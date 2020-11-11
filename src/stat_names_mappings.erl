@@ -305,6 +305,64 @@ pre_70_stat_to_prom_query("@eventing-" ++ _Bucket, _) ->
 pre_70_stat_to_prom_query("@" ++ _, _) ->
     {error, not_found};
 
+%% Exceptions that are not handled by kv_stats_mappings for one reason
+%% on another
+pre_70_stat_to_prom_query(Bucket, <<"cmd_get">>) ->
+    M = {[{eq, <<"name">>, <<"kv_ops">>},
+          {eq, <<"bucket">>, list_to_binary(Bucket)},
+          {eq, <<"op">>, <<"get">>}]},
+    {ok, named(<<"kv_cmd_get">>, sumby([], rate(M)))};
+pre_70_stat_to_prom_query(Bucket, <<"couch_docs_disk_size">>) ->
+    M = bucket_metric(<<"kv_ep_db_file_size_bytes">>, Bucket),
+    {ok, named(<<"couch_docs_disk_size">>, sumby([], M))};
+pre_70_stat_to_prom_query(Bucket, <<"couch_docs_data_size">>) ->
+    M = bucket_metric(<<"kv_ep_db_data_size_bytes">>, Bucket),
+    {ok, named(<<"couch_docs_data_size">>, sumby([], M))};
+pre_70_stat_to_prom_query(Bucket, <<"disk_write_queue">>) ->
+    M = {'or', [bucket_metric(<<"kv_ep_queue_size">>, Bucket),
+                bucket_metric(<<"kv_ep_flusher_todo">>, Bucket)]},
+    {ok, named(<<"kv_disk_write_queue">>, sumby([], M))};
+pre_70_stat_to_prom_query(Bucket, <<"ep_ops_create">>) ->
+    Metrics = [<<"kv_vb_active_ops_create">>, <<"kv_vb_replica_ops_create">>,
+               <<"kv_vb_pending_ops_create">>],
+    M = sumby([], rate({'or', [bucket_metric(M, Bucket) || M <- Metrics]})),
+    {ok, named(<<"kv_ep_ops_create">>, M)};
+pre_70_stat_to_prom_query(Bucket, <<"ep_ops_update">>) ->
+    Metrics = [<<"kv_vb_active_ops_update">>, <<"kv_vb_replica_ops_update">>,
+               <<"kv_vb_pending_ops_update">>],
+    M = sumby([], rate({'or', [bucket_metric(M, Bucket) || M <- Metrics]})),
+    {ok, named(<<"kv_ep_ops_update">>, M)};
+pre_70_stat_to_prom_query(Bucket, <<"misses">>) ->
+    M = {[{eq, <<"name">>, <<"kv_ops">>},
+          {eq, <<"bucket">>, list_to_binary(Bucket)},
+          {eq, <<"result">>, <<"miss">>}]},
+    {ok, named(<<"kv_misses">>, sumby([], rate(M)))};
+pre_70_stat_to_prom_query(Bucket, <<"ops">>) ->
+    Metrics = [rate(bucket_metric(<<"kv_cmd_lookup">>, Bucket)),
+               rate({[{eq, <<"name">>, <<"kv_ops">>},
+                      {eq, <<"bucket">>, list_to_binary(Bucket)},
+                      {eq_any, <<"op">>,
+                       [<<"set">>, <<"incr">>, <<"decr">>, <<"delete">>,
+                        <<"del_meta">>, <<"get_meta">>,<<"set_meta">>,
+                        <<"set_ret_meta">>,<<"del_ret_meta">>]}]})],
+    {ok, named(<<"kv_old_ops">>, sumby([], {'or', Metrics}))};
+pre_70_stat_to_prom_query(Bucket, <<"vb_total_queue_age">>) ->
+    Metric =
+        fun (Name) ->
+            {[{eq, <<"name">>, <<"kv_vb_", Name/binary, "_queue_age_seconds">>},
+              {eq, <<"bucket">>, list_to_binary(Bucket)},
+              {eq, <<"state">>, Name}]}
+        end,
+    States = [<<"active">>, <<"replica">>, <<"pending">>],
+    M = sumby([], {'or', [Metric(S) || S <- States]}),
+    {ok, named(<<"kv_vb_total_queue_age">>,
+               convert_units(seconds, milliseconds, M))};
+pre_70_stat_to_prom_query(Bucket, <<"xdc_ops">>) ->
+    M = {[{eq, <<"name">>, <<"kv_ops">>},
+          {eq, <<"bucket">>, list_to_binary(Bucket)},
+          {eq_any, <<"op">>, [<<"del_meta">>, <<"get_meta">>,
+                              <<"set_meta">>]}]},
+    {ok, named(<<"kv_xdc_ops">>, sumby([], rate(M)))};
 %% Timings metrics:
 pre_70_stat_to_prom_query(Bucket, <<"bg_wait_count">>) ->
     {ok, rate(bucket_metric(<<"kv_bg_wait_seconds_count">>, Bucket))};
@@ -509,6 +567,20 @@ prom_name_to_pre_70_name(Bucket, {JSONProps}) ->
                     <<"update">> -> {ok, <<"disk_update_total">>};
                     _ -> {error, not_found}
                 end;
+            <<"kv_disk_write_queue">> ->
+                {ok, <<"disk_write_queue">>};
+            <<"kv_ep_ops_create">> ->
+                {ok, <<"ep_ops_create">>};
+            <<"kv_ep_ops_update">> ->
+                {ok, <<"ep_ops_update">>};
+            <<"kv_misses">> ->
+                {ok, <<"misses">>};
+            <<"kv_old_ops">> ->
+                {ok, <<"ops">>};
+            <<"kv_vb_total_queue_age">> ->
+                {ok, <<"vb_total_queue_age">>};
+            <<"kv_xdc_ops">> ->
+                {ok, <<"xdc_ops">>};
             <<"kv_", _/binary>> = Name ->
                 DropLabels = [<<"name">>, <<"bucket">>, <<"job">>,
                               <<"category">>, <<"instance">>, <<"__name__">>],
@@ -681,7 +753,9 @@ default_stat_list(_Bucket) ->
      couch_spatial_disk_size, couch_spatial_ops, couch_views_data_size,
      couch_views_disk_size, couch_views_ops, bg_wait_count, bg_wait_total,
      disk_commit_count, disk_commit_total, disk_update_count,
-     disk_update_total].
+     disk_update_total, couch_docs_disk_size, couch_docs_data_size,
+     disk_write_queue, ep_ops_create, ep_ops_update, misses, evictions,
+     ops, vb_total_queue_age, xdc_ops].
 
 is_system_stat(<<"cpu_", _/binary>>) -> true;
 is_system_stat(<<"swap_", _/binary>>) -> true;
