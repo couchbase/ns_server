@@ -599,17 +599,23 @@ delete_disk_buckets_databases_loop(Pred, [Bucket | Rest]) ->
 %% it's named a bit differently from other functions here; but this function
 %% is rpc called by older nodes; so we must keep this name unchanged
 delete_unused_buckets_db_files() ->
-    Config = ns_config:get(),
-    Services = ns_cluster_membership:node_services(Config, node()),
-    BCfgs = ns_bucket:get_buckets(Config),
+    Node = node(),
+    Snapshot = chronicle_compat:get_snapshot(
+                 [ns_bucket:key_filter(),
+                  ns_cluster_membership:key_filter()]),
+    Services = ns_cluster_membership:node_services(Snapshot, Node),
+    BucketConfigs = ns_bucket:get_buckets(Snapshot),
     BucketNames =
         case lists:member(kv, Services) of
             true ->
-                ns_bucket:node_bucket_names_of_type(node(), membase, BCfgs);
+                ns_bucket:node_bucket_names_of_type(Node, membase,
+                                                    BucketConfigs);
             false ->
-                case ns_cluster_membership:get_cluster_membership(node(), Config) of
+                case ns_cluster_membership:get_cluster_membership(Node,
+                                                                  Snapshot) of
                     active ->
-                        ns_bucket:get_bucket_names_of_type(membase, BCfgs);
+                        ns_bucket:get_bucket_names_of_type(membase,
+                                                           BucketConfigs);
                     _ ->
                         []
                 end
@@ -619,7 +625,9 @@ delete_unused_buckets_db_files() ->
               RV = not(lists:member(Bucket, BucketNames)),
               case RV of
                   true ->
-                      ale:info(?USER_LOGGER, "Deleting old data files of bucket ~p", [Bucket]);
+                      ale:info(
+                        ?USER_LOGGER,
+                        "Deleting old data files of bucket ~p", [Bucket]);
                   _ ->
                       ok
               end,

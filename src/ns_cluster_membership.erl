@@ -52,7 +52,8 @@
          remove_node/1,
          prepare_to_join/2,
          is_newly_added_node/1,
-         attach_node_uuids/2
+         attach_node_uuids/2,
+         key_filter/0
         ]).
 
 -export([supported_services/0,
@@ -80,6 +81,26 @@
          should_run_service/3,
          user_friendly_service_name/1,
          json_service_name/1]).
+
+key_filter() ->
+    [{chronicle_compat:backend(), fun key_filter/1}].
+
+key_filter(nodes_wanted) ->
+    true;
+key_filter(server_groups) ->
+    true;
+key_filter({node, _, membership}) ->
+    true;
+key_filter({node, _, recovery_type}) ->
+    true;
+key_filter({service_map, _}) ->
+    true;
+key_filter({service_failover_pending, _}) ->
+    true;
+key_filter({node, _, services}) ->
+    true;
+key_filter(_) ->
+    false.
 
 get_nodes_with_status(PredOrStatus) ->
     get_nodes_with_status(ns_config:latest(), PredOrStatus).
