@@ -75,17 +75,22 @@ handle_node(Node, Req) when is_atom(Node) ->
 %            [{path, /another/good/disk/path}, {quotaMb, 5678}, {state, ok}]]}].
 %
 storage_conf_to_json(S) ->
-    lists:map(fun ({StorageType, Locations}) -> % StorageType is ssd or hdd.
-                  {StorageType, lists:map(fun (LocationPropList) ->
-                                              {struct, lists:map(fun location_prop_to_json/1, LocationPropList)}
-                                          end,
-                                          Locations)}
-              end,
-              S).
+    lists:map(
+      fun ({StorageType, Locations}) -> % StorageType is ssd or hdd.
+              {StorageType,
+               lists:map(
+                 fun (LocationPropList) ->
+                         {struct, lists:map(fun location_prop_to_json/1,
+                                            LocationPropList)}
+                 end,
+                 Locations)}
+      end,
+      S).
 
 location_prop_to_json({path, L}) -> {path, list_to_binary(L)};
 location_prop_to_json({index_path, L}) -> {index_path, list_to_binary(L)};
-location_prop_to_json({cbas_dirs, L}) -> {cbas_dirs, [list_to_binary(El) || El <- L]};
+location_prop_to_json({cbas_dirs, L}) ->
+    {cbas_dirs, [list_to_binary(El) || El <- L]};
 location_prop_to_json({eventing_path,L}) -> {eventing_path, list_to_binary(L)};
 location_prop_to_json({java_home, undefined}) -> {java_home, <<>>};
 location_prop_to_json({java_home, L}) -> {java_home, list_to_binary(L)};
@@ -94,19 +99,27 @@ location_prop_to_json({state, ok}) -> {state, ok};
 location_prop_to_json(KV) -> KV.
 
 build_full_node_info(Node, LocalAddr) ->
-    {struct, KV} = (build_nodes_info_fun(true, normal, unstable, LocalAddr))(Node, undefined),
+    {struct, KV} = (build_nodes_info_fun(true, normal,
+                                         unstable, LocalAddr))(Node, undefined),
     NodeStatus = ns_doctor:get_node(Node),
-    StorageConf = ns_storage_conf:storage_conf_from_node_status(Node, NodeStatus),
+    StorageConf =
+        ns_storage_conf:storage_conf_from_node_status(Node, NodeStatus),
     R = {struct, storage_conf_to_json(StorageConf)},
     DiskData = proplists:get_value(disk_data, NodeStatus, []),
 
-    Fields = [{availableStorage, {struct, [{hdd, [{struct, [{path, list_to_binary(Path)},
-                                                            {sizeKBytes, SizeKBytes},
-                                                            {usagePercent, UsagePercent}]}
-                                                  || {Path, SizeKBytes, UsagePercent} <- DiskData]}]}},
-              {storageTotals, {struct, [{Type, {struct, PropList}}
-                                        || {Type, PropList} <- ns_storage_conf:nodes_storage_info([Node])]}},
-              {storage, R}] ++ KV ++ build_memory_quota_info(ns_config:latest()),
+    Fields = [{availableStorage,
+               {struct,
+                [{hdd, [{struct, [{path, list_to_binary(Path)},
+                                  {sizeKBytes, SizeKBytes},
+                                  {usagePercent, UsagePercent}]}
+                        || {Path, SizeKBytes, UsagePercent} <- DiskData]}]}},
+              {storageTotals,
+               {struct,
+                [{Type, {struct, PropList}}
+                 || {Type, PropList} <-
+                        ns_storage_conf:nodes_storage_info([Node])]}},
+              {storage, R}] ++ KV ++
+        build_memory_quota_info(ns_config:latest()),
     {struct, lists:filter(fun (X) -> X =/= undefined end,
                                    Fields)}.
 
@@ -119,7 +132,8 @@ build_memory_quota_info(Config) ->
       end, memory_quota:aware_services(CompatVersion)).
 
 build_nodes_info(CanIncludeOtpCookie, InfoLevel, Stability, LocalAddr) ->
-    F = build_nodes_info_fun(CanIncludeOtpCookie, InfoLevel, Stability, LocalAddr),
+    F = build_nodes_info_fun(CanIncludeOtpCookie, InfoLevel, Stability,
+                             LocalAddr),
     [F(N, undefined) || N <- ns_node_disco:nodes_wanted()].
 
 %% builds health/warmup status of given node (w.r.t. given Bucket if
@@ -239,7 +253,8 @@ build_extra_node_info(Config, Node, InfoNode) ->
 
     NodesBucketMemoryAllocated = NodesBucketMemoryTotal,
     [{systemStats, {struct, proplists:get_value(system_stats, InfoNode, [])}},
-     {interestingStats, {struct, proplists:get_value(interesting_stats, InfoNode, [])}},
+     {interestingStats,
+      {struct, proplists:get_value(interesting_stats, InfoNode, [])}},
      %% TODO: deprecate this in API (we need 'stable' "startupTStamp"
      %% first)
      {uptime, list_to_binary(integer_to_list(UpSecs))},
@@ -328,7 +343,8 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
 
     RV = [{hostname, list_to_binary(HostName)},
           {nodeUUID, NodeUUID},
-          {clusterCompatibility, cluster_compat_mode:effective_cluster_compat_version()},
+          {clusterCompatibility,
+           cluster_compat_mode:effective_cluster_compat_version()},
           {version, list_to_binary(Version)},
           {os, list_to_binary(OS)},
           {cpuCount, CpuCount},
@@ -363,10 +379,12 @@ handle_bucket_node_list(BucketName, Req) ->
     Servers =
         [{struct,
           [{hostname, Hostname},
-           {uri, bin_concat_path(["pools", "default", "buckets", BucketName, "nodes", Hostname])},
+           {uri, bin_concat_path(["pools", "default", "buckets", BucketName,
+                                  "nodes", Hostname])},
            {stats, {struct, [{uri,
                               bin_concat_path(
-                                ["pools", "default", "buckets", BucketName, "nodes", Hostname, "stats"])}]}}]}
+                                ["pools", "default", "buckets", BucketName,
+                                 "nodes", Hostname, "stats"])}]}}]}
          || {_, Hostname} <- NHs],
     reply_json(Req, {struct, [{servers, Servers}]}).
 
@@ -412,9 +430,11 @@ handle_bucket_node_info(BucketName, Hostname, Req) ->
         {error, {invalid_node, Reason}} ->
             menelaus_util:reply_text(Req, Reason, 400);
         _ ->
-            BucketURI = bin_concat_path(["pools", "default", "buckets", BucketName]),
+            BucketURI = bin_concat_path(["pools", "default", "buckets",
+                                         BucketName]),
             NodeStatsURI = bin_concat_path(
-                             ["pools", "default", "buckets", BucketName, "nodes", Hostname, "stats"]),
+                             ["pools", "default", "buckets", BucketName,
+                              "nodes", Hostname, "stats"]),
             reply_json(Req,
                        {struct, [{hostname, list_to_binary(Hostname)},
                                  {bucket, {struct, [{uri, BucketURI}]}},
@@ -428,9 +448,13 @@ average_failover_safenesses_rec(_Node, _NodeInfos, [], Sum, Count) ->
     try Sum / Count
     catch error:badarith -> 1.0
     end;
-average_failover_safenesses_rec(Node, NodeInfos, [{BucketName, BucketConfig} | RestBuckets], Sum, Count) ->
-    Level = failover_safeness_level:extract_replication_uptodateness(BucketName, BucketConfig, Node, NodeInfos),
-    average_failover_safenesses_rec(Node, NodeInfos, RestBuckets, Sum + Level, Count + 1).
+average_failover_safenesses_rec(Node, NodeInfos,
+                                [{BucketName, BucketConfig} | RestBuckets],
+                                Sum, Count) ->
+    Level = failover_safeness_level:extract_replication_uptodateness(
+              BucketName, BucketConfig, Node, NodeInfos),
+    average_failover_safenesses_rec(Node, NodeInfos, RestBuckets, Sum + Level,
+                                    Count + 1).
 
 %% this serves fresh nodes replication and health status
 handle_node_statuses(Req) ->
@@ -443,31 +467,40 @@ handle_node_statuses(Req) ->
         lists:map(
           fun (N) ->
                   InfoNode = ns_doctor:get_node(N, OldStatuses),
-                  Hostname = proplists:get_value(hostname,
-                                                 build_node_info(Config, N, InfoNode, LocalAddr)),
+                  Hostname = proplists:get_value(
+                               hostname,
+                               build_node_info(Config, N, InfoNode, LocalAddr)),
                   NewInfoNode = ns_doctor:get_node(N, FreshStatuses),
-                  Dataless = not lists:member(kv, ns_cluster_membership:node_services(Config, N)),
+                  Dataless =
+                      not lists:member(
+                            kv, ns_cluster_membership:node_services(Config, N)),
                   V = case proplists:get_bool(down, NewInfoNode) of
                           true ->
                               {struct, [{status, unhealthy},
                                         {otpNode, N},
                                         {dataless, Dataless},
-                                        {replication, average_failover_safenesses(N, OldStatuses, BucketsAll)}]};
+                                        {replication,
+                                         average_failover_safenesses(
+                                           N, OldStatuses, BucketsAll)}]};
                           false ->
-                              GracefulFailoverPossible =
-                                  case ns_rebalancer:check_graceful_failover_possible([N], BucketsAll) of
-                                      true -> true;
-                                      {false, _} -> false
-                                  end,
-                              {struct, [{status, healthy},
-                                        {gracefulFailoverPossible, GracefulFailoverPossible},
-                                        {otpNode, N},
-                                        {dataless, Dataless},
-                                        {replication, average_failover_safenesses(N, FreshStatuses, BucketsAll)}]}
+                              {struct,
+                               [{status, healthy},
+                                {gracefulFailoverPossible,
+                                 graceful_failover_possible(N, BucketsAll)},
+                                {otpNode, N},
+                                {dataless, Dataless},
+                                {replication, average_failover_safenesses(
+                                                N, FreshStatuses, BucketsAll)}]}
                       end,
                   {Hostname, V}
           end, ns_node_disco:nodes_wanted()),
     reply_json(Req, {struct, NodeStatuses}, 200).
+
+graceful_failover_possible(Node, Buckets) ->
+    case ns_rebalancer:check_graceful_failover_possible([Node], Buckets) of
+        true -> true;
+        {false, _} -> false
+    end.
 
 handle_node_rename(Req) ->
     Params = mochiweb_request:parse_post(Req),
@@ -493,16 +526,20 @@ handle_node_rename(Req) ->
                         Msg = io_lib:format("Could not listen: ~p", [Errno]),
                         {error, iolist_to_binary(Msg), 400};
                     not_self_started ->
-                        Msg = <<"Could not rename the node because name was fixed at server start-up.">>,
+                        Msg = <<"Could not rename the node because name was "
+                                "fixed at server start-up.">>,
                         {error, Msg, 403};
                     {address_save_failed, E} ->
-                        Msg = io_lib:format("Could not save address after rename: ~p", [E]),
+                        Msg = io_lib:format("Could not save address after "
+                                            "rename: ~p", [E]),
                         {error, iolist_to_binary(Msg), 500};
                     {address_not_allowed, Message} ->
-                        Msg = io_lib:format("Requested hostname is not allowed: ~s", [Message]),
+                        Msg = io_lib:format("Requested hostname is not "
+                                            "allowed: ~s", [Message]),
                         {error, iolist_to_binary(Msg), 400};
                     already_part_of_cluster ->
-                        Msg = <<"Renaming is disallowed for nodes that are already part of a cluster">>,
+                        Msg = <<"Renaming is disallowed for nodes that are "
+                                "already part of a cluster">>,
                         {error, Msg, 400}
                 end
         end,
