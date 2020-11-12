@@ -156,57 +156,62 @@ build_node_status(Node, Bucket, InfoNode, BucketsAll) ->
     end.
 
 build_nodes_info_fun(CanIncludeOtpCookie, InfoLevel, Stability, LocalAddr) ->
-    OtpCookie = list_to_binary(atom_to_list(erlang:get_cookie())),
+    OtpCookie =
+        %% NOTE: the following avoids exposing otpCookie to UI
+        case CanIncludeOtpCookie andalso InfoLevel =:= normal of
+            true ->
+                {otpCookie, erlang:get_cookie()};
+            false ->
+                []
+        end,
     NodeStatuses = ns_doctor:get_nodes(),
     Config = ns_config:get(),
     BucketsAll = ns_bucket:get_buckets(Config),
     fun(WantENode, Bucket) ->
             InfoNode = ns_doctor:get_node(WantENode, NodeStatuses),
-            KV = build_node_info(Config, WantENode, InfoNode, LocalAddr),
-
-            Status = build_node_status(WantENode, Bucket, InfoNode, BucketsAll),
-            KV1 = [{clusterMembership,
-                    atom_to_binary(
-                      ns_cluster_membership:get_cluster_membership(
-                        WantENode, Config),
-                      latin1)},
-                   {recoveryType,
-                    ns_cluster_membership:get_recovery_type(Config, WantENode)},
-                   {status, Status},
-                   {otpNode, list_to_binary(atom_to_list(WantENode))}
-                   | KV],
-            %% NOTE: the following avoids exposing otpCookie to UI
-            KV2 = case CanIncludeOtpCookie andalso InfoLevel =:= normal of
-                      true ->
-                          [{otpCookie, OtpCookie} | KV1];
-                      false -> KV1
-                  end,
-            KV3 = case Bucket of
-                      undefined ->
-                          [{Key, URL} || {Key, Node} <- [{couchApiBase, WantENode},
-                                                         {couchApiBaseHTTPS, {ssl, WantENode}}],
-                                         URL <- [capi_utils:capi_url_bin(Node, <<"/">>, LocalAddr)],
-                                         URL =/= undefined] ++ KV2;
-                      _ ->
-                          Replication = case ns_bucket:get_bucket(Bucket, Config) of
-                                            not_present -> 0.0;
-                                            {ok, BucketConfig} ->
-                                                failover_safeness_level:extract_replication_uptodateness(Bucket, BucketConfig,
-                                                                                                         WantENode, NodeStatuses)
-                                        end,
-                          [{replication, Replication} | KV2]
-                  end,
-            KV4 = case Stability of
-                      stable ->
-                          KV3;
-                      unstable ->
-                          build_extra_node_info(Config, WantENode,
-                                                InfoNode, BucketsAll, KV3)
-                  end,
-            {struct, KV4}
+            {struct,
+             lists:flatten(
+               [{clusterMembership,
+                 ns_cluster_membership:get_cluster_membership(
+                   WantENode, Config)},
+                {recoveryType,
+                 ns_cluster_membership:get_recovery_type(Config, WantENode)},
+                {status, build_node_status(WantENode, Bucket, InfoNode,
+                                           BucketsAll)},
+                {otpNode, WantENode},
+                build_node_info(Config, WantENode, InfoNode, LocalAddr),
+                OtpCookie,
+                case Bucket of
+                    undefined ->
+                        build_couch_api_base(WantENode, LocalAddr);
+                    _ ->
+                        build_replication_info(Bucket, WantENode, NodeStatuses,
+                                               Config)
+                end,
+                case Stability of
+                    stable ->
+                        [];
+                    unstable ->
+                        build_extra_node_info(Config, WantENode, InfoNode)
+                end])}
     end.
 
-build_extra_node_info(Config, Node, InfoNode, _BucketsAll, Append) ->
+build_couch_api_base(WantENode, LocalAddr) ->
+    [{Key, URL} || {Key, Node} <- [{couchApiBase, WantENode},
+                                   {couchApiBaseHTTPS, {ssl, WantENode}}],
+                   URL <- [capi_utils:capi_url_bin(Node, <<"/">>, LocalAddr)],
+                   URL =/= undefined].
+
+build_replication_info(Bucket, WantENode, NodeStatuses, Config) ->
+    {replication,
+     case ns_bucket:get_bucket(Bucket, Config) of
+         not_present -> 0.0;
+         {ok, BucketConfig} ->
+             failover_safeness_level:extract_replication_uptodateness(
+               Bucket, BucketConfig, WantENode, NodeStatuses)
+     end}.
+
+build_extra_node_info(Config, Node, InfoNode) ->
 
     {UpSecs, {MemoryTotalErlang, MemoryAllocedErlang, _}} =
         {proplists:get_value(wall_clock, InfoNode, 0),
@@ -245,8 +250,7 @@ build_extra_node_info(Config, Node, InfoNode, _BucketsAll, Append) ->
      %% TODO: deprecate this in API
      {mcdMemoryReserved, erlang:trunc(NodesBucketMemoryTotal)},
      %% TODO: deprecate this in API
-     {mcdMemoryAllocated, erlang:trunc(NodesBucketMemoryAllocated)}
-     | Append].
+     {mcdMemoryAllocated, erlang:trunc(NodesBucketMemoryAllocated)}].
 
 build_node_hostname(Config, Node, LocalAddr) ->
     H = misc:extract_node_address(Node),
