@@ -390,6 +390,34 @@ pre_70_stat_to_prom_query(Bucket, <<"disk_update_total">>) ->
 %% Couchdb metrics:
 pre_70_stat_to_prom_query(Bucket, <<"couch_", _/binary>> = N) ->
     {ok, sumby([<<"name">>], bucket_metric(N, Bucket))};
+pre_70_stat_to_prom_query(Bucket, <<"spatial/", Name/binary>>) ->
+    Metric = fun (MetricName, Id) ->
+                 {[{eq, <<"name">>, <<"couch_spatial_", MetricName/binary>>},
+                   {eq, <<"bucket">>, list_to_binary(Bucket)}] ++
+                  [{eq, <<"signature">>, Id} || Id =/= <<"*">>]}
+             end,
+    case binary:split(Name, <<"/">>) of
+        [Id, <<"accesses">>] ->
+            {ok, Metric(<<"ops">>, Id)};
+        [Id, Stat] ->
+            {ok, Metric(Stat, Id)};
+        _ ->
+            {error, not_found}
+    end;
+pre_70_stat_to_prom_query(Bucket, <<"views/", Name/binary>>) ->
+    Metric = fun (MetricName, Id) ->
+                 {[{eq, <<"name">>, <<"couch_views_", MetricName/binary>>},
+                   {eq, <<"bucket">>, list_to_binary(Bucket)}] ++
+                  [{eq, <<"signature">>, Id} || Id =/= <<"*">>]}
+             end,
+    case binary:split(Name, <<"/">>) of
+        [Id, <<"accesses">>] ->
+            {ok, Metric(<<"ops">>, Id)};
+        [Id, Stat] ->
+            {ok, Metric(Stat, Id)};
+        _ ->
+            {error, not_found}
+    end;
 %% Memcached "empty key" metrics:
 pre_70_stat_to_prom_query(_Bucket, <<"curr_connections">>) ->
     %% curr_connections can't be handled like other metrics because
@@ -588,10 +616,25 @@ prom_name_to_pre_70_name(Bucket, {JSONProps}) ->
                 Labels = misc:proplist_keyfilter(Filter, JSONProps),
                 kv_stats_mappings:new_to_old({Name, lists:usort(Labels)});
             <<"couch_", _/binary>> = Name ->
-                {ok, Name};
+                case proplists:get_value(<<"signature">>, JSONProps) of
+                    undefined -> {ok, Name};
+                    Sig ->
+                        case Name of
+                            <<"couch_spatial_ops">> ->
+                                {ok, <<"spatial/", Sig/binary, "/accesses">>};
+                            <<"couch_views_ops">> ->
+                                {ok, <<"views/", Sig/binary, "/accesses">>};
+                            <<"couch_spatial_", N/binary>> ->
+                                {ok, <<"spatial/", Sig/binary, "/", N/binary>>};
+                            <<"couch_views_", N/binary>> ->
+                                {ok, <<"views/", Sig/binary, "/", N/binary>>}
+                        end
+                end;
             _ -> {error, not_found}
         end,
     case Res of
+        {ok, <<"spatial/", _/binary>>} -> Res;
+        {ok, <<"views/", _/binary>>} -> Res;
         {ok, BinName} ->
             %% Since pre-7.0 stats don't care much about stats name type,
             %% 7.0 stats have to convert names to correct types based on stat
@@ -755,7 +798,9 @@ default_stat_list(_Bucket) ->
      disk_commit_count, disk_commit_total, disk_update_count,
      disk_update_total, couch_docs_disk_size, couch_docs_data_size,
      disk_write_queue, ep_ops_create, ep_ops_update, misses, evictions,
-     ops, vb_total_queue_age, xdc_ops].
+     ops, vb_total_queue_age, xdc_ops, <<"spatial/*/accesses">>,
+     <<"spatial/*/data_size">>, <<"spatial/*/disk_size">>,
+     <<"views/*/accesses">>, <<"views/*/data_size">>, <<"views/*/disk_size">>].
 
 is_system_stat(<<"cpu_", _/binary>>) -> true;
 is_system_stat(<<"swap_", _/binary>>) -> true;
