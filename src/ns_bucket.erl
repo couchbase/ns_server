@@ -50,6 +50,7 @@
          bucket_exists/2,
          get_bucket/1,
          get_bucket/2,
+         ensure_bucket/1,
          get_bucket_names/0,
          get_bucket_names/1,
          get_bucket_names_of_type/1,
@@ -212,6 +213,14 @@ get_bucket(Bucket, Snapshot) when is_map(Snapshot) ->
 get_bucket(Bucket, Config) ->
     BucketConfigs = get_buckets(Config),
     get_bucket_from_configs(Bucket, BucketConfigs).
+
+ensure_bucket(Bucket) ->
+    case ns_bucket:get_bucket(Bucket) of
+        not_present ->
+            exit({bucket_not_present, Bucket});
+        {ok, BucketConfig} ->
+            BucketConfig
+    end.
 
 get_bucket_from_configs(Bucket, Configs) ->
     case lists:keysearch(Bucket, 1, Configs) of

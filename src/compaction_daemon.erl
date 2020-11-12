@@ -1103,21 +1103,13 @@ get_group_data_info(BucketName, DDocId, Kind, replica) ->
 ddoc_names(BucketName) ->
     capi_utils:fetch_ddoc_ids(BucketName).
 
-search_node_default(Config, Key, Default) ->
-    case ns_config:search_node(Config, Key) of
-        false ->
-            Default;
-        {value, Value} ->
-            Value
-    end.
-
 compaction_daemon_config(Config) ->
-    Props = search_node_default(Config, compaction_daemon, []),
+    Props = ns_config:search_node_with_default(Config, compaction_daemon, []),
     daemon_config_to_record(Props).
 
 compaction_config_props(Config, BucketName) ->
-    Global = search_node_default(Config, autocompaction, []),
-    BucketConfig = get_bucket(BucketName, Config),
+    Global = ns_config:search_node_with_default(Config, autocompaction, []),
+    BucketConfig = get_bucket(BucketName),
     PerBucket = case proplists:get_value(autocompaction, BucketConfig, []) of
                     false -> [];
                     SomeValue -> SomeValue
@@ -1421,17 +1413,7 @@ all_bucket_dbs(BucketName) ->
     [{V, db_name(BucketName, V)} || V <- NodeVBuckets].
 
 get_bucket(BucketName) ->
-    get_bucket(BucketName, ns_config:get()).
-
-get_bucket(BucketName, Config) ->
-    BucketNameStr = binary_to_list(BucketName),
-
-    case ns_bucket:get_bucket(BucketNameStr, Config) of
-        not_present ->
-            exit({bucket_not_present, BucketName});
-        {ok, BucketConfig} ->
-            BucketConfig
-    end.
+    ns_bucket:ensure_bucket(binary_to_list(BucketName)).
 
 bucket_exists(BucketName) ->
     case ns_bucket:get_bucket(binary_to_list(BucketName)) of
