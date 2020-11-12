@@ -88,14 +88,13 @@ run_on_subset(#httpd{path_parts=[_, _, DName, _, _]}=Req, Name) ->
 %% depending on the number of items in the cluster
 -spec run_on_subset_according_to_stats(binary()) -> true | false | {error, no_stats}.
 run_on_subset_according_to_stats(Bucket) ->
-    case catch stats_reader:latest(minute, ns_node_disco:ns_server_node(), ?b2l(Bucket), 1) of
-        {ok, [Stats|_]} ->
+    NsServerNode = ns_node_disco:ns_server_node(),
+    case stats_interface:current_items_total(Bucket, NsServerNode) of
+        undefined -> {error, no_stats};
+        N ->
             {ok, Config} = ns_bucket:get_bucket(?b2l(Bucket)),
             NumVBuckets = proplists:get_value(num_vbuckets, Config, []),
-            {ok, N} = orddict:find(curr_items_tot, Stats#stat_entry.values),
-            N > NumVBuckets * ?DEV_MULTIPLE;
-        _Error ->
-            {error, no_stats}
+            N > NumVBuckets * ?DEV_MULTIPLE
     end.
 
 

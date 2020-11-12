@@ -21,10 +21,25 @@
          buckets_interesting/0,
          buckets_interesting/1,
          for_alerts/0,
+         current_items_total/1,
+         current_items_total/2,
          latest/2]).
 
 -define(DEFAULT_TIMEOUT, 5000).
 -define(IRATE_INTERVAL, "1m").
+
+current_items_total(Bucket) when is_list(Bucket) ->
+    current_items_total(list_to_binary(Bucket));
+current_items_total(BucketBin) when is_binary(BucketBin) ->
+    case latest(<<"kv_curr_items_tot{bucket=`", BucketBin/binary, "`}">>,
+                fun (_Props) -> {true, curr_items_total} end) of
+        [{curr_items_total, N}] -> N;
+        _ -> undefined
+    end.
+
+current_items_total(Bucket, Node) ->
+    Res = from_nodes([Node], current_items_total, [Bucket], ?DEFAULT_TIMEOUT),
+    proplists:get_value(Node, Res).
 
 system() ->
     latest(<<"{category=`system`,"
