@@ -158,8 +158,6 @@ var stats70LabelsModifier = {
   }
 }
 
-console.log(compat70)
-
 let service = {
   "7.0": {
     "kvGroups": Object.keys(compat65.kvGroups).reduce((acc, group) => {
