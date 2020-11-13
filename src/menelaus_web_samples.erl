@@ -28,7 +28,7 @@
          reply_json/3]).
 
 -define(SAMPLES_LOADING_TIMEOUT, 120000).
--define(SAMPLE_BUCKET_QUOTA_MB, 100).
+-define(SAMPLE_BUCKET_QUOTA_MB, 200).
 -define(SAMPLE_BUCKET_QUOTA, 1024 * 1024 * ?SAMPLE_BUCKET_QUOTA_MB).
 
 handle_get(Req) ->
