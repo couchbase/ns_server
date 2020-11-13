@@ -40,12 +40,17 @@ class MnXDCRFilterComponent extends MnLifeCycleHooksToStream {
       mnXDCRService.stream.postRegexpValidation;
     this.postSettingsReplicationsValidation =
       mnXDCRService.stream.postSettingsReplicationsValidation;
+    this.postCreateReplication =
+      mnXDCRService.stream.postCreateReplication;
 
     this.errors = merge(
       this.postRegexpValidation.success,
       this.postRegexpValidation.error,
+      this.postCreateReplication.error,
       this.postSettingsReplicationsValidation.error
-    ).pipe(map(errors => errors && (errors.error || errors.filterExpression)));
+    ).pipe(map(errors => errors &&
+               (errors.error ? errors.error._ ? errors.error._ :
+                errors.error : errors.filterExpression)));
 
 
     this.form
