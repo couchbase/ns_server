@@ -61,6 +61,12 @@ class MnXDCRFilterComponent extends MnLifeCycleHooksToStream {
       .clearErrors();
   }
 
+  ngOnInit() {
+    this.formHelper.group.patchValue({
+      enableFilters: !!this.group.get("filterExpression").value
+    });
+  }
+
   pack() {
     return {
       expression: this.group.get("filterExpression").value,
