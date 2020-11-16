@@ -61,6 +61,9 @@
          names_conflict/2,
          node_locator/1,
          num_replicas/1,
+         pitr_enabled/1,
+         pitr_granularity/1,
+         pitr_max_history_age/1,
          ram_quota/1,
          conflict_resolution_type/1,
          drift_thresholds/1,
@@ -235,6 +238,36 @@ durability_min_level(BucketConfig) ->
                 persistToMajority ->
                     persist_to_majority
             end
+    end.
+
+%% Per-bucket-type point-in-time recovery attributes.  Point-in-time
+%% recovery is not supported on memcached buckets.
+pitr_enabled(BucketConfig) ->
+    case bucket_type(BucketConfig) of
+        memcached ->
+            false;
+        membase ->
+            proplists:get_bool(pitr_enabled, BucketConfig)
+    end.
+
+pitr_granularity(BucketConfig) ->
+    case bucket_type(BucketConfig) of
+        memcached ->
+            undefined;
+        membase ->
+            proplists:get_value(
+              pitr_granularity, BucketConfig,
+              menelaus_web_buckets:pitr_granularity_default())
+    end.
+
+pitr_max_history_age(BucketConfig) ->
+    case bucket_type(BucketConfig) of
+        memcached ->
+            undefined;
+        membase ->
+            proplists:get_value(
+              pitr_max_history_age, BucketConfig,
+              menelaus_web_buckets:pitr_max_history_age_default())
     end.
 
 %% returns bucket ram quota multiplied by number of nodes this bucket

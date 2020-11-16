@@ -53,7 +53,9 @@
          maybe_cleanup_old_buckets/0,
          serve_short_bucket_info/2,
          serve_streaming_short_bucket_info/2,
-         get_ddocs_list/2]).
+         get_ddocs_list/2,
+         pitr_granularity_default/0,
+         pitr_max_history_age_default/0]).
 
 -import(menelaus_util,
         [reply/2,
@@ -322,6 +324,7 @@ build_dynamic_bucket_info(InfoLevel, Id, BucketConfig) ->
       {evictionPolicy, build_eviction_policy(BucketConfig)},
       {storageBackend, ns_bucket:storage_backend(BucketConfig)},
       {durabilityMinLevel, build_durability_min_level(BucketConfig)},
+      build_pitr_dynamic_bucket_info(BucketConfig),
       {fragmentationPercentage,
        proplists:get_value(frag_percent, BucketConfig, 50)},
       {conflictResolutionType,
@@ -342,6 +345,17 @@ build_dynamic_bucket_info(InfoLevel, Id, BucketConfig) ->
              [{driftAheadThresholdMs, DriftAheadThreshold},
               {driftBehindThresholdMs, DriftBehindThreshold}]
      end].
+
+build_pitr_dynamic_bucket_info(BucketConfig) ->
+    case ns_bucket:bucket_type(BucketConfig) of
+        memcached ->
+            %% memcached buckets don't support pitr.
+            [];
+        _ ->
+            [{pitrEnabled, ns_bucket:pitr_enabled(BucketConfig)},
+             {pitrGranularity, ns_bucket:pitr_granularity(BucketConfig)},
+             {pitrMaxHistoryAge, ns_bucket:pitr_max_history_age(BucketConfig)}]
+    end.
 
 handle_sasl_buckets_streaming(_PoolId, Req) ->
     LocalAddr = menelaus_util:local_addr(Req),
@@ -426,6 +440,7 @@ extract_bucket_props(Props) ->
               [lists:keyfind(Y, 1, Props) ||
                   Y <- [num_replicas, replica_index, ram_quota, auth_type,
                         durability_min_level, frag_percent,
+                        pitr_enabled, pitr_granularity, pitr_max_history_age,
                         sasl_password, moxi_port, autocompaction,
                         purge_interval, flush_enabled, num_threads,
                         eviction_policy, conflict_resolution_type,
@@ -847,6 +862,9 @@ validate_membase_bucket_params(CommonParams, Params,
                                      IsEnterprise, IsDeveloperPreview),
          parse_validate_durability_min_level(Params, BucketConfig, IsNew,
                                              Version),
+         parse_validate_pitr_enabled(Params, IsNew, IsDeveloperPreview),
+         parse_validate_pitr_granularity(Params, IsNew, IsDeveloperPreview),
+         parse_validate_pitr_max_history_age(Params, IsNew, IsDeveloperPreview),
          parse_validate_frag_percent(Params, BucketConfig, IsNew, Version,
                                      IsEnterprise),
          parse_validate_max_ttl(Params, BucketConfig,
@@ -1105,6 +1123,125 @@ parse_validate_ephemeral_durability_min_level(_Other) ->
     {error, durability_min_level,
      <<"Durability minimum level must be either 'none' or 'majority' for "
        "ephemeral buckets">>}.
+
+%% Point-in-time Replication (PITR) parameter parsing and validation.
+
+%% Point-in-time Replication numerical parameter ranges and default values.
+
+%% The granularity (interval between each rollback point) in seconds.
+pitr_granularity_min() -> 1.
+pitr_granularity_max() ->  18000.         % 5 hours
+pitr_granularity_default() -> 600.        % 10 minutes
+
+%% The number of seconds of the oldest entry to keep as part of compaction.
+pitr_max_history_age_min() -> 1.
+pitr_max_history_age_max() -> 172800.     % 48 hours
+pitr_max_history_age_default() -> 86400.  % 24 hours
+
+-spec value_not_in_range_error(Param, Value, Min, Max) -> Result when
+      Param :: atom(),
+      Value :: string(),
+      Min :: non_neg_integer(),
+      Max :: non_neg_integer(),
+      Result :: {error, atom(), bitstring()}.
+value_not_in_range_error(Param, Value, Min, Max) ->
+    NumericValue = list_to_integer(Value),
+    {error, Param,
+     list_to_binary(
+       io_lib:format(
+         "The value of ~p (~p) must be in the range ~p to ~p inclusive",
+         [Param, NumericValue, Min, Max]))}.
+
+value_not_numeric_error(Param, Value) ->
+    {error, Param,
+     list_to_binary(io_lib:format(
+                      "The value of ~p (~s) must be a non-negative integer",
+                      [Param, Value]))}.
+
+value_not_boolean_error(Param) ->
+    {error, Param,
+     list_to_binary(io_lib:format("~p must be true or false",
+                                  [Param]))}.
+
+pitr_not_developer_preview_error(Param) ->
+    {error, Param,
+     <<"Point in time replication is only supported in "
+       "developer preview mode">>}.
+
+parse_validate_pitr_enabled(_Params, _IsNew, false = _IsDeveloperPreview) ->
+    pitr_not_developer_preview_error(pitrEnabled);
+parse_validate_pitr_enabled(Params, IsNew, true = _IsDeveloperPreview) ->
+    Result = menelaus_util:parse_validate_boolean_field("pitrEnabled",
+                                                        '_', Params),
+    case {Result, IsNew} of
+        {[], true} ->
+            %% The value wasn't supplied and we're creating a bucket:
+            %% use the default value.
+            {ok, pitr_enabled, false};
+        {[], false} ->
+            %% The value wasn't supplied and we're modifying a bucket:
+            %% don't complain since the value was either specified or a
+            %% default used when the bucket was created.
+            ignore;
+        {[{ok, _, Value}], _} ->
+            {ok, pitr_enabled, Value};
+        {[{error, _, _ErrorMsg}], _} ->
+            value_not_boolean_error(pitrEnabled)
+    end.
+
+parse_validate_pitr_granularity(Params, IsNew, IsDeveloperPreview) ->
+    parse_validate_pitr_numeric_param(Params,
+                                      pitrGranularity,
+                                      pitr_granularity,
+                                      pitr_granularity_min(),
+                                      pitr_granularity_max(),
+                                      pitr_granularity_default(),
+                                      IsNew, IsDeveloperPreview).
+
+parse_validate_pitr_max_history_age(Params, IsNew, IsDeveloperPreview) ->
+    parse_validate_pitr_numeric_param(Params,
+                                      pitrMaxHistoryAge,
+                                      pitr_max_history_age,
+                                      pitr_max_history_age_min(),
+                                      pitr_max_history_age_max(),
+                                      pitr_max_history_age_default(),
+                                      IsNew, IsDeveloperPreview).
+
+parse_validate_pitr_numeric_param(_Params, Param, _ConfigKey,
+                                  _Min, _Max, _Default, _IsNew,
+                                  false = _IsDeveloperPreview) ->
+    pitr_not_developer_preview_error(Param);
+parse_validate_pitr_numeric_param(Params, Param, ConfigKey, Min, Max,
+                                  Default, IsNew,
+                                  true = _IsDeveloperPreview) ->
+    Value = proplists:get_value(atom_to_list(Param), Params),
+    case {Value, IsNew} of
+        {undefined, true} ->
+            %% The value wasn't supplied and we're creating a bucket:
+            %% use the default value.
+            {ok, ConfigKey, Default};
+        {undefined, false} ->
+            %% The value wasn't supplied and we're modifying a bucket:
+            %% don't complain since the value was either specified or a
+            %% default used when the bucket was created.
+            ignore;
+        {_, _} ->
+            validate_pitr_numeric_param(Value, Param, ConfigKey, Min, Max)
+    end.
+
+%% Validates defined numeric parameters.
+validate_pitr_numeric_param(Value, Param, ConfigKey, Min, Max) ->
+    Result = menelaus_util:parse_validate_number(Value, Min, Max),
+    case Result of
+        {ok, X} ->
+            {ok, ConfigKey, X};
+        invalid ->
+            value_not_numeric_error(Param, Value);
+        too_small ->
+            value_not_in_range_error(Param, Value, Min, Max);
+        too_large ->
+            value_not_in_range_error(Param, Value, Min, Max)
+    end.
 
 get_storage_mode_based_on_storage_backend(Params, Version, IsEnterprise,
                                           IsDeveloperPreview) ->
@@ -1977,4 +2114,171 @@ basic_parse_validate_bucket_auto_compaction_settings_test() ->
                   {view_fragmentation_threshold, {20, undefined}}],
                  Stuff1),
     ok.
+
+parse_validate_pitr_max_history_age_test() ->
+    %% "Constants" used to make parse_validate_pitr_numeric_param() calls in
+    %% this test clearer.
+    IsNewTrue = true,
+    IsNewFalse = false,
+    IsDeveloperPreviewTrue = true,
+    IsDeveloperPreviewFalse = false,
+
+    LegitParams = [{"pitrMaxHistoryAge", "100"}],
+
+    %% For these legitimate params tests, the value of IsNew shouldn't matter.
+
+    %% sub-test: legitimate params, IsNew true
+    Result1 = parse_validate_pitr_numeric_param(
+                LegitParams,
+                pitrMaxHistoryAge,
+                pitr_max_history_age,
+                pitr_max_history_age_min(),
+                pitr_max_history_age_max(),
+                pitr_max_history_age_default(),
+                IsNewTrue, IsDeveloperPreviewTrue),
+    Expected1 = {ok, pitr_max_history_age, 100},
+    ?assertEqual(Expected1, Result1),
+
+    %% sub-test: legitimate params, IsNew false
+    Result2 = parse_validate_pitr_numeric_param(
+                LegitParams,
+                pitrMaxHistoryAge,
+                pitr_max_history_age,
+                pitr_max_history_age_min(),
+                pitr_max_history_age_max(),
+                pitr_max_history_age_default(),
+                IsNewFalse, IsDeveloperPreviewTrue),
+    Expected2 = {ok, pitr_max_history_age, 100},
+    ?assertEqual(Expected2, Result2),
+
+    NonNumericParams = [{"pitrMaxHistoryAge", "foo"}],
+
+    %% sub-test: non-numeric params, IsNew true
+    Result3 = parse_validate_pitr_numeric_param(
+                NonNumericParams,
+                pitrMaxHistoryAge,
+                pitr_max_history_age,
+                pitr_max_history_age_min(),
+                pitr_max_history_age_max(),
+                pitr_max_history_age_default(),
+                IsNewTrue, IsDeveloperPreviewTrue),
+    Expected3 = value_not_numeric_error(pitrMaxHistoryAge, "foo"),
+    ?assertEqual(Expected3, Result3),
+
+    %% sub-test: non-numeric params, IsNew false
+    Result4 = parse_validate_pitr_numeric_param(
+                NonNumericParams,
+                pitrMaxHistoryAge,
+                pitr_max_history_age,
+                pitr_max_history_age_min(),
+                pitr_max_history_age_max(),
+                pitr_max_history_age_default(),
+                IsNewFalse, IsDeveloperPreviewTrue),
+    Expected4 = value_not_numeric_error(pitrMaxHistoryAge, "foo"),
+    ?assertEqual(Expected4, Result4),
+
+    TooSmallParams = [{"pitrMaxHistoryAge", "0"}],
+
+    %% sub-test: too small params, IsNew true
+    Result5 = parse_validate_pitr_numeric_param(
+                TooSmallParams,
+                pitrMaxHistoryAge,
+                pitr_max_history_age,
+                pitr_max_history_age_min(),
+                pitr_max_history_age_max(),
+                pitr_max_history_age_default(),
+                IsNewTrue, IsDeveloperPreviewTrue),
+    Expected5 = value_not_in_range_error(pitrMaxHistoryAge, "0",
+                                         pitr_max_history_age_min(),
+                                         pitr_max_history_age_max()),
+    ?assertEqual(Expected5, Result5),
+
+    %% sub-test: too small params, IsNew false
+    Result6 = parse_validate_pitr_numeric_param(
+                TooSmallParams,
+                pitrMaxHistoryAge,
+                pitr_max_history_age,
+                pitr_max_history_age_min(),
+                pitr_max_history_age_max(),
+                pitr_max_history_age_default(),
+                IsNewFalse, IsDeveloperPreviewTrue),
+    Expected6 = value_not_in_range_error(pitrMaxHistoryAge, "0",
+                                         pitr_max_history_age_min(),
+                                         pitr_max_history_age_max()),
+    ?assertEqual(Expected6, Result6),
+
+    TooBigParams = [{"pitrMaxHistoryAge", "172801"}],
+
+    %% sub-test: too big params, IsNew true
+    Result7 = parse_validate_pitr_numeric_param(
+                TooBigParams,
+                pitrMaxHistoryAge,
+                pitr_max_history_age,
+                pitr_max_history_age_min(),
+                pitr_max_history_age_max(),
+                pitr_max_history_age_default(),
+                IsNewTrue, IsDeveloperPreviewTrue),
+    Expected7 = value_not_in_range_error(pitrMaxHistoryAge, "172801",
+                                         pitr_max_history_age_min(),
+                                         pitr_max_history_age_max()),
+    ?assertEqual(Expected7, Result7),
+
+    %% sub-test: too big params, IsNew false
+    Result8 = parse_validate_pitr_numeric_param(
+                TooBigParams,
+                pitrMaxHistoryAge,
+                pitr_max_history_age,
+                pitr_max_history_age_min(),
+                pitr_max_history_age_max(),
+                pitr_max_history_age_default(),
+                IsNewFalse, IsDeveloperPreviewTrue),
+    Expected8 = value_not_in_range_error(pitrMaxHistoryAge, "172801",
+                                         pitr_max_history_age_min(),
+                                         pitr_max_history_age_max()),
+    ?assertEqual(Expected8, Result8),
+
+    MissingParams = [],
+
+    %% sub-test: missing params, IsNew true
+    %% The result should be the default value.
+    Result9 = parse_validate_pitr_numeric_param(
+                MissingParams,
+                pitrMaxHistoryAge,
+                pitr_max_history_age,
+                pitr_max_history_age_min(),
+                pitr_max_history_age_max(),
+                pitr_max_history_age_default(),
+                IsNewTrue, IsDeveloperPreviewTrue),
+    Expected9 = {ok, pitr_max_history_age, 86400},
+    ?assertEqual(Expected9, Result9),
+
+    %% sub-test: missing params, IsNew false.
+    %% The missing parameters should be ignored.
+    Result10 = parse_validate_pitr_numeric_param(
+                 MissingParams,
+                 pitrMaxHistoryAge,
+                 pitr_max_history_age,
+                 pitr_max_history_age_min(),
+                 pitr_max_history_age_max(),
+                 pitr_max_history_age_default(),
+                 IsNewFalse, IsDeveloperPreviewTrue),
+    Expected10 = ignore,
+    ?assertEqual(Expected10, Result10),
+
+    %% sub-test: ensure that we get an error message if we're not in
+    %% developer preview mode.  The value of IsNew shouldn't matter, so
+    %% we use false.
+    Result11 = parse_validate_pitr_numeric_param(
+                 LegitParams,
+                 pitrMaxHistoryAge,
+                 pitr_max_history_age,
+                 pitr_max_history_age_min(),
+                 pitr_max_history_age_max(),
+                 pitr_max_history_age_default(),
+                 IsNewTrue, IsDeveloperPreviewFalse),
+    Expected11 =
+        {error, pitrMaxHistoryAge,
+         <<"Point in time replication is only supported in "
+           "developer preview mode">>},
+    ?assertEqual(Expected11, Result11).
 -endif.
