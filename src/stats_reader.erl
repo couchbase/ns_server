@@ -127,7 +127,7 @@ init(Bucket) ->
              "@system-processes" -> true;
              "@system" -> true;
              "@global" -> true;
-             _ -> true
+             _ -> false
         end,
     {ok, #state{bucket=Bucket,
                 last_timestamps = queue:new(),
