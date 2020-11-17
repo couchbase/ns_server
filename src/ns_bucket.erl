@@ -72,6 +72,7 @@
          storage_backend/1,
          raw_ram_quota/1,
          sasl_password/1,
+         update_maps/3,
          set_bucket_config/2,
          set_property/3,
          set_fast_forward_map/2,
@@ -733,6 +734,29 @@ update_bucket_config(BucketName, Fun) ->
               RV = misc:key_update(BucketName, Buckets, Fun),
               RV =/= false orelse exit({not_found, BucketName}),
               RV
+      end).
+
+update_maps(Buckets, OnMap, ExtraSets) ->
+    ns_config:run_txn(
+      fun(Config, SetFn) ->
+              {value, BucketsKV} = ns_config:search(Config, buckets),
+              NewBucketsKV =
+                  misc:key_update(
+                    configs, BucketsKV,
+                    fun (AllBuckets) ->
+                            [{Name, case lists:member(Name, Buckets) of
+                                        true ->
+                                            misc:key_update(map, BC,
+                                                            OnMap(Name, _));
+                                        false ->
+                                            BC
+                                    end} ||
+                                {Name, BC} <- AllBuckets]
+                    end),
+              {commit, functools:chain(
+                         Config,
+                         [SetFn(buckets, NewBucketsKV, _) |
+                          [SetFn(K, V, _) || {K, V} <- ExtraSets]])}
       end).
 
 is_named_bucket_persistent(BucketName) ->
