@@ -54,13 +54,22 @@ replicator_name(Bucket) ->
 start_replicator(Bucket) ->
     ns_bucket_sup:ignore_if_not_couchbase_bucket(
       Bucket,
-      fun (BucketConfig) ->
+      %% ignoring BucketConfig passed here, since it might become
+      %% stale in the future
+      fun (_) ->
               GetRemoteNodes =
                   fun () ->
-                          case ns_bucket:get_view_nodes(BucketConfig) of
+                          ViewNodes =
+                              case ns_bucket:get_bucket(Bucket) of
+                                  {ok, BucketConfig} ->
+                                      ns_bucket:get_view_nodes(BucketConfig);
+                                  not_present ->
+                                      []
+                              end,
+                          case ViewNodes of
                               [] ->
                                   [];
-                              ViewNodes ->
+                              _ ->
                                   LiveOtherNodes =
                                       ns_node_disco:nodes_actual_other(),
                                   ordsets:intersection(LiveOtherNodes,
