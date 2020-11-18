@@ -857,6 +857,101 @@ samples_per_second_quota(Settings) ->
     AverageSampleSize = proplists:get_value(average_sample_size, Settings),
     MaxSize / AverageSampleSize / MinPeriod / 24 / 60 / 60.
 
+derived_metrics(n1ql) ->
+    [{"n1ql_avg_req_time",
+      "n1ql_request_time / ignoring(name) n1ql_requests"},
+     {"n1ql_avg_svc_time",
+      "n1ql_service_time / ignoring(name) n1ql_requests"},
+     {"n1ql_avg_response_size",
+      "n1ql_result_size / ignoring(name) n1ql_requests"},
+     {"n1ql_avg_result_count",
+      "n1ql_result_count / ignoring(name) n1ql_requests"}];
+derived_metrics(index) ->
+    [{"index_ram_percent",
+      "(index_memory_used_total / ignoring(name) index_memory_quota) * 100"},
+     {"index_remaining_ram",
+      "index_memory_quota - ignoring(name) index_memory_used_total"},
+
+     {"index_num_docs_pending_and_queued",
+      "sum by (bucket, index, job, instance) "
+          "(index_num_docs_pending or index_num_docs_queued)"},
+     {"index_cache_miss_ratio",
+      "sum by (bucket, index, job, instance) (index_cache_misses) * 100 / "
+      "sum by (bucket, index, job, instance) "
+             "(index_cache_hits or index_cache_misses)"}];
+derived_metrics(kv) ->
+    [{"couch_total_disk_size",
+      "couch_docs_actual_disk_size + ignoring(name) "
+      "couch_views_actual_disk_size"},
+     {"couch_docs_fragmentation",
+      "(kv_ep_db_file_size_bytes - ignoring(name) "
+       "kv_ep_db_data_size_bytes) * 100 / "
+      "ignoring(name) kv_ep_db_file_size_bytes"},
+     {"couch_views_fragmentation",
+      "(couch_views_disk_size - ignoring(name) couch_views_data_size) * 100 / "
+      "ignoring(name) couch_views_disk_size"},
+     {"kv_hit_ratio",
+      "sum by (bucket, instance, job)("
+        "irate(kv_ops{op=`get`,result=`hit`}[5m])) * 100 / "
+      "sum by (bucket, instance, job) (irate(kv_ops{op=`get`}[5m]))"},
+     {"kv_ep_cache_miss_ratio",
+      "sum by (bucket,instance,job)(irate(kv_ep_bg_fetched[5m])) * 100 / "
+      "sum by (bucket, instance, job)(irate(kv_ops{op=`get`}[5m]))"},
+     {"kv_ep_resident_items_ratio",
+      "(kv_curr_items_tot - ignoring(name) kv_ep_num_non_resident) * 100 / "
+      "ignoring (name) kv_curr_items_tot"},
+     {"kv_vb_avg_pending_queue_age_seconds",
+      "kv_vb_pending_queue_age_seconds{state=`pending`} / ignoring (name) "
+      "kv_vb_pending_queue_size{state=`pending`}"},
+     {"kv_vb_pending_resident_items_ratio",
+      "(kv_vb_pending_curr_items{state=`pending`} - ignoring(name) "
+       "kv_vb_pending_num_non_resident{state=`pending`}) * 100 / "
+      "ignoring(name) kv_vb_pending_curr_items{state=`pending`}"},
+     {"kv_avg_disk_time_seconds",
+      "irate(kv_disk_seconds_sum[5m]) / ignoring (name) "
+      "irate(kv_disk_seconds_count[5m])"},
+     {"kv_avg_bg_wait_time_seconds",
+      "irate(kv_bg_wait_seconds_sum[5m]) / ignoring (name) "
+      "irate(kv_bg_wait_seconds_count[5m])"},
+     {"kv_avg_active_timestamp_drift_seconds",
+      "irate(kv_ep_active_hlc_drift_seconds[5m]) / ignoring (name) "
+      "irate(kv_ep_active_hlc_drift_count[5m])"},
+     {"kv_avg_replica_timestamp_drift_seconds",
+      "irate(kv_ep_replica_hlc_drift_seconds[5m]) / ignoring (name) "
+      "irate(kv_ep_replica_hlc_drift_count[5m])"},
+     {"kv_disk_write_queue",
+      "sum by (bucket, instance, job)({name=~`kv_ep_flusher_todo|"
+                                             "kv_ep_queue_size`})"},
+     {"kv_ep_ops_create",
+      "sum by (bucket, instance, job) ("
+        "irate(kv_vb_active_ops_create{state=`active`}[5m]) or "
+        "irate(kv_vb_replica_ops_create{state=`replica`}[5m]) or "
+        "irate(kv_vb_pending_ops_create{state=`pending`}[5m]))"},
+     {"kv_ep_ops_update",
+      "sum by (bucket, instance, job)("
+        "irate(kv_vb_active_ops_update{state=`active`}[5m]) or "
+        "irate(kv_vb_replica_ops_update{state=`replica`}[5m]) or "
+        "irate(kv_vb_pending_ops_update{state=`pending`}[5m]))"},
+     {"kv_xdc_ops",
+      "sum by (bucket, instance, job) (irate(kv_ops{op=~`del_meta|get_meta|"
+                                                        "set_meta`}[5m]))"}];
+derived_metrics(xdcr) ->
+    [{"xdcr_percent_completeness",
+      "(xdcr_docs_processed_total * 100) / ignoring (name) "
+      "(xdcr_changes_left_total + ignoring(name) xdcr_docs_processed_total)"}];
+derived_metrics(eventing) ->
+    [{"eventing_processed_count",
+      "eventing_on_delete_success + ignoring(name) eventing_on_update_success"},
+     {"eventing_failed_count",
+      "sum by (functionName, instance, job)("
+        "{name=~`eventing_bucket_op_exception_count|"
+                "eventing_checkpoint_failure_count|"
+                "eventing_doc_timer_create_failure|"
+                "eventing_n1ql_op_exception_count|"
+                "eventing_non_doc_timer_create_failure|"
+                "eventing_on_delete_failure|"
+                "eventing_on_update_failure|"
+                "eventing_timeout_count`})"}];
 derived_metrics(_) ->
     [].
 
