@@ -83,7 +83,10 @@ default_settings() ->
      {prometheus_metrics_enabled, false},
      {prometheus_metrics_scrape_interval, 60}, %% in seconds
      {listen_addr_type, loopback},
-     {log_queries, false}].
+     {log_queries, false},
+     {derived_metrics, all}, %% all | none | [metric()]
+     {derived_metrics_interval, undefined}, %% in seconds or undefined
+     {rules_config_file, "prometheus_rules.yml"}].
 
 build_settings() -> build_settings(ns_config:get()).
 build_settings(Config) ->
@@ -538,8 +541,10 @@ ensure_prometheus_config(Settings) ->
     TokenFile = token_file(Settings),
     Targets = proplists:get_value(targets, Settings, []),
     TargetsBin = [list_to_binary(T) || {_, T} <- Targets],
+    RulesFiles = ensure_rules_configs(Settings),
     Cfg = #{global => #{scrape_interval => {"~bs", [ScrapeInterval]},
                         scrape_timeout => {"~bs", [ScrapeTimeout]}},
+            rule_files => [list_to_binary(F) || F <- RulesFiles],
             scrape_configs =>
               [#{job_name => general,
                  metrics_path => <<"/_prometheusMetrics">>,
@@ -558,6 +563,44 @@ ensure_prometheus_config(Settings) ->
     ConfigBin = yaml:encode(Cfg),
     ?log_debug("Updating prometheus config file: ~s", [File]),
     ok = misc:atomic_write_file(File, ConfigBin).
+
+ensure_rules_configs(Settings) ->
+    Targets = proplists:get_value(targets, Settings, []),
+    Metrics = lists:append([derived_metrics(Name) || {Name, _} <- Targets]),
+    FilteredMetrics =
+        case proplists:get_value(derived_metrics, Settings) of
+            all -> Metrics;
+            none -> [];
+            List -> lists:filter(fun ({K, _}) -> lists:member(K, List) end,
+                                 Metrics)
+        end,
+    case length(FilteredMetrics) > 0 of
+        true ->
+            RulesInterval =
+                case proplists:get_value(derived_metrics_interval, Settings) of
+                    undefined -> proplists:get_value(scrape_interval, Settings);
+                    N -> N
+                end,
+            File = proplists:get_value(rules_config_file, Settings),
+            FullPath = filename:join(path_config:component_path(data, "config"),
+                                     File),
+            Config =
+                #{groups =>
+                      [#{name => general,
+                         interval => {"~bs", [RulesInterval]},
+                         rules =>
+                             [#{record => list_to_binary(Name),
+                                expr => list_to_binary(Expr),
+                                labels => #{name => list_to_binary(Name)}}
+                                  || {Name, Expr} <- FilteredMetrics]}]},
+
+            ConfigBin = yaml:encode(Config),
+            ?log_debug("Updating prometheus rules config file: ~s", [FullPath]),
+            ok = misc:atomic_write_file(FullPath, ConfigBin),
+            [FullPath];
+        false ->
+            []
+    end.
 
 prometheus_metrics_jobs_config(Settings) ->
     DropMetrics = ["prometheus_target_interval_length_seconds_sum",
@@ -814,6 +857,8 @@ samples_per_second_quota(Settings) ->
     AverageSampleSize = proplists:get_value(average_sample_size, Settings),
     MaxSize / AverageSampleSize / MinPeriod / 24 / 60 / 60.
 
+derived_metrics(_) ->
+    [].
 
 -ifdef(TEST).
 
