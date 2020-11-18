@@ -116,10 +116,9 @@ log_stats(TS, Bucket, RawStats) ->
                   Bucket, format_stats(RawStats)]).
 
 get_min_files_size(Bucket) ->
-    Config = ns_config:get(),
-    MinFileSize = ns_config:search_node_prop(Config,
+    MinFileSize = ns_config:search_node_prop(ns_config:latest(),
                                              compaction_daemon, min_file_size, 131072),
-    {ok, BucketConfig} = ns_bucket:get_bucket(Bucket, Config),
+    {ok, BucketConfig} = ns_bucket:get_bucket(Bucket),
 
     MinFileSize * length(ns_bucket:all_node_vbuckets(BucketConfig)).
 
