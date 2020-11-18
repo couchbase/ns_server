@@ -33,7 +33,8 @@ format(#{} = Map) ->
                  end,
           case format(V) of
               [] -> [[KBin, ":"]];
-              [Line] when not is_list(V) -> [[KBin, ": ", Line]];
+              [Line] when not is_list(V),
+                          not is_map(V) -> [[KBin, ": ", Line]];
               [_|_] = MultiLine ->
                   [[KBin, ":"]] ++
                   ["  " ++ L || L <- MultiLine]
@@ -78,6 +79,9 @@ encode_test() ->
                    "-\n"
                    "  - 1\n"
                    "  - 2">>),
+    ?assertEqual(encode(#{key => #{subkey => 1}}),
+                 <<"key:\n"
+                   "  subkey: 1">>),
     ?assertEqual(encode(#{global =>
                             #{scrape_interval => <<"10s">>,
                               scrape_timeout  => <<"20s">>},
