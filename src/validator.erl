@@ -41,7 +41,7 @@
          range/5,
          greater_or_equal/3,
          length/4,
-         string/4,
+         string/5,
          dir/2,
          email_address/2,
          has_params/1,
@@ -401,11 +401,11 @@ length(Name, Min, Max, State) ->
               end
       end, Name, State).
 
-string(Name, Regex, ErrorStr, State) ->
+string(Name, Regex, Options, ErrorStr, State) ->
     validate(
       fun (Value) ->
               StringValue = (catch simple_term_to_list(Value)),
-              case re:run(StringValue, Regex) of
+              case re:run(StringValue, Regex, Options) of
                   {match, _} ->
                       ok;
                   nomatch ->

@@ -203,7 +203,7 @@ name_first_char_validator(State, Exceptions) ->
 
 name_validator(State) ->
     validator:string(
-      name, "^[0-9A-Za-z_%\-]+$",
+      name, "^[0-9A-Za-z_%\-]+$", [dollar_endonly],
       "Can only contain characters A-Z, a-z, 0-9 and the following symbols "
       "_ - %", State).
 
