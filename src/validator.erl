@@ -409,7 +409,9 @@ string(Name, Regex, Options, ErrorStr, State) ->
                   {match, _} ->
                       ok;
                   nomatch ->
-                      {error, ErrorStr}
+                      ErrorOut = io_lib:format("Invalid value ~p : ~p",
+                                               [Value, ErrorStr]),
+                      {error, ErrorOut}
               end
       end, Name, State).
 
