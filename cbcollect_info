@@ -2013,6 +2013,11 @@ def main():
                         indexer_breakpad_minidump_dir, "*.dmp")):
                     runner.collect_file(dump)
 
+    # Collect ASan / UBSan log files (sanitized builds)
+    for sanitizer_log in glob.glob(os.path.join(
+            read_guts(guts, "log_path"), "sanitizers.log.*")):
+        runner.collect_file(sanitizer_log)
+
     # Collect prometheus stats files
     cleanup_old_prometheus_stats(guts)
     snapshot_dir_path = get_prometheus_stats(guts)
