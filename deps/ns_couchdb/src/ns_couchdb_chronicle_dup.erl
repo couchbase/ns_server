@@ -27,7 +27,8 @@
 -export([start_link/0,
          init/1,
          handle_info/2,
-         lookup/1]).
+         lookup/1,
+         get_snapshot/0]).
 
 
 -record(state, {child, ref}).
@@ -113,10 +114,13 @@ pull() ->
         end,
     apply_snapshot(Snapshot).
 
+get_snapshot() ->
+    ets:tab2list(?MODULE).
+
 apply_snapshot(undefined) ->
     ok;
 apply_snapshot(Snapshot) ->
-    DeletedKeys = [K || {K, _} <- ets:tab2list(?MODULE)] --
+    DeletedKeys = [K || {K, _} <- get_snapshot()] --
         [K || {K, _} <- Snapshot],
     [delete(K) || K <- DeletedKeys],
     lists:foreach(
