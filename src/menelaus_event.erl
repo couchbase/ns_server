@@ -189,7 +189,7 @@ maybe_restart(#state{webconfig = WebConfigOld,
          DisableOld =:= DisableNew andalso
          AFROld =:= AFRNew of
         true -> State;
-        false -> spawn(fun menelaus_sup:restart_web_servers/0),
+        false -> {ok, _} = menelaus_web_sup:restart_web_servers(),
                  State#state{webconfig = WebConfigNew,
                              disable_non_ssl_ports = DisableNew,
                              afamily_requirement = AFRNew}
