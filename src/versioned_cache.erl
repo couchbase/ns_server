@@ -49,7 +49,10 @@ init([Name, CacheSize, Get, GetEvents, GetVersion]) ->
     Pid = self(),
     proc_lib:init_ack({ok, Pid}),
 
-    lists:foreach(fun ({Event, Filter}) ->
+    lists:foreach(fun ({config_events, Filter}) ->
+                          chronicle_compat:subscribe_to_key_change(
+                            Filter, fun (_) -> Pid ! maybe_refresh end);
+                      ({Event, Filter}) ->
                           Handler =
                               fun (Evt) ->
                                       case Filter(Evt) of

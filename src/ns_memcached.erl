@@ -165,29 +165,6 @@ init(Bucket) ->
               },
     {ok, State}.
 
-collections_uid_check_loop(Parent, Bucket, CollectionsUid) ->
-    receive
-        {check, Configs} ->
-            Uid =
-                case ns_bucket:get_bucket_from_configs(Bucket, Configs) of
-                    {ok, BucketConfig} ->
-                        case collections:uid(BucketConfig) of
-                            CollectionsUid ->
-                                CollectionsUid;
-                            NewCollectionsUid ->
-                                ?log_debug(
-                                   "Triggering config check due to "
-                                   "collections uid change from ~p to ~p",
-                                   [CollectionsUid, NewCollectionsUid]),
-                                Parent ! check_config,
-                                NewCollectionsUid
-                        end;
-                    not_present ->
-                        CollectionsUid
-                end,
-            collections_uid_check_loop(Parent, Bucket, Uid)
-    end.
-
 run_connect_phase(Parent, Bucket, WorkersCount) ->
     ?log_debug("Started 'connecting' phase of ns_memcached-~s. Parent is ~p", [Bucket, Parent]),
     RV = case connect() of
@@ -661,17 +638,22 @@ handle_cast({connect_done, WorkersCount, RV}, #state{bucket = Bucket,
                                                          [Self, InitialState]])
                      || _ <- lists:seq(1, WorkersCount)],
 
-                    CollectionsCheckPid =
-                        proc_lib:spawn_link(erlang, apply, [fun collections_uid_check_loop/3,
-                                                            [Self, Bucket, undefined]]),
-                    ns_pubsub:subscribe_link(
-                      ns_config_events,
-                      fun ({buckets, [{configs, Configs}]}) ->
-                              CollectionsCheckPid ! {check, Configs};
-                          ({cluster_compat_version, _V}) ->
-                                self() ! check_config;
-                          (_) ->
-                              ok
+                    chronicle_compat:subscribe_to_key_change(
+                      fun (cluster_compat_version) ->
+                              true;
+                          (Key) ->
+                              case collections:key_match(Key) of
+                                  {true, Bucket} ->
+                                      true;
+                                  _ ->
+                                      false
+                              end
+                      end,
+                      fun (Key) ->
+                              ?log_debug(
+                                 "Triggering config check due to event on "
+                                 "key ~p", [Key]),
+                              Self ! check_config
                       end),
 
                     {noreply, InitialState};

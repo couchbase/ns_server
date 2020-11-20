@@ -27,7 +27,7 @@
 -export([init/1, handle_cast/2, handle_call/3,
          handle_info/2, terminate/2, code_change/3]).
 
--export([rename_and_refresh/3]).
+-export([refresh/1, rename_and_refresh/3]).
 
 -export([format_status/2]).
 
@@ -59,6 +59,9 @@ sync(Module) ->
 
 start_link(Module, Path) ->
     gen_server:start_link({local, Module}, ?MODULE, [Module, Path], []).
+
+refresh(Pid) ->
+    gen_server:cast(Pid, initiate_write).
 
 init([Module, Path]) ->
     ?log_debug("Init config writer for ~p, ~p", [Module, Path]),
@@ -98,7 +101,9 @@ handle_cast({event, Evt}, State = #state{module = Module,
             {noreply, initiate_write(State#state{stuff = NewStuff})};
         unchanged ->
             {noreply, State}
-    end.
+    end;
+handle_cast(initiate_write, State) ->
+    {noreply, initiate_write(State)}.
 
 handle_call(sync, _From, State) ->
     {reply, ok, State}.

@@ -1349,7 +1349,7 @@ check_permissions_url_version(Config) ->
           [cluster_compat_mode:get_compat_version(Config),
            menelaus_users:get_users_version(),
            menelaus_users:get_groups_version(),
-           menelaus_roles:params_version(ns_bucket:get_buckets(Config)),
+           menelaus_roles:params_version(),
            ns_config_auth:get_no_auth_buckets(Config)]),
     base64:encode(crypto:hash(sha, B)).
 

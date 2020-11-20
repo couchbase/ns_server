@@ -29,6 +29,7 @@
          set_multiple/1,
          transaction/2,
          get_snapshot/1,
+         subscribe_to_key_change/1,
          subscribe_to_key_change/2,
          notify_if_key_changes/2,
          start_refresh_worker/2]).

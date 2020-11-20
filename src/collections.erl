@@ -41,8 +41,11 @@
          wait_for_manifest_uid/5,
          convert_uid_from_memcached/1,
          convert_uid_to_memcached/1,
-         get_manifest/1,
+         key_match/1,
+         key_filter/0,
+         key_filter/1,
          get_manifest/2,
+         get_manifest/3,
          set_manifest/4,
          get_scope/2,
          get_collection/2,
@@ -69,9 +72,35 @@ enabled(BucketConfig) ->
 key(Bucket) ->
     ns_bucket:sub_key(Bucket, collections).
 
+key_match(Key) ->
+    case ns_bucket:sub_key_match(Key) of
+        {true, Bucket, collections} ->
+            {true, Bucket};
+        _ ->
+            false
+    end.
+
+%% TODO: these filters account for the possibility that collections
+%% might be stored in ns_config (if FORCE_CHRONICLE=0)
+%% modify after the support of FORCE_CHRONICLE flag is discontinued
+key_filter() ->
+    case enabled() of
+        false ->
+            [];
+        true ->
+            [{chronicle_compat:backend(), ?cut(key_match(_) =/= false)}]
+    end.
+
+key_filter(Bucket) ->
+    case enabled() of
+        false ->
+            [];
+        true ->
+            [{chronicle_compat:backend(), [key(Bucket)]}]
+    end.
+
 default_manifest() ->
     [{uid, 0},
-     {next_uid, 0},
      {next_scope_uid, 7},
      {next_coll_uid, 7},
      {num_scopes, 0},
@@ -106,24 +135,17 @@ with_collection(Fun, ScopeName, CollectionName, Manifest) ->
       end, ScopeName, Manifest).
 
 get_collection_uid(Bucket, ScopeName, CollectionName) ->
-    {ok, BucketConfig} = ns_bucket:get_bucket(Bucket),
+    Manifest = get_manifest(Bucket, direct),
+    true = Manifest =/= undefined,
     with_collection(?cut({ok, get_uid(_)}), ScopeName,
-                    CollectionName, get_manifest(BucketConfig)).
-
-uid(BucketCfg) ->
-    case enabled(BucketCfg) of
-        true ->
-            get_uid_in_memcached_format(get_manifest(BucketCfg));
-        false ->
-            undefined
-    end.
+                    CollectionName, Manifest).
 
 uid(Bucket, Snapshot) ->
     case get_manifest(Bucket, Snapshot) of
         undefined ->
             undefined;
         Manifest ->
-            get_uid_in_memcached_format(Manifest)
+            uid(Manifest)
     end.
 
 get_uid(Props) ->
@@ -137,7 +159,7 @@ convert_uid_from_memcached(V) when is_list(V) ->
 convert_uid_from_memcached(V) when is_binary(V) ->
     convert_uid_from_memcached(binary_to_list(V)).
 
-get_uid_in_memcached_format(Props) ->
+uid(Props) ->
     convert_uid_to_memcached(get_uid(Props)).
 
 collection_prop_to_memcached(uid, V) ->
@@ -191,9 +213,9 @@ manifest_json(Bucket, Snapshot) ->
     Manifest = get_manifest(Bucket, Snapshot),
     jsonify_manifest(Manifest, false).
 
-manifest_json(Identity, Bucket, BucketCfg) ->
+manifest_json(Identity, Bucket, Snapshot) ->
     Roles = menelaus_roles:get_compiled_roles(Identity),
-    Manifest = get_manifest(BucketCfg),
+    Manifest = get_manifest(Bucket, Snapshot, default_manifest()),
     FilteredManifest = on_scopes(
                          filter_collections_with_roles(Bucket, _, Roles),
                          Manifest),
@@ -204,33 +226,17 @@ jsonify_manifest(Manifest, WithDefaults) ->
         lists:map(
           fun ({ScopeName, Scope}) ->
                   {[{name, list_to_binary(ScopeName)},
-                    {uid, get_uid_in_memcached_format(Scope)},
+                    {uid, uid(Scope)},
                     {collections,
                      [collection_to_memcached(CollName, Coll, WithDefaults) ||
                          {CollName, Coll} <- get_collections(Scope)]}]}
           end, get_scopes(Manifest)),
-
-    {[{uid, get_uid_in_memcached_format(Manifest)},
-      {scopes, ScopesJson}]}.
+    {[{uid, uid(Manifest)}, {scopes, ScopesJson}]}.
 
 get_max_supported(num_scopes) ->
     ns_config:read_key_fast(max_scopes_count, ?MAX_SCOPES_SUPPORTED);
 get_max_supported(num_collections) ->
     ns_config:read_key_fast(max_collections_count, ?MAX_COLLECTIONS_SUPPORTED).
-
-total_in_cluster_with_modified_manifest(Counter, Bucket, Manifest) ->
-    Buckets = ns_bucket:get_buckets(),
-    lists:foldl(
-      fun ({B, _}, Acc) when B =:= Bucket ->
-              Acc + get_counter(Manifest, Counter);
-          ({_Name, BucketCfg}, Acc) ->
-              case enabled(BucketCfg) of
-                  true ->
-                      Acc + get_counter(get_manifest(BucketCfg), Counter);
-                  false ->
-                      Acc
-              end
-      end, 0, Buckets).
 
 create_scope(Bucket, Name) ->
     update(Bucket, {create_scope, Name}).
@@ -251,71 +257,108 @@ update(Bucket, Operation) ->
 
 do_update(Bucket, Operation) ->
     ?log_debug("Performing operation ~p on bucket ~p", [Operation, Bucket]),
-    RV =
-        case leader_activities:run_activity(
-               {?MODULE, Bucket}, {?MODULE, Bucket}, majority,
-               fun () ->
-                       do_update_as_leader(Bucket, Operation)
-               end, []) of
-            {leader_activities_error, _, Err} ->
-                {unsafe, Err};
-            Res ->
-                Res
-        end,
+    RV = case chronicle_compat:backend() of
+             chronicle ->
+                 chronicle_kv:txn(kv, update_txn(Bucket, Operation, _));
+             ns_config ->
+                 ns_config_txn(Bucket, Operation)
+         end,
     case RV of
-        {ok, _} ->
-            RV;
+        {ok, _Rev, UID} ->
+            {ok, UID};
+        {not_changed, UID} ->
+            {ok, UID};
         {user_error, Error} ->
             ?log_debug("Operation ~p for bucket ~p failed with ~p",
                        [Operation, Bucket, RV]),
-            Error;
-        {Error, Details} ->
-            ?log_error("Operation ~p for bucket ~p failed with ~p (~p)",
-                       [Operation, Bucket, Error, Details]),
             Error
     end.
 
-do_update_as_leader(Bucket, Operation) ->
-    OtherNodes = ns_node_disco:nodes_actual_other(),
-    case pull_config(OtherNodes) of
-        ok ->
-            {ok, BucketCfg} = ns_bucket:get_bucket(Bucket),
-            Manifest = get_manifest(BucketCfg),
+%% TODO: remove after the support of FORCE_CHRONICLE flag is discontinued
+ns_config_txn(Bucket, Operation) ->
+    RV =
+        ns_config:run_txn(
+          fun (Config, SetFun) ->
+                  case update_txn(Bucket, Operation, Config) of
+                      {abort, Error} ->
+                          {abort, Error};
+                      {commit, [{set, K, V}], UID} ->
+                          {commit, SetFun(K, V, Config), UID}
+                  end
+          end),
+    case RV of
+        {commit, _, UID} ->
+            {ok, no_rev, UID};
+        {abort, Error} ->
+            Error
+    end.
 
-            ?log_debug("Perform operation ~p on manifest ~p of bucket ~p",
-                       [Operation, Manifest, Bucket]),
-            case perform_operations(
-                   Manifest, compile_operation(Operation, Bucket, Manifest)) of
-                {ok, Manifest} ->
-                    {ok, convert_uid_to_memcached(proplists:get_value(
-                                                    uid, Manifest))};
-                {ok, NewManifest} ->
-                    case ensure_cluster_limits(Bucket, NewManifest) of
-                        ok ->
-                            commit(Bucket, Manifest,
-                                   bump_manifest_uid(NewManifest), OtherNodes);
-                        Error ->
-                            {user_error, Error}
-                    end;
+update_txn(Bucket, Operation, Txn) ->
+    Snapshot = txn_get_many([ns_bucket:root(), key(Bucket)], Txn),
+    case get_manifest(Bucket, Snapshot) of
+        undefined ->
+            {abort, not_found};
+        Manifest ->
+            do_update_with_manifest(Bucket, Manifest, Operation, Txn,
+                                    ns_bucket:get_bucket_names(Snapshot))
+    end.
+
+do_update_with_manifest(Bucket, Manifest, Operation, Txn, Buckets) ->
+    ?log_debug("Perform operation ~p on manifest ~p of bucket ~p",
+               [Operation, Manifest, Bucket]),
+    case perform_operations(Manifest,
+                            compile_operation(Operation, Bucket, Manifest)) of
+        {ok, Manifest} ->
+            {abort, {not_changed, uid(Manifest)}};
+        {ok, NewManifest} ->
+            Snapshot =
+                txn_get_many([ns_bucket:root() | [key(B) || B <- Buckets]],
+                             Txn),
+
+            OtherManifests =
+                lists:filtermap(
+                  fun (B) ->
+                          case get_manifest(B, Snapshot) of
+                              undefined ->
+                                  false;
+                              M ->
+                                  {true, M}
+                          end
+                  end, Buckets -- [Bucket]),
+            case check_cluster_limits([NewManifest | OtherManifests]) of
+                ok ->
+                    apply_manifest(Bucket, NewManifest);
                 Error ->
-                    {user_error, Error}
+                    {abort, {user_error, Error}}
             end;
         Error ->
-            {pull_config, Error}
+            {abort, {user_error, Error}}
     end.
 
-commit(Bucket, Manifest, NewManifest, OtherNodes) ->
-    ?log_debug("Resulting manifest ~p", [NewManifest]),
-    ok = update_manifest_next_ids(Bucket, Manifest, NewManifest),
-    case ns_config_rep:ensure_config_seen_by_nodes(OtherNodes) of
-        ok ->
-            ok = update_manifest(Bucket, NewManifest),
-            Uid = proplists:get_value(uid, NewManifest),
-            ?log_debug("Committed manifest with Uid ~p", [Uid]),
-            {ok, convert_uid_to_memcached(Uid)};
-        Error ->
-            {push_config, Error}
+%% TODO: remove after the support of FORCE_CHRONICLE flag is discontinued
+txn_get_many(Keys, Txn) ->
+    case chronicle_compat:backend() of
+        ns_config ->
+            BucketNames = ns_bucket:get_bucket_names(ns_bucket:get_buckets()),
+            maps:from_list(
+              [{ns_bucket:root(), {BucketNames, no_rev}} |
+               ns_config:fold(
+                 fun (K, V, Acc) ->
+                         case lists:member(K, Keys) of
+                             true ->
+                                 [{K, {V, no_rev}} | Acc];
+                             false ->
+                                 Acc
+                         end
+                 end, [], Txn)]);
+        chronicle ->
+            chronicle_kv:txn_get_many(Keys, Txn)
     end.
+
+apply_manifest(Bucket, Manifest) ->
+    NewManifest = bump_id(Manifest, uid),
+    ?log_debug("Resulting manifest ~p", [NewManifest]),
+    {commit, [{set, key(Bucket), NewManifest}], uid(NewManifest)}.
 
 perform_operations(_Manifest, {error, Error}) ->
     Error;
@@ -330,37 +373,24 @@ perform_operations(Manifest, [Operation | Rest]) ->
             Error
     end.
 
-update_manifest_next_ids(Bucket, CurrentManifest, NewManifest) ->
-    NextIDs = [next_uid, next_scope_uid, next_coll_uid],
-    Interim = lists:foldl(
-                fun (ID, ManifestAcc) ->
-                        Val = proplists:get_value(ID, NewManifest),
-                        lists:keystore(ID, 1, ManifestAcc, {ID, Val})
-                end, CurrentManifest, NextIDs),
-    update_manifest(Bucket, Interim).
-
-update_manifest(Bucket, Manifest) ->
-    ns_bucket:set_property(Bucket, collections_manifest, Manifest).
-
 bump_id(Manifest, ID) ->
     misc:key_update(ID, Manifest, _ + 1).
 
-bump_manifest_uid(Manifest) ->
-    NewManifest = bump_id(Manifest, next_uid),
-    Uid = proplists:get_value(next_uid, NewManifest),
-    lists:keystore(uid, 1, NewManifest, {uid, Uid}).
-
-ensure_cluster_limits(Bucket, Manifest) ->
-    case check_limit(num_scopes, Bucket, Manifest) of
+check_cluster_limits(Manifests) ->
+    case check_limit(num_scopes, Manifests) of
         ok ->
-            check_limit(num_collections, Bucket, Manifest);
+            check_limit(num_collections, Manifests);
         Error ->
             Error
     end.
 
-check_limit(Counter, Bucket, Manifest) ->
-    case total_in_cluster_with_modified_manifest(Counter, Bucket, Manifest) >
-        get_max_supported(Counter) of
+check_limit(Counter, Manifests) ->
+    TotalInCluster = lists:foldl(
+                       fun (Manifest, Acc) ->
+                               Acc + get_counter(Manifest, Counter)
+                       end, 0, Manifests),
+
+    case TotalInCluster > get_max_supported(Counter) of
         false ->
             ok;
         true ->
@@ -513,12 +543,30 @@ update_counter(Manifest, Counter, Amount) ->
     lists:keystore(Counter, 1, Manifest,
                    {Counter, get_counter(Manifest, Counter) + Amount}).
 
-get_manifest(BucketCfg) ->
-    proplists:get_value(collections_manifest, BucketCfg, default_manifest()).
-
 get_manifest(Bucket, Snapshot) ->
-    {Manifest, _} = maps:get(key(Bucket), Snapshot, {undefined, no_rev}),
-    Manifest.
+    get_manifest(Bucket, Snapshot, undefined).
+
+get_manifest(Bucket, direct, Default) ->
+    case chronicle_compat:backend() of
+        chronicle ->
+            case chronicle_kv:get(kv, key(Bucket), #{}) of
+                {ok, {M, _R}} ->
+                    M;
+                {error, not_found} ->
+                    Default
+            end;
+        ns_config ->
+            %% TODO: remove after the support of FORCE_CHRONICLE flag is
+            %% discontinued
+            ns_config:read_key_fast(key(Bucket), Default)
+    end;
+get_manifest(Bucket, Snapshot, Default) ->
+    case maps:find(key(Bucket), Snapshot) of
+        {ok, {M, _}} ->
+            M;
+        error ->
+            Default
+    end.
 
 get_scope(Name, Manifest) ->
     find_scope(Name, get_scopes(Manifest)).
@@ -572,20 +620,6 @@ on_collections(Fun, ScopeName, Manifest) ->
               NewScope = update_collections(NewCollections, Scope),
               lists:keystore(ScopeName, 1, Scopes, {ScopeName, NewScope})
       end, Manifest).
-
-pull_config(Nodes) ->
-    ?log_debug("Attempting to pull config from nodes:~n~p", [Nodes]),
-
-    Timeout = ?get_timeout(pull_config, 5000),
-    case ns_config_rep:pull_remotes(Nodes, Timeout) of
-        ok ->
-            ?log_debug("Pulled config successfully."),
-            ok;
-        Error ->
-            ?log_error("Failed to pull config from some nodes: ~p.",
-                       [Error]),
-            Error
-    end.
 
 wait_for_manifest_uid(Bucket, BucketUuid, Uid, Timeout) ->
     case async:run_with_timeout(

@@ -38,7 +38,7 @@
 -include("ns_test.hrl").
 -endif.
 
--record(state, {version,
+-record(state, {buckets,
                 users,
                 cluster_admin,
                 prometheus_user}).
@@ -81,6 +81,17 @@ sync() ->
 
 init() ->
     Config = ns_config:get(),
+    Self = self(),
+    chronicle_compat:subscribe_to_key_change(
+      fun (Key) ->
+              case collections:key_match(Key) of
+                  {true, _} ->
+                      memcached_cfg:refresh(Self);
+                  false ->
+                      ok
+              end
+      end),
+
     AdminUser =
         case ns_config:search(Config, rest_creds) of
             {value, {U, _}} -> U;
@@ -91,11 +102,13 @@ init() ->
             {value, {U2, _}} -> U2;
             _ -> undefined
         end,
-    #state{version = menelaus_roles:params_version(
-                       ns_bucket:get_buckets(Config)),
+    #state{buckets = buckets_uids(ns_bucket:get_buckets(Config)),
            users = spec_users(Config),
            cluster_admin = AdminUser,
            prometheus_user = PromUser}.
+
+buckets_uids(Buckets) ->
+    [{Name, ns_bucket:bucket_uuid(Props)} || {Name, Props} <- Buckets].
 
 spec_users() -> spec_users(ns_config:get()).
 spec_users(Config) ->
@@ -117,13 +130,12 @@ filter_event({{node, Node, prometheus_auth_info}, _}) when Node =:= node() ->
 filter_event(_) ->
     false.
 
-handle_event({buckets, V}, #state{version = Version} = State) ->
-    Configs = proplists:get_value(configs, V),
-    case menelaus_roles:params_version(Configs) of
-        Version ->
+handle_event({buckets, V}, #state{buckets = Buckets} = State) ->
+    case buckets_uids(proplists:get_value(configs, V)) of
+        Buckets ->
             unchanged;
-        NewVersion ->
-            {changed, State#state{version = NewVersion}}
+        NewBuckets ->
+            {changed, State#state{buckets = NewBuckets}}
     end;
 handle_event({user_version, _V}, State) ->
     {changed, State};

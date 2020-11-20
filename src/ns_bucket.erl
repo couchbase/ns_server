@@ -42,12 +42,14 @@
          sub_key/2,
          get_snapshot/0,
          get_snapshot/1,
+         sub_key_match/1,
+         key_filter/0,
+         key_filter/1,
          remove_from_snapshot/2,
          toy_buckets/1,
          bucket_exists/2,
          get_bucket/1,
          get_bucket/2,
-         get_bucket_from_configs/2,
          get_bucket_names/0,
          get_bucket_names/1,
          get_bucket_names_of_type/1,
@@ -84,7 +86,6 @@
          sasl_password/1,
          update_maps/3,
          set_bucket_config/2,
-         set_property/3,
          set_fast_forward_map/2,
          set_map/2,
          set_map_opts/2,
@@ -134,41 +135,42 @@ root() ->
 sub_key(Bucket, SubKey) ->
     {bucket, Bucket, SubKey}.
 
+sub_key_match({bucket, Bucket, SubKey}) ->
+    {true, Bucket, SubKey};
+sub_key_match(_) ->
+    false.
+
 get_snapshot() ->
-    get_snapshot_int(get_buckets()).
+    chronicle_compat:get_snapshot(key_filter()).
 
 get_snapshot(Bucket) ->
-    case get_bucket(Bucket) of
-        not_present ->
-            #{};
-        {ok, BC} ->
-            get_snapshot_int([{Bucket, BC}])
+    chronicle_compat:get_snapshot(key_filter(Bucket)).
+
+key_filter() ->
+    [{ns_config, ns_config_key_filter()}] ++
+        collections:key_filter().
+
+key_filter(Bucket) ->
+    [{ns_config, ns_config_key_filter()}] ++
+        collections:key_filter(Bucket).
+
+ns_config_key_filter() ->
+    fun (buckets) ->
+            {true, fun buckets_to_chronicle/1};
+        (_) ->
+            false
     end.
 
 upgrade_to_chronicle(Buckets) ->
     BucketConfigs = proplists:get_value(configs, Buckets, []),
     [{root(), [N || {N, _} <- BucketConfigs]}].
 
-get_snapshot_int(BucketConfigs) ->
-    %% TODO: temporary implementation till we keep bucket props in ns_config
-    Buckets = get_bucket_names(BucketConfigs),
+buckets_to_chronicle(Buckets) ->
+    BucketConfigs = proplists:get_value(configs, Buckets, []),
+    [{root(), [N || {N, _} <- BucketConfigs]} |
+     [{sub_key(B, props), BC} || {B, BC} <- BucketConfigs]].
 
-    maps:from_list(
-      [{root(), {Buckets, no_rev}} |
-       lists:flatmap(
-         fun ({B, BC}) ->
-                 Default = case collections:enabled(BC) of
-                               true ->
-                                   collections:default_manifest();
-                               false ->
-                                   undefined
-                           end,
-                 Manifest = proplists:get_value(collections_manifest, BC,
-                                                Default),
-                 [{sub_key(B, props), {BC, no_rev}} |
-                  [{sub_key(B, collections), {Manifest, no_rev}} ||
-                      Manifest =/= undefined]]
-         end, BucketConfigs)]).
+
 
 remove_from_snapshot(BucketName, Snapshot) ->
     functools:chain(

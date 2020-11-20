@@ -62,7 +62,7 @@
          get_compiled_roles/1,
          compile_roles/3,
          validate_roles/2,
-         params_version/1,
+         params_version/0,
          filter_out_invalid_roles/3,
          produce_roles_by_permission/2,
          get_security_roles/1,
@@ -771,11 +771,16 @@ find_object(Name, Find, GetId) when is_list(Name) ->
             {{Name, GetId(Props)}, Props}
     end.
 
--spec params_version(list()) -> term().
-params_version(Buckets) ->
+-spec params_version() -> term().
+params_version() ->
+    params_version(ns_bucket:get_snapshot()).
+
+params_version(Snapshot) ->
     [{Name, ns_bucket:bucket_uuid(Props),
-      collections:get_uid(collections:get_manifest(Props))} ||
-        {Name, Props} <- Buckets].
+      collections:get_uid(
+        collections:get_manifest(Name, Snapshot,
+                                 collections:default_manifest()))} ||
+        {Name, Props} <- ns_bucket:get_buckets(Snapshot)].
 
 compile_params([], [], Acc, _) ->
     lists:reverse(Acc);
@@ -861,14 +866,14 @@ start_compiled_roles_cache() ->
                 false
         end,
     ConfigFilter =
-        fun ({buckets, _}) ->
+        fun (buckets) ->
                 true;
-            ({cluster_compat_version, _}) ->
+            (cluster_compat_version) ->
                 true;
-            ({rest_creds, _}) ->
+            (rest_creds) ->
                 true;
-            (_) ->
-                false
+            (Key) ->
+                collections:key_match(Key) =/= false
         end,
     GetVersion =
         fun () ->
@@ -876,7 +881,7 @@ start_compiled_roles_cache() ->
                  menelaus_users:get_users_version(),
                  menelaus_users:get_groups_version(),
                  ns_config_auth:is_system_provisioned(),
-                 params_version(ns_bucket:get_buckets())}
+                 params_version()}
         end,
     GetEvents =
         case ns_node_disco:couchdb_node() == node() of
@@ -886,12 +891,12 @@ start_compiled_roles_cache() ->
                           fun ns_node_disco:ns_server_node/0),
                         [{{user_storage_events, ns_node_disco:ns_server_node()},
                           UsersFilter},
-                         {ns_config_events, ConfigFilter}]
+                         {config_events, ConfigFilter}]
                 end;
             false ->
                 fun () ->
                         [{user_storage_events, UsersFilter},
-                         {ns_config_events, ConfigFilter}]
+                         {config_events, ConfigFilter}]
                 end
         end,
 
@@ -1594,18 +1599,15 @@ produce_roles_by_permission_test_() ->
             {[{bucket, "wrong"}, data, xattr], write})}]}.
 
 params_version_test() ->
-    Test = ?cut(params_version(ns_bucket:get_buckets(
-                                 ns_bucket:toy_buckets(_)))),
+    Test = ?cut(params_version(ns_bucket:toy_buckets(_))),
     Update = ?cut(lists:keyreplace("test", 1, toy_buckets_props(),
                                    {"test", _})),
 
     Version1 = Test(toy_buckets_props()),
     Version2 = Test(lists:keydelete("test", 1, toy_buckets_props())),
     Version3 = Test(Update([{props, [{uuid, <<"test_id1">>}]}])),
-    %% TODO: to be modified after collections are moved to chronicle
-    Version4 = Test(Update([{props,
-                             [{uuid, <<"test_id">>},
-                              {collections_manifest, toy_manifest()}]}])),
+    Version4 = Test(Update([{props, [{uuid, <<"test_id">>}]},
+                            {collections, toy_manifest()}])),
     ?assertNotEqual(Version1, Version2),
     ?assertNotEqual(Version1, Version3),
     ?assertNotEqual(Version1, Version4).

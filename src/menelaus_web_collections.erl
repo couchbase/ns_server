@@ -33,10 +33,9 @@
 
 handle_get(Bucket, Req) ->
     assert_api_available_for_read(Bucket),
-    Identity = menelaus_auth:get_identity(Req),
-    {ok, BucketCfg} = ns_bucket:get_bucket(Bucket),
     menelaus_util:reply_json(
-      Req, collections:manifest_json(Identity, Bucket, BucketCfg)).
+      Req, collections:manifest_json(menelaus_auth:get_identity(Req),
+                                     Bucket, direct)).
 
 handle_post_scope(Bucket, Req) ->
     assert_api_available(Bucket),

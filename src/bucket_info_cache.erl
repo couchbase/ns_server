@@ -54,8 +54,13 @@ cache_init() ->
 
 handle_config_event(buckets) ->
     submit_new_buckets();
-handle_config_event(_) ->
-    submit_full_reset().
+handle_config_event(Key) ->
+    case ns_bucket:sub_key_match(Key) of
+        {true, Bucket, _} ->
+            invalidate_bucket(Bucket);
+        false ->
+            submit_full_reset()
+    end.
 
 is_interesting(buckets) -> true;
 is_interesting({_, _, alternate_addresses}) -> true;
@@ -70,22 +75,33 @@ is_interesting(cluster_compat_version) -> true;
 is_interesting(developer_preview_enabled) -> true;
 is_interesting({node, _, services}) -> true;
 is_interesting({service_map, _}) -> true;
-is_interesting(_) -> false.
+is_interesting(Key) ->
+    case ns_bucket:sub_key_match(Key) of
+        {true, _, _} ->
+            true;
+        false ->
+            false
+    end.
 
 submit_new_buckets() ->
     work_queue:submit_work(
       ?MODULE,
       fun () ->
               Buckets = lists:sort(ns_bucket:get_buckets()),
-              BucketNames = compute_buckets_to_invalidate(Buckets),
-              [begin
-                   ets:delete(bucket_info_cache, Name),
-                   ets:delete(bucket_info_cache_buckets, Name)
-               end || Name <- BucketNames],
-              [gen_event:notify(bucket_info_cache_invalidations, Name) ||
-                  Name <- BucketNames],
-              ok
+              do_invalidate_buckets(compute_buckets_to_invalidate(Buckets))
       end).
+
+invalidate_bucket(Bucket) ->
+    work_queue:submit_work(?MODULE, ?cut(do_invalidate_buckets([Bucket]))).
+
+do_invalidate_buckets(BucketNames) ->
+    [begin
+         ets:delete(bucket_info_cache, Name),
+         ets:delete(bucket_info_cache_buckets, Name)
+     end || Name <- BucketNames],
+    [gen_event:notify(bucket_info_cache_invalidations, Name) ||
+        Name <- BucketNames],
+    ok.
 
 compute_buckets_to_invalidate(Buckets) ->
     CachedBuckets = ets:tab2list(bucket_info_cache_buckets),
