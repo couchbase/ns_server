@@ -38,20 +38,22 @@
                      {error, {bad_vbuckets, [vbucket_id()]}} |
                      {error, {corrupted_server_list, [node()], [node()]}}.
 cleanup(Bucket, Options) ->
-    FullConfig = ns_config:get(),
-    case ns_bucket:get_bucket(Bucket, FullConfig) of
+    Snapshot = chronicle_compat:get_snapshot(
+                 [ns_bucket:key_filter(Bucket),
+                  ns_cluster_membership:key_filter()]),
+    case ns_bucket:get_bucket(Bucket, Snapshot) of
         not_present ->
             ok;
         {ok, BucketConfig} ->
             case ns_bucket:bucket_type(BucketConfig) of
                 membase ->
                     cleanup_membase_bucket(Bucket,
-                                           Options, BucketConfig, FullConfig);
+                                           Options, BucketConfig, Snapshot);
                 _ -> ok
             end
     end.
 
-cleanup_membase_bucket(Bucket, Options, BucketConfig, FullConfig) ->
+cleanup_membase_bucket(Bucket, Options, BucketConfig, Snapshot) ->
     %% We always want to check for unsafe nodes, as we want to honor the
     %% auto-reprovisioning settings for ephemeral buckets. That is, we do not
     %% want to simply activate any bucket on a restarted node and lose the data
@@ -64,14 +66,15 @@ cleanup_membase_bucket(Bucket, Options, BucketConfig, FullConfig) ->
                   {ok, cleanup_with_membase_bucket_check_servers(Bucket,
                                                                  AllOptions,
                                                                  BucketConfig,
-                                                                 FullConfig)}
+                                                                 Snapshot)}
           end,
           [quiet]),
 
     RV.
 
-cleanup_with_membase_bucket_check_servers(Bucket, Options, BucketConfig, FullConfig) ->
-    case check_server_list(Bucket, BucketConfig, FullConfig) of
+cleanup_with_membase_bucket_check_servers(Bucket, Options, BucketConfig,
+                                          Snapshot) ->
+    case check_server_list(Bucket, BucketConfig, Snapshot) of
         ok ->
             cleanup_with_membase_bucket_check_map(Bucket, Options, BucketConfig);
         {update_servers, NewServers} ->
@@ -386,9 +389,9 @@ maybe_reset_rebalance_status(Options) ->
 check_server_list(Bucket, BucketConfig) ->
     check_server_list(Bucket, BucketConfig, ns_config:latest()).
 
-check_server_list(Bucket, BucketConfig, FullConfig) ->
+check_server_list(Bucket, BucketConfig, Snapshot) ->
     Servers = ns_bucket:get_servers(BucketConfig),
-    ActiveKVNodes = ns_cluster_membership:service_active_nodes(FullConfig, kv),
+    ActiveKVNodes = ns_cluster_membership:service_active_nodes(Snapshot, kv),
     do_check_server_list(Bucket, Servers, ActiveKVNodes).
 
 do_check_server_list(_Bucket, [], ActiveKVNodes) ->
