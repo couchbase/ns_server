@@ -34,7 +34,8 @@ class MnSecurityLogRedactionComponent extends MnLifeCycleHooksToStream {
       .setPackPipe(map(this.getValue.bind(this)))
       .setPostRequest(this.postLogRedaction)
       .successMessage("Settings saved successfully!")
-      .clearErrors();
+      .clearErrors()
+      .showGlobalSpinner();
 
     this.form.group.disable();
 

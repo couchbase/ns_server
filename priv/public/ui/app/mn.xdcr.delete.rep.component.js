@@ -35,6 +35,7 @@ class MnXDCRDeleteRepComponent extends MnLifeCycleHooksToStream {
       .setPackPipe(map(() => this.item.id))
       .setPostRequest(mnXDCRService.stream.deleteCancelXDCR)
       .successMessage("Replication deleted successfully!")
+      .showGlobalSpinner()
       .success(function () {
         activeModal.close();
         $rootScope.$broadcast("reloadTasksPoller");

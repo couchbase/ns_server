@@ -62,6 +62,7 @@ class MnSecurityAuditComponent extends MnLifeCycleHooksToStream {
       .setPostRequest(this.postAudit)
       .setValidation(this.postAuditValidation, this.securityWrite)
       .clearErrors()
+      .showGlobalSpinner()
       .successMessage("Settings saved successfully!");
 
     this.httpError = merge(this.postAudit.error, this.postAuditValidation.error);

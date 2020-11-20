@@ -79,6 +79,7 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
       .setPostRequest(this.postCreateReplication)
       .setValidation(this.postSettingsReplicationsValidation)
       .clearErrors()
+      .showGlobalSpinner()
       .success(data => {
         $rootScope.$broadcast("reloadTasksPoller");
         uiRouter.stateService.go('app.admin.replications').then(() => {

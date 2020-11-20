@@ -9,7 +9,7 @@ import {MnFormService} from "./mn.form.service.js";
 import {MnPoolsService} from "./mn.pools.service.js"
 import {MnHttpGroupRequest} from './mn.http.request.js';
 import {MnSecurityService} from "./mn.security.service.js"
-import {MnPools} from "./ajs.upgraded.providers.js";
+import {MnPools, $rootScope} from "./ajs.upgraded.providers.js";
 
 export {MnWizardJoinClusterComponent};
 
@@ -29,10 +29,11 @@ class MnWizardJoinClusterComponent extends MnLifeCycleHooksToStream {
     MnAuthService,
     MnFormService,
     UIRouter,
-    MnPools
+    MnPools,
+    $rootScope
   ]}
 
-  constructor(mnPoolsService, mnSecurityService, mnWizardService, mnAuthService, mnFormService, uiRouter, mnPools) {
+  constructor(mnPoolsService, mnSecurityService, mnWizardService, mnAuthService, mnFormService, uiRouter, mnPools, $rootScope) {
     super();
 
     this.focusFieldSubject = new BehaviorSubject("hostname");
@@ -49,7 +50,6 @@ class MnWizardJoinClusterComponent extends MnLifeCycleHooksToStream {
     this.form
       .setPackPipe(pipe(
         filter(this.isValid.bind(this)),
-        // filter(this.isNotLoading.bind(this)),
         map(() => this.joinClusterForm.get("clusterStorage.storage").value)
       ))
       .setPostRequest(this.diskStorageHttp)
@@ -64,21 +64,13 @@ class MnWizardJoinClusterComponent extends MnLifeCycleHooksToStream {
       .setPackPipe(map(() => this.joinClusterForm.get("clusterAdmin").value))
       .setPostRequest(mnAuthService.stream.postUILogin)
       .clearErrors()
+      .showGlobalSpinner()
       .success(() => {
+        $rootScope.mnGlobalSpinnerFlag = true;
         mnPools.clearCache();
         uiRouter.urlRouter.sync();
       });
-
-    //    this.mnAppLoding = mnAppService.stream.loading;
-    // Rx
-    //   .merge(this.groupHttp.loading, this.joinClusterHttp.loading)
-    //   .pipe(Rx.operators.takeUntil(this.mnOnDestroy))
-    //   .subscribe(this.mnAppLoding.next.bind(this.mnAppLoding));
   }
-
-  // isNotLoading() {
-  //   return !this.mnAppLoding.getValue();
-  // }
 
   isValid() {
     return !this.joinClusterForm.invalid;

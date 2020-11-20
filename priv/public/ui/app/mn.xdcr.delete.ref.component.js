@@ -32,6 +32,7 @@ class MnXDCRDeleteRefComponent extends MnLifeCycleHooksToStream {
       .setPackPipe(map(() => this.item.name))
       .setPostRequest(mnXDCRService.stream.deleteRemoteClusters)
       .successMessage("Replication deleted successfully!")
+      .showGlobalSpinner()
       .success(() => {
         activeModal.close();
         mnXDCRService.stream.updateRemoteClusters.next();

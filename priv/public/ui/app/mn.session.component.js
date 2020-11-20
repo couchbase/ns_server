@@ -37,7 +37,8 @@ class MnSessionComponent extends MnLifeCycleHooksToStream {
       .setPackPipe(map(this.getValue.bind(this)))
       .setPostRequest(this.postSession)
       .successMessage("Settings saved successfully!")
-      .clearErrors();
+      .clearErrors()
+      .showGlobalSpinner();
 
     this.form.group.disable();
 

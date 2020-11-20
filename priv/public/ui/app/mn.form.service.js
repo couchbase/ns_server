@@ -1,9 +1,9 @@
-import { MnAlertsService } from '/ui/app/ajs.upgraded.providers.js';
+import { MnAlertsService, $rootScope } from '/ui/app/ajs.upgraded.providers.js';
 import { Injectable } from '/ui/web_modules/@angular/core.js';
 import { FormBuilder, FormGroup } from '/ui/web_modules/@angular/forms.js';
 import { BehaviorSubject, Subject, NEVER, merge } from "/ui/web_modules/rxjs.js";
 import { map, tap, first, takeUntil, switchMap, mapTo,
-         throttleTime, shareReplay } from "/ui/web_modules/rxjs/operators.js";
+         throttleTime, shareReplay, filter } from "/ui/web_modules/rxjs/operators.js";
 
 
 export { MnFormService };
@@ -15,28 +15,32 @@ class MnFormService {
 
   static get parameters() { return [
     FormBuilder,
-    MnAlertsService
+    MnAlertsService,
+    $rootScope
     // ngb.NgbModal
   ]}
 
-  constructor(formBuilder, mnAlertsService, modalService) {
+  constructor(formBuilder, mnAlertsService, $rootScope, modalService) {
     this.formBuilder = formBuilder;
     this.mnAlertsService = mnAlertsService;
     this.modalService = modalService;
+    this.$rootScope = $rootScope;
   }
 
   create(component) {
-    return new MnForm(this.formBuilder, component, this.mnAlertsService);
+    return new MnForm(this.formBuilder, component, this.mnAlertsService, this.$rootScope);
   }
 }
 
 class MnForm {
-  constructor(builder, component, mnAlertsService) {
+  constructor(builder, component, mnAlertsService, $rootScope) {
     this.builder = builder;
     this.component = component;
     this.mnAlertsService = mnAlertsService;
     this.defaultPackPipe = map(this.getFormValue.bind(this));
     this.requestsChain = [];
+    this.$rootScope = $rootScope;
+
   }
 
   getFormValue() {
@@ -59,6 +63,10 @@ class MnForm {
 
   getLastRequest() {
     return this.requestsChain[this.requestsChain.length - 1];
+  }
+
+  getFirstRequest() {
+    return this.requestsChain[0];
   }
 
   success(fn) {
@@ -92,10 +100,27 @@ class MnForm {
     }
   }
 
+  showGlobalSpinner() {
+    this.trackSubmit();
+    this.processing
+      .pipe(takeUntil(this.component.mnOnDestroy))
+      .subscribe(v => {
+        this.$rootScope.mnGlobalSpinnerFlag = v;
+      });
+    return this;
+  }
+
   trackSubmit() {
-    var response = this.getLastRequest().response.pipe(mapTo(false));
-    var request = this.submit.pipe(mapTo(true));
-    this.processing = merge(request, response).pipe(shareReplay({refCount: true, bufferSize: 1}));
+    var success = this.getLastRequest().success.pipe(mapTo(false));
+    var request = this.getFirstRequest().request.pipe(mapTo(true));
+    var errors = merge.apply(merge,
+                             this.requestsChain.map(req =>
+                                                    req.error
+                                                    .pipe(filter(v => !!v)))).pipe(mapTo(false));
+    this.processing =
+      merge(request, success, errors)
+      .pipe(shareReplay({refCount: true, bufferSize: 1}));
+
     return this;
   }
 
@@ -105,7 +130,7 @@ class MnForm {
 
     if (!lastRequest) {
       this.createSubmitPipe();
-      this.submitPipe.subscribe((v) => this.requestsChain[0].post(v));
+      this.submitPipe.subscribe((v) => this.getFirstRequest().post(v));
     } else {
       lastRequest.success
         .pipe(this.getPackPipe(),

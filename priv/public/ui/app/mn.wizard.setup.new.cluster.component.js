@@ -38,6 +38,7 @@ class MnWizardSetupNewClusterComponent extends MnLifeCycleHooksToStream {
         map(this.getValues.bind(this))))
       .setFormGroup(mnWizardService.wizardForm.newCluster)
       .setPostRequest(this.authHttp)
+      .showGlobalSpinner()
       .success(this.onSuccess.bind(this));
 
     this.form.group.setValidators([mnHelperService.validateEqual("user.password",

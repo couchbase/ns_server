@@ -20,6 +20,8 @@ function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsServic
   vm.showClusterInfoDialog = showClusterInfoDialog;
   vm.isDeveloperPreview = pools.isDeveloperPreview;
 
+  $rootScope.mnGlobalSpinnerFlag = false;
+
   vm.user = whoami;
 
   vm.$state = $state;

@@ -26,6 +26,7 @@ class MnHttpGroupRequest {
       .pipe(filter((responses) =>
                    responses.find((resp) =>
                                   resp instanceof HttpErrorResponse)))
+
     return this;
   }
 
@@ -81,7 +82,7 @@ class MnHttpGroupRequest {
 
 class MnHttpRequest {
   constructor(call) {
-    this._dataSubject = new Subject();
+    this.request = new Subject();
     this._errorSubject = new Subject();
     this._loadingSubject = new Subject();
     this.addResponse(call);
@@ -93,8 +94,8 @@ class MnHttpRequest {
 
   addResponse(call) {
     let errorsAndSuccess = switchMap((data) => call(data).pipe(catchError((err) => of(err))));
-    this.response = this._dataSubject.pipe(errorsAndSuccess,
-                                           shareReplay({refCount: true, bufferSize: 1}));
+    this.response = this.request.pipe(errorsAndSuccess,
+                                      shareReplay({refCount: true, bufferSize: 1}));
     return this;
   }
 
@@ -125,6 +126,7 @@ class MnHttpRequest {
         shareReplay({refCount: true, bufferSize: 1})));
 
     this.error = error;
+
     return this;
   }
 
@@ -148,6 +150,6 @@ class MnHttpRequest {
 
   post(data) {
     this._loadingSubject.next(true);
-    this._dataSubject.next(data);
+    this.request.next(data);
   }
 }

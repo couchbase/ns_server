@@ -5,7 +5,7 @@ import { MnAuthService } from './mn.auth.service.js';
 import { MnFormService } from './mn.form.service.js';
 import { UIRouter } from '/ui/web_modules/@uirouter/angular.js';
 import { MnLifeCycleHooksToStream } from './mn.core.js';
-import { MnPools } from "./ajs.upgraded.providers.js";
+import { MnPools, $rootScope} from "./ajs.upgraded.providers.js";
 
 export { MnAuthComponent };
 
@@ -21,10 +21,11 @@ class MnAuthComponent extends MnLifeCycleHooksToStream {
     MnFormService,
     MnAuthService,
     UIRouter,
-    MnPools
+    MnPools,
+    $rootScope
   ]}
 
-  constructor(mnFormService, mnAuthService, uiRouter, mnPools) {
+  constructor(mnFormService, mnAuthService, uiRouter, mnPools, $rootScope) {
     super();
     this.focusFieldSubject = new BehaviorSubject(true);
 
@@ -35,7 +36,9 @@ class MnAuthComponent extends MnLifeCycleHooksToStream {
         user: ['', Validators.required],
         password: ['', Validators.required]})
       .setPostRequest(this.postUILogin)
+      .showGlobalSpinner()
       .success(() => {
+        $rootScope.mnGlobalSpinnerFlag = true;
         mnPools.clearCache();
         uiRouter.urlRouter.sync();
       });

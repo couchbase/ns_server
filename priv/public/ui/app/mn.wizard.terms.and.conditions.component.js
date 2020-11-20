@@ -66,7 +66,6 @@ class MnWizardTermsAndConditionsComponent extends MnLifeCycleHooksToStream {
     this.defaultForm
       .setPackPipe(pipe(
         filter(this.isValid.bind(this)),
-        // filter(this.isNotLoading.bind(this)),
         withLatestFrom(mnPoolsService.stream.mnServices),
         map(([_, services]) => ({
           services: services.join(","),
@@ -82,7 +81,7 @@ class MnWizardTermsAndConditionsComponent extends MnLifeCycleHooksToStream {
         postPoolsDefault: mnAdminService.stream.postPoolsDefault,
         hostnameHttp: mnWizardService.stream.hostnameHttp,
         statsHttp: mnWizardService.stream.statsHttp
-      }).addSuccess())
+      }).addSuccess().addError())
       .setPackPipe(pipe(
         withLatestFrom(mnPoolsService.stream.isEnterprise),
         map(this.getSecondValues.bind(this))
@@ -91,33 +90,16 @@ class MnWizardTermsAndConditionsComponent extends MnLifeCycleHooksToStream {
         indexesHttp: mnWizardService.stream.indexesHttp,
         authHttp: mnWizardService.stream.authHttp
       })
-      .addSuccess())
+      .addSuccess().addError())
       .setPackPipe(map(mnWizardService.getUserCreds.bind(mnWizardService)))
       .setPostRequest(mnAuthService.stream.postUILogin)
       .clearErrors()
+      .showGlobalSpinner()
       .success(() => {
         mnPools.clearCache();
         uiRouter.urlRouter.sync();
       });
-
-
-
-
-    //     this.mnAppLoding = mnAppService.stream.loading;
-    // Rx
-    //   .merge(
-    //     this.groupHttp.loading,
-    //     this.secondGroupHttp.loading
-    //   )
-    //   .pipe(
-    //     Rx.operators.takeUntil(this.mnOnDestroy)
-    //   )
-    //   .subscribe(this.mnAppLoding.next.bind(this.mnAppLoding));
   }
-
-  // isNotLoading() {
-  //   return !this.mnAppLoding.getValue();
-  // }
 
   onSuccess() {
     this.uiRouter.stateService.go('app.wizard.clusterConfiguration', null, {location: false});

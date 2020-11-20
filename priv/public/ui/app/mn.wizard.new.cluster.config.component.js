@@ -10,7 +10,7 @@ import {MnFormService} from "./mn.form.service.js";
 import {MnAuthService} from "./mn.auth.service.js";
 import {MnAdminService} from "./mn.admin.service.js";
 import {MnHttpGroupRequest} from "./mn.http.request.js";
-import {MnPools} from "./ajs.upgraded.providers.js";
+import {MnPools, $rootScope} from "./ajs.upgraded.providers.js";
 
 export {MnWizardNewClusterConfigComponent};
 
@@ -31,10 +31,11 @@ class MnWizardNewClusterConfigComponent extends MnLifeCycleHooksToStream {
     // MnAppService,
     MnAuthService,
     UIRouter,
-    MnPools
+    MnPools,
+    $rootScope
   ]}
 
-  constructor(mnFormService, mnWizardService, mnAdminService, mnPoolsService, mnAuthService, uiRouter, mnPools) {
+  constructor(mnFormService, mnWizardService, mnAdminService, mnPoolsService, mnAuthService, uiRouter, mnPools, $rootScope) {
     super();
 
     this.wizardForm = mnWizardService.wizardForm;
@@ -68,8 +69,8 @@ class MnWizardNewClusterConfigComponent extends MnLifeCycleHooksToStream {
       .setPostRequest(new MnHttpGroupRequest({
         diskStorageHttp: mnWizardService.stream.diskStorageHttp,
         postPoolsDefault: mnAdminService.stream.postPoolsDefault,
-        enableExternalListenerHttp: mnWizardService.stream.enableExternalListenerHttp,
-      }).addSuccess())
+        enableExternalListenerHttp: mnWizardService.stream.enableExternalListenerHttp
+      }).addSuccess().addError())
       .setPackPipe(pipe(
         withLatestFrom(mnPoolsService.stream.isEnterprise),
         map(this.getWizardValues.bind(this))
@@ -78,7 +79,7 @@ class MnWizardNewClusterConfigComponent extends MnLifeCycleHooksToStream {
         setupNetConfigHttp: mnWizardService.stream.setupNetConfigHttp,
         statsHttp: mnWizardService.stream.statsHttp,
         servicesHttp: mnWizardService.stream.servicesHttp
-      }).addSuccess())
+      }).addSuccess().addError())
       .setPackPipe(map(() =>
                        this.wizardForm.newClusterConfig.get("clusterStorage.hostname").value))
       .setPostRequest(mnWizardService.stream.hostnameHttp)
@@ -86,29 +87,17 @@ class MnWizardNewClusterConfigComponent extends MnLifeCycleHooksToStream {
       .setPostRequest(new MnHttpGroupRequest({
         indexesHttp: mnWizardService.stream.indexesHttp,
         authHttp: mnWizardService.stream.authHttp
-      })
-      .addSuccess())
+      }).addSuccess().addError())
       .setPackPipe(map(mnWizardService.getUserCreds.bind(mnWizardService)))
       .setPostRequest(mnAuthService.stream.postUILogin)
       .clearErrors()
+      .showGlobalSpinner()
       .success(() => {
+        $rootScope.mnGlobalSpinnerFlag = true;
         mnPools.clearCache();
         uiRouter.urlRouter.sync();
       });
-
-        // this.mnAppLoding = mnAppService.stream.loading;
-
-    // merge(
-    //   mnWizardService.stream.groupHttp.loading,
-    //   mnWizardService.stream.secondGroupHttp.loading
-    // ).pipe(
-    //   Rx.operators.takeUntil(this.mnOnDestroy)
-    // ).subscribe(this.mnAppLoding.next.bind(this.mnAppLoding));
   }
-
-  // isNotLoading() {
-  //   return !this.mnAppLoding.getValue();
-  // }
 
   getFinalConfig(isEnterprise) {
     var rv = new Map();

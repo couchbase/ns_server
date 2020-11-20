@@ -93,6 +93,7 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
       .setValidation(this.postSettingsReplicationsValidation)
       .successMessage("Settings saved successfully!")
       .clearErrors()
+      .showGlobalSpinner()
       .success(() => this.uiRouter.stateService.go('app.admin.replications'));
 
     this.replicationSettings

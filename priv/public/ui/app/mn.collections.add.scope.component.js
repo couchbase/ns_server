@@ -34,6 +34,7 @@ class MnCollectionsAddScopeComponent extends MnLifeCycleHooksToStream {
     this.form
       .setFormGroup({name: "", bucketName: this.bucketName})
       .setPostRequest(this.addScopeHttp)
+      .showGlobalSpinner()
       .success(() => {
         this.updateManifest.next();
         this.activeModal.close();

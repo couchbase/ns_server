@@ -32,6 +32,7 @@ class MnCollectionsDeleteScopeComponent extends MnLifeCycleHooksToStream {
       .setFormGroup({})
       .setPackPipe(map(() => [this.bucketName, this.scopeName]))
       .setPostRequest(mnCollectionsService.stream.deleteScopeHttp)
+      .showGlobalSpinner()
       .success(() => {
         mnCollectionsService.stream.updateManifest.next();
         activeModal.close();

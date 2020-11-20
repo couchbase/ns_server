@@ -33,6 +33,7 @@ class MnCollectionsAddItemComponent extends MnLifeCycleHooksToStream {
       .setFormGroup({name: ""})
       .setPackPipe(map(() => [this.bucketName, this.scopeName, this.form.group.value.name]))
       .setPostRequest(this.addCollectionHttp)
+      .showGlobalSpinner()
       .success(() => {
         mnCollectionsService.stream.updateManifest.next();
         activeModal.close()

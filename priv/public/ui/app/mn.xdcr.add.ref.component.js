@@ -50,6 +50,7 @@ class MnXDCRAddRefComponent extends MnLifeCycleHooksToStream {
       .setPostRequest(this.postRemoteClusters)
       .clearErrors()
       .successMessage("Cluster reference saved successfully!")
+      .showGlobalSpinner()
       .success(function () {
         activeModal.close();
         mnXDCRService.stream.updateRemoteClusters.next();
