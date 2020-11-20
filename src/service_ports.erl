@@ -22,6 +22,7 @@
          get_port/3,
          default/2,
          default_config/1,
+         default_config/2,
          find_by_rest_name/1,
          services_port_keys/1,
          get_external_host_and_ports/3,
@@ -143,25 +144,28 @@ default(_Key, #port{secure = secure}, false = _IsEnterprise) ->
 default(Key, #port{default = Default}, _IsEnterprise) ->
     misc:get_env_default(Key, Default).
 
-default_config(#port{key = rest_port, default = Default}, _IsEnterprise) ->
+default_config(#port{key = rest_port, default = Default},
+               _IsEnterprise, Node) ->
     PortMeta = case application:get_env(rest_port) of
                    {ok, _Port} -> local;
                    undefined -> global
                end,
     [{rest, [{port, Default}]},
-     {{node, node(), rest},
+     {{node, Node, rest},
       [{port, misc:get_env_default(rest_port, Default)},
        {port_meta, PortMeta}]}];
-default_config(#port{key = Key} = P, IsEnterprise) ->
-    [{{node, node(), Key}, default(Key, P, IsEnterprise)}].
+default_config(#port{key = Key} = P, IsEnterprise, Node) ->
+    [{{node, Node, Key}, default(Key, P, IsEnterprise)}].
 
 default_config(IsEnterprise) ->
+    default_config(IsEnterprise, node()).
+default_config(IsEnterprise, Node) ->
     lists:flatmap(fun (#port{key = Key} = P) ->
                           case complex_config_key(Key) of
                               true ->
                                   [];
                               false ->
-                                  default_config(P, IsEnterprise)
+                                  default_config(P, IsEnterprise, Node)
                           end
                   end, all_ports()).
 

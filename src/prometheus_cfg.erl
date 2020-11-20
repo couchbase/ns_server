@@ -88,22 +88,24 @@ default_settings() ->
      {derived_metrics_interval, undefined}, %% in seconds or undefined
      {rules_config_file, "prometheus_rules.yml"}].
 
-build_settings() -> build_settings(ns_config:get()).
-build_settings(Config) ->
-    AFamily = ns_config:search_node_with_default(Config, address_family, inet),
-    Port = service_ports:get_port(prometheus_http_port, Config),
+build_settings() -> build_settings(ns_config:get(), node()).
+build_settings(Config, Node) ->
+    AFamily = ns_config:search_node_with_default(Node, Config, address_family,
+                                                 inet),
+    Port = service_ports:get_port(prometheus_http_port, Config, Node),
     LocalAddr = misc:localhost(AFamily, [url]),
-    Services = ns_cluster_membership:node_services(Config, node()),
+    Services = ns_cluster_membership:node_services(Config, Node),
     Targets = lists:filtermap(
                 fun (S) ->
-                        case service_ports:get_port(get_service_port(S)) of
+                        case service_ports:get_port(get_service_port(S),
+                                                    Config, Node) of
                             undefined -> false;
                             P -> {true, {S, misc:join_host_port(LocalAddr, P)}}
                         end
                 end, [ns_server, xdcr | Services]),
 
     NsToPrometheusAuthInfo = ns_config:search_node_with_default(
-                               Config, ns_to_prometheus_auth_info, []),
+                               Node, Config, ns_to_prometheus_auth_info, []),
     {pass, Creds} = proplists:get_value(creds, NsToPrometheusAuthInfo,
                                         {pass, undefined}),
 
@@ -122,7 +124,8 @@ build_settings(Config) ->
     %% metrics collection, and 30 second scrape interval for index service
     %% high cardinality metrics collection.
     DynamicScrapeIntervals = ns_config:search_node_with_default(
-                         Config, stats_scrape_dynamic_intervals, []),
+                               Node, Config, stats_scrape_dynamic_intervals,
+                               []),
 
     Settings =
         case Port == undefined orelse Creds == undefined of
@@ -534,19 +537,20 @@ high_cardinality_jobs_config(Settings) ->
                  replacement => Name}]}
       end, Services).
 
-ensure_prometheus_config(Settings) ->
+generate_prometheus_configs(Settings) ->
     File = prometheus_config_file(Settings),
     ScrapeInterval = proplists:get_value(scrape_interval, Settings),
     ScrapeTimeout = proplists:get_value(scrape_timeout, Settings),
     TokenFile = token_file(Settings),
     Targets = proplists:get_value(targets, Settings, []),
     TargetsBin = [list_to_binary(T) || {_, T} <- Targets],
-    RulesFiles = ensure_rules_configs(Settings),
+    RulesConfigs = generate_rules_configs(Settings),
+    RulesFiles = [F || {F, _} <- RulesConfigs],
     Cfg = #{global => #{scrape_interval => {"~bs", [ScrapeInterval]},
                         scrape_timeout => {"~bs", [ScrapeTimeout]}},
             rule_files => [list_to_binary(F) || F <- RulesFiles],
             scrape_configs =>
-              [#{job_name => general,
+              [#{job_name => <<"general">>,
                  metrics_path => <<"/_prometheusMetrics">>,
                  basic_auth => #{username => list_to_binary(?USERNAME),
                                  password_file => list_to_binary(TokenFile)},
@@ -560,11 +564,19 @@ ensure_prometheus_config(Settings) ->
                       replacement => N} || {N, A} <- Targets]}] ++
               high_cardinality_jobs_config(Settings) ++
               prometheus_metrics_jobs_config(Settings)},
-    ConfigBin = yaml:encode(Cfg),
-    ?log_debug("Updating prometheus config file: ~s", [File]),
-    ok = misc:atomic_write_file(File, ConfigBin).
+    [{File, Cfg} | RulesConfigs].
 
-ensure_rules_configs(Settings) ->
+ensure_prometheus_config(Settings) ->
+    lists:foreach(
+      fun ({Path, YamlTerm}) ->
+          ?log_debug("Updating prometheus config file: ~s", [Path]),
+          ok = misc:atomic_write_file(Path, yaml:encode(YamlTerm))
+      end, generate_prometheus_configs(Settings)).
+
+%% Generate prometheus rules config with respect to derived metrics settings
+%% Note that if derived metrics are disabled or the number of metrics is 0,
+%% the function returns empty list of configs.
+generate_rules_configs(Settings) ->
     Targets = proplists:get_value(targets, Settings, []),
     Metrics = lists:append([derived_metrics(Name) || {Name, _} <- Targets]),
     FilteredMetrics =
@@ -586,7 +598,7 @@ ensure_rules_configs(Settings) ->
                                      File),
             Config =
                 #{groups =>
-                      [#{name => general,
+                      [#{name => <<"general">>,
                          interval => {"~bs", [RulesInterval]},
                          rules =>
                              [#{record => list_to_binary(Name),
@@ -594,10 +606,7 @@ ensure_rules_configs(Settings) ->
                                 labels => #{name => list_to_binary(Name)}}
                                   || {Name, Expr} <- FilteredMetrics]}]},
 
-            ConfigBin = yaml:encode(Config),
-            ?log_debug("Updating prometheus rules config file: ~s", [FullPath]),
-            ok = misc:atomic_write_file(FullPath, ConfigBin),
-            [FullPath];
+            [{FullPath, Config}];
         false ->
             []
     end.
@@ -614,7 +623,7 @@ prometheus_metrics_jobs_config(Settings) ->
                               proplists:get_value(addr, Settings)),
             Interval = proplists:get_value(prometheus_metrics_scrape_interval,
                                            Settings),
-            [#{job_name => prometheus,
+            [#{job_name => <<"prometheus">>,
                scrape_interval => {"~bs", [Interval]},
                scrape_timeout => {"~bs", [Interval]},
                basic_auth => #{username => list_to_binary(?USERNAME),
