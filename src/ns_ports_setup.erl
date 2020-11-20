@@ -430,6 +430,9 @@ goport_args(backup, Config, _Cmd, NodeUUID) ->
      "-integrated-mode-host=" ++ misc:local_url(
                                    service_ports:get_port(rest_port, Config),
                                    []),
+     "-secure-integrated-mode-host=" ++ misc:local_url(
+                                          service_ports:get_port(
+                                            ssl_rest_port, Config), [ssl]),
      "-integrated-mode-user=@backup",
      "-default-collect-logs-path=" ++ path_config:component_path(tmp),
      "-cbauth-host=" ++ misc:local_url(
