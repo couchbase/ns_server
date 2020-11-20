@@ -800,6 +800,6 @@ add_proplist_list_elem_test() ->
            {enabled, false}],
     Expected2 = [{alerts, [ip, time_out_of_sync, communication_issue]},
                  {enabled, false}],
-    Result2 = add_proplist_list_elem(alerts, time_out_of_sync, PL1),
+    Result2 = add_proplist_list_elem(alerts, time_out_of_sync, PL2),
     ?assertEqual(misc:sort_kv_list(Expected2), misc:sort_kv_list(Result2)).
 -endif.
