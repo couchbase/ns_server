@@ -394,32 +394,24 @@ format_status(_Opt, [_PDict, #s{cur_settings = Settings} = State]) ->
 %%%===================================================================
 
 generate_ns_to_prometheus_auth_info() ->
-    Config = ns_config:get(),
-    case ns_config:search_node(Config, ns_to_prometheus_auth_info) of
-        false ->
-            Password = menelaus_web_rbac:gen_password({32,
-                                                       [uppercase, lowercase,
-                                                        digits]}),
-            {Salt0, Hash0, Iterations} = scram_sha:hash_password(sha512,
-                                                                 Password),
-            Salt = base64:encode_to_string(Salt0),
-            Hash = base64:encode_to_string(Hash0),
+    Password = menelaus_web_rbac:gen_password({32, [uppercase, lowercase,
+                                                    digits]}),
+    {Salt0, Hash0, Iterations} = scram_sha:hash_password(sha512, Password),
+    Salt = base64:encode_to_string(Salt0),
+    Hash = base64:encode_to_string(Hash0),
 
-            AuthInfo= {[{username, list_to_binary(?NS_TO_PROMETHEUS_USERNAME)},
-                        {salt, list_to_binary(Salt)},
-                        {hash, list_to_binary(Hash)},
-                        {iterations, Iterations}]},
-            AuthInfoJson = menelaus_util:encode_json(AuthInfo),
+    AuthInfo= {[{username, list_to_binary(?NS_TO_PROMETHEUS_USERNAME)},
+                {salt, list_to_binary(Salt)},
+                {hash, list_to_binary(Hash)},
+                {iterations, Iterations}]},
+    AuthInfoJson = menelaus_util:encode_json(AuthInfo),
 
-            AuthFile = ns_to_prometheus_filename(),
-            ok = misc:atomic_write_file(AuthFile, AuthInfoJson),
+    AuthFile = ns_to_prometheus_filename(),
+    ok = misc:atomic_write_file(AuthFile, AuthInfoJson),
 
-            ns_config:set({node, node(), ns_to_prometheus_auth_info},
-                          [{creds, {pass, {?NS_TO_PROMETHEUS_USERNAME,
-                                           Password}}}]);
-        _ ->
-            ok
-    end.
+    ns_config:set({node, node(), ns_to_prometheus_auth_info},
+                  [{creds, {pass, {?NS_TO_PROMETHEUS_USERNAME,
+                                   Password}}}]).
 
 ns_to_prometheus_filename() ->
     filename:join(path_config:component_path(data, "config"),
