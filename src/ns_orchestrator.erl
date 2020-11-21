@@ -395,25 +395,26 @@ handle_event({call, From},
              {maybe_start_rebalance, KnownNodes, EjectedNodes,
               DeltaRecoveryBuckets, RebalanceId, RetryChk},
              _StateName, _State) ->
+    Snapshot = chronicle_compat:get_snapshot(
+                 [ns_bucket:key_filter(),
+                  ns_cluster_membership:key_filter()]),
+
     case {EjectedNodes -- KnownNodes,
-          lists:sort(ns_node_disco:nodes_wanted()),
+          lists:sort(ns_cluster_membership:nodes_wanted(Snapshot)),
           lists:sort(KnownNodes)} of
         {[], X, X} ->
-            Config = ns_config:get(),
-
             MaybeKeepNodes = KnownNodes -- EjectedNodes,
-            FailedNodes = get_failed_nodes(Config, KnownNodes),
+            FailedNodes = get_failed_nodes(Snapshot, KnownNodes),
             KeepNodes = MaybeKeepNodes -- FailedNodes,
-            DeltaNodes = ns_rebalancer:get_delta_recovery_nodes(Config,
-                                                                KeepNodes),
+            DeltaNodes = get_delta_recovery_nodes(Snapshot, KeepNodes),
             case KeepNodes of
                 [] ->
                     {keep_state_and_data,
                      [{reply, From, no_active_nodes_left}]};
                 _ ->
-                    case rebalance_allowed(Config) of
+                    case rebalance_allowed(Snapshot) of
                         ok ->
-                            case retry_ok(Config, FailedNodes, RetryChk) of
+                            case retry_ok(Snapshot, FailedNodes, RetryChk) of
                                 false ->
                                     {keep_state_and_data,
                                      [{reply, From, retry_check_failed}]};
@@ -1303,10 +1304,10 @@ retry_rebalance(_, _) ->
 %% Fail the retry if there are newly failed over nodes,
 %% server group configuration has changed or buckets have been added
 %% or deleted or their replica count changed.
-retry_ok(Config, FailedNodes, undefined) ->
-    get_retry_check(Config, FailedNodes);
-retry_ok(Config, FailedNodes, RetryChk) ->
-    retry_ok(RetryChk, get_retry_check(Config, FailedNodes)).
+retry_ok(Snapshot, FailedNodes, undefined) ->
+    get_retry_check(Snapshot, FailedNodes);
+retry_ok(Snapshot, FailedNodes, RetryChk) ->
+    retry_ok(RetryChk, get_retry_check(Snapshot, FailedNodes)).
 
 retry_ok(Chk, Chk) ->
     Chk;
@@ -1316,17 +1317,17 @@ retry_ok(RetryChk, NewChk) ->
                [RetryChk -- NewChk, NewChk -- RetryChk]),
     false.
 
-get_retry_check(Config, FailedNodes) ->
-    SGs = ns_cluster_membership:server_groups(Config),
+get_retry_check(Snapshot, FailedNodes) ->
+    SGs = ns_cluster_membership:server_groups(Snapshot),
     [{failed_nodes, lists:sort(FailedNodes)},
      {server_groups, groups_chk(SGs, fun (Nodes) -> Nodes end)},
-     {buckets, buckets_chk(Config)}].
+     {buckets, buckets_chk(Snapshot)}].
 
-buckets_chk(Config) ->
+buckets_chk(Snapshot) ->
     Bkts = lists:map(fun({B, BC}) ->
                              {B, proplists:get_value(num_replicas, BC),
                               ns_bucket:bucket_uuid(BC)}
-                     end, ns_bucket:get_buckets(Config)),
+                     end, ns_bucket:get_buckets(Snapshot)),
     erlang:phash2(lists:sort(Bkts)).
 
 groups_chk(SGs, UpdateFn) ->
@@ -1352,9 +1353,9 @@ update_retry_check(EjectedByReb, Chk0) ->
     lists:keyreplace(server_groups, 1, Chk1,
                      {server_groups, groups_chk(SGs0, UpdateFn)}).
 
-get_failed_nodes(Cfg, KnownNodes) ->
+get_failed_nodes(Snapshot, KnownNodes) ->
     [N || N <- KnownNodes,
-          ns_cluster_membership:get_cluster_membership(N, Cfg)
+          ns_cluster_membership:get_cluster_membership(N, Snapshot)
               =:= inactiveFailed].
 
 graceful_failover_retry_ok(Chk) ->
@@ -1362,10 +1363,13 @@ graceful_failover_retry_ok(Chk) ->
 
 get_graceful_fo_chk() ->
     Cfg = ns_config:get(),
-    KnownNodes0 = ns_node_disco:nodes_wanted(),
+    Snapshot = chronicle_compat:get_snapshot(
+                 [ns_bucket:key_filter(),
+                  ns_cluster_membership:key_filter()]),
+    KnownNodes0 = ns_cluster_membership:nodes_wanted(Snapshot),
     KnownNodes = ns_cluster_membership:attach_node_uuids(KnownNodes0, Cfg),
-    FailedNodes = get_failed_nodes(Cfg, KnownNodes0),
-    [{known_nodes, KnownNodes}] ++ get_retry_check(Cfg, FailedNodes).
+    FailedNodes = get_failed_nodes(Snapshot, KnownNodes0),
+    [{known_nodes, KnownNodes}] ++ get_retry_check(Snapshot, FailedNodes).
 
 maybe_eject_myself(Reason, State) ->
     case need_eject_myself(Reason, State) of
@@ -1527,17 +1531,24 @@ call_recovery_server(State, Call) ->
 call_recovery_server(#recovery_state{pid = Pid}, Call, Args) ->
     erlang:apply(recovery_server, Call, [Pid | Args]).
 
-rebalance_allowed(Config) ->
-    case cluster_compat_mode:is_cluster_65(Config) of
+get_delta_recovery_nodes(Snapshot, Nodes) ->
+    [N || N <- Nodes,
+          ns_cluster_membership:get_cluster_membership(N, Snapshot)
+              =:= inactiveAdded
+              andalso ns_cluster_membership:get_recovery_type(Snapshot, N)
+              =:= delta].
+
+rebalance_allowed(Snapshot) ->
+    case cluster_compat_mode:is_cluster_65() of
         true ->
             ok;
         false ->
-            functools:sequence_([?cut(check_for_passwordless_default(Config)),
-                                 ?cut(check_for_moxi_buckets(Config))])
+            functools:sequence_([?cut(check_for_passwordless_default(Snapshot)),
+                                 ?cut(check_for_moxi_buckets(Snapshot))])
     end.
 
-check_for_moxi_buckets(Config) ->
-    case [Name || {Name, BucketConfig} <- ns_bucket:get_buckets(Config),
+check_for_moxi_buckets(Snapshot) ->
+    case [Name || {Name, BucketConfig} <- ns_bucket:get_buckets(Snapshot),
                   ns_bucket:moxi_port(BucketConfig) =/= undefined] of
         [] ->
             ok;
@@ -1548,10 +1559,10 @@ check_for_moxi_buckets(Config) ->
             {error, Msg}
     end.
 
-check_for_passwordless_default(Config) ->
+check_for_passwordless_default(Snapshot) ->
     case lists:member({"default", local},
                       menelaus_users:get_passwordless()) andalso
-        lists:keymember("default", 1, ns_bucket:get_buckets(Config)) of
+        lists:keymember("default", 1, ns_bucket:get_buckets(Snapshot)) of
         true ->
             {error, "Please reset password for user 'default'"};
         false ->

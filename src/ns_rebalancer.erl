@@ -37,7 +37,6 @@
          map_options_changed/1,
          eject_nodes/1,
          maybe_cleanup_old_buckets/1,
-         get_delta_recovery_nodes/2,
          start_link_graceful_failover/1,
          generate_vbucket_map_options/2,
          check_test_condition/2,
@@ -1140,11 +1139,6 @@ build_transitional_chain_test() ->
                  build_transitional_chain([a, undefined, undefined, undefined],
                                           [b, c])).
 -endif.
-
-get_delta_recovery_nodes(Config, Nodes) ->
-    [N || N <- Nodes,
-          ns_cluster_membership:get_cluster_membership(N, Config) =:= inactiveAdded
-              andalso ns_cluster_membership:get_recovery_type(Config, N) =:= delta].
 
 start_link_graceful_failover(Nodes) ->
     proc_lib:start_link(erlang, apply, [fun run_graceful_failover/1, [Nodes]]).
