@@ -22,7 +22,28 @@
 -endif.
 
 encode(Term) ->
-    iolist_to_binary(lists:join("\n", format(Term))).
+    iolist_to_binary(lists:join("\n", format(preprocess(Term)))).
+
+%% The main purpose of the preprocess function is to format all
+%% {Format, Args} parts of yaml term to regular binary.
+preprocess(#{} = Map) ->
+    maps:map(fun (_, V) -> preprocess(V) end, Map);
+preprocess(List) when is_list(List) ->
+    [preprocess(E) || E <- List];
+preprocess({Format, Args}) ->
+    iolist_to_binary(io_lib:format(Format, Args));
+preprocess(Value) -> Value.
+
+-ifdef(TEST).
+preprocess_test() ->
+    ?assertEqual(preprocess([]), []),
+    ?assertEqual(preprocess(#{}), #{}),
+    ?assertEqual(preprocess(1), 1),
+    ?assertEqual(preprocess(<<"bin">>), <<"bin">>),
+    ?assertEqual(preprocess({"~b-~s", [42, "test"]}), <<"42-test">>),
+    ?assertEqual(preprocess(#{key => [<<"bin">>, {"~b-~s", [42, "test"]}]}),
+                            #{key => [<<"bin">>, <<"42-test">>]}).
+-endif.
 
 format(#{} = Map) ->
     lists:flatmap(
@@ -51,8 +72,6 @@ format([El | Tail]) ->
         [First | Rest] ->
             ["- " ++ First] ++ ["  " ++ L || L <- Rest]
     end ++ format(Tail);
-format({Format, Args}) ->
-    format(iolist_to_binary(io_lib:format(Format, Args)));
 format(N) when is_integer(N) ->
     [integer_to_binary(N)];
 format(F) when is_float(F) ->
@@ -82,6 +101,8 @@ encode_test() ->
     ?assertEqual(encode(#{key => #{subkey => 1}}),
                  <<"key:\n"
                    "  subkey: 1">>),
+    ?assertEqual(encode([#{key => {"int: ~b", [123]}}]),
+                 <<"- key: 'int: 123'">>),
     ?assertEqual(encode(#{global =>
                             #{scrape_interval => <<"10s">>,
                               scrape_timeout  => <<"20s">>},
