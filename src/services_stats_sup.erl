@@ -54,8 +54,8 @@ is_notable_event(rest_creds) ->
 is_notable_event(_) ->
     false.
 
-compute_wanted_children(Service, Config) ->
-    case ns_cluster_membership:should_run_service(Config, Service:get_type(),
+compute_wanted_children(Service, Snapshot) ->
+    case ns_cluster_membership:should_run_service(Snapshot, Service:get_type(),
                                                   node()) of
         false ->
             [];
@@ -68,7 +68,7 @@ compute_wanted_children(Service, Config) ->
                   service_stats_collector:service_event_name(Service)}
                  || Mod <- [stats_archiver, stats_reader]],
 
-            BucketCfgs = ns_bucket:get_buckets(Config),
+            BucketCfgs = ns_bucket:get_buckets(Snapshot),
             BucketNames =
                 [Name || {Name, BConfig} <- BucketCfgs,
                          lists:keyfind(type, 1, BConfig) =:= {type, membase}],
@@ -85,11 +85,13 @@ refresh_children() ->
         [Id || {Id, _, _, _} <-
                    supervisor:which_children(service_stats_children_sup)],
     RunningChildren = lists:sort(RunningChildren0),
-    Config = ns_config:get(),
-    WantedChildren0 = compute_wanted_children(service_fts, Config) ++
-        compute_wanted_children(service_index, Config) ++
-        compute_wanted_children(service_cbas, Config) ++
-        compute_wanted_children(service_eventing, Config),
+    Snapshot = chronicle_compat:get_snapshot(
+                 [ns_bucket:key_filter(),
+                  ns_cluster_membership:key_filter()]),
+    WantedChildren0 = compute_wanted_children(service_fts, Snapshot) ++
+        compute_wanted_children(service_index, Snapshot) ++
+        compute_wanted_children(service_cbas, Snapshot) ++
+        compute_wanted_children(service_eventing, Snapshot),
     WantedChildren = lists:sort(WantedChildren0),
     ToStart = ordsets:subtract(WantedChildren, RunningChildren),
     ToStop = ordsets:subtract(RunningChildren, WantedChildren),
