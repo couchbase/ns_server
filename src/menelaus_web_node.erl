@@ -466,15 +466,11 @@ handle_node_statuses(Req) ->
     NodeStatuses =
         lists:map(
           fun (N) ->
-                  InfoNode = ns_doctor:get_node(N, OldStatuses),
-                  Hostname = proplists:get_value(
-                               hostname,
-                               build_node_info(Config, N, InfoNode, LocalAddr)),
-                  NewInfoNode = ns_doctor:get_node(N, FreshStatuses),
+                  InfoNode = ns_doctor:get_node(N, FreshStatuses),
                   Dataless =
                       not lists:member(
                             kv, ns_cluster_membership:node_services(Config, N)),
-                  V = case proplists:get_bool(down, NewInfoNode) of
+                  V = case proplists:get_bool(down, InfoNode) of
                           true ->
                               {struct, [{status, unhealthy},
                                         {otpNode, N},
@@ -492,7 +488,7 @@ handle_node_statuses(Req) ->
                                 {replication, average_failover_safenesses(
                                                 N, FreshStatuses, BucketsAll)}]}
                       end,
-                  {Hostname, V}
+                  {build_node_hostname(Config, N, LocalAddr), V}
           end, ns_node_disco:nodes_wanted()),
     reply_json(Req, {struct, NodeStatuses}, 200).
 
