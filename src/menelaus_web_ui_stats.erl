@@ -156,9 +156,8 @@ extract_uistats(Now, Params, Req) ->
     MapNode =
         fun (N) when Nodes == all ->
                 LocalAddr = menelaus_util:local_addr(Req),
-                Node = menelaus_web_node:build_node_hostname(ns_config:latest(),
-                                                             N, LocalAddr),
-                iolist_to_binary(Node);
+                menelaus_web_node:build_node_hostname(ns_config:latest(),
+                                                      N, LocalAddr);
             (N) ->
                 proplists:get_value(N, Nodes)
         end,

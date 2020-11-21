@@ -370,9 +370,8 @@ handle_sasl_buckets_streaming(_PoolId, Req) ->
 
 build_sasl_bucket_nodes(BucketConfig, LocalAddr) ->
     {nodes,
-     [{[{hostname,
-         list_to_binary(menelaus_web_node:build_node_hostname(
-                          ns_config:latest(), N, LocalAddr))},
+     [{[{hostname, menelaus_web_node:build_node_hostname(
+                     ns_config:latest(), N, LocalAddr)},
         {ports, {[{direct,
                    service_ports:get_port(
                      memcached_port, ns_config:latest(), N)}]}}]} ||

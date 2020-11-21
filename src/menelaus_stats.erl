@@ -527,8 +527,7 @@ build_response_for_specific_stat(BucketName, StatName, Params, LocalAddr) ->
 
     Config = ns_config:get(),
     Hostnames =
-        [list_to_binary(menelaus_web_node:build_node_hostname(Config, N,
-                                                              LocalAddr)) ||
+        [menelaus_web_node:build_node_hostname(Config, N, LocalAddr) ||
             N <- Nodes],
 
     Timestamps = [TS || {TS, _} <- hd(NodesSamples)],
@@ -2707,10 +2706,10 @@ serve_aggregated_ui_stats(Req, Params) ->
                     {[{url, list_to_binary(DirURL)}]},
                     Wnd, Bucket, null, NewHaveStamp, Extra).
 
-maybe_string_hostname_port(H) ->
-    case lists:reverse(H) of
+maybe_remove_port_8091(H) ->
+    case lists:reverse(binary_to_list(H)) of
         "1908:" ++ RevPref ->
-            lists:reverse(RevPref);
+            list_to_binary(lists:reverse(RevPref));
         _ ->
             H
     end.
@@ -2754,8 +2753,10 @@ serve_specific_ui_stats(Req, StatName, Params) ->
 
     Config = ns_config:get(),
     LocalAddr = menelaus_util:local_addr(Req),
-    StringHostnames = [menelaus_web_node:build_node_hostname(Config, N, LocalAddr) || N <- Nodes],
-    StatKeys = [list_to_binary("@"++H) || H <- StringHostnames],
+    Hostnames =
+        [menelaus_web_node:build_node_hostname(Config, N, LocalAddr)
+         || N <- Nodes],
+    StatKeys = [<<"@", H/binary>> || H <- Hostnames],
 
     Timestamps = [TS || {TS, _} <- hd(NodesSamples)],
     MainValues = [VS || {_, VS} <- hd(NodesSamples)],
@@ -2780,10 +2781,8 @@ serve_specific_ui_stats(Req, StatName, Params) ->
         [{K, V} || {K, V} <- StatDescProps,
                    K =/= name andalso K =/= title],
 
-    StatInfos = [{[{title, list_to_binary(maybe_string_hostname_port(H))},
-                   {name, list_to_binary("@"++H)}
-                   | RestStatDescProps]}
-                 || H <- StringHostnames],
+    StatInfos = [{[{title, maybe_remove_port_8091(H)}, {name, <<"@", H/binary>>}
+                   | RestStatDescProps]} || H <- Hostnames],
 
     ServeDirectory = {[{value, {[{thisISSpecificStats, true},
                                  {blocks, [{[{blockName, <<"Specific Stats">>},
@@ -2990,8 +2989,7 @@ jsonify_node(N, LocalAddr) ->
 
 build_one_stat_json([{{aggregate, Nodes}, Samples}], LocalAddr) ->
     {[{aggregate, Samples},
-      {aggregateNodes,
-       [list_to_binary(jsonify_node(N, LocalAddr)) || N <- Nodes]}]};
+      {aggregateNodes, [jsonify_node(N, LocalAddr) || N <- Nodes]}]};
 build_one_stat_json(SamplesForNodes, LocalAddr) ->
     {[{jsonify_node(N, LocalAddr), Samples} ||
          {N, Samples} <- SamplesForNodes]}.

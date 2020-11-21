@@ -167,8 +167,7 @@ node_bucket_info(Node, Config, Bucket, BucketUUID, BucketConfig) ->
     Ports = {[{direct, service_ports:get_port(memcached_port, Config, Node)}]},
     WantedPorts = [rest_port, memcached_port],
 
-    Info0 = [{hostname, list_to_binary(HostName)},
-             {ports, Ports}] ++
+    Info0 = [{hostname, HostName}, {ports, Ports}] ++
         alternate_addresses_json(Node, Config, WantedPorts),
     Info = case ns_bucket:bucket_type(BucketConfig) of
                membase ->

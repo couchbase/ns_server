@@ -273,7 +273,9 @@ build_node_hostname(Config, Node, LocalAddr) ->
                true  -> LocalAddr;
                false -> H
            end,
-    misc:join_host_port(Host, service_ports:get_port(rest_port, Config, Node)).
+    list_to_binary(
+      misc:join_host_port(Host,
+                          service_ports:get_port(rest_port, Config, Node))).
 
 alternate_addresses_json(Node, Config, WantedPorts) ->
     {ExtHostname, ExtPorts} =
@@ -295,7 +297,6 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
     Version = proplists:get_value(ns_server, Versions, "unknown"),
     OS = proplists:get_value(system_arch, InfoNode, "unknown"),
     CpuCount = proplists:get_value(cpu_count, InfoNode, unknown),
-    HostName = build_node_hostname(Config, WantENode, LocalAddr),
     NodeUUID = ns_config:search_node_with_default(WantENode, Config, uuid,
                                                   undefined),
     ConfiguredHostname =
@@ -341,7 +342,7 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
                         [{[{afamily, AF}, {nodeEncryption, E}]} || {AF, E} <- L]
                 end,
 
-    RV = [{hostname, list_to_binary(HostName)},
+    RV = [{hostname, build_node_hostname(Config, WantENode, LocalAddr)},
           {nodeUUID, NodeUUID},
           {clusterCompatibility,
            cluster_compat_mode:effective_cluster_compat_version()},
@@ -364,8 +365,7 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
 nodes_to_hostnames(Config, Req, NodeStatus) ->
     Nodes = ns_cluster_membership:get_nodes_with_status(Config, NodeStatus),
     LocalAddr = local_addr(Req),
-    [{N, list_to_binary(build_node_hostname(Config, N, LocalAddr))}
-     || N <- Nodes].
+    [{N, build_node_hostname(Config, N, LocalAddr)} || N <- Nodes].
 
 %% Node list
 %% GET /pools/default/buckets/{Id}/nodes
