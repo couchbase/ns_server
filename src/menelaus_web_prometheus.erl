@@ -60,11 +60,10 @@ handle_get_metrics(Req) ->
     mochiweb_response:write_chunk(<<>>, Resp).
 
 handle_sd_config(Req) ->
-    Cfg = ns_config:get(),
-    Nodes = menelaus_web_node:nodes_to_hostnames(Cfg, Req, any),
+    Nodes = menelaus_web_node:get_hostnames(Req, any),
     Yaml = [#{targets => [HostPort || {_, HostPort} <- Nodes]}],
     YamlBin = yaml:encode(Yaml),
-    ClusterName = menelaus_web_pools:get_cluster_name(Cfg),
+    ClusterName = menelaus_web_pools:get_cluster_name(),
     Filename = io_lib:format("couchbase_sd_config_~s.yaml", [ClusterName]),
     ContentDisp = io_lib:format("attachment; filename=\"~s\"", [Filename]),
     ExtraHeaders = [{"Content-Disposition", lists:flatten(ContentDisp)}],

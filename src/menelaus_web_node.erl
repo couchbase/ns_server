@@ -46,7 +46,7 @@
          alternate_addresses_json/3,
          handle_setup_net_config/1,
          handle_change_external_listeners/2,
-         nodes_to_hostnames/3]).
+         get_hostnames/2]).
 
 -import(menelaus_util,
         [local_addr/1,
@@ -169,6 +169,10 @@ build_node_status(Node, Bucket, InfoNode, BucketsAll) ->
             <<"unhealthy">>
     end.
 
+get_snapshot() ->
+    chronicle_compat:get_snapshot([ns_bucket:key_filter(),
+                                   ns_cluster_membership:key_filter()]).
+
 build_nodes_info_fun(CanIncludeOtpCookie, InfoLevel, Stability, LocalAddr) ->
     OtpCookie =
         %% NOTE: the following avoids exposing otpCookie to UI
@@ -180,27 +184,30 @@ build_nodes_info_fun(CanIncludeOtpCookie, InfoLevel, Stability, LocalAddr) ->
         end,
     NodeStatuses = ns_doctor:get_nodes(),
     Config = ns_config:get(),
-    BucketsAll = ns_bucket:get_buckets(Config),
+    Snapshot = get_snapshot(),
+
+    BucketsAll = ns_bucket:get_buckets(Snapshot),
     fun(WantENode, Bucket) ->
             InfoNode = ns_doctor:get_node(WantENode, NodeStatuses),
             {struct,
              lists:flatten(
                [{clusterMembership,
                  ns_cluster_membership:get_cluster_membership(
-                   WantENode, Config)},
+                   WantENode, Snapshot)},
                 {recoveryType,
-                 ns_cluster_membership:get_recovery_type(Config, WantENode)},
+                 ns_cluster_membership:get_recovery_type(Snapshot, WantENode)},
                 {status, build_node_status(WantENode, Bucket, InfoNode,
                                            BucketsAll)},
                 {otpNode, WantENode},
-                build_node_info(Config, WantENode, InfoNode, LocalAddr),
+                build_node_info(Config, Snapshot, WantENode, InfoNode,
+                                LocalAddr),
                 OtpCookie,
                 case Bucket of
                     undefined ->
                         build_couch_api_base(WantENode, LocalAddr);
                     _ ->
                         build_replication_info(Bucket, WantENode, NodeStatuses,
-                                               Config)
+                                               Snapshot)
                 end,
                 case Stability of
                     stable ->
@@ -216,9 +223,9 @@ build_couch_api_base(WantENode, LocalAddr) ->
                    URL <- [capi_utils:capi_url_bin(Node, <<"/">>, LocalAddr)],
                    URL =/= undefined].
 
-build_replication_info(Bucket, WantENode, NodeStatuses, Config) ->
+build_replication_info(Bucket, WantENode, NodeStatuses, Snapshot) ->
     {replication,
-     case ns_bucket:get_bucket(Bucket, Config) of
+     case ns_bucket:get_bucket(Bucket, Snapshot) of
          not_present -> 0.0;
          {ok, BucketConfig} ->
              failover_safeness_level:extract_replication_uptodateness(
@@ -292,7 +299,7 @@ construct_ext_json(Hostname, Ports) ->
     [{external, {struct, [{hostname, list_to_binary(Hostname)},
                           {ports, {struct, Ports}}]}}].
 
-build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
+build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr) ->
     Versions = proplists:get_value(version, InfoNode, []),
     Version = proplists:get_value(ns_server, Versions, "unknown"),
     OS = proplists:get_value(system_arch, InfoNode, "unknown"),
@@ -351,7 +358,7 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
           {os, list_to_binary(OS)},
           {cpuCount, CpuCount},
           {ports, {struct, PortsKV ++ DistPorts}},
-          {services, ns_cluster_membership:node_services(Config, WantENode)},
+          {services, ns_cluster_membership:node_services(Snapshot, WantENode)},
           {nodeEncryption, NEncryption},
           {addressFamilyOnly, AFamilyOnly},
           {configuredHostname, list_to_binary(ConfiguredHostname)}
@@ -364,8 +371,11 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
         _ -> RV
     end.
 
-nodes_to_hostnames(Config, Req, NodeStatus) ->
-    Nodes = ns_cluster_membership:get_nodes_with_status(Config, NodeStatus),
+get_hostnames(Req, NodeStatus) ->
+    Config = ns_config:get(),
+    Snapshot =
+        chronicle_compat:get_snapshot(ns_cluster_membership:key_filter()),
+    Nodes = ns_cluster_membership:get_nodes_with_status(Snapshot, NodeStatus),
     LocalAddr = local_addr(Req),
     [{N, build_node_hostname(Config, N, LocalAddr)} || N <- Nodes].
 
@@ -377,7 +387,7 @@ nodes_to_hostnames(Config, Req, NodeStatus) ->
 handle_bucket_node_list(BucketName, Req) ->
     %% NOTE: since 4.0 release we're listing all active nodes as
     %% part of our approach for dealing with query stats
-    NHs = nodes_to_hostnames(ns_config:get(), Req, active),
+    NHs = get_hostnames(Req, active),
     Servers =
         [{struct,
           [{hostname, Hostname},
@@ -406,7 +416,7 @@ find_node_hostname(HostPortStr, Req, NodeStatus) ->
     try normalize_hostport(HostPortStr, Req) of
         Normalized ->
             HostPortBin = list_to_binary(Normalized),
-            NHs = nodes_to_hostnames(ns_config:get(), Req, NodeStatus),
+            NHs = get_hostnames(Req, NodeStatus),
             case [N || {N, CandidateHostPort} <- NHs,
                        CandidateHostPort =:= HostPortBin] of
                 [] ->
@@ -463,7 +473,8 @@ handle_node_statuses(Req) ->
     LocalAddr = local_addr(Req),
     OldStatuses = ns_doctor:get_nodes(),
     Config = ns_config:get(),
-    BucketsAll = ns_bucket:get_buckets(Config),
+    Snapshot = get_snapshot(),
+    BucketsAll = ns_bucket:get_buckets(Snapshot),
     FreshStatuses = ns_heart:grab_fresh_failover_safeness_infos(BucketsAll),
     NodeStatuses =
         lists:map(
@@ -471,7 +482,8 @@ handle_node_statuses(Req) ->
                   InfoNode = ns_doctor:get_node(N, FreshStatuses),
                   Dataless =
                       not lists:member(
-                            kv, ns_cluster_membership:node_services(Config, N)),
+                            kv,
+                            ns_cluster_membership:node_services(Snapshot, N)),
                   V = case proplists:get_bool(down, InfoNode) of
                           true ->
                               {struct, [{status, unhealthy},
@@ -491,7 +503,7 @@ handle_node_statuses(Req) ->
                                                 N, FreshStatuses, BucketsAll)}]}
                       end,
                   {build_node_hostname(Config, N, LocalAddr), V}
-          end, ns_node_disco:nodes_wanted()),
+          end, ns_node_disco:nodes_wanted(Snapshot)),
     reply_json(Req, {struct, NodeStatuses}, 200).
 
 graceful_failover_possible(Node, Buckets) ->

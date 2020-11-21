@@ -27,7 +27,7 @@
          handle_pool_info_streaming/2,
          handle_pool_settings_post/1,
          handle_terse_cluster_info/1,
-         get_cluster_name/1]).
+         get_cluster_name/0]).
 
 %% for hibernate
 -export([handle_pool_info_wait_wake/4]).
@@ -363,10 +363,7 @@ handle_pool_info_streaming(Id, Req) ->
     handle_streaming(F, Req).
 
 get_cluster_name() ->
-    get_cluster_name(ns_config:latest()).
-
-get_cluster_name(Config) ->
-    ns_config:search(Config, cluster_name, "").
+    ns_config:read_key_fast(cluster_name, "").
 
 pool_settings_post_validators(Config, CompatVersion) ->
     [validator:has_params(_),

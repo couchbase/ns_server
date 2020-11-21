@@ -243,7 +243,8 @@ validators(Now, Req) ->
     [validate_interval(timeWindow, _),
      validator:default(timeWindow, "1m", _),
      menelaus_web_ui_stats:validate_nodes_v2(nodes, _, Req),
-     validator:default(nodes, ?cut(default_nodes(Req)), _),
+     validator:default(nodes,
+                       ?cut(menelaus_web_node:get_hostnames(Req, any)), _),
      validator:one_of(aggregationFunction, [max, min, avg, sum, none], _),
      validator:convert(aggregationFunction,
                        fun (L) when is_binary(L) -> binary_to_atom(L, latin1);
@@ -321,9 +322,6 @@ read_metrics_response(Ref, Props, StartTimestampMs) ->
                 {error, menelaus_web_ui_stats:format_error(R)}]}
                  || {N, R} <- BadRes],
     {[{data, Data}, {errors, Errors}]}.
-
-default_nodes(Req) ->
-    menelaus_web_node:nodes_to_hostnames(ns_config:get(), Req, any).
 
 validate_metric_json(Name, State) ->
     validator:validate(
