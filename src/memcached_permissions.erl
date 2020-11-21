@@ -102,7 +102,7 @@ init() ->
             {value, {U2, _}} -> U2;
             _ -> undefined
         end,
-    #state{buckets = buckets_uids(ns_bucket:get_buckets(Config)),
+    #state{buckets = buckets_uids(ns_bucket:get_buckets()),
            users = spec_users(Config),
            cluster_admin = AdminUser,
            prometheus_user = PromUser}.

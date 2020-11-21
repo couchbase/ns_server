@@ -208,7 +208,7 @@ do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
     PropList =
         [{name, list_to_binary(Id)},
          {nodes, Nodes},
-         build_buckets_info(Config, Id, UUID, Nodes),
+         build_buckets_info(Id, UUID, Nodes),
          build_uri_with_validation(remoteClusters,
                                    "/pools/default/remoteClusters", UUID),
          build_alerts(UUID),
@@ -285,10 +285,9 @@ build_unstable_params(unstable) ->
       {[{Key, {StoragePList}} ||
            {Key, StoragePList} <- ns_storage_conf:cluster_storage_info()]}}].
 
-build_buckets_info(Config, Id, UUID, Nodes) ->
+build_buckets_info(Id, UUID, Nodes) ->
      BucketsVer =
-        erlang:phash2(
-          ns_bucket:get_bucket_names(ns_bucket:get_buckets(Config)))
+        erlang:phash2(ns_bucket:get_bucket_names())
         bxor erlang:phash2(
                [{proplists:get_value(hostname, KV),
                  proplists:get_value(status, KV)} || {struct, KV} <- Nodes]),
@@ -550,7 +549,7 @@ cluster_info_props(Req) ->
               CCAState = ns_ssl_services_setup:client_cert_auth_state(Cfg),
               list_to_binary(CCAState)
       end},
-     {buckets, fun extract_bucket_specific_data/1},
+     {buckets, fun extract_bucket_specific_data/0},
      {nodes,
       fun () ->
               [begin
@@ -586,7 +585,7 @@ get_terse_cluster_info(ReqdPropNames, Props) ->
            end, Props),
     {struct, RV}.
 
-extract_bucket_specific_data(Config) ->
+extract_bucket_specific_data() ->
     BktsInfo =
         misc:groupby_map(
           fun({BName, BCfg}) ->
@@ -602,7 +601,7 @@ extract_bucket_specific_data(Config) ->
                                    {BName, {struct, Props ++ CommonProps}}
                            end,
                   {ns_bucket:display_type(BCfg), BProps}
-          end, ns_bucket:get_buckets(Config)),
+          end, ns_bucket:get_buckets()),
 
     {struct, [{DT, {struct, AllBProps}} || {DT, AllBProps} <- BktsInfo]}.
 

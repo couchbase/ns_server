@@ -777,14 +777,15 @@ terminate(_Reason, #state{sock = still_connecting}) ->
     ?log_debug("Dying when socket is not yet connected");
 terminate(Reason, #state{bucket=Bucket, sock=Sock}) ->
     try
-        do_terminate(Reason, ns_config:get(), Bucket, Sock)
+        do_terminate(Reason, Bucket, Sock)
     after
         gen_event:notify(buckets_events, {stopped, Bucket}),
         ?log_debug("Terminated.")
     end.
 
-do_terminate(Reason, Config, Bucket, Sock) ->
-    BucketConfigs = ns_bucket:get_buckets(Config),
+do_terminate(Reason, Bucket, Sock) ->
+    Config = ns_config:get(),
+    BucketConfigs = ns_bucket:get_buckets(),
     NoBucket = not lists:keymember(Bucket, 1, BucketConfigs),
     NodeDying = (ns_config:search(Config, i_am_a_dead_man) =/= false
                  orelse not lists:member(Bucket, ns_bucket:node_bucket_names(node(), BucketConfigs))),
