@@ -365,13 +365,13 @@ handle_pool_info_streaming(Id, Req) ->
 get_cluster_name() ->
     ns_config:read_key_fast(cluster_name, "").
 
-pool_settings_post_validators(Config, CompatVersion) ->
+pool_settings_post_validators(Config, Snapshot, CompatVersion) ->
     [validator:has_params(_),
      validator:touch(clusterName, _),
-     validate_memory_quota(Config, CompatVersion, _),
+     validate_memory_quota(Config, Snapshot, CompatVersion, _),
      validator:unsupported(_)].
 
-validate_memory_quota(Config, CompatVersion, ValidatorState) ->
+validate_memory_quota(Config, Snapshot, CompatVersion, ValidatorState) ->
     QuotaFields =
         [{memory_quota:service_to_json_name(Service), Service} ||
             Service <- memory_quota:aware_services(CompatVersion)],
@@ -395,22 +395,23 @@ validate_memory_quota(Config, CompatVersion, ValidatorState) ->
         [] ->
             ValidationResult;
         _ ->
-            do_validate_memory_quota(Config, Quotas, ValidationResult)
+            do_validate_memory_quota(Config, Snapshot, Quotas, ValidationResult)
     end.
 
-do_validate_memory_quota(Config, Quotas, ValidatorState) ->
-    Nodes = ns_node_disco:nodes_wanted(Config),
+do_validate_memory_quota(Config, Snapshot, Quotas, ValidatorState) ->
+    Nodes = ns_cluster_membership:nodes_wanted(Snapshot),
     {ok, NodeStatuses} = ns_doctor:wait_statuses(Nodes, 3 * ?HEART_BEAT_PERIOD),
     NodeInfos =
         lists:map(
           fun (Node) ->
                   NodeStatus = dict:fetch(Node, NodeStatuses),
                   {_, MemoryData} = lists:keyfind(memory_data, 1, NodeStatus),
-                  NodeServices = ns_cluster_membership:node_services(Config, Node),
+                  NodeServices =
+                      ns_cluster_membership:node_services(Snapshot, Node),
                   {Node, NodeServices, MemoryData}
           end, Nodes),
 
-    case memory_quota:check_quotas(NodeInfos, Config, Quotas) of
+    case memory_quota:check_quotas(NodeInfos, Config, Snapshot, Quotas) of
         ok ->
             validator:return_value(quotas, Quotas, ValidatorState);
         {error, Error} ->
@@ -451,11 +452,15 @@ do_handle_pool_settings_post_loop(Req, RetriesLeft) ->
 
 do_handle_pool_settings_post(Req) ->
     Config = ns_config:get(),
+    Snapshot = chronicle_compat:get_snapshot(
+                 [ns_bucket:key_filter(),
+                  ns_cluster_membership:key_filter()]),
     CompatVersion = cluster_compat_mode:get_compat_version(Config),
 
     validator:handle(
       do_handle_pool_settings_post_body(Req, Config, _),
-      Req, form, pool_settings_post_validators(Config, CompatVersion)).
+      Req, form,
+      pool_settings_post_validators(Config, Snapshot, CompatVersion)).
 
 do_handle_pool_settings_post_body(Req, Config, Values) ->
     case lists:keyfind(quotas, 1, Values) of

@@ -24,9 +24,10 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--export([this_node_memory_data/0,
+-export([key_filter/0,
+         this_node_memory_data/0,
          get_total_buckets_ram_quota/1,
-         check_quotas/3,
+         check_quotas/4,
          check_this_node_quotas/2,
          get_quota/1,
          get_quota/2,
@@ -40,6 +41,9 @@
 %% based on https://www.kernel.org/doc/Documentation/cgroup-v1/memory.txt
 -define(CGROUP_MEM_USAGE_FILE, "/sys/fs/cgroup/memory/memory.usage_in_bytes").
 -define(CGROUP_MEM_LIMIT_FILE, "/sys/fs/cgroup/memory/memory.limit_in_bytes").
+
+key_filter() ->
+    ns_bucket:key_filter().
 
 this_node_memory_data() ->
     case os:getenv("MEMBASE_RAM_MEGS") of
@@ -68,11 +72,11 @@ memory_data() ->
                                             cgroup_memory_data()),
     {TotalMemory, TotalUsed, ProcInfo}.
 
-get_total_buckets_ram_quota(Config) ->
-    AllBuckets = ns_bucket:get_buckets(Config),
-    lists:foldl(fun ({_, BucketConfig}, RAMQuota) ->
-                                       ns_bucket:raw_ram_quota(BucketConfig) + RAMQuota
-                               end, 0, AllBuckets).
+get_total_buckets_ram_quota(Snapshot) ->
+    lists:foldl(
+      fun ({_, BucketConfig}, RAMQuota) ->
+              ns_bucket:raw_ram_quota(BucketConfig) + RAMQuota
+      end, 0, ns_bucket:get_buckets(Snapshot)).
 
 allowed_memory_usage_max(MemSupData) ->
     {MaxMemoryBytes0, _, _} = MemSupData,
@@ -88,10 +92,11 @@ allowed_memory_usage_max(MemSupData) ->
         {service_quota_too_low, service(), Value :: integer(), MinRequired :: pos_integer()}.
 -type quotas() :: [{service(), integer()}].
 
--spec check_quotas([NodeInfo], ns_config(), quotas()) -> quota_result() when
+-spec check_quotas([NodeInfo], ns_config(), map(), quotas()) ->
+                          quota_result() when
       NodeInfo :: {node(), [service()], MemoryData :: term()}.
-check_quotas(NodeInfos, Config, UpdatedQuotas) ->
-    case check_service_quotas(UpdatedQuotas, Config) of
+check_quotas(NodeInfos, Config, Snapshot, UpdatedQuotas) ->
+    case check_service_quotas(UpdatedQuotas, Snapshot) of
         ok ->
             AllQuotas = get_all_quotas(Config, UpdatedQuotas),
             check_quotas_loop(NodeInfos, AllQuotas);
@@ -155,10 +160,10 @@ check_node_total_quota(Node, TotalQuota, MemoryData) ->
 
 check_service_quotas([], _) ->
     ok;
-check_service_quotas([{Service, Quota} | Rest], Config) ->
-    case check_service_quota(Service, Quota, Config) of
+check_service_quotas([{Service, Quota} | Rest], Snapshot) ->
+    case check_service_quota(Service, Quota, Snapshot) of
         ok ->
-            check_service_quotas(Rest, Config);
+            check_service_quotas(Rest, Snapshot);
         Error ->
             Error
     end.
@@ -177,8 +182,8 @@ min_quota(eventing) ->
     256.
 
 
-check_service_quota(kv, Quota, Config) ->
-    BucketsQuota = get_total_buckets_ram_quota(Config) div ?MIB,
+check_service_quota(kv, Quota, Snapshot) ->
+    BucketsQuota = get_total_buckets_ram_quota(Snapshot) div ?MIB,
     MinMemoryMB = erlang:max(min_quota(kv), BucketsQuota),
     check_min_quota(kv, MinMemoryMB, Quota);
 check_service_quota(Service, Quota, _) ->
