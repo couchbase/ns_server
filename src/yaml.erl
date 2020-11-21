@@ -15,7 +15,7 @@
 
 -module(yaml).
 
--export([encode/1]).
+-export([encode/1, preprocess/1]).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").

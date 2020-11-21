@@ -1145,5 +1145,159 @@ total_db_size_estimate(Info, Settings, Intervals) ->
                 * Days,
     round(TotalSize).
 
+-define(NODE, nodename).
+
+generate_prometheus_test_config(ExtraConfig) ->
+    BaseConfig = [{{node, ?NODE, services}, [kv]},
+                  {{node, ?NODE, ns_to_prometheus_auth_info},
+                   [{creds, {pass, {"user", "pass"}}}]}
+                  | service_ports:default_config(true, ?NODE)],
+    NsConfig = [misc:update_proplist(BaseConfig, ExtraConfig)],
+    Settings = build_settings(NsConfig, ?NODE),
+    Configs = generate_prometheus_configs(Settings),
+    [{F, yaml:preprocess(Yaml)} || {F, Yaml} <- Configs].
+
+default_config_test() ->
+    [{_, DefaultMainCfg}, {RulesFile, DefaultRulesCfg}] =
+        generate_prometheus_test_config([]),
+    RulesFileBin = list_to_binary(RulesFile),
+
+    ?assert(is_binary(yaml:encode(DefaultMainCfg))),
+    ?assert(is_binary(yaml:encode(DefaultRulesCfg))),
+
+    ?assertMatch(
+      #{global := #{scrape_interval := <<"10s">>,
+                    scrape_timeout := <<"10s">>},
+        rule_files := [RulesFileBin],
+        scrape_configs := [#{job_name := <<"general">>,
+                             static_configs :=
+                               [#{targets := [<<"127.0.0.1:8091">>,%% ns_server
+                                              <<"127.0.0.1:9998">>,%% xdcr
+                                              <<"127.0.0.1:11280">>]}]}, %% kv
+                           #{job_name := <<"kv_high_cardinality">>,
+                             scrape_interval := <<"10s">>,
+                             scrape_timeout := <<"10s">>,
+                             static_configs :=
+                               [#{targets := [<<"127.0.0.1:11280">>]}]}]},
+      DefaultMainCfg),
+
+    ?assertMatch(
+      #{groups := [#{interval := <<"10s">>,
+                     rules := [_|_]}]},
+      DefaultRulesCfg).
+
+prometheus_config_test() ->
+    MainConfig =
+        fun (StatsSettings, NodeServices) ->
+            ExtraConfig = [{stats_settings, StatsSettings},
+                           {{node, ?NODE, services}, NodeServices}],
+            [{_, Cfg} | _] = generate_prometheus_test_config(ExtraConfig),
+            ?assert(is_binary(yaml:encode(Cfg))),
+            Cfg
+        end,
+
+    ?assertMatch(
+      #{global := #{scrape_interval := <<"20s">>},
+        scrape_configs := [#{job_name := <<"general">>},
+                           #{job_name := <<"kv_high_cardinality">>,
+                             scrape_interval := <<"20s">>}]},
+      MainConfig([{scrape_interval, 20}], [kv])),
+
+    ?assertMatch(
+      #{scrape_configs := [#{job_name := <<"general">>}]},
+      MainConfig([{services, [{kv, [{high_cardinality_enabled, false}]}]}],
+                 [kv])),
+
+    ?assertMatch(
+      #{global := #{scrape_interval := <<"10s">>},
+        scrape_configs := [#{job_name := <<"general">>},
+                           #{job_name := <<"kv_high_cardinality">>,
+                             scrape_interval := <<"20s">>}]},
+      MainConfig([{services,
+                   [{kv, [{high_cardinality_enabled, true},
+                          {high_cardinality_scrape_interval, 20}]}]}],
+                 [kv])),
+
+    ?assertMatch(
+      #{global := #{scrape_interval := <<"10s">>},
+        scrape_configs := [#{job_name := <<"general">>}]},
+      MainConfig([{services,
+                   [{kv, [{high_cardinality_enabled, true},
+                          {high_cardinality_scrape_interval, 20}]}]}],
+                 [])),
+
+    ?assertMatch(
+      #{scrape_configs := [#{job_name := <<"general">>},
+                           #{job_name := <<"kv_high_cardinality">>},
+                           #{job_name := <<"prometheus">>,
+                             scrape_interval := <<"42s">>}]},
+      MainConfig([{prometheus_metrics_enabled, true},
+                  {prometheus_metrics_scrape_interval, 42}], [kv])),
+
+    ok.
+
+prometheus_derived_metrics_config_test() ->
+    RulesConfig =
+        fun (StatsSettings, NodeServices) ->
+            ExtraConfig = [{stats_settings, StatsSettings},
+                           {{node, ?NODE, services}, NodeServices}],
+            [{_, Cfg} | Rest] = generate_prometheus_test_config(ExtraConfig),
+            ?assert(is_binary(yaml:encode(Cfg))),
+            case Rest of
+                [{_, RulesCfg}] ->
+                    ?assert(is_binary(yaml:encode(RulesCfg))),
+                    RulesCfg;
+                [] ->
+                    undefined
+            end
+        end,
+
+    ?assertMatch(
+      undefined,
+      RulesConfig([{derived_metrics, none}], [kv])),
+
+    ?assertMatch(
+      undefined,
+      RulesConfig([{derived_metrics, []}], [kv])),
+
+    ?assertMatch(
+      #{groups := [#{rules := [#{record := _}|_]}]},
+      RulesConfig([{derived_metrics, all}], [kv])),
+
+    ?assertMatch(
+      #{groups := [#{rules := [#{record := <<"xdcr_", _/binary>>}]}]},
+      RulesConfig([{derived_metrics, all}], [])),
+
+    ?assertMatch(
+      #{groups :=
+          [#{rules := [#{record := <<"n1ql_avg_req_time">>,
+                         expr := <<"n1ql_request_time / ignoring(name) "
+                                   "n1ql_requests">>,
+                         labels := #{name := <<"n1ql_avg_req_time">>}}]}]},
+      RulesConfig([{derived_metrics, ["n1ql_avg_req_time", "unknown"]}],
+                  [kv, n1ql])),
+
+    ?assertMatch(
+      #{groups := [#{interval := <<"42s">>}]},
+      RulesConfig([{derived_metrics_interval, 42}], [kv])),
+
+    ok.
+
+prometheus_config_afamily_test() ->
+    ExtraConfig = [{{node, ?NODE, address_family}, inet6}],
+    [{_, Cfg}, _] = generate_prometheus_test_config(ExtraConfig),
+    ?assert(is_binary(yaml:encode(Cfg))),
+
+    ?assertMatch(
+      #{scrape_configs := [#{job_name := <<"general">>,
+                             static_configs :=
+                               [#{targets := [<<"[::1]:8091">>,%% ns_server
+                                              <<"[::1]:9998">>,%% xdcr
+                                              <<"[::1]:11280">>]}]}, %% kv
+                           #{job_name := <<"kv_high_cardinality">>,
+                             static_configs :=
+                               [#{targets := [<<"[::1]:11280">>]}]}]},
+      Cfg).
+
 -endif.
 
