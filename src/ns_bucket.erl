@@ -495,13 +495,14 @@ failover_safety_rec(BaseSafety, ExtraSafety, [BucketConfig | RestConfigs], Activ
 
 -spec failover_warnings() -> [failoverNeeded | rebalanceNeeded | hardNodesNeeded | softNodesNeeded].
 failover_warnings() ->
-    Config = ns_config:get(),
+    Snapshot = chronicle_compat:get_snapshot(
+                 [key_filter(), ns_cluster_membership:key_filter()]),
 
-    ActiveNodes = ns_cluster_membership:service_active_nodes(Config, kv),
-    LiveNodes = ns_cluster_membership:service_actual_nodes(Config, kv),
+    ActiveNodes = ns_cluster_membership:service_active_nodes(Snapshot, kv),
+    LiveNodes = ns_cluster_membership:service_actual_nodes(Snapshot, kv),
     {BaseSafety0, ExtraSafety}
         = failover_safety_rec(?FS_OK, ok,
-                              [C || {_, C} <- get_buckets(Config),
+                              [C || {_, C} <- get_buckets(Snapshot),
                                     membase =:= bucket_type(C)],
                               ActiveNodes,
                               LiveNodes),
