@@ -49,8 +49,7 @@ cache_init() ->
     ets:new(bucket_info_cache_buckets, [ordered_set, named_table]),
     Self = self(),
     ns_pubsub:subscribe_link(ns_config_events, fun cleaner_loop/2, Self),
-    {value, [{configs, NewBuckets}]} = ns_config:search(buckets),
-    submit_new_buckets(Self, NewBuckets),
+    submit_new_buckets(Self, ns_bucket:get_buckets()),
     submit_full_reset().
 
 cleaner_loop({buckets, [{configs, NewBuckets}]}, Parent) ->

@@ -51,7 +51,7 @@ init() ->
     AU = ns_config:search_node_prop(Config, memcached, admin_user),
     Users = ns_config:search_node_prop(Config, memcached, other_users, []),
     AP = ns_config:search_node_prop(Config, memcached, admin_pass),
-    Buckets = extract_creds(ns_config:search(Config, buckets, [])),
+    Buckets = extract_creds(ns_bucket:get_buckets()),
     RestCreds = ns_config:read_key_fast(rest_creds, undefined),
     PromAuth = ns_config:search_node_with_default(Config, prometheus_auth_info,
                                                   undefined),
@@ -74,7 +74,7 @@ filter_event(_) ->
     false.
 
 handle_event({buckets, V}, #state{buckets = Buckets} = State) ->
-    case extract_creds(V) of
+    case extract_creds(proplists:get_value(configs, V)) of
         Buckets ->
             unchanged;
         NewBuckets ->
@@ -170,8 +170,7 @@ jsonify_auth(Users, AdminPass, Buckets, RestCreds, PromAuth) ->
 refresh() ->
     memcached_refresh:refresh(isasl).
 
-extract_creds(ConfigList) ->
-    Configs = proplists:get_value(configs, ConfigList),
+extract_creds(BucketConfigs) ->
     lists:sort([{BucketName,
                  proplists:get_value(sasl_password, BucketConfig, "")}
-                || {BucketName, BucketConfig} <- Configs]).
+                || {BucketName, BucketConfig} <- BucketConfigs]).
