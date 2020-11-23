@@ -117,7 +117,9 @@ class MnHttpRequest {
         extractErrorsPipe,
         map(function (rv) {
           if (!!rv.error && MnHelperService.prototype.isJson(rv.error)) {
-            return JSON.parse(rv.error);
+            let val = JSON.parse(rv.error);
+            val.status = rv.status;
+            return val;
           } else {
             return rv;
           }
