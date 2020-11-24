@@ -16,16 +16,27 @@
 -module(yaml).
 
 -export([encode/1, preprocess/1]).
+-export_type([yaml_term/0]).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+
+-type yaml_term() :: yaml_term(number() | atom() | binary() |
+                               {Format :: string(), Args :: [term()]}).
+-type yaml_term_preprocessed() :: yaml_term(number() | atom() | binary()).
+-type yaml_term(ValueType) :: ValueType |
+                              #{atom() => yaml_term(ValueType)} |
+                              [yaml_term(ValueType)].
+
+-spec encode(yaml_term()) -> binary().
 encode(Term) ->
     iolist_to_binary(lists:join("\n", format(preprocess(Term)))).
 
 %% The main purpose of the preprocess function is to format all
 %% {Format, Args} parts of yaml term to regular binary.
+-spec preprocess(yaml_term()) -> yaml_term_preprocessed().
 preprocess(#{} = Map) ->
     maps:map(fun (_, V) -> preprocess(V) end, Map);
 preprocess(List) when is_list(List) ->

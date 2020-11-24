@@ -25,18 +25,31 @@
          format_value/1, parse_value/1, format_promql/1,
          create_snapshot/2, reload/2, quit/2]).
 
+-type metrics_data() :: [JSONObject :: {[{binary(), term()}]}].
+-type error() :: {error, timeout | binary()}.
+-type prom_query() :: string() | binary().
+-type prom_timestamp() :: number().
+-type prom_step() :: pos_integer() | string().
+-type http_timeout() :: non_neg_integer().
+-type successful_post() :: {ok, json, {[JSONObject :: term()]}} |
+                           {ok, text, BinString :: binary()}.
+
+-spec quit(http_timeout(), prometheus_cfg:stats_settings()) -> ok | error().
 quit(Timeout, Settings) ->
     case post("/-/quit", [], Timeout, Settings) of
         {ok, text, _} -> ok;
         {error, Reason} -> {error, Reason}
     end.
 
+-spec reload(http_timeout(), prometheus_cfg:stats_settings()) -> ok | error().
 reload(Timeout, Settings) ->
     case post("/-/reload", [], Timeout, Settings) of
         {ok, text, _} -> ok;
         {error, Reason} -> {error, Reason}
     end.
 
+-spec create_snapshot(http_timeout(), prometheus_cfg:stats_settings()) ->
+                                    {ok, PathToSnapshot :: string()} | error().
 create_snapshot(Timeout, Settings) ->
     case post("/api/v1/admin/tsdb/snapshot", [], Timeout, Settings) of
         {ok, json, {Data}} ->
@@ -47,12 +60,26 @@ create_snapshot(Timeout, Settings) ->
             {error, Reason}
     end.
 
+-spec query_range(Query :: prom_query(),
+                  Start :: prom_timestamp(),
+                  End :: prom_timestamp(),
+                  Step :: prom_step(),
+                  Timeout :: http_timeout(),
+                  prometheus_cfg:stats_settings()) ->
+                                                {ok, metrics_data()} | error().
 query_range(Query, Start, End, Step, Timeout, Settings) ->
     wait_async(
       fun (H) ->
           query_range_async(Query, Start, End, Step, Timeout, Settings, H)
       end, Timeout).
 
+-spec query_range_async(Query :: prom_query(),
+                        Start :: prom_timestamp(),
+                        End :: prom_timestamp(),
+                        Step :: prom_step(),
+                        Timeout :: http_timeout(),
+                        prometheus_cfg:stats_settings(),
+                        fun(({ok, metrics_data()} | error()) -> ok)) -> ok.
 query_range_async(Query, Start, End, Step, Timeout, Settings, Handler)
                   when is_integer(Step) ->
     StepStr = integer_to_list(Step) ++ "s",
@@ -73,10 +100,19 @@ query_range_async(Query, Start, End, Step, Timeout, Settings, Handler) ->
         end,
     post_async("/api/v1/query_range", Body, Timeout, Settings, HandlerWrap).
 
+-spec query(Query :: prom_query(),
+            Time :: prom_timestamp() | undefined,
+            Timeout :: http_timeout(),
+            prometheus_cfg:stats_settings()) -> {ok, metrics_data()} | error().
 query(Query, Time, Timeout, Settings) ->
     wait_async(fun (H) -> query_async(Query, Time, Timeout, Settings, H) end,
                Timeout).
 
+-spec query_async(Query :: prom_query(),
+                  Time :: prom_timestamp() | undefined,
+                  Timeout :: http_timeout(),
+                  prometheus_cfg:stats_settings(),
+                  fun(({ok, metrics_data()} | error()) -> ok)) -> ok.
 query_async(Query, Time, Timeout, Settings, Handler) ->
     proplists:get_bool(log_queries, Settings) andalso
         ?log_debug("Query: ~s Time: ~p Timeout: ~p ms",
@@ -93,6 +129,11 @@ query_async(Query, Time, Timeout, Settings, Handler) ->
         end,
     post_async("/api/v1/query", Body, Timeout, Settings, HandlerWrap).
 
+-spec post(Path :: string(),
+           Body :: proplists:proplist(),
+           Timeout :: http_timeout(),
+           prometheus_cfg:stats_settings()) ->
+                successful_post() | error().
 post(Path, Body, Timeout, Settings) ->
     wait_async(fun (H) -> post_async(Path, Body, Timeout, Settings, H) end,
                Timeout).
@@ -112,6 +153,11 @@ wait_async(F, Timeout) ->
           end
       end).
 
+-spec post_async(Path :: string(),
+                 Body :: proplists:proplist(),
+                 Timeout :: http_timeout(),
+                 prometheus_cfg:stats_settings(),
+                 fun((successful_post() | error()) -> ok)) -> ok.
 post_async(Path, Body, Timeout, Settings, Handler) ->
     case proplists:get_value(enabled, Settings) of
         true ->

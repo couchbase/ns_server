@@ -17,6 +17,7 @@
 -behaviour(gen_server).
 
 -include("ns_common.hrl").
+-include("rbac.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -24,6 +25,8 @@
 
 %% API
 -export([start_link/0, authenticate/2, settings/0, wipe/0, storage_path/1]).
+
+-export_type([stats_settings/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -43,6 +46,58 @@
 -define(MAX_SCRAPE_INTERVAL, 6*60*60). %% 6h, in seconds
 -define(PROMETHEUS_SHUTDOWN_TIMEOUT, 20000). %% 20s, in milliseconds
 
+-type stats_settings() :: [stats_setting() | stats_derived_setting()].
+-type stats_setting() ::
+    {enabled, true | false} |
+    {retention_size, pos_integer()} |
+    {retention_time, pos_integer()} |
+    {wal_compression, true | false} |
+    {storage_path, string()} |
+    {config_file, string()} |
+    {log_file_name, string()} |
+    {prometheus_auth_enabled, true | false} |
+    {prometheus_auth_filename, string()} |
+    {log_level, string()} |
+    {max_block_duration, pos_integer()} |
+    {scrape_interval, pos_integer()} |
+    {scrape_timeout, pos_integer()} |
+    {snapshot_timeout_msecs, pos_integer()} |
+    {token_file, string()} |
+    {query_max_samples, pos_integer()} |
+    {intervals_calculation_period, pos_integer() | undefined} |
+    {cbcollect_stats_dump_max_size, pos_integer()} |
+    {cbcollect_stats_min_period, pos_integer()} |
+    {average_sample_size, pos_integer()} |
+    {services,
+     [{extended_service_name(),
+       [{high_cardinality_enabled, true | false} |
+        {high_cardinality_scrape_interval, pos_integer() | auto} |
+        {scrape_timeout, pos_integer()}]}]} |
+    {external_prometheus_services,
+     [{extended_service_name(),
+       [{high_cardinality_enabled, true | false}]}]} |
+    {prometheus_metrics_enabled, true | false} |
+    {prometheus_metrics_scrape_interval, pos_integer()} |
+    {listen_addr_type, loopback | any} |
+    {log_queries, true | false} |
+    {derived_metrics, all | none | [MetricName :: string()]} |
+    {derived_metrics_interval, pos_integer() | undefined} |
+    {rules_config_file, string()}.
+
+%% Those key-values are derived in the sense that they are calculated based
+%% on other settings from ns_config (for example, afamily is taken from
+%% ns_config's {node, Node, address_family} key). Given this, it doesn't make
+%% any sense to modify those settings.
+-type stats_derived_setting() ::
+    {listen_port, tcp_port()} |
+    {addr, HostPort :: string()} |
+    {prometheus_creds, {pass, {User :: string(), Pass :: string()}}} |
+    {targets, [{extended_service_name(), HostPort :: string()}]} |
+    {afamily, inet | inet6} |
+    {dynamic_scrape_intervals, [{extended_service_name(), pos_integer()}]}.
+
+-type extended_service_name() :: service() | ns_service | xdcr.
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -52,9 +107,11 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
+-spec settings() -> stats_settings().
 settings() ->
     gen_server:call(?MODULE, settings).
 
+-spec default_settings() -> [stats_setting()].
 default_settings() ->
     [{enabled, true},
      {retention_size, 1024}, %% in MB
@@ -88,7 +145,10 @@ default_settings() ->
      {derived_metrics_interval, undefined}, %% in seconds or undefined
      {rules_config_file, "prometheus_rules.yml"}].
 
+-spec build_settings() -> stats_settings().
 build_settings() -> build_settings(ns_config:get(), node()).
+
+-spec build_settings(Config :: term(), Node :: atom()) -> stats_settings().
 build_settings(Config, Node) ->
     AFamily = ns_config:search_node_with_default(Node, Config, address_family,
                                                  inet),
@@ -199,6 +259,8 @@ generate_prometheus_args(Settings) ->
      "--query.max-samples", QueryMaxSamples,
      "--storage.tsdb.no-lockfile"] ++ PromAuthArgs ++ WalCompression.
 
+-spec authenticate(rbac_user_id(), rbac_password()) ->
+                                                {ok, rbac_identity()} | false.
 authenticate(User, Pass) ->
     case ns_config:search_node(prometheus_auth_info) of
         {value, {User, {auth, AuthInfo}}} ->
@@ -213,6 +275,7 @@ authenticate(User, Pass) ->
     end.
 
 %% This function should work even when prometheus_cfg is down
+-spec wipe() -> ok | {error, Reason :: term()}.
 wipe() ->
     Settings = build_settings(),
     StoragePath = storage_path(Settings),
@@ -226,6 +289,7 @@ wipe() ->
     end,
     Result.
 
+-spec storage_path(stats_settings()) -> Path :: string().
 storage_path(Settings) ->
     StoragePath = proplists:get_value(storage_path, Settings),
     path_config:component_path(data, StoragePath).
@@ -537,6 +601,8 @@ high_cardinality_jobs_config(Settings) ->
                  replacement => Name}]}
       end, Services).
 
+-spec generate_prometheus_configs(stats_settings()) ->
+                            [{Filename :: string(), Yaml :: yaml:yaml_term()}].
 generate_prometheus_configs(Settings) ->
     File = prometheus_config_file(Settings),
     ScrapeInterval = proplists:get_value(scrape_interval, Settings),
@@ -566,6 +632,7 @@ generate_prometheus_configs(Settings) ->
               prometheus_metrics_jobs_config(Settings)},
     [{File, Cfg} | RulesConfigs].
 
+-spec ensure_prometheus_config(stats_settings()) -> ok.
 ensure_prometheus_config(Settings) ->
     lists:foreach(
       fun ({Path, YamlTerm}) ->
@@ -576,6 +643,8 @@ ensure_prometheus_config(Settings) ->
 %% Generate prometheus rules config with respect to derived metrics settings
 %% Note that if derived metrics are disabled or the number of metrics is 0,
 %% the function returns empty list of configs.
+-spec generate_rules_configs(stats_settings()) ->
+                            [{Filename :: string(), Yaml :: yaml:yaml_term()}].
 generate_rules_configs(Settings) ->
     Targets = proplists:get_value(targets, Settings, []),
     Metrics = lists:append([derived_metrics(Name) || {Name, _} <- Targets]),
@@ -744,11 +813,11 @@ maybe_update_scrape_dynamic_intervals(Settings) ->
 %% in the resulting proplist, the default scrape interval should be
 %% used for that service.
 -spec calculate_dynamic_intervals([{Service, Type, NumberOfSamples}],
-                                  [Setting]) -> [{Service, ScrapeInterval}] when
-                        Service         :: atom(),
+                                  Settings) -> [{Service, ScrapeInterval}] when
+                        Service         :: extended_service_name(),
                         Type            :: low_cardinality | high_cardinality,
                         NumberOfSamples :: non_neg_integer(),
-                        Setting         :: {Key :: atom(), Value :: term()},
+                        Settings        :: stats_settings(),
                         ScrapeInterval  :: float().
 calculate_dynamic_intervals(ScrapeInfos, Settings) ->
     ServiceSettings = proplists:get_value(services, Settings, []),

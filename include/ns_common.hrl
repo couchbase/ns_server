@@ -46,6 +46,7 @@
 -type dcp_conn_type() :: consumer | producer | notifier.
 
 -type service() :: kv | index | n1ql | fts | eventing | cbas.
+-type tcp_port() :: 0..65535.
 
 -define(MULTICALL_DEFAULT_TIMEOUT, 30000).
 
