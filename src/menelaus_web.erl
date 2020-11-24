@@ -99,6 +99,12 @@ generate_http_server_options(Options) ->
 
 http_server(Options) ->
     ServerAFamily = proplists:get_value(afamily, Options),
+    Type =  misc:get_afamily_type(ServerAFamily),
+    maybe_start_http_server(Type, Options).
+
+maybe_start_http_server(off, _Options) ->
+    ignore;
+maybe_start_http_server(Type, Options) ->
     ServerOptions = generate_http_server_options(Options),
     LogOptions = [{K, V} || {K, V} <- ServerOptions,
                             lists:member(K, [ssl, ssl_opts, ip, port])],
@@ -107,17 +113,13 @@ http_server(Options) ->
             ?log_info("Started web service with ~p", [LogOptions]),
             {ok, Pid};
         Other ->
-            AFamily = misc:get_net_family(),
             {Msg, Values} = {"Failed to start web service with ~p, Reason : ~p",
                              [LogOptions, Other]},
-            case {ServerAFamily, AFamily} of
-                {inet, inet6} ->
+            case Type of
+                optional ->
                     ?log_warning("Ignoring error: " ++ Msg, Values),
                     ignore;
-                {inet6, inet} ->
-                    ?log_warning("Ignoring error: " ++ Msg, Values),
-                    ignore;
-                _ ->
+                required ->
                     ?MENELAUS_WEB_LOG(?START_FAIL, Msg, Values),
                     Other
             end

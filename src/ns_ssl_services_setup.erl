@@ -59,7 +59,8 @@
 -record(state, {hash,
                 reload_state,
                 client_cert_auth,
-                sec_settings_state}).
+                sec_settings_state,
+                afamily_requirement}).
 
 start_link() ->
     case cluster_compat_mode:tls_supported() of
@@ -477,6 +478,7 @@ init([]) ->
     {ok, #state{hash = build_hash(Data),
                 reload_state = RetrySvc,
                 sec_settings_state = security_settings_state(),
+                afamily_requirement = misc:address_family_requirement(),
                 client_cert_auth = client_cert_auth()}}.
 
 config_change_detector_loop({cert_and_pkey, _}, Parent) ->
@@ -503,6 +505,9 @@ config_change_detector_loop({secure_headers, _}, Parent) ->
     Parent;
 config_change_detector_loop({{security_settings, ns_server}, _}, Parent) ->
     Parent ! security_settings_changed,
+    Parent;
+config_change_detector_loop({{node, _Node, address_family_only}, _}, Parent) ->
+    Parent ! afamily_only_changed,
     Parent;
 config_change_detector_loop(_OtherEvent, Parent) ->
     Parent.
@@ -553,6 +558,17 @@ handle_info(cert_and_pkey_changed, #state{hash = OldHash} = State) ->
             NewState = State#state{hash = NewHash,
                                    reload_state = all_services()},
             {noreply, notify_services(NewState)}
+    end;
+handle_info(afamily_only_changed,
+            #state{afamily_requirement = Current} = State) ->
+    misc:flush(afamily_only_changed),
+    case misc:address_family_requirement() of
+        Current ->
+            {noreply, State};
+        NewValue ->
+            {noreply, trigger_ssl_reload(
+                        address_family_only, [ssl_service],
+                        State#state{afamily_requirement = NewValue})}
     end;
 handle_info(security_settings_changed,
             #state{sec_settings_state = Current} = State) ->

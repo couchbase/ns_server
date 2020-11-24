@@ -35,6 +35,7 @@
 
 -record(state, {webconfig,
                 disable_non_ssl_ports,
+                afamily_requirement,
                 watchers = []}).
 
 -include("ns_common.hrl").
@@ -72,6 +73,7 @@ sync(Module) ->
 init(ns_config_events) ->
     {ok, #state{watchers = [],
                 disable_non_ssl_ports = misc:disable_non_ssl_ports(),
+                afamily_requirement = misc:address_family_requirement(),
                 webconfig = menelaus_web:webconfig()}};
 
 init(_) ->
@@ -165,6 +167,7 @@ notify_watchers(#state{watchers = Watchers}) ->
                   end, Watchers).
 
 restart_event({{node, N, rest}, _}) when N =:= node() -> true;
+restart_event({{node, N, address_family_only}, _}) when N =:= node() -> true;
 restart_event({rest, _}) -> true;
 restart_event({cluster_encryption_level, _}) -> true;
 restart_event(_) -> false.
@@ -176,14 +179,19 @@ maybe_restart(Event, State) ->
     end.
 
 maybe_restart(#state{webconfig = WebConfigOld,
-                     disable_non_ssl_ports = DisableOld} = State) ->
+                     disable_non_ssl_ports = DisableOld,
+                     afamily_requirement = AFROld} = State) ->
     WebConfigNew = menelaus_web:webconfig(),
     DisableNew = misc:disable_non_ssl_ports(),
-    case WebConfigNew =:= WebConfigOld andalso DisableOld =:= DisableNew of
+    AFRNew = misc:address_family_requirement(),
+    case WebConfigNew =:= WebConfigOld andalso
+         DisableOld =:= DisableNew andalso
+         AFROld =:= AFRNew of
         true -> State;
         false -> spawn(fun menelaus_sup:restart_web_servers/0),
                  State#state{webconfig = WebConfigNew,
-                             disable_non_ssl_ports = DisableNew}
+                             disable_non_ssl_ports = DisableNew,
+                             afamily_requirement = AFRNew}
     end.
 
 flush_watcher_notifications(PrevID) ->

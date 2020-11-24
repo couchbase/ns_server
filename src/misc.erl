@@ -1530,6 +1530,9 @@ get_afamily_type(AFamily) when AFamily =:= inet orelse AFamily =:= inet6 ->
             off
     end.
 
+address_family_requirement() ->
+    [{AF, get_afamily_type(AF)} || AF <- [inet, inet6]].
+
 -spec is_localhost(string()) -> true | false.
 is_localhost(Addr) ->
     case inet:parse_address(Addr) of
