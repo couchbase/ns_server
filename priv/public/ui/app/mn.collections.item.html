@@ -5,19 +5,20 @@
   <span class="cbui-table-cell">
   </span>
   <span class="cbui-table-cell flex-grow-1-5 wrap text-right resp-hide-xsml">
-      <a
-         (click)="$event.stopPropagation()"
-         [hidden]="!permissions.cluster.bucket['.'].collections.read"
-         uiSref="app.admin.docs.editor"
-         [uiParams]="{bucket: bucketName, scope: scopeName, collection: collection.name}">
-        Documents</a>
-
     <a
-       class="nowrap margin-left-half"
+       class="nowrap"
        style="margin-right: -3px;"
        [hidden]="!permissions.cluster.bucket[bucketName]?.collections.delete ||
               collection.name.startsWith('_')"
        (click)="$event.stopPropagation();clickDeleteCollection.next();">
       Drop</a>
+    <a
+       class="margin-left-half"
+       style="margin-right: -4px;"
+       (click)="$event.stopPropagation()"
+       [hidden]="!permissions.cluster.bucket['.'].collections.read"
+       uiSref="app.admin.docs.editor"
+       [uiParams]="{bucket: bucketName, scope: scopeName, collection: collection.name}">
+      Documents</a>
   </span>
 </div>

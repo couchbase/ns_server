@@ -873,7 +873,9 @@ section.error {
   top: 0;
   z-index: 1;
 }
-
+.dialog-wizard label.text-small {
+  font-size: .875rem;
+}
 /* additional styles for login with client certificate */
 .cert-signin {
   margin-bottom: 1.5rem;

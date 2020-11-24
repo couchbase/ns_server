@@ -25,9 +25,7 @@
       </div>
       <small [hidden]="(isEnterprise | async)">Community Edition</small>
 
-      <div
-        class="formrow">
-        <!-- mn-spinner="termsCtl.viewLoading"> -->
+      <div class="formrow">
         <textarea class="text-smaller" rows="10" readonly="readonly">{{license | async}}</textarea>
       </div>
 
@@ -50,7 +48,7 @@
             formControlName="agree"
             name="agree"
             required>
-          <label class="checkbox" for="for-accept-terms">
+          <label class="text-small" for="for-accept-terms">
             I accept the
             <a [attr.href]="termsHref | async" target="_blank">
               terms & conditions
@@ -77,8 +75,8 @@ When the following checkbox is enabled, this product automatically collects conf
          id="init-notifications-updates-enabled"
          formControlName="enableStats"
          checked="checked">
-      <label for="init-notifications-updates-enabled">
-        Share usage information with Couchbase and get software update notifications.
+      <label class="text-small" for="init-notifications-updates-enabled">
+        Share usage information and get software update notifications.
       </label>
     </div>
 

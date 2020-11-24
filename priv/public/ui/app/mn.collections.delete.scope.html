@@ -1,15 +1,21 @@
-<div class="dialog-med">
+<div class="dialog-small">
   <div class="panel-header">
-    <h2>Delete Scopes</h2>
+    <h2>Confirm Drop Scope</h2>
     <a class="ui-dialog-titlebar-close modal-close" (click)="activeModal.dismiss()">X</a>
   </div>
   <form (ngSubmit)="form.submit.next()" [formGroup]="form.group" class="forms">
     <div class="panel-content">
-      <p>Are you sure you want to delete "{{scopeName}}" scope?</p>
+      <div class="row flex-left">
+        <span class="icon fa-warning fa-2x red-3"></span>
+        <p class="break-word">
+          Warning: Data & collections will be lost.
+          <br>Drop <em>{{scopeName}}</em>?
+        </p>
+      </div>
     </div>
     <div class="panel-footer">
       <a (click)="activeModal.dismiss()">Cancel</a>
-      <button type="submit">Delete</button>
+      <button type="submit">Drop Scope</button>
     </div>
   </form>
 </div>
