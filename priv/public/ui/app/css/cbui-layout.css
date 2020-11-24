@@ -417,6 +417,9 @@ footer {
 .min-height-2 {
   height: 2rem;
 }
+.min-height-4 {
+  height: 4rem;
+}
 .height-1-5 {
   height: 1.5rem;
 }

@@ -22,7 +22,7 @@
   </div>
   <div class="cbui-table" ng-if="rolesGroupsCtl.state.groups.length">
     <div class="cbui-table-header padding-left">
-      <span class="cbui-table-cell">
+      <span class="cbui-table-cell flex-grow-1">
         <span class="sorter"
            ng-click="rolesGroupsCtl.sortByChanged('id')"
            ng-class="{'dynamic-active': rolesGroupsCtl.isOrderBy('id'),
@@ -43,16 +43,13 @@
                         'dynamic-inverted': rolesGroupsCtl.isOrderBy('ldap_group_ref')
                         && rolesGroupsCtl.isDesc()}">external mapping</span>
       </span>
-      <span class="cbui-table-cell resp-hide-sml">
-        <span class="sorter">created</span>
-      </span>
     </div>
     <section
        class="has-hover"
        ng-click="rolesGroupsCtl.toggleDetails(rolesGroup.id)"
        ng-repeat="rolesGroup in rolesGroupsCtl.state.groups track by (rolesGroup.id)">
       <div class="cbui-tablerow padding-left resp-sml">
-        <span class="cbui-table-cell">
+        <span class="cbui-table-cell flex-grow-1">
           {{rolesGroup.id}}
         </span>
         <span class="cbui-table-cell flex-grow-3 wrap">
@@ -75,9 +72,6 @@
         </span>
         <span class="cbui-table-cell resp-hide-xsml">
           {{rolesGroup.ldap_group_ref ? rolesGroup.ldap_group_ref : "No"}}
-        </span>
-        <span class="cbui-table-cell resp-hide-sml">
-          {{rolesGroup.created | date:"d MMM, y"}}
         </span>
       </div>
       <div

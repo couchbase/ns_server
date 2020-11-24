@@ -56,13 +56,6 @@
                     'dynamic-inverted': userRolesCtl.isOrderBy('id')
                     && userRolesCtl.isDesc()}">username</span>
       </span>
-      <span class="cbui-table-cell resp-hide-sml">
-        <span class="sorter"
-              ng-click="userRolesCtl.sortByChanged('name')"
-              ng-class="{'dynamic-active': userRolesCtl.isOrderBy('name'),
-                        'dynamic-inverted': userRolesCtl.isOrderBy('name')
-                        && userRolesCtl.isDesc()}">full name</span>
-      </span>
       <span class="cbui-table-cell"
             ng-if="poolDefault.isEnterprise && poolDefault.compat.atLeast65">
         <span>groups</span>
@@ -95,7 +88,6 @@
           {{user.id}}
           <span ng-show="user.passwordless" class="label lt-blue">no password</span>
         </span>
-        <span class="cbui-table-cell resp-hide-sml">{{user.name}}</span>
         <span class="cbui-table-cell wrap"
               ng-if="poolDefault.isEnterprise && poolDefault.compat.atLeast65">
           {{userRolesCtl.parseGroupNames(user)}}
@@ -126,17 +118,25 @@
         </span>
       </div>
       <div
-         class="cbui-tablerow-expanded text-right"
+         class="cbui-tablerow-expanded row min-height-4 items-bottom"
          ng-if="userRolesCtl.isDetailsOpened(user.id + user.domain) && rbac.cluster.admin.security.write">
-        <button
+        <p class="text-smaller">
+          <span ng-if="user.name">
+            <strong>full name:</strong>
+            {{user.name}}
+          </span>
+        </p>
+        <span>
+          <button
            class="outline"
            ng-click="userRolesCtl.deleteUser(user)">Delete</button>
-        <button
-           class="outline"
-           ng-show="user.domain !== 'external' && user.domain !== 'saslauthd'"
-           ng-click="userRolesCtl.resetUserPassword(user)">Reset Password</button>
-        <button
-           ng-click="userRolesCtl.editUser(user)">Edit</button>
+          <button
+             class="outline"
+             ng-show="user.domain !== 'external' && user.domain !== 'saslauthd'"
+             ng-click="userRolesCtl.resetUserPassword(user)">Reset Password</button>
+          <button
+             ng-click="userRolesCtl.editUser(user)">Edit</button>
+        </span>
       </div>
     </section>
   </div>
