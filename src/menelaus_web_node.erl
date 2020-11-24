@@ -883,6 +883,7 @@ verify_net_config_allowed(State) ->
 net_config_validators(SafeAction) ->
     [validator:has_params(_),
      validator:one_of(afamily, ["ipv4", "ipv6"], _),
+     validator:boolean(afamilyOnly, _),
      validator:validate(fun ("ipv4") -> {value, inet};
                             ("ipv6") -> {value, inet6}
                         end, afamily, _),

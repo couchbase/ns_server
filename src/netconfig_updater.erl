@@ -57,6 +57,8 @@ handle_call({apply_config, Config}, _From, State) ->
     CurConfig = lists:map(
                   fun ({afamily, _}) ->
                           {afamily, cb_dist:address_family()};
+                      ({afamilyOnly, _}) ->
+                          {afamilyOnly, misc:get_afamily_only()};
                       ({nodeEncryption, _}) ->
                           {nodeEncryption, cb_dist:external_encryption()};
                       ({externalListeners, _}) ->
@@ -162,11 +164,13 @@ apply_config_unprotected(Config) ->
     try
         AFamily = proplists:get_value(afamily, Config,
                                       cb_dist:address_family()),
+        AFamilyOnly = proplists:get_value(afamilyOnly, Config,
+                                          misc:get_afamily_only()),
         NEncrypt = proplists:get_value(nodeEncryption, Config,
                                        cb_dist:external_encryption()),
         ExternalListeners = proplists:get_value(externalListeners, Config,
                                                 cb_dist:external_listeners()),
-        case cb_dist:update_config(Config) of
+        case cb_dist:update_config(proplists:delete(afamilyOnly, Config)) of
             {ok, _Listeners} ->
                 ok;
             {error, Reason} ->
@@ -187,6 +191,8 @@ apply_config_unprotected(Config) ->
                       NEncrypt),
         ns_config:set({node, node(), erl_external_listeners},
                       ExternalListeners),
+        ns_config:set({node, node(), address_family_only},
+                      AFamilyOnly),
         ?log_info("Node network settings (~p) successfully applied", [Config]),
         ok
     catch

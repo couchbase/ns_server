@@ -1509,6 +1509,10 @@ disable_non_ssl_ports() ->
 get_net_family() ->
     cb_dist:address_family().
 
+-spec get_afamily_only() -> true | false.
+get_afamily_only() ->
+    ns_config:search_node_with_default(address_family_only, false).
+
 -spec get_afamily_type(inet:address_family()) -> required | optional.
 get_afamily_type(AFamily) when AFamily =:= inet orelse AFamily =:= inet6 ->
     Required = ns_config:read_key_fast({node, node(), address_family}, inet),
