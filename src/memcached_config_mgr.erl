@@ -430,13 +430,6 @@ format_ciphers(RFCCipherNames) ->
 get_ssl_cipher_order([], _Params) ->
     ns_ssl_services_setup:honor_cipher_order(kv).
 
-get_afamily_type(AFamily) ->
-    Required = ns_config:read_key_fast({node, node(), address_family}, inet),
-    case AFamily of
-        Required -> <<"required">>;
-        _ -> <<"optional">>
-    end.
-
 prometheus_cfg([], _Params) ->
     {[{port, service_ports:get_port(memcached_prometheus)},
       {family, ns_config:read_key_fast({node, node(), address_family}, inet)}]}.
@@ -464,18 +457,18 @@ generate_interfaces(MCDParams) ->
     IPv4Interfaces = lists:map(
                        fun ({Props}) ->
                                IsSSL = proplists:is_defined(ssl, Props),
-                               Additonal = [{host, get_host(inet, IsSSL)},
-                                            {ipv4, get_afamily_type(inet)},
-                                            {ipv6, <<"off">>}],
-                               {Props ++ Additonal}
+                               Extra = [{host, get_host(inet, IsSSL)},
+                                        {ipv4, misc:get_afamily_type(inet)},
+                                        {ipv6, off}],
+                               {Props ++ Extra}
                        end, InterProps),
     IPv6Interfaces = lists:map(
                        fun ({Props}) ->
                                IsSSL = proplists:is_defined(ssl, Props),
-                               Additonal = [{host, get_host(inet6, IsSSL)},
-                                            {ipv4, <<"off">>},
-                                            {ipv6, get_afamily_type(inet6)}],
-                               {Props ++ Additonal}
+                               Extra = [{host, get_host(inet6, IsSSL)},
+                                        {ipv4, off},
+                                        {ipv6, misc:get_afamily_type(inet6)}],
+                               {Props ++ Extra}
                        end, InterProps),
     IPv4Interfaces ++ IPv6Interfaces.
 
