@@ -145,13 +145,32 @@ collection_to_memcached(Name, Props, WithDefaults) ->
     {[{name, list_to_binary(Name)} |
       [{K, collection_prop_to_memcached(K, V)} || {K, V} <- AdjustedProps]]}.
 
-filter_scopes_with_roles(Bucket, Scopes, Roles, Permission) ->
+filter_scopes_with_roles(Bucket, Scopes, Roles) ->
     lists:filter(
       fun ({ScopeName, _Scope}) ->
               menelaus_roles:is_allowed(
-                {[{collection, [Bucket, ScopeName, all]}, collections],
-                 Permission},
+                {[{collection, [Bucket, ScopeName, all]}, collections], write},
                 Roles)
+      end, Scopes).
+
+filter_collections_with_roles(Bucket, Scopes, Roles) ->
+    lists:filtermap(
+      fun ({ScopeName, Scope}) ->
+              case menelaus_roles:is_allowed(
+                     {[{collection, [Bucket, ScopeName, any]},
+                       collections], read}, Roles) of
+                  false ->
+                      false;
+                  true ->
+                      Filtered = lists:filter(
+                                   fun ({CName, _Props}) ->
+                                           menelaus_roles:is_allowed(
+                                             {[{collection,
+                                                [Bucket, ScopeName, CName]},
+                                               collections], read}, Roles)
+                                   end, get_collections(Scope)),
+                      {true, {ScopeName, update_collections(Filtered, Scope)}}
+              end
       end, Scopes).
 
 manifest_json(BucketCfg) ->
@@ -162,7 +181,7 @@ manifest_json(Identity, Bucket, BucketCfg) ->
     Roles = menelaus_roles:get_compiled_roles(Identity),
     Manifest = get_manifest(BucketCfg),
     FilteredManifest = on_scopes(
-                         filter_scopes_with_roles(Bucket, _, Roles, read),
+                         filter_collections_with_roles(Bucket, _, Roles),
                          Manifest),
     jsonify_manifest(FilteredManifest, true).
 
@@ -390,10 +409,10 @@ get_operations(CurrentScopes, RequiredScopes) ->
 compile_operation({set_manifest, Identity, RequiredScopes, CheckUid},
                   Bucket, Manifest) ->
     Roles = menelaus_roles:get_compiled_roles(Identity),
-    case filter_scopes_with_roles(Bucket, RequiredScopes, Roles, write) of
+    case filter_scopes_with_roles(Bucket, RequiredScopes, Roles) of
         RequiredScopes ->
             FilteredCurScopes = filter_scopes_with_roles(
-                                  Bucket, get_scopes(Manifest), Roles, write),
+                                  Bucket, get_scopes(Manifest), Roles),
             %% scope admin can delete it's own scope.
             [{check_uid, CheckUid} |
              get_operations(FilteredCurScopes, RequiredScopes)];
