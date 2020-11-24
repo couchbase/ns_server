@@ -615,6 +615,10 @@ main_with_everything(StaticTerms, NSConfig, CouchInisPList, Node) ->
 
     MemcachedCertPemPath = filename:join([DataDir, "config",
                                           "memcached-cert.pem"]),
+    LocalSslCertPemPath = filename:join([DataDir, "config",
+                                         "local-ssl-cert.pem"]),
+    SslCertKeyPemPath = filename:join([DataDir, "config",
+                                       "ssl-cert-key.pem"]),
 
     Ipv6 = is_net_config_ipv6(DistCfgPath),
 
@@ -643,6 +647,8 @@ main_with_everything(StaticTerms, NSConfig, CouchInisPList, Node) ->
          {users_storage_path, UsersStoragePath},
          {dist_cfg_path, DistCfgPath},
          {memcached_cert_pem, MemcachedCertPemPath},
+         {local_ssl_cert_pem, LocalSslCertPemPath},
+         {ssl_cert_key_pem, SslCertKeyPemPath},
          {ipv6, Ipv6}],
 
     output([E || {K, V} <- Pairs,

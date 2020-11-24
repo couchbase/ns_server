@@ -1481,6 +1481,10 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
 
         CollectFile("Memcached cert (memcached-cert.pem)",
                     read_guts(guts, "memcached_cert_pem")),
+        CollectFile("Local SSL cert (local-ssl-cert.pem)",
+                    read_guts(guts, "local_ssl_cert_pem")),
+        CollectFile("SSL cert key (ssl-cert-key.pem)",
+                    read_guts(guts, "ssl_cert_key_pem")),
 
         [CollectFile("Rebalance Report: %s" % path, path)
          for path in glob.glob(os.path.join(rebdir, "rebalance_report*"))],
