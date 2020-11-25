@@ -114,6 +114,8 @@ is_notable_config_key({node, N, memcached_config_extra}) ->
     N =:= node();
 is_notable_config_key({node, N, address_family}) ->
     N =:= node();
+is_notable_config_key({node, N, address_family_only}) ->
+    N =:= node();
 is_notable_config_key(memcached) -> true;
 is_notable_config_key(memcached_config_extra) -> true;
 is_notable_config_key(ssl_minimum_protocol) -> true;
@@ -349,7 +351,10 @@ get_minidump_dir([], Params) ->
 
 get_interfaces([], MCDParams) ->
     lists:filter(fun ({Props}) ->
-                    proplists:get_value(port, Props) =/= undefined
+                    proplists:get_value(port, Props) =/= undefined andalso
+                        %% Either ipv4/ipv6 interface.
+                        (proplists:get_value(ipv4, Props) =/= off orelse
+                         proplists:get_value(ipv6, Props) =/= off)
                  end, generate_interfaces(MCDParams)).
 
 ssl_minimum_protocol([], _Params) ->

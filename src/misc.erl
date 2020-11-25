@@ -1513,12 +1513,17 @@ get_net_family() ->
 get_afamily_only() ->
     ns_config:search_node_with_default(address_family_only, false).
 
--spec get_afamily_type(inet:address_family()) -> required | optional.
+-spec get_afamily_type(inet:address_family()) -> off | required | optional.
 get_afamily_type(AFamily) when AFamily =:= inet orelse AFamily =:= inet6 ->
     Required = ns_config:read_key_fast({node, node(), address_family}, inet),
-    case AFamily of
-        Required -> required;
-        _ -> optional
+    AFamilyOnly = get_afamily_only(),
+    case {AFamily, AFamilyOnly} of
+        {Required, _} ->
+            required;
+        {_, false} ->
+            optional;
+        {_, true} ->
+            off
     end.
 
 -spec is_localhost(string()) -> true | false.
