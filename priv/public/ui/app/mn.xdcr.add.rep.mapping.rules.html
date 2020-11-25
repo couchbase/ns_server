@@ -3,7 +3,7 @@
   <div
      *ngFor="let item of explicitMappingRulesKeys | async"
      class="row padding-quarter margin-top-half margin-bottom-quarter grayblack-bg-7 text-small">
-    <span>
+    <span class="break-word">
       {{item[0]}} &gt; {{item[1] || "null"}}
     </span>
     <a
@@ -15,7 +15,7 @@
   <div
      *ngFor="let item of explicitMappingMigrationRulesKeys | async"
      class="row padding-quarter margin-top-half margin-bottom-quarter grayblack-bg-7 text-small">
-    <span>
+    <span class="break-word">
       {{item[0]}} --&gt; {{item[1]}}
     </span>
     <a

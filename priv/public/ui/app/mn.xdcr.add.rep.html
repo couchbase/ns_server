@@ -13,7 +13,7 @@
    (submit)="form.submit.next()"
    class="forms">
   <div class="row flex-left items-stretch resp-sml margin-bottom-2">
-    <div class="width-9">
+    <div class="width-10">
       <div
          class="error"
          [hidden]="!(postCreateReplication.error | async)?._">
@@ -115,7 +115,7 @@
 
     <mn-xdcr-mapping-rules
        *ngIf="(isEnterprise | async)"
-       class="width-3 block"
+       class="width-2 block"
        [group]="form.group"
        [explicitMappingRules]="explicitMappingRules"
        [explicitMappingMigrationRules]="explicitMappingMigrationRules"

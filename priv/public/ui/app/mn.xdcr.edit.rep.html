@@ -13,7 +13,7 @@
    (submit)="form.submit.next()"
    class="forms">
   <div class="row flex-left items-stretch resp-flex-column-med margin-bottom-2">
-    <div class="width-8">
+    <div class="width-10">
 
       <mn-xdcr-mapping
          *ngIf="(replicationSettings | async) && (isEnterprise | async)"
@@ -39,14 +39,13 @@
        class="resp-hide-med">&nbsp;</div>
 
     <mn-xdcr-mapping-rules
-       class="width-4"
+       class="width-2"
        style="display:block;"
        *ngIf="(replicationSettings | async) && (isEnterprise | async)"
        [group]="form.group"
        [explicitMappingRules]="explicitMappingRules"
        [explicitMappingMigrationRules]="explicitMappingMigrationRules"
        [explicitMappingGroup]="explicitMappingGroup"></mn-xdcr-mapping-rules>
-
 
   </div>
 
