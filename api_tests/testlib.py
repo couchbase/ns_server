@@ -118,3 +118,74 @@ class BaseTestSet(ABC):
 
         """
         raise NotImplementedError()
+
+
+def delete_config_key(cluster, key):
+    return post_succ(cluster, '/diag/eval', data=f'ns_config:delete({key})')
+
+
+def put_succ(cluster, path, **kwargs):
+    kwargs_with_auth = set_default_auth(cluster, **kwargs)
+    url = cluster.urls[0] + path
+    res = requests.put(url, **kwargs_with_auth)
+    assert_http_code(200, res),
+    return res
+
+
+def post_succ(cluster, path, **kwargs):
+    kwargs_with_auth = set_default_auth(cluster, **kwargs)
+    url = cluster.urls[0] + path
+    res = requests.post(url, **kwargs_with_auth)
+    assert_http_code(200, res),
+
+
+def get_succ(cluster, path, **kwargs):
+    res = get(cluster, path, **kwargs)
+    assert_http_code(200, res),
+    return res
+
+
+def get_fail(cluster, path, expected_code, **kwargs):
+    res = get(cluster, path, **kwargs)
+    assert_http_code(expected_code, res),
+    return res
+
+
+def get(cluster, path, **kwargs):
+    kwargs_with_auth = set_default_auth(cluster, **kwargs)
+    url = cluster.urls[0] + path
+    return requests.get(url, **kwargs_with_auth)
+
+
+def ensure_deleted(cluster, path, **kwargs):
+    res = delete(cluster, path, **kwargs)
+    code = res.status_code
+    assert code == 200 or code == 404, format_http_error(res, [200, 404])
+    return res
+
+
+def delete(cluster, path, **kwargs):
+    kwargs_with_auth = set_default_auth(cluster, **kwargs)
+    url = cluster.urls[0] + path
+    return requests.delete(url, **kwargs_with_auth)
+
+
+def set_default_auth(cluster, **kwargs):
+    if 'auth' not in kwargs:
+        new_kwargs = kwargs.copy()
+        new_kwargs.update({'auth': cluster.auth})
+        return new_kwargs
+    return kwargs
+
+
+def assert_http_code(expected_code, res):
+    code = res.status_code
+    assert code == expected_code, format_http_error(res, [expected_code])
+
+
+def format_http_error(res, expected_codes):
+    expected_codes_str = " or ".join([str(c) for c in expected_codes])
+    return f"{res.request.method} {res.url} " \
+           f"returned {res.status_code} {res.reason} " \
+           f"(expected {expected_codes_str})" \
+           f", response body: {res.text}"
