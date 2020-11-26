@@ -24,9 +24,11 @@
          [bucket]="item.source"></mn-xdcr-mapping>
 
       <mn-xdcr-filter
+         [xdcrGroup]="form.group"
          [bucket]="item.source"
+         [settingsPipe]="replicationSettings"
          [isEditMode]="true"
-         [group]="form.group"
+         [group]="filterRegexpGroup"
          *ngIf="(isEnterprise | async)"></mn-xdcr-filter>
 
       <mn-xdcr-settings

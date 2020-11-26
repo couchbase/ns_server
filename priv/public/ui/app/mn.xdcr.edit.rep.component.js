@@ -53,20 +53,26 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
   }
 
   ngOnInit() {
+    var thisReplicationSettings = this.createGetSettingsReplicationsPipe(this.item.id);
     this.replicationSettings =
       combineLatest(this.getSettingsReplications,
-                    this.createGetSettingsReplicationsPipe(this.item.id));
+                    thisReplicationSettings)
+      .pipe(map(function (source) {
+        if (source[1].collectionsMigrationMode) {
+          source[1].collectionsExplicitMapping = false;
+        }
+        return Object.assign({}, source[0], source[1]);
+      }))
 
     this.form = this.mnFormService.create(this)
       .setFormGroup({type: null,
                      priority: null,
-                     filterExpression: "",
+                     collectionsExplicitMapping: false,
+                     collectionsMigrationMode: false,
                      filterExpiration: false,
                      filterSkipRestream: "false",
                      filterDeletion: false,
                      filterBypassExpiry: false,
-                     collectionsExplicitMapping: false,
-                     collectionsMigrationMode: false,
                      compressionType: null,
                      sourceNozzlePerNode: null,
                      targetNozzlePerNode: null,
@@ -82,13 +88,7 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
         withLatestFrom(this.isEnterprise, this.compatVersion55),
         map(this.prepareReplicationSettigns),
         map(data => [this.item.id, data])))
-      .setUnpackPipe(map(function (source) {
-        if (source[1].collectionsMigrationMode) {
-          source[1].collectionsExplicitMapping = false;
-        }
-        return Object.assign({}, source[0], source[1]);
-      }))
-      .setSource(this.replicationSettings)
+      .setSourceShared(this.replicationSettings)
       .setPostRequest(this.postSettingsReplications)
       .setValidation(this.postSettingsReplicationsValidation)
       .successMessage("Settings saved successfully!")
@@ -96,7 +96,12 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
       .showGlobalSpinner()
       .success(() => this.uiRouter.stateService.go('app.admin.replications'));
 
-    this.replicationSettings
+    this.filterRegexpGroup = this.formBuilder.group({
+      docId: "",
+      filterExpression: ""
+    });
+
+    thisReplicationSettings
       .pipe(takeUntil(this.mnOnDestroy))
       .subscribe(this.unpackReplicationSettings.bind(this));
   }
@@ -107,8 +112,8 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
     let collections = {};
     let collectionsControls = {};
 
-    Object.keys(v[1].colMappingRules).forEach(sourceRule => {
-      let targetRule = v[1].colMappingRules[sourceRule];
+    Object.keys(v.colMappingRules).forEach(sourceRule => {
+      let targetRule = v.colMappingRules[sourceRule];
       let sourcePair = sourceRule.split(collectionDelimiter);
 
       scopesFlags[sourcePair[0]] = true;
@@ -153,9 +158,9 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
     });
 
     this.explicitMappingRules =
-      new BehaviorSubject(v[1].collectionsMigrationMode ? {} : v[1].colMappingRules);
+      new BehaviorSubject(v.collectionsMigrationMode ? {} : v.colMappingRules);
     this.explicitMappingMigrationRules =
-      new BehaviorSubject(v[1].collectionsMigrationMode ? v[1].colMappingRules : {});
+      new BehaviorSubject(v.collectionsMigrationMode ? v.colMappingRules : {});
 
     this.explicitMappingGroup = {
       scopes: {

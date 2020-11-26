@@ -3,7 +3,7 @@ import { Injectable } from '/ui/web_modules/@angular/core.js';
 import { FormBuilder, FormGroup } from '/ui/web_modules/@angular/forms.js';
 import { BehaviorSubject, Subject, NEVER, merge } from "/ui/web_modules/rxjs.js";
 import { map, tap, first, takeUntil, switchMap, mapTo,
-         throttleTime, shareReplay, filter } from "/ui/web_modules/rxjs/operators.js";
+         shareReplay, filter, debounceTime} from "/ui/web_modules/rxjs/operators.js";
 
 
 export { MnFormService };
@@ -55,6 +55,15 @@ class MnForm {
 
   setSource(source) {
     var sourcePipe = source.pipe(this.unpackPipe || tap(), first());
+
+    sourcePipe.subscribe(v => this.group.patchValue(v));
+
+    return this;
+  }
+
+  setSourceShared(source) {
+    var sourcePipe = source.pipe(this.unpackPipe || tap(),
+                                 takeUntil(this.component.mnOnDestroy));
 
     sourcePipe.subscribe(v => this.group.patchValue(v));
 
@@ -212,8 +221,7 @@ class MnForm {
     //skip initialization of the form
     ;(permissionStream || new BehaviorSubject(true)).pipe(
       switchMap((v) => v ? this.group.valueChanges : NEVER),
-      throttleTime(500, undefined, {leading: true, trailing: true}),
-      // Rx.operators.debounceTime(0),
+      debounceTime(500),
       this.getPackPipe(),
       takeUntil(this.component.mnOnDestroy))
       .subscribe((v) => {

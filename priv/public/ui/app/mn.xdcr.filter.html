@@ -75,75 +75,78 @@
     </div>
 
     <div
-       *ngIf="isEditMode"
-       class="xdcr-filter-stream formrow">
-      <input
-         type="radio"
-         value="false"
-         id="for-save-restart-replication"
-         formControlName="filterSkipRestream">
-      <label for="for-save-restart-replication">Save filter & restart replication</label>
-      <input
-         type="radio"
-         value="true"
-         id="for-save-continue-replicating"
-         formControlName="filterSkipRestream">
-      <label for="for-save-continue-replicating">Save & continue replicating</label>
-    </div>
+       [formGroup]="xdcrGroup">
+      <div
+         *ngIf="isEditMode"
+         class="xdcr-filter-stream formrow">
+        <input
+           type="radio"
+           value="false"
+           id="for-save-restart-replication"
+           formControlName="filterSkipRestream">
+        <label for="for-save-restart-replication">Save filter & restart replication</label>
+        <input
+           type="radio"
+           value="true"
+           id="for-save-continue-replicating"
+           formControlName="filterSkipRestream">
+        <label for="for-save-continue-replicating">Save & continue replicating</label>
+      </div>
 
-    <label>Deletion Filters</label>
-    <div>
-      <input
-         type="checkbox"
-         value="index"
-         id="for-do-not-replicate-ttl"
-         formControlName="filterExpiration">
-      <label for="for-do-not-replicate-ttl" class="margin-right-0">
-        Do not replicate document expirations
-      </label>
-      <span
-         class="fa-stack icon-info"
-         ngbTooltip="Source expirations will not be replicated."
-         placement="auto right">
-        <span class="icon fa-circle-thin fa-stack-2x"></span>
-        <span class="icon fa-info fa-stack-1x"></span>
-      </span>
-    </div>
-    <div>
-      <input
-         type="checkbox"
-         value="index"
-         id="for-do-not-replicate-delete"
-         formControlName="filterDeletion">
-      <label
-         for="for-do-not-replicate-delete"
-         class="margin-right-0">
-        Do not replicate DELETE operations
-      </label>
-      <span
-         class="fa-stack icon-info"
-         ngbTooltip="Application-level deletes will not be replicated."
-         placement="auto right">
-        <span class="icon fa-circle-thin fa-stack-2x"></span>
-        <span class="icon fa-info fa-stack-1x"></span>
-      </span>
-    </div>
-    <div class="margin-bottom-1">
-      <input
-         type="checkbox"
-         value="index"
-         id="for-do-not-replicate-TTL"
-         formControlName="filterBypassExpiry">
-      <label for="for-do-not-replicate-TTL" class="margin-right-0">
-        Remove TTL from replicated items
-      </label>
-      <span
-         class="fa-stack icon-info"
-         ngbTooltip="Destination items will have no TTL."
-         placement="auto right">
-        <span class="icon fa-circle-thin fa-stack-2x"></span>
-        <span class="icon fa-info fa-stack-1x"></span>
-      </span>
+      <label>Deletion Filters</label>
+      <div>
+        <input
+           type="checkbox"
+           value="index"
+           id="for-do-not-replicate-ttl"
+           formControlName="filterExpiration">
+        <label for="for-do-not-replicate-ttl" class="margin-right-0">
+          Do not replicate document expirations
+        </label>
+        <span
+           class="fa-stack icon-info"
+           ngbTooltip="Source expirations will not be replicated."
+           placement="auto right">
+          <span class="icon fa-circle-thin fa-stack-2x"></span>
+          <span class="icon fa-info fa-stack-1x"></span>
+        </span>
+      </div>
+      <div>
+        <input
+           type="checkbox"
+           value="index"
+           id="for-do-not-replicate-delete"
+           formControlName="filterDeletion">
+        <label
+           for="for-do-not-replicate-delete"
+           class="margin-right-0">
+          Do not replicate DELETE operations
+        </label>
+        <span
+           class="fa-stack icon-info"
+           ngbTooltip="Application-level deletes will not be replicated."
+           placement="auto right">
+          <span class="icon fa-circle-thin fa-stack-2x"></span>
+          <span class="icon fa-info fa-stack-1x"></span>
+        </span>
+      </div>
+      <div class="margin-bottom-1">
+        <input
+           type="checkbox"
+           value="index"
+           id="for-do-not-replicate-TTL"
+           formControlName="filterBypassExpiry">
+        <label for="for-do-not-replicate-TTL" class="margin-right-0">
+          Remove TTL from replicated items
+        </label>
+        <span
+           class="fa-stack icon-info"
+           ngbTooltip="Destination items will have no TTL."
+           placement="auto right">
+          <span class="icon fa-circle-thin fa-stack-2x"></span>
+          <span class="icon fa-info fa-stack-1x"></span>
+        </span>
+      </div>
     </div>
 
   </div>

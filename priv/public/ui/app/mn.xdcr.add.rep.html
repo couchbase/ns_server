@@ -98,8 +98,10 @@
          [group]="form.group"></mn-xdcr-mapping>
 
       <mn-xdcr-filter
+         [xdcrGroup]="form.group"
          [bucket]="form.group.get('fromBucket').value"
-         [group]="form.group"
+         [settingsPipe]="getSettingsReplications"
+         [group]="filterRegexpGroup"
          class="block"
          *ngIf="(isEnterprise | async)"></mn-xdcr-filter>
 

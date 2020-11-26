@@ -15,9 +15,11 @@ class MnXDCRFilterComponent extends MnLifeCycleHooksToStream {
       templateUrl: "/ui/app/mn.xdcr.filter.html",
       changeDetection: ChangeDetectionStrategy.OnPush,
       inputs: [
-        "group",
         "bucket",
-        "isEditMode"
+        "group",
+        "xdcrGroup",
+        "isEditMode",
+        "settingsPipe"
       ]
     })
   ]}
@@ -42,26 +44,33 @@ class MnXDCRFilterComponent extends MnLifeCycleHooksToStream {
       mnXDCRService.stream.postSettingsReplicationsValidation;
     this.postCreateReplication =
       mnXDCRService.stream.postCreateReplication;
+    this.postSettingsReplications =
+      mnXDCRService.stream.postSettingsReplications;
 
     this.errors = merge(
       this.postRegexpValidation.success,
       this.postRegexpValidation.error,
       this.postCreateReplication.error,
+      this.postSettingsReplications.error,
       this.postSettingsReplicationsValidation.error
-    ).pipe(map(errors => errors &&
-               (errors.error ? errors.error._ ? errors.error._ :
-                errors.error : errors.filterExpression)));
+    ).pipe(map(errors => {
+      return errors &&
+        (errors.error ? errors.error._ ? errors.error._ :
+         errors.error : errors.filterExpression);
+    }));
 
-
-    this.form
-      .setFormGroup({docId: ""})
-      .setPackPipe(map(this.pack.bind(this)))
-      .setPostRequest(this.postRegexpValidation)
-      .trackSubmit()
-      .clearErrors();
   }
 
   ngOnInit() {
+    this.form
+      .setFormGroup(this.group)
+      .setPackPipe(map(this.pack.bind(this)))
+      .setSourceShared(this.settingsPipe)
+      .setPostRequest(this.postRegexpValidation)
+      .setValidation(this.postRegexpValidation)
+      .trackSubmit()
+      .clearErrors();
+
     this.formHelper.group.patchValue({
       enableFilters: !!this.group.get("filterExpression").value
     });
@@ -70,7 +79,7 @@ class MnXDCRFilterComponent extends MnLifeCycleHooksToStream {
   pack() {
     return {
       expression: this.group.get("filterExpression").value,
-      docId: this.form.group.get("docId").value,
+      docId: this.group.get("docId").value,
       bucket: this.bucket || ""
     };
   }

@@ -3,7 +3,7 @@ import {pipe, BehaviorSubject} from '/ui/web_modules/rxjs.js';
 import {withLatestFrom, map, filter, switchMap, pluck, shareReplay,
         takeUntil} from '/ui/web_modules/rxjs/operators.js';
 import {UIRouter} from '/ui/web_modules/@uirouter/angular.js';
-import {FormBuilder} from '/ui/web_modules/@angular/forms.js';
+import { FormBuilder } from '/ui/web_modules/@angular/forms.js'
 
 import {MnAlertsService, $rootScope} from '/ui/app/ajs.upgraded.providers.js';
 
@@ -54,13 +54,12 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
                      toCluster: "",
                      toBucket: "",
                      priority: null,
-                     filterExpression: "",
+                     collectionsExplicitMapping: false,
+                     collectionsMigrationMode: false,
                      filterExpiration: false,
                      filterSkipRestream: "false",
                      filterDeletion: false,
                      filterBypassExpiry: false,
-                     collectionsExplicitMapping: false,
-                     collectionsMigrationMode: false,
                      compressionType: null,
                      sourceNozzlePerNode: null,
                      targetNozzlePerNode: null,
@@ -75,7 +74,7 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
       .setPackPipe(pipe(withLatestFrom(this.isEnterprise,
                                        mnAdminService.stream.compatVersion55),
                         map(mnXDCRService.prepareReplicationSettigns.bind(this))))
-      .setSource(this.getSettingsReplications)
+      .setSourceShared(this.getSettingsReplications)
       .setPostRequest(this.postCreateReplication)
       .setValidation(this.postSettingsReplicationsValidation)
       .clearErrors()
@@ -90,6 +89,11 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
             hasWarnings ? 0 : 2500);
         });
       });
+
+    this.filterRegexpGroup = formBuilder.group({
+      docId: "",
+      filterExpression: ""
+    });
 
     this.explicitMappingGroup = {
       scopes: {

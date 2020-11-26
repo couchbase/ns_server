@@ -87,7 +87,8 @@ class MnXDCRService {
 
   prepareReplicationSettigns([_, isEnterprise, compatVersion55]) {
     //this points to the component view instance
-    var settings = Object.assign({}, this.form.group.value);
+    var settings = Object.assign({}, this.form.group.value, this.filterRegexpGroup.value);
+    delete settings.docId;
     if (isEnterprise) {
       settings.filterSkipRestream = (settings.filterSkipRestream === "true");
     } else {
