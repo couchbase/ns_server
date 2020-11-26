@@ -42,9 +42,12 @@ base_backup_http_port= 7100
 base_backup_https_port= 17100
 base_backup_grpc_port = 7200
 
+script_dir = os.path.dirname(os.path.realpath(__file__))
+ns_server_dir = os.path.dirname(script_dir)
 
 def read_configuration():
-    with open("build/cluster_run.configuration") as f:
+    configpath = os.path.join(ns_server_dir, "build", "cluster_run.configuration")
+    with open(configpath) as f:
         def fn(line):
             k, v = line.strip().split('=')
             return k, shlex.split(v)[0]
@@ -127,7 +130,7 @@ def setup_path(ns_server_app_path):
 
         return ebins
 
-    path = ebin_search(".")
+    path = ebin_search(ns_server_dir)
     if ns_server_app_path in path:
         # The ns_server_app_path needs to be first in the path. We remove
         # it from what was found and append it to the path (it's at the
@@ -147,24 +150,26 @@ def setup_path(ns_server_app_path):
     return couchpath + path + couch_plugins
 
 
-def maybe_mk_node_couch_config(i):
-    ini_file_name = "couch/n_{0}_conf.ini".format(i)
+def maybe_mk_node_couch_config(i, ini_file_name, root_dir):
+    ini_dir = os.path.dirname(ini_file_name)
 
     # If ini file exists, then don't overwrite it.
     if os.path.isfile(ini_file_name):
         return
 
     try:
-        os.mkdir("couch")
+        os.mkdir(ini_dir)
     except os.error:
         pass
+
+    abs_root_dir = os.path.abspath(root_dir)
 
     with open(ini_file_name, "w") as f:
         f.write("[httpd]\n")
         f.write("port={0}\n".format(base_couch_port + i))
         f.write("[couchdb]\n")
-        f.write("database_dir={0}/data/n_{1}/data\n".format(os.getcwd(), i))
-        f.write("view_index_dir={0}/data/n_{1}/data\n".format(os.getcwd(), i))
+        f.write("database_dir={0}/data/n_{1}/data\n".format(abs_root_dir, i))
+        f.write("view_index_dir={0}/data/n_{1}/data\n".format(abs_root_dir, i))
         f.write("max_dbs_open=10000\n")
         f.write("[upr]\n")
         f.write("port={0}\n".format(base_direct_port + i * 2))
@@ -172,12 +177,13 @@ def maybe_mk_node_couch_config(i):
         f.write("port={0}\n".format(base_direct_port + i * 2))
 
 
-def couch_configs(i):
-    maybe_mk_node_couch_config(i)
+def couch_configs(i, root_dir):
+    ini_file_name = os.path.join(root_dir, "couch", f"n_{i}_conf.ini")
+    maybe_mk_node_couch_config(i, ini_file_name, root_dir)
     return ["{0}/etc/couchdb/default.ini".format(PREFIX),
             "{0}/etc/couchdb/default.d/capi.ini".format(PREFIX),
             "{0}/etc/couchdb/default.d/geocouch.ini".format(PREFIX),
-            "couch/n_{0}_conf.ini".format(i)]
+            ini_file_name]
 
 
 def os_specific(args, params):
@@ -211,7 +217,7 @@ def quote_string_for_erl(s):
 
 def generate_ssl_dist_optfile(datadir):
     cfg_dir = os.path.join(datadir, "config")
-    in_file = os.path.join(os.getcwd(), "etc", "ssl_dist_opts.in")
+    in_file = os.path.join(ns_server_dir, "etc", "ssl_dist_opts.in")
     out_file = os.path.join(cfg_dir, "ssl_dist_opts")
 
     if not os.path.exists(cfg_dir):
@@ -225,9 +231,12 @@ def generate_ssl_dist_optfile(datadir):
 
     return out_file
 
+def abs_path_join(*args):
+    return os.path.abspath(os.path.join(*args))
 
-def erlang_args_for_node(i, ebin_path, extra_args, args_prefix):
-    logdir = os.path.abspath("logs/n_{0}".format(i))
+
+def erlang_args_for_node(i, ebin_path, extra_args, args_prefix, root_dir):
+    logdir = abs_path_join(root_dir, "logs", f"n_{i}")
 
     args = args_prefix + ["erl", "+MMmcs" "30",
                           "+A", "16", "+sbtu",
@@ -236,10 +245,10 @@ def erlang_args_for_node(i, ebin_path, extra_args, args_prefix):
     args += [
         "-setcookie", "nocookie",
         "-kernel", "logger", "[{handler, default, undefined}]",
-        "-couch_ini"] + couch_configs(i)
+        "-couch_ini"] + couch_configs(i, root_dir)
 
-    datadir = os.path.abspath('data/n_{0}'.format(i))
-    tempdir = os.path.abspath('tmp/')
+    datadir = abs_path_join(root_dir, 'data', f'n_{i}')
+    tempdir = abs_path_join(root_dir, 'tmp')
     nodefile = os.path.join(datadir, "nodefile")
     babysitternodefile = os.path.join(
         datadir, "couchbase-server.babysitter.node")
@@ -247,6 +256,8 @@ def erlang_args_for_node(i, ebin_path, extra_args, args_prefix):
         datadir, "couchbase-server.babysitter.cookie")
     ssloptfile = generate_ssl_dist_optfile(datadir)
     cb_dist_config = os.path.join(datadir, "config", "dist_cfg")
+    hosts_file = os.path.join(ns_server_dir, "etc", "hosts.cfg")
+    static_config = os.path.join(ns_server_dir, "etc", "static_config.in")
 
     args += [
         "-name", "babysitter_of_n_{0}@cb.local".format(i),
@@ -255,15 +266,15 @@ def erlang_args_for_node(i, ebin_path, extra_args, args_prefix):
         "-epmd_module", "cb_epmd",
         "-hidden",
         "-kernel", "dist_config_file", quote_string_for_erl(cb_dist_config),
-        "-kernel", "inetrc", "\"etc/hosts.cfg\"",
+        "-kernel", "inetrc", f"\"{hosts_file}\"",
         "-kernel", "external_tcp_port", "21400",
         "-kernel", "external_tls_port", "21450",
         "-ns_babysitter", "cookiefile", quote_string_for_erl(
             babysittercookiefile),
         "-ns_babysitter", "nodefile", quote_string_for_erl(babysitternodefile),
-        "-ns_server", "config_path", '"etc/static_config.in"',
+        "-ns_server", "config_path", f'"{static_config}"',
         "error_logger_mf_dir", quote_string_for_erl(logdir),
-        "path_config_etcdir", '"priv"',
+        "path_config_etcdir", f'"{os.path.join(ns_server_dir, "priv")}"',
         "path_config_bindir", quote_string_for_erl(PREFIX + "/bin"),
         "path_config_libdir", quote_string_for_erl(PREFIX + "/lib"),
         "path_config_datadir", quote_string_for_erl(datadir),
@@ -356,7 +367,8 @@ def start_cluster(num_nodes=1,
                   ipv6=False,
                   force_community=False,
                   dev_preview_default=None,
-                  args=[]):
+                  args=[],
+                  root_dir=ns_server_dir):
 
     extra_args = []
     if not dont_rename:
@@ -386,7 +398,8 @@ def start_cluster(num_nodes=1,
 
     extra_args += ["-ns_server", "loglevel_stderr", loglevel]
 
-    plugins_dir = '../build/cluster_run_ui_plugins'
+    plugins_dir = os.path.join(ns_server_dir, '..', 'build',
+                               'cluster_run_ui_plugins')
     if os.path.isdir(plugins_dir):
         for f in os.listdir(plugins_dir):
             if fnmatch.fnmatch(f, 'pluggable-ui-*.cluster_run.json'):
@@ -413,14 +426,14 @@ def start_cluster(num_nodes=1,
     ebin_path = prepare_start_cluster(force_community, start_index)
 
     def start_node(node_num):
-        logdir = "logs/n_{0}".format(node_num)
+        logdir = os.path.join(root_dir, "logs", f"n_{node_num}")
         try:
             os.makedirs(logdir)
         except OSError:
             pass
 
         args = erlang_args_for_node(node_num, ebin_path, extra_args,
-                                    prepend_args)
+                                    prepend_args, root_dir)
 
         params = {}
 
@@ -510,6 +523,7 @@ def do_encode(input_string):
 
 
 def connect(num_nodes=0,
+            start_index=0,
             deploy=['kv'],
             buckettype="membase",
             memsize=256,
@@ -546,7 +560,7 @@ def connect(num_nodes=0,
           "deployment plan {4}\n".format(
               num_nodes, buckettype, memsize, replicas, str(deploy)))
 
-    base_port = 9000
+    base_port = 9000 + start_index
 
     addr = "127.0.0.1" if protocol == "ipv4" else "[::1]"
     services = deploy["n0"]
