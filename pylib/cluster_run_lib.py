@@ -27,6 +27,7 @@ import urllib.parse
 import urllib.error
 import json
 from functools import reduce
+import time
 
 base_direct_port = 12000
 base_api_port = 9000
@@ -41,6 +42,10 @@ base_prometheus_port = 9900
 base_backup_http_port= 7100
 base_backup_https_port= 17100
 base_backup_grpc_port = 7200
+
+node_start_timeout_s = 30
+default_username = "Administrator"
+default_pass = "asdasd"
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
 ns_server_dir = os.path.dirname(script_dir)
@@ -368,7 +373,9 @@ def start_cluster(num_nodes=1,
                   force_community=False,
                   dev_preview_default=None,
                   args=[],
-                  root_dir=ns_server_dir):
+                  root_dir=ns_server_dir,
+                  wait_for_start=False,
+                  nooutput=False):
 
     extra_args = []
     if not dont_rename:
@@ -472,6 +479,10 @@ def start_cluster(num_nodes=1,
                 # ability to it shutdown carefully or otherwise
                 params['preexec_fn'] = os.setpgrp
 
+        if nooutput:
+            params['stdout'] = subprocess.DEVNULL
+            params['stderr'] = subprocess.DEVNULL
+
         pr = subprocess.Popen(args, **params)
         if w is not None:
             os.close(r)
@@ -482,7 +493,33 @@ def start_cluster(num_nodes=1,
 
         return pr
 
-    return [start_node(i + start_index) for i in range(num_nodes)]
+    processes = [start_node(i + start_index) for i in range(num_nodes)]
+
+    if wait_for_start:
+        wait_nodes_up(num_nodes, start_index, node_start_timeout_s)
+
+    return processes
+
+
+def wait_nodes_up(num_nodes, start_index, timeout_s):
+    deadline = time.time() + timeout_s
+    def wait_node(i):
+        last_error = None
+        print(f"Waiting for node {i}", end="")
+        sys.stdout.flush()
+        while time.time() < deadline:
+            try:
+                http_get_json(f"http://localhost:{base_api_port+i}/pools")
+                print(f" UP")
+                return
+            except urllib.error.URLError as e:
+                last_error = e.reason
+                print('.', end='')
+                sys.stdout.flush()
+                time.sleep(0.5)
+        print(" TIMEOUT")
+        raise RuntimeError(f"Node {i} wait timed out (last error: {last_error})")
+    [wait_node(start_index + i) for i in range(num_nodes)]
 
 
 def kill_nodes(nodes, terminal_attrs=None):
@@ -520,6 +557,17 @@ class PasswordManager(urllib.request.HTTPPasswordMgr):
 
 def do_encode(input_string):
     return input_string.encode()
+
+
+def http_get_json(url):
+    return json.loads(http_get(url))
+
+
+def http_get(url):
+    password_mgr = PasswordManager(default_username, default_pass)
+    handler = urllib.request.HTTPBasicAuthHandler(password_mgr)
+    o = urllib.request.build_opener(handler)
+    return o.open(url).read()
 
 
 def connect(num_nodes=0,
