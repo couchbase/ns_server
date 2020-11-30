@@ -56,21 +56,21 @@
                     'dynamic-inverted': userRolesCtl.isOrderBy('id')
                     && userRolesCtl.isDesc()}">username</span>
       </span>
-      <span class="cbui-table-cell"
+      <span class="cbui-table-cell flex-grow-half"
             ng-if="poolDefault.isEnterprise && poolDefault.compat.atLeast65">
         <span>groups</span>
       </span>
       <span class="cbui-table-cell flex-grow-3">
         <span>roles</span>
       </span>
-      <span class="cbui-table-cell resp-hide-xsml">
+      <span class="cbui-table-cell flex-grow-half resp-hide-xsml">
         <span class="sorter"
               ng-click="userRolesCtl.sortByChanged('domain')"
               ng-class="{'dynamic-active': userRolesCtl.isOrderBy('domain'),
                         'dynamic-inverted': userRolesCtl.isOrderBy('domain')
                         && userRolesCtl.isDesc()}">auth domain</span>
       </span>
-      <span class="cbui-table-cell resp-hide-sml">
+      <span class="cbui-table-cell flex-grow-half resp-hide-sml">
         <span class="sorter"
               ng-click="userRolesCtl.sortByChanged('password_change_timestamp')"
               ng-class="{'dynamic-active': userRolesCtl.isOrderBy('password_change_timestamp'),
@@ -88,7 +88,7 @@
           {{user.id}}
           <span ng-show="user.passwordless" class="label lt-blue">no password</span>
         </span>
-        <span class="cbui-table-cell wrap"
+        <span class="cbui-table-cell flex-grow-half wrap"
               ng-if="poolDefault.isEnterprise && poolDefault.compat.atLeast65">
           {{userRolesCtl.parseGroupNames(user)}}
         </span>
@@ -101,7 +101,7 @@
              tooltip-placement="auto top"
              ng-click="$event.stopPropagation()"
              uib-tooltip="{{userRolesCtl.rolesByRole[role.role].desc}}">
-            <span class="ellipsis">
+            <span class="break-word">
               {{userRolesCtl.rolesByRole[role.role].name}}
               <span ng-show="userRolesCtl.rolesByRole[role.role].params.length">
                 [{{userRolesCtl.getRoleParams(role)}}]
@@ -110,10 +110,10 @@
             </span>
           </span>
         </span>
-        <span class="cbui-table-cell resp-hide-xsml">
+        <span class="cbui-table-cell flex-grow-half resp-hide-xsml">
           {{user.domain === "local" ? "Couchbase" : "External"}}
         </span>
-        <span class="cbui-table-cell resp-hide-sml" title="{{:: user.password_change_date}}">
+        <span class="cbui-table-cell flex-grow-half resp-hide-sml" title="{{:: user.password_change_date}}">
           {{user.password_change_date | date:"d MMM, y"}}
         </span>
       </div>
