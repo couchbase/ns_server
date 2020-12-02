@@ -45,6 +45,7 @@
     "oclazyload": "./oclazyload.js",
     "ramda": "./ramda.js",
     "rxjs": "./rxjs.js",
+    "rxjs-pubsub": "./rxjs-pubsub.js",
     "rxjs/operators": "./rxjs/operators.js",
     "sortablejs": "./sortablejs.js",
     "ui-select": "./ui-select.js"
