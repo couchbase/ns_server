@@ -346,12 +346,17 @@ merge_or_operands({call, F, By, Args1}, {call, F, By, Args2})
                 lists:mapfoldl(
                   fun ({_, _}, conflict) ->
                           {undefined, conflict};
-                      ({A1, A2}, Status) ->
+                      ({A1, A2}, merged) ->
                           case merge_or_operands(A1, A2) of
-                              match -> {A1, match};
                               conflict -> {undefined, conflict};
-                              {merged, M} when Status =:= match -> {M, merged};
+                              match -> {A1, merged};
                               {merged, _} -> {undefined, conflict}
+                          end;
+                      ({A1, A2}, match) ->
+                          case merge_or_operands(A1, A2) of
+                              conflict -> {undefined, conflict};
+                              match -> {A1, match};
+                              {merged, M} -> {M, merged}
                           end
                   end, match, lists:zip(Args1, Args2)),
             case Res of
@@ -477,7 +482,33 @@ format_promql_test() ->
                                 {eq_any, <<"name">>, [<<"v2">>,<<"v3">>]}]},
                               <<"1m">>}]}]}),
                  <<"{name=`v2`,l1=`v2`} or "
-                   "irate({name=~`v1|v2|v3`,l1=`v2`}[1m])">>).
+                   "irate({name=~`v1|v2|v3`,l1=`v2`}[1m])">>),
+    ?assertEqual(format_promql(
+                   {'or',
+                    [{call, f, none, [1, {[{eq, <<"name">>, <<"v1">>}]}, 2]},
+                     {call, f, none, [1, {[{eq, <<"name">>, <<"v1">>}]}, 2]}]}),
+                 <<"f(1,{name=`v1`},2)">>),
+    ?assertEqual(format_promql(
+                   {'or',
+                    [{call, f, none, [1, {[{eq, <<"name">>, <<"v1">>}]}, 2]},
+                     {call, f, none, [1, {[{eq, <<"name">>, <<"v2">>}]}, 2]}]}),
+                 <<"f(1,{name=~`v1|v2`},2)">>),
+    ?assertEqual(format_promql(
+                   {'or',
+                    [{call, f, none, [1,{[{eq, <<"name">>, <<"v1">>}]}, 2]},
+                     {call, f, none, [1,{[{eq, <<"name">>, <<"v2">>}]}, 3]}]}),
+                 <<"f(1,{name=`v1`},2) or f(1,{name=`v2`},3)">>),
+    ?assertEqual(format_promql(
+                   {'or',
+                    [{call, f, none, [1,{[{eq, <<"name">>, <<"v1">>}]}, 3]},
+                     {call, f, none, [2,{[{eq, <<"name">>, <<"v2">>}]}, 3]}]}),
+                 <<"f(1,{name=`v1`},3) or f(2,{name=`v2`},3)">>),
+    ?assertEqual(format_promql(
+                   {'or', [{call, f, none, [{[{eq, <<"name">>, <<"v1">>}]},
+                                            {[{eq, <<"name">>, <<"v2">>}]}]},
+                           {call, f, none, [{[{eq, <<"name">>, <<"v2">>}]},
+                                            {[{eq, <<"name">>, <<"v1">>}]}]}]}),
+                 <<"f({name=`v1`},{name=`v2`}) or f({name=`v2`},{name=`v1`})">>).
 
 post_timeout_test() ->
     meck:new(httpc, [passthrough]),
