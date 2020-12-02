@@ -299,6 +299,8 @@ format_promql_ast({Labels}) when is_list(Labels) ->
                 [Name, "!~`", Value, "`"];
             ({eq_any, Name, [_|_] = Values}) ->
                 [Name, "=~`", lists:join("|", Values), "`"];
+            ({not_any, Name, [_|_] = Values}) ->
+                [Name, "!~`", lists:join("|", Values), "`"];
             ({eq, Name, Value}) ->
                 [Name, "=`", Value, "`"]
         end, Labels),
@@ -508,7 +510,10 @@ format_promql_test() ->
                                             {[{eq, <<"name">>, <<"v2">>}]}]},
                            {call, f, none, [{[{eq, <<"name">>, <<"v2">>}]},
                                             {[{eq, <<"name">>, <<"v1">>}]}]}]}),
-                 <<"f({name=`v1`},{name=`v2`}) or f({name=`v2`},{name=`v1`})">>).
+                 <<"f({name=`v1`},{name=`v2`}) or f({name=`v2`},{name=`v1`})">>),
+    ?assertEqual(format_promql({[{not_any, <<"name">>,
+                                  [<<"v1">>, <<"v2">>, <<"v3">>]}]}),
+                 <<"{name!~`v1|v2|v3`}">>).
 
 post_timeout_test() ->
     meck:new(httpc, [passthrough]),

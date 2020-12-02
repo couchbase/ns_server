@@ -305,6 +305,37 @@ pre_70_stat_to_prom_query("@eventing-" ++ _Bucket, _) ->
 pre_70_stat_to_prom_query("@" ++ _, _) ->
     {error, not_found};
 
+%% "dcpagg :" stats
+pre_70_stat_to_prom_query(Bucket, <<"ep_dcp_replica_", Stat/binary>>) ->
+    TypeLabel = {eq, <<"connection_type">>, <<"replication">>},
+    {ok, map_dcpagg_stat(TypeLabel, Stat, Bucket)};
+pre_70_stat_to_prom_query(Bucket, <<"ep_dcp_xdcr_", Stat/binary>>) ->
+    TypeLabel = {eq, <<"connection_type">>, <<"xdcr">>},
+    {ok, map_dcpagg_stat(TypeLabel, Stat, Bucket)};
+pre_70_stat_to_prom_query(Bucket, <<"ep_dcp_2i_", Stat/binary>>) ->
+    TypeLabel = {eq, <<"connection_type">>, <<"secidx">>},
+    {ok, map_dcpagg_stat(TypeLabel, Stat, Bucket)};
+pre_70_stat_to_prom_query(Bucket, <<"ep_dcp_fts_", Stat/binary>>) ->
+    TypeLabel = {eq, <<"connection_type">>, <<"fts">>},
+    {ok, map_dcpagg_stat(TypeLabel, Stat, Bucket)};
+pre_70_stat_to_prom_query(Bucket, <<"ep_dcp_eventing_", Stat/binary>>) ->
+    TypeLabel = {eq, <<"connection_type">>, <<"eventing">>},
+    {ok, map_dcpagg_stat(TypeLabel, Stat, Bucket)};
+pre_70_stat_to_prom_query(Bucket, <<"ep_dcp_cbas_", Stat/binary>>) ->
+    TypeLabel = {eq, <<"connection_type">>, <<"cbas">>},
+    {ok, map_dcpagg_stat(TypeLabel, Stat, Bucket)};
+pre_70_stat_to_prom_query(Bucket, <<"ep_dcp_views_", Stat/binary>>) ->
+    TypeLabel = {eq_any, <<"connection_type">>, [<<"mapreduce_view">>,
+                                                 <<"spatial_view">>]},
+    ViewsStats = sumby([<<"name">>], map_dcpagg_stat(TypeLabel, Stat, Bucket)),
+    {ok, with_label(<<"connection_type">>, <<"views">>, ViewsStats)};
+pre_70_stat_to_prom_query(Bucket, <<"ep_dcp_other_", Stat/binary>>) ->
+    TypeLabel = {not_any, <<"connection_type">>,
+                 [<<"replication">>, <<"xdcr">>, <<"fts">>, <<"cbas">>,
+                  <<"eventing">>, <<"secidx">>, <<"mapreduce_view">>,
+                  <<"spatial_view">>]},
+    ViewsStats = sumby([<<"name">>], map_dcpagg_stat(TypeLabel, Stat, Bucket)),
+    {ok, with_label(<<"connection_type">>, <<"other">>, ViewsStats)};
 %% Exceptions that are not handled by kv_stats_mappings for one reason
 %% on another
 pre_70_stat_to_prom_query(Bucket, <<"cmd_get">>) ->
@@ -437,6 +468,25 @@ pre_70_stat_to_prom_query(Bucket, Stat) ->
             {error, not_found}
     end.
 
+map_dcpagg_stat(TypeLabel, Stat, Bucket) ->
+    Suffix = case Stat of
+                <<"count">> -> <<"connection_count">>;
+                <<"total_bytes">> -> <<"total_bytes_bytes">>;
+                _ -> Stat
+             end,
+    Metric = {[{eq, <<"name">>, <<"kv_dcp_", Suffix/binary>>},
+               {eq, <<"bucket">>, list_to_binary(Bucket)},
+               TypeLabel]},
+    IsCounter = case Stat of
+               <<"items_sent">> -> true;
+               <<"total_bytes">> -> true;
+               <<"backoff">> -> true;
+               _ -> false
+           end,
+    case IsCounter of
+        true -> rate(Metric);
+        false -> Metric
+    end.
 
 %% Works for fts and index, Prefix is the only difference
 map_index_stats(Prefix, Counters, Bucket, Stat) ->
@@ -510,7 +560,10 @@ eventing_metric(Name, FunctionName) ->
      [{eq, <<"functionName">>, FunctionName} || FunctionName =/= <<"*">>]}.
 
 named(Name, Ast) ->
-    {call, label_replace, none, [Ast, <<"name">>, Name, <<>>, <<>>]}.
+    with_label(<<"name">>, Name, Ast).
+
+with_label(Name, Value, Ast) ->
+    {call, label_replace, none, [Ast, Name, Value, <<>>, <<>>]}.
 
 multiply_by_scalar(Ast, Scalar) ->
     {'*', [Ast, Scalar]}.
@@ -609,6 +662,24 @@ prom_name_to_pre_70_name(Bucket, {JSONProps}) ->
                 {ok, <<"vb_total_queue_age">>};
             <<"kv_xdc_ops">> ->
                 {ok, <<"xdc_ops">>};
+            <<"kv_dcp_", Stat/binary>> ->
+                case proplists:get_value(<<"connection_type">>, JSONProps) of
+                    undefined -> {error, not_found};
+                    Type ->
+                        Type2 =
+                            case Type of
+                                <<"replication">> -> <<"replica">>;
+                                <<"secidx">> -> <<"2i">>;
+                                _ -> Type
+                            end,
+                        Suffix =
+                            case Stat of
+                                <<"connection_count">> -> <<"count">>;
+                                <<"total_bytes_bytes">> -> <<"total_bytes">>;
+                                _ -> Stat
+                            end,
+                        {ok, <<"ep_dcp_", Type2/binary, "_", Suffix/binary>>}
+                end;
             <<"kv_", _/binary>> = Name ->
                 DropLabels = [<<"name">>, <<"bucket">>, <<"job">>,
                               <<"category">>, <<"instance">>, <<"__name__">>],
@@ -791,16 +862,17 @@ default_stat_list("@eventing") ->
 default_stat_list("@eventing-" ++ _) ->
     [];
 default_stat_list(_Bucket) ->
-    [?STAT_GAUGES, ?STAT_COUNTERS, couch_docs_actual_disk_size,
-     couch_views_actual_disk_size, couch_spatial_data_size,
-     couch_spatial_disk_size, couch_spatial_ops, couch_views_data_size,
-     couch_views_disk_size, couch_views_ops, bg_wait_count, bg_wait_total,
-     disk_commit_count, disk_commit_total, disk_update_count,
-     disk_update_total, couch_docs_disk_size, couch_docs_data_size,
-     disk_write_queue, ep_ops_create, ep_ops_update, misses, evictions,
-     ops, vb_total_queue_age, xdc_ops, <<"spatial/*/accesses">>,
-     <<"spatial/*/data_size">>, <<"spatial/*/disk_size">>,
-     <<"views/*/accesses">>, <<"views/*/data_size">>, <<"views/*/disk_size">>].
+    [?STAT_GAUGES, ?STAT_COUNTERS, ?DCP_STAT_GAUGES, ?DCP_STAT_COUNTERS,
+     couch_docs_actual_disk_size, couch_views_actual_disk_size,
+     couch_spatial_data_size, couch_spatial_disk_size, couch_spatial_ops,
+     couch_views_data_size, couch_views_disk_size, couch_views_ops,
+     bg_wait_count, bg_wait_total, disk_commit_count, disk_commit_total,
+     disk_update_count, disk_update_total, couch_docs_disk_size,
+     couch_docs_data_size, disk_write_queue, ep_ops_create, ep_ops_update,
+     misses, evictions, ops, vb_total_queue_age, xdc_ops,
+     <<"spatial/*/accesses">>, <<"spatial/*/data_size">>,
+     <<"spatial/*/disk_size">>, <<"views/*/accesses">>, <<"views/*/data_size">>,
+     <<"views/*/disk_size">>].
 
 is_system_stat(<<"cpu_", _/binary>>) -> true;
 is_system_stat(<<"swap_", _/binary>>) -> true;
