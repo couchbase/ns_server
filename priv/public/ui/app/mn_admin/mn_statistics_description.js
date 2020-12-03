@@ -1,35 +1,10 @@
 var derivedMetric = {
-  "@query.query_avg_req_time": true,
-  "@query.query_avg_svc_time": true,
-  "@query.query_avg_response_size": true,
-  "@query.query_avg_result_count": true,
-
-  "@index.index_ram_percent": true,
-  "@index.index_remaining_ram": true,
-  "@index-.@items.num_docs_pending+queued": true,
-  "@index-.@items.cache_miss_ratio": true,
-
-  "@kv-.couch_total_disk_size": true,
-  "@kv-.couch_docs_fragmentation": true,
-  "@kv-.couch_views_fragmentation": true,
-  "@kv-.hit_ratio": true,
-  "@kv-.ep_cache_miss_rate": true,
-  "@kv-.ep_resident_items_rate": true,
-  "@kv-.vb_avg_pending_queue_age": true,
-  "@kv-.vb_pending_resident_items_ratio": true,
-
-  "@kv-.avg_disk_commit_time": true,
-  "@kv-.avg_bg_wait_time": true,
-  "@kv-.avg_active_timestamp_drift": true,
-  "@kv-.avg_replica_timestamp_drift": true,
   "@kv-.ep_dcp_views+indexes_count": true,
   "@kv-.ep_dcp_views+indexes_items_remaining": true,
   "@kv-.ep_dcp_views+indexes_producer_count": true,
   "@kv-.ep_dcp_views+indexes_items_sent": true,
   "@kv-.ep_dcp_views+indexes_total_bytes": true,
   "@kv-.ep_dcp_views+indexes_backoff": true,
-  "@kv-.couch_views_ops": true,
-  "@kv-.disk_write_queue": true,
   "@kv-.ep_dcp_cbas_backoff": true,
   "@kv-.ep_dcp_cbas_count": true,
   "@kv-.ep_dcp_cbas_items_remaining": true,
@@ -63,30 +38,7 @@ var derivedMetric = {
   "@kv-.ep_dcp_xdcr_items_sent": true,
   "@kv-.ep_dcp_xdcr_producer_count": true,
   "@kv-.ep_dcp_xdcr_total_bytes": true,
-  "@kv-.ep_kv_size": true,
-  "@kv-.ep_num_ops_del_meta": true,
-  "@kv-.ep_num_ops_get_meta": true,
-  "@kv-.ep_num_ops_set_meta": true,
-  "@kv-.ep_ops_create": true,
-  "@kv-.ep_ops_update": true,
-  "@kv-.evictions": true,
-  "@kv-.vb_active_num": true,
-  "@kv-.vb_pending_num": true,
-  "@kv-.vb_replica_num": true,
-  "@kv-.xdc_ops": true,
-
-  "@kv-.@items.accesses": true,
-  "@kv-.@items.data_size": true,
-  "@kv-.@items.disk_size": true,
-
-  "@xdcr-.@items.percent_completeness": true,
-
-  "@fts.fts_num_bytes_used_ram": true,
-  "@fts.fts_total_queries_rejected_by_herder": true,
-  "@fts.fts_curr_batches_blocked_by_herder": true,
-
-  "@eventing.eventing/processed_count": true,
-  "@eventing.eventing/failed_count": true
+  "@kv-.evictions": true
 
 }
 
@@ -120,6 +72,8 @@ var compat70 = propertiesToArray(compat65.stats)
       return acc;
     }, {});
 
+
+//per @items Modifier
 var stats70LabelsModifier = {
   "fts": (cfg) => {
     //metric[service] indicates per item stats
@@ -132,6 +86,7 @@ var stats70LabelsModifier = {
     delete cfg.metric["fts"];
     return cfg;
   },
+
   "xdcr": (cfg) => {
     if (!cfg.metric["xdcr"]) {
       return cfg;
@@ -154,6 +109,28 @@ var stats70LabelsModifier = {
     let ids = cfg.metric["index"].split("/");
     let index = ids[0] == "index" ? 1 : 0;
     cfg.metric["index"] = ids[index];
+    return cfg;
+  },
+  "kv": (cfg) => {
+    if (!cfg.metric["kv"]) {
+      return cfg;
+    }
+    let name = cfg.metric.name;
+    let ids = cfg.metric["kv"].split("/");
+
+    if (ids[0] == "views") {
+      cfg.metric["name"] = ("couch_views_" + (name == "accesses" ? "ops" : name));
+    } else {
+      if (name == "accesses") {
+        cfg.metric["name"] = "spatial_views_ops";
+      } else {
+        cfg.metric["name"] = "couch_spatial_" + name;
+      }
+    }
+
+    delete cfg.metric["kv"];
+
+    cfg.metric.signature = ids[1];
     return cfg;
   }
 }
@@ -279,6 +256,8 @@ function getStatAdditionalConfig(statName) {
   case "@eventing.eventing_timeout_count":
   case "@index-.index_num_rows_returned":
   case "@index-.index_frag_percent":
+  case "@kv-.couch_views_ops": //<- not sure if we need irate
+  case "@kv-.couch_views_fragmentation":
     return {applyFunctions: ["sum"]};
 
   case "@cbas-.cbas_failed_at_parser_records_count_total":
@@ -292,6 +271,12 @@ function getStatAdditionalConfig(statName) {
 
   case "@xdcr-.@items.xdcr_rate_replicated_docs_per_second":
     return {metric: {name: "xdcr_docs_written_total"}, applyFunctions: ["irate"]};
+
+  case "@kv-.kv_memory_used_bytes":
+    return {metric: {for: "hashtable"}};
+
+  case "@kv-.kv_avg_disk_time_seconds":
+    return {metric: {op: "commit"}};
 
   case "@kv-.kv_curr_connections":
     return {bucket: null};
@@ -321,9 +306,21 @@ function getStatAdditionalConfig(statName) {
   case "@kv-.kv_cmd_get":
     return {metric: {name: "kv_ops", op: "get"}, applyFunctions: ["irate", "sum"]};
   case "@kv-.kv_cmd_set":
-    return {metric: {name: "kv_ops", op: "set"}, applyFunctions: ["irate"]};
+    return {metric: {name: "kv_ops", op: "set"}, applyFunctions: ["irate", "sum"]};
   case "@kv-.kv_cmd_total_gets":
     return {metric: {name: "kv_ops", op: "get"}, applyFunctions: ["irate", "sum"], bucket: null};
+  case "@kv-.kv_ep_num_ops_del_meta":
+    return {metric: {name: "kv_ops", op: "del_meta"}, applyFunctions: ["irate"]};
+  case "@kv-.kv_ep_num_ops_get_meta":
+    return {metric: {name: "kv_ops", op: "get_meta"}, applyFunctions: ["irate"]};
+  case "@kv-.kv_ep_num_ops_set_meta":
+    return {metric: {name: "kv_ops", op: "set_meta"}, applyFunctions: ["irate"]};
+  case "@kv-.kv_vb_active_num":
+    return {metric: {name: "kv_num_vbuckets", state: "active"}};
+  case "@kv-.kv_vb_pending_num":
+    return {metric: {name: "kv_num_vbuckets", state: "pending"}};
+  case "@kv-.kv_vb_replica_num":
+    return {metric: {name: "kv_num_vbuckets", state: "replica"}};
 
   default:
     if (statName.includes("@index-.index_")) {
@@ -427,11 +424,25 @@ function get70Mapping() {
 
     "@index.index_memory_used_total": "@index.index_memory_used",
     "@index-.index_frag_percent": "@index-.index/fragmentation",
+    "@index.index_ram_percent": "@index.index_ram_percent",
+    "@index.index_remaining_ram": "@index.index_remaining_ram",
+
+    "@index-.@items.num_docs_pending+queued": "@index-.@items.index_num_docs_pending+queued",
+    "@index-.@items.cache_miss_ratio": "@index-.@items.index_cache_miss_ratio",
 
     "@system.couch_docs_actual_disk_size": "@kv-.couch_docs_actual_disk_size",
     "@system.couch_docs_data_size": "@kv-.couch_docs_data_size",
     "@system.couch_views_actual_disk_size": "@kv-.couch_views_actual_disk_size",
     "@system.couch_views_data_size": "@kv-.couch_views_data_size",
+
+    "@kv-.couch_total_disk_size": "@kv-.couch_total_disk_size",
+    "@kv-.couch_docs_fragmentation": "@kv-.couch_docs_fragmentation",
+    "@kv-.couch_views_fragmentation": "@kv-.couch_views_fragmentation",
+    "@kv-.kv_hit_ratio": "@kv-.hit_ratio",
+    "@kv-.kv_ep_cache_miss_ratio": "@kv-.ep_cache_miss_rate",
+    "@kv-.kv_ep_resident_items_ratio": "@kv-.ep_resident_items_rate",
+    "@kv-.kv_vb_avg_pending_queue_age_seconds": "@kv-.vb_avg_pending_queue_age",
+    "@kv-.kv_vb_pending_resident_items_ratio": "@kv-.vb_pending_resident_items_ratio",
 
     "@kv-.kv_vb_active_queue_age_seconds": "@kv-.vb_avg_active_queue_age",
     "@kv-.kv_vb_replica_queue_age_seconds": "@kv-.vb_avg_replica_queue_age",
@@ -449,6 +460,18 @@ function get70Mapping() {
     "@kv-.kv_cmd_get": "@kv-.cmd_get",
     "@kv-.kv_cmd_set": "@kv-.cmd_set",
     "@kv-.kv_cmd_total_gets": "@kv-.cmd_total_gets",
+    "@kv-.couch_views_ops": "@kv-.couch_views_ops",
+    "@kv-.kv_ep_num_ops_del_meta": "@kv-.ep_num_ops_del_meta",
+    "@kv-.kv_ep_num_ops_get_meta": "@kv-.ep_num_ops_get_meta",
+    "@kv-.kv_ep_num_ops_set_meta": "@kv-.ep_num_ops_set_meta",
+    "@kv-.kv_vb_active_num": "@kv-.vb_active_num",
+    "@kv-.kv_vb_pending_num": "@kv-.vb_pending_num",
+    "@kv-.kv_vb_replica_num": "@kv-.vb_replica_num",
+    "@kv-.@items.accesses": "@kv-.@items.accesses", //<- not sure if we need irate
+    "@kv-.@items.data_size": "@kv-.@items.data_size",
+    "@kv-.@items.disk_size": "@kv-.@items.disk_size",
+
+    "@kv-.kv_memory_used_bytes": "@kv-.ep_kv_size",
 
     "@kv-.kv_curr_connections": "@kv-.curr_connections",
     "@kv-.kv_curr_items": "@kv-.curr_items",
@@ -505,6 +528,14 @@ function get70Mapping() {
     "@kv-.kv_vb_replica_itm_memory_bytes": "@kv-.vb_replica_itm_memory",
     "@kv-.kv_vb_replica_meta_data_memory_bytes": "@kv-.vb_replica_meta_data_memory",
 
+    "@kv-.kv_avg_disk_time_seconds": "@kv-.avg_disk_commit_time",
+    "@kv-.kv_avg_bg_wait_time_seconds": "@kv-.avg_bg_wait_time",
+    "@kv-.kv_avg_active_timestamp_drift_seconds": "@kv-.avg_active_timestamp_drift",
+    "@kv-.kv_avg_replica_timestamp_drift_seconds": "@kv-.avg_replica_timestamp_drift",
+    "@kv-.kv_disk_write_queue": "@kv-.disk_write_queue",
+    "@kv-.kv_ep_ops_create": "@kv-.ep_ops_create",
+    "@kv-.kv_ep_ops_update": "@kv-.ep_ops_update",
+    "@kv-.kv_xdc_ops": "@kv-.xdc_ops",
 
     "@xdcr-.@items.xdcr_changes_left_total": "@xdcr-.@items.changes_left",
     "@xdcr-.@items.xdcr_data_replicated_bytes": "@xdcr-.@items.bandwidth_usage",
@@ -518,13 +549,21 @@ function get70Mapping() {
     "@xdcr-.@items.xdcr_wtavg_docs_latency_seconds": "@xdcr-.@items.wtavg_docs_latency", //?s-ms
     "@xdcr-.@items.xdcr_wtavg_meta_latency_seconds": "@xdcr-.@items.wtavg_meta_latency", //?s-ms
 
+    "@xdcr-.@items.percent_completeness": "@xdcr-.@items.xdcr_percent_completeness",
+
     "@fts-.fts_num_bytes_used_disk": "@fts-.fts/num_bytes_used_disk",
     "@fts-.fts_num_files_on_disk": "@fts-.fts/num_files_on_disk",
     "@fts-.fts_total_bytes_indexed": "@fts-.fts/total_bytes_indexed",
     "@fts-.fts_total_queries": "@fts-.fts/total_queries",
 
+    "@fts.fts_num_bytes_used_ram": "@fts.fts_num_bytes_used_ram",
+    "@fts.fts_total_queries_rejected_by_herder": "@fts.fts_total_queries_rejected_by_herder",
+    "@fts.fts_curr_batches_blocked_by_herder": "@fts.fts_curr_batches_blocked_by_herder",
+
     "@eventing.eventing_dcp_backlog": "@eventing.eventing/dcp_backlog",
-    "@eventing.eventing_timeout_count": "@eventing.eventing/timeout_count"
+    "@eventing.eventing_timeout_count": "@eventing.eventing/timeout_count",
+    "@eventing.eventing_processed_count": "@eventing.eventing/processed_count",
+    "@eventing.eventing_failed_count": "@eventing.eventing/failed_count"
 
   });
 }
