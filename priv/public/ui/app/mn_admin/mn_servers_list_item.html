@@ -81,7 +81,7 @@
     </span>
   </div>
 
-  <!-- InactiveFailed, InactiveAdded and Unhealthy states-->
+<!-- InactiveFailed, InactiveAdded and Unhealthy states -------------------- -->
   <div
      class="cbui-tablerow resp-xsml error"
      ng-show="!adminCtl.tasks.inRebalance && rbac.cluster.tasks.read &&
@@ -99,7 +99,7 @@
         failed-over
       </span>
       <span>
-        | Not taking traffic
+        | Not available for traffic
       </span>
       <span ng-show="serversItemCtl.isNodeUnhealthy &&
                      rbac.cluster.pools.write &&
@@ -108,16 +108,20 @@
                      node.recoveryType === 'none'">
         | FAILOVER to activate available replicas
       </span>
-      <span ng-show="serversItemCtl.isNodeInactiveAdded &&
-                     node.recoveryType === 'none'">
-        | ADD pending rebalance
+      <span ng-show="serversItemCtl.isNodeInactiveAdded && node.recoveryType === 'none'">
+        |
+        <span class="bold" ng-click="serversCtl.postRebalance(); $event.stopPropagation()">
+          REBALANCE</span> to finish adding node
       </span>
       <span ng-show="serversItemCtl.isNodeInactiveFailed">
-        | REMOVAL pending rebalance
+        |
+        <span class="bold" ng-click="serversCtl.postRebalance(); $event.stopPropagation()">
+          REBALANCE</span> to finish removing node
       </span>
-      <span ng-show="serversItemCtl.isNodeInactiveAdded
-                     && node.recoveryType !== 'none'">
-        | <span class="allcaps">{{node.recoveryType}}</span> RECOVERY pending rebalance
+      <span ng-show="serversItemCtl.isNodeInactiveAdded && node.recoveryType !== 'none'">
+        |
+        <span class="bold" ng-click="serversCtl.postRebalance(); $event.stopPropagation()">
+          REBALANCE</span> to finish {{node.recoveryType}} recovery
       </span>
     </span>
     <button
@@ -174,8 +178,11 @@
   <div
      class="cbui-tablerow"
      ng-if="!adminCtl.tasks.inRebalance && !serversItemCtl.isNodeInactiveAdded && !serversItemCtl.isNodeUnhealthy && node.pendingEject && rbac.cluster.tasks.read">
-    <span class="error">Node flagged for removal | Still taking traffic | REMOVAL pending rebalance</span>
-
+    <span class="error">
+      Node flagged for removal | Still available to take traffic |
+      <span class="bold" ng-click="serversCtl.postRebalance(); $event.stopPropagation()">
+        REBALANCE</span> to finish removing node
+    </span>
     <button
        ng-show="rbac.cluster.pools.write"
        class="outline"
