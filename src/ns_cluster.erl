@@ -166,11 +166,15 @@ apply_net_config(NodeKVList) ->
     case ensure_dist_ports_match(NodeKVList) of
         ok ->
             case extract_remote_cluster_net_settings(NodeKVList) of
-                {ok, AFamily, NEncryption, Protos} ->
-                    ?log_info("Applying net config. AFamily: ~p, NEncryption: ~p, "
-                              "DistProtos: ~p", [AFamily, NEncryption, Protos]),
+                {ok, AFamily, AFamilyOnly, NEncryption, Protos} ->
+                    ?log_info("Applying net config. AFamily: ~p, "
+                              "AFamilyOnly: ~p, "
+                              "NEncryption: ~p, "
+                              "DistProtos: ~p",
+                              [AFamily, AFamilyOnly, NEncryption, Protos]),
                     Props = [{externalListeners, Protos},
                              {afamily, AFamily},
+                             {afamilyOnly, AFamilyOnly},
                              {nodeEncryption, NEncryption}],
                     case netconfig_updater:apply_config(Props) of
                         ok ->
@@ -199,15 +203,17 @@ extract_remote_cluster_net_settings(NodeKVList) ->
                 end,
     NEncryption = proplists:get_value(<<"nodeEncryption">>, NodeKVList,
                                       false),
+    AFamilyOnly = proplists:get_value(<<"addressFamilyOnly">>, NodeKVList,
+                                      false),
     case proplists:get_value(<<"addressFamily">>, NodeKVList) of
         undefined ->
             case pre_65_remote_node_address_family(NodeKVList) of
-                {ok, AF} -> {ok, AF, NEncryption, Listeners};
+                {ok, AF} -> {ok, AF, AFamilyOnly, NEncryption, Listeners};
                 {error, Msg} -> {error, Msg}
             end;
         AFamilyBin ->
             AFamily = binary_to_atom(AFamilyBin, latin1),
-            {ok, AFamily, NEncryption, Listeners}
+            {ok, AFamily, AFamilyOnly, NEncryption, Listeners}
     end.
 
 %% Pre 6.5 nodes do not include address family info in engageCluster.
@@ -406,6 +412,7 @@ handle_cast(leave, State) ->
                      rest,
                      {node, node(), rest},
                      {node, node(), address_family},
+                     {node, node(), address_family_only},
                      {node, node(), node_encryption},
                      {node, node(), erl_external_listeners}]),
 

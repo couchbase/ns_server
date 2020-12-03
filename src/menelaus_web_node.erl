@@ -331,6 +331,7 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
 
     AFamily = ns_config:search_node_with_default(WantENode, Config,
                                                  address_family, undefined),
+    AFamilyOnly = misc:get_afamily_only(Config, WantENode),
 
     NEncryption = misc:is_node_encryption_enabled(Config, WantENode),
     Listeners = case ns_config:search_node_with_default(WantENode, Config,
@@ -352,6 +353,7 @@ build_node_info(Config, WantENode, InfoNode, LocalAddr) ->
           {ports, {struct, PortsKV ++ DistPorts}},
           {services, ns_cluster_membership:node_services(Config, WantENode)},
           {nodeEncryption, NEncryption},
+          {addressFamilyOnly, AFamilyOnly},
           {configuredHostname, list_to_binary(ConfiguredHostname)}
          ] ++ [{addressFamily, AFamily} || AFamily =/= undefined]
            ++ [{externalListeners, Listeners} || Listeners =/= undefined]

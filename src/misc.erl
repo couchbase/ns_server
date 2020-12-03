@@ -1511,7 +1511,11 @@ get_net_family() ->
 
 -spec get_afamily_only() -> true | false.
 get_afamily_only() ->
-    ns_config:search_node_with_default(address_family_only, false).
+    get_afamily_only(ns_config:latest(), node()).
+
+-spec get_afamily_only(term(), atom()) -> true | false.
+get_afamily_only(Config, Node) ->
+    ns_config:search_node_with_default(Node, Config, address_family_only, false).
 
 -spec get_afamily_type(inet:address_family()) -> off | required | optional.
 get_afamily_type(AFamily) when AFamily =:= inet orelse AFamily =:= inet6 ->
