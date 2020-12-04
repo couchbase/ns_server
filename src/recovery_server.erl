@@ -157,6 +157,7 @@ handle_start_recovery(Bucket, FromPid) ->
         leader_activities:register_process({recovery, Bucket}, majority),
         ok = leader_activities:activate_quorum_nodes(KVServers),
         ns_cluster_membership:activate(KVServers),
+        ok = chronicle_master:ensure_voters(KVServers),
 
         sync_config(KVServers, FromPid),
         cleanup_old_buckets(KVServers),

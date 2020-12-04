@@ -388,6 +388,8 @@ handle_cast(leave, State) ->
     %% stop nearly everything
     ok = ns_server_cluster_sup:stop_ns_server(),
 
+    chronicle_local:leave_cluster(),
+
     stats_archiver:wipe(),
     prometheus_cfg:wipe(),
 
@@ -540,7 +542,8 @@ shun(RemoteNode) ->
         false ->
             ?cluster_debug("Shunning ~p", [RemoteNode]),
             ns_cluster_membership:remove_node(RemoteNode),
-            ns_config_rep:ensure_config_pushed();
+            ns_config_rep:ensure_config_pushed(),
+            ok = chronicle_master:remove_peer(RemoteNode);
         true ->
             ?cluster_debug("Asked to shun myself. Leaving cluster.", []),
             leave()
@@ -891,7 +894,10 @@ do_add_node_engaged_inner(NodeKVList, OtpNode, Auth, Services, Scheme) ->
 
     {struct, MyNodeKVList} = menelaus_web_node:build_full_node_info(node(),
                                                                     misc:localhost()),
+    {ok, ChronicleInfo} = chronicle_master:add_replica(OtpNode),
     Struct = {struct, [{<<"targetNode">>, OtpNode},
+                       {<<"chronicleInfo">>,
+                        base64:encode(term_to_binary(ChronicleInfo))},
                        {<<"requestedServices">>, Services}
                        | MyNodeKVList]},
 
@@ -1186,6 +1192,8 @@ do_complete_join(NodeKVList) ->
         OtpNode = expect_json_property_atom(<<"otpNode">>, NodeKVList),
         OtpCookie = expect_json_property_atom(<<"otpCookie">>, NodeKVList),
         MyNode = expect_json_property_atom(<<"targetNode">>, NodeKVList),
+        ChronicleInfo =
+            expect_json_property_binary(<<"chronicleInfo">>, NodeKVList),
 
         {ok, Services} = get_requested_services(NodeKVList),
         case check_can_join_to(NodeKVList, Services) of
@@ -1195,7 +1203,10 @@ do_complete_join(NodeKVList) ->
                         {error, join_race_detected,
                          <<"Node is already part of cluster.">>, system_not_joinable};
                     true ->
-                        perform_actual_join(OtpNode, OtpCookie)
+                        perform_actual_join(
+                          OtpNode, OtpCookie,
+                          erlang:binary_to_term(base64:decode(ChronicleInfo),
+                                                [safe]))
                 end;
             Error -> Error
         end
@@ -1206,7 +1217,7 @@ do_complete_join(NodeKVList) ->
     end.
 
 
-perform_actual_join(RemoteNode, NewCookie) ->
+perform_actual_join(RemoteNode, NewCookie, ChronicleInfo) ->
     ?cluster_log(0002, "Node ~p is joining cluster via node ~p.",
                  [node(), RemoteNode]),
     %% let ns_memcached know that we don't need to preserve data at all
@@ -1222,6 +1233,7 @@ perform_actual_join(RemoteNode, NewCookie) ->
     Status = try
         ?cluster_debug("ns_cluster: joining cluster. Child has exited.", []),
         ns_cluster_membership:prepare_to_join(RemoteNode, NewCookie),
+        ok = chronicle_local:prepare_join(ChronicleInfo),
 
         %% reload is needed to reinitialize ns_config's cache after
         %% config cleanup ('erase' causes the problem, but it looks like
@@ -1239,6 +1251,7 @@ perform_actual_join(RemoteNode, NewCookie) ->
         ok = ns_config_rep:pull_from_one_node_directly(RemoteNode),
         ?cluster_debug("pre-join merged config is:~n~p", [ns_config_log:sanitize(ns_config:get())]),
 
+        ok = chronicle_local:join_cluster(ChronicleInfo),
         {ok, ok}
     catch
         Type:Error:Stack ->

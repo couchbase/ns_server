@@ -25,6 +25,9 @@
 -export([start_link/0,
          init/1,
          handle_call/3,
+         prepare_join/1,
+         join_cluster/1,
+         leave_cluster/0,
          rename/1,
          sync/0]).
 
@@ -55,11 +58,33 @@ init([]) ->
     end,
     {ok, []}.
 
+handle_call({prepare_join, Info}, _From, State) ->
+    ?log_debug("Wiping chronicle before prepare join."),
+    ok = chronicle:wipe(),
+    ?log_debug("Prepare join. Info: ~p", [Info]),
+    ok = chronicle:prepare_join(Info),
+    {reply, ok, State};
+handle_call({join_cluster, Info}, _From, State) ->
+    ?log_debug("Joining cluster. Info: ~p", [Info]),
+    ok = chronicle:join_cluster(Info),
+    {reply, ok, State};
+handle_call(leave_cluster, _From, State) ->
+    handle_leave(),
+    {reply, ok, State};
 handle_call({rename, OldNode}, _From, State) ->
     handle_rename(OldNode),
     {reply, ok, State};
 handle_call(sync, _From, State) ->
     {reply, ok, State}.
+
+leave_cluster() ->
+    gen_server2:call(?MODULE, leave_cluster).
+
+prepare_join(Info) ->
+    gen_server2:call(?MODULE, {prepare_join, Info}).
+
+join_cluster(Info) ->
+    gen_server2:call(?MODULE, {join_cluster, Info}).
 
 rename(OldNode) ->
     gen_server2:call(?MODULE, {rename, OldNode}).
@@ -76,6 +101,11 @@ ensure_provisioned() ->
         Other ->
             Other
     end.
+
+handle_leave() ->
+    ?log_debug("Leaving cluster"),
+    ok = chronicle:wipe(),
+    ok = ensure_provisioned().
 
 handle_rename(OldNode) ->
     NewNode = node(),

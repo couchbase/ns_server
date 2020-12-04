@@ -48,6 +48,8 @@ child_specs() ->
       permanent, 1000, worker, []},
      {ns_tick, {ns_tick, start_link, []},
       permanent, 10, worker, [ns_tick]},
+     {chronicle_master, {chronicle_master, start_link, []},
+      permanent, 1000, worker, [chronicle_master]},
      {ns_orchestrator_sup, {ns_orchestrator_sup, start_link, []},
       permanent, infinity, supervisor, [ns_orchestrator_sup]},
      {collections, {collections, start_link, []},
