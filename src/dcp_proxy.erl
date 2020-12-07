@@ -228,6 +228,11 @@ suppress_logging(<<?RES_MAGIC:8, ?DCP_WINDOW_UPDATE, _KeyLen:16, _ExtLen:8,
     true;
 suppress_logging(<<_:8, ?DCP_NOP:8, _Rest/binary>>) ->
     true;
+suppress_logging(<<?RES_MAGIC:8, ?DCP_SYSTEM_EVENT:8, _KeyLen:16, _ExtLen:8,
+                   _DataType:8, ?SUCCESS:16, _Rest/binary>>) ->
+    true;
+suppress_logging(<<?REQ_MAGIC:8, ?DCP_SYSTEM_EVENT:8, _Rest/binary>>) ->
+    true;
 suppress_logging(_) ->
     false.
 
