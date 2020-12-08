@@ -813,6 +813,7 @@ reset_per_service_cipher_suites(Req) ->
       end, services_with_security_settings()).
 
 handle_reset_ciphers_suites(Req) ->
+    menelaus_util:assert_is_enterprise(),
     ns_config:set(cipher_suites, []),
     ns_audit:security_settings(Req, [{cipher_suites, []}]),
     reset_per_service_cipher_suites(Req),
