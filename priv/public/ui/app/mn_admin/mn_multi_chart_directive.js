@@ -98,7 +98,7 @@ function mnMultiChartDirective($window, mnD3Service) {
       }, 10, {leading: true});
 
       angular.element(chartNode).on("mousemove mouseup mousedown mouseout", throttledSync);
-      angular.element(chartNode).on("mousemove", throttledPause);
+      angular.element(chartNode).on("mouseenter", throttledPause);
       angular.element(chartNode).on("mouseout", throttledResume);
 
       $scope.$on("mnStatsCancelTimer", function () {
@@ -115,7 +115,7 @@ function mnMultiChartDirective($window, mnD3Service) {
 
       $scope.$on("$destroy", function () {
         angular.element(chartNode).off("mousemove mouseup mousedown mouseout", throttledSync);
-        angular.element(chartNode).off("mousemove", throttledPause);
+        angular.element(chartNode).off("mouseenter", throttledPause);
         angular.element(chartNode).off("mouseout", throttledResume);
       });
 
