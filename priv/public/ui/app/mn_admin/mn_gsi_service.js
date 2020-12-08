@@ -18,9 +18,14 @@ function mnGsiServiceFactory($http, qwQueryService) {
   return mnGsiService;
 
   function postDropIndex(row) {
-    // to drop an index, we create a 'DROP' query to send to the query workbench
+    // new indexes have a scope and collection
+    var query = 'DROP INDEX default:`' + row.bucket + '`.`' +
+      (row.scope ? row.scope + '`.`' : '') +
+      (row.collection ? row.collection + '`.`' : '') +
+      row.indexName + '`';
+
     return qwQueryService
-      .executeQueryUtil('DROP INDEX `' + row.bucket + '`.`' + row.indexName + '`', true);
+      .executeQueryUtil(query, true);
   }
 
   function getIndexesState(mnHttpParams) {

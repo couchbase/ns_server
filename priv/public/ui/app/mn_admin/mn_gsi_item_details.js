@@ -151,7 +151,8 @@ function mnGsiItemDetails() {
             }
             row.awaitingRemoval = false;
           })
-          .showGlobalSuccess("Index dropped successfully!");
+          .showGlobalSuccess("Index dropped successfully!")
+          .catchGlobalErrors("Error dropping index.");
       });
     }
 
