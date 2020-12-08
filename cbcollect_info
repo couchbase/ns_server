@@ -1188,13 +1188,21 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
     if proj_port:
         proj_url = 'http://%s:%s/debug/pprof/goroutine?debug=1' % (
             local_url_addr, proj_port)
+        proj_mem_url = 'http://%s:%s/debug/pprof/heap?debug=1' % (
+            local_url_addr, proj_port)
         projector_tasks = [
             make_curl_task(
                 name="Projector Go routine dump ",
                 user="@",
                 password=memcached_pass,
                 url=proj_url,
-                log_file="projector_pprof.log")]
+                log_file="projector_pprof.log"),
+            make_curl_task(
+                name="Projector Memory Profile: ",
+                user="@",
+                password=memcached_pass,
+                url=proj_mem_url,
+                log_file="projector_mprof.log")]
 
     goxdcr_tasks = []
     goxdcr_port = read_guts(guts, "xdcr_rest_port")
