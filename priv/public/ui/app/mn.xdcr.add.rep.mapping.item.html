@@ -21,6 +21,7 @@
        style="display: table;background-color: inherit;"
        [formControlName]="item.name"
        [mnFocus]="group.flags.get(item.name).valueChanges"
+       mnName="{{item.name}}"
        type="text"
        autocorrect="off"
        spellcheck="false"

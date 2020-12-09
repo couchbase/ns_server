@@ -41,9 +41,10 @@
          formGroupName="field">
         <input
            [attr.id]="service + '-service-field'"
-           type="number"
            [formControlName]="service"
-           [mnFocus]="focusFieldSubject">
+           [mnFocus]="focusFieldSubject"
+           type="number"
+           mnName="{{service}}">
         <!-- ng-disabled="config.services && !config.services.model.kv || (rbac && !rbac.cluster.pools.write)" -->
         <!-- ng-model="config.memoryQuota" -->
         <div class="inside-label">MiB</div>

@@ -12,18 +12,20 @@ class MnFocusDirective extends MnLifeCycleHooksToStream {
     new Directive({
       selector: "[mnFocus]",
       inputs: [
-        "mnFocus"
+        "mnFocus",
+        "mnName"
       ],
       changeDetection: ChangeDetectionStrategy.OnPush
     })
   ]}
 
-  static get parameters() { return [ElementRef]}
+
+  static get parameters() { return [
+  ]}
 
   constructor(el) {
     super();
     this.el = el.nativeElement;
-    this.formControlName = this.el.getAttribute("formControlName");
   }
 
   ngOnInit() {
@@ -39,7 +41,7 @@ class MnFocusDirective extends MnLifeCycleHooksToStream {
   }
 
   maybePrevent(value) {
-    return (typeof value === "string") ? value === this.formControlName : value
+    return (typeof value === "string") ? value === this.mnName : value;
   }
 
 }
