@@ -102,10 +102,20 @@ buckets_interesting() ->
                         B = proplists:get_value(<<"bucket">>, Props),
                         {true, {binary_to_list(B), binary_to_atom(N, latin1)}}
                     end),
-    interesting_stats_backward_compat_mapping(
-      misc:groupby_map(fun ({{Bucket, Name}, Value}) ->
-                           {Bucket, {Name, Value}}
-                       end, Res)).
+    BucketStats = interesting_stats_backward_compat_mapping(
+                    misc:groupby_map(fun ({{Bucket, Name}, Value}) ->
+                                         {Bucket, {Name, Value}}
+                                     end, Res)),
+
+    BucketInterestingStats =
+        [curr_items, curr_items_tot, vb_replica_curr_items, mem_used,
+         couch_docs_actual_disk_size, couch_views_actual_disk_size,
+         couch_spatial_disk_size, couch_docs_data_size, couch_views_data_size,
+         couch_spatial_data_size, vb_active_num_non_resident, cmd_get, get_hits,
+         ep_bg_fetched, ops],
+
+    [{Bucket, zero_not_existing_stats(Stats, BucketInterestingStats)}
+        || {Bucket, Stats} <- BucketStats].
 
 from_nodes(Nodes, Function, Args, Timeout) ->
     {GoodRes, BadRes} = misc:multi_call(Nodes, ns_server_stats,
@@ -197,3 +207,6 @@ interesting_stats_backward_compat_mapping(BucketStats) ->
       fun ({Bucket, Stats}) ->
           {Bucket, [{Map(N), V} || {N, V} <- Stats]}
       end, BucketStats).
+
+zero_not_existing_stats(StatsData, StatsNames) ->
+    misc:update_proplist([{N, 0} || N <- StatsNames], StatsData).
