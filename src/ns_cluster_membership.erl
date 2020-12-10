@@ -146,9 +146,11 @@ system_joinable() ->
     nodes_wanted() =:= [node()].
 
 activate(Nodes) ->
+    ?log_debug("Activate nodes ~p", [Nodes]),
     chronicle_compat:set_multiple(update_membership_sets(Nodes, active)).
 
 deactivate(Nodes) ->
+    ?log_debug("Deactivate nodes ~p", [Nodes]),
     chronicle_compat:set_multiple(update_membership_sets(Nodes,
                                                          inactiveFailed)).
 
@@ -181,6 +183,8 @@ re_failover(NodeString) ->
         undefined ->
             not_possible;
         Node ->
+            ?log_debug("Move node ~p from pending-recovery state to failed "
+                       "over state", [Node]),
             chronicle_compat:transaction(
               [nodes_wanted,
                {node, Node, membership},
@@ -205,6 +209,7 @@ get_recovery_type(Config, Node) ->
 
 -spec update_recovery_type(node(), delta | full) -> ok | bad_node.
 update_recovery_type(Node, NewType) ->
+    ?log_debug("Update recovery type of ~p to ~p", [Node, NewType]),
     chronicle_compat:transaction(
       [{node, Node, membership},
        {node, Node, recovery_type}],
@@ -225,6 +230,8 @@ clear_recovery_type_sets(Nodes) ->
     [{{node, N, recovery_type}, none} || N <- Nodes].
 
 add_node(Node, GroupUUID, Services) ->
+    ?log_debug("Add node ~p, GroupUUID = ~p, Services = ~p",
+               [Node, GroupUUID, Services]),
     chronicle_compat:transaction(
       [nodes_wanted, server_groups],
       fun (Snapshot) ->
@@ -405,6 +412,7 @@ set_service_map(kv, _Nodes) ->
     %% kv is special; it's dealt with using different set of functions
     ok;
 set_service_map(Service, Nodes) ->
+    ?log_debug("Set service map for service ~p to ~p", [Service, Nodes]),
     master_activity_events:note_set_service_map(Service, Nodes),
     chronicle_compat:set({service_map, Service}, Nodes).
 
@@ -416,6 +424,7 @@ get_service_map(Config, Service) ->
     chronicle_compat:get(Config, {service_map, Service}, #{default => []}).
 
 failover_service_nodes(Config, Service, Nodes) ->
+    ?log_debug("Failover nodes ~p from service ~p", [Nodes, Service]),
     Map = get_service_map(Config, Service),
     chronicle_compat:set_multiple(
       [{{service_map, Service}, Map -- Nodes},
@@ -426,6 +435,7 @@ service_has_pending_failover(Config, Service) ->
                          #{default => false}).
 
 service_clear_pending_failover(Service) ->
+    ?log_debug("Clear pending failover for service ~p", [Service]),
     chronicle_compat:set({service_failover_pending, Service}, false).
 
 node_active_services(Node) ->
