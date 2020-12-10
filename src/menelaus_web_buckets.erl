@@ -1167,8 +1167,18 @@ pitr_not_developer_preview_error(Param) ->
      <<"Point in time replication is only supported in "
        "developer preview mode">>}.
 
-parse_validate_pitr_enabled(_Params, _IsNew, false = _IsDeveloperPreview) ->
-    pitr_not_developer_preview_error(pitrEnabled);
+%% PITR parameter parsing and validation when not in developer preview mode.
+%% Specifying PITR params in production builds is not allowed.
+parse_validate_pitr_param_not_dev_preview(Key, Params) ->
+    case proplists:is_defined(Key, Params) of
+        true ->
+            pitr_not_developer_preview_error(Key);
+        false ->
+            ignore
+    end.
+
+parse_validate_pitr_enabled(Params, _IsNew, false = _IsDeveloperPreview) ->
+    parse_validate_pitr_param_not_dev_preview("pitrEnabled", Params);
 parse_validate_pitr_enabled(Params, IsNew, true = _IsDeveloperPreview) ->
     Result = menelaus_util:parse_validate_boolean_field("pitrEnabled",
                                                         '_', Params),
@@ -1188,31 +1198,32 @@ parse_validate_pitr_enabled(Params, IsNew, true = _IsDeveloperPreview) ->
             value_not_boolean_error(pitrEnabled)
     end.
 
-parse_validate_pitr_granularity(Params, IsNew, IsDeveloperPreview) ->
+parse_validate_pitr_granularity(Params, _IsNew, false = _IsDeveloperPreview) ->
+    parse_validate_pitr_param_not_dev_preview("pitrGranularity", Params);
+parse_validate_pitr_granularity(Params, IsNew, true = _IsDeveloperPreview) ->
     parse_validate_pitr_numeric_param(Params,
                                       pitrGranularity,
                                       pitr_granularity,
                                       pitr_granularity_min(),
                                       pitr_granularity_max(),
                                       pitr_granularity_default(),
-                                      IsNew, IsDeveloperPreview).
+                                      IsNew).
 
-parse_validate_pitr_max_history_age(Params, IsNew, IsDeveloperPreview) ->
+parse_validate_pitr_max_history_age(Params, _IsNew,
+                                    false = _IsDeveloperPreview) ->
+    parse_validate_pitr_param_not_dev_preview("pitrMaxHistoryAge", Params);
+parse_validate_pitr_max_history_age(Params, IsNew,
+                                    true = _IsDeveloperPreview) ->
     parse_validate_pitr_numeric_param(Params,
                                       pitrMaxHistoryAge,
                                       pitr_max_history_age,
                                       pitr_max_history_age_min(),
                                       pitr_max_history_age_max(),
                                       pitr_max_history_age_default(),
-                                      IsNew, IsDeveloperPreview).
+                                      IsNew).
 
-parse_validate_pitr_numeric_param(_Params, Param, _ConfigKey,
-                                  _Min, _Max, _Default, _IsNew,
-                                  false = _IsDeveloperPreview) ->
-    pitr_not_developer_preview_error(Param);
 parse_validate_pitr_numeric_param(Params, Param, ConfigKey, Min, Max,
-                                  Default, IsNew,
-                                  true = _IsDeveloperPreview) ->
+                                  Default, IsNew) ->
     Value = proplists:get_value(atom_to_list(Param), Params),
     case {Value, IsNew} of
         {undefined, true} ->
@@ -2119,8 +2130,6 @@ parse_validate_pitr_max_history_age_test() ->
     %% this test clearer.
     IsNewTrue = true,
     IsNewFalse = false,
-    IsDeveloperPreviewTrue = true,
-    IsDeveloperPreviewFalse = false,
 
     LegitParams = [{"pitrMaxHistoryAge", "100"}],
 
@@ -2134,7 +2143,7 @@ parse_validate_pitr_max_history_age_test() ->
                 pitr_max_history_age_min(),
                 pitr_max_history_age_max(),
                 pitr_max_history_age_default(),
-                IsNewTrue, IsDeveloperPreviewTrue),
+                IsNewTrue),
     Expected1 = {ok, pitr_max_history_age, 100},
     ?assertEqual(Expected1, Result1),
 
@@ -2146,7 +2155,7 @@ parse_validate_pitr_max_history_age_test() ->
                 pitr_max_history_age_min(),
                 pitr_max_history_age_max(),
                 pitr_max_history_age_default(),
-                IsNewFalse, IsDeveloperPreviewTrue),
+                IsNewFalse),
     Expected2 = {ok, pitr_max_history_age, 100},
     ?assertEqual(Expected2, Result2),
 
@@ -2160,7 +2169,7 @@ parse_validate_pitr_max_history_age_test() ->
                 pitr_max_history_age_min(),
                 pitr_max_history_age_max(),
                 pitr_max_history_age_default(),
-                IsNewTrue, IsDeveloperPreviewTrue),
+                IsNewTrue),
     Expected3 = value_not_numeric_error(pitrMaxHistoryAge, "foo"),
     ?assertEqual(Expected3, Result3),
 
@@ -2172,7 +2181,7 @@ parse_validate_pitr_max_history_age_test() ->
                 pitr_max_history_age_min(),
                 pitr_max_history_age_max(),
                 pitr_max_history_age_default(),
-                IsNewFalse, IsDeveloperPreviewTrue),
+                IsNewFalse),
     Expected4 = value_not_numeric_error(pitrMaxHistoryAge, "foo"),
     ?assertEqual(Expected4, Result4),
 
@@ -2186,7 +2195,7 @@ parse_validate_pitr_max_history_age_test() ->
                 pitr_max_history_age_min(),
                 pitr_max_history_age_max(),
                 pitr_max_history_age_default(),
-                IsNewTrue, IsDeveloperPreviewTrue),
+                IsNewTrue),
     Expected5 = value_not_in_range_error(pitrMaxHistoryAge, "0",
                                          pitr_max_history_age_min(),
                                          pitr_max_history_age_max()),
@@ -2200,7 +2209,7 @@ parse_validate_pitr_max_history_age_test() ->
                 pitr_max_history_age_min(),
                 pitr_max_history_age_max(),
                 pitr_max_history_age_default(),
-                IsNewFalse, IsDeveloperPreviewTrue),
+                IsNewFalse),
     Expected6 = value_not_in_range_error(pitrMaxHistoryAge, "0",
                                          pitr_max_history_age_min(),
                                          pitr_max_history_age_max()),
@@ -2216,7 +2225,7 @@ parse_validate_pitr_max_history_age_test() ->
                 pitr_max_history_age_min(),
                 pitr_max_history_age_max(),
                 pitr_max_history_age_default(),
-                IsNewTrue, IsDeveloperPreviewTrue),
+                IsNewTrue),
     Expected7 = value_not_in_range_error(pitrMaxHistoryAge, "172801",
                                          pitr_max_history_age_min(),
                                          pitr_max_history_age_max()),
@@ -2230,7 +2239,7 @@ parse_validate_pitr_max_history_age_test() ->
                 pitr_max_history_age_min(),
                 pitr_max_history_age_max(),
                 pitr_max_history_age_default(),
-                IsNewFalse, IsDeveloperPreviewTrue),
+                IsNewFalse),
     Expected8 = value_not_in_range_error(pitrMaxHistoryAge, "172801",
                                          pitr_max_history_age_min(),
                                          pitr_max_history_age_max()),
@@ -2247,7 +2256,7 @@ parse_validate_pitr_max_history_age_test() ->
                 pitr_max_history_age_min(),
                 pitr_max_history_age_max(),
                 pitr_max_history_age_default(),
-                IsNewTrue, IsDeveloperPreviewTrue),
+                IsNewTrue),
     Expected9 = {ok, pitr_max_history_age, 86400},
     ?assertEqual(Expected9, Result9),
 
@@ -2260,24 +2269,7 @@ parse_validate_pitr_max_history_age_test() ->
                  pitr_max_history_age_min(),
                  pitr_max_history_age_max(),
                  pitr_max_history_age_default(),
-                 IsNewFalse, IsDeveloperPreviewTrue),
+                 IsNewFalse),
     Expected10 = ignore,
-    ?assertEqual(Expected10, Result10),
-
-    %% sub-test: ensure that we get an error message if we're not in
-    %% developer preview mode.  The value of IsNew shouldn't matter, so
-    %% we use false.
-    Result11 = parse_validate_pitr_numeric_param(
-                 LegitParams,
-                 pitrMaxHistoryAge,
-                 pitr_max_history_age,
-                 pitr_max_history_age_min(),
-                 pitr_max_history_age_max(),
-                 pitr_max_history_age_default(),
-                 IsNewTrue, IsDeveloperPreviewFalse),
-    Expected11 =
-        {error, pitrMaxHistoryAge,
-         <<"Point in time replication is only supported in "
-           "developer preview mode">>},
-    ?assertEqual(Expected11, Result11).
+    ?assertEqual(Expected10, Result10).
 -endif.
