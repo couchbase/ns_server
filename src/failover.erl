@@ -106,7 +106,13 @@ orchestrate(Nodes, Options) ->
 
 finish_failover(Nodes) ->
     ok = leader_activities:deactivate_quorum_nodes(Nodes),
-    deactivate_nodes(Nodes).
+    deactivate_nodes(Nodes),
+    case chronicle_compat:enabled() of
+        true ->
+            ok = chronicle_master:deactivate_voters(Nodes);
+        false ->
+            ok
+    end.
 
 config_sync_and_orchestrate(Nodes, Options) ->
     case pre_failover_config_sync(Nodes, Options) of

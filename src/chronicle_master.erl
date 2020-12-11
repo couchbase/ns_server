@@ -28,6 +28,7 @@
          add_replica/1,
          remove_peer/1,
          ensure_voters/1,
+         deactivate_voters/1,
          upgrade_cluster/1]).
 
 -define(UPGRADE_TIMEOUT, ?get_timeout(upgrade, 240000)).
@@ -40,6 +41,9 @@ add_replica(Node) ->
 
 ensure_voters(Nodes) ->
     gen_server2:call(?SERVER, {ensure_voters, Nodes}).
+
+deactivate_voters(Nodes) ->
+    gen_server2:call(?SERVER, {deactivate_voters, Nodes}).
 
 remove_peer(Node) ->
     gen_server2:call(?SERVER, {remove_peer, Node}).
@@ -74,6 +78,12 @@ handle_call({ensure_voters, Nodes}, _From, Lock) ->
         NewVoters ->
             ok = promote_to_voters(Lock, NewVoters)
     end,
+    {reply, ok, Lock};
+
+handle_call({deactivate_voters, Nodes}, _From, Lock) ->
+    ?log_debug("Changing nodes ~p from voters to replicas, Lock: ~p",
+               [Nodes, Lock]),
+    ok = chronicle:set_peer_roles(Lock, [{N, replica} || N <- Nodes]),
     {reply, ok, Lock};
 
 handle_call({upgrade_cluster, NodesToAdd}, _From, Lock) ->
