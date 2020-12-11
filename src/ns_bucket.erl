@@ -244,7 +244,7 @@ durability_min_level(BucketConfig) ->
             end
     end.
 
-%% Point-in-time Replication numerical parameter ranges and default values.
+%% Point-in-time Recovery numerical parameter ranges and default values.
 
 %% The default value of the attribute. Currently PITR-only.
 attribute_default(Name) ->

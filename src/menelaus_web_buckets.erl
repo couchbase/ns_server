@@ -1146,12 +1146,11 @@ value_not_boolean_error(Param) ->
      list_to_binary(io_lib:format("~p must be true or false",
                                   [Param]))}.
 
-%% Point-in-time Replication (PITR) parameter parsing and validation.
+%% Point-in-time Recovery (PITR) parameter parsing and validation.
 
 pitr_not_developer_preview_error(Param) ->
     {error, Param,
-     <<"Point in time replication is only supported in "
-       "developer preview mode">>}.
+     <<"Point in time recovery is only supported in developer preview mode">>}.
 
 %% PITR parameter parsing and validation when not in developer preview mode.
 %% Specifying PITR params in production builds is not allowed.
