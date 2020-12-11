@@ -220,6 +220,13 @@ should_move(_) ->
     false.
 
 upgrade(Config) ->
+    case chronicle_compat:forced() of
+        true ->
+            do_upgrade(Config);
+        false ->
+            ok
+    end.
+do_upgrade(Config) ->
     OtherNodes = ns_node_disco:nodes_wanted(Config) -- [node()],
     ok = chronicle_master:upgrade_cluster(OtherNodes),
 

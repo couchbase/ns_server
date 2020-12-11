@@ -22,6 +22,7 @@
 
 -export([backend/0,
          enabled/0,
+         forced/0,
          get/2,
          get/3,
          set/2,
@@ -39,8 +40,18 @@ backend() ->
             ns_config
     end.
 
+forced() ->
+    case os:getenv("FORCE_CHRONICLE") of
+        false ->
+            false;
+        "0" ->
+            false;
+        _ ->
+            true
+    end.
+
 enabled() ->
-    cluster_compat_mode:is_cluster_cheshirecat().
+    cluster_compat_mode:is_cluster_cheshirecat() andalso forced().
 
 get(Key, Opts) ->
     get(ns_config:latest(), Key, Opts).
