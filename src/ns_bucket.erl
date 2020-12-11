@@ -64,6 +64,9 @@
          pitr_enabled/1,
          pitr_granularity/1,
          pitr_max_history_age/1,
+         attribute_default/1,
+         attribute_min/1,
+         attribute_max/1,
          ram_quota/1,
          conflict_resolution_type/1,
          drift_thresholds/1,
@@ -241,6 +244,29 @@ durability_min_level(BucketConfig) ->
             end
     end.
 
+%% Point-in-time Replication numerical parameter ranges and default values.
+
+%% The default value of the attribute. Currently PITR-only.
+attribute_default(Name) ->
+    case Name of
+        pitr_granularity -> 600;        % 10 minutes
+        pitr_max_history_age -> 86400   % 24 hours
+    end.
+
+%% The minimum value of the attribute. Currently PITR-only.
+attribute_min(Name) ->
+    case Name of
+        pitr_granularity -> 1;          % 1 second
+        pitr_max_history_age -> 1       % 1 second
+    end.
+
+%% The maximum value of the attribute. Currently PITR-only.
+attribute_max(Name) ->
+    case Name of
+        pitr_granularity -> 18000;      % 5 hours
+        pitr_max_history_age -> 172800  % 48 hours
+    end.
+
 %% Per-bucket-type point-in-time recovery attributes.  Point-in-time
 %% recovery is not supported on memcached buckets.
 pitr_enabled(BucketConfig) ->
@@ -256,9 +282,8 @@ pitr_granularity(BucketConfig) ->
         memcached ->
             undefined;
         membase ->
-            proplists:get_value(
-              pitr_granularity, BucketConfig,
-              menelaus_web_buckets:pitr_granularity_default())
+            proplists:get_value(pitr_granularity, BucketConfig,
+                                attribute_default(pitr_granularity))
     end.
 
 pitr_max_history_age(BucketConfig) ->
@@ -266,9 +291,8 @@ pitr_max_history_age(BucketConfig) ->
         memcached ->
             undefined;
         membase ->
-            proplists:get_value(
-              pitr_max_history_age, BucketConfig,
-              menelaus_web_buckets:pitr_max_history_age_default())
+            proplists:get_value(pitr_max_history_age, BucketConfig,
+                                attribute_default(pitr_max_history_age))
     end.
 
 %% returns bucket ram quota multiplied by number of nodes this bucket

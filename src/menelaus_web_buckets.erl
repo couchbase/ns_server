@@ -53,9 +53,7 @@
          maybe_cleanup_old_buckets/0,
          serve_short_bucket_info/2,
          serve_streaming_short_bucket_info/2,
-         get_ddocs_list/2,
-         pitr_granularity_default/0,
-         pitr_max_history_age_default/0]).
+         get_ddocs_list/2]).
 
 -import(menelaus_util,
         [reply/2,
@@ -1123,20 +1121,6 @@ parse_validate_ephemeral_durability_min_level(_Other) ->
      <<"Durability minimum level must be either 'none' or 'majority' for "
        "ephemeral buckets">>}.
 
-%% Point-in-time Replication (PITR) parameter parsing and validation.
-
-%% Point-in-time Replication numerical parameter ranges and default values.
-
-%% The granularity (interval between each rollback point) in seconds.
-pitr_granularity_min() -> 1.
-pitr_granularity_max() ->  18000.         % 5 hours
-pitr_granularity_default() -> 600.        % 10 minutes
-
-%% The number of seconds of the oldest entry to keep as part of compaction.
-pitr_max_history_age_min() -> 1.
-pitr_max_history_age_max() -> 172800.     % 48 hours
-pitr_max_history_age_default() -> 86400.  % 24 hours
-
 -spec value_not_in_range_error(Param, Value, Min, Max) -> Result when
       Param :: atom(),
       Value :: string(),
@@ -1161,6 +1145,8 @@ value_not_boolean_error(Param) ->
     {error, Param,
      list_to_binary(io_lib:format("~p must be true or false",
                                   [Param]))}.
+
+%% Point-in-time Replication (PITR) parameter parsing and validation.
 
 pitr_not_developer_preview_error(Param) ->
     {error, Param,
@@ -1201,46 +1187,37 @@ parse_validate_pitr_enabled(Params, IsNew, true = _IsDeveloperPreview) ->
 parse_validate_pitr_granularity(Params, _IsNew, false = _IsDeveloperPreview) ->
     parse_validate_pitr_param_not_dev_preview("pitrGranularity", Params);
 parse_validate_pitr_granularity(Params, IsNew, true = _IsDeveloperPreview) ->
-    parse_validate_pitr_numeric_param(Params,
-                                      pitrGranularity,
-                                      pitr_granularity,
-                                      pitr_granularity_min(),
-                                      pitr_granularity_max(),
-                                      pitr_granularity_default(),
-                                      IsNew).
+    parse_validate_pitr_numeric_param(Params, pitrGranularity,
+                                      pitr_granularity, IsNew).
 
 parse_validate_pitr_max_history_age(Params, _IsNew,
                                     false = _IsDeveloperPreview) ->
     parse_validate_pitr_param_not_dev_preview("pitrMaxHistoryAge", Params);
 parse_validate_pitr_max_history_age(Params, IsNew,
                                     true = _IsDeveloperPreview) ->
-    parse_validate_pitr_numeric_param(Params,
-                                      pitrMaxHistoryAge,
-                                      pitr_max_history_age,
-                                      pitr_max_history_age_min(),
-                                      pitr_max_history_age_max(),
-                                      pitr_max_history_age_default(),
-                                      IsNew).
+    parse_validate_pitr_numeric_param(Params, pitrMaxHistoryAge,
+                                      pitr_max_history_age, IsNew).
 
-parse_validate_pitr_numeric_param(Params, Param, ConfigKey, Min, Max,
-                                  Default, IsNew) ->
+parse_validate_pitr_numeric_param(Params, Param, ConfigKey, IsNew) ->
     Value = proplists:get_value(atom_to_list(Param), Params),
     case {Value, IsNew} of
         {undefined, true} ->
             %% The value wasn't supplied and we're creating a bucket:
             %% use the default value.
-            {ok, ConfigKey, Default};
+            {ok, ConfigKey, ns_bucket:attribute_default(ConfigKey)};
         {undefined, false} ->
             %% The value wasn't supplied and we're modifying a bucket:
             %% don't complain since the value was either specified or a
             %% default used when the bucket was created.
             ignore;
         {_, _} ->
-            validate_pitr_numeric_param(Value, Param, ConfigKey, Min, Max)
+            validate_pitr_numeric_param(Value, Param, ConfigKey)
     end.
 
 %% Validates defined numeric parameters.
-validate_pitr_numeric_param(Value, Param, ConfigKey, Min, Max) ->
+validate_pitr_numeric_param(Value, Param, ConfigKey) ->
+    Min = ns_bucket:attribute_min(ConfigKey),
+    Max = ns_bucket:attribute_max(ConfigKey),
     Result = menelaus_util:parse_validate_number(Value, Min, Max),
     case Result of
         {ok, X} ->
@@ -2140,9 +2117,6 @@ parse_validate_pitr_max_history_age_test() ->
                 LegitParams,
                 pitrMaxHistoryAge,
                 pitr_max_history_age,
-                pitr_max_history_age_min(),
-                pitr_max_history_age_max(),
-                pitr_max_history_age_default(),
                 IsNewTrue),
     Expected1 = {ok, pitr_max_history_age, 100},
     ?assertEqual(Expected1, Result1),
@@ -2152,9 +2126,6 @@ parse_validate_pitr_max_history_age_test() ->
                 LegitParams,
                 pitrMaxHistoryAge,
                 pitr_max_history_age,
-                pitr_max_history_age_min(),
-                pitr_max_history_age_max(),
-                pitr_max_history_age_default(),
                 IsNewFalse),
     Expected2 = {ok, pitr_max_history_age, 100},
     ?assertEqual(Expected2, Result2),
@@ -2166,9 +2137,6 @@ parse_validate_pitr_max_history_age_test() ->
                 NonNumericParams,
                 pitrMaxHistoryAge,
                 pitr_max_history_age,
-                pitr_max_history_age_min(),
-                pitr_max_history_age_max(),
-                pitr_max_history_age_default(),
                 IsNewTrue),
     Expected3 = value_not_numeric_error(pitrMaxHistoryAge, "foo"),
     ?assertEqual(Expected3, Result3),
@@ -2178,9 +2146,6 @@ parse_validate_pitr_max_history_age_test() ->
                 NonNumericParams,
                 pitrMaxHistoryAge,
                 pitr_max_history_age,
-                pitr_max_history_age_min(),
-                pitr_max_history_age_max(),
-                pitr_max_history_age_default(),
                 IsNewFalse),
     Expected4 = value_not_numeric_error(pitrMaxHistoryAge, "foo"),
     ?assertEqual(Expected4, Result4),
@@ -2192,13 +2157,11 @@ parse_validate_pitr_max_history_age_test() ->
                 TooSmallParams,
                 pitrMaxHistoryAge,
                 pitr_max_history_age,
-                pitr_max_history_age_min(),
-                pitr_max_history_age_max(),
-                pitr_max_history_age_default(),
                 IsNewTrue),
-    Expected5 = value_not_in_range_error(pitrMaxHistoryAge, "0",
-                                         pitr_max_history_age_min(),
-                                         pitr_max_history_age_max()),
+    Expected5 = value_not_in_range_error(
+                  pitrMaxHistoryAge, "0",
+                  ns_bucket:attribute_min(pitr_max_history_age),
+                  ns_bucket:attribute_max(pitr_max_history_age)),
     ?assertEqual(Expected5, Result5),
 
     %% sub-test: too small params, IsNew false
@@ -2206,13 +2169,11 @@ parse_validate_pitr_max_history_age_test() ->
                 TooSmallParams,
                 pitrMaxHistoryAge,
                 pitr_max_history_age,
-                pitr_max_history_age_min(),
-                pitr_max_history_age_max(),
-                pitr_max_history_age_default(),
                 IsNewFalse),
-    Expected6 = value_not_in_range_error(pitrMaxHistoryAge, "0",
-                                         pitr_max_history_age_min(),
-                                         pitr_max_history_age_max()),
+    Expected6 = value_not_in_range_error(
+                  pitrMaxHistoryAge, "0",
+                  ns_bucket:attribute_min(pitr_max_history_age),
+                  ns_bucket:attribute_max(pitr_max_history_age)),
     ?assertEqual(Expected6, Result6),
 
     TooBigParams = [{"pitrMaxHistoryAge", "172801"}],
@@ -2222,13 +2183,11 @@ parse_validate_pitr_max_history_age_test() ->
                 TooBigParams,
                 pitrMaxHistoryAge,
                 pitr_max_history_age,
-                pitr_max_history_age_min(),
-                pitr_max_history_age_max(),
-                pitr_max_history_age_default(),
                 IsNewTrue),
-    Expected7 = value_not_in_range_error(pitrMaxHistoryAge, "172801",
-                                         pitr_max_history_age_min(),
-                                         pitr_max_history_age_max()),
+    Expected7 = value_not_in_range_error(
+                  pitrMaxHistoryAge, "172801",
+                  ns_bucket:attribute_min(pitr_max_history_age),
+                  ns_bucket:attribute_max(pitr_max_history_age)),
     ?assertEqual(Expected7, Result7),
 
     %% sub-test: too big params, IsNew false
@@ -2236,13 +2195,11 @@ parse_validate_pitr_max_history_age_test() ->
                 TooBigParams,
                 pitrMaxHistoryAge,
                 pitr_max_history_age,
-                pitr_max_history_age_min(),
-                pitr_max_history_age_max(),
-                pitr_max_history_age_default(),
                 IsNewFalse),
-    Expected8 = value_not_in_range_error(pitrMaxHistoryAge, "172801",
-                                         pitr_max_history_age_min(),
-                                         pitr_max_history_age_max()),
+    Expected8 = value_not_in_range_error(
+                  pitrMaxHistoryAge, "172801",
+                  ns_bucket:attribute_min(pitr_max_history_age),
+                  ns_bucket:attribute_max(pitr_max_history_age)),
     ?assertEqual(Expected8, Result8),
 
     MissingParams = [],
@@ -2253,9 +2210,6 @@ parse_validate_pitr_max_history_age_test() ->
                 MissingParams,
                 pitrMaxHistoryAge,
                 pitr_max_history_age,
-                pitr_max_history_age_min(),
-                pitr_max_history_age_max(),
-                pitr_max_history_age_default(),
                 IsNewTrue),
     Expected9 = {ok, pitr_max_history_age, 86400},
     ?assertEqual(Expected9, Result9),
@@ -2266,9 +2220,6 @@ parse_validate_pitr_max_history_age_test() ->
                  MissingParams,
                  pitrMaxHistoryAge,
                  pitr_max_history_age,
-                 pitr_max_history_age_min(),
-                 pitr_max_history_age_max(),
-                 pitr_max_history_age_default(),
                  IsNewFalse),
     Expected10 = ignore,
     ?assertEqual(Expected10, Result10).
