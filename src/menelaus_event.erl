@@ -168,6 +168,7 @@ notify_watchers(#state{watchers = Watchers}) ->
 
 restart_event({{node, N, rest}, _}) when N =:= node() -> true;
 restart_event({{node, N, address_family_only}, _}) when N =:= node() -> true;
+restart_event({{node, N, address_family}, _}) when N =:= node() -> true;
 restart_event({rest, _}) -> true;
 restart_event({cluster_encryption_level, _}) -> true;
 restart_event(_) -> false.
