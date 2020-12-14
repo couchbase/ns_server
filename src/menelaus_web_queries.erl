@@ -66,7 +66,12 @@ settings_post_validators_cheshirecat() ->
             [validator:time_duration(queryTxTimeout, _),
              validator:convert(queryTxTimeout, fun list_to_binary/1, _),
              validator:integer(queryMemoryQuota, _),
-             validator:boolean(queryUseCBO, _)];
+             validator:boolean(queryUseCBO, _),
+             validator:boolean(queryCleanupClientAttempts, _),
+             validator:boolean(queryCleanupLostAttempts, _),
+             validator:time_duration(queryCleanupWindow, _),
+             validator:convert(queryCleanupWindow, fun list_to_binary/1, _),
+             validator:integer(queryNumAtrs, _)];
         false ->
             []
     end.

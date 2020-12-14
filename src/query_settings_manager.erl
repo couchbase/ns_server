@@ -118,7 +118,11 @@ general_settings(Ver) ->
             true ->
                 [{queryTxTimeout,          "txtimeout",           <<"0ms">>},
                  {queryMemoryQuota,        "memory-quota",        0},
-                 {queryUseCBO,             "use-cbo",             true}];
+                 {queryUseCBO,             "use-cbo",             true},
+                 {queryCleanupClientAttempts, "cleanupclientattempts", true},
+                 {queryCleanupLostAttempts, "cleanuplostattempts", true},
+                 {queryCleanupWindow,      "cleanupwindow",       <<"60s">>},
+                 {queryNumAtrs,            "numatrs",             1024}];
             false ->
                 []
         end.
