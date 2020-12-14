@@ -970,9 +970,28 @@ derived_metrics(kv) ->
      {"kv_ep_resident_items_ratio",
       "(kv_curr_items_tot - ignoring(name) kv_ep_num_non_resident) * 100 / "
       "ignoring (name) kv_curr_items_tot"},
+     {"kv_vb_avg_active_queue_age_seconds",
+      "kv_vb_active_queue_age_seconds{state=`active`} / ignoring (name) "
+      "kv_vb_active_queue_size{state=`active`}"},
+     {"kv_vb_avg_replica_queue_age_seconds",
+      "kv_vb_replica_queue_age_seconds{state=`replica`} / ignoring (name) "
+      "kv_vb_replica_queue_size{state=`replica`}"},
+     {"kv_vb_avg_total_queue_age_seconds",
+      "sum by (bucket) (kv_vb_active_queue_age_seconds{state=`active`} or "
+                       "kv_vb_pending_queue_age_seconds{state=`pending`} or "
+                       "kv_vb_replica_queue_age_seconds{state=`replica`}) "
+      "/ on (bucket) kv_ep_diskqueue_items"},
      {"kv_vb_avg_pending_queue_age_seconds",
       "kv_vb_pending_queue_age_seconds{state=`pending`} / ignoring (name) "
       "kv_vb_pending_queue_size{state=`pending`}"},
+     {"kv_vb_active_resident_items_ratio",
+      "(kv_vb_active_curr_items{state=`active`} - ignoring(name) "
+       "kv_vb_active_num_non_resident{state=`active`}) * 100 / "
+      "ignoring(name) kv_vb_active_curr_items{state=`active`}"},
+     {"kv_vb_replica_resident_items_ratio",
+      "(kv_vb_replica_curr_items{state=`replica`} - ignoring(name) "
+       "kv_vb_replica_num_non_resident{state=`replica`}) * 100 / "
+      "ignoring(name) kv_vb_replica_curr_items{state=`replica`}"},
      {"kv_vb_pending_resident_items_ratio",
       "(kv_vb_pending_curr_items{state=`pending`} - ignoring(name) "
        "kv_vb_pending_num_non_resident{state=`pending`}) * 100 / "

@@ -444,11 +444,11 @@ function get70Mapping() {
     "@kv-.kv_vb_avg_pending_queue_age_seconds": "@kv-.vb_avg_pending_queue_age",
     "@kv-.kv_vb_pending_resident_items_ratio": "@kv-.vb_pending_resident_items_ratio",
 
-    "@kv-.kv_vb_active_queue_age_seconds": "@kv-.vb_avg_active_queue_age",
-    "@kv-.kv_vb_replica_queue_age_seconds": "@kv-.vb_avg_replica_queue_age",
-    "@kv-.kv_queue_age_seconds": "@kv-.vb_avg_total_queue_age",
-    "@kv-.kv_vb_active_perc_mem_resident_ratio": "@kv-.vb_active_resident_items_ratio",
-    "@kv-.kv_vb_replica_perc_mem_resident_ratio": "@kv-.vb_replica_resident_items_ratio",
+    "@kv-.kv_vb_avg_active_queue_age_seconds": "@kv-.vb_avg_active_queue_age",
+    "@kv-.kv_vb_avg_replica_queue_age_seconds": "@kv-.vb_avg_replica_queue_age",
+    "@kv-.kv_vb_avg_total_queue_age_seconds": "@kv-.vb_avg_total_queue_age",
+    "@kv-.kv_vb_active_resident_items_ratio": "@kv-.vb_active_resident_items_ratio",
+    "@kv-.kv_vb_replica_resident_items_ratio": "@kv-.vb_replica_resident_items_ratio",
     "@kv-.kv_ops_update": "@kv-.avg_disk_update_time", //?
     "@kv-.kv_read_bytes": "@kv-.bytes_read",
     "@kv-.kv_written_bytes": "@kv-.bytes_written",
