@@ -221,7 +221,7 @@ function mnClusterConfigurationServiceFactory($http, mnHelper, IEC, mnPools) {
     return preprocessPathStandard(p);
   }
   function updateTotal(pathResource) {
-    return (Math.floor(pathResource.sizeKBytes * (100 - pathResource.usagePercent) / 100 / IEC.Mi)) + ' GB';
+    return (Math.floor(pathResource.sizeKBytes * (100 - pathResource.usagePercent) / 100 / IEC.Mi)) + ' GiB';
   }
   function getJoinClusterConfig() {
     return joinClusterConfig;

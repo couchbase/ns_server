@@ -228,7 +228,7 @@ class MnWizardService {
   updateTotal(pathResource) {
     return Math.floor(
       pathResource.sizeKBytes * (100 - pathResource.usagePercent) / 100 / this.IEC.Mi
-    ) + ' GB';
+    ) + ' GiB';
   }
 
   lookupPathResource(rv) {

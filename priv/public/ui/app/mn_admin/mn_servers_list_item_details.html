@@ -28,13 +28,13 @@
         <span class="nowrap" ng-if="serversListItemDetailsCtl.server.details.storageTotals.ram.quotaTotal">
           data {{(serversListItemDetailsCtl.server.details.storageTotals.ram.quotaTotal | mnFormatMemSize) || 'unknown'}}</span>
         <span class="nowrap" ng-if="serversListItemDetailsCtl.server.details.indexMemoryQuota">
-          | index {{serversListItemDetailsCtl.server.details.indexMemoryQuota}} MB</span>
+          | index {{serversListItemDetailsCtl.server.details.indexMemoryQuota}} MiB</span>
         <span class="nowrap" ng-if="serversListItemDetailsCtl.server.details.ftsMemoryQuota">
-          | search {{serversListItemDetailsCtl.server.details.ftsMemoryQuota}} MB</span>
+          | search {{serversListItemDetailsCtl.server.details.ftsMemoryQuota}} MiB</span>
         <span class="nowrap" ng-if="serversListItemDetailsCtl.server.details.cbasMemoryQuota">
-          | analytics {{serversListItemDetailsCtl.server.details.cbasMemoryQuota}} MB</span>
+          | analytics {{serversListItemDetailsCtl.server.details.cbasMemoryQuota}} MiB</span>
         <span class="nowrap" ng-if="serversListItemDetailsCtl.server.details.eventingMemoryQuota">
-          | eventing {{serversListItemDetailsCtl.server.details.eventingMemoryQuota}} MB</span>
+          | eventing {{serversListItemDetailsCtl.server.details.eventingMemoryQuota}} MiB</span>
       </div>
       <div
          title="{{serversListItemDetailsCtl.server.details.storage.hdd[0].path}}"

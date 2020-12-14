@@ -386,7 +386,7 @@ function mnPrepareQuantity() {
     }) || [1, ''];
 
     if (K === 1024) {
-      t[1] += 'B';
+      t[1] += 'iB';
     }
 
     return t;

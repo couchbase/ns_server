@@ -46,7 +46,7 @@
            [mnFocus]="focusFieldSubject">
         <!-- ng-disabled="config.services && !config.services.model.kv || (rbac && !rbac.cluster.pools.write)" -->
         <!-- ng-model="config.memoryQuota" -->
-        <div class="inside-label">MB</div>
+        <div class="inside-label">MiB</div>
       </div>
     </div>
 
@@ -61,5 +61,5 @@
 <div
    *ngIf="group.value.field && group.value.flag"
    class="text-small text-right nowrap margin-right-1">
-  <strong>TOTAL QUOTA</strong> &nbsp; {{total | async}} MB
+  <strong>TOTAL QUOTA</strong> &nbsp; {{total | async}} MiB
 </div>

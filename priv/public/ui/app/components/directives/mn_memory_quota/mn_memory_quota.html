@@ -19,7 +19,7 @@
       </label>
     </div>
     <div class="row width-6 flex-right relative">
-      <div class="inside-label">MB</div>
+      <div class="inside-label">MiB</div>
       <input
          type="text"
          mn-focus
@@ -78,7 +78,7 @@
       </label>
     </div>
     <div class="row width-6 flex-right">
-      <div class="inside-label">MB</div>
+      <div class="inside-label">MiB</div>
       <input
          type="text"
          min="0"
@@ -111,7 +111,7 @@
       </label>
     </div>
     <div class="row width-6 flex-right">
-      <div class="inside-label">MB</div>
+      <div class="inside-label">MiB</div>
       <input
          type="text"
          mn-focus="config.services.model.kv === false && config.services.model.index  === false"
@@ -143,7 +143,7 @@
       </label>
     </div>
     <div class="row width-6 flex-right">
-      <div class="inside-label">MB</div>
+      <div class="inside-label">MiB</div>
       <input
          type="text"
          mn-focus="config.services.model.kv === false && config.services.model.index  === false"
@@ -175,7 +175,7 @@
       </label>
     </div>
     <div class="row width-6 flex-right">
-      <div class="inside-label">MB</div>
+      <div class="inside-label">MiB</div>
       <input
          type="text"
          mn-focus="config.services.model.kv === false && config.services.model.index  === false"
@@ -220,12 +220,12 @@
 <div
    ng-if="config.calculateTotal"
    class="text-small text-right nowrap margin-right-1">
-  <strong>TOTAL QUOTA</strong> &nbsp; {{calculateTotalQuota()}} MB
+  <strong>TOTAL QUOTA</strong> &nbsp; {{calculateTotalQuota()}} MiB
 </div>
 
 <div
    ng-if="config.maxMemorySize"
    class="content-box text-center margin-top-1">
-  <strong>RAM Available</strong> {{::config.totalMemorySize}}MB &nbsp;
-  <strong>Max Allowed Quota</strong> {{::config.maxMemorySize}}MB
+  <strong>RAM Available</strong> {{::config.totalMemorySize}}MiB &nbsp;
+  <strong>Max Allowed Quota</strong> {{::config.maxMemorySize}}MiB
 </div>
