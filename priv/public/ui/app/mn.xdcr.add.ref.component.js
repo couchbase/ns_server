@@ -34,6 +34,10 @@ class MnXDCRAddRefComponent extends MnLifeCycleHooksToStream {
     this.postRemoteClusters = mnXDCRService.stream.postRemoteClusters;
     this.activeModal = activeModal;
 
+    this.formHelper =
+      mnFormService.create(this)
+      .setFormGroup({useClientCertificate: false});
+
     this.form = mnFormService.create(this);
 
     this.form

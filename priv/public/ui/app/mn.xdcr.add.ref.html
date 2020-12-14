@@ -151,8 +151,24 @@
             {{(postRemoteClusters.error | async)?.certificate}}
           </div>
         </div>
-        <div class="formrow"
-           *ngIf="form.group.get('encryptionType').value == 'full'">
+
+        <div
+           class="formrow checkbox-list"
+           [hidden]="form.group.get('encryptionType').value !== 'full'"
+           [formGroup]="formHelper.group">
+          <input
+             formControlName="useClientCertificate"
+             id="for_use_client_certificate"
+             type="checkbox">
+          <label for="for_use_client_certificate" class="margin-right-zero">
+            Use Client Certificate Authentication
+          </label>
+        </div>
+
+        <div
+           class="formrow"
+           *ngIf="(form.group.get('encryptionType').value == 'full') &&
+                  formHelper.group.get('useClientCertificate').value">
           <textarea
              rows="4"
              autocorrect="off"
