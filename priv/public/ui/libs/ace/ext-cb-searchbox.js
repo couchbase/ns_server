@@ -68,8 +68,6 @@ var SearchBox = function(editor, range, showReplaceForm) {
         this.wholeWordOption = sb.querySelector("[action=toggleWholeWords]");
         this.searchInput = this.searchBox.querySelector(".ace-search-field");
         this.replaceInput = this.replaceBox.querySelector(".ace-search-field");
-        this.findLabel = sb.querySelector("#find_label");
-        this.replaceLabel = sb.querySelector("#replace_label");
     };
 
     this.$init = function() {
@@ -248,8 +246,6 @@ var SearchBox = function(editor, range, showReplaceForm) {
         this.element.style.display = "";
         this.replaceBox.style.display = isReplace ? "" : "none";
         this.searchOptions.style.display = isReplace && showOptions ? "" : "none";
-        this.findLabel.style.display = isReplace ? "" : "none";
-        this.replaceLabel.style.display = isReplace ? "" : "none";
 
         this.isReplace = isReplace;
 
