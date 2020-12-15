@@ -635,6 +635,9 @@ footer {
 .border-0 {
   border-width: 0!important;
 }
+.border-1 {
+  border-left: 1px solid #d1d1d1;
+}
 .overflow-auto {
   overflow: auto;
 }

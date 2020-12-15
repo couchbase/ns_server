@@ -111,17 +111,19 @@
     </div>
 
     <div
-       *ngIf="(isEnterprise | async)"
-       style="border-left: 1px solid #d1d1d1; margin: 0 16px; flex-basis: 1;"
+       [ngClass]="{'border-1': (isEnterprise | async)}"
+       style="flex-basis: 1; margin: 0 16px;"
        class="resp-hide-sml">&nbsp;</div>
 
-    <mn-xdcr-mapping-rules
-       *ngIf="(isEnterprise | async)"
-       class="width-2 block"
-       [group]="form.group"
-       [explicitMappingRules]="explicitMappingRules"
-       [explicitMappingMigrationRules]="explicitMappingMigrationRules"
-       [explicitMappingGroup]="explicitMappingGroup"></mn-xdcr-mapping-rules>
+    <div class="width-2">
+      <mn-xdcr-mapping-rules
+         *ngIf="(isEnterprise | async)"
+         class="block"
+         [group]="form.group"
+         [explicitMappingRules]="explicitMappingRules"
+         [explicitMappingMigrationRules]="explicitMappingMigrationRules"
+         [explicitMappingGroup]="explicitMappingGroup"></mn-xdcr-mapping-rules>
+    </div>
   </div>
 
   <footer class="footer-save">
