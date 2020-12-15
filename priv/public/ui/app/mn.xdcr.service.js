@@ -114,15 +114,14 @@ class MnXDCRService {
       } else {
         settings.collectionsExplicitMapping = false;
       }
-    } else {
-      if (settings.collectionsMigrationMode) {
-        let rules = this.explicitMappingMigrationRules.getValue();
-        settings.collectionsExplicitMapping = true;
-        if (Object.keys(rules).length) {
-          settings.colMappingRules = JSON.stringify(rules);
-        } else {
-          settings.collectionsMigrationMode = false;
-        }
+    }
+    if (settings.collectionsMigrationMode) {
+      let rules = this.explicitMappingMigrationRules.getValue();
+      settings.collectionsExplicitMapping = false;
+      if (Object.keys(rules).length) {
+        settings.colMappingRules = JSON.stringify(rules);
+      } else {
+        settings.collectionsMigrationMode = false;
       }
     }
     settings.replicationType = "continuous";
