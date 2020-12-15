@@ -227,10 +227,14 @@
         help <span class="has-menu">&nbsp;</span>
       </a>
       <div uib-dropdown-menu class="dropdown-menu-select-like">
-        <a ng-href="https://docs.couchbase.com/server/current/introduction/intro.html" target="_blank">
+        <a ng-href="https://docs.couchbase.com/server/current/introduction/intro.html"
+           rel="noopener noreferrer"
+           target="_blank">
           Documentation<br>
         </a>
-        <a ng-href="{{adminCtl.poolDefault.isEnterprise  ? 'http://support.couchbase.com' : 'http://www.couchbase.com/communities/'}}" target="cbforums">
+        <a ng-href="{{adminCtl.poolDefault.isEnterprise  ? 'http://support.couchbase.com' : 'http://www.couchbase.com/communities/'}}"
+           rel="noopener noreferrer"
+           target="cbforums">
           Couchbase Support<br>
           <desc ng-if="adminCtl.poolDefault.isEnterprise">For Enterprise Edition subscription customers</desc>
           <desc ng-if="!adminCtl.poolDefault.isEnterprise">For Community Edition users</desc>
