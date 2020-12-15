@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2015-2019 Couchbase, Inc.
+%% @copyright 2015-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -27,7 +27,8 @@
          props_lens/1,
          update/2,
          update_txn/2,
-         upgrade_existing_key/4
+         upgrade_existing_key/4,
+         upgrade_existing_key/5
         ]).
 
 -callback cfg_key() -> term().
@@ -97,8 +98,13 @@ update_txn(M, Props) ->
     end.
 
 upgrade_existing_key(M, Config, NewProps, KnownSettings) ->
+    upgrade_existing_key(M, Config, NewProps, KnownSettings,
+                         fun functools:id/1).
+
+upgrade_existing_key(M, Config, NewProps, KnownSettings, Fun) ->
     JSON = fetch_settings_json(Config, M:cfg_key()),
-    Current = decode_settings_json(JSON),
+    Current0 = decode_settings_json(JSON),
+    Current = Fun(Current0),
     New = build_settings_json(NewProps, Current, KnownSettings),
     [{set, M:cfg_key(), New}].
 

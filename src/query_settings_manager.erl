@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2015-2019 Couchbase, Inc.
+%% @copyright 2015-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -79,9 +79,15 @@ config_upgrade_to_65(Config) ->
 config_upgrade_to_cheshire_cat(Config) ->
     NewSettings = general_settings_defaults(?VERSION_CHESHIRECAT) --
         general_settings_defaults(?VERSION_65),
+    UpdatePropsFun = fun (PropsDict) ->
+                             dict:update(<<"n1ql-feat-ctrl">>,
+                                         fun (OldValue) ->
+                                                 OldValue bor 16#40
+                                         end, 16#40, PropsDict)
+                     end,
     json_settings_manager:upgrade_existing_key(
       ?MODULE, Config, [{generalSettings, NewSettings}],
-      known_settings(?VERSION_CHESHIRECAT)).
+      known_settings(?VERSION_CHESHIRECAT), UpdatePropsFun).
 
 known_settings() ->
     known_settings(cluster_compat_mode:get_compat_version()).
