@@ -356,12 +356,12 @@ pre_70_stat_to_prom_query(Bucket, <<"disk_write_queue">>) ->
 pre_70_stat_to_prom_query(Bucket, <<"ep_ops_create">>) ->
     Metrics = [<<"kv_vb_active_ops_create">>, <<"kv_vb_replica_ops_create">>,
                <<"kv_vb_pending_ops_create">>],
-    M = sumby([], rate({'or', [bucket_metric(M, Bucket) || M <- Metrics]})),
+    M = sumby([], {'or', [rate(bucket_metric(M, Bucket)) || M <- Metrics]}),
     {ok, named(<<"kv_ep_ops_create">>, M)};
 pre_70_stat_to_prom_query(Bucket, <<"ep_ops_update">>) ->
     Metrics = [<<"kv_vb_active_ops_update">>, <<"kv_vb_replica_ops_update">>,
                <<"kv_vb_pending_ops_update">>],
-    M = sumby([], rate({'or', [bucket_metric(M, Bucket) || M <- Metrics]})),
+    M = sumby([], {'or', [rate(bucket_metric(M, Bucket)) || M <- Metrics]}),
     {ok, named(<<"kv_ep_ops_update">>, M)};
 pre_70_stat_to_prom_query(Bucket, <<"misses">>) ->
     M = {[{eq, <<"name">>, <<"kv_ops">>},
@@ -535,7 +535,9 @@ map_index_stats(Prefix, Counters, Bucket, Stat) ->
             {error, not_found}
     end.
 
-rate(Ast) -> {call, irate, none, [{range_vector, Ast, ?IRATE_INTERVAL}]}.
+%% range vector argument must be an instant vector
+rate({L} = Ast) when is_list(L) ->
+    {call, irate, none, [{range_vector, Ast, ?IRATE_INTERVAL}]}.
 
 sumby(ByFields, Ast) -> {call, sum, {by, ByFields}, [Ast]}.
 
