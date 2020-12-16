@@ -102,14 +102,35 @@ roles() ->
        {[eventing], none},
        {[analytics], none},
        {[], [read, list]}]},
-     {security_admin, [],
-      [{name, <<"Security Admin">>},
+     {security_admin_local, [],
+      [{name, <<"Local User Security Admin">>},
        {folder, admin},
-       {desc, <<"Can view all cluster statistics and manage user roles, but "
-                "not grant Full Admin or Security Admin roles to other users "
-                "or alter their own role. This user can access the web "
-                "console. This user cannot read data.">>}],
+       {desc, <<"Can view all cluster statistics and manage local user "
+                "roles, but not grant Full Admin or Security Admin roles to "
+                "other users or alter their own role. This user can access "
+                "the web console. This user cannot read data.">>}],
       [{[admin, security, admin], none},
+       {[admin, security, external], none},
+       {[admin, security], all},
+       {[admin, logs], none},
+       {[{bucket, any}, data], none},
+       {[{bucket, any}, views], none},
+       {[{bucket, any}, n1ql], none},
+       {[{bucket, any}, fts], none},
+       {[{bucket, any}, analytics], none},
+       {[{bucket, any}, password], none},
+       {[{bucket, any}], [read]},
+       {[analytics], none},
+       {[], [read, list]}]},
+     {security_admin_external, [],
+      [{name, <<"External User Security Admin">>},
+       {folder, admin},
+       {desc, <<"Can view all cluster statistics and manage external user "
+                "roles, but not grant Full Admin or Security Admin roles to "
+                "other users or alter their own role. This user can access "
+                "the web console. This user cannot read data.">>}],
+      [{[admin, security, admin], none},
+       {[admin, security, local], none},
        {[admin, security], all},
        {[admin, logs], none},
        {[{bucket, any}, data], none},
@@ -1436,7 +1457,8 @@ produce_roles_by_permission_test_() ->
              meck:unload(cluster_compat_mode)
      end,
      [{"security permission",
-       Test([admin, ro_admin, security_admin], {[admin, security], any})},
+       Test([admin, ro_admin, security_admin_external, security_admin_local],
+            {[admin, security], any})},
       {"pools read",
        fun () ->
                Roles = GetRoles({[pools], read}),
@@ -1447,7 +1469,8 @@ produce_roles_by_permission_test_() ->
        end},
       {"bucket settings read",
        Test([admin, cluster_admin, query_external_access, query_system_catalog,
-             replication_admin, ro_admin, security_admin] ++
+             replication_admin, ro_admin, security_admin_external,
+             security_admin_local] ++
                 enum_roles([bucket_full_access, bucket_admin, views_admin,
                             data_backup, data_dcp_reader,
                             data_monitoring, data_writer, data_reader,

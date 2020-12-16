@@ -831,6 +831,8 @@ maybe_upgrade_role_to_cheshirecat({RoleName, Buckets}) ->
                       RoleName, menelaus_roles:get_public_definitions(
                                   ?VERSION_CHESHIRECAT))),
     [{RoleName, misc:align_list(Buckets, Length, any)}];
+maybe_upgrade_role_to_cheshirecat(security_admin) ->
+    [security_admin_local, security_admin_external];
 maybe_upgrade_role_to_cheshirecat(Role) ->
     [Role].
 

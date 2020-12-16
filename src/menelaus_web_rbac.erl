@@ -68,6 +68,12 @@
 -define(SECURITY_READ, {[admin, security, admin], read}).
 -define(SECURITY_WRITE, {[admin, security, admin], write}).
 
+-define(EXTERNAL_USER_READ, {[admin, security, external], read}).
+-define(EXTERNAL_USER_WRITE, {[admin, security, external], write}).
+
+-define(LOCAL_USER_READ, {[admin, security, local], read}).
+-define(LOCAL_USER_WRITE, {[admin, security, local], write}).
+
 assert_is_saslauthd_enabled() ->
     case cluster_compat_mode:is_saslauthd_enabled() of
         true ->
@@ -343,6 +349,25 @@ security_filter(Req) ->
               end, #{})
     end.
 
+domain_filter(Domain, Req) ->
+    Permission = case Domain of
+                     local ->
+                         ?LOCAL_USER_READ;
+                     external ->
+                         ?EXTERNAL_USER_READ
+                 end,
+    case menelaus_auth:has_permission(Permission, Req) of
+        true ->
+            pipes:filter(fun (_) -> true end);
+        false ->
+            pipes:filter(
+              fun ({{user, {_, D}}, _}) when D =:= Domain ->
+                      false;
+                  (_) ->
+                      true
+              end)
+    end.
+
 substr_filter(undefined, _) -> pipes:filter(fun (_) -> true end);
 substr_filter(Substr, PropsToCheck) ->
     LowerSubstr = string:to_lower(Substr),
@@ -372,6 +397,8 @@ handle_get_all_users(Req, Pattern, Params) ->
     pipes:run(menelaus_users:select_users(Pattern),
               [filter_by_roles(Roles),
                security_filter(Req),
+               domain_filter(local, Req),
+               domain_filter(external, Req),
                jsonify_users(),
                sjson:encode_extended_json([{compact, true},
                                            {strict, false}]),
@@ -652,6 +679,8 @@ handle_get_users_page(Req, DomainAtom, Path, Values) ->
                                               SortAndFilteringProps),
                   [filter_by_roles(Roles),
                    security_filter(Req),
+                   domain_filter(local, Req),
+                   domain_filter(external, Req),
                    substr_filter(Substr, [name])],
                   ?make_consumer(
                      pipes:fold(
@@ -998,6 +1027,19 @@ overlap(List1, List2) ->
 get_security_roles() ->
     [R || {R, _} <- menelaus_roles:get_security_roles(ns_config:latest())].
 
+verify_domain_access(Req, {_UserId, local}) ->
+    do_verify_domain_access(Req, ?LOCAL_USER_WRITE);
+verify_domain_access(Req, {_UserId, external}) ->
+    do_verify_domain_access(Req, ?EXTERNAL_USER_WRITE).
+
+do_verify_domain_access(Req, Permission) ->
+    case menelaus_auth:has_permission(Permission, Req) of
+        true ->
+            ok;
+        false ->
+            menelaus_util:require_permission(Req, Permission)
+    end.
+
 handle_put_user_validated(Identity, Name, Password, Roles, Groups, Req) ->
     GroupRoles = lists:concat([menelaus_users:get_group_roles(G)
                                    || Groups =/= undefined, G <- Groups]),
@@ -1006,6 +1048,8 @@ handle_put_user_validated(Identity, Name, Password, Roles, Groups, Req) ->
 
     verify_security_roles_access(
       Req, ?SECURITY_WRITE, lists:usort(GroupRoles ++ Roles ++ OldRoles)),
+
+    verify_domain_access(Req, Identity),
 
     Reason = case menelaus_users:user_exists(Identity) of
                  true -> updated;
@@ -1040,6 +1084,8 @@ handle_delete_user(Domain, UserId, Req) ->
             Identity = {UserId, T},
             verify_security_roles_access(
               Req, ?SECURITY_WRITE, menelaus_users:get_roles(Identity)),
+
+            verify_domain_access(Req, Identity),
 
             case menelaus_users:delete_user(Identity) of
                 {commit, _} ->
