@@ -159,6 +159,7 @@ roles() ->
        {[n1ql, curl], none},
        {[eventing], none},
        {[analytics], none},
+       {[backup], none},
        {[], all}]},
      {eventing_admin, [],
       [{name, <<"Eventing Full Admin">>},
@@ -175,6 +176,14 @@ roles() ->
        {[analytics], all},
        {[buckets], all},
        {[], [read]}]},
+     {backup_admin, [],
+      [{name, <<"Backup Full Admin">>},
+       {folder, backup},
+       {desc, <<"Can perform backup related tasks. This user can access "
+                "the web console">>}],
+      [{[admin], none},
+       {[{bucket, any}, password], none},
+       {[], all}]},
      {bucket_admin, [bucket_name],
       [{name, <<"Bucket Admin">>},
        {folder, bucket},
@@ -561,6 +570,7 @@ ui_folders() ->
      {analytics, "Analytics"},
      {xdcr, "XDCR"},
      {eventing, "Eventing"},
+     {backup, "Backup"},
      {mobile, "Mobile"}].
 
 internal_roles() ->
@@ -1221,6 +1231,14 @@ eventing_admin_test() ->
     ?assertEqual(true, is_allowed({[anything], read}, Roles)),
     ?assertEqual(false, is_allowed({[anything], write}, Roles)).
 
+backup_admin_test() ->
+    Roles = compile_roles([backup_admin], roles()),
+    ?assertEqual(false, is_allowed({[admin], any}, Roles)),
+    ?assertEqual(false, is_allowed({[{bucket, "test"}, password], any}, Roles)),
+    ?assertEqual(true, is_allowed({[buckets], create}, Roles)),
+    ?assertEqual(true, is_allowed({[backup], all}, Roles)),
+    ?assertEqual(true, is_allowed({[anything], all}, Roles)).
+
 ro_admin_test() ->
     Roles = compile_roles([ro_admin], roles()),
     ?assertEqual(false,
@@ -1499,7 +1517,7 @@ produce_roles_by_permission_test_() ->
       {"bucket settings read",
        Test([admin, cluster_admin, query_external_access, query_system_catalog,
              replication_admin, ro_admin, security_admin_external,
-             security_admin_local, eventing_admin] ++
+             security_admin_local, eventing_admin, backup_admin] ++
                 enum_roles([bucket_full_access, bucket_admin, views_admin,
                             data_backup, data_dcp_reader,
                             data_monitoring, data_writer, data_reader,
@@ -1510,19 +1528,19 @@ produce_roles_by_permission_test_() ->
                            [[any], [TestBucket]]),
             {[{bucket, "test"}, settings], read})},
       {"xattr write for bucket",
-       Test([admin, eventing_admin] ++
+       Test([admin, eventing_admin, backup_admin] ++
                 enum_roles([bucket_full_access, data_backup, data_writer,
                             mobile_sync_gateway],
                            [[any], [TestBucket]]),
             {[{bucket, "test"}, data, xattr], write})},
       {"xattr write for wrong bucket",
-       Test([admin, eventing_admin] ++
+       Test([admin, eventing_admin, backup_admin] ++
                 enum_roles([bucket_full_access, data_backup, data_writer,
                             mobile_sync_gateway],
                            [[any]]),
             {[{bucket, "wrong"}, data, xattr], write})},
       {"xattr write for collection",
-       Test([admin, eventing_admin] ++
+       Test([admin, eventing_admin, backup_admin] ++
                 enum_roles([bucket_full_access, data_backup, data_writer,
                             mobile_sync_gateway],
                            [[any], [DefaultBucket]]) ++
@@ -1531,33 +1549,33 @@ produce_roles_by_permission_test_() ->
                                             {"s", 1}, {"c", 1}]]),
             {[{collection, ["default", "s", "c"]}, data, xattr], write})},
       {"xattr write for wrong collection",
-       Test([admin, eventing_admin] ++
+       Test([admin, eventing_admin, backup_admin] ++
                 enum_roles([bucket_full_access, data_backup, data_writer,
                             mobile_sync_gateway],
                            [[any], [DefaultBucket]]) ++
                 enum_roles([data_writer], [[DefaultBucket, {"s", 1}]]),
             {[{collection, ["default", "s", "w"]}, data, xattr], write})},
       {"xattr write for scope",
-       Test([admin, eventing_admin] ++
+       Test([admin, eventing_admin, backup_admin] ++
                 enum_roles([bucket_full_access, data_backup, data_writer,
                             mobile_sync_gateway],
                            [[any], [DefaultBucket]]) ++
                 enum_roles([data_writer], [[DefaultBucket, {"s", 1}]]),
             {[{scope, ["default", "s"]}, data, xattr], write})},
       {"xattr write for wrong scope",
-       Test([admin, eventing_admin] ++
+       Test([admin, eventing_admin, backup_admin] ++
                 enum_roles([bucket_full_access, data_backup, data_writer,
                             mobile_sync_gateway],
                            [[any], [DefaultBucket]]),
             {[{scope, ["default", "w"]}, data, xattr], write})},
       {"any bucket",
-       Test([admin, eventing_admin] ++
+       Test([admin, eventing_admin, backup_admin] ++
                 enum_roles([bucket_full_access, data_backup, data_writer,
                             mobile_sync_gateway],
                            [[any]]),
             {[{bucket, any}, data, xattr], write})},
       {"wrong bucket",
-       Test([admin, eventing_admin] ++
+       Test([admin, eventing_admin, backup_admin] ++
                 enum_roles([bucket_full_access, data_backup, data_writer,
                             mobile_sync_gateway],
                            [[any]]),

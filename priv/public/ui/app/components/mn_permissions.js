@@ -58,6 +58,7 @@ function mnPermissionsProvider() {
 
   var interestingPermissions = [
     "cluster.buckets!create",
+    "cluster.backup!all",
     "cluster.nodes!write",
     "cluster.pools!read",
     "cluster.server_groups!read",
