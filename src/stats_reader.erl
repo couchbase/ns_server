@@ -228,16 +228,15 @@ get_stats(Period, Step, N, StatList, #state{bucket=Bucket,
     StartTSms = misc:trunc_ts(Now - Step * (SamplesNum + 1) * 1000, Step),
     StartTS = StartTSms / 1000,
     EndTS = Now / 1000,
-    Query = stat_names_mappings:pre_70_stats_to_prom_query(Bucket, StatList),
-    case Query of
-        <<>> ->
+    Queries = stat_names_mappings:pre_70_stats_to_prom_query(Bucket, StatList),
+    case Queries of
+        [<<>>] ->
             %% Happens when menelaus_stats tries to guess stat section by
             %% stat name
             {ok, []};
         _ ->
             Settings = prometheus_cfg:settings(),
-            case prometheus:query_range(Query, StartTS, EndTS, Step, 5000,
-                                        Settings) of
+            case run_queries(Queries, StartTS, EndTS, Step, Settings, []) of
                 {ok, JSONList} ->
                     StatEntries = parse_matrix(JSONList, Bucket),
                     Aligned = align_timestamps(StatEntries, EndTS, Period,
@@ -247,6 +246,15 @@ get_stats(Period, Step, N, StatList, #state{bucket=Bucket,
                 {error, _} = Error ->
                     Error
             end
+    end.
+
+run_queries([], _StartTS, _EndTS, _Step, _Settings, Res) -> {ok, Res};
+run_queries([Q | Tail], StartTS, EndTS, Step, Settings, Res) ->
+    case prometheus:query_range(Q, StartTS, EndTS, Step, 5000, Settings) of
+        {ok, JSONList} ->
+            run_queries(Tail, StartTS, EndTS, Step, Settings, JSONList ++ Res);
+        {error, Error} ->
+            {error, Error}
     end.
 
 parse_matrix(JSONList, Bucket) ->
