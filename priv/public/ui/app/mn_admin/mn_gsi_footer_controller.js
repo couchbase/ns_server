@@ -65,11 +65,11 @@ function mnGsiFooterController($scope, $rootScope, $state, mnStatisticsNewServic
 
   function onSelectBucket() {
     //reload ng-controller in the template
-    $scope.$apply(() => {
-      $rootScope.selfDestroy = true;
+    $rootScope.$apply(() => {
+      $rootScope.destroyGsiFooter = true;
     });
     $state.go(".", {footerBucket: vm.currentBucket}).then(function () {
-      $rootScope.selfDestroy = false;
+      $rootScope.destroyGsiFooter = false;
     });
   }
 

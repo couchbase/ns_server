@@ -76,7 +76,7 @@
        class="footer-indexes"
        ng-controller="mnGsiFooterController as footerStatsCtl"
        ng-if="gsiCtl.state.indexes.length &&
-              rbac.bucketNames['.stats!read'].length && !gsiCtl.selfDestroy">
+              rbac.bucketNames['.stats!read'].length && !destroyGsiFooter">
       <div class="column vertical-divider">
         <span class="width-6">Index Service RAM Quota</span>
         <span class="text-right width-6">{{footerStatsCtl.getLatestStat('@index.index_memory_quota')/1024/1024 | number:1}} MB</span><br>
