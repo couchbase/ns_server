@@ -38,6 +38,8 @@
 %% exported for log formatting
 -export([format_msg/2, format_time/1]).
 
+-define(PULL_TIMEOUT, ?get_timeout(upgrade_pull, 60000)).
+
 start_link() ->
     gen_server2:start_link({local, ?MODULE}, ?MODULE, [], []).
 
@@ -75,6 +77,8 @@ handle_call(leave_cluster, _From, State) ->
 handle_call({rename, OldNode}, _From, State) ->
     handle_rename(OldNode),
     {reply, ok, State};
+handle_call({pull, Timeout}, _From, State) ->
+    {reply, pull(Timeout), State};
 handle_call(sync, _From, State) ->
     {reply, ok, State}.
 
@@ -141,6 +145,27 @@ format_msg(#log_info{user_data = #{module := M, function := F, line := L}}
     ale_default_formatter:format_msg(
       Info#log_info{module = M, function = F, line = L}, UserMsg).
 
+pull(Timeout) ->
+    ?log_debug("Pull quorum view of chronicle"),
+    case chronicle_rsm:sync(kv, quorum, Timeout) of
+        ok ->
+            ok;
+        Error ->
+            ?log_warning("Failed to pull quorum view of chronicle ~p", [Error]),
+            Error
+    end.
+
+remote_pull([], _Timeout) ->
+    ok;
+remote_pull(Nodes, Timeout) ->
+    ?log_debug("Asking nodes ~p to pull chronicle", [Nodes]),
+    case misc:multi_call(Nodes, ?MODULE, {pull, Timeout}, Timeout, _ =:= ok) of
+        {_, []} ->
+            ok;
+        {_, Errors} ->
+            ?log_warning("Failed to push chronicle config ~p", [Errors]),
+            {remote_pull_failed, Errors}
+    end.
 
 should_move(_) ->
     false.
@@ -148,6 +173,8 @@ should_move(_) ->
 -dialyzer({nowarn_function, upgrade/1}).
 
 upgrade(Config) ->
+    OtherNodes = ns_node_disco:nodes_wanted(Config) -- [node()],
+
     ns_config:foreach(
       fun (Key, Value) ->
               case should_move(Key) of
@@ -160,4 +187,5 @@ upgrade(Config) ->
                       ok
               end
       end, Config),
-    ok.
+
+    remote_pull(OtherNodes, ?PULL_TIMEOUT).
