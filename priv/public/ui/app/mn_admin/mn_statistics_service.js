@@ -457,7 +457,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
       scope.$on("$destroy", function () {
         offResume && offResume();
         offPause && offPause();
-        doOmit()(config2);
+        doOmit(config2)();
       });
     });
   }
