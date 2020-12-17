@@ -2,6 +2,7 @@ import { NgModule } from '/ui/web_modules/@angular/core.js';
 import { UIRouterModule } from "/ui/web_modules/@uirouter/angular.js";
 import { ReactiveFormsModule } from '/ui/web_modules/@angular/forms.js';
 import { NgbModule } from '/ui/web_modules/@ng-bootstrap/ng-bootstrap.js';
+import { MnPipesModule } from './mn.pipes.module.js';
 
 import { MnElementCraneModule } from './mn.element.crane.js';
 
@@ -76,6 +77,7 @@ class MnCollectionsModule {
         MnCollectionsDeleteItemComponent
       ],
       imports: [
+        MnPipesModule,
         NgbModule,
         MnElementCraneModule,
         ReactiveFormsModule,

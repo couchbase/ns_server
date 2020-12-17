@@ -1,6 +1,6 @@
 <div class="dialog-med">
   <div class="panel-header">
-    <h2>Add Collection into {{scopeName}} scope</h2>
+    <h2 [attr.title]="scopeName">Add Collection into {{scopeName | mnTruncate:15}} scope</h2>
     <a class="ui-dialog-titlebar-close modal-close" (click)="activeModal.dismiss()">X</a>
   </div>
   <form (ngSubmit)="form.submit.next()" [formGroup]="form.group" class="forms">

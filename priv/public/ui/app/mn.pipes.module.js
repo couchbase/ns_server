@@ -18,9 +18,9 @@ class MnPipesModule {
         pipes.MnPrepareQuantity,
         pipes.MnFormatUptime,
         pipes.MnFormatQuantity,
-        pipes.MnLeftEllipsis,
         pipes.MnFormatWarmupMessage,
-        pipes.MnBucketsType
+        pipes.MnBucketsType,
+        pipes.MnTruncate
       ],
       exports: [
         pipes.MnParseVersion,
@@ -33,9 +33,9 @@ class MnPipesModule {
         pipes.MnPrepareQuantity,
         pipes.MnFormatUptime,
         pipes.MnFormatQuantity,
-        pipes.MnLeftEllipsis,
         pipes.MnFormatWarmupMessage,
-        pipes.MnBucketsType
+        pipes.MnBucketsType,
+        pipes.MnTruncate
       ],
       imports: [],
       providers: [

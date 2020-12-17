@@ -14,9 +14,29 @@ export {
   MnPrepareQuantity,
   MnFormatUptime,
   MnFormatQuantity,
-  MnLeftEllipsis,
   MnFormatWarmupMessage,
-  MnBucketsType
+  MnBucketsType,
+  MnTruncate
+}
+
+class MnTruncate {
+  static get annotations() { return [
+    new Pipe({name: "mnTruncate"})
+  ]}
+
+  transform(value, limit, trail, isLeft) {
+    trail = trail != undefined ? trail : "...";
+    limit = limit || 15;
+    if (value.length > limit) {
+      if (isLeft) {
+        return trail + value.substring(value.length - limit, value.length);
+      } else {
+        return value.substring(0, limit) + trail;
+      }
+    } else {
+      return value;
+    }
+  }
 }
 
 class MnParseVersion {
@@ -282,31 +302,6 @@ class MnFormatQuantity {
     return [this.decimalPipe.transform(value/t[0]), spacing, t[1]].join('');
   }
 }
-
-
-
-class MnLeftEllipsis {
-  static get annotations() { return [
-    new Pipe({name: "mnLeftEllipsis"})
-  ]}
-
-  transform(text, length) {
-    if (!text) {
-      return;
-    }
-    if (length <= 3) {
-      // asking for stupidly short length will cause this to do
-      // nothing
-      return text;
-    }
-    if (text.length > length) {
-      return "..." + text.slice(3-length);
-    }
-    return text;
-  }
-}
-
-
 
 class MnFormatWarmupMessage {
   static get annotations() { return [
