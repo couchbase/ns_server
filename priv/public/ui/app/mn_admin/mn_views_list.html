@@ -126,33 +126,33 @@
           </span>
         </div>
 
-        <div class="zero-content" ng-if="('isEmpty' | row.doc.json.spatial) && ('isEmpty' | lodash:row.doc.json.views)">
+        <div class="zero-content" ng-if="('isEmpty' | lodash:row.doc.json.spatial) && ('isEmpty' | lodash:row.doc.json.views)">
           No views defined!<span class="when-in-dev"> Click "Create View" above to create one.</span>
         </div>
 
         <div
            class="cbui-tablerow row-min has-hover"
            ng-if="!('isEmpty' | lodash:row.doc.json.views)"
-         ng-repeat="(key, view) in row.doc.json.views"
-         ui-sref=".editing.result(viewsListCtl.getInitialViewsFilterParams(key, row, false))">
-        <span class="cbui-table-cell">
-          <span class="semi-bold indent-1">{{key}}</span>
-        </span>
-        <span class="cbui-table-cell flex-grow-2 wrap text-right">
-          <button
-             class="outline tight"
-             ng-show="viewsListCtl.isDevModeDoc(row.doc.meta.id) && rbac.cluster.bucket[viewsCtl.currentBucketName].views.write"
-             ng-click="$event.stopPropagation() || viewsListCtl.showViewDeletionDialog(row.doc, key)">
-            Delete
-          </button>
-          <button
-             class="outline tight"
-             ng-click="$event.stopPropagation()"
-             ui-sref=".editing.result(viewsListCtl.getInitialViewsFilterParams(key, row, false))">
-            {{viewsListCtl.isDevModeDoc(row.doc.meta.id) && rbac.cluster.bucket[viewsCtl.currentBucketName].views.write ? 'Edit' : 'Show' }}
-          </button>
-        </span>
-      </div>
+           ng-repeat="(key, view) in row.doc.json.views"
+           ui-sref=".editing.result(viewsListCtl.getInitialViewsFilterParams(key, row, false))">
+          <span class="cbui-table-cell">
+            <span class="semi-bold indent-1">{{key}}</span>
+          </span>
+          <span class="cbui-table-cell flex-grow-2 wrap text-right">
+            <button
+               class="outline tight"
+               ng-show="viewsListCtl.isDevModeDoc(row.doc.meta.id) && rbac.cluster.bucket[viewsCtl.currentBucketName].views.write"
+               ng-click="$event.stopPropagation() || viewsListCtl.showViewDeletionDialog(row.doc, key)">
+              Delete
+            </button>
+            <button
+               class="outline tight"
+               ng-click="$event.stopPropagation()"
+               ui-sref=".editing.result(viewsListCtl.getInitialViewsFilterParams(key, row, false))">
+              {{viewsListCtl.isDevModeDoc(row.doc.meta.id) && rbac.cluster.bucket[viewsCtl.currentBucketName].views.write ? 'Edit' : 'Show' }}
+            </button>
+          </span>
+        </div>
       </div>
     </div>
   </div>

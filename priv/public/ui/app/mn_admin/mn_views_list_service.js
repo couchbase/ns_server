@@ -85,7 +85,7 @@ function mnViewsListFactory($http, $q, mnTasksDetails) {
         return isDevModeDoc(row.doc.meta.id);
       });
       ddocs.production = _.filter(ddocs.rows, function (row) {
-        return !isDevModeDoc(row.doc.meta.id) && !row.doc.json.spatial;
+        return !isDevModeDoc(row.doc.meta.id) && _.isEmpty(row.doc.json.spatial);
       });
       return ddocs;
     }, function (resp) {
