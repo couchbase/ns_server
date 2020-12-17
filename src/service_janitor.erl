@@ -200,8 +200,8 @@ clear_pending_failover(Config, Service, FailedNodes) ->
     OtherNodes = ns_node_disco:nodes_wanted(Config) -- FailedNodes,
     LiveNodes  = leader_utils:live_nodes(Config, OtherNodes),
 
-    ns_config_rep:ensure_config_seen_by_nodes(
-      LiveNodes, ?CLEAR_FAILOVER_CONFIG_SYNC_TIMEOUT).
+    chronicle_compat:config_sync(push, LiveNodes,
+                                 ?CLEAR_FAILOVER_CONFIG_SYNC_TIMEOUT).
 
 complete_topology_aware_service_failover(Config, Service) ->
     NodesLeft = ns_cluster_membership:get_service_map(Config, Service),

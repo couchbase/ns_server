@@ -136,7 +136,7 @@ pre_failover_config_sync(FailedNodes, Options) ->
             ?log_info("Going to pull config "
                       "from ~p before failover", [SyncNodes]),
 
-            case ns_config_rep:pull_remotes(SyncNodes, Timeout) of
+            case chronicle_compat:config_sync(pull, SyncNodes, Timeout) of
                 ok ->
                     ok;
                 Error ->

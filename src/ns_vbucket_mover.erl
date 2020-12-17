@@ -312,6 +312,7 @@ map_sync(#state{map = Map,
     %% over. That means that all nodes_wanted are supposed to be alive, so we
     %% can simply synchronize to all nodes_wanted.
     NodesWanted = ns_node_disco:nodes_wanted(),
+    %% TODO: not needed after buckets are moved to chronicle
     RV = (catch ns_config_rep:ensure_config_seen_by_nodes(NodesWanted)),
 
     lists:foreach(gen_server:reply(_, RV), Waiters),

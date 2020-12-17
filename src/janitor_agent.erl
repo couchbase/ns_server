@@ -621,11 +621,18 @@ handle_call({get_mass_dcp_docs_estimate, VBucketsR}, From, State) ->
 handle_call(Call, From, State) ->
     do_handle_call(Call, From, cleanup_rebalance_artifacts(Call, State)).
 
-do_handle_call(prepare_flush, _From, #state{bucket_name = BucketName} = State) ->
+do_handle_call(prepare_flush, _From, #state{bucket_name = BucketName}
+               = State) ->
     ?log_info("Preparing flush by disabling bucket traffic"),
+    %% make sure that node received bucket configuration updates made
+    %% by orchestrator
+    chronicle_compat:pull(),
     ns_bucket:deactivate_bucket_data_on_this_node(BucketName),
     {reply, ns_memcached:disable_traffic(BucketName, infinity), State};
 do_handle_call(complete_flush, _From, State) ->
+    %% make sure that node received bucket configuration updates made
+    %% by orchestrator
+    chronicle_compat:pull(),
     {reply, ok, consider_doing_flush(State)};
 do_handle_call(query_vbucket_states, _From, State) ->
     {RV, NewState} = handle_query_vbuckets(query_vbucket_states, State),

@@ -204,7 +204,7 @@ sync_config(Servers, FromPid) ->
     FromPidNode = erlang:node(FromPid),
     SyncServers = lists:usort([FromPidNode | Servers]),
 
-    case ns_config_rep:ensure_config_seen_by_nodes(SyncServers) of
+    case chronicle_compat:config_sync(push, SyncServers) of
         ok ->
             ok;
         {error, BadReplies} ->

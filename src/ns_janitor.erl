@@ -259,7 +259,7 @@ config_sync(Type, Options) ->
     Timeout = ?get_timeout({config_sync, Type}, 10000),
 
     ?log_debug("Going to ~s config to/from nodes:~n~p", [Type, Nodes]),
-    try do_config_sync(Type, Nodes, Timeout) of
+    try do_config_sync(chronicle_compat:backend(), Type, Nodes, Timeout) of
         ok ->
             ok;
         Error ->
@@ -272,9 +272,15 @@ config_sync(Type, Options) ->
 push_config(Options) ->
     config_sync(push, Options).
 
-do_config_sync(pull, Nodes, Timeout) ->
+do_config_sync(chronicle, pull, Nodes, Timeout) ->
+    %% TODO: don't need to pull ns_config after buckets are moved to chronicle
+    chronicle_compat:config_sync(pull, Nodes, Timeout);
+do_config_sync(chronicle, push, Nodes, Timeout) ->
+    %% TODO: don't need to push anything after buckets are moved to chronicle
+    do_config_sync(ns_config, push, Nodes, Timeout);
+do_config_sync(ns_config, pull, Nodes, Timeout) ->
     ns_config_rep:pull_remotes(Nodes, Timeout);
-do_config_sync(push, Nodes, Timeout) ->
+do_config_sync(ns_config, push, Nodes, Timeout) ->
     %% Explicitly push buckets to other nodes even if didn't modify them. This
     %% is needed because ensure_conig_seen_by_nodes() only makes sure that any
     %% outstanding local mutations are pushed out. But it's possible that we

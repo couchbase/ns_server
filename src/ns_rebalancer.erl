@@ -241,21 +241,12 @@ do_wait_buckets_shutdown(KeepNodes) ->
 sanitize(Config) ->
     misc:rewrite_key_value_tuple(sasl_password, "*****", Config).
 
-pull_and_push_config(Nodes) ->
-    case ns_config_rep:pull_remotes(Nodes) of
+config_sync(Type, Nodes) ->
+    case chronicle_compat:config_sync(Type, Nodes) of
         ok ->
             ok;
         Error ->
             exit({config_sync_failed, Error})
-    end,
-
-    %% And after we have that, make sure recovery, rebalance and
-    %% graceful failover, all start with latest config reliably
-    case ns_config_rep:ensure_config_seen_by_nodes(Nodes) of
-        ok ->
-            cool;
-        {error, SyncFailedNodes} ->
-            exit({config_sync_failed, SyncFailedNodes})
     end.
 
 start_link_rebalance(KeepNodes, EjectNodes,
@@ -543,7 +534,8 @@ rebalance_body(KeepNodes,
             ok
     end,
 
-    pull_and_push_config(EjectNodesAll ++ KeepNodes),
+    config_sync(pull, LiveNodes),
+    config_sync(push, LiveNodes),
 
     %% Eject failed nodes first so they don't cause trouble
     FailedNodes = FailedNodesAll -- [node()],
@@ -1045,13 +1037,7 @@ apply_delta_recovery_buckets(DeltaRecoveryBuckets, DeltaNodes, CurrentBuckets) -
 
     ok = ns_config:set([{buckets, [{configs, NewBuckets}]}]),
 
-    case ns_config_rep:ensure_config_seen_by_nodes(DeltaNodes) of
-        ok ->
-            cool;
-        {error, SyncFailedNodes} ->
-            exit({delta_recovery_config_synchronization_failed, SyncFailedNodes})
-    end,
-
+    config_sync(push, DeltaNodes),
     complete_delta_recovery(DeltaNodes),
 
     ok = check_test_condition(apply_delta_recovery),
@@ -1144,7 +1130,8 @@ start_link_graceful_failover(Nodes) ->
     proc_lib:start_link(erlang, apply, [fun run_graceful_failover/1, [Nodes]]).
 
 run_graceful_failover(Nodes) ->
-    pull_and_push_config(ns_node_disco:nodes_wanted()),
+    NodesWanted = ns_node_disco:nodes_wanted(),
+    config_sync(pull, NodesWanted),
 
     case failover:is_possible(Nodes) of
         ok ->
@@ -1171,6 +1158,9 @@ run_graceful_failover(Nodes) ->
         {false, Type} ->
             erlang:exit(Type)
     end,
+
+    config_sync(push, NodesWanted),
+
     proc_lib:init_ack({ok, self()}),
 
     ok = leader_activities:run_activity(

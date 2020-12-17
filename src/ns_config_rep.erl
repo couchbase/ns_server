@@ -49,7 +49,8 @@
 -export([ensure_config_pushed/0,
          ensure_config_seen_by_nodes/0,
          ensure_config_seen_by_nodes/1, ensure_config_seen_by_nodes/2,
-         pull_and_push/1, pull_from_one_node_directly/1]).
+         pull_and_push/1, pull_from_one_node_directly/1,
+         get_timeout/1]).
 
 -export([get_remote/2, pull_remotes/1, pull_remotes/2, push_keys/1]).
 
@@ -240,6 +241,10 @@ code_change(_OldVsn, State, _Extra) ->
 %
 % API methods
 %
+get_timeout(pull) ->
+    ?PULL_TIMEOUT;
+get_timeout(push) ->
+    ?SYNCHRONIZE_TIMEOUT.
 
 %% make sure that all outstanding changes are pushed out to other nodes
 ensure_config_pushed() ->

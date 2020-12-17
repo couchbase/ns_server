@@ -18,6 +18,7 @@
 
 -module(chronicle_compat).
 
+-include("ns_common.hrl").
 -include("cut.hrl").
 
 -export([backend/0,
@@ -32,7 +33,12 @@
          subscribe_to_key_change/1,
          subscribe_to_key_change/2,
          notify_if_key_changes/2,
-         start_refresh_worker/2]).
+         start_refresh_worker/2,
+         pull/0,
+         config_sync/2,
+         config_sync/3]).
+
+-define(PULL_TIMEOUT, 15000).
 
 backend() ->
     case enabled() of
@@ -290,3 +296,61 @@ extract_event_key(chronicle, {{key, Key}, _, _}) ->
     Key;
 extract_event_key(_, _) ->
     undefined.
+
+
+pull() ->
+    pull(ns_config_rep:get_timeout(pull)).
+
+pull(Timeout) ->
+    case backend() of
+        ns_config ->
+            ok;
+        chronicle ->
+            case chronicle_rsm:sync(kv, quorum, Timeout) of
+                ok ->
+                    ok;
+                Error ->
+                    ?log_warning("Failed to pull chronicle config ~p", [Error])
+            end
+    end.
+
+remote_pull(Nodes, Timeout) ->
+    case backend() of
+        ns_config ->
+            ok;
+        chronicle ->
+            {Results, BadNodes} =
+                rpc:multicall(Nodes, ?MODULE, pull, [Timeout], Timeout),
+            case BadNodes =:= [] andalso lists:all(fun(A) -> A =:= ok end,
+                                                   Results) of
+                true ->
+                    ok;
+                false ->
+                    Error = {remote_pull_failed, Results, BadNodes},
+                    ?log_warning("Failed to push chronicle config ~p", [Error]),
+                    {error, Error}
+            end
+    end.
+
+config_sync(Type, Nodes) ->
+    config_sync(pull, Nodes, ns_config_rep:get_timeout(Type)).
+
+config_sync(pull, Nodes, Timeout) ->
+    case ns_config_rep:pull_remotes(Nodes, Timeout) of
+        ok ->
+            pull(Timeout);
+        Error ->
+            Error
+    end;
+config_sync(push, Nodes, Timeout) ->
+    case ns_config_rep:ensure_config_seen_by_nodes(Nodes, Timeout) of
+        ok ->
+            case remote_pull(Nodes, Timeout) of
+                ok ->
+                    ok;
+                {error, {remote_pull_failed, Results, BadNodes}} ->
+                    Results ++ [{N, bad_rpc} || N <- BadNodes]
+            end;
+        {error, SyncFailedNodes} ->
+            SyncFailedNodes
+    end.

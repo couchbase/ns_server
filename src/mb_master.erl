@@ -202,7 +202,7 @@ do_invalidate_master(MasterToShutdown, Version) ->
     %% mb_master will see us in peers because of a couple of
     %% races, but at least we'll delay a bit on some work and
     %% increase chance of it. We'll retry if it's not the case
-    ok = ns_config_rep:ensure_config_seen_by_nodes([MasterToShutdown]),
+    ok = chronicle_compat:config_sync(push, [MasterToShutdown]),
     %% ask master to give up
     send_heartbeat_with_peers([MasterToShutdown],
                               master, [node(), MasterToShutdown]),
