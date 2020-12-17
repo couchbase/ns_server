@@ -44,8 +44,9 @@ function mnServersListItemDetailsController($scope, mnServersListItemDetailsServ
   }
 
   function getLatestStat70(statName, stats) {
-    return stats.stats[statName] &&
-      stats.stats[statName][$scope.node.hostname].values.map(([_, v])=> v);
+    let stat = stats.stats[statName];
+    return stat && stat[$scope.node.hostname] &&
+      stat[$scope.node.hostname].values.map(([_, v])=> v);
   }
 
   function updateBarChartData() {
