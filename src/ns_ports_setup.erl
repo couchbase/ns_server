@@ -352,6 +352,15 @@ build_goport_spec(#def{id = SpecId,
 build_goport_specs(Config) ->
     [build_goport_spec(Def, Config) || Def <- goport_defs()].
 
+net_to_afamily(inet) ->
+    "ipv4";
+net_to_afamily(inet6) ->
+    "ipv6".
+
+build_afamily_requirement(Prefix) ->
+    [Prefix ++ net_to_afamily(AF) ++ "=" ++
+     atom_to_list(Type) || {AF, Type} <- misc:address_family_requirement()].
+
 goport_args('query', Config, _Cmd, _NodeUUID) ->
     RestPort = service_ports:get_port(rest_port, Config),
     DataStoreArg = "--datastore=" ++ misc:local_url(RestPort, []),
@@ -359,11 +368,11 @@ goport_args('query', Config, _Cmd, _NodeUUID) ->
     HttpArg = build_port_arg("--http", ":", query_port, Config),
     EntArg = "--enterprise=" ++
         atom_to_list(cluster_compat_mode:is_enterprise()),
-    Ipv6 = "--ipv6=" ++ atom_to_list(misc:is_ipv6()),
 
     HttpsArgs = build_https_args(ssl_query_port, "--https", ":",
                                  "--certfile", "--keyfile", Config),
-    [DataStoreArg, HttpArg, CnfgStoreArg, EntArg, Ipv6] ++ HttpsArgs;
+    [DataStoreArg, HttpArg, CnfgStoreArg, EntArg] ++
+        build_afamily_requirement("--") ++ HttpsArgs;
 
 goport_args(projector, Config, _Cmd, _NodeUUID) ->
     %% Projector is a component that is required by 2i
