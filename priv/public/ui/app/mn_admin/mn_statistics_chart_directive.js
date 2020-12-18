@@ -93,7 +93,7 @@ function mnStatisticsNewChartDirective(mnStatisticsNewService, mnPrepareQuantity
     function initConfig() {
       options = {
         chart: {
-          margin : $scope.config.margin || {top: 10, right: 36, bottom: 16, left: 44},
+          margin : $scope.config.margin || {top: 10, right: 36, bottom: 18, left: 44},
           height: getChartSize($scope.config.size),
           tooltip: {valueFormatter: formatValue},
           useInteractiveGuideline: true,
