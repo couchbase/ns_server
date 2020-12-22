@@ -2212,15 +2212,51 @@ button:hover.scenarios-delete {
   position: relative;
 }
 .wb-button-wrapper {
-  margin-right: 1rem;
+  display: flex;
+  justify-content: flex-start;
 }
 .wb-button-execute {
-  width: 7rem;
-  min-width: 7rem;
+  width: 6.5rem;
+  min-width: 6.5rem;
 }
-.wb-button-wrapper {
-  margin-right: 1rem;
+
+.cbui-drawer {
+  position: relative;
+  margin: 0 .5rem;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  transition: width .4s;
+  width: 2rem;
+  text-overflow: clip;
+  overflow: hidden;
 }
+.cbui-drawer.open {
+  width: 100%;
+}
+.cbui-drawer-opener {
+  cursor: pointer;
+  color: #ccc;
+  padding: 0 .5rem;
+  font-size: 1.2rem;
+}
+.cbui-drawer-opener:hover {
+  color: #333;
+}
+.cbui-drawer .cbui-drawer-opener {
+  display: inline-block;
+}
+.cbui-drawer.open .cbui-drawer-opener {
+  display: none;
+}
+.cbui-drawer-closer {
+  cursor: pointer;
+  color: #ccc;
+}
+.cbui-drawer-closer:hover {
+  color: #333;
+}
+
 .wb-result-summary {
   text-align: left;
   -webkit-box-flex: 1;
