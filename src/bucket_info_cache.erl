@@ -52,12 +52,12 @@ cache_init() ->
     submit_new_buckets(),
     submit_full_reset().
 
-handle_config_event({buckets, _}) ->
+handle_config_event(buckets) ->
     submit_new_buckets();
 handle_config_event(_) ->
     submit_full_reset().
 
-is_interesting({buckets, _}) -> true;
+is_interesting(buckets) -> true;
 is_interesting({_, _, alternate_addresses}) -> true;
 is_interesting({_, _, capi_port}) -> true;
 is_interesting({_, _, ssl_capi_port}) -> true;
