@@ -503,6 +503,7 @@ json_service_name(fts) -> fullTextSearch;
 json_service_name(n1ql) -> query;
 json_service_name(cbas) -> analytics;
 json_service_name(ns_server) -> clusterManager;
+json_service_name(xdcr) -> xdcr;
 json_service_name(Service) -> Service.
 
 attach_node_uuids(Nodes, Config) ->

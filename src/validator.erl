@@ -53,7 +53,9 @@
          return_value/3,
          return_error/3,
          default/3,
-         token_list/3]).
+         token_list/3,
+         add_input_type/2,
+         is_json/1]).
 
 %% Used for testing validators.
 -ifdef(TEST).

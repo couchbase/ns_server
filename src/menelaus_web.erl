@@ -364,6 +364,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[settings], read}, fun menelaus_alert:handle_settings_alerts/1};
                 ["settings", "stats"] ->
                     {{[settings], read}, fun menelaus_web_settings:handle_settings_stats/1};
+                ["settings", "metrics" | PathRest] ->
+                    {{[settings], read},
+                     fun menelaus_web_stats:handle_get_settings/2, [PathRest]};
                 ["settings", "failover"] ->
                     {{[settings], read}, fun menelaus_web_settings:handle_get/2,
                      [failover]};
@@ -591,6 +594,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_alert:handle_settings_alerts_send_test_email/1};
                 ["settings", "stats"] ->
                     {{[settings], write}, fun menelaus_web_settings:handle_settings_stats_post/1};
+                ["settings", "metrics" | PathRest] ->
+                    {{[settings], write},
+                     fun menelaus_web_stats:handle_post_settings/2, [PathRest]};
                 ["settings", "autoFailover"] ->
                     {{[settings], write}, fun menelaus_web_auto_failover:handle_settings_post/1};
                 ["settings", "failover"] ->

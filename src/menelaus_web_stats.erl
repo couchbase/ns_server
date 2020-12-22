@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2020 Couchbase, Inc.
+%% @copyright 2020-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -17,7 +17,8 @@
 %% @doc rest api for stats
 -module(menelaus_web_stats).
 
--export([handle_range_post/1, handle_range_get/2]).
+-export([handle_range_post/1, handle_range_get/2,
+         handle_get_settings/2, handle_post_settings/2]).
 
 -include("ns_common.hrl").
 -include("rbac.hrl").
@@ -26,6 +27,126 @@
 -define(MAX_TS, 9999999999999).
 -define(MIN_TS, -?MAX_TS).
 -define(DEFAULT_PROMETHEUS_QUERY_TIMEOUT, 60000).
+
+
+params() ->
+    Services = all_services(),
+
+    [{"enabled",
+      #{type => bool}},
+     {"scrapeInterval",
+      #{cfg_key => scrape_interval, type => pos_int}},
+     {"scrapeTimeout",
+      #{cfg_key => scrape_timeout, type => pos_int}},
+     {"snapshotCreationTimeout",
+      #{cfg_key => snapshot_timeout_msecs, type => pos_int}},
+     {"scrapeIntervalsCalculationPeriod",
+      #{cfg_key => intervals_calculation_period, type => int}},
+     {"cbcollect.statsMaxSize",
+      #{cfg_key => cbcollect_stats_dump_max_size, type => pos_int}},
+     {"cbcollect.statsMinPeriod",
+      #{cfg_key => cbcollect_stats_min_period, type => pos_int}},
+     {"expectedAvgSampleSize",
+      #{cfg => average_sample_size, type => pos_int}},
+     {"logExecutedQueries",
+      #{cfg_key => log_queries, type => bool}},
+     {"derivedMetricsFilter",
+      #{cfg_key => derived_metrics_filter, type => derived_metrics_filter}},
+     {"derivedMetricsCalculationInterval",
+      #{cfg_key => derived_metrics_interval, type => int}},
+
+     {"prometheus.retentionSize",
+      #{cfg_key => retention_size, type => pos_int}},
+     {"prometheus.retentionTime",
+      #{cfg_key => retention_time, type => pos_int}},
+     {"prometheus.walCompression",
+      #{cfg_key => wal_compression, type => bool}},
+     {"prometheus.authEnabled",
+      #{cfg_key => prometheus_auth_enabled, type => bool}},
+     {"prometheus.logLevel",
+      #{cfg_key => log_level,
+        type => {one_of, string, ["debug", "info", "warn", "error"]}}},
+     {"prometheus.maxBlockDuration",
+      #{cfg_key => max_block_duration, type => pos_int}},
+     {"prometheus.queryMaxSamples",
+      #{cfg_key => query_max_samples, type => pos_int}},
+     {"prometheus.reportMetrics",
+      #{cfg_key => prometheus_metrics_enabled, type => bool}},
+     {"prometheus.reportMetricsInterval",
+      #{cfg_key => prometheus_metrics_scrape_interval, type => pos_int}},
+     {"prometheus.listenAddr",
+      #{cfg_key => listen_addr_type,
+        type => {one_of, existing_atom, [loopback, any]}}}] ++
+    [{"services." ++ N ++ ".highCardEnabled",
+      #{cfg_key => [services, S, high_cardinality_enabled], type => bool}}
+     || {S, N} <- Services] ++
+    [{"statsExport." ++ N ++ ".highCardEnabled",
+      #{cfg_key => [external_prometheus_services, S, high_cardinality_enabled],
+        type => bool}}
+     || {S, N} <- Services].
+
+type_spec(derived_metrics_filter) ->
+    #{validators => [fun derived_metrics_filter/2],
+      formatter => fun format_derived_metrics_filter/1}.
+
+format_derived_metrics_filter(all) -> {value, <<"all">>};
+format_derived_metrics_filter(L) -> {value, [list_to_binary(M) || M <- L]}.
+
+derived_metrics_filter(Name, State) ->
+    Err = "must be either \"all\" or list of strings",
+    validator:validate(
+        case validator:is_json(State) of
+            true ->
+                fun (<<"all">>) -> {value, all};
+                    (List) when is_list(List) ->
+                        case lists:all(fun is_binary/1, List) of
+                            true ->
+                                Metrics = [binary_to_list(B) || B <- List],
+                                verify_derived_metrics(Metrics);
+                            false -> {error, Err}
+                        end;
+                    (_NotList) ->
+                        {error, Err}
+                end;
+            false ->
+                fun ("all") -> {value, all};
+                    (Str) ->
+                        Tokens = string:lexemes(Str, ","),
+                        Metrics = [string:trim(T) || T <- Tokens],
+                        verify_derived_metrics(Metrics)
+                end
+        end, Name, State).
+
+handle_get_settings(Path, Req) ->
+    Settings = misc:update_proplist(
+                 prometheus_cfg:default_settings(),
+                 ns_config:read_key_fast(stats_settings, [])),
+    menelaus_web_settings2:handle_get(Path, params(), fun type_spec/1,
+                                      Settings, Req).
+
+handle_post_settings(Path, Req) ->
+    menelaus_web_settings2:handle_post(
+      apply_props(Path, _, _), Path, params(), fun type_spec/1, Req).
+
+apply_props(Path, PropList, Req) ->
+    OldProps = ns_config:read_key_fast(stats_settings, []),
+    NewProps = lists:foldl(
+                 fun ({KeyTokens, Value}, Acc) ->
+                     apply_value(KeyTokens, Value, Acc)
+                 end, OldProps, PropList),
+    ns_config:set(stats_settings, NewProps),
+    handle_get_settings(Path, Req).
+
+apply_value([], Value, _PropList) -> Value;
+apply_value([Key | Tail], Value, PropList) ->
+    Res = misc:key_update(Key, PropList,
+                          fun (SubProplist) ->
+                              apply_value(Tail, Value, SubProplist)
+                          end),
+    case Res of
+        false -> [{Key, apply_value(Tail, Value, [])} | PropList];
+        _ -> Res
+    end.
 
 handle_range_post(Req) ->
     PermFilters =
@@ -486,3 +607,25 @@ convert_perm_map_to_promql_ast(PermMap) ->
 escape_re_chars(Str) ->
     re:replace(Str, "[\\[\\].\\\\^$|()?*+{}]", "\\\\&",
                [{return,list}, global]).
+
+verify_derived_metrics(Metrics) ->
+    AllDerivedMetrics = all_derived_metrics(),
+    case [M || M <- Metrics, not lists:member(M, AllDerivedMetrics)] of
+        [] -> {value, Metrics};
+        InvalidMetrics ->
+            {error, io_lib:format("Invalid derived metrics: ~p",
+                                  [InvalidMetrics])}
+    end.
+
+all_derived_metrics() ->
+    Services = [S || {S, _} <- all_services()],
+    [N || S <- Services, {N, _} <- prometheus_cfg:derived_metrics(S)].
+
+all_services() ->
+    InstallType = case cluster_compat_mode:is_enterprise() of
+                      true -> enterprise;
+                      false -> community
+                  end,
+    [{S, atom_to_list(ns_cluster_membership:json_service_name(S))}
+        || S <- [ns_server, xdcr |
+                 ns_cluster_membership:allowed_services(InstallType)]].

@@ -24,7 +24,8 @@
 -endif.
 
 %% API
--export([start_link/0, authenticate/2, settings/0, wipe/0, storage_path/1]).
+-export([start_link/0, authenticate/2, settings/0, wipe/0, storage_path/1,
+         default_settings/0, derived_metrics/1]).
 
 -export_type([stats_settings/0]).
 
@@ -76,7 +77,7 @@
     {truncation_match_patterns, [string()]} |
     {token_file, string()} |
     {query_max_samples, pos_integer()} |
-    {intervals_calculation_period, pos_integer() | undefined} |
+    {intervals_calculation_period, integer()} |
     {cbcollect_stats_dump_max_size, pos_integer()} |
     {cbcollect_stats_min_period, pos_integer()} |
     {average_sample_size, pos_integer()} |
@@ -92,8 +93,8 @@
     {prometheus_metrics_scrape_interval, pos_integer()} |
     {listen_addr_type, loopback | any} |
     {log_queries, true | false} |
-    {derived_metrics, all | none | [MetricName :: string()]} |
-    {derived_metrics_interval, pos_integer() | undefined} |
+    {derived_metrics_filter, all | [MetricName :: string()]} |
+    {derived_metrics_interval, integer()} |
     {rules_config_file, string()}.
 
 %% Those key-values are derived in the sense that they are calculated based
@@ -149,7 +150,7 @@ default_settings() ->
      {truncation_match_patterns, ["{job=~\".*_high_cardinality\"}"]},
      {token_file, "prometheus_token"},
      {query_max_samples, 200000},
-     {intervals_calculation_period, 10*60*1000}, %% 10m
+     {intervals_calculation_period, 10*60*1000}, %% 10m (-1 means "disabled")
      {cbcollect_stats_dump_max_size, 1024*1024*1024}, %% 1GB, in bytes
      {cbcollect_stats_min_period, 14}, %% in days
      {average_sample_size, 3}, %% in bytes
@@ -161,8 +162,8 @@ default_settings() ->
      {prometheus_metrics_scrape_interval, 60}, %% in seconds
      {listen_addr_type, loopback},
      {log_queries, false},
-     {derived_metrics, all}, %% all | none | [metric()]
-     {derived_metrics_interval, undefined}, %% in seconds or undefined
+     {derived_metrics_filter, all}, %% all | [metric()]
+     {derived_metrics_interval, -1}, %% in sec (-1 means "use scrape interval")
      {rules_config_file, "prometheus_rules.yml"}].
 
 -spec build_settings() -> stats_settings().
@@ -655,9 +656,8 @@ generate_rules_configs(Settings) ->
     Targets = proplists:get_value(targets, Settings, []),
     Metrics = lists:append([derived_metrics(Name) || {Name, _} <- Targets]),
     FilteredMetrics =
-        case proplists:get_value(derived_metrics, Settings) of
+        case proplists:get_value(derived_metrics_filter, Settings) of
             all -> Metrics;
-            none -> [];
             List -> lists:filter(fun ({K, _}) -> lists:member(K, List) end,
                                  Metrics)
         end,
@@ -665,7 +665,8 @@ generate_rules_configs(Settings) ->
         true ->
             RulesInterval =
                 case proplists:get_value(derived_metrics_interval, Settings) of
-                    undefined -> proplists:get_value(scrape_interval, Settings);
+                    N when N =< 0 ->
+                        proplists:get_value(scrape_interval, Settings);
                     N -> N
                 end,
             File = proplists:get_value(rules_config_file, Settings),
@@ -897,7 +898,7 @@ intervals_calculation_period(Settings) ->
     case proplists:get_bool(enabled, Settings) of
         true ->
             case proplists:get_value(intervals_calculation_period, Settings) of
-                undefined -> disabled;
+                N when N =< 0 -> disabled;
                 Timeout -> Timeout
             end;
         false ->
@@ -1557,19 +1558,15 @@ prometheus_derived_metrics_config_test() ->
 
     ?assertMatch(
       undefined,
-      RulesConfig([{derived_metrics, none}], [kv])),
-
-    ?assertMatch(
-      undefined,
-      RulesConfig([{derived_metrics, []}], [kv])),
+      RulesConfig([{derived_metrics_filter, []}], [kv])),
 
     ?assertMatch(
       #{groups := [#{rules := [#{record := _}|_]}]},
-      RulesConfig([{derived_metrics, all}], [kv])),
+      RulesConfig([{derived_metrics_filter, all}], [kv])),
 
     ?assertMatch(
       #{groups := [#{rules := [#{record := <<"xdcr_", _/binary>>}]}]},
-      RulesConfig([{derived_metrics, all}], [])),
+      RulesConfig([{derived_metrics_filter, all}], [])),
 
     ?assertMatch(
       #{groups :=
@@ -1577,7 +1574,7 @@ prometheus_derived_metrics_config_test() ->
                          expr := <<"n1ql_request_time / ignoring(name) "
                                    "n1ql_requests">>,
                          labels := #{name := <<"n1ql_avg_req_time">>}}]}]},
-      RulesConfig([{derived_metrics, ["n1ql_avg_req_time", "unknown"]}],
+      RulesConfig([{derived_metrics_filter, ["n1ql_avg_req_time", "unknown"]}],
                   [kv, n1ql])),
 
     ?assertMatch(
