@@ -2223,6 +2223,7 @@ button:hover.scenarios-delete {
 .cbui-drawer {
   position: relative;
   margin: 0 .5rem;
+  padding: 0 0 .25rem 0;
   display: flex;
   align-items: center;
   white-space: nowrap;
@@ -2262,6 +2263,7 @@ button:hover.scenarios-delete {
   -webkit-box-flex: 1;
   flex-grow: 1;
   font-size: .75rem;
+  padding: 0 0 .25rem 0;
 }
 .wb-result-status:not(.success):not(.error) {
   white-space: nowrap;
