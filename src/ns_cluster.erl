@@ -1251,7 +1251,7 @@ get_chronicle_info(KVList) ->
         undefined ->
             undefined;
         Binary ->
-            binary_to_term(base64:decode(Binary), [safe])
+            binary_to_term(base64:decode(Binary))
     end.
 
 -spec do_complete_join([{binary(), term()}]) -> {ok, ok} | {error, atom(), binary(), term()}.
