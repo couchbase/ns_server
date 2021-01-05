@@ -113,7 +113,8 @@
          config_upgrade_to_51/1,
          config_upgrade_to_55/1,
          config_upgrade_to_65/1,
-         config_upgrade_to_66/1]).
+         config_upgrade_to_66/1,
+         upgrade_to_chronicle/1]).
 
 
 %%%===================================================================
@@ -143,6 +144,10 @@ get_snapshot(Bucket) ->
         {ok, BC} ->
             get_snapshot_int([{Bucket, BC}])
     end.
+
+upgrade_to_chronicle(Buckets) ->
+    BucketConfigs = proplists:get_value(configs, Buckets, []),
+    [{root(), [N || {N, _} <- BucketConfigs]}].
 
 get_snapshot_int(BucketConfigs) ->
     %% TODO: temporary implementation till we keep bucket props in ns_config
@@ -737,10 +742,38 @@ create_bucket(BucketType, BucketName, NewConfig) ->
                       end,
                       [{BucketName, MergedConfig} | List]
               end),
+            create_in_chronicle(BucketName, collections:enabled(MergedConfig)),
             %% The janitor will handle creating the map.
             ok;
         {error, _} ->
             {error, {invalid_bucket_name, BucketName}}
+    end.
+
+create_in_chronicle(BucketName, CollectionsEnabled) ->
+    case chronicle_compat:backend() of
+        ns_config ->
+            %% for FORCE_CHRONICLE support only
+            case CollectionsEnabled of
+                true ->
+                    ns_config:set(sub_key(BucketName, collections),
+                                  collections:default_manifest());
+                false ->
+                    ok
+            end;
+        chronicle ->
+            RootKey = root(),
+            {ok, _} =
+                chronicle_kv:transaction(
+                  kv, [RootKey],
+                  fun (Snapshot) ->
+                          BucketNames = get_bucket_names(Snapshot),
+                          {commit,
+                           [{set, RootKey,
+                             lists:usort([BucketName | BucketNames])} |
+                            [{set, sub_key(BucketName, collections),
+                              collections:default_manifest()} ||
+                                CollectionsEnabled]]}
+                  end)
     end.
 
 -spec delete_bucket(bucket_name()) ->
@@ -749,6 +782,7 @@ create_bucket(BucketType, BucketName, NewConfig) ->
 delete_bucket(BucketName) ->
     Ref = make_ref(),
     Process = self(),
+    delete_in_chronicle(BucketName),
     RV = ns_config:update_sub_key(
            buckets, configs,
            fun (List) ->
@@ -769,6 +803,26 @@ delete_bucket(BucketName) ->
             end;
         {exit, {not_found, _}, _} ->
             RV
+    end.
+
+delete_in_chronicle(BucketName) ->
+    CollectionsKey = sub_key(BucketName, collections),
+    case chronicle_compat:backend() of
+        ns_config ->
+            %% for FORCE_CHRONICLE support only
+            ns_config:delete(CollectionsKey);
+        chronicle ->
+            RootKey = root(),
+            {ok, _} =
+                chronicle_kv:transaction(
+                  kv, [RootKey, CollectionsKey],
+                  fun (Snapshot) ->
+                          BucketNames = get_bucket_names(Snapshot),
+                          {commit,
+                           [{set, RootKey, BucketNames -- [BucketName]} |
+                            [{delete, CollectionsKey} ||
+                                maps:is_key(CollectionsKey, Snapshot)]]}
+                  end)
     end.
 
 filter_ready_buckets(BucketInfos) ->

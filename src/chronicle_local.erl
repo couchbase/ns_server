@@ -233,7 +233,11 @@ do_upgrade(Config) ->
 
     Pairs =
         ns_config:fold(
-          fun (Key, Value, Acc) ->
+          fun (buckets, Buckets, Acc) ->
+                  maps:merge(
+                    Acc, maps:from_list(
+                           ns_bucket:upgrade_to_chronicle(Buckets)));
+              (Key, Value, Acc) ->
                   case should_move(Key) of
                       true ->
                           maps:put(Key, Value, Acc);
