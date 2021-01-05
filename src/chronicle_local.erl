@@ -226,21 +226,26 @@ upgrade(Config) ->
         false ->
             ok
     end.
+
 do_upgrade(Config) ->
     OtherNodes = ns_node_disco:nodes_wanted(Config) -- [node()],
     ok = chronicle_master:upgrade_cluster(OtherNodes),
 
-    ns_config:foreach(
-      fun (Key, Value) ->
-              case should_move(Key) of
-                  true ->
-                      {ok, Rev} = chronicle_kv:set(kv, Key, Value),
-                      ?log_debug("Key ~p is migrated to chronicle. Rev = ~p."
-                                 "Value = ~p",
-                                 [Key, Rev, Value]);
-                  false ->
-                      ok
-              end
-      end, Config),
+    Pairs =
+        ns_config:fold(
+          fun (Key, Value, Acc) ->
+                  case should_move(Key) of
+                      true ->
+                          maps:put(Key, Value, Acc);
+                      false ->
+                          Acc
+                  end
+          end, #{}, Config),
+
+    Sets = [{set, K, V} || {K, V} <- maps:to_list(Pairs)],
+
+    {ok, Rev} = chronicle_kv:multi(kv, Sets),
+    ?log_info("Keys are migrated to chronicle. Rev = ~p. Sets = ~p",
+              [Rev, Sets]),
 
     remote_pull(OtherNodes, ?PULL_TIMEOUT).
