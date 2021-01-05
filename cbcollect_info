@@ -929,6 +929,7 @@ def make_os_tasks():
         WindowsTask("Physical memory chip info", "wmic memorychip"),
         WindowsTask("Local storage devices", "wmic logicaldisk"),
         UnixTask("Filesystem", "df -ha"),
+        UnixTask("Filesystem inodes", "df -i"),
         UnixTask("System activity reporter", "sar 1 10"),
         UnixTask("System paging activity", "vmstat 1 10"),
         UnixTask("System uptime", "uptime"),
