@@ -32,7 +32,7 @@
          handle_ensure_manifest/3]).
 
 handle_get(Bucket, Req) ->
-    assert_api_available_for_read(Bucket),
+    assert_collections_enabled(),
     menelaus_util:reply_json(
       Req, collections:manifest_json(menelaus_auth:get_identity(Req),
                                      Bucket, direct)).
@@ -164,7 +164,7 @@ handle_ensure_manifest(Bucket, Uid, Req) ->
        nodes_validator(BucketNodes, Req, _),
        validator:unsupported(_)]).
 
-assert_api_available_for_read(_Bucket) ->
+assert_collections_enabled() ->
     case collections:enabled() of
         true ->
             ok;
@@ -174,7 +174,7 @@ assert_api_available_for_read(_Bucket) ->
     end.
 
 assert_api_available(Bucket) ->
-    assert_api_available_for_read(Bucket),
+    assert_collections_enabled(),
     {ok, BucketConfig} = ns_bucket:get_bucket(Bucket),
     case collections:enabled(BucketConfig) of
         true ->
