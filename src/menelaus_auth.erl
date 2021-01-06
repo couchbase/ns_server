@@ -24,7 +24,6 @@
 
 -export([has_permission/2,
          is_internal/1,
-         get_accessible_buckets/2,
          filter_accessible_buckets/3,
          extract_auth/1,
          extract_identity_from_cert/1,
@@ -47,17 +46,6 @@
          authenticate_external/2]).
 
 %% External API
-
--spec get_accessible_buckets(
-        fun ((bucket_name()) -> rbac_permission()), mochiweb_request()) ->
-                                    [{bucket_name(), list()}].
-get_accessible_buckets(Fun, Req) ->
-    Identity = get_identity(Req),
-    Roles = menelaus_roles:get_compiled_roles(Identity),
-
-    [{BucketName, Config} ||
-        {BucketName, Config} <- ns_bucket:get_buckets(),
-        menelaus_roles:is_allowed(Fun(BucketName), Roles)].
 
 filter_accessible_buckets(Fun, Buckets, Req) ->
     Identity = get_identity(Req),
