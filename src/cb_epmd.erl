@@ -135,6 +135,7 @@ parse_node("babysitter_of_n_" ++ Nstr) -> {babysitter, list_to_integer(Nstr)};
 parse_node("couchdb_n_" ++ Nstr) -> {couchdb, list_to_integer(Nstr)};
 
 parse_node("executioner") -> {executioner, 0};
+parse_node("ctl-" ++ _) -> {executioner, 0};
 
 parse_node(Name) -> erlang:error({unknown_node, Name}).
 
