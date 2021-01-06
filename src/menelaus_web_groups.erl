@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2013-2018 Couchbase, Inc.
+%% @copyright 2013-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -113,7 +113,7 @@ server_groups_put_txn(Cfg, JSON, Rev) ->
                         false ->
                             NewGroups = build_replacement_groups(
                                           Groups, ParsedGroups),
-                            {commit, [{server_groups, NewGroups}],
+                            {[{server_groups, NewGroups}],
                              NewGroups}
                     end;
                 _ ->
@@ -267,7 +267,7 @@ do_handle_server_groups_post(Name, Req) ->
                                      {name, Name},
                                      {nodes, []}],
                            NewGroups = lists:sort([AGroup | Groups]),
-                           {commit, [{server_groups, NewGroups}], AGroup};
+                           {[{server_groups, NewGroups}], AGroup};
                        {value, _} ->
                            {abort, already_exists}
                    end
@@ -351,8 +351,7 @@ do_group_update(GroupUUID, Name, Req) ->
                                                            {name, Name}),
                            NewGroups =
                                lists:sort([UpdatedGroup | Groups -- [G]]),
-                           {commit, [{server_groups, NewGroups}],
-                            UpdatedGroup}
+                           {[{server_groups, NewGroups}], UpdatedGroup}
                    end
            end),
     case RV of
@@ -387,8 +386,7 @@ do_group_delete(GroupUUID, Req) ->
                                [_|_] ->
                                    {abort, not_empty};
                                [] ->
-                                   {commit,
-                                    [{server_groups, Groups -- [Victim]}],
+                                   {[{server_groups, Groups -- [Victim]}],
                                     Victim}
                            end
                    end
