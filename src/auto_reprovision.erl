@@ -115,14 +115,14 @@ handle_call({reprovision_buckets, Buckets, UnsafeNodes}, _From,
     %% affected buckets and update the ns_config along with the adjusted
     %% auto-reprovision count as part of a single transaction. The updated
     %% buckets will be brought online as part of the next janitor cleanup.
-    TxnRV = ns_bucket:update_maps(
-              Buckets,
-              do_reprovision_bucket(_, _, UnsafeNodes, Candidates),
-              [{auto_reprovision_cfg, RCfg}]),
+    UpdateRV = ns_bucket:update_maps(
+                 Buckets,
+                 do_reprovision_bucket(_, _, UnsafeNodes, Candidates),
+                 [{auto_reprovision_cfg, RCfg}]),
 
     {RV, State1} =
-        case TxnRV of
-            {commit, _} ->
+        case UpdateRV of
+            ok ->
                 case NewCount >= MaxNodes of
                     true ->
                         ale:info(

@@ -914,27 +914,40 @@ update_bucket_config(BucketName, Fun) ->
       end).
 
 update_maps(Buckets, OnMap, ExtraSets) ->
-    ns_config:run_txn(
-      fun(Config, SetFn) ->
-              {value, BucketsKV} = ns_config:search(Config, buckets),
-              NewBucketsKV =
-                  misc:key_update(
-                    configs, BucketsKV,
-                    fun (AllBuckets) ->
-                            [{Name, case lists:member(Name, Buckets) of
-                                        true ->
-                                            misc:key_update(map, BC,
-                                                            OnMap(Name, _));
-                                        false ->
-                                            BC
-                                    end} ||
-                                {Name, BC} <- AllBuckets]
-                    end),
-              {commit, functools:chain(
-                         Config,
-                         [SetFn(buckets, NewBucketsKV, _) |
-                          [SetFn(K, V, _) || {K, V} <- ExtraSets]])}
+    update_many(
+      fun (AllBuckets) ->
+              {lists:filtermap(
+                 fun ({Name, BC}) ->
+                         case lists:member(Name, Buckets) of
+                             true ->
+                                 {true, {Name, misc:key_update(
+                                                 map, BC, OnMap(Name, _))}};
+                             false ->
+                                 false
+                         end
+                 end, AllBuckets), ExtraSets}
       end).
+
+update_many(Fun) ->
+    RV =
+        ns_config:run_txn(
+          fun(Config, SetFn) ->
+                  Buckets = get_buckets(Config),
+                  {ModifiedBuckets, ExtraSets} = Fun(Buckets),
+                  NewBuckets = misc:update_proplist(Buckets, ModifiedBuckets),
+
+                  BucketSet = {buckets, [{configs, NewBuckets}]},
+                  {commit,
+                   functools:chain(
+                     Config,
+                     [SetFn(K, V, _) || {K, V} <- [BucketSet | ExtraSets]])}
+          end),
+    case RV of
+        {commit, _} ->
+            ok;
+        Error ->
+            Error
+    end.
 
 is_named_bucket_persistent(BucketName) ->
     {ok, BucketConfig} = get_bucket(BucketName),
