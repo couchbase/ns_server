@@ -37,7 +37,8 @@
          disable/0,
          reset_count/0,
          reprovision_buckets/2,
-         get_cleanup_options/0
+         get_cleanup_options/0,
+         jsonify_cfg/0
         ]).
 
 %% gen_server callbacks.
@@ -83,7 +84,7 @@ call(Msg) ->
 
 %% gen_server callbacks.
 init([]) ->
-    {Enabled, MaxNodes, Count} = get_reprovision_cfg(),
+    {Enabled, MaxNodes, Count} = get_reprovision_info(),
     {ok, #state{enabled = Enabled, max_nodes = MaxNodes, count = Count}}.
 
 handle_call({enable, MaxNodes}, _From, #state{count = Count} = State) ->
@@ -96,7 +97,7 @@ handle_call(disable, _From, _State) ->
 handle_call(reset_count, _From, #state{count = 0} = State) ->
     {reply, ok, State};
 handle_call(reset_count, _From, State) ->
-    {Enabled, MaxNodes, Count} = get_reprovision_cfg(),
+    {Enabled, MaxNodes, Count} = get_reprovision_info(),
     ale:info(?USER_LOGGER, "auto-reprovision count reset from ~p", [Count]),
     ok = persist_config(Enabled, MaxNodes, 0),
     {reply, ok, State#state{count = 0}};
@@ -163,6 +164,13 @@ persist_config(Enabled, MaxNodes, Count) ->
 
 get_reprovision_cfg() ->
     {value, RCfg} = ns_config:search(ns_config:latest(), auto_reprovision_cfg),
+    RCfg.
+
+jsonify_cfg() ->
+    {struct, get_reprovision_cfg()}.
+
+get_reprovision_info() ->
+    RCfg = get_reprovision_cfg(),
     {proplists:get_value(enabled, RCfg, true),
      proplists:get_value(max_nodes, RCfg, ?DEFAULT_MAX_NODES_SUPPORTED),
      proplists:get_value(count, RCfg, 0)}.

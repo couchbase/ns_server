@@ -593,17 +593,7 @@ validate_settings_stats(SendStats) ->
 
 %% @doc Settings to en-/disable auto-reprovision
 handle_settings_auto_reprovision(Req) ->
-    Config = build_settings_auto_reprovision(),
-    Enabled = proplists:get_value(enabled, Config),
-    MaxNodes = proplists:get_value(max_nodes, Config),
-    Count = proplists:get_value(count, Config),
-    reply_json(Req, {struct, [{enabled, Enabled},
-                              {max_nodes, MaxNodes},
-                              {count, Count}]}).
-
-build_settings_auto_reprovision() ->
-    {value, Config} = ns_config:search(ns_config:get(), auto_reprovision_cfg),
-    Config.
+    reply_json(Req, auto_reprovision:jsonify_cfg()).
 
 handle_settings_auto_reprovision_post(Req) ->
     PostArgs = mochiweb_request:parse_post(Req),

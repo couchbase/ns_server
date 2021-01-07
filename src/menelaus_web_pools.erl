@@ -518,11 +518,7 @@ cluster_info_props(Req) ->
                                  lists:member(K, [enabled, timeout])],
               {struct, AFCfg}
       end},
-     {autoReprovision,
-      fun (Cfg) ->
-              ARCfg = ns_config:search(Cfg, auto_reprovision_cfg, []),
-              {struct, ARCfg}
-      end},
+     {autoReprovision, fun auto_reprovision:jsonify_cfg/0},
      {orchestrator,
       fun () ->
               case leader_registry:whereis_name(ns_orchestrator) of
