@@ -61,7 +61,7 @@ scope_validators(default_allowed) ->
 scope_validators(Exceptions) ->
     [validator:required(name, _),
      validator:string(name, _),
-     validator:length(name, 1, 30, _),
+     validator:length(name, 1, 251, _),
      name_validator(_),
      name_first_char_validator(_, Exceptions),
      validator:unsupported(_)].
