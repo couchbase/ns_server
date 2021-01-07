@@ -1,5 +1,5 @@
 <div [formGroup]="group"
-   class="row flex-left margin-bottom-1 margin-top-1-5">
+   class="row flex-left margin-bottom-1">
   <label class="toggle-control margin-0">
     <input
        formControlName="collectionsExplicitMapping"
@@ -8,13 +8,11 @@
     <span class="toggle-control-body"></span>
   </label>
   <span class="text-small margin-left-half">
-    Specify scopes, collections, and mapping
+    Specify Scopes, Collections, and Mappings
   </span>
 </div>
 
-<div
-   class="margin-bottom-1-5"
-   [hidden]="!group.get('collectionsExplicitMapping').value">
+<div [hidden]="!group.get('collectionsExplicitMapping').value">
   <div
      class="error error-field"
      [hidden]="!(postCreateReplication.error | async)?.colMappingRules">
@@ -75,7 +73,7 @@
 <!-- Migration Mode controls ----------------------------------------------- -->
 <div
    [formGroup]="group"
-   class="row flex-left margin-bottom-1">
+   class="row flex-left margin-bottom-1 margin-top-2">
   <label class="toggle-control margin-0">
     <input
        formControlName="collectionsMigrationMode"
@@ -83,13 +81,15 @@
        type="checkbox">
     <span class="toggle-control-body"></span>
   </label>
-  <span class="text-small margin-left-half">Migrate collections</span>
+  <span class="text-small margin-left-half">Use Migration Mode</span>
 
   <span
      class="fa-stack icon-info"
-     ngbTooltip="Use this tool to convert pre-7.0 bucket topologies to use buckets, scopes, and collections
-                 and replicate them to your remote cluster. Unlike typical replications, this replication
-                 should be deleted upon migration success."
+     ngbTooltip="Take a bucket with only a default scope and collection (bucketName._default._default)
+                 and replicate that data into the scopes and collections you set
+                 up on a remote cluster. You can just specify the destination
+                 collection or create a set of mapping rules with filter expressions.
+                 Unlike typical replications, this one should be deleted once migration is successful."
      placement="top">
     <span class="icon fa-circle-thin fa-stack-2x"></span>
     <span class="icon fa-info fa-stack-1x"></span>
@@ -102,31 +102,33 @@
    class="margin-bottom-1-5">
   <div class="formrow row flex-left items-stretch resp-flex-column-s">
     <div class="column width-4">
-      <label for="migration_from_collection">Replication Filter for Source</label>
+      <label for="migration_to_collection">Target Collection</label>
       <input
          class="width-12"
-         id="migration_from_collection"
-         formControlName="key"
-         placeholder="Filter for source default collection"
+         id="migration_to_collection"
+         formControlName="target"
+         placeholder="...specify target as bucket.scope.collection"
          type="text"
          autocorrect="off"
          spellcheck="false"
          autocapitalize="off">
     </div>
-    <div class="column width-4">
-      <label for="migration_to_collection">Replicate To Collection</label>
+    <div class="width-4">
+      <label for="migration_from_collection">
+        Optional Filter Expression
+      </label>
       <input
          class="width-12"
-         id="migration_to_collection"
-         formControlName="target"
-         placeholder="use . as separator. e.g. scope.collection"
+         id="migration_from_collection"
+         formControlName="key"
+         placeholder="e.g. type='airport'"
          type="text"
          autocorrect="off"
          spellcheck="false"
          autocapitalize="off">
     </div>
     <button
-       class="margin-top-1-5 inline"
+       class=" outline tight margin-top-1-5 margin-left-quarter inline"
        type="button"
        (click)="addExplicitMappingMigrationRules.next()">Save Mapping</button>
   </div>

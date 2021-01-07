@@ -15,14 +15,6 @@
   <div class="row flex-left items-stretch resp-flex-column-med margin-bottom-2">
     <div class="width-10">
 
-      <mn-xdcr-mapping
-         *ngIf="(replicationSettings | async) && (isEnterprise | async)"
-         [explicitMappingRules]="explicitMappingRules"
-         [explicitMappingMigrationRules]="explicitMappingMigrationRules"
-         [explicitMappingGroup]="explicitMappingGroup"
-         [group]="form.group"
-         [bucket]="item.source"></mn-xdcr-mapping>
-
       <mn-xdcr-filter
          [xdcrGroup]="form.group"
          [bucket]="item.source"
@@ -30,6 +22,14 @@
          [isEditMode]="true"
          [group]="filterRegexpGroup"
          *ngIf="(isEnterprise | async)"></mn-xdcr-filter>
+
+      <mn-xdcr-mapping
+         *ngIf="(replicationSettings | async) && (isEnterprise | async)"
+         [explicitMappingRules]="explicitMappingRules"
+         [explicitMappingMigrationRules]="explicitMappingMigrationRules"
+         [explicitMappingGroup]="explicitMappingGroup"
+         [group]="form.group"
+         [bucket]="item.source"></mn-xdcr-mapping>
 
       <mn-xdcr-settings
          class="panel-content"

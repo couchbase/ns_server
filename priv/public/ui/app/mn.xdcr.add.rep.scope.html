@@ -35,15 +35,14 @@
       </div>
     </div>
 <!-- list of collections *************************************************** -->
-    <div class="cbui-table-body margin-top-1 max-height-280" style="columns: 3 auto; column-gap:0px">
+    <div class="cbui-table-body margin-top-1 margin-bottom-2 max-height-280" style="columns: 2 auto; column-gap:0px">
       <mn-xdcr-add-rep-mapping-item
          *ngFor="let coll of (collections | async); trackBy: trackCollectionsBy"
-         style="display:block;white-space:nowrap"
+         class="block nowrap padding-quarter"
          [parent]="item.name"
          [explicitMappingGroup]="explicitMappingGroup"
          [item]="coll"
-         [explicitMappingRules]="explicitMappingRules"
-         class="">
+         [explicitMappingRules]="explicitMappingRules">
       </mn-xdcr-add-rep-mapping-item>
     </div>
   </div>
