@@ -20,8 +20,8 @@ licenses/APL2.txt.
       <span
          class="sorter"
          [ngClass]="{
-                'dynamic-active': (sorter.click | async) == 'name',
-                'dynamic-inverted': (sorter.state | async)
+                'dynamic-active': (sorter.state | async)[0] == 'name',
+                'dynamic-inverted': (sorter.state | async)[1]
                 }"
          (click)="$event.stopPropagation();sorter.click.next('name')">
         collection name

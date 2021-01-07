@@ -24,7 +24,6 @@ import mnLogsService from "./mn_logs_service.js";
 import mnLogRedactionService from "./mn_redaction_service.js";
 import mnGroupsService from "./mn_groups_service.js";
 import mnLogsCollectInfoController from "./mn_logs_collect_info_controller.js";
-import {mnLogsListController, moduleCodeFilter} from "./mn_logs_list_controller.js";
 import mnLogsCollectInfoService from "./mn_logs_collect_info_service.js";
 
 
@@ -47,9 +46,7 @@ angular.module('mnLogs', [
 ])
   .config(configure)
   .controller('mnLogsController', mnLogsController)
-  .controller('mnLogsListController', mnLogsListController)
   .controller('mnLogsCollectInfoController', mnLogsCollectInfoController)
-  .filter('moduleCode', moduleCodeFilter);
 
 function configure($stateProvider) {
   $stateProvider
@@ -66,11 +63,6 @@ function configure($stateProvider) {
         title: "Logs",
         permissions: "cluster.logs.read"
       }
-    })
-    .state('app.admin.logs.list', {
-      url: '',
-      controller: 'mnLogsListController as logsListCtl',
-      templateUrl: 'app/mn_admin/mn_logs_list.html'
     })
     .state('app.admin.logs.collectInfo', {
       url: '/collectInfo',

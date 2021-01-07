@@ -585,6 +585,12 @@ color: #333;
   padding-right: .75rem;
   cursor: pointer;
 }
+.cbui-table-header .sorter:after {
+  display: none;
+}
+.cbui-table-header .sorter.dynamic-active:after {
+  display: inline-block;
+}
 .cbui-table-header .dynamic-active:after {
   font-family: FontAwesome;
   content: "\f0d8";

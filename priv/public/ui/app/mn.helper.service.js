@@ -9,10 +9,10 @@ licenses/APL2.txt.
 */
 
 import {Injectable} from '/ui/web_modules/@angular/core.js';
-import {BehaviorSubject, combineLatest, zip} from '/ui/web_modules/rxjs.js';
+import {BehaviorSubject, Subject, combineLatest, zip} from '/ui/web_modules/rxjs.js';
 import {scan, map, shareReplay, distinctUntilChanged,
-        debounceTime, startWith, pluck, takeUntil, tap,
-        withLatestFrom} from '/ui/web_modules/rxjs/operators.js';
+        debounceTime, pluck, takeUntil, tap,
+        withLatestFrom, startWith, pairwise} from '/ui/web_modules/rxjs/operators.js';
 import {not, sort, prop, descend, ascend, equals} from '/ui/web_modules/ramda.js';
 import {FormBuilder} from "/ui/web_modules/@angular/forms.js";
 import {UIRouter} from "/ui/web_modules/@uirouter/angular.js";
@@ -99,23 +99,36 @@ class MnHelperService {
     }
   }
 
-  createToggle(defaultValue) {
-    var click = new BehaviorSubject(defaultValue);
+  createToggle(isDesc) {
+    var click = new Subject();
     return {
       click: click,
-      state: click.pipe(scan(not, true),
-                        shareReplay({refCount: true, bufferSize: 1}))
+      state: click.pipe(scan(not, isDesc || false),
+        shareReplay({refCount: true, bufferSize: 1}))
     };
   }
 
-  createSorter(defaultValue) {
-    var toggler = this.createToggle(defaultValue);
-    var click = toggler.click.pipe(distinctUntilChanged());
+  createToggleForSorter(defaultValue, isDesc) {
+    var click = new BehaviorSubject(defaultValue);
     return {
       click: click,
-      state: toggler.state,
+      state: click.pipe(startWith(null),
+                        pairwise(),
+                        scan((toggle, [prevCol, currCol]) => {
+                          return (prevCol === currCol) ? !toggle : isDesc;
+                        }, isDesc))
+    };
+  }
+
+  createSorter(defaultValue, isDesc) {
+    var toggler = this.createToggleForSorter(defaultValue, isDesc);
+    var state = zip(toggler.click, toggler.state).pipe(shareReplay({refCount: true, bufferSize: 1}));
+
+    return {
+      click: toggler.click,
+      state: state,
       pipe: (arrayStream) => {
-        return combineLatest(arrayStream, zip(toggler.click, toggler.state))
+        return combineLatest(arrayStream, state)
           .pipe(map(([array, [sortByValue, isDesc]]) => {
             var ascOrDesc = isDesc ? descend : ascend;
             return sort(ascOrDesc(prop(sortByValue)), array);
@@ -124,7 +137,7 @@ class MnHelperService {
     };
   }
 
-  createFilter(component, filterKey) {
+  createFilter(component, filterKey, splitValueBySpace) {
     filterKey = filterKey || "name";
     var group = this.formBuilder.group({value: ""});
     var hotGroup = new BehaviorSubject("");
@@ -133,12 +146,26 @@ class MnHelperService {
       .pipe(takeUntil(component.mnOnDestroy))
       .subscribe(hotGroup);
 
+    var toLowerString = value =>
+        value.toString().toLowerCase();
+    var isSubstring = (substring, completeString) =>
+        toLowerString(completeString).includes(toLowerString(substring));
     var filterFunction = ([list, filterValue]) =>
-        list ? list.filter(item => {
-          if (typeof item === 'string' || typeof item === 'number') {
-            return item.toString().includes(filterValue);
-          } else {
-            return item[filterKey].includes(filterValue);
+        list ? list.filter(listItem => {
+          switch (typeof listItem) {
+            case 'string':
+            case 'number':
+              return isSubstring(filterValue, listItem);
+            case 'object':
+              if (filterKey instanceof Array) {
+                let filterKeys = filterKey.reduce((acc, key) =>
+                                                   acc + " " + listItem[key], "");
+                let filterValues = splitValueBySpace ? filterValue.split(" ") : [filterValue];
+                return filterValues.every(value =>
+                                          isSubstring(value, filterKeys));
+              } else {
+                return isSubstring(filterValue, listItem[filterKey]);
+              }
           }
         }) : [];
 

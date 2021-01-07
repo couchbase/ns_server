@@ -48,8 +48,8 @@
         <span
            class="sorter"
            [ngClass]="{
-                  'dynamic-active': (scopesSorter.click | async) == 'name',
-                  'dynamic-inverted': (scopesSorter.state | async)
+                  'dynamic-active': (scopesSorter.state | async)[0] == 'name',
+                  'dynamic-inverted': (scopesSorter.state | async)[1]
                   }"
            (click)="scopesSorter.click.next('name')">scope name</span></span>
         <span class="cbui-table-cell">collections</span>

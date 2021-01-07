@@ -41,7 +41,7 @@ class MnCollectionsScopeDetailsComponent extends MnLifeCycleHooksToStream {
     super();
     this.mnHelperService = mnHelperService;
     this.filter = mnHelperService.createFilter(this);
-    this.sorter = mnHelperService.createSorter(this);
+    this.sorter = mnHelperService.createSorter('name');
   }
 
   ngOnInit() {

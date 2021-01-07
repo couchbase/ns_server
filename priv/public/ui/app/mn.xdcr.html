@@ -36,8 +36,8 @@
         <span
            class="sorter"
            [ngClass]="{
-                  'dynamic-active': (referenceSorter.click | async) == 'name',
-                  'dynamic-inverted': (referenceSorter.state | async)
+                  'dynamic-active': (referenceSorter.state | async)[0] == 'name',
+                  'dynamic-inverted': (referenceSorter.state | async)[1]
                   }"
            (click)="referenceSorter.click.next('name')">name</span>
       </span>

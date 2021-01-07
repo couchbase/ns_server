@@ -100,6 +100,12 @@ let logsState = {
   lazyLoad: mnLazyload('./mn_admin/mn_logs_controller.js', "mnLogs")
 };
 
+let logsListState = {
+  name: "app.admin.logs.list.**",
+  url: "",
+  lazyLoad: mnLoadNgModule('./mn.logs.list.module.js', "MnLogsListModule")
+};
+
 let groupsState = {
   name: 'app.admin.groups.**',
   url: '/groups',
@@ -217,7 +223,7 @@ let mnAppImports = [
   MnSharedModule,
   MnElementCraneModule.forRoot(),
   UIRouterUpgradeModule.forRoot({
-    states: [authState, wizardState, overviewState, serversState, bucketsState, logsState, groupsState, documentsState, gsiState, viewsState, settingsState, sampleBucketState, securityState, collectionsState, XDCRState, sessionState, logRedactionState, auditState]
+    states: [authState, wizardState, overviewState, serversState, bucketsState, logsState, logsListState, groupsState, documentsState, gsiState, viewsState, settingsState, sampleBucketState, securityState, collectionsState, XDCRState, sessionState, logRedactionState, auditState]
   }),
 
   //downgradedModules
