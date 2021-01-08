@@ -157,14 +157,13 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% Internal functions.
 persist_config(Enabled, MaxNodes, Count) ->
-    ns_config:set(auto_reprovision_cfg,
-                  [{enabled, Enabled},
-                   {max_nodes, MaxNodes},
-                   {count, Count}]).
+    ok = chronicle_compat:set(auto_reprovision_cfg,
+                              [{enabled, Enabled},
+                               {max_nodes, MaxNodes},
+                               {count, Count}]).
 
 get_reprovision_cfg() ->
-    {value, RCfg} = ns_config:search(ns_config:latest(), auto_reprovision_cfg),
-    RCfg.
+    chronicle_compat:get(direct, auto_reprovision_cfg, #{required => true}).
 
 jsonify_cfg() ->
     {struct, get_reprovision_cfg()}.

@@ -216,6 +216,8 @@ should_move({service_map, _}) ->
     true;
 should_move({service_failover_pending, _}) ->
     true;
+should_move(auto_reprovision_cfg) ->
+    true;
 should_move(_) ->
     false.
 

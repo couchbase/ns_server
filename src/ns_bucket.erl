@@ -929,6 +929,8 @@ update_maps(Buckets, OnMap, ExtraSets) ->
       end).
 
 update_many(Fun) ->
+    %% temporary implementation assuming that buckets are in ns_config
+    %% and ExtraSets are on chronicle if chronicle is enabled
     RV =
         ns_config:run_txn(
           fun(Config, SetFn) ->
@@ -937,14 +939,28 @@ update_many(Fun) ->
                   NewBuckets = misc:update_proplist(Buckets, ModifiedBuckets),
 
                   BucketSet = {buckets, [{configs, NewBuckets}]},
+                  {NsConfigSets, ChronicleSets} =
+                      case chronicle_compat:backend() of
+                          chronicle ->
+                              {[BucketSet], ExtraSets};
+                          ns_config ->
+                              {[BucketSet | ExtraSets], []}
+                      end,
                   {commit,
                    functools:chain(
                      Config,
-                     [SetFn(K, V, _) || {K, V} <- [BucketSet | ExtraSets]])}
+                     [SetFn(K, V, _) || {K, V} <- NsConfigSets]), ChronicleSets}
           end),
     case RV of
-        {commit, _} ->
+        {commit, _, []} ->
             ok;
+        {commit, _, CSets} ->
+            case chronicle_kv:multi(kv, [{set, K, V} || {K, V} <- CSets]) of
+                {ok, _} ->
+                    ok;
+                Error ->
+                    Error
+            end;
         Error ->
             Error
     end.
