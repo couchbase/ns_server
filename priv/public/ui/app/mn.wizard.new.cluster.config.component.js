@@ -80,6 +80,7 @@ class MnWizardNewClusterConfigComponent extends MnLifeCycleHooksToStream {
         statsHttp: mnWizardService.stream.statsHttp,
         servicesHttp: mnWizardService.stream.servicesHttp
       }).addSuccess().addError())
+      .setPostRequest(mnWizardService.stream.disableUnusedExternalListenersHttp)
       .setPackPipe(map(() =>
                        this.wizardForm.newClusterConfig.get("clusterStorage.hostname").value))
       .setPostRequest(mnWizardService.stream.hostnameHttp)

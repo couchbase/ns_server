@@ -137,6 +137,11 @@ class MnWizardService {
       .addSuccess()
       .addError();
 
+    this.stream.disableUnusedExternalListenersHttp =
+      new MnHttpRequest(this.postDisableUnusedExternalListeners.bind(this))
+      .addSuccess()
+      .addError();
+
     this.stream.getSelfConfig =
       (new BehaviorSubject()).pipe(switchMap(this.getSelfConfig.bind(this)),
                                    shareReplay({refCount: true, bufferSize: 1}));
@@ -327,6 +332,10 @@ class MnWizardService {
 
   postSetupNetConfig(data) {
     return this.http.post('/node/controller/setupNetConfig', data);
+  }
+
+  postDisableUnusedExternalListeners() {
+    return this.http.post("/node/controller/disableUnusedExternalListeners");
   }
 
 }
