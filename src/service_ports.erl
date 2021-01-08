@@ -68,6 +68,9 @@ all_ports() ->
      %% projector ports - depending on the cluster encryption setting,
      %%                   projector hosts either an SSL or non-SSL endpoint.
      %%                   Hence assigning the same port for both types.
+     %%                   Also assigning "projector" as the "rest" name for
+     %%                   both as we can't guarantee which is actually being
+     %%                   used on the sole port number.
      ?define_port(projector_port,               projector, kv, 9999),
      ?define_port(projector_ssl_port,           projector, kv, 9999,
                   secure, projector_port),

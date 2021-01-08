@@ -127,8 +127,12 @@ build_nodes_ext([Node | RestNodes], Config, NodesExtAcc) ->
     WantedPorts = service_ports:services_port_keys(Services),
 
     NI3 = NI2 ++ alternate_addresses_json(Node, Config, WantedPorts),
-    NodeInfo = {[{services, {service_ports:get_ports_for_services(
-                               Node, Config, Services)}} | NI3]},
+    %% Build and deDup the ports list
+    PortInfo = lists:usort(service_ports:get_ports_for_services(Node,
+                                                                Config,
+                                                                Services)),
+
+    NodeInfo = {[{services, {PortInfo}} | NI3]},
     build_nodes_ext(RestNodes, Config, [NodeInfo | NodesExtAcc]).
 
 do_compute_bucket_info(Bucket, Config) ->
