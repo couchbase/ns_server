@@ -124,15 +124,16 @@ maybe_build_ext_hostname(Node) ->
         false -> [{hostname, list_to_binary(H)}]
     end.
 
-alternate_addresses_json(Node, Config, WantedPorts) ->
+alternate_addresses_json(Node, Config, Snapshot, WantedPorts) ->
     menelaus_util:strip_json_struct(
-      menelaus_web_node:alternate_addresses_json(Node, Config, WantedPorts)).
+      menelaus_web_node:alternate_addresses_json(Node, Config, Snapshot,
+                                                 WantedPorts)).
 
-build_nodes_ext([] = _Nodes, _Config, NodesExtAcc) ->
+build_nodes_ext([] = _Nodes, _Config, _Snapshot, NodesExtAcc) ->
     lists:reverse(NodesExtAcc);
-build_nodes_ext([Node | RestNodes], Config, NodesExtAcc) ->
+build_nodes_ext([Node | RestNodes], Config, Snapshot, NodesExtAcc) ->
     Services =
-        [rest | ns_cluster_membership:node_active_services(Config, Node)],
+        [rest | ns_cluster_membership:node_active_services(Snapshot, Node)],
     NI1 = maybe_build_ext_hostname(Node),
     NI2 = case Node =:= node() of
               true ->
@@ -142,32 +143,36 @@ build_nodes_ext([Node | RestNodes], Config, NodesExtAcc) ->
           end,
     WantedPorts = service_ports:services_port_keys(Services),
 
-    NI3 = NI2 ++ alternate_addresses_json(Node, Config, WantedPorts),
+    NI3 = NI2 ++ alternate_addresses_json(Node, Config, Snapshot, WantedPorts),
     %% Build and deDup the ports list
     PortInfo = lists:usort(service_ports:get_ports_for_services(Node,
                                                                 Config,
                                                                 Services)),
 
     NodeInfo = {[{services, {PortInfo}} | NI3]},
-    build_nodes_ext(RestNodes, Config, [NodeInfo | NodesExtAcc]).
+    build_nodes_ext(RestNodes, Config, Snapshot, [NodeInfo | NodesExtAcc]).
 
-do_compute_bucket_info(Bucket, Snapshot, Config) ->
+do_compute_bucket_info(Bucket, Config) ->
+    {Snapshot, Rev} = chronicle_compat:get_snapshot_with_revision(
+                        [ns_bucket:key_filter(Bucket),
+                         ns_cluster_membership:key_filter()]),
+
     case ns_bucket:get_bucket(Bucket, Snapshot) of
         {ok, BucketConfig} ->
-            compute_bucket_info_with_config(Bucket, Config, BucketConfig,
-                                            Snapshot);
+            compute_bucket_info_with_config(Bucket, Config, Snapshot,
+                                            BucketConfig, Rev);
         not_present ->
             not_present
     end.
 
-node_bucket_info(Node, Config, Bucket, BucketUUID, BucketConfig) ->
+node_bucket_info(Node, Config, Snapshot, Bucket, BucketUUID, BucketConfig) ->
     HostName = menelaus_web_node:build_node_hostname(Config, Node,
                                                      ?LOCALHOST_MARKER_STRING),
     Ports = {[{direct, service_ports:get_port(memcached_port, Config, Node)}]},
     WantedPorts = [rest_port, memcached_port],
 
     Info0 = [{hostname, HostName}, {ports, Ports}] ++
-        alternate_addresses_json(Node, Config, WantedPorts),
+        alternate_addresses_json(Node, Config, Snapshot, WantedPorts),
     Info = case ns_bucket:bucket_type(BucketConfig) of
                membase ->
                    Url = capi_utils:capi_bucket_url_bin(
@@ -288,18 +293,27 @@ build_bucket_capabilities(BucketConfig) ->
     [{bucketCapabilitiesVer, ''},
      {bucketCapabilities, Caps}].
 
-compute_bucket_info_with_config(Id, Config, BucketConfig, Snapshot) ->
+%% Clients expect these revisions to grow monotonically.
+%% This doesn't handle chronicle quorum failovers, but we may
+%% deal with it later.
+compute_global_rev(Config, {_, ChronicleRev}) ->
+    ns_config:compute_global_rev(Config) + ChronicleRev;
+compute_global_rev(Config, no_rev) ->
+    ns_config:compute_global_rev(Config).
+
+compute_bucket_info_with_config(Id, Config, Snapshot, BucketConfig,
+                                ChronicleRev) ->
     %% we do sorting to make nodes list match order of servers inside
     %% vBucketServerMap
     Servers = lists:sort(ns_bucket:get_servers(BucketConfig)),
     BucketUUID = ns_bucket:bucket_uuid(BucketConfig),
 
     AllServers = Servers ++
-        ordsets:subtract(ns_cluster_membership:active_nodes(Config), Servers),
+        ordsets:subtract(ns_cluster_membership:active_nodes(Snapshot), Servers),
 
     %% We're computing rev using config's global rev which allows us
     %% to track changes to node services and set of active nodes.
-    Rev = ns_config:compute_global_rev(Config),
+    Rev = compute_global_rev(Config, ChronicleRev),
 
     Json =
         {lists:flatten(
@@ -308,15 +322,15 @@ compute_bucket_info_with_config(Id, Config, BucketConfig, Snapshot) ->
             build_ddocs(Id, BucketConfig),
             build_vbucket_map(?LOCALHOST_MARKER_STRING, BucketConfig),
             {nodes,
-             [node_bucket_info(Node, Config, Id, BucketUUID, BucketConfig)
-                 || Node <- Servers]},
-            {nodesExt, build_nodes_ext(AllServers, Config, [])},
+             [node_bucket_info(Node, Config, Snapshot,
+                               Id, BucketUUID, BucketConfig)
+              || Node <- Servers]},
+            {nodesExt, build_nodes_ext(AllServers, Config, Snapshot, [])},
             build_cluster_capabilities(Config)])},
     {ok, Rev, ejson:encode(Json), BucketConfig}.
 
 compute_bucket_info(Bucket) ->
-    Snapshot = ns_bucket:get_snapshot(Bucket),
-    try do_compute_bucket_info(Bucket, Snapshot, ns_config:get())
+    try do_compute_bucket_info(Bucket, ns_config:get())
     catch T:E:S ->
             {T, E, S}
     end.
@@ -396,10 +410,13 @@ build_cluster_capabilities(Config) ->
 
 do_build_node_services() ->
     Config = ns_config:get(),
-    NEIs = build_nodes_ext(ns_cluster_membership:active_nodes(Config),
-                           Config, []),
+    {Snapshot, ChronicleRev} = chronicle_compat:get_snapshot_with_revision(
+                                 ns_cluster_membership:key_filter()),
+
+    NEIs = build_nodes_ext(ns_cluster_membership:active_nodes(Snapshot),
+                           Config, Snapshot, []),
     Caps = build_cluster_capabilities(Config),
-    Rev = ns_config:compute_global_rev(Config),
+    Rev = compute_global_rev(Config, ChronicleRev),
     J = {[{rev, Rev},
           {nodesExt, NEIs}] ++ Caps},
     {Rev, ejson:encode(J)}.

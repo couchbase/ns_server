@@ -25,7 +25,7 @@
          default_config/2,
          find_by_rest_name/1,
          services_port_keys/1,
-         get_external_host_and_ports/3,
+         get_external_host_and_ports/4,
          get_ports_for_services/3,
          portname_to_secure_portname/1]).
 
@@ -206,11 +206,11 @@ find_by_rest_name(RestName) when is_list(RestName) ->
             Port#port.key
     end.
 
-get_internal_ports(Node, Config) ->
-    Services = ns_cluster_membership:node_active_services(Config, Node),
+get_internal_ports(Node, Config, Snapshot) ->
+    Services = ns_cluster_membership:node_active_services(Snapshot, Node),
     get_ports_for_services_int(Node, Config, [rest | Services]).
 
-get_external_host_and_ports(Node, Config, WantedPorts) ->
+get_external_host_and_ports(Node, Config, Snapshot, WantedPorts) ->
     External = ns_config:search_node_prop(Node, Config,
                                           alternate_addresses, external,
                                           []),
@@ -220,7 +220,7 @@ get_external_host_and_ports(Node, Config, WantedPorts) ->
             [] when Hostname =/= undefined ->
                 [{Rest, Value} ||
                     {#port{key = Key, rest = Rest}, Value} <-
-                        get_internal_ports(Node, Config),
+                        get_internal_ports(Node, Config, Snapshot),
                     lists:member(Key, WantedPorts)];
             ExtPorts ->
                 AllPorts = all_ports(),

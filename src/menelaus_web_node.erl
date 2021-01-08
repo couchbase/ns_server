@@ -43,7 +43,7 @@
          handle_node_self_xdcr_ssl_ports/1,
          handle_node_settings_post/2,
          apply_node_settings/1,
-         alternate_addresses_json/3,
+         alternate_addresses_json/4,
          handle_setup_net_config/1,
          handle_change_external_listeners/2,
          get_hostnames/2]).
@@ -284,10 +284,10 @@ build_node_hostname(Config, Node, LocalAddr) ->
       misc:join_host_port(Host,
                           service_ports:get_port(rest_port, Config, Node))).
 
-alternate_addresses_json(Node, Config, WantedPorts) ->
+alternate_addresses_json(Node, Config, Snapshot, WantedPorts) ->
     {ExtHostname, ExtPorts} =
         service_ports:get_external_host_and_ports(
-          Node, Config, WantedPorts),
+          Node, Config, Snapshot, WantedPorts),
     External = construct_ext_json(ExtHostname, ExtPorts),
     [{alternateAddresses, {struct, External}} || External =/= []].
 
@@ -364,7 +364,8 @@ build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr) ->
           {configuredHostname, list_to_binary(ConfiguredHostname)}
          ] ++ [{addressFamily, AFamily} || AFamily =/= undefined]
            ++ [{externalListeners, Listeners} || Listeners =/= undefined]
-           ++ alternate_addresses_json(WantENode, Config, WantedPorts),
+           ++ alternate_addresses_json(WantENode, Config, Snapshot,
+                                       WantedPorts),
     case WantENode =:= node() of
         true ->
             [{thisNode, true} | RV];
@@ -565,9 +566,10 @@ handle_node_self_xdcr_ssl_ports(Req) ->
         false ->
             reply_json(Req, [], 403);
         true ->
+            Snapshot = ns_cluster_membership:get_snapshot(),
             Ports = [{httpsMgmt, service_ports:get_port(ssl_rest_port)},
                      {httpsCAPI, service_ports:get_port(ssl_capi_port)}] ++
-                alternate_addresses_json(node(), ns_config:latest(),
+                alternate_addresses_json(node(), ns_config:latest(), Snapshot,
                                          [ssl_capi_port, ssl_rest_port]),
             reply_json(Req, {struct, Ports})
     end.
