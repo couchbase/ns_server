@@ -500,22 +500,17 @@ map_index_stats(Prefix, Counters, Bucket, Stat) ->
         end,
     case binary:split(Stat, <<"/">>, [global]) of
         [<<"disk_overhead_estimate">> = N] ->
-              DiskSize = sumby([<<"name">>],
-                               bucket_metric(<<Prefix/binary, "_disk_size">>,
-                                             Bucket)),
-              FragPerc = sumby([<<"name">>],
-                               bucket_metric(<<Prefix/binary, "_frag_percent">>,
-                                             Bucket)),
+              DiskSize = bucket_metric(<<Prefix/binary, "_disk_size">>, Bucket),
+              FragPerc = bucket_metric(<<Prefix/binary, "_frag_percent">>,
+                                       Bucket),
               Name = <<Prefix/binary, "_", N/binary>>,
-              {ok, named(Name, {'/', [{'*', [{ignoring, [<<"name">>]}],
-                                       [DiskSize, FragPerc]}, 100]})};
+              Product = {'*', [{ignoring, [<<"name">>]}], [DiskSize, FragPerc]},
+              {ok, named(Name, {'/', [sumby([], Product), 100]})};
         [Index,  <<"disk_overhead_estimate">> = N] ->
-              DiskSize = sumby([<<"name">>, <<"index">>],
-                               index_metric(<<Prefix/binary, "_disk_size">>,
-                                             Bucket, Index)),
-              FragPerc = sumby([<<"name">>, <<"index">>],
-                               index_metric(<<Prefix/binary, "_frag_percent">>,
-                                             Bucket, Index)),
+              DiskSize = index_metric(<<Prefix/binary, "_disk_size">>,
+                                      Bucket, Index),
+              FragPerc = index_metric(<<Prefix/binary, "_frag_percent">>,
+                                      Bucket, Index),
               Name = <<Prefix/binary, "_", N/binary>>,
               {ok, named(Name, {'/', [{'*', [{ignoring, [<<"name">>]}],
                                        [DiskSize, FragPerc]}, 100]})};
@@ -532,11 +527,9 @@ map_index_stats(Prefix, Counters, Bucket, Stat) ->
             Name = <<Prefix/binary, "_", N/binary>>,
             case IsCounter(N) of
                 true ->
-                    {ok, sumby([<<"name">>, <<"index">>],
-                               rate(index_metric(Name, Bucket, Index)))};
+                    {ok, rate(index_metric(Name, Bucket, Index))};
                 false ->
-                    {ok, sumby([<<"name">>, <<"index">>],
-                               index_metric(Name, Bucket, Index))}
+                    {ok, index_metric(Name, Bucket, Index)}
             end;
         _ ->
             {error, not_found}
