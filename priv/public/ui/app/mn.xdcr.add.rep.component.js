@@ -3,7 +3,7 @@ import {pipe, BehaviorSubject} from '/ui/web_modules/rxjs.js';
 import {withLatestFrom, map, filter, switchMap, pluck, shareReplay,
         takeUntil} from '/ui/web_modules/rxjs/operators.js';
 import {UIRouter} from '/ui/web_modules/@uirouter/angular.js';
-import { FormBuilder } from '/ui/web_modules/@angular/forms.js'
+import {FormBuilder, Validators} from '/ui/web_modules/@angular/forms.js'
 
 import {MnAlertsService, $rootScope} from '/ui/app/ajs.upgraded.providers.js';
 
@@ -50,9 +50,9 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
 
 
     this.form = mnFormService.create(this)
-      .setFormGroup({fromBucket: "",
-                     toCluster: "",
-                     toBucket: "",
+      .setFormGroup({fromBucket: ["", [Validators.required]],
+                     toCluster: ["", [Validators.required]],
+                     toBucket: ["", [Validators.required]],
                      priority: null,
                      collectionsExplicitMapping: false,
                      collectionsMigrationMode: false,

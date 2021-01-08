@@ -1,6 +1,6 @@
 import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
 import {merge} from '/ui/web_modules/rxjs.js';
-import {map, pluck} from '/ui/web_modules/rxjs/operators.js';
+import {map, pluck, startWith, takeUntil} from '/ui/web_modules/rxjs/operators.js';
 
 import {MnLifeCycleHooksToStream} from "./mn.core.js";
 import {MnXDCRService} from "./mn.xdcr.service.js";
@@ -74,6 +74,17 @@ class MnXDCRFilterComponent extends MnLifeCycleHooksToStream {
     this.formHelper.group.patchValue({
       enableFilters: !!this.group.get("filterExpression").value
     });
+
+    let hasSourceBucketField = this.xdcrGroup.get("fromBucket");
+    if (hasSourceBucketField) {
+      hasSourceBucketField.valueChanges
+        .pipe(startWith(hasSourceBucketField.value),
+              takeUntil(this.mnOnDestroy))
+        .subscribe(v => {
+          let action = v ? "enable" : "disable";
+          this.formHelper.group.get("enableFilters")[action]({onlySelf: true});
+        });
+    }
   }
 
   pack() {

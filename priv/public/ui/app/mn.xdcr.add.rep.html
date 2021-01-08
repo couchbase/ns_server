@@ -127,7 +127,14 @@
   </div>
 
   <footer class="footer-save">
-    <button type="submit" class="margin-right-2">Save Replication</button>
-    <a class="text-medium" uiSref="app.admin.replications">Cancel/Reset</a>
+    <button
+       type="submit"
+       class="margin-right-2"
+       [disabled]="(form.group.statusChanges | async) === 'INVALID'">
+      Save Replication
+    </button>
+    <a class="text-medium" uiSref="app.admin.replications">
+      Cancel/Reset
+    </a>
   </footer>
 </form>
