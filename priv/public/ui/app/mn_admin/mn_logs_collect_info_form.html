@@ -1,4 +1,4 @@
-<div mn-spinner="logsCollectInfoCtl.viewLoading || !logsCollectInfoCtl.state.nodes" min-height="300px" class="max-width-8 margin-top-half padding-left-1">
+<div mn-spinner="logsCollectInfoCtl.viewLoading || !logsCollectInfoCtl.state.nodes" min-height="300px" class="max-width-11 margin-top-half padding-left-1">
   <div
      class="error error-field"
      ng-show="logsCollectInfoCtl.errors._">{{logsCollectInfoCtl.errors._}}
@@ -90,13 +90,6 @@
          value="true"
          type="checkbox">
       <label for="for_custom_logdir" class="margin-right-zero">Specify custom destination directory</label>
-      <span
-         class="fa-stack icon-info"
-         uib-tooltip="You can specify any valid directory or just leave blank to store in the default Couchbase directory."
-         tooltip-placement="auto top">
-        <span class="icon fa-circle-thin fa-stack-2x"></span>
-        <span class="icon fa-info fa-stack-1x"></span>
-      </span>
       <div ng-if="logsCollectInfoCtl.collect.enableLogDir">
         <input
            type="text"
