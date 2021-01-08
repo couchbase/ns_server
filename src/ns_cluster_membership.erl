@@ -53,6 +53,7 @@
          prepare_to_join/2,
          is_newly_added_node/1,
          attach_node_uuids/2,
+         get_snapshot/0,
          key_filter/0
         ]).
 
@@ -81,6 +82,9 @@
          should_run_service/3,
          user_friendly_service_name/1,
          json_service_name/1]).
+
+get_snapshot() ->
+    chronicle_compat:get_snapshot(key_filter()).
 
 key_filter() ->
     [{chronicle_compat:backend(), fun key_filter/1}].

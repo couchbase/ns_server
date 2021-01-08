@@ -373,8 +373,7 @@ build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr) ->
 
 get_hostnames(Req, NodeStatus) ->
     Config = ns_config:get(),
-    Snapshot =
-        chronicle_compat:get_snapshot(ns_cluster_membership:key_filter()),
+    Snapshot = ns_cluster_membership:get_snapshot(),
     Nodes = ns_cluster_membership:get_nodes_with_status(Snapshot, NodeStatus),
     LocalAddr = local_addr(Req),
     [{N, build_node_hostname(Config, N, LocalAddr)} || N <- Nodes].
