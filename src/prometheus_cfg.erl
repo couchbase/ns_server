@@ -938,7 +938,11 @@ derived_metrics(index) ->
      {"index_cache_miss_ratio",
       "sum by (bucket, index, job, instance) (index_cache_misses) * 100 / "
       "sum by (bucket, index, job, instance) "
-             "(index_cache_hits or index_cache_misses)"}];
+             "(index_cache_hits or index_cache_misses)"},
+     {"index_fragmentation",
+      "sum by (bucket, job, instance) (index_disk_size * ignoring(name) "
+                                      "index_frag_percent) / "
+      "sum by (bucket, job, instance) (index_disk_size)"}];
 derived_metrics(kv) ->
     [{"couch_total_disk_size",
       "couch_docs_actual_disk_size + ignoring(name) "
