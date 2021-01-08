@@ -30,7 +30,7 @@
 handle_range_post(Req) ->
     PermFilters =
         case promql_filters_for_identity(menelaus_auth:get_identity(Req)) of
-            [] -> menelaus_utils:web_exception(403, "Forbidden");
+            [] -> menelaus_util:web_exception(403, "Forbidden");
             F -> F
         end,
     Now = os:system_time(millisecond),
@@ -74,7 +74,7 @@ handle_range_get([], _Req) ->
 handle_range_get([MetricName | NotvalidatedFunctions], Req) ->
     PermFilters =
         case promql_filters_for_identity(menelaus_auth:get_identity(Req)) of
-            [] -> menelaus_utils:web_exception(403, "Forbidden");
+            [] -> menelaus_util:web_exception(403, "Forbidden");
             F -> F
         end,
     Functions = try validate_functions(NotvalidatedFunctions)

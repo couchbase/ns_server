@@ -96,7 +96,7 @@
     {afamily, inet | inet6} |
     {dynamic_scrape_intervals, [{extended_service_name(), pos_integer()}]}.
 
--type extended_service_name() :: service() | ns_service | xdcr.
+-type extended_service_name() :: service() | ns_server | xdcr.
 
 %%%===================================================================
 %%% API
