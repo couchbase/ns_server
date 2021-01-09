@@ -30,6 +30,7 @@
          set_multiple/1,
          transaction/2,
          get_snapshot/1,
+         get_snapshot_with_revision/1,
          subscribe_to_key_change/1,
          subscribe_to_key_change/2,
          notify_if_key_changes/2,
@@ -206,14 +207,18 @@ apply_filters(K, V, Rev, [Fun | Rest], Acc) ->
     end.
 
 get_snapshot(KeyFilters) ->
+    {Snapshot, _} = get_snapshot_with_revision(KeyFilters),
+    Snapshot.
+
+get_snapshot_with_revision(KeyFilters) ->
     GroupedFilters = misc:groupby_map(fun functools:id/1,
                                       lists:flatten([KeyFilters])),
     UniqueFilters = [{Type, lists:usort(Filters)} ||
                         {Type, Filters} <- GroupedFilters],
 
-    lists:foldl(get_snapshot(_, _), #{}, UniqueFilters).
+    lists:foldl(get_snapshot_with_revision(_, _), {#{}, no_rev}, UniqueFilters).
 
-get_snapshot({Type, Filters}, Acc) ->
+get_snapshot_with_revision({Type, Filters}, {Acc, OldRev}) ->
     {ListFilters, FunFilters} =
         lists:partition(fun (F) when is_list(F) -> true;
                             (_) -> false end, Filters),
@@ -227,28 +232,30 @@ get_snapshot({Type, Filters}, Acc) ->
         end,
     case Type of
         ns_config ->
-            ns_config:fold(apply_filters(_, _, no_rev, AllFilters, _), Acc,
-                           ns_config:get());
+            {ns_config:fold(apply_filters(_, _, no_rev, AllFilters, _),
+                            Acc, ns_config:get()), OldRev};
         chronicle ->
             case ns_node_disco:couchdb_node() == node() of
                 true ->
-                    lists:foldl(
-                      fun ({K, V}, Acc1) ->
-                              apply_filters(K, V, no_rev, AllFilters, Acc1)
-                      end, Acc, ns_couchdb_chronicle_dup:get_snapshot());
+                    {lists:foldl(
+                       fun ({K, V}, Acc1) ->
+                               apply_filters(K, V, no_rev, AllFilters, Acc1)
+                       end, Acc, ns_couchdb_chronicle_dup:get_snapshot()),
+                     no_rev};
                 false ->
                     case FunFilters of
                         [] ->
-                            {ok, {Snapshot, _}} =
+                            {ok, {Snapshot, Rev}} =
                                 chronicle_kv:get_snapshot(kv, UniqueKeys),
-                            Snapshot;
+                            {Snapshot, Rev};
                         _ ->
-                            {ok, {Snapshot, _}} =
+                            {ok, {Snapshot, Rev}} =
                                 chronicle_kv:get_full_snapshot(kv),
-                            maps:fold(
-                              fun (K, {V, Rev}, Acc1) ->
-                                      apply_filters(K, V, Rev, AllFilters, Acc1)
-                              end, Acc, Snapshot)
+                            {maps:fold(
+                               fun (K, {V, KeyRev}, Acc1) ->
+                                       apply_filters(K, V, KeyRev, AllFilters,
+                                                     Acc1)
+                               end, Acc, Snapshot), Rev}
                     end
             end
     end.
