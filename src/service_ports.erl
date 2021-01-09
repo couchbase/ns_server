@@ -70,7 +70,7 @@ all_ports() ->
      %%                   Hence assigning the same port for both types.
      ?define_port(projector_port,               projector, kv, 9999),
      ?define_port(projector_ssl_port,           projector, kv, 9999,
-                  secure, projector_ssl_port),
+                  secure, projector_port),
      %% query service ports
      ?define_port(query_port,     n1ql,    n1ql, 8093),
      ?define_port(ssl_query_port, n1qlSSL, n1ql, 18093,
