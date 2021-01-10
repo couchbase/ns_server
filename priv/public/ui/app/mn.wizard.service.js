@@ -50,7 +50,7 @@ var wizardForm = {
   }),
   joinCluster: new FormGroup({
     clusterAdmin: new FormGroup({
-      hostname: new FormControl("127.0.0.1", [Validators.required]),
+      hostname: new FormControl(null, [Validators.required]),
       user: new FormControl("Administrator", [Validators.required]),
       password: new FormControl('', [Validators.required])
     }),
@@ -198,9 +198,20 @@ class MnWizardService {
   }
 
   setSelfConfig(selfConfig) {
-    var hostname = selfConfig['otpNode'].split('@')[1] || '127.0.0.1';
-    if (hostname == "cb.local") {
-      hostname = "127.0.0.1";
+    var hostname = selfConfig.configuredHostname;
+
+    if (!hostname) {
+      let maybeCbLocal = selfConfig['otpNode'].split('@')[1];
+      if (!maybeCbLocal || (maybeCbLocal == "cb.local")) {
+        hostname = selfConfig.addressFamily == "inet6" ? "::1" : "127.0.0.1";
+      } else {
+        hostname = maybeCbLocal;
+      }
+    } else {
+      //remove port from host
+      let parsed = new URL("http://" + selfConfig.configuredHostname);
+      //remove ipv6 brackets
+      hostname = parsed.hostname.replace(/[\[\]']+/g, '');
     }
 
     wizardForm.newClusterConfig.get("clusterStorage.hostname").setValue(hostname);
