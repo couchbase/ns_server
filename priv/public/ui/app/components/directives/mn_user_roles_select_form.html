@@ -1,39 +1,28 @@
-<form>
-  <div class="row">
-    <select
-       ng-repeat="param in item.params"
-       ng-style="{width: 100 / item.params.length + '%', margin: '0 0.2rem'}"
-       ng-model="form[param]"
-       ng-disabled="isRoleDisabled(item) || isSelectDisabled($index)"
-       ng-change="changeParams(param)">
-      <option value="" disabled selected>{{param.split('_')[0]}}</option>
-      <option value="*">*</option>
-      <option
-         ng-repeat="value in form[item.params[$index - 1] || 'init'].children[param]"
-         ng-value="value">
-        {{value.value}}
-      </option>
-    </select>
-    <a ng-click="submit()"
-       ng-show="form['bucket_name']"
-       style="min-width: auto; padding: 0 1rem;">
-      add
-    </a>
+<form class="margin-bottom-1" ng-submit="submit()">
+  <div class="row flex-left">
+    <mn-keyspace-selector [service]="mnCollectionSelectorService">
+    </mn-keyspace-selector>
+    <button
+       type="submit"
+       class="ks-control-button append"> ADD</button>
   </div>
 </form>
+
 <div
-   class="margin-left-half"
+   class="ks-control-selectedrole"
    ng-repeat="cfg in state.selectedRolesConfigs[item.role]">
   <div class="row">
-    {{cfg}}
-    <a ng-click="del(cfg)"
-       style="min-width: auto; padding: 0 1rem;">
+    <span>
+      <span class="icon fa-check green-1"></span>
+      <span class="text-small">{{cfg}}</span>
+    </span>
+    <a ng-click="del(cfg)">
       X
     </a>
   </div>
 </div>
 <div
-   class="margin-left-half"
+   class=""
    ng-repeat="(params, groups) in state.selectedGroupsRolesConfigs[item.role]">
   <div class="row">
     {{params}}

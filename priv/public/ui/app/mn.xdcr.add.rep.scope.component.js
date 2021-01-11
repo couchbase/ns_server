@@ -31,7 +31,7 @@ class MnXDCRAddRepScopeComponent extends MnLifeCycleHooksToStream {
   constructor(mnHelperService, formBuilder) {
     super();
     this.toggler = mnHelperService.createToggle();
-    this.filter = mnHelperService.createFilter("name");
+    this.filter = mnHelperService.createFilter(this);
     this.formBuilder = formBuilder;
 
     this.collections =

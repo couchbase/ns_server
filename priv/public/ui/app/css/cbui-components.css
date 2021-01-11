@@ -1676,7 +1676,7 @@ section.error {
 label + .fa-stack,
 h4 + .fa-stack { /* elevate icon next to label or heading  */
   top: -4px;
-  left: 4px;
+  left: 0;
 }
 .raised { /* elevate element which is child of relatively-positioned parent  */
   top: -4px;
@@ -1929,12 +1929,12 @@ button:hover.scenarios-delete {
 
 /* selecting user roles ------------------------------------------------  */
 .select-user-roles {
-  height: 370px;
+  height: 420px;
   overflow-y: scroll;
   padding: .25rem .25rem .25rem .75rem;
   margin-top: .5rem;
 }
-.select-user-roles div,
+.select-user-roles .user-role-row,
 .select-user-roles label,
 .select-user-roles input[type="checkbox"] + label {
   position: relative;
@@ -3625,4 +3625,103 @@ div.border-top + div.border-top {
   width: 40vw;
   height: 420px;
   background-color: #f6f7f9;
+}
+/* keyspace control --------------------------------------------------------- */
+mn-keyspace-selector {
+  display: block;
+  position: relative;
+  z-index: 1;
+  margin: 0 0 0 .25rem;
+}
+mn-keyspace-selector .filter-input-group .icon {
+  width: auto!important;
+  top: 4px;
+}
+/* imitates the .panel class ------------------------------------------------ */
+mn-keyspace-selector .selector-scroll {
+  border: none;
+  border-radius: 0 0 3px 3px;
+  box-shadow: 0px 1px 1px 1px rgba(0,0,0,0.25);
+  overflow: auto;
+  position: absolute;
+  max-height: 10rem;
+  background: #fff;
+  width: 100%;
+  padding: 1rem 1rem;
+  font-size: .875rem;
+  cursor: pointer;
+}
+mn-keyspace-selector .selector-scroll a {
+  display: block;
+  color: #333;
+  opacity: .8;
+}
+mn-keyspace-selector .selector-scroll a:hover {
+  color: #000;
+  opacity: 1;
+}
+mn-keyspace-selector .selector-scroll a:active {
+  color: #000;
+}
+mn-keyspace-selector .fa-times-circle {
+  display: none;
+}
+.ks-control-wrapper {
+  position: relative;
+  background-color: #ececec;
+  border: 1px solid #d1d1d1;
+  display: flex;
+  justify-content: flex-start;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  border-radius: 3px 0 0 3px;
+
+}
+.ks-control-wrapper input {
+  padding: 0 0 0 .25rem;
+  line-height: auto;
+  height: 26px;
+  border-radius: 0;
+  margin: 0 0 0 0;
+  width: 100%!important;
+  border-width: 0;
+  font-size: .825rem;
+  color: #000;
+}
+.ks-control-button {
+  height: 28px!important;
+  min-width: 0;
+  font-size: .825rem;
+  line-height: 1;
+}
+.ks-control-wrapper span:first-of-type mn-input-filter input {
+  padding: 0 .5rem 0 .25rem;
+  border-radius: 3px 0 0 3px;
+}
+.ks-control-selectedrole {
+  margin: .5rem 0 .5rem .25rem;
+  background-color: #ecf3fa;
+  padding: 0 .25rem 0 .75rem;
+}
+.ks-control-selectedrole a {
+  min-width: auto;
+  display: block;
+  color: #555;
+  text-align: center;
+  border-radius: 50%;
+  padding: .25rem .75rem;
+  opacity: .7;
+  transition: all .4s ease;
+  opacity: 1;
+}
+.ks-control-selectedrole a:hover {
+  color: #000;
+  font-weight: 600;
+  background-color: #ececec;
+  opacity: .9;
+}
+.ks-control-selectedrole a:active {
+  background-color: #d1d1d1;
+  opacity: 1;
 }

@@ -13,9 +13,9 @@ body {
 }
 
 .dialog {
-    position: relative;
-    z-index: 101;
-    top: 2.5rem;
+  position: relative;
+  z-index: 101;
+  top: 2.5rem;
 }
 
 .modal-backdrop {
@@ -32,25 +32,25 @@ body {
 
 /* dialog closing (X) hyperlinks ------------ */
 .modal-close {
-    display: block;
-    text-align: center;
-    font-size: 1.2rem;
-    font-weight: 400;
-    position: absolute;
-    top: .25rem;
-    right: .5rem;
-    color: #fff;
-    border-radius: 50%;
-    padding: .25rem .75rem;
-    opacity: .7;
-    transition: all .4s ease;
-    opacity: 1;
+  display: block;
+  text-align: center;
+  font-size: 1.2rem;
+  font-weight: 400;
+  position: absolute;
+  top: .25rem;
+  right: .5rem;
+  color: #fff;
+  border-radius: 50%;
+  padding: .25rem .75rem;
+  opacity: .7;
+  transition: all .4s ease;
+  opacity: 1;
 }
 .modal-close:link {
-    color: #fff;
+  color: #fff;
 }
 .modal-close:visited {
-    color: #fff;
+  color: #fff;
 }
 .modal-close:hover {
   color: #000;
@@ -59,9 +59,9 @@ body {
   opacity: .8;
 }
 .modal-close:active {
-    color: #689fde;
-    background-color: #eceff2;
-    opacity: .5;
+  color: #689fde;
+  background-color: #eceff2;
+  opacity: .5;
 }
 .chart-overlay .modal-close,
 .chart-overlay .modal-close:link,

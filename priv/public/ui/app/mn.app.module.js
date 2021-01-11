@@ -23,8 +23,10 @@ class MnAppModule {
   static get annotations() { return [
     new NgModule({
       declarations: [
+
       ],
       entryComponents: [
+
       ],
       imports: mnAppImports,
       // bootstrap: [

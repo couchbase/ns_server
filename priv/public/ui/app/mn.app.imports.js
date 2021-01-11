@@ -11,6 +11,9 @@ import {MnElementCraneModule} from './mn.element.crane.js';
 import {UIRouterUpgradeModule} from '/ui/web_modules/@uirouter/angular-hybrid.js';
 import * as pluggableUIsModules from '/ui/pluggable-uis.js';
 
+import {MnKeyspaceSelectorModule} from './mn.keyspace.selector.module.js';
+
+
 let appState = {
   name: 'app',
   url: '/?{enableInternalSettings:bool}&{disablePoorMansAlerts:bool}',
@@ -220,5 +223,8 @@ export let mnAppImports = [
   MnElementCraneModule.forRoot(),
   UIRouterUpgradeModule.forRoot({
     states: [authState, wizardState, overviewState, statsOverviewState, serversState, bucketsState, logsState, groupsState, documentsState, gsiState, viewsState, settingsState, securityState, collectionsState, XDCRState, sessionState, logRedactionState, auditState]
-  })
+  }),
+
+  //downgradedModules
+  MnKeyspaceSelectorModule
 ];

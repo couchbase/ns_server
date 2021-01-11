@@ -1,9 +1,11 @@
 import angular from "/ui/web_modules/angular.js";
+import {Subject, of} from "/ui/web_modules/rxjs.js";
+import mnKeyspaceSelector from "/ui/app/mn.keyspace.selector.downgrade.module.js"
 
 export default "mnUserRolesSelect";
 
 angular
-  .module('mnUserRolesSelect', [])
+  .module('mnUserRolesSelect', [mnKeyspaceSelector])
   .directive('mnUserRolesSelect', mnUserRolesSelectDirective)
   .directive('mnUserRolesSelectForm', mnUserRolesSelectFormDirective);
 
@@ -54,7 +56,7 @@ function mnUserRolesSelectDirective() {
   }
 }
 
-function mnUserRolesSelectFormDirective() {
+function mnUserRolesSelectFormDirective(mnCollectionsService) {
   var mnUserRolesSelectForm = {
     restrict: 'AE',
     templateUrl: 'app/components/directives/mn_user_roles_select_form.html',
@@ -68,9 +70,16 @@ function mnUserRolesSelectFormDirective() {
   return mnUserRolesSelectForm;
 
   function mnUserRolesSelectFormController($scope) {
-    $scope.form = {init: {children: {}}};
-    $scope.form.init.children[$scope.item.params[0]] =
-      $scope.state.parameters[$scope.item.params[0]];
+    let mnOnDestroy = new Subject();
+    let params = $scope.item.params.map(v => v.split("_")[0]);
+
+    $scope.mnCollectionSelectorService =
+      mnCollectionsService.createCollectionSelector({
+        isRolesMode: true,
+        component: {mnOnDestroy},
+        buckets: $scope.state.parameters[$scope.item.params[0]],
+        steps: params
+      });
 
     var rolesConfigs = $scope.state.selectedRolesConfigs[$scope.item.role] || [];
     $scope.state.selectedRolesConfigs[$scope.item.role] = rolesConfigs;
@@ -78,31 +87,14 @@ function mnUserRolesSelectFormDirective() {
     $scope.submit = submit;
     $scope.del = del;
     $scope.isRoleDisabled = isRoleDisabled;
-    $scope.isSelectDisabled = isSelectDisabled;
-    $scope.changeParams = changeParams;
 
-    function isSelectDisabled($index) {
-      var headParam = $scope.item.params[$index - 1];
-      return headParam && !$scope.form[headParam];
-    }
+    $scope.$on("$destroy", function () {
+      mnOnDestroy.next();
+      mnOnDestroy.complete();
+    });
 
     function isRoleDisabled(role) {
       return role.role !== 'admin' && $scope.state.selectedRoles["admin"];
-    }
-
-    function changeParams(param) {
-      if ((param == "bucket_name") &&
-          $scope.form["bucket_name"] &&
-          $scope.form["scope_name"] !== undefined &&
-         $scope.form["collection_name"] !== undefined) {
-        $scope.form["scope_name"] = "*";
-        $scope.form["collection_name"] = "*";
-      }
-
-      if ((param == "scope_name") &&
-          $scope.form["collection_name"] !== undefined) {
-        $scope.form["collection_name"] = "*";
-      }
     }
 
     function del(cfg) {
@@ -110,13 +102,23 @@ function mnUserRolesSelectFormDirective() {
     }
 
     function submit() {
-      let cfg = $scope.item.params.map(param =>
-                                       ($scope.form[param] || {}).value || "*").join(":");
+      let result = $scope.mnCollectionSelectorService.stream.result
+      let resultValue = $scope.mnCollectionSelectorService.stream.result.getValue();
+      let isInvalid = Object.keys(resultValue).some(key => {
+        if (resultValue[key] == null) {
+          $scope.mnCollectionSelectorService.stream.doFocus.next(key);
+          return true;
+        }
+      });
+      if (isInvalid) {
+        return;
+      }
+      let cfg = Object.values(resultValue).map(v => v.value).join(":");
       if (rolesConfigs.includes(cfg)) {
         return;
       }
       rolesConfigs.unshift(cfg);
-      $scope.item.params.forEach(param => ($scope.form[param] = null));
+      $scope.mnCollectionSelectorService.reset();
     }
   }
 }

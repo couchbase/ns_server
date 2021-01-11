@@ -1,4 +1,4 @@
-<div class="dialog-lg">
+<div class="dialog-xlg">
   <div class="panel-header">
     <h2 class="ellipsis">
       <span ng-if="!userRolesAddDialogCtl.isEditingMode">
@@ -15,7 +15,7 @@
      ng-submit="userRolesAddDialogCtl.save()"
      mn-spinner="userRolesAddDialogCtl.viewLoading">
     <div class="panel-content forms row resp-sml items-top" style="padding-bottom: .5rem;">
-      <div class="column width-5">
+      <div class="column width-4">
         <div
            mn-focus="userRolesAddDialogCtl.focusError"
            tabindex="1"
@@ -127,7 +127,7 @@
         </div>
       </div>
 
-      <div class="column width-7">
+      <div class="column width-8">
         <span ng-show="pools.isEnterprise" class="pills nowrap">
           <a ng-click="userRolesAddDialogCtl.selectedPanel = 'roles'"
              ng-class="{selected : (userRolesAddDialogCtl.selectedPanel == 'roles')}">
@@ -173,7 +173,7 @@
               </div>
             </div>
           </div>
-          <div style="width: 320px;">
+          <div style="width: 480px;">
             <mn-user-roles-select
                ng-if="!userRolesAddDialogCtl.reloadUserRoles"
                ng-show="userRolesAddDialogCtl.selectedPanel == 'roles'"

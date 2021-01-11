@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy,
-         Directive,
-         ElementRef } from '../web_modules/@angular/core.js';
+         Directive } from '../web_modules/@angular/core.js';
 import { BehaviorSubject } from '../web_modules/rxjs.js';
 import { filter, takeUntil } from '../web_modules/rxjs/operators.js';
 import { MnLifeCycleHooksToStream } from './mn.core.js';

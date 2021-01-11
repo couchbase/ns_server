@@ -110,21 +110,24 @@ class MnHelperService {
     };
   }
 
-  createFilter() {
+  createFilter(component, filterKey) {
+    filterKey = filterKey || "name";
     var group = this.formBuilder.group({value: ""});
-    var inputStream =
-        group.get("value").valueChanges.pipe(debounceTime(200),
-                                             startWith(""));
+    var hotGroup = new BehaviorSubject("");
+
+    group.get("value").valueChanges
+      .pipe(takeUntil(component.mnOnDestroy))
+      .subscribe(hotGroup);
 
     var filterFunction = ([list, filterValue]) =>
-        list ? list.filter(item => item.name.includes(filterValue)) : [];
+        list ? list.filter(item => item[filterKey].includes(filterValue)) : [];
 
     // R.filter(R.compose(R.any(R.contains(val)), R.values))
 
     return {
       group: group,
       pipe: (arrayStream) => {
-        return combineLatest(arrayStream, inputStream)
+        return combineLatest(arrayStream, hotGroup.pipe(debounceTime(200)))
           .pipe(map(filterFunction),
                 shareReplay({refCount: true, bufferSize: 1}));
       }

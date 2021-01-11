@@ -95,7 +95,7 @@ class MnXDCRAddRepMappingComponent extends MnLifeCycleHooksToStream {
         });
     }
 
-    this.scopesFilter = this.mnHelperService.createFilter("name");
+    this.scopesFilter = this.mnHelperService.createFilter(this);
 
     this.scopes =
       (this.bucket ? of(this.bucket) : this.group.get("fromBucket").valueChanges)

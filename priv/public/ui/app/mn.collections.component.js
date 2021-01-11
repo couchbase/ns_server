@@ -94,8 +94,8 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
             takeUntil(this.mnOnDestroy))
       .subscribe(v => setBucketUrlParam(v, "replace"));
 
-    var scopesSorter = mnHelperService.createSorter("name");
-    var scopesFilter = mnHelperService.createFilter("name");
+    var scopesSorter = mnHelperService.createSorter(this);
+    var scopesFilter = mnHelperService.createFilter(this);
 
     var scopes =
         combineLatest(getBucketUrlParamDefined,

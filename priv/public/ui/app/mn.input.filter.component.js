@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component} from '/ui/web_modules/@angular/core.js';
+import { ChangeDetectionStrategy, Component } from '/ui/web_modules/@angular/core.js';
 
 export { MnInputFilterComponent };
 
@@ -9,9 +9,27 @@ class MnInputFilterComponent {
       templateUrl: "app/mn.input.filter.html",
       inputs: [
         "group",
-        "placeholder"
+        "mnFocusStatus",
+        "mnFocus",
+        "mnClearDisabled",
+        "mnPlaceholder",
+        "mnName"
       ],
       changeDetection: ChangeDetectionStrategy.OnPush
     })
   ]}
+
+  static get parameters() { return [
+  ]}
+
+  constructor() {
+  }
+
+  onBlur() {
+    this.mnFocusStatus && this.mnFocusStatus.next(false);
+  }
+
+  onFocus() {
+    this.mnFocusStatus && this.mnFocusStatus.next(true);
+  }
 }

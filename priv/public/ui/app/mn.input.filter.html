@@ -4,17 +4,23 @@
   <input
      type="text"
      formControlName="value"
+     mnName="{{mnName}}"
      maxlength="256"
-     class="filter-input"
-     placeholder="{{placeholder}}"
+     [mnFocus]="mnFocus"
+     placeholder="{{mnPlaceholder}}"
+     (blur)="onBlur()"
+     (focus)="onFocus()"
      (click)="$event.stopPropagation()">
   <span
      class="icon fa-search-minus"
-     [hidden]="(group.get('value').valueChanges | async)">
+     [hidden]="(group.get('value').valueChanges | async) || group.get('value').disabled">
   </span>
+
   <span
+     *ngIf="!mnClearDisabled"
      class="icon fa-times-circle"
      [hidden]="!(group.get('value').valueChanges | async)"
-     (click)="$event.stopPropagation();group.patchValue({value: ''})">
+     (click)="$event.stopPropagation();group.patchValue({value: ''});">
   </span>
+
 </div>
