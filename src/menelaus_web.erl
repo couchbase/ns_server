@@ -464,7 +464,8 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["nodes", "self", "xdcrSSLPorts"] ->
                     {done, menelaus_web_node:handle_node_self_xdcr_ssl_ports(Req)};
                 ["indexStatus"] ->
-                    {{[{bucket, any}, n1ql, index], read}, fun menelaus_web_indexes:handle_index_status/1};
+                    {{[{collection, [any, any, any]}, n1ql, index], read},
+                     fun menelaus_web_indexes:handle_index_status/1};
                 ["settings", "indexes"] ->
                     {{[settings, indexes], read}, fun menelaus_web_indexes:handle_settings_get/1};
                 ["diag"] ->
@@ -1109,8 +1110,7 @@ get_bucket_id(no_check) ->
     false;
 get_bucket_id({[{bucket, Bucket} | _], _}) when Bucket =/= any ->
     Bucket;
-get_bucket_id({[{collection, [Bucket, _, _]} | _], _}) ->
-    true = Bucket =/= any,
+get_bucket_id({[{collection, [Bucket, _, _]} | _], _}) when Bucket =/= any ->
     Bucket;
 get_bucket_id(_) ->
     false.

@@ -174,18 +174,29 @@ handle_settings_post(Req) ->
               menelaus_util:reply_json(Req, {get_settings()})
       end, Req, form, settings_post_validators()).
 
-handle_index_status(Req) ->
-    AllowedBuckets =
-        [list_to_binary(B) ||
-            B <- menelaus_auth:filter_accessible_buckets(
-                   ?cut({[{bucket, _}, n1ql, index], read}),
-                   ns_bucket:get_bucket_names(), Req)],
+filter_indexes(Roles, Indexes) ->
+    CollectionEnabled = collections:enabled(),
+    lists:filter(
+      fun (Index) ->
+              B = binary_to_list(proplists:get_value(bucket, Index)),
+              {S, C} = case CollectionEnabled of
+                           false ->
+                               {all, all};
+                           true ->
+                               {binary_to_list(proplists:get_value(scope,
+                                                                   Index)),
+                                binary_to_list(proplists:get_value(collection,
+                                                                   Index))}
+                       end,
+              menelaus_roles:is_allowed(
+                {[{collection, [B, S, C]}, n1ql, index], read}, Roles)
+      end, Indexes).
 
-    {ok, Indexes0, Stale, Version} = service_index:get_indexes(),
-    Indexes =
-        [{Index} ||
-            Index <- Indexes0,
-            lists:member(proplists:get_value(bucket, Index), AllowedBuckets)],
+handle_index_status(Req) ->
+    Identity = menelaus_auth:get_identity(Req),
+    Roles = menelaus_roles:get_compiled_roles(Identity),
+    {ok, Indexes, Stale, Version} = service_index:get_indexes(),
+    Filtered = filter_indexes(Roles, Indexes),
 
     Warnings =
         case Stale of
@@ -197,6 +208,6 @@ handle_index_status(Req) ->
                 []
         end,
 
-    menelaus_util:reply_json(Req, {[{indexes, Indexes},
+    menelaus_util:reply_json(Req, {[{indexes, [{I} || I <- Filtered]},
                                     {version, Version},
                                     {warnings, Warnings}]}).
