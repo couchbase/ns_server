@@ -14,7 +14,14 @@ function mnUserRolesResetPasswordDialogController(mnUserRolesService, $uibModalI
     mnPromiseHelper(vm, mnUserRolesService.addUser(
       vm.user,
       vm.user.roles.map(function (role) {
-        return (role.bucket_name ? (role.role + '[' + role.bucket_name + ']') : role.role);
+        if (role.bucket_name) {
+          let params = ([role.bucket_name,
+                         role.scope_name,
+                         role.collection_name]).filter(v => v);
+          return role.role + '[' + mnUserRolesService.packRoleParams(params) + ']';
+        } else {
+          return role.role;
+        }
       }),
       vm.user.groups,
       true,

@@ -18,7 +18,6 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
     addUser: addUser,
     deleteUser: deleteUser,
     getRoles: getRoles,
-    getRolesByRole: getRolesByRole,
     getUsers: getUsers,
     getUser: getUser,
     lookupLDAPUser: lookupLDAPUser,
@@ -45,7 +44,8 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
     resetDashboard: resetDashboard,
     getSaslauthdAuth: getSaslauthdAuth,
     packRolesToSend: packRolesToSend,
-    getRoleParams: getRoleParams
+    getRoleParams: getRoleParams,
+    packRoleParams: packRoleParams
   };
 
   var clientTLSCert = "Client Cert should be supplied";
@@ -149,10 +149,9 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
     return rolesByRole[role.role].params.map(param => role[param] || "*").join(":");
   }
 
-  function packParams(params) {
+  function packRoleParams(params) {
     let i;
     let rv = [];
-    params = params.split(":");
     for (i = 0; i < params.length; i++) {
       let val = params[i];
       if (val == "*") {
@@ -175,7 +174,8 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
               .keys(selectedRolesConfigs)
               .reduce((acc, role) =>
                       acc.concat((selectedRolesConfigs[role] || [])
-                                 .map(config => (role + "[" + packParams(config) + "]"))), []));
+                                 .map(config =>
+                                      (role + "[" + packRoleParams(config.split(":")) + "]"))), []));
   }
 
 
@@ -377,16 +377,6 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
 
   function getLookupLDAPUserUrl(user) {
     return "/settings/rbac/lookupLDAPUser/" + encodeURIComponent(user.id);
-  }
-
-  function getRolesByRole(userRoles) {
-    return (userRoles ? $q.when(userRoles) : getRoles()).then(function (roles) {
-      var rolesByRole = {};
-      angular.forEach(roles, function (role) {
-        rolesByRole[role.role + (role.bucket_name ? '[' + role.bucket_name + ']' : '')] = role;
-      });
-      return rolesByRole;
-    });
   }
 
   function packData(user, roles, groups, isEditingMode, resetPassword) {
