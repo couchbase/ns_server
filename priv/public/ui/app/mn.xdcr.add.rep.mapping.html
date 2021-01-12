@@ -85,12 +85,14 @@
 
   <span
      class="fa-stack icon-info"
-     ngbTooltip="Take a bucket with only a default scope and collection (bucketName._default._default)
-                 and replicate that data into the scopes and collections you set
-                 up on a remote cluster. You can just specify the destination
-                 collection or create a set of mapping rules with filter expressions.
-                 Unlike typical replications, this one should be deleted once migration is successful."
-     placement="top">
+     ngbTooltip="Use Collections Migration Mode to move data from the default
+                 collection on source to one or more named collections on the
+                 target. Optionally you can specify a filter on the source default
+                 collection. You can create multiple such mappings to split the
+                 default collection into multiple named collections on the target
+                 Unlike typical replications, this one should be deleted once
+                 migration is successful."
+     placement="auto right">
     <span class="icon fa-circle-thin fa-stack-2x"></span>
     <span class="icon fa-info fa-stack-1x"></span>
   </span>
