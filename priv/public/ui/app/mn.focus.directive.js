@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy,
-         Directive } from '../web_modules/@angular/core.js';
+         Directive,
+         ElementRef} from '../web_modules/@angular/core.js';
 import { BehaviorSubject } from '../web_modules/rxjs.js';
 import { filter, takeUntil } from '../web_modules/rxjs/operators.js';
 import { MnLifeCycleHooksToStream } from './mn.core.js';
@@ -20,6 +21,7 @@ class MnFocusDirective extends MnLifeCycleHooksToStream {
 
 
   static get parameters() { return [
+    ElementRef
   ]}
 
   constructor(el) {
