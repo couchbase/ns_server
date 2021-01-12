@@ -107,7 +107,7 @@ get_string(SV) ->
     {ok, list_to_binary(string:strip(SV))}.
 
 tlsv1_3_services() ->
-    [S || {S, _} <- services_with_security_settings(),
+    [S || S <- services_with_security_settings(),
           S =/= ns_server].
 
 get_tls_version(SV, Service) ->
@@ -185,14 +185,7 @@ get_cluster_encryption(Level) ->
     end.
 
 services_with_security_settings() ->
-    [{kv, data},
-     {fts, fullTextSearch},
-     {index, index},
-     {eventing, eventing},
-     {n1ql, query},
-     {cbas, analytics},
-     {backup, backup},
-     {ns_server, clusterManager}].
+    [kv, fts, index, eventing, n1ql, cbas, backup, ns_server].
 
 is_allowed_setting(K) ->
     case cluster_compat_mode:is_enterprise() orelse not ee_only_settings(K) of
@@ -221,12 +214,12 @@ conf(security) ->
       ns_ssl_services_setup:honor_cipher_order(undefined, []), fun get_bool/1},
      {cluster_encryption_level, clusterEncryptionLevel, control,
       fun get_cluster_encryption/1}] ++
-    [{{security_settings, S}, SN,
+    [{{security_settings, S}, ns_cluster_membership:json_service_name(S),
       [{cipher_suites, cipherSuites, undefined, fun get_cipher_suites/1},
        {ssl_minimum_protocol, tlsMinVersion, undefined, get_tls_version(_, S)},
        {honor_cipher_order, honorCipherOrder, undefined, fun get_bool/1},
        {supported_ciphers, supportedCipherSuites, ciphers:supported(S),
-        fun read_only/1}]} || {S, SN} <- services_with_security_settings()];
+        fun read_only/1}]} || S <- services_with_security_settings()];
 conf(internal) ->
     [{index_aware_rebalance_disabled, indexAwareRebalanceDisabled, false,
       fun get_bool/1},
@@ -800,7 +793,7 @@ handle_reset_alerts(Req) ->
 
 reset_per_service_cipher_suites(Req) ->
     lists:foreach(
-      fun ({S, _}) ->
+      fun (S) ->
               case ns_config:update_key({security_settings, S},
                                         proplists:delete(cipher_suites, _)) of
                   ok ->

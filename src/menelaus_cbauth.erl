@@ -278,8 +278,7 @@ build_auth_info(#state{cert_version = CertVersion,
      {clientCertAuthVersion, ClientCertAuthVersion},
      {clusterEncryptionConfig, {[{encryptData, ClusterDataEncrypt},
                                  {disableNonSSLPorts, DisableNonSSLPorts}]}},
-     {tlsConfig, [tls_config(S, Config) ||
-                  S <- [N || {N, _} <- TLSServices]]}].
+     {tlsConfig, [tls_config(S, Config) || S <- TLSServices]}].
 
 tls_config(Service, Config) ->
     Label = case Service of

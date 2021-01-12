@@ -78,7 +78,8 @@
          service_nodes/3,
          should_run_service/2,
          should_run_service/3,
-         user_friendly_service_name/1]).
+         user_friendly_service_name/1,
+         json_service_name/1]).
 
 get_nodes_with_status(PredOrStatus) ->
     get_nodes_with_status(ns_config:latest(), PredOrStatus).
@@ -496,6 +497,13 @@ user_friendly_service_name(backup) ->
     "backup";
 user_friendly_service_name(Service) ->
     atom_to_list(Service).
+
+json_service_name(kv) -> data;
+json_service_name(fts) -> fullTextSearch;
+json_service_name(n1ql) -> query;
+json_service_name(cbas) -> analytics;
+json_service_name(ns_server) -> clusterManager;
+json_service_name(Service) -> Service.
 
 attach_node_uuids(Nodes, Config) ->
     UUIDDict = ns_config:get_node_uuid_map(Config),
