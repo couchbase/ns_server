@@ -629,6 +629,9 @@ footer {
 .break-word {
   word-break: break-all;
 }
+.overflow-wrap {
+  overflow-wrap: anywhere
+}
 .debug-outline {
   border: 1px dashed red !important;
 }

@@ -7,7 +7,7 @@
      [formGroup]="form.group"
      (submit)="activeModal.dismiss()" style="height:inherit;">
     <div style="height:calc(100% - 112px);overflow:auto;" class="show-scrollbar">
-      <div class="panel-content">
+      <div class="panel-content overflow-wrap">
         <div *ngFor="let error of errors">
           <span class="icon fa-warning red-3"></span>
           {{error}}
