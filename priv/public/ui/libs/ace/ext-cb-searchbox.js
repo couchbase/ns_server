@@ -19,7 +19,7 @@ var keyUtil = require("../lib/keys");
 
 //dom.importCssString(searchboxCss, "ace_searchbox");
 
-var html = `<div class="ace-search">
+var html = `<div class="ace-search forms">
     <div class="row flex-right">
       <div class="ace-search-options">
         <button class="ace-search-options-buttons" action="toggleRegexpMode" title="RegExp search">.*</button>

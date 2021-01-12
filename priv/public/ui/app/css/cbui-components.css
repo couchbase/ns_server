@@ -2381,6 +2381,7 @@ button:hover.scenarios-delete {
   z-index: 99;
   white-space: normal;
   font: 12px/normal 'OpenSans' !important;
+  font-size: 12px !important;
 }
 .ace-search-icon {
   cursor: pointer;
@@ -2396,7 +2397,7 @@ button:hover.scenarios-delete {
   margin: 0 0 .5rem 0;
 }
 .ace-search-form button.icon {
-  font-size: 12px;
+  font-size: 14px !important;
 }
 .ace-search-form.ace_nomatch {
 }
