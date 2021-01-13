@@ -1695,4 +1695,82 @@ prometheus_decimation_split_sample_test() ->
     Deletions = decimate_stats(Levels, LastDecimationTime, Now, 10),
     ?assertMatch(Deletions, ExpectedDeletions).
 
+prometheus_decimation_randomized_test_() ->
+    {timeout, 120, fun () -> randomized_decimation_correctness_test(1000) end}.
+
+randomized_decimation_correctness_test(K) when K < 0 -> ok;
+randomized_decimation_correctness_test(K) ->
+    ScrapeInterval = misc:rand_uniform(1, 60),
+
+    LevelOnePeriod = misc:rand_uniform(1, 600),
+    LevelTwoPeriod = misc:rand_uniform(1, 24*60*60),
+    LevelTwoInterval = misc:rand_uniform(ScrapeInterval, 240),
+    LevelThreePeriod = misc:rand_uniform(ScrapeInterval, 7*24*60*60),
+    LevelThreeInterval = LevelTwoInterval * misc:rand_uniform(10, 100),
+    TotalPeriod = LevelOnePeriod + LevelTwoPeriod + LevelThreePeriod,
+    Levels = [{one, LevelOnePeriod, skip},
+              {two, LevelTwoPeriod, LevelTwoInterval},
+              {three, LevelThreePeriod, LevelThreeInterval}],
+
+    TimeShift = misc:rand_uniform(0, 600),
+    NumberOfDatapoints = TotalPeriod div ScrapeInterval,
+    Datapoints = [N * ScrapeInterval + TimeShift
+                  || N <- lists:seq(0, NumberOfDatapoints - 1)],
+
+    First = hd(Datapoints),
+    Last = lists:last(Datapoints),
+    StartTime = First - misc:rand_uniform(1, 100),
+    FinishTime = Last + TotalPeriod,
+    DatapointsLeft = apply_test_decimation(
+                       Levels, ScrapeInterval, LevelThreePeriod,
+                       StartTime, FinishTime, Datapoints),
+    ActualLen = length(DatapointsLeft),
+    FirstAligned = (First div LevelThreeInterval) * LevelThreeInterval,
+    LastAligned = (Last div LevelThreeInterval) * LevelThreeInterval,
+    ExpectedLen = (LastAligned - FirstAligned) div LevelThreeInterval,
+
+    IncludeFirst = FirstAligned + ScrapeInterval > First,
+
+    ExpectedLen2 = ExpectedLen + lists:sum([1 || IncludeFirst]),
+
+    try
+        ActualLen = ExpectedLen2
+    catch
+        C:E:ST ->
+            Diff = lists:mapfoldl(fun (N, P) -> {N - P, N} end,
+                                  hd(DatapointsLeft), tl(DatapointsLeft)),
+            io:format("Datapoints: ~p~nLevels: ~p~nScrapeInterval: ~p~n"
+                      "Left: ~p~nDiff: ~p~nExpectedNum: ~p~nActualNum:~p~n"
+                      "IncludeFirst: ~p~n",
+                      [Datapoints, Levels, ScrapeInterval, DatapointsLeft, Diff,
+                       ExpectedLen2, ActualLen, IncludeFirst]),
+            erlang:raise(C, E, ST)
+    end,
+    randomized_decimation_correctness_test(K - 1).
+
+apply_test_decimation(_Levels, _ScrapeInterval, _MaxPruneInterval,
+                      LastDecimation, FinishTime, Datapoints)
+                                            when LastDecimation > FinishTime ->
+    Datapoints;
+apply_test_decimation(Levels, ScrapeInterval, MaxPruneInterval,
+                      LastDecimation, FinishTime, Datapoints) ->
+    Now = LastDecimation + misc:rand_uniform(1, MaxPruneInterval),
+    DeleteIntervals = decimate_stats(Levels, LastDecimation, Now,
+                      ScrapeInterval),
+    NewDatapoints = delete_test_intervals(Datapoints, DeleteIntervals, []),
+    apply_test_decimation(Levels, ScrapeInterval, MaxPruneInterval,
+                          Now, FinishTime, NewDatapoints).
+
+delete_test_intervals([], _, Acc) -> lists:reverse(Acc);
+delete_test_intervals(Datapoints, [], Acc) -> lists:reverse(Acc, Datapoints);
+delete_test_intervals([TS | Tail1], [{C, Start, End} | Tail2], Acc)
+                                                when TS < Start ->
+    delete_test_intervals(Tail1, [{C, Start, End} | Tail2], [TS | Acc]);
+delete_test_intervals([TS | Tail1], [{C, Start, End} | Tail2], Acc)
+                                                when TS >= Start, TS < End ->
+    delete_test_intervals(Tail1, [{C, Start, End} | Tail2], Acc);
+delete_test_intervals([TS | Tail1], [{_, _Start, End} | Tail2], Acc)
+                                                when TS >= End ->
+    delete_test_intervals([TS | Tail1], Tail2, Acc).
+
 -endif.
