@@ -153,9 +153,15 @@
           &nbsp;node{{settingsAutoFailoverCtl.reprovisionSettings.max_nodes !== 1 ? "s" : ""}}&nbsp;
           <span
              class="fa-stack icon-info"
-             uib-tooltip="For an unresponsive node with Ephemeral Buckets, you may choose to have its replicas
-                          promoted to active if it becomes responsive again. This avoids data loss, but leaves
-                          the cluster in an unbalanced state that will require a rebalance."
+             uib-tooltip="Auto-reprovisioning is needed for Ephemeral buckets to
+                          guard against data loss when a Data node fails but restarts
+                          before an auto-failover could occur. It enables automatic
+                          promotion of replicas to active for that node. Here you
+                          can configure the number of nodes for which auto-provisioning
+                          should be done. Ideally, this number should be set to 1;
+                          higher values should only be used if the surviving nodes
+                          have enough capacity to handle increased workload. A cluster
+                          rebalance must be done once the restarted node becomes healthy."
              tooltip-placement="auto top">
             <span class="icon fa-circle-thin fa-stack-2x"></span>
             <span class="icon fa-info fa-stack-1x"></span>
