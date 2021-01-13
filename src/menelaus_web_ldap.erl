@@ -29,40 +29,23 @@
 handle_ldap_settings(Req) ->
     menelaus_web_rbac:assert_groups_and_ldap_enabled(),
     Settings = ldap_util:build_settings(),
-    menelaus_util:reply_json(Req, {prepare_ldap_settings(Settings)}).
+    menelaus_web_settings2:handle_get([], params(), fun type_spec/1,
+                                      Settings, Req).
 
 prepare_ldap_settings(Settings) ->
-    SettingsDesc = ldap_settings_desc(),
-    Fun =
-      fun (_, undefined) -> undefined;
-          (K, V) ->
-            case lists:keyfind(K, 1, SettingsDesc) of
-                %% Removing parameters that are used for validation only,
-                %% like authUser and authPass
-                false -> undefined;
-                {_, JsonKey, _, Formatter} -> {JsonKey, Formatter(V)}
-            end
-      end,
-    [{ResK, ResV} || {K, V} <- Settings, {ResK, ResV} <- [Fun(K, V)]].
+    {Props} = menelaus_web_settings2:prepare_json([], params(),
+                                                  fun type_spec/1, Settings),
+    Props.
 
 handle_ldap_settings_post(Req) ->
     menelaus_web_rbac:assert_groups_and_ldap_enabled(),
-    validator:handle(
-      fun (Props) ->
-              ParsedProps = parse_ldap_settings_keys(Props),
-              ns_audit:ldap_settings(Req, prepare_ldap_settings(ParsedProps)),
-              ldap_util:set_settings(ParsedProps),
-              handle_ldap_settings(Req)
-      end, Req, form, ldap_settings_validators()).
-
-parse_ldap_settings_keys(Props) ->
-    lists:map(
-      fun ({JsonKey, Value}) ->
-          case lists:keyfind(JsonKey, 2, ldap_settings_desc()) of
-              false -> {JsonKey, Value};
-              {Key, _, _, _} -> {Key, Value}
-          end
-      end, Props).
+    menelaus_web_settings2:handle_post(
+      fun (Props, Req2) ->
+          Props2 = [{Key, Val} || {[Key], Val} <- Props],
+          ns_audit:ldap_settings(Req, prepare_ldap_settings(Props2)),
+          ldap_util:set_settings(Props2),
+          handle_ldap_settings(Req2)
+      end, [], params(), fun type_spec/1, Req).
 
 build_validation_settings(Props) ->
     Current = ldap_util:build_settings(),
@@ -79,9 +62,9 @@ handle_ldap_settings_validate_post(Type, Req) when Type =:= "connectivity";
                                                    Type =:= "authentication";
                                                    Type =:= "groupsQuery" ->
     menelaus_web_rbac:assert_groups_and_ldap_enabled(),
-    validator:handle(
-      fun (Props) ->
-              ParsedProps = parse_ldap_settings_keys(Props),
+    menelaus_web_settings2:handle_post(
+      fun (Props, Req2) ->
+              ParsedProps = [{Key, Val} || {[Key], Val} <- Props],
               {CurrProps, NewProps} = build_validation_settings(ParsedProps),
               ?log_debug("Validating ~p for LDAP settings: ~n~p~n"
                          "Modified settings:~n~p~n"
@@ -91,9 +74,8 @@ handle_ldap_settings_validate_post(Type, Req) when Type =:= "connectivity";
                           prepare_ldap_settings(ParsedProps -- CurrProps),
                           prepare_ldap_settings(NewProps)]),
               Res = validate_ldap_settings(Type, NewProps),
-              menelaus_util:reply_json(Req, {Res})
-      end, Req, form, ldap_settings_validator_validators(Type) ++
-                      ldap_settings_validators());
+              menelaus_util:reply_json(Req2, {Res})
+      end, [], params() ++ validation_params(Type), fun type_spec/1, Req);
 handle_ldap_settings_validate_post(_Type, Req) ->
     menelaus_util:reply_json(Req, <<"Unknown validation type">>, 404).
 
@@ -107,8 +89,8 @@ validate_ldap_settings("connectivity", Settings) ->
              {reason, Bin}]
     end;
 validate_ldap_settings("authentication", Settings) ->
-    User = proplists:get_value(authUser, Settings),
-    Pass = proplists:get_value(authPass, Settings),
+    User = proplists:get_value(auth_user, Settings),
+    Pass = proplists:get_value(auth_pass, Settings),
     case ldap_auth:authenticate_with_cause(User, Pass, Settings) of
         {ok, DN} ->
             [{result, success}, {dn, iolist_to_binary(DN)}];
@@ -117,7 +99,7 @@ validate_ldap_settings("authentication", Settings) ->
             [{result, error}, {reason, Bin}]
     end;
 validate_ldap_settings("groupsQuery", Settings) ->
-    GroupsUser = proplists:get_value(groupsQueryUser, Settings),
+    GroupsUser = proplists:get_value(groups_query_user, Settings),
     case ldap_auth:user_groups(GroupsUser, Settings) of
         {ok, Groups} ->
             [{result, success},
@@ -128,91 +110,88 @@ validate_ldap_settings("groupsQuery", Settings) ->
              {reason, Bin2}]
     end.
 
-ldap_settings_desc() ->
-    Curry = fun functools:curry/1,
-    Id = fun functools:id/1,
-    %% [{ConfigKey, JSONKey, ValidatorFun, Formatter}]
-    [{authentication_enabled, authenticationEnabled,
-      Curry(fun validator:boolean/2), Id},
-     {authorization_enabled, authorizationEnabled,
-      Curry(fun validator:boolean/2), Id},
-     {hosts, hosts,
-      Curry(fun validate_ldap_hosts/2),
-      fun (Hosts) -> [list_to_binary(H) || H <- Hosts] end},
-     {port, port,
-      fun (N) -> validator:integer(N, 0, 65535, _) end, Id},
-     {encryption, encryption,
-      fun (N) ->
-          functools:compose(
-            [validator:one_of(N, ["TLS", "StartTLSExtension", "None"], _),
-             validator:convert(N, fun list_to_atom/1, _)])
-      end, Id},
-     {user_dn_mapping, userDNMapping,
-      Curry(fun validate_user_dn_mapping/2), fun ({Obj, _}) -> Obj end},
-     {bind_method, bindMethod,
-      fun (N) ->
-          functools:compose(
-            [validator:one_of(N, ["Simple", "SASLExternal", "None"], _),
-             validator:convert(N, fun list_to_atom/1, _)])
-      end, Id},
-     {bind_dn, bindDN,
-      Curry(fun validate_ldap_dn/2), list_to_binary(_)},
-     {bind_pass, bindPass,
-      fun (N) ->
-          functools:compose(
-            [validator:touch(N, _),
-             validator:convert(N, fun (P) -> ({password, P}) end, _)])
-      end,
-      fun ({password, ""}) -> <<>>;
-          ({password, _}) -> <<"**********">>
-      end},
-     {groups_query, groupsQuery,
-      Curry(fun validate_ldap_groups_query/2), list_to_binary(_)},
-     {max_parallel_connections, maxParallelConnections,
-      fun (N) -> validator:integer(N, 1, 1000, _) end, Id},
-     {max_cache_size, maxCacheSize,
-      fun (N) -> validator:integer(N, 0, 10000, _) end, Id},
-     {cache_value_lifetime, cacheValueLifetime,
-      fun (N) -> validator:integer(N, 0, infinity, _) end, Id},
-     {request_timeout, requestTimeout,
-      fun (N) -> validator:integer(N, 0, infinity, _) end, Id},
-     {nested_groups_enabled, nestedGroupsEnabled,
-      Curry(fun validator:boolean/2), Id},
-     {nested_groups_max_depth, nestedGroupsMaxDepth,
-      fun (N) -> validator:integer(N, 1, 100, _) end, Id},
-     {fail_on_max_depth, failOnMaxDepth,
-      Curry(fun validator:boolean/2), Id},
-     {server_cert_validation, serverCertValidation,
-      Curry(fun validator:boolean/2), Id},
-     {cacert, cacert,
-      Curry(fun validate_cert/2), fun ({CA, _Decoded}) -> CA end},
-     {client_tls_cert, clientTLSCert,
-      Curry(fun validate_cert/2), fun ({CA, _Decoded}) -> CA end},
-     {client_tls_key, clientTLSKey,
-      Curry(fun validate_key/2),
-      fun (undefined) -> <<>>;
-          ({password, {_, _, not_encrypted}}) -> <<"**********">>
-      end},
-     {extra_tls_opts, extraTLSOpts,
-      Curry(fun not_supported/2),
-      fun (List) ->
-          Sanitized =
-              lists:map(
-                fun ({K, {password, _}}) -> {K, <<"********">>};
-                    ({K, V}) -> {K, V}
-                end, List),
-          iolist_to_binary(io_lib:format("~p", [Sanitized]))
-      end}
-    ].
+params() ->
+    [{"authenticationEnabled", #{cfg_key => authentication_enabled,
+                                 type => bool}},
+     {"authorizationEnabled", #{cfg_key => authorization_enabled,
+                                type => bool}},
+     {"hosts", #{type => ldap_hosts}},
+     {"port", #{type => {int, 0, 65535}}},
+     {"encryption", #{type => {one_of, existing_atom,
+                               ["TLS", "StartTLSExtension", "None"]}}},
+     {"userDNMapping", #{cfg_key => user_dn_mapping,
+                         type => user_dn_mapping}},
+     {"bindMethod", #{cfg_key => bind_method,
+                      type => bind_method}},
+     {"bindDN", #{cfg_key => bind_dn, type => ldap_dn}},
+     {"bindPass", #{cfg_key => bind_pass, type => password}},
+     {"groupsQuery", #{cfg_key => groups_query, type => ldap_groups_query}},
+     {"maxParallelConnections", #{cfg_key => max_parallel_connections,
+                                  type => {int, 1, 1000}}},
+     {"maxCacheSize", #{cfg_key => max_cache_size, type => {int, 0, 10000}}},
+     {"cacheValueLifetime", #{cfg_key => cache_value_lifetime,
+                              type => pos_int}},
+     {"requestTimeout", #{cfg_key => request_timeout, type => pos_int}},
+     {"nestedGroupsEnabled", #{cfg_key => nested_groups_enabled, type => bool}},
+     {"nestedGroupsMaxDepth", #{cfg_key => nested_groups_max_depth,
+                                type => {int, 1, 100}}},
+     {"failOnMaxDepth", #{cfg_key => fail_on_max_depth, type => bool}},
+     {"serverCertValidation", #{cfg_key => server_cert_validation,
+                                type => bool}},
+     {"cacert", #{type => certificate}},
+     {"clientTLSCert", #{cfg_key => client_tls_cert, type => certificate}},
+     {"clientTLSKey", #{cfg_key => client_tls_key, type => pkey}},
+     {"extraTLSOpts", #{cfg_key => extra_tls_opts, type => tls_opts}}].
 
-not_supported(Name, State) ->
-    validator:validate(
-      fun (_) -> {error, "modification not supported"} end,
-      Name, State).
+validation_params("connectivity") -> [];
+validation_params("authentication") ->
+    [{"authUser", #{cfg_key => auth_user, type => string}},
+     {"authPass", #{cfg_key => auth_pass, type => string}}];
+validation_params("groupsQuery") ->
+    [{"groupsQueryUser", #{cfg_key => groups_query_user, type => string}}].
 
-ldap_settings_validators() ->
-    [Validator(JsonKey) || {_, JsonKey, Validator, _} <- ldap_settings_desc()]
-    ++ [validator:unsupported(_)].
+type_spec(ldap_hosts) ->
+    #{validators => [fun validate_ldap_hosts/2],
+      formatter => ?cut({value, [list_to_binary(H) || H <- _]})};
+type_spec(user_dn_mapping) ->
+    #{validators => [fun validate_user_dn_mapping/2],
+      formatter => fun ({Obj, _}) -> {value, Obj} end};
+type_spec(ldap_dn) ->
+    #{validators => [string, fun validate_ldap_dn/2],
+      formatter => string};
+type_spec(ldap_groups_query) ->
+    #{validators => [string, fun validate_ldap_groups_query/2],
+      formatter => fun (undefined) -> ignore;
+                       (Str) -> {value, list_to_binary(Str)}
+                   end};
+type_spec(certificate) ->
+    #{validators => [string, fun validate_cert/2],
+      formatter => fun (undefined) -> ignore;
+                       ({Cert, _Decoded}) -> {value, Cert}
+                   end};
+type_spec(pkey) ->
+    #{validators => [string, fun validate_key/2],
+      formatter => fun (undefined) -> ignore;
+                       ({password, {_, _, not_encrypted}}) ->
+                           {value, <<"**********">>}
+                   end};
+type_spec(tls_opts) ->
+    #{validators => [not_supported],
+      formatter => fun (undefined) -> ignore;
+                       (List) ->
+                           Sanitize = fun ({password, _}) -> <<"********">>;
+                                          (V) -> V
+                                      end,
+                           Sanitized = [{K, Sanitize(V)} || {K, V} <- List],
+                           Str = io_lib:format("~p", [Sanitized]),
+                           {value, iolist_to_binary(Str)}
+                   end};
+type_spec(bind_method) ->
+    #{validators => [{one_of, existing_atom, ["Simple", "SASLExternal",
+                                              "None"]}],
+      formatter => fun (undefined) -> ignore;
+                       (Atom) -> {value, atom_to_binary(Atom, latin1)}
+                   end}.
 
 validate_key(Name, State) ->
     validator:validate(
@@ -235,22 +214,25 @@ validate_cert(Name, State) ->
               end
       end, Name, State).
 
-ldap_settings_validator_validators("connectivity") -> [];
-ldap_settings_validator_validators("authentication") ->
-    [validator:required(authUser, _),
-     validator:required(authPass, _)];
-ldap_settings_validator_validators("groupsQuery") ->
-    [validator:required(groupsQueryUser, _)].
-
 validate_ldap_hosts(Name, State) ->
+    IsJson = validator:is_json(State),
     validator:validate(
-      fun (HostsRaw) ->
+      fun (List) when IsJson, is_list(List) ->
+              case lists:all(fun is_binary/1, List) of
+                  true -> {value, [binary_to_list(E) || E <- List]};
+                  false -> {error, "must be a list of strings"}
+              end;
+          (HostsRaw) ->
               {value, [string:trim(T) || T <- string:tokens(HostsRaw, ",")]}
       end, Name, State).
 
 validate_user_dn_mapping(Name, State) ->
+    IsJson = validator:is_json(State),
     validator:validate(
-      fun (Str) ->
+      fun (Obj) when IsJson ->
+              try {value, {Obj, parse_dn_mapping(Obj)}}
+              catch throw:{error, _} = Err -> Err end;
+          (Str) ->
               try
                   Obj = try ejson:decode(Str)
                         catch _:_ ->

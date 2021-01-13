@@ -68,7 +68,7 @@
 
 -module(menelaus_web_settings2).
 
--export([handle_get/5, handle_post/5]).
+-export([prepare_json/4, handle_get/5, handle_post/5]).
 
 -include("ns_common.hrl").
 -include("cut.hrl").
@@ -94,13 +94,31 @@ type_spec(pos_int) ->
     #{validators => [int, greater_than(_, 0, _)], formatter => int};
 type_spec(int) ->
     #{validators => [fun validator:integer/2]};
+type_spec({int, Min, Max}) ->
+    #{validators => [?cut(validator:integer(_1, Min, Max, _2))],
+      formatter => int};
 type_spec(existing_atom) ->
     #{validators => [fun existing_atom/2]};
 type_spec(string) ->
     #{validators => [fun validator:string/2],
       formatter => fun (V) -> {value, list_to_binary(V)} end};
 type_spec({one_of, Type, List}) ->
-    #{validators => [validator:one_of(_, List, _), Type], formatter => Type}.
+    #{validators => [validator:one_of(_, List, _), Type], formatter => Type};
+type_spec(password) ->
+    #{validators => [string, ?cut(validator:convert(_1, fun (P) ->
+                                                            {password, P}
+                                                        end, _2))],
+      formatter => fun ({password, ""}) -> {value, <<>>};
+                       ({password, _}) -> {value, <<"**********">>}
+                   end};
+type_spec(not_supported) ->
+    #{validators => [fun not_supported/2],
+      formatter => fun (_) -> ignore end}.
+
+not_supported(Name, State) ->
+    validator:validate(
+      fun (_) -> {error, "modification not supported"} end,
+      Name, State).
 
 prepare_json(Path, ParamSpecs, UserTypesFun, Values) ->
     TypesFuns = [UserTypesFun, fun type_spec/1],
