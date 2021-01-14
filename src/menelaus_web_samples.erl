@@ -46,8 +46,14 @@ handle_get(Req) ->
 
 handle_post(Req) ->
     menelaus_web_rbac:assert_no_users_upgrade(),
-    Samples = mochijson2:decode(mochiweb_request:recv_body(Req)),
+    case try_decode(mochiweb_request:recv_body(Req)) of
+        {ok, Samples} ->
+            process_post(Req, Samples);
+        {error, Error} ->
+            reply_json(Req, list_to_binary(Error), 400)
+    end.
 
+process_post(Req, Samples) ->
     case ns_orchestrator:ensure_janitor_run(services) of
         ok ->
             ok;
@@ -70,6 +76,16 @@ handle_post(Req) ->
             reply_json(Req, [], 202);
         X2 ->
             reply_json(Req, [Msg || {error, Msg} <- X2], 400)
+    end.
+
+try_decode(Body) ->
+    try
+        {ok, mochijson2:decode(Body)}
+    catch
+        throw:invalid_utf8 ->
+            {error, "Invalid JSON: Illegal UTF-8 character"};
+        error:_ ->
+            {error, "Invalid JSON"}
     end.
 
 start_loading_samples(Req, Samples) ->
