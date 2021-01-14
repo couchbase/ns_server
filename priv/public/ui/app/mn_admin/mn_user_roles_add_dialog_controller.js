@@ -2,7 +2,7 @@ import _ from "/ui/web_modules/lodash.js";
 
 export default mnUserRolesAddDialogController;
 
-function mnUserRolesAddDialogController(mnUserRolesService, $uibModalInstance, mnPromiseHelper, user, isLdapEnabled, mnPoolDefault, mnHelper, $q, isSaslauthdAuthEnabled) {
+function mnUserRolesAddDialogController(mnUserRolesService, $uibModalInstance, mnPromiseHelper, user, isLdapEnabled, mnPoolDefault, mnHelper, $q, isSaslauthdAuthEnabled, $state) {
   var vm = this;
   vm.user = _.clone(user) || {domain: "local"};
   vm.userID = vm.user.id || 'New';
@@ -202,6 +202,7 @@ function mnUserRolesAddDialogController(mnUserRolesService, $uibModalInstance, m
       })
       .broadcast("reloadRolesPoller")
       .closeOnSuccess()
+      .onSuccess(() => $state.go('app.admin.security.roles.user'))
       .showGlobalSuccess("User saved successfully!");
   }
 }

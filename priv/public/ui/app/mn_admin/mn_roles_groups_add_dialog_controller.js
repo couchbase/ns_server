@@ -2,7 +2,7 @@ import _ from "/ui/web_modules/lodash.js";
 
 export default mnRolesGroupsAddDialogController;
 
-function mnRolesGroupsAddDialogController(mnUserRolesService, $uibModalInstance, mnPromiseHelper, rolesGroup) {
+function mnRolesGroupsAddDialogController(mnUserRolesService, $uibModalInstance, mnPromiseHelper, rolesGroup, $state) {
   var vm = this;
   vm.rolesGroup = _.clone(rolesGroup) || {};
   vm.rolesGroupID = vm.rolesGroup.id || 'New';
@@ -58,6 +58,7 @@ function mnRolesGroupsAddDialogController(mnUserRolesService, $uibModalInstance,
       .catchErrors()
       .broadcast("reloadRolesGroupsPoller")
       .closeOnSuccess()
+      .onSuccess(() => $state.go('app.admin.security.roles.groups'))
       .showGlobalSuccess("Group saved successfully!");
   }
 }
