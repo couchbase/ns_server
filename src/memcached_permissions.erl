@@ -101,8 +101,6 @@ spec_users() ->
      ns_config:search_node_prop(ns_config:latest(), memcached,
                                 other_users, [])].
 
-filter_event(buckets) ->
-    true;
 filter_event(cluster_compat_version) ->
     true;
 filter_event(group_version) ->
@@ -114,15 +112,9 @@ filter_event(rest_creds) ->
 filter_event({node, Node, prometheus_auth_info}) when Node =:= node() ->
     true;
 filter_event(Key) ->
-    collections:key_match(Key) =/= false.
+    (collections:key_match(Key) =/= false)
+        orelse ns_bucket:buckets_change(Key).
 
-handle_event(buckets, #state{buckets = Buckets} = State) ->
-    case buckets_uids(ns_bucket:get_buckets()) of
-        Buckets ->
-            unchanged;
-        NewBuckets ->
-            {changed, State#state{buckets = NewBuckets}}
-    end;
 handle_event(user_version, State) ->
     {changed, State};
 handle_event(group_version, State) ->
@@ -144,9 +136,19 @@ handle_event({node, Node, prometheus_auth_info},
         Other ->
             {changed, State#state{prometheus_user = Other}}
     end;
-handle_event(Key, State) ->
-    true = (collections:key_match(Key) =/= false),
-    {changed, State}.
+handle_event(Key, #state{buckets = Buckets} = State) ->
+    case collections:key_match(Key) of
+        false ->
+            true = ns_bucket:buckets_change(Key),
+            case buckets_uids(ns_bucket:get_buckets()) of
+                Buckets ->
+                    unchanged;
+                NewBuckets ->
+                    {changed, State#state{buckets = NewBuckets}}
+            end;
+        {true, _} ->
+            {changed, State}
+    end.
 
 refresh() ->
     memcached_refresh:refresh(rbac).

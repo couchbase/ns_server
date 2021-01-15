@@ -43,6 +43,7 @@
          get_snapshot/0,
          get_snapshot/1,
          sub_key_match/1,
+         buckets_change/1,
          key_filter/0,
          key_filter/1,
          remove_from_snapshot/2,
@@ -138,6 +139,18 @@ sub_key_match({bucket, Bucket, SubKey}) ->
     {true, Bucket, SubKey};
 sub_key_match(_) ->
     false.
+
+%% do not detect changes bucket_names because it is always in the same
+%% transaction with props key
+buckets_change(buckets) ->
+    true;
+buckets_change(Key) ->
+    case sub_key_match(Key) of
+        {true, _, props} ->
+            true;
+        _ ->
+            false
+    end.
 
 get_snapshot() ->
     chronicle_compat:get_snapshot(key_filter()).

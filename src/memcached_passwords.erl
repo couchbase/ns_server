@@ -59,24 +59,15 @@ init() ->
            rest_creds = ns_config_auth:get_admin_user_and_auth(),
            prometheus_auth = prometheus_cfg:get_auth_info()}.
 
-filter_event(buckets) ->
-    true;
 filter_event(auth_version) ->
     true;
 filter_event(rest_creds) ->
     true;
 filter_event({node, Node, prometheus_auth_info}) when Node =:= node() ->
     true;
-filter_event(_) ->
-    false.
+filter_event(Key) ->
+    ns_bucket:buckets_change(Key).
 
-handle_event(buckets, #state{buckets = Buckets} = State) ->
-    case extract_creds(ns_bucket:get_buckets()) of
-        Buckets ->
-            unchanged;
-        NewBuckets ->
-            {changed, State#state{buckets = NewBuckets}}
-    end;
 handle_event(auth_version, State) ->
     {changed, State};
 handle_event(rest_creds, #state{rest_creds = Creds} = State) ->
@@ -93,6 +84,14 @@ handle_event({node, Node, prometheus_auth_info},
             unchanged;
         Other ->
             {changed, State#state{prometheus_auth = Other}}
+    end;
+handle_event(Key, #state{buckets = Buckets} = State) ->
+    true = ns_bucket:buckets_change(Key),
+    case extract_creds(ns_bucket:get_buckets()) of
+        Buckets ->
+            unchanged;
+        NewBuckets ->
+            {changed, State#state{buckets = NewBuckets}}
     end.
 
 producer(#state{buckets = Buckets,
