@@ -1021,14 +1021,16 @@ setup_test_ns_rebalance_observer() ->
                         {ok, {VB, 0, <<"backfilling">>}}
                 end),
 
-    ns_config:test_setup(
-      [{buckets, [{configs,
-                   [{"Bucket1",
-                     [{storage_mode, couchstore},
-                      {type, membase},
-                      {num_vbuckets, 2},
-                      {servers, ['n_0', 'n_1']},
-                      {map, [['n_0','n_1'], ['n_1','n_0']]}]}]}]}]),
+    meck:new(ns_bucket, [passthrough]),
+    meck:expect(ns_bucket, get_buckets,
+                fun () ->
+                        [{"Bucket1",
+                          [{storage_mode, couchstore},
+                           {type, membase},
+                           {num_vbuckets, 2},
+                           {servers, ['n_0', 'n_1']},
+                           {map, [['n_0','n_1'], ['n_1','n_0']]}]}]
+                end),
     {ok, Pid} = gen_server:start_link(?MODULE,
                                       {[], [{active_nodes, [n1, n0]}],
                                        rebalance, <<"rebalanceID">>},
@@ -1037,7 +1039,8 @@ setup_test_ns_rebalance_observer() ->
 
 teardown_test_ns_rebalance_observer(Pid) ->
     gen_server:stop(Pid),
-    meck:unload(janitor_agent).
+    meck:unload(janitor_agent),
+    meck:unload(ns_bucket).
 
 ns_rebalance_observer_test_() ->
     {foreach,
