@@ -80,87 +80,73 @@ sync() ->
     memcached_cfg:sync(?MODULE).
 
 init() ->
-    Config = ns_config:get(),
-    Self = self(),
-    chronicle_compat:subscribe_to_key_change(
-      fun (Key) ->
-              case collections:key_match(Key) of
-                  {true, _} ->
-                      memcached_cfg:refresh(Self);
-                  false ->
-                      ok
-              end
-      end),
-
-    AdminUser =
-        case ns_config:search(Config, rest_creds) of
-            {value, {U, _}} -> U;
-            _ -> undefined
-        end,
-    PromUser =
-        case ns_config:search_node(Config, prometheus_auth_info) of
-            {value, {U2, _}} -> U2;
-            _ -> undefined
-        end,
     #state{buckets = buckets_uids(ns_bucket:get_buckets()),
-           users = spec_users(Config),
-           cluster_admin = AdminUser,
-           prometheus_user = PromUser}.
+           users = spec_users(),
+           cluster_admin = ns_config_auth:get_user(admin),
+           prometheus_user = prom_user()}.
 
 buckets_uids(Buckets) ->
     [{Name, ns_bucket:bucket_uuid(Props)} || {Name, Props} <- Buckets].
 
-spec_users() -> spec_users(ns_config:get()).
-spec_users(Config) ->
-    [ns_config:search_node_prop(Config, memcached, admin_user) |
-     ns_config:search_node_prop(Config, memcached, other_users, [])].
+prom_user() ->
+    case prometheus_cfg:get_auth_info() of
+        {U, _} ->
+            U;
+        undefined ->
+            undefined
+    end.
 
-filter_event({buckets, _V}) ->
-    true;
-filter_event({cluster_compat_version, _V}) ->
-    true;
-filter_event({group_version, _V}) ->
-    true;
-filter_event({user_version, _V}) ->
-    true;
-filter_event({rest_creds, _V}) ->
-    true;
-filter_event({{node, Node, prometheus_auth_info}, _}) when Node =:= node() ->
-    true;
-filter_event(_) ->
-    false.
+spec_users() ->
+    [ns_config:search_node_prop(ns_config:latest(), memcached, admin_user) |
+     ns_config:search_node_prop(ns_config:latest(), memcached,
+                                other_users, [])].
 
-handle_event({buckets, V}, #state{buckets = Buckets} = State) ->
-    case buckets_uids(proplists:get_value(configs, V)) of
+filter_event(buckets) ->
+    true;
+filter_event(cluster_compat_version) ->
+    true;
+filter_event(group_version) ->
+    true;
+filter_event(user_version) ->
+    true;
+filter_event(rest_creds) ->
+    true;
+filter_event({node, Node, prometheus_auth_info}) when Node =:= node() ->
+    true;
+filter_event(Key) ->
+    collections:key_match(Key) =/= false.
+
+handle_event(buckets, #state{buckets = Buckets} = State) ->
+    case buckets_uids(ns_bucket:get_buckets()) of
         Buckets ->
             unchanged;
         NewBuckets ->
             {changed, State#state{buckets = NewBuckets}}
     end;
-handle_event({user_version, _V}, State) ->
+handle_event(user_version, State) ->
     {changed, State};
-handle_event({group_version, _V}, State) ->
+handle_event(group_version, State) ->
     {changed, State};
-handle_event({cluster_compat_version, _V}, State) ->
+handle_event(cluster_compat_version, State) ->
     {changed, State};
-handle_event({rest_creds, {ClusterAdmin, _}},
-             #state{cluster_admin = ClusterAdmin}) ->
-    unchanged;
-handle_event({rest_creds, {ClusterAdmin, _}}, State) ->
-    {changed, State#state{cluster_admin = ClusterAdmin}};
-handle_event({rest_creds, _}, #state{cluster_admin = undefined}) ->
-    unchanged;
-handle_event({rest_creds, _}, State) ->
-    {changed, State#state{cluster_admin = undefined}};
-handle_event({{node, Node, prometheus_auth_info}, {User, _}},
-             #state{prometheus_user = User}) when Node =:= node() ->
-    unchanged;
-handle_event({{node, Node, prometheus_auth_info}, {User, _}},
-             State) when Node =:= node() ->
-    {changed, State#state{prometheus_user = User}};
-handle_event({{node, Node, prometheus_auth_info}, _Info},
-             State) when Node =:= node() ->
-    {changed, State#state{prometheus_user = undefined}}.
+handle_event(rest_creds, #state{cluster_admin = ClusterAdmin} = State) ->
+    case ns_config_auth:get_user(admin) of
+        ClusterAdmin ->
+            unchanged;
+        Other ->
+            {changed, State#state{cluster_admin = Other}}
+    end;
+handle_event({node, Node, prometheus_auth_info},
+             #state{prometheus_user = User} = State) when Node =:= node() ->
+    case prom_user() of
+        User ->
+            unchanged;
+        Other ->
+            {changed, State#state{prometheus_user = Other}}
+    end;
+handle_event(Key, State) ->
+    true = (collections:key_match(Key) =/= false),
+    {changed, State}.
 
 refresh() ->
     memcached_refresh:refresh(rbac).

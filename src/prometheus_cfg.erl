@@ -25,7 +25,7 @@
 
 %% API
 -export([start_link/0, authenticate/2, settings/0, wipe/0, storage_path/1,
-         default_settings/0, derived_metrics/1]).
+         get_auth_info/0, default_settings/0, derived_metrics/1]).
 
 -export_type([stats_settings/0]).
 
@@ -281,18 +281,25 @@ generate_prometheus_args(Settings) ->
      "--query.max-samples", QueryMaxSamples,
      "--storage.tsdb.no-lockfile"] ++ PromAuthArgs ++ WalCompression.
 
+-spec get_auth_info() -> {rbac_user_id(), rbac_password()} | undefined.
+get_auth_info() ->
+    case ns_config:search_node(prometheus_auth_info) of
+        {value, {User, {auth, AuthInfo}}} ->
+            {User, AuthInfo};
+        false ->
+            undefined
+    end.
+
 -spec authenticate(rbac_user_id(), rbac_password()) ->
                                                 {ok, rbac_identity()} | false.
 authenticate(User, Pass) ->
-    case ns_config:search_node(prometheus_auth_info) of
-        {value, {User, {auth, AuthInfo}}} ->
+    case get_auth_info() of
+        {User, AuthInfo} ->
             case menelaus_users:authenticate_with_info(AuthInfo, Pass) of
                 true -> {ok, {User, stats_reader}};
                 false -> false
             end;
-        {value, {_, {auth, _}}} ->
-            false;
-        false ->
+        _ ->
             false
     end.
 

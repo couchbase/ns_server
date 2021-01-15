@@ -27,7 +27,7 @@
 -export([init/1, handle_cast/2, handle_call/3,
          handle_info/2, terminate/2, code_change/3]).
 
--export([refresh/1, rename_and_refresh/3]).
+-export([rename_and_refresh/3]).
 
 -export([format_status/2]).
 
@@ -60,23 +60,21 @@ sync(Module) ->
 start_link(Module, Path) ->
     gen_server:start_link({local, Module}, ?MODULE, [Module, Path], []).
 
-refresh(Pid) ->
-    gen_server:cast(Pid, initiate_write).
-
 init([Module, Path]) ->
     ?log_debug("Init config writer for ~p, ~p", [Module, Path]),
     Pid = self(),
     EventHandler =
-        fun (Evt) ->
-                case Module:filter_event(Evt) of
+        fun (Key) ->
+                case Module:filter_event(Key) of
                     true ->
-                        gen_server:cast(Pid, {event, Evt});
+                        gen_server:cast(Pid, {event, Key});
                     false ->
                         ok
                 end
         end,
-    ns_pubsub:subscribe_link(ns_config_events, EventHandler),
-    ns_pubsub:subscribe_link(user_storage_events, EventHandler),
+    chronicle_compat:subscribe_to_key_change(EventHandler),
+    ns_pubsub:subscribe_link(user_storage_events,
+                             fun ({Key, _}) -> EventHandler(Key) end),
 
     Stuff = Module:init(),
     State = #state{path = Path,
@@ -94,16 +92,14 @@ code_change(_OldVsn, State, _) -> {ok, State}.
 handle_cast(write_cfg, State) ->
     ok = write_cfg(State),
     {noreply, State#state{write_pending = false}};
-handle_cast({event, Evt}, State = #state{module = Module,
+handle_cast({event, Key}, State = #state{module = Module,
                                          stuff = Stuff}) ->
-    case Module:handle_event(Evt, Stuff) of
+    case Module:handle_event(Key, Stuff) of
         {changed, NewStuff} ->
             {noreply, initiate_write(State#state{stuff = NewStuff})};
         unchanged ->
             {noreply, State}
-    end;
-handle_cast(initiate_write, State) ->
-    {noreply, initiate_write(State)}.
+    end.
 
 handle_call(sync, _From, State) ->
     {reply, ok, State}.

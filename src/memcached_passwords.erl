@@ -52,49 +52,48 @@ init() ->
     Users = ns_config:search_node_prop(Config, memcached, other_users, []),
     AP = ns_config:search_node_prop(Config, memcached, admin_pass),
     Buckets = extract_creds(ns_bucket:get_buckets()),
-    RestCreds = ns_config:read_key_fast(rest_creds, undefined),
-    PromAuth = ns_config:search_node_with_default(Config, prometheus_auth_info,
-                                                  undefined),
 
     #state{buckets = Buckets,
            users = [AU | Users],
            admin_pass = AP,
-           rest_creds = RestCreds,
-           prometheus_auth = PromAuth}.
+           rest_creds = ns_config_auth:get_admin_user_and_auth(),
+           prometheus_auth = prometheus_cfg:get_auth_info()}.
 
-filter_event({buckets, _V}) ->
+filter_event(buckets) ->
     true;
-filter_event({auth_version, _V}) ->
+filter_event(auth_version) ->
     true;
-filter_event({rest_creds, _V}) ->
+filter_event(rest_creds) ->
     true;
-filter_event({{node, Node, prometheus_auth_info}, _}) when Node =:= node() ->
+filter_event({node, Node, prometheus_auth_info}) when Node =:= node() ->
     true;
 filter_event(_) ->
     false.
 
-handle_event({buckets, V}, #state{buckets = Buckets} = State) ->
-    case extract_creds(proplists:get_value(configs, V)) of
+handle_event(buckets, #state{buckets = Buckets} = State) ->
+    case extract_creds(ns_bucket:get_buckets()) of
         Buckets ->
             unchanged;
         NewBuckets ->
             {changed, State#state{buckets = NewBuckets}}
     end;
-handle_event({auth_version, _V}, State) ->
+handle_event(auth_version, State) ->
     {changed, State};
-handle_event({rest_creds, Creds}, #state{rest_creds = Creds}) ->
-    unchanged;
-handle_event({rest_creds, Creds}, State) ->
-    {changed, State#state{rest_creds = Creds}};
-handle_event({{node, Node, prometheus_auth_info}, {_, _} = Auth},
-             #state{prometheus_auth = Auth}) when Node =:= node() ->
-    unchanged;
-handle_event({{node, Node, prometheus_auth_info}, {_, _} = Auth},
-             State) when Node =:= node() ->
-    {changed, State#state{prometheus_auth = Auth}};
-handle_event({{node, Node, prometheus_auth_info}, _Auth},
-             State) when Node =:= node() ->
-    {changed, State#state{prometheus_auth = undefined}}.
+handle_event(rest_creds, #state{rest_creds = Creds} = State) ->
+    case ns_config_auth:get_admin_user_and_auth() of
+        Creds ->
+            unchanged;
+        Other ->
+            {changed, State#state{rest_creds = Other}}
+    end;
+handle_event({node, Node, prometheus_auth_info},
+             #state{prometheus_auth = Auth} = State) when Node =:= node() ->
+    case prometheus_cfg:get_auth_info() of
+        Auth ->
+            unchanged;
+        Other ->
+            {changed, State#state{prometheus_auth = Other}}
+    end.
 
 producer(#state{buckets = Buckets,
                 users = Users,
@@ -132,7 +131,7 @@ jsonify_auth(Users, AdminPass, Buckets, RestCreds, PromAuth) ->
                end,
 
            case PromAuth of
-               {PUser, {auth, PAuth}} ->
+               {PUser, PAuth} ->
                    ?yield({json, MakeAuthInfo(PUser, PAuth)}),
                    PUser;
                undefined -> ok
