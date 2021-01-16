@@ -91,17 +91,22 @@ function mnSettingsClusterController($scope, $q, $uibModal, mnPoolDefault, mnMem
     }
 
     if (mnPoolDefault.export.compat.atLeast55 && $scope.rbac.cluster.settings.write) {
+      let settings = [
+        "queryTmpSpaceDir", "queryTmpSpaceSize", "queryPipelineBatch", "queryPipelineCap",
+        "queryScanCap", "queryTimeout", "queryPreparedLimit", "queryCompletedLimit",
+        "queryCompletedThreshold", "queryLogLevel", "queryMaxParallelism",
+        "queryN1QLFeatCtrl"
+      ];
+      if (mnPoolDefault.export.compat.atLeast70) {
+        settings = settings.concat(["queryTxTimeout", "queryMemoryQuota", "queryUseCBO"]);
+      }
       promise3 = mnPromiseHelper(
         vm,
         mnClusterConfigurationService.postQuerySettings(
-          (["queryTmpSpaceDir", "queryTmpSpaceSize", "queryPipelineBatch", "queryPipelineCap",
-            "queryScanCap", "queryTimeout", "queryPreparedLimit", "queryCompletedLimit",
-            "queryCompletedThreshold", "queryLogLevel", "queryMaxParallelism",
-            "queryN1QLFeatCtrl"])
-            .reduce(function (acc, key) {
-              acc[key] = vm.querySettings[key];
-              return acc;
-            }, {})))
+          settings.reduce(function (acc, key) {
+            acc[key] = vm.querySettings[key];
+            return acc;
+          }, {})))
         .catchErrors("querySettingsErrors")
         .getPromise();
 

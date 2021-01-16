@@ -549,6 +549,39 @@
                mn-model="settingsClusterCtl.querySettings"
                mn-errors="settingsClusterCtl.querySettingsErrors">
             </mn-field>
+
+            <mn-field
+               ng-if="adminCtl.poolDefault.compat.atLeast70"
+               mn-name="queryTxTimeout"
+               mn-type="text"
+               mn-id="query-transaction-timeout"
+               mn-label="Transaction Timeout"
+               mn-disabled="!rbac.cluster.settings.write"
+               mn-model="settingsClusterCtl.querySettings"
+               mn-errors="settingsClusterCtl.querySettingsErrors">
+            </mn-field>
+
+            <mn-field
+               ng-if="adminCtl.poolDefault.compat.atLeast70"
+               mn-name="queryMemoryQuota"
+               mn-type="text"
+               mn-id="query-memory-quota"
+               mn-label="Memory Quota (MB)"
+               mn-disabled="!rbac.cluster.settings.write"
+               mn-model="settingsClusterCtl.querySettings"
+               mn-errors="settingsClusterCtl.querySettingsErrors">
+            </mn-field>
+
+            <mn-field
+               ng-if="adminCtl.poolDefault.compat.atLeast70"
+               mn-name="queryUseCBO"
+               mn-type="checkbox"
+               mn-id="query-use-cbo"
+               mn-label="Use Cost-Based Optimizer"
+               mn-disabled="!rbac.cluster.settings.write"
+               mn-model="settingsClusterCtl.querySettings"
+               mn-errors="settingsClusterCtl.querySettingsErrors">
+            </mn-field>
           </div>
         </div>
 
