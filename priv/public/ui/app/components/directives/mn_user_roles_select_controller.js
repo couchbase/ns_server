@@ -1,5 +1,5 @@
 import angular from "/ui/web_modules/angular.js";
-import {Subject, of} from "/ui/web_modules/rxjs.js";
+import {Subject} from "/ui/web_modules/rxjs.js";
 import mnKeyspaceSelector from "/ui/app/mn.keyspace.selector.downgrade.module.js"
 
 export default "mnUserRolesSelect";

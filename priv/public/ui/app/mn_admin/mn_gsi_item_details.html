@@ -27,7 +27,7 @@
         Open in Workbench
       </button>
       <button
-         ng-if="rbac.cluster.bucket[row.bucket].n1ql.select.execute"
+         ng-if="rbac.cluster.bucket[mnGsiItemDetailsCtl.keyspace].n1ql.select.execute"
          class="outline"
          ng-click="mnGsiItemDetailsCtl.dropIndex(row)">Drop</button>
     </div>

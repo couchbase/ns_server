@@ -152,11 +152,13 @@ function mnPermissionsProvider() {
       let any = bucketName + ":" + scopeName + ":.";
       let all = bucketName + ":" + scopeName + ":*"
       return ["cluster.collection[" + any + "].data.docs!read",
-              "cluster.collection[" + all + "].collections!write"];
+              "cluster.collection[" + all + "].collections!write",
+              "cluster.bucket[" + any + "].n1ql.select!execute"];
     }
     function getPerCollectionPermissions(bucketName, scopeName, collectionName) {
       let params = bucketName + ":" + scopeName + ":" + collectionName;
-      return ["cluster.collection[" + params + "].data.docs!read"];
+      return ["cluster.collection[" + params + "].data.docs!read",
+              "cluster.bucket[" + params + "].n1ql.select!execute"];
     }
 
     function clear() {

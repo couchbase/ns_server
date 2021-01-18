@@ -15,10 +15,15 @@
   </div>
 </form>
 
-<div class="selector-scroll" *ngIf="service.stream.showHideDropdown | async">
-  <a
-     (click)="select.next(item)"
-     *ngFor="let item of (service.stream.list | async)">
-    {{item[service.filterKey]}}
-  </a>
+<div
+   *ngIf="(service.stream.showHideDropdown | async)">
+  <div
+     class="selector-scroll"
+     [hidden]="!(service.stream.list | async)?.length">
+    <a
+       (click)="select.next(item)"
+       *ngFor="let item of (service.stream.list | async)">
+      {{item[service.filterKey]}}
+    </a>
+  </div>
 </div>

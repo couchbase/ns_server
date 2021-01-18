@@ -1,6 +1,7 @@
 import angular from "/ui/web_modules/angular.js";
 import uiBootstrap from "/ui/web_modules/angular-ui-bootstrap.js";
 import {format} from "/ui/web_modules/d3-format.js";
+import _ from "/ui/web_modules/lodash.js";
 
 import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
 import mnHelper from "/ui/app/components/mn_helper.js";
@@ -21,7 +22,9 @@ import mnGsiService from "./mn_gsi_service.js";
 import {mnGsiItemController, mnGsiItemStatsController, mnGsiItemDetails} from "./mn_gsi_item_details.js";
 import mnFooterStatsController from "./mn_gsi_footer_controller.js";
 import mnGsiTableDirective from "./mn_gsi_table_directive.js";
-
+import mnKeyspaceSelector from "/ui/app/mn.keyspace.selector.downgrade.module.js"
+import {Subject} from "/ui/web_modules/rxjs.js";
+import {takeUntil, filter, withLatestFrom} from "/ui/web_modules/rxjs/operators.js";
 export default 'mnGsi';
 
 angular
@@ -40,7 +43,8 @@ angular
     mnElementCrane,
     mnDetailStats,
     mnGsiService,
-    mnStatisticsNewService
+    mnStatisticsNewService,
+    mnKeyspaceSelector
   ])
   .config(configure)
   .controller('mnGsiController', mnGsiController)
@@ -53,16 +57,34 @@ angular
 function configure($stateProvider) {
   $stateProvider
     .state('app.admin.gsi', {
-      url: "/index?openedIndex",
+      url: "/index?indexesBucket&indexesScope&openedIndex&perIndexPage&perNodePage",
       params: {
         openedIndex: {
           array: true,
           dynamic: true
         },
+        indexesBucket: {
+          value: "",
+          dynamic: true
+        },
+        indexesScope: {
+          value: "_default",
+          dynamic: true
+        },
         footerBucket: {
           value: null,
           dynamic: true
-        }
+        },
+        perNodePage: {
+          value: {},
+          type: "json",
+          dynamic: true
+        },
+        perIndexPage: {
+          value: {page:1, size:10},
+          type: "json",
+          dynamic: true
+        },
       },
       data: {
         title: "Indexes",
@@ -73,12 +95,22 @@ function configure($stateProvider) {
           controller: "mnGsiController as gsiCtl",
           templateUrl: "app/mn_admin/mn_gsi.html"
         }
+      },
+      redirectTo: function (trans) {
+        var mnPermissionsService = trans.injector().get("mnPermissions");
+        var params = _.clone(trans.params(), true);
+        return mnPermissionsService.check().then(function (permissions) {
+          var indexesRead = permissions.bucketNames['.n1ql.index!read'];
+          var state = {state: "app.admin.gsi", params: params};
+          if (!params.indexesBucket && indexesRead && indexesRead[0]) {
+            state.params.indexesBucket = indexesRead[0];
+            return state;
+          }
+        });
       }
     });
 }
-
-
-function mnGsiController($scope, mnGsiService, mnPoller, $state) {
+function mnGsiController($scope, mnGsiService, mnPoller, $state, mnCollectionsService) {
   var vm = this;
 
   vm.setIndexesView = setIndexesView;
@@ -92,13 +124,48 @@ function mnGsiController($scope, mnGsiService, mnPoller, $state) {
   function activate() {
     vm.viewBy = $state.params.indexesView;
 
-    new mnPoller($scope, function () {
-      return mnGsiService.getIndexesState();
-    })
-      .setInterval(10000)
-      .subscribe("state", vm)
-      .reloadOnScopeEvent("indexStatusURIChanged")
-      .cycle();
+    let mnOnDestroy = new Subject();
+
+    let poller =
+        new mnPoller($scope, function () {
+          let params = vm.mnCollectionSelectorService.stream.result.getValue();
+          return mnGsiService.getIndexesState(undefined, params);
+        })
+        .setInterval(10000)
+        .subscribe("state", vm)
+        .reloadOnScopeEvent("indexStatusURIChanged");
+
+    vm.mnCollectionSelectorService =
+      mnCollectionsService.createCollectionSelector({
+        component: {mnOnDestroy},
+        steps: ["bucket", "scope"]
+      });
+
+    vm.mnCollectionSelectorService.stream.showHideDropdown
+      .pipe(filter(v => !v),
+            takeUntil(mnOnDestroy))
+      .subscribe(stateGo);
+
+    $scope.$on("$destroy", function () {
+      mnOnDestroy.next();
+      mnOnDestroy.complete();
+    });
+
+    $scope.$watchCollection(() => ({
+      bucket: $state.params.indexesBucket,
+      scope: $state.params.indexesScope
+    }), v => {
+      vm.mnCollectionSelectorService.setKeyspace(v);
+    });
+
+    function stateGo() {
+      poller.reload();
+      let params = vm.mnCollectionSelectorService.stream.result.getValue();
+      $state.go('.', {
+        indexesBucket: params.bucket ? params.bucket.name: null,
+        indexesScope: params.scope ? params.scope.name : null
+      }, {notify: false});
+    }
   }
 
 }

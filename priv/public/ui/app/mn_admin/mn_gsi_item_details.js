@@ -26,8 +26,9 @@ function mnGsiItemStatsController($scope) {
   }
 }
 
-function mnGsiItemController($scope, mnStatisticsNewService, mnPoolDefault) {
+function mnGsiItemController($scope, mnStatisticsNewService, mnPoolDefault, mnPermissions) {
   var vm = this;
+  var row = $scope.row;
 
   var stats = mnPoolDefault.export.compat.atLeast70 ? [
     "@index-.@items.index_num_requests", "@index-.@items.index_resident_percent",
@@ -48,13 +49,24 @@ function mnGsiItemController($scope, mnStatisticsNewService, mnPoolDefault) {
     step: 1,
     stats: stats,
     items: {
-      index: mnPoolDefault.export.compat.atLeast70 ?
-        $scope.row.index : ("index/" + $scope.row.index + "/")
+      index: mnPoolDefault.export.compat.atLeast70 ? row.index : ("index/" + row.index + "/")
     }
   }, $scope);
 
+  let interestingPermissions = row.collection ?
+      mnPermissions.getPerCollectionPermissions(row.bucket, row.scope, row.collection) :
+      mnPermissions.getPerScopePermissions(row.bucket, row.scope);
+  interestingPermissions.forEach(mnPermissions.set);
+  mnPermissions.throttledCheck();
+
   $scope.$watch("mnUIStats", updateValues);
   $scope.$watch("row", updateValues);
+  $scope.$on("$destroy", onDestroy);
+
+
+  function onDestroy() {
+    interestingPermissions.forEach(mnPermissions.remove);
+  }
 
   function getIndexStatName(statName) {
     return 'index/' + $scope.row.index + '/' + statName;
@@ -117,10 +129,13 @@ function mnGsiItemDetails() {
 
   return mnGsiItemDetails;
 
-  function mnGsiItemDetailsController($rootScope, mnGsiService, $uibModal, $filter, mnPromiseHelper, mnAlertsService) {
+  function mnGsiItemDetailsController($rootScope, $scope, mnGsiService, $uibModal, $filter, mnPromiseHelper, mnAlertsService) {
     var vm = this;
     vm.dropIndex = dropIndex;
     vm.getFormattedScanTime = getFormattedScanTime;
+    var row = $scope.row;
+
+    vm.keyspace = row.bucket + ":" + row.scope + (row.collection ? (":" + row.collection) : "");
 
     function getFormattedScanTime(row) {
       if (row && row.lastScanTime != 'NA')

@@ -16,6 +16,7 @@ import mnLogsCollectInfoController from "./mn_logs_collect_info_controller.js";
 import {mnLogsListController, moduleCodeFilter} from "./mn_logs_list_controller.js";
 import mnLogsCollectInfoService from "./mn_logs_collect_info_service.js";
 
+
 export default 'mnLogs';
 
 angular.module('mnLogs', [

@@ -8,15 +8,16 @@
 
 <div mn-spinner="!gsiCtl.state" style="padding-bottom: 120px;">
 
-  <div class="row flex-left margin-bottom-half relative">
-    <span>
+  <div class="row margin-bottom-half relative">
+    <mn-keyspace-selector [service]="gsiCtl.mnCollectionSelectorService">
+    </mn-keyspace-selector>
+    <span style="position: relative">
       <div class="simple-select-inside-label">
         view by
       </div>
       <div class="simple-select margin-right-half">
         <select ng-model="gsiCtl.viewBy" ng-change="gsiCtl.setIndexesView()">
           <option value="viewByIndex">index</option>
-          <option value="viewByBucket">bucket</option>
           <option value="viewByNode">server node</option>
         </select>
       </div>
@@ -44,22 +45,9 @@
       </mn-gsi-table>
     </div>
 
-    <div
-       ng-if="gsiCtl.viewBy == 'viewByBucket'"
-       ng-repeat="(bucketName, group) in gsiCtl.state.byBucket track by bucketName">
-      <h4 class="margin-top-1-5">{{bucketName}}</h4>
-      <mn-gsi-table
-         list="group"
-         rbac="rbac"
-         pools="pools"
-         hide-column="bucket"
-         filter-field="gsiCtl.filterField">
-      </mn-gsi-table>
-    </div>
-
     <mn-gsi-table
        ng-if="gsiCtl.viewBy == 'viewByIndex'"
-       list="gsiCtl.state.byID"
+       list="gsiCtl.state.filtered"
        rbac="rbac"
        pools="pools"
        hide-column="index"

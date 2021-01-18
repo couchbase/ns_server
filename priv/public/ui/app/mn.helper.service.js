@@ -134,7 +134,7 @@ class MnHelperService {
     };
   }
 
-  createPagenator(component, arrayStream, stateParam, perItem) {
+  createPagenator(component, arrayStream, stateParam, perItem, ajsScope) {
     var paramsToExport = new BehaviorSubject();
 
     var group = this.formBuilder.group({size: null, page: null});
@@ -145,8 +145,9 @@ class MnHelperService {
     var setParamToExport = (page) =>
         paramsToExport.next(page);
 
-    var setParamsToUrl = (params) =>
-        this.uiRouter.stateService.go('.', params, {notify: false});
+    var setParamsToUrl = (params) => {
+      this.uiRouter.stateService.go('.', params, {notify: false});
+    };
 
     var cloneStateParams = (params) =>
         Object.assign({}, params);
@@ -197,6 +198,19 @@ class MnHelperService {
 
     var page = combineLatest(arrayStream, urlParam)
         .pipe(map(getPage), shareReplay({refCount: true, bufferSize: 1}));
+
+    if (ajsScope) {
+      page
+        .pipe(takeUntil(component.mnOnDestroy))
+        .subscribe(page => {
+          ajsScope.paginatorPage = page;
+        });
+      paramsToExport
+        .pipe(takeUntil(component.mnOnDestroy))
+        .subscribe(values => {
+          ajsScope.paginatorValues = Object.assign({}, values);
+        });
+    }
 
     return {
       group: group,

@@ -28,14 +28,9 @@
         data size
       </span>
     </span>
-    <span class="cbui-table-cell flex-grow-half" ng-if="hideColumn !== 'bucket'">
+    <span class="cbui-table-cell">
       <span mn-sortable-title="bucket" class="sorter">
         bucket
-      </span>
-    </span>
-    <span class="cbui-table-cell" ng-if="hideColumn == 'bucket'">
-      <span mn-sortable-title="hosts[0]" class="sorter">
-        node
       </span>
     </span>
     <span class="cbui-table-cell">
@@ -45,21 +40,16 @@
     </span>
   </div>
   <section
-     ng-repeat="row in list
-                | orderBy:mnSortableTable.sortableTableProperties.orderBy
-                : mnSortableTable.sortableTableProperties.invert
-                | filter:filterField
-                as listFiltered
-                track by mnGsiTableCtl.generateIndexId(row)"
+     ng-repeat="row in mnGsiTableCtl.paginatorPage track by mnGsiTableCtl.generateIndexId(row)"
      ng-class="[(row.awaitingRemoval ? 'disabled-tag' : ''),
-               (mnGsiTableCtl.isDetailsOpened(mnGsiTableCtl.generateIndexId(row)) ?
-               mnGsiTableCtl.getStatusClass(row) : '')]"
+                (mnGsiTableCtl.isDetailsOpened(mnGsiTableCtl.generateIndexId(row)) ?
+                mnGsiTableCtl.getStatusClass(row) : '')]"
      ng-click="mnGsiTableCtl.toggleDetails(mnGsiTableCtl.generateIndexId(row))"
      class="has-hover">
     <div
        class="cbui-tablerow"
        ng-class="[(!mnGsiTableCtl.isDetailsOpened(mnGsiTableCtl.generateIndexId(row)) ?
-                 mnGsiTableCtl.getStatusClass(row) : '')]"
+              mnGsiTableCtl.getStatusClass(row) : '')]"
        ng-controller="mnGsiItemController as gsiItemCtl">
       <span class="cbui-table-cell flex-grow-1-5 row flex-left" title="{{row.index}}">
         {{row.indexName}}
@@ -104,14 +94,8 @@
         </span>
         <span ng-show="gsiItemCtl.has_no_data_size"> - </span>
       </span>
-      <span ng-if="hideColumn !== 'bucket'" class="cbui-table-cell flex-grow-half">
-        {{row.bucket}}
-      </span>
-      <span
-         ng-if="hideColumn == 'bucket'"
-         class="cbui-table-cell"
-         title="{{row.hosts.join(', ')}}">
-        {{row.hosts.join(', ')}}
+      <span class="cbui-table-cell">
+        {{mnGsiTableCtl.getRowKeyspace(row)}}
       </span>
       <span class="cbui-table-cell flex-wrap text-smaller">
         <div
@@ -132,7 +116,7 @@
           {{row.status}}
         </div>
         <div ng-if="row['num_docs_pending+queued']"
-             class="label warning">
+           class="label warning">
           {{row['num_docs_pending+queued'] | number:0}}
           mutations remaining
         </div>
@@ -147,7 +131,23 @@
        ng-if="mnGsiTableCtl.isDetailsOpened(mnGsiTableCtl.generateIndexId(row))">
     </mn-gsi-item-details>
   </section>
-  <div ng-if="!listFiltered.length" class="zero-content margin-top-1-5">
+  <div ng-if="!mnGsiTableCtl.paginatorPage.length" class="zero-content margin-top-1-5">
     You have definitely over-filtered this. Try a little less filtering...
+  </div>
+  <div class="row">
+    <select
+       ng-model="mnGsiTableCtl.paginatorValues.size"
+       ng-change="mnGsiTableCtl.sizeChanged()"
+       class="cbui-select-small margin-top-half">
+      <option ng-repeat="value in [10,20,40,80]" ng-value="value">{{value}}</option>
+    </select>
+    <div
+       uib-pagination
+       ng-if="list.length"
+       ng-model="mnGsiTableCtl.paginatorValues.page"
+       max-size="5"
+       items-per-page="mnGsiTableCtl.paginatorValues.size"
+       total-items="mnGsiTableCtl.listFiltered.length"
+       ng-change="mnGsiTableCtl.pageChanged()"></div>
   </div>
 </div>

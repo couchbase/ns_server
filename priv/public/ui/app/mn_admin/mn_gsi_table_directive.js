@@ -1,3 +1,6 @@
+import {Subject} from "/ui/web_modules/rxjs.js";
+import {takeUntil} from '/ui/web_modules/rxjs/operators.js';
+
 export default mnGsiTableDirective;
 
 function mnGsiTableDirective(mnHelper) {
@@ -18,14 +21,58 @@ function mnGsiTableDirective(mnHelper) {
 
   return mnGsiTable;
 
-  function mnGsiTableController($scope) {
+  function mnGsiTableController($scope, mnHelperService) {
     var vm = this;
     vm.generateIndexId = generateIndexId;
     vm.getStatusClass = getStatusClass;
     vm.getStatusDescription = getStatusDescription;
+    vm.pageChanged = pageChanged;
+    vm.sizeChanged = sizeChanged;
+    vm.getRowKeyspace = getRowKeyspace;
 
     mnHelper.initializeDetailsHashObserver(vm, 'openedIndex', 'app.admin.gsi');
 
+    let mnOnDestroy = new Subject();
+    let paginationStream = new Subject();
+    let paginator = mnHelperService.createPagenator(
+      {mnOnDestroy},
+      paginationStream,
+      $scope.nodeName ? "perNodePage" : "perIndexPage",
+      $scope.nodeName || null,
+      vm
+    );
+
+    vm.paginator = paginator;
+
+    $scope.$watchCollection(
+      "list | orderBy:mnSortableTable.sortableTableProperties.orderBy" +
+        ": mnSortableTable.sortableTableProperties.invert" +
+        "| filter:filterField",
+      (list) => {
+        vm.listFiltered = list;
+        if (list) {
+          paginationStream.next(list);
+        }
+      });
+
+    $scope.$on("$destroy", function () {
+      mnOnDestroy.next();
+      mnOnDestroy.complete();
+    });
+
+    function sizeChanged() {
+      paginator.group.patchValue({size: vm.paginatorValues.size});
+    }
+
+    function pageChanged() {
+      paginator.group.patchValue({page: vm.paginatorValues.page});
+    }
+
+    function getRowKeyspace(row) {
+      return row.bucket + (row.scope ?
+                           ("."+row.scope) + (row.collection ?
+                                              "."+row.collection : "") : "")
+    }
 
     function generateIndexId(row, partitionHost) {
       return (row.id.toString() + (row.instId || "")) +

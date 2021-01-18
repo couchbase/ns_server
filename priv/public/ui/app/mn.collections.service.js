@@ -6,8 +6,8 @@ import { MnHttpRequest } from './mn.http.request.js';
 
 import {BehaviorSubject, Subject, NEVER,
         of, merge, fromEvent} from "/ui/web_modules/rxjs.js";
-import {map, shareReplay, filter, withLatestFrom, pairwise,
-        switchMap, pluck, takeUntil, mapTo} from '/ui/web_modules/rxjs/operators.js';
+import {map, shareReplay, filter, withLatestFrom, pairwise, catchError,
+        switchMap, pluck, takeUntil, mapTo, take, distinctUntilChanged} from '/ui/web_modules/rxjs/operators.js';
 
 import {MnBucketsService} from './mn.buckets.service.js';
 import {MnHelperService} from './mn.helper.service.js';
@@ -75,6 +75,8 @@ class MnCollectionsService {
     this.stream.deleteCollectionHttp =
       new MnHttpRequest(this.deleteCollection.bind(this)).addSuccess().addError();
 
+    this.mnBucketsService = mnBucketsService
+
     this.stream.collectionBuckets = mnBucketsService.stream.bucketsMembaseEphemeral
       .pipe(map(buckets => buckets
                 .filter(bucket => {
@@ -86,6 +88,7 @@ class MnCollectionsService {
 
   createCollectionSelector(options) {
     var filterKey = options.isRolesMode ? "value" : "name";
+    var setValueConfig = {emitEvent: false};
 
     var outsideClick = fromEvent(document, 'click');
 
@@ -111,25 +114,43 @@ class MnCollectionsService {
         result.pipe(filter(v => Object.values(v)
                            .filter(v => !!v).length == options.steps.length));
 
+    var setStepsValuesToFields = () => {
+      let value = result.getValue();
+      Object.keys(value).forEach(key => {
+        if (value[key]) {
+          filters[key].group.get("value").setValue(
+            value[key] ? value[key][filterKey] : "", setValueConfig);
+        }
+      });
+    };
+
+    var mapFocusToStep =
+        merge.apply(merge,
+                    options.steps.map(step => onFocus[step].pipe(filter(v => v),
+                                                                 mapTo(step))));
     var step =
-        merge(merge.apply(merge,
-                          options.steps.map(step => onFocus[step].pipe(filter(v => v),
-                                                                       mapTo(step)))),
+        merge(mapFocusToStep,
               selectionDone.pipe(mapTo("ok")))
         .pipe(shareReplay({refCount: true, bufferSize: 1}));
 
+    outsideClick
+      .pipe(takeUntil(options.component.mnOnDestroy))
+      .subscribe(setStepsValuesToFields);
 
-  var showHideDropdown =
-      merge(outsideClick.pipe(mapTo("ok")),
-            step)
-      .pipe(map(v => v !== "ok"));
+    var showHideDropdown =
+        merge(outsideClick.pipe(mapTo("ok")),
+              step)
+        .pipe(map(v => v !== "ok"));
 
     var list = step
-        .pipe(withLatestFrom(result),
+        .pipe(distinctUntilChanged(),
+              withLatestFrom(result),
               switchMap(options.isRolesMode ?
                         rolesPayload.bind(this) :
                         httpPayload.bind(this)),
               shareReplay({refCount: true, bufferSize: 1}));
+
+
 
     function disableFields(index) {
       options.steps.slice(index).forEach(step => {
@@ -144,22 +165,30 @@ class MnCollectionsService {
       });
     }
 
-    function httpPayload([step, g]) {
-      let rv;
+    function getStepList([step, g]) {
       switch (step) {
       case "bucket":
-        rv = options.buckets;
-        break;
+        return options.buckets || this.stream.collectionBuckets;
       case "scope":
-        rv = this.getManifest(g.bucket.name).pipe(pluck("scopes"));
-        break;
+        return g.bucket ?
+          this.getManifest(g.bucket.name).pipe(pluck("scopes"),
+                                               catchError(() => of([]))) :
+          of([]);
       case "collection":
-        rv = of(g.scope.collections);
-        break;
+        return of(g.scope.collections);
       case "ok":
         return NEVER;
       }
-      return rv.pipe(filters[step].pipe);
+    }
+
+    function httpPayload([step, g]) {
+      let rv = getStepList.bind(this)([step, g]);
+
+      if (step !== "ok") {
+        return rv.pipe(filters[step].pipe);
+      } else {
+        return rv;
+      }
     }
 
     function rolesPayload([step, g]) {
@@ -212,6 +241,30 @@ class MnCollectionsService {
       result.next(next);
     }
 
+    function setKeyspace(setVals, useDefault) {
+      let next = {};
+
+      function setDefault(key, list) {
+        next[key] =  list.find(item => item[filterKey] == setVals[key]) || {name: setVals[key]}
+      }
+
+      getStepList
+        .bind(this)(["bucket"])
+        .pipe(take(1),
+              switchMap(list => {
+                setDefault("bucket", list);
+                return getStepList.bind(this)(["scope", next]).pipe(take(1));
+              }))
+        .subscribe(list => {
+          setDefault("scope", list);
+          result.next(next);
+          setStepsValuesToFields();
+          filters["scope"].group.get("value").enable();
+        });
+
+    }
+
+
     disableFields(1);
 
     step
@@ -221,14 +274,19 @@ class MnCollectionsService {
       .subscribe(([[prevStep, step], result]) => {
         if (prevStep && prevStep !== "ok") {
           let value = result[prevStep] && result[prevStep][filterKey];
-          filters[prevStep].group.get("value").setValue(value);
+          filters[prevStep].group.get("value").setValue(value, setValueConfig);
         }
         if (step && step !== "ok") {
-          filters[step].group.get("value").setValue("");
+          filters[step].group.get("value").setValue("", setValueConfig);
         }
       });
 
+    if (options.defaults) {
+      setKeyspace.bind(this)(options.defaults, true);
+    }
+
     return {
+      setKeyspace: setKeyspace.bind(this),
       reset,
       filters,
       filterKey,
