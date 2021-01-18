@@ -43,10 +43,19 @@ handle_get_metrics(Req) ->
     %% Addr is supposed to be a loopback address (127.0.0.1 or [::1] depending
     %% on configured ip family) with port, hence no need to use https
     MakeURL = fun (Addr, Path) -> "http://" ++ Addr ++ Path end,
-    URLs = [MakeURL(Addr,"/_prometheusMetrics")
-                || {_, Addr} <- AlmostAllTargets] ++
-           [MakeURL(Addr,"/_prometheusMetricsHigh")
-                || {_, Addr} <- HighCardTargets],
+    Config = ns_config:latest(),
+    AuthHeader =
+        fun (kv) ->
+                menelaus_rest:basic_auth_header(
+                  ns_config:search_node_prop(Config, memcached, admin_user),
+                  ns_config:search_node_prop(Config, memcached, admin_pass));
+            (_) ->
+                menelaus_rest:special_auth_header()
+        end,
+    URLs = [{MakeURL(Addr, "/_prometheusMetrics"), AuthHeader(Type)}
+                || {Type, Addr} <- AlmostAllTargets] ++
+           [{MakeURL(Addr, "/_prometheusMetricsHigh"), AuthHeader(Type)}
+                || {Type, Addr} <- HighCardTargets],
     [proxy_chunks_from_url(URL, Resp) || URL <- URLs],
     mochiweb_response:write_chunk(<<>>, Resp).
 
@@ -61,11 +70,11 @@ handle_sd_config(Req) ->
     ExtraHeaders = [{"Content-Disposition", lists:flatten(ContentDisp)}],
     menelaus_util:reply_ok(Req, "text/yaml", YamlBin, ExtraHeaders).
 
-proxy_chunks_from_url(URL, Resp) ->
+proxy_chunks_from_url({URL, AuthHeader}, Resp) ->
     Options = [{connect_timeout, ?METRICS_TIMEOUT},
                {partial_download, [{window_size, ?WINDOW_SIZE},
                                    {part_size, ?PART_SIZE}]}],
-    Headers = [menelaus_rest:special_auth_header()],
+    Headers = [AuthHeader],
     case lhttpc:request(URL, 'GET', Headers, [], ?METRICS_TIMEOUT, Options) of
         {ok, {{200, _}, _Hdrs, Req}} when is_pid(Req) ->
             case proxy_chunks(Req, Resp) of
