@@ -432,13 +432,15 @@ class Task(object):
             timer = Timer(self.timeout, on_timeout)
             timer.start()
 
+        last_char_written = None
+
         try:
             while True:
                 data = p.stdout.read(64 * 1024)
                 if not data:
                     break
-
                 fp.write(data)
+                last_char_written = data[-1:]
         finally:
             if timer is not None:
                 timer.cancel()
@@ -452,7 +454,26 @@ class Task(object):
                     log("[Command timed out after %s seconds] - " %
                         (self.timeout), new_line=False)
 
+        self.maybe_append_newline(fp, last_char_written)
+
         return p.wait()
+
+    def maybe_append_newline(self, fp, last_char):
+        """Append a newline (if appropriate) to ensure that the next
+        header starts on a new line.
+        """
+
+        if hasattr(self, 'suppress_append_newline'):
+            return
+
+        if self.no_header:
+            # The "no_header" attribute indicates that this task
+            # produces a single result which does not contain a header.
+            # Thus, we shouldn't append a new line to the result.
+            return
+
+        if last_char != b'\n':
+            fp.write(b'\n')
 
     def will_run(self):
         """Determine if this task will run on this platform."""
@@ -745,7 +766,10 @@ def get_diag_password(guts):
     url = "http://%s:%s/diag/password" % (local_url_addr, port)
     command = ["curl", "-sS", "--proxy", "", "-u", "@localtoken:%s" % pwd, url]
 
-    task = AllOsTask("get diag password", command, timeout=60)
+    # Don't append a newline to the result, since that would corrupt
+    # the password.
+    task = AllOsTask("get diag password", command, timeout=60,
+                     suppress_append_newline=True)
     output_bytes = BytesIO()
     status = task.execute(output_bytes)
     output = output_bytes.getvalue().decode(LATIN1)
@@ -949,7 +973,8 @@ def make_os_tasks():
         LinuxTask("Raw /proc/uptime", "cat /proc/uptime"),
         LinuxTask("Systemd journal",
                   "journalctl | gzip -c > systemd_journal.gz",
-                  change_dir=True, artifacts=['systemd_journal.gz']),
+                  change_dir=True, artifacts=['systemd_journal.gz'],
+                  suppress_append_newline=True),
         LinuxTask("All logs",
                   "tar cz /var/log/syslog* /var/log/dmesg /var/log/messages* /var/log/daemon* /var/log/debug* "
                   "/var/log/kern.log* 2>/dev/null",
@@ -1795,7 +1820,10 @@ def get_prometheus_stats_via_snapshot(guts):
 
     command = ["curl", "-X", "POST", "-sS", "--proxy", "",
                "-u", user_and_password, url]
-    task = AllOsTask("Generate prometheus snapshot", command, timeout=60)
+    # Don't append a newline to the result, since that would corrupt
+    # the snapshot.
+    task = AllOsTask("Generate prometheus snapshot", command, timeout=60,
+                     suppress_append_newline=True)
     output_bytes = BytesIO()
     status = task.execute(output_bytes)
     if status != 0:
