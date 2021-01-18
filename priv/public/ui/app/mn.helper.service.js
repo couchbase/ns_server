@@ -174,14 +174,15 @@ class MnHelperService {
       return rv;
     };
 
-    var urlParam =
-        this.uiRouter.globals.params$.pipe(pluck(stateParam),
-                                           perItem ? map(unpackPerItemPaginationParams) : tap(),
-                                           distinctUntilChanged(equals),
-                                           shareReplay({refCount: true, bufferSize: 1}));
+    var rawUrlParam =
+        this.uiRouter.globals.params$.pipe(pluck(stateParam));
+
+    var urlParam = rawUrlParam.pipe(perItem ? map(unpackPerItemPaginationParams) : tap(),
+                                    distinctUntilChanged(equals),
+                                    shareReplay({refCount: true, bufferSize: 1}));
 
     group.valueChanges
-      .pipe(withLatestFrom(urlParam),
+      .pipe(withLatestFrom(rawUrlParam),
             map(perItem ? packPerItemPaginationUrlParams : packPerPageUrlParams),
             takeUntil(component.mnOnDestroy))
       .subscribe(setParamsToUrl);
