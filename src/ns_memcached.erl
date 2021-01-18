@@ -815,7 +815,7 @@ code_change(_OldVsn, State, _Extra) ->
 run_check(State) ->
     case State#state.worker_features =:= get_worker_features() of
         false ->
-            {stop, feature_mismatch, State};
+            {stop, {shutdown, feature_mismatch}, State};
         true ->
             case State#state.check_config_pid of
                 undefined ->
