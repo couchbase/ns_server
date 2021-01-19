@@ -207,7 +207,7 @@ ssl_minimum_protocol(Service) ->
     ssl_minimum_protocol(Service, ns_config:latest()).
 
 ssl_minimum_protocol(Service, Config) ->
-    get_sec_setting(Service, ssl_minimum_protocol, Config, 'tlsv1').
+    get_sec_setting(Service, ssl_minimum_protocol, Config, 'tlsv1.2').
 
 
 get_sec_setting(Service, Setting, Config, Default) ->
