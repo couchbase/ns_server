@@ -1488,7 +1488,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                    log_file="stats.log",
                    timeout=60,
                    addenv=[("CB_PASSWORD", memcached_pass)])
-         for stat in ([], ["subdoc_execute"])],
+         for stat in ([], ["subdoc_execute", "snappy_decompress", "json_validate"])],
 
         CollectFile("Users storage", read_guts(guts, "users_storage_path")),
 
