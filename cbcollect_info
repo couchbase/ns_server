@@ -647,7 +647,13 @@ class TaskRunner(object):
         zf = ZipFile(filename, mode='w', compression=ZIP_DEFLATED)
         try:
             for name, relative_name in files:
-                zf.write(name, f"{prefix}/{relative_name}")
+                try:
+                    zf.write(name, f"{prefix}/{relative_name}")
+                except IOError as e:
+                    # Skipping file(s) we cannot zip. The file may have been
+                    # purged from under us.
+                    log("Failed to zip file %s, error (%s): %s" %
+                        (name, e.errno, e.strerror))
         finally:
             zf.close()
 
