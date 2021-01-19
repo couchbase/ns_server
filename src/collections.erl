@@ -55,6 +55,8 @@
          get_scopes/1,
          get_collections/1]).
 
+-export([config_upgrade_to_cheshire_cat/1]).
+
 %% rpc from other nodes
 -export([wait_for_manifest_uid/4]).
 
@@ -709,6 +711,20 @@ set_manifest(Bucket, Identity, RequiredScopes, RequestedUid) ->
                     {Scope} <- RequiredScopes],
             update(Bucket, {set_manifest, Identity, Scopes, Uid})
     end.
+
+%% only to support FORCE_CHRONICLE flag
+config_upgrade_to_cheshire_cat(Config) ->
+    case chronicle_compat:forced() of
+        true ->
+            [];
+        false ->
+            do_config_upgrade_to_cheshire_cat(Config)
+    end.
+
+do_config_upgrade_to_cheshire_cat(Config) ->
+    Buckets = ns_bucket:get_buckets(Config),
+    [{set, key(Bucket), default_manifest()} ||
+        Bucket <- ns_bucket:get_bucket_names_of_type(membase, Buckets)].
 
 -ifdef(TEST).
 get_operations_test_() ->
