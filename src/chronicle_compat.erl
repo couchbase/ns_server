@@ -44,8 +44,6 @@ backend() ->
 
 forced() ->
     case os:getenv("FORCE_CHRONICLE") of
-        false ->
-            false;
         "0" ->
             false;
         _ ->
