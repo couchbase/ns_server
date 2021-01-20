@@ -75,7 +75,7 @@ class MnCollectionsService {
     this.stream.deleteCollectionHttp =
       new MnHttpRequest(this.deleteCollection.bind(this)).addSuccess().addError();
 
-    this.stream.collectionBuckets = mnBucketsService.stream.getBuckets
+    this.stream.collectionBuckets = mnBucketsService.stream.bucketsMembaseEphemeral
       .pipe(map(buckets => buckets
                 .filter(bucket => {
                   let scope = mnPermissions.export.cluster.collection[bucket.name + ':.:.'];
