@@ -942,6 +942,9 @@ samples_per_second_quota(Settings) ->
     AverageSampleSize = proplists:get_value(average_sample_size, Settings),
     MaxSize / AverageSampleSize / MinPeriod / 24 / 60 / 60.
 
+%% It's important to preserve job and instance labels when calculating derived
+%% metrics, as other pieces of code may assume those metrics exist. For example,
+%% removing of job label may lead to a stat not being decimated.
 derived_metrics(n1ql) ->
     [{"n1ql_avg_req_time",
       "n1ql_request_time / ignoring(name) n1ql_requests"},
@@ -962,9 +965,10 @@ derived_metrics(index) ->
       "index_cache_misses * 100 / ignoring (name) "
       "(index_cache_hits + ignoring (name) index_cache_misses)"},
      {"index_fragmentation",
-      "sum by (bucket, job, instance) (index_disk_size * ignoring(name) "
-                                      "index_frag_percent) / "
-      "sum by (bucket, job, instance) (index_disk_size)"}];
+      "sum without(index, collection, scope) (index_disk_size * ignoring(name) "
+                                             "index_frag_percent) "
+      "/ ignoring(name) "
+      "sum without(index, collection, scope) (index_disk_size)"}];
 derived_metrics(kv) ->
     [{"couch_total_disk_size",
       "couch_docs_actual_disk_size + ignoring(name) "
@@ -977,12 +981,12 @@ derived_metrics(kv) ->
       "(couch_views_disk_size - ignoring(name) couch_views_data_size) * 100 / "
       "ignoring(name) couch_views_disk_size"},
      {"kv_hit_ratio",
-      "sum by (bucket, instance, job)("
+      "sum without(result, op) ("
         "irate(kv_ops{op=`get`,result=`hit`}[5m])) * 100 / "
-      "sum by (bucket, instance, job) (irate(kv_ops{op=`get`}[5m]))"},
+      "sum without(result, op) (irate(kv_ops{op=`get`}[5m]))"},
      {"kv_ep_cache_miss_ratio",
-      "sum by (bucket,instance,job)(irate(kv_ep_bg_fetched[5m])) * 100 / "
-      "sum by (bucket, instance, job)(irate(kv_ops{op=`get`}[5m]))"},
+      "irate(kv_ep_bg_fetched[5m]) * 100 / ignoring(name) "
+      "sum without (op, result) (irate(kv_ops{op=`get`}[5m]))"},
      {"kv_ep_resident_items_ratio",
       "(kv_curr_items_tot - ignoring(name) kv_ep_num_non_resident) * 100 / "
       "ignoring (name) kv_curr_items_tot"},
@@ -993,10 +997,11 @@ derived_metrics(kv) ->
       "kv_vb_replica_queue_age_seconds{state=`replica`} / ignoring (name) "
       "kv_vb_replica_queue_size{state=`replica`}"},
      {"kv_vb_avg_total_queue_age_seconds",
-      "sum by (bucket) (kv_vb_active_queue_age_seconds{state=`active`} or "
-                       "kv_vb_pending_queue_age_seconds{state=`pending`} or "
-                       "kv_vb_replica_queue_age_seconds{state=`replica`}) "
-      "/ on (bucket) kv_ep_diskqueue_items"},
+      "sum without(name, state) ("
+        "kv_vb_active_queue_age_seconds{state=`active`} or "
+        "kv_vb_pending_queue_age_seconds{state=`pending`} or "
+        "kv_vb_replica_queue_age_seconds{state=`replica`}) / ignoring (name) "
+      "kv_ep_diskqueue_items"},
      {"kv_vb_avg_pending_queue_age_seconds",
       "kv_vb_pending_queue_age_seconds{state=`pending`} / ignoring (name) "
       "kv_vb_pending_queue_size{state=`pending`}"},
@@ -1025,21 +1030,20 @@ derived_metrics(kv) ->
       "irate(kv_ep_replica_hlc_drift_seconds[5m]) / ignoring (name) "
       "irate(kv_ep_replica_hlc_drift_count[5m])"},
      {"kv_disk_write_queue",
-      "sum by (bucket, instance, job)({name=~`kv_ep_flusher_todo|"
-                                             "kv_ep_queue_size`})"},
+      "kv_ep_flusher_todo + ignoring(name) kv_ep_queue_size"},
      {"kv_ep_ops_create",
-      "sum by (bucket, instance, job) ("
+      "sum without(state, name) ("
         "irate(kv_vb_active_ops_create{state=`active`}[5m]) or "
         "irate(kv_vb_replica_ops_create{state=`replica`}[5m]) or "
         "irate(kv_vb_pending_ops_create{state=`pending`}[5m]))"},
      {"kv_ep_ops_update",
-      "sum by (bucket, instance, job)("
+      "sum without(state, name) ("
         "irate(kv_vb_active_ops_update{state=`active`}[5m]) or "
         "irate(kv_vb_replica_ops_update{state=`replica`}[5m]) or "
         "irate(kv_vb_pending_ops_update{state=`pending`}[5m]))"},
      {"kv_xdc_ops",
-      "sum by (bucket, instance, job) (irate(kv_ops{op=~`del_meta|get_meta|"
-                                                        "set_meta`}[5m]))"}];
+      "sum without(op, result) (irate(kv_ops{op=~`del_meta|get_meta|"
+                                                 "set_meta`}[5m]))"}];
 derived_metrics(xdcr) ->
     [{"xdcr_percent_completeness",
       "(xdcr_docs_processed_total * 100) / ignoring (name) "
@@ -1048,7 +1052,7 @@ derived_metrics(eventing) ->
     [{"eventing_processed_count",
       "eventing_on_delete_success + ignoring(name) eventing_on_update_success"},
      {"eventing_failed_count",
-      "sum by (functionName, instance, job)("
+      "sum without(name) ("
         "{name=~`eventing_bucket_op_exception_count|"
                 "eventing_checkpoint_failure_count|"
                 "eventing_doc_timer_create_failure|"
