@@ -31,6 +31,22 @@ Start a single node cluster (with data and logs in ./test_cluster_data),
 and run all tests against that cluster.
 
 
+Run specific tests or testsets
+-----------------------------
+
+    $ ./run.py --tests DummyTestSet
+
+This command will run all the tests in a specified class. It is possible to pass
+several classes separated by comma.
+
+    $ ./run.py --tests DummyTestSet.dummy1_test
+
+This command will run one test dummy1_test in DummyTestSet class. It is possible
+to pass several tests separated by comma:
+
+    $ ./run.py --tests DummyTestSet.dummy1_test,DummyTestSet.dummy2_test
+
+
 How to add new tests
 --------------------
 

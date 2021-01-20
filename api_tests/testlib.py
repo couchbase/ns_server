@@ -22,7 +22,7 @@ Cluster = namedtuple("Cluster", ['urls', 'processes', 'auth'])
 ClusterRequirements = namedtuple("ClusterRequirements", ['num_nodes'])
 
 
-def run_testset(testset_class, available_clusters):
+def run_testset(testset_class, test_names, available_clusters):
     errors = []
     executed = 0
     print(f"\nStarting testset: {testset_class.__name__}...")
@@ -49,10 +49,8 @@ def run_testset(testset_class, available_clusters):
     if err is not None:
         return (0, [err])
 
-    tests = [m for m in dir(testset_instance) if m.endswith('_test')]
-
     try:
-        for test in tests:
+        for test in test_names:
             executed += 1
             _, err = safe_test_function_call(testset_instance, test,
                                              [clusters[0]], verbose=True)

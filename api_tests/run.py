@@ -47,6 +47,9 @@ Usage: {program_name}
     [--password | -p <admin_password>]
         Password to be used when connecting to an existing cluster.
         Mutually exclusive to --start-server. Default: asdasd
+    [--tests | -t <test_spec>[, <test_spec> ...]]
+        <test_spec> := <test_class>[.test_name]
+        Start only specified tests
     [--help]
         Show this help
 """
@@ -61,10 +64,10 @@ def error_exit(msg):
 
 def main():
     try:
-        optlist, args = getopt.gnu_getopt(sys.argv[1:], "hsu:p:",
+        optlist, args = getopt.gnu_getopt(sys.argv[1:], "hsu:p:t:",
                                           ["help", "start-server",
                                            "user=", "password=",
-                                           "start-index="])
+                                           "start-index=","tests="])
     except getopt.GetoptError as err:
         error_exit(str(err))
 
@@ -72,6 +75,7 @@ def main():
     username = 'Administrator'
     password = 'asdasd'
     start_index = 0
+    tests = None
 
     for o, a in optlist:
         if o in ('--start-server', '-s'):
@@ -86,6 +90,13 @@ def main():
             password = a
         elif o == '--start-index':
             start_index = int(a)
+        elif o in ('--tests','-t'):
+            tests = []
+            for tokens in [t.strip().split(".") for t in a.split(",")]:
+                if len(tokens) == 1:
+                    tests.append((tokens[0], '*'))
+                elif len(tokens) == 2:
+                    tests.append((tokens[0], tokens[1]))
         elif o in ('--help', '-h'):
             usage()
             exit(0)
@@ -116,14 +127,20 @@ def main():
 
     print(f"Available cluster configurations: {clusters}")
 
-    testsets_to_run = discover_testsets()
+    discovered_tests = discover_testsets()
 
-    print(f"Discovered testsets: {[c.__name__ for c in testsets_to_run]}")
+    print(f"Discovered testsets: {[c for c, _, _ in discovered_tests]}")
+
+    testsets_to_run = []
+    if tests is None:
+        testsets_to_run = discovered_tests
+    else:
+        testsets_to_run = find_tests(tests, discovered_tests)
 
     errors = {}
     executed = 0
-    for testset in testsets_to_run:
-        res = testlib.run_testset(testset, clusters)
+    for _, testset, test_names in testsets_to_run:
+        res = testlib.run_testset(testset, test_names, clusters)
         executed += res[0]
         testset_errors = res[1]
         if len(testset_errors) > 0:
@@ -160,6 +177,31 @@ def main():
         sys.exit("Tests finished with errors")
 
 
+def find_tests(test_names, discovered_list):
+    results = {}
+    discovered_dict = {n: (c, t) for n, c, t in discovered_list}
+    for class_name, test_name in test_names:
+        assert class_name in discovered_dict, \
+            f"Testset {class_name} is not found. "\
+            f"Available testsets: {list(discovered_dict.keys())}"
+        testset, tests = discovered_dict[class_name]
+        if test_name == '*':
+            results[class_name] = (testset, tests)
+        else:
+            assert test_name in tests, \
+                f"Test {test_name} is not found in {class_name}. "\
+                f"Available tests: {tests})"
+
+            if class_name in results:
+                testlist = results[class_name][1]
+                testlist.append(test_name)
+                results[class_name] = (results[class_name][0], testlist)
+            else:
+                results[class_name] = (testset, [test_name])
+
+    return [(k, results[k][0], results[k][1]) for k in results]
+
+
 def discover_testsets():
     testsets = []
 
@@ -170,11 +212,12 @@ def discover_testsets():
             continue
         if scriptdir != os.path.dirname(sys.modules[m].__file__):
             continue
-        for c in inspect.getmembers(sys.modules[m], inspect.isclass):
-            if c[1] == testlib.BaseTestSet:
+        for name, testset in inspect.getmembers(sys.modules[m], inspect.isclass):
+            if testset == testlib.BaseTestSet:
                 continue
-            if issubclass(c[1], testlib.BaseTestSet):
-                testsets.append(c[1])
+            if issubclass(testset, testlib.BaseTestSet):
+                tests = [m for m in dir(testset) if m.endswith('_test')]
+                testsets.append((name, testset, tests))
 
     return testsets
 
