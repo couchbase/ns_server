@@ -956,14 +956,11 @@ derived_metrics(index) ->
       "(index_memory_used_total / ignoring(name) index_memory_quota) * 100"},
      {"index_remaining_ram",
       "index_memory_quota - ignoring(name) index_memory_used_total"},
-
      {"index_num_docs_pending_and_queued",
-      "sum by (bucket, index, job, instance) "
-          "(index_num_docs_pending or index_num_docs_queued)"},
+      "index_num_docs_pending + ignoring(name) index_num_docs_queued"},
      {"index_cache_miss_ratio",
-      "sum by (bucket, index, job, instance) (index_cache_misses) * 100 / "
-      "sum by (bucket, index, job, instance) "
-             "(index_cache_hits or index_cache_misses)"},
+      "index_cache_misses * 100 / ignoring (name) "
+      "(index_cache_hits + ignoring (name) index_cache_misses)"},
      {"index_fragmentation",
       "sum by (bucket, job, instance) (index_disk_size * ignoring(name) "
                                       "index_frag_percent) / "
