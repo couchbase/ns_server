@@ -423,7 +423,7 @@ function get70Mapping() {
     "@cbas-.cbas_failed_at_parser_records_count_total": "@cbas-.cbas/failed_at_parser_records_count_total",
 
     "@index.index_memory_used_total": "@index.index_memory_used",
-    "@index-.index_frag_percent": "@index-.index/fragmentation",
+    "@index-.index_fragmentation": "@index-.index/fragmentation",
     "@index.index_ram_percent": "@index.index_ram_percent",
     "@index.index_remaining_ram": "@index.index_remaining_ram",
 
