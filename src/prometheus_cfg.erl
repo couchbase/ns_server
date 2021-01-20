@@ -1064,9 +1064,7 @@ derived_metrics(_) ->
 
 init_pruning_timer(#s{cur_settings = Settings} = State) ->
     Levels = proplists:get_value(decimation_defs, Settings),
-    %% Round to the next minute (makes triaging using timestamps easier)
-    Now0 = os:system_time(seconds),
-    Now = round(Now0 / 60) * 60 + 60,
+    Now = os:system_time(seconds),
 
     case ns_config:search_node(node(), ns_config:latest(),
                                stats_last_decimation_time) of
@@ -1144,6 +1142,10 @@ decimation_definitions_default() ->
 
 %% Pure function that processes the Levels and LastDecimationTime and
 %% returns a list of intervals to delete.
+decimate_stats(_Levels, LastDecimationTime, Now, _Gap)
+  when Now - LastDecimationTime < 0 ->
+    %% Time changed backwards such that LastDecimationTime is in the future.
+    [];
 decimate_stats(Levels, LastDecimationTime, Now, Gap) ->
     TimeSinceLastDecimation = Now - LastDecimationTime,
     {_, Intervals} =
@@ -1638,10 +1640,10 @@ run_level(Val) ->
     %% "Now")
     lists:foreach(
       fun ({_, Start, End}) ->
-              true = Start =< End,
-              true = Start >= Now - LowDuration - MediumDuration -
-              LargeDuration,
-              true = End =< Now - LowDuration
+              ?assert(Start =< End),
+              ?assert(Start >= Now - LowDuration - MediumDuration -
+                      LargeDuration),
+              ?assert(End =< Now - LowDuration)
       end, Results),
 
     run_level(Val - 1).
@@ -1772,5 +1774,16 @@ delete_test_intervals([TS | Tail1], [{C, Start, End} | Tail2], Acc)
 delete_test_intervals([TS | Tail1], [{_, _Start, End} | Tail2], Acc)
                                                 when TS >= End ->
     delete_test_intervals([TS | Tail1], Tail2, Acc).
+
+%% This tests the case where the LastDecimationTime is ahead of "Now" which
+%% might be the case if time changed.
+prometheus_negative_elapsed_time_test() ->
+    Now = floor(os:system_time(seconds) / 60) * 60,
+    Levels = [{low, 3 * ?SECS_IN_DAY, skip},
+              {medium, 4 * ?SECS_IN_DAY, 60},
+              {large, 359 * ?SECS_IN_DAY, 6 * 60 * 60}],
+    LastDecimationTime = Now + 5,
+    Deletions = decimate_stats(Levels, LastDecimationTime, Now, 10),
+    ?assertMatch(Deletions, []).
 
 -endif.
