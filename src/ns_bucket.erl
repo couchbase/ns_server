@@ -163,7 +163,8 @@ ns_config_key_filter() ->
 
 upgrade_to_chronicle(Buckets) ->
     BucketConfigs = proplists:get_value(configs, Buckets, []),
-    [{root(), [N || {N, _} <- BucketConfigs]}].
+    [{root(), [N || {N, _} <- BucketConfigs]}] ++
+        collections:default_kvs(BucketConfigs).
 
 buckets_to_chronicle(Buckets) ->
     BucketConfigs = proplists:get_value(configs, Buckets, []),

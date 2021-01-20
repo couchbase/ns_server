@@ -30,6 +30,7 @@
          enabled/0,
          enabled/1,
          default_manifest/0,
+         default_kvs/1,
          uid/1,
          uid/2,
          manifest_json/2,
@@ -113,6 +114,10 @@ default_manifest() ->
          {collections,
           [{"_default",
             [{uid, 0}]}]}]}]}].
+
+default_kvs(Buckets) ->
+    [{key(Bucket), default_manifest()} ||
+        Bucket <- ns_bucket:get_bucket_names_of_type(membase, Buckets)].
 
 with_scope(Fun, ScopeName, Manifest) ->
     Scopes = get_scopes(Manifest),
@@ -722,9 +727,7 @@ config_upgrade_to_cheshire_cat(Config) ->
     end.
 
 do_config_upgrade_to_cheshire_cat(Config) ->
-    Buckets = ns_bucket:get_buckets(Config),
-    [{set, key(Bucket), default_manifest()} ||
-        Bucket <- ns_bucket:get_bucket_names_of_type(membase, Buckets)].
+    [{set, K, V} || {K, V} <- default_kvs(ns_bucket:get_buckets(Config))].
 
 -ifdef(TEST).
 get_operations_test_() ->
