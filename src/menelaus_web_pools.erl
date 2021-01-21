@@ -513,8 +513,7 @@ cluster_info_props(Req) ->
     [{clusterUUID, fun menelaus_web:get_uuid/0},
      {autoFailover,
       fun (Cfg) ->
-              AFCfg = [{K, V} || {K, V} <- ns_config:search(
-                                             Cfg, auto_failover_cfg, []),
+              AFCfg = [{K, V} || {K, V} <- auto_failover:get_cfg(Cfg),
                                  lists:member(K, [enabled, timeout])],
               {struct, AFCfg}
       end},

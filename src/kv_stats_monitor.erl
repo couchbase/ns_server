@@ -84,7 +84,8 @@ start_link() ->
 %% gen_server callbacks
 init([]) ->
     self() ! refresh,
-    {Enabled, NumSamples} = get_failover_on_disk_issues(),
+    {Enabled, NumSamples} = get_failover_on_disk_issues(
+                              auto_failover:get_cfg()),
     ns_pubsub:subscribe_link(ns_config_events,
                              fun handle_config_event/2, self()),
     {ok, maybe_spawn_stats_collector(#state{buckets = reset_bucket_info(),
@@ -356,10 +357,6 @@ handle_config_event(Event, Pid) ->
             ok
     end,
     Pid.
-
-get_failover_on_disk_issues() ->
-    {value, Config} = ns_config:search(ns_config:get(), auto_failover_cfg),
-    get_failover_on_disk_issues(Config).
 
 get_failover_on_disk_issues(Config) ->
     case menelaus_web_auto_failover:get_failover_on_disk_issues(Config) of

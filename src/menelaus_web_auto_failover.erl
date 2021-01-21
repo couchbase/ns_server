@@ -50,7 +50,7 @@
 -define(DEFAULT_EVENTS_ALLOWED, 1).
 
 handle_settings_get(Req) ->
-    {value, Config} = ns_config:search(ns_config:get(), auto_failover_cfg),
+    Config = auto_failover:get_cfg(),
     Enabled = proplists:get_value(enabled, Config),
     Timeout = proplists:get_value(timeout, Config),
     Count = proplists:get_value(count, Config),
@@ -59,10 +59,12 @@ handle_settings_get(Req) ->
     reply_json(Req, {struct, Settings}).
 
 handle_settings_post(Req) ->
-    ValidateOnly = proplists:get_value("just_validate", mochiweb_request:parse_qs(Req)) =:= "1",
-    {value, Config} = ns_config:search(ns_config:get(), auto_failover_cfg),
+    ValidateOnly = proplists:get_value(
+                     "just_validate", mochiweb_request:parse_qs(Req)) =:= "1",
+    Config = auto_failover:get_cfg(),
     case {ValidateOnly,
-          validate_settings_auto_failover(mochiweb_request:parse_post(Req), Config)} of
+          validate_settings_auto_failover(
+            mochiweb_request:parse_post(Req), Config)} of
         {false, false} ->
             auto_failover:disable(disable_extras(Config)),
             ns_audit:disable_auto_failover(Req),
@@ -104,11 +106,14 @@ get_failover_on_disk_issues(Config) ->
     end.
 
 config_upgrade_to_65(Config) ->
-    {value, Current} = ns_config:search(Config, auto_failover_cfg),
-    CanAbortRebalance = cluster_compat_mode:is_enterprise(),
-    New = lists:keystore(?CAN_ABORT_REBALANCE_CONFIG_KEY, 1, Current,
-                         {?CAN_ABORT_REBALANCE_CONFIG_KEY, CanAbortRebalance}),
-    [{set, auto_failover_cfg, New}].
+    auto_failover:upgrade_cfg(
+      Config,
+      fun (Current) ->
+              CanAbortRebalance = cluster_compat_mode:is_enterprise(),
+              lists:keystore(?CAN_ABORT_REBALANCE_CONFIG_KEY, 1, Current,
+                             {?CAN_ABORT_REBALANCE_CONFIG_KEY,
+                              CanAbortRebalance})
+      end).
 
 %% Internal Functions
 
@@ -265,8 +270,8 @@ boolean_err_msg(Key) ->
     [{Key, list_to_binary(io_lib:format("The value of \"~s\" must be true or false", [Key]))}].
 
 config_check_can_abort_rebalance() ->
-    {value, Cfg} = ns_config:search(ns_config:get(), auto_failover_cfg),
-    proplists:get_value(?CAN_ABORT_REBALANCE_CONFIG_KEY, Cfg, false).
+    proplists:get_value(?CAN_ABORT_REBALANCE_CONFIG_KEY,
+                        auto_failover:get_cfg(), false).
 
 get_extra_settings(Config) ->
     case cluster_compat_mode:is_enterprise() of

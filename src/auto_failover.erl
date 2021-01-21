@@ -53,6 +53,7 @@
 
 -include("cut.hrl").
 -include("ns_common.hrl").
+-include("ns_config.hrl").
 -include("ns_heart.hrl").
 
 -ifdef(TEST).
@@ -60,8 +61,16 @@
 -endif.
 
 %% API
--export([start_link/0, enable/3, disable/1, reset_count/0, reset_count_async/0,
+-export([start_link/0,
+         get_cfg/0,
+         get_cfg/1,
+         upgrade_cfg/2,
+         enable/3,
+         disable/1,
+         reset_count/0,
+         reset_count_async/0,
          is_enabled/0]).
+
 %% For email alert notificatons
 -export([alert_keys/0]).
 
@@ -136,10 +145,21 @@ reset_count() ->
 reset_count_async() ->
     cast(reset_auto_failover_count).
 
+-spec get_cfg() -> list().
+get_cfg() ->
+    get_cfg(ns_config:latest()).
+
+-spec get_cfg(ns_config()) -> list().
+get_cfg(Config) ->
+    {value, Cfg} = ns_config:search(Config, auto_failover_cfg),
+    Cfg.
+
+upgrade_cfg(Config, Fun) ->
+    [{set, auto_failover_cfg, Fun(get_cfg(Config))}].
+
 -spec is_enabled() -> true | false.
 is_enabled() ->
-    AFCfg = ns_config:read_key_fast(auto_failover_cfg, []),
-    proplists:get_value(enabled, AFCfg, false).
+    proplists:get_value(enabled, get_cfg(), false).
 
 call(Call) ->
     misc:wait_for_global_name(?MODULE),
@@ -169,7 +189,7 @@ alert_keys() ->
 init([]) ->
     restart_on_compat_mode_change(),
 
-    {value, Config} = ns_config:search(ns_config:get(), auto_failover_cfg),
+    Config = get_cfg(),
     ?log_debug("init auto_failover.", []),
     Timeout = proplists:get_value(timeout, Config),
     Count = proplists:get_value(count, Config),
@@ -266,7 +286,7 @@ handle_info(tick, State0) ->
     %% rest of the cluster. And say we win the battle over mastership
     %% again. In this case our failover count will still be zero which is
     %% incorrect.
-    {value, AFOConfig} = ns_config:search(Config, auto_failover_cfg),
+    AFOConfig = get_cfg(Config),
     FOSGs = proplists:get_value(failed_over_server_groups, AFOConfig, []),
     State1 = State0#state{count = proplists:get_value(count, AFOConfig),
                           failed_over_server_groups = FOSGs},
@@ -673,7 +693,7 @@ get_down_server_group([_], _, _) ->
 get_down_server_group(DownNodesInfo, Config, NonPendingNodes) ->
     %% TODO: Temporary. Save the failover_server_group setting in
     %% the auto_failover gen_server state to avoid this lookup.
-    {value, AFOConfig} = ns_config:search(Config, auto_failover_cfg),
+    AFOConfig = get_cfg(Config),
     case proplists:get_value(failover_server_group, AFOConfig, false) of
         true ->
             case length(DownNodesInfo) > (length(NonPendingNodes)/2) of
@@ -758,22 +778,18 @@ make_state_persistent(State, Extras) ->
                   _ ->
                       true
               end,
-    {value, Cfg} = ns_config:search(ns_config:get(), auto_failover_cfg),
-    NewCfg0 = lists:keyreplace(enabled, 1, Cfg, {enabled, Enabled}),
-    NewCfg1 = lists:keyreplace(timeout, 1, NewCfg0,
-                               {timeout, State#state.timeout}),
-    NewCfg2 = lists:keyreplace(count, 1, NewCfg1,
-                               {count, State#state.count}),
-    NewCfg3 = lists:keyreplace(max_count, 1, NewCfg2,
-                               {max_count, State#state.max_count}),
-    NewCfg4 = lists:keyreplace(failed_over_server_groups, 1, NewCfg3,
-                               {failed_over_server_groups,
-                                State#state.failed_over_server_groups}),
-    NewCfg = lists:foldl(
-               fun ({Key, Val}, Acc) ->
-                       lists:keyreplace(Key, 1, Acc, {Key, Val})
-               end, NewCfg4, Extras),
-    ns_config:set(auto_failover_cfg, NewCfg).
+    ok = ns_config:update_key(
+           auto_failover_cfg,
+           fun (Cfg) ->
+                   misc:update_proplist(
+                     Cfg,
+                     [{enabled, Enabled},
+                      {timeout, State#state.timeout},
+                      {count, State#state.count},
+                      {max_count, State#state.max_count},
+                      {failed_over_server_groups,
+                       State#state.failed_over_server_groups}] ++ Extras)
+           end).
 
 note_reported(Flag, State) ->
     true = should_report(Flag, State),
