@@ -16,7 +16,8 @@ let bucketsFormConfiguration = {
   compressionMode: "passive",
   durabilityMinLevel: "none",
   maxTTL: 0,
-  storageBackend: 'couchstore'
+  storageBackend: 'couchstore',
+  fragmentationPercentage: 50
 };
 
 let daysOfWeek = [

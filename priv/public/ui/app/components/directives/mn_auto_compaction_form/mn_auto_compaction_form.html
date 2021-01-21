@@ -95,10 +95,10 @@
   <h4>Time Interval</h4>
   <div class="formrow">
     <input
-      type="checkbox"
-      id="for-enable-compaction-timeperiod"
-      ng-disabled="(rbac && !rbac.cluster.settings.write) || !props.isFragmentationProvided"
-      ng-model="autoCompactionSettings.allowedTimePeriodFlag">
+       type="checkbox"
+       id="for-enable-compaction-timeperiod"
+       ng-disabled="(rbac && !rbac.cluster.settings.write) || !props.isFragmentationProvided"
+       ng-model="autoCompactionSettings.allowedTimePeriodFlag">
     <label for="for-enable-compaction-timeperiod">Set the time interval for when compaction is allowed to run</label>
 
     <div
@@ -138,7 +138,7 @@
          type="number"
          ng-disabled="(rbac && !rbac.cluster.settings.write) || autoCompactionSettings.indexCircularCompactionFlag === true"
          ng-model="autoCompactionSettings.indexFragmentationThreshold.percentage">
-        %
+      %
       <div
          class="error"
          ng-show="validationErrors.indexFragmentationThreshold_percentage_">
@@ -183,9 +183,9 @@
   <span
      class="fa-stack icon-info"
      uib-tooltip="Sets the time period during which metadata on deleted items may remain on disk.
-                  The acceptable range of values is 0.04 – 60, where 0.04 = 1 hour and 1 = 1 day.
-                  Setting this value too high may significantly delay reclaiming of disk space; setting
-                  it too low may cause data inconsistencies in XDCR."
+            The acceptable range of values is 0.04 – 60, where 0.04 = 1 hour and 1 = 1 day.
+            Setting this value too high may significantly delay reclaiming of disk space; setting
+            it too low may cause data inconsistencies in XDCR."
      tooltip-placement="top">
     <span class="icon fa-circle-thin fa-stack-2x"></span>
     <span class="icon fa-info fa-stack-1x"></span>
@@ -209,6 +209,4 @@
      ng-show="validationErrors.purgeInterval">
     {{validationErrors.purgeInterval}}
   </div>
-</div>
-
 </div>

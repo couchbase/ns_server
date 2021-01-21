@@ -153,11 +153,11 @@
       <span
          class="fa-stack icon-info"
          uib-tooltip-html="'The maximum time-to-live (TTL) for all documents in
-            this bucket in seconds. If enabled and a document is mutated with no TTL
-            or a TTL greater than than the maximum, its TTL will be set to the
-            maximum bucket TTL. The largest TTL allowed is 2147483647. This option is
-            only available for Couchbase and Ephemeral buckets in Couchbase
-            Enterprise Edition.'"
+                this bucket in seconds. If enabled and a document is mutated with no TTL
+                or a TTL greater than than the maximum, its TTL will be set to the
+                maximum bucket TTL. The largest TTL allowed is 2147483647. This option is
+                only available for Couchbase and Ephemeral buckets in Couchbase
+                Enterprise Edition.'"
          tooltip-placement="top">
         <span class="icon fa-circle-thin fa-stack-2x"></span>
         <span class="icon fa-info fa-stack-1x"></span>
@@ -273,7 +273,7 @@
           Warning: Timestamp-based conflict resolution requires NTP to be correctly set up
           on all the nodes in your replication topology to ensure high-quality time synchronization.
           See  <a href="http://developer.couchbase.com/documentation/server/current/install/synchronize-clocks-using-ntp.html"
-          target="_blank">Setting Up NTP</a> in the Couchbase documentation.
+                  target="_blank">Setting Up NTP</a> in the Couchbase documentation.
         </div>
       </div>
     </div>
@@ -285,8 +285,8 @@
       <span
          class="fa-stack icon-info"
          uib-tooltip-html="'<strong>Value Ejection:</strong> During ejection, only the value will be ejected (key and metadata will remain in memory).<br><br>
-                           <strong>Full Ejection:</strong> During ejection, everything (including key, metadata, and value) will be ejected.<br><br>
-                           Value Ejection needs more system memory, but provides the best performance. Full Ejection reduces the memory overhead requirement.'"
+                <strong>Full Ejection:</strong> During ejection, everything (including key, metadata, and value) will be ejected.<br><br>
+                Value Ejection needs more system memory, but provides the best performance. Full Ejection reduces the memory overhead requirement.'"
          tooltip-placement="top">
         <span class="icon fa-circle-thin fa-stack-2x"></span>
         <span class="icon fa-info fa-stack-1x"></span>
@@ -319,17 +319,17 @@
        class="formrow checkbox-list"
        ng-if="bucketConf.bucketType === 'ephemeral'">
       <label class="inline">Ejection Policy</label>
-        <span
-           class="fa-stack icon-info"
-           uib-tooltip-html="'Ejection automatically removes older data from RAM
-                              to create space for new data if you reach your bucket quota.<br><br>
-                              Without automatic ejection, Couchbase Server keeps all data
-                              until explicitly deleted, but will reject any new data if
-                              you reach the quota (dedicated memory) you set for your bucket.'"
-           tooltip-placement="top">
-          <span class="icon fa-circle-thin fa-stack-2x"></span>
-          <span class="icon fa-info fa-stack-1x"></span>
-        </span>
+      <span
+         class="fa-stack icon-info"
+         uib-tooltip-html="'Ejection automatically removes older data from RAM
+                to create space for new data if you reach your bucket quota.<br><br>
+                Without automatic ejection, Couchbase Server keeps all data
+                until explicitly deleted, but will reject any new data if
+                you reach the quota (dedicated memory) you set for your bucket.'"
+         tooltip-placement="top">
+        <span class="icon fa-circle-thin fa-stack-2x"></span>
+        <span class="icon fa-info fa-stack-1x"></span>
+      </span>
       <div class="formrow">
         <input
            type="radio"
@@ -440,55 +440,6 @@
         {{validation.result.errors.durability_min_level}}
       </div>
     </div>
-
-    <div
-       ng-if="!bucketConf.isWizard"
-       id="js_bucket_auto_compaction_settings"
-       ng-show="bucketConf.bucketType === 'membase'">
-      <label class="inline">Auto-Compaction</label>
-      <span
-         class="fa-stack icon-info"
-         uib-tooltip="Auto-Compaction settings trigger the compaction process. The process compacts databases and their respective view indexes."
-         tooltip-placement="right">
-        <span class="icon fa-circle-thin fa-stack-2x"></span>
-        <span class="icon fa-info fa-stack-1x"></span>
-      </span>
-      <div class="formrow checkbox-list">
-        <input
-           type="checkbox"
-           id="for-auto-compaction-override"
-           ng-model="bucketConf.autoCompactionDefined"
-           value="true">
-        <label for="for-auto-compaction-override">Override the default auto-compaction settings?</label>
-      </div>
-
-      <div
-         class="formrow checkbox-list"
-         ng-show="bucketConf.autoCompactionDefined"
-         mn-auto-compaction-form
-         auto-compaction-settings="autoCompactionSettings"
-         is-buckets-settings="true"
-         validation-errors="validation.result.errors"></div>
-    </div>
-
-    <label class="inline">Flush</label>
-    <span
-       class="fa-stack icon-info"
-       uib-tooltip="When flushed, ALL items in the bucket are removed as soon as possible. NOTE: This does not immediately show in item count statistics with memcached buckets."
-       tooltip-placement="right">
-      <span class="icon fa-circle-thin fa-stack-2x"></span>
-      <span class="icon fa-info fa-stack-1x"></span>
-    </span>
-    <div class="formrow checkbox-list">
-      <input
-         type="checkbox"
-         id="for-enable-flush"
-         ng-model="bucketConf.flushEnabled"
-         ng-false-value="0"
-         ng-true-value="1">
-      <label for="for-enable-flush">Enable</label>
-    </div>
-
     <div
        class="formrow checkbox-list"
        ng-if="pools.isEnterprise && bucketConf.bucketType === 'membase'">
@@ -517,10 +468,32 @@
           {{validation.result.errors.storageBackend}}
         </div>
       </div>
+    </div>
+    <div
+       ng-if="!bucketConf.isWizard"
+       id="js_bucket_auto_compaction_settings"
+       ng-show="bucketConf.bucketType === 'membase'">
+      <label class="inline">Auto-Compaction</label>
+      <span
+         class="fa-stack icon-info"
+         uib-tooltip="Auto-Compaction settings trigger the compaction process. The process compacts databases and their respective view indexes."
+         tooltip-placement="right">
+        <span class="icon fa-circle-thin fa-stack-2x"></span>
+        <span class="icon fa-info fa-stack-1x"></span>
+      </span>
+      <div class="formrow checkbox-list">
+        <input
+           type="checkbox"
+           id="for-auto-compaction-override"
+           ng-model="bucketConf.autoCompactionDefined"
+           value="true">
+        <label for="for-auto-compaction-override">
+          Override the default auto-compaction settings?</label>
+      </div>
 
       <div
-         class="formrow checkbox-list"
-         ng-if="bucketConf.storageBackend === 'magma'">
+         ng-show="bucketConf.autoCompactionDefined && (bucketConf.storageBackend == 'magma')"
+         class="formrow checkbox-list">
         <label>Magma Fragmentation Threshold</label>
         <div class="formrow form-inline">
           <input
@@ -533,6 +506,34 @@
             {{validation.result.errors.fragmentationPercentage}}
           </div>
         </div>
+      </div>
+
+      <div
+         ng-show="bucketConf.autoCompactionDefined && (bucketConf.storageBackend == 'couchstore')"
+         class="formrow checkbox-list"
+         mn-auto-compaction-form
+         auto-compaction-settings="autoCompactionSettings"
+         is-buckets-settings="true"
+         validation-errors="validation.result.errors">
+      </div>
+    </div>
+
+    <label class="inline">Flush</label>
+    <span
+       class="fa-stack icon-info"
+       uib-tooltip="When flushed, ALL items in the bucket are removed as soon as possible. NOTE: This does not immediately show in item count statistics with memcached buckets."
+       tooltip-placement="right">
+      <span class="icon fa-circle-thin fa-stack-2x"></span>
+      <span class="icon fa-info fa-stack-1x"></span>
+    </span>
+    <div class="formrow checkbox-list">
+      <input
+         type="checkbox"
+         id="for-enable-flush"
+         ng-model="bucketConf.flushEnabled"
+         ng-false-value="0"
+         ng-true-value="1">
+      <label for="for-enable-flush">Enable</label>
     </div>
   </div>
 </div>
