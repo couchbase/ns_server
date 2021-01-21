@@ -285,14 +285,14 @@
     <span class="resp-hide-xsml">
       <span class="icon fa-angle-right"></span>
     </span>
-    <span ng-if="adminCtl.$state.current.data.child">
+    <span ng-if="adminCtl.$state.current.data.parent">
       <a
-        ui-state="adminCtl.$state.current.data.child"
-        ui-state-params="('merge' | lodash:{}:adminCtl.$state.params:adminCtl.$state.current.data.childParams)">
-        {{adminCtl.$state.get(adminCtl.$state.current.data.child).data.title}} <!-- the back-to-parent page name -->
+        ui-state="adminCtl.$state.current.data.parent.link"
+        ui-state-params="('merge' | lodash:{}:adminCtl.$state.params:adminCtl.$state.current.data.parentParams)">
+        {{adminCtl.$state.current.data.parent.name}} <!-- the back-to-parent page name -->
       </a>
     </span>
-    <span ng-if="adminCtl.$state.current.data.child" class="icon fa-angle-right"></span>
+    <span ng-if="adminCtl.$state.current.data.parent" class="icon fa-angle-right"></span>
     <span>
       {{adminCtl.$state.current.data.title}} <!-- the current page name -->
     </span>

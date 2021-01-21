@@ -59,7 +59,7 @@ function configure($stateProvider) {
       url: "/documents?bucket",
       data: {
         title: "Documents",
-        child: "app.admin.buckets",
+        parent: {name: 'Buckets', link: 'app.admin.buckets'},
         permissions: "cluster.bucket['.'].settings.read && cluster.bucket['.'].data.docs.read"
       }
     })
@@ -87,7 +87,7 @@ function configure($stateProvider) {
       controller: 'mnDocumentsEditingController as documentsEditingCtl',
       templateUrl: 'app/mn_admin/mn_documents_editing.html',
       data: {
-        child: "app.admin.documents.control.list",
+        parent: {name: 'Documents', link: 'app.admin.documents.control.list'},
         title: "Documents Editing"
       }
     });

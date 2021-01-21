@@ -25,7 +25,7 @@ let collectionsState = {
   data: {
     permissions: "cluster.bucket['.'].settings.read && cluster.collection['.:.:.'].collections.read",
     title: "Scopes & Collections",
-    child: "app.admin.buckets",
+    parent: {name: 'Buckets', link: 'app.admin.buckets'},
     compat: "atLeast70"
   },
   params: {

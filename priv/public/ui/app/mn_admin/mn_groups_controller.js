@@ -51,7 +51,7 @@ function configure($stateProvider) {
         enterprise: true,
         permissions: "cluster.server_groups.read",
         title: "Server Groups",
-        child: "app.admin.servers.list"
+        parent: {name: 'Servers', link: 'app.admin.servers.list'}
       }
     });
 }

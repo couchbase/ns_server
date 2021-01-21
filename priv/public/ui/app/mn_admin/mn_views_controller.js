@@ -95,7 +95,7 @@ function configure($stateProvider) {
         }
       },
       data: {
-        child: "app.admin.views.list",
+        parent: {name: 'Views', link: 'app.admin.views.list'},
         title: "Views Editing"
       }
     })
