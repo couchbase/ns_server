@@ -873,14 +873,13 @@ start_compiled_roles_cache() ->
                 false
         end,
     ConfigFilter =
-        fun (buckets) ->
-                true;
-            (cluster_compat_version) ->
+        fun (cluster_compat_version) ->
                 true;
             (rest_creds) ->
                 true;
             (Key) ->
-                collections:key_match(Key) =/= false
+                collections:key_match(Key) =/= false orelse
+                    ns_bucket:buckets_change(Key)
         end,
     GetVersion =
         fun () ->

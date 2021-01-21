@@ -134,19 +134,14 @@ uninhibit_view_compaction(Bucket, Ref) ->
 init([]) ->
     process_flag(trap_exit, true),
 
-    Self = self(),
-
-    ns_pubsub:subscribe_link(
-      ns_config_events,
-      fun ({buckets, _}) ->
-              Self ! config_changed;
-          ({autocompaction, _}) ->
-              Self ! config_changed;
-          ({{node, Node, compaction_daemon}, _}) when node() =:= Node ->
-              Self ! config_changed;
-          (_) ->
-              ok
-      end),
+    chronicle_compat:notify_if_key_changes(
+      fun (autocompaction) ->
+              true;
+          ({node, Node, compaction_daemon}) when node() =:= Node ->
+              true;
+          (Key) ->
+              ns_bucket:buckets_change(Key)
+      end, config_changed),
 
     ets:new(compaction_daemon, [protected, named_table, set]),
 

@@ -72,17 +72,8 @@ global_stat(Service, StatName) ->
     iolist_to_binary([atom_to_list(Service:get_type()), $/, StatName]).
 
 init(Service) ->
-    Self = self(),
-    ns_pubsub:subscribe_link(
-      ns_config_events,
-      fun ({buckets, Buckets}) ->
-              BucketConfigs = proplists:get_value(configs, Buckets, []),
-              BucketsList =
-                  ns_bucket:get_bucket_names_of_type(membase, BucketConfigs),
-              Self ! {buckets, BucketsList};
-          (_) ->
-              ok
-      end),
+    chronicle_compat:notify_if_key_changes(fun ns_bucket:buckets_change/1,
+                                           {event, buckets}),
 
     Buckets = lists:map(fun list_to_binary/1,
                         ns_bucket:get_bucket_names_of_type(membase)),
@@ -314,9 +305,10 @@ do_aggregate_bucket_stats(_Service, Acc, _, Stats) ->
 finalize_stats(Acc) ->
     lists:keysort(1, Acc).
 
-handle_info({buckets, NewBuckets}, State) ->
-    NewBuckets1 = lists:map(fun list_to_binary/1, NewBuckets),
-    {noreply, State#state{buckets = NewBuckets1}};
+handle_info({event, buckets}, State) ->
+    NewBuckets = lists:map(fun list_to_binary/1,
+                           ns_bucket:get_bucket_names_of_type(membase)),
+    {noreply, State#state{buckets = NewBuckets}};
 handle_info(check_status, #state{status = starting} = State) ->
     {noreply, check_status(State)};
 handle_info(rotate_names, State) ->

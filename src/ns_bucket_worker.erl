@@ -56,9 +56,10 @@ stop_transient_buckets(Ref) ->
 
 %% callbacks
 init([]) ->
-    Self = self(),
-    ns_pubsub:subscribe_link(ns_config_events, config_event_handler(Self, _)),
-    submit_update(Self),
+    chronicle_compat:notify_if_key_changes(
+      fun ns_bucket:buckets_change/1, update_buckets),
+
+    self() ! update_buckets,
     {ok, #state{running_buckets = [],
                 transient_buckets = undefined}}.
 
@@ -71,26 +72,17 @@ handle_call(Call, From, State) ->
                  "call ~p from ~p. State:~n~p", [Call, From, State]),
     {reply, nack, State}.
 
-handle_cast(update_buckets, State) ->
-    {noreply, update_buckets(State)};
 handle_cast(Cast, State) ->
     ?log_warning("Received unexpected cast ~p. State:~n~p", [Cast, State]),
     {noreply, State}.
 
+handle_info(update_buckets, State) ->
+    {noreply, update_buckets(State)};
 handle_info({'DOWN', MRef, _, Pid, Reason}, State) ->
     {noreply, handle_down(MRef, Pid, Reason, State)};
 handle_info(Msg, State) ->
     ?log_warning("Received unexpected message ~p. State:~n~p", [Msg, State]),
     {noreply, State}.
-
-%% internal
-config_event_handler(WorkerPid, {buckets, _}) ->
-    submit_update(WorkerPid);
-config_event_handler(_, _) ->
-    ok.
-
-submit_update(Pid) ->
-    gen_server:cast(Pid, update_buckets).
 
 update_buckets(#state{running_buckets = RunningBuckets} = State) ->
     NewBuckets = compute_buckets_to_run(State),

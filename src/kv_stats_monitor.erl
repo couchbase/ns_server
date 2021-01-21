@@ -83,11 +83,22 @@ start_link() ->
 
 %% gen_server callbacks
 init([]) ->
-    self() ! refresh,
+    Self = self(),
+    Self ! refresh,
+
+    chronicle_compat:subscribe_to_key_change(
+      fun (auto_failover_cfg) ->
+              Self ! {event, auto_failover_cfg};
+          (Key) ->
+              case ns_bucket:buckets_change(Key) of
+                  false ->
+                      ok;
+                  true ->
+                      Self ! {event, buckets}
+              end
+      end),
     {Enabled, NumSamples} = get_failover_on_disk_issues(
                               auto_failover:get_cfg()),
-    ns_pubsub:subscribe_link(ns_config_events,
-                             fun handle_config_event/2, self()),
     {ok, maybe_spawn_stats_collector(#state{buckets = reset_bucket_info(),
                                             enabled = Enabled,
                                             numSamples = NumSamples})}.
@@ -119,9 +130,8 @@ handle_info(refresh, #state{buckets = Buckets,
                              latest_stats = {undefined, dict:new()}}),
     {noreply, resend_refresh_msg(NewState)};
 
-handle_info({buckets, Buckets}, #state{buckets = Dict} = State) ->
-    BucketConfigs = proplists:get_value(configs, Buckets, []),
-    NewBuckets0 = ns_bucket:get_bucket_names_of_type(persistent, BucketConfigs),
+handle_info({event, buckets}, #state{buckets = Dict} = State) ->
+    NewBuckets0 = ns_bucket:get_bucket_names_of_type(persistent),
     NewBuckets = lists:sort(NewBuckets0),
     KnownBuckets = lists:sort(dict:fetch_keys(Dict)),
     ToRemove = KnownBuckets -- NewBuckets,
@@ -136,9 +146,10 @@ handle_info({buckets, Buckets}, #state{buckets = Dict} = State) ->
                 end, NewDict0, ToAdd),
     {noreply, State#state{buckets = NewDict}};
 
-handle_info({auto_failover_cfg, NewCfg},
+handle_info({event, auto_failover_cfg},
             #state{enabled = OldEnabled} = State) ->
-    {Enabled, NumSamples} = get_failover_on_disk_issues(NewCfg),
+    {Enabled, NumSamples} =
+        get_failover_on_disk_issues(auto_failover:get_cfg()),
     NewState = case Enabled of
                      OldEnabled -> State;
                      false -> State#state{buckets = reset_bucket_info()};
@@ -341,22 +352,6 @@ over_threshold(<<1:1, Rest/bits>>, Threshold) ->
     over_threshold(Rest, Threshold - 1);
 over_threshold(<<0:1, Rest/bits>>, Threshold) ->
     over_threshold(Rest, Threshold).
-
-is_significant_event({buckets, _}) ->
-    true;
-is_significant_event({auto_failover_cfg, _}) ->
-    true;
-is_significant_event(_) ->
-    false.
-
-handle_config_event(Event, Pid) ->
-    case is_significant_event(Event) of
-        true ->
-            Pid ! Event;
-        false ->
-            ok
-    end,
-    Pid.
 
 get_failover_on_disk_issues(Config) ->
     case menelaus_web_auto_failover:get_failover_on_disk_issues(Config) of

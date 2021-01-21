@@ -43,16 +43,12 @@ start_link(Bucket) ->
     base_stats_collector:start_link(?MODULE, Bucket).
 
 init(Bucket) ->
-    Self = self(),
-    ns_pubsub:subscribe_link(
-      ns_config_events,
-      fun ({{node, Node, compaction_daemon}, _}) when node() =:= Node ->
-              Self ! config_changed;
-          ({buckets, _}) ->
-              Self ! config_changed;
-          (_) ->
-              ok
-      end),
+    chronicle_compat:notify_if_key_changes(
+      fun ({node, Node, compaction_daemon}) when node() =:= Node ->
+              true;
+          (Key) ->
+              ns_bucket:buckets_change(Key)
+      end, config_changed),
 
     {ok, #state{bucket=Bucket}}.
 
