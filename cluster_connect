@@ -88,7 +88,7 @@ def main():
                 params['deploy'] = plan[0].split('+')
             else:
                 plan = dict(e.split(':') for e in plan)
-                params['deploy ']= dict([(k, v.split('+'))
+                params['deploy'] = dict([(k, v.split('+'))
                                          for k, v in plan.items()])
         elif o in ("-p", "--afamily"):
             if a not in ("ipv4", "ipv6"):
