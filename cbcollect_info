@@ -1300,6 +1300,30 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                 log_file="eventing_insights.log",
                 no_header=True)]
 
+    backup_tasks = []
+    backup_port = read_guts(guts, "backup_http_port")
+    if backup_port:
+        backup_tasks = [
+            make_curl_task(
+                name="Backup leader: ",
+                user="@",
+                password=memcached_pass,
+                url=f"http://{local_url_addr}:{backup_port}/internal/v1/leader",
+            ),
+            make_curl_task(
+                name="Backup repositories: ",
+                user="@",
+                password=memcached_pass,
+                url=f"http://{local_url_addr}:{backup_port}/api/v1/cluster/self"
+            ),
+            make_curl_task(
+                name="Backup node last run tasks: ",
+                user="@",
+                password=memcached_pass,
+                url=f"http://{local_url_addr}:{backup_port}/internal/v1/lastTasks"
+            ),
+        ]
+
     _tasks = [
         UnixTask("Directory structure",
                  ["ls", "-lRai", root]),
@@ -1527,6 +1551,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                       cbas_tasks,
                       eventing_tasks,
                       goxdcr_tasks,
+                      backup_tasks,
                       _tasks])
 
     return _tasks
