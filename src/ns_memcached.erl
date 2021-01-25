@@ -83,6 +83,7 @@
          mark_warmed/1,
          disable_traffic/2,
          delete_vbucket/2,
+         delete_vbuckets/2,
          sync_delete_vbucket/2,
          get_vbucket_details_stats/2,
          get_single_vbucket_details_stats/3,
@@ -92,6 +93,7 @@
          local_connected_and_list_vbuckets/1,
          local_connected_and_list_vbucket_details/2,
          set_vbucket/3, set_vbucket/4,
+         set_vbuckets/2,
          stats/1, stats/2,
          warmup_stats/1,
          topkeys/1,
@@ -352,9 +354,11 @@ verify_report_long_call(StartTS, ActualStartTS, State, Msg, RV) ->
 
 %% anything effectful is likely to be heavy
 assign_queue({delete_vbucket, _}) -> #state.very_heavy_calls_queue;
+assign_queue({delete_vbuckets, _}) -> #state.very_heavy_calls_queue;
 assign_queue({sync_delete_vbucket, _}) -> #state.very_heavy_calls_queue;
 assign_queue(flush) -> #state.very_heavy_calls_queue;
 assign_queue({set_vbucket, _, _, _}) -> #state.heavy_calls_queue;
+assign_queue({set_vbuckets, _}) -> #state.very_heavy_calls_queue;
 assign_queue({add, _Key, _Uid, _VBucket, _Value}) -> #state.heavy_calls_queue;
 assign_queue({get, _Key, _Uid, _VBucket}) -> #state.heavy_calls_queue;
 assign_queue({get_from_replica, _Key, _Uid, _VBucket}) -> #state.heavy_calls_queue;
@@ -455,6 +459,13 @@ do_handle_call({raw_stats, SubStat, StatsFun, StatsFunState}, _From, State) ->
     catch T:E ->
             {reply, {exception, {T, E}}, State}
     end;
+do_handle_call({delete_vbuckets, VBuckets}, _From, #state{sock=Sock} = State) ->
+    try
+        {reply, mc_client_binary:delete_vbuckets(Sock, VBuckets), State}
+    catch
+        {error, _} = Err ->
+            {compromised_reply, Err, State}
+    end;
 do_handle_call({delete_vbucket, VBucket}, _From, #state{sock=Sock} = State) ->
     case mc_client_binary:delete_vbucket(Sock, VBucket) of
         ok ->
@@ -530,6 +541,31 @@ do_handle_call({get_from_replica, Key, CollectionsUid, VBucket}, _From,
                                   #mc_entry{key = EncodedKey}}),
     {reply, Reply, State};
 
+do_handle_call({set_vbuckets, VBsToSet}, _From, #state{sock = Sock} = State) ->
+    ToSet = [{VB, VBState, construct_vbucket_info_json(Topology)}
+             || {VB, VBState, Topology} <- VBsToSet],
+    try
+        Reply = mc_client_binary:set_vbuckets(Sock, ToSet),
+        Good = case Reply of
+                   ok ->
+                       ToSet;
+                   {errors, BadVBs} ->
+                       ?log_error("Failed to change following vbucket "
+                                  "state ~n~p", [BadVBs]),
+                       ToSet -- [Bad || {Bad, _ErrMsg} <- BadVBs]
+               end,
+        ?log_info("Changed vbucket state ~n~p", [Good]),
+        [(catch master_activity_events:note_vbucket_state_change(
+                  State#state.bucket, node(), VBucket, VBState,
+                  VBInfoJson)) || {VBucket, VBState, VBInfoJson} <- Good],
+        {reply, Reply, State}
+    catch
+        {error, _} = Err ->
+            %% We should not reuse this socket on these errors.
+            ?log_error("Failed to change vbucket states: ~p~n~p",
+                       [Err, ToSet]),
+            {compromised_reply, Err, State}
+    end;
 do_handle_call({set_vbucket, VBucket, VBState, Topology}, _From,
                #state{sock=Sock, bucket=BucketName} = State) ->
     VBInfoJson = construct_vbucket_info_json(Topology),
@@ -974,6 +1010,17 @@ update_with_rev(Bucket, VBucket, Id, Value, Rev, Deleted, LocalCAS) ->
 delete_vbucket(Bucket, VBucket) ->
     do_call(server(Bucket), {delete_vbucket, VBucket}, ?TIMEOUT_VERY_HEAVY).
 
+-spec delete_vbuckets(bucket_name(), [vbucket_id()]) ->
+    ok | {errors, [{vbucket_id(), mc_error()}]} | {error, any()}.
+delete_vbuckets(Bucket, VBuckets) ->
+    case VBuckets of
+        [] ->
+            ok;
+        _ ->
+            do_call(server(Bucket), {delete_vbuckets, VBuckets},
+                    ?TIMEOUT_VERY_HEAVY)
+    end.
+
 -spec sync_delete_vbucket(bucket_name(), vbucket_id()) ->
                                  ok | mc_error().
 sync_delete_vbucket(Bucket, VBucket) ->
@@ -1067,6 +1114,19 @@ set_vbucket(Bucket, VBucket, VBState, Topology) ->
     do_call(server(Bucket), {set_vbucket, VBucket, VBState, Topology},
             ?TIMEOUT_HEAVY).
 
+-spec set_vbuckets(bucket_name(),
+                   [{vbucket_id(), vbucket_state(), [[node()]] | undefined}]) ->
+    ok |
+    {errors, [{{vbucket_id(), vbucket_state(), [[node()]] | undefined},
+               mc_error()}]} |
+    {error, any()}.
+set_vbuckets(Bucket, ToSet) ->
+    case ToSet of
+        [] ->
+            ok;
+        _ ->
+            do_call(server(Bucket), {set_vbuckets, ToSet}, ?TIMEOUT_VERY_HEAVY)
+    end.
 
 -spec stats(bucket_name()) ->
                    {ok, [{binary(), binary()}]} | mc_error().

@@ -19,8 +19,9 @@
 -include("mc_constants.hrl").
 -include("mc_entry.hrl").
 
--export([bin/1, recv/2, recv/3, send/4, encode/3, quick_stats/4,
-         quick_stats/5, quick_stats_append/3,
+-export([bin/1, recv/2, recv/3,  quick_active_recv/3,
+         send/4, send/2, encode/3,
+         quick_stats/4, quick_stats/5, quick_stats_append/3,
          decode_packet/1, decode_packet_ext/1,
          get_keys/5, get_xattrs/4,
          maybe_encode_uid_in_key/3]).
@@ -49,7 +50,7 @@ recv_with_data(Sock, Len, TimeoutRef, Data) ->
             end
     end.
 
-quick_stats_recv(Sock, Data, TimeoutRef) ->
+quick_active_recv(Sock, Data, TimeoutRef) ->
     {ok, Hdr, Rest} = recv_with_data(Sock, ?HEADER_LEN, TimeoutRef, Data),
     {Header, Entry} = decode_header(res, Hdr),
     #mc_header{extlen = ExtLen,
@@ -102,7 +103,7 @@ quick_stats(Sock, Key, CB, CBState, Timeout) ->
     end.
 
 quick_stats_loop_enter(Sock, CB, CBState, TimeoutRef, Data) ->
-    {ok, Header, Entry, Rest} = quick_stats_recv(Sock, Data, TimeoutRef),
+    {ok, Header, Entry, Rest} = quick_active_recv(Sock, Data, TimeoutRef),
     %% Assume that only first entry might indicate an error
     case Header#mc_header.status of
         ?SUCCESS ->
@@ -113,7 +114,7 @@ quick_stats_loop_enter(Sock, CB, CBState, TimeoutRef, Data) ->
     end.
 
 quick_stats_loop(Sock, CB, CBState, TimeoutRef, Data) ->
-    {ok, Header, Entry, Rest} = quick_stats_recv(Sock, Data, TimeoutRef),
+    {ok, Header, Entry, Rest} = quick_active_recv(Sock, Data, TimeoutRef),
     quick_stats_loop_process_entry(Sock, CB, CBState, TimeoutRef,
                                    Header, Entry, Rest).
 
@@ -320,7 +321,7 @@ get_keys_recv(Sock, TRef, F, InitAcc, List) ->
     {Acc, <<>>, Status} =
         lists:foldl(
           fun (Elem, {Acc, Data, ok}) ->
-                  {ok, Header, Entry, Data2} = quick_stats_recv(Sock, Data, TRef),
+                  {ok, Header, Entry, Data2} = quick_active_recv(Sock, Data, TRef),
                   try
                       Acc2 = F(Elem, Header, Entry, Acc),
                       {Acc2, Data2, ok}
@@ -329,7 +330,7 @@ get_keys_recv(Sock, TRef, F, InitAcc, List) ->
                           {Error, Data2, failed}
                   end;
               (_Elem, {Acc, Data, failed}) ->
-                  {ok, _Header, _Entry, Data2} = quick_stats_recv(Sock, Data, TRef),
+                  {ok, _Header, _Entry, Data2} = quick_active_recv(Sock, Data, TRef),
                   {Acc, Data2, failed}
           end, {InitAcc, <<>>, ok}, List),
 

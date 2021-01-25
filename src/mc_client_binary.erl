@@ -19,10 +19,11 @@
 -include("mc_constants.hrl").
 -include("mc_entry.hrl").
 
+-define(MAX_MC_TIMEOUT, 300000).
 %% we normally speak to local memcached when issuing delete
 %% vbucket. Thus timeout needs to only cover ep-engine going totally
 %% insane.
--define(VB_DELETE_TIMEOUT, 300000).
+-define(VB_DELETE_TIMEOUT, ?MAX_MC_TIMEOUT).
 -define(NO_BUCKET, "@no bucket@").
 
 -export([auth/2,
@@ -33,6 +34,7 @@
          create_bucket/4,
          delete_bucket/3,
          delete_vbucket/2,
+         delete_vbuckets/2,
          sync_delete_vbucket/2,
          flush/1,
          hello_features/1,
@@ -45,6 +47,7 @@
          deselect_bucket/1,
          set_vbucket/3,
          set_vbucket/4,
+         set_vbuckets/2,
          stats/1,
          stats/4,
          get_meta/3,
@@ -234,12 +237,19 @@ delete_bucket(Sock, BucketName, Options) ->
 
 delete_vbucket(Sock, VBucket) ->
     case cmd(?CMD_DELETE_VBUCKET, Sock, undefined, undefined,
-             {#mc_header{vbucket = VBucket}, #mc_entry{}},
+             construct_delete_vbucket_packet(VBucket),
              ?VB_DELETE_TIMEOUT) of
         {ok, #mc_header{status=?SUCCESS}, _ME, _NCB} ->
             ok;
         Response -> process_error_response(Response)
     end.
+
+delete_vbuckets(Sock, VBs) ->
+    pipeline_send_recv(Sock, ?CMD_DELETE_VBUCKET,
+                       fun construct_delete_vbucket_packet/1, VBs).
+
+construct_delete_vbucket_packet(VBucket) ->
+    {#mc_header{vbucket = VBucket}, #mc_entry{}}.
 
 sync_delete_vbucket(Sock, VBucket) ->
     case cmd(?CMD_DELETE_VBUCKET, Sock, undefined, undefined,
@@ -383,6 +393,13 @@ set_vbucket(Sock, VBucket, VBucketState) ->
     set_vbucket(Sock, VBucket, VBucketState, undefined).
 
 set_vbucket(Sock, VBucket, VBucketState, VBInfo) ->
+    case cmd(?CMD_SET_VBUCKET, Sock, undefined, undefined,
+             construct_set_vbucket_packet({VBucket, VBucketState, VBInfo})) of
+        {ok, #mc_header{status=?SUCCESS}, _ME, _NCB} -> ok;
+        Response -> process_error_response(Response)
+    end.
+
+construct_set_vbucket_packet({VBucket, VBucketState, VBInfo}) ->
     State = encode_vbucket_state(VBucketState),
     Header = #mc_header{vbucket = VBucket},
     Entry = case VBInfo of
@@ -391,9 +408,55 @@ set_vbucket(Sock, VBucket, VBucketState, VBInfo) ->
                                ext = State,
                                datatype = ?MC_DATATYPE_JSON}
             end,
-    case cmd(?CMD_SET_VBUCKET, Sock, undefined, undefined, {Header, Entry}) of
-        {ok, #mc_header{status=?SUCCESS}, _ME, _NCB} -> ok;
-        Response -> process_error_response(Response)
+    {Header, Entry}.
+
+set_vbuckets(Sock, ToSet) ->
+    pipeline_send_recv(Sock, ?CMD_SET_VBUCKET,
+                       fun construct_set_vbucket_packet/1, ToSet).
+
+pipeline_send_recv(Sock, Opcode, EncodeFun, Requests) ->
+    pipeline_send_recv(Sock, Opcode, EncodeFun, Requests, ?MAX_MC_TIMEOUT).
+
+pipeline_send_recv(Sock, Opcode, EncodeFun, Requests, Timeout) ->
+    ToSend = [EncodeFun(R) || R <- Requests],
+    RVs = do_pipeline_send_recv(Sock, Opcode, ToSend, Timeout),
+    Bad = lists:filtermap(
+            fun ({_, {#mc_header{status = ?SUCCESS}, _}}) ->
+                    false;
+                ({Req, {Header, Entry}}) ->
+                    {true, {Req, process_error_response(Header, Entry)}}
+            end, lists:zip(Requests, RVs)),
+    case Bad of
+        [] -> ok;
+        _ -> {errors, Bad}
+    end.
+
+-spec do_pipeline_send_recv(port(), integer(), [{#mc_header{}, #mc_entry{}}],
+                            integer()) -> [{#mc_header{}, #mc_entry{}}].
+do_pipeline_send_recv(Sock, Opcode, Requests, Timeout) ->
+    EncodedStream = lists:map(
+                      fun ({Header, Entry}) ->
+                              NewHeader = Header#mc_header{opcode = Opcode},
+                              NewEntry = ext(Opcode, Entry),
+                              mc_binary:encode(req, NewHeader, NewEntry)
+                      end, Requests),
+    ok = mc_binary:send(Sock, EncodedStream),
+    TRef = make_ref(),
+    Timer = erlang:send_after(Timeout, self(), TRef),
+    try
+        {RV, <<>>} = lists:foldl(
+                       fun (_, {Acc, Rest}) ->
+                               {ok, Header, Entry, Extra} =
+                                   mc_binary:quick_active_recv(Sock, Rest,
+                                                               TRef),
+                               %% Assert we receive the same opcode.
+                               Opcode = Header#mc_header.opcode,
+                               {[{Header, Entry} | Acc], Extra}
+                       end, {[], <<>>}, Requests),
+        lists:reverse(RV)
+    after
+        erlang:cancel_timer(Timer),
+        misc:flush(TRef)
     end.
 
 compact_vbucket(Sock, VBucket, PurgeBeforeTS, PurgeBeforeSeqNo, DropDeletes) ->
@@ -688,10 +751,12 @@ map_status(?SUBDOC_INVALID_XATTR_ORDER) ->
 map_status(_) ->
     unknown.
 
--spec process_error_response(any()) ->
-                                    mc_error().
-process_error_response({ok, #mc_header{status=Status}, #mc_entry{data=Msg},
-                        _NCB}) ->
+-spec process_error_response(any()) -> mc_error().
+process_error_response({ok, Header, Entry, _NCB}) ->
+    process_error_response(Header, Entry).
+
+-spec process_error_response(#mc_header{}, #mc_entry{}) -> mc_error().
+process_error_response(#mc_header{status=Status}, #mc_entry{data=Msg}) ->
     {memcached_error, map_status(Status), Msg}.
 
 wait_for_seqno_persistence(Sock, VBucket, SeqNo) ->
