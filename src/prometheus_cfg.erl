@@ -25,7 +25,8 @@
 
 %% API
 -export([start_link/0, authenticate/2, settings/0, wipe/0, storage_path/1,
-         get_auth_info/0, default_settings/0, derived_metrics/1]).
+         get_auth_info/0, default_settings/0, derived_metrics/2,
+         derived_metrics_interval/1]).
 
 -export_type([stats_settings/0]).
 
@@ -510,6 +511,12 @@ code_change(_OldVsn, State, _Extra) ->
 format_status(_Opt, [_PDict, #s{cur_settings = Settings} = State]) ->
     State#s{cur_settings = sanitize_settings(Settings)}.
 
+derived_metrics_interval(Settings) ->
+    case proplists:get_value(derived_metrics_interval, Settings) of
+        N when N =< 0 -> proplists:get_value(scrape_interval, Settings);
+        N -> N
+    end.
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -760,7 +767,8 @@ ensure_prometheus_config(Settings) ->
                             [{Filename :: string(), Yaml :: yaml:yaml_term()}].
 generate_rules_configs(Settings) ->
     Targets = proplists:get_value(targets, Settings, []),
-    Metrics = lists:append([derived_metrics(Name) || {Name, _} <- Targets]),
+    Metrics = lists:append([derived_metrics(Name, Settings)
+                               || {Name, _} <- Targets]),
     FilteredMetrics =
         case proplists:get_value(derived_metrics_filter, Settings) of
             all -> Metrics;
@@ -769,12 +777,7 @@ generate_rules_configs(Settings) ->
         end,
     case length(FilteredMetrics) > 0 of
         true ->
-            RulesInterval =
-                case proplists:get_value(derived_metrics_interval, Settings) of
-                    N when N =< 0 ->
-                        proplists:get_value(scrape_interval, Settings);
-                    N -> N
-                end,
+            RulesInterval = derived_metrics_interval(Settings),
             File = proplists:get_value(rules_config_file, Settings),
             FullPath = filename:join(path_config:component_path(data, "config"),
                                      File),
@@ -1051,7 +1054,7 @@ samples_per_second_quota(Settings) ->
 %% It's important to preserve job and instance labels when calculating derived
 %% metrics, as other pieces of code may assume those metrics exist. For example,
 %% removing of job label may lead to a stat not being decimated.
-derived_metrics(n1ql) ->
+derived_metrics(n1ql, _) ->
     [{"n1ql_avg_req_time",
       "n1ql_request_time / ignoring(name) n1ql_requests"},
      {"n1ql_avg_svc_time",
@@ -1060,7 +1063,7 @@ derived_metrics(n1ql) ->
       "n1ql_result_size / ignoring(name) n1ql_requests"},
      {"n1ql_avg_result_count",
       "n1ql_result_count / ignoring(name) n1ql_requests"}];
-derived_metrics(index) ->
+derived_metrics(index, _) ->
     [{"index_ram_percent",
       "(index_memory_used_total / ignoring(name) index_memory_quota) * 100"},
      {"index_remaining_ram",
@@ -1075,7 +1078,7 @@ derived_metrics(index) ->
                                              "index_frag_percent) "
       "/ ignoring(name) "
       "sum without(index, collection, scope) (index_disk_size)"}];
-derived_metrics(kv) ->
+derived_metrics(kv, _) ->
     [{"couch_total_disk_size",
       "couch_docs_actual_disk_size + ignoring(name) "
       "couch_views_actual_disk_size"},
@@ -1126,11 +1129,11 @@ derived_metrics(kv) ->
      {"kv_xdc_ops",
       "sum without(op, result) (irate(kv_ops{op=~`del_meta|get_meta|"
                                                  "set_meta`}[5m]))"}];
-derived_metrics(xdcr) ->
+derived_metrics(xdcr, _) ->
     [{"xdcr_percent_completeness",
       "(xdcr_docs_processed_total * 100) / ignoring (name) "
       "(xdcr_changes_left_total + ignoring(name) xdcr_docs_processed_total)"}];
-derived_metrics(eventing) ->
+derived_metrics(eventing, _) ->
     [{"eventing_processed_count",
       "eventing_timer_callback_success + ignoring(name) "
       "eventing_on_delete_success + ignoring(name) "
@@ -1146,8 +1149,28 @@ derived_metrics(eventing) ->
                 "eventing_on_update_failure|"
                 "eventing_timer_callback_failure|"
                 "eventing_timeout_count`})"}];
-derived_metrics(_) ->
+derived_metrics(ns_server, Settings) ->
+    [{"cm_failover_safeness_level", failover_safeness_level_promql(Settings)}];
+derived_metrics(_, _) ->
     [].
+
+failover_safeness_level_promql(Settings) ->
+    Interval = derived_metrics_interval(Settings),
+    %% Rate needs at least 2 samples, so we need 2 intervals minimum,
+    %% Add 1 extra to make sure it works in case of a small delay
+    RateInterval = 3 * Interval,
+    %% Normally look back for 60 s, but if collection interval is long, check
+    %% 2 most recent samples
+    LookBackInterval = max(60, Interval * 2),
+
+    DrainTime = "kv_dcp_items_remaining{connection_type=`replication`} "
+                "/ ignoring(name) "
+                "irate(kv_dcp_items_sent{connection_type=`replication`}[~bs])",
+
+    lists:flatten(io_lib:format(
+                    "1 - (" ++ DrainTime ++ " > bool 1) * "
+                    "(max_over_time((" ++ DrainTime ++ ")[~bs:~bs]) > bool 2)",
+                    [RateInterval, RateInterval, LookBackInterval, Interval])).
 
 init_pruning_timer(#s{cur_settings = Settings} = State) ->
     Levels = proplists:get_value(decimation_defs, Settings),
@@ -1656,7 +1679,8 @@ prometheus_derived_metrics_config_test() ->
       RulesConfig([{derived_metrics_filter, all}], [kv])),
 
     ?assertMatch(
-      #{groups := [#{rules := [#{record := <<"xdcr_", _/binary>>}]}]},
+      #{groups := [#{rules := [#{record := <<"cm_failover_safeness_level">>},
+                               #{record := <<"xdcr_", _/binary>>}]}]},
       RulesConfig([{derived_metrics_filter, all}], [])),
 
     ?assertMatch(

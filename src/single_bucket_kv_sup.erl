@@ -57,10 +57,7 @@ child_specs(BucketName) ->
       permanent, 1000, worker, [stats_reader]},
      {{goxdcr_stats_reader, BucketName},
       {stats_reader, start_link, ["@xdcr-" ++ BucketName]},
-      permanent, 1000, worker, [stats_reader]},
-     {{failover_safeness_level, BucketName},
-      {failover_safeness_level, start_link, [BucketName]},
-      permanent, 1000, worker, [failover_safeness_level]}
+      permanent, 1000, worker, [stats_reader]}
     ].
 
 init([BucketName]) ->

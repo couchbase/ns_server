@@ -23,6 +23,7 @@
          for_alerts/0,
          current_items_total/1,
          current_items_total/2,
+         failover_safeness_level/1,
          latest/2]).
 
 -define(DEFAULT_TIMEOUT, 5000).
@@ -167,6 +168,26 @@ for_alerts() ->
     misc:groupby_map(fun ({{Bucket, Name}, Value}) ->
                          {Bucket, {Name, Value}}
                      end, Res).
+
+failover_safeness_level(Bucket) ->
+    Settings = prometheus_cfg:settings(),
+    Interval = prometheus_cfg:derived_metrics_interval(Settings),
+    % Requesting range-vector in order to retrieve real timestamps
+    % for datapoints, instead of just "now"
+    QueryIOL = io_lib:format("cm_failover_safeness_level{bucket=`~s`}[~bs]",
+                             [Bucket, Interval * 2]),
+    Query = lists:flatten(QueryIOL),
+    case prometheus:query(Query, undefined, ?DEFAULT_TIMEOUT, Settings) of
+        {ok, [{Props} | _]} ->
+            Values = proplists:get_value(<<"values">>, Props),
+            [Timestamp, Val] = lists:last(Values),
+            case prometheus:parse_value(Val) of
+                N when is_number(N) -> {ok, {Timestamp, Interval, round(N)}};
+                _ -> {error, invalid_value}
+            end;
+        {ok, []} -> {error, not_available};
+        {error, _} -> {error, stats_request_failed}
+    end.
 
 latest(Query, NameParser) ->
     latest(Query, NameParser, ?DEFAULT_TIMEOUT).

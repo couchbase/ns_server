@@ -13,172 +13,42 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 %%
-%% @doc This gen_event handler holds failover safeness level for some
-%% particular bucket. We estimate failover safeness as approximation
-%% of time required to replicate backlog of un-replicated yet items.
+%% @doc If time required to replicate backlog of un-replicated yet items
+%% (drain time) is less than 2 seconds the failover is considered safe (green).
+%% Otherwise, if the drain time is greater than 2 second the level is yellow.
 %%
-%% The approach is to subscribe to stats and keep moving averages of
-%% replication streams backlog and replication streams drain
-%% rate. After each new sample we update averages and compute
-%% estimated time to drain all replication backlog. If that estimate
-%% is higher then 2000 ms we switch to 'yellow' level. Switching back
-%% to green has much lower bound to avoid too frequent changing of
-%% levels (i.e. hysteresis).
+%% We also consider the level to be yellow if the drain time is higher than 1s
+%% and has spiked higher than 2s at least once for the most recent minute
+%% (in order to avoid too frequent changing of levels).
 %%
-%% We also keep track of last time we've seen any stats sample. And we
-%% use it when asked about current safeness level. If our information
-%% is too stale (5 or more seconds old), then we respond with 'stale'
-%% level.
+%% If our information is too stale (> 2 stats collection intervals), then we
+%% respond with 'stale' level.
 
 -module(failover_safeness_level).
 
--behaviour(gen_event).
-
 -include("ns_stats.hrl").
 
--define(TO_YELLOW_SECONDS, 2.0).
--define(FROM_YELLOW_SECONDS, 1.0).
--define(STALENESS_THRESHOLD, 5000).
--define(TOO_SMALL_BACKLOG, 0.5).
-
-%% window in milliseconds of averaging of stats used in computation of
-%% failover safeness
--define(AVERAGING_WINDOW, 7000).
-
--export([start_link/1, get_value/1,
-         build_local_safeness_info/1,
+-export([build_local_safeness_info/1,
          extract_replication_uptodateness/4]).
-
-%% gen_event callbacks
--export([init/1, handle_event/2, handle_call/2,
-         handle_info/2, terminate/2, code_change/3]).
-
--record(safeness_info,
-        {backlog_size :: moving_average:moving_average(),
-         drain_rate :: moving_average:moving_average(),
-         safeness_level = unknown :: yellow | green | unknown
-        }).
-
--record(state,
-        {bucket_name :: bucket_name(),
-         dcp_info :: #safeness_info{},
-         last_update_local_clock :: non_neg_integer()
-        }).
-
-start_link(BucketName) ->
-    misc:start_event_link(
-      fun() ->
-              ok = gen_event:add_sup_handler(ns_stats_event,
-                                             {?MODULE, {?MODULE, BucketName}},
-                                             [BucketName])
-      end).
 
 -spec get_value(bucket_name()) ->
                        stale | unknown | green | yellow.
 get_value(BucketName) ->
-    case gen_event:call(ns_stats_event, {?MODULE, {?MODULE, BucketName}}, get_level, 2000) of
-        {ok, Value} -> Value;
-        _ -> unknown
-    end.
-
-init([BucketName]) ->
-    MovingAvg = moving_average:new(?AVERAGING_WINDOW),
-    DcpInfo   = #safeness_info{backlog_size = MovingAvg,
-                               drain_rate   = MovingAvg},
-
-    {ok, #state{bucket_name = BucketName,
-                dcp_info = DcpInfo,
-                last_update_local_clock = erlang:monotonic_time()}}.
-
-terminate(_Reason, _State)     -> ok.
-code_change(_OldVsn, State, _) -> {ok, State}.
-
-handle_event({stats, StatsBucket, #stat_entry{timestamp = TS, values = Values}},
-             #state{bucket_name = StatsBucket,
-                    dcp_info = DcpInfo} = State) ->
-    NewDcpInfo =
-         new_safeness_info(orddict:find(ep_dcp_replica_items_remaining, Values),
-                           orddict:find(ep_dcp_replica_items_sent, Values),
-                           TS,
-                           DcpInfo),
-
-    {ok, State#state{dcp_info = NewDcpInfo,
-                     last_update_local_clock = erlang:monotonic_time()}};
-
-handle_event(_, State) ->
-    {ok, State}.
-
-
-new_safeness_level(Level, BacklogSize, DrainRate) when Level =/= green ->
-    try BacklogSize < ?TOO_SMALL_BACKLOG orelse BacklogSize / DrainRate =< ?FROM_YELLOW_SECONDS of
-        true -> green;
-        _ -> yellow
-    catch error:badarith ->
-            %% division by zero or overflow/underflow (erlang doesn't have infinities)
-            case BacklogSize > DrainRate of
+    case stats_interface:failover_safeness_level(BucketName) of
+        {ok, {LastUpdateTimestamp, UpdateInterval, Value}} ->
+            Now = erlang:system_time(second),
+            case Now - LastUpdateTimestamp < 2 * UpdateInterval of
+                true when Value == 1 -> green;
+                true when Value == 0 -> yellow;
+                false -> stale;
                 true ->
-                    %% overflow
-                    yellow;
-                _ ->
-                    %% underflow or 0/0
-                    green
-            end
-    end;
-new_safeness_level(green, BacklogSize, DrainRate) ->
-    try BacklogSize >= ?TOO_SMALL_BACKLOG andalso BacklogSize / DrainRate > ?TO_YELLOW_SECONDS of
-        true -> yellow;
-        _ -> green
-    catch error:badarith ->
-            %% division by zero or overflow/underflow (erlang doesn't have infinities)
-            case BacklogSize > DrainRate of
-                true ->
-                    %% overflow
-                    yellow;
-                _ ->
-                    %% underflow or 0/0
-                    green
-            end
+                    ?log_error("Unexpected failover_safeness_level(~p): ~p",
+                               [BucketName, Value]),
+                    unknown
+            end;
+        {error, not_available} -> stale;
+        {error, _} -> unknown
     end.
-
-new_safeness_info({ok, BacklogSize}, {ok, DrainRate}, TS,
-                  #safeness_info{backlog_size   = BacklogSizeAvg,
-                                 drain_rate     = DrainRateAvg,
-                                 safeness_level = SafenessLevel}) ->
-
-    NewBacklogSizeAvg   = moving_average:feed(BacklogSize, TS, BacklogSizeAvg),
-    NewBacklogSizeValue = moving_average:get_estimate(NewBacklogSizeAvg),
-
-    NewDrainRateAvg   = moving_average:feed(DrainRate, TS, DrainRateAvg),
-    NewDrainRateValue = moving_average:get_estimate(NewDrainRateAvg),
-
-    NewSafenessLevel = new_safeness_level(SafenessLevel,
-                                          NewBacklogSizeValue,
-                                          NewDrainRateValue),
-
-    #safeness_info{backlog_size   = NewBacklogSizeAvg,
-                   drain_rate     = NewDrainRateAvg,
-                   safeness_level = NewSafenessLevel};
-new_safeness_info(_, _, _, Info) ->
-    Info.
-
-handle_call(get_level, #state{last_update_local_clock = UpdateTS,
-                              dcp_info = #safeness_info{safeness_level = DcpLevel}} = State) ->
-    Now        = erlang:monotonic_time(),
-    TimePassed = erlang:convert_time_unit(Now - UpdateTS, native, millisecond),
-
-    RV = case TimePassed > ?STALENESS_THRESHOLD of
-             true ->
-                 stale;
-             _ ->
-                 DcpLevel
-         end,
-    {ok, {ok, RV}, State};
-handle_call(get_state, State) ->
-    {ok, State, State}.
-
-
-handle_info(_Info, State) ->
-    {ok, State}.
 
 %% Builds local replication safeness information. ns_heart normally
 %% broadcasts it with heartbeats. This information from all nodes can
@@ -186,7 +56,7 @@ handle_info(_Info, State) ->
 %% node.
 build_local_safeness_info(BucketNames) ->
     ReplicationsSafeness =
-        [{Name, failover_safeness_level:get_value(Name)} || Name <- BucketNames],
+        [{Name, get_value(Name)} || Name <- BucketNames],
 
     %% [{BucketName, [{SrcNode0, HashOfVBucketsReplicated0}, ..other nodes..]}, ..other buckets..]
     IncomingReplicationConfs =

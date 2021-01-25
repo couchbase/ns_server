@@ -681,7 +681,8 @@ verify_derived_metrics(Metrics) ->
 
 all_derived_metrics() ->
     Services = [S || {S, _} <- all_services()],
-    [N || S <- Services, {N, _} <- prometheus_cfg:derived_metrics(S)].
+    Settings = prometheus_cfg:settings(),
+    [N || S <- Services, {N, _} <- prometheus_cfg:derived_metrics(S, Settings)].
 
 all_services() ->
     InstallType = case cluster_compat_mode:is_enterprise() of
