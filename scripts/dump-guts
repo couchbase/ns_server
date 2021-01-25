@@ -591,7 +591,9 @@ main_with_everything(StaticTerms, NSConfig, CouchInisPList, Node) ->
 
     Nodes = [node_host(N) || N <- search_config(NSConfig, nodes_wanted, [])],
 
-    Services = search_config_for_node(NSConfig, Node, services, [kv]),
+    %% Assume all services are available on all nodes. This is a workaround
+    %% until we're able to read information from chronicle
+    Services = [kv, n1ql, index, fts, cbas, eventing, backup],
 
     Candidates = [{n1ql, query_port, 8093},
                   {index, indexer_http_port, 9102},
