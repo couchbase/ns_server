@@ -50,7 +50,6 @@
     "oclazyload": "1.1.0",
     "ramda": "0.26.1",
     "rxjs": "6.5.3",
-    "rxjs-pubsub": "^0.1.2",
     "sortablejs": "1.10.2",
     "ui-select": "0.19.8",
     "zone.js": "^0.9.1"
@@ -104,7 +103,6 @@
       "@ng-bootstrap/ng-bootstrap",
       "rxjs",
       "rxjs/operators",
-      "rxjs-pubsub",
       "@uirouter/rx",
       "@uirouter/core",
       "@uirouter/angular",
