@@ -338,6 +338,7 @@ roles() ->
        {desc, <<"Can administer all Full Text Search features. This user can "
                 "access the web console. This user can read some data.">>}],
       [{[{bucket, bucket_name}, fts], [read, write, manage]},
+       {[{bucket, bucket_name}, collections], [read]},
        {[settings, fts], [read, write, manage]},
        {[ui], [read]},
        {[pools], [read]},
