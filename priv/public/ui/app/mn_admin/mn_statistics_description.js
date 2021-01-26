@@ -49,7 +49,12 @@ var mapping70 = get70Mapping();
 var mapping65 = get65Mapping();
 
 var compat70 = propertiesToArray(compat65.stats)
-    .reduce((acc, statPath) => {
+    .concat([
+      "@kv-.kv_items",
+      "@kv-.kv_collections_mem_used_bytes",
+      "@kv-.kv_disk_size_bytes",
+      "@kv-.kv_collection_ops"
+    ]).reduce((acc, statPath) => {
       if (derivedMetric[statPath]) {
         return acc; //do not show
       }
@@ -71,7 +76,6 @@ var compat70 = propertiesToArray(compat65.stats)
 
       return acc;
     }, {});
-
 
 //per @items Modifier
 var stats70LabelsModifier = {
@@ -196,6 +200,7 @@ function getStatAdditionalConfig(statName) {
   case "@fts-.fts_total_bytes_indexed":
   case "@fts-.fts_total_queries":
   case "@kv-.kv_ops":
+  case "@kv-.kv_collection_ops":
     return {applyFunctions: ["irate", "sum"]};
 
   case "@cbas.cbas_gc_count_total":

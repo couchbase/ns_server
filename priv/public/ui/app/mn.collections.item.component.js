@@ -1,8 +1,9 @@
 import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js'
 import {NgbModal} from "/ui/web_modules/@ng-bootstrap/ng-bootstrap.js"
 import {takeUntil} from '/ui/web_modules/rxjs/operators.js';
-import {Subject} from "/ui/web_modules/rxjs.js";
-import {MnPermissions} from '/ui/app/ajs.upgraded.providers.js';
+import {BehaviorSubject, Subject} from "/ui/web_modules/rxjs.js";
+import {MnPermissions, MnStatisticsNewService,
+        $rootScope} from '/ui/app/ajs.upgraded.providers.js'
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnCollectionsService} from './mn.collections.service.js';
@@ -27,10 +28,13 @@ class MnCollectionsItemComponent extends MnLifeCycleHooksToStream {
   static get parameters() { return [
     MnCollectionsService,
     MnPermissions,
-    NgbModal
+    NgbModal,
+    MnStatisticsNewService,
+    $rootScope
   ]}
 
-  constructor(mnCollectionsService, mnPermissions, modalService) {
+  constructor(mnCollectionsService, mnPermissions, modalService,
+              mnStatisticsNewService, $rootScope) {
     super();
 
     var clickDeleteCollection = new Subject();
@@ -47,6 +51,10 @@ class MnCollectionsItemComponent extends MnLifeCycleHooksToStream {
     this.clickDeleteCollection = clickDeleteCollection;
     this.permissions = mnPermissions.stream;
     this.mnPermissions = mnPermissions;
+    this.mnStatisticsNewService = mnStatisticsNewService;
+    this.mnCollectionsService = mnCollectionsService;
+    this.$scope = $rootScope.$new();
+    this.stats = new BehaviorSubject({});
   }
 
   ngOnInit() {
@@ -56,9 +64,28 @@ class MnCollectionsItemComponent extends MnLifeCycleHooksToStream {
                                                      this.collection.name);
     this.interestingPermissions.forEach(this.mnPermissions.set);
     this.mnPermissions.throttledCheck();
+
+    this.mnStatisticsNewService.subscribeUIStatsPoller({
+      bucket: this.bucketName,
+      scope: this.scopeName,
+      collection: this.collection.name,
+      node: "all",
+      zoom: 3000,
+      step: 1,
+      stats: ["@kv-.kv_items",
+              "@kv-.kv_collections_mem_used_bytes",
+              "@kv-.kv_disk_size_bytes",
+              "@kv-.kv_collection_ops"]
+    }, this.$scope);
+
+    this.$scope.$watch("mnUIStats", stats => this.stats.next(stats ? stats.stats : {}));
+
+    this.interestingStats =
+      this.stats.pipe(this.mnCollectionsService.extractInterestingStatsPipe);
   }
 
   ngOnDestroy() {
+    this.$scope.$destroy();
     this.interestingPermissions.forEach(this.mnPermissions.remove);
   }
 }

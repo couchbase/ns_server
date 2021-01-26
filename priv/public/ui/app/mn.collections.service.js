@@ -86,6 +86,21 @@ class MnCollectionsService {
             shareReplay({refCount: true, bufferSize: 1}));
   }
 
+  extractInterestingStatsPipe(statsStream) {
+    return statsStream.pipe(
+      map(stats => Object.keys(stats).reduce((acc, statName) => {
+        if (stats[statName] && stats[statName]["aggregate"]) {
+          acc[statName] = stats[statName]["aggregate"].values
+            .slice()
+            .reverse()
+            .find(stat => stat != null)[1];
+        }
+        return acc;
+      }, {})),
+      shareReplay({refCount: true, bufferSize: 1}));
+
+  }
+
   createCollectionSelector(options) {
     var filterKey = options.isRolesMode ? "value" : "name";
     var setValueConfig = {emitEvent: false};

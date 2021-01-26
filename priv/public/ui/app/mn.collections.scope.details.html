@@ -6,7 +6,7 @@
 </div>
 <div class="cbui-table inner-table">
   <div class="cbui-table-header">
-    <span class="cbui-table-cell flex-grow-3 text-fine" *ngIf="(collections | async)?.length">
+    <span class="cbui-table-cell flex-grow-3 text-fine">
       <span
          class="sorter"
          [ngClass]="{
@@ -17,8 +17,22 @@
         collection name
       </span>
     </span>
-      <span class="cbui-table-cell"></span>
-      <span class="cbui-table-cell flex-grow-1-5 resp-hide-xsml"></span>
+    <span class="cbui-table-cell">
+      ttl
+    </span>
+    <span class="cbui-table-cell">
+      items
+    </span>
+    <span class="cbui-table-cell">
+      memory used
+    </span>
+    <span class="cbui-table-cell">
+      disk used
+    </span>
+    <span class="cbui-table-cell">
+      ops/sec
+    </span>
+    <span class="cbui-table-cell flex-grow-1-5 resp-hide-xsml"></span>
   </div>
   <span *ngIf="!scope.collections.length" class="zero-content">
     You have no collections yet. Use Add Collection above to start.

@@ -79,6 +79,15 @@ const MnServersServiceProvider = {
   deps: ['$injector']
 };
 
+class MnStatisticsNewService {};
+const MnStatisticsNewServiceProvider = {
+  provide: MnStatisticsNewService,
+  useFactory: function MnStatisticsNewServiceFactory(i) {
+    return i.get('mnStatisticsNewService');
+  },
+  deps: ['$injector']
+};
+
 let ajsUpgradedProviders = [
   $rootScopeProvider,
   $stateProvider,
@@ -88,6 +97,7 @@ let ajsUpgradedProviders = [
   MnAuthServiceProvider,
   MnAlertsServiceProvider,
   MnServersServiceProvider,
+  MnStatisticsNewServiceProvider,
   MnPoolDefaultProvider
 ];
 
@@ -101,5 +111,6 @@ export {
   MnAuthService,
   MnAlertsService,
   MnServersService,
+  MnStatisticsNewService,
   MnPoolDefault
 };

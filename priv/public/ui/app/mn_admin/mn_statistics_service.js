@@ -382,6 +382,12 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
             cfg1.metric.bucket = config.bucket;
           }
         }
+        if (config.scope) {
+          cfg1.metric.scope = config.scope;
+        }
+        if (config.collection) {
+          cfg1.metric.collection = config.collection;
+        }
         if (config.node == "all" && !config.specificStat) {
           cfg1.aggregationFunction = statDesc.aggregationFunction;
         }
