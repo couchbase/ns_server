@@ -339,6 +339,7 @@ roles() ->
                 "access the web console. This user can read some data.">>}],
       [{[{bucket, bucket_name}, fts], [read, write, manage]},
        {[{bucket, bucket_name}, collections], [read]},
+       {[{bucket, bucket_name}, data, docs], [read]},
        {[settings, fts], [read, write, manage]},
        {[ui], [read]},
        {[pools], [read]},
