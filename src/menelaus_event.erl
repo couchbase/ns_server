@@ -146,7 +146,6 @@ is_interesting_to_watchers({{node, _, memcached}, _}) -> true;
 is_interesting_to_watchers({{node, _, membership}, _}) -> true;
 is_interesting_to_watchers({rebalance_status, _}) -> true;
 is_interesting_to_watchers({recovery_status, _}) -> true;
-is_interesting_to_watchers({buckets, _}) -> true;
 is_interesting_to_watchers({nodes_wanted, _}) -> true;
 is_interesting_to_watchers({server_groups, _}) -> true;
 is_interesting_to_watchers({ns_node_disco_events, _, _}) -> true;
@@ -165,7 +164,8 @@ is_interesting_to_watchers({client_cert_auth, _}) -> true;
 is_interesting_to_watchers({audit_uid_change, _}) -> true;
 is_interesting_to_watchers({user_version, _}) -> true;
 is_interesting_to_watchers({group_version, _}) -> true;
-is_interesting_to_watchers({Key, _}) -> collections:key_match(Key) =/= false;
+is_interesting_to_watchers({Key, _}) ->
+    collections:key_match(Key) =/= false orelse ns_bucket:buckets_change(Key);
 is_interesting_to_watchers(_) -> false.
 
 maybe_notify_watchers(Event, State) ->
