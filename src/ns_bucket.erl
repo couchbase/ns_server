@@ -44,6 +44,7 @@
          get_snapshot/1,
          sub_key_match/1,
          buckets_change/1,
+         names_change/1,
          key_filter/0,
          key_filter/1,
          remove_from_snapshot/2,
@@ -151,6 +152,13 @@ buckets_change(Key) ->
         _ ->
             false
     end.
+
+names_change(buckets) ->
+    true;
+names_change(bucket_names) ->
+    true;
+names_change(_) ->
+    false.
 
 get_snapshot() ->
     chronicle_compat:get_snapshot(key_filter()).

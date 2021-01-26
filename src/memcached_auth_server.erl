@@ -58,16 +58,19 @@ init([]) ->
     Self = self(),
     Self ! reconnect,
 
-    EventHandler =
-        fun ({buckets, _V} = Event) ->
-                gen_server:cast(Self, Event);
-            ({ldap_settings, _} = Event) ->
-                gen_server:cast(Self, Event);
-            ({saslauthd_auth_settings, _} = Event) ->
-                gen_server:cast(Self, Event);
-            (_) -> ok
-        end,
-    ns_pubsub:subscribe_link(ns_config_events, EventHandler),
+    chronicle_compat:subscribe_to_key_change(
+      fun (ldap_settings) ->
+              gen_server:cast(Self, check_enabled);
+          (saslauthd_auth_settings) ->
+              gen_server:cast(Self, check_enabled);
+          (Key) ->
+              case ns_bucket:names_change(Key) of
+                  true ->
+                      gen_server:cast(Self, update_bucket_names);
+                  false ->
+                      ok
+              end
+      end),
 
     {ok, #s{buckets = ns_bucket:get_bucket_names(),
             enabled = memcached_config_mgr:is_external_auth_service_enabled()}}.
@@ -75,14 +78,10 @@ init([]) ->
 handle_call(_Request, _From, State) ->
    {reply, unhandled, State}.
 
-handle_cast({buckets, V}, State) ->
-    Configs = proplists:get_value(configs, V),
-    NewBuckets = ns_bucket:get_bucket_names(Configs),
-    {noreply, State#s{buckets = NewBuckets}};
+handle_cast(update_bucket_names, State) ->
+    {noreply, State#s{buckets = ns_bucket:get_bucket_names()}};
 
-handle_cast({Prop, _}, #s{enabled = Enabled} = State)
-        when Prop =:= ldap_settings;
-             Prop =:= saslauthd_auth_settings ->
+handle_cast(check_enabled, #s{enabled = Enabled} = State) ->
     NewEnabled = memcached_config_mgr:is_external_auth_service_enabled(),
     case NewEnabled =:= Enabled of
         true -> {noreply, State};
