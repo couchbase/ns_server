@@ -28,6 +28,7 @@ import { MnXDCRFilterComponent } from "./mn.xdcr.filter.component.js";
 import { MnXDCRSettingsComponent } from "./mn.xdcr.settings.component.js";
 import { MnXDCREditRepComponent } from "./mn.xdcr.edit.rep.component.js";
 import { MnXDCRErrorsComponent } from "./mn.xdcr.errors.component.js";
+import { MnXDCRRepMessageComponent } from "./mn.xdcr.rep.message.component.js";
 
 import { MnDetailStatsDirective } from "./ajs.upgraded.components.js";
 
@@ -121,7 +122,8 @@ class MnXDCRModule {
         MnXDCRSettingsComponent,
         MnXDCRFilterComponent,
         MnXDCRErrorsComponent,
-        MnReplicationStatus
+        MnReplicationStatus,
+        MnXDCRRepMessageComponent
       ],
       imports: [
         MnInputFilterModule,

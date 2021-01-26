@@ -1,0 +1,13 @@
+<div class="zero-content margin-bottom-1" [hidden]="!fromBucket">
+  <span [hidden]="!fromBucket">
+    The bucket <em>{{fromBucket}}</em>
+    will be replicated to
+  </span>
+  <span *ngIf="fromBucket && !toCluster">
+    . . .
+  </span>
+  <span [hidden]="!toCluster">
+    <em>{{toCluster}}</em>.
+    Missing targets on the remote will be ignored and that data will not be replicated.
+  </span>
+</div>

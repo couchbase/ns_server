@@ -74,22 +74,10 @@
              placeholder="type remote bucket name (required)">
         </div>
       </div>
-      <div
-         class="zero-content margin-bottom-1"
-         [hidden]="!form.group.get('fromBucket').value">
-        <span [hidden]="!form.group.get('fromBucket').value">
-          The bucket <em>{{form.group.get('fromBucket').value}}</em>
-          will be replicated to
-        </span>
-        <span *ngIf="form.group.get('fromBucket').value && !form.group.get('toCluster').value">
-          . . .
-        </span>
-        <span [hidden]="!form.group.get('toCluster').value">
-          <em>{{form.group.get('toCluster').value}}</em>.
-          Missing targets on the remote will be ignored and that data
-          will not be replicated.
-        </span>
-      </div>
+
+      <mn-xdcr-rep-message
+        [fromBucket]="form.group.get('fromBucket').value"
+        [toCluster]="form.group.get('toCluster').value"></mn-xdcr-rep-message>
 
       <mn-xdcr-filter
          [xdcrGroup]="form.group"

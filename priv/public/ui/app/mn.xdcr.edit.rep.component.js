@@ -1,6 +1,7 @@
 import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
 import {combineLatest, pipe, BehaviorSubject} from '/ui/web_modules/rxjs.js';
-import {map, withLatestFrom, takeUntil} from '/ui/web_modules/rxjs/operators.js';
+import {map, withLatestFrom, takeUntil, pluck, first} from '/ui/web_modules/rxjs/operators.js';
+import {find, where, includes, flip} from "/ui/web_modules/ramda.js";
 import {UIRouter} from "/ui/web_modules/@uirouter/angular.js";
 import {FormBuilder} from '/ui/web_modules/@angular/forms.js';
 
@@ -40,6 +41,7 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
     this.isEditMode = true;
     this.formBuilder = formBuilder;
     this.mnFormService = mnFormService;
+    this.mnXDCRService = mnXDCRService;
     this.isEnterprise = mnPoolsService.stream.isEnterprise;
     this.compatVersion55 = mnAdminService.stream.compatVersion55;
     this.prepareReplicationSettigns = mnXDCRService.prepareReplicationSettigns.bind(this);
@@ -104,6 +106,11 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
     thisReplicationSettings
       .pipe(takeUntil(this.mnOnDestroy))
       .subscribe(this.unpackReplicationSettings.bind(this));
+
+    this.toCluster = this.mnXDCRService.stream.getRemoteClusters
+      .pipe(map(find(where({uuid: flip(includes)(this.item.target)}))),
+            pluck("name"),
+            first());
   }
 
   unpackReplicationSettings(v) {

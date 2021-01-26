@@ -14,6 +14,9 @@
    class="forms">
   <div class="row flex-left items-stretch resp-flex-column-med margin-bottom-2">
     <div class="width-10">
+      <mn-xdcr-rep-message
+        [fromBucket]="item.source"
+        [toCluster]="toCluster | async"></mn-xdcr-rep-message>
 
       <mn-xdcr-filter
          [xdcrGroup]="form.group"
