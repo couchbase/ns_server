@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2012-2018 Couchbase, Inc.
+%% @copyright 2012-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -40,64 +40,113 @@
 
 -export([start_link/0,
          must_node_vbuckets_dict/1, node_vbuckets_dict/1,
-         node_to_inner_capi_base_url/3, submit_full_reset/0,
+         node_to_inner_capi_base_url/3,
          node_to_capi_base_url/2]).
 
+-export([init/1, handle_call/3, handle_info/2]).
+
+-behaviour(gen_server2).
+
 start_link() ->
-    work_queue:start_link(vbucket_map_mirror, fun mirror_init/0).
+    gen_server2:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-mirror_init() ->
-    ets:new(vbucket_map_mirror, [set, named_table]),
+init([]) ->
     Self = self(),
-    ns_pubsub:subscribe_link(ns_config_events, fun cleaner_loop/2, {Self, []}),
-    submit_full_reset().
+    ets:new(?MODULE, [set, named_table]),
+    chronicle_compat:subscribe_to_key_change(
+      fun is_interesting/1,
+      fun (buckets) ->
+              Self ! invalidate_buckets;
+          (Key) ->
+              case ns_bucket:sub_key_match(Key) of
+                  {true, Bucket, props} ->
+                      Self ! {invalidate_bucket, Bucket};
+                  _ ->
+                      Self ! full_reset
+              end
+      end),
+    Self ! full_reset,
+    {ok, []}.
 
-cleaner_loop({buckets, [{configs, NewBuckets0}]}, {Parent, CurrentBuckets}) ->
-    NewBuckets = lists:sort(NewBuckets0),
+is_interesting(buckets) -> true;
+is_interesting({_, _, capi_port}) -> true;
+is_interesting({_, _, ssl_capi_port}) -> true;
+is_interesting(Key) ->
+    case ns_bucket:sub_key_match(Key) of
+        {true, _, props} ->
+            true;
+        _ ->
+            false
+    end.
+
+handle_info(invalidate_buckets, CurrentBuckets) ->
+    NewBuckets = lists:sort(ns_bucket:get_buckets()),
     ToClean = ordsets:subtract(CurrentBuckets, NewBuckets),
     BucketNames  = [Name || {Name, _} <- ToClean],
-    submit_map_reset(Parent, BucketNames),
-    {Parent, NewBuckets};
-cleaner_loop({{_, _, capi_port}, _Value}, State) ->
-    submit_full_reset(),
-    State;
-cleaner_loop({{_, _, ssl_capi_port}, _Value}, State) ->
-    submit_full_reset(),
-    State;
-cleaner_loop(_, Cleaner) ->
-    Cleaner.
+    [ets:delete(?MODULE, Name) || Name <- BucketNames],
+    {noreply, NewBuckets};
+handle_info({invalidate_bucket, Bucket}, CurrentBuckets) ->
+    ets:delete(?MODULE, Bucket),
+    {noreply, lists:keydelete(Bucket, 1, CurrentBuckets)};
+handle_info(full_reset, _State) ->
+    ets:delete_all_objects(?MODULE),
+    {noreply, []}.
 
-submit_map_reset(Pid, BucketNames) ->
-    work_queue:submit_work(Pid, fun () ->
-                                        [ets:delete(vbucket_map_mirror, Name) || Name <- BucketNames],
-                                        ok
-                                end).
+handle_call({compute_map, BucketName}, _From, State) ->
+    RV =
+        case ets:lookup(?MODULE, BucketName) of
+            [] ->
+                case ns_bucket:get_bucket(BucketName) of
+                    {ok, BucketConfig} ->
+                        case proplists:get_value(map, BucketConfig) of
+                            undefined ->
+                                {error, no_map};
+                            Map ->
+                                NodeToVBuckets =
+                                    compute_map_to_vbuckets_dict(Map),
+                                ets:insert(?MODULE,
+                                           {BucketName, NodeToVBuckets}),
+                                {ok, NodeToVBuckets}
+                        end;
+                    not_present ->
+                        {error, not_present}
+                end;
+            [{_, Dict}] ->
+                {ok, Dict}
+        end,
+    {reply, RV, State};
 
-submit_full_reset() ->
-    work_queue:submit_work(vbucket_map_mirror,
-                           fun () ->
-                                   ets:delete_all_objects(vbucket_map_mirror)
-                           end).
+handle_call({compute_node_base_url, Node, User, Password}, _From, State) ->
+    RV =
+        case capi_utils:compute_capi_port(Node) of
+            undefined ->
+                ets:insert(?MODULE, {{Node, User, Password},
+                                     undefined, false}),
+                undefined;
+            Port ->
+                {RealNode, Schema} = case Node of
+                                         {ssl, V} -> {V, <<"https://">>};
+                                         _ -> {Node, <<"http://">>}
+                                     end,
+                Auth = case {User, Password} of
+                           {undefined, undefined} ->
+                               [];
+                           {_, _} ->
+                               [User, $:, Password, $@]
+                       end,
 
-compute_and_cache_map(BucketName) ->
-    case ets:lookup(vbucket_map_mirror, BucketName) of
-        [] ->
-            case ns_bucket:get_bucket(BucketName) of
-                {ok, BucketConfig} ->
-                    case proplists:get_value(map, BucketConfig) of
-                        undefined ->
-                            {error, no_map};
-                        Map ->
-                            NodeToVBuckets = compute_map_to_vbuckets_dict(Map),
-                            ets:insert(vbucket_map_mirror, {BucketName, NodeToVBuckets}),
-                            {ok, NodeToVBuckets}
-                    end;
-                not_present ->
-                    {error, not_present}
-            end;
-        [{_, Dict}] ->
-            {ok, Dict}
-    end.
+                H = misc:extract_node_address(RealNode),
+                StorePort = case misc:is_localhost(H) of
+                                true  -> Port;
+                                false -> false
+                            end,
+                HostPort = misc:join_host_port(H, Port),
+                Url = iolist_to_binary([Schema, Auth, HostPort]),
+                ets:insert(?MODULE, {{Node, User, Password},
+                                     Url, StorePort}),
+                Url
+        end,
+    {reply, RV, State}.
 
 compute_map_to_vbuckets_dict(Map) ->
     {_, NodeToVBuckets0} =
@@ -114,19 +163,13 @@ compute_map_to_vbuckets_dict(Map) ->
                      lists:reverse(Vbs)
              end, NodeToVBuckets0).
 
-call_compute_map(BucketName) ->
-    work_queue:submit_sync_work(
-      vbucket_map_mirror,
-      fun () ->
-              compute_and_cache_map(BucketName)
-      end).
-
 -spec node_vbuckets_dict(bucket_name()) ->
-                                {ok, dict:dict()} | {error, no_map | not_present}.
+                                {ok, dict:dict()} |
+                                {error, no_map | not_present}.
 node_vbuckets_dict(BucketName) ->
-    case ets:lookup(vbucket_map_mirror, BucketName) of
+    case ets:lookup(?MODULE, BucketName) of
         [] ->
-            call_compute_map(BucketName);
+            gen_server2:call(?MODULE, {compute_map, BucketName});
         [{_, Dict}] ->
             {ok, Dict}
     end.
@@ -140,43 +183,14 @@ must_node_vbuckets_dict(BucketName) ->
     end.
 
 call_compute_node_base_url(Node, User, Password) ->
-    work_queue:submit_sync_work(
-      vbucket_map_mirror,
-      fun () ->
-              case capi_utils:compute_capi_port(Node) of
-                  undefined ->
-                      ets:insert(vbucket_map_mirror, {{Node, User, Password}, undefined, false}),
-                      undefined;
-                  Port ->
-                      {RealNode, Schema} = case Node of
-                                               {ssl, V} -> {V, <<"https://">>};
-                                               _ -> {Node, <<"http://">>}
-                                           end,
-                      Auth = case {User, Password} of
-                                 {undefined, undefined} ->
-                                     [];
-                                 {_, _} ->
-                                     [User, $:, Password, $@]
-                             end,
-
-                      H = misc:extract_node_address(RealNode),
-                      StorePort = case misc:is_localhost(H) of
-                                      true  -> Port;
-                                      false -> false
-                                  end,
-                      HostPort = misc:join_host_port(H, Port),
-                      Url = iolist_to_binary([Schema, Auth, HostPort]),
-                      ets:insert(vbucket_map_mirror, {{Node, User, Password}, Url, StorePort}),
-                      Url
-              end
-      end).
+    gen_server2:call(?MODULE, {compute_node_base_url, Node, User, Password}).
 
 %% maps Node to http://<ip>:<capi-port> as binary
 %%
 %% NOTE: it's not necessarily suitable for sending outside because ip
 %% can be localhost!
 node_to_inner_capi_base_url(Node, User, Password) ->
-    case ets:lookup(vbucket_map_mirror, {Node, User, Password}) of
+    case ets:lookup(?MODULE, {Node, User, Password}) of
         [] ->
             call_compute_node_base_url(Node, User, Password),
             node_to_inner_capi_base_url(Node, User, Password);
@@ -187,7 +201,7 @@ node_to_inner_capi_base_url(Node, User, Password) ->
 -spec node_to_capi_base_url(node() | {ssl, node()},
                             iolist() | binary()) -> undefined | binary().
 node_to_capi_base_url(Node, LocalAddr) ->
-    case ets:lookup(vbucket_map_mirror, {Node, undefined, undefined}) of
+    case ets:lookup(?MODULE, {Node, undefined, undefined}) of
         [] ->
             call_compute_node_base_url(Node, undefined, undefined),
             node_to_capi_base_url(Node, LocalAddr);
