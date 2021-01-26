@@ -191,9 +191,9 @@ build_remote_set_specs(Mod, Node, BucketName, DDocId, ViewName, VBuckets) ->
                                   {Node, []}
                           end,
 
-    MergeURL = iolist_to_binary([vbucket_map_mirror:node_to_inner_capi_base_url(
-                                   Node1, "%40ns_server", atom_to_list(Cookie)),
-                                 MergeHandler]),
+    MergeURL = iolist_to_binary(
+                 [capi_url_cache:get_inner_capi_base_url(Node1, Cookie),
+                  MergeHandler]),
 
     Sets = {[
              {BucketName, {[{<<"view">>, FullViewName},

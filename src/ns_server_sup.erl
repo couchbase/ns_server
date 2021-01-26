@@ -99,6 +99,9 @@ child_specs() ->
      {vbucket_map_mirror, {vbucket_map_mirror, start_link, []},
       permanent, brutal_kill, worker, []},
 
+     {capi_url_cache, {capi_url_cache, start_link, []},
+      permanent, brutal_kill, worker, []},
+
      {bucket_info_cache, {bucket_info_cache, start_link, []},
       permanent, brutal_kill, worker, []},
 

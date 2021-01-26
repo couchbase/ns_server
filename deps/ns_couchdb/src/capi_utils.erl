@@ -35,7 +35,7 @@ compute_capi_port(Node) ->
 %% returns http url to capi on given node with given path
 -spec capi_url_bin(node() | {ssl, node()}, iolist() | binary(), iolist() | binary()) -> undefined | binary().
 capi_url_bin(Node, Path, LocalAddr) ->
-    case vbucket_map_mirror:node_to_capi_base_url(Node, LocalAddr) of
+    case capi_url_cache:get_capi_base_url(Node, LocalAddr) of
         undefined -> undefined;
         X ->
             iolist_to_binary([X, Path])
