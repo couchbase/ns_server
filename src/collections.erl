@@ -43,6 +43,7 @@
          convert_uid_from_memcached/1,
          convert_uid_to_memcached/1,
          key_match/1,
+         key/1,
          key_filter/0,
          key_filter/1,
          get_manifest/2,
