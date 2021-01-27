@@ -75,7 +75,8 @@
          compute_sec_headers/0,
          web_exception/2,
          web_json_exception/2,
-         require_permission/2]).
+         require_permission/2,
+         server_error_report/4]).
 
 %% Internal exports.
 -export([wake_up/4]).
@@ -193,15 +194,18 @@ reply_json(Req, Body, Code, ExtraHeaders) ->
     reply(Req, encode_json(Body), Code,
           [{"Content-Type", "application/json"} | ExtraHeaders]).
 
-reply_server_error(Req, Type, What, Stack) ->
+server_error_report(Req, Type, What, Stack) ->
     Report = ["web request failed",
               {path, mochiweb_request:get(path, Req)},
               {method, mochiweb_request:get(method, Req)},
               {type, Type}, {what, What},
               {trace, Stack}],
+    {<<"Unexpected server error, request logged.">>, Report}.
+
+reply_server_error(Req, Type, What, Stack) ->
+    {Msg, Report} = server_error_report(Req, Type, What, Stack),
     ?log_error("Server error during processing: ~p", [Report]),
-    reply_json(
-      Req, [list_to_binary("Unexpected server error, request logged.")], 500).
+    reply_json(Req, [Msg], 500).
 
 hibernate(Req, M, F, A) when is_atom(M), is_atom(F), is_list(A) ->
     erlang:hibernate(?MODULE, wake_up, [Req, M, F, A]).

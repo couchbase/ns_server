@@ -187,7 +187,20 @@ reply_with_chunked_json_array(Fun, List, Req) ->
                   true -> ok;
                   false -> Write(<<",">>)
               end,
-              Write(ejson:encode(Fun(E))),
+              try ejson:encode(Fun(E)) of
+                  Bin -> Write(Bin)
+              catch
+                  Type:What:Stack ->
+                      {Msg, Report} =
+                          menelaus_util:server_error_report(Req, Type, What,
+                                                            Stack),
+                      ?log_error("Server error during processing: ~p",
+                                 [Report]),
+                      ErrorReply = {[{data, []},
+                                     {errors, [{[{node, node()},
+                                                 {error, Msg}]}]}]},
+                      Write(ejson:encode(ErrorReply))
+              end,
               false
           end, true, List),
     Write(<<"]">>),
