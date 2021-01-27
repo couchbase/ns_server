@@ -2823,7 +2823,7 @@ mn-statistics-chart {
   min-width: 200px;
 }
 .statistics-small:hover {
-  background-color: #f6fafd;
+  background-color: #f6f7f9;
   cursor: pointer;
 }
 .statistics-medium {
@@ -2832,7 +2832,7 @@ mn-statistics-chart {
   margin: .25rem;
 }
 .statistics-medium:hover {
-  background-color: #f6fafd;
+  background-color: #f6f7f9;
   cursor: pointer;
 }
 .statistics-large {
@@ -2841,7 +2841,7 @@ mn-statistics-chart {
   margin: .25rem;
 }
 .statistics-large:hover {
-  background-color: #f6fafd;
+  background-color: #f6f7f9;
   cursor: pointer;
 }
 .statistics-small {
@@ -3056,6 +3056,7 @@ text.charts-nodata {
   display: none;
   border: 1px solid #d1d1d1;
   background-color: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 4px 7px 0 rgba(0,0,0,0.20);
   font-size: .75rem;
   z-index: 1050;
   border-radius: 1rem;
@@ -3168,8 +3169,12 @@ mn-dropdown .menu {
 }
 mn-dropdown .footer {
   padding: 1rem;
-  box-shadow: 0 -1px 3px -1px rgba(0,0,0,0.21);
+  box-shadow: 0 -1px 4px 0 rgba(0,0,0,0.25);
   position: relative;
+}
+input.borderless {
+  border-width: 0 !important;
+  padding: 0 !important;
 }
 mn-dropdown-item {
   background-color: white;
@@ -3262,8 +3267,6 @@ mn-dropdown-item .scenario-controls:hover {
   margin: -.5rem 0;
 }
 .scenario-add input[type=text] {
-  border: 1px solid #efefef;
-  border-radius: 2px;
   position: relative;
   width: 100%;
   height: 32px;
@@ -3276,7 +3279,7 @@ mn-dropdown-item .scenario-controls:hover {
 }
 .scenario-add .icon {
   font-size: 1.5rem;
-  color: #ececec;
+  color: #a1a1a1;
   position: absolute;
   right: .5rem;
   top: .25rem;
@@ -3284,7 +3287,7 @@ mn-dropdown-item .scenario-controls:hover {
 }
 .scenario-add:hover .icon {
   font-size: 1.5rem;
-  color: #999;
+  color: #333;
 }
 input[type=text].scenario-desc  {
   border: 1px solid #d1d1d1;

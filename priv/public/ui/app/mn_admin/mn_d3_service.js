@@ -2,7 +2,7 @@ import angular from "/ui/web_modules/angular.js";
 import _ from "/ui/web_modules/lodash.js";
 import {select} from "/ui/web_modules/d3-selection.js";
 import {bisector} from "/ui/web_modules/d3-array.js";
-import {schemeCategory10} from "/ui/web_modules/d3-scale-chromatic.js";
+import {schemeTableau10} from "/ui/web_modules/d3-scale-chromatic.js";
 import {scaleTime, scaleLinear} from "/ui/web_modules/d3-scale.js";
 import {axisBottom, axisLeft, axisRight} from "/ui/web_modules/d3-axis.js";
 import {line as d3Line} from "/ui/web_modules/d3-shape.js";
@@ -23,7 +23,7 @@ function mnD3ServiceFactory() {
       this.throttledResize = _.throttle(this.resize.bind(this), 30);
       var elmRect = this.getElementRect();
       this.cvsRect = this.getCanvasRect(elmRect);
-      this.colors = this.cht.color || schemeCategory10;
+      this.colors = this.cht.color || schemeTableau10;
 
       //main container
       this.svg =

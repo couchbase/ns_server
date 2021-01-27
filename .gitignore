@@ -60,3 +60,4 @@ tmp
 *.swp
 /src/kv_stats_mappings.erl
 /api_tests/test_cluster_data
+/pylib/__pycache__

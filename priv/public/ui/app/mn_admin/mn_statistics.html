@@ -43,6 +43,7 @@
                  type="text"
                  ng-model="scenarioCtrl.scenario.name"
                  placeholder="new dashboard..."
+                 ng-class="{'borderless cursor-pointer' : !scenarioCtrl.showRestOfMenu}"
                  autocorrect="off"
                  ng-click="scenarioCtrl.showRestOfMenu = true"
                  spellcheck="false"
@@ -68,7 +69,7 @@
                  value="true"
                  ng-model="scenarioCtrl.copyScenario"
                  id="for-bucket-type-current">
-              <label for="for-bucket-type-current">save current charts</label>
+              <label for="for-bucket-type-current">start w/ current charts</label>
               <input
                  type="radio"
                  value="false"

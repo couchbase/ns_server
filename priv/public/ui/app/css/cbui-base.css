@@ -877,7 +877,7 @@ input:-ms-input-placeholder {
 }
 input[type="text"]::placeholder,
 textarea::placeholder {
-  color: #999;
+  color: #555;
 }
 
 input[type="email"][disabled],
