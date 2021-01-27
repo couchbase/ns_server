@@ -254,7 +254,7 @@ format_value(N) when is_integer(N) -> integer_to_binary(N);
 format_value(N) -> float_to_binary(N).
 
 parse_value(<<"NaN">>) -> undefined;
-parse_value(<<"Inf">>) -> infinity;
+parse_value(<<"+Inf">>) -> infinity;
 parse_value(<<"-Inf">>) -> neg_infinity;
 parse_value(B) ->
     try
