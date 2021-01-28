@@ -27,6 +27,9 @@
 -define(MAX_TS, 9999999999999).
 -define(MIN_TS, -?MAX_TS).
 -define(DEFAULT_PROMETHEUS_QUERY_TIMEOUT, 60000).
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 
 params() ->
@@ -242,7 +245,7 @@ validators(Now, Req) ->
     NowSec = Now div 1000,
     [validate_interval(timeWindow, _),
      validator:default(timeWindow, "1m", _),
-     menelaus_web_ui_stats:validate_nodes_v2(nodes, _, Req),
+     validate_nodes_v2(nodes, _, Req),
      validator:default(nodes,
                        ?cut(menelaus_web_node:get_hostnames(Req, any)), _),
      validator:one_of(aggregationFunction, [max, min, avg, sum, none], _),
@@ -254,8 +257,8 @@ validators(Now, Req) ->
      validator:default(step, "10s", _),
      validator:integer(start, ?MIN_TS, ?MAX_TS, _),
      validator:integer('end', ?MIN_TS, ?MAX_TS, _),
-     menelaus_web_ui_stats:validate_negative_ts(start, NowSec, _),
-     menelaus_web_ui_stats:validate_negative_ts('end', NowSec, _),
+     validate_negative_ts(start, NowSec, _),
+     validate_negative_ts('end', NowSec, _),
      validator:greater_or_equal('end', start, _),
      validator:default(start, NowSec - 60, _),
      validator:default('end', NowSec, _),
@@ -319,7 +322,7 @@ read_metrics_response(Ref, Props, StartTimestampMs) ->
     AggFunction = proplists:get_value(aggregationFunction, Props, none),
     Data = prepare_metric_props(merge_metrics(GoodRes, AggFunction)),
     Errors = [{[{node, N},
-                {error, menelaus_web_ui_stats:format_error(R)}]}
+                {error, format_error(R)}]}
                  || {N, R} <- BadRes],
     {[{data, Data}, {errors, Errors}]}.
 
@@ -381,8 +384,7 @@ merge_metrics(NodesResults, AggFunction) ->
                          {aggregationFunction, AggFunction} | NameProps]},
           Timestamps = lists:umerge(lists:map(?cut([TS || [TS, _V] <- _1]),
                                               ListOfValueLists)),
-          Normalize =
-              menelaus_web_ui_stats:normalize_datapoints(Timestamps, _, []),
+          Normalize = normalize_datapoints(Timestamps, _, []),
           ListOfValueLists2 = lists:map(Normalize, ListOfValueLists),
           Aggregated = aggregate_datapoints(AggFunction, ListOfValueLists2),
           Values = lists:zipwith(?cut([_1, _2]), Timestamps, Aggregated),
@@ -392,8 +394,7 @@ merge_metrics(NodesResults, AggFunction) ->
 
 aggregate_datapoints(F, Datapoints) ->
     Fun = fun (L) ->
-              Res = menelaus_web_ui_stats:aggregate(
-                      F, [prometheus:parse_value(E) || E <- L]),
+              Res = aggregate(F, [prometheus:parse_value(E) || E <- L]),
               prometheus:format_value(Res)
           end,
     misc:zipwithN(Fun, Datapoints).
@@ -627,3 +628,139 @@ all_services() ->
     [{S, atom_to_list(ns_cluster_membership:json_service_name(S))}
         || S <- [ns_server, xdcr |
                  ns_cluster_membership:allowed_services(InstallType)]].
+
+validate_nodes_v2(Name, State, Req) ->
+    validator:validate(
+      fun (Nodes) ->
+              {Right, Wrong} =
+                  misc:partitionmap(
+                    fun (HostName) ->
+                            case menelaus_web_node:find_node_hostname(
+                                   HostName, Req, any) of
+                                {error, _} ->
+                                    {right, HostName};
+                                {ok, Node} ->
+                                    {left, {Node, list_to_binary(HostName)}}
+                            end
+                    end, Nodes),
+              case Wrong of
+                  [] ->
+                      {value, Right};
+                  _ ->
+                      {error, io_lib:format("Unknown hostnames: ~p", [Wrong])}
+              end
+      end, Name, State).
+
+normalize_datapoints([], [], Acc) ->
+    lists:reverse(Acc);
+normalize_datapoints([T | Tail1], [[T, V] | Tail2], Acc) ->
+    normalize_datapoints(Tail1, Tail2, [V | Acc]);
+normalize_datapoints([_ | Tail1], Values, Acc) ->
+    normalize_datapoints(Tail1, Values, [<<"NaN">> | Acc]).
+
+aggregate(sum, List) -> foldl2(fun prometheus_sum/2, undefined, List);
+aggregate(max, List) -> foldl2(fun prometheus_max/2, undefined, List);
+aggregate(min, List) -> foldl2(fun prometheus_min/2, undefined, List);
+aggregate(avg, List) ->
+    case aggregate(sum, List) of
+        undefined -> undefined;
+        infinity -> infinity;
+        neg_infinity -> neg_infinity;
+        N -> N / length(List)
+    end.
+
+foldl2(_, Acc, []) -> Acc;
+foldl2(F, Acc, [E | Tail]) ->
+    case F(E, Acc) of
+        {stop, Res} -> Res;
+        {ok, NewAcc} -> foldl2(F, NewAcc, Tail)
+    end.
+
+-ifdef(TEST).
+
+aggregate_test() ->
+    ?assertEqual(undefined, aggregate(sum, [])),
+    ?assertEqual(undefined, aggregate(max, [])),
+    ?assertEqual(undefined, aggregate(min, [])),
+    ?assertEqual(undefined, aggregate(avg, [])).
+
+aggregate_randomized_test() ->
+    RandomList = fun (N, K, Extra) ->
+            L = lists:seq(1,N),
+            Undefined = lists:duplicate(K, undefined),
+            {lists:sum(L), misc:shuffle(L ++ Undefined ++ Extra)}
+        end,
+    lists:foreach(
+      fun (_) ->
+              N = rand:uniform(30),
+              K = rand:uniform(20),
+              {Sum, List} = RandomList(N, K, []),
+              ?assertEqual(Sum, aggregate(sum, List)),
+              ?assertEqual(N, aggregate(max, List)),
+              ?assertEqual(1, aggregate(min, List)),
+              ?assertEqual(Sum / length(List), aggregate(avg, List)),
+
+              {_, List2} = RandomList(N, K, [infinity]),
+              ?assertEqual(infinity, aggregate(sum, List2)),
+              ?assertEqual(infinity, aggregate(max, List2)),
+              ?assertEqual(1, aggregate(min, List2)),
+              ?assertEqual(infinity, aggregate(avg, List2)),
+
+              {_, List3} = RandomList(N, K, [neg_infinity]),
+              ?assertEqual(neg_infinity, aggregate(sum, List3)),
+              ?assertEqual(N, aggregate(max, List3)),
+              ?assertEqual(neg_infinity, aggregate(min, List3)),
+              ?assertEqual(neg_infinity, aggregate(avg, List3)),
+
+              {_, List4} = RandomList(N, K, lists:duplicate(3, neg_infinity) ++
+                                            lists:duplicate(3, infinity)),
+              ?assertEqual(undefined, aggregate(sum, List4)),
+              ?assertEqual(infinity, aggregate(max, List4)),
+              ?assertEqual(neg_infinity, aggregate(min, List4)),
+              ?assertEqual(undefined, aggregate(avg, List4))
+      end, lists:seq(1,1000)).
+-endif.
+
+prometheus_sum(undefined, V) -> {ok, V};
+prometheus_sum(V, undefined) -> {ok, V};
+prometheus_sum(infinity, neg_infinity) -> {stop, undefined};
+prometheus_sum(neg_infinity, infinity) -> {stop, undefined};
+prometheus_sum(infinity, _) -> {ok, infinity};
+prometheus_sum(_, infinity) -> {ok, infinity};
+prometheus_sum(neg_infinity, _) -> {ok, neg_infinity};
+prometheus_sum(_, neg_infinity) -> {ok, neg_infinity};
+prometheus_sum(V1, V2) -> {ok, V1 + V2}.
+
+prometheus_max(undefined, V) -> {ok, V};
+prometheus_max(V, undefined) -> {ok, V};
+prometheus_max(infinity, _) -> {stop, infinity};
+prometheus_max(_, infinity) -> {stop, infinity};
+prometheus_max(V, neg_infinity) -> {ok, V};
+prometheus_max(neg_infinity, V) -> {ok, V};
+prometheus_max(V1, V2) when V1 >= V2 -> {ok, V1};
+prometheus_max(_V1, V2) -> {ok, V2}.
+
+prometheus_min(undefined, V) -> {ok, V};
+prometheus_min(V, undefined) -> {ok, V};
+prometheus_min(neg_infinity, _) -> {stop, neg_infinity};
+prometheus_min(_, neg_infinity) -> {stop, neg_infinity};
+prometheus_min(V, infinity) -> {ok, V};
+prometheus_min(infinity, V) -> {ok, V};
+prometheus_min(V1, V2) when V1 >= V2 -> {ok, V2};
+prometheus_min(V1, _V2) -> {ok, V1}.
+
+validate_negative_ts(Name, Now, State) ->
+    validator:validate(
+      fun (TS) when TS < 0 ->
+              {value, Now + TS};
+          (_) ->
+              ok
+      end, Name, State).
+
+format_error(Bin) when is_binary(Bin) -> Bin;
+format_error(timeout) -> <<"Request timed out">>;
+format_error({exit, {{nodedown, _}, _}}) -> <<"Node is down">>;
+format_error({exit, _}) -> <<"Unexpected server error">>;
+format_error({failed_connect, _}) -> <<"Connect to stats backend failed">>;
+format_error(Unknown) -> misc:format_bin("Unexpected error - ~10000p",
+                                         [Unknown]).

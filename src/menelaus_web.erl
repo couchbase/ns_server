@@ -888,9 +888,6 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["_uistats"] ->
                     {{[ui], read},
                      fun menelaus_stats:handle_ui_stats_post/1};
-                ["_uistats", "v2"] ->
-                    {{[stats], read},
-                     fun menelaus_web_ui_stats:handle_ui_stats_post_v2/1};
                 ["_createStatsSnapshot"] ->
                     {local, fun menelaus_web_prometheus:handle_create_snapshot/1};
                 [?PLUGGABLE_UI, RestPrefix | _] ->

@@ -179,14 +179,6 @@ handle_call({stats_interface, Function, Args}, From, State) ->
           end),
     {noreply, State};
 
-%% Can be called from another node. Introduced in Cheshire-Cat
-handle_call({extract, Query, Start, End, Step, Timeout}, From, State) ->
-    Settings = prometheus_cfg:settings(),
-    Reply = fun (Res) -> gen_server:reply(From, Res) end,
-    prometheus:query_range_async(Query, Start, End, Step, Timeout,
-                                 Settings, Reply),
-    {noreply, State};
-
 handle_call(_Request, _From, State) ->
     {noreply, State}.
 
