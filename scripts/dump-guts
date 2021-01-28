@@ -2,7 +2,7 @@
 %% -*- erlang -*-
 %%
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2013-2020 Couchbase, Inc.
+%% @copyright 2013-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -624,6 +624,7 @@ main_with_everything(StaticTerms, NSConfig, CouchInisPList, Node) ->
                                           "memcached-cert.pem"]),
     LocalSslCertPemPath = filename:join([DataDir, "config",
                                          "local-ssl-cert.pem"]),
+    ChronicleDir = filename:join([DataDir, "config", "chronicle"]),
 
     Ipv6 = is_net_config_ipv6(DistCfgPath),
 
@@ -653,6 +654,7 @@ main_with_everything(StaticTerms, NSConfig, CouchInisPList, Node) ->
          {dist_cfg_path, DistCfgPath},
          {memcached_cert_pem, MemcachedCertPemPath},
          {local_ssl_cert_pem, LocalSslCertPemPath},
+         {chronicle_dir, ChronicleDir},
          {ipv6, Ipv6}],
 
     output([E || {K, V} <- Pairs,

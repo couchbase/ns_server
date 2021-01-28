@@ -2,7 +2,7 @@
 # -*- python -*-
 #
 # @author Couchbase <info@couchbase.com>
-# @copyright 2011-2020 Couchbase, Inc.
+# @copyright 2011-2021 Couchbase, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -2071,6 +2071,13 @@ def main():
         runner.collect_dir(snapshot_dir_path, "./stats_snapshot")
     else:
         log("Error: unable to retrieve statistics")
+
+    # Collect the contents of the chronicle directory
+    chronicle_dir_path = read_guts(guts, "chronicle_dir")
+    if chronicle_dir_path is not None:
+        runner.collect_dir(chronicle_dir_path, "./chronicle")
+    else:
+        log("Error: unable to gather chronicle files")
 
     fts_port = read_guts(guts, "fts_http_port")
     if fts_port:
