@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2019 Couchbase, Inc.
+%% @copyright 2009-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -36,7 +36,6 @@
          hash_password/2,
          auth_info_key/1,
          supported_types/0,
-         config_upgrade_to_55/0,
          get_fallback_salt/0]).
 
 %% callback for token_server
@@ -323,9 +322,6 @@ iterations() ->
 
 supported_types() ->
     [sha512, sha256, sha].
-
-config_upgrade_to_55() ->
-    [{set, scramsha_fallback_salt, crypto:strong_rand_bytes(12)}].
 
 
 -ifdef(TEST).

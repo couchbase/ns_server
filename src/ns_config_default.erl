@@ -104,6 +104,8 @@ default() ->
                 {[], [{log_path, Path}]}
         end,
 
+    ScramshaFallbackSalt = crypto:strong_rand_bytes(12),
+
     [{{node, node(), config_version}, get_current_version()},
      {directory, path_config:component_path(data, "config")},
      {{node, node(), is_enterprise}, IsEnterprise},
@@ -148,6 +150,7 @@ default() ->
      {rest_creds, null},
 
      {client_cert_auth, [{state, "disable"}, {prefixes, []}]},
+     {scramsha_fallback_salt, ScramshaFallbackSalt},
 
      {remote_clusters, []},
      {{node, node(), isasl}, [{path, filename:join(DataDir, ?ISASL_PW)}]},

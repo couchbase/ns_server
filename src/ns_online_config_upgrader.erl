@@ -91,8 +91,7 @@ upgrade(?VERSION_50, Config) ->
 upgrade(?VERSION_51, Config) ->
     {?VERSION_55,
          query_settings_manager:config_upgrade_to_55() ++
-         ns_bucket:config_upgrade_to_55(Config) ++
-         scram_sha:config_upgrade_to_55()};
+         ns_bucket:config_upgrade_to_55(Config)};
 
 upgrade(?VERSION_55, _Config) ->
     {?VERSION_60, []};
