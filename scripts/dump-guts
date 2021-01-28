@@ -593,7 +593,6 @@ main_with_everything(StaticTerms, NSConfig, CouchInisPList, Node) ->
                   find_ports(NSConfig, Node, Services, Candidates)],
 
     {_, DataDir} = lists:keyfind(path_config_datadir, 1, StaticTerms),
-    StatsDir = filename:join(DataDir, "stats"),
     PromStatsSettings = search_config(NSConfig, stats_settings, []),
     PromStoragePath = proplists:get_value(storage_path,
                                           PromStatsSettings,
@@ -630,7 +629,6 @@ main_with_everything(StaticTerms, NSConfig, CouchInisPList, Node) ->
          {memcached_breakpad_minidump_dir, PerNodeMDD},
          {indexer_breakpad_minidump_dir, IndexerMDD},
          {nodes, string:join(Nodes, ",")},
-         {stats_dir, StatsDir},
          {prom_stats_dir, PromStatsDir},
          {localtoken_path, filename:join(DataDir, "localtoken")},
          {users_storage_path, UsersStoragePath},

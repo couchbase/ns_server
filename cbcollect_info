@@ -1067,25 +1067,6 @@ def correct_split(string, splitchar):
     return rv
 
 
-def make_stats_archives_task(guts, initargs_path):
-    escript = exec_name("escript")
-    escript_wrapper = find_script("escript-wrapper")
-    dump_stats = find_script("dump-stats")
-    stats_dir = read_guts(guts, "stats_dir")
-
-    if dump_stats is None or escript_wrapper is None or not stats_dir:
-        return []
-
-    output_file = "stats_archives.json"
-    return AllOsTask("stats archives",
-                     [escript,
-                      escript_wrapper,
-                      "--initargs-path", initargs_path, "--",
-                      dump_stats, stats_dir, output_file],
-                     change_dir=True,
-                     artifacts=[output_file])
-
-
 def make_product_task(guts, initargs_path, memcached_pass, options):
     root = os.path.abspath(os.path.join(initargs_path, "..", "..", "..", ".."))
     dbdir = os.path.realpath(read_guts(guts, "db_dir"))
@@ -1563,7 +1544,6 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
 
         CollectFile("NS Log", read_guts(guts, "ns_log_path")),
 
-        make_stats_archives_task(guts, initargs_path),
         AllOsTask("Phosphor Trace",
                   ["kv_trace_dump",
                    "-H", "%s:%s" % (local_url_addr,
