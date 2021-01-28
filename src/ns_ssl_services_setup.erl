@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2013-2019 Couchbase, Inc.
+%% @copyright 2013-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -37,7 +37,6 @@
          client_cert_auth_state/1,
          get_user_name_from_client_cert/1,
          set_node_certificate_chain/4,
-         upgrade_client_cert_auth_to_51/1,
          ssl_client_opts/0,
          configured_ciphers_names/2,
          honor_cipher_order/1,
@@ -220,10 +219,7 @@ get_sec_setting(Service, Setting, Config, Default) ->
     end.
 
 client_cert_auth(Cfg) ->
-    DefaultValue = case cluster_compat_mode:is_cluster_51() of
-                       true -> [{state, "disable"}, {prefixes, []}];
-                       false -> [{state, "disable"}]
-                   end,
+    DefaultValue = [{state, "disable"}, {prefixes, []}],
     ns_config:search(Cfg, client_cert_auth, DefaultValue).
 
 client_cert_auth() ->
@@ -234,21 +230,6 @@ client_cert_auth_state(Cfg) ->
 
 client_cert_auth_state() ->
     client_cert_auth_state(ns_config:latest()).
-
-upgrade_client_cert_auth_to_51(Config) ->
-    Cca = ns_config:search(Config, client_cert_auth, []),
-    State = proplists:get_value(state, Cca, "disable"),
-    NewCca = case proplists:get_value(path, Cca) of
-                 undefined ->
-                     [{state, State}, {prefixes, []}];
-                 Path ->
-                     Prefix = proplists:get_value(prefix, Cca, ""),
-                     Delimiters = proplists:get_value(delimiter, Cca, ""),
-                     [{state, State}, {prefixes,
-                                       [[{path, Path}, {prefix, Prefix}, {delimiter, Delimiters}]]}]
-             end,
-    [{set, client_cert_auth, NewCca}].
-
 
 %% The list is obtained by running the following openssl command:
 %%
@@ -680,30 +661,25 @@ apply_node_cert_data({user_set, Cert, PKey, CAChain}, Path) ->
 
 -spec get_user_name_from_client_cert(term()) -> string() | undefined | failed.
 get_user_name_from_client_cert(Val) ->
-    case cluster_compat_mode:is_cluster_55() of
-        true ->
-            ClientAuth = ns_ssl_services_setup:client_cert_auth(),
-            {state, State} = lists:keyfind(state, 1, ClientAuth),
-            case Val of
-                {ssl, SSLSock} ->
-                    case {ssl:peercert(SSLSock), State} of
-                        {_, "disable"} ->
-                            undefined;
-                        {{ok, Cert}, _} ->
-                            get_user_name_from_client_cert(Cert, ClientAuth);
-                        {{error, no_peercert}, "enable"} ->
-                            undefined;
-                        {{error, R}, _} ->
-                            ?log_debug("Error getting client certificate: ~p",
-                                       [R]),
-                            failed
-                    end;
-                Cert when is_binary(Cert) ->
+    ClientAuth = ns_ssl_services_setup:client_cert_auth(),
+    {state, State} = lists:keyfind(state, 1, ClientAuth),
+    case Val of
+        {ssl, SSLSock} ->
+            case {ssl:peercert(SSLSock), State} of
+                {_, "disable"} ->
+                    undefined;
+                {{ok, Cert}, _} ->
                     get_user_name_from_client_cert(Cert, ClientAuth);
-                _ ->
-                    undefined
+                {{error, no_peercert}, "enable"} ->
+                    undefined;
+                {{error, R}, _} ->
+                    ?log_debug("Error getting client certificate: ~p",
+                               [R]),
+                    failed
             end;
-        false ->
+        Cert when is_binary(Cert) ->
+            get_user_name_from_client_cert(Cert, ClientAuth);
+        _ ->
             undefined
     end.
 

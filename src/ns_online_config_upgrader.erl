@@ -86,7 +86,6 @@ maybe_upgrade_to_cronicle(_, _) ->
 
 upgrade(?VERSION_50, Config) ->
     {?VERSION_51,
-     ns_ssl_services_setup:upgrade_client_cert_auth_to_51(Config) ++
          ns_bucket:config_upgrade_to_51(Config)};
 
 upgrade(?VERSION_51, Config) ->

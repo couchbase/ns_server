@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2020 Couchbase, Inc.
+%% @copyright 2009-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -146,6 +146,8 @@ default() ->
      %% {rest_creds, {User, {password, {Salt, Mac}}}}
      %% {rest_creds, null} means no login/password auth check.
      {rest_creds, null},
+
+     {client_cert_auth, [{state, "disable"}, {prefixes, []}]},
 
      {remote_clusters, []},
      {{node, node(), isasl}, [{path, filename:join(DataDir, ?ISASL_PW)}]},
