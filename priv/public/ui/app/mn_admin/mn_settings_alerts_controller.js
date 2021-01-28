@@ -47,6 +47,7 @@ function mnSettingsAlertsController($scope, mnHelper, mnPromiseHelper, mnSetting
   vm.testEmail = testEmail;
   vm.submit = submit;
   vm.reloadState = mnHelper.reloadState;
+  vm.togglePopup = togglePopup;
 
   activate();
 
@@ -65,6 +66,9 @@ function mnSettingsAlertsController($scope, mnHelper, mnPromiseHelper, mnSetting
       .catchErrors()
       .showGlobalSuccess("Settings saved successfully!")
       .onSuccess(getState);
+  }
+  function togglePopup(alert) {
+    vm.state.popUpAlerts[alert] = !vm.state.popUpAlerts[alert]
   }
   function getState() {
     return mnPromiseHelper(vm, mnSettingsAlertsService.getAlerts())
@@ -101,6 +105,7 @@ function mnSettingsAlertsController($scope, mnHelper, mnPromiseHelper, mnSetting
       params = _.clone(vm.state);
     }
     params.alerts = mnHelper.checkboxesToList(params.alerts);
+    params.pop_up_alerts = mnHelper.checkboxesToList(params.popUpAlerts);
     params.recipients = params.recipients.replace(/\s+/g, ',');
     params.emailUser = params.emailServer.user;
     params.emailPass = params.emailServer.pass;
@@ -109,6 +114,7 @@ function mnSettingsAlertsController($scope, mnHelper, mnPromiseHelper, mnSetting
     params.emailEncrypt = params.emailServer.encrypt;
     delete params.emailServer;
     delete params.knownAlerts;
+    delete params.popUpAlerts;
     return params;
   }
 }

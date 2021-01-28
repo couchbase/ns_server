@@ -21,11 +21,13 @@ function mnSettingsAlertsService($http, knownAlerts, mnHelper) {
   function testMail(params) {
     params = _.clone(params);
     params.alerts = params.alerts.join(',');
+    params.pop_up_alerts = settings.pop_up_alerts.join(',');
     return $http.post('/settings/alerts/testEmail', params);
   }
   function saveAlerts(settings, params) {
     settings = _.clone(settings);
     settings.alerts = settings.alerts.join(',');
+    settings.pop_up_alerts = settings.pop_up_alerts.join(',');
     return $http.post('/settings/alerts', settings, {params: params});
   }
   function getAlerts() {
@@ -34,6 +36,11 @@ function mnSettingsAlertsService($http, knownAlerts, mnHelper) {
       val.recipients = val.recipients.join('\n');
       val.knownAlerts = _.clone(knownAlerts);
       val.alerts = mnHelper.listToCheckboxes(val.alerts);
+      if (val.pop_up_alerts == "undefined" || !val.pop_up_alerts) {
+        val.popUpAlerts = {}
+      } else {
+        val.popUpAlerts = mnHelper.listToCheckboxes(val.pop_up_alerts);
+      }
 
       return val;
     });
