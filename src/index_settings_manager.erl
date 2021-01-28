@@ -249,10 +249,8 @@ defaults_test() ->
 
 config_upgrade_test() ->
     CmdList = config_upgrade_to_cheshire_cat([]),
-    RedistributeCmd = {set,{metakv,<<"/indexing/settings/config">>},
-                       <<"{\"indexer.settings.rebalance.redistribute_indexes\":false}">>},
-    NumReplicaCmd = {set,{metakv,<<"/indexing/settings/config">>},
-                     <<"{\"indexer.settings.num_replica\":0}">>},
-    ?assert(lists:member(RedistributeCmd, CmdList)),
-    ?assert(lists:member(NumReplicaCmd, CmdList)).
+    [{set, {metakv, Meta}, Data}] = CmdList,
+    ?assertEqual(<<"/indexing/settings/config">>, Meta),
+    ?assertEqual(<<"{\"indexer.settings.rebalance.redistribute_indexes\":false,"
+                   "\"indexer.settings.num_replica\":0}">>, Data).
 -endif.
