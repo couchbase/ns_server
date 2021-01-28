@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2014-2018 Couchbase, Inc.
+%% @copyright 2014-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@
 -export([start_link/0, get_global/0, set_global/1, sync_set_global/1,
          default_audit_json_path/0, get_log_path/0, get_uid/0]).
 
--export([upgrade_descriptors/0, upgrade_to_55/1, get_descriptors/1,
+-export([upgrade_descriptors/0, get_descriptors/1,
          jsonifier/1, get_non_filterable_descriptors/0]).
 
 -record(state, {global,
@@ -324,9 +324,3 @@ read_descriptors() ->
 
 upgrade_descriptors() ->
     [{set, audit_decriptors, lists:ukeysort(1, read_descriptors())}].
-
-upgrade_to_55(Config) ->
-    {value, Current} = ns_config:search(Config, audit),
-    New =
-        misc:update_proplist(Current, [{enabled, []}, {disabled_users, []}]),
-    [{set, audit, New}].
