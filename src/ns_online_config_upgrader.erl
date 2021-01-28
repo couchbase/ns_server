@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2012-2019 Couchbase, Inc.
+%% @copyright 2012-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -93,7 +93,6 @@ upgrade(?VERSION_51, Config) ->
     {?VERSION_55,
      menelaus_web_auto_failover:config_upgrade_to_55(Config) ++
          query_settings_manager:config_upgrade_to_55() ++
-         eventing_settings_manager:config_upgrade_to_55() ++
          ns_bucket:config_upgrade_to_55(Config) ++
          menelaus_users:config_upgrade(?VERSION_55) ++
          ns_audit_cfg:upgrade_to_55(Config) ++

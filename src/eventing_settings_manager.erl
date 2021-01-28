@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2018-2019 Couchbase, Inc.
+%% @copyright 2018-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@
 -export([start_link/0,
          get_from_config/3,
          update_txn/1,
-         config_upgrade_to_55/0
+         config_default/0
         ]).
 
 -export([cfg_key/0,
@@ -40,13 +40,18 @@ cfg_key() ->
     {metakv, <<"/eventing/settings/config">>}.
 
 is_enabled() ->
-    cluster_compat_mode:is_cluster_55().
+    true.
 
 on_update(_Key, _Value) ->
     ok.
 
 known_settings() ->
     [{memoryQuota, id_lens(<<"ram_quota">>)}].
+
+config_default() ->
+    {cfg_key(), json_settings_manager:build_settings_json(
+                  default_settings(), dict:new(),
+                  known_settings())}.
 
 default_settings() ->
     [{memoryQuota, 256}].
@@ -56,8 +61,3 @@ get_from_config(Config, Key, Default) ->
 
 update_txn(Props) ->
     json_settings_manager:update_txn(?MODULE, Props).
-
-config_upgrade_to_55() ->
-    [{set, cfg_key(),
-      json_settings_manager:build_settings_json(default_settings(), dict:new(),
-                                                known_settings())}].
