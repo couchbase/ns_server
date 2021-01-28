@@ -334,7 +334,7 @@ chaos_testing() ->
                       Self ! {Ref, self(), List == Res}
               end,
           Procs = [spawn(F) || _ <- lists:seq(1, NumProcs)],
-          [misc:wait_for_process(P, 10000) || P <- Procs],
+          [misc:wait_for_process(P, 60000) || P <- Procs],
           lists:foreach(fun (P) ->
                                 receive
                                     {Ref, P, Res} -> ?assertEqual(true, Res)
