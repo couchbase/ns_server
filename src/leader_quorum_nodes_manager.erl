@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2018 Couchbase, Inc.
+%% @copyright 2018-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@
 %% API
 -export([start_link/0]).
 -export([set_quorum_nodes/2]).
--export([config_upgrade_to_55/1]).
 
 -export([get_quorum_nodes_unsafe/0, set_quorum_nodes_unsafe/1]).
 
@@ -42,10 +41,6 @@ start_link() ->
 
 set_quorum_nodes(Pid, QuorumNodes) ->
     gen_server2:call(Pid, {set_quorum_nodes, QuorumNodes}, infinity).
-
-config_upgrade_to_55(Config) ->
-    [{set, quorum_nodes,
-      lists:usort(ns_cluster_membership:active_nodes(Config))}].
 
 %% The following two functions are only exported for use by leader_activities
 %% when new orchestration is disabled.
