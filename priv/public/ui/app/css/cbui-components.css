@@ -1685,10 +1685,7 @@ h4 + .fa-stack { /* elevate icon next to label or heading  */
 /* icon radio buttons and checkboxes using Font Awesome ----------------- */
 input[type="radio"],
 input[type="checkbox"] {
-  visibility: hidden; /* MB-43540:
-                         'display:none' removes focus behaviour
-                         'opacity:0' automatically scrolls page to the input
-                         which can be located in any place due to absolute position ------- */
+  opacity: 0; /* MB-43540: 'display:none' removes focus behaviour ------- */
   position: absolute;
   width: 0;
   height: 0;
