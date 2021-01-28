@@ -92,7 +92,6 @@ upgrade(?VERSION_51, Config) ->
     {?VERSION_55,
          query_settings_manager:config_upgrade_to_55() ++
          ns_bucket:config_upgrade_to_55(Config) ++
-         menelaus_users:config_upgrade(?VERSION_55) ++
          ns_audit_cfg:upgrade_to_55(Config) ++
          leader_quorum_nodes_manager:config_upgrade_to_55(Config) ++
          scram_sha:config_upgrade_to_55()};
@@ -110,12 +109,12 @@ upgrade(?VERSION_60, Config) ->
 
 upgrade(?VERSION_65, Config) ->
     {?VERSION_66,
-     menelaus_users:config_upgrade(?VERSION_66) ++
+     menelaus_users:config_upgrade() ++
          ns_bucket:config_upgrade_to_66(Config)};
 
 upgrade(?VERSION_66, Config) ->
     {?VERSION_CHESHIRECAT,
-     menelaus_users:config_upgrade(?VERSION_CHESHIRECAT) ++
+     menelaus_users:config_upgrade() ++
          collections:config_upgrade_to_cheshire_cat(Config) ++
          menelaus_web_alerts_srv:config_upgrade_to_cheshire_cat(Config) ++
          index_settings_manager:config_upgrade_to_cheshire_cat(Config) ++

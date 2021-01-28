@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2016-2019 Couchbase, Inc.
+%% @copyright 2016-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -74,7 +74,7 @@
 
 %% Backward compatibility:
          upgrade/3,
-         config_upgrade/1,
+         config_upgrade/0,
          upgrade_in_progress/0,
          upgrade_in_progress/1
         ]).
@@ -751,8 +751,8 @@ rbac_upgrade_key(_) ->
 rbac_upgrade_key() ->
     rbac_upgrade.
 
-config_upgrade(Version) ->
-    [{delete, rbac_upgrade_key(Version)}].
+config_upgrade() ->
+    [{delete, rbac_upgrade_key()}].
 
 upgrade_in_progress() ->
     upgrade_in_progress(ns_config:latest()).
