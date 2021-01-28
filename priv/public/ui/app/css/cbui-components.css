@@ -1685,10 +1685,15 @@ h4 + .fa-stack { /* elevate icon next to label or heading  */
 /* icon radio buttons and checkboxes using Font Awesome ----------------- */
 input[type="radio"],
 input[type="checkbox"] {
-  opacity: 0; /* MB-43540: 'display:none' removes focus behaviour ------- */
-  position: absolute;
+  opacity: 0!important; /* MB-43540: 'display:none' removes focus behaviour
+                           must not be inline element
+                           must not have absolute position ------- */
   width: 0;
   height: 0;
+  padding: 0;
+  margin: 0;
+  font-size: 0;
+  display: block!important;
 }
 input[type="radio"] + label,
 input[type="checkbox"] + label {
