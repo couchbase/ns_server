@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2017-2018 Couchbase, Inc.
+%% @copyright 2017-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -22,8 +22,7 @@
          handle_settings_reset_count/1,
          get_failover_on_disk_issues/1,
          config_check_can_abort_rebalance/0,
-         config_upgrade_to_65/1,
-         config_upgrade_to_55/1]).
+         config_upgrade_to_65/1]).
 
 -import(menelaus_util,
         [reply/2,
@@ -103,34 +102,6 @@ get_failover_on_disk_issues(Config) ->
             TimePeriod = proplists:get_value(timePeriod, Val),
             {Enabled, TimePeriod}
     end.
-
-config_upgrade_to_55(Config) ->
-    {value, Current} = ns_config:search(Config, auto_failover_cfg),
-    [Val] = disable_failover_on_disk_issues(
-              ?DEFAULT_DATA_DISK_ISSUES_TIMEPERIOD),
-    New0 = lists:keystore(?DATA_DISK_ISSUES_CONFIG_KEY, 1, Current, Val),
-    New1 = lists:keystore(?FAILOVER_SERVER_GROUP_CONFIG_KEY, 1, New0,
-                          {?FAILOVER_SERVER_GROUP_CONFIG_KEY, false}),
-    %% 5.0 and earlier, max_nodes was used to indicate the maximum number
-    %% of nodes that can be auto-failed over before requiring reset of the
-    %% quota.
-    %% When server group auto-failover is enabled, the entire server
-    %% group may be failed over, irrespective of the number of nodes in the
-    %% group and value of max_nodes. So, max nodes is no longer an accurate
-    %% term. max_nodes will be replaced with max_count.
-    %% max_count refers to the maximum number of auto-failover
-    %% events that are allowed.
-    %% Even though max_nodes was present in the config in previous releases,
-    %% the auto-failover code never used it. Max was hard coded to 1.
-    %% Infact, 5.0 and earlier, the auto_failover:make_persistent()
-    %% code inadvertently removed max_nodes from the config when auto-failover
-    %% was enabled.
-    New2 = lists:keystore(?MAX_EVENTS_CONFIG_KEY, 1, New1,
-                          {?MAX_EVENTS_CONFIG_KEY, ?DEFAULT_EVENTS_ALLOWED}),
-    New3 = lists:keydelete(max_nodes, 1, New2),
-    New = lists:keystore(failed_over_server_groups, 1, New3,
-                         {failed_over_server_groups, []}),
-    [{set, auto_failover_cfg, New}].
 
 config_upgrade_to_65(Config) ->
     {value, Current} = ns_config:search(Config, auto_failover_cfg),

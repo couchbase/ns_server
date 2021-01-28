@@ -312,11 +312,13 @@ default() ->
                           % timeout is the time (in seconds) a node needs to be
                           % down before it is automatically faileovered
                           {timeout, 120},
-                          % max_nodes is the maximum number of nodes that may be
-                          % automatically failovered
-                          {max_nodes, 1},
                           % count is the number of nodes that were auto-failovered
-                          {count, 0}]},
+                          {count, 0},
+                          {failover_on_data_disk_issues, [{enabled, false},
+                                                          {timePeriod, 120}]},
+                          {failover_server_group, false},
+                          {max_count, 1},
+                          {failed_over_server_groups, []}]},
      % auto-reprovision (mostly applicable to ephemeral buckets) is the operation that
      % is carried out when memcached process on a node restarts within the auto-failover
      % timeout.
