@@ -588,14 +588,19 @@ leave_async() ->
 shun(RemoteNode) ->
     case RemoteNode =:= node() of
         false ->
-            ?cluster_debug("Shunning ~p", [RemoteNode]),
-            ns_cluster_membership:remove_node(RemoteNode),
-            ns_config_rep:ensure_config_pushed(),
-            case chronicle_compat:enabled() of
-                true ->
-                    ok = chronicle_master:remove_peer(RemoteNode);
-                false ->
-                    ok
+            try
+                ?cluster_debug("Shunning ~p", [RemoteNode]),
+                ns_cluster_membership:remove_node(RemoteNode),
+                ns_config_rep:ensure_config_pushed(),
+                case chronicle_compat:enabled() of
+                    true ->
+                        ok = chronicle_master:remove_peer(RemoteNode);
+                    false ->
+                        ok
+                end
+            catch T:E:Stack ->
+                    ?log_error("Shun failed with ~p", [{T,E,Stack}]),
+                    exit(shun_failed)
             end;
         true ->
             ?cluster_debug("Asked to shun myself. Leaving cluster.", []),
