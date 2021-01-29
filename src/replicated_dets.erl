@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2017-2018 Couchbase, Inc.
+%% @copyright 2017-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -39,12 +39,6 @@
                 child_state :: term(),
                 path :: string(),
                 name :: atom()}).
-
-%% Backward compatibility: old doc record is used in pre-5.5
--record(doc, {id :: term(),
-              rev :: term(),
-              deleted :: boolean(),
-              value :: term()}).
 
 -record(docv2, {id    :: term(),
                 value :: term(),
@@ -202,42 +196,12 @@ do_open(Path, TableName, Tries) ->
                          {keypos, #docv2.id},
                          {file, Path}]) of
         {ok, TableName} ->
-            convert_docs_to_55_in_dets(TableName),
             TableName = dets:to_ets(TableName, TableName),
             ok;
         Error ->
             ?log_error("Unable to open ~p, Error: ~p", [Path, Error]),
             timer:sleep(1000),
             do_open(Path, TableName, Tries - 1)
-    end.
-
-convert_docs_to_55_in_dets(Table) ->
-    ?log_info("Checking for pre 5.5 records in dets: ~p", [Table]),
-    dets:safe_fixtable(Table, true),
-    %% Dialyzer thinks it's invalid spec if #doc{} is specified inside the spec
-    %% looks like bug in dialyzer
-    Spec = [{'$1', [{'==', doc, {element, 1, '$1'}}],
-            [{element, #doc.id, '$1'}]}],
-    Ids = dets:select(Table, Spec),
-    dets:safe_fixtable(Table, false),
-    case Ids of
-        [] -> ok;
-        _ ->
-            ?log_info("Start converting ~p records to 5.5 in dets: ~p",
-                      [length(Ids), Table]),
-            lists:foreach(
-              fun (Id) ->
-                      case dets:lookup(Table, Id) of
-                          [Doc] ->
-                              dets:insert(Table, convert_doc_to_55(Doc));
-                          [] ->
-                              ok
-                      end
-              end, Ids),
-            dets:sync(Table),
-            ?log_info("Finished converting older docs to 5.5 in dets: ~p",
-                      [Table]),
-            ok
     end.
 
 get_id(#docv2{id = Id}) ->
@@ -279,29 +243,10 @@ save_docs(Docs, #state{name = TableName,
     {ok, State#state{child_state = NewChildState}}.
 
 on_replicate_in(Doc) ->
-    convert_doc_to_55(Doc).
+    Doc.
 
 on_replicate_out(Doc) ->
-    case cluster_compat_mode:is_cluster_55() of
-        true ->
-            Doc;
-        false ->
-            convert_doc_to_pre_55(Doc)
-    end.
-
-convert_doc_to_55(#docv2{} = Doc) ->
-    Doc;
-convert_doc_to_55(
-  #doc{id = Id, rev = Rev, deleted = Deleted, value = Value}) ->
-    #docv2{id = Id,
-           value = Value,
-           props = [{deleted, Deleted}, {rev, Rev}]}.
-
-convert_doc_to_pre_55(#docv2{id = Id, value = Value} = Doc) ->
-    #doc{id = Id,
-         value = Value,
-         rev = get_revision(Doc),
-         deleted = is_deleted(Doc)}.
+    Doc.
 
 handle_call(suspend, {Pid, _} = From, #state{name = TableName} = State) ->
     MRef = erlang:monitor(process, Pid),
