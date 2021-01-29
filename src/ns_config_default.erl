@@ -358,15 +358,9 @@ upgrade_config(Config) ->
     case ConfigVersion of
         CurrentVersion ->
             [];
-        {5,0} ->
-            [{set, {node, node(), config_version}, {5,1,1}} |
-             upgrade_config_from_5_0_to_5_1_1()];
-        {5,1,1} ->
-            [{set, {node, node(), config_version}, {5,5}} |
-             upgrade_config_from_5_1_1_to_5_5(Config)];
-        {5,5} ->
-            [{set, {node, node(), config_version}, {5,5,3}} |
-             upgrade_config_from_5_5_to_5_5_3()];
+        %% The 6.0 release did not have any config changes so it retained
+        %% the same format as the 5.5.3 release. Thus there's no config
+        %% upgrade needed until we reach 6.0.4.
         {5,5,3} ->
             [{set, {node, node(), config_version}, {6,0,4}} |
              upgrade_config_from_5_5_3_to_6_0_4(Config)];
@@ -429,25 +423,8 @@ rename_key(OldKey, NewKey, Config) ->
             []
     end.
 
-upgrade_config_from_5_0_to_5_1_1() ->
-    rebalance_quirks:upgrade_config_project_intact_patched().
-
-upgrade_config_from_5_1_1_to_5_5(Config) ->
-    DefaultConfig = default(),
-    do_upgrade_config_from_5_1_1_to_5_5(Config, DefaultConfig).
-
-do_upgrade_config_from_5_1_1_to_5_5(Config, DefaultConfig) ->
-    [upgrade_key(memcached_config, DefaultConfig),
-     upgrade_key(memcached_defaults, DefaultConfig),
-     upgrade_sub_keys(memcached, [other_users], Config, DefaultConfig)].
-
-upgrade_config_from_5_5_to_5_5_3() ->
-    DefaultConfig = default(),
-    do_upgrade_config_from_5_5_to_5_5_3(DefaultConfig).
-
-do_upgrade_config_from_5_5_to_5_5_3(DefaultConfig) ->
-    [upgrade_key(memcached_config, DefaultConfig)].
-
+%% The 6.0 release had the same config format as the 5.5.3 release and
+%% so there's nothing to upgrade until we reach the 6.0.4 format.
 upgrade_config_from_5_5_3_to_6_0_4(Config) ->
     DefaultConfig = default(),
     do_upgrade_config_from_5_5_3_to_6_0_4(Config, DefaultConfig).
@@ -529,31 +506,8 @@ fixup(KV) ->
     dist_manager:fixup_config(KV).
 
 -ifdef(TEST).
-upgrade_5_1_1_to_5_5_test() ->
-    Cfg = [[{some_key, some_value},
-            {{node, node(), memcached}, [{old, info}, {other_users, old}]},
-            {{node, node(), memcached_defaults}, old_memcached_defaults},
-            {{node, node(), memcached_config}, old_memcached_config}]],
-
-    Default = [{{node, node(), memcached}, [{some, stuff}, {other_users, new}]},
-               {{node, node(), memcached_defaults}, [{some, stuff},
-                                                     {new_field, enable}]},
-               {{node, node(), memcached_config}, new_memcached_config}],
-
-    ?assertMatch([{set, {node, _, memcached_config}, new_memcached_config},
-                  {set, {node, _, memcached_defaults}, [{some, stuff},
-                                                        {new_field, enable}]},
-                  {set, {node, _, memcached}, [{old, info}, {other_users, new}]}],
-                 do_upgrade_config_from_5_1_1_to_5_5(Cfg, Default)).
-
-upgrade_5_5_to_5_5_3_test() ->
-    Default = [{some_key, some_other_value},
-               {{node, node(), memcached}, [{some, stuff}, {other_users, new}]},
-               {{node, node(), memcached_config}, new_memcached_config}],
-
-    ?assertMatch([{set, {node, _, memcached_config}, new_memcached_config}],
-                 do_upgrade_config_from_5_5_to_5_5_3(Default)).
-
+%% The 6.0 release had the same config format as the 5.5.3 release and
+%% so there's nothing to upgrade until we reach the 6.0.4 format.
 upgrade_5_5_3_to_6_0_4_test() ->
     Cfg = [[{some_key, some_value},
             {{node, node(), memcached}, [{old, info}, {admin_user, old}]}]],
@@ -629,8 +583,10 @@ no_upgrade_on_current_version_test() ->
 
 all_upgrades_test() ->
     Default = default(),
+    %% The 6.0 release had the same config format as 5.5.3 so that is used
+    %% as the starting point for tests.
     KVs = misc:update_proplist(Default,
-                               [{{node, node(), config_version}, {5,0}}]),
+                               [{{node, node(), config_version}, {5,5,3}}]),
     Cfg = #config{dynamic = [KVs], uuid = <<"uuid">>},
     UpgradedCfg = ns_config:upgrade_config(Cfg, fun upgrade_config/1),
 

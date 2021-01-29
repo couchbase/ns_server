@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2012-2019 Couchbase, Inc.
+%% @copyright 2012-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -92,7 +92,7 @@ supported_compat_version() ->
     end.
 
 min_supported_compat_version() ->
-    ?VERSION_50.
+    ?VERSION_60.
 
 %% NOTE: this is rpc:call-ed by mb_master
 %%

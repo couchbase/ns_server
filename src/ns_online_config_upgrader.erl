@@ -56,9 +56,9 @@ do_upgrade_config(Config, FinalVersion) ->
         %% default config, but that uncovered issues that I'm too scared to
         %% touch at the moment.
         false ->
-            upgrade_compat_version(?VERSION_50);
+            upgrade_compat_version(?VERSION_60);
         {value, undefined} ->
-            upgrade_compat_version(?VERSION_50);
+            upgrade_compat_version(?VERSION_60);
         {value, Ver} ->
             {NewVersion, Upgrade} = upgrade(Ver, Config),
             ok = maybe_upgrade_to_cronicle(NewVersion, Config),
@@ -83,15 +83,6 @@ maybe_upgrade_to_cronicle(_, _) ->
 
 %% Note: upgrade functions must ensure that they do not add entries to the
 %% configuration which are already present.
-
-upgrade(?VERSION_50, _Config) ->
-    {?VERSION_51, []};
-
-upgrade(?VERSION_51, _Config) ->
-    {?VERSION_55, []};
-
-upgrade(?VERSION_55, _Config) ->
-    {?VERSION_60, []};
 
 upgrade(?VERSION_60, Config) ->
     {?VERSION_65,
