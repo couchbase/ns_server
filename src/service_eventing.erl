@@ -112,7 +112,8 @@ get_computed() ->
 
 successes() ->
     [on_update_success,
-     on_delete_success].
+     on_delete_success,
+     timer_callback_success].
 
 failures() ->
     [bucket_op_exception_count,
@@ -122,7 +123,8 @@ failures() ->
      doc_timer_create_failure,
      non_doc_timer_create_failure,
      on_update_failure,
-     on_delete_failure].
+     on_delete_failure,
+     timer_callback_failure].
 
 get_service_gauges() ->
     [dcp_backlog | successes() ++ failures()].

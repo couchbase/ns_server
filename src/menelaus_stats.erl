@@ -1527,12 +1527,11 @@ do_couchbase_eventing_stats_descriptions() ->
         [{struct,
           [{title, <<"Processed">>},
            {name, per_fun_evening_stat(Id, <<"processed_count">>)},
-           {desc, <<"Mutations for which the function has finished "
-                    "processing">>}]},
+           {desc, <<"Successful function invocations.">>}]},
          {struct,
           [{title, <<"Failures">>},
            {name, per_fun_evening_stat(Id, <<"failed_count">>)},
-           {desc, <<"Mutations for which the function execution failed">>}]},
+           {desc, <<"Failed function invocations.">>}]},
          {struct,
           [{title, <<"Backlog">>},
            {name, per_fun_evening_stat(Id, <<"dcp_backlog">>)},
@@ -1540,7 +1539,7 @@ do_couchbase_eventing_stats_descriptions() ->
          {struct,
           [{title, <<"Timeouts">>},
            {name, per_fun_evening_stat(Id, <<"timeout_count">>)},
-           {desc, <<"Function execution timed-out while processing.">>}]}]}]}
+           {desc, <<"Timed out function invocations.">>}]}]}]}
      || Id <- Functions].
 
 couchbase_fts_stats_descriptions(BucketId, ServiceNodes) ->

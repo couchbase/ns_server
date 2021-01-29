@@ -1819,13 +1819,13 @@ function get65CompatDesc() {
       "@eventing":{
         "eventing/processed_count": {
           unit: "number",
-          title: "Eventing Mutations Processed",
-          desc: "Mutations the function has finished processing. Per function."
+          title: "Successful Function Invocations",
+          desc: "Count of times the function was invoked successfully. Per function."
         },
         "eventing/failed_count": {
           unit: "number",
-          title: "Eventing Failures",
-          desc: "Mutations for which the function execution failed. Per function."
+          title: "Failed Function Invocations",
+          desc: "Count of times the function invocation failed. Per function."
         },
         "eventing/dcp_backlog": {
           unit: "number",

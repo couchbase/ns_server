@@ -1050,7 +1050,9 @@ derived_metrics(xdcr) ->
       "(xdcr_changes_left_total + ignoring(name) xdcr_docs_processed_total)"}];
 derived_metrics(eventing) ->
     [{"eventing_processed_count",
-      "eventing_on_delete_success + ignoring(name) eventing_on_update_success"},
+      "eventing_timer_callback_success + ignoring(name) "
+      "eventing_on_delete_success + ignoring(name) "
+      "eventing_on_update_success"},
      {"eventing_failed_count",
       "sum without(name) ("
         "{name=~`eventing_bucket_op_exception_count|"
@@ -1060,6 +1062,7 @@ derived_metrics(eventing) ->
                 "eventing_non_doc_timer_create_failure|"
                 "eventing_on_delete_failure|"
                 "eventing_on_update_failure|"
+                "eventing_timer_callback_failure|"
                 "eventing_timeout_count`})"}];
 derived_metrics(_) ->
     [].
