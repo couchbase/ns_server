@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2017-2019 Couchbase, Inc.
+%% @copyright 2017-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -814,7 +814,6 @@ parse_validate_external_params(Params) ->
 %% This replaces any existing alternate_addresses config of this node.
 %% For now this is fine because external is only element in alternate_addresses.
 handle_node_altaddr_external(Req) ->
-    menelaus_util:assert_is_55(),
     Params = mochiweb_request:parse_post(Req),
     External = parse_validate_external_params(Params),
     ns_config:set({node, node(), alternate_addresses}, External),
@@ -823,7 +822,6 @@ handle_node_altaddr_external(Req) ->
 %% Delete alternate_addresses as external is the only element in
 %% alternate_addresses.
 handle_node_altaddr_external_delete(Req) ->
-    menelaus_util:assert_is_55(),
     ns_config:delete({node, node(), alternate_addresses}),
     menelaus_util:reply(Req, 200).
 

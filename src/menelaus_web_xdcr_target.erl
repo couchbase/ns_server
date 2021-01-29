@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2018-2019 Couchbase, Inc.
+%% @copyright 2018-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -43,7 +43,6 @@ validate_commitopaque(Name, State) ->
       end, Name, State).
 
 handle_pre_replicate(Bucket, Req) ->
-    menelaus_util:assert_is_55(),
     validator:handle(do_handle_pre_replicate(Req, _, Bucket), Req, json,
                      validators()).
 

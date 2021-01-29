@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2015-2018 Couchbase, Inc.
+%% @copyright 2015-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -22,8 +22,6 @@
          handle_settings_post/1]).
 
 handle_settings_get(Req) ->
-    menelaus_util:assert_is_55(),
-
     Config = get_settings(),
     menelaus_util:reply_json(Req, {Config}).
 
@@ -89,8 +87,6 @@ update_settings(Key, Value) ->
     end.
 
 handle_settings_post(Req) ->
-    menelaus_util:assert_is_55(),
-
     validator:handle(
       fun (Values) ->
               ok = update_settings(generalSettings, Values),
@@ -114,7 +110,6 @@ get_curl_whitelist_settings() ->
     proplists:get_value(queryCurlWhitelist, Config).
 
 handle_curl_whitelist_post(Req) ->
-    menelaus_util:assert_is_55(),
     validator:handle(
       fun (Values) ->
               ok = update_settings(curlWhitelistSettings,
@@ -124,5 +119,4 @@ handle_curl_whitelist_post(Req) ->
       end, Req, json, settings_curl_whitelist_validators()).
 
 handle_curl_whitelist_get(Req) ->
-    menelaus_util:assert_is_55(),
     menelaus_util:reply_json(Req, get_curl_whitelist_settings()).

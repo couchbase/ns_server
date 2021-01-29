@@ -68,7 +68,6 @@
          send_chunked/3,
          handle_streaming/2,
          assert_is_enterprise/0,
-         assert_is_55/0,
          assert_is_65/0,
          assert_is_66/0,
          strip_json_struct/1,
@@ -586,11 +585,6 @@ assert_is_enterprise() ->
                           "This http API endpoint requires enterprise edition",
                           [{"X-enterprise-edition-needed", 1}])
     end.
-
-assert_is_55() ->
-    %% XXX: will be removed when assert_is_55/0 is removed in a subsequent
-    %% patch.
-    ok.
 
 assert_is_65() ->
     assert_cluster_version(fun cluster_compat_mode:is_cluster_65/0).

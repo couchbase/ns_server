@@ -41,7 +41,6 @@ do_handle_rebalance_report(Req, Params) ->
 
 handle_settings_log_redaction(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_55(),
 
     {value, Config} =
         ns_config:search(ns_config:get(), log_redaction_default_cfg),
@@ -50,7 +49,6 @@ handle_settings_log_redaction(Req) ->
 
 handle_settings_log_redaction_post(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_55(),
 
     validator:handle(do_handle_settings_log_redaction_post_body(Req, _),
                      Req, form, settings_log_redaction_post_validators()).

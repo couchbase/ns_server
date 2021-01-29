@@ -85,7 +85,6 @@ handle_get_non_filterable_descriptors(Req) ->
 
 handle_get_descriptors(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_55(),
     Descriptors = ns_audit_cfg:get_descriptors(ns_config:latest()),
     reply_with_json_audit_descriptors(Req, Descriptors).
 
