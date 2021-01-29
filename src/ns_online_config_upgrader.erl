@@ -84,13 +84,11 @@ maybe_upgrade_to_cronicle(_, _) ->
 %% Note: upgrade functions must ensure that they do not add entries to the
 %% configuration which are already present.
 
-upgrade(?VERSION_50, Config) ->
-    {?VERSION_51,
-         ns_bucket:config_upgrade_to_51(Config)};
+upgrade(?VERSION_50, _Config) ->
+    {?VERSION_51, []};
 
-upgrade(?VERSION_51, Config) ->
-    {?VERSION_55,
-         ns_bucket:config_upgrade_to_55(Config)};
+upgrade(?VERSION_51, _Config) ->
+    {?VERSION_55, []};
 
 upgrade(?VERSION_55, _Config) ->
     {?VERSION_60, []};

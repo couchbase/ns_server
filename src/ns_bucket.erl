@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2020 Couchbase, Inc.
+%% @copyright 2009-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -111,8 +111,6 @@
          buckets_with_data_on_this_node/0,
          activate_bucket_data_on_this_node/1,
          deactivate_bucket_data_on_this_node/1,
-         config_upgrade_to_51/1,
-         config_upgrade_to_55/1,
          config_upgrade_to_65/1,
          config_upgrade_to_66/1,
          upgrade_to_chronicle/1]).
@@ -1146,29 +1144,6 @@ upgrade_buckets(Config, Fun) ->
     NewBuckets = [{Name, Fun(Name, BucketConfig)} ||
                   {Name, BucketConfig} <-Buckets],
     [{set, buckets, [{configs, NewBuckets}]}].
-
-config_upgrade_to_51(Config) ->
-    %% fix for possible consequence of MB-27160
-    upgrade_buckets(Config,
-          fun ("default" = _Name, BucketConfig) ->
-                  case sasl_password(BucketConfig) of
-                      "" ->
-                          lists:keystore(sasl_password, 1, BucketConfig,
-                                         {sasl_password, generate_sasl_password()});
-                      _ ->
-                          BucketConfig
-                  end;
-              (_Name, BucketConfig) ->
-                  BucketConfig
-          end).
-
-config_upgrade_to_55(Config) ->
-    upgrade_buckets(Config,
-          fun (_Name, BCfg) ->
-                  BCfg1 = lists:keystore(max_ttl, 1, BCfg, {max_ttl, 0}),
-                  lists:keystore(compression_mode, 1, BCfg1,
-                                 {compression_mode, off})
-          end).
 
 config_upgrade_to_65(Config) ->
     MaxBuckets = case ns_config:search(Config, max_bucket_count) of
