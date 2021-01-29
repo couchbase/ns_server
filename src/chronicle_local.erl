@@ -212,9 +212,9 @@ should_move({node, _, recovery_type}) ->
     true;
 should_move({node, _, failover_vbuckets}) ->
     true;
-should_move(service_map) ->
+should_move({service_map, _}) ->
     true;
-should_move(service_failover_pending) ->
+should_move({service_failover_pending, _}) ->
     true;
 should_move(_) ->
     false.
