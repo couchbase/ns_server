@@ -71,28 +71,16 @@
         </span>
       </span>
       <span class="cbui-table-cell flex-grow-half resp-hide-xsml">
-        <span ng-show="gsiItemCtl.has_num_requests">
-          {{row.num_requests | number:0}}
-        </span>
-        <span ng-show="gsiItemCtl.has_no_num_requests"> - </span>
+        {{row.num_requests | mnFormatQuantity:1000}}
       </span>
       <span class="cbui-table-cell flex-grow-half resp-hide-sml">
-        <span ng-show="gsiItemCtl.has_index_resident_percent">
-          {{row.index_resident_percent | number:0}}%
-        </span>
-        <span ng-show="gsiItemCtl.has_no_index_resident_percent"> - </span>
+        {{(row.resident_percent | number:0) || 0 }}%
       </span>
       <span class="cbui-table-cell flex-grow-half">
-        <span ng-show="gsiItemCtl.has_items_count">
-          {{row.items_count | number:0}}
-        </span>
-        <span ng-show="gsiItemCtl.has_no_items_count"> - </span>
+        {{row.items_count | mnFormatQuantity:1000}}
       </span>
       <span class="cbui-table-cell flex-grow-half resp-hide-xsml">
-        <span ng-show="gsiItemCtl.has_data_size">
-          {{row.data_size/1024/1024 | number:1}} MiB
-        </span>
-        <span ng-show="gsiItemCtl.has_no_data_size"> - </span>
+        {{row.data_size | mnFormatQuantity}}
       </span>
       <span class="cbui-table-cell">
         {{mnGsiTableCtl.getRowKeyspace(row)}}
@@ -117,7 +105,7 @@
         </div>
         <div ng-if="row['num_docs_pending+queued']"
            class="label warning">
-          {{row['num_docs_pending+queued'] | number:0}}
+          {{row['num_docs_pending+queued'] | mnFormatQuantity:1000}}
           mutations remaining
         </div>
       </span>

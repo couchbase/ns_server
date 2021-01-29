@@ -15,7 +15,7 @@ function mnGsiFooterController($scope, $rootScope, $state, mnStatisticsNewServic
 
   vm.stats = $scope.stats || (mnPoolDefault.export.compat.atLeast70 ? [
     '@index.index_memory_quota','@index.index_memory_used_total',
-    '@index-.index_num_rows_returned','@index-.index_frag_percent',
+    '@index-.index_num_rows_returned','@index-.index_fragmentation',
     '@index-.index_data_size','@index-.index_disk_size'
   ] : [
     '@index.index_memory_quota','@index.index_memory_used',

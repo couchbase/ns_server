@@ -106,10 +106,6 @@ function mnAdminConfig($stateProvider, $urlMatcherFactoryProvider, mnPluggableUi
         requiresAuth: true
       },
       params: {
-        indexesView: {
-          value: 'viewByIndex',
-          dynamic: true
-        },
         scenarioBucket: {
           value: null
         },

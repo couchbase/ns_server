@@ -53,7 +53,7 @@ angular.module('mnSettingsNotificationsService', [
       return average ? rv / array.length : rv;
     }
 
-    function buildPhoneHomeThingy(source) {
+  function buildPhoneHomeThingy(source) {
       var bucketsList = source[0];
       var perBucketStats = source[1];
       var pools = source[2];
@@ -68,6 +68,7 @@ angular.module('mnSettingsNotificationsService', [
       var eventing = source[11];
       var analytics = source[12];
       var ldapSettings = source[13];
+
 
       function getAvgPerItem(items, filter) {
         var avgs = [];
@@ -351,7 +352,7 @@ angular.module('mnSettingsNotificationsService', [
         ];
 
         if (mnPermissions.export.cluster.bucket['.'].n1ql.index.read) {
-          queries[4] = mnGsiService.getIndexesState(mnHttpParams);
+          queries[4] = mnGsiService.getIndexStatus(mnHttpParams);
         }
         if (mnPools.export.isEnterprise && mnPermissions.export.cluster.admin.security.read) {
           queries[5] = mnAuditService.getAuditSettings();
@@ -368,7 +369,7 @@ angular.module('mnSettingsNotificationsService', [
 
         // collect info about XDCR
         if (mnPermissions.export.cluster.xdcr.remote_clusters.read) {
-          queries[9] = mnXDCRService.getReplicationState();
+          queries[9] = mnXDCRService.getReplicationState().then(null, () => ({}))
         }
 
         if (mnPermissions.export.cluster.tasks.read) {
@@ -393,7 +394,6 @@ angular.module('mnSettingsNotificationsService', [
             mnPermissions.export.cluster.admin.security.read) {
           queries[13] = mnUserRolesService.getLdapSettings();
         }
-
         return $q.all(queries).then(buildPhoneHomeThingy);
       });
     };

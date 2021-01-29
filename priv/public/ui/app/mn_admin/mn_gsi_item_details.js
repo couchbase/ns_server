@@ -30,86 +30,18 @@ function mnGsiItemController($scope, mnStatisticsNewService, mnPoolDefault, mnPe
   var vm = this;
   var row = $scope.row;
 
-  var stats = mnPoolDefault.export.compat.atLeast70 ? [
-    "@index-.@items.index_num_requests", "@index-.@items.index_resident_percent",
-    "@index-.@items.index_items_count", "@index-.@items.index_data_size",
-    "@index-.@items.index_num_docs_pending", "@index-.@items.index_num_docs_queued"
-  ] : [
-    "@index-.@items.num_requests", "@index-.@items.index_resident_percent",
-    "@index-.@items.items_count", "@index-.@items.data_size",
-    "@index-.@items.num_docs_pending+queued"
-  ];
-  var getStatSamples = mnPoolDefault.export.compat.atLeast70 ?
-      getStatSamples70 : getStatSamplesPre70;
-
-  mnStatisticsNewService.subscribeUIStatsPoller({
-    bucket: $scope.row.bucket,
-    node: $scope.nodeName || "all",
-    zoom: 3000,
-    step: 1,
-    stats: stats,
-    items: {
-      index: mnPoolDefault.export.compat.atLeast70 ? row.index : ("index/" + row.index + "/")
-    }
-  }, $scope);
-
   let interestingPermissions = row.collection ?
       mnPermissions.getPerCollectionPermissions(row.bucket, row.scope, row.collection) :
       mnPermissions.getPerScopePermissions(row.bucket, row.scope);
   interestingPermissions.forEach(mnPermissions.set);
   mnPermissions.throttledCheck();
 
-  $scope.$watch("mnUIStats", updateValues);
-  $scope.$watch("row", updateValues);
   $scope.$on("$destroy", onDestroy);
 
 
   function onDestroy() {
     interestingPermissions.forEach(mnPermissions.remove);
   }
-
-  function getIndexStatName(statName) {
-    return 'index/' + $scope.row.index + '/' + statName;
-  }
-
-  function doGetStatSamples70(statName) {
-    var stats = $scope.mnUIStats && $scope.mnUIStats.stats;
-    return stats && stats[statName] && stats[statName] &&
-      stats[statName][$scope.nodeName || "aggregate"] &&
-      Number(stats[statName][$scope.nodeName || "aggregate"]
-             .values.slice().reverse().find(stat => stat != null)[1]);
-  }
-
-  function getStatSamples70(statName) {
-    switch (statName) {
-    case "num_docs_pending+queued":
-      return doGetStatSamples70("@index-.@items.index_num_docs_pending") +
-        doGetStatSamples70("@index-.@items.index_num_docs_queued");
-    default:
-      return doGetStatSamples70(mnStatsDesc.mapping65("@index-.@items." + statName));
-    }
-  }
-
-  function getStatSamplesPre70(statName) {
-    return $scope.mnUIStats &&
-      $scope.mnUIStats.stats[getIndexStatName(statName)] &&
-      $scope.mnUIStats.stats[getIndexStatName(statName)][$scope.nodeName || "aggregate"]
-      .slice().reverse().find(stat => stat != null);
-  }
-
-  function updateValues() {
-    (['num_requests', 'index_resident_percent', 'items_count', 'data_size', 'num_docs_pending+queued'])
-      .forEach(function (statName) {
-        var value = getStatSamples(statName);
-        vm['has_' + statName] = parseFloat(value) === value;
-        vm['has_no_' + statName] = parseFloat(value) !== value;
-        if (vm['has_' + statName]) {
-          //set value to the row, so we can use it for sorting later
-          $scope.row[statName] = value;
-        }
-      });
-  }
-
 
 }
 

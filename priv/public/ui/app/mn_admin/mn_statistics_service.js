@@ -64,6 +64,9 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
     getStatsDesc: getStatsDesc,
     buildChartConfig: buildChartConfig,
     tickMultiFormat: multiFormat,
+    packStatsConfig: packStatsConfig,
+    postStatsRange: postStatsRange,
+    postStats: postStats,
     heartbeat: new mnPoller(rootScope, function () {
       currentPerChartScopes = [...perChartScopes];
       return mnPoolDefault.export.compat.atLeast70 ?
@@ -355,7 +358,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
     }
   }
 
-  function packStatsConfig(config) {
+  function packStatsConfig(config, doNotAssignStatPath) {
     let cfg = {};
     let start = 0 - zoomToMS(config.zoom);
     cfg.step = config.step || zoomToStep(config.zoom);
@@ -372,7 +375,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
         if (!statDesc) {
           return;
         }
-        let cfg1 = Object.assign({statPath: statPath}, cfg);
+        let cfg1 = Object.assign(doNotAssignStatPath ? {} : {statPath: statPath}, cfg);
         let service = getServiceNameFromDescriptionPath(statPath);
         cfg1.metric = Object.assign({}, statDesc.metric);
         if (isPerBucketStat(statPath)) {
@@ -442,6 +445,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
         mnStatisticsNewService.heartbeat.stop();
       }
     }
+
 
     function doOmit(config2) {
       return function () {

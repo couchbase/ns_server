@@ -103,7 +103,6 @@ class MnCollectionsService {
 
   createCollectionSelector(options) {
     var filterKey = options.isRolesMode ? "value" : "name";
-    var setValueConfig = {emitEvent: false};
 
     var outsideClick = fromEvent(document, 'click');
 
@@ -134,7 +133,7 @@ class MnCollectionsService {
       Object.keys(value).forEach(key => {
         if (value[key]) {
           filters[key].group.get("value").setValue(
-            value[key] ? value[key][filterKey] : "", setValueConfig);
+            value[key] ? value[key][filterKey] : "");
         }
       });
     };
@@ -289,10 +288,10 @@ class MnCollectionsService {
       .subscribe(([[prevStep, step], result]) => {
         if (prevStep && prevStep !== "ok") {
           let value = result[prevStep] && result[prevStep][filterKey];
-          filters[prevStep].group.get("value").setValue(value, setValueConfig);
+          filters[prevStep].group.get("value").setValue(value);
         }
         if (step && step !== "ok") {
-          filters[step].group.get("value").setValue("", setValueConfig);
+          filters[step].group.get("value").setValue("");
         }
       });
 

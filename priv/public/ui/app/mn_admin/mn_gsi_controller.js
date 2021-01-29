@@ -57,10 +57,14 @@ angular
 function configure($stateProvider) {
   $stateProvider
     .state('app.admin.gsi', {
-      url: "/index?indexesBucket&indexesScope&openedIndex&perIndexPage&perNodePage",
+      url: "/index?indexesBucket&indexesScope&openedIndex&perIndexPage&perNodePage&indexesView",
       params: {
         openedIndex: {
           array: true,
+          dynamic: true
+        },
+        indexesView: {
+          value: 'viewByIndex',
           dynamic: true
         },
         indexesBucket: {
@@ -110,7 +114,8 @@ function configure($stateProvider) {
       }
     });
 }
-function mnGsiController($scope, mnGsiService, mnPoller, $state, mnCollectionsService) {
+function mnGsiController($scope, mnGsiService, mnPoller, $state, mnCollectionsService,
+                         poolDefault) {
   var vm = this;
 
   vm.setIndexesView = setIndexesView;
@@ -118,7 +123,7 @@ function mnGsiController($scope, mnGsiService, mnPoller, $state, mnCollectionsSe
   activate();
 
   function setIndexesView() {
-    $state.go('.', {indexesView: vm.viewBy}, {notify: false});
+    $state.go('.', {indexesView: vm.viewBy}).then(() => vm.poller.reload());
   }
 
   function activate() {
@@ -126,14 +131,31 @@ function mnGsiController($scope, mnGsiService, mnPoller, $state, mnCollectionsSe
 
     let mnOnDestroy = new Subject();
 
-    let poller =
-        new mnPoller($scope, function () {
+    vm.poller =
+      new mnPoller($scope, () => {
+        if (poolDefault.compat.atLeast70) {
           let params = vm.mnCollectionSelectorService.stream.result.getValue();
-          return mnGsiService.getIndexesState(undefined, params);
-        })
-        .setInterval(10000)
-        .subscribe("state", vm)
-        .reloadOnScopeEvent("indexStatusURIChanged");
+          if ($state.params.indexesView == "viewByNode") {
+            return mnGsiService.getIndexesStateByNodes(params);
+          } else {
+            return mnGsiService.getIndexesState(params);
+          }
+        } else {
+          if ($state.params.indexesView == "viewByNode") {
+            return mnGsiService.getIndexesStateByNodesMixed();
+          } else {
+            return mnGsiService.getIndexesStateMixed();
+          }
+        }
+      })
+      .setInterval(10000)
+      .subscribe("state", vm)
+      .reloadOnScopeEvent("indexStatusURIChanged");
+
+    if (!poolDefault.compat.atLeast70) {
+      vm.poller.reload();
+      return;
+    }
 
     vm.mnCollectionSelectorService =
       mnCollectionsService.createCollectionSelector({
@@ -159,7 +181,7 @@ function mnGsiController($scope, mnGsiService, mnPoller, $state, mnCollectionsSe
     });
 
     function stateGo() {
-      poller.reload();
+      vm.poller.reload();
       let params = vm.mnCollectionSelectorService.stream.result.getValue();
       $state.go('.', {
         indexesBucket: params.bucket ? params.bucket.name: null,
