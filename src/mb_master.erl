@@ -42,7 +42,8 @@
 
 %% API
 -export([start_link/0,
-         master_node/0]).
+         master_node/0,
+         wait_for_ejected_leader_shutdown/1]).
 
 
 %% gen_statem callbacks
@@ -67,6 +68,54 @@ start_link() ->
 %% not known yet.
 master_node() ->
     gen_statem:call(?MODULE, master_node).
+
+ejected_leader_shutdown_check(undefined) ->
+    true;
+ejected_leader_shutdown_check(MasterNode) ->
+    NodesWanted = ns_cluster_membership:nodes_wanted(),
+    case lists:member(MasterNode, NodesWanted) of
+        true ->
+            true;
+        false ->
+            ?log_debug("Current leader ~p was ejected. NodesWanted = ~p",
+                       [MasterNode, NodesWanted]),
+            false
+    end.
+
+wait_for_ejected_leader_shutdown(Timeout) ->
+    case async:run_with_timeout(
+           fun () ->
+                   Self = self(),
+                   ns_pubsub:subscribe_link(
+                     leader_events,
+                     case _ of
+                         {new_leader, Node} ->
+                             ?log_debug("New leader ~p", [Node]),
+                             case ejected_leader_shutdown_check(Node) of
+                                 true ->
+                                     Self ! proceed;
+                                 false ->
+                                     ok
+                             end;
+                         _ ->
+                             ok
+                     end),
+
+                   case ejected_leader_shutdown_check(master_node()) of
+                       true ->
+                           ok;
+                       false ->
+                           receive
+                               proceed ->
+                                   ok
+                           end
+                   end
+           end, Timeout) of
+        {ok, ok} ->
+            ok;
+        {error, timeout} ->
+            exit(timeout)
+    end.
 
 %% Returns the master node according to Node. For mb_master's internal use
 %% only.
