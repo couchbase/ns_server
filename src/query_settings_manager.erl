@@ -27,7 +27,7 @@
          get/1,
          get_from_config/3,
          update/2,
-         config_upgrade_to_55/0,
+         config_default/0,
          config_upgrade_to_65/1,
          config_upgrade_to_cheshire_cat/1
         ]).
@@ -55,7 +55,7 @@ cfg_key() ->
     ?QUERY_CONFIG_KEY.
 
 is_enabled() ->
-    cluster_compat_mode:is_cluster_55().
+    true.
 
 on_update(_Key, _Value) ->
     ok.
@@ -63,15 +63,14 @@ on_update(_Key, _Value) ->
 update(Key, Value) ->
     json_settings_manager:update(?MODULE, [{Key, Value}]).
 
-config_upgrade_to_55() ->
-    [{set, ?QUERY_CONFIG_KEY,
-      json_settings_manager:build_settings_json(
-        default_settings(?VERSION_55), dict:new(),
-        known_settings(?VERSION_55))}].
+config_default() ->
+    {?QUERY_CONFIG_KEY, json_settings_manager:build_settings_json(
+                          default_settings(?VERSION_60),
+                          dict:new(), known_settings(?VERSION_60))}.
 
 config_upgrade_to_65(Config) ->
     NewSettings = general_settings_defaults(?VERSION_65) --
-        general_settings_defaults(?VERSION_55),
+        general_settings_defaults(?VERSION_60),
     json_settings_manager:upgrade_existing_key(
       ?MODULE, Config, [{generalSettings, NewSettings}],
       known_settings(?VERSION_65)).

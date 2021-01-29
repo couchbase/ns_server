@@ -144,6 +144,8 @@ default() ->
      index_settings_manager:config_default(),
      %% Default config for metakv eventing settings in minimum supported version
      eventing_settings_manager:config_default(),
+     %% Default config for metakv query settings in minimum supported version
+     query_settings_manager:config_default(),
 
      %% {rest_creds, {User, {password, {Salt, Mac}}}}
      %% {rest_creds, null} means no login/password auth check.
