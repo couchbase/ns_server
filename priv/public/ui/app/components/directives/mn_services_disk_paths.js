@@ -12,7 +12,7 @@ function mnServicesDiskPathsDirective() {
     restrict: "AE",
     scope: {
       config: "=",
-      postDiskStorageErrors: "=",
+      postDiskStorageErrors: "=?",
       isEnterprise: "=",
       isDisabled: "=?"
     },

@@ -3,8 +3,11 @@
    mn-focus="!!postDiskStorageErrors"
    tabindex="0"
    ng-if="postDiskStorageErrors">
-  <div ng-repeat="error in postDiskStorageErrors track by $index">
-    Attention: {{error}}<br>
+  <div ng-if="('isString' | lodash:postDiskStorageErrors)">
+    Attention: {{postDiskStorageErrors}}</div>
+  <div ng-if="('isArray' | lodash:postDiskStorageErrors)">
+    <div ng-repeat="error in postDiskStorageErrors track by $index">
+      Attention: {{error}}</div>
   </div>
 </div>
 
