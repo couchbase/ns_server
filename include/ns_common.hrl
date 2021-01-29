@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2010-2020 Couchbase, Inc.
+%% @copyright 2010-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -223,9 +223,6 @@
 %% common memcached settings are ints which is usually 32-bits wide
 -define(MC_MAXINT, 16#7FFFFFFF).
 
--define(VERSION_50, [5, 0]).
--define(VERSION_51, [5, 1]).
--define(VERSION_55, [5, 5]).
 -define(VERSION_60, [6, 0]).
 -define(VERSION_65, [6, 5]).
 -define(VERSION_66, [6, 6]).

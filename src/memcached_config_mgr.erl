@@ -383,17 +383,13 @@ is_snappy_enabled([], _Params) ->
     is_snappy_enabled().
 
 is_snappy_enabled() ->
-    is_snappy_enabled(?VERSION_55).
-
-is_snappy_enabled(FeatureVersion) ->
     Cfg = ns_config:latest(),
 
     %% Local snappy config > global snappy config > default snappy value.
     Default = ns_config:search_prop(Cfg, {node, node(), memcached_defaults},
                                     datatype_snappy, false),
 
-    cluster_compat_mode:is_enabled(FeatureVersion) andalso
-        ns_config:search_node_prop(Cfg, memcached, datatype_snappy, Default).
+    ns_config:search_node_prop(Cfg, memcached, datatype_snappy, Default).
 
 collections_enabled([], _Params) ->
     collections:enabled().

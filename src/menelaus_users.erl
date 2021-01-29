@@ -742,9 +742,6 @@ build_plain_auth(Salt, Mac) ->
     SaltAndMac = <<Salt/binary, Mac/binary>>,
     [{<<"plain">>, base64:encode(SaltAndMac)}].
 
-rbac_upgrade_key(?VERSION_55) ->
-    %% for backward compatibility
-    {rbac_upgrade, ?VERSION_55};
 rbac_upgrade_key(_) ->
     rbac_upgrade_key().
 
@@ -758,8 +755,7 @@ upgrade_in_progress() ->
     upgrade_in_progress(ns_config:latest()).
 
 upgrade_in_progress(Config) ->
-    ns_config:search(Config, rbac_upgrade_key(?VERSION_55)) =/= false orelse
-        ns_config:search(Config, rbac_upgrade_key()) =/= false.
+    ns_config:search(Config, rbac_upgrade_key()) =/= false.
 
 filter_out_invalid_roles(Props, Definitions, Snapshot) ->
     Roles = proplists:get_value(roles, Props, []),
@@ -825,13 +821,6 @@ upgrade(Version, Config, Nodes) ->
               error
     end.
 
-maybe_upgrade_role_to_55(cluster_admin) ->
-    [cluster_admin, {bucket_full_access, [any]}];
-maybe_upgrade_role_to_55({bucket_admin, Buckets}) ->
-    [{bucket_admin, Buckets}, {bucket_full_access, Buckets}];
-maybe_upgrade_role_to_55(Role) ->
-    [Role].
-
 maybe_upgrade_role_to_cheshirecat({RoleName, Buckets}) ->
     Length = length(menelaus_roles:get_param_defs(
                       RoleName, menelaus_roles:get_public_definitions(
@@ -842,8 +831,6 @@ maybe_upgrade_role_to_cheshirecat(security_admin) ->
 maybe_upgrade_role_to_cheshirecat(Role) ->
     [Role].
 
-upgrade_user(?VERSION_55, Props) ->
-    upgrade_user_roles(fun maybe_upgrade_role_to_55/1, Props);
 upgrade_user(?VERSION_66, Props) ->
     %% remove junk user_roles property that might appear due to MB-39706
     lists:keydelete(user_roles, 1, Props);
@@ -929,20 +916,7 @@ upgrade_test_() ->
              meck:unload(cluster_compat_mode),
              ets:delete(storage_name())
      end,
-     [Test(?VERSION_55,
-           SetRoles([{"user1", [admin, cluster_admin]},
-                     {"user2", [{bucket_admin, ["test"]}, ro_admin]},
-                     {"user3", [{bucket_admin, ["test"]},
-                                {bucket_full_access, ["test"]}]},
-                     {"user4", [admin]}]),
-           CheckRoles(
-             [{"user1", [admin, cluster_admin, {bucket_full_access, [any]}]},
-              {"user2", [{bucket_admin, ["test"]},
-                         {bucket_full_access, ["test"]}, ro_admin]},
-              {"user3", [{bucket_admin, ["test"]},
-                         {bucket_full_access, ["test"]}]},
-              {"user4", [admin]}])),
-      Test(?VERSION_66,
+     [Test(?VERSION_66,
            [{"user",
              [{roles, [admin]}, {name, "Test"}, {user_roles, [admin]}]}],
            ?cut(CheckUser("user", "Test"))),

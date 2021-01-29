@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2016-2019 Couchbase, Inc.
+%% @copyright 2016-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -598,8 +598,6 @@ get_definitions(Config, public) ->
     get_public_definitions(cluster_compat_mode:get_compat_version(Config)).
 
 -spec get_public_definitions(list()) -> [rbac_role_def(), ...].
-get_public_definitions(Version) when Version < ?VERSION_55 ->
-    menelaus_old_roles:roles_pre_55();
 get_public_definitions(Version) when Version < ?VERSION_66 ->
     menelaus_old_roles:roles_pre_66();
 get_public_definitions(Version) when Version < ?VERSION_CHESHIRECAT ->
