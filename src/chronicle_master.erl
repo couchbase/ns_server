@@ -36,21 +36,29 @@
 start_link() ->
     misc:start_singleton(gen_server2, start_link, [?SERVER, ?MODULE, [], []]).
 
+wait_for_server_start() ->
+    misc:wait_for_global_name(?MODULE).
+
 add_replica(Node) ->
+    wait_for_server_start(),
     gen_server2:call(?SERVER, {add_replica, Node}).
 
 ensure_voters(Nodes) ->
+    wait_for_server_start(),
     gen_server2:call(?SERVER, {ensure_voters, Nodes}).
 
 deactivate_voters(Nodes) ->
+    wait_for_server_start(),
     gen_server2:call(?SERVER, {deactivate_voters, Nodes}).
 
 remove_peer(Node) ->
+    wait_for_server_start(),
     gen_server2:call(?SERVER, {remove_peer, Node}).
 
 upgrade_cluster([]) ->
     ok;
 upgrade_cluster(OtherNodes) ->
+    wait_for_server_start(),
     gen_server2:call(?SERVER, {upgrade_cluster, OtherNodes}, ?UPGRADE_TIMEOUT).
 
 init([]) ->
