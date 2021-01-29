@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2011-2018 Couchbase, Inc.
+%% @copyright 2011-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -94,19 +94,13 @@ get_inner(Bucket, DocId, CollectionUid, VBucket, Options, RetriesLeft) ->
             try
                 {ok, Rev, _MetaFlags} = get_meta(Bucket, DocId, CollectionUid,
                                                  VBucket, CAS),
-                case cluster_compat_mode:is_cluster_55() of
-                    true ->
-                        {ok, XAttrsJsonObj} = get_xattrs(Bucket, DocId,
-                                                         CollectionUid,
-                                                         VBucket, CAS,
-                                                         XAttrPermissions),
-                        {ok, #doc{id = DocId, body = Value, rev = Rev,
-                                  content_meta = ContentMeta},
-                         XAttrsJsonObj};
-                    false ->
-                        {ok, #doc{id = DocId, body = Value, rev = Rev,
-                                  content_meta = ContentMeta}}
-                end
+                {ok, XAttrsJsonObj} = get_xattrs(Bucket, DocId,
+                                                 CollectionUid,
+                                                 VBucket, CAS,
+                                                 XAttrPermissions),
+                {ok, #doc{id = DocId, body = Value, rev = Rev,
+                          content_meta = ContentMeta},
+                 XAttrsJsonObj}
 
             catch
                 _:Reason ->

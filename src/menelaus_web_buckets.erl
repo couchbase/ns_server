@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2020 Couchbase, Inc.
+%% @copyright 2009-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -333,8 +333,7 @@ build_dynamic_bucket_info(InfoLevel, Id, BucketConfig) ->
        proplists:get_value(frag_percent, BucketConfig, 50)},
       {conflictResolutionType,
        ns_bucket:conflict_resolution_type(BucketConfig)}],
-     case cluster_compat_mode:is_enterprise() andalso
-         cluster_compat_mode:is_cluster_55() of
+     case cluster_compat_mode:is_enterprise() of
          true ->
              [{maxTTL, proplists:get_value(max_ttl, BucketConfig, 0)},
               {compressionMode,
@@ -877,10 +876,9 @@ validate_membase_bucket_params(CommonParams, Params,
          parse_validate_pitr_max_history_age(Params, IsNew, IsDeveloperPreview),
          parse_validate_frag_percent(Params, BucketConfig, IsNew, Version,
                                      IsEnterprise),
-         parse_validate_max_ttl(Params, BucketConfig,
-                                IsNew, Version, IsEnterprise),
-         parse_validate_compression_mode(Params, BucketConfig,
-                                         IsNew, Version, IsEnterprise)
+         parse_validate_max_ttl(Params, BucketConfig, IsNew, IsEnterprise),
+         parse_validate_compression_mode(Params, BucketConfig, IsNew,
+                                         IsEnterprise)
          | validate_bucket_auto_compaction_settings(Params)],
 
     validate_bucket_purge_interval(Params, BucketConfig, IsNew) ++
@@ -1462,25 +1460,17 @@ parse_validate_replica_index("0") -> {ok, replica_index, false};
 parse_validate_replica_index("1") -> {ok, replica_index, true};
 parse_validate_replica_index(_ReplicaValue) -> {error, replicaIndex, <<"replicaIndex can only be 1 or 0">>}.
 
-parse_validate_compression_mode(Params, BucketConfig, IsNew,
-                                Version, IsEnterprise) ->
+parse_validate_compression_mode(Params, BucketConfig, IsNew, IsEnterprise) ->
     CompMode = proplists:get_value("compressionMode", Params),
     do_parse_validate_compression_mode(
-      IsEnterprise,
-      cluster_compat_mode:is_version_55(Version),
-      CompMode, BucketConfig, IsNew).
+      IsEnterprise, CompMode, BucketConfig, IsNew).
 
-do_parse_validate_compression_mode(false, _, undefined, _BucketCfg, _IsNew) ->
+do_parse_validate_compression_mode(false, undefined, _BucketCfg, _IsNew) ->
     {ok, compression_mode, off};
-do_parse_validate_compression_mode(_, false, undefined, _BucketCfg, _IsNew) ->
-    ignore;
-do_parse_validate_compression_mode(false, _, _CompMode, _BucketCfg, _IsNew) ->
+do_parse_validate_compression_mode(false, _CompMode, _BucketCfg, _IsNew) ->
     {error, compressionMode,
      <<"Compression mode is supported in enterprise edition only">>};
-do_parse_validate_compression_mode(_, false, _CompMode, _BucketCfg, _IsNew) ->
-    {error, compressionMode,
-     <<"Compression mode can not be set until the cluster is fully 5.5">>};
-do_parse_validate_compression_mode(true, true, CompMode, BucketCfg, IsNew) ->
+do_parse_validate_compression_mode(true, CompMode, BucketCfg, IsNew) ->
     DefaultVal = case IsNew of
                      true -> passive;
                      false -> proplists:get_value(compression_mode, BucketCfg)
@@ -1494,21 +1484,15 @@ parse_compression_mode(_) ->
     {error, compressionMode,
      <<"compressionMode can be set to 'off', 'passive' or 'active'">>}.
 
-parse_validate_max_ttl(Params, BucketConfig, IsNew, Version, IsEnterprise) ->
+parse_validate_max_ttl(Params, BucketConfig, IsNew, IsEnterprise) ->
     MaxTTL = proplists:get_value("maxTTL", Params),
-    parse_validate_max_ttl_inner(IsEnterprise,
-                                 cluster_compat_mode:is_version_55(Version),
-                                 MaxTTL, BucketConfig, IsNew).
+    parse_validate_max_ttl_inner(IsEnterprise, MaxTTL, BucketConfig, IsNew).
 
-parse_validate_max_ttl_inner(false, _, undefined, _BucketCfg, _IsNew) ->
+parse_validate_max_ttl_inner(false, undefined, _BucketCfg, _IsNew) ->
     {ok, max_ttl, 0};
-parse_validate_max_ttl_inner(_, false, undefined, _BucketCfg, _IsNew) ->
-    ignore;
-parse_validate_max_ttl_inner(false, _, _MaxTTL, _BucketCfg, _IsNew) ->
+parse_validate_max_ttl_inner(false, _MaxTTL, _BucketCfg, _IsNew) ->
     {error, maxTTL, <<"Max TTL is supported in enterprise edition only">>};
-parse_validate_max_ttl_inner(_, false, _MaxTTL, _BucketCfg, _IsNew) ->
-    {error, maxTTL, <<"Max TTL can not be set until the cluster is fully 5.5">>};
-parse_validate_max_ttl_inner(true, true, MaxTTL, BucketCfg, IsNew) ->
+parse_validate_max_ttl_inner(true, MaxTTL, BucketCfg, IsNew) ->
     DefaultVal = case IsNew of
                      true -> "0";
                      false -> proplists:get_value(max_ttl, BucketCfg)

@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2013-2020 Couchbase, Inc.
+%% @copyright 2013-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -803,15 +803,10 @@ password_policy(Req, Policy) ->
     put(password_policy, Req, PreparedPolicy).
 
 client_cert_auth(Req, ClientCertAuth) ->
-    Val = case cluster_compat_mode:is_cluster_51() of
-              true ->
-                  State = lists:keyfind(state, 1, ClientCertAuth),
-                  {PrefixesKey, Triples} = lists:keyfind(prefixes, 1, ClientCertAuth),
-                  NewTriples = [{propset, T} || T <- Triples],
-                  [State, {PrefixesKey, {list, NewTriples}}];
-              false ->
-                  ClientCertAuth
-          end,
+    State = lists:keyfind(state, 1, ClientCertAuth),
+    {PrefixesKey, Triples} = lists:keyfind(prefixes, 1, ClientCertAuth),
+    NewTriples = [{propset, T} || T <- Triples],
+    Val = [State, {PrefixesKey, {list, NewTriples}}],
     put(client_cert_auth, Req, Val).
 
 security_settings(Req, Settings) ->

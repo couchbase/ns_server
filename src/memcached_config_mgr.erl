@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2014-2018 Couchbase, Inc.
+%% @copyright 2014-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -374,15 +374,10 @@ ssl_minimum_protocol([], _Params) ->
 client_cert_auth([], _Params) ->
     Val = ns_ssl_services_setup:client_cert_auth(),
 
-    case cluster_compat_mode:is_cluster_51() of
-        true ->
-            State = proplists:get_value(state, Val),
-            Prefixes = [{[{K, list_to_binary(V)} || {K, V} <- Triple]} ||
-                           Triple <- proplists:get_value(prefixes, Val, [])],
-            {[{state, list_to_binary(State)}, {prefixes, Prefixes}]};
-        false ->
-            {[{K, list_to_binary(V)} || {K,V} <- Val]}
-    end.
+    State = proplists:get_value(state, Val),
+    Prefixes = [{[{K, list_to_binary(V)} || {K, V} <- Triple]} ||
+                Triple <- proplists:get_value(prefixes, Val, [])],
+    {[{state, list_to_binary(State)}, {prefixes, Prefixes}]}.
 
 is_snappy_enabled([], _Params) ->
     is_snappy_enabled().

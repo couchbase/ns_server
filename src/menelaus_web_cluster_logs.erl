@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2014-2019 Couchbase, Inc.
+%% @copyright 2014-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -287,12 +287,7 @@ parse_validate_collect_params(Params, Config) ->
             N when N =:= "none"; N =:= "partial" ->
                 case cluster_compat_mode:is_enterprise() of
                     true ->
-                        case cluster_compat_mode:is_cluster_55() of
-                            true ->
-                                [{redact_level, list_to_atom(N)}];
-                            false ->
-                                [{error, {cluster_too_old, log_redaction}}]
-                        end;
+                        [{redact_level, list_to_atom(N)}];
                     false ->
                         [{error, {not_enterprise, log_redaction}}]
                 end;

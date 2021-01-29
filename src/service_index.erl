@@ -1,5 +1,5 @@
 %% @author Couchbase, Inc <info@couchbase.com>
-%% @copyright 2015-2019 Couchbase, Inc.
+%% @copyright 2015-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -59,8 +59,7 @@ restart() ->
 
 status_mapping() ->
     AddType0 = [{storageMode, <<"indexType">>}],
-    AddType = case cluster_compat_mode:is_cluster_55() andalso
-                  cluster_compat_mode:is_enterprise() of
+    AddType = case cluster_compat_mode:is_enterprise() of
                   true ->
                       [{instId, <<"instId">>},
                        {partitioned, <<"partitioned">>},

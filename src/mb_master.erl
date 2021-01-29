@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2010-2020 Couchbase, Inc.
+%% @copyright 2010-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -240,27 +240,11 @@ sync_surrender(MasterToShutdown, Timeout) ->
 %%
 %% - The old master is of the affected version.
 %%
-%% - There are no pre-5.5 nodes in the cluster, which would mean that the old
-%% orchestration is still in use and hence the workaround is not needed.
-%%
 %% - The workaround is not explicitly disabled through an ns_config knob.
 should_workaround_mb33750(Version) ->
-    case cluster_compat_mode:is_cluster_55() of
-        true ->
-            Enabled = ?get_param(mb33750_workaround_enabled, true),
-
-            Affected55x = (Version >= [5, 5, 0]) andalso (Version < [5, 5, 4]),
-            Affected60x = (Version >= [6, 0, 0]) andalso (Version < [6, 0, 2]),
-            Affected    = Affected55x orelse Affected60x,
-
-            Enabled andalso Affected;
-        false ->
-            %% The actual node that we are taking over might be running a
-            %% vulnerable version of the code, but that we're still in pre-55
-            %% compat mode indicates that the vulnerable code path didn't get
-            %% a chance to run yet.
-            false
-    end.
+    Enabled = ?get_param(mb33750_workaround_enabled, true),
+    Affected = (Version >= [6, 0, 0]) andalso (Version < [6, 0, 2]),
+    Enabled andalso Affected.
 
 -define(stringify(Body), ??Body).
 

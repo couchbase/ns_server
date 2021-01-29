@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2015-2018 Couchbase, Inc.
+%% @copyright 2015-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -178,18 +178,13 @@ allowed_values(Key) ->
 
 handle_client_cert_auth_settings(Req) ->
     Cca = ns_ssl_services_setup:client_cert_auth(),
-    Out = case cluster_compat_mode:is_cluster_51() of
-              true ->
-                  State = list_to_binary(proplists:get_value(state, Cca)),
-                  Prefixes = [begin
-                                  {struct, [{list_to_binary(atom_to_list(K)), list_to_binary(V)}
-                                            || {K, V} <- Triple]}
-                              end || Triple <- proplists:get_value(prefixes, Cca, [])],
+    State = list_to_binary(proplists:get_value(state, Cca)),
+    Prefixes = [begin
+                    {struct, [{list_to_binary(atom_to_list(K)), list_to_binary(V)}
+                              || {K, V} <- Triple]}
+                end || Triple <- proplists:get_value(prefixes, Cca, [])],
 
-                  {struct, [{<<"state">>, State}, {<<"prefixes">>, Prefixes}]};
-              false ->
-                  {[{K, list_to_binary(V)} || {K,V} <- Cca]}
-          end,
+    Out = {struct, [{<<"state">>, State}, {<<"prefixes">>, Prefixes}]},
     menelaus_util:reply_json(Req, Out).
 
 validate_client_cert_auth_param(Key, Val) ->
@@ -275,39 +270,20 @@ validate_client_cert_auth_prefixes(Prefixes, Cfg, Errors) ->
     PErrs = check_for_duplicate_prefixes(PCfg, PErrs0),
     {Cfg ++ [{prefixes, PCfg}], PErrs ++ Errors}.
 
-validate_client_cert_auth_settings({Key, Val}, Params, OldVal, Acc) ->
-    case Key == "state" andalso Val =/= "disable" of
-        true ->
-            case {proplists:get_value("path", Params), proplists:get_value(path, OldVal)} of
-                {undefined, undefined} ->
-                    [{error, {400, io_lib:format("'path' must be defined when 'state' is "
-                                                 "being set to '~s'", [Val])}}] ++ Acc;
-                _ ->
-                    Acc
-            end;
-        false ->
-            Acc
-    end.
-
 handle_client_cert_auth_settings_post(Req) ->
     menelaus_util:assert_is_enterprise(),
 
-    case cluster_compat_mode:is_cluster_51() of
-        true ->
-            try
-                JSON = menelaus_util:parse_json(Req),
-                do_handle_client_cert_auth_settings_5_1_post(Req, JSON)
-            catch
-                throw:{error, Msg} ->
-                    menelaus_util:reply_json(Req, Msg, 400);
-                _:_ ->
-                    menelaus_util:reply_json(Req, <<"Invalid JSON">>, 400)
-            end;
-        false ->
-            do_handle_client_cert_auth_settings_5_0_post(Req)
+    try
+        JSON = menelaus_util:parse_json(Req),
+        do_handle_client_cert_auth_settings_post(Req, JSON)
+    catch
+        throw:{error, Msg} ->
+            menelaus_util:reply_json(Req, Msg, 400);
+        _:_ ->
+            menelaus_util:reply_json(Req, <<"Invalid JSON">>, 400)
     end.
 
-%% The client_cert_auth settings will be a JSON payload 5.1 onwards and it'll look like
+%% The client_cert_auth settings will be a JSON payload and it'll look like
 %% the following:
 %%
 %% {
@@ -325,7 +301,7 @@ handle_client_cert_auth_settings_post(Req) ->
 %%       }
 %%     ]
 %% }
-do_handle_client_cert_auth_settings_5_1_post(Req, JSON) ->
+do_handle_client_cert_auth_settings_post(Req, JSON) ->
     {struct, Data} = JSON,
     StateRaw = proplists:get_value(<<"state">>, Data),
     PrefixesRaw = proplists:get_value(<<"prefixes">>, Data),
@@ -371,46 +347,4 @@ do_handle_client_cert_auth_settings_5_1_post(Req, JSON) ->
                     Out = [list_to_binary(Msg) || {error, Msg} <- Errors],
                     menelaus_util:reply_json(Req, Out, 400)
             end
-    end.
-
-do_handle_client_cert_auth_settings_5_0_post(Req) ->
-    Params = mochiweb_request:parse_post(Req),
-    OldVal = ns_ssl_services_setup:client_cert_auth(),
-    AccumulateChanges =
-        fun({Key, Val} = Pair, Acc) ->
-                case allowed_values(Key) of
-                    none ->
-                        [{error, {400, io_lib:format("Invalid key: '~s'", [Key])}}]
-                            ++ Acc;
-                    Values ->
-                        Acc1 = validate_client_cert_auth_settings(Pair, Params, OldVal, Acc),
-                        case Values == any orelse lists:member(Val, Values) of
-                            true ->
-                                NewKey = list_to_atom(Key),
-                                case proplists:get_value(NewKey, OldVal) =/= Val of
-                                    true ->
-                                        [{NewKey, Val}] ++ Acc1;
-                                    _Else ->
-                                        Acc1
-                                end;
-                            false ->
-                                [{error, {400, io_lib:format("Invalid value '~s' "
-                                                             "for key '~s'",
-                                                             [Val, Key])
-                                         }
-                                 }] ++ Acc1
-                        end
-                end
-        end,
-    KeyChanged = lists:foldl(AccumulateChanges, [], Params),
-    case proplists:get_value(error, KeyChanged, none) of
-        none when length(KeyChanged) > 0 ->
-            NewValue = lists:ukeysort(1, KeyChanged ++ OldVal),
-            ns_config:set(client_cert_auth, NewValue),
-            ns_audit:client_cert_auth(Req, NewValue),
-            menelaus_util:reply(Req, 202);
-        {Code, Error} ->
-            menelaus_util:reply_json(Req, list_to_binary(Error), Code);
-        _Else ->
-            menelaus_util:reply(Req, 200)
     end.

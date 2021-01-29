@@ -59,12 +59,7 @@ delete_doc(Id) ->
     #docv2{id = Id, value = [], props = [{deleted, true}, {rev, 0}]}.
 
 update_doc(Id, Value) ->
-    %% we don't want last_modified to appear on mixed clusters
-    LastModified =
-        case cluster_compat_mode:is_cluster_55() of
-            true -> [{last_modified, os:system_time(millisecond)}];
-            false -> []
-        end,
+    LastModified = [{last_modified, os:system_time(millisecond)}],
     #docv2{id = Id, value = Value,
            props = [{deleted, false}, {rev, 0}] ++ LastModified}.
 

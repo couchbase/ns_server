@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2017-2018 Couchbase, Inc.
+%% @copyright 2017-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -179,7 +179,6 @@ handle_register_name(Name, Pid, From, State) ->
             State;
         not_found ->
             cache_name(Name, Pid),
-            maybe_register_with_global(Name, Pid),
             reply(From, yes),
             State
     end.
@@ -297,12 +296,4 @@ get_cached_name(Name) ->
     catch
         error:badarg ->
             not_running
-    end.
-
-maybe_register_with_global(Name, Pid) ->
-    case cluster_compat_mode:is_cluster_55() of
-        true ->
-            ok;
-        false ->
-            yes = global:register_name(Name, Pid)
     end.

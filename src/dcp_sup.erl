@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2013-2019 Couchbase, Inc.
+%% @copyright 2013-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -86,7 +86,10 @@ get_replication_features() ->
                   %% so we can assume that if collections are enabled globally
                   %% they cannot be disabled for particular bucket
                   {collections, collections:enabled()},
-                  {del_times, cluster_compat_mode:is_cluster_55()},
+                  %% Unconditionally setting 'del_times' to true as feature
+                  %% must be negotiated in post-5.5 clusters, and earlier
+                  %% versions are no longer supported.
+                  {del_times, true},
                   {ssl, misc:should_cluster_data_be_encrypted()},
                   {set_consumer_name, cluster_compat_mode:is_cluster_65()},
                   {json, cluster_compat_mode:is_cluster_65()},

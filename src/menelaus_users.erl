@@ -919,12 +919,6 @@ upgrade_test_() ->
         end,
     {foreach,
      fun() ->
-             %% only because update_fun calls it. remove when the support of
-             %% pre 5.5 is discontinued
-             meck:new(cluster_compat_mode, [passthrough]),
-             meck:expect(cluster_compat_mode, is_cluster_55,
-                         fun () -> true end),
-
              meck:new(replicated_dets, [passthrough]),
              meck:expect(replicated_dets, select_with_update,
                          fun replicated_dets:toy_select_with_update/4),

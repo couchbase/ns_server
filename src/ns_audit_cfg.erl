@@ -47,30 +47,21 @@ jsonifier(disabled_userids) ->
 jsonifier(_) ->
     fun functools:id/1.
 
-version(CompatMode) ->
-    case cluster_compat_mode:is_version_55(CompatMode) of
-        true ->
-            2;
-        false ->
-            1
-    end.
+version() ->
+    2.
 
-fields(common) ->
+fields() ->
     [version,
      auditd_enabled,
      log_path,
      rotate_interval,
      rotate_size,
      descriptors_path,
-     sync];
-fields(1) ->
-    [disabled | fields(common)];
-fields(2) ->
-    fields(common) ++
-        [disabled_userids,
-         uuid,
-         filtering_enabled,
-         event_states].
+     sync,
+     disabled_userids,
+     uuid,
+     filtering_enabled,
+     event_states].
 
 is_notable_config_key(audit) ->
     true;
@@ -119,7 +110,7 @@ init([]) ->
                                      []
                              end),
 
-    write_audit_json(CompatMode, Merged),
+    write_audit_json(Merged),
     self() ! notify_memcached,
     {ok, #state{global = Global, merged = Merged}}.
 
@@ -155,7 +146,7 @@ handle_info(update_audit_json, #state{merged = OldMerged}) ->
         OldMerged ->
             ok;
         _ ->
-            write_audit_json(CompatMode, Merged),
+            write_audit_json(Merged),
             notify_memcached(NewState)
     end,
     {noreply, NewState}.
@@ -206,7 +197,7 @@ get_log_path() ->
 
 prepare_params(Global, Local, CompatMode) ->
     Merged = lists:ukeymerge(1, Local, Global),
-    massage_params(version(CompatMode), CompatMode, Merged).
+    massage_params(CompatMode, Merged).
 
 calculate_event_states(Params) ->
     %% leave only those events that change the default
@@ -228,9 +219,7 @@ calculate_event_states(Params) ->
          [{integer_to_binary(Id), disabled} ||
              Id <- Disabled, Filter(Id, false)]}.
 
-massage_params(1, _CompatMode, Params) ->
-    Params;
-massage_params(2, CompatMode, Params) ->
+massage_params(CompatMode, Params) ->
     EventStates = calculate_event_states(Params),
     DisabledUsers = proplists:get_value(disabled_users, Params, []),
 
@@ -245,14 +234,14 @@ massage_params(2, CompatMode, Params) ->
 
     [{uuid, UID} | NewParams].
 
-write_audit_json(CompatMode, Params) ->
-    Version = version(CompatMode),
+write_audit_json(Params) ->
+    Version = version(),
     CompleteParams = [{descriptors_path, path_config:component_path(sec)},
                       {version, Version}] ++ Params,
 
     Path = audit_json_path(),
 
-    Fields = fields(Version),
+    Fields = fields(),
     JsonParams = [{K, V} || {K, V} <- CompleteParams,
                             lists:member(K, Fields)],
     Json = [{K, (jsonifier(K))(V)} || {K, V} <- JsonParams],

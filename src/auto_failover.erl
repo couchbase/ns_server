@@ -1,5 +1,5 @@
 %% @author Couchbase, Inc <info@couchbase.com>
-%% @copyright 2011-2020 Couchbase, Inc.
+%% @copyright 2011-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -120,24 +120,12 @@ enable(Timeout, Max, Extras) ->
     %% Request will be sent to the master for processing.
     %% In a mixed version cluster, node running highest version is
     %% usually selected as the master.
-    %% But to be safe, if the cluster has not been fully upgraded yet,
-    %% then use the old API.
-    case cluster_compat_mode:is_cluster_55() of
-        true ->
-            call({enable_auto_failover, Timeout, Max, Extras});
-        false ->
-            call({enable_auto_failover, Timeout, Max})
-    end.
+    call({enable_auto_failover, Timeout, Max, Extras}).
 
 %% @doc Disable auto-failover
 -spec disable(Extras::list()) -> ok.
 disable(Extras) ->
-    case cluster_compat_mode:is_cluster_55() of
-        true ->
-            call({disable_auto_failover, Extras});
-        false ->
-            call(disable_auto_failover)
-    end.
+    call({disable_auto_failover, Extras}).
 
 %% @doc Reset the number of nodes that were auto-failovered to zero
 -spec reset_count() -> ok.
@@ -229,8 +217,6 @@ handle_call({enable_auto_failover, Timeout, Max, Extras}, _From, State) ->
     make_state_persistent(State2, Extras),
     {reply, ok, State2};
 
-handle_call(disable_auto_failover, From, State) ->
-    handle_call({disable_auto_failover, []}, From, State);
 %% @doc Auto-failover is already disabled, so we don't do anything
 handle_call({disable_auto_failover, _}, _From,
             #state{tick_ref = nil} = State) ->
@@ -256,12 +242,7 @@ handle_cast(reset_auto_failover_count, #state{count = 0} = State) ->
     {noreply, State};
 handle_cast(reset_auto_failover_count, State) ->
     ?log_debug("reset auto_failover count: ~p", [State]),
-    State1 = case cluster_compat_mode:is_cluster_55() of
-                 true ->
-                     State#state{failed_over_server_groups = []};
-                 false ->
-                     State
-             end,
+    State1 = State#state{failed_over_server_groups = []},
     LogicState = init_logic_state(State1#state.timeout),
     State2 = State1#state{count = 0, auto_failover_logic_state = LogicState},
     State3 = init_reported(State2),

@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2017-2018 Couchbase, Inc.
+%% @copyright 2017-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -311,16 +311,11 @@ update_quorum_nodes_regular(Fun, Opts) ->
                  end, Opts).
 
 update_quorum_nodes_bypass(Fun, _Opts) ->
-    case cluster_compat_mode:is_cluster_55() of
-        true ->
-            %% If we get there, it means that new orchestration is
-            %% disabled. We update the quorum nodes anyway in case in the
-            %% future the user goes back to new orchestration.
-            Nodes = leader_quorum_nodes_manager:get_quorum_nodes_unsafe(),
-            leader_quorum_nodes_manager:set_quorum_nodes_unsafe(Fun(Nodes));
-        false ->
-            ok
-    end.
+    %% If we get there, it means that new orchestration is
+    %% disabled. We update the quorum nodes anyway in case in the
+    %% future the user goes back to new orchestration.
+    Nodes = leader_quorum_nodes_manager:get_quorum_nodes_unsafe(),
+    leader_quorum_nodes_manager:set_quorum_nodes_unsafe(Fun(Nodes)).
 
 %% gen_server callbacks
 init([]) ->
@@ -1018,8 +1013,7 @@ get_options(#activity{options = Options}) ->
     Options.
 
 must_bypass_server() ->
-    not cluster_compat_mode:is_cluster_55()
-        orelse leader_utils:is_new_orchestration_disabled().
+    leader_utils:is_new_orchestration_disabled().
 
 pick_implementation(Regular, Bypass, Args) ->
     Impl = case must_bypass_server() of

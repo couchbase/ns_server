@@ -140,8 +140,7 @@ parse_validate_other_params(Args, Config) ->
     end.
 
 parse_validate_extras(Args, CurrRV, Config) ->
-    case cluster_compat_mode:is_cluster_55() andalso
-        cluster_compat_mode:is_enterprise() of
+    case cluster_compat_mode:is_enterprise() of
         true ->
             parse_validate_extras_inner(Args, CurrRV, Config);
         false ->
@@ -270,8 +269,7 @@ config_check_can_abort_rebalance() ->
     proplists:get_value(?CAN_ABORT_REBALANCE_CONFIG_KEY, Cfg, false).
 
 get_extra_settings(Config) ->
-    case cluster_compat_mode:is_cluster_55() andalso
-        cluster_compat_mode:is_enterprise() of
+    case cluster_compat_mode:is_enterprise() of
         true ->
             SGFO = proplists:get_value(?FAILOVER_SERVER_GROUP_CONFIG_KEY,
                                        Config),
@@ -295,8 +293,7 @@ get_extra_settings(Config) ->
     end.
 
 disable_extras(Config) ->
-    case cluster_compat_mode:is_cluster_55() andalso
-        cluster_compat_mode:is_enterprise() of
+    case cluster_compat_mode:is_enterprise() of
         true ->
             CanAbortRebalance =
                 case cluster_compat_mode:is_cluster_65() of

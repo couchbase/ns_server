@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2018 Couchbase, Inc.
+%% @copyright 2018-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -64,10 +64,7 @@ handle_post(Req) ->
       end, Req, form, validators(Config)).
 
 audit_modify_audit_settings(Req, Settings) ->
-    case cluster_compat_mode:is_cluster_55() of
-        true -> ns_audit:modify_audit_settings(Req, Settings);
-        false -> ok
-    end.
+    ns_audit:modify_audit_settings(Req, Settings).
 
 reply_with_json_audit_descriptors(Req, Descriptors) ->
     Json =
@@ -133,72 +130,54 @@ key_config_to_api(rotate_size) ->
     rotateSize;
 key_config_to_api(log_path) ->
     logPath;
-key_config_to_api(X) ->
-    case cluster_compat_mode:is_cluster_55() of
-        true ->
-            key_config_to_api_55(X);
-        false ->
-            undefined
-    end.
-
-key_config_to_api_55(actually_disabled) ->
+key_config_to_api(actually_disabled) ->
     disabled;
-key_config_to_api_55(disabled_users) ->
+key_config_to_api(disabled_users) ->
     disabledUsers;
-key_config_to_api_55(uid) ->
+key_config_to_api(uid) ->
     uid;
-key_config_to_api_55(_) ->
+key_config_to_api(_) ->
     undefined.
 
 pre_process_get(Props) ->
-    case cluster_compat_mode:is_cluster_55() of
-        true ->
-            Enabled = proplists:get_value(enabled, Props),
-            Disabled = proplists:get_value(disabled, Props),
-            Descriptors = ns_audit_cfg:get_descriptors(ns_config:latest()),
+    Enabled = proplists:get_value(enabled, Props),
+    Disabled = proplists:get_value(disabled, Props),
+    Descriptors = ns_audit_cfg:get_descriptors(ns_config:latest()),
 
-            %% though POST API stores all configurable events as either enabled
-            %% or disabled, we anticipate that the list of configurable events
-            %% might change
-            ActuallyDisabled =
-                lists:filtermap(
-                  fun ({Id, P}) ->
-                          IsEnabledByDefault = proplists:get_value(enabled, P),
-                          case lists:member(Id, Enabled) orelse
-                              (IsEnabledByDefault andalso
-                               not lists:member(Id, Disabled)) of
-                              true ->
-                                  false;
-                              false ->
-                                  {true, Id}
-                          end
-                  end, Descriptors),
+    %% though POST API stores all configurable events as either enabled
+    %% or disabled, we anticipate that the list of configurable events
+    %% might change
+    ActuallyDisabled =
+        lists:filtermap(
+          fun ({Id, P}) ->
+                  IsEnabledByDefault = proplists:get_value(enabled, P),
+                  case lists:member(Id, Enabled) orelse
+                       (IsEnabledByDefault andalso
+                        not lists:member(Id, Disabled)) of
+                      true ->
+                          false;
+                      false ->
+                          {true, Id}
+                  end
+          end, Descriptors),
 
-            [{actually_disabled, ActuallyDisabled} | Props];
-        false ->
-            Props
-    end.
+    [{actually_disabled, ActuallyDisabled} | Props].
 
 pre_process_post(Config, Props) ->
-    case cluster_compat_mode:is_cluster_55(Config) of
-        true ->
-            case proplists:get_value(disabled, Props) of
-                undefined ->
-                    Props;
-                Disabled ->
-                    Descriptors =
-                        ns_audit_cfg:get_descriptors(Config),
+    case proplists:get_value(disabled, Props) of
+        undefined ->
+            Props;
+        Disabled ->
+            Descriptors =
+            ns_audit_cfg:get_descriptors(Config),
 
-                    %% all configurable events are stored either in enabled or
-                    %% disabled list, to reduce an element of surprise in case
-                    %% if the defaults will change after the upgrade
-                    Enabled = [Id || {Id, _} <- Descriptors] -- Disabled,
-                    misc:update_proplist(Props,
-                                         [{enabled, Enabled},
-                                          {disabled, lists:sort(Disabled)}])
-            end;
-        false ->
-            Props
+            %% all configurable events are stored either in enabled or
+            %% disabled list, to reduce an element of surprise in case
+            %% if the defaults will change after the upgrade
+            Enabled = [Id || {Id, _} <- Descriptors] -- Disabled,
+            misc:update_proplist(Props,
+                                 [{enabled, Enabled},
+                                  {disabled, lists:sort(Disabled)}])
     end.
 
 validate_events(Name, Descriptors, State) ->
@@ -254,20 +233,8 @@ validate_users(Name, State) ->
               end
       end, Name, State).
 
-validator_55(Config, State) ->
-    case cluster_compat_mode:is_cluster_55(Config) of
-        false ->
-            State;
-        true ->
-            functools:chain(State, validators_55(Config))
-    end.
-
-validators_55(Config) ->
-    Descriptors = orddict:from_list(ns_audit_cfg:get_descriptors(Config)),
-    [validate_events(disabled, Descriptors, _),
-     validate_users(disabledUsers, _)].
-
 validators(Config) ->
+    Descriptors = orddict:from_list(ns_audit_cfg:get_descriptors(Config)),
     [validator:has_params(_),
      validator:boolean(auditdEnabled, _),
      validator:dir(logPath, _),
@@ -285,5 +252,6 @@ validators(Config) ->
                end
        end, rotateInterval, _),
      validator:integer(rotateSize, 0, 500*1024*1024, _),
-     validator_55(Config, _),
+     validate_events(disabled, Descriptors, _),
+     validate_users(disabledUsers, _),
      validator:unsupported(_)].

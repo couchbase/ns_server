@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2020 Couchbase, Inc.
+%% @copyright 2009-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -588,7 +588,9 @@ assert_is_enterprise() ->
     end.
 
 assert_is_55() ->
-    assert_cluster_version(fun cluster_compat_mode:is_cluster_55/0).
+    %% XXX: will be removed when assert_is_55/0 is removed in a subsequent
+    %% patch.
+    ok.
 
 assert_is_65() ->
     assert_cluster_version(fun cluster_compat_mode:is_cluster_65/0).
