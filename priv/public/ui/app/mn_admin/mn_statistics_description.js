@@ -253,6 +253,7 @@ function getStatAdditionalConfig(statName) {
   case "@query.n1ql_requests_500ms":
   case "@query.n1ql_selects":
   case "@query.n1ql_warnings":
+  case "@system.sys_rest_requests":
     return {applyFunctions: ["irate"]};
 
   case "@fts-.fts_num_bytes_used_disk":

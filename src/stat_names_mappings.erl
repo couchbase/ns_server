@@ -36,8 +36,6 @@ handle_stats_mapping_get(Section, StatTokens, Req) ->
     Query = pre_70_stats_to_prom_query(Section, Stats),
     menelaus_util:reply_text(Req, Query, 200).
 
-pre_70_stats_to_prom_query("@system", all) ->
-    <<"{category=`system`}">>;
 pre_70_stats_to_prom_query("@system-processes" = Section, all) ->
     SpecialMetrics =
         [<<"*/major_faults">>, <<"*/minor_faults">>, <<"*/page_faults">>],
@@ -60,6 +58,15 @@ pre_70_stats_to_prom_query(StatSection, List) ->
                 end, [bin(S) || S <- List]),
     prometheus:format_promql({'or', AstList}).
 
+pre_70_stat_to_prom_query("@system", <<"rest_requests">>) ->
+    {ok, rate({[{eq, <<"name">>, <<"sys_rest_requests">>}]})};
+pre_70_stat_to_prom_query("@system", <<"hibernated_waked">>) ->
+    {ok, rate({[{eq, <<"name">>, <<"sys_hibernated_waked">>}]})};
+pre_70_stat_to_prom_query("@system", <<"hibernated_requests">>) ->
+    {ok, named(<<"sys_hibernated_requests">>,
+               {'-', [{ignoring, [<<"name">>]}],
+                [{[{eq, <<"name">>, <<"sys_hibernated">>}]},
+                 {[{eq, <<"name">>, <<"sys_hibernated_waked">>}]}]})};
 pre_70_stat_to_prom_query("@system", Stat) ->
     case is_system_stat(Stat) of
         true -> {ok, {[{eq, <<"name">>, <<"sys_", Stat/binary>>}]}};
@@ -781,14 +788,20 @@ key_type_by_stat_type("@eventing-" ++ _) -> binary;
 key_type_by_stat_type(_) -> atom.
 
 
-%% For system stats it's simple, we can get all of them with a simple query
-%% {category="system"}. For most of other stats it's not always the case.
+%% For @global stats it's simple, we can get all of them with a simple query
+%% {category="audit"}. For most of other stats it's not always the case.
 %% For example, for query we need to request rates for some stats, so we have
 %% to know which stats should be rates and which stats should be plain. This
 %% leads to the fact that when we need to get all of them we have to know
 %% the real list of stats being requested. It can be achieved by various
 %% means. I chose to just hardcode it (should be fine as it's for backward
 %% compat only).
+default_stat_list("@system") ->
+    [swap_used, swap_total, rest_requests, odp_report_failed, mem_used_sys,
+     mem_total, mem_limit, mem_free, mem_actual_used, mem_actual_free,
+     hibernated_waked, hibernated_requests, cpu_utilization_rate,
+     cpu_user_rate, cpu_sys_rate, cpu_stolen_rate, cpu_irq_rate,
+     cpu_cores_available, allocstall];
 default_stat_list("@query") ->
     [query_active_requests, query_queued_requests, query_errors,
      query_invalid_requests, query_request_time, query_requests,
@@ -896,7 +909,17 @@ pre_70_to_prom_query_test_() ->
                          list_to_binary(ExpectedQuery),
                          pre_70_stats_to_prom_query(Section, Stats))}
            end,
-    [Test("@system", all, "{category=`system`}"),
+    [Test("@system", all,
+          "{name=~`sys_allocstall|sys_cpu_cores_available|sys_cpu_irq_rate|"
+                  "sys_cpu_stolen_rate|sys_cpu_sys_rate|sys_cpu_user_rate|"
+                  "sys_cpu_utilization_rate|sys_mem_actual_free|"
+                  "sys_mem_actual_used|sys_mem_free|sys_mem_limit|"
+                  "sys_mem_total|sys_mem_used_sys|sys_odp_report_failed|"
+                  "sys_swap_total|sys_swap_used`} or "
+          "irate({name=~`sys_hibernated_waked|sys_rest_requests`}[1m]) or "
+          "label_replace({name=`sys_hibernated`} - ignoring(name) "
+                        "{name=`sys_hibernated_waked`},"
+                        "`name`,`sys_hibernated_requests`,``,``)"),
      Test("@system", [], ""),
      Test("@system-processes", all,
           "{category=`system-processes`} or "

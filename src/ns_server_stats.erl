@@ -127,8 +127,6 @@ init([]) ->
     increment_counter({request_leaves, rest}, 0),
     increment_counter({request_enters, hibernate}, 0),
     increment_counter({request_leaves, hibernate}, 0),
-    increment_counter(prev_request_leaves_rest, 0),
-    increment_counter(prev_request_leaves_hibernate, 0),
     increment_counter(log_counter, 0),
     increment_counter(odp_report_failed, 0),
     _ = spawn_link(fun stale_histo_epoch_cleaner/0),
@@ -365,28 +363,16 @@ proc_stat_name(Name, Stat) ->
 add_ets_stats(Stats) ->
     [{_, NowRestLeaves}] = ets:lookup(ns_server_system_stats,
                                       {request_leaves, rest}),
-    [{_, PrevRestLeaves}] = ets:lookup(ns_server_system_stats,
-                                       prev_request_leaves_rest),
-    ets:insert(ns_server_system_stats,
-               {prev_request_leaves_rest, NowRestLeaves}),
 
     [{_, NowHibernateLeaves}] = ets:lookup(ns_server_system_stats,
                                            {request_leaves, hibernate}),
-    [{_, PrevHibernateLeaves}] = ets:lookup(ns_server_system_stats,
-                                            prev_request_leaves_hibernate),
     [{_, NowHibernateEnters}] = ets:lookup(ns_server_system_stats,
                                            {request_enters, hibernate}),
-    ets:insert(ns_server_system_stats,
-               {prev_request_leaves_hibernate, NowHibernateLeaves}),
-
-    RestRate = NowRestLeaves - PrevRestLeaves,
-    WakeupRate = NowHibernateLeaves - PrevHibernateLeaves,
-    HibernatedCounter = NowHibernateEnters - NowHibernateLeaves,
     [{_, ODPReportFailed}] = ets:lookup(ns_server_system_stats,
                                         odp_report_failed),
-    lists:umerge(Stats, lists:sort([{rest_requests, RestRate},
-                                    {hibernated_requests, HibernatedCounter},
-                                    {hibernated_waked, WakeupRate},
+    lists:umerge(Stats, lists:sort([{rest_requests, NowRestLeaves},
+                                    {hibernated, NowHibernateEnters},
+                                    {hibernated_waked, NowHibernateLeaves},
                                     {odp_report_failed, ODPReportFailed}])).
 
 log_system_stats(TS) ->
