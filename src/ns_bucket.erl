@@ -1248,41 +1248,99 @@ filter_out_unknown_buckets(BucketsWithUUIDs, BucketConfigs) ->
                          end
                  end, BucketsWithUUIDs).
 
+buckets_with_data_key(Node) ->
+    {node, Node, buckets_with_data}.
+
+buckets_with_data_key_filter(Node) ->
+    {chronicle_compat:backend(), [{node, Node, buckets_with_data}]}.
+
 buckets_with_data_on_this_node() ->
-    BucketConfigs = get_buckets(),
-    Stored = membase_buckets_with_data_on_node(node(), ns_config:latest()),
+    Node = node(),
+    Snapshot = chronicle_compat:get_snapshot(
+                 [key_filter(), buckets_with_data_key_filter(Node)]),
+    BucketConfigs = get_buckets(Snapshot),
+    Stored = membase_buckets_with_data_on_node(Snapshot, Node),
     Filtered = filter_out_unknown_buckets(Stored, BucketConfigs),
     [B || {B, _} <- Filtered] ++
         get_bucket_names_of_type(memcached, BucketConfigs).
 
-membase_buckets_with_data_on_node(Node, Config) ->
-    ns_config:search_node_with_default(Node, Config, buckets_with_data, []).
+membase_buckets_with_data_on_node(Snapshot, Node) ->
+    chronicle_compat:get(Snapshot, buckets_with_data_key(Node),
+                         #{default => []}).
 
 activate_bucket_data_on_this_node(Name) ->
-    case ns_config:run_txn(activate_bucket_data_on_this_node_txn(Name, _, _)) of
+    activate_bucket_data_on_this_node(chronicle_compat:backend(), Name).
+
+txn_on_all_buckets(Fun, ExtraKeys) ->
+    chronicle_kv:txn(
+      kv,
+      fun (Txn) ->
+              Snapshot = chronicle_kv:txn_get_many([ns_bucket:root()], Txn),
+              Fun(chronicle_kv:txn_get_many(
+                    [ns_bucket:root() |
+                     [sub_key(B, props) || B <- get_bucket_names(Snapshot)]] ++
+                        ExtraKeys, Txn))
+      end).
+
+activate_bucket_data_on_this_node(chronicle, Name) ->
+    NodeKey = buckets_with_data_key(node()),
+    case txn_on_all_buckets(
+           fun (Snapshot) ->
+                   case activate_bucket_data_on_this_node_txn(Name, Snapshot) of
+                       not_changed ->
+                           {abort, not_changed};
+                       {ok, Value} ->
+                           {commit, [{set, NodeKey, Value}]}
+                   end
+           end, [NodeKey]) of
+        not_changed ->
+            ok;
+        {ok, _} ->
+            ok
+    end;
+activate_bucket_data_on_this_node(ns_config, Name) ->
+    case ns_config:run_txn(
+           fun (Config, Set) ->
+                   case activate_bucket_data_on_this_node_txn(Name, Config) of
+                       not_changed ->
+                           {abort, not_changed};
+                       {ok, Value} ->
+                           {commit, Set(buckets_with_data_key(node()),
+                                        Value, Config)}
+                   end
+           end) of
         {commit, _} ->
             ok;
         {abort, not_changed} ->
             ok
     end.
 
-activate_bucket_data_on_this_node_txn(Name, Config, Set) ->
-    %% TODO: move buckets_with_data key to chronicle so it is in the same
-    %% snapshot with buckets
-    BucketConfigs = get_buckets(),
-    BucketsWithData = membase_buckets_with_data_on_node(node(), Config),
+activate_bucket_data_on_this_node_txn(Name, Snapshot) ->
+    BucketConfigs = get_buckets(Snapshot),
+    BucketsWithData = membase_buckets_with_data_on_node(Snapshot, node()),
     NewBuckets = lists:keystore(Name, 1, BucketsWithData,
                                 {Name, bucket_uuid(Name, BucketConfigs)}),
     case filter_out_unknown_buckets(NewBuckets, BucketConfigs) of
         BucketsWithData ->
-            {abort, not_changed};
-        ToSet ->
-            {commit, Set({node, node(), buckets_with_data}, ToSet, Config)}
+            not_changed;
+        Other ->
+            {ok, Other}
     end.
 
 deactivate_bucket_data_on_this_node(Name) ->
-    ns_config:update_key(
-      {node, node(), buckets_with_data}, lists:keydelete(Name, 1, _), []).
+    deactivate_bucket_data_on_this_node(chronicle_compat:backend(), Name).
+
+deactivate_bucket_data_on_this_node(chronicle, Name) ->
+    case chronicle_kv:update(kv, buckets_with_data_key(node()),
+                             lists:keydelete(Name, 1, _)) of
+        {error, not_found} ->
+            ok;
+        {ok, _} ->
+            ok
+    end;
+deactivate_bucket_data_on_this_node(ns_config, Name) ->
+    ns_config:update_key(buckets_with_data_key(node()),
+                         lists:keydelete(Name, 1, _), []).
 
 upgrade_buckets(Config, Fun) ->
     Buckets = get_buckets(Config),
