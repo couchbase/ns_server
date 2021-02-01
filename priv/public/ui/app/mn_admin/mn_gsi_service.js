@@ -65,7 +65,12 @@ function mnGsiServiceFactory($http, $q, qwQueryService, mnStatisticsNewService, 
       method: 'GET',
       url: '/indexStatus',
       mnHttp: mnHttpParams
-    }).then(resp => resp.data);
+    }).then(resp => {
+      resp.data.indexes.forEach(row => {
+        row.keyspace = row.bucket + row.scope + row.collection;
+      });
+      return resp.data;
+    });
   }
 
   function getIndexStatsConfig(index, node) {
