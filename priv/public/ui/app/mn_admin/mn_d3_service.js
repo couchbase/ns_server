@@ -431,7 +431,7 @@ function mnD3ServiceFactory() {
           .data(this.data
                 .filter(this.filterDisabled.bind(this))
                 .map(this.getLabelRowValues.bind(this)),
-                line => line.color+line.key+line.value)
+                line => line.color+line.key+line.value+line.yAxis)
 
       tooltipRows.join((enter) => {
         enter
@@ -445,9 +445,11 @@ function mnD3ServiceFactory() {
   function getLabelRowValues(line, i) {
     var idx = this.selectedValueIndex;
     if (!(line.values[idx] && line.values[idx].length) || line.disabled) {
-      return;
+      return {};
     }
+
     return {
+      yAxis: line.yAxis,
       color: this.getLineColor(line, i),
       key: line.key,
       value: (!line.values[idx] || line.values[idx][1] == undefined) ? "-" :
@@ -491,7 +493,7 @@ function mnD3ServiceFactory() {
 
   function updateLabelRow(line) {
     return "<span><i style='background-color:" + line.color + "'></i>" +
-      "<span class='charts-tooltip-key'>" + line.key + "</span></span>" +
+      "<span class='charts-tooltip-key'>" + line.key + (line.yAxis ? "(2nd axis)" : "") + "</span></span>" +
       "<span class='bold'>" + line.value + "</span>";
   }
 
