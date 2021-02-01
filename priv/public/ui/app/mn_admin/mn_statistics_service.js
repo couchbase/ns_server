@@ -394,8 +394,8 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
         if (config.node == "all" && !config.specificStat) {
           cfg1.aggregationFunction = statDesc.aggregationFunction;
         }
-        if (config.applyFunctions || statDesc.applyFunctions) {
-          cfg1.applyFunctions = config.applyFunctions || statDesc.applyFunctions;
+        if (statDesc.applyFunctions || config.applyFunctions) {
+          cfg1.applyFunctions = statDesc.applyFunctions || config.applyFunctions;
         }
         if (statPath.includes("@items")) {
           cfg1.metric[service] = config.items[service];

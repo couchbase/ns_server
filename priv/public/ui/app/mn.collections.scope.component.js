@@ -84,11 +84,12 @@ class MnCollectionsScopeComponent extends MnLifeCycleHooksToStream {
       scope: this.scope.name,
       node: "all",
       zoom: 3000,
+      applyFunctions: ["sum"],
       step: 1,
       stats: ["@kv-.kv_items",
               "@kv-.kv_collections_mem_used_bytes",
               "@kv-.kv_disk_size_bytes",
-              "@kv-.kv_collection_ops"]
+              "@kv-.kv_collection_ops_sum"]
     }, this.$scope);
 
     this.$scope.$watch("mnUIStats", stats => this.stats.next(stats ? stats.stats : {}));

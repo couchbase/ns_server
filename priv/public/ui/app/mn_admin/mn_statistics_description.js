@@ -53,7 +53,8 @@ var compat70 = propertiesToArray(compat65.stats)
       "@kv-.kv_items",
       "@kv-.kv_collections_mem_used_bytes",
       "@kv-.kv_disk_size_bytes",
-      "@kv-.kv_collection_ops"
+      "@kv-.kv_collection_ops",
+      "@kv-.kv_collection_ops_sum"
     ]).reduce((acc, statPath) => {
       if (derivedMetric[statPath]) {
         return acc; //do not show
@@ -200,8 +201,10 @@ function getStatAdditionalConfig(statName) {
   case "@fts-.fts_total_bytes_indexed":
   case "@fts-.fts_total_queries":
   case "@kv-.kv_ops":
-  case "@kv-.kv_collection_ops":
     return {applyFunctions: ["irate", "sum"]};
+
+  case "@kv-.kv_collection_ops_sum":
+    return {applyFunctions: ["irate", "sum"], metric: {name: "kv_collection_ops"}};
 
   case "@cbas.cbas_gc_count_total":
   case "@cbas.cbas_gc_time_milliseconds_total":
@@ -254,6 +257,7 @@ function getStatAdditionalConfig(statName) {
   case "@query.n1ql_selects":
   case "@query.n1ql_warnings":
   case "@system.sys_rest_requests":
+  case "@kv-.kv_collection_ops":
     return {applyFunctions: ["irate"]};
 
   case "@fts-.fts_num_bytes_used_disk":
