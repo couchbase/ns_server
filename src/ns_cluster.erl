@@ -435,7 +435,6 @@ handle_cast(leave, State) ->
 
     chronicle_local:leave_cluster(),
 
-    stats_archiver:wipe(),
     prometheus_cfg:wipe(),
 
     %% in order to disconnect from rest of nodes we need new cookie

@@ -199,29 +199,17 @@ child_specs() ->
      {system_stats_collector, {system_stats_collector, start_link, []},
       permanent, 1000, worker, [system_stats_collector]},
 
-     {{stats_archiver, "@system"}, {stats_archiver, start_link, ["@system"]},
-      permanent, 1000, worker, [stats_archiver]},
-
      {{stats_reader, "@system"}, {stats_reader, start_link, ["@system"]},
       permanent, 1000, worker, [start_reader]},
 
-     {{stats_archiver, "@system-processes"}, {stats_archiver, start_link, ["@system-processes"]},
-      permanent, 1000, worker, [stats_archiver]},
-
      {{stats_reader, "@system-processes"}, {stats_reader, start_link, ["@system-processes"]},
       permanent, 1000, worker, [start_reader]},
-
-     {{stats_archiver, "@query"}, {stats_archiver, start_link, ["@query"]},
-      permanent, 1000, worker, [stats_archiver]},
 
      {{stats_reader, "@query"}, {stats_reader, start_link, ["@query"]},
       permanent, 1000, worker, [stats_reader]},
 
      {query_stats_collector, {query_stats_collector, start_link, []},
       permanent, 1000, worker, []},
-
-     {{stats_archiver, "@global"}, {stats_archiver, start_link, ["@global"]},
-      permanent, 1000, worker, [stats_archiver]},
 
      {{stats_reader, "@global"}, {stats_reader, start_link, ["@global"]},
       permanent, 1000, worker, [stats_reader]},

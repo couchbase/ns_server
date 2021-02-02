@@ -105,14 +105,3 @@ shutdown_nicely() ->
 
 master_node() ->
     mb_master:master_node().
-
-fake_historic_stats() ->
-    Results = stats_archiver:fake_historic_stats(),
-    {json, [{struct, [{stats_bucket, list_to_binary(Bucket)},
-                      {status, case Status of
-                                   ok ->
-                                       ok;
-                                   {error, Error} when is_atom(Error) ->
-                                       Error
-                               end}]} ||
-               {Bucket, Status} <- Results]}.
