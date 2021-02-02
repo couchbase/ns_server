@@ -154,7 +154,8 @@ process_doc({Props}) ->
 
 -spec find_all_replication_docs() -> [Doc :: [{Key :: atom(), Value :: _}]].
 find_all_replication_docs() ->
-    find_all_replication_docs(infinity).
+    %% Use 30s as the default timeout.
+    find_all_replication_docs(30000).
 
 -spec find_all_replication_docs(non_neg_integer() | infinity) ->
                                        [Doc :: [{Key :: atom(), Value :: _}]].
@@ -238,4 +239,4 @@ get_replications_with_remote_info() ->
                   parse_remote_bucket_reference(Target),
               ClusterName = proplists:get_value(RemoteClusterUUID, RemoteClusters, <<"unknown">>),
               [{Id, BucketName, binary_to_list(ClusterName), RemoteBucket} | Acc]
-      end, [], find_all_replication_docs(30000)).
+      end, [], find_all_replication_docs()).
