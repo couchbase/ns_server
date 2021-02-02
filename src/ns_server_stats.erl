@@ -347,8 +347,7 @@ log_system_stats(TS) ->
     NSServerStats = lists:sort(ets:tab2list(ns_server_system_stats)),
     NSCouchDbStats = ns_couchdb_api:fetch_stats(),
 
-    stats_collector:log_stats(TS, "@system",
-                              lists:keymerge(1, NSServerStats, NSCouchDbStats)).
+    log_stats(TS, "@system", lists:keymerge(1, NSServerStats, NSCouchDbStats)).
 
 grab_stats(Port) ->
     port_command(Port, <<0:32/native>>),
@@ -616,3 +615,23 @@ compute_utilization(Used, Total) ->
     catch error:badarith ->
             0
     end.
+
+-define(WIDTH, 30).
+
+log_stats(TS, Bucket, RawStats) ->
+    %% TS is epoch _milli_seconds
+    TSMicros = (TS rem 1000) * 1000,
+    TSSec0 = TS div 1000,
+    TSMega = TSSec0 div 1000000,
+    TSSec = TSSec0 rem 1000000,
+    ?stats_debug("(at ~p (~p)) Stats for bucket ~p:~n~s",
+                 [calendar:now_to_local_time({TSMega, TSSec, TSMicros}),
+                  TS,
+                  Bucket, format_stats(RawStats)]).
+
+format_stats(Stats) ->
+    erlang:list_to_binary(
+      [case couch_util:to_binary(K0) of
+           K -> [K, lists:duplicate(erlang:max(1, ?WIDTH - byte_size(K)), $\s),
+                 couch_util:to_binary(V), $\n]
+       end || {K0, V} <- lists:sort(Stats)]).
