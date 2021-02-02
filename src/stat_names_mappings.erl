@@ -108,7 +108,7 @@ pre_70_stat_to_prom_query("@fts", <<"fts_", _/binary>> = Stat) ->
     {ok, {[{eq, <<"name">>, Stat}]}};
 
 pre_70_stat_to_prom_query("@fts-" ++ Bucket, <<"fts/", Stat/binary>>) ->
-    map_index_stats(<<"fts">>, service_fts:get_counters(), Bucket, Stat);
+    map_index_stats(<<"fts">>, get_counters(fts), Bucket, Stat);
 
 pre_70_stat_to_prom_query("@index", <<"index_ram_percent">>) ->
     {ok, named(<<"index_ram_percent">>,
@@ -126,7 +126,7 @@ pre_70_stat_to_prom_query("@index", <<"index_", _/binary>> = Stat) ->
     {ok, metric(Stat)};
 
 pre_70_stat_to_prom_query("@index-" ++ Bucket, <<"index/", Stat/binary>>) ->
-    map_index_stats(<<"index">>, service_index:get_counters(), Bucket, Stat);
+    map_index_stats(<<"index">>, get_counters(index), Bucket, Stat);
 
 pre_70_stat_to_prom_query("@cbas", <<"cbas_disk_used">>) ->
     {ok, metric(<<"cbas_disk_used_bytes_total">>)};
@@ -276,22 +276,22 @@ pre_70_stat_to_prom_query("@eventing", <<"eventing/", Stat/binary>>) ->
     case binary:split(Stat, <<"/">>, [global]) of
         [<<"failed_count">>] ->
             Metrics = [eventing_metric(bin(M), <<"*">>)
-                          || M <- service_eventing:failures()],
+                          || M <- eventing_failures()],
             {ok, named(<<"eventing_failed_count">>,
                        sumby([], {'or', Metrics}))};
         [FunctionName, <<"failed_count">>] ->
             Metrics = [eventing_metric(bin(M), FunctionName)
-                           || M <- service_eventing:failures()],
+                           || M <- eventing_failures()],
             {ok, named(<<"eventing_failed_count">>,
                        sumby([<<"functionName">>], {'or', Metrics}))};
         [<<"processed_count">>] ->
             Metrics = [eventing_metric(bin(M), <<"*">>)
-                           || M <- service_eventing:successes()],
+                           || M <- eventing_successes()],
             {ok, named(<<"eventing_processed_count">>,
                        sumby([], {'or', Metrics}))};
         [FunctionName, <<"processed_count">>] ->
             Metrics = [eventing_metric(bin(M), FunctionName)
-                           || M <- service_eventing:successes()],
+                           || M <- eventing_successes()],
             {ok, named(<<"eventing_processed_count">>,
                        sumby([<<"functionName">>], {'or', Metrics}))};
         [N] ->
@@ -812,32 +812,27 @@ default_stat_list("@query") ->
      query_requests_5000ms, query_result_count, query_result_size,
      query_selects, query_service_time, query_warnings];
 default_stat_list("@fts") ->
-    Stats = service_fts:get_service_gauges() ++
-            service_fts:get_service_counters(),
+    Stats = get_service_gauges(fts),
     [<<"fts_", (bin(S))/binary>> || S <- Stats];
 default_stat_list("@fts-" ++ _) ->
-    Stats = service_fts:get_gauges() ++
-            service_fts:get_counters(),
+    Stats = get_gauges(fts) ++ get_counters(fts),
     [<<"fts/", (bin(S))/binary>> || S <- Stats] ++
     [<<"fts/*/", (bin(S))/binary>> || S <- Stats];
 default_stat_list("@index") ->
-    Stats = service_index:get_service_gauges() ++
-            service_index:get_service_counters() ++
-            [ram_percent, remaining_ram],
+    Stats = get_service_gauges(index) ++ [ram_percent, remaining_ram],
     [<<"index_", (bin(S))/binary>> || S <- Stats];
 default_stat_list("@index-" ++ _) ->
-    Stats = service_index:get_gauges() ++
-            service_index:get_counters() ++
-            service_index:get_computed(),
+    Stats = get_gauges(index) ++
+            get_counters(index) ++
+            get_computed(index),
     [<<"index/", (bin(S))/binary>> || S <- Stats] ++
     [<<"index/*/", (bin(S))/binary>> || S <- Stats];
 default_stat_list("@cbas") ->
-    Stats = service_cbas:get_service_gauges() ++
-            service_cbas:get_service_counters(),
+    Stats = get_service_gauges(cbas) ++
+            get_service_counters(cbas),
     [<<"cbas_", (bin(S))/binary>> || S <- Stats];
 default_stat_list("@cbas-" ++ _) ->
-    Stats = service_cbas:get_gauges() ++
-            service_cbas:get_counters(),
+    Stats = get_gauges(cbas) ++ get_counters(cbas),
     [<<"cbas/", (bin(S))/binary>> || S <- Stats] ++
     [<<"cbas/all/", (bin(S))/binary>> || S <- Stats];
 default_stat_list("@xdcr-" ++ B) ->
@@ -866,8 +861,8 @@ default_stat_list("@xdcr-" ++ B) ->
     [<<"replication_changes_left">>, <<"replication_docs_rep_queue">>] ++
     [<<"replications/*/", Bucket/binary, "/*/", S/binary>> || S <- Stats];
 default_stat_list("@eventing") ->
-    Stats = service_eventing:get_service_gauges() ++
-            service_eventing:get_computed(),
+    Stats = get_service_gauges(eventing) ++
+            get_computed(eventing),
     [<<"eventing/", (bin(S))/binary>> || S <- Stats] ++
     [<<"eventing/*/", (bin(S))/binary>> || S <- Stats];
 default_stat_list("@eventing-" ++ _) ->
@@ -903,6 +898,61 @@ is_sysproc_stat(<<"minor_faults_raw">>) -> true;
 is_sysproc_stat(<<"major_faults_raw">>) -> true;
 is_sysproc_stat(<<"page_faults_raw">>) -> true;
 is_sysproc_stat(_) -> false.
+
+get_gauges(fts) ->
+    [num_mutations_to_index, doc_count, num_recs_to_persist,
+     num_bytes_used_disk, num_pindexes_actual, num_pindexes_target,
+     num_files_on_disk, num_root_memorysegments, num_root_filesegments];
+get_gauges(index) ->
+    [disk_size, data_size, memory_used, num_docs_pending, num_docs_queued,
+     items_count, frag_percent, recs_in_mem, recs_on_disk, data_size_on_disk,
+     log_space_on_disk, raw_data_size];
+get_gauges(cbas) ->
+    ['incoming_records_count_total', 'failed_at_parser_records_count_total'].
+
+get_counters(fts) ->
+    [total_bytes_indexed, total_compaction_written_bytes, total_queries,
+     total_queries_slow, total_queries_timeout, total_queries_error,
+     total_bytes_query_results, total_term_searchers, total_request_time];
+get_counters(index) ->
+    [num_requests, num_rows_returned, num_docs_indexed,
+     scan_bytes_read, total_scan_duration, cache_misses, cache_hits];
+get_counters(cbas) ->
+    ['incoming_records_count', 'failed_at_parser_records_count'].
+
+get_service_gauges(fts) ->
+    [num_bytes_used_ram, total_queries_rejected_by_herder,
+     curr_batches_blocked_by_herder];
+get_service_gauges(index) ->
+    [memory_quota, memory_used];
+get_service_gauges(cbas) ->
+    ['heap_used', 'system_load_average', 'thread_count', 'disk_used'];
+get_service_gauges(eventing) ->
+    [dcp_backlog | eventing_successes() ++ eventing_failures()].
+
+get_service_counters(cbas) ->
+    ['gc_count', 'gc_time', 'io_reads', 'io_writes'].
+
+get_computed(index) ->
+    [disk_overhead_estimate];
+get_computed(eventing) ->
+    [processed_count, failed_count].
+
+eventing_successes() ->
+    [on_update_success,
+     on_delete_success,
+     timer_callback_success].
+
+eventing_failures() ->
+    [bucket_op_exception_count,
+     checkpoint_failure_count,
+     n1ql_op_exception_count,
+     timeout_count,
+     doc_timer_create_failure,
+     non_doc_timer_create_failure,
+     on_update_failure,
+     on_delete_failure,
+     timer_callback_failure].
 
 -ifdef(TEST).
 pre_70_to_prom_query_test_() ->

@@ -60,8 +60,6 @@ compute_wanted_children(Service, Snapshot) ->
         false ->
             [];
         true ->
-            StaticChildren = [{Service, service_stats_collector}],
-
             %% Stats reader for Service specific stats (backward compat)
             ServiceChildren =
                 [{Service, stats_reader,
@@ -75,7 +73,7 @@ compute_wanted_children(Service, Snapshot) ->
                 [{Service, stats_reader, Name}
                  || Name <- BucketNames],
 
-            lists:sort(StaticChildren ++ PerBucketChildren ++ ServiceChildren)
+            lists:sort(PerBucketChildren ++ ServiceChildren)
     end.
 
 refresh_children() ->

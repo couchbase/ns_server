@@ -20,8 +20,7 @@
 -behavior(gen_server).
 
 %% API
--export([start_link/1, update/2, get_status/2,
-         get_items/1, get_version/1, process_indexer_status/3]).
+-export([start_link/1, get_items/1, get_version/1, process_indexer_status/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -35,20 +34,11 @@ get_refresh_interval(Service) ->
 get_stale_threshold(Service) ->
     ?get_param({Service:get_type(), service_status_keeper_stale_threshold}, 2).
 
-dont_restart_service(Service) ->
-    ?get_param({Service:get_type(), dont_restart_service}, false).
-
 server_name(Service) ->
     list_to_atom(?MODULE_STRING "-" ++ atom_to_list(Service:get_type())).
 
 start_link(Service) ->
     gen_server:start_link({local, server_name(Service)}, ?MODULE, Service, []).
-
-update(Service, Status) ->
-    gen_server:cast(server_name(Service), {update, Status}).
-
-get_status(Service, Timeout) ->
-    gen_server:call(server_name(Service), get_status, Timeout).
 
 get_items(Service) ->
     gen_server:call(server_name(Service), get_items).
@@ -57,7 +47,6 @@ get_version(Service) ->
     gen_server:call(server_name(Service), get_version).
 
 -record(state, {service :: atom(),
-                num_connections,
 
                 items,
                 stale :: undefined | true | {false, non_neg_integer()},
@@ -88,7 +77,6 @@ init(Service) ->
                              fun handle_node_disco_event/2, Self),
 
     State = #state{service = Service,
-                   num_connections = 0,
                    restart_pending = false,
                    source = get_source(Service)},
 
@@ -99,27 +87,11 @@ handle_call(get_items, _From, #state{items = Items,
                                      version = Version} = State) ->
     {reply, {ok, Items, is_stale(StaleInfo), Version}, State};
 handle_call(get_version, _From, #state{version = Version} = State) ->
-    {reply, {ok, Version}, State};
-handle_call(get_status, _From,
-            #state{num_connections = NumConnections} = State) ->
-    Status = [{num_connections, NumConnections}],
-    {reply, {ok, Status}, State}.
+    {reply, {ok, Version}, State}.
 
-handle_cast({update, Status}, #state{source = local} = State) ->
-    NumConnections = proplists:get_value(index_num_connections, Status, 0),
-    NeedsRestart = proplists:get_value(index_needs_restart, Status, false),
-
-    NewState0 = State#state{num_connections = NumConnections},
-    NewState = case NeedsRestart of
-                   true ->
-                       maybe_restart_service(NewState0);
-                   false ->
-                       NewState0
-               end,
-
-    {noreply, NewState};
+%% Backward compat:
 handle_cast({update, _}, State) ->
-    ?log_warning("Got unexpected status update when source is not local. Ignoring."),
+    ?log_warning("Ignoring update request."),
     {noreply, State};
 handle_cast({refresh_done, Result}, #state{service = Service} = State) ->
     NewState =
@@ -154,40 +126,7 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-%% internal
-maybe_restart_service(#state{restart_pending = false,
-                             service = Service} = State) ->
-    case dont_restart_service(Service) of
-        true ->
-            State;
-        false ->
-            restart_service(State)
-    end;
-maybe_restart_service(State) ->
-    State.
-
-restart_service(#state{service = Service,
-                       restart_pending = false,
-                       source = local} = State) ->
-    Self = self(),
-    work_queue:submit_work(
-      ?WORKER,
-      fun () ->
-              ?log_info("Restarting the ~p", [Service]),
-
-              case Service:restart() of
-                  {ok, _} ->
-                      ?log_info("Restarted the ~p successfully", [Service]);
-                  Error ->
-                      ?log_error("Failed to restart the ~p: ~p",
-                                 [Service, Error])
-              end,
-
-              gen_server:cast(Self, restart_done)
-      end),
-
-    State#state{restart_pending = true}.
-
+%%% internal
 refresh_status(State) ->
     Self = self(),
     work_queue:submit_work(
