@@ -437,7 +437,7 @@ function get70Mapping() {
     "@index.index_ram_percent": "@index.index_ram_percent",
     "@index.index_remaining_ram": "@index.index_remaining_ram",
 
-    "@index-.@items.num_docs_pending+queued": "@index-.@items.index_num_docs_pending+queued",
+    "@index-.@items.index_num_docs_pending_and_queued": "@index-.@items.num_docs_pending+queued",
     "@index-.@items.cache_miss_ratio": "@index-.@items.index_cache_miss_ratio",
 
     "@system.couch_docs_actual_disk_size": "@kv-.couch_docs_actual_disk_size",

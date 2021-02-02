@@ -29,7 +29,7 @@ function mnGsiServiceFactory($http, $q, qwQueryService, mnStatisticsNewService, 
   let perItemStats = [
     "@index-.@items.index_num_requests", "@index-.@items.index_resident_percent",
     "@index-.@items.index_items_count", "@index-.@items.index_data_size",
-    "@index-.@items.index_num_docs_pending+queued"
+    "@index-.@items.index_num_docs_pending_and_queued"
   ];
 
   //should be the same name for mixed version as well
