@@ -74,7 +74,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
         postStats([...perChartConfig]);
     })
       .setInterval(function (resp) {
-        return resp.interval || 1000;
+        return resp.interval || 4000;
       })
       .subscribe(function (value) {
         if (!value.data) {
