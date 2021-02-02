@@ -330,6 +330,8 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["pools", "default", "buckets", Id, "scopes"] ->
                     {{[{collection, [Id, any, any]}, collections], read},
                      fun menelaus_web_collections:handle_get/2, [Id]};
+                ["pools", "default", "replications"] ->
+                    {no_check, fun goxdcr_rest:proxy/1};
                 ["pools", "default", "remoteClusters"] ->
                     {no_check, fun goxdcr_rest:proxy/1};
                 ["pools", "default", "serverGroups"] ->
