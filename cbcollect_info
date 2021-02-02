@@ -1035,6 +1035,24 @@ def read_guts(guts, key):
     return guts.get(key, "")
 
 
+# Add additional information to guts. Currently this is only persistent
+# buckets but may include other info in the future as items are moved from
+# ns_config to chronicle.
+def populate_guts_with_additional_info(guts):
+    add_bucket_info(guts)
+
+
+def add_bucket_info(guts):
+    # Assume directories in the data directory are for buckets unless
+    # they have invalid bucket names.
+    dbdir = os.path.realpath(read_guts(guts, "db_dir"))
+    buckets = [f.name for f in os.scandir(dbdir)
+            if f.is_dir() and not f.name.startswith(('.', '@'))]
+
+    log(f"Adding persistent buckets '{buckets}' to server guts")
+    guts["persistent_buckets"] = buckets
+
+
 def winquote_path(s):
     return '"' + s.replace("\\\\", "\\").replace('/', "\\") + '"'
 
@@ -1493,22 +1511,19 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
         [AllOsTask("ddocs for %s (%s)" % (bucket, path),
                    ["couch_dbdump", path],
                    log_file="ddocs.log")
-         for bucket in set(correct_split(read_guts(guts, "buckets"), ",")) - \
-            set(correct_split(read_guts(guts, "memcached_buckets"), ","))
+         for bucket in read_guts(guts, "persistent_buckets")
          for path in glob.glob(os.path.join(dbdir, bucket, "master.couch*"))],
 
         [AllOsTask("Couchstore local documents (%s, %s)" % (bucket, os.path.basename(path)),
                    ["couch_dbdump", "--local", path],
                    log_file="couchstore_local.log")
-         for bucket in set(correct_split(read_guts(guts, "buckets"), ",")) - \
-            set(correct_split(read_guts(guts, "memcached_buckets"), ","))
+         for bucket in read_guts(guts, "persistent_buckets")
          for path in glob.glob(os.path.join(dbdir, bucket, "*.couch.*"))],
 
         [AllOsTask("mdocs for %s (%s)" % (bucket, path),
                    ["magma_dump", path, "--cbcollect"],
                    log_file="mdocs.log")
-         for bucket in set(correct_split(read_guts(guts, "buckets"), ",")) - \
-            set(correct_split(read_guts(guts, "memcached_buckets"), ","))
+         for bucket in read_guts(guts, "persistent_buckets")
          for path in glob.glob(os.path.join(dbdir, bucket))],
 
         # RocksDB has logs per DB (i.e. vBucket). 'LOG' is the most
@@ -1517,8 +1532,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
         [AllOsTask("RocksDB Log file (%s, %s)" % (bucket, os.path.basename(path)),
                    "cat '%s'" % (log_file),
                    log_file="kv_rocks.log")
-         for bucket in (set(correct_split(read_guts(guts, "buckets"), ",")) -
-                        set(correct_split(read_guts(guts, "memcached_buckets"), ",")))
+         for bucket in read_guts(guts, "persistent_buckets")
          for path in glob.glob(os.path.join(dbdir, bucket, "rocksdb.*"))
          for log_file in sorted(glob.glob(os.path.join(path, "LOG.old.*"))) + [os.path.join(path, "LOG")]],
 
@@ -2053,6 +2067,8 @@ def main():
                 "var/lib/couchbase/logs")}
 
         guts_initargs_path = os.path.abspath(prefix)
+
+    populate_guts_with_additional_info(guts)
 
     ipv6 = read_guts(guts, "ipv6") == "true"
     set_local_addr(ipv6)
