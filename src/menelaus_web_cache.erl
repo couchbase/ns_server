@@ -84,7 +84,7 @@ lookup_or_compute_with_expiration(Key, ComputeBody, InvalidPred) ->
         {undefined, _} ->
             compute_with_expiration(Key, ComputeBody, InvalidPred);
         Value ->
-            system_stats_collector:increment_counter({web_cache_hits, Key}, 1),
+            ns_server_stats:increment_counter({web_cache_hits, Key}, 1),
             Value
     end.
 
@@ -115,14 +115,14 @@ do_compute_with_expiration(Key, ComputeBody, InvalidPred) ->
             try
                 {Value, Age, InvalidationState} = ComputeBody(),
                 Expiration = Now + Age,
-                system_stats_collector:increment_counter({web_cache_updates, Key}, 1),
+                ns_server_stats:increment_counter({web_cache_updates, Key}, 1),
                 ets:insert(menelaus_web_cache, {Key, Value, Expiration, InvalidationState}),
                 Value
             after
                 erlang:put(seen_keys_stack, SeenKeys)
             end;
         Value ->
-            system_stats_collector:increment_counter({web_inner_cache_hits, Key}, 1),
+            ns_server_stats:increment_counter({web_inner_cache_hits, Key}, 1),
             Value
     end.
 

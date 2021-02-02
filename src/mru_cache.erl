@@ -38,7 +38,7 @@ dispose(Name) ->
     ets:delete(Name).
 
 lookup(Name, Key) ->
-    system_stats_collector:increment_counter({Name, lookup, total}),
+    ns_server_stats:increment_counter({Name, lookup, total}),
 
     time_call({Name, lookup},
               fun () ->
@@ -55,7 +55,7 @@ do_lookup(Name, Recent, Stale, Key) ->
         false ->
             case get_one(Stale, Key) of
                 false ->
-                    system_stats_collector:increment_counter({Name, lookup, miss}),
+                    ns_server_stats:increment_counter({Name, lookup, miss}),
                     false;
                 {ok, Value} ->
                     %% the key might have been evicted (or entire cache might
@@ -63,17 +63,17 @@ do_lookup(Name, Recent, Stale, Key) ->
                     %% need to be prepared
                     case migrate(Name, Recent, Stale, {Key, Value}) of
                         ok ->
-                            system_stats_collector:increment_counter(
+                            ns_server_stats:increment_counter(
                               {Name, lookup, stale}),
                             {ok, Value};
                         not_found ->
-                            system_stats_collector:increment_counter(
+                            ns_server_stats:increment_counter(
                               {Name, lookup, evicted}),
                             false
                     end
             end;
         {ok, Value} ->
-            system_stats_collector:increment_counter({Name, lookup, recent}),
+            ns_server_stats:increment_counter({Name, lookup, recent}),
             {ok, Value}
     end.
 
@@ -269,7 +269,7 @@ swap_tables(Name, Recent, Stale, {Key, _} = LastItem) ->
 
 time_call(Hist, Body) ->
     {T, R} = timer:tc(Body),
-    system_stats_collector:add_histo(Hist, T),
+    ns_server_stats:add_histo(Hist, T),
     R.
 
 %% locking stuff
@@ -280,10 +280,10 @@ take_lock(Name, LockName) ->
     Lock = {LockName, {make_ref(), self()}},
     case take_lock_fast(Name, Lock, ?LOCK_ITERS_FAST) of
         ok ->
-            system_stats_collector:increment_counter({Name, take_lock, fast}),
+            ns_server_stats:increment_counter({Name, take_lock, fast}),
             ok;
         failed ->
-            system_stats_collector:increment_counter({Name, take_lock, slow}),
+            ns_server_stats:increment_counter({Name, take_lock, slow}),
             take_lock_slow(Name, LockName, Lock)
     end.
 
@@ -320,7 +320,7 @@ try_invalidate_lock(Name, LockName, MaybeLockValue) ->
                 true ->
                     ok;
                 false ->
-                    system_stats_collector:increment_counter({Name, take_lock, invalidate}),
+                    ns_server_stats:increment_counter({Name, take_lock, invalidate}),
                     %% this only succeeds if the object stays the same
                     ets:delete_object(Name, {LockName, LockValue})
             end;

@@ -243,7 +243,7 @@ current_status_slow(TS) ->
     Now  = erlang:monotonic_time(),
     Diff = misc:convert_time_unit(Now - TS, microsecond),
 
-    system_stats_collector:add_histo(status_latency, Diff),
+    ns_server_stats:add_histo(status_latency, Diff),
     [{status_latency, Diff} | Status0].
 
 

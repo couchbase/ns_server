@@ -196,9 +196,6 @@ child_specs() ->
      {ns_server_stats, {ns_server_stats, start_link, []},
       permanent, 1000, worker, [ns_server_stats]},
 
-     {system_stats_collector, {system_stats_collector, start_link, []},
-      permanent, 1000, worker, [system_stats_collector]},
-
      {{stats_reader, "@system"}, {stats_reader, start_link, ["@system"]},
       permanent, 1000, worker, [start_reader]},
 

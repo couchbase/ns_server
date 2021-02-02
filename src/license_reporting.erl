@@ -95,7 +95,7 @@ handle_info(report, State) ->
         {error, Error} ->
             ?log_error("On-demand pricing report send failed "
                        "with reason: ~s", [Error]),
-            system_stats_collector:increment_counter(odp_report_failed)
+            ns_server_stats:increment_counter(odp_report_failed)
     end,
     {noreply, restart_timer(State), hibernate};
 

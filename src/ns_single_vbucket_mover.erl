@@ -183,7 +183,7 @@ mover_inner(Parent, Bucket, VBucket,
                     %% pause index on old master node
                     case cluster_compat_mode:is_index_pausing_on() of
                         true ->
-                            system_stats_collector:increment_counter(index_pausing_runs, 1),
+                            ns_server_stats:increment_counter(index_pausing_runs, 1),
                             set_vbucket_state(Bucket, OldMaster, Parent, VBucket,
                                               active, paused, undefined,
                                               [OldChain]),

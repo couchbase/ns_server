@@ -41,7 +41,7 @@ request(Type, Body, RejectBody) ->
         {ok, ThrottlerPid} ->
             do_request(Type, Body, ThrottlerPid);
         {reject, Error} ->
-            system_stats_collector:increment_counter({Type, Error}, 1),
+            ns_server_stats:increment_counter({Type, Error}, 1),
             RejectBody(Error, describe_error(Error))
     end.
 
@@ -55,7 +55,7 @@ unhibernate_trampoline(M, F, A) ->
 
 do_request(Type, Body, ThrottlerPid) ->
     try
-        system_stats_collector:increment_counter({request_enters, Type}, 1),
+        ns_server_stats:increment_counter({request_enters, Type}, 1),
         Body()
     after
         note_request_done(Type, ThrottlerPid)
@@ -97,15 +97,15 @@ handle_call(Request, _From, State) ->
     {reply, unhandled, State}.
 
 handle_cast({note_hibernate, Pid}, State) ->
-    system_stats_collector:increment_counter({request_enters, hibernate}, 1),
+    ns_server_stats:increment_counter({request_enters, hibernate}, 1),
     true = ets:insert_new(?HIBERNATE_TABLE, {Pid, true}),
     {noreply, State};
 handle_cast({note_unhibernate, Pid}, State) ->
-    system_stats_collector:increment_counter({request_leaves, hibernate}, 1),
+    ns_server_stats:increment_counter({request_leaves, hibernate}, 1),
     true = ets:delete(?HIBERNATE_TABLE, Pid),
     {noreply, State};
 handle_cast({note_request_done, Pid, Type}, State) ->
-    system_stats_collector:increment_counter({request_leaves, Type}, 1),
+    ns_server_stats:increment_counter({request_leaves, Type}, 1),
     Count = ets:update_counter(?TABLE, Type, -1),
     true = (Count >= 0),
 
@@ -125,10 +125,10 @@ handle_info({'DOWN', MRef, process, Pid, _Reason}, State) ->
             ok;
         _ ->
             ets:delete(?HIBERNATE_TABLE, Pid),
-            system_stats_collector:increment_counter({request_leaves, hibernate}, 1)
+            ns_server_stats:increment_counter({request_leaves, hibernate}, 1)
     end,
 
-    system_stats_collector:increment_counter({request_leaves, Type}, 1),
+    ns_server_stats:increment_counter({request_leaves, Type}, 1),
     Count = ets:update_counter(?TABLE, Type, -1),
     true = (Count >= 0),
 

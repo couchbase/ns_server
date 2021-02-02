@@ -57,7 +57,7 @@ report_missed_msgs(_Skipped, _Lag) ->
 handle_info({check_time, ExpectedTime}, State) ->
     TimeNow = erlang:monotonic_time(millisecond),
     Lag = TimeNow - ExpectedTime,
-    system_stats_collector:add_histo(timer_lag, Lag * 1000),
+    ns_server_stats:add_histo(timer_lag, Lag * 1000),
 
     Skipped = trunc(Lag / ?TIMER_INTERVAL),
     report_missed_msgs(Skipped, Lag),

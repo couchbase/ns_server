@@ -295,7 +295,7 @@ collect_diag_per_node_body(Reply) ->
     Reply(memory, memsup:get_memory_data()),
     Reply(disk, (catch ns_disksup:get_disk_data())),
     Reply(active_tasks, task_status_all()),
-    Reply(ns_server_stats, (catch system_stats_collector:get_ns_server_stats())),
+    Reply(ns_server_stats, (catch ns_server_stats:get_ns_server_stats())),
     Reply(active_buckets, ActiveBuckets),
     Reply(replication_docs, (catch goxdcr_rest:find_all_replication_docs(5000))),
     Reply(design_docs, [{Bucket, (catch capi_utils:full_live_ddocs(Bucket, 2000))} ||

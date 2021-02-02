@@ -30,8 +30,6 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
--export([grab_stats/1, process_stats/3, spawn_sigar/0]).
-
 -export([increment_counter/1, increment_counter/2,
          get_ns_server_stats/0, set_counter/2,
          add_histo/2,
@@ -48,12 +46,6 @@
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
-
-process_stats(TS, Binary, PrevSample) ->
-    case gen_server:call(?MODULE, {process_stats, TS, Binary, PrevSample}) of
-        {ok, R} -> R;
-        {exception, C, E, ST} -> erlang:raise(C, E, ST)
-    end.
 
 report_prom_stats(ReportFun) ->
     report_audit_stats(ReportFun),
@@ -153,22 +145,6 @@ handle_call(get_stats, _From, State = #state{port = Port, prev = Prev}) ->
     {Stats, NewPrev} =
         process_stats(os:system_time(millisecond), Data, Prev, State),
     {reply, Stats, State#state{prev = NewPrev}};
-
-handle_call(grab_stats, _From, State = #state{port = Port}) ->
-    try
-        {reply, {ok, grab_stats(Port)}, State}
-    catch
-        C:E:S ->
-            {reply, {exception, C, E, S}, State}
-    end;
-
-handle_call({process_stats, TS, Bin, PrevSample}, _From, State) ->
-    try
-        {reply, {ok, process_stats(TS, Bin, PrevSample, State)}, State}
-    catch
-        C:E:S ->
-            {reply, {exception, C, E, S}, State}
-    end;
 
 %% Can be called from another node. Introduced in Cheshire-Cat
 handle_call({stats_interface, Function, Args}, From, State) ->

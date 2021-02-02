@@ -352,17 +352,17 @@ handle_commit_for_checkpoint(Req, Bucket, VB, VBOpaque) ->
 
     case UUID =:= VBOpaque of
         true ->
-            system_stats_collector:increment_counter(xdcr_checkpoint_commit_oks, 1),
+            ns_server_stats:increment_counter(xdcr_checkpoint_commit_oks, 1),
             CommitOpaque = [UUID, Seqno],
             couch_httpd:send_json(Req, 200, {[{<<"commitopaque">>, CommitOpaque}]});
         _ ->
-            system_stats_collector:increment_counter(xdcr_checkpoint_commit_mismatches, 1),
+            ns_server_stats:increment_counter(xdcr_checkpoint_commit_mismatches, 1),
             couch_httpd:send_json(Req, 400, {[{<<"vbopaque">>, UUID}]})
     end.
 
 do_checkpoint_commit(Bucket, VB) ->
     TimeBefore = erlang:monotonic_time(microsecond),
-    system_stats_collector:increment_counter(xdcr_checkpoint_commits_enters, 1),
+    ns_server_stats:increment_counter(xdcr_checkpoint_commits_enters, 1),
     try
         case ns_memcached:perform_checkpoint_commit_for_xdcr(Bucket, VB, ?XDCR_CHECKPOINT_TIMEOUT) of
             ok -> ok;
@@ -370,11 +370,11 @@ do_checkpoint_commit(Bucket, VB) ->
                 erlang:throw({not_found, not_my_vbucket})
         end
     after
-        system_stats_collector:increment_counter(xdcr_checkpoint_commits_leaves, 1)
+        ns_server_stats:increment_counter(xdcr_checkpoint_commits_leaves, 1)
     end,
 
     TimeAfter = erlang:monotonic_time(microsecond),
-    system_stats_collector:add_histo(xdcr_checkpoint_commit_time, TimeAfter - TimeBefore).
+    ns_server_stats:add_histo(xdcr_checkpoint_commit_time, TimeAfter - TimeBefore).
 
 
 -ifdef(TEST).

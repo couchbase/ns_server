@@ -27,7 +27,7 @@ start_loop() ->
     ets:new(ns_server_system_stats, [public, named_table, set]),
 
     proc_lib:init_ack({ok, self()}),
-    system_stats_collector:stale_histo_epoch_cleaner().
+    ns_server_stats:stale_histo_epoch_cleaner().
 
 get_stats() ->
     lists:sort(ets:tab2list(ns_server_system_stats)).

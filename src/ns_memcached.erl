@@ -335,16 +335,16 @@ verify_report_long_call(StartTS, ActualStartTS, State, Msg, RV) ->
         ServiceName = "ns_memcached-" ++ State#state.bucket,
         (catch
              begin
-                 system_stats_collector:increment_counter({ServiceName, call_time}, Diff),
-                 system_stats_collector:increment_counter({ServiceName, q_call_time}, QDiff),
-                 system_stats_collector:increment_counter({ServiceName, calls}, 1)
+                 ns_server_stats:increment_counter({ServiceName, call_time}, Diff),
+                 ns_server_stats:increment_counter({ServiceName, q_call_time}, QDiff),
+                 ns_server_stats:increment_counter({ServiceName, calls}, 1)
              end),
         if
             Diff > ?SLOW_CALL_THRESHOLD_MICROS ->
                 (catch
                      begin
-                         system_stats_collector:increment_counter({ServiceName, long_call_time}, Diff),
-                         system_stats_collector:increment_counter({ServiceName, long_calls}, 1)
+                         ns_server_stats:increment_counter({ServiceName, long_call_time}, Diff),
+                         ns_server_stats:increment_counter({ServiceName, long_calls}, 1)
                      end),
                 ?log_debug("call ~p took too long: ~p us", [Msg, Diff]);
             true ->
@@ -1373,8 +1373,8 @@ do_call(Server, Msg, Timeout) ->
                           _ ->
                               "unknown"
                       end,
-            system_stats_collector:increment_counter({Service, e2e_call_time}, Diff),
-            system_stats_collector:increment_counter({Service, e2e_calls}, 1)
+            ns_server_stats:increment_counter({Service, e2e_call_time}, Diff),
+            ns_server_stats:increment_counter({Service, e2e_calls}, 1)
         catch T:E:S ->
                 ?log_debug("failed to measure ns_memcached call:~n~p",
                            [{T, E, S}])

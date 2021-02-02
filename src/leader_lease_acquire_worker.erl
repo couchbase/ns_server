@@ -306,10 +306,10 @@ handle_fresh_lease_acquired(#state{uuid   = LeaseUUID,
     State#state{have_lease = true}.
 
 add_histo(Name, Value, State) ->
-    system_stats_collector:add_histo(build_stat_name(Name, State), Value).
+    ns_server_stats:add_histo(build_stat_name(Name, State), Value).
 
 inc_counter(Name, State) ->
-    system_stats_collector:increment_counter(build_stat_name(Name, State)).
+    ns_server_stats:increment_counter(build_stat_name(Name, State)).
 
 build_stat_name(Name, State) ->
     {?MODULE, target_node(State), Name}.
