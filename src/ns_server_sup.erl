@@ -205,9 +205,6 @@ child_specs() ->
      {{stats_reader, "@query"}, {stats_reader, start_link, ["@query"]},
       permanent, 1000, worker, [stats_reader]},
 
-     {query_stats_collector, {query_stats_collector, start_link, []},
-      permanent, 1000, worker, []},
-
      {{stats_reader, "@global"}, {stats_reader, start_link, ["@global"]},
       permanent, 1000, worker, [stats_reader]},
 
