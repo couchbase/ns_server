@@ -59,7 +59,7 @@ HOSTS_CFG_FILE="@PREFIX@/etc/couchbase/hosts.cfg"
 # set log_path in both ASAN_OPTIONS and UBSAN_OPTIONS, otherwise the default
 # log_path of UBSan(stderr) will end up getting used for both ASan and UBSan
 # warnings.
-common_sanitizer_flags="log_exe_name=1:log_path=$CB_DATA_DIR/logs/sanitizers.log"
+common_sanitizer_flags="log_exe_name=1:log_path=$CB_DATA_DIR/logs/sanitizers.log:quarantine_size_mb=16:malloc_context_size=10:allocator_release_to_os=1"
 CB_ADDRESSSANITIZER="@CB_ADDRESSSANITIZER@"
 if [ x"${CB_ADDRESSSANITIZER}" != "xOFF" ]
 then
