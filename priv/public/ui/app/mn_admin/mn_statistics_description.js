@@ -559,7 +559,7 @@ function get70Mapping() {
     "@xdcr-.@items.xdcr_wtavg_docs_latency_seconds": "@xdcr-.@items.wtavg_docs_latency", //?s-ms
     "@xdcr-.@items.xdcr_wtavg_meta_latency_seconds": "@xdcr-.@items.wtavg_meta_latency", //?s-ms
 
-    "@xdcr-.@items.percent_completeness": "@xdcr-.@items.xdcr_percent_completeness",
+    "@xdcr-.@items.xdcr_percent_completeness": "@xdcr-.@items.percent_completeness",
 
     "@fts-.fts_num_bytes_used_disk": "@fts-.fts/num_bytes_used_disk",
     "@fts-.fts_num_files_on_disk": "@fts-.fts/num_files_on_disk",
@@ -1892,7 +1892,7 @@ function get65CompatDesc() {
           },
           "rate_received_from_dcp": {
             unit: "number/sec",
-            title: "doc reception rate",
+            title: "Doc reception rate",
             desc: "Rate of mutations received from dcp in terms of number of mutations per second. Per-replication."
           },
           "rate_replicated": {
