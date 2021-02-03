@@ -22,16 +22,9 @@
     </span>
     <span class="cbui-table-cell flex-grow-3 wrap resp-hide-xsml" style="display:flex;flex-wrap:wrap;">
       <span
-         ng-repeat="service in node.services | mnFormatServicesArray | orderBy"
-         class="label neutral nocaps"
-         ng-class="{'flex-order-1' : service == 'Data',
-                    'flex-order-2' : service == 'Query',
-                    'flex-order-3' : service == 'Index',
-                    'flex-order-4' : service == 'Search',
-                    'flex-order-5' : service == 'Analytics',
-                    'flex-order-6' : service == 'Eventing',
-                    'flex-order-7' : service == 'Backup'}">
-        {{service}}
+         ng-repeat="service in (node.services | mnOrderServices)"
+         class="label neutral nocaps">
+        {{service | mnFormatServices}}
       </span>
     </span>
     <span class="cbui-table-cell flex-grow-half flex-basis-2 resp-hide-sml">

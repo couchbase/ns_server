@@ -2,8 +2,38 @@ import mnStatsDesc from "./mn_statistics_description.js";
 
 export default mnServersListItemDetailsController;
 
-function mnServersListItemDetailsController($scope, mnServersListItemDetailsService, mnPromiseHelper, mnStatisticsNewService, mnPermissions, mnPoolDefault) {
+function mnServersListItemDetailsController($scope, mnServersListItemDetailsService, mnPromiseHelper, mnStatisticsNewService, mnPermissions, mnPoolDefault, mnOrderServicesFilter, mnEllipsisiseOnLeftFilter) {
   var vm = this;
+
+  vm.isEnterprise = $scope.poolDefault.isEnterprise;
+  vm.getServiceQuota = getServiceQuota;
+  vm.getServicePath = getServicePath;
+  vm.isPathPresent = isPathPresent;
+  vm.filterQuotaServices = filterQuotaServices;
+
+  $scope.$watchCollection(() => ({
+    stats: $scope.mnUIStats,
+    server: vm.server
+  }), (values) => {
+    if (values.stats && vm.server) {
+      updateBarChartData();
+    }
+  });
+
+  //should be replaced with MnPoolsService.stream.quotaServices in future
+  vm.quotaServices =
+    (vm.isEnterprise ?
+     ["kv", "index", "fts", "cbas", "eventing"] :
+     ["kv", "index", "fts"]).reduce((acc, name) => {
+       acc[name] = true;
+       return acc;
+     }, {});
+
+  vm.availableServices =
+      $scope.node.services.reduce((acc, name) => {
+        acc[name] = true;
+        return acc;
+      }, {});
 
   $scope.$watch('node', function (node) {
     mnPromiseHelper(vm, mnServersListItemDetailsService.getNodeDetails(node))
@@ -35,9 +65,51 @@ function mnServersListItemDetailsController($scope, mnServersListItemDetailsServ
     stats: statsNames
   }, $scope);
 
-  $scope.$watch("mnUIStats", updateBarChartData);
+  function filterQuotaServices(service) {
+    return vm.quotaServices[service];
+  }
 
-  $scope.$watch("serversListItemDetailsCtl.server", updateBarChartData);
+  function getServiceQuota(service) {
+    if (!vm.server || !vm.server.details.storageTotals.ram) {
+      return;
+    }
+    switch (service) {
+    case "kv":
+      return vm.server.details.storageTotals.ram.quotaTotal;
+    default:
+      return vm.server.details[service + "MemoryQuota"];
+    }
+  }
+
+  function isPathPresent(service) {
+    if (!vm.server || !vm.server.details.storage.hdd[0]) {
+      return;
+    }
+    switch (service) {
+    case "kv":
+      return !!vm.server.details.storage.hdd[0].path;
+    case "cbas":
+      return !!vm.server.details.storage.hdd[0].cbas_dirs;
+    default:
+      return !!vm.server.details.storage.hdd[0][service + "_path"];
+    }
+  }
+
+  function getServicePath(service) {
+    if (!vm.server || !vm.server.details.storage.hdd[0]) {
+      return;
+    }
+    switch (service) {
+    case "kv":
+      return mnEllipsisiseOnLeftFilter(vm.server.details.storage.hdd[0].path, 100);
+    case "cbas":
+      return vm.server.details.storage.hdd[0].cbas_dirs.map(dir => {
+        return mnEllipsisiseOnLeftFilter(dir, 100);
+      }).join(" | ");
+    default:
+      return mnEllipsisiseOnLeftFilter(vm.server.details.storage.hdd[0][service + "_path"], 100);
+    }
+  }
 
   function getLatestStat(statName, stats) {
     return stats.stats[statName] && stats.stats[statName][$scope.node.hostname];
@@ -50,67 +122,70 @@ function mnServersListItemDetailsController($scope, mnServersListItemDetailsServ
   }
 
   function updateBarChartData() {
-    if (!vm.server) {
-      return;
-    }
     var details = vm.server.details;
     var ram = details.storageTotals.ram;
     var hdd = details.storageTotals.hdd;
     var stats = $scope.mnUIStats;
 
-    vm.memoryUsages = [];
-    vm.diskUsages = [];
+    let memoryUsages = [];
+    let diskUsages = [];
 
-    if (details.services.includes("kv")) {
-      vm.memoryUsages.push(
-        mnServersListItemDetailsService.getBaseConfig(
-          'quota allocated to buckets',
-          ram.quotaUsedPerNode,
-          ram.quotaTotalPerNode, true),
-        mnServersListItemDetailsService.getBaseConfig(
-          'data service used',
-          ram.usedByData,
-          ram.quotaTotalPerNode, true)
-      );
+    mnOrderServicesFilter(details.services).forEach(serviceName => {
+      if (!vm.quotaServices[serviceName]) {
+        return;
+      }
+      switch (serviceName) {
+      case "kv":
+        memoryUsages.push(
+          mnServersListItemDetailsService.getBaseConfig(
+            'quota allocated to buckets',
+            ram.quotaUsedPerNode,
+            ram.quotaTotalPerNode, true),
+          mnServersListItemDetailsService.getBaseConfig(
+            'data service used',
+            ram.usedByData,
+            ram.quotaTotalPerNode, true));
+        diskUsages.push(mnServersListItemDetailsService.getBaseConfig(
+          'data service',
+          hdd.usedByData,
+          hdd.free));
+        break;
+      case "index":
+        memoryUsages.push(
+          mnServersListItemDetailsService.getBaseConfig(
+            'index service used',
+            vm.getLatestStat(statsNames[0], stats),
+            details.indexMemoryQuota*1024*1024, true));
+        break;
+      case "fts":
+        memoryUsages.push(
+          mnServersListItemDetailsService.getBaseConfig(
+            'search service used',
+            vm.getLatestStat(statsNames[1], stats),
+            details.ftsMemoryQuota*1024*1024, true));
+        break;
+      case "cbas":
+        memoryUsages.push(
+          mnServersListItemDetailsService.getBaseConfig(
+            'analytics service used',
+            vm.getLatestStat(statsNames[2], stats),
+            details.cbasMemoryQuota*1024*1024, true));
+        diskUsages.push(mnServersListItemDetailsService.getBaseConfig(
+          "analytics service",
+          vm.getLatestStat(statsNames[3], stats),
+          hdd.free))
+        break;
+      }
+      //should we add eventigMemoryQuota as well?
 
-      vm.diskUsages.push(mnServersListItemDetailsService.getBaseConfig(
-        'data service',
-        hdd.usedByData,
-        hdd.free));
-    }
-
-    if (!stats) {
-      return;
-    }
-
-    vm.isEnterprise = $scope.poolDefault.isEnterprise;
-
-    vm.memoryUsages.push(
-      mnServersListItemDetailsService.getBaseConfig(
-        'index service used',
-        vm.getLatestStat(statsNames[0], stats),
-        details.indexMemoryQuota*1024*1024, true),
-      mnServersListItemDetailsService.getBaseConfig(
-        'search service used',
-        vm.getLatestStat(statsNames[1], stats),
-        details.ftsMemoryQuota*1024*1024, true),
-      mnServersListItemDetailsService.getBaseConfig(
-        'analytics service used',
-        vm.getLatestStat(statsNames[2], stats),
-        details.cbasMemoryQuota*1024*1024, true)
-    );
-
-    ([
+      //and other services disk?
       //{name: 'couch_views_actual_disk_size', label: "views"},
       //{name: 'index/disk_size', label: "indexes"},
       //{name: 'fts/num_bytes_used_disk', label: "analytics"},
-      {name: statsNames[3], label: "analytics service"}
-    ]).forEach(function (stat, i) {
-      vm.diskUsages.push(mnServersListItemDetailsService.getBaseConfig(
-        stat.label,
-        vm.getLatestStat(stat.name, stats),
-        hdd.free))
     });
+
+    vm.diskUsages = diskUsages;
+    vm.memoryUsages = memoryUsages;
 
   }
 

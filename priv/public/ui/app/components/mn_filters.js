@@ -28,7 +28,7 @@ angular
   .filter('parseVersion', parseVersion)
   .filter('getStringBytes', getStringBytes)
   .filter('mnFormatServices', mnFormatServices)
-  .filter('mnFormatServicesArray', mnFormatServicesArray)
+  .filter('mnOrderServices', mnOrderServices)
   .filter('mnPrettyVersion', mnPrettyVersion)
   .filter('encodeURIComponent', encodeURIComponentFilter)
   .filter('mnTrustAsHtml', mnTrustAsHtml)
@@ -643,11 +643,15 @@ function mnFormatServices() {
     }
   }
 }
-function mnFormatServicesArray() {
+
+function mnOrderServices() {
+  let order = ["kv", "n1ql", "index", "fts", "cbas", "eventing", "backup"];
   return function (services) {
-    return _.map(services, mnFormatServices());
-  };
+    return services.slice().sort((a, b) =>
+                                 order.indexOf(a) - order.indexOf(b));
+  }
 }
+
 function mnPrettyVersion(parseVersionFilter) {
 
   return function (str, full) {
