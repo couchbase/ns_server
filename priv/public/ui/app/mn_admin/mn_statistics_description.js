@@ -1,45 +1,11 @@
 var derivedMetric = {
-  "@kv-.ep_dcp_views+indexes_count": true,
-  "@kv-.ep_dcp_views+indexes_items_remaining": true,
-  "@kv-.ep_dcp_views+indexes_producer_count": true,
-  "@kv-.ep_dcp_views+indexes_items_sent": true,
-  "@kv-.ep_dcp_views+indexes_total_bytes": true,
-  "@kv-.ep_dcp_views+indexes_backoff": true,
-  "@kv-.ep_dcp_cbas_backoff": true,
-  "@kv-.ep_dcp_cbas_count": true,
-  "@kv-.ep_dcp_cbas_items_remaining": true,
-  "@kv-.ep_dcp_cbas_items_sent": true,
-  "@kv-.ep_dcp_cbas_producer_count": true,
-  "@kv-.ep_dcp_cbas_total_bytes": true,
-  "@kv-.ep_dcp_eventing_backoff": true,
-  "@kv-.ep_dcp_eventing_count": true,
-  "@kv-.ep_dcp_eventing_items_remaining": true,
-  "@kv-.ep_dcp_eventing_items_sent": true,
-  "@kv-.ep_dcp_eventing_count": true,
-  "@kv-.ep_dcp_eventing_items_remaining": true,
-  "@kv-.ep_dcp_eventing_items_sent": true,
-  "@kv-.ep_dcp_eventing_producer_count": true,
-  "@kv-.ep_dcp_eventing_total_bytes": true,
   "@kv-.ep_dcp_other_backoff": true,
   "@kv-.ep_dcp_other_count": true,
   "@kv-.ep_dcp_other_items_remaining": true,
   "@kv-.ep_dcp_other_items_sent": true,
   "@kv-.ep_dcp_other_producer_count": true,
   "@kv-.ep_dcp_other_total_bytes": true,
-  "@kv-.ep_dcp_replica_backoff": true,
-  "@kv-.ep_dcp_replica_count": true,
-  "@kv-.ep_dcp_replica_items_remaining": true,
-  "@kv-.ep_dcp_replica_items_sent": true,
-  "@kv-.ep_dcp_replica_producer_count": true,
-  "@kv-.ep_dcp_replica_total_bytes": true,
-  "@kv-.ep_dcp_xdcr_backoff": true,
-  "@kv-.ep_dcp_xdcr_count": true,
-  "@kv-.ep_dcp_xdcr_items_remaining": true,
-  "@kv-.ep_dcp_xdcr_items_sent": true,
-  "@kv-.ep_dcp_xdcr_producer_count": true,
-  "@kv-.ep_dcp_xdcr_total_bytes": true,
   "@kv-.evictions": true
-
 }
 
 var compat65 = get65CompatDesc();
@@ -333,6 +299,14 @@ function getStatAdditionalConfig(statName) {
     return {metric: {name: "kv_num_vbuckets", state: "replica"}};
 
   default:
+    if (statName.includes("@kv-.kv_dcp_")) {
+      let name = statName.split(".").pop().split("_");
+      let type = name.pop();
+      if (type == "views+indexes") {
+        type = "mapreduce_view|spatial_view|secidx|fts";
+      }
+      return {metric: {name: name.join("_"), connection_type: type}};
+    }
     if (statName.includes("@index-.index_")) {
       return {applyFunctions: ["sum"]};
     }
@@ -546,6 +520,43 @@ function get70Mapping() {
     "@kv-.kv_ep_ops_create": "@kv-.ep_ops_create",
     "@kv-.kv_ep_ops_update": "@kv-.ep_ops_update",
     "@kv-.kv_xdc_ops": "@kv-.xdc_ops",
+
+    "@kv-.kv_dcp_backoff_replication": "@kv-.ep_dcp_replica_backoff",
+    "@kv-.kv_dcp_connection_count_replication": "@kv-.ep_dcp_replica_count",
+    "@kv-.kv_dcp_items_remaining_replication": "@kv-.ep_dcp_replica_items_remaining",
+    "@kv-.kv_dcp_items_sent_replication": "@kv-.ep_dcp_replica_items_sent",
+    "@kv-.kv_dcp_producer_count_replication": "@kv-.ep_dcp_replica_producer_count",
+    "@kv-.kv_dcp_total_data_size_bytes_replication": "@kv-.ep_dcp_replica_total_bytes",
+    "@kv-.kv_dcp_backoff_xdcr": "@kv-.ep_dcp_xdcr_backoff",
+    "@kv-.kv_dcp_connection_count_xdcr": "@kv-.ep_dcp_xdcr_count",
+    "@kv-.kv_dcp_items_remaining_xdcr": "@kv-.ep_dcp_xdcr_items_remaining",
+    "@kv-.kv_dcp_items_sent_xdcr": "@kv-.ep_dcp_xdcr_items_sent",
+    "@kv-.kv_dcp_producer_count_xdcr": "@kv-.ep_dcp_xdcr_producer_count",
+    "@kv-.kv_dcp_total_data_size_bytes_xdcr": "@kv-.ep_dcp_xdcr_total_bytes",
+    "@kv-.kv_dcp_backoff_xdcr": "@kv-.ep_dcp_xdcr_backoff",
+    "@kv-.kv_dcp_connection_count_xdcr": "@kv-.ep_dcp_xdcr_count",
+    "@kv-.kv_dcp_items_remaining_xdcr": "@kv-.ep_dcp_xdcr_items_remaining",
+    "@kv-.kv_dcp_items_sent_xdcr": "@kv-.ep_dcp_xdcr_items_sent",
+    "@kv-.kv_dcp_producer_count_xdcr": "@kv-.ep_dcp_xdcr_producer_count",
+    "@kv-.kv_dcp_total_data_size_bytes_xdcr": "@kv-.ep_dcp_xdcr_total_bytes",
+    "@kv-.kv_dcp_backoff_cbas": "@kv-.ep_dcp_cbas_backoff",
+    "@kv-.kv_dcp_connection_count_cbas": "@kv-.ep_dcp_cbas_count",
+    "@kv-.kv_dcp_items_remaining_cbas": "@kv-.ep_dcp_cbas_items_remaining",
+    "@kv-.kv_dcp_items_sent_cbas": "@kv-.ep_dcp_cbas_items_sent",
+    "@kv-.kv_dcp_producer_count_cbas": "@kv-.ep_dcp_cbas_producer_count",
+    "@kv-.kv_dcp_total_data_size_bytes_cbas": "@kv-.ep_dcp_cbas_total_bytes",
+    "@kv-.kv_dcp_backoff_eventing": "@kv-.ep_dcp_eventing_backoff",
+    "@kv-.kv_dcp_connection_count_eventing": "@kv-.ep_dcp_eventing_count",
+    "@kv-.kv_dcp_items_remaining_eventing": "@kv-.ep_dcp_eventing_items_remaining",
+    "@kv-.kv_dcp_items_sent_eventing": "@kv-.ep_dcp_eventing_items_sent",
+    "@kv-.kv_dcp_producer_count_eventing": "@kv-.ep_dcp_eventing_producer_count",
+    "@kv-.kv_dcp_total_data_size_bytes_eventing": "@kv-.ep_dcp_eventing_total_bytes",
+    "@kv-.kv_dcp_backoff_views+indexes": "@kv-.ep_dcp_views+indexes_backoff",
+    "@kv-.kv_dcp_connection_count_views+indexes": "@kv-.ep_dcp_views+indexes_count",
+    "@kv-.kv_dcp_items_remaining_views+indexes": "@kv-.ep_dcp_views+indexes_items_remaining",
+    "@kv-.kv_dcp_items_sent_views+indexes": "@kv-.ep_dcp_views+indexes_items_sent",
+    "@kv-.kv_dcp_producer_count_views+indexes": "@kv-.ep_dcp_views+indexes_producer_count",
+    "@kv-.kv_dcp_total_data_size_bytes_views+indexes": "@kv-.ep_dcp_views+indexes_total_bytes",
 
     "@xdcr-.@items.xdcr_changes_left_total": "@xdcr-.@items.changes_left",
     "@xdcr-.@items.xdcr_data_replicated_bytes": "@xdcr-.@items.bandwidth_usage",
