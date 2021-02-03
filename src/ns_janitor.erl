@@ -272,12 +272,10 @@ config_sync(Type, Options) ->
 push_config(Options) ->
     config_sync(push, Options).
 
-do_config_sync(chronicle, pull, Nodes, Timeout) ->
-    %% TODO: don't need to pull ns_config after buckets are moved to chronicle
-    chronicle_compat:config_sync(pull, Nodes, Timeout);
-do_config_sync(chronicle, push, Nodes, Timeout) ->
-    %% TODO: don't need to push anything after buckets are moved to chronicle
-    do_config_sync(ns_config, push, Nodes, Timeout);
+do_config_sync(chronicle, pull, _Nodes, Timeout) ->
+    chronicle_compat:pull(Timeout);
+do_config_sync(chronicle, push, _Nodes, _Timeout) ->
+    ok; %% don't need to push buckets since we do quorum write
 do_config_sync(ns_config, pull, Nodes, Timeout) ->
     ns_config_rep:pull_remotes(Nodes, Timeout);
 do_config_sync(ns_config, push, Nodes, Timeout) ->

@@ -36,6 +36,7 @@
          notify_if_key_changes/2,
          start_refresh_worker/2,
          pull/0,
+         pull/1,
          config_sync/2,
          config_sync/3]).
 
