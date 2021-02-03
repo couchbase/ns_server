@@ -97,9 +97,9 @@
           </ui-select-choices>
         </ui-select>
         <span class="width-6">Indexes Data Size</span>
-        <span class="text-right width-6">{{footerStatsCtl.getLatestStat('@index-.index/data_size')/1024/1024 | number:1}} MiB</span><br>
+        <span class="text-right width-6">{{footerStatsCtl.getLatestStat('@index-.index/data_size') | mnFormatQuantity}}</span><br>
         <span class="width-6">Indexes Disk Size</span>
-        <span class="text-right width-6">{{footerStatsCtl.getLatestStat('@index-.index/disk_size')/1024/1024 | number:1}} MiB</span>
+        <span class="text-right width-6">{{footerStatsCtl.getLatestStat('@index-.index/disk_size') | mnFormatQuantity}}</span>
       </div>
     </footer>
   </div>

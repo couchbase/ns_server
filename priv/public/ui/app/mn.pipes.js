@@ -287,11 +287,11 @@ class MnFormatQuantity {
     this.decimalPipe = decimalPipe;
   }
 
-  transform(value, spacing, numberSystem) {
+  transform(value, numberSystem, spacing) {
     if (!value && !is(Number, value)) {
       return value;
     }
-    if (spacing == null) {
+    if (!spacing) {
       spacing = '';
     }
     if (numberSystem === 1000 && value <= 9999 && value % 1 === 0) { // MB-11784

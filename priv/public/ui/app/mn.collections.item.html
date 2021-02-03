@@ -7,19 +7,19 @@
   </span>
   <span class="cbui-table-cell resp-hide-sml">
     <span [hidden]="!(interestingStats | async)['@kv-.kv_items']">
-      {{(interestingStats | async)['@kv-.kv_items'] | mnFormatQuantity:' ':1000}}
+      {{(interestingStats | async)['@kv-.kv_items'] | mnFormatQuantity:1000}}
     </span>
     <span [hidden]="(interestingStats | async)['@kv-.kv_items']"> - </span>
   </span>
   <span class="cbui-table-cell resp-hide-sml">
     <span [hidden]="!(interestingStats | async)['@kv-.kv_collections_mem_used_bytes']">
-      {{(interestingStats | async)['@kv-.kv_collections_mem_used_bytes'] | mnFormatQuantity:' '}}
+      {{(interestingStats | async)['@kv-.kv_collections_mem_used_bytes'] | mnFormatQuantity}}
     </span>
     <span [hidden]="(interestingStats | async)['@kv-.kv_collections_mem_used_bytes']"> - </span>
   </span>
   <span class="cbui-table-cell resp-hide-sml">
     <span [hidden]="!(interestingStats | async)['@kv-.kv_disk_size_bytes']">
-      {{(interestingStats | async)['@kv-.kv_disk_size_bytes'] | mnFormatQuantity:' '}}
+      {{(interestingStats | async)['@kv-.kv_disk_size_bytes'] | mnFormatQuantity}}
     </span>
     <span [hidden]="(interestingStats | async)['@kv-.kv_disk_size_bytes']"> - </span>
   </span>

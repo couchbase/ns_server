@@ -524,7 +524,7 @@ function mnFormatQuantity(mnPrepareQuantityFilter, mnTruncateTo3DigitsFilter) {
     if (!value && !_.isNumber(value)) {
       return value;
     }
-    if (spacing == null) {
+    if (!spacing) {
       spacing = '';
     }
     if (numberSystem === 1000 && value <= 9999 && value % 1 === 0) { // MB-11784
@@ -537,7 +537,7 @@ function mnFormatQuantity(mnPrepareQuantityFilter, mnTruncateTo3DigitsFilter) {
 }
 function mnFormatMemSize(mnFormatQuantityFilter) {
   return function (value) {
-    return mnFormatQuantityFilter(value, null, ' ');
+    return mnFormatQuantityFilter(value);
   };
 }
 function mnMsToTime() {
