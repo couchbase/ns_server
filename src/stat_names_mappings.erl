@@ -478,7 +478,7 @@ pre_70_stat_to_prom_query(Bucket, Stat) ->
 map_dcpagg_stat(TypeLabel, Stat, Bucket) ->
     Suffix = case Stat of
                 <<"count">> -> <<"connection_count">>;
-                <<"total_bytes">> -> <<"total_bytes_bytes">>;
+                <<"total_bytes">> -> <<"total_data_size_bytes">>;
                 _ -> Stat
              end,
     Metric = {[{eq, <<"name">>, <<"kv_dcp_", Suffix/binary>>},
@@ -677,7 +677,7 @@ prom_name_to_pre_70_name(Bucket, {JSONProps}) ->
                         Suffix =
                             case Stat of
                                 <<"connection_count">> -> <<"count">>;
-                                <<"total_bytes_bytes">> -> <<"total_bytes">>;
+                                <<"total_data_size_bytes">> -> <<"total_bytes">>;
                                 _ -> Stat
                             end,
                         {ok, <<"ep_dcp_", Type2/binary, "_", Suffix/binary>>}
