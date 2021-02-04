@@ -76,6 +76,8 @@ function mnGsiServiceFactory($http, $q, qwQueryService, mnStatisticsNewService, 
   function getIndexStatsConfig(index, node) {
     return {
       bucket: index.bucket,
+      scope: index.scope,
+      collection: index.collection,
       node: node || "all",
       zoom: 3000,
       step: 1,
