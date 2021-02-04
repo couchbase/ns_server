@@ -753,7 +753,11 @@ parse_bucket_params(Ctx, Params) ->
     end.
 
 parse_bucket_params_without_warnings(Ctx, Params) ->
-    {OKs, Errors} = basic_bucket_params_screening(Ctx ,Params),
+    {OKs, Errors0} = basic_bucket_params_screening(Ctx ,Params),
+    %% Use the parameters that have passed the basic screening and perform
+    %% any additional checks.
+    AdditionalErrors = additional_bucket_params_validation(OKs),
+    Errors = Errors0 ++ AdditionalErrors,
     ClusterStorageTotals = Ctx#bv_ctx.cluster_storage_totals,
     IsNew = Ctx#bv_ctx.new,
     CurrentBucket = proplists:get_value(currentBucket, OKs),
@@ -798,6 +802,17 @@ parse_bucket_params_without_warnings(Ctx, Params) ->
             {ok, OKs, JSONSummaries};
         true ->
             {errors, TotalErrors, JSONSummaries, OKs}
+    end.
+
+additional_bucket_params_validation(Params) ->
+    NumReplicas = proplists:get_value(num_replicas, Params),
+    DurabilityLevel = proplists:get_value(durability_min_level, Params),
+    case {NumReplicas, DurabilityLevel} of
+        {3, none} -> [];
+        {3, _} -> [{durability_min_level,
+                    <<"Durability minimum level cannot be specified with "
+                      "3 replicas">>}];
+        {_, _} -> []
     end.
 
 basic_bucket_params_screening(#bv_ctx{bucket_config = false, new = false}, _Params) ->
