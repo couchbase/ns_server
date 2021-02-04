@@ -1538,12 +1538,6 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
          for path in glob.glob(os.path.join(dbdir, bucket, "rocksdb.*"))
          for log_file in sorted(glob.glob(os.path.join(path, "LOG.old.*"))) + [os.path.join(path, "LOG")]],
 
-        [UnixTask("moxi stats (port %s)" % port,
-                  "echo stats proxy | nc %s %s" % (local_addr, port),
-                  log_file="stats.log",
-                  timeout=60)
-         for port in correct_split(read_guts(guts, "moxi_ports"), ",")],
-
         [AllOsTask("mctimings %s" % stat,
                    ["mctimings",
                     "-u", read_guts(guts, "memcached_admin"),

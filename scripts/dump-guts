@@ -571,20 +571,6 @@ main_with_everything(StaticTerms, NSConfig, CouchInisPList, Node) ->
     PerNodeMDD = search_config(MCDConfig, breakpad_minidump_dir_path,
                                GlobalMDD),
 
-    BucketConfigs = search_config(search_config(NSConfig, buckets, []),
-                                  configs, []),
-    BucketTypePairs = [{Name, search_config(Props, type, undefined)} || {Name, Props} <- BucketConfigs],
-    BucketNames = [Name || {Name, _} <- BucketTypePairs],
-    MCDBucketNames = [Name || {Name, memcached} <- BucketTypePairs],
-
-    MoxiConfig = search_config_for_node(NSConfig, Node, moxi, []),
-    MoxiPort = search_config(MoxiConfig, port, undefined),
-    PerBucketMoxiPorts = [P || {_, Props} <- BucketConfigs,
-                               P <- [proplists:get_value(moxi_port, Props)]],
-
-    MoxiPorts = [integer_to_list(P) || P <- [MoxiPort | PerBucketMoxiPorts],
-                                       is_integer(P)],
-
     NSLogPath = search_config(search_config_for_node(NSConfig, Node, ns_log, []),
                               filename,
                               ""),
@@ -637,9 +623,6 @@ main_with_everything(StaticTerms, NSConfig, CouchInisPList, Node) ->
          {idx_dir, IdxDir},
          {rest_port, RestPort},
          {memcached_port, MCDPort},
-         {moxi_ports, string:join(MoxiPorts, ",")},
-         {buckets, string:join(BucketNames, ",")},
-         {memcached_buckets, string:join(MCDBucketNames, ",")},
          {ns_log_path, NSLogPath},
          {log_path, search_config(StaticTerms, error_logger_mf_dir, "")},
          {memcached_admin, MCDAdmin},
