@@ -47,7 +47,11 @@
 <div
    [hidden]="!((permissions | async)?.cluster.tasks.read && (references | async)?.length)"
    class="margin-top-1-5">
-  <h4>Outgoing Replications</h4>
+  <h4>Outgoing Replications
+    <span
+       *ngIf="(permissions | async)?.cluster.stats.read"
+       [hidden]="!(getChangesLeftTotal | async)"
+       class="label neutral">{{getChangesLeftTotal | async | mnFormatQuantity:1000}}</span></h4>
   <div
      class="cbui-table"
      [hidden]="!(tasksXDCR | async)?.length">

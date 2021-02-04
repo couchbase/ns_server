@@ -251,6 +251,9 @@ function getStatAdditionalConfig(statName) {
   case "@kv-.couch_views_ops": //<- not sure if we need irate
     return {applyFunctions: ["sum"]};
 
+  case "@xdcr-.xdcr_changes_left_total":
+    return {metric: {name: "xdcr_changes_left_total"}, applyFunctions: ["sum"], bucketLabel: "sourceBucketName"};
+
   case "@cbas-.cbas_failed_at_parser_records_count_total":
     return {metric: {name: "cbas_failed_at_parse_records_count"}};
 
@@ -566,6 +569,7 @@ function get70Mapping() {
     "@kv-.kv_dcp_producer_count_views+indexes": "@kv-.ep_dcp_views+indexes_producer_count",
     "@kv-.kv_dcp_total_data_size_bytes_views+indexes": "@kv-.ep_dcp_views+indexes_total_bytes",
 
+    "@xdcr-.xdcr_changes_left_total": "@xdcr-.replication_changes_left",
     "@xdcr-.@items.xdcr_changes_left_total": "@xdcr-.@items.changes_left",
     "@xdcr-.@items.xdcr_data_replicated_bytes": "@xdcr-.@items.bandwidth_usage",
     "@xdcr-.@items.xdcr_docs_failed_cr_source_total": "@xdcr-.@items.docs_failed_cr_source",

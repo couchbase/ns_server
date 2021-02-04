@@ -6,6 +6,7 @@ import { NgbModule } from "/ui/web_modules/@ng-bootstrap/ng-bootstrap.js";
 import { MnElementCraneModule } from "./mn.element.crane.js";
 import { MnSharedModule } from './mn.shared.module.js';
 import { MnInputFilterModule } from './mn.input.filter.module.js';
+import { MnPipesModule } from './mn.pipes.module.js';
 
 import { MnXDCRComponent } from "./mn.xdcr.component.js";
 import { MnXDCRItemComponent } from "./mn.xdcr.item.component.js";
@@ -15,6 +16,7 @@ import { MnXDCRRefItemComponent } from "./mn.xdcr.ref.item.component.js";
 import { MnXDCRService } from "./mn.xdcr.service.js";
 import { MnBucketsService } from "./mn.buckets.service.js";
 import { MnCollectionsService } from './mn.collections.service.js';
+import { MnStatsService } from './mn.stats.service.js';
 
 import { MnXDCRAddRefComponent } from "./mn.xdcr.add.ref.component.js";
 import { MnXDCRAddRepComponent } from "./mn.xdcr.add.rep.component.js";
@@ -133,12 +135,14 @@ class MnXDCRModule {
         MnElementCraneModule,
         ReactiveFormsModule,
         MnSharedModule,
+        MnPipesModule,
         UIRouterModule.forChild({ states: [XDCRState, AddXDCRState, EditXDCRState] })
       ],
       providers: [
         MnXDCRService,
         MnBucketsService,
-        MnCollectionsService
+        MnCollectionsService,
+        MnStatsService
       ]
     })
   ]}

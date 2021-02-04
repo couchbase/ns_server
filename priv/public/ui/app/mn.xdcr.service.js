@@ -1,9 +1,11 @@
 import { Injectable } from "/ui/web_modules/@angular/core.js";
 import { HttpClient } from '/ui/web_modules/@angular/common/http.js';
 import { BehaviorSubject, combineLatest, timer } from "/ui/web_modules/rxjs.js";
-import { map, shareReplay, switchMap } from '/ui/web_modules/rxjs/operators.js';
+import { map, shareReplay, switchMap,
+         filter as rxFitler, throttleTime} from '/ui/web_modules/rxjs/operators.js';
 import { pipe, filter, propEq, sortBy, prop, groupBy } from "/ui/web_modules/ramda.js";
-
+import { MnStatsService } from "./mn.stats.service.js"
+import { MnTasksService } from './mn.tasks.service.js';
 import { MnHttpRequest } from './mn.http.request.js';
 
 let collectionDelimiter = ".";
@@ -16,10 +18,12 @@ class MnXDCRService {
   ]}
 
   static get parameters() { return [
-    HttpClient
+    HttpClient,
+    MnStatsService,
+    MnTasksService
   ]}
 
-  constructor(http) {
+  constructor(http, mnStatsService, mnTasksService) {
     this.http = http;
 
     this.stream = {};
@@ -83,6 +87,26 @@ class MnXDCRService {
     this.stream.getRemoteClustersByUUID = this.stream.getRemoteClusters
       .pipe(map(groupBy(prop("uuid"))),
             shareReplay({refCount: true, bufferSize: 1}));
+
+    this.stream.getChangesLeftTotal = mnTasksService.stream.tasksXDCR
+      .pipe(
+        throttleTime(1000),
+        rxFitler(tasks => tasks && tasks.length),
+        map(tasks => tasks.map(task => ({
+          aggregationFunction: "sum",
+          applyFunctions: ["sum"],
+          start: -5,
+          step: 10,
+          metric: {
+            name: "xdcr_changes_left_total",
+            sourceBucketName: task.source
+          }
+        }))),
+        switchMap(configs => mnStatsService.postStatsRange(configs)),
+        map(stats => stats.reduce((acc, stat) =>
+                                  acc + Number(stat.data[0] &&
+                                               stat.data[0].values[0][1]) || 0, 0)),
+        shareReplay({refCount: true, bufferSize: 1}));
   }
 
   prepareReplicationSettigns([_, isEnterprise, compatVersion55]) {

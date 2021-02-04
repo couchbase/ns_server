@@ -52,6 +52,8 @@ class MnXDCRComponent extends MnLifeCycleHooksToStream {
     this.onAddReference = onAddReference;
     this.referenceSorter = referenceSorter;
 
+    this.getChangesLeftTotal = mnXDCRService.stream.getChangesLeftTotal;
+
   }
 
   trackByFn(_, row) {

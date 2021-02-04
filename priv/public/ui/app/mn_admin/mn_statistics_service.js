@@ -442,7 +442,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
           if (statDesc.bucket === null) {
             delete cfg1.metric.bucket;
           } else {
-            cfg1.metric.bucket = config.bucket;
+            cfg1.metric[statDesc.bucketLabel || "bucket"] = config.bucket;
           }
         }
         if (config.scope) {
