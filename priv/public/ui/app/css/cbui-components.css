@@ -1732,12 +1732,20 @@ input[type="checkbox"] + label:before {
 input[type="radio"] + label:before {
   content: "\f1db"; /* radio unchecked */
 }
+input[type="radio"]:focus + label:before,
+input[type="radio"]:checked:focus + label:before {
+  color: #000; /* radio focused by TAB */
+}
 input[type="radio"]:checked + label:before {
   content: "\f192"; /* radio checked */
   color: #555;
 }
 input[type="checkbox"] + label:before {
   content: "\f096"; /* checkbox unchecked */
+}
+input[type="checkbox"]:focus + label:before,
+input[type="checkbox"]:checked:focus + label:before {
+  color: #000; /* checkbox focused by TAB */
 }
 input[type="checkbox"]:checked + label:before,
 input[type="checkbox"].fake-select + label:before {

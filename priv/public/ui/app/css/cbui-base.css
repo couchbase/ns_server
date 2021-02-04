@@ -59,6 +59,11 @@ button::-moz-focus-inner {
   border: 0;
   padding: 0;
 }
+button:focus,
+button.outline:focus,
+button.append:focus {
+  box-shadow: 0 0 4px 2px rgba(0,0,0,0.20)!important; /* button focused by TAB */
+}
 hr {
   display: block;
   box-sizing: content-box;
@@ -924,7 +929,7 @@ select:focus,
 input:focus {
   outline: none;
   background: #fff;
-  border: 1px solid #a1a1a1;
+  border: 1px solid #999;
 }
 select:-moz-focusring {
   color: transparent;
