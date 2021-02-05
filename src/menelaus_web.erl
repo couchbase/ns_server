@@ -385,7 +385,12 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_auto_rebalance:handle_get_retry/1};
                 ["settings", "querySettings"] ->
                     {{[settings], read}, fun menelaus_web_queries:handle_settings_get/1};
+                %% The following API will be deprecated and will be succeeded
+                %% by the one below.
                 ["settings", "querySettings", "curlWhitelist"] ->
+                    {{[settings], read},
+                     fun menelaus_web_queries:handle_curl_whitelist_get/1};
+                ["settings", "querySettings", "curlAllowlist"] ->
                     {{[settings], read},
                      fun menelaus_web_queries:handle_curl_whitelist_get/1};
                 ["settings", "logRedaction"] ->
@@ -617,7 +622,12 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_auto_rebalance:handle_post_retry/1};
                 ["settings", "querySettings"] ->
                     {{[settings], write}, fun menelaus_web_queries:handle_settings_post/1};
+                %% The following API will be deprecated and will be succeeded
+                %% by the one below.
                 ["settings", "querySettings", "curlWhitelist"] ->
+                    {{[settings], write},
+                     fun menelaus_web_queries:handle_curl_whitelist_post/1};
+                ["settings", "querySettings", "curlAllowlist"] ->
                     {{[settings], write},
                      fun menelaus_web_queries:handle_curl_whitelist_post/1};
                 ["settings", "logRedaction"] ->
