@@ -66,7 +66,7 @@ function mnStatisticsNewChartDirective(mnStatisticsNewService, mnPrepareQuantity
     }
 
     function subscribeToMultiChartData() {
-      mnStatisticsNewService.subscribeUIStatsPoller({
+      mnStatisticsNewService.mnAdminStatsPoller.subscribeUIStatsPoller({
         bucket: $scope.bucket,
         node: $scope.node || "all",
         stats: $scope.config.stats,

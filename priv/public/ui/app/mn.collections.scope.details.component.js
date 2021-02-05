@@ -14,6 +14,7 @@ class MnCollectionsScopeDetailsComponent extends MnLifeCycleHooksToStream {
       templateUrl: "app/mn.collections.scope.details.html",
       changeDetection: ChangeDetectionStrategy.OnPush,
       inputs: [
+        "mnCollectionsStatsPoller",
         "scope",
         "scopeName",
         "bucketName",

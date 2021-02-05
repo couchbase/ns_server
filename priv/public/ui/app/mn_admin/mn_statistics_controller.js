@@ -389,7 +389,7 @@ function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http
   function activate() {
     initItemsDropdownSelect();
 
-    mnStatisticsNewService.heartbeat.setInterval(
+    mnStatisticsNewService.mnAdminStatsPoller.heartbeat.setInterval(
       mnStatisticsNewService.defaultZoomInterval(vm.zoom));
 
     if ($scope.rbac.cluster.stats.read) {

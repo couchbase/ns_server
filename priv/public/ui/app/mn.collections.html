@@ -2,7 +2,7 @@
   <mn-element-cargo depot="actions">
     <div class="header-controls resp-xsml">
       <a (click)="clickAddScope.next()"
-         [hidden]="!(permissions | async)?.cluster.bucket[bucketSelect.get('item').value.name].collections.write">
+         [hidden]="!bucketSelect.get('item')?.value?.name || !(permissions | async)?.cluster.bucket[bucketSelect.get('item').value.name].collections.write">
         ADD SCOPE
       </a>
     </div>
@@ -55,6 +55,7 @@
     <div *ngFor="let scope of (scopesPaginator.page | async); trackBy: trackByFn.bind(this)">
       <mn-collections-scope
          [scope]="scope"
+         [mnCollectionsStatsPoller]="mnCollectionsStatsPoller"
          [statusClass]="(statusClass | async)"
          [bucketName]="bucketSelect.get('item').value.name"></mn-collections-scope>
     </div>

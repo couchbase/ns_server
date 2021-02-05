@@ -134,6 +134,7 @@ function mnServersController($scope, $state, $uibModal, mnPoolDefault, mnPoller,
   vm.filterField = "";
   vm.sortByGroup = sortByGroup;
   vm.multipleFailoverDialog = multipleFailoverDialog;
+  vm.mnServersStatsPoller = mnStatisticsNewService.createStatsPoller($scope);
 
   function sortByGroup(node) {
     return vm.getGroupsByHostname[node.hostname] && vm.getGroupsByHostname[node.hostname].name;
@@ -143,10 +144,6 @@ function mnServersController($scope, $state, $uibModal, mnPoolDefault, mnPoller,
 
   function activate() {
     mnHelper.initializeDetailsHashObserver(vm, 'openedServers', 'app.admin.servers.list');
-
-    mnStatisticsNewService.heartbeat.setInterval(function (resp) {
-      return resp.interval || 5000;
-    });
 
     if (permissions.cluster.server_groups.read) {
       new mnPoller($scope, function () {

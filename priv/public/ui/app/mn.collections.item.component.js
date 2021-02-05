@@ -2,8 +2,7 @@ import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.
 import {NgbModal} from "/ui/web_modules/@ng-bootstrap/ng-bootstrap.js"
 import {takeUntil} from '/ui/web_modules/rxjs/operators.js';
 import {BehaviorSubject, Subject} from "/ui/web_modules/rxjs.js";
-import {MnPermissions, MnStatisticsNewService,
-        $rootScope} from '/ui/app/ajs.upgraded.providers.js'
+import {MnPermissions, $rootScope} from '/ui/app/ajs.upgraded.providers.js'
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnCollectionsService} from './mn.collections.service.js';
@@ -20,7 +19,8 @@ class MnCollectionsItemComponent extends MnLifeCycleHooksToStream {
       inputs: [
         "collection",
         "scopeName",
-        "bucketName"
+        "bucketName",
+        "mnCollectionsStatsPoller"
       ]
     })
   ]}
@@ -29,12 +29,10 @@ class MnCollectionsItemComponent extends MnLifeCycleHooksToStream {
     MnCollectionsService,
     MnPermissions,
     NgbModal,
-    MnStatisticsNewService,
     $rootScope
   ]}
 
-  constructor(mnCollectionsService, mnPermissions, modalService,
-              mnStatisticsNewService, $rootScope) {
+  constructor(mnCollectionsService, mnPermissions, modalService,  $rootScope) {
     super();
 
     var clickDeleteCollection = new Subject();
@@ -51,7 +49,6 @@ class MnCollectionsItemComponent extends MnLifeCycleHooksToStream {
     this.clickDeleteCollection = clickDeleteCollection;
     this.permissions = mnPermissions.stream;
     this.mnPermissions = mnPermissions;
-    this.mnStatisticsNewService = mnStatisticsNewService;
     this.mnCollectionsService = mnCollectionsService;
     this.$scope = $rootScope.$new();
     this.stats = new BehaviorSubject({});
@@ -65,7 +62,7 @@ class MnCollectionsItemComponent extends MnLifeCycleHooksToStream {
     this.interestingPermissions.forEach(this.mnPermissions.set);
     this.mnPermissions.throttledCheck();
 
-    this.mnStatisticsNewService.subscribeUIStatsPoller({
+    this.mnCollectionsStatsPoller.subscribeUIStatsPoller({
       bucket: this.bucketName,
       scope: this.scopeName,
       collection: this.collection.name,

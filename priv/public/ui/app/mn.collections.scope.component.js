@@ -3,8 +3,7 @@ import {NgbModal} from "/ui/web_modules/@ng-bootstrap/ng-bootstrap.js"
 import {takeUntil} from '/ui/web_modules/rxjs/operators.js';
 import {Subject, BehaviorSubject} from "/ui/web_modules/rxjs.js";
 import {UIRouter} from "/ui/web_modules/@uirouter/angular.js";
-import {MnPermissions, MnStatisticsNewService,
-        $rootScope} from '/ui/app/ajs.upgraded.providers.js';
+import {MnPermissions, $rootScope} from '/ui/app/ajs.upgraded.providers.js';
 
 import {MnLifeCycleHooksToStream, DetailsHashObserver} from './mn.core.js';
 import {MnCollectionsService} from './mn.collections.service.js';
@@ -21,6 +20,7 @@ class MnCollectionsScopeComponent extends MnLifeCycleHooksToStream {
       changeDetection: ChangeDetectionStrategy.OnPush,
       inputs: [
         "scope",
+        "mnCollectionsStatsPoller",
         "bucketName",
         "statusClass"
       ]
@@ -32,12 +32,10 @@ class MnCollectionsScopeComponent extends MnLifeCycleHooksToStream {
     MnPermissions,
     NgbModal,
     UIRouter,
-    MnStatisticsNewService,
     $rootScope
   ]}
 
-  constructor(mnCollectionsService, mnPermissions, modalService, uiRouter,
-              mnStatisticsNewService, $rootScope) {
+  constructor(mnCollectionsService, mnPermissions, modalService, uiRouter, $rootScope) {
     super();
 
     var clickDeleteScope = new Subject();
@@ -65,7 +63,6 @@ class MnCollectionsScopeComponent extends MnLifeCycleHooksToStream {
     this.permissions = mnPermissions.stream;
     this.mnPermissions = mnPermissions;
     this.mnCollectionsService = mnCollectionsService;
-    this.mnStatisticsNewService = mnStatisticsNewService;
     this.$scope = $rootScope.$new();
     this.stats = new BehaviorSubject({});
   }
@@ -79,7 +76,7 @@ class MnCollectionsScopeComponent extends MnLifeCycleHooksToStream {
     this.interestingPermissions.forEach(this.mnPermissions.set);
     this.mnPermissions.throttledCheck();
 
-    this.mnStatisticsNewService.subscribeUIStatsPoller({
+    this.mnCollectionsStatsPoller.subscribeUIStatsPoller({
       bucket: this.bucketName,
       scope: this.scope.name,
       node: "all",
@@ -100,6 +97,9 @@ class MnCollectionsScopeComponent extends MnLifeCycleHooksToStream {
   }
 
   ngOnDestroy() {
+    this.$scope.$destroy();
+    this.mnOnDestroy.next();
+    this.mnOnDestroy.complete();
     this.interestingPermissions.forEach(this.mnPermissions.remove);
   }
 }

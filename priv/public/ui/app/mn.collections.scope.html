@@ -60,6 +60,7 @@
      *ngIf="(detailsHashObserver.stream.isOpened | async)">
     <mn-collections-scope-details
        [scope]="scope"
+       [mnCollectionsStatsPoller]="mnCollectionsStatsPoller"
        [statusClass]="statusClass"
        [bucketName]="bucketName"
        [scopeName]="scope.name"

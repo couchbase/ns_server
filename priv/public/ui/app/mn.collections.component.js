@@ -5,7 +5,8 @@ import {pluck, filter, switchMap, distinctUntilChanged, withLatestFrom,
         shareReplay, takeUntil, tap, map} from '/ui/web_modules/rxjs/operators.js';
 import {combineLatest, Subject, timer, NEVER, of} from "/ui/web_modules/rxjs.js";
 import {NgbModal} from "/ui/web_modules/@ng-bootstrap/ng-bootstrap.js";
-import {MnPermissions, MnServersService} from '/ui/app/ajs.upgraded.providers.js';
+import {MnPermissions, MnStatisticsNewService,
+        MnServersService, $rootScope} from '/ui/app/ajs.upgraded.providers.js';
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnCollectionsService} from './mn.collections.service.js';
@@ -30,11 +31,14 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
     NgbModal,
     FormBuilder,
     MnHelperService,
-    MnServersService
+    MnServersService,
+    MnStatisticsNewService,
+    $rootScope
   ]}
 
-  constructor(mnCollectionsService, mnPermissions,
-              uiRouter, modalService, formBuilder, mnHelperService, mnServersService) {
+  constructor(mnCollectionsService, mnPermissions, uiRouter, modalService,
+              formBuilder, mnHelperService, mnServersService, mnStatisticsNewService,
+              $rootScope) {
     super();
 
     var clickAddScope = new Subject();
@@ -127,6 +131,14 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
     this.scopes = scopes;
     this.clickAddScope = clickAddScope;
     this.statusClass = statusClass;
+    this.$scope = $rootScope.$new();
+    this.mnCollectionsStatsPoller = mnStatisticsNewService.createStatsPoller(this.$scope);
+  }
+
+  ngOnDestroy() {
+    this.mnOnDestroy.next();
+    this.mnOnDestroy.complete();
+    this.$scope.$destroy();
   }
 
   trackByFn(_, scope) {

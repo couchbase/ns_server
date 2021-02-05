@@ -56,7 +56,7 @@ function mnServersListItemDetailsController($scope, mnServersListItemDetailsServ
   vm.getLatestStat =
     mnPoolDefault.export.compat.atLeast70 ? getLatestStat70 : getLatestStat;
 
-  mnStatisticsNewService.subscribeUIStatsPoller({
+  $scope.serversCtl.mnServersStatsPoller.subscribeUIStatsPoller({
     node: $scope.node.hostname || "all",
     zoom: 3000,
     step: 1,

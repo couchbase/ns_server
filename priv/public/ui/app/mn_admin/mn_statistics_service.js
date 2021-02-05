@@ -30,10 +30,7 @@ angular
 
 function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootScope, mnStatisticsDescriptionService, mnStoreService, mnPoolDefault) {
   var rootScope = $rootScope.$new();
-  var perChartConfig = [];
-  var perChartStatsPath = [];
-  var perChartScopes = [];
-  var currentPerChartScopes = [];
+
   var formatSecond = timeFormat("%-I:%M:%S%p");
   var formatMinute = timeFormat("%-I:%M%p");
   var formatHour = timeFormat("%-I%p");
@@ -45,7 +42,6 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
     export: {
       scenario: {}
     },
-    subscribeUIStatsPoller: subscribeUIStatsPoller,
     descriptionPathsToStatNames: descriptionPathsToStatNames,
     descriptionPathToStatName: descriptionPathToStatName,
     defaultZoomInterval: defaultZoomInterval,
@@ -67,31 +63,122 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
     packStatsConfig: packStatsConfig,
     postStatsRange: postStatsRange,
     postStats: postStats,
-    heartbeat: new mnPoller(rootScope, function () {
-      currentPerChartScopes = [...perChartScopes];
-      return mnPoolDefault.export.compat.atLeast70 ?
-        postStatsRange([...perChartConfig]) :
-        postStats([...perChartConfig]);
-    })
-      .setInterval(function (resp) {
-        return resp.interval || 4000;
-      })
-      .subscribe(function (value) {
-        if (!value.data) {
-          return;
-        }
-        if (mnPoolDefault.export.compat.atLeast70) {
-          currentPerChartScopes.forEach(scope => delete scope["mnUIStats"]);
-          currentPerChartScopes.forEach(unpack70Stats(value));
-        } else {
-          currentPerChartScopes.forEach(function (scope, i) {
-            scope["mnUIStats"] = value.data[i];
-          });
-        }
-      })
+    createStatsPoller: createStatsPoller,
+    mnAdminStatsPoller: createStatsPoller(rootScope)
   };
 
   return mnStatisticsNewService;
+
+  function createStatsPoller(scope) {
+    var perChartConfig = [];
+    var perChartStatsPath = [];
+    var perChartScopes = [];
+    var currentPerChartScopes = [];
+    let heartbeat =
+        new mnPoller(scope, function () {
+          currentPerChartScopes = [...perChartScopes];
+          return mnPoolDefault.export.compat.atLeast70 ?
+            postStatsRange([...perChartConfig]) :
+            postStats([...perChartConfig]);
+        })
+        .setInterval(function (resp) {
+          return resp.interval || 4000;
+        })
+        .subscribe(function (value) {
+          if (!value.data) {
+            return;
+          }
+          if (mnPoolDefault.export.compat.atLeast70) {
+            currentPerChartScopes.forEach(scope => delete scope["mnUIStats"]);
+            currentPerChartScopes.forEach(unpack70Stats(value));
+          } else {
+            currentPerChartScopes.forEach(function (scope, i) {
+              scope["mnUIStats"] = value.data[i];
+            });
+          }
+        });
+
+    return {
+      subscribeUIStatsPoller: subscribeUIStatsPoller,
+      heartbeat: heartbeat
+    };
+
+    function subscribeUIStatsPoller(config, scope) {
+      let config1 = packStatsConfig(config);
+
+      function register(config2, statPath) {
+        if (mnPoolDefault.export.compat.atLeast70) {
+          perChartStatsPath.push(statPath);
+          delete config2.statPath;
+        }
+
+        perChartConfig.push(config2);
+        perChartScopes.push(scope);
+
+        heartbeat.throttledReload();
+      }
+      function omit(config2) {
+        var index = perChartConfig.indexOf(config2);
+        perChartConfig.splice(index, 1);
+        perChartScopes.splice(perChartScopes.indexOf(scope), 1);
+        if (mnPoolDefault.export.compat.atLeast70) {
+          perChartStatsPath.splice(index, 1);
+        }
+
+        if (!perChartConfig.length) {
+          heartbeat.stop();
+        }
+      }
+      function doOmit(config2) {
+        return function () {
+          omit(config2);
+        };
+      }
+      function doRegister(config2, statPath) {
+        return function () {
+          register(config2, statPath);
+        };
+      }
+      config1.forEach((config2) => {
+        let statPath = config2.statPath;
+        register(config2, statPath);
+        let offPause = scope.$on("mnPauseStats", doOmit(config2));
+        let offResume = scope.$on("mnResumeStats", doRegister(config2, statPath));
+        scope.$on("$destroy", function () {
+          offResume && offResume();
+          offPause && offPause();
+          doOmit(config2)();
+        });
+      });
+    }
+
+    function unpack70Stats(resp) {
+      return function (scope, i) {
+        if (!resp.data[i]) {
+          return;
+        }
+        var config = perChartConfig[i];
+        if (!config) {
+          return;
+        }
+        var statPath = perChartStatsPath[i];
+        var data = resp.data[i].data[0];
+        scope["mnUIStats"] = scope["mnUIStats"] || {stats:{}};
+        var maybeScopeHasStat = scope["mnUIStats"].stats[statPath] || {};
+        if (!config.aggregationFunction) {
+          scope["mnUIStats"].stats[statPath] =
+            resp.data[i].data.reduce((acc, data) => {
+              acc[data.metric.nodes[0]] = data;
+              return acc;
+            }, maybeScopeHasStat);
+        } else {
+          scope["mnUIStats"].stats[statPath] =
+            maybeScopeHasStat;
+          maybeScopeHasStat[config.aggregationFunction ? "aggregate" : data.nodes[0]] = data;
+        }
+      }
+    }
+  }
 
   function buildChartConfig(stats, statName, currentNode, title, unit, axis) {
     currentNode = currentNode == "all" ? "aggregate" : currentNode;
@@ -331,33 +418,6 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
     return cfg.metric.name + (cfg.applyFunctions ? ("_" + cfg.applyFunctions.join("")) : "");
   }
 
-  function unpack70Stats(resp) {
-    return function (scope, i) {
-      if (!resp.data[i]) {
-        return;
-      }
-      var config = perChartConfig[i];
-      if (!config) {
-        return;
-      }
-      var statPath = perChartStatsPath[i];
-      var data = resp.data[i].data[0];
-      scope["mnUIStats"] = scope["mnUIStats"] || {stats:{}};
-      var maybeScopeHasStat = scope["mnUIStats"].stats[statPath] || {};
-      if (!config.aggregationFunction) {
-        scope["mnUIStats"].stats[statPath] =
-          resp.data[i].data.reduce((acc, data) => {
-            acc[data.metric.nodes[0]] = data;
-            return acc;
-          }, maybeScopeHasStat);
-      } else {
-        scope["mnUIStats"].stats[statPath] =
-          maybeScopeHasStat;
-        maybeScopeHasStat[config.aggregationFunction ? "aggregate" : data.nodes[0]] = data;
-      }
-    }
-  }
-
   function packStatsConfig(config, doNotAssignStatPath) {
     let cfg = {};
     let start = 0 - zoomToMS(config.zoom);
@@ -416,60 +476,6 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
       }
       return [cfg];
     }
-  }
-
-  function subscribeUIStatsPoller(config, scope) {
-    let config1 = packStatsConfig(config);
-
-    function register(config2, statPath) {
-      if (mnPoolDefault.export.compat.atLeast70) {
-        perChartStatsPath.push(statPath);
-        delete config2.statPath;
-      }
-
-      perChartConfig.push(config2);
-      perChartScopes.push(scope);
-
-      mnStatisticsNewService.heartbeat.throttledReload();
-    }
-
-    function omit(config2) {
-      var index = perChartConfig.indexOf(config2);
-      perChartConfig.splice(index, 1);
-      perChartScopes.splice(perChartScopes.indexOf(scope), 1);
-      if (mnPoolDefault.export.compat.atLeast70) {
-        perChartStatsPath.splice(index, 1);
-      }
-
-      if (!perChartConfig.length) {
-        mnStatisticsNewService.heartbeat.stop();
-      }
-    }
-
-
-    function doOmit(config2) {
-      return function () {
-        omit(config2);
-      };
-    }
-
-    function doRegister(config2, statPath) {
-      return function () {
-        register(config2, statPath);
-      };
-    }
-
-    config1.forEach((config2) => {
-      let statPath = config2.statPath;
-      register(config2, statPath);
-      let offPause = scope.$on("mnPauseStats", doOmit(config2));
-      let offResume = scope.$on("mnResumeStats", doRegister(config2, statPath));
-      scope.$on("$destroy", function () {
-        offResume && offResume();
-        offPause && offPause();
-        doOmit(config2)();
-      });
-    });
   }
 
   function prepareNodesList(params) {

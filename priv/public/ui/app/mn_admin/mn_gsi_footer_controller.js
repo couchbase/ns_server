@@ -13,6 +13,8 @@ function mnGsiFooterController($scope, $rootScope, $state, mnStatisticsNewServic
     (mnPermissions.export.bucketNames['.stats!read'] &&
      mnPermissions.export.bucketNames['.stats!read'][0]);
 
+  vm.mnGSIFooterStatsPoller = mnStatisticsNewService.createStatsPoller($scope);
+
   vm.stats = $scope.stats || (mnPoolDefault.export.compat.atLeast70 ? [
     '@index.index_memory_quota','@index.index_memory_used_total',
     '@index-.index_num_rows_returned','@index-.index_fragmentation',
@@ -34,7 +36,7 @@ function mnGsiFooterController($scope, $rootScope, $state, mnStatisticsNewServic
   activate();
 
   function activate() {
-    mnStatisticsNewService.subscribeUIStatsPoller(config, $scope);
+    vm.mnGSIFooterStatsPoller.subscribeUIStatsPoller(config, $scope);
   }
 
   function doGetLatestStat70(statName) {
