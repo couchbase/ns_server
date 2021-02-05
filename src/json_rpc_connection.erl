@@ -156,7 +156,7 @@ handle_call({call, Name, EJsonArgThunk}, From, #state{counter = Counter,
               {method, NameB}
               | MaybeParams]},
     ale:debug(?JSON_RPC_LOGGER,
-              "sending jsonrpc call:~p", [ns_config_log:sanitize(EJSON)]),
+              "sending jsonrpc call:~p", [ns_config_log:sanitize(EJSON, true)]),
     ok = gen_tcp:send(Sock, [ejson:encode(EJSON) | <<"\n">>]),
     ets:insert(IdToCaller, {Counter, From}),
     {noreply, State#state{counter = Counter + 1}}.
