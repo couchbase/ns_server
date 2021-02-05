@@ -76,7 +76,21 @@ angular.module('ui.select').run(function($animate) {
   }
 });
 
-function mnAdminConfig($stateProvider, $urlMatcherFactoryProvider, mnPluggableUiRegistryProvider) {
+function mnAdminConfig($stateProvider, $urlMatcherFactoryProvider, mnPluggableUiRegistryProvider, $httpProvider) {
+
+  $httpProvider.interceptors.push(['$q', '$injector', interceptorOf401]);
+
+  function interceptorOf401($q, $injector) {
+    return {
+      responseError: function (rejection) {
+        if (rejection.config.url == "/pools/default" &&
+            rejection.config.params && rejection.config.params.etag) {
+          $injector.get('mnAuthService').logout();
+        }
+        return $q.reject(rejection);
+      }
+    };
+  }
 
   function valToString(val) {
     return val != null ? val.toString() : val;
