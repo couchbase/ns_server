@@ -32,7 +32,7 @@
       <p>Data - {{buckets.details.length + ' bucket' + overviewCtl.getEndings(buckets.details.length)}}</p>
       <div
          class="error"
-         ng-repeat="(nodeStatuses, count) in overviewCtl.nodes.kv.nodespyStatuses">
+         ng-repeat="(nodeStatuses, count) in overviewCtl.nodes.kv.nodesByStatuses">
         {{count + ' node' + overviewCtl.getEndings(count) + ' ' + nodeStatuses}}
       </div>
     </div>
