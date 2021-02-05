@@ -1478,6 +1478,10 @@ form .error-form {
   background-color: #efebe0;
 }
 
+.filter-gray {
+  filter: brightness(0.95);
+}
+
 /* CURSOR STYLES ------------------------------------------------------------ */
 .cursor-default {
   cursor: default;

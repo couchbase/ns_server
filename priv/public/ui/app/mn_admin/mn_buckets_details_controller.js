@@ -1,6 +1,6 @@
 export default mnBucketsDetailsController;
 
-function mnBucketsDetailsController($scope, mnBucketsDetailsService, mnPromiseHelper, mnSettingsAutoCompactionService, mnCompaction, $uibModal, mnBucketsDetailsDialogService, mnPoller, mnHelper) {
+function mnBucketsDetailsController($scope, mnBucketsDetailsService, mnPromiseHelper, mnSettingsAutoCompactionService, mnCompaction, $uibModal, mnBucketsDetailsDialogService, mnPoller, mnHelper, permissions) {
   var vm = this;
   vm.editBucket = editBucket;
   vm.deleteBucket = deleteBucket;
@@ -16,21 +16,25 @@ function mnBucketsDetailsController($scope, mnBucketsDetailsService, mnPromiseHe
 
 
   function activate() {
-    compactionTasks = new mnPoller($scope, function () {
-      return mnBucketsDetailsService.getCompactionTask($scope.bucket);
-    })
-      .subscribe("compactionTasks", vm)
-      .reloadOnScopeEvent("mnTasksDetailsChanged")
-      .cycle();
+    if (permissions.cluster.tasks.read) {
+      compactionTasks = new mnPoller($scope, function () {
+        return mnBucketsDetailsService.getCompactionTask($scope.bucket);
+      })
+        .subscribe("compactionTasks", vm)
+        .reloadOnScopeEvent("mnTasksDetailsChanged")
+        .cycle();
+    }
 
     $scope.$watch('bucket', function () {
-      compactionTasks.reload();
+      permissions.cluster.tasks.read && compactionTasks.reload();
       mnPromiseHelper(vm, mnBucketsDetailsService.doGetDetails($scope.bucket)).applyToScope("bucketDetails");
     });
 
-    $scope.$watchGroup(['bucket', 'adminCtl.tasks'], function (values) {
-      vm.warmUpTasks = mnBucketsDetailsService.getWarmUpTasks(values[0], values[1]);
-    });
+    if (permissions.cluster.tasks.read) {
+      $scope.$watchGroup(['bucket', 'adminCtl.tasks'], function (values) {
+        vm.warmUpTasks = mnBucketsDetailsService.getWarmUpTasks(values[0], values[1]);
+      });
+    }
   }
 
   $scope.$watch("bucketsDetailsCtl.bucketDetails", getBucketRamGuageConfig);

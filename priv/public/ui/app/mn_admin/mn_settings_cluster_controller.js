@@ -232,9 +232,11 @@ function mnSettingsClusterController($scope, $q, $uibModal, mnPoolDefault, mnMem
       services.backup = mnPoolDefault.export.compat.atLeast70;
     }
 
-    mnXDCRService.getSettingsReplications().then(function (rv) {
-      vm.replicationSettings = rv.data;
-    });
+    if ($scope.rbac.cluster.xdcr.settings.read) {
+      mnXDCRService.getSettingsReplications().then(function (rv) {
+        vm.replicationSettings = rv.data;
+      });
+    }
 
     if ($scope.rbac.cluster.admin.memcached.read) {
       mnSettingsClusterService.getMemcachedSettings().then(function (rv) {
