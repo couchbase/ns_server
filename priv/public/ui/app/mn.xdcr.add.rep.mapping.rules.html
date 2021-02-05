@@ -1,25 +1,26 @@
-<h4>Mapping Rules</h4>
-<div [hidden]="isMigrationMode | async">
-  <div
-     *ngFor="let item of explicitMappingRulesKeys | async"
-     class="row padding-quarter margin-top-half margin-bottom-quarter grayblack-bg-7 text-small">
-    <span class="break-word">
-      {{item[0]}} &gt; {{item[1] || "null"}}
-    </span>
-    <a
-       (click)="delExplicitMappingRules(item[0])"
-       class="x-close-sml">X</a>
+<div (click)="$event.stopPropagation();">
+  <div [hidden]="!(isExplicitMappingMode | async)">
+    <div
+       *ngFor="let item of explicitMappingRulesKeys | async"
+       class="row padding-quarter margin-top-half margin-bottom-quarter grayblack-bg-7 text-small">
+      <span class="break-word">
+        {{item[0]}} &gt; {{item[1] || "null"}}
+      </span>
+      <a *ngIf="isEditMode"
+         (click)="delExplicitMappingRules(item[0])"
+         class="x-close-sml">X</a>
+    </div>
   </div>
-</div>
-<div [hidden]="!(isMigrationMode | async)">
-  <div
-     *ngFor="let item of explicitMappingMigrationRulesKeys | async"
-     class="row padding-quarter margin-top-half margin-bottom-quarter grayblack-bg-7 text-small">
-    <span class="break-word">
-      {{item[0]}} --&gt; {{item[1]}}
-    </span>
-    <a
-       (click)="delExplicitMappingMigrationRules(item[0])"
-       class="x-close-sml">X</a>
+  <div [hidden]="!(isMigrationMode | async)">
+    <div
+       *ngFor="let item of explicitMappingMigrationRulesKeys | async"
+       class="row padding-quarter margin-top-half margin-bottom-quarter grayblack-bg-7 text-small">
+      <span class="break-word">
+        {{item[0]}} --&gt; {{item[1]}}
+      </span>
+      <a *ngIf="isEditMode"
+         (click)="delExplicitMappingMigrationRules(item[0])"
+         class="x-close-sml">X</a>
+    </div>
   </div>
 </div>

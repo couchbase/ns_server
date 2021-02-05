@@ -1,13 +1,14 @@
 import {Component, Pipe, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js'
 import {NgbModal} from "/ui/web_modules/@ng-bootstrap/ng-bootstrap.js"
-import {Subject, pipe} from "/ui/web_modules/rxjs.js";
+import {Subject, BehaviorSubject, pipe} from "/ui/web_modules/rxjs.js";
 import {pluck, map, shareReplay, takeUntil,
-        withLatestFrom, filter} from '/ui/web_modules/rxjs/operators.js';
+        withLatestFrom, filter, combineLatest} from '/ui/web_modules/rxjs/operators.js';
 import {MnPermissions, $rootScope} from '/ui/app/ajs.upgraded.providers.js';
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnXDCRService} from './mn.xdcr.service.js';
 import {MnFormService} from "./mn.form.service.js";
+import {MnHelperService} from "./mn.helper.service.js";
 import {MnXDCRDeleteRepComponent} from "./mn.xdcr.delete.rep.component.js";
 
 export {MnXDCRItemDetailsComponent, MnReplicationStatus};
@@ -29,10 +30,11 @@ class MnXDCRItemDetailsComponent extends MnLifeCycleHooksToStream {
     MnXDCRService,
     MnFormService,
     NgbModal,
-    $rootScope
+    $rootScope,
+    MnHelperService
   ]}
 
-  constructor(mnPermissions, mnXDCRService, mnFormService, modalService, $rootScope) {
+  constructor(mnPermissions, mnXDCRService, mnFormService, modalService, $rootScope, mnHelperService) {
     super();
 
     this.mnFormService = mnFormService;
@@ -50,6 +52,13 @@ class MnXDCRItemDetailsComponent extends MnLifeCycleHooksToStream {
     this.permissions = mnPermissions.stream;
     this.onDeleteReplication = onDeleteReplication;
 
+    this.createGetSettingsReplicationsPipe =
+      mnXDCRService.createGetSettingsReplicationsPipe.bind(mnXDCRService);
+    this.explicitMappingRules = new BehaviorSubject({});
+    this.explicitMappingMigrationRules = new BehaviorSubject({});
+    this.isMigrationMode = new BehaviorSubject();
+    this.isExplicitMappingMode = new BehaviorSubject();
+    this.toggler = mnHelperService.createToggle();
   }
 
   ngOnInit() {
@@ -70,6 +79,24 @@ class MnXDCRItemDetailsComponent extends MnLifeCycleHooksToStream {
     this.form = form;
     this.status = status;
     this.statusClass = status.pipe(map(v => "fa-" + v));
+
+    this.replicationSettings = this.createGetSettingsReplicationsPipe(this.item.id);
+    this.replicationSettings
+      .pipe(takeUntil(this.mnOnDestroy))
+      .subscribe(this.unpackReplicationMappings.bind(this));
+    this.areThereMappingRules = this.explicitMappingRules.pipe(
+      combineLatest(this.explicitMappingMigrationRules),
+      map(([mappingRules, mappingMigrationRules]) => {
+        return Object.keys(mappingRules).length || Object.keys(mappingMigrationRules).length;
+      })
+    );
+  }
+
+  unpackReplicationMappings(v) {
+    this.explicitMappingRules.next(v.collectionsExplicitMapping ? v.colMappingRules : {});
+    this.explicitMappingMigrationRules.next(v.collectionsMigrationMode ? v.colMappingRules : {});
+    this.isMigrationMode.next(v.collectionsMigrationMode);
+    this.isExplicitMappingMode.next(v.collectionsExplicitMapping);
   }
 
   getStatus(row) {

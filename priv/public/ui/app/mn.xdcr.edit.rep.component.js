@@ -1,6 +1,6 @@
 import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
 import {combineLatest, pipe, BehaviorSubject} from '/ui/web_modules/rxjs.js';
-import {map, withLatestFrom, takeUntil, pluck, first} from '/ui/web_modules/rxjs/operators.js';
+import {map, withLatestFrom, takeUntil, pluck, first, startWith} from '/ui/web_modules/rxjs/operators.js';
 import {find, where, includes, flip} from "/ui/web_modules/ramda.js";
 import {UIRouter} from "/ui/web_modules/@uirouter/angular.js";
 import {FormBuilder} from '/ui/web_modules/@angular/forms.js';
@@ -182,6 +182,10 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
       new BehaviorSubject(v.collectionsMigrationMode ? {} : v.colMappingRules);
     this.explicitMappingMigrationRules =
       new BehaviorSubject(v.collectionsMigrationMode ? v.colMappingRules : {});
+    let migrationMode = this.form.group.get("collectionsMigrationMode");
+    this.isMigrationMode = migrationMode.valueChanges.pipe(startWith(migrationMode.value));
+    let explicitMappingMode = this.form.group.get("collectionsExplicitMapping");
+    this.isExplicitMappingMode = explicitMappingMode.valueChanges.pipe(startWith(explicitMappingMode.value));
 
     this.explicitMappingGroup = {
       scopes: {

@@ -101,13 +101,20 @@
        class="resp-hide-sml">&nbsp;</div>
 
     <div class="width-2">
+      <h4
+         class="inline margin-right-1">
+        Mapping Rules
+      </h4>
       <mn-xdcr-mapping-rules
          *ngIf="(isEnterprise | async)"
          class="block"
-         [group]="form.group"
+         [isEditMode]="true"
+         [isMigrationMode]="isMigrationMode"
+         [isExplicitMappingMode]="isExplicitMappingMode"
          [explicitMappingRules]="explicitMappingRules"
          [explicitMappingMigrationRules]="explicitMappingMigrationRules"
-         [explicitMappingGroup]="explicitMappingGroup"></mn-xdcr-mapping-rules>
+         [explicitMappingGroup]="explicitMappingGroup">
+      </mn-xdcr-mapping-rules>
     </div>
   </div>
 

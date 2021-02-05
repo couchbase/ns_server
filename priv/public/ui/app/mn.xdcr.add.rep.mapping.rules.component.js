@@ -12,7 +12,9 @@ class MnXDCRAddRepMappingRulesComponent extends MnLifeCycleHooksToStream {
       templateUrl: "/ui/app/mn.xdcr.add.rep.mapping.rules.html",
       changeDetection: ChangeDetectionStrategy.OnPush,
       inputs: [
-        "group",
+        "isEditMode",
+        "isMigrationMode",
+        "isExplicitMappingMode",
         "explicitMappingRules",
         "explicitMappingMigrationRules",
         "explicitMappingGroup"
@@ -26,16 +28,9 @@ class MnXDCRAddRepMappingRulesComponent extends MnLifeCycleHooksToStream {
 
   ngOnInit() {
     let kvToArray = (rules) => Object.keys(rules).sort().map(from => [from, rules[from]]);
-    let migrationMode = this.group.get("collectionsMigrationMode")
 
-    this.explicitMappingRulesKeys =
-      this.explicitMappingRules.pipe(map(kvToArray));
-
-    this.explicitMappingMigrationRulesKeys =
-      this.explicitMappingMigrationRules.pipe(map(kvToArray));
-
-    this.isMigrationMode =
-      migrationMode.valueChanges.pipe(startWith(migrationMode.value));
+    this.explicitMappingRulesKeys = this.explicitMappingRules.pipe(map(kvToArray));
+    this.explicitMappingMigrationRulesKeys = this.explicitMappingMigrationRules.pipe(map(kvToArray));
   }
 
   delExplicitMappingRules(key) {

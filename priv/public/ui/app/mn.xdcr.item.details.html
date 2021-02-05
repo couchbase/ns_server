@@ -26,6 +26,25 @@
          [ngClass]="statusClass | async"></div>
     </button>
   </div>
+
+  <div
+     *ngIf="areThereMappingRules | async"
+     class="row flex-column items-top margin-bottom-half"
+     (click)="$event.stopPropagation();">
+    <p
+       class="text-medium margin-0 disclosure"
+       [ngClass]="{disclosed: (toggler.state | async)}"
+       (click)="toggler.click.next()">
+      Mapping Rules
+    </p>
+    <mn-xdcr-mapping-rules
+       *ngIf="toggler.state | async"
+       [isMigrationMode]="isMigrationMode"
+       [isExplicitMappingMode]="isExplicitMappingMode"
+       [explicitMappingRules]="explicitMappingRules"
+       [explicitMappingMigrationRules]="explicitMappingMigrationRules">
+    </mn-xdcr-mapping-rules>
+  </div>
   <mn-detail-stats
      bucket="{{item.source}}"
      mnTitle="XDCR Stats"

@@ -44,16 +44,22 @@
        *ngIf="(isEnterprise | async)"
        style="border-left: 1px solid #d1d1d1; margin: 0 16px; flex-basis: 1;"
        class="resp-hide-med">&nbsp;</div>
-
-    <mn-xdcr-mapping-rules
-       class="width-2"
-       style="display:block;"
-       *ngIf="(replicationSettings | async) && (isEnterprise | async)"
-       [group]="form.group"
-       [explicitMappingRules]="explicitMappingRules"
-       [explicitMappingMigrationRules]="explicitMappingMigrationRules"
-       [explicitMappingGroup]="explicitMappingGroup"></mn-xdcr-mapping-rules>
-
+    <div class="width-2">
+      <h4
+         class="block margin-right-1">
+        Mapping Rules
+      </h4>
+      <mn-xdcr-mapping-rules
+         class="block"
+         *ngIf="(replicationSettings | async) && (isEnterprise | async)"
+         [isEditMode]="true"
+         [isMigrationMode]="isMigrationMode"
+         [isExplicitMappingMode]="isExplicitMappingMode"
+         [explicitMappingRules]="explicitMappingRules"
+         [explicitMappingMigrationRules]="explicitMappingMigrationRules"
+         [explicitMappingGroup]="explicitMappingGroup">
+      </mn-xdcr-mapping-rules>
+    </div>
   </div>
 
   <footer class="footer-save">

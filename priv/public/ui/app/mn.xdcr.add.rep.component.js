@@ -102,6 +102,10 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
     this.explicitMappingRules = new BehaviorSubject();
     this.explicitMappingMigrationRules = new BehaviorSubject();
     this.explicitMappingGroup.migrationMode = formBuilder.group({key: "", target: ""});
+    let migrationMode = this.form.group.get("collectionsMigrationMode");
+    this.isMigrationMode = migrationMode.valueChanges.pipe(startWith(migrationMode.value));
+    let explicitMappingMode = this.form.group.get("collectionsExplicitMapping");
+    this.isExplicitMappingMode = explicitMappingMode.valueChanges.pipe(startWith(explicitMappingMode.value));
 
     function resetMappingRules() {
       this.explicitMappingGroup.scopesControls = {};
