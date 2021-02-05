@@ -1225,11 +1225,15 @@ maybe_truncate_stats(#s{cur_settings = Settings} = State) ->
         ns_config:search_node(node(), ns_config:latest(),
                               stats_last_truncation_time),
     MaxAge = proplists:get_value(truncate_max_age, Settings),
+    %% Amount of time to not truncate stats even if they're older than the
+    %% maximum age.
+    MinTruncationInterval = proplists:get_value(min_truncation_interval,
+                                                Settings),
     End = Now - MaxAge,
     %% Each call truncates the little bit that has exceeded the age limit
     %% since the last call.  We might want to do this less frequently e.g.
     %% when a certain time frame is exceeded.
-    case End - LastTruncationTime > 0 of
+    case End - LastTruncationTime > MinTruncationInterval of
         true ->
             do_truncate_stats(LastTruncationTime, End, State),
             ?log_debug("Updating last truncation times, Old ~p, New ~p",
