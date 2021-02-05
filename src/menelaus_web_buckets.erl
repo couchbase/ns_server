@@ -2069,6 +2069,40 @@ basic_bucket_params_screening_test() ->
     ?assertEqual(8, proplists:get_value(num_threads, OK12)),
     ?assertEqual(full_eviction, proplists:get_value(eviction_policy, OK12)),
 
+    %% it is not possible to create a bucket with 3 replicas and durability
+    %% level that isn't none.
+    DurabilityLevels = ["majority", "majorityAndPersistActive",
+                        "persistToMajority"],
+    lists:map(
+      fun (Level) ->
+              {OK14, E14} = basic_bucket_params_screening(
+                              true, "ReplicaDurability",
+                              [{"bucketType", "membase"},
+                               {"ramQuotaMB", "400"},
+                               {"replicaNumber", "3"},
+                               {"durabilityMinLevel", Level}],
+                              AllBuckets),
+              [] = E14,
+              MoreChecks14 = additional_bucket_params_validation(OK14),
+              ?assertEqual([{durability_min_level,
+                             <<"Durability minimum level cannot be specified "
+                               "with 3 replicas">>}],
+                             MoreChecks14)
+      end, DurabilityLevels),
+
+    %% it is possible to create a bucket with 3 replicas when durability is
+    %% none.
+    {OK15, E15} = basic_bucket_params_screening(
+                              true, "ReplicaDurability",
+                              [{"bucketType", "membase"},
+                               {"ramQuotaMB", "400"},
+                               {"replicaNumber", "3"},
+                               {"durabilityMinLevel", "none"}],
+                              AllBuckets),
+              [] = E15,
+    MoreChecks15 = additional_bucket_params_validation(OK15),
+    [] = MoreChecks15,
+
     ok.
 
 basic_parse_validate_bucket_auto_compaction_settings_test() ->
