@@ -1,7 +1,6 @@
 import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
 import {pipe, BehaviorSubject} from '/ui/web_modules/rxjs.js';
-import {withLatestFrom, map, filter, switchMap, pluck, shareReplay,
-        takeUntil} from '/ui/web_modules/rxjs/operators.js';
+import {withLatestFrom, map, takeUntil, startWith} from '/ui/web_modules/rxjs/operators.js';
 import {UIRouter} from '/ui/web_modules/@uirouter/angular.js';
 import {FormBuilder, Validators} from '/ui/web_modules/@angular/forms.js'
 
@@ -95,18 +94,28 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
       filterExpression: ""
     });
 
-    this.explicitMappingGroup = {
-      scopes: {
-        flags: formBuilder.group({}),
-        fields: formBuilder.group({})
-      },
-      collections: {},
-      collectionsControls: {},
-      migrationMode: formBuilder.group({key: "", target: ""})
-    };
+    this.isSaveButtonDisabled =
+      this.form.group.statusChanges
+      .pipe(startWith(this.form.group.status),
+            map(v => v === "INVALID"));
+    this.explicitMappingGroup = {};
+    this.explicitMappingRules = new BehaviorSubject();
+    this.explicitMappingMigrationRules = new BehaviorSubject();
+    this.explicitMappingGroup.migrationMode = formBuilder.group({key: "", target: ""});
 
-    this.explicitMappingRules = new BehaviorSubject({});
-    this.explicitMappingMigrationRules = new BehaviorSubject({});
+    function resetMappingRules() {
+      this.explicitMappingGroup.scopesControls = {};
+      this.explicitMappingGroup.scopes = {};
+      this.explicitMappingGroup.collections = {};
+      this.explicitMappingGroup.collectionsControls = {};
+      this.explicitMappingRules.next({});
+      this.explicitMappingMigrationRules.next({});
+    }
+    resetMappingRules.bind(this)();
+
+    this.form.group.get("fromBucket").valueChanges
+      .pipe(takeUntil(this.mnOnDestroy))
+      .subscribe(resetMappingRules.bind(this));
 
   }
 }

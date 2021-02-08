@@ -25,7 +25,7 @@ class MnXDCRAddRepMappingRulesComponent extends MnLifeCycleHooksToStream {
   }
 
   ngOnInit() {
-    let kvToArray = (rules) => Object.keys(rules).map(from => [from, rules[from]]);
+    let kvToArray = (rules) => Object.keys(rules).sort().map(from => [from, rules[from]]);
     let migrationMode = this.group.get("collectionsMigrationMode")
 
     this.explicitMappingRulesKeys =
@@ -45,12 +45,16 @@ class MnXDCRAddRepMappingRulesComponent extends MnLifeCycleHooksToStream {
       this.explicitMappingGroup.collections[scopeCollection[0]]
         .flags.get(scopeCollection[1]).setValue(rules[key] == null);
     } else {
-      this.explicitMappingGroup.scopes.flags.get(scopeCollection[0]).setValue(false);
-      Object.keys(rules).forEach(mapKey => {
-        if (mapKey.startsWith(scopeCollection[0])) {
-          delete rules[mapKey];
-        }
-      });
+      if (rules[key]) {
+        this.explicitMappingGroup.scopes.root.flags.get(scopeCollection[0]).setValue(false);
+        Object.keys(rules).forEach(mapKey => {
+          if (mapKey.startsWith(scopeCollection[0])) {
+            delete rules[mapKey];
+          }
+        });
+      } else {
+        this.explicitMappingGroup.scopes.root.flags.get(scopeCollection[0]).setValue(true);
+      }
     }
     delete rules[key];
     this.explicitMappingRules.next(rules);

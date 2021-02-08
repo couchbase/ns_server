@@ -1,7 +1,7 @@
 import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
-import {pipe, Subject, of} from '/ui/web_modules/rxjs.js';
-import {withLatestFrom, map, filter, switchMap, pluck, shareReplay,
-        takeUntil, startWith} from '/ui/web_modules/rxjs/operators.js';
+import {Subject, of} from '/ui/web_modules/rxjs.js';
+import {map, filter, switchMap, shareReplay, takeUntil, startWith,
+        distinctUntilChanged} from '/ui/web_modules/rxjs/operators.js';
 
 import {MnLifeCycleHooksToStream} from "./mn.core.js";
 
@@ -67,6 +67,7 @@ class MnXDCRAddRepMappingComponent extends MnLifeCycleHooksToStream {
   }
 
   ngOnInit() {
+
     this.group.get("collectionsExplicitMapping").valueChanges
       .pipe(takeUntil(this.mnOnDestroy))
       .subscribe(enabled => {
@@ -95,17 +96,12 @@ class MnXDCRAddRepMappingComponent extends MnLifeCycleHooksToStream {
         });
     }
 
-    this.scopesFilter = this.mnHelperService.createFilter(this);
-
     this.scopes =
       (this.bucket ? of(this.bucket) : this.group.get("fromBucket").valueChanges)
       .pipe(filter(v => !!v),
+            distinctUntilChanged(),
             switchMap(bucketName => this.mnCollectionsService.getManifest(bucketName)),
-            pluck("scopes"),
-            this.scopesFilter.pipe,
+            map(v => [v.scopes]),
             shareReplay({refCount: true, bufferSize: 1}));
-
-    this.scopesPaginator =
-      this.mnHelperService.createPagenator(this, this.scopes, "scopesPage");
   }
 }

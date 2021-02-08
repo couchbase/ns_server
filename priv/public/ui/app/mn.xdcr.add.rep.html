@@ -120,7 +120,7 @@
     <button
        type="submit"
        class="margin-right-2"
-       [disabled]="(form.group.statusChanges | async) === 'INVALID'">
+       [disabled]="(isSaveButtonDisabled | async)">
       Save Replication
     </button>
     <a class="text-medium" uiSref="app.admin.replications">

@@ -116,6 +116,12 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
   unpackReplicationSettings(v) {
     let scopesFlags = {};
     let scopesFields = {};
+    let scopesControls = {
+      root: this.formBuilder.group({
+        checkAll: this.formBuilder.control(true),
+        denyMode: this.formBuilder.control(false)
+      })
+    };
     let collections = {};
     let collectionsControls = {};
 
@@ -157,10 +163,17 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
         if (targetRule) {
           scopesFields[sourcePair[0]] = targetRule.split(collectionDelimiter)[0];
         } else {
+          scopesFields[sourcePair[0]] = sourcePair[0];
           collectionsControls[sourcePair[0]].get("denyMode").setValue(true);
         }
       } else {
-        scopesFields[sourcePair[0]] = targetRule;
+        scopesFlags[sourcePair[0]] = !!targetRule;
+        if (targetRule) {
+          scopesFields[sourcePair[0]] = targetRule;
+        } else {
+          scopesFields[sourcePair[0]] = sourcePair[0];
+          scopesControls.root.get("denyMode").setValue(true);
+        }
       }
     });
 
@@ -171,9 +184,12 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
 
     this.explicitMappingGroup = {
       scopes: {
-        flags: this.formBuilder.group(scopesFlags),
-        fields: this.formBuilder.group(scopesFields)
+        root: {
+          flags: this.formBuilder.group(scopesFlags),
+          fields: this.formBuilder.group(scopesFields)
+        }
       },
+      scopesControls: scopesControls,
       collections: collections,
       collectionsControls: collectionsControls,
       migrationMode: this.formBuilder.group({key: "", target: ""})

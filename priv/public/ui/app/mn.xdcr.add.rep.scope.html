@@ -1,50 +1,23 @@
 <section class="has-hover" (click)="toggler.click.next();">
   <div class="cbui-tablerow">
     <mn-xdcr-add-rep-mapping-item
-       style="display: block;"
-       [explicitMappingGroup]="explicitMappingGroup"
+       class="block"
+       keyspace="scopes"
+       parent="root"
        [item]="item"
+       [initialDenyMode]="initialDenyMode"
+       [explicitMappingGroup]="explicitMappingGroup"
        [explicitMappingRules]="explicitMappingRules">
     </mn-xdcr-add-rep-mapping-item>
   </div>
-  <div class="margin-left-2" [hidden]="!(toggler.state | async)">
-    <mn-input-filter
-       class="inline"
-       [group]="filter.group"
-       mnPlaceholder="filter collections...">
-    </mn-input-filter>
 
-    <div [formGroup]="explicitMappingGroup.collectionsControls[item.name]" class="inline">
-      <div class="inline margin-left-1 text-smaller">
-        <input
-           [attr.id]="'dynamic_collections_check_all' + item.name"
-           formControlName="checkAll"
-           type="checkbox">
-        <label [attr.for]="'dynamic_collections_check_all' + item.name" class="margin-right-zero">
-          check all
-        </label>
-      </div>
-      <div class="inline margin-left-1">
-        <input
-           [attr.id]="'collections_deny_mode' + item.name"
-           formControlName="denyMode"
-           type="checkbox">
-        <label [attr.for]="'collections_deny_mode' + item.name" class="margin-right-zero">
-          include future collections
-        </label>
-      </div>
-    </div>
-<!-- list of collections *************************************************** -->
-    <div class="cbui-table-body margin-top-1 margin-bottom-2 max-height-280" style="columns: 2 auto; column-gap:0px">
-      <mn-xdcr-add-rep-mapping-item
-         *ngFor="let coll of (collections | async); trackBy: trackCollectionsBy"
-         class="block nowrap padding-quarter"
-         [parent]="item.name"
-         [explicitMappingGroup]="explicitMappingGroup"
-         [item]="coll"
-         [explicitMappingRules]="explicitMappingRules">
-      </mn-xdcr-add-rep-mapping-item>
-    </div>
-  </div>
-
+  <mn-xdcr-add-rep-mapping-controls
+     [hidden]="!(toggler.state | async)"
+     style="display: block;"
+     keyspace="collections"
+     [parent]="item.name"
+     [item]="item"
+     [explicitMappingGroup]="explicitMappingGroup"
+     [explicitMappingRules]="explicitMappingRules">
+  </mn-xdcr-add-rep-mapping-controls>
 </section>

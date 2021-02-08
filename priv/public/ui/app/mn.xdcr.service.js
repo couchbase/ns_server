@@ -129,6 +129,26 @@ class MnXDCRService {
     return settings;
   }
 
+  setMappingRule(sourceFlag, denyMode, sourceField, targetField, source, target, rules) {
+    if (denyMode) {
+      if (sourceFlag) {
+        if (sourceField === targetField) {
+          delete rules[source];
+        } else {
+          rules[source] = target;
+        }
+      } else {
+        rules[source] = null;
+      }
+    } else {
+      if (sourceFlag) {
+        rules[source] = target;
+      } else {
+        delete rules[source];
+      }
+    }
+  }
+
   createGetSettingsReplicationsPipe(id) {
     return (new BehaviorSubject(id)).pipe(
       switchMap(this.getSettingsReplications.bind(this)),

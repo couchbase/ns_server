@@ -19,6 +19,7 @@ import { MnCollectionsService } from './mn.collections.service.js';
 import { MnXDCRAddRefComponent } from "./mn.xdcr.add.ref.component.js";
 import { MnXDCRAddRepComponent } from "./mn.xdcr.add.rep.component.js";
 import { MnXDCRAddRepScopeComponent } from "./mn.xdcr.add.rep.scope.component.js";
+import { MnXDCRAddRepMappingControlsComponent } from "./mn.xdcr.add.rep.mapping.controls.component.js";
 import { MnXDCRAddRepMappingItemComponent } from "./mn.xdcr.add.rep.mapping.item.component.js";
 import { MnXDCRAddRepMappingRulesComponent } from "./mn.xdcr.add.rep.mapping.rules.component.js";
 import { MnXDCRAddRepMappingComponent } from "./mn.xdcr.add.rep.mapping.component.js";
@@ -116,6 +117,7 @@ class MnXDCRModule {
         MnXDCRAddRepMappingRulesComponent,
         MnXDCRAddRepMappingComponent,
         MnXDCRAddRepScopeComponent,
+        MnXDCRAddRepMappingControlsComponent,
         MnXDCRDeleteRefComponent,
         MnXDCRDeleteRepComponent,
         MnXDCREditRepComponent,
