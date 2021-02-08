@@ -361,15 +361,11 @@ pre_70_stat_to_prom_query(Bucket, <<"disk_write_queue">>) ->
                 bucket_metric(<<"kv_ep_flusher_todo">>, Bucket)]},
     {ok, named(<<"kv_disk_write_queue">>, sumby([], M))};
 pre_70_stat_to_prom_query(Bucket, <<"ep_ops_create">>) ->
-    Metrics = [<<"kv_vb_active_ops_create">>, <<"kv_vb_replica_ops_create">>,
-               <<"kv_vb_pending_ops_create">>],
-    M = sumby([], {'or', [rate(bucket_metric(M, Bucket)) || M <- Metrics]}),
-    {ok, named(<<"kv_ep_ops_create">>, M)};
+    %% kv_ep_ops_create is a derived metric
+    {ok, rate(bucket_metric(<<"kv_ep_ops_create">>, Bucket))};
 pre_70_stat_to_prom_query(Bucket, <<"ep_ops_update">>) ->
-    Metrics = [<<"kv_vb_active_ops_update">>, <<"kv_vb_replica_ops_update">>,
-               <<"kv_vb_pending_ops_update">>],
-    M = sumby([], {'or', [rate(bucket_metric(M, Bucket)) || M <- Metrics]}),
-    {ok, named(<<"kv_ep_ops_update">>, M)};
+    %% kv_ep_ops_update is a derived metric
+    {ok, rate(bucket_metric(<<"kv_ep_ops_update">>, Bucket))};
 pre_70_stat_to_prom_query(Bucket, <<"misses">>) ->
     M = {[{eq, <<"name">>, <<"kv_ops">>},
           {eq, <<"bucket">>, list_to_binary(Bucket)},
@@ -385,16 +381,9 @@ pre_70_stat_to_prom_query(Bucket, <<"ops">>) ->
                         <<"set_ret_meta">>,<<"del_ret_meta">>]}]})],
     {ok, named(<<"kv_old_ops">>, sumby([], {'or', Metrics}))};
 pre_70_stat_to_prom_query(Bucket, <<"vb_total_queue_age">>) ->
-    Metric =
-        fun (Name) ->
-            {[{eq, <<"name">>, <<"kv_vb_", Name/binary, "_queue_age_seconds">>},
-              {eq, <<"bucket">>, list_to_binary(Bucket)},
-              {eq, <<"state">>, Name}]}
-        end,
-    States = [<<"active">>, <<"replica">>, <<"pending">>],
-    M = sumby([], {'or', [Metric(S) || S <- States]}),
+    M = bucket_metric(<<"kv_vb_queue_age_seconds">>, list_to_binary(Bucket)),
     {ok, named(<<"kv_vb_total_queue_age">>,
-               convert_units(seconds, milliseconds, M))};
+               convert_units(seconds, milliseconds, sumby([], M)))};
 pre_70_stat_to_prom_query(Bucket, <<"xdc_ops">>) ->
     M = {[{eq, <<"name">>, <<"kv_ops">>},
           {eq, <<"bucket">>, list_to_binary(Bucket)},
