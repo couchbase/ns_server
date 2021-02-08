@@ -997,33 +997,15 @@ derived_metrics(kv) ->
      {"kv_ep_resident_items_ratio",
       "(kv_curr_items_tot - ignoring(name) kv_ep_num_non_resident) * 100 / "
       "ignoring (name) kv_curr_items_tot"},
-     {"kv_vb_avg_active_queue_age_seconds",
-      "kv_vb_active_queue_age_seconds{state=`active`} / ignoring (name) "
-      "kv_vb_active_queue_size{state=`active`}"},
-     {"kv_vb_avg_replica_queue_age_seconds",
-      "kv_vb_replica_queue_age_seconds{state=`replica`} / ignoring (name) "
-      "kv_vb_replica_queue_size{state=`replica`}"},
+     {"kv_vb_avg_queue_age_seconds",
+      "kv_vb_queue_age_seconds / ignoring (name) kv_vb_queue_size"},
      {"kv_vb_avg_total_queue_age_seconds",
-      "sum without(name, state) ("
-        "kv_vb_active_queue_age_seconds{state=`active`} or "
-        "kv_vb_pending_queue_age_seconds{state=`pending`} or "
-        "kv_vb_replica_queue_age_seconds{state=`replica`}) / ignoring (name) "
+      "sum without(name, state) (kv_vb_queue_age_seconds) / ignoring (name) "
       "kv_ep_diskqueue_items"},
-     {"kv_vb_avg_pending_queue_age_seconds",
-      "kv_vb_pending_queue_age_seconds{state=`pending`} / ignoring (name) "
-      "kv_vb_pending_queue_size{state=`pending`}"},
-     {"kv_vb_active_resident_items_ratio",
-      "(kv_vb_active_curr_items{state=`active`} - ignoring(name) "
-       "kv_vb_active_num_non_resident{state=`active`}) * 100 / "
-      "ignoring(name) kv_vb_active_curr_items{state=`active`}"},
-     {"kv_vb_replica_resident_items_ratio",
-      "(kv_vb_replica_curr_items{state=`replica`} - ignoring(name) "
-       "kv_vb_replica_num_non_resident{state=`replica`}) * 100 / "
-      "ignoring(name) kv_vb_replica_curr_items{state=`replica`}"},
-     {"kv_vb_pending_resident_items_ratio",
-      "(kv_vb_pending_curr_items{state=`pending`} - ignoring(name) "
-       "kv_vb_pending_num_non_resident{state=`pending`}) * 100 / "
-      "ignoring(name) kv_vb_pending_curr_items{state=`pending`}"},
+     {"kv_vb_resident_items_ratio",
+      "(kv_vb_curr_items - ignoring(name) "
+       "kv_vb_num_non_resident) * 100 / "
+      "ignoring(name) kv_vb_curr_items"},
      {"kv_avg_disk_time_seconds",
       "irate(kv_disk_seconds_sum[5m]) / ignoring (name) "
       "irate(kv_disk_seconds_count[5m])"},
@@ -1039,15 +1021,9 @@ derived_metrics(kv) ->
      {"kv_disk_write_queue",
       "kv_ep_flusher_todo + ignoring(name) kv_ep_queue_size"},
      {"kv_ep_ops_create",
-      "sum without(state, name) ("
-        "irate(kv_vb_active_ops_create{state=`active`}[5m]) or "
-        "irate(kv_vb_replica_ops_create{state=`replica`}[5m]) or "
-        "irate(kv_vb_pending_ops_create{state=`pending`}[5m]))"},
+      "sum without(state, name) (kv_vb_ops_create)"},
      {"kv_ep_ops_update",
-      "sum without(state, name) ("
-        "irate(kv_vb_active_ops_update{state=`active`}[5m]) or "
-        "irate(kv_vb_replica_ops_update{state=`replica`}[5m]) or "
-        "irate(kv_vb_pending_ops_update{state=`pending`}[5m]))"},
+      "sum without(state, name) (kv_vb_ops_update)"},
      {"kv_xdc_ops",
       "sum without(op, result) (irate(kv_ops{op=~`del_meta|get_meta|"
                                                  "set_meta`}[5m]))"}];
