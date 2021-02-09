@@ -647,3 +647,6 @@ footer {
 .overflow-hidden {
   overflow: hidden;
 }
+.comma-list:not(:empty) ~ .comma-list:not(:empty):before {
+  content: ", ";
+}
