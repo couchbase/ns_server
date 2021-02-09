@@ -81,12 +81,12 @@ function mnStatisticsNewChartDirective(mnStatisticsNewService, mnPrepareQuantity
 
     function getChartSize(size) {
       switch (size) {
-      case "tiny": return 60;
-      case "small": return 100;
-      case "medium": return 120;
-      case "large": return 310;
-      case "extra": return 430;
-      default: return 150;
+      case "tiny": return 62;
+      case "small": return 102;
+      case "medium": return 122;
+      case "large": return 312;
+      case "extra": return 432;
+      default: return 122;
       }
     }
 
