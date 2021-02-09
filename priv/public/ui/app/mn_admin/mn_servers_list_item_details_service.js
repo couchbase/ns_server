@@ -33,7 +33,7 @@ function mnServersListItemDetailsFactory($http) {
         value: used
       }, {
         name: 'remaining',
-        value: isQuota ? freeOrQuota - used : freeOrQuota
+        value: isQuota ? used > freeOrQuota ? 0 : freeOrQuota - used : freeOrQuota
       }]
     };
   }
