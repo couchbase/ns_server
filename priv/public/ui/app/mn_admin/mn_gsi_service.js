@@ -102,7 +102,7 @@ function mnGsiServiceFactory($http, $q, qwQueryService, mnStatisticsNewService, 
     return Object.keys(byNode).reduce((acc, node) => {
       let configs = getIndexStatsConfigs(byNode[node], node);
       Array.prototype.push.apply(acc, configs);
-      return configs;
+      return acc;
     }, []);
   }
 
