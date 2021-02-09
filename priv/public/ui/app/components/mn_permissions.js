@@ -81,6 +81,7 @@ function mnPermissionsProvider() {
     "cluster.pools!write",
     "cluster.settings.indexes!write",
     "cluster.admin.security!write",
+    "cluster.admin.security.external!write",
     "cluster.samples!read",
     "cluster.nodes!read",
     "cluster.admin.memcached!read",
