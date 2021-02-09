@@ -37,7 +37,7 @@ do_cleanup() ->
         ok ->
             %% config might have been changed by maybe_init_services, so
             %% re-pull the snapshot
-            Snapshot = ns_cluster_membership:get_snapshot(),
+            Snapshot = get_snapshot_from_quorum(),
             Services = ns_cluster_membership:cluster_supported_services(),
             RVs =
                 [maybe_complete_pending_failover(Snapshot, S) || S <- Services],
@@ -45,6 +45,12 @@ do_cleanup() ->
         Error ->
             Error
     end.
+
+get_snapshot_from_quorum() ->
+    %% pull quorum view of chronicle to make sure that we do not access
+    %% locally cached version of service_failover_pending
+    chronicle_compat:pull(),
+    ns_cluster_membership:get_snapshot().
 
 maybe_init_services() ->
     Snapshot = ns_cluster_membership:get_snapshot(),
@@ -168,7 +174,7 @@ maybe_complete_pending_failover_body(Snapshot, Service) ->
     end.
 
 complete_service_failover(Service, FailedNodes) ->
-    complete_service_failover(ns_cluster_membership:get_snapshot(),
+    complete_service_failover(get_snapshot_from_quorum(),
                               Service, FailedNodes).
 
 complete_service_failover(Snapshot, Service, FailedNodes) ->
@@ -195,11 +201,16 @@ complete_service_failover(Snapshot, Service, FailedNodes) ->
 clear_pending_failover(Snapshot, Service, FailedNodes) ->
     ok = ns_cluster_membership:service_clear_pending_failover(Service),
 
-    OtherNodes = ns_node_disco:nodes_wanted(Snapshot) -- FailedNodes,
-    LiveNodes  = leader_utils:live_nodes(Snapshot, OtherNodes),
+    case chronicle_compat:backend() of
+        chronicle ->
+            ok;
+        ns_config ->
+            OtherNodes = ns_node_disco:nodes_wanted(Snapshot) -- FailedNodes,
+            LiveNodes  = leader_utils:live_nodes(Snapshot, OtherNodes),
 
-    chronicle_compat:config_sync(push, LiveNodes,
-                                 ?CLEAR_FAILOVER_CONFIG_SYNC_TIMEOUT).
+            ns_config_rep:ensure_config_seen_by_nodes(
+              LiveNodes, ?CLEAR_FAILOVER_CONFIG_SYNC_TIMEOUT)
+    end.
 
 complete_topology_aware_service_failover(Snapshot, Service) ->
     NodesLeft = ns_cluster_membership:get_service_map(Snapshot, Service),
