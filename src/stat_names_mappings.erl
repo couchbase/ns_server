@@ -415,6 +415,9 @@ pre_70_stat_to_prom_query(Bucket, <<"disk_update_total">>) ->
                {eq, <<"bucket">>, Bucket}]}),
     {ok, convert_units(seconds, microseconds, M)};
 %% Couchdb metrics:
+pre_70_stat_to_prom_query(Bucket, N) when N =:= <<"couch_views_ops">>;
+                                          N =:= <<"couch_spatial_ops">> ->
+    {ok, sumby([<<"name">>], rate(bucket_metric(N, Bucket)))};
 pre_70_stat_to_prom_query(Bucket, <<"couch_", _/binary>> = N) ->
     {ok, sumby([<<"name">>], bucket_metric(N, Bucket))};
 pre_70_stat_to_prom_query(Bucket, <<"spatial/", Name/binary>>) ->
@@ -425,7 +428,7 @@ pre_70_stat_to_prom_query(Bucket, <<"spatial/", Name/binary>>) ->
              end,
     case binary:split(Name, <<"/">>) of
         [Id, <<"accesses">>] ->
-            {ok, Metric(<<"ops">>, Id)};
+            {ok, rate(Metric(<<"ops">>, Id))};
         [Id, Stat] ->
             {ok, Metric(Stat, Id)};
         _ ->
@@ -439,7 +442,7 @@ pre_70_stat_to_prom_query(Bucket, <<"views/", Name/binary>>) ->
              end,
     case binary:split(Name, <<"/">>) of
         [Id, <<"accesses">>] ->
-            {ok, Metric(<<"ops">>, Id)};
+            {ok, rate(Metric(<<"ops">>, Id))};
         [Id, Stat] ->
             {ok, Metric(Stat, Id)};
         _ ->
