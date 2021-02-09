@@ -77,7 +77,7 @@ function mnServersListItemDetailsController($scope, mnServersListItemDetailsServ
     case "kv":
       return vm.server.details.storageTotals.ram.quotaTotal;
     default:
-      return vm.server.details[service + "MemoryQuota"];
+      return vm.server.details[service + "MemoryQuota"] * 1024 * 1024;
     }
   }
 
@@ -155,21 +155,21 @@ function mnServersListItemDetailsController($scope, mnServersListItemDetailsServ
           mnServersListItemDetailsService.getBaseConfig(
             'index service used',
             vm.getLatestStat(statsNames[0], stats),
-            details.indexMemoryQuota*1024*1024, true));
+            getServiceQuota(serviceName), true));
         break;
       case "fts":
         memoryUsages.push(
           mnServersListItemDetailsService.getBaseConfig(
             'search service used',
             vm.getLatestStat(statsNames[1], stats),
-            details.ftsMemoryQuota*1024*1024, true));
+            getServiceQuota(serviceName), true));
         break;
       case "cbas":
         memoryUsages.push(
           mnServersListItemDetailsService.getBaseConfig(
             'analytics service used',
             vm.getLatestStat(statsNames[2], stats),
-            details.cbasMemoryQuota*1024*1024, true));
+            getServiceQuota(serviceName), true));
         diskUsages.push(mnServersListItemDetailsService.getBaseConfig(
           "analytics service",
           vm.getLatestStat(statsNames[3], stats),
