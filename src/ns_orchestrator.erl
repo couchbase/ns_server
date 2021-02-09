@@ -1513,15 +1513,13 @@ start_service_upgrader(KeepNodes, Services) ->
       end).
 
 service_upgrader_body(Services, KeepNodes) ->
-    Config = ns_config:get(),
-    EjectNodes = [],
-
-    ok = service_janitor:cleanup(Config),
+    ok = service_janitor:cleanup(),
 
     %% since we are not actually ejecting anything here, we can ignore the
     %% return value
+    EjectNodes = [],
     _ = ns_rebalancer:rebalance_topology_aware_services(
-          Config, Services, KeepNodes, EjectNodes),
+          ns_config:get(), Services, KeepNodes, EjectNodes),
 
     ok.
 

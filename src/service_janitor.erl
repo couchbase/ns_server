@@ -18,79 +18,79 @@
 -include("cut.hrl").
 -include("ns_common.hrl").
 
--export([cleanup/0, cleanup/1, complete_service_failover/3]).
+-export([cleanup/0, complete_service_failover/2]).
 
 -define(INITIAL_REBALANCE_TIMEOUT, ?get_timeout(initial_rebalance, 120000)).
 -define(CLEAR_FAILOVER_CONFIG_SYNC_TIMEOUT,
         ?get_timeout(clear_failover_sync, 2000)).
 
 cleanup() ->
-    Config = ns_config:get(),
-    case ns_config_auth:is_system_provisioned(Config) of
+    case ns_config_auth:is_system_provisioned() of
         true ->
-            cleanup(Config);
+            do_cleanup();
         false ->
             ok
     end.
 
-cleanup(Config) ->
-    case maybe_init_services(Config) of
+do_cleanup() ->
+    case maybe_init_services() of
         ok ->
-            %% config might have been changed by maybe_init_services
-            NewConfig = ns_config:get(),
-            maybe_complete_pending_failovers(NewConfig);
+            %% config might have been changed by maybe_init_services, so
+            %% re-pull the snapshot
+            Snapshot = ns_cluster_membership:get_snapshot(),
+            Services = ns_cluster_membership:cluster_supported_services(),
+            RVs =
+                [maybe_complete_pending_failover(Snapshot, S) || S <- Services],
+            handle_results(RVs);
         Error ->
             Error
     end.
 
-maybe_init_services(Config) ->
-    ActiveNodes = ns_cluster_membership:active_nodes(Config),
+maybe_init_services() ->
+    Snapshot = ns_cluster_membership:get_snapshot(),
+    ActiveNodes = ns_cluster_membership:active_nodes(Snapshot),
     case ActiveNodes of
         [Node] when Node =:= node() ->
-            Services = ns_cluster_membership:node_services(Config, Node),
-            RVs = [maybe_init_service(Config, S) || S <- Services],
+            Services = ns_cluster_membership:node_services(Snapshot, Node),
+            RVs = [maybe_init_service(Snapshot, S) || S <- Services],
             handle_results(RVs);
         _ ->
             ok
     end.
 
-maybe_init_service(_Config, kv) ->
+maybe_init_service(_Snapshot, kv) ->
     ok;
-maybe_init_service(Config, Service) ->
-    case lists:member(Service, ns_cluster_membership:topology_aware_services()) of
-        true ->
-            maybe_init_topology_aware_service(Config, Service);
-        false ->
-            maybe_init_simple_service(Config, Service)
-    end.
-
-maybe_init_simple_service(Config, Service) ->
-    case ns_cluster_membership:get_service_map(Config, Service) of
+maybe_init_service(Snapshot, Service) ->
+    case ns_cluster_membership:get_service_map(Snapshot, Service) of
         [] ->
-            ok = ns_cluster_membership:set_service_map(Service, [node()]),
-            ?log_debug("Created initial service map for service `~p'",
-                       [Service]),
-            ok;
-        _ ->
-            ok
-    end.
-
-maybe_init_topology_aware_service(Config, Service) ->
-    case ns_cluster_membership:get_service_map(Config, Service) of
-        [] ->
-            ?log_debug("Doing initial topology change for service `~p'", [Service]),
-            case orchestrate_initial_rebalance(Service) of
-                ok ->
-                    ?log_debug("Initial rebalance for `~p` finished successfully",
-                               [Service]),
-                    ok;
-                Error ->
-                    ?log_error("Initial rebalance for `~p` failed: ~p",
-                               [Service, Error]),
-                    Error
+            case lists:member(
+                   Service,
+                   ns_cluster_membership:topology_aware_services()) of
+                true ->
+                    init_topology_aware_service(Service);
+                false ->
+                    init_simple_service(Service)
             end;
         _ ->
             ok
+    end.
+
+init_simple_service(Service) ->
+    ok = ns_cluster_membership:set_service_map(Service, [node()]),
+    ?log_debug("Created initial service map for service `~p'", [Service]),
+    ok.
+
+init_topology_aware_service(Service) ->
+    ?log_debug("Doing initial topology change for service `~p'", [Service]),
+    case orchestrate_initial_rebalance(Service) of
+        ok ->
+            ?log_debug("Initial rebalance for `~p` finished successfully",
+                       [Service]),
+            ok;
+        Error ->
+            ?log_error("Initial rebalance for `~p` failed: ~p",
+                       [Service, Error]),
+            Error
     end.
 
 orchestrate_initial_rebalance(Service) ->
@@ -134,28 +134,26 @@ do_orchestrate_initial_rebalance(Service) ->
             {error, {initial_rebalance_timeout, Service}}
     end.
 
-maybe_complete_pending_failovers(Config) ->
-    Services = ns_cluster_membership:cluster_supported_services(),
-    RVs = [maybe_complete_pending_failover(Config, S) || S <- Services],
-    handle_results(RVs).
-
-maybe_complete_pending_failover(Config, Service) ->
+maybe_complete_pending_failover(Snapshot, Service) ->
     {ok, RV} =
         leader_activities:run_activity(
           {service_janitor, Service, maybe_complete_pending_failover},
           majority,
           fun () ->
-                  {ok, maybe_complete_pending_failover_body(Config, Service)}
+                  {ok, maybe_complete_pending_failover_body(Snapshot, Service)}
           end,
           [quiet]),
 
     RV.
 
-maybe_complete_pending_failover_body(Config, Service) ->
-    case ns_cluster_membership:service_has_pending_failover(Config, Service) of
+maybe_complete_pending_failover_body(Snapshot, Service) ->
+    case ns_cluster_membership:service_has_pending_failover(Snapshot,
+                                                            Service) of
         true ->
             ?log_debug("Found unfinished failover for service ~p", [Service]),
-            RV = complete_service_failover(Config, Service),
+            FailedNodes = ns_cluster_membership:get_nodes_with_status(
+                            Snapshot, inactiveFailed),
+            RV = complete_service_failover(Snapshot, Service, FailedNodes),
             case RV of
                 ok ->
                     ?log_debug("Completed failover for service ~p successfully",
@@ -169,42 +167,42 @@ maybe_complete_pending_failover_body(Config, Service) ->
             ok
     end.
 
-complete_service_failover(Config, Service) ->
-    FailedNodes = ns_cluster_membership:get_nodes_with_status(Config,
-                                                              inactiveFailed),
-    complete_service_failover(Config, Service, FailedNodes).
+complete_service_failover(Service, FailedNodes) ->
+    complete_service_failover(ns_cluster_membership:get_snapshot(),
+                              Service, FailedNodes).
 
-complete_service_failover(Config, Service, FailedNodes) ->
-    true = ns_cluster_membership:service_has_pending_failover(Config, Service),
+complete_service_failover(Snapshot, Service, FailedNodes) ->
+    true = ns_cluster_membership:service_has_pending_failover(
+             Snapshot, Service),
 
     TopologyAwareServices = ns_cluster_membership:topology_aware_services(),
     RV = case lists:member(Service, TopologyAwareServices) of
              true ->
-                 complete_topology_aware_service_failover(Config, Service);
+                 complete_topology_aware_service_failover(Snapshot, Service);
              false ->
                  ok
          end,
 
     case RV of
         ok ->
-            clear_pending_failover(Config, Service, FailedNodes);
+            clear_pending_failover(Snapshot, Service, FailedNodes);
         _ ->
             ok
     end,
 
     RV.
 
-clear_pending_failover(Config, Service, FailedNodes) ->
+clear_pending_failover(Snapshot, Service, FailedNodes) ->
     ok = ns_cluster_membership:service_clear_pending_failover(Service),
 
-    OtherNodes = ns_node_disco:nodes_wanted(Config) -- FailedNodes,
-    LiveNodes  = leader_utils:live_nodes(Config, OtherNodes),
+    OtherNodes = ns_node_disco:nodes_wanted(Snapshot) -- FailedNodes,
+    LiveNodes  = leader_utils:live_nodes(Snapshot, OtherNodes),
 
     chronicle_compat:config_sync(push, LiveNodes,
                                  ?CLEAR_FAILOVER_CONFIG_SYNC_TIMEOUT).
 
-complete_topology_aware_service_failover(Config, Service) ->
-    NodesLeft = ns_cluster_membership:get_service_map(Config, Service),
+complete_topology_aware_service_failover(Snapshot, Service) ->
+    NodesLeft = ns_cluster_membership:get_service_map(Snapshot, Service),
     case NodesLeft of
         [] ->
             ok;
