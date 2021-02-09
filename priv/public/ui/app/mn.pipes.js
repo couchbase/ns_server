@@ -233,7 +233,7 @@ class MnPrepareQuantity {
     }) || [1, ''];
 
     if (K === 1024) {
-      t[1] += 'iB';
+      t[1] += t[1] ? 'iB' : 'B';
     }
 
     return t;
