@@ -39,6 +39,7 @@
             reload_timer_ref = undefined,
             intervals_calc_timer_ref = undefined,
             pruning_timer_ref = undefined,
+            pruning_pid = undefined,
             decimation_levels = []}).
 
 -define(RELOAD_RETRY_PERIOD, 10000). %% in milliseconds
@@ -375,8 +376,15 @@ handle_info(intervals_calculation_timer, #s{cur_settings = Settings} = State) ->
     maybe_update_scrape_dynamic_intervals(Settings),
     {noreply, restart_intervals_calculation_timer(State)};
 
-handle_info(pruning_timer, State) ->
-    {noreply, maybe_prune_stats(State#s{pruning_timer_ref = undefined})};
+handle_info(pruning_timer, #s{cur_settings = Settings} = State) ->
+    State1 = case proplists:get_bool(enabled, Settings) of
+                 true ->
+                     maybe_prune_stats(State);
+                 false ->
+                     State
+             end,
+    State2 = State1#s{pruning_timer_ref = undefined},
+    {noreply, start_pruning_timer(State2)};
 
 handle_info({'EXIT', PortServer, Reason},
             #s{prometheus_port = PortServer} = State) ->
@@ -386,6 +394,17 @@ handle_info({'EXIT', PortServer, Reason},
     %% cpu burning if it crashes again and again.
     {noreply, start_reload_timer(State#s{prometheus_port = undefined,
                                          specs = undefined})};
+
+handle_info({'EXIT', Pid, Reason},
+            #s{pruning_pid = Pid} = State) ->
+    case Reason of
+        normal ->
+            ok;
+        _ ->
+            ?log_error("Received exit from pruning pid ~p with reason ~p.",
+                       [Pid, Reason])
+    end,
+    {noreply, State#s{pruning_pid = undefined}};
 
 handle_info({'EXIT', Pid, normal}, State) ->
     ?log_debug("Received exit from ~p with reason normal. Ignoring... ", [Pid]),
@@ -400,8 +419,14 @@ handle_info(Info, State) ->
     ?log_error("Unhandled info: ~p", [Info]),
     {noreply, State}.
 
-terminate(Reason, State) ->
+terminate(Reason, #s{pruning_pid = PruningPid} = State) ->
     ?log_error("Terminate: ~p", [Reason]),
+    case PruningPid of
+        undefined ->
+            ok;
+        _ ->
+            misc:terminate_and_wait(PruningPid, Reason)
+    end,
     terminate_prometheus(State),
     ok.
 
@@ -1105,33 +1130,13 @@ start_pruning_timer(#s{pruning_timer_ref = undefined,
 start_pruning_timer(State) ->
     State.
 
-maybe_prune_stats(#s{cur_settings = Settings} = State) ->
-    case proplists:get_bool(enabled, Settings) of
-        true ->
-            StatsDecimated = case proplists:get_bool(decimation_enabled,
-                                                     Settings) of
-                                 true ->
-                                     maybe_decimate_stats(State);
-                                 false ->
-                                     false
-                             end,
-            StatsTruncated = case proplists:get_bool(truncation_enabled,
-                                                     Settings) of
-                                 true ->
-                                     maybe_truncate_stats(State);
-                                 false ->
-                                     false
-                             end,
-            case StatsDecimated orelse StatsTruncated of
-                true ->
-                    clean_tombstones(Settings);
-                false ->
-                    ok
-            end;
-        false ->
-            ok
-    end,
-    start_pruning_timer(State).
+maybe_prune_stats(#s{pruning_pid = Pid} = State) when is_pid(Pid) ->
+    ?log_debug("Skipping stats pruning as prior run has not finished."),
+    State;
+maybe_prune_stats(#s{decimation_levels = Levels,
+                     cur_settings = Settings} = State) ->
+    Pid = proc_lib:spawn_link(fun () -> run_prune_stats(Levels, Settings) end),
+    State#s{pruning_pid = Pid}.
 
 %% The definitions of the decimation levels consist of the name of the level,
 %% the length (duration) for the level, and the length of time in which
@@ -1190,8 +1195,29 @@ deletion_intervals(Coarseness, Start, End, Interval, Gap) ->
                            end,
     ToDelete ++ LastDeletionInterval.
 
-maybe_decimate_stats(#s{decimation_levels = Levels,
-                        cur_settings = Settings}) ->
+%% Run as a separate process to avoid hanging the main process.
+run_prune_stats(Levels, Settings) ->
+    StatsDecimated = case proplists:get_bool(decimation_enabled, Settings) of
+                         true ->
+                             run_decimate_stats(Levels, Settings);
+                         false ->
+                             false
+                     end,
+    StatsTruncated = case proplists:get_bool(truncation_enabled, Settings) of
+                         true ->
+                             run_truncate_stats(Settings);
+                         false ->
+                             false
+                     end,
+    case StatsDecimated orelse StatsTruncated of
+        true ->
+            clean_tombstones(Settings);
+        false ->
+            ok
+    end.
+
+
+run_decimate_stats(Levels, Settings) ->
     Now = os:system_time(seconds),
     {value, LastDecimationTime} =
         ns_config:search_node(node(), ns_config:latest(),
@@ -1223,7 +1249,7 @@ delete_stats(Coarseness, StartTime, EndTime, Settings) ->
 
     delete_series(MatchPatterns, StartTime, EndTime, 30000, Settings).
 
-maybe_truncate_stats(#s{cur_settings = Settings} = State) ->
+run_truncate_stats(Settings) ->
     Now = os:system_time(seconds),
     %% XXX: maybe the last truncation time doesn't need to be saved (if
     %% prometheus is smart about "minimum possible time" such that we don't
@@ -1242,7 +1268,7 @@ maybe_truncate_stats(#s{cur_settings = Settings} = State) ->
     %% when a certain time frame is exceeded.
     case End - LastTruncationTime > MinTruncationInterval of
         true ->
-            do_truncate_stats(LastTruncationTime, End, State),
+            do_truncate_stats(LastTruncationTime, End, Settings),
             ?log_debug("Updating last truncation times, Old ~p, New ~p",
                        [LastTruncationTime, End]),
             ns_config:set({node, node(), stats_last_truncation_time}, End),
@@ -1251,7 +1277,7 @@ maybe_truncate_stats(#s{cur_settings = Settings} = State) ->
             false
     end.
 
-do_truncate_stats(StartTime, EndTime, #s{cur_settings = Settings}) ->
+do_truncate_stats(StartTime, EndTime, Settings) ->
     %% Only high-cardinality stats are truncated
     MatchPatterns = proplists:get_value(truncation_match_patterns, Settings),
 
