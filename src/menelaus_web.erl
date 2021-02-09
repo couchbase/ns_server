@@ -412,7 +412,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, security], read},
                      fun menelaus_web_rbac:handle_saslauthd_auth_settings/1};
                 ["settings", "ldap"] ->
-                    {{[admin, security], read},
+                    {{[admin, security, external], read},
                      fun menelaus_web_ldap:handle_ldap_settings/1};
                 ["settings", "clientCertAuth"] ->
                     {{[admin, security], read},
@@ -455,7 +455,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_rbac:handle_get_profile/2,
                      [{UserId, Domain}]};
                 ["settings", "rbac", "lookupLDAPUser", Name] ->
-                    {{[admin, security], read},
+                    {{[admin, security, external], read},
                      fun menelaus_web_rbac:handle_lookup_ldap_user/2, [Name]};
                 ["settings", "passwordPolicy"] ->
                     {{[admin, security], read},
@@ -650,14 +650,14 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, security], write},
                      fun menelaus_web_rbac:handle_saslauthd_auth_settings_post/1};
                 ["settings", "ldap"] ->
-                    {{[admin, security], write},
+                    {{[admin, security, external], write},
                      fun menelaus_web_ldap:handle_ldap_settings_post/1};
                 ["settings", "ldap", "validate", Type] ->
-                    {{[admin, security], write},
+                    {{[admin, security, external], write},
                      fun menelaus_web_ldap:handle_ldap_settings_validate_post/2,
                      [Type]};
                 ["settings", "invalidateLDAPCache"] ->
-                    {{[admin, security], write},
+                    {{[admin, security, external], write},
                      fun menelaus_web_ldap:handle_invalidate_ldap_cache/1};
                 ["settings", "clientCertAuth"] ->
                     {{[admin, security], write},
