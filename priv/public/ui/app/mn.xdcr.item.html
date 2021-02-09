@@ -32,7 +32,7 @@
          *ngIf="item.filterExpression || item.filterExpiration || item.filterDeletion || item.filterBypassExpiry"
          (click)="$event.stopPropagation()"
          [ngbTooltip]="filterTooltipTemplate"
-         placement="auto top"
+         placement="auto right"
          appendToBody="true"
          trigger="mouseenter">
         filter

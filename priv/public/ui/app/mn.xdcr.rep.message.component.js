@@ -9,6 +9,7 @@ class MnXDCRRepMessageComponent {
       templateUrl: "/ui/app/mn.xdcr.rep.message.html",
       inputs: [
         "fromBucket",
+        "toBucket",
         "toCluster"
       ],
       changeDetection: ChangeDetectionStrategy.OnPush

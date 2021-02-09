@@ -1,13 +1,17 @@
 <div class="zero-content margin-bottom-1" [hidden]="!fromBucket">
   <span [hidden]="!fromBucket">
-    The bucket <em>{{fromBucket}}</em>
-    will be replicated to
+    The bucket <em class="bold">{{fromBucket}}</em>
+    will be replicated to the bucket
   </span>
-  <span *ngIf="fromBucket && !toCluster">
-    . . .
-  </span>
-  <span [hidden]="!toCluster">
-    <em>{{toCluster}}</em>.
-    Missing targets on the remote will be ignored and that data will not be replicated.
+  <div *ngIf="fromBucket && !toBucket" class="loading"></div>
+  <span *ngIf="toBucket">
+    <em class="bold">{{toBucket}}</em> on the remote cluster
+    <div *ngIf="fromBucket && !toCluster" class="loading"></div>
+    <span *ngIf="toCluster">
+      <em class="bold">{{toCluster}}</em>.
+      <div>
+        Missing targets on the remote will be ignored and that data will not be replicated.
+      </div>
+    </span>
   </span>
 </div>

@@ -2058,7 +2058,7 @@ button:hover.scenarios-delete {
 /* "LOADING" animated ellipsis ------------------------------------------ */
 .loading {
   display: inline-block;
-  width: 1rem;
+  width: 0;
 }
 .loading-placeholder {
   display: inline-block;
