@@ -1091,12 +1091,7 @@ derived_metrics(index, _) ->
       "index_num_docs_pending + ignoring(name) index_num_docs_queued"},
      {"index_cache_miss_ratio",
       "index_cache_misses * 100 / ignoring (name) "
-      "(index_cache_hits + ignoring (name) index_cache_misses)"},
-     {"index_fragmentation",
-      "sum without(index, collection, scope) (index_disk_size * ignoring(name) "
-                                             "index_frag_percent) "
-      "/ ignoring(name) "
-      "sum without(index, collection, scope) (index_disk_size)"}];
+      "(index_cache_hits + ignoring (name) index_cache_misses)"}];
 derived_metrics(kv, _) ->
     [{"couch_total_disk_size",
       "couch_docs_actual_disk_size + ignoring(name) "
