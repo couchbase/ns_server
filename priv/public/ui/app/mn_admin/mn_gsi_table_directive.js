@@ -61,8 +61,8 @@ function mnGsiTableDirective(mnHelper) {
       mnOnDestroy.complete();
     });
 
-    function sizeChanged() {
-      paginator.group.patchValue({size: vm.paginatorValues.size});
+    function sizeChanged(selectedOption) {
+      paginator.group.patchValue({size: selectedOption});
     }
 
     function pageChanged() {

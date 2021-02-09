@@ -67,9 +67,9 @@ function mnRolesGroupsController($scope, $uibModal, mnPromiseHelper, mnUserRoles
     return $state.params.order === "desc";
   }
 
-  function pageSizeChanged() {
+  function pageSizeChanged(selectedOption) {
     $state.go('.', {
-      pageSize: vm.pageSize
+      pageSize: selectedOption
     });
   }
 

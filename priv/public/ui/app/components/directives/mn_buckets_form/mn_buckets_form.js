@@ -67,11 +67,26 @@ function mnBucketsFormDirective($http, mnBucketsDetailsDialogService, mnPromiseH
     };
     $scope.replicaNumberEnabled = $scope.bucketConf.replicaNumber != 0;
     $scope.canChangeBucketsSettings = $scope.bucketConf.isNew;
+
+    let durabilityMinLevelOptionsComplete = ['none', 'majority', 'majorityAndPersistActive', 'persistToMajority'];
+    let durabilityMinLevelOptionsBasic = ['none', 'majority'];
+    $scope.durabilityMinLevelOptions = durabilityMinLevelOptionsComplete;
     $scope.bucketTypeChanged = function () {
-      if ($scope.bucketConf.bucketType == "ephemeral" &&
-          ($scope.bucketConf.durabilityMinLevel != "none" ||
-           $scope.bucketConf.durabilityMinLevel != "majority")) {
-        $scope.bucketConf.durabilityMinLevel = "none";
+      switch ($scope.bucketConf.bucketType) {
+        case 'membase':
+          $scope.durabilityMinLevelOptions = durabilityMinLevelOptionsComplete;
+          break;
+        case 'memcached':
+          $scope.durabilityMinLevelOptions = durabilityMinLevelOptionsBasic;
+          break;
+        case 'ephemeral':
+          $scope.durabilityMinLevelOptions = durabilityMinLevelOptionsBasic;
+          if ($scope.bucketConf.durabilityMinLevel != "none" ||
+              $scope.bucketConf.durabilityMinLevel != "majority") {
+            $scope.bucketConf.durabilityMinLevel = "none";
+          }
+          break;
+        default: break;
       }
     };
 

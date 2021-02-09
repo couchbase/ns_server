@@ -30,12 +30,12 @@
      ng-disabled="mnDisabled"
      type="number"
      ng-model="mnModel[mnName]">
-  <select
-     ng-if="mnType == 'select'"
-     ng-disabled="mnDisabled"
-     ng-model="mnModel[mnName]">
-    <option ng-repeat="value in mnItems" value="{{value}}">{{value}}</option>
-  </select>
+  <mn-select
+    ng-if="mnType == 'select'"
+    ng-disabled="mnDisabled"
+    ng-model="mnModel[mnName]"
+    values="mnItems">
+  </mn-select>
   <div
      class="error"
      ng-show="mnErrors[mnName]">

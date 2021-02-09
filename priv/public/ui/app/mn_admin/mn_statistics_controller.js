@@ -289,9 +289,9 @@ function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http
     });
   }
 
-  function onBucketChange(bucket) {
+  function onBucketChange(selectedOption) {
     $state.go('^.statistics', {
-      scenarioBucket: bucket
+      scenarioBucket: selectedOption
     });
   }
 
@@ -301,9 +301,9 @@ function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http
     });
   }
 
-  function onSelectZoom() {
+  function onSelectZoom(selectedOption) {
     $state.go('^.statistics', {
-      scenarioZoom: vm.zoom
+      scenarioZoom: selectedOption
     });
   }
 
@@ -320,7 +320,13 @@ function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http
         });
       })
         .setInterval(10000)
-        .subscribe("xdcrItems", vm)
+        .subscribe(xdcrItems => {
+          vm.xdcrItems = (xdcrItems || []).reduce((acc, xdcrItem) => {
+            acc.values.push('replications/' + xdcrItem.id + '/');
+            acc.labels.push(xdcrItem.source + '->' + xdcrItem.target.split('buckets/')[1]);
+            return acc;
+          }, {values: [], labels: []});
+        })
         .reloadOnScopeEvent("reloadXdcrPoller")
         .cycle();
     }
@@ -338,7 +344,13 @@ function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http
         });
       })
         .setInterval(10000)
-        .subscribe("ftsItems", vm)
+        .subscribe(ftsItems => {
+          vm.ftsItems = (ftsItems || []).reduce((acc, ftsItem) => {
+            acc.values.push('fts/' + ftsItem.name + '/');
+            acc.labels.push(ftsItem.name);
+            return acc;
+          }, {values: [], labels: []});
+        })
         .reloadOnScopeEvent("reloadXdcrPoller")
         .cycle();
     }
@@ -353,7 +365,13 @@ function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http
         });
       })
         .setInterval(10000)
-        .subscribe("indexItems", vm)
+        .subscribe(indexes => {
+          vm.indexItems = (indexes || []).reduce((acc, indexItem) => {
+            acc.values.push('index/' + indexItem.index + '/');
+            acc.labels.push(indexItem.index);
+            return acc;
+          }, {values: [], labels: []});
+        })
         .reloadOnScopeEvent("indexStatusURIChanged")
         .cycle();
     }
@@ -377,7 +395,13 @@ function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http
           });
       })
         .setInterval(10000)
-        .subscribe("viewItems", vm)
+        .subscribe(views => {
+          vm.viewItems = (views || []).reduce((acc, viewItem) => {
+            acc.values.push(viewItem.statKeyPrefix);
+            acc.labels.push(viewItem.statId);
+            return acc;
+          }, {values: [], labels: []});
+        })
         .reloadOnScopeEvent("reloadViewsPoller")
         .cycle();
     }

@@ -93,12 +93,12 @@
   </div>
   <div class="row pagination"
        ng-if="rolesGroupsCtl.state.groups.length">
-    <div class="simple-select">
-      <select
-         ng-change="rolesGroupsCtl.pageSizeChanged()"
-         ng-model="rolesGroupsCtl.pageSize"
-         ng-options="o as o for o in [10,20,50,100]"></select>
-    </div>
+    <mn-select
+      class="fix-width-3-quarters"
+      ng-model="rolesGroupsCtl.pageSize"
+      on-select="rolesGroupsCtl.pageSizeChanged(selectedOption)"
+      values="[10, 20, 50, 100]">
+    </mn-select>
     <span>
       <a
          ng-class="{'disabled-link' : rolesGroupsCtl.state.skipped == 0}"

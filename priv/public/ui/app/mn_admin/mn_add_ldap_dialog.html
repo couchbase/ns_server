@@ -50,13 +50,11 @@
             <div class="formrow row">
               <span class="width-4 margin-right-2">
                 <label for="ldap_encryption">Encryption</label>
-                <select
+                <mn-select
                    id="ldap_encryption"
+                   values="['None', 'TLS', 'StartTLSExtension']"
                    ng-model="addLdapDialogCtl.config.connect.encryption">
-                  <option value="None">None</option>
-                  <option value="TLS">TLS</option>
-                  <option value="StartTLSExtension">StartTLSExtension</option>
-                </select>
+                </mn-select>
                 <div
                   class="error"
                   ng-show="addLdapDialogCtl.errors.encryption">
@@ -371,13 +369,12 @@
                 </div>
                 <div ng-if="addLdapDialogCtl.config.userDnMapping == 'query'" class="width-4">
                   <label for="user-dn-mapping-scope">Scope</label>
-                  <select
-                     id="user-dn-mapping-scope"
-                     ng-model="addLdapDialogCtl.config.authentication.userDNMapping.scope">
-                    <option value="base">base object</option>
-                    <option value="one">one-level</option>
-                    <option value="sub">subtree</option>
-                  </select>
+                   <mn-select
+                      id="user-dn-mapping-scope"
+                      ng-model="addLdapDialogCtl.config.authentication.userDNMapping.scope"
+                      values="['base', 'one', 'sub']"
+                      labels="['base object', 'one-level', 'subtree']">
+                  </mn-select>
                 </div>
                 <div
                    class="error"
@@ -556,13 +553,12 @@
               </div>
               <div ng-if="addLdapDialogCtl.config.queryForGroups == 'query'" class="width-4">
                 <label for="for-groups-query-scope">Scope</label>
-                <select
+                <mn-select
                    id="for-groups-query-scope"
-                   ng-model="addLdapDialogCtl.config.group.groupsQuery.scope">
-                   <option value="base">base object</option>
-                   <option value="one">one-level</option>
-                   <option value="sub">subtree</option>
-                </select>
+                   ng-model="addLdapDialogCtl.config.group.groupsQuery.scope"
+                   values="['base', 'one', 'sub']"
+                   labels="['base object', 'one-level', 'subtree']">
+                </mn-select>
               </div>
               <div
                  class="error"

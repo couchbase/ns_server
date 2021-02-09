@@ -44,15 +44,12 @@
     <div class="row fix-width-5">
       <div class="width-5 margin-right-half">
         <label for="client_cert_path_{{$index}}">Path</label>
-        <select
-           id="client_cert_path_{{$index}}"
-           ng-disabled="!rbac.cluster.admin.security.write || clientCertCtl.settings.state == 'disable'"
-           ng-model="prefix.path">
-          <option value="subject.cn">subject.cn</option>
-          <option value="san.dnsname">san.dnsname</option>
-          <option value="san.email">san.email</option>
-          <option value="san.uri">san.uri</option>
-        </select>
+        <mn-select
+          id="client_cert_path_{{$index}}"
+          ng-disabled="!rbac.cluster.admin.security.write || clientCertCtl.settings.state == 'disable'"
+          ng-model="prefix.path"
+          values="['subject.cn', 'san.dnsname', 'san.email', 'san.uri']">
+        </mn-select>
       </div>
       <div class="width-5 margin-right-half">
         <label for="client_cert_prefix_{{$index}}">Prefix</label>

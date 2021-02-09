@@ -38,29 +38,25 @@
 
         <div class="margin-right-1 nowrap">
           <h5>Chart Size</h5>
-          <select
-             ng-model="builderCtl.newChart.size"
-             class="fix-width-1">
-            <option value="small">S</option>
-            <option value="medium">M</option>
-            <option value="large">L</option>
-          </select>
+          <mn-select
+            class="fix-width-half"
+            ng-model="builderCtl.newChart.size"
+            values="['small', 'medium', 'large']"
+            labels="['S', 'M', 'L']">
+          </mn-select>
         </div>
 
         <div
            class="nowrap"
            ng-if="builderCtl.isEditing">
           <h5>Group</h5>
-          <select
-             class="fix-width-2"
-             ng-disabled="!builderCtl.isEditing"
-             ng-model="builderCtl.selectedGroup">
-            <option
-               ng-repeat="group in builderCtl.groups"
-               value="{{group.id}}">
-              {{group.name}}
-            </option>
-          </select>
+          <mn-select
+            class="inline"
+            ng-disabled="!builderCtl.isEditing"
+            ng-model="builderCtl.selectedGroup"
+            values="builderCtl.groupIds"
+            filter="builderCtl.filterGroupName">
+          </mn-select>
         </div>
       </div>
 

@@ -122,12 +122,12 @@
     No indexes found for this bucket.scope combination. Try another bucket.scope.
   </div>
   <div class="row">
-    <select
-       ng-model="mnGsiTableCtl.paginatorValues.size"
-       ng-change="mnGsiTableCtl.sizeChanged()"
-       class="cbui-select-small margin-top-half">
-      <option ng-repeat="value in [10,20,40,80]" ng-value="value">{{value}}</option>
-    </select>
+    <mn-select
+      class="cbui-select-small fix-width-3-quarters margin-top-half"
+      ng-model="mnGsiTableCtl.paginatorValues.size"
+      values="[10, 20, 40, 80]"
+      on-select="mnGsiTableCtl.sizeChanged(selectedOption)">
+    </mn-select>
     <div
        uib-pagination
        ng-if="list.length"

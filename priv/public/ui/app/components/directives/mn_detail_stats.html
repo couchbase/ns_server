@@ -5,17 +5,14 @@
      ng-click="$ctrl.showStats = !$ctrl.showStats;">
     {{$ctrl.mnTitle}}
   </p>
-  <select
-     ng-model="$ctrl.zoom"
-     ng-change="$ctrl.onSelectZoom()"
-     ng-if="$ctrl.showStats"
-     class="margin-left-1">
-    <option value="minute">minute</option>
-    <option value="hour">hour</option>
-    <option value="day">day</option>
-    <option value="week">week</option>
-    <option value="month">month</option>
-  </select>
+  <mn-select
+    ng-if="$ctrl.showStats"
+    class="margin-left-1 fix-width-1-5"
+    ng-model="$ctrl.zoom"
+    on-select="$ctrl.onSelectZoom(selectedOption)"
+    values="['minute', 'hour', 'day', 'week', 'month']"
+    capitalize="true">
+  </mn-select>
 </div>
 <div class="row charts"
    ng-if="$ctrl.showStats"

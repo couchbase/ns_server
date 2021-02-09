@@ -122,8 +122,8 @@ function mnGsiController($scope, mnGsiService, mnPoller, $state, mnCollectionsSe
 
   activate();
 
-  function setIndexesView() {
-    $state.go('.', {indexesView: vm.viewBy}).then(() => vm.poller.reload());
+  function setIndexesView(selectedOption) {
+    $state.go('.', {indexesView: selectedOption}).then(() => vm.poller.reload());
   }
 
   function activate() {
@@ -189,5 +189,4 @@ function mnGsiController($scope, mnGsiService, mnPoller, $state, mnCollectionsSe
       }, {notify: false});
     }
   }
-
 }

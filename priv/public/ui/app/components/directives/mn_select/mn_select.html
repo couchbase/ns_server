@@ -1,0 +1,24 @@
+<div
+   uib-dropdown
+   class="select relative"
+   is-open="isOpened">
+  <div uib-dropdown-toggle ng-disabled="ngDisabled">
+    <button
+       ng-disabled="ngDisabled"
+       class="outline btn-small dropdown-btn ellipsis">
+      {{labels ? labels[values.indexOf(ngModel)] : filter(ngModel)}}
+    </button>
+    <span
+       class="icon"
+       ng-class="{'fa-angle-up': isOpened, 'fa-angle-down': !isOpened}">
+    </span>
+  </div>
+  <div
+     uib-dropdown-menu
+     class="panel fit-content-width margin-0"
+     style="position: absolute; top: auto; left:0;">
+   <div class="block option" ng-repeat="value in values" ng-click="optionClicked(value)">
+     {{labels ? labels[$index] : filter(value)}}
+   </div>
+  </div>
+</div>

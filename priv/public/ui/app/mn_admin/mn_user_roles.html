@@ -144,12 +144,12 @@
   <div
      class="row pagination"
      ng-if="userRolesCtl.state.users.length">
-    <div class="simple-select">
-      <select
-         ng-change="userRolesCtl.pageSizeChanged()"
-         ng-model="userRolesCtl.pageSize"
-         ng-options="o as o for o in [10,20,50,100]"></select>
-    </div>
+      <mn-select
+        class="inline fix-width-3-quarters"
+        ng-change="userRolesCtl.pageSizeChanged()"
+        ng-model="userRolesCtl.pageSize"
+        values="[10, 20, 50, 100]">
+      </mn-select>
     <span>
       <a
          ui-sref="(userRolesCtl.state.links.prev)"

@@ -27,10 +27,13 @@ function mnServersAddDialogController($scope, $rootScope, $q, $uibModal, mnServe
   }
   vm.isGroupsAvailable = !!groups;
   vm.onSubmit = onSubmit;
+  vm.onSelectGroup = onSelectGroup;
 
   if (vm.isGroupsAvailable) {
     vm.addNodeConfig.selectedGroup = groups.groups[0];
+    vm.selectedGroupName = vm.addNodeConfig.selectedGroup.name;
     vm.groups = groups.groups;
+    vm.groupNames = vm.groups.map( (group) => group.name);
   }
 
   activate();
@@ -110,4 +113,7 @@ function mnServersAddDialogController($scope, $rootScope, $q, $uibModal, mnServe
       .broadcast("maybeShowMemoryQuotaDialog", vm.addNodeConfig.services.model)
       .showGlobalSuccess("Server added successfully!");
   };
+  function onSelectGroup(selectedOption) {
+    vm.addNodeConfig.selectedGroup = vm.groups.find((group) => group.name === selectedOption);
+  }
 }

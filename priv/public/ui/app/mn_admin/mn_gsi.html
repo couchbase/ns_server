@@ -17,17 +17,15 @@
          [service]="gsiCtl.mnCollectionSelectorService">
       </mn-keyspace-selector-downgrade>
     </div>
-    <div class="margin-top-half relative flex-grow-1">
-      <div class="simple-select-inside-label">
-        view by
-      </div>
-      <div class="simple-select">
-        <select ng-model="gsiCtl.viewBy" ng-change="gsiCtl.setIndexesView()">
-          <option value="viewByIndex">index</option>
-          <option value="viewByNode">server node</option>
-        </select>
-      </div>
-    </div>
+    <span class="margin-top-half relative flex-grow-1">
+      <mn-select
+        class="inline fix-width-3 margin-right-half"
+        ng-model="gsiCtl.viewBy"
+        on-select="gsiCtl.setIndexesView(selectedOption)"
+        values="['viewByIndex', 'viewByNode']"
+        labels="['view by index', 'view by server node']">
+      </mn-select>
+    </span>
     <div
        class="row flex-right flex-grow-1"
        mn-placeholder="filter indexes..."

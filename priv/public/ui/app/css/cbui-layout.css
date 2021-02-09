@@ -253,6 +253,12 @@ footer {
 .min-width-10 {
   min-width: 10rem;
 }
+.min-width-4 {
+  min-width: 4rem;
+}
+.min-width-12 {
+  min-width: 12rem;
+}
 
 .max-width-1 {
   max-width: 4rem; /* 1rem = 16px, 4rem = 64px */
@@ -339,6 +345,12 @@ footer {
 .fix-width-half {
   width: 2rem !important; /* 1rem = 16px, 2rem = 32px */
 }
+.fix-width-half-1 {
+  width: 2.5rem !important; /* 1rem = 16px, 2rem = 32px */
+}
+.fix-width-3-quarters {
+  width: 3.5rem !important; /* 1rem = 16px, 2rem = 32px */
+}
 .fix-width-1 {
   width: 4rem !important; /* 1rem = 16px, 4rem = 64px */
 }
@@ -383,6 +395,12 @@ footer {
 }
 .fix-width-12 {
   width: 80rem !important; /* 1280px */
+}
+
+/* fit content width -------------------------------------------------- */
+.fit-content-width {
+  min-width: fit-content;
+  min-width: -moz-fit-content;
 }
 
 /* fixed pixel width -------------------------------------------------- */

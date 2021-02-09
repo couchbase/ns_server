@@ -14,10 +14,10 @@ function mnStatisticsDetailedChartController($scope, $timeout, $state, chart, it
   mnStatisticsNewService.mnAdminStatsPoller.heartbeat.setInterval(
     mnStatisticsNewService.defaultZoomInterval(vm.zoom));
 
-  function onSelectZoom() {
-    vm.options.showFocus = vm.zoom !== "minute";
+  function onSelectZoom(selectedOption) {
+    vm.options.showFocus = selectedOption !== "minute";
     mnStatisticsNewService.mnAdminStatsPoller.heartbeat.setInterval(
-      mnStatisticsNewService.defaultZoomInterval(vm.zoom));
+      mnStatisticsNewService.defaultZoomInterval(selectedOption));
     vm.reloadChartDirective = true;
     $timeout(function () {
       vm.reloadChartDirective = false;

@@ -43,6 +43,7 @@ function mnStatisticsNewChartBuilderController($rootScope, mnStatisticsNewServic
   vm.getSelectedStats = getSelectedStats;
   vm.getSelectedStatsLength = getSelectedStatsLength;
   vm.formatGroupLabel = formatGroupLabel;
+  vm.filterGroupName = filterGroupName;
   var selectedUnits = {};
   vm.selectedKVFilters = {};
   var selectedByNodeStats = {};
@@ -162,6 +163,7 @@ function mnStatisticsNewChartBuilderController($rootScope, mnStatisticsNewServic
       vm.groups = scenario.groups.map(function (id) {
         return mnStoreService.store("groups").get(id);
       });
+      vm.groupIds = vm.groups.map(group => group.id);
       Object.keys(vm.newChart.stats).forEach(onStatChecked);
     } else {
       vm.newChart = {
@@ -222,6 +224,10 @@ function mnStatisticsNewChartBuilderController($rootScope, mnStatisticsNewServic
       $rootScope.$broadcast("scenariosChanged");
       $uibModalInstance.close();
     });
+  }
+
+  function filterGroupName(groupId) {
+    return (vm.groups.find((group) => groupId === group.id)).name;
   }
 
 }

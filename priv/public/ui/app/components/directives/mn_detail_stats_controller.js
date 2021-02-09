@@ -34,8 +34,8 @@ function controller(mnStatisticsNewService, mnStatisticsDescriptionService, mnHe
   vm.items = {};
   vm.$onInit = activate;
 
-  function onSelectZoom() {
-    activate();
+  function onSelectZoom(selectedOption) {
+    activate(selectedOption);
   }
 
   function getStats(stat) {
@@ -44,11 +44,11 @@ function controller(mnStatisticsNewService, mnStatisticsDescriptionService, mnHe
     return rv;
   }
 
-  function activate() {
+  function activate(selectedZoom) {
     vm.scope = $scope;
     vm.mnAdminStatsPoller = mnStatisticsNewService.mnAdminStatsPoller;
     vm.mnAdminStatsPoller.heartbeat
-      .setInterval(mnStatisticsNewService.defaultZoomInterval(vm.zoom));
+      .setInterval(mnStatisticsNewService.defaultZoomInterval(selectedZoom));
     vm.items[vm.service] =
       mnPoolDefault.export.compat.atLeast70 ? vm.itemId : (vm.prefix + "/" + vm.itemId + "/")
     var stats = mnStatisticsDescriptionService.getStats();
