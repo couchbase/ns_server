@@ -68,8 +68,8 @@
 -define(SECURITY_READ, {[admin, security, admin], read}).
 -define(SECURITY_WRITE, {[admin, security, admin], write}).
 
--define(EXTERNAL_USER_READ, {[admin, security, external], read}).
--define(EXTERNAL_USER_WRITE, {[admin, security, external], write}).
+-define(EXTERNAL_READ, {[admin, security, external], read}).
+-define(EXTERNAL_WRITE, {[admin, security, external], write}).
 
 -define(LOCAL_USER_READ, {[admin, security, local], read}).
 -define(LOCAL_USER_WRITE, {[admin, security, local], write}).
@@ -354,7 +354,7 @@ domain_filter(Domain, Req) ->
                      local ->
                          ?LOCAL_USER_READ;
                      external ->
-                         ?EXTERNAL_USER_READ
+                         ?EXTERNAL_READ
                  end,
     case menelaus_auth:has_permission(Permission, Req) of
         true ->
@@ -1031,7 +1031,7 @@ get_security_roles() ->
 verify_domain_access(Req, {_UserId, local}) ->
     do_verify_domain_access(Req, ?LOCAL_USER_WRITE);
 verify_domain_access(Req, {_UserId, external}) ->
-    do_verify_domain_access(Req, ?EXTERNAL_USER_WRITE).
+    do_verify_domain_access(Req, ?EXTERNAL_WRITE).
 
 do_verify_domain_access(Req, Permission) ->
     case menelaus_auth:has_permission(Permission, Req) of
