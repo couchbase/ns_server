@@ -1,6 +1,6 @@
 export default mnRolesController;
 
-function mnRolesController(poolDefault, mnHelper, $uibModal, $q) {
+function mnRolesController(poolDefault, mnHelper, $uibModal, $q, permissions) {
   var vm = this;
   vm.addUser = addUser;
   vm.addRolesGroup = addRolesGroup;
@@ -15,13 +15,13 @@ function mnRolesController(poolDefault, mnHelper, $uibModal, $q) {
         isSaslauthdAuthEnabled: function (mnUserRolesService) {
           return (poolDefault.saslauthdEnabled ?
                   mnUserRolesService.getSaslauthdAuth() : $q.when())
-            .then((resp) => resp && resp.enabled);
+            .then(resp => resp && resp.enabled);
         },
         isLdapEnabled: function (mnUserRolesService) {
-          return ((poolDefault.isEnterprise && poolDefault.compat.atLeast65) ?
+          return ((permissions.cluster.admin.security.external.read &&
+                   poolDefault.isEnterprise && poolDefault.compat.atLeast65) ?
                   mnUserRolesService.getLdapSettings() : $q.when())
-            .then((resp) =>
-                  resp && resp.data.authenticationEnabled);
+            .then(resp => resp && resp.data.authenticationEnabled);
         }
       }
     });

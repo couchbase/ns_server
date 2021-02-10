@@ -51,7 +51,7 @@ angular
   .controller("mnUserRolesAddDialogController", mnUserRolesAddDialogController)
   .controller("mnRolesController", mnRolesController);
 
-function mnUserRolesController($scope, $uibModal, mnPromiseHelper, mnUserRolesService, mnPoller, mnHelper, $state, poolDefault) {
+function mnUserRolesController($scope, $uibModal, mnPromiseHelper, mnUserRolesService, mnPoller, mnHelper, $state, poolDefault, permissions) {
   var vm = this;
 
   vm.deleteUser = deleteUser;
@@ -127,7 +127,8 @@ function mnUserRolesController($scope, $uibModal, mnPromiseHelper, mnUserRolesSe
     }
 
 
-    if (poolDefault.compat.atLeast65 && poolDefault.isEnterprise) {
+    if (permissions.cluster.admin.security.external.read &&
+        poolDefault.compat.atLeast65 && poolDefault.isEnterprise) {
       new mnPoller($scope, function () {
         return mnUserRolesService.getLdapSettings();
       })
@@ -153,10 +154,10 @@ function mnUserRolesController($scope, $uibModal, mnPromiseHelper, mnUserRolesSe
       resolve: {
         user: mnHelper.wrapInFunction(user),
         isSaslauthdAuthEnabled: function () {
-          return (vm.ldapSettings && vm.ldapSettings.data.authenticationEnabled);
+          return (vm.saslauthdAuth && vm.saslauthdAuth.enabled);
         },
         isLdapEnabled: function () {
-          return (vm.saslauthdAuth && vm.saslauthdAuth.enabled);
+          return (vm.ldapSettings && vm.ldapSettings.data.authenticationEnabled);
         }
       }
     });
