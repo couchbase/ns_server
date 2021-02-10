@@ -53,11 +53,17 @@ subscribe_link(Name, Fun) ->
       end, ignored).
 
 -spec subscribe_link(any(),
-                     fun((Event :: term(), State :: any()) -> NewState :: any()),
+                     fun((Event :: term(),
+                          State :: any()) -> NewState :: any()),
                      InitState :: any()) -> pid().
 subscribe_link(Name, Fun, InitState) ->
-    proc_lib:start(?MODULE, do_subscribe_link, [Name, Fun, InitState, self()]).
-
+    case proc_lib:start(?MODULE, do_subscribe_link,
+                        [Name, Fun, InitState, self()]) of
+        {error, Error} ->
+            error(Error);
+        Pid when is_pid(Pid) ->
+            Pid
+    end.
 
 unsubscribe(Pid) ->
     Pid ! unsubscribe,
