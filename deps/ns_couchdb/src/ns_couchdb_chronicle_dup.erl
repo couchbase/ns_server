@@ -64,7 +64,7 @@ subscribe_to_events() ->
 
 handle_info({'EXIT', Child, Reason}, #state{child = Child}) ->
     ?log_debug("Received exit ~p from event subscriber", [Reason]),
-    erlang:send_after(200, self(), resubscribe),
+    resubscribe(),
     {noreply, #state{child = undefined, ref = undefined}};
 handle_info({'EXIT', From, Reason}, State) ->
     ?log_debug("Received exit ~p from ~p", [Reason, From]),
@@ -75,9 +75,16 @@ handle_info({insert, Ref, KV}, State = #state{ref = Ref}) ->
 handle_info({delete, Ref, K}, State = #state{ref = Ref}) ->
     delete(K),
     {noreply, State};
-handle_info(resubscribe, #state{child = undefined}) ->
-    self() ! pull,
-    {noreply, subscribe_to_events()};
+handle_info(resubscribe, #state{child = undefined} = State) ->
+    {noreply, try
+                  NewState = subscribe_to_events(),
+                  self() ! pull,
+                  NewState
+              catch error:Error ->
+                      ?log_debug("Subscription failed with ~p", [Error]),
+                      resubscribe(),
+                      State
+              end};
 handle_info(pull, State) ->
     misc:flush(pull),
     pull(),
@@ -85,6 +92,9 @@ handle_info(pull, State) ->
 handle_info(Message, State) ->
     ?log_debug("Unexpected message ~p at state ~p", [Message, State]),
     {noreply, State}.
+
+resubscribe() ->
+    erlang:send_after(200, self(), resubscribe).
 
 notify(Evt) ->
     gen_event:notify(chronicle_kv:event_manager(kv), Evt).
