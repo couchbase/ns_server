@@ -50,6 +50,8 @@
          select_groups/1,
          select_groups/2,
          get_group_roles/1,
+         has_group_ldap_ref/1,
+         is_empty_ldap_group_ref/1,
          get_group_props/1,
          group_exists/1,
          get_groups_version/0,
@@ -613,6 +615,17 @@ get_group_props(GroupId, Items, Definitions, Buckets) ->
 
 group_exists(GroupId) ->
     false =/= replicated_dets:get(storage_name(), {group, GroupId}).
+
+get_group_ldap_ref(GroupId) ->
+    proplists:get_value(ldap_group_ref,
+                        get_group_props(GroupId, [ldap_group_ref])).
+
+has_group_ldap_ref(GroupId) ->
+    not is_empty_ldap_group_ref(get_group_ldap_ref(GroupId)).
+
+%% Unfortunately we allow ldap_group_ref as "".
+is_empty_ldap_group_ref(Ref) ->
+    undefined =:= Ref orelse [] =:= Ref.
 
 get_group_roles(GroupId) ->
     proplists:get_value(roles, get_group_props(GroupId, [roles]), []).

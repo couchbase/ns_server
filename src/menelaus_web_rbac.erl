@@ -336,6 +336,18 @@ handle_get_users_with_domain(Req, DomainAtom, Path) ->
               Req, Query, get_users_page_validators(DomainAtom, HasStartFrom))
     end.
 
+ldap_ref_filter(Req) ->
+    case menelaus_auth:has_permission(?EXTERNAL_READ, Req) of
+        true ->
+            pipes:filter(fun (_) -> true end);
+        false ->
+            pipes:filter(
+              fun ({{group, _Id}, Props}) ->
+                      menelaus_users:is_empty_ldap_group_ref(
+                        proplists:get_value(ldap_group_ref, Props))
+              end)
+    end.
+
 security_filter(Req) ->
     case menelaus_auth:has_permission(?SECURITY_READ, Req) of
         true ->
@@ -1042,8 +1054,14 @@ do_verify_domain_access(Req, Permission) ->
     end.
 
 handle_put_user_validated(Identity, Name, Password, Roles, Groups, Req) ->
+    GroupList = case Groups of
+                    undefined -> [];
+                    _ -> Groups
+                end,
     GroupRoles = lists:concat([menelaus_users:get_group_roles(G)
-                                   || Groups =/= undefined, G <- Groups]),
+                                   || G <- GroupList]),
+    LdapMapGroups = lists:any(fun menelaus_users:has_group_ldap_ref/1,
+                              GroupList),
     UniqueRoles = lists:usort(Roles),
     OldRoles = menelaus_users:get_roles(Identity),
 
@@ -1051,6 +1069,8 @@ handle_put_user_validated(Identity, Name, Password, Roles, Groups, Req) ->
       Req, ?SECURITY_WRITE, lists:usort(GroupRoles ++ Roles ++ OldRoles)),
 
     verify_domain_access(Req, Identity),
+
+    verify_ldap_access(Req, ?EXTERNAL_WRITE, LdapMapGroups),
 
     Reason = case menelaus_users:user_exists(Identity) of
                  true -> updated;
@@ -1451,6 +1471,14 @@ assert_no_users_upgrade() ->
               503, "Not allowed during cluster upgrade.")
     end.
 
+verify_ldap_access(Req, Permission, ExistingMapping) ->
+    verify_ldap_access(Req, Permission, ExistingMapping, false).
+
+verify_ldap_access(_Req, _Permission, false, false) ->
+    ok;
+verify_ldap_access(Req, Permission, _ExistingMapping, _NewMapping) ->
+    menelaus_util:require_permission(Req, Permission).
+
 handle_put_group(GroupId, Req) ->
     assert_groups_and_ldap_enabled(),
 
@@ -1467,6 +1495,11 @@ handle_put_group(GroupId, Req) ->
                         Req, ?SECURITY_WRITE,
                         lists:usort(
                           Roles ++ menelaus_users:get_group_roles(GroupId))),
+
+                      verify_ldap_access(
+                        Req, ?EXTERNAL_WRITE,
+                        menelaus_users:has_group_ldap_ref(GroupId),
+                        not menelaus_users:is_empty_ldap_group_ref(LDAPGroup)),
 
                       do_store_group(GroupId, Description, UniqueRoles,
                                      LDAPGroup, Req)
@@ -1516,6 +1549,8 @@ handle_delete_group(GroupId, Req) ->
     assert_groups_and_ldap_enabled(),
     verify_security_roles_access(
       Req, ?SECURITY_WRITE, menelaus_users:get_group_roles(GroupId)),
+    verify_ldap_access(Req, ?EXTERNAL_WRITE,
+                       menelaus_users:has_group_ldap_ref(GroupId)),
 
     case menelaus_users:delete_group(GroupId) of
         ok ->
@@ -1562,6 +1597,7 @@ handle_get_groups_page(Req, Path, Values) ->
     {PageSkews, Total} =
         pipes:run(menelaus_users:select_groups('_'),
                   [security_filter(Req),
+                   ldap_ref_filter(Req),
                    substr_filter(Substr, [description])],
                   ?make_consumer(
                      pipes:fold(
@@ -1587,6 +1623,7 @@ handle_get_groups_page(Req, Path, Values) ->
 handle_get_all_groups(Req) ->
     pipes:run(menelaus_users:select_groups('_'),
               [security_filter(Req),
+               ldap_ref_filter(Req),
                jsonify_groups(),
                sjson:encode_extended_json([{compact, true},
                                            {strict, false}]),
