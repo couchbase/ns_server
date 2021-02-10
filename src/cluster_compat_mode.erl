@@ -159,6 +159,12 @@ is_cbas_enabled() ->
 rebalance_ignore_view_compactions() ->
     ns_config:read_key_fast(rebalance_ignore_view_compactions, false).
 
+%% This function is used to determine if developer preview is enabled by
+%% default. This is normally enabled (made true) during development of the
+%% release and then disabled (made false) near release time.
+is_developer_preview_enabled_by_default() ->
+    false.
+
 consider_switching_compat_mode() ->
     Config = ns_config:get(),
     CurrentVersion = ns_config:search(Config, cluster_compat_version, undefined),
@@ -166,8 +172,10 @@ consider_switching_compat_mode() ->
         true ->
             case is_developer_preview() of
                 false ->
-                    Default = misc:get_env_default(developer_preview_enabled_default,
-                                                   true),
+                    %% Specifying the environment variable takes precedence.
+                    Default = misc:get_env_default(
+                                developer_preview_enabled_default,
+                                is_developer_preview_enabled_by_default()),
                     ns_config:set(developer_preview_enabled, Default);
                 true ->
                     ok
