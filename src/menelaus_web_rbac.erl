@@ -71,8 +71,8 @@
 -define(EXTERNAL_READ, {[admin, security, external], read}).
 -define(EXTERNAL_WRITE, {[admin, security, external], write}).
 
--define(LOCAL_USER_READ, {[admin, security, local], read}).
--define(LOCAL_USER_WRITE, {[admin, security, local], write}).
+-define(LOCAL_READ, {[admin, security, local], read}).
+-define(LOCAL_WRITE, {[admin, security, local], write}).
 
 assert_is_saslauthd_enabled() ->
     case cluster_compat_mode:is_saslauthd_enabled() of
@@ -352,7 +352,7 @@ security_filter(Req) ->
 domain_filter(Domain, Req) ->
     Permission = case Domain of
                      local ->
-                         ?LOCAL_USER_READ;
+                         ?LOCAL_READ;
                      external ->
                          ?EXTERNAL_READ
                  end,
@@ -1029,7 +1029,7 @@ get_security_roles() ->
                       ns_bucket:get_snapshot())].
 
 verify_domain_access(Req, {_UserId, local}) ->
-    do_verify_domain_access(Req, ?LOCAL_USER_WRITE);
+    do_verify_domain_access(Req, ?LOCAL_WRITE);
 verify_domain_access(Req, {_UserId, external}) ->
     do_verify_domain_access(Req, ?EXTERNAL_WRITE).
 
