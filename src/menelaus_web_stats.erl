@@ -228,7 +228,11 @@ handle_range_get([MetricName | NotvalidatedFunctions], Req) ->
                                                           aggregationFunction,
                                                           timeout])
                                 end, Props),
-          Metric = [{<<"name">>, iolist_to_binary(MetricName)}|Labels],
+          AllLabels = [{<<"__name__">>, iolist_to_binary(MetricName)} | Labels],
+          Metric = lists:map(
+                     fun ({Name, Value}) ->
+                         {[{<<"label">>, Name}, {<<"value">>, Value}]}
+                     end, AllLabels),
           NewProps = [{metric, Metric}, {applyFunctions, Functions} | Props],
           %% New process is needed to avoid leaving response messages in
           %% mochiweb handler process's mailbox in case of timeout or other
@@ -296,11 +300,8 @@ stop_node_extractors_monitoring(Refs) ->
 send_metrics_request(Props, PermFilters) ->
     Functions = proplists:get_value(applyFunctions, Props, []),
     Window = proplists:get_value(timeWindow, Props),
-    Metric = proplists:get_value(metric, Props),
-    Name = proplists:get_value(<<"name">>, Metric),
-    Labels = proplists:delete(<<"name">>, Metric),
-    Query = construct_promql_query(Name, Labels, Functions,
-                                   Window, PermFilters),
+    Labels = proplists:get_value(metric, Props),
+    Query = construct_promql_query(Labels, Functions, Window, PermFilters),
     Start = proplists:get_value(start, Props),
     End = proplists:get_value('end', Props),
     Step = proplists:get_value(step, Props),
@@ -341,16 +342,59 @@ read_metrics_response(Ref, Props, StartTimestampMs) ->
 
 validate_metric_json(Name, State) ->
     validator:validate(
-      fun ({[]}) ->
-              {error, "must be not empty"};
-          ({Props}) when is_list(Props) ->
-              case lists:all(?cut(is_binary(element(2, _))), Props) of
-                  true -> {value, Props};
-                  false -> {error, "metric labels must be strings"}
+      fun ([]) ->
+              {error, "must not be empty"};
+          (Labels) when is_list(Labels) ->
+              try
+                  lists:foreach(
+                    fun ({Props}) -> validate_label_props(Props);
+                        (_) -> throw("must be a list of JSON objects")
+                    end, Labels),
+                  ok
+              catch
+                  throw:Msg -> {error, Msg}
               end;
           (_) ->
-              {error, "must be a json object"}
+              {error, "must be a list of JSON objects"}
       end, Name, State).
+
+validate_label_props(LabelProps) ->
+    lists:foreach(
+      fun ({N, _}) ->
+          case lists:member(N, [<<"label">>, <<"value">>, <<"operator">>]) of
+              true -> ok;
+              false -> throw(io_lib:format("unknown label prop: ~s", [N]))
+          end
+      end, LabelProps),
+    case proplists:is_defined(<<"label">>, LabelProps) and
+         proplists:is_defined(<<"value">>, LabelProps) of
+        true -> ok;
+        false -> throw("all metric labels must contain "
+                       "'label' and 'value' keys")
+    end,
+    Op = proplists:get_value(<<"operator">>, LabelProps, <<"=">>),
+    case lists:member(Op, [<<"=">>, <<"!=">>, <<"=~">>, <<"!~">>, <<"any">>,
+                           <<"not_any">>]) of
+        true -> ok;
+        false -> throw(io_lib:format("invalid operator: ~p", [Op]))
+    end,
+    Name = proplists:get_value(<<"label">>, LabelProps),
+    case is_binary(Name) of
+        true -> ok;
+        false -> throw("Label name must be a string")
+    end,
+    Val = proplists:get_value(<<"value">>, LabelProps),
+    case lists:member(Op, [<<"any">>, <<"not_any">>]) of
+        true ->
+            (is_list(Val) andalso lists:all(fun is_binary/1, Val)) orelse
+                throw(io_lib:format("label value for ~s must be a list of "
+                                    "strings when used with '~s' operation",
+                                    [Name, Op]));
+        false ->
+            is_binary(Val) orelse
+                throw(io_lib:format("label value for ~s must be a string",
+                                    [Name]))
+    end.
 
 validate_functions(Name, State) ->
     validator:validate(
@@ -412,16 +456,14 @@ aggregate_datapoints(F, Datapoints) ->
           end,
     misc:zipwithN(Fun, Datapoints).
 
-construct_promql_query(Metric, Labels, Functions, Window, PermFilters) ->
+construct_promql_query(Labels, Functions, Window, PermFilters) ->
     {RangeVFunctions, InstantVFunctions} =
         lists:splitwith(fun is_range_vector_function/1, Functions),
     functools:chain(
       Labels,
-      [?cut(lists:map(fun ({PermFilter}) ->
-                          {[{eq, "__name__", Metric} || Metric =/= undefined] ++
-                           [{re, K, V} || {K, V} <- _] ++
-                           PermFilter}
-                      end, PermFilters)),
+      [lists:map(fun construct_promql_labels_ast/1, _),
+       ?cut(lists:map(fun ({PermFilter}) -> {_ ++ PermFilter} end,
+                      PermFilters)),
        case RangeVFunctions of
            [] -> fun functools:id/1;
            _ -> lists:map(fun (Ast) -> range_vector(Ast, Window) end, _)
@@ -430,6 +472,19 @@ construct_promql_query(Metric, Labels, Functions, Window, PermFilters) ->
        {'or', _},
        apply_functions(_, InstantVFunctions),
        prometheus:format_promql(_)]).
+
+construct_promql_labels_ast({MetricProps}) ->
+    Label = proplists:get_value(<<"label">>, MetricProps),
+    Value = proplists:get_value(<<"value">>, MetricProps),
+    Op = case proplists:get_value(<<"operator">>, MetricProps, <<"=">>) of
+             <<"=">> -> eq;
+             <<"!=">> -> not_eq;
+             <<"=~">> -> re;
+             <<"!~">> -> not_re;
+             <<"any">> -> eq_any;
+             <<"not_any">> -> not_any
+         end,
+    {Op, Label, Value}.
 
 range_vector(Ast, TimeWindow) -> {range_vector, Ast, TimeWindow}.
 

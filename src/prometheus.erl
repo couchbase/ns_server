@@ -322,7 +322,9 @@ format_promql_ast({Labels}) when is_list(Labels) ->
                 Escaped = [escape_re_chars(V) || V <- Values],
                 [Name, "!~`", lists:join("|", Escaped), "`"];
             ({eq, Name, Value}) ->
-                [Name, "=`", Value, "`"]
+                [Name, "=`", Value, "`"];
+            ({not_eq, Name, Value}) ->
+                [Name, "!=`", Value, "`"]
         end, Labels),
     ["{" ++ lists:join(",", LabelsIOLists) ++ "}"];
 format_promql_ast(Bin) when is_binary(Bin) ->
