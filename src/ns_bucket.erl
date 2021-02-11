@@ -105,7 +105,6 @@
          past_vbucket_maps/0,
          past_vbucket_maps/1,
          config_to_map_options/1,
-         needs_rebalance/2,
          can_have_views/1,
          get_view_nodes/1,
          get_num_vbuckets/0,
@@ -515,7 +514,8 @@ bucket_failover_safety(BucketConfig, ActiveNodes, LiveNodes) ->
                                 ?FS_HARD_NODES_NEEDED
                         end;
                     true ->
-                        case needs_rebalance(BucketConfig, ActiveNodes) of
+                        case ns_rebalancer:bucket_needs_rebalance(
+                               BucketConfig, ActiveNodes) of
                             true ->
                                 ?FS_SOFT_REBALANCE_NEEDED;
                             false ->
@@ -1188,34 +1188,6 @@ num_replicas_changed(_NumReplicas, undefined) ->
 num_replicas_changed(NumReplicas, Map) ->
     ExpectedChainLength = NumReplicas + 1,
     lists:any(?cut(ExpectedChainLength =/= length(_)), Map).
-
-needs_rebalance(BucketConfig, Nodes) ->
-    Servers = get_servers(BucketConfig),
-    case proplists:get_value(type, BucketConfig) of
-        membase ->
-            case Servers of
-                [] ->
-                    false;
-                _ ->
-                    Map = proplists:get_value(map, BucketConfig),
-                    Map =:= undefined orelse
-                        num_replicas_changed(BucketConfig) orelse
-                        lists:sort(Nodes) =/= lists:sort(Servers) orelse
-                        ns_rebalancer:map_options_changed(BucketConfig) orelse
-                        (ns_rebalancer:unbalanced(Map, BucketConfig) andalso
-                         not is_compatible_past_map(Nodes, BucketConfig, Map))
-            end;
-        memcached ->
-            lists:sort(Nodes) =/= lists:sort(Servers)
-    end.
-
-is_compatible_past_map(Nodes, BucketConfig, Map) ->
-    History = past_vbucket_maps(),
-    MapOpts = ns_rebalancer:generate_vbucket_map_options(Nodes, BucketConfig),
-    Matching = mb_map:find_matching_past_maps(Nodes, Map,
-                                              MapOpts, History, [trivial]),
-
-    lists:member(Map, Matching).
 
 can_have_views(BucketConfig) ->
     storage_mode(BucketConfig) =:= couchstore orelse
