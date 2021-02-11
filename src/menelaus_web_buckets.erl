@@ -753,11 +753,7 @@ parse_bucket_params(Ctx, Params) ->
     end.
 
 parse_bucket_params_without_warnings(Ctx, Params) ->
-    {OKs, Errors0} = basic_bucket_params_screening(Ctx ,Params),
-    %% Use the parameters that have passed the basic screening and perform
-    %% any additional checks.
-    AdditionalErrors = additional_bucket_params_validation(OKs),
-    Errors = Errors0 ++ AdditionalErrors,
+    {OKs, Errors} = basic_bucket_params_screening(Ctx ,Params),
     ClusterStorageTotals = Ctx#bv_ctx.cluster_storage_totals,
     IsNew = Ctx#bv_ctx.new,
     CurrentBucket = proplists:get_value(currentBucket, OKs),
@@ -804,15 +800,30 @@ parse_bucket_params_without_warnings(Ctx, Params) ->
             {errors, TotalErrors, JSONSummaries, OKs}
     end.
 
-additional_bucket_params_validation(Params) ->
-    NumReplicas = proplists:get_value(num_replicas, Params),
-    DurabilityLevel = proplists:get_value(durability_min_level, Params),
+additional_bucket_params_validation(Params, Ctx) ->
+    NumReplicas = get_value_from_parms_or_bucket(num_replicas, Params, Ctx),
+    DurabilityLevel = get_value_from_parms_or_bucket(durability_min_level,
+                                                     Params, Ctx),
     case {NumReplicas, DurabilityLevel} of
         {3, none} -> [];
         {3, _} -> [{durability_min_level,
                     <<"Durability minimum level cannot be specified with "
                       "3 replicas">>}];
         {_, _} -> []
+    end.
+
+%% Get the value from the params. If it wasn't specified and this isn't
+%% a bucket creation then get the existing value from the bucket config.
+get_value_from_parms_or_bucket(Key, Params,
+                               #bv_ctx{bucket_config = BucketConfig,
+                                       new = IsNew}) ->
+    case proplists:get_value(Key, Params) of
+        undefined ->
+            case IsNew of
+                true -> undefined;
+                false -> proplists:get_value(Key, BucketConfig, undefined)
+            end;
+        Value -> Value
     end.
 
 basic_bucket_params_screening(#bv_ctx{bucket_config = false, new = false}, _Params) ->
@@ -823,8 +834,13 @@ basic_bucket_params_screening(Ctx, Params) ->
         validate_bucket_type_specific_params(CommonParams, Params, Ctx),
     Candidates = CommonParams ++ TypeSpecificParams,
     assert_candidates(Candidates),
-    {[{K,V} || {ok, K, V} <- Candidates],
-     [{K,V} || {error, K, V} <- Candidates]}.
+    %% Basic parameter checking has been done. Take the non-error key/values
+    %% and do additional checking (e.g. relationships between different
+    %% keys).
+    OKs = [{K, V} || {ok, K, V} <- Candidates],
+    Errors =  [{K, V} || {error, K, V} <- Candidates],
+    AdditionalErrors = additional_bucket_params_validation(OKs, Ctx),
+    {OKs, Errors ++ AdditionalErrors}.
 
 validate_common_params(#bv_ctx{bucket_name = BucketName,
                                bucket_config = BucketConfig, new = IsNew,
@@ -1965,7 +1981,16 @@ basic_bucket_params_screening_test() ->
                     {servers, []},
                     {ram_quota, 768 * ?MIB},
                     {auth_type, sasl},
-                    {sasl_password, "asdasd"}]}],
+                    {sasl_password, "asdasd"}]},
+                  {"fourth",
+                   [{type, membase},
+                    {num_vbuckets, 16},
+                    {num_replicas, 3},
+                    {servers, []},
+                    {ram_quota, 100 * ?MIB},
+                    {auth_type, sasl},
+                    {sasl_password, ""}]}],
+
     %% it is possible to create bucket with ok params
     {OK1, E1} = basic_bucket_params_screening(true, "mcd",
                                               [{"bucketType", "membase"},
@@ -2069,39 +2094,66 @@ basic_bucket_params_screening_test() ->
     ?assertEqual(8, proplists:get_value(num_threads, OK12)),
     ?assertEqual(full_eviction, proplists:get_value(eviction_policy, OK12)),
 
-    %% it is not possible to create a bucket with 3 replicas and durability
-    %% level that isn't none.
+    %% it is not possible to CREATE a bucket or UPDATE an existing bucket
+    %% with 3 replicas and durability level that isn't none.
     DurabilityLevels = ["majority", "majorityAndPersistActive",
                         "persistToMajority"],
     lists:map(
       fun (Level) ->
-              {OK14, E14} = basic_bucket_params_screening(
-                              true, "ReplicaDurability",
-                              [{"bucketType", "membase"},
-                               {"ramQuotaMB", "400"},
-                               {"replicaNumber", "3"},
-                               {"durabilityMinLevel", Level}],
-                              AllBuckets),
-              [] = E14,
-              MoreChecks14 = additional_bucket_params_validation(OK14),
+              %% Create
+              {_OK14a, E14a} = basic_bucket_params_screening(
+                                 true, "ReplicaDurability",
+                                 [{"bucketType", "membase"},
+                                  {"ramQuotaMB", "400"},
+                                  {"replicaNumber", "3"},
+                                  {"durabilityMinLevel", Level}],
+                                 AllBuckets),
               ?assertEqual([{durability_min_level,
                              <<"Durability minimum level cannot be specified "
                                "with 3 replicas">>}],
-                             MoreChecks14)
+                           E14a),
+
+              %% Update
+              {_OK14b, E14b} = basic_bucket_params_screening(
+                                 false, "fourth",
+                                 [{"bucketType", "membase"},
+                                  {"ramQuotaMB", "400"},
+                                  {"replicaNumber", "3"},
+                                  {"durabilityMinLevel", Level}],
+                                 AllBuckets),
+              ?assertEqual([{durability_min_level,
+                             <<"Durability minimum level cannot be specified "
+                               "with 3 replicas">>}],
+                           E14b)
       end, DurabilityLevels),
 
     %% it is possible to create a bucket with 3 replicas when durability is
     %% none.
-    {OK15, E15} = basic_bucket_params_screening(
-                              true, "ReplicaDurability",
-                              [{"bucketType", "membase"},
-                               {"ramQuotaMB", "400"},
-                               {"replicaNumber", "3"},
-                               {"durabilityMinLevel", "none"}],
-                              AllBuckets),
-              [] = E15,
-    MoreChecks15 = additional_bucket_params_validation(OK15),
-    [] = MoreChecks15,
+    lists:map(
+      fun (BucketType) ->
+              {_OK15, E15} = basic_bucket_params_screening(
+                               true, "ReplicaDurability",
+                               [{"bucketType", BucketType},
+                                {"ramQuotaMB", "400"},
+                                {"replicaNumber", "3"},
+                                {"durabilityMinLevel", "none"}],
+                               AllBuckets),
+              [] = E15
+      end, ["membase", "ephemeral"]),
+
+    %% is is not possible to create an ephemeral bucket with 3 replicas and
+    %% durability level that isn't none.
+    {_OK16, E16} = basic_bucket_params_screening(
+                     true, "ReplicaDurability",
+                     [{"bucketType", "ephemeral"},
+                      {"ramQuotaMB", "400"},
+                      {"replicaNumber", "3"},
+                      {"durabilityMinLevel", "majority"}],
+                     AllBuckets),
+    ?assertEqual([{durability_min_level,
+                   <<"Durability minimum level cannot be specified "
+                     "with 3 replicas">>}],
+                 E16),
 
     ok.
 
