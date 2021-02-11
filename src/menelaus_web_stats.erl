@@ -585,10 +585,8 @@ build_stats_perm_map(UserRoles, PermCheckFun, RolesDefinitions) ->
 convert_perm_map_to_promql_ast(PermMap) ->
     AllowedBuckets = maps:keys(maps:filter(fun (_, V) -> V =:= true end,
                                            PermMap)),
-    AllowedBucketsRe = [escape_re_chars(B) || B <- AllowedBuckets],
     Filters =
-        [{[{re, "bucket", lists:join("|", AllowedBucketsRe)}]}
-                || AllowedBucketsRe =/= []] ++
+        [{[{eq_any, "bucket", AllowedBuckets}]} || AllowedBuckets =/= []] ++
         maps:fold(
           fun (_Bucket, true, Acc) -> Acc;
               (Bucket, ScopePermMap, Acc) ->
@@ -616,9 +614,6 @@ convert_perm_map_to_promql_ast(PermMap) ->
         _ -> [{[{not_re, "bucket", ".+"}]} | Filters]
     end.
 
-escape_re_chars(Str) ->
-    re:replace(Str, "[\\[\\].\\\\^$|()?*+{}]", "\\\\&",
-               [{return,list}, global]).
 
 verify_derived_metrics(Metrics) ->
     AllDerivedMetrics = all_derived_metrics(),

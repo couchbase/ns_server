@@ -316,9 +316,11 @@ format_promql_ast({Labels}) when is_list(Labels) ->
             ({not_re, Name, Value}) ->
                 [Name, "!~`", Value, "`"];
             ({eq_any, Name, [_|_] = Values}) ->
-                [Name, "=~`", lists:join("|", Values), "`"];
+                Escaped = [escape_re_chars(V) || V <- Values],
+                [Name, "=~`", lists:join("|", Escaped), "`"];
             ({not_any, Name, [_|_] = Values}) ->
-                [Name, "!~`", lists:join("|", Values), "`"];
+                Escaped = [escape_re_chars(V) || V <- Values],
+                [Name, "!~`", lists:join("|", Escaped), "`"];
             ({eq, Name, Value}) ->
                 [Name, "=`", Value, "`"]
         end, Labels),
@@ -444,6 +446,10 @@ extract_merge_label(Props) ->
         {value, {eq_any, _, NL}, Rest} -> {lists:usort(NL), Rest};
         _ -> not_found
     end.
+
+escape_re_chars(Str) ->
+    re:replace(Str, "[\\[\\].\\\\^$|()?*+{}]", "\\\\&",
+               [{return,list}, global]).
 
 -ifdef(TEST).
 format_promql_test() ->
