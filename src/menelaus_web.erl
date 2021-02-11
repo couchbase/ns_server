@@ -323,11 +323,6 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[{bucket, Id}, recovery], read},
                      fun menelaus_web_recovery:handle_recovery_status/3,
                      ["default", Id]};
-                %% XXX: This API is being deprecated...
-                ["pools", "default", "buckets", Id, "collections"] ->
-                    {{[{collection, [Id, any, any]}, collections], read},
-                     fun menelaus_web_collections:handle_get/2, [Id]};
-                %% ...and replaced with
                 ["pools", "default", "buckets", Id, "scopes"] ->
                     {{[{collection, [Id, any, any]}, collections], read},
                      fun menelaus_web_collections:handle_get/2, [Id]};
@@ -808,34 +803,16 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[{bucket, Id}, views], compact},
                      fun menelaus_web_buckets:handle_set_ddoc_update_min_changes/4,
                      ["default", Id, DDocId]};
-                %% XXX: This api is being depreciated
-                ["pools", "default", "buckets", Id, "collections",
-                 "@ensureManifest", ManifestId] ->
-                    {{[{collection, [Id, any, any]}, collections], read},
-                     fun menelaus_web_collections:handle_ensure_manifest/3,
-                     [Id, ManifestId]};
-                %% ...and replaced with
                 ["pools", "default", "buckets", Id, "scopes",
                  "@ensureManifest", ManifestId] ->
                     {{[{collection, [Id, any, any]}, collections], read},
                      fun menelaus_web_collections:handle_ensure_manifest/3,
                      [Id, ManifestId]};
-                %% XXX: This api is being deprecated...
-                ["pools", "default", "buckets", Id, "collections", Scope] ->
-                    {{[{collection, [Id, Scope, all]}, collections], write},
-                     fun menelaus_web_collections:handle_post_collection/3,
-                     [Id, Scope]};
-                %% ...and replaced with
                 ["pools", "default", "buckets", Id, "scopes", Scope,
                  "collections"] ->
                     {{[{collection, [Id, Scope, all]}, collections], write},
                      fun menelaus_web_collections:handle_post_collection/3,
                      [Id, Scope]};
-                %% XXX: This api is being deprecated....
-                ["pools", "default", "buckets", Id, "collections"] ->
-                    {{[{bucket, Id}, collections], write},
-                     fun menelaus_web_collections:handle_post_scope/2, [Id]};
-                %% ...and replaced with
                 ["pools", "default", "buckets", Id, "scopes"] ->
                     {{[{bucket, Id}, collections], write},
                      fun menelaus_web_collections:handle_post_scope/2, [Id]};
@@ -911,23 +888,10 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_buckets:handle_bucket_delete/3, ["default", Id]};
                 ["pools", "default", "remoteClusters", _Id] ->
                     {no_check, fun goxdcr_rest:proxy/1};
-                %% XXX: This api is being deprecated...
-                ["pools", "default", "buckets", Id, "collections", Name] ->
-                    {{[{collection, [Id, Name, all]}, collections], write},
-                     fun menelaus_web_collections:handle_delete_scope/3,
-                     [Id, Name]};
-                %% ...and replaced with
                 ["pools", "default", "buckets", Id, "scopes", Name] ->
                     {{[{collection, [Id, Name, all]}, collections], write},
                      fun menelaus_web_collections:handle_delete_scope/3,
                      [Id, Name]};
-                %% XXX: This api is being deprecated...
-                ["pools", "default", "buckets", Id, "collections",
-                 Scope, Name] ->
-                    {{[{collection, [Id, Scope, all]}, collections], write},
-                     fun menelaus_web_collections:handle_delete_collection/4,
-                     [Id, Scope, Name]};
-                %% ...and replaced with
                 ["pools", "default", "buckets", Id, "scopes", Scope,
                  "collections", Name] ->
                     {{[{collection, [Id, Scope, all]}, collections], write},
@@ -1020,11 +984,6 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, security], write},
                      fun menelaus_web_rbac:handle_put_profile/2,
                      [{UserId, Domain}]};
-                %% XXX: This API is being deprecated...
-                ["pools", "default", "buckets", Id, "collections"] ->
-                    {{[{collection, [Id, any, any]}, collections], write},
-                     fun menelaus_web_collections:handle_set_manifest/2, [Id]};
-                %% ...and replaced with
                 ["pools", "default", "buckets", Id, "scopes"] ->
                     {{[{collection, [Id, any, any]}, collections], write},
                      fun menelaus_web_collections:handle_set_manifest/2, [Id]};
