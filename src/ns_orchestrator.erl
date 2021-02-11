@@ -1519,8 +1519,7 @@ service_upgrader_body(Services, KeepNodes) ->
     %% return value
     EjectNodes = [],
     _ = ns_rebalancer:rebalance_topology_aware_services(
-          ns_config:get(), Services, KeepNodes, EjectNodes),
-
+          Services, KeepNodes, EjectNodes),
     ok.
 
 call_recovery_server(State, Call) ->
