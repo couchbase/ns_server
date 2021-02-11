@@ -787,16 +787,6 @@ do_unbalanced(Map, Servers) ->
               Counts =/= [] andalso lists:max(Counts) - lists:min(Counts) > 1
       end, [MastersCounts, ReplicasCounts]).
 
-map_options_changed(Servers, BucketConfig) ->
-    Opts = generate_vbucket_map_options(Servers, BucketConfig),
-    OptsHash = proplists:get_value(map_opts_hash, BucketConfig),
-    case OptsHash of
-        undefined ->
-            true;
-        _ ->
-            erlang:phash2(Opts) =/= OptsHash
-    end.
-
 bucket_needs_rebalance(BucketConfig, Nodes) ->
     Servers = ns_bucket:get_servers(BucketConfig),
     case proplists:get_value(type, BucketConfig) of
@@ -805,25 +795,48 @@ bucket_needs_rebalance(BucketConfig, Nodes) ->
                 [] ->
                     false;
                 _ ->
-                    Map = proplists:get_value(map, BucketConfig),
-                    Map =:= undefined orelse
-                        ns_bucket:num_replicas_changed(BucketConfig) orelse
+                    ns_bucket:num_replicas_changed(BucketConfig) orelse
                         lists:sort(Nodes) =/= lists:sort(Servers) orelse
-                        map_options_changed(Servers, BucketConfig) orelse
-                        (unbalanced(Map, BucketConfig) andalso
-                         not is_compatible_past_map(Nodes, BucketConfig, Map))
+                        map_needs_rebalance(Servers, BucketConfig)
             end;
         memcached ->
             lists:sort(Nodes) =/= lists:sort(Servers)
     end.
 
-is_compatible_past_map(Nodes, BucketConfig, Map) ->
-    History = ns_bucket:past_vbucket_maps(),
-    MapOpts = generate_vbucket_map_options(Nodes, BucketConfig),
-    Matching = mb_map:find_matching_past_maps(Nodes, Map,
-                                              MapOpts, History, [trivial]),
+map_needs_rebalance(Servers, BucketConfig) ->
+    case proplists:get_value(map, BucketConfig) of
+        undefined ->
+            true;
+        Map ->
+            case map_options_changed(Servers, BucketConfig) of
+                true ->
+                    true;
+                {false, MapOpts} ->
+                    unbalanced(Map, BucketConfig) andalso
+                        incompatible_with_past_map(Servers, MapOpts, Map)
+            end
+    end.
 
-    lists:member(Map, Matching).
+map_options_changed(Servers, BucketConfig) ->
+    case proplists:get_value(map_opts_hash, BucketConfig) of
+        undefined ->
+            true;
+        OptsHash ->
+            MapOpts = generate_vbucket_map_options(Servers,
+                                                   BucketConfig),
+            case erlang:phash2(MapOpts) of
+                OptsHash ->
+                    {false, MapOpts};
+                _ ->
+                    true
+            end
+    end.
+
+incompatible_with_past_map(Nodes, MapOpts, Map) ->
+    History = ns_bucket:past_vbucket_maps(),
+    Matching =
+        mb_map:find_matching_past_maps(Nodes, Map, MapOpts, History, [trivial]),
+    not lists:member(Map, Matching).
 
 %%
 %% Internal functions
