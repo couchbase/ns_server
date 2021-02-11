@@ -88,6 +88,7 @@
          raw_ram_quota/1,
          sasl_password/1,
          update_maps/3,
+         update_buckets/3,
          set_bucket_config/2,
          set_fast_forward_map/2,
          set_map/2,
@@ -1068,6 +1069,18 @@ update_many(Fun) ->
         Error ->
             Error
     end.
+
+update_buckets(ModifiedBuckets, CurrentBuckets, ExtraSets) ->
+    BucketSets =
+        case chronicle_compat:backend() of
+            ns_config ->
+                NewBuckets = misc:update_proplist(CurrentBuckets,
+                                                  ModifiedBuckets),
+                [{buckets, [{configs, NewBuckets}]}];
+            chronicle ->
+                [{sub_key(N, props), BC} || {N, BC} <- ModifiedBuckets]
+        end,
+    chronicle_compat:set_multiple(BucketSets ++ ExtraSets).
 
 is_named_bucket_persistent(BucketName) ->
     {ok, BucketConfig} = get_bucket(BucketName),

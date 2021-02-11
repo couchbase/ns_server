@@ -1074,13 +1074,10 @@ apply_delta_recovery_buckets(DeltaRecoveryBuckets, DeltaNodes, CurrentBuckets) -
                                                          DeltaNodes,
                                                          CurrentBuckets),
 
-    NewBuckets = misc:update_proplist(CurrentBuckets, TransitionalBuckets),
-
-    ok = chronicle_compat:set_multiple(
+    ok = ns_bucket:update_buckets(
+           TransitionalBuckets, CurrentBuckets,
            ns_cluster_membership:update_membership_sets(DeltaNodes, active) ++
                failover:clear_failover_vbuckets_sets(DeltaNodes)),
-
-    ok = ns_config:set([{buckets, [{configs, NewBuckets}]}]),
 
     config_sync(push, DeltaNodes),
     complete_delta_recovery(DeltaNodes),
