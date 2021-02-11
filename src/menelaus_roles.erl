@@ -321,7 +321,8 @@ roles() ->
        {desc, <<"Can backup and restore a given bucket’s data. This user "
                 "cannot access the web console and is intended only for "
                 "application access. This user can read data.">>}],
-      [{[{bucket, bucket_name}, data], all},
+      [{[{collection, [bucket_name, any, any]}, collections], all},
+       {[{bucket, bucket_name}, data], all},
        {[{bucket, bucket_name}, views], [read, write]},
        {[{bucket, bucket_name}, fts], [read, write, manage]},
        {[{bucket, bucket_name}, stats], [read]},
