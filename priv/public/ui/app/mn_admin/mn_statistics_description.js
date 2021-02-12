@@ -533,12 +533,6 @@ function get70Mapping() {
     "@kv-.kv_dcp_items_sent_xdcr": "@kv-.ep_dcp_xdcr_items_sent",
     "@kv-.kv_dcp_producer_count_xdcr": "@kv-.ep_dcp_xdcr_producer_count",
     "@kv-.kv_dcp_total_data_size_bytes_xdcr": "@kv-.ep_dcp_xdcr_total_bytes",
-    "@kv-.kv_dcp_backoff_xdcr": "@kv-.ep_dcp_xdcr_backoff",
-    "@kv-.kv_dcp_connection_count_xdcr": "@kv-.ep_dcp_xdcr_count",
-    "@kv-.kv_dcp_items_remaining_xdcr": "@kv-.ep_dcp_xdcr_items_remaining",
-    "@kv-.kv_dcp_items_sent_xdcr": "@kv-.ep_dcp_xdcr_items_sent",
-    "@kv-.kv_dcp_producer_count_xdcr": "@kv-.ep_dcp_xdcr_producer_count",
-    "@kv-.kv_dcp_total_data_size_bytes_xdcr": "@kv-.ep_dcp_xdcr_total_bytes",
     "@kv-.kv_dcp_backoff_cbas": "@kv-.ep_dcp_cbas_backoff",
     "@kv-.kv_dcp_connection_count_cbas": "@kv-.ep_dcp_cbas_count",
     "@kv-.kv_dcp_items_remaining_cbas": "@kv-.ep_dcp_cbas_items_remaining",
@@ -1305,71 +1299,6 @@ function get65CompatDesc() {
           title: "XDCR Incoming Op Rate",
           desc: "Number of incoming XDCR operations per second for this bucket. (measured from xdc_ops)"
         },
-
-        // "ep_active_hlc_drift": null,
-        // "ep_active_hlc_drift_count": null,
-        // "ep_clock_cas_drift_threshold_exceeded": null,
-        // "ep_dcp_2i_backoff": null,
-        // "ep_dcp_2i_count": null,
-        // "ep_dcp_2i_items_remaining": null,
-        // "ep_dcp_2i_items_sent": null,
-        // "ep_dcp_2i_producer_count": null,
-        // "ep_dcp_2i_total_backlog_size": null,
-        // "ep_dcp_2i_total_bytes": null,
-        // "ep_dcp_cbas_total_backlog_size": null,
-        // "ep_dcp_fts_backoff": null,
-        // "ep_dcp_fts_count": null,
-        // "ep_dcp_fts_items_remaining": null,
-        // "ep_dcp_fts_items_sent": null,
-        // "ep_dcp_fts_producer_count": null,
-        // "ep_dcp_fts_total_backlog_size": null,
-        // "ep_dcp_fts_total_bytes": null,
-        // "ep_dcp_eventing_total_backlog_size": null,
-        // "ep_dcp_other_total_backlog_size": null,
-        // "ep_flusher_todo": null,
-        // "ep_item_commit_failed": null,
-        // "ep_max_size": null,
-        // "ep_num_non_resident": null,
-        // "ep_num_ops_del_ret_meta": null,
-        // "ep_num_ops_set_ret_meta": null,
-        // "ep_oom_errors": null,
-        // "ep_overhead": null,
-        // "ep_queue_size": null,
-        // "ep_replica_hlc_drift": null,
-        // "ep_replica_hlc_drift_count": null,
-        // "misses": null,
-        // "vb_active_num_non_resident": null,
-        // "vb_active_ops_update": null,
-        // "vb_active_queue_age": null,
-        // "vb_pending_num_non_resident": null,
-        // "vb_pending_ops_update": null,
-        // "vb_pending_queue_age": null,
-        // "vb_replica_num_non_resident": null,
-        // "vb_replica_ops_update": null,
-        // "vb_replica_queue_age": null,
-        // "vb_total_queue_age": null,
-        // "bg_wait_count": null,
-        // "bg_wait_total": null,
-        // "ep_dcp_views+indexes_total_backlog_size": null,
-        // "couch_docs_disk_size": null,
-        // "couch_spatial_data_size": null,
-        // "couch_spatial_disk_size": null,
-        // "couch_spatial_ops": null,
-        // "couch_views_disk_size": null,
-        // "disk_commit_count": null,
-        // "disk_commit_total": null,
-        // "disk_update_count": null,
-        // "disk_update_total": null,
-        // "ep_dcp_views_backoff": null,
-        // "ep_dcp_views_count": null,
-        // "ep_dcp_views_items_remaining": null,
-        // "ep_dcp_views_items_sent": null,
-        // "ep_dcp_views_producer_count": null,
-        // "ep_dcp_views_total_backlog_size": null,
-        // "ep_dcp_views_total_bytes": null,
-        // "ep_dcp_replica_total_backlog_size": null,
-        // "ep_dcp_xdcr_total_backlog_size": null,
-
         "@items": {
           "accesses": {
             unit: "number/sec",
@@ -1435,8 +1364,6 @@ function get65CompatDesc() {
             unit: "bytes",
             title: "Index Data Size",
             desc: "Bytes of data in this index. Per index."
-            //membase_index_stats_description
-            //title: "index data size"
           },
           "disk_size": {
             unit: "bytes",
@@ -1478,15 +1405,6 @@ function get65CompatDesc() {
             title: "Index Cache Miss Ratio",
             desc: "Percentage of accesses to this index data from disk as opposed to RAM. (measured from cache_misses * 100 / (cache_misses + cache_hits))"
           }
-          // "cache_hits": null,
-          // "cache_misses": null,
-          // "disk_overhead_estimate": null,
-          // "frag_percent": null,
-          // "num_docs_pending": null,
-          // "num_docs_queued": null,
-          // "recs_in_mem": null,
-          // "recs_on_disk": null,
-          // "total_scan_duration": null,
         },
         "index/data_size": {
           unit: "bytes",
@@ -1533,17 +1451,6 @@ function get65CompatDesc() {
           title: "Index Scan Bytes",
           desc: "Number of bytes/sec scanned by the index."
         }
-        // "index/cache_hits": null,
-        // "index/cache_misses": null,
-        // "index/disk_overhead_estimate": null,
-        // "index/frag_percent": null,
-        // "index/cache_hits": null,
-        // "index/cache_misses": null,
-        // "index/num_docs_pending": null,
-        // "index/num_docs_queued": null,
-        // "index/recs_in_mem": null,
-        // "index/recs_on_disk": null,
-        // "index/total_scan_duration": null
       },
 
       "@query":{
@@ -1567,7 +1474,6 @@ function get65CompatDesc() {
           title: "Query Result Items",
           desc: "Average number of results (items/documents) returned by a query."
         },
-        // "query_active_requests": null,
         "query_errors": {
           unit: "number/sec",
           title: "N1QL Error Rate",
@@ -1578,15 +1484,10 @@ function get65CompatDesc() {
           title: "N1QL Invalid Request Rate",
           desc: "Number of requests for unsupported endpoints per second, specifically HTTP requests for all endpoints not supported by the query engine. For example, a request for http://localhost:8093/foo will be included. Potentially useful in identifying DOS attacks."
         },
-        // "query_queued_requests": null,
-        // "query_request_time": null,
         "query_requests": {
           unit: "number/sec",
           title: "N1QL Request Rate",
           desc: "Number of N1QL requests processed per second."
-          // membase_query_stats_description
-          // title: "N1QL queries/sec"
-          // desc: "Number of N1QL requests processed per second"
         },
         "query_requests_1000ms": {
           unit: "number/sec",
@@ -1608,14 +1509,11 @@ function get65CompatDesc() {
           title: "Queries > 500ms",
           desc: "Number of queries that take longer than 500 ms per second."
         },
-        // "query_result_count": null,
-        // "query_result_size": null,
         "query_selects": {
           unit: "number/sec",
           title: "N1QL Select Rate",
           desc: "Number of N1QL selects processed per second."
         },
-        // "query_service_time": null,
         "query_warnings": {
           unit: "number/sec",
           title: "N1QL Warning Rate",
@@ -1715,7 +1613,6 @@ function get65CompatDesc() {
             title: "Term Searchers Start Rate",
             desc: "Number of term searchers started per second. Per index. (measured from total_term_searchers)"
           }
-          // "total_request_time": null,
         },
         "fts/num_bytes_used_disk": {
           unit: "bytes",
@@ -1737,18 +1634,6 @@ function get65CompatDesc() {
           title: "Search Query Rate",
           desc: "Search queries per second for all Search indexes in this bucket."
         }
-        // "fts/doc_count": null,
-        // "fts/num_mutations_to_index": null,
-        // "fts/num_pindexes_actual": null,
-        // "fts/num_pindexes_target": null,
-        // "fts/num_recs_to_persist": null,
-        // "fts/total_bytes_query_results": null,
-        // "fts/total_compaction_written_bytes": null,
-        // "fts/total_queries_error": null,
-        // "fts/total_queries_slow": null,
-        // "fts/total_queries_timeout": null,
-        // "fts/total_request_time": null,
-        // "fts/total_term_searchers": null
       },
 
       "@fts": {
@@ -1770,7 +1655,6 @@ function get65CompatDesc() {
       },
 
       "@cbas-":{
-        // "cbas/failed_at_parser_records_count": null,
         "cbas/failed_at_parser_records_count_total": {
           unit: "number",
           title: "Analytics Parse Fail Since Connect",
@@ -1921,33 +1805,6 @@ function get65CompatDesc() {
             title: "XDCR Meta Batch Latency",
             desc: "Weighted average latency in ms of sending getMeta and waiting for a conflict solution result from remote cluster. Per-replication. (measured from wtavg_meta_latency)"
           }
-          // "resp_wait_time": null,
-          // "set_docs_written": null,
-          // "set_failed_cr_source": null,
-          // "set_filtered": null,
-          // "set_received_from_dcp": null,
-          // "size_rep_queue": null,
-          // "throttle_latency": null,
-          // "time_committing": null,
-          // "expiry_docs_written": null,
-          // "expiry_failed_cr_source": null,
-          // "expiry_filtered": null,
-          // "expiry_received_from_dcp": null,
-          // "num_checkpoints": null,
-          // "num_failedckpts": null,
-          // "replication_docs_rep_queue": null,
-          // "data_replicated": null,
-          // "dcp_datach_length": null,
-          // "dcp_dispatch_time": null,
-          // "deletion_docs_written": null,
-          // "deletion_failed_cr_source": null,
-          // "deletion_filtered": null,
-          // "deletion_received_from_dcp": null,
-          // "docs_checked": null,
-          // "docs_opt_repd": null,
-          // "docs_processed": null,
-          // "docs_received_from_dcp": null,
-          // "docs_rep_queue": null
         }
       }
     }
