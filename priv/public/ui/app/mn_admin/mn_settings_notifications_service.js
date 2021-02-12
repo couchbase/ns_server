@@ -335,7 +335,9 @@ angular.module('mnSettingsNotificationsService', [
           var queries = [
             mnAnalyticsService.doGetStats(statsParams, mnHttpParams)
           ];
-          if (_.indexOf(poolDefault.thisNode.services, "kv") > -1 && mnPermissions.export.cluster.bucket[bucket.name].views.read) {
+          if (_.indexOf(poolDefault.thisNode.services, "kv") > -1 &&
+              mnPermissions.export.cluster.bucket[bucket.name].views &&
+              mnPermissions.export.cluster.bucket[bucket.name].views.read) {
             queries.push(mnViewsListService.getDdocs(bucket.name, mnHttpParams));
           } else {
             queries.push($q.when({}));
