@@ -61,8 +61,15 @@
          ng-if="bucket.isMembase">
         <strong>Storage Backend:</strong>
         {{bucketsDetailsCtl.bucketDetails.storageBackend === "couchstore" ? "CouchStore" :
-          bucketsDetailsCtl.bucketDetails.storageBackend === "magma" ? "Magma" : ""}}
+        bucketsDetailsCtl.bucketDetails.storageBackend === "magma" ? "Magma" : ""}}
       </div>
+      <div
+         class="nowrap"
+         ng-if="bucket.isEphemeral || bucket.isMembase">
+        <strong>Minimum Durability Level:</strong>
+        {{bucketsDetailsCtl.bucketDetails.durabilityMinLevel}}
+      </div>
+
     </div>
 
     <div class="cbui-table-meters buckets">

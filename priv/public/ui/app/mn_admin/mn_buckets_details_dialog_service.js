@@ -54,7 +54,7 @@ function mnBucketsDetailsDialogServiceFactory($http, $q, mnBytesToMBFilter, mnCo
       copyProperty("storageBackend");
     }
     if (bucketConf.bucketType === "ephemeral") {
-      copyProperty("purgeInterval");
+      copyProperties(["purgeInterval", "durabilityMinLevel"]);
       conf["evictionPolicy"] = bucketConf["evictionPolicyEphemeral"];
     }
     if (bucketConf.storageBackend === "magma") {
