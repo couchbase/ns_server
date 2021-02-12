@@ -2116,10 +2116,7 @@ basic_bucket_params_screening_test() ->
               %% Update
               {_OK14b, E14b} = basic_bucket_params_screening(
                                  false, "fourth",
-                                 [{"bucketType", "membase"},
-                                  {"ramQuotaMB", "400"},
-                                  {"replicaNumber", "3"},
-                                  {"durabilityMinLevel", Level}],
+                                 [{"durabilityMinLevel", Level}],
                                  AllBuckets),
               ?assertEqual([{durability_min_level,
                              <<"Durability minimum level cannot be specified "
