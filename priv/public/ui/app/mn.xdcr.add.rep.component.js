@@ -83,7 +83,7 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
         uiRouter.stateService.go('app.admin.replications').then(() => {
           var hasWarnings = !!(data.warnings && data.warnings.length);
           mnAlertsService.formatAndSetAlerts(
-            hasWarnings ? resp.data.warnings : "Replication created successfully!",
+            hasWarnings ? data.warnings : "Replication created successfully!",
             hasWarnings ? 'warning': "success",
             hasWarnings ? 0 : 2500);
         });
