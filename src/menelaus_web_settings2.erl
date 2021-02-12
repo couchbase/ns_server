@@ -211,8 +211,10 @@ parse_params(AllPossibleKeys, Req) ->
                                              %% reasons
                            B -> B
                        end,
-                JSON = try
-                           ejson:decode(Body)
+                JSON = try ejson:decode(Body) of
+                           {_} = J -> J;
+                           _ -> menelaus_util:web_exception(
+                                  400, "JSON object is expected")
                        catch
                            _:_ ->
                                menelaus_util:web_exception(400, "Invalid JSON")
