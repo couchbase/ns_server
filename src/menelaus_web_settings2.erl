@@ -205,7 +205,12 @@ parse_params(AllPossibleKeys, Req) ->
                               {KeyTokens, Val}
                           end, mochiweb_request:parse_post(Req));
             json ->
-                Body = mochiweb_request:recv_body(Req),
+                Body = case mochiweb_request:recv_body(Req) of
+                           <<>> -> <<"{}">>; %% treat empty body as an empty
+                                             %% object due to backward compat
+                                             %% reasons
+                           B -> B
+                       end,
                 JSON = try
                            ejson:decode(Body)
                        catch
