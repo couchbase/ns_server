@@ -5,7 +5,6 @@ var derivedMetric = {
   "@kv-.ep_dcp_other_items_sent": true,
   "@kv-.ep_dcp_other_producer_count": true,
   "@kv-.ep_dcp_other_total_bytes": true,
-  "@kv-.evictions": true
 }
 
 var compat65 = get65CompatDesc();
@@ -153,24 +152,93 @@ function propertiesToArray(obj) {
 
 function getStatAdditionalConfig(statName) {
   switch (statName) {
+  case "@kv-.kv_vb_replica_queue_age_seconds":
+    return {metric: {name: "kv_vb_queue_age_seconds",state:"replica"},aggregationFunction:"avg"};
+  case "@kv-.kv_vb_active_queue_age_seconds":
+    return {metric: {name: "kv_vb_queue_age_seconds",state:"active"}, aggregationFunction:"avg"};
+  case "@kv-.kv_vb_pending_queue_age_seconds":
+    return {metric: {name: "kv_vb_queue_age_seconds",state:"pending"},aggregationFunction:"avg"};
+  case "@kv-.kv_vb_total_queue_age_seconds":
+    return {metric: {name: "kv_vb_queue_age_seconds"},
+            aggregationFunction:"avg", applyFunctions: ["sum"]};
+
+  case "@kv-.kv_vb_active_eject":
+    return {metric: {name: "kv_vb_eject", state: "active"}, applyFunctions: ["irate"]};
+  case "@kv-.kv_vb_active_ops_create":
+    return {metric: {name: "kv_vb_ops_create", state: "active"}, applyFunctions: ["irate"]};
+  case "@kv-.kv_vb_active_queue_drain":
+    return {metric: {name: "kv_vb_queue_drain", state: "active"}, applyFunctions: ["irate"]};
+  case "@kv-.kv_vb_active_queue_fill":
+    return {metric: {name: "kv_vb_queue_fill", state: "active"}, applyFunctions: ["irate"]};
+  case "@kv-.kv_vb_active_sync_write_accepted_count":
+    return {metric: {name: "kv_vb_sync_write_accepted_count", state: "active"},
+            applyFunctions: ["irate"]};
+  case "@kv-.kv_vb_active_sync_write_committed_count":
+    return {metric: {name: "kv_vb_sync_write_committed_count", state: "active"},
+            applyFunctions: ["irate"]};
+  case "@kv-.kv_vb_active_sync_write_aborted_count":
+    return {metric: {name: "kv_vb_sync_write_aborted_count", state: "active"},
+            applyFunctions: ["irate"]};
+  case "@kv-.kv_vb_pending_eject":
+    return {metric: {name: "kv_vb_eject", state: "pending"}, applyFunctions: ["irate"]};
+  case "@kv-.kv_vb_pending_ops_create":
+    return {metric: {name: "kv_vb_ops_create", state: "pending"}, applyFunctions: ["irate"]};
+  case "@kv-.kv_vb_pending_queue_drain":
+    return {metric: {name: "kv_vb_queue_drain", state: "pending"}, applyFunctions: ["irate"]};
+  case "@kv-.kv_vb_pending_queue_fill":
+    return {metric: {name: "kv_vb_queue_fill", state: "pending"}, applyFunctions: ["irate"]};
+  case "@kv-.kv_vb_replica_eject":
+    return {metric: {name: "kv_vb_eject", state: "replica"}, applyFunctions: ["irate"]};
+  case "@kv-.kv_vb_replica_ops_create":
+    return {metric: {name: "kv_vb_ops_create", state: "replica"}, applyFunctions: ["irate"]};
+  case "@kv-.kv_vb_replica_queue_drain":
+    return {metric: {name: "kv_vb_queue_drain", state: "replica"}, applyFunctions: ["irate"]};
+  case "@kv-.kv_vb_replica_queue_fill":
+    return {metric: {name: "kv_vb_queue_fill", state: "replica"}, applyFunctions: ["irate"]};
+  case "@kv-.kv_vb_active_queue_size":
+    return {metric: {name: "kv_vb_queue_size", state: "active"}};
+  case "@kv-.kv_vb_pending_queue_size":
+    return {metric: {name: "kv_vb_queue_size", state: "pending"}};
+  case "@kv-.kv_vb_replica_curr_items":
+    return {metric: {name: "kv_vb_curr_items", state: "replica"}};
+  case "@kv-.kv_vb_pending_curr_items":
+    return {metric: {name: "kv_vb_curr_items", state: "pending"}};
+  case "@kv-.kv_vb_replica_queue_size":
+    return {metric: {name: "kv_vb_queue_size", state: "replica"}};
+  case "@kv-.kv_vb_active_itm_memory_bytes":
+    return {metric: {name: "kv_vb_itm_memory_bytes", state: "active"}};
+  case "@kv-.kv_vb_active_meta_data_memory_bytes":
+    return {metric: {name: "kv_vb_meta_data_memory_bytes", state: "active"}};
+  case "@kv-.kv_vb_pending_itm_memory_bytes":
+    return {metric: {name: "kv_vb_itm_memory_bytes", state: "pending"}};
+  case "@kv-.kv_vb_pending_meta_data_memory_bytes":
+    return {metric: {name: "kv_vb_meta_data_memory_bytes", state: "pending"}};
+  case "@kv-.kv_vb_replica_itm_memory_bytes":
+    return {metric: {name: "kv_vb_itm_memory_bytes", state: "replica"}};
+  case "@kv-.kv_vb_replica_meta_data_memory_bytes":
+    return {metric: {name: "kv_vb_meta_data_memory_bytes", state: "replica"}};
+
+  case "@kv-.kv_vb_pending_resident_items_ratio":
+    return {metric: {name: "kv_vb_resident_items_ratio", state: "pending"},
+            aggregationFunction: "avg"};
+  case "@kv-.kv_vb_active_resident_items_ratio":
+    return {metric: {name: "kv_vb_resident_items_ratio", state: "active"},
+            aggregationFunction: "avg"};
+  case "@kv-.kv_vb_replica_resident_items_ratio":
+    return {metric: {name: "kv_vb_resident_items_ratio", state: "replica"},
+            aggregationFunction: "avg"};
+
   case "@system.sys_cpu_utilization_rate":
   case "@kv-.kv_ep_resident_items_ratio":
-  case "@kv-.kv_vb_pending_resident_items_ratio":
-  case "@kv-.kv_vb_active_resident_items_ratio":
-  case "@kv-.kv_vb_replica_resident_items_ratio":
   case "@kv-.couch_docs_fragmentation":
   case "@kv-.kv_hit_ratio":
   case "@kv-.kv_ep_cache_miss_ratio":
-  case "@kv-.kv_ep_resident_items_ratio":
   case "@kv-.kv_avg_disk_time_seconds":
   case "@index-.@items.index_resident_percent":
   case "@index-.@items.index_cache_miss_ratio":
   case "@index-.index_fragmentation":
   case "@xdcr-@items.xdcr_percent_completeness":
   case "@cbas.cbas_system_load_average":
-  case "@kv-.kv_vb_replica_queue_age_seconds":
-  case "@kv-.kv_vb_active_queue_age_seconds":
-  case "@kv-.kv_queue_age_seconds":
   case "@kv-.kv_ops_update":
     return {aggregationFunction: "avg"};
 
@@ -199,21 +267,6 @@ function getStatAdditionalConfig(statName) {
   case "@kv-.kv_ep_num_value_ejects":
   case "@kv-.kv_ep_replica_ahead_exceptions":
   case "@kv-.kv_ep_tmp_oom_errors":
-  case "@kv-.kv_vb_active_eject":
-  case "@kv-.kv_vb_active_ops_create":
-  case "@kv-.kv_vb_active_queue_drain":
-  case "@kv-.kv_vb_active_queue_fill":
-  case "@kv-.kv_vb_active_sync_write_accepted_count":
-  case "@kv-.kv_vb_active_sync_write_committed_count":
-  case "@kv-.kv_vb_active_sync_write_aborted_count":
-  case "@kv-.kv_vb_pending_eject":
-  case "@kv-.kv_vb_pending_ops_create":
-  case "@kv-.kv_vb_pending_queue_drain":
-  case "@kv-.kv_vb_pending_queue_fill":
-  case "@kv-.kv_vb_replica_eject":
-  case "@kv-.kv_vb_replica_ops_create":
-  case "@kv-.kv_vb_replica_queue_drain":
-  case "@kv-.kv_vb_replica_queue_fill":
   case "@index-.@items.index_num_requests":
   case "@index-.@items.index_num_docs_indexed":
   case "@index-.@items.index_num_rows_returned":
@@ -259,9 +312,6 @@ function getStatAdditionalConfig(statName) {
 
   case "@cbas-.cbas_incoming_records_count_total":
     return {metric: {name: "cbas_incoming_records_count"}, applyFunctions: ["sum"]};
-
-  case "@kv-.kv_queue_age_seconds":
-    return {aggregationFunction: "avg", applyFunctions: ["sum"]};
 
   case "@xdcr-.@items.xdcr_rate_replicated_docs_per_second":
     return {metric: {name: "xdcr_docs_written_total"}, applyFunctions: ["irate"]};
@@ -437,15 +487,16 @@ function get70Mapping() {
     "@system.couch_views_actual_disk_size": "@kv-.couch_views_actual_disk_size",
     "@system.couch_views_data_size": "@kv-.couch_views_data_size",
 
+    "@kv-.kv_memcache_evictions": "@kv-.evictions",
     "@kv-.couch_total_disk_size": "@kv-.couch_total_disk_size",
     "@kv-.couch_docs_fragmentation": "@kv-.couch_docs_fragmentation",
     "@kv-.couch_views_fragmentation": "@kv-.couch_views_fragmentation",
     "@kv-.kv_hit_ratio": "@kv-.hit_ratio",
     "@kv-.kv_ep_cache_miss_ratio": "@kv-.ep_cache_miss_rate",
-    "@kv-.kv_vb_avg_pending_queue_age_seconds": "@kv-.vb_avg_pending_queue_age", //<--?
-    "@kv-.kv_vb_avg_active_queue_age_seconds": "@kv-.vb_avg_active_queue_age",
-    "@kv-.kv_vb_avg_replica_queue_age_seconds": "@kv-.vb_avg_replica_queue_age",
-    "@kv-.kv_vb_avg_total_queue_age_seconds": "@kv-.vb_avg_total_queue_age",
+    "@kv-.kv_vb_pending_queue_age_seconds": "@kv-.vb_avg_pending_queue_age",
+    "@kv-.kv_vb_active_queue_age_seconds": "@kv-.vb_avg_active_queue_age",
+    "@kv-.kv_vb_replica_queue_age_seconds": "@kv-.vb_avg_replica_queue_age",
+    "@kv-.kv_vb_total_queue_age_seconds": "@kv-.vb_avg_total_queue_age",
     "@kv-.kv_ep_resident_items_ratio": "@kv-.ep_resident_items_rate",
     "@kv-.kv_vb_pending_resident_items_ratio": "@kv-.vb_pending_resident_items_ratio",
     "@kv-.kv_vb_active_resident_items_ratio": "@kv-.vb_active_resident_items_ratio",
@@ -512,8 +563,6 @@ function get70Mapping() {
     "@kv-.kv_vb_pending_queue_fill": "@kv-.vb_pending_queue_fill",
     "@kv-.kv_vb_pending_queue_size": "@kv-.vb_pending_queue_size",
     "@kv-.kv_vb_replica_curr_items": "@kv-.vb_replica_curr_items",
-    "@kv-.kv_vb_pending_queue_size": "@kv-.vb_pending_queue_size",
-    "@kv-.kv_vb_replica_curr_items": "@kv-.vb_replica_curr_items",
     "@kv-.kv_vb_replica_eject": "@kv-.vb_replica_eject",
     "@kv-.kv_vb_replica_ops_create": "@kv-.vb_replica_ops_create",
     "@kv-.kv_vb_replica_queue_drain": "@kv-.vb_replica_queue_drain",
@@ -531,8 +580,8 @@ function get70Mapping() {
 
     "@kv-.kv_avg_disk_time_seconds": "@kv-.avg_disk_commit_time",
     "@kv-.kv_avg_bg_wait_time_seconds": "@kv-.avg_bg_wait_time",
-    "@kv-.kv_avg_active_timestamp_drift_seconds": "@kv-.avg_active_timestamp_drift",
-    "@kv-.kv_avg_replica_timestamp_drift_seconds": "@kv-.avg_replica_timestamp_drift",
+    "@kv-.kv_avg_active_timestamp_drift_seconds": "@kv-.avg_active_timestamp_drift",//<?
+    "@kv-.kv_avg_replica_timestamp_drift_seconds": "@kv-.avg_replica_timestamp_drift",//<?
     "@kv-.kv_disk_write_queue": "@kv-.disk_write_queue",
     "@kv-.kv_ep_ops_create": "@kv-.ep_ops_create",
     "@kv-.kv_ep_ops_update": "@kv-.ep_ops_update",
