@@ -226,7 +226,7 @@ do_nodes_wanted_updated_fun(Node, NodeList) ->
     PongList = ping_all(NodeList),
     ?log_debug("ns_node_disco: nodes_wanted pong: ~p, with cookie: ~p",
                [PongList, SanitizedCookie]),
-    case lists:member(Node, NodeList) of
+    case chronicle_compat:enabled() orelse lists:member(Node, NodeList) of
         true ->
             ok;
         false ->

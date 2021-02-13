@@ -498,6 +498,20 @@ handle_cast(retry_start_ns_server, State) ->
 
     {noreply, State}.
 
+handle_info(check_chronicle_state, State) ->
+    ChronicleState = chronicle:get_system_state(),
+    ?log_info("Chronicle state is: ~p", [ChronicleState]),
+    case ChronicleState of
+        removed ->
+            misc:flush(check_chronicle_state),
+            true = chronicle_compat:enabled(),
+            false = misc:marker_exists(leave_marker_path()),
+            handle_cast(leave, State);
+        _ ->
+            ok
+    end,
+    {noreply, State};
+
 handle_info({'DOWN', MRef, process, Pid, Reason},
             State = #state{mref = MRef}) ->
     ?log_info("Caller process ~p died with ~p", [Pid, Reason]),
@@ -509,6 +523,19 @@ handle_info(Msg, State) ->
 
 
 init([]) ->
+    Self = self(),
+
+    Subscribe =
+        fun () ->
+                ns_pubsub:subscribe_link(
+                  chronicle_external_events,
+                  fun ({important_change, system_state}) ->
+                          Self ! check_chronicle_state;
+                      (_) ->
+                          ok
+                  end)
+        end,
+
     case misc:marker_exists(leave_marker_path()) of
         true ->
             ?log_info("Found marker of in-flight cluster leave. "
@@ -517,7 +544,8 @@ init([]) ->
             %% we have to do it async because otherwise our parent
             %% supervisor is waiting us to complete init and our call
             %% to terminate ns_server_sup is going to cause deadlock
-            gen_server:cast(self(), leave);
+            gen_server:cast(Self, leave),
+            Subscribe();
         false ->
             case misc:marker_exists(start_marker_path()) of
                 true ->
@@ -525,10 +553,12 @@ init([]) ->
                               "Looks like we failed to restart ns_server "
                               "after leaving or joining a cluster. "
                               "Will try again.", [start_marker_path()]),
-                    gen_server:cast(self(), retry_start_ns_server);
+                    gen_server:cast(Self, retry_start_ns_server);
                 false ->
                     ok
-            end
+            end,
+            Subscribe(),
+            Self ! check_chronicle_state
     end,
     {ok, #state{}}.
 
@@ -556,8 +586,13 @@ leave() ->
                    [RemoteNode]),
     %% Tell the remote server to tell everyone to shun me.
     rpc:cast(RemoteNode, ?MODULE, shun, [node()]),
-    %% Then drop ourselves into a leaving state.
-    leave_async().
+    case chronicle_compat:enabled() of
+        false ->
+            %% Then drop ourselves into a leaving state.
+            leave_async();
+        true ->
+            ok
+    end.
 
 force_eject_self() ->
     %% first send leave
@@ -576,7 +611,12 @@ leave(Node) ->
             leave();
         false ->
             %% Will never fail, but may not reach the destination
-            gen_server:cast({?MODULE, Node}, leave),
+            case chronicle_compat:enabled() of
+                false ->
+                    gen_server:cast({?MODULE, Node}, leave);
+                true ->
+                    ok
+            end,
             shun(Node)
     end.
 
