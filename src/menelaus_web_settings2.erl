@@ -211,10 +211,8 @@ parse_params(AllPossibleKeys, Req) ->
                                              %% reasons
                            B -> B
                        end,
-                JSON = try ejson:decode(Body) of
-                           {_} = J -> J;
-                           _ -> menelaus_util:web_exception(
-                                  400, "JSON object is expected")
+                JSON = try
+                           ejson:decode(Body)
                        catch
                            _:_ ->
                                menelaus_util:web_exception(400, "Invalid JSON")
@@ -234,7 +232,9 @@ flatten_json(AllPossibleKeys, {JSON}, Path) when is_list(JSON) ->
                                   (_) -> false
                               end, AllPossibleKeys),
           flatten_json(NewPossibleKeys, Value, Path ++ [KeyStr])
-      end, JSON).
+      end, JSON);
+flatten_json(_AllPossibleKeys, _JSON, _Path) ->
+    menelaus_util:web_exception(400, "JSON object is expected").
 
 group_elements([{[], Value}], _) -> Value;
 group_elements(Proplist, GroupFormatter) ->
