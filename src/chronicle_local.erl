@@ -53,7 +53,16 @@ init([]) ->
     ?log_debug("Ensure chronicle is started"),
     ok = application:ensure_started(chronicle, permanent),
 
-    ok = ensure_provisioned(),
+    ChronicleState = chronicle:get_system_state(),
+    ?log_debug("Chronicle state is: ~p", [ChronicleState]),
+
+    case ChronicleState of
+        not_provisioned ->
+            ok = provision();
+        _ ->
+            ok
+    end,
+
     case dist_manager:need_fixup() of
         {true, OldNode} ->
             ?log_info("Aborted rename from ~p was detected", [OldNode]),
@@ -69,7 +78,7 @@ handle_call({prepare_join, Info}, _From, State) ->
     case Info of
         undefined ->
             ?log_debug("Joining not chronicle enabled cluster"),
-            ok = ensure_provisioned();
+            ok = provision();
         _ ->
             ?log_debug("Prepare join. Info: ~p", [Info]),
             ok = chronicle:prepare_join(Info)
@@ -124,20 +133,14 @@ get_snapshot(Node) ->
 sync() ->
     gen_server2:call(?MODULE, sync).
 
-ensure_provisioned() ->
-    ?log_debug("Ensure that chronicle is provisioned"),
-    case chronicle:provision([{kv, chronicle_kv, []}]) of
-        {error, provisioned} ->
-            ?log_debug("Chronicle is already provisioned."),
-            ok;
-        Other ->
-            Other
-    end.
+provision() ->
+    ?log_debug("Provision chronicle on this node"),
+    chronicle:provision([{kv, chronicle_kv, []}]).
 
 handle_leave() ->
     ?log_debug("Leaving cluster"),
     ok = chronicle:wipe(),
-    ok = ensure_provisioned().
+    ok = provision().
 
 handle_rename(OldNode) ->
     NewNode = node(),
