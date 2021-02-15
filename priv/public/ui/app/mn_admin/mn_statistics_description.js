@@ -158,12 +158,25 @@ function getStatAdditionalConfig(statName) {
   case "@kv-.kv_vb_pending_resident_items_ratio":
   case "@kv-.kv_vb_active_resident_items_ratio":
   case "@kv-.kv_vb_replica_resident_items_ratio":
+  case "@kv-.couch_docs_fragmentation":
+  case "@kv-.kv_hit_ratio":
+  case "@kv-.kv_ep_cache_miss_ratio":
+  case "@kv-.kv_ep_resident_items_ratio":
+  case "@kv-.kv_avg_disk_time_seconds":
+  case "@index-.@items.index_resident_percent":
+  case "@index-.@items.index_cache_miss_ratio":
+  case "@index-.index_fragmentation":
+  case "@xdcr-@items.xdcr_percent_completeness":
   case "@cbas.cbas_system_load_average":
   case "@kv-.kv_vb_replica_queue_age_seconds":
   case "@kv-.kv_vb_active_queue_age_seconds":
   case "@kv-.kv_queue_age_seconds":
   case "@kv-.kv_ops_update":
     return {aggregationFunction: "avg"};
+
+  case "@kv-.couch_views_fragmentation":
+  case "@index-.@items.index_frag_percent":
+    return {aggregationFunction: "avg", applyFunctions: ["sum"]};
 
   case "@cbas-.cbas_incoming_records_count":
   case "@index-.index_num_docs_indexed":
@@ -235,9 +248,7 @@ function getStatAdditionalConfig(statName) {
   case "@eventing.eventing_dcp_backlog":
   case "@eventing.eventing_timeout_count":
   case "@index-.index_num_rows_returned":
-  case "@index-.index_frag_percent":
   case "@kv-.couch_views_ops": //<- not sure if we need irate
-  case "@kv-.couch_views_fragmentation":
     return {applyFunctions: ["sum"]};
 
   case "@cbas-.cbas_failed_at_parser_records_count_total":
@@ -416,7 +427,7 @@ function get70Mapping() {
     "@index.index_remaining_ram": "@index.index_remaining_ram",
 
     "@index-.@items.index_num_docs_pending_and_queued": "@index-.@items.num_docs_pending+queued",
-    "@index-.@items.cache_miss_ratio": "@index-.@items.index_cache_miss_ratio",
+    "@index-.@items.index_cache_miss_ratio": "@index-.@items.cache_miss_ratio",
 
     "@system.couch_docs_actual_disk_size": "@kv-.couch_docs_actual_disk_size",
     "@system.couch_docs_data_size": "@kv-.couch_docs_data_size",
@@ -1324,7 +1335,7 @@ function get65CompatDesc() {
       "@index":{
         "index_memory_quota": null, //able in system but not in builder
         "index_memory_used": null,
-        "index_ram_percent": {
+        "index_ram_percent": { //doesn't exist in prometheus
           unit: "percent",
           title: "Index RAM Quota Used",
           desc: "Percentage of Index RAM quota in use across all indexes on this server."
