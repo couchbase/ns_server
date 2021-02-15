@@ -154,6 +154,10 @@ function propertiesToArray(obj) {
 function getStatAdditionalConfig(statName) {
   switch (statName) {
   case "@system.sys_cpu_utilization_rate":
+  case "@kv-.kv_ep_resident_items_ratio":
+  case "@kv-.kv_vb_pending_resident_items_ratio":
+  case "@kv-.kv_vb_active_resident_items_ratio":
+  case "@kv-.kv_vb_replica_resident_items_ratio":
   case "@cbas.cbas_system_load_average":
   case "@kv-.kv_vb_replica_queue_age_seconds":
   case "@kv-.kv_vb_active_queue_age_seconds":
@@ -424,13 +428,12 @@ function get70Mapping() {
     "@kv-.couch_views_fragmentation": "@kv-.couch_views_fragmentation",
     "@kv-.kv_hit_ratio": "@kv-.hit_ratio",
     "@kv-.kv_ep_cache_miss_ratio": "@kv-.ep_cache_miss_rate",
-    "@kv-.kv_ep_resident_items_ratio": "@kv-.ep_resident_items_rate",
-    "@kv-.kv_vb_avg_pending_queue_age_seconds": "@kv-.vb_avg_pending_queue_age",
-    "@kv-.kv_vb_pending_resident_items_ratio": "@kv-.vb_pending_resident_items_ratio",
-
+    "@kv-.kv_vb_avg_pending_queue_age_seconds": "@kv-.vb_avg_pending_queue_age", //<--?
     "@kv-.kv_vb_avg_active_queue_age_seconds": "@kv-.vb_avg_active_queue_age",
     "@kv-.kv_vb_avg_replica_queue_age_seconds": "@kv-.vb_avg_replica_queue_age",
     "@kv-.kv_vb_avg_total_queue_age_seconds": "@kv-.vb_avg_total_queue_age",
+    "@kv-.kv_ep_resident_items_ratio": "@kv-.ep_resident_items_rate",
+    "@kv-.kv_vb_pending_resident_items_ratio": "@kv-.vb_pending_resident_items_ratio",
     "@kv-.kv_vb_active_resident_items_ratio": "@kv-.vb_active_resident_items_ratio",
     "@kv-.kv_vb_replica_resident_items_ratio": "@kv-.vb_replica_resident_items_ratio",
     "@kv-.kv_ops_update": "@kv-.avg_disk_update_time", //?
