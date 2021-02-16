@@ -38,6 +38,8 @@
 %% exported for log formatting
 -export([format_msg/2, format_time/1]).
 
+-define(CALL_TIMEOUT, ?get_timeout(call, 180000)).
+
 start_link() ->
     gen_server2:start_link({local, ?MODULE}, ?MODULE, [], []).
 
@@ -107,25 +109,26 @@ handle_call(sync, _From, State) ->
     {reply, ok, State}.
 
 leave_cluster() ->
-    gen_server2:call(?MODULE, leave_cluster).
+    gen_server2:call(?MODULE, leave_cluster, ?CALL_TIMEOUT).
 
 prepare_join(Info) ->
-    gen_server2:call(?MODULE, {prepare_join, Info}).
+    gen_server2:call(?MODULE, {prepare_join, Info}, ?CALL_TIMEOUT).
 
 join_cluster(undefined) ->
     ok;
 join_cluster(Info) ->
-    gen_server2:call(?MODULE, {join_cluster, Info}).
+    gen_server2:call(?MODULE, {join_cluster, Info}, ?CALL_TIMEOUT).
 
 rename(OldNode) ->
     gen_server2:call(?MODULE, {rename, OldNode}).
 
 get_snapshot(Node) ->
-    {ok, Snapshot} = gen_server2:call({?MODULE, Node}, get_snapshot),
+    {ok, Snapshot} = gen_server2:call({?MODULE, Node}, get_snapshot,
+                                      ?CALL_TIMEOUT),
     Snapshot.
 
 sync() ->
-    gen_server2:call(?MODULE, sync).
+    gen_server2:call(?MODULE, sync, ?CALL_TIMEOUT).
 
 provision() ->
     ?log_debug("Provision chronicle on this node"),
