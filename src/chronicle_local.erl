@@ -94,8 +94,6 @@ handle_call(leave_cluster, _From, State) ->
 handle_call({rename, OldNode}, _From, State) ->
     handle_rename(OldNode),
     {reply, ok, State};
-handle_call({pull, Timeout}, _From, State) ->
-    {reply, pull(Timeout), State};
 handle_call(get_snapshot, _From, Pid) ->
     RV =
         try chronicle_kv:get_full_snapshot(kv) of
@@ -175,28 +173,6 @@ format_msg(#log_info{user_data = #{module := M, function := F, line := L}}
     ale_default_formatter:format_msg(
       Info#log_info{module = M, function = F, line = L}, UserMsg).
 
-pull(Timeout) ->
-    ?log_debug("Pull quorum view of chronicle"),
-    case chronicle_rsm:sync(kv, quorum, Timeout) of
-        ok ->
-            ok;
-        Error ->
-            ?log_warning("Failed to pull quorum view of chronicle ~p", [Error]),
-            Error
-    end.
-
-remote_pull([], _Timeout) ->
-    ok;
-remote_pull(Nodes, Timeout) ->
-    ?log_debug("Asking nodes ~p to pull chronicle", [Nodes]),
-    case misc:multi_call(Nodes, ?MODULE, {pull, Timeout}, Timeout, _ =:= ok) of
-        {_, []} ->
-            ok;
-        {_, Errors} ->
-            ?log_warning("Failed to push chronicle config ~p", [Errors]),
-            {remote_pull_failed, Errors}
-    end.
-
 node_keys(Node) ->
     [{node, Node, membership},
      {node, Node, services},
@@ -259,4 +235,4 @@ do_upgrade(Config) ->
     ?log_info("Keys are migrated to chronicle. Rev = ~p. Sets = ~p",
               [Rev, Sets]),
 
-    remote_pull(OtherNodes, ?PULL_TIMEOUT).
+    chronicle_compat:remote_pull(OtherNodes, ?PULL_TIMEOUT).

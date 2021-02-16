@@ -37,8 +37,12 @@
          start_refresh_worker/2,
          pull/0,
          pull/1,
+         remote_pull/2,
          config_sync/2,
          config_sync/3]).
+
+%% RPC from another nodes
+-export([do_pull/1]).
 
 -define(PULL_TIMEOUT, 15000).
 
@@ -314,30 +318,28 @@ pull(Timeout) ->
         ns_config ->
             ok;
         chronicle ->
-            case chronicle_rsm:sync(kv, quorum, Timeout) of
-                ok ->
-                    ok;
-                Error ->
-                    ?log_warning("Failed to pull chronicle config ~p", [Error])
-            end
+            do_pull(Timeout)
+    end.
+
+do_pull(Timeout) ->
+    case chronicle_rsm:sync(kv, quorum, Timeout) of
+        ok ->
+            ok;
+        Error ->
+            ?log_warning("Failed to pull chronicle config ~p", [Error])
     end.
 
 remote_pull(Nodes, Timeout) ->
-    case backend() of
-        ns_config ->
+    {Results, BadNodes} =
+        rpc:multicall(Nodes, ?MODULE, do_pull, [Timeout], Timeout),
+    case BadNodes =:= [] andalso lists:all(fun(A) -> A =:= ok end,
+                                           Results) of
+        true ->
             ok;
-        chronicle ->
-            {Results, BadNodes} =
-                rpc:multicall(Nodes, ?MODULE, pull, [Timeout], Timeout),
-            case BadNodes =:= [] andalso lists:all(fun(A) -> A =:= ok end,
-                                                   Results) of
-                true ->
-                    ok;
-                false ->
-                    Error = {remote_pull_failed, Results, BadNodes},
-                    ?log_warning("Failed to push chronicle config ~p", [Error]),
-                    {error, Error}
-            end
+        false ->
+            Error = {remote_pull_failed, Results, BadNodes},
+            ?log_warning("Failed to push chronicle config ~p", [Error]),
+            {error, Error}
     end.
 
 config_sync(Type, Nodes) ->
@@ -353,11 +355,16 @@ config_sync(pull, Nodes, Timeout) ->
 config_sync(push, Nodes, Timeout) ->
     case ns_config_rep:ensure_config_seen_by_nodes(Nodes, Timeout) of
         ok ->
-            case remote_pull(Nodes, Timeout) of
-                ok ->
+            case backend() of
+                ns_config ->
                     ok;
-                {error, {remote_pull_failed, Results, BadNodes}} ->
-                    Results ++ [{N, bad_rpc} || N <- BadNodes]
+                chronicle ->
+                    case remote_pull(Nodes, Timeout) of
+                        ok ->
+                            ok;
+                        {error, {remote_pull_failed, Results, BadNodes}} ->
+                            Results ++ [{N, bad_rpc} || N <- BadNodes]
+                    end
             end;
         {error, SyncFailedNodes} ->
             SyncFailedNodes
