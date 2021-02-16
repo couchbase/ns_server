@@ -29,11 +29,11 @@
 -define(NODE_EJECTED, 4).
 -define(NODE_JOIN_FAILED, 5).
 
--define(ADD_NODE_TIMEOUT,       ?get_timeout(add_node, 160000)).
+-define(ADD_NODE_TIMEOUT,       ?get_timeout(add_node, 240000)).
 -define(ENGAGE_TIMEOUT,         ?get_timeout(engage, 30000)).
--define(COMPLETE_TIMEOUT,       ?get_timeout(complete, 120000)).
--define(PREP_CHRONICLE_TIMEOUT, ?get_timeout(prep_chronicle, 120000)).
--define(JOIN_CHRONICLE_TIMEOUT, ?get_timeout(join_chronicle, 120000)).
+-define(COMPLETE_TIMEOUT,       ?get_timeout(complete, 240000)).
+-define(PREP_CHRONICLE_TIMEOUT, ?get_timeout(prep_chronicle, 240000)).
+-define(JOIN_CHRONICLE_TIMEOUT, ?get_timeout(join_chronicle, 240000)).
 -define(CHANGE_ADDRESS_TIMEOUT, ?get_timeout(change_address, 30000)).
 -define(LEADER_SHUTDOWN_TIMEOUT,?get_timeout(leader_shutdown, 30000)).
 
