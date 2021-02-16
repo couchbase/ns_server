@@ -344,11 +344,11 @@ function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http
 
     if ($scope.rbac.cluster.bucket['.'].n1ql.index.read) {
       new mnPoller($scope, function () {
-        return mnGsiService.getIndexesState().then(function (rv) {
+        return mnGsiService.getIndexStatus().then(function (rv) {
           if (!$state.params.scenarioBucket) {
             return;
           }
-          return rv.byBucket[$state.params.scenarioBucket];
+          return rv.indexes.filter(index => index.bucket === $state.params.scenarioBucket);
         });
       })
         .setInterval(10000)
