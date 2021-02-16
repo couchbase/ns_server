@@ -77,7 +77,7 @@ maybe_final_upgrade(_) ->
     [].
 
 maybe_upgrade_to_cronicle(?VERSION_CHESHIRECAT, Config) ->
-    chronicle_local:upgrade(Config);
+    chronicle_compat:upgrade(Config);
 maybe_upgrade_to_cronicle(_, _) ->
     ok.
 

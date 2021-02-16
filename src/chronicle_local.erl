@@ -30,8 +30,6 @@
          leave_cluster/0,
          rename/1,
          get_snapshot/1,
-         upgrade/1,
-         node_keys/1,
          sync/0]).
 
 %% exported chronicle log fun
@@ -39,8 +37,6 @@
 
 %% exported for log formatting
 -export([format_msg/2, format_time/1]).
-
--define(PULL_TIMEOUT, ?get_timeout(upgrade_pull, 60000)).
 
 start_link() ->
     gen_server2:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -172,67 +168,3 @@ format_msg(#log_info{user_data = #{module := M, function := F, line := L}}
            = Info, UserMsg) ->
     ale_default_formatter:format_msg(
       Info#log_info{module = M, function = F, line = L}, UserMsg).
-
-node_keys(Node) ->
-    [{node, Node, membership},
-     {node, Node, services},
-     {node, Node, recovery_type},
-     {node, Node, failover_vbuckets}].
-
-should_move(nodes_wanted) ->
-    true;
-should_move(server_groups) ->
-    true;
-should_move({node, _, membership}) ->
-    true;
-should_move({node, _, services}) ->
-    true;
-should_move({node, _, recovery_type}) ->
-    true;
-should_move({node, _, failover_vbuckets}) ->
-    true;
-should_move({service_map, _}) ->
-    true;
-should_move({service_failover_pending, _}) ->
-    true;
-should_move(auto_reprovision_cfg) ->
-    true;
-should_move(buckets_with_data) ->
-    true;
-should_move(_) ->
-    false.
-
-upgrade(Config) ->
-    case chronicle_compat:forced() of
-        true ->
-            do_upgrade(Config);
-        false ->
-            ok
-    end.
-
-do_upgrade(Config) ->
-    OtherNodes = ns_node_disco:nodes_wanted(Config) -- [node()],
-    ok = chronicle_master:upgrade_cluster(OtherNodes),
-
-    Pairs =
-        ns_config:fold(
-          fun (buckets, Buckets, Acc) ->
-                  maps:merge(
-                    Acc, maps:from_list(
-                           ns_bucket:upgrade_to_chronicle(Buckets)));
-              (Key, Value, Acc) ->
-                  case should_move(Key) of
-                      true ->
-                          maps:put(Key, Value, Acc);
-                      false ->
-                          Acc
-                  end
-          end, #{}, Config),
-
-    Sets = [{set, K, V} || {K, V} <- maps:to_list(Pairs)],
-
-    {ok, Rev} = chronicle_kv:multi(kv, Sets),
-    ?log_info("Keys are migrated to chronicle. Rev = ~p. Sets = ~p",
-              [Rev, Sets]),
-
-    chronicle_compat:remote_pull(OtherNodes, ?PULL_TIMEOUT).

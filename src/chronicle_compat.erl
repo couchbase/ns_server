@@ -37,14 +37,16 @@
          start_refresh_worker/2,
          pull/0,
          pull/1,
-         remote_pull/2,
          config_sync/2,
-         config_sync/3]).
+         config_sync/3,
+         node_keys/1,
+         upgrade/1]).
 
 %% RPC from another nodes
 -export([do_pull/1]).
 
--define(PULL_TIMEOUT, 15000).
+-define(UPGRADE_PULL_TIMEOUT,
+        ?get_timeout(upgrade_pull, 60000)).
 
 backend() ->
     case enabled() of
@@ -369,3 +371,67 @@ config_sync(push, Nodes, Timeout) ->
         {error, SyncFailedNodes} ->
             SyncFailedNodes
     end.
+
+node_keys(Node) ->
+    [{node, Node, membership},
+     {node, Node, services},
+     {node, Node, recovery_type},
+     {node, Node, failover_vbuckets}].
+
+should_move(nodes_wanted) ->
+    true;
+should_move(server_groups) ->
+    true;
+should_move({node, _, membership}) ->
+    true;
+should_move({node, _, services}) ->
+    true;
+should_move({node, _, recovery_type}) ->
+    true;
+should_move({node, _, failover_vbuckets}) ->
+    true;
+should_move({service_map, _}) ->
+    true;
+should_move({service_failover_pending, _}) ->
+    true;
+should_move(auto_reprovision_cfg) ->
+    true;
+should_move(buckets_with_data) ->
+    true;
+should_move(_) ->
+    false.
+
+upgrade(Config) ->
+    case forced() of
+        true ->
+            do_upgrade(Config);
+        false ->
+            ok
+    end.
+
+do_upgrade(Config) ->
+    OtherNodes = ns_node_disco:nodes_wanted(Config) -- [node()],
+    ok = chronicle_master:upgrade_cluster(OtherNodes),
+
+    Pairs =
+        ns_config:fold(
+          fun (buckets, Buckets, Acc) ->
+                  maps:merge(
+                    Acc, maps:from_list(
+                           ns_bucket:upgrade_to_chronicle(Buckets)));
+              (Key, Value, Acc) ->
+                  case should_move(Key) of
+                      true ->
+                          maps:put(Key, Value, Acc);
+                      false ->
+                          Acc
+                  end
+          end, #{}, Config),
+
+    Sets = [{set, K, V} || {K, V} <- maps:to_list(Pairs)],
+
+    {ok, Rev} = chronicle_kv:multi(kv, Sets),
+    ?log_info("Keys are migrated to chronicle. Rev = ~p. Sets = ~p",
+              [Rev, Sets]),
+
+    remote_pull(OtherNodes, ?UPGRADE_PULL_TIMEOUT).

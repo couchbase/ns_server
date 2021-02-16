@@ -331,7 +331,7 @@ remove_node(RemoteNode) ->
                        (_Other) ->
                            skip
                    end),
-            NodeKeys = chronicle_local:node_keys(RemoteNode),
+            NodeKeys = chronicle_compat:node_keys(RemoteNode),
             {ok, _} =
                 chronicle_kv:transaction(
                   kv, [nodes_wanted, server_groups | NodeKeys],
