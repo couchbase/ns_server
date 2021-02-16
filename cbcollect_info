@@ -114,12 +114,10 @@ USAGE = """usage: %prog [options] output_file.zip
 # adapted from pytz
 
 
-class FixedOffsetTZ(tzinfo):
-    def __init__(self, minutes):
-        if abs(minutes) >= 1440:
-            raise ValueError("absolute offset is too large", minutes)
-        self._minutes = minutes
-        self._offset = timedelta(minutes=minutes)
+class LocalTZ(tzinfo):
+    def __init__(self):
+        offset = time.localtime().tm_gmtoff
+        self._offset = timedelta(seconds=offset)
 
     def utcoffset(self, dt):
         return self._offset
@@ -131,7 +129,7 @@ class FixedOffsetTZ(tzinfo):
         return None
 
 
-local_tz = FixedOffsetTZ(minutes=time.timezone / 60)
+local_tz = LocalTZ()
 log_stream = StringIO()
 local_addr = None
 local_url_addr = None
