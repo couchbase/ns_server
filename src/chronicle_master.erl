@@ -25,6 +25,7 @@
 -export([start_link/0,
          init/1,
          handle_call/3,
+         handle_info/2,
          add_replica/1,
          remove_peer/1,
          ensure_voters/1,
@@ -62,6 +63,7 @@ upgrade_cluster(OtherNodes) ->
     gen_server2:call(?SERVER, {upgrade_cluster, OtherNodes}, ?UPGRADE_TIMEOUT).
 
 init([]) ->
+    erlang:process_flag(trap_exit, true),
     {ok, Lock} = chronicle:acquire_lock(),
     ?log_debug("Aquired lock: ~p", [Lock]),
     {ok, Lock}.
@@ -117,6 +119,11 @@ handle_call({upgrade_cluster, NodesToAdd}, _From, Lock) ->
     ok = promote_to_voters(Lock, NodesToAdd),
     ?log_info("Cluster successfully upgraded to chronicle"),
     {reply, ok, Lock}.
+
+handle_info({'EXIT', From, Reason}, State) ->
+    ?log_debug("Received exit from ~p with reason ~p. Exiting.",
+               [From, Reason]),
+    {stop, Reason, State}.
 
 promote_to_voters(Lock, Nodes) ->
     ?log_debug("Promoting nodes ~p to voters, Lock: ~p", [Nodes, Lock]),
