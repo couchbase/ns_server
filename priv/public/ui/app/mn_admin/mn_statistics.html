@@ -1,6 +1,8 @@
 <div class="row margin-bottom-1-5" ng-show="rbac.cluster.stats.read">
   <div class="row flex-left flex-wrap">
-    <div class="inline margin-right-half"
+    <span>
+      <h5>Choose Dashboard <small> or create your own</small></h5>
+    <div class="margin-right-half"
        ng-controller="mnScenarioDialogController as scenarioCtrl">
       <mn-dropdown
          ng-click="$event.stopPropagation();"
@@ -19,15 +21,14 @@
             <div
                ng-if="!scenario.preset"
                class="scenario-controls"
-               ng-click="$event.stopPropagation();"
-               title="delete/edit scenario">
+               ng-click="$event.stopPropagation();">
               <span
                  title="delete scenario"
-                 class="icon fa-trash"
+                 class="icon fa-trash dashboard-delete"
                  ng-click="scenarioCtrl.deleteScenario(scenario.id)"></span>
               <span
                  title="edit scenario"
-                 class="icon fa-edit"
+                 class="icon fa-edit dashboard-adder"
                  ng-click="scenarioCtrl.editScenario(scenario)"></span>
             </div>
           </mn-dropdown-item>
@@ -36,7 +37,7 @@
           <form
              novalidate
              ng-submit="scenarioCtrl.onSubmit(statisticsNewCtl.getSelectedScenario())"
-             name="form"
+             name="add_scenario_form"
              class="forms">
             <div class="scenario-add" ng-class="{'scenario-add-ext' : scenarioCtrl.showRestOfMenu}">
               <input
@@ -48,14 +49,14 @@
                  ng-click="scenarioCtrl.showRestOfMenu = true"
                  spellcheck="false"
                  autocapitalize="off"
-                 ng-disabled="!rbac.bucketNames['.stats!read'].length">
+                 ng-disabled="!rbac.bucketNames['.stats!read'].length"
+                 required>
               <span class="icon fa-plus-square" ng-show="!scenarioCtrl.showRestOfMenu"></span>
             </div>
-
             <input
                type="text"
                ng-model="scenarioCtrl.scenario.desc"
-               placeholder="add optional description..."
+               placeholder="optional description..."
                autocorrect="off"
                spellcheck="false"
                autocapitalize="off"
@@ -78,14 +79,20 @@
               <label for="for-bucket-type-blank">start blank</label>
             </div>
             <div class="scenario-save-controls" ng-show="scenarioCtrl.showRestOfMenu">
-              <button type="submit">Save</button>
+              <button
+                 type="submit"
+                 ng-disabled="add_scenario_form.$invalid">
+                Save</button>
               <a class="width-12 text-center" ng-click="scenarioCtrl.clear()">Cancel</a>
             </div>
           </form>
         </inner-footer>
       </mn-dropdown>
     </div>
+  </span>
 
+  <span>
+    <h5>Stat Interval</h5>
     <select
        ng-model="statisticsNewCtl.zoom"
        ng-change="statisticsNewCtl.onSelectZoom()"
@@ -96,16 +103,22 @@
       <option value="week">week</option>
       <option value="month">month</option>
     </select>
+  </span>
 
-    <select
-       ng-model="statisticsNewCtl.selectedBucket"
-       class="max-width-4 margin-right-half"
-       ng-change="statisticsNewCtl.onBucketChange(statisticsNewCtl.selectedBucket)">
-      <option ng-repeat="name in rbac.bucketNames['.stats!read']" value="{{name}}">
-        {{name}}
-      </option>
-    </select>
+  <span>
+  <h5>Bucket</h5>
+      <select
+         ng-model="statisticsNewCtl.selectedBucket"
+         class="max-width-4 margin-right-half"
+         ng-change="statisticsNewCtl.onBucketChange(statisticsNewCtl.selectedBucket)">
+        <option ng-repeat="name in rbac.bucketNames['.stats!read']" value="{{name}}">
+          {{name}}
+        </option>
+      </select>
+  </span>
 
+  <span>
+  <h5>Node(s)</h5>
     <ui-select
        class="cbui-select"
        ng-model="statisticsNewCtl.nodes.nodesNames.selected"
@@ -119,27 +132,32 @@
         <span class="select-item ellipsis" ng-bind-html="name | highlight: $select.search"></span>
       </ui-select-choices>
     </ui-select>
+  </span>
   </div>
-  <div class="row flex-right">
+  <div class="row flex-right flex-wrap">
     <!--
          <a href="http://127.0.0.1:9000/ui/index.html#!/servers/list/analytics/" class="text-smaller">
          Classic Stats
          </a>
     -->
-    <button ng-click="statisticsNewCtl.resetDashboardConfiguration();" class="outline tight scenario-delete indent-1">
+    <button
+       ng-click="statisticsNewCtl.resetDashboardConfiguration();"
+       class="light dashboard-delete"
+       title="reset & delete customizations">
       <span class="icon fa-trash"></span> Reset
     </button>
     <button
        ng-disabled="!statisticsNewCtl.scenarios.length"
        ng-click="statisticsNewCtl.openGroupDialog()"
-       class="outline tight"
-       ng-hide="statisticsNewCtl.getSelectedScenario().preset">
+       class="light dashboard-adder"
+       ng-hide="statisticsNewCtl.getSelectedScenario().preset"
+       title="add chart group">
       <span class="icon fa-plus-circle"></span> Add Group
     </button>
   </div>
 </div>
 
-<div class="width-12">
+<div class="width-12 margin-bottom-4"> <!-- wrapper around all chart groups -->
   <div
      ng-repeat="groupID in statisticsNewCtl.getSelectedScenario().groups track by ($index + groupID)"
      ng-attr-id="group-{{groupID}}"
@@ -154,7 +172,7 @@
        ng-class="{disclosed: mnStatsGroupsCtl.getGroup().isOpen}">
       <form novalidate
          ng-if="!mnStatsGroupsCtl.getGroup().preset"
-         style="display: inline-block;"
+         class="inline"
          ng-mouseleave="mnStatsGroupsCtl.hideGroupControls();"
          ng-click="$event.stopPropagation();"
          ng-submit="mnStatsGroupsCtl.onGroupSubmit();">
@@ -170,23 +188,37 @@
            ng-attr-size="{{mnStatsGroupsCtl.getGroup().name.length + 3}}">
         <button
            type="submit"
-           title="save chart"
-           class="outline icon fa-check"
+           title="save group name"
+           class="light dashboard-adder"
            mn-focus="mnStatsGroupsCtl.focusOnSubmit"
            ng-show="mnStatsGroupsCtl.showGroupControls"
            ng-mousedown="mnStatsGroupsCtl.onControlClick = true;">
+           <span class="icon fa-check"></span>
         </button>
-        <span
+        <button
            title="delete group"
-           class="icon fa-trash"
+           class="light dashboard-delete margin-0"
            ng-show="mnStatsGroupsCtl.showGroupControls"
            ng-mousedown="mnStatsGroupsCtl.onGroupDelete();">
-        </span>
+           <span class="icon fa-trash"></span>
+        </button>
       </form>
       <span class="charts-preset-group-name ellipsis"
          ng-if="mnStatsGroupsCtl.getGroup().preset">{{mnStatsGroupsCtl.getGroup().name}}</span>
 
-      <!-- if stats can be sub-divided by "item", they show in these menus ---------->
+      <button
+         class="light dashboard-adder"
+         ng-show="!statisticsNewCtl.getSelectedScenario().preset"
+         ng-click="$event.stopPropagation();
+                   statisticsNewCtl.openChartBuilderDialog(
+                   mnStatsGroupsCtl.getGroup(),
+                   statisticsNewCtl.getSelectedScenario(),
+                   mnStatsGroupsCtl)"
+         title="add chart">
+       <span class="icon fa-plus-circle"></span> Add a Chart
+      </button>
+
+<!-- if stats can be sub-divided by "item", they show in these menus ---------->
       <div
          ng-if="mnStatsGroupsCtl.getGroup().isOpen"
          class="chart-group-row-items"
@@ -195,7 +227,7 @@
            ng-if="mnStatsGroupsCtl.enabledItems['@index-'] && statisticsNewCtl.indexItems.length"
            ng-init="mnStatsGroupsCtl.items.index =
                   'index/' + statisticsNewCtl.indexItems[0].index +'/'">
-          indexes:
+          Indexes:
           <select
              ng-model="mnStatsGroupsCtl.items.index"
              class="max-width-4">
@@ -209,7 +241,7 @@
         <div ng-if="mnStatsGroupsCtl.enabledItems['@kv-'] && statisticsNewCtl.viewItems.length"
            ng-init="mnStatsGroupsCtl.items.kv =
                     statisticsNewCtl.viewItems[0].statKeyPrefix">
-          views:
+          Views:
           <select
              ng-model="mnStatsGroupsCtl.items.kv"
              class="max-width-4 margin-left-quarter">
@@ -239,7 +271,7 @@
            ng-if="mnStatsGroupsCtl.enabledItems['@fts-'] && statisticsNewCtl.ftsItems.length"
            ng-init="mnStatsGroupsCtl.items.fts =
                   'fts/' + statisticsNewCtl.ftsItems[0].name + '/'">
-          search indexes:
+          Search indexes:
           <select
              ng-model="mnStatsGroupsCtl.items.fts"
              class="max-width-4">
@@ -258,13 +290,12 @@
          ng-controller="mnStatisticsChartsController as mnStatsChartsCtl"
          ng-class="'statistics-' + (mnStatsChartsCtl.getChart().size || 'small')"
          class="panel relative">
-        <div class="chart-controls"
-           title="show/hide chart controls"
-           ng-show="!mnStatsChartsCtl.getChart().preset">
+        <div class="chart-controls" ng-show="!mnStatsChartsCtl.getChart().preset">
           <span
              title="delete chart"
              class="icon fa-trash"
-             ng-click="mnStatsChartsCtl.deleteChart()"></span>
+             ng-click="mnStatsChartsCtl.deleteChart()"
+             title="delete chart"></span>
           <span
              ng-if="mnStatsChartsCtl.getChart()"
              title="edit chart"
@@ -287,16 +318,6 @@
            rbac="rbac"
            api="mnStatsChartsCtl.api"
            config="mnStatsChartsCtl.getChart()"></mn-statistics-chart>
-      </div>
-      <div
-         class="chart-adder"
-         ng-show="!statisticsNewCtl.getSelectedScenario().preset"
-         ng-click="statisticsNewCtl.openChartBuilderDialog(
-                mnStatsGroupsCtl.getGroup(),
-                statisticsNewCtl.getSelectedScenario(),
-                mnStatsGroupsCtl)"
-         title="Add a Chart">
-        <span class="text text-small grayblack-2">&nbsp; Add a Chart</span>
       </div>
     </div>
   </div>

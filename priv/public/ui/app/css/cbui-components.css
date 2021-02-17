@@ -1827,6 +1827,19 @@ a:hover.scenarios-delete,
 button:hover.scenarios-delete {
   color: #555;
 }
+/* color added to icons on hover ------------------------------------------ */
+button.dashboard-delete:hover .icon,
+span.dashboard-delete:hover,
+.chart-controls .fa-trash:hover {
+  color: #e07f82!important;
+}
+button.dashboard-adder:hover .icon,
+span.dashboard-adder:hover {
+  color: #80c677!important;
+}
+.chart-controls .fa-edit:hover {
+  color: #2ca01c!important;
+}
 
 /* utility links area ----------------------------------------------------- */
 .nav-header a {
@@ -2058,7 +2071,7 @@ button:hover.scenarios-delete {
 /* "LOADING" animated ellipsis ------------------------------------------ */
 .loading {
   display: inline-block;
-  width: 0;
+  width: 1rem;
 }
 .loading-placeholder {
   display: inline-block;
@@ -2235,7 +2248,7 @@ button:hover.scenarios-delete {
   width: 6.5rem;
   min-width: 6.5rem;
 }
-
+/* a drawer to hide extra stuff + an opener & animation for it -------------- */
 .cbui-drawer {
   position: relative;
   margin: 0 .5rem;
@@ -2252,16 +2265,17 @@ button:hover.scenarios-delete {
   width: 100%;
 }
 .cbui-drawer-opener {
-  cursor: pointer;
+  font-size: 1rem;
+  margin-right: .5rem;
+  padding: 0 1.8rem 0 .5rem;
   color: #ccc;
-  padding: 0 .5rem;
-  font-size: 1.2rem;
+  cursor: pointer;
+}
+.cbui-drawer-opener .icon {
+  font-size: .875rem;
 }
 .cbui-drawer-opener:hover {
   color: #333;
-}
-.cbui-drawer .cbui-drawer-opener {
-  display: inline-block;
 }
 .cbui-drawer.open .cbui-drawer-opener {
   display: none;
@@ -2796,10 +2810,6 @@ nav.nav-sidebar-hidden {
 }
 
 /* chart & dashboard styles ------------------------------------------------- */
-button.outline:hover .icon {
-  color: #333;
-}
-
 mn-statistics-chart {
   display: block;
 }
@@ -2935,59 +2945,25 @@ mn-statistics-chart {
 .chart-controls .icon.fa-ellipsis-v {
   color: #999;
 }
-.chart-controls .icon:hover {
-  color: #000;
-}
-.chart-adder {
-  background-color: #f6fafd;
-  border-radius: 5px;
-  font-family: FontAwesome;
-  color: #a1a1a1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.5rem;
-  cursor: pointer;
-  margin: .25rem;
-  flex-grow: 2;
-  min-height: 2rem;
-  transition: all 200ms;
-}
-.chart-adder:hover {
-  color: #555;
-  background-color: #fff;
-}
-.chart-adder:before {
-  content: "\f055";
-}
-.chart-adder:hover span {
-  color: #000;
-}
-button.outline > .icon {
-  color: #a1a1a1;
-}
-button.outline:hover > .icon {
-  color: #555;
-}
-
 
 .charts-group {
-  margin-bottom: 1rem;
+  margin-bottom: 1.5rem;
 }
 .charts-group:last-child {
   margin-bottom: 4rem;
 }
 .charts-group-row {
   display: flex;
-  align-items: center;
+  align-items: middle;
   justify-content: space-between;
+  min-height: 2.5rem;
 }
 .charts-group-row.disclosure {
-  padding-left: 1rem;
+  padding-left: .5rem;
 }
 .charts-group-row.disclosure:before,
 .charts-group-row.disclosed:before {
-  top: 3px;
+  top: 2px;
 }
 .chart-group-row-items {
   font-size: .825rem;
@@ -3006,7 +2982,7 @@ input[type="text"].charts-group-name {
   border-color: #fff;
   font-size: .961rem;
   font-weight: 600;
-  margin: 0 .5rem;
+  margin: 0 0 0 .5rem;
 }
 input[type="text"]:focus.charts-group-name {
   border-color: #d1d1d1;
@@ -3018,27 +2994,6 @@ input[type="text"]:focus.charts-group-name {
   height: 2rem;
   line-height: 2rem;
   margin-left: 1rem;
-}
-.charts-group-row .icon {
-  padding: 0 .5rem;
-  color: #4287d6;
-  cursor: pointer;
-}
-.charts-group-row .icon:hover {
-  color: #000;
-}
-.charts-group-row button {
-  height: auto;
-  padding: 0;
-  margin: 0;
-  border-width: 0;
-}
-.charts-group-row button:hover {
-  border-width: 0;
-  box-shadow: none;
-}
-.charts-group-row button:active {
-  background-color: transparent;
 }
 
 /* mnd3 css ----------------------------------------------------------------- */
