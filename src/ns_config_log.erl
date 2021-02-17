@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2009-2018 Couchbase, Inc.
+%% @copyright 2009-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -178,14 +178,14 @@ sanitize(Config, TagUserTuples) ->
                 fun tag_user_tuples_fun/1
         end,
     rewrite_tuples_with_vclock(
-      fun ({password, V}) ->
-              {stop, {password, sanitize_value(V)}};
-          ({sasl_password, V}) ->
-              {stop, {sasl_password, sanitize_value(V)}};
-          ({admin_pass, V}) ->
-              {stop, {admin_pass, sanitize_value(V)}};
-          ({pass, V}) ->
-              {stop, {pass, sanitize_value(V)}};
+      fun ({password, _}) ->
+              {stop, {password, "*****"}};
+          ({sasl_password, _}) ->
+              {stop, {sasl_password, "*****"}};
+          ({admin_pass, _}) ->
+              {stop, {admin_pass, "*****"}};
+          ({pass, _}) ->
+              {stop, {pass, "*****"}};
           ({cert_and_pkey, {Cert, PKey}}) ->
               {stop, {cert_and_pkey, {Cert, sanitize_value(PKey)}}};
           ({cert_and_pkey, {Props, Cert, PKey}}) ->
