@@ -78,7 +78,13 @@ handle_call({add_replica, Node}, _From, State) ->
 handle_call({remove_peer, Node}, _From, State) ->
     {ok, Lock} = chronicle:acquire_lock(),
     ?log_debug("Removing node ~p, Lock: ~p", [Node, Lock]),
-    ok = chronicle:remove_peer(Lock, Node),
+    case chronicle:remove_peer(Lock, Node) of
+        ok ->
+            ok;
+        {not_member, _} ->
+            ?log_debug("Node is not a member"),
+            ok
+    end,
     {reply, ok, State};
 
 handle_call({ensure_voters, Nodes}, _From, State) ->
@@ -96,7 +102,10 @@ handle_call({deactivate_voters, Nodes}, _From, State) ->
     {ok, Lock} = chronicle:acquire_lock(),
     ?log_debug("Changing nodes ~p from voters to replicas, Lock: ~p",
                [Nodes, Lock]),
-    ok = chronicle:set_peer_roles(Lock, [{N, replica} || N <- Nodes]),
+    {ok, Voters} = chronicle:get_voters(),
+    NodesToDeactivate = lists:filter(lists:member(_, Voters), Nodes),
+    ok = chronicle:set_peer_roles(
+                     Lock, [{N, replica} || N <- NodesToDeactivate]),
     {reply, ok, State};
 
 handle_call({upgrade_cluster, NodesToAdd}, _From, State) ->
