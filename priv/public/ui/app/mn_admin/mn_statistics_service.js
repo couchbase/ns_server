@@ -464,6 +464,19 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
         if (httpParamsModifier) {
           cfg1 = httpParamsModifier(cfg1);
         }
+        cfg1.metric = Object.keys(cfg1.metric).map(labelName => {
+          let rv = {};
+          let labelValue = cfg1.metric[labelName];
+          if (labelValue) {
+            rv.label = labelName;
+            rv.value = labelValue;
+          }
+          let operator = mnStatisticsDescription.maybeGetLabelOperator(service);
+          if (operator) {
+            rv.operator = operator;
+          }
+          return rv;
+        });
         rv.push(cfg1);
       });
       return rv;

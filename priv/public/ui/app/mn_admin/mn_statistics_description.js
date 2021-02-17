@@ -5,7 +5,11 @@ var derivedMetric = {
   "@kv-.ep_dcp_other_items_sent": true,
   "@kv-.ep_dcp_other_producer_count": true,
   "@kv-.ep_dcp_other_total_bytes": true,
-}
+};
+
+var labelOperators = {
+  "connection_type": "=~"
+};
 
 var compat65 = get65CompatDesc();
 
@@ -48,6 +52,7 @@ var stats70LabelsModifier = {
   "fts": (cfg) => {
     //metric[service] indicates per item stats
     if (!cfg.metric["fts"]) {
+      delete cfg.metric["fts"];
       return cfg;
     }
     let ids = cfg.metric["fts"].split("/");
@@ -59,6 +64,7 @@ var stats70LabelsModifier = {
 
   "xdcr": (cfg) => {
     if (!cfg.metric["xdcr"]) {
+      delete cfg.metric["xdcr"];
       return cfg;
     }
     //cfg is constructed in mnStatisticsNewService.packStatsConfig function
@@ -74,6 +80,7 @@ var stats70LabelsModifier = {
   "index": (cfg) => {
     //metric[service] indicates per item stats
     if (!cfg.metric["index"]) {
+      delete cfg.metric["index"];
       return cfg;
     }
     let ids = cfg.metric["index"].split("/");
@@ -83,6 +90,7 @@ var stats70LabelsModifier = {
   },
   "kv": (cfg) => {
     if (!cfg.metric["kv"]) {
+      delete cfg.metric["kv"];
       return cfg;
     }
     let name = cfg.metric.name;
@@ -132,6 +140,9 @@ let service = {
   },
   maybeGetLabelsModifier: function (service) {
     return stats70LabelsModifier[service];
+  },
+  maybeGetLabelOperator: function (labelName) {
+    return labelOperators[labelName];
   }
 };
 

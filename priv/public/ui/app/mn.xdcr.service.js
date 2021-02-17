@@ -97,10 +97,10 @@ class MnXDCRService {
           applyFunctions: ["sum"],
           start: -5,
           step: 10,
-          metric: {
-            name: "xdcr_changes_left_total",
-            sourceBucketName: task.source
-          }
+          metric: [
+            {label: "name", value: "xdcr_changes_left_total"},
+            {label: "sourceBucketName", value: task.source}
+          ]
         }))),
         switchMap(configs => mnStatsService.postStatsRange(configs)),
         map(stats => stats.reduce((acc, stat) =>
