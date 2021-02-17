@@ -70,16 +70,16 @@
         </span>
       </span>
       <span class="cbui-table-cell flex-grow-half resp-hide-xsml">
-        {{row.num_requests | mnFormatQuantity:1000}}
+        {{row.num_requests ? (row.num_requests | mnFormatQuantity:1000) : "-"}}
       </span>
       <span class="cbui-table-cell flex-grow-half resp-hide-sml">
-        {{(row.index_resident_percent | number:0) || 0}}%
+        {{row.index_resident_percent?(row.index_resident_percent|number:0)+"%":"-" }}
       </span>
       <span class="cbui-table-cell flex-grow-half">
-        {{row.items_count | mnFormatQuantity:1000}}
+        {{row.items_count ? (row.items_count | mnFormatQuantity:1000) : "-"}}
       </span>
       <span class="cbui-table-cell flex-grow-half resp-hide-xsml">
-        {{row.data_size | mnFormatQuantity}}
+        {{row.data_size ? (row.data_size | mnFormatQuantity) : "-"}}
       </span>
       <span class="cbui-table-cell">
         {{mnGsiTableCtl.getRowKeyspace(row)}}
@@ -102,7 +102,7 @@
            class="nocaps">
           {{row.status}}
         </div>
-        <div ng-if="row['num_docs_pending+queued']"
+        <div ng-if="row['num_docs_pending+queued'] != '0'"
            class="label warning">
           {{row['num_docs_pending+queued'] | mnFormatQuantity:1000}}
           mutations remaining

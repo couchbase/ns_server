@@ -145,7 +145,7 @@ function mnGsiServiceFactory($http, $q, qwQueryService, mnStatisticsNewService, 
             let stats = thisNodeStats.slice(start, end);
 
             uiStatNames.forEach((statName, i) => {
-              row[statName] = stats[i].data[0] ? Number(stats[i].data[0].values[0][1]) : null;
+              row[statName] = stats[i].data[0] ? stats[i].data[0].values[0][1] : null;
             });
           });
         });
@@ -168,7 +168,7 @@ function mnGsiServiceFactory($http, $q, qwQueryService, mnStatisticsNewService, 
           let stats = perIndexStats.data.slice(start, end);
 
           uiStatNames.forEach((statName, i) => {
-            row[statName] = stats[i].data[0] ? Number(stats[i].data[0].values[0][1]) : null
+            row[statName] = stats[i].data[0] ? stats[i].data[0].values[0][1] : null
           });
         });
         return indexStatus;
