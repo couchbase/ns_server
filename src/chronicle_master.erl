@@ -30,6 +30,8 @@
          remove_peer/1,
          activate_nodes/1,
          deactivate_nodes/1,
+         start_failover/2,
+         complete_failover/2,
          upgrade_cluster/1]).
 
 -define(CALL_TIMEOUT, ?get_timeout(call, 60000)).
@@ -55,6 +57,16 @@ deactivate_nodes(Nodes) ->
 
 remove_peer(Node) ->
     call({remove_peer, Node}).
+
+start_failover(Nodes, Ref) when Nodes =/= [] ->
+    chronicle = chronicle_compat:backend(),
+    wait_for_server_start(),
+    gen_server2:call(?SERVER, {start_failover, Nodes, Ref}, ?CALL_TIMEOUT).
+
+complete_failover(Nodes, Ref) when Nodes =/= [] ->
+    chronicle = chronicle_compat:backend(),
+    wait_for_server_start(),
+    gen_server2:call(?SERVER, {complete_failover, Nodes, Ref}, ?CALL_TIMEOUT).
 
 upgrade_cluster([]) ->
     ok;
@@ -136,6 +148,42 @@ handle_call({upgrade_cluster, NodesToAdd}, _From, State) ->
     ?log_info("Cluster successfully upgraded to chronicle"),
     {reply, ok, State};
 
+handle_call({start_failover, Nodes, Ref}, _From, State) ->
+    PreviousFailoverNodes = get_prev_failover_nodes(),
+
+    case PreviousFailoverNodes -- Nodes of
+        [] ->
+            Opaque = {Ref, Nodes},
+            NodesToKeep = ns_cluster_membership:nodes_wanted() -- Nodes,
+
+            ?log_info("Starting quorum failover with opaque ~p, "
+                      "keeping nodes ~p", [Opaque, NodesToKeep]),
+            RV = case chronicle:failover(NodesToKeep, Opaque) of
+                     ok ->
+                         ok;
+                     {error, Error} = E ->
+                         ?log_error("Unsuccesfull quorum loss failover. (~p).",
+                                    [Error]),
+                         E
+                 end,
+            {reply, RV, State};
+        _ ->
+            ?log_warning("Requested failover of ~p is incompatibe with "
+                         "unfinished failover of ~p",
+                         [Nodes, PreviousFailoverNodes]),
+            {reply, {incompatible_with_previous, PreviousFailoverNodes}, State}
+    end;
+
+handle_call({complete_failover, Nodes, Ref}, _From, State) ->
+    ?log_info("Completing quorum loss failover with ref = ~p "
+              "removing nodes ~p", [Ref, Nodes]),
+    {ok, _} =
+        ns_cluster_membership:remove_nodes(
+          Nodes,
+          transaction_with_key_remove(
+            failover_opaque_key(), _, fun ({ORef, _}) -> ORef =:= Ref end, _)),
+    {reply, ok, State};
+
 handle_call(Oper, _From, #state{self_ref = SelfRef} = State) ->
     NewState = cancel_janitor_timer(State),
     {ok, Lock} = chronicle:acquire_lock(),
@@ -169,11 +217,22 @@ set_peer_roles(_Lock, [], _Role) ->
 set_peer_roles(Lock, Nodes, Role) ->
     ok = chronicle:set_peer_roles(Lock, [{N, Role} || N <- Nodes]).
 
+failover_opaque_key() ->
+    '$failover_opaque'.
+
 operation_key() ->
     unfinished_topology_operation.
 
 operation_key_set(Oper, Lock, SelfRef) ->
     {set, operation_key(), {Oper, Lock, SelfRef}}.
+
+get_prev_failover_nodes() ->
+    case chronicle_kv:get(kv, failover_opaque_key(), #{}) of
+        {ok, {{_, Nodes}, _R}} ->
+            Nodes;
+        {error, not_found} ->
+            []
+    end.
 
 transaction(Keys, Oper, Lock, SelfRef, Fun) ->
     chronicle_kv:transaction(
@@ -196,21 +255,32 @@ transaction(Keys, Oper, Lock, SelfRef, Fun) ->
               end
       end).
 
+transaction_with_key_remove(Key, Keys, Verify, Do) ->
+    chronicle_kv:transaction(
+      kv, [Key | Keys],
+      fun (Snapshot) ->
+              {V, _Rev} = maps:get(Key, Snapshot, {undefined, no_rev}),
+              case Verify(V) of
+                  true ->
+                      case Do(Snapshot) of
+                          {commit, Sets} ->
+                              {commit, [{delete, Key} | Sets]};
+                          {abort, Error} ->
+                              {abort, Error}
+                      end;
+                  false ->
+                      ?log_warning("Incompatible value for key ~p found: ~p",
+                                   [Key, V]),
+                      {abort, {incompatible_key_value, Key, V}}
+              end
+      end).
+
 remove_oper_key(Lock) ->
     ?log_debug("Removing operation key with lock ~p", [Lock]),
     {ok, _} =
-        chronicle_kv:transaction(
-          kv, [operation_key()],
-          fun (Snapshot) ->
-                  case maps:get(operation_key(), Snapshot) of
-                      {{_, Lock, _}, _Rev} ->
-                          {commit, [{delete, operation_key()}]};
-                      {{_, OtherLock, _}, _Rev} ->
-                          ?log_info("Operation key with unknown lock ~p found",
-                                    [OtherLock]),
-                          {abort, operation_key_with_wrong_lock}
-                  end
-          end).
+        transaction_with_key_remove(
+          operation_key(), [], fun({_, L, _}) -> L =:= Lock end,
+          fun (_) -> {commit, []} end).
 
 handle_kv_oper({add_replica, Node, GroupUUID, Services}, Transaction) ->
     ns_cluster_membership:add_node(Node, GroupUUID, Services, Transaction);

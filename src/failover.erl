@@ -68,8 +68,14 @@ run(Nodes, AllowUnsafe, Parent) when Nodes =/= [] ->
     Result = leader_activities:run_activity(
                failover, majority,
                fun () ->
-                       Parent ! started,
-                       orchestrate(Nodes, [durability_aware])
+                       case maybe_restore_chronicle_quorum(Nodes,
+                                                           AllowUnsafe) of
+                           {ok, Props} ->
+                               Parent ! started,
+                               orchestrate(Nodes, [durability_aware | Props]);
+                           Error ->
+                               Error
+                       end
                end,
                [{unsafe, AllowUnsafe}]),
 
@@ -82,6 +88,34 @@ run(Nodes, AllowUnsafe, Parent) when Nodes =/= [] ->
             Result
     end.
 
+maybe_restore_chronicle_quorum(_FailedNodes, false) ->
+    {ok, []};
+maybe_restore_chronicle_quorum(FailedNodes, true) ->
+    case chronicle_compat:enabled() of
+        true ->
+            restore_chronicle_quorum(FailedNodes);
+        false ->
+            {ok, []}
+    end.
+
+restore_chronicle_quorum(FailedNodes) ->
+    ?log_info("Attempting quorum loss failover of = ~p", [FailedNodes]),
+    Ref = erlang:make_ref(),
+    case chronicle_master:start_failover(FailedNodes, Ref) of
+        ok ->
+            case chronicle:check_quorum() of
+                true ->
+                    {ok, [{quorum_failover, Ref}]};
+                {false, What} ->
+                    ?log_info(
+                       "Cannot establish quorum after failover due to: ~p",
+                       [What]),
+                    orchestration_unsafe
+            end;
+        Error ->
+            Error
+    end.
+
 orchestrate(Nodes, Options) when Nodes =/= [] ->
     ale:info(?USER_LOGGER, "Starting failing over ~p", [Nodes]),
     master_activity_events:note_failover(Nodes),
@@ -91,14 +125,14 @@ orchestrate(Nodes, Options) when Nodes =/= [] ->
             ok ->
                 ns_cluster:counter_inc(failover_complete),
                 ale:info(?USER_LOGGER, "Failed over ~p: ok", [Nodes]),
-                deactivate_nodes(Nodes),
+                deactivate_nodes(Nodes, Options),
                 ok;
             {failover_incomplete, ErrorNodes} ->
                 ns_cluster:counter_inc(failover_incomplete),
                 ale:error(?USER_LOGGER,
                           "Failover couldn't complete on some nodes:~n~p",
                           [ErrorNodes]),
-                deactivate_nodes(Nodes),
+                deactivate_nodes(Nodes, Options),
                 ok;
             Error ->
                 ns_cluster:counter_inc(failover_failed),
@@ -147,10 +181,18 @@ config_sync_nodes(FailedNodes) ->
     Nodes = ns_cluster_membership:get_nodes_with_status(_ =/= inactiveFailed),
     Nodes -- FailedNodes.
 
-deactivate_nodes(Nodes) ->
-    ale:info(?USER_LOGGER, "Deactivating failed over nodes ~p", [Nodes]),
+deactivate_nodes(Nodes, Options) ->
     ok = leader_activities:deactivate_quorum_nodes(Nodes),
-    ok = chronicle_master:deactivate_nodes(Nodes).
+    case proplists:get_value(quorum_failover, Options) of
+        undefined ->
+            ale:info(?USER_LOGGER, "Deactivating failed over nodes ~p",
+                     [Nodes]),
+            ok = chronicle_master:deactivate_nodes(Nodes);
+        Ref ->
+            ale:info(?USER_LOGGER, "Removing failed over nodes ~p",
+                     [Nodes]),
+            ok = chronicle_master:complete_failover(Nodes, Ref)
+    end.
 
 %% @doc Fail one or more nodes. Doesn't eject the node from the cluster. Takes
 %% effect immediately.
