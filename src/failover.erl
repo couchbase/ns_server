@@ -38,6 +38,8 @@
 
 start(Nodes, AllowUnsafe) ->
     Parent = self(),
+    ?log_debug("Starting failover with Nodes = ~p, AllowUnsafe = ~p",
+               [Nodes, AllowUnsafe]),
     case is_possible(Nodes) of
         ok ->
             Pid = proc_lib:spawn_link(
@@ -51,11 +53,14 @@ start(Nodes, AllowUnsafe) ->
                     end),
             receive
                 started ->
+                    ?log_debug("Failover started. Pid = ~p", [Pid]),
                     {ok, Pid};
                 {'EXIT', Pid, Reason} ->
+                    ?log_debug("Failover ~p exited with ~p", [Pid, Reason]),
                     Reason
             end;
         Error ->
+            ?log_debug("Failover is not possible due to ~p", [Error]),
             Error
     end.
 
