@@ -737,6 +737,16 @@ def make_curl_task(name, user, password, url,
                      to_stdin="--user %s:%s" % (user, password),
                      **kwargs)
 
+def make_curl_post_task(name, user, password, url, timeout=60,
+                        log_file="couchbase.log", post_data="",
+                        base_task=AllOsTask, **kwargs):
+    return base_task(name, ["curl", "-sS", "-X", "POST", "--proxy", "", "-K-",
+                     url],
+                     timeout=timeout,
+                     log_file=log_file,
+                     to_stdin=f"--user {user}:{password}\n --data {post_data}",
+                     **kwargs)
+
 
 def make_cbstats_task(kind, memcached_pass, guts):
     port = read_guts(guts, "memcached_port")
@@ -1414,6 +1424,15 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                        timeout=600,
                        url=diag_url,
                        log_file="diag.log"),
+
+        make_curl_post_task(name="Chronicle config",
+                       user="@",
+                       password=memcached_pass,
+                       timeout=600,
+                       url=f"http://{local_url_addr}:"
+                           f"{read_guts(guts, 'rest_port')}/diag/eval",
+                       log_file="couchbase.log",
+                       post_data="chronicle_local:get_snapshot(node())."),
 
         make_curl_task(name="master events",
                        user="@",
