@@ -84,6 +84,13 @@ init([]) ->
             false -> user_storage_events
         end,
     ns_pubsub:subscribe_link(UserEvents, EventHandler),
+
+    %% Flush the roles cache when a bucket, collection or scope changes.
+    chronicle_compat:subscribe_to_key_change(
+      fun bucket_or_collection_key_change/1,
+      fun(_) ->
+              active_cache:flush(Self)
+      end),
     ok.
 
 translate_options([Opt]) -> [opt(Opt)].
@@ -91,6 +98,9 @@ translate_options([Opt]) -> [opt(Opt)].
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+bucket_or_collection_key_change(Key) ->
+    ns_bucket:buckets_change(Key) orelse (collections:key_match(Key) =/= false).
 
 opt({external_user_roles_cache_size, ?DELETED_MARKER}) ->
     {max_size, ?DEFAULT_MAX_CACHE_SIZE};
