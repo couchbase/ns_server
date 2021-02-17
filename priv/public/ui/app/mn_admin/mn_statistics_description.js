@@ -233,13 +233,15 @@ function getStatAdditionalConfig(statName) {
   case "@kv-.couch_docs_fragmentation":
   case "@kv-.kv_hit_ratio":
   case "@kv-.kv_ep_cache_miss_ratio":
-  case "@kv-.kv_avg_disk_time_seconds":
   case "@index-.@items.index_resident_percent":
   case "@index-.@items.index_cache_miss_ratio":
   case "@index-.index_fragmentation":
   case "@xdcr-@items.xdcr_percent_completeness":
   case "@cbas.cbas_system_load_average":
   case "@kv-.kv_ops_update":
+  case "@kv-.kv_avg_bg_wait_time_seconds":
+  case "@kv-.kv_avg_active_timestamp_drift_seconds":
+  case "@kv-.kv_avg_replica_timestamp_drift_seconds":
     return {aggregationFunction: "avg"};
 
   case "@kv-.couch_views_fragmentation":
@@ -320,7 +322,7 @@ function getStatAdditionalConfig(statName) {
     return {metric: {for: "hashtable"}};
 
   case "@kv-.kv_avg_disk_time_seconds":
-    return {metric: {op: "commit"}};
+    return {metric: {op: "commit"}, aggregationFunction:"avg"};
 
   case "@kv-.kv_curr_connections":
     return {bucket: null};
@@ -580,8 +582,8 @@ function get70Mapping() {
 
     "@kv-.kv_avg_disk_time_seconds": "@kv-.avg_disk_commit_time",
     "@kv-.kv_avg_bg_wait_time_seconds": "@kv-.avg_bg_wait_time",
-    "@kv-.kv_avg_active_timestamp_drift_seconds": "@kv-.avg_active_timestamp_drift",//<?
-    "@kv-.kv_avg_replica_timestamp_drift_seconds": "@kv-.avg_replica_timestamp_drift",//<?
+    "@kv-.kv_avg_active_timestamp_drift_seconds": "@kv-.avg_active_timestamp_drift",
+    "@kv-.kv_avg_replica_timestamp_drift_seconds": "@kv-.avg_replica_timestamp_drift",
     "@kv-.kv_disk_write_queue": "@kv-.disk_write_queue",
     "@kv-.kv_ep_ops_create": "@kv-.ep_ops_create",
     "@kv-.kv_ep_ops_update": "@kv-.ep_ops_update",
