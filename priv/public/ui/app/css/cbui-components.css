@@ -138,7 +138,7 @@ h1 a:active {
   font-size: .875rem;
   font-weight: 400;
   cursor: pointer;
-  padding: 1px 2.5rem 2px 2rem;
+  padding: 0 2.5rem 2px 2rem;
   color: #fff;
   position: relative;
 }
@@ -181,15 +181,15 @@ h1 a:active {
   white-space: nowrap;
   border-right: 4px solid #fff;
   opacity: 1;
-  transition: all .5s;
+  transition: all .3s;
 }
 .nav-sidebar a:hover {
   border-right: 4px solid #c6dbf2;
 }
 .nav-sidebar a.currentnav,
 .nav-sidebar .currentnav a {
-  border-right: 4px solid #c6dbf2;
-  color: #555;
+  border-right: 4px solid #669ee0;
+  color: #333;
 }
 
 /* tab navigation -> "pills" -------------------------------------------- */
@@ -325,9 +325,12 @@ h1 a:active {
 /* search/filter control ------------------------------------------------ */
 .filter-input-group {
   position: relative;
+  border: 1px solid #ececec;
+  border-width: 0 0 0 1px;
 }
 input.filter-input {
   width: 320px !important;
+  
 }
 /* inserts magnifying glass inside filter input field ------------------- */
 .filter-input-group .fa-search-minus {
@@ -497,7 +500,6 @@ color: #333;
 .cbui-table-body .cbui-tablerow {
   padding: 2px !important;
   font-size: .725rem;
-  font-weight: 600;
 }
 .cbui-table-body div {
   border-bottom: 1px solid #d8d8d8;
@@ -1674,7 +1676,8 @@ section.error {
 }
 .icon-info,
 label + .fa-stack,
-h4 + .fa-stack { /* elevate icon next to label or heading  */
+h4 + .fa-stack,
+h5 + .fa-stack { /* elevate icon next to label or heading  */
   top: -4px;
   left: 0;
 }
@@ -2541,24 +2544,14 @@ button.ace-search-options-buttons.checked {
   border-width: 0!important;
   padding: 0!important;
 }
-.insights-sidebar-body h5 {
-  line-height: 2rem;
-  font-weight: 600;
-  color: #000;
-}
 .insights-sidebar-body .row {
   line-height: 1.5rem;
 }
-/*.insights-sidebar-body .icon {
-  cursor: pointer;
-  color: #555;
-} */
 .insights-sidebar-body ul {
   margin: 0;
   cursor: default;
 }
 .insights-sidebar-body ul ul {
-
 }
 .insights-sidebar-body li {
   list-style-type: none;
@@ -3605,64 +3598,74 @@ div.border-top + div.border-top {
 mn-keyspace-selector {
   display: block;
   position: relative;
-  z-index: 1;
-  margin: 0 0 0 .25rem;
+  z-index: 11;
+  background-color: #fff;
 }
 mn-keyspace-selector .filter-input-group .icon {
   width: auto!important;
-  top: 4px;
+  margin: auto 0;
 }
 /* imitates the .panel class ------------------------------------------------ */
 mn-keyspace-selector .selector-scroll {
   border: none;
   border-radius: 0 0 3px 3px;
-  box-shadow: 0px 1px 1px 1px rgba(0,0,0,0.25);
+  z-index: 10;
+  box-shadow: 0 5px 6px 0 rgba(0,0,0,0.25);
   overflow: auto;
   position: absolute;
   max-height: 10rem;
-  background: #fff;
+  background-color: #fff;
   width: 100%;
-  padding: 1rem 1rem;
   font-size: .875rem;
   cursor: pointer;
+  line-height: 2;
 }
 mn-keyspace-selector .selector-scroll a {
+  color: #4287d6;
+  font-size: .875rem;
   display: block;
-  color: #333;
-  opacity: .8;
+  border-bottom: 1px solid #d1d1d1;
+  line-height: 1.3;
+  padding: .7rem 1.5rem;
+  margin: 0;
 }
+
+mn-keyspace-selector .selector-scroll a:last-child {
+  border-bottom: none;
+}
+
 mn-keyspace-selector .selector-scroll a:hover {
   color: #000;
+  background-color: #f6fafd;
   opacity: 1;
 }
 mn-keyspace-selector .selector-scroll a:active {
-  color: #000;
+  color: #4287d6;
 }
 mn-keyspace-selector .fa-times-circle {
   display: none;
 }
 .ks-control-wrapper {
   position: relative;
-  background-color: #ececec;
   border: 1px solid #d1d1d1;
   display: flex;
-  justify-content: flex-start;
   margin: 0;
   padding: 0;
-  width: 100%;
-  border-radius: 3px 0 0 3px;
-
+  border-radius: 3px;
 }
 .ks-control-wrapper input {
-  padding: 0 0 0 .25rem;
+  padding: 0 0 0 .5rem;
   line-height: auto;
-  height: 26px;
-  border-radius: 0;
+  height: 2rem;
   margin: 0 0 0 0;
-  width: 100%!important;
   border-width: 0;
   font-size: .825rem;
   color: #000;
+  background-color: transparent!important;
+  width: 100%!important;
+}
+.ks-control-wrapper input.selected {
+  background-color: #f5f5f5 !important;
 }
 .ks-control-button {
   height: 28px!important;
@@ -3670,9 +3673,10 @@ mn-keyspace-selector .fa-times-circle {
   font-size: .825rem;
   line-height: 1;
 }
-.ks-control-wrapper span:first-of-type mn-input-filter input {
-  padding: 0 .5rem 0 .25rem;
-  border-radius: 3px 0 0 3px;
+mn-input-filter {
+  display: inline-block;
+  position: relative;
+  width: 100%!important;
 }
 .ks-control-selectedrole {
   margin: .5rem 0 .5rem .25rem;

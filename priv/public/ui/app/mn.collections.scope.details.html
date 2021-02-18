@@ -1,12 +1,13 @@
-<div class="row force-icon-size-16">
+
   <mn-input-filter
      [group]="filter.group"
-     mnPlaceholder="filter collections">
+     mnPlaceholder="filter collections"
+     class="row flex-left">
   </mn-input-filter>
-</div>
+
 <div class="cbui-table inner-table">
-  <div class="cbui-table-header">
-    <span class="cbui-table-cell flex-grow-3 text-fine">
+  <div class="cbui-table-header text-fine">
+    <span class="cbui-table-cell flex-grow-3">
       <span
          class="sorter"
          [ngClass]="{
@@ -17,21 +18,11 @@
         collection name
       </span>
     </span>
-    <span class="cbui-table-cell">
-      ttl
-    </span>
-    <span class="cbui-table-cell">
-      items
-    </span>
-    <span class="cbui-table-cell">
-      memory used
-    </span>
-    <span class="cbui-table-cell">
-      disk used
-    </span>
-    <span class="cbui-table-cell">
-      ops/sec
-    </span>
+    <span class="cbui-table-cell">ttl</span>
+    <span class="cbui-table-cell">items</span>
+    <span class="cbui-table-cell">memory used</span>
+    <span class="cbui-table-cell">disk used</span>
+    <span class="cbui-table-cell">ops/sec</span>
     <span class="cbui-table-cell flex-grow-1-5 resp-hide-xsml"></span>
   </div>
   <span *ngIf="!scope.collections.length" class="zero-content">

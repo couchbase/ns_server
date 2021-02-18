@@ -2,21 +2,19 @@
    (ngSubmit)="select.next()"
    [formGroup]="service.filters.bucket.group">
   <div class="ks-control-wrapper">
-    <span *ngFor="let step of service.options.steps">
-      <mn-input-filter
-         [group]="service.filters[step].group"
-         [mnFocusStatus]="service.stream.onFocus[step]"
-         [mnFocus]="service.stream.doFocus"
-         [mnClearDisabled]="true"
-         mnName="{{step}}"
-         mnPlaceholder="{{step}}...">
+    <mn-input-filter
+       *ngFor="let step of service.options.steps"
+       [group]="service.filters[step].group"
+       [mnFocusStatus]="service.stream.onFocus[step]"
+       [mnFocus]="service.stream.doFocus"
+       [mnClearDisabled]="true"
+       mnName="{{step}}"
+       mnPlaceholder="{{step}}...">
       </mn-input-filter>
-    </span>
   </div>
 </form>
 
-<div
-   *ngIf="(service.stream.showHideDropdown | async)">
+<div *ngIf="(service.stream.showHideDropdown | async)">
   <div
      class="selector-scroll"
      [hidden]="!(service.stream.list | async)?.length">

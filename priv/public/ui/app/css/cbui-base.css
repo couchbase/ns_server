@@ -287,8 +287,8 @@ small {
 }
 /* 16px base = 11px --------------------------------------------------------- */
 .text-fine {
-  font-size: .688rem;
-  font-weight: 400;
+  font-size: .688rem !important;
+  font-weight: 400 !important;
 }
 .text-finer {
   font-size: .625rem;

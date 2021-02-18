@@ -113,10 +113,10 @@ footer {
 
 /* GENERAL HELPERS ------------------------------------------------------ */
 .relative {
-  position: relative;
+  position: relative !important;
 }
 .inline {
-  display: inline-block;
+  display: inline-block !important;
 }
 .middle {
   vertical-align: middle;

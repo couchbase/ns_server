@@ -19,7 +19,8 @@
 
     <mn-input-filter
        [group]="scopesFilter.group"
-       mnPlaceholder="filter scopes">
+       mnPlaceholder="filter scopes"
+       class="row flex-right">
     </mn-input-filter>
   </div>
 
@@ -33,18 +34,18 @@
                   'dynamic-inverted': (scopesSorter.state | async)
                   }"
            (click)="scopesSorter.click.next('name')">scope name</span></span>
-        <span class="cbui-table-cell">collections</span>
+        <span class="cbui-table-cell">&nbsp; collections</span>
         <span class="cbui-table-cell">
-          items
+          &nbsp; items
         </span>
         <span class="cbui-table-cell">
-          memory used
+          &nbsp; memory used
         </span>
         <span class="cbui-table-cell">
-          disk used
+          &nbsp; disk used
         </span>
         <span class="cbui-table-cell">
-          ops/sec
+          &nbsp; ops/sec
         </span>
         <span class="cbui-table-cell flex-grow-1-5 resp-hide-xsml"></span>
     </div>

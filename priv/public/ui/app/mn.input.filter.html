@@ -10,17 +10,17 @@
      placeholder="{{mnPlaceholder}}"
      (blur)="onBlur()"
      (focus)="onFocus()"
-     (click)="$event.stopPropagation()">
+     (click)="$event.stopPropagation()"
+     [ngClass]="{'selected' : !(group.get('value').valueChanges | async)}"
+     class="filter-input">
   <span
      class="icon fa-search-minus"
      [hidden]="(group.get('value').valueChanges | async) || group.get('value').disabled">
   </span>
-
   <span
      *ngIf="!mnClearDisabled"
      class="icon fa-times-circle"
      [hidden]="!(group.get('value').valueChanges | async)"
      (click)="$event.stopPropagation();group.patchValue({value: ''});">
   </span>
-
 </div>
