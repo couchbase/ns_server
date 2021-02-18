@@ -1,7 +1,7 @@
 <div class="indent-1 cursor-auto">
-  <div class="row items-top margin-bottom-1">
-    <div class="margin-right-half">
-      <div ng-click="$event.stopPropagation();">
+  <div class="row items-bottom margin-bottom-1">
+    <div class="margin-right-4">
+      <div ng-click="$event.stopPropagation();" class="break-word margin-bottom-half">
         <strong>Definition</strong> {{row.definition}}
       </div>
       <div>
@@ -22,14 +22,14 @@
     </div>
     <div class="nowrap margin-right-1">
       <button
-         class="outline"
+         class="outline tight"
          ui-sref="app.admin.query.workbench({query: row.definition})">
-        Open in Workbench
-      </button>
+        Open in Workbench</button>
       <button
          ng-if="rbac.cluster.bucket[mnGsiItemDetailsCtl.keyspace].n1ql.select.execute"
-         class="outline"
-         ng-click="mnGsiItemDetailsCtl.dropIndex(row)">Drop</button>
+         class="outline tight"
+         ng-click="mnGsiItemDetailsCtl.dropIndex(row)">
+        Drop</button>
     </div>
   </div>
   <mn-detail-stats
@@ -40,5 +40,4 @@
      service="index"
      prefix="index"
      ></mn-detail-stats>
-  <!-- nodes="statisticsNewCtl.nodes" -->
 </div>

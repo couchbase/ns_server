@@ -51,7 +51,7 @@
        ng-class="[(!mnGsiTableCtl.isDetailsOpened(mnGsiTableCtl.generateIndexId(row)) ?
               mnGsiTableCtl.getStatusClass(row) : '')]"
        ng-controller="mnGsiItemController as gsiItemCtl">
-      <span class="cbui-table-cell flex-grow-1-5 row flex-left" ng-attr-title="{{row.index}}">
+      <span class="cbui-table-cell flex-grow-1-5" ng-attr-title="{{row.index}}">
         {{row.indexName || row.index}}
         <span class="flex-inline flex-wrap">
           <span class="label lt-blue" ng-if="row.partitioned">

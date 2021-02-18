@@ -1516,7 +1516,7 @@ form .error-form {
 
 /* CURSOR STYLES ------------------------------------------------------------ */
 .cursor-default {
-  cursor: default;
+  cursor: default!important;
 }
 .cursor-auto {
   cursor: auto;
@@ -1525,7 +1525,7 @@ form .error-form {
   cursor: pointer;
 }
 .cursor-none {
-  cursor: none;
+  cursor: none!important;
 }
 .cursor-move {
   cursor: move;
