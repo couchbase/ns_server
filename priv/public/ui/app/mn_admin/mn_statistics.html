@@ -28,7 +28,7 @@
                  ng-click="scenarioCtrl.deleteScenario(scenario.id)"></span>
               <span
                  title="edit scenario"
-                 class="icon fa-edit dashboard-adder"
+                 class="icon fa-edit adder"
                  ng-click="scenarioCtrl.editScenario(scenario)"></span>
             </div>
           </mn-dropdown-item>
@@ -149,7 +149,7 @@
     <button
        ng-disabled="!statisticsNewCtl.scenarios.length"
        ng-click="statisticsNewCtl.openGroupDialog()"
-       class="light dashboard-adder"
+       class="light adder"
        ng-hide="statisticsNewCtl.getSelectedScenario().preset"
        title="add chart group">
       <span class="icon fa-plus-circle"></span> Add Group
@@ -189,7 +189,7 @@
         <button
            type="submit"
            title="save group name"
-           class="light dashboard-adder"
+           class="light adder"
            mn-focus="mnStatsGroupsCtl.focusOnSubmit"
            ng-show="mnStatsGroupsCtl.showGroupControls"
            ng-mousedown="mnStatsGroupsCtl.onControlClick = true;">
@@ -207,7 +207,7 @@
          ng-if="mnStatsGroupsCtl.getGroup().preset">{{mnStatsGroupsCtl.getGroup().name}}</span>
 
       <button
-         class="light dashboard-adder"
+         class="light adder"
          ng-show="!statisticsNewCtl.getSelectedScenario().preset"
          ng-click="$event.stopPropagation();
                    statisticsNewCtl.openChartBuilderDialog(

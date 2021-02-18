@@ -8,7 +8,7 @@
 
 <div mn-spinner="!gsiCtl.state" style="padding-bottom: 120px;">
 
-  <div class="row items-bottom margin-bottom-half">
+  <div class="row items-bottom margin-bottom-half flex-wrap">
     <div class="column flex-grow-1-5">
       <h5>Keyspace <small> bucket.scope</small></h5>
       <mn-keyspace-selector
@@ -17,7 +17,7 @@
          class="relative">
       </mn-keyspace-selector>
     </div>
-    <span class="relative flex-grow-1">
+    <div class="margin-top-half relative flex-grow-1">
       <div class="simple-select-inside-label">
         view by
       </div>
@@ -27,7 +27,7 @@
           <option value="viewByNode">server node</option>
         </select>
       </div>
-    </span>
+    </div>
     <div
        class="row flex-right flex-grow-1"
        mn-placeholder="filter indexes..."

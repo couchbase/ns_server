@@ -330,7 +330,7 @@ h1 a:active {
 }
 input.filter-input {
   width: 320px !important;
-  
+
 }
 /* inserts magnifying glass inside filter input field ------------------- */
 .filter-input-group .fa-search-minus {
@@ -1788,7 +1788,7 @@ input[type="checkbox"].fake-select + label:before {
   top: 28px;
   right: 0;
   text-align: left;
-  z-index: 10;
+  z-index: 13;
   border-radius: 2px;
   box-shadow: 0 5px 6px 0 rgba(0,0,0,0.25);
   white-space: nowrap;
@@ -1797,9 +1797,10 @@ input[type="checkbox"].fake-select + label:before {
   color: #4287d6;
   font-size: .875rem;
   display: block;
+  min-width: 240px;
   border-bottom: 1px solid #d1d1d1;
   line-height: 1.3;
-  padding: .7rem 2rem;
+  padding: .7rem 2rem .7rem 1.5rem;
   margin: 0;
 }
 .dropdown-menu-select-like a desc {
@@ -1811,12 +1812,12 @@ input[type="checkbox"].fake-select + label:before {
 }
 .dropdown-menu.dropdown-menu-select-like a:last-child {
   border-bottom: none;
+  padding-bottom: 1rem;
 }
 .dropdown-menu.dropdown-menu-select-like a:hover {
   color: #000;
   background-color: #f6fafd;
   transition: none;
-  border-radius: 2px;
 }
 a.scenarios-delete  {
   display: block;
@@ -1836,8 +1837,8 @@ span.dashboard-delete:hover,
 .chart-controls .fa-trash:hover {
   color: #e07f82!important;
 }
-button.dashboard-adder:hover .icon,
-span.dashboard-adder:hover {
+button.adder:hover .icon,
+span.adder:hover {
   color: #80c677!important;
 }
 .chart-controls .fa-edit:hover {
@@ -2150,7 +2151,7 @@ span.dashboard-adder:hover {
 
 /* workbench styles shared by query/analytics workbenches ------------------ */
 .wb-wrapper { /* wrapper for the whole workbench --------------------------- */
-  margin: 0 0 -150px 0;
+  margin: 0;
   padding: 0;
   display: flex;
   align-items: flex-start;
@@ -2160,7 +2161,7 @@ span.dashboard-adder:hover {
 }
 /* wrapper for query editor and results area ----------- */
 .wb-main-wrapper {
-  height: calc(100vh - 130px); /* magic number - 130px for the header */
+  height: calc(100vh - 155px); /* magic number - 155px for the header */
   display: flex;
   flex-direction: column;
   transition: all 1s;
@@ -2260,7 +2261,7 @@ span.dashboard-adder:hover {
   align-items: center;
   white-space: nowrap;
   transition: width .4s;
-  width: 2rem;
+  width: 2.2rem;
   text-overflow: clip;
   overflow: hidden;
 }
@@ -2270,8 +2271,8 @@ span.dashboard-adder:hover {
 .cbui-drawer-opener {
   font-size: 1rem;
   margin-right: .5rem;
-  padding: 0 1.8rem 0 .5rem;
-  color: #ccc;
+  padding: 0 1.6rem 0 .25rem;
+  color: #949aa0;
   cursor: pointer;
 }
 .cbui-drawer-opener .icon {
@@ -2357,8 +2358,7 @@ span.dashboard-adder:hover {
 .wb-results-tree,
 .wb-results-explain,
 .wb-results-explain-text,
-.wb-results-advice,
-.insights-sidebar {
+.wb-results-advice {
   overflow: auto;
   height: 100%;
 }
@@ -2483,11 +2483,18 @@ button.ace-search-options-buttons.checked {
 .insights-sidebar { /* wrapper for sidebar area ----------------------------- */
   -webkit-box-flex: 0;
   flex: 0 0 auto;
-  padding-left: 1.5rem;
-  height: calc(100vh - 128px);
-  overflow: auto;
+  padding-left: 1rem;
   transition: all .8s;
+  margin: 0 -.5rem 0 0;
+  overflow: hidden;
+  max-height: calc(100vh - 160px);
 }
+.insights-sidebar section {
+  height: calc(100vh - 160px);
+  overflow: auto;
+  padding-right: 1rem!important;
+}
+
 .insights-sidebar.fix-width-0 {
   padding-left: 1rem;
 }
@@ -2535,10 +2542,10 @@ button.ace-search-options-buttons.checked {
 }
 .insights-sidebar-body {
   border-left: 1px solid #d1d1d1;
-  padding: .25rem .25rem .5rem .75rem;
+  padding: .25rem 0 .5rem 1rem;
   white-space: nowrap;
-  overflow: auto;
-  height: 100%;
+  overflow: hidden;
+
 }
 .insights-sidebar.fix-width-0 .insights-sidebar-body {
   border-width: 0!important;
@@ -2578,9 +2585,11 @@ button.ace-search-options-buttons.checked {
 }
 .insights-scope {
   margin: .25rem 0 .25rem 1rem;
+
 }
 .insights-collection {
   margin: .25rem 0 .25rem 1rem;
+
 }
 /* workbench query history -------------------------------------------------- */
 .wb-history-controls {
@@ -3621,13 +3630,15 @@ mn-keyspace-selector .selector-scroll {
   line-height: 2;
 }
 mn-keyspace-selector .selector-scroll a {
-  color: #4287d6;
+  color: #555;
   font-size: .875rem;
   display: block;
   border-bottom: 1px solid #d1d1d1;
   line-height: 1.3;
   padding: .7rem 1.5rem;
   margin: 0;
+  /* opacity: .85;
+  transition: all .5s; */
 }
 
 mn-keyspace-selector .selector-scroll a:last-child {
@@ -3690,8 +3701,6 @@ mn-input-filter {
   text-align: center;
   border-radius: 50%;
   padding: .25rem .75rem;
-  opacity: .7;
-  transition: all .4s ease;
   opacity: 1;
 }
 .ks-control-selectedrole a:hover {
