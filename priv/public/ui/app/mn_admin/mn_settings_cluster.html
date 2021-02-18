@@ -573,7 +573,7 @@
             </mn-field>
 
             <mn-field
-               ng-if="adminCtl.poolDefault.compat.atLeast70"
+               ng-if="adminCtl.poolDefault.compat.atLeast70 && adminCtl.poolDefault.isEnterprise"
                mn-name="queryUseCBO"
                mn-type="checkbox"
                mn-id="query-use-cbo"
