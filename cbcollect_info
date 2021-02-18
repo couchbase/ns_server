@@ -1062,8 +1062,13 @@ def add_bucket_info(guts):
     # Assume directories in the data directory are for buckets unless
     # they have invalid bucket names.
     dbdir = os.path.realpath(read_guts(guts, "db_dir"))
-    buckets = [f.name for f in os.scandir(dbdir)
+    buckets = []
+    try:
+        buckets = [f.name for f in os.scandir(dbdir)
             if f.is_dir() and not f.name.startswith(('.', '@'))]
+    except IOError as e:
+        log("add_bucket_info failed to walk data dir " +
+            "I/O error(%s): %s directory:%s" % (e.errno, e.strerror, dbdir))
 
     log(f"Adding persistent buckets '{buckets}' to server guts")
     guts["persistent_buckets"] = buckets
