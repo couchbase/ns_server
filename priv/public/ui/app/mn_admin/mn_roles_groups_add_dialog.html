@@ -54,7 +54,7 @@
             {{rolesGroupsAddDialogCtl.errors.description}}
           </div>
         </div>
-        <div class="formrow">
+        <div class="formrow" ng-if="rbac.cluster.admin.security.external.write">
           <label for="ldap_group_ref">Map to LDAP Group</label>
           <textarea
              rows="4"

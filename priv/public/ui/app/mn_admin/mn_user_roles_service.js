@@ -447,14 +447,17 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
   }
 
   function putRolesGroup(group, roles) {
+    let data = {
+      roles: roles.indexOf("admin") > -1 ? "admin" : roles.join(','),
+      description: group.description
+    };
+    if (group.ldap_group_ref) {
+      data.ldap_group_ref = group.ldap_group_ref;
+    }
     var config = {
       method: "PUT",
       url: "/settings/rbac/groups/" + encodeURIComponent(group.id),
-      data: {
-        roles: roles.indexOf("admin") > -1 ? "admin" : roles.join(','),
-        description: group.description,
-        ldap_group_ref: group.ldap_group_ref
-      }
+      data: data
     };
 
     return $http(config);
