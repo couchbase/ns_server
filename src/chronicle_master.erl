@@ -32,6 +32,7 @@
          deactivate_voters/1,
          upgrade_cluster/1]).
 
+-define(CALL_TIMEOUT, ?get_timeout(call, 60000)).
 -define(UPGRADE_TIMEOUT, ?get_timeout(upgrade, 240000)).
 
 start_link() ->
@@ -41,26 +42,26 @@ wait_for_server_start() ->
     misc:wait_for_global_name(?MODULE).
 
 add_replica(Node) ->
-    wait_for_server_start(),
-    gen_server2:call(?SERVER, {add_replica, Node}).
+    call({add_replica, Node}).
 
 ensure_voters(Nodes) ->
-    wait_for_server_start(),
-    gen_server2:call(?SERVER, {ensure_voters, Nodes}).
+    call({ensure_voters, Nodes}).
 
 deactivate_voters(Nodes) ->
-    wait_for_server_start(),
-    gen_server2:call(?SERVER, {deactivate_voters, Nodes}).
+    call({deactivate_voters, Nodes}).
 
 remove_peer(Node) ->
-    wait_for_server_start(),
-    gen_server2:call(?SERVER, {remove_peer, Node}).
+    call({remove_peer, Node}).
 
 upgrade_cluster([]) ->
     ok;
 upgrade_cluster(OtherNodes) ->
     wait_for_server_start(),
     gen_server2:call(?SERVER, {upgrade_cluster, OtherNodes}, ?UPGRADE_TIMEOUT).
+
+call(Call) ->
+    wait_for_server_start(),
+    gen_server2:call(?SERVER, Call, ?CALL_TIMEOUT).
 
 init([]) ->
     erlang:process_flag(trap_exit, true),
