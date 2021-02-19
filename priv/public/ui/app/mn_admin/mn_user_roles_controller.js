@@ -121,23 +121,6 @@ function mnUserRolesController($scope, $uibModal, mnPromiseHelper, mnUserRolesSe
       vm.rolesByRole = roles.rolesByRole;
     });
 
-    if (poolDefault.saslauthdEnabled) {
-      mnPromiseHelper(vm, mnUserRolesService.getSaslauthdAuth())
-        .applyToScope("saslauthdAuth");
-    }
-
-
-    if (permissions.cluster.admin.security.external.read &&
-        poolDefault.compat.atLeast65 && poolDefault.isEnterprise) {
-      new mnPoller($scope, function () {
-        return mnUserRolesService.getLdapSettings();
-      })
-        .subscribe("ldapSettings", vm)
-        .setInterval(10000)
-        .reloadOnScopeEvent("reloadLdapSettings")
-        .cycle();
-    }
-
     new mnPoller($scope, function () {
       return mnUserRolesService.getState($state.params);
     })
@@ -153,12 +136,9 @@ function mnUserRolesController($scope, $uibModal, mnPromiseHelper, mnUserRolesSe
       controller: 'mnUserRolesAddDialogController as userRolesAddDialogCtl',
       resolve: {
         user: mnHelper.wrapInFunction(user),
-        isSaslauthdAuthEnabled: function () {
-          return (vm.saslauthdAuth && vm.saslauthdAuth.enabled);
-        },
-        isLdapEnabled: function () {
-          return (vm.ldapSettings && vm.ldapSettings.data.authenticationEnabled);
-        }
+        isSaslauthdAuthEnabled: mnHelper.wrapInFunction($scope.rolesCtl.isSaslauthdAuthEnabled),
+        isLdapEnabled: mnHelper.wrapInFunction($scope.rolesCtl.isLdapEnabled),
+        permissions: mnHelper.wrapInFunction(permissions)
       }
     });
   }

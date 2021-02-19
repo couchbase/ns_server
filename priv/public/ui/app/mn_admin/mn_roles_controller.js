@@ -1,10 +1,32 @@
 export default mnRolesController;
 
-function mnRolesController(poolDefault, mnHelper, $uibModal, $q, permissions) {
+function mnRolesController($scope, poolDefault, mnHelper, $uibModal, permissions,
+                           mnUserRolesService, mnPoller, mnPromiseHelper) {
   var vm = this;
   vm.addUser = addUser;
   vm.addRolesGroup = addRolesGroup;
   vm.addLDAP = addLDAP;
+
+  activate();
+
+
+  function activate() {
+    if (poolDefault.saslauthdEnabled) {
+      mnPromiseHelper(vm, mnUserRolesService.getSaslauthdAuth())
+        .applyToScope(v => vm.isSaslauthdAuthEnabled = saslauthdAuth.enabled);
+    }
+
+    if (permissions.cluster.admin.security.external.read &&
+        poolDefault.compat.atLeast65 && poolDefault.isEnterprise) {
+      new mnPoller($scope, function () {
+        return mnUserRolesService.getLdapSettings();
+      })
+        .subscribe(v => vm.isLdapEnabled = v.data.authenticationEnabled, vm)
+        .setInterval(10000)
+        .reloadOnScopeEvent("reloadLdapSettings")
+        .cycle();
+    }
+  }
 
   function addUser() {
     $uibModal.open({
@@ -12,17 +34,9 @@ function mnRolesController(poolDefault, mnHelper, $uibModal, $q, permissions) {
       controller: 'mnUserRolesAddDialogController as userRolesAddDialogCtl',
       resolve: {
         user: mnHelper.wrapInFunction(undefined),
-        isSaslauthdAuthEnabled: function (mnUserRolesService) {
-          return (poolDefault.saslauthdEnabled ?
-                  mnUserRolesService.getSaslauthdAuth() : $q.when())
-            .then(resp => resp && resp.enabled);
-        },
-        isLdapEnabled: function (mnUserRolesService) {
-          return ((permissions.cluster.admin.security.external.read &&
-                   poolDefault.isEnterprise && poolDefault.compat.atLeast65) ?
-                  mnUserRolesService.getLdapSettings() : $q.when())
-            .then(resp => resp && resp.data.authenticationEnabled);
-        }
+        isSaslauthdAuthEnabled: mnHelper.wrapInFunction(vm.isSaslauthdAuthEnabled),
+        isLdapEnabled: mnHelper.wrapInFunction(vm.isLdapEnabled),
+        permissions: mnHelper.wrapInFunction(permissions)
       }
     });
   }

@@ -21,7 +21,7 @@ angular
     mnElementCrane,
     mnPluggableUiRegistry
   ])
-  .config(mnIndexesConfig)
+  .config(mnSecurityConfig)
   .controller("mnSecurityController", mnSecurityController);
 
 function mnSecurityController(poolDefault) {
@@ -29,7 +29,7 @@ function mnSecurityController(poolDefault) {
   vm.poolDefault = poolDefault;
 }
 
-function mnIndexesConfig($stateProvider) {
+function mnSecurityConfig($stateProvider) {
   $stateProvider
     .state('app.admin.security', {
       abstract: true,

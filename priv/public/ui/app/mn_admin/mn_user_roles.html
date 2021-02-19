@@ -13,25 +13,26 @@
     <span class="row">
       <div
          class="users-auth-check margin-right-1"
-         ng-if="userRolesCtl.saslauthdAuth">
+         ng-if="rolesCtl.isSaslauthdAuthEnabled !== undefined">
         <span
            class="icon margin-right"
-           ng-class="userRolesCtl.saslauthdAuth.enabled ? 'fa-check success' : 'fa-ban grayblack-3'">
+           ng-class="rolesCtl.isSaslauthdAuthEnabled ? 'fa-check success' : 'fa-ban grayblack-3'">
         </span>
         <p
            uib-tooltip-html="'Use the CLI to change the state of saslauthd authentication.'"
            tooltip-placement="auto right">
           saslauthd authentication is
-          <span ng-show="userRolesCtl.saslauthdAuth"><span ng-show="!userRolesCtl.saslauthdAuth.enabled">not</span> enabled</span>
+          <span ng-show="rolesCtl.isSaslauthdAuthEnabled !== undefined">
+            <span ng-show="!rolesCtl.isSaslauthdAuthEnabled">not</span> enabled</span>
         </p>
       </div>
       <div class="users-auth-check" ng-show="poolDefault.isEnterprise && poolDefault.compat.atLeast65">
         <span
            class="icon margin-right"
-           ng-class="userRolesCtl.ldapSettings.data.authenticationEnabled ? 'fa-check success' : 'fa-ban grayblack-3'">
+           ng-class="rolesCtl.isLdapEnabled ? 'fa-check success' : 'fa-ban grayblack-3'">
         </span>
         <p>
-          LDAP is {{!userRolesCtl.ldapSettings.data.authenticationEnabled ? 'not': ''}} enabled
+          LDAP is {{!rolesCtl.isLdapEnabled ? 'not': ''}} enabled
         </p>
       </div>
     </span>
