@@ -83,9 +83,9 @@ class MnCollectionsScopeComponent extends MnLifeCycleHooksToStream {
       zoom: 3000,
       applyFunctions: ["sum"],
       step: 1,
-      stats: ["@kv-.kv_items",
-              "@kv-.kv_collections_mem_used_bytes",
-              "@kv-.kv_disk_size_bytes",
+      stats: ["@kv-.kv_collection_item_count",
+              "@kv-.kv_collection_mem_used_bytes",
+              "@kv-.kv_collection_disk_size_bytes",
               "@kv-.kv_collection_ops_sum"]
     }, this.$scope);
 

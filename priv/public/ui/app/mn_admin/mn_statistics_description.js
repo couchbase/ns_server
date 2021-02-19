@@ -19,9 +19,9 @@ var mapping65 = get65Mapping();
 
 var compat70 = propertiesToArray(compat65.stats)
     .concat([
-      "@kv-.kv_items",
-      "@kv-.kv_collections_mem_used_bytes",
-      "@kv-.kv_disk_size_bytes",
+      "@kv-.kv_collection_item_count",
+      "@kv-.kv_collection_mem_used_bytes",
+      "@kv-.kv_collection_disk_size_bytes",
       "@kv-.kv_collection_ops",
       "@kv-.kv_collection_ops_sum"
     ]).reduce((acc, statPath) => {
@@ -270,6 +270,9 @@ function getStatAdditionalConfig(statName) {
   case "@kv-.kv_collection_ops_sum":
     return {applyFunctions: ["irate", "sum"], metric: {name: "kv_collection_ops"}};
 
+  case "@kv-.kv_collection_ops":
+    return {applyFunctions: ["irate"], metric: {name: "kv_collection_ops", op: "get"}};
+
   case "@cbas.cbas_gc_count_total":
   case "@cbas.cbas_gc_time_milliseconds_total":
   case "@kv-.kv_read_bytes":
@@ -306,7 +309,6 @@ function getStatAdditionalConfig(statName) {
   case "@query.n1ql_selects":
   case "@query.n1ql_warnings":
   case "@system.sys_rest_requests":
-  case "@kv-.kv_collection_ops":
     return {applyFunctions: ["irate"]};
 
   case "@fts-.fts_num_bytes_used_disk":
