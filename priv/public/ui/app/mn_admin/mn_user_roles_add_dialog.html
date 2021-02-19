@@ -24,8 +24,10 @@
            ng-repeat="error in userRolesAddDialogCtl.errors">
           {{error}}
         </div>
-        <div ng-if="userRolesAddDialogCtl.isLdapEnabled ||
-                    userRolesAddDialogCtl.isSaslauthdAuthEnabled" class="formrow checkbox-list">
+        <div ng-if="rbac.cluster.admin.security.local.write &&
+                    rbac.cluster.admin.security.external.write &&
+                    (userRolesAddDialogCtl.isLdapEnabled ||
+                    userRolesAddDialogCtl.isSaslauthdAuthEnabled)" class="formrow checkbox-list">
           <div>
             <h4>Authentication Domain</h4>
             <input
@@ -54,11 +56,11 @@
             <span ng-show="userRolesAddDialogCtl.isLookupEnabled() &&
                            userRolesAddDialogCtl.user.id">
               <span ng-show="!userRolesAddDialogCtl.isUserAvailable"
-                    style="display: inline"
-                    class="error">not found</span>
+                 style="display: inline"
+                 class="error">not found</span>
               <span ng-show="userRolesAddDialogCtl.isUserAvailable"
-                    style="display: inline"
-                    class="success">exists</span>
+                 style="display: inline"
+                 class="success">exists</span>
             </span>
           </label>
           <input
@@ -140,8 +142,8 @@
           </a>
         </span>
         <fieldset class="select-user-roles hide-track show-scrollbar"
-                  mn-spinner="userRolesAddDialogCtl.reloadUserRoles"
-                  min-height="410px">
+           mn-spinner="userRolesAddDialogCtl.reloadUserRoles"
+           min-height="410px">
           <div ng-show="userRolesAddDialogCtl.selectedPanel == 'groups'">
             <label
                class="disclosure"

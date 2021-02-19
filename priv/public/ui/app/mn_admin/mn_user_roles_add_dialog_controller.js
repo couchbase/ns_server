@@ -2,9 +2,11 @@ import _ from "/ui/web_modules/lodash.js";
 
 export default mnUserRolesAddDialogController;
 
-function mnUserRolesAddDialogController(mnUserRolesService, $uibModalInstance, mnPromiseHelper, user, isLdapEnabled, mnPoolDefault, mnHelper, $q, isSaslauthdAuthEnabled, $state) {
+function mnUserRolesAddDialogController(mnUserRolesService, $uibModalInstance, mnPromiseHelper, user, isLdapEnabled, mnPoolDefault, mnHelper, $q, isSaslauthdAuthEnabled, $state, permissions) {
   var vm = this;
-  vm.user = _.clone(user) || {domain: "local"};
+  vm.user = _.clone(user) || {
+    domain: permissions.cluster.admin.security.local.write ? "local" : "external"
+  };
   vm.userID = vm.user.id || 'New';
   vm.save = save;
   vm.isEditingMode = !!user;
