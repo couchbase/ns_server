@@ -230,7 +230,60 @@ build_settings(Config, Snapshot, Node) ->
                  {dynamic_scrape_intervals, DynamicScrapeIntervals}]
         end,
 
-    misc:update_proplist(default_settings(), Settings).
+    Settings1 = misc:update_proplist(default_settings(), Settings),
+    validate_settings(Settings1).
+
+validate_settings(Settings) ->
+    %% Check decimation levels.
+    Levels = proplists:get_value(decimation_defs, Settings),
+    Settings1 = case levels_are_valid(Levels) of
+                    true ->
+                        Settings;
+                    false ->
+                        ?log_error("Stats pruning is disabled due to invalid "
+                                   "levels"),
+                        S = lists:keyreplace(decimation_enabled, 1, Settings,
+                                             {decimation_enabled, false}),
+                        lists:keyreplace(truncation_enabled, 1, S,
+                                         {truncation_enabled, false})
+                end,
+    Settings1.
+
+levels_are_valid(Levels) ->
+    %% The interval must be a multiple of the prior level (unless it was
+    %% "skip") to maintain alignment and not lose samples (as we keep only
+    %% the scrape amount per interval).
+    {_, Errors} =
+        lists:foldl(
+          fun ({Coarseness, Duration, skip}, {PriorInterval, Errs}) ->
+                  case is_valid_duration(Coarseness, Duration, skip) of
+                      true ->
+                          {PriorInterval, Errs};
+                      false ->
+                          ?log_error("Invalid decimation duration ~p ~p ~p",
+                                     [Coarseness, Duration, skip]),
+                          {PriorInterval, Errs + 1}
+                  end;
+              ({Coarseness, Duration, Interval}, {PriorInterval, Errs}) ->
+                  case Interval >= PriorInterval andalso
+                       Interval rem PriorInterval =:= 0 andalso
+                       is_valid_duration(Coarseness, Duration, Interval) of
+                      true ->
+                          {Interval, Errs};
+                      false ->
+                          ?log_error("Invalid decimation level ~p ~p ~p",
+                                     [Coarseness, Duration, Interval]),
+                          {Interval, Errs + 1}
+                  end
+          end, {1, 0}, Levels),
+    Errors =:= 0.
+
+is_valid_duration(_Coarseness, Duration, skip) when Duration > 0 ->
+    true;
+is_valid_duration(_Coarseness, Duration, Interval) when Duration >= Interval ->
+    true;
+is_valid_duration(_Coarseness, _Duration, _Interval) ->
+    false.
 
 specs(Settings) ->
     Args = generate_prometheus_args(Settings),
@@ -1799,5 +1852,64 @@ prometheus_negative_elapsed_time_test() ->
     LastDecimationTime = Now + 5,
     Deletions = decimate_stats(Levels, LastDecimationTime, Now, 10),
     ?assertMatch(Deletions, []).
+
+levels_are_valid_test() ->
+    ?assert(levels_are_valid(decimation_definitions_default())),
+
+    %% Valid to have same length interval
+    Levels1 = [{low, ?SECS_IN_DAY, skip},
+               {medium, ?SECS_IN_DAY, 60},
+               {large, ?SECS_IN_DAY, 60},
+               {xlarge, ?SECS_IN_DAY, 6 * 60}],
+    ?assert(levels_are_valid(Levels1)),
+
+    %% Invalid to not have intervals that are multiples of prior level.
+    Levels2 = [{low, ?SECS_IN_DAY, skip},
+               {medium, ?SECS_IN_DAY, 60},
+               {large, ?SECS_IN_DAY, 60},
+               {xlarge, ?SECS_IN_DAY, 90}],
+    ?assert(not levels_are_valid(Levels2)),
+
+    %% Allow skip in non-first level
+    Levels3 = [{low, ?SECS_IN_DAY, skip},
+               {medium, ?SECS_IN_DAY, 60},
+               {large, ?SECS_IN_DAY, skip},
+               {xlarge, ?SECS_IN_DAY, 6 * 60}],
+    ?assert(levels_are_valid(Levels3)),
+
+    %% Invalid for level to be lower than prior level
+    Levels4 = [{low, ?SECS_IN_DAY, skip},
+               {medium, ?SECS_IN_DAY, 60},
+               {large, ?SECS_IN_DAY, 30},
+               {xlarge, ?SECS_IN_DAY, 6 * 60}],
+    ?assert(not levels_are_valid(Levels4)),
+
+    %% Invalid for level to have a zero duration skip level
+    Levels5 = [{low, 0, skip},
+               {medium, ?SECS_IN_DAY, 60},
+               {large, ?SECS_IN_DAY, 3 * 60 },
+               {xlarge, ?SECS_IN_DAY, 6 * 60}],
+    ?assert(not levels_are_valid(Levels5)),
+
+    %% Invalid for level to have a negative duration skip level
+    Levels6 = [{low, -1, skip},
+               {medium, ?SECS_IN_DAY, 60},
+               {large, ?SECS_IN_DAY, 3 * 60 },
+               {xlarge, ?SECS_IN_DAY, 6 * 60}],
+    ?assert(not levels_are_valid(Levels6)),
+
+    %% Invalid for level to have a duration smaller than the interval
+    Levels7 = [{low, ?SECS_IN_DAY, skip},
+               {medium, 60 - 10, 60},
+               {large, ?SECS_IN_DAY, 3 * 60},
+               {xlarge, ?SECS_IN_DAY, 6 * 60}],
+    ?assert(not levels_are_valid(Levels7)),
+
+    %% Valid for level to have a duration equal to the interval
+    Levels8 = [{low, ?SECS_IN_DAY, skip},
+               {medium, 60, 60},
+               {large, ?SECS_IN_DAY, 3 * 60},
+               {xlarge, ?SECS_IN_DAY, 6 * 60}],
+    ?assert(levels_are_valid(Levels8)).
 
 -endif.
