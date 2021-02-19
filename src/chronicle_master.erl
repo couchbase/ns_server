@@ -64,39 +64,42 @@ upgrade_cluster(OtherNodes) ->
 
 init([]) ->
     erlang:process_flag(trap_exit, true),
-    {ok, Lock} = chronicle:acquire_lock(),
-    ?log_debug("Aquired lock: ~p", [Lock]),
-    {ok, Lock}.
+    {ok, undefined}.
 
-handle_call({add_replica, Node}, _From, Lock) ->
+handle_call({add_replica, Node}, _From, State) ->
+    {ok, Lock} = chronicle:acquire_lock(),
     ?log_debug("Adding node ~p as a replica. Lock: ~p", [Node, Lock]),
     ok = chronicle:add_replica(Lock, Node),
     ClusterInfo = chronicle:get_cluster_info(),
     ?log_debug("Cluster info: ~p", [ClusterInfo]),
-    {reply, {ok, ClusterInfo}, Lock};
+    {reply, {ok, ClusterInfo}, State};
 
-handle_call({remove_peer, Node}, _From, Lock) ->
+handle_call({remove_peer, Node}, _From, State) ->
+    {ok, Lock} = chronicle:acquire_lock(),
     ?log_debug("Removing node ~p, Lock: ~p", [Node, Lock]),
     ok = chronicle:remove_peer(Lock, Node),
-    {reply, ok, Lock};
+    {reply, ok, State};
 
-handle_call({ensure_voters, Nodes}, _From, Lock) ->
+handle_call({ensure_voters, Nodes}, _From, State) ->
+    {ok, Lock} = chronicle:acquire_lock(),
     {ok, Voters} = chronicle:get_voters(),
     case Nodes -- Voters of
         [] ->
             ok;
         NewVoters ->
-            ok = promote_to_voters(Lock, NewVoters)
+            promote_to_voters(Lock, NewVoters)
     end,
-    {reply, ok, Lock};
+    {reply, ok, State};
 
-handle_call({deactivate_voters, Nodes}, _From, Lock) ->
+handle_call({deactivate_voters, Nodes}, _From, State) ->
+    {ok, Lock} = chronicle:acquire_lock(),
     ?log_debug("Changing nodes ~p from voters to replicas, Lock: ~p",
                [Nodes, Lock]),
     ok = chronicle:set_peer_roles(Lock, [{N, replica} || N <- Nodes]),
-    {reply, ok, Lock};
+    {reply, ok, State};
 
-handle_call({upgrade_cluster, NodesToAdd}, _From, Lock) ->
+handle_call({upgrade_cluster, NodesToAdd}, _From, State) ->
+    {ok, Lock} = chronicle:acquire_lock(),
     ?log_debug("Adding nodes ~p to chronicle cluster. Lock: ~p",
                [NodesToAdd, Lock]),
     ClusterInfo = chronicle:get_cluster_info(),
@@ -116,9 +119,9 @@ handle_call({upgrade_cluster, NodesToAdd}, _From, Lock) ->
                [NodesToAdd, ClusterInfo1]),
     ok = ns_cluster:join_chronicle(NodesToAdd, ClusterInfo1),
 
-    ok = promote_to_voters(Lock, NodesToAdd),
+    promote_to_voters(Lock, NodesToAdd),
     ?log_info("Cluster successfully upgraded to chronicle"),
-    {reply, ok, Lock}.
+    {reply, ok, State}.
 
 handle_info({'EXIT', From, Reason}, State) ->
     ?log_debug("Received exit from ~p with reason ~p. Exiting.",
@@ -127,4 +130,4 @@ handle_info({'EXIT', From, Reason}, State) ->
 
 promote_to_voters(Lock, Nodes) ->
     ?log_debug("Promoting nodes ~p to voters, Lock: ~p", [Nodes, Lock]),
-    chronicle:set_peer_roles(Lock, [{N, voter} || N <- Nodes]).
+    ok = chronicle:set_peer_roles(Lock, [{N, voter} || N <- Nodes]).
