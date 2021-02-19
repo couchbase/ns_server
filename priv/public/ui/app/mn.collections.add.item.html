@@ -27,6 +27,22 @@
           {{(addCollectionHttp.error | async)?.errors?.name}}
         </div>
       </div>
+      <div class="formrow">
+        <label for="add-collection">TTL</label>
+        <input
+          type="text"
+          id="add-collection-ttl"
+          name="maxTTL"
+          formControlName="maxTTL"
+          autocorrect="off"
+          spellcheck="false"
+          autocapitalize="off">
+        <div
+          class="error"
+          [hidden]="!(addCollectionHttp.error | async)?.errors?.maxTTL">
+          {{(addCollectionHttp.error | async)?.errors?.maxTTL}}
+        </div>
+      </div>
     </div>
     <div class="panel-footer">
       <a (click)="activeModal.dismiss()">Cancel</a>

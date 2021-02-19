@@ -329,10 +329,10 @@ class MnCollectionsService {
     });
   }
 
-  addCollection([bucket, scope, name]) {
+  addCollection([bucket, scope, name, ttl]) {
     bucket = encodeURIComponent(bucket);
     scope = encodeURIComponent(scope);
-    return this.http.post(`${restApiBase}/${bucket}/scopes/${scope}/collections`, {name: name});
+    return this.http.post(`${restApiBase}/${bucket}/scopes/${scope}/collections`, {name: name, maxTTL: ttl || 0});
   }
 
   deleteScope([bucket, scope]) {
