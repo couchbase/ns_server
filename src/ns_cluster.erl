@@ -503,7 +503,6 @@ handle_info(check_chronicle_state, State) ->
     ?log_info("Chronicle state is: ~p", [ChronicleState]),
     case ChronicleState of
         removed ->
-            misc:flush(check_chronicle_state),
             true = chronicle_compat:enabled(),
             false = misc:marker_exists(leave_marker_path()),
             handle_cast(leave, State);
