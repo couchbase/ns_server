@@ -2542,10 +2542,10 @@ button.ace-search-options-buttons.checked {
 }
 .insights-sidebar-body {
   border-left: 1px solid #d1d1d1;
-  padding: .25rem 0 .5rem 1rem;
+  padding: .25rem 0 0 1rem;
   white-space: nowrap;
   overflow: hidden;
-
+  margin-bottom: 2rem;
 }
 .insights-sidebar.fix-width-0 .insights-sidebar-body {
   border-width: 0!important;
@@ -2568,7 +2568,6 @@ button.ace-search-options-buttons.checked {
   border-width: 0;
   margin: 0;
   padding: 0;
-  margin-bottom: 1.5rem;
 }
 .insights-sidebar-schema .indexed {
   color: #000;

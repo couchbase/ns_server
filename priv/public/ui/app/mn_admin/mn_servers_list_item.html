@@ -1,12 +1,11 @@
 <!-- the "dynamic_ + X" style is added w/ ng-class to either the section container or the cbui-tablerow depending on node status and whether the row is expanded or not -->
 <section
-   class="has-hover"
    ng-click="rbac.cluster.nodes.read && serversCtl.toggleDetails(node.hostname)"
    ng-class="{['dynamic_' + node.clusterMembership] : serversCtl.isDetailsOpened(node.hostname) || serversItemCtl.isNodeInactiveFailed || serversItemCtl.isNodeInactiveAdded || serversItemCtl.isNodeUnhealthy || (adminCtl.tasks.inRebalance && adminCtl.tasks.tasksRebalance.status === 'running' && rbac.cluster.tasks.read),
               ['dynamic_' + node.status] : serversCtl.isDetailsOpened(node.hostname) || serversItemCtl.isNodeInactiveFailed || serversItemCtl.isNodeInactiveAdded || serversItemCtl.isNodeUnhealthy || (adminCtl.tasks.inRebalance && adminCtl.tasks.tasksRebalance.status === 'running' && rbac.cluster.tasks.read) || (!serversItemCtl.isNodeInactiveAdded && !serversItemCtl.isNodeUnhealthy && node.pendingEject),
                'eject-node' : !serversItemCtl.isNodeInactiveAdded && !serversItemCtl.isNodeUnhealthy && node.pendingEject}">
   <div
-     class="cbui-tablerow resp-sml"
+     class="cbui-tablerow has-hover resp-sml"
      ng-class="{['dynamic_' + node.status] : !serversCtl.isDetailsOpened(node.hostname) && !(serversItemCtl.isNodeInactiveFailed || serversItemCtl.isNodeInactiveAdded || serversItemCtl.isNodeUnhealthy || (adminCtl.tasks.inRebalance && adminCtl.tasks.tasksRebalance.status === 'running' && rbac.cluster.tasks.read) || (!serversItemCtl.isNodeInactiveAdded && !serversItemCtl.isNodeUnhealthy && node.pendingEject)),
                 ['dynamic_' + node.clusterMembership] : !serversCtl.isDetailsOpened(node.hostname) && !(serversItemCtl.isNodeInactiveFailed || serversItemCtl.isNodeInactiveAdded || serversItemCtl.isNodeUnhealthy || (adminCtl.tasks.inRebalance && adminCtl.tasks.tasksRebalance.status === 'running' && rbac.cluster.tasks.read))}">
     <span class="cbui-table-cell flex-grow-2-5 cbui-tablerow-title flex-left">

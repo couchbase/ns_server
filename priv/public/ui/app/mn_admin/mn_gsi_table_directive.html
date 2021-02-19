@@ -44,10 +44,9 @@
      ng-class="[(row.awaitingRemoval ? 'disabled-tag' : ''),
                 (mnGsiTableCtl.isDetailsOpened(mnGsiTableCtl.generateIndexId(row)) ?
                 mnGsiTableCtl.getStatusClass(row) : '')]"
-     ng-click="mnGsiTableCtl.toggleDetails(mnGsiTableCtl.generateIndexId(row))"
-     class="has-hover">
+     ng-click="mnGsiTableCtl.toggleDetails(mnGsiTableCtl.generateIndexId(row))">
     <div
-       class="cbui-tablerow"
+       class="cbui-tablerow has-hover"
        ng-class="[(!mnGsiTableCtl.isDetailsOpened(mnGsiTableCtl.generateIndexId(row)) ?
               mnGsiTableCtl.getStatusClass(row) : '')]"
        ng-controller="mnGsiItemController as gsiItemCtl">
