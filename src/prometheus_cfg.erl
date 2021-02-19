@@ -247,7 +247,7 @@ validate_settings(Settings) ->
                         lists:keyreplace(truncation_enabled, 1, S,
                                          {truncation_enabled, false})
                 end,
-    Settings1.
+    maybe_adjust_settings(Settings1).
 
 levels_are_valid(Levels) ->
     %% The interval must be a multiple of the prior level (unless it was
@@ -284,6 +284,27 @@ is_valid_duration(_Coarseness, Duration, Interval) when Duration >= Interval ->
     true;
 is_valid_duration(_Coarseness, _Duration, _Interval) ->
     false.
+
+maybe_adjust_settings(Settings) ->
+    %% If the scrape interval is larger than the interval for a level
+    %% we'll disable decimation for that level (by setting it to "skip").
+    Levels = proplists:get_value(decimation_defs, Settings),
+    Scrape = proplists:get_value(scrape_interval, Settings),
+    MaybeNewLevels =
+        lists:map(
+          fun ({Coarseness, Duration, skip}) ->
+                  {Coarseness, Duration, skip};
+              ({Coarseness, Duration, Interval}) when Scrape >= Interval ->
+                  {Coarseness, Duration, skip};
+              ({Coarseness, Duration, Interval}) ->
+                  {Coarseness, Duration, Interval}
+          end, Levels),
+
+    case Levels =/= MaybeNewLevels of
+        false -> Settings;
+        true -> lists:keyreplace(decimation_defs, 1, Settings,
+                                 {decimation_defs, MaybeNewLevels})
+    end.
 
 specs(Settings) ->
     Args = generate_prometheus_args(Settings),
@@ -1911,5 +1932,27 @@ levels_are_valid_test() ->
                {large, ?SECS_IN_DAY, 3 * 60},
                {xlarge, ?SECS_IN_DAY, 6 * 60}],
     ?assert(levels_are_valid(Levels8)).
+
+maybe_adjust_settings_test() ->
+    %% Settings are good, no adjustments
+    Levels = [{low, ?SECS_IN_DAY, skip},
+              {medium, ?SECS_IN_DAY, 60},
+              {large, ?SECS_IN_DAY, 2 * 60},
+              {xlarge, ?SECS_IN_DAY, 6 * 60}],
+    Settings = [{decimation_defs, Levels},
+                {scrape_interval, 10}],
+    ?assertEqual(Settings, maybe_adjust_settings(Settings)),
+
+    %% Setting have a scrape interval that is larger than two of the level
+    %% intervals so we skip those intervals.
+    Settings2 = [{decimation_defs, Levels},
+                 {scrape_interval, 2 * 60 + 1}],
+    ExpectedLevels2 = [{low, ?SECS_IN_DAY, skip},
+                       {medium, ?SECS_IN_DAY, skip},
+                       {large, ?SECS_IN_DAY, skip},
+                       {xlarge, ?SECS_IN_DAY, 6 * 60}],
+    ExpectedSettings2 = [{decimation_defs, ExpectedLevels2},
+                         {scrape_interval, 2 * 60 + 1}],
+    ?assertEqual(ExpectedSettings2, maybe_adjust_settings(Settings2)).
 
 -endif.
