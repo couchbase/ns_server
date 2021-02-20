@@ -224,14 +224,16 @@ function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsServic
                                  prevTask.tasksRebalance.lastReportURI)) {
                   mnTasksDetails.clearRebalanceReportCache(prevTask.tasksRebalance.lastReportURI);
                 }
-                return mnTasksDetails.getRebalanceReport(tasks.tasksRebalance.lastReportURI)
-                  .then(function (rv) {
-                    if (rv.data.stageInfo) {
-                      tasks.tasksRebalance.stageInfo = rv.data.stageInfo;
-                      tasks.tasksRebalance.completionMessage = rv.data.completionMessage;
-                    }
-                    return tasks;
-                  });
+                if (mnPermissions.export.cluster.admin.logs.read) {
+                  return mnTasksDetails.getRebalanceReport(tasks.tasksRebalance.lastReportURI)
+                    .then(function (rv) {
+                      if (rv.data.stageInfo) {
+                        tasks.tasksRebalance.stageInfo = rv.data.stageInfo;
+                        tasks.tasksRebalance.completionMessage = rv.data.completionMessage;
+                      }
+                      return tasks;
+                    });
+                }
               }
               return tasks;
             }
