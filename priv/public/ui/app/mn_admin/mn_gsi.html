@@ -9,10 +9,10 @@
 <div mn-spinner="!gsiCtl.state" style="padding-bottom: 120px;">
 
   <div class="row items-bottom margin-bottom-half flex-wrap">
-    <div class="column flex-grow-1-5">
+    <div class="column flex-grow-1-5"
+       ng-if="adminCtl.poolDefault.compat.atLeast70">
       <h5>Keyspace <small> bucket.scope</small></h5>
       <mn-keyspace-selector
-         ng-if="adminCtl.poolDefault.compat.atLeast70"
          [service]="gsiCtl.mnCollectionSelectorService"
          class="relative">
       </mn-keyspace-selector>
