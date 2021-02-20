@@ -527,14 +527,6 @@ handle_node_rename(Req) ->
                         ok;
                     not_renamed ->
                         ok;
-                    {cannot_resolve, {Errno, AFamily}} ->
-                        Msg = io_lib:format(
-                                "Unable to resolve ~s address for ~p: ~p",
-                                [misc:afamily2str(AFamily), Hostname, Errno]),
-                        {error, iolist_to_binary(Msg), 400};
-                    {cannot_listen, Errno} ->
-                        Msg = io_lib:format("Could not listen: ~p", [Errno]),
-                        {error, iolist_to_binary(Msg), 400};
                     not_self_started ->
                         Msg = <<"Could not rename the node because name was "
                                 "fixed at server start-up.">>,
@@ -543,13 +535,15 @@ handle_node_rename(Req) ->
                         Msg = io_lib:format("Could not save address after "
                                             "rename: ~p", [E]),
                         {error, iolist_to_binary(Msg), 500};
-                    {address_not_allowed, Message} ->
-                        Msg = io_lib:format("Requested hostname is not "
-                                            "allowed: ~s", [Message]),
-                        {error, iolist_to_binary(Msg), 400};
                     already_part_of_cluster ->
                         Msg = <<"Renaming is disallowed for nodes that are "
                                 "already part of a cluster">>,
+                        {error, Msg, 400};
+                    {Type, _} = Err when Type == cannot_resolve;
+                                         Type == cannot_listen;
+                                         Type == address_not_allowed ->
+                        Msg = ns_error_messages:address_check_error(Hostname,
+                                                                    Err),
                         {error, Msg, 400}
                 end
         end,

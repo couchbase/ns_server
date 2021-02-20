@@ -1216,20 +1216,7 @@ do_engage_cluster_inner_check_address(Address, true) ->
         ok ->
             ok;
         {ErrorType, _} = Error ->
-            Msg0 = case Error of
-                       {cannot_resolve, {Errno, AFamily}} ->
-                           io_lib:format(
-                             "Unable to resolve ~s address for ~p: ~p",
-                             [misc:afamily2str(AFamily), Address, Errno]);
-                       {cannot_listen, Errno} ->
-                           io_lib:format("Could not listen on address \"~s\": ~p",
-                                         [Address, Errno]);
-                       {address_not_allowed, ErrorMsg} ->
-                           io_lib:format("Requested address \"~s\" is not allowed: ~s",
-                                         [Address, ErrorMsg])
-                   end,
-
-            Msg = iolist_to_binary(Msg0),
+            Msg = ns_error_messages:address_check_error(Address, Error),
             {error, ErrorType, Msg, Error}
     end.
 

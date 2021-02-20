@@ -32,7 +32,8 @@
          node_certificate_warning/1,
          not_absolute_path/1,
          empty_param/1,
-         preview_cluster_join_error/0]).
+         preview_cluster_join_error/0,
+         address_check_error/2]).
 
 -spec connection_error_message(term(), string(), string() | integer()) -> binary() | undefined.
 connection_error_message({tls_alert, "bad record mac"}, Host, Port) ->
@@ -283,3 +284,17 @@ empty_param(Param) ->
 
 preview_cluster_join_error() ->
     <<"Can't join a developer preview cluster">>.
+
+%% The function returns error messages associated with calls to
+%% misc:is_good_address
+address_check_error(Address, {cannot_resolve, {Errno, AFamily}}) ->
+    iolist_to_binary(
+      io_lib:format("Unable to resolve ~s address for ~p: ~p",
+                    [misc:afamily2str(AFamily), Address, Errno]));
+address_check_error(Address, {cannot_listen, Errno}) ->
+    iolist_to_binary(io_lib:format("Could not listen on address \"~s\": ~p",
+                     [Address, Errno]));
+address_check_error(Address, {address_not_allowed, ErrorMsg}) ->
+    iolist_to_binary(
+      io_lib:format("Requested hostname \"~s\" is not allowed: ~s",
+                    [Address, ErrorMsg])).
