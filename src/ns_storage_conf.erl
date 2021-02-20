@@ -220,7 +220,7 @@ prepare_db_ix_dirs(NewDbDir, NewIxDir) ->
                                 Error ->
                                     Msg = iolist_to_binary(
                                             io_lib:format(
-                                              "Could not delete unused database files in ~p: ~p",
+                                              "Could not delete unused database files in ~p: ~p.",
                                               [CurrentDbDir, Error])),
                                     {errors, [Msg]}
                             end
@@ -256,7 +256,7 @@ prepare_cbas_dirs(CBASDirs) ->
                 false ->
                     {errors,
                      [<<"Could not set analytics storage. Different directories should not resolve "
-                        "into the same physical location">>]};
+                        "into the same physical location.">>]};
                 true ->
                     case this_node_cbas_dirs() of
                         RealDirs ->
