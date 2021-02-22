@@ -21,7 +21,7 @@ function mnGsiTableDirective(mnHelper) {
 
   return mnGsiTable;
 
-  function mnGsiTableController($scope, mnHelperService) {
+  function mnGsiTableController($scope, mnHelperService, mnPoolDefault) {
     var vm = this;
     vm.generateIndexId = generateIndexId;
     vm.getStatusClass = getStatusClass;
@@ -29,6 +29,7 @@ function mnGsiTableDirective(mnHelper) {
     vm.pageChanged = pageChanged;
     vm.sizeChanged = sizeChanged;
     vm.getRowKeyspace = getRowKeyspace;
+    vm.poolDefault = mnPoolDefault.export;
 
     mnHelper.initializeDetailsHashObserver(vm, 'openedIndex', 'app.admin.gsi');
 

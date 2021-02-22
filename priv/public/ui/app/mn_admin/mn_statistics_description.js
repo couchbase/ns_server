@@ -23,7 +23,8 @@ var compat70 = propertiesToArray(compat65.stats)
       "@kv-.kv_collection_mem_used_bytes",
       "@kv-.kv_collection_disk_size_bytes",
       "@kv-.kv_collection_ops",
-      "@kv-.kv_collection_ops_sum"
+      "@kv-.kv_collection_ops_sum",
+      "@index-.@items.index_num_docs_queued"
     ]).reduce((acc, statPath) => {
       if (derivedMetric[statPath]) {
         return acc; //do not show
