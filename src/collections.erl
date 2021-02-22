@@ -124,7 +124,7 @@ with_scope(Fun, ScopeName, Manifest) ->
     Scopes = get_scopes(Manifest),
     case find_scope(ScopeName, Scopes) of
         undefined ->
-            {error, {scope_not_found, ScopeName}};
+            {scope_not_found, ScopeName};
         Scope ->
             Fun(Scope)
     end.
@@ -135,13 +135,15 @@ with_collection(Fun, ScopeName, CollectionName, Manifest) ->
               Collections = get_collections(Scope),
               case find_collection(CollectionName, Collections) of
                   undefined ->
-                      {error,
-                       {collection_not_found, ScopeName, CollectionName}};
+                      {collection_not_found, ScopeName, CollectionName};
                   Props ->
                       Fun(Props)
               end
       end, ScopeName, Manifest).
 
+-spec get_collection_uid(bucket_name(), string(), string()) ->
+          {ok, integer()} |
+          {atom(), string()}.
 get_collection_uid(Bucket, ScopeName, CollectionName) ->
     Manifest = get_manifest(Bucket, direct),
     true = Manifest =/= undefined,
