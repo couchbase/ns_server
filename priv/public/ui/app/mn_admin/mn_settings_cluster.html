@@ -266,40 +266,42 @@
               {{settingsClusterCtl.dataServiceSettingsErrors.num_writer_threads}}
             </div>
 
-            <label class="margin-top-half">Storage Engine Thread Settings</label>
-            <input
-               type="radio"
-               id="for-storage-default"
-               name="storage_thread_options"
-               ng-model="settingsClusterCtl.storageThreads"
-               value="default">
-            <label for="for-storage-default">
-              Default
-            </label>
-            <div class="row flex-left">
+            <div ng-if="adminCtl.isDeveloperPreview">
+              <label class="margin-top-half">Storage Engine Thread Settings</label>
               <input
                  type="radio"
-                 id="for-storage-fixed"
+                 id="for-storage-default"
                  name="storage_thread_options"
                  ng-model="settingsClusterCtl.storageThreads"
-                 value="fixed">
-              <label for="for-storage-fixed">
-                Fixed value
+                 value="default">
+              <label for="for-storage-default">
+                Default
               </label>
-              <select
-                 class="select-small fix-width-1"
-                 ng-model="settingsClusterCtl.storageThreadsFixed"
-                 ng-if="settingsClusterCtl.storageThreads == 'fixed'">
-                <option
-                   ng-repeat="item in settingsClusterCtl.itemsSelect"
-                   value="{{item}}">{{item}}
-                </option>
-              </select>
-            </div>
-            <div
-               class="error"
-               ng-show="settingsClusterCtl.dataServiceSettingsErrors.num_storage_threads">
-              {{settingsClusterCtl.dataServiceSettingsErrors.num_storage_threads}}
+              <div class="row flex-left">
+                <input
+                   type="radio"
+                   id="for-storage-fixed"
+                   name="storage_thread_options"
+                   ng-model="settingsClusterCtl.storageThreads"
+                   value="fixed">
+                <label for="for-storage-fixed">
+                  Fixed value
+                </label>
+                <select
+                   class="select-small fix-width-1"
+                   ng-model="settingsClusterCtl.storageThreadsFixed"
+                   ng-if="settingsClusterCtl.storageThreads == 'fixed'">
+                  <option
+                     ng-repeat="item in settingsClusterCtl.itemsSelect"
+                     value="{{item}}">{{item}}
+                  </option>
+                </select>
+              </div>
+              <div
+                 class="error"
+                 ng-show="settingsClusterCtl.dataServiceSettingsErrors.num_storage_threads">
+                {{settingsClusterCtl.dataServiceSettingsErrors.num_storage_threads}}
+              </div>
             </div>
           </div>
         </div>

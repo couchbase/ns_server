@@ -442,7 +442,8 @@
     </div>
     <div
        class="formrow checkbox-list"
-       ng-if="pools.isEnterprise && bucketConf.bucketType === 'membase'">
+       ng-if="pools.isDeveloperPreview &&
+              pools.isEnterprise && bucketConf.bucketType === 'membase'">
       <label>Storage Backend</label>
       <div class="formrow checkbox-list">
         <input
