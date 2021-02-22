@@ -2066,6 +2066,10 @@ span.adder:hover {
   padding-left: .25rem;
   font-size: .875rem;
 }
+.pagination .page-item.active, /* ng-bootstrap */
+.pagination .pagination-page.active /* angular-ui-bootstrap */ {
+  text-decoration: underline;
+}
 
 /* CodeMirror JSON editor height ---------------------------------------- */
 .height-100 .CodeMirror {
