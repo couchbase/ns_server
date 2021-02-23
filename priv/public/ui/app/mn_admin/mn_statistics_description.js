@@ -904,7 +904,7 @@ function get65CompatDesc() {
         },
         "couch_views_ops": {
           unit: "number/sec",
-          title: "Views Read Rate",
+          title: "Views Read Rate Total",
           desc: "All the views reads for all design documents including scatter gather. (measured from couch_views_ops)"
         },
         "curr_connections": {
