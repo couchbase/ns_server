@@ -98,7 +98,10 @@ function mnSettingsClusterController($scope, $q, $uibModal, mnPoolDefault, mnMem
         "queryN1QLFeatCtrl"
       ];
       if (mnPoolDefault.export.compat.atLeast70) {
-        settings = settings.concat(["queryTxTimeout", "queryMemoryQuota", "queryUseCBO"]);
+        settings = settings.concat(["queryTxTimeout", "queryMemoryQuota"]);
+        if (mnPoolDefault.export.isEnterprise) {
+          settings.push("queryUseCBO");
+        }
       }
       promise3 = mnPromiseHelper(
         vm,
