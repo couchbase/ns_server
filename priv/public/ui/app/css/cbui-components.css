@@ -2252,6 +2252,7 @@ span.adder:hover {
 .wb-button-wrapper {
   display: flex;
   justify-content: flex-start;
+  margin-right: .5rem;
 }
 .wb-button-execute {
   width: 6.5rem;
@@ -2260,7 +2261,7 @@ span.adder:hover {
 /* a drawer to hide extra stuff + an opener & animation for it -------------- */
 .cbui-drawer {
   position: relative;
-  margin: 0 .5rem;
+  margin: 0 0 0 .5rem;
   padding: 0 0 .25rem 0;
   display: flex;
   align-items: center;
