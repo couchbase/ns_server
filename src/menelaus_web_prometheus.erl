@@ -119,9 +119,10 @@ handle_create_snapshot(Req) ->
 %%%===================================================================
 
 report_metric({Metric, Labels, Value}, Resp) ->
+    LabelsIOList = [[name_to_iolist(K), <<"=\"">>, label_val_to_bin(V),
+                     <<"\"">>] || {K, V} <- Labels],
     Line =
-        [name_to_iolist(Metric), <<"{">>,
-         lists:join(<<",">>,[[K, <<"=\"">>, V, <<"\"">>] || {K, V} <- Labels]),
+        [name_to_iolist(Metric), <<"{">>, lists:join(<<",">>, LabelsIOList),
          <<"} ">>, prometheus:format_value(Value), <<"\n">>],
     mochiweb_response:write_chunk(Line, Resp);
 report_metric({Prefix, Metric, Labels, Value}, Resp) ->
@@ -130,3 +131,10 @@ report_metric({Prefix, Metric, Labels, Value}, Resp) ->
 
 name_to_iolist(A) when is_atom(A) -> atom_to_binary(A, latin1);
 name_to_iolist(A) -> A.
+
+label_val_to_bin(N) when is_integer(N) -> integer_to_binary(N);
+label_val_to_bin(F) when is_float(F) -> float_to_binary(F);
+label_val_to_bin(A) when is_atom(A) -> atom_to_binary(A, latin1);
+label_val_to_bin(Bin) when is_binary(Bin) -> Bin;
+label_val_to_bin(Str) when is_list(Str) -> list_to_binary(Str).
+

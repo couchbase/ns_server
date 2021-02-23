@@ -24,7 +24,7 @@ start_link() ->
     proc_lib:start_link(erlang, apply, [fun start_loop/0, []]).
 
 start_loop() ->
-    ets:new(ns_server_system_stats, [public, named_table, set]),
+    ns_server_stats:init_stats(),
 
     proc_lib:init_ack({ok, self()}),
     ns_server_stats:stale_histo_epoch_cleaner().

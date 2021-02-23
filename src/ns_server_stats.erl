@@ -19,16 +19,24 @@
 
 -behaviour(gen_server).
 
+-include_lib("stdlib/include/assert.hrl").
 -include("ns_common.hrl").
 -include("ns_stats.hrl").
 
 -define(ETS_LOG_INTVL, 180).
+
+-define(DEFAULT_HIST_MAX, 10000). %%  10^4, 4 buckets
+-define(DEFAULT_HIST_UNIT, millisecond).
+-define(METRIC_PREFIX, <<"cm_">>).
 
 %% API
 -export([start_link/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
+
+-export([init_stats/0, notify_counter/1, notify_counter/2, notify_gauge/2,
+         notify_histogram/2, notify_histogram/4]).
 
 -export([increment_counter/1, increment_counter/2,
          get_ns_server_stats/0, set_counter/2,
@@ -47,8 +55,43 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
+notify_counter(Metric) ->
+    notify_counter(Metric, 1).
+notify_counter(Metric, Val) when Val > 0, is_integer(Val) ->
+    Key = {c, normalized_metric(Metric)},
+    catch ets:update_counter(?MODULE, Key, Val, {Key, 0}),
+    ok.
+
+notify_gauge(Metric, Val) ->
+    Key = {g, normalized_metric(Metric)},
+    catch ets:insert(?MODULE, {Key, Val}),
+    ok.
+
+notify_histogram(Metric, Val) ->
+    notify_histogram(Metric, ?DEFAULT_HIST_MAX, ?DEFAULT_HIST_UNIT, Val).
+notify_histogram(Metric, Max, Units, Val) when Max > 0, Val >= 0,
+                                               is_integer(Val) ->
+    BucketN = get_histogram_bucket(Val, Max),
+    Key = {h, normalized_metric(Metric), Max, Units},
+            %% Update sum | Update counter for a particular bucket
+    Updates = [{2, Val},    {BucketN + 4, 1}],
+    try ets:update_counter(?MODULE, Key, Updates) of
+        _ -> ok
+    catch
+        error:badarg -> %% missing stat or no ets table
+            N = get_histogram_bucket(Max, Max) + 1,
+            %%                      Sum | Inf | Other Buckets
+            V = list_to_tuple([Key,   0,    0 | lists:duplicate(N, 0)]),
+            %% verify units
+            ?assert(is_number(to_seconds(1, Units))),
+            catch ets:insert_new(?MODULE, V),
+            catch ets:update_counter(?MODULE, Key, Updates),
+            ok
+    end.
+
 report_prom_stats(ReportFun) ->
     report_audit_stats(ReportFun),
+    report_ns_server_stats(ReportFun),
     Stats = gen_server:call(?MODULE, get_stats),
     SystemStats = proplists:get_value("@system", Stats, []),
     lists:foreach(
@@ -114,8 +157,39 @@ report_couch_stats(Bucket, ReportFun) ->
             ReportFun({couch_spatial_ops, L, Ops})
       end, SpatialStats).
 
+report_ns_server_stats(ReportFun) ->
+    ets:foldl(
+      fun ({{g, {BinName, Labels}}, Value}, _) ->
+              ReportFun({[?METRIC_PREFIX, BinName], Labels, Value});
+          ({{c, {BinName, Labels}}, Value}, _) ->
+              NameIOList = [[?METRIC_PREFIX, BinName], <<"_total">>],
+              ReportFun({NameIOList, Labels, Value});
+          (Histogram, _) ->
+              [{h, {Name, Labels}, _Max, Units}, Sum, Inf | Buckets] =
+                  tuple_to_list(Histogram),
+              BinName = iolist_to_binary([Name, <<"_seconds">>]),
+
+              BucketName = [?METRIC_PREFIX, BinName, <<"_bucket">>],
+              {_, BucketsTotal} =
+                  lists:foldl(
+                    fun (Val, {Le, CurTotal}) ->
+                        BucketValue = CurTotal + Val,
+                        ReportFun({BucketName,
+                                   [{le, to_seconds(Le, Units)} | Labels],
+                                   BucketValue}),
+                        {Le * 10, BucketValue}
+                    end, {1, 0}, Buckets),
+              Total = BucketsTotal + Inf,
+              ReportFun({BucketName, [{le, <<"+Inf">>}| Labels], Total}),
+              ReportFun({[?METRIC_PREFIX, BinName, <<"_count">>], Labels,
+                         Total}),
+              ReportFun({[?METRIC_PREFIX, BinName, <<"_sum">>], Labels,
+                         to_seconds(Sum, Units)})
+      end, [], ?MODULE),
+      ok.
+
 init([]) ->
-    ets:new(ns_server_system_stats, [public, named_table, set]),
+    init_stats(),
     increment_counter({request_leaves, rest}, 0),
     increment_counter({request_enters, hibernate}, 0),
     increment_counter({request_leaves, hibernate}, 0),
@@ -130,6 +204,11 @@ init([]) ->
                    pid_names = grab_pid_names()},
 
     {ok, State}.
+
+init_stats() ->
+    ets:new(?MODULE, [public, named_table, set]),
+    %% Deprecated table, will be removed:
+    ets:new(ns_server_system_stats, [public, named_table, set]).
 
 spawn_sigar() ->
     Path = path_config:component_path(bin, "sigar_port"),
@@ -635,3 +714,18 @@ format_stats(Stats) ->
            K -> [K, lists:duplicate(erlang:max(1, ?WIDTH - byte_size(K)), $\s),
                  couch_util:to_binary(V), $\n]
        end || {K0, V} <- lists:sort(Stats)]).
+
+get_histogram_bucket(V, Max) when V > Max -> -1;
+get_histogram_bucket(0, _Max) -> 0;
+get_histogram_bucket(V, _Max) when is_integer(V) -> ceil(math:log10(V)).
+
+to_seconds(Value, second) -> Value;
+to_seconds(Value, millisecond) -> Value / 1000;
+to_seconds(Value, microsecond) -> Value / 1000000.
+
+normalized_metric(N) when is_atom(N); is_binary(N) ->
+    normalized_metric({N, []});
+normalized_metric({N, L}) when is_atom(N) ->
+    normalized_metric({atom_to_binary(N, latin1), L});
+normalized_metric({N, L}) when is_binary(N), is_list(L) ->
+    {N, lists:usort(L)}.
