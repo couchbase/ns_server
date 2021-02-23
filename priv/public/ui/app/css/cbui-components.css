@@ -2154,21 +2154,22 @@ span.adder:hover {
 }
 
 /* workbench styles shared by query/analytics workbenches ------------------ */
-.wb-wrapper { /* wrapper for the whole workbench --------------------------- */
+.wb-wrapper { /* wrapper for the workbench + insights sidebar -------------- */
   margin: 0;
-  padding: 0;
+  padding: 0 0 0 0;
   display: flex;
   align-items: flex-start;
   flex-wrap: nowrap;
   justify-content: space-between;
   position: relative;
+  overflow: hidden;
 }
 /* wrapper for query editor and results area ----------- */
 .wb-main-wrapper {
-  height: calc(100vh - 155px); /* magic number - 155px for the header */
-  display: flex;
-  flex-direction: column;
+  height: calc(100vh - 130px); /* magic number - 155px for the header */
+  overflow: hidden;
   transition: all 1s;
+  margin: 0 0 0 0;
 }
 .wb-query-editor { /* wrapper for query editor area: header, Ace, footer -- */
   flex: 0 0 auto; /* don't expand or shrink, size will be set in .js */
@@ -2353,8 +2354,8 @@ span.adder:hover {
 .wb-results-wrapper {
   background-color: #f6f7f9;
   margin-top: .5rem;
-  flex: 1;
   overflow: auto;
+  height: 100%;
 }
 /* the wrappers around the various results views --------------------------- */
 .wb-results-json,
@@ -2483,22 +2484,24 @@ button.ace-search-options-buttons.checked {
   font-size: 12px !important;
   margin-bottom: .25rem;
 }
-/* bucket inference sidebar ------------------------------------------------- */
+/* for bucket inference sidebar & ananlytics dataverse mgmt sidebar --------- */
 .insights-sidebar { /* wrapper for sidebar area ----------------------------- */
   -webkit-box-flex: 0;
   flex: 0 0 auto;
-  padding-left: 1rem;
   transition: all .8s;
-  margin: 0 -.5rem 0 0;
+  margin: 0 -.5rem 0 1rem;
   overflow: hidden;
-  max-height: calc(100vh - 160px);
+  border-left: 1px solid #d1d1d1;
+  padding: .25rem 0 0 1rem;
+}
+.insights-sidebar-body {
+  overflow: auto;
+  max-height: calc(100vh - 168px);
 }
 .insights-sidebar section {
-  height: calc(100vh - 160px);
   overflow: auto;
   padding-right: 1rem!important;
 }
-
 .insights-sidebar.fix-width-0 {
   padding-left: 1rem;
 }
@@ -2544,13 +2547,7 @@ button.ace-search-options-buttons.checked {
 .find-icon:hover {
   color: #333;
 }
-.insights-sidebar-body {
-  border-left: 1px solid #d1d1d1;
-  padding: .25rem 0 0 1rem;
-  white-space: nowrap;
-  overflow: hidden;
-  margin-bottom: 2rem;
-}
+
 .insights-sidebar.fix-width-0 .insights-sidebar-body {
   border-width: 0!important;
   padding: 0!important;
@@ -2588,12 +2585,23 @@ button.ace-search-options-buttons.checked {
 }
 .insights-scope {
   margin: .25rem 0 .25rem 1rem;
-
 }
 .insights-collection {
   margin: .25rem 0 .25rem 1rem;
-
 }
+.dataverse-box {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #f5f5f5;
+  margin: .5rem 0 0 0;
+  padding: .5rem;
+}
+.dataverse-box h5,
+.dataverse-box div {
+  line-height: 1.2 !important;
+}
+
 /* workbench query history -------------------------------------------------- */
 .wb-history-controls {
   display: flex;

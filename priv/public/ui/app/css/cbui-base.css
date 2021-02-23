@@ -185,8 +185,8 @@ h5 {
 /* very small title --------------------------------------------------------- */
 h6 {
   font-size: .8125rem;
-  font-weight: 400;
-  color: #333;
+  font-weight: 600;
+  color: #000;
   line-height: 1.5 !important;
 }
 h6 + h5 {

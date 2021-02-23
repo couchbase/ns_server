@@ -1,7 +1,7 @@
 /* MAIN LAYOUT COMPONENTS ----------------------------------------------- */
 /* expands height of the page regardless of content - for footer position */
 html, body, .root-container {
-  height: 100%;
+  height: 100vh;
 }
 /* utility links at page top -------------------------------------------- */
 .nav-header {
@@ -30,7 +30,7 @@ main {
   display: flex;
   flex-wrap: nowrap;
   align-items: flex-start;
-  padding: 1rem;
+  padding: 1rem 1rem 0 1rem;
   margin: 0;
   width: 100vw;
   position: relative;
@@ -60,7 +60,7 @@ nav.nav-sidebar {
 /* wrapper for all content in <main> besides sidebar -------------------- */
 .main-content {
   flex: 1;
-  margin-bottom: 2rem;
+  overflow: hidden;
 }
 section {
   border-bottom: 1px solid #d1d1d1;
