@@ -558,6 +558,8 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {no_check, fun menelaus_web_misc:handle_uilogout/1};
                 ["sampleBuckets", "install"] ->
                     {{[buckets], create}, fun menelaus_web_samples:handle_post/1};
+                ["nodeInit"] ->
+                    {{[admin, setup], write}, fun menelaus_web_node:handle_node_init/1};
                 ["engageCluster2"] ->
                     {{[admin, setup], write}, fun menelaus_web_cluster:handle_engage_cluster2/1};
                 ["completeJoin"] ->

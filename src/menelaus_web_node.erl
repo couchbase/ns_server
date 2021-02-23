@@ -46,7 +46,8 @@
          alternate_addresses_json/4,
          handle_setup_net_config/1,
          handle_change_external_listeners/2,
-         get_hostnames/2]).
+         get_hostnames/2,
+         handle_node_init/1]).
 
 -import(menelaus_util,
         [local_addr/1,
@@ -55,6 +56,114 @@
          bin_concat_path/1,
          reply_not_found/1,
          reply/2]).
+
+handle_node_init(Req) ->
+    validator:handle(
+      fun (Props) ->
+          %% NOTE: due to required restart we need to protect
+          %%       ourselves from 'death signal' of parent
+          erlang:process_flag(trap_exit, true),
+          try
+              ok = node_init(Req, Props),
+              reply(Req, 200)
+          catch
+              throw:{error, Code, Msg} ->
+                 Json = {[{errors, {[{<<"_">>, Msg}]}}]},
+                 menelaus_util:web_json_exception(Code, Json)
+          end,
+          %% NOTE: we have to stop this process because in case of
+          %%       ns_server restart it becomes orphan
+          erlang:exit(normal)
+      end, Req, form, node_init_validators()).
+
+node_init_validators() ->
+    [validator:has_params(_),
+     validator:touch(dataPath, _),
+     validator:touch(indexPath, _),
+     validator:touch(analyticsPath, _),
+     validator:touch(eventingPath, _),
+     validator:touch(javaHome, _),
+     validator:validate(
+       fun (_) ->
+           case ns_cluster_membership:system_joinable() of
+               true -> ok;
+               false -> {error, "not supported when node is part of a cluster"}
+           end
+       end, afamily, _),
+     validator:one_of(afamily, ["ipv4", "ipv6"], _),
+     validator:validate(fun ("ipv4") -> {value, inet};
+                            ("ipv6") -> {value, inet6}
+                        end, afamily, _),
+     validator:default(afamily, unchanged, _),
+     validator:validate(
+       fun (_) ->
+           case ns_cluster_membership:system_joinable() of
+               true -> ok;
+               false -> {error, "not supported when node is part of a cluster"}
+           end
+       end, hostname, _),
+     validator:validate_relative(
+       fun (Hostname, AFamily) ->
+           AFamily2 = case AFamily of
+                          unchanged -> misc:get_net_family();
+                          _ -> AFamily
+                      end,
+           case misc:is_good_address(Hostname, AFamily2) of
+               ok -> {value, Hostname};
+               Error ->
+                   Msg = ns_error_messages:address_check_error(Hostname, Error),
+                   {error, Msg}
+           end
+       end, hostname, afamily, _),
+     validator:unsupported(_)].
+
+node_init(Req, Props) ->
+    Settings =
+        lists:flatmap(
+          fun ({N1, N2}) ->
+              [{N2, P} || P <- proplists:get_all_values(N1, Props)]
+          end,
+          [{dataPath, "path"}, {indexPath, "index_path"},
+           {analyticsPath, "cbas_path"}, {eventingPath, "eventing_path"},
+           {javaHome, "java_home"}]),
+
+    case apply_node_settings(Settings) of
+        not_changed -> ok;
+        ok ->
+            ns_audit:disk_storage_conf(Req, node(), Settings),
+            ok;
+        {error, Msgs} ->
+            ErrorMsg = iolist_to_binary(lists:join(" ", Msgs)),
+            throw({error, 400, ErrorMsg})
+    end,
+
+    case proplists:get_value(afamily, Props) of
+        unchanged -> ok;
+        AFamily ->
+            Encryption = cb_dist:external_encryption(),
+            CBDistCfg = [{afamily, AFamily},
+                         {externalListeners, [{AFamily, Encryption}]}],
+            case netconfig_updater:apply_config(CBDistCfg) of
+                ok ->
+                    %% Wait for web servers to restart
+                    ns_config:sync_announcements(),
+                    menelaus_event:sync(ns_config_events),
+                    cluster_compat_mode:is_enterprise() andalso
+                        ns_ssl_services_setup:sync();
+                {error, Msg} ->
+                    throw({error, 400, Msg})
+            end
+    end,
+
+    case proplists:get_value(hostname, Props) of
+        undefined -> ok;
+        Hostname ->
+            case do_node_rename(Req, Hostname) of
+                ok -> ok;
+                {error, Msg2, Code} ->
+                    throw({error, Code, Msg2})
+            end
+    end.
 
 handle_node("self", Req) ->
     handle_node(node(), Req);
@@ -514,38 +623,11 @@ graceful_failover_possible(Node, Buckets) ->
 
 handle_node_rename(Req) ->
     Params = mochiweb_request:parse_post(Req),
-    Node = node(),
 
     Reply =
         case proplists:get_value("hostname", Params) of
-            undefined ->
-                {error, <<"The name cannot be empty">>, 400};
-            Hostname ->
-                case ns_cluster:change_address(Hostname) of
-                    ok ->
-                        ns_audit:rename_node(Req, Node, Hostname),
-                        ok;
-                    not_renamed ->
-                        ok;
-                    not_self_started ->
-                        Msg = <<"Could not rename the node because name was "
-                                "fixed at server start-up.">>,
-                        {error, Msg, 403};
-                    {address_save_failed, E} ->
-                        Msg = io_lib:format("Could not save address after "
-                                            "rename: ~p", [E]),
-                        {error, iolist_to_binary(Msg), 500};
-                    already_part_of_cluster ->
-                        Msg = <<"Renaming is disallowed for nodes that are "
-                                "already part of a cluster">>,
-                        {error, Msg, 400};
-                    {Type, _} = Err when Type == cannot_resolve;
-                                         Type == cannot_listen;
-                                         Type == address_not_allowed ->
-                        Msg = ns_error_messages:address_check_error(Hostname,
-                                                                    Err),
-                        {error, Msg, 400}
-                end
+            undefined -> {error, <<"The name cannot be empty">>, 400};
+            Hostname -> do_node_rename(Req, Hostname)
         end,
 
     case Reply of
@@ -553,6 +635,32 @@ handle_node_rename(Req) ->
             reply(Req, 200);
         {error, Error, Status} ->
             reply_json(Req, [Error], Status)
+    end.
+
+do_node_rename(Req, Hostname) ->
+    case ns_cluster:change_address(Hostname) of
+        ok ->
+            ns_audit:rename_node(Req, node(), Hostname),
+            ok;
+        not_renamed ->
+            ok;
+        not_self_started ->
+            Msg = <<"Could not rename the node because name was "
+                    "fixed at server start-up.">>,
+            {error, Msg, 403};
+        {address_save_failed, E} ->
+            Msg = io_lib:format("Could not save address after "
+                                "rename: ~p", [E]),
+            {error, iolist_to_binary(Msg), 500};
+        already_part_of_cluster ->
+            Msg = <<"Renaming is disallowed for nodes that are "
+                    "already part of a cluster">>,
+            {error, Msg, 400};
+        {Type, _} = Error when Type == cannot_resolve;
+                               Type == cannot_listen;
+                               Type == address_not_allowed ->
+            Msg = ns_error_messages:address_check_error(Hostname, Error),
+            {error, Msg, 400}
     end.
 
 handle_node_self_xdcr_ssl_ports(Req) ->
