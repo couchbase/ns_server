@@ -71,6 +71,8 @@ let interestingPermissions = ([
   "cluster.admin.security!write",
   "cluster.admin.security.external!write",
   "cluster.admin.security.external!read",
+  "cluster.admin.security.admin!write",
+  "cluster.admin.security.admin!read",
   "cluster.samples!read",
   "cluster.nodes!read"
 ]).concat(bucketSpecificPermissions[0]({name: "."}));

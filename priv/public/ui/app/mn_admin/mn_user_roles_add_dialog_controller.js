@@ -100,6 +100,13 @@ function mnUserRolesAddDialogController(mnUserRolesService, $uibModalInstance, m
       resp.selectedRoles = {};
       resp.selectedGroupsRoles = {};
       resp.selectedGroupsRolesConfigs = {};
+      if (!permissions.cluster.admin.security.admin.write) {
+        let administ = resp.folders.find(f => f.name == "Administrative");
+        if (administ) {
+          administ.roles = administ.roles.filter(r => !r.role.includes("security_admin_") &&
+                                                 r.role !== "admin" && r.role !== "ro_admin");
+        }
+      }
       vm.state = resp;
       applyUser(vm.user);
       vm.reloadUserRoles = false;
