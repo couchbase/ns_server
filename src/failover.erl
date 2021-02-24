@@ -91,14 +91,14 @@ orchestrate(Nodes, Options) when Nodes =/= [] ->
             ok ->
                 ns_cluster:counter_inc(failover_complete),
                 ale:info(?USER_LOGGER, "Failed over ~p: ok", [Nodes]),
-                finish_failover(Nodes),
+                deactivate_nodes(Nodes),
                 ok;
             {failover_incomplete, ErrorNodes} ->
                 ns_cluster:counter_inc(failover_incomplete),
                 ale:error(?USER_LOGGER,
                           "Failover couldn't complete on some nodes:~n~p",
                           [ErrorNodes]),
-                finish_failover(Nodes),
+                deactivate_nodes(Nodes),
                 ok;
             Error ->
                 ns_cluster:counter_inc(failover_failed),
@@ -108,16 +108,6 @@ orchestrate(Nodes, Options) when Nodes =/= [] ->
     ns_cluster:counter_inc(failover),
     master_activity_events:note_failover_ended(),
     Res.
-
-finish_failover(Nodes) ->
-    ok = leader_activities:deactivate_quorum_nodes(Nodes),
-    deactivate_nodes(Nodes),
-    case chronicle_compat:enabled() of
-        true ->
-            ok = chronicle_master:deactivate_voters(Nodes);
-        false ->
-            ok
-    end.
 
 config_sync_and_orchestrate(Nodes, Options) ->
     case pre_failover_config_sync(Nodes, Options) of
@@ -159,7 +149,8 @@ config_sync_nodes(FailedNodes) ->
 
 deactivate_nodes(Nodes) ->
     ale:info(?USER_LOGGER, "Deactivating failed over nodes ~p", [Nodes]),
-    ok = ns_cluster_membership:deactivate(Nodes).
+    ok = leader_activities:deactivate_quorum_nodes(Nodes),
+    ok = chronicle_master:deactivate_nodes(Nodes).
 
 %% @doc Fail one or more nodes. Doesn't eject the node from the cluster. Takes
 %% effect immediately.

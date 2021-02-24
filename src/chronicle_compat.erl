@@ -29,6 +29,7 @@
          set/2,
          set_multiple/1,
          transaction/2,
+         transaction/3,
          get_snapshot/1,
          get_snapshot_with_revision/1,
          subscribe_to_key_change/1,

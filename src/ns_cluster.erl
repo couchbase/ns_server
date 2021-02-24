@@ -619,14 +619,8 @@ shun(RemoteNode) ->
         false ->
             try
                 ?cluster_debug("Shunning ~p", [RemoteNode]),
-                ns_cluster_membership:remove_node(RemoteNode),
-                ns_config_rep:ensure_config_pushed(),
-                case chronicle_compat:enabled() of
-                    true ->
-                        ok = chronicle_master:remove_peer(RemoteNode);
-                    false ->
-                        ok
-                end
+                ok = chronicle_master:remove_peer(RemoteNode),
+                ns_config_rep:ensure_config_pushed()
             catch T:E:Stack ->
                     ?log_error("Shun failed with ~p", [{T,E,Stack}]),
                     exit(shun_failed)
@@ -984,8 +978,8 @@ do_add_node_engaged(NodeKVList, Auth, GroupUUID, Services, Scheme) ->
                     %% services from NodeKVList
                     node_add_transaction(
                       OtpNode, GroupUUID, Services,
-                      ?cut(do_add_node_engaged_inner(
-                             RequestTarget, OtpNode, Auth, Services)));
+                      do_add_node_engaged_inner(
+                        _, RequestTarget, OtpNode, Auth, Services));
                 Error -> Error
             end;
         X -> X
@@ -1026,22 +1020,15 @@ get_request_target(NodeKVList, Scheme) ->
         end,
     {Scheme2, Hostname, Port}.
 
-do_add_node_engaged_inner({Scheme, Hostname, Port} = Target,
+do_add_node_engaged_inner(ChronicleInfo, {Scheme, Hostname, Port} = Target,
                           OtpNode, Auth, Services) ->
-    {struct, MyNodeKVList} = menelaus_web_node:build_full_node_info(node(),
-                                                                    misc:localhost()),
-    ChronicleInfo =
-        case chronicle_compat:enabled() of
-            true ->
-                {ok, CI} = chronicle_master:add_replica(OtpNode),
-                base64:encode(term_to_binary(CI));
-            false ->
-                undefined
-        end,
+    {struct, MyNodeKVList} =
+        menelaus_web_node:build_full_node_info(node(), misc:localhost()),
     Struct = {struct, [{<<"targetNode">>, OtpNode},
                        {<<"requestedServices">>, Services}
                        | MyNodeKVList] ++
-                  [{<<"chronicleInfo">>, ChronicleInfo} ||
+                  [{<<"chronicleInfo">>,
+                    base64:encode(term_to_binary(ChronicleInfo))} ||
                       ChronicleInfo =/= undefined]},
 
     ConnectOpts = [misc:get_net_family()],
@@ -1077,9 +1064,12 @@ do_add_node_engaged_inner({Scheme, Hostname, Port} = Target,
     end.
 
 node_add_transaction(Node, GroupUUID, Services, Body) ->
-    case ns_cluster_membership:add_node(Node, GroupUUID, Services) of
-        {ok, _} ->
-            node_add_transaction_finish(Node, GroupUUID, Body);
+    case chronicle_master:add_replica(Node, GroupUUID, Services) of
+        ok ->
+            %% pre cheshirecat clusters only
+            node_add_transaction_finish(Node, GroupUUID, undefined, Body);
+        {ok, ChronicleInfo} ->
+            node_add_transaction_finish(Node, GroupUUID, ChronicleInfo, Body);
         group_not_found ->
             M = iolist_to_binary([<<"Could not find group with uuid: ">>,
                                   GroupUUID]),
@@ -1090,10 +1080,10 @@ node_add_transaction(Node, GroupUUID, Services, Body) ->
             {error, node_present, M, {node_present, Node}}
     end.
 
-node_add_transaction_finish(Node, GroupUUID, Body) ->
+node_add_transaction_finish(Node, GroupUUID, ChronicleInfo, Body) ->
     ?cluster_info("Started node add transaction by adding node ~p to nodes_wanted (group: ~s)",
                   [Node, GroupUUID]),
-    try Body() of
+    try Body(ChronicleInfo) of
         {ok, _} = X -> X;
         Crap ->
             ?cluster_error("Add transaction of ~p failed because of ~p",

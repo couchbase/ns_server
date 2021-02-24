@@ -533,14 +533,8 @@ rebalance_body(KeepNodes,
       [kv, kv_delta_recovery]),
     ok = service_janitor:cleanup(),
 
+    ok = chronicle_master:activate_nodes(KeepNodes),
     ok = leader_activities:activate_quorum_nodes(KeepNodes),
-    ok = ns_cluster_membership:activate(KeepNodes),
-    case chronicle_compat:enabled() of
-        true ->
-            ok = chronicle_master:ensure_voters(KeepNodes);
-        false ->
-            ok
-    end,
 
     config_sync(pull, LiveNodes),
     config_sync(push, LiveNodes),

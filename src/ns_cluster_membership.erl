@@ -38,9 +38,9 @@
          get_cluster_membership/1,
          get_cluster_membership/2,
          get_node_server_group/2,
-         activate/1,
+         activate/2,
          update_membership_sets/2,
-         deactivate/1,
+         deactivate/2,
          failover/2,
          re_failover/1,
          system_joinable/0,
@@ -48,8 +48,8 @@
          get_recovery_type/2,
          update_recovery_type/2,
          clear_recovery_type_sets/1,
-         add_node/3,
-         remove_node/1,
+         add_node/4,
+         remove_node/2,
          prepare_to_join/2,
          is_newly_added_node/1,
          attach_node_uuids/2,
@@ -171,17 +171,20 @@ get_node_server_group_inner(Node, [SG | Rest]) ->
 system_joinable() ->
     nodes_wanted() =:= [node()].
 
-activate(Nodes) ->
+activate(Nodes, Transaction) ->
     ?log_debug("Activate nodes ~p", [Nodes]),
-    chronicle_compat:set_multiple(update_membership_sets(Nodes, active)).
+    update_membership(Nodes, active, Transaction).
 
-deactivate(Nodes) ->
+deactivate(Nodes, Transaction) ->
     ?log_debug("Deactivate nodes ~p", [Nodes]),
-    chronicle_compat:set_multiple(update_membership_sets(Nodes,
-                                                         inactiveFailed)).
+    update_membership(Nodes, inactiveFailed, Transaction).
 
 update_membership_sets(Nodes, Membership) ->
     [{{node, Node, membership}, Membership} || Node <- Nodes].
+
+update_membership(Nodes, Type, Transaction) ->
+    Sets = [{set, K, V} || {K, V} <- update_membership_sets(Nodes, Type)],
+    Transaction([], fun (_) -> {commit, Sets} end).
 
 is_newly_added_node(Node) ->
     get_cluster_membership(Node) =:= inactiveAdded andalso
@@ -256,10 +259,10 @@ update_recovery_type(Node, NewType) ->
 clear_recovery_type_sets(Nodes) ->
     [{{node, N, recovery_type}, none} || N <- Nodes].
 
-add_node(Node, GroupUUID, Services) ->
+add_node(Node, GroupUUID, Services, Transaction) ->
     ?log_debug("Add node ~p, GroupUUID = ~p, Services = ~p",
                [Node, GroupUUID, Services]),
-    chronicle_compat:transaction(
+    Transaction(
       [nodes_wanted, server_groups],
       fun (Snapshot) ->
               NodesWanted = nodes_wanted(Snapshot),
@@ -309,44 +312,50 @@ add_node_to_groups(Groups, GroupUUID, Node) ->
             lists:usort([NewGroup | (Groups -- MaybeGroup)])
     end.
 
-remove_node(RemoteNode) ->
-    case chronicle_compat:backend() of
-        ns_config ->
-            ok = ns_config:update(
-                   fun ({nodes_wanted, V}) ->
-                           {update, {nodes_wanted, V -- [RemoteNode]}};
-                       ({server_groups, Groups}) ->
-                           {update, {server_groups,
-                                     remove_node_from_server_groups(
-                                       RemoteNode, Groups)}};
-                       ({{node, Node, _}, _})
-                         when Node =:= RemoteNode ->
-                           delete;
-                       (_Other) ->
-                           skip
-                   end);
-        chronicle ->
+remove_node(RemoteNode, Transaction) ->
+    remove_node(chronicle_compat:backend(), RemoteNode, Transaction).
+
+remove_node(ns_config, RemoteNode, _Transaction) ->
+    ok = ns_config:update(
+           fun ({nodes_wanted, V}) ->
+                   {update, {nodes_wanted, V -- [RemoteNode]}};
+               ({server_groups, Groups}) ->
+                   {update, {server_groups,
+                             remove_node_from_server_groups(
+                               RemoteNode, Groups)}};
+               ({{node, Node, _}, _})
+                 when Node =:= RemoteNode ->
+                   delete;
+               (_Other) ->
+                   skip
+           end);
+
+remove_node(chronicle, RemoteNode, Transaction) ->
+    RV = Transaction(
+           [nodes_wanted, server_groups],
+           fun (Snapshot) ->
+                   {commit,
+                    [{set, nodes_wanted,
+                      nodes_wanted(Snapshot) -- [RemoteNode]},
+                     {set, server_groups,
+                      remove_node_from_server_groups(
+                        RemoteNode, server_groups(Snapshot))} |
+                     [{delete, K} ||
+                         K <- chronicle_compat:node_keys(RemoteNode)]]}
+           end),
+    case RV of
+        {ok, _} ->
             ok = ns_config:update(
                    fun ({{node, Node, _}, _})
                          when Node =:= RemoteNode ->
                            delete;
                        (_Other) ->
                            skip
-                   end),
-            NodeKeys = chronicle_compat:node_keys(RemoteNode),
-            {ok, _} =
-                chronicle_kv:transaction(
-                  kv, [nodes_wanted, server_groups | NodeKeys],
-                  fun (Snapshot) ->
-                          {commit,
-                           [{set, nodes_wanted,
-                             nodes_wanted(Snapshot) -- [RemoteNode]},
-                            {set, server_groups,
-                             remove_node_from_server_groups(
-                               RemoteNode, server_groups(Snapshot))} |
-                            [{delete, K} || K <- NodeKeys]]}
-                  end)
-    end.
+                   end);
+        _ ->
+            ok
+    end,
+    RV.
 
 remove_node_from_server_groups(RemoteNode, Groups) ->
     [lists:keystore(nodes, 1, G,
