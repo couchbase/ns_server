@@ -68,7 +68,7 @@ class MnSecurityAuditComponent extends MnLifeCycleHooksToStream {
     this.httpError = merge(this.postAudit.error, this.postAuditValidation.error);
 
     this.maybeItIsPlural =
-      this.form.group.valueChanges.pipe(pluck("rotateInterval"),
+      this.form.group.get("rotateInterval").valueChanges.pipe(
                                         distinctUntilChanged(),
                                         map(this.getEnding.bind(this)),
                                         shareReplay({refCount: true, bufferSize: 1}));

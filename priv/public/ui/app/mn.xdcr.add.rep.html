@@ -38,15 +38,12 @@
       <div class="formrow row flex-left items-stretch resp-flex-column-s">
         <div class="column flex-grow-1">
           <label for="replication_from_bucket" class="nowrap">Replicate From Bucket</label>
-          <select
-             formControlName="fromBucket">
-            <option value="" disabled="true">
-              select bucket
-            </option>
-            <option *ngFor="let v of (bucketsMembaseEphemeral | async)" [ngValue]="v.name">
-              {{v.name}}
-            </option>
-          </select>
+          <mn-select
+             [values]="bucketsMembaseEphemeral | async"
+             [group]="form.group"
+             mnPlaceholder="select bucket"
+             mnFormControlName="fromBucket">
+          </mn-select>
         </div>
         <div class="column row resp-hide-sml">
           <span class="icon fa-angle-right text-superbig grayblack-2"></span>
@@ -64,14 +61,12 @@
         </div>
         <div class="flex-grow-1">
           <label for="replication_to_cluster" class="nowrap">Remote Cluster</label>
-          <select formControlName="toCluster">
-            <option value="" disabled="true">
-              select remote cluster
-            </option>
-            <option *ngFor="let v of (remoteClusters | async)" [ngValue]="v.name">
-              {{v.name}}
-            </option>
-          </select>
+          <mn-select
+             [values]="remoteClusters | async"
+             [group]="form.group"
+             mnPlaceholder="select remote cluster"
+             mnFormControlName="toCluster">
+          </mn-select>
         </div>
       </div>
 

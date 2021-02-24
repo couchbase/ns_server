@@ -12,13 +12,12 @@
       </div>
       <div class="formrow">
         <label for="add-bucket-name">Bucket Name</label>
-        <select
-           formControlName="bucketName"
-           id="add-bucket-name">
-          <option *ngFor="let bucket of (buckets | async)" [ngValue]="bucket.name">
-            {{bucket.name}}
-          </option>
-        </select>
+        <mn-select
+           id="add-bucket-name"
+           [values]="bucketsNames | async"
+           [group]="form.group"
+           mnFormControlName="bucketName">
+        </mn-select>
         <div
            class="error"
            [hidden]="!(addScopeHttp.error | async)?.errors?.bucketName">

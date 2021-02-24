@@ -53,15 +53,13 @@
            formControlName="rotateInterval"
            class="input-short-1"
            type="number">
-        <div class="simple-select">
-          <select
-             formControlName="rotateUnit">
-            <option value="minutes">minute{{(maybeItIsPlural | async)}}</option>
-            <option value="hours">hour{{(maybeItIsPlural | async)}}</option>
-
-            <option value="days">day{{(maybeItIsPlural | async)}}</option>
-          </select>
-        </div>
+        <mn-select
+           class="inline align-top"
+           [values]="['minutes', 'hours', 'days']"
+           [labels]="['minute' + (maybeItIsPlural | async), 'hour' + (maybeItIsPlural | async), 'day' + (maybeItIsPlural | async)]"
+           [group]="form.group"
+           mnFormControlName="rotateUnit">
+        </mn-select>
       </div>
       <div class="column">
         <span class="form-inline">

@@ -1,0 +1,31 @@
+<div
+   ngbDropdown
+   #ngbSelect="ngbDropdown"
+   display="dynamic"
+   class="mn-select relative">
+  <div ngbDropdownToggle>
+    <button
+       type="button"
+       class="outline btn-small dropdown-btn ng-binding"
+       [disabled]="disabled | async">
+      {{labels ? labels[values.indexOf(value | async)] : filter(value | async) || mnPlaceholder}}
+    </button>
+    <span
+       class="icon"
+       (click)="arrowClicked($event)"
+       [class.disabled]="disabled | async"
+       [class.fa-angle-up]="ngbSelect.isOpen()"
+       [class.fa-angle-down]="!ngbSelect.isOpen()">
+  </span>
+  </div>
+  <div ngbDropdownMenu
+       class="panel margin-0 fit-content-width">
+    <div
+       ngbDropdownItem
+       class="option"
+       (click)="optionClicked(value)"
+       *ngFor="let value of values; index as i;">
+      {{labels ? labels[i] : filter(value)}}
+    </div>
+  </div>
+</div>

@@ -7,13 +7,13 @@
 <div [hidden]="!(toggler.state | async)" [formGroup]="group" class="width-6">
   <div class="formrow" *ngIf="(isEnterprise | async)">
     <label for="replication_priority">Replication Priority</label>
-    <select
+    <mn-select
+       class="inline width-12"
        id="replication_priority"
-       formControlName="priority">
-      <option value="Low">Low</option>
-      <option value="Medium">Medium</option>
-      <option value="High">High</option>
-    </select>
+       [values]="['Low', 'Medium', 'High']"
+       [group]="group"
+       mnFormControlName="priority">
+    </mn-select>
   </div>
 
   <div
@@ -23,12 +23,12 @@
     <label for="for-xdcr-compression">
       XDCR Compression Type
     </label>
-    <select
+    <mn-select
        id="for-xdcr-compression"
-       formControlName="compressionType">
-      <option value="Auto">Auto</option>
-      <option value="None">None</option>
-    </select>
+       [values]="['Auto', 'None']"
+       [group]="group"
+       mnFormControlName="compressionType">
+    </mn-select>
     <div
        class="error error-field"
        [hidden]="!(error | async)?.compressionType">
@@ -152,14 +152,12 @@
   <div
      class="formrow">
     <label for="per_logging_level">XDCR Logging Level</label>
-    <select
-       formControlName="logLevel">
-      <option value="Info">Info</option>
-      <option value="Debug">Debug</option>
-      <option value="Trace">Trace</option>
-      <option value="Warn">Warn</option>
-      <option value="Error">Error</option>
-    </select>
+    <mn-select
+       class="inline width-12"
+       [values]="['Info', 'Debug', 'Trace', 'Warn', 'Error']"
+       [group]="group"
+       mnFormControlName="logLevel">
+    </mn-select>
     <div
        class="error"
        [hidden]="!(error | async)?.logLevel">

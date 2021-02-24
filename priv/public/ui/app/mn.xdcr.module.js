@@ -9,6 +9,7 @@ import { MnInputFilterModule } from './mn.input.filter.module.js';
 import { MnPipesModule } from './mn.pipes.module.js';
 import { MnKeyspaceSelectorModule } from "./mn.keyspace.selector.module.js";
 import { MnCollectionsServiceModule } from './mn.collections.service.js';
+import { MnSelectModule } from './mn.select.module.js';
 
 import { MnXDCRComponent } from "./mn.xdcr.component.js";
 import { MnXDCRItemComponent } from "./mn.xdcr.item.component.js";
@@ -139,6 +140,7 @@ class MnXDCRModule {
         MnCollectionsServiceModule,
         MnSharedModule,
         MnPipesModule,
+        MnSelectModule,
         UIRouterModule.forChild({ states: [XDCRState, AddXDCRState, EditXDCRState] })
       ],
       providers: [

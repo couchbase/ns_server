@@ -40,9 +40,9 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
     super();
 
     this.isEnterprise = mnPoolsService.stream.isEnterprise;
-    this.bucketsMembaseEphemeral = mnBucketsService.stream.bucketsMembaseEphemeral;
+    this.bucketsMembaseEphemeral = mnBucketsService.stream.bucketsMembaseEphemeral.pipe(map((buckets)=> buckets.map((bucket) => bucket.name)));
     this.getSettingsReplications = mnXDCRService.stream.getSettingsReplications;
-    this.remoteClusters = mnXDCRService.stream.getRemoteClustersFiltered;
+    this.remoteClusters = mnXDCRService.stream.getRemoteClustersFiltered.pipe(map((clusters)=> clusters.map((cluster) => cluster.name)));
     this.postCreateReplication = mnXDCRService.stream.postCreateReplication;
     this.postSettingsReplicationsValidation =
       mnXDCRService.stream.postSettingsReplicationsValidation;

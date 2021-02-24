@@ -127,6 +127,7 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
 
     this.permissions = mnPermissions.stream;
     this.buckets = getBuckets;
+    this.bucketsNames = getBuckets.pipe(map(buckets => buckets.map((bucket) => bucket.name)));
     this.bucketSelect = bucketSelect;
     this.scopes = scopes;
     this.clickAddScope = clickAddScope;

@@ -50,11 +50,13 @@
        (click)="$event.stopPropagation();"
        [formGroup]="paginator.group"
        *ngIf="(collections | async)?.length">
-      <select formControlName="size" class="cbui-select-small">
-        <option *ngFor="let num of [10,20,40,80]" [ngValue]="num">
-          {{num}}
-        </option>
-      </select>
+      <mn-select
+         class="inline fix-width-3-quarters"
+         [values]="[10, 20, 40, 80]"
+         [group]="paginator.group"
+         mnPlaceholder="select bucket"
+         mnFormControlName="size">
+      </mn-select>
     </div>
 
     <ngb-pagination
