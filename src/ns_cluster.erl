@@ -35,7 +35,6 @@
 -define(PREP_CHRONICLE_TIMEOUT, ?get_timeout(prep_chronicle, 240000)).
 -define(JOIN_CHRONICLE_TIMEOUT, ?get_timeout(join_chronicle, 240000)).
 -define(CHANGE_ADDRESS_TIMEOUT, ?get_timeout(change_address, 30000)).
--define(LEADER_SHUTDOWN_TIMEOUT,?get_timeout(leader_shutdown, 30000)).
 
 -define(cluster_log(Code, Fmt, Args),
         ale:xlog(?USER_LOGGER, ns_log_sink:get_loglevel(?MODULE, Code),
@@ -627,8 +626,6 @@ shun(RemoteNode) ->
                 ns_config_rep:ensure_config_pushed(),
                 case chronicle_compat:enabled() of
                     true ->
-                        ok = mb_master:wait_for_ejected_leader_shutdown(
-                               ?LEADER_SHUTDOWN_TIMEOUT),
                         ok = chronicle_master:remove_peer(RemoteNode);
                     false ->
                         ok
