@@ -984,15 +984,14 @@ do_add_node_engaged(NodeKVList, Auth, GroupUUID, Services, Scheme) ->
         {ok, _} ->
             case check_can_add_node(NodeKVList) of
                 ok ->
+                    RequestTarget = get_request_target(NodeKVList, Scheme),
                     %% TODO: only add services if possible
                     %% TODO: consider getting list of supported
                     %% services from NodeKVList
-                    node_add_transaction(OtpNode, GroupUUID, Services,
-                                         fun () ->
-                                                 do_add_node_engaged_inner(
-                                                   NodeKVList, OtpNode, Auth,
-                                                   Services, Scheme)
-                                         end);
+                    node_add_transaction(
+                      OtpNode, GroupUUID, Services,
+                      ?cut(do_add_node_engaged_inner(
+                             RequestTarget, OtpNode, Auth, Services)));
                 Error -> Error
             end;
         X -> X
@@ -1019,9 +1018,9 @@ check_can_add_node(NodeKVList) ->
                   {incompatible_cluster_version, MyCompatVersion, JoineeClusterCompatVersion}}
     end.
 
-do_add_node_engaged_inner(NodeKVList, OtpNode, Auth, Services, Scheme) ->
+get_request_target(NodeKVList, Scheme) ->
     HostnameRaw = expect_json_property_list(<<"hostname">>, NodeKVList),
-    {Hostname0, NonHttpsPort} = misc:split_host_port(HostnameRaw, "8091",
+    {Hostname, NonHttpsPort} = misc:split_host_port(HostnameRaw, "8091",
                                                      misc:get_net_family()),
     {struct, Ports} = proplists:get_value(<<"ports">>, NodeKVList,
                                           {struct, []}),
@@ -1031,7 +1030,10 @@ do_add_node_engaged_inner(NodeKVList, OtpNode, Auth, Services, Scheme) ->
             P when Scheme == https -> {https, P};
             _ -> {http, NonHttpsPort}
         end,
+    {Scheme2, Hostname, Port}.
 
+do_add_node_engaged_inner({Scheme, Hostname, Port} = Target,
+                          OtpNode, Auth, Services) ->
     {struct, MyNodeKVList} = menelaus_web_node:build_full_node_info(node(),
                                                                     misc:localhost()),
     ChronicleInfo =
@@ -1051,9 +1053,9 @@ do_add_node_engaged_inner(NodeKVList, OtpNode, Auth, Services, Scheme) ->
     ConnectOpts = [misc:get_net_family()],
 
     ?cluster_debug("Posting the following to complete_join on ~p:~n~p",
-                   [{Scheme2, Hostname0, Port}, sanitize_node_info(Struct)]),
+                   [Target, sanitize_node_info(Struct)]),
     RV = menelaus_rest:json_request_hilevel(post,
-                                            {Scheme2, Hostname0, Port,
+                                            {Scheme, Hostname, Port,
                                              "/completeJoin",
                                              "application/json",
                                              mochijson2:encode(Struct)},
@@ -1062,7 +1064,7 @@ do_add_node_engaged_inner(NodeKVList, OtpNode, Auth, Services, Scheme) ->
                                              {timeout, ?COMPLETE_TIMEOUT},
                                              {connect_timeout, ?COMPLETE_TIMEOUT}]),
     ?cluster_debug("Reply from complete_join on ~p:~n~p",
-                   [HostnameRaw, RV]),
+                   [Target, RV]),
 
     ExtendedRV = case RV of
                      {client_error, [Message]} = JSONErr when is_binary(Message) ->
