@@ -493,7 +493,7 @@ function mnD3ServiceFactory() {
 
   function updateLabelRow(line) {
     return "<span><i style='background-color:" + line.color + "'></i>" +
-      "<span class='charts-tooltip-key'>" + line.key + (line.yAxis ? "(2nd axis)" : "") + "</span></span>" +
+      "<span class='charts-tooltip-key'>" + line.key + (line.yAxis ? " (2nd axis)" : "") + "</span></span>" +
       "<span class='bold'>" + line.value + "</span>";
   }
 

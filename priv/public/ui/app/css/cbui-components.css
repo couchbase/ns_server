@@ -3050,7 +3050,7 @@ text.charts-nodata {
   align-items: center;
 }
 .charts-tooltip-key {
-  margin-right: .5rem;
+  margin-right: 2rem;
 }
 .charts-tooltip-row i {
   display: inline-block;
