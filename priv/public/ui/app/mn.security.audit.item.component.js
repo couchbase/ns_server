@@ -53,7 +53,8 @@ class MnSecurityAuditItemComponent extends MnLifeCycleHooksToStream {
                                         map(() => thisModuleGroup.getRawValue()));
 
     this.isAuditEnabled =
-      this.form.group.valueChanges.pipe(pluck("auditdEnabled"),
+      this.form.group.valueChanges.pipe(startWith(this.form.group.value),
+                                        pluck("auditdEnabled"),
                                         distinctUntilChanged());
 
     this.isAuditEnabled
