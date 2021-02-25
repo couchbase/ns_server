@@ -146,56 +146,39 @@ set_multiple(List) ->
     end.
 
 transaction(Keys, Fun) ->
-    RunCallback =
-        fun (Snapshot, BuildCommit) ->
-                case Fun(Snapshot) of
-                    {abort, _} = Abort ->
-                        Abort;
-                    {List, Extra} ->
-                        {commit, BuildCommit(List), Extra};
-                    List ->
-                        {commit, BuildCommit(List)}
-                end
-        end,
+    transaction(backend(), Keys, Fun).
 
-    case backend() of
-        chronicle ->
-            RV =
-                chronicle_kv:transaction(
-                  kv, Keys,
-                  fun (Snapshot) ->
-                          RunCallback(Snapshot,
-                                      ?cut([{set, K, V} || {K, V} <- _]))
-                  end, #{}),
-            case RV of
-                {ok, _} ->
-                    ok;
-                {ok, _, Extra} ->
-                    {ok, Extra};
-                Error ->
-                    Error
-            end;
-        ns_config ->
-            TXNRV =
-                ns_config:run_txn(
-                  fun (Cfg, SetFn) ->
-                          RunCallback(Cfg, fun (List) ->
-                                                   lists:foldl(
-                                                     fun ({K, V}, Acc) ->
-                                                             SetFn(K, V, Acc)
-                                                     end, Cfg, List)
-                                           end)
-                  end),
-            case TXNRV of
-                {commit, _} ->
-                    ok;
-                {commit, _, Extra} ->
-                    {ok, Extra};
-                {abort, Error} ->
-                    Error;
-                retry_needed ->
-                    erlang:error(exceeded_retries)
-            end
+transaction(chronicle, Keys, Fun) ->
+    chronicle_kv:transaction(kv, Keys, Fun, #{});
+
+transaction(ns_config, Keys, Fun) ->
+    TXNRV =
+        ns_config:run_txn(
+          fun (Cfg, SetFn) ->
+                  Snapshot =
+                      ns_config_to_snapshot([lists:member(_, Keys)], #{}, Cfg),
+                  BuildCommit =
+                      lists:foldl(
+                        fun ({set, K, V}, Acc) -> SetFn(K, V, Acc) end,
+                        Cfg, _),
+                  case Fun(Snapshot) of
+                      {abort, _} = Abort ->
+                          Abort;
+                      {commit, Sets, Extra} ->
+                          {commit, BuildCommit(Sets), Extra};
+                      {commit, Sets} ->
+                          {commit, BuildCommit(Sets)}
+                  end
+          end),
+    case TXNRV of
+        {commit, _} ->
+            {ok, no_rev};
+        {commit, _, Extra} ->
+            {ok, no_rev, Extra};
+        {abort, Error} ->
+            Error;
+        retry_needed ->
+            erlang:error(exceeded_retries)
     end.
 
 apply_filters(_, _, _, [], Acc) ->
@@ -225,6 +208,10 @@ get_snapshot_with_revision(KeyFilters) ->
 
     lists:foldl(get_snapshot_with_revision(_, _), {#{}, no_rev}, UniqueFilters).
 
+ns_config_to_snapshot(Filters, InitialSnapshot, Config) ->
+    ns_config:fold(apply_filters(_, _, no_rev, Filters, _),
+                   InitialSnapshot, Config).
+
 get_snapshot_with_revision({Type, Filters}, {Acc, OldRev}) ->
     {ListFilters, FunFilters} =
         lists:partition(fun (F) when is_list(F) -> true;
@@ -239,8 +226,7 @@ get_snapshot_with_revision({Type, Filters}, {Acc, OldRev}) ->
         end,
     case Type of
         ns_config ->
-            {ns_config:fold(apply_filters(_, _, no_rev, AllFilters, _),
-                            Acc, ns_config:get()), OldRev};
+            {ns_config_to_snapshot(AllFilters, Acc, ns_config:get()), OldRev};
         chronicle ->
             case ns_node_disco:couchdb_node() == node() of
                 true ->

@@ -1078,7 +1078,7 @@ do_add_node_engaged_inner({Scheme, Hostname, Port} = Target,
 
 node_add_transaction(Node, GroupUUID, Services, Body) ->
     case ns_cluster_membership:add_node(Node, GroupUUID, Services) of
-        ok ->
+        {ok, _} ->
             node_add_transaction_finish(Node, GroupUUID, Body);
         group_not_found ->
             M = iolist_to_binary([<<"Could not find group with uuid: ">>,

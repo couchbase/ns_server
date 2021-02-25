@@ -62,7 +62,7 @@ handle_server_groups_put(Req) ->
            [rebalancer_pid, server_groups, nodes_wanted],
            server_groups_put_txn(_, JSON, Rev)),
     case RV of
-        {ok, Groups} ->
+        {ok, _, Groups} ->
             [ns_audit:update_group(Req, Group) || Group <- Groups],
             menelaus_util:reply_json(Req, [], 200);
         {parse_error, Error} ->
@@ -113,7 +113,7 @@ server_groups_put_txn(Cfg, JSON, Rev) ->
                         false ->
                             NewGroups = build_replacement_groups(
                                           Groups, ParsedGroups),
-                            {[{server_groups, NewGroups}],
+                            {commit, [{set, server_groups, NewGroups}],
                              NewGroups}
                     end;
                 _ ->
@@ -267,13 +267,13 @@ do_handle_server_groups_post(Name, Req) ->
                                      {name, Name},
                                      {nodes, []}],
                            NewGroups = lists:sort([AGroup | Groups]),
-                           {[{server_groups, NewGroups}], AGroup};
+                           {commit, [{set, server_groups, NewGroups}], AGroup};
                        {value, _} ->
                            {abort, already_exists}
                    end
            end),
     case RV of
-        {ok, AGroup} ->
+        {ok, _, AGroup} ->
             ns_audit:add_group(Req, AGroup),
             ok;
         Error ->
@@ -351,11 +351,12 @@ do_group_update(GroupUUID, Name, Req) ->
                                                            {name, Name}),
                            NewGroups =
                                lists:sort([UpdatedGroup | Groups -- [G]]),
-                           {[{server_groups, NewGroups}], UpdatedGroup}
+                           {commit, [{set, server_groups, NewGroups}],
+                            UpdatedGroup}
                    end
            end),
     case RV of
-        {ok, UpdatedGroup} ->
+        {ok, _, UpdatedGroup} ->
             ns_audit:update_group(Req, UpdatedGroup),
             ok;
         Error ->
@@ -386,13 +387,14 @@ do_group_delete(GroupUUID, Req) ->
                                [_|_] ->
                                    {abort, not_empty};
                                [] ->
-                                   {[{server_groups, Groups -- [Victim]}],
+                                   {commit,
+                                    [set, {server_groups, Groups -- [Victim]}],
                                     Victim}
                            end
                    end
            end),
     case RV of
-        {ok, Victim} ->
+        {ok, _, Victim} ->
             ns_audit:delete_group(Req, Victim),
             ok;
         Error ->

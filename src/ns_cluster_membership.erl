@@ -221,8 +221,9 @@ re_failover(NodeString) ->
                           get_cluster_membership(Node,
                                                  Snapshot) =:= inactiveAdded of
                           true ->
-                              [{{node, Node, membership}, inactiveFailed},
-                               {{node, Node, recovery_type}, none}];
+                              {commit,
+                               [{set, {node, Node, membership}, inactiveFailed},
+                                {set, {node, Node, recovery_type}, none}]};
                           false ->
                               {abort, not_possible}
                       end
@@ -233,7 +234,7 @@ get_recovery_type(Config, Node) ->
     chronicle_compat:get(Config, {node, Node, recovery_type},
                          #{default => none}).
 
--spec update_recovery_type(node(), delta | full) -> ok | bad_node.
+-spec update_recovery_type(node(), delta | full) -> {ok, term()} | bad_node.
 update_recovery_type(Node, NewType) ->
     ?log_debug("Update recovery type of ~p to ~p", [Node, NewType]),
     chronicle_compat:transaction(
@@ -245,8 +246,8 @@ update_recovery_type(Node, NewType) ->
                     andalso get_recovery_type(Snapshot, Node) =/= none)
                   orelse Membership =:= inactiveFailed of
                   true ->
-                      [{{node, Node, membership}, inactiveAdded},
-                       {{node, Node, recovery_type}, NewType}];
+                      {commit, [{set, {node, Node, membership}, inactiveAdded},
+                                {set, {node, Node, recovery_type}, NewType}]};
                   false ->
                       {abort, bad_node}
               end
@@ -271,11 +272,12 @@ add_node(Node, GroupUUID, Services) ->
                           {error, Error} ->
                               {abort, Error};
                           NewGroups ->
-                              [{nodes_wanted,
-                                lists:usort([Node | NodesWanted])},
-                               {{node, Node, membership}, inactiveAdded},
-                               {{node, Node, services}, Services},
-                               {server_groups, NewGroups}]
+                              {commit,
+                               [{set, nodes_wanted,
+                                 lists:usort([Node | NodesWanted])},
+                                {set, {node, Node, membership}, inactiveAdded},
+                                {set, {node, Node, services}, Services},
+                                {set, server_groups, NewGroups}]}
                       end
               end
       end).

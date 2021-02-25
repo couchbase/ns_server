@@ -205,15 +205,16 @@ update_failover_vbuckets(Results) ->
 
                                  {Node, {Bucket, VBs}}
                          end, Results),
-    ok =
+    {ok, _} =
         chronicle_compat:transaction(
           [{node, N, failover_vbuckets} || {N, _} <- GroupedByNode],
           fun (Snapshot) ->
-                  lists:filtermap(update_failover_vbuckets(Snapshot, _),
-                                  GroupedByNode)
+                  {commit,
+                   lists:filtermap(update_failover_vbuckets_sets(Snapshot, _),
+                                   GroupedByNode)}
           end).
 
-update_failover_vbuckets(Snapshot, {Node, BucketResults}) ->
+update_failover_vbuckets_sets(Snapshot, {Node, BucketResults}) ->
     ExistingBucketResults = get_failover_vbuckets(Snapshot, Node),
     Merged = merge_failover_vbuckets(ExistingBucketResults, BucketResults),
 
@@ -225,7 +226,7 @@ update_failover_vbuckets(Snapshot, {Node, BucketResults}) ->
         ExistingBucketResults ->
             false;
         _ ->
-            {true, {{node, Node, failover_vbuckets}, Merged}}
+            {true, {set, {node, Node, failover_vbuckets}, Merged}}
     end.
 
 merge_failover_vbuckets(ExistingBucketResults, BucketResults) ->

@@ -871,7 +871,7 @@ handle_re_failover(Req) ->
     Params = mochiweb_request:parse_post(Req),
     NodeString = proplists:get_value("otpNode", Params, "undefined"),
     case ns_cluster_membership:re_failover(NodeString) of
-        ok ->
+        {ok, _} ->
             ns_audit:failover_nodes(Req, [list_to_existing_atom(NodeString)],
                                     cancel_recovery),
             reply(Req, 200);
@@ -942,7 +942,7 @@ do_handle_set_recovery_type(Req, Type, Params) ->
     case Errors of
         [] ->
             case ns_cluster_membership:update_recovery_type(Node, Type) of
-                ok ->
+                {ok, _} ->
                     ns_audit:enter_node_recovery(Req, Node, Type),
                     reply_json(Req, [], 200);
                 bad_node ->
