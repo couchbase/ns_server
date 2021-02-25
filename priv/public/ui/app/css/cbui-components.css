@@ -1697,6 +1697,11 @@ input[type="checkbox"] {
   margin: 0;
   font-size: 0;
   display: block!important;
+  position: absolute!important;
+  left: auto!important;
+  right: auto!important;
+  top: auto!important;
+  bottom: auto!important;
 }
 input[type="radio"] + label,
 input[type="checkbox"] + label {
