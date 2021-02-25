@@ -47,7 +47,7 @@
                 </div>
               </span>
             </div>
-            <div class="formrow row items-top">
+            <div class="formrow row">
               <span class="width-4 margin-right-2">
                 <label for="ldap_encryption">Encryption</label>
                 <select
@@ -66,10 +66,19 @@
               <span class="width-8">
                 <label
                    for="cert"
-                   ng-disabled="addLdapDialogCtl.config.connect.encryption == 'None'">
-                  Certificate
-                </label>
-                <div class="checkbox-list">
+                   ng-disabled="addLdapDialogCtl.config.connect.encryption == 'None'"
+                   class="inline">
+                  Root Certificate</label>
+                <span
+                   class="fa-stack icon-info"
+                   uib-tooltip="This certificate will be used to verify your LDAP server's identity."
+                   tooltip-placement="top"
+                   tooltip-append-to-body="true"
+                   tooltip-trigger="mouseenter">
+                  <span class="icon fa-circle-thin fa-stack-2x"></span>
+                  <span class="icon fa-info fa-stack-1x"></span>
+                </span>
+                <div>
                   <input
                      type="radio"
                      id="ldap-cert-none"
@@ -91,7 +100,10 @@
                      ng-disabled="addLdapDialogCtl.config.connect.encryption == 'None'">
                   <label
                      for="ldap-cert-server"
-                     ng-disabled="addLdapDialogCtl.config.connect.encryption == 'None'">
+                     ng-disabled="addLdapDialogCtl.config.connect.encryption == 'None'"
+                     uib-tooltip="Use the certificate already loaded in your Couchbase cluster"
+                     tooltip-trigger="mouseenter"
+                     tooltip-placement="top">
                     Couchbase
                   </label>
                   <input
@@ -139,12 +151,13 @@
             <div class="formrow">
               <label>Contact LDAP Host</label>
               <div class="desc" ng-show="addLdapDialogCtl.config.authType == 'cert'">
-                Note: Client cert auth is currently supported only for GSuite Secure LDAP
+                Note: Client cert auth is currently supported only for GSuite Secure LDAP.<br>
+                These certificates will be used for authentication on your LDAP server.
               </div>
               <div class="desc" ng-if="addLdapDialogCtl.maybeDisableClientCert()">
                 The Client Certificate choice requires Encryption be enabled above.
               </div>
-              <div class="checkbox-list">
+              <div>
                 <input
                    type="radio"
                    id="anonymous-access"
@@ -168,8 +181,7 @@
                    value="cert">
                 <label
                    for="auth-using-client-cert"
-                   ng-disabled="addLdapDialogCtl.maybeDisableClientCert()">
-                  Client Certificate</label>
+                   ng-disabled="addLdapDialogCtl.maybeDisableClientCert()">Client Certificate</label>
               </div>
             </div>
             <div
@@ -299,7 +311,7 @@
                      ng-model="addLdapDialogCtl.config.userDnMapping"
                      name="userDnMapping"
                      value="query">
-                  <label for="user-dn-mapping-flag-query">LDAP Query</label>
+                  <label for="user-dn-mapping-flag-query">LDAP Search</label>
                 </div>
               </div>
               <div class="formrow">
@@ -317,7 +329,15 @@
                 </div>
                 <div class="row formrow items-top" ng-if="addLdapDialogCtl.config.userDnMapping == 'query'">
                   <span class="width-6 margin-right-half">
-                    <label for="user-dn-mapping-base">Base</label>
+                    <label class="inline">Base</label>
+                    <span
+                       class="fa-stack icon-info"
+                       uib-tooltip="Use this value as the starting point for your search."
+                       tooltip-placement="auto right"
+                       tooltip-append-to-body="true">
+                      <span class="icon fa-circle-thin fa-stack-2x"></span>
+                      <span class="icon fa-info fa-stack-1x"></span>
+                    </span>
                     <input
                        type="text"
                        autocorrect="off"
@@ -329,7 +349,15 @@
                        placeholder="ou=users,dc=example,dc=com">
                   </span>
                   <span class="width-6">
-                    <label for="user-dn-mapping-filter">Filter</label>
+                    <label class="inline">Filter</label>
+                    <span
+                      class="fa-stack icon-info"
+                      uib-tooltip-html="'Filter as defined in <a href=\'https://tools.ietf.org/search/rfc4515#section-3\' target=\'_blank\'>RFC 4515</a>'"
+                      tooltip-placement="auto top"
+                      tooltip-append-to-body="true">
+                     <span class="icon fa-circle-thin fa-stack-2x"></span>
+                     <span class="icon fa-info fa-stack-1x"></span>
+                    </span>
                     <input
                        type="text"
                        autocorrect="off"
@@ -346,9 +374,9 @@
                   <select
                      id="user-dn-mapping-scope"
                      ng-model="addLdapDialogCtl.config.authentication.userDNMapping.scope">
-                    <option value="base">base</option>
-                    <option value="one">one</option>
-                    <option value="sub">sub</option>
+                    <option value="base">base object</option>
+                    <option value="one">one-level</option>
+                    <option value="sub">subtree</option>
                   </select>
                 </div>
                 <div
@@ -445,7 +473,15 @@
                      ng-model="addLdapDialogCtl.config.queryForGroups"
                      name="queryForGroups"
                      value="users_attrs">
-                  <label for="for-query-groups-attrs">User's attributes</label>
+                  <label for="for-query-groups-attrs" class="margin-right-0">User's attributes</label>
+                  <span
+                     class="fa-stack icon-info"
+                     uib-tooltip="Use this option when your LDAP users objects contain an attribute with a list of this user's groups. Specify the name of that attribute below."
+                     tooltip-placement="auto right"
+                     tooltip-append-to-body="true">
+                    <span class="icon fa-circle-thin fa-stack-2x"></span>
+                    <span class="icon fa-info fa-stack-1x"></span>
+                  </span>
                   <input
                      type="radio"
                      id="for-query-groups-builder"
@@ -453,7 +489,15 @@
                      ng-model="addLdapDialogCtl.config.queryForGroups"
                      name="queryForGroups"
                      value="query">
-                  <label for="for-query-groups-builder">LDAP Query</label>
+                  <label for="for-query-groups-builder" class="margin-right-0">LDAP Search</label>
+                  <span
+                     class="fa-stack icon-info"
+                     uib-tooltip="Use this option when your LDAP groups objects contain references to their users."
+                     tooltip-placement="auto right"
+                     tooltip-append-to-body="true">
+                    <span class="icon fa-circle-thin fa-stack-2x"></span>
+                    <span class="icon fa-info fa-stack-1x"></span>
+                  </span>
                 </div>
               </div>
               <div ng-if="addLdapDialogCtl.config.queryForGroups == 'users_attrs'">
@@ -470,7 +514,15 @@
               </div>
               <div class="row formrow items-top" ng-if="addLdapDialogCtl.config.queryForGroups == 'query'">
                 <span class="width-6 margin-right-half">
-                  <label for="for-groups-query">Base</label>
+                  <label class="inline">Base</label>
+                  <span
+                     class="fa-stack icon-info"
+                     uib-tooltip="Use this value as the starting point for your search."
+                     tooltip-placement="auto right"
+                     tooltip-append-to-body="true">
+                    <span class="icon fa-circle-thin fa-stack-2x"></span>
+                    <span class="icon fa-info fa-stack-1x"></span>
+                  </span>
                   <input
                      type="text"
                      autocorrect="off"
@@ -482,7 +534,15 @@
                      placeholder="ou=groups,dc=example,dc=com">
                 </span>
                 <span class="width-6">
-                  <label for="for-groups-query-filter">Filter</label>
+                  <label class="inline">Filter</label>
+                  <span
+                    class="fa-stack icon-info"
+                    uib-tooltip-html="'Filter as defined in <a href=\'https://tools.ietf.org/search/rfc4515#section-3\' target=\'_blank\'>RFC 4515</a>'"
+                    tooltip-placement="auto top"
+                    tooltip-append-to-body="true">
+                   <span class="icon fa-circle-thin fa-stack-2x"></span>
+                   <span class="icon fa-info fa-stack-1x"></span>
+                  </span>
                   <input
                      type="text"
                      autocorrect="off"
@@ -499,9 +559,9 @@
                 <select
                    id="for-groups-query-scope"
                    ng-model="addLdapDialogCtl.config.group.groupsQuery.scope">
-                  <option value="base">base</option>
-                  <option value="one">one</option>
-                  <option value="sub">sub</option>
+                   <option value="base">base object</option>
+                   <option value="one">one-level</option>
+                   <option value="sub">subtree</option>
                 </select>
               </div>
               <div
