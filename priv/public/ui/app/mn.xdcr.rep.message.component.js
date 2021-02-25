@@ -10,7 +10,8 @@ class MnXDCRRepMessageComponent {
       inputs: [
         "fromBucket",
         "toBucket",
-        "toCluster"
+        "toCluster",
+        "isEditMode"
       ],
       changeDetection: ChangeDetectionStrategy.OnPush
     })

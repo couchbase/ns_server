@@ -1,78 +1,79 @@
-<div class="margin-left-2">
-  <mn-input-filter
-     class="inline"
-     [group]="filter.group"
-     [mnPlaceholder]="'filter' + keyspace + '...'">
-  </mn-input-filter>
+<div class="row">
 
-  <div [formGroup]="controls" class="inline">
-    <div class="inline margin-left-1 text-smaller">
-      <input
-         [attr.id]="'dynamic_check_all' + keyspace + parent"
-         formControlName="checkAll"
-         type="checkbox">
-      <label
-         [attr.for]="'dynamic_check_all' + keyspace + parent"
-         class="margin-right-zero">
-        check all
-      </label>
-    </div>
-    <div class="inline margin-left-1">
-      <input
-         [attr.id]="'dynamic_deny_mode' + keyspace + parent"
-         formControlName="denyMode"
-         type="checkbox">
-      <label
-         [attr.for]="'dynamic_deny_mode' + keyspace + parent"
-         class="margin-right-zero">
-        include future {{keyspace}}
-      </label>
-    </div>
-  </div>
+<div [formGroup]="controls" class="width-12">
+  <span>
+    <input
+     [attr.id]="'dynamic_check_all' + keyspace + parent"
+     formControlName="checkAll"
+     type="checkbox">
+  <label
+     [attr.for]="'dynamic_check_all' + keyspace + parent">
+    check all
+  </label>
+  </span>
+    <span>
+  <input
+     [attr.id]="'dynamic_deny_mode' + keyspace + parent"
+     formControlName="denyMode"
+     type="checkbox">
+  <label
+     [attr.for]="'dynamic_deny_mode' + keyspace + parent"
+      class="checkbox-inline">
+    include future {{keyspace}}
+  </label>
+  </span>
+</div>
 
-  <div *ngIf="keyspace == 'scopes'">
-    <div class="cbui-table">
-      <div class="cbui-table-header">
-        <span class="cbui-table-cell flex-grow-3">
-          <span class="sorter indent-1">
-            {{keyspace}}
-          </span>
+<mn-input-filter
+ class="row flex-right"
+ [group]="filter.group"
+ [mnPlaceholder]="'filter ' + keyspace + '...'">
+</mn-input-filter>
+
+</div>
+
+<div *ngIf="keyspace == 'scopes'">
+  <div class="cbui-table">
+    <div class="cbui-table-header">
+      <span class="cbui-table-cell flex-grow-3">
+        <span class="sorter indent-1">
+          {{keyspace}}
         </span>
-      </div>
-      <div *ngFor="let scope of (scopesPaginator.page | async);">
-        <mn-xdcr-add-rep-scope
-           class="block"
-           [item]="scope"
-           [initialDenyMode]="initialDenyMode"
-           [explicitMappingGroup]="explicitMappingGroup"
-           [explicitMappingRules]="explicitMappingRules">
-        </mn-xdcr-add-rep-scope>
-      </div>
+      </span>
     </div>
-    <ngb-pagination
-       *ngIf="(scopesPaginator.values | async)?.size && (filteredItems | async)?.length"
-       [page]="(scopesPaginator.values | async)?.page"
-       [maxSize]="5"
-       [pageSize]="(scopesPaginator.values | async)?.size"
-       [collectionSize]="(filteredItems | async)?.length"
-       (pageChange)="scopesPaginator.group.patchValue({page:$event})">
-      <ng-template ngbPaginationPrevious>&#60; prev</ng-template>
-      <ng-template ngbPaginationNext>next &#62;</ng-template>
-    </ngb-pagination>
+    <div *ngFor="let scope of (scopesPaginator.page | async);">
+      <mn-xdcr-add-rep-scope
+         class="block"
+         [item]="scope"
+         [initialDenyMode]="initialDenyMode"
+         [explicitMappingGroup]="explicitMappingGroup"
+         [explicitMappingRules]="explicitMappingRules">
+      </mn-xdcr-add-rep-scope>
+    </div>
   </div>
-  <div
-     *ngIf="keyspace == 'collections'"
-     class="cbui-table-body margin-top-1 margin-bottom-2 max-height-280"
-     style="columns: 2 auto; column-gap:0px">
-    <mn-xdcr-add-rep-mapping-item
-       *ngFor="let coll of (filteredItems | async); trackBy: trackCollectionsBy"
-       class="block nowrap padding-quarter"
-       [item]="coll"
-       [keyspace]="keyspace"
-       [parent]="item.name"
-       [initialDenyMode]="initialDenyMode"
-       [explicitMappingGroup]="explicitMappingGroup"
-       [explicitMappingRules]="explicitMappingRules">
-    </mn-xdcr-add-rep-mapping-item>
-  </div>
+  <ngb-pagination
+     *ngIf="(scopesPaginator.values | async)?.size && (filteredItems | async)?.length"
+     [page]="(scopesPaginator.values | async)?.page"
+     [maxSize]="5"
+     [pageSize]="(scopesPaginator.values | async)?.size"
+     [collectionSize]="(filteredItems | async)?.length"
+     (pageChange)="scopesPaginator.group.patchValue({page:$event})">
+    <ng-template ngbPaginationPrevious>&#60; prev</ng-template>
+    <ng-template ngbPaginationNext>next &#62;</ng-template>
+  </ngb-pagination>
+</div>
+<div
+   *ngIf="keyspace == 'collections'"
+   class="cbui-table-body margin-top-1 margin-bottom-2 max-height-280"
+   style="columns: 2 auto; column-gap:0px">
+  <mn-xdcr-add-rep-mapping-item
+     *ngFor="let coll of (filteredItems | async); trackBy: trackCollectionsBy"
+     class="block nowrap padding-quarter"
+     [item]="coll"
+     [keyspace]="keyspace"
+     [parent]="item.name"
+     [initialDenyMode]="initialDenyMode"
+     [explicitMappingGroup]="explicitMappingGroup"
+     [explicitMappingRules]="explicitMappingRules">
+  </mn-xdcr-add-rep-mapping-item>
 </div>

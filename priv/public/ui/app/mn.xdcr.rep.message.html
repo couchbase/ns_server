@@ -1,17 +1,29 @@
 <div class="zero-content margin-bottom-1" [hidden]="!fromBucket">
-  <span [hidden]="!fromBucket">
-    The bucket <em class="bold">{{fromBucket}}</em>
-    will be replicated to the bucket
-  </span>
-  <div *ngIf="fromBucket && !toBucket" class="loading"></div>
-  <span *ngIf="toBucket">
-    <em class="bold">{{toBucket}}</em> on the remote cluster
-    <div *ngIf="fromBucket && !toCluster" class="loading"></div>
-    <span *ngIf="toCluster">
-      <em class="bold">{{toCluster}}</em>.
-      <div>
-        Missing targets on the remote will be ignored and that data will not be replicated.
-      </div>
+<!-- add mode -------------------------------------------------------------- -->
+  <span *ngIf="!isEditMode">
+    <span [hidden]="!fromBucket">
+      The bucket <em class="bold">{{fromBucket}}</em>
+      will be replicated to the bucket
     </span>
+    <div *ngIf="fromBucket && !toBucket" class="loading"></div>
+    <span *ngIf="toBucket">
+      <em class="bold">{{toBucket}}</em> on the remote cluster
+      <div *ngIf="fromBucket && !toCluster" class="loading"></div>
+      <span *ngIf="toCluster">
+        <em class="bold">{{toCluster}}</em>.
+        <div>
+          Missing targets on the remote will be ignored and that data will not be replicated.
+        </div>
+      </span>
+    </span>
+  </span>
+<!-- edit mode ------------------------------------------------------------- -->
+  <span *ngIf="isEditMode">
+    The bucket <em class="bold">{{fromBucket}}</em> will be replicated to the
+    bucket <em class="bold">{{toBucket}}</em> on the remote cluster
+    <em class="bold">{{toCluster}}</em>.
+    <div>
+      Missing targets on the remote will be ignored and that data will not be replicated.
+    </div>
   </span>
 </div>
