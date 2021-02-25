@@ -50,6 +50,16 @@
 %% from this.
 -dialyzer({no_fail_call, start_link/1}).
 start_link(Bucket) ->
+    %% After the removal of old stats collectors (and stats_archiver
+    %% in particular), atoms from stats_archiver:archives() are not created
+    %% anymore, so code that assumes those atoms exist starts to break.
+    %% Since all that code is actually backward compatibility code,
+    %% it's easier to just create the atoms by calling the function
+    %% instead of fixing the code that will be removed.
+    case lists:keyfind(Bucket, 1, stats_archiver:archives()) of
+        false -> ok;
+        _ -> ?log_error("Will never happen")
+    end,
     gen_server:start_link({local, server(Bucket)}, ?MODULE, Bucket,
                           [{hibernate_after,
                             ?get_param(hibernate_after, 10000)}]).
