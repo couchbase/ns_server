@@ -618,9 +618,6 @@ shun(RemoteNode) ->
     case RemoteNode =:= node() of
         false ->
             try
-                %% pull chronicle quorum state before we leave, to make sure,
-                %% say, deactivation of membership isn't lost
-                ok = chronicle_compat:pull(),
                 ?cluster_debug("Shunning ~p", [RemoteNode]),
                 ns_cluster_membership:remove_node(RemoteNode),
                 ns_config_rep:ensure_config_pushed(),

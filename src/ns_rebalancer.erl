@@ -854,10 +854,7 @@ eject_nodes(Nodes) ->
                      false ->
                          Nodes
                  end,
-    lists:foreach(fun (N) ->
-                          ok = ns_cluster_membership:deactivate([N]),
-                          ns_cluster:leave(N)
-                  end, LeaveNodes).
+    lists:foreach(fun ns_cluster:leave/1, LeaveNodes).
 
 verify_replication(Bucket, Nodes, Map) ->
     ExpectedReplicators0 = ns_bucket:map_to_replicas(Map),
