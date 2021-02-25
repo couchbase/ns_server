@@ -90,14 +90,26 @@ notify_histogram(Metric, Max, Units, Val) when Max > 0, Val >= 0,
     end.
 
 report_prom_stats(ReportFun) ->
-    report_audit_stats(ReportFun),
-    report_ns_server_stats(ReportFun),
+    Try = fun (Name, F) ->
+              try F()
+              catch C:E:ST ->
+                  ?log_error("~p stats reporting exception: ~p:~p~n~p",
+                             [Name, C, E, ST])
+              end
+          end,
+    Try(audit, fun () -> report_audit_stats(ReportFun) end),
+    Try(ns_server, fun () -> report_ns_server_stats(ReportFun) end),
+    Try(system, fun () -> report_system_stats(ReportFun) end),
+    Try(couchdb, fun () -> report_couchdb_stats(ReportFun) end),
+    ok.
+
+report_system_stats(ReportFun) ->
     Stats = gen_server:call(?MODULE, get_stats),
     SystemStats = proplists:get_value("@system", Stats, []),
     lists:foreach(
-        fun ({Key, Val}) ->
-            ReportFun({<<"sys">>, Key, [{<<"category">>, <<"system">>}], Val})
-        end, SystemStats),
+      fun ({Key, Val}) ->
+          ReportFun({<<"sys">>, Key, [{<<"category">>, <<"system">>}], Val})
+      end, SystemStats),
 
     SysProcStats = proplists:get_value("@system-processes", Stats, []),
     lists:foreach(
@@ -106,10 +118,7 @@ report_prom_stats(ReportFun) ->
             ReportFun({<<"sysproc">>, Name,
                        [{<<"proc">>, Proc},
                         {<<"category">>, <<"system-processes">>}], Val})
-        end, SysProcStats),
-    ThisNodeBuckets = ns_bucket:node_bucket_names_of_type(node(), membase),
-    [report_couch_stats(B, ReportFun) || B <- ThisNodeBuckets],
-    ok.
+        end, SysProcStats).
 
 report_audit_stats(ReportFun) ->
     {ok, Stats} = ns_audit:stats(),
@@ -119,6 +128,10 @@ report_audit_stats(ReportFun) ->
               [{<<"category">>, <<"audit">>}], AuditQueueLen}),
     ReportFun({<<"audit">>, <<"unsuccessful_retries">>,
               [{<<"category">>, <<"audit">>}], AuditRetries}).
+
+report_couchdb_stats(ReportFun) ->
+    ThisNodeBuckets = ns_bucket:node_bucket_names_of_type(node(), membase),
+    [report_couch_stats(B, ReportFun) || B <- ThisNodeBuckets].
 
 report_couch_stats(Bucket, ReportFun) ->
     Stats = try
