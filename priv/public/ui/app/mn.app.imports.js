@@ -102,16 +102,6 @@ let overviewState = {
   }
 };
 
-let statsOverviewState = {
-  name: 'app.admin.statistics_overview.**',
-  url: '/stats_overview',
-  lazyLoad: ($transition$) => {
-    return import('./mn_admin/mn_statistics_overview_controller.js').then(m => {
-      $transition$.injector().get('$ocLazyLoad').load({name: 'mnStatisticsOverview'});
-    });
-  }
-};
-
 let serversState = {
   name: 'app.admin.servers.**',
   url: '/servers',
@@ -222,7 +212,7 @@ export let mnAppImports = [
   MnSharedModule,
   MnElementCraneModule.forRoot(),
   UIRouterUpgradeModule.forRoot({
-    states: [authState, wizardState, overviewState, statsOverviewState, serversState, bucketsState, logsState, groupsState, documentsState, gsiState, viewsState, settingsState, securityState, collectionsState, XDCRState, sessionState, logRedactionState, auditState]
+    states: [authState, wizardState, overviewState, serversState, bucketsState, logsState, groupsState, documentsState, gsiState, viewsState, settingsState, securityState, collectionsState, XDCRState, sessionState, logRedactionState, auditState]
   }),
 
   //downgradedModules
