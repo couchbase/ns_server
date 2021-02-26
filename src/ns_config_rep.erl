@@ -158,10 +158,12 @@ accumulate_push_keys(InitialKeys) ->
 
 accumulate_and_push_keys(_Keys0, 0) ->
     ns_server_stats:increment_counter(ns_config_rep_push_keys_retries_exceeded, 1),
-    ale:warn(?USER_LOGGER,
-             "Exceeded retries count trying to get consistent keys/values "
-             "for config replication. This is minor bug. Everything is "
-             "safe, but please file bug and attach logs"),
+    %% Exceeded retries count trying to get consistent keys/values for config
+    %% replication. This can be caused when there are too many independent
+    %% changes over a short time interval. Rather than try to accumulate more
+    %% changes we'll just replicate the entire configuration.
+    ?log_info("Exceeded retries count trying to get consistent keys/values "
+              "for config replication. The full config will be replicated."),
     KVs = lists:sort(ns_config:get_kv_list()),
     Keys = [K || {K, _} <- KVs],
     do_push_keys(Keys, KVs);
