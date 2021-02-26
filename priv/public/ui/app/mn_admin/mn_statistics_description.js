@@ -248,7 +248,6 @@ function getStatAdditionalConfig(statName) {
   case "@index-.@items.index_resident_percent":
   case "@index-.@items.index_cache_miss_ratio":
   case "@index-.index_fragmentation":
-  case "@xdcr-@items.xdcr_percent_completeness":
   case "@cbas.cbas_system_load_average":
   case "@kv-.kv_ops_update":
   case "@kv-.kv_avg_bg_wait_time_seconds":
@@ -258,6 +257,7 @@ function getStatAdditionalConfig(statName) {
 
   case "@kv-.couch_views_fragmentation":
   case "@index-.@items.index_frag_percent":
+  case "@xdcr-.@items.xdcr_percent_completeness":
     return {aggregationFunction: "avg", applyFunctions: ["sum"]};
 
   case "@cbas-.cbas_incoming_records_count":
@@ -266,6 +266,11 @@ function getStatAdditionalConfig(statName) {
   case "@fts-.fts_total_bytes_indexed":
   case "@fts-.fts_total_queries":
   case "@kv-.kv_ops":
+  case "@xdcr-.@items.xdcr_data_replicated_bytes":
+  case "@xdcr-.@items.xdcr_docs_filtered_total":
+  case "@xdcr-.@items.xdcr_docs_checked_total":
+  case "@xdcr-.@items.xdcr_docs_opt_repd_total":
+  case "@xdcr-.@items.xdcr_docs_received_from_dcp_total":
     return {applyFunctions: ["irate", "sum"]};
 
   case "@kv-.kv_collection_ops_sum":
@@ -287,11 +292,6 @@ function getStatAdditionalConfig(statName) {
   case "@index-.@items.index_num_requests":
   case "@index-.@items.index_num_docs_indexed":
   case "@index-.@items.index_num_rows_returned":
-  case "@xdcr-.@items.xdcr_data_replicated_bytes":
-  case "@xdcr-.@items.xdcr_docs_filtered_total":
-  case "@xdcr-.@items.xdcr_docs_checked_total":
-  case "@xdcr-.@items.xdcr_docs_opt_repd_total":
-  case "@xdcr-.@items.xdcr_docs_received_from_dcp_total":
   case "@fts-.@items.fts_total_bytes_indexed":
   case "@fts-.@items.fts_total_bytes_query_results":
   case "@fts-.@items.fts_total_compaction_written_bytes":
@@ -318,6 +318,11 @@ function getStatAdditionalConfig(statName) {
   case "@eventing.eventing_timeout_count":
   case "@index-.index_num_rows_returned":
   case "@kv-.couch_views_ops": //<- not sure if we need irate
+  case "@xdcr-.@items.xdcr_docs_failed_cr_source_total":
+  case "@xdcr-.@items.xdcr_docs_written_total":
+  case "@xdcr-.@items.xdcr_changes_left_total":
+  case "@xdcr-.@items.xdcr_wtavg_docs_latency_seconds":
+  case "@xdcr-.@items.xdcr_wtavg_meta_latency_seconds":
     return {applyFunctions: ["sum"]};
 
   case "@xdcr-.xdcr_changes_left_total":
@@ -330,7 +335,7 @@ function getStatAdditionalConfig(statName) {
     return {metric: {name: "cbas_incoming_records_count"}, applyFunctions: ["sum"]};
 
   case "@xdcr-.@items.xdcr_rate_replicated_docs_per_second":
-    return {metric: {name: "xdcr_docs_written_total"}, applyFunctions: ["irate"]};
+    return {metric: {name: "xdcr_docs_written_total"}, applyFunctions: ["irate", "sum"]};
 
   case "@kv-.kv_memory_used_bytes":
     return {metric: {for: "hashtable"}};
