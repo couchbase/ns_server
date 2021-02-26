@@ -577,6 +577,12 @@ validate_add_node_params(User, Password) ->
                  end,
     lists:filter(fun (E) -> E =/= true end, Candidates).
 
+malformed_url_message(Hostname) ->
+    list_to_binary(
+      io_lib:format(
+        "Malformed URL ~s; if using IPv6, enclose in square brackets",
+        [Hostname])).
+
 %% erlang R15B03 has http_uri:parse/2 that does the job
 %% reimplement after support of R14B04 will be dropped
 parse_hostname(Hostname, DefaultScheme) ->
@@ -606,7 +612,7 @@ do_parse_hostname(Hostname, DefaultScheme) ->
         {error, {invalid_sheme, S}} ->
             throw({error, [list_to_binary("Unsupported protocol " ++ S)]});
         _ ->
-            throw({error, [list_to_binary("Malformed URL " ++ Hostname)]})
+            throw({error, [malformed_url_message(Hostname)]})
     end.
 
 handle_add_node(Req) ->
@@ -989,13 +995,17 @@ hostname_parsing_test() ->
                        {error, [<<"Unsupported protocol ftp">>]},
                        {http, "host", 8091},
                        {https, "127.0.0.1", 6000},
-                       {error, [<<"Malformed URL host:port">>]},
-                       {error, [<<"Malformed URL aaa:bb:cc">>]},
+                       {error,
+                        [<<"Malformed URL host:port; "
+                           "if using IPv6, enclose in square brackets">>]},
+                       {error, [<<"Malformed URL aaa:bb:cc; "
+                           "if using IPv6, enclose in square brackets">>]},
                        {https, "host", 18091},
                        {error, [<<"Hostname is required.">>]},
                        {https, "host", 2000},
                        {https, "::1", 18091},
-                       {error, [<<"Malformed URL http://::1:10000">>]},
+                       {error, [<<"Malformed URL http://::1:10000; "
+                           "if using IPv6, enclose in square brackets">>]},
                        {http, "::1", 10000}],
 
     Results = [(catch parse_hostname(X, https)) || X <- Urls],
