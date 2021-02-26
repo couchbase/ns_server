@@ -525,7 +525,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
   function presetScenario() {
     return [{
       name: "Cluster Overview",
-      desc: "Stats showing the general health of your cluster.",
+      desc: "Stats showing the general health of your cluster. Customize and/or make your own dashboard with \"new dashboard... \" below.",
       groups: [{
         name: "Cluster Overview",
         isOpen: true,
@@ -537,8 +537,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
                   "@kv-.ep_cache_miss_rate": true,
                   "@kv-.cmd_get": true,
                   "@kv-.cmd_set": true,
-                  "@kv-.delete_hits": true,
-                  "@kv-.@items.accesses": true
+                  "@kv-.delete_hits": true
                  },
           size: "large",
           specificStat: false
@@ -622,7 +621,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
     },{  // 2nd scenario starts here with the comma ///////////////////////
 
       name: "All Services",
-      desc: 'Most common stats, arranged per service. Customize and make your own dashboard with "new dashboard... " below.',
+      desc: "Most common stats, arranged per service. Customize and/or make your own dashboard with \"new dashboard... \" below.",
       groups: [{
         name: "Data (Docs/Views/XDCR)",
         isOpen: true,
