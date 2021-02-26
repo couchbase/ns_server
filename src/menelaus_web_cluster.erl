@@ -600,7 +600,7 @@ do_parse_hostname(Hostname, DefaultScheme) ->
                         case string:to_lower(S) of
                             "http" -> valid;
                             "https" -> valid;
-                            _ -> {error, {invalid_sheme, S}}
+                            _ -> {error, {invalid_scheme, S}}
                         end
                 end,
     case http_uri:parse(WithScheme, [{scheme_validation_fun, SchemeVer},
@@ -609,7 +609,7 @@ do_parse_hostname(Hostname, DefaultScheme) ->
                                                         {https, 18091}]}]) of
         {ok, {Scheme, "", Host, Port, "/", ""}} ->
             {Scheme, Host, parse_validate_port_number(integer_to_list(Port))};
-        {error, {invalid_sheme, S}} ->
+        {error, {invalid_scheme, S}} ->
             throw({error, [list_to_binary("Unsupported protocol " ++ S)]});
         _ ->
             throw({error, [malformed_url_message(Hostname)]})
