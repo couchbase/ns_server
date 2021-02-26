@@ -33,7 +33,10 @@
          upgrade_cluster/1]).
 
 -define(CALL_TIMEOUT, ?get_timeout(call, 60000)).
+-define(JANITOR_TIMEOUT, ?get_timeout(janitor, 60000)).
 -define(UPGRADE_TIMEOUT, ?get_timeout(upgrade, 240000)).
+
+-record(state, {self_ref, janitor_timer_ref}).
 
 start_link() ->
     misc:start_singleton(gen_server2, start_link, [?SERVER, ?MODULE, [], []]).
@@ -90,7 +93,22 @@ call(Oper, Tries) ->
 
 init([]) ->
     erlang:process_flag(trap_exit, true),
-    {ok, undefined}.
+    Self = self(),
+    SelfRef = erlang:make_ref(),
+    ?log_debug("Starting with SelfRef = ~p", [SelfRef]),
+    OperationKey = operation_key(),
+    ns_pubsub:subscribe_link(
+      chronicle_kv:event_manager(kv),
+      fun ({{key, Key}, _, {updated, {_, _, Ref}}} = Evt)
+            when Key =:= OperationKey,
+                 Ref =/= SelfRef ->
+              ?log_debug("Detected update on operation key: ~p. "
+                         "Scheduling janitor.", [Evt]),
+              Self ! arm_janitor_timer;
+          (_) ->
+              ok
+      end),
+    {ok, arm_janitor_timer(#state{self_ref = SelfRef})}.
 
 handle_call({upgrade_cluster, NodesToAdd}, _From, State) ->
     {ok, Lock} = chronicle:acquire_lock(),
@@ -118,9 +136,28 @@ handle_call({upgrade_cluster, NodesToAdd}, _From, State) ->
     ?log_info("Cluster successfully upgraded to chronicle"),
     {reply, ok, State};
 
-handle_call(Oper, _From, State) ->
+handle_call(Oper, _From, #state{self_ref = SelfRef} = State) ->
+    NewState = cancel_janitor_timer(State),
     {ok, Lock} = chronicle:acquire_lock(),
-    {reply, handle_oper(Oper, Lock), State}.
+    RV = handle_oper(Oper, Lock, SelfRef),
+    {reply, RV, NewState}.
+
+handle_info(arm_janitor_timer, State) ->
+    {noreply, arm_janitor_timer(State)};
+
+handle_info(janitor, #state{self_ref = SelfRef} = State) ->
+    NewState = cancel_janitor_timer(State),
+    {ok, Lock} = chronicle:acquire_lock(),
+    case transaction([], undefined, Lock, SelfRef,
+                     fun (_) -> {abort, clean} end) of
+        {ok, _, {need_recovery, RecoveryOper}} ->
+            ?log_debug("Janitor found that recovery is needed for "
+                       "operation ~p", [RecoveryOper]),
+            ok = handle_oper(RecoveryOper, Lock, SelfRef);
+        clean ->
+            ok
+    end,
+    {noreply, NewState};
 
 handle_info({'EXIT', From, Reason}, State) ->
     ?log_debug("Received exit from ~p with reason ~p. Exiting.",
@@ -135,23 +172,24 @@ set_peer_roles(Lock, Nodes, Role) ->
 operation_key() ->
     unfinished_topology_operation.
 
-operation_key_set(Oper, Lock) ->
-    {set, operation_key(), {Oper, Lock}}.
+operation_key_set(Oper, Lock, SelfRef) ->
+    {set, operation_key(), {Oper, Lock, SelfRef}}.
 
-transaction(Keys, Oper, Lock, Fun) ->
+transaction(Keys, Oper, Lock, SelfRef, Fun) ->
     chronicle_kv:transaction(
       kv, [operation_key() | Keys],
       fun (Snapshot) ->
               case maps:find(operation_key(), Snapshot) of
-                  {ok, {{AnotherOper, _Lock}, _Rev}}
+                  {ok, {{AnotherOper, _Lock, _SelfRef}, _Rev}}
                     when AnotherOper =/= Oper ->
                       RecoveryOper = recovery_oper(AnotherOper),
-                      {commit, [operation_key_set(RecoveryOper, Lock)],
+                      {commit, [operation_key_set(RecoveryOper, Lock, SelfRef)],
                        {need_recovery, RecoveryOper}};
                   _ ->
                       case Fun(Snapshot) of
                           {commit, Sets} ->
-                              {commit, [operation_key_set(Oper, Lock) | Sets]};
+                              {commit,
+                               [operation_key_set(Oper, Lock, SelfRef) | Sets]};
                           {abort, Error} ->
                               {abort, Error}
                       end
@@ -165,9 +203,9 @@ remove_oper_key(Lock) ->
           kv, [operation_key()],
           fun (Snapshot) ->
                   case maps:get(operation_key(), Snapshot) of
-                      {{_, Lock}, _Rev} ->
+                      {{_, Lock, _}, _Rev} ->
                           {commit, [{delete, operation_key()}]};
-                      {{_, OtherLock}, _Rev} ->
+                      {{_, OtherLock, _}, _Rev} ->
                           ?log_info("Operation key with unknown lock ~p found",
                                     [OtherLock]),
                           {abort, operation_key_with_wrong_lock}
@@ -206,9 +244,9 @@ handle_topology_oper({activate_nodes, Nodes}, Lock) ->
 handle_topology_oper({deactivate_nodes, Nodes}, Lock) ->
     set_peer_roles(Lock, Nodes, replica).
 
-handle_oper(Oper, Lock) ->
+handle_oper(Oper, Lock, SelfRef) ->
     ?log_debug("Starting kv operation ~p with lock ~p", [Oper, Lock]),
-    case handle_kv_oper(Oper, transaction(_, Oper, Lock, _)) of
+    case handle_kv_oper(Oper, transaction(_, Oper, Lock, SelfRef, _)) of
         {ok, _} ->
             ?log_debug("Starting topology operation ~p with lock ~p",
                        [Oper, Lock]),
@@ -217,8 +255,8 @@ handle_oper(Oper, Lock) ->
             RV;
         {ok, _, {need_recovery, RecoveryOper}} ->
             ?log_debug("Recovery is needed for operation ~p", [RecoveryOper]),
-            ok = handle_oper(RecoveryOper, Lock),
-            handle_oper(Oper, Lock);
+            ok = handle_oper(RecoveryOper, Lock, SelfRef),
+            handle_oper(Oper, Lock, SelfRef);
         Error ->
             Error
     end.
@@ -227,3 +265,14 @@ recovery_oper({add_replica, Node, _, _}) ->
     {remove_peer, Node};
 recovery_oper(Oper) ->
     Oper.
+
+cancel_janitor_timer(#state{janitor_timer_ref = Ref} = State) ->
+    Ref =/= undefined andalso erlang:cancel_timer(Ref),
+    misc:flush(janitor),
+    misc:flush(arm_janitor_timer),
+    State#state{janitor_timer_ref = undefined}.
+
+arm_janitor_timer(State) ->
+    NewState = cancel_janitor_timer(State),
+    NewRef = erlang:send_after(?JANITOR_TIMEOUT, self(), janitor),
+    NewState#state{janitor_timer_ref = NewRef}.
