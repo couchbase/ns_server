@@ -62,15 +62,16 @@
          (click)="form.submit.next()">
         Test Filter
       </button>
-      <div
-         class="xdcrfilter-matching"
-         [hidden]="(postRegexpValidation.success | async) == null || (errors | async)"
-         [ngClass]="{
-                dynamic_match: (postRegexpValidation.success | async)?.result,
-                dynamic_spinner: (form.processing | async)}">
-        <span class="xdcrfilter-nomatch">no match</span>
-        <span class="xdcrfilter-loading loading">...</span>
-        <span class="xdcrfilter-match">match</span>
+      <div class="xdcrfilter-matching">
+        <span
+           class="xdcrfilter-nomatch"
+           [hidden]="(form.processing | async) || (postRegexpValidation.success | async)?.result">no match</span>
+        <span
+           class="xdcrfilter-loading loading"
+           [hidden]="!(form.processing | async)">...</span>
+        <span
+           class="xdcrfilter-match"
+           [hidden]="(form.processing | async) || !(postRegexpValidation.success | async)?.result">match</span>
       </div>
     </div>
 

@@ -1621,20 +1621,7 @@ section.error {
   position: relative;
   right: 6px;
 }
-.xdcrfilter-matching .xdcrfilter-nomatch,
-.xdcrfilter-matching.dynamic_match .xdcrfilter-match,
-.xdcrfilter-matching.dynamic_spinner .xdcrfilter-loading {
-  display: block;
-}
-.xdcrfilter-matching.hidden .xdcrfilter-nomatch,
-.xdcrfilter-matching.dynamic_spinner .xdcrfilter-nomatch,
-.xdcrfilter-matching.dynamic_spinner .xdcrfilter-match,
-.xdcrfilter-matching.dynamic_match .xdcrfilter-nomatch,
-.xdcrfilter-matching.dynamic_match .xdcrfilter-loading,
-.xdcrfilter-matching .xdcrfilter-loading,
-.xdcrfilter-matching .xdcrfilter-match {
-  display: none;
-}
+
 .xdcr-filter-stream,
 .xdcr-filter-stream label {
   font-size: .875rem!important;
