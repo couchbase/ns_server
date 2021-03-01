@@ -27,19 +27,35 @@
           {{(addCollectionHttp.error | async)?.errors?.name}}
         </div>
       </div>
-      <div class="formrow">
-        <label for="add-collection">TTL</label>
+      <div class="formrow" *ngIf="isEnterprise | async">
+        <label for="add-collection" class="inline margin-right-quarter">Collection Max Time-To-Live</label>
+        <ng-template #maxTimeToLiveTooltip>
+          The maximum time-to-live (TTL) for all documents in this collection in seconds.
+          If enabled and a document is mutated with no TTL or a TTL greater than the maximum,
+          its TTL will be set to the collection TTL.
+          <br/><br/>
+          The largest TTL allowed is 2147483647 seconds. A 0 value means TTL is disabled.
+          <br/><br/>
+          NOTE: if collection-level TTL is set, bucket-level TTL is ignored.
+        </ng-template>
+        <span
+           class="fa-stack icon-info"
+           [ngbTooltip]="maxTimeToLiveTooltip"
+           placement="right">
+          <span class="icon fa-circle-thin fa-stack-2x"></span>
+          <span class="icon fa-info fa-stack-1x"></span>
+        </span>
         <input
-          type="text"
-          id="add-collection-ttl"
-          name="maxTTL"
-          formControlName="maxTTL"
-          autocorrect="off"
-          spellcheck="false"
-          autocapitalize="off">
+           type="text"
+           id="add-collection-ttl"
+           name="maxTTL"
+           formControlName="maxTTL"
+           autocorrect="off"
+           spellcheck="false"
+           autocapitalize="off">
         <div
-          class="error"
-          [hidden]="!(addCollectionHttp.error | async)?.errors?.maxTTL">
+           class="error"
+           [hidden]="!(addCollectionHttp.error | async)?.errors?.maxTTL">
           {{(addCollectionHttp.error | async)?.errors?.maxTTL}}
         </div>
       </div>
