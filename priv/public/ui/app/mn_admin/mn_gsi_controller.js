@@ -22,7 +22,7 @@ import mnGsiService from "./mn_gsi_service.js";
 import {mnGsiItemController, mnGsiItemStatsController, mnGsiItemDetails} from "./mn_gsi_item_details.js";
 import mnFooterStatsController from "./mn_gsi_footer_controller.js";
 import mnGsiTableDirective from "./mn_gsi_table_directive.js";
-import mnKeyspaceSelector from "/ui/app/mn.keyspace.selector.downgrade.module.js"
+import mnKeyspaceSelectorDowngradeModule from "/ui/app/mn.keyspace.selector.downgrade.module.js"
 import {Subject} from "/ui/web_modules/rxjs.js";
 import {takeUntil, filter, withLatestFrom} from "/ui/web_modules/rxjs/operators.js";
 export default 'mnGsi';
@@ -44,7 +44,7 @@ angular
     mnDetailStats,
     mnGsiService,
     mnStatisticsNewService,
-    mnKeyspaceSelector
+    mnKeyspaceSelectorDowngradeModule
   ])
   .config(configure)
   .controller('mnGsiController', mnGsiController)
@@ -114,7 +114,7 @@ function configure($stateProvider) {
       }
     });
 }
-function mnGsiController($scope, mnGsiService, mnPoller, $state, mnCollectionsService,
+function mnGsiController($scope, mnGsiService, mnPoller, $state, mnCollectionsServiceDowngrade,
                          poolDefault) {
   var vm = this;
 
@@ -158,7 +158,7 @@ function mnGsiController($scope, mnGsiService, mnPoller, $state, mnCollectionsSe
     }
 
     vm.mnCollectionSelectorService =
-      mnCollectionsService.createCollectionSelector({
+      mnCollectionsServiceDowngrade.createCollectionSelector({
         component: {mnOnDestroy},
         steps: ["bucket", "scope"]
       });

@@ -1,7 +1,9 @@
 <form class="margin-bottom-1" ng-submit="submit()">
   <div class="row flex-left">
-    <mn-keyspace-selector [service]="mnCollectionSelectorService">
-    </mn-keyspace-selector>
+    <mn-keyspace-selector-downgrade
+       class="mn-keyspace-selector"
+       [service]="mnCollectionSelectorService">
+    </mn-keyspace-selector-downgrade>
     <button
        type="submit"
        class="ks-control-button append"> ADD</button>

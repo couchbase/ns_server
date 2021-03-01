@@ -1,6 +1,6 @@
 <form
-   (ngSubmit)="select.next()"
-   [formGroup]="service.filters.bucket.group">
+   (ngSubmit)="form.submit.next()"
+   [formGroup]="form.group">
   <div class="ks-control-wrapper">
     <mn-input-filter
        *ngFor="let step of service.options.steps"
@@ -19,7 +19,7 @@
      class="selector-scroll"
      [hidden]="!(service.stream.list | async)?.length">
     <a
-       (click)="select.next(item)"
+       (click)="form.submit.next(item)"
        *ngFor="let item of (service.stream.list | async)">
       {{item[service.filterKey]}}
     </a>

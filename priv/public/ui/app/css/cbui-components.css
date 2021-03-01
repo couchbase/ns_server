@@ -3621,18 +3621,18 @@ div.border-top + div.border-top {
   background-color: #f6f7f9;
 }
 /* keyspace control --------------------------------------------------------- */
-mn-keyspace-selector {
+.mn-keyspace-selector {
   display: block;
   position: relative;
   z-index: 11;
   background-color: #fff;
 }
-mn-keyspace-selector .filter-input-group .icon {
+.mn-keyspace-selector .filter-input-group .icon {
   width: auto!important;
   margin: auto 0;
 }
 /* imitates the .panel class ------------------------------------------------ */
-mn-keyspace-selector .selector-scroll {
+.mn-keyspace-selector .selector-scroll {
   border: none;
   border-radius: 0 0 3px 3px;
   z-index: 10;
@@ -3646,7 +3646,7 @@ mn-keyspace-selector .selector-scroll {
   cursor: pointer;
   line-height: 2;
 }
-mn-keyspace-selector .selector-scroll a {
+.mn-keyspace-selector .selector-scroll a {
   color: #555;
   font-size: .875rem;
   display: block;
@@ -3658,19 +3658,19 @@ mn-keyspace-selector .selector-scroll a {
   transition: all .5s; */
 }
 
-mn-keyspace-selector .selector-scroll a:last-child {
+.mn-keyspace-selector .selector-scroll a:last-child {
   border-bottom: none;
 }
 
-mn-keyspace-selector .selector-scroll a:hover {
+.mn-keyspace-selector .selector-scroll a:hover {
   color: #000;
   background-color: #f6fafd;
   opacity: 1;
 }
-mn-keyspace-selector .selector-scroll a:active {
+.mn-keyspace-selector .selector-scroll a:active {
   color: #4287d6;
 }
-mn-keyspace-selector .fa-times-circle {
+.mn-keyspace-selector .fa-times-circle {
   display: none;
 }
 .ks-control-wrapper {

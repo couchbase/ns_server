@@ -212,7 +212,7 @@ class MnForm {
     return this;
   }
 
-  setValidation(validationPostRequest, permissionStream) {
+  setValidation(validationPostRequest, permissionStream, validateOnStream) {
     validationPostRequest.response
       .pipe(takeUntil(this.component.mnOnDestroy))
       .subscribe(function () {
@@ -220,7 +220,7 @@ class MnForm {
       });
     //skip initialization of the form
     ;(permissionStream || new BehaviorSubject(true)).pipe(
-      switchMap((v) => v ? this.group.valueChanges : NEVER),
+      switchMap((v) => v ? (validateOnStream || this.group.valueChanges) : NEVER),
       debounceTime(500),
       this.getPackPipe(),
       takeUntil(this.component.mnOnDestroy))

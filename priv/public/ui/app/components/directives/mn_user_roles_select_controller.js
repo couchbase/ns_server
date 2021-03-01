@@ -1,11 +1,11 @@
 import angular from "/ui/web_modules/angular.js";
 import {Subject} from "/ui/web_modules/rxjs.js";
-import mnKeyspaceSelector from "/ui/app/mn.keyspace.selector.downgrade.module.js"
+import mnKeyspaceSelectorDowngradeModule from "/ui/app/mn.keyspace.selector.downgrade.module.js"
 
 export default "mnUserRolesSelect";
 
 angular
-  .module('mnUserRolesSelect', [mnKeyspaceSelector])
+  .module('mnUserRolesSelect', [mnKeyspaceSelectorDowngradeModule])
   .directive('mnUserRolesSelect', mnUserRolesSelectDirective)
   .directive('mnUserRolesSelectForm', mnUserRolesSelectFormDirective);
 
@@ -56,7 +56,7 @@ function mnUserRolesSelectDirective() {
   }
 }
 
-function mnUserRolesSelectFormDirective(mnCollectionsService) {
+function mnUserRolesSelectFormDirective(mnCollectionsServiceDowngrade) {
   var mnUserRolesSelectForm = {
     restrict: 'AE',
     templateUrl: 'app/components/directives/mn_user_roles_select_form.html',
@@ -74,7 +74,7 @@ function mnUserRolesSelectFormDirective(mnCollectionsService) {
     let params = $scope.item.params.map(v => v.split("_")[0]);
 
     $scope.mnCollectionSelectorService =
-      mnCollectionsService.createCollectionSelector({
+      mnCollectionsServiceDowngrade.createCollectionSelector({
         isRolesMode: true,
         component: {mnOnDestroy},
         buckets: $scope.state.parameters[$scope.item.params[0]],
@@ -103,7 +103,7 @@ function mnUserRolesSelectFormDirective(mnCollectionsService) {
 
     function submit() {
       let result = $scope.mnCollectionSelectorService.stream.result
-      let resultValue = $scope.mnCollectionSelectorService.stream.result.getValue();
+      let resultValue = result.getValue();
       let isInvalid = Object.keys(resultValue).some(key => {
         if (resultValue[key] == null) {
           $scope.mnCollectionSelectorService.stream.doFocus.next(key);

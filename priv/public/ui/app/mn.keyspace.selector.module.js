@@ -1,9 +1,11 @@
 import { NgModule } from '/ui/web_modules/@angular/core.js';
-import { BrowserModule } from '/ui/web_modules/@angular/platform-browser.js';
+import { CommonModule } from '/ui/web_modules/@angular/common.js';
 import { ReactiveFormsModule } from '/ui/web_modules/@angular/forms.js';
-import { MnKeyspaceSelectorComponent } from "/ui/app/mn.keyspace.selector.component.js";
 import { MnInputFilterModule } from './mn.input.filter.module.js';
 import { MnCollectionsServiceModule } from './mn.collections.service.js';
+
+import { MnKeyspaceSelectorComponent } from "/ui/app/mn.keyspace.selector.component.js";
+import { MnFormService } from "./mn.form.service.js";
 
 export { MnKeyspaceSelectorModule };
 
@@ -16,11 +18,17 @@ class MnKeyspaceSelectorModule {
       declarations: [
         MnKeyspaceSelectorComponent
       ],
+      exports: [
+        MnKeyspaceSelectorComponent
+      ],
       imports: [
-        BrowserModule,
+        CommonModule,
         MnInputFilterModule,
         ReactiveFormsModule,
         MnCollectionsServiceModule
+      ],
+      providers: [
+        MnFormService
       ]
     })
   ]}

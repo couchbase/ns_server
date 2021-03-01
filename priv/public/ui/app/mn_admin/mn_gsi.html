@@ -12,10 +12,10 @@
     <div class="column flex-grow-1-5"
        ng-if="adminCtl.poolDefault.compat.atLeast70">
       <h5>Keyspace <small> bucket.scope</small></h5>
-      <mn-keyspace-selector
-         [service]="gsiCtl.mnCollectionSelectorService"
-         class="relative">
-      </mn-keyspace-selector>
+      <mn-keyspace-selector-downgrade
+         class="mn-keyspace-selector"
+         [service]="gsiCtl.mnCollectionSelectorService">
+      </mn-keyspace-selector-downgrade>
     </div>
     <div class="margin-top-half relative flex-grow-1">
       <div class="simple-select-inside-label">

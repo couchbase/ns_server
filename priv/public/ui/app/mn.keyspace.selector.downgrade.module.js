@@ -5,11 +5,11 @@ import {MnKeyspaceSelectorComponent} from "/ui/app/mn.keyspace.selector.componen
 import {MnCollectionsService} from '/ui/app/mn.collections.service.js';
 import {Subject, of} from "/ui/web_modules/rxjs.js";
 
-export default "mnKeyspaceSelector";
+export default "mnKeyspaceSelectorDowngradeModule";
 
 angular
-  .module('mnKeyspaceSelector', [])
-  .factory('mnCollectionsService', downgradeInjectable(MnCollectionsService))
-  .directive('mnKeyspaceSelector', downgradeComponent({
+  .module('mnKeyspaceSelectorDowngradeModule', [])
+  .factory('mnCollectionsServiceDowngrade', downgradeInjectable(MnCollectionsService))
+  .directive('mnKeyspaceSelectorDowngrade', downgradeComponent({
     component: MnKeyspaceSelectorComponent
   }));

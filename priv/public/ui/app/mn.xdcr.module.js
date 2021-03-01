@@ -7,6 +7,8 @@ import { MnElementCraneModule } from "./mn.element.crane.js";
 import { MnSharedModule } from './mn.shared.module.js';
 import { MnInputFilterModule } from './mn.input.filter.module.js';
 import { MnPipesModule } from './mn.pipes.module.js';
+import { MnKeyspaceSelectorModule } from "./mn.keyspace.selector.module.js";
+import { MnCollectionsServiceModule } from './mn.collections.service.js';
 
 import { MnXDCRComponent } from "./mn.xdcr.component.js";
 import { MnXDCRItemComponent } from "./mn.xdcr.item.component.js";
@@ -15,7 +17,6 @@ import { MnXDCRItemDetailsComponent,
 import { MnXDCRRefItemComponent } from "./mn.xdcr.ref.item.component.js";
 import { MnXDCRService } from "./mn.xdcr.service.js";
 import { MnBucketsService } from "./mn.buckets.service.js";
-import { MnCollectionsService } from './mn.collections.service.js';
 import { MnStatsService } from './mn.stats.service.js';
 
 import { MnXDCRAddRefComponent } from "./mn.xdcr.add.ref.component.js";
@@ -134,6 +135,8 @@ class MnXDCRModule {
         NgbModule,
         MnElementCraneModule,
         ReactiveFormsModule,
+        MnKeyspaceSelectorModule,
+        MnCollectionsServiceModule,
         MnSharedModule,
         MnPipesModule,
         UIRouterModule.forChild({ states: [XDCRState, AddXDCRState, EditXDCRState] })
@@ -141,7 +144,6 @@ class MnXDCRModule {
       providers: [
         MnXDCRService,
         MnBucketsService,
-        MnCollectionsService,
         MnStatsService
       ]
     })

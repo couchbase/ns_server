@@ -6,7 +6,7 @@ import { MnHttpRequest } from './mn.http.request.js';
 
 import {BehaviorSubject, Subject, NEVER,
         of, merge, fromEvent} from "/ui/web_modules/rxjs.js";
-import {map, shareReplay, filter, withLatestFrom, pairwise, catchError,
+import {map, shareReplay, filter, withLatestFrom, pairwise, catchError, startWith,
         switchMap, pluck, takeUntil, mapTo, take, distinctUntilChanged} from '/ui/web_modules/rxjs/operators.js';
 
 import {MnBucketsService} from './mn.buckets.service.js';
@@ -23,7 +23,6 @@ class MnCollectionsServiceModule {
       providers: [
         MnCollectionsService,
         MnBucketsService,
-        MnPermissions,
         MnHelperService
       ]
     })
@@ -270,7 +269,7 @@ class MnCollectionsService {
                 return getStepList.bind(this)(["scope", next]).pipe(take(1));
               }))
         .subscribe(list => {
-          setDefault("scope", list);
+          setVals.scope && setDefault("scope", list);
           result.next(next);
           setStepsValuesToFields();
           filters["scope"].group.get("value").enable();
@@ -282,7 +281,8 @@ class MnCollectionsService {
     disableFields(1);
 
     step
-      .pipe(pairwise(),
+      .pipe(startWith(""),
+            pairwise(),
             withLatestFrom(result),
             takeUntil(options.component.mnOnDestroy))
       .subscribe(([[prevStep, step], result]) => {
@@ -294,10 +294,6 @@ class MnCollectionsService {
           filters[step].group.get("value").setValue("");
         }
       });
-
-    if (options.defaults) {
-      setKeyspace.bind(this)(options.defaults, true);
-    }
 
     return {
       setKeyspace: setKeyspace.bind(this),

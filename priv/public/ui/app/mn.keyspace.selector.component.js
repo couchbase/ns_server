@@ -3,7 +3,7 @@ import {map, mapTo, takeUntil, withLatestFrom,
         filter, skip} from '/ui/web_modules/rxjs/operators.js';
 import {MnLifeCycleHooksToStream} from "./mn.core.js";
 import {Subject, merge, } from "/ui/web_modules/rxjs.js";
-
+import {MnFormService} from "./mn.form.service.js";
 
 export {MnKeyspaceSelectorComponent};
 
@@ -13,7 +13,8 @@ class MnKeyspaceSelectorComponent extends MnLifeCycleHooksToStream {
       selector: "mn-keyspace-selector",
       templateUrl: "/ui/app/mn.keyspace.selector.html",
       inputs: [
-        "service"
+        "service",
+        "defaults"
       ],
       changeDetection: ChangeDetectionStrategy.OnPush,
       host: {
@@ -23,15 +24,18 @@ class MnKeyspaceSelectorComponent extends MnLifeCycleHooksToStream {
   ]}
 
   static get parameters() { return [
+    MnFormService
   ]}
 
-  constructor() {
+  constructor(mnFormService) {
     super();
-    this.select = new Subject();
+    this.form = mnFormService.create(this).setFormGroup({}).hasNoPostRequest();
   }
 
   ngOnInit() {
-    this.select
+    this.defaults && this.service.setKeyspace(this.defaults);
+
+    this.form.submit
       .pipe(withLatestFrom(this.service.stream.step),
             takeUntil(this.mnOnDestroy))
       .subscribe(([item, step]) => {

@@ -1,10 +1,11 @@
 import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
-import {merge} from '/ui/web_modules/rxjs.js';
-import {map, pluck, startWith, takeUntil} from '/ui/web_modules/rxjs/operators.js';
+import {merge, pipe} from '/ui/web_modules/rxjs.js';
+import {map, filter, pluck, startWith, withLatestFrom, takeUntil, tap} from '/ui/web_modules/rxjs/operators.js';
 
 import {MnLifeCycleHooksToStream} from "./mn.core.js";
 import {MnXDCRService} from "./mn.xdcr.service.js";
 import {MnFormService} from "./mn.form.service.js";
+import {MnCollectionsService} from "./mn.collections.service.js";
 
 export {MnXDCRFilterComponent};
 
@@ -26,10 +27,11 @@ class MnXDCRFilterComponent extends MnLifeCycleHooksToStream {
 
   static get parameters() { return [
     MnXDCRService,
-    MnFormService
+    MnFormService,
+    MnCollectionsService
   ]}
 
-  constructor(mnXDCRService, mnFormService) {
+  constructor(mnXDCRService, mnFormService, mnCollectionsService) {
     super();
 
     this.form = mnFormService.create(this);
@@ -47,6 +49,8 @@ class MnXDCRFilterComponent extends MnLifeCycleHooksToStream {
     this.postSettingsReplications =
       mnXDCRService.stream.postSettingsReplications;
 
+    this.mnCollectionsService = mnCollectionsService;
+
     this.errors = merge(
       this.postRegexpValidation.success,
       this.postRegexpValidation.error,
@@ -62,12 +66,24 @@ class MnXDCRFilterComponent extends MnLifeCycleHooksToStream {
   }
 
   ngOnInit() {
+    this.mnCollectionSelectorService =
+      this.mnCollectionsService.createCollectionSelector({
+        component: this,
+        steps: ["bucket", "scope", "collection"]
+      });
+
+    let validateOnStream =
+        merge(this.group.valueChanges,
+              this.mnCollectionSelectorService.stream.step.pipe(filter(v => v == "ok")));
+
     this.form
       .setFormGroup(this.group)
-      .setPackPipe(map(this.pack.bind(this)))
+      .setPackPipe(pipe(withLatestFrom(this.mnCollectionSelectorService.stream.result),
+                        filter(([_, r]) => r.bucket && r.scope && r.collection),
+                        map(this.pack.bind(this))))
       .setSourceShared(this.settingsPipe)
       .setPostRequest(this.postRegexpValidation)
-      .setValidation(this.postRegexpValidation)
+      .setValidation(this.postRegexpValidation, null, validateOnStream)
       .trackSubmit()
       .clearErrors();
 
@@ -87,11 +103,13 @@ class MnXDCRFilterComponent extends MnLifeCycleHooksToStream {
     }
   }
 
-  pack() {
+  pack([_, result]) {
     return {
       expression: this.group.get("filterExpression").value,
       docId: this.group.get("docId").value,
-      bucket: this.bucket || ""
+      bucket: result.bucket.name,
+      scope: result.scope.name,
+      collection: result.collection.name
     };
   }
 }

@@ -13,7 +13,7 @@
 </div>
 
 <div
-   [hidden]="!formHelper.group.get('enableFilters').value"
+   *ngIf="formHelper.group.get('enableFilters').value"
    [formGroup]="group">
   <div class="margin-bottom-1-5">
     <label class="inline">Filter Expression</label>
@@ -42,6 +42,11 @@
     <div
        class="row margin-bottom-half"
        [formGroup]="form.group">
+      <mn-keyspace-selector
+         class="mn-keyspace-selector margin-right-half"
+         [defaults]="{bucket: bucket}"
+         [service]="mnCollectionSelectorService">
+      </mn-keyspace-selector>
       <input
          formControlName="docId"
          type="text"
