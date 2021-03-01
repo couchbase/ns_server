@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2020 Couchbase, Inc.
+%% @copyright 2020-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -73,13 +73,13 @@ buckets_interesting(Nodes) ->
 buckets_interesting() ->
     Q = <<"{name=~`kv_curr_items|"
                   "kv_curr_items_tot|"
-                  "kv_vb_replica_curr_items|"
                   "kv_mem_used_bytes|"
                   "couch_docs_actual_disk_size|"
                   "couch_views_actual_disk_size|"
                   "kv_ep_db_data_size_bytes|"
-                  "kv_vb_active_num_non_resident|"
                   "kv_ep_bg_fetched`} or "
+          "kv_vb_curr_items{state='replica'} or "
+          "kv_vb_num_non_resident{state='active'} or "
           "label_replace(sum by (bucket, name) ("
                           "irate(kv_ops{op=`get`}["?IRATE_INTERVAL"])), `name`,"
                           "`cmd_get`, ``, ``) or "
@@ -197,9 +197,9 @@ interesting_stats_backward_compat_mapping(BucketStats) ->
    Map = fun (kv_mem_used_bytes) -> mem_used;
              (kv_curr_items) -> curr_items;
              (kv_curr_items_tot) -> curr_items_tot;
-             (kv_vb_replica_curr_items) -> vb_replica_curr_items;
+             (kv_vb_curr_items) -> vb_replica_curr_items;
              (kv_ep_db_data_size_bytes) -> couch_docs_data_size;
-             (kv_vb_active_num_non_resident) -> vb_active_num_non_resident;
+             (kv_vb_num_non_resident) -> vb_active_num_non_resident;
              (kv_ep_bg_fetched) -> ep_bg_fetched;
              (N) -> N
          end,
