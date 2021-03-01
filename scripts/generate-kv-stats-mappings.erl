@@ -1,6 +1,6 @@
 #!/usr/bin/env escript
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2020 Couchbase, Inc.
+%% @copyright 2020-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -65,6 +65,19 @@ generate_mappings(Name, Pairs) ->
     {function, 0, Name, 1, Clauses ++ [DefaultClause]}.
 
 old_to_new_kv_stat_mapping(Pairs) ->
+    do_generate_mappings(Pairs,
+                         fun (Key, Type, Value, KeyUnit, ValueUnit) ->
+                                 {true,
+                                  {Key, {Type, Value, {KeyUnit, ValueUnit}}}}
+                         end).
+
+new_to_old_kv_stat_mapping(Pairs) ->
+    do_generate_mappings(Pairs,
+                         fun (Key, _Type, Value, _KeyUnit, _ValueUnit) ->
+                                 {true, {Value, Key}}
+                         end).
+
+do_generate_mappings(Pairs, BuildMapEntry) ->
     BinCounters = [atom_to_binary(C, latin1) || C <- [?STAT_COUNTERS]],
     BinGauges = [atom_to_binary(G, latin1) || G <- [?STAT_GAUGES]],
 
@@ -80,7 +93,7 @@ old_to_new_kv_stat_mapping(Pairs) ->
                      end,
               case Type of
                   unknown -> false;
-                  _ -> {true, {Key, {Type, Value, {KeyUnit, ValueUnit}}}}
+                  _ -> BuildMapEntry(Key, Type, Value, KeyUnit, ValueUnit)
               end
       end, Pairs).
 
@@ -92,9 +105,6 @@ add_missing_kv_pairs(Pairs) ->
     ExtraPairs = [{{M, none}, {{<<"kv_", M/binary>>, []}, none}}
                       || M <- MissingMetrics],
     Pairs ++ ExtraPairs.
-
-new_to_old_kv_stat_mapping(Pairs) ->
-    [{V, K} || {{K, _KU}, {V, _VU}} <- Pairs].
 
 parse_map_file(Contents) ->
     Lines = string:lexemes(Contents, [$\n]),
@@ -157,7 +167,7 @@ format_error(Error) ->
 
 licence() ->
     "%% @author Couchbase <info@couchbase.com>\n"
-    "%% @copyright 2020 Couchbase, Inc.\n"
+    "%% @copyright 2020-2021 Couchbase, Inc.\n"
     "%%\n"
     "%% Licensed under the Apache License, Version 2.0 (the \"License\");\n"
     "%% you may not use this file except in compliance with the License.\n"
