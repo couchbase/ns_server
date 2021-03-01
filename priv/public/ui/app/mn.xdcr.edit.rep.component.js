@@ -111,6 +111,7 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
       .pipe(map(find(where({uuid: flip(includes)(this.item.target)}))),
             pluck("name"),
             first());
+    this.toBucket = this.item.target.split('buckets/')[1];
   }
 
   unpackReplicationSettings(v) {
