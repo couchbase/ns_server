@@ -66,7 +66,8 @@ scope_validators(Exceptions) ->
      validator:unsupported(_)].
 
 collection_validators(DefaultAllowed) ->
-    [validator:integer(maxTTL, 0, ?MC_MAXINT, _) |
+    [validator:integer(maxTTL, 0, ?MC_MAXINT, _),
+     validator:changeable_in_enterprise_only(maxTTL, 0, _) |
      scope_validators(DefaultAllowed)].
 
 handle_post_collection(Bucket, Scope, Req) ->
