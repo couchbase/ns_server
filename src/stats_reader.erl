@@ -252,7 +252,11 @@ get_stats(Period, Step, N, StatList, #state{bucket=Bucket,
                     Aligned = align_timestamps(StatEntries, EndTS, Period,
                                                Step, LastTSQ),
                     StartIndex = max(length(Aligned) - SamplesNum, 0) + 1,
-                    {ok, lists:sublist(Aligned, StartIndex, SamplesNum)};
+                    Res = lists:sublist(Aligned, StartIndex, SamplesNum),
+                    SortedRes =
+                        [E#stat_entry{values = lists:sort(E#stat_entry.values)}
+                            || E <- Res],
+                    {ok, SortedRes};
                 {error, _} = Error ->
                     Error
             end
