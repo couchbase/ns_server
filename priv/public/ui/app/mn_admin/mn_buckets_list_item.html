@@ -51,8 +51,9 @@
       <a
          ng-click="$event.stopPropagation()"
          class="margin-left-1 nowrap"
-         ng-show="rbac.cluster.collection[bucket.name + ':.:.'].collections.read &&
-                   poolDefault.compat.atLeast70"
+         ng-show="!bucket.isMemcached &&
+                  rbac.cluster.collection[bucket.name + ':.:.'].collections.read &&
+                  poolDefault.compat.atLeast70"
          ui-sref="app.admin.collections({collectionsBucket: bucket.name})">
         Scopes & Collections</a>
     </span>
