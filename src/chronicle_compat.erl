@@ -328,18 +328,22 @@ do_pull(Timeout) ->
         ok ->
             ok;
         Error ->
-            ?log_warning("Failed to pull chronicle config ~p", [Error])
+            ?log_warning("Failed to pull chronicle config ~p", [Error]),
+            Error
     end.
 
 remote_pull(Nodes, Timeout) ->
-    {Results, BadNodes} =
-        rpc:multicall(Nodes, ?MODULE, do_pull, [Timeout], Timeout),
-    case BadNodes =:= [] andalso lists:all(fun(A) -> A =:= ok end,
-                                           Results) of
+    {Results, BadRPC, BadNodes} =
+        misc:rpc_multicall_with_plist_result(Nodes, ?MODULE, do_pull, [Timeout],
+                                             Timeout),
+    case BadNodes =:= [] andalso
+        BadRPC =:= [] andalso lists:all(fun({_, R}) -> R =:= ok end,
+                                        Results) of
         true ->
             ok;
         false ->
-            Error = {remote_pull_failed, Results, BadNodes},
+            Error = {remote_pull_failed, BadRPC ++
+                         [{N, bad_node} || N <- BadNodes]},
             ?log_warning("Failed to push chronicle config ~p", [Error]),
             {error, Error}
     end.
@@ -364,12 +368,12 @@ config_sync(push, Nodes, Timeout) ->
                     case remote_pull(Nodes, Timeout) of
                         ok ->
                             ok;
-                        {error, {remote_pull_failed, Results, BadNodes}} ->
-                            Results ++ [{N, bad_rpc} || N <- BadNodes]
+                        {error, {remote_pull_failed, BadResults}} ->
+                            {error, BadResults}
                     end
             end;
         {error, SyncFailedNodes} ->
-            SyncFailedNodes
+            {error, SyncFailedNodes}
     end.
 
 node_keys(Node) ->
