@@ -32,6 +32,7 @@ function mnStatisticsNewChartDirective(mnStatisticsNewService, mnPrepareQuantity
     restrict: 'AE',
     templateUrl: 'app/mn_admin/mn_statistics_chart_directive.html',
     scope: {
+      statsPoller: "=?",
       syncScope: "=?",
       config: "=",
       mnD3: "=?",

@@ -22,6 +22,7 @@
    ng-click="$event.stopPropagation();">
   <mn-statistics-chart
      ng-if="$ctrl.scope"
+     stats-poller="$ctrl.mnAdminStatsPoller"
      sync-scope="$ctrl.scope"
      ng-repeat="config in $ctrl.charts track by config.id"
      items="$ctrl.items"

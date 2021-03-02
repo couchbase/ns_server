@@ -235,6 +235,7 @@ function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http
   vm.showBlocks = {
     "Server Resources": true
   };
+  vm.mnAdminStatsPoller = mnStatisticsNewService.mnAdminStatsPoller;
 
   activate();
 
@@ -389,8 +390,8 @@ function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http
   function activate() {
     initItemsDropdownSelect();
 
-    mnStatisticsNewService.mnAdminStatsPoller.heartbeat.setInterval(
-      mnStatisticsNewService.defaultZoomInterval(vm.zoom));
+    vm.mnAdminStatsPoller.heartbeat
+      .setInterval(mnStatisticsNewService.defaultZoomInterval(vm.zoom));
 
     if ($scope.rbac.cluster.stats.read) {
       mnUserRolesService.getUserProfile().then(function (profile) {

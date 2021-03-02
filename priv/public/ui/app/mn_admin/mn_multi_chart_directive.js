@@ -9,7 +9,8 @@ function mnMultiChartDirective($window, mnD3Service) {
       data: "=?",
       options: "=?",
       api: "=?",
-      syncScope: "=?"
+      syncScope: "=?",
+      statsPoller: "=?"
     },
     controller: controller
   };
@@ -65,9 +66,9 @@ function mnMultiChartDirective($window, mnD3Service) {
     }
 
     function syncTooltipsAndPauseCharts() {
-      let mnPauseStats = false;
       let resumeStatsTimer;
       let chartNode = chart.tipBox.node();
+      let cancelStatsTimer = () => $scope.syncScope.$broadcast("mnStatsCancelTimer");
 
       let throttledSync = _.throttle(function (e) {
         if (e.bubbles) {
@@ -79,20 +80,18 @@ function mnMultiChartDirective($window, mnD3Service) {
 
       let throttledPause = _.throttle(function (e) {
         if (e.bubbles) {
-          $scope.syncScope.$broadcast("mnStatsCancelTimer");
-          if (!mnPauseStats) {
-            $scope.syncScope.$broadcast("mnPauseStats");
-            mnPauseStats = true;
+          cancelStatsTimer();
+          if (!$scope.statsPoller.heartbeat.isPaused) {
+            $scope.statsPoller.heartbeat.pause();
           }
         }
       }, 10, {leading: true});
 
       let throttledResume = _.throttle(function (e) {
-        if (mnPauseStats && e.bubbles) {
+        if ($scope.statsPoller.heartbeat.isPaused && e.bubbles) {
           resumeStatsTimer && $timeout.cancel(resumeStatsTimer);
           resumeStatsTimer = $timeout(function () {
-            $scope.syncScope.$broadcast("mnResumeStats");
-            mnPauseStats = false;
+            $scope.statsPoller.heartbeat.resume();
           }, 1000);
         }
       }, 10, {leading: true});
@@ -101,22 +100,17 @@ function mnMultiChartDirective($window, mnD3Service) {
       angular.element(chartNode).on("mouseenter", throttledPause);
       angular.element(chartNode).on("mouseout", throttledResume);
 
+      document.addEventListener('visibilitychange', cancelStatsTimer);
+
       $scope.$on("mnStatsCancelTimer", function () {
         resumeStatsTimer && $timeout.cancel(resumeStatsTimer);
-      });
-
-      $scope.$on("mnPauseStats", function () {
-        mnPauseStats = true;
-      });
-
-      $scope.$on("mnResumeStats", function () {
-        mnPauseStats = false;
       });
 
       $scope.$on("$destroy", function () {
         angular.element(chartNode).off("mousemove mouseup mousedown mouseout", throttledSync);
         angular.element(chartNode).off("mouseenter", throttledPause);
         angular.element(chartNode).off("mouseout", throttledResume);
+        document.removeEventListener('visibilitychange', cancelStatsTimer);
       });
 
       $scope.$on("syncTooltips", function (e, source) {

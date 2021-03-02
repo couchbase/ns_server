@@ -180,6 +180,9 @@ function mnPollerFactory($q, $timeout, mnPromiseHelper) {
     }
   }
   function pause() {
+    if (this.isPaused) {
+      return;
+    }
     this.state = this.isLaunched;
     this.isPaused = true;
     this.stop();

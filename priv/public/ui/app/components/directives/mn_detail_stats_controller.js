@@ -46,8 +46,9 @@ function controller(mnStatisticsNewService, mnStatisticsDescriptionService, mnHe
 
   function activate() {
     vm.scope = $scope;
-    mnStatisticsNewService.mnAdminStatsPoller.heartbeat.setInterval(
-      mnStatisticsNewService.defaultZoomInterval(vm.zoom));
+    vm.mnAdminStatsPoller = mnStatisticsNewService.mnAdminStatsPoller;
+    vm.mnAdminStatsPoller.heartbeat
+      .setInterval(mnStatisticsNewService.defaultZoomInterval(vm.zoom));
     vm.items[vm.service] =
       mnPoolDefault.export.compat.atLeast70 ? vm.itemId : (vm.prefix + "/" + vm.itemId + "/")
     var stats = mnStatisticsDescriptionService.getStats();
