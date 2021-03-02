@@ -553,7 +553,10 @@ remove_proto({_AddrType, Mod} = Listener,
                               error_msg("Wait for acceptor: ~p failed with "
                                         "reason: ~p", [Proc, Reason]),
                               exit(Proc, kill)
-                      end
+                      end,
+                      %% Since we killed the acceptor flush the accept messages
+                      %% from it.
+                      flush_accept_messages(Proc)
               end, lists:usort([P || {P, M} <- Acceptors, M =:= Listener])),
 
             State#s{listeners = proplists:delete(Listener, Listeners),
@@ -562,6 +565,16 @@ remove_proto({_AddrType, Mod} = Listener,
             info_msg("ignoring closing of ~p because listener is not started",
                      [Listener]),
             State
+    end.
+
+flush_accept_messages(AcceptorPid) ->
+    receive
+        {accept, AcceptorPid, _, _, _} = Msg ->
+            info_msg("Ignoring message from acceptor ~p", [Msg]),
+            flush_accept_messages(AcceptorPid)
+    after
+        0 ->
+            ok
     end.
 
 listen_proto({AddrType, Module}, NodeName) ->
