@@ -52,8 +52,20 @@ start(_StartType, _StartArgs) ->
     Cookie = ns_server:read_cookie_file(CookieFile),
     erlang:set_cookie(node(), Cookie),
 
+    NsServer = ns_node_disco:ns_server_node(),
+    ?log_debug("Waiting for ns_server ~p to establish a connection to us",
+               [NsServer]),
+    case wait_for_connection_from(NsServer, 10000, 200) of
+        true ->
+            ?log_debug("Connection from ~p is up", [NsServer]),
+            ok;
+        timeout ->
+            ?log_error("Wait for ns_server ~p timed out", [NsServer]),
+            erlang:error({wait_for_node_failed, NsServer})
+    end,
+
     ?log_info("CouchDB node ~p was initialized for ~p. Cookie: ~p",
-              [node(), ns_node_disco:ns_server_node(),
+              [node(), NsServer,
               ns_cookie_manager:sanitize_cookie(Cookie)]),
     ns_couchdb_sup:start_link().
 
@@ -129,3 +141,15 @@ init_logging() ->
             ok
     end,
     ale:info(?NS_SERVER_LOGGER, "Brought up ns_couchdb logging").
+
+wait_for_connection_from(Node, Timeout, Sleep) ->
+    misc:poll_for_condition(
+      fun () ->
+          case catch net_kernel:node_info(Node, state) of
+              {ok, up} -> true;
+              Res ->
+                  ?log_debug("Waiting for a connection from ~p (~p)",
+                             [Node, Res]),
+                  false
+          end
+      end, Timeout, Sleep).
