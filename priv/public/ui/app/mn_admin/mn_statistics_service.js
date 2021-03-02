@@ -105,6 +105,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
 
     function subscribeUIStatsPoller(config, scope) {
       let config1 = packStatsConfig(config);
+      let poller = this;
 
       function register(config2, statPath) {
         if (mnPoolDefault.export.compat.atLeast70) {
@@ -134,16 +135,18 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
           omit(config2);
         };
       }
-      function doRegister(config2, statPath) {
+      function doResume(config2, statPath) {
         return function () {
-          register(config2, statPath);
+          if (!poller.heartbeat.isPaused) {
+            register(config2, statPath);
+          }
         };
       }
       config1.forEach((config2) => {
         let statPath = config2.statPath;
         register(config2, statPath);
         let offPause = scope.$on("mnPauseStats", doOmit(config2));
-        let offResume = scope.$on("mnResumeStats", doRegister(config2, statPath));
+        let offResume = scope.$on("mnResumeStats", doResume(config2, statPath));
         scope.$on("$destroy", function () {
           offResume && offResume();
           offPause && offPause();

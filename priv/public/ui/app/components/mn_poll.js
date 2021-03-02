@@ -174,12 +174,14 @@ function mnPollerFactory($q, $timeout, mnPromiseHelper) {
     return this;
   }
   function resume() {
+    this.isPaused = false;
     if (this.state) {
       this.reload();
     }
   }
   function pause() {
     this.state = this.isLaunched;
+    this.isPaused = true;
     this.stop();
   }
   function stop() {
