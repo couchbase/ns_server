@@ -82,6 +82,7 @@ function mnPollerFactory($q, $timeout, mnPromiseHelper) {
   Poller.prototype.reloadOnScopeEvent = reloadOnScopeEvent;
   Poller.prototype.onDestroy = onDestroy;
   Poller.prototype.getLatestResult = getLatestResult;
+  Poller.prototype.onResum = onResum;
 
   Poller.prototype.throttledReload = _.debounce(reload, 100);
 
@@ -173,9 +174,14 @@ function mnPollerFactory($q, $timeout, mnPromiseHelper) {
     });
     return this;
   }
+  function onResum(fn) {
+    this.onResumCallback = fn;
+    return this;
+  }
   function resume() {
     this.isPaused = false;
     if (this.state) {
+      this.onResumCallback && this.onResumCallback();
       this.reload();
     }
   }

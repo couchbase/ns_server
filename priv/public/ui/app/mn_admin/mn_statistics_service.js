@@ -69,6 +69,20 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
 
   return mnStatisticsNewService;
 
+  function maybeSwitchToFullStatInfo(config) {
+    if (config.start == -1 && config.step == 2) {
+      config.start = -60;
+      config.step = 1;
+    }
+  }
+
+  function maybeSwitchToSingleStat(config) {
+    if (config.start == -60 && config.step == 1) {
+      config.start = -1;
+      config.step = 2;
+    }
+  }
+
   function createStatsPoller(scope) {
     var perChartConfig = [];
     var perChartStatsPath = [];
@@ -96,6 +110,11 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
               scope["mnUIStats"] = value.data[i];
             });
           }
+        })
+        .onResum(function () {
+          if (mnPoolDefault.export.compat.atLeast70) {
+            perChartConfig.forEach(maybeSwitchToFullStatInfo);
+          }
         });
 
     return {
@@ -110,6 +129,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
         if (mnPoolDefault.export.compat.atLeast70) {
           perChartStatsPath.push(statPath);
           delete config2.statPath;
+          maybeSwitchToFullStatInfo(config2);
         }
 
         perChartConfig.push(config2);
@@ -147,6 +167,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
         if (!config) {
           return;
         }
+        maybeSwitchToSingleStat(config);
         var statPath = perChartStatsPath[i];
         var data = resp.data[i].data[0];
         scope["mnUIStats"] = scope["mnUIStats"] || {stats:{}};
@@ -166,7 +187,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
     }
   }
 
-  function buildChartConfig(stats, statName, currentNode, title, unit, axis) {
+  function buildChartConfig(stats, statName, currentNode, title, unit, axis, zoom, previousData) {
     currentNode = currentNode == "all" ? "aggregate" : currentNode;
     var perNodeStats = stats.stats[statName] && stats.stats[statName][currentNode];
     var onlyValues = [];
@@ -174,11 +195,21 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
 
     if (perNodeStats) {
       if (mnPoolDefault.export.compat.atLeast70) {
+        if ((zoom == "minute") && previousData && perNodeStats.values.length == 1) {
+          values = previousData.values;
+          onlyValues = previousData.onlyValues;
+        }
+
         perNodeStats.values.forEach(([ts, v]) => {
           var convertValue = Number(v);
           onlyValues.push(convertValue);
           values.push([ts * 1000, convertValue]);
         });
+
+        if ((zoom == "minute") && previousData && (values.length > 60)) {
+          values.shift();
+          onlyValues.shift();
+        }
       } else {
         stats.timestamps.forEach((ts, i) => {
           var v = perNodeStats[i];
@@ -196,6 +227,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
       min: d3Min(onlyValues) || 0,
       yAxis: axis,
       key: title,
+      onlyValues: onlyValues,
       values: values
     };
   }

@@ -228,12 +228,15 @@ function mnStatisticsNewChartDirective(mnStatisticsNewService, mnPrepareQuantity
         var nodes = ($scope.node == "all") ?
             Object.keys(stats.stats[statName] || {}) : [$scope.node];
 
-        nodes.forEach(nodeName =>
-                      chartData.push(
-                        mnStatisticsNewService.buildChartConfig(
-                          stats, statName, nodeName, nodeName, desc.unit, units[desc.unit])));
+        nodes.forEach((nodeName, i) => {
+          var previousData = $scope.chartData && $scope.chartData[i];
+          chartData.push(
+            mnStatisticsNewService.buildChartConfig(stats, statName, nodeName,
+                                                    nodeName, desc.unit, units[desc.unit],
+                                                    $scope.zoom, previousData))
+        });
       } else {
-        Object.keys($scope.config.stats).forEach(function (descPath) {
+        Object.keys($scope.config.stats).forEach(function (descPath, i) {
           var desc = mnStatisticsNewService.readByPath(descPath);
           if (!desc) {
             return;
@@ -241,9 +244,11 @@ function mnStatisticsNewChartDirective(mnStatisticsNewService, mnPrepareQuantity
 
           var statName =
               mnStatisticsNewService.descriptionPathToStatName(descPath, $scope.items);
+          var previousData = $scope.chartData && $scope.chartData[i];
           chartData.push(
             mnStatisticsNewService.buildChartConfig(stats, statName, $scope.node,
-                                                    desc.title, desc.unit, units[desc.unit]));
+                                                    desc.title, desc.unit, units[desc.unit],
+                                                    $scope.zoom, previousData));
 
         });
       }
