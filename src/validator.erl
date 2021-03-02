@@ -49,6 +49,7 @@
          unsupported/1,
          required/2,
          prohibited/2,
+         changeable_in_enterprise_only/3,
          string_array/2,
          return_value/3,
          return_error/3,
@@ -482,6 +483,22 @@ prohibited(Name, #state{kv = Props} = State) ->
         true ->
             return_error(Name, "The value must not be supplied", State)
     end.
+
+%% Validate a parameter that may only be set to a non-default value in
+%% enterprise edition.
+changeable_in_enterprise_only(Name, Default, State) ->
+    IsEnterprise = cluster_compat_mode:is_enterprise(),
+    validate(
+      fun (Value) ->
+              case {IsEnterprise, Value =:= Default} of
+                  {true, _} ->
+                      {value, Value};
+                  {false, true} ->
+                      {value, Value};
+                  {false, false} ->
+                      {error, "Supported in enterprise edition only"}
+              end
+      end, Name, State).
 
 string_array(Name, State) ->
     validate(
