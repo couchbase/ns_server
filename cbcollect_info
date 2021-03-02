@@ -1350,22 +1350,10 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
     if backup_port:
         backup_tasks = [
             make_curl_task(
-                name="Backup leader: ",
+                name="Backup service information: ",
                 user="@",
                 password=memcached_pass,
-                url=f"http://{local_url_addr}:{backup_port}/internal/v1/leader",
-            ),
-            make_curl_task(
-                name="Backup repositories: ",
-                user="@",
-                password=memcached_pass,
-                url=f"http://{local_url_addr}:{backup_port}/api/v1/cluster/self"
-            ),
-            make_curl_task(
-                name="Backup node last run tasks: ",
-                user="@",
-                password=memcached_pass,
-                url=f"http://{local_url_addr}:{backup_port}/internal/v1/lastTasks"
+                url=f"http://{local_url_addr}:{backup_port}/internal/v1/serviceInfo",
             ),
         ]
 
