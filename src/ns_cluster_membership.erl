@@ -49,7 +49,7 @@
          update_recovery_type/2,
          clear_recovery_type_sets/1,
          add_node/4,
-         remove_node/2,
+         remove_nodes/2,
          prepare_to_join/2,
          is_newly_added_node/1,
          attach_node_uuids/2,
@@ -312,17 +312,19 @@ add_node_to_groups(Groups, GroupUUID, Node) ->
             lists:usort([NewGroup | (Groups -- MaybeGroup)])
     end.
 
-remove_node(RemoteNode, Transaction) ->
-    remove_node(chronicle_compat:backend(), RemoteNode, Transaction).
+remove_nodes(RemoteNodes, Transaction) ->
+    remove_nodes(chronicle_compat:backend(), RemoteNodes, Transaction).
 
-remove_node(ns_config, RemoteNode, _Transaction) ->
+remove_nodes(ns_config, [RemoteNode], _Transaction) ->
+    %% removing multiple nodes is not supported here, because it is used
+    %% during chronicle quorum loss failover only
     ok = ns_config:update(
            fun ({nodes_wanted, V}) ->
                    {update, {nodes_wanted, V -- [RemoteNode]}};
                ({server_groups, Groups}) ->
                    {update, {server_groups,
-                             remove_node_from_server_groups(
-                               RemoteNode, Groups)}};
+                             remove_nodes_from_server_groups(
+                               [RemoteNode], Groups)}};
                ({{node, Node, _}, _})
                  when Node =:= RemoteNode ->
                    delete;
@@ -330,25 +332,31 @@ remove_node(ns_config, RemoteNode, _Transaction) ->
                    skip
            end);
 
-remove_node(chronicle, RemoteNode, Transaction) ->
+remove_nodes(chronicle, RemoteNodes, Transaction) ->
     RV = Transaction(
            [nodes_wanted, server_groups],
            fun (Snapshot) ->
+                   NodeKeys = lists:flatten(
+                                [chronicle_compat:node_keys(RN) ||
+                                    RN <- RemoteNodes]),
                    {commit,
                     [{set, nodes_wanted,
-                      nodes_wanted(Snapshot) -- [RemoteNode]},
+                      nodes_wanted(Snapshot) -- RemoteNodes},
                      {set, server_groups,
-                      remove_node_from_server_groups(
-                        RemoteNode, server_groups(Snapshot))} |
-                     [{delete, K} ||
-                         K <- chronicle_compat:node_keys(RemoteNode)]]}
+                      remove_nodes_from_server_groups(
+                        RemoteNodes, server_groups(Snapshot))} |
+                     [{delete, K} || K <- NodeKeys]]}
            end),
     case RV of
         {ok, _} ->
             ok = ns_config:update(
-                   fun ({{node, Node, _}, _})
-                         when Node =:= RemoteNode ->
-                           delete;
+                   fun ({{node, Node, _}, _}) ->
+                           case lists:member(Node, RemoteNodes) of
+                               true ->
+                                   delete;
+                               false ->
+                                   skip
+                           end;
                        (_Other) ->
                            skip
                    end);
@@ -357,9 +365,9 @@ remove_node(chronicle, RemoteNode, Transaction) ->
     end,
     RV.
 
-remove_node_from_server_groups(RemoteNode, Groups) ->
+remove_nodes_from_server_groups(NodesToRemove, Groups) ->
     [lists:keystore(nodes, 1, G,
-                    {nodes, proplists:get_value(nodes, G) -- [RemoteNode]}) ||
+                    {nodes, proplists:get_value(nodes, G) -- NodesToRemove}) ||
         G <- Groups].
 
 prepare_to_join(RemoteNode, Cookie) ->

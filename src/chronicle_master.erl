@@ -215,7 +215,7 @@ remove_oper_key(Lock) ->
 handle_kv_oper({add_replica, Node, GroupUUID, Services}, Transaction) ->
     ns_cluster_membership:add_node(Node, GroupUUID, Services, Transaction);
 handle_kv_oper({remove_peer, Node}, Transaction) ->
-    ns_cluster_membership:remove_node(Node, Transaction);
+    ns_cluster_membership:remove_nodes([Node], Transaction);
 handle_kv_oper({activate_nodes, Nodes}, Transaction) ->
     ns_cluster_membership:activate(Nodes, Transaction);
 handle_kv_oper({deactivate_nodes, Nodes}, Transaction) ->
