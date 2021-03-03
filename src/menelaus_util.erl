@@ -224,7 +224,10 @@ handle_request(Req, Fun) ->
         throw:{web_exception, StatusCode, Message, ExtraHeaders} ->
             reply_text(Req, Message, StatusCode, ExtraHeaders);
         Type:What:Stack ->
-            reply_server_error(Req, Type, What, Stack)
+            reply_server_error(Req, Type, What, Stack),
+            %% An unexpected error has occurred. Exit so as to not leave any
+            %% residual state (e.g. late messages) around.
+            erlang:exit(normal)
     end.
 
 log_web_hit(Peer, Req, Resp) ->
