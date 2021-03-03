@@ -13,19 +13,15 @@ var labelOperators = {
 
 var compat65 = get65CompatDesc();
 
+var compat70 = get70CompatDesc();
+
 var mapping70 = get70Mapping();
 
 var mapping65 = get65Mapping();
 
-var compat70 = propertiesToArray(compat65.stats)
-    .concat([
-      "@kv-.kv_collection_item_count",
-      "@kv-.kv_collection_mem_used_bytes",
-      "@kv-.kv_collection_disk_size_bytes",
-      "@kv-.kv_collection_ops",
-      "@kv-.kv_collection_ops_sum",
-      "@index-.@items.index_num_docs_queued"
-    ]).reduce((acc, statPath) => {
+var compat70Combined = propertiesToArray(compat65.stats)
+    .concat(propertiesToArray(compat70.stats))
+    .reduce((acc, statPath) => {
       if (derivedMetric[statPath]) {
         return acc; //do not show
       }
@@ -38,7 +34,7 @@ var compat70 = propertiesToArray(compat65.stats)
           parent[key] = Object.assign({
             aggregationFunction: "sum",
             metric: {name: key}
-          }, readByPath(statPath), config);
+          }, readByPath(statPath, !mapping65[statPath]), config);
         } else {
           parent[key] = parent[key] || {};
           parent = parent[key];
@@ -130,7 +126,7 @@ let service = {
       }, []);
       return acc;
     },{}),
-    "stats": compat70
+    "stats": compat70Combined
   },
   "6.5": compat65,
   mapping70: function (name) {
@@ -150,7 +146,7 @@ let service = {
 export default service;
 
 function propertiesToArray(obj) {
-  let isObject = val => val !== null && typeof val === "object" && !val.desc;
+  let isObject = val => val !== null && typeof val === "object" && !val.title;
   let addDelimiter = (a, b) => a ? (a + "." + b) : b;
 
   let paths = (obj = {}, head = '') => {
@@ -404,9 +400,9 @@ function getStatAdditionalConfig(statName) {
 }
 
 
-function readByPath(descPath) {
+function readByPath(descPath, is70Stat) {
   var paths = descPath.split('.');
-  var statsDesc = compat65.stats;
+  var statsDesc = is70Stat ? compat70.stats : compat65.stats;
   var i;
 
   for (i = 0; i < paths.length; ++i) {
@@ -669,6 +665,29 @@ function get70Mapping() {
     "@eventing.eventing_failed_count": "@eventing.eventing/failed_count"
 
   });
+}
+
+function get70CompatDesc() {
+  return {
+    "stats": {
+      "@kv-": {
+        "kv_collection_item_count": null,
+        "kv_collection_mem_used_bytes": null,
+        "kv_collection_disk_size_bytes": null,
+        "kv_collection_ops": null,
+        "kv_collection_ops_sum": null
+      },
+      "@index-": {
+        "@items": {
+          "index_num_docs_queued": {
+            unit: "number",
+            title: "Index Write Queue",
+            desc: ""
+          }
+        }
+      }
+    }
+  }
 }
 
 function get65CompatDesc() {

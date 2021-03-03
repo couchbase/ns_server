@@ -32,10 +32,6 @@ function mnGsiServiceFactory($http, $q, qwQueryService, mnStatisticsNewService, 
     "@index-.@items.index_num_docs_pending_and_queued"
   ];
 
-  if (isAtLeast70) {
-    perItemStats.push("@index-.@items.index_num_docs_queued");
-  }
-
   //should be the same name for mixed version as well
   let uiStatNames = perItemStats.map(
     stat => mnStatisticsDescription.mapping70(stat).split(".").pop());

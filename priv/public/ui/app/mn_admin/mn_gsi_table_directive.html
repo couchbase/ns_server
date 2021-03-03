@@ -13,13 +13,6 @@
         requests/sec
       </span>
     </span>
-    <span
-       class="cbui-table-cell flex-grow-half resp-hide-sml"
-       ng-if="mnGsiTableCtl.poolDefault.compat.atLeast70">
-      <span mn-sortable-title="index_resident_percent" class="sorter">
-        write queue
-      </span>
-    </span>
     <span class="cbui-table-cell flex-grow-half resp-hide-sml">
       <span mn-sortable-title="index_resident_percent" class="sorter">
         resident ratio
@@ -78,11 +71,6 @@
       </span>
       <span class="cbui-table-cell flex-grow-half resp-hide-xsml">
         {{row.num_requests ? (row.num_requests | mnFormatQuantity:1000) : "-"}}
-      </span>
-      <span
-         class="cbui-table-cell flex-grow-half"
-         ng-if="mnGsiTableCtl.poolDefault.compat.atLeast70">
-        {{row.index_num_docs_queued ? (row.index_num_docs_queued | mnFormatQuantity:1000) : "-"}}
       </span>
       <span class="cbui-table-cell flex-grow-half resp-hide-sml">
         {{row.index_resident_percent?(row.index_resident_percent|number:0)+"%":"-" }}
