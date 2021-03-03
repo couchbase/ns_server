@@ -374,10 +374,10 @@ system_connections count kv_system_connections{} count
 total_connections count kv_total_connections{} count
 connection_structures count kv_connection_structures{} count
 cmd_set count kv_ops{op="set"} count
-cmd_flush count kv_operations{op="flush"} count
-cmd_lock count kv_operations{op="lock"} count
-cmd_subdoc_lookup count kv_subdoc_operations{op="lookup"} count
-cmd_subdoc_mutation count kv_subdoc_operations{op="mutation"} count
+cmd_flush count kv_ops{op="flush"} count
+cmd_lock count kv_ops{op="lock"} count
+cmd_subdoc_lookup count kv_subdoc_ops{op="lookup"} count
+cmd_subdoc_mutation count kv_subdoc_ops{op="mutation"} count
 bytes_subdoc_lookup_total bytes kv_subdoc_lookup_searched_bytes{} bytes
 bytes_subdoc_lookup_extracted bytes kv_subdoc_lookup_extracted_bytes{} bytes
 bytes_subdoc_mutation_total bytes kv_subdoc_mutation_updated_bytes{} bytes
