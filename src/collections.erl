@@ -460,9 +460,8 @@ get_operations(CurrentScopes, RequiredScopes) ->
                 get_collections(ScopeProps))
       end, CurrentScopes, RequiredScopes).
 
-compile_operation({set_manifest, Identity, RequiredScopes, CheckUid},
+compile_operation({set_manifest, Roles, RequiredScopes, CheckUid},
                   Bucket, Manifest) ->
-    Roles = menelaus_roles:get_compiled_roles(Identity),
     case filter_scopes_with_roles(Bucket, RequiredScopes, Roles) of
         RequiredScopes ->
             FilteredCurScopes = filter_scopes_with_roles(
@@ -712,12 +711,13 @@ set_manifest(Bucket, Identity, RequiredScopes, RequestedUid) ->
         invalid_uid ->
             invalid_uid;
         Uid ->
+            Roles = menelaus_roles:get_compiled_roles(Identity),
             Scopes =
                 [{proplists:get_value(name, Scope),
                   [{collections, [extract_name(Props) ||
                                      {Props} <- get_collections(Scope)]}]} ||
                     {Scope} <- RequiredScopes],
-            update(Bucket, {set_manifest, Identity, Scopes, Uid})
+            update(Bucket, {set_manifest, Roles, Scopes, Uid})
     end.
 
 %% only to support FORCE_CHRONICLE flag
