@@ -36,6 +36,8 @@ def quote_string_for_erl(s):
 USAGE_STRING = """
 usage: {program_name}
     [--nodes=<number of nodes>] (default: 1)
+    [--dir=<directory>] (directory where node's data, logs will be kept;
+                         default: this script's directory)
     [--dont-rename] (don't change network address)
     [--dont-start] (don't start ns_server)
     [--static-cookie] (don't reset cookie)
@@ -79,6 +81,7 @@ def main():
     try:
         optlist, args = getopt.gnu_getopt(sys.argv[1:], "hn:p:",
                                           ["help", "start-index=", "nodes=",
+                                           "dir=",
                                            "dont-rename",
                                            "static-cookie", "dont-start",
                                            "loglevel=",
@@ -118,6 +121,8 @@ def main():
                 print("Valid log levels are the following: %s" % ', '.join(LOGLEVELS))
                 sys.exit(1)
             params['loglevel'] = a
+        elif o == '--dir':
+            params['root_dir'] = a
         elif o == "--prepend-extras":
             params['prepend_extras'] = True
         elif o == "--pluggable-config":
