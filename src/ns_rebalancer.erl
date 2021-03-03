@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2010-2020 Couchbase, Inc.
+%% @copyright 2010-2021 Couchbase, Inc.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -46,7 +46,7 @@
 
 -define(BAD_REPLICATORS, 2).
 
--define(BUCKETS_SHUTDOWN_WAIT_TIMEOUT, ?get_timeout(buckets_shutdown, 20000)).
+-define(BUCKETS_SHUTDOWN_WAIT_TIMEOUT, ?get_timeout(buckets_shutdown, 60000)).
 
 -define(REBALANCER_READINESS_WAIT_TIMEOUT, ?get_timeout(readiness, 60000)).
 -define(REBALANCER_QUERY_STATES_TIMEOUT,   ?get_timeout(query_states, 10000)).
