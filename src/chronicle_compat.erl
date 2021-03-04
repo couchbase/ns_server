@@ -349,7 +349,7 @@ remote_pull(Nodes, Timeout) ->
     end.
 
 config_sync(Type, Nodes) ->
-    config_sync(pull, Nodes, ns_config_rep:get_timeout(Type)).
+    config_sync(Type, Nodes, ns_config_rep:get_timeout(Type)).
 
 config_sync(pull, Nodes, Timeout) ->
     case ns_config_rep:pull_remotes(Nodes, Timeout) of
