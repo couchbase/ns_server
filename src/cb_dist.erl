@@ -300,7 +300,8 @@ handle_call({accept, KernelPid}, _From, #s{listeners = Listeners} = State) ->
 
 handle_call({get_module_by_acceptor, AcceptorPid}, _From,
             #s{acceptors = Acceptors} = State) ->
-    {_, Module} = proplists:get_value(AcceptorPid, Acceptors),
+    {_, Module} = proplists:get_value(AcceptorPid, Acceptors,
+                                      {undefined, undefined}),
     {reply, Module, State};
 
 handle_call({get_preferred, Target}, _From, #s{name = Name,
@@ -407,12 +408,20 @@ handle_info({accept, AcceptorPid, ConSocket, _Family, _Protocol},
                connections = Connections,
                acceptors = Acceptors} = State) ->
     Ref = make_ref(),
-    {_, Module} = proplists:get_value(AcceptorPid, Acceptors),
-    Con = #con{ref = Ref, mod = Module},
-    info_msg("Accepted new connection from ~p DistCtrl ~p: ~p",
-             [AcceptorPid, ConSocket, Con]),
-    KernelPid ! {accept, self(), {Ref, AcceptorPid, ConSocket}, ?family, ?proto},
-    {noreply, State#s{connections = [Con | Connections]}};
+    case proplists:get_value(AcceptorPid, Acceptors) of
+        {_, Module} ->
+            Con = #con{ref = Ref, mod = Module},
+            info_msg("Accepted new connection from ~p DistCtrl ~p: ~p",
+                     [AcceptorPid, ConSocket, Con]),
+            KernelPid ! {accept, self(), {Ref, AcceptorPid, ConSocket},
+                         ?family, ?proto},
+            {noreply, State#s{connections = [Con | Connections]}};
+        undefined ->
+            error_msg("Accept from unknown acceptor ~p DistCtrl ~p",
+                     [AcceptorPid, ConSocket]),
+            AcceptorPid ! {self(), unsupported_protocol},
+            {noreply, State}
+    end;
 
 handle_info({KernelPid, controller, {ConRef, ConPid, AcceptorPid}},
             #s{kernel_pid = KernelPid} = State) ->
