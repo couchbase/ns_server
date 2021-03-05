@@ -286,7 +286,8 @@ handle_range_get([MetricName | NotvalidatedFunctions], Req) ->
                                      not lists:member(K, [timeWindow, step,
                                                           start, 'end', nodes,
                                                           aggregationFunction,
-                                                          timeout])
+                                                          timeout,
+                                                          alignTimestamps])
                                 end, Props),
           AllLabels = [{<<"__name__">>, iolist_to_binary(MetricName)} | Labels],
           Metric = lists:map(
@@ -322,6 +323,7 @@ validators(Now, Req) ->
     NowSec = Now div 1000,
     [validate_time_duration(timeWindow, _),
      validator:default(timeWindow, "1m", _),
+     validator:boolean(alignTimestamps, _),
      validate_nodes_v2(nodes, _, Req),
      validator:default(nodes,
                        ?cut(menelaus_web_node:get_hostnames(Req, any)), _),
@@ -339,6 +341,7 @@ validators(Now, Req) ->
      validator:greater_or_equal('end', start, _),
      validator:default(start, NowSec - 60, _),
      validator:default('end', NowSec, _),
+     maybe_align_start(_),
      validator:integer(timeout, 1, 60*5*1000, _),
      validator:default(timeout, ?DEFAULT_PROMETHEUS_QUERY_TIMEOUT, _)].
 
@@ -877,6 +880,22 @@ validate_negative_ts(Name, Now, State) ->
           (_) ->
               ok
       end, Name, State).
+
+maybe_align_start(State) ->
+    validator:validate_relative(
+      fun (_Start, false) -> ok;
+          (Start, true) ->
+              Step = validator:get_value(step, State),
+              End = validator:get_value('end', State),
+              {ok, StepMs} = prometheus:parse_time_duration(Step),
+              StartMs = Start * 1000,
+              Aligned = (math:ceil(StartMs / StepMs) * StepMs) / 1000,
+              case Aligned > End of
+                  true -> {error, "[start, end] interval doesn't contain any "
+                                  "aligned datapoints"};
+                  false -> {value, Aligned}
+              end
+      end, start, alignTimestamps, State).
 
 format_error(Bin) when is_binary(Bin) -> Bin;
 format_error(timeout) -> <<"Request timed out">>;
