@@ -75,6 +75,7 @@
          compute_sec_headers/0,
          web_exception/2,
          web_json_exception/2,
+         global_error_exception/2,
          require_permission/2,
          server_error_report/4]).
 
@@ -468,6 +469,10 @@ web_exception(Code, Message, ExtraHeaders) ->
 
 web_json_exception(Code, Json) ->
     erlang:throw({web_json_exception, Code, Json}).
+
+global_error_exception(Code, Msg) ->
+    Json = {[{errors, {[{<<"_">>, Msg}]}}]},
+    web_json_exception(Code, Json).
 
 require_permission(Req, Permission) ->
     case menelaus_auth:has_permission(Permission, Req) of

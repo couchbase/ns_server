@@ -121,9 +121,7 @@ derived_metrics_filter(Name, State) ->
         end, Name, State).
 
 handle_get_settings(Path, Req) ->
-    Settings = misc:update_proplist(
-                 prometheus_cfg:default_settings(),
-                 ns_config:read_key_fast(stats_settings, [])),
+    Settings = with_applied_defaults(ns_config:read_key_fast(stats_settings, [])),
     menelaus_web_settings2:handle_get(Path, params(), fun type_spec/1,
                                       Settings, Req).
 
@@ -137,8 +135,19 @@ apply_props(Path, PropList, Req) ->
                  fun ({KeyTokens, Value}, Acc) ->
                      apply_value(KeyTokens, Value, Acc)
                  end, OldProps, PropList),
+    validate_metrics_settings(with_applied_defaults(NewProps)),
     ns_config:set(stats_settings, NewProps),
     handle_get_settings(Path, Req).
+
+validate_metrics_settings(Settings) ->
+    case proplists:get_value(scrape_interval, Settings) <
+         proplists:get_value(scrape_timeout, Settings) of
+        true ->
+            Msg = <<"scrapeInterval must be greater then or equal to "
+                    "scrapeTimeout">>,
+            menelaus_util:global_error_exception(400, Msg);
+        false -> ok
+    end.
 
 apply_value([], Value, _PropList) -> Value;
 apply_value([Key | Tail], Value, PropList) ->
@@ -828,3 +837,6 @@ format_error({exit, _}) -> <<"Unexpected server error">>;
 format_error({failed_connect, _}) -> <<"Connect to stats backend failed">>;
 format_error(Unknown) -> misc:format_bin("Unexpected error - ~10000p",
                                          [Unknown]).
+
+with_applied_defaults(Props) ->
+    misc:update_proplist(prometheus_cfg:default_settings(), Props).

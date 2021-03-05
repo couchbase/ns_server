@@ -68,8 +68,7 @@ handle_node_init(Req) ->
               reply(Req, 200)
           catch
               throw:{error, Code, Msg} ->
-                 Json = {[{errors, {[{<<"_">>, Msg}]}}]},
-                 menelaus_util:web_json_exception(Code, Json)
+                 menelaus_util:global_error_exception(Code, Msg)
           end,
           %% NOTE: we have to stop this process because in case of
           %%       ns_server restart it becomes orphan
