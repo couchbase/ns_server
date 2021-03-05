@@ -320,7 +320,7 @@ get_validators(Now, Req) ->
 
 validators(Now, Req) ->
     NowSec = Now div 1000,
-    [validate_interval(timeWindow, _),
+    [validate_time_duration(timeWindow, _),
      validator:default(timeWindow, "1m", _),
      validate_nodes_v2(nodes, _, Req),
      validator:default(nodes,
@@ -330,7 +330,7 @@ validators(Now, Req) ->
                        fun (L) when is_binary(L) -> binary_to_atom(L, latin1);
                            (L) -> list_to_atom(L)
                        end, _),
-     validate_interval(step, _),
+     validate_time_duration(step, _),
      validator:default(step, "10s", _),
      validator:integer(start, ?MIN_TS, ?MAX_TS, _),
      validator:integer('end', ?MIN_TS, ?MAX_TS, _),
@@ -613,26 +613,23 @@ validate_functions(Functions) ->
           end, [], Parsed),
     lists:reverse(Reversed).
 
-validate_interval(Name, State) ->
+%% If no unit is specified, we assume it's in seconds
+validate_time_duration(Name, State) ->
     validator:validate(
-      fun (Interval) when is_integer(Interval) ->
-              {value, integer_to_list(Interval)};
-          (Interval) ->
-              IntervalStr = case is_binary(Interval) of
-                                true -> binary_to_list(Interval);
-                                false -> Interval
+      fun (Duration) when is_integer(Duration) ->
+              {value, integer_to_list(Duration) ++ "s"};
+          (Duration) ->
+              DurationStr = case is_binary(Duration) of
+                                true -> binary_to_list(Duration);
+                                false -> Duration
                             end,
-              try string:list_to_integer(IntervalStr) of
-                  {error, _} -> {error, "invalid interval"};
-                  {_, ""} -> {value, IntervalStr};
-                  {_, [Unit]} ->
-                      case lists:member(Unit, "smhdwy") of
-                          true -> {value, IntervalStr};
-                          false -> {error, "invalid duration unit"}
-                      end;
-                  {_, _} -> {error, "invalid duration unit"}
-              catch
-                  _:_ -> {error, "invalid interval"}
+              try list_to_integer(DurationStr) of
+                  Int -> {value, integer_to_list(Int) ++ "s"}
+              catch _:_ ->
+                  case prometheus:parse_time_duration(DurationStr) of
+                      {ok, _} -> {value, DurationStr};
+                      {error, Error} -> {error, Error}
+                  end
               end
       end, Name, State).
 

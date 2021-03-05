@@ -24,7 +24,8 @@
 -export([query_range/6, query_range_async/7, query/4,
          format_value/1, parse_value/1, format_promql/1,
          create_snapshot/2, reload/2, quit/2,
-         delete_series/5, clean_tombstones/2]).
+         delete_series/5, clean_tombstones/2,
+         parse_time_duration/1]).
 
 -type metrics_data() :: [JSONObject :: {[{binary(), term()}]}].
 -type error() :: {error, timeout | binary()}.
@@ -453,7 +454,55 @@ escape_re_chars(Str) ->
     re:replace(Str, "[\\[\\].\\\\^$|()?*+{}]", "\\\\&",
                [{return,list}, global]).
 
+-spec parse_time_duration(Duration :: string()) ->
+    {ok, Milliseconds :: integer()} | {error, binary()}.
+parse_time_duration("") ->
+    {error, <<"missing unit character in duration">>};
+parse_time_duration(Str) when is_list(Str) ->
+    parse_time_duration(Str, 0).
+parse_time_duration("", Acc) -> {ok, Acc};
+parse_time_duration(Str, Acc) ->
+    try string:list_to_integer(Str) of
+        {error, _} ->
+            {error, <<"not a valid duration string">>};
+        {Val, "ms" ++ Rest} ->
+            parse_time_duration(Rest, Acc + Val);
+        {Val, "s" ++ Rest} ->
+            parse_time_duration(Rest, Acc + Val * 1000);
+        {Val, "m" ++ Rest} ->
+            parse_time_duration(Rest, Acc + Val * 60 * 1000);
+        {Val, "h" ++ Rest} ->
+            parse_time_duration(Rest, Acc + Val * 60 * 60 * 1000);
+        {Val, "d" ++ Rest} ->
+            parse_time_duration(Rest, Acc + Val * 24 * 60 * 60 * 1000);
+        {Val, "w" ++ Rest} ->
+            parse_time_duration(Rest, Acc + Val * 7 * 24 * 60 * 60 * 1000);
+        {Val, "y" ++ Rest} ->
+            parse_time_duration(Rest, Acc + Val * 365 * 24 * 60 * 60 * 1000);
+        {_, ""} ->
+            {error, <<"missing unit character in duration">>};
+        {_, _} ->
+            {error, <<"bad duration syntax">>}
+    catch
+        _:_ -> {error, <<"invalid interval">>}
+    end.
+
 -ifdef(TEST).
+
+parse_time_duration_test() ->
+    ?assertMatch({error, _}, parse_time_duration("")),
+    ?assertMatch({error, _}, parse_time_duration("1")),
+    ?assertMatch({error, _}, parse_time_duration("42m42")),
+    ?assertMatch({error, _}, parse_time_duration("42a")),
+    ?assertEqual({ok, 42}, parse_time_duration("42ms")),
+    ?assertEqual({ok, 42000}, parse_time_duration("42s")),
+    ?assertEqual({ok, 42000 * 60}, parse_time_duration("42m")),
+    ?assertEqual({ok, 42000 * 60 * 60}, parse_time_duration("42h")),
+    ?assertEqual({ok, 42000 * 60 * 60 * 24}, parse_time_duration("42d")),
+    ?assertEqual({ok, 42000 * 60 * 60 * 24 * 7}, parse_time_duration("42w")),
+    ?assertEqual({ok, 42000 * 60 * 60 * 24 * 365}, parse_time_duration("42y")),
+    ?assertEqual({ok, 754056}, parse_time_duration("12m34s56ms")).
+
 format_promql_test() ->
     ?assertEqual(format_promql({[]}), <<"{}">>),
     ?assertEqual(format_promql({[{eq, <<"label1">>, <<"val1">>},
