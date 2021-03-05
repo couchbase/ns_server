@@ -64,7 +64,7 @@ start(Nodes, AllowUnsafe) ->
             Error
     end.
 
-run(Nodes, AllowUnsafe, Parent) ->
+run(Nodes, AllowUnsafe, Parent) when Nodes =/= [] ->
     Result = leader_activities:run_activity(
                failover, majority,
                fun () ->
@@ -82,7 +82,7 @@ run(Nodes, AllowUnsafe, Parent) ->
             Result
     end.
 
-orchestrate(Nodes, Options) ->
+orchestrate(Nodes, Options) when Nodes =/= [] ->
     ale:info(?USER_LOGGER, "Starting failing over ~p", [Nodes]),
     master_activity_events:note_failover(Nodes),
 
@@ -157,8 +157,6 @@ config_sync_nodes(FailedNodes) ->
     Nodes = ns_cluster_membership:get_nodes_with_status(_ =/= inactiveFailed),
     Nodes -- FailedNodes.
 
-deactivate_nodes([]) ->
-    ok;
 deactivate_nodes(Nodes) ->
     ale:info(?USER_LOGGER, "Deactivating failed over nodes ~p", [Nodes]),
     ok = ns_cluster_membership:deactivate(Nodes).
