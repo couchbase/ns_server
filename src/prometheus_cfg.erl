@@ -87,7 +87,7 @@
      [{extended_service_name(),
        [{high_cardinality_enabled, true | false} |
         {high_cardinality_scrape_interval, pos_integer() | auto} |
-        {scrape_timeout, pos_integer()}]}]} |
+        {high_cardinality_scrape_timeout, pos_integer()}]}]} |
     {external_prometheus_services,
      [{extended_service_name(),
        [{high_cardinality_enabled, true | false}]}]} |
@@ -703,7 +703,7 @@ high_cardinality_jobs_config(Settings) ->
                   I ->
                       I
               end,
-          Timeout = proplists:get_value(scrape_timeout, Props,
+          Timeout = proplists:get_value(high_cardinality_scrape_timeout, Props,
                                         min(Interval, DefaultTimeout)),
           #{job_name => {"~p_high_cardinality", [Name]},
             scrape_interval => {"~bs", [Interval]},
