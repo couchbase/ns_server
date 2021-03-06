@@ -121,7 +121,8 @@ derived_metrics_filter(Name, State) ->
         end, Name, State).
 
 handle_get_settings(Path, Req) ->
-    Settings = with_applied_defaults(ns_config:read_key_fast(stats_settings, [])),
+    Settings = prometheus_cfg:with_applied_defaults(
+                 ns_config:read_key_fast(stats_settings, [])),
     menelaus_web_settings2:handle_get(Path, params(), fun type_spec/1,
                                       Settings, Req).
 
@@ -135,7 +136,7 @@ apply_props(Path, PropList, Req) ->
                  fun ({KeyTokens, Value}, Acc) ->
                      apply_value(KeyTokens, Value, Acc)
                  end, OldProps, PropList),
-    validate_metrics_settings(with_applied_defaults(NewProps)),
+    validate_metrics_settings(prometheus_cfg:with_applied_defaults(NewProps)),
     ns_config:set(stats_settings, NewProps),
     handle_get_settings(Path, Req).
 
@@ -838,5 +839,3 @@ format_error({failed_connect, _}) -> <<"Connect to stats backend failed">>;
 format_error(Unknown) -> misc:format_bin("Unexpected error - ~10000p",
                                          [Unknown]).
 
-with_applied_defaults(Props) ->
-    misc:update_proplist(prometheus_cfg:default_settings(), Props).

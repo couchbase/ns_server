@@ -939,6 +939,44 @@ update_proplist_test() ->
                                                 [{a,1}, {b,2}]).
 -endif.
 
+%% Returns proplist that contains all the elements from Left and from Right.
+%% Calls MergeFun(Key, LeftValue, RightValue) in case if some key
+%% is part of both proplists.
+merge_proplists(MergeFun, LeftProplist, RightProplist) ->
+    lists:foldr(
+      fun ({Key, LeftValue}, Acc) ->
+          case proplists:get_all_values(Key, Acc) of
+              [RightValue] ->
+                  [{Key, MergeFun(Key, LeftValue, RightValue)}
+                      | proplists:delete(Key, Acc)];
+              [] ->
+                  [{Key, LeftValue} | Acc]
+          end
+      end, RightProplist, LeftProplist).
+
+-ifdef(TEST).
+merge_proplists_test() ->
+    ?assertEqual(
+      [], merge_proplists(fun (_, _, _) -> error(never_happens) end, [], [])),
+    ?assertEqual(
+      [{a, 1}, {b, 2}],
+      merge_proplists(fun (_, _, _) -> error(never_happens) end,
+                      [], [{a, 1}, {b, 2}])),
+    ?assertEqual(
+      [{a, 1}, {b, 2}],
+      merge_proplists(fun (_, _, _) -> error(never_happens) end,
+                      [{a, 1}, {b, 2}], [])),
+    ?assertEqual(
+      [{a, 1}, {b, 10}, {c, 21}, {d, 11}],
+      merge_proplists(fun (_, L, R) -> L * R end,
+                      [{a, 1}, {b, 2}, {c, 3}], [{b, 5}, {c, 7}, {d, 11}])),
+    ?assertEqual(
+      [{a, 1}, {b, 5}, {c, 7}, {d, 11}],
+      merge_proplists(fun (_, _L, R) -> R end,
+                      [{a, 1}, {b, 2}, {c, 3}], [{b, 5}, {c, 7}, {d, 11}])).
+-endif.
+
+
 %% get proplist value or fail
 expect_prop_value(K, List) ->
     Ref = make_ref(),

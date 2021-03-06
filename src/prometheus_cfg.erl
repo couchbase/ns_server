@@ -25,7 +25,7 @@
 
 %% API
 -export([start_link/0, authenticate/2, settings/0, wipe/0, storage_path/1,
-         get_auth_info/0, default_settings/0, derived_metrics/2,
+         get_auth_info/0, derived_metrics/2, with_applied_defaults/1,
          derived_metrics_interval/1]).
 
 -export_type([stats_settings/0]).
@@ -231,7 +231,7 @@ build_settings(Config, Snapshot, Node) ->
                  {dynamic_scrape_intervals, DynamicScrapeIntervals}]
         end,
 
-    Settings1 = misc:update_proplist(default_settings(), Settings),
+    Settings1 = with_applied_defaults(Settings),
     validate_settings(Settings1).
 
 validate_settings(Settings) ->
@@ -516,6 +516,21 @@ derived_metrics_interval(Settings) ->
         N when N =< 0 -> proplists:get_value(scrape_interval, Settings);
         N -> N
     end.
+
+with_applied_defaults(Props) ->
+    misc:merge_proplists(
+      %% We handle these two separately because they are not single values, but
+      %% subtrees (proplists of proplists actually) that contain many values,
+      %% so having value in one leaf of the tree should not lead to ignored
+      %% default for another leaf of the tree
+      fun (Key, Left, Right) when Key == services;
+                                  Key == external_prometheus_services ->
+              misc:merge_proplists(
+                fun (_Service, LeftS, RightS) ->
+                    misc:update_proplist(LeftS, RightS)
+                end, Left, Right);
+          (_Key, _Left, Right) -> Right
+      end, default_settings(), Props).
 
 %%%===================================================================
 %%% Internal functions
