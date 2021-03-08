@@ -480,10 +480,12 @@ build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr) ->
         _ -> RV
     end.
 
-get_hostnames(Req, NodeStatus) ->
-    Config = ns_config:get(),
+get_hostnames(Req, NodeStatus) when is_atom(NodeStatus) ->
     Snapshot = ns_cluster_membership:get_snapshot(),
     Nodes = ns_cluster_membership:get_nodes_with_status(Snapshot, NodeStatus),
+    get_hostnames(Req, Nodes);
+get_hostnames(Req, Nodes) when is_list(Nodes) ->
+    Config = ns_config:get(),
     LocalAddr = local_addr(Req),
     [{N, build_node_hostname(Config, N, LocalAddr)} || N <- Nodes].
 

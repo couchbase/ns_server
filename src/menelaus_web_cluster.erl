@@ -707,6 +707,14 @@ parse_hard_failover_args(Req) ->
             Error
     end.
 
+failover_reply({incompatible_with_previous, Nodes}, Req) ->
+    Hostnames = [binary_to_list(H) ||
+                    {_, H} <- menelaus_web_node:get_hostnames(Req, Nodes)],
+    {400, io_lib:format("Failover must include the following nodes: ~s.",
+                        [string:join(Hostnames, ", ")])};
+failover_reply(RV, _) ->
+    failover_reply(RV).
+
 failover_reply(ok) ->
     200;
 failover_reply(in_progress) ->
@@ -740,7 +748,7 @@ failover_reply(Other) ->
     {500, io_lib:format("Unexpected server error: ~p", [Other])}.
 
 failover_audit_and_reply(RV, Req, Nodes, Type) ->
-    case failover_reply(RV) of
+    case failover_reply(RV, Req) of
         200 ->
             ns_audit:failover_nodes(Req, Nodes, Type),
             reply(Req, 200);

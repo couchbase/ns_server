@@ -163,6 +163,7 @@ flush_bucket(BucketName) ->
                       config_sync_failed |
                       quorum_lost |
                       stopped_by_user |
+                      {incompatible_with_previous, [atom()]} |
                       %% the following is needed just to trick the dialyzer;
                       %% otherwise it wouldn't let the callers cover what it
                       %% believes to be an impossible return value if all
@@ -178,6 +179,7 @@ failover(Nodes, AllowUnsafe) ->
                             in_recovery |
                             last_node |
                             unknown_node |
+                            {incompatible_with_previous, [atom()]} |
                             %% the following is needed just to trick the dialyzer;
                             %% otherwise it wouldn't let the callers cover what it
                             %% believes to be an impossible return value if all
