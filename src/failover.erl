@@ -67,16 +67,7 @@ start(Nodes, AllowUnsafe) ->
 run(Nodes, AllowUnsafe, Parent) when Nodes =/= [] ->
     Result = leader_activities:run_activity(
                failover, majority,
-               fun () ->
-                       case maybe_restore_chronicle_quorum(Nodes,
-                                                           AllowUnsafe) of
-                           {ok, Props} ->
-                               Parent ! started,
-                               orchestrate(Nodes, [durability_aware | Props]);
-                           Error ->
-                               Error
-                       end
-               end,
+               ?cut(activity_body(Nodes, AllowUnsafe, Parent)),
                [{unsafe, AllowUnsafe}]),
 
     case Result of
@@ -86,6 +77,21 @@ run(Nodes, AllowUnsafe, Parent) when Nodes =/= [] ->
             orchestration_unsafe;
         _ ->
             Result
+    end.
+
+activity_body(Nodes, AllowUnsafe, Parent) ->
+    case maybe_check_chronicle_quorum(AllowUnsafe) of
+        ok ->
+            case maybe_restore_chronicle_quorum(Nodes,
+                                                AllowUnsafe) of
+                {ok, Props} ->
+                    Parent ! started,
+                    orchestrate(Nodes, [durability_aware | Props]);
+                Error ->
+                    Error
+            end;
+        Error ->
+            Error
     end.
 
 maybe_restore_chronicle_quorum(_FailedNodes, false) ->
@@ -103,17 +109,33 @@ restore_chronicle_quorum(FailedNodes) ->
     Ref = erlang:make_ref(),
     case chronicle_master:start_failover(FailedNodes, Ref) of
         ok ->
-            case chronicle:check_quorum() of
-                true ->
+            case check_chronicle_quorum() of
+                ok ->
                     {ok, [{quorum_failover, Ref}]};
-                {false, What} ->
-                    ?log_info(
-                       "Cannot establish quorum after failover due to: ~p",
-                       [What]),
-                    orchestration_unsafe
+                Error ->
+                    Error
             end;
         Error ->
             Error
+    end.
+
+maybe_check_chronicle_quorum(true) ->
+    ok;
+maybe_check_chronicle_quorum(false) ->
+    case chronicle_compat:enabled() of
+        true ->
+            check_chronicle_quorum();
+        false ->
+            ok
+    end.
+
+check_chronicle_quorum() ->
+    case chronicle:check_quorum() of
+        true ->
+            ok;
+        {false, What} ->
+            ?log_info("Cannot establish quorum due to: ~p", [What]),
+            orchestration_unsafe
     end.
 
 orchestrate(Nodes, Options) when Nodes =/= [] ->
