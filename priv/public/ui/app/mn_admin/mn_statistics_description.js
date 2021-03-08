@@ -682,7 +682,7 @@ function get70CompatDesc() {
           "index_num_docs_queued": {
             unit: "number",
             title: "Index Write Queue",
-            desc: ""
+            desc: "Number of documents queued to be indexed at the Indexer. Per Index."
           }
         }
       }
