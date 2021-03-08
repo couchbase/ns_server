@@ -1313,8 +1313,20 @@ run_decimate_stats(Levels, Settings) ->
     {value, LastDecimationTime} =
         ns_config:search_node(node(), ns_config:latest(),
                               stats_last_decimation_time),
+    PruningIntervalSecs = proplists:get_value(pruning_interval,
+                                              Settings) div 1000,
     ScrapeInterval = proplists:get_value(scrape_interval, Settings),
-    Deletions = decimate_stats(Levels, LastDecimationTime, Now, ScrapeInterval),
+
+    %% The last decimation time may be a significant amount of time in the
+    %% past. We don't want to decimate that far back as our assumption is
+    %% we weren't gathering stats since we weren't doing decimation.
+    %% If that is the case then we'll go back twice the pruning interval
+    %% so as to not leave undecimated stats (e.g. if the pruning timer
+    %% fires a bit late).
+    LastDecimationTime2 = max(LastDecimationTime,
+                              Now - 2 * PruningIntervalSecs),
+    Deletions = decimate_stats(Levels, LastDecimationTime2, Now,
+                               ScrapeInterval),
 
     %% In order to avoid spamming the logs we'll log one message per level
     report_decimation_summary(Deletions),
@@ -1836,7 +1848,7 @@ prometheus_decimation_test() ->
     ExpectedDeletions = ExpectedLarge ++ ExpectedMedium,
 
     Deletions = decimate_stats(Levels, LastDecimationTime, Now, 10),
-    ?assertMatch(Deletions, ExpectedDeletions).
+    ?assertMatch(ExpectedDeletions, Deletions).
 
 %% This test splits the sample to accommodate the gap at the interval boundary.
 prometheus_decimation_split_sample_test() ->
@@ -1859,7 +1871,7 @@ prometheus_decimation_split_sample_test() ->
                           (Now - 6 * 60) div 60 * 60 + 60 + 10 + 13}],
 
     Deletions = decimate_stats(Levels, LastDecimationTime, Now, 10),
-    ?assertMatch(Deletions, ExpectedDeletions).
+    ?assertMatch(ExpectedDeletions, Deletions).
 
 prometheus_decimation_randomized_test_() ->
     {timeout, 120, fun () -> randomized_decimation_correctness_test(1000) end}.
@@ -1948,7 +1960,7 @@ prometheus_negative_elapsed_time_test() ->
               {large, 359 * ?SECS_IN_DAY, 6 * 60 * 60}],
     LastDecimationTime = Now + 5,
     Deletions = decimate_stats(Levels, LastDecimationTime, Now, 10),
-    ?assertMatch(Deletions, []).
+    ?assertMatch([], Deletions).
 
 levels_are_valid_test() ->
     ?assert(levels_are_valid(decimation_definitions_default())),
