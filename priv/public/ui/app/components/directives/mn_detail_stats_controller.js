@@ -45,6 +45,7 @@ function controller(mnStatisticsNewService, mnStatisticsDescriptionService, mnHe
   }
 
   function activate(selectedZoom) {
+    selectedZoom = selectedZoom || vm.zoom;
     vm.scope = $scope;
     vm.mnAdminStatsPoller = mnStatisticsNewService.mnAdminStatsPoller;
     vm.mnAdminStatsPoller.heartbeat

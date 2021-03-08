@@ -6,7 +6,9 @@ import {schemeTableau10} from "/ui/web_modules/d3-scale-chromatic.js";
 import {scaleTime, scaleLinear} from "/ui/web_modules/d3-scale.js";
 import {axisBottom, axisLeft, axisRight} from "/ui/web_modules/d3-axis.js";
 import {line as d3Line} from "/ui/web_modules/d3-shape.js";
+import {interpolateTransformSvg} from "/ui/web_modules/d3-interpolate.js";
 import {brushX, brushSelection} from "/ui/web_modules/d3-brush.js";
+import {min as d3Min, max as d3Max} from "/ui/web_modules/d3-array.js"
 
 export default "mnD3Service";
 
@@ -26,17 +28,42 @@ function mnD3ServiceFactory() {
       this.colors = this.cht.color || schemeTableau10;
 
       //main container
-      this.svg =
-        this.rootEl.append("svg").attr("width", "100%").attr("height", this.cht.height)
-        .append("g").attr("transform", this.getTransform(this.cht.margin.left,
-                                                         this.cht.margin.top));
+
+      this.id = Math.random().toString(36).substr(2, 9);
+
+      let root = this.rootEl
+          .append("svg")
+          .attr("width", "100%")
+          .attr("height", this.cht.height);
+
+      this.svg = root
+        .append("g")
+        .attr("transform", this.getTransform(this.cht.margin.left, this.cht.margin.top));
+
+      let defs =
+          root.append("defs")
+
+      this.clip = defs.append("rect")
+        .attr("id", "clipRect" + this.id)
+        .attr("width", this.cvsRect.width)
+        .attr("height", this.cvsRect.height)
+        .attr("x", 0)
+        .attr("y", 0);
+
+      defs.append("clipPath")
+        .attr("id", "clipPath" + this.id)
+        .append("use")
+        .attr("xlink:href", "#clipRect" + this.id);
     }
     init() {
       this.inititalized = true;
       this.svg.html("");
 
       this.linesWrap = this.svg.append("g")
-        .attr("clip-path", "url(#clip)");
+        .attr("clip-path", "url(#clipPath" +this.id+ ")")
+        .attr("fill", "rgba(0, 0, 0, 0.002)");
+
+      this.linesWrap.append( "use" ).attr( "xlink:href", "#clipRect" + this.id);
 
       // Initialise a X axis:
       this.xScale = scaleTime().range([0, this.cvsRect.width]);
@@ -64,7 +91,7 @@ function mnD3ServiceFactory() {
     }
     updateYAxis(i) {
       var domain = this.data.filter(function (line) {
-        return (line.yAxis == i) && this.filterDisabled(line);
+        return (line.yAxis == i);
       }.bind(this));
 
       var yDomain = this.cht.yAxis[i].domain(domain);
@@ -79,17 +106,16 @@ function mnD3ServiceFactory() {
     createYAxis(i, axis, coordinates) {
       this.yScale[i] = scaleLinear().range([this.cvsRect.height, 0]).nice();
       this.yAxis[i] = axis().scale(this.yScale[i]).tickFormat(this.cht.yAxis[i].tickFormat);
-
       this.yLines[i] = d3Line()
-        .defined(function (d) {
-          return !isNaN(d[1]);
+        .defined((d, i, lines) => {
+          let isValueAvailable = !isNaN(d[1]);
+          if (this.opt.is70Cluster && isValueAvailable && i) {
+            isValueAvailable = (d[0] - lines[i-1][0]) == this.opt.step;
+          }
+          return isValueAvailable;
         })
-        .x(function (d) {
-          return this.xScale(d[0]);
-        }.bind(this))
-        .y(function (d) {
-          return this.yScale[i](d[1]);
-        }.bind(this));
+        .x(d => this.xScale(d[0]))
+        .y(d => this.yScale[i](d[1]));
 
       if (!this.cht.hideTicks) {
         this.svg.append("g").attr("transform", coordinates).attr("class", "yAxis yAxis" + i);
@@ -101,19 +127,8 @@ function mnD3ServiceFactory() {
     getTransform(x, y) {
       return "translate(" + x + ", " + y + ")";
     }
-    filterDisabled(line) {
-      return !!line.values.length && !line.disabled;
-    }
     redrawXAxis() {
       return this.svg.selectAll(".xAxis").transition().duration(0).call(this.xAxis);
-    }
-    getLineColor(d, i) {
-      var color = this.colors
-          .slice(0, this.data.length)
-          .filter(function (_, i) {
-            return !!this.data[i].values.length && !this.data[i].disabled;
-          }.bind(this));
-      return color[i % color.length];
     }
     drawLine(path) {
       path.attr("d", function (d) {
@@ -126,12 +141,12 @@ function mnD3ServiceFactory() {
         .call(this.drawLinePath.bind(this));
     }
     drawLinePath(pipe) {
-      pipe.style("stroke", this.getLineColor.bind(this))
+      pipe.style("stroke", v => v.color)
         .style("fill", "none")
         .style("stroke-width", 1);
     }
     drawCirclePath(pipe) {
-      pipe.style("fill", this.getLineColor.bind(this));
+      pipe.style("fill", v => v.color);
     }
     updateXAxis(xDomain) {
       if (!xDomain.length) {
@@ -140,41 +155,112 @@ function mnD3ServiceFactory() {
       this.xScale.domain(xDomain);
       this.redrawXAxis();
     }
+    cancelLineAnimation() {
+      this.animationInterval && window.clearInterval(this.animationInterval);
+    }
+    stopLineAnimation() {
+      this.cancelLineAnimation();
+      this.linesWrap.selectAll('.lines').attr("transform", null);
+    }
+    animateLine(fps) {
+      let frame = 0;
+      let v = this.xAxisTimestamps;
+      let interpolateSvg = interpolateTransformSvg(
+        this.getTransform(0, 0),
+        this.getTransform(this.xScale(v[1]), 0));
+
+      let layer = this.linesWrap.selectAll('.lines');
+
+      this.animationInterval = window.setInterval(() => {
+        frame++;
+
+        let transformValue = interpolateSvg(-(frame / fps));
+
+        layer.attr("transform", transformValue);
+
+        let step = (v[1] - v[0]) * (frame / fps);
+
+        let domain = this.getXaxisDomain(this.xAxisTimestamps);
+
+        this.updateXAxis([domain[0] + step, domain[1] + step]);
+
+        if (frame >= fps) {
+          window.clearInterval(this.animationInterval);
+        }
+      }, (v[1] - v[0]) / fps);
+    }
     updateLine() {
+      this.opt.enableAnimation && this.stopLineAnimation();
+
       this.linesWrap.selectAll('.lines')
-        .data(this.data.filter(this.filterDisabled.bind(this)))
+        .data(this.data)
         .join(function (enter) {
-          enter
+          return enter
             .append('path').attr('class', 'lines')
             .call(this.drawLine.bind(this));
         }.bind(this), function (update) {
-          update
-            .transition().duration(0)
-            .call(this.drawLine.bind(this));
+          if (this.opt.enableAnimation) {
+            return update.call(this.drawLine.bind(this));
+          } else {
+            return update.transition().duration(0).call(this.drawLine.bind(this));
+          }
         }.bind(this));
+
+      this.opt.enableAnimation && this.animateLine(100);
+    }
+    getxAxisTimestamps(data) {
+      let rv = [];
+      let step = this.opt.step;
+      let start = this.opt.start;
+      let finish = d3Max(data, v => v.xMax) || (new Date().getTime());//should be serve side time
+      while (start) {
+        rv.unshift(finish);
+        start -= step;
+        finish -= step;
+      }
+      return rv;
     }
     updateData(data) {
       if (!data) {
         return;
       }
 
-      this.xAxisData = data
-        .reduce((max, item) =>
-                item.values.length > max.length ? item.values : max
-                , []);
-      this.data = data;
+      data.forEach((item, index) => {
+        item.color = this.colors[index % this.colors.length];
+      });
 
+      if (this.opt.is70Cluster) {
 
-      if (this.xAxisData && this.xAxisData.length) {
+        this.xAxisTimestamps = this.getxAxisTimestamps(data);
+        this.xAxisMap = data.map(line => line.values.reduce((acc, [ts, v]) => {
+          acc[ts] = v;
+          return acc;
+        }, {}));
+
+        this.data = data;
+
         if (!this.inititalized) {
           this.init();
         }
+        this.updateXAxis(this.getXaxisDomain(this.xAxisTimestamps));
       } else {
-        this.showEmptyContent();
-        return;
-      }
+        this.xAxisData = data
+          .reduce((max, item) =>
+                  item.values.length > max.length ? item.values : max
+                  , []);
 
-      this.updateXAxis(this.getXaxisDomain(this.xAxisData));
+        this.data = data;
+
+        if (this.xAxisData && this.xAxisData.length) {
+          if (!this.inititalized) {
+            this.init();
+          }
+        } else {
+          this.showEmptyContent();
+          return;
+        }
+        this.updateXAxis(this.getXaxisDomain(this.xAxisData));
+      }
 
       this.updateYAxis(0);
 
@@ -190,10 +276,18 @@ function mnD3ServiceFactory() {
       this.svg.html("<text class='charts-nodata'>"+this.cht.noData+"</text>");
     }
     getXaxisDomain(data) {
-      return [data[0][0], data[data.length-1][0]];
+      if (this.opt.is70Cluster) {
+        if (this.opt.enableAnimation) {
+          return [data[0], data[data.length-3]];
+        } else {
+          return [data[0], data[data.length-1]];
+        }
+      } else {
+        return [data[0][0], data[data.length-1][0]];
+      }
     }
     toggleLine(i) {
-      var maybeLast = this.data.filter(this.filterDisabled.bind(this));
+      var maybeLast = this.data.filter(v => !v.disabled);
       if ((maybeLast.length == 1) && (this.data.indexOf(maybeLast[0]) == i)) {
         return;
       }
@@ -203,12 +297,13 @@ function mnD3ServiceFactory() {
     }
     resize() {
       this.cvsRect = this.getCanvasRect(this.getElementRect());
+      this.clip.attr("width", this.cvsRect.width).attr("height", this.cvsRect.height);
       this.xScale.range([0, this.cvsRect.width]);
-      this.redrawXAxis();
       this.xAxis.ticks(Math.max(this.cvsRect.width/100, 2));
       if (this.cht.yAxis[1] && !this.cht.hideTicks) {
         this.svg.select(".yAxis1").attr("transform", this.getTransform(this.cvsRect.width, 0));
       }
+      this.updateData(this.data);
     }
   }
 
@@ -220,17 +315,11 @@ function mnD3ServiceFactory() {
     init() {
       super.init();
 
-      this.chart.clip = this.svg.append("defs").append("svg:clipPath")
-        .attr("id", "clip")
-        .append("svg:rect")
-        .attr("width", this.chart.cvsRect.width)
-        .attr("height", this.chart.cvsRect.height)
-        .attr("x", 0)
-        .attr("y", 0);
-
-      this.chart.linesWrap.attr("clip-path", "url(#clip)");
-
-      this.bisect = bisector(function (d) { return d[0]; }).left;
+      if (this.opt.is70Cluster) {
+        this.bisect = bisector(d => d).left;
+      } else {
+        this.bisect = bisector(function (d) { return d[0]; }).left;
+      }
 
       this.brush = brushX()
         .extent([[0, 0], [this.cvsRect.width,
@@ -250,7 +339,8 @@ function mnD3ServiceFactory() {
     }
     getDomain() {
       var s = brushSelection(this.brushEl.node());
-      return s ? s.map(this.xScale.invert, this.xScale) : this.getXaxisDomain(this.xAxisData);
+      let data = this.opt.is70Cluster ? this.xAxisTimestamps : this.xAxisData;
+      return s ? s.map(this.xScale.invert, this.xScale) : this.getXaxisDomain(data);
     }
     brushed() {
       if (!this.data) {
@@ -272,20 +362,17 @@ function mnD3ServiceFactory() {
 
       super.resize();
 
-      this.chart.clip
-        .attr("width", this.chart.cvsRect.width)
-        .attr("height", this.chart.cvsRect.height);
-
       this.brush.extent([[0, 0], [this.cvsRect.width, this.cht.height]]);
       this.brushEl.call(this.brush);
 
       if (brushSelection(this.brushEl.node())) { //proportional resize of selection
-        var i1 = this.bisect(this.xAxisData, s[0]);
-        var i2 = this.bisect(this.xAxisData, s[1]);
+        let data = this.opt.is70Cluster ? this.xAxisTimestamps : this.xAxisData;
+        var i1 = this.bisect(data, s[0]);
+        var i2 = this.bisect(data, s[1]);
 
         this.brush.move(this.brushEl, [
-          this.xScale(this.xAxisData[i1][0]),
-          this.xScale(this.xAxisData[i2][0])
+          this.xScale(this.opt.is70Cluster ? data[i1] : data[i1][0]),
+          this.xScale(this.opt.is70Cluster ? data[i2] : data[i2][0])
         ]);
 
         this.brushed();
@@ -301,7 +388,11 @@ function mnD3ServiceFactory() {
     init() {
       super.init();
 
-      this.bisect = bisector(function (d) { return d[0]; }).left;
+      if (this.opt.is70Cluster) {
+        this.bisect = bisector(d => d).left;
+      } else {
+        this.bisect = bisector(function (d) { return d[0]; }).left;
+      }
 
       //Tooltip
       this.tip = select("body").append("div").attr('class', 'mnd3-tooltip');
@@ -316,6 +407,7 @@ function mnD3ServiceFactory() {
       angular.element(this.tipBox.node()).on('mousemove', this.setMouseMoveEvent.bind(this));
       angular.element(this.tipBox.node()).on('mousemove', this.drawTooltipThrottle);
       angular.element(this.tipBox.node()).on('mouseout', this.hideTooltip.bind(this));
+      angular.element(this.tipBox.node()).on('mousemove', this.cancelLineAnimation.bind(this));
 
       this.onInit && this.onInit();
     }
@@ -368,7 +460,8 @@ function mnD3ServiceFactory() {
   function drawCircle(path) {
     path
       .call(this.drawCirclePath.bind(this))
-      .call(this.updateCirclePosition.bind(this), this.selectedValueIndex);
+      .call(this.updateCirclePosition.bind(this),
+            this.opt.is70Cluster ? undefined : this.selectedValueIndex);
   }
 
   function drawTooltip() {
@@ -382,32 +475,59 @@ function mnD3ServiceFactory() {
     var elementX = this.mouseMoveEvent.pageX - elementRect.left;
     var elementY = this.mouseMoveEvent.pageY - elementRect.top;
 
-    var xDate = this.xScale.invert(elementX);
+    var circlesPerLine;
+    if (this.opt.is70Cluster) {
 
-    var i = this.bisect(this.xAxisData, xDate);
+      var xDate = this.xScale.invert(elementX).getTime();
+      var i = this.bisect(this.xAxisTimestamps, xDate);
+      var d0 = this.xAxisTimestamps[i - 1];
+      var d1 = this.xAxisTimestamps[i];
+      this.selectedXDate = (!d0 || ((xDate - d0) > (d1 - xDate))) ? d1 : d0;
 
-    var d0 = this.xAxisData[i - 1];
-    var d1 = this.xAxisData[i];
+      this.svg.select(".tip-line")
+        .style("opacity", "1")
+        .attr("d", () => {
+          var x = this.xScale(this.selectedXDate);
+          x = x < 0 ? 0 : x > this.cvsRect.width ? this.cvsRect.width : x;
+          var d = "M" + x  + "," + elementRect.height;
+          d += " " + x + ", 0";
+          return d;
+        });
 
-    // work out which date value is closest to the mouse
-    this.selectedValueIndex = (!d0 || (xDate - d0[0]) > (d1[0] - xDate)) ? i : i-1;
-
-    this.svg.select(".tip-line")
-      .style("opacity", "1")
-      .attr("d", function () {
-        var idx = this.selectedValueIndex;
-        var d = "M" + this.xScale(this.xAxisData[idx][0]) + "," + elementRect.height;
-        d += " " + this.xScale(this.xAxisData[idx][0]) + ", 0";
-        return d;
-      }.bind(this));
-
-    var circlesPerLine =
+      circlesPerLine =
         this.tipLineWrap.selectAll('.circle-per-line')
-        .data(this.data.filter(this.filterDisabled.bind(this)))
+        .data(this.data)
+        .style('opacity', function (d, i) {
+          var value = this.xAxisMap[i][this.selectedXDate];
+          return ((value || value === 0) && !d.disabled) ? 1 : 0;
+        }.bind(this));
+    } else {
+
+      var xDate = this.xScale.invert(elementX);
+      var i = this.bisect(this.xAxisData, xDate);
+      var d0 = this.xAxisData[i - 1];
+      var d1 = this.xAxisData[i];
+
+      // work out which date value is closest to the mouse
+      this.selectedValueIndex = (!d0 || (xDate - d0[0]) > (d1[0] - xDate)) ? i : i-1;
+
+      this.svg.select(".tip-line")
+        .style("opacity", "1")
+        .attr("d", function () {
+          var idx = this.selectedValueIndex;
+          var d = "M" + this.xScale(this.xAxisData[idx][0]) + "," + elementRect.height;
+          d += " " + this.xScale(this.xAxisData[idx][0]) + ", 0";
+          return d;
+        }.bind(this));
+
+      circlesPerLine =
+        this.tipLineWrap.selectAll('.circle-per-line')
+        .data(this.data)
         .style('opacity', function (d) {
           var idx = this.selectedValueIndex;
           return (d.values.length && !d.disabled && !isNaN(d.values[idx] && d.values[idx][1])) ? 1 : 0;
         }.bind(this));
+    }
 
     circlesPerLine.join(function (enter) {
       enter
@@ -422,38 +542,52 @@ function mnD3ServiceFactory() {
         .call(this.drawCircle.bind(this));
     }.bind(this));
 
+    let offsetWidth = document.getElementsByTagName("body")[0].clientWidth;
+    let offsetHeight = document.getElementsByTagName("body")[0].clientHeight;
+    let rightPos = offsetWidth - this.mouseMoveEvent.pageX;
+    let bottomPos = offsetHeight - this.mouseMoveEvent.pageY;
+    let leftRight = rightPos < 200 ? "right" : "left";
+    let topBottom = bottomPos < 150 ? "bottom" : "top";
+
     if (!this.disableTooltipFlag) {
       var tooltipRows = this.tip
           .style('display', 'block')
-          .style('left', this.mouseMoveEvent.pageX + 20 + "px")
-          .style('top', this.mouseMoveEvent.pageY - 40 + "px")
+          .style(leftRight == "left" ? "right" : "left", "auto")
+          .style(topBottom == "top" ? "bottom" : "top", "auto")
+          .style(leftRight, (leftRight == "left" ? this.mouseMoveEvent.pageX + 30 : rightPos) + "px")
+          .style(topBottom, (topBottom == "top" ? this.mouseMoveEvent.pageY + 20 : bottomPos) + "px")
           .selectAll(".charts-tooltip-row")
           .data(this.data
-                .filter(this.filterDisabled.bind(this))
                 .map(this.getLabelRowValues.bind(this)),
-                line => line.color+line.key+line.value+line.yAxis)
+                line => line.color+line.key+line.value+line.yAxis+line.disabled);
 
       tooltipRows.join((enter) => {
         enter
           .append("div")
-          .attr('class', 'charts-tooltip-row')
-          .html(this.updateLabelRow.bind(this));
+          .attr('class', line => line.disabled ? "" : "charts-tooltip-row")
+          .html(line =>  line.disabled ? "" : this.updateLabelRow(line))
       });
     }
   }
 
   function getLabelRowValues(line, i) {
-    var idx = this.selectedValueIndex;
-    if (!(line.values[idx] && line.values[idx].length) || line.disabled) {
-      return {};
+    let value;
+    if (this.opt.is70Cluster) {
+      let selectedValue = this.xAxisMap[i][this.selectedXDate];
+      let isValuePresent = (selectedValue || selectedValue === 0);
+      value = isValuePresent ?
+        this.cht.tooltip.valueFormatter(selectedValue, line.unit) : "-";
+    } else {
+      let idx = this.selectedValueIndex;
+      value = (!line.values[idx] || line.values[idx][1] == undefined) ? "-" :
+        this.cht.tooltip.valueFormatter(line.values[idx][1], line.unit);
     }
-
     return {
+      disabled: line.disabled,
       yAxis: line.yAxis,
-      color: this.getLineColor(line, i),
+      color: line.color,
       key: line.key,
-      value: (!line.values[idx] || line.values[idx][1] == undefined) ? "-" :
-        this.cht.tooltip.valueFormatter(line.values[idx][1], line.unit)
+      value: value
     };
   }
 
@@ -487,7 +621,7 @@ function mnD3ServiceFactory() {
   }
 
   function getLegendsHtml(line, i) {
-    return "<i style='background-color:" + this.getLineColor(line, i) + "'></i>" +
+    return "<i style='background-color:" + line.color + "'></i>" +
       "<span>" + line.key + "</span>";
   }
 
@@ -498,7 +632,14 @@ function mnD3ServiceFactory() {
   }
 
   function updateCirclePosition(pipe, idx) {
-    return pipe.attr("transform", function (line) {
+    return this.opt.is70Cluster ? pipe.attr("transform", (line, i) => {
+      let selectedValue = this.xAxisMap[i][this.selectedXDate];
+      if (selectedValue || selectedValue === 0) {
+        let x = this.xScale(this.selectedXDate);
+        x = x < 0 ? 0 : x > this.cvsRect.width ? this.cvsRect.width : x;
+        return this.getTransform(x, this.yScale[line.yAxis](selectedValue));
+      }
+    }) : pipe.attr("transform", function (line) {
       if (line.values[idx] && line.values[idx].length && !isNaN(line.values[idx][1])) {
         return this.getTransform(this.xScale(line.values[idx][0]),
                                  this.yScale[line.yAxis](line.values[idx][1]));

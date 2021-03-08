@@ -76,7 +76,7 @@ function mnMultiChartDirective($window, mnD3Service) {
                                                        event: e,
                                                        chart: chart});
         }
-      }, 10, {leading: true});
+      }, 60, {leading: true});
 
       let throttledPause = _.throttle(function (e) {
         if (e.bubbles) {

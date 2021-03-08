@@ -111,9 +111,10 @@ function mnStatisticsChartsController($scope, $uibModal, mnStatisticsNewService,
       windowTopClass: "chart-overlay",
       resolve: {
         items: mnHelper.wrapInFunction($scope.mnStatsGroupsCtl.items),
-        chart: mnHelper.wrapInFunction(vm.getChart())
+        chart: mnHelper.wrapInFunction(vm.getChart()),
+        mnStatisticsNewScope: mnHelper.wrapInFunction($scope.statisticsNewCtl.mnStatisticsNewScope)
       }
-    });
+    })
   }
 }
 

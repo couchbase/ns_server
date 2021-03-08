@@ -53,6 +53,9 @@ function mnStatisticsNewChartDirective(mnStatisticsNewService, mnPrepareQuantity
     var units;
     var options;
     var isFocusChart = $scope.nvd3Options && $scope.nvd3Options.type === 'lineWithFocusChart';
+    let poller = $scope.statsPoller || mnStatisticsNewService.mnAdminStatsPoller;
+    let step = mnStatisticsNewService.getChartStep($scope.zoom);
+    let start = mnStatisticsNewService.getChartStart($scope.zoom);
 
     if (!_.isEmpty($scope.config.stats)) {
       units = mnStatisticsNewService.getStatsUnits($scope.config.stats);
@@ -67,13 +70,14 @@ function mnStatisticsNewChartDirective(mnStatisticsNewService, mnPrepareQuantity
     }
 
     function subscribeToMultiChartData() {
-      mnStatisticsNewService.mnAdminStatsPoller.subscribeUIStatsPoller({
+      poller.subscribeUIStatsPoller({
         bucket: $scope.bucket,
         node: $scope.node || "all",
         stats: $scope.config.stats,
         items: $scope.items,
         zoom: $scope.zoom,
-        specificStat: $scope.config.specificStat
+        specificStat: $scope.config.specificStat,
+        alignTimestamps: true
       }, $scope);
 
 
@@ -93,8 +97,12 @@ function mnStatisticsNewChartDirective(mnStatisticsNewService, mnPrepareQuantity
 
     function initConfig() {
       options = {
+        step: step,
+        start: start,
+        enableAnimation: mnPoolDefault.export.compat.atLeast70 && $scope.zoom == "minute",
+        is70Cluster: mnPoolDefault.export.compat.atLeast70,
         chart: {
-          margin : $scope.config.margin || {top: 10, right: 36, bottom: 18, left: 44},
+          margin: $scope.config.margin || {top: 10, right: 36, bottom: 18, left: 44},
           height: getChartSize($scope.config.size),
           tooltip: {valueFormatter: formatValue},
           useInteractiveGuideline: true,
@@ -163,8 +171,8 @@ function mnStatisticsNewChartDirective(mnStatisticsNewService, mnPrepareQuantity
     }
 
     function getScaledMinMax(chartData) {
-      var min = d3Min(chartData, function (line) {return line.min/1.005;});
-      var max = d3Max(chartData, function (line) {return line.max;});
+      var min = d3Min(chartData, function (line) {return line.yMin/1.005;});
+      var max = d3Max(chartData, function (line) {return line.yMax;});
       if (chartData[0] && chartData[0].unit == "bytes") {
         return [min <= 0 ? 0 : roundDownBytes(min), max == 0 ? 1 : roundUpBytes(max)];
       } else {
@@ -225,15 +233,23 @@ function mnStatisticsNewChartDirective(mnStatisticsNewService, mnPrepareQuantity
           return;
         }
         var statName = Object.keys(stats.stats)[0];
-        var nodes = ($scope.node == "all") ?
-            Object.keys(stats.stats[statName] || {}) : [$scope.node];
+        var nodes;
+        if ($scope.node == "all") {
+          nodes = Object.keys(stats.stats[statName] || {});
+          if (!nodes.length) {
+            nodes = mnPoolDefault.export.nodes.map(n => n.hostname);
+          }
+        } else {
+          nodes = [$scope.node];
+        }
 
         nodes.forEach((nodeName, i) => {
           var previousData = $scope.chartData && $scope.chartData[i];
           chartData.push(
             mnStatisticsNewService.buildChartConfig(stats, statName, nodeName,
                                                     nodeName, desc.unit, units[desc.unit],
-                                                    $scope.zoom, previousData))
+                                                    previousData, poller.isThisInitCall(),
+                                                    start, step))
         });
       } else {
         Object.keys($scope.config.stats).forEach(function (descPath, i) {
@@ -248,7 +264,8 @@ function mnStatisticsNewChartDirective(mnStatisticsNewService, mnPrepareQuantity
           chartData.push(
             mnStatisticsNewService.buildChartConfig(stats, statName, $scope.node,
                                                     desc.title, desc.unit, units[desc.unit],
-                                                    $scope.zoom, previousData));
+                                                    previousData, poller.isThisInitCall(),
+                                                    start, step));
 
         });
       }

@@ -11,6 +11,7 @@
   <mn-statistics-chart
      ng-class="detailedChartCtl.zoom + '-chart'"
      ng-if="!detailedChartCtl.reloadChartDirective"
+     stats-poller="detailedChartCtl.statsPoller"
      bucket="{{detailedChartCtl.bucket}}"
      zoom="{{detailedChartCtl.zoom}}"
      node="{{detailedChartCtl.node || 'all'}}"

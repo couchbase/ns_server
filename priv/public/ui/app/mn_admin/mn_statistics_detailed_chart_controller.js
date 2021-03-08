@@ -1,6 +1,6 @@
 export default mnStatisticsDetailedChartController;
 
-function mnStatisticsDetailedChartController($scope, $timeout, $state, chart, items, mnStatisticsNewService) {
+function mnStatisticsDetailedChartController($scope, $timeout, $state, chart, items, mnStatisticsNewService, mnStatisticsNewScope) {
   var vm = this;
   vm.chart = Object.assign({}, chart, {size: "extra"});
 
@@ -11,13 +11,16 @@ function mnStatisticsDetailedChartController($scope, $timeout, $state, chart, it
   vm.node = $state.params.statsHostname;
   vm.options = {showFocus: true, showTicks: true, showLegends: true};
 
-  mnStatisticsNewService.mnAdminStatsPoller.heartbeat.setInterval(
-    mnStatisticsNewService.defaultZoomInterval(vm.zoom));
+  mnStatisticsNewScope.$broadcast("mnStatsCancelTimer");
+
+  mnStatisticsNewService.mnAdminStatsPoller.heartbeat.pause();
+  vm.statsPoller = mnStatisticsNewService.createStatsPoller($scope);
+  vm.statsPoller.heartbeat.setInterval(mnStatisticsNewService.defaultZoomInterval(vm.zoom));
 
   function onSelectZoom(selectedOption) {
     vm.options.showFocus = selectedOption !== "minute";
-    mnStatisticsNewService.mnAdminStatsPoller.heartbeat.setInterval(
-      mnStatisticsNewService.defaultZoomInterval(selectedOption));
+    let interval = mnStatisticsNewService.defaultZoomInterval(selectedOption);
+    vm.statsPoller.heartbeat.setInterval(interval);
     vm.reloadChartDirective = true;
     $timeout(function () {
       vm.reloadChartDirective = false;
@@ -25,9 +28,7 @@ function mnStatisticsDetailedChartController($scope, $timeout, $state, chart, it
   }
 
   $scope.$on("$destroy", function () {
-    mnStatisticsNewService.mnAdminStatsPoller.heartbeat.setInterval(
-      mnStatisticsNewService.defaultZoomInterval($state.params.scenarioZoom));
-    mnStatisticsNewService.mnAdminStatsPoller.heartbeat.reload();
+    mnStatisticsNewService.mnAdminStatsPoller.heartbeat.resume();
   });
 
 }
