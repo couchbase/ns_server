@@ -51,6 +51,7 @@
 -define(MAX_SCRAPE_INTERVAL, 6*60*60). %% 6h, in seconds
 -define(PROMETHEUS_SHUTDOWN_TIMEOUT, 20000). %% 20s, in milliseconds
 -define(SECS_IN_DAY, 24*60*60).
+-define(AUTO_CALCULATED, -1).
 
 -type stats_settings() :: [stats_setting() | stats_derived_setting()].
 -type stats_setting() ::
@@ -86,7 +87,7 @@
     {services,
      [{extended_service_name(),
        [{high_cardinality_enabled, true | false} |
-        {high_cardinality_scrape_interval, pos_integer() | auto} |
+        {high_cardinality_scrape_interval, integer()} |
         {high_cardinality_scrape_timeout, pos_integer()}]}]} |
     {external_prometheus_services,
      [{extended_service_name(),
@@ -156,7 +157,8 @@ default_settings() ->
      {cbcollect_stats_dump_max_size, 1024*1024*1024}, %% 1GB, in bytes
      {cbcollect_stats_min_period, 14}, %% in days
      {average_sample_size, 3}, %% in bytes
-     {services, [{S, [{high_cardinality_enabled, true}]}
+     {services, [{S, [{high_cardinality_enabled, true},
+                      {high_cardinality_scrape_interval, ?AUTO_CALCULATED}]}
                         || S <- ?DEFAULT_HIGH_CARD_SERVICES]},
      {external_prometheus_services, [{S, [{high_cardinality_enabled, true}]}
                                         || S <- ?DEFAULT_HIGH_CARD_SERVICES]},
@@ -711,8 +713,8 @@ high_cardinality_jobs_config(Settings) ->
           Addr = proplists:get_value(Name, Targets),
           Interval =
               case proplists:get_value(high_cardinality_scrape_interval, Props,
-                                       auto) of
-                  auto ->
+                                       ?AUTO_CALCULATED) of
+                  ?AUTO_CALCULATED ->
                       proplists:get_value(Name, DynamicScrapeIntervals,
                                           DefaultInterval);
                   I ->
@@ -965,8 +967,8 @@ calculate_dynamic_intervals(ScrapeInfos, Settings) ->
               ({Name, high_cardinality, Num}) ->
                   Props = proplists:get_value(Name, ServiceSettings, []),
                   case proplists:get_value(high_cardinality_scrape_interval,
-                                           Props, auto) of
-                      auto -> {right, {Name, Num}};
+                                           Props, ?AUTO_CALCULATED) of
+                      ?AUTO_CALCULATED -> {right, {Name, Num}};
                       I -> {left, Num / I}
                   end
           end, ScrapeInfos),
@@ -1514,7 +1516,7 @@ randomly_test_calculate_dynamic_intervals() ->
         fun (N) ->
             Name = ServiceName(N),
             Interval = case WithProbability(0.5) of
-                           true -> auto;
+                           true -> ?AUTO_CALCULATED;
                            false -> rand:uniform(120)
                        end,
             [{Name, [{high_cardinality_scrape_interval, Interval}]}
@@ -1546,8 +1548,9 @@ randomly_test_calculate_dynamic_intervals() ->
                 HCTargets = [N || {N, high_cardinality, _} <- ScrapeInfos],
                 StaticTargets =
                     [N || {N, Props} <- ServicesSettings,
-                          auto =/= proplists:get_value(
-                                     high_cardinality_scrape_interval, Props)],
+                          ?AUTO_CALCULATED =/=
+                            proplists:get_value(
+                              high_cardinality_scrape_interval, Props)],
                 HCTargets -- StaticTargets
             end,
 
@@ -1589,8 +1592,8 @@ total_db_size_estimate(Info, Settings, Intervals) ->
                 Props = proplists:get_value(Name, Services, []),
                 Interval =
                     case proplists:get_value(high_cardinality_scrape_interval,
-                                             Props, auto) of
-                        auto ->
+                                             Props, ?AUTO_CALCULATED) of
+                        ?AUTO_CALCULATED ->
                             proplists:get_value(Name, Intervals, DefaultInterval);
                         I ->
                             I

@@ -79,9 +79,31 @@ params() ->
       #{cfg_key => prometheus_metrics_scrape_interval, type => pos_int}},
      {"prometheus.listenAddr",
       #{cfg_key => listen_addr_type,
-        type => {one_of, existing_atom, [loopback, any]}}}] ++
+        type => {one_of, existing_atom, [loopback, any]}}},
+     {"pruningInterval",
+      #{cfg_key => pruning_interval, type => pos_int}},
+     {"decimation.enabled",
+      #{cfg_key => decimation_enabled, type => bool}},
+     {"decimation.matchPatterns",
+      #{cfg_key => decimation_match_patterns, type => prom_patterns}},
+     {"truncation.enabled",
+      #{cfg_key => truncation_enabled, type => bool}},
+     {"truncation.matchPatterns",
+      #{cfg_key => truncation_match_patterns, type => prom_patterns}},
+     {"truncation.age",
+      #{cfg_key => truncate_max_age, type => pos_int}},
+     {"truncation.minInterval",
+      #{cfg_key => min_truncation_interval, type => non_neg_int}}] ++
     [{"services." ++ N ++ ".highCardEnabled",
       #{cfg_key => [services, S, high_cardinality_enabled], type => bool}}
+     || {S, N} <- Services] ++
+    [{"services." ++ N ++ ".highCardScrapeInterval",
+      #{cfg_key => [services, S, high_cardinality_scrape_interval],
+        type => int}}
+     || {S, N} <- Services] ++
+    [{"services." ++ N ++ ".highCardScrapeTimeout",
+      #{cfg_key => [services, S, high_cardinality_scrape_timeout],
+        type => pos_int}}
      || {S, N} <- Services] ++
     [{"statsExport." ++ N ++ ".highCardEnabled",
       #{cfg_key => [external_prometheus_services, S, high_cardinality_enabled],
@@ -90,7 +112,11 @@ params() ->
 
 type_spec(derived_metrics_filter) ->
     #{validators => [fun derived_metrics_filter/2],
-      formatter => fun format_derived_metrics_filter/1}.
+      formatter => fun format_derived_metrics_filter/1};
+type_spec(prom_patterns) ->
+    #{validators => [{string_list, ","},
+                     validate_list(fun prom_pattern/1, _, _)],
+      formatter => {string_list, ","}}.
 
 format_derived_metrics_filter(all) -> {value, <<"all">>};
 format_derived_metrics_filter(L) -> {value, [list_to_binary(M) || M <- L]}.
@@ -119,6 +145,30 @@ derived_metrics_filter(Name, State) ->
                         verify_derived_metrics(Metrics)
                 end
         end, Name, State).
+
+validate_list(Fun, Name, State) ->
+    validator:validate(
+      fun (List) ->
+          try
+             {value, lists:map(
+                       fun (E) ->
+                           case Fun(E) of
+                               {value, V} -> V;
+                               {error, Err} -> throw(Err)
+                           end
+                       end, List)}
+          catch
+              throw:Err -> {error, Err}
+          end
+      end, Name, State).
+
+prom_pattern(Str) ->
+    Trimmed = string:trim(Str),
+    Msg = <<"bad prometheus patterns">>,
+    case re:run(Trimmed, <<"^{(.*)}$">>, [{capture, all_but_first, list}]) of
+        {match, _} -> {value, Trimmed};
+        nomatch -> {error, Msg}
+    end.
 
 handle_get_settings(Path, Req) ->
     Settings = prometheus_cfg:with_applied_defaults(

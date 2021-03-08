@@ -92,6 +92,8 @@ type_spec(bool) ->
     #{validators => [fun validator:boolean/2], formatter => existing_atom};
 type_spec(pos_int) ->
     #{validators => [int, greater_than(_, 0, _)], formatter => int};
+type_spec(non_neg_int) ->
+    #{validators => [int, greater_than(_, -1, _)], formatter => int};
 type_spec(int) ->
     #{validators => [fun validator:integer/2]};
 type_spec({int, Min, Max}) ->
@@ -113,7 +115,16 @@ type_spec(password) ->
                    end};
 type_spec(not_supported) ->
     #{validators => [fun not_supported/2],
-      formatter => fun (_) -> ignore end}.
+      formatter => fun (_) -> ignore end};
+type_spec({string_list, Separator}) ->
+    #{validators => [validate_string_list(Separator, _, _)],
+      formatter => fun (L) -> {value, [list_to_binary(M) || M <- L]} end}.
+
+validate_string_list(Separator, Name, State) ->
+    case validator:is_json(State) of
+          true -> validator:string_array(Name, State);
+          false -> validator:token_list(Name, Separator, State)
+    end.
 
 not_supported(Name, State) ->
     validator:validate(
