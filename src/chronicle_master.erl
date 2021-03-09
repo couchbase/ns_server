@@ -194,17 +194,22 @@ handle_info(arm_janitor_timer, State) ->
     {noreply, arm_janitor_timer(State)};
 
 handle_info(janitor, #state{self_ref = SelfRef} = State) ->
-    NewState = cancel_janitor_timer(State),
+    CleanState = cancel_janitor_timer(State),
     {ok, Lock} = chronicle:acquire_lock(),
-    case transaction([], undefined, Lock, SelfRef,
-                     fun (_) -> {abort, clean} end) of
-        {ok, _, {need_recovery, RecoveryOper}} ->
-            ?log_debug("Janitor found that recovery is needed for "
-                       "operation ~p", [RecoveryOper]),
-            ok = handle_oper(RecoveryOper, Lock, SelfRef);
-        clean ->
-            ok
-    end,
+    NewState =
+        case transaction([], undefined, Lock, SelfRef,
+                         fun (_) -> {abort, clean} end) of
+            {ok, _, {need_recovery, RecoveryOper}} ->
+                ?log_debug("Janitor found that recovery is needed for "
+                           "operation ~p", [RecoveryOper]),
+                ok = handle_oper(RecoveryOper, Lock, SelfRef),
+                CleanState;
+            unfinished_failover ->
+                ?log_debug("Try janitor later."),
+                arm_janitor_timer(CleanState);
+            clean ->
+                CleanState
+        end,
     {noreply, NewState};
 
 handle_info({'EXIT', From, Reason}, State) ->
@@ -236,21 +241,29 @@ get_prev_failover_nodes() ->
 
 transaction(Keys, Oper, Lock, SelfRef, Fun) ->
     chronicle_kv:transaction(
-      kv, [operation_key() | Keys],
+      kv, [operation_key(), failover_opaque_key() | Keys],
       fun (Snapshot) ->
-              case maps:find(operation_key(), Snapshot) of
-                  {ok, {{AnotherOper, _Lock, _SelfRef}, _Rev}}
-                    when AnotherOper =/= Oper ->
-                      RecoveryOper = recovery_oper(AnotherOper),
-                      {commit, [operation_key_set(RecoveryOper, Lock, SelfRef)],
-                       {need_recovery, RecoveryOper}};
+              case maps:find(failover_opaque_key(), Snapshot) of
+                  {ok, {V, _Rev}} ->
+                      ?log_info("Unfinished failover ~p is detected.", [V]),
+                      {abort, unfinished_failover};
                   _ ->
-                      case Fun(Snapshot) of
-                          {commit, Sets} ->
-                              {commit,
-                               [operation_key_set(Oper, Lock, SelfRef) | Sets]};
-                          {abort, Error} ->
-                              {abort, Error}
+                      case maps:find(operation_key(), Snapshot) of
+                          {ok, {{AnotherOper, _Lock, _SelfRef}, _Rev}}
+                            when AnotherOper =/= Oper ->
+                              RecoveryOper = recovery_oper(AnotherOper),
+                              {commit, [operation_key_set(
+                                          RecoveryOper, Lock, SelfRef)],
+                               {need_recovery, RecoveryOper}};
+                          _ ->
+                              case Fun(Snapshot) of
+                                  {commit, Sets} ->
+                                      {commit,
+                                       [operation_key_set(Oper, Lock, SelfRef)
+                                        | Sets]};
+                                  {abort, Error} ->
+                                      {abort, Error}
+                              end
                       end
               end
       end).

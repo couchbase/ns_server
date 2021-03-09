@@ -1063,7 +1063,10 @@ node_add_transaction(Node, GroupUUID, Services, Body) ->
         node_present ->
             M = iolist_to_binary([<<"Node already exists in cluster: ">>,
                                   atom_to_list(Node)]),
-            {error, node_present, M}
+            {error, node_present, M};
+        unfinished_failover ->
+            {error, unfinished_failover,
+             <<"Operation cannot be performed due to unfinished failover">>}
     end.
 
 node_add_transaction_finish(Node, GroupUUID, ChronicleInfo, Body) ->
