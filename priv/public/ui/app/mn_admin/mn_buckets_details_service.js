@@ -72,7 +72,7 @@ function mnBucketsDetailsServiceFcatory($http, mnTasksDetails, mnCompaction) {
       name: 'this bucket',
       value: ramSummary.thisAlloc
     }, {
-      name: 'remaining',
+      name: 'available',
       value: ramSummary.total - ramSummary.otherBuckets - ramSummary.thisAlloc
     }];
 
@@ -104,7 +104,7 @@ function mnBucketsDetailsServiceFcatory($http, mnTasksDetails, mnCompaction) {
       name: 'this bucket',
       value: thisBucket
     }, {
-      name: 'remaining',
+      name: 'available',
       value: free
     }];
 
