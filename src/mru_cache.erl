@@ -38,8 +38,6 @@ dispose(Name) ->
     ets:delete(Name).
 
 lookup(Name, Key) ->
-    ns_server_stats:increment_counter({Name, lookup, total}),
-
     time_call({Name, lookup},
               fun () ->
                       with_item_lock(
@@ -55,7 +53,9 @@ do_lookup(Name, Recent, Stale, Key) ->
         false ->
             case get_one(Stale, Key) of
                 false ->
-                    ns_server_stats:increment_counter({Name, lookup, miss}),
+                    ns_server_stats:notify_counter({<<"mru_cache_lookup">>,
+                                                    [{name, Name},
+                                                     {type, miss}]}),
                     false;
                 {ok, Value} ->
                     %% the key might have been evicted (or entire cache might
@@ -63,17 +63,20 @@ do_lookup(Name, Recent, Stale, Key) ->
                     %% need to be prepared
                     case migrate(Name, Recent, Stale, {Key, Value}) of
                         ok ->
-                            ns_server_stats:increment_counter(
-                              {Name, lookup, stale}),
+                            ns_server_stats:notify_counter(
+                              {<<"mru_cache_lookup">>,
+                               [{name, Name}, {type, stale}]}),
                             {ok, Value};
                         not_found ->
-                            ns_server_stats:increment_counter(
-                              {Name, lookup, evicted}),
+                            ns_server_stats:notify_counter(
+                              {<<"mru_cache_lookup">>,
+                               [{name, Name}, {type, evicted}]}),
                             false
                     end
             end;
         {ok, Value} ->
-            ns_server_stats:increment_counter({Name, lookup, recent}),
+            ns_server_stats:notify_counter({<<"mru_cache_lookup">>,
+                                            [{name, Name}, {type, recent}]}),
             {ok, Value}
     end.
 
@@ -267,9 +270,17 @@ swap_tables(Name, Recent, Stale, {Key, _} = LastItem) ->
     %% now actual swapping
     update_item(Name, tables, {NewRecent, NewStale}).
 
-time_call(Hist, Body) ->
+time_call({CacheName, CallType}, Body) ->
+    {CallType2, ExtraLabels} =
+        case CallType of
+            {lock, LT} -> {lock, [{type, LT}]};
+            CT -> {CT, []}
+        end,
+    BinCallType = atom_to_binary(CallType2, latin1),
+    Metric = {<<"mru_cache_", BinCallType/binary, "_time">>,
+              [{name, CacheName} | ExtraLabels]},
     {T, R} = timer:tc(Body),
-    ns_server_stats:add_histo(Hist, T),
+    ns_server_stats:notify_histogram(Metric, 1000000, microsecond, T),
     R.
 
 %% locking stuff
@@ -280,10 +291,12 @@ take_lock(Name, LockName) ->
     Lock = {LockName, {make_ref(), self()}},
     case take_lock_fast(Name, Lock, ?LOCK_ITERS_FAST) of
         ok ->
-            ns_server_stats:increment_counter({Name, take_lock, fast}),
+            ns_server_stats:notify_counter({<<"mru_cache_take_lock">>,
+                                            [{name, Name}, {type, fast}]}),
             ok;
         failed ->
-            ns_server_stats:increment_counter({Name, take_lock, slow}),
+            ns_server_stats:notify_counter({<<"mru_cache_take_lock">>,
+                                            [{name, Name}, {type, slow}]}),
             take_lock_slow(Name, LockName, Lock)
     end.
 
@@ -320,7 +333,8 @@ try_invalidate_lock(Name, LockName, MaybeLockValue) ->
                 true ->
                     ok;
                 false ->
-                    ns_server_stats:increment_counter({Name, take_lock, invalidate}),
+                    ns_server_stats:notify_counter(
+                      {<<"mru_cache_take_lock_invalidate">>, [{name, Name}]}),
                     %% this only succeeds if the object stays the same
                     ets:delete_object(Name, {LockName, LockValue})
             end;
