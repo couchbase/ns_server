@@ -698,7 +698,7 @@ function get65CompatDesc() {
       "Memory":
       ["mem_used","ep_kv_size","ep_meta_data_memory","ep_tmp_oom_errors","ep_mem_low_wat","ep_mem_high_wat","vb_active_itm_memory","vb_active_meta_data_memory","vb_pending_itm_memory","vb_pending_meta_data_memory","vb_replica_itm_memory","vb_replica_meta_data_memory"],
       "Disk":
-      ["couch_total_disk_size","ep_cache_miss_rate","vb_avg_total_queue_age","avg_disk_update_time","avg_disk_commit_time","couch_docs_actual_disk_size","couch_views_actual_disk_size",
+      ["couch_total_disk_size","couch_docs_fragmentation","couch_views_fragmentation","ep_cache_miss_rate","vb_avg_total_queue_age","avg_disk_update_time","avg_disk_commit_time","couch_docs_actual_disk_size","couch_views_actual_disk_size",
        "disk_write_queue","ep_bg_fetched","ep_data_read_failed","ep_data_write_failed","ep_num_value_ejects","ep_ops_create","ep_ops_update"],
       "vBuckets":
       ["ep_vb_total","vb_active_num","curr_items","vb_active_ops_create","vb_active_resident_items_ratio","vb_active_eject","vb_active_sync_write_accepted_count","vb_active_sync_write_committed_count","vb_active_sync_write_aborted_count","avg_active_timestamp_drift","ep_active_ahead_exceptions","vb_pending_num","vb_pending_curr_items","vb_pending_ops_create","vb_pending_resident_items_ratio","vb_pending_eject","vb_replica_num","vb_replica_curr_items","vb_replica_ops_create","vb_replica_resident_items_ratio","vb_replica_eject","avg_replica_timestamp_drift","ep_replica_ahead_exceptions"],
