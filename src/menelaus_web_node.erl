@@ -279,7 +279,8 @@ build_node_status(Node, Bucket, InfoNode, BucketsAll) ->
 
 get_snapshot() ->
     chronicle_compat:get_snapshot([ns_bucket:key_filter(),
-                                   ns_cluster_membership:key_filter()]).
+                                   ns_cluster_membership:key_filter(),
+                                   chronicle_master:key_filter()]).
 
 build_nodes_info_fun(CanIncludeOtpCookie, InfoLevel, Stability, LocalAddr) ->
     OtpCookie =
@@ -317,12 +318,22 @@ build_nodes_info_fun(CanIncludeOtpCookie, InfoLevel, Stability, LocalAddr) ->
                         build_replication_info(Bucket, WantENode, NodeStatuses,
                                                Snapshot)
                 end,
+                build_failover_status(Snapshot, WantENode),
                 case Stability of
                     stable ->
                         [];
                     unstable ->
                         build_extra_node_info(Config, WantENode, InfoNode)
                 end])}
+    end.
+
+build_failover_status(Snapshot, Node) ->
+    PrevFailoverNodes = chronicle_master:get_prev_failover_nodes(Snapshot),
+    case lists:member(Node, PrevFailoverNodes) of
+        true ->
+            {failoverStatus, unfinished};
+        false ->
+            []
     end.
 
 build_couch_api_base(WantENode, LocalAddr) ->

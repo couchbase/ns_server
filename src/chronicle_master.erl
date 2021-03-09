@@ -32,7 +32,9 @@
          deactivate_nodes/1,
          start_failover/2,
          complete_failover/2,
-         upgrade_cluster/1]).
+         upgrade_cluster/1,
+         get_prev_failover_nodes/1,
+         key_filter/0]).
 
 -define(CALL_TIMEOUT, ?get_timeout(call, 60000)).
 -define(JANITOR_TIMEOUT, ?get_timeout(janitor, 60000)).
@@ -73,6 +75,14 @@ upgrade_cluster([]) ->
 upgrade_cluster(OtherNodes) ->
     wait_for_server_start(),
     gen_server2:call(?SERVER, {upgrade_cluster, OtherNodes}, ?UPGRADE_TIMEOUT).
+
+key_filter() ->
+    case chronicle_compat:backend() of
+        ns_config ->
+            [];
+        chronicle ->
+            {chronicle, [failover_opaque_key()]}
+    end.
 
 call(Oper) ->
     case chronicle_compat:backend() of
@@ -149,7 +159,7 @@ handle_call({upgrade_cluster, NodesToAdd}, _From, State) ->
     {reply, ok, State};
 
 handle_call({start_failover, Nodes, Ref}, _From, State) ->
-    PreviousFailoverNodes = get_prev_failover_nodes(),
+    PreviousFailoverNodes = get_prev_failover_nodes(direct),
 
     case PreviousFailoverNodes -- Nodes of
         [] ->
@@ -238,9 +248,9 @@ operation_key() ->
 operation_key_set(Oper, Lock, SelfRef) ->
     {set, operation_key(), {Oper, Lock, SelfRef}}.
 
-get_prev_failover_nodes() ->
-    case chronicle_kv:get(kv, failover_opaque_key(), #{}) of
-        {ok, {{_, Nodes}, _R}} ->
+get_prev_failover_nodes(Snapshot) ->
+    case chronicle_compat:get(Snapshot, failover_opaque_key(), #{}) of
+        {ok, {_, Nodes}} ->
             Nodes;
         {error, not_found} ->
             []
