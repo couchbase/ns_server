@@ -125,7 +125,7 @@ handle_engage_cluster2(Req) ->
                         Result
                 end,
             reply_json(Req, {struct, ResultWithCompat});
-        {error, _What, Message, _Nested} ->
+        {error, _What, Message} ->
             reply_json(Req, [Message], 400)
     end,
     exit(normal).
@@ -136,7 +136,7 @@ handle_complete_join(Req) ->
     case ns_cluster:complete_join(NodeKVList) of
         {ok, _} ->
             reply_json(Req, [], 200);
-        {error, _What, Message, _Nested} ->
+        {error, _What, Message} ->
             reply_json(Req, [Message], 400)
     end,
     exit(normal).
@@ -346,8 +346,7 @@ handle_join_tail(Req, OtherScheme, OtherHost, OtherPort, OtherUser, OtherPswd,
                                                  OtherScheme),
                     ReasonStr = io_lib:format("Failed to connect to ~s. ~s",
                                               [URL, M]),
-                    {error, host_connectivity, iolist_to_binary(ReasonStr),
-                     {error, Reason}}
+                    {error, host_connectivity, iolist_to_binary(ReasonStr)}
          end,
 
     case RV of
@@ -355,7 +354,7 @@ handle_join_tail(Req, OtherScheme, OtherHost, OtherPort, OtherUser, OtherPswd,
             reply(Req, 200);
         {client_error, JSON} ->
             reply_json(Req, JSON, 400);
-        {error, _What, Message, _Nested} ->
+        {error, _What, Message} ->
             reply_json(Req, [Message], 400)
     end,
     exit(normal).
@@ -648,9 +647,9 @@ do_handle_add_node(Req, GroupUUID) ->
                 {ok, OtpNode} ->
                     ns_audit:add_node(Req, Hostname, Port, User, GroupUUID, Services, OtpNode),
                     reply_json(Req, {struct, [{otpNode, OtpNode}]}, 200);
-                {error, unknown_group, Message, _} ->
+                {error, unknown_group, Message} ->
                     reply_json(Req, [Message], 404);
-                {error, _What, Message, _Nested} ->
+                {error, _What, Message} ->
                     reply_json(Req, [Message], 400)
             end,
             %% we have to stop this process because in case of

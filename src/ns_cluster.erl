@@ -84,8 +84,9 @@ add_node_to_group(Scheme, RemoteAddr, RestPort, Auth, GroupUUID, Services) ->
     RV = gen_server:call(?MODULE, {add_node_to_group, Scheme, RemoteAddr, RestPort, Auth, GroupUUID, Services},
                          ?ADD_NODE_TIMEOUT),
     case RV of
-        {error, _What, Message, _Nested} ->
-            ?cluster_log(?NODE_JOIN_FAILED, "Failed to add node ~s:~w to cluster. ~s",
+        {error, _What, Message} ->
+            ?cluster_log(?NODE_JOIN_FAILED,
+                         "Failed to add node ~s:~w to cluster. ~s",
                          [RemoteAddr, RestPort, Message]);
         _ -> ok
     end,
@@ -98,11 +99,10 @@ engage_cluster(NodeKVList) ->
     Joinable = ns_cluster_membership:system_joinable(),
     if
         OtpNode =:= MyNode ->
-            {error, self_join,
-             <<"Joining node to itself is not allowed.">>, {self_join, MyNode}};
+            {error, self_join, <<"Joining node to itself is not allowed.">>};
         not Joinable ->
             {error, system_not_joinable,
-             <<"Node is already part of cluster.">>, system_not_joinable};
+             <<"Node is already part of cluster.">>};
         true ->
             engage_cluster_not_to_self(NodeKVList)
     end.
@@ -134,7 +134,7 @@ engage_cluster_apply_certs(NodeKVList) ->
         ClusterCA ->
             case apply_certs(ClusterCA) of
                 ok -> engage_cluster_apply_net_config(NodeKVList);
-                {error, _, _, _} = Error -> Error
+                {error, _, _} = Error -> Error
             end
     end.
 
@@ -149,20 +149,22 @@ apply_certs(ClusterCA) ->
                     ok;
                 {error, Error} ->
                     Message =
-                        iolist_to_binary(["Error applying node certificate. ",
-                                          ns_error_messages:reload_node_certificate_error(Error)]),
-                    {error, apply_cert, Message, {apply_cert, Error}}
+                        iolist_to_binary(
+                          ["Error applying node certificate. ",
+                           ns_error_messages:reload_node_certificate_error(
+                             Error)]),
+                    {error, apply_cert, Message}
             end;
         {error, Error} ->
             Msg = io_lib:format("Error applying root CA: ~p", [Error]),
-            {error, apply_cert, iolist_to_binary(Msg), {apply_cert, Error}}
+            {error, apply_cert, iolist_to_binary(Msg)}
     end.
 
 engage_cluster_apply_net_config(NodeKVList) ->
     case apply_net_config(NodeKVList) of
         ok -> call_engage_cluster(NodeKVList);
         {error, Msg} ->
-            {error, apply_net_config, Msg, apply_net_config}
+            {error, apply_net_config, Msg}
     end.
 
 apply_net_config(NodeKVList) ->
@@ -378,7 +380,7 @@ handle_call({complete_join, NodeKVList}, _From, State) ->
         %% that somebody needs to attempt to start ns_server back; usually
         %% this somebody is ns_cluster:init; so to let it do its job we need
         %% to restart ns_cluster; note that we still reply to the caller
-        {error, start_cluster_failed, _, _} ->
+        {error, start_cluster_failed, _} ->
             {stop, start_cluster_failed, RV, State};
         _ ->
             {reply, RV, State}
@@ -727,14 +729,13 @@ maybe_rename(NewAddr, UserSupplied) ->
 check_add_possible(Body) ->
     case ns_config_auth:is_system_provisioned() of
         false -> {error, system_not_provisioned,
-                  <<"Adding nodes to not provisioned nodes is not allowed.">>,
-                  system_not_provisioned};
+                  <<"Adding nodes to not provisioned nodes is not allowed.">>};
         true ->
             case rebalance:running() of
                 true ->
                     Msg = <<"Node addition is disallowed while rebalance "
                             "is in progress">>,
-                    {error, rebalance_running, Msg, rebalance_running};
+                    {error, rebalance_running, Msg};
                 false ->
                     Body()
             end
@@ -776,10 +777,10 @@ do_add_node_allowed(Scheme, RemoteAddr, RestPort, Auth, GroupUUID, Services) ->
                 ok ->
                     do_add_node_with_connectivity(Scheme, RemoteAddr, RestPort,
                                                   Auth, GroupUUID, Services);
-                {address_save_failed, Error} = Nested ->
-                    Msg = io_lib:format("Could not save address after rename: ~p",
-                                        [Error]),
-                    {error, rename_failed, iolist_to_binary(Msg), Nested}
+                {address_save_failed, Error} ->
+                    Msg = io_lib:format(
+                            "Could not save address after rename: ~p", [Error]),
+                    {error, rename_failed, iolist_to_binary(Msg)}
             end;
         {error, Reason} ->
             M = case ns_error_messages:connection_error_message(
@@ -789,8 +790,7 @@ do_add_node_allowed(Scheme, RemoteAddr, RestPort, Auth, GroupUUID, Services) ->
                 end,
             URL = menelaus_rest:rest_url(RemoteAddr, RestPort, "", Scheme),
             ReasonStr = io_lib:format("Failed to connect to ~s. ~s", [URL, M]),
-            {error, host_connectivity, iolist_to_binary(ReasonStr),
-             {error, Reason}}
+            {error, host_connectivity, iolist_to_binary(ReasonStr)}
     end.
 
 do_add_node_with_connectivity(Scheme, RemoteAddr, RestPort, Auth, GroupUUID,
@@ -824,14 +824,17 @@ do_add_node_with_connectivity(Scheme, RemoteAddr, RestPort, Auth, GroupUUID,
     ?cluster_debug("Reply from engage_cluster on ~p:~n~p",
                    [{RemoteAddr, RestPort}, sanitize_node_info(RV)]),
 
-    ExtendedRV = case RV of
-                     {client_error, [Message]} = JSONErr when is_binary(Message) ->
-                         {error, rest_error, Message, JSONErr};
-                     {client_error, _} = JSONErr ->
-                         {error, rest_error,
-                          ns_error_messages:engage_cluster_json_error(undefined), JSONErr};
-                     X -> X
-                 end,
+    ExtendedRV =
+        case RV of
+            {client_error, [Message]} when is_binary(Message) ->
+                {error, Message};
+            {client_error, _} ->
+                {error, ns_error_messages:engage_cluster_json_error(undefined)};
+            {error, _, X, _} ->
+                {error, X};
+            Other ->
+                Other
+        end,
 
     case ExtendedRV of
         {ok, {struct, NodeKVList}} ->
@@ -841,15 +844,14 @@ do_add_node_with_connectivity(Scheme, RemoteAddr, RestPort, Auth, GroupUUID,
             catch
                 exit:{unexpected_json, _Where, _Field} = Exc ->
                     JsonMsg = ns_error_messages:engage_cluster_json_error(Exc),
-                    {error, engage_cluster_bad_json, JsonMsg, Exc}
+                    {error, engage_cluster_bad_json, JsonMsg}
             end;
-        {ok, JSON} ->
+        {ok, _JSON} ->
             {error, engage_cluster_bad_json,
-             ns_error_messages:engage_cluster_json_error(undefined),
-             {struct_expected, JSON}};
-        {error, _What, Msg, _Nested} = E ->
+             ns_error_messages:engage_cluster_json_error(undefined)};
+        {error, Msg} ->
             M = iolist_to_binary([<<"Prepare join failed. ">>, Msg]),
-            {error, engage_cluster, M, E}
+            {error, engage_cluster, M}
     end.
 
 expect_json_property_base(PropName, KVList) ->
@@ -906,22 +908,20 @@ verify_otp_connectivity(OtpNode, Options) ->
                 {error, Reason} ->
                     {error, connect_node,
                      ns_error_messages:verify_otp_connectivity_connection_error(
-                       Reason, OtpNode, Host, Port),
-                     {error, Reason}}
+                       Reason, OtpNode, Host, Port)}
             end;
         {ok, Port} ->
             case check_host_port_connectivity(Host, Port, NodeAFamily) of
                 {ok, IP} -> {ok, IP};
                 {error, Reason} ->
                     {error, connect_node,
-                     ns_error_messages:verify_otp_connectivity_connection_error(Reason, OtpNode, Host, Port),
-                     {error, Reason}}
+                     ns_error_messages:verify_otp_connectivity_connection_error(
+                       Reason, OtpNode, Host, Port)}
             end;
         Error ->
             {error, connect_node,
              ns_error_messages:verify_otp_connectivity_port_error(OtpNode, Host,
-                                                                  Error),
-             {connect_node, OtpNode, Error}}
+                                                                  Error)}
     end.
 
 check_otp_tls_connectivity(Host, Port, AFamily) ->
@@ -994,16 +994,15 @@ check_can_add_node(NodeKVList) ->
         true -> case expect_json_property_binary(<<"version">>, NodeKVList) of
                     <<"1.",_/binary>> = Version ->
                         {error, incompatible_cluster_version,
-                         ns_error_messages:too_old_version_error(JoineeNode, Version),
-                         incompatible_cluster_version};
+                         ns_error_messages:too_old_version_error(JoineeNode,
+                                                                 Version)};
                     _ ->
                         ok
                 end;
-        false -> {error, incompatible_cluster_version,
-                  ns_error_messages:incompatible_cluster_version_error(MyCompatVersion,
-                                                                       JoineeClusterCompatVersion,
-                                                                       JoineeNode),
-                  {incompatible_cluster_version, MyCompatVersion, JoineeClusterCompatVersion}}
+        false ->
+            {error, incompatible_cluster_version,
+             ns_error_messages:incompatible_cluster_version_error(
+               MyCompatVersion, JoineeClusterCompatVersion, JoineeNode)}
     end.
 
 get_request_target(NodeKVList, Scheme) ->
@@ -1048,19 +1047,21 @@ do_add_node_engaged_inner(ChronicleInfo, {Scheme, Hostname, Port} = Target,
                    [Target, RV]),
 
     ExtendedRV = case RV of
-                     {client_error, [Message]} = JSONErr when is_binary(Message) ->
-                         {error, rest_error, Message, JSONErr};
-                     {client_error, _} = JSONErr ->
-                         {error, rest_error,
-                          <<"REST call returned invalid json.">>, JSONErr};
-                     X -> X
+                     {client_error, [Message]} when is_binary(Message) ->
+                         {error, Message};
+                     {client_error, _} ->
+                         {error, <<"REST call returned invalid json.">>};
+                     {error, _, X, _} ->
+                         {error, X};
+                     Other ->
+                         Other
                  end,
 
     case ExtendedRV of
         {ok, _} -> {ok, OtpNode};
-        {error, _Where, Msg, _Nested} = E ->
+        {error, Msg} ->
             M = iolist_to_binary([<<"Join completion call failed. ">>, Msg]),
-            {error, complete_join, M, E}
+            {error, complete_join, M}
     end.
 
 node_add_transaction(Node, GroupUUID, Services, Body) ->
@@ -1073,11 +1074,11 @@ node_add_transaction(Node, GroupUUID, Services, Body) ->
         group_not_found ->
             M = iolist_to_binary([<<"Could not find group with uuid: ">>,
                                   GroupUUID]),
-            {error, unknown_group, M, {unknown_group, GroupUUID}};
+            {error, unknown_group, M};
         node_present ->
             M = iolist_to_binary([<<"Node already exists in cluster: ">>,
                                   atom_to_list(Node)]),
-            {error, node_present, M, {node_present, Node}}
+            {error, node_present, M}
     end.
 
 node_add_transaction_finish(Node, GroupUUID, ChronicleInfo, Body) ->
@@ -1105,8 +1106,7 @@ do_engage_cluster(NodeKVList) ->
     catch
         exit:{unexpected_json, _, _} = Exc ->
             {error, unexpected_json,
-             ns_error_messages:engage_cluster_json_error(Exc),
-             Exc}
+             ns_error_messages:engage_cluster_json_error(Exc)}
     end.
 
 do_engage_cluster_check_compatibility(NodeKVList) ->
@@ -1116,8 +1116,7 @@ do_engage_cluster_check_compatibility(NodeKVList) ->
     case Version of
         <<"1.",_/binary>> ->
             {error, incompatible_cluster_version,
-             ns_error_messages:too_old_version_error(Node, Version),
-             incompatible_cluster_version};
+             ns_error_messages:too_old_version_error(Node, Version)};
         _ ->
             do_engage_cluster_check_compat_version(Node, Version, NodeKVList)
     end.
@@ -1136,12 +1135,10 @@ do_engage_cluster_check_compat_version(Node, Version, NodeKVList) ->
     if
         ActualCompatibility < MinSupportedCompatibility ->
             {error, incompatible_cluster_version,
-             ns_error_messages:too_old_version_error(Node, Version),
-             incompatible_cluster_version};
+             ns_error_messages:too_old_version_error(Node, Version)};
         IsPreviewCluster and (WantedCompatibility > ActualCompatibility) ->
             {error, incompatible_cluster_version,
-             ns_error_messages:preview_cluster_join_error(),
-             incompatible_cluster_version};
+             ns_error_messages:preview_cluster_join_error()};
         true ->
             do_engage_cluster_check_services(NodeKVList)
     end.
@@ -1203,7 +1200,7 @@ do_engage_cluster_check_services(NodeKVList) ->
                 [] ->
                     case enforce_topology_limitation(Services) of
                         {error, Msg} ->
-                            {error, incompatible_services, Msg, incompatible_services};
+                            {error, incompatible_services, Msg};
                         ok ->
                             do_engage_cluster_inner(NodeKVList, Services)
                     end;
@@ -1216,8 +1213,7 @@ do_engage_cluster_check_services(NodeKVList) ->
 
 unsupported_services_error(Supported, Requested) ->
     {error, incompatible_services,
-     ns_error_messages:unsupported_services_error(Supported, Requested),
-     incompatible_services}.
+     ns_error_messages:unsupported_services_error(Supported, Requested)}.
 
 do_engage_cluster_inner(NodeKVList, Services) ->
     OtpNode = expect_json_property_atom(<<"otpNode">>, NodeKVList),
@@ -1250,15 +1246,15 @@ do_engage_cluster_inner_check_address(Address, true) ->
             ok;
         {ErrorType, _} = Error ->
             Msg = ns_error_messages:address_check_error(Address, Error),
-            {error, ErrorType, Msg, Error}
+            {error, ErrorType, Msg}
     end.
 
 do_engage_cluster_inner_tail(NodeKVList, Address, UserSupplied, Services) ->
     case do_change_address(Address, UserSupplied) of
-        {address_save_failed, Error1} = Nested ->
+        {address_save_failed, Error1} ->
             Msg = io_lib:format("Could not save address after rename: ~p",
                                 [Error1]),
-            {error, rename_failed, iolist_to_binary(Msg), Nested};
+            {error, rename_failed, iolist_to_binary(Msg)};
         _ ->
             %% we re-init node's cookie to support joining cloned
             %% nodes. If we don't do that cluster will be able to
@@ -1293,11 +1289,9 @@ check_memory_size(NodeKVList, Services) ->
         ok ->
             ok;
         {error, {total_quota_too_high, _, TotalQuota, MaxQuota}} ->
-            Error = {error, bad_memory_size, [{max, MaxQuota},
-                                              {totalQuota, TotalQuota}]},
             {error, bad_memory_size,
-             ns_error_messages:bad_memory_size_error(Services, TotalQuota, MaxQuota),
-             Error}
+             ns_error_messages:bad_memory_size_error(Services, TotalQuota,
+                                                     MaxQuota)}
     end.
 
 check_can_join_to(NodeKVList, Services) ->
@@ -1314,7 +1308,8 @@ get_chronicle_info(KVList) ->
             binary_to_term(base64:decode(Binary))
     end.
 
--spec do_complete_join([{binary(), term()}]) -> {ok, ok} | {error, atom(), binary(), term()}.
+-spec do_complete_join([{binary(), term()}]) -> {ok, ok} | {error, atom(),
+                                                            binary()}.
 do_complete_join(NodeKVList) ->
     try
         OtpNode = expect_json_property_atom(<<"otpNode">>, NodeKVList),
@@ -1327,17 +1322,16 @@ do_complete_join(NodeKVList) ->
                 case ns_cluster_membership:system_joinable() andalso MyNode =:= node() of
                     false ->
                         {error, join_race_detected,
-                         <<"Node is already part of cluster.">>, system_not_joinable};
+                         <<"Node is already part of cluster.">>};
                     true ->
                         perform_actual_join(
                           OtpNode, OtpCookie, get_chronicle_info(NodeKVList))
                 end;
             Error -> Error
         end
-    catch exit:{unexpected_json, _Where, _Field} = Exc ->
+    catch exit:{unexpected_json, _Where, _Field} ->
             {error, engage_cluster_bad_json,
-             ns_error_messages:engage_cluster_json_error(undefined),
-             Exc}
+             ns_error_messages:engage_cluster_json_error(undefined)}
     end.
 
 
@@ -1388,10 +1382,10 @@ perform_actual_join(RemoteNode, NewCookie, ChronicleInfo) ->
     ?cluster_debug("Join status: ~p, starting ns_server_cluster back",
                    [Status]),
     Status2 = case ns_server_cluster_sup:start_ns_server() of
-                  {error, _} = E ->
+                  {error, _} ->
                       {error, start_cluster_failed,
-                       <<"Failed to start ns_server cluster processes back. Logs might have more details.">>,
-                       E};
+                       <<"Failed to start ns_server cluster processes back. "
+                         "Logs might have more details.">>};
                   {ok, _} ->
                       misc:remove_marker(start_marker_path()),
                       Status
