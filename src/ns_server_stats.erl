@@ -420,21 +420,6 @@ do_extract_string(Bin, Pos) ->
 proc_stat_name(Name, Stat) ->
     <<Name/binary, $/, (atom_to_binary(Stat, latin1))/binary>>.
 
-add_ets_stats(Stats) ->
-    [{_, NowRestLeaves}] = ets:lookup(ns_server_system_stats,
-                                      {request_leaves, rest}),
-
-    [{_, NowHibernateLeaves}] = ets:lookup(ns_server_system_stats,
-                                           {request_leaves, hibernate}),
-    [{_, NowHibernateEnters}] = ets:lookup(ns_server_system_stats,
-                                           {request_enters, hibernate}),
-    [{_, ODPReportFailed}] = ets:lookup(ns_server_system_stats,
-                                        odp_report_failed),
-    lists:umerge(Stats, lists:sort([{rest_requests, NowRestLeaves},
-                                    {hibernated, NowHibernateEnters},
-                                    {hibernated_waked, NowHibernateLeaves},
-                                    {odp_report_failed, ODPReportFailed}])).
-
 log_system_stats(TS) ->
     NSServerStats = lists:sort(ets:tab2list(ns_server_system_stats)),
     NSCouchDbStats = ns_couchdb_api:fetch_stats(),
@@ -457,8 +442,6 @@ process_stats(TS, Binary, PrevSample, State) ->
             undefined ->
                 [];
             _ ->
-                Stats = lists:sort(Stats0),
-                Stats2 = add_ets_stats(Stats),
                 case ets:update_counter(ns_server_system_stats, log_counter,
                                         {2, 1, ?ETS_LOG_INTVL, 0}) of
                     0 ->
@@ -466,7 +449,7 @@ process_stats(TS, Binary, PrevSample, State) ->
                     _ ->
                         ok
                 end,
-                [{"@system", Stats2}]
+                [{"@system", Stats0}]
         end ++
         case ProcStats of
             undefined ->

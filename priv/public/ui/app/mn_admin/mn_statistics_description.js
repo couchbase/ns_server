@@ -312,7 +312,7 @@ function getStatAdditionalConfig(statName) {
   case "@query.n1ql_requests":
   case "@query.n1ql_selects":
   case "@query.n1ql_warnings":
-  case "@system.sys_rest_requests":
+  case "@system.cm_rest_request_leaves_total":
     return {applyFunctions: ["irate"]};
 
   case "@query.n1ql_requests_1000ms":
@@ -500,7 +500,7 @@ function get70Mapping() {
     "@system.sys_hibernated_requests": "@system.hibernated_requests",
     "@system.sys_hibernated_waked": "@system.hibernated_waked",
     "@system.sys_mem_actual_free": "@system.mem_actual_free",
-    "@system.sys_rest_requests": "@system.rest_requests",
+    "@system.cm_rest_request_leaves_total": "@system.rest_requests",
     "@system.sys_swap_used": "@system.swap_used",
 
     "@cbas.cbas_disk_used_bytes_total": "@cbas.cbas_disk_used",

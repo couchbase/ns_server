@@ -41,21 +41,26 @@ request(Type, Body, RejectBody) ->
         {ok, ThrottlerPid} ->
             do_request(Type, Body, ThrottlerPid);
         {reject, Error} ->
-            ns_server_stats:increment_counter({Type, Error}, 1),
+            TypeBin = atom_to_binary(Type, latin1),
+            ns_server_stats:notify_counter(
+              {<<TypeBin/binary, "_rejects">>, [{error, Error}]}),
             RejectBody(Error, describe_error(Error))
     end.
 
 hibernate(Req, M, F, A) ->
+    ns_server_stats:notify_counter(<<"request_hibernates">>),
     gen_server:cast(?MODULE, {note_hibernate, self()}),
     menelaus_util:hibernate(Req, ?MODULE, unhibernate_trampoline, [M, F, A]).
 
 unhibernate_trampoline(M, F, A) ->
+    ns_server_stats:notify_counter(<<"request_unhibernates">>),
     gen_server:cast(?MODULE, {note_unhibernate, self()}),
     erlang:apply(M, F, A).
 
 do_request(Type, Body, ThrottlerPid) ->
     try
-        ns_server_stats:increment_counter({request_enters, Type}, 1),
+        Counter = <<(atom_to_binary(Type, latin1))/binary, "_request_enters">>,
+        ns_server_stats:notify_counter(Counter),
         Body()
     after
         note_request_done(Type, ThrottlerPid)
@@ -97,15 +102,14 @@ handle_call(Request, _From, State) ->
     {reply, unhandled, State}.
 
 handle_cast({note_hibernate, Pid}, State) ->
-    ns_server_stats:increment_counter({request_enters, hibernate}, 1),
     true = ets:insert_new(?HIBERNATE_TABLE, {Pid, true}),
     {noreply, State};
 handle_cast({note_unhibernate, Pid}, State) ->
-    ns_server_stats:increment_counter({request_leaves, hibernate}, 1),
     true = ets:delete(?HIBERNATE_TABLE, Pid),
     {noreply, State};
 handle_cast({note_request_done, Pid, Type}, State) ->
-    ns_server_stats:increment_counter({request_leaves, Type}, 1),
+    TypeBin = atom_to_binary(Type, latin1),
+    ns_server_stats:notify_counter(<<TypeBin/binary, "_request_leaves">>),
     Count = ets:update_counter(?TABLE, Type, -1),
     true = (Count >= 0),
 
@@ -125,10 +129,11 @@ handle_info({'DOWN', MRef, process, Pid, _Reason}, State) ->
             ok;
         _ ->
             ets:delete(?HIBERNATE_TABLE, Pid),
-            ns_server_stats:increment_counter({request_leaves, hibernate}, 1)
+            ns_server_stats:notify_counter(<<"request_unhibernates">>)
     end,
 
-    ns_server_stats:increment_counter({request_leaves, Type}, 1),
+    TypeBin = atom_to_binary(Type, latin1),
+    ns_server_stats:notify_counter(<<TypeBin/binary, "_request_leaves">>),
     Count = ets:update_counter(?TABLE, Type, -1),
     true = (Count >= 0),
 
