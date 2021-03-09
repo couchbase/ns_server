@@ -1298,9 +1298,15 @@ run_decimate_stats(Levels, Settings) ->
     ScrapeInterval = proplists:get_value(scrape_interval, Settings),
     Deletions = decimate_stats(Levels, LastDecimationTime, Now, ScrapeInterval),
 
+    %% In order to avoid spamming the logs we'll log one message per level
+    report_decimation_summary(Deletions),
+
+    %% Only low-cardinality stats are decimated.
+    MatchPatterns = proplists:get_value(decimation_match_patterns, Settings),
+
     lists:map(
-      fun ({Coarseness, StartTime, EndTime}) ->
-              delete_stats(Coarseness, StartTime, EndTime, Settings)
+      fun ({_Coarseness, StartTime, EndTime}) ->
+              delete_series(MatchPatterns, StartTime, EndTime, 30000, Settings)
       end, Deletions),
 
     ns_config:set({node, node(), stats_last_decimation_time}, Now),
@@ -1308,19 +1314,46 @@ run_decimate_stats(Levels, Settings) ->
     %% Let caller know if any deletions were done
     Deletions =/= [].
 
-%% Do the actual deletion of the stats
-delete_stats(Coarseness, StartTime, EndTime, Settings) ->
-    %% Only low-cardinality stats are decimated.
-    MatchPatterns = proplists:get_value(decimation_match_patterns, Settings),
+report_decimation_summary(Deletions) ->
+    Summary = build_decimation_summary(Deletions),
 
-    ?log_debug("Deleting '~p' level stats from ~p (~p) to ~p (~p)",
-               [Coarseness,
-                calendar:system_time_to_rfc3339(StartTime, [{offset, 0}]),
-                StartTime,
-                calendar:system_time_to_rfc3339(EndTime, [{offset, 0}]),
-                EndTime]),
+    lists:map(
+      fun ({Coarseness, StartTime, EndTime, Count}) ->
+              ?log_debug("Decimating ~p '~p' level intervals from ~p (~p) to "
+                         "~p (~p)",
+                         [Count, Coarseness,
+                          calendar:system_time_to_rfc3339(StartTime,
+                                                          [{offset, 0}]),
+                          StartTime,
+                          calendar:system_time_to_rfc3339(EndTime,
+                                                          [{offset, 0}]),
+                          EndTime])
+      end, Summary).
 
-    delete_series(MatchPatterns, StartTime, EndTime, 30000, Settings).
+%% The SortedDeletions are grouped into levels by coarseness. Within each
+%% group/level the intervals are sorted by time in ascending order.
+build_decimation_summary(SortedDeletions) ->
+    [First | Rest0] = SortedDeletions,
+    %% Fake last level to emit entry for "real" last level
+    Rest = lists:append(Rest0, [{last, 0, 0}]),
+
+    {{_, _, _}, _, Summary} =
+        lists:foldl(
+          fun ({Coarseness, _Start, End},
+               {{Coarseness, PriorStart, _PriorEnd}, PriorCount, Condensed}) ->
+                  %% Same level, just update the end as times are ascending
+                  %% and the count for this level
+                  {{Coarseness, PriorStart, End}, PriorCount + 1, Condensed};
+              ({Coarseness, Start, End},
+               {{PriorCoarseness, PriorStart, PriorEnd},
+                PriorCount, Condensed}) ->
+                  %% Level changed, add the prior level's info
+                  NewCondensed = [{PriorCoarseness, PriorStart, PriorEnd,
+                                   PriorCount}
+                                  | Condensed],
+                  {{Coarseness, Start, End}, 1, NewCondensed}
+          end, {First, 1, []}, Rest),
+    Summary.
 
 run_truncate_stats(Settings) ->
     Now = os:system_time(seconds),
@@ -1978,5 +2011,26 @@ maybe_adjust_settings_test() ->
     ExpectedSettings2 = [{decimation_defs, ExpectedLevels2},
                          {scrape_interval, 2 * 60 + 1}],
     ?assertEqual(ExpectedSettings2, maybe_adjust_settings(Settings2)).
+
+%% Test condensing the level information which is logged into a single
+%% entry per level so as to not spam the logs.
+build_decimation_summary_test() ->
+   Deletions = [{small, 18, 44},
+                {small, 50, 77},
+                {small, 99, 111},
+                {medium, 12, 22},
+                {medium, 31, 34},
+                {medium, 41, 64},
+                {medium, 64, 1020},
+                {medium, 1111, 3456},
+                {medium, 7070, 123456},
+                {large, 10, 30},
+                {large, 55, 70},
+                {large, 88, 104}],
+   Expected = [{large, 10, 104, 3},
+               {medium, 12, 123456, 6},
+               {small, 18, 111, 3}],
+   Condensed = build_decimation_summary(Deletions),
+   ?assertEqual(Expected, Condensed).
 
 -endif.
