@@ -332,20 +332,15 @@ verify_report_long_call(StartTS, ActualStartTS, State, Msg, RV) ->
         EndTS = os:timestamp(),
         Diff = timer:now_diff(EndTS, ActualStartTS),
         QDiff = timer:now_diff(EndTS, StartTS),
-        ServiceName = "ns_memcached-" ++ State#state.bucket,
-        (catch
-             begin
-                 ns_server_stats:increment_counter({ServiceName, call_time}, Diff),
-                 ns_server_stats:increment_counter({ServiceName, q_call_time}, QDiff),
-                 ns_server_stats:increment_counter({ServiceName, calls}, 1)
-             end),
+        Bucket = State#state.bucket,
+        ns_server_stats:notify_histogram(
+          {<<"memcached_call_time">>, [{bucket, Bucket}]},
+          Diff div 1000),
+        ns_server_stats:notify_histogram(
+          {<<"memcached_q_call_time">>, [{bucket, Bucket}]},
+          QDiff div 1000),
         if
             Diff > ?SLOW_CALL_THRESHOLD_MICROS ->
-                (catch
-                     begin
-                         ns_server_stats:increment_counter({ServiceName, long_call_time}, Diff),
-                         ns_server_stats:increment_counter({ServiceName, long_calls}, 1)
-                     end),
                 ?log_debug("call ~p took too long: ~p us", [Msg, Diff]);
             true ->
                 ok
@@ -887,7 +882,7 @@ active_buckets() ->
 -spec warmed(node(), bucket_name(), pos_integer() | infinity) -> boolean().
 warmed(Node, Bucket, Timeout) ->
     try
-        do_call({server(Bucket), Node}, warmed, Timeout)
+        do_call({server(Bucket), Node}, Bucket, warmed, Timeout)
     catch
         _:_ ->
             false
@@ -919,28 +914,28 @@ warmed_buckets(Timeout) ->
 %% @doc Send flush command to specified bucket
 -spec flush(bucket_name()) -> ok.
 flush(Bucket) ->
-    do_call({server(Bucket), node()}, flush, ?TIMEOUT_VERY_HEAVY).
+    do_call({server(Bucket), node()}, Bucket, flush, ?TIMEOUT_VERY_HEAVY).
 
 
 %% @doc send an add command to memcached instance
 -spec add(bucket_name(), binary(), integer(), integer(), binary()) ->
                  {ok, #mc_header{}, #mc_entry{}, any()}.
 add(Bucket, Key, CollectionsUid, VBucket, Value) ->
-    do_call(server(Bucket),
+    do_call(server(Bucket), Bucket,
             {add, Key, CollectionsUid, VBucket, Value}, ?TIMEOUT_HEAVY).
 
 %% @doc send get command to memcached instance
 -spec get(bucket_name(), binary(), undefined | integer(), integer()) ->
                  {ok, #mc_header{}, #mc_entry{}, any()}.
 get(Bucket, Key, CollectionsUid, VBucket) ->
-    do_call(server(Bucket),
+    do_call(server(Bucket), Bucket,
             {get, Key, CollectionsUid, VBucket}, ?TIMEOUT_HEAVY).
 
 %% @doc send get_from_replica command to memcached instance. for testing only
 -spec get_from_replica(bucket_name(), binary(), integer(), integer()) ->
                               {ok, #mc_header{}, #mc_entry{}, any()}.
 get_from_replica(Bucket, Key, CollectionsUid, VBucket) ->
-    do_call(server(Bucket),
+    do_call(server(Bucket), Bucket,
             {get_from_replica, Key, CollectionsUid, VBucket}, ?TIMEOUT_HEAVY).
 
 %% @doc send an get metadata command to memcached
@@ -977,7 +972,7 @@ get_xattrs(Bucket, Key, CollectionsUid, VBucket, Permissions) ->
                     {ok, #mc_header{}, #mc_entry{}, any()} |
                     {memcached_error, any(), any()}.
 delete(Bucket, Key, CollectionsUid, VBucket) ->
-    do_call(server(Bucket),
+    do_call(server(Bucket), Bucket,
             {delete, Key, CollectionsUid, VBucket}, ?TIMEOUT_HEAVY).
 
 %% @doc send a set command to memcached instance
@@ -986,7 +981,7 @@ delete(Bucket, Key, CollectionsUid, VBucket) ->
                  {ok, #mc_header{}, #mc_entry{}, any()} |
                  {memcached_error, any(), any()}.
 set(Bucket, Key, CollectionsUid, VBucket, Value, Flags) ->
-    do_call(server(Bucket),
+    do_call(server(Bucket), Bucket,
             {set, Key, CollectionsUid, VBucket, Value, Flags}, ?TIMEOUT_HEAVY).
 
 -spec update_with_rev(Bucket::bucket_name(), VBucket::vbucket_id(),
@@ -1006,7 +1001,8 @@ update_with_rev(Bucket, VBucket, Id, Value, Rev, Deleted, LocalCAS) ->
 -spec delete_vbucket(bucket_name(), vbucket_id()) ->
                             ok | mc_error().
 delete_vbucket(Bucket, VBucket) ->
-    do_call(server(Bucket), {delete_vbucket, VBucket}, ?TIMEOUT_VERY_HEAVY).
+    do_call(server(Bucket), Bucket,
+            {delete_vbucket, VBucket}, ?TIMEOUT_VERY_HEAVY).
 
 -spec delete_vbuckets(bucket_name(), [vbucket_id()]) ->
     ok | {errors, [{vbucket_id(), mc_error()}]} | {error, any()}.
@@ -1015,14 +1011,14 @@ delete_vbuckets(Bucket, VBuckets) ->
         [] ->
             ok;
         _ ->
-            do_call(server(Bucket), {delete_vbuckets, VBuckets},
+            do_call(server(Bucket), Bucket, {delete_vbuckets, VBuckets},
                     ?TIMEOUT_VERY_HEAVY)
     end.
 
 -spec sync_delete_vbucket(bucket_name(), vbucket_id()) ->
                                  ok | mc_error().
 sync_delete_vbucket(Bucket, VBucket) ->
-    do_call(server(Bucket), {sync_delete_vbucket, VBucket},
+    do_call(server(Bucket), Bucket, {sync_delete_vbucket, VBucket},
             infinity).
 
 -spec get_single_vbucket_details_stats(bucket_name(), vbucket_id(),
@@ -1054,8 +1050,8 @@ get_vbucket_details_stats(Bucket, ReqdKeys) ->
                                 [nonempty_string()]) ->
                                        {ok, dict:dict()} | mc_error().
 get_vbucket_details_stats(Bucket, VBucket, ReqdKeys) ->
-    do_call(server(Bucket), {get_vbucket_details_stats, VBucket, ReqdKeys},
-            ?TIMEOUT).
+    do_call(server(Bucket), Bucket,
+            {get_vbucket_details_stats, VBucket, ReqdKeys}, ?TIMEOUT).
 
 -spec host_ports(node(), any()) ->
                         {nonempty_string(),
@@ -1089,17 +1085,17 @@ list_vbuckets(Bucket) ->
 -spec list_vbuckets(node(), bucket_name()) ->
                            {ok, [{vbucket_id(), vbucket_state()}]} | mc_error().
 list_vbuckets(Node, Bucket) ->
-    do_call({server(Bucket), Node}, list_vbuckets, ?TIMEOUT).
+    do_call({server(Bucket), Node}, Bucket, list_vbuckets, ?TIMEOUT).
 
 -spec local_connected_and_list_vbuckets(bucket_name()) -> warming_up | {ok, [{vbucket_id(), vbucket_state()}]}.
 local_connected_and_list_vbuckets(Bucket) ->
-    do_call(server(Bucket), connected_and_list_vbuckets, ?TIMEOUT).
+    do_call(server(Bucket), Bucket, connected_and_list_vbuckets, ?TIMEOUT).
 
 -spec local_connected_and_list_vbucket_details(bucket_name(), [string()]) ->
                                                       warming_up |
                                                       {ok, dict:dict()}.
 local_connected_and_list_vbucket_details(Bucket, Keys) ->
-    do_call(server(Bucket), {connected_and_list_vbucket_details, Keys},
+    do_call(server(Bucket), Bucket, {connected_and_list_vbucket_details, Keys},
             ?TIMEOUT).
 
 
@@ -1109,7 +1105,7 @@ set_vbucket(Bucket, VBucket, VBState) ->
 -spec set_vbucket(bucket_name(), vbucket_id(), vbucket_state(),
                   [[node()]] | undefined) -> ok | mc_error().
 set_vbucket(Bucket, VBucket, VBState, Topology) ->
-    do_call(server(Bucket), {set_vbucket, VBucket, VBState, Topology},
+    do_call(server(Bucket), Bucket, {set_vbucket, VBucket, VBState, Topology},
             ?TIMEOUT_HEAVY).
 
 -spec set_vbuckets(bucket_name(),
@@ -1123,7 +1119,8 @@ set_vbuckets(Bucket, ToSet) ->
         [] ->
             ok;
         _ ->
-            do_call(server(Bucket), {set_vbuckets, ToSet}, ?TIMEOUT_VERY_HEAVY)
+            do_call(server(Bucket), Bucket,
+                    {set_vbuckets, ToSet}, ?TIMEOUT_VERY_HEAVY)
     end.
 
 -spec stats(bucket_name(), binary() | string()) ->
@@ -1138,25 +1135,26 @@ stats(Bucket, Key) ->
 
 -spec warmup_stats(bucket_name()) -> [{binary(), binary()}].
 warmup_stats(Bucket) ->
-    do_call(server(Bucket), warmup_stats, ?TIMEOUT).
+    do_call(server(Bucket), Bucket, warmup_stats, ?TIMEOUT).
 
 -spec topkeys(bucket_name()) ->
                      {ok, [{nonempty_string(), [{atom(), integer()}]}]} |
                      mc_error().
 topkeys(Bucket) ->
-    do_call(server(Bucket), topkeys, ?TIMEOUT).
+    do_call(server(Bucket), Bucket, topkeys, ?TIMEOUT).
 
 
 -spec raw_stats(node(), bucket_name(), binary(), fun(), any()) -> {ok, any()} | {exception, any()} | {error, any()}.
 raw_stats(Node, Bucket, SubStats, Fn, FnState) ->
-    do_call({server(Bucket), Node},
+    do_call({server(Bucket), Node}, Bucket,
             {raw_stats, SubStats, Fn, FnState}, ?TIMEOUT).
 
 
 -spec get_vbucket_high_seqno(bucket_name(), vbucket_id()) ->
                                     {ok, {undefined | seq_no()}}.
 get_vbucket_high_seqno(Bucket, VBucketId) ->
-    do_call(server(Bucket), {get_vbucket_high_seqno, VBucketId}, ?TIMEOUT).
+    do_call(server(Bucket), Bucket,
+            {get_vbucket_high_seqno, VBucketId}, ?TIMEOUT).
 
 -spec get_seqno_stats(ext_bucket_name(), vbucket_id() | undefined) ->
                              [{binary(), binary()}].
@@ -1355,7 +1353,7 @@ has_started_inner({ok, WarmupStats}) ->
             false
     end.
 
-do_call(Server, Msg, Timeout) ->
+do_call(Server, Bucket, Msg, Timeout) ->
     StartTS = os:timestamp(),
     try
         gen_server:call(Server, Msg, Timeout)
@@ -1363,14 +1361,9 @@ do_call(Server, Msg, Timeout) ->
         try
             EndTS = os:timestamp(),
             Diff = timer:now_diff(EndTS, StartTS),
-            Service = case Server of
-                          _ when is_atom(Server) ->
-                              atom_to_list(Server);
-                          _ ->
-                              "unknown"
-                      end,
-            ns_server_stats:increment_counter({Service, e2e_call_time}, Diff),
-            ns_server_stats:increment_counter({Service, e2e_calls}, 1)
+            ns_server_stats:notify_histogram(
+              {<<"memcached_e2e_call_time">>, [{bucket, Bucket}]},
+              Diff div 1000)
         catch T:E:S ->
                 ?log_debug("failed to measure ns_memcached call:~n~p",
                            [{T, E, S}])
@@ -1402,23 +1395,25 @@ compact_vbucket(Bucket, VBucket, {PurgeBeforeTS, PurgeBeforeSeqNo, DropDeletes})
 -spec get_dcp_docs_estimate(bucket_name(), vbucket_id(), string()) ->
                                    {ok, {non_neg_integer(), non_neg_integer(), binary()}}.
 get_dcp_docs_estimate(Bucket, VBucketId, ConnName) ->
-    do_call(server(Bucket), {get_dcp_docs_estimate, VBucketId, ConnName}, ?TIMEOUT).
+    do_call(server(Bucket), Bucket,
+            {get_dcp_docs_estimate, VBucketId, ConnName}, ?TIMEOUT).
 
 -spec get_mass_dcp_docs_estimate(bucket_name(), [vbucket_id()]) ->
                                         {ok, [{non_neg_integer(), non_neg_integer(), binary()}]}.
 get_mass_dcp_docs_estimate(Bucket, VBuckets) ->
-    do_call(server(Bucket), {get_mass_dcp_docs_estimate, VBuckets}, ?TIMEOUT_VERY_HEAVY).
+    do_call(server(Bucket), Bucket,
+            {get_mass_dcp_docs_estimate, VBuckets}, ?TIMEOUT_VERY_HEAVY).
 
 -spec set_cluster_config(bucket_name(), integer(), binary()) -> ok | mc_error().
 set_cluster_config(Bucket, Rev, Blob) ->
-    do_call(server(Bucket), {set_cluster_config, Rev, Blob}, ?TIMEOUT).
+    do_call(server(Bucket), Bucket, {set_cluster_config, Rev, Blob}, ?TIMEOUT).
 
 %% The function might be rpc'ed beginning from 6.5
 get_random_key(Bucket) ->
     get_random_key(Bucket, undefined).
 
 get_random_key(Bucket, CollectionsUid) ->
-    do_call(server(Bucket), {get_random_key, CollectionsUid}, ?TIMEOUT).
+    do_call(server(Bucket), Bucket, {get_random_key, CollectionsUid}, ?TIMEOUT).
 
 get_ep_startup_time_for_xdcr(Bucket) ->
     perform_very_long_call(
@@ -1482,7 +1477,7 @@ get_keys(Bucket, NodeVBuckets, Params) ->
 do_get_keys(Bucket, NodeVBuckets, Params) ->
     misc:parallel_map(
       fun ({Node, VBuckets}) ->
-              try do_call({server(Bucket), Node},
+              try do_call({server(Bucket), Node}, Bucket,
                           {get_keys, VBuckets, Params}, infinity) of
                   unhandled ->
                       {Node, {ok, []}};
