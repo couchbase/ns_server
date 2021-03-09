@@ -195,20 +195,27 @@ handle_info(arm_janitor_timer, State) ->
 
 handle_info(janitor, #state{self_ref = SelfRef} = State) ->
     CleanState = cancel_janitor_timer(State),
-    {ok, Lock} = chronicle:acquire_lock(),
     NewState =
-        case transaction([], undefined, Lock, SelfRef,
-                         fun (_) -> {abort, clean} end) of
-            {ok, _, {need_recovery, RecoveryOper}} ->
-                ?log_debug("Janitor found that recovery is needed for "
-                           "operation ~p", [RecoveryOper]),
-                ok = handle_oper(RecoveryOper, Lock, SelfRef),
-                CleanState;
-            unfinished_failover ->
-                ?log_debug("Try janitor later."),
-                arm_janitor_timer(CleanState);
-            clean ->
-                CleanState
+        try chronicle:acquire_lock() of
+            {ok, Lock} ->
+                case transaction([], undefined, Lock, SelfRef,
+                                 fun (_) -> {abort, clean} end) of
+                    {ok, _, {need_recovery, RecoveryOper}} ->
+                        ?log_debug("Janitor found that recovery is needed for "
+                                   "operation ~p", [RecoveryOper]),
+                        ok = handle_oper(RecoveryOper, Lock, SelfRef),
+                        CleanState;
+                    unfinished_failover ->
+                        ?log_debug("Try janitor later."),
+                        arm_janitor_timer(CleanState);
+                    clean ->
+                        CleanState
+                end
+        catch Type:What ->
+                ?log_debug(
+                   "Cannot acquire lock due to ~p:~p. Try janitor later.",
+                   [Type, What]),
+                arm_janitor_timer(CleanState)
         end,
     {noreply, NewState};
 
