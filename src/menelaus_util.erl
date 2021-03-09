@@ -232,6 +232,7 @@ handle_request(Req, Fun) ->
     end.
 
 log_web_hit(Peer, Req, Resp) ->
+    catch count_web_hit(Req, Resp),
     Level = case menelaus_auth:get_user_id(Req) of
                 [$@ | _] ->
                     debug;
@@ -244,6 +245,25 @@ log_web_hit(Peer, Req, Resp) ->
         error:undef ->
             ok
     end.
+
+count_web_hit(Req, Resp) ->
+    User = case menelaus_auth:get_user_id(Req) of
+               "@" ++ _ = N -> N;
+               "" -> "-";
+               _ -> "other" %% We should not disclose real usernames in stats
+           end,
+    Scheme = mochiweb_request:get(scheme, Req),
+    Method = mochiweb_request:get(method, Req),
+    Path = case string:lexemes(mochiweb_request:get(path, Req), "/") of
+                [] -> "/";
+                [P | _] -> "/" ++ P ++ "/*"
+           end,
+    Code = mochiweb_response:get(code, Resp),
+    ResponseTime = menelaus_web:response_time_ms(Req),
+    ns_server_stats:notify_counter(
+      {<<"http_requests">>, [{scheme, Scheme}, {method, Method}, {path, Path},
+                             {user, User}, {code, Code}]}),
+    ns_server_stats:notify_histogram(<<"http_requests">>, ResponseTime).
 
 reply_ok(Req, ContentType, Body) ->
     reply_ok(Req, ContentType, Body, []).

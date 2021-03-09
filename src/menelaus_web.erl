@@ -35,7 +35,8 @@
          webconfig/1,
          get_uuid/0,
          get_addr/2,
-         init/1]).
+         init/1,
+         response_time_ms/1]).
 
 -export([ns_log_cat/1, ns_log_code_string/1, ns_log_prepare_message/2]).
 
@@ -1268,3 +1269,9 @@ drop_rest_prefix("/" ++ Path) ->
 
 drop_prefix("/" ++ Path) ->
     [$/ | nth_path_tail(Path, 1)].
+
+response_time_ms(Req) ->
+    Now = erlang:monotonic_time(millisecond),
+    Time0 = mochiweb_request:get_header_value("menelaus-start-time", Req),
+    Time = list_to_integer(Time0),
+    Now - Time.

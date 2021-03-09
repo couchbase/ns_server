@@ -111,10 +111,7 @@ get_size(Resp) ->
     end.
 
 add_response_time(Req) ->
-    Now = erlang:monotonic_time(millisecond),
-    Time0 = mochiweb_request:get_header_value("menelaus-start-time", Req),
-    Time = list_to_integer(Time0),
-    io_lib:format("~p", [Now - Time]).
+    io_lib:format("~p", [menelaus_web:response_time_ms(Req)]).
 
 get_auth_user(Req) ->
     User =
