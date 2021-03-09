@@ -793,6 +793,29 @@ do_add_node_allowed(Scheme, RemoteAddr, RestPort, Auth, GroupUUID, Services) ->
             {error, host_connectivity, iolist_to_binary(ReasonStr)}
     end.
 
+post_json(Target, Auth, Options, Stuff) ->
+    ?cluster_debug("Posting the following to ~p:~n~p",
+                   [Target, {sanitize_node_info(Stuff)}]),
+    Post = list_to_tuple(Target ++
+                             ["application/json", mochijson2:encode(Stuff)]),
+    RV = menelaus_rest:json_request_hilevel(post, Post, Auth, Options),
+    ?cluster_debug("Reply from ~p:~n~p", [Target, sanitize_node_info(RV)]),
+
+    case RV of
+        {client_error, [Message]} when is_binary(Message) ->
+            {error, Message};
+        {client_error, _} ->
+            {error, invalid_json};
+        {error, _, X, _} ->
+            {error, X};
+        Other ->
+            Other
+    end.
+
+engage_cluster_bad_json_error(Exc) ->
+    {error, engage_cluster_bad_json,
+     ns_error_messages:engage_cluster_json_error(Exc)}.
+
 do_add_node_with_connectivity(Scheme, RemoteAddr, RestPort, Auth, GroupUUID,
                               Services) ->
     {struct, NodeInfo} = menelaus_web_node:build_full_node_info(node(),
@@ -813,42 +836,20 @@ do_add_node_with_connectivity(Scheme, RemoteAddr, RestPort, Auth, GroupUUID,
 
     Options = [{connect_options, [misc:get_net_family()]}],
 
-    ?cluster_debug("Posting node info to engage_cluster on ~p:~n~p",
-                   [{Scheme, RemoteAddr, RestPort},
-                    {sanitize_node_info(Props1)}]),
-    RV = menelaus_rest:json_request_hilevel(post,
-                                            {Scheme, RemoteAddr, RestPort,
-                                             "/engageCluster2", "application/json",
-                                             mochijson2:encode({Props1})},
-                                            Auth, Options),
-    ?cluster_debug("Reply from engage_cluster on ~p:~n~p",
-                   [{RemoteAddr, RestPort}, sanitize_node_info(RV)]),
-
-    ExtendedRV =
-        case RV of
-            {client_error, [Message]} when is_binary(Message) ->
-                {error, Message};
-            {client_error, _} ->
-                {error, ns_error_messages:engage_cluster_json_error(undefined)};
-            {error, _, X, _} ->
-                {error, X};
-            Other ->
-                Other
-        end,
-
-    case ExtendedRV of
+    case post_json([Scheme, RemoteAddr, RestPort, "/engageCluster2"],
+                   Auth, Options, {Props1}) of
         {ok, {struct, NodeKVList}} ->
             try
                 do_add_node_engaged(NodeKVList, Auth, GroupUUID, Services,
                                     Scheme)
             catch
                 exit:{unexpected_json, _Where, _Field} = Exc ->
-                    JsonMsg = ns_error_messages:engage_cluster_json_error(Exc),
-                    {error, engage_cluster_bad_json, JsonMsg}
+                    engage_cluster_bad_json_error(Exc)
             end;
         {ok, _JSON} ->
-            {error, engage_cluster_bad_json,
-             ns_error_messages:engage_cluster_json_error(undefined)};
+            engage_cluster_bad_json_error(undefined);
+        {error, invalid_json} ->
+            engage_cluster_bad_json_error(undefined);
         {error, Msg} ->
             M = iolist_to_binary([<<"Prepare join failed. ">>, Msg]),
             {error, engage_cluster, M}
@@ -1019,7 +1020,7 @@ get_request_target(NodeKVList, Scheme) ->
         end,
     {Scheme2, Hostname, Port}.
 
-do_add_node_engaged_inner(ChronicleInfo, {Scheme, Hostname, Port} = Target,
+do_add_node_engaged_inner(ChronicleInfo, {Scheme, Hostname, Port},
                           OtpNode, Auth, Services) ->
     {struct, MyNodeKVList} =
         menelaus_web_node:build_full_node_info(node(), misc:localhost()),
@@ -1030,38 +1031,22 @@ do_add_node_engaged_inner(ChronicleInfo, {Scheme, Hostname, Port} = Target,
                     base64:encode(term_to_binary(ChronicleInfo))} ||
                       ChronicleInfo =/= undefined]},
 
-    ConnectOpts = [misc:get_net_family()],
+    Options = [{connect_options, [misc:get_net_family()]},
+               {timeout, ?COMPLETE_TIMEOUT},
+               {connect_timeout, ?COMPLETE_TIMEOUT}],
 
-    ?cluster_debug("Posting the following to complete_join on ~p:~n~p",
-                   [Target, sanitize_node_info(Struct)]),
-    RV = menelaus_rest:json_request_hilevel(post,
-                                            {Scheme, Hostname, Port,
-                                             "/completeJoin",
-                                             "application/json",
-                                             mochijson2:encode(Struct)},
-                                            Auth,
-                                            [{connect_options, ConnectOpts},
-                                             {timeout, ?COMPLETE_TIMEOUT},
-                                             {connect_timeout, ?COMPLETE_TIMEOUT}]),
-    ?cluster_debug("Reply from complete_join on ~p:~n~p",
-                   [Target, RV]),
-
-    ExtendedRV = case RV of
-                     {client_error, [Message]} when is_binary(Message) ->
-                         {error, Message};
-                     {client_error, _} ->
-                         {error, <<"REST call returned invalid json.">>};
-                     {error, _, X, _} ->
-                         {error, X};
-                     Other ->
-                         Other
-                 end,
-
-    case ExtendedRV of
-        {ok, _} -> {ok, OtpNode};
+    case post_json([Scheme, Hostname, Port, "/completeJoin"],
+                   Auth, Options, Struct) of
+        {ok, _} ->
+            {ok, OtpNode};
         {error, Msg} ->
-            M = iolist_to_binary([<<"Join completion call failed. ">>, Msg]),
-            {error, complete_join, M}
+            {error, complete_join,
+            case Msg of
+                invalid_json ->
+                    <<"REST call returned invalid json.">>;
+                _ ->
+                    iolist_to_binary([<<"Join completion call failed. ">>, Msg])
+            end}
     end.
 
 node_add_transaction(Node, GroupUUID, Services, Body) ->
