@@ -1,7 +1,7 @@
 import {UIRouter} from '/ui/web_modules/@uirouter/angular.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
-import {filter, map, switchMap} from '/ui/web_modules/rxjs/operators.js';
+import {filter, map, switchMap, withLatestFrom} from '/ui/web_modules/rxjs/operators.js';
 import {BehaviorSubject, Subject, pipe, empty} from '/ui/web_modules/rxjs.js';
 import {MnWizardService} from './mn.wizard.service.js';
 import {MnAuthService} from "./mn.auth.service.js";
@@ -50,9 +50,21 @@ class MnWizardJoinClusterComponent extends MnLifeCycleHooksToStream {
     this.form
       .setPackPipe(pipe(
         filter(this.isValid.bind(this)),
-        map(() => this.joinClusterForm.get("clusterStorage.storage").value)
+        withLatestFrom(mnPoolsService.stream.isEnterprise),
+        map(([_, isEnterprise]) => {
+          let rv = {};
+          var nodeStorage = this.joinClusterForm.get("clusterStorage");
+          rv.dataPath = nodeStorage.get("storage.path").value;
+          rv.indexPath = nodeStorage.get("storage.index_path").value;
+          rv.eventingPath = nodeStorage.get("storage.eventing_path").value;
+          rv.javaHome = nodeStorage.get("storage.java_home").value;
+          if (isEnterprise) {
+            rv.analyticsPath = nodeStorage.get("storage.cbas_path").value;
+          }
+          return rv;
+        })
       ))
-      .setPostRequest(this.diskStorageHttp)
+      .setPostRequest(mnWizardService.stream.postNodeInitHttp)
       .setPackPipe(map(() => {
         var data = this.joinClusterForm.get("clusterAdmin").value;
         var services = this.joinClusterForm.get("services.flag");

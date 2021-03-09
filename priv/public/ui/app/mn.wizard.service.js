@@ -92,8 +92,28 @@ class MnWizardService {
       .addLoading()
       .addError();
 
+    this.stream.postNodeInitHttp =
+      new MnHttpRequest(this.postNodeInit.bind(this))
+      .addSuccess()
+      .addError();
+
     this.stream.diskStorageHttp =
       new MnHttpRequest(this.postDiskStorage.bind(this))
+      .addSuccess()
+      .addError();
+
+    this.stream.enableExternalListenerHttp =
+      new MnHttpRequest(this.postEnableExternalListener.bind(this))
+      .addSuccess()
+      .addError();
+
+    this.stream.setupNetConfigHttp =
+      new MnHttpRequest(this.postSetupNetConfig.bind(this))
+      .addSuccess()
+      .addError();
+
+    this.stream.disableUnusedExternalListenersHttp =
+      new MnHttpRequest(this.postDisableUnusedExternalListeners.bind(this))
       .addSuccess()
       .addError();
 
@@ -124,21 +144,6 @@ class MnWizardService {
 
     this.stream.statsHttp =
       new MnHttpRequest(this.postStats.bind(this))
-      .addSuccess()
-      .addError();
-
-    this.stream.enableExternalListenerHttp =
-      new MnHttpRequest(this.postEnableExternalListener.bind(this))
-      .addSuccess()
-      .addError();
-
-    this.stream.setupNetConfigHttp =
-      new MnHttpRequest(this.postSetupNetConfig.bind(this))
-      .addSuccess()
-      .addError();
-
-    this.stream.disableUnusedExternalListenersHttp =
-      new MnHttpRequest(this.postDisableUnusedExternalListeners.bind(this))
       .addSuccess()
       .addError();
 
@@ -306,6 +311,34 @@ class MnWizardService {
     return this.http.post('/node/controller/setupServices', data);
   }
 
+
+
+  postNodeInit(data) {
+    return this.http.post('/nodeInit', data);
+  }
+
+  postDiskStorage(config) {
+    return this.http.post('/nodes/self/controller/settings', config);
+  }
+
+  postEnableExternalListener(data) {
+    return this.http.post('/node/controller/enableExternalListener',  data);
+  }
+
+  postSetupNetConfig(data) {
+    return this.http.post('/node/controller/setupNetConfig', data);
+  }
+
+  postDisableUnusedExternalListeners() {
+    return this.http.post("/node/controller/disableUnusedExternalListeners");
+  }
+
+  postHostname(hostname) {
+    return this.http.post('/node/controller/rename', {hostname: hostname});
+  }
+
+
+
   postQuerySettings(data) {
     return this.http.post("/settings/querySettings", data);
   }
@@ -327,26 +360,8 @@ class MnWizardService {
     });
   }
 
-  postDiskStorage(config) {
-    return this.http.post('/nodes/self/controller/settings', config);
-  }
-  postHostname(hostname) {
-    return this.http.post('/node/controller/rename', {hostname: hostname});
-  }
   postJoinCluster(clusterMember) {
     return this.http.post('/node/controller/doJoinCluster', clusterMember)
-  }
-
-  postEnableExternalListener(data) {
-    return this.http.post('/node/controller/enableExternalListener',  data);
-  }
-
-  postSetupNetConfig(data) {
-    return this.http.post('/node/controller/setupNetConfig', data);
-  }
-
-  postDisableUnusedExternalListeners() {
-    return this.http.post("/node/controller/disableUnusedExternalListeners");
   }
 
 }

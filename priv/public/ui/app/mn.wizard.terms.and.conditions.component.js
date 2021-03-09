@@ -66,6 +66,9 @@ class MnWizardTermsAndConditionsComponent extends MnLifeCycleHooksToStream {
     this.defaultForm
       .setPackPipe(pipe(
         filter(this.isValid.bind(this)),
+        map(this.getNodeInitConfig.bind(this))))
+      .setPostRequest(mnWizardService.stream.postNodeInitHttp)
+      .setPackPipe(pipe(
         withLatestFrom(mnPoolsService.stream.mnServices),
         map(([_, services]) => ({
           services: services.join(","),
@@ -79,12 +82,11 @@ class MnWizardTermsAndConditionsComponent extends MnLifeCycleHooksToStream {
       ))
       .setPostRequest(new MnHttpGroupRequest({
         postPoolsDefault: mnAdminService.stream.postPoolsDefault,
-        hostnameHttp: mnWizardService.stream.hostnameHttp,
         statsHttp: mnWizardService.stream.statsHttp
       }).addSuccess().addError())
       .setPackPipe(pipe(
         withLatestFrom(mnPoolsService.stream.isEnterprise),
-        map(this.getSecondValues.bind(this))
+        map(this.getFinalConfig.bind(this))
       ))
       .setPostRequest(new MnHttpGroupRequest({
         indexesHttp: mnWizardService.stream.indexesHttp,
@@ -121,7 +123,13 @@ class MnWizardTermsAndConditionsComponent extends MnLifeCycleHooksToStream {
       'https://www.couchbase.com/community';
   }
 
-  getSecondValues(isEnterprise) {
+  getNodeInitConfig() {
+    return {
+      hostname: this.initialValues.hostname
+    };
+  }
+
+  getFinalConfig(isEnterprise) {
     return {
       indexesHttp: {
         storageMode: isEnterprise[1] ? "plasma" : "forestdb"
@@ -135,7 +143,6 @@ class MnWizardTermsAndConditionsComponent extends MnLifeCycleHooksToStream {
       postPoolsDefault: [{
         clusterName: this.wizardForm.newCluster.get("clusterName").value
       }, false],
-      hostnameHttp: this.initialValues.hostname,
       statsHttp: this.wizardForm.termsAndConditions.get("enableStats").value
     };
   }

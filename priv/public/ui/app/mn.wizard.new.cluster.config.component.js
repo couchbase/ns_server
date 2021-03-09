@@ -61,43 +61,58 @@ class MnWizardNewClusterConfigComponent extends MnLifeCycleHooksToStream {
 
     this.form = mnFormService.create(this);
 
-    this.form
-      .setPackPipe(pipe(
-        withLatestFrom(mnPoolsService.stream.isEnterprise),
-        map(this.getHostConfigValues.bind(this)),
-      ))
-      .setPostRequest(new MnHttpGroupRequest({
-        diskStorageHttp: mnWizardService.stream.diskStorageHttp,
-        postPoolsDefault: mnAdminService.stream.postPoolsDefault,
-        enableExternalListenerHttp: mnWizardService.stream.enableExternalListenerHttp
-      }).addSuccess().addError())
-      .setPackPipe(pipe(
-        withLatestFrom(mnPoolsService.stream.isEnterprise),
-        map(this.getWizardValues.bind(this))
-      ))
-      .setPostRequest(new MnHttpGroupRequest({
-        setupNetConfigHttp: mnWizardService.stream.setupNetConfigHttp,
-        statsHttp: mnWizardService.stream.statsHttp,
-        servicesHttp: mnWizardService.stream.servicesHttp
-      }).addSuccess().addError())
-      .setPostRequest(mnWizardService.stream.disableUnusedExternalListenersHttp)
-      .setPackPipe(map(() =>
-                       this.wizardForm.newClusterConfig.get("clusterStorage.hostname").value))
-      .setPostRequest(mnWizardService.stream.hostnameHttp)
-      .setPackPipe(map(this.getFinalConfig.bind(this)))
-      .setPostRequest(new MnHttpGroupRequest({
-        indexesHttp: mnWizardService.stream.indexesHttp,
-        authHttp: mnWizardService.stream.authHttp
-      }).addSuccess().addError())
-      .setPackPipe(map(mnWizardService.getUserCreds.bind(mnWizardService)))
-      .setPostRequest(mnAuthService.stream.postUILogin)
-      .clearErrors()
-      .showGlobalSpinner()
-      .success(() => {
-        $rootScope.mnGlobalSpinnerFlag = true;
-        mnPools.clearCache();
-        uiRouter.urlRouter.sync();
+    mnPoolsService.stream.isEnterprise
+      .pipe(first())
+      .subscribe(isEnterprise => {
+        this.form
+          .setPackPipe(pipe(
+            withLatestFrom(mnPoolsService.stream.isEnterprise),
+            map(this.getNodeInitConfig.bind(this))
+          ))
+          .setPostRequest(mnWizardService.stream.postNodeInitHttp)
+          .setPackPipe(pipe(
+            withLatestFrom(mnPoolsService.stream.isEnterprise),
+            map(this.getClusterInitConfig.bind(this))
+          ))
+          .setPostRequest(new MnHttpGroupRequest({
+            postPoolsDefault: mnAdminService.stream.postPoolsDefault,
+            statsHttp: mnWizardService.stream.statsHttp,
+            servicesHttp: mnWizardService.stream.servicesHttp
+          }).addSuccess().addError());
+
+        if (isEnterprise) {
+          this.form
+            .setPackPipe(map(this.getHostConfig.bind(this)))
+            .setPostRequest(mnWizardService.stream.enableExternalListenerHttp)
+            .setPackPipe(map(this.getHostConfig.bind(this)))
+            .setPostRequest(mnWizardService.stream.setupNetConfigHttp)
+            .setPostRequest(mnWizardService.stream.disableUnusedExternalListenersHttp)
+        }
+
+        this.form
+          .setPackPipe(map(this.getFinalConfig.bind(this)))
+          .setPostRequest(new MnHttpGroupRequest({
+            indexesHttp: mnWizardService.stream.indexesHttp,
+            authHttp: mnWizardService.stream.authHttp
+          }).addSuccess().addError())
+          .setPackPipe(map(mnWizardService.getUserCreds.bind(mnWizardService)))
+          .setPostRequest(mnAuthService.stream.postUILogin)
+          .clearErrors()
+          .showGlobalSpinner()
+          .success(() => {
+            $rootScope.mnGlobalSpinnerFlag = true;
+            mnPools.clearCache();
+            uiRouter.urlRouter.sync();
+          });
       });
+  }
+
+  getHostConfig() {
+    var clusterStor = this.wizardForm.newClusterConfig.get("clusterStorage");
+    return {
+      afamily: clusterStor.get("hostConfig.afamily").value ? "ipv6" : "ipv4",
+      nodeEncryption: clusterStor.get("hostConfig.nodeEncryption").value ? 'on' : 'off'
+    };
   }
 
   getFinalConfig(isEnterprise) {
@@ -112,39 +127,32 @@ class MnWizardNewClusterConfigComponent extends MnLifeCycleHooksToStream {
     return rv;
   }
 
-  getHostConfig() {
-    var clusterStor = this.wizardForm.newClusterConfig.get("clusterStorage");
-    return {
-      afamily: clusterStor.get("hostConfig.afamily").value ? "ipv6" : "ipv4",
-      nodeEncryption: clusterStor.get("hostConfig.nodeEncryption").value ? 'on' : 'off'
+  getNodeInitConfig([_, isEnterprise]) {
+    let rv = {};
+    var nodeStorage = this.wizardForm.newClusterConfig.get("clusterStorage");
+    rv.hostname = nodeStorage.get("hostname").value;
+    rv.dataPath = nodeStorage.get("storage.path").value;
+    rv.indexPath = nodeStorage.get("storage.index_path").value;
+    rv.eventingPath = nodeStorage.get("storage.eventing_path").value;
+    rv.javaHome = nodeStorage.get("storage.java_home").value;
+
+    if (isEnterprise) {
+      rv.afamily = nodeStorage.get("hostConfig.afamily").value ? "ipv6" : "ipv4";
+      rv.analyticsPath = nodeStorage.get("storage.cbas_path").value;
     }
-  }
-
-  getHostConfigValues(isEnterprise) {
-    var clusterStor = this.wizardForm.newClusterConfig.get("clusterStorage");
-    var rv = new Map();
-
-    rv.set("diskStorageHttp", clusterStor.get("storage").value);
-    rv.set("postPoolsDefault", [this.getPoolsDefaultValues.bind(this)(isEnterprise[1]), false]);
-
-    if (isEnterprise[1]) {
-      rv.set("enableExternalListenerHttp", this.getHostConfig());
-    }
-
     return rv;
   }
 
-  getWizardValues(isEnterprise) {
-    let rv = {
-      statsHttp: this.wizardForm.termsAndConditions.get("enableStats").value,
-      servicesHttp: {
-        services: this.getServicesValues(this.wizardForm
-                                         .newClusterConfig.get("services.flag")).join(",")
-      }
-    };
-    if (isEnterprise[1]) {
-      rv.setupNetConfigHttp = this.getHostConfig();
-    }
+  getClusterInitConfig(isEnterprise) {
+    let rv = new Map();
+    let nodeStorage = this.wizardForm.newClusterConfig.get("clusterStorage");
+    let services = this.wizardForm.newClusterConfig.get("services.flag");
+    let poolsDefault = [this.getPoolsDefaultValues.bind(this)(isEnterprise[1]), false];
+
+    rv.set("postPoolsDefault", poolsDefault);
+    rv.set("statsHttp", this.wizardForm.termsAndConditions.get("enableStats").value);
+    rv.set("servicesHttp", {services: this.getServicesValues(services).join(",")});
+
     return rv;
   }
 
