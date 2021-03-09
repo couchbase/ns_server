@@ -169,13 +169,13 @@ pick_acquire_time_estimate(Start, PrevAcquireEstimate, State) ->
 
     if
         Start > PrevAcquireEstimate ->
-            inc_counter(used_start_estimate, State),
-            add_histo('start_time-prev_acquire_estimate',
+            inc_counter(<<"used_start_estimate">>, State),
+            add_histo(<<"start_time_minus_prev_acquire_estimate">>,
                       Start - PrevAcquireEstimate, State),
             Start;
         PrevAcquireEstimate > Start ->
-            inc_counter(used_prev_acquire_estimate, State),
-            add_histo('prev_acquire_estimate-start_time',
+            inc_counter(<<"used_prev_acquire_estimate">>, State),
+            add_histo(<<"prev_acquire_estimate_minus_start_time">>,
                       PrevAcquireEstimate - Start, State),
             PrevAcquireEstimate;
         true ->
@@ -184,7 +184,7 @@ pick_acquire_time_estimate(Start, PrevAcquireEstimate, State) ->
 
 update_inflight_histo(Start, Now, State) ->
     TimeInFlight = Now - Start,
-    add_histo(time_inflight, TimeInFlight, State).
+    add_histo(<<"time_inflight">>, TimeInFlight, State).
 
 get_prev_acquire_estimate(_Now, _LeaseProps, #state{have_lease = false}) ->
     undefined;
@@ -212,7 +212,7 @@ get_prev_acquire_estimate(SincePrevAcquire,
                          "SincePrevAcquire: ~p, LeaseProps: ~p",
                          [target_node(State), Now,
                           PrevAcquireTS, SincePrevAcquire, LeaseProps]),
-            inc_counter(prev_acquire_estimate_in_future, State),
+            inc_counter(<<"prev_acquire_estimate_in_future">>, State),
             undefined
     end.
 
@@ -306,10 +306,10 @@ handle_fresh_lease_acquired(#state{uuid   = LeaseUUID,
     State#state{have_lease = true}.
 
 add_histo(Name, Value, State) ->
-    ns_server_stats:add_histo(build_stat_name(Name, State), Value).
+    ns_server_stats:notify_histogram(build_stat_name(Name, State), Value).
 
 inc_counter(Name, State) ->
-    ns_server_stats:increment_counter(build_stat_name(Name, State)).
+    ns_server_stats:notify_counter(build_stat_name(Name, State)).
 
 build_stat_name(Name, State) ->
-    {?MODULE, target_node(State), Name}.
+    {<<"lease_aquirer_", Name/binary>>, [{node, target_node(State)}]}.
