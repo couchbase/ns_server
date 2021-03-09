@@ -22,20 +22,20 @@
          get_json_local/5]).
 
 request(Type, URL, Method, Headers, Body, Timeout) ->
-    ns_server_stats:increment_counter({Type, requests}, 1),
-
     Start = os:timestamp(),
     RV = lhttpc:request(URL, Method, Headers, Body, Timeout,
                         [{pool, rest_lhttpc_pool}]),
     case RV of
         {ok, {{Code, _}, _, _}} ->
             Diff = timer:now_diff(os:timestamp(), Start),
-            ns_server_stats:add_histo({Type, latency}, Diff),
+            ns_server_stats:notify_histogram(
+              {<<"outgoing_http_requests">>, [{type, Type}]}, Diff div 1000),
 
-            Class = (Code div 100) * 100,
-            ns_server_stats:increment_counter({Type, status, Class}, 1);
+            ns_server_stats:notify_counter(
+              {<<"outgoing_http_requests">>, [{code, Code}, {type, Type}]});
         _ ->
-            ns_server_stats:increment_counter({Type, failed_requests}, 1)
+            ns_server_stats:notify_counter(
+              {<<"outgoing_http_requests">>, [{code, "error"}, {type, Type}]})
     end,
 
     RV.
