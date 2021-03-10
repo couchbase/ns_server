@@ -335,13 +335,13 @@ ep_db_file_size bytes kv_ep_db_file_size_bytes{} bytes
 ep_db_prepare_size bytes kv_ep_db_prepare_size_bytes{} bytes
 bg_wait microseconds kv_bg_wait_seconds{} seconds
 bg_load microseconds kv_bg_load_seconds{} seconds
-set_with_meta microseconds kv_set_with_meta_seconds{} seconds
 pending_ops microseconds kv_pending_ops_seconds{} seconds
 access_scanner microseconds kv_access_scanner_seconds{} seconds
 checkpoint_remover microseconds kv_checkpoint_remover_seconds{} seconds
 item_pager microseconds kv_item_pager_seconds{} seconds
 expiry_pager microseconds kv_expiry_pager_seconds{} seconds
 storage_age microseconds kv_storage_age_seconds{} seconds
+set_with_meta microseconds kv_cmd_time_taken_seconds{op="set_with_meta"} seconds
 get_cmd microseconds kv_cmd_time_taken_seconds{op="get"} seconds
 store_cmd microseconds kv_cmd_time_taken_seconds{op="store"} seconds
 arith_cmd microseconds kv_cmd_time_taken_seconds{op="arith"} seconds
