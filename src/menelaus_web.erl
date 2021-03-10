@@ -518,7 +518,12 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_rbac:handle_check_permission_for_cbauth/1};
                 ["_prometheusMetrics"] ->
                     {{[admin, internal, stats], read},
-                     fun menelaus_web_prometheus:handle_get_local_metrics/1};
+                     fun menelaus_web_prometheus:handle_get_local_metrics/2,
+                     [false]};
+                ["_prometheusMetricsHigh"] ->
+                    {{[admin, internal, stats], read},
+                     fun menelaus_web_prometheus:handle_get_local_metrics/2,
+                     [true]};
                 ["_statsMapping", Section | StatTokens] ->
                     {{[admin, internal], all},
                      fun stat_names_mappings:handle_stats_mapping_get/3,

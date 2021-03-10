@@ -42,7 +42,7 @@
          get_ns_server_stats/0, set_counter/2,
          add_histo/2,
          cleanup_stale_epoch_histos/0, log_system_stats/1,
-         stale_histo_epoch_cleaner/0, report_prom_stats/1]).
+         stale_histo_epoch_cleaner/0, report_prom_stats/2]).
 
 -type os_pid() :: integer().
 
@@ -89,7 +89,7 @@ notify_histogram(Metric, Max, Units, Val) when Max > 0, Val >= 0,
             ok
     end.
 
-report_prom_stats(ReportFun) ->
+report_prom_stats(ReportFun, IsHighCard) ->
     Try = fun (Name, F) ->
               try F()
               catch C:E:ST ->
@@ -97,10 +97,14 @@ report_prom_stats(ReportFun) ->
                              [Name, C, E, ST])
               end
           end,
-    Try(audit, fun () -> report_audit_stats(ReportFun) end),
-    Try(ns_server, fun () -> report_ns_server_stats(ReportFun) end),
-    Try(system, fun () -> report_system_stats(ReportFun) end),
-    Try(couchdb, fun () -> report_couchdb_stats(ReportFun) end),
+    case IsHighCard of
+        true ->
+            Try(ns_server, fun () -> report_ns_server_stats(ReportFun) end);
+        false ->
+            Try(audit, fun () -> report_audit_stats(ReportFun) end),
+            Try(system, fun () -> report_system_stats(ReportFun) end),
+            Try(couchdb, fun () -> report_couchdb_stats(ReportFun) end)
+    end,
     ok.
 
 report_system_stats(ReportFun) ->

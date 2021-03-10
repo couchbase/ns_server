@@ -15,7 +15,7 @@
 -module(menelaus_web_prometheus).
 
 %% API
--export([handle_get_local_metrics/1, handle_create_snapshot/1,
+-export([handle_get_local_metrics/2, handle_create_snapshot/1,
          handle_get_metrics/1, handle_sd_config/1]).
 
 -include("ns_common.hrl").
@@ -30,16 +30,24 @@
 
 handle_get_metrics(Req) ->
     Resp = mochiweb_request:respond({200, [], chunked}, Req),
-    ns_server_stats:report_prom_stats(fun (M) -> report_metric(M, Resp) end),
+    ns_server_stats:report_prom_stats(fun (M) -> report_metric(M, Resp) end,
+                                      false),
     Settings = prometheus_cfg:settings(),
+    Services = proplists:get_value(external_prometheus_services, Settings),
+    NsServerProps = proplists:get_value(ns_server, Services, []),
+    case proplists:get_bool(high_cardinality_enabled, NsServerProps) of
+        true ->
+            ns_server_stats:report_prom_stats(
+              fun (M) -> report_metric(M, Resp) end, true);
+        false -> ok
+    end,
     AllTargets = proplists:get_value(targets, Settings),
     AlmostAllTargets = proplists:delete(ns_server, AllTargets),
-    Services = proplists:get_value(external_prometheus_services, Settings),
     HighCardTargets = lists:filter(
                         fun ({Name, _Addr}) ->
                             Props = proplists:get_value(Name, Services, []),
                             proplists:get_bool(high_cardinality_enabled, Props)
-                        end, AllTargets),
+                        end, AlmostAllTargets),
     %% Addr is supposed to be a loopback address (127.0.0.1 or [::1] depending
     %% on configured ip family) with port, hence no need to use https
     MakeURL = fun (Addr, Path) -> "http://" ++ Addr ++ Path end,
@@ -98,9 +106,10 @@ proxy_chunks(Req, Resp) ->
     end.
 
 %% It is supposed to be used by local prometheus to collect ns_server metrics
-handle_get_local_metrics(Req) ->
+handle_get_local_metrics(IsHighCard, Req) ->
     Resp = mochiweb_request:respond({200, [], chunked}, Req),
-    ns_server_stats:report_prom_stats(fun (M) -> report_metric(M, Resp) end),
+    ns_server_stats:report_prom_stats(fun (M) -> report_metric(M, Resp) end,
+                                      IsHighCard),
     mochiweb_response:write_chunk(<<>>, Resp).
 
 handle_create_snapshot(Req) ->

@@ -47,7 +47,8 @@
 -define(DEFAULT_PROMETHEUS_TIMEOUT, 5000). %% in milliseconds
 -define(USERNAME, "@prometheus").
 -define(NS_TO_PROMETHEUS_USERNAME, "ns_server").
--define(DEFAULT_HIGH_CARD_SERVICES, [index, fts, kv, cbas, eventing]).
+-define(DEFAULT_HIGH_CARD_SERVICES,
+        [index, fts, kv, cbas, eventing, ns_server]).
 -define(MAX_SCRAPE_INTERVAL, 6*60*60). %% 6h, in seconds
 -define(PROMETHEUS_SHUTDOWN_TIMEOUT, 20000). %% 20s, in milliseconds
 -define(SECS_IN_DAY, 24*60*60).
@@ -158,9 +159,11 @@ default_settings() ->
      {cbcollect_stats_dump_max_size, 1024*1024*1024}, %% 1GB, in bytes
      {cbcollect_stats_min_period, 14}, %% in days
      {average_sample_size, 3}, %% in bytes
-     {services, [{S, [{high_cardinality_enabled, true},
+     {services, [{ns_server, [{high_cardinality_enabled, true},
+                              {high_cardinality_scrape_interval, 60}]}] ++
+                [{S, [{high_cardinality_enabled, true},
                       {high_cardinality_scrape_interval, ?AUTO_CALCULATED}]}
-                        || S <- ?DEFAULT_HIGH_CARD_SERVICES]},
+                        || S <- ?DEFAULT_HIGH_CARD_SERVICES -- [ns_server]]},
      {external_prometheus_services, [{S, [{high_cardinality_enabled, true}]}
                                         || S <- ?DEFAULT_HIGH_CARD_SERVICES]},
      {prometheus_metrics_enabled, false},
@@ -1644,6 +1647,11 @@ default_config_test() ->
                                [#{targets := [<<"127.0.0.1:8091">>,%% ns_server
                                               <<"127.0.0.1:9998">>,%% xdcr
                                               <<"127.0.0.1:11280">>]}]}, %% kv
+                           #{job_name := <<"ns_server_high_cardinality">>,
+                             scrape_interval := <<"60s">>,
+                             scrape_timeout  := <<"10s">>,
+                             static_configs :=
+                               [#{targets := [<<"127.0.0.1:8091">>]}]},
                            #{job_name := <<"kv_high_cardinality">>,
                              scrape_interval := <<"10s">>,
                              scrape_timeout := <<"10s">>,
@@ -1669,13 +1677,17 @@ prometheus_config_test() ->
     ?assertMatch(
       #{global := #{scrape_interval := <<"20s">>},
         scrape_configs := [#{job_name := <<"general">>},
+                           #{job_name := <<"ns_server_high_cardinality">>,
+                             scrape_interval := <<"60s">>},
                            #{job_name := <<"kv_high_cardinality">>,
                              scrape_interval := <<"20s">>}]},
       MainConfig([{scrape_interval, 20}], [kv])),
 
     ?assertMatch(
       #{scrape_configs := [#{job_name := <<"general">>}]},
-      MainConfig([{services, [{kv, [{high_cardinality_enabled, false}]}]}],
+      MainConfig([{services, [{kv, [{high_cardinality_enabled, false}]},
+                              {ns_server,
+                               [{high_cardinality_enabled, false}]}]}],
                  [kv])),
 
     ?assertMatch(
@@ -1685,7 +1697,8 @@ prometheus_config_test() ->
                              scrape_interval := <<"20s">>}]},
       MainConfig([{services,
                    [{kv, [{high_cardinality_enabled, true},
-                          {high_cardinality_scrape_interval, 20}]}]}],
+                          {high_cardinality_scrape_interval, 20}]},
+                    {ns_server, [{high_cardinality_enabled, false}]}]}],
                  [kv])),
 
     ?assertMatch(
@@ -1693,11 +1706,13 @@ prometheus_config_test() ->
         scrape_configs := [#{job_name := <<"general">>}]},
       MainConfig([{services,
                    [{kv, [{high_cardinality_enabled, true},
-                          {high_cardinality_scrape_interval, 20}]}]}],
+                          {high_cardinality_scrape_interval, 20}]},
+                    {ns_server, [{high_cardinality_enabled, false}]}]}],
                  [])),
 
     ?assertMatch(
       #{scrape_configs := [#{job_name := <<"general">>},
+                           #{job_name := <<"ns_server_high_cardinality">>},
                            #{job_name := <<"kv_high_cardinality">>},
                            #{job_name := <<"prometheus">>,
                              scrape_interval := <<"42s">>}]},
@@ -1760,6 +1775,9 @@ prometheus_config_afamily_test() ->
                                [#{targets := [<<"[::1]:8091">>,%% ns_server
                                               <<"[::1]:9998">>,%% xdcr
                                               <<"[::1]:11280">>]}]}, %% kv
+                           #{job_name := <<"ns_server_high_cardinality">>,
+                             static_configs :=
+                               [#{targets := [<<"[::1]:8091">>]}]},
                            #{job_name := <<"kv_high_cardinality">>,
                              static_configs :=
                                [#{targets := [<<"[::1]:11280">>]}]}]},
