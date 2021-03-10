@@ -149,8 +149,8 @@ footer {
 }
 .fix-position-br {
   position: fixed;
-  bottom: 1rem;
-  right: 1rem;
+  bottom: .5rem;
+  right: .5rem;
 }
 .fix-position-bl {
   position: fixed;

@@ -763,6 +763,7 @@ section.error {
   padding: 0 1rem;
   min-height: 3rem;
   height: 1px;
+  overflow: hidden;
 }
 .panel-header.flex-left {
   justify-content: flex-start;
@@ -2592,7 +2593,7 @@ button.ace-search-options-buttons.checked {
   font-size: 12px !important;
   margin-bottom: .25rem;
 }
-/* for bucket inference sidebar & ananlytics dataverse mgmt sidebar --------- */
+/* for bucket inference sidebar & analytics dataverse mgmt sidebar --------- */
 .insights-sidebar { /* wrapper for sidebar area ----------------------------- */
   -webkit-box-flex: 0;
   flex: 0 0 auto;
@@ -2600,11 +2601,11 @@ button.ace-search-options-buttons.checked {
   margin: 0 -.5rem 0 1rem;
   overflow: hidden;
   border-left: 1px solid #d1d1d1;
-  padding: .25rem 0 0 1rem;
+  padding: .25rem 0 2rem 1rem;
 }
 .insights-sidebar-body {
   overflow: auto;
-  max-height: calc(100vh - 168px);
+  height: calc(100vh - 200px);
 }
 .insights-sidebar section {
   overflow: auto;
@@ -2706,6 +2707,7 @@ button.ace-search-options-buttons.checked {
   padding: .5rem;
 }
 .dataverse-box h5,
+.dataverse-box span,
 .dataverse-box div {
   line-height: 1.2 !important;
 }
