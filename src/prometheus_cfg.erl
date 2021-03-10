@@ -52,6 +52,7 @@
 -define(PROMETHEUS_SHUTDOWN_TIMEOUT, 20000). %% 20s, in milliseconds
 -define(SECS_IN_DAY, 24*60*60).
 -define(AUTO_CALCULATED, -1).
+-define(USE_SCRAPE_INTERVAL, -1).
 
 -type stats_settings() :: [stats_setting() | stats_derived_setting()].
 -type stats_setting() ::
@@ -167,7 +168,7 @@ default_settings() ->
      {listen_addr_type, loopback},
      {log_queries, false},
      {derived_metrics_filter, all}, %% all | [metric()]
-     {derived_metrics_interval, -1}, %% in sec (-1 means "use scrape interval")
+     {derived_metrics_interval, ?USE_SCRAPE_INTERVAL},
      {rules_config_file, "prometheus_rules.yml"}].
 
 -spec build_settings() -> stats_settings().
@@ -515,7 +516,7 @@ format_status(_Opt, [_PDict, #s{cur_settings = Settings} = State]) ->
 
 derived_metrics_interval(Settings) ->
     case proplists:get_value(derived_metrics_interval, Settings) of
-        N when N =< 0 -> proplists:get_value(scrape_interval, Settings);
+        ?USE_SCRAPE_INTERVAL -> proplists:get_value(scrape_interval, Settings);
         N -> N
     end.
 
