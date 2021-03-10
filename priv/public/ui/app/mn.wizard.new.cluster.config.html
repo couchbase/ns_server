@@ -44,7 +44,7 @@
             </div>
             <label>Index Storage Setting</label>
             <mn-storage-mode
-               [indexFlagChanges]="newClusterConfigForm.get('services.flag.index')?.valueChanges"
+               [indexFlag]="newClusterConfigForm.get('services.flag.index')"
                [control]="newClusterConfigForm.get('storageMode')">
             </mn-storage-mode>
             <mn-node-storage-config

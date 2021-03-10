@@ -3,6 +3,8 @@ import {NgModule} from '/ui/web_modules/@angular/core.js';
 import {ReactiveFormsModule} from '/ui/web_modules/@angular/forms.js';
 import {HttpClientJsonpModule} from '/ui/web_modules/@angular/common/http.js';
 import {CommonModule} from '/ui/web_modules/@angular/common.js';
+import {NgbModule} from '/ui/web_modules/@ng-bootstrap/ng-bootstrap.js';
+
 import {MnWizardComponent} from './mn.wizard.component.js';
 import {MnWizardWelcomeComponent} from './mn.wizard.welcome.component.js';
 import {MnWizardSetupNewClusterComponent} from './mn.wizard.setup.new.cluster.component.js';
@@ -87,6 +89,7 @@ class MnWizardModule {
         UIRouterUpgradeModule.forChild({
           states: states
         }),
+        NgbModule,
         UIRouterModule,
         CommonModule,
         ReactiveFormsModule,

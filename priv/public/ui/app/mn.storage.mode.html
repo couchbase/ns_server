@@ -9,7 +9,7 @@
       {{(isEnterprise | async) ? 'Legacy' : 'Standard'}} Global Secondary
     </label>
   </div>
-  <div *ngIf="showPlasma | async">
+  <div *ngIf="isEnterprise | async">
     <input
        type="radio"
        value="plasma"
@@ -28,13 +28,13 @@
     <label for="storage_memory_optimized" class="checkbox margin-right-zero">
       Memory-Optimized
     </label>
-    <!-- <span -->
-    <!--    class="fa-stack icon-info" -->
-    <!--    uib-tooltip="Memory-optimized indexing is highly performant but requires careful attention to your index RAM quota. It is an Enterprise-only feature." -->
-    <!--    tooltip-placement="top"> -->
-    <!--   <span class="icon fa-circle-thin fa-stack-2x"></span> -->
-    <!--   <span class="icon fa-info fa-stack-1x"></span> -->
-    <!-- </span> -->
+    <span
+       class="fa-stack icon-info"
+       ngbTooltip="Memory-optimized indexing is highly performant but requires careful attention to your index RAM quota. It is an Enterprise-only feature."
+       placement="right">
+      <span class="icon fa-circle-thin fa-stack-2x"></span>
+      <span class="icon fa-info fa-stack-1x"></span>
+    </span>
   </div>
   <div
      class="error error-field"

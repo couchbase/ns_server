@@ -6,9 +6,7 @@
        value="forestdb"
        id="storage_mode_forestdb"
        ng-model="mnModel.storageMode"
-       ng-disabled="(mnServices && !mnServicesModel.index) ||
-                    (mnPermissions && !mnPermissions.cluster.settings.indexes.write) ||
-                    (mnInitial && mnInitial.storageMode === 'forestdb')">
+       ng-disabled="(mnServices && !mnServicesModel.index) || (mnPermissions && !mnPermissions.cluster.settings.indexes.write)">
     <label for="storage_mode_forestdb" class="checkbox">
       {{:: mnIsEnterprise ? 'Legacy' : 'Standard'}} Global Secondary
     </label>
@@ -19,9 +17,7 @@
        value="plasma"
        id="storage_plasma_indexes"
        ng-model="mnModel.storageMode"
-       ng-disabled="!mnIsEnterprise ||
-                    (mnServicesModel && !mnServicesModel.index) ||
-                    (mnPermissions && !mnPermissions.cluster.settings.indexes.write)">
+       ng-disabled="(mnServicesModel && !mnServicesModel.index) || (mnPermissions && !mnPermissions.cluster.settings.indexes.write)">
     <label for="storage_plasma_indexes" class="checkbox">
       Standard Global Secondary
     </label>
@@ -32,9 +28,7 @@
        value="memory_optimized"
        id="storage_memory_optimized"
        ng-model="mnModel.storageMode"
-       ng-disabled="!mnIsEnterprise ||
-                    (mnServicesModel && !mnServicesModel.index) ||
-                    (mnPermissions && !mnPermissions.cluster.settings.indexes.write)">
+       ng-disabled="!mnIsEnterprise || (mnServicesModel && !mnServicesModel.index) || (mnPermissions && !mnPermissions.cluster.settings.indexes.write)">
     <label for="storage_memory_optimized" class="checkbox margin-right-zero">
       Memory-Optimized
     </label>
