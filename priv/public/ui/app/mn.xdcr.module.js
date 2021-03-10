@@ -63,7 +63,7 @@ let AddXDCRState = {
   },
   params: {
     scopesPage: {
-      value: {page:1, size:5},
+      value: {page:1, size:15},
       type: 'json',
       dynamic: true
     },
@@ -82,7 +82,7 @@ let EditXDCRState = {
   },
   params: {
     scopesPage: {
-      value: {page:1, size:5},
+      value: {page:1, size:15},
       type: 'json',
       dynamic: true
     },

@@ -5,7 +5,7 @@
   <div
      class="cbui-tablerow has-hover"
      [ngClass]="(detailsHashObserver.stream.isOpened | async) ? '' : statusClass">
-    <span class="cbui-table-cell flex-grow-3 cbui-tablerow-title margin-right-1">
+    <span class="cbui-table-cell flex-grow-3 cbui-tablerow-title margin-right-half" title="{{scope.name}}">
       {{scope.name}}
     </span>
     <span class="cbui-table-cell">
@@ -35,7 +35,7 @@
       </span>
       <span [hidden]="(interestingStats | async)['@kv-.kv_collection_ops_sum']"> - </span>
     </span>
-    <span class="cbui-table-cell flex-grow-1-5 text-right wrap resp-hide-xsml">
+    <span class="cbui-table-cell flex-grow-2 text-right wrap resp-hide-xsml">
       <a
          [hidden]="!(permissions | async)?.cluster.collection[bucketName + ':' + scope.name + ':*']?.collections.write ||
                    scope.name.startsWith('_')"

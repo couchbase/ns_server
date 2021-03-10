@@ -434,13 +434,16 @@ footer {
   min-height: 0 !important;
 }
 .min-height-2 {
-  height: 2rem;
+  height: 2rem !important;
 }
 .min-height-4 {
-  height: 4rem;
+  height: 4rem !important;
+}
+.min-height-1 {
+  min-height: 1rem !important;
 }
 .height-1-5 {
-  height: 1.5rem;
+  height: 1.5rem !important;
 }
 
 /* responsive height -------------------------------------------------- */
