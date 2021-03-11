@@ -5,7 +5,8 @@
   <div uib-dropdown-toggle ng-disabled="ngDisabled">
     <button
        ng-disabled="ngDisabled"
-       class="outline btn-small dropdown-btn ellipsis">
+       class="outline btn-small dropdown-btn ellipsis"
+       type="button">
       {{labels ? labels[values.indexOf(ngModel)] : filter(ngModel)}}
     </button>
     <span
