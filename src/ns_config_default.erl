@@ -80,6 +80,15 @@ init_saslauthd_enabled() ->
 
     IsForced orelse IsLinux.
 
+%% On Windows we need to specify a default je_malloc configuration value.
+je_malloc_conf_default() ->
+    case misc:is_windows() of
+        true->
+            "narenas:1";
+        false ->
+            undefined
+    end.
+
 default() ->
     DataDir = get_data_dir(),
 
@@ -93,6 +102,7 @@ default() ->
 
     IsEnterprise = init_is_enterprise(),
     SASLAuthdEnabled = init_saslauthd_enabled(),
+    JeMallocConfDefault = je_malloc_conf_default(),
 
     {ok, LogDir} = application:get_env(ns_server, error_logger_mf_dir),
 
@@ -180,6 +190,7 @@ default() ->
        %% Location that Breakpad should write minidumps upon memcached crash.
        {breakpad_minidump_dir_path, BreakpadMinidumpDir},
        {dedupe_nmvb_maps, false},
+       {je_malloc_conf, JeMallocConfDefault},
        {tracing_enabled, IsEnterprise},
        {datatype_snappy, true},
        {num_reader_threads, <<"default">>},

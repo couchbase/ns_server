@@ -188,10 +188,10 @@ dynamic_children(Mode) ->
     expand_specs(lists:flatten(Specs), Config).
 
 do_dynamic_children(shutdown, Config) ->
-    [memcached_spec(),
+    [memcached_spec(Config),
      saslauthd_port_spec(Config)];
 do_dynamic_children(normal, Config) ->
-    [memcached_spec(),
+    [memcached_spec(Config),
      saslauthd_port_spec(Config)] ++
         build_goport_specs(Config).
 
@@ -594,25 +594,45 @@ saslauthd_port_spec(Config) ->
             []
     end.
 
-memcached_spec() ->
+je_malloc_conf_default(Config) ->
+    McdDefaults = ns_config:search(Config,
+                                   {node, node(), memcached_defaults}, []),
+    proplists:get_value(je_malloc_conf, McdDefaults).
+
+
+%% The list of environment variables used when running memcached.
+memcached_environment_variables(Config) ->
+    %% Environment variables common to all execution environments.
+    CommonEnv =
+        [{"EVENT_NOSELECT", "1"},
+         %% NOTE: bucket engine keeps this number of top keys
+         %% per top-keys-shard. And number of shards is hard-coded to 8
+         %%
+         %% So with previous setting of 100 we actually got 800
+         %% top keys every time. Even if we need just 10.
+         %%
+         %% See hot_keys_keeper.erl TOP_KEYS_NUMBER constant
+         %%
+         %% Because of that heavy sharding we cannot ask for
+         %% very small number, which would defeat usefulness
+         %% LRU-based top-key maintenance in memcached. 5 seems
+         %% not too small number which means that we'll deal
+         %% with 40 top keys.
+         {"MEMCACHED_TOP_KEYS", "5"},
+         {"CBSASL_PWFILE", {"~s", [{isasl, path}]}}],
+
+    %% Some execution environments require JE_MALLOC_CONF.
+    case je_malloc_conf_default(Config) of
+        undefined ->
+            CommonEnv;
+        Value ->
+            lists:append(CommonEnv, [{"JE_MALLOC_CONF", Value}])
+    end.
+
+memcached_spec(Config) ->
     {memcached, path_config:component_path(bin, "memcached"),
      ["-C", {"~s", [{memcached, config_path}]}],
-     [{env, [{"EVENT_NOSELECT", "1"},
-             %% NOTE: bucket engine keeps this number of top keys
-             %% per top-keys-shard. And number of shards is hard-coded to 8
-             %%
-             %% So with previous setting of 100 we actually got 800
-             %% top keys every time. Even if we need just 10.
-             %%
-             %% See hot_keys_keeper.erl TOP_KEYS_NUMBER constant
-             %%
-             %% Because of that heavy sharding we cannot ask for
-             %% very small number, which would defeat usefulness
-             %% LRU-based top-key maintenance in memcached. 5 seems
-             %% not too small number which means that we'll deal
-             %% with 40 top keys.
-             {"MEMCACHED_TOP_KEYS", "5"},
-             {"CBSASL_PWFILE", {"~s", [{isasl, path}]}}]},
+     [{env, memcached_environment_variables(Config)},
       use_stdio,
       stderr_to_stdout, exit_status,
       port_server_dont_start,
