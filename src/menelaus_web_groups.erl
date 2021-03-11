@@ -388,7 +388,7 @@ do_group_delete(GroupUUID, Req) ->
                                    {abort, not_empty};
                                [] ->
                                    {commit,
-                                    [set, {server_groups, Groups -- [Victim]}],
+                                    [{set, server_groups, Groups -- [Victim]}],
                                     Victim}
                            end
                    end
