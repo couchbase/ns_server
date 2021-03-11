@@ -311,21 +311,13 @@ pull(Timeout) ->
     end.
 
 do_pull(Timeout) ->
-    case chronicle_rsm:sync(kv, quorum, Timeout) of
-        ok ->
-            ok;
-        Error ->
-            ?log_warning("Failed to pull chronicle config ~p", [Error]),
-            Error
-    end.
+    ok = chronicle_rsm:sync(kv, quorum, Timeout).
 
 remote_pull(Nodes, Timeout) ->
-    {Results, BadRPC, BadNodes} =
+    {_, BadRPC, BadNodes} =
         misc:rpc_multicall_with_plist_result(Nodes, ?MODULE, do_pull, [Timeout],
                                              Timeout),
-    case BadNodes =:= [] andalso
-        BadRPC =:= [] andalso lists:all(fun({_, R}) -> R =:= ok end,
-                                        Results) of
+    case BadNodes =:= [] andalso BadRPC =:= [] of
         true ->
             ok;
         false ->
