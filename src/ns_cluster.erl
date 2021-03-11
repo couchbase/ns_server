@@ -903,16 +903,13 @@ verify_otp_connectivity(OtpNode, Options) ->
     TCPOnly = proplists:get_bool(tcp_only, Options),
     Host = misc:extract_node_address(OtpNode, NodeAFamily),
     case get_port_from_empd(OtpNode, NodeAFamily, NodeEncryption) of
-        {ok, Port} when NodeEncryption and not TCPOnly ->
-            case check_otp_tls_connectivity(Host, Port, NodeAFamily) of
-                {ok, IP} -> {ok, IP};
-                {error, Reason} ->
-                    {error, connect_node,
-                     ns_error_messages:verify_otp_connectivity_connection_error(
-                       Reason, OtpNode, Host, Port)}
-            end;
         {ok, Port} ->
-            case check_host_port_connectivity(Host, Port, NodeAFamily) of
+            VerifyConnectivity =
+                case {NodeEncryption, TCPOnly} of
+                    {true, false} -> fun check_otp_tls_connectivity/3;
+                    _ -> fun check_host_port_connectivity/3
+                end,
+            case VerifyConnectivity(Host, Port, NodeAFamily) of
                 {ok, IP} -> {ok, IP};
                 {error, Reason} ->
                     {error, connect_node,
