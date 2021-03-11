@@ -38,6 +38,7 @@ function mnBucketsDetailsDialogServiceFactory($http, $q, mnBytesToMBFilter, mnCo
   }
   function prepareBucketConfigForSaving(bucketConf, autoCompactionSettings, poolDefault, pools) {
     var conf = {};
+    var isMembase = bucketConf.bucketType === "membase";
     function copyProperty(property) {
       if (bucketConf[property] !== undefined) {
         conf[property] = bucketConf[property];
@@ -49,19 +50,21 @@ function mnBucketsDetailsDialogServiceFactory($http, $q, mnBytesToMBFilter, mnCo
     if (bucketConf.isNew) {
       copyProperties(["name", "bucketType"]);
     }
-    if (bucketConf.bucketType === "membase") {
-      copyProperties(["autoCompactionDefined", "evictionPolicy", "durabilityMinLevel"]);
+    if (pools.isDeveloperPreview && pools.isEnterprise && isMembase) {
       copyProperty("storageBackend");
+      if (bucketConf.storageBackend === "magma") {
+        copyProperty("fragmentationPercentage");
+      }
+    }
+    if (isMembase) {
+      copyProperties(["autoCompactionDefined", "evictionPolicy", "durabilityMinLevel"]);
     }
     if (bucketConf.bucketType === "ephemeral") {
       copyProperties(["purgeInterval", "durabilityMinLevel"]);
       conf["evictionPolicy"] = bucketConf["evictionPolicyEphemeral"];
     }
-    if (bucketConf.storageBackend === "magma") {
-      copyProperty("fragmentationPercentage");
-    }
 
-    if (bucketConf.bucketType === "membase" || bucketConf.bucketType === "ephemeral") {
+    if (isMembase || bucketConf.bucketType === "ephemeral") {
       copyProperties(["threadsNumber", "replicaNumber"]);
       if (pools.isEnterprise && poolDefault.compat.atLeast55) {
         copyProperty("compressionMode");

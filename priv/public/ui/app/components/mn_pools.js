@@ -29,7 +29,7 @@ function mnPoolsFactory($http, $cacheFactory) {
       var pools = resp.data;
       pools.isInitialized = !!pools.pools.length;
       pools.launchID = pools.uuid + '-' + launchID;
-      mnPools.export.isEnterprise = pools.isEnterprise;
+      Object.assign(mnPools.export, pools);
       return pools;
     });
   }
