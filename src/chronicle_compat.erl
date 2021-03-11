@@ -339,28 +339,23 @@ config_sync(Type, Nodes) ->
     config_sync(Type, Nodes, ns_config_rep:get_timeout(Type)).
 
 config_sync(pull, Nodes, Timeout) ->
-    case ns_config_rep:pull_remotes(Nodes, Timeout) of
-        ok ->
-            pull(Timeout);
-        Error ->
-            Error
+    case backend() of
+        ns_config ->
+            ns_config_rep:pull_remotes(Nodes, Timeout);
+        chronicle ->
+            do_pull(Timeout)
     end;
 config_sync(push, Nodes, Timeout) ->
-    case ns_config_rep:ensure_config_seen_by_nodes(Nodes, Timeout) of
-        ok ->
-            case backend() of
-                ns_config ->
+    case backend() of
+        ns_config ->
+            ns_config_rep:ensure_config_seen_by_nodes(Nodes, Timeout);
+        chronicle ->
+            case remote_pull(Nodes, Timeout) of
+                ok ->
                     ok;
-                chronicle ->
-                    case remote_pull(Nodes, Timeout) of
-                        ok ->
-                            ok;
-                        {error, {remote_pull_failed, BadResults}} ->
-                            {error, BadResults}
-                    end
-            end;
-        {error, SyncFailedNodes} ->
-            {error, SyncFailedNodes}
+                {error, {remote_pull_failed, BadResults}} ->
+                    {error, BadResults}
+            end
     end.
 
 node_keys(Node) ->
