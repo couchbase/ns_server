@@ -80,7 +80,6 @@
          storage_mode/1,
          storage_backend/1,
          raw_ram_quota/1,
-         sasl_password/1,
          update_maps/3,
          update_buckets/3,
          set_bucket_config/2,
@@ -676,10 +675,6 @@ display_type(Type, _) ->
 
 auth_type(Bucket) ->
     proplists:get_value(auth_type, Bucket).
-
-sasl_password(_Bucket) ->
-    %% No longer used but kept for now until all code can remove usage.
-    "".
 
 moxi_port(Bucket) ->
     proplists:get_value(moxi_port, Bucket).
