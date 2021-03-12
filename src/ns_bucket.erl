@@ -25,7 +25,6 @@
          kv_backend_type/1,
          num_replicas_changed/1,
          create_bucket/3,
-         credentials/1,
          delete_bucket/1,
          display_type/1,
          display_type/2,
@@ -118,13 +117,6 @@
 %%%===================================================================
 %%% API
 %%%===================================================================
-
-%% @doc Return {Username, Password} for a bucket.
--spec credentials(nonempty_string()) ->
-                         {nonempty_string(), string()}.
-credentials(Bucket) ->
-    {ok, BucketConfig} = get_bucket(Bucket),
-    {Bucket, proplists:get_value(sasl_password, BucketConfig, "")}.
 
 root() ->
     bucket_names.

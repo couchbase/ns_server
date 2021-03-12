@@ -334,9 +334,6 @@ jsonify_users(Users, RoleDefinitions, ClusterAdmin, PromUser) ->
            EmitLocalUser(ClusterAdmin, {ClusterAdmin, admin}),
            EmitLocalUser(PromUser, {PromUser, stats_reader}),
 
-           lists:foreach(?cut(EmitLocalUser(_1 ++ ";legacy", {_1, bucket})),
-                         ns_bucket:get_bucket_names(Snapshot)),
-
            pipes:foreach(
              ?producer(),
              fun ({{user, {UserName, _} = Identity}, Props}) ->

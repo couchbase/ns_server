@@ -140,5 +140,4 @@ get_no_auth_buckets() ->
 get_no_auth_buckets(Snapshot) ->
     [BucketName ||
         {BucketName, BucketProps} <- ns_bucket:get_buckets(Snapshot),
-        proplists:get_value(auth_type, BucketProps) =:= none orelse
-            proplists:get_value(sasl_password, BucketProps) =:= ""].
+        proplists:get_value(auth_type, BucketProps) =:= none].
