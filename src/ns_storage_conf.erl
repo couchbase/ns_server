@@ -31,7 +31,9 @@
          this_node_dbdir/0, this_node_ixdir/0, this_node_logdir/0,
          this_node_evdir/0,
          this_node_bucket_dbdir/1,
+         buckets_in_use/1,
          delete_unused_buckets_db_files/0,
+         delete_unused_buckets_db_files/1,
          delete_old_2i_indexes/0,
          setup_storage_paths/0,
          this_node_cbas_dirs/0,
@@ -594,36 +596,39 @@ delete_disk_buckets_databases_loop(Pred, [Bucket | Rest]) ->
             Error
     end.
 
+buckets_in_use(Node) ->
+    Snapshot = chronicle_compat:get_snapshot(
+                 [ns_bucket:key_filter(),
+                  ns_cluster_membership:key_filter()]),
+    Services = ns_cluster_membership:node_services(Snapshot, Node),
+    BucketConfigs = ns_bucket:get_buckets(Snapshot),
+    case lists:member(kv, Services) of
+        true ->
+            ns_bucket:node_bucket_names_of_type(Node, membase,
+                                                BucketConfigs);
+        false ->
+            case ns_cluster_membership:get_cluster_membership(Node,
+                                                              Snapshot) of
+                active ->
+                    ns_bucket:get_bucket_names_of_type(membase,
+                                                       BucketConfigs);
+                _ ->
+                    []
+            end
+    end.
+
 %% deletes all databases files for buckets not defined for this node
 %% note: this is called remotely
 %%
 %% it's named a bit differently from other functions here; but this function
 %% is rpc called by older nodes; so we must keep this name unchanged
 delete_unused_buckets_db_files() ->
-    Node = node(),
-    Snapshot = chronicle_compat:get_snapshot(
-                 [ns_bucket:key_filter(),
-                  ns_cluster_membership:key_filter()]),
-    Services = ns_cluster_membership:node_services(Snapshot, Node),
-    BucketConfigs = ns_bucket:get_buckets(Snapshot),
-    BucketNames =
-        case lists:member(kv, Services) of
-            true ->
-                ns_bucket:node_bucket_names_of_type(Node, membase,
-                                                    BucketConfigs);
-            false ->
-                case ns_cluster_membership:get_cluster_membership(Node,
-                                                                  Snapshot) of
-                    active ->
-                        ns_bucket:get_bucket_names_of_type(membase,
-                                                           BucketConfigs);
-                    _ ->
-                        []
-                end
-        end,
+    delete_unused_buckets_db_files(buckets_in_use(node())).
+
+delete_unused_buckets_db_files(BucketsInUse) ->
     delete_disk_buckets_databases(
       fun (Bucket) ->
-              RV = not(lists:member(Bucket, BucketNames)),
+              RV = not(lists:member(Bucket, BucketsInUse)),
               case RV of
                   true ->
                       ale:info(

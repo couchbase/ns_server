@@ -919,44 +919,26 @@ terminate_mover(Pid, StopReason) ->
             exit(OtherReason)
     end.
 
+build_delete_unused_buckets_db_files_request(Node, false) ->
+    {Node, ?cut(rpc:call(Node, ns_storage_conf,
+                         delete_unused_buckets_db_files, []))};
+build_delete_unused_buckets_db_files_request(Node, true) ->
+    BucketsInUse = ns_storage_conf:buckets_in_use(Node),
+    {Node, ?cut(rpc:call(Node, ns_storage_conf,
+                         delete_unused_buckets_db_files, [BucketsInUse]))}.
+
 maybe_cleanup_old_buckets(KeepNodes) ->
-    case misc:rpc_multicall_with_plist_result(KeepNodes, ns_storage_conf, delete_unused_buckets_db_files, []) of
-        {_, _, DownNodes} when DownNodes =/= [] ->
-            ?rebalance_error("Failed to cleanup old buckets on some nodes: ~p",
-                             [DownNodes]),
-            {buckets_cleanup_failed, DownNodes};
-        {Good, ReallyBad, []} ->
-            ReallyBadNodes =
-                case ReallyBad of
-                    [] ->
-                        [];
-                    _ ->
-                        ?rebalance_error(
-                           "Failed to cleanup old buckets on some nodes: ~n~p",
-                           [ReallyBad]),
-                        lists:map(fun ({Node, _}) -> Node end, ReallyBad)
-                end,
-
-            FailedNodes =
-                lists:foldl(
-                  fun ({Node, Result}, Acc) ->
-                          case Result of
-                              ok ->
-                                  Acc;
-                              Error ->
-                                  ?rebalance_error(
-                                     "Failed to cleanup old buckets on node ~p: ~p",
-                                     [Node, Error]),
-                                  [Node | Acc]
-                          end
-                  end, [], Good),
-
-            case FailedNodes ++ ReallyBadNodes of
-                [] ->
-                    ok;
-                AllFailedNodes ->
-                    {buckets_cleanup_failed, AllFailedNodes}
-            end
+    IsCheshireCat = cluster_compat_mode:is_cluster_cheshirecat(),
+    Requests = lists:map(
+                 build_delete_unused_buckets_db_files_request(_, IsCheshireCat),
+                 KeepNodes),
+    case misc:multi_call_request(Requests, infinity, _ =:= ok) of
+        {_, []} ->
+            ok;
+        {_, BadNodes} ->
+            [?rebalance_error("Failed to cleanup old buckets on node ~p: ~p",
+                              [Node, Error]) || {Node, Error} <- BadNodes],
+            {buckets_cleanup_failed, [N || {N, _} <- BadNodes]}
     end.
 
 find_delta_recovery_map(Config, AllNodes, DeltaNodes, Bucket, BucketConfig) ->
