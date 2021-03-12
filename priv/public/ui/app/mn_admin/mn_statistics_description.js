@@ -1562,12 +1562,12 @@ function get65CompatDesc() {
 
       "@query":{
         "query_avg_req_time": {
-          unit: "second",
+          unit: "nanoseconds",
           title: "Query Request Time",
           desc: "Average end-to-end time to process a query (in seconds)."
         },
         "query_avg_svc_time": {
-          unit: "second",
+          unit: "nanoseconds",
           title: "Query Execution Time",
           desc: "Average time to execute a query (in seconds)."
         },
