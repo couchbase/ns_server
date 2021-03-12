@@ -552,12 +552,11 @@ event_to_jsons({TS, became_master}) ->
     event_to_jsons({TS, became_master, 'nonode@unknown'});
 
 event_to_jsons({TS, create_bucket, BucketName, BucketType, NewConfig}) ->
-    SanitizedConfig = lists:keydelete(sasl_password, 1, NewConfig),
     [format_simple_plist_as_json([{type, createBucket},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {bucket, BucketName},
                                   {bucketType, BucketType}])
-     ++ [{params, {struct, format_simple_plist_as_json(SanitizedConfig)}}]];
+     ++ [{params, {struct, format_simple_plist_as_json(NewConfig)}}]];
 
 event_to_jsons({TS, delete_bucket, BucketName}) ->
     [format_simple_plist_as_json([{type, deleteBucket},

@@ -579,13 +579,11 @@ rebalance_initiated(Req, KnownNodes, EjectedNodes, DeltaRecoveryBuckets) ->
 
 build_bucket_props(Props) ->
     lists:foldl(
-      fun({sasl_password, _}, Acc) ->
+      fun ({autocompaction, false}, Acc) ->
               Acc;
-         ({autocompaction, false}, Acc) ->
-              Acc;
-         ({autocompaction, CProps}, Acc) ->
+          ({autocompaction, CProps}, Acc) ->
               [{autocompaction, {build_compaction_settings(CProps)}} | Acc];
-         ({K, V}, Acc) ->
+          ({K, V}, Acc) ->
               [{K, to_binary(V)} | Acc]
       end, [], Props).
 

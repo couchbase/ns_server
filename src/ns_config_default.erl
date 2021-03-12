@@ -473,6 +473,9 @@ encrypt(Config) ->
     misc:rewrite_tuples(fun ({admin_pass, Pass}) ->
                                 {stop, {admin_pass, encrypt_config_val(Pass)}};
                             ({sasl_password, Pass}) ->
+                                %% Maybe present on mixed version clusters.
+                                %% The key is eventually deleted at some time
+                                %% after compat mode is elevated to 7.0.
                                 {stop, {sasl_password, encrypt_config_val(Pass)}};
                             ({metakv_sensitive, Val}) ->
                                 {stop, {metakv_sensitive, encrypt_config_val(Val)}};
