@@ -244,6 +244,21 @@ config_sync(Type, Nodes) ->
             exit({config_sync_failed, Error})
     end.
 
+push_ns_config(Nodes) ->
+    case cluster_compat_mode:is_cluster_70() of
+        true ->
+            ok;
+        false ->
+            case ns_config_rep:ensure_config_seen_by_nodes(Nodes) of
+                ok ->
+                    ok;
+                {error, SyncFailedNodes} ->
+                    ?log_error("Failed to push config to nodes ~p",
+                               [SyncFailedNodes]),
+                    {config_sync_failed, SyncFailedNodes}
+            end
+    end.
+
 start_link_rebalance(KeepNodes, EjectNodes,
                      FailedNodes, DeltaNodes, DeltaRecoveryBucketNames) ->
     proc_lib:start_link(
@@ -537,7 +552,6 @@ rebalance_body(KeepNodes,
     ok = leader_activities:activate_quorum_nodes(KeepNodes),
 
     config_sync(pull, LiveNodes),
-    config_sync(push, LiveNodes),
 
     %% Eject failed nodes first so they don't cause trouble
     FailedNodes = FailedNodesAll -- [node()],
@@ -923,13 +937,20 @@ maybe_cleanup_old_buckets(KeepNodes) ->
     Requests = [{Node, ?cut(rpc:call(Node, ns_storage_conf,
                                      delete_unused_buckets_db_files, []))} ||
                    Node <- KeepNodes],
-    case misc:multi_call_request(Requests, infinity, _ =:= ok) of
-        {_, []} ->
-            ok;
-        {_, BadNodes} ->
-            [?rebalance_error("Failed to cleanup old buckets on node ~p: ~p",
-                              [Node, Error]) || {Node, Error} <- BadNodes],
-            {buckets_cleanup_failed, [N || {N, _} <- BadNodes]}
+
+    case push_ns_config(KeepNodes) of
+        ok ->
+            case misc:multi_call_request(Requests, infinity, _ =:= ok) of
+                {_, []} ->
+                    ok;
+                {_, BadNodes} ->
+                    [?rebalance_error(
+                        "Failed to cleanup old buckets on node ~p: ~p",
+                        [Node, Error]) || {Node, Error} <- BadNodes],
+                    {buckets_cleanup_failed, [N || {N, _} <- BadNodes]}
+            end;
+        Error ->
+            Error
     end.
 
 find_delta_recovery_map(Config, AllNodes, DeltaNodes, Bucket, BucketConfig) ->
