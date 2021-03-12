@@ -2074,26 +2074,27 @@ multi_call(Nodes, Name, Request, Timeout) ->
        OkPred   :: fun((any()) -> OkPredRV),
        OkPredRV :: boolean() | {false, ErrorTerm :: term()}.
 multi_call(Nodes, Name, Request, Timeout, OkPred) ->
-    NodeRequests = [{N, Request} || N <- Nodes],
-    multi_call_request(NodeRequests, Name, Timeout, OkPred).
+    NodeRequests =
+        [{N, ?cut(gen_server:call({Name, N}, Request, infinity))} ||
+            N <- Nodes],
+    multi_call_request(NodeRequests, Timeout, OkPred).
 
--spec multi_call_request(NodeRequests, Name, Timeout, OkPred) -> Result
+-spec multi_call_request(NodeRequests, Timeout, OkPred) -> Result
   when NodeRequests :: [{node(), any()}],
-       Name         :: atom(),
        Timeout      :: infinity | non_neg_integer(),
        Result       :: {Good, Bad},
        Good         :: [{node(), any()}],
        Bad          :: [{node(), any()}],
        OkPred       :: fun((any()) -> OkPredRV),
        OkPredRV     :: boolean() | {false, ErrorTerm :: term()}.
-multi_call_request(NodeRequests, Name, Timeout, OkPred) ->
+multi_call_request(NodeRequests, Timeout, OkPred) ->
     Nodes = [N || {N, _Req} <- NodeRequests],
     Ref = erlang:make_ref(),
     Parent = self(),
     try
         parallel_map(
           fun ({N, Request}) ->
-                  RV = try gen_server:call({Name, N}, Request, infinity) of
+                  RV = try Request() of
                            Res ->
                                case OkPred(Res) of
                                    true ->
@@ -2231,25 +2232,28 @@ multi_call_request_test_() ->
      [fun do_test_multi_call_request/0]}.
 
 do_test_multi_call_request() ->
-    %% okpred is tested by multi_call_ok_pred_test_
-    OkPred = fun (_) -> true end,
+    MultiCallRequest =
+        fun (NR) ->
+                Requests =
+                    [{N, ?cut(gen_server:call({multi_call_server, N},
+                                              R, infinity))} || {N, R} <- NR],
+                multi_call_request(Requests, 100, fun (_) -> true end)
+        end,
     NodeRequests = [{N, {echo, Val}} || {Val, N} <- misc:enumerate(nodes())],
-    {R1, Bad1} = misc:multi_call_request(NodeRequests, multi_call_server, 100,
-                                         OkPred),
+
+    {R1, Bad1} = MultiCallRequest(NodeRequests),
 
     multi_call_request_test_assert_results(R1, NodeRequests),
     multi_call_test_assert_bad_nodes(Bad1, []),
 
-    {R2, Bad2} = misc:multi_call_request([{bad_node, {echo, ok}} | NodeRequests],
-                                         multi_call_server, 100, OkPred),
+    {R2, Bad2} = MultiCallRequest([{bad_node, {echo, ok}} | NodeRequests]),
     multi_call_request_test_assert_results(R2, NodeRequests),
     multi_call_test_assert_bad_nodes(Bad2, [bad_node]),
 
     [{FirstNode, _} | RestNodeRequests] = NodeRequests,
     catch gen_server:call({multi_call_server, FirstNode}, {sleep, 100000}, 100),
 
-    {R3, Bad3} = misc:multi_call_request(NodeRequests, multi_call_server, 100,
-                                         OkPred),
+    {R3, Bad3} = MultiCallRequest(NodeRequests),
     multi_call_request_test_assert_results(R3, RestNodeRequests),
     ?assertEqual(Bad3, [{FirstNode, timeout}]),
 
@@ -2257,8 +2261,7 @@ do_test_multi_call_request() ->
                     [fun () ->
                              erlang:exit(whereis(multi_call_server), kill)
                      end, []]),
-    {R4, Bad4} = misc:multi_call_request(NodeRequests, multi_call_server, 100,
-                                         OkPred),
+    {R4, Bad4} = MultiCallRequest(NodeRequests),
     multi_call_request_test_assert_results(R4, RestNodeRequests),
     ?assertMatch([{FirstNode, {exit, {noproc, _}}}], Bad4).
 
