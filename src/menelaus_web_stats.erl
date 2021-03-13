@@ -44,7 +44,7 @@ params() ->
      {"snapshotCreationTimeout",
       #{cfg_key => snapshot_timeout_msecs, type => pos_int}},
      {"scrapeIntervalsCalculationPeriod",
-      #{cfg_key => intervals_calculation_period, type => int}},
+      #{cfg_key => intervals_calculation_period, type => pos_int_or_minus_one}},
      {"cbcollect.statsMaxSize",
       #{cfg_key => cbcollect_stats_dump_max_size, type => pos_int}},
      {"cbcollect.statsMinPeriod",
@@ -56,7 +56,7 @@ params() ->
      {"derivedMetricsFilter",
       #{cfg_key => derived_metrics_filter, type => derived_metrics_filter}},
      {"derivedMetricsCalculationInterval",
-      #{cfg_key => derived_metrics_interval, type => int}},
+      #{cfg_key => derived_metrics_interval, type => pos_int_or_minus_one}},
 
      {"prometheus.retentionSize",
       #{cfg_key => retention_size, type => pos_int}},
@@ -99,7 +99,7 @@ params() ->
      || {S, N} <- Services] ++
     [{"services." ++ N ++ ".highCardScrapeInterval",
       #{cfg_key => [services, S, high_cardinality_scrape_interval],
-        type => int}}
+        type => pos_int_or_minus_one}}
      || {S, N} <- Services] ++
     [{"services." ++ N ++ ".highCardScrapeTimeout",
       #{cfg_key => [services, S, high_cardinality_scrape_timeout],
@@ -116,7 +116,15 @@ type_spec(derived_metrics_filter) ->
 type_spec(prom_patterns) ->
     #{validators => [{string_list, ","},
                      validate_list(fun prom_pattern/1, _, _)],
-      formatter => {string_list, ","}}.
+      formatter => {string_list, ","}};
+type_spec(pos_int_or_minus_one) ->
+    #{validators => [int, validator:validate(
+                            fun (-1) -> ok;
+                                (N) when N > 0 -> ok;
+                                (_) ->
+                                    {error, "must be a positive integer or -1"}
+                            end, _, _)],
+      formatter => int}.
 
 format_derived_metrics_filter(all) -> {value, <<"all">>};
 format_derived_metrics_filter(L) -> {value, [list_to_binary(M) || M <- L]}.
