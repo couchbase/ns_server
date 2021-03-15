@@ -10,19 +10,11 @@
 
 <div class="row margin-top-half margin-bottom-half">
   <div class="row flex-left min-width-zero">
-    <ui-select
-       on-select="documentsCtl.onSelectBucketName($item)"
+    <mn-select
        ng-model="documentsCtl.currentBucketName"
-       theme="selectize"
-       class="cbui-select">
-      <ui-select-match
-         class="ui-select-match">{{$select.selected}}</ui-select-match>
-      <ui-select-choices
-         class="ui-select-choices"
-         repeat="name in rbac.bucketNames['.data.docs!read'] | filter: $select.search">
-        <span class="select-item ellipsis" ng-bind-html="name | highlight: $select.search"></span>
-      </ui-select-choices>
-    </ui-select>
+       values="rbac.bucketNames['.data.docs!read']"
+       on-select="documentsCtl.onSelectBucketName(selectedOption)">
+    </mn-select>
     <div
        class="row min-width-zero"
        ng-if="!buckets.details.byName[documentsCtl.currentBucketName].isEphemeral">

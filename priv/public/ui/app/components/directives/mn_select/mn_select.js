@@ -17,7 +17,8 @@ function mnSelectDirective() {
       onSelect: "&",
       ngDisabled: "=",
       filter: "=?",
-      capitalize: "="
+      capitalize: "=",
+      openOnTop: "="
     },
     templateUrl: "app/components/directives/mn_select/mn_select.html",
     link: mnSelectController

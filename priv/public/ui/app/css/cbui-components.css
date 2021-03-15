@@ -1838,21 +1838,36 @@ mn-select[disabled] .mn-select .dropdown-toggle .icon,
 .mn-select.dropdown.open .dropdown-menu,
 .mn-select.dropdown.show .dropdown-menu,
 .mn-select.dropup.open .dropdown-menu,
-.mn-select.dropup.show .dropdown-menu{
-    display: block;
+.mn-select.dropup.show .dropdown-menu {
+  display: block;
+}
+.mn-select.open-on-top .dropdown-menu {
+  bottom: 2rem;
+}
+.mn-select-small .mn-select.open-on-top .dropdown-menu {
+  bottom: 1.75rem;
 }
 
 .mn-select .dropdown-menu {
-    display: none;
-    background-color: #fff;
-    position: absolute;
-    top: 28px;
-    right: 0;
-    text-align: left;
-    z-index: 13;
-    border-radius: 2px;
-    box-shadow: 0 5px 6px 0 rgba(0,0,0,0.25);
-    white-space: nowrap;
+  display: none;
+  background-color: #fff;
+  position: absolute;
+  top: 28px;
+  right: 0;
+  text-align: left;
+  z-index: 13;
+  border-radius: 2px;
+  box-shadow: 0 5px 6px 0 rgba(0,0,0,0.25);
+  white-space: nowrap;
+}
+.mn-select.open-on-top .dropdown-menu {
+  box-shadow: 0 -5px 6px 0 rgba(0,0,0,0.25);
+}
+
+.mn-select-small .mn-select .dropdown-btn {
+    height: 1.75rem;
+    line-height: 1.5rem;
+    font-size: 13px;
 }
 
 .forms .mn-select.width-1 {

@@ -23,20 +23,13 @@
 
 <div>
   <div class="row resp-sml">
-    <ui-select
+    <mn-select
+       class="margin-bottom-half"
        ng-model="viewsCtl.currentBucketName"
-       on-select="viewsCtl.onSelectBucket($item)"
-       theme="selectize"
+       values="rbac.bucketNames['.views!read']"
        ng-disabled="!rbac.bucketNames['.views!read'].length"
-       class="cbui-select margin-bottom-half">
-      <ui-select-match
-         class="ui-select-match">{{$select.selected}}</ui-select-match>
-      <ui-select-choices
-         class="ui-select-choices"
-         repeat="name in rbac.bucketNames['.views!read'] | filter: $select.search">
-        <span class="select-item ellipsis" ng-bind-html="name | highlight: $select.search" ></span>
-      </ui-select-choices>
-    </ui-select>
+       on-select="viewsCtl.onSelectBucket(selectedOption)">
+    </mn-select>
     <span class="pills nowrap">
       <a
          ui-sref="{ type: 'development' }"

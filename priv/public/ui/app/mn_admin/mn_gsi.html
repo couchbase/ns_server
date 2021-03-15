@@ -84,19 +84,14 @@
         <span class="text-right width-6">{{footerStatsCtl.getLatestStat('@index-.index/fragmentation') | number:1}}%</span>
       </div>
       <div class="column">
-        <ui-select
-           class="cbui-select cbui-select-small"
+        <mn-select
+           class="mn-select-small block"
            ng-model="footerStatsCtl.currentBucket"
-           theme="selectize"
+           values="rbac.bucketNames['.stats!read']"
            ng-disabled="!rbac.bucketNames['.stats!read'].length"
-           on-select="footerStatsCtl.onSelectBucket($item)">
-          <ui-select-match class="ui-select-match">{{$select.selected}} </ui-select-match>
-          <ui-select-choices
-             class="ui-select-choices"
-             repeat="name in rbac.bucketNames['.stats!read'] | filter: $select.search">
-            <span class="select-item ellipsis" ng-bind-html="name | highlight: $select.search"></span>
-          </ui-select-choices>
-        </ui-select>
+           on-select="footerStatsCtl.onSelectBucket(selectedOption)"
+           open-on-top="true">
+        </mn-select>
         <span class="width-6">Indexes Data Size</span>
         <span class="text-right width-6">{{footerStatsCtl.getLatestStat('@index-.index/data_size') | mnFormatQuantity}}</span><br>
         <span class="width-6">Indexes Disk Size</span>

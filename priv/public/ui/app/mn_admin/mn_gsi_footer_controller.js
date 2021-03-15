@@ -2,7 +2,7 @@ import mnStatsDesc from "./mn_statistics_description.js";
 
 export default mnGsiFooterController;
 
-function mnGsiFooterController($scope, $rootScope, $state, mnStatisticsNewService, mnPoolDefault, mnPermissions) {
+function mnGsiFooterController($scope, $rootScope, $state, mnStatisticsNewService, mnPoolDefault, mnPermissions, $timeout) {
   var vm = this;
 
   vm.onSelectBucket = onSelectBucket;
@@ -66,14 +66,13 @@ function mnGsiFooterController($scope, $rootScope, $state, mnStatisticsNewServic
       $scope.mnUIStats.stats[statName].aggregate.slice().reverse().find(stat => stat != null);
   }
 
-  function onSelectBucket() {
+  function onSelectBucket(selectedOption) {
     //reload ng-controller in the template
-    $rootScope.$apply(() => {
-      $rootScope.destroyGsiFooter = true;
-    });
-    $state.go(".", {footerBucket: vm.currentBucket}).then(function () {
-      $rootScope.destroyGsiFooter = false;
-    });
+    $rootScope.destroyGsiFooter = true;
+    $timeout(() => {
+      $state.go(".", {footerBucket: selectedOption}).then(function () {
+        $rootScope.destroyGsiFooter = false;
+      });
+    }, 0);
   }
-
 }
