@@ -192,7 +192,9 @@ handle_call({complete_failover, Nodes, Ref}, _From, State) ->
           Nodes,
           transaction_with_key_remove(
             failover_opaque_key(), _, fun ({ORef, _}) -> ORef =:= Ref end, _)),
-    {reply, ok, State};
+    NewState = cancel_janitor_timer(State),
+    self() ! janitor,
+    {reply, ok, NewState};
 
 handle_call(Oper, _From, #state{self_ref = SelfRef} = State) ->
     NewState = cancel_janitor_timer(State),
@@ -213,14 +215,13 @@ handle_info(janitor, #state{self_ref = SelfRef} = State) ->
                     {ok, _, {need_recovery, RecoveryOper}} ->
                         ?log_debug("Janitor found that recovery is needed for "
                                    "operation ~p", [RecoveryOper]),
-                        ok = handle_oper(RecoveryOper, Lock, SelfRef),
-                        CleanState;
+                        ok = handle_oper(RecoveryOper, Lock, SelfRef);
                     unfinished_failover ->
-                        ?log_debug("Try janitor later."),
-                        arm_janitor_timer(CleanState);
+                        ?log_debug("Skip janitor due to unfinished failover.");
                     clean ->
-                        CleanState
-                end
+                        ok
+                end,
+                CleanState
         catch Type:What ->
                 ?log_debug(
                    "Cannot acquire lock due to ~p:~p. Try janitor later.",
