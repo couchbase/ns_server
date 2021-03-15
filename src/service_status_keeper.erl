@@ -138,7 +138,7 @@ refresh_status(State) ->
 grab_status(#state{service = Service,
                    source = local}) ->
     case Service:get_local_status() of
-        {ok, Status} ->
+        {ok, _Headers, Status} ->
             Service:process_status(Status);
         Error ->
             Error

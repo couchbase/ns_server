@@ -46,9 +46,9 @@ request_local(Type, URL, Method, Headers, Body, Timeout) ->
 get_json(Type, URL, Path, Timeout) ->
     RV = request_local(Type, URL, "GET", [], [], Timeout),
     case RV of
-        {ok, {{200, _}, _Headers, BodyRaw}} ->
+        {ok, {{200, _}, Headers, BodyRaw}} ->
             try
-                {ok, ejson:decode(BodyRaw)}
+                {ok, Headers, ejson:decode(BodyRaw)}
             catch
                 T:E ->
                     ?log_error("Received bad json in response from (~p) ~s: ~p",
@@ -60,6 +60,8 @@ get_json(Type, URL, Path, Timeout) ->
             {error, RV}
     end.
 
+-spec get_json_local(atom(), string(), integer(), integer()) ->
+    {ok, [{any(), any()}], any()} | {error, any()}.
 get_json_local(Type, Path, Port, Timeout) ->
     get_json_local(Type, Path, Port, Timeout, false).
 
