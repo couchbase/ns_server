@@ -231,7 +231,7 @@
                ng-model="mnStatsGroupsCtl.items.kv"
                values="statisticsNewCtl.viewItems.values"
                labels="statisticsNewCtl.viewItems.labels">
-          </mn-select>
+            </mn-select>
           </span>
         </div>
         <div
@@ -244,6 +244,18 @@
                ng-model="mnStatsGroupsCtl.items.xdcr"
                values="statisticsNewCtl.xdcrItems.values"
                labels="statisticsNewCtl.xdcrItems.labels">
+            </mn-select>
+          </span>
+        </div>
+        <div
+           ng-if="mnStatsGroupsCtl.enabledItems['@eventing-'] && statisticsNewCtl.eventingItems.values.length"
+           ng-init="mnStatsGroupsCtl.items.eventing = statisticsNewCtl.eventingItems.values[0]">
+          <span>
+            <h5>Eventing functions</h5>
+            <mn-select
+               class="inline margin-left-quarter"
+               ng-model="mnStatsGroupsCtl.items.eventing"
+               values="statisticsNewCtl.eventingItems.values">
             </mn-select>
           </span>
         </div>

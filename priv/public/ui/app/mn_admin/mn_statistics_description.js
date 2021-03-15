@@ -46,6 +46,17 @@ var compat70Combined = propertiesToArray(compat65.stats)
 
 //per @items Modifier
 var stats70LabelsModifier = {
+  "eventing": (cfg) => {
+    if (!cfg.metric["eventing"]) {
+      delete cfg.metric["eventing"];
+      return cfg;
+    }
+
+    cfg.metric["functionName"] = cfg.metric["eventing"];
+    delete cfg.metric["eventing"];
+    return cfg;
+  },
+
   "fts": (cfg) => {
     //metric[service] indicates per item stats
     if (!cfg.metric["fts"]) {
@@ -310,8 +321,6 @@ function getStatAdditionalConfig(statName) {
 
   case "@fts-.fts_num_bytes_used_disk":
   case "@fts-.fts_num_files_on_disk":
-  case "@eventing.eventing_dcp_backlog":
-  case "@eventing.eventing_timeout_count":
   case "@index-.index_num_rows_returned":
   case "@kv-.couch_views_ops": //<- not sure if we need irate
   case "@xdcr-.@items.xdcr_docs_failed_cr_source_total":
@@ -340,6 +349,16 @@ function getStatAdditionalConfig(statName) {
     return {metric: {op: "commit"}, aggregationFunction:"avg"};
 
   case "@kv-.kv_curr_connections":
+    return {bucket: null};
+
+  case "@eventing.eventing_processed_count":
+  case "@eventing.eventing_failed_count":
+  case "@eventing.eventing_timeout_count":
+    return {applyFunctions: ["sum"], bucket: null};
+
+  case "@eventing-.@items.eventing_processed_count":
+  case "@eventing-.@items.eventing_failed_count":
+  case "@eventing-.@items.eventing_timeout_count":
     return {bucket: null};
 
   case "@kv-.kv_cas_hits":
@@ -659,10 +678,9 @@ function get70Mapping() {
     "@fts.fts_total_queries_rejected_by_herder": "@fts.fts_total_queries_rejected_by_herder",
     "@fts.fts_curr_batches_blocked_by_herder": "@fts.fts_curr_batches_blocked_by_herder",
 
-    "@eventing.eventing_dcp_backlog": "@eventing.eventing/dcp_backlog",
-    "@eventing.eventing_timeout_count": "@eventing.eventing/timeout_count",
-    "@eventing.eventing_processed_count": "@eventing.eventing/processed_count",
-    "@eventing.eventing_failed_count": "@eventing.eventing/failed_count"
+    "@eventing-.@items.eventing_timeout_count": "@eventing.eventing/timeout_count",
+    "@eventing-.@items.eventing_processed_count": "@eventing.eventing/processed_count",
+    "@eventing-.@items.eventing_failed_count": "@eventing.eventing/failed_count"
 
   });
 }
@@ -684,6 +702,23 @@ function get70CompatDesc() {
             title: "Index Write Queue",
             desc: "Number of documents queued to be indexed at the Indexer. Per Index."
           }
+        }
+      },
+      "@eventing": {
+        "eventing_processed_count": {
+          unit: "number",
+          title: "Successful Function Invocations",
+          desc: "Count of times the function was invoked successfully."
+        },
+        "eventing_failed_count": {
+          unit: "number",
+          title: "Failed Function Invocations",
+          desc: "Count of times the function invocation failed."
+        },
+        "eventing_timeout_count": {
+          unit: "number",
+          title: "Eventing Timeouts",
+          desc: "Execution timeouts while processing mutations."
         }
       }
     }
@@ -1833,7 +1868,7 @@ function get65CompatDesc() {
           title: "Failed Function Invocations",
           desc: "Count of times the function invocation failed. Per function."
         },
-        "eventing/dcp_backlog": {
+        "eventing/dcp_backlog": { //deprecated in 7.0
           unit: "number",
           title: "Eventing Backlog",
           desc: "Remaining mutations to be processed by the function. Per function."

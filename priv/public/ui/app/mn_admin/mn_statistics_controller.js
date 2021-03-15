@@ -377,6 +377,22 @@ function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http
         .cycle();
     }
 
+    if ($scope.rbac.cluster.eventing.functions.manage) {
+      new mnPoller($scope, function () {
+        return $http.get('/_p/event/api/v1/status');
+      })
+        .setInterval(10000)
+        .subscribe(resp => {
+          vm.eventingItems = ((resp.data && resp.data.apps) || []).reduce((acc, func) => {
+            if (func.composite_status == "deployed") {
+              acc.values.push(func.name);
+            }
+            return acc;
+          }, {values: []});
+        })
+        .cycle();
+    }
+
     if ($scope.rbac.cluster.bucket['.'].views.read) {
       new mnPoller($scope, function () {
         return mnStatisticsNewService.getStatsDirectory($state.params.scenarioBucket, {})

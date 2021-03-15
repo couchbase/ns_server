@@ -90,7 +90,8 @@ function mnPermissionsProvider() {
     "cluster.samples!read",
     "cluster.nodes!read",
     "cluster.admin.memcached!read",
-    "cluster.admin.memcached!write"
+    "cluster.admin.memcached!write",
+    "cluster.eventing.functions!manage"
   ];
 
   function getAll() {
