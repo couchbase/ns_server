@@ -17,7 +17,7 @@
 
 -include("ns_common.hrl").
 
--export([request/6, get_json_local/4, get_json_local/5]).
+-export([request/6, get_json_local/4]).
 
 request(Type, URL, Method, Headers, Body, Timeout) ->
     ns_server_stats:increment_counter({Type, requests}, 1),
@@ -63,11 +63,5 @@ get_json(Type, URL, Path, Timeout) ->
 -spec get_json_local(atom(), string(), integer(), integer()) ->
     {ok, [{any(), any()}], any()} | {error, any()}.
 get_json_local(Type, Path, Port, Timeout) ->
-    get_json_local(Type, Path, Port, Timeout, false).
-
-get_json_local(Type, Path, Port, Timeout, false = _IsSecure) ->
     URL = misc:local_url(Port, Path, []),
-    get_json(Type, URL, Path, Timeout);
-get_json_local(Type, Path, Port, Timeout, true = _IsSecure) ->
-    URL = misc:local_url(Port, Path, [ssl]),
     get_json(Type, URL, Path, Timeout).
