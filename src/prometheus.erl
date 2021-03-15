@@ -459,32 +459,39 @@ escape_re_chars(Str) ->
 parse_time_duration("") ->
     {error, <<"missing unit character in duration">>};
 parse_time_duration(Str) when is_list(Str) ->
-    parse_time_duration(Str, 0).
-parse_time_duration("", Acc) -> {ok, Acc};
-parse_time_duration(Str, Acc) ->
+    parse_time_duration(Str, "", 0).
+parse_time_duration("", _, Acc) -> {ok, Acc};
+parse_time_duration(Str, PrevUnit, Acc) ->
+    ParseUnit =
+        fun ("ms" ++ Rest) -> {ok, "ms", 1, Rest};
+            ("s" ++ Rest)  -> {ok, "s", 1000, Rest};
+            ("m" ++ Rest)  -> {ok, "m", 60 * 1000, Rest};
+            ("h" ++ Rest)  -> {ok, "h", 60 * 60 * 1000, Rest};
+            ("d" ++ Rest)  -> {ok, "d", 24 * 60 * 60 * 1000, Rest};
+            ("w" ++ Rest)  -> {ok, "w", 7 * 24 * 60 * 60 * 1000, Rest};
+            ("y" ++ Rest)  -> {ok, "y", 365 * 24 * 60 * 60 * 1000, Rest};
+            (_) -> {error, <<"missing unit character in duration">>}
+        end,
+    ValidUnit =
+        fun (Unit) ->
+            Allowed = lists:takewhile(fun (U) -> U =/= PrevUnit end,
+                                      ["ms", "s", "m", "h", "d", "w", "y"]),
+            lists:member(Unit, Allowed)
+        end,
     try string:list_to_integer(Str) of
         {error, _} ->
             {error, <<"not a valid duration string">>};
-        {Val, "ms" ++ Rest} ->
-            parse_time_duration(Rest, Acc + Val);
-        {Val, "s" ++ Rest} ->
-            parse_time_duration(Rest, Acc + Val * 1000);
-        {Val, "m" ++ Rest} ->
-            parse_time_duration(Rest, Acc + Val * 60 * 1000);
-        {Val, "h" ++ Rest} ->
-            parse_time_duration(Rest, Acc + Val * 60 * 60 * 1000);
-        {Val, "d" ++ Rest} ->
-            parse_time_duration(Rest, Acc + Val * 24 * 60 * 60 * 1000);
-        {Val, "w" ++ Rest} ->
-            parse_time_duration(Rest, Acc + Val * 7 * 24 * 60 * 60 * 1000);
-        {Val, "y" ++ Rest} ->
-            parse_time_duration(Rest, Acc + Val * 365 * 24 * 60 * 60 * 1000);
-        {_, ""} ->
-            {error, <<"missing unit character in duration">>};
-        {_, _} ->
-            {error, <<"bad duration syntax">>}
+        {Val, Rest} ->
+            case ParseUnit(Rest) of
+                {ok, Unit, Mult, Rest2} ->
+                    case ValidUnit(Unit) of
+                        true -> parse_time_duration(Rest2, Unit, Acc + Val * Mult);
+                        false -> {error, <<"not valid duration string">>}
+                    end;
+                {error, Error} -> {error, Error}
+            end
     catch
-        _:_ -> {error, <<"invalid interval">>}
+        _:_ -> {error, <<"not a valid duration string">>}
     end.
 
 -ifdef(TEST).
@@ -494,6 +501,8 @@ parse_time_duration_test() ->
     ?assertMatch({error, _}, parse_time_duration("1")),
     ?assertMatch({error, _}, parse_time_duration("42m42")),
     ?assertMatch({error, _}, parse_time_duration("42a")),
+    ?assertMatch({error, _}, parse_time_duration("2y3m4h")),
+    ?assertMatch({error, _}, parse_time_duration("105w2y5w90s")),
     ?assertEqual({ok, 42}, parse_time_duration("42ms")),
     ?assertEqual({ok, 42000}, parse_time_duration("42s")),
     ?assertEqual({ok, 42000 * 60}, parse_time_duration("42m")),
@@ -501,7 +510,7 @@ parse_time_duration_test() ->
     ?assertEqual({ok, 42000 * 60 * 60 * 24}, parse_time_duration("42d")),
     ?assertEqual({ok, 42000 * 60 * 60 * 24 * 7}, parse_time_duration("42w")),
     ?assertEqual({ok, 42000 * 60 * 60 * 24 * 365}, parse_time_duration("42y")),
-    ?assertEqual({ok, 754056}, parse_time_duration("12m34s56ms")).
+    ?assertEqual({ok, 33019506007}, parse_time_duration("1y2w3d4h5m6s7ms")).
 
 format_promql_test() ->
     ?assertEqual(format_promql({[]}), <<"{}">>),
