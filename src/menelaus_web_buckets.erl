@@ -786,9 +786,9 @@ parse_bucket_params_without_warnings(Ctx, Params) ->
     RAMErrors =
         if
             RAMSummary#ram_summary.free < 0 ->
-                [{ramQuotaMB, <<"RAM quota specified is too large to be provisioned into this cluster.">>}];
+                [{ramQuota, <<"RAM quota specified is too large to be provisioned into this cluster.">>}];
             RAMSummary#ram_summary.this_alloc < RAMSummary#ram_summary.this_used ->
-                [{ramQuotaMB, <<"RAM quota cannot be set below current usage.">>}];
+                [{ramQuota, <<"RAM quota cannot be set below current usage.">>}];
             true ->
                 []
         end,
@@ -984,26 +984,28 @@ get_bucket_type(_IsNew, _BucketConfig, Params) ->
 
 quota_size_error(CommonParams, BucketType, IsNew, BucketConfig) ->
     case lists:keyfind(ram_quota, 2, CommonParams) of
-        {ok, ram_quota, RAMQuotaMB} ->
+        {ok, ram_quota, RAMQuota} ->
             {MinQuota, Msg}
                 = case BucketType of
                       membase ->
                           Q = misc:get_env_default(membase_min_ram_quota, 100),
                           Qv = list_to_binary(integer_to_list(Q)),
-                          {Q, <<"RAM quota cannot be less than ", Qv/binary, " MB">>};
+                          {Q, <<"RAM quota cannot be less than ", Qv/binary,
+                                " MiB">>};
                       memcached ->
                           Q = misc:get_env_default(memcached_min_ram_quota, 64),
                           Qv = list_to_binary(integer_to_list(Q)),
-                          {Q, <<"RAM quota cannot be less than ", Qv/binary, " MB">>}
+                          {Q, <<"RAM quota cannot be less than ", Qv/binary,
+                                " MiB">>}
                   end,
             if
-                RAMQuotaMB < MinQuota * ?MIB ->
-                    {error, ramQuotaMB, Msg};
+                RAMQuota < MinQuota * ?MIB ->
+                    {error, ramQuota, Msg};
                 IsNew =/= true andalso BucketConfig =/= false andalso BucketType =:= memcached ->
                     case ns_bucket:raw_ram_quota(BucketConfig) of
-                        RAMQuotaMB -> ignore;
+                        RAMQuota -> ignore;
                         _ ->
-                            {error, ramQuotaMB, <<"cannot change quota of memcached buckets">>}
+                            {error, ramQuota, <<"cannot change quota of memcached buckets">>}
                     end;
                 true ->
                     ignore
@@ -1690,18 +1692,24 @@ parse_validate_drift_behind_threshold(Threshold) ->
     end.
 
 parse_validate_ram_quota(Params, BucketConfig) ->
-    do_parse_validate_ram_quota(proplists:get_value("ramQuotaMB", Params),
-                                BucketConfig).
+    RamQuota = case proplists:get_value("ramQuota", Params) of
+                   undefined ->
+                       %% Provide backward compatibility.
+                       proplists:get_value("ramQuotaMB", Params);
+                   Ram ->
+                       Ram
+               end,
+    do_parse_validate_ram_quota(RamQuota, BucketConfig).
 
 do_parse_validate_ram_quota(undefined, BucketConfig) when BucketConfig =/= false ->
     {ok, ram_quota, ns_bucket:raw_ram_quota(BucketConfig)};
 do_parse_validate_ram_quota(Value, _BucketConfig) ->
     case menelaus_util:parse_validate_number(Value, 0, undefined) of
         invalid ->
-            {error, ramQuotaMB,
+            {error, ramQuota,
              <<"The RAM Quota must be specified and must be a positive integer.">>};
         too_small ->
-            {error, ramQuotaMB, <<"The RAM Quota cannot be negative.">>};
+            {error, ramQuota, <<"The RAM Quota cannot be negative.">>};
         {ok, X} ->
             {ok, ram_quota, X * ?MIB}
     end.
@@ -1995,7 +2003,7 @@ basic_bucket_params_screening_test() ->
     {OK1, E1} = basic_bucket_params_screening(true, "mcd",
                                               [{"bucketType", "membase"},
                                                {"authType", "sasl"}, {"saslPassword", ""},
-                                               {"ramQuotaMB", "400"}, {"replicaNumber", "2"}],
+                                               {"ramQuota", "400"}, {"replicaNumber", "2"}],
                                               tl(AllBuckets)),
     [] = E1,
     %% missing fields have their defaults set
@@ -2007,7 +2015,7 @@ basic_bucket_params_screening_test() ->
     {_OK2, E2} = basic_bucket_params_screening(true, "mcd",
                                                [{"bucketType", "membase"},
                                                 {"authType", "sasl"}, {"saslPassword", ""},
-                                                {"ramQuotaMB", "400"}, {"replicaNumber", "2"}],
+                                                {"ramQuota", "400"}, {"replicaNumber", "2"}],
                                                AllBuckets),
     true = lists:member(name, proplists:get_keys(E2)), % mcd is already present
 
@@ -2015,7 +2023,7 @@ basic_bucket_params_screening_test() ->
     {OK3, E3} = basic_bucket_params_screening(false, "missing",
                                               [{"bucketType", "membase"},
                                                {"authType", "sasl"}, {"saslPassword", ""},
-                                               {"ramQuotaMB", "400"}, {"replicaNumber", "2"}],
+                                               {"ramQuota", "400"}, {"replicaNumber", "2"}],
                                               AllBuckets),
     [] = OK3,
     [name] = proplists:get_keys(E3),
@@ -2049,21 +2057,21 @@ basic_bucket_params_screening_test() ->
     {_OK7, E7} = basic_bucket_params_screening(false, "mcd",
                                                [{"bucketType", "membase"},
                                                 {"authType", "sasl"}, {"saslPassword", ""},
-                                                {"ramQuotaMB", "1024"}, {"replicaNumber", "2"}],
+                                                {"ramQuota", "1024"}, {"replicaNumber", "2"}],
                                                AllBuckets),
-    ?assertEqual(true, lists:member(ramQuotaMB, proplists:get_keys(E7))),
+    ?assertEqual(true, lists:member(ramQuota, proplists:get_keys(E7))),
 
     {_OK8, E8} = basic_bucket_params_screening(true, undefined,
                                                [{"bucketType", "membase"},
                                                 {"authType", "sasl"}, {"saslPassword", ""},
-                                                {"ramQuotaMB", "400"}, {"replicaNumber", "2"}],
+                                                {"ramQuota", "400"}, {"replicaNumber", "2"}],
                                                AllBuckets),
     ?assertEqual([{name, <<"Bucket name needs to be specified">>}], E8),
 
     {_OK9, E9} = basic_bucket_params_screening(false, undefined,
                                                [{"bucketType", "membase"},
                                                 {"authType", "sasl"}, {"saslPassword", ""},
-                                                {"ramQuotaMB", "400"}, {"replicaNumber", "2"}],
+                                                {"ramQuota", "400"}, {"replicaNumber", "2"}],
                                                AllBuckets),
     ?assertEqual([{name, <<"Bucket with given name doesn't exist">>}], E9),
 
@@ -2071,7 +2079,7 @@ basic_bucket_params_screening_test() ->
     {_OK10, E10} = basic_bucket_params_screening(true, "Mcd",
                                                  [{"bucketType", "membase"},
                                                   {"authType", "sasl"}, {"saslPassword", ""},
-                                                  {"ramQuotaMB", "400"}, {"replicaNumber", "2"}],
+                                                  {"ramQuota", "400"}, {"replicaNumber", "2"}],
                                                  AllBuckets),
     ?assertEqual([{name, <<"Bucket with given name already exists">>}], E10),
 
@@ -2079,7 +2087,7 @@ basic_bucket_params_screening_test() ->
     {_OK11, E11} = basic_bucket_params_screening(true, "12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901",
                                                  [{"bucketType", "membase"},
                                                   {"authType", "sasl"}, {"saslPassword", ""},
-                                                  {"ramQuotaMB", "400"}, {"replicaNumber", "2"}],
+                                                  {"ramQuota", "400"}, {"replicaNumber", "2"}],
                                                  AllBuckets),
     ?assertEqual([{name, ?l2b(io_lib:format("Bucket name cannot exceed ~p characters",
                                             [?MAX_BUCKET_NAME_LEN]))}], E11),
@@ -2104,7 +2112,7 @@ basic_bucket_params_screening_test() ->
               {_OK14a, E14a} = basic_bucket_params_screening(
                                  true, "ReplicaDurability",
                                  [{"bucketType", "membase"},
-                                  {"ramQuotaMB", "400"},
+                                  {"ramQuota", "400"},
                                   {"replicaNumber", "3"},
                                   {"durabilityMinLevel", Level}],
                                  AllBuckets),
@@ -2131,7 +2139,7 @@ basic_bucket_params_screening_test() ->
               {_OK15, E15} = basic_bucket_params_screening(
                                true, "ReplicaDurability",
                                [{"bucketType", BucketType},
-                                {"ramQuotaMB", "400"},
+                                {"ramQuota", "400"},
                                 {"replicaNumber", "3"},
                                 {"durabilityMinLevel", "none"}],
                                AllBuckets),
@@ -2143,7 +2151,7 @@ basic_bucket_params_screening_test() ->
     {_OK16, E16} = basic_bucket_params_screening(
                      true, "ReplicaDurability",
                      [{"bucketType", "ephemeral"},
-                      {"ramQuotaMB", "400"},
+                      {"ramQuota", "400"},
                       {"replicaNumber", "3"},
                       {"durabilityMinLevel", "majority"}],
                      AllBuckets),
@@ -2151,6 +2159,16 @@ basic_bucket_params_screening_test() ->
                    <<"Durability minimum level cannot be specified "
                      "with 3 replicas">>}],
                  E16),
+
+    %% it is possible to crete a bucket using the deprecated ramQuotaMB
+    %% (to ensure backwards compatibility).
+    {OK17, E17} = basic_bucket_params_screening(
+                   true, "Bucket17", [{"bucketType", "membase"},
+                    {"authType", "sasl"},
+                    {"ramQuotaMB", "400"}, {"replicaNumber", "2"}],
+                   AllBuckets),
+    [] = E17,
+    true = proplists:is_defined(ram_quota, OK17),
 
     ok.
 
