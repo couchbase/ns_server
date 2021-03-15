@@ -80,8 +80,8 @@ run(Nodes, AllowUnsafe, Parent) when Nodes =/= [] ->
     end.
 
 activity_body(Nodes, AllowUnsafe, Parent) ->
-    case maybe_check_chronicle_quorum(AllowUnsafe) of
-        ok ->
+    case check_safeness(AllowUnsafe) of
+        true ->
             case maybe_restore_chronicle_quorum(Nodes,
                                                 AllowUnsafe) of
                 {ok, Props} ->
@@ -90,8 +90,8 @@ activity_body(Nodes, AllowUnsafe, Parent) ->
                 Error ->
                     Error
             end;
-        Error ->
-            Error
+        false ->
+            orchestration_unsafe
     end.
 
 maybe_restore_chronicle_quorum(_FailedNodes, false) ->
@@ -110,32 +110,42 @@ restore_chronicle_quorum(FailedNodes) ->
     case chronicle_master:start_failover(FailedNodes, Ref) of
         ok ->
             case check_chronicle_quorum() of
-                ok ->
+                true ->
                     {ok, [{quorum_failover, Ref}]};
-                Error ->
-                    Error
+                false ->
+                    orchestration_unsafe
             end;
         Error ->
             Error
     end.
 
-maybe_check_chronicle_quorum(true) ->
-    ok;
-maybe_check_chronicle_quorum(false) ->
+check_safeness(true) ->
+    true;
+check_safeness(false) ->
     case chronicle_compat:enabled() of
         true ->
-            check_chronicle_quorum();
+            check_chronicle_quorum() andalso
+                check_for_unfinished_failover();
         false ->
-            ok
+            true
+    end.
+
+check_for_unfinished_failover() ->
+    case chronicle_master:get_prev_failover_nodes(direct) of
+        [] ->
+            true;
+        Nodes ->
+            ?log_info("Unfinished failover of nodes ~p was found.", [Nodes]),
+            false
     end.
 
 check_chronicle_quorum() ->
     case chronicle:check_quorum() of
         true ->
-            ok;
+            true;
         {false, What} ->
             ?log_info("Cannot establish quorum due to: ~p", [What]),
-            orchestration_unsafe
+            false
     end.
 
 orchestrate(Nodes, Options) when Nodes =/= [] ->
