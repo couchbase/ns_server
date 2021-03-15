@@ -23,7 +23,7 @@
 
 -export([start_keeper/0, get_indexes/0, get_indexes_version/0]).
 
--export([get_type/0, get_remote_items/1, get_local_status/0,
+-export([get_type/0, get_remote_items/1, get_local_status/1,
          process_status/1, compute_version/2]).
 
 get_indexes() ->
@@ -44,9 +44,10 @@ get_timeout() ->
 get_remote_items(Node) ->
     remote_api:get_indexes(Node).
 
-get_local_status() ->
+get_local_status(Headers) ->
     rest_utils:get_json_local(indexer, "getIndexStatus",
-                              get_port(), get_timeout()).
+                              get_port(), get_timeout(),
+                              Headers).
 
 status_mapping() ->
     AddType0 = [{storageMode, <<"indexType">>}],

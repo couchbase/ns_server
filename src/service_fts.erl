@@ -21,7 +21,7 @@
 
 -export([get_type/0,
          get_remote_items/1,
-         get_local_status/0,
+         get_local_status/1,
          process_status/1,
          compute_version/2]).
 
@@ -40,7 +40,7 @@ get_timeout() ->
 get_remote_items(Node) ->
     remote_api:get_fts_indexes(Node).
 
-get_local_status() ->
+get_local_status(_Headers) ->
     rest_utils:get_json_local(fts, "api/nsstatus", get_port(), get_timeout()).
 
 status_mapping() ->

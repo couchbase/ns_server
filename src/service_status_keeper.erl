@@ -48,6 +48,7 @@ get_version(Service) ->
 
 -record(state, {service :: atom(),
 
+                etag = undefined :: undefined | string(),
                 items,
                 stale :: undefined | true | {false, non_neg_integer()},
                 version,
@@ -93,11 +94,15 @@ handle_call(get_version, _From, #state{version = Version} = State) ->
 handle_cast({update, _}, State) ->
     ?log_warning("Ignoring update request."),
     {noreply, State};
-handle_cast({refresh_done, Result}, #state{service = Service} = State) ->
+handle_cast({refresh_done, Result}, #state{service = Service,
+                                           etag = Etag} = State) ->
     NewState =
         case Result of
-            {ok, Items} ->
-                set_items(Items, State);
+            {ok, Etag, _} when Etag =/= undefined ->
+                %% Same Etag returned as previous. No change in State.
+                State;
+            {ok, NewEtag, Items} ->
+                set_items(Items, State#state{etag = NewEtag});
             {stale, Items} ->
                 set_stale(Items, State);
             {error, _} ->
@@ -135,19 +140,46 @@ refresh_status(State) ->
               gen_server:cast(Self, {refresh_done, grab_status(State)})
       end).
 
+-spec grab_status(#state{}) -> {ok, undefined | string(), any()} |
+                               {error, any()} |
+                               {stale, any()}.
+%% Grab status from local service.
 grab_status(#state{service = Service,
-                   source = local}) ->
-    case Service:get_local_status() of
-        {ok, _Headers, Status} ->
-            Service:process_status(Status);
+                   source = local,
+                   etag = Etag,
+                   items = Items}) ->
+    %% - Request for service status with previous known Etag in the
+    %%   if-none-match header field
+    %% - Service is expected to return status with
+    %%   200 -> if Etag has changed and returns new status.
+    %%   304 -> Etag is the same, and status is empty payload.
+    Headers = case Etag of
+                  undefined ->
+                      [];
+                  _ ->
+                      [menelaus_rest:if_none_match_header(Etag)]
+              end,
+    case Service:get_local_status(Headers) of
+        {ok, ResHeaders, Status} ->
+            case proplists:get_value("Etag", ResHeaders) of
+                Etag when Etag =/= undefined ->
+                    %% Same Etag returned as previous. No change in Items.
+                    {ok, Etag, Items};
+                NewEtag ->
+                    case Service:process_status(Status) of
+                        {ok, RV} -> {ok, NewEtag, RV};
+                        Err -> Err
+                    end
+            end;
         Error ->
             Error
     end;
+%% Grab status from remote node.
 grab_status(#state{service = Service,
                    source = {remote, Nodes, NodesCount}}) ->
     case Nodes of
         [] ->
-            {ok, []};
+            {ok, undefined, []};
         _ ->
             Node = lists:nth(rand:uniform(NodesCount), Nodes),
 
@@ -163,7 +195,7 @@ grab_status(#state{service = Service,
                         true ->
                             {stale, Items};
                         false ->
-                            {ok, Items}
+                            {ok, undefined, Items}
                     end;
                 Error ->
                     ?log_error("Couldn't get items from node ~p: ~p",

@@ -26,6 +26,7 @@
          basic_auth_header/2,
          special_auth_header/0,
          is_auth_header/1,
+         if_none_match_header/1,
          on_behalf_header/1]).
 
 -spec rest_url(string(), string() | integer(), string(), string() | atom()) -> string().
@@ -42,6 +43,9 @@ rest_url(Host, Port, Path) ->
 basic_auth_header(User, Password) ->
     UserPassword = base64:encode_to_string(User ++ ":" ++ Password),
     {"Authorization", "Basic " ++ UserPassword}.
+
+if_none_match_header(Etag) ->
+    {"If-None-Match", Etag}.
 
 special_auth_header() ->
     basic_auth_header(ns_config_auth:get_user(special),

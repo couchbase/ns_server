@@ -20,7 +20,7 @@
 -export([get_functions/0,
          start_keeper/0,
          get_type/0,
-         get_local_status/0,
+         get_local_status/1,
          get_remote_items/1,
          process_status/1,
          compute_version/2]).
@@ -38,7 +38,7 @@ get_type() ->
 get_port() ->
     service_ports:get_port(eventing_http_port).
 
-get_local_status() ->
+get_local_status(_Headers) ->
     Timeout = ?get_timeout(status, 30000),
     rest_utils:get_json_local(eventing, "api/v1/functions",
                               get_port(), Timeout).
