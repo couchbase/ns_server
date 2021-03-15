@@ -17,7 +17,9 @@
 
 -include("ns_common.hrl").
 
--export([request/6, get_json_local/4]).
+-export([request/6,
+         get_json_local/4,
+         get_json_local/5]).
 
 request(Type, URL, Method, Headers, Body, Timeout) ->
     ns_server_stats:increment_counter({Type, requests}, 1),
@@ -43,8 +45,8 @@ request_local(Type, URL, Method, Headers, Body, Timeout) ->
 
     request(Type, URL, Method, HeadersWithAuth, Body, Timeout).
 
-get_json(Type, URL, Path, Timeout) ->
-    RV = request_local(Type, URL, "GET", [], [], Timeout),
+get_json(Type, URL, Path, Timeout, ReqHeaders) ->
+    RV = request_local(Type, URL, "GET", ReqHeaders, [], Timeout),
     case RV of
         {ok, {{200, _}, Headers, BodyRaw}} ->
             try
@@ -55,6 +57,8 @@ get_json(Type, URL, Path, Timeout) ->
                                [Type, Path, {T, E}]),
                     {error, bad_json}
             end;
+        {ok, {{304, _}, Headers, <<>> = Body}} ->
+            {ok, Headers, Body};
         _ ->
             ?log_error("Request to (~p) ~s failed: ~p", [Type, Path, RV]),
             {error, RV}
@@ -63,5 +67,11 @@ get_json(Type, URL, Path, Timeout) ->
 -spec get_json_local(atom(), string(), integer(), integer()) ->
     {ok, [{any(), any()}], any()} | {error, any()}.
 get_json_local(Type, Path, Port, Timeout) ->
+    get_json_local(Type, Path, Port, Timeout, []).
+
+-spec get_json_local(atom(), string(), integer(), integer(),
+                     [{any(), any()}]) -> {ok, [{any(), any()}], any()} |
+                                          {error, any()}.
+get_json_local(Type, Path, Port, Timeout, Headers) ->
     URL = misc:local_url(Port, Path, []),
-    get_json(Type, URL, Path, Timeout).
+    get_json(Type, URL, Path, Timeout, Headers).
