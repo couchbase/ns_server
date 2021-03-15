@@ -5,6 +5,10 @@ html {
   width: 100vw;
   overflow-x: hidden;
 }
+
+.mn-scroll-active .root-container {
+  pointer-events: none;
+}
 *,
 *:before,
 *:after {

@@ -1,4 +1,5 @@
-import {Subject} from "/ui/web_modules/rxjs.js";
+import {fromEvent, Subject, timer} from "/ui/web_modules/rxjs.js";
+import {tap, switchMap, takeUntil} from "/ui/web_modules/rxjs/operators.js";
 import _ from "/ui/web_modules/lodash.js";
 import saveAs from "/ui/web_modules/file-saver.js";
 
@@ -45,6 +46,24 @@ function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsServic
   $rootScope.poolDefault = mnPoolDefault.export;
   $rootScope.pools = mnPools.export;
   $rootScope.buckets = mnBucketsService.export;
+
+  let mnOnDestroy = new Subject();
+  $scope.$on("$destroy", function () {
+    mnOnDestroy.next();
+    mnOnDestroy.complete();
+  });
+
+  function disableHoverEventDuringScroll() {
+    let bodyElement = angular.element(document.querySelector("body"));
+
+    fromEvent(bodyElement, "scroll")
+      .pipe(tap(() => bodyElement.addClass("mn-scroll-active")),
+            switchMap(() => timer(200)),
+            takeUntil(mnOnDestroy))
+      .subscribe(() => bodyElement.removeClass("mn-scroll-active"));
+  }
+
+  disableHoverEventDuringScroll();
 
   activate();
 
@@ -143,7 +162,7 @@ function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsServic
         .cycle();
     }
 
-    loadAndRunSessionService($scope, injector, compiler);
+    loadAndRunSessionService(mnOnDestroy, injector, compiler);
 
     if (mnPermissions.export.cluster.settings.read) {
       loadAndRunLauchpad($ocLazyLoad, $injector, vm);
@@ -373,19 +392,13 @@ function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsServic
 }
 
 
-async function loadAndRunSessionService($scope, injector, compiler) {
+async function loadAndRunSessionService(mnOnDestroy, injector, compiler) {
   let module = await import("/ui/app/mn.session.service.js");
   let factory = await compiler.compileModuleAsync(module.MnSessionServiceModule);
   let moduleRef = factory.create(injector);
   let mnSessionService = moduleRef.injector.get(module.MnSessionService);
-  let mnOnDestroy = new Subject();
 
   mnSessionService.activate(mnOnDestroy);
-
-  $scope.$on("$destroy", function () {
-    mnOnDestroy.next();
-    mnOnDestroy.complete();
-  });
 }
 
 function loadAndRunMemoryQuotaDialog($uibModal, $ocLazyLoad, $injector, mnPoolDefault) {
