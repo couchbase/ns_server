@@ -1,7 +1,7 @@
 <div
    uib-dropdown
    class="mn-select relative"
-   ng-class="{'open-on-top': openOnTop}"
+   ng-class="{'mn-align-left': mnHorizontalAlign === 'left', 'mn-align-right': mnHorizontalAlign === 'right', 'open-on-top': openOnTop}"
    is-open="isOpened">
   <div uib-dropdown-toggle ng-disabled="ngDisabled">
     <button
@@ -17,10 +17,9 @@
   </div>
   <div
      uib-dropdown-menu
-     class="panel fit-content-width margin-0"
-     style="position: absolute; top: auto; left:0;">
-   <div class="block option" ng-repeat="value in values" ng-click="optionClicked(value)">
-     {{labels ? labels[$index] : filter(value)}}
-   </div>
+     class="panel absolute fit-content-width margin-0">
+    <div class="block option" ng-repeat="value in values" ng-click="optionClicked(value)">
+      {{labels ? labels[$index] : filter(value)}}
+    </div>
   </div>
 </div>

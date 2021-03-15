@@ -115,6 +115,9 @@ footer {
 .relative {
   position: relative !important;
 }
+.absolute {
+  position: absolute;
+}
 .inline {
   display: inline-block !important;
 }

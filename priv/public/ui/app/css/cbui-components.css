@@ -1826,8 +1826,17 @@ mn-select[disabled] .mn-select .dropdown-toggle .icon,
   font-size: .875rem;
 }
 .mn-select div[uib-dropdown-menu] .option:hover,
-.mn-select div[ngbDropdownMenu] .option:hover {
+.mn-select div[ngbDropdownMenu] .option:hover{
   background-color: #f5f5f5;
+}
+
+.mn-select.mn-align-left div[uib-dropdown-menu] {
+  top: auto;
+  left: 0;
+}
+.mn-select.mn-align-right div[uib-dropdown-menu] {
+  top: auto;
+  right: 0;
 }
 
 .mn-select.dropdown,

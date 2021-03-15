@@ -18,7 +18,8 @@ function mnSelectDirective() {
       ngDisabled: "=",
       filter: "=?",
       capitalize: "=",
-      openOnTop: "="
+      openOnTop: "=",
+      mnHorizontalAlign: "=?"
     },
     templateUrl: "app/components/directives/mn_select/mn_select.html",
     link: mnSelectController
@@ -30,6 +31,7 @@ function mnSelectDirective() {
     var vm = $scope;
 
     vm.filter = $attrs['filter'] ? vm.filter : (option) => defaultFilter(option);
+    vm.mnHorizontalAlign = vm.mnHorizontalAlign || 'left';
     vm.isOpened = false;
     vm.optionClicked = optionClicked;
 
