@@ -192,15 +192,12 @@
               <label for="for-reader-fixed">
                 Fixed value
               </label>
-              <select
-                class="select-small fix-width-1"
-                ng-model="settingsClusterCtl.readerThreadsFixed"
-                ng-if="settingsClusterCtl.readerThreads == 'fixed'">
-                <option
-                  ng-repeat="item in settingsClusterCtl.itemsSelect"
-                  value="{{item}}">{{item}}
-                </option>
-              </select>
+              <mn-select
+                 class="fix-width-1"
+                 ng-model="settingsClusterCtl.readerThreadsFixed"
+                 ng-if="settingsClusterCtl.readerThreads == 'fixed'"
+                 values="settingsClusterCtl.itemsSelect">
+              </mn-select>
             </div>
             <p class="desc max-width-6" ng-if="settingsClusterCtl.readerThreads == 'fixed'">
               Higher reader and writer thread counts reduce latency and improve

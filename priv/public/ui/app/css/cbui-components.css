@@ -1820,6 +1820,11 @@ mn-select[disabled] .mn-select .dropdown-toggle .icon,
   font-size: .875rem;
 }
 
+.mn-select .dropdown-menu {
+    max-height: 30vh;
+    overflow-y: scroll;
+}
+
 .mn-select div[uib-dropdown-menu] .option,
 .mn-select div[ngbDropdownMenu] .option {
   padding: 0.5rem;
