@@ -1085,7 +1085,8 @@ derived_metrics(index, _) ->
     [{"index_ram_percent",
       "(index_memory_used_total / ignoring(name) index_memory_quota) * 100"},
      {"index_remaining_ram",
-      "index_memory_quota - ignoring(name) index_memory_used_total"},
+      "clamp_min(index_memory_quota - ignoring(name) index_memory_used_total, "
+                "0)"},
      {"index_num_docs_pending_and_queued",
       "index_num_docs_pending + ignoring(name) index_num_docs_queued"},
      {"index_cache_miss_ratio",
