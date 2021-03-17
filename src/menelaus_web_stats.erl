@@ -237,26 +237,28 @@ handle_range_post(Req) ->
                 Requests = lists:map(send_metrics_request(_, PermFilters),
                                      List),
                 reply_with_chunked_json_array(
-                  fun ({Ref, Props}) ->
-                      read_metrics_response(Ref, Props, Now)
-                  end, lists:zip(Requests, List), Req),
+                  fun ({Ref, Props}, DownHosts) ->
+                      read_metrics_response(Ref, Props, Now, DownHosts)
+                  end, [], lists:zip(Requests, List), Req),
                 stop_node_extractors_monitoring(Monitors)
             end)
       end, Req, json_array, post_validators(Now, Req)).
 
-reply_with_chunked_json_array(Fun, List, Req) ->
+reply_with_chunked_json_array(Fun, AccInit, List, Req) ->
     HTTPResp = menelaus_util:reply_ok(
                  Req, "application/json; charset=utf-8", chunked),
     Write = mochiweb_response:write_chunk(_, HTTPResp),
     Write(<<"[">>),
     _ = lists:foldl(
-          fun (E, IsFirst) ->
+          fun (E, {IsFirst, Acc}) ->
               case IsFirst of
                   true -> ok;
                   false -> Write(<<",">>)
               end,
-              try ejson:encode(Fun(E)) of
-                  Bin -> Write(Bin)
+              try
+                  {Res, NewAcc} = Fun(E, Acc),
+                  Write(ejson:encode(Res)),
+                  {false, NewAcc}
               catch
                   Type:What:Stack ->
                       {Msg, Report} =
@@ -267,10 +269,10 @@ reply_with_chunked_json_array(Fun, List, Req) ->
                       ErrorReply = {[{data, []},
                                      {errors, [{[{node, node()},
                                                  {error, Msg}]}]}]},
-                      Write(ejson:encode(ErrorReply))
-              end,
-              false
-          end, true, List),
+                      Write(ejson:encode(ErrorReply)),
+                      {false, Acc}
+              end
+          end, {true, AccInit}, List),
     Write(<<"]">>),
     Write(<<>>).
 
@@ -310,7 +312,7 @@ handle_range_get([MetricName | NotvalidatedFunctions], Req) ->
             fun () ->
                 Monitors = start_node_extractors_monitoring([Props]),
                 Ref = send_metrics_request(NewProps, PermFilters),
-                Res = read_metrics_response(Ref, Props, Now),
+                {Res, _} = read_metrics_response(Ref, Props, Now, []),
                 stop_node_extractors_monitoring(Monitors),
                 menelaus_util:reply_json(Req, Res)
             end)
@@ -387,21 +389,25 @@ send_metrics_request(Props, PermFilters) ->
       end, NodesToPoll),
     Ref.
 
-read_metrics_response(Ref, Props, StartTimestampMs) ->
+read_metrics_response(Ref, Props, StartTimestampMs, DownHosts) ->
     Nodes = proplists:get_value(nodes, Props),
     Timeout = proplists:get_value(timeout, Props),
     {BadRes, GoodRes} =
         misc:partitionmap(
           fun ({Node, HostPort}) ->
-              TimeLeft = max(StartTimestampMs + Timeout -
-                             os:system_time(millisecond), 0),
-              receive
-                  {{Ref, Node}, {ok, R}} -> {right, {HostPort, R}};
-                  {{Ref, Node}, {error, R}} -> {left, {HostPort, R}};
-                  {'DOWN', _, _, {ns_server_stats, Node}, _} ->
-                      {left, {HostPort, <<"Node is not available">>}}
-              after TimeLeft ->
-                  {left, {HostPort, timeout}}
+              case lists:member(HostPort, DownHosts) of
+                  true -> {left, {HostPort, down}};
+                  false ->
+                      TimeLeft = max(StartTimestampMs + Timeout -
+                                     os:system_time(millisecond), 0),
+                      receive
+                          {{Ref, Node}, {ok, R}} -> {right, {HostPort, R}};
+                          {{Ref, Node}, {error, R}} -> {left, {HostPort, R}};
+                          {'DOWN', _, _, {ns_server_stats, Node}, _} ->
+                              {left, {HostPort, down}}
+                      after TimeLeft ->
+                          {left, {HostPort, timeout}}
+                      end
               end
           end, Nodes),
     AggFunction = proplists:get_value(aggregationFunction, Props, none),
@@ -409,7 +415,8 @@ read_metrics_response(Ref, Props, StartTimestampMs) ->
     Errors = [{[{node, N},
                 {error, format_error(R)}]}
                  || {N, R} <- BadRes],
-    {[{data, Data}, {errors, Errors}]}.
+    NewDownHosts = lists:usort(DownHosts ++ [H || {H, down} <- BadRes]),
+    {{[{data, Data}, {errors, Errors}]}, NewDownHosts}.
 
 validate_metric_json(Name, State) ->
     validator:validate(
@@ -910,6 +917,7 @@ format_error(timeout) -> <<"Request timed out">>;
 format_error({exit, {{nodedown, _}, _}}) -> <<"Node is down">>;
 format_error({exit, _}) -> <<"Unexpected server error">>;
 format_error({failed_connect, _}) -> <<"Connect to stats backend failed">>;
+format_error(down) -> <<"Node is not available">>;
 format_error(Unknown) -> misc:format_bin("Unexpected error - ~10000p",
                                          [Unknown]).
 
