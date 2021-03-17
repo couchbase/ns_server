@@ -400,7 +400,8 @@ handle_event({call, From},
              _StateName, _State) ->
     Snapshot = chronicle_compat:get_snapshot(
                  [ns_bucket:key_filter(),
-                  ns_cluster_membership:key_filter()]),
+                  ns_cluster_membership:key_filter(),
+                  chronicle_master:key_filter()]),
 
     case {EjectedNodes -- KnownNodes,
           lists:sort(ns_cluster_membership:nodes_wanted(Snapshot)),
@@ -1541,7 +1542,12 @@ get_delta_recovery_nodes(Snapshot, Nodes) ->
 rebalance_allowed(Snapshot) ->
     case cluster_compat_mode:is_cluster_65() of
         true ->
-            ok;
+            case chronicle_compat:enabled() of
+                true ->
+                    check_for_unfinished_failover(Snapshot);
+                false ->
+                    ok
+            end;
         false ->
             functools:sequence_([?cut(check_for_passwordless_default(Snapshot)),
                                  ?cut(check_for_moxi_buckets(Snapshot))])
@@ -1567,6 +1573,15 @@ check_for_passwordless_default(Snapshot) ->
             {error, "Please reset password for user 'default'"};
         false ->
             ok
+    end.
+
+check_for_unfinished_failover(Snapshot) ->
+    case chronicle_master:get_prev_failover_nodes(Snapshot) of
+        [] ->
+            ok;
+        Nodes ->
+            {error, io_lib:format("Unfinished failover of nodes ~p was found.",
+                                  [Nodes])}
     end.
 
 handle_start_failover(Nodes, AllowUnsafe, From, Wait) ->
