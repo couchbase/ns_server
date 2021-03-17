@@ -72,7 +72,9 @@
           sock = still_connecting :: port() | still_connecting,
           work_requests = [],
           warmup_stats = [] :: [{binary(), binary()}],
-          check_config_pid = undefined :: undefined | pid()
+          control_queue :: pid(),
+          check_in_progress = false :: boolean(),
+          next_check_after = ?CHECK_INTERVAL :: integer()
          }).
 
 %% external API
@@ -153,8 +155,10 @@ init(Bucket) ->
                            DefinedWorkersCount
                    end,
     Self = self(),
-    proc_lib:spawn_link(erlang, apply, [fun run_connect_phase/3,
-                                        [Self, Bucket, WorkersCount]]),
+    {ok, ControlQueue} = work_queue:start_link(),
+    work_queue:submit_work(
+      ControlQueue, ?cut(run_connect_phase(Self, Bucket, WorkersCount))),
+
     State = #state{
                status = connecting,
                bucket = Bucket,
@@ -163,12 +167,14 @@ init(Bucket) ->
                fast_calls_queue = Q,
                heavy_calls_queue = Q,
                very_heavy_calls_queue = Q,
-               running_fast = WorkersCount
+               running_fast = WorkersCount,
+               control_queue = ControlQueue
               },
     {ok, State}.
 
 run_connect_phase(Parent, Bucket, WorkersCount) ->
-    ?log_debug("Started 'connecting' phase of ns_memcached-~s. Parent is ~p", [Bucket, Parent]),
+    ?log_debug("Started 'connecting' phase of ns_memcached-~s. Parent is ~p",
+               [Bucket, Parent]),
     RV = case connect() of
              {ok, Sock} ->
                  gen_tcp:controlling_process(Sock, Parent),
@@ -176,8 +182,7 @@ run_connect_phase(Parent, Bucket, WorkersCount) ->
              {error, _} = Error  ->
                  Error
          end,
-    gen_server:cast(Parent, {connect_done, WorkersCount, RV}),
-    erlang:unlink(Parent).
+    gen_server:cast(Parent, {connect_done, WorkersCount, RV}).
 
 get_worker_features() ->
     FeatureSet = [%% Always use json feature as the local memcached would have
@@ -681,7 +686,7 @@ handle_cast({connect_done, WorkersCount, RV}, #state{bucket = Bucket,
                               ?log_debug(
                                  "Triggering config check due to event on "
                                  "key ~p", [Key]),
-                              Self ! check_config
+                              Self ! check_config_soon
                       end),
 
                     {noreply, InitialState};
@@ -702,7 +707,7 @@ handle_cast(start_completed, #state{start_time=Start,
     ale:info(?USER_LOGGER, "Bucket ~p loaded on node ~p in ~p seconds.",
              [Bucket, node(), timer:now_diff(os:timestamp(), Start) div 1000000]),
     gen_event:notify(buckets_events, {loaded, Bucket}),
-    send_check_config_msg(),
+    send_check_config_msg(State),
     BucketConfig = case ns_bucket:get_bucket(State#state.bucket) of
                        {ok, BC} -> BC;
                        not_present -> []
@@ -748,15 +753,35 @@ handle_info(check_started,
             send_check_started_msg(),
             {noreply, State#state{warmup_stats = S}}
     end;
-handle_info(check_config, #state{check_config_pid = undefined} = State) ->
+handle_info(check_config_soon, #state{check_in_progress = true} = State) ->
+    {noreply, State#state{next_check_after = 0}};
+handle_info(check_config, #state{check_in_progress = true} = State) ->
+    {noreply, State};
+handle_info(Message, #state{worker_features = WF, control_queue = Q,
+                            bucket = Bucket, check_in_progress = false} = State)
+  when Message =:= check_config_soon orelse Message =:= check_config ->
+    misc:flush(check_config_soon),
     misc:flush(check_config),
-    send_check_config_msg(),
-    run_check(State);
-handle_info(check_config, State) ->
-    send_check_config_msg(),
-    run_check(State);
-handle_info({'EXIT', Pid, normal}, #state{check_config_pid = Pid} = State) ->
-    {noreply, State#state{check_config_pid = undefined}};
+    case get_worker_features() of
+        WF ->
+            Self = self(),
+            work_queue:submit_work(
+              Q,
+              fun () ->
+                      perform_very_long_call_with_timing(
+                        Bucket, ensure_bucket, ensure_bucket(_, Bucket, true)),
+                      Self ! complete_check
+              end),
+            {noreply, State#state{check_in_progress = true,
+                                  next_check_after = ?CHECK_INTERVAL}};
+        OldWF ->
+            ?log_info("Restarting due to features change from ~p to ~p",
+                      [OldWF, WF]),
+            {stop, {shutdown, feature_mismatch}, State}
+    end;
+handle_info(complete_check, State = #state{check_in_progress = true}) ->
+    send_check_config_msg(State),
+    {noreply, State#state{check_in_progress = false}};
 handle_info({'EXIT', _, Reason} = Msg, State) ->
     ?log_debug("Got ~p. Exiting.", [Msg]),
     {stop, Reason, State};
@@ -841,33 +866,15 @@ code_change(_OldVsn, State, _Extra) ->
 %%
 %% API
 %%
-run_check(State) ->
-    case State#state.worker_features =:= get_worker_features() of
-        false ->
-            {stop, {shutdown, feature_mismatch}, State};
-        true ->
-            case State#state.check_config_pid of
-                undefined ->
-                    Pid = proc_lib:start_link(
-                            erlang, apply,
-                            [fun run_check_and_maybe_update_config/2,
-                             [State#state.bucket, self()]]),
-                    {noreply, State#state{check_config_pid = Pid}};
-                CheckPid when is_pid(CheckPid) ->
-                    {noreply, State}
-            end
-    end.
-
-run_check_and_maybe_update_config(Bucket, Parent) ->
-    proc_lib:init_ack(Parent, self()),
+perform_very_long_call_with_timing(Bucket, Name, Fun) ->
     perform_very_long_call(
       fun(Sock) ->
               StartTS = os:timestamp(),
-              ok = ensure_bucket(Sock, Bucket, true),
+              ok = Fun(Sock),
               Diff = timer:now_diff(os:timestamp(), StartTS),
               if
                   Diff > ?SLOW_CALL_THRESHOLD_MICROS ->
-                      ?log_debug("ensure_bucket took too long: ~p us", [Diff]);
+                      ?log_debug("~p took too long: ~p us", [Name, Diff]);
                   true ->
                       ok
               end,
@@ -1612,5 +1619,5 @@ get_vbucket_details_inner(Sock, DetailsKey, ReqdKeys) ->
 send_check_started_msg() ->
     erlang:send_after(?CHECK_WARMUP_INTERVAL, self(), check_started).
 
-send_check_config_msg() ->
-    erlang:send_after(?CHECK_INTERVAL, self(), check_config).
+send_check_config_msg(#state{next_check_after = After}) ->
+    erlang:send_after(After, self(), check_config).
