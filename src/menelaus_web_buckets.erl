@@ -61,14 +61,6 @@
 
 -define(MAX_BUCKET_NAME_LEN, 100).
 
-may_expose_bucket_auth(Name, Req) ->
-    case menelaus_auth:get_token(Req) of
-        undefined ->
-            menelaus_auth:has_permission({[{bucket, Name}, password], read}, Req);
-        _ ->
-            false
-    end.
-
 get_info_level(Req) ->
     case proplists:get_value("basic_stats", mochiweb_request:parse_qs(Req)) of
         undefined ->
@@ -231,11 +223,10 @@ build_buckets_info(Req, Buckets, Ctx, InfoLevel) ->
     SkipMap = InfoLevel =/= streaming andalso
         proplists:get_value(
           "skipMap", mochiweb_request:parse_qs(Req)) =:= "true",
-    [build_bucket_info(BucketName, Ctx, InfoLevel,
-                       may_expose_bucket_auth(BucketName, Req), SkipMap) ||
+    [build_bucket_info(BucketName, Ctx, InfoLevel, SkipMap) ||
         BucketName <- Buckets].
 
-build_bucket_info(Id, Ctx, InfoLevel, _MayExposeAuth, SkipMap) ->
+build_bucket_info(Id, Ctx, InfoLevel, SkipMap) ->
     Snapshot = menelaus_web_node:get_snapshot(Ctx),
     {ok, BucketConfig} = ns_bucket:get_bucket(Id, Snapshot),
     BucketUUID = ns_bucket:uuid(Id, Snapshot),
@@ -246,7 +237,6 @@ build_bucket_info(Id, Ctx, InfoLevel, _MayExposeAuth, SkipMap) ->
         [bucket_info_cache:build_vbucket_map(
            menelaus_web_node:get_local_addr(Ctx), BucketConfig)
          || not SkipMap],
-        {authType, misc:expect_prop_value(auth_type, BucketConfig)},
         {localRandomKeyUri,
          bucket_info_cache:build_pools_uri(["buckets", Id, "localRandomKey"])},
         {controllers, {build_controllers(Id, BucketConfig)}},
@@ -342,8 +332,7 @@ handle_sasl_buckets_streaming(_PoolId, Req) ->
 
     F = fun (_, _) ->
                 List = [build_sasl_bucket_info({Id, BucketConfig}, LocalAddr) ||
-                           {Id, BucketConfig} <- ns_bucket:get_buckets(),
-                           ns_bucket:auth_type(BucketConfig) =:= sasl],
+                           {Id, BucketConfig} <- ns_bucket:get_buckets()],
                 {just_write, {[{buckets, List}]}}
         end,
     handle_streaming(F, Req).
@@ -426,7 +415,7 @@ respond_bucket_created(Req, PoolId, BucketId) ->
 extract_bucket_props(Props) ->
     [X || X <-
               [lists:keyfind(Y, 1, Props) ||
-                  Y <- [num_replicas, replica_index, ram_quota, auth_type,
+                  Y <- [num_replicas, replica_index, ram_quota,
                         durability_min_level, frag_percent,
                         pitr_enabled, pitr_granularity, pitr_max_history_age,
                         moxi_port, autocompaction,
@@ -1961,34 +1950,29 @@ basic_bucket_params_screening_test() ->
                     {num_replicas, 1},
                     {servers, []},
                     {ram_quota, 76 * ?MIB},
-                    {auth_type, none},
                     {moxi_port, 33333}]},
                   {"default",
                    [{type, membase},
                     {num_vbuckets, 16},
                     {num_replicas, 1},
                     {servers, []},
-                    {ram_quota, 512 * ?MIB},
-                    {auth_type, sasl}]},
+                    {ram_quota, 512 * ?MIB}]},
                   {"third",
                    [{type, membase},
                     {num_vbuckets, 16},
                     {num_replicas, 1},
                     {servers, []},
-                    {ram_quota, 768 * ?MIB},
-                    {auth_type, sasl}]},
+                    {ram_quota, 768 * ?MIB}]},
                   {"fourth",
                    [{type, membase},
                     {num_vbuckets, 16},
                     {num_replicas, 3},
                     {servers, []},
-                    {ram_quota, 100 * ?MIB},
-                    {auth_type, sasl}]}],
+                    {ram_quota, 100 * ?MIB}]}],
 
     %% it is possible to create bucket with ok params
     {OK1, E1} = basic_bucket_params_screening(true, "mcd",
                                               [{"bucketType", "membase"},
-                                               {"authType", "sasl"},
                                                {"ramQuota", "400"}, {"replicaNumber", "2"}],
                                               tl(AllBuckets)),
     [] = E1,
@@ -2000,7 +1984,6 @@ basic_bucket_params_screening_test() ->
     %% it is not possible to create bucket with duplicate name
     {_OK2, E2} = basic_bucket_params_screening(true, "mcd",
                                                [{"bucketType", "membase"},
-                                                {"authType", "sasl"},
                                                 {"ramQuota", "400"}, {"replicaNumber", "2"}],
                                                AllBuckets),
     true = lists:member(name, proplists:get_keys(E2)), % mcd is already present
@@ -2008,7 +1991,6 @@ basic_bucket_params_screening_test() ->
     %% it is not possible to update missing bucket. And specific format of errors
     {OK3, E3} = basic_bucket_params_screening(false, "missing",
                                               [{"bucketType", "membase"},
-                                               {"authType", "sasl"},
                                                {"ramQuota", "400"}, {"replicaNumber", "2"}],
                                               AllBuckets),
     [] = OK3,
@@ -2023,7 +2005,7 @@ basic_bucket_params_screening_test() ->
 
     %% it is not possible to update missing bucket. And specific format of errors
     {OK5, E5} = basic_bucket_params_screening(false, "missing",
-                                              [{"authType", "some"}],
+                                              [{"ramQuota", "222"}],
                                               AllBuckets),
     [] = OK5,
     [name] = proplists:get_keys(E5),
@@ -2042,21 +2024,18 @@ basic_bucket_params_screening_test() ->
     %% its not possible to update memcached bucket ram quota
     {_OK7, E7} = basic_bucket_params_screening(false, "mcd",
                                                [{"bucketType", "membase"},
-                                                {"authType", "sasl"},
                                                 {"ramQuota", "1024"}, {"replicaNumber", "2"}],
                                                AllBuckets),
     ?assertEqual(true, lists:member(ramQuota, proplists:get_keys(E7))),
 
     {_OK8, E8} = basic_bucket_params_screening(true, undefined,
                                                [{"bucketType", "membase"},
-                                                {"authType", "sasl"},
                                                 {"ramQuota", "400"}, {"replicaNumber", "2"}],
                                                AllBuckets),
     ?assertEqual([{name, <<"Bucket name needs to be specified">>}], E8),
 
     {_OK9, E9} = basic_bucket_params_screening(false, undefined,
                                                [{"bucketType", "membase"},
-                                                {"authType", "sasl"},
                                                 {"ramQuota", "400"}, {"replicaNumber", "2"}],
                                                AllBuckets),
     ?assertEqual([{name, <<"Bucket with given name doesn't exist">>}], E9),
@@ -2064,7 +2043,6 @@ basic_bucket_params_screening_test() ->
     %% it is not possible to create bucket with duplicate name in different register
     {_OK10, E10} = basic_bucket_params_screening(true, "Mcd",
                                                  [{"bucketType", "membase"},
-                                                  {"authType", "sasl"},
                                                   {"ramQuota", "400"}, {"replicaNumber", "2"}],
                                                  AllBuckets),
     ?assertEqual([{name, <<"Bucket with given name already exists">>}], E10),
@@ -2072,7 +2050,6 @@ basic_bucket_params_screening_test() ->
     %% it is not possible to create bucket with name longer than 100 characters
     {_OK11, E11} = basic_bucket_params_screening(true, "12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901",
                                                  [{"bucketType", "membase"},
-                                                  {"authType", "sasl"},
                                                   {"ramQuota", "400"}, {"replicaNumber", "2"}],
                                                  AllBuckets),
     ?assertEqual([{name, ?l2b(io_lib:format("Bucket name cannot exceed ~p characters",
@@ -2150,7 +2127,6 @@ basic_bucket_params_screening_test() ->
     %% (to ensure backwards compatibility).
     {OK17, E17} = basic_bucket_params_screening(
                    true, "Bucket17", [{"bucketType", "membase"},
-                    {"authType", "sasl"},
                     {"ramQuotaMB", "400"}, {"replicaNumber", "2"}],
                    AllBuckets),
     [] = E17,

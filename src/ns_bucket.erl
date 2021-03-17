@@ -18,8 +18,7 @@
 -endif.
 
 %% API
--export([auth_type/1,
-         get_servers/1,
+-export([get_servers/1,
          bucket_type/1,
          kv_bucket_type/1,
          kv_backend_type/1,
@@ -665,9 +664,6 @@ display_type(membase = _Type, ephemeral = _StorageMode) ->
 display_type(Type, _) ->
     Type.
 
-auth_type(Bucket) ->
-    proplists:get_value(auth_type, Bucket).
-
 moxi_port(Bucket) ->
     proplists:get_value(moxi_port, Bucket).
 
@@ -767,12 +763,22 @@ generate_sasl_password(Props) ->
     [{auth_type, sasl} |
      case cluster_compat_mode:is_cluster_70() of
          false ->
-             %% Older releases still require this property
+             %% Backwards compatility with older releases that require
+             %% this property
              lists:keystore(sasl_password, 1, Props,
                             {sasl_password, generate_sasl_password()});
          true ->
              Props
      end].
+
+add_auth_type(Props) ->
+    case cluster_compat_mode:is_cluster_NEO() of
+        true ->
+            Props;
+        false ->
+            %% Required property of older versions
+            [{auth_type, sasl} | Props]
+    end.
 
 create_bucket(BucketType, BucketName, NewConfig) ->
     case is_valid_bucket_name(BucketName) of
@@ -780,7 +786,8 @@ create_bucket(BucketType, BucketName, NewConfig) ->
             MergedConfig0 =
                 misc:update_proplist(new_bucket_default_params(BucketType),
                                      NewConfig),
-            MergedConfig = generate_sasl_password(MergedConfig0),
+            MergedConfig1 = generate_sasl_password(MergedConfig0),
+            MergedConfig = add_auth_type(MergedConfig1),
             do_create_bucket(chronicle_compat:backend(), BucketName,
                              MergedConfig),
             %% The janitor will handle creating the map.

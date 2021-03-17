@@ -846,8 +846,7 @@ get_roles({"", anonymous}) ->
         false ->
             [admin];
         true ->
-            [{bucket_full_access, [BucketName]} ||
-                BucketName <- ns_config_auth:get_no_auth_buckets()]
+            []
     end;
 get_roles({_, admin}) ->
     [admin];

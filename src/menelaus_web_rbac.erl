@@ -1371,8 +1371,7 @@ check_permissions_url_version(Snapshot) ->
           [cluster_compat_mode:get_compat_version(),
            menelaus_users:get_users_version(),
            menelaus_users:get_groups_version(),
-           menelaus_roles:params_version(Snapshot),
-           ns_config_auth:get_no_auth_buckets(Snapshot)]),
+           menelaus_roles:params_version(Snapshot)]),
     base64:encode(crypto:hash(sha, B)).
 
 handle_check_permission_for_cbauth(Req) ->

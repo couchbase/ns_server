@@ -22,8 +22,6 @@
          get_admin_creds/1,
          is_system_provisioned/0,
          is_system_provisioned/1,
-         get_no_auth_buckets/0,
-         get_no_auth_buckets/1,
          hash_password/1,
          hash_password/2]).
 
@@ -133,11 +131,3 @@ hash_password(Password) ->
 
 hash_password(Salt, Password) ->
     crypto:hmac(sha, Salt, list_to_binary(Password)).
-
-get_no_auth_buckets() ->
-    get_no_auth_buckets(ns_bucket:get_snapshot()).
-
-get_no_auth_buckets(Snapshot) ->
-    [BucketName ||
-        {BucketName, BucketProps} <- ns_bucket:get_buckets(Snapshot),
-        proplists:get_value(auth_type, BucketProps) =:= none].
