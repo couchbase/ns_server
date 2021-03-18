@@ -189,8 +189,12 @@ handle_call({complete_failover, Nodes, Ref}, _From, State) ->
 
 handle_call(Oper, _From, #state{self_ref = SelfRef} = State) ->
     NewState = cancel_janitor_timer(State),
-    {ok, Lock} = chronicle:acquire_lock(),
-    RV = handle_oper(Oper, Lock, SelfRef),
+    RV = case acquire_lock() of
+             {ok, Lock} ->
+                 handle_oper(Oper, Lock, SelfRef);
+             cannot_acquire_lock ->
+                 cannot_acquire_lock
+         end,
     {reply, RV, NewState}.
 
 handle_info(arm_janitor_timer, State) ->
@@ -199,7 +203,7 @@ handle_info(arm_janitor_timer, State) ->
 handle_info(janitor, #state{self_ref = SelfRef} = State) ->
     CleanState = cancel_janitor_timer(State),
     NewState =
-        try chronicle:acquire_lock() of
+        case acquire_lock() of
             {ok, Lock} ->
                 case transaction([], undefined, Lock, SelfRef,
                                  fun (_) -> {abort, clean} end) of
@@ -212,11 +216,9 @@ handle_info(janitor, #state{self_ref = SelfRef} = State) ->
                     clean ->
                         ok
                 end,
-                CleanState
-        catch Type:What ->
-                ?log_debug(
-                   "Cannot acquire lock due to ~p:~p. Try janitor later.",
-                   [Type, What]),
+                CleanState;
+            cannot_acquire_lock ->
+                ?log_debug("Cannot acquire lock. Try janitor later."),
                 arm_janitor_timer(CleanState)
         end,
     {noreply, NewState};
@@ -225,6 +227,15 @@ handle_info({'EXIT', From, Reason}, State) ->
     ?log_debug("Received exit from ~p with reason ~p. Exiting.",
                [From, Reason]),
     {stop, Reason, State}.
+
+acquire_lock() ->
+    try chronicle:acquire_lock() of
+        {ok, Lock} ->
+            {ok, Lock}
+    catch Type:What ->
+            ?log_debug("Cannot acquire lock due to ~p:~p.", [Type, What]),
+            cannot_acquire_lock
+    end.
 
 set_peer_roles(_Lock, [], _Role) ->
     ok;
