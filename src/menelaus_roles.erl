@@ -168,7 +168,7 @@ roles() ->
        {[], all}]},
      {eventing_admin, [],
       [{name, <<"Eventing Full Admin">>},
-       {folder, eventing},
+       {folder, admin},
        {desc, <<"Can create/manage eventing functions. This user can access "
                 "the web console">>}],
       [{[admin], none},
@@ -183,7 +183,7 @@ roles() ->
        {[], [read]}]},
      {backup_admin, [],
       [{name, <<"Backup Full Admin">>},
-       {folder, backup},
+       {folder, admin},
        {desc, <<"Can perform backup related tasks. This user can access "
                 "the web console">>}],
       [{[admin], none},
@@ -317,7 +317,7 @@ roles() ->
        {[pools], [read]}]},
      {data_backup, [bucket_name],
       [{name, <<"Data Backup & Restore">>},
-       {folder, data},
+       {folder, backup},
        {desc, <<"Can backup and restore a given bucket’s data. This user "
                 "cannot access the web console and is intended only for "
                 "application access. This user can read data.">>}],
@@ -581,7 +581,6 @@ ui_folders() ->
      {search, "Search"},
      {analytics, "Analytics"},
      {xdcr, "XDCR"},
-     {eventing, "Eventing"},
      {backup, "Backup"},
      {mobile, "Mobile"}].
 
