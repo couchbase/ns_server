@@ -87,8 +87,7 @@ roles() ->
        {desc, <<"Can view all cluster statistics. This user can access the "
                 "web console. This user can read some data.">>},
        {ce, true}],
-      [{[{bucket, any}, password], none},
-       {[{bucket, any}, data], none},
+      [{[{bucket, any}, data], none},
        {[{bucket, any}, fts], none},
        {[{bucket, any}, analytics], none},
        {[admin, security], [read]},
@@ -113,7 +112,6 @@ roles() ->
        {[{bucket, any}, n1ql], none},
        {[{bucket, any}, fts], none},
        {[{bucket, any}, analytics], none},
-       {[{bucket, any}, password], none},
        {[{bucket, any}], [read]},
        {[analytics], none},
        {[backup], none},
@@ -136,7 +134,6 @@ roles() ->
        {[{bucket, any}, n1ql], none},
        {[{bucket, any}, fts], none},
        {[{bucket, any}, analytics], none},
-       {[{bucket, any}, password], none},
        {[{bucket, any}], [read]},
        {[analytics], none},
        {[backup], none},
@@ -156,7 +153,6 @@ roles() ->
        {[{bucket, any}, n1ql], none},
        {[{bucket, any}, fts], none},
        {[{bucket, any}, analytics], none},
-       {[{bucket, any}, password], none},
        {[n1ql, curl], none},
        {[eventing], none},
        {[analytics], none},
@@ -170,7 +166,6 @@ roles() ->
       [{[admin], none},
        {[xdcr], none},
        {[{bucket, any}, xdcr], none},
-       {[{bucket, any}, password], none},
        {[{bucket, any}], all},
        {[n1ql], all},
        {[eventing], all},
@@ -183,7 +178,6 @@ roles() ->
        {desc, <<"Can perform backup related tasks. This user can access "
                 "the web console">>}],
       [{[admin], none},
-       {[{bucket, any}, password], none},
        {[], all}]},
      {bucket_admin, [bucket_name],
       [{name, <<"Bucket Admin">>},
@@ -195,7 +189,6 @@ roles() ->
        {[{bucket, bucket_name}, data], none},
        {[{bucket, bucket_name}, views], none},
        {[{bucket, bucket_name}, n1ql], none},
-       {[{bucket, bucket_name}, password], none},
        {[{bucket, bucket_name}, fts], none},
        {[{bucket, any}, analytics], none},
        {[{bucket, bucket_name}], all},
@@ -601,6 +594,8 @@ get_public_definitions(Version) when Version < ?VERSION_66 ->
     menelaus_old_roles:roles_pre_66();
 get_public_definitions(Version) when Version < ?VERSION_70 ->
     menelaus_old_roles:roles_pre_70();
+get_public_definitions(Version) when Version < ?VERSION_NEO ->
+    menelaus_old_roles:roles_pre_NEO();
 get_public_definitions(_) ->
     roles().
 
@@ -1244,7 +1239,6 @@ eventing_admin_test() ->
     Roles = compile_roles([eventing_admin], roles()),
     ?assertEqual(false, is_allowed({[admin], any}, Roles)),
     ?assertEqual(false, is_allowed({[xdcr], any}, Roles)),
-    ?assertEqual(false, is_allowed({[{bucket, "test"}, password], any}, Roles)),
     ?assertEqual(false, is_allowed({[{bucket, "test"}, xdcr], any}, Roles)),
     ?assertEqual(true, is_allowed({[buckets], create}, Roles)),
     ?assertEqual(true, is_allowed({[n1ql], all}, Roles)),
@@ -1256,15 +1250,12 @@ eventing_admin_test() ->
 backup_admin_test() ->
     Roles = compile_roles([backup_admin], roles()),
     ?assertEqual(false, is_allowed({[admin], any}, Roles)),
-    ?assertEqual(false, is_allowed({[{bucket, "test"}, password], any}, Roles)),
     ?assertEqual(true, is_allowed({[buckets], create}, Roles)),
     ?assertEqual(true, is_allowed({[backup], all}, Roles)),
     ?assertEqual(true, is_allowed({[anything], all}, Roles)).
 
 ro_admin_test() ->
     Roles = compile_roles([ro_admin], roles()),
-    ?assertEqual(false,
-                 is_allowed({[{bucket, "test"}, password], read}, Roles)),
     ?assertEqual(false, is_allowed({[{bucket, "test"}, data], read}, Roles)),
     ?assertEqual(true,
                  is_allowed({[{bucket, "test"}, something], read}, Roles)),
@@ -1357,8 +1348,6 @@ replication_admin_test() ->
     Roles = compile_roles([replication_admin], roles()),
     ?assertEqual(true,
                  is_allowed({[{bucket, "default"}, xdcr], anything}, Roles)),
-    ?assertEqual(false,
-                 is_allowed({[{bucket, "default"}, password], read}, Roles)),
     ?assertEqual(false,
                  is_allowed({[{bucket, "default"}, views], read}, Roles)),
     ?assertEqual(true,
@@ -1646,6 +1635,7 @@ validate_roles(Roles) ->
 
 roles_format_test() ->
     ?assert(validate_roles(roles())),
+    ?assert(validate_roles(menelaus_old_roles:roles_pre_NEO())),
     ?assert(validate_roles(menelaus_old_roles:roles_pre_70())),
     ?assert(validate_roles(menelaus_old_roles:roles_pre_66())).
 
