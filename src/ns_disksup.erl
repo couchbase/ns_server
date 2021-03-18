@@ -39,25 +39,15 @@
 %%----------------------------------------------------------------------
 
 start_link() ->
-    case is_my_os() of
+    case misc:is_linux() orelse misc:is_macos() of
         true ->
             gen_server:start_link({local, ?MODULE}, ?MODULE, [], []);
         false ->
             ignore
     end.
 
-is_my_os() ->
-    case os:type() of
-        {unix, linux} ->
-            true;
-        {unix, darwin} ->
-            true;
-        _ ->
-            false
-    end.
-
 get_disk_data() ->
-    case is_my_os() of
+    case misc:is_linux() orelse misc:is_macos() of
         true ->
             gen_server:call(?MODULE, get_disk_data, infinity);
         false ->

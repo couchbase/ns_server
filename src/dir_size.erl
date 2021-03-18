@@ -26,10 +26,10 @@
 
 
 godu_name() ->
-    case erlang:system_info(system_architecture) of
-        "win32" ->
+    case misc:is_windows() of
+        true ->
             "godu.exe";
-        _ ->
+        false ->
             "godu"
     end.
 

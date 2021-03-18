@@ -76,9 +76,7 @@ init_is_enterprise() ->
 
 init_saslauthd_enabled() ->
     IsForced = is_forced("FORCE_SASLAUTHD"),
-    IsLinux = os:type() =:= {unix, linux},
-
-    IsForced orelse IsLinux.
+    IsForced orelse misc:is_linux().
 
 %% On Windows we need to specify a default je_malloc configuration value.
 je_malloc_conf_default() ->

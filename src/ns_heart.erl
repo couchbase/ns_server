@@ -422,8 +422,8 @@ grab_one_service_status(Service) ->
     end.
 
 grab_procfs_files() ->
-    case os:type() of
-        {_, linux} ->
+    case misc:is_linux() of
+        true ->
             Files = [{meminfo, "/proc/meminfo"},
                      {loadavg, "/proc/loadavg"},
                      {cpu_pressure, "/proc/pressure/cpu"},
@@ -436,6 +436,6 @@ grab_procfs_files() ->
                             Error
                     end} ||
                 {Name, Path} <- Files];
-        _ ->
+        false ->
             []
     end.

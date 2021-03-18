@@ -244,10 +244,10 @@ goport_path() ->
     path_config:component_path(bin, goport_name()).
 
 goport_name() ->
-    case erlang:system_info(system_architecture) of
-        "win32" ->
+    case misc:is_windows() of
+        true ->
             "goport.exe";
-        _ ->
+        false ->
             "goport"
     end.
 

@@ -701,10 +701,10 @@ testnodes(NumNodes) ->
 
 invoke_vbmap(CurrentMap, Nodes, NumVBuckets, NumSlaves, NumReplicas, Tags) ->
     VbmapName =
-        case erlang:system_info(system_architecture) of
-            "win32" ->
+        case misc:is_windows() of
+            true ->
                 "vbmap.exe";
-            _ ->
+            false ->
                 "vbmap"
         end,
 
