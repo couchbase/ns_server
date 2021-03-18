@@ -284,7 +284,7 @@ transaction(Keys, Oper, Lock, SelfRef, Fun) ->
                               end
                       end
               end
-      end).
+      end, #{read_consistency => quorum}).
 
 transaction_with_key_remove(Key, Keys, Verify, Do) ->
     chronicle_kv:transaction(
