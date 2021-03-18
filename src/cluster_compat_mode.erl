@@ -176,7 +176,12 @@ consider_switching_compat_mode() ->
                     Default = misc:get_env_default(
                                 developer_preview_enabled_default,
                                 is_developer_preview_enabled_by_default()),
-                    ns_config:set(developer_preview_enabled, Default);
+                    case Default of
+                        true ->
+                            ns_config:set(developer_preview_enabled, Default);
+                        _ ->
+                            ok
+                    end;
                 true ->
                     ok
             end,
