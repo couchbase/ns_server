@@ -604,6 +604,13 @@ handle_add_node(Req) ->
 handle_add_node_to_group(GroupUUIDString, Req) ->
     do_handle_add_node(Req, list_to_binary(GroupUUIDString)).
 
+add_node_error_code(cannot_acquire_lock) ->
+    503;
+add_node_error_code(unknown_group) ->
+    404;
+add_node_error_code(_) ->
+    400.
+
 do_handle_add_node(Req, GroupUUID) ->
     %% parameter example: hostname=epsilon.local, user=Administrator, password=asd!23
     Params = mochiweb_request:parse_post(Req),
@@ -641,10 +648,8 @@ do_handle_add_node(Req, GroupUUID) ->
                 {ok, OtpNode} ->
                     ns_audit:add_node(Req, Hostname, Port, User, GroupUUID, Services, OtpNode),
                     reply_json(Req, {struct, [{otpNode, OtpNode}]}, 200);
-                {error, unknown_group, Message} ->
-                    reply_json(Req, [Message], 404);
-                {error, _What, Message} ->
-                    reply_json(Req, [Message], 400)
+                {error, What, Message} ->
+                    reply_json(Req, [Message], add_node_error_code(What))
             end,
             %% we have to stop this process because in case of
             %% ns_server restart it becomes orphan

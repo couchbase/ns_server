@@ -1052,6 +1052,10 @@ node_add_transaction(Node, GroupUUID, Services, Body) ->
             node_add_transaction_finish(Node, GroupUUID, undefined, Body);
         {ok, ChronicleInfo} ->
             node_add_transaction_finish(Node, GroupUUID, ChronicleInfo, Body);
+        cannot_acquire_lock ->
+            {error, cannot_acquire_lock,
+             <<"Operation temporarily cannot be performed possibly due to loss "
+               "of quorum">>};
         group_not_found ->
             M = iolist_to_binary([<<"Could not find group with uuid: ">>,
                                   GroupUUID]),
