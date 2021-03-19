@@ -205,7 +205,16 @@ buckets_to_chronicle(Buckets) ->
 
 bucket_configs_to_chronicle(BucketConfigs) ->
     [{root(), [N || {N, _} <- BucketConfigs]} |
-     [{sub_key(B, props), BC} || {B, BC} <- BucketConfigs]].
+     [{sub_key(B, props), scrubbed(BC)} || {B, BC} <- BucketConfigs]].
+
+deprecated_property(sasl_password) ->
+    true;
+deprecated_property(_) ->
+    false.
+
+scrubbed(BucketProperties) ->
+    [{Key, Value} || {Key, Value} <- BucketProperties,
+                     not deprecated_property(Key)].
 
 remove_from_snapshot(BucketName, Snapshot) ->
     functools:chain(
