@@ -94,7 +94,7 @@
          local_connected_and_list_vbucket_details/2,
          set_vbucket/3, set_vbucket/4,
          set_vbuckets/2,
-         stats/1, stats/2,
+         stats/2,
          warmup_stats/1,
          topkeys/1,
          raw_stats/5,
@@ -580,9 +580,6 @@ do_handle_call({set_vbucket, VBucket, VBState, Topology}, _From,
             ?log_error("Failed to change bucket ~p vbucket ~p state to ~p: ~p",
                        [BucketName, VBucket, VBState, Reply])
     end,
-    {reply, Reply, State};
-do_handle_call({stats, Key}, _From, State) ->
-    Reply = mc_binary:quick_stats(State#state.sock, Key, fun mc_binary:quick_stats_append/3, []),
     {reply, Reply, State};
 do_handle_call({get_dcp_docs_estimate, VBucketId, ConnName}, _From, State) ->
     {reply, mc_client_binary:get_dcp_docs_estimate(State#state.sock, VBucketId, ConnName), State};
@@ -1129,16 +1126,15 @@ set_vbuckets(Bucket, ToSet) ->
             do_call(server(Bucket), {set_vbuckets, ToSet}, ?TIMEOUT_VERY_HEAVY)
     end.
 
--spec stats(bucket_name()) ->
-                   {ok, [{binary(), binary()}]} | mc_error().
-stats(Bucket) ->
-    stats(Bucket, <<>>).
-
-
 -spec stats(bucket_name(), binary() | string()) ->
                    {ok, [{binary(), binary()}]} | mc_error().
 stats(Bucket, Key) ->
-    do_call(server(Bucket), {stats, Key}, ?TIMEOUT).
+    perform_very_long_call(
+      fun (Sock) ->
+              Reply = mc_binary:quick_stats(
+                        Sock, Key, fun mc_binary:quick_stats_append/3, []),
+              {reply, Reply}
+      end, Bucket).
 
 -spec warmup_stats(bucket_name()) -> [{binary(), binary()}].
 warmup_stats(Bucket) ->
