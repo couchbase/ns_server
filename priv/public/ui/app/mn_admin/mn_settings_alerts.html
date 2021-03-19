@@ -137,8 +137,7 @@
                     !rbac.cluster.settings.write"
              ng-click="settingsAlertsCtl.togglePopup(alert)">
             UI alert is
-            {{!settingsAlertsCtl.state.alerts[alert] ||
-            settingsAlertsCtl.state.popUpAlerts[alert] ? "disabled" : "enabled"}}
+            {{settingsAlertsCtl.state.popUpAlerts[alert] ? "enabled" : "disabled"}}
           </a>
         </div>
       </div>
