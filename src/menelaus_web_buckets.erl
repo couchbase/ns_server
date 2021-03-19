@@ -288,9 +288,9 @@ build_bucket_info(Id, Snapshot, InfoLevel, LocalAddr, MayExposeAuth, SkipMap) ->
         build_dynamic_bucket_info(InfoLevel, Id, BucketConfig),
         [build_sasl_password(BucketConfig) || MayExposeAuth]])}.
 
-build_sasl_password(BucketConfig) ->
-    {saslPassword,
-     list_to_binary(proplists:get_value(sasl_password, BucketConfig, ""))}.
+build_sasl_password(_BucketConfig) ->
+    %% No longer used but kept for now until all code can remove usage.
+    {saslPassword, <<>>}.
 
 build_replica_index(BucketConfig) ->
     [{replicaIndex, proplists:get_value(replica_index, BucketConfig, true)} ||
@@ -450,7 +450,7 @@ extract_bucket_props(Props) ->
                   Y <- [num_replicas, replica_index, ram_quota, auth_type,
                         durability_min_level, frag_percent,
                         pitr_enabled, pitr_granularity, pitr_max_history_age,
-                        sasl_password, moxi_port, autocompaction,
+                        moxi_port, autocompaction,
                         purge_interval, flush_enabled, num_threads,
                         eviction_policy, conflict_resolution_type,
                         drift_ahead_threshold_ms, drift_behind_threshold_ms,

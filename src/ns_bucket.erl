@@ -691,8 +691,9 @@ display_type(Type, _) ->
 auth_type(Bucket) ->
     proplists:get_value(auth_type, Bucket).
 
-sasl_password(Bucket) ->
-    proplists:get_value(sasl_password, Bucket, "").
+sasl_password(_Bucket) ->
+    %% No longer used but kept for now until all code can remove usage.
+    "".
 
 moxi_port(Bucket) ->
     proplists:get_value(moxi_port, Bucket).
@@ -786,21 +787,13 @@ cleanup_bucket_props(Props) ->
             Props
     end.
 
-generate_sasl_password() ->
-    binary_to_list(couch_uuids:random()).
-
-generate_sasl_password(Props) ->
-    [{auth_type, sasl} |
-     lists:keystore(sasl_password, 1, Props,
-                    {sasl_password, generate_sasl_password()})].
-
 create_bucket(BucketType, BucketName, NewConfig) ->
     case is_valid_bucket_name(BucketName) of
         true ->
             MergedConfig0 =
                 misc:update_proplist(new_bucket_default_params(BucketType),
                                      NewConfig),
-            MergedConfig1 = generate_sasl_password(MergedConfig0),
+            MergedConfig1 = [{auth_type, sasl} | MergedConfig0],
             BucketUUID = couch_uuids:random(),
             MergedConfig = [{uuid, BucketUUID} | MergedConfig1],
             do_create_bucket(chronicle_compat:backend(), BucketName,
