@@ -202,7 +202,7 @@ validate_metrics_settings(Settings) ->
     case proplists:get_value(scrape_interval, Settings) <
          proplists:get_value(scrape_timeout, Settings) of
         true ->
-            Msg = <<"scrapeInterval must be greater then or equal to "
+            Msg = <<"scrapeInterval must be greater than or equal to "
                     "scrapeTimeout">>,
             menelaus_util:global_error_exception(400, Msg);
         false -> ok
