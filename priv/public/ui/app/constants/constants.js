@@ -9,10 +9,8 @@ licenses/APL2.txt.
 */
 
 let bucketsFormConfiguration = {
-  authType: 'sasl',
   name: '',
   conflictResolutionType: 'seqno',
-  saslPassword: '',
   bucketType: 'membase',
   evictionPolicy: 'valueOnly',
   evictionPolicyEphemeral: 'noEviction',
