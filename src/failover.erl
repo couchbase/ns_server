@@ -29,7 +29,7 @@
 -export([fix_vbucket_map_test_wrapper/1, meck_query_vbuckets/2]).
 -endif.
 
--export([start/2, is_possible/1, orchestrate/2,
+-export([start/2, is_possible/2, orchestrate/2,
          get_failover_vbuckets/2, promote_max_replicas/4,
          clear_failover_vbuckets_sets/1]).
 
@@ -40,7 +40,7 @@ start(Nodes, AllowUnsafe) ->
     Parent = self(),
     ?log_debug("Starting failover with Nodes = ~p, AllowUnsafe = ~p",
                [Nodes, AllowUnsafe]),
-    case is_possible(Nodes) of
+    case is_possible(Nodes, AllowUnsafe) of
         ok ->
             Pid = proc_lib:spawn_link(
                     fun () ->
@@ -559,24 +559,37 @@ node_vbuckets(Map, Node) ->
     [V || {V, Chain} <- misc:enumerate(Map, 0),
           lists:member(Node, Chain)].
 
-is_possible(Nodes) ->
-    ActiveNodes = lists:sort(ns_cluster_membership:active_nodes()),
-    FailoverNodes = lists:sort(Nodes),
-    case ActiveNodes of
-        FailoverNodes ->
-            last_node;
-        _ ->
-            case lists:subtract(FailoverNodes, ActiveNodes) of
-                [] ->
-                    case ns_cluster_membership:service_nodes(ActiveNodes, kv) of
-                        FailoverNodes ->
-                            last_node;
-                        _ ->
-                            ok
-                    end;
-                _ ->
-                    unknown_node
-            end
+is_possible(FailoverNodes, AllowUnsafe) ->
+    ActiveNodes = ns_cluster_membership:active_nodes(),
+    KVActiveNodes = ns_cluster_membership:service_nodes(ActiveNodes, kv),
+    NodesWanted = ns_node_disco:nodes_wanted(),
+    try
+        case KVActiveNodes -- FailoverNodes of
+            [] ->
+                throw(last_node);
+            _ ->
+                ok
+        end,
+        case FailoverNodes -- NodesWanted of
+            [] ->
+                ok;
+            _ ->
+                throw(unknown_node)
+        end,
+        case {AllowUnsafe, FailoverNodes -- ActiveNodes} of
+            {_, []} ->
+                ok;
+            {true, _} ->
+                %% inactiveFailed and inactiveAdded nodes participate in
+                %% chronicle quorum, therefore, in case of unsafe quorum
+                %% failover we allow failover of these nodes.
+                ok;
+            {false, _} ->
+                throw(inactive_node)
+        end
+    catch
+        throw:Error ->
+            Error
     end.
 
 get_failover_vbuckets(Config, Node) ->

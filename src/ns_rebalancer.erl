@@ -1148,7 +1148,7 @@ run_graceful_failover(Nodes) ->
     NodesWanted = ns_node_disco:nodes_wanted(),
     config_sync(pull, NodesWanted),
 
-    case failover:is_possible(Nodes) of
+    case failover:is_possible(Nodes, false) of
         ok ->
             ok;
         Error ->
