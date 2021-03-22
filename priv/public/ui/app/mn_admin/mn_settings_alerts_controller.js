@@ -105,7 +105,7 @@ function mnSettingsAlertsController($scope, mnHelper, mnPromiseHelper, mnSetting
       params = _.clone(vm.state);
     }
     params.alerts = mnHelper.checkboxesToList(params.alerts);
-    params.pop_up_alerts = mnHelper.checkboxesToList(params.popUpAlerts);
+    params.pop_up_alerts = mnHelper.checkboxesToList(vm.state.popUpAlerts);
     params.recipients = params.recipients.replace(/\s+/g, ',');
     params.emailUser = params.emailServer.user;
     params.emailPass = params.emailServer.pass;

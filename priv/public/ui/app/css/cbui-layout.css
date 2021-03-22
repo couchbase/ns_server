@@ -81,6 +81,11 @@ footer {
   box-shadow: 0px -1px 5px 1px rgba(0,0,0,0.12);
   z-index: 1;
 }
+.forms .vertical-divider {
+  border-left: 1px solid #d1d1d1;
+  margin: 0 40px;
+  flex-basis: 1;
+}
 /* basic flex component for horizontal layout --------------------------- */
 .row {
   display: flex;
