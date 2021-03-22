@@ -627,8 +627,6 @@ def connect(num_nodes=0,
                      "&indexMemoryQuota=" + str(indexmemsize))
     o.open("http://{0}:{1}/pools/default".format(addr, base_port), data).read()
     data = do_encode("name=default" +
-                     "&authType=sasl" +
-                     "&saslPassword=" +
                      "&bucketType=" + buckettype +
                      "&storageBackend=" + storage_backend +
                      "&ramQuotaMB=" + str(memsize) +
