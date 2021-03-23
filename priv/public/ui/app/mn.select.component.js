@@ -66,10 +66,4 @@ class MnSelectComponent extends MnLifeCycleHooksToStream {
   optionClicked(value) {
     this.dropdownFormControl.setValue(value);
   }
-
-  arrowClicked(event) {
-    if (this.disabled.getValue()) {
-      event.stopPropagation();
-    }
-  }
 }

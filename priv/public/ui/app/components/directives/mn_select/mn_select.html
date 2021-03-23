@@ -3,17 +3,16 @@
    class="mn-select relative"
    ng-class="{'mn-align-left': mnHorizontalAlign === 'left', 'mn-align-right': mnHorizontalAlign === 'right', 'open-on-top': openOnTop}"
    is-open="isOpened">
-  <div uib-dropdown-toggle ng-disabled="ngDisabled">
+  <div
+     uib-dropdown-toggle
+     ng-disabled="mnDisabled">
     <button
-       ng-disabled="ngDisabled"
+       ng-disabled="mnDisabled"
        class="outline btn-small dropdown-btn ellipsis"
+       ng-class="{'active': isOpened}"
        type="button">
       {{labels ? labels[values.indexOf(ngModel)] : filter(ngModel)}}
     </button>
-    <span
-       class="icon"
-       ng-class="{'fa-angle-up': isOpened, 'fa-angle-down': !isOpened}">
-    </span>
   </div>
   <div
      uib-dropdown-menu

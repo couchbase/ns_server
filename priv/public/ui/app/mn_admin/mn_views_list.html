@@ -27,7 +27,7 @@
        class="margin-bottom-half"
        ng-model="viewsCtl.currentBucketName"
        values="rbac.bucketNames['.views!read']"
-       ng-disabled="!rbac.bucketNames['.views!read'].length"
+       mn-disabled="!rbac.bucketNames['.views!read'].length"
        on-select="viewsCtl.onSelectBucket(selectedOption)">
     </mn-select>
     <span class="pills nowrap">

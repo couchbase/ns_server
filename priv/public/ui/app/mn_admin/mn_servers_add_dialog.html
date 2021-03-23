@@ -54,11 +54,11 @@
         <span ng-if="serversAddDialogCtl.isGroupsAvailable">
           <label for="js_servers_group_select">Assign Group</label>
           <mn-select
-            id="js_servers_group_select"
-            ng-disabled="!!serversAddDialogCtl.postDiskStorageErrors"
-            ng-model="serversAddDialogCtl.selectedGroupName"
-            values="serversAddDialogCtl.groupNames"
-            on-select="serversAddDialogCtl.onSelectGroup(selectedOption)"
+             id="js_servers_group_select"
+             mn-disabled="!!serversAddDialogCtl.postDiskStorageErrors"
+             ng-model="serversAddDialogCtl.selectedGroupName"
+             values="serversAddDialogCtl.groupNames"
+             on-select="serversAddDialogCtl.onSelectGroup(selectedOption)"
           ></mn-select>
         </span>
       </div>

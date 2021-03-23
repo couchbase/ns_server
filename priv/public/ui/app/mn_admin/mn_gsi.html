@@ -19,11 +19,11 @@
     </div>
     <span class="margin-top-half relative flex-grow-1">
       <mn-select
-        class="inline fix-width-3 margin-right-half"
-        ng-model="gsiCtl.viewBy"
-        on-select="gsiCtl.setIndexesView(selectedOption)"
-        values="['viewByIndex', 'viewByNode']"
-        labels="['view by index', 'view by server node']">
+         class="inline fix-width-3 margin-right-half"
+         ng-model="gsiCtl.viewBy"
+         on-select="gsiCtl.setIndexesView(selectedOption)"
+         values="['viewByIndex', 'viewByNode']"
+         labels="['view by index', 'view by server node']">
       </mn-select>
     </span>
     <div
@@ -88,7 +88,7 @@
            class="mn-select-small block"
            ng-model="footerStatsCtl.currentBucket"
            values="rbac.bucketNames['.stats!read']"
-           ng-disabled="!rbac.bucketNames['.stats!read'].length"
+           mn-disabled="!rbac.bucketNames['.stats!read'].length"
            on-select="footerStatsCtl.onSelectBucket(selectedOption)"
            open-on-top="true">
         </mn-select>

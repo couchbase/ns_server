@@ -94,10 +94,10 @@
   <div class="row pagination"
        ng-if="rolesGroupsCtl.state.groups.length">
     <mn-select
-      class="fix-width-3-quarters"
-      ng-model="rolesGroupsCtl.pageSize"
-      on-select="rolesGroupsCtl.pageSizeChanged(selectedOption)"
-      values="[10, 20, 50, 100]">
+       class="fix-width-1"
+       ng-model="rolesGroupsCtl.pageSize"
+       on-select="rolesGroupsCtl.pageSizeChanged(selectedOption)"
+       values="[10, 20, 50, 100]">
     </mn-select>
     <span>
       <a

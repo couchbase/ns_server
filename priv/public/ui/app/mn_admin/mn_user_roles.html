@@ -145,10 +145,10 @@
      class="row pagination"
      ng-if="userRolesCtl.state.users.length">
       <mn-select
-        class="inline fix-width-3-quarters"
-        ng-change="userRolesCtl.pageSizeChanged()"
-        ng-model="userRolesCtl.pageSize"
-        values="[10, 20, 50, 100]">
+         class="inline fix-width-1"
+         ng-change="userRolesCtl.pageSizeChanged()"
+         ng-model="userRolesCtl.pageSize"
+         values="[10, 20, 50, 100]">
       </mn-select>
     <span>
       <a

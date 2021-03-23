@@ -15,7 +15,7 @@ function mnSelectDirective() {
       labels: "=",
       ngModel: "=",
       onSelect: "&",
-      ngDisabled: "=",
+      mnDisabled: "=",
       filter: "=?",
       capitalize: "=",
       openOnTop: "=",

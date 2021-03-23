@@ -117,9 +117,9 @@
         </span>
         <div ng-if="replicaNumberEnabled" class="row flex-left width-8">
           <mn-select
-            class="inline margin-right-half fix-width-half-1"
-            ng-model="bucketConf.replicaNumber"
-            values="[1, 2, 3]">
+             class="inline margin-right-half fix-width-half-1"
+             ng-model="bucketConf.replicaNumber"
+             values="[1, 2, 3]">
           </mn-select>
           <small>Number of replica (backup) copies</small>
         </div>
@@ -420,10 +420,10 @@
       </span><br>
       <div class="formrow">
         <mn-select
-          name="durabilityMinLevel"
-          class="inline fix-width-3"
-          ng-model="bucketConf.durabilityMinLevel"
-          values="durabilityMinLevelOptions">
+           name="durabilityMinLevel"
+           class="inline fix-width-3"
+           ng-model="bucketConf.durabilityMinLevel"
+           values="durabilityMinLevelOptions">
         </mn-select>
       </div>
       <div

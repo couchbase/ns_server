@@ -39,10 +39,10 @@
         <div class="margin-right-1 nowrap">
           <h5>Chart Size</h5>
           <mn-select
-            class="fix-width-half"
-            ng-model="builderCtl.newChart.size"
-            values="['small', 'medium', 'large']"
-            labels="['S', 'M', 'L']">
+             class="fix-width-half"
+             ng-model="builderCtl.newChart.size"
+             values="['small', 'medium', 'large']"
+             labels="['S', 'M', 'L']">
           </mn-select>
         </div>
 
@@ -51,11 +51,11 @@
            ng-if="builderCtl.isEditing">
           <h5>Group</h5>
           <mn-select
-            class="inline"
-            ng-disabled="!builderCtl.isEditing"
-            ng-model="builderCtl.selectedGroup"
-            values="builderCtl.groupIds"
-            filter="builderCtl.filterGroupName">
+             class="inline"
+             mn-disabled="!builderCtl.isEditing"
+             ng-model="builderCtl.selectedGroup"
+             values="builderCtl.groupIds"
+             filter="builderCtl.filterGroupName">
           </mn-select>
         </div>
       </div>

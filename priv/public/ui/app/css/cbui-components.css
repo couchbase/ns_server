@@ -1769,7 +1769,7 @@ input[type="checkbox"].fake-select + label:before {
 .mn-select button.dropdown-btn {
   font-family: OpenSans, sans-serif;
   font-size: .875rem;
-  padding: 0 .9rem 0 .5rem;
+  padding: 0 1.4rem 0 .5rem;
   margin-bottom: 0;
   line-height: 2rem;
   height: 2rem;
@@ -1782,6 +1782,18 @@ input[type="checkbox"].fake-select + label:before {
   box-shadow: none;
   text-align: left;
 }
+.mn-select .dropdown-btn:after {
+    font-family: FontAwesome;
+    content: "\f0d7";
+    position: absolute;
+    right: .5rem;
+    padding-right: 0;
+    color: #555;
+    font-size: .875rem;
+}
+.mn-select .dropdown-btn.active:after {
+    content: "\f0d8";
+}
 .mn-select button.dropdown-btn:hover {
   box-shadow: none;
 }
@@ -1790,7 +1802,6 @@ input[type="checkbox"].fake-select + label:before {
 }
 
 mn-select[disabled] .mn-select,
-mn-select[disabled] .mn-select .dropdown-toggle .icon,
 .mn-select .dropdown-btn[disabled] {
   resize: none;
   opacity: 0.55;
@@ -1808,16 +1819,6 @@ mn-select[disabled] .mn-select .dropdown-toggle .icon,
 .mn-select .dropdown-toggle {
   height: 100%;
   width: 100%;
-}
-
-.mn-select .fa-angle-up,
-.mn-select .fa-angle-down {
-  position: absolute;
-  top: calc(50% - 0.4rem);
-  right: 4px;
-  padding-right: 0;
-  color: #333;
-  font-size: .875rem;
 }
 
 .mn-select .dropdown-menu {
@@ -1842,6 +1843,7 @@ mn-select[disabled] .mn-select .dropdown-toggle .icon,
 .mn-select.mn-align-right div[uib-dropdown-menu] {
   top: auto;
   right: 0;
+  min-width: 100%;
 }
 
 .mn-select.dropdown,

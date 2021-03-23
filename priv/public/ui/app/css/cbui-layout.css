@@ -266,6 +266,9 @@ footer {
 .min-width-12 {
   min-width: 12rem;
 }
+.min-width-full {
+  min-width: 100%;
+}
 
 .max-width-1 {
   max-width: 4rem; /* 1rem = 16px, 4rem = 64px */

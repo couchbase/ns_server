@@ -6,12 +6,12 @@
     {{$ctrl.mnTitle}}
   </p>
   <mn-select
-    ng-if="$ctrl.showStats"
-    class="margin-left-1 fix-width-1-5"
-    ng-model="$ctrl.zoom"
-    on-select="$ctrl.onSelectZoom(selectedOption)"
-    values="['minute', 'hour', 'day', 'week', 'month']"
-    capitalize="true">
+     ng-if="$ctrl.showStats"
+     class="margin-left-1 fix-width-1-5"
+     ng-model="$ctrl.zoom"
+     on-select="$ctrl.onSelectZoom(selectedOption)"
+     values="['minute', 'hour', 'day', 'week', 'month']"
+     capitalize="true">
   </mn-select>
 </div>
 <div class="row charts"
