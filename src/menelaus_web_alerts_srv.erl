@@ -136,10 +136,11 @@ local_alert(Key, Val) ->
 
 %% @doc fetch a list of binary string, clearing out the message
 %% history
--spec fetch_alerts() -> {[{Key, Message, Time}], Token}
+-spec fetch_alerts() -> {[{Key, Message, Time, NoUIPopUp}], Token}
   when Key :: term(),
        Message :: binary(),
        Time :: pos_integer(),
+       NoUIPopUp :: boolean(),
        Token :: binary().
 fetch_alerts() ->
     diag_handler:diagnosing_timeouts(
@@ -176,8 +177,17 @@ handle_call({consume_alerts, PassedCounter}, _From, #state{change_counter = Coun
     {reply, NewState =/= State, NewState};
 
 handle_call(fetch_alert, _From, #state{queue=Alerts0, change_counter=Counter}=State) ->
-    %% convert monotonic time to the system time
-    Alerts = [{Key, Msg, Offset + Time} || {Key, Msg, Time, Offset} <- Alerts0],
+    %% List of alerts for which we show a UI pop-up.
+    PopUps = menelaus_alert:popup_alerts_config(),
+
+    %% Convert monotonic time to the system time and indicate if we want to
+    %% suppress alert UI pop-ups.
+    Alerts = lists:map(
+               fun ({Key, Msg, Time, Offset}) ->
+                       {AlertKey, _Node} = Key,
+                       NoPopUp = not lists:member(AlertKey, PopUps),
+                       {Key, Msg, Offset + Time, NoPopUp}
+               end, Alerts0),
 
     {reply, {lists:reverse(Alerts), list_to_binary(integer_to_list(Counter))}, State};
 
@@ -686,14 +696,15 @@ run_basic_test_do() ->
     MyNode = node(),
 
     ?assertEqual(ok, ?MODULE:local_alert({foo, node()}, <<"bar">>)),
-    ?assertMatch({[{{foo, MyNode}, <<"bar">>, _}], _}, ?MODULE:fetch_alerts()),
-    {[{{foo, MyNode}, <<"bar">>, _}], Opaque1} = ?MODULE:fetch_alerts(),
+    ?assertMatch({[{{foo, MyNode}, <<"bar">>, _, _}], _},
+                 ?MODULE:fetch_alerts()),
+    {[{{foo, MyNode}, <<"bar">>, _, _}], Opaque1} = ?MODULE:fetch_alerts(),
     ?assertMatch({true, {[], _}},
                  {?MODULE:consume_alerts(Opaque1), ?MODULE:fetch_alerts()}),
 
     ?assertEqual(ok, ?MODULE:local_alert({bar, node()}, <<"bar">>)),
     ?assertEqual(ignored, ?MODULE:local_alert({bar, node()}, <<"bar">>)),
-    {[{{bar, MyNode}, <<"bar">>, _}], Opaque2} = ?MODULE:fetch_alerts(),
+    {[{{bar, MyNode}, <<"bar">>, _, _}], Opaque2} = ?MODULE:fetch_alerts(),
     true = (Opaque1 =/= Opaque2),
     ?assertEqual(false, ?MODULE:consume_alerts(Opaque1)),
     ?assertEqual(true, ?MODULE:consume_alerts(Opaque2)),
@@ -701,7 +712,8 @@ run_basic_test_do() ->
 
     ?assertEqual(ok, ?MODULE:global_alert(fu, <<"bar">>)),
     ?assertEqual(ok, ?MODULE:global_alert(fu, <<"bar">>)),
-    ?assertMatch({[{{fu, MyNode}, <<"bar">>, _}], _}, ?MODULE:fetch_alerts()).
+    ?assertMatch({[{{fu, MyNode}, <<"bar">>, _, _}], _},
+                 ?MODULE:fetch_alerts()).
 
 basic_test() ->
     {ok, Pid} = ?MODULE:start_link(),

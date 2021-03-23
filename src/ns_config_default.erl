@@ -309,9 +309,8 @@ default() ->
                        {port, 25},
                        {encrypt, false}]},
        {alerts, menelaus_alert:alert_keys()},
-       %% The alerts which should produce UI pop-ups; does not include
-       %% auto_failover alerts.
-       {pop_up_alerts, menelaus_web_alerts_srv:alert_keys()}
+       %% The alerts which should produce UI pop-ups.
+       {pop_up_alerts, menelaus_alert:alert_keys()}
       ]},
      {alert_limits, [
        %% Maximum percentage of overhead compared to max bucket size (%)

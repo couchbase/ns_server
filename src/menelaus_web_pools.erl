@@ -348,11 +348,13 @@ build_alerts(UUID) ->
       iolist_to_binary([build_controller_uri("resetAlerts", UUID), "&token=",
                         AlertsSilenceToken])}].
 
-build_one_alert({_Key, Msg, Time}) ->
+build_one_alert({_Key, Msg, Time, DisablePopUp}) ->
     LocalTime = calendar:now_to_local_time(misc:time_to_timestamp(Time)),
     StrTime = format_server_time(LocalTime),
+    StrDisablePopUp = menelaus_util:boolean_to_binary_string(DisablePopUp),
 
-    {struct, [{msg, Msg}, {serverTime, StrTime}]}.
+    {struct, [{msg, Msg}, {serverTime, StrTime},
+              {disableUIPopUp, StrDisablePopUp}]}.
 
 handle_pool_info_streaming(Id, Req) ->
     LocalAddr = local_addr(Req),

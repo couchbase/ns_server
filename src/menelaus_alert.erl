@@ -32,7 +32,8 @@
          handle_settings_alerts_send_test_email/1,
          build_alerts_json/1,
          build_alerts_config/1,
-         alert_keys/0]).
+         alert_keys/0,
+         popup_alerts_config/0]).
 
 -export([category_bin/1]).
 
@@ -115,6 +116,13 @@ alert_keys() ->
     Modules = [auto_failover, menelaus_web_alerts_srv],
     Keys = [M:alert_keys() || M <- Modules],
     lists:append(Keys).
+
+%% @doc Returns the list of alerts which, if raised, should display
+%% a pop-up in the UI.
+-spec popup_alerts_config() -> [atom()].
+popup_alerts_config() ->
+    {value, EmailAlerts} = ns_config:search(email_alerts),
+    proplists:get_value(pop_up_alerts, EmailAlerts, []).
 
 %%
 %% Internal functions
