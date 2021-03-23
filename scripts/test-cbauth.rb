@@ -63,7 +63,7 @@ class TestCBAuth < Minitest::Test
     assert_equal nil, task["errorMessage"]
   end
 
-  def create_bucket! name, password = ""
+  def create_bucket! name
     print_cmd! "create_bucket " + name
     post!("/pools/default/buckets",
           :name => name,
@@ -71,9 +71,7 @@ class TestCBAuth < Minitest::Test
           :replicaIndex => 1,
           :replicaNumber => 1,
           :ramQuotaMB => 100,
-          :bucketType => "membase",
-          :authType => "sasl",
-          :saslPassword => password)
+          :bucketType => "membase")
   end
 
   def sh(*args)
@@ -83,9 +81,9 @@ class TestCBAuth < Minitest::Test
 
   def test_basic_stuff
     unless SKIP_SETUP
-      create_bucket! "other", "apassword"
+      create_bucket! "other"
       create_bucket! "default"
-      create_bucket! "foo", ""
+      create_bucket! "foo"
     end
 
     puts post!("/diag/eval", 'ns_orchestrator:ensure_janitor_run({bucket, "default"})')

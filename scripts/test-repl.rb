@@ -56,9 +56,7 @@ class TestRepl < Minitest::Test
           :replicaIndex => 1,
           :replicaNumber => 1,
           :ramQuotaMB => 100,
-          :bucketType => "membase",
-          :authType => "sasl",
-          :saslPassword => "")
+          :bucketType => "membase")
   end
 
   def create_document! bucket, vbucket, key, value

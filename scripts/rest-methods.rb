@@ -109,8 +109,6 @@ module RESTMethods
         post!("/pools/default/buckets",
               :name => "default",
               :ramQuotaMB => $opts.sane_default_bucket ? quota/2 : quota,
-              :authType => 'sasl',
-              :saslPassword => '',
               :replicaNumber => $opts.replicas.to_s)
       end
       post!("/settings/web", {:port => "SAME", :username => $username, :password => $password})
