@@ -451,6 +451,7 @@ comparable(Const) when is_number(Const); is_binary(Const) ->
 
 commute_with_or(F, {by, List}) when ?AGGREGATION_OP(F) ->
     lists:member(?MERGE_LABEL, List);
+commute_with_or(F, {without, _List}) when ?AGGREGATION_OP(F) -> false;
 commute_with_or(F, none) when ?AGGREGATION_OP(F) -> false;
 commute_with_or(_, none) -> true.
 

@@ -27,6 +27,7 @@
 -define(MAX_TS, 9999999999999).
 -define(MIN_TS, -?MAX_TS).
 -define(DEFAULT_PROMETHEUS_QUERY_TIMEOUT, 60000).
+-define(DERIVED_PARAM_LABEL, <<"__derived_param_name_label__">>).
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
@@ -299,7 +300,7 @@ handle_range_get([MetricName | NotvalidatedFunctions], Req) ->
                                                           timeout,
                                                           alignTimestamps])
                                 end, Props),
-          AllLabels = [{<<"__name__">>, iolist_to_binary(MetricName)} | Labels],
+          AllLabels = [{<<"name">>, iolist_to_binary(MetricName)} | Labels],
           Metric = lists:map(
                      fun ({Name, Value}) ->
                          {[{<<"label">>, Name}, {<<"value">>, Value}]}
@@ -312,11 +313,11 @@ handle_range_get([MetricName | NotvalidatedFunctions], Req) ->
             fun () ->
                 Monitors = start_node_extractors_monitoring([Props]),
                 Ref = send_metrics_request(NewProps, PermFilters),
-                {Res, _} = read_metrics_response(Ref, Props, Now, []),
+                {Res, _} = read_metrics_response(Ref, NewProps, Now, []),
                 stop_node_extractors_monitoring(Monitors),
                 menelaus_util:reply_json(Req, Res)
             end)
-      end, Req, qs, get_validators(Now, Req)).
+      end, Req, qs, get_validators(Now, MetricName, Req)).
 
 post_validators(Now, Req) ->
     [validate_metric_json(metric, _),
@@ -324,10 +325,30 @@ post_validators(Now, Req) ->
      validator:string_array(applyFunctions, _),
      validate_functions(applyFunctions, _),
      validator:string_array(nodes, _) | validators(Now, Req)] ++
-    [validator:unsupported(_)].
+    [validator:validate_relative(
+       fun (special, Metric) ->
+               case is_derived_metric(extract_metric_name(Metric)) of
+                   false ->
+                       {error, <<"'special' aggregation is not available for "
+                                 "non-derived metric">>};
+                   _ -> ok
+               end;
+           (_, _) -> ok
+       end, aggregationFunction, metric, _),
+     validator:unsupported(_)].
 
-get_validators(Now, Req) ->
-    [validator:token_list(nodes, ", ", _) | validators(Now, Req)].
+get_validators(Now, MetricName, Req) ->
+    [validator:token_list(nodes, ", ", _) | validators(Now, Req)] ++
+    [validator:validate(
+       fun (special) ->
+               case is_derived_metric(iolist_to_binary(MetricName)) of
+                   false ->
+                       {error, <<"'special' aggregation is not available for "
+                                 "non-derived metric">>};
+                   _ -> ok
+               end;
+           (_) -> ok
+       end, aggregationFunction, _)].
 
 validators(Now, Req) ->
     NowSec = Now div 1000,
@@ -337,7 +358,8 @@ validators(Now, Req) ->
      validate_nodes_v2(nodes, _, Req),
      validator:default(nodes,
                        ?cut(menelaus_web_node:get_hostnames(Req, any)), _),
-     validator:one_of(aggregationFunction, [max, min, avg, sum, none], _),
+     validator:one_of(aggregationFunction,
+                      [max, min, avg, sum, none, special], _),
      validator:convert(aggregationFunction,
                        fun (L) when is_binary(L) -> binary_to_atom(L, latin1);
                            (L) -> list_to_atom(L)
@@ -370,11 +392,45 @@ stop_node_extractors_monitoring(Refs) ->
           erlang:demonitor(Ref, [flush])
       end, Refs).
 
+is_derived_metric(Name) ->
+    get_derived_metric(Name) =/= [].
+
+get_derived_metric(Name, Key) ->
+    proplists:get_value(Key, get_derived_metric(Name)).
+
+get_derived_metric(<<"index_fragmentation">>) ->
+    [{params, [<<"fragmented_size">>, <<"total_size">>]},
+     {aggregation_fun,
+      fun (FragmentedSizes, TotalSizes) ->
+          aggregate('div', [aggregate(sum, FragmentedSizes),
+                            aggregate(sum, TotalSizes)])
+      end},
+     {query,
+      fun (ExtraLabels) ->
+          FragmentedSize =
+            {call, sum, {without, [<<"index">>, <<"collection">>, <<"scope">>]},
+             [{'*', [{ignoring, [<<"name">>]}],
+               [{[{eq, <<"name">>, <<"index_disk_size">>} | ExtraLabels]},
+                {[{eq, <<"name">>, <<"index_frag_percent">>} | ExtraLabels]}]}]},
+          TotalSize =
+            {call, sum, {without, [<<"index">>, <<"collection">>, <<"scope">>]},
+             [{[{eq, <<"name">>, <<"index_disk_size">>} | ExtraLabels]}]},
+          [FragmentedSize, TotalSize]
+      end}];
+get_derived_metric(_) -> [].
+
 send_metrics_request(Props, PermFilters) ->
     Functions = proplists:get_value(applyFunctions, Props, []),
     Window = proplists:get_value(timeWindow, Props),
     Labels = proplists:get_value(metric, Props),
-    Query = construct_promql_query(Labels, Functions, Window, PermFilters),
+    MetricName = extract_metric_name(proplists:get_value(metric, Props, [])),
+    Query =
+        case get_derived_metric(MetricName, params) of
+            undefined ->
+                construct_promql_query(Labels, Functions, Window, PermFilters);
+            _ ->
+                derived_metric_query(Labels, PermFilters)
+        end,
     Start = proplists:get_value(start, Props),
     End = proplists:get_value('end', Props),
     Step = proplists:get_value(step, Props),
@@ -411,7 +467,10 @@ read_metrics_response(Ref, Props, StartTimestampMs, DownHosts) ->
               end
           end, Nodes),
     AggFunction = proplists:get_value(aggregationFunction, Props, none),
-    Data = prepare_metric_props(merge_metrics(GoodRes, AggFunction)),
+    MetricName = extract_metric_name(proplists:get_value(metric, Props, [])),
+    IsDerived = is_derived_metric(MetricName),
+    CleanedRes = [{N, clean_metric_props(R)} || {N, R} <- GoodRes],
+    Data = merge_metrics(CleanedRes, Props, IsDerived, AggFunction),
     Errors = [{[{node, N},
                 {error, format_error(R)}]}
                  || {N, R} <- BadRes],
@@ -485,7 +544,7 @@ validate_functions(Name, State) ->
           end
       end, Name, State).
 
-prepare_metric_props(Metrics) ->
+clean_metric_props(Metrics) ->
     lists:map(
       fun ({MetricProps}) ->
           {misc:key_update(<<"metric">>, MetricProps,
@@ -496,43 +555,185 @@ prepare_metric_props(Metrics) ->
                            end)}
       end, Metrics).
 
-merge_metrics(NodesResults, none) ->
-    lists:flatmap(
-      fun ({Node, NodeRes}) ->
-          lists:map(
-            fun ({MetricProps}) ->
-                {misc:key_update(<<"metric">>, MetricProps,
-                                 fun ({P}) -> {[{nodes, [Node]} | P]} end)}
-            end, NodeRes)
-      end, NodesResults);
-merge_metrics(NodesResults, AggFunction) ->
-    Nodes = [N || {N, _} <- NodesResults],
-    FlatList = [{maps:from_list(Metric), Values} ||
-                    {_, Metrics} <- NodesResults,
-                    {Props} <- Metrics,
-                    [{<<"metric">>, {Metric}},
-                     {<<"values">>, Values}] <- [lists:sort(Props)]],
+aggregate_results(Results, AggregationParams, AggregationFun) ->
+    UnpackedResults = [{maps:from_list(Metric), Values}
+                        || {Props} <- Results,
+                           [{<<"metric">>, {Metric}},
+                            {<<"values">>, Values}] <- [lists:sort(Props)]],
     lists:map(
-      fun ({NamePropsMap, ListOfValueLists}) ->
-          NameProps = maps:to_list(NamePropsMap),
-          NameProps2 = {[{nodes, Nodes},
-                         {aggregationFunction, AggFunction} | NameProps]},
-          Timestamps = lists:umerge(lists:map(?cut([TS || [TS, _V] <- _1]),
-                                              ListOfValueLists)),
-          Normalize = normalize_datapoints(Timestamps, _, []),
-          ListOfValueLists2 = lists:map(Normalize, ListOfValueLists),
-          Aggregated = aggregate_datapoints(AggFunction, ListOfValueLists2),
-          Values = lists:zipwith(?cut([_1, _2]), Timestamps, Aggregated),
-          {[{<<"metric">>, NameProps2},
-            {<<"values">>, Values}]}
-      end, misc:groupby_map(fun functools:id/1, FlatList)).
+      fun ({NamePropsMap, List}) ->
+          {[{<<"metric">>, {maps:to_list(NamePropsMap)}},
+            {<<"values">>, aggregate_values(List, AggregationParams,
+                                            AggregationFun)}]}
+      end, misc:groupby_map(
+             fun ({M, V}) ->
+                PName = maps:get(?DERIVED_PARAM_LABEL, M, default_param),
+                %% if this metric is part of a derived metric,
+                %% the name label will lead to incorrect groupping (we will
+                %% set other name for it after aggregation anyway).
+                LabelsToRemove = [?DERIVED_PARAM_LABEL] ++
+                                 [<<"name">> || PName =/= default_param],
+                {maps:without(LabelsToRemove, M), {PName, V}}
+             end, UnpackedResults)).
 
-aggregate_datapoints(F, Datapoints) ->
-    Fun = fun (L) ->
-              Res = aggregate(F, [prometheus:parse_value(E) || E <- L]),
-              prometheus:format_value(Res)
-          end,
-    misc:zipwithN(Fun, Datapoints).
+%% List :: [{ParamName, list([Timestamp, ValueAsStr])}]
+%% Example:
+%% [{param1, [[16243234, "1"], [16243235, "1"], [16243236, "1"]]},
+%% [{param1, [[16243234, "2"],                  [16243236, "2"]]},
+%% [{param2, [[16243234, "3"], [16243235, "3"], [16243236, "3"]]},
+%% [{param2, [[16243234, "4"], [16243235, "4"]                 ]}]
+aggregate_values(List, AggregationParams, AggregationFun) ->
+      %% List2 :: [{ParamName, list(list([Timestamp, ValueAsStr]))}]
+      %% Example:
+      %% [{param1, [[[16243234, "1"], [16243235, "1"], [16243236, "1"]],
+      %%            [[16243234, "2"],                  [16243236, "2"]]]},
+      %%  {param2, [[[16243234, "3"], [16243235, "3"], [16243236, "3"]],
+      %%            [[16243234, "4"], [16243235, "4"],                ]]}]
+      List2 = misc:groupby_map(fun functools:id/1, List),
+
+      Timestamps = lists:umerge(lists:map(?cut([TS || [TS, _V] <- _1]),
+                                          [L || {_, L} <- List])),
+      Normalize = normalize_datapoints(Timestamps, _, []),
+
+      %% List3 :: [[[ValueAsStr]]]
+      %% Example:
+      %%        Node1              Node2
+      %% [ [["1", "1", "1"], ["2", "NaN", "2"]],   <- param1
+      %%   [["3", "3", "3"], ["4", "4", "NaN"]] ]  <- param2
+      List3 = [lists:map(Normalize, proplists:get_value(P, List2, []))
+               || P <- AggregationParams],
+
+      %% List4 :: [[[ValueAsStr]]]
+      %% Example: [ [["1", "2"], ["1", "NaN"], ["1", "2"]],
+      %%            [["3", "4"], ["3", "4"], ["3", "NaN"]] ]
+      List4 = lists:map(
+                fun ([]) ->
+                        [[] || _ <- Timestamps];
+                    (ValueLists) ->
+                        misc:zipwithN(fun (L) -> L end, ValueLists)
+                end, List3),
+
+      %% List5 :: [AggregatedValueAsStr]
+      %% Example: [AggregationFun([1, 2], [3, 4]),
+      %%           AggregationFun([1, undefined], [3, 4]),
+      %%           AggregationFun([1, 2], [3, undefined])]
+      %% and if AggregationFun is sum, List4 will be [10, 8, 6]
+      List5 = misc:zipwithN(
+                fun (ValuesLists) ->
+                   ParsedValuesLists =
+                     [[prometheus:parse_value(V) || V <- Values]
+                      || Values <- ValuesLists],
+                   Res = erlang:apply(AggregationFun, ParsedValuesLists),
+                   prometheus:format_value(Res)
+                end, List4),
+
+      %% Values :: [ [Timestamp, AggregatedValueAsStr] ]
+      %% Example: [[16243234, 10], [16243235, 8], [16243236, 6]]
+      lists:zipwith(?cut([_1, _2]), Timestamps, List5).
+
+-ifdef(TEST).
+
+aggregate_results_test() ->
+    ?assertEqual([], aggregate_results([], [<<"op1">>], undefined)),
+
+    Values = [
+        %% From node 1
+        {[{<<"metric">>, {[{<<"name">>, <<"m1">>}, {<<"b">>, <<"b1">>},
+                           {?DERIVED_PARAM_LABEL, <<"op1">>}]}},
+          {<<"values">>, [[1, <<"2">>], [2, <<"3">>], [3, <<"5">>]]}]},
+        {[{<<"metric">>, {[{<<"name">>, <<"m1">>}, {<<"b">>, <<"b2">>},
+                           {?DERIVED_PARAM_LABEL, <<"op1">>}]}},
+          {<<"values">>, [[1, <<"7">>], [2, <<"11">>], [3, <<"13">>]]}]},
+        {[{<<"metric">>, {[{<<"name">>, <<"m2">>}, {<<"b">>, <<"b1">>},
+                           {?DERIVED_PARAM_LABEL, <<"op2">>}]}},
+          {<<"values">>, [[1, <<"17">>], [2, <<"19">>], [3, <<"23">>]]}]},
+        {[{<<"metric">>, {[{<<"name">>, <<"m2">>}, {<<"b">>, <<"b2">>},
+                           {?DERIVED_PARAM_LABEL, <<"op2">>}]}},
+          {<<"values">>, [               [2, <<"31">>], [3, <<"37">>]]}]},
+        %% From node 2
+        {[{<<"metric">>, {[{<<"name">>, <<"m1">>}, {<<"b">>, <<"b1">>},
+                           {?DERIVED_PARAM_LABEL, <<"op1">>}]}},
+          {<<"values">>, [[1, <<"41">>], [2, <<"43">>], [3, <<"47">>]]}]},
+        {[{<<"metric">>, {[{<<"name">>, <<"m1">>}, {<<"b">>, <<"b2">>},
+                           {?DERIVED_PARAM_LABEL, <<"op1">>}]}},
+          {<<"values">>, [[1, <<"53">>], [2, <<"59">>], [3, <<"61">>]]}]},
+        {[{<<"metric">>, {[{<<"name">>, <<"m2">>}, {<<"b">>, <<"b1">>},
+                           {?DERIVED_PARAM_LABEL, <<"op2">>}]}},
+          {<<"values">>, [[1, <<"67">>], [2, <<"71">>], [3, <<"73">>]]}]},
+        {[{<<"metric">>, {[{<<"name">>, <<"m2">>}, {<<"b">>, <<"b2">>},
+                           {?DERIVED_PARAM_LABEL, <<"op2">>}]}},
+          {<<"values">>, [[1, <<"79">>], [2, <<"83">>], [3, <<"89">>]]}]}
+    ],
+    Res = aggregate_results(Values, [<<"op1">>, <<"op2">>, <<"op3">>],
+                            fun (Op1, Op2, Op3) ->
+                                 %% Op3 is missing in values
+                                 ?assertEqual([], Op3),
+                                 %% Need +1 to add some asymmetry
+                                 aggregate(sum, Op1) * (aggregate(sum, Op2) + 1)
+                            end),
+    ?assertEqual([{[{<<"metric">>, {[{<<"b">>, <<"b1">>}]}},
+                   {<<"values">>,
+                    [[1, <<"3655">>], %% (2 + 41) * (17 + 67 + 1)
+                     [2, <<"4186">>], %% (3 + 43) * (19 + 71 + 1)
+                     [3, <<"5044">>]]}]}, %% (5 + 47) * (23 + 73 + 1)
+                  {[{<<"metric">>, {[{<<"b">>, <<"b2">>}]}},
+                    {<<"values">>,
+                     [[1, <<"4800">>], %% (7 + 53) * ((miss) + 79 + 1)
+                      [2, <<"8050">>], %% (11 + 59) * (31 + 83 + 1)
+                      [3, <<"9398">>]]}]}], %% (13 + 61) * (37 + 89 + 1)
+                 Res).
+-endif.
+
+metrics_add_label(Res, Labels) ->
+    lists:map(
+      fun ({Props}) ->
+          {misc:key_update(<<"metric">>, Props,
+                           fun ({P}) -> {Labels ++ P} end)}
+      end, Res).
+
+merge_metrics(NodesResults, _ReqProps, false, none) ->
+    lists:flatmap(
+      fun ({Node, List}) -> metrics_add_label(List, [{nodes, [Node]}]) end,
+      NodesResults);
+merge_metrics(NodesResults, _ReqProps, false, AggFunctionName) ->
+    {Nodes, ResultsLists} = lists:unzip(NodesResults),
+    FlatResults = lists:flatten(ResultsLists),
+    AggFun2 = aggregate(AggFunctionName, _),
+    %% When request is not supposed to contain any named parameters we use
+    %% 'default_param' atom to point to all the metrics without any param name
+    %% label
+    FlatAggregated = aggregate_results(FlatResults, [default_param], AggFun2),
+    metrics_add_label(FlatAggregated, [{nodes, [Nodes]}]);
+merge_metrics(NodesResults, ReqProps, true, none) ->
+    Name = extract_metric_name(proplists:get_value(metric, ReqProps, [])),
+    AggFun = get_derived_metric(Name, aggregation_fun),
+    Params = get_derived_metric(Name, params),
+    NodesResults2 = [{N, aggregate_results(R, Params, AggFun)}
+                         || {N, R} <- NodesResults],
+    lists:flatmap(
+      fun ({Node, List}) ->
+          metrics_add_label(List, [{nodes, [Node]}, {name, Name}])
+      end, NodesResults2);
+merge_metrics(NodesResults, ReqProps, true, special) ->
+    Name = extract_metric_name(proplists:get_value(metric, ReqProps, [])),
+    AggFun = get_derived_metric(Name, aggregation_fun),
+    Params = get_derived_metric(Name, params),
+    {Nodes, ResultsLists} = lists:unzip(NodesResults),
+    FlatResults = lists:flatten(ResultsLists),
+    FlatAggregated = aggregate_results(FlatResults, Params, AggFun),
+    metrics_add_label(FlatAggregated, [{nodes, [Nodes]}, {name, Name}]);
+
+merge_metrics(NodesResults, ReqProps, true, AggFunctionName) ->
+    Name = extract_metric_name(proplists:get_value(metric, ReqProps, [])),
+    AggFun = get_derived_metric(Name, aggregation_fun),
+    Params = get_derived_metric(Name, params),
+    NodesResults2 = [{N, aggregate_results(R, Params, AggFun)}
+                         || {N, R} <- NodesResults],
+    {Nodes, ResultsLists} = lists:unzip(NodesResults2),
+    FlatResults = lists:flatten(ResultsLists),
+    AggFun2 = aggregate(AggFunctionName, _),
+    FlatAggregated = aggregate_results(FlatResults, [default_param], AggFun2),
+    metrics_add_label(FlatAggregated, [{nodes, [Nodes]}, {name, Name}]).
 
 construct_promql_query(Labels, Functions, Window, PermFilters) ->
     {RangeVFunctions, InstantVFunctions} =
@@ -550,6 +751,26 @@ construct_promql_query(Labels, Functions, Window, PermFilters) ->
        {'or', _},
        apply_functions(_, InstantVFunctions),
        prometheus:format_promql(_)]).
+
+derived_metric_query(Labels, AuthorizationLabelsList) ->
+    LabelsAst = lists:map(fun construct_promql_labels_ast/1, Labels),
+
+    {[{eq, <<"name">>, Name}], RestLabels} =
+        lists:partition(
+          fun ({eq, <<"name">>, _}) -> true;
+              ({_, _, _}) -> false
+          end, LabelsAst),
+
+    prometheus:format_promql(
+      {'or', lists:flatmap(
+               fun ({AuthorizationLabels}) ->
+                   ExtraLabels = RestLabels ++ AuthorizationLabels,
+                   ParamAsts = (get_derived_metric(Name, query))(ExtraLabels),
+                   Params = get_derived_metric(Name, params),
+                   [{call, label_replace, none,
+                     [AST, ?DERIVED_PARAM_LABEL, N, <<>>, <<>>]}
+                    || {N, AST} <- lists:zip(Params, ParamAsts)]
+               end, AuthorizationLabelsList)}).
 
 construct_promql_labels_ast({MetricProps}) ->
     Label = proplists:get_value(<<"label">>, MetricProps),
@@ -806,6 +1027,17 @@ aggregate(avg, List) ->
         infinity -> infinity;
         neg_infinity -> neg_infinity;
         N -> N / length(List)
+    end;
+aggregate('div', [Op1, Op2]) ->
+    if Op2 == 0 -> undefined;
+       is_number(Op1) andalso is_number(Op2) -> Op1 / Op2;
+       Op2 == undefined -> undefined;
+       Op2 == infinity andalso is_number(Op1) -> 0;
+       Op2 == neg_infinity andalso is_number(Op1) -> 0;
+       Op1 == undefined -> undefined;
+       Op1 == infinity andalso is_number(Op2) -> infinity;
+       Op1 == neg_infinity andalso is_number(Op2) -> neg_infinity;
+       is_atom(Op1) andalso is_atom(Op2) -> undefined
     end.
 
 foldl2(_, Acc, []) -> Acc;
@@ -858,6 +1090,26 @@ aggregate_randomized_test() ->
               ?assertEqual(neg_infinity, aggregate(min, List4)),
               ?assertEqual(undefined, aggregate(avg, List4))
       end, lists:seq(1,1000)).
+
+aggregate_div_test() ->
+    ?assertEqual(3.0, aggregate('div', [6, 2])),
+    ?assertEqual(undefined, aggregate('div', [6, 0])),
+    ?assertEqual(undefined, aggregate('div', [undefined, 123])),
+    ?assertEqual(undefined, aggregate('div', [123, undefined])),
+    ?assertEqual(undefined, aggregate('div', [undefined, infinity])),
+    ?assertEqual(undefined, aggregate('div', [undefined, neg_infinity])),
+    ?assertEqual(undefined, aggregate('div', [infinity, infinity])),
+    ?assertEqual(undefined, aggregate('div', [neg_infinity, infinity])),
+    ?assertEqual(undefined, aggregate('div', [infinity, neg_infinity])),
+    ?assertEqual(undefined, aggregate('div', [infinity, undefined])),
+    ?assertEqual(undefined, aggregate('div', [neg_infinity, undefined])),
+    ?assertEqual(undefined, aggregate('div', [infinity, 0])),
+    ?assertEqual(undefined, aggregate('div', [neg_infinity, 0])),
+    ?assertEqual(0, aggregate('div', [2, infinity])),
+    ?assertEqual(0, aggregate('div', [2, neg_infinity])),
+    ?assertEqual(infinity, aggregate('div', [infinity, 2])),
+    ?assertEqual(neg_infinity, aggregate('div', [neg_infinity, 2])).
+
 -endif.
 
 prometheus_sum(undefined, V) -> {ok, V};
@@ -921,3 +1173,9 @@ format_error(down) -> <<"Node is not available">>;
 format_error(Unknown) -> misc:format_bin("Unexpected error - ~10000p",
                                          [Unknown]).
 
+extract_metric_name([]) -> undefined;
+extract_metric_name([{Props} | Labels]) ->
+    case proplists:get_value(<<"label">>, Props) of
+        <<"name">> -> proplists:get_value(<<"value">>, Props);
+        _ -> extract_metric_name(Labels)
+    end.
