@@ -451,7 +451,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
     case "day": return 86400000;
     case "week": return 604800000;
     case "month": return 2628000000;
-    default: return 60000;
+    default: return zoom ? zoom : 60000;
     }
   }
 
@@ -473,7 +473,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
     case "day":
     case "week":
     case "month": return zoomToMS(zoom) / 1000 / 100; //100 - how many steps we have
-    default: 10;
+    default: return zoom ? (zoom / 1000) : 10;
     }
   }
 
