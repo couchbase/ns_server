@@ -164,12 +164,12 @@ h1 a:active {
 .sub-nav a.toggle-subnav.selected:after {
   content: " "!important;
 }
-.sub-nav .dropdown-menu.dropdown-menu-select-like a:hover,
-.sub-nav .dropdown-menu.dropdown-menu-select-like a.selected {
+.dropdown-menu-select-like a:hover,
+.dropdown-menu-select-like a.selected {
   background-color: #f5f5f5!important;
 }
-.sub-nav .dropdown-menu.dropdown-menu-select-like a:hover:after,
-.sub-nav .dropdown-menu.dropdown-menu-select-like a.selected:after {
+.dropdown-menu-select-like a:hover:after,
+.dropdown-menu-select-like a.selected:after {
   content: " "!important;
 }
 /* nav sidebar links ---------------------------------------------------- */
@@ -1753,11 +1753,11 @@ input[type="checkbox"].fake-select + label:before {
 .mn-select {
   margin: 0;
   padding-right: 0;
-  width: 100%;
+
   cursor: pointer;
 }
 .forms .mn-select {
-  width: 100%;
+
   display: block;
 }
 .forms.form-inline .mn-select,
@@ -1843,7 +1843,7 @@ mn-select[disabled] .mn-select,
 .mn-select.mn-align-right div[uib-dropdown-menu] {
   top: auto;
   right: 0;
-  min-width: 100%;
+
 }
 
 .mn-select.dropdown,
@@ -1877,7 +1877,7 @@ mn-select[disabled] .mn-select,
   white-space: nowrap;
 }
 .mn-select.open-on-top .dropdown-menu {
-  box-shadow: 0 -5px 6px 0 rgba(0,0,0,0.25);
+  box-shadow: 0 -1px 3px 0 rgba(0,0,0,0.25);
 }
 
 .mn-select-small .mn-select .dropdown-btn {

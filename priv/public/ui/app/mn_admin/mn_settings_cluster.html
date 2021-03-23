@@ -3,9 +3,7 @@
   <form
      ng-submit="settingsClusterCtl.saveVisualInternalSettings()"
      class="forms">
-
     <div class="row flex-left items-stretch resp-flex-column-med margin-bottom-2">
-
       <div class="width-5">
         <div>
           <label>Cluster Name</label>
@@ -19,7 +17,6 @@
              ng-model="settingsClusterCtl.clusterName"
              ng-disabled="!rbac.cluster.pools.write">
         </div>
-
         <div class="margin-top-1-5">
           <div class="formrow">
             <label>Memory Quotas &nbsp;<small>per server node</small></label>
@@ -37,15 +34,12 @@
            ng-if="rbac.cluster.settings.read"
            ui-view="notifications"
            class="margin-top-1-5"></div>
-
       </div>
 
-      <div class="vertical-divider resp-hide-med">&nbsp;</div>
+      <div class="vertical-page-splitter resp-hide-med">&nbsp;</div>
 
       <div class="width-6">
-
         <div ng-if="rbac.cluster.settings.read" ui-view="autofailover"></div>
-
         <div ng-show="((adminCtl.poolDefault.compat.atLeast65 &&
                       adminCtl.poolDefault.isEnterprise) ||
                       adminCtl.poolDefault.compat.atLeast66) && rbac.cluster.settings.read"
@@ -120,7 +114,6 @@
                 {{settingsClusterCtl.retryRebalanceErrors.afterTimePeriod}}
               </div>
             </div>
-
             <div
                class="formrow"
                ng-if="adminCtl.poolDefault.compat.atLeast66">
