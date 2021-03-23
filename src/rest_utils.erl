@@ -60,7 +60,8 @@ get_json(Type, URL, Path, Timeout, ReqHeaders) ->
         {ok, {{304, _}, Headers, <<>> = Body}} ->
             {ok, Headers, Body};
         _ ->
-            ?log_error("Request to (~p) ~s failed: ~p", [Type, Path, RV]),
+            ?log_error("Request to (~p) ~s with headers ~p failed: ~p",
+                       [Type, Path, ReqHeaders, RV]),
             {error, RV}
     end.
 
