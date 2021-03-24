@@ -50,13 +50,11 @@ class MnXDCRAddRepMappingComponent extends MnLifeCycleHooksToStream {
     this.addExplicitMappingMigrationRules = new Subject();
 
     this.addExplicitMappingMigrationRules
-      .pipe(filter(() => !!this.explicitMappingGroup.migrationMode.value.key),
-            map(() => [this.explicitMappingGroup.migrationMode.value.key,
-                       this.explicitMappingGroup.migrationMode.value.target]),
-            takeUntil(this.mnOnDestroy))
+      .pipe(takeUntil(this.mnOnDestroy))
       .subscribe(v => {
+        let newRule = this.explicitMappingGroup.migrationMode.value;
         let rules = this.explicitMappingMigrationRules.getValue();
-        rules[v[0]] = v[1];
+        rules[newRule.key || "_default._default"] = newRule.target;
         this.explicitMappingMigrationRules.next(rules);
         resetExplicitMappingMigrationGroup.bind(this)();
       });
