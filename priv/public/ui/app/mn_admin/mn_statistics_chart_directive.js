@@ -99,6 +99,7 @@ function mnStatisticsNewChartDirective(mnStatisticsNewService, mnPrepareQuantity
       options = {
         step: step,
         start: start,
+        isPauseEnabled: !!$scope.syncScope,
         enableAnimation: mnPoolDefault.export.compat.atLeast70 && $scope.zoom == "minute",
         is70Cluster: mnPoolDefault.export.compat.atLeast70,
         chart: {

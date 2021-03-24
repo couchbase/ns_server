@@ -407,7 +407,9 @@ function mnD3ServiceFactory() {
       angular.element(this.tipBox.node()).on('mousemove', this.setMouseMoveEvent.bind(this));
       angular.element(this.tipBox.node()).on('mousemove', this.drawTooltipThrottle);
       angular.element(this.tipBox.node()).on('mouseout', this.hideTooltip.bind(this));
-      angular.element(this.tipBox.node()).on('mousemove', this.cancelLineAnimation.bind(this));
+      if (this.opt.isPauseEnabled) {
+        angular.element(this.tipBox.node()).on('mousemove', this.cancelLineAnimation.bind(this));
+      }
 
       this.onInit && this.onInit();
     }

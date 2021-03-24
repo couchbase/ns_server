@@ -66,6 +66,7 @@ function mnPollerFactory($q, $timeout, mnPromiseHelper) {
     this.extractInterval = undefined;
     this.timeout = undefined;
     this.doCallPromise = undefined;
+    this.throttledReload = _.debounce(this.reload.bind(this), 100);
   }
 
   Poller.prototype.isStopped = isStopped;
@@ -83,8 +84,6 @@ function mnPollerFactory($q, $timeout, mnPromiseHelper) {
   Poller.prototype.onDestroy = onDestroy;
   Poller.prototype.getLatestResult = getLatestResult;
   Poller.prototype.onResum = onResum;
-
-  Poller.prototype.throttledReload = _.debounce(reload, 100);
 
   return Poller;
 
