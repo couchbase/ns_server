@@ -636,10 +636,13 @@ footer {
   padding-right: 0 !important;
 }
 .padding-right-min {
-  padding-right: 4px !important;
+  padding-right: .25rem !important;
 }
 .padding-right-half {
-  padding-right: 8px !important;
+  padding-right: .5rem !important;
+}
+.padding-right-1 {
+  padding-right: 1rem !important;
 }
 
 .padding-bottom-6 {

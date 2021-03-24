@@ -1753,12 +1753,12 @@ input[type="checkbox"].fake-select + label:before {
 .mn-select {
   margin: 0;
   padding-right: 0;
-
+  width: 100%;
   cursor: pointer;
+  display: block;
 }
 .forms .mn-select {
 
-  display: block;
 }
 .forms.form-inline .mn-select,
 .forms .form-inline .mn-select {
@@ -1783,16 +1783,16 @@ input[type="checkbox"].fake-select + label:before {
   text-align: left;
 }
 .mn-select .dropdown-btn:after {
-    font-family: FontAwesome;
-    content: "\f0d7";
-    position: absolute;
-    right: .5rem;
-    padding-right: 0;
-    color: #555;
-    font-size: .875rem;
+  font-family: FontAwesome;
+  content: "\f0d7";
+  position: absolute;
+  right: .5rem;
+  padding-right: 0;
+  color: #555;
+  font-size: .875rem;
 }
 .mn-select .dropdown-btn.active:after {
-    content: "\f0d8";
+  content: "\f0d8";
 }
 .mn-select button.dropdown-btn:hover {
   box-shadow: none;
@@ -1843,7 +1843,7 @@ mn-select[disabled] .mn-select,
 .mn-select.mn-align-right div[uib-dropdown-menu] {
   top: auto;
   right: 0;
-
+  min-width: 100%;
 }
 
 .mn-select.dropdown,
@@ -2520,8 +2520,7 @@ span.adder:hover {
 .wb-results-wrapper {
   background-color: #f6f7f9;
   margin-top: .5rem;
-  overflow: auto;
-  height: 100%;
+  height: calc(100vh - 360px);
 }
 /* the wrappers around the various results views --------------------------- */
 .wb-results-json,
@@ -2662,7 +2661,7 @@ button.ace-search-options-buttons.checked {
 }
 .insights-sidebar-body {
   overflow: auto;
-  height: calc(100vh - 200px);
+  height: calc(100vh - 210px);
 }
 .insights-sidebar section {
   overflow: auto;
@@ -3898,5 +3897,8 @@ mn-xdcr-add-rep-mapping-controls {
   padding: 0 1rem;
 }
 mn-xdcr-add-rep-scope {
+  display: block !important;
+}
+qw-collection-menu {
   display: block !important;
 }
