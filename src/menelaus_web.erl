@@ -410,7 +410,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "replications", _XID] ->
                     {no_check, fun goxdcr_rest:proxy/1};
                 ["settings", "saslauthdAuth"] ->
-                    {{[admin, security], read},
+                    {{[admin, security, external], read},
                      fun menelaus_web_rbac:handle_saslauthd_auth_settings/1};
                 ["settings", "ldap"] ->
                     {{[admin, security, external], read},
@@ -650,7 +650,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "replications", _XID] ->
                     {no_check, fun goxdcr_rest:proxy/1};
                 ["settings", "saslauthdAuth"] ->
-                    {{[admin, security], write},
+                    {{[admin, security, external], write},
                      fun menelaus_web_rbac:handle_saslauthd_auth_settings_post/1};
                 ["settings", "ldap"] ->
                     {{[admin, security, external], write},
