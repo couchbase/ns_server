@@ -361,19 +361,27 @@ security_filter(Req) ->
               end, #{})
     end.
 
+get_domain_access_permission(read, Domain) ->
+    case Domain of
+        admin -> ?SECURITY_READ;
+        local -> ?LOCAL_READ;
+        external -> ?EXTERNAL_READ
+    end;
+get_domain_access_permission(write, Domain) ->
+    case Domain of
+        admin -> ?SECURITY_WRITE;
+        local -> ?LOCAL_WRITE;
+        external -> ?EXTERNAL_WRITE
+    end.
+
 domain_filter(Domain, Req) ->
-    Permission = case Domain of
-                     local ->
-                         ?LOCAL_READ;
-                     external ->
-                         ?EXTERNAL_READ
-                 end,
+    Permission = get_domain_access_permission(read, Domain),
     case menelaus_auth:has_permission(Permission, Req) of
         true ->
             pipes:filter(fun (_) -> true end);
         false ->
             pipes:filter(
-              fun ({{user, {_, D}}, _}) when D =:= Domain ->
+              fun ({{_, {_, D}}, _}) when D =:= Domain ->
                       false;
                   (_) ->
                       true
@@ -1040,10 +1048,10 @@ get_security_roles() ->
     [R || {R, _} <- menelaus_roles:get_security_roles(
                       ns_bucket:get_snapshot())].
 
-verify_domain_access(Req, {_UserId, local}) ->
-    do_verify_domain_access(Req, ?LOCAL_WRITE);
-verify_domain_access(Req, {_UserId, external}) ->
-    do_verify_domain_access(Req, ?EXTERNAL_WRITE).
+verify_domain_access(Req, {_UserId, Domain})
+  when Domain =:= local orelse Domain =:= external ->
+    Permission = get_domain_access_permission(write, Domain),
+    do_verify_domain_access(Req, Permission).
 
 do_verify_domain_access(Req, Permission) ->
     case menelaus_auth:has_permission(Permission, Req) of
@@ -1688,7 +1696,10 @@ jsonify_profiles() ->
 
 handle_get_profiles(Req) ->
     pipes:run(menelaus_users:select_profiles(),
-              [jsonify_profiles(),
+              [domain_filter(admin, Req),
+               domain_filter(local, Req),
+               domain_filter(external, Req),
+               jsonify_profiles(),
                sjson:encode_extended_json([{compact, true},
                                            {strict, false}]),
                pipes:simple_buffer(2048)],
@@ -1734,8 +1745,15 @@ validate_identity_for_profiles({Name, Domain}) ->
             menelaus_util:web_exception(400, Error)
     end.
 
+verify_domain_access_for_profiles(_Req, _Op, _Identity, self) ->
+    ok;
+verify_domain_access_for_profiles(Req, Op, {_, Domain}, _RawIdentity) ->
+    Permission = get_domain_access_permission(Op, Domain),
+    do_verify_domain_access(Req, Permission).
+
 handle_get_profile(RawIdentity, Req) ->
     Identity = get_identity_for_profiles(RawIdentity, Req),
+    verify_domain_access_for_profiles(Req, read, Identity, RawIdentity),
     case menelaus_users:get_profile(Identity) of
         undefined ->
             menelaus_util:reply_json(Req, <<"UI profile was not found.">>, 404);
@@ -1745,6 +1763,7 @@ handle_get_profile(RawIdentity, Req) ->
 
 handle_delete_profile(RawIdentity, Req) ->
     Identity = get_identity_for_profiles(RawIdentity, Req),
+    verify_domain_access_for_profiles(Req, write, Identity, RawIdentity),
     case menelaus_users:delete_profile(Identity) of
         ok ->
             ns_audit:delete_user_profile(Req, Identity),
@@ -1755,6 +1774,7 @@ handle_delete_profile(RawIdentity, Req) ->
 
 handle_put_profile(RawIdentity, Req) ->
     Identity = get_identity_for_profiles(RawIdentity, Req),
+    verify_domain_access_for_profiles(Req, write, Identity, RawIdentity),
     validate_identity_for_profiles(Identity),
 
     Body = mochiweb_request:recv_body(Req),
