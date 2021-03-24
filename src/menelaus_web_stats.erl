@@ -858,8 +858,13 @@ validate_functions(Functions) ->
 %% If no unit is specified, we assume it's in seconds
 validate_time_duration(Name, State) ->
     validator:validate(
-      fun (Duration) when is_integer(Duration) ->
+      fun (Duration) when is_number(Duration), Duration =< 0.001 ->
+              {error, <<"must be greater than 1ms">>};
+          (Duration) when is_integer(Duration) ->
               {value, integer_to_list(Duration) ++ "s"};
+          (Duration) when is_float(Duration) ->
+              MS = round(Duration * 1000),
+              {value, integer_to_list(MS) ++ "ms"};
           (Duration) ->
               DurationStr = case is_binary(Duration) of
                                 true -> binary_to_list(Duration);
@@ -1157,13 +1162,20 @@ maybe_align_start(State) ->
           (Start, true) ->
               Step = validator:get_value(step, State),
               End = validator:get_value('end', State),
-              {ok, StepMs} = prometheus:parse_time_duration(Step),
-              StartMs = Start * 1000,
-              Aligned = (math:ceil(StartMs / StepMs) * StepMs) / 1000,
-              case Aligned > End of
-                  true -> {error, "[start, end] interval doesn't contain any "
-                                  "aligned datapoints"};
-                  false -> {value, Aligned}
+              case (Step =/= undefined) andalso (End =/= undefined) of
+                  true ->
+                      {ok, StepMs} = prometheus:parse_time_duration(Step),
+                      StartMs = Start * 1000,
+                      Aligned = (math:ceil(StartMs / StepMs) * StepMs) / 1000,
+                      case Aligned > End of
+                          true -> {error, "[start, end] interval doesn't "
+                                          "contain any aligned datapoints"};
+                          false -> {value, Aligned}
+                      end;
+                  false ->
+                      %% it doesn't make sense to do the check if 'end' or
+                      %% 'step' is invalid
+                      ok
               end
       end, start, alignTimestamps, State).
 
