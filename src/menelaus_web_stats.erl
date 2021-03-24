@@ -475,7 +475,10 @@ read_metrics_response(Ref, Props, StartTimestampMs, DownHosts) ->
                 {error, format_error(R)}]}
                  || {N, R} <- BadRes],
     NewDownHosts = lists:usort(DownHosts ++ [H || {H, down} <- BadRes]),
-    {{[{data, Data}, {errors, Errors}]}, NewDownHosts}.
+    Start = proplists:get_value(start, Props),
+    End = proplists:get_value('end', Props),
+    {{[{data, Data}, {errors, Errors}, {startTimestamp, Start},
+       {endTimestamp, End}]}, NewDownHosts}.
 
 validate_metric_json(Name, State) ->
     validator:validate(
