@@ -186,10 +186,11 @@ post_async(Path, Body, Timeout, Settings, Handler) ->
                                                        Settings),
             Headers = [menelaus_rest:basic_auth_header(Username, Password)],
             AFamily = proplists:get_value(afamily, Settings),
+            StartTime = erlang:monotonic_time(millisecond),
             Receiver =
                 fun (Res) ->
                     try
-                        case handle_post_async_reply(Res) of
+                        case handle_post_async_reply(Res, StartTime) of
                             {ok, _, _} = Reply -> Handler(Reply);
                             {error, Reason} = Reply ->
                                 ?log_error("Prometheus http request failed:~n"
@@ -215,9 +216,17 @@ post_async(Path, Body, Timeout, Settings, Handler) ->
     end,
     ok.
 
-handle_post_async_reply({_Ref, {error, R}}) ->
+handle_post_async_reply({_Ref, {error, R}}, _) ->
+    ns_server_stats:notify_counter(
+        {<<"outgoing_http_requests">>, [{code, "error"}, {type, prometheus}]}),
     {error, R};
-handle_post_async_reply({_Ref, {{_, Code, CodeText}, Headers, Reply}}) ->
+handle_post_async_reply({_Ref, {{_, Code, CodeText}, Headers, Reply}},
+                        StartTime) ->
+    TimeDiff = erlang:monotonic_time(millisecond) - StartTime,
+    ns_server_stats:notify_histogram(
+        {<<"outgoing_http_requests">>, [{type, prometheus}]}, TimeDiff),
+    ns_server_stats:notify_counter(
+        {<<"outgoing_http_requests">>, [{code, Code}, {type, prometheus}]}),
     case proplists:get_value("content-type", Headers) of
         "application/json" ->
             try ejson:decode(Reply) of
@@ -243,8 +252,10 @@ handle_post_async_reply({_Ref, {{_, Code, CodeText}, Headers, Reply}}) ->
                 _ -> {error, CodeText}
             end
     end;
-handle_post_async_reply(Unhandled) ->
+handle_post_async_reply(Unhandled, _) ->
     ?log_error("Unhandled response from httpc: ~p", [Unhandled]),
+    ns_server_stats:notify_counter(
+        {<<"outgoing_http_requests">>, [{code, "error"}, {type, prometheus}]}),
     {error, {unexpected, Unhandled}}.
 
 format_value(undefined) -> <<"NaN">>;
