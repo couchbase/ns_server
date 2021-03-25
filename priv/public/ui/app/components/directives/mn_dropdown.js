@@ -44,7 +44,7 @@ function mnDropdownItemDirective() {
 
   }
 }
-function mnDropdownDirective($document) {
+function mnDropdownDirective() {
   var mnDropdown = {
     restrict: 'E',
     scope: {
@@ -65,44 +65,13 @@ function mnDropdownDirective($document) {
 
   return mnDropdown;
 
-  function controller($scope, $transclude, $timeout) {
-    $scope.toggleMenu = toggleMenu;
+  function controller($scope, $transclude) {
     $scope.isSlotFilled = $transclude.isSlotFilled;
     this.onItemClick = onItemClick;
 
-    $scope.$on("$destroy", function () {
-      $document.off('click', toggleMenu);
-    });
-
-    function closeMenu() {
-      $scope.showMenu = false;
-      $scope.onClose && $scope.onClose($scope.model);
-    }
-
-    function openMenu() {
-      $scope.showMenu = true;
-    }
-
     function onItemClick(item) {
-      $timeout(function () {
-        $scope.model && ($scope.model = item);
-        $scope.onSelect && $scope.onSelect({scenarioId: item});
-        toggleMenu();
-      });
-    }
-
-    function documentClick() {
-      $timeout(toggleMenu);
-    }
-
-    function toggleMenu($event) {
-      $event && $event.stopPropagation && $event.stopPropagation();
-      ($scope.showMenu ? closeMenu : openMenu)();
-      outsideClick();
-    }
-
-    function outsideClick() {
-      $document[$scope.showMenu ? "on" : "off"]('click', documentClick);
+      $scope.model && ($scope.model = item);
+      $scope.onSelect && $scope.onSelect({scenarioId: item});
     }
   }
 }

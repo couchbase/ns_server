@@ -1822,8 +1822,8 @@ mn-select[disabled] .mn-select,
 }
 
 .mn-select .dropdown-menu {
-    max-height: 30vh;
-    overflow-y: scroll;
+  max-height: 30vh;
+  overflow-y: scroll;
 }
 
 .mn-select div[uib-dropdown-menu] .option,
@@ -1846,15 +1846,8 @@ mn-select[disabled] .mn-select,
   min-width: 100%;
 }
 
-.mn-select.dropdown,
-.mn-select.dropup {
-  position: relative;
-  display: inline-block;
-}
-.mn-select.dropdown.open .dropdown-menu,
-.mn-select.dropdown.show .dropdown-menu,
-.mn-select.dropup.open .dropdown-menu,
-.mn-select.dropup.show .dropdown-menu {
+.mn-select.open .dropdown-menu,
+.mn-select.show .dropdown-menu {
   display: block;
 }
 .mn-select.open-on-top .dropdown-menu {
@@ -1881,9 +1874,9 @@ mn-select[disabled] .mn-select,
 }
 
 .mn-select-small .mn-select .dropdown-btn {
-    height: 1.75rem;
-    line-height: 1.5rem;
-    font-size: 13px;
+  height: 1.75rem;
+  line-height: 1.5rem;
+  font-size: 13px;
 }
 
 .forms .mn-select.width-1 {
@@ -3271,18 +3264,27 @@ rect.selection {
   transform: translate(64px, 10px);
 }
 /* cbui custom dropdown menu  ------------------------------------------------*/
-mn-dropdown {
+.mn-dropdown {
   display: block;
   position: relative;
   z-index: 100;
 }
-mn-dropdown inner-header,
-mn-dropdown inner-body,
-mn-dropdown inner-footer,
-mn-dropdown mn-dropdown-item {
+
+.mn-dropdown .dropdown-menu {
+  display: none;
+}
+.mn-dropdown.open .dropdown-menu {
   display: block;
 }
-mn-dropdown .select {
+
+.mn-dropdown inner-header,
+.mn-dropdown inner-body,
+.mn-dropdown inner-footer,
+.mn-dropdown mn-dropdown-item {
+    display: block;
+}
+
+.mn-dropdown .select {
   border: 1px solid #d1d1d1;
   border-radius: 4px;
   position: relative;
@@ -3295,17 +3297,17 @@ mn-dropdown .select {
   min-width: 248px;
   font-size: .875rem;
 }
-mn-dropdown .select:after {
+.mn-dropdown .select:after {
   font-family: FontAwesome;
   content: "\f0d7";
   color: #555;
   position: relative;
   right: -.5rem;
 }
-mn-dropdown .select.active:after {
+.mn-dropdown.open .select:after {
   content: "\f0d8";
 }
-mn-dropdown .menu {
+.mn-dropdown .menu {
   position: absolute;
   top: 31px;
   width: 248px;
@@ -3314,7 +3316,7 @@ mn-dropdown .menu {
   box-shadow: 0 4px 7px 0 rgba(0,0,0,0.25);
   overflow-y: hidden;
 }
-mn-dropdown .footer {
+.mn-dropdown .footer {
   padding: 1rem;
   box-shadow: 0 -1px 4px 0 rgba(0,0,0,0.25);
   position: relative;
