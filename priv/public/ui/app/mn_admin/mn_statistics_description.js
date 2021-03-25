@@ -310,14 +310,16 @@ function getStatAdditionalConfig(statName) {
   case "@query.n1ql_errors":
   case "@query.n1ql_invalid_requests":
   case "@query.n1ql_requests":
-  case "@query.n1ql_requests_1000ms":
-  case "@query.n1ql_requests_250ms":
-  case "@query.n1ql_requests_5000ms":
-  case "@query.n1ql_requests_500ms":
   case "@query.n1ql_selects":
   case "@query.n1ql_warnings":
   case "@system.sys_rest_requests":
     return {applyFunctions: ["irate"]};
+
+  case "@query.n1ql_requests_1000ms":
+  case "@query.n1ql_requests_250ms":
+  case "@query.n1ql_requests_5000ms":
+  case "@query.n1ql_requests_500ms":
+    return {timeWindow: "1m", applyFunctions: ["increase"]};
 
   case "@fts-.fts_num_bytes_used_disk":
   case "@fts-.fts_num_files_on_disk":
