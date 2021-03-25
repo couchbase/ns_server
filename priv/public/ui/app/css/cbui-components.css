@@ -736,12 +736,12 @@ section.error {
 .force-icon-size-16 .icon {
   font-size: 1rem !important; /* hack for collections filter icon */
 }
-.cbui-table-header .icon,
+/* .cbui-table-header .icon,
 .cbui-table-header-filled .icon {
   color: #555;
   font-size: .75rem;
   margin-left: .5rem;
-}
+} */
 
 /* PANEL DIALOGS -------------------------------------------------------- */
 .panel {
@@ -1671,6 +1671,9 @@ h5 + .fa-stack { /* elevate icon next to label or heading  */
 }
 .raised { /* elevate element which is child of relatively-positioned parent  */
   top: -4px;
+}
+.rasied-med {
+  top: -2px;
 }
 
 /* icon radio buttons and checkboxes using Font Awesome ----------------- */

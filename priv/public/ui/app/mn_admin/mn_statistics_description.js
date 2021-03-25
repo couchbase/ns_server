@@ -693,7 +693,7 @@ function get70CompatDesc() {
       "@kv-": {
         "kv_collection_item_count": null,
         "kv_collection_mem_used_bytes": null,
-        "kv_collection_disk_size_bytes": null,
+        "kv_collection_data_size_bytes": null,
         "kv_collection_ops": null,
         "kv_collection_ops_sum": null
       },

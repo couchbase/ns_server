@@ -37,18 +37,29 @@
                   'dynamic-inverted': (scopesSorter.state | async)
                   }"
            (click)="scopesSorter.click.next('name')">scope name</span></span>
-        <span class="cbui-table-cell">&nbsp; collections</span>
+        <span class="cbui-table-cell">collections</span>
         <span class="cbui-table-cell">
-          &nbsp; items
+           items
+        </span>
+        <span class="cbui-table-cell">memory used</span>
+        <span class="cbui-table-cell">
+           disk utilization
+          <span
+             class="fa-stack icon-info rasied-med"
+             container="body"
+             ngbTooltip="The total data size on disk of a collection including
+                    the size of the key, meta-data, and the compressed value for each document including tombstones.
+                    Total disk usage summed across your buckets, scopes, and collections may be greater due to
+                    the overheads associated with the underlying storage engine, the
+                    underlying file system, and previous versions of
+                    documents which may take up disk space until compaction."
+             placement="right">
+            <span class="icon fa-circle-thin fa-stack-2x"></span>
+            <span class="icon fa-info fa-stack-1x"></span>
+          </span>
         </span>
         <span class="cbui-table-cell">
-          &nbsp; memory used
-        </span>
-        <span class="cbui-table-cell">
-          &nbsp; disk used
-        </span>
-        <span class="cbui-table-cell">
-          &nbsp; ops/sec
+           ops/sec
         </span>
         <span class="cbui-table-cell flex-grow-2 resp-hide-xsml"></span>
     </div>

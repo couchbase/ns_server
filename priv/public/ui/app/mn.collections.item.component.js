@@ -71,7 +71,7 @@ class MnCollectionsItemComponent extends MnLifeCycleHooksToStream {
       step: 1,
       stats: ["@kv-.kv_collection_item_count",
               "@kv-.kv_collection_mem_used_bytes",
-              "@kv-.kv_collection_disk_size_bytes",
+              "@kv-.kv_collection_data_size_bytes",
               "@kv-.kv_collection_ops"]
     }, this.$scope);
 
