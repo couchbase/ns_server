@@ -123,6 +123,9 @@ footer {
 .absolute {
   position: absolute;
 }
+.sticky {
+  position: sticky;
+}
 .inline {
   display: inline-block !important;
 }
@@ -462,6 +465,11 @@ footer {
 /* responsive height -------------------------------------------------- */
 .height-85vh {
   height: 85vh;
+}
+
+/* positions ---------------------------------------------------------- */
+.position-top-0 {
+  top: 0;
 }
 
 /* margins ------------------------------------------------------------ */

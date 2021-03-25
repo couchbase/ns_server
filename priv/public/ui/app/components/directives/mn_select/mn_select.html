@@ -11,14 +11,42 @@
        class="outline btn-small dropdown-btn ellipsis"
        ng-class="{'active': isOpened}"
        type="button">
-      {{labels ? labels[values.indexOf(ngModel)] : filter(ngModel)}}
+      {{labels ? labels[values.indexOf(ngModel)] : valuesMapping(ngModel)}}
     </button>
   </div>
   <div
      uib-dropdown-menu
      class="panel absolute fit-content-width margin-0">
-    <div class="block option" ng-repeat="value in values" ng-click="optionClicked(value)">
-      {{labels ? labels[$index] : filter(value)}}
+    <div
+       ng-if="hasSearchInput()"
+       class="sticky position-top-0"
+       mn-search="mnSearch.value"
+       mn-hide-button="true"
+       ng-click="clickSearch($event)">
     </div>
+    <a
+       ng-if="!hasSearchInput()"
+       class="block option"
+       href="javascript:void(0)"
+       ng-repeat="value in values track by value"
+       ng-click="optionClicked(value)">
+      {{labels ? labels[$index] : valuesMapping(value)}}
+    </a>
+    <a
+       ng-if="hasSearchInput() && !labels"
+       class="block option"
+       href="javascript:void(0)"
+       ng-repeat="value in getPreparedValues() | filter: mnSearch.value track by value"
+       ng-click="optionClicked(values[preparedValues.indexOf(value)])">
+      {{value}}
+    </a>
+    <a
+       ng-if="hasSearchInput() && labels"
+       class="block option"
+       href="javascript:void(0)"
+       ng-repeat="label in labels | filter: mnSearch.value track by label"
+       ng-click="optionClicked(values[labels.indexOf(label)])">
+      {{label}}
+    </a>
   </div>
 </div>

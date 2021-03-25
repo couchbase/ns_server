@@ -28,6 +28,7 @@
        ng-model="viewsCtl.currentBucketName"
        values="rbac.bucketNames['.views!read']"
        mn-disabled="!rbac.bucketNames['.views!read'].length"
+       has-search="true"
        on-select="viewsCtl.onSelectBucket(selectedOption)">
     </mn-select>
     <span class="pills nowrap">

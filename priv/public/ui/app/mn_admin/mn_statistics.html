@@ -108,6 +108,7 @@
           class="inline margin-right-half"
           ng-model="statisticsNewCtl.selectedBucket"
           values="rbac.bucketNames['.stats!read']"
+          has-search="true"
           on-select="statisticsNewCtl.onBucketChange(selectedOption)">
       </mn-select>
     </span>
@@ -117,6 +118,7 @@
     <mn-select
        ng-model="statisticsNewCtl.nodes.nodesNames.selected"
        values="statisticsNewCtl.nodes.nodesNames"
+       has-search="true"
        on-select="statisticsNewCtl.onSelectNode(selectedOption)">
     </mn-select>
   </span>
@@ -209,7 +211,8 @@
                ng-model="mnStatsGroupsCtl.items.index"
                values="statisticsNewCtl.indexItems.values"
                labels="statisticsNewCtl.indexItems.labels"
-               mn-horizontal-align="'right'">
+               mn-horizontal-align="'right'"
+               has-search="true">
           </mn-select>
 
         </div>

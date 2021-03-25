@@ -13,6 +13,7 @@
     <mn-select
        ng-model="documentsCtl.currentBucketName"
        values="rbac.bucketNames['.data.docs!read']"
+       has-search="true"
        on-select="documentsCtl.onSelectBucketName(selectedOption)">
     </mn-select>
     <div
