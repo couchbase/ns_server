@@ -1992,8 +1992,10 @@ button:hover.scenarios-delete {
 /* color added to icons on hover ------------------------------------------ */
 button.dashboard-delete:hover .icon,
 span.dashboard-delete:hover,
-.chart-controls .fa-trash:hover {
+.chart-controls .fa-trash:hover,
+.fa-trash:hover {
   color: #e07f82!important;
+  cursor: pointer;
 }
 button.adder:hover .icon,
 span.adder:hover {
@@ -3853,7 +3855,6 @@ div.border-top + div.border-top {
   font-size: .875rem;
   color: #000;
   background-color: transparent!important;
-  width: 100%!important;
 }
 .ks-control-wrapper input.selected {
   background-color: #f5f5f5 !important;
@@ -3867,7 +3868,6 @@ div.border-top + div.border-top {
 mn-input-filter {
   display: inline-block;
   position: relative;
-  width: 100%!important;
   max-height: 2rem !important;
 }
 .ks-control-selectedrole {

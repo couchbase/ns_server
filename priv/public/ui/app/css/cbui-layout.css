@@ -345,7 +345,7 @@ footer {
   width: 91.66666667%;
 }
 .width-12 {
-  width: 100%;
+  width: 100%!important;
 }
 
 /* fixed rem width ----------------------------------------------------- */
