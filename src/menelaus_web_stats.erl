@@ -406,15 +406,15 @@ get_derived_metric(<<"index_fragmentation">>) ->
                             aggregate(sum, TotalSizes)])
       end},
      {query,
-      fun (ExtraLabels) ->
+      fun (M) ->
+          DiskSize = M(<<"index_disk_size">>),
+          FragPercent = M(<<"index_frag_percent">>),
           FragmentedSize =
-            {call, sum, {without, [<<"index">>, <<"collection">>, <<"scope">>]},
-             [{'*', [{ignoring, [<<"name">>]}],
-               [{[{eq, <<"name">>, <<"index_disk_size">>} | ExtraLabels]},
-                {[{eq, <<"name">>, <<"index_frag_percent">>} | ExtraLabels]}]}]},
+            promQL:sum_without([<<"index">>, <<"collection">>, <<"scope">>],
+                               promQL:op('*', [DiskSize, FragPercent])),
           TotalSize =
-            {call, sum, {without, [<<"index">>, <<"collection">>, <<"scope">>]},
-             [{[{eq, <<"name">>, <<"index_disk_size">>} | ExtraLabels]}]},
+            promQL:sum_without([<<"index">>, <<"collection">>, <<"scope">>],
+                               DiskSize),
           [FragmentedSize, TotalSize]
       end}];
 %% Used by unit tests:
@@ -869,10 +869,11 @@ derived_metric_query(Labels, AuthorizationLabelsList) ->
       {'or', lists:flatmap(
                fun ({AuthorizationLabels}) ->
                    ExtraLabels = RestLabels ++ AuthorizationLabels,
-                   ParamAsts = (get_derived_metric(Name, query))(ExtraLabels),
+                   MetricFun =
+                       fun (N) -> promQL:eq(<<"name">>, N, {ExtraLabels}) end,
+                   ParamAsts = (get_derived_metric(Name, query))(MetricFun),
                    Params = get_derived_metric(Name, params),
-                   [{call, label_replace, none,
-                     [AST, ?DERIVED_PARAM_LABEL, N, <<>>, <<>>]}
+                   [promQL:with_label(?DERIVED_PARAM_LABEL, N, AST)
                     || {N, AST} <- lists:zip(Params, ParamAsts)]
                end, AuthorizationLabelsList)}).
 
