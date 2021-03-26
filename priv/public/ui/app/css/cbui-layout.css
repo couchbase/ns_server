@@ -613,6 +613,9 @@ footer {
 .padding-half {
   padding: .5rem !important;
 }
+.padding-1 {
+  padding: 1rem !important;
+}
 .padding-left-0 {
   padding-left: 0 !important;
 }
