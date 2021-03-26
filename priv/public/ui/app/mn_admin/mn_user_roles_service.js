@@ -264,6 +264,25 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
     });
   }
 
+  function remove65PresetScenarios(profile) {
+    profile.scenarios = profile.scenarios.filter(v => !v.preset);
+    profile.groups = profile.groups.filter(v => !v.preset);
+    profile.charts = profile.charts.filter(v => !v.preset);
+  }
+
+  function concatPresetAndUsersScenarios(profile) {
+    profile.scenarios = profile.scenarios.concat(mnStoreService.store("scenarios").share());
+    profile.groups = profile.groups.concat(mnStoreService.store("groups").share());
+    profile.charts = profile.charts.concat(mnStoreService.store("charts").share());
+  }
+
+  function createPresetScenarios() {
+    mnStoreService.createStore("scenarios", {keyPath: "id"});
+    mnStoreService.createStore("groups", {keyPath: "id"});
+    mnStoreService.createStore("charts", {keyPath: "id"});
+    mnStatisticsNewService.doAddPresetScenario();
+  }
+
   function getUserProfile() {
     return $q.all([
       getProfile(),
@@ -273,7 +292,13 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
       var poolDefault = resp[1];
       if (profile.version) {
         if (poolDefault.compat.atLeast70 && (profile.version < poolDefault.versions["70"])) {
-          //upgrade stat names to 70
+          //remove old preset scenarios
+          remove65PresetScenarios(profile);
+          //generate new preset scenarios
+          createPresetScenarios();
+          //concat new preset scenarios and users custom scenarios
+          concatPresetAndUsersScenarios(profile);
+          //upgrade user/preset stat names to 70
           upgradeChartsNamesTo70(profile);
           return putUserProfile({
             version: poolDefault.versions["70"],
@@ -287,11 +312,9 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
         mnStoreService.createStore("charts", {keyPath: "id", fill: profile.charts});
         return profile;
       } else {
-        //inititlize
-        mnStoreService.createStore("scenarios", {keyPath: "id"});
-        mnStoreService.createStore("groups", {keyPath: "id"});
-        mnStoreService.createStore("charts", {keyPath: "id"});
-        mnStatisticsNewService.doAddPresetScenario();
+        //inititlize user profile
+        createPresetScenarios();
+
         return putUserProfile({
           version: poolDefault.versions["65"],
           scenarios: mnStoreService.store("scenarios").share(),
