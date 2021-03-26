@@ -123,7 +123,7 @@ report_metric({Metric, Labels, Value}, Resp) ->
                      <<"\"">>] || {K, V} <- Labels],
     Line =
         [name_to_iolist(Metric), <<"{">>, lists:join(<<",">>, LabelsIOList),
-         <<"} ">>, prometheus:format_value(Value), <<"\n">>],
+         <<"} ">>, promQL:format_value(Value), <<"\n">>],
     mochiweb_response:write_chunk(Line, Resp);
 report_metric({Prefix, Metric, Labels, Value}, Resp) ->
     Prefixed = [Prefix, <<"_">>, name_to_iolist(Metric)],

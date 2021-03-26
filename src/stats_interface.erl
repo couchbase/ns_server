@@ -181,7 +181,7 @@ failover_safeness_level(Bucket) ->
         {ok, [{Props} | _]} ->
             Values = proplists:get_value(<<"values">>, Props),
             [Timestamp, Val] = lists:last(Values),
-            case prometheus:parse_value(Val) of
+            case promQL:parse_value(Val) of
                 N when is_number(N) -> {ok, {Timestamp, Interval, round(N)}};
                 _ -> {error, invalid_value}
             end;
@@ -201,7 +201,7 @@ latest(Query, NameParser, Timeout) ->
                   [_, Val] = proplists:get_value(<<"value">>, Props),
                   case NameParser(MetricProps) of
                       {true, Name} ->
-                          {true, {Name, prometheus:parse_value(Val)}};
+                          {true, {Name, promQL:parse_value(Val)}};
                       false ->
                           false
                   end

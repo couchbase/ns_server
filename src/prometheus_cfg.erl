@@ -1049,7 +1049,7 @@ scrapes_info(Settings) ->
                          end,
                   [_, ValBin] = lists:last(proplists:get_value(<<"values">>,
                                                                Props)),
-                  Num = case prometheus:parse_value(ValBin) of
+                  Num = case promQL:parse_value(ValBin) of
                             %% NaN will be returned as undefined
                             undefined -> 0;
                             %% We assume this metric should never return

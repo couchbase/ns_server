@@ -289,7 +289,7 @@ add_prom_entry_to_stat_entry_list(Bucket, JSONProps, StatEntries) ->
 
 add_stat_entry(_Name, [], Rest, Res) -> lists:reverse(Res, Rest);
 add_stat_entry(Name, [[TS, ValStr] | Tail1], Stats, Res) ->
-    NewVal = prometheus:parse_value(ValStr),
+    NewVal = promQL:parse_value(ValStr),
     NewTS = round(TS * 1000), %% prometheus returns seconds, but stat_entry
                               %% record uses milliseconds
     case Stats of

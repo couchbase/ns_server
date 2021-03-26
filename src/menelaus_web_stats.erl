@@ -629,10 +629,10 @@ aggregate_values(List, AggregationParams, AggregationFun) ->
       List5 = misc:zipwithN(
                 fun (ValuesLists) ->
                    ParsedValuesLists =
-                     [[prometheus:parse_value(V) || V <- Values]
+                     [[promQL:parse_value(V) || V <- Values]
                       || Values <- ValuesLists],
                    Res = erlang:apply(AggregationFun, ParsedValuesLists),
-                   prometheus:format_value(Res)
+                   promQL:format_value(Res)
                 end, List4),
 
       %% Values :: [ [Timestamp, AggregatedValueAsStr] ]
@@ -854,7 +854,7 @@ construct_promql_query(Labels, Functions, Window, PermFilters) ->
        lists:map(fun (Ast) -> apply_functions(Ast, RangeVFunctions) end, _),
        {'or', _},
        apply_functions(_, InstantVFunctions),
-       prometheus:format_promql(_)]).
+       promQL:format_promql(_)]).
 
 derived_metric_query(Labels, AuthorizationLabelsList) ->
     LabelsAst = lists:map(fun construct_promql_labels_ast/1, Labels),
@@ -865,7 +865,7 @@ derived_metric_query(Labels, AuthorizationLabelsList) ->
               ({_, _, _}) -> false
           end, LabelsAst),
 
-    prometheus:format_promql(
+    promQL:format_promql(
       {'or', lists:flatmap(
                fun ({AuthorizationLabels}) ->
                    ExtraLabels = RestLabels ++ AuthorizationLabels,
@@ -974,7 +974,7 @@ validate_time_duration(Name, State) ->
               try list_to_integer(DurationStr) of
                   Int -> {value, integer_to_list(Int) ++ "s"}
               catch _:_ ->
-                  case prometheus:parse_time_duration(DurationStr) of
+                  case promQL:parse_time_duration(DurationStr) of
                       {ok, _} -> {value, DurationStr};
                       {error, Error} -> {error, Error}
                   end
@@ -1265,7 +1265,7 @@ maybe_align_start(State) ->
               End = validator:get_value('end', State),
               case (Step =/= undefined) andalso (End =/= undefined) of
                   true ->
-                      {ok, StepMs} = prometheus:parse_time_duration(Step),
+                      {ok, StepMs} = promQL:parse_time_duration(Step),
                       StartMs = Start * 1000,
                       Aligned = (math:ceil(StartMs / StepMs) * StepMs) / 1000,
                       case Aligned > End of
