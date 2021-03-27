@@ -918,7 +918,7 @@ section.error {
   font-weight: 400;
   display: inline-block;
   line-height: 1.1;
-  color: #333;
+  color: #000;
   text-align: center;
   text-decoration: none;
   border: 1px solid #fff;
@@ -926,6 +926,9 @@ section.error {
   padding: 1px 3px 3px 3px;
   position: relative;
   white-space: nowrap;
+}
+.label.up {
+  top: -4px;
 }
 .label.cell-label {
   top: 2px;
@@ -940,6 +943,9 @@ section.error {
 .label.red {
   background-color: #cc2a2e;
   color: #fff;
+}
+.label.green {
+  background-color: #bfe2ba;
 }
 .label.warning {
   background-color: #fdedd3;
@@ -2004,8 +2010,8 @@ button.adder:hover .icon,
 span.adder:hover {
   color: #80c677!important;
 }
-.chart-controls .fa-edit:hover {
-  color: #2ca01c!important;
+.fa-edit:hover {
+  color: #56b349!important;
 }
 
 /* utility links area ----------------------------------------------------- */
