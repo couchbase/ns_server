@@ -1123,10 +1123,6 @@ derived_metrics(kv, _) ->
      {"kv_vb_avg_total_queue_age_seconds",
       "sum without(name, state) (kv_vb_queue_age_seconds) / ignoring (name) "
       "kv_ep_diskqueue_items"},
-     {"kv_vb_resident_items_ratio",
-      "(kv_vb_curr_items - ignoring(name) "
-       "kv_vb_num_non_resident) * 100 / "
-      "ignoring(name) kv_vb_curr_items"},
      {"kv_avg_disk_time_seconds",
       "irate(kv_disk_seconds_sum[5m]) / ignoring (name) "
       "irate(kv_disk_seconds_count[5m])"},
@@ -1148,10 +1144,6 @@ derived_metrics(kv, _) ->
      {"kv_xdc_ops",
       "sum without(op, result) (irate(kv_ops{op=~`del_meta|get_meta|"
                                                  "set_meta`}[5m]))"}];
-derived_metrics(xdcr, _) ->
-    [{"xdcr_percent_completeness",
-      "(xdcr_docs_processed_total * 100) / ignoring (name) "
-      "(xdcr_changes_left_total + ignoring(name) xdcr_docs_processed_total)"}];
 derived_metrics(eventing, _) ->
     [{"eventing_processed_count",
       "eventing_timer_callback_success + ignoring(name) "
@@ -1744,8 +1736,7 @@ prometheus_derived_metrics_config_test() ->
       RulesConfig([{derived_metrics_filter, all}], [kv])),
 
     ?assertMatch(
-      #{groups := [#{rules := [#{record := <<"cm_failover_safeness_level">>},
-                               #{record := <<"xdcr_", _/binary>>}]}]},
+      #{groups := [#{rules := [#{record := <<"cm_failover_safeness_level">>}]}]},
       RulesConfig([{derived_metrics_filter, all}], [])),
 
     ?assertMatch(

@@ -398,13 +398,43 @@ is_derived_metric(Name) ->
 get_derived_metric(Name, Key) ->
     proplists:get_value(Key, get_derived_metric(Name)).
 
+aggregated_ratio(Values1, Values2, DivisionByZeroDefault) ->
+    case aggregate(sum, Values2) of
+        0 -> DivisionByZeroDefault;
+        Total -> aggregate('div', [aggregate(sum, Values1), Total])
+    end.
+
+get_derived_metric(<<"kv_vb_resident_items_ratio">>) ->
+    [{params, [<<"Resident">>, <<"Total">>]},
+     {aggregation_fun, aggregated_ratio(_, _, 100)},
+     {query,
+      fun (M) ->
+          CI = M(<<"kv_vb_curr_items">>),
+          NR = M(<<"kv_vb_num_non_resident">>),
+          [promQL:multiply_by_scalar(promQL:op('-', [CI, NR]), 100), CI]
+      end}];
+get_derived_metric(<<"index_resident_percent">>) ->
+    [{params, [<<"in_memory">>, <<"total">>]},
+     {aggregation_fun, aggregated_ratio(_, _, 100)},
+     {query,
+      fun (M) ->
+          RP = M(<<"index_resident_percent">>),
+          DS = M(<<"index_data_size">>),
+          [promQL:op('*', [RP, DS]), DS]
+      end}];
+get_derived_metric(<<"xdcr_percent_completeness">>) ->
+    [{params, [<<"total_processed">>, <<"left_and_processed">>]},
+     {aggregation_fun, aggregated_ratio(_, _, 100)},
+     {query,
+      fun (M) ->
+          Processed = M(<<"xdcr_docs_processed_total">>),
+          Left = M(<<"xdcr_changes_left_total">>),
+          [promQL:multiply_by_scalar(Processed, 100),
+           promQL:sum_without([<<"name">>], {'or', [Processed, Left]})]
+      end}];
 get_derived_metric(<<"index_fragmentation">>) ->
     [{params, [<<"fragmented_size">>, <<"total_size">>]},
-     {aggregation_fun,
-      fun (FragmentedSizes, TotalSizes) ->
-          aggregate('div', [aggregate(sum, FragmentedSizes),
-                            aggregate(sum, TotalSizes)])
-      end},
+     {aggregation_fun, aggregated_ratio(_, _, 100)},
      {query,
       fun (M) ->
           DiskSize = M(<<"index_disk_size">>),
