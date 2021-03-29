@@ -335,9 +335,6 @@ function getStatAdditionalConfig(statName) {
   case "@xdcr-.xdcr_changes_left_total":
     return {metric: {name: "xdcr_changes_left_total"}, applyFunctions: ["sum"], bucketLabel: "sourceBucketName"};
 
-  case "@cbas-.cbas_failed_at_parser_records_count_total":
-    return {metric: {name: "cbas_failed_at_parse_records_count"}};
-
   case "@cbas-.cbas_incoming_records_count_total":
     return {metric: {name: "cbas_incoming_records_count"}, applyFunctions: ["sum"]};
 
@@ -510,7 +507,7 @@ function get70Mapping() {
 
     "@cbas-.cbas_incoming_records_count": "@cbas-.cbas/incoming_records_count",
     "@cbas-.cbas_incoming_records_count_total": "@cbas-.cbas/incoming_records_count_total",
-    "@cbas-.cbas_failed_at_parser_records_count_total": "@cbas-.cbas/failed_at_parser_records_count_total",
+    "@cbas-.cbas_failed_to_parse_records_count": "@cbas-.cbas/failed_at_parser_records_count_total",
 
     "@index.index_memory_used_total": "@index.index_memory_used",
     "@index-.index_fragmentation": "@index-.index/fragmentation",
@@ -722,9 +719,21 @@ function get70CompatDesc() {
           title: "Eventing Timeouts",
           desc: "Execution timeouts while processing mutations."
         }
+      },
+      "@cbas": {
+        "cbas_pending_merge_ops": {
+          unit: "number",
+          title: "Analytics Pending Merge Operations",
+          desc: "Number of pending merge operations per node."
+        },
+        "cbas_pending_flush_ops": {
+          unit: "number",
+          title: "Analytics Pending Flush Operations",
+          desc: "Number of pending flush operations per node."
+        }
       }
     }
-  }
+  };
 }
 
 function get65CompatDesc() {
@@ -1823,7 +1832,7 @@ function get65CompatDesc() {
           desc: "The total disk size used by Analytics."
         },
         "cbas_gc_count": {
-          unit: "number",
+          unit: "number/sec",
           title: "Analytics Garbage Collection Rate",
           desc: "Number of JVM garbage collections per second for this Analytics node."
         },

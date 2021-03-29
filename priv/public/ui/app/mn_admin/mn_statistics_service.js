@@ -822,7 +822,19 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
           size: "small",
           specificStat: true
         }, {
+          stats: {"@cbas-.cbas/incoming_records_count_total": true},
+          size: "small",
+          specificStat: true
+        }, {
+          stats: {"@cbas-.cbas/failed_at_parser_records_count_total": true},
+          size: "small",
+          specificStat: true
+        }, {
           stats: {"@cbas.cbas_heap_used": true},
+          size: "small",
+          specificStat: true
+        }, {
+          stats: {"@cbas.cbas_thread_count": true},
           size: "small",
           specificStat: true
         }, {
@@ -830,7 +842,23 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
           size: "small",
           specificStat: true
         }, {
+          stats: {"@cbas.cbas_io_reads": true},
+          size: "small",
+          specificStat: true
+        }, {
+          stats: {"@cbas.cbas_io_writes": true},
+          size: "small",
+          specificStat: true
+        }, {
           stats: {"@cbas.cbas_system_load_average": true},
+          size: "small",
+          specificStat: true
+        }, {
+          stats: {"@cbas.cbas_pending_merge_ops": true},
+          size: "small",
+          specificStat: true
+        }, {
+          stats: {"@cbas.cbas_pending_flush_ops": true},
           size: "small",
           specificStat: true
         }]
