@@ -1,6 +1,5 @@
 import angular from "/ui/web_modules/angular.js";
 import _ from "/ui/web_modules/lodash.js";
-import {format as d3Format} from "/ui/web_modules/d3-format.js";
 import {min as d3Min, max as d3Max} from "/ui/web_modules/d3-array.js"
 
 import uiRouter from "/ui/web_modules/@uirouter/angularjs.js";
@@ -27,7 +26,7 @@ angular
   .directive("mnStatisticsChart", mnStatisticsNewChartDirective)
   .directive("mnMultiChart", mnMultiChartDirective);
 
-function mnStatisticsNewChartDirective(mnStatisticsNewService, mnPrepareQuantityFilter, $state, mnTruncateTo3DigitsFilter, mnHelper, mnPoolDefault) {
+function mnStatisticsNewChartDirective(mnStatisticsNewService, mnFormatQuantityFilter, $state, mnTruncateTo3DigitsFilter, mnHelper, mnPoolDefault) {
   return {
     restrict: 'AE',
     templateUrl: 'app/mn_admin/mn_statistics_chart_directive.html',
@@ -122,7 +121,7 @@ function mnStatisticsNewChartDirective(mnStatisticsNewService, mnPrepareQuantity
         options.chart.yAxis[index] = {};
         options.chart.yAxis[index].unit = unit;
         options.chart.yAxis[index].tickFormat = function (d) {
-          return formatMaxMin(d, unit);
+          return formatValue(d, unit);
         };
         options.chart.yAxis[index].domain = getScaledMinMax;
       });
@@ -134,40 +133,19 @@ function mnStatisticsNewChartDirective(mnStatisticsNewService, mnPrepareQuantity
       $scope.options = options;
     }
 
-    function formatMaxMin(d, unit) {
-      switch (unit) {
-      case "bytes":
-        var val = mnPrepareQuantityFilter(d, 1024);
-        return d3Format(".2s")(d/val[0]) + val[1];
-      case "percent":
-        return d3Format(".0%")(d / 100);
-      case "second":
-        return d3Format(".2s")(d) + 's';
-      case "millisecond":
-        return d3Format(".2s")(d / 1000) + 's';
-      case "microsecond":
-        return d3Format(".2s")(d / 1000000) + 's';
-      case "nanoseconds":
-        return d3Format(".2s")(d / 1000000000) + 's';
-      default:
-        return d3Format(".2s")(d);
-      }
-    }
-
     function formatValue(d, unit) {
       switch (unit) {
-      case "bytes":
-        var val = mnPrepareQuantityFilter(d, 1024);
-        return [mnTruncateTo3DigitsFilter(d/val[0]), val[1]].join('');
-      case "percent":
-        return  mnTruncateTo3DigitsFilter(d) + "%";
-      case "millisecond":
-        return d3Format(".2s")(d / 1000) + 's';
-      case "microsecond":
-        return d3Format(".2s")(d / 1000000) + 's';
-      case "nanoseconds":
-        return d3Format(".2s")(d / 1000000000) + 's';
-      default: return mnTruncateTo3DigitsFilter(d);
+      case "percent": return mnTruncateTo3DigitsFilter(d) + "%";
+      case "bytes": return mnFormatQuantityFilter(d, 1024);
+      case "bytes/sec": return mnFormatQuantityFilter(d, 1024) + "/s";
+      case "second": return mnFormatQuantityFilter(d, 1000);
+      case "millisecond": return mnFormatQuantityFilter(d / 1000, 1000) + "s"
+      case "millisecond/sec": return mnFormatQuantityFilter(d / 1000, 1000) + "/s";
+      case "microsecond": return mnFormatQuantityFilter(d / 1000000, 1000) + "s"
+      case "nanoseconds": return mnFormatQuantityFilter(d / 1000000000, 1000) + "s";
+      case "number": return mnFormatQuantityFilter(d, 1000);
+      case "number/sec": return mnFormatQuantityFilter(d, 1000) + "/s";
+      default: return mnFormatQuantityFilter(d, 1000);
       }
     }
 

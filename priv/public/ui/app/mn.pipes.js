@@ -294,7 +294,7 @@ class MnFormatQuantity {
     if (!spacing) {
       spacing = '';
     }
-    if (numberSystem === 1000 && value <= 9999 && value % 1 === 0) { // MB-11784
+    if (numberSystem === 1000 && value <= 1100 && value % 1 === 0) { // MB-11784
       return value;
     }
 
