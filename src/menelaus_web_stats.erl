@@ -451,20 +451,20 @@ get_derived_metric(<<"index_fragmentation">>) ->
 get_derived_metric(<<"test_derived_metric">>) ->
     [{params, [<<"p1">>, <<"p2">>]},
      {aggregation_fun,
-      fun (P1, P2) -> aggregate(sum, P1) * (aggregate(sum, P2) + 1) end}];
+      fun (P1, P2) -> aggregate(sum, P1) * (aggregate(sum, P2) + 1) end},
+     {query, fun (M) -> [M(<<"m1">>), M(<<"m2">>)] end}];
 get_derived_metric(_) -> [].
 
 send_metrics_request(Props, PermFilters) ->
     Functions = proplists:get_value(applyFunctions, Props, []),
     Window = proplists:get_value(timeWindow, Props),
     Labels = proplists:get_value(metric, Props),
-    MetricName = extract_metric_name(proplists:get_value(metric, Props, [])),
     Query =
-        case is_derived_metric(MetricName) of
+        case is_derived_metric(extract_metric_name(Labels)) of
             false ->
                 construct_promql_query(Labels, Functions, Window, PermFilters);
             true ->
-                derived_metric_query(Labels, PermFilters)
+                derived_metric_query(Labels, Functions, Window, PermFilters)
         end,
     Start = proplists:get_value(start, Props),
     End = proplists:get_value('end', Props),
@@ -886,7 +886,10 @@ construct_promql_query(Labels, Functions, Window, PermFilters) ->
        apply_functions(_, InstantVFunctions),
        promQL:format_promql(_)]).
 
-derived_metric_query(Labels, AuthorizationLabelsList) ->
+derived_metric_query(Labels, Functions, Window, AuthorizationLabelsList) ->
+    {RangeVFunctions, InstantVFunctions} =
+        lists:splitwith(fun is_range_vector_function/1, Functions),
+
     LabelsAst = lists:map(fun construct_promql_labels_ast/1, Labels),
 
     {[{eq, <<"name">>, Name}], RestLabels} =
@@ -895,17 +898,67 @@ derived_metric_query(Labels, AuthorizationLabelsList) ->
               ({_, _, _}) -> false
           end, LabelsAst),
 
-    promQL:format_promql(
-      {'or', lists:flatmap(
-               fun ({AuthorizationLabels}) ->
-                   ExtraLabels = RestLabels ++ AuthorizationLabels,
-                   MetricFun =
-                       fun (N) -> promQL:eq(<<"name">>, N, {ExtraLabels}) end,
-                   ParamAsts = (get_derived_metric(Name, query))(MetricFun),
-                   Params = get_derived_metric(Name, params),
-                   [promQL:with_label(?DERIVED_PARAM_LABEL, N, AST)
-                    || {N, AST} <- lists:zip(Params, ParamAsts)]
-               end, AuthorizationLabelsList)}).
+    Subqueries =
+        lists:flatmap(
+          fun ({AuthorizationLabels}) ->
+              ExtraLabels = RestLabels ++ AuthorizationLabels,
+              MetricFun =
+                  fun (N) ->
+                      AST = promQL:eq(<<"name">>, N, {ExtraLabels}),
+                      case RangeVFunctions of
+                          [] -> AST;
+                          _ ->
+                              apply_functions(range_vector(AST, Window),
+                                              RangeVFunctions)
+                      end
+                  end,
+              ParamAsts = (get_derived_metric(Name, query))(MetricFun),
+              Params = get_derived_metric(Name, params),
+              [promQL:with_label(?DERIVED_PARAM_LABEL, N,
+                                 apply_functions(AST, InstantVFunctions))
+               || {N, AST} <- lists:zip(Params, ParamAsts)]
+          end, AuthorizationLabelsList),
+
+    promQL:format_promql({'or', Subqueries}).
+
+
+-ifdef(TEST).
+
+derived_metric_query_test() ->
+    Labels = [{[{<<"label">>, <<"name">>},
+                {<<"value">>, <<"test_derived_metric">>}]},
+              {[{<<"label">>, <<"b">>},{<<"value">>, <<"b1">>}]}],
+    ?assertEqual(
+      <<"label_replace({name=`m1`,b=`b1`},"
+                      "`__derived_param_name_label__`,`p1`,``,``) or "
+        "label_replace({name=`m2`,b=`b1`},"
+                      "`__derived_param_name_label__`,`p2`,``,``)">>,
+      derived_metric_query(Labels, [], <<"1m">>, [{[]}])),
+    ?assertEqual(
+      <<"label_replace(sum(avg_over_time({name=`m1`,b=`b1`}[1m])),"
+                      "`__derived_param_name_label__`,`p1`,``,``) or "
+        "label_replace(sum(avg_over_time({name=`m2`,b=`b1`}[1m])),"
+                      "`__derived_param_name_label__`,`p2`,``,``)">>,
+      derived_metric_query(Labels, [avg_over_time, sum], <<"1m">>, [{[]}])),
+    ?assertEqual(
+      <<"label_replace("
+          "sum(avg_over_time({name=`m1`,b=`b1`,c=`c1`,d=`d1`}[1m])),"
+          "`__derived_param_name_label__`,`p1`,``,``) or "
+        "label_replace("
+          "sum(avg_over_time({name=`m2`,b=`b1`,c=`c1`,d=`d1`}[1m])),"
+          "`__derived_param_name_label__`,`p2`,``,``) or "
+        "label_replace("
+          "sum(avg_over_time({name=`m1`,b=`b1`,e=`e1`}[1m])),"
+          "`__derived_param_name_label__`,`p1`,``,``) or "
+        "label_replace("
+          "sum(avg_over_time({name=`m2`,b=`b1`,e=`e1`}[1m])),"
+          "`__derived_param_name_label__`,`p2`,``,``)">>,
+      derived_metric_query(Labels,
+                           [avg_over_time, sum], <<"1m">>,
+                           [{[{eq, <<"c">>, <<"c1">>},{eq, <<"d">>, <<"d1">>}]},
+                            {[{eq, <<"e">>, <<"e1">>}]}])).
+
+-endif.
 
 construct_promql_labels_ast({MetricProps}) ->
     Label = proplists:get_value(<<"label">>, MetricProps),
