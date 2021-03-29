@@ -39,7 +39,9 @@ function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAle
   vm.$state = $state;
 
   vm.enableInternalSettings = $state.params.enableInternalSettings;
+  vm.enableDeveloperSettings = $state.params.enableDeveloperSettings;
   vm.runInternalSettingsDialog = runInternalSettingsDialog;
+  vm.runDeveloperSettingsDialog = runDeveloperSettingsDialog;
   vm.lostConnState = mnLostConnectionService.getState();
 
   vm.clientAlerts = mnAlertsService.clientAlerts;
@@ -111,6 +113,17 @@ function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAle
     var mnServersService = $injector.get('mnServersService');
     return mnPromiseHelper(vm, mnServersService.stopRebalanceWithConfirm())
       .broadcast("reloadServersPoller");
+  }
+
+  function runDeveloperSettingsDialog() {
+    import('/ui/app/mn_admin/mn_developer_settings_controller.js')
+      .then(function () {
+        $ocLazyLoad.load({name: 'mnDeveloperSettings'});
+        $uibModal.open({
+          templateUrl: "app/mn_admin/mn_developer_settings.html",
+          controller: "mnDeveloperSettingsController as devSettingsCtl"
+        });
+      });
   }
 
   function runInternalSettingsDialog() {

@@ -230,7 +230,12 @@
     <a
        ng-click="adminCtl.runInternalSettingsDialog();"
        ng-show="adminCtl.enableInternalSettings && rbac.cluster.admin.settings.write">
-      Edit internal settings
+      edit internal settings
+    </a>
+    <a
+       ng-click="adminCtl.runDeveloperSettingsDialog();"
+       ng-show="adminCtl.enableDeveloperSettings">
+      edit developer settings
     </a>
     <span uib-dropdown class="mn-dropdown-menu">
       <a uib-dropdown-toggle>

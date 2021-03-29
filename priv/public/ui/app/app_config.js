@@ -42,8 +42,12 @@ function appConfig($httpProvider, $stateProvider, $urlRouterProvider, $transitio
   });
 
   $stateProvider.state('app', {
-    url: '?{enableInternalSettings:bool}&{disablePoorMansAlerts:bool}',
+    url: '?{enableInternalSettings:bool}&{disablePoorMansAlerts:bool}&{enableDeveloperSettings:bool}',
     params: {
+      enableDeveloperSettings: {
+        value: null,
+        squash: true
+      },
       enableInternalSettings: {
         value: null,
         squash: true
