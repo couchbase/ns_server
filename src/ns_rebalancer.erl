@@ -919,19 +919,10 @@ terminate_mover(Pid, StopReason) ->
             exit(OtherReason)
     end.
 
-build_delete_unused_buckets_db_files_request(Node, false) ->
-    {Node, ?cut(rpc:call(Node, ns_storage_conf,
-                         delete_unused_buckets_db_files, []))};
-build_delete_unused_buckets_db_files_request(Node, true) ->
-    BucketsInUse = ns_storage_conf:buckets_in_use(Node),
-    {Node, ?cut(rpc:call(Node, ns_storage_conf,
-                         delete_unused_buckets_db_files, [BucketsInUse]))}.
-
 maybe_cleanup_old_buckets(KeepNodes) ->
-    Is70 = cluster_compat_mode:is_cluster_70(),
-    Requests = lists:map(
-                 build_delete_unused_buckets_db_files_request(_, Is70),
-                 KeepNodes),
+    Requests = [{Node, ?cut(rpc:call(Node, ns_storage_conf,
+                                     delete_unused_buckets_db_files, []))} ||
+                   Node <- KeepNodes],
     case misc:multi_call_request(Requests, infinity, _ =:= ok) of
         {_, []} ->
             ok;
