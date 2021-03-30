@@ -823,15 +823,7 @@ do_create_bucket(ns_config, BucketName, Config) ->
                       exit({already_exists, Tuple})
               end,
               [{BucketName, Config} | List]
-      end),
-    %% for FORCE_CHRONICLE support only
-    case collections:enabled(Config) of
-        true ->
-            ns_config:set(collections:key(BucketName),
-                          collections:default_manifest());
-        false ->
-            ok
-    end;
+      end);
 do_create_bucket(chronicle, BucketName, Config) ->
     {ok, _} =
         chronicle_kv:transaction(
@@ -876,9 +868,6 @@ do_delete_bucket(ns_config, BucketName) ->
         ok ->
             receive
                 {Ref, BucketConfig} ->
-                    %% for FORCE_CHRONICLE support only
-                    ns_config:delete(collections:key(BucketName)),
-
                     {ok, BucketConfig}
             after 0 ->
                     exit(this_cannot_happen)

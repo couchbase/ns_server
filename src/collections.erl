@@ -57,8 +57,6 @@
          get_scopes/1,
          get_collections/1]).
 
--export([config_upgrade_to_70/1]).
-
 %% rpc from other nodes
 -export([wait_for_manifest_uid/4]).
 
@@ -84,15 +82,12 @@ key_match(Key) ->
             false
     end.
 
-%% TODO: these filters account for the possibility that collections
-%% might be stored in ns_config (if FORCE_CHRONICLE=0)
-%% modify after the support of FORCE_CHRONICLE flag is discontinued
 key_filter() ->
     case enabled() of
         false ->
             [];
         true ->
-            [{chronicle_compat:backend(), ?cut(key_match(_) =/= false)}]
+            [{chronicle, ?cut(key_match(_) =/= false)}]
     end.
 
 key_filter(Bucket) ->
@@ -100,7 +95,7 @@ key_filter(Bucket) ->
         false ->
             [];
         true ->
-            [{chronicle_compat:backend(), [key(Bucket)]}]
+            [{chronicle, [key(Bucket)]}]
     end.
 
 default_manifest() ->
@@ -267,44 +262,19 @@ update(Bucket, Operation) ->
 
 do_update(Bucket, Operation) ->
     ?log_debug("Performing operation ~p on bucket ~p", [Operation, Bucket]),
-    RV = case chronicle_compat:backend() of
-             chronicle ->
-                 chronicle_kv:txn(kv, update_txn(Bucket, Operation, _));
-             ns_config ->
-                 ns_config_txn(Bucket, Operation)
-         end,
-    case RV of
+    case chronicle_kv:txn(kv, update_txn(Bucket, Operation, _)) of
         {ok, _Rev, UID} ->
             {ok, UID};
         {not_changed, UID} ->
             {ok, UID};
-        {user_error, Error} ->
+        {user_error, Error} = RV ->
             ?log_debug("Operation ~p for bucket ~p failed with ~p",
                        [Operation, Bucket, RV]),
             Error
     end.
 
-%% TODO: remove after the support of FORCE_CHRONICLE flag is discontinued
-ns_config_txn(Bucket, Operation) ->
-    RV =
-        ns_config:run_txn(
-          fun (Config, SetFun) ->
-                  case update_txn(Bucket, Operation, Config) of
-                      {abort, Error} ->
-                          {abort, Error};
-                      {commit, [{set, K, V}], UID} ->
-                          {commit, SetFun(K, V, Config), UID}
-                  end
-          end),
-    case RV of
-        {commit, _, UID} ->
-            {ok, no_rev, UID};
-        {abort, Error} ->
-            Error
-    end.
-
 update_txn(Bucket, Operation, Txn) ->
-    Snapshot = txn_get_many([ns_bucket:root(), key(Bucket)], Txn),
+    Snapshot = chronicle_kv:txn_get_many([ns_bucket:root(), key(Bucket)], Txn),
     case get_manifest(Bucket, Snapshot) of
         undefined ->
             {abort, not_found};
@@ -322,8 +292,8 @@ do_update_with_manifest(Bucket, Manifest, Operation, Txn, Buckets) ->
             {abort, {not_changed, uid(Manifest)}};
         {ok, NewManifest} ->
             Snapshot =
-                txn_get_many([ns_bucket:root() | [key(B) || B <- Buckets]],
-                             Txn),
+                chronicle_kv:txn_get_many(
+                  [ns_bucket:root() | [key(B) || B <- Buckets]], Txn),
 
             OtherManifests =
                 lists:filtermap(
@@ -343,26 +313,6 @@ do_update_with_manifest(Bucket, Manifest, Operation, Txn, Buckets) ->
             end;
         Error ->
             {abort, {user_error, Error}}
-    end.
-
-%% TODO: remove after the support of FORCE_CHRONICLE flag is discontinued
-txn_get_many(Keys, Txn) ->
-    case chronicle_compat:backend() of
-        ns_config ->
-            BucketNames = ns_bucket:get_bucket_names(ns_bucket:get_buckets()),
-            maps:from_list(
-              [{ns_bucket:root(), {BucketNames, no_rev}} |
-               ns_config:fold(
-                 fun (K, V, Acc) ->
-                         case lists:member(K, Keys) of
-                             true ->
-                                 [{K, {V, no_rev}} | Acc];
-                             false ->
-                                 Acc
-                         end
-                 end, [], Txn)]);
-        chronicle ->
-            chronicle_kv:txn_get_many(Keys, Txn)
     end.
 
 apply_manifest(Bucket, Manifest) ->
@@ -556,18 +506,11 @@ get_manifest(Bucket, Snapshot) ->
     get_manifest(Bucket, Snapshot, undefined).
 
 get_manifest(Bucket, direct, Default) ->
-    case chronicle_compat:backend() of
-        chronicle ->
-            case chronicle_kv:get(kv, key(Bucket), #{}) of
-                {ok, {M, _R}} ->
-                    M;
-                {error, not_found} ->
-                    Default
-            end;
-        ns_config ->
-            %% TODO: remove after the support of FORCE_CHRONICLE flag is
-            %% discontinued
-            ns_config:read_key_fast(key(Bucket), Default)
+    case chronicle_kv:get(kv, key(Bucket), #{}) of
+        {ok, {M, _R}} ->
+            M;
+        {error, not_found} ->
+            Default
     end;
 get_manifest(Bucket, Snapshot, Default) ->
     case maps:find(key(Bucket), Snapshot) of
@@ -719,18 +662,6 @@ set_manifest(Bucket, Identity, RequiredScopes, RequestedUid) ->
                     {Scope} <- RequiredScopes],
             update(Bucket, {set_manifest, Roles, Scopes, Uid})
     end.
-
-%% only to support FORCE_CHRONICLE flag
-config_upgrade_to_70(Config) ->
-    case chronicle_compat:forced() of
-        true ->
-            [];
-        false ->
-            do_config_upgrade_to_70(Config)
-    end.
-
-do_config_upgrade_to_70(Config) ->
-    [{set, K, V} || {K, V} <- default_kvs(ns_bucket:get_buckets(Config))].
 
 -ifdef(TEST).
 get_operations_test_() ->

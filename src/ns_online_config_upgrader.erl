@@ -100,7 +100,6 @@ upgrade(?VERSION_65, Config) ->
 upgrade(?VERSION_66, Config) ->
     {?VERSION_70,
      menelaus_users:config_upgrade() ++
-         collections:config_upgrade_to_70(Config) ++
          menelaus_web_alerts_srv:config_upgrade_to_70(Config) ++
          index_settings_manager:config_upgrade_to_70(Config) ++
          query_settings_manager:config_upgrade_to_70(Config)}.
