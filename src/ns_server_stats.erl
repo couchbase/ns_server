@@ -109,8 +109,9 @@ report_prom_stats(ReportFun, IsHighCard) ->
           end,
     case IsHighCard of
         true ->
-            Try(ns_server, fun () -> report_ns_server_stats(ReportFun) end);
+            Try(ns_server, fun () -> report_ns_server_hc_stats(ReportFun) end);
         false ->
+            Try(ns_server, fun () -> report_ns_server_lc_stats(ReportFun) end),
             Try(audit, fun () -> report_audit_stats(ReportFun) end),
             Try(system, fun () -> report_system_stats(ReportFun) end),
             Try(couchdb, fun () -> report_couchdb_stats(ReportFun) end)
@@ -184,42 +185,62 @@ report_couch_stats(Bucket, ReportFun) ->
             ReportFun({couch_spatial_ops, L, Ops})
       end, SpatialStats).
 
-report_ns_server_stats(ReportFun) ->
-    Now = erlang:monotonic_time(millisecond),
-    ets:foldl(
-      fun ({{g, {BinName, Labels}}, Value}, _) ->
-              ReportFun({[?METRIC_PREFIX, BinName], Labels, Value});
-          ({{c, {BinName, Labels}}, Value}, _) ->
-              NameIOList = [[?METRIC_PREFIX, BinName], <<"_total">>],
-              ReportFun({NameIOList, Labels, Value});
-          ({{mw, F, Window, {BinName, Labels}}, BucketsQ}, _) ->
-              PrunedBucketsQ = prune_buckets(Now - Window, BucketsQ),
-              Values = [V || {_, V} <- queue:to_list(PrunedBucketsQ)],
-              Value = aggregate_moving_window_buckets(F, Values),
-              ReportFun({[?METRIC_PREFIX, BinName], Labels, Value});
-          (Histogram, _) ->
-              [{h, {Name, Labels}, _Max, Units}, Sum, Inf | Buckets] =
-                  tuple_to_list(Histogram),
-              BinName = iolist_to_binary([Name, <<"_seconds">>]),
+report_ns_server_lc_stats(ReportFun) ->
+    lists:foreach(
+      fun (Key) ->
+          case ets:lookup(?MODULE, Key) of
+              [] -> ok;
+              [M] -> report_stat(M, ReportFun)
+          end
+      end, low_cardinality_stats()).
 
-              BucketName = [?METRIC_PREFIX, BinName, <<"_bucket">>],
-              {_, BucketsTotal} =
-                  lists:foldl(
-                    fun (Val, {Le, CurTotal}) ->
-                        BucketValue = CurTotal + Val,
-                        ReportFun({BucketName,
-                                   [{le, to_seconds(Le, Units)} | Labels],
-                                   BucketValue}),
-                        {Le * 10, BucketValue}
-                    end, {1, 0}, Buckets),
-              Total = BucketsTotal + Inf,
-              ReportFun({BucketName, [{le, <<"+Inf">>}| Labels], Total}),
-              ReportFun({[?METRIC_PREFIX, BinName, <<"_count">>], Labels,
-                         Total}),
-              ReportFun({[?METRIC_PREFIX, BinName, <<"_sum">>], Labels,
-                         to_seconds(Sum, Units)})
+report_ns_server_hc_stats(ReportFun) ->
+    ets:foldl(
+      fun (M, _) ->
+          case lists:member(element(1, M), low_cardinality_stats()) of
+              true -> ok;
+              false -> report_stat(M, ReportFun)
+          end,
+          ok
       end, [], ?MODULE),
-      ok.
+    ok.
+
+low_cardinality_stats() ->
+    [{c, {<<"rest_request_enters">>, []}},
+     {c, {<<"rest_request_leaves">>, []}}].
+
+report_stat({{g, {BinName, Labels}}, Value}, ReportFun) ->
+    ReportFun({[?METRIC_PREFIX, BinName], Labels, Value});
+report_stat({{c, {BinName, Labels}}, Value}, ReportFun) ->
+    NameIOList = [[?METRIC_PREFIX, BinName], <<"_total">>],
+    ReportFun({NameIOList, Labels, Value});
+report_stat({{mw, F, Window, {BinName, Labels}}, BucketsQ}, ReportFun) ->
+    Now = erlang:monotonic_time(millisecond),
+    PrunedBucketsQ = prune_buckets(Now - Window, BucketsQ),
+    Values = [V || {_, V} <- queue:to_list(PrunedBucketsQ)],
+    Value = aggregate_moving_window_buckets(F, Values),
+    ReportFun({[?METRIC_PREFIX, BinName], Labels, Value});
+report_stat(Histogram, ReportFun) ->
+    [{h, {Name, Labels}, _Max, Units}, Sum, Inf | Buckets] =
+        tuple_to_list(Histogram),
+    BinName = iolist_to_binary([Name, <<"_seconds">>]),
+
+    BucketName = [?METRIC_PREFIX, BinName, <<"_bucket">>],
+    {_, BucketsTotal} =
+        lists:foldl(
+          fun (Val, {Le, CurTotal}) ->
+              BucketValue = CurTotal + Val,
+              ReportFun({BucketName,
+                         [{le, to_seconds(Le, Units)} | Labels],
+                         BucketValue}),
+              {Le * 10, BucketValue}
+          end, {1, 0}, Buckets),
+    Total = BucketsTotal + Inf,
+    ReportFun({BucketName, [{le, <<"+Inf">>}| Labels], Total}),
+    ReportFun({[?METRIC_PREFIX, BinName, <<"_count">>], Labels,
+               Total}),
+    ReportFun({[?METRIC_PREFIX, BinName, <<"_sum">>], Labels,
+               to_seconds(Sum, Units)}).
 
 init([]) ->
     init_stats(),
