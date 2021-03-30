@@ -706,7 +706,7 @@ merge_metrics(NodesResults, _ReqProps, false, AggFunctionName) ->
     %% 'default_param' atom to point to all the metrics without any param name
     %% label
     FlatAggregated = aggregate_results(FlatResults, [default_param], AggFun2),
-    metrics_add_label(FlatAggregated, [{nodes, [Nodes]}]);
+    metrics_add_label(FlatAggregated, [{nodes, Nodes}]);
 merge_metrics(NodesResults, ReqProps, true, none) ->
     Name = extract_metric_name(proplists:get_value(metric, ReqProps, [])),
     AggFun = get_derived_metric(Name, aggregation_fun),
@@ -724,7 +724,7 @@ merge_metrics(NodesResults, ReqProps, true, special) ->
     {Nodes, ResultsLists} = lists:unzip(NodesResults),
     FlatResults = lists:flatten(ResultsLists),
     FlatAggregated = aggregate_results(FlatResults, Params, AggFun),
-    metrics_add_label(FlatAggregated, [{nodes, [Nodes]}, {name, Name}]);
+    metrics_add_label(FlatAggregated, [{nodes, Nodes}, {name, Name}]);
 
 merge_metrics(NodesResults, ReqProps, true, AggFunctionName) ->
     Name = extract_metric_name(proplists:get_value(metric, ReqProps, [])),
@@ -736,7 +736,7 @@ merge_metrics(NodesResults, ReqProps, true, AggFunctionName) ->
     FlatResults = lists:flatten(ResultsLists),
     AggFun2 = aggregate(AggFunctionName, _),
     FlatAggregated = aggregate_results(FlatResults, [default_param], AggFun2),
-    metrics_add_label(FlatAggregated, [{nodes, [Nodes]}, {name, Name}]).
+    metrics_add_label(FlatAggregated, [{nodes, Nodes}, {name, Name}]).
 
 construct_promql_query(Labels, Functions, Window, PermFilters) ->
     {RangeVFunctions, InstantVFunctions} =
