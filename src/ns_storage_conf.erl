@@ -598,7 +598,8 @@ buckets_in_use() ->
     Node = node(),
     Snapshot = chronicle_compat:get_snapshot(
                  [ns_bucket:key_filter(),
-                  ns_cluster_membership:key_filter()]),
+                  ns_cluster_membership:key_filter()],
+                 #{read_consistency => quorum}),
     Services = ns_cluster_membership:node_services(Snapshot, Node),
     BucketConfigs = ns_bucket:get_buckets(Snapshot),
     case lists:member(kv, Services) of
