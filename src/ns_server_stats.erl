@@ -23,6 +23,10 @@
 -include("ns_common.hrl").
 -include("ns_stats.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -define(ETS_LOG_INTVL, 180).
 
 -define(DEFAULT_HIST_MAX, 10000). %%  10^4, 4 buckets
@@ -36,7 +40,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -export([init_stats/0, notify_counter/1, notify_counter/2, notify_gauge/2,
-         notify_histogram/2, notify_histogram/4]).
+         notify_histogram/2, notify_histogram/4, notify_max/2]).
 
 -export([increment_counter/1, increment_counter/2,
          get_ns_server_stats/0, set_counter/2,
@@ -88,6 +92,12 @@ notify_histogram(Metric, Max, Units, Val) when Max > 0, Val >= 0,
             catch ets:update_counter(?MODULE, Key, Updates),
             ok
     end.
+
+%% It is unsafe to use this function from multiple processes with the same
+%% metric
+notify_max({Metric, Window, BucketSize}, Val) ->
+    Now = erlang:monotonic_time(millisecond),
+    notify_moving_window(max, Metric, Window, BucketSize, Now, ?MODULE, Val).
 
 report_prom_stats(ReportFun, IsHighCard) ->
     Try = fun (Name, F) ->
@@ -175,12 +185,18 @@ report_couch_stats(Bucket, ReportFun) ->
       end, SpatialStats).
 
 report_ns_server_stats(ReportFun) ->
+    Now = erlang:monotonic_time(millisecond),
     ets:foldl(
       fun ({{g, {BinName, Labels}}, Value}, _) ->
               ReportFun({[?METRIC_PREFIX, BinName], Labels, Value});
           ({{c, {BinName, Labels}}, Value}, _) ->
               NameIOList = [[?METRIC_PREFIX, BinName], <<"_total">>],
               ReportFun({NameIOList, Labels, Value});
+          ({{mw, F, Window, {BinName, Labels}}, BucketsQ}, _) ->
+              PrunedBucketsQ = prune_buckets(Now - Window, BucketsQ),
+              Values = [V || {_, V} <- queue:to_list(PrunedBucketsQ)],
+              Value = aggregate_moving_window_buckets(F, Values),
+              ReportFun({[?METRIC_PREFIX, BinName], Labels, Value});
           (Histogram, _) ->
               [{h, {Name, Labels}, _Max, Units}, Sum, Inf | Buckets] =
                   tuple_to_list(Histogram),
@@ -729,3 +745,74 @@ normalized_metric({N, L}) when is_atom(N) ->
     normalized_metric({atom_to_binary(N, latin1), L});
 normalized_metric({N, L}) when is_binary(N), is_list(L) ->
     {N, lists:usort(L)}.
+
+notify_moving_window(F, Metric, Window, BucketSize, Now, Table, Val) ->
+    Key = {mw, F, Window, normalized_metric(Metric)},
+    Bucket = (Now div BucketSize) * BucketSize,
+    try ets:lookup(Table, Key) of
+        [] ->
+            Q = queue:from_list([{Bucket, new_moving_window_bucket(F, Val)}]),
+            catch ets:insert(Table, {Key, Q});
+        [{Key, Q}] ->
+            Q2 = prune_buckets(Now - Window, Q),
+            Q3 = case queue:out(Q2) of
+                     {{value, {Bucket, PrevVal}}, TmpQ} ->
+                         NewVal = update_moving_window_bucket(F, PrevVal, Val),
+                         queue:in_r({Bucket, NewVal}, TmpQ);
+                     {_, _} ->
+                         queue:in_r({Bucket, Val}, Q2)
+                 end,
+            catch ets:insert(Table, {Key, Q3}),
+            ok
+    catch
+        error:badarg -> ok
+    end.
+
+new_moving_window_bucket(max, Val) -> Val.
+
+update_moving_window_bucket(max, PrevVal, NewVal) ->
+    case NewVal > PrevVal of
+        true -> NewVal;
+        false -> PrevVal
+    end.
+
+aggregate_moving_window_buckets(max, []) -> undefined;
+aggregate_moving_window_buckets(max, Values) -> lists:max(Values).
+
+prune_buckets(Deadline, Q) ->
+    case queue:out_r(Q) of
+        {{value, {TS, _}}, Q2} when TS < Deadline ->
+            prune_buckets(Deadline, Q2);
+        {_, _}  -> Q
+    end.
+
+-ifdef(TEST).
+
+notify_moving_window_test() ->
+    Tid = ets:new(test_table, [public, set]),
+    try
+        Buckets =
+            fun () ->
+                [{_, Q}] = ets:lookup(Tid, {mw, max, 1000, {<<"m">>, []}}),
+                queue:to_list(Q)
+            end,
+        notify_moving_window(max, m, 1000, 100, 200, Tid, 3),
+        notify_moving_window(max, m, 1000, 100, 250, Tid, 4),
+        notify_moving_window(max, m, 1000, 100, 250, Tid, 2),
+        notify_moving_window(max, m, 1000, 100, 255, Tid, 1),
+        ?assertEqual([{200, 4}], Buckets()),
+        notify_moving_window(max, m, 1000, 100, 400, Tid, 30),
+        notify_moving_window(max, m, 1000, 100, 450, Tid, 40),
+        notify_moving_window(max, m, 1000, 100, 455, Tid, 10),
+        ?assertEqual([{400, 40}, {200, 4}], Buckets()),
+        notify_moving_window(max, m, 1000, 100, 1201, Tid, 30),
+        notify_moving_window(max, m, 1000, 100, 1300, Tid, 40),
+        notify_moving_window(max, m, 1000, 100, 1350, Tid, 10),
+        ?assertEqual([{1300, 40}, {1200, 30}, {400, 40}], Buckets()),
+        notify_moving_window(max, m, 1000, 100, 2380, Tid, 11),
+        ?assertEqual([{2300, 11}], Buckets())
+    after
+        ets:delete(Tid)
+    end.
+
+-endif.
