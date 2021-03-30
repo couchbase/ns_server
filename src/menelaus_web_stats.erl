@@ -417,6 +417,11 @@ get_derived_metric(<<"index_fragmentation">>) ->
              [{[{eq, <<"name">>, <<"index_disk_size">>} | ExtraLabels]}]},
           [FragmentedSize, TotalSize]
       end}];
+%% Used by unit tests:
+get_derived_metric(<<"test_derived_metric">>) ->
+    [{params, [<<"p1">>, <<"p2">>]},
+     {aggregation_fun,
+      fun (P1, P2) -> aggregate(sum, P1) * (aggregate(sum, P2) + 1) end}];
 get_derived_metric(_) -> [].
 
 send_metrics_request(Props, PermFilters) ->
@@ -425,10 +430,10 @@ send_metrics_request(Props, PermFilters) ->
     Labels = proplists:get_value(metric, Props),
     MetricName = extract_metric_name(proplists:get_value(metric, Props, [])),
     Query =
-        case get_derived_metric(MetricName, params) of
-            undefined ->
+        case is_derived_metric(MetricName) of
+            false ->
                 construct_promql_query(Labels, Functions, Window, PermFilters);
-            _ ->
+            true ->
                 derived_metric_query(Labels, PermFilters)
         end,
     Start = proplists:get_value(start, Props),
@@ -468,9 +473,9 @@ read_metrics_response(Ref, Props, StartTimestampMs, DownHosts) ->
           end, Nodes),
     AggFunction = proplists:get_value(aggregationFunction, Props, none),
     MetricName = extract_metric_name(proplists:get_value(metric, Props, [])),
-    IsDerived = is_derived_metric(MetricName),
+    DerivedMetricName = (is_derived_metric(MetricName) andalso MetricName),
     CleanedRes = [{N, clean_metric_props(R)} || {N, R} <- GoodRes],
-    Data = merge_metrics(CleanedRes, Props, IsDerived, AggFunction),
+    Data = merge_metrics(CleanedRes, DerivedMetricName, AggFunction),
     Errors = [{[{node, N},
                 {error, format_error(R)}]}
                  || {N, R} <- BadRes],
@@ -637,7 +642,7 @@ aggregate_values(List, AggregationParams, AggregationFun) ->
 -ifdef(TEST).
 
 aggregate_results_test() ->
-    ?assertEqual([], aggregate_results([], [<<"op1">>], undefined)),
+    ?assertEqual([], aggregate_results([], [<<"op1">>], fun (_) -> 42 end)),
 
     Values = [
         %% From node 1
@@ -684,7 +689,34 @@ aggregate_results_test() ->
                      [[1, <<"4800">>], %% (7 + 53) * ((miss) + 79 + 1)
                       [2, <<"8050">>], %% (11 + 59) * (31 + 83 + 1)
                       [3, <<"9398">>]]}]}], %% (13 + 61) * (37 + 89 + 1)
-                 Res).
+                 Res),
+
+    DeleteParamLabel =
+        fun ({P}) -> {proplists:delete(?DERIVED_PARAM_LABEL, P)} end,
+    Values2 = [{misc:key_update(<<"metric">>, M, DeleteParamLabel)}
+                   || {M} <- Values],
+
+    Res2 = aggregate_results(Values2, [default_param],
+                             fun (Op) -> aggregate(sum, Op) end),
+
+    ?assertEqual(
+      [{[{<<"metric">>, {[{<<"b">>, <<"b1">>}, {<<"name">>, <<"m1">>}]}},
+         {<<"values">>, [[1, <<"43">>], %% 2 + 41
+                         [2, <<"46">>], %% 3 + 43
+                         [3, <<"52">>]]}]}, %% 5 + 47
+       {[{<<"metric">>, {[{<<"b">>, <<"b1">>}, {<<"name">>, <<"m2">>}]}},
+         {<<"values">>, [[1, <<"84">>], %% 17 + 67
+                         [2, <<"90">>], %% 19 + 71
+                         [3, <<"96">>]]}]}, %% 23 + 73
+       {[{<<"metric">>, {[{<<"b">>, <<"b2">>}, {<<"name">>, <<"m1">>}]}},
+         {<<"values">>, [[1, <<"60">>], %% 7 + 53
+                         [2, <<"70">>], %% 11 + 59
+                         [3, <<"74">>]]}]}, %% 13 + 61
+       {[{<<"metric">>, {[{<<"b">>, <<"b2">>}, {<<"name">>, <<"m2">>}]}},
+         {<<"values">>, [[1, <<"79">>], %% (miss) + 79
+                         [2, <<"114">>], %% 31 + 83
+                         [3, <<"126">>]]}]} %% 37 + 89
+      ], Res2).
 -endif.
 
 metrics_add_label(Res, Labels) ->
@@ -694,11 +726,11 @@ metrics_add_label(Res, Labels) ->
                            fun ({P}) -> {Labels ++ P} end)}
       end, Res).
 
-merge_metrics(NodesResults, _ReqProps, false, none) ->
+merge_metrics(NodesResults, false, none) ->
     lists:flatmap(
       fun ({Node, List}) -> metrics_add_label(List, [{nodes, [Node]}]) end,
       NodesResults);
-merge_metrics(NodesResults, _ReqProps, false, AggFunctionName) ->
+merge_metrics(NodesResults, false, AggFunctionName) ->
     {Nodes, ResultsLists} = lists:unzip(NodesResults),
     FlatResults = lists:flatten(ResultsLists),
     AggFun2 = aggregate(AggFunctionName, _),
@@ -707,36 +739,105 @@ merge_metrics(NodesResults, _ReqProps, false, AggFunctionName) ->
     %% label
     FlatAggregated = aggregate_results(FlatResults, [default_param], AggFun2),
     metrics_add_label(FlatAggregated, [{nodes, Nodes}]);
-merge_metrics(NodesResults, ReqProps, true, none) ->
-    Name = extract_metric_name(proplists:get_value(metric, ReqProps, [])),
-    AggFun = get_derived_metric(Name, aggregation_fun),
-    Params = get_derived_metric(Name, params),
+merge_metrics(NodesResults, DerivedMetricName, none) ->
+    AggFun = get_derived_metric(DerivedMetricName, aggregation_fun),
+    Params = get_derived_metric(DerivedMetricName, params),
     NodesResults2 = [{N, aggregate_results(R, Params, AggFun)}
                          || {N, R} <- NodesResults],
     lists:flatmap(
       fun ({Node, List}) ->
-          metrics_add_label(List, [{nodes, [Node]}, {name, Name}])
+          metrics_add_label(List, [{nodes, [Node]}, {name, DerivedMetricName}])
       end, NodesResults2);
-merge_metrics(NodesResults, ReqProps, true, special) ->
-    Name = extract_metric_name(proplists:get_value(metric, ReqProps, [])),
-    AggFun = get_derived_metric(Name, aggregation_fun),
-    Params = get_derived_metric(Name, params),
+merge_metrics(NodesResults, DerivedMetricName, special) ->
+    AggFun = get_derived_metric(DerivedMetricName, aggregation_fun),
+    Params = get_derived_metric(DerivedMetricName, params),
     {Nodes, ResultsLists} = lists:unzip(NodesResults),
     FlatResults = lists:flatten(ResultsLists),
     FlatAggregated = aggregate_results(FlatResults, Params, AggFun),
-    metrics_add_label(FlatAggregated, [{nodes, Nodes}, {name, Name}]);
+    metrics_add_label(FlatAggregated, [{nodes, Nodes},
+                                       {name, DerivedMetricName}]);
 
-merge_metrics(NodesResults, ReqProps, true, AggFunctionName) ->
-    Name = extract_metric_name(proplists:get_value(metric, ReqProps, [])),
-    AggFun = get_derived_metric(Name, aggregation_fun),
-    Params = get_derived_metric(Name, params),
+merge_metrics(NodesResults, DerivedMetricName, AggFunctionName) ->
+    AggFun = get_derived_metric(DerivedMetricName, aggregation_fun),
+    Params = get_derived_metric(DerivedMetricName, params),
     NodesResults2 = [{N, aggregate_results(R, Params, AggFun)}
                          || {N, R} <- NodesResults],
     {Nodes, ResultsLists} = lists:unzip(NodesResults2),
     FlatResults = lists:flatten(ResultsLists),
     AggFun2 = aggregate(AggFunctionName, _),
     FlatAggregated = aggregate_results(FlatResults, [default_param], AggFun2),
-    metrics_add_label(FlatAggregated, [{nodes, Nodes}, {name, Name}]).
+    metrics_add_label(FlatAggregated, [{nodes, Nodes},
+                                       {name, DerivedMetricName}]).
+
+-ifdef(TEST).
+
+merge_regular_metrics_test() ->
+    Data = [{node1, [{[{<<"metric">>, {[{<<"name">>, <<"m1">>}]}},
+                       {<<"values">>, [[1, <<"2">>]]}]},
+                     {[{<<"metric">>, {[{<<"name">>, <<"m2">>}]}},
+                       {<<"values">>, [[1, <<"5">>]]}]}]},
+            {node2, [{[{<<"metric">>, {[{<<"name">>, <<"m1">>}]}},
+                       {<<"values">>, [[1, <<"7">>]]}]},
+                     {[{<<"metric">>, {[{<<"name">>, <<"m2">>}]}},
+                       {<<"values">>, [[1, <<"11">>]]}]}]}],
+
+    ?assertEqual(
+     [{[{<<"metric">>, {[{nodes, [node1]}, {<<"name">>, <<"m1">>}]}},
+        {<<"values">>, [[1, <<"2">>]]}]},
+      {[{<<"metric">>, {[{nodes, [node1]}, {<<"name">>, <<"m2">>}]}},
+        {<<"values">>, [[1, <<"5">>]]}]},
+      {[{<<"metric">>, {[{nodes, [node2]}, {<<"name">>, <<"m1">>}]}},
+        {<<"values">>, [[1, <<"7">>]]}]},
+      {[{<<"metric">>, {[{nodes, [node2]}, {<<"name">>, <<"m2">>}]}},
+        {<<"values">>, [[1, <<"11">>]]}]}],
+     merge_metrics(Data, false, none)),
+
+    ?assertEqual(
+     [{[{<<"metric">>, {[{nodes, [node1, node2]}, {<<"name">>, <<"m1">>}]}},
+        {<<"values">>, [[1, <<"9">>]]}]},
+      {[{<<"metric">>, {[{nodes, [node1, node2]}, {<<"name">>, <<"m2">>}]}},
+        {<<"values">>, [[1, <<"16">>]]}]}],
+     merge_metrics(Data, false, sum)).
+
+
+merge_derived_metrics_test() ->
+    Data = [{node1, [{[{<<"metric">>, {[{<<"name">>, <<"m1">>},
+                                        {?DERIVED_PARAM_LABEL, <<"p1">>}]}},
+                       {<<"values">>, [[1, <<"11">>]]}]},
+                     {[{<<"metric">>, {[%% that's ok if some names are missing
+                                       {?DERIVED_PARAM_LABEL, <<"p1">>}]}},
+                       {<<"values">>, [[1, <<"13">>]]}]},
+                     {[{<<"metric">>, {[%% that's ok if some names are missing
+                                       {?DERIVED_PARAM_LABEL, <<"p2">>}]}},
+                       {<<"values">>, [[1, <<"17">>]]}]}]},
+            {node2, [{[{<<"metric">>, {[{<<"name">>, <<"m1">>},
+                                        {?DERIVED_PARAM_LABEL, <<"p1">>}]}},
+                       {<<"values">>, [[1, <<"19">>]]}]},
+                     {[{<<"metric">>, {[{<<"name">>, <<"m2">>},
+                                        {?DERIVED_PARAM_LABEL, <<"p2">>}]}},
+                       {<<"values">>, [[1, <<"23">>]]}]}]}],
+
+    ?assertEqual(
+     [{[{<<"metric">>, {[{nodes, [node1]}, {name, <<"test_derived_metric">>}]}},
+        {<<"values">>, [[1, <<"432">>]]}]}, %% (11 + 13) * (17 + 1)
+      {[{<<"metric">>, {[{nodes, [node2]}, {name, <<"test_derived_metric">>}]}},
+        {<<"values">>, [[1, <<"456">>]]}]}], %% 19 * (23 + 1)
+     merge_metrics(Data, <<"test_derived_metric">>, none)),
+
+    ?assertEqual(
+     [{[{<<"metric">>, {[{nodes, [node1, node2]},
+                         {name, <<"test_derived_metric">>}]}},
+        {<<"values">>, [[1, <<"888">>]]}]}], %% 432 + 456
+     merge_metrics(Data, <<"test_derived_metric">>, sum)),
+
+    ?assertEqual(
+     [{[{<<"metric">>, {[{nodes, [node1, node2]},
+                         {name, <<"test_derived_metric">>}]}},
+        {<<"values">>, [[1, <<"1763">>]]}]}], %% (11 + 13 + 19) * (17 + 23 + 1)
+     merge_metrics(Data, <<"test_derived_metric">>, special)).
+
+-endif.
+
 
 construct_promql_query(Labels, Functions, Window, PermFilters) ->
     {RangeVFunctions, InstantVFunctions} =
