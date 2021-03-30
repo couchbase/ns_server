@@ -29,7 +29,7 @@
          update/2,
          config_default/0,
          config_upgrade_to_65/1,
-         config_upgrade_to_cheshire_cat/1
+         config_upgrade_to_70/1
         ]).
 
 -export([cfg_key/0,
@@ -75,8 +75,8 @@ config_upgrade_to_65(Config) ->
       ?MODULE, Config, [{generalSettings, NewSettings}],
       known_settings(?VERSION_65)).
 
-config_upgrade_to_cheshire_cat(Config) ->
-    NewSettings = general_settings_defaults(?VERSION_CHESHIRECAT) --
+config_upgrade_to_70(Config) ->
+    NewSettings = general_settings_defaults(?VERSION_70) --
         general_settings_defaults(?VERSION_65),
     UpdatePropsFun = fun (PropsDict) ->
                              dict:update(<<"n1ql-feat-ctrl">>,
@@ -86,7 +86,7 @@ config_upgrade_to_cheshire_cat(Config) ->
                      end,
     json_settings_manager:upgrade_existing_key(
       ?MODULE, Config, [{generalSettings, NewSettings}],
-      known_settings(?VERSION_CHESHIRECAT), UpdatePropsFun).
+      known_settings(?VERSION_70), UpdatePropsFun).
 
 known_settings() ->
     known_settings(cluster_compat_mode:get_compat_version()).
@@ -119,7 +119,7 @@ general_settings(Ver) ->
             false ->
                 []
         end ++
-        case cluster_compat_mode:is_version_cheshirecat(Ver) of
+        case cluster_compat_mode:is_version_70(Ver) of
             true ->
                 [{queryTxTimeout,          "txtimeout",           <<"0ms">>},
                  {queryMemoryQuota,        "memory-quota",        0},

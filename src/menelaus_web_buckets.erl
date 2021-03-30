@@ -1279,7 +1279,7 @@ get_storage_mode_based_on_storage_backend(Params, Version, IsEnterprise,
                                          "couchstore"),
     do_get_storage_mode_based_on_storage_backend(
       StorageBackend, IsEnterprise,
-      cluster_compat_mode:is_version_cheshirecat(Version),
+      cluster_compat_mode:is_version_70(Version),
       IsDeveloperPreview).
 
 do_get_storage_mode_based_on_storage_backend("magma", false, _Is70, _IsDP) ->
@@ -1292,7 +1292,7 @@ do_get_storage_mode_based_on_storage_backend("magma", true, true, false) ->
     {error, storageBackend,
      <<"Magma is supported only in developer preview mode">>};
 do_get_storage_mode_based_on_storage_backend(StorageBackend, _IsEnterprise,
-                                             _IsCheshireCat, _IsDP) ->
+                                             _Is70, _IsDP) ->
     case StorageBackend of
         "couchstore" ->
             {ok, storage_mode, couchstore};
@@ -1549,7 +1549,7 @@ is_magma(_Params, BucketCfg, false = _IsNew) ->
 parse_validate_frag_percent(Params, BucketConfig, IsNew, Version,
                             IsEnterprise) ->
     Percent = proplists:get_value("fragmentationPercentage", Params),
-    IsCompat = cluster_compat_mode:is_version_cheshirecat(Version),
+    IsCompat = cluster_compat_mode:is_version_70(Version),
     IsMagma = is_magma(Params, BucketConfig, IsNew),
     parse_validate_frag_percent_inner(IsEnterprise, IsCompat, Percent,
                                       BucketConfig, IsNew, IsMagma).

@@ -238,7 +238,7 @@ handle_call(get_stats, _From, State = #state{port = Port, prev = Prev}) ->
         process_stats(os:system_time(millisecond), Data, Prev, State),
     {reply, Stats, State#state{prev = NewPrev}};
 
-%% Can be called from another node. Introduced in Cheshire-Cat
+%% Can be called from another node. Introduced in 7.0
 handle_call({stats_interface, Function, Args}, From, State) ->
     _ = proc_lib:spawn_link(
           fun () ->
@@ -250,7 +250,7 @@ handle_call({stats_interface, Function, Args}, From, State) ->
 handle_call(_Request, _From, State) ->
     {noreply, State}.
 
-%% Can be called from another node. Introduced in Cheshire-Cat
+%% Can be called from another node. Introduced in 7.0
 handle_cast({extract, {From, Ref}, Query, Start, End, Step, Timeout}, State) ->
     Settings = prometheus_cfg:settings(),
     Reply = fun (Res) -> From ! {Ref, Res} end,

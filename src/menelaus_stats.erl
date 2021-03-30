@@ -69,7 +69,7 @@ grab_latest_bucket_stats(BucketName, Nodes) ->
         case Nodes -- FoundNodes of
             [] -> [];
             RestNodes ->
-                case cluster_compat_mode:is_cluster_cheshirecat() of
+                case cluster_compat_mode:is_cluster_70() of
                     true ->
                         stats_interface:buckets_interesting(RestNodes);
                     false ->

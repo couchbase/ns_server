@@ -834,21 +834,21 @@ upgrade(Version, Config, Nodes) ->
               error
     end.
 
-maybe_upgrade_role_to_cheshirecat({RoleName, Buckets}) ->
+maybe_upgrade_role_to_70({RoleName, Buckets}) ->
     Length = length(menelaus_roles:get_param_defs(
                       RoleName, menelaus_roles:get_public_definitions(
-                                  ?VERSION_CHESHIRECAT))),
+                                  ?VERSION_70))),
     [{RoleName, misc:align_list(Buckets, Length, any)}];
-maybe_upgrade_role_to_cheshirecat(security_admin) ->
+maybe_upgrade_role_to_70(security_admin) ->
     [security_admin_local, security_admin_external];
-maybe_upgrade_role_to_cheshirecat(Role) ->
+maybe_upgrade_role_to_70(Role) ->
     [Role].
 
 upgrade_user(?VERSION_66, Props) ->
     %% remove junk user_roles property that might appear due to MB-39706
     lists:keydelete(user_roles, 1, Props);
-upgrade_user(?VERSION_CHESHIRECAT, Props) ->
-    upgrade_user_roles(fun maybe_upgrade_role_to_cheshirecat/1, Props).
+upgrade_user(?VERSION_70, Props) ->
+    upgrade_user_roles(fun maybe_upgrade_role_to_70/1, Props).
 
 upgrade_user_roles(Fun, Props) ->
     OldRoles = lists:sort(proplists:get_value(roles, Props)),
@@ -933,7 +933,7 @@ upgrade_test_() ->
            [{"user",
              [{roles, [admin]}, {name, "Test"}, {user_roles, [admin]}]}],
            ?cut(CheckUser("user", "Test"))),
-      Test(?VERSION_CHESHIRECAT,
+      Test(?VERSION_70,
            SetRoles([{"user1", [admin, {bucket_admin, ["test"]}]},
                      {"user2", [{data_reader, [any]},
                                 {data_writer, ["test"]}]}]),

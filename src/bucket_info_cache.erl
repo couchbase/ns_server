@@ -279,9 +279,9 @@ build_bucket_capabilities(BucketConfig) ->
                       cluster_compat_mode:is_cluster_66()},
                      {couchapi, ns_bucket:can_have_views(BucketConfig)},
                      {'subdoc.ReplaceBodyWithXattr',
-                      cluster_compat_mode:is_cluster_cheshirecat()},
+                      cluster_compat_mode:is_cluster_70()},
                      {'subdoc.DocumentMacroSupport',
-                      cluster_compat_mode:is_cluster_cheshirecat()}],
+                      cluster_compat_mode:is_cluster_70()}],
 
                 [C || {C, true} <- Conditional] ++
                     [dcp, cbhello, touch, cccp, xdcrCheckpointing, nodesExt,

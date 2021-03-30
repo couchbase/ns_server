@@ -66,7 +66,7 @@ forced() ->
     end.
 
 enabled() ->
-    cluster_compat_mode:is_cluster_cheshirecat() andalso forced().
+    cluster_compat_mode:is_cluster_70() andalso forced().
 
 get(Key, Opts) ->
     get(ns_config:latest(), Key, Opts).

@@ -35,7 +35,7 @@
          is_enabled/0,
          known_settings/0,
          on_update/2,
-         config_upgrade_to_cheshire_cat/1]).
+         config_upgrade_to_70/1]).
 
 -import(json_settings_manager,
         [id_lens/1]).
@@ -125,7 +125,7 @@ indexer_threads_lens() ->
     {Get, Set}.
 
 general_settings_lens_props(ClusterVersion) ->
-    case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_CHESHIRECAT) of
+    case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_70) of
         true ->
             [{redistributeIndexes,
               id_lens(<<"indexer.settings.rebalance.redistribute_indexes">>)},
@@ -154,7 +154,7 @@ default_rollback_points() ->
     end.
 
 general_settings_defaults(ClusterVersion) ->
-    case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_CHESHIRECAT) of
+    case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_70) of
         true ->
             [{redistributeIndexes, false},
              {numReplica, 0}];
@@ -231,12 +231,12 @@ compaction_defaults() ->
 compaction_lens() ->
     json_settings_manager:props_lens(compaction_lens_props()).
 
-config_upgrade_to_cheshire_cat(Config) ->
-    NewSettings = general_settings_defaults(?VERSION_CHESHIRECAT) --
+config_upgrade_to_70(Config) ->
+    NewSettings = general_settings_defaults(?VERSION_70) --
         general_settings_defaults(?VERSION_66),
     json_settings_manager:upgrade_existing_key(
       ?MODULE, Config, [{generalSettings, NewSettings}],
-      known_settings(?VERSION_CHESHIRECAT)).
+      known_settings(?VERSION_70)).
 
 -ifdef(TEST).
 defaults_test() ->
@@ -248,7 +248,7 @@ defaults_test() ->
                  Keys(general_settings_defaults(?LATEST_VERSION_NUM))).
 
 config_upgrade_test() ->
-    CmdList = config_upgrade_to_cheshire_cat([]),
+    CmdList = config_upgrade_to_70([]),
     [{set, {metakv, Meta}, Data}] = CmdList,
     ?assertEqual(<<"/indexing/settings/config">>, Meta),
     ?assertEqual(<<"{\"indexer.settings.rebalance.redistribute_indexes\":false,"

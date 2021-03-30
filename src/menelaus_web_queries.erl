@@ -36,7 +36,7 @@ settings_post_validators() ->
      validator:dir(queryTmpSpaceDir, _),
      validator:convert(queryTmpSpaceDir, fun list_to_binary/1, _)] ++
         settings_post_validators_65() ++
-        settings_post_validators_cheshirecat() ++
+        settings_post_validators_70() ++
         [validator:unsupported(_)].
 
 settings_post_validators_65() ->
@@ -58,8 +58,8 @@ settings_post_validators_65() ->
             []
     end.
 
-settings_post_validators_cheshirecat() ->
-    case cluster_compat_mode:is_cluster_cheshirecat() of
+settings_post_validators_70() ->
+    case cluster_compat_mode:is_cluster_70() of
         true ->
             [validator:time_duration(queryTxTimeout, _),
              validator:convert(queryTxTimeout, fun list_to_binary/1, _),

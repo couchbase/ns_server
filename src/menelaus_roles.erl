@@ -603,8 +603,8 @@ get_definitions(Config, public) ->
 -spec get_public_definitions(list()) -> [rbac_role_def(), ...].
 get_public_definitions(Version) when Version < ?VERSION_66 ->
     menelaus_old_roles:roles_pre_66();
-get_public_definitions(Version) when Version < ?VERSION_CHESHIRECAT ->
-    menelaus_old_roles:roles_pre_cheshirecat();
+get_public_definitions(Version) when Version < ?VERSION_70 ->
+    menelaus_old_roles:roles_pre_70();
 get_public_definitions(_) ->
     roles().
 
@@ -1524,7 +1524,7 @@ produce_roles_by_permission_test_() ->
              meck:expect(cluster_compat_mode, is_enterprise,
                          fun () -> true end),
              meck:expect(cluster_compat_mode, get_compat_version,
-                         fun (_) -> ?VERSION_CHESHIRECAT end)
+                         fun (_) -> ?VERSION_70 end)
      end,
      fun (_) ->
              meck:unload(cluster_compat_mode)

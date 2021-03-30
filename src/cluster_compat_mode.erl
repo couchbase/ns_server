@@ -34,9 +34,9 @@
          is_cluster_66/0,
          is_cluster_66/1,
          is_version_66/1,
-         is_cluster_cheshirecat/0,
-         is_cluster_cheshirecat/1,
-         is_version_cheshirecat/1,
+         is_cluster_70/0,
+         is_cluster_70/1,
+         is_version_70/1,
          is_enterprise/0,
          is_saslauthd_enabled/0,
          is_cbas_enabled/0,
@@ -129,14 +129,14 @@ is_cluster_66() ->
 is_cluster_66(Config) ->
     is_enabled(Config, ?VERSION_66).
 
-is_version_cheshirecat(ClusterVersion) ->
-    is_enabled_at(ClusterVersion, ?VERSION_CHESHIRECAT).
+is_version_70(ClusterVersion) ->
+    is_enabled_at(ClusterVersion, ?VERSION_70).
 
-is_cluster_cheshirecat() ->
-    is_cluster_cheshirecat(ns_config:latest()).
+is_cluster_70() ->
+    is_cluster_70(ns_config:latest()).
 
-is_cluster_cheshirecat(Config) ->
-    is_enabled(Config, ?VERSION_CHESHIRECAT).
+is_cluster_70(Config) ->
+    is_enabled(Config, ?VERSION_70).
 
 is_index_aware_rebalance_on() ->
     not ns_config:read_key_fast(index_aware_rebalance_disabled, false).
@@ -192,7 +192,7 @@ consider_switching_compat_mode() ->
 
 upgrades() ->
     [{?VERSION_66, rbac, menelaus_users, upgrade},
-     {?VERSION_CHESHIRECAT, rbac, menelaus_users, upgrade}].
+     {?VERSION_70, rbac, menelaus_users, upgrade}].
 
 do_upgrades(undefined, _, _, _) ->
     %% this happens during the cluster initialization. no upgrade needed

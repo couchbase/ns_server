@@ -20,7 +20,7 @@
 -include("rbac.hrl").
 
 -export([roles_pre_66/0,
-         roles_pre_cheshirecat/0]).
+         roles_pre_70/0]).
 
 -spec roles_pre_66() -> [rbac_role_def(), ...].
 roles_pre_66() ->
@@ -334,8 +334,8 @@ roles_pre_66() ->
        {[ui], [read]},
        {[pools], [read]}]}].
 
--spec roles_pre_cheshirecat() -> [rbac_role_def(), ...].
-roles_pre_cheshirecat() ->
+-spec roles_pre_70() -> [rbac_role_def(), ...].
+roles_pre_70() ->
     [{admin, [],
       [{name, <<"Full Admin">>},
        {folder, admin},

@@ -45,7 +45,7 @@ handle_mutation_rv(#mc_header{status = ?NOT_MY_VBUCKET} = _Header, _Entry) ->
 set(BucketBin, DocId, Value) ->
     set(BucketBin, DocId, Value, 0).
 
-%% For cluster pre ?VERSION_CHESHIRECAT
+%% For cluster pre ?VERSION_70
 set(BucketBin, DocId, Value, Flags) ->
     set(BucketBin, DocId, undefined, Value, Flags).
 
@@ -56,7 +56,7 @@ set(BucketBin, DocId, CollectionUid, Value, Flags) ->
                                               VBucket, Value, Flags),
     handle_mutation_rv(Header, Entry).
 
-%% For cluster pre ?VERSION_CHESHIRECAT
+%% For cluster pre ?VERSION_70
 delete(BucketBin, DocId) ->
     delete(BucketBin, DocId, undefined).
 
@@ -67,7 +67,7 @@ delete(BucketBin, DocId, CollectionUid) ->
                                                  VBucket),
     handle_mutation_rv(Header, Entry).
 
-%% For cluster pre ?VERSION_CHESHIRECAT
+%% For cluster pre ?VERSION_70
 get(BucketBin, DocId, Options) ->
     get(BucketBin, DocId, undefined, Options).
 

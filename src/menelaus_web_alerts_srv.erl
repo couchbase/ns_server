@@ -30,7 +30,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--export([alert_keys/0, config_upgrade_to_cheshire_cat/1]).
+-export([alert_keys/0, config_upgrade_to_70/1]).
 
 %% @doc Hold client state for any alerts that need to be shown in
 %% the browser, is used by menelaus_web to piggy back for a transport
@@ -259,12 +259,12 @@ alert_keys() ->
      ep_clock_cas_drift_threshold_exceeded,
      communication_issue, time_out_of_sync].
 
-config_upgrade_to_cheshire_cat(Config) ->
+config_upgrade_to_70(Config) ->
     case ns_config:search(Config, email_alerts) of
         false ->
             [];
         {value, EmailAlerts} ->
-            config_email_alerts_upgrade_to_cheshire_cat(EmailAlerts)
+            config_email_alerts_upgrade_to_70(EmailAlerts)
     end.
 
 %% ------------------------------------------------------------------
@@ -674,7 +674,7 @@ add_proplist_list_elem(ListKey, Elem, PList) ->
     List = misc:expect_prop_value(ListKey, PList),
     misc:update_proplist(PList, [{ListKey, lists:usort([Elem | List])}]).
 
-config_email_alerts_upgrade_to_cheshire_cat(EmailAlerts) ->
+config_email_alerts_upgrade_to_70(EmailAlerts) ->
     Result =
         functools:chain(
           EmailAlerts,
@@ -728,7 +728,7 @@ basic_test() ->
         misc:unlink_terminate_and_wait(Pid, shutdown)
     end.
 
-config_update_to_cheshire_cat_test() ->
+config_update_to_70_test() ->
     %% Note: in this test the config keys and values aren't supplied in
     %% sorted order so we can ensure that we handle upgrade correctly
     %% regardless of key and value order.
@@ -741,7 +741,7 @@ config_update_to_cheshire_cat_test() ->
                   {alerts, [ip, time_out_of_sync, communication_issue]}]
                 }]],
     Expected1 = [],
-    Result1 = config_upgrade_to_cheshire_cat(Config1),
+    Result1 = config_upgrade_to_70(Config1),
     ?assertEqual(Expected1, Result1),
 
     %% Sub-test: config needs upgrade of alerts because the
@@ -755,7 +755,7 @@ config_update_to_cheshire_cat_test() ->
         [{alerts, [communication_issue, ip, time_out_of_sync]},
          {enabled, false},
          {pop_up_alerts, [ip, disk]}],
-    [{set, email_alerts, Actual2}] = config_upgrade_to_cheshire_cat(Config2),
+    [{set, email_alerts, Actual2}] = config_upgrade_to_70(Config2),
     ?assertEqual(misc:sort_kv_list(Expected2), misc:sort_kv_list(Actual2)),
 
     %% Sub-test: config needs pop_up_alerts because it isn't present.
@@ -767,7 +767,7 @@ config_update_to_cheshire_cat_test() ->
         [{alerts, [ip, communication_issue, time_out_of_sync]},
          {enabled, false},
          {pop_up_alerts, alert_keys()}],
-    [{set, email_alerts, Actual3}] = config_upgrade_to_cheshire_cat(Config3),
+    [{set, email_alerts, Actual3}] = config_upgrade_to_70(Config3),
     ?assertEqual(misc:sort_kv_list(Expected3), misc:sort_kv_list(Actual3)),
 
     %% Sub-test: config needs upgrade of alerts and pop_up_alerts because
@@ -780,7 +780,7 @@ config_update_to_cheshire_cat_test() ->
         [{alerts, [ip, communication_issue, time_out_of_sync]},
          {enabled, false},
          {pop_up_alerts, alert_keys()}],
-    [{set, email_alerts, Actual4}] = config_upgrade_to_cheshire_cat(Config4),
+    [{set, email_alerts, Actual4}] = config_upgrade_to_70(Config4),
     ?assertEqual(misc:sort_kv_list(Expected4), misc:sort_kv_list(Actual4)).
 
 add_proplist_kv_test() ->

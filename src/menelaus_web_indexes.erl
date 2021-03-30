@@ -34,7 +34,7 @@ settings_post_validators() ->
      validator:integer(memorySnapshotInterval, 1, infinity, _),
      validator:integer(stableSnapshotInterval, 1, infinity, _),
      validator:integer(maxRollbackPoints, 1, infinity, _)] ++
-        case cluster_compat_mode:is_cluster_cheshirecat() of
+        case cluster_compat_mode:is_cluster_70() of
             true ->
                 [validator:boolean(redistributeIndexes, _),
                  validator:integer(numReplica, 0, 16, _)];

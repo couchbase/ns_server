@@ -57,7 +57,7 @@
          get_scopes/1,
          get_collections/1]).
 
--export([config_upgrade_to_cheshire_cat/1]).
+-export([config_upgrade_to_70/1]).
 
 %% rpc from other nodes
 -export([wait_for_manifest_uid/4]).
@@ -68,7 +68,7 @@ start_link() ->
     misc:start_singleton(work_queue, start_link, [?SERVER]).
 
 enabled() ->
-    cluster_compat_mode:is_enabled(?VERSION_CHESHIRECAT).
+    cluster_compat_mode:is_enabled(?VERSION_70).
 
 enabled(BucketConfig) ->
     enabled() andalso ns_bucket:bucket_type(BucketConfig) =:= membase.
@@ -721,15 +721,15 @@ set_manifest(Bucket, Identity, RequiredScopes, RequestedUid) ->
     end.
 
 %% only to support FORCE_CHRONICLE flag
-config_upgrade_to_cheshire_cat(Config) ->
+config_upgrade_to_70(Config) ->
     case chronicle_compat:forced() of
         true ->
             [];
         false ->
-            do_config_upgrade_to_cheshire_cat(Config)
+            do_config_upgrade_to_70(Config)
     end.
 
-do_config_upgrade_to_cheshire_cat(Config) ->
+do_config_upgrade_to_70(Config) ->
     [{set, K, V} || {K, V} <- default_kvs(ns_bucket:get_buckets(Config))].
 
 -ifdef(TEST).

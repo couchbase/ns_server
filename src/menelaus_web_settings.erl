@@ -160,7 +160,7 @@ get_cluster_encryption(Level) ->
     ValidLevel = lists:member(Level, SupportedLevels),
     IsMandatory = (ns_ssl_services_setup:client_cert_auth_state() =:=
                        "mandatory"),
-    IsStrictPossible = cluster_compat_mode:is_cluster_cheshirecat(),
+    IsStrictPossible = cluster_compat_mode:is_cluster_70(),
 
     if
         not IsCEncryptEnabled  ->

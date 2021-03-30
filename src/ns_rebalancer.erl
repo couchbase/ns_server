@@ -928,9 +928,9 @@ build_delete_unused_buckets_db_files_request(Node, true) ->
                          delete_unused_buckets_db_files, [BucketsInUse]))}.
 
 maybe_cleanup_old_buckets(KeepNodes) ->
-    IsCheshireCat = cluster_compat_mode:is_cluster_cheshirecat(),
+    Is70 = cluster_compat_mode:is_cluster_70(),
     Requests = lists:map(
-                 build_delete_unused_buckets_db_files_request(_, IsCheshireCat),
+                 build_delete_unused_buckets_db_files_request(_, Is70),
                  KeepNodes),
     case misc:multi_call_request(Requests, infinity, _ =:= ok) of
         {_, []} ->

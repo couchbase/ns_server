@@ -76,7 +76,7 @@ maybe_final_upgrade(?LATEST_VERSION_NUM) ->
 maybe_final_upgrade(_) ->
     [].
 
-maybe_upgrade_to_cronicle(?VERSION_CHESHIRECAT, Config) ->
+maybe_upgrade_to_cronicle(?VERSION_70, Config) ->
     chronicle_compat:upgrade(Config);
 maybe_upgrade_to_cronicle(_, _) ->
     ok.
@@ -98,9 +98,9 @@ upgrade(?VERSION_65, Config) ->
          ns_bucket:config_upgrade_to_66(Config)};
 
 upgrade(?VERSION_66, Config) ->
-    {?VERSION_CHESHIRECAT,
+    {?VERSION_70,
      menelaus_users:config_upgrade() ++
-         collections:config_upgrade_to_cheshire_cat(Config) ++
-         menelaus_web_alerts_srv:config_upgrade_to_cheshire_cat(Config) ++
-         index_settings_manager:config_upgrade_to_cheshire_cat(Config) ++
-         query_settings_manager:config_upgrade_to_cheshire_cat(Config)}.
+         collections:config_upgrade_to_70(Config) ++
+         menelaus_web_alerts_srv:config_upgrade_to_70(Config) ++
+         index_settings_manager:config_upgrade_to_70(Config) ++
+         query_settings_manager:config_upgrade_to_70(Config)}.

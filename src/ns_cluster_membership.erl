@@ -419,11 +419,11 @@ enterprise_only_services() ->
 
 services_by_version() ->
     [{?PREHISTORIC, [kv, n1ql, index, fts, cbas, eventing]},
-     {?VERSION_CHESHIRECAT, [backup]}].
+     {?VERSION_70, [backup]}].
 
 topology_aware_services_by_version() ->
     [{?PREHISTORIC, [fts, index, cbas, eventing]},
-     {?VERSION_CHESHIRECAT, [backup]}].
+     {?VERSION_70, [backup]}].
 
 filter_services_by_version(Version, ServicesTable) ->
     lists:flatmap(fun ({V, Services}) ->
@@ -564,10 +564,10 @@ attach_node_uuids(Nodes, Config) ->
 supported_services_for_version_test() ->
     ?assertEqual(lists:sort([fts,kv,index,n1ql,cbas,eventing,backup]),
                  lists:sort(supported_services_for_version(
-                              ?VERSION_CHESHIRECAT))).
+                              ?VERSION_70))).
 
 topology_aware_services_for_version_test() ->
     ?assertEqual(lists:sort([fts,index,cbas,eventing,backup]),
                  lists:sort(topology_aware_services_for_version(
-                              ?VERSION_CHESHIRECAT))).
+                              ?VERSION_70))).
 -endif.

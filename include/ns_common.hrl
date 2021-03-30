@@ -226,12 +226,12 @@
 -define(VERSION_60, [6, 0]).
 -define(VERSION_65, [6, 5]).
 -define(VERSION_66, [6, 6]).
--define(VERSION_CHESHIRECAT, [7, 0]).
+-define(VERSION_70, [7, 0]).
 
--define(LATEST_UI_COMPAT_VERSION, ?VERSION_CHESHIRECAT).
+-define(LATEST_UI_COMPAT_VERSION, ?VERSION_70).
 
 %% Points to latest release
--define(LATEST_VERSION_NUM, ?VERSION_CHESHIRECAT).
+-define(LATEST_VERSION_NUM, ?VERSION_70).
 -define(MASTER_ADVERTISED_VERSION, [7, 0, 0]).
 
 -define(MIN_OF_MAX_MOVES_PER_NODE, 1).

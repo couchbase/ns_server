@@ -1050,7 +1050,7 @@ do_add_node_engaged_inner(ChronicleInfo, {Scheme, Hostname, Port},
 node_add_transaction(Node, GroupUUID, Services, Body) ->
     case chronicle_master:add_replica(Node, GroupUUID, Services) of
         ok ->
-            %% pre cheshirecat clusters only
+            %% pre 7.0 clusters only
             node_add_transaction_finish(Node, GroupUUID, undefined, Body);
         {ok, ChronicleInfo} ->
             node_add_transaction_finish(Node, GroupUUID, ChronicleInfo, Body);
