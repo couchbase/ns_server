@@ -93,12 +93,16 @@ merger_loop() ->
         {merge_compressed, Blob} ->
             WakeTime = os:timestamp(),
             KVList = misc:decompress(Blob),
-            ns_server_stats:increment_counter(total_config_merger_sleep_time, timer:now_diff(WakeTime, EnterTime)),
+            SleepTime = timer:now_diff(WakeTime, EnterTime) div 1000,
+            ns_server_stats:notify_histogram(<<"ns_config_merger_sleep_time">>,
+                                             SleepTime),
             merge_one_remote_config(KVList),
-            ns_server_stats:increment_counter(total_config_merger_run_time, timer:now_diff(os:timestamp(), WakeTime)),
-            ns_server_stats:increment_counter(total_config_merger_runs, 1),
+            RunTime = timer:now_diff(os:timestamp(), WakeTime) div 1000,
+            ns_server_stats:notify_histogram(<<"ns_config_merger_run_time">>,
+                                             RunTime),
             {message_queue_len, QL} = erlang:process_info(self(), message_queue_len),
-            ns_server_stats:set_counter(config_merger_queue_len, QL),
+            ns_server_stats:notify_max(
+              {<<"ns_config_merger_queue_len_1m_max">>, 60000, 1000}, QL),
             case QL > ?MERGING_EMERGENCY_THRESHOLD of
                 true ->
                     ?log_warning("Queue size emergency state reached. "
@@ -157,7 +161,8 @@ accumulate_push_keys(InitialKeys) ->
     accumulate_X(lists:sort(InitialKeys), push_keys).
 
 accumulate_and_push_keys(_Keys0, 0) ->
-    ns_server_stats:increment_counter(ns_config_rep_push_keys_retries_exceeded, 1),
+    ns_server_stats:notify_counter(
+      <<"ns_config_rep_push_keys_retries_exceeded">>),
     %% Exceeded retries count trying to get consistent keys/values for config
     %% replication. This can be caused when there are too many independent
     %% changes over a short time interval. Rather than try to accumulate more
@@ -179,8 +184,8 @@ accumulate_and_push_keys(Keys0, RetriesLeft) ->
             %% ok, yet another change is detected, we need to retry so
             %% that AllConfigKV is consistent with list of changed
             %% keys we have
-            ns_server_stats:increment_counter(ns_config_rep_push_keys_retries, 1),
-            ns_server_stats:increment_counter(ns_config_rep_push_keys_total_retries_left, RetriesLeft),
+            ns_server_stats:notify_counter(
+              <<"ns_config_rep_push_keys_retries">>),
             %% ordering of these messages is irrelevant so we can
             %% resend and retry
             self() ! Msg,
