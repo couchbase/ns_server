@@ -1127,12 +1127,9 @@ derived_metrics(kv, _) ->
      {"kv_avg_bg_wait_time_seconds",
       "irate(kv_bg_wait_seconds_sum[5m]) / ignoring (name) "
       "irate(kv_bg_wait_seconds_count[5m])"},
-     {"kv_avg_active_timestamp_drift_seconds",
-      "irate(kv_ep_active_hlc_drift_seconds[5m]) / ignoring (name) "
-      "irate(kv_ep_active_hlc_drift_count[5m])"},
-     {"kv_avg_replica_timestamp_drift_seconds",
-      "irate(kv_ep_replica_hlc_drift_seconds[5m]) / ignoring (name) "
-      "irate(kv_ep_replica_hlc_drift_count[5m])"},
+     {"kv_avg_timestamp_drift_seconds",
+      "irate(kv_ep_hlc_drift_seconds[5m]) / ignoring (name) "
+      "irate(kv_ep_hlc_drift_count[5m])"},
      {"kv_disk_write_queue",
       "kv_ep_flusher_todo + ignoring(name) kv_ep_queue_size"},
      {"kv_ep_ops_create",
