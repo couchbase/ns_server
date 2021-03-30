@@ -30,6 +30,7 @@ function mnGsiTableDirective(mnHelper) {
     vm.sizeChanged = sizeChanged;
     vm.getRowKeyspace = getRowKeyspace;
     vm.poolDefault = mnPoolDefault.export;
+    vm.isNaN = window.isNaN;
 
     mnHelper.initializeDetailsHashObserver(vm, 'openedIndex', 'app.admin.gsi');
 
