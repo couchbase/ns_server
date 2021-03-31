@@ -21,7 +21,8 @@
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-         terminate/2, code_change/3, sanitize/1, sanitize/2, sanitize_value/1]).
+         terminate/2, code_change/3, sanitize/1, sanitize/2, sanitize_value/1,
+         compute_bucket_diff/2]).
 
 -include("ns_common.hrl").
 -include("generic.hrl").
@@ -78,23 +79,21 @@ compute_buckets_diff(NewBuckets, OldBuckets) ->
     NewConfigs = proplists:get_value(configs, NewBuckets, []),
 
     Diffed =
-        merge_bucket_configs(
-          fun (NewValue, OldValue) ->
-                  OldMap = proplists:get_value(map, OldValue, []),
-                  NewMap = proplists:get_value(map, NewValue, []),
-                  MapDiff = misc:compute_map_diff(NewMap, OldMap),
-
-                  OldFFMap = proplists:get_value(fastForwardMap, OldValue, []),
-                  NewFFMap = proplists:get_value(fastForwardMap, NewValue, []),
-                  FFMapDiff = misc:compute_map_diff(NewFFMap, OldFFMap),
-
-                  misc:update_proplist(
-                    NewValue,
-                    [{map, MapDiff},
-                     {fastForwardMap, FFMapDiff}])
-          end, NewConfigs, OldConfigs),
+        merge_bucket_configs(fun compute_bucket_diff/2, NewConfigs, OldConfigs),
 
     misc:update_proplist(NewBuckets, [{configs, Diffed}]).
+
+compute_bucket_diff(NewProps, OldProps) ->
+    OldMap = proplists:get_value(map, OldProps, []),
+    NewMap = proplists:get_value(map, NewProps, []),
+    MapDiff = misc:compute_map_diff(NewMap, OldMap),
+
+    OldFFMap = proplists:get_value(fastForwardMap, OldProps, []),
+    NewFFMap = proplists:get_value(fastForwardMap, NewProps, []),
+    FFMapDiff = misc:compute_map_diff(NewFFMap, OldFFMap),
+
+    misc:update_proplist(NewProps, [{map, MapDiff},
+                                    {fastForwardMap, FFMapDiff}]).
 
 do_tag_user_name("@" ++ _ = Name) ->
     {ok, Name};

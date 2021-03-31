@@ -69,6 +69,9 @@ child_specs() ->
      {request_throttler, {request_throttler, start_link, []},
       permanent, 1000, worker, [request_throttler]},
 
+     {chronicle_kv_log, {chronicle_kv_log, start_link, []},
+      permanent, 1000, worker, [chronicle_kv_log]},
+
      %% ns_log starts after ns_config because it needs the config to
      %% find where to persist the logs
      {ns_log, {ns_log, start_link, []},
