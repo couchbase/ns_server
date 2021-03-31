@@ -60,10 +60,8 @@
 %% rpc from other nodes
 -export([wait_for_manifest_uid/4]).
 
--define(SERVER, {via, leader_registry, ?MODULE}).
-
 start_link() ->
-    misc:start_singleton(work_queue, start_link, [?SERVER]).
+    work_queue:start_link(?MODULE).
 
 enabled() ->
     cluster_compat_mode:is_enabled(?VERSION_70).
@@ -258,7 +256,7 @@ drop_collection(Bucket, Scope, Name) ->
 
 update(Bucket, Operation) ->
     work_queue:submit_sync_work(
-      ?SERVER, ?cut(do_update(Bucket, Operation))).
+      ?MODULE, ?cut(do_update(Bucket, Operation))).
 
 do_update(Bucket, Operation) ->
     ?log_debug("Performing operation ~p on bucket ~p", [Operation, Bucket]),

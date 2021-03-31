@@ -51,8 +51,6 @@ child_specs() ->
      {chronicle_master, {chronicle_master, start_link, []},
       permanent, 1000, worker, [chronicle_master]},
      {ns_orchestrator_sup, {ns_orchestrator_sup, start_link, []},
-      permanent, infinity, supervisor, [ns_orchestrator_sup]},
-     {collections, {collections, start_link, []},
-      permanent, 1000, worker, [collections]}] ++
-     [{license_reporting, {license_reporting, start_link, []},
-       permanent, 1000, worker, []} || cluster_compat_mode:is_enterprise()].
+      permanent, infinity, supervisor, [ns_orchestrator_sup]}] ++
+        [{license_reporting, {license_reporting, start_link, []},
+          permanent, 1000, worker, []} || cluster_compat_mode:is_enterprise()].

@@ -220,6 +220,9 @@ child_specs() ->
      {cluster_logs_sup, {cluster_logs_sup, start_link, []},
       permanent, infinity, supervisor, []},
 
+     {collections, {collections, start_link, []},
+      permanent, 1000, worker, [collections]},
+
      %% Note to the users of leader_events. The events are announced
      %% synchronously, make sure not to block mb_master for too long.
      {leader_events, {gen_event, start_link, [{local, leader_events}]},
