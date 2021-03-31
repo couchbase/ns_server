@@ -639,6 +639,8 @@ check_host_port_connectivity(Host, Port, AFamily) ->
         {ok, Socket} ->
             try
                 {ok, {IpAddr, _}} = inet:sockname(Socket),
+                ?log_debug("Successfully checked TCP connectivity to "
+                           "~p:~p", [Host, Port]),
                 {ok, inet:ntoa(IpAddr)}
             after
                 inet:close(Socket)
@@ -943,6 +945,8 @@ check_otp_tls_connectivity(Host, Port, AFamily) ->
                 {ok, TLSSocket} ->
                     {ok, {LocalIpAddr, _}} = ssl:sockname(TLSSocket),
                     catch ssl:close(TLSSocket),
+                    ?log_debug("Successfully checked OTP TLS connectivity to "
+                               "~p(~p):~p", [Host, IpAddr, Port]),
                     {ok, inet:ntoa(LocalIpAddr)};
                 {error, _} = Error ->
                     Error
