@@ -355,6 +355,13 @@ function getStatAdditionalConfig(statName) {
   case "@eventing.eventing_timeout_count":
     return {applyFunctions: ["sum"], bucket: null};
 
+  case "@eventing-.@items.eventing_processed_count_rate":
+    return {applyFunctions: ["irate"], bucket: null, metric: {name: "eventing_processed_count"}};
+  case "@eventing-.@items.eventing_failed_count_rate":
+    return {applyFunctions: ["irate"], bucket: null, metric: {name: "eventing_failed_count"}};
+  case "@eventing-.@items.eventing_timeout_count_rate":
+    return {applyFunctions: ["irate"], bucket: null, metric: {name: "eventing_timeout_count"}};
+
   case "@eventing-.@items.eventing_processed_count":
   case "@eventing-.@items.eventing_failed_count":
   case "@eventing-.@items.eventing_timeout_count":
@@ -718,6 +725,25 @@ function get70CompatDesc() {
           unit: "number",
           title: "Eventing Timeouts",
           desc: "Execution timeouts while processing mutations."
+        }
+      },
+      "@eventing-": {
+        "@items": {
+          "eventing_processed_count_rate": {
+            unit: "number/sec",
+            title: "Successful Function Invocations Rate",
+            desc: "Count of times the function was invoked successfully per second."
+          },
+          "eventing_failed_count_rate": {
+            unit: "number/sec",
+            title: "Failed Function Invocations Rate",
+            desc: "Count of times the function invocation failed per second."
+          },
+          "eventing_timeout_count_rate": {
+            unit: "number/sec",
+            title: "Eventing Timeouts Rate",
+            desc: "Execution timeouts while processing mutations per second."
+          }
         }
       },
       "@cbas": {
