@@ -3902,3 +3902,6 @@ mn-xdcr-add-rep-scope {
 qw-collection-menu {
   display: block !important;
 }
+qw-collection-menu select {
+  display: inline-block !important;
+}
