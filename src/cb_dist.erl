@@ -291,14 +291,11 @@ handle_call({listen, Name}, _From, #s{creation = Creation} = State) ->
     end;
 
 handle_call({accept, KernelPid}, _From, #s{listeners = Listeners} = State) ->
-    Acceptors =
-        lists:map(
-            fun ({{_AType, Module} = Listener, {LSocket, _Addr, _Creation}}) ->
-                {Module:accept(LSocket), Listener}
-            end,
-            Listeners),
-    {reply, self(), ensure_config(State#s{acceptors = Acceptors,
-                                          kernel_pid = KernelPid})};
+    NewState = lists:foldl(
+                 fun ({L, _}, AccState) ->
+                     start_acceptor(L, AccState)
+                 end, State, Listeners),
+    {reply, self(), ensure_config(NewState#s{kernel_pid = KernelPid})};
 
 handle_call({get_module_by_acceptor, AcceptorPid}, _From,
             #s{acceptors = Acceptors} = State) ->
@@ -438,9 +435,10 @@ handle_info({'EXIT', From, Reason}, #s{acceptors = Acceptors} = State) ->
     error_msg("received EXIT from ~p, reason: ~p", [From, Reason]),
     case {is_restartable_event(Reason), lists:keyfind(From, 1, Acceptors)} of
         {true, {From, Listener}} ->
-            error_msg("Try to restart listener ~p", [Listener]),
-            NewState = ensure_config(remove_proto(Listener, State)),
-            {noreply, NewState};
+            error_msg("Restart acceptor for ~p", [Listener]),
+            NewAcceptors = proplists:delete(From, Acceptors),
+            {noreply, start_acceptor(Listener,
+                                     State#s{acceptors = NewAcceptors})};
         _ ->
             {stop, {'EXIT', From, Reason}, State}
     end;
@@ -511,26 +509,14 @@ with_dist_ip_and_port(IP, Port, Fun) ->
         end
     end.
 
-add_proto({_AddrType, Mod} = Listener,
-          #s{name = NodeName, listeners = Listeners,
-             acceptors = Acceptors} = State) ->
+add_proto(Listener,
+          #s{name = NodeName, listeners = Listeners} = State) ->
     case can_add_proto(Listener, State) of
         ok ->
             case listen_proto(Listener, NodeName) of
-                {ok, L = {LSocket, _, _}} ->
-                    try
-                        APid = Mod:accept(LSocket),
-                        true = is_pid(APid),
-                        State#s{listeners = [{Listener, L}|Listeners],
-                                acceptors = [{APid, Listener}|Acceptors]}
-                    catch
-                        _:E:ST ->
-                            catch Mod:close(LSocket),
-                            error_msg(
-                              "Accept failed for protocol ~p with reason: ~p~n"
-                              "Stacktrace: ~p", [Listener, E, ST]),
-                            start_ensure_config_timer(State)
-                    end;
+                {ok, L} ->
+                    NewState = State#s{listeners = [{Listener, L} | Listeners]},
+                    start_acceptor(Listener, NewState);
                 {error, eafnosupport} -> State;
                 {error, eprotonosupport} -> State;
                 ignore -> State;
@@ -539,6 +525,28 @@ add_proto({_AddrType, Mod} = Listener,
         {error, Reason} ->
             error_msg("Ignoring ~p listener, reason: ~p", [Listener, Reason]),
             State
+    end.
+
+start_acceptor({_AddrType, Mod} = Listener,
+               #s{listeners = Listeners, acceptors = Acceptors} = State) ->
+    case proplists:get_value(Listener, Listeners) of
+        undefined ->
+            error_msg("Ignoring attempt to start an acceptor for unknown "
+                      "listener: ~p", [Listener]),
+            State;
+        {LSocket, _, _} ->
+            try
+                APid = Mod:accept(LSocket),
+                true = is_pid(APid),
+                State#s{acceptors = [{APid, Listener} | Acceptors]}
+            catch
+                _:E:ST ->
+                    error_msg(
+                      "Accept failed for protocol ~p with reason: ~p~n"
+                      "Stacktrace: ~p", [Listener, E, ST]),
+                    remove_proto(Listener, State),
+                    start_ensure_config_timer(State)
+            end
     end.
 
 start_ensure_config_timer(#s{ensure_config_timer = undefined} = State) ->
