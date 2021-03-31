@@ -936,7 +936,7 @@ check_otp_tls_connectivity(Host, Port, AFamily) ->
                   _ -> [{server_name_indication, Host}]
               end,
     AllOpts = [binary, {active, false}, {packet, 4},
-               AFamily, {nodelay, true}] ++ SNIOpts ++
+               AFamily, {nodelay, true}, {erl_dist, true}] ++ SNIOpts ++
                lists:ukeysort(1, Opts ++ TLSOpts),
     Timeout = net_kernel:connecttime(),
     case inet:getaddr(Host, AFamily) of
