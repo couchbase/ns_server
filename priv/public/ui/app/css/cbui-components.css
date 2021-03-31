@@ -1824,17 +1824,14 @@ mn-select[disabled] .mn-select,
   color: transparent;
   text-shadow: 0 0 0 #000;
 }
-
 .mn-select .dropdown-toggle {
   height: 100%;
   width: 100%;
 }
-
 .mn-select .dropdown-menu {
   max-height: 30vh;
   overflow-y: scroll;
 }
-
 .mn-select div[uib-dropdown-menu] .option,
 .mn-select div[ngbDropdownMenu] .option {
   padding: 0.5rem;
@@ -1844,7 +1841,6 @@ mn-select[disabled] .mn-select,
 .mn-select div[ngbDropdownMenu] .option:hover{
   background-color: #f5f5f5;
 }
-
 .mn-select.mn-align-left div[uib-dropdown-menu] {
   top: auto;
   left: 0;
@@ -1853,8 +1849,8 @@ mn-select[disabled] .mn-select,
   top: auto;
   right: 0;
   min-width: 100%;
+  padding: 1rem 0;
 }
-
 .mn-select.open .dropdown-menu,
 .mn-select.show .dropdown-menu {
   display: block;
@@ -1865,7 +1861,6 @@ mn-select[disabled] .mn-select,
 .mn-select-small .mn-select.open-on-top .dropdown-menu {
   bottom: 1.75rem;
 }
-
 .mn-select .dropdown-menu {
   display: none;
   background-color: #fff;
@@ -2988,7 +2983,7 @@ nav.nav-sidebar-hidden {
 }
 .checkbox-filter label {
   width: 100%;
-  font-size: .8125rem!important;
+  font-size: .825rem!important;
   text-align: center;
 }
 
@@ -3137,28 +3132,22 @@ mn-statistics-chart {
 }
 .charts-group-row {
   display: flex;
-  align-items: middle;
+  align-items: center;
   justify-content: space-between;
   min-height: 2.5rem;
 }
 .charts-group-row.disclosure {
-  padding-left: .5rem;
+  padding-left: .75rem;
 }
 .charts-group-row.disclosure:before,
 .charts-group-row.disclosed:before {
-  top: 2px;
+  top: 6px;
+  left: 4px;
 }
 .chart-group-row-items {
   font-size: .825rem;
-}
-.chart-group-row-items div {
-  display: inline-block;
-}
-.chart-group-row-items select {
-  margin-right: .5rem;
-}
-.chart-group-row-items div:last-of-type select {
-  margin-right: .25rem;
+  display: flex;
+  align-items: center;
 }
 
 input[type="text"].charts-group-name {
@@ -3482,7 +3471,7 @@ input[type=text].scenario-desc:hover {
 
 /* chart-builder -------------------------------------------------------------*/
 .chart-builder label {
-  font-size: .875rem!important;
+  font-size: .75rem!important;
 }
 .chart-builder .dialog-xlg {
   max-height: 80vh;

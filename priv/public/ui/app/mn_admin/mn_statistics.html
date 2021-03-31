@@ -155,7 +155,7 @@
        ng-if="mnStatsGroupsCtl.getGroup() && ((mnStatsGroupsCtl.getGroup().enterprise == undefined) || poolDefault.isEnterprise)"
        ng-click="mnStatsGroupsCtl.getGroup().isOpen = !mnStatsGroupsCtl.getGroup().isOpen;
               mnStatsGroupsCtl.saveDashboard();"
-       class="charts-group-row disclosure nowrap"
+       class="charts-group-row disclosure nowrap has-hover"
        ng-class="{disclosed: mnStatsGroupsCtl.getGroup().isOpen}">
       <form novalidate
          ng-if="!mnStatsGroupsCtl.getGroup().preset"
@@ -200,78 +200,83 @@
          ng-click="$event.stopPropagation();">
         <div
            ng-if="mnStatsGroupsCtl.enabledItems['@index-'] && statisticsNewCtl.indexItems.values.length"
-           ng-init="mnStatsGroupsCtl.items.index = statisticsNewCtl.indexItems.values[0]">
-          <span>
-            <h5>Indexes</h5>
+           ng-init="mnStatsGroupsCtl.items.index = statisticsNewCtl.indexItems.values[0]"
+           class="row flex-wrap">
+
+            <strong class="margin-right-quarter">Indexes</strong>
             <mn-select
-               class="inline min-width-full"
+               class="inline max-width-2"
                ng-model="mnStatsGroupsCtl.items.index"
                values="statisticsNewCtl.indexItems.values"
                labels="statisticsNewCtl.indexItems.labels"
                mn-horizontal-align="'right'">
           </mn-select>
-          </span>
+
         </div>
         <div
            ng-if="mnStatsGroupsCtl.enabledItems['@kv-'] && statisticsNewCtl.viewItems.values.length"
-           ng-init="mnStatsGroupsCtl.items.kv = statisticsNewCtl.viewItems.values[0]">
-          <span>
-            <h5>Views</h5>
+           ng-init="mnStatsGroupsCtl.items.kv = statisticsNewCtl.viewItems.values[0]"
+           class="row flex-wrap margin-left-1">
+
+            <strong class="margin-right-quarter" class="margin-right-quarter">Views</strong>
             <mn-select
-               class="inline margin-left-quarter min-width-full"
+               class="inline max-width-2"
                ng-model="mnStatsGroupsCtl.items.kv"
                values="statisticsNewCtl.viewItems.values"
                labels="statisticsNewCtl.viewItems.labels"
                mn-horizontal-align="'right'">
             </mn-select>
-          </span>
+
         </div>
         <div
            ng-if="mnStatsGroupsCtl.enabledItems['@xdcr-'] && statisticsNewCtl.xdcrItems.values.length"
-           ng-init="mnStatsGroupsCtl.items.xdcr = statisticsNewCtl.xdcrItems.values[0]">
-          <span>
-            <h5>Replications</h5>
+           ng-init="mnStatsGroupsCtl.items.xdcr = statisticsNewCtl.xdcrItems.values[0]"
+           class="row flex-wrap margin-left-1">
+
+            <strong class="margin-right-quarter">Replications</strong>
             <mn-select
-               class="inline margin-left-quarter min-width-full"
+               class="inline max-width-2"
                ng-model="mnStatsGroupsCtl.items.xdcr"
                values="statisticsNewCtl.xdcrItems.values"
                labels="statisticsNewCtl.xdcrItems.labels"
                mn-horizontal-align="'right'">
             </mn-select>
-          </span>
+
         </div>
         <div
            ng-if="mnStatsGroupsCtl.enabledItems['@eventing-'] && statisticsNewCtl.eventingItems.values.length"
-           ng-init="mnStatsGroupsCtl.items.eventing = statisticsNewCtl.eventingItems.values[0]">
-          <span>
-            <h5>Eventing functions</h5>
+           ng-init="mnStatsGroupsCtl.items.eventing = statisticsNewCtl.eventingItems.values[0]"
+           class="row flex-wrap margin-left-1">
+
+            <strong class="margin-right-quarter">Eventing</strong>
             <mn-select
-               class="inline margin-left-quarter min-width-full"
+               class="inline max-width-2"
                ng-model="mnStatsGroupsCtl.items.eventing"
                values="statisticsNewCtl.eventingItems.values"
                mn-horizontal-align="'right'">
             </mn-select>
-          </span>
+
         </div>
 
         <div
            ng-if="mnStatsGroupsCtl.enabledItems['@fts-'] && statisticsNewCtl.ftsItems.values.length"
-           ng-init="mnStatsGroupsCtl.items.fts = statisticsNewCtl.ftsItems.values[0]">
-          <span>
-            <h5>Search indexes</h5>
+           ng-init="mnStatsGroupsCtl.items.fts = statisticsNewCtl.ftsItems.values[0]"
+           class="row flex-wrap margin-left-1">
+
+            <strong class="margin-right-quarter">Search Indexes</strong>
             <mn-select
-               class="inline margin-left-quarter min-width-full"
+               class="inline max-width-2"
                ng-model="mnStatsGroupsCtl.items.fts"
                values="statisticsNewCtl.ftsItems.values"
                labels="statisticsNewCtl.ftsItems.labels"
                mn-horizontal-align="'right'">
           </mn-select>
-          </span>
+
         </div>
       </div>
 
       <button
-         class="light adder"
+         class="light adder margin-right-half margin-left-1"
          ng-show="!statisticsNewCtl.getSelectedScenario().preset"
          ng-click="$event.stopPropagation();
                    statisticsNewCtl.openChartBuilderDialog(
