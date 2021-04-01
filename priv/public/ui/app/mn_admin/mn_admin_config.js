@@ -86,9 +86,14 @@ function mnAdminConfig($stateProvider, $urlMatcherFactoryProvider, mnPluggableUi
   function interceptorOf401($q, $injector) {
     return {
       responseError: function (rejection) {
-        if (rejection.status == 401 &&
-            rejection.config.url == "/pools/default" &&
-            rejection.config.params && rejection.config.params.etag) {
+        if (rejection.status === 401 &&
+            rejection.config.url !== "/pools" &&
+            rejection.config.url !== "/controller/changePassword" &&
+            rejection.config.url !== "/uilogout" &&
+            ($injector.get('$state').includes('app.admin') ||
+             $injector.get('$state').includes('app.wizard')) &&
+            !rejection.config.headers["ignore-401"] &&
+            !$injector.get('mnLostConnectionService').getState().isActive) {
           $injector.get('mnAuthService').logout();
         }
         return $q.reject(rejection);
