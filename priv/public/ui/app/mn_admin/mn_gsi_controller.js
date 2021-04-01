@@ -85,7 +85,7 @@ function configure($stateProvider) {
           dynamic: true
         },
         perIndexPage: {
-          value: {page:1, size:10},
+          value: {page:1, size:15},
           type: "json",
           dynamic: true
         },

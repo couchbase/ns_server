@@ -1,5 +1,5 @@
 import _ from "/ui/web_modules/lodash.js";
-import mnStatsDesc from "./mn_statistics_description.js";
+import mnStatisticsDescription from "./mn_statistics_description.js";
 
 export {mnGsiItemController, mnGsiItemStatsController, mnGsiItemDetails};
 
@@ -26,15 +26,81 @@ function mnGsiItemStatsController($scope) {
   }
 }
 
-function mnGsiItemController($scope, mnStatisticsNewService, mnPoolDefault, mnPermissions) {
+function mnGsiItemController($scope, mnGsiService, mnStatisticsNewService, mnPoolDefault, mnPermissions) {
   var vm = this;
   var row = $scope.row;
 
+  //check permissions
   let interestingPermissions = row.collection ?
       mnPermissions.getPerCollectionPermissions(row.bucket, row.scope, row.collection) :
       mnPermissions.getPerScopePermissions(row.bucket, row.scope);
   interestingPermissions.forEach(mnPermissions.set);
   mnPermissions.throttledCheck();
+
+
+  //get stats
+  let isAtLeast70 = mnPoolDefault.export.compat.atLeast70;
+
+  let perItemStats = [
+    "@index-.@items.index_num_requests", "@index-.@items.index_resident_percent",
+    "@index-.@items.index_items_count", "@index-.@items.index_data_size",
+    "@index-.@items.index_num_docs_pending_and_queued"
+  ];
+
+  let uiStatNames = perItemStats.map(
+    stat => mnStatisticsDescription.mapping70(stat).split(".").pop());
+
+  if (!isAtLeast70) {
+    perItemStats = perItemStats.map(mnStatisticsDescription.mapping70);
+  }
+
+  let getStatSamples = isAtLeast70 ? getStatSamples70 : getStatSamplesPre70;
+
+
+  $scope.mnGsiTableCtl.mnGsiStatsPoller.subscribeUIStatsPoller({
+    bucket: row.bucket,
+    scope: row.scope,
+    collection: row.collection,
+    node: $scope.nodeName || "all",
+    zoom: 3000,
+    step: 1,
+    stats: perItemStats,
+    items: {
+      index: isAtLeast70 ?
+        row.index : ("index/" + row.index + "/")
+    }
+  }, $scope);
+
+  $scope.$watch("mnUIStats", updateValues);
+  $scope.$watch("row", updateValues);
+
+  function getIndexStatName(statName) {
+    return 'index/' + $scope.row.index + '/' + statName;
+  }
+
+  function getStats(statName) {
+    let stats = $scope.mnUIStats && $scope.mnUIStats && $scope.mnUIStats.stats;
+    return stats && stats[statName] && stats[statName][$scope.nodeName || "aggregate"];
+  }
+
+  function getStatSamples70(statName) {
+    statName = mnStatisticsDescription.mapping65("@index-.@items." + statName);
+    let stats = getStats(statName);
+    let last = stats && stats.values[stats.values.length - 1];
+    let val = last && last[1];
+    val = val ? Number(val) : !!val;
+    return val;
+  }
+
+  function getStatSamplesPre70(statName) {
+    let stats = getStats(getIndexStatName(statName));
+    return stats && stats.slice().reverse().find(stat => stat != null);
+  }
+
+  function updateValues() {
+    uiStatNames.forEach(statName => $scope.row[statName] = getStatSamples(statName))
+  }
+
 
   $scope.$on("$destroy", onDestroy);
 

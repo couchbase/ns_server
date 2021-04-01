@@ -26,20 +26,6 @@ function mnGsiServiceFactory($http, $q, qwQueryService, mnStatisticsNewService, 
 
   let isAtLeast70 = mnPoolDefault.export.compat.atLeast70;
 
-  let perItemStats = [
-    "@index-.@items.index_num_requests", "@index-.@items.index_resident_percent",
-    "@index-.@items.index_items_count", "@index-.@items.index_data_size",
-    "@index-.@items.index_num_docs_pending_and_queued"
-  ];
-
-  //should be the same name for mixed version as well
-  let uiStatNames = perItemStats.map(
-    stat => mnStatisticsDescription.mapping70(stat).split(".").pop());
-
-  if (!isAtLeast70) {
-    perItemStats = perItemStats.map(mnStatisticsDescription.mapping70);
-  }
-
   return mnGsiService;
 
   function postDropIndex(row) {
@@ -73,39 +59,6 @@ function mnGsiServiceFactory($http, $q, qwQueryService, mnStatisticsNewService, 
     });
   }
 
-  function getIndexStatsConfig(index, node) {
-    return {
-      bucket: index.bucket,
-      scope: index.scope,
-      collection: index.collection,
-      node: node || "all",
-      zoom: 3000,
-      step: 1,
-      stats: perItemStats,
-      items: {
-        index: isAtLeast70 ?
-          index.index : ("index/" + index.index + "/")
-      }
-    };
-  }
-
-  function getIndexStatsConfigs(indexes, node) {
-    return indexes.reduce((acc, index) => {
-      let cfg = getIndexStatsConfig(index, node);
-      let configs = mnStatisticsNewService.packStatsConfig(cfg, true);
-      Array.prototype.push.apply(acc, configs);
-      return acc;
-    }, []);
-  }
-
-  function getIndexStatsConfigsByNode(byNode) {
-    return Object.keys(byNode).reduce((acc, node) => {
-      let configs = getIndexStatsConfigs(byNode[node], node);
-      Array.prototype.push.apply(acc, configs);
-      return acc;
-    }, []);
-  }
-
   function getIndexesByNodes(indexes) {
     return indexes.reduce((acc, index) => {
       index.hosts.forEach(node => {
@@ -124,105 +77,33 @@ function mnGsiServiceFactory($http, $q, qwQueryService, mnStatisticsNewService, 
     return getIndexStatus().then(indexStatus => {
       let indexesToDisplay = filterIndexesByKeystore(indexStatus.indexes, keyStoreParams);
       let byNodes = getIndexesByNodes(indexesToDisplay);
-      let statsConfigs = getIndexStatsConfigsByNode(byNodes);
       indexStatus.filtered = indexesToDisplay;
       indexStatus.byNodes = byNodes;
-      return $q.all([
-        mnStatisticsNewService.postStatsRange(statsConfigs), $q.when(indexStatus)
-      ]).then(([perIndexStats, indexStatus]) => {
-        let nodes = Object.keys(indexStatus.byNodes);
-        let checkpoint = 0;
-
-        nodes.forEach(node => {
-          let indexes = indexStatus.byNodes[node];
-          let nextCheckpoint = checkpoint + (indexes.length * perItemStats.length);
-          let thisNodeStats = perIndexStats.data.slice(checkpoint, nextCheckpoint);
-          checkpoint = nextCheckpoint;
-
-          indexes.forEach((row, i) => {
-            let start = i * perItemStats.length;
-            let end = start + perItemStats.length;
-            let stats = thisNodeStats.slice(start, end);
-
-            uiStatNames.forEach((statName, i) => {
-              row[statName] = stats[i].data[0] ? Number(stats[i].data[0].values[0][1]) : null;
-            });
-          });
-        });
-        return indexStatus;
-      });
+      return indexStatus;
     });
   }
 
   function getIndexesState(keyStoreParams) {
     return getIndexStatus().then(indexStatus => {
       let indexesToDisplay = filterIndexesByKeystore(indexStatus.indexes, keyStoreParams);
-      let statsConfigs = getIndexStatsConfigs(indexesToDisplay);
       indexStatus.filtered = indexesToDisplay;
-      return $q.all([
-        mnStatisticsNewService.postStatsRange(statsConfigs), $q.when(indexStatus)
-      ]).then(([perIndexStats, indexStatus]) => {
-        indexStatus.filtered.forEach((row, i) => {
-          let start = i * perItemStats.length;
-          let end = start + perItemStats.length;
-          let stats = perIndexStats.data.slice(start, end);
-
-          uiStatNames.forEach((statName, i) => {
-            row[statName] = stats[i].data[0] ? Number(stats[i].data[0].values[0][1]) : null
-          });
-        });
-        return indexStatus;
-      });
+      return indexStatus;
     });
   }
 
   function getIndexesStateByNodesMixed() {
     return getIndexStatus().then(indexStatus => {
       let byNodes = getIndexesByNodes(indexStatus.indexes);
-      let statsConfigs = getIndexStatsConfigsByNode(byNodes);
       indexStatus.byNodes = byNodes;
       indexStatus.filtered = indexStatus.indexes;
-
-      return $q.all([
-        mnStatisticsNewService.postStats(statsConfigs), $q.when(indexStatus)
-      ]).then(([perIndexStats, indexStatus]) => {
-        let nodes = Object.keys(indexStatus.byNodes);
-        let checkpoint = 0;
-
-        nodes.forEach(node => {
-          let indexes = indexStatus.byNodes[node];
-          let nextCheckpoint = checkpoint + indexes.length;
-          let thisNodeStats = perIndexStats.data.slice(checkpoint, nextCheckpoint);
-          checkpoint = nextCheckpoint;
-
-          indexes.forEach((row, indexI) => {
-            uiStatNames.forEach((statName, i) => {
-              let stats = perIndexStats.data[indexI].stats["index/"+row.index+"/"+statName];
-              row[statName] = (stats && stats[node]) ? Number(stats[node][0]) : null
-            });
-          });
-        });
-
-        return indexStatus;
-      });
+      return indexStatus;
     });
   }
 
   function getIndexesStateMixed() {
     return getIndexStatus().then(indexStatus => {
-      let statsConfigs = getIndexStatsConfigs(indexStatus.indexes);
       indexStatus.filtered = indexStatus.indexes;
-      return $q.all([
-        mnStatisticsNewService.postStats(statsConfigs), $q.when(indexStatus)
-      ]).then(([perIndexStats, indexStatus]) => {
-        indexStatus.filtered.forEach((row, indexI) => {
-          uiStatNames.forEach((statName, i) => {
-            let stats = perIndexStats.data[indexI].stats["index/"+row.index+"/"+statName];
-            row[statName] = (stats && stats.aggregate) ? Number(stats.aggregate[0]) : null
-          });
-        });
-        return indexStatus;
-      });
+      return indexStatus;
     });
   }
 }

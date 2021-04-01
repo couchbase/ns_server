@@ -456,6 +456,9 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
   }
 
   function zoomToStep(zoom) {
+    if (Number.isFinite(zoom)) {
+      return zoom;
+    }
     return zoomToMS(zoom) / 60000;
   }
 
@@ -548,7 +551,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
       });
       return rv;
     } else {
-      cfg.step = zoomToStep(config.zoom);
+      cfg.step = config.step || zoomToStep(config.zoom);
       cfg.startTS = 0 - zoomToMS(config.zoom);
       cfg.stats = descriptionPathsToStatNames(config.stats, config.items);
       cfg.bucket = config.bucket;

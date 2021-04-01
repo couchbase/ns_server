@@ -9,24 +9,16 @@
       </span>
     </span>
     <span class="cbui-table-cell flex-grow-half resp-hide-xsml">
-      <span mn-sortable-title="num_requests" class="sorter">
-        requests/sec
-      </span>
+      requests/sec
     </span>
     <span class="cbui-table-cell flex-grow-half resp-hide-sml">
-      <span mn-sortable-title="index_resident_percent" class="sorter">
-        resident ratio
-      </span>
+      resident ratio
     </span>
     <span class="cbui-table-cell flex-grow-half">
-      <span mn-sortable-title="items_count" class="sorter">
-        items
-      </span>
+      items
     </span>
     <span class="cbui-table-cell flex-grow-half resp-hide-xsml">
-      <span mn-sortable-title="data_size" class="sorter">
-        data size
-      </span>
+      data size
     </span>
     <span class="cbui-table-cell">
       <span mn-sortable-title="keyspace" class="sorter">
@@ -70,16 +62,16 @@
         </span>
       </span>
       <span class="cbui-table-cell flex-grow-half resp-hide-xsml">
-        {{!isNaN(row.num_requests) ? (row.num_requests | mnFormatQuantity:1000) : "-"}}
+        {{mnGsiTableCtl.isFinite(row.num_requests) ? (row.num_requests | mnFormatQuantity:1000) : "-"}}
       </span>
       <span class="cbui-table-cell flex-grow-half resp-hide-sml">
-        {{!isNaN(row.index_resident_percent)?(row.index_resident_percent|number:0)+"%":"-" }}
+        {{mnGsiTableCtl.isFinite(row.index_resident_percent)?(row.index_resident_percent|number:0)+"%":"-" }}
       </span>
       <span class="cbui-table-cell flex-grow-half">
-        {{!isNaN(row.items_count) ? (row.items_count | mnFormatQuantity:1000) : "-"}}
+        {{mnGsiTableCtl.isFinite(row.items_count) ? (row.items_count | mnFormatQuantity:1000) : "-"}}
       </span>
       <span class="cbui-table-cell flex-grow-half resp-hide-xsml">
-        {{!isNaN(row.data_size) ? (row.data_size | mnFormatQuantity) : "-"}}
+        {{mnGsiTableCtl.isFinite(row.data_size) ? (row.data_size | mnFormatQuantity) : "-"}}
       </span>
       <span class="cbui-table-cell">
         {{mnGsiTableCtl.getRowKeyspace(row)}}
@@ -102,7 +94,8 @@
            class="nocaps">
           {{row.status}}
         </div>
-        <div ng-if="row['num_docs_pending+queued'] != '0'"
+        <div ng-if="mnGsiTableCtl.isFinite(row['num_docs_pending+queued']) &&
+                    row['num_docs_pending+queued'] !== 0"
            class="label warning">
           {{row['num_docs_pending+queued'] | mnFormatQuantity:1000}}
           mutations remaining

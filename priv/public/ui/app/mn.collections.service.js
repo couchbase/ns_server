@@ -103,8 +103,6 @@ class MnCollectionsService {
   createCollectionSelector(options) {
     var filterKey = options.isRolesMode ? "value" : "name";
 
-    var outsideClick = fromEvent(document, 'click');
-
     var doFocus = new Subject();
 
     var filters = options.steps.reduce((acc, step) => {
@@ -145,6 +143,10 @@ class MnCollectionsService {
         merge(mapFocusToStep,
               selectionDone.pipe(mapTo("ok")))
         .pipe(shareReplay({refCount: true, bufferSize: 1}));
+
+    var outsideClick = step.pipe(switchMap(v => v != "ok" ?
+                                           fromEvent(document, 'click') :
+                                           NEVER));
 
     outsideClick
       .pipe(takeUntil(options.component.mnOnDestroy))

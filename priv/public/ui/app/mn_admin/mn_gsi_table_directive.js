@@ -21,7 +21,7 @@ function mnGsiTableDirective(mnHelper) {
 
   return mnGsiTable;
 
-  function mnGsiTableController($scope, mnHelperService, mnPoolDefault) {
+  function mnGsiTableController($scope, mnHelperService, mnPoolDefault, mnStatisticsNewService) {
     var vm = this;
     vm.generateIndexId = generateIndexId;
     vm.getStatusClass = getStatusClass;
@@ -30,7 +30,7 @@ function mnGsiTableDirective(mnHelper) {
     vm.sizeChanged = sizeChanged;
     vm.getRowKeyspace = getRowKeyspace;
     vm.poolDefault = mnPoolDefault.export;
-    vm.isNaN = window.isNaN;
+    vm.isFinite = Number.isFinite;
 
     mnHelper.initializeDetailsHashObserver(vm, 'openedIndex', 'app.admin.gsi');
 
@@ -43,6 +43,8 @@ function mnGsiTableDirective(mnHelper) {
       $scope.nodeName || null,
       vm
     );
+
+    vm.mnGsiStatsPoller = mnStatisticsNewService.createStatsPoller($scope);
 
     vm.paginator = paginator;
 
