@@ -42,11 +42,10 @@
          sub_key/2,
          get_snapshot/0,
          get_snapshot/1,
+         fetch_snapshot/2,
          sub_key_match/1,
          buckets_change/1,
          names_change/1,
-         key_filter/0,
-         key_filter/1,
          remove_from_snapshot/2,
          toy_buckets/1,
          bucket_exists/2,
@@ -160,47 +159,30 @@ names_change(bucket_names) ->
 names_change(_) ->
     false.
 
+fetch_snapshot(_Bucket, {ns_config, Config}) ->
+    Converted = bucket_configs_to_chronicle(get_buckets(Config)),
+    maps:from_list([{K, {V, no_rev}} || {K, V} <- Converted]);
+fetch_snapshot(all, Txn) ->
+    {ok, {Names, _} = NamesRev} = chronicle_compat:txn_get(root(), Txn),
+    Snapshot =
+        chronicle_compat:txn_get_many(
+          [sub_key(B, SubKey) || B <- Names,
+                                 SubKey <- [props, collections]], Txn),
+    Snapshot#{root() => NamesRev};
+fetch_snapshot(Bucket, Txn) ->
+    chronicle_compat:txn_get_many(
+      [root(), sub_key(Bucket, props), collections:key(Bucket)], Txn).
+
 get_snapshot() ->
-    chronicle_compat:get_snapshot(key_filter()).
+    get_snapshot(all).
 
 get_snapshot(Bucket) ->
-    chronicle_compat:get_snapshot(key_filter(Bucket)).
-
-key_filter() ->
-    case chronicle_compat:backend() of
-        ns_config ->
-            [{ns_config, ns_config_key_filter()}];
-        chronicle ->
-            [{chronicle, fun (bucket_names) ->
-                                 true;
-                             (Key) ->
-                                 sub_key_match(Key) =/= false
-                         end}]
-    end.
-
-key_filter(Bucket) ->
-    case chronicle_compat:backend() of
-        ns_config ->
-            [{ns_config, ns_config_key_filter()}];
-        chronicle ->
-            [{chronicle, [root(), sub_key(Bucket, props),
-                          collections:key(Bucket)]}]
-    end.
-
-ns_config_key_filter() ->
-    fun (buckets) ->
-            {true, fun buckets_to_chronicle/1};
-        (_) ->
-            false
-    end.
+    chronicle_compat:get_snapshot([fetch_snapshot(Bucket, _)]).
 
 upgrade_to_chronicle(Buckets) ->
     BucketConfigs = proplists:get_value(configs, Buckets, []),
     bucket_configs_to_chronicle(BucketConfigs) ++
         collections:default_kvs(BucketConfigs).
-
-buckets_to_chronicle(Buckets) ->
-    bucket_configs_to_chronicle(proplists:get_value(configs, Buckets, [])).
 
 bucket_configs_to_chronicle(BucketConfigs) ->
     [{root(), [N || {N, _} <- BucketConfigs]} |
@@ -564,7 +546,8 @@ failover_safety_rec(BaseSafety, ExtraSafety, [BucketConfig | RestConfigs], Activ
 -spec failover_warnings() -> [failoverNeeded | rebalanceNeeded | hardNodesNeeded | softNodesNeeded].
 failover_warnings() ->
     Snapshot = chronicle_compat:get_snapshot(
-                 [key_filter(), ns_cluster_membership:key_filter()]),
+                 [fetch_snapshot(all, _),
+                  ns_cluster_membership:fetch_snapshot(_)]),
 
     ActiveNodes = ns_cluster_membership:service_active_nodes(Snapshot, kv),
     LiveNodes = ns_cluster_membership:service_actual_nodes(Snapshot, kv),
@@ -1226,13 +1209,13 @@ filter_out_unknown_buckets(BucketsWithUUIDs, BucketConfigs) ->
 buckets_with_data_key(Node) ->
     {node, Node, buckets_with_data}.
 
-buckets_with_data_key_filter(Node) ->
-    {chronicle_compat:backend(), [{node, Node, buckets_with_data}]}.
-
 buckets_with_data_on_this_node() ->
     Node = node(),
-    Snapshot = chronicle_compat:get_snapshot(
-                 [key_filter(), buckets_with_data_key_filter(Node)]),
+    Snapshot =
+        chronicle_compat:get_snapshot(
+          [fetch_snapshot(all, _),
+           chronicle_compat:txn_get_many(
+             [{node, Node, buckets_with_data}], _)]),
     BucketConfigs = get_buckets(Snapshot),
     Stored = membase_buckets_with_data_on_node(Snapshot, Node),
     Filtered = filter_out_unknown_buckets(Stored, BucketConfigs),

@@ -34,7 +34,7 @@
          complete_failover/2,
          upgrade_cluster/1,
          get_prev_failover_nodes/1,
-         key_filter/0]).
+         fetch_snapshot/1]).
 
 -define(CALL_TIMEOUT, ?get_timeout(call, 60000)).
 -define(JANITOR_TIMEOUT, ?get_timeout(janitor, 60000)).
@@ -76,13 +76,10 @@ upgrade_cluster(OtherNodes) ->
     wait_for_server_start(),
     gen_server2:call(?SERVER, {upgrade_cluster, OtherNodes}, ?UPGRADE_TIMEOUT).
 
-key_filter() ->
-    case chronicle_compat:backend() of
-        ns_config ->
-            [];
-        chronicle ->
-            {chronicle, [failover_opaque_key()]}
-    end.
+fetch_snapshot({ns_config, _}) ->
+    #{};
+fetch_snapshot(Txn) ->
+    chronicle_compat:txn_get_many([failover_opaque_key()], Txn).
 
 call(Oper) ->
     case chronicle_compat:backend() of

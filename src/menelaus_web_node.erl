@@ -278,9 +278,10 @@ build_node_status(Node, Bucket, InfoNode, BucketsAll) ->
     end.
 
 get_snapshot() ->
-    chronicle_compat:get_snapshot([ns_bucket:key_filter(),
-                                   ns_cluster_membership:key_filter(),
-                                   chronicle_master:key_filter()]).
+    chronicle_compat:get_snapshot(
+      [ns_bucket:fetch_snapshot(all, _),
+       ns_cluster_membership:fetch_snapshot(_),
+       chronicle_master:fetch_snapshot(_)]).
 
 build_nodes_info_fun(CanIncludeOtpCookie, InfoLevel, Stability, LocalAddr) ->
     OtpCookie =

@@ -53,8 +53,8 @@
          prepare_to_join/2,
          is_newly_added_node/1,
          attach_node_uuids/2,
-         get_snapshot/0,
-         key_filter/0
+         fetch_snapshot/1,
+         get_snapshot/0
         ]).
 
 -export([supported_services/0,
@@ -83,28 +83,21 @@
          user_friendly_service_name/1,
          json_service_name/1]).
 
+fetch_snapshot(Txn) ->
+    Snapshot =
+        chronicle_compat:txn_get_many(
+          [nodes_wanted, server_groups,
+           [chronicle_compat:service_keys(S) ||
+               S <- supported_services()]], Txn),
+    maps:merge(
+      Snapshot,
+      chronicle_compat:txn_get_many(
+        lists:flatten(
+          [chronicle_compat:node_keys(N) || N <- nodes_wanted(Snapshot)]),
+        Txn)).
+
 get_snapshot() ->
-    chronicle_compat:get_snapshot(key_filter()).
-
-key_filter() ->
-    [{chronicle_compat:backend(), fun key_filter/1}].
-
-key_filter(nodes_wanted) ->
-    true;
-key_filter(server_groups) ->
-    true;
-key_filter({node, _, membership}) ->
-    true;
-key_filter({node, _, recovery_type}) ->
-    true;
-key_filter({service_map, _}) ->
-    true;
-key_filter({service_failover_pending, _}) ->
-    true;
-key_filter({node, _, services}) ->
-    true;
-key_filter(_) ->
-    false.
+    chronicle_compat:get_snapshot([fetch_snapshot(_)]).
 
 get_nodes_with_status(PredOrStatus) ->
     get_nodes_with_status(ns_config:latest(), PredOrStatus).

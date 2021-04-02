@@ -399,9 +399,9 @@ handle_event({call, From},
               DeltaRecoveryBuckets, RebalanceId, RetryChk},
              _StateName, _State) ->
     Snapshot = chronicle_compat:get_snapshot(
-                 [ns_bucket:key_filter(),
-                  ns_cluster_membership:key_filter(),
-                  chronicle_master:key_filter()]),
+                 [ns_bucket:fetch_snapshot(all, _),
+                  ns_cluster_membership:fetch_snapshot(_),
+                  chronicle_master:fetch_snapshot(_)]),
 
     case {EjectedNodes -- KnownNodes,
           lists:sort(ns_cluster_membership:nodes_wanted(Snapshot)),
@@ -1368,8 +1368,8 @@ graceful_failover_retry_ok(Chk) ->
 get_graceful_fo_chk() ->
     Cfg = ns_config:get(),
     Snapshot = chronicle_compat:get_snapshot(
-                 [ns_bucket:key_filter(),
-                  ns_cluster_membership:key_filter()]),
+                 [ns_bucket:fetch_snapshot(all, _),
+                  ns_cluster_membership:fetch_snapshot(_)]),
     KnownNodes0 = ns_cluster_membership:nodes_wanted(Snapshot),
     KnownNodes = ns_cluster_membership:attach_node_uuids(KnownNodes0, Cfg),
     FailedNodes = get_failed_nodes(Snapshot, KnownNodes0),

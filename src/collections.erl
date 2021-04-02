@@ -44,8 +44,6 @@
          convert_uid_to_memcached/1,
          key_match/1,
          key/1,
-         key_filter/0,
-         key_filter/1,
          get_manifest/2,
          get_manifest/3,
          set_manifest/4,
@@ -78,22 +76,6 @@ key_match(Key) ->
             {true, Bucket};
         _ ->
             false
-    end.
-
-key_filter() ->
-    case enabled() of
-        false ->
-            [];
-        true ->
-            [{chronicle, ?cut(key_match(_) =/= false)}]
-    end.
-
-key_filter(Bucket) ->
-    case enabled() of
-        false ->
-            [];
-        true ->
-            [{chronicle, [key(Bucket)]}]
     end.
 
 default_manifest() ->

@@ -38,9 +38,10 @@
                      {error, {bad_vbuckets, [vbucket_id()]}} |
                      {error, {corrupted_server_list, [node()], [node()]}}.
 cleanup(Bucket, Options) ->
-    Snapshot = chronicle_compat:get_snapshot(
-                 [ns_bucket:key_filter(Bucket),
-                  ns_cluster_membership:key_filter()]),
+    Snapshot =
+        chronicle_compat:get_snapshot(
+          [ns_bucket:fetch_snapshot(Bucket, _),
+           ns_cluster_membership:fetch_snapshot(_)]),
     case ns_bucket:get_bucket(Bucket, Snapshot) of
         not_present ->
             ok;

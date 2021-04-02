@@ -24,7 +24,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--export([key_filter/0,
+-export([get_snapshot/0,
          this_node_memory_data/0,
          get_total_buckets_ram_quota/1,
          check_quotas/4,
@@ -42,8 +42,8 @@
 -define(CGROUP_MEM_USAGE_FILE, "/sys/fs/cgroup/memory/memory.usage_in_bytes").
 -define(CGROUP_MEM_LIMIT_FILE, "/sys/fs/cgroup/memory/memory.limit_in_bytes").
 
-key_filter() ->
-    ns_bucket:key_filter().
+get_snapshot() ->
+    ns_bucket:get_snapshot().
 
 this_node_memory_data() ->
     case os:getenv("MEMBASE_RAM_MEGS") of

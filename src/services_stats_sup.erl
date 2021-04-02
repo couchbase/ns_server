@@ -16,6 +16,7 @@
 -module(services_stats_sup).
 
 -include("ns_common.hrl").
+-include("cut.hrl").
 
 -behaviour(supervisor).
 
@@ -81,9 +82,10 @@ refresh_children() ->
         [Id || {Id, _, _, _} <-
                    supervisor:which_children(service_stats_children_sup)],
     RunningChildren = lists:sort(RunningChildren0),
-    Snapshot = chronicle_compat:get_snapshot(
-                 [ns_bucket:key_filter(),
-                  ns_cluster_membership:key_filter()]),
+    Snapshot =
+        chronicle_compat:get_snapshot(
+          [ns_bucket:fetch_snapshot(all, _),
+           ns_cluster_membership:fetch_snapshot(_)]),
     WantedChildren0 = compute_wanted_children(service_fts, Snapshot) ++
         compute_wanted_children(service_index, Snapshot) ++
         compute_wanted_children(service_cbas, Snapshot) ++

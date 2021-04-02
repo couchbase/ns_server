@@ -29,6 +29,9 @@
          set_multiple/1,
          transaction/2,
          transaction/3,
+         ro_txn/1,
+         txn_get/2,
+         txn_get_many/2,
          get_snapshot/1,
          get_snapshot/2,
          get_snapshot_with_revision/1,
@@ -41,6 +44,7 @@
          config_sync/2,
          config_sync/3,
          node_keys/1,
+         service_keys/1,
          upgrade/1]).
 
 %% RPC from another nodes
@@ -148,8 +152,7 @@ transaction(ns_config, Keys, Fun) ->
     TXNRV =
         ns_config:run_txn(
           fun (Cfg, SetFn) ->
-                  Snapshot =
-                      ns_config_to_snapshot([lists:member(_, Keys)], #{}, Cfg),
+                  Snapshot = txn_get_many(Keys, {ns_config, Cfg}),
                   BuildCommit =
                       lists:foldl(
                         fun ({set, K, V}, Acc) -> SetFn(K, V, Acc) end,
@@ -174,85 +177,71 @@ transaction(ns_config, Keys, Fun) ->
             erlang:error(exceeded_retries)
     end.
 
-apply_filters(_, _, _, [], Acc) ->
-    Acc;
-apply_filters(K, V, Rev, [Fun | Rest], Acc) ->
-    case Fun(K) of
-        {true, Convert} ->
-            lists:foldl(
-              fun ({K1, V1}, Acc1) ->
-                      maps:put(K1, {V1, Rev}, Acc1)
-              end, Acc, Convert(V));
-        true ->
-            maps:put(K, {V, Rev}, Acc);
+ro_txn(Body) ->
+    ro_txn(Body, #{}).
+
+ro_txn(Body, Opts) ->
+    Type =
+        case {backend(), ns_node_disco:couchdb_node() == node()} of
+            {chronicle, true} ->
+                couchdb;
+            {Backend, _} ->
+                Backend
+        end,
+    ro_txn(Type, Body, Opts).
+
+ro_txn(chronicle, Body, Opts) ->
+    chronicle_kv:ro_txn(kv, ?cut(Body({chronicle, _})), Opts);
+ro_txn(ns_config, Body, _Opts) ->
+    {ok, {Body({ns_config, ns_config:get()}), no_rev}};
+ro_txn(couchdb, Body, #{}) ->
+    {ok, {ns_couchdb_chronicle_dup:ro_txn(?cut(Body({couchdb, _}))), no_rev}}.
+
+txn_get(K, {chronicle, Txn}) ->
+    chronicle_kv:txn_get(K, Txn);
+txn_get(K, {ns_config, Config}) ->
+    case ns_config:search(Config, K) of
+        {value, V} ->
+            {ok, {V, no_rev}};
         false ->
-            apply_filters(K, V, Rev, Rest, Acc)
-    end.
+            {error, not_found}
+    end;
+txn_get(K, {couchdb, TxnGet}) ->
+    TxnGet(K).
 
-get_snapshot(KeyFilters) ->
-    get_snapshot(KeyFilters, #{}).
+txn_get_many(Keys, {chronicle, Txn}) ->
+    chronicle_kv:txn_get_many(Keys, Txn);
+txn_get_many(Keys, Txn) ->
+    lists:foldl(
+      fun (K, Acc) ->
+              case txn_get(K, Txn) of
+                  {ok, {V, R}} ->
+                      maps:put(K, {V, R}, Acc);
+                  {error, not_found} ->
+                      Acc
+              end
+      end, #{}, Keys).
 
-get_snapshot(KeyFilters, Opts) ->
-    {Snapshot, _} = get_snapshot_with_revision(KeyFilters, Opts),
+get_snapshot(Fetchers) ->
+    get_snapshot(Fetchers, #{}).
+
+get_snapshot(Fetchers, Opts) ->
+    {Snapshot, _} = get_snapshot_with_revision(Fetchers, Opts),
     Snapshot.
 
-get_snapshot_with_revision(KeyFilters) ->
-    get_snapshot_with_revision(KeyFilters, #{}).
+get_snapshot_with_revision(Fetchers) ->
+    get_snapshot_with_revision(Fetchers, #{}).
 
-get_snapshot_with_revision(KeyFilters, Opts) ->
-    GroupedFilters = misc:groupby_map(fun functools:id/1,
-                                      lists:flatten([KeyFilters])),
-    UniqueFilters = [{Type, lists:usort(Filters)} ||
-                        {Type, Filters} <- GroupedFilters],
-
-    lists:foldl(get_snapshot_with_revision(_, _, Opts), {#{}, no_rev},
-                UniqueFilters).
-
-ns_config_to_snapshot(Filters, InitialSnapshot, Config) ->
-    ns_config:fold(apply_filters(_, _, no_rev, Filters, _),
-                   InitialSnapshot, Config).
-
-get_snapshot_with_revision({Type, Filters}, {Acc, OldRev}, Opts) ->
-    {ListFilters, FunFilters} =
-        lists:partition(fun (F) when is_list(F) -> true;
-                            (_) -> false end, Filters),
-    UniqueKeys = lists:usort(lists:flatten(ListFilters)),
-    AllFilters =
-        case ListFilters of
-            [] ->
-                FunFilters;
-            _ ->
-                [lists:member(_, UniqueKeys) | FunFilters]
-        end,
-    case Type of
-        ns_config ->
-            {ns_config_to_snapshot(AllFilters, Acc, ns_config:get()), OldRev};
-        chronicle ->
-            case ns_node_disco:couchdb_node() == node() of
-                true ->
-                    Opts = #{},
-                    {lists:foldl(
-                       fun ({K, {V, R}}, Acc1) ->
-                               apply_filters(K, V, R, AllFilters, Acc1)
-                       end, Acc, ns_couchdb_chronicle_dup:get_snapshot()),
-                     no_rev};
-                false ->
-                    case FunFilters of
-                        [] ->
-                            {ok, {Snapshot, Rev}} =
-                                chronicle_kv:get_snapshot(kv, UniqueKeys, Opts),
-                            {Snapshot, Rev};
-                        _ ->
-                            {ok, {Snapshot, Rev}} =
-                                chronicle_kv:get_full_snapshot(kv, Opts),
-                            {maps:fold(
-                               fun (K, {V, KeyRev}, Acc1) ->
-                                       apply_filters(K, V, KeyRev, AllFilters,
-                                                     Acc1)
-                               end, Acc, Snapshot), Rev}
-                    end
-            end
-    end.
+get_snapshot_with_revision(Fetchers, Opts) ->
+    {ok, SnapshotWithRev} =
+        ro_txn(
+          fun (Txn) ->
+                  lists:foldl(
+                    fun (Fetcher, Acc) ->
+                            maps:merge(Fetcher(Txn), Acc)
+                    end, #{}, Fetchers)
+          end, Opts),
+    SnapshotWithRev.
 
 subscribe_to_key_change(Handler) ->
     BuildHandler = fun (Type) ->
@@ -355,6 +344,10 @@ node_keys(Node) ->
      {node, Node, services},
      {node, Node, recovery_type},
      {node, Node, failover_vbuckets}].
+
+service_keys(Service) ->
+    [{service_map, Service},
+     {service_failover_pending, Service}].
 
 should_move(nodes_wanted) ->
     true;

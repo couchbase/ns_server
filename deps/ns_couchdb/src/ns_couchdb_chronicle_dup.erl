@@ -27,9 +27,9 @@
 -export([start_link/0,
          init/1,
          handle_info/2,
+         handle_call/3,
          lookup/1,
-         get_snapshot/0]).
-
+         ro_txn/1]).
 
 -record(state, {child, ref}).
 
@@ -38,6 +38,9 @@ start_link() ->
 
 lookup(Key) ->
     ets:lookup(?MODULE, Key).
+
+ro_txn(Body) ->
+    gen_server:call(?MODULE, {ro_txn, Body}).
 
 init([]) ->
     ets:new(?MODULE, [public, set, named_table]),
@@ -61,6 +64,17 @@ subscribe_to_events() ->
                       ok
               end),
     #state{child = Child, ref = Ref}.
+
+handle_call({ro_txn, Body}, _From, State) ->
+    TxnGet = fun (K) ->
+                     case ets:lookup(?MODULE, K) of
+                         [{K, VR}] ->
+                             {ok, VR};
+                         [] ->
+                             {error, not_found}
+                     end
+             end,
+    {reply, Body(TxnGet), State}.
 
 handle_info({'EXIT', Child, Reason}, #state{child = Child}) ->
     ?log_debug("Received exit ~p from event subscriber", [Reason]),
@@ -124,9 +138,6 @@ pull() ->
         end,
     apply_snapshot(Snapshot).
 
-get_snapshot() ->
-    ets:tab2list(?MODULE).
-
 apply_snapshot(undefined) ->
     ok;
 apply_snapshot(Snapshot) ->
@@ -138,7 +149,7 @@ apply_snapshot(Snapshot) ->
                   false ->
                       delete(K, R)
               end
-      end, get_snapshot()),
+      end, ets:tab2list(?MODULE)),
     lists:foreach(
       fun ({K, {V, R}}) ->
               case ets:lookup(?MODULE, K) of

@@ -20,6 +20,7 @@
 
 -include("ns_common.hrl").
 -include("ns_config.hrl").
+-include("cut.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -486,7 +487,7 @@ interesting_stats_total_rec([ThisStats | RestStats], Key, Acc) ->
 do_cluster_storage_info([]) -> [];
 do_cluster_storage_info(NodeInfos) ->
     Config = ns_config:get(),
-    Snapshot = chronicle_compat:get_snapshot(memory_quota:key_filter()),
+    Snapshot = memory_quota:get_snapshot(),
     NodesCount = length(NodeInfos),
     RAMQuotaUsedPerNode = memory_quota:get_total_buckets_ram_quota(Snapshot),
     RAMQuotaUsed = RAMQuotaUsedPerNode * NodesCount,
@@ -596,10 +597,11 @@ delete_disk_buckets_databases_loop(Pred, [Bucket | Rest]) ->
 
 buckets_in_use() ->
     Node = node(),
-    Snapshot = chronicle_compat:get_snapshot(
-                 [ns_bucket:key_filter(),
-                  ns_cluster_membership:key_filter()],
-                 #{read_consistency => quorum}),
+    Snapshot =
+        chronicle_compat:get_snapshot(
+          [ns_bucket:fetch_snapshot(all, _),
+           ns_cluster_membership:fetch_snapshot(_)],
+          #{read_consistency => quorum}),
     Services = ns_cluster_membership:node_services(Snapshot, Node),
     BucketConfigs = ns_bucket:get_buckets(Snapshot),
     case lists:member(kv, Services) of

@@ -454,8 +454,8 @@ do_handle_pool_settings_post_loop(Req, RetriesLeft) ->
 do_handle_pool_settings_post(Req) ->
     Config = ns_config:get(),
     Snapshot = chronicle_compat:get_snapshot(
-                 [ns_bucket:key_filter(),
-                  ns_cluster_membership:key_filter()]),
+                 [ns_bucket:fetch_snapshot(all, _),
+                  ns_cluster_membership:fetch_snapshot(_)]),
     CompatVersion = cluster_compat_mode:get_compat_version(Config),
 
     validator:handle(
