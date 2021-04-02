@@ -51,6 +51,7 @@
          get_option/2]).
 
 -define(PLUGGABLE_UI, "_p").
+-define(PROMETHEUS_API, "_prometheus").
 
 %% External API
 
@@ -548,6 +549,12 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["prometheus_sd_config.yaml"] ->
                     {{[admin, stats_export], read},
                      fun menelaus_web_prometheus:handle_sd_config/1};
+                [?PROMETHEUS_API | _] ->
+                    "/"?PROMETHEUS_API ++ RawPath =
+                        mochiweb_request:get(raw_path, Req),
+                    {{[admin, stats_export], read},
+                     fun menelaus_web_prometheus:proxy_prometheus_api/2,
+                     [RawPath]};
                 _ ->
                     {ui, IsSSL, fun handle_serve_file/4, [AppRoot, Path, 10]}
             end;
@@ -883,6 +890,12 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                                drop_rest_prefix(mochiweb_request:get(raw_path, Req)),
                                Plugins, PReq)
                      end};
+                [?PROMETHEUS_API | _] ->
+                    "/"?PROMETHEUS_API ++ RawPath =
+                        mochiweb_request:get(raw_path, Req),
+                    {{[admin, stats_export], read},
+                     fun menelaus_web_prometheus:proxy_prometheus_api/2,
+                     [RawPath]};
                 _ ->
                     {done, reply_not_found(Req)}
             end;

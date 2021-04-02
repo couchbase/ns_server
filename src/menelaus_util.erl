@@ -78,7 +78,8 @@
          web_json_exception/2,
          global_error_exception/2,
          require_permission/2,
-         server_error_report/4]).
+         server_error_report/4,
+         proxy_req/6]).
 
 %% Internal exports.
 -export([wake_up/4]).
@@ -101,6 +102,8 @@
         [{?CACHE_CONTROL, "no-cache,no-store,must-revalidate"},
          {"Expires", "Thu, 01 Jan 1970 00:00:00 GMT"},
          {"Pragma", "no-cache"}]).
+-define(PART_SIZE, 100000).
+-define(WINDOW_SIZE, 5).
 
 compute_sec_headers() ->
     {value, Headers} = ns_config:search(secure_headers),
@@ -651,6 +654,49 @@ choose_node_consistently(Req, Nodes) ->
     N = erlang:phash2({Memo, Peer}, length(Nodes)) + 1,
     lists:nth(N, Nodes).
 
+proxy_req({Scheme, Host, Port, AFamily}, Path, Headers, Timeout,
+          RespHeaderFilterFun, Req) ->
+    Method = mochiweb_request:get(method, Req),
+    Body = get_body(Req),
+    Options = [{partial_download, [{window_size, ?WINDOW_SIZE},
+                                   {part_size, ?PART_SIZE}]},
+               {connect_options, [AFamily]}],
+    Resp = lhttpc:request(Host, Port, Scheme =:= https, Path, Method, Headers,
+                          Body, Timeout, Options),
+    handle_resp(Resp, RespHeaderFilterFun, Req).
+
+get_body(Req) ->
+    case mochiweb_request:recv_body(Req) of
+        Body when is_binary(Body) ->
+            Body;
+        undefined ->
+            <<>>
+    end.
+
+handle_resp({ok, {{StatusCode, _ReasonPhrase}, RcvdHeaders, Pid}},
+            RespHeaderFilterFun, Req)
+  when is_pid(Pid) ->
+    SendHeaders = RespHeaderFilterFun(RcvdHeaders),
+    Resp = menelaus_util:reply(Req, chunked, StatusCode, SendHeaders),
+    stream_body(Pid, Resp);
+handle_resp({ok, {{StatusCode, _ReasonPhrase}, RcvdHeaders, undefined = _Body}},
+            RespHeaderFilterFun, Req) ->
+    SendHeaders = RespHeaderFilterFun(RcvdHeaders),
+    menelaus_util:reply_text(Req, <<>>, StatusCode, SendHeaders);
+handle_resp({error, timeout}, _RespHeaderFilterFun, Req) ->
+    menelaus_util:reply_text(Req, <<"Gateway Timeout">>, 504);
+handle_resp({error, _Reason} = Error, _RespHeaderFilterFun, Req) ->
+    ?log_error("http client error ~p~n", [Error]),
+    menelaus_util:reply_text(Req, <<"Unexpected server error">>, 500).
+
+stream_body(Pid, Resp) ->
+    case lhttpc:get_body_part(Pid) of
+        {ok, Part} when is_binary(Part) ->
+            mochiweb_response:write_chunk(Part, Resp),
+            stream_body(Pid, Resp);
+        {ok, {http_eob, _Trailers}} ->
+            mochiweb_response:write_chunk(<<>>, Resp)
+    end.
 
 -ifdef(TEST).
 compute_sec_headers_test() ->

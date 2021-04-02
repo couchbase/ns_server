@@ -16,7 +16,8 @@
 
 %% API
 -export([handle_get_local_metrics/2, handle_create_snapshot/1,
-         handle_get_metrics/1, handle_sd_config/1]).
+         handle_get_metrics/1, handle_sd_config/1,
+         proxy_prometheus_api/2]).
 
 -include("ns_common.hrl").
 
@@ -123,9 +124,36 @@ handle_create_snapshot(Req) ->
             menelaus_util:reply_text(Req, Reason, 500)
     end.
 
+proxy_prometheus_api(RawPath, Req) ->
+    ensure_allowed_prom_req(RawPath),
+    Settings = prometheus_cfg:settings(),
+    {Username, Password} = proplists:get_value(prometheus_creds, Settings),
+    Method = mochiweb_request:get(method, Req),
+    Headers = [menelaus_rest:basic_auth_header(Username, Password)] ++
+              [{"Content-Type", "application/x-www-form-urlencoded"} ||
+                Method /= 'GET'],
+    {Addr, PortStr} = misc:split_host_port(proplists:get_value(addr, Settings),
+                                           ""),
+    Port = list_to_integer(PortStr),
+    AFamily = proplists:get_value(afamily, Settings),
+    %% Since we are not using https, we need to make sure we communicate
+    %% with prometheus over loopback only (to comply with the strict TLS policy)
+    true = lists:member(Addr, ["::1", "127.0.0.1"]),
+    menelaus_util:proxy_req({http, Addr, Port, AFamily}, RawPath, Headers,
+                            ?METRICS_TIMEOUT, fun (Hs) -> Hs end, Req).
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+ensure_allowed_prom_req("/api/v1/query_range" ++ _) -> ok;
+ensure_allowed_prom_req("/api/v1/query" ++ _) -> ok;
+ensure_allowed_prom_req("/api/v1/series" ++ _) -> ok;
+ensure_allowed_prom_req("/api/v1/labels" ++ _) -> ok;
+ensure_allowed_prom_req("/api/v1/label/" ++ _) -> ok;
+ensure_allowed_prom_req("/api/v1/metadata" ++ _) -> ok;
+ensure_allowed_prom_req(_) ->
+    menelaus_util:web_exception(404, "not found").
 
 report_metric({Metric, Labels, Value}, Resp) ->
     LabelsIOList = [[name_to_iolist(K), <<"=\"">>, label_val_to_bin(V),

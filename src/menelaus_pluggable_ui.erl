@@ -32,8 +32,6 @@
 -define(HEAD_MARKER, <<"<!-- Inject head.frag.html file content for Pluggable "
                        "UI components here -->">>).
 -define(TIMEOUT, 60000).
--define(PART_SIZE, 100000).
--define(WINDOW_SIZE, 5).
 -define(DEF_REQ_HEADERS_FILTER, {drop, ["content-length",
                                         "transfer-encoding",
                                         "ns-server-proxy-timeout"]}).
@@ -295,7 +293,12 @@ proxy_req(RestPrefix, Path, PluginsConfig, Req) ->
                     AuthToken = auth_token(Req, Remote),
                     Headers = AuthToken ++ convert_headers(Req, HdrFilter) ++
                         forwarded_headers(Req),
-                    do_proxy_req(HostPort, Path, Headers, Timeout, Req);
+                    RespHeaderFilter =
+                        fun (H) ->
+                            filter_headers(H, ?DEF_RESP_HEADERS_FILTER)
+                        end,
+                    menelaus_util:proxy_req(HostPort, Path, Headers, Timeout,
+                                            RespHeaderFilter, Req);
                 {error, Error} ->
                     server_error(Req, Error)
             end;
@@ -427,48 +430,6 @@ filter_headers(Headers, {drop, Names}) ->
 
 member(Name, Names) ->
     lists:member(string:to_lower(Name), Names).
-
-do_proxy_req({Scheme, Host, Port, AFamily}, Path, Headers, Timeout, Req) ->
-    Method = mochiweb_request:get(method, Req),
-    Body = get_body(Req),
-    Options = [{partial_download, [{window_size, ?WINDOW_SIZE},
-                                   {part_size, ?PART_SIZE}]},
-               {connect_options, [AFamily]}],
-    Resp = lhttpc:request(Host, Port, Scheme =:= https, Path, Method, Headers,
-                          Body, Timeout, Options),
-    handle_resp(Resp, Req).
-
-get_body(Req) ->
-    case mochiweb_request:recv_body(Req) of
-        Body when is_binary(Body) ->
-            Body;
-        undefined ->
-            <<>>
-    end.
-
-handle_resp({ok, {{StatusCode, _ReasonPhrase}, RcvdHeaders, Pid}}, Req)
-  when is_pid(Pid) ->
-    SendHeaders = filter_headers(RcvdHeaders, ?DEF_RESP_HEADERS_FILTER),
-    Resp = menelaus_util:reply(Req, chunked, StatusCode, SendHeaders),
-    stream_body(Pid, Resp);
-handle_resp({ok, {{StatusCode, _ReasonPhrase}, RcvdHeaders, undefined = _Body}},
-            Req) ->
-    SendHeaders = filter_headers(RcvdHeaders, ?DEF_RESP_HEADERS_FILTER),
-    menelaus_util:reply_text(Req, <<>>, StatusCode, SendHeaders);
-handle_resp({error, timeout}, Req) ->
-    menelaus_util:reply_text(Req, <<"Gateway Timeout">>, 504);
-handle_resp({error, _Reason}=Error, Req) ->
-    ?log_error("http client error ~p~n", [Error]),
-    menelaus_util:reply_text(Req, <<"Unexpected server error">>, 500).
-
-stream_body(Pid, Resp) ->
-    case lhttpc:get_body_part(Pid) of
-        {ok, Part} when is_binary(Part) ->
-            mochiweb_response:write_chunk(Part, Resp),
-            stream_body(Pid, Resp);
-        {ok, {http_eob, _Trailers}} ->
-            mochiweb_response:write_chunk(<<>>, Resp)
-    end.
 
 server_error(Req, {service_not_running, Service}) ->
     Msg = list_to_binary("Service " ++ atom_to_list(Service)
