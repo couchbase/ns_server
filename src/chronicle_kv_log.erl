@@ -38,16 +38,22 @@ handle_info(Info, State) ->
     ?log_warning("Unexpected message(~p, ~p)", [Info, State]),
     {noreply, State, hibernate}.
 
+calculate_diff(K, V, Diff, State) ->
+    {case maps:find(K, State) of
+         {ok, Old} ->
+             Diff(V, Old);
+         error ->
+             V
+     end, maps:put(K, V, State)}.
+
 log(K, V, R, State) ->
     {NewV, NewState} =
         case ns_bucket:sub_key_match(K) of
             {true, _Bucket, props} ->
-                {case maps:find(K, State) of
-                     {ok, Old} ->
-                         ns_config_log:compute_bucket_diff(V, Old);
-                     error ->
-                         V
-                 end, maps:put(K, V, State)};
+                calculate_diff(K, V, fun ns_config_log:compute_bucket_diff/2,
+                               State);
+            {true, _Bucket, collections} ->
+                calculate_diff(K, V, fun collections:diff_manifests/2, State);
             _ ->
                 {V, State}
         end,

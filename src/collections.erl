@@ -47,7 +47,8 @@
          get_uid/1,
          get_collection_uid/3,
          get_scopes/1,
-         get_collections/1]).
+         get_collections/1,
+         diff_manifests/2]).
 
 %% rpc from other nodes
 -export([wait_for_manifest_uid/4]).
@@ -387,6 +388,48 @@ get_operations(CurrentScopes, RequiredScopes) ->
                 end, get_collections(CurrentScopeProps),
                 get_collections(ScopeProps))
       end, CurrentScopes, RequiredScopes).
+
+diff_scopes(CurrentScopes, RequiredScopes) ->
+    get_operations(
+      fun ({delete, ScopeName, ScopeProps}) ->
+              {deleted_scope, ScopeName, ScopeProps};
+          ({add, ScopeName, ScopeProps}) ->
+              {new_scope, ScopeName, ScopeProps};
+          ({modify, ScopeName, ScopeProps, CurrentScopeProps}) ->
+              case get_uid(CurrentScopeProps) =:= get_uid(ScopeProps) of
+                  true ->
+                      diff_collections(ScopeName, CurrentScopeProps,
+                                       ScopeProps);
+                  false ->
+                      [{deleted_scope, ScopeName, CurrentScopeProps},
+                       {new_scope, ScopeName, ScopeProps}]
+              end
+      end, CurrentScopes, RequiredScopes).
+
+diff_collections(ScopeName, CurrentScopeProps, ScopeProps) ->
+    get_operations(
+      fun ({delete, CollectionName, Props}) ->
+              {deleted_collection, ScopeName, CollectionName, Props};
+          ({add, CollectionName, CollectionProps}) ->
+              {new_collection, ScopeName, CollectionName, CollectionProps};
+          ({modify, CollectionName, CollectionProps, CurrentCollectionProps}) ->
+              case lists:sort(CollectionProps) =:=
+                  lists:sort(CurrentCollectionProps) of
+                  false ->
+                      [{deleted_collection, ScopeName, CollectionName,
+                        CurrentCollectionProps},
+                       {new_collection, ScopeName, CollectionName}];
+                  true ->
+                      []
+              end
+      end, get_collections(CurrentScopeProps),
+      get_collections(ScopeProps)).
+
+diff_manifests(NewManifest, OldManifest) ->
+    NewScopes = get_scopes(NewManifest),
+    OldScopes = get_scopes(OldManifest),
+    lists:keyreplace(scopes, 1, NewManifest,
+                     {scopes_diff, diff_scopes(OldScopes, NewScopes)}).
 
 compile_operation({set_manifest, Roles, RequiredScopes, CheckUid},
                   Bucket, Manifest) ->
