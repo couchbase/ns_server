@@ -275,8 +275,7 @@ ensure_collections(Sock, #cfg{name = BucketName, config = BucketConfig,
             Manifest = collections:manifest_json(BucketName, Snapshot),
             ?log_debug(
                "Applying collection manifest to bucket ~p due to id change from"
-               " ~p to ~p. Manifest = ~p",
-               [BucketName, Prev, Next, Manifest]),
+               " ~p to ~p.", [BucketName, Prev, Next]),
             ok = mc_client_binary:set_collections_manifest(
                    Sock, ejson:encode(Manifest)),
             gen_event:notify(buckets_events,

@@ -283,7 +283,7 @@ update_txn(Bucket, Operation, Txn) ->
 
 do_update_with_manifest(Bucket, Manifest, Operation, Txn, Buckets) ->
     ?log_debug("Perform operation ~p on manifest ~p of bucket ~p",
-               [Operation, Manifest, Bucket]),
+               [Operation, get_uid(Manifest), Bucket]),
     case perform_operations(Manifest,
                             compile_operation(Operation, Bucket, Manifest)) of
         {ok, Manifest} ->
@@ -315,7 +315,6 @@ do_update_with_manifest(Bucket, Manifest, Operation, Txn, Buckets) ->
 
 apply_manifest(Bucket, Manifest) ->
     NewManifest = bump_id(Manifest, uid),
-    ?log_debug("Resulting manifest ~p", [NewManifest]),
     {commit, [{set, key(Bucket), NewManifest}], uid(NewManifest)}.
 
 perform_operations(_Manifest, {error, Error}) ->
