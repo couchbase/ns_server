@@ -96,9 +96,7 @@ handle_call(get_snapshot, _From, Pid) ->
     RV =
         try chronicle_kv:get_full_snapshot(kv) of
             {ok, {Snapshot, _}} ->
-                {ok, maps:fold(fun (K, {V, _}, Acc) ->
-                                       [{K, V} | Acc]
-                               end, [], Snapshot)}
+                {ok, Snapshot}
         catch T:E:S ->
                 ?log_debug("Unable to obtain chronicle snapshot:~n~p",
                            [{T, E, S}]),

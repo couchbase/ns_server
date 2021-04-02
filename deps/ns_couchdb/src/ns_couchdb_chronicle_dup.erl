@@ -53,10 +53,10 @@ subscribe_to_events() ->
     ?log_debug("Subscribing to events from ~p with ref = ~p", [NsServer, Ref]),
     Child = ns_pubsub:subscribe_link(
               {chronicle_kv:event_manager(kv), NsServer},
-              fun ({{key, Key}, _Rev, {updated, Value}}) ->
-                      Self ! {insert, Ref, {Key, Value}};
-                  ({{key, Key}, _Rev, deleted}) ->
-                      Self ! {delete, Ref, Key};
+              fun ({{key, Key}, Rev, {updated, Value}}) ->
+                      Self ! {insert, Ref, Key, Value, Rev};
+                  ({{key, Key}, Rev, deleted}) ->
+                      Self ! {delete, Ref, Key, Rev};
                   (_) ->
                       ok
               end),
@@ -69,11 +69,11 @@ handle_info({'EXIT', Child, Reason}, #state{child = Child}) ->
 handle_info({'EXIT', From, Reason}, State) ->
     ?log_debug("Received exit ~p from ~p", [Reason, From]),
     {stop, Reason, State};
-handle_info({insert, Ref, KV}, State = #state{ref = Ref}) ->
-    insert(KV),
+handle_info({insert, Ref, K, V, Rev}, State = #state{ref = Ref}) ->
+    insert(K, V, Rev),
     {noreply, State};
-handle_info({delete, Ref, K}, State = #state{ref = Ref}) ->
-    delete(K),
+handle_info({delete, Ref, K, Rev}, State = #state{ref = Ref}) ->
+    delete(K, Rev),
     {noreply, State};
 handle_info(resubscribe, #state{child = undefined} = State) ->
     {noreply, try
@@ -99,15 +99,15 @@ resubscribe() ->
 notify(Evt) ->
     gen_event:notify(chronicle_kv:event_manager(kv), Evt).
 
-insert({K, V} = KV) ->
-    ?log_debug("Set ~p", [KV]),
-    ets:insert(?MODULE, KV),
-    notify({{key, K}, no_rev, {updated, V}}).
+insert(K, V, R) ->
+    ?log_debug("Set ~p, rev = ~p", [K, R]),
+    ets:insert(?MODULE, {K, {V, R}}),
+    notify({{key, K}, R, {updated, V}}).
 
-delete(K) ->
-    ?log_debug("Delete ~p", [K]),
+delete(K, R) ->
+    ?log_debug("Delete ~p, rev = ~p", [K, R]),
     ets:delete(?MODULE, K),
-    notify({{key, K}, no_rev, deleted}).
+    notify({{key, K}, R, deleted}).
 
 pull() ->
     NsServer = ns_node_disco:ns_server_node(),
@@ -130,15 +130,21 @@ get_snapshot() ->
 apply_snapshot(undefined) ->
     ok;
 apply_snapshot(Snapshot) ->
-    DeletedKeys = [K || {K, _} <- get_snapshot()] --
-        [K || {K, _} <- Snapshot],
-    [delete(K) || K <- DeletedKeys],
     lists:foreach(
-      fun ({K, _V} = KV) ->
+      fun ({K, {_V, R}}) ->
+              case maps:is_key(K, Snapshot) of
+                  true ->
+                      ok;
+                  false ->
+                      delete(K, R)
+              end
+      end, get_snapshot()),
+    lists:foreach(
+      fun ({K, {V, R}}) ->
               case ets:lookup(?MODULE, K) of
-                  [KV] ->
+                  [{K, {V, R}}] ->
                       ok;
                   _ ->
-                      insert(KV)
+                      insert(K, V, R)
               end
-      end, Snapshot).
+      end, maps:to_list(Snapshot)).

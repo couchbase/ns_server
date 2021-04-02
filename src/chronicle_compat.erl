@@ -88,7 +88,7 @@ get(Config, Key, #{}) ->
             case ns_node_disco:couchdb_node() =:= node() of
                 true ->
                     case ns_couchdb_chronicle_dup:lookup(Key) of
-                        [{Key, Value}] ->
+                        [{Key, {Value, _Rev}}] ->
                             {ok, Value};
                         [] ->
                             {error, not_found}
@@ -232,8 +232,8 @@ get_snapshot_with_revision({Type, Filters}, {Acc, OldRev}, Opts) ->
                 true ->
                     Opts = #{},
                     {lists:foldl(
-                       fun ({K, V}, Acc1) ->
-                               apply_filters(K, V, no_rev, AllFilters, Acc1)
+                       fun ({K, {V, R}}, Acc1) ->
+                               apply_filters(K, V, R, AllFilters, Acc1)
                        end, Acc, ns_couchdb_chronicle_dup:get_snapshot()),
                      no_rev};
                 false ->
