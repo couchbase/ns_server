@@ -169,7 +169,7 @@ get_snapshot(Bucket) ->
 key_filter() ->
     case chronicle_compat:backend() of
         ns_config ->
-            [{ns_config, ns_config_key_filter()} | collections:key_filter()];
+            [{ns_config, ns_config_key_filter()}];
         chronicle ->
             [{chronicle, fun (bucket_names) ->
                                  true;
@@ -181,8 +181,7 @@ key_filter() ->
 key_filter(Bucket) ->
     case chronicle_compat:backend() of
         ns_config ->
-            [{ns_config, ns_config_key_filter()} |
-             collections:key_filter(Bucket)];
+            [{ns_config, ns_config_key_filter()}];
         chronicle ->
             [{chronicle, [root(), sub_key(Bucket, props),
                           collections:key(Bucket)]}]
