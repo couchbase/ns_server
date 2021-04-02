@@ -91,7 +91,15 @@ notify_histogram(Metric, Max, Units, Val) when Max > 0, Val >= 0,
             catch ets:insert_new(?MODULE, V),
             catch ets:update_counter(?MODULE, Key, Updates),
             ok
-    end.
+    end;
+%% Ignoring negative values. It might happen in case of time change
+%% when os:system_time is used for measurements. It is also possible to
+%% see that in case of monotonic time usage, though (seen it one time,
+%% most likely a bug in vm specific to mac os).
+notify_histogram(Metric, _Max, _Units, Val) when Val < 0 ->
+    ?log_warning("Ignoring negative histogram value (~p) for ~p",
+                 [Val, Metric]),
+    ok.
 
 %% It is unsafe to use this function from multiple processes with the same
 %% metric
