@@ -309,7 +309,14 @@ handle_cast({extract, {From, Ref}, Query, Start, End, Step, Timeout}, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info(_Info, State) ->
+handle_info({Port, {exit_status, Status}}, #state{port = Port} = State) ->
+    ?log_error("Received exit_status ~p from sigar", [Status]),
+    {stop, {sigar, Status}, State};
+handle_info({Port, eof}, #state{port = Port} = State) ->
+    ?log_error("Received eof from sigar"),
+    {stop, {sigar, eof}, State};
+handle_info(Info, State) ->
+    ?log_warning("Unhandled info: ~p", [Info]),
     {noreply, State}.
 
 recv_data(Port) ->
@@ -324,7 +331,13 @@ recv_data_loop(_, <<Version:32/native, _/binary>>) ->
 recv_data_loop(Port, Acc) ->
     receive
         {Port, {data, Data}} ->
-            recv_data_loop(Port, <<Data/binary, Acc/binary>>)
+            recv_data_loop(Port, <<Data/binary, Acc/binary>>);
+        {Port, {exit_status, Status}} ->
+            ?log_error("Received exit_status ~p from sigar", [Status]),
+            exit({sigar, Status});
+        {Port, eof} ->
+            ?log_error("Received eof from sigar"),
+            exit({sigar, eof})
     end.
 
 recv_data_with_length(_Port, Acc, _WantedLength = 0) ->
@@ -339,7 +352,13 @@ recv_data_with_length(Port, Acc, WantedLength) ->
                                           WantedLength - Size);
                 Size > WantedLength ->
                     erlang:error({too_big_recv, Size, WantedLength, Data, Acc})
-            end
+            end;
+        {Port, {exit_status, Status}} ->
+            ?log_error("Received exit_status ~p from sigar", [Status]),
+            exit({sigar, Status});
+        {Port, eof} ->
+            ?log_error("Received eof from sigar"),
+            exit({sigar, eof})
     end.
 
 unpack_data({Bin, LocalStats}, PrevCounters, State) ->
