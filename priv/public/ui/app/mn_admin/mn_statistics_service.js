@@ -10,6 +10,7 @@ import {timeMinute,
 import mnPoll from "/ui/app/components/mn_poll.js";
 import mnStoreService from "/ui/app/components/mn_store_service.js";
 import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
+import mnPermissions from "/ui/app/components/mn_pool_default.js";
 
 import mnServersService from "./mn_servers_service.js"
 import mnStatisticsDescriptionService from "./mn_statistics_description_service.js";
@@ -24,11 +25,12 @@ angular
     mnPoll,
     mnStatisticsDescriptionService,
     mnStoreService,
-    mnPoolDefault
+    mnPoolDefault,
+    mnPermissions
   ])
   .factory('mnStatisticsNewService', mnStatisticsNewServiceFactory);
 
-function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootScope, mnStatisticsDescriptionService, mnStoreService, mnPoolDefault) {
+function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootScope, mnStatisticsDescriptionService, mnStoreService, mnPoolDefault, mnPermissions) {
   var rootScope = $rootScope.$new();
 
   var formatSecond = timeFormat("%-I:%M:%S%p");
@@ -141,6 +143,9 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
     };
 
     function subscribeUIStatsPoller(config, scope) {
+      if (mnPoolDefault.export.compat.atLeast70 && !mnPermissions.export.cluster.stats.read) {
+        return
+      }
       let config1 = packStatsConfig(config);
 
       function register(config2, statPath) {

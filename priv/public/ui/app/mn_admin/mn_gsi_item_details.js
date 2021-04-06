@@ -71,8 +71,10 @@ function mnGsiItemController($scope, mnGsiService, mnStatisticsNewService, mnPoo
     }
   }, $scope);
 
-  $scope.$watch("mnUIStats", updateValues);
-  $scope.$watch("row", updateValues);
+  if (isAtLeast70 && $scope.rbac.cluster.stats.read) {
+    $scope.$watch("mnUIStats", updateValues);
+    $scope.$watch("row", updateValues);
+  }
 
   function getIndexStatName(statName) {
     return 'index/' + $scope.row.index + '/' + statName;
