@@ -18,8 +18,7 @@ class MnXDCRAddRepMappingItemComponent extends MnLifeCycleHooksToStream {
         "explicitMappingGroup",
         "parent",
         "explicitMappingRules",
-        "keyspace",
-        "initialDenyMode"
+        "keyspace"
       ]
     })
   ]}
@@ -43,11 +42,16 @@ class MnXDCRAddRepMappingItemComponent extends MnLifeCycleHooksToStream {
     this.scopeGroup = isCollection ? this.explicitMappingGroup.scopes.root : this.group;
 
     if (!this.group.flags.get(this.item.name)) {
+      let rules =
+          this.explicitMappingRules.getValue();
+      let name =
+          isCollection ? this.parent + collectionDelimiter + this.item.name : this.item.name;
+
       this.group.flags.addControl(
         this.item.name,
         this.formBuilder.control({
-          value: this.initialDenyMode,
-          disabled: isCollection ? !this.scopeGroup.flags.get(this.parent).value : false
+          value: !!rules[name],
+          disabled: false
         })
       );
     }
@@ -56,7 +60,7 @@ class MnXDCRAddRepMappingItemComponent extends MnLifeCycleHooksToStream {
         this.item.name,
         this.formBuilder.control({
           value: this.item.name,
-          disabled: isCollection ? !this.scopeGroup.flags.get(this.parent).value : false
+          disabled: isCollection ? this.group.flags.get(this.item.name).value : false
         })
       );
     }
@@ -65,44 +69,28 @@ class MnXDCRAddRepMappingItemComponent extends MnLifeCycleHooksToStream {
     this.field = this.group.fields.get(this.item.name);
 
     let doSet = isCollection ? this.setCollectionsRule : this.setScopesRule;
-    let denyModeStream =
-        this.controls.get("denyMode").valueChanges
-        .pipe(startWith(this.controls.get("denyMode").value));
 
 
     this.flag.valueChanges
-      .pipe(withLatestFrom(denyModeStream),
-            takeUntil(this.mnOnDestroy))
+      .pipe(takeUntil(this.mnOnDestroy))
       .subscribe(doSet.bind(this));
 
     this.field.valueChanges
-      .pipe(withLatestFrom(denyModeStream),
-            takeUntil(this.mnOnDestroy))
+      .pipe(takeUntil(this.mnOnDestroy))
       .subscribe(doSet.bind(this));
 
-    this.flag.valueChanges.pipe(startWith(this.flag.value))
-      .pipe(takeUntil(this.mnOnDestroy))
-      .subscribe(this.toggleFiled.bind(this));
-
     if (!isCollection) {
-      this.flag.valueChanges
-        .pipe(merge(this.field.valueChanges),
-              takeUntil(this.mnOnDestroy))
-        .subscribe(this.setRawCollectionsRule.bind(this));
-
-      this.flag.valueChanges
+      this.field.valueChanges
         .pipe(takeUntil(this.mnOnDestroy))
-        .subscribe(v => {
-          let collectionGroup = this.explicitMappingGroup.collections[this.item.name];
-          let collectionControls = this.explicitMappingGroup.collectionsControls[this.item.name];
-          collectionGroup.fields[v ? "enable" : "disable"]({emitEvent: v});
-          collectionGroup.flags[v ? "enable" : "disable"]({emitEvent: v});
-          collectionControls[v ? "enable" : "disable"]({emitEvent: false});
-        });
+        .subscribe(this.updateScopeName.bind(this));
+    } else {
+      this.flag.valueChanges.pipe(startWith(this.flag.value))
+        .pipe(takeUntil(this.mnOnDestroy))
+        .subscribe(this.toggleFiled.bind(this));
     }
   }
 
-  setRawCollectionsRule() {
+  updateScopeName() {
     let rules = this.explicitMappingRules.getValue();
     let collectionGroup = this.explicitMappingGroup.collections[this.item.name];
     let collectionControls = this.explicitMappingGroup.collectionsControls[this.item.name];
@@ -116,23 +104,14 @@ class MnXDCRAddRepMappingItemComponent extends MnLifeCycleHooksToStream {
       let targetCollection = collectionGroup.fields.get(item.name).value;
       let target = targetScope + collectionDelimiter + targetCollection;
 
-      let scopeFlag = this.flag.value;
-
-      if (!scopeFlag) {
-        this.setMappingRule(false, false, sourceCollection,
-                            targetCollection, source, target, rules);
-      } else {
-        let denyMode = collectionControls.get("denyMode").value;
-        let collectionFlag = collectionGroup.flags.get(item.name).value;
-        this.setMappingRule(collectionFlag, denyMode, sourceCollection,
-                            targetCollection, source, target, rules);
-      }
+      let collectionFlag = collectionGroup.flags.get(item.name).value;
+      this.setMappingRule(collectionFlag, source, target, rules);
     });
 
     this.explicitMappingRules.next(rules);
   }
 
-  setScopesRule([_, denyMode]) {
+  setScopesRule() {
     let rules = this.explicitMappingRules.getValue();
 
     let sourceScope = this.item.name;
@@ -140,13 +119,12 @@ class MnXDCRAddRepMappingItemComponent extends MnLifeCycleHooksToStream {
 
     let scopeFlag = this.flag.value
 
-    this.setMappingRule(scopeFlag, denyMode, sourceScope, targetScope,
-                        sourceScope, targetScope, rules);
+    this.setMappingRule(scopeFlag, sourceScope, targetScope, rules);
 
     this.explicitMappingRules.next(rules);
   }
 
-  setCollectionsRule([_, denyMode]) {
+  setCollectionsRule() {
     let rules = this.explicitMappingRules.getValue();
 
     let sourceScope = this.parent;
@@ -159,8 +137,7 @@ class MnXDCRAddRepMappingItemComponent extends MnLifeCycleHooksToStream {
 
     let collectionFlag = this.flag.value;
 
-    this.setMappingRule(collectionFlag, denyMode, sourceCollection,
-                        targetCollection, source, target, rules);
+    this.setMappingRule(collectionFlag, source, target, rules);
 
     this.explicitMappingRules.next(rules);
   }

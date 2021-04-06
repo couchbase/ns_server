@@ -153,23 +153,11 @@ class MnXDCRService {
     return settings;
   }
 
-  setMappingRule(sourceFlag, denyMode, sourceField, targetField, source, target, rules) {
-    if (denyMode) {
-      if (sourceFlag) {
-        if (sourceField === targetField) {
-          delete rules[source];
-        } else {
-          rules[source] = target;
-        }
-      } else {
-        rules[source] = null;
-      }
+  setMappingRule(sourceFlag, source, target, rules) {
+    if (sourceFlag) {
+      rules[source] = target;
     } else {
-      if (sourceFlag) {
-        rules[source] = target;
-      } else {
-        delete rules[source];
-      }
+      delete rules[source];
     }
   }
 

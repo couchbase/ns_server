@@ -4,7 +4,7 @@
        *ngFor="let item of explicitMappingRulesKeys | async"
        class="row padding-quarter margin-top-half margin-bottom-quarter grayblack-bg-7 text-small">
       <span class="break-word">
-        {{item[0]}} &gt; {{item[1] || "null"}}
+        {{item[0]}} &gt; {{item[1] || ""}}
       </span>
       <a *ngIf="isEditMode"
          (click)="delExplicitMappingRules(item[0])"

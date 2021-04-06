@@ -1,35 +1,25 @@
 <div class="row">
 
-<div [formGroup]="controls" class="width-12">
-  <span class="indent-1">
-    <input
-     [attr.id]="'dynamic_check_all' + keyspace + parent"
-     formControlName="checkAll"
-     type="checkbox">
-  <label
-     [attr.for]="'dynamic_check_all' + keyspace + parent">
-    check all
-  </label>
-  </span>
-    <span>
-  <input
-     [attr.id]="'dynamic_deny_mode' + keyspace + parent"
-     formControlName="denyMode"
-     type="checkbox">
-  <label
-     [attr.for]="'dynamic_deny_mode' + keyspace + parent"
-      class="checkbox-inline">
-    include future {{keyspace}}
-  </label>
-  </span>
-</div>
+  <div [formGroup]="controls" class="width-12">
+    <span class="indent-1">
+      <input
+         [attr.id]="'dynamic_check_all' + keyspace + parent"
+         formControlName="checkAll"
+         type="checkbox">
+      <label
+         [attr.for]="'dynamic_check_all' + keyspace + parent">
+        {{(controls.get("checkAll").valueChanges | async) ? "disable" : "enable"}}
+        all filtered
+        {{isCollection ? "collections" : "scopes"}}
+      </label>
+    </span>
+  </div>
 
-<mn-input-filter
- class="row flex-right"
- [group]="filter.group"
- [mnPlaceholder]="'filter ' + keyspace + '...'">
-</mn-input-filter>
-
+  <mn-input-filter
+     class="row flex-right"
+     [group]="filter.group"
+     [mnPlaceholder]="'filter ' + keyspace + '...'">
+  </mn-input-filter>
 </div>
 
 <div *ngIf="keyspace == 'scopes'">
@@ -38,7 +28,6 @@
     <div *ngFor="let scope of (scopesPaginator.page | async);">
       <mn-xdcr-add-rep-scope
          [item]="scope"
-         [initialDenyMode]="initialDenyMode"
          [explicitMappingGroup]="explicitMappingGroup"
          [explicitMappingRules]="explicitMappingRules">
       </mn-xdcr-add-rep-scope>
@@ -56,17 +45,24 @@
   </ngb-pagination>
 </div>
 <div
-   *ngIf="keyspace == 'collections'"
    class="cbui-table-body margin-top-1 margin-bottom-2 max-height-280"
-   style="columns: 2 auto; column-gap:0px">
-  <mn-xdcr-add-rep-mapping-item
-     *ngFor="let coll of (filteredItems | async); trackBy: trackCollectionsBy"
-     class="block nowrap padding-quarter"
-     [item]="coll"
-     [keyspace]="keyspace"
-     [parent]="item.name"
-     [initialDenyMode]="initialDenyMode"
-     [explicitMappingGroup]="explicitMappingGroup"
-     [explicitMappingRules]="explicitMappingRules">
-  </mn-xdcr-add-rep-mapping-item>
+   *ngIf="keyspace == 'collections'">
+  <span
+     [hidden]="(filteredItems | async)?.length"
+     class="zero-content">
+    there's nothing here
+  </span>
+  <div
+     [hidden]="!(filteredItems | async)?.length"
+     style="columns: 2 auto; column-gap:0px">
+    <mn-xdcr-add-rep-mapping-item
+       *ngFor="let coll of (filteredItems | async); trackBy: trackCollectionsBy"
+       class="block nowrap padding-quarter"
+       [item]="coll"
+       [keyspace]="keyspace"
+       [parent]="item.name"
+       [explicitMappingGroup]="explicitMappingGroup"
+       [explicitMappingRules]="explicitMappingRules">
+    </mn-xdcr-add-rep-mapping-item>
+  </div>
 </div>

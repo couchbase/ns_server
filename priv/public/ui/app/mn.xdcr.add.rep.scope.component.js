@@ -12,7 +12,6 @@ class MnXDCRAddRepScopeComponent extends MnLifeCycleHooksToStream {
       changeDetection: ChangeDetectionStrategy.OnPush,
       inputs: [
         "item",
-        "initialDenyMode",
         "explicitMappingGroup",
         "explicitMappingRules"
       ]

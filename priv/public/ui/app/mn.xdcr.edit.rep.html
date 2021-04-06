@@ -51,7 +51,7 @@
       </h4>
       <mn-xdcr-mapping-rules
          class="block"
-         *ngIf="(replicationSettings | async) && (isEnterprise | async)"
+         *ngIf="(isEnterprise | async)"
          [isEditMode]="true"
          [isMigrationMode]="isMigrationMode"
          [isExplicitMappingMode]="isExplicitMappingMode"
