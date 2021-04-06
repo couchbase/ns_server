@@ -120,7 +120,13 @@ class MnHelperService {
       .subscribe(hotGroup);
 
     var filterFunction = ([list, filterValue]) =>
-        list ? list.filter(item => item[filterKey].includes(filterValue)) : [];
+        list ? list.filter(item => {
+          if (typeof item === 'string' || typeof item === 'number') {
+            return item.toString().includes(filterValue);
+          } else {
+            return item[filterKey].includes(filterValue);
+          }
+        }) : [];
 
     // R.filter(R.compose(R.any(R.contains(val)), R.values))
 

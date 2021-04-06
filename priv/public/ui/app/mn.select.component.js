@@ -1,7 +1,9 @@
 import { ChangeDetectionStrategy, Component } from '/ui/web_modules/@angular/core.js';
 import { MnLifeCycleHooksToStream } from "./mn.core.js";
 import { startWith } from '/ui/web_modules/rxjs/operators.js';
-import { BehaviorSubject } from '/ui/web_modules/rxjs.js';
+import { BehaviorSubject, Subject } from '/ui/web_modules/rxjs.js';
+import { MnHelperService } from './mn.helper.service.js';
+import { pluck, shareReplay, map, takeUntil, withLatestFrom } from '/ui/web_modules/rxjs/operators.js';
 
 export { MnSelectComponent };
 
@@ -15,47 +17,86 @@ class MnSelectComponent extends MnLifeCycleHooksToStream {
         "mnFormControlName",
         "values",
         "labels",
-        "filter",
+        "valuesMapping",
         "capitalize",
         "mnPlaceholder",
-        "placement"
+        "placement",
+        "hasSearch"
       ],
       changeDetection: ChangeDetectionStrategy.OnPush
     })
   ]}
 
   static get parameters() { return [
+    MnHelperService
   ]}
 
-  constructor() {
+  constructor(MnHelperService) {
     super();
+
+    this.mnHelperService = MnHelperService;
   }
 
   ngOnInit() {
+    this.placement = this.placement || 'bottom';
+
+    if (!this.valuesMapping) {
+      this.valuesMapping = this.defaultValuesMapping.bind(this);
+    }
+
+    if (this.hasSearch) {
+      this.prepareSearch();
+    }
+
     this.dropdownFormControl = this.group.get(this.mnFormControlName);
     if (this.dropdownFormControl) {
       this.disabled = new BehaviorSubject(this.dropdownFormControl.disabled);
+      this.value = this.dropdownFormControl.valueChanges.pipe(startWith(this.dropdownFormControl.value));
+      this.dropdownFormControl.registerOnDisabledChange(disabled => this.disabled.next(disabled));
     }
+  }
 
-    if (!this.filter) {
-      this.filter = this.defaultFilter;
-    }
+  prepareSearch() {
+    let searchMinimumOptionsNumber = 10;
+    this.selectOptionClickStream = new Subject();
+    this.selectLabelClickStream = new Subject();
+    this.searchFilter = this.mnHelperService.createFilter(this);
 
-    this.placement = this.placement || 'bottom';
+    var valuesStream = this.mnOnChanges
+      .pipe(pluck("values", "currentValue"));
+    this.preparedValues = valuesStream
+      .pipe(this.searchFilter.pipe,
+            shareReplay({refCount: true, bufferSize: 1}));
 
-    let field = this.group.get(this.mnFormControlName);
-    this.value = field.valueChanges.pipe(startWith(field.value));
-    field.registerOnDisabledChange(disabled => this.disabled.next(disabled));
+    this.hasSearchInput = valuesStream
+      .pipe(map(values => (this.hasSearch && (values || []).length >= searchMinimumOptionsNumber) || false));
+
+    this.selectOptionClickStream
+      .pipe(takeUntil(this.mnOnDestroy))
+      .subscribe(selectedOption => this.optionSelected(selectedOption));
+
+    var labelsStream = this.mnOnChanges
+      .pipe(pluck("labels", "currentValue"));
+    this.preparedLabels = labelsStream
+      .pipe(this.searchFilter.pipe,
+            shareReplay({refCount: true, bufferSize: 1}));
+
+    this.selectLabelClickStream
+      .pipe(withLatestFrom(labelsStream, valuesStream),
+            takeUntil(this.mnOnDestroy))
+      .subscribe(([selectedLabel, labels, values]) => {
+        this.optionSelected(values[labels.indexOf(selectedLabel)]);
+      });
   }
 
   /**
-   * Default filter:
+   * Default values mapping:
    * * if capitalize input flag is true - capitalize the displayed label if it is a string
    * * else leave the label as it is
    * @param option
    * @returns {string}
    */
-  defaultFilter(option) {
+  defaultValuesMapping(option) {
     if (this.capitalize && angular.isString(option) && option) {
       return option[0].toUpperCase() + option.slice(1);
     }
@@ -63,7 +104,10 @@ class MnSelectComponent extends MnLifeCycleHooksToStream {
     return option;
   }
 
-  optionClicked(value) {
+  optionSelected(value) {
     this.dropdownFormControl.setValue(value);
+    if (this.hasSearchInput) {
+      this.searchFilter.group.get('value').setValue('');
+    }
   }
 }

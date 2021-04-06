@@ -1839,7 +1839,8 @@ mn-select[disabled] .mn-select,
 }
 .mn-select div[uib-dropdown-menu] .option:hover,
 .mn-select div[ngbDropdownMenu] .option:hover,
-.mn-select div[uib-dropdown-menu] .option:focus {
+.mn-select div[uib-dropdown-menu] .option:focus,
+.mn-select div[ngbDropdownMenu] .option:focus {
   background-color: #f5f5f5;
 }
 .mn-select.mn-align-left div[uib-dropdown-menu] {
