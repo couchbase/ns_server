@@ -22,6 +22,7 @@
 -define(MIN_TS, -?MAX_TS).
 -define(DEFAULT_PROMETHEUS_QUERY_TIMEOUT, 60000).
 -define(DERIVED_PARAM_LABEL, <<"__derived_param_name_label__">>).
+-define(MAX_PARALLEL_QUERIES_IN_POST, 128).
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
@@ -228,46 +229,56 @@ handle_range_post(Req) ->
           %% problems
           misc:executing_on_new_process(
             fun () ->
-                Monitors = start_node_extractors_monitoring(List),
-                Requests = lists:map(send_metrics_request(_, PermFilters),
-                                     List),
-                reply_with_chunked_json_array(
-                  fun ({Ref, Props}, DownHosts) ->
-                      read_metrics_response(Ref, Props, Now, DownHosts)
-                  end, [], lists:zip(Requests, List), Req),
-                stop_node_extractors_monitoring(Monitors)
+                handle_range_post_validated(List, PermFilters, Now, Req)
             end)
       end, Req, json_array, post_validators(Now, Req)).
 
-reply_with_chunked_json_array(Fun, AccInit, List, Req) ->
+handle_range_post_validated(List, PermFilters, Now, Req) ->
+    Monitors = start_node_extractors_monitoring(List),
+    Groups = misc:split(?MAX_PARALLEL_QUERIES_IN_POST, List),
+    reply_with_chunked_json_array(
+      fun (Reply, InitState) ->
+          lists:foldl(
+            fun (Sublist, Acc1) ->
+                Requests = lists:map(send_metrics_request(_, PermFilters),
+                                     Sublist),
+                lists:foldl(
+                  fun ({Ref, Props}, {Acc2, DownHosts}) ->
+                      try read_metrics_response(Ref, Props, Now, DownHosts) of
+                          {Res, NewDownHosts} ->
+                              NewAcc2 = Reply(Res, Acc2),
+                              {NewAcc2, NewDownHosts}
+                      catch
+                          Type:What:Stack ->
+                              {Msg, Report} = menelaus_util:server_error_report(
+                                                Req, Type, What, Stack),
+                              ?log_error("Server error during processing: ~p",
+                                         [Report]),
+                              ErrorReply = {[{data, []},
+                                             {errors, [{[{node, node()},
+                                                         {error, Msg}]}]}]},
+                              NewAcc2 = Reply(ErrorReply, Acc2),
+                              {NewAcc2, DownHosts}
+                      end
+                  end, Acc1, lists:zip(Requests, Sublist))
+            end, {InitState, []}, Groups)
+      end, Req),
+    stop_node_extractors_monitoring(Monitors).
+
+reply_with_chunked_json_array(Fun, Req) ->
     HTTPResp = menelaus_util:reply_ok(
                  Req, "application/json; charset=utf-8", chunked),
     Write = mochiweb_response:write_chunk(_, HTTPResp),
     Write(<<"[">>),
-    _ = lists:foldl(
-          fun (E, {IsFirst, Acc}) ->
-              case IsFirst of
-                  true -> ok;
-                  false -> Write(<<",">>)
-              end,
-              try
-                  {Res, NewAcc} = Fun(E, Acc),
-                  Write(ejson:encode(Res)),
-                  {false, NewAcc}
-              catch
-                  Type:What:Stack ->
-                      {Msg, Report} =
-                          menelaus_util:server_error_report(Req, Type, What,
-                                                            Stack),
-                      ?log_error("Server error during processing: ~p",
-                                 [Report]),
-                      ErrorReply = {[{data, []},
-                                     {errors, [{[{node, node()},
-                                                 {error, Msg}]}]}]},
-                      Write(ejson:encode(ErrorReply)),
-                      {false, Acc}
-              end
-          end, {true, AccInit}, List),
+    ReportFun = fun (JsonToWrite, IsFirst) ->
+                    case IsFirst of
+                         true -> ok;
+                         false -> Write(<<",">>)
+                    end,
+                    Write(ejson:encode(JsonToWrite)),
+                    false
+                end,
+    Fun(ReportFun, true),
     Write(<<"]">>),
     Write(<<>>).
 

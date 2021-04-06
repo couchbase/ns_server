@@ -43,7 +43,7 @@ pre_70_stats_to_prom_query("@system-processes" = Section, OrGroupSize, all) ->
         [Ast || M <- SpecialMetrics,
                 {ok, Ast} <- [pre_70_stat_to_prom_query(Section, M)]],
     [promQL:format_promql({'or', SubGroup})
-        || SubGroup <- split(OrGroupSize, AstList)];
+        || SubGroup <- misc:split(OrGroupSize, AstList)];
 pre_70_stats_to_prom_query("@global", _, all) ->
     [<<"{category=`audit`}">>];
 pre_70_stats_to_prom_query(StatSection, OrGroupSize, all) ->
@@ -59,7 +59,7 @@ pre_70_stats_to_prom_query(StatSection, OrGroupSize, List) ->
                 end, [bin(S) || S <- List]),
 
     [promQL:format_promql({'or', SubGroup})
-        || SubGroup <- split(OrGroupSize, AstList)].
+        || SubGroup <- misc:split(OrGroupSize, AstList)].
 
 pre_70_stat_to_prom_query("@system", <<"rest_requests">>) ->
     {ok, promQL:rate({[{eq, <<"name">>, <<"sys_rest_requests">>}]})};
@@ -942,49 +942,7 @@ eventing_failures() ->
      on_delete_failure,
      timer_callback_failure].
 
-%% Splits list into groups of given max size. It minimizes the number of groups
-%% and tries to make groups equal in size when possible.
-%% split(3, [1,2,3,4,5]) => [[1,2,3], [4,5]]
-%% split(3, [1,2,3,4]) => [[1,2], [3,4]]
--spec split(undefined | non_neg_integer(), [A]) -> [[A]].
-split(undefined, List) -> [List];
-split(N, []) when N > 0 -> [[]];
-split(N, List) when N > 0 ->
-    Len = length(List),
-    GroupsNum = ceil(Len / N),
-    split_in_groups(GroupsNum, List, []).
-
-split_in_groups(GroupsNum, List, Res) ->
-    Len = length(List),
-    GroupsMaxSize = ceil(Len / GroupsNum),
-    case misc:safe_split(GroupsMaxSize, List) of
-        {SL, []} -> lists:reverse([SL | Res]);
-        {SL, Rest} -> split_in_groups(GroupsNum - 1, Rest, [SL | Res])
-    end.
-
 -ifdef(TEST).
-
-split_test_() ->
-    Test =
-        fun (N, ListLen) ->
-            MaxElem = ListLen - 1,
-            Name = lists:flatten(io_lib:format("split(~b, lists:seq(0, ~b))",
-                                               [N, MaxElem])),
-            {Name,
-             fun () ->
-                 OrigList = lists:seq(0, MaxElem),
-                 Res = split(N, OrigList),
-                 ?assertEqual(OrigList, lists:concat(Res)),
-                 ?assert(length(Res) > 0),
-                 Max = length(hd(Res)),
-                 ?assert(Max =< N),
-                 lists:foreach(
-                   fun (SubRes) ->
-                       ?assert(lists:member(length(SubRes), [Max, Max - 1]))
-                   end, Res)
-             end}
-        end,
-    [Test(N, Len) || N <- lists:seq(1, 30), Len <- lists:seq(0, 3*N)].
 
 pre_70_to_prom_query_test_() ->
     Test = fun (Section, Stats, ExpectedQuery) ->

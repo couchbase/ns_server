@@ -1837,6 +1837,52 @@ do_safe_split(0, List, Acc) ->
 do_safe_split(N, [H|T], Acc) ->
     do_safe_split(N - 1, T, [H|Acc]).
 
+%% Splits list into groups of given max size. It minimizes the number of groups
+%% and tries to make groups equal in size when possible.
+%% split(3, [1,2,3,4,5]) => [[1,2,3], [4,5]]
+%% split(3, [1,2,3,4]) => [[1,2], [3,4]]
+-spec split(undefined | non_neg_integer(), [A]) -> [[A]].
+split(undefined, List) -> [List];
+split(N, []) when N > 0 -> [[]];
+split(N, List) when N > 0 ->
+    Len = length(List),
+    GroupsNum = ceil(Len / N),
+    split_in_groups(GroupsNum, List, []).
+
+split_in_groups(GroupsNum, List, Res) ->
+    Len = length(List),
+    GroupsMaxSize = ceil(Len / GroupsNum),
+    case misc:safe_split(GroupsMaxSize, List) of
+        {SL, []} -> lists:reverse([SL | Res]);
+        {SL, Rest} -> split_in_groups(GroupsNum - 1, Rest, [SL | Res])
+    end.
+
+-ifdef(TEST).
+
+split_test_() ->
+    Test =
+        fun (N, ListLen) ->
+            MaxElem = ListLen - 1,
+            Name = lists:flatten(io_lib:format("split(~b, lists:seq(0, ~b))",
+                                               [N, MaxElem])),
+            {Name,
+             fun () ->
+                 OrigList = lists:seq(0, MaxElem),
+                 Res = split(N, OrigList),
+                 ?assertEqual(OrigList, lists:concat(Res)),
+                 ?assert(length(Res) > 0),
+                 Max = length(hd(Res)),
+                 ?assert(Max =< N),
+                 lists:foreach(
+                   fun (SubRes) ->
+                       ?assert(lists:member(length(SubRes), [Max, Max - 1]))
+                   end, Res)
+             end}
+        end,
+    [Test(N, Len) || N <- lists:seq(1, 30), Len <- lists:seq(0, 3*N)].
+
+-endif.
+
 -spec run_external_tool(string(), [string()]) -> {non_neg_integer(), binary()}.
 run_external_tool(Path, Args) ->
     run_external_tool(Path, Args, []).
