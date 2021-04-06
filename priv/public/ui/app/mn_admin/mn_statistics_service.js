@@ -660,35 +660,28 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
           stats: {"@fts-.@items.num_mutations_to_index": true},
           size: "small",
           specificStat: true
+        }]
+      }, {
+        name: "Node Resources",
+        isOpen: false,
+        charts: [{
+          stats: {"@system.cpu_utilization_rate": true},
+          size: "medium",
+          specificStat: true // for single-stat chart
         }, {
-          stats: {"@eventing.eventing/dcp_backlog": true},
-          size: "small",
+          stats: {"@system.rest_requests": true},
+          size: "medium",
           specificStat: true
-        },
-                ]
-      },
-               {
-                 name: "Node Resources",
-                 isOpen: false,
-                 charts: [{
-                   stats: {"@system.cpu_utilization_rate": true},
-                   size: "medium",
-                   specificStat: true // for single-stat chart
-                 }, {
-                   stats: {"@system.rest_requests": true},
-                   size: "medium",
-                   specificStat: true
-                 }, {
-                   stats: {"@system.mem_actual_free": true},
-                   size: "medium",
-                   specificStat: false
-                 }, {
-                   stats: {"@system.swap_used": true},
-                   size: "medium",
-                   specificStat: true
-                 }]
-               }
-              ]
+        }, {
+          stats: {"@system.mem_actual_free": true},
+          size: "medium",
+          specificStat: false
+        }, {
+          stats: {"@system.swap_used": true},
+          size: "medium",
+          specificStat: true
+        }]
+      }]
     },{  // 2nd scenario starts here with the comma ///////////////////////
 
       name: "All Services",
@@ -870,10 +863,6 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
         enterprise: true,
         isOpen: false,
         charts: [{
-          stats: {"@eventing.eventing/dcp_backlog": true},
-          size: "small",
-          specificStat: true
-        }, {
           stats: {"@eventing.eventing/failed_count": true,
                   "@eventing.eventing/timeout_count": true},
           size: "small",
