@@ -328,9 +328,8 @@ h1 a:active {
   border: 1px solid #ececec;
   border-width: 0 0 0 1px;
 }
-input.filter-input {
-  width: 320px !important;
-
+.filter-input {
+  width: 320px;
 }
 /* inserts magnifying glass inside filter input field ------------------- */
 .filter-input-group .fa-search-minus {
@@ -3788,6 +3787,7 @@ div.border-top + div.border-top {
   position: relative;
   z-index: 11;
   background-color: #fff;
+  width: fit-content;
 }
 .mn-keyspace-selector .filter-input-group .icon {
   width: auto!important;
@@ -3858,10 +3858,10 @@ div.border-top + div.border-top {
   background-color: #f5f5f5 !important;
 }
 .ks-control-button {
-  height: 28px!important;
   min-width: 0;
   font-size: .825rem;
   line-height: 1;
+  font-weight: 600;
 }
 mn-input-filter {
   display: inline-block;
@@ -3871,7 +3871,10 @@ mn-input-filter {
 .ks-control-selectedrole {
   margin: .5rem 0 .5rem .25rem;
   background-color: #ecf3fa;
-  padding: 0 .25rem 0 .75rem;
+  padding: .5rem 0 0 .5rem;
+}
+.ks-control-selectedrole p {
+  margin: 0 0 .25rem 0;
 }
 .ks-control-selectedrole a {
   min-width: auto;
@@ -3879,8 +3882,10 @@ mn-input-filter {
   color: #555;
   text-align: center;
   border-radius: 50%;
-  padding: .25rem .75rem;
+  padding: 0 .75rem;
   opacity: 1;
+  position: relative;
+  top: -.5rem;
 }
 .ks-control-selectedrole a:hover {
   color: #000;

@@ -13,10 +13,10 @@
 <div
    class="ks-control-selectedrole"
    ng-repeat="cfg in state.selectedRolesConfigs[item.role]">
-  <div class="row">
-    <span>
-      <span class="icon fa-check green-1"></span>
-      <span class="text-small">{{cfg}}</span>
+  <div class="row items-top">
+    <span class="row items-top">
+      <span class="icon fa-check green-1 margin-right-quarter"></span>
+      <p class="text-smaller break-word line-height-1-5">{{cfg}}</p>
     </span>
     <a ng-click="del(cfg)">
       X
