@@ -171,6 +171,11 @@ function propertiesToArray(obj) {
 
 function getStatAdditionalConfig(statName) {
   switch (statName) {
+  case "@kv-.kv_ep_active_ahead_exceptions":
+    return {metric: {name: "kv_ep_ahead_exceptions", state:"active"}, applyFunctions: ["irate"]};
+  case "@kv-.kv_ep_replica_ahead_exceptions":
+    return {metric: {name: "kv_ep_ahead_exceptions", state:"replica"}, applyFunctions: ["irate"]};
+
   case "@kv-.kv_vb_replica_queue_age_seconds":
     return {metric: {name: "kv_vb_queue_age_seconds",state:"replica"},aggregationFunction:"avg"};
   case "@kv-.kv_vb_active_queue_age_seconds":
@@ -294,7 +299,6 @@ function getStatAdditionalConfig(statName) {
   case "@kv-.kv_ep_diskqueue_drain":
   case "@kv-.kv_ep_diskqueue_fill":
   case "@kv-.kv_ep_num_value_ejects":
-  case "@kv-.kv_ep_replica_ahead_exceptions":
   case "@kv-.kv_ep_tmp_oom_errors":
   case "@index-.@items.index_num_requests":
   case "@index-.@items.index_num_docs_indexed":
