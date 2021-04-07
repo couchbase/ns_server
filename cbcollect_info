@@ -1731,8 +1731,8 @@ class CurlKiller:
         self.p = None
 
 
-def do_upload_and_exit(path, url, proxy):
-    output_fd, output_file = tempfile.mkstemp()
+def do_upload_and_exit(path, url, proxy, tmp_dir=None):
+    output_fd, output_file = tempfile.mkstemp(dir=tmp_dir)
     os.close(output_fd)
 
     AltExit.register(lambda: os.unlink(output_file))
@@ -2004,7 +2004,7 @@ def main():
 
     if options.just_upload_into is not None:
         do_upload_and_exit(args[0], options.just_upload_into,
-                           options.upload_proxy)
+                           options.upload_proxy, tmp_dir=options.tmp_dir)
 
     runner = TaskRunner(verbosity=options.verbosity,
                         task_regexp=options.task_regexp,
@@ -2155,9 +2155,11 @@ def main():
     cleanup_old_prometheus_stats(guts)
 
     if upload_url and options.redact_level != "none":
-        do_upload_and_exit(redact_zip_file, upload_url, options.upload_proxy)
+        do_upload_and_exit(redact_zip_file, upload_url, options.upload_proxy,
+                           tmp_dir=options.tmp_dir)
     elif upload_url:
-        do_upload_and_exit(zip_filename, upload_url, options.upload_proxy)
+        do_upload_and_exit(zip_filename, upload_url, options.upload_proxy,
+                           tmp_dir=options.tmp_dir)
 
 
 def find_primary_addr(ipv6, default=None):
