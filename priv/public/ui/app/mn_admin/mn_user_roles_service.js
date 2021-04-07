@@ -192,7 +192,7 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
     }
     if (formData.connect.encryption !== "None" &&
         formData.connect.serverCertValidation == "pasteCert" &&
-        formData.connect.cacert == "") {
+        !formData.connect.cacert) {
       errors.cacert = "The certificate should be provided"
     }
     if (Object.keys(errors).length) {
