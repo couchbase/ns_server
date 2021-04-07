@@ -300,7 +300,7 @@ pull(Timeout) ->
     end.
 
 do_pull(Timeout) ->
-    ok = chronicle_rsm:sync(kv, quorum, Timeout).
+    ok = chronicle_kv:sync(kv, Timeout).
 
 remote_pull(Nodes, Timeout) ->
     {_, BadRPC, BadNodes} =
