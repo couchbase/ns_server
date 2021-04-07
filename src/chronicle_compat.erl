@@ -122,6 +122,8 @@ set(Key, Value) ->
             ok
     end.
 
+set_multiple([]) ->
+    ok;
 set_multiple(List) ->
     case backend() of
         chronicle ->
