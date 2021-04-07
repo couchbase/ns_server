@@ -40,7 +40,7 @@ function mnPoorMansAlertsFactory($http, $state, $uibModal, mnHelper, $timeout) {
     if ($state.params.disablePoorMansAlerts) {
       return;
     }
-    alerts = poolDefault.alerts;
+    alerts = poolDefault.alerts.filter(a => !a.disableUIPopUp);
     if (!alerts.length) {
       return;
     }
