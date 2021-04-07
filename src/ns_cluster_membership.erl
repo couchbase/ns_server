@@ -95,56 +95,57 @@ get_snapshot() ->
     chronicle_compat:get_snapshot([fetch_snapshot(_)]).
 
 get_nodes_with_status(PredOrStatus) ->
-    get_nodes_with_status(ns_config:latest(), PredOrStatus).
+    get_nodes_with_status(direct, PredOrStatus).
 
-get_nodes_with_status(Config, PredOrStatus) ->
-    get_nodes_with_status(Config, nodes_wanted(Config), PredOrStatus).
+get_nodes_with_status(Snapshot, PredOrStatus) ->
+    get_nodes_with_status(Snapshot, nodes_wanted(Snapshot), PredOrStatus).
 
-get_nodes_with_status(Config, Nodes, any) ->
-    get_nodes_with_status(Config, Nodes, fun (_) -> true end);
-get_nodes_with_status(Config, Nodes, Status)
+get_nodes_with_status(Snapshot, Nodes, any) ->
+    get_nodes_with_status(Snapshot, Nodes, fun (_) -> true end);
+get_nodes_with_status(Snapshot, Nodes, Status)
   when is_atom(Status) ->
-    get_nodes_with_status(Config, Nodes, _ =:= Status);
-get_nodes_with_status(Config, Nodes, Pred)
+    get_nodes_with_status(Snapshot, Nodes, _ =:= Status);
+get_nodes_with_status(Snapshot, Nodes, Pred)
   when is_function(Pred, 1) ->
     [Node || Node <- Nodes,
-             Pred(get_cluster_membership(Node, Config))].
+             Pred(get_cluster_membership(Node, Snapshot))].
 
 nodes_wanted() ->
-    nodes_wanted(ns_config:latest()).
+    nodes_wanted(direct).
 
-nodes_wanted(Config) ->
-    lists:usort(chronicle_compat:get(Config, nodes_wanted, #{default => []})).
+nodes_wanted(Snapshot) ->
+    lists:usort(chronicle_compat:get(Snapshot, nodes_wanted, #{default => []})).
+
 server_groups() ->
-    server_groups(ns_config:latest()).
+    server_groups(direct).
 
-server_groups(Config) ->
-    chronicle_compat:get(Config, server_groups, #{required => true}).
+server_groups(Snapshot) ->
+    chronicle_compat:get(Snapshot, server_groups, #{required => true}).
 
 active_nodes() ->
-    active_nodes(ns_config:get()).
+    active_nodes(get_snapshot()).
 
-active_nodes(Config) ->
-    get_nodes_with_status(Config, active).
+active_nodes(Snapshot) ->
+    get_nodes_with_status(Snapshot, active).
 
 inactive_added_nodes() ->
     get_nodes_with_status(inactiveAdded).
 
 actual_active_nodes() ->
-    actual_active_nodes(ns_config:get()).
+    actual_active_nodes(get_snapshot()).
 
-actual_active_nodes(Config) ->
-    get_nodes_with_status(Config, ns_node_disco:nodes_actual(), active).
+actual_active_nodes(Snapshot) ->
+    get_nodes_with_status(Snapshot, ns_node_disco:nodes_actual(), active).
 
 get_cluster_membership(Node) ->
-    get_cluster_membership(Node, ns_config:latest()).
+    get_cluster_membership(Node, direct).
 
-get_cluster_membership(Node, Config) ->
-    chronicle_compat:get(Config, {node, Node, membership},
+get_cluster_membership(Node, Snapshot) ->
+    chronicle_compat:get(Snapshot, {node, Node, membership},
                          #{default => inactiveAdded}).
 
-get_node_server_group(Node, Config) ->
-    get_node_server_group_inner(Node, server_groups(Config)).
+get_node_server_group(Node, Snapshot) ->
+    get_node_server_group_inner(Node, server_groups(Snapshot)).
 
 get_node_server_group_inner(_, []) ->
     undefined;
@@ -176,7 +177,7 @@ update_membership(Nodes, Type, Transaction) ->
 
 is_newly_added_node(Node) ->
     get_cluster_membership(Node) =:= inactiveAdded andalso
-        get_recovery_type(ns_config:latest(), Node) =:= none.
+        get_recovery_type(direct, Node) =:= none.
 
 is_balanced() ->
     not ns_orchestrator:needs_rebalance().
@@ -221,8 +222,8 @@ re_failover(NodeString) ->
               end)
     end.
 
-get_recovery_type(Config, Node) ->
-    chronicle_compat:get(Config, {node, Node, recovery_type},
+get_recovery_type(Snapshot, Node) ->
+    chronicle_compat:get(Snapshot, {node, Node, recovery_type},
                          #{default => none}).
 
 -spec update_recovery_type(node(), delta | full) -> {ok, term()} | bad_node.
@@ -447,22 +448,22 @@ set_service_map(Service, Nodes) ->
     master_activity_events:note_set_service_map(Service, Nodes),
     chronicle_compat:set({service_map, Service}, Nodes).
 
-get_service_map(Config, kv) ->
+get_service_map(Snapshot, kv) ->
     %% kv is special; just return active kv nodes
-    ActiveNodes = active_nodes(Config),
-    service_nodes(Config, ActiveNodes, kv);
-get_service_map(Config, Service) ->
-    chronicle_compat:get(Config, {service_map, Service}, #{default => []}).
+    ActiveNodes = active_nodes(Snapshot),
+    service_nodes(Snapshot, ActiveNodes, kv);
+get_service_map(Snapshot, Service) ->
+    chronicle_compat:get(Snapshot, {service_map, Service}, #{default => []}).
 
-failover_service_nodes(Config, Service, Nodes) ->
+failover_service_nodes(Snapshot, Service, Nodes) ->
     ?log_debug("Failover nodes ~p from service ~p", [Nodes, Service]),
-    Map = get_service_map(Config, Service),
+    Map = get_service_map(Snapshot, Service),
     chronicle_compat:set_multiple(
       [{{service_map, Service}, Map -- Nodes},
        {{service_failover_pending, Service}, true}]).
 
-service_has_pending_failover(Config, Service) ->
-    chronicle_compat:get(Config, {service_failover_pending, Service},
+service_has_pending_failover(Snapshot, Service) ->
+    chronicle_compat:get(Snapshot, {service_failover_pending, Service},
                          #{default => false}).
 
 service_clear_pending_failover(Service) ->
@@ -470,49 +471,50 @@ service_clear_pending_failover(Service) ->
     chronicle_compat:set({service_failover_pending, Service}, false).
 
 node_active_services(Node) ->
-    node_active_services(ns_config:latest(), Node).
+    node_active_services(direct, Node).
 
-node_active_services(Config, Node) ->
-    AllServices = node_services(Config, Node),
+node_active_services(Snapshot, Node) ->
+    AllServices = node_services(Snapshot, Node),
     [S || S <- AllServices,
-          lists:member(Node, service_active_nodes(Config, S))].
+          lists:member(Node, service_active_nodes(Snapshot, S))].
 
 node_services(Node) ->
-    node_services(ns_config:latest(), Node).
+    node_services(direct, Node).
 
-node_services(Config, Node) ->
-    chronicle_compat:get(Config, {node, Node, services},
+node_services(Snapshot, Node) ->
+    chronicle_compat:get(Snapshot, {node, Node, services},
                          #{default => default_services()}).
 
 should_run_service(Service, Node) ->
-    should_run_service(ns_config:latest(), Service, Node).
+    should_run_service(direct, Service, Node).
 
-should_run_service(Config, Service, Node) ->
+should_run_service(Snapshot, Service, Node) ->
     case ns_config_auth:is_system_provisioned()
-        andalso get_cluster_membership(Node, Config) =:= active  of
+        andalso get_cluster_membership(Node, Snapshot) =:= active  of
         false -> false;
         true ->
-            Svcs = node_services(Config, Node),
+            Svcs = node_services(Snapshot, Node),
             lists:member(Service, Svcs)
     end.
 
 service_active_nodes(Service) ->
-    service_active_nodes(ns_config:latest(), Service).
+    service_active_nodes(direct, Service).
 
-service_active_nodes(Config, Service) ->
-    get_service_map(Config, Service).
+service_active_nodes(Snapshot, Service) ->
+    get_service_map(Snapshot, Service).
 
-service_actual_nodes(Config, Service) ->
-    ActualNodes = ordsets:from_list(actual_active_nodes(Config)),
-    ServiceActiveNodes = ordsets:from_list(service_active_nodes(Config, Service)),
+service_actual_nodes(Snapshot, Service) ->
+    ActualNodes = ordsets:from_list(actual_active_nodes(Snapshot)),
+    ServiceActiveNodes =
+        ordsets:from_list(service_active_nodes(Snapshot, Service)),
     ordsets:intersection(ActualNodes, ServiceActiveNodes).
 
 service_nodes(Nodes, Service) ->
-    service_nodes(ns_config:latest(), Nodes, Service).
+    service_nodes(direct, Nodes, Service).
 
-service_nodes(Config, Nodes, Service) ->
+service_nodes(Snapshot, Nodes, Service) ->
     [N || N <- Nodes,
-          ServiceC <- node_services(Config, N),
+          ServiceC <- node_services(Snapshot, N),
           ServiceC =:= Service].
 
 user_friendly_service_name(kv) ->
