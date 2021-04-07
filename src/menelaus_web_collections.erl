@@ -267,6 +267,9 @@ get_err_code_msg({max_number_exceeded, num_scopes}) ->
     {"Maximum number of scopes has been reached", 400};
 get_err_code_msg({max_number_exceeded, num_collections}) ->
     {"Maximum number of collections has been reached", 400};
+get_err_code_msg(exceeded_retries) ->
+    {"Exceeded retries due to conflicting operations on bucket properties.",
+     503};
 get_err_code_msg(Error) when Error =:= unsafe;
                              Error =:= push_config;
                              Error =:= pull_config ->

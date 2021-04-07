@@ -244,7 +244,9 @@ do_update(Bucket, Operation) ->
         {user_error, Error} = RV ->
             ?log_debug("Operation ~p for bucket ~p failed with ~p",
                        [Operation, Bucket, RV]),
-            Error
+            Error;
+        {error, exceeded_retries} ->
+            exceeded_retries
     end.
 
 update_txn(Bucket, Operation, Txn) ->
