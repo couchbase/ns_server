@@ -913,7 +913,7 @@ maybe_update_scrape_dynamic_intervals(Settings) ->
             try
                 Info = scrapes_info(Settings),
                 Intervals = calculate_dynamic_intervals(Info, Settings),
-                RoundedIntervals = [{S, min(round(Float), ?MAX_SCRAPE_INTERVAL)}
+                RoundedIntervals = [{S, round(min(Float, ?MAX_SCRAPE_INTERVAL))}
                                         || {S, Float} <- Intervals],
                 CurIntervals = ns_config:read_key_fast(
                                  {node, node(), stats_scrape_dynamic_intervals},
