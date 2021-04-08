@@ -357,16 +357,16 @@ do_failover_bucket(membase, Bucket, BucketConfig, Nodes, Options) ->
       {vbuckets, node_vbuckets(Map, N)}] || N <- Nodes].
 
 failover_services(Nodes) ->
-    Config    = ns_config:get(),
+    Snapshot = ns_cluster_membership:get_snapshot(),
     Services0 = lists:flatmap(
-                  ns_cluster_membership:node_services(Config, _), Nodes),
+                  ns_cluster_membership:node_services(Snapshot, _), Nodes),
     Services  = lists:usort(Services0) -- [kv],
 
-    Results = lists:flatmap(failover_service(Config, _, Nodes), Services),
+    Results = lists:flatmap(failover_service(Snapshot, _, Nodes), Services),
     failover_handle_results(Results).
 
-failover_service(Config, Service, Nodes) ->
-    ok = ns_cluster_membership:failover_service_nodes(Config, Service, Nodes),
+failover_service(Snapshot, Service, Nodes) ->
+    ok = ns_cluster_membership:failover_service_nodes(Snapshot, Service, Nodes),
 
     %% We're refetching the config since failover_service_nodes updated the
     %% one that we had.

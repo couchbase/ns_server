@@ -98,10 +98,10 @@ nodes_actual_other() ->
     lists:subtract(nodes_actual(), [node()]).
 
 nodes_wanted() ->
-    nodes_wanted(ns_config:latest()).
+    nodes_wanted(direct).
 
-nodes_wanted(Config) ->
-    ns_cluster_membership:nodes_wanted(Config).
+nodes_wanted(Snapshot) ->
+    ns_cluster_membership:nodes_wanted(Snapshot).
 
 % API's used as callbacks that are invoked when ns_config
 % keys have changed.

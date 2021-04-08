@@ -185,9 +185,10 @@ do_dynamic_children(shutdown, Config) ->
     [memcached_spec(Config),
      saslauthd_port_spec(Config)];
 do_dynamic_children(normal, Config) ->
+    Snapshot = ns_cluster_membership:get_snapshot(),
     [memcached_spec(Config),
      saslauthd_port_spec(Config)] ++
-        build_goport_specs(Config).
+        build_goport_specs(Config, Snapshot).
 
 expand_specs(Specs, Config) ->
     [expand_args(S, Config) || S <- Specs].
@@ -326,13 +327,13 @@ build_goport_spec(#def{id = SpecId,
                        exe = Executable,
                        service = Service,
                        rpc = RPCService,
-                       log = Log}, Config) ->
+                       log = Log}, Config, Snapshot) ->
     Cmd = find_executable(Executable),
     NodeUUID = ns_config:search(Config, {node, node(), uuid}, false),
     case Cmd =/= false andalso
         NodeUUID =/= false andalso
         (Service =:= undefined orelse
-         ns_cluster_membership:should_run_service(Config, Service, node())) of
+         ns_cluster_membership:should_run_service(Snapshot, Service, node())) of
         false ->
             [];
         _ ->
@@ -343,8 +344,8 @@ build_goport_spec(#def{id = SpecId,
                   [{log, Log} || Log =/= undefined]}]
     end.
 
-build_goport_specs(Config) ->
-    [build_goport_spec(Def, Config) || Def <- goport_defs()].
+build_goport_specs(Config, Snapshot) ->
+    [build_goport_spec(Def, Config, Snapshot) || Def <- goport_defs()].
 
 net_to_afamily(inet) ->
     "ipv4";

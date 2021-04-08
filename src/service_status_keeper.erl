@@ -242,15 +242,15 @@ process_indexes(Indexes, Mapping) ->
       end, Indexes).
 
 get_source(Service) ->
-    Config = ns_config:get(),
-    case ns_cluster_membership:should_run_service(Config, Service:get_type(),
-                                                  ns_node_disco:ns_server_node()) of
+    Snapshot = ns_cluster_membership:get_snapshot(),
+    case ns_cluster_membership:should_run_service(
+           Snapshot, Service:get_type(), ns_node_disco:ns_server_node()) of
         true ->
             local;
         false ->
             ServiceNodes =
-                ns_cluster_membership:service_actual_nodes(Config,
-                                                           Service:get_type()),
+                ns_cluster_membership:service_actual_nodes(
+                  Snapshot, Service:get_type()),
             {remote, ServiceNodes, length(ServiceNodes)}
     end.
 

@@ -57,18 +57,17 @@ is_notable_event(rest_creds) ->
 is_notable_event(_) ->
     false.
 
-wanted_children(Config) ->
+wanted_children() ->
+    Snapshot = ns_cluster_membership:get_snapshot(),
     [S || S <- health_monitor:supported_services(),
-          ns_cluster_membership:should_run_service(Config, S, node())].
+          ns_cluster_membership:should_run_service(Snapshot, S, node())].
 
 running_children() ->
     [S || {{S, _}, _, _, _} <- supervisor:which_children(service_monitor_children_sup)].
 
 refresh_children() ->
-    Config = ns_config:get(),
-
     Running = ordsets:from_list(running_children()),
-    Wanted = ordsets:from_list(wanted_children(Config)),
+    Wanted = ordsets:from_list(wanted_children()),
 
     ToStart = ordsets:subtract(Wanted, Running),
     ToStop = ordsets:subtract(Running, Wanted),

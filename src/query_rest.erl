@@ -17,7 +17,7 @@
 -export([get_stats/0]).
 
 get_stats() ->
-    case ns_cluster_membership:should_run_service(ns_config:latest(), n1ql, node()) of
+    case ns_cluster_membership:should_run_service(n1ql, node()) of
         true ->
             do_get_stats();
         false ->

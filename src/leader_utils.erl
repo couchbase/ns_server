@@ -33,8 +33,8 @@ live_nodes() ->
 live_nodes(WantedNodes) ->
     live_nodes(ns_config:latest(), WantedNodes).
 
-live_nodes(Config, WantedNodes) ->
-    Nodes = ns_cluster_membership:get_nodes_with_status(Config,
+live_nodes(Snapshot, WantedNodes) ->
+    Nodes = ns_cluster_membership:get_nodes_with_status(Snapshot,
                                                         WantedNodes,
                                                         _ =/= inactiveFailed),
     ns_node_disco:only_live_nodes(Nodes).

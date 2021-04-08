@@ -200,7 +200,7 @@ do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
     {ok, IndexesVersion0} = service_index:get_indexes_version(),
     IndexesVersion = list_to_binary(integer_to_list(IndexesVersion0)),
 
-    GroupsV = erlang:phash2(ns_cluster_membership:server_groups(Config)),
+    GroupsV = erlang:phash2(ns_cluster_membership:server_groups()),
 
     PropList =
         [{name, list_to_binary(Id)},

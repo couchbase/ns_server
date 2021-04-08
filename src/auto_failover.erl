@@ -271,6 +271,7 @@ handle_cast(_Msg, State) ->
 handle_info(tick, State0) ->
     Ref = send_tick_msg(),
     Config = ns_config:get(),
+    Snapshot = ns_cluster_membership:get_snapshot(),
 
     %% Reread autofailover count from config just in case. This value can be
     %% different, for instance, if due to network issues we get disconnected
@@ -285,18 +286,19 @@ handle_info(tick, State0) ->
     State1 = State0#state{count = proplists:get_value(count, AFOConfig),
                           failed_over_server_groups = FOSGs},
 
-    NonPendingNodes = lists:sort(ns_cluster_membership:active_nodes(Config)),
+    NonPendingNodes = lists:sort(ns_cluster_membership:active_nodes(Snapshot)),
 
     NodeStatuses = ns_doctor:get_nodes(),
     DownNodes = fastfo_down_nodes(NonPendingNodes),
-    DownSG = get_down_server_group(DownNodes, Config, NonPendingNodes),
+    DownSG = get_down_server_group(DownNodes, Config, Snapshot,
+                                   NonPendingNodes),
 
     State = log_down_nodes_reason(DownNodes, State1),
     CurrentlyDown = [N || {N, _, _} <- DownNodes],
     NodeUUIDs = ns_config:get_node_uuid_map(Config),
 
     %% Extract service specfic information from the Config
-    ServicesConfig = all_services_config(Config),
+    ServicesConfig = all_services_config(Config, Snapshot),
 
     {Actions, LogicState} =
         auto_failover_logic:process_frame(attach_node_uuids(NonPendingNodes, NodeUUIDs),
@@ -306,7 +308,7 @@ handle_info(tick, State0) ->
     NewState = lists:foldl(
                  fun(Action, S) ->
                          process_action(Action, S, DownNodes, NodeStatuses,
-                                        Config)
+                                        Snapshot)
                  end, State#state{auto_failover_logic_state = LogicState},
                  Actions),
 
@@ -409,8 +411,9 @@ process_action({mail_auto_failover_disabled, Service, {Node, _}}, S, _, _, _) ->
        "Auto-failover for ~s service is disabled.",
        [Node, ns_cluster_membership:user_friendly_service_name(Service)]),
     S;
-process_action({failover, {Node, _UUID}}, S, DownNodes, NodeStatuses, Config) ->
-    SG = ns_cluster_membership:get_node_server_group(Node, Config),
+process_action({failover, {Node, _UUID}}, S, DownNodes, NodeStatuses,
+               Snapshot) ->
+    SG = ns_cluster_membership:get_node_server_group(Node, Snapshot),
     case allow_failover(SG, S, failover) of
         {false, ErrMsg} ->
             case should_report(max_node_reached, S) of
@@ -679,12 +682,12 @@ is_node_down(MonitorStatuses) ->
 %%        report those nodes are down. This meets the requirement for
 %%        server group failover.
 %%
-get_down_server_group([], _, _) ->
+get_down_server_group([], _, _, _) ->
     [];
-get_down_server_group([_], _, _) ->
+get_down_server_group([_], _, _, _) ->
     %% Only one node is down. Skip the checks for server group failover.
     [];
-get_down_server_group(DownNodesInfo, Config, NonPendingNodes) ->
+get_down_server_group(DownNodesInfo, Config, Snapshot, NonPendingNodes) ->
     %% TODO: Temporary. Save the failover_server_group setting in
     %% the auto_failover gen_server state to avoid this lookup.
     AFOConfig = get_cfg(Config),
@@ -698,18 +701,18 @@ get_down_server_group(DownNodesInfo, Config, NonPendingNodes) ->
                                "Down nodes:~p", [DownNodes]),
                     [];
                 false ->
-                    get_down_server_group_inner(DownNodesInfo, Config)
+                    get_down_server_group_inner(DownNodesInfo, Snapshot)
             end;
         false ->
             []
     end.
 
-get_down_server_group_inner(DownNodesInfo, Config) ->
+get_down_server_group_inner(DownNodesInfo, Snapshot) ->
     %% Do all monitors on all down nodes report them as unhealthy?
     Pred = fun ({_, _, true}) -> true; (_) -> false end,
     case lists:all(Pred, DownNodesInfo) of
         true ->
-            case enough_active_server_groups(Config) of
+            case enough_active_server_groups(Snapshot) of
                 false ->
                     [];
                 SGs ->
@@ -725,8 +728,8 @@ get_down_server_group_inner(DownNodesInfo, Config) ->
             []
     end.
 
-enough_active_server_groups(Config) ->
-    ActiveSGs = active_server_groups(Config),
+enough_active_server_groups(Snapshot) ->
+    ActiveSGs = active_server_groups(Snapshot),
     case length(ActiveSGs) < ?MIN_ACTIVE_SERVER_GROUPS of
         true ->
             false;
@@ -734,14 +737,14 @@ enough_active_server_groups(Config) ->
             ActiveSGs
     end.
 
-active_server_groups(Config) ->
-    Groups = ns_cluster_membership:server_groups(Config),
+active_server_groups(Snapshot) ->
+    Groups = ns_cluster_membership:server_groups(Snapshot),
     AllSGs = [{proplists:get_value(name, SG),
                proplists:get_value(nodes, SG)} || SG <- Groups],
     lists:filtermap(
       fun ({SG, Ns}) ->
               case ns_cluster_membership:get_nodes_with_status(
-                     Config, Ns, active) of
+                     Snapshot, Ns, active) of
                   [] ->
                       false;
                   ActiveNodes ->
@@ -807,13 +810,14 @@ update_reported_flags_by_actions(Actions, State) ->
 %% Create a list of all services with following info for each service:
 %% - is auto-failover for the service disabled
 %% - list of nodes that are currently running the service.
-all_services_config(Config) ->
+all_services_config(Config, Snapshot) ->
     %% Get list of all supported services
     AllServices = ns_cluster_membership:cluster_supported_services(),
     lists:map(
       fun (Service) ->
               %% Get list of all nodes running the service.
-              SvcNodes = ns_cluster_membership:service_active_nodes(Config, Service),
+              SvcNodes = ns_cluster_membership:service_active_nodes(
+                           Snapshot, Service),
               %% Is auto-failover for the service disabled?
               ServiceKey = {auto_failover_disabled, Service},
               DV = case Service of

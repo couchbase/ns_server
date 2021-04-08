@@ -206,14 +206,15 @@ notify_cbauth(Label, Pid, Info) ->
             error
     end.
 
-build_node_info(N, Config) ->
-    build_node_info(N, ns_config:search_node_prop(N, Config, memcached, admin_user), Config).
+build_node_info(N, Config, Snapshot) ->
+    build_node_info(N, ns_config:search_node_prop(
+                         N, Config, memcached, admin_user), Config, Snapshot).
 
-build_node_info(_N, undefined, _Config) ->
+build_node_info(_N, undefined, _Config, _Snapshot) ->
     undefined;
-build_node_info(N, User, Config) ->
+build_node_info(N, User, Config, Snapshot) ->
     ActiveServices = [rest |
-                      ns_cluster_membership:node_active_services(Config, N)],
+                      ns_cluster_membership:node_active_services(Snapshot, N)],
     Ports0 = [Port || {_Key, Port} <- service_ports:get_ports_for_services(
                                         N, Config, ActiveServices)],
 
@@ -242,14 +243,15 @@ build_node_info(N, User, Config) ->
 build_auth_info(#state{cert_version = CertVersion,
                        client_cert_auth_version = ClientCertAuthVersion}) ->
     Config = ns_config:get(),
+    Snapshot = ns_cluster_membership:get_snapshot(),
     Nodes = lists:foldl(fun (Node, Acc) ->
-                                case build_node_info(Node, Config) of
+                                case build_node_info(Node, Config, Snapshot) of
                                     undefined ->
                                         Acc;
                                     Info ->
                                         [Info | Acc]
                                 end
-                        end, [], ns_node_disco:nodes_wanted(Config)),
+                        end, [], ns_cluster_membership:nodes_wanted(Snapshot)),
 
     CcaState = ns_ssl_services_setup:client_cert_auth_state(),
     Port = service_ports:get_port(rest_port, Config),

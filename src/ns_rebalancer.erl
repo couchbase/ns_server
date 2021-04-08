@@ -1257,8 +1257,8 @@ check_graceful_failover_possible_rec(Nodes, [{_BucketName, BucketConfig} | RestB
     end.
 
 drop_old_2i_indexes(KeepNodes) ->
-    Config = ns_config:get(),
-    NewNodes = KeepNodes -- ns_cluster_membership:active_nodes(Config),
+    Snapshot = ns_cluster_membership:get_snapshot(),
+    NewNodes = KeepNodes -- ns_cluster_membership:active_nodes(Snapshot),
     %% Only delta recovery is supported for index service.
     %% Note that if a node is running both KV and index service,
     %% and if user selects the full recovery option for such
@@ -1268,8 +1268,9 @@ drop_old_2i_indexes(KeepNodes) ->
     %% Also, delta recovery for index service is different
     %% from that for the KV service. In case of index, it just
     %% means that we will not drop the indexes and their meta data.
-    CleanupNodes = [N || N <- NewNodes,
-                         ns_cluster_membership:get_recovery_type(Config, N) =:= none],
+    CleanupNodes =
+        [N || N <- NewNodes,
+              ns_cluster_membership:get_recovery_type(Snapshot, N) =:= none],
     ?rebalance_info("Going to drop possible old 2i indexes on nodes ~p",
                     [CleanupNodes]),
     {Oks, RPCErrors, Downs} = misc:rpc_multicall_with_plist_result(
@@ -1282,7 +1283,7 @@ drop_old_2i_indexes(KeepNodes) ->
     %% recovery_type for nodes running KV services gets cleared later.
     NonKV = [N || N <- RecoveryNodes,
                   not lists:member(
-                        kv, ns_cluster_membership:node_services(Config, N))],
+                        kv, ns_cluster_membership:node_services(Snapshot, N))],
 
     ok = chronicle_compat:set_multiple(
            ns_cluster_membership:update_membership_sets(NonKV, active) ++
