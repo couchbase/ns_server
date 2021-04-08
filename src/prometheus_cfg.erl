@@ -918,22 +918,31 @@ maybe_update_scrape_dynamic_intervals(Settings) ->
                 CurIntervals = ns_config:read_key_fast(
                                  {node, node(), stats_scrape_dynamic_intervals},
                                  undefined),
+
+                StatsSizeEstimation =
+                    (catch total_db_size_estimate(Info, Settings,
+                                                  RoundedIntervals)),
+
                 case RoundedIntervals of
                     CurIntervals ->
                         ?log_debug("Scrape intervals haven't changed:~n~p~n"
+                                   "CBCollect stats dir size estimation: ~p~n"
                                    "Calculated based on scrapes info:~n~p~n"
                                    "Raw intervals:~n~p",
-                                   [RoundedIntervals, Info, Intervals]);
+                                   [RoundedIntervals, StatsSizeEstimation,
+                                    Info, Intervals]);
                     _ ->
                         ns_config:set(
                           {node, node(), stats_scrape_dynamic_intervals},
                           RoundedIntervals),
+
                         ?log_debug("New scrape intervals:~n~p~n"
                                    "Previous scrape intervals: ~n~p~n"
+                                   "CBCollect stats dir size estimation: ~p~n"
                                    "Calculated based on scrapes info:~n~p~n"
                                    "Raw intervals:~n~p",
-                                   [RoundedIntervals, CurIntervals, Info,
-                                    Intervals])
+                                   [RoundedIntervals, CurIntervals,
+                                    StatsSizeEstimation, Info, Intervals])
                 end
             catch
                 C:E:ST ->
@@ -960,39 +969,63 @@ maybe_update_scrape_dynamic_intervals(Settings) ->
 calculate_dynamic_intervals(ScrapeInfos, Settings) ->
     ServiceSettings = proplists:get_value(services, Settings, []),
     MinScrapeInterval = proplists:get_value(scrape_interval, Settings),
+    MaxSize = proplists:get_value(cbcollect_stats_dump_max_size, Settings),
+    MinPeriodInSec = proplists:get_value(cbcollect_stats_min_period, Settings)
+                     * ?SECS_IN_DAY,
+    AverageSampleSize = proplists:get_value(average_sample_size, Settings),
+    Levels = case proplists:get_bool(decimation_enabled, Settings) of
+                 true -> proplists:get_value(decimation_defs, Settings);
+                 false -> []
+             end,
+    TruncationMaxAge = proplists:get_value(truncate_max_age, Settings),
+    HighCardMaxAge = case proplists:get_bool(truncation_enabled, Settings) of
+                         true -> min(TruncationMaxAge, MinPeriodInSec);
+                         false -> MinPeriodInSec
+                     end,
+    TotalSamplesQuota = MaxSize / AverageSampleSize,
+
     %% Split all reporting targets into two lists
     %% First list is for targets that use static scrape intervals (they can't be
-    %% modified), we need to calculate total reported rate for them (in samples
-    %% per second)
+    %% modified), we need to calculate the total number of reported samples for
+    %% them.
     %% Second list is targets for which we need to calculate scrape intervals.
-    {StaticIntSampleRates, DynamicIntTargets} =
+    {StaticIntTargetSamplesNum, DynamicIntTargets} =
         misc:partitionmap(
           fun ({_Name, low_cardinality, Num}) ->
-                  {left, Num / MinScrapeInterval};
+                  {left, calculate_decimated_samples_num(
+                           Levels, MinPeriodInSec, Num, MinScrapeInterval)};
               ({Name, high_cardinality, Num}) ->
                   Props = proplists:get_value(Name, ServiceSettings, []),
                   case proplists:get_value(high_cardinality_scrape_interval,
                                            Props, ?AUTO_CALCULATED) of
-                      ?AUTO_CALCULATED -> {right, {Name, Num}};
-                      I -> {left, Num / I}
+                      ?AUTO_CALCULATED ->
+                          {right, {Name, Num}};
+                      Interval ->
+                          {left, HighCardMaxAge * Num / Interval}
                   end
           end, ScrapeInfos),
-    %% This is the total sample rate reported by targets with static scrape
+
+    %% This is how many metrics will be reported by targets with static scrape
     %% interval
-    StaticIntTotalRate = lists:sum(StaticIntSampleRates),
-    %% This is how many samples we can report per second (to maintain the max
-    %% cbcollect dump size)
-    TotalSamplesQuota = samples_per_second_quota(Settings),
+    TotalStaticIntSamples = lists:sum(StaticIntTargetSamplesNum),
+
+    %% This is how many samples can be reported by targets with dynamic scrape
+    %% intervals
+    DynamicIntSamplesQuota = max(TotalSamplesQuota - TotalStaticIntSamples, 0),
+
     %% This is how many samples can be reported per seconds by targets with
     %% dynamic scrape intervals
-    DynamicIntSamplesQuota = max(TotalSamplesQuota - StaticIntTotalRate, 0),
+    DynamicIntSamplesRateQuota = DynamicIntSamplesQuota / HighCardMaxAge,
+
     %% This is how many samples per second each service wants to report
     DynamicIntDesiredSamplesRates =
         [{Name, Num / MinScrapeInterval} || {Name, Num} <- DynamicIntTargets],
+
     %% The same as above but sorted by the second tuple element
     DynamicIntDesiredSamplesRatesSorted =
         lists:usort(fun ({T1, N1}, {T2, N2}) -> {N1, T1} =< {N2, T2} end,
                     DynamicIntDesiredSamplesRates),
+
     %% split_quota calculates max rates per service, the only thing left is
     %% to convert "report speed" to "scrape interval" by dividing "distance" by
     %% "speed"
@@ -1002,7 +1035,28 @@ calculate_dynamic_intervals(ScrapeInfos, Settings) ->
                       SamplesPerScrape = proplists:get_value(Target, DynamicIntTargets),
                       {Target, SamplesPerScrape / MaxSampleRate}
               end, split_quota(DynamicIntDesiredSamplesRatesSorted,
-                               DynamicIntSamplesQuota, [])).
+                               DynamicIntSamplesRateQuota, [])).
+
+%% Calculates how many samples will stay in DB after decimation (for a given
+%% duration)
+calculate_decimated_samples_num(Levels, TimeAmountInSec, SamplesPerScrape,
+                                ScrapeInterval) ->
+    {TotalSamplesNumPerMetric, NotCoveredByDecimation, LastInterval} =
+        lists:foldl(
+          fun ({_Name, LevelPeriod, Interval}, {Acc, TimeLeft, _})
+                                                        when TimeLeft > 0 ->
+                  IntBetweenSamples = case Interval of
+                                          skip -> ScrapeInterval;
+                                          _ -> Interval
+                                      end,
+                  LevelSamples = min(LevelPeriod, TimeLeft) / IntBetweenSamples,
+                  NewTimeLeft = TimeLeft - LevelPeriod,
+                  {Acc + LevelSamples, NewTimeLeft, IntBetweenSamples};
+              ({_Name, _LevelPeriod, _Interval}, {Acc, TimeLeft, LastInt}) ->
+                  {Acc, TimeLeft, LastInt}
+          end, {0, TimeAmountInSec, ScrapeInterval}, Levels),
+    (TotalSamplesNumPerMetric + max(NotCoveredByDecimation, 0) / LastInterval)
+    * SamplesPerScrape.
 
 %% Distribute sample rate quota among services
 %% Input proplist is how many samples per seconds services want to report
@@ -1066,12 +1120,6 @@ scrapes_info(Settings) ->
         {error, Error} ->
             erlang:error(Error)
     end.
-
-samples_per_second_quota(Settings) ->
-    MaxSize = proplists:get_value(cbcollect_stats_dump_max_size, Settings),
-    MinPeriod = proplists:get_value(cbcollect_stats_min_period, Settings),
-    AverageSampleSize = proplists:get_value(average_sample_size, Settings),
-    MaxSize / AverageSampleSize / MinPeriod / 24 / 60 / 60.
 
 %% It's important to preserve job and instance labels when calculating derived
 %% metrics, as other pieces of code may assume those metrics exist. For example,
@@ -1433,8 +1481,65 @@ clean_tombstones(Settings) ->
             {error, Reason}
     end.
 
+total_db_size_estimate(Info, Settings, Intervals) ->
+    DefaultInterval = proplists:get_value(scrape_interval, Settings),
+    Services = proplists:get_value(services, Settings),
+    MinPeriodInSec = proplists:get_value(cbcollect_stats_min_period, Settings)
+                     * ?SECS_IN_DAY,
+    Levels = proplists:get_value(decimation_defs, Settings),
+    DecimationEnabled = proplists:get_bool(decimation_enabled, Settings),
+    TruncationMaxAge = proplists:get_value(truncate_max_age, Settings),
+    TruncationEnabled = proplists:get_bool(truncation_enabled, Settings),
+
+    SamplesPerEndpoint =
+        fun ({_, low_cardinality, Num}) when DecimationEnabled ->
+                calculate_decimated_samples_num(Levels, MinPeriodInSec, Num,
+                                                DefaultInterval);
+            ({_, low_cardinality, Num}) ->
+                MinPeriodInSec * Num / DefaultInterval;
+            ({Name, high_cardinality, Num}) ->
+                Props = proplists:get_value(Name, Services, []),
+                Interval =
+                    case proplists:get_value(high_cardinality_scrape_interval,
+                                             Props, ?AUTO_CALCULATED) of
+                        ?AUTO_CALCULATED ->
+                            proplists:get_value(Name, Intervals,
+                                                DefaultInterval);
+                        I ->
+                            I
+                    end,
+                case Interval of
+                    infinity -> 0;
+                    _ when TruncationEnabled ->
+                        min(TruncationMaxAge, MinPeriodInSec) * Num / Interval;
+                    _ ->
+                        MinPeriodInSec * Num / Interval
+                end
+        end,
+
+    TotalSamples = lists:sum(lists:map(SamplesPerEndpoint, Info)),
+    SampleSize = proplists:get_value(average_sample_size, Settings),
+    TotalSize = TotalSamples * SampleSize,
+    round(TotalSize).
 
 -ifdef(TEST).
+
+calculate_decimated_samples_num_test() ->
+    ?assertEqual(
+      400000.0,
+      calculate_decimated_samples_num([], 40000, 100, 10)),
+    ?assertEqual(
+      142500.0,
+      calculate_decimated_samples_num([{a, 10000, skip}, {b, 20000, 50},
+                                       {c, 400000, 400}], 40000, 100, 10)),
+    ?assertEqual(
+      400000.0,
+      calculate_decimated_samples_num([{a, 100000, skip}, {b, 20000, 50},
+                                       {c, 400000, 400}], 40000, 100, 10)),
+    ?assertEqual(
+      1160000.0,
+      calculate_decimated_samples_num([{a, 100000, skip}, {b, 20000, 50},
+                                       {c, 400000, 400}], 600000, 100, 10)).
 
 dynamic_intervals_monotonicity_test_() ->
     {timeout, 60,
@@ -1459,6 +1564,12 @@ randomly_test_dynamic_intervals_monotonocity() ->
     MaxSize = rand:uniform(2*1024*1024*1024),
     Period = rand:uniform(60),
     SampleSize = rand:uniform(10),
+    LowDecimationPeriod = rand:uniform(3 * ?SECS_IN_DAY),
+    MediumDecimationPeriod = rand:uniform(4 * ?SECS_IN_DAY),
+    LargeDecimationPeriod = rand:uniform(359 * ?SECS_IN_DAY),
+    TruncationAge = rand:uniform(7*?SECS_IN_DAY),
+    MediumDecimationInterval = ScrapeInt + rand:uniform(60),
+    LargeDecimationInterval = MediumDecimationInterval * rand:uniform(20),
 
     ScrapeInfos = fun (N) ->
                       [{service1, low_cardinality, LCS1Num},
@@ -1472,7 +1583,15 @@ randomly_test_dynamic_intervals_monotonocity() ->
                     {scrape_interval, ScrapeInt},
                     {cbcollect_stats_dump_max_size, Size},
                     {cbcollect_stats_min_period, Period},
-                    {average_sample_size, SampleSize}]
+                    {average_sample_size, SampleSize},
+                    {decimation_enabled, true},
+                    {decimation_defs,
+                     [{low, LowDecimationPeriod, skip},
+                      {medium, MediumDecimationPeriod,
+                       MediumDecimationInterval},
+                      {large, LargeDecimationPeriod, LargeDecimationInterval}]},
+                    {truncation_enabled, true},
+                    {truncate_max_age, TruncationAge}]
                end,
 
     Fun = fun (ScrapeNum, Size) ->
@@ -1528,11 +1647,21 @@ randomly_test_calculate_dynamic_intervals() ->
                                      lists:seq(1, ServiceNum)),
     MaxSize = rand:uniform(1024*1024*1024),
     DefaultInterval = rand:uniform(60),
+    MediumDecimationInterval = DefaultInterval + rand:uniform(60),
     Settings = [{services, ServicesSettings},
                 {scrape_interval, DefaultInterval},
                 {cbcollect_stats_dump_max_size, MaxSize},
                 {cbcollect_stats_min_period, rand:uniform(60)},
-                {average_sample_size, rand:uniform(10)}],
+                {average_sample_size, rand:uniform(10)},
+                {decimation_enabled, WithProbability(0.8)},
+                {decimation_defs,
+                 [{low, rand:uniform(3 * ?SECS_IN_DAY), skip},
+                  {medium, rand:uniform(4 * ?SECS_IN_DAY),
+                   MediumDecimationInterval},
+                  {large, rand:uniform(359 * ?SECS_IN_DAY),
+                   MediumDecimationInterval * rand:uniform(20)}]},
+                {truncation_enabled, WithProbability(0.8)},
+                {truncate_max_age, rand:uniform(7*?SECS_IN_DAY)}],
 
     try
         DynamicIntervals = calculate_dynamic_intervals(ScrapeInfos, Settings),
@@ -1584,37 +1713,6 @@ randomly_test_calculate_dynamic_intervals() ->
             io:format("Info:~n~p~nSettings:~n~p", [ScrapeInfos, Settings]),
             erlang:raise(C, E, ST)
     end.
-
-total_db_size_estimate(Info, Settings, Intervals) ->
-    DefaultInterval = proplists:get_value(scrape_interval, Settings),
-    Services = proplists:get_value(services, Settings),
-    GetRate =
-        fun ({_, low_cardinality, Num}) -> Num / DefaultInterval;
-            ({Name, high_cardinality, Num}) ->
-                Props = proplists:get_value(Name, Services, []),
-                Interval =
-                    case proplists:get_value(high_cardinality_scrape_interval,
-                                             Props, ?AUTO_CALCULATED) of
-                        ?AUTO_CALCULATED ->
-                            proplists:get_value(Name, Intervals, DefaultInterval);
-                        I ->
-                            I
-                    end,
-                case Interval of
-                    infinity -> 0;
-                    _ -> Num / Interval
-                end
-        end,
-    TotalSamplesRate = lists:sum(lists:map(GetRate, Info)),
-
-    Days = proplists:get_value(cbcollect_stats_min_period, Settings),
-    SampleSize = proplists:get_value(average_sample_size, Settings),
-    TotalSize = TotalSamplesRate * SampleSize
-                * 60 %% seconds
-                * 60 %% minutes
-                * 24 %% hours
-                * Days,
-    round(TotalSize).
 
 -define(NODE, nodename).
 
