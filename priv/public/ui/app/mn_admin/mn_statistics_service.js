@@ -611,6 +611,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
   function presetScenario() {
     return [{
       name: "Cluster Overview",
+      uiid: "mn-cluster-overview",
       desc: "Stats showing the general health of your cluster. Customize and/or make your own dashboard with \"new dashboard... \" below.",
       groups: [{
         name: "Cluster Overview",
@@ -700,6 +701,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
     },{  // 2nd scenario starts here with the comma ///////////////////////
 
       name: "All Services",
+      uiid: "mn-all-services",
       desc: "Most common stats, arranged per service. Customize and/or make your own dashboard with \"new dashboard... \" below.",
       groups: [{
         name: "Data (Docs/Views/XDCR)",

@@ -75,13 +75,14 @@ function mnScenarioDialogController($scope, $rootScope, mnStatisticsNewService, 
       } else {
         mnStoreService.store("scenarios").add(vm.scenario);
       }
-      selectLastScenario();
     }
 
     mnUserRolesService.saveDashboard().then(() => {
-      $rootScope.$broadcast("scenariosChanged");
-      $document.triggerHandler("click");
-      clear();
+      selectLastScenario().then(() => {
+        $rootScope.$broadcast("scenariosChanged");
+        $document.triggerHandler("click");
+        clear();
+      });
     });
   }
 }

@@ -62,23 +62,40 @@ function mnOverviewConfig($stateProvider) {
         statsHostname: "all"
       },
       redirectTo: function (trans) {
+        var $q = trans.injector().get("$q");
         var mnPermissionsService = trans.injector().get("mnPermissions");
-        var params = _.clone(trans.params(), true);
-        return mnPermissionsService.check().then(function (permissions) {
+        var mnUserRolesService = trans.injector().get("mnUserRolesService");
+        var mnStoreService = trans.injector().get("mnStoreService");
+        let original = Object.assign({}, trans.params());
+
+        return $q.all([
+          mnPermissionsService.check(),
+          mnUserRolesService.getUserProfile()
+        ]).then(function ([permissions, profile]) {
+          let params = Object.assign({}, original);
           var statsRead = permissions.bucketNames['.stats!read'];
-          var state = {state: "app.admin.overview.statistics", params: params};
+          let scenarios = mnStoreService.store("scenarios").share();
+
+          params.scenario =
+            (params.scenario && (scenarios.find(item => item.id == params.scenario) || {}).id) ||
+            (scenarios.find(item =>
+                            (item.uiid == "mn-cluster-overview") ||
+                            (item.name == "Cluster Overview")) || {}).id ||
+            mnStoreService.store("scenarios").last().id;
+
+
           if (!params.scenarioBucket && statsRead && statsRead[0]) {
-            state.params.scenarioBucket = statsRead[0];
-            return state;
+            params.scenarioBucket = statsRead[0];
+          } else if (params.scenarioBucket && statsRead &&
+                     !statsRead.includes(params.scenarioBucket)) {
+            params.scenarioBucket = statsRead[0];
+          } else if (params.scenarioBucket && (!statsRead || !statsRead[0])) {
+            params.scenarioBucket = null;
           }
-          if (params.scenarioBucket &&
-              statsRead && statsRead.indexOf(params.scenarioBucket) < 0) {
-            state.params.scenarioBucket = statsRead[0];
-            return state;
-          }
-          if (params.scenarioBucket && (!statsRead || !statsRead[0])) {
-            state.params.scenarioBucket = null;
-            return state;
+
+          if ((params.scenarioBucket !== original.scenarioBucket) ||
+              (params.scenario !== original.scenario)) {
+            return {state: "app.admin.overview.statistics", params: params};
           }
         });
       }

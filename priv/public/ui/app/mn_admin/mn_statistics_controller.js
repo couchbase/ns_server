@@ -445,14 +445,7 @@ function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http
       .setInterval(mnStatisticsNewService.defaultZoomInterval(vm.zoom));
 
     if ($scope.rbac.cluster.stats.read) {
-      mnUserRolesService.getUserProfile().then(function (profile) {
-        vm.scenarioId =
-          $state.params.scenario ?
-          $state.params.scenario :
-          mnStoreService.store("scenarios").share().find(function (item) {
-            return item.name === "Cluster Overview";
-          }).id || mnStoreService.store("scenarios").last().id
-      });
+      vm.scenarioId = $state.params.scenario;
 
       function groupById(arr) {
         return arr.reduce((acc, item) => {
