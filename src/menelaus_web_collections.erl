@@ -270,10 +270,6 @@ get_err_code_msg({max_number_exceeded, num_collections}) ->
 get_err_code_msg(exceeded_retries) ->
     {"Exceeded retries due to conflicting operations on bucket properties.",
      503};
-get_err_code_msg(Error) when Error =:= unsafe;
-                             Error =:= push_config;
-                             Error =:= pull_config ->
-    {"Operation is unsafe at this time. Retry later.", 503};
 get_err_code_msg(Error) ->
     {"Unknown error ~p", [Error], 400}.
 
