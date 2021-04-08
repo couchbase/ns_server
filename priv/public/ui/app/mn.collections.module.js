@@ -31,7 +31,7 @@ import { MnCollectionsAddItemComponent} from './mn.collections.add.item.componen
 import { MnCollectionsDeleteItemComponent} from './mn.collections.delete.item.component.js';
 
 let collectionsState = {
-  url: '/collections?collectionsBucket&scopeDetails&scopesPage&collsPage',
+  url: '/collections?scopeDetails&scopesPage&collsPage',
   name: "app.admin.collections",
   data: {
     permissions: "cluster.bucket['.'].settings.read && cluster.collection['.:.:.'].collections.read",
@@ -40,10 +40,6 @@ let collectionsState = {
     compat: "atLeast70"
   },
   params: {
-    collectionsBucket: {
-      type: 'string',
-      dynamic: true
-    },
     scopeDetails: {
       array: true,
       dynamic: true

@@ -16,7 +16,7 @@ function mnDocumentsCreateDialogController($scope, mnDocumentsEditingService, mn
 
   function onSubmit() {
     var newDocumentParams = {
-      bucket: $state.params.bucket,
+      sharedBucket: $state.params.sharedBucket,
       documentId: vm.documentId
     };
     var promise = mnDocumentsEditingService.getDocument(newDocumentParams)

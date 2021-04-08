@@ -68,12 +68,7 @@ function configure($stateProvider) {
   $stateProvider
     .state('app.admin.views', {
       abstract: true,
-      url: '/views?bucket',
-      params: {
-        bucket: {
-          value: null
-        }
-      },
+      url: '/views',
       data: {
         title: "Views",
         permissions: "cluster.bucket['.'].settings.read && cluster.bucket['.'].views.read"
@@ -133,9 +128,9 @@ function mnViewsController($state, mnPoolDefault) {
   vm.onSelectBucket = onSelectBucket;
   vm.mnPoolDefault = mnPoolDefault.latestValue();
   vm.ddocsLoading = true;
-  vm.currentBucketName = $state.params.bucket;
+  vm.currentBucketName = $state.params.sharedBucket;
 
   function onSelectBucket(selectedBucket) {
-    $state.go('^.list', {bucket: selectedBucket});
+    $state.go('^.list', {sharedBucket: selectedBucket}, {reload: true});
   }
 }

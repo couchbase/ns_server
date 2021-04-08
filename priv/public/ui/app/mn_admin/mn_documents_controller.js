@@ -66,7 +66,7 @@ function configure($stateProvider) {
           controller: "mnDocumentsController as documentsCtl"
         }
       },
-      url: "/documents?bucket",
+      url: "/documents",
       data: {
         title: "Documents",
         parent: {name: 'Buckets', link: 'app.admin.buckets'},
@@ -107,12 +107,12 @@ function mnDocumentsController($state) {
   var vm = this;
 
   vm.onSelectBucketName = onSelectBucketName;
-  vm.currentBucketName = $state.params.bucket;
+  vm.currentBucketName = $state.params.sharedBucket;
 
   function onSelectBucketName(selectedBucket) {
     $state.go('^.list', {
-      bucket: selectedBucket,
+      sharedBucket: selectedBucket,
       pageNumber: 0
-    });
+    }, {reload: true});
   }
 }

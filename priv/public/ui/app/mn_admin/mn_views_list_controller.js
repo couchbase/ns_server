@@ -41,12 +41,12 @@ function mnViewsListController($scope, $state, $uibModal, mnViewsListService, mn
       viewId: key,
       full_set: null,
       documentId: row.doc.meta.id,
-      bucket: $state.params.bucket,
+      sharedBucket: $state.params.sharedBucket,
       viewsParams: JSON.stringify(mnViewsEditingService.getInitialViewsFilterParams())
     };
   }
   function showViewCreationButtons() {
-    return vm.ddocs && $state.params.bucket && vm.isDevelopmentViews && !vm.ddocs.ddocsAreInFactMissing;
+    return vm.ddocs && $state.params.sharedBucket && vm.isDevelopmentViews && !vm.ddocs.ddocsAreInFactMissing;
   }
   function showPublishButton(row) {
     return vm.isDevelopmentViews && !isEmptyView(row);
@@ -107,7 +107,7 @@ function mnViewsListController($scope, $state, $uibModal, mnViewsListService, mn
     };
   }
   function publishDdoc(ddoc) {
-    var url = mnViewsListService.getDdocUrl($state.params.bucket, "_design/" + mnViewsListService.cutOffDesignPrefix(ddoc.meta.id));
+    var url = mnViewsListService.getDdocUrl($state.params.sharedBucket, "_design/" + mnViewsListService.cutOffDesignPrefix(ddoc.meta.id));
     var publish = prepareToPublish(url, ddoc);
     var promise = mnViewsListService.getDdoc(url).then(function () {
       return $uibModal.open({

@@ -58,7 +58,7 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
     var setBucket = (v) => bucketSelect.patchValue({item: v});
 
     var setBucketUrlParam = (name, location) =>
-        uiRouter.stateService.go('.', {collectionsBucket: name ? name : null}, {
+        uiRouter.stateService.go('.', {sharedBucket: name ? name : null}, {
           notify: false,
           location: location || true
         });
@@ -67,7 +67,7 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
         mnCollectionsService.stream.collectionBuckets;
 
     var getBucketUrlParam =
-        uiRouter.globals.params$.pipe(pluck("collectionsBucket"),
+        uiRouter.globals.params$.pipe(pluck("sharedBucket"),
                                       distinctUntilChanged());
     var getBucketUrlParamDefined =
         combineLatest(

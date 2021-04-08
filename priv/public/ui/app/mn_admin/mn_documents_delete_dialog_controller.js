@@ -16,7 +16,7 @@ function mnDocumentsDeleteDialogController(mnDocumentsEditingService, $state, do
 
   function onSubmit() {
     var promise = mnDocumentsEditingService.deleteDocument({
-      bucket: $state.params.bucket,
+      sharedBucket: $state.params.sharedBucket,
       documentId: documentId
     });
 

@@ -64,7 +64,7 @@ function mnViewsEditingFactory($http, $state, mnPermissions, mnViewsListService,
     if (params.documentId.slice(0, "_local/".length) === "_local/") {
       params.documentId = "_local/" + encodeURIComponent(params.documentId.slice("_local/".length));
     }
-    return encodeURIComponent(params.bucket) + "/" + params.documentId + "/_view/" + encodeURIComponent(params.viewId);
+    return encodeURIComponent(params.sharedBucket) + "/" + params.documentId + "/_view/" + encodeURIComponent(params.viewId);
   }
 
   function getRandomKey(bucket) {
@@ -158,18 +158,18 @@ function mnViewsEditingFactory($http, $state, mnPermissions, mnViewsListService,
   function prepareRandomDocument(params) {
     return params.sampleDocumentId ? getSampleDocument({
       documentId: params.sampleDocumentId,
-      bucket: params.bucket
-    }) : getRandomKey(params.bucket).then(function (resp) {
+      sharedBucket: params.sharedBucket
+    }) : getRandomKey(params.sharedBucket).then(function (resp) {
       return getSampleDocument({
         documentId: resp.data.key,
-        bucket: params.bucket
+        sharedBucket: params.sharedBucket
       });
     }, function (resp) {
       switch(resp.status) {
       case 404:
         if (resp.data.error === "fallback_to_all_docs") {
           return mnDocumentsListService.getDocuments({
-            bucket: params.bucket,
+            sharedBucket: params.sharedBucket,
             pageNumber: 0,
             pageLimit: 1
           }).then(function (resp) {
@@ -203,7 +203,7 @@ function mnViewsEditingFactory($http, $state, mnPermissions, mnViewsListService,
       url: "/couchBase/" + buildViewUrl(params)
     }).then(function () {
       return $q.all([
-        mnViewsListService.getDdocsByType(params.bucket),
+        mnViewsListService.getDdocsByType(params.sharedBucket),
         mnPoolDefault.get()
       ]).then(function (resp) {
         var rv = {};
@@ -215,7 +215,7 @@ function mnViewsEditingFactory($http, $state, mnPermissions, mnViewsListService,
           rv.currentDocument = _.find(rv.ddocs.rows, function (row) {
             return row.doc.meta.id === params.documentId;
           });
-          if (mnPermissions.export.cluster.bucket[params.bucket].data.docs.read) {
+          if (mnPermissions.export.cluster.bucket[params.sharedBucket].data.docs.read) {
             return prepareRandomDocument(params).then(function (randomDoc) {
               rv.sampleDocument = randomDoc;
               return rv;

@@ -99,7 +99,7 @@ function mnDocumentsEditingFactory($http, $q, getStringBytesFilter, docBytesLimi
     });
   }
   function buildDocumentUrl(params) {
-    let base =  "/pools/default/buckets/" + encodeURIComponent(params.bucket);
+    let base =  "/pools/default/buckets/" + encodeURIComponent(params.sharedBucket);
     if (params.scope && params.collection) {
       base += "/scopes/" + encodeURIComponent(params.scope) + "/collections/" + encodeURIComponent(params.collection);
     }

@@ -67,7 +67,7 @@ angular
 function configure($stateProvider) {
   $stateProvider
     .state('app.admin.gsi', {
-      url: "/index?indexesBucket&indexesScope&openedIndex&perIndexPage&perNodePage&indexesView",
+      url: "/index?indexesScope&openedIndex&perIndexPage&perNodePage&indexesView",
       params: {
         openedIndex: {
           array: true,
@@ -75,10 +75,6 @@ function configure($stateProvider) {
         },
         indexesView: {
           value: 'viewByIndex',
-          dynamic: true
-        },
-        indexesBucket: {
-          value: "",
           dynamic: true
         },
         indexesScope: {
@@ -116,8 +112,8 @@ function configure($stateProvider) {
         return mnPermissionsService.check().then(function (permissions) {
           var indexesRead = permissions.bucketNames['.n1ql.index!read'];
           var state = {state: "app.admin.gsi", params: params};
-          if (!params.indexesBucket && indexesRead && indexesRead[0]) {
-            state.params.indexesBucket = indexesRead[0];
+          if (!params.sharedBucket && indexesRead && indexesRead[0]) {
+            state.params.sharedBucket = indexesRead[0];
             return state;
           }
         });
@@ -184,7 +180,7 @@ function mnGsiController($scope, mnGsiService, mnPoller, $state, mnCollectionsSe
     });
 
     $scope.$watchCollection(() => ({
-      bucket: $state.params.indexesBucket,
+      bucket: $state.params.sharedBucket,
       scope: $state.params.indexesScope
     }), v => {
       vm.mnCollectionSelectorService.setKeyspace(v);
@@ -194,7 +190,7 @@ function mnGsiController($scope, mnGsiService, mnPoller, $state, mnCollectionsSe
       vm.poller.reload();
       let params = vm.mnCollectionSelectorService.stream.result.getValue();
       $state.go('.', {
-        indexesBucket: params.bucket ? params.bucket.name: null,
+        sharedBucket: params.bucket ? params.bucket.name: null,
         indexesScope: params.scope ? params.scope.name : null
       }, {notify: false});
     }

@@ -66,6 +66,28 @@ function appConfig($httpProvider, $stateProvider, $urlRouterProvider, $transitio
   });
 
   $transitionsProvider.onBefore({
+    to: "app.admin.**"
+  }, (trans) => {
+    //convert pre 7.0 bucket params to 7.0 sharedBucket
+    let original = Object.assign({}, trans.params('to'));
+
+    if (!original.sharedBucket) {
+      let params = Object.assign({}, original);
+      ;(["bucket", "scenarioBucket", "collectionsBucket", "indexesBucket"])
+          .forEach(bucket => {
+            if (params[bucket]) {
+              params.sharedBucket = params[bucket];
+              delete params[bucket];
+            }
+          });
+
+      if (params.sharedBucket) {
+        return trans.router.stateService.target(trans.to().name, params);
+      }
+    }
+  });
+
+  $transitionsProvider.onBefore({
     to: (state) => state.data && state.data.requiresAuth
   }, (transition) => {
     let mnPools = transition.injector().get('mnPools');

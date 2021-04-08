@@ -48,7 +48,7 @@ function mnDocumentsListFactory($http, $q, docsLimit) {
       switch (resp.status) {
       case 0:
       case -1: return $q.reject(resp);
-      case 404: return !params.bucket ? {status: "_404"} : resp;
+      case 404: return !params.sharedBucket ? {status: "_404"} : resp;
       case 501: return {};
       default: return resp;
       }
@@ -81,7 +81,7 @@ function mnDocumentsListFactory($http, $q, docsLimit) {
   }
 
   function getDocumentsURI(params) {
-    let base = "/pools/default/buckets/" + encodeURIComponent(params.bucket)
+    let base = "/pools/default/buckets/" + encodeURIComponent(params.sharedBucket)
     if (params.scope && params.collection) {
       base += "/scopes/" + encodeURIComponent(params.scope) + "/collections/" + encodeURIComponent(params.collection);
     }

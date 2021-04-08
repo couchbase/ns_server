@@ -16,7 +16,7 @@ function mnViewsDeleteDdocDialogController($state, $uibModalInstance, mnViewsLis
   vm.doDelete = doDelete;
 
   function doDelete() {
-    var url = mnViewsListService.getDdocUrl($state.params.bucket, currentDdocName);
+    var url = mnViewsListService.getDdocUrl($state.params.sharedBucket, currentDdocName);
     var promise = mnViewsListService.deleteDdoc(url);
     mnPromiseHelper(vm, promise, $uibModalInstance)
       .showGlobalSpinner()

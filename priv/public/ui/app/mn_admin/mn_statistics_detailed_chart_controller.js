@@ -16,7 +16,7 @@ function mnStatisticsDetailedChartController($scope, $timeout, $state, chart, it
 
   vm.items = items;
   vm.onSelectZoom = onSelectZoom;
-  vm.bucket = $state.params.scenarioBucket;
+  vm.bucket = $state.params.sharedBucket;
   vm.zoom = $state.params.scenarioZoom !== "minute" ? $state.params.scenarioZoom : "hour";
   vm.node = $state.params.statsHostname;
   vm.options = {showFocus: true, showTicks: true, showLegends: true};

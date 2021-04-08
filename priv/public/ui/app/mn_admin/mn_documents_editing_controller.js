@@ -110,8 +110,8 @@ function mnDocumentsEditingController($scope, $state, $uibModal, mnDocumentsEdit
   }
 
   function hasDocUpsert() {
-    return $scope.rbac.cluster.bucket[$state.params.bucket] &&
-      $scope.rbac.cluster.bucket[$state.params.bucket].data.docs.upsert;
+    return $scope.rbac.cluster.bucket[$state.params.sharedBucket] &&
+      $scope.rbac.cluster.bucket[$state.params.sharedBucket].data.docs.upsert;
   }
   function isEditorDisabled() {
     return !vm.state ||

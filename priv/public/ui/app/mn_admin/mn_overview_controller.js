@@ -83,17 +83,16 @@ function mnOverviewConfig($stateProvider) {
                             (item.name == "Cluster Overview")) || {}).id ||
             mnStoreService.store("scenarios").last().id;
 
-
-          if (!params.scenarioBucket && statsRead && statsRead[0]) {
-            params.scenarioBucket = statsRead[0];
-          } else if (params.scenarioBucket && statsRead &&
-                     !statsRead.includes(params.scenarioBucket)) {
-            params.scenarioBucket = statsRead[0];
-          } else if (params.scenarioBucket && (!statsRead || !statsRead[0])) {
-            params.scenarioBucket = null;
+          if (!params.sharedBucket && statsRead && statsRead[0]) {
+            params.sharedBucket = statsRead[0];
+          } else if (params.sharedBucket &&
+                     statsRead && statsRead.indexOf(params.sharedBucket) < 0) {
+            params.sharedBucket = statsRead[0];
+          } else if (params.sharedBucket && (!statsRead || !statsRead[0])) {
+            params.sharedBucket = null;
           }
 
-          if ((params.scenarioBucket !== original.scenarioBucket) ||
+          if ((params.sharedBucket !== original.sharedBucket) ||
               (params.scenario !== original.scenario)) {
             return {state: "app.admin.overview.statistics", params: params};
           }
