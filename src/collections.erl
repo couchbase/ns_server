@@ -236,7 +236,13 @@ update(Bucket, Operation) ->
 
 do_update(Bucket, Operation) ->
     ?log_debug("Performing operation ~p on bucket ~p", [Operation, Bucket]),
-    case chronicle_kv:txn(kv, update_txn(Bucket, Operation, _)) of
+    %% Derive the total collection and scope that exist outside of this
+    %% bucket context. We will use this information to check_cluster_limits
+    %% later on.
+    OtherBucketCounts = other_bucket_counts(Bucket),
+    case chronicle_kv:transaction(kv, [key(Bucket)],
+                                  update_txn(Bucket, Operation,
+                                             OtherBucketCounts, _)) of
         {ok, _Rev, UID} ->
             {ok, UID};
         {not_changed, UID} ->
@@ -249,17 +255,16 @@ do_update(Bucket, Operation) ->
             exceeded_retries
     end.
 
-update_txn(Bucket, Operation, Txn) ->
-    Snapshot = chronicle_kv:txn_get_many([ns_bucket:root(), key(Bucket)], Txn),
+update_txn(Bucket, Operation, OtherBucketCounts, Snapshot) ->
     case get_manifest(Bucket, Snapshot) of
         undefined ->
             {abort, not_found};
         Manifest ->
-            do_update_with_manifest(Bucket, Manifest, Operation, Txn,
-                                    ns_bucket:get_bucket_names(Snapshot))
+            do_update_with_manifest(Bucket, Manifest, Operation,
+                                    OtherBucketCounts)
     end.
 
-do_update_with_manifest(Bucket, Manifest, Operation, Txn, Buckets) ->
+do_update_with_manifest(Bucket, Manifest, Operation, OtherBucketCounts) ->
     ?log_debug("Perform operation ~p on manifest ~p of bucket ~p",
                [Operation, get_uid(Manifest), Bucket]),
     case perform_operations(Manifest,
@@ -267,21 +272,7 @@ do_update_with_manifest(Bucket, Manifest, Operation, Txn, Buckets) ->
         {ok, Manifest} ->
             {abort, {not_changed, uid(Manifest)}};
         {ok, NewManifest} ->
-            Snapshot =
-                chronicle_kv:txn_get_many(
-                  [ns_bucket:root() | [key(B) || B <- Buckets]], Txn),
-
-            OtherManifests =
-                lists:filtermap(
-                  fun (B) ->
-                          case get_manifest(B, Snapshot) of
-                              undefined ->
-                                  false;
-                              M ->
-                                  {true, M}
-                          end
-                  end, Buckets -- [Bucket]),
-            case check_cluster_limits([NewManifest | OtherManifests]) of
+            case check_cluster_limits(NewManifest, OtherBucketCounts) of
                 ok ->
                     apply_manifest(Bucket, NewManifest);
                 Error ->
@@ -311,20 +302,32 @@ perform_operations(Manifest, [Operation | Rest]) ->
 bump_id(Manifest, ID) ->
     misc:key_update(ID, Manifest, _ + 1).
 
-check_cluster_limits(Manifests) ->
-    case check_limit(num_scopes, Manifests) of
+other_bucket_counts(Bucket) ->
+    Snapshot = ns_bucket:get_snapshot(),
+    Buckets = ns_bucket:get_bucket_names(Snapshot),
+    lists:foldl(
+      fun (B, {AccS, AccC} = Acc) ->
+              case get_manifest(B, Snapshot) of
+                  undefined ->
+                      Acc;
+                  Manifest ->
+                      {AccS + get_counter(Manifest, num_scopes),
+                       AccC + get_counter(Manifest, num_collections)}
+              end
+      end, {0, 0}, lists:delete(Bucket, Buckets)).
+
+check_cluster_limits(NewManifest, {OtherScopeTotal, OtherCollectionTotal}) ->
+    TotalScopes = get_counter(NewManifest, num_scopes) + OtherScopeTotal,
+    TotalCollections = get_counter(NewManifest, num_collections) +
+                       OtherCollectionTotal,
+    case check_limit(num_scopes, TotalScopes) of
         ok ->
-            check_limit(num_collections, Manifests);
+            check_limit(num_collections, TotalCollections);
         Error ->
             Error
     end.
 
-check_limit(Counter, Manifests) ->
-    TotalInCluster = lists:foldl(
-                       fun (Manifest, Acc) ->
-                               Acc + get_counter(Manifest, Counter)
-                       end, 0, Manifests),
-
+check_limit(Counter, TotalInCluster) ->
     case TotalInCluster > get_max_supported(Counter) of
         false ->
             ok;
