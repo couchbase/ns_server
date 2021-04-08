@@ -62,7 +62,7 @@ function mnSelectDirective() {
     }
 
     function getPreparedValues() {
-      vm.preparedValues = vm.labels ? vm.labels : vm.values.map(vm.valuesMapping);
+      vm.preparedValues = vm.labels ? vm.labels : (vm.values || []).map(vm.valuesMapping);
       return vm.preparedValues;
     }
 
@@ -81,7 +81,7 @@ function mnSelectDirective() {
     }
 
     function hasSearchInput() {
-      return (vm.hasSearch && vm.values.length >= searchMinimumOptionsNumber) || false;
+      return (vm.hasSearch && (vm.values || []).length >= searchMinimumOptionsNumber) || false;
     }
   }
 }
