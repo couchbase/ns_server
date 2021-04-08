@@ -29,10 +29,10 @@
 
   <div
      *ngIf="areThereMappingRules | async"
-     class="row flex-column items-top margin-bottom-half"
+     class="margin-bottom-half"
      (click)="$event.stopPropagation();">
     <p
-       class="text-medium margin-0 disclosure"
+       class="disclosure"
        [ngClass]="{disclosed: (toggler.state | async)}"
        (click)="toggler.click.next()">
       Mapping Rules

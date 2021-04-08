@@ -1199,7 +1199,8 @@ form .error-form {
 .success { /* green-2 */
   color: #56b349;
 }
-.warning { /* orange-1 */
+.warning,
+.fa-warning { /* orange-1 */
   color: #f5a623 !important;
 }
 .error { /* red-1 */

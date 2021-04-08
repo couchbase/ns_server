@@ -39,11 +39,12 @@
        class="xdcr-filter margin-bottom-half">
     </textarea>
 
+    <h5>Test Filter</h5>
     <div
        class="row margin-bottom-half"
        [formGroup]="form.group">
       <mn-keyspace-selector
-         class="mn-keyspace-selector margin-right-half"
+         class="mn-keyspace-selector width-12 margin-right-half"
          [defaults]="{bucket: bucket}"
          [service]="mnCollectionSelectorService">
       </mn-keyspace-selector>
@@ -53,8 +54,7 @@
          autocorrect="off"
          autocompleterg="off"
          spellcheck="false"
-         placeholder="id of document to test..."
-         class="margin-right-half">
+         placeholder="id of document to test...">
       <button
          type="button"
          class="outline"

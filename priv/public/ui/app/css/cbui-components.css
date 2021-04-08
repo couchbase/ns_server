@@ -1843,6 +1843,9 @@ mn-select[disabled] .mn-select,
 .mn-select div[ngbDropdownMenu] .option:focus {
   background-color: #f5f5f5;
 }
+.mn-select button.outline:focus {
+  box-shadow: 0 0 3px 1px rgba(0,0,0,0.15);
+}
 .mn-select.mn-align-left div[uib-dropdown-menu] {
   top: auto;
   left: 0;
@@ -3669,8 +3672,20 @@ button.replication .fa-spinner {
  background-color: #efefef;
  color: #555;
  opacity: .7;
-
 }
+.close-x.sml {
+  margin: 0 0 0 .5rem;
+  font-size: .875rem;
+  padding: 0 .25rem;
+  top: 0;
+}
+.close-x.sml:hover {
+  background-color: #fff;
+  font-weight: 600;
+  color: #000;
+  opacity: 1;
+}
+
 .cb-breadcrumb {
   position: relative;
 }
@@ -3748,16 +3763,6 @@ schema-display {
   display: block;
   margin-left: 1rem;
 }
-a.x-close-sml {
-  display: block;
-  padding: .25rem;
-  margin-left: 1rem;
-  color: #555;
-}
-a:hover.x-close-sml {
-  color: #000;
-}
-
 .border-top {
   border-width: 0;
   padding-top: 0!important;
@@ -3903,6 +3908,19 @@ mn-input-filter {
 mn-xdcr-add-rep-mapping-controls {
   display: block !important;
   padding: 0 1rem;
+}
+.mapping-rule {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  font-size: .8125rem;
+  background-color: #f5f5f5;
+  padding: .25rem;
+  margin: .5rem 0 .25rem 0;
+}
+.cbui-tablerow-expanded .mapping-rule {
+  background-color: transparent;
+  margin-left: 1rem;
 }
 mn-xdcr-add-rep-scope {
   display: block !important;
