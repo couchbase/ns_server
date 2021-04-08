@@ -1352,7 +1352,20 @@ perform_actual_join(RemoteNode, NewCookie, ChronicleInfo) ->
 
         {ok, _Cookie} = ns_cookie_manager:cookie_sync(),
         %% Let's verify connectivity.
-        Connected = net_kernel:connect_node(RemoteNode),
+
+        Connected =
+            misc:poll_for_condition(
+              fun () ->
+                  ?log_debug("Trying to connect to node ~p...", [RemoteNode]),
+                  case catch net_kernel:connect_node(RemoteNode) of
+                      true -> true;
+                      Res ->
+                          ?log_error("Connect to node ~p failed: ~p",
+                                     [RemoteNode, Res]),
+                          false
+                  end
+              end, 10000, 500),
+
         ?cluster_debug("Connection from ~p to ~p:  ~p",
                        [node(), RemoteNode, Connected]),
 
