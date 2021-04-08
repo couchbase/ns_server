@@ -26,7 +26,7 @@ class MnXDCRSettingsComponent extends MnLifeCycleHooksToStream {
       templateUrl: "/ui/app/mn.xdcr.settings.html",
       changeDetection: ChangeDetectionStrategy.OnPush,
       inputs: [
-        "group"
+        "form"
       ]
     })
   ]}

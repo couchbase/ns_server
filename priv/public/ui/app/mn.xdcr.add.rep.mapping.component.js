@@ -9,9 +9,9 @@ licenses/APL2.txt.
 */
 
 import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
-import {Subject, of} from '/ui/web_modules/rxjs.js';
+import {Subject, of, merge} from '/ui/web_modules/rxjs.js';
 import {map, filter, switchMap, shareReplay, takeUntil, startWith,
-        distinctUntilChanged} from '/ui/web_modules/rxjs/operators.js';
+  distinctUntilChanged, throttleTime, withLatestFrom} from '/ui/web_modules/rxjs/operators.js';
 
 import {MnLifeCycleHooksToStream} from "./mn.core.js";
 
@@ -56,22 +56,11 @@ class MnXDCRAddRepMappingComponent extends MnLifeCycleHooksToStream {
       mnXDCRService.stream.postSettingsReplicationsValidation;
     this.postSettingsReplications =
       mnXDCRService.stream.postSettingsReplications;
+    this.postRegexpValidationExpression =
+      mnXDCRService.stream.postRegexpValidationExpression;
 
     this.addExplicitMappingMigrationRules = new Subject();
 
-    this.addExplicitMappingMigrationRules
-      .pipe(takeUntil(this.mnOnDestroy))
-      .subscribe(v => {
-        let newRule = this.explicitMappingGroup.migrationMode.value;
-        let rules = this.explicitMappingMigrationRules.getValue();
-        rules[newRule.key || "_default._default"] = newRule.target;
-        this.explicitMappingMigrationRules.next(rules);
-        resetExplicitMappingMigrationGroup.bind(this)();
-      });
-
-    function resetExplicitMappingMigrationGroup() {
-      this.explicitMappingGroup.migrationMode.patchValue({key: "", target: ""});
-    }
   }
 
   ngOnInit() {
@@ -111,5 +100,43 @@ class MnXDCRAddRepMappingComponent extends MnLifeCycleHooksToStream {
             switchMap(bucketName => this.mnCollectionsService.getManifest(bucketName)),
             map(v => [v.scopes]),
             shareReplay({refCount: true, bufferSize: 1}));
+
+    this.postRegexpValidationErrors =
+      merge(this.postRegexpValidationExpression.success,
+            this.postRegexpValidationExpression.error)
+      .pipe(map(errors => {
+        return errors &&
+          (errors.error ? errors.error._ ? errors.error._ :
+            errors.error : errors.key);
+    }));
+
+    let keyChanges = this.explicitMappingGroup.migrationMode.get('key').valueChanges;
+    keyChanges
+      .pipe(filter(e => !!e),
+            throttleTime(1000),
+            takeUntil(this.mnOnDestroy))
+      .subscribe(expression => {
+        this.postRegexpValidationExpression.post({
+          expression: expression,
+          bucket: this.bucket,
+          skipDoc: true});
+      });
+
+    keyChanges
+      .pipe(filter(e => !e),
+            takeUntil(this.mnOnDestroy))
+      .subscribe(() => this.postRegexpValidationExpression.clearError());
+
+    this.addExplicitMappingMigrationRules
+      .pipe(withLatestFrom(this.postRegexpValidationErrors),
+            filter(([migrationRule, errors]) => !errors),
+            takeUntil(this.mnOnDestroy))
+      .subscribe(() => {
+        let newRule = this.explicitMappingGroup.migrationMode.value;
+        let rules = this.explicitMappingMigrationRules.getValue();
+        rules[newRule.key || "_default._default"] = newRule.target;
+        this.explicitMappingMigrationRules.next(rules);
+        this.explicitMappingGroup.migrationMode.patchValue({key: "", target: ""});
+      });
   }
 }

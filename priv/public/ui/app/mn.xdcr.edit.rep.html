@@ -18,9 +18,8 @@ licenses/APL2.txt.
   </div>
 </mn-element-cargo>
 
-<form
+<div
    [formGroup]="form.group"
-   (submit)="form.submit.next()"
    class="forms">
   <div class="row flex-left items-stretch resp-flex-column-med margin-bottom-2">
     <div class="width-10">
@@ -48,7 +47,7 @@ licenses/APL2.txt.
 
       <mn-xdcr-settings
          class="panel-content"
-         [group]="form.group"></mn-xdcr-settings>
+         [form]="form"></mn-xdcr-settings>
     </div>
     <div
        *ngIf="(isEnterprise | async)"
@@ -73,7 +72,10 @@ licenses/APL2.txt.
   </div>
 
   <footer class="footer-save">
-    <button type="submit" class="margin-right-2">Save Replication</button>
+    <button
+       type="button"
+       class="margin-right-2"
+       (click)="form.submit.next()">Save Replication</button>
     <a class="text-medium" uiSref="app.admin.replications">Cancel/Reset</a>
   </footer>
-</form>
+</div>

@@ -125,14 +125,6 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
 
     this.explicitMappingRules = new BehaviorSubject({});
     this.explicitMappingMigrationRules = new BehaviorSubject({});
-
-    let migrationMode = this.form.group.get("collectionsMigrationMode");
-    this.isMigrationMode = migrationMode.valueChanges.pipe(startWith(migrationMode.value));
-
-    let explicitMappingMode = this.form.group.get("collectionsExplicitMapping");
-    this.isExplicitMappingMode =
-      explicitMappingMode.valueChanges.pipe(startWith(explicitMappingMode.value));
-
   }
 
   unpackReplicationSettings(v) {
@@ -210,5 +202,9 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
 
     this.explicitMappingRules.next(v.collectionsMigrationMode ? {} : v.colMappingRules);
     this.explicitMappingMigrationRules.next(v.collectionsMigrationMode ? v.colMappingRules : {});
+    let migrationMode = this.form.group.get("collectionsMigrationMode");
+    this.isMigrationMode = migrationMode.valueChanges.pipe(startWith(v.collectionsMigrationMode));
+    let explicitMappingMode = this.form.group.get("collectionsExplicitMapping");
+    this.isExplicitMappingMode = explicitMappingMode.valueChanges.pipe(startWith(v.collectionsExplicitMapping));
   }
 }

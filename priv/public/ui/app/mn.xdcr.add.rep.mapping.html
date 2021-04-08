@@ -87,8 +87,9 @@ licenses/APL2.txt.
   </span>
 </div>
 
-<div
+<form
    [formGroup]="explicitMappingGroup.migrationMode"
+   (ngSubmit)="addExplicitMappingMigrationRules.next()"
    [hidden]="!group.get('collectionsMigrationMode').value"
    class="margin-bottom-1-5">
   <div class="formrow row flex-left items-stretch resp-flex-column-s">
@@ -117,11 +118,15 @@ licenses/APL2.txt.
          autocorrect="off"
          spellcheck="false"
          autocapitalize="off">
+      <div
+         class="error"
+         [hidden]="!(postRegexpValidationErrors | async)">
+        {{(postRegexpValidationErrors | async)}}
+      </div>
     </div>
     <button
        class=" outline tight margin-top-1-5 margin-left-quarter inline"
-       type="button"
-       (click)="addExplicitMappingMigrationRules.next()">Save Mapping</button>
+       type="submit">Save Mapping</button>
   </div>
   <div
      class="error error-field pre-line"
@@ -133,4 +138,4 @@ licenses/APL2.txt.
      [hidden]="!(postSettingsReplications.error | async)?.colMappingRules">
     {{(postSettingsReplications.error | async)?.colMappingRules}}
   </div>
-</div>
+</form>

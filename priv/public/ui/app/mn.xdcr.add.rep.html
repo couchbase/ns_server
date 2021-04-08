@@ -18,9 +18,8 @@ licenses/APL2.txt.
   </div>
 </mn-element-cargo>
 
-<form
+<div
    [formGroup]="form.group"
-   (submit)="form.submit.next()"
    class="forms">
   <div class="row flex-left items-stretch resp-sml margin-bottom-4">
     <div class="width-10">
@@ -45,7 +44,10 @@ licenses/APL2.txt.
         {{(postCreateReplication.error | async)?.toBucket}}
       </div>
 
-      <div class="formrow row flex-left items-stretch resp-flex-column-s">
+      <form
+         [formGroup]="form.group"
+         (submit)="form.submit.next()"
+         class="formrow row flex-left items-stretch resp-flex-column-s">
         <div class="column flex-grow-1">
           <label for="replication_from_bucket" class="nowrap">Replicate From Bucket</label>
           <mn-select
@@ -79,7 +81,8 @@ licenses/APL2.txt.
              mnFormControlName="toCluster">
           </mn-select>
         </div>
-      </div>
+        <input type="submit" [hidden]="true"/>
+      </form>
 
       <mn-xdcr-rep-message
          [fromBucket]="form.group.get('fromBucket').value"
@@ -102,7 +105,7 @@ licenses/APL2.txt.
          [group]="form.group"></mn-xdcr-mapping>
 
       <mn-xdcr-settings
-         [group]="form.group"
+         [form]="form"
          class="block"></mn-xdcr-settings>
     </div>
 
@@ -131,8 +134,9 @@ licenses/APL2.txt.
 
   <footer class="footer-save">
     <button
-       type="submit"
+       type="button"
        class="margin-right-2"
+       (click)="form.submit.next()"
        [disabled]="(isSaveButtonDisabled | async)">
       Save Replication
     </button>
@@ -140,4 +144,4 @@ licenses/APL2.txt.
       Cancel/Reset
     </a>
   </footer>
-</form>
+</div>

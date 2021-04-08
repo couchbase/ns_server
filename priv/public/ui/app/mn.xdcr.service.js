@@ -83,6 +83,11 @@ class MnXDCRService {
       .addSuccess(map(data => JSON.parse(data)))
       .addError(map(error => ({error: error.error || error})));
 
+    this.stream.postRegexpValidationExpression =
+      new MnHttpRequest(this.postRegexpValidation.bind(this))
+        .addSuccess(map(data => JSON.parse(data)))
+        .addError(map(error => ({error: error.error || error})));
+
     this.stream.getRemoteClusters =
       combineLatest(timer(0, 10000),
                     this.stream.updateRemoteClusters)

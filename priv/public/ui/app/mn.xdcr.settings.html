@@ -14,14 +14,18 @@ licenses/APL2.txt.
    (click)="toggler.click.next()">
   Advanced Settings
 </p>
-<div [hidden]="!(toggler.state | async)" [formGroup]="group" class="width-6">
+<form
+   class="width-6"
+   [hidden]="!(toggler.state | async)"
+   [formGroup]="form.group"
+   (ngSubmit)="form.submit.next()">
   <div class="formrow" *ngIf="(isEnterprise | async)">
     <label for="replication_priority">Replication Priority</label>
     <mn-select
        class="inline width-12"
        id="replication_priority"
        [values]="['Low', 'Medium', 'High']"
-       [group]="group"
+       [group]="form.group"
        mnFormControlName="priority">
     </mn-select>
   </div>
@@ -36,7 +40,7 @@ licenses/APL2.txt.
     <mn-select
        id="for-xdcr-compression"
        [values]="['Auto', 'None']"
-       [group]="group"
+       [group]="form.group"
        mnFormControlName="compressionType">
     </mn-select>
     <div
@@ -165,7 +169,7 @@ licenses/APL2.txt.
     <mn-select
        class="inline width-12"
        [values]="['Info', 'Debug', 'Trace', 'Warn', 'Error']"
-       [group]="group"
+       [group]="form.group"
        mnFormControlName="logLevel">
     </mn-select>
     <div
@@ -174,4 +178,6 @@ licenses/APL2.txt.
       {{(error | async)?.logLevel}}
     </div>
   </div>
-</div>
+
+  <input type="submit" [hidden]="true"/>
+</form>

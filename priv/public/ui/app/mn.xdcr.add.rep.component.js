@@ -10,7 +10,7 @@ licenses/APL2.txt.
 
 import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
 import {pipe, BehaviorSubject} from '/ui/web_modules/rxjs.js';
-import {withLatestFrom, map, takeUntil, startWith} from '/ui/web_modules/rxjs/operators.js';
+import {withLatestFrom, map, takeUntil, startWith, filter} from '/ui/web_modules/rxjs/operators.js';
 import {UIRouter} from '/ui/web_modules/@uirouter/angular.js';
 import {FormBuilder, Validators} from '/ui/web_modules/@angular/forms.js'
 
@@ -57,7 +57,6 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
     this.postSettingsReplicationsValidation =
       mnXDCRService.stream.postSettingsReplicationsValidation;
 
-
     this.form = mnFormService.create(this)
       .setFormGroup({fromBucket: ["", [Validators.required]],
                      toCluster: ["", [Validators.required]],
@@ -79,9 +78,18 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
                      optimisticReplicationThreshold: null,
                      statsInterval: null,
                      networkUsageLimit: null,
-                     logLevel: null})
+                     logLevel: null});
+
+    this.isSaveButtonDisabled =
+      this.form.group.statusChanges
+        .pipe(startWith(this.form.group.status),
+              map(v => v === "INVALID"));
+
+    this.form
       .setPackPipe(pipe(withLatestFrom(this.isEnterprise,
-                                       mnAdminService.stream.compatVersion55),
+                                       mnAdminService.stream.compatVersion55,
+                                       this.isSaveButtonDisabled),
+                        filter(([_, isEnterprise, compatVersion, isDisabled]) => !isDisabled),
                         map(mnXDCRService.prepareReplicationSettigns.bind(this))))
       .setSourceShared(this.getSettingsReplications)
       .setPostRequest(this.postCreateReplication)
@@ -104,10 +112,6 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
       filterExpression: ""
     });
 
-    this.isSaveButtonDisabled =
-      this.form.group.statusChanges
-      .pipe(startWith(this.form.group.status),
-            map(v => v === "INVALID"));
     this.explicitMappingGroup = {};
     this.explicitMappingRules = new BehaviorSubject();
     this.explicitMappingMigrationRules = new BehaviorSubject();
