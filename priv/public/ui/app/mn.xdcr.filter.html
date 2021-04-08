@@ -16,7 +16,7 @@
    *ngIf="formHelper.group.get('enableFilters').value"
    [formGroup]="group">
   <div class="margin-bottom-1-5">
-    <label class="inline">Filter Expression</label>
+    <label class="inline margin-right-quarter">Filter Expression</label>
     <span
        class="fa-stack icon-info"
        ngbTooltip="You may filter for values and x-attributes in addition to key names.
@@ -25,7 +25,7 @@
               (NOTE: regex pattern-matching and many N1QL statements are supported, but there
               are some unique aspects to the XDCR filtering language). You may test if your
               filter expression matches a document by entering the document ID in the test field."
-       placement="auto right"
+       placement="right"
        container="body">
       <span class="icon fa-circle-thin fa-stack-2x"></span>
       <span class="icon fa-info fa-stack-1x"></span>
@@ -39,7 +39,7 @@
        class="xdcr-filter margin-bottom-half">
     </textarea>
 
-    <h5>Test Filter</h5>
+    <h5>Test Filter Expression</h5>
     <div
        class="row margin-bottom-half"
        [formGroup]="form.group">
@@ -100,25 +100,24 @@
         <label for="for-save-continue-replicating">Save & continue replicating</label>
       </div>
 
-      <label>Deletion Filters</label>
-      <div>
-        <input
-           type="checkbox"
-           value="index"
-           id="for-do-not-replicate-ttl"
-           formControlName="filterExpiration">
-        <label for="for-do-not-replicate-ttl" class="margin-right-0">
-          Do not replicate document expirations
-        </label>
-        <span
-           class="fa-stack icon-info"
-           ngbTooltip="Source expirations will not be replicated."
-           placement="auto right"
-           container="body">
-          <span class="icon fa-circle-thin fa-stack-2x"></span>
-          <span class="icon fa-info fa-stack-1x"></span>
-        </span>
-      </div>
+      <label class="margin-top-1">Deletion Filters</label>
+      <input
+         type="checkbox"
+         value="index"
+         id="for-do-not-replicate-ttl"
+         formControlName="filterExpiration">
+      <label for="for-do-not-replicate-ttl" class="margin-right-quarter">
+        Do not replicate document expirations
+      </label>
+      <span
+         class="fa-stack icon-info"
+         ngbTooltip="Source expirations will not be replicated."
+         placement="right"
+         container="body">
+        <span class="icon fa-circle-thin fa-stack-2x"></span>
+        <span class="icon fa-info fa-stack-1x"></span>
+      </span>
+
       <div>
         <input
            type="checkbox"
@@ -127,13 +126,13 @@
            formControlName="filterDeletion">
         <label
            for="for-do-not-replicate-delete"
-           class="margin-right-0">
+           class="margin-right-quarter">
           Do not replicate DELETE operations
         </label>
         <span
            class="fa-stack icon-info"
            ngbTooltip="Application-level deletes will not be replicated."
-           placement="auto right"
+           placement="right"
            container="body">
           <span class="icon fa-circle-thin fa-stack-2x"></span>
           <span class="icon fa-info fa-stack-1x"></span>
@@ -145,13 +144,13 @@
            value="index"
            id="for-do-not-replicate-TTL"
            formControlName="filterBypassExpiry">
-        <label for="for-do-not-replicate-TTL" class="margin-right-0">
+        <label for="for-do-not-replicate-TTL" class="margin-right-quarter">
           Remove TTL from replicated items
         </label>
         <span
            class="fa-stack icon-info"
            ngbTooltip="Destination items will have no TTL."
-           placement="auto right"
+           placement="right"
            container="body">
           <span class="icon fa-circle-thin fa-stack-2x"></span>
           <span class="icon fa-info fa-stack-1x"></span>
