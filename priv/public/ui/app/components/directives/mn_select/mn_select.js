@@ -13,7 +13,7 @@ angular
 function mnSelectDirective() {
   var mnSelect = {
     restrict: "AE",
-    require: "ngModel",
+    require: ["mnSelect", "ngModel"],
     scope: {
       values: "=",
       labels: "=",
@@ -27,19 +27,31 @@ function mnSelectDirective() {
       hasSearch: "=?"
     },
     templateUrl: "app/components/directives/mn_select/mn_select.html",
-    link: mnSelectController
+    link: ($scope, $element, $attributes, controllers) => {
+      controllers[0].setNgModelCtl(controllers[1]);
+    },
+    controller: mnSelectController,
+    controllerAs: "vm",
+    bindToController: true
   };
 
   return mnSelect;
 
-  function mnSelectController($scope, $element, $attrs, ngModel) {
-    var vm = $scope;
-
-    vm.mnSearch = {value: ""};
-
+  function mnSelectController($scope, $element, $attrs) {
+    var vm = this;
     var searchMinimumOptionsNumber = 10;
-    vm.valuesMapping = $attrs['valuesMapping'] ? vm.valuesMapping : (option) => defaultValuesMapping(option);
-    vm.mnHorizontalAlign = vm.mnHorizontalAlign || 'left';
+
+    var ngModelCtl;
+    vm.setNgModelCtl = (ctl) => (ngModelCtl = ctl);
+
+    if (!$attrs['valuesMapping']) {
+      vm.valuesMapping = defaultValuesMapping;
+    }
+    if (!$attrs['mnHorizontalAlign']) {
+      vm.mnHorizontalAlign = "left";
+    }
+
+    vm.mnSearchValue = "";
     vm.isOpened = false;
     vm.optionClicked = optionClicked;
     vm.clickSearch = clickSearch;
@@ -55,7 +67,7 @@ function mnSelectDirective() {
      */
     function defaultValuesMapping(option) {
       if (vm.capitalize && angular.isString(option) && option) {
-        return option[0].toUpperCase() + option.slice(1);
+        return option.charAt(0).toUpperCase() + option.slice(1);
       }
 
       return option;
@@ -68,11 +80,11 @@ function mnSelectDirective() {
 
     function optionClicked(value) {
       vm.onSelect && vm.onSelect({selectedOption: value});
-      ngModel.$setViewValue(value);
+      ngModelCtl.$setViewValue(value);
       vm.isOpened = !vm.isOpened;
 
       if (vm.hasSearchInput()) {
-        vm.mnSearch.value = '';
+        vm.mnSearchValue = "";
       }
     }
 
