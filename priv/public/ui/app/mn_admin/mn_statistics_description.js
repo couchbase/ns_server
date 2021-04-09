@@ -698,9 +698,9 @@ function get70Mapping() {
     "@fts.fts_total_queries_rejected_by_herder": "@fts.fts_total_queries_rejected_by_herder",
     "@fts.fts_curr_batches_blocked_by_herder": "@fts.fts_curr_batches_blocked_by_herder",
 
-    "@eventing-.@items.eventing_timeout_count": "@eventing.eventing/timeout_count",
-    "@eventing-.@items.eventing_processed_count": "@eventing.eventing/processed_count",
-    "@eventing-.@items.eventing_failed_count": "@eventing.eventing/failed_count"
+    "@eventing.eventing_timeout_count": "@eventing.eventing/timeout_count",
+    "@eventing.eventing_processed_count": "@eventing.eventing/processed_count",
+    "@eventing.eventing_failed_count": "@eventing.eventing/failed_count"
 
   });
 }
