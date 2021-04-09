@@ -33,7 +33,7 @@
        ng-class="['dynamic_' + overviewCtl.nodes.kv.statusClass]">
       <p>Data - {{buckets.details.length + ' bucket' + overviewCtl.getEndings(buckets.details.length)}}</p>
       <div
-         class="error"
+         class="error piped"
          ng-repeat="(nodeStatuses, count) in overviewCtl.nodes.kv.nodesByStatuses">
         {{count + ' node' + overviewCtl.getEndings(count) + ' ' + nodeStatuses}}
       </div>
@@ -44,7 +44,7 @@
        ng-class="['dynamic_' + overviewCtl.nodes.index.statusClass]">
       <p>Index</p>
       <div
-         class="error"
+         class="error piped"
          ng-repeat="(nodeStatuses, count) in overviewCtl.nodes.index.nodesByStatuses">
         {{count + ' node' + overviewCtl.getEndings(count) + ' ' + nodeStatuses}}
       </div>
@@ -55,7 +55,7 @@
        ng-class="['dynamic_' + overviewCtl.nodes.n1ql.statusClass]">
       <p>Query</p>
       <div
-         class="error"
+         class="error piped"
          ng-repeat="(nodeStatuses, count) in overviewCtl.nodes.n1ql.nodesByStatuses">
         {{count + ' node' + overviewCtl.getEndings(count) + ' ' + nodeStatuses}}
       </div>
@@ -66,7 +66,7 @@
        ng-class="['dynamic_' + overviewCtl.nodes.fts.statusClass]">
       <p>Search</p>
       <div
-         class="error"
+         class="error piped"
          ng-repeat="(nodeStatuses, count) in overviewCtl.nodes.fts.nodesByStatuses">
         {{count + ' node' + overviewCtl.getEndings(count) + ' ' + nodeStatuses}}
       </div>
@@ -78,7 +78,7 @@
        ng-class="['dynamic_' + overviewCtl.nodes.cbas.statusClass]">
       <p>Analytics</p>
       <div
-         class="error"
+         class="error piped"
          ng-repeat="(nodeStatuses, count) in overviewCtl.nodes.cbas.nodesByStatuses">
         {{count + ' node' + overviewCtl.getEndings(count) + ' ' + nodeStatuses}}
       </div>
@@ -90,7 +90,7 @@
        ng-class="['dynamic_' + overviewCtl.nodes.eventing.statusClass]">
       <p>Eventing</p>
       <div
-         class="error"
+         class="error piped"
          ng-repeat="(nodeStatuses, count) in overviewCtl.nodes.eventing.nodesByStatuses">
         {{count + ' node' + overviewCtl.getEndings(count) + ' ' + nodeStatuses}}
       </div>

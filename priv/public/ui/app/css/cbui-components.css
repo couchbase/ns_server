@@ -2959,6 +2959,9 @@ nav.nav-sidebar-hidden {
   content: '\007C';
   color: #d1d1d1;
 }
+.piped:not(:first-of-type):before {
+  content: '\00a0\007C';
+}
 
 .nvd3.nv-scatter.nv-single-point .nv-groups .nv-group .nv-point:not(.hover) {
   fill-opacity: .0 !important;
