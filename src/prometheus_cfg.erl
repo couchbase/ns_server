@@ -84,7 +84,7 @@
      [{extended_service_name(),
        [{high_cardinality_enabled, true | false} |
         {high_cardinality_scrape_interval, integer()} |
-        {high_cardinality_scrape_timeout, pos_integer()}]}]} |
+        {high_cardinality_scrape_timeout, integer()}]}]} |
     {external_prometheus_services,
      [{extended_service_name(),
        [{high_cardinality_enabled, true | false}]}]} |
@@ -156,7 +156,8 @@ default_settings() ->
      {services, [{ns_server, [{high_cardinality_enabled, true},
                               {high_cardinality_scrape_interval, 60}]}] ++
                 [{S, [{high_cardinality_enabled, true},
-                      {high_cardinality_scrape_interval, ?AUTO_CALCULATED}]}
+                      {high_cardinality_scrape_interval, ?AUTO_CALCULATED},
+                      {high_cardinality_scrape_timeout, ?AUTO_CALCULATED}]}
                         || S <- ?DEFAULT_HIGH_CARD_SERVICES -- [ns_server]]},
      {external_prometheus_services, [{S, [{high_cardinality_enabled, true}]}
                                         || S <- ?DEFAULT_HIGH_CARD_SERVICES]},
@@ -718,8 +719,14 @@ high_cardinality_jobs_config(Settings) ->
                   I ->
                       I
               end,
-          Timeout = proplists:get_value(high_cardinality_scrape_timeout, Props,
-                                        min(Interval, DefaultTimeout)),
+          Timeout =
+              case proplists:get_value(high_cardinality_scrape_timeout, Props,
+                                       ?AUTO_CALCULATED) of
+                  ?AUTO_CALCULATED ->
+                      min(Interval, DefaultTimeout);
+                  T ->
+                      T
+              end,
           #{job_name => {"~p_high_cardinality", [Name]},
             scrape_interval => {"~bs", [Interval]},
             scrape_timeout => {"~bs", [Timeout]},
