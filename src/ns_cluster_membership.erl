@@ -86,9 +86,10 @@
 fetch_snapshot(Txn) ->
     Snapshot =
         chronicle_compat:txn_get_many(
-          [nodes_wanted, server_groups,
-           [chronicle_compat:service_keys(S) ||
-               S <- supported_services()]], Txn),
+          lists:flatten(
+            [nodes_wanted, server_groups,
+             [chronicle_compat:service_keys(S) ||
+                 S <- supported_services()]]), Txn),
     maps:merge(
       Snapshot,
       chronicle_compat:txn_get_many(
