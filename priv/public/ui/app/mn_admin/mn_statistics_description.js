@@ -254,22 +254,26 @@ function getStatAdditionalConfig(statName) {
 
   case "@kv-.kv_vb_pending_resident_items_ratio":
     return {metric: {name: "kv_vb_resident_items_ratio", state: "pending"},
-            aggregationFunction: "avg"};
+            aggregationFunction: "special"};
   case "@kv-.kv_vb_active_resident_items_ratio":
     return {metric: {name: "kv_vb_resident_items_ratio", state: "active"},
-            aggregationFunction: "avg"};
+            aggregationFunction: "special"};
   case "@kv-.kv_vb_replica_resident_items_ratio":
     return {metric: {name: "kv_vb_resident_items_ratio", state: "replica"},
-            aggregationFunction: "avg"};
+            aggregationFunction: "special"};
+  case "@index-.index_fragmentation":
+    return {aggregationFunction: "special"};
+  case "@index-.@items.index_resident_percent":
+    return {aggregationFunction: "special"};
+  case "@xdcr-.@items.xdcr_percent_completeness":
+    return {aggregationFunction: "special", applyFunctions: ["sum"]};
 
   case "@system.sys_cpu_utilization_rate":
   case "@kv-.kv_ep_resident_items_ratio":
   case "@kv-.couch_docs_fragmentation":
   case "@kv-.kv_hit_ratio":
   case "@kv-.kv_ep_cache_miss_ratio":
-  case "@index-.@items.index_resident_percent":
   case "@index-.@items.index_cache_miss_ratio":
-  case "@index-.index_fragmentation":
   case "@cbas.cbas_system_load_average":
   case "@kv-.kv_ops_update":
   case "@kv-.kv_avg_bg_wait_time_seconds":
@@ -279,7 +283,6 @@ function getStatAdditionalConfig(statName) {
 
   case "@kv-.couch_views_fragmentation":
   case "@index-.@items.index_frag_percent":
-  case "@xdcr-.@items.xdcr_percent_completeness":
     return {aggregationFunction: "avg", applyFunctions: ["sum"]};
 
   case "@cbas-.cbas_incoming_records_count":
