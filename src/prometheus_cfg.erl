@@ -20,7 +20,7 @@
 %% API
 -export([start_link/0, authenticate/2, settings/0, wipe/0, storage_path/1,
          get_auth_info/0, derived_metrics/2, with_applied_defaults/1,
-         derived_metrics_interval/1]).
+         derived_metrics_interval/1, max_scrape_int/0]).
 
 -export_type([stats_settings/0]).
 
@@ -43,7 +43,9 @@
 -define(NS_TO_PROMETHEUS_USERNAME, "ns_server").
 -define(DEFAULT_HIGH_CARD_SERVICES,
         [index, fts, kv, cbas, eventing, ns_server]).
--define(MAX_SCRAPE_INTERVAL, 6*60*60). %% 6h, in seconds
+-define(MAX_SCRAPE_INTERVAL, 3*60). %% 3m, in seconds,
+                                    %% approximate max interval so that 2K
+                                    %% indexes fit in 1GB
 -define(PROMETHEUS_SHUTDOWN_TIMEOUT, 20000). %% 20s, in milliseconds
 -define(SECS_IN_DAY, 24*60*60).
 -define(AUTO_CALCULATED, -1).
@@ -399,6 +401,9 @@ wipe() ->
 storage_path(Settings) ->
     StoragePath = proplists:get_value(storage_path, Settings),
     path_config:component_path(data, StoragePath).
+
+-spec max_scrape_int() -> pos_integer().
+max_scrape_int() -> ?MAX_SCRAPE_INTERVAL.
 
 %%%===================================================================
 %%% gen_server callbacks

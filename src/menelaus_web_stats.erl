@@ -34,9 +34,11 @@ params() ->
     [{"enabled",
       #{type => bool}},
      {"scrapeInterval",
-      #{cfg_key => scrape_interval, type => pos_int}},
+      #{cfg_key => scrape_interval,
+        type => {int, 1, prometheus_cfg:max_scrape_int()}}},
      {"scrapeTimeout",
-      #{cfg_key => scrape_timeout, type => pos_int}},
+      #{cfg_key => scrape_timeout,
+        type => {int, 1, prometheus_cfg:max_scrape_int()}}},
      {"snapshotCreationTimeout",
       #{cfg_key => snapshot_timeout_msecs, type => pos_int}},
      {"scrapeIntervalsCalculationPeriod",
@@ -95,11 +97,11 @@ params() ->
      || {S, N} <- Services] ++
     [{"services." ++ N ++ ".highCardScrapeInterval",
       #{cfg_key => [services, S, high_cardinality_scrape_interval],
-        type => pos_int_or_minus_one}}
+        type => high_card_scrape_interval}}
      || {S, N} <- Services] ++
     [{"services." ++ N ++ ".highCardScrapeTimeout",
       #{cfg_key => [services, S, high_cardinality_scrape_timeout],
-        type => pos_int}}
+        type => high_card_scrape_interval}}
      || {S, N} <- Services] ++
     [{"statsExport." ++ N ++ ".highCardEnabled",
       #{cfg_key => [external_prometheus_services, S, high_cardinality_enabled],
@@ -119,6 +121,18 @@ type_spec(pos_int_or_minus_one) ->
                                 (N) when N > 0 -> ok;
                                 (_) ->
                                     {error, "must be a positive integer or -1"}
+                            end, _, _)],
+      formatter => int};
+type_spec(high_card_scrape_interval) ->
+    MaxInt = prometheus_cfg:max_scrape_int(),
+    #{validators => [int, validator:validate(
+                            fun (-1) -> ok;
+                                (N) when N > 0, N =< MaxInt -> ok;
+                                (_) ->
+                                    Err = io_lib:format(
+                                            "must be an integer in range from "
+                                            "1 to ~b, or -1", [MaxInt]),
+                                    {error, Err}
                             end, _, _)],
       formatter => int}.
 
@@ -358,7 +372,14 @@ get_validators(Now, MetricName, Req) ->
 validators(Now, Req) ->
     NowSec = Now div 1000,
     [validate_time_duration(timeWindow, _),
-     validator:default(timeWindow, "1m", _),
+     validator:default(timeWindow,
+                       fun () ->
+                           MaxScrapeInt = prometheus_cfg:max_scrape_int(),
+                           %% Use 2 * MaxScrapeInterval by default
+                           %% because most of the functions require at least 2
+                           %% samples to be evaluated
+                           integer_to_list(2 * MaxScrapeInt) ++ "s"
+                       end, _),
      validator:boolean(alignTimestamps, _),
      validate_nodes_v2(nodes, _, Req),
      validator:default(nodes,
