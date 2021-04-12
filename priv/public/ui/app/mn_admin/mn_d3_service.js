@@ -221,13 +221,16 @@ function mnD3ServiceFactory() {
     getxAxisTimestamps(data) {
       let rv = [];
       let step = this.opt.step;
-      let start = this.opt.start;
-      let finish = d3Max(data, v => v.xMax) || (new Date().getTime());//should be serve side time
-      while (start) {
-        rv.unshift(finish);
-        start -= step;
-        finish -= step;
+      let lengthInMS = this.opt.start;
+      let start = d3Max(data, v => v.startTimestamp);
+      rv.push(start);
+
+      while (lengthInMS > 0) {
+        lengthInMS -= step;
+        start += step;
+        rv.push(start);
       }
+
       return rv;
     }
     updateData(data) {

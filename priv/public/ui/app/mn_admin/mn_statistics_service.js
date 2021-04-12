@@ -205,7 +205,11 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
         switchToSingleStat(config, perChartOriginConfig[i]);
         var statPath = perChartStatsPath[i];
         var data = resp.data[i].data[0];
-        scope["mnUIStats"] = scope["mnUIStats"] || {stats:{}};
+        scope["mnUIStats"] = scope["mnUIStats"] || {
+          stats: {},
+          endTimestamp: resp.data[i].endTimestamp * 1000,
+          startTimestamp: resp.data[i].startTimestamp * 1000
+        };
         var maybeScopeHasStat = scope["mnUIStats"].stats[statPath] || {};
         if (!config.aggregationFunction) {
           scope["mnUIStats"].stats[statPath] =
@@ -257,16 +261,16 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
     values.forEach(v => {
       yMin = yMin > v[1] ? v[1] : yMin;
       yMax = yMax < v[1] ? v[1] : yMax;
-      xMax = xMax < v[0] ? v[0] : xMax;
     });
 
     return {
+      endTimestamp: stats.endTimestamp,
+      startTimestamp: previousData && !isThisInitCall ? previousData.startTimestamp + step : stats.startTimestamp,
       type: 'line',
       unit: unit,
       yAxis: axis,
       yMin: yMin,
       yMax: yMax,
-      xMax: xMax,
       key: title,
       values: values
     };
