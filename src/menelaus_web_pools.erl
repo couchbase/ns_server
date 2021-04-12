@@ -187,9 +187,12 @@ do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
     UUID = menelaus_web:get_uuid(),
 
     CanIncludeOtpCookie = InfoLevel =:= admin orelse InfoLevel =:= internal,
-    Nodes = menelaus_web_node:build_nodes_info(CanIncludeOtpCookie, InfoLevel,
-                                               Stability, LocalAddr),
+
     Config = ns_config:get(),
+    Snapshot = menelaus_web_node:get_snapshot(),
+
+    Nodes = menelaus_web_node:build_nodes_info(CanIncludeOtpCookie, InfoLevel,
+                                               Stability, LocalAddr, Config, Snapshot),
 
     TasksURI = bin_concat_path(["pools", Id, "tasks"],
                                [{"v", ns_doctor:get_tasks_version()}]),
@@ -202,7 +205,7 @@ do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
     PropList =
         [{name, list_to_binary(Id)},
          {nodes, Nodes},
-         build_buckets_info(Id, UUID, Nodes),
+         build_buckets_info(Id, UUID, Nodes, Snapshot),
          build_uri_with_validation(remoteClusters,
                                    "/pools/default/remoteClusters", UUID),
          build_alerts(UUID),
@@ -279,12 +282,13 @@ build_unstable_params(unstable) ->
       {[{Key, {StoragePList}} ||
            {Key, StoragePList} <- ns_storage_conf:cluster_storage_info()]}}].
 
-build_buckets_info(Id, UUID, Nodes) ->
-     BucketsVer =
-        erlang:phash2(ns_bucket:get_bucket_names())
-        bxor erlang:phash2(
-               [{proplists:get_value(hostname, KV),
-                 proplists:get_value(status, KV)} || {struct, KV} <- Nodes]),
+build_buckets_info(Id, UUID, Nodes, Snapshot) ->
+    BucketsConfig = ns_bucket:get_buckets(Snapshot),
+    BucketsVer =
+       erlang:phash2([ns_bucket:bucket_uuid(Props) || {_, Props} <- BucketsConfig])
+       bxor erlang:phash2(
+              [{proplists:get_value(hostname, KV),
+                proplists:get_value(status, KV)} || {struct, KV} <- Nodes]),
     {buckets, {struct,
                [{uri, bin_concat_path(["pools", Id, "buckets"],
                                       [{"v", BucketsVer},

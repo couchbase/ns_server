@@ -25,6 +25,7 @@
          build_memory_quota_info/1,
          build_nodes_info_fun/4,
          build_nodes_info/4,
+         build_nodes_info/6,
          build_node_hostname/3,
          handle_bucket_node_list/2,
          handle_bucket_node_info/3,
@@ -41,7 +42,8 @@
          handle_setup_net_config/1,
          handle_change_external_listeners/2,
          get_hostnames/2,
-         handle_node_init/1]).
+         handle_node_init/1,
+         get_snapshot/0]).
 
 -import(menelaus_util,
         [local_addr/1,
@@ -238,6 +240,11 @@ build_nodes_info(CanIncludeOtpCookie, InfoLevel, Stability, LocalAddr) ->
                              LocalAddr),
     [F(N, undefined) || N <- ns_node_disco:nodes_wanted()].
 
+build_nodes_info(CanIncludeOtpCookie, InfoLevel, Stability, LocalAddr, Config, Snapshot) ->
+    F = do_build_nodes_info_fun(CanIncludeOtpCookie, InfoLevel, Stability,
+                             LocalAddr, Config, Snapshot),
+    [F(N, undefined) || N <- ns_node_disco:nodes_wanted()].
+
 %% builds health/warmup status of given node (w.r.t. given Bucket if
 %% not undefined)
 build_node_status(Node, Bucket, InfoNode, BucketsAll) ->
@@ -278,6 +285,11 @@ get_snapshot() ->
        chronicle_master:fetch_snapshot(_)]).
 
 build_nodes_info_fun(CanIncludeOtpCookie, InfoLevel, Stability, LocalAddr) ->
+    Config = ns_config:get(),
+    Snapshot = get_snapshot(),
+    do_build_nodes_info_fun(CanIncludeOtpCookie, InfoLevel, Stability, LocalAddr, Config, Snapshot).
+
+do_build_nodes_info_fun(CanIncludeOtpCookie, InfoLevel, Stability, LocalAddr, Config, Snapshot) ->
     OtpCookie =
         %% NOTE: the following avoids exposing otpCookie to UI
         case CanIncludeOtpCookie andalso InfoLevel =:= normal of
@@ -287,8 +299,6 @@ build_nodes_info_fun(CanIncludeOtpCookie, InfoLevel, Stability, LocalAddr) ->
                 []
         end,
     NodeStatuses = ns_doctor:get_nodes(),
-    Config = ns_config:get(),
-    Snapshot = get_snapshot(),
 
     BucketsAll = ns_bucket:get_buckets(Snapshot),
     fun(WantENode, Bucket) ->
