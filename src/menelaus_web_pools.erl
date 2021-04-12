@@ -345,10 +345,8 @@ build_alerts(UUID) ->
 build_one_alert({_Key, Msg, Time, DisablePopUp}) ->
     LocalTime = calendar:now_to_local_time(misc:time_to_timestamp(Time)),
     StrTime = format_server_time(LocalTime),
-    StrDisablePopUp = menelaus_util:boolean_to_binary_string(DisablePopUp),
-
     {struct, [{msg, Msg}, {serverTime, StrTime},
-              {disableUIPopUp, StrDisablePopUp}]}.
+              {disableUIPopUp, DisablePopUp}]}.
 
 handle_pool_info_streaming(Id, Req) ->
     LocalAddr = local_addr(Req),

@@ -55,7 +55,6 @@
          is_valid_positive_integer_in_range/3,
          format_server_time/1,
          format_server_time/2,
-         boolean_to_binary_string/1,
          ensure_local/1,
          reply_global_error/2,
          reply_error/3,
@@ -478,15 +477,6 @@ format_server_time({{YYYY, MM, DD}, {Hour, Min, Sec}}, MicroSecs) ->
     list_to_binary(
       io_lib:format("~4.4.0w-~2.2.0w-~2.2.0wT~2.2.0w:~2.2.0w:~2.2.0w.~3.3.0wZ",
                     [YYYY, MM, DD, Hour, Min, Sec, MicroSecs div 1000])).
-
--spec boolean_to_binary_string(boolean()) -> binary().
-boolean_to_binary_string(Bool) ->
-    case Bool of
-        true ->
-            <<"true">>;
-        false ->
-            <<"false">>
-    end.
 
 web_exception(Code, Message) ->
     web_exception(Code, Message, []).
