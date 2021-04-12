@@ -1376,7 +1376,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                        url=f"http://{local_url_addr}:"
                            f"{read_guts(guts, 'rest_port')}/diag/eval",
                        log_file="couchbase.log",
-                       post_data="chronicle_local:get_snapshot(node())."),
+                       post_data="maps:to_list(chronicle_local:get_snapshot(node()))."),
 
         make_curl_task(name="master events",
                        user="@",
