@@ -19,6 +19,7 @@
          default_config/2,
          find_by_rest_name/1,
          services_port_keys/1,
+         all_port_keys/0,
          get_external_host_and_ports/4,
          get_ports_for_services/3,
          portname_to_secure_portname/1]).
@@ -190,6 +191,9 @@ get_port(Key, Config, Node) ->
 services_port_keys(Services) ->
     AllPorts = all_ports(),
     [P#port.key || P <- AllPorts, lists:member(P#port.service, Services)].
+
+all_port_keys() ->
+    [P#port.key || P <- all_ports()].
 
 find_by_rest_name(RestName) when is_list(RestName) ->
     RestNameBin = list_to_binary(RestName),

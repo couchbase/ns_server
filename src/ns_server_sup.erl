@@ -71,6 +71,9 @@ child_specs() ->
      {ns_log, {ns_log, start_link, []},
       permanent, 1000, worker, [ns_log]},
 
+     {initargs_updater, {initargs_updater, start_link, []},
+      permanent, 1000, worker, [initargs_updater]},
+
      {timer_lag_recorder, {timer_lag_recorder, start_link, []},
       permanent, 1000, worker, []},
 
