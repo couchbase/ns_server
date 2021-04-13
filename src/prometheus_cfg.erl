@@ -732,7 +732,7 @@ high_cardinality_jobs_config(Settings) ->
                   ?AUTO_CALCULATED ->
                       min(Interval, DefaultTimeout);
                   T ->
-                      T
+                      min(Interval, T)
               end,
           #{job_name => {"~p_high_cardinality", [Name]},
             scrape_interval => {"~bs", [Interval]},

@@ -216,7 +216,22 @@ validate_metrics_settings(Settings) ->
                     "scrapeTimeout">>,
             menelaus_util:global_error_exception(400, Msg);
         false -> ok
-    end.
+    end,
+    lists:foreach(
+      fun ({Name, Props}) ->
+          Int = proplists:get_value(high_cardinality_scrape_interval, Props),
+          Timeout = proplists:get_value(high_cardinality_scrape_timeout, Props),
+          if
+              Int == -1 -> ok;
+              Int < Timeout ->
+                  F = "highCardScrapeInterval for service ~p must be "
+                      "greater than or equal to highCardScrapeTimeout",
+                  S = ns_cluster_membership:json_service_name(Name),
+                  Error = iolist_to_binary(io_lib:format(F, [S])),
+                  menelaus_util:global_error_exception(400, Error);
+              true -> ok
+          end
+      end, proplists:get_value(services, Settings, [])).
 
 apply_value([], Value, _PropList) -> Value;
 apply_value([Key | Tail], Value, PropList) ->
