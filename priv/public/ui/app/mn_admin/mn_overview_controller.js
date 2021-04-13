@@ -39,7 +39,56 @@ angular
   .config(mnOverviewConfig)
   .controller('mnOverviewController', mnOverviewController);
 
-function mnOverviewConfig($stateProvider) {
+function mnOverviewConfig($stateProvider, $transitionsProvider) {
+  $transitionsProvider.onBefore({
+    from: state => (state.name !== "app.admin.overview.statistics"),
+    to: "app.admin.overview.statistics"
+  }, trans => {
+    var $q = trans.injector().get("$q");
+    var mnPermissionsService = trans.injector().get("mnPermissions");
+    var mnUserRolesService = trans.injector().get("mnUserRolesService");
+    var mnStoreService = trans.injector().get("mnStoreService");
+    let original = Object.assign({}, trans.params());
+
+    return $q.all([
+      mnPermissionsService.check(),
+      mnUserRolesService.getUserProfile()
+    ]).then(function ([permissions, profile]) {
+      let params = Object.assign({}, original);
+      var statsRead = permissions.bucketNames['.stats!read'];
+      let scenarios = mnStoreService.store("scenarios").share();
+      let groups = mnStoreService.store("groups").share();
+
+      params.scenario =
+        (params.scenario && (scenarios.find(item => item.id == params.scenario) || {}).id) ||
+        (scenarios.find(item =>
+                        (item.uiid == "mn-cluster-overview") ||
+                        (item.name == "Cluster Overview")) || {}).id ||
+        mnStoreService.store("scenarios").last().id;
+
+      if (!original.openedGroups.length) {
+        params.openedGroups = groups
+          .filter(g => g.uiid && ((g.uiid == "mn-cluster-overview-group") ||
+                                  (g.uiid == "mn-all-services-data-group"))).map(g => g.id);
+      }
+
+      if (!params.sharedBucket && statsRead && statsRead[0]) {
+        params.sharedBucket = statsRead[0];
+      } else if (params.sharedBucket &&
+                 statsRead && statsRead.indexOf(params.sharedBucket) < 0) {
+        params.sharedBucket = statsRead[0];
+      } else if (params.sharedBucket && (!statsRead || !statsRead[0])) {
+        params.sharedBucket = null;
+      }
+
+      if ((params.sharedBucket !== original.sharedBucket) ||
+          (params.scenario !== original.scenario) ||
+          (params.openedGroups.length !== original.openedGroups.length)) {
+        return trans.router.stateService.target("app.admin.overview.statistics", params);
+      }
+    });
+  });
+
   $stateProvider
     .state('app.admin.overview', {
       url: '/overview',
@@ -60,43 +109,6 @@ function mnOverviewConfig($stateProvider) {
       templateUrl: 'app/mn_admin/mn_statistics.html',
       params: {
         statsHostname: "all"
-      },
-      redirectTo: function (trans) {
-        var $q = trans.injector().get("$q");
-        var mnPermissionsService = trans.injector().get("mnPermissions");
-        var mnUserRolesService = trans.injector().get("mnUserRolesService");
-        var mnStoreService = trans.injector().get("mnStoreService");
-        let original = Object.assign({}, trans.params());
-
-        return $q.all([
-          mnPermissionsService.check(),
-          mnUserRolesService.getUserProfile()
-        ]).then(function ([permissions, profile]) {
-          let params = Object.assign({}, original);
-          var statsRead = permissions.bucketNames['.stats!read'];
-          let scenarios = mnStoreService.store("scenarios").share();
-
-          params.scenario =
-            (params.scenario && (scenarios.find(item => item.id == params.scenario) || {}).id) ||
-            (scenarios.find(item =>
-                            (item.uiid == "mn-cluster-overview") ||
-                            (item.name == "Cluster Overview")) || {}).id ||
-            mnStoreService.store("scenarios").last().id;
-
-          if (!params.sharedBucket && statsRead && statsRead[0]) {
-            params.sharedBucket = statsRead[0];
-          } else if (params.sharedBucket &&
-                     statsRead && statsRead.indexOf(params.sharedBucket) < 0) {
-            params.sharedBucket = statsRead[0];
-          } else if (params.sharedBucket && (!statsRead || !statsRead[0])) {
-            params.sharedBucket = null;
-          }
-
-          if ((params.sharedBucket !== original.sharedBucket) ||
-              (params.scenario !== original.scenario)) {
-            return {state: "app.admin.overview.statistics", params: params};
-          }
-        });
       }
     });
 }

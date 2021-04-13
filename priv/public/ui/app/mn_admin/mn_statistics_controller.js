@@ -129,7 +129,8 @@ function mnStatisticsChartsController($scope, $uibModal, mnStatisticsNewService,
 }
 
 function mnStatisticsGroupsController($scope, $uibModal, $timeout,
-                                      mnStatisticsNewService, mnStoreService, mnUserRolesService) {
+                                      mnStatisticsNewService, mnStoreService,
+                                      mnUserRolesService, mnHelper) {
   var vm = this;
   vm.isDetailsOpened = true;
   vm.hideGroupControls = hideGroupControls;
@@ -247,6 +248,8 @@ function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http
     "Server Resources": true
   };
   vm.mnAdminStatsPoller = mnStatisticsNewService.mnAdminStatsPoller;
+
+  mnHelper.initializeDetailsHashObserver(vm, 'openedGroups', '.');
 
   activate();
 

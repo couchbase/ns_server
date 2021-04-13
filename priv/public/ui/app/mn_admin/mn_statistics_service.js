@@ -619,7 +619,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
       desc: "Stats showing the general health of your cluster. Customize and/or make your own dashboard with \"new dashboard... \" below.",
       groups: [{
         name: "Cluster Overview",
-        isOpen: true,
+        uiid: "mn-cluster-overview-group",
         charts: [{
           stats: {"@kv-.ops": true,
                   "@query.query_requests": true,
@@ -683,7 +683,6 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
         }]
       }, {
         name: "Node Resources",
-        isOpen: false,
         charts: [{
           stats: {"@system.cpu_utilization_rate": true},
           size: "medium",
@@ -709,7 +708,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
       desc: "Most common stats, arranged per service. Customize and/or make your own dashboard with \"new dashboard... \" below.",
       groups: [{
         name: "Data (Docs/Views/XDCR)",
-        isOpen: true,
+        uiid: "mn-all-services-data-group",
         charts: [{
           stats: {"@kv-.mem_used": true,
                   "@kv-.ep_mem_low_wat": true,
@@ -757,7 +756,6 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
         }]
       }, {
         name: "Query",
-        isOpen: false,
         charts: [{
           stats: {"@query.query_requests_1000ms": true,
                   "@query.query_requests_500ms": true,
@@ -788,7 +786,6 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
         }]
       }, {
         name: "Index",
-        isOpen: false,
         charts: [{
           stats: {"@index-.index/num_rows_returned": true},
           size: "small",
@@ -815,7 +812,6 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
         }]
       }, {
         name: "Search",
-        isOpen: false,
         charts: [{
           stats: {"@fts-.fts/num_bytes_used_disk": true,
                   "@fts.fts_num_bytes_used_ram": true},
@@ -833,7 +829,6 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
       }, {
         name: "Analytics",
         enterprise: true,
-        isOpen: false,
         charts: [{
           stats: {"@cbas-.cbas/incoming_records_count": true},
           size: "small",
@@ -882,7 +877,6 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
       }, {
         name: "Eventing",
         enterprise: true,
-        isOpen: false,
         charts: [{
           stats: {"@eventing.eventing/failed_count": true,
                   "@eventing.eventing/timeout_count": true},
@@ -891,7 +885,6 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
         }]
       },  {
         name: "XDCR",
-        isOpen: false,
         charts: [{
           stats: {"@xdcr-.replication_changes_left": true},
           size: "small",
@@ -913,7 +906,6 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
         }]
       }, {
         name: "vBucket Resources",
-        isOpen: false,
         charts: [{
           stats: {"@kv-.vb_active_num": true,
                   "@kv-.vb_replica_num": true,
@@ -966,7 +958,6 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
         }]
       }, {
         name: "DCP Queues",
-        isOpen: false,
         charts: [{
           stats: {"@kv-.ep_dcp_views+indexes_count": true,
                   "@kv-.ep_dcp_cbas_count": true,
@@ -1025,7 +1016,6 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
                 ]
       }, {
         name: "Disk Queues",
-        isOpen: false,
         charts: [{
           stats: {"@kv-.ep_diskqueue_fill": true,
                   "@kv-.ep_diskqueue_drain": true,

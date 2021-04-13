@@ -163,10 +163,9 @@ licenses/APL2.txt.
        class="charts-group">
       <div
          ng-if="mnStatsGroupsCtl.getGroup() && ((mnStatsGroupsCtl.getGroup().enterprise == undefined) || poolDefault.isEnterprise)"
-         ng-click="mnStatsGroupsCtl.getGroup().isOpen = !mnStatsGroupsCtl.getGroup().isOpen;
-                mnStatsGroupsCtl.saveDashboard();"
+         ng-click="statisticsNewCtl.toggleDetails(groupID);"
          class="charts-group-row disclosure nowrap has-hover"
-         ng-class="{disclosed: mnStatsGroupsCtl.getGroup().isOpen}">
+         ng-class="{disclosed: statisticsNewCtl.isDetailsOpened(groupID)}">
         <form novalidate
            ng-if="!mnStatsGroupsCtl.getGroup().preset"
            class="inline"
@@ -205,7 +204,7 @@ licenses/APL2.txt.
 
         <!-- if stats can be sub-divided by "item", they show in these menus ---------->
         <div
-           ng-if="mnStatsGroupsCtl.getGroup().isOpen"
+           ng-if="statisticsNewCtl.isDetailsOpened(groupID)"
            class="chart-group-row-items"
            ng-click="$event.stopPropagation();">
           <div
@@ -299,7 +298,7 @@ licenses/APL2.txt.
         </button>
       </div>
 
-      <div ng-if="mnStatsGroupsCtl.getGroup().isOpen" class="row charts">
+      <div ng-if="statisticsNewCtl.isDetailsOpened(groupID)" class="row charts">
         <div
            ng-repeat="chartID in mnStatsGroupsCtl.getGroup().charts track by ($index + chartID)"
            ng-controller="mnStatisticsChartsController as mnStatsChartsCtl"

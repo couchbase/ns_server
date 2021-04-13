@@ -139,6 +139,11 @@ function mnAdminConfig($stateProvider, $urlMatcherFactoryProvider, mnPluggableUi
         requiresAuth: true
       },
       params: {
+        openedGroups: {
+          value: [],
+          array: true,
+          dynamic: true
+        },
         sharedBucket: {
           value: null,
           dynamic: true

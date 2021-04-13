@@ -15,8 +15,7 @@ function mnGroupDialogController($rootScope, $uibModalInstance, mnUserRolesServi
   vm.group = {
     name: "",
     desc: "",
-    charts: [],
-    isOpen: true
+    charts: []
   };
 
   vm.submit = submit;
