@@ -2758,7 +2758,7 @@ button.ace-search-options-buttons.checked {
 .insights-collection {
   margin: .25rem 0 .25rem 1rem;
 }
-.dataverse-box {
+.analytics-scope-box {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -2766,9 +2766,9 @@ button.ace-search-options-buttons.checked {
   margin: .5rem 0 0 0;
   padding: .5rem;
 }
-.dataverse-box h5,
-.dataverse-box span,
-.dataverse-box div {
+.analytics-scope-box h5,
+.analytics-scope-box span,
+.analytics-scope-box div {
   line-height: 1.2 !important;
 }
 
@@ -2817,11 +2817,11 @@ button.ace-search-options-buttons.checked {
 .wb-history-table section span.selected {
   background-color: #ececec;
 }
-.wb-use {
+.query-context {
   white-space: nowrap;
   font-size: .75rem;
 }
-.wb-use select {
+.query-context select {
   height: 24px!important;
   border-radius: 3px;
   font-size: .75rem;
