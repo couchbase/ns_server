@@ -13,6 +13,7 @@ import mnStatisticsDescriptionService from "/ui/app/mn_admin/mn_statistics_descr
 import mnStatisticsChart from "/ui/app/mn_admin/mn_statistics_chart_directive.js";
 import mnHelper from "/ui/app/components/mn_helper.js";
 import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
+import mnPermissions from "/ui/app/components/mn_permissions.js";
 
 export default 'mnDetailStatsModule';
 
@@ -22,7 +23,8 @@ angular
     mnStatisticsDescriptionService,
     mnStatisticsChart,
     mnHelper,
-    mnPoolDefault
+    mnPoolDefault,
+    mnPermissions
   ])
   .component('mnDetailStats', {
     bindings: {
@@ -37,8 +39,15 @@ angular
     controller: controller
   });
 
-function controller(mnStatisticsNewService, mnStatisticsDescriptionService, mnHelper, $scope, mnPoolDefault) {
+function controller(mnStatisticsNewService, mnStatisticsDescriptionService, mnHelper, $scope, mnPoolDefault, mnPermissions) {
   var vm = this;
+  vm.isComponentDisabled =
+    mnPoolDefault.export.compat.atLeast70 &&
+    !mnPermissions.export.cluster.stats.read;
+
+  if (vm.isComponentDisabled) {
+    return;
+  }
   vm.zoom = "minute";
   vm.onSelectZoom = onSelectZoom;
   vm.items = {};
@@ -61,7 +70,7 @@ function controller(mnStatisticsNewService, mnStatisticsDescriptionService, mnHe
     vm.mnAdminStatsPoller.heartbeat
       .setInterval(mnStatisticsNewService.defaultZoomInterval(selectedZoom));
     vm.items[vm.service] =
-      mnPoolDefault.export.compat.atLeast70 ? vm.itemId : (vm.prefix + "/" + vm.itemId + "/")
+      mnPoolDefault.export.compat.atLeast70 ? vm.itemId : (vm.prefix + "/" + vm.itemId + "/");
     var stats = mnStatisticsDescriptionService.getStats();
     vm.charts = Object
       .keys(stats["@" + vm.service + "-"]["@items"])

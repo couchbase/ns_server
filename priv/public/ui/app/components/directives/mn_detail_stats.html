@@ -1,15 +1,17 @@
 <!--
-Copyright 2019-Present Couchbase, Inc.
+     Copyright 2019-Present Couchbase, Inc.
 
-Use of this software is governed by the Business Source License included in
-the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
-file, in accordance with the Business Source License, use of this software will
-be governed by the Apache License, Version 2.0, included in the file
-licenses/APL2.txt.
+     Use of this software is governed by the Business Source License included in
+     the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
+     file, in accordance with the Business Source License, use of this software will
+     be governed by the Apache License, Version 2.0, included in the file
+     licenses/APL2.txt.
 -->
 
-<div class="row flex-left min-height-2 margin-bottom-half"
-     ng-click="$event.stopPropagation();">
+<div
+   class="row flex-left min-height-2 margin-bottom-half"
+   ng-if="!$ctrl.isComponentDisabled"
+   ng-click="$event.stopPropagation();">
   <p class="disclosure margin-bottom-0"
      ng-class="{'disclosed': $ctrl.showStats}"
      ng-click="$ctrl.showStats = !$ctrl.showStats;">
@@ -25,7 +27,7 @@ licenses/APL2.txt.
   </mn-select>
 </div>
 <div class="row charts"
-   ng-if="$ctrl.showStats"
+   ng-if="$ctrl.showStats && !$ctrl.isComponentDisabled"
    ng-click="$event.stopPropagation();">
   <mn-statistics-chart
      ng-if="$ctrl.scope"
