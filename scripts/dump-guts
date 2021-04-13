@@ -149,7 +149,23 @@ main(Args) ->
                  node_name,
                  couch_inis,
                  initargs_path,
-                 guess_prefix}).
+                 guess_prefix,
+                 %% All services by default.
+                 services = [kv, n1ql, index, fts, cbas, eventing, backup],
+                 nodes_wanted = [],
+                 %% relevant ports and their defaults.
+                 ports = [{xdcr, xdcr_rest_port, 9998},
+                          {kv, memcached_dedicated_port, 11209},
+                          {ns_server, rest_port, 8091},
+                          {n1ql, query_port, 8093},
+                          {index, indexer_http_port, 9102},
+                          {kv, projector_port, 9999},
+                          {fts, fts_http_port, 8094},
+                          {cbas, cbas_http_port, 8095},
+                          {cbas, cbas_admin_port, 9110},
+                          {cbas, cbas_parent_port, 9122},
+                          {backup, backup_http_port, 8097},
+                          {eventing, eventing_http_port, 8096}]}).
 
 flag_to_config_field("static-config") -> #config.static_config;
 flag_to_config_field("node-file") -> #config.node_file;
@@ -191,6 +207,14 @@ get_initargs(#config{initargs_path = Path}) ->
             RV;
         RV ->
             RV
+    end.
+
+get_app_init_arg(InitArgs, App, Flag, Default) ->
+    case get_app_init_arg(InitArgs, App, Flag) of
+        {error, not_found} ->
+            Default;
+        {ok, V} ->
+            V
     end.
 
 get_app_init_arg(InitArgs, App, Flag) ->
@@ -263,8 +287,6 @@ main_main(Flags, []) ->
                                   erlang:setelement(Field, Acc, Value)
                           end, #config{}, Flags),
     Config = massage_config(Config0),
-
-    erlang:put(config, Config),
     StaticPath = Config#config.static_config,
 
     case StaticPath of
@@ -280,17 +302,33 @@ main_main(Flags, []) ->
         _ ->
             case file:consult(StaticPath) of
                 {ok, Terms} when is_list(Terms) ->
-                    Terms2 = case get_initargs(Config) of
-                                 {ok, InitArgs} ->
-                                     maybe_override_static_config_with_initargs(Terms, InitArgs);
-                                 _ ->
-                                     Terms
-                             end,
-                    main_with_static_config(Terms2);
+                    {NewTerms, NewConfig} = update_terms_config(Terms, Config),
+                    erlang:put(config, NewConfig),
+                    main_with_static_config(NewTerms);
                 Err ->
                     io:format(standard_error, "Failed to read static config ~s (~p):~n~p~n", [filename:absname(StaticPath), file:get_cwd(), Err]),
                     erlang:halt(1)
             end
+    end.
+
+update_terms_config(Terms, Config) ->
+    case get_initargs(Config) of
+        {ok, InitArgs} ->
+            NodesWanted = get_app_init_arg(InitArgs, ns_server, nodes_wanted,
+                                           Config#config.nodes_wanted),
+            Services = get_app_init_arg(InitArgs, ns_server, services,
+                                        Config#config.services),
+            Ports = lists:map(
+                      fun ({S, K, D}) ->
+                              {S, K, get_app_init_arg(InitArgs, ns_server,
+                                                      K, D)}
+                      end, Config#config.ports),
+
+            {maybe_override_static_config_with_initargs(Terms, InitArgs),
+             Config#config{services = Services, ports = Ports,
+                           nodes_wanted = NodesWanted}};
+        _ ->
+            {Terms, Config}
     end.
 
 maybe_override_static_config_with_initargs(Terms, InitArgs) ->
@@ -449,25 +487,6 @@ search_config_for_node(NSConfig, Node, Key, Default) ->
             Value
     end.
 
-extract_rest_port(NSConfig, Node) ->
-    None = make_ref(),
-    case search_config_for_node(NSConfig, Node, rest, None) of
-        None ->
-            dig_rest_port(search_config(NSConfig, rest, []));
-        KV ->
-            case lists:keyfind(port_meta, 1, KV) of
-                {port_meta, global} ->
-                    dig_rest_port(search_config(NSConfig, rest, []));
-                _ ->
-                    dig_rest_port(KV)
-            end
-    end.
-
-%% those are copied from misc.erl. We cannot use misc.erl directly
-%% because we're standalone escript
-dig_rest_port(KV) ->
-    search_config(KV, port, "").
-
 rewrite(Fun, Term) ->
     case Fun(Term) of
         continue ->
@@ -539,21 +558,11 @@ sanitize_config(Config) ->
               {continue, Other}
       end, Config).
 
-find_port(NSConfig, Node, ConfigKey, DefaultPort) ->
-    Port = search_config_for_node(NSConfig, Node, ConfigKey, DefaultPort),
-    {ConfigKey, integer_to_list(Port)}.
-
-find_ports(NSConfig, Node, Services, Candidates) ->
-    [find_port(NSConfig, Node, ConfigKey, DefaultPort)
-     || {Service, ConfigKey, DefaultPort} <- Candidates, lists:member(Service, Services)].
-
 main_with_everything(StaticTerms, NSConfig, CouchInisPList, Node) ->
     DBDir = proplists:get_value({"couchdb", "database_dir"}, CouchInisPList, ""),
     IdxDir = proplists:get_value({"couchdb", "view_index_dir"}, CouchInisPList, ""),
-    RestPort = extract_rest_port(NSConfig, Node),
     MCDConfig = search_config_for_node(NSConfig, Node, memcached, []),
     MCDDefaults = search_config_for_node(NSConfig, Node, memcached_defaults, []),
-    MCDPort = search_config(MCDConfig, dedicated_port, ""),
     MCDAdmin = search_config(MCDConfig, admin_user, ""),
     MCDLogs = search_config(MCDConfig, log_path, ""),
 
@@ -569,23 +578,7 @@ main_with_everything(StaticTerms, NSConfig, CouchInisPList, Node) ->
                               filename,
                               ""),
 
-    Nodes = [node_host(N) || N <- search_config(NSConfig, nodes_wanted, [])],
-
-    %% Assume all services are available on all nodes. This is a workaround
-    %% until we're able to read information from chronicle
-    Services = [kv, n1ql, index, fts, cbas, eventing, backup],
-
-    Candidates = [{n1ql, query_port, 8093},
-                  {index, indexer_http_port, 9102},
-                  {kv, projector_port, 9999},
-                  {fts, fts_http_port, 8094},
-                  {cbas, cbas_http_port, 8095},
-                  {cbas, cbas_admin_port, 9110},
-                  {cbas, cbas_parent_port, 9122},
-                  {backup, backup_http_port, 8097},
-                  {eventing, eventing_http_port, 8096}],
-    OtherPorts = [find_port(NSConfig, Node, xdcr_rest_port, 9998) |
-                  find_ports(NSConfig, Node, Services, Candidates)],
+    Nodes = [node_host(N) || N <- confget(#config.nodes_wanted)],
 
     {_, DataDir} = lists:keyfind(path_config_datadir, 1, StaticTerms),
     PromStatsSettings = search_config(NSConfig, stats_settings, []),
@@ -596,7 +589,12 @@ main_with_everything(StaticTerms, NSConfig, CouchInisPList, Node) ->
     DistCfgPath = filename:join([DataDir, "config", "dist_cfg"]),
     Ipv6 = is_net_config_ipv6(DistCfgPath),
 
-    Pairs = OtherPorts ++
+    Services = confget(#config.services),
+    Ports = [{P, N} || {S, P, N} <- confget(#config.ports),
+                       S =:= ns_server orelse S =:= xdcr orelse
+                       lists:member(S, Services)],
+
+    Pairs = Ports ++
         [{ns_config, iolist_to_binary(io_lib:format("~p", [sanitize_config(NSConfig)]))},
          {static_config, iolist_to_binary(io_lib:format("~p", [StaticTerms]))},
          {couch_inis, confget(#config.couch_inis)},
@@ -604,8 +602,6 @@ main_with_everything(StaticTerms, NSConfig, CouchInisPList, Node) ->
          {node, Node},
          {db_dir, DBDir},
          {idx_dir, IdxDir},
-         {rest_port, RestPort},
-         {memcached_port, MCDPort},
          {ns_log_path, NSLogPath},
          {log_path, search_config(StaticTerms, error_logger_mf_dir, "")},
          {memcached_admin, MCDAdmin},

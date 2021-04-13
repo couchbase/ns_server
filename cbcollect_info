@@ -741,7 +741,7 @@ def make_curl_post_task(name, user, password, url, timeout=60,
 
 
 def make_cbstats_task(kind, memcached_pass, guts):
-    port = read_guts(guts, "memcached_port")
+    port = read_guts(guts, "memcached_dedicated_port")
     user = read_guts(guts, "memcached_admin")
     return AllOsTask("memcached stats %s" % kind,
                      flatten(["cbstats", "-a", "%s:%s" %
@@ -1438,7 +1438,10 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                       "warmup", "workload"]],
 
         [AllOsTask("memcached mcstat %s" % kind,
-                   flatten(["mcstat", "-h", "%s:%s" % (local_url_addr, read_guts(guts, "memcached_port")),
+                   flatten(["mcstat", "-h",
+                            "%s:%s" % (local_url_addr,
+                                       read_guts(guts,
+                                                 "memcached_dedicated_port")),
                             "-u", read_guts(guts, "memcached_admin"), kind]),
                    log_file="stats.log",
                    timeout=60,
@@ -1447,7 +1450,10 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
 
         # mcstat -a (iterate for all buckets)
         [AllOsTask("memcached mcstat %s" % kind,
-                   flatten(["mcstat", "-a", "-h", "%s:%s" % (local_url_addr, read_guts(guts, "memcached_port")),
+                   flatten(["mcstat", "-a", "-h",
+                            "%s:%s" % (local_url_addr,
+                                       read_guts(guts,
+                                                 "memcached_dedicated_port")),
                             "-u", read_guts(guts, "memcached_admin"), kind]),
                    log_file="stats.log",
                    timeout=60,
@@ -1517,7 +1523,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                    ["mctimings",
                     "-u", read_guts(guts, "memcached_admin"),
                     "-h", "%s:%s" % (local_url_addr,
-                                     read_guts(guts, "memcached_port")),
+                                     read_guts(guts, "memcached_dedicated_port")),
                     "-a", "-v"] + stat,
                    log_file="stats.log",
                    timeout=60,
@@ -1541,7 +1547,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
         AllOsTask("Phosphor Trace",
                   ["kv_trace_dump",
                    "-H", "%s:%s" % (local_url_addr,
-                                    read_guts(guts, "memcached_port")),
+                                    read_guts(guts, "memcached_dedicated_port")),
                    "-u", read_guts(guts, "memcached_admin"),
                    "kv_trace.json"],
                   timeout=120,
