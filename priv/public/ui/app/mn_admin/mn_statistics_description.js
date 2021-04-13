@@ -301,6 +301,7 @@ function getStatAdditionalConfig(statName) {
     return {nodesAggregation: "special", applyFunctions: ["sum"]};
 
   case "@cbas-.cbas_incoming_records_count":
+  case "@cbas-.cbas_failed_to_parse_records_count":
   case "@index-.index_num_docs_indexed":
   case "@index-.index_num_requests":
   case "@fts-.fts_total_bytes_indexed":
@@ -369,6 +370,9 @@ function getStatAdditionalConfig(statName) {
 
   case "@cbas-.cbas_incoming_records_count_total":
     return {metric: {name: "cbas_incoming_records_count"}, applyFunctions: ["sum"]};
+
+  case "@cbas-.cbas_failed_to_parse_records_count_total":
+    return {metric: {name: "cbas_failed_to_parse_records_count"}, applyFunctions: ["sum"]};
 
   case "@xdcr-.@items.xdcr_rate_replicated_docs_per_second":
     return {metric: {name: "xdcr_docs_written_total"}, applyFunctions: ["irate", "sum"]};
@@ -566,7 +570,7 @@ function get70Mapping() {
 
     "@cbas-.cbas_incoming_records_count": "@cbas-.cbas/incoming_records_count",
     "@cbas-.cbas_incoming_records_count_total": "@cbas-.cbas/incoming_records_count_total",
-    "@cbas-.cbas_failed_to_parse_records_count": "@cbas-.cbas/failed_at_parser_records_count_total",
+    "@cbas-.cbas_failed_to_parse_records_count_total": "@cbas-.cbas/failed_at_parser_records_count_total",
 
     "@index.index_memory_used_total": "@index.index_memory_used",
     "@index-.index_fragmentation": "@index-.index/fragmentation",
@@ -804,6 +808,13 @@ function get70CompatDesc() {
             title: "Eventing Timeouts Rate",
             desc: "Execution timeouts while processing mutations per second."
           }
+        }
+      },
+      "@cbas-": {
+        "cbas_failed_to_parse_records_count": {
+          unit: "number/sec",
+          title: "Analytics Parse Fail Rate",
+          desc: "Number of records Analytics failed to parse per second."
         }
       },
       "@cbas": {

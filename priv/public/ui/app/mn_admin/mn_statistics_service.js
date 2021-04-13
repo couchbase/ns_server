@@ -839,7 +839,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
           size: "small",
           specificStat: true
         }, {
-          stats: {"@cbas-.cbas/incoming_records_count_total": true},
+          stats: {"@cbas-.cbas_failed_to_parse_records_count": true},
           size: "small",
           specificStat: true
         }, {
