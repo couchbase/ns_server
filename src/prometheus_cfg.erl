@@ -156,7 +156,9 @@ default_settings() ->
      {cbcollect_stats_min_period, 14}, %% in days
      {average_sample_size, 3}, %% in bytes
      {services, [{ns_server, [{high_cardinality_enabled, true},
-                              {high_cardinality_scrape_interval, 60}]}] ++
+                              {high_cardinality_scrape_interval, 60},
+                              {high_cardinality_scrape_timeout,
+                               ?AUTO_CALCULATED}]}] ++
                 [{S, [{high_cardinality_enabled, true},
                       {high_cardinality_scrape_interval, ?AUTO_CALCULATED},
                       {high_cardinality_scrape_timeout, ?AUTO_CALCULATED}]}
