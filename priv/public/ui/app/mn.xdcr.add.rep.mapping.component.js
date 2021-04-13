@@ -11,7 +11,7 @@ licenses/APL2.txt.
 import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
 import {Subject, of, merge} from '/ui/web_modules/rxjs.js';
 import {map, filter, switchMap, shareReplay, takeUntil, startWith,
-  distinctUntilChanged, throttleTime, withLatestFrom} from '/ui/web_modules/rxjs/operators.js';
+  distinctUntilChanged, debounceTime, withLatestFrom} from '/ui/web_modules/rxjs/operators.js';
 
 import {MnLifeCycleHooksToStream} from "./mn.core.js";
 
@@ -113,7 +113,7 @@ class MnXDCRAddRepMappingComponent extends MnLifeCycleHooksToStream {
     let keyChanges = this.explicitMappingGroup.migrationMode.get('key').valueChanges;
     keyChanges
       .pipe(filter(e => !!e),
-            throttleTime(1000),
+            debounceTime(500),
             takeUntil(this.mnOnDestroy))
       .subscribe(expression => {
         this.postRegexpValidationExpression.post({
