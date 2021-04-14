@@ -126,25 +126,21 @@ reset_master_vbucket(Bucket) ->
 %% replicated_storage callbacks
 
 init([Bucket, Replicator, ReplicationSrv]) ->
-    Self = self(),
-
     replicated_storage:anounce_startup(Replicator),
     replicated_storage:anounce_startup(ReplicationSrv),
 
     EventManager = whereis(event_manager(Bucket)),
     true = is_pid(EventManager) andalso is_process_alive(EventManager),
 
-    ns_pubsub:subscribe_link(
-      ns_config_events,
-      fun ({buckets, _}) ->
-              Self ! replicate_newnodes_docs;
-          ({{node, _, membership}, _}) ->
-              Self ! replicate_newnodes_docs;
-          ({{node, _, services}, _}) ->
-              Self ! replicate_newnodes_docs;
-          (_) ->
-              ok
-      end),
+    chronicle_compat:notify_if_key_changes(
+      fun ({node, _, membership}) ->
+              true;
+          ({node, _, services}) ->
+              true;
+          (Key) ->
+              ns_bucket:buckets_change(Key)
+      end, replicate_newnodes_docs),
+
     #state{bucket = Bucket,
            event_manager = EventManager}.
 
