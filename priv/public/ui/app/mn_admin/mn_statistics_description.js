@@ -8,17 +8,20 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-var derivedMetric = {
-  "@kv-.ep_dcp_other_backoff": true,
-  "@kv-.ep_dcp_other_count": true,
-  "@kv-.ep_dcp_other_items_remaining": true,
-  "@kv-.ep_dcp_other_items_sent": true,
-  "@kv-.ep_dcp_other_producer_count": true,
-  "@kv-.ep_dcp_other_total_bytes": true,
-};
-
 var labelOperators = {
-  "connection_type": "=~"
+  "@kv-.kv_dcp_backoff_views+indexes.connection_type": "=~",
+  "@kv-.kv_dcp_connection_count_views+indexes.connection_type": "=~",
+  "@kv-.kv_dcp_items_remaining_views+indexes.connection_type": "=~",
+  "@kv-.kv_dcp_items_sent_views+indexes.connection_type": "=~",
+  "@kv-.kv_dcp_producer_count_views+indexes.connection_type": "=~",
+  "@kv-.kv_dcp_total_data_size_bytes_views+indexes.connection_type": "=~",
+
+  "@kv-.kv_dcp_backoff_other.connection_type": "not_any",
+  "@kv-.kv_dcp_producer_count_other.connection_type": "not_any",
+  "@kv-.kv_dcp_connection_count_other.connection_type": "not_any",
+  "@kv-.kv_dcp_items_remaining_other.connection_type": "not_any",
+  "@kv-.kv_dcp_items_sent_other.connection_type": "not_any",
+  "@kv-.kv_dcp_total_data_size_bytes_other.connection_type": "not_any"
 };
 
 var compat65 = get65CompatDesc();
@@ -32,9 +35,6 @@ var mapping65 = get65Mapping();
 var compat70Combined = propertiesToArray(compat65.stats)
     .concat(propertiesToArray(compat70.stats))
     .reduce((acc, statPath) => {
-      if (derivedMetric[statPath]) {
-        return acc; //do not show
-      }
       let statPath70 = mapping65[statPath] || statPath;
       let config = getStatAdditionalConfig(statPath70);
       let path = statPath70.split(".");
@@ -135,13 +135,9 @@ let service = {
   "7.0": {
     "kvGroups": Object.keys(compat65.kvGroups).reduce((acc, group) => {
       acc[group] = compat65.kvGroups[group].reduce((acc, stat65) => {
-        if (derivedMetric["@kv-." + stat65]) {
-          return acc; //do not show
-        } else {
-          let descPath70 = mapping65["@kv-." + stat65].split(".");
-          if (descPath70[0] == "@kv-") {
-            acc.push(descPath70[1]);
-          }
+        let descPath70 = mapping65["@kv-." + stat65].split(".");
+        if (descPath70[0] == "@kv-") {
+          acc.push(descPath70[1]);
         }
         return acc;
       }, []);
@@ -159,8 +155,8 @@ let service = {
   maybeGetLabelsModifier: function (service) {
     return stats70LabelsModifier[service];
   },
-  maybeGetLabelOperator: function (labelName) {
-    return labelOperators[labelName];
+  maybeGetLabelOperator: function (statNamePlusLabelName) {
+    return labelOperators[statNamePlusLabelName];
   }
 };
 
@@ -429,10 +425,29 @@ function getStatAdditionalConfig(statName) {
     if (statName.includes("@kv-.kv_dcp_")) {
       let name = statName.split(".").pop().split("_");
       let type = name.pop();
+      let rv = {metric: {name: name.join("_")}};
+      let applyFunctions = [];
+
+      if (statName.includes("@kv-.kv_dcp_items_sent_") ||
+          statName.includes("@kv-.kv_dcp_total_data_size_bytes_")) {
+        applyFunctions.push("irate");
+      }
+      if (statName.includes("@kv-.kv_dcp_backoff_cbas") ||
+          statName.includes("@kv-.kv_dcp_backoff_eventing")) {
+        applyFunctions.push("irate");
+      }
+      if (type == "other") {
+        type = ["replication","xdcr","fts","cbas",
+                "eventing","secidx","mapreduce_view","spatial_view"];
+        applyFunctions.push("sum");
+      }
       if (type == "views+indexes") {
         type = "mapreduce_view|spatial_view|secidx|fts";
+        applyFunctions.push("sum");
       }
-      return {metric: {name: name.join("_"), connection_type: type}};
+      rv.metric.connection_type = type;
+      rv.applyFunctions = applyFunctions;
+      return rv;
     }
     if (statName.includes("@index-.index_")) {
       return {applyFunctions: ["sum"]};
@@ -469,9 +484,6 @@ function get70Mapping() {
   var rv = {};
   Object.keys(compat65.stats["@index-"]["@items"]).forEach(key => {
     let name = "@index-.@items." + key;
-    if (derivedMetric[name]) {
-      return;
-    }
     let name70 = "@index-.@items.";
     if (!key.includes("index_")) {
       name70 += "index_";
@@ -482,18 +494,12 @@ function get70Mapping() {
 
   Object.keys(compat65.stats["@index-"]).forEach(key => {
     let name = "@index-." + key;
-    if (derivedMetric[name]) {
-      return;
-    }
     let name70 = "@index-." + key.replace("/", "_");
     rv[name70] = rv[name70] || name;
   });
 
   Object.keys(compat65.stats["@query"]).forEach(key => {
     let name = "@query." + key;
-    if (derivedMetric[name]) {
-      return;
-    }
     let name70 = "@query.n1ql_";
     if (key.includes("query_")) {
       name70 += key.split("query_")[1];
@@ -505,9 +511,6 @@ function get70Mapping() {
 
   Object.keys(compat65.stats["@fts-"]["@items"]).forEach(key => {
     let name = "@fts-.@items." + key;
-    if (derivedMetric[name]) {
-      return;
-    }
     let name70 = "@fts-.@items.fts_" + key;
     rv[name70] = rv[name70] || name;
   });
@@ -676,6 +679,13 @@ function get70Mapping() {
     "@kv-.kv_dcp_items_sent_views+indexes": "@kv-.ep_dcp_views+indexes_items_sent",
     "@kv-.kv_dcp_producer_count_views+indexes": "@kv-.ep_dcp_views+indexes_producer_count",
     "@kv-.kv_dcp_total_data_size_bytes_views+indexes": "@kv-.ep_dcp_views+indexes_total_bytes",
+
+    "@kv-.kv_dcp_backoff_other": "@kv-.ep_dcp_other_backoff",
+    "@kv-.kv_dcp_connection_count_other": "@kv-.ep_dcp_other_count",
+    "@kv-.kv_dcp_items_remaining_other": "@kv-.ep_dcp_other_items_remaining",
+    "@kv-.kv_dcp_items_sent_other": "@kv-.ep_dcp_other_items_sent",
+    "@kv-.kv_dcp_producer_count_other": "@kv-.ep_dcp_other_producer_count",
+    "@kv-.kv_dcp_total_data_size_bytes_other": "@kv-.ep_dcp_other_total_bytes",
 
     "@xdcr-.xdcr_changes_left_total": "@xdcr-.replication_changes_left",
     "@xdcr-.@items.xdcr_changes_left_total": "@xdcr-.@items.changes_left",
@@ -950,7 +960,7 @@ function get65CompatDesc() {
           desc: "Number of bytes per second being sent for views/gsi/search index DCP connections for this bucket (measured from ep_dcp_views_total_bytes + ep_dcp_2i_total_bytes + ep_dcp_fts_total_bytes)"
         },
         "ep_dcp_views+indexes_backoff": {
-          unit: "number/sec",
+          unit: "number",
           title: "DCP Indexes Backoffs",
           desc: "Number of backoffs for views/gsi/search index DCP connections (measured from ep_dcp_views_backoff + ep_dcp_2i_backoff + ep_dcp_fts_backoff)"
         },
@@ -1141,7 +1151,7 @@ function get65CompatDesc() {
           desc:"Number of bytes per second being sent for eventing DCP connections for this bucket (measured from ep_dcp_eventing_total_bytes)"
         },
         "ep_dcp_other_backoff": {
-          unit: "number/sec",
+          unit: "number",
           title: "DCP Other Backoffs",
           desc: "Number of backoffs for other DCP connections"
         },
@@ -1186,7 +1196,7 @@ function get65CompatDesc() {
           desc: "Number of items remaining to be sent to consumer in this bucket (measured from ep_dcp_replica_items_remaining)"
         },
         "ep_dcp_replica_items_sent": {
-          unit: "number",
+          unit: "number/sec",
           title: "DCP Replication Items Sent",
           desc: "Number of items per second being sent for a producer for this bucket (measured from ep_dcp_replica_items_sent)"
         },

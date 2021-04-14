@@ -557,7 +557,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
             rv.label = labelName;
             rv.value = labelValue;
           }
-          let operator = mnStatisticsDescription.maybeGetLabelOperator(service);
+          let operator = mnStatisticsDescription.maybeGetLabelOperator(statPath+"."+labelName);
           if (operator) {
             rv.operator = operator;
           }
