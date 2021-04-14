@@ -1326,7 +1326,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
         LinuxTask("Index directory filefrag info",
                   ["find", viewdir, "-type", "f", "-exec", "filefrag", "-v", "{}", "+"]),
         WindowsTask("Directory structure",
-                    "dir /s"  + winquote_path(root)),
+                    "dir /s " + winquote_path(root)),
         WindowsTask("Database directory structure",
                     "dir /s " + winquote_path(dbdir)),
         WindowsTask("Index directory structure",
