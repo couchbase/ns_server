@@ -185,6 +185,11 @@ function mnAdminController($scope, $rootScope, $state, $uibModal, mnAlertsServic
       }, {group: "global"});
     }, true).subscribe(function (resp, previous) {
 
+      if (previous && (resp.thisNode.clusterCompatibility !=
+                       previous.thisNode.clusterCompatibility)) {
+        $window.location.reload();
+      }
+
       mnAdminService.stream.getPoolsDefault.next(resp);
 
       if (!_.isEqual(resp, previous)) {
