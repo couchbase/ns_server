@@ -24,7 +24,7 @@
 %%%===================================================================
 
 handle_get_metrics(Req) ->
-    Resp = mochiweb_request:respond({200, [], chunked}, Req),
+    Resp = menelaus_util:respond(Req, {200, [], chunked}),
     ns_server_stats:report_prom_stats(fun (M) -> report_metric(M, Resp) end,
                                       false),
     Settings = prometheus_cfg:settings(),
@@ -102,7 +102,7 @@ proxy_chunks(Req, Resp) ->
 
 %% It is supposed to be used by local prometheus to collect ns_server metrics
 handle_get_local_metrics(IsHighCard, Req) ->
-    Resp = mochiweb_request:respond({200, [], chunked}, Req),
+    Resp = menelaus_util:respond(Req, {200, [], chunked}),
     ns_server_stats:report_prom_stats(fun (M) -> report_metric(M, Resp) end,
                                       IsHighCard),
     mochiweb_response:write_chunk(<<>>, Resp).

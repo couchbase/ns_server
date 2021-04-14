@@ -72,7 +72,8 @@
          global_error_exception/2,
          require_permission/2,
          server_error_report/4,
-         proxy_req/6]).
+         proxy_req/6,
+         respond/2]).
 
 %% Internal exports.
 -export([wake_up/4]).
