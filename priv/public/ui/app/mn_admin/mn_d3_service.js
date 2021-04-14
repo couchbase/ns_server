@@ -223,12 +223,11 @@ function mnD3ServiceFactory() {
       let step = this.opt.step;
       let lengthInMS = this.opt.start;
       let start = d3Max(data, v => v.startTimestamp);
-      rv.push(start);
 
       while (lengthInMS > 0) {
+        rv.push(start);
         lengthInMS -= step;
         start += step;
-        rv.push(start);
       }
 
       return rv;

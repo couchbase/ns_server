@@ -98,6 +98,12 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
   function switchToFullStatInfo(config, originConfig) {
     config.step = rangeZoomToStep(originConfig.zoom);
     config.start = 0 - rangeZoomToSec(originConfig.zoom);
+    if (originConfig.zoom == "minute") {
+      //in order to make sure that we recieve 12 samples UI
+      //should send a bit less seconds
+      //e.g. start = - N * step + 1 (- 12 * 10  + 1 = -119)
+      config.start += 1;
+    }
   }
 
   function switchToSingleStat(config, originConfig) {
@@ -513,8 +519,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
     if (mnPoolDefault.export.compat.atLeast70) {
       let rv = [];
 
-      cfg.step = rangeZoomToStep(config.zoom);
-      cfg.start = 0 - rangeZoomToSec(config.zoom);
+      switchToFullStatInfo(cfg, config);
 
       getStatsProp(config.stats).forEach(statPath => {
         let statDesc = readByPath(statPath);
