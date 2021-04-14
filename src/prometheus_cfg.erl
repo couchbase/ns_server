@@ -1406,6 +1406,8 @@ report_decimation_summary(Deletions) ->
 
 %% The SortedDeletions are grouped into levels by coarseness. Within each
 %% group/level the intervals are sorted by time in ascending order.
+build_decimation_summary([]) ->
+    [];
 build_decimation_summary(SortedDeletions) ->
     [First | Rest0] = SortedDeletions,
     %% Fake last level to emit entry for "real" last level
