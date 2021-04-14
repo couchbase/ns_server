@@ -83,6 +83,8 @@ init([]) ->
     chronicle_compat:subscribe_to_key_change(
       fun (auto_failover_cfg) ->
               Self ! {event, auto_failover_cfg};
+          (cluster_compat_version) ->
+              Self ! {event, buckets};
           (Key) ->
               case ns_bucket:buckets_change(Key) of
                   false ->

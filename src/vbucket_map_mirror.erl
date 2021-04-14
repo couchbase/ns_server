@@ -47,12 +47,17 @@ init([]) ->
     Self = self(),
     ets:new(?MODULE, [set, named_table]),
     chronicle_compat:subscribe_to_key_change(
-      fun ns_bucket:buckets_change/1,
-      fun (buckets) ->
+      fun (cluster_compat_version) ->
+              Self ! invalidate_buckets;
+          (buckets) ->
               Self ! invalidate_buckets;
           (Key) ->
-              {true, Bucket, props} = ns_bucket:sub_key_match(Key),
-              Self ! {invalidate_bucket, Bucket}
+              case ns_bucket:sub_key_match(Key) of
+                  {true, Bucket, props} ->
+                      Self ! {invalidate_bucket, Bucket};
+                  _ ->
+                      ok
+              end
       end),
     {ok, []}.
 

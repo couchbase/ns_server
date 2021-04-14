@@ -236,12 +236,7 @@ get_snapshot_with_revision(Fetchers, Opts) ->
     SnapshotWithRev.
 
 subscribe_to_key_change(Handler) ->
-    BuildHandler = fun (Type) ->
-                           ?cut(Handler(extract_event_key(Type, _)))
-                   end,
-    ns_pubsub:subscribe_link(ns_config_events, BuildHandler(ns_config)),
-    ns_pubsub:subscribe_link(chronicle_kv:event_manager(kv),
-                             BuildHandler(chronicle)).
+    ns_pubsub:subscribe_link(chronicle_compat_events:event_manager(), Handler).
 
 subscribe_to_key_change(Keys, Worker) when is_list(Keys) ->
     subscribe_to_key_change(lists:member(_, Keys), Worker);
@@ -255,9 +250,19 @@ subscribe_to_key_change(Filter, Worker) ->
                                     end
                             end).
 
+filter_with_compat_ver(Keys) when is_list(Keys) ->
+    [cluster_compat_version | Keys];
+filter_with_compat_ver(Filter) ->
+    fun (cluster_compat_version) ->
+            true;
+        (Key) ->
+            Filter(Key)
+    end.
+
 notify_if_key_changes(Filter, Message) ->
     Self = self(),
-    subscribe_to_key_change(Filter, fun (_) -> Self ! Message end).
+    subscribe_to_key_change(filter_with_compat_ver(Filter),
+                            fun (_) -> Self ! Message end).
 
 start_refresh_worker(Filter, Refresh) ->
     RV = {ok, Pid} =
@@ -265,20 +270,13 @@ start_refresh_worker(Filter, Refresh) ->
           fun () ->
                   Self = self(),
                   subscribe_to_key_change(
-                    Filter, fun (_) ->
-                                    work_queue:submit_work(Self, Refresh)
-                            end)
+                    filter_with_compat_ver(Filter),
+                    fun (_) ->
+                            work_queue:submit_work(Self, Refresh)
+                    end)
           end),
     work_queue:submit_sync_work(Pid, Refresh),
     RV.
-
-extract_event_key(ns_config, {Key, _}) ->
-    Key;
-extract_event_key(chronicle, {{key, Key}, _, _}) ->
-    Key;
-extract_event_key(_, _) ->
-    undefined.
-
 
 pull() ->
     pull(ns_config_rep:get_timeout(pull)).

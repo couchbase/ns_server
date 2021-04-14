@@ -43,6 +43,9 @@ init([]) ->
             {gen_event, start_link, [{local, chronicle_kv:event_manager(kv)}]},
             permanent, 1000, worker, []},
 
+           {chronicle_compat_events, {chronicle_compat_events, start_link, []},
+            permanent, 5000, worker, [chronicle_compat_events]},
+
            {ns_couchdb_chronicle_dup,
             {ns_couchdb_chronicle_dup, start_link, []},
             permanent, 1000, worker, []},

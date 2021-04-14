@@ -53,7 +53,9 @@ init([]) ->
     Self ! reconnect,
 
     chronicle_compat:subscribe_to_key_change(
-      fun (ldap_settings) ->
+      fun (cluster_compat_version) ->
+              gen_server:cast(Self, update_bucket_names);
+          (ldap_settings) ->
               gen_server:cast(Self, check_enabled);
           (saslauthd_auth_settings) ->
               gen_server:cast(Self, check_enabled);

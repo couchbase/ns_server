@@ -131,8 +131,7 @@ handle_call({upgrade_cluster, NodesToAdd}, _From, State) ->
 
     ?log_debug("Preparing nodes ~p to join chronicle cluster with info ~p",
                [NodesToAdd, ClusterInfo]),
-    Self = self(),
-    ok = ns_cluster:prep_chronicle(NodesToAdd, Self, ClusterInfo),
+    ok = ns_cluster:prep_chronicle(NodesToAdd, ClusterInfo),
 
     ?log_debug("Adding nodes ~p as replicas to chronicle cluster",
                [NodesToAdd]),

@@ -38,14 +38,13 @@
 % Noop process to get initialized in the supervision tree.
 
 modules() ->
-    [ns_config_events,
+    [chronicle_compat_events:event_manager(),
      ns_node_disco_events,
      buckets_events,
      index_events,
      audit_events,
      bucket_info_cache_invalidations,
-     user_storage_events,
-     chronicle_kv:event_manager(kv)].
+     user_storage_events].
 
 start_link() ->
     misc:start_event_link(
@@ -67,14 +66,17 @@ sync(Module) ->
 
 %% Implementation
 
-init(ns_config_events = Module) ->
-    {ok, #state{webconfig = menelaus_web:webconfig(),
-                disable_non_ssl_ports = misc:disable_non_ssl_ports(),
-                afamily_requirement = misc:address_family_requirement(),
-                module = Module}};
-
 init(Module) ->
-    {ok, #state{module = Module}}.
+    {ok,
+     case chronicle_compat_events:event_manager() of
+         Module ->
+             #state{webconfig = menelaus_web:webconfig(),
+                    disable_non_ssl_ports = misc:disable_non_ssl_ports(),
+                    afamily_requirement = misc:address_family_requirement(),
+                    module = Module};
+         _ ->
+             #state{module = Module}
+     end}.
 
 terminate(_Reason, _State)     -> ok.
 code_change(_OldVsn, State, _) -> {ok, State}.
@@ -125,17 +127,15 @@ handle_info(_Info, State) ->
 
 % ------------------------------------------------------------
 
-convert_event({{key, Key}, _, _} = Event, #state{module = Module}) ->
-    case chronicle_kv:event_manager(kv) of
+convert_event(_, #state{module = bucket_info_cache_invalidations}) ->
+    bucket_info_cache_invalidation;
+convert_event(Key, #state{module = Module}) ->
+    case chronicle_compat_events:event_manager() of
         Module ->
             {Key, something};
         _ ->
-            Event
-    end;
-convert_event(_, #state{module = bucket_info_cache_invalidations}) ->
-    bucket_info_cache_invalidation;
-convert_event(Event, _) ->
-    Event.
+            Key
+    end.
 
 is_interesting_to_watchers({significant_buckets_change, _}) -> true;
 is_interesting_to_watchers({memcached, _}) -> true;

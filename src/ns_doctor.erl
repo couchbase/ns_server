@@ -55,7 +55,9 @@ init([]) ->
     erlang:process_flag(priority, high),
     Self ! acquire_initial_status,
     chronicle_compat:subscribe_to_key_change(
-      fun (rebalance_status_uuid) ->
+      fun (cluster_compat_version) ->
+              true;
+          (rebalance_status_uuid) ->
               true;
           (recovery_status) ->
               true;
@@ -65,7 +67,7 @@ init([]) ->
               true;
           (_) ->
               false
-      end, fun (Key) -> Self ! {config_change, Key} end),
+      end, fun (Event) -> Self ! {config_change, Event} end),
     case misc:get_env_default(dont_log_stats, false) of
         false ->
             send_log_msg();
@@ -126,7 +128,8 @@ handle_cast(Msg, State) ->
     ?doctor_warning("Unexpected cast: ~p", [Msg]),
     {noreply, State}.
 
-handle_info({config_change, nodes_wanted}, #state{nodes=Statuses} = State) ->
+handle_info({config_change, nodes_wanted},
+            #state{nodes=Statuses} = State) ->
     NewNodes = lists:sort(ns_node_disco:nodes_wanted()),
     CurrentNodes = lists:sort(dict:fetch_keys(Statuses)),
     ToRemove = ordsets:subtract(CurrentNodes, NewNodes),
@@ -140,7 +143,13 @@ handle_info({config_change, nodes_wanted}, #state{nodes=Statuses} = State) ->
     {noreply, State#state{nodes=NewStatuses,
                           nodes_wanted=NewNodes}};
 
-handle_info({config_change, Key}, #state{config_state = ConfigState} = State) ->
+handle_info({config_change, cluster_compat_version}, State) ->
+    handle_info({config_change, nodes_wanted},
+                State#state{tasks_hash_nodes = undefined,
+                            config_state = #{}});
+
+handle_info({config_change, Key},
+            #state{config_state = ConfigState} = State) ->
     OldValue = maps:get(Key, ConfigState, undefined),
     NewState =
         case get_from_config(Key) of

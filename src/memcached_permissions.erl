@@ -95,8 +95,6 @@ spec_users() ->
      ns_config:search_node_prop(ns_config:latest(), memcached,
                                 other_users, [])].
 
-filter_event(cluster_compat_version) ->
-    true;
 filter_event(group_version) ->
     true;
 filter_event(user_version) ->
@@ -112,8 +110,6 @@ filter_event(Key) ->
 handle_event(user_version, State) ->
     {changed, State};
 handle_event(group_version, State) ->
-    {changed, State};
-handle_event(cluster_compat_version, State) ->
     {changed, State};
 handle_event(rest_creds, #state{cluster_admin = ClusterAdmin} = State) ->
     case ns_config_auth:get_user(admin) of

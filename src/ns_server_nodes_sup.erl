@@ -41,6 +41,9 @@ init([]) ->
 
 child_specs() ->
     [
+     {chronicle_compat_events, {chronicle_compat_events, start_link, []},
+      permanent, 5000, worker, [chronicle_compat_events]},
+
      {remote_monitors, {remote_monitors, start_link, []},
       permanent, 1000, worker, []},
 

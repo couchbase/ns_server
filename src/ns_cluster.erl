@@ -52,7 +52,7 @@
 
 -export([add_node_to_group/6,
          engage_cluster/1, complete_join/1,
-         prep_chronicle/3, join_chronicle/2,
+         prep_chronicle/2, join_chronicle/2,
          check_host_port_connectivity/2, change_address/1,
          enforce_topology_limitation/1,
          rename_marker_path/0,
@@ -66,7 +66,7 @@
          counter_inc/1,
          counter_inc/2]).
 
--record(state, {mref}).
+-record(state, {}).
 
 %%
 %% API
@@ -293,8 +293,8 @@ multi_call(Nodes, Call, Timeout) ->
             {bad_nodes, BadNodes}
     end.
 
-prep_chronicle(Nodes, Parent, Info) ->
-    multi_call(Nodes, {prep_chronicle, Parent, Info}, ?PREP_CHRONICLE_TIMEOUT).
+prep_chronicle(Nodes, Info) ->
+    multi_call(Nodes, {prep_chronicle, Info}, ?PREP_CHRONICLE_TIMEOUT).
 
 join_chronicle(Nodes, Info) ->
     multi_call(Nodes, {join_chronicle, Info}, ?JOIN_CHRONICLE_TIMEOUT).
@@ -392,29 +392,21 @@ handle_call({change_address, Address}, _From, State) ->
          end,
     {reply, RV, State};
 
-handle_call({prep_chronicle, Pid, Info}, _From,
-            State = #state{mref = undefined}) ->
+handle_call({prep_chronicle, Info}, _From, State) ->
+    chronicle_compat_events:hush_chronicle(),
     ?log_debug("Preparing chronicle to join cluster"),
-    MRef = erlang:monitor(process, Pid),
-    misc:create_marker(start_marker_path()),
-    ok = ns_server_cluster_sup:stop_ns_server(),
-
     ok = chronicle_local:prepare_join(Info),
     ?log_debug("Successfully prepared chronicle"),
 
-    {reply, ok, State#state{mref = MRef}};
+    {reply, ok, State};
 
-handle_call({join_chronicle, Info}, _From,
-            State = #state{mref = MRef}) when MRef =/= undefined ->
+handle_call({join_chronicle, Info}, _From, State) ->
     ?log_debug("Received request to join cluster"),
     ok = chronicle_local:join_cluster(Info),
-
-    {ok, _} = ns_server_cluster_sup:start_ns_server(),
-    misc:remove_marker(start_marker_path()),
-    erlang:demonitor(MRef, [flush]),
+    chronicle_compat_events:resume_chronicle(),
     ?log_debug("Successfully joined cluster"),
 
-    {reply, ok, State#state{mref = undefined}}.
+    {reply, ok, State}.
 
 handle_cast(leave, State) ->
     ?cluster_log(0001, "Node ~p is leaving cluster.", [node()]),
@@ -505,11 +497,6 @@ handle_info(check_chronicle_state, State) ->
             ok
     end,
     {noreply, State};
-
-handle_info({'DOWN', MRef, process, Pid, Reason},
-            State = #state{mref = MRef}) ->
-    ?log_info("Caller process ~p died with ~p", [Pid, Reason]),
-    {stop, {error, caller_died}, State#state{mref = undefined}};
 
 handle_info(Msg, State) ->
     ?cluster_debug("Unexpected message ~p, State = ~p", [Msg, State]),

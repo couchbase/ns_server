@@ -66,7 +66,12 @@ init([Module, Path]) ->
                         ok
                 end
         end,
-    chronicle_compat:subscribe_to_key_change(EventHandler),
+    chronicle_compat:subscribe_to_key_change(
+      fun (cluster_compat_version) ->
+              gen_server:cast(Pid, full_reset);
+          (Key) ->
+              EventHandler(Key)
+      end),
     ns_pubsub:subscribe_link(user_storage_events,
                              fun ({Key, _}) -> EventHandler(Key) end),
 
@@ -93,7 +98,9 @@ handle_cast({event, Key}, State = #state{module = Module,
             {noreply, initiate_write(State#state{stuff = NewStuff})};
         unchanged ->
             {noreply, State}
-    end.
+    end;
+handle_cast(full_reset, State = #state{module = Module}) ->
+    {noreply, initiate_write(State#state{stuff = Module:init()})}.
 
 handle_call(sync, _From, State) ->
     {reply, ok, State}.
