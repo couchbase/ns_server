@@ -7,6 +7,7 @@ file, in accordance with the Business Source License, use of this software will
 be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
+import {startWith } from '/ui/web_modules/rxjs/operators.js';
 
 import { ChangeDetectionStrategy, Component } from '/ui/web_modules/@angular/core.js';
 
@@ -31,6 +32,11 @@ class MnInputFilterComponent {
 
   static get parameters() { return [
   ]}
+
+  ngOnInit() {
+    let value = this.group.get('value');
+    this.currentValue = value.valueChanges.pipe(startWith(value.value));
+  }
 
   constructor() {
   }

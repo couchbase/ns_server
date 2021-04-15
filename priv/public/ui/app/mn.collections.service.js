@@ -269,24 +269,16 @@ class MnCollectionsService {
     function setKeyspace(setVals, useDefault) {
       let next = {};
 
-      function setDefault(key, list) {
-        next[key] =  list.find(item => item[filterKey] == setVals[key]) || {name: setVals[key]}
+      if (setVals.bucket) {
+        next["bucket"] = {name: setVals["bucket"]};
+        filters["scope"].group.get("value").enable();
+      }
+      if (setVals.scope) {
+        next["scope"] = {name: setVals["scope"]};
       }
 
-      getStepList
-        .bind(this)(["bucket"])
-        .pipe(take(1),
-              switchMap(list => {
-                setDefault("bucket", list);
-                return getStepList.bind(this)(["scope", next]).pipe(take(1));
-              }))
-        .subscribe(list => {
-          setVals.scope && setDefault("scope", list);
-          result.next(next);
-          setStepsValuesToFields();
-          filters["scope"].group.get("value").enable();
-        });
-
+      result.next(next);
+      setStepsValuesToFields();
     }
 
 

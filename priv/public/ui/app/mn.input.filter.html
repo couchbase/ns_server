@@ -21,7 +21,7 @@ licenses/APL2.txt.
      (blur)="onBlur()"
      (focus)="onFocus()"
      (click)="$event.stopPropagation()"
-     [ngClass]="{'selected' : !(group.get('value').valueChanges | async)}"
+     [ngClass]="{'selected' : !(currentValue | async)}"
      class="filter-input">
   <span
      class="icon fa-search-minus"

@@ -112,6 +112,8 @@ function mnDocumentsController($state) {
   function onSelectBucketName(selectedBucket) {
     $state.go('^.list', {
       commonBucket: selectedBucket,
+      commonScope: null,
+      commonCollection: null,
       pageNumber: 0
     }, {reload: true});
   }

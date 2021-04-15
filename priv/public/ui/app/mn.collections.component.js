@@ -58,7 +58,11 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
     var setBucket = (v) => bucketSelect.patchValue({item: v});
 
     var setBucketUrlParam = (name, location) =>
-        uiRouter.stateService.go('.', {commonBucket: name ? name : null}, {
+        uiRouter.stateService.go('.', {
+          commonBucket: name ? name : null,
+          commonScope: null,
+          commonCollection: null
+        }, {
           notify: false,
           location: location || true
         });

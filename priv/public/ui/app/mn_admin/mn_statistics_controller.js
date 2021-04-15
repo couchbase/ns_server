@@ -305,7 +305,9 @@ function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http
 
   function onBucketChange(selectedOption) {
     $state.go('^.statistics', {
-      commonBucket: selectedOption
+      commonBucket: selectedOption,
+      commonScope: null,
+      commonCollection: null
     }, {reload: true});
   }
 

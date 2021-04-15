@@ -131,6 +131,10 @@ function mnViewsController($state, mnPoolDefault) {
   vm.currentBucketName = $state.params.commonBucket;
 
   function onSelectBucket(selectedBucket) {
-    $state.go('^.list', {commonBucket: selectedBucket}, {reload: true});
+    $state.go('^.list', {
+      commonBucket: selectedBucket,
+      commonScope: null,
+      commonCollection: null
+    }, {reload: true});
   }
 }

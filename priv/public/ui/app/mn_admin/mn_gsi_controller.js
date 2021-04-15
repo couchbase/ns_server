@@ -64,10 +64,44 @@ angular
   .directive('mnGsiItemDetails', mnGsiItemDetails)
   .directive('mnGsiTable', mnGsiTableDirective);
 
-function configure($stateProvider) {
+function configure($stateProvider, $transitionsProvider) {
+  $transitionsProvider.onBefore({
+    from: state => (state.name !== "app.admin.gsi"),
+    to: "app.admin.gsi"
+  }, trans => {
+    var mnPermissionsService = trans.injector().get("mnPermissions");
+    var original = Object.assign({}, trans.params());
+
+    return mnPermissionsService.check().then(function (permissions) {
+      let params = Object.assign({}, original);
+      var indexesRead = permissions.bucketNames['.n1ql.index!read'];
+
+      if (!params.commonBucket && indexesRead && indexesRead[0]) {
+        params.commonBucket = indexesRead[0];
+      } else if (params.commonBucket &&
+                 indexesRead && indexesRead.indexOf(params.commonBucket) < 0) {
+        params.commonBucket = indexesRead[0];
+      } else if (params.commonBucket && (!indexesRead || !indexesRead[0])) {
+        params.commonBucket = null;
+      }
+
+      if (params.commonBucket && !params.commonScope) {
+        params.commonScope = "_default";
+      }
+      if (!params.commonBucket) {
+        params.commonScope = null;
+      }
+
+      if (original.commonBucket !== params.commonBucket ||
+          original.commonScope !== params.commonScope) {
+        return trans.router.stateService.target("app.admin.gsi", params);
+      }
+    });
+  });
+
   $stateProvider
     .state('app.admin.gsi', {
-      url: "/index?indexesScope&openedIndex&perIndexPage&perNodePage&indexesView",
+      url: "/index?openedIndex&perIndexPage&perNodePage&indexesView",
       params: {
         openedIndex: {
           array: true,
@@ -75,10 +109,6 @@ function configure($stateProvider) {
         },
         indexesView: {
           value: 'viewByIndex',
-          dynamic: true
-        },
-        indexesScope: {
-          value: "_default",
           dynamic: true
         },
         footerBucket: {
@@ -105,18 +135,6 @@ function configure($stateProvider) {
           controller: "mnGsiController as gsiCtl",
           templateUrl: "app/mn_admin/mn_gsi.html"
         }
-      },
-      redirectTo: function (trans) {
-        var mnPermissionsService = trans.injector().get("mnPermissions");
-        var params = _.clone(trans.params(), true);
-        return mnPermissionsService.check().then(function (permissions) {
-          var indexesRead = permissions.bucketNames['.n1ql.index!read'];
-          var state = {state: "app.admin.gsi", params: params};
-          if (!params.commonBucket && indexesRead && indexesRead[0]) {
-            state.params.commonBucket = indexesRead[0];
-            return state;
-          }
-        });
       }
     });
 }
@@ -181,17 +199,22 @@ function mnGsiController($scope, mnGsiService, mnPoller, $state, mnCollectionsSe
 
     $scope.$watchCollection(() => ({
       bucket: $state.params.commonBucket,
-      scope: $state.params.indexesScope
+      scope: $state.params.commonScope
     }), v => {
       vm.mnCollectionSelectorService.setKeyspace(v);
     });
+
+    if (!$state.params.commonBucket) {
+      stateGo();
+    }
 
     function stateGo() {
       vm.poller.reload();
       let params = vm.mnCollectionSelectorService.stream.result.getValue();
       $state.go('.', {
         commonBucket: params.bucket ? params.bucket.name: null,
-        indexesScope: params.scope ? params.scope.name : null
+        commonScope: params.scope ? params.scope.name : null,
+        commonCollection: null
       }, {notify: false});
     }
   }
