@@ -19,49 +19,120 @@ is_metric(Name) ->
 get_metric(Name, Key) ->
     proplists:get_value(Key, get_metric(Name)).
 
-get_metric(<<"kv_vb_resident_items_ratio">>) ->
-    [{params, [<<"Resident">>, <<"Total">>]},
-     {aggregation_fun, aggregated_ratio(_, _, 100)},
-     {query,
+get_metric(<<"n1ql_avg_req_time">>) ->
+    ratio(_(<<"n1ql_request_time">>), _(<<"n1ql_requests">>));
+get_metric(<<"n1ql_avg_svc_time">>) ->
+    ratio(_(<<"n1ql_service_time">>), _(<<"n1ql_requests">>));
+get_metric(<<"n1ql_avg_response_size">>) ->
+    ratio(_(<<"n1ql_result_size">>), _(<<"n1ql_requests">>));
+get_metric(<<"n1ql_avg_result_count">>) ->
+    ratio(_(<<"n1ql_result_count">>), _(<<"n1ql_requests">>));
+get_metric(<<"index_ram_percent">>) ->
+    percent(_(<<"index_memory_used_total">>), _(<<"index_memory_quota">>), 100);
+get_metric(<<"index_remaining_ram">>) ->
+    sum_across_labels(
       fun (M) ->
-          CI = M(<<"kv_vb_curr_items">>),
-          NR = M(<<"kv_vb_num_non_resident">>),
-          [promQL:multiply_by_scalar(promQL:op('-', [CI, NR]), 100), CI]
-      end}];
-get_metric(<<"index_resident_percent">>) ->
-    [{params, [<<"in_memory">>, <<"total">>]},
-     {aggregation_fun, aggregated_ratio(_, _, 100)},
-     {query,
-      fun (M) ->
-          RP = M(<<"index_resident_percent">>),
-          DS = M(<<"index_data_size">>),
-          [promQL:op('*', [RP, DS]), DS]
-      end}];
-get_metric(<<"xdcr_percent_completeness">>) ->
-    [{params, [<<"total_processed">>, <<"left_and_processed">>]},
-     {aggregation_fun, aggregated_ratio(_, _, 100)},
-     {query,
-      fun (M) ->
-          Processed = M(<<"xdcr_docs_processed_total">>),
-          Left = M(<<"xdcr_changes_left_total">>),
-          [promQL:multiply_by_scalar(Processed, 100),
-           promQL:sum_without([<<"name">>], {'or', [Processed, Left]})]
-      end}];
+          Diff = promQL:op('-', [M(<<"index_memory_quota">>),
+                                 M(<<"index_memory_used_total">>)]),
+          promQL:clamp_min(Diff, 0)
+      end, []);
+get_metric(<<"index_num_docs_pending_and_queued">>) ->
+    sum([<<"index_num_docs_pending">>, <<"index_num_docs_queued">>]);
+get_metric(<<"index_cache_miss_ratio">>) ->
+    percent(_(<<"index_cache_misses">>),
+            fun (M) ->
+                promQL:op('+', [M(<<"index_cache_misses">>),
+                                M(<<"index_cache_hits">>)])
+            end, 0);
 get_metric(<<"index_fragmentation">>) ->
-    [{params, [<<"fragmented_size">>, <<"total_size">>]},
-     {aggregation_fun, aggregated_ratio(_, _, 100)},
-     {query,
+    ratio(
       fun (M) ->
-          DiskSize = M(<<"index_disk_size">>),
-          FragPercent = M(<<"index_frag_percent">>),
-          FragmentedSize =
             promQL:sum_without([<<"index">>, <<"collection">>, <<"scope">>],
-                               promQL:op('*', [DiskSize, FragPercent])),
-          TotalSize =
+                               promQL:op('*', [M(<<"index_disk_size">>),
+                                               M(<<"index_frag_percent">>)]))
+      end,
+      fun (M) ->
             promQL:sum_without([<<"index">>, <<"collection">>, <<"scope">>],
-                               DiskSize),
-          [FragmentedSize, TotalSize]
-      end}];
+                               M(<<"index_disk_size">>))
+      end, 100);
+get_metric(<<"index_resident_percent">>) ->
+    ratio(fun (M) ->
+              promQL:op('*', [M(<<"index_resident_percent">>),
+                              M(<<"index_data_size">>)])
+          end,
+          _(<<"index_data_size">>), 100);
+get_metric(<<"couch_total_disk_size">>) ->
+    sum([<<"couch_docs_actual_disk_size">>,
+         <<"couch_views_actual_disk_size">>]);
+get_metric(<<"couch_docs_fragmentation">>) ->
+    opposite_percent(_(<<"kv_ep_db_data_size_bytes">>),
+                     _(<<"kv_ep_db_file_size_bytes">>));
+get_metric(<<"couch_views_fragmentation">>) ->
+    opposite_percent(_(<<"couch_views_data_size">>),
+                     _(<<"couch_views_disk_size">>));
+get_metric(<<"kv_hit_ratio">>) ->
+    percent(?cut(promQL:sum_without([<<"result">>, <<"op">>],
+                                    _({[{eq, <<"name">>, <<"kv_ops">>},
+                                        {eq, <<"op">>, <<"get">>},
+                                        {eq, <<"result">>, <<"hit">>}]}))),
+            ?cut(promQL:sum_without([<<"result">>, <<"op">>],
+                                    _({[{eq, <<"name">>, <<"kv_ops">>},
+                                        {eq, <<"op">>, <<"get">>}]}))), 100);
+get_metric(<<"kv_ep_cache_miss_ratio">>) ->
+    percent(_(<<"kv_ep_bg_fetched">>),
+            ?cut(promQL:sum_without([<<"op">>, <<"result">>],
+                                    _({[{eq, <<"name">>, <<"kv_ops">>},
+                                        {eq, <<"op">>, <<"get">>}]}))), 0);
+get_metric(<<"kv_ep_resident_items_ratio">>) ->
+    opposite_percent(_(<<"kv_ep_num_non_resident">>),
+                     _(<<"kv_curr_items_tot">>));
+get_metric(<<"kv_vb_avg_queue_age_seconds">>) ->
+    ratio(_(<<"kv_vb_queue_age_seconds">>), _(<<"kv_vb_queue_size">>));
+get_metric(<<"kv_vb_avg_total_queue_age_seconds">>) ->
+    ratio(?cut(promQL:sum_without([<<"state">>],
+                                  _(<<"kv_vb_queue_age_seconds">>))),
+          _(<<"kv_ep_diskqueue_items">>));
+get_metric(<<"kv_avg_disk_time_seconds">>) ->
+    ratio(_(<<"kv_disk_seconds_sum">>), _(<<"kv_disk_seconds_count">>));
+get_metric(<<"kv_avg_bg_wait_time_seconds">>) ->
+    ratio(_(<<"kv_bg_wait_seconds_sum">>), _(<<"kv_bg_wait_seconds_count">>));
+get_metric(<<"kv_avg_timestamp_drift_seconds">>) ->
+    ratio(_(<<"kv_ep_hlc_drift_seconds">>), _(<<"kv_ep_hlc_drift_count">>));
+get_metric(<<"kv_disk_write_queue">>) ->
+    sum([<<"kv_ep_flusher_todo">>, <<"kv_ep_queue_size">>]);
+get_metric(<<"kv_ep_ops_create">>) ->
+    sum_across_labels(_(<<"kv_vb_ops_create">>), [<<"state">>]);
+get_metric(<<"kv_ep_ops_update">>) ->
+    sum_across_labels(_(<<"kv_vb_ops_update">>), [<<"state">>]);
+get_metric(<<"kv_xdc_ops">>) ->
+    sum_across_labels(
+      _(promQL:re(<<"op">>, <<"del_meta|get_meta|set_meta">>,
+                  promQL:metric(<<"kv_ops">>))),
+      [<<"op">>, <<"result">>]);
+get_metric(<<"kv_vb_resident_items_ratio">>) ->
+    opposite_percent(_(<<"kv_vb_num_non_resident">>),
+                     _(<<"kv_vb_curr_items">>));
+get_metric(<<"xdcr_percent_completeness">>) ->
+    percent(_(<<"xdcr_docs_processed_total">>),
+            fun (M) ->
+                promQL:sum_without([<<"name">>],
+                                   {'or', [M(<<"xdcr_docs_processed_total">>),
+                                           M(<<"xdcr_changes_left_total">>)]})
+            end, 100);
+get_metric(<<"eventing_processed_count">>) ->
+    sum([<<"eventing_timer_callback_success">>,
+         <<"eventing_on_delete_success">>,
+         <<"eventing_on_update_success">>]);
+get_metric(<<"eventing_failed_count">>) ->
+    sum([<<"eventing_bucket_op_exception_count">>,
+         <<"eventing_checkpoint_failure_count">>,
+         <<"eventing_doc_timer_create_failure">>,
+         <<"eventing_n1ql_op_exception_count">>,
+         <<"eventing_non_doc_timer_create_failure">>,
+         <<"eventing_on_delete_failure">>,
+         <<"eventing_on_update_failure">>,
+         <<"eventing_timer_callback_failure">>,
+         <<"eventing_timeout_count">>]);
 %% Used by unit tests:
 get_metric(<<"test_derived_metric">>) ->
     [{params, [<<"p1">>, <<"p2">>]},
@@ -81,3 +152,26 @@ aggregated_ratio(Values1, Values2, DivisionByZeroDefault) ->
               'div', [menelaus_web_stats:aggregate(sum, Values1), Total])
     end.
 
+sum(MetricNames) ->
+    sum_across_labels(_(promQL:eq_any(<<"name">>, MetricNames)), [<<"name">>]).
+
+sum_across_labels(Metric, Labels) ->
+    [{params, [<<"Param1">>]},
+     {aggregation_fun, menelaus_web_stats:aggregate(sum, _)},
+     {query, fun (M) -> [promQL:sum_without(Labels, Metric(M))] end}].
+
+ratio(Numerator, Denominator, Default) ->
+    [{params, [<<"Param1">>, <<"Param2">>]},
+     {aggregation_fun, aggregated_ratio(_, _, Default)},
+     {query, fun (M) -> [Numerator(M), Denominator(M)] end}].
+
+ratio(Numerator, Denominator) ->
+    ratio(Numerator, Denominator, undefined).
+
+percent(Numerator, Denominator, Default) ->
+    ratio(?cut(promQL:multiply_by_scalar(Numerator(_), 100)), Denominator,
+          Default).
+
+opposite_percent(Numerator, Denominator) ->
+    percent(fun (M) -> promQL:op('-', [Denominator(M), Numerator(M)]) end,
+            Denominator, 100).

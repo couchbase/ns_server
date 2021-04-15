@@ -1131,86 +1131,6 @@ scrapes_info(Settings) ->
 %% It's important to preserve job and instance labels when calculating derived
 %% metrics, as other pieces of code may assume those metrics exist. For example,
 %% removing of job label may lead to a stat not being decimated.
-derived_metrics(n1ql, _) ->
-    [{"n1ql_avg_req_time",
-      "n1ql_request_time / ignoring(name) n1ql_requests"},
-     {"n1ql_avg_svc_time",
-      "n1ql_service_time / ignoring(name) n1ql_requests"},
-     {"n1ql_avg_response_size",
-      "n1ql_result_size / ignoring(name) n1ql_requests"},
-     {"n1ql_avg_result_count",
-      "n1ql_result_count / ignoring(name) n1ql_requests"}];
-derived_metrics(index, _) ->
-    [{"index_ram_percent",
-      "(index_memory_used_total / ignoring(name) index_memory_quota) * 100"},
-     {"index_remaining_ram",
-      "clamp_min(index_memory_quota - ignoring(name) index_memory_used_total, "
-                "0)"},
-     {"index_num_docs_pending_and_queued",
-      "index_num_docs_pending + ignoring(name) index_num_docs_queued"},
-     {"index_cache_miss_ratio",
-      "index_cache_misses * 100 / ignoring (name) "
-      "(index_cache_hits + ignoring (name) index_cache_misses)"}];
-derived_metrics(kv, _) ->
-    [{"couch_total_disk_size",
-      "couch_docs_actual_disk_size + ignoring(name) "
-      "couch_views_actual_disk_size"},
-     {"couch_docs_fragmentation",
-      "(kv_ep_db_file_size_bytes - ignoring(name) "
-       "kv_ep_db_data_size_bytes) * 100 / "
-      "ignoring(name) kv_ep_db_file_size_bytes"},
-     {"couch_views_fragmentation",
-      "(couch_views_disk_size - ignoring(name) couch_views_data_size) * 100 / "
-      "ignoring(name) couch_views_disk_size"},
-     {"kv_hit_ratio",
-      "sum without(result, op) ("
-        "irate(kv_ops{op=`get`,result=`hit`}[5m])) * 100 / "
-      "sum without(result, op) (irate(kv_ops{op=`get`}[5m]))"},
-     {"kv_ep_cache_miss_ratio",
-      "irate(kv_ep_bg_fetched[5m]) * 100 / ignoring(name) "
-      "sum without (op, result) (irate(kv_ops{op=`get`}[5m]))"},
-     {"kv_ep_resident_items_ratio",
-      "(kv_curr_items_tot - ignoring(name) kv_ep_num_non_resident) * 100 / "
-      "ignoring (name) kv_curr_items_tot"},
-     {"kv_vb_avg_queue_age_seconds",
-      "kv_vb_queue_age_seconds / ignoring (name) kv_vb_queue_size"},
-     {"kv_vb_avg_total_queue_age_seconds",
-      "sum without(name, state) (kv_vb_queue_age_seconds) / ignoring (name) "
-      "kv_ep_diskqueue_items"},
-     {"kv_avg_disk_time_seconds",
-      "irate(kv_disk_seconds_sum[5m]) / ignoring (name) "
-      "irate(kv_disk_seconds_count[5m])"},
-     {"kv_avg_bg_wait_time_seconds",
-      "irate(kv_bg_wait_seconds_sum[5m]) / ignoring (name) "
-      "irate(kv_bg_wait_seconds_count[5m])"},
-     {"kv_avg_timestamp_drift_seconds",
-      "irate(kv_ep_hlc_drift_seconds[5m]) / ignoring (name) "
-      "irate(kv_ep_hlc_drift_count[5m])"},
-     {"kv_disk_write_queue",
-      "kv_ep_flusher_todo + ignoring(name) kv_ep_queue_size"},
-     {"kv_ep_ops_create",
-      "sum without(state, name) (kv_vb_ops_create)"},
-     {"kv_ep_ops_update",
-      "sum without(state, name) (kv_vb_ops_update)"},
-     {"kv_xdc_ops",
-      "sum without(op, result) (irate(kv_ops{op=~`del_meta|get_meta|"
-                                                 "set_meta`}[5m]))"}];
-derived_metrics(eventing, _) ->
-    [{"eventing_processed_count",
-      "eventing_timer_callback_success + ignoring(name) "
-      "eventing_on_delete_success + ignoring(name) "
-      "eventing_on_update_success"},
-     {"eventing_failed_count",
-      "sum without(name) ("
-        "{name=~`eventing_bucket_op_exception_count|"
-                "eventing_checkpoint_failure_count|"
-                "eventing_doc_timer_create_failure|"
-                "eventing_n1ql_op_exception_count|"
-                "eventing_non_doc_timer_create_failure|"
-                "eventing_on_delete_failure|"
-                "eventing_on_update_failure|"
-                "eventing_timer_callback_failure|"
-                "eventing_timeout_count`})"}];
 derived_metrics(ns_server, Settings) ->
     [{"cm_failover_safeness_level", failover_safeness_level_promql(Settings)}];
 derived_metrics(_, _) ->
@@ -1854,13 +1774,15 @@ prometheus_derived_metrics_config_test() ->
       #{groups := [#{rules := [#{record := <<"cm_failover_safeness_level">>}]}]},
       RulesConfig([{derived_metrics_filter, all}], [])),
 
+    FailoverSafenessName = <<"cm_failover_safeness_level">>,
     ?assertMatch(
       #{groups :=
-          [#{rules := [#{record := <<"n1ql_avg_req_time">>,
-                         expr := <<"n1ql_request_time / ignoring(name) "
-                                   "n1ql_requests">>,
-                         labels := #{name := <<"n1ql_avg_req_time">>}}]}]},
-      RulesConfig([{derived_metrics_filter, ["n1ql_avg_req_time", "unknown"]}],
+          [#{rules := [#{record := FailoverSafenessName,
+                         expr := <<"1 - (kv_dcp_items_remaining{", _/binary>>,
+                         labels := #{name := FailoverSafenessName}}]}]},
+      RulesConfig([{derived_metrics_interval, 7},
+                   {derived_metrics_filter,
+                    [binary_to_list(FailoverSafenessName), "unknown"]}],
                   [kv, n1ql])),
 
     ?assertMatch(

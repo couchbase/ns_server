@@ -883,14 +883,15 @@ derived_metric_query(Labels, Functions, Window, AuthorizationLabelsList) ->
           fun ({AuthorizationLabels}) ->
               ExtraLabels = RestLabels ++ AuthorizationLabels,
               MetricFun =
-                  fun (N) ->
-                      AST = promQL:eq(<<"name">>, N, {ExtraLabels}),
-                      case RangeVFunctions of
-                          [] -> AST;
-                          _ ->
-                              apply_functions(range_vector(AST, Window),
-                                              RangeVFunctions)
-                      end
+                  fun MF(N) when is_binary(N) -> MF(promQL:metric(N));
+                      MF({L}) ->
+                          AST = {ExtraLabels ++ L},
+                          case RangeVFunctions of
+                              [] -> AST;
+                              _ ->
+                                  apply_functions(range_vector(AST, Window),
+                                                  RangeVFunctions)
+                          end
                   end,
               ParamAsts = (derived_metrics:get_metric(Name, query))(MetricFun),
               Params = derived_metrics:get_metric(Name, params),
@@ -909,29 +910,29 @@ derived_metric_query_test() ->
                 {<<"value">>, <<"test_derived_metric">>}]},
               {[{<<"label">>, <<"b">>},{<<"value">>, <<"b1">>}]}],
     ?assertEqual(
-      <<"label_replace({name=`m1`,b=`b1`},"
+      <<"label_replace({b=`b1`,name=`m1`},"
                       "`__derived_param_name_label__`,`p1`,``,``) or "
-        "label_replace({name=`m2`,b=`b1`},"
+        "label_replace({b=`b1`,name=`m2`},"
                       "`__derived_param_name_label__`,`p2`,``,``)">>,
       derived_metric_query(Labels, [], <<"1m">>, [{[]}])),
     ?assertEqual(
-      <<"label_replace(sum(avg_over_time({name=`m1`,b=`b1`}[1m])),"
+      <<"label_replace(sum(avg_over_time({b=`b1`,name=`m1`}[1m])),"
                       "`__derived_param_name_label__`,`p1`,``,``) or "
-        "label_replace(sum(avg_over_time({name=`m2`,b=`b1`}[1m])),"
+        "label_replace(sum(avg_over_time({b=`b1`,name=`m2`}[1m])),"
                       "`__derived_param_name_label__`,`p2`,``,``)">>,
       derived_metric_query(Labels, [avg_over_time, sum], <<"1m">>, [{[]}])),
     ?assertEqual(
       <<"label_replace("
-          "sum(avg_over_time({name=`m1`,b=`b1`,c=`c1`,d=`d1`}[1m])),"
+          "sum(avg_over_time({b=`b1`,c=`c1`,d=`d1`,name=`m1`}[1m])),"
           "`__derived_param_name_label__`,`p1`,``,``) or "
         "label_replace("
-          "sum(avg_over_time({name=`m2`,b=`b1`,c=`c1`,d=`d1`}[1m])),"
+          "sum(avg_over_time({b=`b1`,c=`c1`,d=`d1`,name=`m2`}[1m])),"
           "`__derived_param_name_label__`,`p2`,``,``) or "
         "label_replace("
-          "sum(avg_over_time({name=`m1`,b=`b1`,e=`e1`}[1m])),"
+          "sum(avg_over_time({b=`b1`,e=`e1`,name=`m1`}[1m])),"
           "`__derived_param_name_label__`,`p1`,``,``) or "
         "label_replace("
-          "sum(avg_over_time({name=`m2`,b=`b1`,e=`e1`}[1m])),"
+          "sum(avg_over_time({b=`b1`,e=`e1`,name=`m2`}[1m])),"
           "`__derived_param_name_label__`,`p2`,``,``)">>,
       derived_metric_query(Labels,
                            [avg_over_time, sum], <<"1m">>,

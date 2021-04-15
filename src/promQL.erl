@@ -18,12 +18,16 @@
 %% AST helpers
 -export([metric/1, rate/1, sum/1, sum_by/2, sum_without/2, bucket_metric/2,
          named/2, with_label/3, multiply_by_scalar/2, convert_units/3,
-         eq/2, eq/3, op/2]).
+         eq/2, eq/3, eq_any/2, re/3, op/2, clamp_min/2]).
 
 -define(IRATE_INTERVAL, "1m").
 
 eq(Name, Value) -> eq(Name, Value, {[]}).
 eq(Name, Value, {M}) -> {[{eq, Name, Value} | M]}.
+
+eq_any(Name, Values) -> {[{eq_any, Name, Values}]}.
+
+re(Name, Value, {M}) -> {[{re, Name, Value} | M]}.
 
 metric(Name) -> eq(<<"name">>, Name).
 
@@ -32,6 +36,9 @@ op(Op, Metrics) -> {Op, [{ignoring, [<<"name">>]}], Metrics}.
 %% range vector argument must be an instant vector
 rate({L} = Ast) when is_list(L) ->
     {call, irate, none, [{range_vector, Ast, ?IRATE_INTERVAL}]}.
+
+clamp_min(Ast, Min) ->
+    {call, clamp_min, none, [Ast, Min]}.
 
 sum(Ast) -> {call, sum, none, [Ast]}.
 
