@@ -1256,14 +1256,28 @@ do_connect(Options) ->
     end.
 
 ensure_bucket(Sock, Bucket, BucketSelected) ->
-    try memcached_bucket_config:get(Bucket) of
-        BConf ->
-            case do_ensure_bucket(Sock, Bucket, BConf, BucketSelected) of
-                ok ->
-                    memcached_bucket_config:ensure_collections(Sock, BConf);
-                Error ->
-                    Error
-            end
+    try
+       case memcached_bucket_config:get(Bucket) of
+           {error, not_present} ->
+               case BucketSelected of
+                   true ->
+                       %% Bucket disappeared from under us...just swallow the
+                       %% error.
+                       ?log_debug("Bucket ~p not found during ensure_bucket",
+                                  [Bucket]),
+                       ok;
+                   false ->
+                       %% We were trying to setup handling of the bucket.
+                       not_present
+               end;
+           BConf ->
+               case do_ensure_bucket(Sock, Bucket, BConf, BucketSelected) of
+                   ok ->
+                       memcached_bucket_config:ensure_collections(Sock, BConf);
+                   Error ->
+                       Error
+               end
+       end
     catch
         E:R:S ->
             ?log_error("Unable to get config for bucket ~p: ~p",

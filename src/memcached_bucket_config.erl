@@ -133,20 +133,26 @@ persistent_metadata_purge_age(BucketName, BucketConfig) ->
 get(BucketName) ->
     Snapshot = ns_bucket:get_snapshot(BucketName),
 
-    {ok, BucketConfig} = ns_bucket:get_bucket(BucketName, Snapshot),
-    BucketType = proplists:get_value(type, BucketConfig),
+    case ns_bucket:get_bucket(BucketName, Snapshot) of
+        {ok, BucketConfig} ->
+            BucketType = proplists:get_value(type, BucketConfig),
 
-    MemQuota = proplists:get_value(ram_quota, BucketConfig),
-    UUID = ns_bucket:bucket_uuid(BucketConfig),
+            MemQuota = proplists:get_value(ram_quota, BucketConfig),
+            UUID = ns_bucket:bucket_uuid(BucketConfig),
 
-    Params = params(BucketType, BucketName, BucketConfig, MemQuota, UUID),
+            Params = params(BucketType, BucketName, BucketConfig, MemQuota,
+                            UUID),
 
-    Engines = ns_config:search_node_prop(ns_config:latest(),
-                                         memcached, engines),
-    EngineConfig = proplists:get_value(BucketType, Engines),
+            Engines = ns_config:search_node_prop(ns_config:latest(),
+                                                 memcached, engines),
+            EngineConfig = proplists:get_value(BucketType, Engines),
 
-    #cfg{type = BucketType, name = BucketName, config = BucketConfig,
-         snapshot = Snapshot, params = Params, engine_config = EngineConfig}.
+            #cfg{type = BucketType, name = BucketName, config = BucketConfig,
+                 snapshot = Snapshot, params = Params,
+                 engine_config = EngineConfig};
+        not_present ->
+            {error, not_present}
+    end.
 
 query_stats(Sock) ->
     {ok, Stats} =
