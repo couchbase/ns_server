@@ -1931,19 +1931,30 @@ build_terse_bucket_info(BucketName) ->
         {ok, _, V} -> V;
         %% NOTE: {auth_bucket for this route handles 404 for us albeit
         %% harmlessly racefully
+        not_present ->
+            %% Bucket disappeared from under us
+            {error, not_present};
         {T, E, Stack} ->
             erlang:raise(T, E, Stack)
     end.
 
 serve_short_bucket_info(BucketName, Req) ->
-    V = build_terse_bucket_info(BucketName),
-    menelaus_util:reply_ok(Req, "application/json", V).
+    case build_terse_bucket_info(BucketName) of
+        {error, not_present} ->
+            menelaus_util:reply_json(Req, <<"Bucket not found">>, 404);
+        V ->
+            menelaus_util:reply_ok(Req, "application/json", V)
+    end.
 
 serve_streaming_short_bucket_info(BucketName, Req) ->
     handle_streaming(
       fun (_, _UpdateID) ->
-              V = build_terse_bucket_info(BucketName),
-              {just_write, {write, V}}
+              case build_terse_bucket_info(BucketName) of
+                  {error, not_present} ->
+                      exit(normal);
+                  V ->
+                      {just_write, {write, V}}
+              end
       end, Req).
 
 
