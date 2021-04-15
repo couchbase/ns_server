@@ -12,7 +12,8 @@
 -module(menelaus_web_stats).
 
 -export([handle_range_post/1, handle_range_get/2,
-         handle_get_settings/2, handle_post_settings/2]).
+         handle_get_settings/2, handle_post_settings/2,
+         aggregate/2]).
 
 -include("ns_common.hrl").
 -include("rbac.hrl").
@@ -361,7 +362,7 @@ post_validators(Now, Req) ->
      validator:string_array(nodes, _) | validators(Now, Req)] ++
     [validator:validate_relative(
        fun (special, Metric) ->
-               case is_derived_metric(extract_metric_name(Metric)) of
+               case derived_metrics:is_metric(extract_metric_name(Metric)) of
                    false ->
                        {error, <<"'special' aggregation is not available for "
                                  "non-derived metric">>};
@@ -375,7 +376,7 @@ get_validators(Now, MetricName, Req) ->
     [validator:token_list(nodes, ", ", _) | validators(Now, Req)] ++
     [validator:validate(
        fun (special) ->
-               case is_derived_metric(iolist_to_binary(MetricName)) of
+               case derived_metrics:is_metric(iolist_to_binary(MetricName)) of
                    false ->
                        {error, <<"'special' aggregation is not available for "
                                  "non-derived metric">>};
@@ -433,75 +434,12 @@ stop_node_extractors_monitoring(Refs) ->
           erlang:demonitor(Ref, [flush])
       end, Refs).
 
-is_derived_metric(Name) ->
-    get_derived_metric(Name) =/= [].
-
-get_derived_metric(Name, Key) ->
-    proplists:get_value(Key, get_derived_metric(Name)).
-
-aggregated_ratio(Values1, Values2, DivisionByZeroDefault) ->
-    case aggregate(sum, Values2) of
-        0 -> DivisionByZeroDefault;
-        Total -> aggregate('div', [aggregate(sum, Values1), Total])
-    end.
-
-get_derived_metric(<<"kv_vb_resident_items_ratio">>) ->
-    [{params, [<<"Resident">>, <<"Total">>]},
-     {aggregation_fun, aggregated_ratio(_, _, 100)},
-     {query,
-      fun (M) ->
-          CI = M(<<"kv_vb_curr_items">>),
-          NR = M(<<"kv_vb_num_non_resident">>),
-          [promQL:multiply_by_scalar(promQL:op('-', [CI, NR]), 100), CI]
-      end}];
-get_derived_metric(<<"index_resident_percent">>) ->
-    [{params, [<<"in_memory">>, <<"total">>]},
-     {aggregation_fun, aggregated_ratio(_, _, 100)},
-     {query,
-      fun (M) ->
-          RP = M(<<"index_resident_percent">>),
-          DS = M(<<"index_data_size">>),
-          [promQL:op('*', [RP, DS]), DS]
-      end}];
-get_derived_metric(<<"xdcr_percent_completeness">>) ->
-    [{params, [<<"total_processed">>, <<"left_and_processed">>]},
-     {aggregation_fun, aggregated_ratio(_, _, 100)},
-     {query,
-      fun (M) ->
-          Processed = M(<<"xdcr_docs_processed_total">>),
-          Left = M(<<"xdcr_changes_left_total">>),
-          [promQL:multiply_by_scalar(Processed, 100),
-           promQL:sum_without([<<"name">>], {'or', [Processed, Left]})]
-      end}];
-get_derived_metric(<<"index_fragmentation">>) ->
-    [{params, [<<"fragmented_size">>, <<"total_size">>]},
-     {aggregation_fun, aggregated_ratio(_, _, 100)},
-     {query,
-      fun (M) ->
-          DiskSize = M(<<"index_disk_size">>),
-          FragPercent = M(<<"index_frag_percent">>),
-          FragmentedSize =
-            promQL:sum_without([<<"index">>, <<"collection">>, <<"scope">>],
-                               promQL:op('*', [DiskSize, FragPercent])),
-          TotalSize =
-            promQL:sum_without([<<"index">>, <<"collection">>, <<"scope">>],
-                               DiskSize),
-          [FragmentedSize, TotalSize]
-      end}];
-%% Used by unit tests:
-get_derived_metric(<<"test_derived_metric">>) ->
-    [{params, [<<"p1">>, <<"p2">>]},
-     {aggregation_fun,
-      fun (P1, P2) -> aggregate(sum, P1) * (aggregate(sum, P2) + 1) end},
-     {query, fun (M) -> [M(<<"m1">>), M(<<"m2">>)] end}];
-get_derived_metric(_) -> [].
-
 send_metrics_request(Props, PermFilters) ->
     Functions = proplists:get_value(applyFunctions, Props, []),
     Window = proplists:get_value(timeWindow, Props),
     Labels = proplists:get_value(metric, Props),
     Query =
-        case is_derived_metric(extract_metric_name(Labels)) of
+        case derived_metrics:is_metric(extract_metric_name(Labels)) of
             false ->
                 construct_promql_query(Labels, Functions, Window, PermFilters);
             true ->
@@ -544,7 +482,8 @@ read_metrics_response(Ref, Props, StartTimestampMs, DownHosts) ->
           end, Nodes),
     AggFunction = proplists:get_value(aggregationFunction, Props, none),
     MetricName = extract_metric_name(proplists:get_value(metric, Props, [])),
-    DerivedMetricName = (is_derived_metric(MetricName) andalso MetricName),
+    DerivedMetricName = (derived_metrics:is_metric(MetricName)
+                         andalso MetricName),
     CleanedRes = [{N, clean_metric_props(R)} || {N, R} <- GoodRes],
     Data = merge_metrics(CleanedRes, DerivedMetricName, AggFunction),
     Errors = [{[{node, N},
@@ -811,8 +750,8 @@ merge_metrics(NodesResults, false, AggFunctionName) ->
     FlatAggregated = aggregate_results(FlatResults, [default_param], AggFun2),
     metrics_add_label(FlatAggregated, [{nodes, Nodes}]);
 merge_metrics(NodesResults, DerivedMetricName, none) ->
-    AggFun = get_derived_metric(DerivedMetricName, aggregation_fun),
-    Params = get_derived_metric(DerivedMetricName, params),
+    AggFun = derived_metrics:get_metric(DerivedMetricName, aggregation_fun),
+    Params = derived_metrics:get_metric(DerivedMetricName, params),
     NodesResults2 = [{N, aggregate_results(R, Params, AggFun)}
                          || {N, R} <- NodesResults],
     lists:flatmap(
@@ -820,8 +759,8 @@ merge_metrics(NodesResults, DerivedMetricName, none) ->
           metrics_add_label(List, [{nodes, [Node]}, {name, DerivedMetricName}])
       end, NodesResults2);
 merge_metrics(NodesResults, DerivedMetricName, special) ->
-    AggFun = get_derived_metric(DerivedMetricName, aggregation_fun),
-    Params = get_derived_metric(DerivedMetricName, params),
+    AggFun = derived_metrics:get_metric(DerivedMetricName, aggregation_fun),
+    Params = derived_metrics:get_metric(DerivedMetricName, params),
     {Nodes, ResultsLists} = lists:unzip(NodesResults),
     FlatResults = lists:flatten(ResultsLists),
     FlatAggregated = aggregate_results(FlatResults, Params, AggFun),
@@ -829,8 +768,8 @@ merge_metrics(NodesResults, DerivedMetricName, special) ->
                                        {name, DerivedMetricName}]);
 
 merge_metrics(NodesResults, DerivedMetricName, AggFunctionName) ->
-    AggFun = get_derived_metric(DerivedMetricName, aggregation_fun),
-    Params = get_derived_metric(DerivedMetricName, params),
+    AggFun = derived_metrics:get_metric(DerivedMetricName, aggregation_fun),
+    Params = derived_metrics:get_metric(DerivedMetricName, params),
     NodesResults2 = [{N, aggregate_results(R, Params, AggFun)}
                          || {N, R} <- NodesResults],
     {Nodes, ResultsLists} = lists:unzip(NodesResults2),
@@ -953,8 +892,8 @@ derived_metric_query(Labels, Functions, Window, AuthorizationLabelsList) ->
                                               RangeVFunctions)
                       end
                   end,
-              ParamAsts = (get_derived_metric(Name, query))(MetricFun),
-              Params = get_derived_metric(Name, params),
+              ParamAsts = (derived_metrics:get_metric(Name, query))(MetricFun),
+              Params = derived_metrics:get_metric(Name, params),
               [promQL:with_label(?DERIVED_PARAM_LABEL, N,
                                  apply_functions(AST, InstantVFunctions))
                || {N, AST} <- lists:zip(Params, ParamAsts)]
