@@ -112,8 +112,8 @@ function configure($stateProvider) {
         return mnPermissionsService.check().then(function (permissions) {
           var indexesRead = permissions.bucketNames['.n1ql.index!read'];
           var state = {state: "app.admin.gsi", params: params};
-          if (!params.sharedBucket && indexesRead && indexesRead[0]) {
-            state.params.sharedBucket = indexesRead[0];
+          if (!params.commonBucket && indexesRead && indexesRead[0]) {
+            state.params.commonBucket = indexesRead[0];
             return state;
           }
         });
@@ -180,7 +180,7 @@ function mnGsiController($scope, mnGsiService, mnPoller, $state, mnCollectionsSe
     });
 
     $scope.$watchCollection(() => ({
-      bucket: $state.params.sharedBucket,
+      bucket: $state.params.commonBucket,
       scope: $state.params.indexesScope
     }), v => {
       vm.mnCollectionSelectorService.setKeyspace(v);
@@ -190,7 +190,7 @@ function mnGsiController($scope, mnGsiService, mnPoller, $state, mnCollectionsSe
       vm.poller.reload();
       let params = vm.mnCollectionSelectorService.stream.result.getValue();
       $state.go('.', {
-        sharedBucket: params.bucket ? params.bucket.name: null,
+        commonBucket: params.bucket ? params.bucket.name: null,
         indexesScope: params.scope ? params.scope.name : null
       }, {notify: false});
     }

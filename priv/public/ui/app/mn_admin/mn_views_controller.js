@@ -128,9 +128,9 @@ function mnViewsController($state, mnPoolDefault) {
   vm.onSelectBucket = onSelectBucket;
   vm.mnPoolDefault = mnPoolDefault.latestValue();
   vm.ddocsLoading = true;
-  vm.currentBucketName = $state.params.sharedBucket;
+  vm.currentBucketName = $state.params.commonBucket;
 
   function onSelectBucket(selectedBucket) {
-    $state.go('^.list', {sharedBucket: selectedBucket}, {reload: true});
+    $state.go('^.list', {commonBucket: selectedBucket}, {reload: true});
   }
 }

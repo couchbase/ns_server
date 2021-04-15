@@ -183,7 +183,7 @@ function mnStatisticsNewChartBuilderController($rootScope, mnStatisticsNewServic
       };
     }
 
-    vm.bucket = $state.params.sharedBucket;
+    vm.bucket = $state.params.commonBucket;
 
     if (vm.isEditing) {
       vm.tab = Object.keys(chart.stats).map(function (stat) {

@@ -107,11 +107,11 @@ function mnDocumentsController($state) {
   var vm = this;
 
   vm.onSelectBucketName = onSelectBucketName;
-  vm.currentBucketName = $state.params.sharedBucket;
+  vm.currentBucketName = $state.params.commonBucket;
 
   function onSelectBucketName(selectedBucket) {
     $state.go('^.list', {
-      sharedBucket: selectedBucket,
+      commonBucket: selectedBucket,
       pageNumber: 0
     }, {reload: true});
   }

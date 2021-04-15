@@ -32,7 +32,7 @@ function mnViewsEditingController($scope, $state, $uibModal, mnHelper, mnViewsEd
   sampleDocumentOptions.lineWrapping = true;
   var sampleMetaOptions = _.clone(sampleDocumentOptions);
 
-  vm.currentBucketName = $state.params.sharedBucket;
+  vm.currentBucketName = $state.params.commonBucket;
   vm.viewsOptions = viewsOptions;
   vm.sampleDocumentOptions = sampleDocumentOptions;
   vm.sampleMetaOptions = sampleMetaOptions;
@@ -59,7 +59,7 @@ function mnViewsEditingController($scope, $state, $uibModal, mnHelper, mnViewsEd
     e.stopImmediatePropagation();
     $state.go("app.admin.documents.editing", {
       documentId: vm.state.sampleDocument.meta.id,
-      sharedBucket: $state.params.sharedBucket
+      commonBucket: $state.params.commonBucket
     });
   }
   function toggleSampleDocument() {
@@ -69,7 +69,7 @@ function mnViewsEditingController($scope, $state, $uibModal, mnHelper, mnViewsEd
     vm.isViewsClosed = !vm.isViewsClosed;
   }
   function hasNoWritePermission() {
-    return !$scope.rbac.cluster.bucket[$state.params.sharedBucket].views.write;
+    return !$scope.rbac.cluster.bucket[$state.params.commonBucket].views.write;
   }
   function isEditDocumentDisabled() {
     return awaitingSampleDocument() || (vm.state.sampleDocument && vm.state.sampleDocument.warnings) || vm.state.isEmptyState || hasNoWritePermission();
@@ -131,7 +131,7 @@ function mnViewsEditingController($scope, $state, $uibModal, mnHelper, mnViewsEd
   }
   function save(e) {
     e.stopImmediatePropagation();
-    var url = mnViewsListService.getDdocUrl($state.params.sharedBucket, vm.state.currentDocument.doc.meta.id)
+    var url = mnViewsListService.getDdocUrl($state.params.commonBucket, vm.state.currentDocument.doc.meta.id)
     mnPromiseHelper(vm.state, mnViewsListService.createDdoc(url, vm.state.currentDocument.doc.json))
       .catchErrors("viewsError")
       .showSpinner("viewsLoading")

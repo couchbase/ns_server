@@ -232,12 +232,12 @@ function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http
   vm.onSelectScenario = onSelectScenario;
   vm.onSelectZoom = onSelectZoom;
 
-  vm.bucket = $state.params.sharedBucket;
+  vm.bucket = $state.params.commonBucket;
   vm.zoom = $state.params.scenarioZoom;
   vm.node = $state.params.statsHostname;
   //selected scenario holder
   vm.openGroupDialog = openGroupDialog;
-  vm.selectedBucket = $state.params.sharedBucket;
+  vm.selectedBucket = $state.params.commonBucket;
   vm.onBucketChange = onBucketChange;
   vm.onSelectNode = onSelectNode;
   vm.getSelectedScenario = getSelectedScenario;
@@ -305,7 +305,7 @@ function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http
 
   function onBucketChange(selectedOption) {
     $state.go('^.statistics', {
-      sharedBucket: selectedOption
+      commonBucket: selectedOption
     }, {reload: true});
   }
 
@@ -325,11 +325,11 @@ function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http
     if ($scope.rbac.cluster.tasks.read) {
       new mnPoller($scope, function () {
         return mnTasksDetails.get().then(function (rv) {
-          if (!$state.params.sharedBucket) {
+          if (!$state.params.commonBucket) {
             return;
           }
           return rv.tasksXDCR.filter(function (row) {
-            return row.source == $state.params.sharedBucket;
+            return row.source == $state.params.commonBucket;
           });
         });
       })
@@ -350,7 +350,7 @@ function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http
         return $http.get('/_p/fts/api/index').then(function(rv) {
           return Object.keys(rv.data.indexDefs.indexDefs).reduce(function (acc, key) {
             var index = rv.data.indexDefs.indexDefs[key];
-            if (index.sourceName == $state.params.sharedBucket) {
+            if (index.sourceName == $state.params.commonBucket) {
               acc.push(index);
             }
             return acc;
@@ -372,10 +372,10 @@ function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http
     if ($scope.rbac.cluster.bucket['.'].n1ql.index.read) {
       new mnPoller($scope, function () {
         return mnGsiService.getIndexStatus().then(function (rv) {
-          if (!$state.params.sharedBucket) {
+          if (!$state.params.commonBucket) {
             return;
           }
-          return rv.indexes.filter(index => index.bucket === $state.params.sharedBucket);
+          return rv.indexes.filter(index => index.bucket === $state.params.commonBucket);
         });
       })
         .setInterval(10000)
@@ -408,9 +408,9 @@ function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http
 
     if ($scope.rbac.cluster.bucket['.'].views.read) {
       new mnPoller($scope, function () {
-        return mnStatisticsNewService.getStatsDirectory($state.params.sharedBucket, {})
+        return mnStatisticsNewService.getStatsDirectory($state.params.commonBucket, {})
           .then(function (rv) {
-            if (!$state.params.sharedBucket) {
+            if (!$state.params.commonBucket) {
               return;
             }
             return rv.data.blocks.filter(function (block) {

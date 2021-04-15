@@ -18,7 +18,7 @@ function mnViewsCopyDialogController($scope, $uibModal, $state, mnViewsListServi
   vm.onSubmit = onSubmit;
 
   function onSubmit() {
-    var url = mnViewsListService.getDdocUrl($state.params.sharedBucket, "_design/dev_" + vm.ddoc.name);
+    var url = mnViewsListService.getDdocUrl($state.params.commonBucket, "_design/dev_" + vm.ddoc.name);
     var copy = prepareToCopy(url, currentDdoc);
     var promise = mnViewsListService.getDdoc(url).then(function (presentDdoc) {
       return $uibModal.open({

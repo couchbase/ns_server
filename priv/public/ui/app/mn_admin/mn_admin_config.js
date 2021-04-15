@@ -133,7 +133,7 @@ function mnAdminConfig($stateProvider, $urlMatcherFactoryProvider, mnPluggableUi
 
   $stateProvider
     .state('app.admin', {
-      url: "?sharedBucket&scenarioZoom&scenario",
+      url: "?commonBucket&scenarioZoom&scenario",
       abstract: true,
       data: {
         requiresAuth: true
@@ -144,7 +144,7 @@ function mnAdminConfig($stateProvider, $urlMatcherFactoryProvider, mnPluggableUi
           array: true,
           dynamic: true
         },
-        sharedBucket: {
+        commonBucket: {
           value: null,
           dynamic: true
         },

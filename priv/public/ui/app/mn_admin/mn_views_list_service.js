@@ -117,7 +117,7 @@ function mnViewsListFactory($http, $q, mnTasksDetails) {
       };
 
       _.each(tasks.tasks, function (taskInfo) {
-        if ((taskInfo.type !== 'indexer' && taskInfo.type !== 'view_compaction') || taskInfo.bucket !== params.sharedBucket) {
+        if ((taskInfo.type !== 'indexer' && taskInfo.type !== 'view_compaction') || taskInfo.bucket !== params.commonBucket) {
           return;
         }
         var ddoc = taskInfo.designDocument;
@@ -133,6 +133,6 @@ function mnViewsListFactory($http, $q, mnTasksDetails) {
     });
   }
   function getViewsListState(params) {
-    return getDdocsByType(params.sharedBucket);
+    return getDdocsByType(params.commonBucket);
   }
 }

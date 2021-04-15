@@ -68,20 +68,20 @@ function appConfig($httpProvider, $stateProvider, $urlRouterProvider, $transitio
   $transitionsProvider.onBefore({
     to: "app.admin.**"
   }, (trans) => {
-    //convert pre 7.0 bucket params to 7.0 sharedBucket
+    //convert pre 7.0 bucket params to 7.0 commonBucket
     let original = Object.assign({}, trans.params('to'));
 
-    if (!original.sharedBucket) {
+    if (!original.commonBucket) {
       let params = Object.assign({}, original);
       ;(["bucket", "scenarioBucket", "collectionsBucket", "indexesBucket"])
           .forEach(bucket => {
             if (params[bucket]) {
-              params.sharedBucket = params[bucket];
+              params.commonBucket = params[bucket];
               delete params[bucket];
             }
           });
 
-      if (params.sharedBucket) {
+      if (params.commonBucket) {
         return trans.router.stateService.target(trans.to().name, params);
       }
     }

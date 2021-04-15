@@ -25,7 +25,7 @@ function mnViewsCreateDialogController($uibModal, $state, $q, mnViewsListService
   vm.onSubmit = onSubmit;
 
   function getDdocUrl() {
-    return mnViewsListService.getDdocUrl($state.params.sharedBucket, '_design/dev_' + vm.ddoc.name);
+    return mnViewsListService.getDdocUrl($state.params.commonBucket, '_design/dev_' + vm.ddoc.name);
   }
 
   function createDdoc(presentDdoc) {
