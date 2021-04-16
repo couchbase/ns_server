@@ -10,7 +10,7 @@ licenses/APL2.txt.
 
 <div class="fix-width-8">
   <div class="panel-header">
-    <h2>Failover Multiple Nodes</h2>
+    <h2>Failover Multiple Nodes<span ng-if="multipleFailoverDialogCtl.allowUnsafe">: Unsafe Mode</span></h2>
   </div>
   <form
      ng-submit="multipleFailoverDialogCtl.onSubmit()"
@@ -35,11 +35,26 @@ licenses/APL2.txt.
           removes nodes immediately it may also result in failure of in-flight operations.
         </span>
       </p>
+      <p class="text-smaller row margin-top-1" ng-if="multipleFailoverDialogCtl.allowUnsafe">
+        <span class="icon fa-warning fa-2x red-3 margin-right-1"></span>
+        <span>
+          <strong>Unsafe Failover Warning:</strong>
+          Some servers cannot be contacted (this could be for multiple reasons such
+          as network delays or unresponsive hardware). You can perform an Unsafe
+          Failover on any nodes previously recognized by your cluster (even
+          if they are unreachable, you will now be able to select them for failover in
+          this dialog). BUT, failover coordination throughout the cluster could be
+          compromised and data loss may occur. Do you wish to proceed with the Unsafe
+          Failover?
+        </span>
+      </p>
     </div>
     <div class="panel-footer">
       <span class="row">
         <a  ng-click="$dismiss()">Cancel</a>
-        <button type="submit">Failover Nodes</button>
+        <button type="submit" ng-class="{orange: multipleFailoverDialogCtl.allowUnsafe}">
+          Failover Nodes<span ng-if="multipleFailoverDialogCtl.allowUnsafe">: Unsafe Mode</span>
+        </button>
       </span>
     </div>
   </form>

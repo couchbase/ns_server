@@ -10,13 +10,14 @@ licenses/APL2.txt.
 
 export default mnMultipleFailoverDialogController;
 
-function mnMultipleFailoverDialogController(mnServersService, mnPromiseHelper, groups, nodes, $uibModalInstance, $uibModal, mnHelper) {
+function mnMultipleFailoverDialogController(mnServersService, mnPromiseHelper, groups, nodes, $uibModalInstance, $uibModal, mnHelper, allowUnsafe) {
   var vm = this;
 
-  vm.nodes = nodes;
+  vm.nodes = nodes[allowUnsafe ? "allNodes" : "reallyActive"];
   vm.onSubmit = onSubmit;
   vm.mnGroups = groups;
   vm.mnSelectedNodesHolder = {};
+  vm.allowUnsafe = allowUnsafe;
 
   function doPostFailover(allowUnsafe) {
     var otpNodes = mnHelper.checkboxesToList(vm.mnSelectedNodesHolder);
@@ -29,16 +30,25 @@ function mnMultipleFailoverDialogController(mnServersService, mnPromiseHelper, g
   }
 
   function onSubmit() {
-    doPostFailover()
-      .getPromise()
-      .then(null, function (resp) {
-        if (resp.status == 504) {
-          return $uibModal.open({
-            templateUrl: 'app/mn_admin/mn_servers_failover_confirmation_dialog.html'
-          }).result.then(function () {
-            return doPostFailover(true);
-          });
-        }
-      });
+    if (allowUnsafe) {
+      return doPostFailover(allowUnsafe);
+    } else {
+      return doPostFailover(allowUnsafe)
+        .getPromise()
+        .then(null, function (resp) {
+          if (resp.status == 504) {
+            $uibModalInstance.close();
+            return $uibModal.open({
+              templateUrl: 'app/mn_admin/mn_multiple_failover_dialog.html',
+              controller: 'mnMultipleFailoverDialogController as multipleFailoverDialogCtl',
+              resolve: {
+                groups: mnHelper.wrapInFunction(groups),
+                nodes: mnHelper.wrapInFunction(nodes),
+                allowUnsafe: mnHelper.wrapInFunction(true)
+              }
+            });
+          }
+        });
+    }
   }
 }

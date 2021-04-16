@@ -190,9 +190,9 @@ function mnServersController($scope, $state, $uibModal, mnPoolDefault, mnPoller,
             }
           });
         },
-        nodes: function () {
-          return vm.nodes.reallyActive;
-        }
+        nodes: mnHelper.wrapInFunction(vm.nodes),
+        allowUnsafe: mnHelper.wrapInFunction(false)
+
       }
     });
   }
