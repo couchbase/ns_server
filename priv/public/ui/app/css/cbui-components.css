@@ -1794,6 +1794,7 @@ input[type="checkbox"].fake-select + label:before {
   font-family: FontAwesome;
   content: "\f0d7";
   position: absolute;
+  top: 0;
   right: .5rem;
   padding-right: 0;
   color: #555;
@@ -1837,6 +1838,12 @@ mn-select[disabled] .mn-select,
   font-size: .875rem;
   color: #333;
 }
+
+.mn-select div[uib-dropdown-menu] a.option:first-of-type,
+.mn-select div[ngbDropdownMenu] a.option:first-of-type {
+  margin-top: .5rem;
+}
+
 .mn-select div[uib-dropdown-menu] .option:hover,
 .mn-select div[ngbDropdownMenu] .option:hover,
 .mn-select div[uib-dropdown-menu] .option:focus,
@@ -1854,7 +1861,6 @@ mn-select[disabled] .mn-select,
   top: auto;
   right: 0;
   min-width: 100%;
-  padding: 1rem 0;
 }
 .mn-select.open .dropdown-menu,
 .mn-select.show .dropdown-menu {
@@ -1877,9 +1883,13 @@ mn-select[disabled] .mn-select,
   border-radius: 2px;
   box-shadow: 0 5px 6px 0 rgba(0,0,0,0.25);
   white-space: nowrap;
+  padding-bottom: .5rem;
 }
 .mn-select.open-on-top .dropdown-menu {
   box-shadow: 0 -1px 3px 0 rgba(0,0,0,0.25);
+}
+.mn-select .filter-input-group {
+  width: 100%;
 }
 
 .mn-select-small .mn-select .dropdown-btn {
