@@ -591,27 +591,16 @@ main_with_everything(StaticTerms, NSConfig, CouchInisPList, Node) ->
     PromStatsSettings = search_config(NSConfig, stats_settings, []),
     PromStoragePath = proplists:get_value(storage_path,
                                           PromStatsSettings,
-                                          "./stats_data"),
-    PromStatsDir = filename:join(DataDir, PromStoragePath),
-
-    IndexerMDD = filename:join(DataDir, "crash"),
-
-    UsersStoragePath = filename:join([DataDir, "config", "users.dets"]),
+                                          "stats_data"),
 
     DistCfgPath = filename:join([DataDir, "config", "dist_cfg"]),
-
-    MemcachedCertPemPath = filename:join([DataDir, "config",
-                                          "memcached-cert.pem"]),
-    LocalSslCertPemPath = filename:join([DataDir, "config",
-                                         "local-ssl-cert.pem"]),
-    ChronicleDir = filename:join([DataDir, "config", "chronicle"]),
-
     Ipv6 = is_net_config_ipv6(DistCfgPath),
 
     Pairs = OtherPorts ++
         [{ns_config, iolist_to_binary(io_lib:format("~p", [sanitize_config(NSConfig)]))},
          {static_config, iolist_to_binary(io_lib:format("~p", [StaticTerms]))},
          {couch_inis, confget(#config.couch_inis)},
+         {path_config_datadir, DataDir},
          {node, Node},
          {db_dir, DBDir},
          {idx_dir, IdxDir},
@@ -622,15 +611,8 @@ main_with_everything(StaticTerms, NSConfig, CouchInisPList, Node) ->
          {memcached_admin, MCDAdmin},
          {memcached_logs_path, MCDLogs},
          {memcached_breakpad_minidump_dir, PerNodeMDD},
-         {indexer_breakpad_minidump_dir, IndexerMDD},
          {nodes, string:join(Nodes, ",")},
-         {prom_stats_dir, PromStatsDir},
-         {localtoken_path, filename:join(DataDir, "localtoken")},
-         {users_storage_path, UsersStoragePath},
-         {dist_cfg_path, DistCfgPath},
-         {memcached_cert_pem, MemcachedCertPemPath},
-         {local_ssl_cert_pem, LocalSslCertPemPath},
-         {chronicle_dir, ChronicleDir},
+         {relative_prom_stats_dir, PromStoragePath},
          {ipv6, Ipv6}],
 
     output([E || {K, V} <- Pairs,

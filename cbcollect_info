@@ -1069,11 +1069,25 @@ def read_guts(guts, key):
     return guts.get(key, "")
 
 
-# Add additional information to guts. Currently this is only persistent
-# buckets but may include other info in the future as items are moved from
-# ns_config to chronicle.
 def populate_guts_with_additional_info(guts):
+    add_required_data_paths(guts)
     add_bucket_info(guts)
+
+
+def add_required_data_paths(guts):
+    data_dir = guts.get("path_config_datadir")
+    if data_dir is None:
+        return
+    guts["indexer_breakpad_minidump_dir"] = os.path.join(data_dir, "crash")
+    guts["users_storage_path"] = os.path.join(data_dir, "config", "users.dets")
+    guts["dist_cfg_path"] = os.path.join(data_dir, "config", "dist_cfg")
+    guts["memcached_cert_pem"] = os.path.join(data_dir, "config", "memcached-cert.pem")
+    guts["local_ssl_cert_pem"] = os.path.join(data_dir, "config", "local-ssl-cert.pem")
+    guts["chronicle_dir"] = os.path.join(data_dir, "config", "chronicle")
+    guts["localtoken_path"] = os.path.join(data_dir, "localtoken")
+
+    rpd = read_guts(guts, "relative_prom_stats_dir")
+    guts["prom_stats_dir"] = os.path.join(data_dir, rpd)
 
 
 def add_bucket_info(guts):
