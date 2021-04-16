@@ -77,7 +77,12 @@ function appConfig($httpProvider, $stateProvider, $urlRouterProvider, $transitio
           .forEach(bucket => {
             if (params[bucket]) {
               params.commonBucket = params[bucket];
-              delete params[bucket];
+              if (bucket != "bucket") {
+                //do not remove 'bucket' parameter since this is
+                //popular pluggable UI param, so we just pass it
+                //along with commonBucket parameter
+                delete params[bucket];
+              }
             }
           });
 
