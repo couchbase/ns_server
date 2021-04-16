@@ -308,17 +308,12 @@ transaction_with_key_remove(Key, Keys, Verify, Do) ->
               end
       end).
 
-transaction_with_oper_key_remove(Keys, Lock, Do) ->
-    transaction_with_key_remove(
-      operation_key(), Keys, fun({_, L, _}) -> L =:= Lock end, Do).
-
-create_oper_key(Oper, Lock, SelfRef) ->
-    transaction([], Oper, Lock, SelfRef, fun (_) -> {commit, []} end).
-
 remove_oper_key(Lock) ->
     ?log_debug("Removing operation key with lock ~p", [Lock]),
     {ok, _} =
-        transaction_with_oper_key_remove([], Lock, fun (_) -> {commit, []} end).
+        transaction_with_key_remove(
+          operation_key(), [], fun({_, L, _}) -> L =:= Lock end,
+          fun (_) -> {commit, []} end).
 
 handle_kv_oper({add_replica, Node, GroupUUID, Services}, Transaction) ->
     ns_cluster_membership:add_node(Node, GroupUUID, Services, Transaction);
@@ -352,49 +347,21 @@ handle_topology_oper({activate_nodes, Nodes}, Lock) ->
 handle_topology_oper({deactivate_nodes, Nodes}, Lock) ->
     set_peer_roles(Lock, Nodes, replica).
 
-do_handle_topology_oper(Oper, Lock) ->
-    ?log_debug("Starting topology operation ~p with lock ~p", [Oper, Lock]),
-    handle_topology_oper(Oper, Lock).
-
-do_handle_kv_oper(Oper, Lock, Transaction) ->
+handle_oper(Oper, Lock, SelfRef) ->
     ?log_debug("Starting kv operation ~p with lock ~p", [Oper, Lock]),
-    handle_kv_oper(Oper, Transaction).
-
-oper_order({remove_peer, _}) ->
-    topology_first;
-oper_order(_) ->
-    kv_first.
-
-handle_oper(kv_first, Oper, Lock, SelfRef) ->
-    case do_handle_kv_oper(
-           Oper, Lock, transaction(_, Oper, Lock, SelfRef, _)) of
+    case handle_kv_oper(Oper, transaction(_, Oper, Lock, SelfRef, _)) of
         {ok, _} ->
-            RV = do_handle_topology_oper(Oper, Lock),
+            ?log_debug("Starting topology operation ~p with lock ~p",
+                       [Oper, Lock]),
+            RV = handle_topology_oper(Oper, Lock),
             remove_oper_key(Lock),
             RV;
-        Error ->
-            Error
-    end;
-handle_oper(topology_first, Oper, Lock, SelfRef) ->
-    case create_oper_key(Oper, Lock, SelfRef) of
-        {ok, _} ->
-            ok = do_handle_topology_oper(Oper, Lock),
-            {ok, _} =
-                do_handle_kv_oper(
-                  Oper, Lock, transaction_with_oper_key_remove(_, Lock, _)),
-            ok;
-        Other ->
-            Other
-    end.
-
-handle_oper(Oper, Lock, SelfRef) ->
-    case handle_oper(oper_order(Oper), Oper, Lock, SelfRef) of
         {ok, _, {need_recovery, RecoveryOper}} ->
             ?log_debug("Recovery is needed for operation ~p", [RecoveryOper]),
             ok = handle_oper(RecoveryOper, Lock, SelfRef),
             handle_oper(Oper, Lock, SelfRef);
-        Other ->
-            Other
+        Error ->
+            Error
     end.
 
 recovery_oper({add_replica, Node, _, _}) ->
