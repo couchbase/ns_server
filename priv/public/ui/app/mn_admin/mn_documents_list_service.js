@@ -81,7 +81,8 @@ function mnDocumentsListFactory($http, $q, docsLimit) {
   }
 
   function getDocumentsURI(params) {
-    let base = "/pools/default/buckets/" + encodeURIComponent(params.commonBucket)
+    let bucket = params.bucket || params.commonBucket;
+    let base = "/pools/default/buckets/" + encodeURIComponent(bucket);
     if (params.scope && params.collection) {
       base += "/scopes/" + encodeURIComponent(params.scope) + "/collections/" + encodeURIComponent(params.collection);
     }

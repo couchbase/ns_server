@@ -47,7 +47,6 @@ function mnDocumentsEditingFactory($http, $q, getStringBytesFilter, docBytesLimi
       if (_.chain(editorWarnings).values().some().value()) {
         rv.editorWarnings = editorWarnings;
       } else {
-        console.log(doc.json,js_beautify(doc.json, {"indent_size": 2}))
         rv.doc = js_beautify(doc.json, {"indent_size": 2});
         rv.meta = JSON.stringify(doc.meta, null, "  ");
       }
@@ -99,7 +98,8 @@ function mnDocumentsEditingFactory($http, $q, getStringBytesFilter, docBytesLimi
     });
   }
   function buildDocumentUrl(params) {
-    let base =  "/pools/default/buckets/" + encodeURIComponent(params.commonBucket);
+    let bucket = params.bucket || params.commonBucket;
+    let base =  "/pools/default/buckets/" + encodeURIComponent(bucket);
     if (params.scope && params.collection) {
       base += "/scopes/" + encodeURIComponent(params.scope) + "/collections/" + encodeURIComponent(params.collection);
     }
