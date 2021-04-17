@@ -150,7 +150,7 @@ roles() ->
                 "can access the web console. This user cannot read data.">>}],
       [{[admin, internal], none},
        {[admin, security], none},
-       {[admin, diag], read},
+       {[admin, diag], [read]},
        {[{bucket, any}, data], none},
        {[{bucket, any}, views], none},
        {[{bucket, any}, n1ql], none},
@@ -1614,5 +1614,37 @@ params_version_test() ->
     ?assertNotEqual(Version1, Version2),
     ?assertNotEqual(Version1, Version3),
     ?assertNotEqual(Version1, Version4).
+
+validate_roles(Roles) ->
+    lists:all(
+      fun ({Name, Params, Desc, Permissions}) when is_atom(Name),
+                                                   is_list(Params),
+                                                   is_list(Desc),
+                                                   is_list(Permissions) ->
+          ?assert(lists:member(Params, all_params_combinations())),
+          ?assert(lists:all(fun ({_, _}) -> true; (_) -> false end, Desc)),
+          ValidateObject =
+              fun (Obj) ->
+                  ?assert(lists:all(
+                            fun (A) when is_atom(A) -> true;
+                                ({A, _}) when is_atom(A) -> true;
+                                (_) -> false
+                            end, Obj)),
+                  true
+              end,
+          ?assert(lists:all(
+                    fun ({Object, all}) -> ValidateObject(Object);
+                        ({Object, none}) -> ValidateObject(Object);
+                        ({Object, Ops}) when is_list(Ops) ->
+                            ?assert(lists:all(fun (A) -> is_atom(A) end, Ops)),
+                            ValidateObject(Object)
+                    end, Permissions)),
+          true
+      end, Roles).
+
+roles_format_test() ->
+    ?assert(validate_roles(roles())),
+    ?assert(validate_roles(menelaus_old_roles:roles_pre_70())),
+    ?assert(validate_roles(menelaus_old_roles:roles_pre_66())).
 
 -endif.
