@@ -977,7 +977,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
                   "@kv-.ep_dcp_cbas_producer_count": true,
                   "@kv-.ep_dcp_replica_producer_count": true,
                   "@kv-.ep_dcp_xdcr_producer_count": true,
-                  "@kv-.ep_dcp_xdcr_eventing_count": true,
+                  "@kv-.ep_dcp_eventing_producer_count": true,
                   "@kv-.ep_dcp_other_producer_count": true},
           size: "medium",
           specificStat: false
