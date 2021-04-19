@@ -142,8 +142,6 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
       let targetRule = v.colMappingRules[sourceRule];
       let sourcePair = sourceRule.split(collectionDelimiter);
 
-      scopesFlags[sourcePair[0]] = true;
-
       if (sourcePair.length == 2) {
         if (!collections[sourcePair[0]]) {
           collections[sourcePair[0]] = {
