@@ -503,7 +503,8 @@ goport_args(fts, Config, _Cmd, NodeUUID) ->
      "-auth=cbauth",
      "-extra=" ++ lists:flatten(io_lib:format("~s:~b", [Host, NsRestPort])),
      "-options=" ++ Options
-    ] ++ BindHttp ++ BindHttps ++ BindGrpc ++ BindGrpcSsl;
+    ] ++ BindHttp ++ BindHttps ++ BindGrpc ++ BindGrpcSsl ++
+    build_port_args([{"-serverSslPort", ssl_rest_port}], Config);
 
 goport_args(eventing, Config, _Cmd, NodeUUID) ->
     {ok, EvDir} = ns_storage_conf:this_node_evdir(),
