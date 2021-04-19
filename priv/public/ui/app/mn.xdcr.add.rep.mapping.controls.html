@@ -18,8 +18,7 @@ licenses/APL2.txt.
          type="checkbox">
       <label
          [attr.for]="'dynamic_check_all' + keyspace + parent">
-        {{(controls.get("checkAll").valueChanges | async) ? "disable" : "enable"}}
-        all filtered
+        check all filtered
         {{isCollection ? "collections" : "scopes"}}
       </label>
     </span>

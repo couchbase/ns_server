@@ -10,7 +10,7 @@ licenses/APL2.txt.
 
 import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js'
 import {takeUntil, withLatestFrom, shareReplay} from '/ui/web_modules/rxjs/operators.js';
-import {of} from "/ui/web_modules/rxjs.js";
+import {of, combineLatest} from "/ui/web_modules/rxjs.js";
 import {MnHelperService} from "./mn.helper.service.js";
 import {FormBuilder} from '/ui/web_modules/@angular/forms.js';
 import {MnXDCRService, collectionDelimiter} from "./mn.xdcr.service.js";
@@ -96,6 +96,17 @@ class MnXDCRAddRepMappingControlsComponent extends MnLifeCycleHooksToStream {
       this.scopesPaginator =
         this.mnHelperService.createPagenator(this, this.filteredItems, "scopesPage");
     }
+
+    combineLatest(this.explicitMappingRules,
+                  this.filteredItems)
+      .pipe(takeUntil(this.mnOnDestroy))
+      .subscribe(([rules, items]) => {
+        let hasUncheckedItem =
+            items.find(v => !rules[this.isCollection ? (this.parent +  "." + v.name) : v.name]);
+        this.controls.get("checkAll").setValue(!hasUncheckedItem, {
+          emitEvent: false
+        });
+      });
   }
 
   toggleCheckAllScopes([checkAll, items]) {
