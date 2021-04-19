@@ -1,4 +1,5 @@
 import ace from './ace.js';
+import _ from "/ui/web_modules/lodash.js";
 
 export default "mode-sql-plus-plus";
 
