@@ -43,6 +43,7 @@ modules() ->
      buckets_events,
      index_events,
      audit_events,
+     bucket_info_cache_invalidations,
      user_storage_events,
      chronicle_kv:event_manager(kv)].
 
@@ -131,6 +132,8 @@ convert_event({{key, Key}, _, _} = Event, #state{module = Module}) ->
         _ ->
             Event
     end;
+convert_event(_, #state{module = bucket_info_cache_invalidations}) ->
+    bucket_info_cache_invalidation;
 convert_event(Event, _) ->
     Event.
 
@@ -158,6 +161,7 @@ is_interesting_to_watchers({client_cert_auth, _}) -> true;
 is_interesting_to_watchers({audit_uid_change, _}) -> true;
 is_interesting_to_watchers({user_version, _}) -> true;
 is_interesting_to_watchers({group_version, _}) -> true;
+is_interesting_to_watchers(bucket_info_cache_invalidation) -> true;
 is_interesting_to_watchers({Key, _}) ->
     collections:key_match(Key) =/= false orelse ns_bucket:buckets_change(Key);
 is_interesting_to_watchers(_) -> false.
