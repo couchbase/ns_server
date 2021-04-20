@@ -42,7 +42,7 @@ var compat70Combined = propertiesToArray(compat65.stats)
       path.forEach((key, index) => {
         if (index == (path.length - 1)) {
           parent[key] = Object.assign({
-            aggregationFunction: "sum",
+            nodesAggregation: "sum",
             metric: {name: key}
           }, readByPath(statPath, !mapping65[statPath]), config);
         } else {
@@ -184,13 +184,13 @@ function getStatAdditionalConfig(statName) {
 
   case "@kv-.kv_vb_avg_replica_queue_age_seconds":
     return {metric: {name: "kv_vb_avg_queue_age_seconds", state: "replica"},
-            aggregationFunction: "special"};
+            nodesAggregation: "special"};
   case "@kv-.kv_vb_avg_active_queue_age_seconds":
     return {metric: {name: "kv_vb_avg_queue_age_seconds", state: "active"},
-            aggregationFunction: "special"};
+            nodesAggregation: "special"};
   case "@kv-.kv_vb_avg_pending_queue_age_seconds":
     return {metric: {name: "kv_vb_avg_queue_age_seconds", state: "pending"},
-            aggregationFunction: "special"};
+            nodesAggregation: "special"};
 
   case "@kv-.kv_vb_active_eject":
     return {metric: {name: "kv_vb_eject", state: "active"}, applyFunctions: ["irate"]};
@@ -250,23 +250,23 @@ function getStatAdditionalConfig(statName) {
 
   case "@kv-.kv_avg_active_timestamp_drift_seconds":
     return {metric: {name: "kv_avg_timestamp_drift_seconds", state: "active"},
-            aggregationFunction: "special"};
+            nodesAggregation: "special"};
   case "@kv-.kv_avg_replica_timestamp_drift_seconds":
     return {metric: {name: "kv_avg_timestamp_drift_seconds", state: "replica"},
-            aggregationFunction: "special"};
+            nodesAggregation: "special"};
   case "@kv-.kv_vb_pending_resident_items_ratio":
     return {metric: {name: "kv_vb_resident_items_ratio", state: "pending"},
-            aggregationFunction: "special"};
+            nodesAggregation: "special"};
   case "@kv-.kv_vb_active_resident_items_ratio":
     return {metric: {name: "kv_vb_resident_items_ratio", state: "active"},
-            aggregationFunction: "special"};
+            nodesAggregation: "special"};
   case "@kv-.kv_vb_replica_resident_items_ratio":
     return {metric: {name: "kv_vb_resident_items_ratio", state: "replica"},
-            aggregationFunction: "special"};
+            nodesAggregation: "special"};
 
   case "@xdcr-.@items.xdcr_percent_completeness":
   case "@kv-.couch_views_fragmentation":
-    return {aggregationFunction: "special", applyFunctions: ["sum"]};
+    return {nodesAggregation: "special", applyFunctions: ["sum"]};
 
   case "@query.n1ql_avg_req_time":
   case "@query.n1ql_avg_svc_time":
@@ -285,21 +285,21 @@ function getStatAdditionalConfig(statName) {
   case "@kv-.kv_disk_write_queue":
   case "@kv-.kv_ep_ops_create":
   case "@kv-.kv_ep_ops_update":
-    return {aggregationFunction: "special"};
+    return {nodesAggregation: "special"};
 
   case "@kv-.kv_hit_ratio":
   case "@kv-.kv_ep_cache_miss_ratio":
   case "@kv-.kv_avg_bg_wait_time_seconds":
   case "@kv-.kv_xdc_ops":
-    return {aggregationFunction: "special", applyFunctions: ["irate"]};
+    return {nodesAggregation: "special", applyFunctions: ["irate"]};
 
   case "@system.sys_cpu_utilization_rate":
   case "@cbas.cbas_system_load_average":
   case "@kv-.kv_ops_update":
-    return {aggregationFunction: "avg"};
+    return {nodesAggregation: "avg"};
 
   case "@index-.@items.index_frag_percent":
-    return {aggregationFunction: "avg", applyFunctions: ["sum"]};
+    return {nodesAggregation: "avg", applyFunctions: ["sum"]};
 
   case "@cbas-.cbas_incoming_records_count":
   case "@index-.index_num_docs_indexed":
@@ -378,7 +378,7 @@ function getStatAdditionalConfig(statName) {
     return {metric: {for: "hashtable"}};
 
   case "@kv-.kv_avg_disk_time_seconds":
-    return {metric: {op: "commit"}, aggregationFunction: "special", applyFunctions: ["irate"]};
+    return {metric: {op: "commit"}, nodesAggregation: "special", applyFunctions: ["irate"]};
 
   case "@kv-.kv_curr_connections":
     return {bucket: null};
@@ -387,22 +387,22 @@ function getStatAdditionalConfig(statName) {
     return {applyFunctions: ["sum"], bucket: null};
 
   case "@eventing.eventing_failed_count":
-    return {applyFunctions: ["sum"], bucket: null, aggregationFunction: "special"};
+    return {applyFunctions: ["sum"], bucket: null, nodesAggregation: "special"};
 
   case "@eventing.eventing_processed_count":
-    return {applyFunctions: ["irate", "sum"], bucket: null, aggregationFunction: "special"};
+    return {applyFunctions: ["irate", "sum"], bucket: null, nodesAggregation: "special"};
 
   case "@eventing-.@items.eventing_processed_count_rate":
     return {applyFunctions: ["irate"], bucket: null, metric: {name: "eventing_processed_count"},
-            aggregationFunction: "special"};
+            nodesAggregation: "special"};
   case "@eventing-.@items.eventing_failed_count_rate":
     return {applyFunctions: ["irate"], bucket: null, metric: {name: "eventing_failed_count"},
-            aggregationFunction: "special"};
+            nodesAggregation: "special"};
   case "@eventing-.@items.eventing_timeout_count_rate":
     return {applyFunctions: ["irate"], bucket: null, metric: {name: "eventing_timeout_count"}};
 
   case "@eventing-.@items.eventing_failed_count":
-    return {bucket: null, aggregationFunction: "special"};
+    return {bucket: null, nodesAggregation: "special"};
 
   case "@eventing-.@items.eventing_processed_count":
   case "@eventing-.@items.eventing_timeout_count":

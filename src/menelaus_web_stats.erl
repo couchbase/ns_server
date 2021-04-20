@@ -331,7 +331,7 @@ handle_range_get([MetricName | NotvalidatedFunctions], Req) ->
           Labels = lists:filter(fun ({K, _V}) ->
                                      not lists:member(K, [timeWindow, step,
                                                           start, 'end', nodes,
-                                                          aggregationFunction,
+                                                          nodesAggregation,
                                                           timeout,
                                                           alignTimestamps])
                                 end, Props),
@@ -369,7 +369,7 @@ post_validators(Now, Req) ->
                    _ -> ok
                end;
            (_, _) -> ok
-       end, aggregationFunction, metric, _),
+       end, nodesAggregation, metric, _),
      validator:unsupported(_)].
 
 get_validators(Now, MetricName, Req) ->
@@ -383,7 +383,7 @@ get_validators(Now, MetricName, Req) ->
                    _ -> ok
                end;
            (_) -> ok
-       end, aggregationFunction, _)].
+       end, nodesAggregation, _)].
 
 validators(Now, Req) ->
     NowSec = Now div 1000,
@@ -400,9 +400,9 @@ validators(Now, Req) ->
      validate_nodes_v2(nodes, _, Req),
      validator:default(nodes,
                        ?cut(menelaus_web_node:get_hostnames(Req, any)), _),
-     validator:one_of(aggregationFunction,
+     validator:one_of(nodesAggregation,
                       [max, min, avg, sum, none, special], _),
-     validator:convert(aggregationFunction,
+     validator:convert(nodesAggregation,
                        fun (L) when is_binary(L) -> binary_to_atom(L, latin1);
                            (L) -> list_to_atom(L)
                        end, _),
@@ -480,7 +480,7 @@ read_metrics_response(Ref, Props, StartTimestampMs, DownHosts) ->
                       end
               end
           end, Nodes),
-    AggFunction = proplists:get_value(aggregationFunction, Props, none),
+    AggFunction = proplists:get_value(nodesAggregation, Props, none),
     MetricName = extract_metric_name(proplists:get_value(metric, Props, [])),
     DerivedMetricName = (derived_metrics:is_metric(MetricName)
                          andalso MetricName),

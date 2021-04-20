@@ -217,7 +217,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
           startTimestamp: resp.data[i].startTimestamp * 1000
         };
         var maybeScopeHasStat = scope["mnUIStats"].stats[statPath] || {};
-        if (!config.aggregationFunction) {
+        if (!config.nodesAggregation) {
           scope["mnUIStats"].stats[statPath] =
             resp.data[i].data.reduce((acc, data) => {
               acc[data.metric.nodes[0]] = data;
@@ -226,7 +226,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
         } else {
           scope["mnUIStats"].stats[statPath] =
             maybeScopeHasStat;
-          maybeScopeHasStat[config.aggregationFunction ? "aggregate" : data.nodes[0]] = data;
+          maybeScopeHasStat[config.nodesAggregation ? "aggregate" : data.nodes[0]] = data;
         }
       }
     }
@@ -543,7 +543,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
           cfg1.metric.collection = config.collection;
         }
         if (config.node == "all" && !config.specificStat) {
-          cfg1.aggregationFunction = statDesc.aggregationFunction;
+          cfg1.nodesAggregation = statDesc.nodesAggregation;
         }
         if (statDesc.applyFunctions || config.applyFunctions) {
           cfg1.applyFunctions = statDesc.applyFunctions || config.applyFunctions;

@@ -108,7 +108,7 @@ class MnXDCRService {
         throttleTime(1000),
         rxFitler(tasks => tasks && tasks.length),
         map(tasks => tasks.map(task => ({
-          aggregationFunction: "sum",
+          nodesAggregation: "sum",
           applyFunctions: ["sum"],
           start: -5,
           step: 10,
