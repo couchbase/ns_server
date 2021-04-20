@@ -55,7 +55,7 @@ init(Service) ->
 
     Self ! refresh,
 
-    chronicle_compat:notify_if_key_changes(
+    chronicle_compat_events:notify_if_key_changes(
       fun ({node, _, membership}) ->
               true;
           (nodes_wanted) ->

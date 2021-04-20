@@ -52,7 +52,7 @@ init([]) ->
     Self = self(),
     Self ! reconnect,
 
-    chronicle_compat:subscribe_to_key_change(
+    chronicle_compat_events:subscribe(
       fun (cluster_compat_version) ->
               gen_server:cast(Self, update_bucket_names);
           (ldap_settings) ->

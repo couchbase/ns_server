@@ -46,7 +46,7 @@ start_link() ->
 init([]) ->
     Self = self(),
     ets:new(?MODULE, [set, named_table]),
-    chronicle_compat:subscribe_to_key_change(
+    chronicle_compat_events:subscribe(
       fun (cluster_compat_version) ->
               Self ! invalidate_buckets;
           (buckets) ->

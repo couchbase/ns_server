@@ -81,7 +81,8 @@ callback_mode() ->
     state_functions.
 
 init([]) ->
-    chronicle_compat:notify_if_key_changes([nodes_wanted], peers_changed),
+    chronicle_compat_events:notify_if_key_changes([nodes_wanted],
+                                                  peers_changed),
     erlang:process_flag(trap_exit, true),
     CurHBInterval = ?HEARTBEAT_INTERVAL,
     ?log_debug("Heartbeat interval is ~p", [CurHBInterval]),

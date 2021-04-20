@@ -113,8 +113,8 @@ init([]) ->
     % Register for nodeup/down messages as handle_info callbacks.
     ok = net_kernel:monitor_nodes(true, [nodedown_reason]),
 
-    chronicle_compat:notify_if_key_changes([nodes_wanted, otp],
-                                           nodes_wanted_updated),
+    chronicle_compat_events:notify_if_key_changes([nodes_wanted, otp],
+                                                  nodes_wanted_updated),
 
     send_ping_all_msg(),
     self() ! nodes_wanted_updated,

@@ -50,7 +50,7 @@ stop_transient_buckets(Ref) ->
 
 %% callbacks
 init([]) ->
-    chronicle_compat:notify_if_key_changes(
+    chronicle_compat_events:notify_if_key_changes(
       fun ns_bucket:buckets_change/1, update_buckets),
 
     self() ! update_buckets,

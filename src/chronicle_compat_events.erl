@@ -20,11 +20,16 @@
 -export([start_link/0,
          hush_chronicle/0,
          resume_chronicle/0,
-         event_manager/0]).
+         event_manager/0,
+         subscribe/1,
+         subscribe/2,
+         notify_if_key_changes/2,
+         start_refresh_worker/2]).
 
 -export([init/1, handle_call/3]).
 
 -include("ns_common.hrl").
+-include("cut.hrl").
 
 -record(state, {chronicle_events_pid, event_manager}).
 
@@ -78,3 +83,45 @@ handle_call(resume_chronicle, _From,
                    event_manager = EventManager} = State) ->
     Pid = subscribe_to_chronicle_events(EventManager),
     {reply, ok, State#state{chronicle_events_pid = Pid}}.
+
+subscribe(Handler) ->
+    ns_pubsub:subscribe_link(event_manager(), Handler).
+
+subscribe(Keys, Worker) when is_list(Keys) ->
+    subscribe(lists:member(_, Keys), Worker);
+subscribe(Filter, Worker) ->
+    subscribe(fun (Key) ->
+                      case Filter(Key) of
+                          false ->
+                              ok;
+                          true ->
+                              Worker(Key)
+                      end
+              end).
+
+filter_with_compat_ver(Keys) when is_list(Keys) ->
+    [cluster_compat_version | Keys];
+filter_with_compat_ver(Filter) ->
+    fun (cluster_compat_version) ->
+            true;
+        (Key) ->
+            Filter(Key)
+    end.
+
+notify_if_key_changes(Filter, Message) ->
+    Self = self(),
+    subscribe(filter_with_compat_ver(Filter), fun (_) -> Self ! Message end).
+
+start_refresh_worker(Filter, Refresh) ->
+    RV = {ok, Pid} =
+        work_queue:start_link(
+          fun () ->
+                  Self = self(),
+                  subscribe(
+                    filter_with_compat_ver(Filter),
+                    fun (_) ->
+                            work_queue:submit_work(Self, Refresh)
+                    end)
+          end),
+    work_queue:submit_sync_work(Pid, Refresh),
+    RV.

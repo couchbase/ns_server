@@ -54,7 +54,7 @@ init([]) ->
     Self = self(),
     erlang:process_flag(priority, high),
     Self ! acquire_initial_status,
-    chronicle_compat:subscribe_to_key_change(
+    chronicle_compat_events:subscribe(
       fun (cluster_compat_version) ->
               true;
           (rebalance_status_uuid) ->

@@ -48,7 +48,8 @@ common_init(MonModule, with_refresh) ->
     common_init(MonModule).
 
 common_init(MonModule) ->
-    chronicle_compat:notify_if_key_changes([nodes_wanted], peers_changed),
+    chronicle_compat_events:notify_if_key_changes([nodes_wanted],
+                                                  peers_changed),
     {ok, #state{nodes = dict:new(),
                 nodes_wanted = ns_node_disco:nodes_wanted(),
                 monitor_module = MonModule}}.

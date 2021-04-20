@@ -44,7 +44,7 @@ init([Name, CacheSize, Get, GetEvents, GetVersion]) ->
     proc_lib:init_ack({ok, Pid}),
 
     lists:foreach(fun ({config_events, Filter}) ->
-                          chronicle_compat:notify_if_key_changes(
+                          chronicle_compat_events:notify_if_key_changes(
                             Filter, maybe_refresh);
                       ({Event, Filter}) ->
                           Handler =

@@ -132,7 +132,7 @@ init([Bucket, Replicator, ReplicationSrv]) ->
     EventManager = whereis(event_manager(Bucket)),
     true = is_pid(EventManager) andalso is_process_alive(EventManager),
 
-    chronicle_compat:notify_if_key_changes(
+    chronicle_compat_events:notify_if_key_changes(
       fun ({node, _, membership}) ->
               true;
           ({node, _, services}) ->

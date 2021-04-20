@@ -431,7 +431,8 @@ init([]) ->
             (_) -> false
         end,
 
-    chronicle_compat:notify_if_key_changes(EventFilter, settings_updated),
+    chronicle_compat_events:notify_if_key_changes(EventFilter,
+                                                  settings_updated),
 
     process_flag(trap_exit,true),
     generate_ns_to_prometheus_auth_info(),

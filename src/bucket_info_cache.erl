@@ -41,8 +41,8 @@ cache_init() ->
     {ok, _} = gen_event:start_link({local, bucket_info_cache_invalidations}),
     ets:new(bucket_info_cache, [set, named_table]),
     ets:new(bucket_info_cache_buckets, [ordered_set, named_table]),
-    chronicle_compat:subscribe_to_key_change(fun is_interesting/1,
-                                             fun handle_config_event/1),
+    chronicle_compat_events:subscribe(fun is_interesting/1,
+                                      fun handle_config_event/1),
     submit_new_buckets(),
     submit_full_reset().
 

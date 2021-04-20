@@ -128,7 +128,7 @@ uninhibit_view_compaction(Bucket, Ref) ->
 init([]) ->
     process_flag(trap_exit, true),
 
-    chronicle_compat:notify_if_key_changes(
+    chronicle_compat_events:notify_if_key_changes(
       fun (autocompaction) ->
               true;
           ({node, Node, compaction_daemon}) when node() =:= Node ->

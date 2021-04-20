@@ -80,7 +80,7 @@ init([]) ->
     Self = self(),
     Self ! refresh,
 
-    chronicle_compat:subscribe_to_key_change(
+    chronicle_compat_events:subscribe(
       fun (auto_failover_cfg) ->
               Self ! {event, auto_failover_cfg};
           (cluster_compat_version) ->

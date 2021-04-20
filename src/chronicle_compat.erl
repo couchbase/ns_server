@@ -29,10 +29,6 @@
          get_snapshot/1,
          get_snapshot/2,
          get_snapshot_with_revision/2,
-         subscribe_to_key_change/1,
-         subscribe_to_key_change/2,
-         notify_if_key_changes/2,
-         start_refresh_worker/2,
          pull/0,
          pull/1,
          config_sync/2,
@@ -234,49 +230,6 @@ get_snapshot_with_revision(Fetchers, Opts) ->
                     end, #{}, Fetchers)
           end, Opts),
     SnapshotWithRev.
-
-subscribe_to_key_change(Handler) ->
-    ns_pubsub:subscribe_link(chronicle_compat_events:event_manager(), Handler).
-
-subscribe_to_key_change(Keys, Worker) when is_list(Keys) ->
-    subscribe_to_key_change(lists:member(_, Keys), Worker);
-subscribe_to_key_change(Filter, Worker) ->
-    subscribe_to_key_change(fun (Key) ->
-                                    case Filter(Key) of
-                                        false ->
-                                            ok;
-                                        true ->
-                                            Worker(Key)
-                                    end
-                            end).
-
-filter_with_compat_ver(Keys) when is_list(Keys) ->
-    [cluster_compat_version | Keys];
-filter_with_compat_ver(Filter) ->
-    fun (cluster_compat_version) ->
-            true;
-        (Key) ->
-            Filter(Key)
-    end.
-
-notify_if_key_changes(Filter, Message) ->
-    Self = self(),
-    subscribe_to_key_change(filter_with_compat_ver(Filter),
-                            fun (_) -> Self ! Message end).
-
-start_refresh_worker(Filter, Refresh) ->
-    RV = {ok, Pid} =
-        work_queue:start_link(
-          fun () ->
-                  Self = self(),
-                  subscribe_to_key_change(
-                    filter_with_compat_ver(Filter),
-                    fun (_) ->
-                            work_queue:submit_work(Self, Refresh)
-                    end)
-          end),
-    work_queue:submit_sync_work(Pid, Refresh),
-    RV.
 
 pull() ->
     pull(ns_config_rep:get_timeout(pull)).

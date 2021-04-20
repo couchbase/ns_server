@@ -114,5 +114,5 @@ stop_child(Id) ->
     ok = supervisor:delete_child(service_stats_children_sup, Id).
 
 start_link_worker() ->
-    chronicle_compat:start_refresh_worker(fun is_notable_event/1,
-                                          fun refresh_children/0).
+    chronicle_compat_events:start_refresh_worker(fun is_notable_event/1,
+                                                 fun refresh_children/0).

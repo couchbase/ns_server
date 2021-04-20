@@ -665,7 +665,7 @@ handle_cast({connect_done, WorkersCount, RV}, #state{bucket = Bucket,
                                                          [Self, InitialState]])
                      || _ <- lists:seq(1, WorkersCount)],
 
-                    chronicle_compat:subscribe_to_key_change(
+                    chronicle_compat_events:subscribe(
                       fun (cluster_compat_version) ->
                               true;
                           (Key) ->
