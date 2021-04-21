@@ -186,13 +186,11 @@ build_pool_info(Id, _Req, for_ui, Stability, LocalAddr, _UpdateID) ->
 do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
     UUID = menelaus_web:get_uuid(),
 
-    CanIncludeOtpCookie = InfoLevel =:= admin orelse InfoLevel =:= internal,
-
     Config = ns_config:get(),
     Snapshot = menelaus_web_node:get_snapshot(),
 
-    Nodes = menelaus_web_node:build_nodes_info(CanIncludeOtpCookie, InfoLevel,
-                                               Stability, LocalAddr, Config, Snapshot),
+    Nodes = menelaus_web_node:build_nodes_info(
+              false, InfoLevel, Stability, LocalAddr, Config, Snapshot),
 
     TasksURI = bin_concat_path(["pools", Id, "tasks"],
                                [{"v", ns_doctor:get_tasks_version()}]),
