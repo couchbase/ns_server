@@ -190,7 +190,7 @@ do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
     Snapshot = menelaus_web_node:get_snapshot(),
 
     Nodes = menelaus_web_node:build_nodes_info(
-              false, InfoLevel, Stability, LocalAddr, Config, Snapshot),
+              false, Stability, LocalAddr, Config, Snapshot),
 
     TasksURI = bin_concat_path(["pools", Id, "tasks"],
                                [{"v", ns_doctor:get_tasks_version()}]),

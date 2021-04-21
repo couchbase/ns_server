@@ -23,9 +23,9 @@
 -export([handle_node/2,
          build_full_node_info/2,
          build_memory_quota_info/1,
-         build_nodes_info_fun/4,
-         build_nodes_info/4,
-         build_nodes_info/6,
+         build_nodes_info_fun/3,
+         build_nodes_info/3,
+         build_nodes_info/5,
          build_node_hostname/3,
          handle_bucket_node_list/2,
          handle_bucket_node_info/3,
@@ -203,7 +203,7 @@ location_prop_to_json({state, ok}) -> {state, ok};
 location_prop_to_json(KV) -> KV.
 
 build_full_node_info(Node, LocalAddr) ->
-    {struct, KV} = (build_nodes_info_fun(true, normal,
+    {struct, KV} = (build_nodes_info_fun(true,
                                          unstable, LocalAddr))(Node, undefined),
     NodeStatus = ns_doctor:get_node(Node),
     StorageConf =
@@ -235,14 +235,13 @@ build_memory_quota_info(Config) ->
               {memory_quota:service_to_json_name(Service), Quota}
       end, memory_quota:aware_services(CompatVersion)).
 
-build_nodes_info(CanIncludeOtpCookie, InfoLevel, Stability, LocalAddr) ->
-    F = build_nodes_info_fun(CanIncludeOtpCookie, InfoLevel, Stability,
-                             LocalAddr),
+build_nodes_info(CanIncludeOtpCookie, Stability, LocalAddr) ->
+    F = build_nodes_info_fun(CanIncludeOtpCookie, Stability, LocalAddr),
     [F(N, undefined) || N <- ns_node_disco:nodes_wanted()].
 
-build_nodes_info(CanIncludeOtpCookie, InfoLevel, Stability, LocalAddr, Config, Snapshot) ->
-    F = do_build_nodes_info_fun(CanIncludeOtpCookie, InfoLevel, Stability,
-                             LocalAddr, Config, Snapshot),
+build_nodes_info(CanIncludeOtpCookie, Stability, LocalAddr, Config, Snapshot) ->
+    F = do_build_nodes_info_fun(CanIncludeOtpCookie, Stability,
+                                LocalAddr, Config, Snapshot),
     [F(N, undefined) || N <- ns_node_disco:nodes_wanted()].
 
 %% builds health/warmup status of given node (w.r.t. given Bucket if
@@ -284,15 +283,16 @@ get_snapshot() ->
        ns_cluster_membership:fetch_snapshot(_),
        chronicle_master:fetch_snapshot(_)]).
 
-build_nodes_info_fun(CanIncludeOtpCookie, InfoLevel, Stability, LocalAddr) ->
+build_nodes_info_fun(CanIncludeOtpCookie, Stability, LocalAddr) ->
     Config = ns_config:get(),
     Snapshot = get_snapshot(),
-    do_build_nodes_info_fun(CanIncludeOtpCookie, InfoLevel, Stability, LocalAddr, Config, Snapshot).
+    do_build_nodes_info_fun(CanIncludeOtpCookie, Stability, LocalAddr, Config,
+                            Snapshot).
 
-do_build_nodes_info_fun(CanIncludeOtpCookie, InfoLevel, Stability, LocalAddr, Config, Snapshot) ->
+do_build_nodes_info_fun(CanIncludeOtpCookie, Stability, LocalAddr, Config,
+                        Snapshot) ->
     OtpCookie =
-        %% NOTE: the following avoids exposing otpCookie to UI
-        case CanIncludeOtpCookie andalso InfoLevel =:= normal of
+        case CanIncludeOtpCookie of
             true ->
                 {otpCookie, erlang:get_cookie()};
             false ->

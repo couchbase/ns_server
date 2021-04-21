@@ -467,7 +467,8 @@ handle_just_diag(Req, Extra) ->
 
     Infos = [["nodes_info = ~p",
               ns_cluster:sanitize_node_info(
-                menelaus_web_node:build_nodes_info(true, normal, unstable, misc:localhost()))],
+                menelaus_web_node:build_nodes_info(true, unstable,
+                                                   misc:localhost()))],
              ["buckets = ~p", ns_config_log:sanitize(Buckets)]],
 
     [begin

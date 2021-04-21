@@ -112,10 +112,15 @@ handle_bucket_info(_PoolId, Id, Req) ->
     [Json] = build_buckets_info(Req, [Id], Snapshot, get_info_level(Req)),
     reply_json(Req, Json).
 
-build_bucket_nodes_info(BucketName, BucketConfig, InfoLevel0, LocalAddr) ->
-    {InfoLevel, Stability} = convert_info_level(InfoLevel0),
+build_bucket_nodes_info(BucketName, BucketConfig, InfoLevel, LocalAddr) ->
+    Stability = case InfoLevel of
+                    streaming ->
+                        stable;
+                    _ ->
+                        unstable
+                end,
     %% Only list nodes this bucket is mapped to
-    F = menelaus_web_node:build_nodes_info_fun(false, InfoLevel, Stability, LocalAddr),
+    F = menelaus_web_node:build_nodes_info_fun(false, Stability, LocalAddr),
     Nodes = ns_bucket:get_servers(BucketConfig),
     %% NOTE: there's potential inconsistency here between BucketConfig
     %% and (potentially more up-to-date) vbuckets dict. Given that
@@ -1920,11 +1925,6 @@ do_handle_local_random_key(Bucket, CollectionUId, Req) ->
             reply_json(Req, {struct,
                              [{ok, false}]}, 404)
     end.
-
-convert_info_level(streaming) ->
-    {normal, stable};
-convert_info_level(InfoLevel) ->
-    {InfoLevel, unstable}.
 
 build_terse_bucket_info(BucketName) ->
     case bucket_info_cache:terse_bucket_info(BucketName) of
