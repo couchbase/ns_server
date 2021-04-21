@@ -23,12 +23,12 @@
          set_multiple/1,
          transaction/2,
          transaction/3,
-         ro_txn/1,
+         ro_txn/2,
          txn_get/2,
          txn_get_many/2,
          get_snapshot/1,
          get_snapshot/2,
-         get_snapshot_with_revision/1,
+         get_snapshot_with_revision/2,
          subscribe_to_key_change/1,
          subscribe_to_key_change/2,
          notify_if_key_changes/2,
@@ -173,9 +173,6 @@ transaction(ns_config, Keys, Fun) ->
             erlang:error(exceeded_retries)
     end.
 
-ro_txn(Body) ->
-    ro_txn(Body, #{}).
-
 ro_txn(Body, Opts) ->
     Type =
         case {backend(), ns_node_disco:couchdb_node() == node()} of
@@ -188,6 +185,8 @@ ro_txn(Body, Opts) ->
 
 ro_txn(chronicle, Body, Opts) ->
     chronicle_kv:ro_txn(kv, ?cut(Body({chronicle, _})), Opts);
+ro_txn(ns_config, Body, #{ns_config := Config}) ->
+    {ok, {Body({ns_config, Config}), no_rev}};
 ro_txn(ns_config, Body, _Opts) ->
     {ok, {Body({ns_config, ns_config:get()}), no_rev}};
 ro_txn(couchdb, Body, #{}) ->
@@ -224,9 +223,6 @@ get_snapshot(Fetchers) ->
 get_snapshot(Fetchers, Opts) ->
     {Snapshot, _} = get_snapshot_with_revision(Fetchers, Opts),
     Snapshot.
-
-get_snapshot_with_revision(Fetchers) ->
-    get_snapshot_with_revision(Fetchers, #{}).
 
 get_snapshot_with_revision(Fetchers, Opts) ->
     {ok, SnapshotWithRev} =

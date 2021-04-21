@@ -187,7 +187,7 @@ do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
     UUID = menelaus_web:get_uuid(),
 
     Config = ns_config:get(),
-    Snapshot = menelaus_web_node:get_snapshot(),
+    Snapshot = menelaus_web_node:get_snapshot(#{ns_config => Config}),
 
     Nodes = menelaus_web_node:build_nodes_info(
               false, Stability, LocalAddr, Config, Snapshot),
@@ -449,7 +449,8 @@ do_handle_pool_settings_post(Req) ->
     Config = ns_config:get(),
     Snapshot = chronicle_compat:get_snapshot(
                  [ns_bucket:fetch_snapshot(all, _),
-                  ns_cluster_membership:fetch_snapshot(_)]),
+                  ns_cluster_membership:fetch_snapshot(_)],
+                 #{ns_config => Config}),
     CompatVersion = cluster_compat_mode:get_compat_version(Config),
 
     validator:handle(

@@ -149,7 +149,8 @@ build_nodes_ext([Node | RestNodes], Config, Snapshot, NodesExtAcc) ->
 do_compute_bucket_info(Bucket, Config) ->
     {Snapshot, Rev} = chronicle_compat:get_snapshot_with_revision(
                         [ns_bucket:fetch_snapshot(Bucket, _),
-                         ns_cluster_membership:fetch_snapshot(_)]),
+                         ns_cluster_membership:fetch_snapshot(_)],
+                        #{ns_config => Config}),
 
     case ns_bucket:get_bucket(Bucket, Snapshot) of
         {ok, BucketConfig} ->
@@ -405,7 +406,8 @@ build_cluster_capabilities(Config) ->
 do_build_node_services() ->
     Config = ns_config:get(),
     {ok, {Snapshot, ChronicleRev}} =
-        chronicle_compat:ro_txn(fun ns_cluster_membership:fetch_snapshot/1),
+        chronicle_compat:ro_txn(fun ns_cluster_membership:fetch_snapshot/1,
+                                #{ns_config => Config}),
 
     NEIs = build_nodes_ext(ns_cluster_membership:active_nodes(Snapshot),
                            Config, Snapshot, []),

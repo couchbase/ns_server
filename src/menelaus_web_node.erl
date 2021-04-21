@@ -43,7 +43,7 @@
          handle_change_external_listeners/2,
          get_hostnames/2,
          handle_node_init/1,
-         get_snapshot/0]).
+         get_snapshot/1]).
 
 -import(menelaus_util,
         [local_addr/1,
@@ -277,15 +277,15 @@ build_node_status(Node, Bucket, InfoNode, BucketsAll) ->
             <<"unhealthy">>
     end.
 
-get_snapshot() ->
+get_snapshot(Opts) ->
     chronicle_compat:get_snapshot(
       [ns_bucket:fetch_snapshot(all, _),
        ns_cluster_membership:fetch_snapshot(_),
-       chronicle_master:fetch_snapshot(_)]).
+       chronicle_master:fetch_snapshot(_)], Opts).
 
 build_nodes_info_fun(CanIncludeOtpCookie, Stability, LocalAddr) ->
     Config = ns_config:get(),
-    Snapshot = get_snapshot(),
+    Snapshot = get_snapshot(#{ns_config => Config}),
     do_build_nodes_info_fun(CanIncludeOtpCookie, Stability, LocalAddr, Config,
                             Snapshot).
 
@@ -599,7 +599,7 @@ handle_node_statuses(Req) ->
     LocalAddr = local_addr(Req),
     OldStatuses = ns_doctor:get_nodes(),
     Config = ns_config:get(),
-    Snapshot = get_snapshot(),
+    Snapshot = get_snapshot(#{ns_config => Config}),
     BucketsAll = ns_bucket:get_buckets(Snapshot),
     FreshStatuses = ns_heart:grab_fresh_failover_safeness_infos(BucketsAll),
     NodeStatuses =

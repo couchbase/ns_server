@@ -36,6 +36,7 @@
          sub_key/2,
          get_snapshot/0,
          get_snapshot/1,
+         get_snapshot/2,
          fetch_snapshot/2,
          sub_key_match/1,
          buckets_change/1,
@@ -171,7 +172,10 @@ get_snapshot() ->
     get_snapshot(all).
 
 get_snapshot(Bucket) ->
-    chronicle_compat:get_snapshot([fetch_snapshot(Bucket, _)]).
+    get_snapshot(Bucket, #{}).
+
+get_snapshot(Bucket, Opts) ->
+    chronicle_compat:get_snapshot([fetch_snapshot(Bucket, _)], Opts).
 
 upgrade_to_chronicle(Buckets) ->
     BucketConfigs = proplists:get_value(configs, Buckets, []),

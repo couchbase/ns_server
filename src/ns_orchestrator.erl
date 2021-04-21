@@ -1363,7 +1363,8 @@ get_graceful_fo_chk() ->
     Cfg = ns_config:get(),
     Snapshot = chronicle_compat:get_snapshot(
                  [ns_bucket:fetch_snapshot(all, _),
-                  ns_cluster_membership:fetch_snapshot(_)]),
+                  ns_cluster_membership:fetch_snapshot(_)],
+                 #{ns_config => Cfg}),
     KnownNodes0 = ns_cluster_membership:nodes_wanted(Snapshot),
     KnownNodes = ns_cluster_membership:attach_node_uuids(KnownNodes0, Cfg),
     FailedNodes = get_failed_nodes(Snapshot, KnownNodes0),

@@ -243,7 +243,7 @@ build_node_info(N, User, Config, Snapshot) ->
 build_auth_info(#state{cert_version = CertVersion,
                        client_cert_auth_version = ClientCertAuthVersion}) ->
     Config = ns_config:get(),
-    Snapshot = ns_cluster_membership:get_snapshot(),
+    Snapshot = ns_cluster_membership:get_snapshot(#{ns_config => Config}),
     Nodes = lists:foldl(fun (Node, Acc) ->
                                 case build_node_info(Node, Config, Snapshot) of
                                     undefined ->

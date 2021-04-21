@@ -48,6 +48,7 @@
          is_newly_added_node/1,
          attach_node_uuids/2,
          fetch_snapshot/1,
+         get_snapshot/1,
          get_snapshot/0
         ]).
 
@@ -92,7 +93,10 @@ fetch_snapshot(Txn) ->
         Txn)).
 
 get_snapshot() ->
-    chronicle_compat:get_snapshot([fetch_snapshot(_)]).
+    get_snapshot(#{}).
+
+get_snapshot(Opts) ->
+    chronicle_compat:get_snapshot([fetch_snapshot(_)], Opts).
 
 get_nodes_with_status(PredOrStatus) ->
     get_nodes_with_status(direct, PredOrStatus).

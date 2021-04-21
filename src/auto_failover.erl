@@ -271,7 +271,7 @@ handle_cast(_Msg, State) ->
 handle_info(tick, State0) ->
     Ref = send_tick_msg(),
     Config = ns_config:get(),
-    Snapshot = ns_cluster_membership:get_snapshot(),
+    Snapshot = ns_cluster_membership:get_snapshot(#{ns_config => Config}),
 
     %% Reread autofailover count from config just in case. This value can be
     %% different, for instance, if due to network issues we get disconnected
