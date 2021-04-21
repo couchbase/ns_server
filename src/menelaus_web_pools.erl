@@ -147,7 +147,13 @@ handle_pool_info_wait_tail(Req, Id, LocalAddr, ETag, UpdateID) ->
 config_version_token() ->
     {chronicle_kv:get_revision(kv), ns_config:config_version_token()}.
 
-build_pool_info(Id, Req, normal, Stability, LocalAddr, UpdateID) ->
+build_pool_info(Id, Req, InfoLevel, Stability, LocalAddr, UpdateID) ->
+    Ctx = menelaus_web_node:get_context({ip, LocalAddr}, false, Stability),
+    build_pool_info(Id, Req, InfoLevel, Ctx, UpdateID).
+
+build_pool_info(Id, Req, normal, Ctx, UpdateID) ->
+    Stability = menelaus_web_node:get_stability(Ctx),
+    LocalAddr = menelaus_web_node:get_local_addr(Ctx),
     InfoLevel =
         case menelaus_auth:has_permission({[admin, internal], all}, Req) of
             true ->
@@ -171,8 +177,7 @@ build_pool_info(Id, Req, normal, Stability, LocalAddr, UpdateID) ->
       fun () ->
               %% NOTE: token needs to be taken before building pool info
               Vsn = {config_version_token(), nodes(), UpdateID},
-              {do_build_pool_info(Id, InfoLevel, Stability, LocalAddr), 1000,
-               Vsn}
+              {do_build_pool_info(Id, InfoLevel, Ctx), 1000, Vsn}
       end,
       fun (_Key, _Value, {ConfigVersionToken, Nodes, OldUpdateID}) ->
               ConfigVersionToken =/= config_version_token()
@@ -180,17 +185,15 @@ build_pool_info(Id, Req, normal, Stability, LocalAddr, UpdateID) ->
                   orelse ((UpdateID =/= OldUpdateID) andalso
                           (UpdateID =/= undefined))
       end);
-build_pool_info(Id, _Req, for_ui, Stability, LocalAddr, _UpdateID) ->
-    do_build_pool_info(Id, for_ui, Stability, LocalAddr).
+build_pool_info(Id, _Req, for_ui, Ctx, _UpdateID) ->
+    do_build_pool_info(Id, for_ui, Ctx).
 
-do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
+do_build_pool_info(Id, InfoLevel, Ctx) ->
+    Config = menelaus_web_node:get_config(Ctx),
+    Snapshot = menelaus_web_node:get_snapshot(Ctx),
+
     UUID = menelaus_web:get_uuid(),
-
-    Config = ns_config:get(),
-    Snapshot = menelaus_web_node:get_snapshot(#{ns_config => Config}),
-
-    Nodes = menelaus_web_node:build_nodes_info(
-              false, Stability, LocalAddr, Config, Snapshot),
+    Nodes = menelaus_web_node:build_nodes_info(Ctx),
 
     TasksURI = bin_concat_path(["pools", Id, "tasks"],
                                [{"v", ns_doctor:get_tasks_version()}]),
@@ -227,7 +230,7 @@ do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
          menelaus_web_node:build_memory_quota_info(Config),
          build_ui_params(InfoLevel),
          build_internal_params(InfoLevel),
-         build_unstable_params(Stability)],
+         build_unstable_params(menelaus_web_node:get_stability(Ctx))],
     {struct, lists:flatten(PropList)}.
 
 build_rebalance_params(Id, UUID) ->
@@ -545,8 +548,8 @@ cluster_info_props(Req) ->
      {nodes,
       fun () ->
               [begin
-                   {struct, Props} = menelaus_web_node:build_full_node_info(
-                                       N, local_addr(Req)),
+                   {struct, Props} =
+                       menelaus_web_node:build_full_node_info(Req, N),
                    glean_node_details(Props)
                end || N <- ns_node_disco:nodes_wanted()]
       end}].

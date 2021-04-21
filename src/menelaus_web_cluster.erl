@@ -105,7 +105,7 @@ handle_engage_cluster2(Req) ->
             %% 127.0.0.1 and thus join attempt in CBSE-385 would be
             %% prevented at completeJoin step which would be sent to
             %% 127.0.0.1 (joiner) and bounced.
-            {struct, Result} = menelaus_web_node:build_full_node_info(node(), misc:localhost()),
+            {struct, Result} = menelaus_web_node:build_full_node_info(node()),
             {_, _} = CompatTuple = lists:keyfind(<<"clusterCompatibility">>, 1, NodeKVList),
             ThreeXCompat = cluster_compat_mode:effective_cluster_compat_version_for(
                              cluster_compat_mode:supported_compat_version()),
@@ -305,8 +305,8 @@ handle_join_tail(Req, OtherScheme, OtherHost, OtherPort, OtherUser, OtherPswd,
                     case Hostname of
                         undefined ->
                             {struct, MyPList} =
-                                menelaus_web_node:build_full_node_info(node(),
-                                                                       MyIP),
+                                menelaus_web_node:build_full_node_info(
+                                  {ip, MyIP}, node()),
                             HostnamePort =
                                 binary_to_list(misc:expect_prop_value(hostname,
                                                                       MyPList)),

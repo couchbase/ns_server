@@ -465,10 +465,10 @@ handle_just_diag(Req, Extra) ->
     Buckets = lists:sort(fun (A,B) -> element(1, A) =< element(1, B) end,
                          ns_bucket:get_buckets()),
 
+    Ctx = menelaus_web_node:get_context(undefined, true, unstable),
     Infos = [["nodes_info = ~p",
               ns_cluster:sanitize_node_info(
-                menelaus_web_node:build_nodes_info(true, unstable,
-                                                   misc:localhost()))],
+                menelaus_web_node:build_nodes_info(Ctx))],
              ["buckets = ~p", ns_config_log:sanitize(Buckets)]],
 
     [begin

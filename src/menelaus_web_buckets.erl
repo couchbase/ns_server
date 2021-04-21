@@ -96,7 +96,8 @@ get_info_level(Req) ->
     end.
 
 handle_bucket_list(Req) ->
-    Snapshot = ns_bucket:get_snapshot(),
+    Ctx = menelaus_web_node:get_context(Req, false, unstable),
+    Snapshot = menelaus_web_node:get_snapshot(Ctx),
 
     BucketsUnsorted =
         menelaus_auth:filter_accessible_buckets(
@@ -104,23 +105,16 @@ handle_bucket_list(Req) ->
           ns_bucket:get_bucket_names(Snapshot), Req),
     Buckets = lists:sort(fun (A,B) -> A =< B end, BucketsUnsorted),
 
-    reply_json(Req, build_buckets_info(Req, Buckets, Snapshot,
-                                       get_info_level(Req))).
+    reply_json(Req, build_buckets_info(Req, Buckets, Ctx, get_info_level(Req))).
 
 handle_bucket_info(_PoolId, Id, Req) ->
-    Snapshot = ns_bucket:get_snapshot(Id),
-    [Json] = build_buckets_info(Req, [Id], Snapshot, get_info_level(Req)),
+    Ctx = menelaus_web_node:get_context(Req, false, unstable),
+    [Json] = build_buckets_info(Req, [Id], Ctx, get_info_level(Req)),
     reply_json(Req, Json).
 
-build_bucket_nodes_info(BucketName, BucketConfig, InfoLevel, LocalAddr) ->
-    Stability = case InfoLevel of
-                    streaming ->
-                        stable;
-                    _ ->
-                        unstable
-                end,
+build_bucket_nodes_info(BucketName, BucketConfig, Ctx) ->
     %% Only list nodes this bucket is mapped to
-    F = menelaus_web_node:build_nodes_info_fun(false, Stability, LocalAddr),
+    F = menelaus_web_node:build_nodes_info_fun(Ctx),
     Nodes = ns_bucket:get_servers(BucketConfig),
     %% NOTE: there's potential inconsistency here between BucketConfig
     %% and (potentially more up-to-date) vbuckets dict. Given that
@@ -131,7 +125,9 @@ build_bucket_nodes_info(BucketName, BucketConfig, InfoLevel, LocalAddr) ->
                {error, no_map} -> dict:new()
            end,
     BucketUUID = ns_bucket:bucket_uuid(BucketConfig),
-    add_couch_api_base_loop(Nodes, BucketName, BucketUUID, LocalAddr, F, Dict, [], []).
+    LocalAddr = menelaus_web_node:get_local_addr(Ctx),
+    add_couch_api_base_loop(Nodes, BucketName, BucketUUID, LocalAddr, F,
+                            Dict, [], []).
 
 
 add_couch_api_base_loop([], _BucketName, _BucketUUID, _LocalAddr, _F, _Dict, CAPINodes, NonCAPINodes) ->
@@ -250,21 +246,22 @@ build_durability_min_level(BucketConfig) ->
             <<"persistToMajority">>
     end.
 
-build_buckets_info(Req, Buckets, Snapshot, InfoLevel) ->
+build_buckets_info(Req, Buckets, Ctx, InfoLevel) ->
     SkipMap = InfoLevel =/= streaming andalso
         proplists:get_value(
           "skipMap", mochiweb_request:parse_qs(Req)) =:= "true",
-    LocalAddr = menelaus_util:local_addr(Req),
-    [build_bucket_info(BucketName, Snapshot, InfoLevel, LocalAddr,
+    [build_bucket_info(BucketName, Ctx, InfoLevel,
                        may_expose_bucket_auth(BucketName, Req), SkipMap) ||
         BucketName <- Buckets].
 
-build_bucket_info(Id, Snapshot, InfoLevel, LocalAddr, MayExposeAuth, SkipMap) ->
+build_bucket_info(Id, Ctx, InfoLevel, MayExposeAuth, SkipMap) ->
+    Snapshot = menelaus_web_node:get_snapshot(Ctx),
     {ok, BucketConfig} = ns_bucket:get_bucket(Id, Snapshot),
     {lists:flatten(
        [bucket_info_cache:build_short_bucket_info(Id, BucketConfig, Snapshot),
         bucket_info_cache:build_ddocs(Id, BucketConfig),
-        [bucket_info_cache:build_vbucket_map(LocalAddr, BucketConfig)
+        [bucket_info_cache:build_vbucket_map(
+           menelaus_web_node:get_local_addr(Ctx), BucketConfig)
          || not SkipMap],
         {bucketType, ns_bucket:external_bucket_type(BucketConfig)},
         {authType, misc:expect_prop_value(auth_type, BucketConfig)},
@@ -273,7 +270,7 @@ build_bucket_info(Id, Snapshot, InfoLevel, LocalAddr, MayExposeAuth, SkipMap) ->
         {controllers, {build_controllers(Id, BucketConfig)}},
         {nodes,
          menelaus_util:strip_json_struct(
-           build_bucket_nodes_info(Id, BucketConfig, InfoLevel, LocalAddr))},
+           build_bucket_nodes_info(Id, BucketConfig, Ctx))},
         {stats,
          {[{uri, bucket_info_cache:build_pools_uri(["buckets", Id, "stats"])},
            {directoryURI,
@@ -386,39 +383,34 @@ build_sasl_bucket_info({Id, BucketConfig}, LocalAddr) ->
         bucket_info_cache:build_vbucket_map(LocalAddr, BucketConfig),
         build_sasl_bucket_nodes(BucketConfig, LocalAddr)])}.
 
-build_terse_streaming_info(Id, Req) ->
+build_streaming_info(true, Id, _Req, LocalAddr) ->
     case ns_bucket:bucket_exists(Id, direct) of
         true ->
             {ok, Bin} =
                 bucket_info_cache:terse_bucket_info_with_local_addr(
-                  Id, menelaus_util:local_addr(Req)),
+                  Id, LocalAddr),
             {write, Bin};
         false ->
             exit(normal)
-    end.
-
-build_streaming_info(Id, Req) ->
-    Snapshot = ns_bucket:get_snapshot(Id),
+    end;
+build_streaming_info(false, Id, Req, LocalAddr) ->
+    Ctx = menelaus_web_node:get_context({ip, LocalAddr}, false, stable),
+    Snapshot = menelaus_web_node:get_snapshot(Ctx),
     case ns_bucket:bucket_exists(Id, Snapshot) of
         true ->
-            [Info] = build_buckets_info(Req, [Id], Snapshot, streaming),
+            [Info] = build_buckets_info(Req, [Id], Ctx, streaming),
             Info;
         false ->
             exit(normal)
     end.
 
 handle_bucket_info_streaming(_PoolId, Id, Req) ->
-    Build =
-        case ns_config:read_key_fast(send_terse_streaming_buckets, false) of
-            true ->
-                ?cut(build_terse_streaming_info(Id, Req));
-            false ->
-                ?cut(build_streaming_info(Id, Req))
-        end,
-
-    handle_streaming(fun(_Stability, _UpdateID) ->
-                             {just_write, Build()}
-                     end, Req).
+    LocalAddr = menelaus_util:local_addr(Req),
+    Terse = ns_config:read_key_fast(send_terse_streaming_buckets, false),
+    handle_streaming(
+      fun(_Stability, _UpdateID) ->
+              {just_write, build_streaming_info(Terse, Id, Req, LocalAddr)}
+      end, Req).
 
 handle_bucket_delete(_PoolId, BucketId, Req) ->
     menelaus_web_rbac:assert_no_users_upgrade(),

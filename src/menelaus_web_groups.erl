@@ -31,10 +31,10 @@ build_group_uri(GroupPList) ->
 
 handle_server_groups(Req) ->
     Groups = ns_cluster_membership:server_groups(),
-    LocalAddr = menelaus_util:local_addr(Req),
-    CanIncludeOtpCookie = menelaus_auth:has_permission({[admin, internal], all}, Req),
-    Fun = menelaus_web_node:build_nodes_info_fun(CanIncludeOtpCookie, unstable,
-                                                 LocalAddr),
+    IncludeOtpCookie = menelaus_auth:has_permission({[admin, internal], all},
+                                                    Req),
+    Ctx = menelaus_web_node:get_context(Req, IncludeOtpCookie, unstable),
+    Fun = menelaus_web_node:build_nodes_info_fun(Ctx),
     J = [begin
              UUIDBin = proplists:get_value(uuid, G),
              L = [{name, proplists:get_value(name, G)},

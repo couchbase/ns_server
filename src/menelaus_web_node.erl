@@ -21,11 +21,11 @@
 -define(MAX_HOSTNAME_LENGTH, 1000).
 
 -export([handle_node/2,
+         build_full_node_info/1,
          build_full_node_info/2,
          build_memory_quota_info/1,
-         build_nodes_info_fun/3,
-         build_nodes_info/3,
-         build_nodes_info/5,
+         build_nodes_info_fun/1,
+         build_nodes_info/1,
          build_node_hostname/3,
          handle_bucket_node_list/2,
          handle_bucket_node_info/3,
@@ -43,6 +43,10 @@
          handle_change_external_listeners/2,
          get_hostnames/2,
          handle_node_init/1,
+         get_context/3,
+         get_config/1,
+         get_stability/1,
+         get_local_addr/1,
          get_snapshot/1]).
 
 -import(menelaus_util,
@@ -52,6 +56,8 @@
          bin_concat_path/1,
          reply_not_found/1,
          reply/2]).
+
+-record(ctx, {ns_config, snapshot, local_addr, include_cookie, stability}).
 
 handle_node_init(Req) ->
     validator:handle(
@@ -165,10 +171,9 @@ handle_node("self", Req) ->
 handle_node(S, Req) when is_list(S) ->
     handle_node(list_to_atom(S), Req);
 handle_node(Node, Req) when is_atom(Node) ->
-    LocalAddr = local_addr(Req),
     case lists:member(Node, ns_node_disco:nodes_wanted()) of
         true ->
-            Result = build_full_node_info(Node, LocalAddr),
+            Result = build_full_node_info(Req, Node),
             reply_json(Req, Result);
         false ->
             reply_json(Req, <<"Node is unknown to this cluster.">>, 404)
@@ -202,9 +207,13 @@ location_prop_to_json({quotaMb, none}) -> {quotaMb, none};
 location_prop_to_json({state, ok}) -> {state, ok};
 location_prop_to_json(KV) -> KV.
 
-build_full_node_info(Node, LocalAddr) ->
-    {struct, KV} = (build_nodes_info_fun(true,
-                                         unstable, LocalAddr))(Node, undefined),
+build_full_node_info(Node) ->
+    build_full_node_info(undefined, Node).
+
+build_full_node_info(Req, Node) ->
+    Ctx = get_context(Req, true, unstable),
+    Config = get_config(Ctx),
+    {struct, KV} = (build_nodes_info_fun(Ctx))(Node, undefined),
     NodeStatus = ns_doctor:get_node(Node),
     StorageConf =
         ns_storage_conf:storage_conf_from_node_status(Node, NodeStatus),
@@ -223,7 +232,7 @@ build_full_node_info(Node, LocalAddr) ->
                  || {Type, PropList} <-
                         ns_storage_conf:nodes_storage_info([Node])]}},
               {storage, R}] ++ KV ++
-        build_memory_quota_info(ns_config:latest()),
+        build_memory_quota_info(Config),
     {struct, lists:filter(fun (X) -> X =/= undefined end,
                                    Fields)}.
 
@@ -235,14 +244,9 @@ build_memory_quota_info(Config) ->
               {memory_quota:service_to_json_name(Service), Quota}
       end, memory_quota:aware_services(CompatVersion)).
 
-build_nodes_info(CanIncludeOtpCookie, Stability, LocalAddr) ->
-    F = build_nodes_info_fun(CanIncludeOtpCookie, Stability, LocalAddr),
-    [F(N, undefined) || N <- ns_node_disco:nodes_wanted()].
-
-build_nodes_info(CanIncludeOtpCookie, Stability, LocalAddr, Config, Snapshot) ->
-    F = do_build_nodes_info_fun(CanIncludeOtpCookie, Stability,
-                                LocalAddr, Config, Snapshot),
-    [F(N, undefined) || N <- ns_node_disco:nodes_wanted()].
+build_nodes_info(Ctx = #ctx{snapshot = Snapshot}) ->
+    F = build_nodes_info_fun(Ctx),
+    [F(N, undefined) || N <- ns_node_disco:nodes_wanted(Snapshot)].
 
 %% builds health/warmup status of given node (w.r.t. given Bucket if
 %% not undefined)
@@ -277,22 +281,48 @@ build_node_status(Node, Bucket, InfoNode, BucketsAll) ->
             <<"unhealthy">>
     end.
 
-get_snapshot(Opts) ->
-    chronicle_compat:get_snapshot(
-      [ns_bucket:fetch_snapshot(all, _),
-       ns_cluster_membership:fetch_snapshot(_),
-       chronicle_master:fetch_snapshot(_)], Opts).
-
-build_nodes_info_fun(CanIncludeOtpCookie, Stability, LocalAddr) ->
+get_context(Req, IncludeOtpCookie, Stability) ->
     Config = ns_config:get(),
-    Snapshot = get_snapshot(#{ns_config => Config}),
-    do_build_nodes_info_fun(CanIncludeOtpCookie, Stability, LocalAddr, Config,
-                            Snapshot).
+    Snapshot =
+        chronicle_compat:get_snapshot(
+          [ns_bucket:fetch_snapshot(all, _),
+           ns_cluster_membership:fetch_snapshot(_),
+           chronicle_master:fetch_snapshot(_)], #{ns_config => Config}),
 
-do_build_nodes_info_fun(CanIncludeOtpCookie, Stability, LocalAddr, Config,
-                        Snapshot) ->
+    LocalAddr = case Req of
+                    undefined ->
+                        misc:localhost();
+                    {ip, IP} ->
+                        IP;
+                    _ ->
+                        menelaus_util:local_addr(Req)
+                end,
+
+    #ctx{ns_config = Config,
+         snapshot = Snapshot,
+         local_addr = LocalAddr,
+         include_cookie = IncludeOtpCookie,
+         stability = Stability}.
+
+get_stability(#ctx{stability = Stability}) ->
+    Stability.
+
+get_config(#ctx{ns_config = Config}) ->
+    Config.
+
+get_snapshot(#ctx{snapshot = Snapshot}) ->
+    Snapshot.
+
+get_local_addr(#ctx{local_addr = LocalAddr}) ->
+    LocalAddr.
+
+build_nodes_info_fun(#ctx{ns_config = Config,
+                          snapshot = Snapshot,
+                          include_cookie = IncludeOtpCookie,
+                          stability = Stability,
+                          local_addr = LocalAddr}) ->
     OtpCookie =
-        case CanIncludeOtpCookie of
+        case IncludeOtpCookie of
             true ->
                 {otpCookie, erlang:get_cookie()};
             false ->
@@ -596,10 +626,10 @@ average_failover_safenesses_rec(Node, NodeInfos,
 
 %% this serves fresh nodes replication and health status
 handle_node_statuses(Req) ->
-    LocalAddr = local_addr(Req),
     OldStatuses = ns_doctor:get_nodes(),
-    Config = ns_config:get(),
-    Snapshot = get_snapshot(#{ns_config => Config}),
+    #ctx{ns_config = Config,
+         local_addr = LocalAddr,
+         snapshot = Snapshot} = get_context(Req, false, stable),
     BucketsAll = ns_bucket:get_buckets(Snapshot),
     FreshStatuses = ns_heart:grab_fresh_failover_safeness_infos(BucketsAll),
     NodeStatuses =

@@ -815,8 +815,7 @@ engage_cluster_bad_json_error(Exc) ->
 
 do_add_node_with_connectivity(Scheme, RemoteAddr, RestPort, Auth, GroupUUID,
                               Services) ->
-    {struct, NodeInfo} = menelaus_web_node:build_full_node_info(node(),
-                                                                misc:localhost()),
+    {struct, NodeInfo} = menelaus_web_node:build_full_node_info(node()),
     IsPreviewCluster = cluster_compat_mode:is_developer_preview(),
     Props = [{<<"requestedTargetNodeHostname">>, list_to_binary(RemoteAddr)},
              {<<"requestedServices">>, Services},
@@ -1019,7 +1018,7 @@ get_request_target(NodeKVList, Scheme) ->
 do_add_node_engaged_inner(ChronicleInfo, {Scheme, Hostname, Port},
                           OtpNode, Auth, Services) ->
     {struct, MyNodeKVList} =
-        menelaus_web_node:build_full_node_info(node(), misc:localhost()),
+        menelaus_web_node:build_full_node_info(node()),
     Struct = {struct, [{<<"targetNode">>, OtpNode},
                        {<<"requestedServices">>, Services}
                        | MyNodeKVList] ++
