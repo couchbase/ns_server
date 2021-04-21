@@ -2026,12 +2026,12 @@ function get65CompatDesc() {
           },
           "rate_received_from_dcp": {
             unit: "number/sec",
-            title: "Doc reception rate",
+            title: "Doc Reception Rate",
             desc: "Rate of mutations received from dcp in terms of number of mutations per second. Per-replication."
           },
           "rate_replicated": {
             unit: "number/sec",
-            title: "XDCR Replication Rate",
+            title: "XDCR Mutations Replicated Rate",
             desc:"Number of replicated mutations per second. Per-replication. (measured from rate_replicated)"
           },
           "wtavg_docs_latency": {
