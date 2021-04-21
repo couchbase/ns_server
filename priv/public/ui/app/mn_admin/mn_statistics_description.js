@@ -295,11 +295,10 @@ function getStatAdditionalConfig(statName) {
 
   case "@system.sys_cpu_utilization_rate":
   case "@cbas.cbas_system_load_average":
-  case "@kv-.kv_ops_update":
     return {nodesAggregation: "avg"};
 
-  case "@index-.@items.index_frag_percent":
-    return {nodesAggregation: "avg", applyFunctions: ["sum"]};
+  case "@index-.@items.index_fragmentation":
+    return {nodesAggregation: "special", applyFunctions: ["sum"]};
 
   case "@cbas-.cbas_incoming_records_count":
   case "@index-.index_num_docs_indexed":
@@ -377,8 +376,13 @@ function getStatAdditionalConfig(statName) {
   case "@kv-.kv_memory_used_bytes":
     return {metric: {for: "hashtable"}};
 
-  case "@kv-.kv_avg_disk_time_seconds":
-    return {metric: {op: "commit"}, nodesAggregation: "special", applyFunctions: ["irate"]};
+  case "@kv-.kv_avg_disk_time_seconds_update":
+    return {metric: {name: "kv_avg_disk_time_seconds", op: "update"},
+            nodesAggregation: "special", applyFunctions: ["irate"]};
+
+  case "@kv-.kv_avg_disk_time_seconds_commit":
+    return {metric: {name: "kv_avg_disk_time_seconds", op: "commit"},
+            nodesAggregation: "special", applyFunctions: ["irate"]};
 
   case "@kv-.kv_curr_connections":
     return {bucket: null};
@@ -566,6 +570,7 @@ function get70Mapping() {
 
     "@index.index_memory_used_total": "@index.index_memory_used",
     "@index-.index_fragmentation": "@index-.index/fragmentation",
+    "@index-.@items.index_fragmentation": "@index-.@items.index_frag_percent",
     "@index.index_ram_percent": "@index.index_ram_percent",
     "@index.index_remaining_ram": "@index.index_remaining_ram",
 
@@ -591,7 +596,8 @@ function get70Mapping() {
     "@kv-.kv_vb_pending_resident_items_ratio": "@kv-.vb_pending_resident_items_ratio",
     "@kv-.kv_vb_active_resident_items_ratio": "@kv-.vb_active_resident_items_ratio",
     "@kv-.kv_vb_replica_resident_items_ratio": "@kv-.vb_replica_resident_items_ratio",
-    "@kv-.kv_ops_update": "@kv-.avg_disk_update_time", //?
+    "@kv-.kv_avg_disk_time_seconds_update": "@kv-.avg_disk_update_time",
+    "@kv-.kv_avg_disk_time_seconds_commit": "@kv-.avg_disk_commit_time",
     "@kv-.kv_read_bytes": "@kv-.bytes_read",
     "@kv-.kv_written_bytes": "@kv-.bytes_written",
     "@kv-.kv_cas_badval": "@kv-.cas_badval",
@@ -668,7 +674,6 @@ function get70Mapping() {
     "@kv-.kv_vb_replica_itm_memory_bytes": "@kv-.vb_replica_itm_memory",
     "@kv-.kv_vb_replica_meta_data_memory_bytes": "@kv-.vb_replica_meta_data_memory",
 
-    "@kv-.kv_avg_disk_time_seconds": "@kv-.avg_disk_commit_time",
     "@kv-.kv_avg_bg_wait_time_seconds": "@kv-.avg_bg_wait_time",
     "@kv-.kv_avg_active_timestamp_drift_seconds": "@kv-.avg_active_timestamp_drift",
     "@kv-.kv_avg_replica_timestamp_drift_seconds": "@kv-.avg_replica_timestamp_drift",
@@ -721,7 +726,7 @@ function get70Mapping() {
     "@xdcr-.@items.xdcr_docs_failed_cr_source_total": "@xdcr-.@items.docs_failed_cr_source",
     "@xdcr-.@items.xdcr_docs_filtered_total": "@xdcr-.@items.docs_filtered",
     "@xdcr-.@items.xdcr_docs_written_total": "@xdcr-.@items.docs_written",
-    "@xdcr-.@items.xdcr_docs_checked_total": "@xdcr-.@items.rate_doc_checks", //? irate
+    "@xdcr-.@items.xdcr_docs_checked_total": "@xdcr-.@items.rate_doc_checks",
     "@xdcr-.@items.xdcr_docs_opt_repd_total": "@xdcr-.@items.rate_doc_opt_repd",
     "@xdcr-.@items.xdcr_docs_received_from_dcp_total": "@xdcr-.@items.rate_received_from_dcp",
     "@xdcr-.@items.xdcr_rate_replicated_docs_per_second": "@xdcr-.@items.rate_replicated",
