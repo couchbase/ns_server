@@ -135,6 +135,9 @@ footer {
 .align-top {
   vertical-align: top;
 }
+.align-bottom {
+  vertical-align: bottom;
+}
 .text-right {
   text-align: right;
 }
@@ -265,6 +268,9 @@ footer {
 }
 .min-width-10 {
   min-width: 10rem;
+}
+.min-width-3-5 {
+  min-width: 3.5rem;
 }
 .min-width-4 {
   min-width: 4rem;
