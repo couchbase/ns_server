@@ -169,7 +169,7 @@ maybe_notify_watchers(Event, State) ->
     end.
 
 notify_watchers(#state{watchers = Watchers}) ->
-    UpdateID = erlang:unique_integer(),
+    UpdateID = erlang:unique_integer([monotonic]),
     lists:foreach(fun({Pid, _}) ->
                           Pid ! {notify_watcher, UpdateID}
                   end, Watchers).
