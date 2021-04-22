@@ -13,6 +13,7 @@
 -module(menelaus_web_samples).
 
 -include("ns_common.hrl").
+-include("cut.hrl").
 
 -export([handle_get/1,
          handle_post/1]).
@@ -114,8 +115,15 @@ validate_post_sample_buckets(Samples) ->
     end.
 
 check_quota(Samples) ->
-    NodesCount = length(ns_cluster_membership:service_active_nodes(kv)),
-    StorageInfo = ns_storage_conf:cluster_storage_info(),
+    Config = ns_config:get(),
+    Snapshot =
+        chronicle_compat:get_snapshot(
+          [ns_bucket:fetch_snapshot(all, _),
+           ns_cluster_membership:fetch_snapshot(_)], #{ns_config => Config}),
+
+    NodesCount =
+        length(ns_cluster_membership:service_active_nodes(Snapshot, kv)),
+    StorageInfo = ns_storage_conf:cluster_storage_info(Config, Snapshot),
     RamQuotas = proplists:get_value(ram, StorageInfo),
     QuotaUsed = proplists:get_value(quotaUsed, RamQuotas),
     QuotaTotal = proplists:get_value(quotaTotal, RamQuotas),

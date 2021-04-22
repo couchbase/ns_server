@@ -281,7 +281,7 @@ build_bucket_info(Id, Ctx, InfoLevel, MayExposeAuth, SkipMap) ->
         build_auto_compaction_info(BucketConfig),
         build_purge_interval_info(BucketConfig),
         build_replica_index(BucketConfig),
-        build_dynamic_bucket_info(InfoLevel, Id, BucketConfig),
+        build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx),
         [build_sasl_password(BucketConfig) || MayExposeAuth]])}.
 
 build_sasl_password(_BucketConfig) ->
@@ -304,23 +304,27 @@ build_controllers(Id, BucketConfig) ->
      [{flush, build_controller(Id, "doFlush")} ||
          proplists:get_value(flush_enabled, BucketConfig, false)]].
 
-build_bucket_stats(for_ui, Id) ->
+build_bucket_stats(for_ui, Id, Ctx) ->
+    Config = menelaus_web_node:get_config(Ctx),
+    Snapshot = menelaus_web_node:get_snapshot(Ctx),
+
     StorageTotals = [{Key, {StoragePList}}
                      || {Key, StoragePList} <-
-                            ns_storage_conf:cluster_storage_info()],
+                            ns_storage_conf:cluster_storage_info(Config,
+                                                                 Snapshot)],
 
     [{storageTotals, {StorageTotals}} | menelaus_stats:basic_stats(Id)];
-build_bucket_stats(_, Id) ->
+build_bucket_stats(_, Id, _) ->
     menelaus_stats:basic_stats(Id).
 
-build_dynamic_bucket_info(streaming, _Id, _BucketConfig) ->
+build_dynamic_bucket_info(streaming, _Id, _BucketConfig, _) ->
     [];
-build_dynamic_bucket_info(InfoLevel, Id, BucketConfig) ->
+build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx) ->
     [[{replicaNumber, ns_bucket:num_replicas(BucketConfig)},
       {threadsNumber, proplists:get_value(num_threads, BucketConfig, 3)},
       {quota, {[{ram, ns_bucket:ram_quota(BucketConfig)},
                 {rawRAM, ns_bucket:raw_ram_quota(BucketConfig)}]}},
-      {basicStats, {build_bucket_stats(InfoLevel, Id)}},
+      {basicStats, {build_bucket_stats(InfoLevel, Id, Ctx)}},
       {evictionPolicy, build_eviction_policy(BucketConfig)},
       {storageBackend, ns_bucket:storage_backend(BucketConfig)},
       {durabilityMinLevel, build_durability_min_level(BucketConfig)},
@@ -465,14 +469,24 @@ init_bucket_validation_context(IsNew, BucketName, Req) ->
     IgnoreWarnings = (proplists:get_value("ignore_warnings", mochiweb_request:parse_qs(Req)) =:= "1"),
     init_bucket_validation_context(IsNew, BucketName, ValidateOnly, IgnoreWarnings).
 
-init_bucket_validation_context(IsNew, BucketName, ValidateOnly, IgnoreWarnings) ->
-    init_bucket_validation_context(IsNew, BucketName,
-                                   ns_bucket:get_buckets(),
-                                   extended_cluster_storage_info(),
-                                   ValidateOnly, IgnoreWarnings,
-                                   cluster_compat_mode:get_compat_version(),
-                                   cluster_compat_mode:is_enterprise(),
-                                   cluster_compat_mode:is_developer_preview()).
+init_bucket_validation_context(IsNew, BucketName, ValidateOnly,
+                               IgnoreWarnings) ->
+    Config = ns_config:get(),
+    Snapshot =
+        chronicle_compat:get_snapshot(
+          [ns_bucket:fetch_snapshot(all, _),
+           ns_cluster_membership:fetch_snapshot(_)], #{ns_config => Config}),
+
+    init_bucket_validation_context(
+      IsNew, BucketName,
+      ns_bucket:get_buckets(Snapshot),
+      [{nodesCount,
+        length(ns_cluster_membership:service_active_nodes(Snapshot, kv))}
+       | ns_storage_conf:cluster_storage_info(Config, Snapshot)],
+      ValidateOnly, IgnoreWarnings,
+      cluster_compat_mode:get_compat_version(),
+      cluster_compat_mode:is_enterprise(),
+      cluster_compat_mode:is_developer_preview()).
 
 init_bucket_validation_context(IsNew, BucketName, AllBuckets, ClusterStorageTotals,
                                ValidateOnly, IgnoreWarnings,
@@ -1749,11 +1763,6 @@ parse_validate_conflict_resolution_type("custom") ->
 parse_validate_conflict_resolution_type(_Other) ->
     {error, conflictResolutionType,
      <<"Conflict resolution type must be 'seqno' or 'lww' or 'custom'">>}.
-
-extended_cluster_storage_info() ->
-    [{nodesCount, length(ns_cluster_membership:service_active_nodes(kv))}
-     | ns_storage_conf:cluster_storage_info()].
-
 
 handle_compact_bucket(_PoolId, Bucket, Req) ->
     ok = compaction_api:force_compact_bucket(Bucket),

@@ -213,6 +213,7 @@ build_full_node_info(Node) ->
 build_full_node_info(Req, Node) ->
     Ctx = get_context(Req, true, unstable),
     Config = get_config(Ctx),
+    Snapshot = get_snapshot(Ctx),
     {struct, KV} = (build_nodes_info_fun(Ctx))(Node, undefined),
     NodeStatus = ns_doctor:get_node(Node),
     StorageConf =
@@ -230,7 +231,8 @@ build_full_node_info(Req, Node) ->
                {struct,
                 [{Type, {struct, PropList}}
                  || {Type, PropList} <-
-                        ns_storage_conf:nodes_storage_info([Node])]}},
+                        ns_storage_conf:nodes_storage_info(
+                          [Node], Config, Snapshot)]}},
               {storage, R}] ++ KV ++
         build_memory_quota_info(Config),
     {struct, lists:filter(fun (X) -> X =/= undefined end,

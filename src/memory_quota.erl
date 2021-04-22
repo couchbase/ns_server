@@ -18,8 +18,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--export([get_snapshot/1,
-         this_node_memory_data/0,
+-export([this_node_memory_data/0,
          get_total_buckets_ram_quota/1,
          check_quotas/4,
          check_this_node_quotas/2,
@@ -35,9 +34,6 @@
 %% based on https://www.kernel.org/doc/Documentation/cgroup-v1/memory.txt
 -define(CGROUP_MEM_USAGE_FILE, "/sys/fs/cgroup/memory/memory.usage_in_bytes").
 -define(CGROUP_MEM_LIMIT_FILE, "/sys/fs/cgroup/memory/memory.limit_in_bytes").
-
-get_snapshot(Opts) ->
-    ns_bucket:get_snapshot(all, Opts).
 
 this_node_memory_data() ->
     case os:getenv("MEMBASE_RAM_MEGS") of

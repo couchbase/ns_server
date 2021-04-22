@@ -230,7 +230,7 @@ do_build_pool_info(Id, InfoLevel, Ctx) ->
          menelaus_web_node:build_memory_quota_info(Config),
          build_ui_params(InfoLevel, Snapshot),
          build_internal_params(InfoLevel),
-         build_unstable_params(menelaus_web_node:get_stability(Ctx))],
+         build_unstable_params(Ctx)],
     {struct, lists:flatten(PropList)}.
 
 build_rebalance_params(Id, UUID) ->
@@ -276,12 +276,18 @@ build_check_permissions_uri(InfoLevel, Id, Snapshot) ->
     {checkPermissionsURI, bin_concat_path(["pools", Id, "checkPermissions"],
                                           Params)}.
 
-build_unstable_params(stable) ->
-    [];
-build_unstable_params(unstable) ->
-    [{storageTotals,
-      {[{Key, {StoragePList}} ||
-           {Key, StoragePList} <- ns_storage_conf:cluster_storage_info()]}}].
+build_unstable_params(Ctx) ->
+    case menelaus_web_node:get_stability(Ctx) of
+        stable ->
+            [];
+        unstable ->
+            Config = menelaus_web_node:get_config(Ctx),
+            Snapshot = menelaus_web_node:get_snapshot(Ctx),
+            StorageInfo = ns_storage_conf:cluster_storage_info(
+                            Config, Snapshot),
+            [{storageTotals,
+              {[{Key, {StoragePList}} || {Key, StoragePList} <- StorageInfo]}}]
+    end.
 
 build_buckets_info(Id, UUID, Nodes, Snapshot) ->
     BucketsConfig = ns_bucket:get_buckets(Snapshot),
