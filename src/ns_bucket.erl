@@ -31,7 +31,7 @@
          display_type/2,
          external_bucket_type/1,
          durability_min_level/1,
-         failover_warnings/0,
+         failover_warnings/1,
          root/0,
          sub_key/2,
          get_snapshot/0,
@@ -541,12 +541,9 @@ failover_safety_rec(BaseSafety, ExtraSafety, [BucketConfig | RestConfigs], Activ
     failover_safety_rec(NewBaseSafety, NewExtraSafety,
                         RestConfigs, ActiveNodes, LiveNodes).
 
--spec failover_warnings() -> [failoverNeeded | rebalanceNeeded | hardNodesNeeded | softNodesNeeded].
-failover_warnings() ->
-    Snapshot = chronicle_compat:get_snapshot(
-                 [fetch_snapshot(all, _),
-                  ns_cluster_membership:fetch_snapshot(_)]),
-
+-spec failover_warnings(map()) -> [failoverNeeded | rebalanceNeeded |
+                                   hardNodesNeeded | softNodesNeeded].
+failover_warnings(Snapshot) ->
     ActiveNodes = ns_cluster_membership:service_active_nodes(Snapshot, kv),
     LiveNodes = ns_cluster_membership:service_actual_nodes(Snapshot, kv),
     {BaseSafety0, ExtraSafety}

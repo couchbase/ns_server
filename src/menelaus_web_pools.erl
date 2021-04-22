@@ -228,7 +228,7 @@ do_build_pool_info(Id, InfoLevel, Ctx) ->
          {balanced, ns_cluster_membership:is_balanced()},
          build_check_permissions_uri(InfoLevel, Id, Snapshot),
          menelaus_web_node:build_memory_quota_info(Config),
-         build_ui_params(InfoLevel),
+         build_ui_params(InfoLevel, Snapshot),
          build_internal_params(InfoLevel),
          build_unstable_params(menelaus_web_node:get_stability(Ctx))],
     {struct, lists:flatten(PropList)}.
@@ -256,12 +256,12 @@ build_internal_params(internal) ->
 build_internal_params(_) ->
     [].
 
-build_ui_params(for_ui) ->
-    [{failoverWarnings, ns_bucket:failover_warnings()},
+build_ui_params(for_ui, Snapshot) ->
+    [{failoverWarnings, ns_bucket:failover_warnings(Snapshot)},
      {saslauthdEnabled, cluster_compat_mode:is_saslauthd_enabled()},
      {uiSessionTimeout,
       ns_config:read_key_fast(ui_session_timeout, undefined)}];
-build_ui_params(_) ->
+build_ui_params(_, _) ->
     [].
 
 build_check_permissions_uri(InfoLevel, Id, Snapshot) ->
