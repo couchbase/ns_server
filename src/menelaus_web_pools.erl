@@ -226,7 +226,7 @@ do_build_pool_info(Id, InfoLevel, Ctx) ->
             (list_to_binary(integer_to_list(GroupsV)))/binary>>},
          {clusterName, list_to_binary(get_cluster_name())},
          {balanced, ns_cluster_membership:is_balanced()},
-         build_check_permissions_uri(InfoLevel, Id),
+         build_check_permissions_uri(InfoLevel, Id, Snapshot),
          menelaus_web_node:build_memory_quota_info(Config),
          build_ui_params(InfoLevel),
          build_internal_params(InfoLevel),
@@ -264,12 +264,12 @@ build_ui_params(for_ui) ->
 build_ui_params(_) ->
     [].
 
-build_check_permissions_uri(InfoLevel, Id) ->
+build_check_permissions_uri(InfoLevel, Id, Snapshot) ->
     Params =
         case InfoLevel of
             for_ui ->
                 [{"v",
-                  menelaus_web_rbac:check_permissions_url_version()}];
+                  menelaus_web_rbac:check_permissions_url_version(Snapshot)}];
             _ ->
                 []
         end,

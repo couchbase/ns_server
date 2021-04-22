@@ -26,6 +26,7 @@
                 client_cert_auth_version}).
 
 -include("ns_common.hrl").
+-include("cut.hrl").
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -243,7 +244,11 @@ build_node_info(N, User, Config, Snapshot) ->
 build_auth_info(#state{cert_version = CertVersion,
                        client_cert_auth_version = ClientCertAuthVersion}) ->
     Config = ns_config:get(),
-    Snapshot = ns_cluster_membership:get_snapshot(#{ns_config => Config}),
+    Snapshot =
+        chronicle_compat:get_snapshot(
+          [ns_bucket:fetch_snapshot(all, _),
+           ns_cluster_membership:fetch_snapshot(_)], #{ns_config => Config}),
+
     Nodes = lists:foldl(fun (Node, Acc) ->
                                 case build_node_info(Node, Config, Snapshot) of
                                     undefined ->
@@ -257,7 +262,8 @@ build_auth_info(#state{cert_version = CertVersion,
     Port = service_ports:get_port(rest_port, Config),
     AuthCheckURL = misc:local_url(Port, "/_cbauth", []),
     PermissionCheckURL = misc:local_url(Port, "/_cbauth/checkPermission", []),
-    PermissionsVersion = menelaus_web_rbac:check_permissions_url_version(),
+    PermissionsVersion = menelaus_web_rbac:check_permissions_url_version(
+                           Snapshot),
     EUserFromCertURL = misc:local_url(Port, "/_cbauth/extractUserFromCert", []),
     ClusterDataEncrypt = misc:should_cluster_data_be_encrypted(),
     DisableNonSSLPorts = misc:disable_non_ssl_ports(),
