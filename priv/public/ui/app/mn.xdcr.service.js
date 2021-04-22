@@ -10,7 +10,7 @@ licenses/APL2.txt.
 
 import { Injectable } from "/ui/web_modules/@angular/core.js";
 import { HttpClient } from '/ui/web_modules/@angular/common/http.js';
-import { BehaviorSubject, combineLatest, timer } from "/ui/web_modules/rxjs.js";
+import { BehaviorSubject, combineLatest, timer, of } from "/ui/web_modules/rxjs.js";
 import { map, shareReplay, switchMap,
          filter as rxFitler, throttleTime} from '/ui/web_modules/rxjs/operators.js';
 import { pipe, filter, propEq, sortBy, prop, groupBy } from "/ui/web_modules/ramda.js";
@@ -103,25 +103,32 @@ class MnXDCRService {
       .pipe(map(groupBy(prop("uuid"))),
             shareReplay({refCount: true, bufferSize: 1}));
 
+
     this.stream.getChangesLeftTotal = mnTasksService.stream.tasksXDCR
-      .pipe(
-        throttleTime(1000),
-        rxFitler(tasks => tasks && tasks.length),
-        map(tasks => tasks.map(task => ({
-          nodesAggregation: "sum",
-          applyFunctions: ["sum"],
-          start: -5,
-          step: 10,
-          metric: [
-            {label: "name", value: "xdcr_changes_left_total"},
-            {label: "sourceBucketName", value: task.source}
-          ]
-        }))),
-        switchMap(configs => mnStatsService.postStatsRange(configs)),
-        map(stats => stats.reduce((acc, stat) =>
-                                  acc + Number(stat.data[0] &&
-                                               stat.data[0].values[0][1]) || 0, 0)),
-        shareReplay({refCount: true, bufferSize: 1}));
+      .pipe(throttleTime(1000, undefined, {leading: true, trailing: true}),
+            map(tasks => tasks && tasks.map(task => ({
+              nodesAggregation: "sum",
+              applyFunctions: ["sum"],
+              start: -5,
+              step: 10,
+              metric: [
+                {label: "name", value: "xdcr_changes_left_total"},
+                {label: "sourceBucketName", value: task.source}
+              ]
+            }))),
+            switchMap(configs => {
+              if (configs) {
+                return mnStatsService.postStatsRange(configs)
+                  .pipe(map(stats =>
+                            stats.reduce((acc, stat) =>
+                                         acc + Number(stat.data[0] &&
+                                                      stat.data[0].values[0][1]) || 0, 0)));
+              } else {
+                return of(0);
+              }
+            }),
+            shareReplay({refCount: true, bufferSize: 1}));
+
   }
 
   prepareReplicationSettigns([_, isEnterprise, compatVersion55]) {
