@@ -35,6 +35,8 @@
             intervals_calc_timer_ref = undefined,
             pruning_timer_ref = undefined,
             pruning_pid = undefined,
+            pruning_start_time = undefined,
+            last_pruning_time = undefined,
             decimation_levels = []}).
 
 -define(RELOAD_RETRY_PERIOD, 10000). %% in milliseconds
@@ -479,15 +481,23 @@ handle_info({'EXIT', PortServer, Reason},
                                          specs = undefined})};
 
 handle_info({'EXIT', Pid, Reason},
-            #s{pruning_pid = Pid} = State) ->
-    case Reason of
-        normal ->
-            ok;
-        _ ->
-            ?log_error("Received exit from pruning pid ~p with reason ~p.",
-                       [Pid, Reason])
-    end,
-    {noreply, State#s{pruning_pid = undefined}};
+            #s{pruning_pid = Pid,
+               pruning_start_time = PruningStartTime,
+               last_pruning_time = LastPruningTime} = State) ->
+    NewLastPruningTime =
+        case Reason of
+            normal ->
+                PruningStartTime;
+            _ ->
+                ?log_error("Received exit from pruning pid ~p with reason ~p.",
+                           [Pid, Reason]),
+                %% Keep same last pruning time as we don't know what happened
+                %% prior to the unexpected exit.
+                LastPruningTime
+        end,
+    {noreply, State#s{pruning_pid = undefined,
+                      pruning_start_time = undefined,
+                      last_pruning_time = NewLastPruningTime}};
 
 handle_info({'EXIT', Pid, normal}, State) ->
     ?log_debug("Received exit from ~p with reason normal. Ignoring... ", [Pid]),
@@ -1158,24 +1168,8 @@ init_pruning_timer(#s{cur_settings = Settings} = State) ->
     Levels = proplists:get_value(decimation_defs, Settings),
     Now = os:system_time(seconds),
 
-    case ns_config:search_node(node(), ns_config:latest(),
-                               stats_last_decimation_time) of
-        {value, _} ->
-            not_changed;
-        false ->
-            ns_config:set({node, node(), stats_last_decimation_time}, Now)
-    end,
-
-    %% High-cardinality stats get truncated after a certain period of time.
-    case ns_config:search_node(node(), ns_config:latest(),
-                               stats_last_truncation_time) of
-        {value, _} ->
-            not_changed;
-        false ->
-            ns_config:set({node, node(), stats_last_truncation_time}, Now)
-    end,
-
-    start_pruning_timer(State#s{decimation_levels = Levels}).
+    start_pruning_timer(State#s{decimation_levels = Levels,
+                                last_pruning_time = Now}).
 
 start_pruning_timer(#s{pruning_timer_ref = undefined,
                        cur_settings = Settings} = State) ->
@@ -1189,9 +1183,17 @@ maybe_prune_stats(#s{pruning_pid = Pid} = State) when is_pid(Pid) ->
     ?log_debug("Skipping stats pruning as prior run has not finished."),
     State;
 maybe_prune_stats(#s{decimation_levels = Levels,
+                     last_pruning_time = LastPruningTime,
                      cur_settings = Settings} = State) ->
-    Pid = proc_lib:spawn_link(fun () -> run_prune_stats(Levels, Settings) end),
-    State#s{pruning_pid = Pid}.
+    %% We'll save the time when this pruning started and if it completes
+    %% successfully the saved time will become the last_pruning_time for
+    %% the next pruning run.
+    Now = os:system_time(seconds),
+    Pid = proc_lib:spawn_link(
+            fun () ->
+                    run_prune_stats(Levels, LastPruningTime, Settings)
+            end),
+    State#s{pruning_pid = Pid, pruning_start_time = Now}.
 
 %% The definitions of the decimation levels consist of the name of the level,
 %% the length (duration) for the level, and the length of time in which
@@ -1251,16 +1253,17 @@ deletion_intervals(Coarseness, Start, End, Interval, Gap) ->
     ToDelete ++ LastDeletionInterval.
 
 %% Run as a separate process to avoid hanging the main process.
-run_prune_stats(Levels, Settings) ->
+run_prune_stats(Levels, LastPruningTime, Settings) ->
     StatsDecimated = case proplists:get_bool(decimation_enabled, Settings) of
                          true ->
-                             run_decimate_stats(Levels, Settings);
+                             run_decimate_stats(Levels, LastPruningTime,
+                                                Settings);
                          false ->
                              false
                      end,
     StatsTruncated = case proplists:get_bool(truncation_enabled, Settings) of
                          true ->
-                             run_truncate_stats(Settings);
+                             run_truncate_stats(LastPruningTime, Settings);
                          false ->
                              false
                      end,
@@ -1272,11 +1275,8 @@ run_prune_stats(Levels, Settings) ->
     end.
 
 
-run_decimate_stats(Levels, Settings) ->
+run_decimate_stats(Levels, LastPruningTime, Settings) ->
     Now = os:system_time(seconds),
-    {value, LastDecimationTime} =
-        ns_config:search_node(node(), ns_config:latest(),
-                              stats_last_decimation_time),
     PruningIntervalSecs = proplists:get_value(pruning_interval,
                                               Settings) div 1000,
     ScrapeInterval = proplists:get_value(scrape_interval, Settings),
@@ -1287,9 +1287,9 @@ run_decimate_stats(Levels, Settings) ->
     %% If that is the case then we'll go back twice the pruning interval
     %% so as to not leave undecimated stats (e.g. if the pruning timer
     %% fires a bit late).
-    LastDecimationTime2 = max(LastDecimationTime,
-                              Now - 2 * PruningIntervalSecs),
-    Deletions = decimate_stats(Levels, LastDecimationTime2, Now,
+    LastDecimationTime = max(LastPruningTime,
+                             Now - 2 * PruningIntervalSecs),
+    Deletions = decimate_stats(Levels, LastDecimationTime, Now,
                                ScrapeInterval),
 
     %% In order to avoid spamming the logs we'll log one message per level
@@ -1302,8 +1302,6 @@ run_decimate_stats(Levels, Settings) ->
       fun ({_Coarseness, StartTime, EndTime}) ->
               delete_series(MatchPatterns, StartTime, EndTime, 30000, Settings)
       end, Deletions),
-
-    ns_config:set({node, node(), stats_last_decimation_time}, Now),
 
     %% Let caller know if any deletions were done
     Deletions =/= [].
@@ -1351,14 +1349,8 @@ build_decimation_summary(SortedDeletions) ->
           end, {First, 1, []}, Rest),
     Summary.
 
-run_truncate_stats(Settings) ->
+run_truncate_stats(LastPruningTime, Settings) ->
     Now = os:system_time(seconds),
-    %% XXX: maybe the last truncation time doesn't need to be saved (if
-    %% prometheus is smart about "minimum possible time" such that we don't
-    %% revisit the same time frames over and over again).
-    {value, LastTruncationTime} =
-        ns_config:search_node(node(), ns_config:latest(),
-                              stats_last_truncation_time),
     MaxAge = proplists:get_value(truncate_max_age, Settings),
     %% Amount of time to not truncate stats even if they're older than the
     %% maximum age.
@@ -1368,12 +1360,9 @@ run_truncate_stats(Settings) ->
     %% Each call truncates the little bit that has exceeded the age limit
     %% since the last call.  We might want to do this less frequently e.g.
     %% when a certain time frame is exceeded.
-    case End - LastTruncationTime > MinTruncationInterval of
+    case End - LastPruningTime > MinTruncationInterval of
         true ->
-            do_truncate_stats(LastTruncationTime, End, Settings),
-            ?log_debug("Updating last truncation times, Old ~p, New ~p",
-                       [LastTruncationTime, End]),
-            ns_config:set({node, node(), stats_last_truncation_time}, End),
+            do_truncate_stats(LastPruningTime, End, Settings),
             true;
         false ->
             false
