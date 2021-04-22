@@ -45,173 +45,149 @@ let appState = {
 
 let wizardState = {
   name: 'app.wizard.**',
-  loadChildren: () => {
-    return import('./mn.wizard.module.js').then(m => {
-      return m.MnWizardModule;
-    });
-  }
+  loadChildren: () =>
+    mnLazyload('./mn.wizard.module.js', 'MnWizardModule')
 };
 
 let collectionsState = {
   name: 'app.admin.collections.**',
   url: '/collections',
-  loadChildren: () => {
-    return import('./mn.collections.module.js').then(m => {
-      return m.MnCollectionsModule;
-    });
-  }
+  loadChildren: () =>
+    mnLazyload('./mn.collections.module.js', 'MnCollectionsModule')
 };
 
 let XDCRState = {
   name: 'app.admin.replications.**',
   url: '/replications',
-  loadChildren: () => {
-    return import('./mn.xdcr.module.js').then(m => {
-      return m.MnXDCRModule;
-    });
-  }
+  loadChildren: () =>
+    mnLazyload('./mn.xdcr.module.js', "MnXDCRModule")
 };
 
 let sessionState = {
   name: 'app.admin.security.session.**',
   url: '/session',
-  loadChildren: () => {
-    return import('./mn.session.module.js').then(m => {
-      return m.MnSessionModule;
-    });
-  }
+  loadChildren: () =>
+    mnLazyload('./mn.session.module.js', 'MnSessionModule')
 };
 
 let logRedactionState = {
   name: 'app.admin.security.redaction.**',
   url: '/redaction',
-  loadChildren: () => {
-    return import('./mn.security.log.redaction.module.js').then(m => {
-      return m.MnSecurityLogRedactionModule;
-    });
-  }
+  loadChildren: () =>
+    mnLazyload('./mn.security.log.redaction.module.js', 'MnSecurityLogRedactionModule')
 };
 
 let auditState = {
   name: 'app.admin.security.audit.**',
   url: '/audit',
-  loadChildren: () => {
-    return import('./mn.security.audit.module.js').then(m => {
-      return m.MnSecurityAuditModule;
-    });
-  }
+  loadChildren: () =>
+    mnLazyload('./mn.security.audit.module.js', 'MnSecurityAuditModule')
 };
 
 let overviewState = {
   name: 'app.admin.overview.**',
   url: '/overview',
-  lazyLoad: ($transition$) => {
-    return import('./mn_admin/mn_overview_controller.js').then(m => {
-      $transition$.injector().get('$ocLazyLoad').load({name: 'mnOverview'});
-    });
-  }
+  lazyLoad: ($transition$) =>
+    mnLazyload('./mn_admin/mn_overview_controller.js', 'mnOverview', $transition$)
 };
 
 let serversState = {
   name: 'app.admin.servers.**',
   url: '/servers',
-  lazyLoad: ($transition$) => {
-    return import('./mn_admin/mn_servers_controller.js').then(m => {
-      $transition$.injector().get('$ocLazyLoad').load({name: 'mnServers'});
-    });
-  }
+  lazyLoad: ($transition$) =>
+    mnLazyload('./mn_admin/mn_servers_controller.js', 'mnServers', $transition$)
 };
 
 let logsState = {
   name: 'app.admin.logs.**',
   url: '/logs',
-  lazyLoad: ($transition$) => {
-    return import('./mn_admin/mn_logs_controller.js').then(m => {
-      $transition$.injector().get('$ocLazyLoad').load({name: 'mnLogs'});
-    });
-  }
+  lazyLoad: ($transition$) =>
+    mnLazyload('./mn_admin/mn_logs_controller.js', "mnLogs", $transition$)
 };
 
 let groupsState = {
   name: 'app.admin.groups.**',
   url: '/groups',
-  lazyLoad: ($transition$) => {
-    return import('./mn_admin/mn_groups_controller.js').then(m => {
-      $transition$.injector().get('$ocLazyLoad').load({name: 'mnGroups'});
-    });
-  }
+  lazyLoad: ($transition$) =>
+    mnLazyload('./mn_admin/mn_groups_controller.js', 'mnGroups', $transition$)
 };
 
 let bucketsState = {
   name: 'app.admin.buckets.**',
   url: '/buckets',
-  lazyLoad: ($transition$) => {
-    return import('./mn_admin/mn_buckets_controller.js').then(m => {
-      $transition$.injector().get('$ocLazyLoad').load({name: 'mnBuckets'});
-    });
-  }
+  lazyLoad: ($transition$) =>
+    mnLazyload('./mn_admin/mn_buckets_controller.js', 'mnBuckets', $transition$)
 };
 
 let documentsState = {
   name: "app.admin.documents.**",
   url: "/documents",
-  lazyLoad: ($transition$) => {
-    return import('./mn_admin/mn_documents_controller.js').then(m => {
-      $transition$.injector().get('$ocLazyLoad').load({name: 'mnDocuments'});
-    });
-  }
+  lazyLoad: ($transition$) =>
+    mnLazyload('./mn_admin/mn_documents_controller.js', 'mnDocuments', $transition$)
 };
 
 let authState = {
   name: "app.auth.**",
-  loadChildren: () => {
-    return import('./mn.auth.module.js').then(m => {
-      return m.MnAuthModule;
-    });
-  }
+  loadChildren: () =>
+    mnLazyload('./mn.auth.module.js', 'MnAuthModule')
 };
 
 let gsiState = {
   name: "app.admin.gsi.**",
   url: "/index",
-  lazyLoad: ($transition$) => {
-    return import('./mn_admin/mn_gsi_controller.js').then(m => {
-      $transition$.injector().get('$ocLazyLoad').load({name: 'mnGsi'});
-    });
-  }
+  lazyLoad: ($transition$) =>
+    mnLazyload('./mn_admin/mn_gsi_controller.js', 'mnGsi', $transition$)
 };
 
 let viewsState = {
   name: "app.admin.views.**",
   url: "/views",
-  lazyLoad: ($transition$) => {
-    return import('./mn_admin/mn_views_controller.js').then(m => {
-      $transition$.injector().get('$ocLazyLoad').load({name: 'mnViews'});
-    });
-  }
+  lazyLoad: ($transition$) =>
+    mnLazyload('./mn_admin/mn_views_controller.js', "mnViews", $transition$)
 };
 
 let settingsState = {
   name: "app.admin.settings.**",
   url: "/settings",
-  lazyLoad: ($transition$) => {
-    return import('./mn_admin/mn_settings_config.js').then(m => {
-      $transition$.injector().get('$ocLazyLoad').load({name: 'mnSettings'});
-    });
-  }
+  lazyLoad: ($transition$) =>
+    mnLazyload('./mn_admin/mn_settings_config.js', "mnSettings", $transition$)
 };
 
 let securityState = {
   name: "app.admin.security.**",
   url: "/security",
-  lazyLoad: ($transition$) => {
-    return import('./mn_admin/mn_security_config.js').then(m => {
-      $transition$.injector().get('$ocLazyLoad').load({name: 'mnSecurity'});
-    });
-  }
+  lazyLoad: ($transition$) =>
+    mnLazyload('./mn_admin/mn_security_config.js', "mnSecurity", $transition$)
 };
 
-export let mnAppImports = [
+function rejectTransition() {
+  return Promise.reject(new Error('Lazy loading has been suppressed by another transition'));
+}
+
+function mnLazyload(url, module, $transition$) {
+  let initialHref = window.location.href;
+  return import(url).then(m => {
+    let postImportHref = window.location.href;
+    if (initialHref === postImportHref) {
+      if ($transition$) {
+        return $transition$.injector().get('$ocLazyLoad').load({name: module}).then(loaded => {
+          let postLoadHref = window.location.href;
+          if (initialHref === postLoadHref) {
+            return loaded;
+          } else {
+            return rejectTransition();
+          }
+        });
+      } else {
+        return m[module];
+      }
+    } else {
+      return rejectTransition();
+    }
+  });
+}
+
+let mnAppImports = [
   ...Object.values(pluggableUIsModules),
   UpgradeModule,
   UIRouterModule,
@@ -228,3 +204,5 @@ export let mnAppImports = [
   //downgradedModules
   MnKeyspaceSelectorModule
 ];
+
+export {mnAppImports, mnLazyload};
