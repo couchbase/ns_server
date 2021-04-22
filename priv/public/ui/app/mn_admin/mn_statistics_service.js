@@ -629,20 +629,17 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
           stats: {"@kv-.ops": true,
                   "@query.query_requests": true,
                   "@fts-.@items.total_queries": true,
-                  "@kv-.ep_tmp_oom_errors": true,
-                  "@kv-.ep_cache_miss_rate": true,
                   "@kv-.cmd_get": true,
                   "@kv-.cmd_set": true,
-                  "@kv-.delete_hits": true
-                 },
-          size: "large",
-          specificStat: false
+                  "@kv-.delete_hits": true},
+          size: "medium",
+          specificStat: false // false for multi-stat chart
         }, {
           stats: {"@kv-.mem_used": true,
                   "@kv-.ep_mem_low_wat": true,
                   "@kv-.ep_mem_high_wat": true},
           size: "medium",
-          specificStat: false // false for multi-stat chart
+          specificStat: false
         }, {
           stats: {"@kv-.curr_items": true,
                   "@kv-.vb_replica_curr_items": true,
@@ -651,10 +648,17 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
           size: "medium",
           specificStat: false
         }, {
-          stats: {"@kv-.disk_write_queue": true},
-          size: "small",
-          specificStat: true
+          stats: {"@kv-.disk_write_queue": true,
+                  "@kv-.couch_docs_actual_disk_size": true,
+                  "@kv-.couch_docs_fragmentation": true},
+          size: "medium",
+          specificStat: false
         }, {
+          stats: {"@kv-.ep_tmp_oom_errors": true,
+                  "@kv-.ep_cache_miss_rate": true},
+          size: "small",
+          specificStat: false
+        },{
           stats: {"@kv-.ep_dcp_replica_items_remaining": true},
           size: "small",
           specificStat: true
@@ -662,9 +666,9 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
           stats: {"@kv-.ep_data_read_failed": true,
                   "@kv-.ep_data_write_failed": true,
                   "@query.query_errors": true,
-                  "@query.total_queries_error": true,
+                  "@fts-.@items.fts_total_queries_error": true,
                   "@eventing.eventing/failed_count": true},
-          size: "small",
+          size: "medium",
           specificStat: false
         }, {
           stats: {"@query.query_requests_250ms": true,
@@ -818,15 +822,15 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
       }, {
         name: "Search",
         charts: [{
-          stats: {"@fts-.fts/num_bytes_used_disk": true,
+          stats: {"@fts-.fts_num_bytes_used_disk": true,
                   "@fts.fts_num_bytes_used_ram": true},
           size: "medium",
           specificStat: false
         }, {
-          stats: {"@fts-.@items.total_queries": true,
-                  "@fts-.@items.total_queries_error": true,
-                  "@fts-.@items.total_queries_slow": true,
-                  "@fts-.@items.total_queries_timeout": true,
+          stats: {"@fts-.@items.fts_total_queries": true,
+                  "@fts-.@items.fts_total_queries_error": true,
+                  "@fts-.@items.fts_total_queries_slow": true,
+                  "@fts-.@items.fts_total_queries_timeout": true,
                   "@fts.fts_total_queries_rejected_by_herder": true},
           size: "medium",
           specificStat: false
