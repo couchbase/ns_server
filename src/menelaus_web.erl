@@ -876,6 +876,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_stats:handle_ui_stats_post/1};
                 ["_createStatsSnapshot"] ->
                     {local, fun menelaus_web_prometheus:handle_create_snapshot/1};
+                ["_exportChronicleSnapshot"] ->
+                    {local,
+                     fun menelaus_web_node:handle_export_chronicle_snapshot/1};
                 [?PLUGGABLE_UI, RestPrefix | _] ->
                     {no_check,
                      fun (PReq) ->

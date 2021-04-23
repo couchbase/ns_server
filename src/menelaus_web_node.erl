@@ -41,6 +41,7 @@
          alternate_addresses_json/4,
          handle_setup_net_config/1,
          handle_change_external_listeners/2,
+         handle_export_chronicle_snapshot/1,
          get_hostnames/2,
          handle_node_init/1,
          get_context/3,
@@ -1125,3 +1126,21 @@ validate_ix_cbas_path_test() ->
     ?assertEqual(false, validate_ix_cbas_path({path2, "/abc/def"}, "/abc/de")),
     ?assertEqual(false, validate_ix_cbas_path({path2, "/abc"}, "/abc/hi")).
 -endif.
+
+handle_export_chronicle_snapshot(Req) ->
+    menelaus_util:ensure_local(Req),
+    Dir = path_config:component_path(data),
+    Path = filename:join(Dir, "exported_chronicle_snapshots"),
+    ok = misc:ensure_writable_dir(Path),
+
+    %% cleanup directory as best we can.
+    {ok, Files} = file:list_dir(Path),
+    [file:delete(filename:join(Path, F)) || F <- Files],
+
+    case chronicle:export_snapshot(Path) of
+        ok ->
+            menelaus_util:reply_text(Req, Path, 200);
+        {error, _} = Err ->
+            ?log_debug("Exporting snapshot failed with reason: ~p", [Err]),
+            menelaus_util:reply_text(Req, <<"Internal Error">>, 500)
+    end.
