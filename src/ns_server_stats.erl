@@ -81,7 +81,7 @@ notify_histogram(Metric, Max, Units, Val) when Max > 0, Val >= 0,
             %%                      Sum | Inf | Other Buckets
             V = list_to_tuple([Key,   0,    0 | lists:duplicate(N, 0)]),
             %% verify units
-            ?assert(is_number(to_seconds(1, Units))),
+            ?assert(is_binary(to_seconds_bin(1, Units))),
             catch ets:insert_new(?MODULE, V),
             catch ets:update_counter(?MODULE, Key, Updates),
             ok
@@ -232,9 +232,8 @@ report_stat(Histogram, ReportFun) ->
         lists:foldl(
           fun (Val, {Le, CurTotal}) ->
               BucketValue = CurTotal + Val,
-              ReportFun({BucketName,
-                         [{le, to_seconds(Le, Units)} | Labels],
-                         BucketValue}),
+              LeBin = to_seconds_bin(Le, Units),
+              ReportFun({BucketName, [{le, LeBin} | Labels], BucketValue}),
               {Le * 10, BucketValue}
           end, {1, 0}, Buckets),
     Total = BucketsTotal + Inf,
@@ -242,7 +241,7 @@ report_stat(Histogram, ReportFun) ->
     ReportFun({[?METRIC_PREFIX, BinName, <<"_count">>], Labels,
                Total}),
     ReportFun({[?METRIC_PREFIX, BinName, <<"_sum">>], Labels,
-               to_seconds(Sum, Units)}).
+               to_seconds_bin(Sum, Units)}).
 
 init([]) ->
     init_stats(),
@@ -777,9 +776,20 @@ get_histogram_bucket(V, Max) when V > Max -> -1;
 get_histogram_bucket(0, _Max) -> 0;
 get_histogram_bucket(V, _Max) when is_integer(V) -> ceil(math:log10(V)).
 
-to_seconds(Value, second) -> Value;
-to_seconds(Value, millisecond) -> Value / 1000;
-to_seconds(Value, microsecond) -> Value / 1000000.
+to_seconds_bin(Value, second) -> integer_to_binary(Value);
+to_seconds_bin(Value, millisecond) ->
+    float_to_binary(Value / 1000, [compact, {decimals, 3}]);
+to_seconds_bin(Value, microsecond) ->
+    float_to_binary(Value / 1000000, [compact, {decimals, 6}]).
+
+-ifdef(TEST).
+
+to_seconds_bin_test() ->
+    ?assertEqual(<<"420">>, to_seconds_bin(420, second)),
+    ?assertEqual(<<"0.42">>, to_seconds_bin(420, millisecond)),
+    ?assertEqual(<<"0.00042">>, to_seconds_bin(420, microsecond)).
+
+-endif.
 
 normalized_metric(N) when is_atom(N); is_binary(N) ->
     normalized_metric({N, []});
