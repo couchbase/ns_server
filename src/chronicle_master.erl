@@ -37,7 +37,7 @@
 -define(AFTER_UPGRADE_CLEANUP_TIMEOUT,
         ?get_timeout(after_upgrade_cleanup, 60000)).
 
--record(state, {self_ref, janitor_timer_ref}).
+-record(state, {self_ref, janitor_timer_ref, events}).
 
 start_link() ->
     misc:start_singleton(gen_server2, start_link, [?SERVER, ?MODULE, [], []]).
@@ -112,18 +112,7 @@ init([]) ->
     Self = self(),
     SelfRef = erlang:make_ref(),
     ?log_debug("Starting with SelfRef = ~p", [SelfRef]),
-    OperationKey = operation_key(),
-    ns_pubsub:subscribe_link(
-      chronicle_kv:event_manager(kv),
-      fun ({{key, Key}, _, {updated, {_, _, Ref}}} = Evt)
-            when Key =:= OperationKey,
-                 Ref =/= SelfRef ->
-              ?log_debug("Detected update on operation key: ~p. "
-                         "Scheduling janitor.", [Evt]),
-              Self ! arm_janitor_timer;
-          (_) ->
-              ok
-      end),
+    Events = subscribe_to_chronicle_events(SelfRef),
     ns_pubsub:subscribe_link(
       ns_config_events,
       fun ({keys_to_delete, _}) ->
@@ -139,9 +128,21 @@ init([]) ->
             ok
     end,
 
-    {ok, arm_janitor_timer(#state{self_ref = SelfRef})}.
+    {ok, arm_janitor_timer(#state{self_ref = SelfRef,
+                                  events = Events})}.
 
-handle_call({upgrade_cluster, NodesToAdd}, _From, State) ->
+handle_call({upgrade_cluster, NodesToAdd}, _From,
+            State = #state{self_ref = SelfRef, events = Events}) ->
+    ?log_debug("Reinitialize chronicle before the upgrade"),
+    chronicle_compat_events:hush_chronicle(),
+    ns_pubsub:unsubscribe(Events),
+    %% this will wipe chronicle on this node and reprovision it
+    chronicle_local:leave_cluster(),
+    NewEvents = subscribe_to_chronicle_events(SelfRef),
+    chronicle_compat_events:resume_chronicle(),
+
+    ?log_debug("Starting upgrade to chronicle cluster"),
+
     {ok, Lock} = chronicle:acquire_lock(),
     ?log_debug("Adding nodes ~p to chronicle cluster. Lock: ~p",
                [NodesToAdd, Lock]),
@@ -164,7 +165,7 @@ handle_call({upgrade_cluster, NodesToAdd}, _From, State) ->
     ?log_debug("Promoting nodes ~p to voters, Lock: ~p", [NodesToAdd, Lock]),
     set_peer_roles(Lock, NodesToAdd, voter),
     ?log_info("Cluster successfully upgraded to chronicle"),
-    {reply, ok, State};
+    {reply, ok, State#state{events = NewEvents}};
 
 handle_call({start_failover, Nodes, Ref}, _From, State) ->
     PreviousFailoverNodes = get_prev_failover_nodes(direct),
@@ -422,3 +423,18 @@ arm_janitor_timer(State) ->
 schedule_after_upgrade_cleanup(Self) ->
     erlang:send_after(?AFTER_UPGRADE_CLEANUP_TIMEOUT, Self,
                       after_upgrade_cleanup).
+
+subscribe_to_chronicle_events(SelfRef) ->
+    Self = self(),
+    OperationKey = operation_key(),
+    ns_pubsub:subscribe_link(
+      chronicle_kv:event_manager(kv),
+      fun ({{key, Key}, _, {updated, {_, _, Ref}}} = Evt)
+            when Key =:= OperationKey,
+                 Ref =/= SelfRef ->
+              ?log_debug("Detected update on operation key: ~p. "
+                         "Scheduling janitor.", [Evt]),
+              Self ! arm_janitor_timer;
+          (_) ->
+              ok
+      end).
