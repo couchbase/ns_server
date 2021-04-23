@@ -19,6 +19,7 @@
          compute_bucket_diff/2]).
 
 -include("ns_common.hrl").
+-include("ns_config.hrl").
 -include("generic.hrl").
 
 -record(state, {buckets=[]}).
@@ -205,15 +206,22 @@ sanitize(Config, TagUserTuples) ->
 sanitize_value(Value) ->
     {sanitized, base64:encode(crypto:hash(sha256, term_to_binary(Value)))}.
 
+log_kv({buckets = K, ?DELETED_MARKER = V}, State) ->
+    log_common(K, V),
+    State#state{buckets=[]};
 log_kv({buckets, RawBuckets0}, #state{buckets=OldBuckets} = State) ->
     VClock = ns_config:extract_vclock(RawBuckets0),
-    RawBuckets = ns_config:strip_metadata(RawBuckets0),
-
-    NewBuckets = sort_buckets(RawBuckets),
-    BucketsDiff = compute_buckets_diff(NewBuckets, OldBuckets),
-    NewState = State#state{buckets=NewBuckets},
-    log_common(buckets, [VClock | BucketsDiff]),
-    NewState;
+    {V, NewBuckets} =
+        case ns_config:strip_metadata(RawBuckets0) of
+            ?DELETED_MARKER ->
+                {?DELETED_MARKER, []};
+            RawBuckets ->
+                SortedBuckets = sort_buckets(RawBuckets),
+                {compute_buckets_diff(SortedBuckets, OldBuckets),
+                 SortedBuckets}
+        end,
+    log_common(buckets, [VClock | V]),
+    State#state{buckets=NewBuckets};
 log_kv({K, V}, State) ->
     log_common(K, V),
     State.
