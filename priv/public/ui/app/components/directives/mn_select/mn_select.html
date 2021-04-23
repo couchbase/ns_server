@@ -21,7 +21,7 @@ licenses/APL2.txt.
        class="outline btn-small dropdown-btn ellipsis"
        ng-class="{'active': vm.isOpened}"
        type="button">
-      {{vm.values.indexOf(vm.ngModel) >= 0 ? (vm.labels ? vm.labels[vm.values.indexOf(vm.ngModel)] : vm.valuesMapping(vm.ngModel)) : ''}}
+      {{vm.values.indexOf(vm.ngModel) >= 0 ? (vm.labels ? vm.labels[vm.values.indexOf(vm.ngModel)] : vm.valuesMapping(vm.ngModel)) : (vm.mnPlaceholder || '')}}
     </button>
   </div>
   <div

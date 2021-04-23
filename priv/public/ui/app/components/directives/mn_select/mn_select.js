@@ -34,6 +34,7 @@ function mnSelectDirective() {
       capitalize: "=",
       openOnTop: "=",
       mnHorizontalAlign: "=?",
+      mnPlaceholder: "=",
       hasSearch: "=?"
     },
     templateUrl: "app/components/directives/mn_select/mn_select.html",
