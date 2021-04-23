@@ -319,25 +319,27 @@ upgrade(Config) ->
     OtherNodes = ns_node_disco:nodes_wanted(Config) -- [node()],
     ok = chronicle_master:upgrade_cluster(OtherNodes),
 
-    Pairs =
+    {ToSet, ToDel} =
         ns_config:fold(
-          fun (buckets, Buckets, Acc) ->
-                  maps:merge(
-                    Acc, maps:from_list(
-                           ns_bucket:upgrade_to_chronicle(Buckets)));
-              (Key, Value, Acc) ->
+          fun (buckets, Buckets, {ToSetAcc, ToDelAcc}) ->
+                  {maps:merge(
+                     ToSetAcc, maps:from_list(
+                                 ns_bucket:upgrade_to_chronicle(Buckets))),
+                   [buckets | ToDelAcc]};
+              (Key, Value, {ToSetAcc, ToDelAcc} = Acc) ->
                   case should_move(Key) of
                       true ->
-                          maps:put(Key, Value, Acc);
+                          {maps:put(Key, Value, ToSetAcc), [Key | ToDelAcc]};
                       false ->
                           Acc
                   end
-          end, #{}, Config),
+          end, {#{}, []}, Config),
 
-    Sets = [{set, K, V} || {K, V} <- maps:to_list(Pairs)],
+    Sets = [{set, K, V} || {K, V} <- maps:to_list(ToSet)],
 
     {ok, Rev} = chronicle_kv:multi(kv, Sets),
     ?log_info("Keys are migrated to chronicle. Rev = ~p. Sets = ~p",
               [Rev, Sets]),
 
-    remote_pull(OtherNodes, ?UPGRADE_PULL_TIMEOUT).
+    ok = remote_pull(OtherNodes, ?UPGRADE_PULL_TIMEOUT),
+    [{set, keys_to_delete, ToDel}].

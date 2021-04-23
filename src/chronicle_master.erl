@@ -12,6 +12,7 @@
 -behaviour(gen_server2).
 
 -include("ns_common.hrl").
+-include("ns_config.hrl").
 -include("cut.hrl").
 
 -define(SERVER, {via, leader_registry, ?MODULE}).
@@ -33,6 +34,8 @@
 -define(CALL_TIMEOUT, ?get_timeout(call, 60000)).
 -define(JANITOR_TIMEOUT, ?get_timeout(janitor, 60000)).
 -define(UPGRADE_TIMEOUT, ?get_timeout(upgrade, 240000)).
+-define(AFTER_UPGRADE_CLEANUP_TIMEOUT,
+        ?get_timeout(after_upgrade_cleanup, 60000)).
 
 -record(state, {self_ref, janitor_timer_ref}).
 
@@ -121,6 +124,21 @@ init([]) ->
           (_) ->
               ok
       end),
+    ns_pubsub:subscribe_link(
+      ns_config_events,
+      fun ({keys_to_delete, _}) ->
+              schedule_after_upgrade_cleanup(Self);
+          (_) ->
+              ok
+      end),
+
+    case ns_config:search(keys_to_delete) of
+        {value, _} ->
+            schedule_after_upgrade_cleanup(Self);
+        false ->
+            ok
+    end,
+
     {ok, arm_janitor_timer(#state{self_ref = SelfRef})}.
 
 handle_call({upgrade_cluster, NodesToAdd}, _From, State) ->
@@ -221,6 +239,28 @@ handle_info(janitor, #state{self_ref = SelfRef} = State) ->
                 arm_janitor_timer(CleanState)
         end,
     {noreply, NewState};
+
+handle_info(after_upgrade_cleanup, State) ->
+    RV =
+        ns_config:run_txn(
+          fun (Config, SetFn) ->
+                  case ns_config:search(Config, keys_to_delete) of
+                      false ->
+                          {abort, nothing_to_do};
+                      {value, Keys} ->
+                          {commit,
+                           lists:foldl(?cut(SetFn(_, ?DELETED_MARKER, _)),
+                                       Config, [keys_to_delete | Keys])}
+                  end
+          end),
+    case RV of
+        {commit, _} ->
+            ?log_debug("Successful after upgrade cleanup"),
+            ok;
+        {abort, nothing_to_do} ->
+            ok
+    end,
+    {noreply, State};
 
 handle_info({'EXIT', From, Reason}, State) ->
     ?log_debug("Received exit from ~p with reason ~p. Exiting.",
@@ -378,3 +418,7 @@ arm_janitor_timer(State) ->
     NewState = cancel_janitor_timer(State),
     NewRef = erlang:send_after(?JANITOR_TIMEOUT, self(), janitor),
     NewState#state{janitor_timer_ref = NewRef}.
+
+schedule_after_upgrade_cleanup(Self) ->
+    erlang:send_after(?AFTER_UPGRADE_CLEANUP_TIMEOUT, Self,
+                      after_upgrade_cleanup).
