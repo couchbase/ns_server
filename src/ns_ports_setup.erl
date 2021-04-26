@@ -504,7 +504,12 @@ goport_args(fts, Config, _Cmd, NodeUUID) ->
      "-extra=" ++ lists:flatten(io_lib:format("~s:~b", [Host, NsRestPort])),
      "-options=" ++ Options
     ] ++ BindHttp ++ BindHttps ++ BindGrpc ++ BindGrpcSsl ++
-    build_port_args([{"-serverSslPort", ssl_rest_port}], Config);
+        case cluster_compat_mode:is_enterprise() of
+            true ->
+                build_port_args([{"-serverSslPort", ssl_rest_port}], Config);
+            false ->
+                []
+        end;
 
 goport_args(eventing, Config, _Cmd, NodeUUID) ->
     {ok, EvDir} = ns_storage_conf:this_node_evdir(),
