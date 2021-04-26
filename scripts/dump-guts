@@ -278,8 +278,6 @@ massage_config(Config) ->
 main_main(_Flags, [_|_]) ->
     complain("Got non-option arguments~n", []),
     usage(),
-    %% {ok, Bin} = file:read_file("etc/capi.ini.in"),
-    %% complain("Couch stuff:~n~p~n", [parse_couch_ini_file(Bin)]),
     erlang:halt(1);
 main_main(Flags, []) ->
     Config0 = lists:foldl(fun ({Flag, Value}, Acc) ->
@@ -392,39 +390,6 @@ do_read_node(StaticConfig) ->
             {ok, list_to_atom(NodeString)}
     end.
 
-read_couch_ini_file(Path) ->
-    %% complain("Reading couch ini: ~p~n", [Path]),
-    case file:read_file(Path) of
-        {ok, Binary} ->
-            parse_couch_ini_file(Binary);
-        Err ->
-            Err
-    end.
-
-read_couch_inis() ->
-    Paths0 = confget(#config.couch_inis),
-    %% usually last ini file overrides any values in previous
-    %% config. To get similar behavior with simple proplist:get_value
-    %% we reverse list of inis
-    Paths = lists:reverse(string:tokens(Paths0, ";")),
-    RVPairs = [{Name, read_couch_ini_file(Name)}
-               || Name <- Paths],
-    Errors = [Pair || {_, RV} = Pair <- RVPairs,
-                      case RV of
-                          {ok, _} -> false;
-                          _ -> true
-                      end],
-    case Errors of
-        [] ->
-            {ok, lists:append([case RV of
-                                   {ok, Config} -> Config
-                               end || {_, RV} <- RVPairs])};
-        _ ->
-            [complain("Failed to load ~s due to ~p~n", [Name, Error])
-             || {Name, Error} <- Errors],
-            failed
-    end.
-
 main_with_static_config(Terms) ->
     %% io:format("Terms:~n~p~n", [Terms]),
 
@@ -443,14 +408,6 @@ main_with_static_config(Terms) ->
     end.
 
 main_after_ns_config(Terms, NSConfig) ->
-    case read_couch_inis() of
-        {ok, CouchInisPList} ->
-            main_after_couch_inis(Terms, NSConfig, CouchInisPList);
-        failed ->
-            erlang:halt(1)
-    end.
-
-main_after_couch_inis(Terms, NSConfig, CouchInisPList) ->
     case do_read_node(Terms) of
         {ok, Atom} ->
             case lists:keyfind({node, Atom, port_servers}, 1, NSConfig) of
@@ -458,7 +415,7 @@ main_after_couch_inis(Terms, NSConfig, CouchInisPList) ->
                     complain("Given node name (~s) doesn't appear in ns_config.~n", [Atom]),
                     erlang:halt(1);
                 _ ->
-                    main_with_everything(Terms, NSConfig, CouchInisPList, Atom)
+                    main_with_everything(Terms, NSConfig, Atom)
             end;
         failed ->
             %% NOTE: error is already reported here
@@ -558,9 +515,7 @@ sanitize_config(Config) ->
               {continue, Other}
       end, Config).
 
-main_with_everything(StaticTerms, NSConfig, CouchInisPList, Node) ->
-    DBDir = proplists:get_value({"couchdb", "database_dir"}, CouchInisPList, ""),
-    IdxDir = proplists:get_value({"couchdb", "view_index_dir"}, CouchInisPList, ""),
+main_with_everything(StaticTerms, NSConfig, Node) ->
     MCDConfig = search_config_for_node(NSConfig, Node, memcached, []),
     MCDDefaults = search_config_for_node(NSConfig, Node, memcached_defaults, []),
     MCDAdmin = search_config(MCDConfig, admin_user, ""),
@@ -600,8 +555,6 @@ main_with_everything(StaticTerms, NSConfig, CouchInisPList, Node) ->
          {couch_inis, confget(#config.couch_inis)},
          {path_config_datadir, DataDir},
          {node, Node},
-         {db_dir, DBDir},
-         {idx_dir, IdxDir},
          {ns_log_path, NSLogPath},
          {log_path, search_config(StaticTerms, error_logger_mf_dir, "")},
          {memcached_admin, MCDAdmin},
@@ -670,82 +623,3 @@ usage() ->
                                      end, "\n"]
          end || {Name, BoolText} <- Descs],
     io:format(standard_error, "Usage: ~s [OPTION]\n\nOptions:~n~s", [escript:script_name(), Options]).
-
-couchutil_implode(List, Sep) ->
-    couchutil_implode(List, Sep, []).
-
-couchutil_implode([], _Sep, Acc) ->
-    lists:flatten(lists:reverse(Acc));
-couchutil_implode([H], Sep, Acc) ->
-    couchutil_implode([], Sep, [H|Acc]);
-couchutil_implode([H|T], Sep, Acc) ->
-    couchutil_implode(T, Sep, [Sep,H|Acc]).
-
-
-%% this is stolen from couch_config.erl and massaged a bit
-parse_couch_ini_file(IniBin) ->
-    Lines = re:split(IniBin, "\r\n|\n|\r|\032", [{return, list}]),
-    {_, ParsedIniValues} =
-        lists:foldl(
-          fun(Line, {AccSectionName, AccValues}) ->
-                  case string:strip(Line) of
-                      "[" ++ Rest ->
-                          case re:split(Rest, "\\]", [{return, list}]) of
-                              [NewSectionName, ""] ->
-                                  {NewSectionName, AccValues};
-                              _Else -> % end bracket not at end, ignore this line
-                                  {AccSectionName, AccValues}
-                          end;
-                      ";" ++ _Comment ->
-                          {AccSectionName, AccValues};
-                      Line2 ->
-                          case re:split(Line2, "\s?=\s?", [{return, list}]) of
-                              [Value] ->
-                                  MultiLineValuePart = case re:run(Line, "^ \\S", []) of
-                                                           {match, _} ->
-                                                               true;
-                                                           _ ->
-                                                               false
-                                                       end,
-                                  case {MultiLineValuePart, AccValues} of
-                                      {true, [{{_, ValueName}, PrevValue} | AccValuesRest]} ->
-                                                % remove comment
-                                          case re:split(Value, " ;|\t;", [{return, list}]) of
-                                              [[]] ->
-                                                % empty line
-                                                  {AccSectionName, AccValues};
-                                              [LineValue | _Rest] ->
-                                                  E = {{AccSectionName, ValueName},
-                                                       PrevValue ++ " " ++ LineValue},
-                                                  {AccSectionName, [E | AccValuesRest]}
-                                          end;
-                                      _ ->
-                                          {AccSectionName, AccValues}
-                                  end;
-                              [""|_LineValues] -> % line begins with "=", ignore
-                                  {AccSectionName, AccValues};
-                              [ValueName|LineValues] -> % yeehaw, got a line!
-                                  RemainingLine = couchutil_implode(LineValues, "="),
-                                  %% removes comments
-                                  case re:split(RemainingLine, " ;|\t;", [{return, list}]) of
-                                      [[]] ->
-                                          %% ALK: clearly this
-                                          %% stateful code works for
-                                          %% cases when later file
-                                          %% overrides earlier
-                                          %% file. But given we're
-                                          %% going to read just one
-                                          %% file we're fine without
-                                          %% it.
-                                          %%
-                                          %% empty line means delete this key
-                                          %% ets:delete(?MODULE, {AccSectionName, ValueName}),
-                                          {AccSectionName, AccValues};
-                                      [LineValue | _Rest] ->
-                                          {AccSectionName,
-                                           [{{AccSectionName, ValueName}, LineValue} | AccValues]}
-                                  end
-                          end
-                  end
-          end, {"", []}, Lines),
-    {ok, ParsedIniValues}.

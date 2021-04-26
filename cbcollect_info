@@ -28,6 +28,7 @@ import errno
 import hashlib
 import uuid
 import io
+import configparser
 from datetime import datetime, timedelta, tzinfo
 from io import BytesIO, StringIO
 from collections import namedtuple
@@ -1084,6 +1085,7 @@ def read_guts(guts, key):
 
 
 def populate_guts_with_additional_info(guts):
+    add_db_idx_dirs(guts)
     add_required_data_paths(guts)
     add_bucket_info(guts)
     add_chronicle_snapshot_dir(guts)
@@ -1122,6 +1124,19 @@ def add_bucket_info(guts):
     log(f"Adding persistent buckets '{buckets}' to server guts")
     guts["persistent_buckets"] = buckets
 
+def add_db_idx_dirs(guts):
+    couch_ini_files = read_guts(guts, "couch_inis").split(";"),
+    for file in couch_ini_files:
+        config = configparser.ConfigParser()
+        config.read(file)
+        try:
+            guts["db_dir"] = config['couchdb']['database_dir']
+        except KeyError:
+            pass
+        try:
+            guts["idx_dir"] = config['couchdb']['view_index_dir']
+        except KeyError:
+            pass
 
 def winquote_path(s):
     return '"' + s.replace("\\\\", "\\").replace('/', "\\") + '"'
