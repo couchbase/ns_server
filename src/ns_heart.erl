@@ -270,8 +270,6 @@ current_status_slow_inner() ->
         ++ grab_warmup_tasks()
         ++ cluster_logs_collection_task:maybe_build_cluster_logs_task(),
 
-    ClusterCompatVersion = cluster_compat_mode:effective_cluster_compat_version(),
-
     StorageConf = ns_storage_conf:query_storage_conf(),
 
     ProcFSFiles = grab_procfs_files(),
@@ -294,8 +292,7 @@ current_status_slow_inner() ->
                                   cpu_cores_available, allocstall]]},
          {interesting_stats, InterestingStats},
          {per_bucket_interesting_stats, PerBucketInterestingStats},
-         {processes_stats, ProcessesStats},
-         {cluster_compatibility_version, ClusterCompatVersion}
+         {processes_stats, ProcessesStats}
          | element(2, ns_info:basic_info())].
 
 %% returns dict as if returned by ns_doctor:get_nodes/0 but containing only

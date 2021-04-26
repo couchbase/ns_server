@@ -985,7 +985,7 @@ check_can_add_node(NodeKVList) ->
     JoineeClusterCompatVersion = expect_json_property_integer(<<"clusterCompatibility">>, NodeKVList),
     JoineeNode = expect_json_property_atom(<<"otpNode">>, NodeKVList),
 
-    MyCompatVersion = misc:expect_prop_value(cluster_compatibility_version, dict:fetch(node(), ns_doctor:get_nodes())),
+    MyCompatVersion = cluster_compat_mode:effective_cluster_compat_version(),
     case JoineeClusterCompatVersion =:= MyCompatVersion of
         true -> case expect_json_property_binary(<<"version">>, NodeKVList) of
                     <<"1.",_/binary>> = Version ->
