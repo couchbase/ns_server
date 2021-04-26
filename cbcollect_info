@@ -1435,15 +1435,6 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                        url=diag_url,
                        log_file="diag.log"),
 
-        make_curl_post_task(name="Chronicle config",
-                       user="@",
-                       password=memcached_pass,
-                       timeout=600,
-                       url=f"http://{local_url_addr}:"
-                           f"{read_guts(guts, 'rest_port')}/diag/eval",
-                       log_file="couchbase.log",
-                       post_data=r'maps:fold(fun(K,{V,_},Acc)->[{K,V}|Acc]end,[],chronicle_local:get_snapshot(node())).'),
-
         make_curl_task(name="master events",
                        user="@",
                        password=memcached_pass,
