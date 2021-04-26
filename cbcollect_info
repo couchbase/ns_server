@@ -707,6 +707,20 @@ class LiteralTask(AllOsTask):
         return 0
 
 
+class CollectDirectory(AllOsTask):
+    def __init__(self, description, dir_path, relative_output_path, **kwargs):
+        self.description = description
+        self.command = ''
+        self.dir_path = dir_path
+        self.relative_output_path = relative_output_path
+        self.__dict__.update(kwargs)
+
+    def execute(self, fp):
+        self._task_runner.collect_dir(self.dir_path, self.relative_output_path)
+        fp.write(f"Collected directory {self.dir_path}\n".encode())
+        return 0
+
+
 class CollectFile(AllOsTask):
     def __init__(self, description, file_path, **kwargs):
         self.description = description
@@ -1072,7 +1086,10 @@ def read_guts(guts, key):
 def populate_guts_with_additional_info(guts):
     add_required_data_paths(guts)
     add_bucket_info(guts)
+    add_chronicle_snapshot_dir(guts)
 
+def add_chronicle_snapshot_dir(guts):
+    guts["chronicle_snapshot_dir"] = get_chronicle_snapshot_dir(guts)
 
 def add_required_data_paths(guts):
     data_dir = guts.get("path_config_datadir")
@@ -1132,6 +1149,26 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
         local_url_addr, read_guts(guts, "rest_port"))
 
     from distutils.spawn import find_executable
+
+    escript = exec_name("escript")
+    chronicle_dump_path = find_script("chronicle_dump")
+    chronicle_snapshot_dir = read_guts(guts, "chronicle_snapshot_dir")
+    chronicle_tasks = []
+    if chronicle_snapshot_dir is not None and chronicle_dump_path is not None:
+        files = [os.path.join(chronicle_snapshot_dir, f.name)
+                    for f in os.scandir(chronicle_snapshot_dir)
+                        if f.is_file() and f.name.endswith('.snapshot')]
+
+        chronicle_tasks = [
+                AllOsTask("Chronicle dump",
+                  [escript, chronicle_dump_path, "snapshot"] + files,
+                  timeout=600,
+                  log_file="couchbase.log"),
+                CollectDirectory("Chronicle snapshot directory: "
+                                 f"{chronicle_snapshot_dir}",
+                                 chronicle_snapshot_dir,
+                                 os.path.join("chronicle",
+                                              "exported_snapshot"))]
 
     lookup_cmd = None
     for cmd in ["dig", "nslookup", "host"]:
@@ -1559,6 +1596,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
 
     _tasks = flatten([getent_tasks,
                       lookup_tasks,
+                      chronicle_tasks,
                       query_tasks,
                       index_tasks,
                       projector_tasks,
@@ -1578,6 +1616,7 @@ def find_script(name):
         log("Found %s: %s" % (name, path))
         return os.path.abspath(path)
 
+    log(f"Could not find script {name}")
     return None
 
 
@@ -1799,30 +1838,50 @@ def cleanup_old_prometheus_stats(guts):
     shutil.rmtree(snapshot_dir, ignore_errors=True)
 
 
-def get_prometheus_stats_via_snapshot(guts):
-    # Generate a prometheus snapshot. These consist of hard links to
-    # existing blocks and a dump of the current open blocks.
-
+def post_rest_api(description, api, guts):
     token = get_local_token(guts)
     port = read_guts(guts, "rest_port")
     user_and_password = f"@localtoken:{token}"
-    url = f"http://{local_url_addr}:{port}/_createStatsSnapshot"
+    url = f"http://{local_url_addr}:{port}/{api}"
 
     command = ["curl", "-X", "POST", "-sS", "--proxy", "",
                "-u", user_and_password, url]
     # Don't append a newline to the result, since that would corrupt
     # the snapshot.
-    task = AllOsTask("Generate prometheus snapshot", command, timeout=60,
+    task = AllOsTask(description, command, timeout=60,
                      suppress_append_newline=True)
     output_bytes = BytesIO()
     status = task.execute(output_bytes)
     if status != 0:
-        log(f"Failed to create prometheus snapshot: {status}")
+        log(f"Failed rest request {url}: {status}")
+        return None
+    return output_bytes.getvalue().decode(LATIN1)
+
+
+def export_chronicle_snapshot(guts):
+    # The path of the created snapshot directory is returned.
+    return post_rest_api("Export chronicle snapshot",
+                         "_exportChronicleSnapshot", guts)
+
+def get_chronicle_snapshot_dir(guts):
+    path = export_chronicle_snapshot(guts)
+    if path is not None and os.path.exists(os.path.join(path, "kv.snapshot")):
+        return path
+    # We expect this code path to trigger when the server isn't running.
+    snapshots_path = os.path.join(read_guts(guts, "chronicle_dir"), "snapshots")
+    try:
+        max_seqno = max([int(i) for i in os.listdir(snapshots_path)])
+        return os.path.join(snapshots_path, str(max_seqno))
+    except:
         return None
 
-    # The name of the created snapshot directory is returned.
-    snapshot_dir_path = output_bytes.getvalue().decode(LATIN1)
 
+def get_prometheus_stats_via_snapshot(guts):
+    # Generate a prometheus snapshot. These consist of hard links to
+    # existing blocks and a dump of the current open blocks.
+    # The name of the created snapshot directory is returned.
+    snapshot_dir_path = post_rest_api("Generate prometheus snapshot",
+                                      "_createStatsSnapshot", guts)
     return snapshot_dir_path
 
 
@@ -2044,10 +2103,10 @@ def main():
 
         guts_initargs_path = os.path.abspath(prefix)
 
-    populate_guts_with_additional_info(guts)
-
     ipv6 = read_guts(guts, "ipv6") == "true"
     set_local_addr(ipv6)
+
+    populate_guts_with_additional_info(guts)
 
     memcached_password = get_diag_password(guts)
 
