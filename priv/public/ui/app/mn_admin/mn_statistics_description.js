@@ -307,6 +307,7 @@ function getStatAdditionalConfig(statName) {
   case "@fts-.fts_total_bytes_indexed":
   case "@fts-.fts_total_queries":
   case "@kv-.kv_ops":
+  case "@kv-.couch_views_ops":
   case "@xdcr-.@items.xdcr_data_replicated_bytes":
   case "@xdcr-.@items.xdcr_docs_filtered_total":
   case "@xdcr-.@items.xdcr_docs_checked_total":
@@ -329,6 +330,7 @@ function getStatAdditionalConfig(statName) {
   case "@kv-.kv_ep_diskqueue_fill":
   case "@kv-.kv_ep_num_value_ejects":
   case "@kv-.kv_ep_tmp_oom_errors":
+  case "@kv-.@items.accesses":
   case "@index-.@items.index_num_requests":
   case "@index-.@items.index_num_docs_indexed":
   case "@index-.@items.index_num_rows_returned":
@@ -357,7 +359,6 @@ function getStatAdditionalConfig(statName) {
   case "@fts-.fts_num_bytes_used_disk":
   case "@fts-.fts_num_files_on_disk":
   case "@index-.index_num_rows_returned":
-  case "@kv-.couch_views_ops": //<- not sure if we need irate
   case "@xdcr-.@items.xdcr_docs_failed_cr_source_total":
   case "@xdcr-.@items.xdcr_docs_written_total":
   case "@xdcr-.@items.xdcr_changes_left_total":
@@ -619,7 +620,7 @@ function get70Mapping() {
     "@kv-.kv_vb_active_num": "@kv-.vb_active_num",
     "@kv-.kv_vb_pending_num": "@kv-.vb_pending_num",
     "@kv-.kv_vb_replica_num": "@kv-.vb_replica_num",
-    "@kv-.@items.accesses": "@kv-.@items.accesses", //<- not sure if we need irate
+    "@kv-.@items.accesses": "@kv-.@items.accesses",
     "@kv-.@items.data_size": "@kv-.@items.data_size",
     "@kv-.@items.disk_size": "@kv-.@items.disk_size",
 
