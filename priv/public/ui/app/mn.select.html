@@ -16,7 +16,7 @@ licenses/APL2.txt.
   <div ngbDropdownToggle>
     <button
        type="button"
-       class="outline btn-small dropdown-btn ng-binding"
+       class="outline btn-small dropdown-btn ng-binding margin-top-0 ellipsis"
        [class.active]="ngbSelect.isOpen()"
        [disabled]="disabled | async">
       {{labels ? labels[values.indexOf(value | async)] : valuesMapping(value | async) || mnPlaceholder}}
