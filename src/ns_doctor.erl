@@ -61,13 +61,18 @@ init([]) ->
               true;
           (recovery_status) ->
               true;
-          (buckets) ->
-              true;
           (nodes_wanted) ->
               true;
-          (_) ->
-              false
-      end, fun (Event) -> Self ! {config_change, Event} end),
+          (Key) ->
+              ns_bucket:names_change(Key)
+      end, fun (Key) ->
+                   case ns_bucket:names_change(Key) of
+                       true ->
+                           Self ! {config_change, buckets};
+                       false ->
+                           Self ! {config_change, Key}
+                   end
+           end),
     case misc:get_env_default(dont_log_stats, false) of
         false ->
             send_log_msg();
