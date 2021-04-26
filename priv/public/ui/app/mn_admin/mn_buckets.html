@@ -17,8 +17,10 @@ licenses/APL2.txt.
     </div>
     <div
        class="interim alert alert-warning"
-       ng-show="bucketsCtl.isMaxBucketCountWarning()">
+       ng-show="!bucketsCtl.hideMaxBucketWarning && bucketsCtl.isMaxBucketCountWarning()">
       <p>Attention: Maximum number of buckets has been reached. For optimal performance, no more than {{bucketsCtl.maxBucketCount}} buckets are allowed.</p>
+      <a ng-click="bucketsCtl.hideMaxBucketWarning = !bucketsCtl.hideMaxBucketWarning"
+         class="close">X</a>
     </div>
   </div>
 </mn-element-cargo>
