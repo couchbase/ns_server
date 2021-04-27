@@ -11,19 +11,13 @@ licenses/APL2.txt.
 <div class="selectable-nodes-list">
   <div class="row margin-bottom-half">
     <span class="row nodes-list-select-all">
-      <label
-         class="toggle-control margin-0"
-         for="thisModule_checkall">
-        <input
-          type="checkbox"
-          id="thisModule_checkall"
-          ng-disabled="!filteredNodes.length"
-          ng-checked="mnThisCtl.areAllChecked(false)"
-          ng-click="mnThisCtl.toggleAll()">
-        <span class="toggle-control-body"></span>
-      </label>
-      <span class="text-smaller">&nbsp; select all nodes</span>
-
+      <input
+         type="checkbox"
+         id="thisModule_checkall"
+         ng-disabled="!filteredNodes.length"
+         ng-checked="mnThisCtl.areAllChecked(false)"
+         ng-click="mnThisCtl.toggleAll()">
+      <label for="thisModule_checkall">select all</label>
     </span>
     <div
        class="row"
@@ -50,7 +44,7 @@ licenses/APL2.txt.
         </label>
       </span>
       <span
-         class="cbui-table-cell resp-hide-sml"
+         class="cbui-table-cell flex-grow-half resp-hide-sml"
          ng-if="mnThisCtl.getGroupName(node)"
          title="{{mnThisCtl.getGroupName(node)}}">
         {{mnThisCtl.getGroupName(node) | mnLimitTo: 20}}
