@@ -2776,11 +2776,7 @@ button.ace-search-options-buttons.checked {
   margin: .5rem 0 0 0;
   padding: .5rem;
 }
-.analytics-scope-box h5,
-.analytics-scope-box span,
-.analytics-scope-box div {
-  line-height: 1.2 !important;
-}
+
 
 /* workbench query history -------------------------------------------------- */
 .wb-history-controls {
