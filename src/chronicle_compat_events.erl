@@ -21,6 +21,7 @@
          hush_chronicle/0,
          resume_chronicle/0,
          event_manager/0,
+         kv_event_manager/0,
          subscribe/1,
          subscribe/2,
          notify_if_key_changes/2,
@@ -31,7 +32,7 @@
 -include("ns_common.hrl").
 -include("cut.hrl").
 
--record(state, {chronicle_events_pid, event_manager}).
+-record(state, {chronicle_events_pid, event_manager, kv_event_manager}).
 
 start_link() ->
     gen_server2:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -44,19 +45,26 @@ hush_chronicle() ->
 
 init([]) ->
     ok = misc:wait_for_process(event_manager(), 10000),
+    ok = misc:wait_for_process(kv_event_manager(), 10000),
     {ok, EventManager} = gen_event:start_link({local, event_manager()}),
+    {ok, KVEventManager} = gen_event:start_link({local, kv_event_manager()}),
     subscribe_to_ns_config_events(EventManager),
-    Pid = subscribe_to_chronicle_events(EventManager),
+    Pid = subscribe_to_chronicle_events(EventManager, KVEventManager),
     {ok, #state{chronicle_events_pid = Pid,
-                event_manager = EventManager}}.
+                event_manager = EventManager,
+                kv_event_manager = KVEventManager}}.
 
 event_manager() ->
     chronicle_compat_event_manager.
 
-subscribe_to_chronicle_events(EventManager) ->
+kv_event_manager() ->
+    chronicle_compat_kv_event_manager.
+
+subscribe_to_chronicle_events(EventManager, KVEventManager) ->
     ns_pubsub:subscribe_link(
       chronicle_kv:event_manager(kv),
-      fun ({{key, Key}, _Rev, _}) ->
+      fun ({{key, Key}, _Rev, _} = Event) ->
+              gen_event:notify(KVEventManager, Event),
               gen_event:notify(EventManager, Key);
           (_) ->
               ok
@@ -80,8 +88,9 @@ handle_call(hush_chronicle, _From,
     {reply, ok, State#state{chronicle_events_pid = undefined}};
 handle_call(resume_chronicle, _From,
             #state{chronicle_events_pid = undefined,
-                   event_manager = EventManager} = State) ->
-    Pid = subscribe_to_chronicle_events(EventManager),
+                   event_manager = EventManager,
+                   kv_event_manager = KVEventManager} = State) ->
+    Pid = subscribe_to_chronicle_events(EventManager, KVEventManager),
     {reply, ok, State#state{chronicle_events_pid = Pid}}.
 
 subscribe(Handler) ->

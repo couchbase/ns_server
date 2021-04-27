@@ -20,7 +20,7 @@ start_link() ->
 
 init([]) ->
     Self = self(),
-    ns_pubsub:subscribe_link(chronicle_kv:event_manager(kv),
+    ns_pubsub:subscribe_link(chronicle_compat_events:kv_event_manager(),
                              fun ({_, _, _} = Evt) ->
                                      Self ! Evt;
                                  (_) ->
