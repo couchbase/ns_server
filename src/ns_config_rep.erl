@@ -31,6 +31,7 @@
 -define(SYNCHRONIZE_TIMEOUT, ?get_timeout(sync, 30000)).
 
 -define(MERGING_EMERGENCY_THRESHOLD, ?get_param(merge_mailbox_threshold, 2000)).
+-define(MERGER_MAX_BLOBS_BATCH, ?get_param(merger_max_blobs_batch, 50)).
 
 % How to launch the thing.
 -export([start_link/0, start_link_merger/0]).
@@ -79,35 +80,55 @@ init([]) ->
 merger_init() ->
     erlang:register(ns_config_rep_merger, self()),
     proc_lib:init_ack({ok, self()}),
-    merger_loop().
+    merger_loop([], ?MERGER_MAX_BLOBS_BATCH).
 
-merger_loop() ->
+merger_loop([], MaxBatch) ->
     EnterTime = os:timestamp(),
     receive
         {merge_compressed, Blob} ->
             WakeTime = os:timestamp(),
-            KVList = misc:decompress(Blob),
             SleepTime = timer:now_diff(WakeTime, EnterTime) div 1000,
             ns_server_stats:notify_histogram(<<"ns_config_merger_sleep_time">>,
                                              SleepTime),
-            merge_one_remote_config(KVList),
-            RunTime = timer:now_diff(os:timestamp(), WakeTime) div 1000,
-            ns_server_stats:notify_histogram(<<"ns_config_merger_run_time">>,
-                                             RunTime),
-            {message_queue_len, QL} = erlang:process_info(self(), message_queue_len),
-            ns_server_stats:notify_max(
-              {<<"ns_config_merger_queue_len_1m_max">>, 60000, 1000}, QL),
-            case QL > ?MERGING_EMERGENCY_THRESHOLD of
-                true ->
-                    ?log_warning("Queue size emergency state reached. "
-                                 "Will kill myself and resync"),
-                    exit(emergency_kill);
-                false -> ok
-            end;
+            merger_loop([Blob], MaxBatch);
         {'$gen_call', From, sync} ->
-            gen_server:reply(From, sync_done)
-    end,
-    merger_loop().
+            gen_server:reply(From, sync_done),
+            merger_loop([], MaxBatch)
+    end;
+merger_loop(Changes, MaxBatch) when length(Changes) >= MaxBatch ->
+    merge_changes(Changes),
+    merger_loop([], ?MERGER_MAX_BLOBS_BATCH);
+merger_loop(Changes, MaxBatch) ->
+    receive
+        {merge_compressed, Blob} ->
+            merger_loop([Blob|Changes], MaxBatch);
+        {'$gen_call', From, sync} ->
+            merge_changes(Changes),
+            gen_server:reply(From, sync_done),
+            merger_loop([], ?MERGER_MAX_BLOBS_BATCH)
+    after 0 ->
+        merge_changes(Changes),
+        merger_loop([], ?MERGER_MAX_BLOBS_BATCH)
+    end.
+
+merge_changes(ListOfBlobs) ->
+    MergeStart = os:timestamp(),
+    %% decompress and reverse:
+    KVLists = lists:foldl(fun (B, L) -> [misc:decompress(B) | L] end,
+                          [], ListOfBlobs),
+    merge_remote_configs(KVLists),
+    RunTime = timer:now_diff(os:timestamp(), MergeStart) div 1000,
+    ns_server_stats:notify_histogram(<<"ns_config_merger_run_time">>, RunTime),
+    {message_queue_len, QL} = erlang:process_info(self(), message_queue_len),
+    ns_server_stats:notify_max(
+      {<<"ns_config_merger_queue_len_1m_max">>, 60000, 1000}, QL),
+    case QL > ?MERGING_EMERGENCY_THRESHOLD of
+        true ->
+            ?log_warning("Queue size emergency state reached. "
+                         "Will kill myself and resync"),
+            exit(emergency_kill);
+        false -> ok
+    end.
 
 handle_call(synchronize, _From, State) ->
     %% Need to sync with merger too because in case of incoming config change
