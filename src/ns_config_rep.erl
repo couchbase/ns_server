@@ -113,10 +113,7 @@ merger_loop(Changes, MaxBatch) ->
 
 merge_changes(ListOfBlobs) ->
     MergeStart = os:timestamp(),
-    %% decompress and reverse:
-    KVLists = lists:foldl(fun (B, L) -> [misc:decompress(B) | L] end,
-                          [], ListOfBlobs),
-    merge_remote_configs(KVLists),
+    merge_remote_configs(fun misc:decompress/1, lists:reverse(ListOfBlobs)),
     RunTime = timer:now_diff(os:timestamp(), MergeStart) div 1000,
     ns_server_stats:notify_histogram(<<"ns_config_merger_run_time">>, RunTime),
     {message_queue_len, QL} = erlang:process_info(self(), message_queue_len),
@@ -393,8 +390,8 @@ pull_from_one_node_directly(Node) ->
 pull_from_all_nodes(Nodes, Timeout) ->
     {Good, Bad} = ns_config_replica:get_compressed_many(Nodes, Timeout),
 
-    KVLists     = [misc:decompress(Blob) || {_, Blob} <- Good],
-    MergeResult = merge_remote_configs(KVLists),
+    Blobs = [Blob || {_, Blob} <- Good],
+    MergeResult = merge_remote_configs(fun misc:decompress/1, Blobs),
 
     case Bad =:= [] of
         true ->
@@ -404,11 +401,11 @@ pull_from_all_nodes(Nodes, Timeout) ->
     end.
 
 merge_one_remote_config(KVList) ->
-    merge_remote_configs([KVList]).
+    merge_remote_configs(fun (L) -> L end, [KVList]).
 
-merge_remote_configs([]) ->
+merge_remote_configs(_, []) ->
     ok;
-merge_remote_configs(KVLists) ->
+merge_remote_configs(Fun, KVLists) ->
     Config = ns_config:get(),
     LocalKVList = ns_config:get_kv_list_with_config(Config),
     UUID = ns_config:uuid(Config),
@@ -416,7 +413,8 @@ merge_remote_configs(KVLists) ->
     {NewKVList, TouchedKeys} =
         lists:foldl(
           fun (RemoteKVList, {AccKVList, AccTouched}) ->
-                  do_merge_one_remote_config(UUID, RemoteKVList, AccKVList, AccTouched)
+                  do_merge_one_remote_config(UUID, Fun(RemoteKVList), AccKVList,
+                                             AccTouched)
           end, {LocalKVList, []}, KVLists),
 
     case NewKVList =:= LocalKVList of
@@ -429,7 +427,7 @@ merge_remote_configs(KVLists) ->
                     ok;
                 _ ->
                     ?log_warning("config cas failed. Retrying", []),
-                    merge_remote_configs(KVLists)
+                    merge_remote_configs(Fun, KVLists)
             end
     end.
 
