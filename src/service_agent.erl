@@ -275,7 +275,7 @@ handle_info({new_topology, Topology}, State) ->
     {noreply, handle_new_topology(Topology, State)};
 handle_info({'EXIT', Pid, Reason}, State) ->
     ?log_error("Linked process ~p died with reason ~p. Terminating", [Pid, Reason]),
-    {stop, {linked_process_died, Pid, Reason}, State};
+    {stop, {linked_process_died, Pid, {node(), Reason}}, State};
 handle_info({'DOWN', MRef, _, _, Reason}, #state{rebalancer = Pid,
                                                  rebalancer_mref = MRef} = State) ->
     ?log_error("Rebalancer ~p died unexpectedly: ~p", [Pid, Reason]),
@@ -284,7 +284,7 @@ handle_info({'DOWN', MRef, _, _, Reason}, #state{service = Service,
                                                  conn_mref = MRef} = State) ->
     ?log_error("Lost json rpc connection for service ~p, reason ~p. Terminating.",
                [Service, Reason]),
-    {stop, {lost_connection, Reason}, handle_lost_connection(State)};
+    {stop, {lost_connection, {node(), Reason}}, handle_lost_connection(State)};
 handle_info(Msg, State) ->
     ?log_warning("Unexpected message ~p when in state~n~p",
                  [Msg, State]),
