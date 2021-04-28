@@ -49,8 +49,11 @@ function mnBucketsDetailsController($scope, mnBucketsDetailsService, mnPromiseHe
 
   $scope.$watch("bucketsDetailsCtl.bucketDetails", getBucketRamGuageConfig);
   function getBucketRamGuageConfig(details) {
+    if (!details) {
+      return;
+    }
     let ram = details.basicStats.storageTotals.ram;
-    vm.bucketRamGuageConfig = mnBucketsDetailsService.getBucketRamGuageConfig(details && {
+    vm.bucketRamGuageConfig = mnBucketsDetailsService.getBucketRamGuageConfig({
       total: ram ? (ram.quotaTotalPerNode * details.nodes.length) : 0,
       thisAlloc: details.quota.ram,
       otherBuckets: ram ? (ram.quotaUsedPerNode * details.nodes.length - details.quota.ram) : 0
