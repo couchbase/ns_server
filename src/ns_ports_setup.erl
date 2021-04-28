@@ -24,15 +24,6 @@ sync() ->
 shutdown_ports() ->
     gen_server:call(?MODULE, shutdown_ports, infinity).
 
-%% ns_config announces full list as well which we don't need
-is_useless_event(List) when is_list(List) ->
-    true;
-%% config changes for other nodes is quite obviously irrelevant
-is_useless_event({{node, N, _}, _}) when N =/= node() ->
-    true;
-is_useless_event(_) ->
-    false.
-
 setup_body_tramp() ->
     misc:delaying_crash(1000, fun setup_body/0).
 
@@ -40,15 +31,13 @@ setup_body() ->
     Self = self(),
     erlang:register(?MODULE, Self),
     proc_lib:init_ack({ok, Self}),
-    ns_pubsub:subscribe_link(ns_config_events,
-                             fun (Event) ->
-                                     case is_useless_event(Event) of
-                                         false ->
-                                             Self ! check_children_update;
-                                         _ ->
-                                             []
-                                     end
-                             end),
+    chronicle_compat_events:notify_if_key_changes(
+      %% config changes for other nodes is quite obviously irrelevant
+      fun ({node, N, _}) when N =/= node() ->
+              false;
+          (_) ->
+              true
+      end, check_children_update),
     ns_pubsub:subscribe_link(user_storage_events,
                              fun (_) ->
                                      Self ! check_children_update
