@@ -135,7 +135,8 @@ function mnBucketsController($scope, mnPoolDefault, mnPromiseHelper, $uibModal, 
   function addBucket() {
     mnPromiseHelper(vm, mnPoolDefault.getFresh())
       .onSuccess(function (poolDefault) {
-        if (poolDefault.storageTotals.ram.quotaTotal === poolDefault.storageTotals.ram.quotaUsed) {
+        let ram = poolDefault.storageTotals.ram;
+        if (!ram || ram.quotaTotal === ram.quotaUsed) {
           $uibModal.open({
             templateUrl: 'app/mn_admin/mn_bucket_full_dialog.html'
           });

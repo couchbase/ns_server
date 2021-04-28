@@ -38,9 +38,9 @@ function mnMemoryQuotaServiceFactory($http, $window, mnPoolDefault, mnHelper, IE
     var rv = {
       calculateTotal: calculateTotal,
       displayedServices: displayedServices,
-      minMemorySize: Math.max(256, Math.floor(ram.quotaUsedPerNode / IEC.Mi)),
-      totalMemorySize: Math.floor(ram.total/IEC.Mi),
-      memoryQuota: Math.floor(ram.quotaTotalPerNode/IEC.Mi)
+      Minmemorysize: ram ? Math.max(256, Math.floor(ram.quotaUsedPerNode / IEC.Mi)) : 0,
+      totalMemorySize: ram ? Math.floor(ram.total/IEC.Mi) : 0,
+      memoryQuota: ram ? Math.floor(ram.quotaTotalPerNode/IEC.Mi) : 0
     };
 
     rv.indexMemoryQuota = currentPool.indexMemoryQuota || 256;
@@ -51,7 +51,7 @@ function mnMemoryQuotaServiceFactory($http, $window, mnPoolDefault, mnHelper, IE
       rv.eventingMemoryQuota = currentPool.eventingMemoryQuota || 256;
     }
     if (calculateMaxMemory) {
-      rv.maxMemorySize = mnHelper.calculateMaxMemorySize(ram.total / IEC.Mi);
+      rv.maxMemorySize = ram ? mnHelper.calculateMaxMemorySize(ram.total / IEC.Mi) : 0;
     } else {
       rv.maxMemorySize = false;
     }

@@ -57,8 +57,9 @@ function mnSettingsSampleBucketsFactory($http, $q, mnPoolDefault, mnTasksDetails
       var buckets = resp[3];
       var servers = resp[4];
 
+      let ram = poolDefault.storageTotals.ram;
       var numServers = servers.active.length;
-      var quotaAvailable = poolDefault.storageTotals.ram.quotaTotal - poolDefault.storageTotals.ram.quotaUsed;
+      var quotaAvailable = ram ? (ram.quotaTotal - ram.quotaUsed) : 0;
       var maxNumBuckets = poolDefault.maxBucketCount;
       var numExistingBuckets = buckets.length;
 

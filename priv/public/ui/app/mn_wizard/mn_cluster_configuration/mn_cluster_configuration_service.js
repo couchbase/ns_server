@@ -243,7 +243,7 @@ function mnClusterConfigurationServiceFactory($http, mnHelper, IEC, mnPools) {
     }).then(function (resp) {
       var nodeConfig = resp.data;
       var ram = nodeConfig.storageTotals.ram;
-      var totalRAMMegs = Math.floor(ram.total / IEC.Mi);
+      var totalRAMMegs = ram ? Math.floor(ram.total / IEC.Mi) : 0;
       preprocessPath = (nodeConfig.os === 'windows' || nodeConfig.os === 'win64' || nodeConfig.os === 'win32') ? preprocessPathForWindows : preprocessPathStandard;
       nodeConfig.preprocessedAvailableStorage = _.map(_.clone(nodeConfig.availableStorage.hdd, true), function (storage) {
         storage.path = preprocessPath(storage.path);

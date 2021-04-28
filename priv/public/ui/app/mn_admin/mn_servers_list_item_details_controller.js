@@ -149,16 +149,16 @@ function mnServersListItemDetailsController($scope, mnServersListItemDetailsServ
         memoryUsages.push(
           mnServersListItemDetailsService.getBaseConfig(
             'quota allocated to buckets',
-            ram.quotaUsedPerNode,
-            ram.quotaTotalPerNode, true),
+            ram ? ram.quotaUsedPerNode : 0,
+            ram ? ram.quotaTotalPerNode : 0, true),
           mnServersListItemDetailsService.getBaseConfig(
             'data service used',
-            ram.usedByData,
-            ram.quotaTotalPerNode, true));
+            ram ? ram.usedByData : 0,
+            ram ? ram.quotaTotalPerNode : 0, true));
         diskUsages.push(mnServersListItemDetailsService.getBaseConfig(
           'data service',
-          hdd.usedByData,
-          hdd.free));
+          hdd ? hdd.usedByData : 0,
+          hdd ? hdd.free : 0));
         break;
       case "index":
         memoryUsages.push(
@@ -183,7 +183,7 @@ function mnServersListItemDetailsController($scope, mnServersListItemDetailsServ
         diskUsages.push(mnServersListItemDetailsService.getBaseConfig(
           "analytics service",
           vm.getLatestStat(statsNames[3], stats),
-          hdd.free))
+          hdd ? hdd.free : 0))
         break;
       }
       //should we add eventigMemoryQuota as well?

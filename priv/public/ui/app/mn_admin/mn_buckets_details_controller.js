@@ -49,21 +49,23 @@ function mnBucketsDetailsController($scope, mnBucketsDetailsService, mnPromiseHe
 
   $scope.$watch("bucketsDetailsCtl.bucketDetails", getBucketRamGuageConfig);
   function getBucketRamGuageConfig(details) {
+    let ram = details.basicStats.storageTotals.ram;
     vm.bucketRamGuageConfig = mnBucketsDetailsService.getBucketRamGuageConfig(details && {
-      total: details.basicStats.storageTotals.ram.quotaTotalPerNode * details.nodes.length,
+      total: ram ? (ram.quotaTotalPerNode * details.nodes.length) : 0,
       thisAlloc: details.quota.ram,
-      otherBuckets: details.basicStats.storageTotals.ram.quotaUsedPerNode * details.nodes.length - details.quota.ram
+      otherBuckets: ram ? (ram.quotaUsedPerNode * details.nodes.length - details.quota.ram) : 0
     });
   }
   function getGuageConfig(details) {
     if (!details) {
       return;
     }
+    let hdd = details.basicStats.storageTotals.hdd;
     return mnBucketsDetailsService.getGuageConfig(
-      details.basicStats.storageTotals.hdd.total,
+      hdd ? hdd.total : 0,
       details.basicStats.diskUsed,
-      details.basicStats.storageTotals.hdd.usedByData - details.basicStats.diskUsed,
-      details.basicStats.storageTotals.hdd.used - details.basicStats.storageTotals.hdd.usedByData
+      hdd ? (hdd.usedByData - details.basicStats.diskUsed) : 0,
+      hdd ? (hdd.used - hdd.usedByData) : 0
     );
   }
   function editBucket() {

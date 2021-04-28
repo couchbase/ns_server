@@ -118,6 +118,9 @@ angular.module('mnSettingsNotificationsService', [
         }
       }
 
+    let ram = poolsDefault.storageTotals.ram;
+    let hdd = poolsDefault.storageTotals.hdd;
+
       var stats = {
         cluster_settings: {},
         packageVariant: pools.packageVariant,
@@ -136,16 +139,16 @@ angular.module('mnSettingsNotificationsService', [
         adminLDAPEnabled : poolsDefault.saslauthdEnabled ||
           ldapSettings && ldapSettings.data.authenticationEnabled,
         ram: {
-          total: poolsDefault.storageTotals.ram.total,
-          quotaTotal: poolsDefault.storageTotals.ram.quotaTotal,
-          quotaUsed: poolsDefault.storageTotals.ram.quotaUsed,
+          total: ram ? ram.total : 0,
+          quotaTotal: ram ? ram.quotaTotal : 0,
+          quotaUsed: ram ? ram.quotaUsed : 0 ,
           indexMemoryQuota: mnMBtoBytesFilter(poolsDefault.indexMemoryQuota)
         },
         hdd: {
-          total: poolsDefault.storageTotals.hdd.total,
-          quotaTotal: poolsDefault.storageTotals.hdd.quotaTotal,
-          used: poolsDefault.storageTotals.hdd.used,
-          usedByData: poolsDefault.storageTotals.hdd.usedByData
+          total: hdd ? hdd.total : 0,
+          quotaTotal: hdd ? hdd.quotaTotal : 0,
+          used: hdd ? hdd.used : 0,
+          usedByData: hdd ? hdd.usedByData : 0
         },
         buckets: { //Number of buckets
           total: bucketsList.length,

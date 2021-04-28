@@ -127,7 +127,7 @@ function mnBucketsDetailsDialogServiceFactory($http, $q, mnBytesToMBFilter, mnCo
       var totals = resp[1].storageTotals;
       var bucketConf = _.clone(bucketsFormConfiguration);
       bucketConf.isNew = true;
-      bucketConf.ramQuotaMB = mnBytesToMBFilter(Math.floor((totals.ram.quotaTotal - totals.ram.quotaUsed) / activeServersLength));
+      bucketConf.ramQuotaMB = totals.ram ? mnBytesToMBFilter(Math.floor((totals.ram.quotaTotal - totals.ram.quotaUsed) / activeServersLength)) : 0;
       return bucketConf;
     });
   }

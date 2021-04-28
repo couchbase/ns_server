@@ -293,7 +293,9 @@ function mnServersFactory($http, $q, $uibModal, mnPoolDefault) {
       rv.unhealthyActive = _.detect(rv.reallyActive, function (node) {
         return node.status === 'unhealthy';
       });
-      rv.ramTotalPerActiveNode = poolDefault.storageTotals.ram.total / rv.onlyActive.length;
+      let ram = poolDefault.storageTotals.ram;
+
+      rv.ramTotalPerActiveNode = ram ? (ram.total / rv.onlyActive.length) : 0;
 
       return rv;
     });
