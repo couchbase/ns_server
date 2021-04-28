@@ -229,7 +229,7 @@ roles() ->
        {[pools], [read]}]},
      {views_admin, [bucket_name],
       [{name, <<"Views Admin">>},
-       {folder, views},
+       {folder, admin},
        {desc, <<"Can create and manage views of a given bucket. This user can "
                 "access the web console. This user can read some data.">>}],
       [{[{bucket, bucket_name}, views], all},
@@ -246,7 +246,7 @@ roles() ->
        {[], [read]}]},
      {views_reader, [bucket_name],
       [{name, <<"Views Reader">>},
-       {folder, admin},
+       {folder, views},
        {desc, <<"Can read data from the views of a given bucket. This user "
                 "cannot access the web console and is intended only for "
                 "application access. This user can read some data.">>}],
