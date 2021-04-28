@@ -15,6 +15,7 @@ licenses/APL2.txt.
    class="mn-select relative">
   <div ngbDropdownToggle>
     <button
+       [attr.title]="labels ? labels[values.indexOf(value | async)] : valuesMapping(value | async) || mnPlaceholder"
        type="button"
        class="outline btn-small dropdown-btn ng-binding margin-top-0 ellipsis"
        [class.active]="ngbSelect.isOpen()"

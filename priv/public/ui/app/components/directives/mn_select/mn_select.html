@@ -17,6 +17,7 @@ licenses/APL2.txt.
      uib-dropdown-toggle
      ng-disabled="vm.mnDisabled">
     <button
+       ng-attr-title="{{vm.values.indexOf(vm.ngModel) >= 0 ? (vm.labels ? vm.labels[vm.values.indexOf(vm.ngModel)] : vm.valuesMapping(vm.ngModel)) : (vm.mnPlaceholder || '')}}"
        ng-disabled="vm.mnDisabled"
        class="outline btn-small dropdown-btn ellipsis"
        ng-class="{'active': vm.isOpened}"
