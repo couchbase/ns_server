@@ -54,6 +54,8 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
     this.mnXDCRService = mnXDCRService;
     this.isEnterprise = mnPoolsService.stream.isEnterprise;
     this.compatVersion55 = mnAdminService.stream.compatVersion55;
+    this.compatVersion70 = mnAdminService.stream.compatVersion70;
+
     this.prepareReplicationSettigns = mnXDCRService.prepareReplicationSettigns.bind(this);
     this.getSettingsReplications = mnXDCRService.stream.getSettingsReplications
     this.postSettingsReplicationsValidation =

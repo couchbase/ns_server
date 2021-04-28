@@ -16,6 +16,7 @@ import {MnLifeCycleHooksToStream} from "./mn.core.js";
 import {MnXDCRService} from "./mn.xdcr.service.js";
 import {MnFormService} from "./mn.form.service.js";
 import {MnCollectionsService} from "./mn.collections.service.js";
+import {MnAdminService} from "./mn.admin.service.js";
 
 export {MnXDCRFilterComponent};
 
@@ -38,10 +39,11 @@ class MnXDCRFilterComponent extends MnLifeCycleHooksToStream {
   static get parameters() { return [
     MnXDCRService,
     MnFormService,
-    MnCollectionsService
+    MnCollectionsService,
+    MnAdminService
   ]}
 
-  constructor(mnXDCRService, mnFormService, mnCollectionsService) {
+  constructor(mnXDCRService, mnFormService, mnCollectionsService, mnAdminService) {
     super();
 
     this.form = mnFormService.create(this);
@@ -58,6 +60,8 @@ class MnXDCRFilterComponent extends MnLifeCycleHooksToStream {
       mnXDCRService.stream.postCreateReplication;
     this.postSettingsReplications =
       mnXDCRService.stream.postSettingsReplications;
+    this.compatVersion70 =
+      mnAdminService.stream.compatVersion70;
 
     this.mnCollectionsService = mnCollectionsService;
 
@@ -88,8 +92,11 @@ class MnXDCRFilterComponent extends MnLifeCycleHooksToStream {
 
     this.form
       .setFormGroup(this.group)
-      .setPackPipe(pipe(withLatestFrom(this.mnCollectionSelectorService.stream.result),
-                        filter(([_, r]) => r.bucket && r.scope && r.collection),
+      .setPackPipe(pipe(withLatestFrom(this.mnCollectionSelectorService.stream.result,
+                                       this.compatVersion70),
+                        filter(([_, r, is70]) => is70 ?
+                               r.bucket && r.scope && r.collection :
+                               !!this.bucket),
                         map(this.pack.bind(this))))
       .setSourceShared(this.settingsPipe)
       .setPostRequest(this.postRegexpValidation)
@@ -113,13 +120,18 @@ class MnXDCRFilterComponent extends MnLifeCycleHooksToStream {
     }
   }
 
-  pack([_, result]) {
-    return {
+  pack([_, result, is70]) {
+    let rv = {
       expression: this.group.get("filterExpression").value,
       docId: this.group.get("docId").value,
-      bucket: result.bucket.name,
-      scope: result.scope.name,
-      collection: result.collection.name
     };
+    if (is70) {
+      rv.bucket = result.bucket.name;
+      rv.scope = result.scope.name;
+      rv.collection = result.collection.name;
+    } else {
+      rv.bucket = this.bucket;
+    }
+    return rv;
   }
 }
