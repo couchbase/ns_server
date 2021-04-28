@@ -37,6 +37,7 @@
          convert_uid_from_memcached/1,
          convert_uid_to_memcached/1,
          key_match/1,
+         change/1,
          key/1,
          get_manifest/2,
          get_manifest/3,
@@ -72,6 +73,9 @@ key_match(Key) ->
         _ ->
             false
     end.
+
+change(Key) ->
+    key_match(Key) =/= false.
 
 default_manifest() ->
     [{uid, 0},

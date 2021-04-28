@@ -35,8 +35,10 @@ setup_body() ->
       %% config changes for other nodes is quite obviously irrelevant
       fun ({node, N, _}) when N =/= node() ->
               false;
-          (_) ->
-              true
+          (Key) ->
+              not (ns_bucket:buckets_change(Key) orelse
+                   ns_bucket:names_change(Key) orelse
+                   collections:change(Key))
       end, check_children_update),
     ns_pubsub:subscribe_link(user_storage_events,
                              fun (_) ->
