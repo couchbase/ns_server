@@ -3932,7 +3932,8 @@ mn-xdcr-add-rep-mapping-controls {
 }
 .cbui-tablerow-expanded .mapping-rule {
   background-color: transparent;
-  margin-left: 1rem;
+  margin-left: 2rem;
+  display: inline-block;
 }
 mn-xdcr-add-rep-scope {
   display: block !important;
