@@ -649,8 +649,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
           specificStat: false
         }, {
           stats: {"@kv-.disk_write_queue": true,
-                  "@kv-.couch_docs_actual_disk_size": true,
-                  "@kv-.couch_docs_fragmentation": true},
+                  "@kv-.couch_docs_actual_disk_size": true},
           size: "medium",
           specificStat: false
         }, {
