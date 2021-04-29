@@ -804,8 +804,9 @@ init({full, ConfigPath, DirPath, PolicyMod} = Init) ->
             {stop, Error}
     end;
 init({pull_from_node, Node} = Init) ->
-    KVList = duplicate_node_keys(ns_config_rep:get_remote(Node, infinity),
-                                 Node, node()),
+    KVList0 = duplicate_node_keys(ns_config_rep:get_remote(Node, infinity),
+                                  Node, node()),
+    {_, KVList} = drop_deletes(KVList0),
     Cfg = #config{dynamic = [KVList],
                   policy_mod = ns_config_default,
                   saver_mfa = {?MODULE, do_not_save_config, []},
@@ -960,7 +961,15 @@ handle_call({merge_ns_couchdb_config, NewKVList0, FromNode}, _From, State) ->
     NewKVList = misc:ukeymergewith(fun (New, _Old) -> New end,
                                    1, NewKVList1, lists:sort(OldKVList)),
     C = {cas_config, NewKVList, [], OldKVList, remote},
-    {reply, true, NewState} = handle_call(C, [], State),
+    {reply, true, NewState0} = handle_call(C, [], State),
+
+    %% {cas_config, ..} above would have announced any deletions if anybody
+    %% cares about them. Now we can drop them.
+    #config{dynamic = [KVList]} = NewState0,
+    {Deletes, FinalKVList} = drop_deletes(KVList),
+    erase_ets_dup(Deletes),
+    NewState = NewState0#config{dynamic = [FinalKVList]},
+
     {reply, ok, NewState};
 
 handle_call(merge_dynamic_and_static, _From, State) ->
@@ -1867,3 +1876,14 @@ do_update_with_changes(Fun, OldList, UUID) ->
                        [{T, E}, Stacktrace]),
             {error, {T, E, Stacktrace}}
     end.
+
+drop_deletes(KVList) ->
+    misc:partitionmap(
+      fun ({Key, Value} = Pair) ->
+              case strip_metadata(Value) of
+                  ?DELETED_MARKER ->
+                      {left, Key};
+                  _ ->
+                      {right, Pair}
+              end
+      end, KVList).
