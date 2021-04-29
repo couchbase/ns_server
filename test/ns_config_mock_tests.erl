@@ -159,7 +159,7 @@ test_update() ->
     meck:expect(ns_config, handle_call,
                 fun({update_with_changes, _Fun} = Msg, _From, _State) ->
                         Self ! Msg,
-                        {reply, ok, {}}
+                        {reply, {ok, unused}, {}}
                 end),
     RecvUpdater = fun () ->
                           receive
@@ -186,7 +186,7 @@ test_update() ->
                              {update, {K, -V}}
                      end),
     Updater = RecvUpdater(),
-    {Changes, Erased, NewConfig} = Updater(OldConfig, <<"uuid">>),
+    {Changes, Erased, NewConfig, _} = Updater(OldConfig, <<"uuid">>),
 
     ?assertEqual(Erased, [erase]),
     ?assertConfigEquals(Changes ++ [{dont_change, 1}],
