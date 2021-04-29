@@ -54,7 +54,9 @@
          get/0, get/1,
          set/2, set/1,
          cas_remote_config/3,
-         set_initial/2, update/1, update_key/2, update_key/3,
+         set_initial/2,
+         update/1, update_with_vclocks/1,
+         update_key/2, update_key/3,
          update_sub_key/3, set_sub/2,
          search_node/3, search_node/2, search_node/1,
          search_node_prop/3, search_node_prop/4,
@@ -292,27 +294,21 @@ update_with_changes(Fun) ->
 do_update_rec(_Fun, [], _UUID, NewConfig, NewPairs, Erased) ->
     {NewPairs, Erased, lists:reverse(NewConfig)};
 do_update_rec(Fun, [Pair | Rest], UUID, NewConfig, NewPairs, Erased) ->
-    StrippedPair = case Pair of
-                       {K0, [_|_] = V0} -> {K0, strip_metadata(V0)};
-                       _ -> Pair
-                   end,
-    Action = Fun(StrippedPair),
+    {Key, Value} = Pair,
+    Action = Fun(Key, strip_metadata(Value), extract_vclock(Value)),
 
     case Action of
         skip ->
             do_update_rec(Fun, Rest, UUID,
                           [Pair | NewConfig], NewPairs, Erased);
         erase ->
-            {K, _} = Pair,
-            do_update_rec(Fun, Rest, UUID, NewConfig, NewPairs, [K | Erased]);
+            do_update_rec(Fun, Rest, UUID, NewConfig, NewPairs, [Key | Erased]);
         delete ->
-            {K, OldValue} = Pair,
-            NewPair = {K, increment_vclock(?DELETED_MARKER, OldValue, UUID)},
+            NewPair = {Key, increment_vclock(?DELETED_MARKER, Value, UUID)},
             do_update_rec(Fun, Rest, UUID,
                           [NewPair | NewConfig], [NewPair | NewPairs], Erased);
         {update, {NewKey, NewValue}} ->
-            {_, OldValue} = Pair,
-            NewPair = {NewKey, increment_vclock(NewValue, OldValue, UUID)},
+            NewPair = {NewKey, increment_vclock(NewValue, Value, UUID)},
             do_update(Fun, Rest, UUID,
                       NewConfig, NewPairs, Erased, Pair, NewPair);
         {set_initial, NewPair} ->
@@ -341,6 +337,12 @@ do_update(Fun, Rest, UUID, NewConfig, NewPairs, Erased, OldPair, NewPair) ->
                   [NewPair | NewConfig1], [NewPair | NewPairs1], Erased).
 
 update(Fun) ->
+    update_with_vclocks(
+      fun (Key, Value, _VClock) ->
+              Fun({Key, Value})
+      end).
+
+update_with_vclocks(Fun) ->
     update_with_changes(fun (Config, UUID) ->
                                 do_update_rec(Fun, Config, UUID, [], [], [])
                         end).
