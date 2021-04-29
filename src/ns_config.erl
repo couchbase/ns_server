@@ -289,9 +289,9 @@ update_with_changes(Fun) ->
 %%
 %% Function returns a pair {NewPairs, NewConfig} where NewConfig is
 %% new config and NewPairs is list of changed pairs.
-do_update_rec(_Fun, [], _UUID, NewConfig, NewPairs) ->
-    {NewPairs, lists:reverse(NewConfig)};
-do_update_rec(Fun,[Pair | Rest], UUID, NewConfig, NewPairs) ->
+do_update_rec(_Fun, [], _UUID, NewConfig, NewPairs, Erased) ->
+    {NewPairs, Erased, lists:reverse(NewConfig)};
+do_update_rec(Fun, [Pair | Rest], UUID, NewConfig, NewPairs, Erased) ->
     StrippedPair = case Pair of
                        {K0, [_|_] = V0} -> {K0, strip_metadata(V0)};
                        _ -> Pair
@@ -300,23 +300,27 @@ do_update_rec(Fun,[Pair | Rest], UUID, NewConfig, NewPairs) ->
 
     case Action of
         skip ->
-            do_update_rec(Fun, Rest, UUID, [Pair | NewConfig], NewPairs);
+            do_update_rec(Fun, Rest, UUID,
+                          [Pair | NewConfig], NewPairs, Erased);
         erase ->
-            do_update_rec(Fun, Rest, UUID, NewConfig, NewPairs);
+            {K, _} = Pair,
+            do_update_rec(Fun, Rest, UUID, NewConfig, NewPairs, [K | Erased]);
         delete ->
             {K, OldValue} = Pair,
             NewPair = {K, increment_vclock(?DELETED_MARKER, OldValue, UUID)},
             do_update_rec(Fun, Rest, UUID,
-                          [NewPair | NewConfig], [NewPair | NewPairs]);
+                          [NewPair | NewConfig], [NewPair | NewPairs], Erased);
         {update, {NewKey, NewValue}} ->
             {_, OldValue} = Pair,
             NewPair = {NewKey, increment_vclock(NewValue, OldValue, UUID)},
-            do_update(Fun, Rest, UUID, NewConfig, NewPairs, Pair, NewPair);
+            do_update(Fun, Rest, UUID,
+                      NewConfig, NewPairs, Erased, Pair, NewPair);
         {set_initial, NewPair} ->
-            do_update(Fun, Rest, UUID, NewConfig, NewPairs, Pair, NewPair)
+            do_update(Fun, Rest, UUID,
+                      NewConfig, NewPairs, Erased, Pair, NewPair)
     end.
 
-do_update(Fun, Rest, UUID, NewConfig, NewPairs, OldPair, NewPair) ->
+do_update(Fun, Rest, UUID, NewConfig, NewPairs, Erased, OldPair, NewPair) ->
     {OldKey, _} = OldPair,
     {NewKey, _} = NewPair,
 
@@ -334,11 +338,11 @@ do_update(Fun, Rest, UUID, NewConfig, NewPairs, OldPair, NewPair) ->
         end,
 
     do_update_rec(Fun, Rest1, UUID,
-                  [NewPair | NewConfig1], [NewPair | NewPairs1]).
+                  [NewPair | NewConfig1], [NewPair | NewPairs1], Erased).
 
 update(Fun) ->
     update_with_changes(fun (Config, UUID) ->
-                                do_update_rec(Fun, Config, UUID, [], [])
+                                do_update_rec(Fun, Config, UUID, [], [], [])
                         end).
 
 %% Applies given Fun to value of given Key. The Key must exist.
@@ -890,22 +894,35 @@ handle_call(regenerate_node_uuid, From, State) ->
                                         State),
     {reply, ok, NewState#config{uuid=NewUUID}};
 
-handle_call({update_with_changes, Fun}, From, #config{uuid = UUID} = State) ->
+handle_call({update_with_changes, Fun}, _From, #config{uuid = UUID} = State) ->
     OldList = config_dynamic(State),
-    try Fun(OldList, UUID) of
-        {[], _} ->
-            {reply, ok, State};
-        {NewPairs0, NewConfig} ->
-            {NewState, CounterPair} = bump_local_changes_counter_full(State#config{dynamic=[NewConfig]}),
-            NewPairs = [CounterPair | NewPairs0],
-            update_ets_dup(NewPairs),
-            announce_locally_made_changes(NewPairs),
-            handle_call(resave, From, NewState)
-    catch
-        T:E:Stacktrace ->
-            ?log_error("Failed to update config: ~p~nStacktrace: ~n~p",
-                       [{T, E}, Stacktrace]),
-            {reply, {T, E, Stacktrace}, State}
+    case do_update_with_changes(Fun, OldList, UUID) of
+        {ok, NewPairs, Erased, NewConfig} ->
+            case {NewPairs, Erased} of
+                {[], []} ->
+                    {reply, ok, State};
+                {_, _} ->
+                    NewState = State#config{dynamic=[NewConfig]},
+
+                    {FinalState, FinalPairs} =
+                        case NewPairs =/= [] of
+                            true ->
+                                %% Bump the counter only if there are real
+                                %% (non-erase changes).
+                                {NewState1, CounterPair} =
+                                    bump_local_changes_counter_full(NewState),
+                                {NewState1, [CounterPair | NewPairs]};
+                            false ->
+                                {NewState, NewPairs}
+                        end,
+
+                    erase_ets_dup(Erased),
+                    update_ets_dup(FinalPairs),
+                    announce_locally_made_changes(FinalPairs),
+                    {reply, ok, initiate_save_config(FinalState)}
+            end;
+        {error, Error} ->
+            {reply, Error, State}
     end;
 
 handle_call({clear, Keep}, From, State) ->
@@ -1145,6 +1162,12 @@ announce_changes(KVList) ->
 update_ets_dup(KVList) ->
     KVs = [{K, strip_metadata(V)} || {K, V} <- KVList],
     ets:insert(ns_config_ets_dup, KVs).
+
+erase_ets_dup(Keys) ->
+    lists:foreach(
+      fun (Key) ->
+              ets:delete(ns_config_ets_dup, Key)
+      end, Keys).
 
 load_file(txt, ConfigPath) -> read_includes(ConfigPath);
 
@@ -1814,3 +1837,16 @@ merge_values_test_iter() ->
     %% when merge was done
     ?assertEqual(R0, R2).
 -endif.
+
+do_update_with_changes(Fun, OldList, UUID) ->
+    try Fun(OldList, UUID) of
+        {Changed, Config} ->
+            {ok, Changed, [], Config};
+        {Changed, Erased, Config} ->
+            {ok, Changed, Erased, Config}
+    catch
+        T:E:Stacktrace ->
+            ?log_error("Failed to update config: ~p~nStacktrace: ~n~p",
+                       [{T, E}, Stacktrace]),
+            {error, {T, E, Stacktrace}}
+    end.

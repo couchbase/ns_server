@@ -186,8 +186,9 @@ test_update() ->
                              {update, {K, -V}}
                      end),
     Updater = RecvUpdater(),
-    {Changes, NewConfig} = Updater(OldConfig, <<"uuid">>),
+    {Changes, Erased, NewConfig} = Updater(OldConfig, <<"uuid">>),
 
+    ?assertEqual(Erased, [erase]),
     ?assertConfigEquals(Changes ++ [{dont_change, 1}],
                         NewConfig),
     ?assertEqual(lists:keyfind(dont_change, 1, Changes), false),
