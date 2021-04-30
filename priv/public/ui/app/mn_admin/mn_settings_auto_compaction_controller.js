@@ -11,6 +11,7 @@ licenses/APL2.txt.
 import angular from "/ui/web_modules/angular.js";
 
 import mnHelper from "/ui/app/components/mn_helper.js";
+import mnMainSpinner from "/ui/app/components/directives/mn_main_spinner.js";
 import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
 
 import mnAutoCompactionForm from "/ui/app/components/directives/mn_auto_compaction_form/mn_auto_compaction_form.js";
@@ -21,6 +22,7 @@ export default 'mnSettingsAutoCompaction';
 angular
   .module('mnSettingsAutoCompaction', [
     mnHelper,
+    mnMainSpinner,
     mnPromiseHelper,
     mnAutoCompactionForm,
     mnSettingsAutoCompactionService

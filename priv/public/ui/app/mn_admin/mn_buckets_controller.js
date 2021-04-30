@@ -27,6 +27,7 @@ import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
 import mnPoll from "/ui/app/components/mn_poll.js";
 import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
 import mnSpinner from "/ui/app/components/directives/mn_spinner.js";
+import mnMainSpinner from "/ui/app/components/directives/mn_main_spinner.js";
 import mnFilters from "/ui/app/components/mn_filters.js";
 import mnTasksDetails from "/ui/app/components/mn_tasks_details.js";
 import mnWarmupProgress from "/ui/app/components/directives/mn_warmup_progress/mn_warmup_progress.js";
@@ -46,6 +47,7 @@ angular
     mnPoll,
     mnPoolDefault,
     mnSpinner,
+    mnMainSpinner,
     mnSearch,
     mnFilters,
     mnTasksDetails,

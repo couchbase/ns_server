@@ -13,6 +13,7 @@ import angular from "/ui/web_modules/angular.js";
 import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
 import mnPoll from "/ui/app/components/mn_poll.js";
 import mnSpinner from "/ui/app/components/directives/mn_spinner.js";
+import mnMainSpinner from "/ui/app/components/directives/mn_main_spinner.js";
 import mnFilters from "/ui/app/components/mn_filters.js";
 import mnSearch from "/ui/app/components/directives/mn_search/mn_search_directive.js";
 import mnSortableTable from "/ui/app/components/directives/mn_sortable_table.js";
@@ -33,6 +34,7 @@ angular.module('mnLogs', [
   mnPromiseHelper,
   mnPoll,
   mnSpinner,
+  mnMainSpinner,
   mnFilters,
   mnSearch,
   mnSortableTable,

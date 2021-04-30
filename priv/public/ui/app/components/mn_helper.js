@@ -28,13 +28,24 @@ function mnHelperFactory($window, $state, $location, $timeout, $q, $http, mnPend
     reloadState: reloadState,
     listToCheckboxes: listToCheckboxes,
     getEndings: getEndings,
-    generateID: generateID
+    generateID: generateID,
+    counterSpinner: counterSpinner,
+    mainSpinnerCounter: counterSpinner()
   };
 
   return mnHelper;
 
   function getEndings(length) {
     return length !== 1 ? "s" : "";
+  }
+
+  function counterSpinner() {
+    let counter = 0;
+    return {
+      increase: () => (counter++),
+      decrease: () => (counter > 0 && counter--),
+      value: () => !!counter
+    }
   }
 
   function wrapInFunction(value) {

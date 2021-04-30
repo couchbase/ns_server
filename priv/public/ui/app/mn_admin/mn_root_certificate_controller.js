@@ -11,6 +11,7 @@ licenses/APL2.txt.
 import angular from "/ui/web_modules/angular.js";
 import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
 import mnSpinner from "/ui/app/components/directives/mn_spinner.js";
+import mnMainSpinner from "/ui/app/components/directives/mn_main_spinner.js";
 
 import mnRootCertificateService from "./mn_root_certificate_service.js";
 
@@ -20,7 +21,8 @@ angular
   .module("mnRootCertificate", [
     mnRootCertificateService,
     mnPromiseHelper,
-    mnSpinner
+    mnSpinner,
+    mnMainSpinner
   ])
   .controller("mnRootCertificateController", mnRootCertificateController);
 

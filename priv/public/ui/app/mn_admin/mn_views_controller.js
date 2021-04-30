@@ -22,6 +22,8 @@ import mnHelper from "/ui/app/components/mn_helper.js";
 import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
 import mnPoll from "/ui/app/components/mn_poll.js";
 import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
+import mnSpinner from "/ui/app/components/directives/mn_spinner.js";
+import mnMainSpinner from "/ui/app/components/directives/mn_main_spinner.js";
 
 import mnFilter from "/ui/app/components/directives/mn_filter/mn_filter.js";
 
@@ -52,7 +54,9 @@ angular
     mnPoolDefault,
     mnViewsListService,
     mnViewsEditingService,
-    mnFilter
+    mnFilter,
+    mnSpinner,
+    mnMainSpinner
   ])
   .config(configure)
   .controller("mnViewsController", mnViewsController)

@@ -44,6 +44,15 @@ const MnPoolsProvider = {
   deps: ['$injector']
 };
 
+class MnHelper {}
+const MnHelperProvider = {
+  provide: MnHelper,
+  useFactory: function MnHelperFactory(i) {
+    return i.get('mnHelper');
+  },
+  deps: ['$injector']
+};
+
 class MnPoolDefault {}
 const MnPoolDefaultProvider = {
   provide: MnPoolDefault,
@@ -102,6 +111,7 @@ let ajsUpgradedProviders = [
   $rootScopeProvider,
   $stateProvider,
   MnPoolsProvider,
+  MnHelperProvider,
   MnPendingQueryKeeperProvider,
   MnPermissionsProvider,
   MnAuthServiceProvider,
@@ -116,6 +126,7 @@ export {
   $state,
   $rootScope,
   MnPools,
+  MnHelper,
   MnPendingQueryKeeper,
   MnPermissions,
   MnAuthService,

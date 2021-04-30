@@ -17,6 +17,7 @@ import uiRouter from "/ui/web_modules/@uirouter/angularjs.js";
 import mnPoll from "/ui/app/components/mn_poll.js";
 import mnFilters from "/ui/app/components/mn_filters.js";
 import mnSpinner from "/ui/app/components/directives/mn_spinner.js";
+import mnMainSpinner from "/ui/app/components/directives/mn_main_spinner.js";
 import mnHelper from "/ui/app/components/mn_helper.js";
 import mnStoreService from "/ui/app/components/mn_store_service.js";
 import mnDropdown from "/ui/app/components/directives/mn_dropdown.js";
@@ -41,6 +42,7 @@ angular
     mnPoll,
     mnHelper,
     mnSpinner,
+    mnMainSpinner,
     mnFilters,
     mnDropdown,
     mnStatisticsChart,

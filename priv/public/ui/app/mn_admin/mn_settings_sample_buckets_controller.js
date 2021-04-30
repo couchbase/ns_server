@@ -11,6 +11,7 @@ licenses/APL2.txt.
 import angular from "/ui/web_modules/angular.js";
 import _ from "/ui/web_modules/lodash.js";
 import ngMessages from "/ui/web_modules/angular-messages.js";
+import mnMainSpinner from "/ui/app/components/directives/mn_main_spinner.js";
 
 import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
 import mnElementCrane from "/ui/app/components/directives/mn_element_crane/mn_element_crane.js";
@@ -21,6 +22,7 @@ export default "mnSettingsSampleBuckets";
 angular
   .module("mnSettingsSampleBuckets", [
     mnPromiseHelper,
+    mnMainSpinner,
     mnElementCrane,
     mnSettingsSampleBucketsService,
     ngMessages

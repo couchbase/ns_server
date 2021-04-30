@@ -117,16 +117,16 @@ function appConfig($httpProvider, $stateProvider, $urlRouterProvider, $transitio
     from: "app.admin.**",
     to: "app.admin.**"
   }, function (trans) {
-    var $rootScope = trans.injector().get('$rootScope');
-    $rootScope.showMainSpinner = false;
+    var mnHelper = trans.injector().get('mnHelper');
+    mnHelper.mainSpinnerCounter.decrease();
   });
 
   $transitionsProvider.onError({
     from: "app.admin.**",
     to: "app.admin.**"
   }, function (trans) {
-    var $rootScope = trans.injector().get('$rootScope');
-    $rootScope.showMainSpinner = false;
+    var mnHelper = trans.injector().get('mnHelper');
+    mnHelper.mainSpinnerCounter.decrease();
   });
 
   $transitionsProvider.onBefore({
@@ -146,7 +146,8 @@ function appConfig($httpProvider, $stateProvider, $urlRouterProvider, $transitio
     if (!isModalOpen && toName.indexOf(fromName) === -1 && fromName.indexOf(toName) === -1) {
       //cancel tabs specific queries in case toName is not child of fromName and vise versa
       mnPendingQueryKeeper.cancelTabsSpecificQueries();
-      $rootScope.showMainSpinner = true;
+      var mnHelper = trans.injector().get('mnHelper');
+      mnHelper.mainSpinnerCounter.increase();
     }
     return !isModalOpen;
   });

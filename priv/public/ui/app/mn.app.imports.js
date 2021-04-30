@@ -11,7 +11,7 @@ licenses/APL2.txt.
 import {CommonModule} from '/ui/web_modules/@angular/common.js';
 import {BrowserModule} from '/ui/web_modules/@angular/platform-browser.js';
 import {HttpClientModule} from '../web_modules/@angular/common/http.js';
-import {UIRouterModule, UIView} from '../web_modules/@uirouter/angular.js';
+import {UIRouterModule, UIView, loadNgModule} from '../web_modules/@uirouter/angular.js';
 import {MnPipesModule} from './mn.pipes.module.js';
 import {MnAppComponent} from './mn.app.component.js';
 import {MnAuthComponent} from './mn.auth.component.js';
@@ -22,6 +22,8 @@ import {UIRouterUpgradeModule} from '/ui/web_modules/@uirouter/angular-hybrid.js
 import * as pluggableUIsModules from '/ui/pluggable-uis.js';
 
 import {MnKeyspaceSelectorModule} from './mn.keyspace.selector.module.js';
+
+import {MnHelper} from '/ui/app/ajs.upgraded.providers.js';
 
 
 let appState = {
@@ -45,146 +47,156 @@ let appState = {
 
 let wizardState = {
   name: 'app.wizard.**',
-  loadChildren: () =>
-    mnLazyload('./mn.wizard.module.js', 'MnWizardModule')
+  lazyLoad: mnLoadNgModule('./mn.wizard.module.js', 'MnWizardModule')
 };
 
 let collectionsState = {
   name: 'app.admin.collections.**',
   url: '/collections',
-  loadChildren: () =>
-    mnLazyload('./mn.collections.module.js', 'MnCollectionsModule')
+  lazyLoad: mnLoadNgModule('./mn.collections.module.js', 'MnCollectionsModule')
 };
 
 let XDCRState = {
   name: 'app.admin.replications.**',
   url: '/replications',
-  loadChildren: () =>
-    mnLazyload('./mn.xdcr.module.js', "MnXDCRModule")
+  lazyLoad: mnLoadNgModule('./mn.xdcr.module.js', "MnXDCRModule")
 };
 
 let sessionState = {
   name: 'app.admin.security.session.**',
   url: '/session',
-  loadChildren: () =>
-    mnLazyload('./mn.session.module.js', 'MnSessionModule')
+  lazyLoad: mnLoadNgModule('./mn.session.module.js', 'MnSessionModule')
 };
 
 let logRedactionState = {
   name: 'app.admin.security.redaction.**',
   url: '/redaction',
-  loadChildren: () =>
-    mnLazyload('./mn.security.log.redaction.module.js', 'MnSecurityLogRedactionModule')
+  lazyLoad: mnLoadNgModule('./mn.security.log.redaction.module.js',
+                           'MnSecurityLogRedactionModule')
 };
 
 let auditState = {
   name: 'app.admin.security.audit.**',
   url: '/audit',
-  loadChildren: () =>
-    mnLazyload('./mn.security.audit.module.js', 'MnSecurityAuditModule')
+  lazyLoad: mnLoadNgModule('./mn.security.audit.module.js', 'MnSecurityAuditModule')
 };
 
 let overviewState = {
   name: 'app.admin.overview.**',
   url: '/overview',
-  lazyLoad: ($transition$) =>
-    mnLazyload('./mn_admin/mn_overview_controller.js', 'mnOverview', $transition$)
+  lazyLoad: mnLazyload('./mn_admin/mn_overview_controller.js', 'mnOverview')
 };
 
 let serversState = {
   name: 'app.admin.servers.**',
   url: '/servers',
-  lazyLoad: ($transition$) =>
-    mnLazyload('./mn_admin/mn_servers_controller.js', 'mnServers', $transition$)
+  lazyLoad: mnLazyload('./mn_admin/mn_servers_controller.js', 'mnServers')
 };
 
 let logsState = {
   name: 'app.admin.logs.**',
   url: '/logs',
-  lazyLoad: ($transition$) =>
-    mnLazyload('./mn_admin/mn_logs_controller.js', "mnLogs", $transition$)
+  lazyLoad: mnLazyload('./mn_admin/mn_logs_controller.js', "mnLogs")
 };
 
 let groupsState = {
   name: 'app.admin.groups.**',
   url: '/groups',
-  lazyLoad: ($transition$) =>
-    mnLazyload('./mn_admin/mn_groups_controller.js', 'mnGroups', $transition$)
+  lazyLoad: mnLazyload('./mn_admin/mn_groups_controller.js', 'mnGroups')
 };
 
 let bucketsState = {
   name: 'app.admin.buckets.**',
   url: '/buckets',
-  lazyLoad: ($transition$) =>
-    mnLazyload('./mn_admin/mn_buckets_controller.js', 'mnBuckets', $transition$)
+  lazyLoad: mnLazyload('./mn_admin/mn_buckets_controller.js', 'mnBuckets')
 };
 
 let documentsState = {
   name: "app.admin.documents.**",
   url: "/documents",
-  lazyLoad: ($transition$) =>
-    mnLazyload('./mn_admin/mn_documents_controller.js', 'mnDocuments', $transition$)
+  lazyLoad: mnLazyload('./mn_admin/mn_documents_controller.js', 'mnDocuments')
 };
 
 let authState = {
   name: "app.auth.**",
-  loadChildren: () =>
-    mnLazyload('./mn.auth.module.js', 'MnAuthModule')
+  lazyLoad: mnLoadNgModule('./mn.auth.module.js', 'MnAuthModule')
 };
 
 let gsiState = {
   name: "app.admin.gsi.**",
   url: "/index",
-  lazyLoad: ($transition$) =>
-    mnLazyload('./mn_admin/mn_gsi_controller.js', 'mnGsi', $transition$)
+  lazyLoad: mnLazyload('./mn_admin/mn_gsi_controller.js', 'mnGsi')
 };
 
 let viewsState = {
   name: "app.admin.views.**",
   url: "/views",
-  lazyLoad: ($transition$) =>
-    mnLazyload('./mn_admin/mn_views_controller.js', "mnViews", $transition$)
+  lazyLoad: mnLazyload('./mn_admin/mn_views_controller.js', "mnViews")
 };
 
 let settingsState = {
   name: "app.admin.settings.**",
   url: "/settings",
-  lazyLoad: ($transition$) =>
-    mnLazyload('./mn_admin/mn_settings_config.js', "mnSettings", $transition$)
+  lazyLoad: mnLazyload('./mn_admin/mn_settings_config.js', "mnSettings")
 };
 
 let securityState = {
   name: "app.admin.security.**",
   url: "/security",
-  lazyLoad: ($transition$) =>
-    mnLazyload('./mn_admin/mn_security_config.js', "mnSecurity", $transition$)
+  lazyLoad: mnLazyload('./mn_admin/mn_security_config.js', "mnSecurity")
 };
 
 function rejectTransition() {
   return Promise.reject(new Error('Lazy loading has been suppressed by another transition'));
 }
 
-function mnLazyload(url, module, $transition$) {
-  let initialHref = window.location.href;
-  return import(url).then(m => {
-    let postImportHref = window.location.href;
-    if (initialHref === postImportHref) {
-      if ($transition$) {
-        return $transition$.injector().get('$ocLazyLoad').load({name: module}).then(loaded => {
-          let postLoadHref = window.location.href;
-          if (initialHref === postLoadHref) {
-            return loaded;
-          } else {
-            return rejectTransition();
-          }
-        });
-      } else {
-        return m[module];
-      }
-    } else {
-      return rejectTransition();
-    }
-  });
+function ocLazyLoad($transition$, module, initialHref) {
+  return $transition$
+    .injector()
+    .get('$ocLazyLoad')
+    .load({name: module})
+    .then(result => {
+      let postLoadHref = window.location.href;
+      return initialHref === postLoadHref ? result : rejectTransition();
+    });
+}
+
+function mnLazyload(url, module) {
+  return ($transition$) => {
+    let initialHref = window.location.href;
+
+    let mnHelper = $transition$.injector().get('mnHelper');
+    mnHelper.mainSpinnerCounter.increase();
+
+    return import(url).then(m => {
+      let postImportHref = window.location.href;
+
+      return initialHref === postImportHref ?
+        ocLazyLoad($transition$, module, initialHref) :
+        rejectTransition();
+
+    }).finally(() => mnHelper.mainSpinnerCounter.decrease());
+  };
+}
+
+function mnLoadNgModule(url, module) {
+  return (transition, stateObject) => {
+    let initialHref = window.location.href;
+
+    let mnHelper = transition.injector().get(MnHelper);
+    mnHelper.mainSpinnerCounter.increase();
+
+    let lazyLoadFn = loadNgModule(() => import(url).then(result => {
+      let postImportHref = window.location.href;
+      return initialHref === postImportHref ? result[module] : rejectTransition();
+    }));
+
+    return lazyLoadFn(transition, stateObject).then(result => {
+      let postLoadHref = window.location.href;
+      return initialHref === postLoadHref ? result : rejectTransition();
+
+    }).finally(() => mnHelper.mainSpinnerCounter.decrease());
+  };
 }
 
 let mnAppImports = [
@@ -205,4 +217,4 @@ let mnAppImports = [
   MnKeyspaceSelectorModule
 ];
 
-export {mnAppImports, mnLazyload};
+export {mnAppImports, mnLoadNgModule, mnLazyload};

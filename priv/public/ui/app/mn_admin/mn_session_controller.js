@@ -11,11 +11,18 @@ licenses/APL2.txt.
 import angular from "/ui/web_modules/angular.js";
 import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
 import mnSessionService from "/ui/app/components/mn_session.js";
+import mnSpinner from "/ui/app/components/directives/mn_spinner.js";
+import mnMainSpinner from "/ui/app/components/directives/mn_main_spinner.js";
 
 export default 'mnSession';
 
 angular
-  .module('mnSession', [mnSessionService, mnPromiseHelper])
+  .module('mnSession', [
+    mnSessionService,
+    mnPromiseHelper,
+    mnSpinner,
+    mnMainSpinner
+  ])
   .controller('mnSessionController', mnSessionController);
 
 function mnSessionController(mnSessionService, mnPromiseHelper) {

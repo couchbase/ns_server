@@ -57,6 +57,7 @@ angular.module('mnAdmin', [
   mnAlertsService,
   mnPoolDefault,
   mnAuthService,
+  mnHelper,
 
   mnTasksDetails,
 

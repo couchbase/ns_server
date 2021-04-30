@@ -16,6 +16,7 @@ import mnHelper from "/ui/app/components/mn_helper.js";
 import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
 import mnPoll from "/ui/app/components/mn_poll.js";
 import mnSpinner from "/ui/app/components/directives/mn_spinner.js";
+import mnMainSpinner from "/ui/app/components/directives/mn_main_spinner.js";
 import mnEqual from "/ui/app/components/directives/mn_validation/mn_equal.js";
 import mnFilters from "/ui/app/components/mn_filters.js";
 import mnAutocompleteOff from "/ui/app/components/directives/mn_autocomplete_off.js";
@@ -37,6 +38,7 @@ angular
     mnPromiseHelper,
     mnPoll,
     mnSpinner,
+    mnMainSpinner,
     mnEqual,
     mnFilters,
     mnAutocompleteOff,

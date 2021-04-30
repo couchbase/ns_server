@@ -24,6 +24,7 @@ import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
 import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
 import mnServices from "/ui/app/components/directives/mn_services/mn_services.js";
 import mnSpinner from "/ui/app/components/directives/mn_spinner.js";
+import mnMainSpinner from "/ui/app/components/directives/mn_main_spinner.js";
 import mnAutocompleteOff from "/ui/app/components/directives/mn_autocomplete_off.js";
 import mnStorageMode from "/ui/app/components/directives/mn_storage_mode/mn_storage_mode.js";
 import mnMemoryQuotaService from "/ui/app/components/directives/mn_memory_quota/mn_memory_quota_service.js";
@@ -67,6 +68,7 @@ angular
     mnFilters,
     mnServices,
     mnSpinner,
+    mnMainSpinner,
     mnAutocompleteOff,
     mnStorageMode,
     mnMemoryQuotaService,

@@ -9,7 +9,7 @@ licenses/APL2.txt.
 -->
 
 <div
-   mn-spinner="settingsClusterCtl.clusterName === undefined || !settingsClusterCtl.memoryQuotaConfig || (rbac.cluster.settings.indexes.read && !settingsClusterCtl.indexSettings) || (poolDefault.value.isEnterprise && !settingsClusterCtl.certificate)">
+   mn-main-spinner="(settingsClusterCtl.clusterName === undefined) || !settingsClusterCtl.memoryQuotaConfig || (rbac.cluster.settings.indexes.read && !settingsClusterCtl.indexSettings) || (poolDefault.value.isEnterprise && !settingsClusterCtl.certificate)">
   <form
      ng-submit="settingsClusterCtl.saveVisualInternalSettings()"
      class="forms">

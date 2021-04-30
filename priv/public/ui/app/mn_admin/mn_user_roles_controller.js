@@ -19,6 +19,7 @@ import mnCompaction from "/ui/app/components/mn_compaction.js";
 import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
 import mnSortableTable from "/ui/app/components/directives/mn_sortable_table.js";
 import mnSpinner from "/ui/app/components/directives/mn_spinner.js";
+import mnMainSpinner from "/ui/app/components/directives/mn_main_spinner.js";
 import mnEqual from "/ui/app/components/directives/mn_validation/mn_equal.js";
 import mnFilters from "/ui/app/components/mn_filters.js";
 import mnAutocompleteOff from "/ui/app/components/directives/mn_autocomplete_off.js";
@@ -45,6 +46,7 @@ angular
     mnPoll,
     mnSortableTable,
     mnSpinner,
+    mnMainSpinner,
     mnEqual,
     mnFilters,
     mnAutocompleteOff,

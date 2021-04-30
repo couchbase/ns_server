@@ -14,6 +14,7 @@ import _ from "/ui/web_modules/lodash.js";
 import mnHelper from "/ui/app/components/mn_helper.js";
 import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
 import mnAutocompleteOff from "/ui/app/components/directives/mn_autocomplete_off.js";
+import mnMainSpinner from "/ui/app/components/directives/mn_main_spinner.js";
 
 import mnSettingsAlertsService from "./mn_settings_alerts_service.js";
 
@@ -22,6 +23,7 @@ export default 'mnSettingsAlerts';
 angular
   .module('mnSettingsAlerts', [
     mnHelper,
+    mnMainSpinner,
     mnPromiseHelper,
     mnAutocompleteOff,
     mnSettingsAlertsService

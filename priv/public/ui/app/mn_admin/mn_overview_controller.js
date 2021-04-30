@@ -19,6 +19,7 @@ import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
 import mnBucketsService from "./mn_buckets_service.js";
 import mnServersService from "./mn_servers_service.js";
 import mnStatisticsNew from "./mn_statistics_controller.js";
+import mnMainSpinner from "/ui/app/components/directives/mn_main_spinner.js";
 
 import mnElementCrane from "/ui/app/components/directives/mn_element_crane/mn_element_crane.js";
 
@@ -34,7 +35,8 @@ angular
     mnPoolDefault,
     mnBucketsService,
     mnServersService,
-    mnElementCrane
+    mnElementCrane,
+    mnMainSpinner
   ])
   .config(mnOverviewConfig)
   .controller('mnOverviewController', mnOverviewController);

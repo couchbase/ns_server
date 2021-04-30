@@ -26,6 +26,7 @@ import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
 import mnFilters from "/ui/app/components/mn_filters.js";
 import mnFilter from "/ui/app/components/directives/mn_filter/mn_filter.js";
 import mnSpinner from "/ui/app/components/directives/mn_spinner.js";
+import mnMainSpinner from "/ui/app/components/directives/mn_main_spinner.js";
 import ngMessages from "/ui/web_modules/angular-messages.js";
 
 import mnPoll from "/ui/app/components/mn_poll.js";
@@ -44,6 +45,7 @@ angular
     uiBootstrap,
     uiCodemirror,
     mnSpinner,
+    mnMainSpinner,
     ngMessages,
     mnPoll,
     mnElementCrane

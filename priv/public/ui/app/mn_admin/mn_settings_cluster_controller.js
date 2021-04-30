@@ -13,6 +13,7 @@ import _ from "/ui/web_modules/lodash.js";
 
 import mnHelper from "/ui/app/components/mn_helper.js";
 import mnSpinner from "/ui/app/components/directives/mn_spinner.js";
+import mnMainSpinner from "/ui/app/components/directives/mn_main_spinner.js";
 import mnField from "/ui/app/components/directives/mn_field_directive.js";
 import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
 import mnMemoryQuota from "/ui/app/components/directives/mn_memory_quota/mn_memory_quota.js";
@@ -30,6 +31,7 @@ export default 'mnSettingsCluster';
 angular.module('mnSettingsCluster', [
   mnHelper,
   mnSpinner,
+  mnMainSpinner,
   mnField,
   mnPromiseHelper,
   mnMemoryQuota,

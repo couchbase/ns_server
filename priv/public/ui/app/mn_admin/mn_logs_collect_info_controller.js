@@ -16,6 +16,7 @@ function mnLogsCollectInfoController($scope, mnHelper, mnPromiseHelper, mnPoolDe
   vm.isNodeDisabled = isNodeDisabled;
   vm.submit = submit;
   vm.showClusterInfoDialog = mnLogsService.showClusterInfoDialog;
+  vm.counterSpinner = mnHelper.counterSpinner();
 
   activate();
 
@@ -32,23 +33,30 @@ function mnLogsCollectInfoController($scope, mnHelper, mnPromiseHelper, mnPoolDe
 
   function activate() {
     if (mnPoolDefault.export.isGroupsAvailable && permissions.cluster.server_groups.read) {
+      vm.counterSpinner.increase();
       new mnPoller($scope, mnGroupsService.getGroupsByHostname)
-        .subscribe("getGroupsByHostname", vm)
+        .subscribe(groups => {
+          vm.counterSpinner.decrease();
+          vm.getGroupsByHostname = groups;
+        })
         .cycle();
     }
+    vm.counterSpinner.increase();
     new mnPoller($scope, mnLogsCollectInfoService.getState)
       .subscribe(function (state) {
+        vm.counterSpinner.decrease();
         vm.loadingResult = false;
         vm.state = state;
       })
-      .reloadOnScopeEvent("reloadCollectInfoPoller", vm, "loadingResult")
       .reloadOnScopeEvent("mnTasksDetailsChanged")
       .cycle();
 
     if (permissions.cluster.settings.read &&
         mnPoolDefault.export.compat.atLeast55 &&
         mnPoolDefault.export.isEnterprise) {
+      vm.counterSpinner.increase();
       mnLogRedactionService.get().then(function (value) {
+        vm.counterSpinner.decrease();
         vm.collect.logRedactionLevel = value.logRedactionLevel;
       });
     }
