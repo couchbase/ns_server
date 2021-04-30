@@ -3284,7 +3284,6 @@ rect.selection {
 .mn-dropdown {
   display: block;
   position: relative;
-  z-index: 100;
 }
 
 .mn-dropdown .dropdown-menu {
@@ -3332,6 +3331,7 @@ rect.selection {
   background-color: #fff;
   box-shadow: 0 4px 7px 0 rgba(0,0,0,0.25);
   overflow-y: hidden;
+  z-index: 10;
 }
 .mn-dropdown .footer {
   padding: 1rem;
