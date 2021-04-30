@@ -208,9 +208,9 @@ roles() ->
        {[backup], none},
        {[], [read]}]},
      {scope_admin, ?RBAC_SCOPE_PARAMS,
-      [{name, <<"Manage Collections in Scope">>},
+      [{name, <<"Manage Scopes">>},
        {folder, bucket},
-       {desc, <<"Can create/delete collections within a given scope. "
+       {desc, <<"Can create/delete scopes and collections within a given bucket. "
                 "This user cannot access the web console.">>}],
       [{[{collection, [bucket_name, scope_name, any]}, collections], all}]},
      {bucket_full_access, [bucket_name],
