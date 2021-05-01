@@ -42,7 +42,7 @@ angular.module('app', [
   mnEnv,
   mnHttp,
   mnFilters,
-  // mnExceptionReporter,
+  mnExceptionReporter,
   ngAnimate,
   ngSanitize,
   uiRouter,
