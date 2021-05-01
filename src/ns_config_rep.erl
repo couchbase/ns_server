@@ -68,10 +68,6 @@ init([]) ->
     pull_random_node(),
     ?log_debug("init pushing", []),
     do_push(),
-    % Have ns_config reannounce its config for any synchronization that
-    % may have occurred.
-    ?log_debug("init reannouncing", []),
-    ns_config:reannounce(),
     % Schedule some random config syncs.
     schedule_config_sync(),
     ok = ns_node_disco_rep_events:add_sup_handler(),
