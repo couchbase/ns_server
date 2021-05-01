@@ -409,16 +409,75 @@ verify_rest_auth(Req, Permission) ->
             case authenticate(Auth) of
                 false ->
                     {auth_failure, meta_headers(get_rejected_user(Auth))};
-                {ok, Identity} ->
-                    Token = case Auth of
-                                {token, T} ->
-                                    T;
-                                _ ->
-                                    undefined
-                            end,
-                    {check_permission(Identity, Permission),
-                     meta_headers(Identity, Token)}
+                {ok, {User, _} = Identity} ->
+                    case extract_effective_identity(Identity, Req) of
+                        error ->
+                            {auth_failure, meta_headers({User, cb_on_behalf_of_rejected})};
+                        EffectiveIdentity ->
+                            Token = case Auth of
+                                        {token, T} ->
+                                            T;
+                                        _ ->
+                                            undefined
+                                    end,
+                            {check_permission(EffectiveIdentity, Permission),
+                             meta_headers(EffectiveIdentity, Token)}
+                    end
             end
+    end.
+
+%% When we say identity, we could be referring to one of the following
+%% three identities.
+%%
+%% 1) real identity: The user that is authenticated.
+%% 2) on-behalf-of identity: The user on whose behalf the action is
+%%    being taken, if a valid cb-on-behalf-of Header is present.
+%%    This may also be referred to as the "authorization user".
+%% 3) effective identity: on-behalf-of identity if present, else the real
+%%    identity.
+
+-spec extract_effective_identity(rbac_identity(), mochiweb_request()) ->
+                                                    error | rbac_identity().
+extract_effective_identity({[$@ | _], admin} = Identity, Req) ->
+     case extract_on_behalf_of_identity(Req) of
+         error ->
+             error;
+         undefined ->
+             Identity;
+         {ok, RealIdentity} ->
+            RealIdentity
+     end;
+extract_effective_identity(Identity, _Req) ->
+    Identity.
+
+-spec extract_on_behalf_of_identity(mochiweb_request()) ->
+                                                error | undefined
+                                                | {ok, rbac_identity()}.
+extract_on_behalf_of_identity(Req) ->
+    case mochiweb_request:get_header_value("cb-on-behalf-of", Req) of
+        Header when is_list(Header) ->
+            case parse_on_behalf_of_header(Header) of
+                {User, Domain} ->
+                    {ok, {User, list_to_existing_atom(Domain)}};
+                _ ->
+                    error
+            end;
+        undefined ->
+            undefined
+    end.
+
+parse_on_behalf_of_header(Header) ->
+    case (catch base64:decode_to_string(Header)) of
+        UserDomainStr when is_list(UserDomainStr) ->
+            case string:chr(UserDomainStr, $:) of
+                0 ->
+                    error;
+                I ->
+                    {string:substr(UserDomainStr, 1, I - 1),
+                     string:substr(UserDomainStr, I + 1)}
+            end;
+        _ ->
+            error
     end.
 
 -spec extract_identity_from_cert(binary()) -> auth_failure | tuple().

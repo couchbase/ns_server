@@ -389,10 +389,21 @@ auth_token(Req, Remote) ->
             %% if we go agains local node, there's no reason to pack node name
             %% into the token. In fact it causes the race with node rename that
             %% results in 401
-            NodeToken = case Remote of
-                            local ->
+
+            %% Services running on the local node, can forward pluggable UI
+            %% requests to remote nodes. That necessitates packing the
+            %% local-node in the "ns-server-auth-token" when the compat version
+            %% is less than 7.0.0, else authentication of the request on the remote
+            %% node will fail.
+
+            %% Starting 7.0.0, Services use "cb-on-behalf-of" Headers which doesn't
+            %% need the local-node info to authenticate a request.
+
+            NodeToken = case cluster_compat_mode:is_cluster_70()
+                             andalso Remote =:= local of
+                            true ->
                                 Token;
-                            remote ->
+                            false ->
                                 menelaus_ui_auth:set_token_node(Token, node())
                         end,
             [{"ns-server-ui","yes"},
