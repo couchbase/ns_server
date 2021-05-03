@@ -1299,10 +1299,6 @@ merge_values({K, RV} = RP, {_, LV} = LP) ->
             case {strip_metadata(LV), strip_metadata(RV)} of
                 {X1, X1} ->
                     lists:max([LP, RP]);
-                {?DELETED_MARKER, _} ->
-                    RP;
-                {_, ?DELETED_MARKER} ->
-                    LP;
                 {_, _} ->
                     touch_key(K),
                     {K, merge_values_using_timestamps(K, LV, LClock, RV, RClock)}
