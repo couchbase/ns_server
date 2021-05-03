@@ -109,7 +109,9 @@ restore_chronicle_quorum(FailedNodes) ->
                 false ->
                     orchestration_unsafe
             end;
-        Error ->
+        {error, Error} ->
+            Error;
+        {incompatible_with_previous, _} = Error ->
             Error
     end.
 

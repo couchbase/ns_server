@@ -744,6 +744,23 @@ failover_reply(inactive_node) ->
     {400, "Inactive server given."};
 failover_reply(stopped_by_user) ->
     {409, "Stopped by user."};
+failover_reply({not_in_peers, Node, _ClusterNodes}) ->
+    {400, io_lib:format("~p which is orchestrating the failover must be "
+                        "one of the nodes that survive the failover", [Node])};
+failover_reply({aborted, Map}) ->
+    Format = [{failed_peers, "Failover could not be processed on nodes ~p"},
+              {diverged_peers, "Failover is unsafe on nodes ~p due to "
+                               "diverged histories"}],
+    Errs = maps:fold(
+             fun (K, V, Acc) ->
+                     F = proplists:get_value(K, Format),
+                     Err = lists:flatten(io_lib:format(F, [V])),
+                     case Acc of
+                         [] -> Err;
+                         _ -> Acc ++ [" and "] ++ Err
+                     end
+             end, [], Map),
+    {503, lists:flatten(Errs)};
 failover_reply(Other) ->
     {500, io_lib:format("Unexpected server error: ~p", [Other])}.
 
