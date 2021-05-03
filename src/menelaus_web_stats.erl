@@ -23,6 +23,7 @@
 -define(MIN_TS, -?MAX_TS).
 -define(DEFAULT_PROMETHEUS_QUERY_TIMEOUT, 60000).
 -define(DERIVED_PARAM_LABEL, <<"__derived_param_name_label__">>).
+-define(NOT_EXISTING_LABEL, undefined).
 -define(MAX_PARALLEL_QUERIES_IN_POST, 128).
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -573,7 +574,7 @@ clean_metric_props(Metrics) ->
                            end)}
       end, Metrics).
 
-aggregate_results(Results, AggregationParams, AggregationFun) ->
+aggregate_results(Results, AggParamsLabel, AggregationFun) ->
     UnpackedResults = [{maps:from_list(Metric), Values}
                         || {Props} <- Results,
                            [{<<"metric">>, {Metric}},
@@ -581,15 +582,14 @@ aggregate_results(Results, AggregationParams, AggregationFun) ->
     lists:map(
       fun ({NamePropsMap, List}) ->
           {[{<<"metric">>, {maps:to_list(NamePropsMap)}},
-            {<<"values">>, aggregate_values(List, AggregationParams,
-                                            AggregationFun)}]}
+            {<<"values">>, aggregate_values(List, AggregationFun)}]}
       end, misc:groupby_map(
              fun ({M, V}) ->
-                PName = maps:get(?DERIVED_PARAM_LABEL, M, default_param),
+                PName = maps:get(AggParamsLabel, M, default_param),
                 %% if this metric is part of a derived metric,
                 %% the name label will lead to incorrect groupping (we will
                 %% set other name for it after aggregation anyway).
-                LabelsToRemove = [?DERIVED_PARAM_LABEL] ++
+                LabelsToRemove = [AggParamsLabel] ++
                                  [<<"name">> || PName =/= default_param],
                 {maps:without(LabelsToRemove, M), {PName, V}}
              end, UnpackedResults)).
@@ -600,7 +600,7 @@ aggregate_results(Results, AggregationParams, AggregationFun) ->
 %% [{param1, [[16243234, "2"],                  [16243236, "2"]]},
 %% [{param2, [[16243234, "3"], [16243235, "3"], [16243236, "3"]]},
 %% [{param2, [[16243234, "4"], [16243235, "4"]                 ]}]
-aggregate_values(List, AggregationParams, AggregationFun) ->
+aggregate_values(List, AggregationFun) ->
       %% List2 :: [{ParamName, list(list([Timestamp, ValueAsStr]))}]
       %% Example:
       %% [{param1, [[[16243234, "1"], [16243235, "1"], [16243236, "1"]],
@@ -613,41 +613,42 @@ aggregate_values(List, AggregationParams, AggregationFun) ->
                                           [L || {_, L} <- List])),
       Normalize = normalize_datapoints(Timestamps, _, []),
 
-      %% List3 :: [[[ValueAsStr]]]
+      %% List4 :: [[[ValueAsStr]]]
       %% Example:
       %%        Node1              Node2
       %% [ [["1", "1", "1"], ["2", "NaN", "2"]],   <- param1
       %%   [["3", "3", "3"], ["4", "4", "NaN"]] ]  <- param2
-      List3 = [lists:map(Normalize, proplists:get_value(P, List2, []))
-               || P <- AggregationParams],
+      {AggregationParams, List3} = lists:unzip(List2),
+      List4 = [lists:map(Normalize, L) || L <- List3],
 
-      %% List4 :: [[[ValueAsStr]]]
+      %% List5 :: [[[ValueAsStr]]]
       %% Example: [ [["1", "2"], ["1", "NaN"], ["1", "2"]],
       %%            [["3", "4"], ["3", "4"], ["3", "NaN"]] ]
-      List4 = lists:map(
+      List5 = lists:map(
                 fun ([]) ->
                         [[] || _ <- Timestamps];
                     (ValueLists) ->
                         misc:zipwithN(fun (L) -> L end, ValueLists)
-                end, List3),
+                end, List4),
 
-      %% List5 :: [AggregatedValueAsStr]
+      %% List6 :: [AggregatedValueAsStr]
       %% Example: [AggregationFun([1, 2], [3, 4]),
       %%           AggregationFun([1, undefined], [3, 4]),
       %%           AggregationFun([1, 2], [3, undefined])]
-      %% and if AggregationFun is sum, List4 will be [10, 8, 6]
-      List5 = misc:zipwithN(
+      %% and if AggregationFun is sum, List6 will be [10, 8, 6]
+      List6 = misc:zipwithN(
                 fun (ValuesLists) ->
-                   ParsedValuesLists =
-                     [[promQL:parse_value(V) || V <- Values]
-                      || Values <- ValuesLists],
-                   Res = erlang:apply(AggregationFun, ParsedValuesLists),
+                   ParsedValuesMap =
+                     lists:zip(AggregationParams,
+                               [[promQL:parse_value(V) || V <- Values]
+                                || Values <- ValuesLists]),
+                   Res = AggregationFun(maps:from_list(ParsedValuesMap)),
                    promQL:format_value(Res)
-                end, List4),
+                end, List5),
 
       %% Values :: [ [Timestamp, AggregatedValueAsStr] ]
       %% Example: [[16243234, 10], [16243235, 8], [16243236, 6]]
-      lists:zipwith(?cut([_1, _2]), Timestamps, List5).
+      lists:zipwith(?cut([_1, _2]), Timestamps, List6).
 
 -ifdef(TEST).
 
@@ -682,10 +683,9 @@ aggregate_results_test() ->
                            {?DERIVED_PARAM_LABEL, <<"op2">>}]}},
           {<<"values">>, [[1, <<"79">>], [2, <<"83">>], [3, <<"89">>]]}]}
     ],
-    Res = aggregate_results(Values, [<<"op1">>, <<"op2">>, <<"op3">>],
-                            fun (Op1, Op2, Op3) ->
-                                 %% Op3 is missing in values
-                                 ?assertEqual([], Op3),
+    Res = aggregate_results(Values, ?DERIVED_PARAM_LABEL,
+                            fun (#{<<"op1">> := Op1, <<"op2">> := Op2} = M) ->
+                                 ?assertEqual(2, maps:size(M)),
                                  %% Need +1 to add some asymmetry
                                  aggregate(sum, Op1) * (aggregate(sum, Op2) + 1)
                             end),
@@ -706,8 +706,8 @@ aggregate_results_test() ->
     Values2 = [{misc:key_update(<<"metric">>, M, DeleteParamLabel)}
                    || {M} <- Values],
 
-    Res2 = aggregate_results(Values2, [default_param],
-                             fun (Op) -> aggregate(sum, Op) end),
+    {PName, AggFun} = regular_aggregation_fun(sum),
+    Res2 = aggregate_results(Values2, PName, AggFun),
 
     ?assertEqual(
       [{[{<<"metric">>, {[{<<"b">>, <<"b1">>}, {<<"name">>, <<"m1">>}]}},
@@ -743,16 +743,15 @@ merge_metrics(NodesResults, false, none) ->
 merge_metrics(NodesResults, false, AggFunctionName) ->
     {Nodes, ResultsLists} = lists:unzip(NodesResults),
     FlatResults = lists:flatten(ResultsLists),
-    AggFun2 = aggregate(AggFunctionName, _),
+    {AggLabel, AggFun} = regular_aggregation_fun(AggFunctionName),
     %% When request is not supposed to contain any named parameters we use
     %% 'default_param' atom to point to all the metrics without any param name
     %% label
-    FlatAggregated = aggregate_results(FlatResults, [default_param], AggFun2),
+    FlatAggregated = aggregate_results(FlatResults, AggLabel, AggFun),
     metrics_add_label(FlatAggregated, [{nodes, Nodes}]);
 merge_metrics(NodesResults, DerivedMetricName, none) ->
     AggFun = derived_metrics:get_metric(DerivedMetricName, aggregation_fun),
-    Params = derived_metrics:get_metric(DerivedMetricName, params),
-    NodesResults2 = [{N, aggregate_results(R, Params, AggFun)}
+    NodesResults2 = [{N, aggregate_results(R, ?DERIVED_PARAM_LABEL, AggFun)}
                          || {N, R} <- NodesResults],
     lists:flatmap(
       fun ({Node, List}) ->
@@ -760,24 +759,26 @@ merge_metrics(NodesResults, DerivedMetricName, none) ->
       end, NodesResults2);
 merge_metrics(NodesResults, DerivedMetricName, special) ->
     AggFun = derived_metrics:get_metric(DerivedMetricName, aggregation_fun),
-    Params = derived_metrics:get_metric(DerivedMetricName, params),
     {Nodes, ResultsLists} = lists:unzip(NodesResults),
     FlatResults = lists:flatten(ResultsLists),
-    FlatAggregated = aggregate_results(FlatResults, Params, AggFun),
+    FlatAggregated = aggregate_results(FlatResults, ?DERIVED_PARAM_LABEL, AggFun),
     metrics_add_label(FlatAggregated, [{nodes, Nodes},
                                        {name, DerivedMetricName}]);
 
 merge_metrics(NodesResults, DerivedMetricName, AggFunctionName) ->
     AggFun = derived_metrics:get_metric(DerivedMetricName, aggregation_fun),
-    Params = derived_metrics:get_metric(DerivedMetricName, params),
-    NodesResults2 = [{N, aggregate_results(R, Params, AggFun)}
+    NodesResults2 = [{N, aggregate_results(R, ?DERIVED_PARAM_LABEL, AggFun)}
                          || {N, R} <- NodesResults],
     {Nodes, ResultsLists} = lists:unzip(NodesResults2),
     FlatResults = lists:flatten(ResultsLists),
-    AggFun2 = aggregate(AggFunctionName, _),
-    FlatAggregated = aggregate_results(FlatResults, [default_param], AggFun2),
+    {AggLabel2, AggFun2} = regular_aggregation_fun(AggFunctionName),
+    FlatAggregated = aggregate_results(FlatResults, AggLabel2, AggFun2),
     metrics_add_label(FlatAggregated, [{nodes, Nodes},
                                        {name, DerivedMetricName}]).
+
+regular_aggregation_fun(Name) ->
+    {?NOT_EXISTING_LABEL,
+     fun (#{default_param := P}) -> aggregate(Name, P) end}.
 
 -ifdef(TEST).
 
@@ -894,10 +895,9 @@ derived_metric_query(Labels, Functions, Window, AuthorizationLabelsList) ->
                           end
                   end,
               ParamAsts = (derived_metrics:get_metric(Name, query))(MetricFun),
-              Params = derived_metrics:get_metric(Name, params),
               [promQL:with_label(?DERIVED_PARAM_LABEL, N,
                                  apply_functions(AST, InstantVFunctions))
-               || {N, AST} <- lists:zip(Params, ParamAsts)]
+               || {N, AST} <- maps:to_list(ParamAsts)]
           end, AuthorizationLabelsList),
 
     promQL:format_promql({'or', Subqueries}).

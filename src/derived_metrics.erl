@@ -135,13 +135,13 @@ get_metric(<<"eventing_failed_count">>) ->
          <<"eventing_timeout_count">>]);
 %% Used by unit tests:
 get_metric(<<"test_derived_metric">>) ->
-    [{params, [<<"p1">>, <<"p2">>]},
-     {aggregation_fun,
-      fun (P1, P2) ->
-          menelaus_web_stats:aggregate(sum, P1) *
-          (menelaus_web_stats:aggregate(sum, P2) + 1)
-      end},
-     {query, fun (M) -> [M(<<"m1">>), M(<<"m2">>)] end}];
+    [{aggregation_fun, fun (#{<<"p1">> := P1, <<"p2">> := P2}) ->
+                           menelaus_web_stats:aggregate(sum, P1) *
+                           (menelaus_web_stats:aggregate(sum, P2) + 1)
+                       end},
+     {query, fun (M) ->
+                 #{<<"p1">> => M(<<"m1">>), <<"p2">> => M(<<"m2">>)}
+             end}];
 get_metric(_) -> [].
 
 aggregated_ratio(Values1, Values2, DivisionByZeroDefault) ->
@@ -156,14 +156,20 @@ sum(MetricNames) ->
     sum_across_labels(_(promQL:eq_any(<<"name">>, MetricNames)), [<<"name">>]).
 
 sum_across_labels(Metric, Labels) ->
-    [{params, [<<"Param1">>]},
-     {aggregation_fun, menelaus_web_stats:aggregate(sum, _)},
-     {query, fun (M) -> [promQL:sum_without(Labels, Metric(M))] end}].
+    [{aggregation_fun, fun (#{<<"Param1">> := P1}) ->
+                           menelaus_web_stats:aggregate(sum, P1)
+                       end},
+     {query, fun (M) ->
+                 #{<<"param1">> => promQL:sum_without(Labels, Metric(M))}
+             end}].
 
 ratio(Numerator, Denominator, Default) ->
-    [{params, [<<"Param1">>, <<"Param2">>]},
-     {aggregation_fun, aggregated_ratio(_, _, Default)},
-     {query, fun (M) -> [Numerator(M), Denominator(M)] end}].
+    [{aggregation_fun, fun (#{<<"Param1">> := P1, <<"Param2">> := P2}) ->
+                           aggregated_ratio(P1, P2, Default)
+                       end},
+     {query, fun (M) ->
+                 #{<<"Param1">> => Numerator(M), <<"Param2">> => Denominator(M)}
+             end}].
 
 ratio(Numerator, Denominator) ->
     ratio(Numerator, Denominator, undefined).
