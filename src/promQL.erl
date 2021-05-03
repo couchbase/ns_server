@@ -13,7 +13,7 @@
 -endif.
 
 -export([format_value/1, parse_value/1, format_promql/1,
-         parse_time_duration/1]).
+         parse_time_duration/1, is_aggregation_op/1]).
 
 %% AST helpers
 -export([metric/1, rate/1, sum/1, sum_by/2, sum_without/2, bucket_metric/2,
@@ -94,6 +94,9 @@ format_promql(AST) ->
                             Op =:= bottomk; Op =:= topk;  Op =:= quantile).
 
 -define(MERGE_LABEL, <<"name">>).
+
+is_aggregation_op(Op) when ?AGGREGATION_OP(Op) -> true;
+is_aggregation_op(_) -> false.
 
 format_promql_ast({call, F, By, Args}) when is_atom(F) ->
     format_promql_ast({call, atom_to_list(F), By, Args});

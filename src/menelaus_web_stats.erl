@@ -401,12 +401,20 @@ validators(Now, Req) ->
      validate_nodes_v2(nodes, _, Req),
      validator:default(nodes,
                        ?cut(menelaus_web_node:get_hostnames(Req, any)), _),
-     validator:one_of(nodesAggregation,
-                      [max, min, avg, sum, none, special], _),
-     validator:convert(nodesAggregation,
-                       fun (L) when is_binary(L) -> binary_to_atom(L, latin1);
-                           (L) -> list_to_atom(L)
-                       end, _),
+     validator:validate(
+       fun Parse(V) when is_binary(V) -> Parse(binary_to_list(V));
+           Parse("max") -> {value, max};
+           Parse("min") -> {value, min};
+           Parse("avg") -> {value, avg};
+           Parse("sum") -> {value, sum};
+           Parse("none") -> {value, none};
+           Parse("special") -> {value, special};
+           Parse("p" ++ PStr) ->
+               try {value, {histogram_quantile, validate_percentile(PStr)}}
+               catch _ -> {error, "invalid aggregation function"} end;
+           Parse(_) ->
+               {error, "invalid aggregation function"}
+       end, nodesAggregation, _),
      validate_time_duration(step, _),
      validator:default(step, "10s", _),
      validator:integer(start, ?MIN_TS, ?MAX_TS, _),
@@ -435,16 +443,46 @@ stop_node_extractors_monitoring(Refs) ->
           erlang:demonitor(Ref, [flush])
       end, Refs).
 
+%% If sum is used inside quantile, we should sum by le. The reason is
+%% because the histogram_quantile function needs 'le' label to be present.
+%% The same logic works for other aggregative functions, like min, max, etc.
+%% For example:
+%% "http_request_duration_bucket/sum/p90" should be converted
+%%   histogram_quantile(0.9, sum by (le) (http_request_duration_bucket))
+%% instead of
+%%   histogram_quantile(0.9, sum(http_request_duration_bucket))
+%% which will not work
+maybe_prevent_le_aggregation(Functions, Props) ->
+    NodesAggregation = proplists:get_value(nodesAggregation, Props),
+    PreserveLE = case NodesAggregation of
+                      {histogram_quantile, _} -> true;
+                      _ -> false
+                 end,
+    {_, NewFunctions} =
+        lists:foldr(
+          fun ({histogram_quantile, _} = F, {_, Acc}) -> {true, [F | Acc]};
+              (F, {false, Acc}) -> {false, [F | Acc]};
+              (F, {true, Acc}) ->
+                  case promQL:is_aggregation_op(F) of
+                      true ->
+                          {true, [{F, by, ["le"]} | Acc]};
+                      false ->
+                          {true, [F | Acc]}
+                  end
+          end, {PreserveLE, []}, Functions),
+    NewFunctions.
+
 send_metrics_request(Props, PermFilters) ->
     Functions = proplists:get_value(applyFunctions, Props, []),
+    Functions2 = maybe_prevent_le_aggregation(Functions, Props),
     Window = proplists:get_value(timeWindow, Props),
     Labels = proplists:get_value(metric, Props),
     Query =
         case derived_metrics:is_metric(extract_metric_name(Labels)) of
             false ->
-                construct_promql_query(Labels, Functions, Window, PermFilters);
+                construct_promql_query(Labels, Functions2, Window, PermFilters);
             true ->
-                derived_metric_query(Labels, Functions, Window, PermFilters)
+                derived_metric_query(Labels, Functions2, Window, PermFilters)
         end,
     Start = proplists:get_value(start, Props),
     End = proplists:get_value('end', Props),
@@ -776,6 +814,8 @@ merge_metrics(NodesResults, DerivedMetricName, AggFunctionName) ->
     metrics_add_label(FlatAggregated, [{nodes, Nodes},
                                        {name, DerivedMetricName}]).
 
+regular_aggregation_fun({histogram_quantile, Q}) ->
+    {<<"le">>, aggregate_percentile(_, Q)};
 regular_aggregation_fun(Name) ->
     {?NOT_EXISTING_LABEL,
      fun (#{default_param := P}) -> aggregate(Name, P) end}.
@@ -971,55 +1011,32 @@ is_range_vector_function(Function) ->
                             max_over_time, deriv, delta, idelta]).
 
 validate_functions(Functions) ->
-    Parsed =
-        lists:map(
-          fun ("rate") -> rate;
-              ("irate") -> irate;
-              ("increase") -> increase;
-              ("avg_over_time") -> avg_over_time;
-              ("min_over_time") -> min_over_time;
-              ("max_over_time") -> max_over_time;
-              ("deriv") -> deriv;
-              ("delta") -> delta;
-              ("idelta") -> idelta;
-              ("sum") -> sum;
-              ("min") -> min;
-              ("max") -> max;
-              ("avg") -> avg;
-              ("p" ++ PStr) ->
-                  try list_to_integer(PStr) of
-                      P when 0 < P; P =< 100  -> {histogram_quantile, P/100};
-                      _ -> error(invalid_function)
-                  catch
-                      _:_ -> error(invalid_function)
-                  end;
-              (_) -> error(invalid_function)
-          end, Functions),
+    lists:map(
+      fun ("rate") -> rate;
+          ("irate") -> irate;
+          ("increase") -> increase;
+          ("avg_over_time") -> avg_over_time;
+          ("min_over_time") -> min_over_time;
+          ("max_over_time") -> max_over_time;
+          ("deriv") -> deriv;
+          ("delta") -> delta;
+          ("idelta") -> idelta;
+          ("sum") -> sum;
+          ("min") -> min;
+          ("max") -> max;
+          ("avg") -> avg;
+          ("p" ++ PStr) ->
+              {histogram_quantile, validate_percentile(PStr)};
+          (_) -> error(invalid_function)
+      end, Functions).
 
-    %% If sum is used inside quantile, we should sum by le. The reason is
-    %% because the histogram_quantile function needs 'le' label to present.
-    %% The same logic works for other aggregative functions, like min, max, etc.
-    %% For example:
-    %% "http_request_duration_bucket/sum/p90" should be converted
-    %%   histogram_quantile(0.9, sum by (le) (http_request_duration_bucket))
-    %% instead of
-    %%   histogram_quantile(0.9, sum(http_request_duration_bucket))
-    %% which will not work
-    Reversed =
-        lists:foldl(
-          fun ({histogram_quantile, _} = F, Acc) ->
-                  case Acc of
-                      [] -> [F];
-                      [PrevF | T] ->
-                          case lists:member(PrevF, [sum, min, max, avg]) of
-                              true -> [F, {PrevF, by, ["le"]} | T];
-                              false -> [F | Acc]
-                          end
-                  end;
-              (F, Acc) ->
-                  [F | Acc]
-          end, [], Parsed),
-    lists:reverse(Reversed).
+validate_percentile(PStr) ->
+    try list_to_integer(PStr) of
+        P when 0 < P; P =< 100  -> P/100;
+        _ -> error(invalid_function)
+    catch
+        _:_ -> error(invalid_function)
+    end.
 
 %% If no unit is specified, we assume it's in seconds
 validate_time_duration(Name, State) ->
@@ -1191,6 +1208,111 @@ normalize_datapoints([T | Tail1], [[T, V] | Tail2], Acc) ->
     normalize_datapoints(Tail1, Tail2, [V | Acc]);
 normalize_datapoints([_ | Tail1], Values, Acc) ->
     normalize_datapoints(Tail1, Values, [<<"NaN">> | Acc]).
+
+
+%% Note: In order to be consistent with prometheus's quantile calculation, we
+%% are making the same assumptions as they do, like the following:
+%%  * samples are uniformly distributed within a bucket;
+%%  * if the quantile falls into the most right bucket (N, +Inf), N is returned;
+%%  * if there are less then 2 buckets, return NaN.
+aggregate_percentile(_HistBucketsRaw, P) when P < 0 -> neg_infinity;
+aggregate_percentile(_HistBucketsRaw, P) when P > 1 -> infinity;
+aggregate_percentile(HistBucketsRaw, P) ->
+    Buckets = lists:filtermap(
+                fun ({default_param, _}) -> false;
+                    ({Le, Values}) ->
+                        {true, {promQL:parse_value(Le), aggregate(sum, Values)}}
+                 end,  maps:to_list(HistBucketsRaw)),
+    BucketsSorted = lists:sort(Buckets),
+    TotalSamplesNum = proplists:get_value(infinity, BucketsSorted),
+    case valid_hist_buckets(BucketsSorted) of
+        false -> undefined;
+        true ->
+            PercentileSamplesNum = TotalSamplesNum * P,
+            FindBucket = fun F(PrevLE, [{LE, Val} | Tail]) ->
+                             case Val >= PercentileSamplesNum of
+                                 true -> {PrevLE, LE};
+                                 false -> F(LE, Tail)
+                             end
+                         end,
+            case FindBucket(0, BucketsSorted) of
+                {LeftLE, infinity} ->
+                    %% Prometheus also returns the greatest LE in this case
+                    proplists:get_value(LeftLE, BucketsSorted);
+                {LeftLE, RightLE} ->
+                    LeftValue = proplists:get_value(LeftLE, BucketsSorted, 0),
+                    RightValue = proplists:get_value(RightLE, BucketsSorted),
+                    BucketSamples = RightValue - LeftValue,
+                    PercentileBucketSamples = PercentileSamplesNum - LeftValue,
+                    LeftLE + (RightLE - LeftLE) * PercentileBucketSamples /
+                                                  BucketSamples
+            end
+    end.
+
+
+-ifdef(TEST).
+
+generate_buckets(BucketsNum, SamplesNum, Mu, Sigma) ->
+    V = Sigma*Sigma,
+    Max = 2*Mu,
+    BucketSize = Max / BucketsNum,
+    Buckets =
+        lists:foldl(
+          fun (_, Acc) ->
+              N = max(rand:normal(Mu, V), 1),
+              Le = ceil(ceil(N / BucketSize) * BucketSize),
+              maps:update_with(Le, fun (K) -> K + 1 end, 1, Acc)
+          end, #{}, lists:seq(1, SamplesNum)),
+
+    {Boundaries, _} = lists:mapfoldl(fun (_, B) ->
+                                         {ceil(B + BucketSize), B + BucketSize}
+                                     end, 0, lists:seq(1, BucketsNum)),
+
+    {S, Res} = lists:foldl(
+                 fun (Le, {Sum, Acc}) ->
+                     Sum2 = Sum + maps:get(Le, Buckets, 0),
+                     {Sum2, Acc#{integer_to_binary(Le) => [Sum2]}}
+                 end, {0, #{}}, Boundaries),
+
+    Res#{<<"+Inf">> => [S]}.
+
+test_percentiles_with_random_normal_distribution() ->
+    Mu = rand:uniform(100000) + 1000,
+    Sigma = Mu * (rand:uniform()/2 + 0.5) / 4, %% not more than 4 sigmas to zero
+    Buckets = generate_buckets(100, 100000, Mu, Sigma),
+    CheckDeviation = fun (LeftBoundary, P, RightBoundary) ->
+                         D = ((aggregate_percentile(Buckets, P) - Mu) / Sigma),
+                         case LeftBoundary =< D andalso D =< RightBoundary of
+                             true -> true;
+                             false -> error({invalid_deviation, D, Mu, Sigma})
+                         end
+                     end,
+    CheckDeviation(-3.3,  0.001, -2.8), %% should be -3*sigma from Mu
+    CheckDeviation(-2.2,  0.023, -1.8), %% should be -2*sigma from Mu
+    CheckDeviation(-1.2,  0.159, -0.8), %% should be -sigma from Mu
+    CheckDeviation(-0.2,  0.5,    0.2), %% should be ~= Mu
+    CheckDeviation( 0.8,  0.841,  1.2), %% should be sigma from Mu
+    CheckDeviation( 1.8,  0.977,  2.2), %% should be 2*sigma from Mu
+    CheckDeviation( 2.8,  0.999,  3.3). %% should be 3*sigma from Mu
+
+aggregate_percentile_test() ->
+    {timeout, 60,
+     fun () ->
+         [test_percentiles_with_random_normal_distribution()
+            || _ <- lists:seq(0, 50)]
+     end}.
+
+-endif.
+
+valid_hist_buckets(Buckets) when length(Buckets) < 2 -> false;
+valid_hist_buckets(Buckets) -> valid_hist_buckets(0, Buckets).
+valid_hist_buckets(_, []) -> true;
+valid_hist_buckets(_, [{infinity, V} | _]) when V == 0 -> false;
+valid_hist_buckets(_PrevVal, [{_Le, undefined} | _]) -> false;
+valid_hist_buckets(_PrevVal, [{_Le, infinity} | _]) -> false;
+valid_hist_buckets(_PrevVal, [{_Le, neg_infinity} | _]) -> false;
+valid_hist_buckets(PrevVal, [{_Le, Val} | _]) when Val < PrevVal -> false;
+valid_hist_buckets(_PrevVal, [{_Le, Val} | T]) -> valid_hist_buckets(Val, T).
 
 aggregate(sum, List) -> foldl2(fun prometheus_sum/2, undefined, List);
 aggregate(max, List) -> foldl2(fun prometheus_max/2, undefined, List);
