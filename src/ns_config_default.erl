@@ -562,7 +562,7 @@ upgrade_6_5_to_6_5_1_test() ->
     ?assertMatch([{set, {node, _, memcached}, [{old, info}, {admin_user, new}]}],
                  do_upgrade_config_from_6_5_to_6_5_1(Cfg, Default)).
 
-upgrade_6_5_1_to_70() ->
+upgrade_6_5_1_to_70_test() ->
     Cfg = [[{some_key, some_value},
             {{node, node(), memcached}, [{old, info}, {other_users, old}]},
             {{node, node(), memcached_defaults}, old_memcached_defaults},
