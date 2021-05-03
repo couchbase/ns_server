@@ -87,8 +87,8 @@ merger_loop([], MaxBatch) ->
             ns_server_stats:notify_histogram(<<"ns_config_merger_sleep_time">>,
                                              SleepTime),
             merger_loop([Blob], MaxBatch);
-        {'$gen_call', From, sync} ->
-            gen_server:reply(From, sync_done),
+        {sync, Pid, StartTS, From} ->
+            merger_sync_reply(Pid, StartTS, From),
             merger_loop([], MaxBatch)
     end;
 merger_loop(Changes, MaxBatch) when length(Changes) >= MaxBatch ->
@@ -98,14 +98,17 @@ merger_loop(Changes, MaxBatch) ->
     receive
         {merge_compressed, Blob} ->
             merger_loop([Blob|Changes], MaxBatch);
-        {'$gen_call', From, sync} ->
+        {sync, Pid, StartTS, From} ->
             merge_changes(Changes),
-            gen_server:reply(From, sync_done),
+            merger_sync_reply(Pid, StartTS, From),
             merger_loop([], ?MERGER_MAX_BLOBS_BATCH)
     after 0 ->
         merge_changes(Changes),
         merger_loop([], ?MERGER_MAX_BLOBS_BATCH)
     end.
+
+merger_sync_reply(Pid, StartTS, From) ->
+    gen_server:cast(Pid, {sync_reply, StartTS, From}).
 
 merge_changes(ListOfBlobs) ->
     MergeStart = os:timestamp(),
@@ -123,24 +126,17 @@ merge_changes(ListOfBlobs) ->
         false -> ok
     end.
 
-handle_call(synchronize, _From, State) ->
+handle_call(synchronize, From, State) ->
     %% Need to sync with merger too because in case of incoming config change
     %% merger pushes changes to couchdb node
-    sync_done = gen_server:call(ns_config_rep_merger, sync,
-                                ?SYNCHRONIZE_TIMEOUT),
-    {reply, ok, State};
-handle_call(synchronize_everything, {Pid, _Tag} = _From,
+    merger_request_sync(From),
+    {noreply, State};
+handle_call(synchronize_everything, {Pid, _Tag} = From,
             State) ->
     RemoteNode = node(Pid),
     ?log_debug("Got full synchronization request from ~p", [RemoteNode]),
-
-    StartTS = os:timestamp(),
-    sync_done = gen_server:call(ns_config_rep_merger, sync, ?SYNCHRONIZE_TIMEOUT),
-    EndTS = os:timestamp(),
-    Diff = timer:now_diff(EndTS, StartTS),
-    ?log_debug("Fully synchronized config in ~p us", [Diff]),
-
-    {reply, ok, State};
+    merger_request_sync(From),
+    {noreply, State};
 handle_call({pull_remotes, Nodes, Timeout}, _From, State) ->
     {reply, pull_from_all_nodes(Nodes, Timeout), State};
 handle_call(Msg, _From, State) ->
@@ -150,9 +146,18 @@ handle_call(Msg, _From, State) ->
 handle_cast({merge_compressed, _Blob} = Msg, State) ->
     ns_config_rep_merger ! Msg,
     {noreply, State};
+handle_cast({sync_reply, StartTS, From}, State) ->
+    EndTS = erlang:monotonic_time(microsecond),
+    ?log_debug("Synchronized with merger in ~p us", [EndTS - StartTS]),
+    gen_server:reply(From, ok),
+    {noreply, State};
 handle_cast(Msg, State) ->
     ?log_error("Unhandled cast: ~p", [Msg]),
     {noreply, State}.
+
+merger_request_sync(From) ->
+    Msg = {sync, self(), erlang:monotonic_time(microsecond), From},
+    ns_config_rep_merger ! Msg.
 
 accumulate_X(Acc, X) ->
     receive
