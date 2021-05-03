@@ -254,6 +254,8 @@ count_web_hit(Req, Resp) ->
     Method = mochiweb_request:get(method, Req),
     Path = case string:lexemes(mochiweb_request:get(path, Req), "/") of
                 [] -> "/";
+                ["pools"] -> "/pools";
+                ["pools", "default", P | _] -> "/pools/default/" ++ P ++ "/*";
                 [P | _] -> "/" ++ P ++ "/*"
            end,
     Code = mochiweb_response:get(code, Resp),
