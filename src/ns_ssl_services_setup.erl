@@ -34,7 +34,9 @@
          ssl_client_opts/0,
          configured_ciphers_names/2,
          honor_cipher_order/1,
-         honor_cipher_order/2]).
+         honor_cipher_order/2,
+         generate_node_certs/3,
+         set_certs/4]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -384,20 +386,21 @@ user_set_key_path() ->
 user_set_ca_chain_path() ->
     filename:join(path_config:component_path(data, "config"), "user-set-ca.pem").
 
-check_local_cert_and_pkey(ClusterCertPEM, Node) ->
+check_local_cert_and_pkey(ClusterCertPEM, Host) ->
     true = is_binary(ClusterCertPEM),
     try
-        do_check_local_cert_and_pkey(ClusterCertPEM, Node)
+        do_check_local_cert_and_pkey(ClusterCertPEM, Host)
     catch T:E ->
             {T, E}
     end.
 
-do_check_local_cert_and_pkey(ClusterCertPEM, Node) ->
+do_check_local_cert_and_pkey(ClusterCertPEM, Host) ->
     {ok, MetaBin} = file:read_file(local_cert_path_prefix() ++ "meta"),
     Meta = erlang:binary_to_term(MetaBin),
     {ok, LocalCert} = file:read_file(local_cert_path_prefix() ++ "cert.pem"),
     {ok, LocalPKey} = file:read_file(local_cert_path_prefix() ++ "pkey.pem"),
-    Digest = erlang:md5(term_to_binary({Node, ClusterCertPEM, LocalCert, LocalPKey})),
+    Digest = erlang:md5(term_to_binary({Host, ClusterCertPEM, LocalCert,
+                                        LocalPKey})),
     {proplists:get_value(digest, Meta) =:= Digest, LocalCert, LocalPKey}.
 
 sync() ->
@@ -431,6 +434,9 @@ get_node_cert_data() ->
                     {generated, GeneratedCert, GeneratedKey, Node}
             end
     end.
+
+set_certs(Host, CA, NodeCert, NodeKey) ->
+    gen_server:call(?MODULE, {set_certs, Host, CA, NodeCert, NodeKey}).
 
 init([]) ->
     Self = self(),
@@ -507,6 +513,15 @@ handle_call({set_node_certificate_chain, Props, CAChain, Cert, PKey}, _From, Sta
         false ->
             {reply, {error, n2n_enabled}, State}
     end;
+handle_call({set_certs, Host, CA, NodeCert, NodeKey}, _From, State) ->
+    ns_server_cert:set_generated_public_ca(CA),
+    if
+        (NodeCert =/= undefined) andalso (NodeKey =/= undefined) ->
+            save_certs(CA, NodeCert, NodeKey, Host);
+        true ->
+            ?log_warning("Set certs: Node certs are not present. Ignoring")
+    end,
+    {reply, ok, State};
 handle_call(ping, _From, State) ->
     {reply, ok, State};
 handle_call(_, _From, State) ->
@@ -590,8 +605,7 @@ trigger_ssl_reload(Event, Services, #state{reload_state = ReloadState} = State) 
     ?log_debug("Notify services ~p about ~p change", [Services, Event]),
     State#state{reload_state = lists:usort(Services ++ ReloadState)}.
 
-do_generate_local_cert(CertPEM, PKeyPEM, Node) ->
-    Host = misc:extract_node_address(node()),
+generate_node_certs(CertPEM, PKeyPEM, Host) ->
     SANArg =
         case misc:is_raw_ip(Host) of
             true -> "--san-ip-addrs=" ++ Host;
@@ -610,18 +624,36 @@ do_generate_local_cert(CertPEM, PKeyPEM, Node) ->
             SANArg],
     Env = [{"CACERT", binary_to_list(CertPEM)},
            {"CAPKEY", binary_to_list(PKeyPEM)}],
-    {LocalCert, LocalPKey} = ns_server_cert:do_generate_cert_and_pkey(Args, Env),
-    ok = misc:atomic_write_file(local_cert_path_prefix() ++ "pkey.pem", LocalPKey),
-    ok = misc:atomic_write_file(local_cert_path_prefix() ++ "cert.pem", LocalCert),
-    Meta = [{digest, erlang:md5(term_to_binary({Node, CertPEM, LocalCert, LocalPKey}))}],
-    ok = misc:atomic_write_file(local_cert_path_prefix() ++ "meta", term_to_binary(Meta)),
-    ?log_info("Saved local cert for node ~p", [Node]),
-    {true, LocalCert, LocalPKey} = check_local_cert_and_pkey(CertPEM, Node),
+    ns_server_cert:do_generate_cert_and_pkey(Args, Env).
+
+do_generate_local_cert(_CertPEM, undefined, _Node) ->
+    ?log_error("Trying to generate node certs but cluster pkey is missing"),
+    erlang:error(no_cluster_pkey);
+do_generate_local_cert(CertPEM, PKeyPEM, Node) ->
+    Host = misc:extract_node_address(Node),
+    {LocalCert, LocalPKey} = generate_node_certs(CertPEM, PKeyPEM, Host),
+    save_certs(CertPEM, LocalCert, LocalPKey, Host),
     {LocalCert, LocalPKey}.
 
+save_certs(CertPEM, NodeCert, NodeKey, Host) ->
+    Prefix = local_cert_path_prefix(),
+    ok = misc:atomic_write_file(Prefix ++ "pkey.pem", NodeKey),
+    ok = misc:atomic_write_file(Prefix ++ "cert.pem", NodeCert),
+    Meta = [{digest, erlang:md5(term_to_binary({Host, CertPEM, NodeCert,
+                                                NodeKey}))}],
+    ok = misc:atomic_write_file(Prefix ++ "meta", term_to_binary(Meta)),
+    ?log_info("Saved local cert for host ~p", [Host]),
+    {true, NodeCert, NodeKey} = check_local_cert_and_pkey(CertPEM, Host),
+    ok.
+
 maybe_generate_local_cert(CertPEM, PKeyPEM, Node) ->
-    case check_local_cert_and_pkey(CertPEM, Node) of
+    Host = misc:extract_node_address(Node),
+    case check_local_cert_and_pkey(CertPEM, Host) of
         {true, LocalCert, LocalPKey} ->
+            {LocalCert, LocalPKey};
+        {false, LocalCert, LocalPKey} when PKeyPEM == undefined ->
+            ?log_info("Can't regenerate node certs (no cluster private key). "
+                      "Ignoring"),
             {LocalCert, LocalPKey};
         {false, _, _} ->
             ?log_info("Detected existing node certificate that did not match cluster certificate. Will re-generate"),
@@ -637,10 +669,6 @@ apply_node_cert_data(Data) ->
     ok = ssl:clear_pem_cache(),
     cb_dist:restart_tls().
 
-apply_node_cert_data({generated, CertPEM, undefined, _Node}, _Path) ->
-    ?log_info("No private key provided. This happens when node joins the "
-              "cluster. Just store the new CA"),
-    ok = misc:atomic_write_file(raw_ssl_cacert_key_path(), CertPEM);
 apply_node_cert_data({generated, CertPEM, PKeyPEM, Node}, Path) ->
     {LocalCert, LocalPKey} = maybe_generate_local_cert(CertPEM, PKeyPEM, Node),
     ok = misc:atomic_write_file(Path, [LocalCert, LocalPKey]),
