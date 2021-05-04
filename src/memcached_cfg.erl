@@ -153,6 +153,7 @@ rename_and_refresh(#state{path = Path,
                     ?log_info("Trying again after ~p ms (~p tries remaining)",
                               [SleepTime, Tries]),
                     {ok, _TRef} = timer:apply_after(SleepTime, ?MODULE, rename_and_refresh,
-                                                    [State, Tries - 1, SleepTime * 2.0])
+                                                    [State, Tries - 1,
+                                                     SleepTime * 2])
             end
     end.
