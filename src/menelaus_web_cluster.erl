@@ -388,10 +388,12 @@ call_add_node(OtherScheme, OtherHost, OtherPort, Creds, AFamily,
              mochiweb_util:urlencode(Payload)},
             Creds, Options),
     case Res of
-        {error, What, _M, {bad_status, 404, Msg}} ->
+        {error, rest_error, _M, {bad_status, 404, Msg}} ->
             NewMsg = <<"Node attempting to join an older cluster. Some of the "
                        "selected services are not available.">>,
-            {error, What, NewMsg, {bad_status, 404, Msg}};
+            {error, rest_error, NewMsg};
+        {error, rest_error, M, _} ->
+            {error, rest_error, M};
         Other -> Other
     end.
 
