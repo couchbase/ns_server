@@ -1308,13 +1308,16 @@ merge_values({K, RV} = RP, {_, LV} = LP) ->
     case {vclock:descends(RClock, LClock),
           vclock:descends(LClock, RClock)} of
         {X, X} ->
-            case {strip_metadata(LV), strip_metadata(RV)} of
-                {X1, X1} ->
-                    lists:max([LP, RP]);
-                {_, _} ->
-                    touch_key(K),
-                    {K, merge_values_using_timestamps(K, LV, LClock, RV, RClock)}
-            end;
+            touch_key(K),
+            Merged =
+                case {strip_metadata(LV), strip_metadata(RV)} of
+                    {X1, X1} ->
+                        [Loser, Winner] = lists:sort([LV, RV]),
+                        merge_vclocks(Winner, Loser);
+                    {_, _} ->
+                        merge_values_using_timestamps(K, LV, LClock, RV, RClock)
+                end,
+            {K, Merged};
         {true, false} -> RP;
         {false, true} -> LP
     end.

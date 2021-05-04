@@ -248,10 +248,23 @@ merge_kv_pairs_timestamps_test() ->
     ?assertEqual([{<<"uuid">>, {1, 11}}], ClockRight).
 
 merge_kv_pairs_same_value_test() ->
-    X0 = [{x, [{'_vclock', [{<<"a">>, {1, 10}}]}, {data, 1}]}],
-    X1 = [{x, [{'_vclock', [{<<"b">>, {1, 11}}]}, {data, 1}]}],
-    ?assertEqual({X1, []}, ns_config:merge_kv_pairs(X0, X1, <<"a">>)),
-    ?assertEqual({X1, []}, ns_config:merge_kv_pairs(X1, X0, <<"b">>)).
+    V0 = [{<<"a">>, {1, 10}}],
+    X0 = [{x, [{'_vclock', V0}, {data, 1}]}],
+
+    V1 = [{<<"b">>, {1, 11}}],
+    X1 = [{x, [{'_vclock', V1}, {data, 1}]}],
+
+    {[R1], [x]} = ns_config:merge_kv_pairs(X0, X1, <<"a">>),
+    {[R2], [x]} = ns_config:merge_kv_pairs(X1, X0, <<"b">>),
+
+    ?assertEqual(R1, R2),
+    {x, Merged} = R1,
+    MergedClock = ns_config:extract_vclock(Merged),
+
+    ?assert(vclock:descends(MergedClock, V0)),
+    ?assert(vclock:descends(MergedClock, V1)),
+    ?assertNot(vclock:descends(V0, MergedClock)),
+    ?assertNot(vclock:descends(V1, MergedClock)).
 
 test_bin_persist() ->
     CP = data_file(),
