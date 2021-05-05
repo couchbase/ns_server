@@ -1256,28 +1256,32 @@ do_connect(Options) ->
     end.
 
 ensure_bucket(Sock, Bucket, BucketSelected) ->
-    try
-       case memcached_bucket_config:get(Bucket) of
-           {error, not_present} ->
-               case BucketSelected of
-                   true ->
-                       %% Bucket disappeared from under us...just swallow the
-                       %% error.
-                       ?log_debug("Bucket ~p not found during ensure_bucket",
-                                  [Bucket]),
-                       ok;
-                   false ->
-                       %% We were trying to setup handling of the bucket.
-                       not_present
-               end;
-           BConf ->
-               case do_ensure_bucket(Sock, Bucket, BConf, BucketSelected) of
-                   ok ->
-                       memcached_bucket_config:ensure_collections(Sock, BConf);
-                   Error ->
-                       Error
-               end
-       end
+    %% Only catch exceptions when getting the bucket config. Once we're
+    %% past that point and into the guts of this function there is code
+    %% that may exit with reason {shutdown, reconfig} and that exit should
+    %% not be caught. The reason is the changing of bucket parameters may
+    %% require a bucket deletion/recreation which happens as a result of
+    %% the exit.
+    try memcached_bucket_config:get(Bucket) of
+        {error, not_present} ->
+            case BucketSelected of
+                true ->
+                    %% Bucket disappeared from under us...just swallow the
+                    %% error.
+                    ?log_debug("Bucket ~p not found during ensure_bucket",
+                               [Bucket]),
+                    ok;
+                false ->
+                    %% We were trying to setup handling of the bucket.
+                    not_present
+            end;
+        BConf ->
+            case do_ensure_bucket(Sock, Bucket, BConf, BucketSelected) of
+                ok ->
+                    memcached_bucket_config:ensure_collections(Sock, BConf);
+                Error ->
+                    Error
+            end
     catch
         E:R:S ->
             ?log_error("Unable to get config for bucket ~p: ~p",
