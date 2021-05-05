@@ -378,7 +378,7 @@ prepare_to_join(RemoteNode, Cookie) ->
       fun ({directory,_}) ->
               skip;
           ({otp, _}) ->
-              {update, {otp, [{cookie, Cookie}]}};
+              {set_initial, {otp, [{cookie, Cookie}]}};
           ({nodes_wanted, _}) ->
               {set_initial, {nodes_wanted, [node(), RemoteNode]}};
           ({cluster_compat_mode, _}) ->
