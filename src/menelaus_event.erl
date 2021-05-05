@@ -178,15 +178,16 @@ notify_watchers(#state{watchers = Watchers}) ->
                           Pid ! {notify_watcher, UpdateID}
                   end, Watchers).
 
-restart_event({{node, N, rest}, _}) when N =:= node() -> true;
-restart_event({{node, N, address_family_only}, _}) when N =:= node() -> true;
-restart_event({{node, N, address_family}, _}) when N =:= node() -> true;
-restart_event({rest, _}) -> true;
-restart_event({cluster_encryption_level, _}) -> true;
+restart_event({node, N, rest}) when N =:= node() -> true;
+restart_event({node, N, address_family_only}) when N =:= node() -> true;
+restart_event({node, N, address_family}) when N =:= node() -> true;
+restart_event(rest) -> true;
+restart_event(cluster_encryption_level) -> true;
 restart_event(_) -> false.
 
-maybe_restart(Event, State) ->
-    case restart_event(Event) of
+maybe_restart(Event, State = #state{module = Module}) ->
+    case Module =:= chronicle_compat_events:event_manager()
+        andalso restart_event(Event) of
         true -> maybe_restart(State);
         false -> State
     end.
