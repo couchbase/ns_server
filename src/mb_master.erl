@@ -518,7 +518,7 @@ send_heartbeat_with_peers(Nodes, StateName, Peers) ->
           end, AliveNodes, 2000),
         ok
     catch exit:timeout ->
-            ?log_warning("send heartbeat timed out~n", [])
+              ?log_warning("send heartbeat timed out")
     end.
 
 
