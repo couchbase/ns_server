@@ -30,7 +30,7 @@
 -author('Andy Gross <andy@basho.com>').
 
 -export([fresh/0, descends/2, merge/1,
-         increment/2, likely_newer/2,
+         increment/2, increment/3, likely_newer/2,
          get_latest_timestamp/1, count_changes/1]).
 
 -ifdef(TEST).
@@ -129,19 +129,20 @@ get_latest_timestamp([{_Node, {_Ctr, TS}} | Rest]) ->
             TS
     end.
 
+increment(Node, VClock) ->
+    increment(Node, 0, VClock).
+
 % @doc Increment VClock at Node.
 % @spec increment(Node :: node(), VClock :: vclock()) -> vclock()
-increment(Node, VClock) ->
-    {Ctr, TS} = case proplists:get_value(Node, VClock) of
-                    undefined ->
-                        {1, timestamp()};
-                    {C, OldTS} ->
-                        {C + 1, max(OldTS, timestamp())}
-                end,
-    extend({Node, {Ctr, TS}}, VClock).
-
-timestamp() ->
-    calendar:datetime_to_gregorian_seconds(erlang:universaltime()).
+increment(Node, TS, VClock) ->
+    {Ctr, FinalTS} =
+        case proplists:get_value(Node, VClock) of
+            undefined ->
+                {1, TS};
+            {C, OldTS} ->
+                {C + 1, max(OldTS, TS)}
+        end,
+    extend({Node, {Ctr, FinalTS}}, VClock).
 
 count_changes_rec([], Acc) -> Acc;
 count_changes_rec([{_Node, {Counter, _}} | RestVClock], Acc) ->

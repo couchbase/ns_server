@@ -87,11 +87,19 @@ start_link() ->
 
 
 get_last_rebalance_or_failover_timestamp() ->
-    case ns_config:search_raw(ns_config:get(), counters) of
-        {value, [{'_vclock', VClock} | _]} ->
-            GregorianSecondsTS = vclock:get_latest_timestamp(VClock),
-            GregorianSecondsTS - calendar:datetime_to_gregorian_seconds({{1970, 1, 1}, {0, 0, 0}});
-        _ -> 0
+    case ns_config:search_with_vclock(ns_config:get(), counters) of
+        {value, _, {_, VClock}} ->
+            case vclock:get_latest_timestamp(VClock) of
+                0 ->
+                    0;
+                GregorianSecondsTS ->
+                    UnixEpochStart = {{1970, 1, 1}, {0, 0, 0}},
+                    UnixEpochStartTS =
+                        calendar:datetime_to_gregorian_seconds(UnixEpochStart),
+                    GregorianSecondsTS - UnixEpochStartTS
+            end;
+        false ->
+            0
     end.
 
 %% While Pid is alive prevents autocompaction of views for given

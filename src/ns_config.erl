@@ -51,6 +51,7 @@
 
 -export([uuid/1,
          start_link/2, start_link/1,
+         sync/0,
          get/0, get/1,
          set/2, set/1,
          cas_remote_config/3,
@@ -92,6 +93,7 @@
 -export([save_file/3, load_config/3,
          load_file/2, send_config/2,
          test_setup/1, upgrade_config/2]).
+-export([mock_tombstone_agent/0, unmock_tombstone_agent/0]).
 -endif.
 
 % A static config file is often hand edited.
@@ -130,6 +132,9 @@ start_link(ConfigPath, PolicyMod) -> start_link([ConfigPath, PolicyMod]).
 stop()       -> gen_server:cast(?MODULE, stop).
 resave()     -> gen_server:call(?MODULE, resave).
 reannounce() -> gen_server:call(?MODULE, reannounce).
+
+sync() ->
+    gen_server:call(?MODULE, sync, ?DEFAULT_TIMEOUT).
 
 % ----------------------------------------
 
@@ -524,10 +529,11 @@ search(Config, Key, Default) ->
 search_with_vclock_kvlist([], _Key) -> false;
 search_with_vclock_kvlist([KVList | Rest], Key) ->
     case lists:keyfind(Key, 1, KVList) of
-        {_, [{'_vclock', Clock} | Value]} ->
+        {_, RawValue} ->
+            Clock = extract_vclock(RawValue),
+            Value = strip_metadata(RawValue),
+
             {value, Value, Clock};
-        {_, Value} ->
-            {value, Value, []};
         false ->
             search_with_vclock_kvlist(Rest, Key)
     end.
@@ -645,35 +651,55 @@ fold(Fun, Acc, 'latest-config-marker') ->
 %% Implementation
 
 % Removes metadata like METADATA_VCLOCK from results.
-strip_metadata([{'_vclock', _} | Rest]) ->
+strip_metadata([{?METADATA_VCLOCK, _} | Rest]) ->
+    Rest;
+strip_metadata([{?METADATA_VCLOCK, _, _} | Rest]) ->
     Rest;
 strip_metadata(Value) ->
     Value.
 
-extract_vclock([{'_vclock', Clock} | _]) -> Clock;
-extract_vclock(_Value) -> [].
+extract_vclock([First | _]) ->
+    case First of
+        {?METADATA_VCLOCK, Clock} ->
+            {0, Clock};
+        {?METADATA_VCLOCK, PurgeTS, Clock} ->
+            {PurgeTS, Clock};
+        _ ->
+            {0, []}
+    end;
+extract_vclock(_) ->
+    {0, []}.
+
+build_vclock(0, Clock) ->
+    {?METADATA_VCLOCK, Clock};
+build_vclock(PurgeTS, Clock) ->
+    {?METADATA_VCLOCK, PurgeTS, Clock}.
 
 %% Increment the vclock in V2 and replace the one in V1
 increment_vclock(NewValue, OldValue, Node) ->
-    OldVClock = extract_vclock(OldValue),
-    NewVClock = lists:sort(vclock:increment(Node, OldVClock)),
-    [{?METADATA_VCLOCK, NewVClock} | strip_metadata(NewValue)].
+    TS = tombstone_agent:vclock_ts(),
+    {PurgeTS, OldVClock} = extract_vclock(OldValue),
+    NewVClock = lists:sort(vclock:increment(Node, TS, OldVClock)),
+    [build_vclock(PurgeTS, NewVClock) | strip_metadata(NewValue)].
 
 %% Set the vclock in NewValue to one that descends from both
 merge_vclocks(NewValue, OldValue) ->
-    NewValueVClock = extract_vclock(NewValue),
-    OldValueVClock = extract_vclock(OldValue),
-    case NewValueVClock =:= [] andalso OldValueVClock =:= [] of
+    {PurgeTS, NewValueVClock} = extract_vclock(NewValue),
+    {_, OldValueVClock} = extract_vclock(OldValue),
+    case NewValueVClock =:= [] andalso
+        OldValueVClock =:= [] andalso PurgeTS =:= 0 of
         true ->
             NewValue;
         _ ->
             NewVClock = lists:sort(vclock:merge([OldValueVClock, NewValueVClock])),
-            [{?METADATA_VCLOCK, NewVClock} | strip_metadata(NewValue)]
+            [build_vclock(PurgeTS, NewVClock) | strip_metadata(NewValue)]
     end.
 
 attach_vclock(Value, Node) ->
-    VClock = lists:sort(vclock:increment(Node, vclock:fresh())),
-    [{?METADATA_VCLOCK, VClock} | strip_metadata(Value)].
+    TS = tombstone_agent:vclock_ts(),
+    VClock = lists:sort(vclock:increment(Node, TS, vclock:fresh())),
+    PurgeTS = tombstone_agent:purge_ts(),
+    [build_vclock(PurgeTS, VClock) | strip_metadata(Value)].
 
 %% NOTE: this function is not supposed to be used widely. It won't
 %% "scale" with size of config. It is ok with existing limits of
@@ -687,7 +713,10 @@ compute_global_rev('latest-config-marker') ->
 compute_global_rev(Config) ->
     KVList = config_dynamic(Config),
     lists:foldl(
-      fun ({{local_changes_count, _}, [{'_vclock', VC}|_]}, Acc) ->
+      fun ({{local_changes_count, _}, Value}, Acc) ->
+              %% local_changes_count never gets deleted, so it should be safe
+              %% to ignore the purge timestamp
+              {_, VC} = extract_vclock(Value),
               Acc + vclock:count_changes(VC);
           (_, Acc) ->
               Acc
@@ -705,8 +734,8 @@ upgrade_config(Config, Upgrader) ->
     do_upgrade_config(Config, Upgrader(Config), Upgrader).
 
 upgrade_vclock(V, OldV, UUID) when is_list(OldV) ->
-    case proplists:get_value(?METADATA_VCLOCK, OldV) of
-        undefined ->
+    case lists:keyfind(?METADATA_VCLOCK, 1, OldV) of
+        false ->
             %% we encountered plenty of upgrade problems coming from the fact
             %% that both old and new values miss vclock;
             %% in this case the new value can be reverted by the old value
@@ -801,6 +830,7 @@ init({full, ConfigPath, DirPath, PolicyMod} = Init) ->
     erlang:process_flag(priority, high),
     case load_config(ConfigPath, DirPath, PolicyMod) of
         {ok, Config} ->
+            tombstone_agent:init_timestamps(Config),
             do_init(Config#config{init = Init,
                                   saver_mfa = {PolicyMod, encrypt_and_save, []},
                                   upgrade_config_fun = fun upgrade_config/1});
@@ -879,6 +909,8 @@ handle_info(Info, State) ->
     ?log_warning("Unhandled message: ~p", [Info]),
     {noreply, State}.
 
+handle_call(sync, _From, State) ->
+    {reply, ok, State};
 handle_call(reload, _From, State) ->
     ?log_debug("Reload config"),
     wait_saver(State, infinity),
@@ -1290,7 +1322,7 @@ do_merge_kv_pairs(RemoteKVList, LocalKVList, UUID) ->
                                                 "local = ~p~n"
                                                 "remote = ~p", [K, LV, RV]),
                                      touch_key(K),
-                                     {K, increment_vclock(LV, merge_vclocks(RV, LV), UUID)}
+                                     {K, increment_vclock(LV, merge_vclocks(LV, RV), UUID)}
                              end;
                          false ->
                              merge_values(RP, LP)
@@ -1303,23 +1335,47 @@ do_merge_kv_pairs(RemoteKVList, LocalKVList, UUID) ->
 -spec merge_values(kvpair(), kvpair()) -> kvpair().
 merge_values({_K, RV} = RP, {_, LV} = _LP) when RV =:= LV -> RP;
 merge_values({K, RV} = RP, {_, LV} = LP) ->
-    RClock = extract_vclock(RV),
-    LClock = extract_vclock(LV),
-    case {vclock:descends(RClock, LClock),
-          vclock:descends(LClock, RClock)} of
-        {X, X} ->
-            touch_key(K),
-            Merged =
-                case {strip_metadata(LV), strip_metadata(RV)} of
-                    {X1, X1} ->
-                        [Loser, Winner] = lists:sort([LV, RV]),
-                        merge_vclocks(Winner, Loser);
-                    {_, _} ->
-                        merge_values_using_timestamps(K, LV, LClock, RV, RClock)
-                end,
-            {K, Merged};
-        {true, false} -> RP;
-        {false, true} -> LP
+    {RPurgeTS, RClock} = extract_vclock(RV),
+    {LPurgeTS, LClock} = extract_vclock(LV),
+
+    case RPurgeTS =:= LPurgeTS of
+        true ->
+            case {vclock:descends(RClock, LClock),
+                  vclock:descends(LClock, RClock)} of
+                {X, X} ->
+                    touch_key(K),
+                    Merged =
+                        case {strip_metadata(LV), strip_metadata(RV)} of
+                            {X1, X1} ->
+                                [Loser, Winner] = lists:sort([LV, RV]),
+                                merge_vclocks(Winner, Loser);
+                            {_, _} ->
+                                merge_values_using_timestamps(K,
+                                                              LV, LClock,
+                                                              RV, RClock)
+                        end,
+                    {K, Merged};
+                {true, false} -> RP;
+                {false, true} -> LP
+            end;
+        false ->
+            %% Pick the value with the later timestamp, break ties using purge
+            %% timestamps.
+            RLatestTS = vclock:get_latest_timestamp(RClock),
+            LLatestTS = vclock:get_latest_timestamp(LClock),
+
+            [{_, Loser}, {_, Winner}] =
+                lists:keysort(1,
+                              [{{LLatestTS, LPurgeTS}, LV},
+                               {{RLatestTS, RPurgeTS}, RV}]),
+
+            ?log_debug("Purge timestamp conflict on field "
+                       "~p:~n~p and~n~p, choosing the former.",
+                       [K,
+                        sanitize_just_value(K, Winner),
+                        sanitize_just_value(K, Loser)]),
+
+            {K, Winner}
     end.
 
 sanitize_just_value(K, V) ->
@@ -1409,6 +1465,15 @@ latest() ->
 
 
 -ifdef(TEST).
+mock_tombstone_agent() ->
+    ok = meck:new(tombstone_agent),
+    ok = meck:expect(tombstone_agent, init_timestamps, fun (_) -> ok end),
+    ok = meck:expect(tombstone_agent, vclock_ts, fun() -> 0 end),
+    ok = meck:expect(tombstone_agent, purge_ts, fun() -> 0 end).
+
+unmock_tombstone_agent() ->
+    ok = meck:unload(tombstone_agent).
+
 %% used in test/ns_config_tests.erl
 test_setup(KVPairs) ->
     (catch ets:new(ns_config_ets_dup, [public, set, named_table])),
@@ -1416,14 +1481,26 @@ test_setup(KVPairs) ->
     update_ets_dup(KVPairs).
 
 all_test_() ->
-    [{spawn, [{"test_update_config", fun test_update_config/0},
-              {"test_set_kvlist", fun test_set_kvlist/0}]},
-     {spawn, {foreach, fun setup_with_saver/0, fun teardown_with_saver/1,
-              [{"test_with_saver_stop", fun test_with_saver_stop/0},
-               {"test_clear", fun test_clear/0},
-               {"test_with_saver_set_and_stop", fun test_with_saver_set_and_stop/0},
-               {"test_clear_with_concurrent_save", fun test_clear_with_concurrent_save/0},
-               {"test_local_changes_count", fun test_local_changes_count/0}]}}].
+    {setup,
+     fun mock_tombstone_agent/0,
+     fun (_) ->
+             unmock_tombstone_agent()
+     end,
+     [{spawn, [{"test_update_config", fun test_update_config/0},
+               {"test_set_kvlist", fun test_set_kvlist/0}]},
+      {spawn,
+       {foreach, fun setup_with_saver/0, fun teardown_with_saver/1,
+        [{"test_with_saver_stop", fun test_with_saver_stop/0},
+         {"test_clear", fun test_clear/0},
+         {"test_with_saver_set_and_stop", fun test_with_saver_set_and_stop/0},
+         {"test_clear_with_concurrent_save",
+          fun test_clear_with_concurrent_save/0},
+         {"test_local_changes_count", fun test_local_changes_count/0}]}},
+
+      {spawn, ?_test(test_upgrade_config_with_many_upgrades())},
+      {spawn, ?_test(test_upgrade_config_vclocks())},
+      {spawn, make_upgrade_config_test_spec()}
+     ]}.
 
 -define(assertConfigEquals(A, B), ?assertEqual(lists:sort([{K, strip_metadata(V)} || {K,V} <- A]),
                                                lists:sort([{K, strip_metadata(V)} || {K,V} <- B]))).
@@ -1723,8 +1800,8 @@ test_local_changes_count() ->
     ?assertEqual(1, compute_global_rev(latest())),
     ?assertEqual(1, compute_global_rev(ns_config:get())),
 
-    {value, [], VC} = search_with_vclock(ns_config:get(),
-                                         {local_changes_count, testuuid}),
+    {value, [], {0, VC}} = search_with_vclock(ns_config:get(),
+                                              {local_changes_count, testuuid}),
     ?assertEqual(1, vclock:count_changes(VC)),
 
     ok.
@@ -1749,7 +1826,7 @@ upgrade_config_testgen(InitialList, Changes, ExpectedList) ->
     {Title,
      fun () -> upgrade_config_case(InitialList, Changes, ExpectedList) end}.
 
-upgrade_config_test_() ->
+make_upgrade_config_test_spec() ->
     T = [{[{a, 1}, {b, 2}], [{set, a, 2}, {set, c, 3}], [{a, 2}, {b, 2}, {c, 3}]},
          {[{b, 2}, {a, 1}], [{set, a, 2}, {set, c, 3}], [{a, 2}, {b, 2}, {c, 3}]},
          {[{b, 2}, {a, [{key1, "asd"}, {key2, "ffd"}]}, {c, 0}],
@@ -1758,7 +1835,7 @@ upgrade_config_test_() ->
         ],
     [upgrade_config_testgen(I, C, E) || {I,C,E} <- T].
 
-upgrade_config_vclocks_test() ->
+test_upgrade_config_vclocks() ->
     Config = #config{dynamic = [[{{node, node(), a}, 1},
                                  {unchanged, 2},
                                  {b, 2},
@@ -1776,19 +1853,16 @@ upgrade_config_vclocks_test() ->
                   Value
           end,
 
-    ?assertMatch([{<<"uuid">>, {_, _}}],
+    ?assertMatch({0, [{<<"uuid">>, {_, _}}]},
                  extract_vclock(Get(UpgradedConfig, {node, node(), a}))),
-    ?assertMatch([],
+    ?assertMatch({0, []},
                  extract_vclock(Get(UpgradedConfig, unchanged))),
-    ?assertMatch([{<<"uuid">>, {_, _}}],
+    ?assertMatch({0, [{<<"uuid">>, {_, _}}]},
                  extract_vclock(Get(UpgradedConfig, b))),
-    ?assertMatch([{<<"uuid">>, {_, _}}],
+    ?assertMatch({0, [{<<"uuid">>, {_, _}}]},
                  extract_vclock(Get(UpgradedConfig, {node, node(), c}))),
-    ?assertMatch([{<<"uuid">>, {_, _}}],
+    ?assertMatch({0, [{<<"uuid">>, {_, _}}]},
                  extract_vclock(Get(UpgradedConfig, d))).
-
-upgrade_config_with_many_upgrades_test_() ->
-    {spawn, ?_test(test_upgrade_config_with_many_upgrades())}.
 
 test_upgrade_config_with_many_upgrades() ->
     Initial = [{a, 1}],
@@ -1827,24 +1901,25 @@ merge_values_test__() ->
 mock_timestamp(Body) ->
     Tid = ets:new(none, [public]),
     true = ets:insert_new(Tid, {counter, 0}),
-    ok = meck:new(calendar, [unstick, passthrough]),
+    ok = meck:new(tombstone_agent),
 
     try
-        ok = meck:expect(calendar, datetime_to_gregorian_seconds,
-                          fun (_) ->
-                                  [{counter, Count}] = ets:lookup(Tid, counter),
-                                  NewCount = case rand:uniform() < 0.3 of
-                                                 true ->
-                                                     Count + 1;
-                                                 false ->
-                                                     Count
-                                             end,
-                                  true = ets:insert(Tid, {counter, NewCount}),
-                                  Count
-                          end),
+        ok = meck:expect(tombstone_agent, purge_ts, fun() -> 0 end),
+        ok = meck:expect(tombstone_agent, vclock_ts,
+                         fun () ->
+                                 [{counter, Count}] = ets:lookup(Tid, counter),
+                                 NewCount = case rand:uniform() < 0.3 of
+                                                true ->
+                                                    Count + 1;
+                                                false ->
+                                                    Count
+                                            end,
+                                 true = ets:insert(Tid, {counter, NewCount}),
+                                 Count
+                         end),
         Body()
     after
-        meck:unload(calendar),
+        meck:unload(),
         ets:delete(Tid)
     end.
 

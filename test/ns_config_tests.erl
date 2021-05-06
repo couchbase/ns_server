@@ -259,7 +259,7 @@ merge_kv_pairs_same_value_test() ->
 
     ?assertEqual(R1, R2),
     {x, Merged} = R1,
-    MergedClock = ns_config:extract_vclock(Merged),
+    {_, MergedClock} = ns_config:extract_vclock(Merged),
 
     ?assert(vclock:descends(MergedClock, V0)),
     ?assert(vclock:descends(MergedClock, V1)),
@@ -397,12 +397,14 @@ test_include_missing_config() ->
 test_setup() ->
     process_flag(trap_exit, true),
     misc:rm_rf(test_dir()),
+    ns_config:mock_tombstone_agent(),
     ok.
 
 test_teardown(_) ->
     file:delete(data_file()),
     misc:rm_rf(test_dir()),
-    ok.
+    ns_config:unmock_tombstone_agent(),
+    meck:unload().
 
 test_dir() ->
   Dir = filename:join([t:config(priv_dir), "data", "config"]),

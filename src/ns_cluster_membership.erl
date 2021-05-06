@@ -370,6 +370,7 @@ prepare_to_join(RemoteNode, Cookie) ->
     %% the same cluster end up having same node uuid because they
     %% were created from same virtual machine image.
     ns_config:regenerate_node_uuid(),
+    tombstone_agent:wipe(),
 
     %% For the keys that are being preserved and have vclocks,
     %% we will just update_vclock so that these keys get stamped

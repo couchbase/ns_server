@@ -26,6 +26,10 @@ init([]) ->
     ?log_info("loading static ns_config from ~p", [CfgPath]),
     {ok, {{rest_for_one, 3, 10},
           [
+           {tombstone_keeper,
+            {tombstone_keeper, start_link, []},
+            permanent, 1000, worker, []},
+
            %% gen_event for the config events.
            {ns_config_events,
             {gen_event, start_link, [{local, ns_config_events}]},

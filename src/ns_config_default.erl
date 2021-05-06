@@ -583,7 +583,15 @@ upgrade_6_5_1_to_70_test() ->
 no_upgrade_on_current_version_test() ->
     ?assertEqual([], upgrade_config([[{{node, node(), config_version}, get_current_version()}]])).
 
-all_upgrades_test() ->
+all_upgrades_test_() ->
+    {setup,
+     fun ns_config:mock_tombstone_agent/0,
+     fun (_) ->
+             ns_config:unmock_tombstone_agent()
+     end,
+     ?_test(test_all_upgrades())}.
+
+test_all_upgrades() ->
     Default = default(),
     %% The 6.0 release had the same config format as 5.5.3 so that is used
     %% as the starting point for tests.

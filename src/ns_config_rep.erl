@@ -41,7 +41,7 @@
          terminate/2, code_change/3]).
 
 % API
--export([ensure_config_pushed/0,
+-export([ensure_config_pushed/0, synchronize_local/0,
          ensure_config_seen_by_nodes/0,
          ensure_config_seen_by_nodes/1, ensure_config_seen_by_nodes/2,
          pull_and_push/1, pull_from_one_node_directly/1,
@@ -433,7 +433,10 @@ merge_remote_configs(Fun, KVLists) ->
     end.
 
 do_merge_one_remote_config(UUID, RemoteKVList, AccKVList, AccTouched) ->
-    {Merged, Touched} = ns_config:merge_kv_pairs(RemoteKVList, AccKVList, UUID),
+    %% Make sure that tombstones that we might have already purged don't get
+    %% replicated to us again.
+    PurgedKVList = tombstone_agent:purge_kvlist(RemoteKVList),
+    {Merged, Touched} = ns_config:merge_kv_pairs(PurgedKVList, AccKVList, UUID),
     {Merged, ordsets:union(AccTouched, Touched)}.
 
 

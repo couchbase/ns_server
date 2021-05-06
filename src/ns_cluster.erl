@@ -433,6 +433,8 @@ handle_cast(leave, State) ->
     ok = dist_manager:reset_address(),
     %% and then we clear config. In fact better name would be 'reset',
     %% because as seen above we actually re-initialize default config
+    tombstone_agent:wipe(),
+
     ns_config:clear([directory,
                      %% Preserve these directories as they may have been
                      %% changed from their defaults and their handling
@@ -1353,10 +1355,15 @@ perform_actual_join(RemoteNode, NewCookie, ChronicleInfo) ->
         ?cluster_debug("Connection from ~p to ~p:  ~p",
                        [node(), RemoteNode, Connected]),
 
-        ok = ns_config_rep:pull_from_one_node_directly(RemoteNode),
-        ?cluster_debug("pre-join merged config is:~n~p", [ns_config_log:sanitize(ns_config:get())]),
-
         ok = chronicle_local:join_cluster(ChronicleInfo),
+
+        %% Make sure that latest timestamps are published synchronously.
+        tombstone_agent:refresh(),
+
+        ok = ns_config_rep:pull_from_one_node_directly(RemoteNode),
+        ?cluster_debug("pre-join merged config is:~n~p",
+                       [ns_config_log:sanitize(ns_config:get())]),
+
         {ok, ok}
     catch
         Type:Error:Stack ->

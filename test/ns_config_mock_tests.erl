@@ -42,6 +42,7 @@ all_test_() ->
 do_setup() ->
     ok = meck:new(ns_config, [passthrough]),
     ok = meck:expect(ns_config, init, fun([]) -> {ok, {}} end),
+    ns_config:mock_tombstone_agent(),
     {ok, _} = gen_server:start_link({local, ns_config}, ns_config, [], []),
     ok.
 
@@ -60,6 +61,7 @@ shutdown_process(Name) ->
 
 do_teardown(_V) ->
     shutdown_process(ns_config),
+    ns_config:unmock_tombstone_agent(),
     meck:unload().
 
 test_basic() ->
@@ -206,9 +208,13 @@ test_update() ->
     ?assertEqual(-3, ns_config:strip_metadata(proplists:get_value(a, NewConfig))),
     ?assertEqual(-4, ns_config:strip_metadata(proplists:get_value(b, NewConfig))),
 
-    ?assertMatch([{<<"uuid">>, _}], ns_config:extract_vclock(proplists:get_value(a, NewConfig))),
-    ?assertMatch([{<<"uuid">>, _}], ns_config:extract_vclock(proplists:get_value(b, NewConfig))),
-    ?assertMatch([{<<"uuid">>, _}], ns_config:extract_vclock(proplists:get_value(delete, NewConfig))),
+    ?assertMatch({0, [{<<"uuid">>, _}]},
+                 ns_config:extract_vclock(proplists:get_value(a, NewConfig))),
+    ?assertMatch({0, [{<<"uuid">>, _}]},
+                 ns_config:extract_vclock(proplists:get_value(b, NewConfig))),
+    ?assertMatch({0, [{<<"uuid">>, _}]},
+                 ns_config:extract_vclock(proplists:get_value(delete,
+                                                              NewConfig))),
 
     ?assertEqual(false, ns_config:search([NewConfig], delete)),
 

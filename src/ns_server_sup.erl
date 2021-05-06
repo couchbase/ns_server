@@ -96,6 +96,9 @@ child_specs() ->
       permanent, infinity, supervisor,
       [ns_node_disco_sup]},
 
+     {tombstone_agent, {tombstone_agent, start_link, []},
+      permanent, 1000, worker, []},
+
      {vbucket_map_mirror, {vbucket_map_mirror, start_link, []},
       permanent, brutal_kill, worker, []},
 
