@@ -388,9 +388,13 @@ prepare_to_join(RemoteNode, Cookie) ->
           ({{node, Node, membership}, _} = P) when Node =:= MyNode ->
               {set_initial, P};
           ({{node, Node, _}, _} = Pair) when Node =:= MyNode ->
-              %% update for the sake of incrementing the
-              %% vclock
-              {update, Pair};
+              %% Attach a fresh vector clock to the value. This will cause an
+              %% intentional conflict with any non-deleted values from
+              %% previous incarnations of this (or other of the same) node in
+              %% the cluster we are joining. We create a fresh vector clock as
+              %% opposed to incrementing the existing one, so we don't carry
+              %% redundant history.
+              {set_fresh, Pair};
           ({cert_and_pkey, V}) ->
               {set_initial, {cert_and_pkey, V}};
           (_) ->

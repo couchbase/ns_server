@@ -315,6 +315,10 @@ do_update_rec(Fun, Acc, [Pair | Rest], UUID, NewConfig, NewPairs, Erased) ->
                       NewConfig, NewPairs, Erased, Pair, NewPair);
         {set_initial, NewPair} ->
             do_update(Fun, NewAcc, Rest, UUID,
+                      NewConfig, NewPairs, Erased, Pair, NewPair);
+        {set_fresh, {NewKey, NewValue}} ->
+            NewPair = {NewKey, attach_vclock(NewValue, UUID)},
+            do_update(Fun, NewAcc, Rest, UUID,
                       NewConfig, NewPairs, Erased, Pair, NewPair)
     end.
 
@@ -944,9 +948,17 @@ handle_call({update_with_changes, Fun}, _From, #config{uuid = UUID} = State) ->
 handle_call({clear, Keep}, From, State) ->
     false = lists:member({node, node(), uuid}, Keep),
 
-    NewList0 = lists:filter(fun({K,_V}) -> lists:member(K, Keep) end,
-                            config_dynamic(State)),
     NewUUID = couch_uuids:random(),
+    NewList0 = lists:filtermap(
+                 fun({K, V}) ->
+                         case lists:member(K, Keep) of
+                             true ->
+                                 {true, {K, attach_vclock(V, NewUUID)}};
+                             false ->
+                                 false
+                         end
+                 end,
+                 config_dynamic(State)),
     NewList = [{{node, node(), uuid}, attach_vclock(NewUUID, NewUUID)} | NewList0],
     {reply, _, NewState} = handle_call(resave, From,
                                        State#config{dynamic=[NewList],
