@@ -88,9 +88,13 @@ fetch_snapshot(Txn) ->
     maps:merge(
       Snapshot,
       chronicle_compat:txn_get_many(
-        lists:flatten(
-          [chronicle_compat:node_keys(N) || N <- nodes_wanted(Snapshot)]),
+        lists:flatten([node_membership_keys(N) || N <- nodes_wanted(Snapshot)]),
         Txn)).
+
+node_membership_keys(Node) ->
+    [{node, Node, membership},
+     {node, Node, services},
+     {node, Node, recovery_type}].
 
 get_snapshot() ->
     get_snapshot(#{}).

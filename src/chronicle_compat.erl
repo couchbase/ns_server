@@ -286,7 +286,8 @@ node_keys(Node) ->
     [{node, Node, membership},
      {node, Node, services},
      {node, Node, recovery_type},
-     {node, Node, failover_vbuckets}].
+     {node, Node, failover_vbuckets},
+     {node, Node, buckets_with_data}].
 
 service_keys(Service) ->
     [{service_map, Service},
@@ -310,7 +311,7 @@ should_move({service_failover_pending, _}) ->
     true;
 should_move(auto_reprovision_cfg) ->
     true;
-should_move(buckets_with_data) ->
+should_move({node, _, buckets_with_data}) ->
     true;
 should_move(_) ->
     false.
