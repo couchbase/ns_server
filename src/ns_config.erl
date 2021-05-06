@@ -1334,12 +1334,11 @@ merge_values_using_timestamps(K, LV, LClock, RV, RClock) ->
         {X1, X1} ->
             [Winner, Loser] = lists:sort([LV, RV]),
 
-            ale:log(?USER_LOGGER, get_conflict_loglevel(K),
-                    "Conflicting configuration changes to field "
-                    "~p:~n~p and~n~p, choosing the former.",
-                    [K,
-                     sanitize_just_value(K, Winner),
-                     sanitize_just_value(K, Loser)]),
+            ?log_debug("Conflicting configuration changes to field "
+                       "~p:~n~p and~n~p, choosing the former.",
+                       [K,
+                        sanitize_just_value(K, Winner),
+                        sanitize_just_value(K, Loser)]),
 
             merge_vclocks(Winner, Loser);
         {LocalNewer, RemoteNewer} ->
@@ -1353,20 +1352,15 @@ merge_values_using_timestamps(K, LV, LClock, RV, RClock) ->
                         [RV, LV]
                 end,
 
-            ale:log(?USER_LOGGER, get_conflict_loglevel(K),
-                    "Conflicting configuration changes to field "
-                    "~p:~n~p and~n~p, choosing the former, which looks newer.",
-                    [K,
-                     sanitize_just_value(K, Winner),
-                     sanitize_just_value(K, Loser)]),
+            ?log_debug("Conflicting configuration changes to field "
+                       "~p:~n~p and~n~p, choosing the former, "
+                       "which looks newer.",
+                       [K,
+                        sanitize_just_value(K, Winner),
+                        sanitize_just_value(K, Loser)]),
 
             merge_vclocks(Winner, Loser)
     end.
-
-get_conflict_loglevel({metakv, _}) ->
-    debug;
-get_conflict_loglevel(_) ->
-    info.
 
 read_includes(Path) -> read_includes([{include, Path}], []).
 
