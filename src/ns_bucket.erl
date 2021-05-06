@@ -854,10 +854,9 @@ do_delete_bucket(ns_config, BucketName) ->
     end;
 do_delete_bucket(chronicle, BucketName) ->
     RootKey = root(),
-    CollectionsKey = collections:key(BucketName),
     PropsKey = sub_key(BucketName, props),
     RV = chronicle_kv:transaction(
-           kv, [RootKey, CollectionsKey, PropsKey],
+           kv, [RootKey, PropsKey],
            fun (Snapshot) ->
                    BucketNames = get_bucket_names(Snapshot),
                    case lists:member(BucketName, BucketNames) of
@@ -866,10 +865,10 @@ do_delete_bucket(chronicle, BucketName) ->
                        true ->
                            {ok, BucketConfig} =
                                get_bucket(BucketName, Snapshot),
+                           CollectionsKey = collections:key(BucketName),
                            {commit,
                             [{set, RootKey, BucketNames -- [BucketName]} |
-                             [{delete, K} || K <- [CollectionsKey, PropsKey],
-                                             maps:is_key(K, Snapshot)]],
+                             [{delete, K} || K <- [CollectionsKey, PropsKey]]],
                             BucketConfig}
                    end
            end),
