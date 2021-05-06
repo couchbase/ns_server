@@ -135,8 +135,8 @@ increment(Node, VClock) ->
     {Ctr, TS} = case proplists:get_value(Node, VClock) of
                     undefined ->
                         {1, timestamp()};
-                    {C, _T} ->
-                        {C + 1, timestamp()}
+                    {C, OldTS} ->
+                        {C + 1, max(OldTS, timestamp())}
                 end,
     extend({Node, {Ctr, TS}}, VClock).
 
