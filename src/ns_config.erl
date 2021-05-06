@@ -1334,11 +1334,12 @@ merge_values_using_timestamps(K, LV, LClock, RV, RClock) ->
         {X1, X1} ->
             [Winner, Loser] = lists:sort([LV, RV]),
 
-            ?log_debug("Conflicting configuration changes to field "
-                       "~p:~n~p and~n~p, choosing the former.",
-                       [K,
-                        sanitize_just_value(K, Winner),
-                        sanitize_just_value(K, Loser)]),
+            log_conflict(LV,
+                         "Conflicting configuration changes to field "
+                         "~p:~n~p and~n~p, choosing the former.",
+                         [K,
+                          sanitize_just_value(K, Winner),
+                          sanitize_just_value(K, Loser)]),
 
             merge_vclocks(Winner, Loser);
         {LocalNewer, RemoteNewer} ->
@@ -1352,14 +1353,27 @@ merge_values_using_timestamps(K, LV, LClock, RV, RClock) ->
                         [RV, LV]
                 end,
 
-            ?log_debug("Conflicting configuration changes to field "
-                       "~p:~n~p and~n~p, choosing the former, "
-                       "which looks newer.",
-                       [K,
-                        sanitize_just_value(K, Winner),
-                        sanitize_just_value(K, Loser)]),
+            log_conflict(LV,
+                         "Conflicting configuration changes to field "
+                         "~p:~n~p and~n~p, choosing the former, "
+                         "which looks newer.",
+                         [K,
+                          sanitize_just_value(K, Winner),
+                          sanitize_just_value(K, Loser)]),
 
             merge_vclocks(Winner, Loser)
+    end.
+
+log_conflict(LocalValue, Fmt, Args) ->
+    case strip_metadata(LocalValue) of
+        ?DELETED_MARKER ->
+            %% Historically we've been treating delete conflicts specially and
+            %% didn't log anything. Since these sort of conflicts are very
+            %% common when nodes are removed/readded, continue to treat
+            %% this specially.
+            ok;
+        _ ->
+            ?log_debug(Fmt, Args)
     end.
 
 read_includes(Path) -> read_includes([{include, Path}], []).
