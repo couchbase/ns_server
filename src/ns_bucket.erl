@@ -1208,8 +1208,7 @@ buckets_with_data_on_this_node() ->
     Snapshot =
         chronicle_compat:get_snapshot(
           [fetch_snapshot(all, _),
-           chronicle_compat:txn_get_many(
-             [{node, Node, buckets_with_data}], _)]),
+           chronicle_compat:txn_get_many([buckets_with_data_key(Node)], _)]),
     BucketConfigs = get_buckets(Snapshot),
     Stored = membase_buckets_with_data_on_node(Snapshot, Node),
     Filtered = filter_out_unknown_buckets(Stored, BucketConfigs),
