@@ -3810,7 +3810,6 @@ div.border-top + div.border-top {
 .mn-keyspace-selector {
   display: block;
   position: relative;
-  z-index: 11;
   background-color: #fff;
   width: fit-content;
 }
