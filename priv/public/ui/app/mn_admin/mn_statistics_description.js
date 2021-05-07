@@ -348,6 +348,8 @@ function getStatAdditionalConfig(statName) {
   case "@query.n1ql_selects":
   case "@query.n1ql_warnings":
   case "@system.cm_rest_request_leaves_total":
+  case "@cbas.cbas_io_reads_total":
+  case "@cbas.cbas_io_writes_total":
     return {applyFunctions: ["irate"]};
 
   case "@query.n1ql_requests_1000ms":
