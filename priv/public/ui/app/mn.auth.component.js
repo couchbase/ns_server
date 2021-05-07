@@ -12,6 +12,7 @@ import { Component, ChangeDetectionStrategy } from '/ui/web_modules/@angular/cor
 import { FormGroup, FormControl, Validators } from '/ui/web_modules/@angular/forms.js';
 import { BehaviorSubject } from '/ui/web_modules/rxjs.js';
 import { MnAuthService } from './mn.auth.service.js';
+import { MnAdminService } from './mn.admin.service.js';
 import { MnFormService } from './mn.form.service.js';
 import { UIRouter } from '/ui/web_modules/@uirouter/angular.js';
 import { MnLifeCycleHooksToStream } from './mn.core.js';
@@ -30,16 +31,18 @@ class MnAuthComponent extends MnLifeCycleHooksToStream {
   static get parameters() { return [
     MnFormService,
     MnAuthService,
+    MnAdminService,
     UIRouter,
     MnPools,
     $rootScope
   ]}
 
-  constructor(mnFormService, mnAuthService, uiRouter, mnPools, $rootScope) {
+  constructor(mnFormService, mnAuthService, MnAdminService, uiRouter, mnPools, $rootScope) {
     super();
     this.focusFieldSubject = new BehaviorSubject(true);
 
     this.postUILogin = mnAuthService.stream.postUILogin;
+    this.majorMinorVersion = MnAdminService.stream.majorMinorVersion;
 
     this.form = mnFormService.create(this)
       .setFormGroup({

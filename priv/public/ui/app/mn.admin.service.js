@@ -95,6 +95,14 @@ class MnAdminService {
       (new BehaviorSubject()).pipe(switchMap(this.getVersion.bind(this)),
                                    pluck("implementationVersion"),
                                    shareReplay({refCount: true, bufferSize: 1}));
+
+    this.stream.majorMinorVersion =
+      this.stream.implementationVersion.pipe(
+        map(function (implementationVersion) {
+          return implementationVersion.split('.').splice(0,2).join('.');
+        })
+      );
+
     this.stream.prettyVersion =
       this.stream.implementationVersion.pipe(
         map(mnPrettyVersionPipe.transform.bind(mnPrettyVersionPipe)));

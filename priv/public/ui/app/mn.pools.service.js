@@ -45,17 +45,6 @@ class MnPoolsService {
     this.stream.isEnterprise =
       this.stream.getSuccess.pipe(pluck("isEnterprise"), distinctUntilChanged());
 
-    this.stream.implementationVersion =
-      this.stream.getSuccess.pipe(pluck("implementationVersion"));
-
-    this.stream.majorMinorVersion =
-      this.stream.implementationVersion.pipe(
-        map(mnParseVersionPipe.transform.bind(mnParseVersionPipe)),
-        map(function (rv) {
-          return rv[0].split('.').splice(0,2).join('.');
-        })
-      );
-
     this.stream.mnServices =
       this.stream.isEnterprise
       .pipe(map(function (isEnterprise) {

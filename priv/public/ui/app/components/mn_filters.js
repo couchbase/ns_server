@@ -26,6 +26,7 @@ angular
   .filter('mnMBtoBytes', mnMBtoBytes)
   .filter('mnBytesToMB', mnBytesToMB)
   .filter('parseVersion', parseVersion)
+  .filter('mnMajorMinorVersion', mnMajorMinorVersion)
   .filter('getStringBytes', getStringBytes)
   .filter('mnFormatServices', mnFormatServices)
   .filter('mnOrderServices', mnOrderServices)
@@ -610,6 +611,17 @@ function parseVersion() {
     // running (which in the case of maintenance packs and one-off's, it is.)
     a[3] = (a[3] && (a[3].substr(0, 1).toUpperCase() + a[3].substr(1))) || "DEV";
     return a; // Example result: ["1.8.0-9", "9", "ga083a1e", "Enterprise"]
+  }
+}
+function mnMajorMinorVersion(parseVersionFilter) {
+  return function (str) {
+    let versionStr = parseVersionFilter(str);
+    if (!versionStr || !versionStr.length) {
+      return;
+    }
+
+    // Example result: {major}.{minor} - "6.5"
+    return versionStr[0].split('.').splice(0,2).join('.');
   }
 }
 function getStringBytes() {

@@ -27,9 +27,10 @@ class MnWizardWelcomeComponent extends MnLifeCycleHooksToStream {
     MnAdminService
   ]}
 
-  constructor(mnAdmin) {
+  constructor(mnAdminService) {
     super();
     this.focusFieldSubject = new BehaviorSubject(true);
-    this.prettyVersion = mnAdmin.stream.prettyVersion;
+    this.prettyVersion = mnAdminService.stream.prettyVersion;
+    this.majorMinorVersion = mnAdminService.stream.majorMinorVersion;
   }
 }
