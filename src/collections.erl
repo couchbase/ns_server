@@ -79,6 +79,7 @@ change(Key) ->
 
 default_manifest() ->
     [{uid, 0},
+     {next_uid, 0},
      {next_scope_uid, 7},
      {next_coll_uid, 7},
      {num_scopes, 0},
@@ -288,8 +289,13 @@ do_update_with_manifest(Bucket, Manifest, Operation, OtherBucketCounts) ->
     end.
 
 apply_manifest(Bucket, Manifest) ->
-    NewManifest = bump_id(Manifest, uid),
+    NewManifest = advance_manifest_id(Manifest),
     {commit, [{set, key(Bucket), NewManifest}], uid(NewManifest)}.
+
+advance_manifest_id(Manifest) ->
+    Manifest1 = bump_id(Manifest, next_uid),
+    lists:keyreplace(uid, 1, Manifest1,
+                     {uid, proplists:get_value(next_uid, Manifest1)}).
 
 perform_operations(_Manifest, {error, Error}) ->
     Error;
