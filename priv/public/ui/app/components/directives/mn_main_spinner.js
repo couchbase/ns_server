@@ -29,7 +29,14 @@ function mnMainSpinnerDirective(mnHelper) {
   return directive;
 
   function controller($scope) {
+    let initialized;
     $scope.$watch("mnMainSpinner", (mainSpinner) => {
+      if (!initialized && mainSpinner) {
+        initialized = true;
+      }
+      if (!initialized) {
+        return;
+      }
       if (mainSpinner) {
         mnHelper.mainSpinnerCounter.increase();
       } else {
@@ -37,7 +44,7 @@ function mnMainSpinnerDirective(mnHelper) {
       }
     });
     $scope.$on("$destroy", () => {
-      if ($scope.mnMainSpinner) {
+      if (initialized && $scope.mnMainSpinner) {
         mnHelper.mainSpinnerCounter.decrease();
       }
     });
