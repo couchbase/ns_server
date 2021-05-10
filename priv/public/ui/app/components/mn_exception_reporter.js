@@ -10,6 +10,7 @@ licenses/APL2.txt.
 
 import angular from "/ui/web_modules/angular.js";
 import _ from "/ui/web_modules/lodash.js";
+import { Rejection } from '/ui/web_modules/@uirouter/core.js';
 
 export default 'mnExceptionReporter';
 
@@ -33,7 +34,7 @@ function mnExceptionReporter($delegate, $injector) {
   // 6 "ERROR";
   return function (exception, cause) {
     if (
-      exception.constructor.name === "Rejection" &&
+      exception instanceof Rejection &&
         (exception.type === 2 || exception.type === 3 || exception.type === 5)
     ) {
       return; //we are not interested in these Rejection exceptions;

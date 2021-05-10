@@ -12,6 +12,7 @@ import {CommonModule} from '/ui/web_modules/@angular/common.js';
 import {BrowserModule} from '/ui/web_modules/@angular/platform-browser.js';
 import {HttpClientModule} from '../web_modules/@angular/common/http.js';
 import {UIRouterModule, UIView, loadNgModule} from '../web_modules/@uirouter/angular.js';
+import {Rejection} from '/ui/web_modules/@uirouter/core.js';
 import {MnPipesModule} from './mn.pipes.module.js';
 import {MnAppComponent} from './mn.app.component.js';
 import {MnAuthComponent} from './mn.auth.component.js';
@@ -147,7 +148,7 @@ let securityState = {
 };
 
 function rejectTransition() {
-  return Promise.reject(new Error('Lazy loading has been suppressed by another transition'));
+  return Promise.reject(Rejection.superseded("Lazy loading has been suppressed by another transition"));
 }
 
 function ocLazyLoad($transition$, module, initialHref) {

@@ -15,6 +15,7 @@ import { MnAppService } from './mn.app.service.js';
 import { MnPoolsService } from './mn.pools.service.js';
 import { combineLatest, Subject } from '../web_modules/rxjs.js'
 import { take, filter, map, withLatestFrom, tap } from '../web_modules/rxjs/operators.js';
+import { Rejection } from '/ui/web_modules/@uirouter/core.js';
 
 export { MnExceptionHandlerService };
 
@@ -71,7 +72,7 @@ class MnExceptionHandlerService {
   filterException(exception) {
     return !(exception instanceof HttpErrorResponse) &&
       //we are not interested in these Rejection exceptions;
-    !(exception.constructor.name === "Rejection" &&
+    !(exception instanceof Rejection &&
       (exception.type === 2 || exception.type === 3 || exception.type === 5));
   }
 
