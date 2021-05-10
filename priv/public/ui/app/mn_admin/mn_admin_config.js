@@ -23,6 +23,8 @@ import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
 import mnPoll from "/ui/app/components/mn_poll.js";
 import mnFilters from "/ui/app/components/mn_filters.js";
 import mnHelper from "/ui/app/components/mn_helper.js";
+import mnSpinner from "/ui/app/components/directives/mn_spinner.js";
+import mnMainSpinner from "/ui/app/components/directives/mn_main_spinner.js";
 import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
 import mnLaunchpad from "/ui/app/components/directives/mn_launchpad.js";
 import mnPluggableUiRegistry from "/ui/app/components/mn_pluggable_ui_registry.js";
@@ -58,6 +60,8 @@ angular.module('mnAdmin', [
   mnPoolDefault,
   mnAuthService,
   mnHelper,
+  mnSpinner,
+  mnMainSpinner,
 
   mnTasksDetails,
 
