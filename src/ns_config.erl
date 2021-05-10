@@ -1324,6 +1324,10 @@ merge_values({K, RV} = RP, {_, LV} = LP) ->
                             {X1, X1} ->
                                 [Loser, Winner] = lists:sort([LV, RV]),
                                 merge_vclocks(Winner, Loser);
+                            {?DELETED_MARKER, _} ->
+                                RP;
+                            {_, ?DELETED_MARKER} ->
+                                LP;
                             {_, _} ->
                                 merge_values_using_timestamps(K,
                                                               LV, LClock,
