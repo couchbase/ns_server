@@ -587,14 +587,14 @@ color: #333;
 }
 .cbui-table-header .dynamic-active:after {
   font-family: FontAwesome;
-  content: "\f0d7";
+  content: "\f0d8";
   color: #555;
   position: absolute;
   right: 0;
 }
 .cbui-table-header .dynamic-inverted:after {
   font-family: FontAwesome;
-  content: "\f0d8";
+  content: "\f0d7";
   color: #555;
   position: absolute;
   right: 0;
