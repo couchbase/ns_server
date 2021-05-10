@@ -160,7 +160,7 @@ sum_across_labels(Metric, Labels) ->
                            menelaus_web_stats:aggregate(sum, P1)
                        end},
      {query, fun (M) ->
-                 #{<<"param1">> => promQL:sum_without(Labels, Metric(M))}
+                 #{<<"Param1">> => promQL:sum_without(Labels, Metric(M))}
              end}].
 
 ratio(Numerator, Denominator, Default) ->
