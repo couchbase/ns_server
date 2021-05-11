@@ -372,11 +372,11 @@ pre_70_stat_to_prom_query(Bucket, <<"disk_write_queue">>) ->
                 promQL:bucket_metric(<<"kv_ep_flusher_todo">>, Bucket)]},
     {ok, promQL:named(<<"kv_disk_write_queue">>, promQL:sum(M))};
 pre_70_stat_to_prom_query(Bucket, <<"ep_ops_create">>) ->
-    %% kv_ep_ops_create is a derived metric
-    {ok, promQL:rate(promQL:bucket_metric(<<"kv_ep_ops_create">>, Bucket))};
+    M = promQL:rate(promQL:bucket_metric(<<"kv_vb_ops_create">>, Bucket)),
+    {ok, promQL:named(<<"kv_ep_ops_create">>, promQL:sum_by([], M))};
 pre_70_stat_to_prom_query(Bucket, <<"ep_ops_update">>) ->
-    %% kv_ep_ops_update is a derived metric
-    {ok, promQL:rate(promQL:bucket_metric(<<"kv_ep_ops_update">>, Bucket))};
+    M = promQL:rate(promQL:bucket_metric(<<"kv_vb_ops_update">>, Bucket)),
+    {ok, promQL:named(<<"kv_ep_ops_update">>, promQL:sum_by([], M))};
 pre_70_stat_to_prom_query(Bucket, <<"misses">>) ->
     M = {[{eq, <<"name">>, <<"kv_ops">>},
           {eq, <<"bucket">>, list_to_binary(Bucket)},
