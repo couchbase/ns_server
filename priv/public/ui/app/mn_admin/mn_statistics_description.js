@@ -1826,45 +1826,45 @@ function get65CompatDesc() {
             title: "Search Records to Persist",
             desc: "Number of index records not yet persisted to disk. Per index. (measured from num_recs_to_persist)"
           },
-          "fts_total_bytes_indexed": {
+          "total_bytes_indexed": {
             unit: "bytes/sec",
             title: "Search Index Rate",
-            desc: "Bytes of plain text indexed per second. Per index. (measured from fts_total_bytes_indexed)"
+            desc: "Bytes of plain text indexed per second. Per index. (measured from total_bytes_indexed)"
           },
-          "fts_total_bytes_query_results": {
+          "total_bytes_query_results": {
             unit: "bytes/sec",
             title: "Search Result Rate",
-            desc: "Bytes returned in results per second. Per index. (measured from fts_total_bytes_query_results)"
+            desc: "Bytes returned in results per second. Per index. (measured from total_bytes_query_results)"
           },
-          "fts_total_compaction_written_bytes": {
+          "total_compaction_written_bytes": {
             unit: "bytes/sec",
             title: "Search Compaction Rate",
-            desc: "Compaction bytes written per second. Per index. (measured from fts_total_compaction_written_bytes)",
+            desc: "Compaction bytes written per second. Per index. (measured from total_compaction_written_bytes)",
           },
-          "fts_total_queries": {
+          "total_queries": {
             unit: "number/sec",
             title: "Search Query Rate",
-            desc: "Number of queries per second. Per index. (measured from fts_total_queries)"
+            desc: "Number of queries per second. Per index. (measured from total_queries)"
           },
-          "fts_total_queries_error": {
+          "total_queries_error": {
             unit: "number/sec",
             title: "Search Query Error Rate",
             desc: "Number of queries per second (including timeouts) that resulted in errors. Per index. (measured from total_queries_error)"
           },
-          "fts_total_queries_slow": {
+          "total_queries_slow": {
             unit: "number/sec",
             title: "Search Slow Queries",
-            desc: "Number of slow queries (> 5s to run) per second. Per index. (measured from fts_total_queries_slow)"
+            desc: "Number of slow queries (> 5s to run) per second. Per index. (measured from total_queries_slow)"
           },
-          "fts_total_queries_timeout": {
+          "total_queries_timeout": {
             unit: "number/sec",
             title: "Search Query Timeout Rate",
-            desc: "Number of queries that timeout per second. Per index. (measured from fts_total_queries_timeout)"
+            desc: "Number of queries that timeout per second. Per index. (measured from total_queries_timeout)"
           },
-          "fts_total_term_searchers": {
+          "total_term_searchers": {
             unit: "number/sec",
             title: "Term Searchers Start Rate",
-            desc: "Number of term searchers started per second. Per index. (measured from fts_total_term_searchers)"
+            desc: "Number of term searchers started per second. Per index. (measured from total_term_searchers)"
           }
         },
         "fts/num_bytes_used_disk": {
