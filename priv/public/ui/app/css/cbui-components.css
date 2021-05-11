@@ -3258,6 +3258,9 @@ text.charts-nodata {
   width: 10px;
   margin-right: .25rem;
 }
+.legends.disabled i {
+  border: 1px solid #000;
+}
 rect.selection {
   fill: #c6dbf2;
 }
