@@ -376,22 +376,20 @@ prepare_to_join(RemoteNode, Cookie) ->
     ns_config:regenerate_node_uuid(),
     tombstone_agent:wipe(),
 
+    InitialKVs =
+        [{otp, [{cookie, Cookie}]},
+         {nodes_wanted, [MyNode, RemoteNode]},
+         {cluster_compat_mode, undefined},
+         {{node, MyNode, membership}, inactiveAdded}],
+
     %% For the keys that are being preserved and have vclocks,
     %% we will just update_vclock so that these keys get stamped
     %% with new node uuid vclock.
     ns_config:update(
       fun ({directory,_}) ->
               skip;
-          ({otp, _}) ->
-              {set_initial, {otp, [{cookie, Cookie}]}};
-          ({nodes_wanted, _}) ->
-              {set_initial, {nodes_wanted, [node(), RemoteNode]}};
-          ({cluster_compat_mode, _}) ->
-              {set_initial, {cluster_compat_mode, undefined}};
           ({{node, _, services}, _}) ->
               erase;
-          ({{node, Node, membership}, _} = P) when Node =:= MyNode ->
-              {set_initial, P};
           ({{node, Node, _}, _} = Pair) when Node =:= MyNode ->
               %% Attach a fresh vector clock to the value. This will cause an
               %% intentional conflict with any non-deleted values from
@@ -402,9 +400,24 @@ prepare_to_join(RemoteNode, Cookie) ->
               {set_fresh, Pair};
           ({cert_and_pkey, V}) ->
               {set_initial, {cert_and_pkey, V}};
-          (_) ->
-              erase
-      end).
+          ({K, _V}) ->
+              %% Don't erase values we are about to set_initial, just to be
+              %% extra safe in terms of preserving how it behaved previously.
+              case lists:keyfind(K, 1, InitialKVs) of
+                  false ->
+                      erase;
+                  Pair ->
+                      {set_initial, Pair}
+              end
+      end),
+
+    %% Some of the keys from InitialKVs could have been entirely removed from
+    %% the config while the node was part of 7.0 cluster due to tombstone
+    %% purging. So those need to be set explicitly.
+    lists:foreach(
+      fun ({Key, Value}) ->
+              ns_config:set_initial(Key, Value)
+      end, InitialKVs).
 
 supported_services() ->
     supported_services_for_version(cluster_compat_mode:supported_compat_version()).
