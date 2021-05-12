@@ -142,6 +142,9 @@ handle_info({Port, {data, Data}}, #state{port = Port,
 handle_info(log, State) ->
     State1 = log(State),
     {noreply, State1};
+handle_info({_Port, {exit_status, 0} = Msg}, State) ->
+    ?log_info("Got ~p from port ~p. Exiting normally", [Msg, port_name(State)]),
+    {stop, normal, State};
 handle_info({_Port, {exit_status, Status}}, State) ->
     ns_crash_log:record_crash({port_name(State),
                                Status,
