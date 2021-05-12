@@ -13,6 +13,7 @@
 -module(chronicle_compat).
 
 -include("ns_common.hrl").
+-include("ns_config.hrl").
 -include("cut.hrl").
 
 -export([backend/0,
@@ -316,21 +317,29 @@ should_move({node, _, buckets_with_data}) ->
 should_move(_) ->
     false.
 
+cleanup_value(nodes_wanted) ->
+    [];
+cleanup_value(buckets) ->
+    [{configs, []}];
+cleanup_value(_) ->
+    ?DELETED_MARKER.
+
 upgrade(Config) ->
     OtherNodes = ns_node_disco:nodes_wanted(Config) -- [node()],
     ok = chronicle_master:upgrade_cluster(OtherNodes),
 
-    {ToSet, ToDel} =
+    {ToSet, Cleanup} =
         ns_config:fold(
-          fun (buckets, Buckets, {ToSetAcc, ToDelAcc}) ->
+          fun (buckets, Buckets, {ToSetAcc, CleanupAcc}) ->
                   {maps:merge(
                      ToSetAcc, maps:from_list(
                                  ns_bucket:upgrade_to_chronicle(Buckets))),
-                   [buckets | ToDelAcc]};
-              (Key, Value, {ToSetAcc, ToDelAcc} = Acc) ->
+                   [{buckets, cleanup_value(buckets)} | CleanupAcc]};
+              (Key, Value, {ToSetAcc, CleanupAcc} = Acc) ->
                   case should_move(Key) of
                       true ->
-                          {maps:put(Key, Value, ToSetAcc), [Key | ToDelAcc]};
+                          {maps:put(Key, Value, ToSetAcc),
+                           [{Key, cleanup_value(Key)} | CleanupAcc]};
                       false ->
                           Acc
                   end
@@ -343,4 +352,4 @@ upgrade(Config) ->
               [Rev, Sets]),
 
     ok = remote_pull(OtherNodes, ?UPGRADE_PULL_TIMEOUT),
-    [{set, keys_to_delete, ToDel}].
+    [{set, after_upgrade_cleanup, Cleanup}].

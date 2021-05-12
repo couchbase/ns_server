@@ -115,13 +115,13 @@ init([]) ->
     Events = subscribe_to_chronicle_events(SelfRef),
     ns_pubsub:subscribe_link(
       ns_config_events,
-      fun ({keys_to_delete, _}) ->
+      fun ({after_upgrade_cleanup, _}) ->
               schedule_after_upgrade_cleanup(Self);
           (_) ->
               ok
       end),
 
-    case ns_config:search(keys_to_delete) of
+    case ns_config:search(after_upgrade_cleanup) of
         {value, _} ->
             schedule_after_upgrade_cleanup(Self);
         false ->
@@ -245,13 +245,15 @@ handle_info(after_upgrade_cleanup, State) ->
     RV =
         ns_config:run_txn(
           fun (Config, SetFn) ->
-                  case ns_config:search(Config, keys_to_delete) of
+                  case ns_config:search(Config, after_upgrade_cleanup) of
                       false ->
                           {abort, nothing_to_do};
-                      {value, Keys} ->
+                      {value, KVs} ->
                           {commit,
-                           lists:foldl(?cut(SetFn(_, ?DELETED_MARKER, _)),
-                                       Config, [keys_to_delete | Keys])}
+                           lists:foldl(
+                             fun ({K, V}, Acc) -> SetFn(K, V, Acc) end,
+                             Config, [{after_upgrade_cleanup,
+                                       ?DELETED_MARKER} | KVs])}
                   end
           end),
     case RV of
