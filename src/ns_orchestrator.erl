@@ -45,7 +45,6 @@
          start_failover/2,
          try_autofailover/1,
          needs_rebalance/0,
-         request_janitor_run/1,
          start_link/0,
          start_rebalance/3,
          retry_rebalance/4,
@@ -896,7 +895,10 @@ rebalancing({timeout, _Tref, stop_timeout},
             {'EXIT', Pid, R} ->
                 R
         end,
-    handle_rebalance_completion(Reason, State).
+    handle_rebalance_completion(Reason, State);
+rebalancing({request_janitor_run, _Item} = Msg, _State) ->
+    ?log_debug("Message ~p ignored", [Msg]),
+    keep_state_and_data.
 
 %% Synchronous rebalancing events
 rebalancing({try_autofailover, Nodes}, From,
@@ -1207,6 +1209,7 @@ handle_rebalance_completion(ExitReason, State) ->
     rpc:eval_everywhere(diag_handler, log_all_dcp_stats, []),
     terminate_observer(State),
     maybe_reply_to(ExitReason, State),
+    maybe_request_janitor_run(ExitReason, State),
 
     R = compat_mode_manager:consider_switching_compat_mode(),
     case maybe_start_service_upgrader(ExitReason, R, State) of
@@ -1219,6 +1222,14 @@ handle_rebalance_completion(ExitReason, State) ->
             %% based on the reason for aborting rebalance.
             rebalance_completed_next_state(State#rebalancing_state.abort_reason)
     end.
+
+maybe_request_janitor_run({failover_failed, Bucket, _},
+                          #rebalancing_state{type = failover}) ->
+    ?log_debug("Requesting janitor run for bucket ~p after unsuccessful "
+               "failover", [Bucket]),
+    request_janitor_run({bucket, Bucket});
+maybe_request_janitor_run(_, _) ->
+    ok.
 
 maybe_retry_rebalance(ExitReason,
                       #rebalancing_state{type = Type,
