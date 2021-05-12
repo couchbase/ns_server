@@ -2968,7 +2968,7 @@ nav.nav-sidebar-hidden {
 /*  pipe delimiter style  --------------------------------------------------- */
 .pipe:before {
   content: '\007C';
-  color: #d1d1d1;
+  color: #a1a1a1;
 }
 .piped:not(:first-of-type):before {
   content: '\00a0\007C';
