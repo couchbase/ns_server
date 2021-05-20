@@ -139,7 +139,7 @@ check_quota(Samples) ->
     end.
 
 
-check_valid_samples(Samples) ->
+check_valid_samples(Samples) when is_list(Samples) ->
     Errors = [begin
                   case ns_bucket:name_conflict(binary_to_list(Name)) of
                       true ->
@@ -159,7 +159,9 @@ check_valid_samples(Samples) ->
             ok;
         X ->
             X
-    end.
+    end;
+check_valid_samples(_Samples) ->
+    [{error, list_to_binary("A [list] of names must be specified.")}].
 
 format_MB(X) ->
     integer_to_list(misc:ceiling(X / 1024 / 1024)) ++ "MB".
