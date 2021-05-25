@@ -96,4 +96,7 @@ upgrade(?VERSION_66, Config) ->
      menelaus_users:config_upgrade() ++
          menelaus_web_alerts_srv:config_upgrade_to_70(Config) ++
          index_settings_manager:config_upgrade_to_70(Config) ++
-         query_settings_manager:config_upgrade_to_70(Config)}.
+         query_settings_manager:config_upgrade_to_70(Config)};
+
+upgrade(?VERSION_70, _Config) ->
+    {?VERSION_NEO, []}.

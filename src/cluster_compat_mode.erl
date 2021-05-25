@@ -31,6 +31,9 @@
          is_cluster_70/0,
          is_cluster_70/1,
          is_version_70/1,
+         is_cluster_NEO/0,
+         is_cluster_NEO/1,
+         is_version_NEO/1,
          is_enterprise/0,
          is_saslauthd_enabled/0,
          is_cbas_enabled/0,
@@ -131,6 +134,15 @@ is_cluster_70() ->
 
 is_cluster_70(Config) ->
     is_enabled(Config, ?VERSION_70).
+
+is_version_NEO(ClusterVersion) ->
+    is_enabled_at(ClusterVersion, ?VERSION_NEO).
+
+is_cluster_NEO() ->
+    is_cluster_NEO(ns_config:latest()).
+
+is_cluster_NEO(Config) ->
+    is_enabled(Config, ?VERSION_NEO).
 
 is_index_aware_rebalance_on() ->
     not ns_config:read_key_fast(index_aware_rebalance_disabled, false).
