@@ -34,12 +34,12 @@ class MnBucketsService {
     this.stream = {};
     this.http = http;
 
-    var bucketsUri =
+    this.stream.bucketsUri =
         mnAdminService.stream.getPoolsDefault.pipe(pluck("buckets", "uri"),
                                                    distinctUntilChanged());
     this.stream.getBuckets =
-      bucketsUri.pipe(switchMap(this.get.bind(this)),
-                      shareReplay({refCount: true, bufferSize: 1}));
+      this.stream.bucketsUri.pipe(switchMap(this.get.bind(this)),
+                                  shareReplay({refCount: true, bufferSize: 1}));
 
     this.stream.getBucketsByName =
       this.stream.getBuckets.pipe(map(buckets =>

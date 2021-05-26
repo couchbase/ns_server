@@ -141,6 +141,12 @@ let settingsState = {
   lazyLoad: mnLazyload('./mn_admin/mn_settings_config.js', "mnSettings")
 };
 
+let sampleBucketState = {
+  name: 'app.admin.settings.sampleBuckets.**',
+  url: '/sampleBuckets',
+  lazyLoad: mnLoadNgModule('./mn.settings.sample.buckets.module.js', 'MnSettingsSampleBucketsModule')
+};
+
 let securityState = {
   name: "app.admin.security.**",
   url: "/security",
@@ -211,7 +217,7 @@ let mnAppImports = [
   MnSharedModule,
   MnElementCraneModule.forRoot(),
   UIRouterUpgradeModule.forRoot({
-    states: [authState, wizardState, overviewState, serversState, bucketsState, logsState, groupsState, documentsState, gsiState, viewsState, settingsState, securityState, collectionsState, XDCRState, sessionState, logRedactionState, auditState]
+    states: [authState, wizardState, overviewState, serversState, bucketsState, logsState, groupsState, documentsState, gsiState, viewsState, settingsState, sampleBucketState, securityState, collectionsState, XDCRState, sessionState, logRedactionState, auditState]
   }),
 
   //downgradedModules

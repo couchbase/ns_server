@@ -17,7 +17,6 @@ import mnElementCrane from "/ui/app/components/directives/mn_element_crane/mn_el
 import mnSession from "./mn_session_controller.js";
 
 import mnSettingsNotifications from "./mn_settings_notifications_controller.js";
-import mnSettingsSampleBuckets from "./mn_settings_sample_buckets_controller.js";
 import mnSettingsCluster from "./mn_settings_cluster_controller.js";
 import mnSettingsAutoFailover from "./mn_settings_auto_failover_controller.js";
 import mnSettingsAutoCompaction from "./mn_settings_auto_compaction_controller.js"
@@ -33,7 +32,6 @@ angular
     mnElementCrane,
     mnSession,
     mnSettingsNotifications,
-    mnSettingsSampleBuckets,
     mnSettingsAutoFailover,
     mnSettingsAutoCompaction,
     mnSettingsCluster,
@@ -96,12 +94,4 @@ function mnSettingsConfig($stateProvider) {
         permissions: 'cluster.settings.read'
       }
     })
-    .state('app.admin.settings.sampleBuckets', {
-      url: '/sampleBuckets',
-      controller: 'mnSettingsSampleBucketsController as settingsSampleBucketsCtl',
-      templateUrl: 'app/mn_admin/mn_settings_sample_buckets.html',
-      data: {
-        permissions: 'cluster.samples.read'
-      }
-    });
 }

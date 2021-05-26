@@ -68,6 +68,19 @@ class MnAdminService {
       }
     });
 
+    this.stream.getNodes =
+      this.stream.getPoolsDefault.pipe(pluck("nodes"));
+
+    this.stream.failedOverNodes = this.stream.getNodes.pipe(
+      map(nodes => nodes.filter(node => node.clusterMembership === "inactiveFailed")));
+
+    this.stream.onlyActiveNodes = this.stream.getNodes.pipe(
+      map(nodes => nodes.filter(node => node.clusterMembership === "active")));
+
+    this.stream.allActiveNodes =
+      combineLatest(this.stream.failedOverNodes, this.stream.onlyActiveNodes)
+      .pipe(map(([failedOver, onlyActive]) => failedOver.concat(onlyActive)));
+
     this.stream.isRebalancing =
       this.stream.getPoolsDefault.pipe(
         map(R.pipe(R.propEq('rebalanceStatus', 'none'), R.not)), distinctUntilChanged());
