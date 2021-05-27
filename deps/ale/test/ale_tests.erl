@@ -6,7 +6,7 @@
 %% in that file, in accordance with the Business Source License, use of this
 %% software will be governed by the Apache License, Version 2.0, included in
 %% the file licenses/APL2.txt.
--module(test).
+-module(ale_tests).
 
 -compile(nowarn_export_all).
 -compile(export_all).
@@ -14,13 +14,15 @@
 
 -include("ale.hrl").
 
+-include_lib("eunit/include/eunit.hrl").
+
 prepare() ->
     application:start(ale),
 
     ok = ale:start_sink(stderr, ale_stderr_sink, []),
     ok = ale:start_sink(disk, ale_disk_sink, ["/tmp/test_log"]),
 
-    ok = ale:add_sink(?ERROR_LOGGER_LOGGER, disk, info),
+    ok = ale:add_sink(?ERROR_LOGGER, disk, info),
     ok = ale:add_sink(?ALE_LOGGER, stderr, info),
 
     ok = ale:start_logger(info),
@@ -79,5 +81,14 @@ test_perf() ->
     {Time, _} = timer:tc(fun test_perf_loop/1, [1000000]),
     io:format("Time spent: ~ps~n", [Time div 1000000]).
 
-test_delay() ->
-    ale:delay(io:format("=========================delay test: ~p~n", [some_arg])).
+test_ale_codegen() ->
+    ok = ale:start_sink(stderr_dummy, ale_stderr_sink, []),
+    ok = ale:start_logger(info),
+    ok = ale:add_sink(info, stderr_dummy),
+
+    ale:warn(info, "test msg: ~p", ["hello"], [{chars_limit, 1000}]),
+    ale:xwarn(info, user_data, "test msg: ~p", ["hello"], [{chars_limit, 1000}]),
+    ok.
+
+test_ale_codegen_test() ->
+    ?assertEqual(ok, test_ale_codegen()).
