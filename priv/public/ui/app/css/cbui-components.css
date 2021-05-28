@@ -1880,11 +1880,17 @@ mn-select[disabled] .mn-select,
   background-color: rgba(0, 0, 0, 0.45);
 }
 
-.mn-select div[uib-dropdown-menu] .option,
+.mn-select div[uib-dropdown-menu] .option {
+  font-size: .875rem;
+  color: #333;
+}
 .mn-select div[ngbDropdownMenu] .option {
   padding: 0.5rem;
   font-size: .875rem;
   color: #333;
+}
+.mn-select div[uib-dropdown-menu] .option label {
+  padding: 0.5rem;
 }
 
 .mn-select div[uib-dropdown-menu] a.option:first-of-type,
@@ -1892,9 +1898,18 @@ mn-select[disabled] .mn-select,
   margin-top: .5rem;
 }
 
+.mn-select div[uib-dropdown-menu] .option input[type="radio"] {
+  display: none !important;
+}
+
+.mn-select div[uib-dropdown-menu] .option input[type="radio"] + label:before {
+  display: none;
+}
+
 .mn-select div[uib-dropdown-menu] .option:hover,
 .mn-select div[ngbDropdownMenu] .option:hover,
-.mn-select div[uib-dropdown-menu] .option:focus,
+.mn-select div[uib-dropdown-menu] .option label:focus,
+.mn-select div[uib-dropdown-menu] .option input[type="radio"]:checked + label,
 .mn-select div[ngbDropdownMenu] .option:focus {
   background-color: #f5f5f5;
 }

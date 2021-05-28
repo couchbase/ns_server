@@ -11,16 +11,18 @@ licenses/APL2.txt.
 import angular from "/ui/web_modules/angular.js";
 
 import mnSearch from "/ui/app/components/directives/mn_search/mn_search_directive.js";
+import mnHelper from "/ui/app/components/mn_helper.js";
 
 export default "mnSelect";
 
 angular
   .module("mnSelect", [
-    mnSearch
+    mnSearch,
+    mnHelper
   ])
   .directive("mnSelect", mnSelectDirective);
 
-function mnSelectDirective() {
+function mnSelectDirective(mnHelper) {
   var mnSelect = {
     restrict: "AE",
     require: ["mnSelect", "ngModel"],
@@ -51,6 +53,7 @@ function mnSelectDirective() {
   function mnSelectController($scope, $element, $attrs) {
     var vm = this;
     var searchMinimumOptionsNumber = 10;
+    vm.id = mnHelper.generateID();
 
     var ngModelCtl;
     vm.setNgModelCtl = (ctl) => (ngModelCtl = ctl);
@@ -89,10 +92,14 @@ function mnSelectDirective() {
       return vm.preparedValues;
     }
 
-    function optionClicked(value) {
+    function optionClicked(value, event) {
+      if (event && event.key !== 'Enter') {
+        return;
+      }
+
       vm.onSelect && vm.onSelect({selectedOption: value});
       ngModelCtl.$setViewValue(value);
-      vm.isOpened = !vm.isOpened;
+      vm.isOpened = false;
 
       if (vm.hasSearchInput()) {
         vm.mnSearchValue = "";
