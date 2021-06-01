@@ -209,11 +209,7 @@ function mnD3ServiceFactory($timeout) {
             .append('path').attr('class', 'lines')
             .call(this.drawLine.bind(this));
         }.bind(this), function (update) {
-          if (this.opt.enableAnimation) {
-            return update.call(this.drawLine.bind(this));
-          } else {
-            return update.transition().duration(0).call(this.drawLine.bind(this));
-          }
+          return update.call(this.drawLine.bind(this));
         }.bind(this));
 
       this.opt.enableAnimation && this.animateLine(100);
@@ -280,16 +276,7 @@ function mnD3ServiceFactory($timeout) {
         this.updateYAxis(1);
       }
 
-      //Safari doesn't render initial chart. The issue disappears
-      //after update of the chart or after scroll of the page.
-      //Most likely this is due wrong chart initialization process or
-      //some issues with Safari renderer (search chart.updateData, onInit, init)
-
-      //Setting updateLine in the end of callback queue fixes this
-      //TODO: get rid of $timeout; investigate the initialization process issue;
-      $timeout(() => {
-        this.updateLine();
-      }, 0);
+      this.updateLine();
 
       return true;
     }
@@ -630,8 +617,7 @@ function mnD3ServiceFactory($timeout) {
           .html(getLegendsHtml.bind(this));
       }.bind(this), function (update) {
         update
-          .html(getLegendsHtml.bind(this))
-          .transition().duration(0);
+          .html(getLegendsHtml.bind(this));
       }.bind(this));
 
     this.clickCB = this.getLegends().nodes().map(function (node, i) {
