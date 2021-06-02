@@ -320,14 +320,15 @@ choose_node(Service, #plugin{proxy_strategy = local}, _Req) ->
 choose_node(Service, #plugin{proxy_strategy = sticky}, Req) ->
     Node = node(),
     case service_nodes(Service) of
-        [] -> {error, {service_not_running, Service}};
-        Nodes ->
+        {ok, Nodes} ->
             case lists:member(Node, Nodes) of
                 true -> {ok, Node, local};
                 false ->
                     {ok, menelaus_util:choose_node_consistently(Req, Nodes),
                      remote}
-            end
+            end;
+        Err ->
+            Err
     end.
 
 %% We don't want to proxy requests to nodes of different versions
@@ -338,7 +339,20 @@ service_nodes(Service) ->
     Versions = dict:map(?cut(proplists:get_value(advertised_version, _2)),
                         NodesInfoDict),
     {ok, LocalVsn} = dict:find(node(), Versions),
-    lists:usort([N || N <- Nodes, {ok, LocalVsn} =:= dict:find(N, Versions)]).
+    SameVersionNodes = lists:usort(
+                         [N || N <- Nodes,
+                               {ok, LocalVsn} =:= dict:find(N, Versions)]),
+    case SameVersionNodes =:= [] of
+        true ->
+            case Nodes =:= [] of
+                true ->
+                    {error, {service_not_running, Service}};
+                false ->
+                    {error, {no_compatible_service_running, Service}}
+            end;
+        false ->
+            {ok, SameVersionNodes}
+    end.
 
 address_and_port(UnsecurePortName, Node) ->
     Addr = node_address(Node),
@@ -439,12 +453,17 @@ member(Name, Names) ->
 server_error(Req, {service_not_running, Service}) ->
     Msg = list_to_binary("Service " ++ atom_to_list(Service)
                          ++ " not running on this node"),
-    send_server_error(Req, Msg);
+    send_server_error(Req, Msg, 404);
+server_error(Req, {no_compatible_service_running, Service}) ->
+    Msg = list_to_binary("Service " ++ atom_to_list(Service)
+                         ++ " not running on this node,"
+                         ++ " and compatible service is not found."),
+    send_server_error(Req, Msg, 503);
 server_error(Req, service_not_found) ->
-    send_server_error(Req, <<"Not found">>).
+    send_server_error(Req, <<"Not found">>, 404).
 
-send_server_error(Req, Msg) ->
-    menelaus_util:reply_text(Req, Msg, 404).
+send_server_error(Req, Msg, Code) ->
+    menelaus_util:reply_text(Req, Msg, Code).
 
 %%% =============================================================
 %%%
