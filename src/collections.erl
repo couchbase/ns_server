@@ -703,21 +703,30 @@ wait_for_manifest_uid(Bucket, BucketUuid, Uid) ->
                   Parent ! {Ref, ok};
               ({stopped, B}) when B =:= Bucket ->
                   Parent ! {Ref, stopped};
+              ({loaded, B}) when B =:= Bucket ->
+                  Parent ! {Ref, loaded};
               (_) ->
                   ok
           end),
-    try
-        case ns_memcached:get_collections_uid(Bucket) of
-            U when U >= Uid ->
-                ok;
-            _ ->
-                receive
-                    {Ref, Ret} ->
-                        Ret
-                end
-        end
+    try wait_for_manifest_uid_loop(Bucket, Ref, Uid)
     after
         (catch ns_pubsub:unsubscribe(Subscription))
+    end.
+
+wait_for_manifest_uid_loop(Bucket, Ref, Uid) ->
+    case ns_memcached:get_collections_uid(Bucket) of
+        {ok, U} when U >= Uid ->
+            ok;
+        {error, bucket_not_found} ->
+            receive
+                {Ref, loaded} ->
+                    wait_for_manifest_uid_loop(Bucket, Ref, Uid)
+            end;
+        _ ->
+            receive
+                {Ref, Ret} when Ret =/= loaded ->
+                    Ret
+            end
     end.
 
 wait_for_manifest_uid(Nodes, Bucket, BucketUuid, Uid, Timeout) ->

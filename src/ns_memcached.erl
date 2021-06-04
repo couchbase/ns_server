@@ -1536,10 +1536,16 @@ set_cluster_config(Rev, Blob) ->
       ?cut({reply, mc_client_binary:set_cluster_config(_, "", Rev, Blob)})).
 
 get_collections_uid(Bucket) ->
-    collections:convert_uid_from_memcached(
-      perform_very_long_call(
-        ?cut({reply, memcached_bucket_config:get_current_collections_uid(_)}),
-        Bucket)).
+    RV =
+        perform_very_long_call(
+          ?cut({reply, memcached_bucket_config:get_current_collections_uid(_)}),
+          Bucket),
+    case RV of
+        {error, {select_bucket_failed, {memcached_error, key_enoent, _}}} ->
+            {error, bucket_not_found};
+        UID ->
+            {ok, collections:convert_uid_from_memcached(UID)}
+    end.
 
 handle_connected_call(Call, From, #state{status = Status} = State) ->
     case Status of
