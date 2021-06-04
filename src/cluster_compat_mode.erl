@@ -35,6 +35,7 @@
          is_cluster_NEO/1,
          is_version_NEO/1,
          is_enterprise/0,
+         is_enterprise/1,
          is_saslauthd_enabled/0,
          is_cbas_enabled/0,
          supported_compat_version/0,
@@ -150,6 +151,9 @@ is_index_aware_rebalance_on() ->
 is_index_pausing_on() ->
     is_index_aware_rebalance_on() andalso
         (not ns_config:read_key_fast(index_pausing_disabled, false)).
+
+is_enterprise(Config) ->
+    ns_config:search(Config, {node, node(), is_enterprise}, false).
 
 is_enterprise() ->
     ns_config:read_key_fast({node, node(), is_enterprise}, false).
