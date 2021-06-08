@@ -109,8 +109,8 @@ set_initial_map(Map, MapOpts, Bucket, BucketConfig, Options) ->
             ok
     end,
 
-    ns_bucket:set_map(Bucket, Map),
     ns_bucket:set_map_opts(Bucket, MapOpts),
+    ns_bucket:set_map(Bucket, Map),
 
     push_config(Options).
 
