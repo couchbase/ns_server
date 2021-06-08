@@ -23,8 +23,9 @@ licenses/APL2.txt.
       {{labels ? labels[values.indexOf(value | async)] : valuesMapping(value | async) || mnPlaceholder}}
     </button>
   </div>
-  <div ngbDropdownMenu
-       class="panel margin-0 fit-content-width">
+  <div
+     ngbDropdownMenu
+     class="panel margin-0 fit-content-width">
     <mn-input-filter
        *ngIf="hasSearchInput | async"
        [group]="searchFilter.group"
@@ -33,40 +34,73 @@ licenses/APL2.txt.
     </mn-input-filter>
     <div class="scrollable">
       <span
-         *ngIf="!(hasSearchInput | async)">
-        <a
-           ngbDropdownItem
+         *ngIf="!(hasSearchInput | async)"
+         [formGroup]="hiddenRadioGroup">
+        <span
            class="block option"
-           href="javascript:void(0)"
-           (click)="optionSelected(value)"
-           (keydown.enter)="optionSelected(value);"
            *ngFor="let value of values; index as i;">
-          {{labels ? labels[i] : valuesMapping(value)}}
-        </a>
+          <input
+             formControlName="hiddenRadio"
+             name="hiddenRadio"
+             type="radio"
+             [attr.id]="'mn-select-' + id + '-' + i"
+             [attr.name]="'mn-select-' + id"
+             [value]="value"
+             (change)="selectOptionClickStream.next(value);">
+          <label
+             [attr.for]="'mn-select-' + id + '-' + i"
+             class="width-12"
+             tabindex="0"
+             (keydown.enter)="selectOptionClickStream.next(value);">
+            {{labels ? labels[i] : valuesMapping(value)}}
+          </label>
+        </span>
       </span>
       <span
-         *ngIf="(hasSearchInput | async) && !labels">
-        <a
-           ngbDropdownItem
+         *ngIf="(hasSearchInput | async) && !labels"
+         [formGroup]="hiddenRadioGroup">
+        <span
            class="block option"
-           href="javascript:void(0)"
-           (click)="selectOptionClickStream.next(value)"
-           (keydown.enter)="selectOptionClickStream.next(value)"
-           *ngFor="let value of preparedValues | async">
-          {{valuesMapping(value)}}
-        </a>
+           *ngFor="let value of preparedValues | async; index as i;">
+          <input
+             formControlName="hiddenRadio"
+             name="hiddenRadio"
+             type="radio"
+             [attr.id]="'mn-select-' + id + '-' + i"
+             [attr.name]="'mn-select-' + id"
+             [value]="value"
+             (change)="selectOptionClickStream.next(value);">
+          <label
+             [attr.for]="'mn-select-' + id + '-' + i"
+             class="width-12"
+             tabindex="0"
+             (keydown.enter)="selectOptionClickStream.next(value);">
+            {{valuesMapping(value)}}
+          </label>
+        </span>
       </span>
       <span
-         *ngIf="(hasSearchInput | async) && labels">
-        <a
-           ngbDropdownItem
+         *ngIf="(hasSearchInput | async) && labels"
+         [formGroup]="hiddenRadioGroup">
+        <span
            class="block option"
-           href="javascript:void(0)"
-           (click)="selectLabelClickStream.next(label)"
-           (keydown.enter)="selectLabelClickStream.next(label)"
-           *ngFor="let label of preparedLabels | async">
-          {{label}}
-        </a>
+           *ngFor="let label of preparedLabels | async; index as i;">
+          <input
+             formControlName="hiddenRadio"
+             name="hiddenRadio"
+             type="radio"
+             [attr.id]="'mn-select-' + id + '-' + i"
+             [attr.name]="'mn-select-' + id"
+             [value]="label"
+             (change)="selectLabelClickStream.next(label);">
+          <label
+             [attr.for]="'mn-select-' + id + '-' + i"
+             class="width-12"
+             tabindex="0"
+             (keydown.enter)="selectLabelClickStream.next(label);">
+            {{label}}
+          </label>
+        </span>
       </span>
     </div>
   </div>

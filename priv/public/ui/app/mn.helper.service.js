@@ -42,6 +42,10 @@ class MnHelperService {
     return {Ki: 1024, Mi: 1024 * 1024, Gi: 1024 * 1024 * 1024}
   }
 
+  generateID() {
+    return Math.random().toString(36).substr(2, 9);
+  }
+
   invert(v) { //TODO: sould be replaced with Ramda.not
     return !v;
   }

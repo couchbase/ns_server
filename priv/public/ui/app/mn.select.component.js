@@ -8,12 +8,14 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { ChangeDetectionStrategy, Component } from '/ui/web_modules/@angular/core.js';
+import { ChangeDetectionStrategy, Component, ViewChild } from '/ui/web_modules/@angular/core.js';
 import { MnLifeCycleHooksToStream } from "./mn.core.js";
-import { startWith } from '/ui/web_modules/rxjs/operators.js';
+import { startWith, distinctUntilChanged } from '/ui/web_modules/rxjs/operators.js';
 import { BehaviorSubject, Subject } from '/ui/web_modules/rxjs.js';
 import { MnHelperService } from './mn.helper.service.js';
+import { FormBuilder } from "/ui/web_modules/@angular/forms.js";
 import { pluck, shareReplay, map, takeUntil, withLatestFrom } from '/ui/web_modules/rxjs/operators.js';
+import { NgbDropdown } from "/ui/web_modules/@ng-bootstrap/ng-bootstrap.js";
 
 export { MnSelectComponent };
 
@@ -33,18 +35,27 @@ class MnSelectComponent extends MnLifeCycleHooksToStream {
         "placement",
         "hasSearch"
       ],
-      changeDetection: ChangeDetectionStrategy.OnPush
+      changeDetection: ChangeDetectionStrategy.OnPush,
+      queries: {
+        ngbDropdownView: new ViewChild(NgbDropdown)
+      }
     })
   ]}
 
   static get parameters() { return [
-    MnHelperService
+    MnHelperService,
+    FormBuilder
   ]}
 
-  constructor(MnHelperService) {
+  constructor(MnHelperService, FormBuilder) {
     super();
 
     this.mnHelperService = MnHelperService;
+    this.hiddenRadioGroup = FormBuilder.group({
+      hiddenRadio: null
+    });
+
+    this.id = this.mnHelperService.generateID();
   }
 
   ngOnInit() {
@@ -61,8 +72,13 @@ class MnSelectComponent extends MnLifeCycleHooksToStream {
     this.dropdownFormControl = this.group.get(this.mnFormControlName);
     if (this.dropdownFormControl) {
       this.disabled = new BehaviorSubject(this.dropdownFormControl.disabled);
-      this.value = this.dropdownFormControl.valueChanges.pipe(startWith(this.dropdownFormControl.value));
       this.dropdownFormControl.registerOnDisabledChange(disabled => this.disabled.next(disabled));
+
+      this.value = this.dropdownFormControl.valueChanges.pipe(startWith(this.dropdownFormControl.value));
+      this.value
+        .pipe(distinctUntilChanged(),
+              takeUntil(this.mnOnDestroy))
+        .subscribe(this.setHiddenRadioValue.bind(this));
     }
   }
 
@@ -74,6 +90,7 @@ class MnSelectComponent extends MnLifeCycleHooksToStream {
 
     var valuesStream = this.mnOnChanges
       .pipe(pluck("values", "currentValue"));
+
     this.preparedValues = valuesStream
       .pipe(this.searchFilter.pipe,
             shareReplay({refCount: true, bufferSize: 1}));
@@ -87,6 +104,7 @@ class MnSelectComponent extends MnLifeCycleHooksToStream {
 
     var labelsStream = this.mnOnChanges
       .pipe(pluck("labels", "currentValue"));
+
     this.preparedLabels = labelsStream
       .pipe(this.searchFilter.pipe,
             shareReplay({refCount: true, bufferSize: 1}));
@@ -97,6 +115,13 @@ class MnSelectComponent extends MnLifeCycleHooksToStream {
       .subscribe(([selectedLabel, labels, values]) => {
         this.optionSelected(values[labels.indexOf(selectedLabel)]);
       });
+  }
+
+  setHiddenRadioValue(value) {
+    let patchedValue = (this.hasSearch && this.labels) ?
+      this.labels[this.values.indexOf(value)] : value;
+
+    this.hiddenRadioGroup.patchValue({hiddenRadio: patchedValue});
   }
 
   /**
@@ -119,5 +144,7 @@ class MnSelectComponent extends MnLifeCycleHooksToStream {
     if (this.hasSearchInput) {
       this.searchFilter.group.get('value').setValue('');
     }
+
+    this.ngbDropdownView.close();
   }
 }

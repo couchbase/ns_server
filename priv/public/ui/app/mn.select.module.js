@@ -14,6 +14,7 @@ import { CommonModule } from '/ui/web_modules/@angular/common.js';
 import { MnSharedModule } from './mn.shared.module.js';
 import { NgbModule } from '/ui/web_modules/@ng-bootstrap/ng-bootstrap.js';
 import { MnInputFilterModule } from './mn.input.filter.module.js';
+import { ReactiveFormsModule } from '/ui/web_modules/@angular/forms.js';
 
 export { MnSelectModule }
 
@@ -24,7 +25,8 @@ class MnSelectModule {
         CommonModule,
         MnSharedModule,
         NgbModule,
-        MnInputFilterModule
+        MnInputFilterModule,
+        ReactiveFormsModule
       ],
       declarations: [
         MnSelectComponent
