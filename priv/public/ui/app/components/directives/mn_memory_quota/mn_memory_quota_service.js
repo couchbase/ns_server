@@ -83,36 +83,31 @@ function mnMemoryQuotaServiceFactory($http, $window, mnPoolDefault, mnHelper, IE
     });
   }
 
-  function toggleServices(service, bool, config) {
-    _.forEach(config.services.model, function (_, service1) {
-      if ((config.services.disabled && config.services.disabled[service1]) ||
-          (config.displayedServices && !config.displayedServices[service1])
-         ) {
-        return;
-      }
-      config.services.model[service1] = bool;
-    });
-  }
-
-  function isThereOther(service, config) {
-    return _.keys(config.services.model)
-      .some(function (service1) {
-        return (!config.displayedServices || config.displayedServices[service1]) &&
-          (!config.services.disabled || !config.services.disabled[service1]) &&
-          config.services.model[service1] &&
-          service1 !== service;
+  function toggleServices(service, config, bool) {
+    Object
+      .keys(config.services.model)
+      .forEach(service1 => {
+        config.services.model[service1] = bool;
       });
   }
 
-  function handleAltAndClick(service, config) {
-    if (!$window.event.altKey) {
+  function isThereOther(service, config) {
+    return Object
+      .keys(config.services.model)
+      .some(service1 => config.services.model[service1] && service1 !== service);
+  }
+
+  function handleAltAndClick(service, config, $event) {
+    if (!$event.altKey) {
       return;
     }
-    if (isThereOther(service, config)) {
-      toggleServices(service, false, config);
-    } else {
-      toggleServices(service, true, config);
-    }
+
+    //if label has attribute for then it triggers additional click event on input.
+    //as if it's real user click, so we should intercept click event here
+    $event.preventDefault();
+
+    toggleServices(service, config, !isThereOther(service, config));
+
     config.services.model[service] = true;
   }
 

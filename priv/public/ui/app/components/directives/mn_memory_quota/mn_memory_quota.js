@@ -39,8 +39,6 @@ function mnMemoryQuotaDirective($window, mnMemoryQuotaService) {
     //should be removed after implementation of Controller As syntax
     $scope.mnMemoryQuotaController = $scope;
 
-    $scope.change = mnMemoryQuotaService.handleAltAndClick;
-
     $scope.calculateTotalQuota = calculateTotalQuota;
 
     function getServiceFieldName(service) {
