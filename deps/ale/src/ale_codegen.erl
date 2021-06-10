@@ -126,8 +126,12 @@ generic_loglevel(LoggerName, LogLevel, Formatter, Preformatted, Raw) ->
          true ->
              io_lib:format(
                "Info = ale_utils:assemble_info(~s, ~p, M, F, L, Data),"
-               "CharsLimit = proplists:get_value(chars_limit, Opts, ~B),"
-               "UserMsg = io_lib:format(Fmt, Args, [{chars_limit, CharsLimit}]),",
+               "UserMsg = case Args =/= [] of"
+               "              true ->"
+               "                  CharsLimit = proplists:get_value(chars_limit, Opts, ~B),"
+               "                  io_lib:format(Fmt, Args, [{chars_limit, CharsLimit}]);"
+               "              false -> Fmt"
+               "          end,",
                [LoggerName, LogLevel, ?CHARS_LIMIT_DEFAULT]);
          false ->
              ""
