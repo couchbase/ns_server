@@ -56,6 +56,13 @@ class MnSelectComponent extends MnLifeCycleHooksToStream {
     });
 
     this.id = this.mnHelperService.generateID();
+
+    this.selectOptionClickStream = new Subject();
+    this.selectLabelClickStream = new Subject();
+
+    this.selectOptionClickStream
+      .pipe(takeUntil(this.mnOnDestroy))
+      .subscribe(this.optionSelected.bind(this));
   }
 
   ngOnInit() {
@@ -84,8 +91,6 @@ class MnSelectComponent extends MnLifeCycleHooksToStream {
 
   prepareSearch() {
     let searchMinimumOptionsNumber = 10;
-    this.selectOptionClickStream = new Subject();
-    this.selectLabelClickStream = new Subject();
     this.searchFilter = this.mnHelperService.createFilter(this);
 
     var valuesStream = this.mnOnChanges
@@ -97,10 +102,6 @@ class MnSelectComponent extends MnLifeCycleHooksToStream {
 
     this.hasSearchInput = valuesStream
       .pipe(map(values => (this.hasSearch && (values || []).length >= searchMinimumOptionsNumber) || false));
-
-    this.selectOptionClickStream
-      .pipe(takeUntil(this.mnOnDestroy))
-      .subscribe(selectedOption => this.optionSelected(selectedOption));
 
     var labelsStream = this.mnOnChanges
       .pipe(pluck("labels", "currentValue"));
