@@ -61,8 +61,6 @@ is_notable_config_key(audit) ->
     true;
 is_notable_config_key({node, N, audit}) ->
     N =:= node();
-is_notable_config_key(cluster_compat_version) ->
-    true;
 is_notable_config_key(_) ->
     false.
 
@@ -88,8 +86,7 @@ sync() ->
 
 init([]) ->
     {Global, Local} = read_config(),
-    CompatMode = cluster_compat_mode:get_compat_version(),
-    Merged = prepare_params(Global, Local, CompatMode),
+    Merged = prepare_params(Global, Local),
 
     Self = self(),
     ns_pubsub:subscribe_link(ns_config_events,
@@ -133,8 +130,7 @@ handle_info(notify_memcached, State) ->
 handle_info(update_audit_json, #state{merged = OldMerged}) ->
     misc:flush(update_audit_json),
     {Global, Local} = read_config(),
-    CompatMode = cluster_compat_mode:get_compat_version(),
-    Merged = prepare_params(Global, Local, CompatMode),
+    Merged = prepare_params(Global, Local),
     NewState = #state{global = Global, merged = Merged},
     case Merged of
         OldMerged ->
@@ -189,9 +185,8 @@ get_log_path() ->
             end
     end.
 
-prepare_params(Global, Local, CompatMode) ->
-    Merged = lists:ukeymerge(1, Local, Global),
-    massage_params(CompatMode, Merged).
+prepare_params(Global, Local) ->
+    massage_params(lists:ukeymerge(1, Local, Global)).
 
 calculate_event_states(Params) ->
     %% leave only those events that change the default
@@ -213,7 +208,7 @@ calculate_event_states(Params) ->
          [{integer_to_binary(Id), disabled} ||
              Id <- Disabled, Filter(Id, false)]}.
 
-massage_params(CompatMode, Params) ->
+massage_params(Params) ->
     EventStates = calculate_event_states(Params),
     DisabledUsers = proplists:get_value(disabled_users, Params, []),
 
@@ -224,7 +219,7 @@ massage_params(CompatMode, Params) ->
                                       {filtering_enabled, FilteringEnabled},
                                       {disabled_userids, DisabledUsers}]),
 
-    UID = integer_to_list(erlang:phash2({NewParams, CompatMode})),
+    UID = integer_to_list(erlang:phash2(NewParams)),
 
     [{uuid, UID} | NewParams].
 
