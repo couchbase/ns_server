@@ -85,7 +85,6 @@
          set_map/2,
          set_map_opts/2,
          set_servers/2,
-         filter_ready_buckets/1,
          update_bucket_props/2,
          update_bucket_props/4,
          node_bucket_names/1,
@@ -904,15 +903,6 @@ do_delete_bucket(chronicle, BucketName) ->
         not_found ->
             {exit, {not_found, BucketName}, nothing}
     end.
-
-filter_ready_buckets(BucketInfos) ->
-    lists:filter(fun ({_Name, PList}) ->
-                         case get_servers(PList) of
-                             [_|_] = List ->
-                                 lists:member(node(), List);
-                             _ -> false
-                         end
-                 end, BucketInfos).
 
 %% Updates properties of bucket of given name and type.  Check of type
 %% protects us from type change races in certain cases.

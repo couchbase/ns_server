@@ -175,8 +175,7 @@ stats_read_permission(BucketName) ->
 handle_bucket_stats(_PoolId, Id, Req) ->
     Params = mochiweb_request:parse_qs(Req),
     PropList1 = build_bucket_stats_ops_response(all, Id, Params, true),
-    PropList2 = build_bucket_stats_hks_response(Id),
-    menelaus_util:reply_json(Req, {struct, PropList1 ++ PropList2}).
+    menelaus_util:reply_json(Req, {struct, PropList1}).
 
 check_bucket(BucketName, Req) ->
     Permission = stats_read_permission(BucketName),
@@ -239,16 +238,10 @@ handle_bucket_node_stats(_PoolId, BucketName, HostName, Req) ->
         {ok, Node} ->
             Params = mochiweb_request:parse_qs(Req),
             Ops = build_bucket_stats_ops_response([Node], BucketName, Params, true),
-            BucketsTopKeys = case hot_keys_keeper:bucket_hot_keys(BucketName, Node) of
-                                 undefined -> [];
-                                 X -> X
-                             end,
-
-            HKS = jsonify_hks(BucketsTopKeys),
             menelaus_util:reply_json(
               Req,
               {struct, [{hostname, list_to_binary(HostName)}
-                        | HKS ++ Ops]})
+                        | Ops]})
     end.
 
 handle_stats_section_for_node(_PoolId, Id, HostName, Req) ->
@@ -1176,38 +1169,6 @@ build_bucket_stats_ops_response(Nodes, BucketName, Params, WithSystemStats) ->
                              L -> lists:last(L)
                          end},
             {interval, Step * 1000}]}}].
-
-is_safe_key_name(Name) ->
-    lists:all(fun (C) ->
-                      C >= 16#20 andalso C =< 16#7f
-              end, Name).
-
-
-build_bucket_stats_hks_response(BucketName) ->
-    build_bucket_stats_hks_response(BucketName, all).
-
-build_bucket_stats_hks_response(BucketName, all) ->
-    handle_hot_keys_resp(hot_keys_keeper:bucket_hot_keys(BucketName));
-build_bucket_stats_hks_response(BucketName, [Node]) ->
-    handle_hot_keys_resp(hot_keys_keeper:bucket_hot_keys(BucketName, Node)).
-
-handle_hot_keys_resp(Resp) ->
-    BucketsTopKeys = case Resp of
-                         undefined -> [];
-                         X -> X
-                     end,
-    jsonify_hks(BucketsTopKeys).
-
-jsonify_hks(BucketsTopKeys) ->
-    HotKeyStructs = lists:map(fun ({Key, PList}) ->
-                                      EscapedKey = case is_safe_key_name(Key) of
-                                                       true -> Key;
-                                                       _ -> "BIN_" ++ base64:encode_to_string(Key)
-                                                   end,
-                                      {struct, [{name, list_to_binary(EscapedKey)},
-                                                {ops, proplists:get_value(ops, PList)}]}
-                              end, BucketsTopKeys),
-    [{hot_keys, HotKeyStructs}].
 
 %% by default we aggregate stats between nodes using SUM
 %% but in some cases other methods should be used
@@ -2692,12 +2653,9 @@ serve_aggregated_ui_stats(Req, Params) ->
     DirURL = "/pools/default/buckets/" ++
         menelaus_util:concat_url_path([Bucket, "statsDirectory"], DirQS),
 
-    [{hot_keys, HKs0}] = build_bucket_stats_hks_response(Bucket, Nodes),
-    HKs = [{HK} || {struct, HK} <- HKs0],
-    Extra = [{hot_keys, HKs}],
     output_ui_stats(Req, Stats,
                     {[{url, list_to_binary(DirURL)}]},
-                    Wnd, Bucket, null, NewHaveStamp, Extra).
+                    Wnd, Bucket, null, NewHaveStamp).
 
 maybe_remove_port_8091(H) ->
     case lists:reverse(binary_to_list(H)) of
@@ -2790,10 +2748,10 @@ serve_specific_ui_stats(Req, StatName, Params) ->
                     [{perNode, {FullStats}}],
                     ServeDirectory,
                     Wnd, Bucket, list_to_binary(StatName),
-                    [{perNode, LastTStamp}], []).
+                    [{perNode, LastTStamp}]).
 
 
-output_ui_stats(Req, Stats, Directory, Wnd, Bucket, StatName, NewHaveStamp, Extra) ->
+output_ui_stats(Req, Stats, Directory, Wnd, Bucket, StatName, NewHaveStamp) ->
     Step = element(1, Wnd),
     J = [{stats, {Stats}},
          {directory, Directory},
@@ -2806,7 +2764,7 @@ output_ui_stats(Req, Stats, Directory, Wnd, Bucket, StatName, NewHaveStamp, Extr
                         end},
          {mainStatsBlock, element(1, hd(Stats))},
          {specificStatName, StatName},
-         {lastTStamp, {NewHaveStamp}} | Extra],
+         {lastTStamp, {NewHaveStamp}}],
     menelaus_util:reply_json(Req, {J}).
 
 get_indexes(Service, BucketId) ->

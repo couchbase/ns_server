@@ -92,7 +92,6 @@
          set_vbuckets/2,
          stats/2,
          warmup_stats/1,
-         topkeys/1,
          raw_stats/5,
          flush/1,
          set/6, add/5, get/4, delete/4,
@@ -583,20 +582,6 @@ do_handle_call({set_cluster_config, Rev, Blob}, _From,
                State = #state{bucket = Bucket, sock = Sock}) ->
     {reply, mc_client_binary:set_cluster_config(Sock, Bucket, Rev, Blob),
      State};
-do_handle_call(topkeys, _From, State) ->
-    Reply = mc_binary:quick_stats(
-              State#state.sock, <<"topkeys">>,
-              fun (K, V, Acc) ->
-                      Tokens = binary:split(V, <<",">>, [global]),
-                      PL = [case binary:split(S, <<"=">>) of
-                                [Key, Value] ->
-                                    {binary_to_atom(Key, latin1),
-                                     list_to_integer(binary_to_list(Value))}
-                            end || S <- Tokens],
-                      [{binary_to_list(K), PL} | Acc]
-              end,
-              []),
-    {reply, Reply, State};
 do_handle_call({get_random_key, CollectionsUid}, _From, State) ->
     CollectionsEnabled = proplists:get_bool(collections,
                                             State#state.worker_features),
@@ -1137,13 +1122,6 @@ stats(Bucket, Key) ->
 -spec warmup_stats(bucket_name()) -> [{binary(), binary()}].
 warmup_stats(Bucket) ->
     do_call(server(Bucket), Bucket, warmup_stats, ?TIMEOUT).
-
--spec topkeys(bucket_name()) ->
-                     {ok, [{nonempty_string(), [{atom(), integer()}]}]} |
-                     mc_error().
-topkeys(Bucket) ->
-    do_call(server(Bucket), Bucket, topkeys, ?TIMEOUT).
-
 
 -spec raw_stats(node(), bucket_name(), binary(), fun(), any()) -> {ok, any()} | {exception, any()} | {error, any()}.
 raw_stats(Node, Bucket, SubStats, Fn, FnState) ->

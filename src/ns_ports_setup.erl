@@ -598,20 +598,6 @@ memcached_environment_variables(Config) ->
     %% Environment variables common to all execution environments.
     CommonEnv =
         [{"EVENT_NOSELECT", "1"},
-         %% NOTE: bucket engine keeps this number of top keys
-         %% per top-keys-shard. And number of shards is hard-coded to 8
-         %%
-         %% So with previous setting of 100 we actually got 800
-         %% top keys every time. Even if we need just 10.
-         %%
-         %% See hot_keys_keeper.erl TOP_KEYS_NUMBER constant
-         %%
-         %% Because of that heavy sharding we cannot ask for
-         %% very small number, which would defeat usefulness
-         %% LRU-based top-key maintenance in memcached. 5 seems
-         %% not too small number which means that we'll deal
-         %% with 40 top keys.
-         {"MEMCACHED_TOP_KEYS", "5"},
          {"CBSASL_PWFILE", {"~s", [{isasl, path}]}}],
 
     %% Some execution environments require JE_MALLOC_CONF.
