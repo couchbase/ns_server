@@ -12,20 +12,24 @@
 %%
 -module(menelaus_web_cache).
 -include("ns_common.hrl").
+-include("cut.hrl").
 
 -export([start_link/0,
          get_static_value/1,
          lookup_or_compute_with_expiration/3]).
 
+-define(CLEANUP_INTERVAL, ?get_timeout(cleanup, 600000)).
+
 start_link() ->
-    work_queue:start_link(menelaus_web_cache, fun cache_init/0).
+    work_queue:start_link(?MODULE, fun cache_init/0).
 
 cache_init() ->
-    ets:new(menelaus_web_cache, [set, named_table]),
+    ets:new(?MODULE, [set, named_table]),
     VersionsPList = build_versions(),
-    ets:insert(menelaus_web_cache, {versions, VersionsPList}),
+    ets:insert(?MODULE, {versions, VersionsPList}),
     PackageVariant = read_package_variant(),
-    ets:insert(menelaus_web_cache, {package_variant, PackageVariant}).
+    ets:insert(?MODULE, {package_variant, PackageVariant}),
+    schedule_cleanup().
 
 implementation_version(Versions) ->
     list_to_binary(proplists:get_value(ns_server, Versions, "unknown")).
@@ -51,79 +55,65 @@ read_package_variant() ->
     end.
 
 get_static_value(Key) ->
-    [{Key, Value}] = ets:lookup(menelaus_web_cache, Key),
+    [{Key, Value}] = ets:lookup(?MODULE, Key),
     Value.
 
-lookup_value_with_expiration(Key, Nothing, InvalidPred) ->
+lookup_value_with_expiration(Key, InvalidPred) ->
     Now = erlang:monotonic_time(millisecond),
-    case ets:lookup(menelaus_web_cache, Key) of
+    case ets:lookup(?MODULE, Key) of
         [] ->
-            {Nothing, Now};
+            {not_found, Now};
         [{_, Value, Expiration, InvalidationState}] ->
             case Now =< Expiration of
                 true ->
                     case InvalidPred(Key, Value, InvalidationState) of
                         true ->
-                            {Nothing, Now};
+                            {not_found, Now};
                         _ ->
-                            Value
+                            {ok, Value}
                     end;
                 _ ->
-                    {Nothing, Now}
+                    {not_found, Now}
             end
     end.
 
 lookup_or_compute_with_expiration(Key, ComputeBody, InvalidPred) ->
-    case lookup_value_with_expiration(Key, undefined, InvalidPred) of
-        {undefined, _} ->
+    case lookup_value_with_expiration(Key, InvalidPred) of
+        {not_found, _} ->
             compute_with_expiration(Key, ComputeBody, InvalidPred);
-        Value ->
+        {ok, Value} ->
             ns_server_stats:notify_counter(<<"web_cache_hits">>),
             Value
     end.
 
 compute_with_expiration(Key, ComputeBody, InvalidPred) ->
-    CachePid = whereis(menelaus_web_cache),
-    case CachePid =:= self() of
-        true ->
-            SeenKeys = get_default(seen_keys_stack, []),
-            case lists:member(Key, SeenKeys) of
-                true ->
-                    erlang:error({loop_detected, Key, SeenKeys});
-                false ->
-                    do_compute_with_expiration(Key, ComputeBody, InvalidPred)
-            end;
-        false ->
-            work_queue:submit_sync_work(
-              CachePid,
-              fun () ->
-                      do_compute_with_expiration(Key, ComputeBody, InvalidPred)
-              end)
-    end.
+    work_queue:submit_sync_work(
+      ?MODULE, ?cut(do_compute_with_expiration(Key, ComputeBody, InvalidPred))).
 
 do_compute_with_expiration(Key, ComputeBody, InvalidPred) ->
-    case lookup_value_with_expiration(Key, undefined, InvalidPred) of
-        {undefined, Now} ->
-            SeenKeys = get_default(seen_keys_stack, []),
-            erlang:put(seen_keys_stack, [Key | SeenKeys]),
-            try
-                {Value, Age, InvalidationState} = ComputeBody(),
-                Expiration = Now + Age,
-                ns_server_stats:notify_counter(<<"web_cache_updates">>),
-                ets:insert(menelaus_web_cache, {Key, Value, Expiration, InvalidationState}),
-                Value
-            after
-                erlang:put(seen_keys_stack, SeenKeys)
-            end;
-        Value ->
+    case lookup_value_with_expiration(Key, InvalidPred) of
+        {not_found, Now} ->
+            {Value, Age, InvalidationState} = ComputeBody(),
+            Expiration = Now + Age,
+            ns_server_stats:notify_counter(<<"web_cache_updates">>),
+            ets:insert(?MODULE, {Key, Value, Expiration, InvalidationState}),
+            Value;
+        {ok, Value} ->
             ns_server_stats:notify_counter(<<"web_cache_inner_hits">>),
             Value
     end.
 
-get_default(Key, Default) ->
-    case erlang:get(Key) of
-        undefined ->
-            Default;
-        V ->
-            V
-    end.
+schedule_cleanup() ->
+    {ok, _} = timer:apply_after(?CLEANUP_INTERVAL, work_queue, submit_work,
+                                [self(), fun cleanup/0]).
+
+cleanup() ->
+    Now = erlang:monotonic_time(millisecond),
+    ToDelete = ets:foldl(
+                 fun ({Key, _, Expiration, _}, Acc) when Now > Expiration ->
+                         [Key | Acc];
+                     (_, Acc) ->
+                         Acc
+                 end, [], ?MODULE),
+    [ets:delete(?MODULE, K) || K <- ToDelete],
+    schedule_cleanup().
