@@ -13,7 +13,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/0, refresh/1]).
+-export([start_link/0, refresh/1, apply_to_file/2]).
 
 -include("ns_common.hrl").
 
@@ -26,6 +26,9 @@ start_link() ->
 
 refresh(Item) ->
     gen_server:cast(?MODULE, {refresh, Item}).
+
+apply_to_file(TmpPath, Path) ->
+    gen_server:call(?MODULE, {apply_to_file, TmpPath, Path}).
 
 init([]) ->
     ToRestart =
@@ -42,6 +45,9 @@ init([]) ->
 code_change(_OldVsn, State, _) -> {ok, State}.
 terminate(_Reason, _State) -> ok.
 
+handle_call({apply_to_file, TmpPath, Path}, _From, State) ->
+    ?log_debug("File rename from ~p to ~p is requested", [TmpPath, Path]),
+    {reply, file:rename(TmpPath, Path), State};
 handle_call(_Msg, _From, State) ->
     {reply, not_implemented, State}.
 

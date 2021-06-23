@@ -163,7 +163,7 @@ write_cfg(#state{path = Path,
 rename_and_refresh(#state{path = Path,
                           tmp_path = TmpPath,
                           module = Module}, Tries, SleepTime) ->
-    case file:rename(TmpPath, Path) of
+    case memcached_refresh:apply_to_file(TmpPath, Path) of
         ok ->
             ok = Module:refresh(),
             ?log_debug("Successfully renamed ~p to ~p", [TmpPath, Path]);
