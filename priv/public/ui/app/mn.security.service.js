@@ -15,6 +15,7 @@ import {switchMap, shareReplay, map, pluck} from '../web_modules/rxjs/operators.
 import {MnHttpRequest} from './mn.http.request.js';
 import {MnAdminService} from './mn.admin.service.js';
 import {MnPoolsService} from './mn.pools.service.js';
+import {MnPermissions} from './ajs.upgraded.providers.js';
 import {MN_HTTP_REQUEST_RESTRICTED} from './constants/constants.js';
 
 export {MnSecurityService};
@@ -27,14 +28,16 @@ class MnSecurityService {
   static get parameters() { return [
     HttpClient,
     MnAdminService,
-    MnPoolsService
+    MnPoolsService,
+    MnPermissions
   ]}
 
-  constructor(http, mnAdminService, mnPoolsService) {
+  constructor(http, mnAdminService, mnPoolsService, mnPermissions) {
     this.http = http;
 
     let isEnterprise = mnPoolsService.stream.isEnterprise;
     let compatVersion55 = mnAdminService.stream.compatVersion55;
+    let permissions = mnPermissions.stream;
 
     this.stream = {};
 
@@ -51,10 +54,10 @@ class MnSecurityService {
     let getLogRedaction =
       (new BehaviorSubject()).pipe(
         switchMap(this.getLogRedaction.bind(this)));
-    this.stream.shouldGetLogRedaction = combineLatest(isEnterprise, compatVersion55)
-      .pipe(switchMap(([isEnterprise, compatVersion55]) =>
-                        isEnterprise && compatVersion55 ? getLogRedaction : of(MN_HTTP_REQUEST_RESTRICTED)),
-                        shareReplay({refCount: true, bufferSize: 1}));
+    this.stream.shouldGetLogRedaction = combineLatest(isEnterprise, compatVersion55, permissions)
+      .pipe(switchMap(([isEnterprise, compatVersion55, permissions]) =>
+                        isEnterprise && compatVersion55 && permissions.cluster.settings.read ? getLogRedaction : of(MN_HTTP_REQUEST_RESTRICTED)),
+            shareReplay({refCount: true, bufferSize: 1}));
 
     this.stream.getClientCertAuth =
       (new BehaviorSubject()).pipe(
@@ -83,8 +86,8 @@ class MnSecurityService {
     let getClusterEncryption = this.stream.getSettingsSecurity
       .pipe(pluck('clusterEncryptionLevel'));
     this.stream.shouldGetClusterEncryption = isEnterprise
-    .pipe(switchMap(isEnterprise => isEnterprise ? getClusterEncryption : of(MN_HTTP_REQUEST_RESTRICTED)),
-      shareReplay({refCount: true, bufferSize: 1}));
+      .pipe(switchMap(isEnterprise => isEnterprise ? getClusterEncryption : of(MN_HTTP_REQUEST_RESTRICTED)),
+            shareReplay({refCount: true, bufferSize: 1}));
 
     this.stream.postLogRedaction =
       new MnHttpRequest(this.postLogRedaction.bind(this))

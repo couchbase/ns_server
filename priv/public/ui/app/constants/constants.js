@@ -78,6 +78,9 @@ let IEC = {
   Gi: 1073741824
 };
 
+let servicesEnterprise = ["kv", "n1ql", "index", "fts", "cbas", "eventing", "backup"];
+let servicesCE = ["kv", "index", "fts", "n1ql"];
+
 class MnHttpRequestRestricted {
   constructor(){}
 }
@@ -92,5 +95,7 @@ export {
   docBytesLimit,
   viewsPerPageLimit,
   IEC,
+  servicesEnterprise,
+  servicesCE,
   MN_HTTP_REQUEST_RESTRICTED
 };

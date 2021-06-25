@@ -19,8 +19,8 @@ licenses/APL2.txt.
      ng-class="{['dynamic_' + node.status] : !serversCtl.isDetailsOpened(node.hostname) && !(serversItemCtl.isNodeInactiveFailed || serversItemCtl.isNodeInactiveAdded || serversItemCtl.isNodeUnhealthy || (adminCtl.tasks.inRebalance && adminCtl.tasks.tasksRebalance.status === 'running' && rbac.cluster.tasks.read) || (!serversItemCtl.isNodeInactiveAdded && !serversItemCtl.isNodeUnhealthy && node.pendingEject)),
                 ['dynamic_' + node.clusterMembership] : !serversCtl.isDetailsOpened(node.hostname) && !(serversItemCtl.isNodeInactiveFailed || serversItemCtl.isNodeInactiveAdded || serversItemCtl.isNodeUnhealthy || (adminCtl.tasks.inRebalance && adminCtl.tasks.tasksRebalance.status === 'running' && rbac.cluster.tasks.read))}">
     <span class="cbui-table-cell flex-grow-2-5 cbui-tablerow-title flex-left">
-      <span class="ellipsis padding-right-min" title="{{node.hostname | mnStripPortHTML:serversCtl.nodes.allNodes}}">
-       {{node.configuredHostname | mnStripPortHTML:serversCtl.nodes.allNodes}}
+      <span class="ellipsis padding-right-min" title="{{node.hostname | mnStripPortHTML}}">
+        {{node.configuredHostname | mnStripPortHTML}}
       </span>
     </span>
     <span

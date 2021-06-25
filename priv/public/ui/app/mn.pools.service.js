@@ -14,6 +14,8 @@ import { HttpClient } from '../web_modules/@angular/common/http.js';
 import { BehaviorSubject } from '../web_modules/rxjs.js';
 import { switchMap, shareReplay, pluck,
          distinctUntilChanged, map } from '../web_modules/rxjs/operators.js';
+import { servicesEnterprise } from '/ui/app/constants/constants.js';
+import { servicesCE } from '/ui/app/constants/constants.js';
 
 export { MnPoolsService, MnPoolsServiceModule };
 
@@ -52,12 +54,13 @@ class MnPoolsService {
     this.stream.isEnterprise =
       this.stream.getSuccess.pipe(pluck("isEnterprise"), distinctUntilChanged());
 
+    this.stream.isStrippingPort =
+      this.stream.getSuccess.pipe(pluck("isStrippingPort"), distinctUntilChanged());
+
     this.stream.mnServices =
       this.stream.isEnterprise
       .pipe(map(function (isEnterprise) {
-        return isEnterprise ?
-          ["kv", "n1ql", "index", "fts", "cbas", "eventing", "backup"] :
-          ["kv", "index", "fts", "n1ql"];
+        return isEnterprise ? servicesEnterprise : servicesCE;
       }), shareReplay({refCount: true, bufferSize: 1}));
 
     this.stream.quotaServices =

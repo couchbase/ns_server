@@ -16,7 +16,7 @@
   <div class="row flex-left items-top resp-sml">
     <div class="cbui-table-props cursor-text" ng-click="$event.stopPropagation();">
       <div class="break-word">
-        <strong>Addresses:</strong> {{node.hostname | mnStripPortHTML:serversCtl.nodes.allNodes}} (int) <span ng-if="serversListItemDetailsCtl.server.details.alternateAddresses">
+        <strong>Addresses:</strong> {{node.hostname | mnStripPortHTML}} (int) <span ng-if="serversListItemDetailsCtl.server.details.alternateAddresses">
           | {{serversListItemDetailsCtl.server.details.alternateAddresses.external.hostname}}<span ng-if="serversListItemDetailsCtl.server.details.alternateAddresses.external.ports.mgmt">:{{serversListItemDetailsCtl.server.details.alternateAddresses.external.ports.mgmt}}
           </span> (ext)
         </span>

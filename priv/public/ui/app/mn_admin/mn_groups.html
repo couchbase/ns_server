@@ -73,7 +73,7 @@ licenses/APL2.txt.
        class="cbui-tablerow"
        ng-class="['dynamic_' + server.status, 'dynamic_' + server.clusterMembership]">
         <span class="cbui-tablerow-title ellipsis flex-grow-1-5 row flex-left">
-          {{server.hostname | mnStripPortHTML:group.nodes}}
+          {{server.hostname | mnStripPortHTML}}
           <span
              ng-repeat="service in server.services | mnOrderServices"
              class="label neutral nocaps">

@@ -30,7 +30,10 @@ class MnPipesModule {
         pipes.MnFormatQuantity,
         pipes.MnFormatWarmupMessage,
         pipes.MnBucketsType,
-        pipes.MnTruncate
+        pipes.MnTruncate,
+        pipes.MnFormatServices,
+        pipes.MnOrderServices,
+        pipes.MnStripPortHTML
       ],
       exports: [
         pipes.MnParseVersion,
@@ -45,7 +48,10 @@ class MnPipesModule {
         pipes.MnFormatQuantity,
         pipes.MnFormatWarmupMessage,
         pipes.MnBucketsType,
-        pipes.MnTruncate
+        pipes.MnTruncate,
+        pipes.MnFormatServices,
+        pipes.MnOrderServices,
+        pipes.MnStripPortHTML
       ],
       imports: [],
       providers: [
@@ -54,7 +60,8 @@ class MnPipesModule {
         pipes.MnPrepareQuantity,
         pipes.MnBytesToMB,
         pipes.MnFormatQuantity,
-        DecimalPipe
+        DecimalPipe,
+        pipes.MnFormatServices
       ]
     })
   ]}

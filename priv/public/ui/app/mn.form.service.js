@@ -57,9 +57,9 @@ class MnForm {
     return this.group.value;
   }
 
-  setFormGroup(formDescription) {
+  setFormGroup(formDescription, options) {
     this.group = (formDescription instanceof FormGroup) ?
-      formDescription : this.builder.group(formDescription);
+      formDescription : this.builder.group(formDescription, options);
     return this;
   }
 

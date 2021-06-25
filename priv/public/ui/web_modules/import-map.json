@@ -42,6 +42,7 @@
     "ipaddr.js": "./ipaddr.js",
     "js-beautify": "./js-beautify.js",
     "lodash": "./lodash.js",
+    "ngx-clipboard": "./ngx-clipboard.js",
     "oclazyload": "./oclazyload.js",
     "ramda": "./ramda.js",
     "rxjs": "./rxjs.js",

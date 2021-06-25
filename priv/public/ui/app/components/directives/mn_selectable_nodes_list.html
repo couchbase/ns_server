@@ -38,9 +38,9 @@ licenses/APL2.txt.
            ng-attr-id="collected_node_list_{{node.otpNode}}"
            ng-disabled="mnThisCtl.mnIsNodeDisabled({node:node})">
         <label
-           title="{{node.hostname | mnStripPortHTML:mnThisCtl.nodes}}"
+           title="{{node.hostname | mnStripPortHTML}}"
            for="collected_node_list_{{node.otpNode}}">
-          {{ node.hostname | mnStripPortHTML:mnThisCtl.nodes }}
+          {{node.hostname | mnStripPortHTML}}
         </label>
       </span>
       <span

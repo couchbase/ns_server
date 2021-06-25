@@ -128,7 +128,7 @@ class MnHelperService {
     };
   }
 
-  createFilter(component, filterKey, splitValueBySpace) {
+  createFilter(component, filterKey, splitValueBySpace, customValueGetter) {
     filterKey = filterKey || "name";
     var group = this.formBuilder.group({value: ""});
     var hotGroup = new BehaviorSubject("");
@@ -149,8 +149,9 @@ class MnHelperService {
               return isSubstring(filterValue, listItem);
             case 'object':
               if (filterKey instanceof Array) {
+                let valueGetter = customValueGetter || ((key, value) => value);
                 let filterKeys = filterKey.reduce((acc, key) =>
-                                                   acc + " " + listItem[key], "");
+                                                   acc + " " + valueGetter(key, listItem[key]), "");
                 let filterValues = splitValueBySpace ? filterValue.split(" ") : [filterValue];
                 return filterValues.every(value =>
                                           isSubstring(value, filterKeys));

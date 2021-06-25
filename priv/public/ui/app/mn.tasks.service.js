@@ -27,5 +27,9 @@ class MnTasksService {
     this.stream.tasksXDCRPlug = new BehaviorSubject();
     this.stream.tasksXDCR = this.stream.tasksXDCRPlug
       .pipe(shareReplay({refCount: true, bufferSize: 1}));
+
+    this.stream.taskCollectInfoPlug = new BehaviorSubject();
+    this.stream.taskCollectInfo = this.stream.taskCollectInfoPlug
+      .pipe(shareReplay({refCount: true, bufferSize: 1}));
   }
 }

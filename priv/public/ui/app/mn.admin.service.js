@@ -80,6 +80,15 @@ class MnAdminService {
     this.stream.getNodes =
       this.stream.getPoolsDefault.pipe(pluck("nodes"));
 
+    this.stream.nodesByOtp = this.stream.getNodes
+      .pipe(map(R.groupBy(R.prop('otpNode'))));
+
+    this.stream.isGroupsAvailable =
+      this.stream.getPoolsDefault.pipe(pluck("isGroupsAvailable"), distinctUntilChanged());
+
+    this.stream.isStrippingPort =
+      this.stream.getPoolsDefault.pipe(pluck("isStrippingPort"), distinctUntilChanged());
+
     this.stream.failedOverNodes = this.stream.getNodes.pipe(
       map(nodes => nodes.filter(node => node.clusterMembership === "inactiveFailed")));
 

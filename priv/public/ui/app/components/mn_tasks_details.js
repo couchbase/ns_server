@@ -58,6 +58,7 @@ function mnTasksDetailsFactory($http, $cacheFactory, mnTasksService) {
 
       rv.tasks = tasks;
       rv.tasksXDCR = _.filter(tasks, detectXDCRTask);
+      rv.tasksCollectInfo = _.filter(tasks, detectCollectInfoTask);
       rv.tasksRecovery = _.detect(tasks, detectRecoveryTasks);
       rv.tasksRebalance = _.detect(tasks, detectRebalanceTasks);
       rv.tasksWarmingUp = _.filter(tasks, detectWarmupTask);
@@ -73,12 +74,24 @@ function mnTasksDetailsFactory($http, $cacheFactory, mnTasksService) {
 
       mnTasksService.stream.tasksXDCRPlug.next(rv.tasksXDCR);
 
+      let noCollectInfoTask = {
+        nodesByStatus: {},
+        nodeErrors: [],
+        status: 'idle',
+        perNode: {}
+      };
+      mnTasksService.stream.taskCollectInfoPlug.next(rv.tasksCollectInfo[0] || noCollectInfoTask);
+
       return rv;
     });
   }
 
   function detectXDCRTask(taskInfo) {
     return taskInfo.type === 'xdcr';
+  }
+
+  function detectCollectInfoTask(taskInfo) {
+    return taskInfo.type === 'clusterLogsCollection';
   }
 
   function detectOrphanBucketTask(taskInfo) {

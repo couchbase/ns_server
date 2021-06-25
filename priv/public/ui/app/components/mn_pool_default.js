@@ -11,13 +11,12 @@ licenses/APL2.txt.
 import angular from "/ui/web_modules/angular.js";
 import _ from "/ui/web_modules/lodash.js";
 import mnPools from "/ui/app/components/mn_pools.js";
-import mnFilters from "/ui/app/components/mn_filters.js";
 import mnHelper from "/ui/app/components/mn_helper.js";
 
 export default 'mnPoolDefault';
 
 angular
-  .module('mnPoolDefault', [mnPools, mnFilters, mnHelper])
+  .module('mnPoolDefault', [mnPools, mnHelper])
   .factory('mnPoolDefault', mnPoolDefaultFactory);
 
 function mnPoolDefaultFactory(mnPools, mnHelper, $http, $q, $window, $location, $httpParamSerializerJQLike, $state) {
@@ -87,6 +86,9 @@ function mnPoolDefaultFactory(mnPools, mnHelper, $http, $q, $window, $location, 
       poolDefault.thisNode = _.detect(poolDefault.nodes, function (n) {
         return n.thisNode;
       });
+
+      poolDefault.isStrippingPort = poolDefault.nodes.every(node => node.hostname.includes(':8091'));
+
       poolDefault.compat = {
         atLeast51: poolDefault.thisNode.clusterCompatibility >= version51,
         atLeast55: poolDefault.thisNode.clusterCompatibility >= version55,

@@ -1,11 +1,12 @@
 import angular from "/ui/web_modules/angular.js";
+import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
 import lodash from "/ui/web_modules/lodash.js";
 let _ = lodash;
 
 export default 'mnFilters';
 
 angular
-  .module('mnFilters', [])
+  .module('mnFilters', [mnPoolDefault])
   .filter('mnCount', mnCount)
   .filter('removeEmptyValue', removeEmptyValue)
   .filter('formatProgressMessage', formatProgressMessage)
@@ -483,34 +484,12 @@ function mnMakeSafeForCSS() {
     });
   };
 }
-function mnStripPortHTML() {
-  var cachedAllServers;
-  var cachedIsStripping;
-  var strippingRE = /:8091$/;
-
-  return function (value, allServers) {
-    if (allServers === undefined) {
-      throw new Error("second argument is required!");
+function mnStripPortHTML(mnPoolDefault) {
+  return function (hostname) {
+    if (mnPoolDefault.export.isStrippingPort) {
+      return hostname.replace(/:8091$/, '');
     }
-    let allNames;
-    let isStripping;
-    if (cachedAllServers === allServers) {
-      isStripping = cachedIsStripping;
-    } else {
-      if (allServers.length == 0 || _.isString(allServers[0])) {
-        allNames = allServers;
-      } else {
-        allNames = _.pluck(allServers, 'hostname');
-      }
-      isStripping = _.all(allNames, function (h) {return h.match(strippingRE);});
-      cachedIsStripping = isStripping;
-      cachedAllServers = allServers;
-    }
-    if (isStripping) {
-      var match = value.match(strippingRE);
-      return match ? value.slice(0, match.index) : value;
-    }
-    return value;
+    return hostname;
   };
 }
 function mnTruncateTo3Digits() {

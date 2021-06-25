@@ -11,7 +11,10 @@ licenses/APL2.txt.
 import { Pipe } from '../web_modules/@angular/core.js';
 import { DecimalPipe } from '../web_modules/@angular/common.js';
 import { MnHelperService } from './mn.helper.service.js';
+import { MnAdminService } from './mn.admin.service.js';
 import { is } from '../web_modules/ramda.js';
+import { servicesEnterprise } from '/ui/app/constants/constants.js';
+import { map } from "../web_modules/rxjs/operators.js";
 
 export {
   MnParseVersion,
@@ -26,7 +29,10 @@ export {
   MnFormatQuantity,
   MnFormatWarmupMessage,
   MnBucketsType,
-  MnTruncate
+  MnTruncate,
+  MnFormatServices,
+  MnOrderServices,
+  MnStripPortHTML
 }
 
 class MnTruncate {
@@ -346,5 +352,55 @@ class MnBucketsType {
     case "memcached":
       return type.charAt(0).toUpperCase() + type.slice(1);
     }
+  }
+}
+
+class MnFormatServices {
+  static get annotations() { return [
+    new Pipe({name: "mnFormatServices"})
+  ]}
+
+  transform(service) {
+    switch (service) {
+      case 'kv': return 'Data';
+      case 'query':
+      case 'n1ql': return 'Query';
+      case 'index': return 'Index';
+      case 'fts': return 'Search';
+      case 'eventing': return 'Eventing';
+      case 'cbas': return 'Analytics';
+      case 'backup': return 'Backup';
+      default: return service;
+    }
+  }
+}
+
+class MnOrderServices {
+  static get annotations() { return [
+    new Pipe({name: "mnOrderServices"})
+  ]}
+
+  transform(services) {
+    return services.slice().sort((a, b) =>
+      servicesEnterprise.indexOf(a) - servicesEnterprise.indexOf(b));
+  }
+}
+
+class MnStripPortHTML {
+  static get annotations() { return [
+    new Pipe({name: "mnStripPortHTML"})
+  ]}
+
+  static get parameters() { return [
+    MnAdminService
+  ]}
+
+  constructor(mnAdminService) {
+    this.mnAdminService = mnAdminService;
+  }
+
+  transform(hostname) {
+    return this.mnAdminService.stream.isStrippingPort
+      .pipe(map((v) => v ? hostname.replace(/:8091$/, '') : hostname));
   }
 }

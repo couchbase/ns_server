@@ -23,8 +23,6 @@ import mnSelectableNodesList from "/ui/app/components/directives/mn_selectable_n
 import mnLogsService from "./mn_logs_service.js";
 import mnLogRedactionService from "./mn_redaction_service.js";
 import mnGroupsService from "./mn_groups_service.js";
-import mnLogsCollectInfoController from "./mn_logs_collect_info_controller.js";
-import mnLogsCollectInfoService from "./mn_logs_collect_info_service.js";
 
 
 export default 'mnLogs';
@@ -41,12 +39,10 @@ angular.module('mnLogs', [
   mnSelectableNodesList,
   mnLogsService,
   mnLogRedactionService,
-  mnLogsCollectInfoService,
   mnGroupsService
 ])
   .config(configure)
   .controller('mnLogsController', mnLogsController)
-  .controller('mnLogsCollectInfoController', mnLogsCollectInfoController)
 
 function configure($stateProvider) {
   $stateProvider
@@ -63,24 +59,6 @@ function configure($stateProvider) {
         title: "Logs",
         permissions: "cluster.logs.read"
       }
-    })
-    .state('app.admin.logs.collectInfo', {
-      url: '/collectInfo',
-      abstract: true,
-      controller: 'mnLogsCollectInfoController as logsCollectInfoCtl',
-      templateUrl: 'app/mn_admin/mn_logs_collect_info.html',
-      data: {
-        permissions: "cluster.admin.logs.read",
-        title: "Collect Information"
-      }
-    })
-    .state('app.admin.logs.collectInfo.result', {
-      url: '/result',
-      templateUrl: 'app/mn_admin/mn_logs_collect_info_result.html'
-    })
-    .state('app.admin.logs.collectInfo.form', {
-      url: '/form',
-      templateUrl: 'app/mn_admin/mn_logs_collect_info_form.html'
     });
 }
 

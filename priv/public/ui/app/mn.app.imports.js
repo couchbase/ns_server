@@ -79,6 +79,12 @@ let logsListState = {
   lazyLoad: mnLoadNgModule('./mn.logs.list.module.js', "MnLogsListModule")
 };
 
+let logsCollectInfo = {
+  name: "app.admin.logs.collectInfo.**",
+  url: "/collectInfo",
+  lazyLoad: mnLoadNgModule('./mn.logs.collectInfo.module.js', "MnLogsCollectInfoModule")
+}
+
 let groupsState = {
   name: 'app.admin.groups.**',
   url: '/groups',
@@ -208,6 +214,7 @@ let mnAppImports = [
       bucketsState,
       logsState,
       logsListState,
+      logsCollectInfo,
       alertsState,
       groupsState,
       gsiState,

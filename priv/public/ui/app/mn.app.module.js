@@ -15,6 +15,7 @@ import { MnHelperService } from './mn.helper.service.js';
 import { MnTasksService } from './mn.tasks.service.js';
 
 import { MnSecurityService } from './mn.security.service.js';
+import { MnServerGroupsService } from './mn.server.groups.service.js';
 import { mnAppImports } from './mn.app.imports.js';
 import { MnFormService } from './mn.form.service.js';
 import { MnHttpInterceptor } from './mn.http.interceptor.js';
@@ -42,6 +43,7 @@ class MnAppModule {
       providers: [
         ...ajsUpgradedProviders,
         MnSecurityService,
+        MnServerGroupsService,
         MnAppService,
         MnTasksService,
         MnFormService,
