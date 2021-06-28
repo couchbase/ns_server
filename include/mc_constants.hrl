@@ -56,7 +56,6 @@
 
 -define(CMD_CREATE_BUCKET, 16#85).
 -define(CMD_DELETE_BUCKET, 16#86).
--define(CMD_LIST_BUCKETS , 16#87).
 -define(CMD_EXPAND_BUCKET, 16#88).
 -define(CMD_SELECT_BUCKET, 16#89).
 

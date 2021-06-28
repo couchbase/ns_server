@@ -33,7 +33,6 @@
          flush/1,
          hello_features/1,
          hello/3,
-         list_buckets/1,
          refresh_isasl/1,
          refresh_ssl_certs/1,
          noop/1,
@@ -79,7 +78,7 @@
                      ?QUITQ | ?FLUSHQ | ?APPENDQ | ?PREPENDQ |
                      ?CMD_SASL_LIST_MECHS | ?CMD_SASL_AUTH | ?CMD_SASL_STEP |
                      ?CMD_CREATE_BUCKET | ?CMD_DELETE_BUCKET |
-                     ?CMD_LIST_BUCKETS | ?CMD_EXPAND_BUCKET |
+                     ?CMD_EXPAND_BUCKET |
                      ?CMD_SELECT_BUCKET | ?CMD_SET_PARAM | ?CMD_GET_REPLICA |
                      ?CMD_SET_VBUCKET | ?CMD_GET_VBUCKET | ?CMD_DELETE_VBUCKET |
                      ?CMD_ISASL_REFRESH | ?CMD_GET_META | ?CMD_GETQ_META |
@@ -304,18 +303,6 @@ vbucket_state_to_atom(?VB_STATE_DEAD) ->
     dead;
 vbucket_state_to_atom(_) ->
     unknown.
-
-list_buckets(Sock) ->
-    case cmd(?CMD_LIST_BUCKETS, Sock, undefined, undefined,
-             {#mc_header{},
-              #mc_entry{}}) of
-        {ok, #mc_header{status=?SUCCESS}, #mc_entry{data=BucketsBin}, _NCB} ->
-            case BucketsBin of
-                undefined -> {ok, []};
-                _ -> {ok, string:tokens(binary_to_list(BucketsBin), " ")}
-            end;
-        Response -> process_error_response(Response)
-    end.
 
 refresh_isasl(Sock) ->
     case cmd(?CMD_ISASL_REFRESH, Sock, undefined, undefined, {#mc_header{}, #mc_entry{}}) of
