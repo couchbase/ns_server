@@ -60,7 +60,7 @@ function mnBucketsDetailsDialogServiceFactory($http, $q, mnBytesToMBFilter, mnCo
     if (bucketConf.isNew) {
       copyProperties(["name", "bucketType"]);
     }
-    if (pools.isDeveloperPreview && pools.isEnterprise && isMembase) {
+    if (pools.isEnterprise && isMembase) {
       copyProperty("storageBackend");
       if (bucketConf.storageBackend === "magma") {
         copyProperty("fragmentationPercentage");
