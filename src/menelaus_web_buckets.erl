@@ -876,7 +876,7 @@ validate_membase_bucket_params(CommonParams, Params,
          parse_validate_eviction_policy(Params, BucketConfig, IsNew),
          quota_size_error(CommonParams, membase, IsNew, BucketConfig),
          parse_validate_storage_mode(Params, BucketConfig, IsNew, Version,
-                                     IsEnterprise, IsDeveloperPreview),
+                                     IsEnterprise),
          parse_validate_durability_min_level(Params, BucketConfig, IsNew,
                                              Version),
          parse_validate_pitr_enabled(Params, IsNew, IsDeveloperPreview),
@@ -1083,21 +1083,19 @@ is_ephemeral(_Params, BucketConfig, false = _IsNew) ->
 %% used/checked at multiple places and would need changes in all those places.
 %% Hence the above described approach.
 parse_validate_storage_mode(Params, _BucketConfig, true = _IsNew, Version,
-                            IsEnterprise, IsDeveloperPreview) ->
+                            IsEnterprise) ->
     case proplists:get_value("bucketType", Params, "membase") of
         "membase" ->
             get_storage_mode_based_on_storage_backend(Params, Version,
-                                                      IsEnterprise,
-                                                      IsDeveloperPreview);
+                                                      IsEnterprise);
         "couchbase" ->
             get_storage_mode_based_on_storage_backend(Params, Version,
-                                                      IsEnterprise,
-                                                      IsDeveloperPreview);
+                                                      IsEnterprise);
         "ephemeral" ->
             {ok, storage_mode, ephemeral}
     end;
 parse_validate_storage_mode(_Params, BucketConfig, false = _IsNew, _Version,
-                            _IsEnterprise, _IsDeveloperPreview)->
+                            _IsEnterprise)->
     {ok, storage_mode, ns_bucket:storage_mode(BucketConfig)}.
 
 parse_validate_durability_min_level(Params, BucketConfig, IsNew, Version) ->
@@ -1250,26 +1248,21 @@ validate_pitr_numeric_param(Value, Param, ConfigKey) ->
             value_not_in_range_error(Param, Value, Min, Max)
     end.
 
-get_storage_mode_based_on_storage_backend(Params, Version, IsEnterprise,
-                                          IsDeveloperPreview) ->
+get_storage_mode_based_on_storage_backend(Params, Version, IsEnterprise) ->
     StorageBackend = proplists:get_value("storageBackend", Params,
                                          "couchstore"),
     do_get_storage_mode_based_on_storage_backend(
       StorageBackend, IsEnterprise,
-      cluster_compat_mode:is_version_70(Version),
-      IsDeveloperPreview).
+      cluster_compat_mode:is_version_NEO(Version)).
 
-do_get_storage_mode_based_on_storage_backend("magma", false, _Is70, _IsDP) ->
+do_get_storage_mode_based_on_storage_backend("magma", false, _IsNEO) ->
     {error, storageBackend,
      <<"Magma is supported in enterprise edition only">>};
-do_get_storage_mode_based_on_storage_backend("magma", true, false, _IsDP) ->
+do_get_storage_mode_based_on_storage_backend("magma", true, false) ->
     {error, storageBackend,
-     <<"Not allowed until entire cluster is upgraded to 7.0">>};
-do_get_storage_mode_based_on_storage_backend("magma", true, true, false) ->
-    {error, storageBackend,
-     <<"Magma is supported only in developer preview mode">>};
+     <<"Not allowed until entire cluster is upgraded to NEO">>};
 do_get_storage_mode_based_on_storage_backend(StorageBackend, _IsEnterprise,
-                                             _Is70, _IsDP) ->
+                                             _IsNEO) ->
     case StorageBackend of
         "couchstore" ->
             {ok, storage_mode, couchstore};
