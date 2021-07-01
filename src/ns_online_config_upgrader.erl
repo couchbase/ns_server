@@ -36,8 +36,14 @@
 upgrade_config(NewVersion) ->
     true = (NewVersion =< ?LATEST_VERSION_NUM),
 
-    ok = ns_config:upgrade_config_explicitly(
-           do_upgrade_config(_, NewVersion)).
+    case NewVersion > cluster_compat_mode:get_ns_config_compat_version() of
+        true ->
+            ok = ns_config:upgrade_config_explicitly(
+                   do_upgrade_config(_, NewVersion));
+        false ->
+            ?log_warning("ns_config is already upgraded to ~p", [NewVersion]),
+            ok
+    end.
 
 do_upgrade_config(Config, FinalVersion) ->
     case ns_config:search(Config, cluster_compat_version) of

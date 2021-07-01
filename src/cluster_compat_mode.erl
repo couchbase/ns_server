@@ -17,6 +17,7 @@
 
 -export([get_compat_version/0,
          get_compat_version/1,
+         get_ns_config_compat_version/0,
          is_enabled/1, is_enabled_at/2,
          consider_switching_compat_mode/0,
          is_index_aware_rebalance_on/0,
@@ -72,8 +73,20 @@ get_cluster_capabilities(Config) ->
 get_compat_version() ->
     get_compat_version(ns_config:latest()).
 
-get_compat_version(Config) ->
+get_ns_config_compat_version() ->
+    get_ns_config_compat_version(ns_config:latest()).
+
+get_ns_config_compat_version(Config) ->
     ns_config:search(Config, cluster_compat_version, undefined).
+
+get_compat_version(Config) ->
+    case get_ns_config_compat_version(Config) of
+        V when V =:= undefined orelse V < ?VERSION_NEO ->
+            V;
+        _ ->
+            chronicle_compat:get(Config, cluster_compat_version,
+                                 #{default => ?VERSION_70})
+    end.
 
 supported_compat_version() ->
     case get_pretend_version() of
@@ -107,7 +120,14 @@ is_enabled(FeatureVersion) ->
     is_enabled(ns_config:latest(), FeatureVersion).
 
 is_enabled(Config, FeatureVersion) ->
-    is_enabled_at(get_compat_version(Config), FeatureVersion).
+    CompatVersion =
+        case FeatureVersion > ?VERSION_70 of
+            true ->
+                get_compat_version(Config);
+            false ->
+                get_ns_config_compat_version(Config)
+        end,
+    is_enabled_at(CompatVersion, FeatureVersion).
 
 is_version_65(ClusterVersion) ->
     is_enabled_at(ClusterVersion, ?VERSION_65).
@@ -177,7 +197,7 @@ is_developer_preview_enabled_by_default() ->
 
 consider_switching_compat_mode() ->
     Config = ns_config:get(),
-    CurrentVersion = ns_config:search(Config, cluster_compat_version, undefined),
+    CurrentVersion = get_compat_version(Config),
     case CurrentVersion =:= supported_compat_version() of
         true ->
             case is_developer_preview() of
@@ -268,6 +288,14 @@ do_consider_switching_compat_mode(Config, CurrentVersion) ->
     end.
 
 do_switch_compat_mode(NewVersion, NodesWanted) ->
+    case upgrade_ns_config(NewVersion, NodesWanted) of
+        ok ->
+            chronicle_upgrade:upgrade(NewVersion, NodesWanted);
+        error ->
+            error
+    end.
+
+upgrade_ns_config(NewVersion, NodesWanted) ->
     ns_online_config_upgrader:upgrade_config(NewVersion),
     try
         case ns_config_rep:ensure_config_seen_by_nodes(NodesWanted) of
@@ -276,12 +304,13 @@ do_switch_compat_mode(NewVersion, NodesWanted) ->
                 ale:error(?USER_LOGGER,
                           "Was unable to sync cluster_compat_version update "
                           "to some nodes: ~p", [BadNodes]),
-                ok
+                error
         end
     catch T:E:S ->
             ale:error(?USER_LOGGER,
                       "Got problems trying to replicate cluster_compat_version "
-                      "update~n~p", [{T, E, S}])
+                      "update~n~p", [{T, E, S}]),
+            error
     end.
 
 consider_switching_compat_mode_loop(_NodeInfos, _NodesWanted,

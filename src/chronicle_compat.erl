@@ -34,6 +34,7 @@
          get_snapshot_with_revision/2,
          pull/0,
          pull/1,
+         remote_pull/2,
          config_sync/2,
          config_sync/3,
          node_keys/2,
