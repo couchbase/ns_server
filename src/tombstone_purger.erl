@@ -34,17 +34,12 @@ purge_now(Age) ->
 
 %% callbacks
 init([]) ->
-    Self = self(),
-    ns_pubsub:subscribe_link(
-      ns_config_events,
-      fun (Event) ->
-              case Event of
-                  {cluster_compat_version, _} ->
-                      Self ! maybe_schedule_timer;
-                  _ ->
-                      ok
-              end
-      end),
+    chronicle_compat_events:notify_if_key_changes(
+      fun (cluster_compat_version) ->
+              true;
+          (_) ->
+              false
+      end, maybe_schedule_timer),
 
     {ok, maybe_schedule_timer(#state{})}.
 

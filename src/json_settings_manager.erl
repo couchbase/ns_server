@@ -57,16 +57,15 @@ get_from_config(M, Config, Key, Default) ->
 init(M) ->
     ets:new(M, [named_table, set, protected]),
     ModCfgKey = M:cfg_key(),
-    ns_pubsub:subscribe_link(ns_config_events,
-                             fun ({Key, JSON}, Pid) when (Key =:= ModCfgKey) ->
-                                     submit_config_update(M, Pid, JSON),
-                                     Pid;
-                                 ({cluster_compat_version, _}, Pid) ->
-                                     submit_full_refresh(M, Pid),
-                                     Pid;
-                                 (_, Pid) ->
-                                     Pid
-                             end, self()),
+    Self = self(),
+    chronicle_compat_events:subscribe(
+      fun (Key) when (Key =:= ModCfgKey) ->
+              submit_config_update(M, Self, Key);
+          (cluster_compat_version) ->
+              submit_full_refresh(M, Self);
+          (_) ->
+              ok
+      end),
     populate_ets_table(M).
 
 update(M, Props) ->
@@ -119,11 +118,11 @@ submit_full_refresh(M, Pid) ->
               populate_ets_table(M)
       end).
 
-submit_config_update(M, Pid, JSON) ->
+submit_config_update(M, Pid, Key) ->
     work_queue:submit_work(
       Pid,
       fun () ->
-              populate_ets_table(M, JSON)
+              populate_ets_table(M, fetch_settings_json(Key))
       end).
 
 fetch_settings_json(CfgKey) ->
