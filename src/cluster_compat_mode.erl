@@ -232,28 +232,34 @@ do_consider_switching_compat_mode(Config, CurrentVersion) ->
     case ordsets:is_subset(NodesWanted, NodesUp) of
         true ->
             NodeInfos = ns_doctor:get_nodes(),
-            case consider_switching_compat_mode_loop(NodeInfos, NodesWanted, supported_compat_version()) of
+            case consider_switching_compat_mode_loop(
+                   NodeInfos, NodesWanted, supported_compat_version()) of
                 CurrentVersion ->
                     ok;
                 AnotherVersion ->
                     case is_enabled_at(AnotherVersion, CurrentVersion) of
                         true ->
-                            case do_upgrades(CurrentVersion, AnotherVersion, Config, NodesWanted) of
+                            case do_upgrades(CurrentVersion, AnotherVersion,
+                                             Config, NodesWanted) of
                                 ok ->
-                                    do_switch_compat_mode(AnotherVersion, NodesWanted),
+                                    do_switch_compat_mode(AnotherVersion,
+                                                          NodesWanted),
                                     changed;
                                 Name ->
-                                    ?log_error("Refusing to upgrade the compat "
-                                               "version from ~p to ~p due to failure of ~p upgrade"
-                                               "~nNodesWanted: ~p~nNodeInfos: ~p",
-                                               [CurrentVersion, AnotherVersion, Name,
-                                                NodesWanted, NodeInfos])
+                                    ?log_error(
+                                       "Refusing to upgrade the compat "
+                                       "version from ~p to ~p due to failure "
+                                       "of ~p upgrade"
+                                       "~nNodesWanted: ~p~nNodeInfos: ~p",
+                                       [CurrentVersion, AnotherVersion, Name,
+                                        NodesWanted, NodeInfos])
                             end;
                         false ->
                             ?log_error("Refusing to downgrade the compat "
                                        "version from ~p to ~p."
                                        "~nNodesWanted: ~p~nNodeInfos: ~p",
-                                       [CurrentVersion, AnotherVersion, NodesWanted, NodeInfos]),
+                                       [CurrentVersion, AnotherVersion,
+                                        NodesWanted, NodeInfos]),
                             ok
                     end
             end;
@@ -267,28 +273,36 @@ do_switch_compat_mode(NewVersion, NodesWanted) ->
         case ns_config_rep:ensure_config_seen_by_nodes(NodesWanted) of
             ok -> ok;
             {error, BadNodes} ->
-                ale:error(?USER_LOGGER, "Was unable to sync cluster_compat_version update to some nodes: ~p", [BadNodes]),
+                ale:error(?USER_LOGGER,
+                          "Was unable to sync cluster_compat_version update "
+                          "to some nodes: ~p", [BadNodes]),
                 ok
         end
     catch T:E:S ->
-            ale:error(?USER_LOGGER, "Got problems trying to replicate cluster_compat_version update~n~p", [{T, E, S}])
+            ale:error(?USER_LOGGER,
+                      "Got problems trying to replicate cluster_compat_version "
+                      "update~n~p", [{T, E, S}])
     end.
 
-consider_switching_compat_mode_loop(_NodeInfos, _NodesWanted, _Version = undefined) ->
+consider_switching_compat_mode_loop(_NodeInfos, _NodesWanted,
+                                    _Version = undefined) ->
     undefined;
 consider_switching_compat_mode_loop(_NodeInfos, [], Version) ->
     Version;
-consider_switching_compat_mode_loop(NodeInfos, [Node | RestNodesWanted], Version) ->
+consider_switching_compat_mode_loop(NodeInfos, [Node | RestNodesWanted],
+                                    Version) ->
     case dict:find(Node, NodeInfos) of
         {ok, Info} ->
-            NodeVersion = proplists:get_value(supported_compat_version, Info, undefined),
+            NodeVersion = proplists:get_value(supported_compat_version, Info,
+                                              undefined),
             AgreedVersion = case is_enabled_at(NodeVersion, Version) of
                                 true ->
                                     Version;
                                 false ->
                                     NodeVersion
                             end,
-            consider_switching_compat_mode_loop(NodeInfos, RestNodesWanted, AgreedVersion);
+            consider_switching_compat_mode_loop(NodeInfos, RestNodesWanted,
+                                                AgreedVersion);
         _ ->
             undefined
     end.
@@ -297,7 +311,8 @@ consider_switching_compat_mode_loop(NodeInfos, [Node | RestNodesWanted], Version
 %% there's no compat mode yet
 effective_cluster_compat_version_for(undefined) ->
     1;
-effective_cluster_compat_version_for([VersionMaj, VersionMin] = _CompatVersion) ->
+effective_cluster_compat_version_for([VersionMaj, VersionMin] =
+                                         _CompatVersion) ->
     VersionMaj * 16#10000 + VersionMin.
 
 effective_cluster_compat_version() ->
