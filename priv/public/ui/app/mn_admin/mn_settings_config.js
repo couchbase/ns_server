@@ -20,7 +20,6 @@ import mnSettingsNotifications from "./mn_settings_notifications_controller.js";
 import mnSettingsCluster from "./mn_settings_cluster_controller.js";
 import mnSettingsAutoFailover from "./mn_settings_auto_failover_controller.js";
 import mnSettingsAutoCompaction from "./mn_settings_auto_compaction_controller.js"
-import mnSettingsAlerts from "./mn_settings_alerts_controller.js";
 import mnSettingsNotificationsService from "./mn_settings_notifications_service.js";
 
 export default "mnSettings";
@@ -35,7 +34,6 @@ angular
     mnSettingsAutoFailover,
     mnSettingsAutoCompaction,
     mnSettingsCluster,
-    mnSettingsAlerts,
     mnSettingsNotificationsService
   ])
   .config(mnSettingsConfig)
@@ -76,14 +74,6 @@ function mnSettingsConfig($stateProvider) {
           controller: 'mnSettingsNotificationsController as settingsNotificationsCtl',
           templateUrl: 'app/mn_admin/mn_settings_notifications.html'
         }
-      }
-    })
-    .state('app.admin.settings.alerts', {
-      url: '/alerts',
-      controller: 'mnSettingsAlertsController as settingsAlertsCtl',
-      templateUrl: 'app/mn_admin/mn_settings_alerts.html',
-      data: {
-        permissions: 'cluster.settings.read'
       }
     })
     .state('app.admin.settings.autoCompaction', {
