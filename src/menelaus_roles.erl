@@ -258,6 +258,7 @@ roles() ->
        {[{bucket, any}, stats], [read]},
        {[{bucket, any}, collections], [read]},
        {[{bucket, any}], none},
+       {[xdcr, developer], [read]},
        {[xdcr], all},
        {[admin], none},
        {[eventing], none},
