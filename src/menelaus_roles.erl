@@ -1367,9 +1367,16 @@ replication_admin_test() ->
                  is_allowed({[{bucket, "default"}, data], read}, Roles)),
     ?assertEqual(false,
                  is_allowed({[{bucket, "default"}, data], write}, Roles)),
+    ?assertEqual(true, is_allowed({[xdcr, developer], read}, Roles)),
+    ?assertEqual(false, is_allowed({[xdcr, developer], write}, Roles)),
     ?assertEqual(true, is_allowed({[xdcr], anything}, Roles)),
     ?assertEqual(false, is_allowed({[admin], read}, Roles)),
     ?assertEqual(true, is_allowed({[other], read}, Roles)).
+
+replication_developer_test() ->
+    Roles = compile_roles([replication_developer], roles()),
+    ?assertEqual(true, is_allowed({[xdcr, developer], read}, Roles)),
+    ?assertEqual(true, is_allowed({[xdcr, developer], write}, Roles)).
 
 compile_and_assert(Role, Permissions, Params, Results) ->
     Roles = compile_roles([{Role, Params}], roles()),
