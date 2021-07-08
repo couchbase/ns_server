@@ -265,6 +265,12 @@ roles() ->
        {[analytics], none},
        {[backup], none},
        {[], [read]}]},
+     {replication_developer, [],
+      [{name, <<"XDCR Developer">>},
+       {folder, xdcr},
+       {desc, <<"Can read and write Custom Conflict Resolution merge "
+                "functions. This user cannot access the web console.">>}],
+      [{[xdcr, developer], all}]},
      {data_reader, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Data Reader">>},
        {folder, data},
