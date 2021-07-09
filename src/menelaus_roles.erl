@@ -267,12 +267,6 @@ roles() ->
        {[analytics], none},
        {[backup], none},
        {[], [read]}]},
-     {replication_developer, [],
-      [{name, <<"XDCR Developer">>},
-       {folder, xdcr},
-       {desc, <<"Can read and write Custom Conflict Resolution merge "
-                "functions. This user cannot access the web console.">>}],
-      [{[xdcr, developer], all}]},
      {data_reader, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Data Reader">>},
        {folder, data},
@@ -588,6 +582,20 @@ internal_roles() ->
     [{stats_reader, [], [],
       [{[admin, internal, stats], [read]}]}].
 
+maybe_add_developer_preview_roles() ->
+    DP = cluster_compat_mode:is_developer_preview(),
+    add_replication_developer_roles(DP).
+
+add_replication_developer_roles(true) ->
+    [{replication_developer, [],
+      [{name, <<"XDCR Developer">>},
+       {folder, xdcr},
+       {desc, <<"Can read and write Custom Conflict Resolution merge "
+                "functions. This user cannot access the web console.">>}],
+      [{[xdcr, developer], all}]}];
+add_replication_developer_roles(false) ->
+    [].
+
 -spec get_definitions(all | public) -> [rbac_role_def(), ...].
 get_definitions(Type) ->
     get_definitions(ns_config:latest(), Type).
@@ -606,7 +614,7 @@ get_public_definitions(Version) when Version < ?VERSION_70 ->
 get_public_definitions(Version) when Version < ?VERSION_NEO ->
     menelaus_old_roles:roles_pre_NEO();
 get_public_definitions(_) ->
-    roles().
+    roles() ++ maybe_add_developer_preview_roles().
 
 -spec object_match(
         rbac_permission_object(), rbac_permission_pattern_object()) ->
@@ -1372,11 +1380,6 @@ replication_admin_test() ->
     ?assertEqual(true, is_allowed({[xdcr], anything}, Roles)),
     ?assertEqual(false, is_allowed({[admin], read}, Roles)),
     ?assertEqual(true, is_allowed({[other], read}, Roles)).
-
-replication_developer_test() ->
-    Roles = compile_roles([replication_developer], roles()),
-    ?assertEqual(true, is_allowed({[xdcr, developer], read}, Roles)),
-    ?assertEqual(true, is_allowed({[xdcr, developer], write}, Roles)).
 
 compile_and_assert(Role, Permissions, Params, Results) ->
     Roles = compile_roles([{Role, Params}], roles()),
