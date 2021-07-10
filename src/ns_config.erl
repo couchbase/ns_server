@@ -51,7 +51,7 @@
          delete/1,
          regenerate_node_uuid/0,
          get_node_uuid_map/1,
-         strip_metadata/1, extract_vclock/1,
+         strip_metadata/1, extract_vclock/1, build_vclock/2,
          latest/0,
          merge_dynamic_and_static/0,
          search_node_with_default/2,
@@ -1265,7 +1265,9 @@ do_merge_kv_pairs(RemoteKVList, LocalKVList, UUID) ->
     LocalKVList1 = lists:sort(LocalKVList),
     Merger = fun (_, {directory, _} = LP) ->
                      LP;
-                 ({_, [{'_vclock', _} | ?DELETED_MARKER]}, {{node, Node, _}, _LV} = LP) when Node =:= node() ->
+                 ({_, [VClock | ?DELETED_MARKER]}, {{node, Node, _}, _LV} = LP)
+                   when Node =:= node(), is_tuple(VClock),
+                        element(1, VClock) =:= ?METADATA_VCLOCK ->
                      %% we don't allow incoming replications of
                      %% deletions of our per-node keys. This is
                      %% because they (deletions) are done as part of
