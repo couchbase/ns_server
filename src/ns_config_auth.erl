@@ -17,6 +17,7 @@
          set_admin_credentials/2,
          get_user/1,
          get_password/1,
+         get_password/2,
          admin_credentials_changed/2,
          get_admin_user_and_auth/0,
          get_admin_creds/1,
@@ -59,9 +60,11 @@ get_user(admin) ->
         _ ->
             undefined
     end.
-
 get_password(special) ->
-    ns_config:search_node_prop(ns_config:latest(), memcached, admin_pass).
+    get_password(node(), special).
+
+get_password(Node, special) when is_atom(Node)->
+    ns_config:search_node_prop(Node, ns_config:latest(), memcached, admin_pass).
 
 get_salt_and_mac({password, {Salt, Mac}}) ->
     {Salt, Mac};

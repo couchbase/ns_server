@@ -67,7 +67,6 @@ hardcoded_plugins() ->
                                              {keep, ["accept",
                                                      "accept-encoding",
                                                      "accept-language",
-                                                     "authorization",
                                                      "cache-control",
                                                      "connection",
                                                      "content-type",
@@ -274,6 +273,20 @@ decode_request_headers_filter({[{Op, BinNames}]}) ->
     Names = [string:to_lower(binary_to_list(Name)) || Name <- BinNames],
     {binary_to_existing_atom(Op, latin1), Names}.
 
+
+%% When we are adding the cb-on-behalf-of Headers we have to drop
+%% "ns-server-ui" and other menelaus-auth-* Headers.
+%% If the "ns-server-ui" Header is present cbauth library
+%% deduces the "ns-server-auth-token" is present.
+
+add_filter_headers({drop, Hdrs}) ->
+    {drop, Hdrs ++ ["ns-server-ui",
+                    "menelaus-auth-user",
+                    "menelaus-auth-domain",
+                    "menelaus-auth-token"]};
+add_filter_headers(_HdrFilter) ->
+    _HdrFilter.
+
 %%% =============================================================
 %%%
 proxy_req(RestPrefix, Path, PluginsConfig, Req) ->
@@ -284,8 +297,26 @@ proxy_req(RestPrefix, Path, PluginsConfig, Req) ->
                 {ok, Node, Remote} ->
                     HostPort = address_and_port(Port, Node),
                     Timeout = get_timeout(Service, Req),
-                    AuthToken = auth_token(Req, Remote),
-                    Headers = AuthToken ++ convert_headers(Req, HdrFilter) ++
+
+                    % choose_node/3 makes sure that the version of
+                    % this node and the destination node are same.
+                    % But we still need to make the following
+                    % cluster_compat_mode check, since some services like
+                    % Analytics can forward this request to an Analytics
+                    % service on a node with lower version.
+
+                    {FwdHeader, HdrFilter1} =
+                        case cluster_compat_mode:is_cluster_70() of
+                            false ->
+                                {auth_token(Req, Remote), HdrFilter};
+                            true ->
+                                Identity = menelaus_auth:get_identity(Req),
+                                {[menelaus_rest:on_behalf_header(Identity),
+                                  menelaus_rest:special_auth_header(Node)],
+                                 add_filter_headers(HdrFilter)}
+                        end,
+
+                    Headers = FwdHeader ++ convert_headers(Req, HdrFilter1) ++
                         forwarded_headers(Req),
                     RespHeaderFilter =
                         fun (H) ->

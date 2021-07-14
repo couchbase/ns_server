@@ -19,6 +19,7 @@
          json_request_hilevel/4,
          basic_auth_header/2,
          special_auth_header/0,
+         special_auth_header/1,
          is_auth_header/1,
          if_none_match_header/1,
          on_behalf_header/1]).
@@ -40,10 +41,11 @@ basic_auth_header(User, Password) ->
 
 if_none_match_header(Etag) ->
     {"If-None-Match", Etag}.
-
 special_auth_header() ->
+    special_auth_header(node()).
+special_auth_header(Node) when is_atom(Node) ->
     basic_auth_header(ns_config_auth:get_user(special),
-                      ns_config_auth:get_password(special)).
+                      ns_config_auth:get_password(Node, special)).
 
 on_behalf_header({User, Domain}) ->
     {"cb-on-behalf-of",
