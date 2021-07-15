@@ -8,20 +8,20 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { NgModule } from '/ui/web_modules/@angular/core.js';
-import { Injectable } from "/ui/web_modules/@angular/core.js";
-import { HttpClient } from '/ui/web_modules/@angular/common/http.js';
-import { UIRouter } from "/ui/web_modules/@uirouter/angular.js";
+import { NgModule } from '../web_modules/@angular/core.js';
+import { Injectable } from "../web_modules/@angular/core.js";
+import { HttpClient } from '../web_modules/@angular/common/http.js';
+import { UIRouter } from "../web_modules/@uirouter/angular.js";
 import { MnHttpRequest } from './mn.http.request.js';
 
 import {BehaviorSubject, Subject, NEVER,
-        of, merge, fromEvent} from "/ui/web_modules/rxjs.js";
+        of, merge, fromEvent} from "../web_modules/rxjs.js";
 import {map, shareReplay, filter, withLatestFrom, pairwise, catchError, startWith,
-        switchMap, pluck, takeUntil, mapTo, take, distinctUntilChanged} from '/ui/web_modules/rxjs/operators.js';
+        switchMap, pluck, takeUntil, mapTo, take, distinctUntilChanged} from '../web_modules/rxjs/operators.js';
 
 import {MnBucketsService} from './mn.buckets.service.js';
 import {MnHelperService} from './mn.helper.service.js';
-import {MnPermissions} from '/ui/app/ajs.upgraded.providers.js';
+import {MnPermissions} from './ajs.upgraded.providers.js';
 
 const restApiBase = "/pools/default/buckets";
 

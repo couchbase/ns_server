@@ -8,10 +8,10 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
+import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
 import {MnPoolsService} from './mn.pools.service.js';
 import {MnWizardService} from './mn.wizard.service.js';
-import {FormControl} from "/ui/web_modules/@angular/forms.js";
+import {FormControl} from "../web_modules/@angular/forms.js";
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 
 export {MnNodeStorageConfigComponent};
@@ -20,7 +20,7 @@ class MnNodeStorageConfigComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
       selector: "mn-node-storage-config",
-      templateUrl: "/ui/app/mn.node.storage.config.html",
+      templateUrl: "app/mn.node.storage.config.html",
       inputs: [
         "group"
       ],

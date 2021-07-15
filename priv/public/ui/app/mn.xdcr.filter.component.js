@@ -8,9 +8,9 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
-import {merge, pipe} from '/ui/web_modules/rxjs.js';
-import {map, filter, pluck, startWith, withLatestFrom, takeUntil, tap} from '/ui/web_modules/rxjs/operators.js';
+import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
+import {merge, pipe} from '../web_modules/rxjs.js';
+import {map, filter, pluck, startWith, withLatestFrom, takeUntil, tap} from '../web_modules/rxjs/operators.js';
 
 import {MnLifeCycleHooksToStream} from "./mn.core.js";
 import {MnXDCRService} from "./mn.xdcr.service.js";
@@ -24,7 +24,7 @@ class MnXDCRFilterComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
       selector: "mn-xdcr-filter",
-      templateUrl: "/ui/app/mn.xdcr.filter.html",
+      templateUrl: "app/mn.xdcr.filter.html",
       changeDetection: ChangeDetectionStrategy.OnPush,
       inputs: [
         "bucket",

@@ -8,17 +8,20 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js'
-import {NgbModal} from "/ui/web_modules/@ng-bootstrap/ng-bootstrap.js"
-import {takeUntil} from '/ui/web_modules/rxjs/operators.js';
-import {Subject, BehaviorSubject} from "/ui/web_modules/rxjs.js";
-import {UIRouter} from "/ui/web_modules/@uirouter/angular.js";
-import {MnPermissions, $rootScope} from '/ui/app/ajs.upgraded.providers.js';
+import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js'
+import {NgbModal} from "../web_modules/@ng-bootstrap/ng-bootstrap.js"
+import {takeUntil} from '../web_modules/rxjs/operators.js';
+import {Subject, BehaviorSubject} from "../web_modules/rxjs.js";
+import {UIRouter} from "../web_modules/@uirouter/angular.js";
+import {MnPermissions, $rootScope} from './ajs.upgraded.providers.js';
 
 import {MnLifeCycleHooksToStream, DetailsHashObserver} from './mn.core.js';
 import {MnCollectionsService} from './mn.collections.service.js';
 import {MnCollectionsDeleteScopeComponent} from './mn.collections.delete.scope.component.js';
 import {MnCollectionsAddItemComponent} from './mn.collections.add.item.component.js';
+
+import {loadHTML} from './mn.core.js';
+let template = await loadHTML('./mn.collections.scope.html', import.meta.url);
 
 export {MnCollectionsScopeComponent};
 
@@ -26,7 +29,7 @@ class MnCollectionsScopeComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
       selector: "mn-collections-scope",
-      templateUrl: "app/mn.collections.scope.html",
+      template: template,
       changeDetection: ChangeDetectionStrategy.OnPush,
       inputs: [
         "scope",

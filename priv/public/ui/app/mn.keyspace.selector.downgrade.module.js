@@ -8,12 +8,12 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
+import angular from "../web_modules/angular.js";
 import {downgradeComponent,
-        downgradeInjectable} from"/ui/web_modules/@angular/upgrade/static.js";
-import {MnKeyspaceSelectorComponent} from "/ui/app/mn.keyspace.selector.component.js";
-import {MnCollectionsService} from '/ui/app/mn.collections.service.js';
-import {Subject, of} from "/ui/web_modules/rxjs.js";
+        downgradeInjectable} from"../web_modules/@angular/upgrade/static.js";
+import {MnKeyspaceSelectorComponent} from "./mn.keyspace.selector.component.js";
+import {MnCollectionsService} from './mn.collections.service.js';
+import {Subject, of} from "../web_modules/rxjs.js";
 
 export default "mnKeyspaceSelectorDowngradeModule";
 

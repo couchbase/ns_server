@@ -8,14 +8,17 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { ChangeDetectionStrategy, Component, ViewChild } from '/ui/web_modules/@angular/core.js';
+import { ChangeDetectionStrategy, Component, ViewChild } from '../web_modules/@angular/core.js';
 import { MnLifeCycleHooksToStream } from "./mn.core.js";
-import { startWith, distinctUntilChanged } from '/ui/web_modules/rxjs/operators.js';
-import { BehaviorSubject, Subject } from '/ui/web_modules/rxjs.js';
+import { startWith, distinctUntilChanged } from '../web_modules/rxjs/operators.js';
+import { BehaviorSubject, Subject } from '../web_modules/rxjs.js';
 import { MnHelperService } from './mn.helper.service.js';
-import { FormBuilder } from "/ui/web_modules/@angular/forms.js";
-import { pluck, shareReplay, map, takeUntil, withLatestFrom } from '/ui/web_modules/rxjs/operators.js';
-import { NgbDropdown } from "/ui/web_modules/@ng-bootstrap/ng-bootstrap.js";
+import { FormBuilder } from "../web_modules/@angular/forms.js";
+import { pluck, shareReplay, map, takeUntil, withLatestFrom } from '../web_modules/rxjs/operators.js';
+import { NgbDropdown } from "../web_modules/@ng-bootstrap/ng-bootstrap.js";
+
+import {loadHTML} from './mn.core.js';
+let template = await loadHTML('./mn.select.html', import.meta.url);
 
 export { MnSelectComponent };
 
@@ -23,7 +26,7 @@ class MnSelectComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
       selector: "mn-select",
-      templateUrl: "app/mn.select.html",
+      template: template,
       inputs: [
         "group",
         "mnFormControlName",

@@ -8,14 +8,14 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Injectable} from "/ui/web_modules/@angular/core.js";
+import {Injectable} from "../web_modules/@angular/core.js";
 import {pluck,
         switchMap,
         shareReplay,
         distinctUntilChanged,
-        map} from "/ui/web_modules/rxjs/operators.js";
-import {filter, anyPass, propEq} from "/ui/web_modules/ramda.js";
-import {HttpClient, HttpParams} from '/ui/web_modules/@angular/common/http.js';
+        map} from "../web_modules/rxjs/operators.js";
+import {filter, anyPass, propEq} from "../web_modules/ramda.js";
+import {HttpClient, HttpParams} from '../web_modules/@angular/common/http.js';
 import {MnAdminService} from './mn.admin.service.js';
 
 export {MnBucketsService};

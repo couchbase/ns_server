@@ -8,11 +8,11 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { Component, ChangeDetectionStrategy } from '/ui/web_modules/@angular/core.js';
+import { Component, ChangeDetectionStrategy } from '../web_modules/@angular/core.js';
 import { MnLifeCycleHooksToStream } from './mn.core.js';
-import { UIRouter } from '/ui/web_modules/@uirouter/angular.js';
-import { BehaviorSubject, Subject, pipe} from '/ui/web_modules/rxjs.js';
-import { takeUntil, filter, map } from '/ui/web_modules/rxjs/operators.js';
+import { UIRouter } from '../web_modules/@uirouter/angular.js';
+import { BehaviorSubject, Subject, pipe} from '../web_modules/rxjs.js';
+import { takeUntil, filter, map } from '../web_modules/rxjs/operators.js';
 import { MnHelperService } from './mn.helper.service.js';
 import { MnWizardService } from './mn.wizard.service.js';
 import { MnFormService } from "./mn.form.service.js";
@@ -22,7 +22,7 @@ export {MnWizardSetupNewClusterComponent};
 class MnWizardSetupNewClusterComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
-      templateUrl: "/ui/app/mn.wizard.setup.new.cluster.html",
+      templateUrl: "app/mn.wizard.setup.new.cluster.html",
       changeDetection: ChangeDetectionStrategy.OnPush
     })
   ]}

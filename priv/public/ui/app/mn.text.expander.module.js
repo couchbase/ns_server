@@ -9,8 +9,8 @@ licenses/APL2.txt.
 */
 
 import {MnTextExpanderComponent} from './mn.text.expander.component.js';
-import {NgModule} from '/ui/web_modules/@angular/core.js';
-import {CommonModule} from '/ui/web_modules/@angular/common.js';
+import {NgModule} from '../web_modules/@angular/core.js';
+import {CommonModule} from '../web_modules/@angular/common.js';
 import {MnPipesModule} from './mn.pipes.module.js';
 
 export {MnTextExpanderModule}

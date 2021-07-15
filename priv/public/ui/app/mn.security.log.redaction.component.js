@@ -8,9 +8,9 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
-import {pluck, map, takeUntil} from '/ui/web_modules/rxjs/operators.js';
-import {MnPermissions} from '/ui/app/ajs.upgraded.providers.js';
+import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
+import {pluck, map, takeUntil} from '../web_modules/rxjs/operators.js';
+import {MnPermissions} from './ajs.upgraded.providers.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnSecurityService} from './mn.security.service.js';
 import {MnFormService} from './mn.form.service.js';
@@ -20,7 +20,7 @@ export {MnSecurityLogRedactionComponent};
 class MnSecurityLogRedactionComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
-      templateUrl: "/ui/app/mn.security.log.redaction.html",
+      templateUrl: "app/mn.security.log.redaction.html",
       changeDetection: ChangeDetectionStrategy.OnPush
     })
   ]}

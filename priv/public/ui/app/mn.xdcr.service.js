@@ -8,12 +8,12 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { Injectable } from "/ui/web_modules/@angular/core.js";
-import { HttpClient } from '/ui/web_modules/@angular/common/http.js';
-import { BehaviorSubject, combineLatest, timer, of } from "/ui/web_modules/rxjs.js";
+import { Injectable } from "../web_modules/@angular/core.js";
+import { HttpClient } from '../web_modules/@angular/common/http.js';
+import { BehaviorSubject, combineLatest, timer, of } from "../web_modules/rxjs.js";
 import { map, shareReplay, switchMap,
-         filter as rxFitler, throttleTime} from '/ui/web_modules/rxjs/operators.js';
-import { pipe, filter, propEq, sortBy, prop, groupBy } from "/ui/web_modules/ramda.js";
+         filter as rxFitler, throttleTime} from '../web_modules/rxjs/operators.js';
+import { pipe, filter, propEq, sortBy, prop, groupBy } from "../web_modules/ramda.js";
 import { MnStatsService } from "./mn.stats.service.js"
 import { MnTasksService } from './mn.tasks.service.js';
 import { MnHttpRequest } from './mn.http.request.js';

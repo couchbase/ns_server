@@ -8,11 +8,11 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
+import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
-import {merge, fromEvent} from '/ui/web_modules/rxjs.js';
+import {merge, fromEvent} from '../web_modules/rxjs.js';
 import {takeUntil, map, withLatestFrom, filter, switchMap,
-        first, throttleTime, distinctUntilChanged} from '/ui/web_modules/rxjs/operators.js';
+        first, throttleTime, distinctUntilChanged} from '../web_modules/rxjs/operators.js';
 import {MnPoolsService} from './mn.pools.service.js';
 import {MnAdminService} from "./mn.admin.service.js";
 import {MnHelperService} from "./mn.helper.service.js";
@@ -23,7 +23,7 @@ class MnServicesConfigComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
       selector: "mn-services-config",
-      templateUrl: "/ui/app/mn.services.config.html",
+      templateUrl: "app/mn.services.config.html",
       inputs: [
         "group",
         "initDataStream",

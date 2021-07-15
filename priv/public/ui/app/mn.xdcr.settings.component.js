@@ -8,8 +8,8 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
-import {combineLatest} from "/ui/web_modules/rxjs.js";
+import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
+import {combineLatest} from "../web_modules/rxjs.js";
 
 import {MnLifeCycleHooksToStream} from "./mn.core.js";
 import {MnXDCRService} from "./mn.xdcr.service.js";
@@ -23,7 +23,7 @@ class MnXDCRSettingsComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
       selector: "mn-xdcr-settings",
-      templateUrl: "/ui/app/mn.xdcr.settings.html",
+      templateUrl: "app/mn.xdcr.settings.html",
       changeDetection: ChangeDetectionStrategy.OnPush,
       inputs: [
         "form"

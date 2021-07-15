@@ -8,20 +8,20 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Injectable} from "/ui/web_modules/@angular/core.js";
-import {UIRouter} from "/ui/web_modules/@uirouter/angular.js";
-import {BehaviorSubject, combineLatest} from "/ui/web_modules/rxjs.js";
+import {Injectable} from "../web_modules/@angular/core.js";
+import {UIRouter} from "../web_modules/@uirouter/angular.js";
+import {BehaviorSubject, combineLatest} from "../web_modules/rxjs.js";
 import {pluck,
         switchMap,
         shareReplay,
         map,
         distinctUntilChanged,
-        withLatestFrom} from "/ui/web_modules/rxjs/operators.js";
-import {HttpClient, HttpParams} from '/ui/web_modules/@angular/common/http.js';
+        withLatestFrom} from "../web_modules/rxjs/operators.js";
+import {HttpClient, HttpParams} from '../web_modules/@angular/common/http.js';
 import {MnHelperService} from './mn.helper.service.js';
 import {MnPrettyVersion} from './mn.pipes.js';
 import {MnPoolsService} from './mn.pools.service.js';
-import * as R from '/ui/web_modules/ramda.js';
+import * as R from '../web_modules/ramda.js';
 import { MnHttpRequest } from './mn.http.request.js';
 
 export {MnAdminService};

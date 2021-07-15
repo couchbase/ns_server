@@ -12,9 +12,9 @@ import {MnWizardService} from './mn.wizard.service.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnPoolsService} from './mn.pools.service.js';
 import {MnAdminService} from "./mn.admin.service.js";
-import {first} from '/ui/web_modules/rxjs/operators.js';
-import {FormGroup, FormControl} from '/ui/web_modules/@angular/forms.js';
-import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
+import {first} from '../web_modules/rxjs/operators.js';
+import {FormGroup, FormControl} from '../web_modules/@angular/forms.js';
+import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
 
 export {MnWizardComponent};
 
@@ -22,7 +22,7 @@ class MnWizardComponent extends MnLifeCycleHooksToStream {
 
   static get annotations() { return [
     new Component({
-      templateUrl: '/ui/app/mn.wizard.html',
+      templateUrl: 'app/mn.wizard.html',
       changeDetection: ChangeDetectionStrategy.OnPush
     })
   ]}

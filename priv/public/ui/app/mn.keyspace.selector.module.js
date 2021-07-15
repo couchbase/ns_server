@@ -8,13 +8,13 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { NgModule } from '/ui/web_modules/@angular/core.js';
-import { CommonModule } from '/ui/web_modules/@angular/common.js';
-import { ReactiveFormsModule } from '/ui/web_modules/@angular/forms.js';
+import { NgModule } from '../web_modules/@angular/core.js';
+import { CommonModule } from '../web_modules/@angular/common.js';
+import { ReactiveFormsModule } from '../web_modules/@angular/forms.js';
 import { MnInputFilterModule } from './mn.input.filter.module.js';
 import { MnCollectionsServiceModule } from './mn.collections.service.js';
 
-import { MnKeyspaceSelectorComponent } from "/ui/app/mn.keyspace.selector.component.js";
+import { MnKeyspaceSelectorComponent } from "./mn.keyspace.selector.component.js";
 import { MnFormService } from "./mn.form.service.js";
 
 export { MnKeyspaceSelectorModule };

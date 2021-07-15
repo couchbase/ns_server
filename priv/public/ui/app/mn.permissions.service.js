@@ -8,10 +8,10 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { Injectable } from '/ui/web_modules/@angular/core.js';
-import { pluck, distinctUntilChanged, shareReplay, map, switchMap } from '/ui/web_modules/rxjs/operators.js';
-import { combineLatest } from "/ui/web_modules/rxjs.js";
-import { HttpClient } from '/ui/web_modules/@angular/common/http.js';
+import { Injectable } from '../web_modules/@angular/core.js';
+import { pluck, distinctUntilChanged, shareReplay, map, switchMap } from '../web_modules/rxjs/operators.js';
+import { combineLatest } from "../web_modules/rxjs.js";
+import { HttpClient } from '../web_modules/@angular/common/http.js';
 import { MnBucketsService } from './mn.buckets.service.js';
 import { MnAdminService } from './mn.admin.service.js';
 

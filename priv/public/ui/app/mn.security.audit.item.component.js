@@ -8,12 +8,12 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
+import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
 import {pluck, scan, distinctUntilChanged, shareReplay,
-        takeUntil, startWith, map} from '/ui/web_modules/rxjs/operators.js';
-import {Subject, combineLatest} from '/ui/web_modules/rxjs.js';
-import {not, pipe, contains, all, equals} from '/ui/web_modules/ramda.js';
-import {FormControl, FormGroup} from '/ui/web_modules/@angular/forms.js';
+        takeUntil, startWith, map} from '../web_modules/rxjs/operators.js';
+import {Subject, combineLatest} from '../web_modules/rxjs.js';
+import {not, pipe, contains, all, equals} from '../web_modules/ramda.js';
+import {FormControl, FormGroup} from '../web_modules/@angular/forms.js';
 
 import { MnLifeCycleHooksToStream } from './mn.core.js';
 
@@ -23,7 +23,7 @@ class MnSecurityAuditItemComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
       selector: "mn-security-audit-item",
-      templateUrl: "/ui/app/mn.security.audit.item.html",
+      templateUrl: "app/mn.security.audit.item.html",
       inputs: [
         "form",
         "descriptors",

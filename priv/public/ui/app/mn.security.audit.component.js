@@ -8,17 +8,17 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
+import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
 import {map, withLatestFrom, pluck, switchMap,
-        distinctUntilChanged, shareReplay, takeUntil} from '/ui/web_modules/rxjs/operators.js';
-import {merge, combineLatest, pipe, Subject, of} from '/ui/web_modules/rxjs.js';
+        distinctUntilChanged, shareReplay, takeUntil} from '../web_modules/rxjs/operators.js';
+import {merge, combineLatest, pipe, Subject, of} from '../web_modules/rxjs.js';
 
 import { MnLifeCycleHooksToStream } from './mn.core.js';
 
 import {MnFormService} from './mn.form.service.js';
 import {MnHelperService} from './mn.helper.service.js';
 import {MnSecurityService} from './mn.security.service.js';
-import {MnPermissions} from '/ui/app/ajs.upgraded.providers.js';
+import {MnPermissions} from './ajs.upgraded.providers.js';
 import {MnAdminService} from './mn.admin.service.js';
 import {MnPoolsService} from './mn.pools.service.js';
 
@@ -27,7 +27,7 @@ export {MnSecurityAuditComponent};
 class MnSecurityAuditComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
-      templateUrl: "/ui/app/mn.security.audit.html",
+      templateUrl: "app/mn.security.audit.html",
       changeDetection: ChangeDetectionStrategy.OnPush
     })
   ]}

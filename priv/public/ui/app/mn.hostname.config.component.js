@@ -8,11 +8,11 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
+import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
 import {MnPoolsService} from './mn.pools.service.js';
 import {MnWizardService} from './mn.wizard.service.js';
-import {BehaviorSubject} from '/ui/web_modules/rxjs.js';
-import {takeUntil, pluck, distinctUntilChanged} from '/ui/web_modules/rxjs/operators.js';
+import {BehaviorSubject} from '../web_modules/rxjs.js';
+import {takeUntil, pluck, distinctUntilChanged} from '../web_modules/rxjs/operators.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 
 export {MnHostnameConfigComponent};
@@ -21,7 +21,7 @@ class MnHostnameConfigComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
       selector: "mn-hostname-config",
-      templateUrl: "/ui/app/mn.hostname.config.html",
+      templateUrl: "app/mn.hostname.config.html",
       inputs: [
         "group",
         "isHostCfgEnabled"

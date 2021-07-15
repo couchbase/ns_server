@@ -9,11 +9,11 @@
 */
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
-import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
-import {pluck, filter, shareReplay, map} from "/ui/web_modules/rxjs/operators.js";
+import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
+import {pluck, filter, shareReplay, map} from "../web_modules/rxjs/operators.js";
 import {MnLogsListService} from './mn.logs.list.service.js';
 import {MnHelperService} from './mn.helper.service.js';
-import {DatePipe} from '/ui/web_modules/@angular/common.js';
+import {DatePipe} from '../web_modules/@angular/common.js';
 
 export {MnLogsListComponent};
 
@@ -22,7 +22,7 @@ class MnLogsListComponent extends MnLifeCycleHooksToStream {
   static get annotations() {
     return [
       new Component({
-        templateUrl: "/ui/app/mn.logs.list.html",
+        templateUrl: "app/mn.logs.list.html",
         changeDetection: ChangeDetectionStrategy.OnPush
       })
   ]}

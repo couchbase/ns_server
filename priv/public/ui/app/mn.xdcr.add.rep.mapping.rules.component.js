@@ -8,8 +8,8 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
-import {map, startWith} from '/ui/web_modules/rxjs/operators.js';
+import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
+import {map, startWith} from '../web_modules/rxjs/operators.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {collectionDelimiter} from './mn.xdcr.service.js';
 
@@ -19,7 +19,7 @@ class MnXDCRAddRepMappingRulesComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
       selector: "mn-xdcr-mapping-rules",
-      templateUrl: "/ui/app/mn.xdcr.add.rep.mapping.rules.html",
+      templateUrl: "app/mn.xdcr.add.rep.mapping.rules.html",
       changeDetection: ChangeDetectionStrategy.OnPush,
       inputs: [
         "isEditMode",

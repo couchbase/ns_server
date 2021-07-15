@@ -8,9 +8,9 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { BehaviorSubject } from "/ui/web_modules/rxjs.js";
-import { shareReplay } from '/ui/web_modules/rxjs/operators.js';
-import { Injectable } from "/ui/web_modules/@angular/core.js";
+import { BehaviorSubject } from "../web_modules/rxjs.js";
+import { shareReplay } from '../web_modules/rxjs/operators.js';
+import { Injectable } from "../web_modules/@angular/core.js";
 
 export { MnTasksService }
 

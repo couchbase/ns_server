@@ -8,15 +8,18 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js'
-import {NgbModal} from "/ui/web_modules/@ng-bootstrap/ng-bootstrap.js"
-import {takeUntil} from '/ui/web_modules/rxjs/operators.js';
-import {BehaviorSubject, Subject} from "/ui/web_modules/rxjs.js";
-import {MnPermissions, $rootScope} from '/ui/app/ajs.upgraded.providers.js'
+import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js'
+import {NgbModal} from "../web_modules/@ng-bootstrap/ng-bootstrap.js"
+import {takeUntil} from '../web_modules/rxjs/operators.js';
+import {BehaviorSubject, Subject} from "../web_modules/rxjs.js";
+import {MnPermissions, $rootScope} from './ajs.upgraded.providers.js'
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnCollectionsService} from './mn.collections.service.js';
 import {MnCollectionsDeleteItemComponent} from './mn.collections.delete.item.component.js';
+
+import {loadHTML} from './mn.core.js';
+let template = await loadHTML('./mn.collections.item.html', import.meta.url);
 
 export {MnCollectionsItemComponent};
 
@@ -24,7 +27,7 @@ class MnCollectionsItemComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
       selector: "mn-collections-item",
-      templateUrl: "app/mn.collections.item.html",
+      template: template,
       changeDetection: ChangeDetectionStrategy.OnPush,
       inputs: [
         "collection",

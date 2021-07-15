@@ -8,10 +8,10 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Injectable} from "/ui/web_modules/@angular/core.js";
-import {HttpClient, HttpParams, HttpHeaders} from '/ui/web_modules/@angular/common/http.js';
-import {BehaviorSubject} from '/ui/web_modules/rxjs.js';
-import {switchMap, shareReplay, map} from '/ui/web_modules/rxjs/operators.js';
+import {Injectable} from "../web_modules/@angular/core.js";
+import {HttpClient, HttpParams, HttpHeaders} from '../web_modules/@angular/common/http.js';
+import {BehaviorSubject} from '../web_modules/rxjs.js';
+import {switchMap, shareReplay, map} from '../web_modules/rxjs/operators.js';
 import {MnHttpRequest} from './mn.http.request.js';
 
 export {MnSecurityService};

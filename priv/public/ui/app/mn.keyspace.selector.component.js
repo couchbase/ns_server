@@ -8,11 +8,11 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
+import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
 import {map, mapTo, takeUntil, withLatestFrom,
-        filter, skip} from '/ui/web_modules/rxjs/operators.js';
+        filter, skip} from '../web_modules/rxjs/operators.js';
 import {MnLifeCycleHooksToStream} from "./mn.core.js";
-import {Subject, merge, } from "/ui/web_modules/rxjs.js";
+import {Subject, merge, } from "../web_modules/rxjs.js";
 import {MnFormService} from "./mn.form.service.js";
 
 export {MnKeyspaceSelectorComponent};
@@ -21,7 +21,7 @@ class MnKeyspaceSelectorComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
       selector: "mn-keyspace-selector",
-      templateUrl: "/ui/app/mn.keyspace.selector.html",
+      templateUrl: "app/mn.keyspace.selector.html",
       inputs: [
         "service",
         "defaults"

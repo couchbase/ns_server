@@ -8,10 +8,10 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
-import {Subject, of, merge, NEVER} from '/ui/web_modules/rxjs.js';
+import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
+import {Subject, of, merge, NEVER} from '../web_modules/rxjs.js';
 import {map, filter, switchMap, shareReplay, takeUntil, startWith, distinctUntilChanged,
-        debounceTime, withLatestFrom} from '/ui/web_modules/rxjs/operators.js';
+        debounceTime, withLatestFrom} from '../web_modules/rxjs/operators.js';
 
 import {MnLifeCycleHooksToStream} from "./mn.core.js";
 
@@ -20,7 +20,7 @@ import {MnXDCRService} from "./mn.xdcr.service.js";
 import {MnCollectionsService} from './mn.collections.service.js';
 import {MnHelperService} from "./mn.helper.service.js";
 
-import {MnPermissions} from '/ui/app/ajs.upgraded.providers.js';
+import {MnPermissions} from './ajs.upgraded.providers.js';
 
 export {MnXDCRAddRepMappingComponent};
 
@@ -28,7 +28,7 @@ class MnXDCRAddRepMappingComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
       selector: "mn-xdcr-mapping",
-      templateUrl: "/ui/app/mn.xdcr.add.rep.mapping.html",
+      templateUrl: "app/mn.xdcr.add.rep.mapping.html",
       changeDetection: ChangeDetectionStrategy.OnPush,
       inputs: [
         "explicitMappingRules",

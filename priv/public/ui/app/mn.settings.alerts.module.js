@@ -8,10 +8,10 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { NgModule } from '/ui/web_modules/@angular/core.js';
-import { UIRouterModule } from "/ui/web_modules/@uirouter/angular.js";
+import { NgModule } from '../web_modules/@angular/core.js';
+import { UIRouterModule } from "../web_modules/@uirouter/angular.js";
 import { MnSharedModule } from './mn.shared.module.js';
-import { ReactiveFormsModule } from '/ui/web_modules/@angular/forms.js';
+import { ReactiveFormsModule } from '../web_modules/@angular/forms.js';
 import { MnSettingsAlertsComponent } from './mn.settings.alerts.component.js';
 import { MnSettingsAlertsService } from './mn.settings.alerts.service.js';
 

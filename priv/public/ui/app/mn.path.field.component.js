@@ -8,9 +8,9 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
+import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
 import {MnWizardService} from './mn.wizard.service.js';
-import {BehaviorSubject} from '/ui/web_modules/rxjs.js';
+import {BehaviorSubject} from '../web_modules/rxjs.js';
 
 export {MnPathFieldComponent};
 
@@ -18,7 +18,7 @@ class MnPathFieldComponent {
   static get annotations() { return [
     new Component({
       selector: "mn-path-field",
-      templateUrl: "/ui/app/mn.path.field.html",
+      templateUrl: "app/mn.path.field.html",
       inputs: [
         "control",
         "controlName"

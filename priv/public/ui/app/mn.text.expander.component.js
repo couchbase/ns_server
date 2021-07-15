@@ -8,7 +8,7 @@
   licenses/APL2.txt.
 */
 
-import { ChangeDetectionStrategy, Component } from '/ui/web_modules/@angular/core.js';
+import { ChangeDetectionStrategy, Component } from '../web_modules/@angular/core.js';
 import { MnHelperService } from './mn.helper.service.js';
 
 export { MnTextExpanderComponent };

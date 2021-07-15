@@ -8,10 +8,10 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {NgZone} from '/ui/web_modules/@angular/core.js';
-import {platformBrowserDynamic} from '/ui/web_modules/@angular/platform-browser-dynamic.js';
+import {NgZone} from '../web_modules/@angular/core.js';
+import {platformBrowserDynamic} from '../web_modules/@angular/platform-browser-dynamic.js';
 import {MnAppModule} from './mn.app.module.js';
-import {UIRouter} from '/ui/web_modules/@uirouter/core.js';
+import {UIRouter} from '../web_modules/@uirouter/core.js';
 
 platformBrowserDynamic().bootstrapModule(MnAppModule).then(platformRef => {
   const urlService = platformRef.injector.get(UIRouter).urlService;

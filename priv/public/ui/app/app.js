@@ -8,20 +8,20 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import uiRouter from "/ui/web_modules/@uirouter/angularjs.js";
-import { upgradeModule } from '/ui/web_modules/@uirouter/angular-hybrid.js';
-import oclazyLoad from "/ui/web_modules/oclazyload.js";
-import ngSanitize from "/ui/web_modules/angular-sanitize.js";
-import ngAnimate from "/ui/web_modules/angular-animate.js";
-import uiBootstrap from "/ui/web_modules/angular-ui-bootstrap.js";
-import mnAdmin from "/ui/app/mn_admin/mn_admin_config.js";
-import mnAppConfig from "/ui/app/app_config.js";
-import mnPools from "/ui/app/components/mn_pools.js";
-import mnEnv from "/ui/app/components/mn_env.js";
-import mnFilters from "/ui/app/components/mn_filters.js";
-import mnHttp from "/ui/app/components/mn_http.js";
-import mnExceptionReporter from "/ui/app/components/mn_exception_reporter.js";
+import angular from "../web_modules/angular.js";
+import uiRouter from "../web_modules/@uirouter/angularjs.js";
+import { upgradeModule } from '../web_modules/@uirouter/angular-hybrid.js';
+import oclazyLoad from "../web_modules/oclazyload.js";
+import ngSanitize from "../web_modules/angular-sanitize.js";
+import ngAnimate from "../web_modules/angular-animate.js";
+import uiBootstrap from "../web_modules/angular-ui-bootstrap.js";
+import mnAdmin from "./mn_admin/mn_admin_config.js";
+import mnAppConfig from "./app_config.js";
+import mnPools from "./components/mn_pools.js";
+import mnEnv from "./components/mn_env.js";
+import mnFilters from "./components/mn_filters.js";
+import mnHttp from "./components/mn_http.js";
+import mnExceptionReporter from "./components/mn_exception_reporter.js";
 import {
   bucketsFormConfiguration,
   daysOfWeek,
@@ -31,7 +31,7 @@ import {
   docBytesLimit,
   viewsPerPageLimit,
   IEC
-} from "/ui/app/constants/constants.js";
+} from "./constants/constants.js";
 
 export default 'app';
 

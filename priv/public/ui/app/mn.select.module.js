@@ -9,12 +9,12 @@ licenses/APL2.txt.
 */
 
 import { MnSelectComponent } from './mn.select.component.js';
-import { NgModule } from '/ui/web_modules/@angular/core.js';
-import { CommonModule } from '/ui/web_modules/@angular/common.js';
+import { NgModule } from '../web_modules/@angular/core.js';
+import { CommonModule } from '../web_modules/@angular/common.js';
 import { MnSharedModule } from './mn.shared.module.js';
-import { NgbModule } from '/ui/web_modules/@ng-bootstrap/ng-bootstrap.js';
+import { NgbModule } from '../web_modules/@ng-bootstrap/ng-bootstrap.js';
 import { MnInputFilterModule } from './mn.input.filter.module.js';
-import { ReactiveFormsModule } from '/ui/web_modules/@angular/forms.js';
+import { ReactiveFormsModule } from '../web_modules/@angular/forms.js';
 
 export { MnSelectModule }
 

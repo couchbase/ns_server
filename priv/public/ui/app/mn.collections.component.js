@@ -8,15 +8,15 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
-import {FormBuilder} from "/ui/web_modules/@angular/forms.js";
-import {UIRouter} from "/ui/web_modules/@uirouter/angular.js";
+import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
+import {FormBuilder} from "../web_modules/@angular/forms.js";
+import {UIRouter} from "../web_modules/@uirouter/angular.js";
 import {pluck, filter, switchMap, distinctUntilChanged, withLatestFrom,
-        shareReplay, takeUntil, tap, map} from '/ui/web_modules/rxjs/operators.js';
-import {combineLatest, Subject, timer, NEVER, of} from "/ui/web_modules/rxjs.js";
-import {NgbModal} from "/ui/web_modules/@ng-bootstrap/ng-bootstrap.js";
+        shareReplay, takeUntil, tap, map} from '../web_modules/rxjs/operators.js';
+import {combineLatest, Subject, timer, NEVER, of} from "../web_modules/rxjs.js";
+import {NgbModal} from "../web_modules/@ng-bootstrap/ng-bootstrap.js";
 import {MnPermissions, MnStatisticsNewService,
-        MnServersService, $rootScope} from '/ui/app/ajs.upgraded.providers.js';
+        MnServersService, $rootScope} from './ajs.upgraded.providers.js';
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnCollectionsService} from './mn.collections.service.js';
@@ -24,12 +24,15 @@ import {MnCollectionsAddScopeComponent} from './mn.collections.add.scope.compone
 
 import {MnHelperService} from './mn.helper.service.js';
 
+import {loadHTML} from './mn.core.js';
+let template = await loadHTML('./mn.collections.html', import.meta.url);
+
 export {MnCollectionsComponent};
 
 class MnCollectionsComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
-      templateUrl: "/ui/app/mn.collections.html",
+      template: template,
       changeDetection: ChangeDetectionStrategy.OnPush
     })
   ]}

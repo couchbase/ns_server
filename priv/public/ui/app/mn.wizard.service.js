@@ -8,12 +8,12 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {FormGroup, FormControl, Validators, FormArray} from "/ui/web_modules/@angular/forms.js";
-import {Injectable} from "/ui/web_modules/@angular/core.js";
-import {HttpClient, HttpParams} from '/ui/web_modules/@angular/common/http.js';
-import _ from '/ui/web_modules/lodash.js';
-import {BehaviorSubject, Subject, combineLatest} from '/ui/web_modules/rxjs.js';
-import {switchMap, shareReplay, withLatestFrom, first, map, pluck} from '/ui/web_modules/rxjs/operators.js';
+import {FormGroup, FormControl, Validators, FormArray} from "../web_modules/@angular/forms.js";
+import {Injectable} from "../web_modules/@angular/core.js";
+import {HttpClient, HttpParams} from '../web_modules/@angular/common/http.js';
+import _ from '../web_modules/lodash.js';
+import {BehaviorSubject, Subject, combineLatest} from '../web_modules/rxjs.js';
+import {switchMap, shareReplay, withLatestFrom, first, map, pluck} from '../web_modules/rxjs/operators.js';
 import {MnHelperService} from './mn.helper.service.js';
 import {MnAdminService} from './mn.admin.service.js';
 import {MnPoolsService} from './mn.pools.service.js';

@@ -15,7 +15,7 @@ import { MnAppService } from './mn.app.service.js';
 import { MnPoolsService } from './mn.pools.service.js';
 import { combineLatest, Subject } from '../web_modules/rxjs.js'
 import { take, filter, map, withLatestFrom, tap } from '../web_modules/rxjs/operators.js';
-import { Rejection } from '/ui/web_modules/@uirouter/core.js';
+import { Rejection } from '../web_modules/@uirouter/core.js';
 
 export { MnExceptionHandlerService };
 

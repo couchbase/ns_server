@@ -8,13 +8,13 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
-import {pipe, BehaviorSubject} from '/ui/web_modules/rxjs.js';
-import {withLatestFrom, map, takeUntil, startWith, filter} from '/ui/web_modules/rxjs/operators.js';
-import {UIRouter} from '/ui/web_modules/@uirouter/angular.js';
-import {FormBuilder, Validators} from '/ui/web_modules/@angular/forms.js'
+import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
+import {pipe, BehaviorSubject} from '../web_modules/rxjs.js';
+import {withLatestFrom, map, takeUntil, startWith, filter} from '../web_modules/rxjs/operators.js';
+import {UIRouter} from '../web_modules/@uirouter/angular.js';
+import {FormBuilder, Validators} from '../web_modules/@angular/forms.js'
 
-import {MnAlertsService, $rootScope} from '/ui/app/ajs.upgraded.providers.js';
+import {MnAlertsService, $rootScope} from './ajs.upgraded.providers.js';
 
 import {MnLifeCycleHooksToStream} from "./mn.core.js";
 import {MnFormService} from "./mn.form.service.js";
@@ -28,7 +28,7 @@ export {MnXDCRAddRepComponent};
 class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
-      templateUrl: "/ui/app/mn.xdcr.add.rep.html",
+      templateUrl: "app/mn.xdcr.add.rep.html",
       changeDetection: ChangeDetectionStrategy.OnPush,
     })
   ]}

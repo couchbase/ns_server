@@ -8,13 +8,13 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { Component, ChangeDetectionStrategy } from '/ui/web_modules/@angular/core.js';
-import { FormGroup, FormControl, Validators } from '/ui/web_modules/@angular/forms.js';
-import { BehaviorSubject } from '/ui/web_modules/rxjs.js';
+import { Component, ChangeDetectionStrategy } from '../web_modules/@angular/core.js';
+import { FormGroup, FormControl, Validators } from '../web_modules/@angular/forms.js';
+import { BehaviorSubject } from '../web_modules/rxjs.js';
 import { MnAuthService } from './mn.auth.service.js';
 import { MnAdminService } from './mn.admin.service.js';
 import { MnFormService } from './mn.form.service.js';
-import { UIRouter } from '/ui/web_modules/@uirouter/angular.js';
+import { UIRouter } from '../web_modules/@uirouter/angular.js';
 import { MnLifeCycleHooksToStream } from './mn.core.js';
 import { MnPools, $rootScope} from "./ajs.upgraded.providers.js";
 

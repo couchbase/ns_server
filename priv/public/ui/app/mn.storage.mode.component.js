@@ -8,13 +8,13 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
+import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
-import {combineLatest, of} from '/ui/web_modules/rxjs.js';
-import {takeUntil, map, first, startWith, filter} from '/ui/web_modules/rxjs/operators.js';
+import {combineLatest, of} from '../web_modules/rxjs.js';
+import {takeUntil, map, first, startWith, filter} from '../web_modules/rxjs/operators.js';
 import {MnWizardService} from './mn.wizard.service.js';
 import {MnPoolsService} from './mn.pools.service.js';
-import {not, any, all} from '/ui/web_modules/ramda.js';
+import {not, any, all} from '../web_modules/ramda.js';
 
 export {MnStorageModeComponent};
 
@@ -22,7 +22,7 @@ class MnStorageModeComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
       selector: "mn-storage-mode",
-      templateUrl: "/ui/app/mn.storage.mode.html",
+      templateUrl: "app/mn.storage.mode.html",
       inputs: [
         "control",
         "indexFlag",

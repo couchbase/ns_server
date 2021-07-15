@@ -8,7 +8,7 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js'
+import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js'
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnHelperService} from "./mn.helper.service.js";
 
@@ -18,7 +18,7 @@ class MnXDCRAddRepScopeComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
       selector: "mn-xdcr-add-rep-scope",
-      templateUrl: "/ui/app/mn.xdcr.add.rep.scope.html",
+      templateUrl: "app/mn.xdcr.add.rep.scope.html",
       changeDetection: ChangeDetectionStrategy.OnPush,
       inputs: [
         "item",

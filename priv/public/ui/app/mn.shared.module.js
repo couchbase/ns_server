@@ -10,7 +10,7 @@ licenses/APL2.txt.
 
 import { MnFocusDirective } from './mn.focus.directive.js';
 import { NgModule } from '../web_modules/@angular/core.js';
-import { CommonModule } from '/ui/web_modules/@angular/common.js';
+import { CommonModule } from '../web_modules/@angular/common.js';
 import { ReactiveFormsModule } from '../web_modules/@angular/forms.js';
 
 import { MnMainSpinnerDirective } from "./ajs.upgraded.components.js";

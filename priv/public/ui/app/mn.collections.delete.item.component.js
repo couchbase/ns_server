@@ -8,21 +8,24 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
-import {NgbActiveModal} from '/ui/web_modules/@ng-bootstrap/ng-bootstrap.js';
+import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
+import {NgbActiveModal} from '../web_modules/@ng-bootstrap/ng-bootstrap.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
-import {takeUntil} from '/ui/web_modules/rxjs/operators.js';
-import {map} from "/ui/web_modules/rxjs/operators.js";
+import {takeUntil} from '../web_modules/rxjs/operators.js';
+import {map} from "../web_modules/rxjs/operators.js";
 
 import {MnFormService} from "./mn.form.service.js";
 import {MnCollectionsService} from './mn.collections.service.js';
+
+import {loadHTML} from './mn.core.js';
+let template = await loadHTML('./mn.collections.delete.item.html', import.meta.url);
 
 export {MnCollectionsDeleteItemComponent}
 
 class MnCollectionsDeleteItemComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
-      templateUrl: "app/mn.collections.delete.item.html",
+      template: template,
       changeDetection: ChangeDetectionStrategy.OnPush
     })
   ]}

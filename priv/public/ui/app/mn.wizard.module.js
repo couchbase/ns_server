@@ -8,12 +8,12 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {NgModule} from '/ui/web_modules/@angular/core.js';
+import {NgModule} from '../web_modules/@angular/core.js';
 
-import {ReactiveFormsModule} from '/ui/web_modules/@angular/forms.js';
-import {HttpClientJsonpModule} from '/ui/web_modules/@angular/common/http.js';
-import {CommonModule} from '/ui/web_modules/@angular/common.js';
-import {NgbModule} from '/ui/web_modules/@ng-bootstrap/ng-bootstrap.js';
+import {ReactiveFormsModule} from '../web_modules/@angular/forms.js';
+import {HttpClientJsonpModule} from '../web_modules/@angular/common/http.js';
+import {CommonModule} from '../web_modules/@angular/common.js';
+import {NgbModule} from '../web_modules/@ng-bootstrap/ng-bootstrap.js';
 
 import {MnWizardComponent} from './mn.wizard.component.js';
 import {MnWizardWelcomeComponent} from './mn.wizard.welcome.component.js';
@@ -25,10 +25,10 @@ import {MnWizardService} from './mn.wizard.service.js';
 import {MnAuthService} from './mn.auth.service.js';
 import {MnSharedModule} from './mn.shared.module.js';
 import {MnPipesModule} from './mn.pipes.module.js';
-import {HttpClientModule} from '/ui/web_modules/@angular/common/http.js';
-import {UpgradeModule} from '/ui/web_modules/@angular/upgrade/static.js';
-import {UIRouterModule} from '/ui/web_modules/@uirouter/angular.js';
-import {UIRouterUpgradeModule} from '/ui/web_modules/@uirouter/angular-hybrid.js';
+import {HttpClientModule} from '../web_modules/@angular/common/http.js';
+import {UpgradeModule} from '../web_modules/@angular/upgrade/static.js';
+import {UIRouterModule} from '../web_modules/@uirouter/angular.js';
+import {UIRouterUpgradeModule} from '../web_modules/@uirouter/angular-hybrid.js';
 
 import {MnNodeStorageConfigComponent} from './mn.node.storage.config.component.js';
 import {MnHostnameConfigComponent} from './mn.hostname.config.component.js';
@@ -39,7 +39,7 @@ import {MnPathFieldComponent} from './mn.path.field.component.js';
 import {MnAdminService} from './mn.admin.service.js';
 import {MnPoolsService} from './mn.pools.service.js';
 
-import {HTTP_INTERCEPTORS} from '/ui/web_modules/@angular/common/http.js';
+import {HTTP_INTERCEPTORS} from '../web_modules/@angular/common/http.js';
 import {MnHttpInterceptor} from './mn.http.interceptor.js';
 
 let states = [{

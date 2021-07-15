@@ -7,9 +7,11 @@ file, in accordance with the Business Source License, use of this software will
 be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
-import {startWith } from '/ui/web_modules/rxjs/operators.js';
+import {startWith } from '../web_modules/rxjs/operators.js';
+import { ChangeDetectionStrategy, Component } from '../web_modules/@angular/core.js';
 
-import { ChangeDetectionStrategy, Component } from '/ui/web_modules/@angular/core.js';
+import { loadHTML } from './mn.core.js';
+let template = await loadHTML('./mn.input.filter.html', import.meta.url);
 
 export { MnInputFilterComponent };
 
@@ -17,7 +19,7 @@ class MnInputFilterComponent {
   static get annotations() { return [
     new Component({
       selector: "mn-input-filter",
-      templateUrl: "app/mn.input.filter.html",
+      template: template,
       inputs: [
         "group",
         "mnFocusStatus",

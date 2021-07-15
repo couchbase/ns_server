@@ -8,12 +8,12 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {UIRouter} from '/ui/web_modules/@uirouter/angular.js';
+import {UIRouter} from '../web_modules/@uirouter/angular.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
-import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
-import {BehaviorSubject, Subject, pipe} from '/ui/web_modules/rxjs.js';
+import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
+import {BehaviorSubject, Subject, pipe} from '../web_modules/rxjs.js';
 import {takeUntil, filter, map, tap, withLatestFrom,
-        switchMap} from '/ui/web_modules/rxjs/operators.js';
+        switchMap} from '../web_modules/rxjs/operators.js';
 import {MnWizardService} from './mn.wizard.service.js';
 import {MnPoolsService} from './mn.pools.service.js';
 import {MnFormService} from "./mn.form.service.js";
@@ -27,7 +27,7 @@ export {MnWizardTermsAndConditionsComponent};
 class MnWizardTermsAndConditionsComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
-      templateUrl: "/ui/app/mn.wizard.terms.and.conditions.html",
+      templateUrl: "app/mn.wizard.terms.and.conditions.html",
       changeDetection: ChangeDetectionStrategy.OnPush
     })
   ]}

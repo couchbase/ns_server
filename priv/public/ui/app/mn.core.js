@@ -8,11 +8,17 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { BehaviorSubject, Subject } from '/ui/web_modules/rxjs.js';
+import { BehaviorSubject, Subject } from '../web_modules/rxjs.js';
 import { distinctUntilChanged, withLatestFrom, takeUntil,
-         map, pluck } from '/ui/web_modules/rxjs/operators.js';
+         map, pluck } from '../web_modules/rxjs/operators.js';
 
-export { MnLifeCycleHooksToStream, DetailsHashObserver };
+export { MnLifeCycleHooksToStream, DetailsHashObserver, loadHTML};
+
+function loadHTML(htmlRelativeUrl, baseUrl) {
+  // fetch resolves relative url using the document base URL
+  let htmlUrl = new URL(htmlRelativeUrl, baseUrl).href;
+  return fetch(htmlUrl).then(response => response.text());
+}
 
 let componentLifecycleHooks = [
   "OnChanges",

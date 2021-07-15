@@ -8,23 +8,23 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {CommonModule} from '/ui/web_modules/@angular/common.js';
-import {BrowserModule} from '/ui/web_modules/@angular/platform-browser.js';
+import {CommonModule} from '../web_modules/@angular/common.js';
+import {BrowserModule} from '../web_modules/@angular/platform-browser.js';
 import {HttpClientModule} from '../web_modules/@angular/common/http.js';
 import {UIRouterModule, UIView, loadNgModule} from '../web_modules/@uirouter/angular.js';
-import {Rejection} from '/ui/web_modules/@uirouter/core.js';
+import {Rejection} from '../web_modules/@uirouter/core.js';
 import {MnPipesModule} from './mn.pipes.module.js';
 import {MnAppComponent} from './mn.app.component.js';
 import {MnAuthComponent} from './mn.auth.component.js';
-import {UpgradeModule} from '/ui/web_modules/@angular/upgrade/static.js';
+import {UpgradeModule} from '../web_modules/@angular/upgrade/static.js';
 import {MnSharedModule} from './mn.shared.module.js';
 import {MnElementCraneModule} from './mn.element.crane.js';
-import {UIRouterUpgradeModule} from '/ui/web_modules/@uirouter/angular-hybrid.js';
+import {UIRouterUpgradeModule} from '../web_modules/@uirouter/angular-hybrid.js';
 import * as pluggableUIsModules from '/ui/pluggable-uis.js';
 
 import {MnKeyspaceSelectorModule} from './mn.keyspace.selector.module.js';
 
-import {MnHelper} from '/ui/app/ajs.upgraded.providers.js';
+import {MnHelper} from './ajs.upgraded.providers.js';
 
 
 let appState = {

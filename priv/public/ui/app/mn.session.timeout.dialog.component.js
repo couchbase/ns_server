@@ -8,11 +8,11 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '/ui/web_modules/@angular/core.js';
-import {FormGroup} from '/ui/web_modules/@angular/forms.js';
-import {interval} from '/ui/web_modules/rxjs.js';
-import {NgbActiveModal} from '/ui/web_modules/@ng-bootstrap/ng-bootstrap.js';
-import {scan, startWith} from '/ui/web_modules/rxjs/operators.js';
+import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
+import {FormGroup} from '../web_modules/@angular/forms.js';
+import {interval} from '../web_modules/rxjs.js';
+import {NgbActiveModal} from '../web_modules/@ng-bootstrap/ng-bootstrap.js';
+import {scan, startWith} from '../web_modules/rxjs/operators.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 
 export {MnSessionTimeoutDialogComponent};
@@ -20,7 +20,7 @@ export {MnSessionTimeoutDialogComponent};
 class MnSessionTimeoutDialogComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
-      templateUrl: "/ui/app/mn.session.timeout.dialog.html",
+      templateUrl: "app/mn.session.timeout.dialog.html",
       changeDetection: ChangeDetectionStrategy.OnPush
     })
   ]}
