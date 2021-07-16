@@ -15,8 +15,7 @@ import {shareReplay} from '../web_modules/rxjs/operators.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnHelperService} from './mn.helper.service.js';
 
-import {loadHTML} from './mn.core.js';
-let template = await loadHTML('./mn.collections.scope.details.html', import.meta.url);
+import {mnTemplateUrl} from './mn.core.js';
 
 export {MnCollectionsScopeDetailsComponent};
 
@@ -24,7 +23,7 @@ class MnCollectionsScopeDetailsComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
       selector: "mn-collections-scope-details",
-      template: template,
+      templateUrl: mnTemplateUrl('./mn.collections.scope.details.html', import.meta.url),
       changeDetection: ChangeDetectionStrategy.OnPush,
       inputs: [
         "mnCollectionsStatsPoller",

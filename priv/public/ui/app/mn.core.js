@@ -12,12 +12,10 @@ import { BehaviorSubject, Subject } from '../web_modules/rxjs.js';
 import { distinctUntilChanged, withLatestFrom, takeUntil,
          map, pluck } from '../web_modules/rxjs/operators.js';
 
-export { MnLifeCycleHooksToStream, DetailsHashObserver, loadHTML};
+export { MnLifeCycleHooksToStream, DetailsHashObserver, mnTemplateUrl };
 
-function loadHTML(htmlRelativeUrl, baseUrl) {
-  // fetch resolves relative url using the document base URL
-  let htmlUrl = new URL(htmlRelativeUrl, baseUrl).href;
-  return fetch(htmlUrl).then(response => response.text());
+function mnTemplateUrl(htmlRelativeUrl, baseUrl) {
+  return new URL(htmlRelativeUrl, baseUrl).pathname;
 }
 
 let componentLifecycleHooks = [

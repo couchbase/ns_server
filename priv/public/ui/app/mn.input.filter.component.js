@@ -10,8 +10,7 @@ licenses/APL2.txt.
 import {startWith } from '../web_modules/rxjs/operators.js';
 import { ChangeDetectionStrategy, Component } from '../web_modules/@angular/core.js';
 
-import { loadHTML } from './mn.core.js';
-let template = await loadHTML('./mn.input.filter.html', import.meta.url);
+import { mnTemplateUrl } from './mn.core.js';
 
 export { MnInputFilterComponent };
 
@@ -19,7 +18,7 @@ class MnInputFilterComponent {
   static get annotations() { return [
     new Component({
       selector: "mn-input-filter",
-      template: template,
+      templateUrl: mnTemplateUrl('./mn.input.filter.html', import.meta.url),
       inputs: [
         "group",
         "mnFocusStatus",

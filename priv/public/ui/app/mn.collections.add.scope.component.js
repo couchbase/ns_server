@@ -16,15 +16,14 @@ import {map} from '../web_modules/rxjs/operators.js';
 import {MnFormService} from "./mn.form.service.js";
 import {MnCollectionsService} from './mn.collections.service.js';
 
-import {loadHTML} from './mn.core.js';
-let template = await loadHTML('./mn.collections.add.scope.html', import.meta.url);
+import {mnTemplateUrl} from './mn.core.js';
 
 export {MnCollectionsAddScopeComponent}
 
 class MnCollectionsAddScopeComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
-      template: template,
+      templateUrl: mnTemplateUrl('./mn.collections.add.scope.html', import.meta.url),
       changeDetection: ChangeDetectionStrategy.OnPush
     })
   ]}

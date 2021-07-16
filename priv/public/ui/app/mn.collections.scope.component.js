@@ -20,8 +20,7 @@ import {MnCollectionsService} from './mn.collections.service.js';
 import {MnCollectionsDeleteScopeComponent} from './mn.collections.delete.scope.component.js';
 import {MnCollectionsAddItemComponent} from './mn.collections.add.item.component.js';
 
-import {loadHTML} from './mn.core.js';
-let template = await loadHTML('./mn.collections.scope.html', import.meta.url);
+import {mnTemplateUrl} from './mn.core.js';
 
 export {MnCollectionsScopeComponent};
 
@@ -29,7 +28,7 @@ class MnCollectionsScopeComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
       selector: "mn-collections-scope",
-      template: template,
+      templateUrl: mnTemplateUrl('./mn.collections.scope.html', import.meta.url),
       changeDetection: ChangeDetectionStrategy.OnPush,
       inputs: [
         "scope",

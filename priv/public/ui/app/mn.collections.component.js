@@ -24,15 +24,14 @@ import {MnCollectionsAddScopeComponent} from './mn.collections.add.scope.compone
 
 import {MnHelperService} from './mn.helper.service.js';
 
-import {loadHTML} from './mn.core.js';
-let template = await loadHTML('./mn.collections.html', import.meta.url);
+import {mnTemplateUrl} from './mn.core.js';
 
 export {MnCollectionsComponent};
 
 class MnCollectionsComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
-      template: template,
+      templateUrl: mnTemplateUrl('./mn.collections.html', import.meta.url),
       changeDetection: ChangeDetectionStrategy.OnPush
     })
   ]}

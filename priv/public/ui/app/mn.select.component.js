@@ -17,8 +17,7 @@ import { FormBuilder } from "../web_modules/@angular/forms.js";
 import { pluck, shareReplay, map, takeUntil, withLatestFrom } from '../web_modules/rxjs/operators.js';
 import { NgbDropdown } from "../web_modules/@ng-bootstrap/ng-bootstrap.js";
 
-import {loadHTML} from './mn.core.js';
-let template = await loadHTML('./mn.select.html', import.meta.url);
+import { mnTemplateUrl } from './mn.core.js';
 
 export { MnSelectComponent };
 
@@ -26,7 +25,7 @@ class MnSelectComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
       selector: "mn-select",
-      template: template,
+      templateUrl: mnTemplateUrl('./mn.select.html', import.meta.url),
       inputs: [
         "group",
         "mnFormControlName",
