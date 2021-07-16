@@ -465,7 +465,8 @@ services_by_version() ->
 
 topology_aware_services_by_version() ->
     [{?PREHISTORIC, [fts, index, cbas, eventing]},
-     {?VERSION_70, [backup]}].
+     {?VERSION_70, [backup]},
+     {?VERSION_NEO, [n1ql]}].
 
 filter_services_by_version(Version, ServicesTable) ->
     lists:flatmap(fun ({V, Services}) ->
