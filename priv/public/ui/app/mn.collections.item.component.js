@@ -18,15 +18,13 @@ import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnCollectionsService} from './mn.collections.service.js';
 import {MnCollectionsDeleteItemComponent} from './mn.collections.delete.item.component.js';
 
-import {mnTemplateUrl} from './mn.core.js';
-
 export {MnCollectionsItemComponent};
 
 class MnCollectionsItemComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
       selector: "mn-collections-item",
-      templateUrl: mnTemplateUrl('./mn.collections.item.html', import.meta.url),
+      templateUrl: new URL('./mn.collections.item.html', import.meta.url).pathname,
       changeDetection: ChangeDetectionStrategy.OnPush,
       inputs: [
         "collection",

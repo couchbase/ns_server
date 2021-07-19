@@ -12,11 +12,7 @@ import { BehaviorSubject, Subject } from '../web_modules/rxjs.js';
 import { distinctUntilChanged, withLatestFrom, takeUntil,
          map, pluck } from '../web_modules/rxjs/operators.js';
 
-export { MnLifeCycleHooksToStream, DetailsHashObserver, mnTemplateUrl };
-
-function mnTemplateUrl(htmlRelativeUrl, baseUrl) {
-  return new URL(htmlRelativeUrl, baseUrl).pathname;
-}
+export { MnLifeCycleHooksToStream, DetailsHashObserver };
 
 let componentLifecycleHooks = [
   "OnChanges",

@@ -24,14 +24,12 @@ import {MnCollectionsAddScopeComponent} from './mn.collections.add.scope.compone
 
 import {MnHelperService} from './mn.helper.service.js';
 
-import {mnTemplateUrl} from './mn.core.js';
-
 export {MnCollectionsComponent};
 
 class MnCollectionsComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
-      templateUrl: mnTemplateUrl('./mn.collections.html', import.meta.url),
+      templateUrl: new URL('./mn.collections.html', import.meta.url).pathname,
       changeDetection: ChangeDetectionStrategy.OnPush
     })
   ]}

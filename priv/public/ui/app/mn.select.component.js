@@ -17,15 +17,13 @@ import { FormBuilder } from "../web_modules/@angular/forms.js";
 import { pluck, shareReplay, map, takeUntil, withLatestFrom } from '../web_modules/rxjs/operators.js';
 import { NgbDropdown } from "../web_modules/@ng-bootstrap/ng-bootstrap.js";
 
-import { mnTemplateUrl } from './mn.core.js';
-
 export { MnSelectComponent };
 
 class MnSelectComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
       selector: "mn-select",
-      templateUrl: mnTemplateUrl('./mn.select.html', import.meta.url),
+      templateUrl: new URL('./mn.select.html', import.meta.url).pathname,
       inputs: [
         "group",
         "mnFormControlName",

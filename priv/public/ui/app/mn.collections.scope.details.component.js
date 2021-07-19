@@ -15,15 +15,13 @@ import {shareReplay} from '../web_modules/rxjs/operators.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnHelperService} from './mn.helper.service.js';
 
-import {mnTemplateUrl} from './mn.core.js';
-
 export {MnCollectionsScopeDetailsComponent};
 
 class MnCollectionsScopeDetailsComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
       selector: "mn-collections-scope-details",
-      templateUrl: mnTemplateUrl('./mn.collections.scope.details.html', import.meta.url),
+      templateUrl: new URL('./mn.collections.scope.details.html', import.meta.url).pathname,
       changeDetection: ChangeDetectionStrategy.OnPush,
       inputs: [
         "mnCollectionsStatsPoller",

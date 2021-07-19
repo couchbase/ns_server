@@ -17,14 +17,12 @@ import {map} from "../web_modules/rxjs/operators.js";
 import {MnFormService} from "./mn.form.service.js";
 import {MnCollectionsService} from './mn.collections.service.js';
 
-import {mnTemplateUrl} from './mn.core.js';
-
 export {MnCollectionsDeleteScopeComponent}
 
 class MnCollectionsDeleteScopeComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
-      templateUrl: mnTemplateUrl('./mn.collections.delete.scope.html', import.meta.url),
+      templateUrl: new URL('./mn.collections.delete.scope.html', import.meta.url).pathname,
       changeDetection: ChangeDetectionStrategy.OnPush
     })
   ]}
