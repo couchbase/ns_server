@@ -20,8 +20,6 @@ import {MnCollectionsService} from './mn.collections.service.js';
 import {MnCollectionsDeleteScopeComponent} from './mn.collections.delete.scope.component.js';
 import {MnCollectionsAddItemComponent} from './mn.collections.add.item.component.js';
 
-import {mnTemplateUrl} from './mn.core.js';
-
 export {MnCollectionsScopeComponent};
 
 class MnCollectionsScopeComponent extends MnLifeCycleHooksToStream {
