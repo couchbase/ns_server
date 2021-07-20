@@ -12,7 +12,7 @@ import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.j
 import {map, mapTo, takeUntil, withLatestFrom,
         filter, skip} from '../web_modules/rxjs/operators.js';
 import {MnLifeCycleHooksToStream} from "./mn.core.js";
-import {Subject, merge, } from "../web_modules/rxjs.js";
+import {Subject, merge} from "../web_modules/rxjs.js";
 import {MnFormService} from "./mn.form.service.js";
 
 export {MnKeyspaceSelectorComponent};

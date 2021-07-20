@@ -15,7 +15,7 @@ import {map, filter, pluck, startWith, withLatestFrom, takeUntil, tap} from '../
 import {MnLifeCycleHooksToStream} from "./mn.core.js";
 import {MnXDCRService} from "./mn.xdcr.service.js";
 import {MnFormService} from "./mn.form.service.js";
-import {MnCollectionsService} from "./mn.collections.service.js";
+import {MnKeyspaceSelectorService} from "./mn.keyspace.selector.service.js";
 import {MnAdminService} from "./mn.admin.service.js";
 
 export {MnXDCRFilterComponent};
@@ -39,11 +39,11 @@ class MnXDCRFilterComponent extends MnLifeCycleHooksToStream {
   static get parameters() { return [
     MnXDCRService,
     MnFormService,
-    MnCollectionsService,
+    MnKeyspaceSelectorService,
     MnAdminService
   ]}
 
-  constructor(mnXDCRService, mnFormService, mnCollectionsService, mnAdminService) {
+  constructor(mnXDCRService, mnFormService, mnKeyspaceSelectorService, mnAdminService) {
     super();
 
     this.form = mnFormService.create(this);
@@ -63,7 +63,7 @@ class MnXDCRFilterComponent extends MnLifeCycleHooksToStream {
     this.compatVersion70 =
       mnAdminService.stream.compatVersion70;
 
-    this.mnCollectionsService = mnCollectionsService;
+    this.mnKeyspaceSelectorService = mnKeyspaceSelectorService;
 
     this.errors = merge(
       this.postRegexpValidation.success,
@@ -80,19 +80,19 @@ class MnXDCRFilterComponent extends MnLifeCycleHooksToStream {
   }
 
   ngOnInit() {
-    this.mnCollectionSelectorService =
-      this.mnCollectionsService.createCollectionSelector({
+    this.mnKeyspaceSelector =
+      this.mnKeyspaceSelectorService.createCollectionSelector({
         component: this,
         steps: ["bucket", "scope", "collection"]
       });
 
     let validateOnStream =
         merge(this.group.valueChanges,
-              this.mnCollectionSelectorService.stream.step.pipe(filter(v => v == "ok")));
+              this.mnKeyspaceSelector.stream.step.pipe(filter(v => v == "ok")));
 
     this.form
       .setFormGroup(this.group)
-      .setPackPipe(pipe(withLatestFrom(this.mnCollectionSelectorService.stream.result,
+      .setPackPipe(pipe(withLatestFrom(this.mnKeyspaceSelector.stream.result,
                                        this.compatVersion70),
                         filter(([_, r, is70]) => is70 ?
                                r.bucket && r.scope && r.collection :

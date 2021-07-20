@@ -18,6 +18,7 @@ import { MnSharedModule } from './mn.shared.module.js';
 import { MnInputFilterModule } from './mn.input.filter.module.js';
 import { MnPipesModule } from './mn.pipes.module.js';
 import { MnKeyspaceSelectorModule } from "./mn.keyspace.selector.module.js";
+import { MnKeyspaceSelectorServiceModule } from "./mn.keyspace.selector.service.js";
 import { MnCollectionsServiceModule } from './mn.collections.service.js';
 import { MnSelectModule } from './mn.select.module.js';
 
@@ -147,6 +148,7 @@ class MnXDCRModule {
         MnElementCraneModule,
         ReactiveFormsModule,
         MnKeyspaceSelectorModule,
+        MnKeyspaceSelectorServiceModule,
         MnCollectionsServiceModule,
         MnSharedModule,
         MnPipesModule,

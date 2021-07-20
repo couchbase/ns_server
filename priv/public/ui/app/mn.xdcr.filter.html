@@ -57,7 +57,7 @@ licenses/APL2.txt.
          *ngIf="compatVersion70 | async"
          class="mn-keyspace-selector width-12 margin-right-half"
          [defaults]="{bucket: bucket}"
-         [service]="mnCollectionSelectorService">
+         [service]="mnKeyspaceSelector">
       </mn-keyspace-selector>
       <input
          formControlName="docId"
