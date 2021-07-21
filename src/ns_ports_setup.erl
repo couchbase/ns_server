@@ -577,7 +577,7 @@ goport_args(cbas, Config, Cmd, NodeUUID) ->
                      {"-bindReplicationPort",  cbas_replication_port}],
                     Config) ++
         build_https_args(cbas_ssl_port, "-bindHttpsPort",
-                         "-tlsCertFile", "-tlsKeyFile", undefined, Config) ++
+                         "-tlsCertFile", "-tlsKeyFile", "-tlsCAFile", Config) ++
         [
          "-uuid=" ++ NodeUUID,
          "-serverAddress=" ++ misc:localhost(),
