@@ -9,7 +9,6 @@ licenses/APL2.txt.
 */
 
 import {Injectable} from "../web_modules/@angular/core.js";
-import {UIRouter} from "../web_modules/@uirouter/angular.js";
 import {BehaviorSubject, combineLatest} from "../web_modules/rxjs.js";
 import {pluck,
         switchMap,
@@ -36,25 +35,24 @@ class MnAdminService {
   ]}
 
   static get parameters() { return [
-    UIRouter,
     HttpClient,
     MnPrettyVersion,
     MnPoolsService
   ]}
 
-  constructor(uiRouter, http, mnPrettyVersionPipe, mnPoolsService) {
+  constructor(http, mnPrettyVersionPipe, mnPoolsService) {
     this.stream = {};
     this.http = http;
     this.stream.etag = new BehaviorSubject();
-
-    this.stream.enableInternalSettings =
-      uiRouter.globals.params$.pipe(pluck("enableInternalSettings"));
 
     this.stream.whomi =
       (new BehaviorSubject()).pipe(
         switchMap(this.getWhoami.bind(this)),
         shareReplay({refCount: true, bufferSize: 1})
       );
+
+    // this.stream.enableInternalSettings =
+    //   uiRouter.globals.params$.pipe(pluck("enableInternalSettings"));
 
     // this.stream.getPoolsDefault =
     //   this.stream.etag.pipe(switchMap(this.getPoolsDefault.bind(this)),
