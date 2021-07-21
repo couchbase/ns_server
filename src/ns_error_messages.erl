@@ -27,7 +27,8 @@
          not_absolute_path/1,
          empty_param/1,
          preview_cluster_join_error/0,
-         address_check_error/2]).
+         address_check_error/2,
+         load_CAs_from_inbox_error/1]).
 
 -spec connection_error_message(term(), string(), string() | integer()) -> binary() | undefined.
 connection_error_message({tls_alert, "bad record mac"}, Host, Port) ->
@@ -228,8 +229,20 @@ file_read_error(enomem) ->
 file_read_error(Reason) ->
     atom_to_list(Reason).
 
+load_CAs_from_inbox_error({Path, empty}) ->
+    list_to_binary(io_lib:format("Directory ~s is empty", [Path]));
+load_CAs_from_inbox_error({File, {read, Error}}) ->
+    list_to_binary(io_lib:format("Couldn't load CA certificate from ~s. ~s",
+                                 [File, file_read_error(Error)]));
+load_CAs_from_inbox_error({File, {bad_cert, Error}}) ->
+    list_to_binary(io_lib:format("Couldn't load CA certificate from ~s. ~s",
+                                 [File, cert_validation_error_message(Error)])).
+
 reload_node_certificate_error(no_cluster_ca) ->
     <<"Cluster CA needs to be set before setting node certificate.">>;
+reload_node_certificate_error(no_ca) ->
+    <<"CA certificate for this chain is not found "
+      "in the list of trusted CA's">>;
 reload_node_certificate_error({bad_cert, {invalid_root_issuer, Subject, RootSubject}}) ->
     list_to_binary(io_lib:format("Last certificate of the chain ~p is not issued by the "
                                  "cluster root certificate ~p",

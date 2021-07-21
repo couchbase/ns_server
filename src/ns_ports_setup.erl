@@ -245,8 +245,8 @@ build_https_args(PortName, PortArg, PortPrefix, CertArg, KeyArg, Config) ->
             [];
         Port ->
             [PortArg ++ "=" ++ PortPrefix ++ integer_to_list(Port),
-             CertArg ++ "=" ++ ns_ssl_services_setup:memcached_cert_path(),
-             KeyArg ++ "=" ++ ns_ssl_services_setup:memcached_key_path()]
+             CertArg ++ "=" ++ ns_ssl_services_setup:chain_file_path(),
+             KeyArg ++ "=" ++ ns_ssl_services_setup:pkey_file_path()]
     end.
 
 build_port_arg(ArgName, PortName, Config) ->
@@ -380,7 +380,7 @@ goport_args(goxdcr, Config, _Cmd, _NodeUUID) ->
     build_port_args([{"-sourceKVAdminPort", rest_port},
                      {"-xdcrRestPort", xdcr_rest_port}], Config) ++
         [IsEnterprise | build_afamily_requirement("-")] ++
-        ["-caFile=" ++ ns_ssl_services_setup:memcached_cert_path()];
+        ["-caFile=" ++ ns_ssl_services_setup:ca_file_path()];
 
 goport_args(indexer, Config, _Cmd, NodeUUID) ->
     {ok, LogDir} = application:get_env(ns_server, error_logger_mf_dir),

@@ -15,7 +15,8 @@
 
 -export([handle_cluster_certificate/1,
          handle_regenerate_certificate/1,
-         handle_upload_cluster_ca/1,
+         handle_load_ca_certs/1,
+         handle_upload_cluster_ca/1, %% deprecated
          handle_reload_node_certificate/1,
          handle_get_node_certificate/2,
          handle_client_cert_auth_settings/1,
@@ -59,8 +60,11 @@ translate_warning(Warning) ->
     warning_props(Warning).
 
 jsonify_cert_props(Props) ->
-    lists:map(fun ({expires, UTCSeconds}) ->
-                      {expires, format_time(UTCSeconds)};
+    lists:map(fun ({K, UTCSeconds}) when K =:= expires;
+                                         K =:= not_before;
+                                         K =:= not_after;
+                                         K =:= load_timestamp ->
+                      {K, format_time(UTCSeconds)};
                   ({K, V}) when is_list(V) ->
                       {K, list_to_binary(V)};
                   (Pair) ->
@@ -95,6 +99,26 @@ reply_error(Req, Error) ->
     menelaus_util:reply_json(
       Req, {[{error, ns_error_messages:cert_validation_error_message(Error)}]}, 400).
 
+handle_load_ca_certs(Req) ->
+    menelaus_util:assert_is_enterprise(),
+    menelaus_util:assert_is_NEO(),
+    Nodes = nodes(),
+    case ns_server_cert:load_CAs_from_inbox() of
+        {ok, NewCertsProps} ->
+            ns_ssl_services_setup:sync(),
+            case netconfig_updater:ensure_tls_dist_started(Nodes) of
+                ok ->
+                    CertsJson = [{jsonify_cert_props(C)} || C <- NewCertsProps],
+                    menelaus_util:reply_json(Req, CertsJson, 200);
+                {error, ErrorMsg} ->
+                    menelaus_util:reply_json(Req, ErrorMsg, 400)
+            end;
+        {error, Error} ->
+            ?log_error("Error loading CA certificates: ~p", [Error]),
+            menelaus_util:reply_json(
+              Req, ns_error_messages:load_CAs_from_inbox_error(Error), 400)
+    end.
+
 handle_upload_cluster_ca(Req) ->
     menelaus_util:assert_is_enterprise(),
     assert_n2n_encryption_is_disabled(),
@@ -125,11 +149,11 @@ assert_n2n_encryption_is_disabled() ->
 handle_reload_node_certificate(Req) ->
     menelaus_util:assert_is_enterprise(),
     Nodes = nodes(),
-    case ns_server_cert:apply_certificate_chain_from_inbox() of
+    case ns_server_cert:load_node_certs_from_inbox() of
         {ok, Props} ->
             ns_audit:reload_node_certificate(Req,
                                              proplists:get_value(subject, Props),
-                                             proplists:get_value(expires, Props)),
+                                             proplists:get_value(not_after, Props)),
             ns_ssl_services_setup:sync(),
             case netconfig_updater:ensure_tls_dist_started(Nodes) of
                 ok ->

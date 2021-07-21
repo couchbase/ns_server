@@ -436,9 +436,8 @@ prometheus_cfg([], _Params) ->
       {family, ns_config:read_key_fast({node, node(), address_family}, inet)}]}.
 
 generate_interfaces(MCDParams) ->
-    SSL = {[{key, list_to_binary(ns_ssl_services_setup:memcached_key_path())},
-            {cert,
-             list_to_binary(ns_ssl_services_setup:memcached_cert_path())}]},
+    SSL = {[{key, list_to_binary(ns_ssl_services_setup:pkey_file_path())},
+            {cert, list_to_binary(ns_ssl_services_setup:chain_file_path())}]},
     GetPort = fun (Port) ->
                       {Port, Value} = lists:keyfind(Port, 1, MCDParams),
                       Value

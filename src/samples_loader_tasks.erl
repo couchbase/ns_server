@@ -122,8 +122,7 @@ perform_loading_task(Name, Quota) ->
                           Cluster = "https://" ++ misc:join_host_port(
                                                     Host, SslPort),
                           ["--cluster", Cluster,
-                           "--cacert",
-                           ns_ssl_services_setup:memcached_cert_path()];
+                           "--cacert", ns_ssl_services_setup:ca_file_path()];
                       false ->
                           Port = service_ports:get_port(rest_port),
                           ["--cluster", misc:join_host_port(Host, Port)]

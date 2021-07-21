@@ -11,6 +11,7 @@
 
 -include("ns_common.hrl").
 -include_lib("public_key/include/public_key.hrl").
+-include("cut.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -19,10 +20,9 @@
 -export([start_link/0,
          start_link_capi_service/0,
          start_link_rest_service/0,
-         ssl_cert_key_path/0,
-         ssl_cacert_key_path/0,
-         memcached_cert_path/0,
-         memcached_key_path/0,
+         pkey_file_path/0,
+         chain_file_path/0,
+         ca_file_path/0,
          sync/0,
          ssl_minimum_protocol/1,
          ssl_minimum_protocol/2,
@@ -30,12 +30,11 @@
          client_cert_auth_state/0,
          client_cert_auth_state/1,
          get_user_name_from_client_cert/1,
-         set_node_certificate_chain/4,
+         set_node_certificate_chain/3,
          ssl_client_opts/0,
          configured_ciphers_names/2,
          honor_cipher_order/1,
          honor_cipher_order/2,
-         generate_node_certs/3,
          set_certs/4]).
 
 %% gen_server callbacks
@@ -51,8 +50,7 @@
 
 -behavior(gen_server).
 
--record(state, {hash,
-                reload_state,
+-record(state, {reload_state,
                 client_cert_auth,
                 sec_settings_state,
                 afamily_requirement}).
@@ -306,7 +304,6 @@ ssl_auth_options() ->
     end.
 
 ssl_server_opts() ->
-    Path = ssl_cert_key_path(),
     CipherSuites = ns_server_ciphers(),
     Order = honor_cipher_order(ns_server),
     ClientReneg = ns_config:read_key_fast(client_renegotiation_allowed, false),
@@ -316,24 +313,27 @@ ssl_server_opts() ->
     %% web server doesn't load new CA (after cert rotation) until
     %% all connections to the server are closed
     ssl_auth_options() ++
-        [{keyfile, Path},
-         {certfile, Path},
+        [{keyfile, pkey_file_path()},
+         {certfile, chain_file_path()},
          {versions, supported_versions(ssl_minimum_protocol(ns_server))},
-         {cacerts, read_ca_certs(ssl_cacert_key_path())},
+         {cacerts, read_ca_certs(ca_file_path())},
          {dh, dh_params_der()},
          {ciphers, CipherSuites},
          {honor_cipher_order, Order},
          {secure_renegotiate, true},
          {client_renegotiation, ClientReneg}].
 
-read_ca_certs(undefined) -> [];
 read_ca_certs(File) ->
-    {ok, CAPemBin} = file:read_file(File),
-    {ok, Certs} = ns_server_cert:decode_cert_chain(CAPemBin),
-    Certs.
+    case file:read_file(File) of
+        {ok, CAPemBin} ->
+            {ok, Certs} = ns_server_cert:decode_cert_chain(CAPemBin),
+            Certs;
+        {error, enoent} ->
+            []
+    end.
 
 ssl_client_opts() ->
-    [{cacertfile, ssl_cacert_key_path()},
+    [{cacerts, ns_server_cert:trusted_CAs(der)},
      {verify, verify_peer},
      {depth, ?ALLOWED_CERT_CHAIN_LENGTH}].
 
@@ -349,179 +349,104 @@ start_link_rest_service() ->
             menelaus_web:start_link(Config3)
     end.
 
-ssl_cert_key_path() ->
-    filename:join(path_config:component_path(data, "config"), "ssl-cert-key.pem").
-
-
-raw_ssl_cacert_key_path() ->
-    ssl_cert_key_path() ++ "-ca".
-
-ssl_cacert_key_path() ->
-    Path = raw_ssl_cacert_key_path(),
-    case filelib:is_file(Path) of
-        true ->
-            Path;
-        false ->
-            undefined
-    end.
-
-local_cert_path_prefix() ->
-    filename:join(path_config:component_path(data, "config"), "local-ssl-").
-
-memcached_cert_path() ->
-    filename:join(path_config:component_path(data, "config"), "memcached-cert.pem").
-
-memcached_key_path() ->
-    filename:join(path_config:component_path(data, "config"), "memcached-key.pem").
-
 marker_path() ->
     filename:join(path_config:component_path(data, "config"), "reload_marker").
 
-user_set_cert_path() ->
-    filename:join(path_config:component_path(data, "config"), "user-set-cert.pem").
-
-user_set_key_path() ->
-    filename:join(path_config:component_path(data, "config"), "user-set-key.pem").
-
-user_set_ca_chain_path() ->
-    filename:join(path_config:component_path(data, "config"), "user-set-ca.pem").
-
-check_local_cert_and_pkey(ClusterCertPEM, Host) ->
-    true = is_binary(ClusterCertPEM),
-    try
-        do_check_local_cert_and_pkey(ClusterCertPEM, Host)
-    catch T:E ->
-            {T, E}
-    end.
-
-do_check_local_cert_and_pkey(ClusterCertPEM, Host) ->
-    {ok, MetaBin} = file:read_file(local_cert_path_prefix() ++ "meta"),
-    Meta = erlang:binary_to_term(MetaBin),
-    {ok, LocalCert} = file:read_file(local_cert_path_prefix() ++ "cert.pem"),
-    {ok, LocalPKey} = file:read_file(local_cert_path_prefix() ++ "pkey.pem"),
-    Digest = erlang:md5(term_to_binary({Host, ClusterCertPEM, LocalCert,
-                                        LocalPKey})),
-    {proplists:get_value(digest, Meta) =:= Digest, LocalCert, LocalPKey}.
+ca_file_path() ->
+    filename:join(path_config:component_path(data, "config"), "ca.pem").
+chain_file_path() ->
+    filename:join(path_config:component_path(data, "config"), "chain.pem").
+pkey_file_path() ->
+    filename:join(path_config:component_path(data, "config"), "pkey.pem").
+tmp_certs_and_key_file() ->
+    filename:join(path_config:component_path(data, "config"), "certs.tmp").
 
 sync() ->
     ns_config:sync_announcements(),
-    %% First ping guarantees that trigger_ssl_reload has sent
+    %% First ping guarantees that async_ssl_reload has sent
     %% the notify_services message
     ok = gen_server:call(?MODULE, ping, infinity),
     %% Second ping guarantees that the notify_services message message
     %% has been handled
     ok = gen_server:call(?MODULE, ping, infinity).
 
-set_node_certificate_chain(Props, CAChain, Cert, PKey) ->
-    gen_server:call(?MODULE, {set_node_certificate_chain, Props, CAChain, Cert, PKey}, infinity).
-
-build_hash(Data) ->
-    crypto:hash(sha256, term_to_binary(Data)).
-
-get_node_cert_data() ->
-    Node = node(),
-    case ns_server_cert:cluster_ca() of
-        {GeneratedCert, GeneratedKey} ->
-            {generated, GeneratedCert, GeneratedKey, Node};
-        {_UploadedCAProps, GeneratedCert, GeneratedKey} ->
-            case ns_config:search(ns_config:latest(), {node, node(), cert}) of
-                {value, _Props} ->
-                    {ok, Cert} = file:read_file(user_set_cert_path()),
-                    {ok, PKey} = file:read_file(user_set_key_path()),
-                    {ok, CAChain} = file:read_file(user_set_ca_chain_path()),
-                    {user_set, Cert, PKey, CAChain};
-                false ->
-                    {generated, GeneratedCert, GeneratedKey, Node}
-            end
-    end.
+set_node_certificate_chain(CAEntry, Chain, PKey) ->
+    gen_server:call(?MODULE, {set_node_certificate_chain, CAEntry, Chain, PKey}, infinity).
 
 set_certs(Host, CA, NodeCert, NodeKey) ->
     gen_server:call(?MODULE, {set_certs, Host, CA, NodeCert, NodeKey}).
 
 init([]) ->
     Self = self(),
-    ns_pubsub:subscribe_link(ns_config_events, fun config_change_detector_loop/2, Self),
+    chronicle_compat_events:subscribe(handle_config_change(_, Self)),
 
-    Data = get_node_cert_data(),
-    apply_node_cert_data(Data),
+    save_node_certs_phase2(),
+    maybe_store_ca_certs(),
+    maybe_generate_node_certs(),
     RetrySvc = case misc:marker_exists(marker_path()) of
                    true ->
+                       %% In case if we crashed in the middle of certs
+                       %% generation. It should do nothing if "auto-generated"
+                       %% certs are in order.
                        Self ! notify_services,
                        all_services() -- [ssl_service];
                    false ->
                        []
                end,
-    {ok, #state{hash = build_hash(Data),
-                reload_state = RetrySvc,
+    {ok, #state{reload_state = RetrySvc,
                 sec_settings_state = security_settings_state(),
                 afamily_requirement = misc:address_family_requirement(),
                 client_cert_auth = client_cert_auth()}}.
 
-config_change_detector_loop({cert_and_pkey, _}, Parent) ->
-    Parent ! cert_and_pkey_changed,
-    Parent;
+handle_config_change(ca_certificates, Parent) ->
+    Parent ! ca_certificates_updated;
+handle_config_change(cert_and_pkey, Parent) ->
+    Parent ! cert_and_pkey_changed;
 %% we're using this key to detect change of node() name
-config_change_detector_loop({{node, _Node, capi_port}, _}, Parent) ->
-    Parent ! cert_and_pkey_changed,
-    Parent;
-config_change_detector_loop({ssl_minimum_protocol, _}, Parent) ->
-    Parent ! security_settings_changed,
-    Parent;
-config_change_detector_loop({client_cert_auth, _}, Parent) ->
-    Parent ! client_cert_auth_changed,
-    Parent;
-config_change_detector_loop({cipher_suites, _}, Parent) ->
-    Parent ! security_settings_changed,
-    Parent;
-config_change_detector_loop({honor_cipher_order, _}, Parent) ->
-    Parent ! security_settings_changed,
-    Parent;
-config_change_detector_loop({secure_headers, _}, Parent) ->
-    Parent ! secure_headers_changed,
-    Parent;
-config_change_detector_loop({{security_settings, ns_server}, _}, Parent) ->
-    Parent ! security_settings_changed,
-    Parent;
-config_change_detector_loop({{node, _Node, address_family}, _}, Parent) ->
-    Parent ! afamily_requirement_changed,
-    Parent;
-config_change_detector_loop({{node, _Node, address_family_only}, _}, Parent) ->
-    Parent ! afamily_requirement_changed,
-    Parent;
-config_change_detector_loop(_OtherEvent, Parent) ->
-    Parent.
+handle_config_change({node, _Node, capi_port}, Parent) ->
+    Parent ! cert_and_pkey_changed;
+handle_config_change(ssl_minimum_protocol, Parent) ->
+    Parent ! security_settings_changed;
+handle_config_change(client_cert_auth, Parent) ->
+    Parent ! client_cert_auth_changed;
+handle_config_change(cipher_suites, Parent) ->
+    Parent ! security_settings_changed;
+handle_config_change(honor_cipher_order, Parent) ->
+    Parent ! security_settings_changed;
+handle_config_change(secure_headers, Parent) ->
+    Parent ! secure_headers_changed;
+handle_config_change({security_settings, ns_server}, Parent) ->
+    Parent ! security_settings_changed;
+handle_config_change({node, _Node, address_family}, Parent) ->
+    Parent ! afamily_requirement_changed;
+handle_config_change({node, _Node, address_family_only}, Parent) ->
+    Parent ! afamily_requirement_changed;
+handle_config_change(_OtherEvent, _Parent) ->
+    ok.
 
-handle_call({set_node_certificate_chain, Props, CAChain, Cert, PKey}, _From, State) ->
-    CAChainFile = user_set_ca_chain_path(),
-    CanUpdateChain =
-        case file:read_file(CAChainFile) of
-            {ok, CAChain} -> true;
-            _ ->  misc:is_cluster_encryption_fully_disabled()
-        end,
 
-    case CanUpdateChain of
-        true ->
-            ns_config:delete({node, node(), cert}),
+handle_call({set_node_certificate_chain, CAEntry, Chain, PKey}, _From, State) ->
+    Props = save_uploaded_certs(CAEntry, Chain, PKey),
+    {reply, {ok, Props}, sync_ssl_reload(State)};
 
-            ok = misc:atomic_write_file(CAChainFile, CAChain),
-            ok = misc:atomic_write_file(user_set_cert_path(), Cert),
-            ok = misc:atomic_write_file(user_set_key_path(), PKey),
-
-            ns_config:set({node, node(), cert}, Props),
-            self() ! cert_and_pkey_changed,
-            {reply, ok, State};
-        false ->
-            {reply, {error, n2n_enabled}, State}
-    end;
+%% Note: During node addition this certificates are generated by another
+%% cluster (by another CA)
 handle_call({set_certs, Host, CA, NodeCert, NodeKey}, _From, State) ->
-    ns_server_cert:set_generated_public_ca(CA),
-    if
-        (NodeCert =/= undefined) andalso (NodeKey =/= undefined) ->
-            save_certs(CA, NodeCert, NodeKey, Host);
-        true ->
-            ?log_warning("Set certs: Node certs are not present. Ignoring")
-    end,
-    {reply, ok, State};
+    ns_server_cert:set_generated_ca(CA),
+    CAUpdated = maybe_store_ca_certs(),
+    NodeCertUpdated =
+        if
+            (NodeCert =/= undefined) andalso (NodeKey =/= undefined) ->
+                save_generated_certs(CA, NodeCert, NodeKey, Host),
+                true;
+            true ->
+                ?log_warning("Set certs: Node certs are not present. Ignoring"),
+                false
+        end,
+    case CAUpdated or NodeCertUpdated of
+        true -> {reply, ok, sync_ssl_reload(State)};
+        false -> {reply, ok, State}
+    end;
 handle_call(ping, _From, State) ->
     {reply, ok, State};
 handle_call(_, _From, State) ->
@@ -530,23 +455,22 @@ handle_call(_, _From, State) ->
 handle_cast(_, State) ->
     {noreply, State}.
 
-handle_info(cert_and_pkey_changed, #state{hash = OldHash} = State) ->
-    misc:flush(cert_and_pkey_changed),
-
-    Data = get_node_cert_data(),
-    NewHash = build_hash(Data),
-    case OldHash =:= NewHash of
-        true ->
-            {noreply, State};
-        false ->
-            ?log_info("Got certificate and pkey change"),
-            misc:create_marker(marker_path()),
-            apply_node_cert_data(Data),
-            ?log_info("Wrote new pem file"),
-            NewState = State#state{hash = NewHash,
-                                   reload_state = all_services()},
-            {noreply, notify_services(NewState)}
+handle_info(ca_certificates_updated, #state{} = State) ->
+    misc:flush(ca_certificates_updated),
+    case maybe_store_ca_certs() of
+        true -> {noreply, sync_ssl_reload(State)};
+        false -> {noreply, State}
     end;
+
+%% It means either we generated new cluster CA cert or hostname changed
+handle_info(cert_and_pkey_changed, #state{} = State) ->
+    ?log_info("cert_and_pkey changed"),
+    misc:flush(cert_and_pkey_changed),
+    case maybe_generate_node_certs() of
+        true -> {noreply, sync_ssl_reload(State)};
+        false -> {noreply, State}
+    end;
+
 handle_info(afamily_requirement_changed,
             #state{afamily_requirement = Current} = State) ->
     misc:flush(afamily_requirement_changed),
@@ -554,7 +478,7 @@ handle_info(afamily_requirement_changed,
         Current ->
             {noreply, State};
         NewValue ->
-            {noreply, trigger_ssl_reload(
+            {noreply, async_ssl_reload(
                         address_family_requirement, [ssl_service],
                         State#state{afamily_requirement = NewValue})}
     end;
@@ -565,10 +489,10 @@ handle_info(security_settings_changed,
         Current ->
             {noreply, State};
         NewValue ->
-            {noreply, trigger_ssl_reload(cipher_suites,
-                                         [ssl_service, capi_ssl_service],
-                                          State#state{
-                                              sec_settings_state = NewValue})}
+            {noreply, async_ssl_reload(cipher_suites,
+                                       [ssl_service, capi_ssl_service],
+                                       State#state{
+                                           sec_settings_state = NewValue})}
     end;
 handle_info(client_cert_auth_changed,
             #state{client_cert_auth = Auth} = State) ->
@@ -577,14 +501,14 @@ handle_info(client_cert_auth_changed,
         Auth ->
             {noreply, State};
         Other ->
-            {noreply, trigger_ssl_reload(client_cert_auth,
-                                         [ssl_service, capi_ssl_service],
-                                         State#state{client_cert_auth = Other})}
+            {noreply, async_ssl_reload(client_cert_auth,
+                                       [ssl_service, capi_ssl_service],
+                                       State#state{client_cert_auth = Other})}
     end;
 handle_info(secure_headers_changed, State) ->
     misc:flush(secure_headers_changed),
-    {noreply, trigger_ssl_reload(secure_headers_changed, [capi_ssl_service],
-                                 State)};
+    {noreply, async_ssl_reload(secure_headers_changed, [capi_ssl_service],
+                               State)};
 
 handle_info(notify_services, State) ->
     misc:flush(notify_services),
@@ -599,87 +523,115 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-trigger_ssl_reload(Event, Services, #state{reload_state = ReloadState} = State) ->
+prepare_ca_file_content() ->
+    CAs = [string:trim(P) || P <- ns_server_cert:trusted_CAs(pem)],
+    {length(CAs), iolist_to_binary(lists:join(io_lib:nl(), CAs))}.
+
+maybe_store_ca_certs() ->
+    %% just to trigger generation of ca cert if it's not generated yet
+    _ = ns_server_cert:self_generated_ca(),
+    {N, NewContent} = prepare_ca_file_content(),
+    Path = ca_file_path(),
+
+    ShouldUpdate =
+        case file:read_file(Path) of
+            {ok, NewContent} -> false;
+            {ok, _} -> true;
+            {error, enoent} -> true
+        end,
+
+    case ShouldUpdate of
+        true ->
+            ok = misc:atomic_write_file(Path, NewContent),
+            ?log_info("CA file updated: ~b cert(s) written", [N]),
+            misc:create_marker(marker_path());
+        false ->
+            ok
+    end,
+
+    ShouldUpdate.
+
+maybe_generate_node_certs() ->
+    Node = node(),
+    CertProps = ns_config:search(ns_config:latest(), {node, Node, node_cert},
+                                 []),
+
+    case proplists:get_value(type, CertProps, generated) of
+        generated ->
+            ClusterCA = ns_server_cert:self_generated_ca(),
+            Hostname = misc:extract_node_address(Node),
+            case (proplists:get_value(ca, CertProps) =/= ClusterCA) orelse
+                 (proplists:get_value(hostname, CertProps) =/= Hostname) of
+                true ->
+                    case ns_server_cert:generate_node_certs(Hostname) of
+                        no_private_key ->
+                            ?log_warning("Node doesn't have private key, "
+                                         "skipping node cert generation"),
+                            false;
+                        {CA, CertChain, NodeKey} ->
+                            save_generated_certs(CA, CertChain, NodeKey, Hostname),
+                            true
+                    end;
+                false ->
+                    false
+            end;
+        uploaded ->
+            false
+    end.
+
+async_ssl_reload(Event, Services, #state{reload_state = ReloadState} = State) ->
     misc:create_marker(marker_path()),
     self() ! notify_services,
     ?log_debug("Notify services ~p about ~p change", [Services, Event]),
     State#state{reload_state = lists:usort(Services ++ ReloadState)}.
 
-generate_node_certs(CertPEM, PKeyPEM, Host) ->
-    SANArg =
-        case misc:is_raw_ip(Host) of
-            true -> "--san-ip-addrs=" ++ Host;
-            false -> "--san-dns-names=" ++ Host
-        end,
+sync_ssl_reload(State) ->
+    NewState = State#state{reload_state = all_services()},
+    notify_services(NewState).
 
-    %% CN can't be longer than 64 characters. Since it will be used for
-    %% displaying purposing only, it doesn't make sense to make it even
-    %% that long
-    HostShortened = case string:slice(Host, 0, 20) of
-                        Host -> Host;
-                        Shortened -> Shortened ++ "..."
-                    end,
-    Args = ["--generate-leaf",
-            "--common-name=Couchbase Server Node (" ++ HostShortened ++ ")",
-            SANArg],
-    Env = [{"CACERT", binary_to_list(CertPEM)},
-           {"CAPKEY", binary_to_list(PKeyPEM)}],
-    ns_server_cert:do_generate_cert_and_pkey(Args, Env).
 
-do_generate_local_cert(_CertPEM, undefined, _Node) ->
-    ?log_error("Trying to generate node certs but cluster pkey is missing"),
-    erlang:error(no_cluster_pkey);
-do_generate_local_cert(CertPEM, PKeyPEM, Node) ->
-    Host = misc:extract_node_address(Node),
-    {LocalCert, LocalPKey} = generate_node_certs(CertPEM, PKeyPEM, Host),
-    save_certs(CertPEM, LocalCert, LocalPKey, Host),
-    {LocalCert, LocalPKey}.
+save_generated_certs(CA, Chain, PKey, Hostname) ->
+    save_node_certs(generated, CA, Chain, PKey, [{hostname, Hostname}]).
+save_uploaded_certs(CA, Chain, PKey) ->
+    save_node_certs(uploaded, CA, Chain, PKey, []).
 
-save_certs(CertPEM, NodeCert, NodeKey, Host) ->
-    Prefix = local_cert_path_prefix(),
-    ok = misc:atomic_write_file(Prefix ++ "pkey.pem", NodeKey),
-    ok = misc:atomic_write_file(Prefix ++ "cert.pem", NodeCert),
-    Meta = [{digest, erlang:md5(term_to_binary({Host, CertPEM, NodeCert,
-                                                NodeKey}))}],
-    ok = misc:atomic_write_file(Prefix ++ "meta", term_to_binary(Meta)),
-    ?log_info("Saved local cert for host ~p", [Host]),
-    {true, NodeCert, NodeKey} = check_local_cert_and_pkey(CertPEM, Host),
-    ok.
+%% CA, PKey and Chain are pem encoded
+%% Chain :: [NodeCert, IntermediateCert, ...]
+save_node_certs(Type, CA, Chain, PKey, Extra) when is_binary(CA),
+                                                   is_binary(Chain),
+                                                   is_binary(PKey) ->
+    {Subject, Expiration} =
+        ns_server_cert:get_chain_info(Chain, CA),
+    UTCTime = calendar:universal_time(),
+    LoadTime = calendar:datetime_to_gregorian_seconds(UTCTime),
+    Props = [{subject, iolist_to_binary(Subject)},
+             {not_after, Expiration},
+             {verified_with, erlang:md5(CA)},
+             {type, Type},
+             {load_timestamp, LoadTime},
+             {ca, CA} | Extra],
 
-maybe_generate_local_cert(CertPEM, PKeyPEM, Node) ->
-    Host = misc:extract_node_address(Node),
-    case check_local_cert_and_pkey(CertPEM, Host) of
-        {true, LocalCert, LocalPKey} ->
-            {LocalCert, LocalPKey};
-        {false, LocalCert, LocalPKey} when PKeyPEM == undefined ->
-            ?log_info("Can't regenerate node certs (no cluster private key). "
-                      "Ignoring"),
-            {LocalCert, LocalPKey};
-        {false, _, _} ->
-            ?log_info("Detected existing node certificate that did not match cluster certificate. Will re-generate"),
-            do_generate_local_cert(CertPEM, PKeyPEM, Node);
-        Error ->
-            ?log_info("Failed to read node certificate. Perhaps it wasn't created yet. Error: ~p", [Error]),
-            do_generate_local_cert(CertPEM, PKeyPEM, Node)
+    Data = term_to_binary({node_certs, Props, Chain, PKey}),
+
+    ok = misc:atomic_write_file(tmp_certs_and_key_file(), Data),
+    ?log_info("New node cert and pkey are written to tmp file"),
+    ok = save_node_certs_phase2(),
+    Props.
+
+save_node_certs_phase2() ->
+    TmpFile = tmp_certs_and_key_file(),
+    case file:read_file(TmpFile) of
+        {ok, Bin} ->
+            {node_certs, Props, Chain, PKey} =  binary_to_term(Bin),
+            ok = misc:atomic_write_file(chain_file_path(), Chain),
+            ok = misc:atomic_write_file(pkey_file_path(), PKey),
+            ?log_info("Node cert and pkey files updated"),
+            ns_config:set({node, node(), node_cert}, Props),
+            ok = ssl:clear_pem_cache(),
+            misc:create_marker(marker_path()),
+            ok = file:delete(TmpFile);
+        {error, enoent} -> file_not_found
     end.
-
-apply_node_cert_data(Data) ->
-    Path = ssl_cert_key_path(),
-    apply_node_cert_data(Data, Path),
-    ok = ssl:clear_pem_cache(),
-    cb_dist:restart_tls().
-
-apply_node_cert_data({generated, CertPEM, PKeyPEM, Node}, Path) ->
-    {LocalCert, LocalPKey} = maybe_generate_local_cert(CertPEM, PKeyPEM, Node),
-    ok = misc:atomic_write_file(Path, [LocalCert, LocalPKey]),
-    ok = misc:atomic_write_file(raw_ssl_cacert_key_path(), CertPEM),
-    ok = misc:atomic_write_file(memcached_cert_path(), [LocalCert, CertPEM]),
-    ok = misc:atomic_write_file(memcached_key_path(), LocalPKey);
-apply_node_cert_data({user_set, Cert, PKey, CAChain}, Path) ->
-    ok = misc:atomic_write_file(Path, [Cert, PKey]),
-    ok = misc:atomic_write_file(raw_ssl_cacert_key_path(), CAChain),
-    ok = misc:atomic_write_file(memcached_cert_path(), [Cert, CAChain]),
-    ok = misc:atomic_write_file(memcached_key_path(), PKey).
 
 -spec get_user_name_from_client_cert(term()) -> string() | undefined | failed.
 get_user_name_from_client_cert(Val) ->
@@ -766,7 +718,7 @@ san_field_to_type("uri") -> uniformResourceIdentifier;
 san_field_to_type("email") -> rfc822Name.
 
 all_services() ->
-    [ssl_service, capi_ssl_service, xdcr_proxy, memcached, event].
+    [cb_dist_tls, ssl_service, capi_ssl_service, xdcr_proxy, memcached, event].
 
 notify_services(#state{reload_state = []} = State) -> State;
 notify_services(#state{reload_state = Reloads} = State) ->
@@ -835,7 +787,9 @@ do_notify_service(xdcr_proxy) ->
 do_notify_service(memcached) ->
     memcached_refresh:refresh(ssl_certs);
 do_notify_service(event) ->
-    gen_event:notify(ssl_service_events, cert_changed).
+    gen_event:notify(ssl_service_events, cert_changed);
+do_notify_service(cb_dist_tls) ->
+    cb_dist:restart_tls().
 
 security_settings_state() ->
     {ssl_minimum_protocol(ns_server),
