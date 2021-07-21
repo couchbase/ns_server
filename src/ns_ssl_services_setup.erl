@@ -314,9 +314,11 @@ ssl_server_opts() ->
     %% all connections to the server are closed
     ssl_auth_options() ++
         [{keyfile, pkey_file_path()},
-         {certfile, chain_file_path()},
+         %% It should be chain_file_path() for erl >= 23
+         {certfile, cert_file_path_erl22()},
          {versions, supported_versions(ssl_minimum_protocol(ns_server))},
-         {cacerts, read_ca_certs(ca_file_path())},
+         %% It should be just ca_file_path() for erl >= 23
+         {cacerts, read_ca_certs(ca_file_path_erl22())},
          {dh, dh_params_der()},
          {ciphers, CipherSuites},
          {honor_cipher_order, Order},
@@ -360,6 +362,11 @@ pkey_file_path() ->
     filename:join(path_config:component_path(data, "config"), "pkey.pem").
 tmp_certs_and_key_file() ->
     filename:join(path_config:component_path(data, "config"), "certs.tmp").
+
+ca_file_path_erl22() ->
+    filename:join(path_config:component_path(data, "config"), "ca_erl22.pem").
+cert_file_path_erl22() ->
+    filename:join(path_config:component_path(data, "config"), "cert_erl22.pem").
 
 sync() ->
     ns_config:sync_announcements(),
@@ -544,6 +551,8 @@ maybe_store_ca_certs() ->
         true ->
             ok = misc:atomic_write_file(Path, NewContent),
             ?log_info("CA file updated: ~b cert(s) written", [N]),
+            %% Can be removed when upgraded to erl >= 23
+            update_certs_erl22(),
             misc:create_marker(marker_path());
         false ->
             ok
@@ -626,12 +635,35 @@ save_node_certs_phase2() ->
             ok = misc:atomic_write_file(chain_file_path(), Chain),
             ok = misc:atomic_write_file(pkey_file_path(), PKey),
             ?log_info("Node cert and pkey files updated"),
+            %% Can be removed when upgraded to erl >= 23
+            update_certs_erl22(),
             ns_config:set({node, node(), node_cert}, Props),
             ok = ssl:clear_pem_cache(),
             misc:create_marker(marker_path()),
             ok = file:delete(TmpFile);
         {error, enoent} -> file_not_found
     end.
+
+update_certs_erl22() ->
+    Erl22Chain =
+        case file:read_file(chain_file_path()) of
+            {ok, Chain} ->
+                [NodeCertDecoded | ChainDecoded] = public_key:pem_decode(Chain),
+                NodeCert = public_key:pem_encode([NodeCertDecoded]),
+                misc:atomic_write_file(cert_file_path_erl22(), NodeCert),
+                case ChainDecoded of
+                    [] -> [];
+                    _ -> [public_key:pem_encode(ChainDecoded)]
+                end;
+            {error, enoent} ->
+                []
+        end,
+    CAs = case file:read_file(ca_file_path()) of
+              {ok, C} -> [C];
+              {error, enoent} -> []
+          end,
+    Erl22CAs = lists:join(io_lib:nl(), Erl22Chain ++ CAs),
+    misc:atomic_write_file(ca_file_path_erl22(), Erl22CAs).
 
 -spec get_user_name_from_client_cert(term()) -> string() | undefined | failed.
 get_user_name_from_client_cert(Val) ->
