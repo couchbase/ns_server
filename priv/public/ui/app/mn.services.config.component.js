@@ -15,7 +15,6 @@ import {takeUntil, map, withLatestFrom, filter, switchMap,
         first, throttleTime, distinctUntilChanged} from '../web_modules/rxjs/operators.js';
 import {MnPoolsService} from './mn.pools.service.js';
 import {MnAdminService} from "./mn.admin.service.js";
-import {MnHelperService} from "./mn.helper.service.js";
 
 export {MnServicesConfigComponent};
 
@@ -35,19 +34,18 @@ class MnServicesConfigComponent extends MnLifeCycleHooksToStream {
   ]}
 
   static get parameters() { return [
-    MnHelperService,
     MnAdminService,
     MnPoolsService
   ]}
 
-  constructor(mnHelperService, mnAdminService, mnPoolsService) {
+  constructor(mnAdminService, mnPoolsService) {
     super();
     this.postPoolsDefaultValidation = mnAdminService.stream.postPoolsDefaultValidation;
     this.isEnterprise = mnPoolsService.stream.isEnterprise;
     this.quotaServices = mnPoolsService.stream.quotaServices;
     this.mnServices = mnPoolsService.stream.mnServices;
-    this.getServiceName = mnHelperService.getServiceVisibleName;
-    this.getServiceErrorName = mnHelperService.getServiceQuotaName;
+    this.getServiceName = mnPoolsService.getServiceVisibleName;
+    this.getServiceErrorName = mnPoolsService.getServiceQuotaName;
   }
 
   ngOnInit() {

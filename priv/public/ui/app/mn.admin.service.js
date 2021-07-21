@@ -18,7 +18,6 @@ import {pluck,
         distinctUntilChanged,
         withLatestFrom} from "../web_modules/rxjs/operators.js";
 import {HttpClient, HttpParams} from '../web_modules/@angular/common/http.js';
-import {MnHelperService} from './mn.helper.service.js';
 import {MnPrettyVersion} from './mn.pipes.js';
 import {MnPoolsService} from './mn.pools.service.js';
 import * as R from '../web_modules/ramda.js';
@@ -37,14 +36,13 @@ class MnAdminService {
   ]}
 
   static get parameters() { return [
-    MnHelperService,
     UIRouter,
     HttpClient,
     MnPrettyVersion,
     MnPoolsService
   ]}
 
-  constructor(mnHelperService, uiRouter, http, mnPrettyVersionPipe, mnPoolsService) {
+  constructor(uiRouter, http, mnPrettyVersionPipe, mnPoolsService) {
     this.stream = {};
     this.http = http;
     this.stream.etag = new BehaviorSubject();
@@ -126,7 +124,7 @@ class MnAdminService {
     this.stream.memoryQuotas =
       this.stream.getPoolsDefault.pipe(
         withLatestFrom(mnPoolsService.stream.quotaServices),
-        map(mnHelperService.pluckMemoryQuotas.bind(mnHelperService)));
+        map(mnPoolsService.pluckMemoryQuotas.bind(mnPoolsService)));
 
     this.stream.clusterName =
       this.stream.getPoolsDefault.pipe(pluck("clusterName"));

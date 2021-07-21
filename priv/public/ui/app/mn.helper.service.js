@@ -63,32 +63,6 @@ class MnHelperService {
     return Math.floor(Math.max(totalRAMMegs * 0.8, totalRAMMegs - 1024));
   }
 
-  pluckMemoryQuotas(source) {
-    return source[1].reduce((acc, service) => {
-      acc[service] = source[0][this.getServiceQuotaName(service)];
-      return acc;
-    }, {});
-  }
-
-  getServiceQuotaName(service) {
-    switch (service) {
-    case "kv": return "memoryQuota";
-    default: return service + "MemoryQuota";
-    }
-  }
-
-  getServiceVisibleName(service) {
-    switch (service) {
-    case "kv": return "Data";
-    case "index": return "Index";
-    case "fts": return "Search";
-    case "n1ql": return "Query";
-    case "eventing": return "Eventing";
-    case "cbas": return "Analytics";
-    case "backup": return "Backup";
-    }
-  }
-
   validateEqual(key1, key2, erroName) {
     return function (group) {
       if (group.get(key1).value !== group.get(key2).value) {

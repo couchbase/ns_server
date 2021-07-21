@@ -62,6 +62,32 @@ class MnPoolsService {
       }), shareReplay({refCount: true, bufferSize: 1}));
   }
 
+  getServiceVisibleName(service) {
+    switch (service) {
+    case "kv": return "Data";
+    case "index": return "Index";
+    case "fts": return "Search";
+    case "n1ql": return "Query";
+    case "eventing": return "Eventing";
+    case "cbas": return "Analytics";
+    case "backup": return "Backup";
+    }
+  }
+
+  getServiceQuotaName(service) {
+    switch (service) {
+    case "kv": return "memoryQuota";
+    default: return service + "MemoryQuota";
+    }
+  }
+
+  pluckMemoryQuotas(source) {
+    return source[1].reduce((acc, service) => {
+      acc[service] = source[0][this.getServiceQuotaName(service)];
+      return acc;
+    }, {});
+  }
+
   get() {
     return this.http.get('/pools').pipe(
       map(function (pools) {

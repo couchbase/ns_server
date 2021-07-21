@@ -167,7 +167,7 @@ class MnWizardService {
         this.stream.getSelfConfig,
         mnPoolsService.stream.quotaServices
       )
-      .pipe(map(mnHelperService.pluckMemoryQuotas.bind(mnHelperService)));
+      .pipe(map(mnPoolsService.pluckMemoryQuotas.bind(mnPoolsService)));
 
     this.stream.getIndexes =
       (new BehaviorSubject()).pipe(switchMap(this.getIndexes.bind(this)),
