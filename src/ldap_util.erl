@@ -81,16 +81,12 @@ client_cert_auth_enabled(Settings) ->
     end.
 
 get_cacerts(Settings) ->
-    case proplists:get_value(cacert, Settings) of
-        {_Cert, DecodedCert} -> [DecodedCert];
-        undefined ->
-            case ns_server_cert:cluster_ca() of
-                {_, _} -> []; %% No point in using self signed cert
-                {UploadedCAProps, _, _} ->
-                    Pem = proplists:get_value(pem, UploadedCAProps),
-                    [ns_server_cert:decode_single_certificate(Pem)]
-            end
-    end.
+    ExtraCerts =
+        case proplists:get_value(cacert, Settings) of
+            {_Cert, DecodedCert} -> [DecodedCert];
+            undefined -> []
+        end,
+    ExtraCerts ++ ns_server_cert:trusted_CAs(der).
 
 %% Can't just pass the list of hosts to eldap:open/2 because it is impossible
 %% to get the peer's hostname later, so we have to iterate over the list
