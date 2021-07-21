@@ -16,8 +16,8 @@ import { MnHttpRequest } from './mn.http.request.js';
 import { BehaviorSubject } from "../web_modules/rxjs.js";
 import { map, shareReplay } from '../web_modules/rxjs/operators.js';
 
-import {MnBucketsService} from './mn.buckets.service.js';
-import {MnPermissions} from './ajs.upgraded.providers.js';
+import { MnBucketsService, MnBucketsServiceModule } from './mn.buckets.service.js';
+import { MnPermissions } from './ajs.upgraded.providers.js';
 
 const restApiBase = "/pools/default/buckets";
 
@@ -26,9 +26,11 @@ export { MnCollectionsService, MnCollectionsServiceModule }
 class MnCollectionsServiceModule {
   static get annotations() { return [
     new NgModule({
+      imports: [
+        MnBucketsServiceModule
+      ],
       providers: [
-        MnCollectionsService,
-        MnBucketsService
+        MnCollectionsService
       ]
     })
   ]}

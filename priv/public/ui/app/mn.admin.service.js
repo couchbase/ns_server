@@ -7,26 +7,36 @@ file, in accordance with the Business Source License, use of this software will
 be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
-
-import {Injectable} from "../web_modules/@angular/core.js";
-import {BehaviorSubject, combineLatest} from "../web_modules/rxjs.js";
-import {pluck,
-        switchMap,
-        shareReplay,
-        map,
-        distinctUntilChanged,
-        withLatestFrom} from "../web_modules/rxjs/operators.js";
-import {HttpClient, HttpParams} from '../web_modules/@angular/common/http.js';
-import {MnPrettyVersion} from './mn.pipes.js';
-import {MnPoolsService} from './mn.pools.service.js';
+import { NgModule } from '../web_modules/@angular/core.js';
+import { Injectable } from "../web_modules/@angular/core.js";
+import { BehaviorSubject, combineLatest } from "../web_modules/rxjs.js";
+import { pluck, switchMap, shareReplay, map,
+         distinctUntilChanged, withLatestFrom } from "../web_modules/rxjs/operators.js";
+import { HttpClient, HttpParams } from '../web_modules/@angular/common/http.js';
+import { MnPrettyVersion } from './mn.pipes.js';
+import { MnPoolsService, MnPoolsServiceModule } from './mn.pools.service.js';
 import * as R from '../web_modules/ramda.js';
 import { MnHttpRequest } from './mn.http.request.js';
 
-export {MnAdminService};
+export { MnAdminService, MnAdminServiceModule };
 
 // counterpart of ns_heart:effective_cluster_compat_version/0
 function encodeCompatVersion(major, minor) {
   return (major < 2) ? 1 : major * 0x10000 + minor;
+}
+
+class MnAdminServiceModule {
+  static get annotations() { return [
+    new NgModule({
+      imports: [
+        MnPoolsServiceModule
+      ],
+      providers: [
+        MnAdminService,
+        MnPrettyVersion
+      ]
+    })
+  ]}
 }
 
 class MnAdminService {

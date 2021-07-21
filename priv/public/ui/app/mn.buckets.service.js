@@ -7,18 +7,28 @@ file, in accordance with the Business Source License, use of this software will
 be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
+import { NgModule } from '../web_modules/@angular/core.js';
+import { Injectable } from "../web_modules/@angular/core.js";
+import { pluck, switchMap, shareReplay,
+         distinctUntilChanged, map } from "../web_modules/rxjs/operators.js";
+import { filter, anyPass, propEq } from "../web_modules/ramda.js";
+import { HttpClient, HttpParams } from '../web_modules/@angular/common/http.js';
+import { MnAdminService, MnAdminServiceModule } from './mn.admin.service.js';
 
-import {Injectable} from "../web_modules/@angular/core.js";
-import {pluck,
-        switchMap,
-        shareReplay,
-        distinctUntilChanged,
-        map} from "../web_modules/rxjs/operators.js";
-import {filter, anyPass, propEq} from "../web_modules/ramda.js";
-import {HttpClient, HttpParams} from '../web_modules/@angular/common/http.js';
-import {MnAdminService} from './mn.admin.service.js';
+export { MnBucketsServiceModule, MnBucketsService };
 
-export {MnBucketsService};
+class MnBucketsServiceModule {
+  static get annotations() { return [
+    new NgModule({
+      imports: [
+        MnAdminServiceModule
+      ],
+      providers: [
+        MnBucketsService
+      ]
+    })
+  ]}
+}
 
 class MnBucketsService {
   static get annotations() { return [
