@@ -250,12 +250,6 @@ build_https_args(PortName, PortArg, PortPrefix, CertArg, KeyArg, CAArg,
     case service_ports:get_port(PortName, Config) of
         undefined ->
             [];
-        %% pass old style chain file to the services that haven't added support
-        %% for ca file yet
-        Port when CAArg == undefined ->
-            [PortArg ++ "=" ++ PortPrefix ++ integer_to_list(Port),
-             CertArg ++ "=" ++ ns_ssl_services_setup:legacy_cert_path(),
-             KeyArg ++ "=" ++ ns_ssl_services_setup:unencrypted_pkey_file_path()];
         Port when PortName == fts_ssl_port;
                   PortName == cbas_ssl_port;
                   PortName == indexer_https_port;
@@ -536,7 +530,7 @@ goport_args(eventing, Config, _Cmd, NodeUUID) ->
                      {"-debugPort", eventing_debug_port}], Config) ++
 
         build_https_args(eventing_https_port, "-adminsslport",
-                         "-certfile", "-keyfile", undefined, Config) ++
+                         "-certfile", "-keyfile", "-cafile", Config) ++
 
         build_afamily_requirement("-") ++
 
