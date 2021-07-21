@@ -243,18 +243,38 @@ is_allowed_on_cluster([secure_headers]) ->
 is_allowed_on_cluster(_) ->
     true.
 
-is_allowed_setting(K) ->
-    case cluster_compat_mode:is_enterprise() orelse not ee_only_settings(K) of
-        true ->
-            case is_allowed_on_cluster(K) of
-                true ->
-                    ok;
-                false ->
-                    {error, <<"Not supported in mixed version clusters.">>}
-            end;
-        false ->
-            {error, <<"not supported in community edition">>}
-    end.
+is_allowed_setting(Req, K) ->
+    functools:sequence_(
+      [fun () ->
+           case cluster_compat_mode:is_enterprise() orelse
+                not ee_only_settings(K) of
+               true -> ok;
+               false -> {error, <<"not supported in community edition">>}
+           end
+       end,
+       fun () ->
+           case is_allowed_on_cluster(K) of
+               true -> ok;
+               false -> {error, <<"not supported in mixed version clusters">>}
+           end
+       end,
+       fun () ->
+           case localhost_only_settings(K) of
+               true ->
+                   try menelaus_util:ensure_local(Req) of
+                       ok -> ok
+                   catch
+                       throw:{web_exception, _, _, _} ->
+                           {error, <<"can be modified from localhost only for "
+                                     "security reasons">>}
+                   end;
+               false ->
+                   ok
+           end
+       end]).
+
+localhost_only_settings([allow_non_local_ca_upload]) -> true;
+localhost_only_settings(_) -> false.
 
 ee_only_settings([ssl_minimum_protocol]) -> true;
 ee_only_settings([cipher_suites]) -> true;
@@ -277,7 +297,8 @@ conf(security) ->
      {honor_cipher_order, honorCipherOrder,
       ns_ssl_services_setup:honor_cipher_order(undefined, []), fun get_bool/1},
      {cluster_encryption_level, clusterEncryptionLevel, control,
-      fun get_cluster_encryption/1}] ++
+      fun get_cluster_encryption/1},
+     {allow_non_local_ca_upload, allowNonLocalCACertUpload, false, fun get_bool/1}] ++
     [{{security_settings, S}, ns_cluster_membership:json_service_name(S),
       [{cipher_suites, cipherSuites, undefined, fun get_cipher_suites/1},
        {ssl_minimum_protocol, tlsMinVersion, undefined, get_tls_version(_, S)},
@@ -366,10 +387,10 @@ handle_get(Type, Keys, Req) ->
     Filter = fun (_, undefined) ->
                      false;
                  ([cluster_encryption_level = K], _) ->
-                     (ok == is_allowed_setting(K)) andalso
+                     (ok == is_allowed_setting(Req, K)) andalso
                          misc:is_cluster_encryption_fully_enabled();
                  (K, _) ->
-                     ok == is_allowed_setting(K)
+                     ok == is_allowed_setting(Req, K)
               end,
     Settings = build_kvs(conf(Type), ns_config:get(), Filter),
 
@@ -406,7 +427,7 @@ handle_post(Type, Keys, Req) ->
     %%       ourselves from 'death signal' of parent
     erlang:process_flag(trap_exit, true),
     case parse_post_data(conf(Type), Keys, mochiweb_request:recv_body(Req),
-                         fun is_allowed_setting/1) of
+                         is_allowed_setting(Req, _)) of
         {ok, ToSet} ->
             case ns_config:run_txn(?cut(set_keys_in_txn(_1, _2, ToSet))) of
                 {commit, _, AuditProps} ->
@@ -514,7 +535,7 @@ find_key_to_delete(Conf, PKeys) ->
 handle_delete(Type, PKeys, Req) ->
     case find_key_to_delete(conf(Type), PKeys) of
         {ok, Keys} ->
-            case is_allowed_setting(Keys) of
+            case is_allowed_setting(Req, Keys) of
                 ok ->
                     case Keys of
                         [K] ->

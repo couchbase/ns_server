@@ -138,21 +138,44 @@ handle_load_ca_certs(Req) ->
     end.
 
 handle_upload_cluster_ca(Req) ->
+    case (not cluster_compat_mode:is_cluster_NEO()) orelse
+         ns_config:read_key_fast(allow_non_local_ca_upload, false) of
+        true -> ok;
+        false -> menelaus_util:ensure_local(Req)
+    end,
     menelaus_util:assert_is_enterprise(),
-    assert_n2n_encryption_is_disabled(),
 
     case mochiweb_request:recv_body(Req) of
         undefined ->
             reply_error(Req, empty_cert);
         PemEncodedCA ->
-            case ns_server_cert:set_cluster_ca(PemEncodedCA) of
-                {ok, Props} ->
-                    ns_audit:upload_cluster_ca(Req,
-                                               proplists:get_value(subject, Props),
-                                               proplists:get_value(expires, Props)),
-                    handle_cluster_certificate_extended(Req);
-                {error, Error} ->
-                    reply_error(Req, Error)
+            case cluster_compat_mode:is_cluster_NEO() of
+                true ->
+                    case ns_server_cert:add_CAs(uploaded, PemEncodedCA,
+                                                [{single_cert, true}]) of
+                        {ok, []} ->
+                            reply_error(Req, already_in_use);
+                        {ok, [Props]} ->
+                            ns_audit:upload_cluster_ca(
+                              Req,
+                              proplists:get_value(subject, Props),
+                              proplists:get_value(not_after, Props)),
+                            handle_cluster_certificate_extended(Req);
+                        {error, Error} ->
+                            reply_error(Req, Error)
+                    end;
+                false ->
+                    assert_n2n_encryption_is_disabled(),
+                    case ns_server_cert:set_cluster_ca(PemEncodedCA) of
+                        {ok, Props} ->
+                            ns_audit:upload_cluster_ca(
+                              Req,
+                              proplists:get_value(subject, Props),
+                              proplists:get_value(expires, Props)),
+                            handle_cluster_certificate_extended(Req);
+                        {error, Error} ->
+                            reply_error(Req, Error)
+                    end
             end
     end.
 

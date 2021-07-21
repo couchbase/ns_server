@@ -20,10 +20,11 @@
          this_node_uses_self_generated_certs/0,
          this_node_uses_self_generated_certs/1,
          self_generated_ca/0,
-         set_cluster_ca/1,
+         set_cluster_ca/1, %% deprecated
          load_node_certs_from_inbox/0,
          load_CAs_from_inbox/0,
          add_CAs/2,
+         add_CAs/3,
          get_warnings/0,
          get_subject_fields_by_type/2,
          get_sub_alt_names_by_type/2,
@@ -415,6 +416,7 @@ parse_cluster_ca(CA) ->
             end
     end.
 
+%% Deprecated. Can be used in pre-NEO clusters only.
 set_cluster_ca(CA) ->
     case parse_cluster_ca(CA) of
         {ok, Props} ->
@@ -637,9 +639,16 @@ set_node_certificate_chain(Chain, PKey) ->
             {error, Reason}
     end.
 
-add_CAs(Type, Pem) when is_binary(Pem),
+add_CAs(Type, Pem) ->
+    add_CAs(Type, Pem, []).
+
+add_CAs(Type, Pem, Opts) when is_binary(Pem),
                         (Type =:= uploaded) or (Type =:= generated) ->
+    SingleCert = proplists:get_bool(single_cert, Opts),
     case decode_certificates(Pem) of
+        {ok, PemEntries} when SingleCert,
+                              length(PemEntries) > 1 ->
+            {error, too_many_entries};
         {ok, PemEntries} ->
             load_CAs([cert_props(Type, E, []) || E <- PemEntries]);
         {error, Reason} ->

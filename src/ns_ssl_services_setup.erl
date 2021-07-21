@@ -476,7 +476,13 @@ handle_info(ca_certificates_updated, #state{} = State) ->
 handle_info(cert_and_pkey_changed, #state{} = State) ->
     ?log_info("cert_and_pkey changed"),
     misc:flush(cert_and_pkey_changed),
-    case maybe_generate_node_certs() of
+    NeedReload =
+        maybe_generate_node_certs() or
+        case cluster_compat_mode:is_cluster_NEO() of
+            true -> false;
+            false -> maybe_store_ca_certs()
+        end,
+    case NeedReload of
         true -> {noreply, sync_ssl_reload(State)};
         false -> {noreply, State}
     end;
