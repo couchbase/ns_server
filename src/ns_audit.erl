@@ -44,13 +44,6 @@
          add_group/2,
          delete_group/2,
          update_group/2,
-         xdcr_create_cluster_ref/2,
-         xdcr_update_cluster_ref/2,
-         xdcr_delete_cluster_ref/2,
-         xdcr_create_replication/3,
-         xdcr_update_replication/3,
-         xdcr_cancel_replication/2,
-         xdcr_update_global_settings/2,
          enable_auto_failover/4,
          disable_auto_failover/1,
          reset_auto_failover_count/1,
@@ -280,20 +273,6 @@ code(delete_group) ->
     8211;
 code(update_group) ->
     8212;
-code(xdcr_create_cluster_ref) ->
-    8213;
-code(xdcr_update_cluster_ref) ->
-    8214;
-code(xdcr_delete_cluster_ref) ->
-    8215;
-code(xdcr_create_replication) ->
-    8216;
-code(xdcr_update_replication) ->
-    8217;
-code(xdcr_cancel_replication) ->
-    8218;
-code(xdcr_update_global_settings) ->
-    8219;
 code(enable_auto_failover) ->
     8220;
 code(disable_auto_failover) ->
@@ -653,47 +632,6 @@ update_group(Req, Group) ->
     put(update_group, Req, [{group_name, proplists:get_value(name, Group)},
                             {uuid, proplists:get_value(uuid, Group)},
                             {nodes, {list, proplists:get_value(nodes, Group, [])}}]).
-
-build_xdcr_cluster_props(KV) ->
-    [{name, misc:expect_prop_value(name, KV)},
-     {demand_encryption, proplists:get_value(cert, KV) =/= undefined},
-     {hostname, misc:expect_prop_value(hostname, KV)},
-     {username, misc:expect_prop_value(username, KV)},
-     {uuid, misc:expect_prop_value(uuid, KV)}].
-
-xdcr_create_cluster_ref(Req, Props) ->
-    put(xdcr_create_cluster_ref, Req, build_xdcr_cluster_props(Props)).
-
-xdcr_update_cluster_ref(Req, Props) ->
-    put(xdcr_update_cluster_ref, Req, build_xdcr_cluster_props(Props)).
-
-xdcr_delete_cluster_ref(Req, Props) ->
-    put(xdcr_delete_cluster_ref, Req, build_xdcr_cluster_props(Props)).
-
-xdcr_create_replication(Req, Id, Props) ->
-    {Params, Settings} =
-        lists:splitwith(fun ({from_bucket, _}) ->
-                                true;
-                            ({to_bucket, _}) ->
-                                true;
-                            ({to_cluster, _}) ->
-                                true;
-                            (_) ->
-                                false
-                        end, Props),
-
-    put(xdcr_create_replication, Req, [{rep_id, Id},
-                                       {settings, {prepare_list(Settings)}}] ++ Params).
-
-xdcr_update_replication(Req, Id, Props) ->
-    put(xdcr_update_replication, Req, [{rep_id, Id},
-                                       {settings, {prepare_list(Props)}}]).
-
-xdcr_cancel_replication(Req, Id) ->
-    put(xdcr_cancel_replication, Req, [{rep_id, Id}]).
-
-xdcr_update_global_settings(Req, Settings) ->
-    put(xdcr_update_global_settings, Req, [{settings, {prepare_list(Settings)}}]).
 
 build_auto_failover_extras(Extras) ->
     lists:foldl(
