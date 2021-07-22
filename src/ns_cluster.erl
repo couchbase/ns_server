@@ -149,8 +149,8 @@ engage_cluster_apply_certs(NodeKVList) ->
     end.
 
 apply_certs(ClusterCA) ->
-    case ns_server_cert:set_cluster_ca(ClusterCA) of
-        {ok, _} ->
+    case ns_server_cert:add_CAs(uploaded, ClusterCA) of
+        ok ->
             case ns_server_cert:load_node_certs_from_inbox() of
                 {ok, Props} ->
                     ns_ssl_services_setup:sync(),

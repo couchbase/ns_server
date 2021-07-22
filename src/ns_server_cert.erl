@@ -24,6 +24,7 @@
          set_cluster_ca/1,
          load_node_certs_from_inbox/0,
          load_CAs_from_inbox/0,
+         add_CAs/2,
          get_warnings/1,
          get_subject_fields_by_type/2,
          get_sub_alt_names_by_type/2,
@@ -127,8 +128,7 @@ generate_and_set_cert_and_pkey(Force) ->
                 true ->
                     %% If we crash here the new cert will never get to
                     %% ca_certificates
-                    {ok, [NewCA]} = decode_certificates(element(1, Pair)),
-                    ok = load_CAs([cert_props(generated, NewCA, [])]);
+                    ok = add_CAs(generated, element(1, Pair));
                 false ->
                     %% It will be added during online upgrade
                     ok
@@ -482,7 +482,9 @@ set_cluster_ca(CA) ->
     end.
 
 set_generated_ca(CA) ->
-    ns_config:set(cert_and_pkey, {CA, undefined}).
+    ns_config:set(cert_and_pkey, {CA, undefined}),
+    ok = add_CAs(generated, CA),
+    ok.
 
 -record(verify_state, {last_subject, root_cert, chain_len}).
 
@@ -656,6 +658,15 @@ set_node_certificate_chain(Chain, PKey) ->
                 {error, Reason} ->
                     {error, Reason}
             end;
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+add_CAs(Type, Pem) when is_binary(Pem),
+                        (Type =:= uploaded) or (Type =:= generated) ->
+    case decode_certificates(Pem) of
+        {ok, PemEntries} ->
+            load_CAs([cert_props(Type, E, []) || E <- PemEntries]);
         {error, Reason} ->
             {error, Reason}
     end.
