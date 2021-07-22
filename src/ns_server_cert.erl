@@ -128,7 +128,7 @@ generate_and_set_cert_and_pkey(Force) ->
                 true ->
                     %% If we crash here the new cert will never get to
                     %% ca_certificates
-                    ok = add_CAs(generated, element(1, Pair));
+                    {ok, _} = add_CAs(generated, element(1, Pair));
                 false ->
                     %% It will be added during online upgrade
                     ok
@@ -483,7 +483,7 @@ set_cluster_ca(CA) ->
 
 set_generated_ca(CA) ->
     ns_config:set(cert_and_pkey, {CA, undefined}),
-    ok = add_CAs(generated, CA),
+    {ok, _} = add_CAs(generated, CA),
     ok.
 
 -record(verify_state, {last_subject, root_cert, chain_len}).
@@ -677,8 +677,7 @@ load_CAs_from_inbox() ->
         {ok, []} ->
             {error, {CAInbox, empty}};
         {ok, NewCAs} ->
-            load_CAs(NewCAs),
-            {ok, NewCAs};
+            load_CAs(NewCAs);
         {error, R} ->
             {error, R}
     end.
@@ -686,15 +685,17 @@ load_CAs_from_inbox() ->
 load_CAs(CAPropsList) ->
     UTCTime = calendar:universal_time(),
     LoadTime = calendar:datetime_to_gregorian_seconds(UTCTime),
-    {ok, _} = chronicle_kv:transaction(
-                kv, [ca_certificates],
-                fun (Snapshot) ->
-                    {CAs, _Rev} = maps:get(ca_certificates, Snapshot,
-                                           {[], undefined}),
-                    ToSet = maybe_append_CA_certs(CAs, CAPropsList, LoadTime),
-                    {commit, [{set, ca_certificates, ToSet}]}
-                end, #{}),
-    ok.
+    {ok, _, AddedCAs} =
+        chronicle_kv:transaction(
+          kv, [ca_certificates],
+          fun (Snapshot) ->
+              {CAs, _Rev} = maps:get(ca_certificates, Snapshot,
+                                     {[], undefined}),
+              ToSet = maybe_append_CA_certs(CAs, CAPropsList, LoadTime),
+              NewCAs = ToSet -- CAs,
+              {commit, [{set, ca_certificates, ToSet}], NewCAs}
+          end, #{}),
+    {ok, AddedCAs}.
 
 maybe_append_CA_certs(CAs, [], _) ->
     ?log_error("Appending empty list of certs"),

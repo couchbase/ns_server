@@ -105,6 +105,12 @@ handle_load_ca_certs(Req) ->
     Nodes = nodes(),
     case ns_server_cert:load_CAs_from_inbox() of
         {ok, NewCertsProps} ->
+            lists:foreach(
+              fun (Props) ->
+                  Subject = proplists:get_value(subject, Props),
+                  Expire = proplists:get_value(not_after, Props),
+                  ns_audit:upload_cluster_ca(Req, Subject, Expire)
+              end, NewCertsProps),
             ns_ssl_services_setup:sync(),
             case netconfig_updater:ensure_tls_dist_started(Nodes) of
                 ok ->
