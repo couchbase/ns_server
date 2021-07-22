@@ -26,13 +26,19 @@ function encodeCompatVersion(major, minor) {
 }
 
 class MnAdminServiceModule {
+  static forRoot() {
+    return {
+      ngModule: MnAdminServiceModule,
+      providers: [MnAdminService]
+    };
+  }
+
   static get annotations() { return [
     new NgModule({
       imports: [
-        MnPoolsServiceModule
+        MnPoolsServiceModule.forRoot()
       ],
       providers: [
-        MnAdminService,
         MnPrettyVersion
       ]
     })

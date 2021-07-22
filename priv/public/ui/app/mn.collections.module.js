@@ -86,16 +86,15 @@ class MnCollectionsModule {
       imports: [
         MnPipesModule,
         NgbModule,
-        MnElementCraneModule,
         ReactiveFormsModule,
         MnSharedModule,
         MnInputFilterModule,
         MnSelectModule,
+        MnElementCraneModule,
         UIRouterModule.forChild({ states: [collectionsState] })
       ],
       providers: [
-        MnCollectionsService,
-        MnBucketsService
+        MnCollectionsService
       ]
     })
   ]}

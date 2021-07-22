@@ -20,11 +20,17 @@ export { MnPoolsService, MnPoolsServiceModule };
 let launchID =  (new Date()).valueOf() + '-' + ((Math.random() * 65536) >> 0);
 
 class MnPoolsServiceModule {
+  static forRoot() {
+    return {
+      ngModule: MnPoolsServiceModule,
+      providers: [MnPoolsService]
+    };
+  }
+
   static get annotations() { return [
     new NgModule({
       imports: [],
       providers: [
-        MnPoolsService,
         MnParseVersion
       ]
     })

@@ -12,7 +12,6 @@ import { NgModule } from '../web_modules/@angular/core.js';
 import { CommonModule } from '../web_modules/@angular/common.js';
 import { ReactiveFormsModule } from '../web_modules/@angular/forms.js';
 import { MnInputFilterModule } from './mn.input.filter.module.js';
-import { MnCollectionsServiceModule } from './mn.collections.service.js';
 
 import { MnKeyspaceSelectorComponent } from "./mn.keyspace.selector.component.js";
 import { MnFormService } from "./mn.form.service.js";
@@ -34,8 +33,7 @@ class MnKeyspaceSelectorModule {
       imports: [
         CommonModule,
         MnInputFilterModule,
-        ReactiveFormsModule,
-        MnCollectionsServiceModule
+        ReactiveFormsModule
       ],
       providers: [
         MnFormService

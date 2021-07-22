@@ -19,7 +19,6 @@ import { MnInputFilterModule } from './mn.input.filter.module.js';
 import { MnPipesModule } from './mn.pipes.module.js';
 import { MnKeyspaceSelectorModule } from "./mn.keyspace.selector.module.js";
 import { MnKeyspaceSelectorServiceModule } from "./mn.keyspace.selector.service.js";
-import { MnCollectionsServiceModule } from './mn.collections.service.js';
 import { MnSelectModule } from './mn.select.module.js';
 
 import { MnXDCRComponent } from "./mn.xdcr.component.js";
@@ -28,7 +27,6 @@ import { MnXDCRItemDetailsComponent,
          MnReplicationStatus } from "./mn.xdcr.item.details.component.js";
 import { MnXDCRRefItemComponent } from "./mn.xdcr.ref.item.component.js";
 import { MnXDCRService } from "./mn.xdcr.service.js";
-import { MnBucketsService } from "./mn.buckets.service.js";
 import { MnStatsService } from './mn.stats.service.js';
 
 import { MnXDCRAddRefComponent } from "./mn.xdcr.add.ref.component.js";
@@ -143,13 +141,14 @@ class MnXDCRModule {
         MnXDCRRepMessageComponent
       ],
       imports: [
-        MnInputFilterModule,
         NgbModule,
-        MnElementCraneModule,
         ReactiveFormsModule,
+
+        MnInputFilterModule,
+        MnElementCraneModule,
         MnKeyspaceSelectorModule,
         MnKeyspaceSelectorServiceModule,
-        MnCollectionsServiceModule,
+
         MnSharedModule,
         MnPipesModule,
         MnSelectModule,
@@ -157,7 +156,6 @@ class MnXDCRModule {
       ],
       providers: [
         MnXDCRService,
-        MnBucketsService,
         MnStatsService
       ]
     })

@@ -18,14 +18,19 @@ import { MnAdminService, MnAdminServiceModule } from './mn.admin.service.js';
 export { MnBucketsServiceModule, MnBucketsService };
 
 class MnBucketsServiceModule {
+  static forRoot() {
+    return {
+      ngModule: MnBucketsServiceModule,
+      providers: [MnBucketsService]
+    };
+  }
+
   static get annotations() { return [
     new NgModule({
       imports: [
-        MnAdminServiceModule
+        MnAdminServiceModule.forRoot()
       ],
-      providers: [
-        MnBucketsService
-      ]
+      providers: []
     })
   ]}
 }

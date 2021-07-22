@@ -165,8 +165,7 @@ class MnSessionServiceModule {
         MnSharedModule,
       ],
       providers: [
-        MnSessionService,
-        MnBucketsService
+        MnSessionService
       ]
     })
   ]}

@@ -24,10 +24,17 @@ const restApiBase = "/pools/default/buckets";
 export { MnCollectionsService, MnCollectionsServiceModule }
 
 class MnCollectionsServiceModule {
+  static forRoot() {
+    return {
+      ngModule: MnCollectionsServiceModule,
+      providers: [MnCollectionsService]
+    };
+  }
+
   static get annotations() { return [
     new NgModule({
       imports: [
-        MnBucketsServiceModule
+        MnBucketsServiceModule.forRoot()
       ],
       providers: [
         MnCollectionsService

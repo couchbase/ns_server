@@ -16,7 +16,6 @@ import {NgbModule} from '../web_modules/@ng-bootstrap/ng-bootstrap.js';
 
 import {MnSecurityLogRedactionComponent} from './mn.security.log.redaction.component.js';
 import {MnSecurityService} from './mn.security.service.js';
-import {MnBucketsService} from './mn.buckets.service.js';
 import {MnFormService} from './mn.form.service.js';
 
 let logRedactionState = {
@@ -46,8 +45,7 @@ class MnSecurityLogRedactionModule {
         UIRouterModule.forChild({ states: [logRedactionState] })
       ],
       providers: [
-        MnSecurityService,
-        MnBucketsService
+        MnSecurityService
       ]
     })
   ]}

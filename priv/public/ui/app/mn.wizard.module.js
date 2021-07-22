@@ -36,9 +36,6 @@ import {MnServicesConfigComponent} from './mn.services.config.component.js';
 import {MnStorageModeComponent} from './mn.storage.mode.component.js';
 import {MnPathFieldComponent} from './mn.path.field.component.js';
 
-import {MnAdminService} from './mn.admin.service.js';
-import {MnPoolsService} from './mn.pools.service.js';
-
 import {HTTP_INTERCEPTORS} from '../web_modules/@angular/common/http.js';
 import {MnHttpInterceptor} from './mn.http.interceptor.js';
 
@@ -86,8 +83,6 @@ class MnWizardModule {
       ],
       providers: [
         MnWizardService,
-        MnPoolsService,
-        MnAdminService,
         MnAuthService,
         {
           provide: HTTP_INTERCEPTORS,

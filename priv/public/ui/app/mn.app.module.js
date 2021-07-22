@@ -13,9 +13,8 @@ import { ajsUpgradedProviders } from './ajs.upgraded.providers.js';
 import { MnAppComponent } from './mn.app.component.js';
 import { MnAppService } from './mn.app.service.js';
 import { MnHelperService } from './mn.helper.service.js';
-import { MnAdminService } from './mn.admin.service.js';
 import { MnTasksService } from './mn.tasks.service.js';
-import { MnPoolsService } from './mn.pools.service.js';
+
 import { MnSecurityService } from './mn.security.service.js';
 import { mnAppImports } from './mn.app.imports.js';
 import { MnFormService } from './mn.form.service.js';
@@ -46,9 +45,7 @@ class MnAppModule {
         ...ajsUpgradedProviders,
         MnSecurityService,
         MnAppService,
-        MnAdminService,
         MnTasksService,
-        MnPoolsService,
         MnFormService,
         MnHelperService,
         {

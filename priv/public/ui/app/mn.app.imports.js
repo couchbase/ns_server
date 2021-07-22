@@ -21,6 +21,9 @@ import {MnSharedModule} from './mn.shared.module.js';
 import {MnElementCraneModule} from './mn.element.crane.js';
 import {UIRouterUpgradeModule} from '../web_modules/@uirouter/angular-hybrid.js';
 import * as pluggableUIsModules from '/ui/pluggable-uis.js';
+import {MnPoolsServiceModule} from './mn.pools.service.js';
+import {MnAdminServiceModule} from './mn.admin.service.js';
+import {MnCollectionsServiceModule} from './mn.collections.service.js';
 
 import {MnKeyspaceSelectorModule} from './mn.keyspace.selector.module.js';
 
@@ -227,6 +230,9 @@ let mnAppImports = [
   CommonModule,
   HttpClientModule,
   MnSharedModule,
+  MnCollectionsServiceModule.forRoot(),
+  MnAdminServiceModule.forRoot(),
+  MnPoolsServiceModule.forRoot(),
   MnElementCraneModule.forRoot(),
   UIRouterUpgradeModule.forRoot({
     states: [authState, wizardState, overviewState, serversState, bucketsState, logsState, logsListState, alertsState, groupsState, documentsState, gsiState, viewsState, settingsState, sampleBucketState, securityState, collectionsState, XDCRState, sessionState, logRedactionState, auditState]

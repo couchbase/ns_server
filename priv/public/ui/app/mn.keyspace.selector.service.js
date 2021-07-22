@@ -7,7 +7,7 @@ import { filter, withLatestFrom, pairwise, catchError,
 import { BehaviorSubject, Subject, NEVER, of, merge, fromEvent } from "../web_modules/rxjs.js";
 
 import { MnHelperService } from './mn.helper.service.js';
-import { MnCollectionsService, MnCollectionsServiceModule } from './mn.collections.service.js';
+import { MnCollectionsService } from './mn.collections.service.js';
 
 export { MnKeyspaceSelectorServiceModule, MnKeyspaceSelectorService }
 
@@ -15,7 +15,6 @@ class MnKeyspaceSelectorServiceModule {
   static get annotations() { return [
     new NgModule({
       imports: [
-        MnCollectionsServiceModule
       ],
       providers: [
         MnKeyspaceSelectorService,
