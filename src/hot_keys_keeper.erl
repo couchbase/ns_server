@@ -26,4 +26,6 @@ start_link() ->
     gen_server2:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 handle_call({get_local_keys, _}, _From, State) ->
+    {reply, [], State};
+handle_call(all_local_hot_keys, _From, State) ->
     {reply, [], State}.
