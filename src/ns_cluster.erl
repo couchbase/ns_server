@@ -1018,7 +1018,14 @@ do_add_node_engaged(NodeKVList, Auth, GroupUUID, Services, Scheme) ->
                      %% to us (because it knows our CA), then it will sync
                      %% config, and only then it will be able to generate
                      %% correct certs
-                     true -> [tcp_only];
+                     %% Update: starting from 7.0 we pass certs to the node
+                     %% being added, so it should work even in case of
+                     %% self-generated certs.
+                     true ->
+                         case cluster_compat_mode:is_cluster_70() of
+                             true -> [];
+                             false -> [tcp_only]
+                         end;
                      false -> []
                  end,
     RV = verify_otp_connectivity(OtpNode, VerifyOpts),
