@@ -508,6 +508,10 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     XdcrPath = drop_prefix(mochiweb_request:get(raw_path, Req)),
                     {{[admin, internal], all},
                      fun goxdcr_rest:proxy/2, [XdcrPath]};
+                ["xdcr" | _RestPath] ->
+                    XdcrPath = mochiweb_request:get(raw_path, Req),
+                    {{[admin, internal], all},
+                     fun goxdcr_rest:proxy/2, [XdcrPath]};
                 ["_cbauth", "checkPermission"] ->
                     {{[admin, internal], all},
                      fun menelaus_web_rbac:handle_check_permission_for_cbauth/1};
@@ -862,6 +866,10 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[{bucket, Bucket}, data, meta], read},
                      fun menelaus_web_xdcr_target:handle_pre_replicate/2,
                      [Bucket]};
+                ["xdcr" | _RestPath] ->
+                    XdcrPath = mochiweb_request:get(raw_path, Req),
+                    {{[admin, internal], all},
+                     fun goxdcr_rest:proxy/2, [XdcrPath]};
                 ["logClientError"] ->
                     {no_check, fun log_client_error/1};
                 ["diag", "eval"] ->
@@ -959,6 +967,10 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                                       ["couchBase",
                                        drop_prefix(mochiweb_request:get(raw_path, Req)),
                                        Plugins]};
+                ["xdcr" | _RestPath] ->
+                    XdcrPath = mochiweb_request:get(raw_path, Req),
+                    {{[admin, internal], all},
+                     fun goxdcr_rest:proxy/2, [XdcrPath]};
                 ["_metakv" | _] ->
                     {{[admin, internal], all}, fun menelaus_metakv:handle_delete/2, [Path]};
                 [?PLUGGABLE_UI, RestPrefix | _] ->
@@ -1007,6 +1019,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      ["couchBase",
                       drop_prefix(mochiweb_request:get(raw_path, Req)),
                       Plugins]};
+                ["xdcr" | _RestPath] ->
+                    XdcrPath = mochiweb_request:get(raw_path, Req),
+                    {{[admin, internal], all}, fun goxdcr_rest:proxy/2, [XdcrPath]};
                 ["_metakv" | _] ->
                     {{[admin, internal], all}, fun menelaus_metakv:handle_put/2, [Path]};
                 [?PLUGGABLE_UI, RestPrefix | _] ->
