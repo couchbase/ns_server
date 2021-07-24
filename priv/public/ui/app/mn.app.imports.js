@@ -230,9 +230,9 @@ let mnAppImports = [
   CommonModule,
   HttpClientModule,
   MnSharedModule,
-  MnCollectionsServiceModule.forRoot(),
-  MnAdminServiceModule.forRoot(),
-  MnPoolsServiceModule.forRoot(),
+  MnCollectionsServiceModule,
+  MnAdminServiceModule,
+  MnPoolsServiceModule,
   MnElementCraneModule.forRoot(),
   UIRouterUpgradeModule.forRoot({
     states: [authState, wizardState, overviewState, serversState, bucketsState, logsState, logsListState, alertsState, groupsState, documentsState, gsiState, viewsState, settingsState, sampleBucketState, securityState, collectionsState, XDCRState, sessionState, logRedactionState, auditState]

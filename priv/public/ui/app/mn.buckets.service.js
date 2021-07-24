@@ -7,6 +7,7 @@ file, in accordance with the Business Source License, use of this software will
 be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
+import { singletonGuard } from './mn.core.js'
 import { NgModule } from '../web_modules/@angular/core.js';
 import { Injectable } from "../web_modules/@angular/core.js";
 import { pluck, switchMap, shareReplay,
@@ -18,19 +19,14 @@ import { MnAdminService, MnAdminServiceModule } from './mn.admin.service.js';
 export { MnBucketsServiceModule, MnBucketsService };
 
 class MnBucketsServiceModule {
-  static forRoot() {
-    return {
-      ngModule: MnBucketsServiceModule,
-      providers: [MnBucketsService]
-    };
-  }
-
   static get annotations() { return [
     new NgModule({
       imports: [
-        MnAdminServiceModule.forRoot()
+        MnAdminServiceModule
       ],
-      providers: []
+      providers: [
+        MnBucketsService
+      ]
     })
   ]}
 }
@@ -46,6 +42,8 @@ class MnBucketsService {
   ]}
 
   constructor(http, mnAdminService) {
+    singletonGuard(MnBucketsService);
+
     this.stream = {};
     this.http = http;
 

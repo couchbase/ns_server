@@ -7,7 +7,7 @@ file, in accordance with the Business Source License, use of this software will
 be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
-
+import { singletonGuard } from './mn.core.js';
 import { NgModule } from '../web_modules/@angular/core.js';
 import { Injectable } from "../web_modules/@angular/core.js";
 import { HttpClient } from '../web_modules/@angular/common/http.js';
@@ -24,17 +24,10 @@ const restApiBase = "/pools/default/buckets";
 export { MnCollectionsService, MnCollectionsServiceModule }
 
 class MnCollectionsServiceModule {
-  static forRoot() {
-    return {
-      ngModule: MnCollectionsServiceModule,
-      providers: [MnCollectionsService]
-    };
-  }
-
   static get annotations() { return [
     new NgModule({
       imports: [
-        MnBucketsServiceModule.forRoot()
+        MnBucketsServiceModule
       ],
       providers: [
         MnCollectionsService
@@ -55,6 +48,8 @@ class MnCollectionsService {
   ]}
 
   constructor(http, mnBucketsService, mnPermissions) {
+    singletonGuard(MnCollectionsService);
+
     this.http = http;
     this.stream = {};
 

@@ -12,7 +12,7 @@ import { BehaviorSubject, Subject } from '../web_modules/rxjs.js';
 import { distinctUntilChanged, withLatestFrom, takeUntil,
          map, pluck } from '../web_modules/rxjs/operators.js';
 
-export { MnLifeCycleHooksToStream, DetailsHashObserver };
+export { MnLifeCycleHooksToStream, DetailsHashObserver, singletonGuard };
 
 let componentLifecycleHooks = [
   "OnChanges",
@@ -92,4 +92,13 @@ class DetailsHashObserver {
   isOpened(values = []) {
     return values.indexOf(this.paramValue) > -1;
   }
+}
+
+let singletonsMap = {};
+function singletonGuard(type) {
+  if (singletonsMap[type]) {
+    throw new Error(`[${type}]: trying to create multiple instances,
+      but this service should be a singleton.`);
+  }
+  singletonsMap[type] = true;
 }

@@ -7,6 +7,7 @@ file, in accordance with the Business Source License, use of this software will
 be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
+import { singletonGuard } from './mn.core.js';
 import { NgModule } from '../web_modules/@angular/core.js';
 import { Injectable } from "../web_modules/@angular/core.js";
 import { BehaviorSubject, combineLatest } from "../web_modules/rxjs.js";
@@ -26,20 +27,14 @@ function encodeCompatVersion(major, minor) {
 }
 
 class MnAdminServiceModule {
-  static forRoot() {
-    return {
-      ngModule: MnAdminServiceModule,
-      providers: [MnAdminService]
-    };
-  }
-
   static get annotations() { return [
     new NgModule({
       imports: [
-        MnPoolsServiceModule.forRoot()
+        MnPoolsServiceModule
       ],
       providers: [
-        MnPrettyVersion
+        MnPrettyVersion,
+        MnAdminService
       ]
     })
   ]}
@@ -57,6 +52,8 @@ class MnAdminService {
   ]}
 
   constructor(http, mnPrettyVersionPipe, mnPoolsService) {
+    singletonGuard(MnAdminService);
+
     this.stream = {};
     this.http = http;
     this.stream.etag = new BehaviorSubject();
