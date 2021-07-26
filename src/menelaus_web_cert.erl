@@ -26,6 +26,13 @@
 
 handle_cluster_certificate(Req) ->
     menelaus_util:assert_is_enterprise(),
+    %% This API doesn't make sense anymore because it is now possible that
+    %% different nodes in the cluster might have different CAs (not that it's
+    %% good idea in general but it is definitely the case during CA rotation)
+    %% So, the idea is to keep this endpoint working for backward compat reasons
+    %% until at least one CA is loaded. When the CA is added  this endpoint is
+    %% not correct anymore and should start returning error
+    assert_old_CAs(),
 
     case proplists:get_value("extended", mochiweb_request:parse_qs(Req)) of
         "true" ->
@@ -34,13 +41,20 @@ handle_cluster_certificate(Req) ->
             handle_cluster_certificate_simple(Req)
     end.
 
+assert_old_CAs() ->
+    NoNewCAsUploaded =
+        lists:all(
+          fun (P) -> upgrade == proplists:get_value(origin, P) end,
+          ns_server_cert:trusted_CAs(props)),
+    case NoNewCAsUploaded of
+        true -> ok;
+        false ->
+            Err = <<"deprecated, please use /pools/default/trustedCAs">>,
+            menelaus_util:web_exception(400, Err)
+    end.
+
 handle_cluster_certificate_simple(Req) ->
-    Cert = case ns_server_cert:cluster_ca() of
-               {GeneratedCert, _} ->
-                   GeneratedCert;
-               {UploadedCAProps, _, _} ->
-                   proplists:get_value(pem, UploadedCAProps)
-           end,
+    Cert = lists:last(ns_server_cert:trusted_CAs(pem)),
     menelaus_util:reply_ok(Req, "text/plain", Cert).
 
 format_time(UTCSeconds) ->
@@ -57,9 +71,7 @@ warning_props(Warning) ->
 translate_warning({{node, Node}, Warning}) ->
     [{node, Node} | warning_props(Warning)];
 translate_warning({{ca, Id}, Warning}) ->
-    [{ca, Id} | warning_props(Warning)];
-translate_warning(Warning) ->
-    warning_props(Warning).
+    [{ca, Id} | warning_props(Warning)].
 
 jsonify_cert_props(Props) ->
     lists:map(fun ({K, UTCSeconds}) when K =:= expires;
@@ -74,18 +86,16 @@ jsonify_cert_props(Props) ->
               end, Props).
 
 handle_cluster_certificate_extended(Req) ->
-    {Cert, WarningsJson} =
-        case ns_server_cert:cluster_ca() of
-            {GeneratedCert, _} ->
-                {[{type, generated},
-                  {pem, GeneratedCert}], [{translate_warning(self_signed)}]};
-            {UploadedCAProps, _, _} ->
-                Warnings = ns_server_cert:get_warnings(),
-                {[{type, uploaded} | UploadedCAProps],
-                 [{translate_warning(Pair)} || Pair <- Warnings]}
-        end,
-    menelaus_util:reply_json(Req, {[{cert, {jsonify_cert_props(Cert)}},
-                                    {warnings, WarningsJson}]}).
+    CertProps =
+        lists:filtermap( %% to be compatible with pre-NEO
+          fun ({not_after, V}) -> {true, {expires, V}};
+              ({not_before, _}) -> false;
+              ({id, _}) -> false;
+              ({K, V}) -> {true, {K, V}}
+          end, lists:last(ns_server_cert:trusted_CAs(props))),
+    CertJson = {jsonify_cert_props(CertProps)},
+    Warnings = [{translate_warning(W)} || W <- ns_server_cert:get_warnings()],
+    menelaus_util:reply_json(Req, {[{cert, CertJson}, {warnings, Warnings}]}).
 
 handle_regenerate_certificate(Req) ->
     menelaus_util:assert_is_enterprise(),
