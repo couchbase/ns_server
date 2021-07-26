@@ -25,7 +25,7 @@
          load_node_certs_from_inbox/0,
          load_CAs_from_inbox/0,
          add_CAs/2,
-         get_warnings/1,
+         get_warnings/0,
          get_subject_fields_by_type/2,
          get_sub_alt_names_by_type/2,
          get_node_cert_info/1,
@@ -764,40 +764,97 @@ cert_props(Type, DecodedCert, Extras) ->
      {type, Type},
      {pem, public_key:pem_encode([DecodedCert])}] ++ Extras.
 
-get_warnings(CAProps) ->
-    ClusterCA = proplists:get_value(pem, CAProps),
-    false = ClusterCA =:= undefined,
-
-    VerifiedWith = erlang:md5(ClusterCA),
-
+get_warnings() ->
     Config = ns_config:get(),
     Nodes = ns_node_disco:nodes_wanted(Config),
+    TrustedCAs = trusted_CAs(pem),
+    NodeWarnings =
+        lists:flatmap(
+          fun (Node) ->
+              Warnings =
+                  case ns_config:search(Config, {node, Node, node_cert}) of
+                      {value, Props} -> node_cert_warnings(TrustedCAs, Props);
+                      false ->
+                          %% Pre-NEO node:
+                          case ns_config:search(Config, {node, Node, cert}) of
+                              {value, Props} ->
+                                   node_cert_warnings(TrustedCAs, Props);
+                              false ->
+                                   case ns_config:search(cert_and_pkey) of
+                                       {value, {_, _}} ->
+                                           [self_signed];
+                                       _ ->
+                                           [mismatch]
+                                   end
+                          end
+                  end,
+              [{{node, Node}, W} || W <- Warnings]
+          end, Nodes),
+    CAWarnings =
+        lists:flatmap(
+          fun (CAProps) ->
+                  SelfSignedWarnings =
+                      case proplists:get_value(type, CAProps) of
+                          generated -> [self_signed];
+                          _ -> []
+                      end,
+                  ExpWarnings = expiration_warnings(CAProps),
+                  Id = proplists:get_value(id, CAProps),
+                  [{{ca, Id}, W} || W <- SelfSignedWarnings ++ ExpWarnings]
+          end, trusted_CAs(props)),
+    NodeWarnings ++ CAWarnings.
 
-    lists:foldl(
-      fun (Node, Acc) ->
-              case ns_config:search(Config, {node, Node, cert}) of
-                  {value, Props} ->
-                      case proplists:get_value(verified_with, Props) of
-                          VerifiedWith ->
-                              Now = calendar:datetime_to_gregorian_seconds(calendar:universal_time()),
-                              WarningDays = ns_config:read_key_fast({cert, expiration_warning_days}, 7),
-                              WarningThreshold = Now + WarningDays * 24 * 60 * 60,
+expiration_warnings(CertProps) ->
+    Now = calendar:datetime_to_gregorian_seconds(calendar:universal_time()),
+    WarningDays = ns_config:read_key_fast({cert, expiration_warning_days}, 7),
+    WarningThreshold = Now + WarningDays * 24 * 60 * 60,
 
-                              case proplists:get_value(expires, Props) of
-                                  A when is_integer(A) andalso A =< Now ->
-                                      [{Node, expired} | Acc];
-                                  A when  is_integer(A) andalso A =< WarningThreshold ->
-                                      [{Node, {expires_soon, A}} | Acc];
-                                  A when is_integer(A) ->
-                                      Acc
-                              end;
-                          _ ->
-                              [{Node, mismatch} | Acc]
-                      end;
-                  false ->
-                      [{Node, mismatch} | Acc]
-              end
-      end, [], Nodes).
+    Expire = proplists:get_value(expires, CertProps), %% For pre-NEO only
+    NotAfter = proplists:get_value(not_after, CertProps, Expire),
+    case NotAfter of
+        A when is_integer(A) andalso A =< Now ->
+            [expired];
+        A when is_integer(A) andalso A =< WarningThreshold ->
+            [{expires_soon, A}];
+        _ ->
+            []
+    end.
+
+is_trusted(CAPem, TrustedCAs) ->
+    Decoded = decode_single_certificate(CAPem),
+    lists:any(
+      fun (C) ->
+          Decoded == decode_single_certificate(C)
+      end, TrustedCAs).
+
+node_cert_warnings(TrustedCAs, NodeCertProps) ->
+    MissingCAWarnings =
+        case proplists:get_value(ca, NodeCertProps) of
+            undefined ->
+                %% For pre-NEO clusters, old nodes don't have ca prop
+                VerifiedWith =
+                    proplists:get_value(verified_with, NodeCertProps),
+                CAMd5s = [erlang:md5(C) || C <- TrustedCAs],
+                case lists:member(VerifiedWith, CAMd5s) of
+                    true -> [];
+                    false -> [mismatch]
+                end;
+            CA ->
+                case is_trusted(CA, TrustedCAs) of
+                    true -> [];
+                    false -> [mismatch]
+                end
+        end,
+
+    ExpirationWarnings = expiration_warnings(NodeCertProps),
+
+    SelfSignedWarnings =
+        case proplists:get_value(type, NodeCertProps) of
+            generated -> [self_signed];
+            _ -> []
+        end,
+
+    MissingCAWarnings ++ ExpirationWarnings ++ SelfSignedWarnings.
 
 get_node_cert_info(Node) ->
     Props = ns_config:read_key_fast({node, Node, cert}, []),

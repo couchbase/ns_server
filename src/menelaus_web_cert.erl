@@ -54,8 +54,10 @@ warning_props({expires_soon, UTCSeconds}) ->
 warning_props(Warning) ->
     [{message, ns_error_messages:node_certificate_warning(Warning)}].
 
-translate_warning({Node, Warning}) ->
+translate_warning({{node, Node}, Warning}) ->
     [{node, Node} | warning_props(Warning)];
+translate_warning({{ca, Id}, Warning}) ->
+    [{ca, Id} | warning_props(Warning)];
 translate_warning(Warning) ->
     warning_props(Warning).
 
@@ -78,7 +80,7 @@ handle_cluster_certificate_extended(Req) ->
                 {[{type, generated},
                   {pem, GeneratedCert}], [{translate_warning(self_signed)}]};
             {UploadedCAProps, _, _} ->
-                Warnings = ns_server_cert:get_warnings(UploadedCAProps),
+                Warnings = ns_server_cert:get_warnings(),
                 {[{type, uploaded} | UploadedCAProps],
                  [{translate_warning(Pair)} || Pair <- Warnings]}
         end,
