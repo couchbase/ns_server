@@ -379,7 +379,8 @@ goport_args(goxdcr, Config, _Cmd, _NodeUUID) ->
         atom_to_list(cluster_compat_mode:is_enterprise()),
     build_port_args([{"-sourceKVAdminPort", rest_port},
                      {"-xdcrRestPort", xdcr_rest_port}], Config) ++
-        [IsEnterprise | build_afamily_requirement("-")];
+        [IsEnterprise | build_afamily_requirement("-")] ++
+        ["-caFile=" ++ ns_ssl_services_setup:memcached_cert_path()];
 
 goport_args(indexer, Config, _Cmd, NodeUUID) ->
     {ok, LogDir} = application:get_env(ns_server, error_logger_mf_dir),
