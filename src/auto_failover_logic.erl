@@ -560,15 +560,32 @@ test_frame(Tries, Nodes, DownNodes, State) ->
     NodesWithIDs = attach_test_uuids(Nodes),
     SvcConfig = [{kv, {{disable_auto_failover, false}, {nodes, Nodes}}}],
     test_frame(Tries, [], NodesWithIDs,
-               attach_test_uuids(DownNodes), State, SvcConfig).
+               attach_test_uuids(DownNodes), State, SvcConfig,
+               [{Tries, [], State}]).
 
-test_frame(0, Actions, _Nodes, _DownNodes, State, _SvcConfig) ->
+test_frame(0, Actions, _Nodes, _DownNodes, State, _SvcConfig, Report) ->
+    ?log_debug("~n---------------~n~s~n----------------~n",
+               [generate_report(Report, [])]),
     {Actions, State};
-test_frame(Times, Actions, Nodes, DownNodes, State, SvcConfig) ->
+test_frame(Times, Actions, Nodes, DownNodes, State, SvcConfig, Report) ->
     ?assertEqual([], Actions),
-    {NewActions, NewState} = process_frame(
-                               Nodes, DownNodes, State, SvcConfig, []),
-    test_frame(Times - 1, NewActions, Nodes, DownNodes, NewState, SvcConfig).
+    {NewActions, NewState} =
+        process_frame(Nodes, DownNodes, State, SvcConfig, []),
+    StateDiff = flatten_state(NewState) -- flatten_state(State),
+    test_frame(Times - 1, NewActions, Nodes, DownNodes, NewState, SvcConfig,
+               [{Times - 1, NewActions, StateDiff} | Report]).
+
+generate_report([], Iolist) ->
+    lists:flatten(Iolist);
+generate_report([{Times, Actions, State} | Rest], Iolist) ->
+    generate_report(
+      Rest,
+      [io_lib:format("~p: ~p~n~p~n", [Times, Actions, State]),
+       Iolist]).
+
+flatten_state(#state{nodes_states = NS, services_state = SS,
+                     down_server_group_state = DSGS}) ->
+    NS ++ SS ++ [DSGS].
 
 expect_no_actions({Actions, State}) ->
     ?assertEqual([], Actions),
