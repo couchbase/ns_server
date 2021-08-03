@@ -39,7 +39,7 @@
 -record(node_state, {
           name :: term(),
           down_counter = 0 :: non_neg_integer(),
-          state :: removed|new|half_down|nearly_down|failover|up,
+          state :: new|half_down|nearly_down|failover|up,
           %% Whether are down_warning for this node was already
           %% mailed or not
           mailed_down_warning = false :: boolean()
@@ -95,10 +95,8 @@ init_services_state(CompatVersion, IsEnterprise) ->
 init_down_group_state() ->
     #down_group_state{name = nil, down_counter = 0, state = nil}.
 
-fold_matching_nodes([], NodeStates, Fun, Acc) ->
-    lists:foldl(fun (S, A) ->
-                        Fun(S#node_state{state = removed}, A)
-                end, Acc, NodeStates);
+fold_matching_nodes([], _NodeStates, _Fun, Acc) ->
+    Acc;
 fold_matching_nodes([Node | RestNodes], [], Fun, Acc) ->
     NewAcc = Fun(#node_state{name = Node,
                              state = new},
@@ -116,8 +114,7 @@ fold_matching_nodes([Node | RestNodes] = AllNodes,
         false ->
             case Node =:= Name of
                 false ->
-                    NewAcc = Fun(NodeState#node_state{state = removed}, Acc),
-                    fold_matching_nodes(AllNodes, RestStates, Fun, NewAcc);
+                    fold_matching_nodes(AllNodes, RestStates, Fun, Acc);
                 _ ->
                     NewAcc = Fun(NodeState, Acc),
                     fold_matching_nodes(RestNodes, RestStates, Fun, NewAcc)
@@ -180,8 +177,7 @@ log_master_activity(#node_state{state = Prev, name = {Node, _} = Name} = NodeSta
                                                                New, NewCounter).
 get_up_states(UpNodes, #state{nodes_states = NodeStates}) ->
     UpFun =
-        fun (#node_state{state = removed}, Acc) -> Acc;
-            (NodeState, Acc) ->
+        fun (NodeState, Acc) ->
                 NewUpState = NodeState#node_state{state = up,
                                                   down_counter = 0,
                                                   mailed_down_warning = false},
@@ -193,8 +189,7 @@ get_up_states(UpNodes, #state{nodes_states = NodeStates}) ->
 
 get_down_states(DownNodes, State, NodesChanged) ->
     DownFun =
-        fun (#node_state{state = removed}, Acc) -> Acc;
-            (NodeState, Acc) ->
+        fun (NodeState, Acc) ->
                 NewState = increment_down_state(NodeState, DownNodes,
                                                 State, NodesChanged),
                 log_master_activity(NodeState, NewState),
@@ -673,9 +668,7 @@ fold_matching_nodes_test() ->
                                     N <- NodesForStates],
                    Res = fold_matching_nodes(
                            Nodes, NodeStates,
-                           fun (#node_state{state = removed}, Acc) ->
-                                   Acc;
-                               (NS, Acc) ->
+                           fun (NS, Acc) ->
                                    [NS | Acc]
                            end, []),
                    lists:reverse(
