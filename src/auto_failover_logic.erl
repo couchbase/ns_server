@@ -83,29 +83,27 @@ init_services_state(CompatVersion, IsEnterprise) ->
 init_down_group_state() ->
     #down_group_state{name = nil, down_counter = 0, state = nil}.
 
-fold_matching_nodes([], _NodeStates, _Fun, Acc) ->
-    Acc;
-fold_matching_nodes([Node | RestNodes], [], Fun, Acc) ->
-    NewAcc = Fun(#node_state{name = Node,
-                             state = new},
-                 Acc),
-    fold_matching_nodes(RestNodes, [], Fun, NewAcc);
-fold_matching_nodes([Node | RestNodes] = AllNodes,
-                    [#node_state{name = Name} = NodeState | RestStates] = States,
-                    Fun, Acc) ->
+filter_node_states(Nodes, NodeStates) ->
+    filter_node_states(Nodes, NodeStates, []).
+
+filter_node_states([], _NodeStates, Acc) ->
+    lists:reverse(Acc);
+filter_node_states([Node | RestNodes], [], Acc) ->
+    filter_node_states(RestNodes, [],
+                       [#node_state{name = Node, state = new} | Acc]);
+filter_node_states([Node | RestNodes] = AllNodes,
+                   [#node_state{name = Name} = NodeState | RestStates] = States,
+                   Acc) ->
     case Node < Name of
         true ->
-            NewAcc = Fun(#node_state{name = Node,
-                                     state = new},
-                         Acc),
-            fold_matching_nodes(RestNodes, States, Fun, NewAcc);
+            filter_node_states(RestNodes, States,
+                               [#node_state{name = Node, state = new} | Acc]);
         false ->
             case Node =:= Name of
                 false ->
-                    fold_matching_nodes(AllNodes, RestStates, Fun, Acc);
+                    filter_node_states(AllNodes, RestStates, Acc);
                 _ ->
-                    NewAcc = Fun(NodeState, Acc),
-                    fold_matching_nodes(RestNodes, RestStates, Fun, NewAcc)
+                    filter_node_states(RestNodes, RestStates, [NodeState | Acc])
             end
     end.
 
@@ -163,29 +161,24 @@ log_master_activity(#node_state{state = Prev, name = {Node, _} = Name} = NodeSta
     end,
     master_activity_events:note_autofailover_node_state_change(Node, Prev,
                                                                New, NewCounter).
-get_up_states(UpNodes, #state{nodes_states = NodeStates}) ->
-    UpFun =
-        fun (NodeState, Acc) ->
-                NewUpState = NodeState#node_state{state = up,
-                                                  down_counter = 0,
-                                                  mailed_down_warning = false},
-                log_master_activity(NodeState, NewUpState),
-                [NewUpState | Acc]
-        end,
-    UpStates0 = fold_matching_nodes(UpNodes, NodeStates, UpFun, []),
-    lists:reverse(UpStates0).
 
-get_down_states(DownNodes, State, NodesChanged) ->
-    DownFun =
-        fun (NodeState, Acc) ->
-                NewState = increment_down_state(NodeState, DownNodes,
-                                                State, NodesChanged),
-                log_master_activity(NodeState, NewState),
-                [NewState | Acc]
-        end,
-    DownStates0 = fold_matching_nodes(DownNodes, State#state.nodes_states,
-                                      DownFun, []),
-    lists:reverse(DownStates0).
+process_states(Fun, Nodes, #state{nodes_states = NodeStates}) ->
+    lists:map(
+      fun (NodeState) ->
+              NewState = Fun(NodeState),
+              log_master_activity(NodeState, NewState),
+              NewState
+      end, filter_node_states(Nodes, NodeStates)).
+
+process_up_states(Nodes, State) ->
+    process_states(
+      _#node_state{state = up, down_counter = 0, mailed_down_warning = false},
+      Nodes, State).
+
+process_down_states(Nodes, State, NodesChanged) ->
+    process_states(
+      increment_down_state(_, Nodes, State, NodesChanged),
+      Nodes, State).
 
 log_down_sg_state_change(OldState, Newstate) ->
     case Newstate of
@@ -261,9 +254,10 @@ process_frame(Nodes, DownNodes, State, SvcConfig, DownSG) ->
     PrevNodes = [NS#node_state.name || NS <- State#state.nodes_states],
     NodesChanged = (SortedNodes =/= ordsets:from_list(PrevNodes)),
 
-    UpStates = get_up_states(ordsets:subtract(SortedNodes, SortedDownNodes),
-                             State),
-    DownStates = get_down_states(SortedDownNodes, State, NodesChanged),
+    UpStates = process_up_states(
+                 ordsets:subtract(SortedNodes, SortedDownNodes),
+                 State),
+    DownStates = process_down_states(SortedDownNodes, State, NodesChanged),
     DownSGState = get_down_sg_state(DownStates, DownSG,
                                     State#state.down_server_group_state),
 
@@ -646,17 +640,12 @@ mail_down_warning_down_up_down_test() ->
                                       test_frame(1, Nodes, [b, c], _)))]).
 
 
-fold_matching_nodes_test() ->
+filter_node_states_test() ->
     Test = fun (Nodes, NodesForStates) ->
                    NodeStates = [#node_state{name = N, state = up} ||
                                     N <- NodesForStates],
-                   Res = fold_matching_nodes(
-                           Nodes, NodeStates,
-                           fun (NS, Acc) ->
-                                   [NS | Acc]
-                           end, []),
-                   lists:reverse(
-                     [{N, S} || #node_state{name = N, state = S} <- Res])
+                   Res = filter_node_states(Nodes, NodeStates),
+                   [{N, S} || #node_state{name = N, state = S} <- Res]
            end,
     ?assertEqual([{a, new}, {b, up}, {d, up}], Test([a, b, d], [b, c, d, e])),
     ?assertEqual([{b, up}, {d, up}], Test([b, d], [a, b, d, e])).
