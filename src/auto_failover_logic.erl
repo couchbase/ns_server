@@ -666,4 +666,22 @@ mail_down_warning_down_up_down_test() ->
        ?cut(expect_mail_down_warnings([b],
                                       test_frame(1, Nodes, [b, c], _)))]).
 
+
+fold_matching_nodes_test() ->
+    Test = fun (Nodes, NodesForStates) ->
+                   NodeStates = [#node_state{name = N, state = up} ||
+                                    N <- NodesForStates],
+                   Res = fold_matching_nodes(
+                           Nodes, NodeStates,
+                           fun (#node_state{state = removed}, Acc) ->
+                                   Acc;
+                               (NS, Acc) ->
+                                   [NS | Acc]
+                           end, []),
+                   lists:reverse(
+                     [{N, S} || #node_state{name = N, state = S} <- Res])
+           end,
+    ?assertEqual([{a, new}, {b, up}, {d, up}], Test([a, b, d], [b, c, d, e])),
+    ?assertEqual([{b, up}, {d, up}], Test([b, d], [a, b, d, e])).
+
 -endif.
