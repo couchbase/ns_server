@@ -73,7 +73,8 @@ submit_cast(Event) ->
         gen_event:notify(master_activity_events_ingress,
                          {submit_master_event, Event})
     catch T:E ->
-              ?log_debug("Failed to send master activity event: ~p", [{T,E}])
+            ?log_debug("Failed to send master activity event ~p: ~p",
+                       [Event, {T,E}])
     end.
 
 get_stage_list(Stage) when is_atom(Stage) ->
