@@ -178,7 +178,7 @@ log_master_activity(#node_state{state = Prev, name = {Node, _} = Name} = NodeSta
     end,
     master_activity_events:note_autofailover_node_state_change(Node, Prev,
                                                                New, NewCounter).
-get_up_states(UpNodes, NodeStates) ->
+get_up_states(UpNodes, #state{nodes_states = NodeStates}) ->
     UpFun =
         fun (#node_state{state = removed}, Acc) -> Acc;
             (NodeState, Acc) ->
@@ -279,7 +279,7 @@ process_frame(Nodes, DownNodes, State, SvcConfig, DownSG) ->
     NodesChanged = (SortedNodes =/= ordsets:from_list(PrevNodes)),
 
     UpStates = get_up_states(ordsets:subtract(SortedNodes, SortedDownNodes),
-                             State#state.nodes_states),
+                             State),
     DownStates = get_down_states(SortedDownNodes, State, NodesChanged),
     DownSGState = get_down_sg_state(DownStates, DownSG,
                                     State#state.down_server_group_state),
