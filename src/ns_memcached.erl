@@ -39,6 +39,7 @@
 -define(SLOW_CALL_THRESHOLD_MICROS, 500000).
 -define(GET_KEYS_TIMEOUT,       ?get_timeout(get_keys, 60000)).
 -define(GET_KEYS_OUTER_TIMEOUT, ?get_timeout(get_keys_outer, 70000)).
+-define(MAGMA_CREATION_TIMEOUT, ?get_timeout(magma_creation, 300000)).
 
 -define(RECBUF, ?get_param(recbuf, 64 * 1024)).
 -define(SNDBUF, ?get_param(sndbuf, 64 * 1024)).
@@ -1272,8 +1273,17 @@ do_ensure_bucket(Sock, Bucket, BConf, false) ->
             {Engine, ConfigString} =
                 memcached_bucket_config:start_params(BConf),
 
+            BucketConfig = memcached_bucket_config:get_bucket_config(BConf),
+            Timeout = case ns_bucket:kv_backend_type(BucketConfig) of
+                          magma ->
+                              ?MAGMA_CREATION_TIMEOUT;
+                          _ ->
+                              %% Use whatever the default value is
+                              undefined
+                      end,
+
             case mc_client_binary:create_bucket(Sock, Bucket, Engine,
-                                                ConfigString) of
+                                                ConfigString, Timeout) of
                 ok ->
                     ?log_info("Created bucket ~p with config string ~p",
                               [Bucket, ConfigString]),

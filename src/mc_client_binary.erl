@@ -25,7 +25,7 @@
          cmd_quiet/3,
          cmd_vocal/3,
          respond/3,
-         create_bucket/4,
+         create_bucket/5,
          delete_bucket/3,
          delete_vbucket/2,
          delete_vbuckets/2,
@@ -205,11 +205,12 @@ auth(_Sock, _UnknownMech) ->
     {error, emech_unsupported}.
 
 % -------------------------------------------------
-create_bucket(Sock, BucketName, Engine, Config) ->
+create_bucket(Sock, BucketName, Engine, Config, Timeout) ->
     case cmd(?CMD_CREATE_BUCKET, Sock, undefined, undefined,
              {#mc_header{},
               #mc_entry{key = BucketName,
-                        data = list_to_binary([Engine, 0, Config])}}) of
+                        data = list_to_binary([Engine, 0, Config])}},
+             Timeout) of
         {ok, #mc_header{status=?SUCCESS}, _ME, _NCB} ->
             ok;
         Response -> process_error_response(Response)

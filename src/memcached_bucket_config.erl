@@ -18,6 +18,7 @@
 -record(cfg, {type, name, config, snapshot, engine_config, params}).
 
 -export([get/1,
+         get_bucket_config/1,
          ensure/2,
          start_params/1,
          ensure_collections/2,
@@ -312,3 +313,6 @@ start_params(#cfg{config = BucketConfig,
 
     ExtraParams = [P || P <- [StaticConfigString, ExtraConfigString], P =/= ""],
     {Engine, string:join(DynamicParams ++ ExtraParams, ";")}.
+
+get_bucket_config(#cfg{config = BucketConfig}) ->
+    BucketConfig.
