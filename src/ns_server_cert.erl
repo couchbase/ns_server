@@ -34,6 +34,7 @@
          validate_pkey/1,
          get_chain_info/2,
          trusted_CAs/1,
+         trusted_CAs_pre_NEO/1,
          generate_node_certs/1]).
 
 inbox_ca_path() ->
@@ -584,28 +585,78 @@ get_chain_info(Chain, CA) when is_binary(Chain), is_binary(CA) ->
                                 lists:reverse(public_key:pem_decode(Chain))).
 
 trusted_CAs(Format) ->
-    case chronicle_kv:get(kv, ca_certificates) of
-        {ok, {Certs, _}} ->
-            SortedCerts = lists:sort(fun (PL1, PL2) ->
-                                         Id1 = proplists:get_value(id, PL1),
-                                         Id2 = proplists:get_value(id, PL2),
-                                         Id1 =< Id2
-                                     end, Certs),
-            case Format of
-                props ->
-                    SortedCerts;
-                pem ->
-                    [proplists:get_value(pem, Props) || Props <- SortedCerts];
-                der ->
-                    lists:map(
-                      fun (Props) ->
-                          Pem = proplists:get_value(pem, Props),
-                          decode_single_certificate(Pem)
-                      end, SortedCerts)
-            end;
-        {error, not_found} ->
-            []
+    Certs =
+        case cluster_compat_mode:is_cluster_NEO() of
+            true ->
+                case chronicle_kv:get(kv, ca_certificates) of
+                    {ok, {Cs, _}} -> Cs;
+                    {error, not_found} -> []
+                end;
+            false ->
+                trusted_CAs_pre_NEO(ns_config:latest())
+        end,
+
+    SortedCerts = lists:sort(fun (PL1, PL2) ->
+                                 Id1 = proplists:get_value(id, PL1),
+                                 Id2 = proplists:get_value(id, PL2),
+                                 Id1 =< Id2
+                             end, Certs),
+    case Format of
+        props ->
+            SortedCerts;
+        pem ->
+            [proplists:get_value(pem, Props) || Props <- SortedCerts];
+        der ->
+            lists:map(
+              fun (Props) ->
+                  Pem = proplists:get_value(pem, Props),
+                  decode_single_certificate(Pem)
+              end, SortedCerts)
     end.
+
+trusted_CAs_pre_NEO(Config) ->
+    CertAndPKey = ns_config:search(Config, cert_and_pkey),
+    Extra = [{origin, upgrade}],
+
+    SelfGeneratedCAs =
+        case CertAndPKey of
+            {value, {_, SGCA, _}} ->
+                Nodes = ns_node_disco:nodes_wanted(),
+                ShouldUseSelfGeneratedCA =
+                    lists:any(
+                      fun (N) ->
+                          case ns_config:search(Config, {node, N, node_cert}) of
+                              {value, Props} ->
+                                  generated == proplists:get_value(type, Props);
+                              false ->
+                                  ?log_error("Node ~p doesn't seem to have "
+                                             "node_cert key in ns_config", [N]),
+                                  true
+                          end
+                      end, Nodes),
+                case ShouldUseSelfGeneratedCA of
+                    true ->
+                        {ok, [SGCADecoded]} = decode_certificates(SGCA),
+                        [[{id, 0} | cert_props(generated, SGCADecoded, Extra)]];
+                    false ->
+                        []
+                end;
+            {value, {SGCA, _}} ->
+                {ok, [SGCADecoded]} = decode_certificates(SGCA),
+                [[{id, 0} | cert_props(generated, SGCADecoded, Extra)]];
+            false -> []
+        end,
+
+    UploadedCAs =
+        case CertAndPKey of
+            {value, {CAProps, _, _}} ->
+                CA = proplists:get_value(pem, CAProps),
+                {ok, [CADecoded]} = decode_certificates(CA),
+                [[{id, 1} | cert_props(uploaded, CADecoded, Extra)]];
+            _ -> []
+        end,
+
+    UploadedCAs ++ SelfGeneratedCAs.
 
 load_node_certs_from_inbox() ->
     case file:read_file(inbox_chain_path()) of

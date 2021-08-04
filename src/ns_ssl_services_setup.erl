@@ -35,7 +35,8 @@
          configured_ciphers_names/2,
          honor_cipher_order/1,
          honor_cipher_order/2,
-         set_certs/4]).
+         set_certs/4,
+         chronicle_upgrade_to_NEO/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -387,7 +388,8 @@ init([]) ->
     Self = self(),
     chronicle_compat_events:subscribe(handle_config_change(_, Self)),
 
-    save_node_certs_phase2(),
+    maybe_convert_pre_NEO_certs(),
+    _ = save_node_certs_phase2(),
     maybe_store_ca_certs(),
     maybe_generate_node_certs(),
     RetrySvc = case misc:marker_exists(marker_path()) of
@@ -428,6 +430,8 @@ handle_config_change({node, _Node, address_family}, Parent) ->
     Parent ! afamily_requirement_changed;
 handle_config_change({node, _Node, address_family_only}, Parent) ->
     Parent ! afamily_requirement_changed;
+handle_config_change(cluster_compat_version, Parent) ->
+    Parent ! ca_certificates_updated;
 handle_config_change(_OtherEvent, _Parent) ->
     ok.
 
@@ -848,3 +852,125 @@ extract_user_name_test() ->
                                    "www.", "."), {error, not_found}),
     ?assertEqual(extract_user_name(["xyz.abc.com"], "", "-"), "xyz.abc.com").
 -endif.
+
+maybe_convert_pre_NEO_certs() ->
+    ShouldConvert = should_convert_pre_neo_certs(),
+
+    case ShouldConvert of
+        true ->
+            ?log_info("Upgrading certs to NEO..."),
+            {value, CertAndPKey} = ns_config:search(cert_and_pkey),
+            Type =
+                case CertAndPKey of
+                    {_, _} -> generated;
+                    {_, _, _} ->
+                        case ns_config:search({node, node(), cert}) of
+                            {value, _} -> uploaded;
+                            false -> generated
+                        end
+                end,
+            ?log_info("Certs type: ~p", [Type]),
+
+            case Type of
+                generated ->
+                    CA = case CertAndPKey of
+                             {_, P, _} -> P;
+                             {P, _} -> P
+                         end,
+                    {ok, NodeCert} = file:read_file(local_cert_path()),
+                    {ok, NodePKey} = file:read_file(local_pkey_path()),
+                    Hostname = misc:extract_node_address(node()),
+                    ?log_info("Saving the following chain~n~p", [NodeCert]),
+                    _ = save_generated_certs(CA, NodeCert, NodePKey, Hostname);
+                uploaded ->
+                    %% Note: this user provided CA might be not the same as
+                    %% in user provided CA cert in cert_and_pkey.
+                    %% The CA cert from this file must be the one that
+                    %% signed the node cert, while the CA cert
+                    %% in cert_and_pkey might be different.
+                    {ok, ChainWithCA} =
+                        file:read_file(user_set_ca_chain_path()),
+                    ?log_info("Orig chain: ~p", [ChainWithCA]),
+                    [CADecoded | ChainTailReversedDecoded] =
+                        lists:reverse(public_key:pem_decode(ChainWithCA)),
+                    CA = public_key:pem_encode([CADecoded]),
+                    {ok, NodeCert} = file:read_file(user_set_cert_path()),
+                    ?log_info("Orig node cert: ~p", [ChainWithCA]),
+                    ChainDecoded = public_key:pem_decode(NodeCert) ++
+                                   lists:reverse(ChainTailReversedDecoded),
+                    Chain = public_key:pem_encode(ChainDecoded),
+                    {ok, NodePKey} = file:read_file(user_set_key_path()),
+                    ?log_info("Saving the following chain~n~p", [Chain]),
+                    _ = save_uploaded_certs(CA, Chain, NodePKey)
+            end,
+
+            FilesToRemove = pre_NEO_files_to_remove(),
+
+            lists:foreach(
+              fun (F) ->
+                  R = file:delete(F),
+                  ?log_warning("Removing file: ~s, result: ~p", [F, R])
+              end, FilesToRemove),
+
+            ?log_info("Certs upgraded"),
+            ok;
+        false ->
+            ok
+    end.
+
+pre_NEO_files_to_remove() ->
+    [raw_ssl_cacert_key_path(),
+     ssl_cert_key_path(),
+     memcached_cert_path(),
+     memcached_key_path(),
+     local_cert_path(),
+     local_pkey_path(),
+     local_cert_meta_path(),
+     user_set_cert_path(),
+     user_set_key_path(),
+     user_set_ca_chain_path()].
+
+should_convert_pre_neo_certs() ->
+    case ns_config:read_key_fast({node, node(), node_cert}, undefined) of
+        undefined ->
+            lists:any(fun (P) -> filelib:is_file(P) end,
+                      pre_NEO_files_to_remove());
+        _ -> false
+    end.
+
+raw_ssl_cacert_key_path() ->
+    ssl_cert_key_path() ++ "-ca".
+ssl_cert_key_path() ->
+    filename:join(path_config:component_path(data, "config"),
+                  "ssl-cert-key.pem").
+memcached_cert_path() ->
+    filename:join(path_config:component_path(data, "config"),
+                  "memcached-cert.pem").
+memcached_key_path() ->
+    filename:join(path_config:component_path(data, "config"),
+                  "memcached-key.pem").
+
+local_cert_path() ->
+    local_cert_path_prefix() ++ "cert.pem".
+local_pkey_path() ->
+    local_cert_path_prefix() ++ "pkey.pem".
+local_cert_meta_path() ->
+    local_cert_path_prefix() ++ "meta".
+local_cert_path_prefix() ->
+    filename:join(path_config:component_path(data, "config"),
+                  "local-ssl-").
+user_set_cert_path() ->
+    filename:join(path_config:component_path(data, "config"),
+                  "user-set-cert.pem").
+user_set_key_path() ->
+    filename:join(path_config:component_path(data, "config"),
+                  "user-set-key.pem").
+user_set_ca_chain_path() ->
+    filename:join(path_config:component_path(data, "config"),
+                  "user-set-ca.pem").
+
+chronicle_upgrade_to_NEO(ChronicleTxn) ->
+    Props = ns_server_cert:trusted_CAs_pre_NEO(ns_config:get()),
+    ?log_info("Upgrading CA certs to NEO: setting ca_certificates to the "
+              "following props:~n ~p", [Props]),
+    chronicle_upgrade:set_key(ca_certificates, Props, ChronicleTxn).
