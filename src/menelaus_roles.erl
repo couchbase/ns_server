@@ -560,6 +560,45 @@ roles() ->
        {[admin, memcached, idle], [write]},
        {[settings, autocompaction], [read]},
        {[pools], [read]}]},
+     {sync_gateway_configurator, ?RBAC_COLLECTION_PARAMS,
+      [{name, <<"Sync Gateway Architect">>},
+       {folder, mobile},
+       {desc, <<"Can manage Sync Gateway databases and users, "
+                "and access Sync Gateway's /metrics endpoint. "
+                "This user cannot read application data.">>}],
+      [{[{collection, ?RBAC_COLLECTION_PARAMS}, sgw], all}]},
+     {sync_gateway_app, ?RBAC_COLLECTION_PARAMS,
+      [{name, <<"Sync Gateway Application">>},
+       {folder, mobile},
+       {desc, <<"Can manage Sync Gateway users and roles, and "
+                "read and write application data through Sync "
+                "Gateway.">>}],
+      [{[{collection, ?RBAC_COLLECTION_PARAMS}, sgw, auth], [configure]},
+       {[{collection, ?RBAC_COLLECTION_PARAMS}, sgw, principal], [read, write]},
+       {[{collection, ?RBAC_COLLECTION_PARAMS}, sgw, appdata], [read, write]},
+       {[{collection, ?RBAC_COLLECTION_PARAMS}, sgw, principal_appdata], [read]}]},
+     {sync_gateway_app_ro, ?RBAC_COLLECTION_PARAMS,
+      [{name, <<"Sync Gateway Application Read Only">>},
+       {folder, mobile},
+       {desc, <<"Can read Sync Gateway users and roles, and "
+                "read application data through Sync Gateway.">>}],
+      [{[{collection, ?RBAC_COLLECTION_PARAMS}, sgw, appdata], [read]},
+       {[{collection, ?RBAC_COLLECTION_PARAMS}, sgw, principal], [read]},
+       {[{collection, ?RBAC_COLLECTION_PARAMS}, sgw, principal_appdata], [read]}]},
+     {sync_gateway_replicator, ?RBAC_COLLECTION_PARAMS,
+      [{name, <<"Sync Gateway Replicator">>},
+       {folder, mobile},
+       {desc, <<"Can manage Inter-Sync Gateway Replications. "
+                "This user cannot read application data.">>}],
+      [{[{collection, ?RBAC_COLLECTION_PARAMS}, sgw, replications], all}]},
+     {sync_gateway_dev_ops, [],
+      [{name, <<"Sync Gateway Dev Ops">>},
+       {folder, mobile},
+       {desc, <<"Can manage Sync Gateway node-level configuration, "
+                "and access Sync Gateway's /metrics endpoint "
+                "for Prometheus integration.">>}],
+      [{[{collection, ?RBAC_COLLECTION_PARAMS}, sgw, dev_ops], all},
+       {[admin, stats_export], [read]}]},
      {external_stats_reader, [],
       [{name, <<"External Stats Reader">>},
        {folder, admin},
