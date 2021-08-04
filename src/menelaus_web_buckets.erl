@@ -19,6 +19,8 @@
 -include("ns_stats.hrl").
 -include("cut.hrl").
 
+-define(MAGMA_MIN_RAMQUOTA, 256).
+
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
@@ -771,13 +773,29 @@ additional_bucket_params_validation(Params, Ctx) ->
     NumReplicas = get_value_from_parms_or_bucket(num_replicas, Params, Ctx),
     DurabilityLevel = get_value_from_parms_or_bucket(durability_min_level,
                                                      Params, Ctx),
-    case {NumReplicas, DurabilityLevel} of
-        {3, none} -> [];
-        {3, _} -> [{durability_min_level,
-                    <<"Durability minimum level cannot be specified with "
-                      "3 replicas">>}];
-        {_, _} -> []
-    end.
+    Err1 = case {NumReplicas, DurabilityLevel} of
+               {3, none} -> [];
+               {3, _} -> [{durability_min_level,
+                           <<"Durability minimum level cannot be specified with "
+                             "3 replicas">>}];
+               {_, _} -> []
+           end,
+
+    StorageMode = get_value_from_parms_or_bucket(storage_mode, Params, Ctx),
+    RamQuota = get_value_from_parms_or_bucket(ram_quota, Params, Ctx),
+
+    Err2 = case {StorageMode, RamQuota} of
+               {magma, RamQuota}
+                 when RamQuota < ?MAGMA_MIN_RAMQUOTA * 1024 * 1024 ->
+                   RamQ = list_to_binary(integer_to_list(?MAGMA_MIN_RAMQUOTA)),
+                   [{ramQuota,
+                     <<"Ram quota for magma must be at least ", RamQ/binary,
+                       " MiB">>}];
+               {_, _} ->
+                   []
+           end,
+
+    Err1 ++ Err2.
 
 %% Get the value from the params. If it wasn't specified and this isn't
 %% a bucket creation then get the existing value from the bucket config.
