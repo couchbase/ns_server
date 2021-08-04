@@ -138,7 +138,7 @@ incompatible_cluster_version_error(MyVersion, OtherVersion, OtherNode) ->
                                          [1,8]
                                  end,
             list_to_binary(io_lib:format("This node cannot add another node (~p)"
-                                         " because of cluster version compatibility mismatch. Cluster works in ~p mode and node only supports ~p",
+                                         " because of cluster version compatibility mismatch. Cluster works in ~0p mode and node only supports ~0p",
                                          [OtherNode, RequiredVersion, OtherVersionExpand]));
         false ->
             list_to_binary(io_lib:format("This node cannot add another node (~p)"
