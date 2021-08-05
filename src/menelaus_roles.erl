@@ -597,7 +597,7 @@ roles() ->
        {desc, <<"Can manage Sync Gateway node-level configuration, "
                 "and access Sync Gateway's /metrics endpoint "
                 "for Prometheus integration.">>}],
-      [{[{collection, ?RBAC_COLLECTION_PARAMS}, sgw, dev_ops], all},
+      [{[{collection, [any, any, any]}, sgw, dev_ops], all},
        {[admin, stats_export], [read]}]},
      {external_stats_reader, [],
       [{name, <<"External Stats Reader">>},
