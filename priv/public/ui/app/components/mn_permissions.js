@@ -101,7 +101,9 @@ function mnPermissionsProvider() {
     "cluster.nodes!read",
     "cluster.admin.memcached!read",
     "cluster.admin.memcached!write",
-    "cluster.eventing.functions!manage"
+    "cluster.eventing.functions!manage",
+    "cluster.settings.autocompaction!read",
+    "cluster.settings.autocompaction!write"
   ];
 
   function getAll() {

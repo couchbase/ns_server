@@ -11,7 +11,7 @@ licenses/APL2.txt.
 import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
 import {map, withLatestFrom, pluck, switchMap,
         distinctUntilChanged, shareReplay, takeUntil} from '../web_modules/rxjs/operators.js';
-import {merge, combineLatest, pipe, Subject, of} from '../web_modules/rxjs.js';
+import {merge, combineLatest, pipe, of} from '../web_modules/rxjs.js';
 
 import { MnLifeCycleHooksToStream } from './mn.core.js';
 
@@ -46,15 +46,15 @@ class MnSecurityAuditComponent extends MnLifeCycleHooksToStream {
 
     this.IEC = mnHelperService.IEC;
 
-    var securityWrite = new Subject();
-    this.securityWrite = securityWrite.pipe(shareReplay({refCount: true, bufferSize: 1}));
-
     this.compatVersion55 = mnAdminService.stream.compatVersion55;
     this.isEnterprise = mnPoolsService.stream.isEnterprise;
     this.getAuditDescriptors = mnSecurityService.stream.getAuditDescriptors;
     this.getAudit = mnSecurityService.stream.getAudit;
     this.postAudit = mnSecurityService.stream.postAudit;
     this.postAuditValidation = mnSecurityService.stream.postAuditValidation;
+
+    this.securityWrite = mnPermissions.stream
+      .pipe(map(permissions => permissions.cluster.admin.security.write));
 
     this.form = mnFormService.create(this);
     this.form
@@ -106,8 +106,6 @@ class MnSecurityAuditComponent extends MnLifeCycleHooksToStream {
                                     of(null))))
       .pipe(map(this.getDescriptorsByModule.bind(this)),
             shareReplay({refCount: true, bufferSize: 1}));
-
-    securityWrite.next(mnPermissions.export.cluster.admin.security.write);
   }
 
   formatTimeUnit(unit) {

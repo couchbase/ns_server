@@ -52,11 +52,21 @@ class MnHelperService {
   }
 
   get daysOfWeek() {
-    return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+    return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   }
 
   get IEC() {
-    return {Ki: 1024, Mi: 1024 * 1024, Gi: 1024 * 1024 * 1024}
+    return {Ki: 1024, Mi: 1024 * 1024, Gi: 1024 * 1024 * 1024};
+  }
+
+  transformMBToBytes(mb) {
+    let mb1 = Number(mb);
+
+    return isNaN(mb1) ? mb : mb * 1024 * 1024;
+  }
+
+  transformBytesToMB(bytes) {
+    return Math.floor(bytes / (1024 * 1024));
   }
 
   generateID() {
@@ -65,6 +75,21 @@ class MnHelperService {
 
   invert(v) { //TODO: sould be replaced with Ramda.not
     return !v;
+  }
+
+  stringifyValues(obj)  {
+    return Object.keys(obj).filter(v => obj[v]).join(',');
+  }
+
+  stringToObject(string) {
+    if (typeof string === "string" && string.length) {
+      return string.split(",").reduce((acc, key) => {
+        acc[key] = true;
+        return acc;
+      }, {});
+    } else {
+      return {};
+    }
   }
 
   isJson(str) {

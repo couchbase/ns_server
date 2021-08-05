@@ -84,7 +84,9 @@ let interestingPermissions = ([
   "cluster.admin.security.admin!write",
   "cluster.admin.security.admin!read",
   "cluster.samples!read",
-  "cluster.nodes!read"
+  "cluster.nodes!read",
+  "cluster.settings.autocompaction!read",
+  "cluster.settings.autocompaction!write"
 ]).concat(bucketSpecificPermissions[0]({name: "."}));
 
 export {MnPermissionsService};
