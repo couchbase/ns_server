@@ -23,6 +23,7 @@
          pkey_file_path/0,
          chain_file_path/0,
          ca_file_path/0,
+         legacy_cert_path/0,
          sync/0,
          ssl_minimum_protocol/1,
          ssl_minimum_protocol/2,
@@ -368,6 +369,8 @@ ca_file_path_erl22() ->
     filename:join(path_config:component_path(data, "config"), "ca_erl22.pem").
 cert_file_path_erl22() ->
     filename:join(path_config:component_path(data, "config"), "cert_erl22.pem").
+legacy_cert_path() ->
+    filename:join(path_config:component_path(data, "config"), "legacy_cert.pem").
 
 sync() ->
     ns_config:sync_announcements(),
@@ -566,6 +569,9 @@ maybe_store_ca_certs() ->
             ?log_info("CA file updated: ~b cert(s) written", [N]),
             %% Can be removed when upgraded to erl >= 23
             update_certs_erl22(),
+            %% Can be removed when all the services and memcached switch to new
+            %% cert format (where ca certs are kept separately)
+            update_legacy_cert_file(),
             misc:create_marker(marker_path());
         false ->
             ok
@@ -651,6 +657,9 @@ save_node_certs_phase2() ->
             %% Can be removed when upgraded to erl >= 23
             update_certs_erl22(),
             ns_config:set({node, node(), node_cert}, Props),
+            %% Can be removed when all the services and memcached switch to new
+            %% cert format (where ca certs are kept separately)
+            update_legacy_cert_file(),
             ok = ssl:clear_pem_cache(),
             misc:create_marker(marker_path()),
             ok = file:delete(TmpFile);
@@ -677,6 +686,18 @@ update_certs_erl22() ->
           end,
     Erl22CAs = lists:join(io_lib:nl(), Erl22Chain ++ CAs),
     misc:atomic_write_file(ca_file_path_erl22(), Erl22CAs).
+
+update_legacy_cert_file() ->
+    Chain = case file:read_file(chain_file_path()) of
+                {ok, C} -> [C];
+                {error, enoent} -> []
+            end,
+    CA = case ns_config:search({node, node(), node_cert}) of
+             {value, Props} -> [proplists:get_value(ca, Props)];
+             false -> []
+         end,
+    LegacyCert = lists:join(io_lib:nl(), Chain ++ CA),
+    misc:atomic_write_file(legacy_cert_path(), LegacyCert).
 
 -spec get_user_name_from_client_cert(term()) -> string() | undefined | failed.
 get_user_name_from_client_cert(Val) ->

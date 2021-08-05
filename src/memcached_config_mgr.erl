@@ -437,7 +437,7 @@ prometheus_cfg([], _Params) ->
 
 generate_interfaces(MCDParams) ->
     SSL = {[{key, list_to_binary(ns_ssl_services_setup:pkey_file_path())},
-            {cert, list_to_binary(ns_ssl_services_setup:chain_file_path())}]},
+            {cert, list_to_binary(ns_ssl_services_setup:legacy_cert_path())}]},
     GetPort = fun (Port) ->
                       {Port, Value} = lists:keyfind(Port, 1, MCDParams),
                       Value
