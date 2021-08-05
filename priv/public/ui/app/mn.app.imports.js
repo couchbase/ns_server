@@ -121,12 +121,6 @@ let bucketsState = {
   lazyLoad: mnLazyload('./mn_admin/mn_buckets_controller.js', 'mnBuckets')
 };
 
-let documentsState = {
-  name: "app.admin.documents.**",
-  url: "/documents",
-  lazyLoad: mnLazyload('./mn_admin/mn_documents_controller.js', 'mnDocuments')
-};
-
 let authState = {
   name: "app.auth.**",
   lazyLoad: mnLoadNgModule('./mn.auth.module.js', 'MnAuthModule')
@@ -235,7 +229,27 @@ let mnAppImports = [
   MnPoolsServiceModule,
   MnElementCraneModule.forRoot(),
   UIRouterUpgradeModule.forRoot({
-    states: [authState, wizardState, overviewState, serversState, bucketsState, logsState, logsListState, alertsState, groupsState, documentsState, gsiState, viewsState, settingsState, sampleBucketState, securityState, collectionsState, XDCRState, sessionState, logRedactionState, auditState]
+    states: [
+      authState,
+      wizardState,
+      overviewState,
+      serversState,
+      bucketsState,
+      logsState,
+      logsListState,
+      alertsState,
+      groupsState,
+      gsiState,
+      viewsState,
+      settingsState,
+      sampleBucketState,
+      securityState,
+      collectionsState,
+      XDCRState,
+      sessionState,
+      logRedactionState,
+      auditState
+    ]
   }),
 
   //downgradedModules
