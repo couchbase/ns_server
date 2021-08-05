@@ -140,8 +140,8 @@ function configure($stateProvider, $transitionsProvider) {
       }
     });
 }
-function mnGsiController($scope, mnGsiService, mnPoller, $state, mnCollectionsServiceDowngrade,
-                         poolDefault) {
+function mnGsiController($scope, mnGsiService, mnPoller, $state,
+                         mnKeyspaceSelectorServiceDowngrade, poolDefault) {
   var vm = this;
 
   vm.setIndexesView = setIndexesView;
@@ -184,7 +184,7 @@ function mnGsiController($scope, mnGsiService, mnPoller, $state, mnCollectionsSe
     }
 
     vm.mnCollectionSelectorService =
-      mnCollectionsServiceDowngrade.createCollectionSelector({
+      mnKeyspaceSelectorServiceDowngrade.createCollectionSelector({
         component: {mnOnDestroy},
         steps: ["bucket", "scope"]
       });

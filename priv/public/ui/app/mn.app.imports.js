@@ -24,6 +24,7 @@ import * as pluggableUIsModules from '/ui/pluggable-uis.js';
 import {MnPoolsServiceModule} from './mn.pools.service.js';
 import {MnAdminServiceModule} from './mn.admin.service.js';
 import {MnCollectionsServiceModule} from './mn.collections.service.js';
+import {MnKeyspaceSelectorServiceModule} from "./mn.keyspace.selector.service.js";
 
 import {MnKeyspaceSelectorModule} from './mn.keyspace.selector.module.js';
 
@@ -227,6 +228,7 @@ let mnAppImports = [
   MnCollectionsServiceModule,
   MnAdminServiceModule,
   MnPoolsServiceModule,
+  MnKeyspaceSelectorServiceModule,
   MnElementCraneModule.forRoot(),
   UIRouterUpgradeModule.forRoot({
     states: [

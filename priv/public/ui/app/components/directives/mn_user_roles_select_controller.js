@@ -66,7 +66,7 @@ function mnUserRolesSelectDirective() {
   }
 }
 
-function mnUserRolesSelectFormDirective(mnCollectionsServiceDowngrade) {
+function mnUserRolesSelectFormDirective(mnKeyspaceSelectorServiceDowngrade) {
   var mnUserRolesSelectForm = {
     restrict: 'AE',
     templateUrl: 'app/components/directives/mn_user_roles_select_form.html',
@@ -84,7 +84,7 @@ function mnUserRolesSelectFormDirective(mnCollectionsServiceDowngrade) {
     let params = $scope.item.params.map(v => v.split("_")[0]);
 
     $scope.mnCollectionSelectorService =
-      mnCollectionsServiceDowngrade.createCollectionSelector({
+      mnKeyspaceSelectorServiceDowngrade.createCollectionSelector({
         isRolesMode: true,
         component: {mnOnDestroy},
         buckets: $scope.state.parameters[$scope.item.params[0]],

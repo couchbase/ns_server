@@ -12,14 +12,14 @@ import angular from "../web_modules/angular.js";
 import {downgradeComponent,
         downgradeInjectable} from"../web_modules/@angular/upgrade/static.js";
 import {MnKeyspaceSelectorComponent} from "./mn.keyspace.selector.component.js";
-import {MnCollectionsService} from './mn.collections.service.js';
+import {MnKeyspaceSelectorService} from './mn.keyspace.selector.service.js';
 import {Subject, of} from "../web_modules/rxjs.js";
 
 export default "mnKeyspaceSelectorDowngradeModule";
 
 angular
   .module('mnKeyspaceSelectorDowngradeModule', [])
-  .factory('mnCollectionsServiceDowngrade', downgradeInjectable(MnCollectionsService))
+  .factory('mnKeyspaceSelectorServiceDowngrade', downgradeInjectable(MnKeyspaceSelectorService))
   .directive('mnKeyspaceSelectorDowngrade', downgradeComponent({
     component: MnKeyspaceSelectorComponent
   }));
