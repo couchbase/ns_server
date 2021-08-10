@@ -566,7 +566,10 @@ roles() ->
        {desc, <<"Can manage Sync Gateway databases and users, "
                 "and access Sync Gateway's /metrics endpoint. "
                 "This user cannot read application data.">>}],
-      [{[{collection, ?RBAC_COLLECTION_PARAMS}, sgw], all}]},
+      [{[{collection, [any, any, any]}, sgw, appdata], none},
+       {[{collection, [any, any, any]}, sgw, principal_appdata], none},
+       {[{collection, [any, any, any]}, sgw, replications], none},
+       {[{collection, ?RBAC_COLLECTION_PARAMS}, sgw], all}]},
      {sync_gateway_app, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Sync Gateway Application">>},
        {folder, mobile},
@@ -597,7 +600,7 @@ roles() ->
        {desc, <<"Can manage Sync Gateway node-level configuration, "
                 "and access Sync Gateway's /metrics endpoint "
                 "for Prometheus integration.">>}],
-      [{[{collection, [any, any, any]}, sgw, dev_ops], all},
+      [{[sgw, dev_ops], all},
        {[admin, stats_export], [read]}]},
      {external_stats_reader, [],
       [{name, <<"External Stats Reader">>},
