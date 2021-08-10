@@ -1,9 +1,11 @@
 {
   "name": "ns_server-ui",
+  "type": "module",
+  "exports": "./app/main.js",
   "version": "0.0.0",
   "scripts": {
-    "rebuild": "rm -rf node_modules web_modules && npm install",
-    "prepare": "snowpack"
+    "rebuild": "rm -rf node_modules web_modules && npm install && snowpack",
+    "checks": "eslint app/**/*.js"
   },
   "dependencies": {
     "@angular/common": "8.2.14",
@@ -55,7 +57,11 @@
     "zone.js": "^0.9.1"
   },
   "devDependencies": {
+    "eslint": "^7.32.0",
     "snowpack": "1.7.1"
+  },
+  "engines": {
+    "node": "^14.13.1 || >=16.0.0"
   },
   "snowpack": {
     "installOptions": {
