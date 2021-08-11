@@ -64,6 +64,7 @@
          assert_is_enterprise/0,
          assert_is_65/0,
          assert_is_66/0,
+         assert_is_NEO/0,
          strip_json_struct/1,
          choose_node_consistently/2,
          compute_sec_headers/0,
@@ -623,6 +624,9 @@ assert_is_65() ->
 
 assert_is_66() ->
     assert_cluster_version(fun cluster_compat_mode:is_cluster_66/0).
+
+assert_is_NEO() ->
+    assert_cluster_version(fun cluster_compat_mode:is_cluster_NEO/0).
 
 assert_cluster_version(Fun) ->
     case Fun() of

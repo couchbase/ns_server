@@ -1323,6 +1323,25 @@
           "optional_fields" : {
               "sessionid" : ""
           }
+      },
+      {
+          "id" : 8267,
+          "name" : "modify analytics settings",
+          "description" : "Analytics service settings were modified",
+          "sync" : false,
+          "enabled" : true,
+          "filtering_permitted" : false,
+          "mandatory_fields" : {
+              "timestamp" : "",
+              "real_userid" : {"source" : "", "user" : ""},
+              "remote" : {"ip" : "", "port" : 1},
+              "local" : {"ip" : "", "port" : 1},
+              "settings" : ""
+          },
+          "optional_fields" : {
+              "sessionid" : ""
+          }
       }
+
     ]
 }

@@ -142,12 +142,12 @@ default() ->
      {{couchdb, max_parallel_indexers}, 4},
      {{couchdb, max_parallel_replica_indexers}, 2},
 
-     %% Default config for metakv index settings in minimum supported version,
+     %% Default config for metakv settings in minimum supported version for
+     %% the various services that use it.
      index_settings_manager:config_default(),
-     %% Default config for metakv eventing settings in minimum supported version
      eventing_settings_manager:config_default(),
-     %% Default config for metakv query settings in minimum supported version
      query_settings_manager:config_default(),
+     analytics_settings_manager:config_default(),
 
      %% {rest_creds, {User, {password, {Salt, Mac}}}}
      %% {rest_creds, null} means no login/password auth check.

@@ -68,6 +68,7 @@
          modify_index_settings/2,
          modify_query_curl_whitelist_setting/2,
          modify_query_settings/2,
+         modify_analytics_settings/2,
          read_doc/3,
          mutate_doc/4,
          set_user_group/6,
@@ -367,7 +368,9 @@ code(auth_failure) ->
 code(rbac_info_retrieved) ->
     8265;
 code(admin_password_reset) ->
-    8266.
+    8266;
+code(modify_analytics_settings) ->
+    8267.
 
 to_binary({list, List}) ->
     [to_binary(A) || A <- List];
@@ -826,6 +829,9 @@ print_audit_records(Queue) ->
 
 modify_index_settings(Req, Settings) ->
     put(modify_index_settings, Req, [{settings, {prepare_list(Settings)}}]).
+
+modify_analytics_settings(Req, Settings) ->
+    put(modify_analytics_settings, Req, [{settings, {prepare_list(Settings)}}]).
 
 modify_query_settings(Req, Settings) ->
     put(modify_query_settings, Req, [{settings, {prepare_list(Settings)}}]).

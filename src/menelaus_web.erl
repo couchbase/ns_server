@@ -469,6 +469,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_indexes:handle_index_status/1};
                 ["settings", "indexes"] ->
                     {{[settings, indexes], read}, fun menelaus_web_indexes:handle_settings_get/1};
+                ["settings", "analytics"] ->
+                    {{[settings, analytics], read},
+                     fun menelaus_web_analytics:handle_settings_get/1};
                 ["diag"] ->
                     {{[admin, diag], read}, fun diag_handler:handle_diag/1, []};
                 ["diag", "vbuckets"] ->
@@ -847,6 +850,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_stats:handle_range_post/1, []};
                 ["settings", "indexes"] ->
                     {{[settings, indexes], write}, fun menelaus_web_indexes:handle_settings_post/1};
+                ["settings", "analytics"] ->
+                    {{[settings, analytics], write},
+                     fun menelaus_web_analytics:handle_settings_post/1};
                 ["_cbauth"] ->
                     {no_check, fun menelaus_cbauth:handle_cbauth_post/1};
                 ["_cbauth", "extractUserFromCert"] ->
