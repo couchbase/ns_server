@@ -851,7 +851,7 @@ do_notify_service(capi_ssl_service) ->
 do_notify_service(xdcr_proxy) ->
     ns_ports_setup:restart_xdcr_proxy();
 do_notify_service(memcached) ->
-    memcached_refresh:refresh(ssl_certs);
+    memcached_config_mgr:trigger_tls_config_push();
 do_notify_service(event) ->
     gen_event:notify(ssl_service_events, cert_changed);
 do_notify_service(cb_dist_tls) ->

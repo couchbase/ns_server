@@ -114,6 +114,7 @@
          get_keys/3,
          config_validate/2,
          config_reload/1,
+         set_tls_config/1,
          get_failover_log/2,
          get_failover_logs/2,
          get_collections_uid/1
@@ -1502,6 +1503,15 @@ config_reload(AFamilies) ->
               {ok, Sock} = connect([{retries, 1},
                                     {try_afamily, AFamilies}]),
               mc_client_binary:config_reload(Sock)
+      end).
+
+set_tls_config(Config) ->
+    perform_very_long_call(
+      fun (Sock) ->
+          case mc_client_binary:set_tls_config(Sock, Config) of
+              ok -> {reply, ok};
+              {memcached_error, S, Msg} -> {reply, {error, {S, Msg}}}
+          end
       end).
 
 -spec get_failover_log(bucket_name(), vbucket_id()) ->

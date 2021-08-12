@@ -85,6 +85,7 @@
 
 -define(CMD_ENABLE_TRAFFIC, 16#ad).
 -define(CMD_DISABLE_TRAFFIC, 16#ae).
+-define(CMD_IFCONFIG, 16#af).
 
 -define(CMD_CHANGE_VB_FILTER, 16#b0).
 
@@ -106,7 +107,6 @@
 -define(CMD_SUBDOC_MULTI_LOOKUP, 16#d0).
 
 -define(CMD_ISASL_REFRESH, 16#f1).
--define(CMD_SSL_CERTS_REFRESH, 16#f2).
 -define(CMD_RBAC_REFRESH, 16#f7).
 -define(CMD_GET_ERROR_MAP, 16#fe).
 

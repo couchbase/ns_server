@@ -31,7 +31,7 @@ get_current_version() ->
     %% changed in 6.0.4 after 6.5.0 had shipped.  As 6.5.0 had no knowledge
     %% of the 6.0.4 version (as it didn't exist when 6.5.0 shipped) it
     %% was unable to perform an upgrade.
-    list_to_tuple(?VERSION_70).
+    list_to_tuple(?VERSION_NEO).
 
 get_data_dir() ->
     RawDir = path_config:component_path(data),
@@ -229,10 +229,7 @@ default() ->
      {{node, node(), memcached_config},
       {[
         {interfaces, {memcached_config_mgr, get_interfaces, []}},
-        {ssl_cipher_list, {memcached_config_mgr, get_ssl_cipher_list, []}},
-        {ssl_cipher_order, {memcached_config_mgr, get_ssl_cipher_order, []}},
         {client_cert_auth, {memcached_config_mgr, client_cert_auth, []}},
-        {ssl_minimum_protocol, {memcached_config_mgr, ssl_minimum_protocol, []}},
 
         {connection_idle_time, connection_idle_time},
         {privilege_debug, privilege_debug},
@@ -375,11 +372,14 @@ upgrade_config(Config) ->
             [{set, {node, node(), config_version}, {6,5,1}} |
              upgrade_config_from_6_5_to_6_5_1(Config)];
         {6,5,1} ->
+                [{set, {node, node(), config_version}, {7,0}} |
+                 upgrade_config_from_6_5_1_to_7_0(Config)];
+        {7,0} ->
             %% When upgrading to the latest config_version always upgrade
             %% service_ports.
             service_ports:offline_upgrade(Config) ++
                 [{set, {node, node(), config_version}, CurrentVersion} |
-                 upgrade_config_from_6_5_1_to_70(Config)];
+                 upgrade_config_from_7_0_to_NEO(Config)];
         OldVersion ->
             ?log_error("Detected an attempt to offline upgrade from "
                        "unsupported version ~p. Terminating.", [OldVersion]),
@@ -458,14 +458,21 @@ upgrade_config_from_6_5_to_6_5_1(Config) ->
 do_upgrade_config_from_6_5_to_6_5_1(Config, DefaultConfig) ->
     [upgrade_sub_keys(memcached, [admin_user], Config, DefaultConfig)].
 
-upgrade_config_from_6_5_1_to_70(Config) ->
+upgrade_config_from_6_5_1_to_7_0(Config) ->
     DefaultConfig = default(),
-    do_upgrade_config_from_6_5_1_to_70(Config, DefaultConfig).
+    do_upgrade_config_from_6_5_1_to_7_0(Config, DefaultConfig).
 
-do_upgrade_config_from_6_5_1_to_70(Config, DefaultConfig) ->
+do_upgrade_config_from_6_5_1_to_7_0(Config, DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig),
      upgrade_key(memcached_defaults, DefaultConfig),
      upgrade_sub_keys(memcached, [other_users], Config, DefaultConfig)].
+
+upgrade_config_from_7_0_to_NEO(Config) ->
+    DefaultConfig = default(),
+    do_upgrade_config_from_7_0_to_NEO(Config, DefaultConfig).
+
+do_upgrade_config_from_7_0_to_NEO(_Config, DefaultConfig) ->
+    [upgrade_key(memcached_config, DefaultConfig)].
 
 encrypt_config_val(Val) ->
     {ok, Encrypted} = encryption_service:encrypt(term_to_binary(Val)),
@@ -570,7 +577,7 @@ upgrade_6_5_to_6_5_1_test() ->
     ?assertMatch([{set, {node, _, memcached}, [{old, info}, {admin_user, new}]}],
                  do_upgrade_config_from_6_5_to_6_5_1(Cfg, Default)).
 
-upgrade_6_5_1_to_70_test() ->
+upgrade_6_5_1_to_7_0_test() ->
     Cfg = [[{some_key, some_value},
             {{node, node(), memcached}, [{old, info}, {other_users, old}]},
             {{node, node(), memcached_defaults}, old_memcached_defaults},
@@ -586,7 +593,7 @@ upgrade_6_5_1_to_70_test() ->
                    [{some, stuff}, {num_storage_threads, 4}]},
                   {set, {node, _, memcached},
                    [{old, info}, {other_users, new}]}],
-                 do_upgrade_config_from_6_5_1_to_70(Cfg, Default)).
+                 do_upgrade_config_from_6_5_1_to_7_0(Cfg, Default)).
 
 no_upgrade_on_current_version_test() ->
     ?assertEqual([], upgrade_config([[{{node, node(), config_version}, get_current_version()}]])).

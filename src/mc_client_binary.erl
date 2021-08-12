@@ -34,7 +34,6 @@
          hello_features/1,
          hello/3,
          refresh_isasl/1,
-         refresh_ssl_certs/1,
          noop/1,
          select_bucket/2,
          deselect_bucket/1,
@@ -66,7 +65,8 @@
          get_failover_log/2,
          update_user_permissions/2,
          set_collections_manifest/2,
-         get_collections_manifest/1
+         get_collections_manifest/1,
+         set_tls_config/2
         ]).
 
 -type recv_callback() :: fun((_, _, _) -> any()) | undefined.
@@ -310,15 +310,6 @@ refresh_isasl(Sock) ->
         {ok, #mc_header{status=?SUCCESS}, _, _} ->
             ok;
         Response -> process_error_response(Response)
-    end.
-
-refresh_ssl_certs(Sock) ->
-    case cmd(?CMD_SSL_CERTS_REFRESH, Sock, undefined, undefined,
-             {#mc_header{}, #mc_entry{}}) of
-        {ok, #mc_header{status=?SUCCESS}, _, _} ->
-            ok;
-        Response ->
-            process_error_response(Response)
     end.
 
 noop(Sock) ->
@@ -925,4 +916,14 @@ update_user_permissions(Sock, RBACJson) ->
              {#mc_header{}, #mc_entry{data = Data}}) of
         {ok, #mc_header{status = ?SUCCESS}, _, _} -> ok;
         Response -> process_error_response(Response)
+    end.
+
+set_tls_config(Sock, TLSConfigJSON) ->
+    Data = ejson:encode(TLSConfigJSON),
+    case cmd(?CMD_IFCONFIG, Sock, undefined, undefined,
+             {#mc_header{}, #mc_entry{key = <<"tls">>, data = Data}}) of
+        {ok, #mc_header{status = ?SUCCESS}, _, _} ->
+            ok;
+        Response ->
+            process_error_response(Response)
     end.

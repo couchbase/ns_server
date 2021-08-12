@@ -36,7 +36,7 @@ init([]) ->
             Pid when is_pid(Pid) ->
                 ?log_debug("Starting during memcached lifetime. Try to refresh all files."),
                 self() ! refresh,
-                [isasl, ssl_certs, rbac];
+                [isasl, rbac];
             _ ->
                 []
         end,

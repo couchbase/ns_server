@@ -15,14 +15,14 @@
 -include("cut.hrl").
 
 %% API
--export([start_link/0]).
+-export([start_link/0, trigger_tls_config_push/0]).
 
 %% referenced from ns_config_default
--export([get_minidump_dir/2, get_interfaces/2, ssl_minimum_protocol/2,
+-export([get_minidump_dir/2, get_interfaces/2,
          client_cert_auth/2, is_snappy_enabled/2,
          is_snappy_enabled/0, collections_enabled/2, get_fallback_salt/2,
-         get_external_users_push_interval/2, get_ssl_cipher_list/2,
-         get_ssl_cipher_order/2, get_external_auth_service/2,
+         get_external_users_push_interval/2,
+         get_external_auth_service/2,
          should_enforce_limits/2,
          is_external_auth_service_enabled/0,
          prometheus_cfg/2]).
@@ -31,13 +31,22 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
+-record(state, {
+          port_pid :: pid(),
+          memcached_config :: binary(),
+          tls_config_timer = undefined :: erlang:reference()
+         }).
+
 start_link() ->
     proc_lib:start_link(?MODULE, init, [[]]).
 
--record(state, {
-          port_pid :: pid(),
-          memcached_config :: binary()
-         }).
+trigger_tls_config_push() ->
+    try
+        ?MODULE ! upload_tls_config,
+        ok
+    catch
+        error:badarg -> {error, no_proccess}
+    end.
 
 init([]) ->
     register(?MODULE, self()),
@@ -64,11 +73,18 @@ init([]) ->
                                              Self ! do_check;
                                          _ ->
                                              []
+                                     end,
+                                     case is_notable_tls_config_key(Key) of
+                                         true ->
+                                             Self ! upload_tls_config;
+                                         _ ->
+                                             []
                                      end;
                                  (_Other) ->
                                      []
                              end),
     Self ! do_check,
+    Self ! upload_tls_config,
     ActualMcdConfig =
         case ReadConfigResult of
             inactive ->
@@ -113,14 +129,11 @@ is_notable_config_key({node, N, address_family_only}) ->
     N =:= node();
 is_notable_config_key(memcached) -> true;
 is_notable_config_key(memcached_config_extra) -> true;
-is_notable_config_key(ssl_minimum_protocol) -> true;
 is_notable_config_key(cluster_compat_version) -> true;
 is_notable_config_key(developer_preview_enabled) -> true;
 is_notable_config_key(client_cert_auth) -> true;
 is_notable_config_key(scramsha_fallback_salt) -> true;
 is_notable_config_key(external_auth_polling_interval) -> true;
-is_notable_config_key(cipher_suites) -> true;
-is_notable_config_key(honor_cipher_order) -> true;
 is_notable_config_key(cluster_encryption_level) -> true;
 is_notable_config_key({security_settings, kv}) -> true;
 is_notable_config_key(ldap_settings) -> true;
@@ -128,6 +141,12 @@ is_notable_config_key(saslauthd_auth_settings) -> true;
 is_notable_config_key(enforce_limits) -> true;
 is_notable_config_key(_) ->
     false.
+
+is_notable_tls_config_key(ssl_minimum_protocol) -> true;
+is_notable_tls_config_key(client_cert_auth) -> true;
+is_notable_tls_config_key(cipher_suites) -> true;
+is_notable_tls_config_key(honor_cipher_order) -> true;
+is_notable_tls_config_key(_) -> false.
 
 find_port_pid_loop(Tries, Delay) when Tries > 0 ->
     RV = ns_ports_manager:find_port(ns_server:get_babysitter_node(), memcached),
@@ -158,6 +177,14 @@ handle_info(do_check, #state{memcached_config = CurrentMcdConfig} = State) ->
         DifferentConfig ->
             apply_changed_memcached_config(DifferentConfig, State)
     end;
+handle_info(upload_tls_config, #state{} = State) ->
+    NewState =
+        case push_tls_config() of
+            ok -> stop_tls_config_timer(State);
+            {error, _} -> restart_tls_config_timer(State)
+        end,
+    {noreply, NewState};
+
 handle_info({remote_monitor_down, Pid, Reason},
             #state{port_pid = Pid} = State) ->
     ?log_debug("Got DOWN with reason: ~p from memcached port server: ~p. "
@@ -172,6 +199,36 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+restart_tls_config_timer(#state{tls_config_timer = undefined} = State) ->
+    RetryTimeout = ?get_timeout(retry_tls_config_timeout, 1000),
+    Ref = erlang:send_after(RetryTimeout, self(), upload_tls_config),
+    State#state{tls_config_timer = Ref};
+restart_tls_config_timer(State) ->
+    restart_tls_config_timer(stop_tls_config_timer(State)).
+
+stop_tls_config_timer(#state{tls_config_timer = Ref} = State) ->
+    _ = (catch erlang:cancel_timer(Ref)),
+    State#state{tls_config_timer = undefined}.
+
+sanitize_tls_config({Cfg}) ->
+    {lists:map(
+       fun ({<<"password">>, _}) -> {<<"password">>, <<"********">>};
+           ({K, V}) -> {K, V}
+       end, Cfg)}.
+
+push_tls_config() ->
+    TLSCfg = tls_config(memcached_params(ns_config:get())),
+    ?log_info("Pushing TLS config to memcached:~n~p",
+              [sanitize_tls_config(TLSCfg)]),
+    case ns_memcached:set_tls_config(TLSCfg) of
+        ok ->
+            ?log_info("Successfully pushed TLS config to memcached"),
+            ok;
+        {error, Reason} ->
+            ?log_error("Failed to push TLS config to memcached: ~p", [Reason]),
+            {error, Reason}
+    end.
 
 apply_changed_memcached_config(DifferentConfig, State) ->
     %% We might have changed address family in ns_server and we don't want to
@@ -300,17 +357,19 @@ do_read_current_memcached_config([Path | Rest]) ->
             do_read_current_memcached_config(Rest)
     end.
 
-memcached_config(Config) ->
+memcached_params(Config) ->
     {value, McdParams0} = ns_config:search(Config, {node, node(), memcached}),
-    {value, McdConf} = ns_config:search(Config, {node, node(),
-                                                 memcached_config}),
-
     GlobalMcdParams = ns_config:search(Config, memcached, []),
-
     DefaultMcdParams = ns_config:search(Config,
                                         {node, node(), memcached_defaults}, []),
 
-    McdParams = McdParams0 ++ GlobalMcdParams ++ DefaultMcdParams,
+    McdParams0 ++ GlobalMcdParams ++ DefaultMcdParams.
+
+memcached_config(Config) ->
+    {value, McdConf} = ns_config:search(Config, {node, node(),
+                                                 memcached_config}),
+
+    McdParams = memcached_params(Config),
 
     {Props} = expand_memcached_config(McdConf, McdParams),
     ExtraProps = ns_config:search(Config,
@@ -363,9 +422,6 @@ get_interfaces([], MCDParams) ->
                         (proplists:get_value(ipv4, Props) =/= off orelse
                          proplists:get_value(ipv6, Props) =/= off)
                  end, generate_interfaces(MCDParams)).
-
-ssl_minimum_protocol([], _Params) ->
-    ns_ssl_services_setup:ssl_minimum_protocol(kv).
 
 client_cert_auth([], _Params) ->
     Val = ns_ssl_services_setup:client_cert_auth(),
@@ -424,8 +480,30 @@ get_ssl_cipher_list([], Params) ->
                 {C13, C12} = lists:partition(fun ciphers:is_tls13_cipher/1, L),
                 {format_ciphers(C12), format_ciphers(C13)}
         end,
-    {[{<<"tls 1.2">>, Ciphers12},
-      {<<"tls 1.3">>, Ciphers13}]}.
+    {[{<<"TLS 1.2">>, Ciphers12},
+      {<<"TLS 1.3">>, Ciphers13}]}.
+
+tls_config(Params) ->
+    KeyPath = iolist_to_binary(ns_ssl_services_setup:pkey_file_path()),
+    ChainPath = iolist_to_binary(ns_ssl_services_setup:chain_file_path()),
+    CAPath = iolist_to_binary(ns_ssl_services_setup:ca_file_path()),
+    MinVsn = case ns_ssl_services_setup:ssl_minimum_protocol(kv) of
+                 'tlsv1' -> <<"TLS 1">>;
+                 'tlsv1.1' -> <<"TLS 1.1">>;
+                 'tlsv1.2' -> <<"TLS 1.2">>;
+                 'tlsv1.3' -> <<"TLS 1.3">>
+             end,
+    Ciphers = get_ssl_cipher_list([], Params),
+    CipherOrder = ns_ssl_services_setup:honor_cipher_order(kv),
+    Auth = proplists:get_value(state, ns_ssl_services_setup:client_cert_auth()),
+    AuthBin = iolist_to_binary(Auth),
+    {[{<<"private key">>, KeyPath},
+      {<<"certificate chain">>, ChainPath},
+      {<<"CA file">>, CAPath},
+      {<<"minimum version">>, MinVsn},
+      {<<"cipher list">>, Ciphers},
+      {<<"cipher order">>, CipherOrder},
+      {<<"client cert auth">>, AuthBin}]}.
 
 format_ciphers(RFCCipherNames) ->
     OpenSSLNames = [Name || C <- RFCCipherNames,
@@ -433,16 +511,11 @@ format_ciphers(RFCCipherNames) ->
                             Name =/= undefined],
     iolist_to_binary(lists:join(":", OpenSSLNames)).
 
-get_ssl_cipher_order([], _Params) ->
-    ns_ssl_services_setup:honor_cipher_order(kv).
-
 prometheus_cfg([], _Params) ->
     {[{port, service_ports:get_port(memcached_prometheus)},
       {family, ns_config:read_key_fast({node, node(), address_family}, inet)}]}.
 
 generate_interfaces(MCDParams) ->
-    SSL = {[{key, list_to_binary(ns_ssl_services_setup:pkey_file_path())},
-            {cert, list_to_binary(ns_ssl_services_setup:legacy_cert_path())}]},
     GetPort = fun (Port) ->
                       {Port, Value} = lists:keyfind(Port, 1, MCDParams),
                       Value
@@ -453,11 +526,11 @@ generate_interfaces(MCDParams) ->
                     {system, true}]},
 
                   {[{port, GetPort(ssl_port)},
-                    {ssl, SSL}]},
+                    {tls, true}]},
 
                   {[{port, GetPort(dedicated_ssl_port)},
                     {system, true},
-                    {ssl, SSL}]}],
+                    {tls, true}]}],
 
     IPv4Interfaces = lists:map(
                        fun ({Props}) ->
