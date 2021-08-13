@@ -227,6 +227,19 @@ validate_pkey(PKeyPemBin) ->
     try public_key:pem_decode(PKeyPemBin) of
         [{Type, _, not_encrypted} = Entry] ->
             case Type of
+                'PrivateKeyInfo' ->
+                    try element(1, public_key:pem_entry_decode(Entry)) of
+                        'RSAPrivateKey' -> {ok, Entry};
+                        'DSAPrivateKey' -> {ok, Entry};
+                        Other ->
+                            ?log_debug("Invalid pkey type: ~p", [Other]),
+                            {error, {invalid_pkey, Other}}
+                    catch
+                        _:Ex:ST ->
+                            ?log_error("Failed to decode pem entry: ~p~n~p",
+                                       [Ex, ST]),
+                            {error, malformed_pkey}
+                    end;
                 'RSAPrivateKey' ->
                     {ok, Entry};
                 'DSAPrivateKey' ->
