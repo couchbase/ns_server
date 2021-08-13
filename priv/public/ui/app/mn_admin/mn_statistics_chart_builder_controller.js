@@ -55,7 +55,6 @@ function mnStatisticsNewChartBuilderController($rootScope, mnStatisticsNewServic
   vm.formatGroupLabel = formatGroupLabel;
   vm.filterGroupName = filterGroupName;
 
-  var selectedUnits = {};
   vm.selectedKVFilters = {};
   var selectedByNodeStats = {};
   var selectedStats = {};

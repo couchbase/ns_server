@@ -54,7 +54,7 @@ function mnViewsListController($scope, $state, $uibModal, mnViewsListService, mn
   function isEmptyView(row) {
     return !row.doc.json.views || _.isEmpty(row.doc.json.views);
   }
-  function showCreationButton(row) {
+  function showCreationButton() {
     return vm.isDevelopmentViews;
   }
 

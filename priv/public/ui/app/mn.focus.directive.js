@@ -47,7 +47,7 @@ class MnFocusDirective extends MnLifeCycleHooksToStream {
     ).subscribe(this.doFocus.bind(this));
   }
 
-  doFocus(value) {
+  doFocus() {
     this.el.focus();
   }
 

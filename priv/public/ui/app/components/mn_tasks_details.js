@@ -75,7 +75,7 @@ function mnTasksDetailsFactory($http, $cacheFactory, mnTasksService) {
 
       return rv;
     });
-  };
+  }
 
   function detectXDCRTask(taskInfo) {
     return taskInfo.type === 'xdcr';

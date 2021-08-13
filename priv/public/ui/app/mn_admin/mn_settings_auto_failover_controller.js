@@ -117,5 +117,5 @@ function mnSettingsAutoFailoverController($scope, $q, mnPromiseHelper, mnSetting
     ];
 
     return $q.all(queries);
-  };
+  }
 }

@@ -128,7 +128,7 @@ function mnXDCRServiceFactory($q, $http, mnPoolDefault, mnPools, getStringBytesF
     });
   }
 
-  function getSettingsReplications(settings, justValidate) {
+  function getSettingsReplications() {
     return $http.get('/settings/replications');
   }
 

@@ -18,7 +18,7 @@ import {axisBottom, axisLeft, axisRight} from "/ui/web_modules/d3-axis.js";
 import {line as d3Line} from "/ui/web_modules/d3-shape.js";
 import {interpolateTransformSvg} from "/ui/web_modules/d3-interpolate.js";
 import {brushX, brushSelection} from "/ui/web_modules/d3-brush.js";
-import {min as d3Min, max as d3Max} from "/ui/web_modules/d3-array.js"
+import {max as d3Max} from "/ui/web_modules/d3-array.js"
 
 export default "mnD3Service";
 
@@ -26,7 +26,7 @@ angular
   .module('mnD3Service', [])
   .factory('mnD3Service', mnD3ServiceFactory);
 
-function mnD3ServiceFactory($timeout) {
+function mnD3ServiceFactory() {
   class mnD3 {
     constructor(options, rootElement) {
       this.opt = options;
@@ -481,18 +481,16 @@ function mnD3ServiceFactory($timeout) {
     }
 
     var elementRect = this.tipBoxRect;
-    var cvsRect = this.getCanvasRect(elementRect);
 
     var elementX = this.mouseMoveEvent.pageX - elementRect.left;
-    var elementY = this.mouseMoveEvent.pageY - elementRect.top;
 
     var circlesPerLine;
     if (this.opt.is70Cluster) {
 
-      var xDate = this.xScale.invert(elementX).getTime();
-      var i = this.bisect(this.xAxisTimestamps, xDate);
-      var d0 = this.xAxisTimestamps[i - 1];
-      var d1 = this.xAxisTimestamps[i];
+      let xDate = this.xScale.invert(elementX).getTime();
+      let i = this.bisect(this.xAxisTimestamps, xDate);
+      let d0 = this.xAxisTimestamps[i - 1];
+      let d1 = this.xAxisTimestamps[i];
       this.selectedXDate = (!d0 || ((xDate - d0) > (d1 - xDate))) ? d1 : d0;
 
       this.svg.select(".tip-line")
@@ -514,10 +512,10 @@ function mnD3ServiceFactory($timeout) {
         }.bind(this));
     } else {
 
-      var xDate = this.xScale.invert(elementX);
-      var i = this.bisect(this.xAxisData, xDate);
-      var d0 = this.xAxisData[i - 1];
-      var d1 = this.xAxisData[i];
+      let xDate = this.xScale.invert(elementX);
+      let i = this.bisect(this.xAxisData, xDate);
+      let d0 = this.xAxisData[i - 1];
+      let d1 = this.xAxisData[i];
 
       // work out which date value is closest to the mouse
       this.selectedValueIndex = (!d0 || (xDate - d0[0]) > (d1[0] - xDate)) ? i : i-1;
@@ -630,7 +628,7 @@ function mnD3ServiceFactory($timeout) {
     }.bind(this));
   }
 
-  function getLegendsHtml(line, i) {
+  function getLegendsHtml(line) {
     return "<i style='background-color:" + line.color + "'></i>" +
       "<span>" + line.key + "</span>";
   }

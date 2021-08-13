@@ -10,7 +10,6 @@ licenses/APL2.txt.
 
 import angular from "/ui/web_modules/angular.js";
 import uiRouter from "/ui/web_modules/@uirouter/angularjs.js";
-import _ from "/ui/web_modules/lodash.js";
 
 import mnPoll from "/ui/app/components/mn_poll.js";
 import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
@@ -55,7 +54,7 @@ function mnOverviewConfig($stateProvider, $transitionsProvider) {
     return $q.all([
       mnPermissionsService.check(),
       mnUserRolesService.getUserProfile()
-    ]).then(function ([permissions, profile]) {
+    ]).then(function ([permissions]) {
       let params = Object.assign({}, original);
       var statsRead = permissions.bucketNames['.stats!read'];
       let scenarios = mnStoreService.store("scenarios").share();

@@ -57,13 +57,15 @@ function mnGsiFooterController($scope, $rootScope, $state, mnStatisticsNewServic
 
   function getLatestStat70(statName) {
     switch (statName) {
-    case "@index.index_remaining_ram":
+    case "@index.index_remaining_ram": {
       let quota = doGetLatestStat70("@index.index_memory_quota");
       let used = doGetLatestStat70("@index.index_memory_used_total");
       return used > quota ? 0 : quota - used;
-    case "@index.index_ram_percent":
+    }
+    case "@index.index_ram_percent": {
       return doGetLatestStat70("@index.index_memory_used_total") /
         doGetLatestStat70("@index.index_memory_quota") * 100;
+    }
     default:
       return doGetLatestStat70(mnStatsDesc.mapping65(statName));
     }

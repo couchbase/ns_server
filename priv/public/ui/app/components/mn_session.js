@@ -96,13 +96,13 @@ function mnSessionFactory($http, $window, $timeout, mnAuthService, $interval, mn
   function resetTimeout(timeout) {
     timeout = Number(timeout);
     var dialogTimeout;
-    if (!!sessionTimer) {
+    if (sessionTimer) {
       $timeout.cancel(sessionTimer);
     }
-    if (!!showTimeoutDialogTimer) {
+    if (showTimeoutDialogTimer) {
       $timeout.cancel(showTimeoutDialogTimer);
     }
-    if (!!timeout) {
+    if (timeout) {
       dialogTimeout = timeout - 30000;
       sessionTimer = $timeout(mnAuthService.logout.bind(mnAuthService), timeout);
       showTimeoutDialogTimer = $timeout(showTimeoutDialog(dialogTimeout), dialogTimeout);

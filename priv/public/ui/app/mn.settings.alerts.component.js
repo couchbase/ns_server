@@ -70,7 +70,7 @@ class MnSettingsAlertsComponent extends MnLifeCycleHooksToStream {
 
     this.isDisabled = this.getAlerts
           .pipe(withLatestFrom(this.permissions),
-                map(([alerts, permissions]) => permissions.cluster.settings.write));
+                map(([, permissions]) => permissions.cluster.settings.write));
 
     this.isDisabled
       .pipe(takeUntil(this.mnOnDestroy))

@@ -9,7 +9,7 @@ licenses/APL2.txt.
 */
 
 import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
-import {combineLatest, Subject, timer, BehaviorSubject} from "../web_modules/rxjs.js";
+import {Subject} from "../web_modules/rxjs.js";
 import {NgbModal} from "../web_modules/@ng-bootstrap/ng-bootstrap.js";
 import {takeUntil} from '../web_modules/rxjs/operators.js';
 import {MnPermissions} from './ajs.upgraded.providers.js';

@@ -39,8 +39,7 @@ angular
   .config(mnSettingsConfig)
   .controller("mnSettingsController", mnSettingsController);
 
-function mnSettingsController($scope) {
-  var vm = this;
+function mnSettingsController() {
 }
 
 function mnSettingsConfig($stateProvider) {

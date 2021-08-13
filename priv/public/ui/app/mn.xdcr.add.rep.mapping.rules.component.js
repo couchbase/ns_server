@@ -9,7 +9,7 @@ licenses/APL2.txt.
 */
 
 import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
-import {map, startWith} from '../web_modules/rxjs/operators.js';
+import {map} from '../web_modules/rxjs/operators.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {collectionDelimiter} from './mn.xdcr.service.js';
 

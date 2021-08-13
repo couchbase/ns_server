@@ -31,7 +31,6 @@ function mnBucketsDetailsServiceFcatory($http, mnTasksDetails, mnCompaction) {
     getCompactionTask: getCompactionTask
   };
 
-  var bucketRamGuageConfig = {};
   var guageConfig = {};
 
   return mnBucketsDetailsService;

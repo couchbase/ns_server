@@ -55,7 +55,7 @@ function mnViewsEditingFactory($http, $state, mnPermissions, mnViewsListService,
     if (!params || !params.documentId) {
       return;
     }
-    var params = _.clone(params);
+    params = _.clone(params);
     if (params.documentId.slice(0, "_design/".length) === "_design/") {
       params.documentId = "_design/" + encodeURIComponent(params.documentId.slice("_design/".length));
     }
@@ -191,7 +191,7 @@ function mnViewsEditingFactory($http, $state, mnPermissions, mnViewsListService,
       }
     });
   }
-  function getEmptyViewState(params) {
+  function getEmptyViewState() {
     return {isEmptyState: true};
   }
 

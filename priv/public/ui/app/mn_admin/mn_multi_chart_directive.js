@@ -7,7 +7,7 @@ file, in accordance with the Business Source License, use of this software will
 be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
-
+import angular from "/ui/web_modules/angular.js";
 import _ from "/ui/web_modules/lodash.js"
 
 export default mnMultiChartDirective;
@@ -61,7 +61,7 @@ function mnMultiChartDirective($window, mnD3Service) {
 
       $scope.$watch("data", chartF.updateData.bind(chartF));
 
-      chart.rootEl.on("toggleLegend", function (opt) {
+      chart.rootEl.on("toggleLegend", function () {
         chartF.updateData(chartF.data);
       });
 
@@ -140,10 +140,10 @@ function mnMultiChartDirective($window, mnD3Service) {
           chart.disableTooltip(true);
 
           chart.tipBox.node().dispatchEvent(createEvent(
-	    source.event.type,
+            source.event.type,
             clientX,
             clientY
-	  ));
+          ));
         }
       });
     }

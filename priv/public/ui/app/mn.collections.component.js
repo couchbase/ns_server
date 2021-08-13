@@ -12,7 +12,7 @@ import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.j
 import {FormBuilder} from "../web_modules/@angular/forms.js";
 import {UIRouter} from "../web_modules/@uirouter/angular.js";
 import {pluck, filter, switchMap, distinctUntilChanged, withLatestFrom,
-        shareReplay, takeUntil, tap, map} from '../web_modules/rxjs/operators.js';
+        shareReplay, takeUntil, map} from '../web_modules/rxjs/operators.js';
 import {combineLatest, Subject, timer, NEVER, of} from "../web_modules/rxjs.js";
 import {NgbModal} from "../web_modules/@ng-bootstrap/ng-bootstrap.js";
 import {MnPermissions, MnStatisticsNewService,
@@ -111,7 +111,7 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
       .subscribe(setBucketUrlParam);
 
     bucketsWithParams
-      .pipe(filter(([_, param]) => !param),
+      .pipe(filter(([, param]) => !param),
             pluck(0, 0, "name"),
             takeUntil(this.mnOnDestroy))
       .subscribe(v => setBucketUrlParam(v, "replace"));

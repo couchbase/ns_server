@@ -11,7 +11,6 @@ licenses/APL2.txt.
 import { Injectable } from "../web_modules/@angular/core.js";
 import { HttpClient } from '../web_modules/@angular/common/http.js';
 import { map } from '../web_modules/rxjs/operators.js';
-import { MnHttpRequest } from './mn.http.request.js';
 
 export { MnStatsService };
 

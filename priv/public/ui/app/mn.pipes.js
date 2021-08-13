@@ -167,7 +167,7 @@ class MnFormatProgressMessage {
   ]}
 
   addNodeCount(perNode) {
-    var serversCount = Object.keys(task.perNode || {}).length;
+    var serversCount = Object.keys(perNode || {}).length;
     return serversCount + " " + (serversCount === 1 ? 'node' : 'nodes');
   }
 

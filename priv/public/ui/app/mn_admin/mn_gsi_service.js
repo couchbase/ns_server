@@ -12,19 +12,16 @@ import angular from "/ui/web_modules/angular.js";
 import { QwQueryService } from "/_p/ui/query/angular-services/qw.query.service.js";
 import {downgradeInjectable} from '/ui/web_modules/@angular/upgrade/static.js';
 import {MnHelperService} from '/ui/app/mn.helper.service.js';
-import mnStatisticsNewService from '/ui/app/mn_admin/mn_statistics_service.js';
-import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
-import mnStatisticsDescription from "./mn_statistics_description.js";
 
 export default 'mnGsiService';
 
 angular
-  .module('mnGsiService', [mnStatisticsNewService, mnPoolDefault])
+  .module('mnGsiService', [])
   .factory('qwQueryService', downgradeInjectable(QwQueryService))
   .factory('mnHelperService', downgradeInjectable(MnHelperService))
   .factory('mnGsiService', mnGsiServiceFactory);
 
-function mnGsiServiceFactory($http, $q, qwQueryService, mnStatisticsNewService, mnPoolDefault) {
+function mnGsiServiceFactory($http, $q, qwQueryService) {
   var mnGsiService = {
     getIndexesState: getIndexesState,
     getIndexesStateMixed: getIndexesStateMixed,
@@ -33,8 +30,6 @@ function mnGsiServiceFactory($http, $q, qwQueryService, mnStatisticsNewService, 
     postDropIndex: postDropIndex,
     getIndexStatus: getIndexStatus
   };
-
-  let isAtLeast70 = mnPoolDefault.export.compat.atLeast70;
 
   return mnGsiService;
 

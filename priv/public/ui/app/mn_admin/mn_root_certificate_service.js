@@ -16,7 +16,7 @@ angular
   .module("mnRootCertificateService", [])
   .factory("mnRootCertificateService", mnRootCertificateFactory);
 
-function mnRootCertificateFactory($http, $q) {
+function mnRootCertificateFactory($http) {
   var mnRootCertificateService = {
     getDefaultCertificate: getDefaultCertificate
   };

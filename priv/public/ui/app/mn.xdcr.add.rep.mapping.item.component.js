@@ -9,7 +9,7 @@ licenses/APL2.txt.
 */
 
 import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js'
-import {takeUntil, withLatestFrom, merge, startWith} from '../web_modules/rxjs/operators.js';
+import {takeUntil, startWith} from '../web_modules/rxjs/operators.js';
 import {FormBuilder} from '../web_modules/@angular/forms.js';
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
@@ -103,7 +103,6 @@ class MnXDCRAddRepMappingItemComponent extends MnLifeCycleHooksToStream {
   updateScopeName() {
     let rules = this.explicitMappingRules.getValue();
     let collectionGroup = this.explicitMappingGroup.collections[this.item.name];
-    let collectionControls = this.explicitMappingGroup.collectionsControls[this.item.name];
 
     this.item.collections.forEach(item => {
       let sourceScope = this.item.name;

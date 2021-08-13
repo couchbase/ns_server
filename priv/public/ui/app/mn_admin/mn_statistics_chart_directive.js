@@ -54,14 +54,13 @@ function mnStatisticsNewChartDirective(mnStatisticsNewService, mnFormatQuantityF
     controller: controller
   };
 
-  function controller($scope, $element) {
+  function controller($scope) {
     if (!$scope.config) {
       return;
     }
 
     var units;
     var options;
-    var isFocusChart = $scope.nvd3Options && $scope.nvd3Options.type === 'lineWithFocusChart';
     let poller = $scope.statsPoller || mnStatisticsNewService.mnAdminStatsPoller;
     let step = mnStatisticsNewService.getChartStep($scope.zoom);
     let start = mnStatisticsNewService.getChartStart($scope.zoom);

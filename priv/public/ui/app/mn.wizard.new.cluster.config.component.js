@@ -158,7 +158,7 @@ class MnWizardNewClusterConfigComponent extends MnLifeCycleHooksToStream {
     return rv;
   }
 
-  getNodeInitConfig([_, isEnterprise]) {
+  getNodeInitConfig([, isEnterprise]) {
     let rv = {};
     let nodeStorage = this.wizardForm.newClusterConfig.get("clusterStorage");
     let addressFamilyUI = nodeStorage.get("hostConfig.addressFamilyUI").value;

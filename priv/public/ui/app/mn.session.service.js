@@ -14,12 +14,11 @@ import {HttpClient} from '../web_modules/@angular/common/http.js';
 import {NgbModule, NgbModal} from '../web_modules/@ng-bootstrap/ng-bootstrap.js';
 import {MnSharedModule} from './mn.shared.module.js';
 import {fromEvent, merge, NEVER, timer} from "../web_modules/rxjs.js";
-import {throttleTime, takeUntil, filter, tap,
+import {throttleTime, takeUntil, filter,
         switchMap, map, shareReplay} from '../web_modules/rxjs/operators.js';
 import {not, compose} from "../web_modules/ramda.js";
 import {MnAuthService} from "./ajs.upgraded.providers.js";
 import {MnAdminService} from "./mn.admin.service.js";
-import {MnBucketsService} from './mn.buckets.service.js';
 import {MnSessionTimeoutDialogComponent} from "./mn.session.timeout.dialog.component.js";
 
 export {MnSessionService, MnSessionServiceModule};

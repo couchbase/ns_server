@@ -39,7 +39,7 @@ function mnPluggableTabUtil() {
        "\"ui-sref-active=\"currentnav\"") + ">" +
       config.name +
       "</a>";
-  };
+  }
 
 }
 
@@ -55,17 +55,17 @@ function mnPluggableUiTabs(mnPluggableUiRegistry, mnPluggableTabUtil, $compile) 
       return;
     }
     pluggableUiConfigs = _.sortBy(pluggableUiConfigs, 'index');
-    angular.forEach(pluggableUiConfigs, function (config, index) {
+    angular.forEach(pluggableUiConfigs, function (config) {
       config.ngShow = config.ngShow == undefined ? true : config.ngShow;
       if (config.after) {
         var targetTab = $element[0].querySelector("[mn-tab='" + config.after + "']");
         if (!targetTab) {
           throw new Error("There is no tab with mn-tab=" + config.after + " in " + $attrs.mnTabBarName);
         }
-        var compiled = $compile(mnPluggableTabUtil.getTabTemplate(config, $attrs.mnTabBarName))($scope);
+        let compiled = $compile(mnPluggableTabUtil.getTabTemplate(config, $attrs.mnTabBarName))($scope);
         angular.element(targetTab).after(compiled);
       } else {
-        var compiled = $compile(mnPluggableTabUtil.getTabTemplate(config, $attrs.mnTabBarName))($scope);
+        let compiled = $compile(mnPluggableTabUtil.getTabTemplate(config, $attrs.mnTabBarName))($scope);
         $element.append(compiled);
       }
     });

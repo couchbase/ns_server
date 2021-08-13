@@ -42,7 +42,7 @@ angular
         result: "=",
         disable: "="
       },
-      link: function (scope, element, attributes) {
+      link: function (scope, element) {
         var defaultName = "Select File";
         var inputFile = element.find("input");
 
@@ -51,7 +51,7 @@ angular
         scope.name = defaultName;
         scope.onTextareaChange = onTextareaChange;
 
-        function onTextareaChange(a) {
+        function onTextareaChange() {
           scope.name = defaultName;
           inputFile[0].value = "";
         }

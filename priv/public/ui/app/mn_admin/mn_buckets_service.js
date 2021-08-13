@@ -44,7 +44,7 @@ function mnBucketsServiceFactory($q, mnBucketsStats) {
   }
 
   function getBucketsByType(mnHttpParams) {
-    if (!!cache) {
+    if (cache) {
       return $q.when(cache);
     }
     return mnBucketsStats.get(mnHttpParams).then(function (resp) {

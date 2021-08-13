@@ -12,12 +12,11 @@ import {UIRouter} from '../web_modules/@uirouter/angular.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
 import {filter, map, switchMap, withLatestFrom} from '../web_modules/rxjs/operators.js';
-import {BehaviorSubject, Subject, pipe, empty} from '../web_modules/rxjs.js';
+import {BehaviorSubject, pipe, empty} from '../web_modules/rxjs.js';
 import {MnWizardService} from './mn.wizard.service.js';
 import {MnAuthService} from "./mn.auth.service.js";
 import {MnFormService} from "./mn.form.service.js";
 import {MnPoolsService} from "./mn.pools.service.js"
-import {MnHttpGroupRequest} from './mn.http.request.js';
 import {MnSecurityService} from "./mn.security.service.js"
 import {MnPools, $rootScope} from "./ajs.upgraded.providers.js";
 
@@ -59,7 +58,7 @@ class MnWizardJoinClusterComponent extends MnLifeCycleHooksToStream {
       .setPackPipe(pipe(
         filter(this.isValid.bind(this)),
         withLatestFrom(mnPoolsService.stream.isEnterprise),
-        map(([_, isEnterprise]) => {
+        map(([, isEnterprise]) => {
           let rv = {};
           var nodeStorage = this.joinClusterForm.get("clusterStorage");
           rv.hostname = nodeStorage.get("hostname").value;

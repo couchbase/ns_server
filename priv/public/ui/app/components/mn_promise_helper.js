@@ -91,7 +91,7 @@ function mnPromiseHelperFactory(mnAlertsService, mnHelper, $timeout, $rootScope)
       return this;
     }
 
-    function showGlobalSpinner(timer) {
+    function showGlobalSpinner() {
       var id = doShowGlobalSpinner();
       promise.then(hideGlobalSpinner(id), hideGlobalSpinner(id));
       return this;

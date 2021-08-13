@@ -24,9 +24,6 @@ function mnClientCertController($scope, mnClientCertificateService, mnPromiseHel
 
   activate();
 
-  function maybeSetInititalValue(array, value) {
-  }
-
   function onSubmit() {
     if ($scope.mnGlobalSpinnerFlag) {
       return;
@@ -41,7 +38,7 @@ function mnClientCertController($scope, mnClientCertificateService, mnPromiseHel
   function activate() {
     mnPromiseHelper(vm, mnClientCertificateService.getClientCertificateSettings())
       .applyToScope("settings")
-      .onSuccess(function (resp) {
+      .onSuccess(function () {
         if ($scope.rbac.cluster.admin.security.write && vm.settings.prefixes.length === 0) {
           vm.settings.prefixes.push({delimiter: '', prefix: '', path: 'subject.cn'});
         }

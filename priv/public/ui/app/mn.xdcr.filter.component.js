@@ -10,8 +10,8 @@ licenses/APL2.txt.
 
 import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
 import {merge, pipe} from '../web_modules/rxjs.js';
-import {map, filter, pluck, startWith, withLatestFrom, takeUntil, tap} from '../web_modules/rxjs/operators.js';
-
+import {map, filter, startWith,
+        withLatestFrom, takeUntil} from '../web_modules/rxjs/operators.js';
 import {MnLifeCycleHooksToStream} from "./mn.core.js";
 import {MnXDCRService} from "./mn.xdcr.service.js";
 import {MnFormService} from "./mn.form.service.js";
@@ -94,7 +94,7 @@ class MnXDCRFilterComponent extends MnLifeCycleHooksToStream {
       .setFormGroup(this.group)
       .setPackPipe(pipe(withLatestFrom(this.mnKeyspaceSelector.stream.result,
                                        this.compatVersion70),
-                        filter(([_, r, is70]) => is70 ?
+                        filter(([, r, is70]) => is70 ?
                                r.bucket && r.scope && r.collection :
                                !!this.bucket),
                         map(this.pack.bind(this))))
@@ -120,7 +120,7 @@ class MnXDCRFilterComponent extends MnLifeCycleHooksToStream {
     }
   }
 
-  pack([_, result, is70]) {
+  pack([, result, is70]) {
     let rv = {
       expression: this.group.get("filterExpression").value,
       docId: this.group.get("docId").value,

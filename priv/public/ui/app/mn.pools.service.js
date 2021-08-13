@@ -10,11 +10,10 @@ licenses/APL2.txt.
 import { singletonGuard } from './mn.core.js';
 import { NgModule } from '../web_modules/@angular/core.js';
 import { Injectable } from '../web_modules/@angular/core.js';
-import { HttpClient, HttpErrorResponse } from '../web_modules/@angular/common/http.js';
+import { HttpClient } from '../web_modules/@angular/common/http.js';
 import { BehaviorSubject } from '../web_modules/rxjs.js';
 import { switchMap, shareReplay, pluck,
-         distinctUntilChanged, map, tap } from '../web_modules/rxjs/operators.js';
-import { MnParseVersion } from './mn.pipes.js'
+         distinctUntilChanged, map } from '../web_modules/rxjs/operators.js';
 
 export { MnPoolsService, MnPoolsServiceModule };
 
@@ -25,7 +24,6 @@ class MnPoolsServiceModule {
     new NgModule({
       imports: [],
       providers: [
-        MnParseVersion,
         MnPoolsService
       ]
     })
@@ -38,11 +36,10 @@ class MnPoolsService {
   ]}
 
   static get parameters() { return [
-    HttpClient,
-    MnParseVersion
+    HttpClient
   ]}
 
-  constructor(http, mnParseVersionPipe) {
+  constructor(http) {
     singletonGuard(MnPoolsService);
 
     this.http = http;

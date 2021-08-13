@@ -12,7 +12,6 @@ import mnAdminController from "./mn_admin_controller.js";
 import {downgradeInjectable} from "/ui/web_modules/@angular/upgrade/static.js";
 
 import angular from "/ui/web_modules/angular.js";
-import _ from "/ui/web_modules/lodash.js";
 import ngAnimate from "/ui/web_modules/angular-animate.js";
 
 import uiBootstrap from "/ui/web_modules/angular-ui-bootstrap.js";
@@ -25,7 +24,6 @@ import mnFilters from "/ui/app/components/mn_filters.js";
 import mnHelper from "/ui/app/components/mn_helper.js";
 import mnSpinner from "/ui/app/components/directives/mn_spinner.js";
 import mnMainSpinner from "/ui/app/components/directives/mn_main_spinner.js";
-import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
 import mnLaunchpad from "/ui/app/components/directives/mn_launchpad.js";
 import mnPluggableUiRegistry from "/ui/app/components/mn_pluggable_ui_registry.js";
 import mnSettingsAutoFailoverService from "/ui/app/mn_admin/mn_settings_auto_failover_service.js";

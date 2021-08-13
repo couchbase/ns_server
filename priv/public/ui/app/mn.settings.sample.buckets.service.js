@@ -43,13 +43,13 @@ class MnSettingsSampleBucketsService {
       new MnHttpRequest(this.installSampleBuckets.bind(this))
       .addSuccess()
       .addError();
-  };
+  }
 
   getSampleBuckets() {
     return this.http.get('/sampleBuckets');
-  };
+  }
 
   installSampleBuckets(selectedSamples) {
     return this.http.post('/sampleBuckets/install', selectedSamples);
-  };
+  }
 }

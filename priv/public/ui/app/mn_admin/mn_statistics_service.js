@@ -25,7 +25,6 @@ import mnPermissions from "/ui/app/components/mn_pool_default.js";
 import mnServersService from "./mn_servers_service.js"
 import mnStatisticsDescriptionService from "./mn_statistics_description_service.js";
 import mnStatisticsDescription from "./mn_statistics_description.js";
-import {min as d3Min, max as d3Max} from "/ui/web_modules/d3-array.js"
 
 export default "mnStatisticsNewService";
 
@@ -265,7 +264,6 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
 
     let yMin = 0;
     let yMax = 1;
-    let xMax = null;
     values.forEach(v => {
       yMin = yMin > v[1] ? v[1] : yMin;
       yMax = yMax < v[1] ? v[1] : yMax;
@@ -285,7 +283,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
   }
 
   function defaultZoomInterval(zoom) {
-    return mnPoolDefault.export.compat.atLeast70 ? function (resp) {
+    return mnPoolDefault.export.compat.atLeast70 ? function () {
       return rangeZoomToStep(zoom) * 1000;
     } : function (resp) {
       return resp.interval || (function () {

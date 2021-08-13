@@ -55,10 +55,11 @@ function mnExceptionReporter($delegate, $injector) {
   }
 
   function send(exception) {
-    if (exception.hasOwnProperty("config") &&
-        exception.hasOwnProperty("headers") &&
-        exception.hasOwnProperty("status") &&
-        exception.hasOwnProperty("statusText")) {
+    let has = Object.prototype.hasOwnProperty;
+    if (has.call(exception, "config") &&
+        has.call(exception, "headers") &&
+        has.call(exception, "status") &&
+        has.call(exception, "statusText")) {
       return; //we are not interested in http exception;
     }
     var error;

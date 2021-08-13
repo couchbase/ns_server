@@ -9,7 +9,7 @@ licenses/APL2.txt.
 */
 
 import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
-import {pluck, map, takeUntil} from '../web_modules/rxjs/operators.js';
+import {map, takeUntil} from '../web_modules/rxjs/operators.js';
 import {MnPermissions} from './ajs.upgraded.providers.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnSecurityService} from './mn.security.service.js';
@@ -54,7 +54,7 @@ class MnSessionComponent extends MnLifeCycleHooksToStream {
 
     this.isDisabled =
       mnAdminService.stream.uiSessionTimeout
-      .pipe(map(v => mnPermissions.export.cluster.admin.security.write));
+      .pipe(map(() => mnPermissions.export.cluster.admin.security.write));
 
     this.isDisabled
       .pipe(takeUntil(this.mnOnDestroy))

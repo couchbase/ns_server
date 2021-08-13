@@ -122,7 +122,7 @@ function mnServersAddDialogController($scope, $rootScope, $q, $uibModal, mnServe
       .broadcast("reloadServersPoller")
       .broadcast("maybeShowMemoryQuotaDialog", vm.addNodeConfig.services.model)
       .showGlobalSuccess("Server added successfully!");
-  };
+  }
   function onSelectGroup(selectedOption) {
     vm.addNodeConfig.selectedGroup = vm.groups.find((group) => group.name === selectedOption);
   }

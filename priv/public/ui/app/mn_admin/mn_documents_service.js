@@ -16,7 +16,7 @@ angular
   .module("mnDocumentsService", [])
   .factory("mnDocumentsService", mnDocumentsFactory);
 
-function mnDocumentsFactory($http, $q, docsLimit) {
+function mnDocumentsFactory($http, $q) {
   var mnDocumentsService = {
     getDocument: getDocument,
     getDocuments: getDocuments,

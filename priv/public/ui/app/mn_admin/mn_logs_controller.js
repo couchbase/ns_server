@@ -84,6 +84,5 @@ function configure($stateProvider) {
     });
 }
 
-function mnLogsController($scope, mnHelper, mnLogsService) {
-  var vm = this;
+function mnLogsController() {
 }

@@ -10,11 +10,8 @@ licenses/APL2.txt.
 
 import { Injectable } from '../web_modules/@angular/core.js';
 import { HttpClient, HttpErrorResponse } from '../web_modules/@angular/common/http.js';
-import { UIRouter } from '../web_modules/@uirouter/angular.js';
-import { MnAppService } from './mn.app.service.js';
-import { MnPoolsService } from './mn.pools.service.js';
-import { combineLatest, Subject } from '../web_modules/rxjs.js'
-import { take, filter, map, withLatestFrom, tap } from '../web_modules/rxjs/operators.js';
+import { Subject } from '../web_modules/rxjs.js'
+import { take, filter, map } from '../web_modules/rxjs/operators.js';
 import { Rejection } from '../web_modules/@uirouter/core.js';
 
 export { MnExceptionHandlerService };
@@ -25,12 +22,10 @@ class MnExceptionHandlerService {
   ]}
 
   static get parameters() { return [
-    HttpClient,
-    MnPoolsService,
-    // UIRouter
+    HttpClient
   ]}
 
-  constructor(http, mnPoolsService, uiRouter) {
+  constructor(http) {
     this.stream = {};
     this.http = http;
     this.errorReportsLimit = 8;
@@ -46,7 +41,7 @@ class MnExceptionHandlerService {
     // uiRouter.stateService.defaultErrorHandler(this.handleError.bind(this));
   }
 
-  handleError(exception, cause) {
+  handleError(exception) {
     console.error(exception);
     this.stream.appError.next(exception);
   }

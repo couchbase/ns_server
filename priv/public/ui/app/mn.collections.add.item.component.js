@@ -55,7 +55,7 @@ class MnCollectionsAddItemComponent extends MnLifeCycleHooksToStream {
       });
   }
 
-  prepareDataForSending([_, isEnterprise]) {
+  prepareDataForSending([, isEnterprise]) {
     let dataForSending = [this.bucketName, this.scopeName, this.form.group.value.name];
     if (isEnterprise) {
       dataForSending.push(this.form.group.value.maxTTL);

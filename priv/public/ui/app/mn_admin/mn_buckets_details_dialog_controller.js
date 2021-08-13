@@ -43,5 +43,5 @@ function mnBucketsDetailsDialogController($scope, $rootScope, mnBucketsDetailsDi
         }
       })
       .showGlobalSuccess("Bucket settings saved successfully!");
-  };
+  }
 }

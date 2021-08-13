@@ -9,7 +9,6 @@ licenses/APL2.txt.
 */
 
 import {Subject} from "/ui/web_modules/rxjs.js";
-import {takeUntil} from '/ui/web_modules/rxjs/operators.js';
 
 export default mnGsiTableDirective;
 
@@ -89,7 +88,7 @@ function mnGsiTableDirective(mnHelper) {
                                               "."+row.collection : "") : "")
     }
 
-    function generateIndexId(row, partitionHost) {
+    function generateIndexId(row) {
       return (row.id.toString() + (row.instId || "")) +
         (row.hosts ? row.hosts.join() : "") +
         ($scope.nodeName || "");

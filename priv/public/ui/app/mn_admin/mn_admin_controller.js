@@ -8,6 +8,7 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
+import angular from "/ui/web_modules/angular.js";
 import {fromEvent, Subject, timer} from "/ui/web_modules/rxjs.js";
 import {tap, switchMap, takeUntil} from "/ui/web_modules/rxjs/operators.js";
 import _ from "/ui/web_modules/lodash.js";
@@ -192,7 +193,7 @@ function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAle
       loadAndRunLauchpad($ocLazyLoad, $injector, vm);
     }
 
-    var etagPoller = new mnEtagPoller($scope, function (previous) {
+    new mnEtagPoller($scope, function (previous) {
       return mnPoolDefault.get({
         etag: previous ? previous.etag : "",
         waitChange: 10000
@@ -251,7 +252,7 @@ function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAle
 
     if (mnPermissions.export.cluster.tasks.read) {
       if (pools.isEnterprise && poolDefault.compat.atLeast65) {
-        var retryRebalancePoller = new mnPoller($scope, function () {
+        new mnPoller($scope, function () {
           return mnSettingsClusterService.getPendingRetryRebalance({group: "global"});
         })
             .setInterval(function (resp) {

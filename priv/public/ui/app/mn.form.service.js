@@ -214,7 +214,7 @@ class MnForm {
           this.modalService
             .open(dialog)
             .result
-            .then((a) => {
+            .then(() => {
               this.submit.next(true);
             }, function () {});
         }
@@ -229,7 +229,7 @@ class MnForm {
         validationPostRequest.clearError();
       });
     //skip initialization of the form
-    ;(permissionStream || new BehaviorSubject(true)).pipe(
+    (permissionStream || new BehaviorSubject(true)).pipe(
       switchMap((v) => v ? (validateOnStream || this.group.valueChanges) : NEVER),
       debounceTime(500),
       this.getPackPipe(),

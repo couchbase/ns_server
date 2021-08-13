@@ -108,7 +108,7 @@ class MnSettingsSampleBucketsComponent extends MnLifeCycleHooksToStream {
           value: bucket.installed,
           disabled: bucket.installed
         }));
-      };
+      }
     });
   }
 

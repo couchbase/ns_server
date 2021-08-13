@@ -9,7 +9,6 @@ licenses/APL2.txt.
 */
 
 import angular from "/ui/web_modules/angular.js";
-import _ from "/ui/web_modules/lodash.js";
 
 import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
 import mnStoreService from "/ui/app/components/mn_store_service.js";
@@ -70,7 +69,7 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
       url: "/settings/saslauthdAuth"
     }).then(function (resp) {
       return resp.data;
-    }, function (resp) {
+    }, function () {
       return;
     });
   }
@@ -502,7 +501,7 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
       for (i in resp.data.links) {
         resp.data.links[i] = resp.data.links[i].split("?")[1]
           .split("&")
-          .reduce(function(prev, curr, i, arr) {
+          .reduce(function(prev, curr) {
             var p = curr.split("=");
             prev[decodeURIComponent(p[0])] = decodeURIComponent(p[1]);
             return prev;
@@ -520,7 +519,7 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
     if (isEditingMode) {
       return doAddUser(packData(user, roles, groups, isEditingMode, resetPassword), user);
     } else {
-      return getUser(user).then(function (users) {
+      return getUser(user).then(function () {
         return $q.reject({username: "username already exists"});
       }, function () {
         return doAddUser(packData(user, roles, groups, isEditingMode), user);
@@ -534,7 +533,7 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
       for (i in resp.data.links) {
         resp.data.links[i] = resp.data.links[i].split("?")[1]
           .split("&")
-          .reduce(function(prev, curr, i, arr) {
+          .reduce(function(prev, curr) {
             var p = curr.split("=");
             prev[decodeURIComponent(p[0])] = decodeURIComponent(p[1]);
             return prev;

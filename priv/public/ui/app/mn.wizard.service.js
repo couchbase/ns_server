@@ -231,7 +231,7 @@ class MnWizardService {
       //remove port from host
       let parsed = new URL("http://" + selfConfig.configuredHostname);
       //remove ipv6 brackets
-      hostname = parsed.hostname.replace(/[\[\]']+/g, '');
+      hostname = parsed.hostname.replace(/[[\]']+/g, '');
     }
 
     wizardForm.newClusterConfig.get("clusterStorage.hostname").setValue(hostname);

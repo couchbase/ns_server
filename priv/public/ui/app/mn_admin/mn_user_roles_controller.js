@@ -15,8 +15,6 @@ import uiSelect from "/ui/web_modules/ui-select.js";
 import mnHelper from "/ui/app/components/mn_helper.js";
 import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
 import mnPoll from "/ui/app/components/mn_poll.js";
-import mnCompaction from "/ui/app/components/mn_compaction.js";
-import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
 import mnSortableTable from "/ui/app/components/directives/mn_sortable_table.js";
 import mnSpinner from "/ui/app/components/directives/mn_spinner.js";
 import mnMainSpinner from "/ui/app/components/directives/mn_main_spinner.js";

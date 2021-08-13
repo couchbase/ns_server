@@ -178,7 +178,7 @@ function mnPollerFactory($q, $timeout, mnPromiseHelper) {
         self.timeout = $timeout(self.doCycle.bind(self), interval);
       }.bind(self.doCallPromise));
     }
-    self.doCallPromise.then(null, function (resp) {
+    self.doCallPromise.then(null, function () {
       self.stop(); //stop cycle on any http error;
     });
     return this;

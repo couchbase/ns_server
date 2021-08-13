@@ -24,7 +24,6 @@ import { MnCollectionsService } from './mn.collections.service.js';
 import { MnSharedModule } from './mn.shared.module.js';
 import { MnInputFilterModule } from './mn.input.filter.module.js';
 import { MnSelectModule } from './mn.select.module.js';
-import { MnBucketsService } from './mn.buckets.service.js';
 import { MnCollectionsAddScopeComponent } from './mn.collections.add.scope.component.js';
 import { MnCollectionsDeleteScopeComponent } from './mn.collections.delete.scope.component.js';
 import { MnCollectionsAddItemComponent} from './mn.collections.add.item.component.js';

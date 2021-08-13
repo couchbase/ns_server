@@ -77,9 +77,7 @@ function mnServersListFilter($filter, mnFormatServicesFilter) {
 
       var interestingFields = ["hostname", "status"];
       var l2 = interestingFields.length;
-      var l3 = node.services.length;
       var i2;
-      var i3;
       var searchFiled;
       searchValue = searchValue.toLowerCase();
       var rv = false;
@@ -333,25 +331,31 @@ function mnParseHttpDate() {
   }
   function doParseHTTPDate(date) {
     var match;
+    let day;
+    let month;
+    let year;
+    let hour;
+    let minute;
+    let second;
     if ((match = rfc1123RE.exec(date)) || (match = rfc850RE.exec(date))) {
-      var day = parseInt(match[1], 10);
-      var month = parseMonth(match[2]);
-      var year = parseInt(match[3], 10);
+      day = parseInt(match[1], 10);
+      month = parseMonth(match[2]);
+      year = parseInt(match[3], 10);
 
-      var hour = parseInt(match[4], 10);
-      var minute = parseInt(match[5], 10);
-      var second = parseInt(match[6], 10);
+      hour = parseInt(match[4], 10);
+      minute = parseInt(match[5], 10);
+      second = parseInt(match[6], 10);
 
       return new Date(Date.UTC(year, month, day, hour, minute, second));
     } else if ((match = asctimeRE.exec(date))) {
-      var month = parseMonth(match[1]);
-      var day = parseInt(match[2], 10);
+      month = parseMonth(match[1]);
+      day = parseInt(match[2], 10);
 
-      var hour = parseInt(match[3], 10);
-      var minute = parseInt(match[4], 10);
-      var second = parseInt(match[5], 10);
+      hour = parseInt(match[3], 10);
+      minute = parseInt(match[4], 10);
+      second = parseInt(match[5], 10);
 
-      var year = parseInt(match[6], 10);
+      year = parseInt(match[6], 10);
 
       return new Date(Date.UTC(year, month, day, hour, minute, second));
     } else {
@@ -488,15 +492,17 @@ function mnStripPortHTML() {
     if (allServers === undefined) {
       throw new Error("second argument is required!");
     }
+    let allNames;
+    let isStripping;
     if (cachedAllServers === allServers) {
-      var isStripping = cachedIsStripping;
+      isStripping = cachedIsStripping;
     } else {
       if (allServers.length == 0 || _.isString(allServers[0])) {
-        var allNames = allServers;
+        allNames = allServers;
       } else {
-        var allNames = _.pluck(allServers, 'hostname');
+        allNames = _.pluck(allServers, 'hostname');
       }
-      var isStripping = _.all(allNames, function (h) {return h.match(strippingRE);});
+      isStripping = _.all(allNames, function (h) {return h.match(strippingRE);});
       cachedIsStripping = isStripping;
       cachedAllServers = allServers;
     }
@@ -543,13 +549,12 @@ function mnFormatMemSize(mnFormatQuantityFilter) {
 }
 function mnMsToTime() {
   return function (ms) {
-    var d, h, m, s;
+    var h, m, s;
     s = Math.floor(ms / 1000);
     m = Math.floor(s / 60);
     s = s % 60;
     h = Math.floor(m / 60);
     m = m % 60;
-    d = Math.floor(h / 24);
     h = h % 24;
 
     return (h ? (h + ':') : '') +

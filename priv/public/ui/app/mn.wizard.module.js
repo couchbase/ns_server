@@ -26,7 +26,6 @@ import {MnAuthService} from './mn.auth.service.js';
 import {MnSharedModule} from './mn.shared.module.js';
 import {MnPipesModule} from './mn.pipes.module.js';
 import {HttpClientModule} from '../web_modules/@angular/common/http.js';
-import {UpgradeModule} from '../web_modules/@angular/upgrade/static.js';
 import {UIRouterModule} from '../web_modules/@uirouter/angular.js';
 import {UIRouterUpgradeModule} from '../web_modules/@uirouter/angular-hybrid.js';
 

@@ -10,8 +10,6 @@ licenses/APL2.txt.
 
 import angular from "/ui/web_modules/angular.js";
 import uiBootstrap from "/ui/web_modules/angular-ui-bootstrap.js";
-import {format} from "/ui/web_modules/d3-format.js";
-import _ from "/ui/web_modules/lodash.js";
 
 import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
 import mnHelper from "/ui/app/components/mn_helper.js";
@@ -35,7 +33,7 @@ import mnFooterStatsController from "./mn_gsi_footer_controller.js";
 import mnGsiTableDirective from "./mn_gsi_table_directive.js";
 import mnKeyspaceSelectorDowngradeModule from "/ui/app/mn.keyspace.selector.downgrade.module.js"
 import {Subject} from "/ui/web_modules/rxjs.js";
-import {takeUntil, filter, withLatestFrom} from "/ui/web_modules/rxjs/operators.js";
+import {takeUntil, filter} from "/ui/web_modules/rxjs/operators.js";
 export default 'mnGsi';
 
 angular

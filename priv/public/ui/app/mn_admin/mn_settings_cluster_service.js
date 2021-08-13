@@ -94,7 +94,7 @@ function mnSettingsClusterServiceFactory($http, $q, IEC, mnPools, mnPoolDefault)
     return childInitChecker;
   }
 
-  function clearInitChecker(cb) {
+  function clearInitChecker() {
     childInitChecker = [];
   }
 
@@ -106,7 +106,7 @@ function mnSettingsClusterServiceFactory($http, $q, IEC, mnPools, mnPoolDefault)
     return childSubmitCallbacks;
   }
 
-  function clearSubmitCallbacks(cb) {
+  function clearSubmitCallbacks() {
     childSubmitCallbacks = [];
   }
 

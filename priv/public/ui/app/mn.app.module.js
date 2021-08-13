@@ -10,7 +10,6 @@ licenses/APL2.txt.
 
 import app from "./app.js";
 import { ajsUpgradedProviders } from './ajs.upgraded.providers.js';
-import { MnAppComponent } from './mn.app.component.js';
 import { MnAppService } from './mn.app.service.js';
 import { MnHelperService } from './mn.helper.service.js';
 import { MnTasksService } from './mn.tasks.service.js';
@@ -20,9 +19,8 @@ import { mnAppImports } from './mn.app.imports.js';
 import { MnFormService } from './mn.form.service.js';
 import { MnHttpInterceptor } from './mn.http.interceptor.js';
 import { MnExceptionHandlerService } from './mn.exception.handler.service.js';
-import { NgModule, ErrorHandler, APP_INITIALIZER} from '../web_modules/@angular/core.js';
-import { HTTP_INTERCEPTORS, HttpClient } from '../web_modules/@angular/common/http.js';
-import { UIView} from '../web_modules/@uirouter/angular.js';
+import { NgModule, ErrorHandler } from '../web_modules/@angular/core.js';
+import { HTTP_INTERCEPTORS } from '../web_modules/@angular/common/http.js';
 import { UpgradeModule } from '../web_modules/@angular/upgrade/static.js';
 import { NgbModalConfig } from '../web_modules/@ng-bootstrap/ng-bootstrap.js';
 

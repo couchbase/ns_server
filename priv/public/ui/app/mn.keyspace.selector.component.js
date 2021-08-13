@@ -9,10 +9,8 @@ licenses/APL2.txt.
 */
 
 import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
-import {map, mapTo, takeUntil, withLatestFrom,
-        filter, skip} from '../web_modules/rxjs/operators.js';
+import {takeUntil, withLatestFrom} from '../web_modules/rxjs/operators.js';
 import {MnLifeCycleHooksToStream} from "./mn.core.js";
-import {Subject, merge} from "../web_modules/rxjs.js";
 import {MnFormService} from "./mn.form.service.js";
 
 export {MnKeyspaceSelectorComponent};

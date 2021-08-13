@@ -43,7 +43,7 @@ angular.module('mnSettingsCluster', [
   mnClusterConfigurationService,
 ]).controller('mnSettingsClusterController', mnSettingsClusterController);
 
-function mnSettingsClusterController($scope, $q, $uibModal, mnPoolDefault, mnMemoryQuotaService, mnSettingsClusterService, mnHelper, mnPromiseHelper, mnClusterConfigurationService, mnXDCRService, $rootScope) {
+function mnSettingsClusterController($scope, $q, $uibModal, mnPoolDefault, mnMemoryQuotaService, mnSettingsClusterService, mnHelper, mnPromiseHelper, mnClusterConfigurationService, mnXDCRService) {
   var vm = this;
   vm.saveVisualInternalSettings = saveVisualInternalSettings;
   vm.reloadState = mnHelper.reloadState;
@@ -87,10 +87,11 @@ function mnSettingsClusterController($scope, $q, $uibModal, mnPoolDefault, mnMem
     var promise3;
     var promise5;
     var promise6;
-    var promise8;
     var promise7;
     var promise8;
     var promise9;
+
+    queries.push(promise1);
 
     promise6 = mnPromiseHelper(vm,
                                mnXDCRService.postSettingsReplications(vm.replicationSettings))
@@ -189,7 +190,7 @@ function mnSettingsClusterController($scope, $q, $uibModal, mnPoolDefault, mnMem
     default: return vm[type + 'Threads'];
     }
   }
-  function unpackThreadValue(value, settings) {
+  function unpackThreadValue(value) {
     switch (typeof value) {
     case "string": return value;
     case "number": return "fixed";

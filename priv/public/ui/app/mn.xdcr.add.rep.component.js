@@ -90,7 +90,7 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
       .setPackPipe(pipe(withLatestFrom(this.isEnterprise,
                                        mnAdminService.stream.compatVersion55,
                                        this.isSaveButtonDisabled),
-                        filter(([_, isEnterprise, compatVersion, isDisabled]) => !isDisabled),
+                        filter(([, , , isDisabled]) => !isDisabled),
                         map(mnXDCRService.prepareReplicationSettigns.bind(this))))
       .setSourceShared(this.getSettingsReplications)
       .setPostRequest(this.postCreateReplication)

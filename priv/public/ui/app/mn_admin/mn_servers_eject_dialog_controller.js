@@ -19,5 +19,5 @@ function mnServersEjectDialogController($rootScope, $uibModalInstance, node, war
     mnServersService.addToPendingEject(node);
     $uibModalInstance.close();
     $rootScope.$broadcast("reloadNodes");
-  };
+  }
 }

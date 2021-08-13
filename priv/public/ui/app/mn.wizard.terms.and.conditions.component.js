@@ -11,8 +11,8 @@ licenses/APL2.txt.
 import {UIRouter} from '../web_modules/@uirouter/angular.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
-import {BehaviorSubject, Subject, pipe} from '../web_modules/rxjs.js';
-import {takeUntil, filter, map, tap, withLatestFrom,
+import {BehaviorSubject, pipe} from '../web_modules/rxjs.js';
+import {filter, map, withLatestFrom,
         switchMap} from '../web_modules/rxjs/operators.js';
 import {MnWizardService} from './mn.wizard.service.js';
 import {MnPoolsService} from './mn.pools.service.js';
@@ -81,7 +81,7 @@ class MnWizardTermsAndConditionsComponent extends MnLifeCycleHooksToStream {
       .setPostRequest(mnWizardService.stream.postNodeInitHttp)
       .setPackPipe(pipe(
         withLatestFrom(mnPoolsService.stream.mnServices),
-        map(([_, services]) => ({
+        map(([, services]) => ({
           services: services.join(","),
           setDefaultMemQuotas : true
         }))
@@ -149,7 +149,7 @@ class MnWizardTermsAndConditionsComponent extends MnLifeCycleHooksToStream {
     };
   }
 
-  getValues(isEnterprise) {
+  getValues() {
     return {
       postPoolsDefault: {
         clusterName: this.wizardForm.newCluster.get("clusterName").value

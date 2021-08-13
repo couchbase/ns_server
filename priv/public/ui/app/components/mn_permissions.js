@@ -201,7 +201,7 @@ function mnPermissionsProvider() {
     }
 
     function check() {
-      if (!!cache) {
+      if (cache) {
         return $q.when(mnPermissions.export);
       }
 
@@ -250,7 +250,7 @@ function mnPermissionsProvider() {
     function convertIntoTree(permissions) {
       var rv = {};
       angular.forEach(permissions, function (value, key) {
-        var levels = key.split(/[\[\]]+/);
+        var levels = key.split(/[[\]]+/);
         var regex = /[.:!]+/;
         if (levels[1]) {
           levels = _.compact(levels[0].split(regex).concat([levels[1]]).concat(levels[2].split(regex)))

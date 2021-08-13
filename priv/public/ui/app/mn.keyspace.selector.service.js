@@ -195,7 +195,7 @@ class MnKeyspaceSelectorService {
       result.next(next);
     }
 
-    function setKeyspace(setVals, useDefault) {
+    function setKeyspace(setVals) {
       let next = {};
 
       if (setVals.bucket) {

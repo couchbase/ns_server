@@ -141,7 +141,7 @@ class MnXDCRAddRepMappingComponent extends MnLifeCycleHooksToStream {
 
     this.addExplicitMappingMigrationRules
       .pipe(withLatestFrom(this.postRegexpValidationErrors),
-            filter(([migrationRule, errors]) => !errors),
+            filter(([, errors]) => !errors),
             takeUntil(this.mnOnDestroy))
       .subscribe(() => {
         let newRule = this.explicitMappingGroup.migrationMode.value;

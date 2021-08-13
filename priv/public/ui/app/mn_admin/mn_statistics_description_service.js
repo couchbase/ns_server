@@ -130,14 +130,14 @@ function mnStatisticsDescriptionFactory($http, $q, mnPoolDefault) {
         }
       }
     }
-    return $q.all(promises).then(function (resp) {
+    return $q.all(promises).then(function () {
       return result;
     });
   }
 
-  function getByMetricName(uiStats){
+  function getByMetricName(uiStats) {
     var result = {};
-    uiStats.forEach(function (stat, index){
+    uiStats.forEach(function (stat) {
       var metric = stat['metric'];
       if (metric) {
         var name = metric['name'];

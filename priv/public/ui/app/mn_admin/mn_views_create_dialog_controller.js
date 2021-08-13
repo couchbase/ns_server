@@ -78,6 +78,6 @@ function mnViewsCreateDialogController($uibModal, $state, $q, mnViewsListService
       .closeOnSuccess()
       .broadcast("reloadViewsPoller")
       .showGlobalSuccess("View created successfully!");
-  };
+  }
 
 }

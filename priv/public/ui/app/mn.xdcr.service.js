@@ -11,8 +11,7 @@ licenses/APL2.txt.
 import { Injectable } from "../web_modules/@angular/core.js";
 import { HttpClient } from '../web_modules/@angular/common/http.js';
 import { BehaviorSubject, combineLatest, timer, of } from "../web_modules/rxjs.js";
-import { map, shareReplay, switchMap,
-         filter as rxFitler, throttleTime} from '../web_modules/rxjs/operators.js';
+import { map, shareReplay, switchMap, throttleTime} from '../web_modules/rxjs/operators.js';
 import { pipe, filter, propEq, sortBy, prop, groupBy } from "../web_modules/ramda.js";
 import { MnStatsService } from "./mn.stats.service.js"
 import { MnTasksService } from './mn.tasks.service.js';
@@ -131,7 +130,7 @@ class MnXDCRService {
 
   }
 
-  prepareReplicationSettigns([_, isEnterprise, compatVersion55]) {
+  prepareReplicationSettigns([, isEnterprise, compatVersion55]) {
     //this points to the component view instance
     var settings = Object.assign({}, this.form.group.value, this.filterRegexpGroup.value);
     delete settings.docId;

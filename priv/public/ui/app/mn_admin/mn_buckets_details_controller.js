@@ -20,7 +20,6 @@ function mnBucketsDetailsController($scope, mnBucketsDetailsService, mnPromiseHe
   vm.getEndings = mnHelper.getEndings;
 
   var compactionTasks;
-  var warmUpTasks;
 
   activate();
 
@@ -118,5 +117,5 @@ function mnBucketsDetailsController($scope, mnBucketsDetailsService, mnPromiseHe
       .onSuccess(function () {
         compactionTasks.reload()
       });
-  };
+  }
 }

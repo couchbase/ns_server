@@ -14,8 +14,11 @@ import { startWith, distinctUntilChanged } from '../web_modules/rxjs/operators.j
 import { BehaviorSubject, Subject } from '../web_modules/rxjs.js';
 import { MnHelperService } from './mn.helper.service.js';
 import { FormBuilder } from "../web_modules/@angular/forms.js";
+import { is } from "../web_modules/ramda.js";
 import { pluck, shareReplay, map, takeUntil, withLatestFrom } from '../web_modules/rxjs/operators.js';
 import { NgbDropdown } from "../web_modules/@ng-bootstrap/ng-bootstrap.js";
+
+let isString = is(String);
 
 export { MnSelectComponent };
 
@@ -133,7 +136,7 @@ class MnSelectComponent extends MnLifeCycleHooksToStream {
    * @returns {string}
    */
   defaultValuesMapping(option) {
-    if (this.capitalize && angular.isString(option) && option) {
+    if (this.capitalize && isString(option) && option) {
       return option[0].toUpperCase() + option.slice(1);
     }
 

@@ -33,16 +33,17 @@ class MnLogsListComponent extends MnLifeCycleHooksToStream {
     DatePipe
   ]}
 
-  constructor(MnLogsService, MnHelperService, DatePipe) {
+  constructor(mnLogsService, mnHelperService, datePipe) {
     super();
 
+    this.datePipe = datePipe;
     this.textLimit = 1000;
-    this.sorter = MnHelperService.createSorter('tstamp', true);
-    this.filter = MnHelperService.createFilter(this,
+    this.sorter = mnHelperService.createSorter('tstamp', true);
+    this.filter = mnHelperService.createFilter(this,
                                                ['text', 'module', 'code', 'node', 'prettyTime'],
                                                true);
 
-    this.logs = MnLogsService.stream.logs
+    this.logs = mnLogsService.stream.logs
       .pipe(pluck('list'),
             filter(logs => !!logs),
             map(this.addPrettyTime.bind(this)),
@@ -62,11 +63,10 @@ class MnLogsListComponent extends MnLifeCycleHooksToStream {
   }
 
   addPrettyTime(logs) {
-    let datePipe = new DatePipe();
     logs.forEach(log =>
-                 log.prettyTime = datePipe.transform(log.serverTime, 'mediumTime', 'UTC', 'en-US') +
-                                  " " +
-                                  datePipe.transform(log.serverTime, 'd MMM, y', 'UTC', 'en-US'));
+                 (log.prettyTime =
+                  this.datePipe.transform(log.serverTime, 'mediumTime', 'UTC', 'en-US') + " " +
+                  this.datePipe.transform(log.serverTime, 'd MMM, y', 'UTC', 'en-US')));
     return logs;
   }
 }

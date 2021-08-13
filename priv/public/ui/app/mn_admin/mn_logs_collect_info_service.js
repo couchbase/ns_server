@@ -74,7 +74,6 @@ function mnLogsCollectInfoServiceFactory($http, $q, mnServersService, mnTasksDet
     return $q.all(queries).then(function (resp) {
       var nodes = _.clone(resp[0].allNodes, true);
       var tasks = resp[1].tasks;
-      var logRedaction = resp[2];
       var task = _.detect(tasks, function (taskInfo) {
         return taskInfo.type === "clusterLogsCollection";
       });
@@ -114,7 +113,6 @@ function mnLogsCollectInfoServiceFactory($http, $q, mnServersService, mnTasksDet
       var nodesByStatus = _.groupBy(perNode, 'status');
 
       var nodeErrors = _.compact(_.map(perNode, function (ni) {
-        var rv;
         var error;
         if (ni.uploadOutput || ni.collectionOutput) {
           error = [];

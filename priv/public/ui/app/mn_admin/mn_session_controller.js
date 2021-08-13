@@ -45,5 +45,5 @@ function mnSessionController(mnSessionService, mnPromiseHelper) {
       .catchErrors()
       .showSpinner()
       .showGlobalSuccess("Session settings changed successfully!");
-  };
+  }
 }

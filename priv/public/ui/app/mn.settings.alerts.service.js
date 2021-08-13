@@ -11,9 +11,8 @@ licenses/APL2.txt.
 import { Injectable } from "../web_modules/@angular/core.js";
 import { HttpClient } from '../web_modules/@angular/common/http.js';
 import { MnHttpRequest } from './mn.http.request.js';
-import { switchMap, shareReplay, map } from '../web_modules/rxjs/operators.js';
+import { switchMap, shareReplay } from '../web_modules/rxjs/operators.js';
 import { BehaviorSubject } from '../web_modules/rxjs.js';
-import { knownAlerts } from './constants/constants.js';
 
 export { MnSettingsAlertsService }
 

@@ -457,7 +457,7 @@ angular.module('mnSettingsNotificationsService', [
               version: pools.implementationVersion
             }, mnHttpParams).then(function (resp) {
               return _.extend(_.clone(resp.data), sendStatsData);
-            }, function (resp) {
+            }, function () {
               return sendStatsData;
             });
           });

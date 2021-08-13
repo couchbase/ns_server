@@ -123,7 +123,7 @@ function mnViewsListFactory($http, $q, mnTasksDetails) {
         var ddoc = taskInfo.designDocument;
         (rv[ddoc] || (rv[ddoc] = [])).push(taskInfo);
       });
-      _.each(rv, function (ddocTasks, key) {
+      _.each(rv, function (ddocTasks) {
         ddocTasks.sort(function (taskA, taskB) {
           return importance[taskA.type] - importance[taskB.type];
         });

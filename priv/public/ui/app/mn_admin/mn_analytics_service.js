@@ -9,7 +9,7 @@ licenses/APL2.txt.
 */
 
 import angular from "/ui/web_modules/angular.js";
-
+import _ from "/ui/web_modules/lodash.js";
 import mnFilters from "/ui/app/components/mn_filters.js";
 
 import mnServersService from "./mn_servers_service.js";
@@ -131,7 +131,7 @@ function mnAnalyticsServiceFactory($http, $q, mnServersService, mnCloneOnlyDataF
       stats = maybeApplyDelta(params.previousResult.stats, stats);
     }
 
-    angular.forEach(stats.stats, function (subSamples, subName) {
+    angular.forEach(stats.stats, function (subSamples) {
       var timestamps = subSamples.timestamp;
       for (var k in subSamples) {
         if (k == "timestamp") {
@@ -151,7 +151,7 @@ function mnAnalyticsServiceFactory($http, $q, mnServersService, mnCloneOnlyDataF
     var zoomMillis = timeUnitToSeconds[params.$stateParams.zoom] * 1000;
     var columnIndex = 0;
 
-    angular.forEach(statDesc.blocks, function (block, index) {
+    angular.forEach(statDesc.blocks, function (block) {
       block.withTotal = block.columns && block.columns[block.columns.length - 1] === "Total";
       angular.forEach(block.stats, function (info) {
         var sample = samples[info.name];

@@ -24,12 +24,6 @@ function mnGsiItemStatsController($scope) {
     activate();
   }
 
-  function getStats(stat) {
-    var rv = {};
-    rv[stat] = "@index-.@items";
-    return rv;
-  }
-
   function activate() {
     var row = $scope.row;
     vm.hosts = row.hosts.join(', ');
@@ -37,7 +31,6 @@ function mnGsiItemStatsController($scope) {
 }
 
 function mnGsiItemController($scope, mnGsiService, mnStatisticsNewService, mnPoolDefault, mnPermissions) {
-  var vm = this;
   var row = $scope.row;
 
   //check permissions

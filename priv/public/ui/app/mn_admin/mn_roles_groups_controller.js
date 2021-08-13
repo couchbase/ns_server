@@ -51,7 +51,7 @@ angular
   .controller("mnRolesGroupsDeleteDialogController", mnRolesGroupsDeleteDialogController)
   .controller("mnRolesGroupsAddDialogController", mnRolesGroupsAddDialogController);
 
-function mnRolesGroupsController($scope, $uibModal, mnPromiseHelper, mnUserRolesService, mnPoller, mnHelper, $state, poolDefault, $timeout) {
+function mnRolesGroupsController($scope, $uibModal, mnPromiseHelper, mnUserRolesService, mnPoller, mnHelper, $state) {
   var vm = this;
 
   vm.addRolesGroup = addRolesGroup;
@@ -116,7 +116,7 @@ function mnRolesGroupsController($scope, $uibModal, mnPromiseHelper, mnUserRoles
       vm.rolesByRole = roles.rolesByRole;
     });
 
-    var poller = new mnPoller($scope, function () {
+    new mnPoller($scope, function () {
       return mnUserRolesService.getRolesGroupsState($state.params);
     })
         .subscribe("state", vm)

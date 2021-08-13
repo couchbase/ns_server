@@ -132,7 +132,7 @@ function mnStatisticsChartsController($scope, $uibModal, mnStatisticsNewService,
 
 function mnStatisticsGroupsController($scope, $uibModal, $timeout,
                                       mnStatisticsNewService, mnStoreService,
-                                      mnUserRolesService, mnHelper) {
+                                      mnUserRolesService) {
   var vm = this;
   vm.isDetailsOpened = true;
   vm.hideGroupControls = hideGroupControls;
@@ -445,6 +445,13 @@ function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http
     return vm.scenariosById && vm.scenariosById[vm.scenarioId] || {};
   }
 
+  function groupById(arr) {
+    return arr.reduce((acc, item) => {
+      acc[item.id] = item;
+      return acc;
+    }, {});
+  }
+
   function activate() {
     initItemsDropdownSelect();
 
@@ -453,13 +460,6 @@ function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http
 
     if ($scope.rbac.cluster.stats.read) {
       vm.scenarioId = $state.params.scenario;
-
-      function groupById(arr) {
-        return arr.reduce((acc, item) => {
-          acc[item.id] = item;
-          return acc;
-        }, {});
-      }
 
       new mnPoller($scope, function () {
         return mnUserRolesService.getUserProfile();

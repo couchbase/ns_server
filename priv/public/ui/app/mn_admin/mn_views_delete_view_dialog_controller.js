@@ -29,5 +29,5 @@ function mnViewsDeleteViewDialogController($state, $uibModalInstance, mnPromiseH
       .closeFinally()
       .broadcast("reloadViewsPoller")
       .showGlobalSuccess("View deleted successfully!");
-  };
+  }
 }

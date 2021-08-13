@@ -79,8 +79,8 @@ class MnXDCRItemDetailsComponent extends MnLifeCycleHooksToStream {
     form
       .setFormGroup({})
       .setPackPipe(pipe(withLatestFrom(status),
-                        filter(([_, status]) => status !== "spinner"),
-                        map(([item, _]) => [item.id, {
+                        filter(([, status]) => status !== "spinner"),
+                        map(([item,]) => [item.id, {
                           pauseRequested: item.status !== "paused"
                         }])))
       .setPostRequest(this.mnXDCRService.stream.postPausePlayReplication)

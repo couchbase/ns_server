@@ -8,6 +8,7 @@
     "ecmaVersion": 12,
     "sourceType": "module"
   },
+  "ignorePatterns": ["app/components/mn_jquery.js"],
   "rules": {
     "accessor-pairs": "error",
     "array-bracket-newline": "off",

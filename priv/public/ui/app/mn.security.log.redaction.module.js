@@ -16,7 +16,6 @@ import {NgbModule} from '../web_modules/@ng-bootstrap/ng-bootstrap.js';
 
 import {MnSecurityLogRedactionComponent} from './mn.security.log.redaction.component.js';
 import {MnSecurityService} from './mn.security.service.js';
-import {MnFormService} from './mn.form.service.js';
 
 let logRedactionState = {
   url: '/redaction',

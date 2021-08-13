@@ -8,11 +8,13 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
+import angular from "../../web_modules/angular.js";
 import mnFilters from "/ui/app/components/mn_filters.js";
 import uiBootstrap from "/ui/web_modules/angular-ui-bootstrap.js";
 import _ from "/ui/web_modules/lodash.js";
 
-export default "mnAlertsService"
+export default "mnAlertsService";
+
 
 angular
   .module('mnAlertsService', [uiBootstrap, mnFilters])

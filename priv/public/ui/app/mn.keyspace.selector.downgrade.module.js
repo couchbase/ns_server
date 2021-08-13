@@ -13,7 +13,6 @@ import {downgradeComponent,
         downgradeInjectable} from"../web_modules/@angular/upgrade/static.js";
 import {MnKeyspaceSelectorComponent} from "./mn.keyspace.selector.component.js";
 import {MnKeyspaceSelectorService} from './mn.keyspace.selector.service.js';
-import {Subject, of} from "../web_modules/rxjs.js";
 
 export default "mnKeyspaceSelectorDowngradeModule";
 

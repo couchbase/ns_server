@@ -11,11 +11,9 @@ licenses/APL2.txt.
 import {CommonModule} from '../web_modules/@angular/common.js';
 import {BrowserModule} from '../web_modules/@angular/platform-browser.js';
 import {HttpClientModule} from '../web_modules/@angular/common/http.js';
-import {UIRouterModule, UIView, loadNgModule} from '../web_modules/@uirouter/angular.js';
+import {UIRouterModule, loadNgModule} from '../web_modules/@uirouter/angular.js';
 import {Rejection} from '../web_modules/@uirouter/core.js';
 import {MnPipesModule} from './mn.pipes.module.js';
-import {MnAppComponent} from './mn.app.component.js';
-import {MnAuthComponent} from './mn.auth.component.js';
 import {UpgradeModule} from '../web_modules/@angular/upgrade/static.js';
 import {MnSharedModule} from './mn.shared.module.js';
 import {MnElementCraneModule} from './mn.element.crane.js';
@@ -25,30 +23,8 @@ import {MnPoolsServiceModule} from './mn.pools.service.js';
 import {MnAdminServiceModule} from './mn.admin.service.js';
 import {MnCollectionsServiceModule} from './mn.collections.service.js';
 import {MnKeyspaceSelectorServiceModule} from "./mn.keyspace.selector.service.js";
-
 import {MnKeyspaceSelectorModule} from './mn.keyspace.selector.module.js';
-
 import {MnHelper} from './ajs.upgraded.providers.js';
-
-
-let appState = {
-  name: 'app',
-  url: '/?{enableInternalSettings:bool}&{disablePoorMansAlerts:bool}',
-  component: MnAppComponent,
-  params: {
-    enableInternalSettings: {
-      value: null,
-      squash: true,
-      dynamic: true
-    },
-    disablePoorMansAlerts: {
-      value: null,
-      squash: true,
-      dynamic: true
-    }
-  },
-  abstract: true
-};
 
 let wizardState = {
   name: 'app.wizard.**',
@@ -185,7 +161,7 @@ function mnLazyload(url, module) {
     let mnHelper = $transition$.injector().get('mnHelper');
     mnHelper.mainSpinnerCounter.increase();
 
-    return import(url).then(m => {
+    return import(url).then(() => {
       let postImportHref = window.location.href;
 
       return initialHref === postImportHref ?
