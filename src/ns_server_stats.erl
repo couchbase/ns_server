@@ -36,11 +36,11 @@
 -export([init_stats/0, notify_counter/1, notify_counter/2, notify_gauge/2,
          notify_histogram/2, notify_histogram/4, notify_max/2]).
 
--export([increment_counter/1, increment_counter/2,
-         get_ns_server_stats/0, set_counter/2,
+-export([increment_counter/2,
+         get_ns_server_stats/0,
          add_histo/2,
-         cleanup_stale_epoch_histos/0, log_system_stats/1,
-         stale_histo_epoch_cleaner/0, report_prom_stats/2]).
+         stale_histo_epoch_cleaner/0,
+         report_prom_stats/2]).
 
 -type os_pid() :: integer().
 
@@ -522,9 +522,6 @@ process_stats(TS, Binary, PrevSample, State) ->
     update_merger_rates(),
     sample_ns_memcached_queues(),
     {RetStats, NewPrevSample}.
-
-increment_counter(Name) ->
-    increment_counter(Name, 1).
 
 increment_counter(Name, By) ->
     try
