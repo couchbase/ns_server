@@ -39,7 +39,9 @@ function mnSettingsClusterServiceFactory($http, $q, IEC, mnPools, mnPoolDefault)
     getPendingRetryRebalance: getPendingRetryRebalance,
     postCancelRebalanceRetry: postCancelRebalanceRetry,
     getMemcachedSettings: getMemcachedSettings,
-    postMemcachedSettings: postMemcachedSettings
+    postMemcachedSettings: postMemcachedSettings,
+    getSettingsAnalytics: getSettingsAnalytics,
+    postSettingsAnalytics: postSettingsAnalytics
   };
 
   var childSubmitCallbacks = [];
@@ -88,6 +90,17 @@ function mnSettingsClusterServiceFactory($http, $q, IEC, mnPools, mnPoolDefault)
       method: "POST",
       mnHttp: {group: "global"}
     });
+  }
+
+  function getSettingsAnalytics() {
+    return $http.get("/settings/analytics")
+      .then(function (resp) {
+        return resp.data;
+      });
+  }
+
+  function postSettingsAnalytics(data) {
+    return $http.post("/settings/analytics", data);
   }
 
   function getInitChecker() {

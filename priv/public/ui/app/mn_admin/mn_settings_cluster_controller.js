@@ -90,6 +90,7 @@ function mnSettingsClusterController($scope, $q, $uibModal, mnPoolDefault, mnMem
     var promise7;
     var promise8;
     var promise9;
+    var promise10;
 
     queries.push(promise1);
 
@@ -160,6 +161,15 @@ function mnSettingsClusterController($scope, $q, $uibModal, mnPoolDefault, mnMem
         .catchErrors("settingsRebalanceErrors")
         .getPromise();
       queries.push(promise9);
+    }
+
+    if (mnPoolDefault.export.compat.atLeast71 &&
+        $scope.rbac.cluster.settings.write) {
+      promise10 = mnPromiseHelper(vm, mnSettingsClusterService
+                                 .postSettingsAnalytics(vm.settingsAnalytics))
+        .catchErrors("settingsAnalyticsErrors")
+        .getPromise();
+      queries.push(promise10);
     }
 
     if ($scope.rbac.cluster.admin.memcached.write) {
@@ -274,6 +284,11 @@ function mnSettingsClusterController($scope, $q, $uibModal, mnPoolDefault, mnMem
       mnXDCRService.getSettingsReplications().then(function (rv) {
         vm.replicationSettings = rv.data;
       });
+    }
+
+    if (mnPoolDefault.export.compat.atLeast71 && $scope.rbac.cluster.settings.read) {
+      mnSettingsClusterService.getSettingsAnalytics()
+        .then(settings => vm.settingsAnalytics = settings);
     }
 
     if ($scope.rbac.cluster.admin.memcached.read) {
