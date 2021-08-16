@@ -23,7 +23,7 @@
 
 -export([
 %% User management:
-         store_user/5,
+         store_user/6,
          delete_user/1,
          select_users/1,
          select_users/2,
@@ -31,11 +31,13 @@
          user_exists/1,
          get_roles/1,
          get_user_name/1,
+         get_limits_version/0,
          get_users_version/0,
          get_auth_version/0,
          get_auth_info/1,
          get_user_props/1,
          get_user_props/2,
+         get_user_limits/1,
          change_password/2,
 
 %% Group management:
@@ -137,6 +139,10 @@ get_auth_version() ->
             rpc:call(ns_node_disco:ns_server_node(), ?MODULE, get_auth_version, [])
     end.
 
+get_limits_version() ->
+    [{limits_version, V, Base}] = ets:lookup(versions_name(), limits_version),
+    {V, Base}.
+
 start_replicator() ->
     GetRemoteNodes =
         fun () ->
@@ -176,16 +182,20 @@ init_versions() ->
     Base = misc:rand_uniform(0, 16#100000000),
     ets:insert_new(versions_name(), [{user_version, 0, Base},
                                      {auth_version, 0, Base},
-                                     {group_version, 0, Base}]),
+                                     {group_version, 0, Base},
+                                     {limits_version, 0, Base}]),
     gen_event:notify(user_storage_events, {user_version, {0, Base}}),
     gen_event:notify(user_storage_events, {group_version, {0, Base}}),
     gen_event:notify(user_storage_events, {auth_version, {0, Base}}),
+    gen_event:notify(user_storage_events, {limits_version, {0, Base}}),
     Base.
 
 on_save(Docs, State) ->
     ProcessDoc =
         fun ({group, _}, _Doc, S) ->
                 {{change_version, group_version}, S};
+            ({limits, _}, _Doc, S) ->
+                {{change_version, limits_version}, S};
             ({user, _}, _Doc, S) ->
                 {{change_version, user_version}, S};
             ({auth, Identity}, Doc, S) ->
@@ -373,10 +383,12 @@ build_auth({_, CurrentAuth}, Password) ->
     end.
 
 -spec store_user(rbac_identity(), rbac_user_name(), rbac_password(),
-                 [rbac_role()], [rbac_group_id()]) ->
+                 [rbac_role()], [rbac_group_id()],
+                 [{atom(), [{atom(), term()}]}]) ->
     {commit, ok} | {abort, {error, roles_validation, _}} |
     {abort, password_required} | {abort, too_many}.
-store_user({_UserName, Domain} = Identity, Name, Password, Roles, Groups) ->
+store_user({_UserName, Domain} = Identity, Name, Password, Roles,
+           Groups, Limits) ->
     Props = [{name, Name} || Name =/= undefined] ++
             [{groups, Groups} || Groups =/= undefined],
     Snapshot = ns_bucket:get_snapshot(),
@@ -386,7 +398,7 @@ store_user({_UserName, Domain} = Identity, Name, Password, Roles, Groups) ->
         true ->
             case Domain of
                 external ->
-                    store_user_with_auth(Identity, Props, same, Roles,
+                    store_user_with_auth(Identity, Props, same, Roles, Limits,
                                          Snapshot);
                 local ->
                     case build_auth(CurrentAuth, Password) of
@@ -394,7 +406,7 @@ store_user({_UserName, Domain} = Identity, Name, Password, Roles, Groups) ->
                             {abort, password_required};
                         Auth ->
                             store_user_with_auth(Identity, Props, Auth, Roles,
-                                                 Snapshot)
+                                                 Limits, Snapshot)
                     end
             end;
         false ->
@@ -422,19 +434,20 @@ check_limit(Identity) ->
             end
     end.
 
-store_user_with_auth(Identity, Props, Auth, Roles, Snapshot) ->
+store_user_with_auth(Identity, Props, Auth, Roles, Limits, Snapshot) ->
     case menelaus_roles:validate_roles(Roles, Snapshot) of
         {NewRoles, []} ->
             ok = store_user_validated(Identity, [{roles, NewRoles} | Props],
-                                      Auth),
+                                      Auth, Limits),
             {commit, ok};
         {_, BadRoles} ->
             {abort, {error, roles_validation, BadRoles}}
     end.
 
-store_user_validated(Identity, Props, Auth) ->
+store_user_validated(Identity, Props, Auth, Limits) ->
     case replicated_dets:get(storage_name(), {user, Identity}) of
         false ->
+            _ = replicated_dets:delete(storage_name(), {limits, Identity}),
             _ = delete_profile(Identity);
         _ ->
             ok
@@ -445,6 +458,25 @@ store_user_validated(Identity, Props, Auth) ->
             ok;
         unchanged ->
             ok
+    end,
+    maybe_change_limits(Identity, Limits).
+
+maybe_change_limits(_Identity, undefined) ->
+    ok;
+maybe_change_limits(Identity, []) ->
+    case replicated_dets:delete(storage_name(), {limits, Identity}) of
+        ok -> ok;
+        {not_found, _} -> ok
+    end;
+maybe_change_limits(Identity, Limits) ->
+    Sorted = lists:usort([{S, lists:usort(L)} || {S, L} <- Limits]),
+    CurLimits = get_user_limits(Identity),
+    case CurLimits =:= Sorted of
+        true ->
+            ok;
+        false ->
+            ok = replicated_dets:set(storage_name(), {limits, Identity},
+                                     Sorted)
     end.
 
 store_auth(_Identity, same) ->
@@ -467,6 +499,7 @@ change_password({_UserName, local} = Identity, Password) when is_list(Password) 
 delete_user({_, Domain} = Identity) ->
     case Domain of
         local ->
+            _ = replicated_dets:delete(storage_name(), {limits, Identity}),
             _ = replicated_dets:delete(storage_name(), {auth, Identity}),
             _ = delete_profile(Identity);
         external ->
@@ -725,6 +758,14 @@ get_user_name({_, Domain} = Identity) when Domain =:= local orelse Domain =:= ex
     proplists:get_value(name, get_user_props(Identity, [name]));
 get_user_name(_) ->
     undefined.
+
+get_user_limits(Identity) ->
+    case replicated_dets:get(storage_name(), {limits, Identity}) of
+        false ->
+            undefined;
+        {_, Limits} ->
+            Limits
+    end.
 
 user_auth_info(User, Auth) ->
     {[{<<"n">>, list_to_binary(User)} | Auth]}.
