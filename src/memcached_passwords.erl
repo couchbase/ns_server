@@ -46,6 +46,10 @@ init() ->
            rest_creds = ns_config_auth:get_admin_user_and_auth(),
            prometheus_auth = prometheus_cfg:get_auth_info()}.
 
+filter_event(limits_version) ->
+    true;
+filter_event(enforce_limits) ->
+    true;
 filter_event(auth_version) ->
     true;
 filter_event(rest_creds) ->
@@ -55,6 +59,10 @@ filter_event({node, Node, prometheus_auth_info}) when Node =:= node() ->
 filter_event(_Key) ->
     false.
 
+handle_event(limits_version, State) ->
+    {changed, State};
+handle_event(enforce_limits, State) ->
+    {changed, State};
 handle_event(auth_version, State) ->
     {changed, State};
 handle_event(rest_creds, #state{rest_creds = Creds} = State) ->
@@ -90,8 +98,26 @@ get_admin_auth_json({User, {auth, Auth}}) ->
 get_admin_auth_json(_) ->
     undefined.
 
+jsonify_kv_user_limits(undefined) ->
+    [];
+jsonify_kv_user_limits(Limits) ->
+    [{limits, {Limits}}].
+
+get_user_limits_json(false, _Identity) ->
+    [];
+get_user_limits_json(true, Identity) ->
+    Limits = menelaus_users:get_user_limits(Identity),
+    case Limits of
+        undefined ->
+            [];
+        _ ->
+            KVLimits = proplists:get_value(kv, Limits),
+            jsonify_kv_user_limits(KVLimits)
+    end.
+
 jsonify_auth(Users, AdminPass, RestCreds, PromAuth) ->
-    MakeAuthInfo = fun menelaus_users:user_auth_info/2,
+    MakeAuthInfo = fun menelaus_users:memcached_user_info/2,
+    EnforceLimits = cluster_compat_mode:should_enforce_limits(),
     ?make_transducer(
        begin
            ?yield(object_start),
@@ -119,7 +145,7 @@ jsonify_auth(Users, AdminPass, RestCreds, PromAuth) ->
 
            pipes:foreach(
              ?producer(),
-             fun ({{auth, {UserName, _Type}}, Auth}) ->
+             fun ({{auth, {UserName, _Type} = Identity}, Auth}) ->
                      case UserName of
                          ClusterAdmin ->
                              TagCA = ns_config_log:tag_user_name(ClusterAdmin),
@@ -128,7 +154,10 @@ jsonify_auth(Users, AdminPass, RestCreds, PromAuth) ->
                                           [TagCA]),
                              ok;
                          _ ->
-                             ?yield({json, MakeAuthInfo(UserName, Auth)})
+                             Limits = get_user_limits_json(EnforceLimits,
+                                                           Identity),
+                             ?yield({json, MakeAuthInfo(UserName,
+                                                        Limits ++ Auth)})
                      end
              end),
            ?yield(array_end),

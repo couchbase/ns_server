@@ -68,7 +68,7 @@
          cleanup_bucket_roles/1,
          get_passwordless/0,
          get_salt_and_mac/1,
-         user_auth_info/2,
+         memcached_user_info/2,
 
 %% Backward compatibility:
          upgrade/3,
@@ -767,8 +767,8 @@ get_user_limits(Identity) ->
             Limits
     end.
 
-user_auth_info(User, Auth) ->
-    {[{<<"n">>, list_to_binary(User)} | Auth]}.
+memcached_user_info(User, Info) ->
+    {[{<<"n">>, list_to_binary(User)} | Info]}.
 
 build_scram_auth(Password) ->
     BuildAuth =
