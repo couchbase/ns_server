@@ -50,6 +50,8 @@
          default/3,
          token_list/3,
          add_input_type/2,
+         json/3,
+         decoded_json/3,
          is_json/1]).
 
 %% Used for testing validators.
@@ -184,6 +186,35 @@ with_decoded_object({KVList}, Validators) ->
     functools:chain(#state{kv = add_input_type(json, Params)}, Validators);
 with_decoded_object(_, _) ->
     #state{errors = [{<<"_">>, <<"Unexpected Json">>}]}.
+
+decoded_json(Name, Validators, State) ->
+    validate(
+      fun (DecodedObject) ->
+              St = with_decoded_object(DecodedObject, Validators),
+              case St#state.errors of
+                  [] ->
+                      {value, prepare_params(St)};
+                  _ ->
+                      {error, {json, jsonify_errors(St#state.errors)}}
+              end
+      end, Name, State).
+
+json(Name, Validators, State) ->
+    validate(
+      fun (BinJson) ->
+              try ejson:decode(BinJson) of
+                  Object ->
+                      St = with_decoded_object(Object, Validators),
+                      case St#state.errors of
+                          [] ->
+                              {value, prepare_params(St)};
+                          _ ->
+                              {error, {json, jsonify_errors(St#state.errors)}}
+                      end
+              catch _:_ ->
+                        {error, {json, {[{<<"_">>, <<"Invalid Json">>}]}}}
+              end
+      end, Name, State).
 
 with_json_object(Body, Validators) ->
     try ejson:decode(Body) of
