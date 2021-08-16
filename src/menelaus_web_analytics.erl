@@ -22,7 +22,7 @@ get_settings() ->
 
 settings_post_validators() ->
     [validator:has_params(_),
-     validator:integer(numReplicas, 0, 16, _),
+     validator:integer(numReplicas, 0, 3, _),
      validator:unsupported(_)].
 
 update_settings(Key, Value) ->
