@@ -518,6 +518,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["_cbauth", "checkPermission"] ->
                     {{[admin, internal], all},
                      fun menelaus_web_rbac:handle_check_permission_for_cbauth/1};
+                ["_cbauth", "getUserLimits"] ->
+                    {{[admin, internal], all},
+                     fun menelaus_web_rbac:handle_get_user_limits_for_cbauth/1};
                 ["_prometheusMetrics"] ->
                     {{[admin, internal, stats], read},
                      fun menelaus_web_prometheus:handle_get_local_metrics/2,

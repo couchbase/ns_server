@@ -34,7 +34,9 @@
          handle_reset_admin_password/1,
          handle_check_permissions_post/1,
          check_permissions_url_version/1,
+         check_user_limits_version/0,
          handle_check_permission_for_cbauth/1,
+         handle_get_user_limits_for_cbauth/1,
          forbidden_response/1,
          role_to_string/1,
          validate_cred/2,
@@ -1438,6 +1440,24 @@ check_permissions_url_version(Snapshot) ->
            menelaus_users:get_groups_version(),
            menelaus_roles:params_version(Snapshot)]),
     base64:encode(crypto:hash(sha, B)).
+
+check_user_limits_version() ->
+    B = term_to_binary([menelaus_users:get_limits_version()]),
+    base64:encode(crypto:hash(sha, B)).
+
+handle_get_user_limits_for_cbauth(Req) ->
+    Params = mochiweb_request:parse_qs(Req),
+    Identity = {proplists:get_value("user", Params),
+                list_to_existing_atom(proplists:get_value("domain", Params))},
+    Service = list_to_existing_atom(proplists:get_value("service", Params)),
+    case {cluster_compat_mode:should_enforce_limits(),
+          menelaus_users:get_user_limits(Identity)} of
+        {true, Limits} when Limits =/= undefined ->
+            ServiceLimits = proplists:get_value(Service, Limits, []),
+            menelaus_util:reply_json(Req, {ServiceLimits}, 200);
+        _ ->
+            menelaus_util:reply_json(Req, {[]}, 200)
+    end.
 
 handle_check_permission_for_cbauth(Req) ->
     Params = mochiweb_request:parse_qs(Req),

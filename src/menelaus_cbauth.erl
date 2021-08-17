@@ -88,6 +88,7 @@ is_interesting(cipher_suites) -> true;
 is_interesting(honor_cipher_order) -> true;
 is_interesting(ssl_minimum_protocol) -> true;
 is_interesting(cluster_encryption_level) -> true;
+is_interesting(enforce_limits) -> true;
 is_interesting({security_settings, _}) -> true;
 is_interesting({node, N, prometheus_auth_info}) when N =:= node() -> true;
 is_interesting(_) -> false.
@@ -264,17 +265,24 @@ build_auth_info(#state{cert_version = CertVersion,
     PermissionCheckURL = misc:local_url(Port, "/_cbauth/checkPermission", []),
     PermissionsVersion = menelaus_web_rbac:check_permissions_url_version(
                            Snapshot),
+    LimitsCheckURL = misc:local_url(Port, "/_cbauth/getUserLimits", []),
     EUserFromCertURL = misc:local_url(Port, "/_cbauth/extractUserFromCert", []),
     ClusterDataEncrypt = misc:should_cluster_data_be_encrypted(),
     DisableNonSSLPorts = misc:disable_non_ssl_ports(),
     TLSServices = menelaus_web_settings:services_with_security_settings(),
+    LimitsConfig = {[{enforceLimits,
+                      cluster_compat_mode:should_enforce_limits()},
+                     {userLimitsVersion,
+                      menelaus_web_rbac:check_user_limits_version()}]},
 
     [{nodes, Nodes},
      {authCheckURL, list_to_binary(AuthCheckURL)},
      {permissionCheckURL, list_to_binary(PermissionCheckURL)},
      {permissionsVersion, PermissionsVersion},
+     {limitsCheckURL, list_to_binary(LimitsCheckURL)},
      {authVersion, auth_version(Config)},
      {certVersion, CertVersion},
+     {limitsConfig, LimitsConfig},
      {extractUserFromCertURL, list_to_binary(EUserFromCertURL)},
      {clientCertAuthState, list_to_binary(CcaState)},
      {clientCertAuthVersion, ClientCertAuthVersion},
