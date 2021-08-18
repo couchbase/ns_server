@@ -956,7 +956,14 @@ verify_otp_connectivity(OtpNode, Options) ->
                                          cb_dist:external_encryption()),
     TCPOnly = proplists:get_bool(tcp_only, Options),
     Host = misc:extract_node_address(OtpNode, NodeAFamily),
-    case get_port_from_empd(OtpNode, NodeAFamily, NodeEncryption) of
+    PortRes =
+        case proplists:get_value(port, Options) of
+            undefined ->
+                get_port_from_empd(OtpNode, NodeAFamily, NodeEncryption);
+            P ->
+                {ok, P}
+        end,
+    case PortRes of
         {ok, Port} ->
             VerifyConnectivity =
                 case {NodeEncryption, TCPOnly} of

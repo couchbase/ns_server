@@ -690,17 +690,97 @@ set_node_certificate_chain(Chain, PKey) ->
             %% ChainReversed :: [Int cert,..., Node cert] (without CA)
             ChainEntries = lists:reverse(ChainEntriesReversed),
             NodeCert = hd(ChainEntries),
-            case validate_cert_and_pkey(NodeCert, PKey) of
+            ChainPem = public_key:pem_encode(ChainEntries),
+            ValidationRes =
+                functools:sequence_(
+                  [fun () ->
+                       validate_cert_and_pkey(NodeCert, PKey)
+                   end,
+                   fun () ->
+                       validate_otp_server_certs(CAPem, ChainPem, PKey)
+                   end]),
+
+            case ValidationRes of
                 ok ->
                     ns_ssl_services_setup:set_node_certificate_chain(
                            CAPem,
-                           public_key:pem_encode(ChainEntries),
+                           ChainPem,
                            PKey);
                 {error, Reason} ->
                     {error, Reason}
             end;
         {error, Reason} ->
             {error, Reason}
+    end.
+
+validate_otp_server_certs(CAPem, ChainPem, PKeyPem) ->
+    case cb_dist:external_encryption() of
+        true ->
+            with_test_otp_server(
+              fun (Port) ->
+                  Opts = [{port, Port}],
+                  Node = node(),
+                  case ns_cluster:verify_otp_connectivity(Node, Opts) of
+                      {ok, _} -> ok;
+                      {error, _, Msg} ->
+                          ?log_error(
+                            "Could not establish test connection to "
+                            "test otp server at port ~p with reason: ~p",
+                            [Port, Msg]),
+                          Host = misc:extract_node_address(
+                                   Node, cb_dist:address_family()),
+                          {error, {test_connection_failed, Host, Msg}}
+                  end
+              end, CAPem, ChainPem, PKeyPem);
+        false -> ok
+    end.
+
+with_test_otp_server(Fun, CAPem, ChainPem, PKeyPem) ->
+    [{server, CurrentServerOpts}] = ets:lookup(ssl_dist_opts, server),
+    CurrentServerOptsWithAF =
+        [cb_dist:address_family() | CurrentServerOpts],
+
+    ChainEntries = public_key:pem_decode(ChainPem),
+    ChainDer = [D || {'Certificate', D, not_encrypted} <- ChainEntries],
+
+    [{KeyType, KeyDer, not_encrypted}] = public_key:pem_decode(PKeyPem),
+    PKeyDer = {KeyType, KeyDer},
+
+    CAEntries = public_key:pem_decode(CAPem),
+    CACertsDer = [D || {'Certificate', D, not_encrypted} <- CAEntries],
+
+    ServerOpts = lists:map(
+                   fun ({certfile, _}) -> {cert, ChainDer};
+                       ({keyfile, _}) -> {key, PKeyDer};
+                       ({cacertfile, _}) -> {cacerts, CACertsDer};
+                       (O) -> O
+                   end, CurrentServerOptsWithAF),
+    case ssl:listen(0, ServerOpts) of
+        {ok, LSocket} ->
+            Accepter = spawn(fun () ->
+                                 {ok, HS} = ssl:transport_accept(LSocket,
+                                                                 30000),
+                                 {ok, S} = ssl:handshake(HS, 30000),
+                                 receive
+                                    stop -> catch ssl:close(S)
+                                 after 30000 -> ok
+                                 end
+                             end),
+            try
+                {ok, {_, Port}} = ssl:sockname(LSocket),
+                ?log_info("Started test server on port ~p for certs "
+                          "validation", [Port]),
+                Fun(Port)
+            catch
+                _:E:ST ->
+                    ?log_error("Unexpected exception: ~p~n~p", [E, ST]),
+                    {error, {test_server_error, unexpected_exception}}
+            after
+                Accepter ! stop,
+                catch ssl:close(LSocket)
+            end;
+        {error, Reason} ->
+            {error, {test_server_error, Reason}}
     end.
 
 add_CAs(Type, Pem) ->

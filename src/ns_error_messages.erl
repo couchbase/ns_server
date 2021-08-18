@@ -276,7 +276,16 @@ reload_node_certificate_error(too_many_pkey_entries) ->
 reload_node_certificate_error(malformed_pkey) ->
     <<"Malformed or unsupported private key format">>;
 reload_node_certificate_error(n2n_enabled) ->
-    <<"Operation requires node-to-node encryption to be disabled">>.
+    <<"Operation requires node-to-node encryption to be disabled">>;
+reload_node_certificate_error({test_connection_failed, Host, Msg}) ->
+    iolist_to_binary(io_lib:format(
+      "TLS connection to a test server with provided certificates failed. "
+      "Please make sure the node certificate contains '~s' in SAN. Details: ~s",
+      [Host, Msg]));
+reload_node_certificate_error({test_server_error, Reason}) ->
+    iolist_to_binary(io_lib:format("Failed to start a test server with "
+                                   "provided certificates: ~0p", [Reason],
+                                   [{chars_limit, 80}])).
 
 node_certificate_warning(mismatch) ->
     <<"Certificate is not signed with cluster CA.">>;
