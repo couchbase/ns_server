@@ -613,6 +613,14 @@ two_down_at_same_time_test() ->
        ?cut(expect_mail_down_warnings([b, c],
                                       test_frame(1, Nodes, [b, c], _)))]).
 
+two_down_at_same_time_with_shift_test() ->
+    Nodes = [a, b, c, d],
+    functools:chain(
+      test_init(3),
+      [?cut(expect_no_actions(test_frame(1, Nodes, [b], _))),
+       ?cut(expect_mail_down_warnings([b], test_frame(3, Nodes, [b, c], _))),
+       ?cut(expect_mail_down_warnings([c], test_frame(1, Nodes, [b, c], _)))]).
+
 multiple_mail_down_warning_test() ->
     Nodes = [a, b, c],
     functools:chain(
