@@ -1500,6 +1500,10 @@ join_marker_path() ->
 community_allowed_topologies_test() ->
     %% Test to help catch changes in community topologies that don't
     %% maintain backwards compatibility
+    meck:new(cluster_compat_mode, [passthrough]),
+    meck:expect(cluster_compat_mode, is_enterprise, fun () -> false end),
     ?assertEqual(community_allowed_topologies(),
-                 [[kv],[index,kv,n1ql],[fts,index,kv,n1ql]]).
+                 [[kv],[index,kv,n1ql],[fts,index,kv,n1ql]]),
+    meck:unload(cluster_compat_mode).
+
 -endif.

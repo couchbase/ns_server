@@ -982,11 +982,14 @@ do_handle_set_recovery_type(Req, Type, Params) ->
 
 -ifdef(TEST).
 parse_validate_services_list_test() ->
+    meck:new(cluster_compat_mode, [passthrough]),
+    meck:expect(cluster_compat_mode, is_enterprise, fun () -> true end),
     {error, _} = parse_validate_services_list(""),
     ?assertEqual({ok, [index, kv, n1ql]}, parse_validate_services_list("n1ql,kv,index")),
     {ok, [kv]} = parse_validate_services_list("kv"),
     {error, _} = parse_validate_services_list("n1ql,kv,s"),
-    ?assertMatch({error, _}, parse_validate_services_list("neeql,kv")).
+    ?assertMatch({error, _}, parse_validate_services_list("neeql,kv")),
+    meck:unload(cluster_compat_mode).
 
 hostname_parsing_test() ->
     Urls = [" \t\r\nhttp://host:1025\n\r\t ",

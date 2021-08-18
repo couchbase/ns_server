@@ -479,8 +479,14 @@ filter_services_by_version(Version, ServicesTable) ->
                   end, ServicesTable).
 
 supported_services_for_version(ClusterVersion) ->
-    filter_services_by_version(ClusterVersion, services_by_version()).
-
+    Invalid =
+        case cluster_compat_mode:is_enterprise() of
+            true ->
+                [];
+            false ->
+                enterprise_only_services()
+        end,
+    filter_services_by_version(ClusterVersion, services_by_version()) -- Invalid.
 
 cluster_supported_services() ->
     supported_services_for_version(cluster_compat_mode:get_compat_version()).
@@ -605,13 +611,46 @@ attach_node_uuids(Nodes, Config) ->
       end, Nodes).
 
 -ifdef(TEST).
+mock_out_compat_mode(Fun) ->
+    mock_out_compat_mode(Fun, true).
+
+mock_out_compat_mode(Fun, Val) ->
+    meck:new(cluster_compat_mode, [passthrough]),
+    meck:expect(cluster_compat_mode, is_enterprise, fun () -> Val end),
+    Resp = try
+               Fun()
+           catch Error ->
+                   throw(Error)
+           after
+               meck:unload(cluster_compat_mode)
+           end,
+    Resp.
+
 supported_services_for_version_test() ->
-    ?assertEqual(lists:sort([fts,kv,index,n1ql,cbas,eventing,backup]),
-                 lists:sort(supported_services_for_version(
-                              ?VERSION_70))).
+    mock_out_compat_mode(
+      ?cut(?assertEqual(
+              lists:sort([fts,kv,index,n1ql,cbas,eventing,backup]),
+              lists:sort(supported_services_for_version(
+                           ?VERSION_70))))).
 
 topology_aware_services_for_version_test() ->
-    ?assertEqual(lists:sort([fts,index,cbas,eventing,backup]),
-                 lists:sort(topology_aware_services_for_version(
-                              ?VERSION_70))).
+    mock_out_compat_mode(
+      ?cut(?assertEqual(lists:sort([fts,index,cbas,eventing,backup]),
+                        lists:sort(topology_aware_services_for_version(
+                                     ?VERSION_70))))).
+
+community_services_test() ->
+    mock_out_compat_mode(
+      ?cut(
+         ?assertEqual(
+            lists:sort([fts,kv,index,n1ql]),
+            lists:sort(supported_services_for_version(?VERSION_NEO)))),
+      false).
+
+enterprise_services_test() ->
+    mock_out_compat_mode(
+      ?cut(
+         ?assertEqual(
+            lists:sort([backup,cbas,eventing,fts,kv,index,n1ql]),
+            lists:sort(supported_services_for_version(?VERSION_NEO))))).
 -endif.
