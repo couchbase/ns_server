@@ -749,10 +749,13 @@ with_test_otp_server(Fun, CAPem, ChainPem, PKeyPem) ->
     CAEntries = public_key:pem_decode(CAPem),
     CACertsDer = [D || {'Certificate', D, not_encrypted} <- CAEntries],
 
+    Erl22Cert = hd(ChainDer),
+    Erl22CA = tl(ChainDer) ++ CACertsDer,
+
     ServerOpts = lists:map(
-                   fun ({certfile, _}) -> {cert, ChainDer};
+                   fun ({certfile, _}) -> {cert, Erl22Cert};
                        ({keyfile, _}) -> {key, PKeyDer};
-                       ({cacertfile, _}) -> {cacerts, CACertsDer};
+                       ({cacertfile, _}) -> {cacerts, Erl22CA};
                        (O) -> O
                    end, CurrentServerOptsWithAF),
     case ssl:listen(0, ServerOpts) of
