@@ -609,7 +609,16 @@ roles() ->
        {desc, <<"Access to /metrics endpoint for Prometheus integration. "
                 "Can read all stats for all services. This user cannot "
                 "access the web console">>}],
-      [{[admin, stats_export], [read]}]}].
+      [{[admin, stats_export], [read]}]},
+     {eventing_manage_functions, ?RBAC_SCOPE_PARAMS,
+      [{name, <<"Manage Scope Functions">>},
+       {folder, eventing},
+       {desc, <<"Can manage eventing functions for a given scope">>}],
+      [{[{collection, [bucket_name, scope_name, any]}, eventing, function], [manage]},
+       {[{collection, [bucket_name, scope_name, any]}, collections], [read]},
+       {[ui], [read]},
+       {[pools], [read]}]}
+    ].
 
 ui_folders() ->
     [{admin, "Administrative"},
@@ -619,6 +628,7 @@ ui_folders() ->
      {'query', "Query & Index"},
      {search, "Search"},
      {analytics, "Analytics"},
+     {eventing, "Eventing"},
      {xdcr, "XDCR"},
      {backup, "Backup"},
      {mobile, "Mobile"}].
@@ -1505,6 +1515,36 @@ query_functions_test_() ->
           end, Roles),
 
     {foreach, fun () -> ok end, Tests}.
+
+eventing_functions_test_() ->
+    Roles = [{eventing_manage_functions, [eventing, function], manage}],
+
+    Sources = [{scope, ["default", "s"]},
+               {scope, ["default", "s1"]},
+               {bucket, "default"}],
+
+    Tests =
+        lists:flatmap(
+          fun ({Role, Object, Oper}) ->
+                  RoleStr = atom_to_list(Role),
+                  Permissions = [{[S | Object], Oper} || S <- Sources],
+                  Test =
+                    ?cut(fun () ->
+                                 compile_and_assert(Role, Permissions, _, _)
+                         end),
+
+                    [{"existing scope with id's : " ++ RoleStr,
+                      Test([{"default", <<"default_id">>}, {"s", 1}],
+                           [true, false, false])},
+                     {"whole bucket",
+                      Test(["default", any],
+                           [true, true, true])},
+                     {"another bucket",
+                      Test(["test", any],
+                           [false, false, false])}]
+          end, Roles),
+
+        {foreach, fun () -> ok end, Tests}.
 
 validate_role_test() ->
     ValidateRole = validate_role(_, roles(), toy_buckets()),
