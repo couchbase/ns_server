@@ -520,17 +520,21 @@ generate_interfaces(MCDParams) ->
                       {Port, Value} = lists:keyfind(Port, 1, MCDParams),
                       Value
               end,
+    SSL = {[{key, list_to_binary(ns_ssl_services_setup:pkey_file_path())},
+            {cert, list_to_binary(ns_ssl_services_setup:legacy_cert_path())}]},
     InterProps = [{[{port, GetPort(port)}]},
 
                   {[{port, GetPort(dedicated_port)},
                     {system, true}]},
 
                   {[{port, GetPort(ssl_port)},
-                    {tls, true}]},
+                    {tls, true},
+                    {ssl, SSL}]},
 
                   {[{port, GetPort(dedicated_ssl_port)},
                     {system, true},
-                    {tls, true}]}],
+                    {tls, true},
+                    {ssl, SSL}]}],
 
     IPv4Interfaces = lists:map(
                        fun ({Props}) ->
