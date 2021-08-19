@@ -9,9 +9,9 @@ licenses/APL2.txt.
 */
 
 import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
-import {Subject} from "../web_modules/rxjs.js";
+import {combineLatest, Subject} from "../web_modules/rxjs.js";
 import {NgbModal} from "../web_modules/@ng-bootstrap/ng-bootstrap.js";
-import {takeUntil} from '../web_modules/rxjs/operators.js';
+import {takeUntil, map} from '../web_modules/rxjs/operators.js';
 import {MnPermissions} from './ajs.upgraded.providers.js';
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
@@ -54,10 +54,17 @@ class MnXDCRComponent extends MnLifeCycleHooksToStream {
 
     this.tasksXDCR = mnTasksService.stream.tasksXDCR;
     this.isEnterprise = mnPoolsService.stream.isEnterprise;
-
     this.permissions = mnPermissions.stream;
-    this.references = mnXDCRService.stream.getRemoteClustersFiltered
+
+    this.references =
+      mnXDCRService.stream.getRemoteClustersFiltered
       .pipe(referenceSorter.pipe);
+
+    this.isNotEnterpriseAndHasClusters =
+      combineLatest(
+        this.isEnterprise,
+        this.references
+      ).pipe(map(([isEnterprise, ref]) => !isEnterprise && !!(ref && ref.length)));
 
     this.onAddReference = onAddReference;
     this.referenceSorter = referenceSorter;
