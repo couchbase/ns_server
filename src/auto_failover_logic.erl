@@ -258,14 +258,22 @@ process_frame(Nodes, DownNodes, State, SvcConfig, DownSG) ->
                  ordsets:subtract(SortedNodes, SortedDownNodes),
                  State),
     DownStates = process_down_states(SortedDownNodes, State, NodesChanged),
-    DownSGState = get_down_sg_state(DownStates, DownSG,
-                                    State#state.down_server_group_state),
 
-    {Actions, NewDownStates} = process_downs(DownStates, State, SvcConfig,
+    {{Actions, NewDownStates}, NewState} =
+        case DownSG of
+            undefined ->
+                {process_node_down(DownStates, State, SvcConfig), State};
+            _ ->
+                DownSGState = get_down_sg_state(
+                                DownStates, DownSG,
+                                State#state.down_server_group_state),
+                {process_with_group_failover(DownStates, State, SvcConfig,
                                              DownSGState),
+                 State#state{down_server_group_state = DownSGState}}
+        end,
 
     NodeStates = lists:umerge(UpStates, NewDownStates),
-    SvcS = update_multi_services_state(Actions, State#state.services_state),
+    SvcS = update_multi_services_state(Actions, NewState#state.services_state),
 
     case Actions of
         [] ->
@@ -273,15 +281,17 @@ process_frame(Nodes, DownNodes, State, SvcConfig, DownSG) ->
         _ ->
             ?log_debug("Decided on following actions: ~p", [Actions])
     end,
-    {Actions, State#state{nodes_states = NodeStates, services_state = SvcS,
-                          down_server_group_state = DownSGState}}.
+    {Actions, State#state{nodes_states = NodeStates, services_state = SvcS}}.
 
-process_downs(DownStates, State, SvcConfig, #down_group_state{name = nil}) ->
+process_with_group_failover(DownStates, State, SvcConfig,
+                            #down_group_state{name = nil}) ->
     process_node_down(DownStates, State, SvcConfig);
-process_downs(DownStates, _, _, #down_group_state{state = nearly_down}) ->
+process_with_group_failover(DownStates, _, _,
+                            #down_group_state{state = nearly_down}) ->
     {[], DownStates};
-process_downs(DownStates, State, SvcConfig,
-              #down_group_state{name = DownSG, state = failover}) ->
+process_with_group_failover(DownStates, State, SvcConfig,
+                            #down_group_state{name = DownSG,
+                                              state = failover}) ->
     {process_group_down(DownSG, DownStates, State, SvcConfig), DownStates}.
 
 get_down_node_names(DownStates) ->
@@ -535,7 +545,7 @@ test_frame(0, Actions, _Nodes, _DownNodes, State, _SvcConfig, Report) ->
 test_frame(Times, Actions, Nodes, DownNodes, State, SvcConfig, Report) ->
     ?assertEqual([], Actions),
     {NewActions, NewState} =
-        process_frame(Nodes, DownNodes, State, SvcConfig, []),
+        process_frame(Nodes, DownNodes, State, SvcConfig, undefined),
     StateDiff = flatten_state(NewState) -- flatten_state(State),
     test_frame(Times - 1, NewActions, Nodes, DownNodes, NewState, SvcConfig,
                [{Times - 1, NewActions, StateDiff} | Report]).

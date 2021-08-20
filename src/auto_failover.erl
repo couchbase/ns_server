@@ -290,8 +290,13 @@ handle_info(tick, State0) ->
 
     NodeStatuses = ns_doctor:get_nodes(),
     DownNodes = fastfo_down_nodes(NonPendingNodes),
-    DownSG = get_down_server_group(DownNodes, Config, Snapshot,
-                                   NonPendingNodes),
+    DownSG = case cluster_compat_mode:is_cluster_NEO() of
+                 true ->
+                     undefined;
+                 false ->
+                     get_down_server_group(DownNodes, Config, Snapshot,
+                                           NonPendingNodes)
+             end,
 
     State = log_down_nodes_reason(DownNodes, State1),
     CurrentlyDown = [N || {N, _, _} <- DownNodes],
