@@ -504,8 +504,7 @@ setup_services_check_quota(Services, Params) ->
                        fun(Service) ->
                                {ok, Quota} = memory_quota:get_quota(Service),
                                {Service, Quota}
-                       end, memory_quota:aware_services(
-                              cluster_compat_mode:get_compat_version()));
+                       end, memory_quota:aware_services());
                  "true" ->
                      do_update_with_default_quotas(memory_quota:default_quotas(Services))
              end,

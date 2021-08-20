@@ -382,16 +382,16 @@ handle_pool_info_streaming(Id, Req) ->
 get_cluster_name() ->
     ns_config:read_key_fast(cluster_name, "").
 
-pool_settings_post_validators(Config, Snapshot, CompatVersion) ->
+pool_settings_post_validators(Config, Snapshot) ->
     [validator:has_params(_),
      validator:touch(clusterName, _),
-     validate_memory_quota(Config, Snapshot, CompatVersion, _),
+     validate_memory_quota(Config, Snapshot, _),
      validator:unsupported(_)].
 
-validate_memory_quota(Config, Snapshot, CompatVersion, ValidatorState) ->
+validate_memory_quota(Config, Snapshot, ValidatorState) ->
     QuotaFields =
         [{memory_quota:service_to_json_name(Service), Service} ||
-            Service <- memory_quota:aware_services(CompatVersion)],
+            Service <- memory_quota:aware_services(Config)],
     ValidationResult =
         lists:foldl(
           fun ({Key, _}, Acc) ->
@@ -473,12 +473,11 @@ do_handle_pool_settings_post(Req) ->
                  [ns_bucket:fetch_snapshot(all, _),
                   ns_cluster_membership:fetch_snapshot(_)],
                  #{ns_config => Config}),
-    CompatVersion = cluster_compat_mode:get_compat_version(Config),
 
     validator:handle(
       do_handle_pool_settings_post_body(Req, Config, _),
       Req, form,
-      pool_settings_post_validators(Config, Snapshot, CompatVersion)).
+      pool_settings_post_validators(Config, Snapshot)).
 
 do_handle_pool_settings_post_body(Req, Config, Values) ->
     case lists:keyfind(quotas, 1, Values) of
@@ -509,7 +508,7 @@ do_audit_cluster_settings(Req) ->
                fun (Service) ->
                        {ok, Quota} = memory_quota:get_quota(Service),
                        {Service, Quota}
-               end, memory_quota:aware_services(cluster_compat_mode:get_compat_version())),
+               end, memory_quota:aware_services()),
     ClusterName = get_cluster_name(),
     ns_audit:cluster_settings(Req, Quotas, ClusterName).
 

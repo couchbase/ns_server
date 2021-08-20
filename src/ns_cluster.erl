@@ -1342,7 +1342,7 @@ check_memory_size(NodeKVList, Services) ->
                       false ->
                           Acc
                   end
-          end, [], memory_quota:aware_services(cluster_compat_mode:get_compat_version())),
+          end, [], memory_quota:aware_services()),
 
     case memory_quota:check_this_node_quotas(Services, Quotas) of
         ok ->
@@ -1521,10 +1521,7 @@ join_marker_path() ->
 community_allowed_topologies_test() ->
     %% Test to help catch changes in community topologies that don't
     %% maintain backwards compatibility
-    meck:new(cluster_compat_mode, [passthrough]),
-    meck:expect(cluster_compat_mode, is_enterprise, fun () -> false end),
     ?assertEqual(community_allowed_topologies(),
-                 [[kv],[index,kv,n1ql],[fts,index,kv,n1ql]]),
-    meck:unload(cluster_compat_mode).
+                 [[kv],[index,kv,n1ql],[fts,index,kv,n1ql]]).
 
 -endif.

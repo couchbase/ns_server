@@ -69,26 +69,28 @@
          }).
 
 init_state(DownThreshold) ->
-    init_state(DownThreshold, cluster_compat_mode:get_compat_version()).
+    init_state(DownThreshold, cluster_compat_mode:get_compat_version(),
+               cluster_compat_mode:is_enterprise()).
 
-init_state(DownThreshold, CompatVersion) ->
+init_state(DownThreshold, CompatVersion, IsEnterprise) ->
     %% When the auto-failover timeout value is small the skew among the
     %% various monitors checking state is a significant portion of the
     %% overall timeout value.  Because of this we allow an extra second
     %% to mitigate the skew.
     AdjustedDownThreshold = DownThreshold - ?DOWN_GRACE_PERIOD,
     #state{nodes_states = [],
-           services_state = init_services_state(CompatVersion),
+           services_state = init_services_state(CompatVersion, IsEnterprise),
            down_server_group_state = init_down_group_state(),
            down_threshold = AdjustedDownThreshold}.
 
-init_services_state(CompatVersion) ->
+init_services_state(CompatVersion, IsEnterprise) ->
     lists:map(
       fun (Service) ->
               #service_state{name = Service,
                              mailed_too_small_cluster = nil,
                              logged_auto_failover_disabled = false}
-      end, ns_cluster_membership:supported_services_for_version(CompatVersion)).
+      end, ns_cluster_membership:supported_services_for_version(
+             CompatVersion, IsEnterprise)).
 
 init_down_group_state() ->
     #down_group_state{name = nil, down_counter = 0, state = nil}.
@@ -537,31 +539,16 @@ service_failover_min_node_count(backup) ->
 
 
 -ifdef(TEST).
-mock_out_compat_mode(Fun) ->
-    mock_out_compat_mode(Fun, true).
-
-mock_out_compat_mode(Fun, Val) ->
-    meck:new(cluster_compat_mode, [passthrough]),
-    meck:expect(cluster_compat_mode, is_enterprise, fun () -> Val end),
-    Resp = try
-               Fun()
-           catch Error ->
-                   throw(Error)
-           after
-               meck:unload(cluster_compat_mode)
-           end,
-    Resp.
-
 service_failover_min_node_count_test() ->
-    Services = mock_out_compat_mode(
-                 ?cut(ns_cluster_membership:supported_services())),
+    Services = ns_cluster_membership:supported_services_for_version(
+                 ?LATEST_VERSION_NUM, true),
     lists:foreach(
       fun (Service) ->
               true = is_integer(service_failover_min_node_count(Service))
       end, Services).
 
 test_init(DownThreshold) ->
-    init_state(DownThreshold + ?DOWN_GRACE_PERIOD, ?LATEST_VERSION_NUM).
+    init_state(DownThreshold + ?DOWN_GRACE_PERIOD, ?LATEST_VERSION_NUM, true).
 
 attach_test_uuid(Node) ->
     {Node, list_to_binary(atom_to_list(Node))}.
@@ -597,15 +584,13 @@ expect_mail_down_warnings(Nodes, {Actions, State}) ->
     State.
 
 basic_kv_1_test() ->
-    mock_out_compat_mode(
-      ?cut(functools:chain(
-             test_init(3),
-             [?cut(expect_no_actions(test_frame(1, [a, b, c], [], _))),
-              ?cut(expect_failover(b, test_frame(6, [a, b, c], [b], _)))]))).
+    functools:chain(
+      test_init(3),
+      [?cut(expect_no_actions(test_frame(1, [a, b, c], [], _))),
+       ?cut(expect_failover(b, test_frame(6, [a, b, c], [b], _)))]).
 
 basic_kv_2_test() ->
-    mock_out_compat_mode(
-      ?cut(expect_failover(b, test_frame(7, [a, b, c], [b], test_init(4))))).
+    expect_failover(b, test_frame(7, [a, b, c], [b], test_init(4))).
 
 min_size_test_body(Threshold) ->
     {Actions, State} = test_frame(Threshold + 3, [a, b], [b],
@@ -614,67 +599,54 @@ min_size_test_body(Threshold) ->
     test_frame(30, [a, b], [b], State).
 
 min_size_test() ->
-    mock_out_compat_mode(
-      fun () ->
-              min_size_test_body(2),
-              min_size_test_body(3),
-              min_size_test_body(4)
-      end).
+    min_size_test_body(2),
+    min_size_test_body(3),
+    min_size_test_body(4).
 
 min_size_and_increasing_test() ->
-    mock_out_compat_mode(
-      fun () ->
-              S = expect_no_actions(min_size_test_body(2)),
-              expect_failover(b, test_frame(5, [a, b, c], [b], S))
-      end).
+    S = expect_no_actions(min_size_test_body(2)),
+    expect_failover(b, test_frame(5, [a, b, c], [b], S)).
 
 other_down_test() ->
     Nodes = [a, b, c],
-    mock_out_compat_mode(
-      ?cut(functools:chain(
-             test_init(3),
-             [?cut(expect_no_actions(test_frame(5, Nodes, [b], _))),
-              ?cut(expect_mail_down_warnings([b], test_frame(1, Nodes, [b, c], _))),
-              ?cut(expect_failover(b, test_frame(2, Nodes, [b], _))),
-              ?cut(expect_no_actions(test_frame(1, Nodes, [b, c], _))),
-              ?cut(expect_failover(b, test_frame(1, Nodes, [b], _)))]))).
+    functools:chain(
+      test_init(3),
+      [?cut(expect_no_actions(test_frame(5, Nodes, [b], _))),
+       ?cut(expect_mail_down_warnings([b], test_frame(1, Nodes, [b, c], _))),
+       ?cut(expect_failover(b, test_frame(2, Nodes, [b], _))),
+       ?cut(expect_no_actions(test_frame(1, Nodes, [b, c], _))),
+       ?cut(expect_failover(b, test_frame(1, Nodes, [b], _)))]).
 
 two_down_at_same_time_test() ->
     Nodes = [a, b, c, d],
-    mock_out_compat_mode(
-      ?cut(functools:chain(
-             test_init(3),
-             [?cut(expect_no_actions(test_frame(3, Nodes, [b, c], _))),
-              ?cut(expect_mail_down_warnings([b, c],
-                                             test_frame(1, Nodes, [b, c], _)))]))).
+    functools:chain(
+      test_init(3),
+      [?cut(expect_no_actions(test_frame(3, Nodes, [b, c], _))),
+       ?cut(expect_mail_down_warnings([b, c],
+                                      test_frame(1, Nodes, [b, c], _)))]).
 
 multiple_mail_down_warning_test() ->
     Nodes = [a, b, c],
-    mock_out_compat_mode(
-      ?cut(functools:chain(
-             test_init(3),
-             [?cut(expect_no_actions(test_frame(4, Nodes, [b], _))),
-              ?cut(expect_mail_down_warnings([b],
-                                             test_frame(1, Nodes, [b, c], _))),
-              %% Make sure not every tick sends out a message
-              ?cut(expect_no_actions(test_frame(2, Nodes, [b, c], _))),
-              ?cut(
-                 expect_mail_down_warnings([c],
-                                           test_frame(1, Nodes, [b, c], _)))]))).
+    functools:chain(
+      test_init(3),
+      [?cut(expect_no_actions(test_frame(4, Nodes, [b], _))),
+       ?cut(expect_mail_down_warnings([b], test_frame(1, Nodes, [b, c], _))),
+       %% Make sure not every tick sends out a message
+       ?cut(expect_no_actions(test_frame(2, Nodes, [b, c], _))),
+       ?cut(expect_mail_down_warnings([c], test_frame(1, Nodes, [b, c], _)))]).
 
 %% Test if mail_down_warning is sent again if node was up in between
 mail_down_warning_down_up_down_test() ->
     Nodes = [a, b, c],
-    mock_out_compat_mode(
-      ?cut(functools:chain(
-             test_init(3),
-             [?cut(expect_no_actions(test_frame(4, Nodes, [b], _))),
-              ?cut(expect_mail_down_warnings([b],
-                                             test_frame(1, Nodes, [b, c], _))),
-              %% Node is up again
-              ?cut(expect_no_actions(test_frame(1, Nodes, [], _))),
-              ?cut(expect_no_actions(test_frame(3, Nodes, [b], _))),
-              ?cut(expect_mail_down_warnings([b],
-                                             test_frame(1, Nodes, [b, c], _)))]))).
+    functools:chain(
+      test_init(3),
+      [?cut(expect_no_actions(test_frame(4, Nodes, [b], _))),
+       ?cut(expect_mail_down_warnings([b],
+                                      test_frame(1, Nodes, [b, c], _))),
+       %% Node is up again
+       ?cut(expect_no_actions(test_frame(1, Nodes, [], _))),
+       ?cut(expect_no_actions(test_frame(3, Nodes, [b], _))),
+       ?cut(expect_mail_down_warnings([b],
+                                      test_frame(1, Nodes, [b, c], _)))]).
 
 -endif.

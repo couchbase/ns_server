@@ -241,12 +241,11 @@ build_full_node_info(Req, Node) ->
                                    Fields)}.
 
 build_memory_quota_info(Config) ->
-    CompatVersion = cluster_compat_mode:get_compat_version(Config),
     lists:map(
       fun (Service) ->
               {ok, Quota} = memory_quota:get_quota(Config, Service),
               {memory_quota:service_to_json_name(Service), Quota}
-      end, memory_quota:aware_services(CompatVersion)).
+      end, memory_quota:aware_services(Config)).
 
 build_nodes_info(Ctx = #ctx{snapshot = Snapshot}) ->
     F = build_nodes_info_fun(Ctx),

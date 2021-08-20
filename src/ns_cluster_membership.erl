@@ -53,8 +53,9 @@
         ]).
 
 -export([supported_services/0,
+         supported_services/1,
          allowed_services/1,
-         supported_services_for_version/1,
+         supported_services_for_version/2,
          cluster_supported_services/0,
          topology_aware_services/0,
          topology_aware_services_for_version/1,
@@ -447,12 +448,17 @@ prepare_to_join(RemoteNode, Cookie) ->
       end, InitialKVs).
 
 supported_services() ->
-    supported_services_for_version(cluster_compat_mode:supported_compat_version()).
+    supported_services(cluster_compat_mode:is_enterprise()).
+
+supported_services(IsEnterprise) ->
+    supported_services_for_version(
+      cluster_compat_mode:supported_compat_version(),
+      IsEnterprise).
 
 allowed_services(enterprise) ->
-    supported_services();
+    supported_services(true);
 allowed_services(community) ->
-    supported_services() -- enterprise_only_services().
+    supported_services(false).
 
 enterprise_only_services() ->
     [cbas, eventing, backup].
@@ -478,18 +484,20 @@ filter_services_by_version(Version, ServicesTable) ->
                           end
                   end, ServicesTable).
 
-supported_services_for_version(ClusterVersion) ->
-    Invalid =
-        case cluster_compat_mode:is_enterprise() of
+supported_services_for_version(ClusterVersion, IsEnterprise) ->
+    NotSupported =
+        case IsEnterprise of
             true ->
                 [];
             false ->
                 enterprise_only_services()
         end,
-    filter_services_by_version(ClusterVersion, services_by_version()) -- Invalid.
+    filter_services_by_version(ClusterVersion,
+                               services_by_version()) -- NotSupported.
 
 cluster_supported_services() ->
-    supported_services_for_version(cluster_compat_mode:get_compat_version()).
+    supported_services_for_version(cluster_compat_mode:get_compat_version(),
+                                   cluster_compat_mode:is_enterprise()).
 
 default_services() ->
     [kv].
@@ -611,46 +619,23 @@ attach_node_uuids(Nodes, Config) ->
       end, Nodes).
 
 -ifdef(TEST).
-mock_out_compat_mode(Fun) ->
-    mock_out_compat_mode(Fun, true).
-
-mock_out_compat_mode(Fun, Val) ->
-    meck:new(cluster_compat_mode, [passthrough]),
-    meck:expect(cluster_compat_mode, is_enterprise, fun () -> Val end),
-    Resp = try
-               Fun()
-           catch Error ->
-                   throw(Error)
-           after
-               meck:unload(cluster_compat_mode)
-           end,
-    Resp.
-
 supported_services_for_version_test() ->
-    mock_out_compat_mode(
-      ?cut(?assertEqual(
-              lists:sort([fts,kv,index,n1ql,cbas,eventing,backup]),
-              lists:sort(supported_services_for_version(
-                           ?VERSION_70))))).
+    ?assertEqual(
+       lists:sort([fts,kv,index,n1ql,cbas,eventing,backup]),
+       lists:sort(supported_services_for_version(?VERSION_70, true))).
 
 topology_aware_services_for_version_test() ->
-    mock_out_compat_mode(
-      ?cut(?assertEqual(lists:sort([fts,index,cbas,eventing,backup]),
-                        lists:sort(topology_aware_services_for_version(
-                                     ?VERSION_70))))).
+    ?assertEqual(lists:sort([fts,index,cbas,eventing,backup]),
+                 lists:sort(topology_aware_services_for_version(
+                              ?VERSION_70))).
 
 community_services_test() ->
-    mock_out_compat_mode(
-      ?cut(
-         ?assertEqual(
-            lists:sort([fts,kv,index,n1ql]),
-            lists:sort(supported_services_for_version(?VERSION_NEO)))),
-      false).
+    ?assertEqual(
+       lists:sort([fts,kv,index,n1ql]),
+       lists:sort(supported_services_for_version(?VERSION_NEO, false))).
 
 enterprise_services_test() ->
-    mock_out_compat_mode(
-      ?cut(
-         ?assertEqual(
-            lists:sort([backup,cbas,eventing,fts,kv,index,n1ql]),
-            lists:sort(supported_services_for_version(?VERSION_NEO))))).
+    ?assertEqual(
+       lists:sort([backup,cbas,eventing,fts,kv,index,n1ql]),
+       lists:sort(supported_services_for_version(?VERSION_NEO, true))).
 -endif.

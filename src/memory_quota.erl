@@ -27,6 +27,7 @@
          set_quotas/2,
          default_quotas/1,
          service_to_json_name/1,
+         aware_services/0,
          aware_services/1,
          cgroup_memory_data/0,
          choose_limit/3]).
@@ -108,13 +109,21 @@ service_to_json_name(eventing) ->
 services_ranking() ->
     [kv, cbas, index, fts, eventing].
 
-aware_services(CompatVersion) ->
-    [S || S <- ns_cluster_membership:supported_services_for_version(CompatVersion),
+aware_services() ->
+    aware_services(ns_config:latest()).
+
+aware_services(Config) ->
+    aware_services(
+      cluster_compat_mode:get_compat_version(Config),
+      cluster_compat_mode:is_enterprise(Config)).
+
+aware_services(CompatVersion, IsEnterprise) ->
+    [S || S <- ns_cluster_membership:supported_services_for_version(
+                 CompatVersion, IsEnterprise),
           lists:member(S, services_ranking())].
 
 get_all_quotas(Config, UpdatedQuotas) ->
-    CompatVersion = cluster_compat_mode:get_compat_version(Config),
-    Services = aware_services(CompatVersion),
+    Services = aware_services(Config),
     lists:map(
       fun (Service) ->
               Value =
