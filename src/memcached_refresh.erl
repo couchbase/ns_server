@@ -93,7 +93,12 @@ handle_info(refresh, ToRefresh) ->
             ?log_debug("Refresh of ~p failed. Retry in ~p ms.", [ToRetry, RetryAfter]),
             erlang:send_after(RetryAfter, self(), refresh)
     end,
-    {noreply, ToRetry}.
+    {noreply, ToRetry};
+
+%% Handle a late arriving response from a gen_server:call which may have
+%% timed out.
+handle_info(_Msg, State) ->
+    {noreply, State}.
 
 refresh_fun(Item) ->
     list_to_atom("refresh_" ++ atom_to_list(Item)).
