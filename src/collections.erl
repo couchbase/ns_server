@@ -29,7 +29,8 @@
          uid/2,
          manifest_json/2,
          manifest_json/3,
-         create_scope/2,
+         create_scope/3,
+         update_limits/3,
          create_collection/4,
          drop_scope/2,
          drop_collection/3,
@@ -235,11 +236,19 @@ jsonify_manifest(Manifest, WithDefaults) ->
     ScopesJson =
         lists:map(
           fun ({ScopeName, Scope}) ->
+                  LimitsJson = case get_limits(Scope) of
+                                   [] ->
+                                       [];
+                                   Limits ->
+                                       [{limits,
+                                         {[{S, {L}} || {S, L} <- Limits]}}]
+                               end,
                   {[{name, list_to_binary(ScopeName)},
                     {uid, uid(Scope)},
                     {collections,
                      [collection_to_memcached(CollName, Coll, WithDefaults) ||
-                         {CollName, Coll} <- get_collections(Scope)]}]}
+                         {CollName, Coll} <- get_collections(Scope)]}] ++
+                   LimitsJson}
           end, get_scopes(Manifest)),
     {[{uid, uid(Manifest)}, {scopes, ScopesJson}]}.
 
@@ -248,8 +257,11 @@ get_max_supported(num_scopes) ->
 get_max_supported(num_collections) ->
     ns_config:read_key_fast(max_collections_count, ?MAX_COLLECTIONS_SUPPORTED).
 
-create_scope(Bucket, Name) ->
-    update(Bucket, {create_scope, Name}).
+update_limits(Bucket, Name, Limits) ->
+    update(Bucket, {update_limits, Name, Limits}).
+
+create_scope(Bucket, Name, Limits) ->
+    update(Bucket, {create_scope, Name, Limits}).
 
 create_collection(Bucket, Scope, Name, Props) ->
     update(Bucket, {create_collection, Scope, Name,
@@ -444,30 +456,33 @@ get_operations(CurrentScopes, RequiredScopes) ->
       fun ({delete, ScopeName, _}) ->
               {drop_scope, ScopeName};
           ({add, ScopeName, ScopeProps}) ->
-              [{create_scope, ScopeName} |
+              Limits = get_limits(ScopeProps),
+              [{create_scope, ScopeName, Limits} |
                [{create_collection, ScopeName, CollectionName,
                  remove_defaults(CollectionProps)} ||
                    {CollectionName, CollectionProps}
                        <- get_collections(ScopeProps)]];
           ({modify, ScopeName, ScopeProps, CurrentScopeProps}) ->
-              get_operations(
-                fun ({delete, CollectionName, _}) ->
-                        {drop_collection, ScopeName, CollectionName};
-                    ({add, CollectionName, CollectionProps}) ->
-                        {create_collection, ScopeName, CollectionName,
-                         remove_defaults(CollectionProps)};
-                    ({modify, CollectionName, CollectionProps,
-                      CurrentCollectionProps}) ->
-                        case lists:sort(remove_defaults(CollectionProps)) =:=
-                            lists:sort(lists:keydelete(
-                                         uid, 1, CurrentCollectionProps)) of
-                            false ->
-                                {modify_collection, ScopeName, CollectionName};
-                            true ->
-                                []
-                        end
-                end, get_collections(CurrentScopeProps),
-                get_collections(ScopeProps))
+              Limits = [{update_limits, ScopeName, get_limits(ScopeProps)}],
+              (Limits ++
+               get_operations(
+                 fun ({delete, CollectionName, _}) ->
+                         {drop_collection, ScopeName, CollectionName};
+                     ({add, CollectionName, CollectionProps}) ->
+                         {create_collection, ScopeName, CollectionName,
+                          remove_defaults(CollectionProps)};
+                     ({modify, CollectionName, CollectionProps,
+                       CurrentCollectionProps}) ->
+                         case lists:sort(remove_defaults(CollectionProps)) =:=
+                              lists:sort(lists:keydelete(
+                                           uid, 1, CurrentCollectionProps)) of
+                             false ->
+                                 {modify_collection, ScopeName, CollectionName};
+                             true ->
+                                 []
+                         end
+                 end, get_collections(CurrentScopeProps),
+                 get_collections(ScopeProps)))
       end, CurrentScopes, RequiredScopes).
 
 diff_scopes(CurrentScopes, RequiredScopes) ->
@@ -528,6 +543,14 @@ compile_operation({set_manifest, Roles, RequiredScopes, CheckUid},
 compile_operation(Oper, _Bucket, _Manifest) ->
     [Oper].
 
+verify_oper({update_limits, Name, _Limits}, Manifest) ->
+    Scopes = get_scopes(Manifest),
+    case find_scope(Name, Scopes) of
+        undefined ->
+            {scope_not_found, Name};
+        _ ->
+            ok
+    end;
 verify_oper({check_uid, CheckUid}, Manifest) ->
     ManifestUid = proplists:get_value(uid, Manifest),
     case CheckUid =:= ManifestUid orelse CheckUid =:= undefined of
@@ -536,7 +559,7 @@ verify_oper({check_uid, CheckUid}, Manifest) ->
         false ->
             uid_mismatch
     end;
-verify_oper({create_scope, Name}, Manifest) ->
+verify_oper({create_scope, Name, _Limits}, Manifest) ->
     Scopes = get_scopes(Manifest),
     case find_scope(Name, Scopes) of
         undefined ->
@@ -568,12 +591,14 @@ verify_oper({modify_collection, ScopeName, Name}, _Manifest) ->
 verify_oper(bump_epoch, _Manifest) ->
     ok.
 
+handle_oper({update_limits, Name, Limits}, Manifest) ->
+    do_update_limits(Manifest, Name, Limits);
 handle_oper({check_uid, _CheckUid}, Manifest) ->
     Manifest;
-handle_oper({create_scope, Name}, Manifest) ->
+handle_oper({create_scope, Name, Limits}, Manifest) ->
     functools:chain(
       Manifest,
-      [add_scope(_, Name),
+      [add_scope(_, Name, Limits),
        bump_id(_, next_scope_uid),
        update_counter(_, num_scopes, 1)]);
 handle_oper({drop_scope, Name}, Manifest) ->
@@ -639,9 +664,41 @@ get_scopes(Manifest) ->
 find_scope(Name, Scopes) ->
     proplists:get_value(Name, Scopes).
 
-add_scope(Manifest, Name) ->
+sort_limits(Limits) ->
+    lists:usort([{S, lists:usort(L)} || {S, L} <- Limits]).
+
+do_update_limits(Manifest, ScopeName, Limits) ->
+    SortedLimits = sort_limits(Limits),
+    on_scopes(
+      fun (Scopes) ->
+              Scope = find_scope(ScopeName, Scopes),
+              CurLimits = get_limits(Scope),
+              case CurLimits =:= SortedLimits of
+                  true ->
+                      Scopes;
+                  false ->
+                      NScope = case SortedLimits of
+                                   [] ->
+                                       lists:keydelete(limits, 1, Scope);
+                                   _ ->
+                                       lists:keystore(limits, 1, Scope,
+                                                      {limits, SortedLimits})
+                               end,
+                      lists:keystore(ScopeName, 1, Scopes,
+                                     {ScopeName, NScope})
+              end
+      end, Manifest).
+
+add_scope(Manifest, Name, Limits) ->
     Uid = proplists:get_value(next_scope_uid, Manifest),
-    on_scopes([{Name, [{uid, Uid}, {collections, []}]} | _], Manifest).
+    Extra = case Limits of
+                no_limits ->
+                    [];
+                _ ->
+                    [{limits, sort_limits(Limits)}]
+            end,
+    on_scopes([{Name, [{uid, Uid}, {collections, []}] ++ Extra} | _],
+              Manifest).
 
 delete_scope(Manifest, Name) ->
     on_scopes(lists:keydelete(Name, 1, _), Manifest).
@@ -653,6 +710,9 @@ on_scopes(Fun, Manifest) ->
     Scopes = get_scopes(Manifest),
     NewScopes = Fun(Scopes),
     update_scopes(NewScopes, Manifest).
+
+get_limits(Scope) ->
+    proplists:get_value(limits, Scope, []).
 
 get_collections(Scope) ->
     proplists:get_value(collections, Scope, []).
@@ -777,7 +837,8 @@ set_manifest(Bucket, Identity, RequiredScopes, RequestedUid) ->
             Scopes =
                 [{proplists:get_value(name, Scope),
                   [{collections, [extract_name(Props) ||
-                                     {Props} <- get_collections(Scope)]}]} ||
+                                     {Props} <- get_collections(Scope)]},
+                   {limits, get_limits(Scope)}]} ||
                     {Scope} <- RequiredScopes],
             update(Bucket, {set_manifest, Roles, Scopes, Uid})
     end.
@@ -870,7 +931,7 @@ get_operations_test_() ->
      [{"Create scopes and collections commands in the correct order",
        fun () ->
                ?assertEqual(
-                  [{create_scope, "s1"},
+                  [{create_scope, "s1", []},
                    {create_collection, "s1", "c1", []},
                    {create_collection, "s1", "c2", [{maxTTL, 8}]}],
                   get_operations(
@@ -881,7 +942,10 @@ get_operations_test_() ->
       {"Drop/create collections",
        fun () ->
                ?assertListsEqual(
-                  [{create_collection, "s2", "c3", []},
+                  [{update_limits, "s1", []},
+                   {update_limits, "s2", []},
+                   {update_limits, "_default", []},
+                   {create_collection, "s2", "c3", []},
                    {create_collection, "s1", "c2", []},
                    {drop_collection, "s1", "c1"},
                    {drop_collection, "_default", "_default"}],
@@ -897,7 +961,8 @@ get_operations_test_() ->
       {"Drop scope with collection present.",
        fun () ->
                ?assertListsEqual(
-                  [{create_collection, "s1", "c2", []},
+                  [{update_limits, "s1", []},
+                   {create_collection, "s1", "c2", []},
                    {drop_scope, "s2"}],
                   get_operations(
                     [{"s1", [{collections, [{"c1", []}]}]},
@@ -909,7 +974,9 @@ get_operations_test_() ->
       {"Modify collection.",
        fun () ->
                ?assertListsEqual(
-                  [{modify_collection, "s3", "ic2"},
+                  [{update_limits, "s3", []},
+                   {update_limits, "s1", [{"l1", 1}, {"l2", 2}]},
+                   {modify_collection, "s3", "ic2"},
                    {create_collection, "s1", "c2", []},
                    {drop_scope, "s2"}],
                   get_operations(
@@ -917,7 +984,8 @@ get_operations_test_() ->
                      {"s2", [{collections, [{"c1", []}, {"c2", []}]}]},
                      {"s3", [{collections, [{"ic1", []},
                                             {"ic2", [{maxTTL, 10}]}]}]}],
-                    [{"s1", [{collections, [{"c1", []}, {"c2", []}]}]},
+                    [{"s1", [{limits, [{"l1", 1}, {"l2", 2}]},
+                             {collections, [{"c1", []}, {"c2", []}]}]},
                      {"s3", [{collections, [{"ic1", [{maxTTL, 0}]},
                                             {"ic2", [{maxTTL, 0}]}]}]}]))
        end}]}.

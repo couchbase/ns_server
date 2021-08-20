@@ -37,10 +37,19 @@ handle_post_scope(Bucket, Req) ->
     validator:handle(
       fun (Values) ->
               Name = proplists:get_value(name, Values),
-              RV = collections:create_scope(Bucket, Name),
-              maybe_audit(RV, Req, ns_audit:create_scope(_, Bucket, Name, _)),
-              handle_rv(RV, Req)
-      end, Req, form, scope_validators(default_not_allowed)).
+              Limits = proplists:get_value(limits, Values, no_limits),
+              RV = collections:create_scope(Bucket, Name, Limits),
+              case {RV, Limits} of
+                  {{scope_already_exists, _}, L} when L =/= no_limits ->
+                      RV1 = collections:update_limits(Bucket, Name, Limits),
+                      handle_rv(RV1, Req);
+                  _ ->
+                      maybe_audit(RV, Req,
+                                  ns_audit:create_scope(_, Bucket, Name, _)),
+                      handle_rv(RV, Req)
+              end
+      end, Req, form,
+      scope_limit_validators(raw) ++ scope_validators(default_not_allowed)).
 
 maybe_audit({ok, Uid}, Req, SuccessfulAuditFun) ->
     SuccessfulAuditFun(Req, Uid);
@@ -48,6 +57,31 @@ maybe_audit(forbidden, Req, _SuccessfulAuditFun) ->
     ns_audit:auth_failure(Req);
 maybe_audit(_, _Req, _SuccessfulAuditFun) ->
     ok.
+
+service_scope_limit_validators(clusterManager) ->
+    [validator:integer(num_collections, 1, infinity, _),
+     validator:unsupported(_)];
+service_scope_limit_validators(fts) ->
+    [validator:integer(num_fts_indexes, 1, infinity, _),
+     validator:unsupported(_)];
+service_scope_limit_validators(index) ->
+    [validator:integer(num_indexes, 1, infinity, _),
+     validator:unsupported(_)];
+service_scope_limit_validators(kv) ->
+    [validator:integer(data_size, 1, infinity, _),
+     validator:unsupported(_)].
+
+scope_limit_validators(Type) ->
+    Validators = [validator:decoded_json(
+                    Service, service_scope_limit_validators(Service), _) ||
+                  Service <- [clusterManager, fts, index, kv]] ++
+                 [validator:unsupported(_)],
+    [case Type of
+         decoded ->
+             validator:decoded_json(limits, Validators, _);
+         raw ->
+             validator:json(limits, Validators, _)
+     end].
 
 scope_validators(default_not_allowed) ->
     scope_validators([]);
@@ -129,9 +163,12 @@ check_duplicates(Name, State) ->
 
 validate_scopes(Name, State) ->
     validator:json_array(
-      Name, [validate_collections(collections, _),
-             check_duplicates(collections, _) |
-             scope_validators(default_allowed)], State).
+      Name,
+      scope_limit_validators(decoded) ++
+          [validate_collections(collections, _),
+           check_duplicates(collections, _) |
+           scope_validators(default_allowed)],
+      State).
 
 validate_collections(Name, State) ->
     validator:json_array(Name, collection_validators(default_allowed), State).
