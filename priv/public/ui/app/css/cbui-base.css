@@ -314,6 +314,7 @@ small {
 .text, text {
   font-family: 'OpenSans' !important;
   font-weight: 400 !important;
+  font-size: .875rem;
   color: #000;
 }
 strong,
