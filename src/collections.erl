@@ -577,9 +577,17 @@ verify_oper({create_collection, ScopeName, Name, _}, Manifest) ->
     with_scope(
       fun (Scope) ->
               Collections = get_collections(Scope),
+              Limit = get_limit(clusterManager, num_collections, Scope),
               case find_collection(Name, Collections) of
                   undefined ->
-                      ok;
+                      case cluster_compat_mode:should_enforce_limits() andalso
+                           Limit =/= infinity andalso
+                           length(Collections) > Limit of
+                          false ->
+                              ok;
+                          true ->
+                              {max_number_exceeded, num_collections}
+                      end;
                   _ ->
                       {collection_already_exists, ScopeName, Name}
               end
@@ -713,6 +721,13 @@ on_scopes(Fun, Manifest) ->
 
 get_limits(Scope) ->
     proplists:get_value(limits, Scope, []).
+
+get_limit(Service, Limit, Scope) ->
+    functools:chain(
+      Scope,
+      [proplists:get_value(limits, _, []),
+       proplists:get_value(Service, _, []),
+       proplists:get_value(Limit, _, infinity)]).
 
 get_collections(Scope) ->
     proplists:get_value(collections, Scope, []).
