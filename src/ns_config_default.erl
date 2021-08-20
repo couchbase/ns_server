@@ -252,6 +252,8 @@ default() ->
         {xattr_enabled, true},
         {scramsha_fallback_salt, {memcached_config_mgr, get_fallback_salt, []}},
         {collections_enabled, {memcached_config_mgr, collections_enabled, []}},
+        {enforce_tenant_limits_enabled,
+         {memcached_config_mgr, should_enforce_limits, []}},
         {max_connections, max_connections},
         {system_connections, system_connections},
         {num_reader_threads, num_reader_threads},

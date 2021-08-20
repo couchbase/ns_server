@@ -23,6 +23,7 @@
          is_snappy_enabled/0, collections_enabled/2, get_fallback_salt/2,
          get_external_users_push_interval/2, get_ssl_cipher_list/2,
          get_ssl_cipher_order/2, get_external_auth_service/2,
+         should_enforce_limits/2,
          is_external_auth_service_enabled/0,
          prometheus_cfg/2]).
 
@@ -124,6 +125,7 @@ is_notable_config_key(cluster_encryption_level) -> true;
 is_notable_config_key({security_settings, kv}) -> true;
 is_notable_config_key(ldap_settings) -> true;
 is_notable_config_key(saslauthd_auth_settings) -> true;
+is_notable_config_key(enforce_limits) -> true;
 is_notable_config_key(_) ->
     false.
 
@@ -387,6 +389,9 @@ is_snappy_enabled() ->
 
 collections_enabled([], _Params) ->
     collections:enabled().
+
+should_enforce_limits([], _Params) ->
+    cluster_compat_mode:should_enforce_limits().
 
 get_fallback_salt([], _Params) ->
     base64:encode(scram_sha:get_fallback_salt()).
