@@ -306,7 +306,8 @@ conf(security) ->
        {supported_ciphers, supportedCipherSuites, ciphers:supported(S),
         fun read_only/1}]} || S <- services_with_security_settings()];
 conf(internal) ->
-    [{index_aware_rebalance_disabled, indexAwareRebalanceDisabled, false,
+    [{enforce_limits, enforceLimits, false, fun get_bool/1},
+     {index_aware_rebalance_disabled, indexAwareRebalanceDisabled, false,
       fun get_bool/1},
      {rebalance_index_waiting_disabled, rebalanceIndexWaitingDisabled, false,
       fun get_bool/1},
