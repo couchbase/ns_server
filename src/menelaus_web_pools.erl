@@ -44,12 +44,7 @@ handle_pools(Req) ->
 
     Enterprise = cluster_compat_mode:is_enterprise(),
     AllowedServices =
-        ns_cluster_membership:allowed_services(case Enterprise of
-                                                   true ->
-                                                       enterprise;
-                                                   false ->
-                                                       community
-                                               end),
+        ns_cluster_membership:supported_services(Enterprise),
     RV1 = [{isAdminCreds, true},
            {isROAdminCreds, false},
            {isEnterprise, Enterprise},

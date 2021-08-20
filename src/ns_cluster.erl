@@ -1232,7 +1232,7 @@ do_get_requested_services(Key, KVList, Default) ->
 community_allowed_topologies() ->
     KvOnly = [kv],
     AllServices40 = [kv, index, n1ql],
-    AllServices = ns_cluster_membership:allowed_services(community),
+    AllServices = ns_cluster_membership:supported_services(false),
 
     [KvOnly, lists:sort(AllServices40), lists:sort(AllServices)].
 

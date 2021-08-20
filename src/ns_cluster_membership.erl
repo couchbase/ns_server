@@ -54,7 +54,6 @@
 
 -export([supported_services/0,
          supported_services/1,
-         allowed_services/1,
          supported_services_for_version/2,
          cluster_supported_services/0,
          topology_aware_services/0,
@@ -454,11 +453,6 @@ supported_services(IsEnterprise) ->
     supported_services_for_version(
       cluster_compat_mode:supported_compat_version(),
       IsEnterprise).
-
-allowed_services(enterprise) ->
-    supported_services(true);
-allowed_services(community) ->
-    supported_services(false).
 
 enterprise_only_services() ->
     [cbas, eventing, backup].

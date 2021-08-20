@@ -1180,13 +1180,9 @@ all_derived_metrics() ->
     [N || S <- Services, {N, _} <- prometheus_cfg:derived_metrics(S, Settings)].
 
 all_services() ->
-    InstallType = case cluster_compat_mode:is_enterprise() of
-                      true -> enterprise;
-                      false -> community
-                  end,
     [{S, atom_to_list(ns_cluster_membership:json_service_name(S))}
         || S <- [ns_server, xdcr |
-                 ns_cluster_membership:allowed_services(InstallType)]].
+                 ns_cluster_membership:supported_services()]].
 
 validate_nodes_v2(Name, State, Req) ->
     validator:validate(
