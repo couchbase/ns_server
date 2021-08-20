@@ -1186,6 +1186,7 @@
               "new_manifest_uid" : ""
           },
           "optional_fields" : {
+              "limits" : "",
               "sessionid" : ""
           }
       },
@@ -1341,7 +1342,27 @@
           "optional_fields" : {
               "sessionid" : ""
           }
+      },
+      {
+          "id" : 8268,
+          "name" : "update scope",
+          "description" : "Scope properties were updated",
+          "sync" : false,
+          "enabled" : true,
+          "filtering_permitted" : false,
+          "mandatory_fields" : {
+              "timestamp" : "",
+              "real_userid" : {"domain" : "", "user" : ""},
+              "remote" : {"ip" : "", "port" : 1},
+              "local" : {"ip" : "", "port" : 1},
+              "bucket_name" : "",
+              "scope_name" : "",
+              "new_manifest_uid" : ""
+          },
+          "optional_fields" : {
+              "limits" : "",
+              "sessionid" : ""
+          }
       }
-
     ]
 }

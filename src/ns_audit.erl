@@ -31,7 +31,8 @@
          modify_bucket/4,
          delete_bucket/2,
          flush_bucket/2,
-         create_scope/4,
+         create_scope/5,
+         update_scope/5,
          drop_scope/4,
          create_collection/5,
          drop_collection/5,
@@ -370,7 +371,9 @@ code(rbac_info_retrieved) ->
 code(admin_password_reset) ->
     8266;
 code(modify_analytics_settings) ->
-    8267.
+    8267;
+code(update_scope) ->
+    8268.
 
 to_binary({list, List}) ->
     [to_binary(A) || A <- List];
@@ -885,10 +888,18 @@ failover_settings(Req, Settings) ->
     put(failover_settings, Req,
         [{settings, {prepare_list(Settings1)}}]).
 
-create_scope(Req, BucketName, ScopeName, Uid) ->
+get_scope_params(BucketName, ScopeName, Props, Uid) ->
+    [{bucket_name, BucketName},
+     {scope_name, ScopeName},
+     {new_manifest_uid, Uid}] ++ Props.
+
+update_scope(Req, BucketName, ScopeName, Props, Uid) ->
+    put(update_scope, Req,
+        get_scope_params(BucketName, ScopeName, Props, Uid)).
+
+create_scope(Req, BucketName, ScopeName, Props, Uid) ->
     put(create_scope, Req,
-        [{bucket_name, BucketName}, {scope_name, ScopeName},
-         {new_manifest_uid, Uid}]).
+        get_scope_params(BucketName, ScopeName, Props, Uid)).
 
 drop_scope(Req, BucketName, ScopeName, Uid) ->
     put(drop_scope, Req,
