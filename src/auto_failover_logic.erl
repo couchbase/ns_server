@@ -107,23 +107,7 @@ filter_node_states([Node | RestNodes] = AllNodes,
             end
     end.
 
-process_down_state(NodeState, Threshold, NewState, ResetCounter) ->
-    CurrCounter = NodeState#node_state.down_counter,
-    NewCounter = CurrCounter + 1,
-    case NewCounter >= Threshold of
-        true ->
-            Counter = case ResetCounter of
-                          true ->
-                              0;
-                          false ->
-                              CurrCounter
-                      end,
-            NodeState#node_state{down_counter = Counter, state = NewState};
-        _ ->
-            NodeState#node_state{down_counter = NewCounter}
-    end.
-
-increment_down_state(NodeState, DownNodes, BigState, NodesChanged) ->
+increment_down_state(NodeState, Threshold, NodesChanged) ->
     case {NodeState#node_state.state, NodesChanged} of
         {new, _} ->
             NodeState#node_state{state = half_down};
@@ -132,19 +116,21 @@ increment_down_state(NodeState, DownNodes, BigState, NodesChanged) ->
         {_, true} ->
             NodeState#node_state{state = half_down, down_counter = 0};
         {half_down, _} ->
-            process_down_state(NodeState, BigState#state.down_threshold,
-                               nearly_down, true);
-        {nearly_down, _} ->
-            case DownNodes of
-                [_,_|_] ->
-                    NodeState#node_state{down_counter = 0};
-                [_] ->
-                    process_down_state(NodeState, ?DOWN_GRACE_PERIOD,
-                                       failover, false)
+            CurrCounter = NodeState#node_state.down_counter,
+            NewCounter = CurrCounter + 1,
+            case NewCounter >= Threshold of
+                true ->
+                    NodeState#node_state{down_counter = 0, state = nearly_down};
+                false ->
+                    NodeState#node_state{down_counter = NewCounter}
             end;
-        {failover, _} ->
+        _ ->
             NodeState
     end.
+
+log_state_changes(PrevStates, NewStates) ->
+    [log_master_activity(Prev, New) || {Prev, New} <- lists:zip(PrevStates,
+                                                                NewStates)].
 
 log_master_activity(#node_state{state = Same, down_counter = SameCounter},
                     #node_state{state = Same, down_counter = SameCounter}) ->
@@ -162,23 +148,38 @@ log_master_activity(#node_state{state = Prev, name = {Node, _} = Name} = NodeSta
     master_activity_events:note_autofailover_node_state_change(Node, Prev,
                                                                New, NewCounter).
 
-process_states(Fun, Nodes, #state{nodes_states = NodeStates}) ->
+get_candidates(NodeStates) ->
+    lists:filtermap(
+      fun (#node_state{name = Name, state = State}) when State =:= nearly_down;
+                                                         State =:= failover->
+              {true, Name};
+          (_) ->
+              false
+      end, NodeStates).
+
+reset_candidates(NodeStates) ->
     lists:map(
-      fun (NodeState) ->
-              NewState = Fun(NodeState),
-              log_master_activity(NodeState, NewState),
-              NewState
-      end, filter_node_states(Nodes, NodeStates)).
+      fun (NodeState = #node_state{state = nearly_down}) ->
+              NodeState#node_state{down_counter = 0};
+          (NodeState = #node_state{state = failover}) ->
+              NodeState#node_state{state = nearly_down, down_counter = 0};
+          (NodeState) ->
+              NodeState
+      end, NodeStates).
 
-process_up_states(Nodes, State) ->
-    process_states(
-      _#node_state{state = up, down_counter = 0, mailed_down_warning = false},
-      Nodes, State).
-
-process_down_states(Nodes, State, NodesChanged) ->
-    process_states(
-      increment_down_state(_, Nodes, State, NodesChanged),
-      Nodes, State).
+advance_candidates(NodeStates) ->
+    lists:map(
+      fun (NodeState = #node_state{state = nearly_down,
+                                   down_counter = Counter}) ->
+              case Counter + 1 of
+                  ?DOWN_GRACE_PERIOD ->
+                      NodeState#node_state{state = failover};
+                  NewCounter ->
+                      NodeState#node_state{down_counter = NewCounter}
+              end;
+          (NodeState) ->
+              NodeState
+      end, NodeStates).
 
 log_down_sg_state_change(OldState, Newstate) ->
     case Newstate of
@@ -247,32 +248,73 @@ process_group_down_state(DownSG,
                               state = nearly_down}
     end.
 
-process_frame(Nodes, DownNodes, State, SvcConfig, DownSG) ->
+process_frame(Nodes, DownNodes, State = #state{nodes_states = NodeStates,
+                                               down_threshold = Threshold},
+              SvcConfig, DownSG) ->
     SortedNodes = ordsets:from_list(Nodes),
     SortedDownNodes = ordsets:from_list(DownNodes),
 
-    PrevNodes = [NS#node_state.name || NS <- State#state.nodes_states],
+    PrevNodes = [NS#node_state.name || NS <- NodeStates],
     NodesChanged = (SortedNodes =/= ordsets:from_list(PrevNodes)),
 
-    UpStates = process_up_states(
-                 ordsets:subtract(SortedNodes, SortedDownNodes),
-                 State),
-    DownStates = process_down_states(SortedDownNodes, State, NodesChanged),
+    SortedUpNodes = ordsets:subtract(SortedNodes, SortedDownNodes),
+    UpStates = filter_node_states(SortedUpNodes, NodeStates),
+    NewUpStates =
+        [NS#node_state{state = up, down_counter = 0,
+                       mailed_down_warning = false} || NS <- UpStates],
 
-    {{Actions, NewDownStates}, NewState} =
+    DownStates = filter_node_states(SortedDownNodes, NodeStates),
+
+    NewDownStates = [increment_down_state(NS, Threshold, NodesChanged) ||
+                        NS <- DownStates],
+
+    %% we can promote nodes status to failover only if the group of down nodes
+    %% remains stable during ?DOWN_GRACE_PERIOD and all down nodes are promoted
+    %% to nearly_down status
+    NewDownStates1 =
+        case get_candidates(NewDownStates) of
+            [] ->
+                NewDownStates;
+            Candidates ->
+                case get_node_names_and_uuids(DownStates) of
+                    Candidates ->
+                        case get_candidates(NodeStates) of
+                            Candidates ->
+                                advance_candidates(NewDownStates);
+                            OldCandidates ->
+                                ?log_debug(
+                                   "List of candidates changed from ~p to ~p. "
+                                   "Resetting counter", [OldCandidates,
+                                                         Candidates]),
+                                reset_candidates(NewDownStates)
+                        end;
+                    Other ->
+                        ?log_debug("List of auto failover candidates ~p "
+                                   "doesn't match the nodes being down ~p. "
+                                   "Resetting counter",
+                                   [Candidates, Other]),
+                        reset_candidates(NewDownStates)
+                end
+        end,
+
+    log_state_changes(UpStates, NewUpStates),
+    log_state_changes(DownStates, NewDownStates1),
+
+    {{Actions, NewDownStates2}, NewState} =
         case DownSG of
             undefined ->
-                {process_node_down(DownStates, State, SvcConfig), State};
+                {decide_on_actions(NewDownStates1, State, SvcConfig,
+                                   undefined), State};
             _ ->
                 DownSGState = get_down_sg_state(
-                                DownStates, DownSG,
+                                NewDownStates1, DownSG,
                                 State#state.down_server_group_state),
-                {process_with_group_failover(DownStates, State, SvcConfig,
+                {process_with_group_failover(NewDownStates1, State, SvcConfig,
                                              DownSGState),
                  State#state{down_server_group_state = DownSGState}}
         end,
 
-    NodeStates = lists:umerge(UpStates, NewDownStates),
+    NewNodeStates = lists:umerge(NewUpStates, NewDownStates2),
     SvcS = update_multi_services_state(Actions, NewState#state.services_state),
 
     case Actions of
@@ -281,11 +323,11 @@ process_frame(Nodes, DownNodes, State, SvcConfig, DownSG) ->
         _ ->
             ?log_debug("Decided on following actions: ~p", [Actions])
     end,
-    {Actions, State#state{nodes_states = NodeStates, services_state = SvcS}}.
+    {Actions, State#state{nodes_states = NewNodeStates, services_state = SvcS}}.
 
 process_with_group_failover(DownStates, State, SvcConfig,
                             #down_group_state{name = nil}) ->
-    process_node_down(DownStates, State, SvcConfig);
+    decide_on_actions(DownStates, State, SvcConfig, 1);
 process_with_group_failover(DownStates, _, _,
                             #down_group_state{state = nearly_down}) ->
     {[], DownStates};
@@ -294,11 +336,14 @@ process_with_group_failover(DownStates, State, SvcConfig,
                                               state = failover}) ->
     {process_group_down(DownSG, DownStates, State, SvcConfig), DownStates}.
 
-get_down_node_names(DownStates) ->
-    ordsets:from_list([N || #node_state{name = {N, _UUID}} <- DownStates]).
+get_node_names_and_uuids(States) ->
+    [NameWithUUID || #node_state{name = NameWithUUID} <- States].
+
+get_node_names(States) ->
+    [N || {N, _UUID} <- get_node_names_and_uuids(States)].
 
 process_group_down(SG, DownStates, State, SvcConfig) ->
-    DownNodes = get_down_node_names(DownStates),
+    DownNodes = ordsets:from_list(get_node_names(DownStates)),
     lists:foldl(
       fun (#node_state{name = Node}, Actions) ->
               case should_failover_node(State, Node, SvcConfig, DownNodes) of
@@ -317,23 +362,35 @@ process_group_down(SG, DownStates, State, SvcConfig) ->
               end
       end, [], DownStates).
 
-process_node_down([#node_state{state = failover, name = Node}] = DownStates,
-                  State, SvcConfig) ->
-    DownNodes = get_down_node_names(DownStates),
-    {should_failover_node(State, Node, SvcConfig, DownNodes), DownStates};
-process_node_down([#node_state{state = nearly_down}] = DownStates, _, _) ->
-    {[], DownStates};
-process_node_down(DownStates, _, _) ->
-    Fun = fun (#node_state{state = nearly_down}) -> true; (_) -> false end,
-    case lists:any(Fun, DownStates) of
+ready_for_failover(DownStates) ->
+    lists:all(
+      fun (#node_state{state = failover}) ->
+              true;
+          (_) ->
+              false
+      end, DownStates).
+
+decide_on_actions(DownStates, State, SvcConfig, MaxGroupSize) ->
+    case MaxGroupSize =/= undefined andalso
+        length(DownStates) > MaxGroupSize of
         true ->
-            process_multiple_nodes_down(DownStates);
-        _ ->
-            {[], DownStates}
+            issue_mail_down_warnings(DownStates);
+        false ->
+            case ready_for_failover(DownStates) of
+                true ->
+                    DownNodes = get_node_names_and_uuids(DownStates),
+                    DownNodesOrdset = ordsets:from_list(
+                                        get_node_names(DownStates)),
+                    {lists:flatmap(should_failover_node(
+                                     State, _, SvcConfig,
+                                     DownNodesOrdset), DownNodes), DownStates};
+                false ->
+                    {[], DownStates}
+            end
     end.
 
 %% Return separate events for all nodes that are down.
-process_multiple_nodes_down(DownStates) ->
+issue_mail_down_warnings(DownStates) ->
     {Actions, NewDownStates} =
         lists:foldl(
           fun (#node_state{state = nearly_down, name = Node,
@@ -545,7 +602,7 @@ test_frame(0, Actions, _Nodes, _DownNodes, State, _SvcConfig, Report) ->
 test_frame(Times, Actions, Nodes, DownNodes, State, SvcConfig, Report) ->
     ?assertEqual([], Actions),
     {NewActions, NewState} =
-        process_frame(Nodes, DownNodes, State, SvcConfig, undefined),
+        process_frame(Nodes, DownNodes, State, SvcConfig, []),
     StateDiff = flatten_state(NewState) -- flatten_state(State),
     test_frame(Times - 1, NewActions, Nodes, DownNodes, NewState, SvcConfig,
                [{Times - 1, NewActions, StateDiff} | Report]).
@@ -607,7 +664,7 @@ other_down_test() ->
        ?cut(expect_mail_down_warnings([b], test_frame(1, Nodes, [b, c], _))),
        ?cut(expect_failover(b, test_frame(2, Nodes, [b], _))),
        ?cut(expect_no_actions(test_frame(1, Nodes, [b, c], _))),
-       ?cut(expect_failover(b, test_frame(1, Nodes, [b], _)))]).
+       ?cut(expect_failover(b, test_frame(2, Nodes, [b], _)))]).
 
 two_down_at_same_time_test() ->
     Nodes = [a, b, c, d],
