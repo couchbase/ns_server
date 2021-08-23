@@ -40,7 +40,7 @@ function mnCertController($scope, mnCertificatesService, mnPromiseHelper, mnHelp
   function activate() {
     mnPromiseHelper(vm, mnCertificatesService.getClientCertificateSettings())
       .applyToScope("clientCertSettings")
-      .onSuccess(function (resp) {
+      .onSuccess(function () {
         if ($scope.rbac.cluster.admin.security.write && !vm.clientCertSettings.prefixes.length) {
           vm.clientCertSettings.prefixes.push({delimiter: '', prefix: '', path: 'subject.cn'});
         }

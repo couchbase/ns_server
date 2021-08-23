@@ -1012,8 +1012,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
                   "@kv-.ep_dcp_other_backoff": true},
           size: "medium",
           specificStat: false
-        }
-                ]
+        }]
       }, {
         name: "Disk Queues",
         charts: [{
@@ -1040,10 +1039,8 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
                   "@kv-.vb_pending_queue_size": true},
           size: "medium",
           specificStat: false
-        }
-                ]
-      }
-              ]
+        }]
+      }]
     }]
   }
 }

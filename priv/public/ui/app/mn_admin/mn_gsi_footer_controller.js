@@ -33,7 +33,8 @@ function mnGsiFooterController($scope, $rootScope, $state, mnStatisticsNewServic
     '@index.index_memory_quota','@index.index_memory_used',
     '@index.index_remaining_ram','@index.index_ram_percent',
     '@index-.index/num_rows_returned','@index-.index/fragmentation',
-    '@index-.index/data_size','@index-.index/disk_size']);
+    '@index-.index/data_size','@index-.index/disk_size'
+  ]);
 
   var config = {
     bucket: vm.currentBucket,

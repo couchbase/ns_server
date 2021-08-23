@@ -25,7 +25,8 @@ angular
     mnPoolDefault,
     mnServersService,
     mnBucketsDetailsService,
-    mnSettingsAutoCompactionService])
+    mnSettingsAutoCompactionService
+  ])
   .factory('mnBucketsDetailsDialogService', mnBucketsDetailsDialogServiceFactory);
 
 function mnBucketsDetailsDialogServiceFactory($http, $q, mnBytesToMBFilter, mnCountFilter, mnSettingsAutoCompactionService, mnPoolDefault, mnServersService, bucketsFormConfiguration, mnBucketsDetailsService) {

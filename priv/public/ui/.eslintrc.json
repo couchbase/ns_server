@@ -11,11 +11,8 @@
   "ignorePatterns": ["app/components/mn_jquery.js"],
   "rules": {
     "accessor-pairs": "error",
-    "array-bracket-newline": "off",
-    "array-bracket-spacing": [
-      "error",
-      "never"
-    ],
+    "array-bracket-newline": ["error", "consistent"],
+    "array-bracket-spacing": ["error", "never"],
     "array-callback-return": "off",
     "array-element-newline": "off",
     "arrow-body-style": "off",
