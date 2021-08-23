@@ -133,6 +133,7 @@ angular.module('mnSettingsNotificationsService', [
           if ((levels.length == 4) && (levels[3] == "svc")) {
             return levels[0].startsWith(levels[1] + "-");
           }
+          return false;
         }),
         numNodes: poolsDefault.nodes.length, //Total number of nodes
         isEnterpriseEdition: pools.isEnterprise,

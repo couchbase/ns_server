@@ -13,7 +13,7 @@
     "accessor-pairs": "error",
     "array-bracket-newline": ["error", "consistent"],
     "array-bracket-spacing": ["error", "never"],
-    "array-callback-return": "off",
+    "array-callback-return": "error",
     "array-element-newline": "off",
     "arrow-body-style": "off",
     "arrow-parens": "off",

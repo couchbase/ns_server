@@ -425,6 +425,7 @@ function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http
                 block.statKeyPrefix = name.join("/") + "/";
                 return true;
               }
+              return false;
             });
           });
       })
