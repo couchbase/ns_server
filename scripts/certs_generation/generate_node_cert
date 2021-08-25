@@ -49,7 +49,17 @@ intermediate_dir_abs=$(abs_path "${intermediate_dir}")
 echo "Creating a key..."
 mkdir "${out_node_dir}/private"
 keyfile="${out_node_dir}/private/${hostname}.key.pem"
-openssl genrsa  -out "${keyfile}" 2048
+read -e -p "Should the node private key be encrypted? y/[n]: " pkey_encrypted
+if [[ "$pkey_encrypted" == "y" ]]; then
+    echo "Enter passphrase: "
+    openssl genrsa -aes256 -passout stdin  -out "${keyfile}" 2048
+elif [[ "$pkey_encrypted" == "n" ]]; then
+    openssl genrsa  -out "${keyfile}" 2048
+else
+    echo "invalid reply: $pkey_encrypted"
+    exit 1
+fi
+
 chmod 400 "${keyfile}"
 
 echo "Creating a certificate signing request..."
