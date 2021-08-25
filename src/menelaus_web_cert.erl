@@ -217,7 +217,17 @@ handle_get_node_certificate(NodeId, Req) ->
                 [] ->
                     menelaus_util:reply_text(Req, <<"Certificate is not set up on this node">>, 404);
                 Props ->
-                    menelaus_util:reply_json(Req, {jsonify_cert_props(Props)})
+                    Filtered =
+                        lists:filtermap(
+                            fun ({subject, _}) -> true;
+                                %% Backward compat:
+                                ({not_after, V}) -> {true, {expires, V}};
+                                ({pem, _}) -> true;
+                                ({type, _}) -> true;
+                                (_) -> false
+                            end, Props),
+                    CertJson = {jsonify_cert_props(Filtered)},
+                    menelaus_util:reply_json(Req, CertJson)
             end;
         {error, {invalid_node, Reason}} ->
             menelaus_util:reply_text(Req, Reason, 400);

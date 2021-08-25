@@ -637,7 +637,8 @@ save_node_certs(Type, CA, Chain, PKey, Extra) when is_binary(CA),
              {verified_with, erlang:md5(CA)},
              {type, Type},
              {load_timestamp, LoadTime},
-             {ca, CA} | Extra],
+             {ca, CA},
+             {pem, Chain} | Extra],
 
     Data = term_to_binary({node_certs, Props, Chain, PKey}),
 

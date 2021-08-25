@@ -988,8 +988,7 @@ node_cert_warnings(TrustedCAs, NodeCertProps) ->
     MissingCAWarnings ++ ExpirationWarnings ++ SelfSignedWarnings.
 
 get_node_cert_info(Node) ->
-    Props = ns_config:read_key_fast({node, Node, cert}, []),
-    proplists:delete(verified_with, Props).
+    ns_config:read_key_fast({node, Node, node_cert}, []).
 
 tls_server_validation_options() ->
     case this_node_uses_self_generated_certs() of
