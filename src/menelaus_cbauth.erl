@@ -355,17 +355,21 @@ client_cert_auth_version() ->
 
 handle_cbauth_post(Req) ->
     {User, Domain} = menelaus_auth:get_identity(Req),
+    UUID = menelaus_users:get_user_uuid({User, Domain}),
     menelaus_util:reply_json(Req, {[{user, erlang:list_to_binary(User)},
-                                    {domain, Domain}]}).
+                                    {domain, Domain}] ++
+                                    [{uuid, UUID} || UUID =/= undefined]}).
 
 handle_extract_user_from_cert_post(Req) ->
     CertBin = mochiweb_request:recv_body(Req),
     try
         case menelaus_auth:extract_identity_from_cert(CertBin) of
             {User, Domain} ->
-                menelaus_util:reply_json(Req,
-                                         {[{user, list_to_binary(User)},
-                                           {domain, Domain}]});
+                UUID = menelaus_users:get_user_uuid({User, Domain}),
+                menelaus_util:reply_json(
+                  Req, {[{user, list_to_binary(User)},
+                         {domain, Domain}] ++
+                        [{uuid, UUID} || UUID =/= undefined]});
             auth_failure ->
                 ns_audit:auth_failure(Req),
                 menelaus_util:reply_json(Req, <<"Auth failure">>, 401)

@@ -38,6 +38,7 @@
          get_user_props/1,
          get_user_props/2,
          get_user_limits/1,
+         get_user_uuid/1,
          change_password/2,
 
 %% Group management:
@@ -768,6 +769,10 @@ get_user_limits(Identity) ->
         {_, Limits} ->
             Limits
     end.
+
+-spec get_user_uuid(rbac_identity()) -> binary() | undefined.
+get_user_uuid(Identity) ->
+    get_user_uuid(Identity, undefined).
 
 -spec get_user_uuid(rbac_identity(), binary() | undefined) -> binary() |
                                                               undefined.

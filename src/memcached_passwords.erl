@@ -64,6 +64,8 @@ handle_event(limits_version, State) ->
 handle_event(enforce_limits, State) ->
     {changed, State};
 handle_event(auth_version, State) ->
+    %% auth_version also takes care of UUID changes when deleting and adding
+    %% same user.
     {changed, State};
 handle_event(rest_creds, #state{rest_creds = Creds} = State) ->
     case ns_config_auth:get_admin_user_and_auth() of
@@ -115,6 +117,16 @@ get_user_limits_json(true, Identity) ->
             jsonify_kv_user_limits(KVLimits)
     end.
 
+get_user_uuid(false, _Identity) ->
+    [];
+get_user_uuid(true, Identity) ->
+    case menelaus_users:get_user_uuid(Identity) of
+        undefined ->
+            [];
+        UUID ->
+            [{uuid, UUID}]
+    end.
+
 jsonify_auth(Users, AdminPass, RestCreds, PromAuth) ->
     MakeAuthInfo = fun menelaus_users:memcached_user_info/2,
     EnforceLimits = cluster_compat_mode:should_enforce_limits(),
@@ -156,8 +168,10 @@ jsonify_auth(Users, AdminPass, RestCreds, PromAuth) ->
                          _ ->
                              Limits = get_user_limits_json(EnforceLimits,
                                                            Identity),
-                             ?yield({json, MakeAuthInfo(UserName,
-                                                        Limits ++ Auth)})
+                             UUID = get_user_uuid(EnforceLimits, Identity),
+                             ?yield({json, MakeAuthInfo(
+                                             UserName,
+                                             UUID ++ Limits ++ Auth)})
                      end
              end),
            ?yield(array_end),
