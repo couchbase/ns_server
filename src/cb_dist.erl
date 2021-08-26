@@ -17,6 +17,8 @@
 -include_lib("kernel/include/dist_util.hrl").
 -include_lib("kernel/include/logger.hrl").
 
+-include_lib("stdlib/include/ms_transform.hrl").
+
 -include("cut.hrl").
 
 % dist module callbacks, called from net_kernel
@@ -58,12 +60,13 @@
             config = undefined,
             name = undefined,
             ensure_config_timer = undefined,
-            connections = [] :: [#con{}]}).
+            connections = [] :: [#con{}],
+            is_pkey_encrypted = false}).
 
 -define(family, ?MODULE).
 -define(proto, ?MODULE).
 -define(TERMINATE_TIMEOUT, 5000).
--define(ENSURE_CONFIG_TIMEOUT, 60000).
+-define(ENSURE_CONFIG_TIMEOUT, 10000).
 
 -type socket() :: any().
 -type protocol() :: inet_tcp_dist | inet6_tcp_dist |
@@ -241,7 +244,8 @@ init([]) ->
     Config = read_config(config_path(), true),
     info_msg("Starting cb_dist with config ~p", [Config]),
     process_flag(trap_exit,true),
-    {ok, #s{config = Config, creation = rand:uniform(4) - 1}}.
+    {ok, #s{config = Config, creation = rand:uniform(4) - 1,
+            is_pkey_encrypted = is_pkey_encrypted()}}.
 
 handle_call({listen, Name}, _From, #s{creation = Creation} = State) ->
     State1 = State#s{name = Name},
@@ -347,6 +351,7 @@ handle_call({update_config, Props}, _From, #s{config = Cfg} = State) ->
 
 handle_call({register_connection, Mod}, _From,
             #s{connections = Connections} = State) ->
+    maybe_update_pkey_passphrase(client, Mod, State),
     Ref = make_ref(),
     Con = #con{ref = Ref, mod = Mod, pid = undefined},
     info_msg("Added connection ~p", [Con]),
@@ -388,7 +393,9 @@ handle_call(restart_tls, _From, #s{connections = Connections,
       {unconditionally_clear_pem_cache, self()},
       infinity),
 
-    {reply, ok, ensure_config(NewState#s{connections = NewConnections})};
+    {reply, ok, ensure_config(NewState#s{
+                                connections = NewConnections,
+                                is_pkey_encrypted = is_pkey_encrypted()})};
 
 handle_call(_Request, _From, State) ->
     {noreply, State}.
@@ -529,17 +536,64 @@ start_acceptor({_AddrType, Mod} = Listener,
                       "listener: ~p", [Listener]),
             State;
         {LSocket, _, _} ->
-            try
-                APid = Mod:accept(LSocket),
-                true = is_pid(APid),
-                State#s{acceptors = [{APid, Listener} | Acceptors]}
-            catch
-                _:E:ST ->
-                    error_msg(
-                      "Accept failed for protocol ~p with reason: ~p~n"
-                      "Stacktrace: ~p", [Listener, E, ST]),
+            case maybe_update_pkey_passphrase(server, Mod, State) of
+                true ->
+                    try
+                        APid = Mod:accept(LSocket),
+                        true = is_pid(APid),
+                        info_msg("Started acceptor ~p: ~p", [Mod, APid]),
+                        State#s{acceptors = [{APid, Listener} | Acceptors]}
+                    catch
+                        _:E:ST ->
+                            error_msg(
+                              "Accept failed for protocol ~p with reason: ~p~n"
+                              "Stacktrace: ~p", [Listener, E, ST]),
+                            start_ensure_config_timer(
+                              remove_proto(Listener, State))
+                    end;
+                false ->
+                    info_msg("Private key password is not "
+                             "available yet or undefined, waiting...", []),
                     start_ensure_config_timer(remove_proto(Listener, State))
             end
+    end.
+
+maybe_update_pkey_passphrase(Type, Mod,
+                             #s{is_pkey_encrypted = IsPKeyEncrypted}) ->
+    case proto_to_encryption(Mod) andalso IsPKeyEncrypted of
+        true ->
+            case extract_pkey_passphrase() of
+                {ok, PassFun} ->
+                    Pass = PassFun(),
+                    MS = ets:fun2ms(
+                           fun ({T, [{password, _} | L]}) when T =:= Type ->
+                                    {T, [{password, Pass} | L]};
+                               ({T, L}) when T =:= Type ->
+                                    {T, [{password, Pass} | L]}
+                           end),
+                    try
+                        N = ets:select_replace(ssl_dist_opts, MS),
+                        info_msg("Updated ~p ssl_dist_opts records", [N]),
+                        case Pass of
+                            undefined ->
+                                error_msg("Extracted pkey passphrase is "
+                                          "undefined", []),
+                                false;
+                            _ -> true
+                        end
+                    catch
+                        error:badarg ->
+                            error_msg(
+                              "Failed to modify ssl_dist_opts, "
+                              "it will not work on vanilla erlang",
+                              []),
+                            false
+                    end;
+                {error, not_available} ->
+                    false
+            end;
+        false ->
+            true
     end.
 
 start_ensure_config_timer(#s{ensure_config_timer = undefined} = State) ->
@@ -596,6 +650,7 @@ listen_proto({AddrType, Module}, NodeName) ->
         fun () ->
                 case Module:listen(NodeName) of
                     {ok, _} = Res ->
+                        info_msg("Started listener: ~p", [Module]),
                         maybe_register_on_epmd(Module, NodeName, Port),
                         Res;
                     Error -> Error
@@ -988,3 +1043,33 @@ is_restartable_event({error, {tls_alert, {_, _}}}) ->
     true;
 is_restartable_event(_) ->
     false.
+
+is_pkey_encrypted() ->
+    [{server, TLSOpts}] = ets:lookup(ssl_dist_opts, server),
+    case proplists:get_value(keyfile, TLSOpts) of
+        undefined -> false;
+        File ->
+            case erl_prim_loader:get_file(File) of
+                {ok, Pem, _} ->
+                    case public_key:pem_decode(Pem) of
+                        [{_, _, not_encrypted}] -> false;
+                        [{_, _, _}] -> true
+                    end;
+                error -> false
+            end
+    end.
+
+extract_pkey_passphrase() ->
+    case application:get_env(cb_dist_pkey_pass_mfa) of
+        undefined ->
+            error_msg("Missing cb_dist_pkey_pass_mfa env", []),
+            {error, not_available};
+        {ok, {M, F, A}} ->
+            try erlang:apply(M, F, A) of
+                PassFun when is_function(PassFun) ->
+                    info_msg("Successfully extracted pkey passphrase", []),
+                    {ok, PassFun}
+            catch
+                _:_ -> {error, not_available}
+            end
+    end.
