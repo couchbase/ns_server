@@ -269,8 +269,6 @@ reload_node_certificate_error({invalid_pkey, BadType}) ->
                                  [BadType]));
 reload_node_certificate_error(cert_pkey_mismatch) ->
     <<"Provided certificate doesn't match provided private key">>;
-reload_node_certificate_error(encrypted_pkey) ->
-    <<"Encrypted keys are not supported">>;
 reload_node_certificate_error(too_many_pkey_entries) ->
     <<"Provided private key contains incorrect number of entries">>;
 reload_node_certificate_error(malformed_pkey) ->
@@ -285,7 +283,9 @@ reload_node_certificate_error({test_connection_failed, Host, Msg}) ->
 reload_node_certificate_error({test_server_error, Reason}) ->
     iolist_to_binary(io_lib:format("Failed to start a test server with "
                                    "provided certificates: ~0p", [Reason],
-                                   [{chars_limit, 80}])).
+                                   [{chars_limit, 80}]));
+reload_node_certificate_error(could_not_decrypt) ->
+    <<"Failed to decrypt provided private key. Check password">>.
 
 node_certificate_warning(mismatch) ->
     <<"Certificate is not signed with cluster CA.">>;

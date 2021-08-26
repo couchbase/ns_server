@@ -31,7 +31,7 @@
          client_cert_auth_state/0,
          client_cert_auth_state/1,
          get_user_name_from_client_cert/1,
-         set_node_certificate_chain/3,
+         set_node_certificate_chain/4,
          ssl_client_opts/0,
          configured_ciphers_names/2,
          honor_cipher_order/1,
@@ -306,6 +306,14 @@ ssl_auth_options() ->
     end.
 
 ssl_server_opts() ->
+    PassphraseFun =
+        case ns_node_disco:couchdb_node() == node() of
+            true ->
+                rpc:call(ns_node_disco:ns_server_node(), ns_secrets,
+                         get_pkey_pass, []);
+            false ->
+                ns_secrets:get_pkey_pass()
+        end,
     CipherSuites = ns_server_ciphers(),
     Order = honor_cipher_order(ns_server),
     ClientReneg = ns_config:read_key_fast(client_renegotiation_allowed, false),
@@ -325,7 +333,8 @@ ssl_server_opts() ->
          {ciphers, CipherSuites},
          {honor_cipher_order, Order},
          {secure_renegotiate, true},
-         {client_renegotiation, ClientReneg}].
+         {client_renegotiation, ClientReneg},
+         {password, PassphraseFun()}].
 
 read_ca_certs(File) ->
     case file:read_file(File) of
@@ -381,8 +390,9 @@ sync() ->
     %% has been handled
     ok = gen_server:call(?MODULE, ping, infinity).
 
-set_node_certificate_chain(CAEntry, Chain, PKey) ->
-    gen_server:call(?MODULE, {set_node_certificate_chain, CAEntry, Chain, PKey}, infinity).
+set_node_certificate_chain(CAEntry, Chain, PKey, PassphraseSettings) ->
+    gen_server:call(?MODULE, {set_node_certificate_chain, CAEntry, Chain, PKey,
+                              PassphraseSettings}, infinity).
 
 set_certs(Host, CA, NodeCert, NodeKey) ->
     gen_server:call(?MODULE, {set_certs, Host, CA, NodeCert, NodeKey}).
@@ -439,8 +449,9 @@ handle_config_change(_OtherEvent, _Parent) ->
     ok.
 
 
-handle_call({set_node_certificate_chain, CAEntry, Chain, PKey}, _From, State) ->
-    Props = save_uploaded_certs(CAEntry, Chain, PKey),
+handle_call({set_node_certificate_chain, CAEntry, Chain, PKey,
+             PassphraseSettings}, _From, State) ->
+    Props = save_uploaded_certs(CAEntry, Chain, PKey, PassphraseSettings),
     {reply, {ok, Props}, sync_ssl_reload(State)};
 
 %% This is used in the case when this node is added to a cluster
@@ -619,15 +630,16 @@ sync_ssl_reload(State) ->
 
 
 save_generated_certs(CA, Chain, PKey, Hostname) ->
-    save_node_certs(generated, CA, Chain, PKey, [{hostname, Hostname}]).
-save_uploaded_certs(CA, Chain, PKey) ->
-    save_node_certs(uploaded, CA, Chain, PKey, []).
+    save_node_certs(generated, CA, Chain, PKey, [], [{hostname, Hostname}]).
+save_uploaded_certs(CA, Chain, PKey, PassphraseSettings) ->
+    save_node_certs(uploaded, CA, Chain, PKey, PassphraseSettings, []).
 
 %% CA, PKey and Chain are pem encoded
 %% Chain :: [NodeCert, IntermediateCert, ...]
-save_node_certs(Type, CA, Chain, PKey, Extra) when is_binary(CA),
-                                                   is_binary(Chain),
-                                                   is_binary(PKey) ->
+save_node_certs(Type, CA, Chain, PKey, PassphraseSettings, Extra)
+                                                        when is_binary(CA),
+                                                             is_binary(Chain),
+                                                             is_binary(PKey) ->
     {Subject, Expiration} =
         ns_server_cert:get_chain_info(Chain, CA),
     UTCTime = calendar:universal_time(),
@@ -638,7 +650,8 @@ save_node_certs(Type, CA, Chain, PKey, Extra) when is_binary(CA),
              {type, Type},
              {load_timestamp, LoadTime},
              {ca, CA},
-             {pem, Chain} | Extra],
+             {pem, Chain},
+             {pkey_passphrase_settings, PassphraseSettings} | Extra],
 
     Data = term_to_binary({node_certs, Props, Chain, PKey}),
 
@@ -651,7 +664,7 @@ save_node_certs_phase2() ->
     TmpFile = tmp_certs_and_key_file(),
     case file:read_file(TmpFile) of
         {ok, Bin} ->
-            {node_certs, Props, Chain, PKey} =  binary_to_term(Bin),
+            {node_certs, Props, Chain, PKey} = binary_to_term(Bin),
             ok = misc:atomic_write_file(chain_file_path(), Chain),
             ok = misc:atomic_write_file(pkey_file_path(), PKey),
             ?log_info("Node cert and pkey files updated"),
@@ -923,7 +936,7 @@ maybe_convert_pre_NEO_certs() ->
                     Chain = public_key:pem_encode(ChainDecoded),
                     {ok, NodePKey} = file:read_file(user_set_key_path()),
                     ?log_info("Saving the following chain~n~p", [Chain]),
-                    _ = save_uploaded_certs(CA, Chain, NodePKey)
+                    _ = save_uploaded_certs(CA, Chain, NodePKey, [])
             end,
 
             FilesToRemove = pre_NEO_files_to_remove(),

@@ -252,6 +252,8 @@ bringup(MyIP, UserSupplied) ->
 
     ?log_info("Attempting to bring up net_kernel with name ~p", [MyNodeName]),
     ok = misc:wait_for_nodename(ShortName),
+    application:set_env(kernel, cb_dist_pkey_pass_mfa,
+                        {ns_secrets, get_pkey_pass, []}),
     Rv = decode_status(net_kernel:start([MyNodeName, longnames])),
     net_kernel:set_net_ticktime(misc:get_env_default(set_net_ticktime, 60)),
 

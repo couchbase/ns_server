@@ -151,7 +151,28 @@ engage_cluster_apply_certs(NodeKVList) ->
 apply_certs(ClusterCA) ->
     case ns_server_cert:add_CAs(uploaded, ClusterCA) of
         {ok, _} ->
-            case ns_server_cert:load_node_certs_from_inbox() of
+            %% We skip loading if certs in inbox are already loaded because of
+            %% two reasons:
+            %%  - We don't have passphrase settings for encrypted key, so if we
+            %%    try to load them one more time, we will fail (in case if pkey
+            %%    is encrypted);
+            %%  - No point in reloading the same certs twice anyway
+            %% Note 1:
+            %% The check is implemented outside of load_node_certs_from_inbox
+            %% because it actually does make sense calling
+            %% load_node_certs_from_inbox with unchanged cert files,
+            %% when only passphrase settings change.
+            %% Note 2:
+            %% This loading of certs from engage_cluster is only useful
+            %% when node is loaded via http (not https). In case of https
+            %% certificates must already be loaded by this moment, we won't be
+            %% able to establish a TLS connection for engage_cluster otherwise.
+            case ns_server_cert:are_certs_loaded() orelse
+                 ns_server_cert:load_node_certs_from_inbox([]) of
+                true ->
+                    ?log_info("Certificates are already loaded, skipping "
+                              "apply_certs stage"),
+                    ok;
                 {ok, Props} ->
                     ns_ssl_services_setup:sync(),
                     ?log_info("Custom certificate was loaded on the node "

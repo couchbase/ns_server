@@ -191,7 +191,8 @@ validate_key(Name, State) ->
     validator:validate(
       fun ("") -> {value, undefined};
           (Key) ->
-              case ns_server_cert:validate_pkey(iolist_to_binary(Key)) of
+              case ns_server_cert:validate_pkey(iolist_to_binary(Key),
+                                                fun () -> undefined end) of
                   {ok, DecodedKey} -> {value, {password, DecodedKey}};
                   {error, _} -> {error, "invalid key"}
               end

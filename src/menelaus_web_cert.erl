@@ -190,7 +190,12 @@ assert_n2n_encryption_is_disabled() ->
 handle_reload_node_certificate(Req) ->
     menelaus_util:assert_is_enterprise(),
     Nodes = nodes(),
-    case ns_server_cert:load_node_certs_from_inbox() of
+    {PassphraseSettings} =
+        case mochiweb_request:recv_body(Req) of
+            undefined -> {[]};
+            Bin when is_binary(Bin) -> ejson:decode(Bin)
+        end,
+    case ns_server_cert:load_node_certs_from_inbox(PassphraseSettings) of
         {ok, Props} ->
             ns_audit:reload_node_certificate(Req,
                                              proplists:get_value(subject, Props),

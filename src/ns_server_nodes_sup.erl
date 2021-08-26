@@ -61,6 +61,8 @@ child_specs() ->
      {memcached_refresh, {memcached_refresh, start_link, []},
       permanent, 1000, worker, []},
 
+     {ns_secrets, {ns_secrets, start_link, []}, permanent, 1000, worker, []},
+
      {ns_ssl_services_sup,
       {ns_ssl_services_sup, start_link, []},
       permanent, infinity, supervisor, []},

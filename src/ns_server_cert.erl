@@ -21,7 +21,8 @@
          this_node_uses_self_generated_certs/1,
          self_generated_ca/0,
          set_cluster_ca/1, %% deprecated
-         load_node_certs_from_inbox/0,
+         load_node_certs_from_inbox/1,
+         are_certs_loaded/0,
          load_CAs_from_inbox/0,
          add_CAs/2,
          add_CAs/3,
@@ -31,7 +32,7 @@
          get_node_cert_info/1,
          tls_server_validation_options/0,
          set_generated_ca/1,
-         validate_pkey/1,
+         validate_pkey/2,
          get_chain_info/2,
          trusted_CAs/1,
          trusted_CAs_pre_NEO/1,
@@ -223,7 +224,7 @@ validate_cert_pem_entry({'Certificate', _, _}) ->
 validate_cert_pem_entry({BadType, _, _}) ->
     {error, {invalid_certificate_type, BadType}}.
 
-validate_pkey(PKeyPemBin) ->
+validate_pkey(PKeyPemBin, PassFun) ->
     try public_key:pem_decode(PKeyPemBin) of
         [{Type, _, not_encrypted} = Entry] ->
             case Type of
@@ -248,8 +249,19 @@ validate_pkey(PKeyPemBin) ->
                     ?log_debug("Invalid pkey type: ~p", [Other]),
                     {error, {invalid_pkey, Type}}
             end;
-        [{_, _, _}] ->
-            {error, encrypted_pkey};
+        [{_Type, _, _CipherInfo} = Entry] ->
+            try element(1, public_key:pem_entry_decode(Entry, PassFun())) of
+                'RSAPrivateKey' -> {ok, Entry};
+                'DSAPrivateKey' -> {ok, Entry};
+                Other ->
+                    ?log_debug("Invalid pkey type: ~p", [Other]),
+                    {error, {invalid_pkey, Other}}
+            catch
+                _:_ ->
+                    ?log_error("Could not decrypt private key, password might "
+                               "be wrong"),
+                    {error, could_not_decrypt}
+            end;
         [] ->
             {error, malformed_pkey};
         Other ->
@@ -261,15 +273,16 @@ validate_pkey(PKeyPemBin) ->
             {error, malformed_pkey}
     end.
 
-validate_cert_and_pkey({'Certificate', DerCert, not_encrypted}, PKey) ->
-    case validate_pkey(PKey) of
+validate_cert_and_pkey({'Certificate', DerCert, not_encrypted},
+                       PKey, PassphraseFun) ->
+    case validate_pkey(PKey, PassphraseFun) of
         {ok, DerKey} ->
             DecodedCert = public_key:pkix_decode_cert(DerCert, otp),
 
             TBSCert = DecodedCert#'OTPCertificate'.tbsCertificate,
             PublicKeyInfo = TBSCert#'OTPTBSCertificate'.subjectPublicKeyInfo,
             PublicKey = PublicKeyInfo#'OTPSubjectPublicKeyInfo'.subjectPublicKey,
-            DecodedKey = public_key:pem_entry_decode(DerKey),
+            DecodedKey = public_key:pem_entry_decode(DerKey, PassphraseFun()),
 
             Msg = <<"1234567890">>,
             Signature = public_key:sign(Msg, sha, DecodedKey),
@@ -295,7 +308,9 @@ extract_cert_and_pkey(Output) ->
                 {error, Error} ->
                     erlang:exit({bad_generated_cert, Cert, Error});
                 _ ->
-                    case validate_pkey(PKey) of
+                    %% We assume this function is used for self-generated
+                    %% certs only, hence no password is used
+                    case validate_pkey(PKey, fun () -> undefined end) of
                         {ok, _} ->
                             {Cert, PKey};
                         Err ->
@@ -671,12 +686,12 @@ trusted_CAs_pre_NEO(Config) ->
 
     UploadedCAs ++ SelfGeneratedCAs.
 
-load_node_certs_from_inbox() ->
+load_node_certs_from_inbox(PassphraseSettings) ->
     case file:read_file(inbox_chain_path()) of
         {ok, Chain} ->
             case file:read_file(inbox_pkey_path()) of
                 {ok, PKey} ->
-                    set_node_certificate_chain(Chain, PKey);
+                    set_node_certificate_chain(Chain, PKey, PassphraseSettings);
                 {error, Reason} ->
                     {error, {read_pkey, inbox_pkey_path(), Reason}}
             end;
@@ -684,20 +699,36 @@ load_node_certs_from_inbox() ->
             {error, {read_chain, inbox_chain_path(), Reason}}
     end.
 
-set_node_certificate_chain(Chain, PKey) ->
+are_certs_loaded() ->
+    case file:read_file(inbox_chain_path()) of
+        {ok, Chain} ->
+            CurChain =
+                proplists:get_value(pem, get_node_cert_info(node()), <<>>),
+            [CurNodePemEntry | _] = public_key:pem_decode(CurChain),
+            case public_key:pem_decode(Chain) of
+                [CurNodePemEntry | _] -> true;
+                _ -> false
+            end;
+        {error, _} ->
+            false
+    end.
+
+set_node_certificate_chain(Chain, PKey, PassphraseSettings) ->
     case decode_and_validate_chain(trusted_CAs(props), Chain) of
         {ok, CAPem, ChainEntriesReversed} ->
             %% ChainReversed :: [Int cert,..., Node cert] (without CA)
             ChainEntries = lists:reverse(ChainEntriesReversed),
             NodeCert = hd(ChainEntries),
             ChainPem = public_key:pem_encode(ChainEntries),
+            PassphraseFun = ns_secrets:get_pkey_pass(PassphraseSettings),
             ValidationRes =
                 functools:sequence_(
                   [fun () ->
-                       validate_cert_and_pkey(NodeCert, PKey)
+                       validate_cert_and_pkey(NodeCert, PKey, PassphraseFun)
                    end,
                    fun () ->
-                       validate_otp_server_certs(CAPem, ChainPem, PKey)
+                       validate_otp_server_certs(CAPem, ChainPem, PKey,
+                                                 PassphraseFun)
                    end]),
 
             case ValidationRes of
@@ -705,7 +736,8 @@ set_node_certificate_chain(Chain, PKey) ->
                     ns_ssl_services_setup:set_node_certificate_chain(
                            CAPem,
                            ChainPem,
-                           PKey);
+                           PKey,
+                           PassphraseSettings);
                 {error, Reason} ->
                     {error, Reason}
             end;
@@ -713,7 +745,7 @@ set_node_certificate_chain(Chain, PKey) ->
             {error, Reason}
     end.
 
-validate_otp_server_certs(CAPem, ChainPem, PKeyPem) ->
+validate_otp_server_certs(CAPem, ChainPem, PKeyPem, PassphraseFun) ->
     case cb_dist:external_encryption() of
         true ->
             with_test_otp_server(
@@ -731,11 +763,11 @@ validate_otp_server_certs(CAPem, ChainPem, PKeyPem) ->
                                    Node, cb_dist:address_family()),
                           {error, {test_connection_failed, Host, Msg}}
                   end
-              end, CAPem, ChainPem, PKeyPem);
+              end, CAPem, ChainPem, PKeyPem, PassphraseFun);
         false -> ok
     end.
 
-with_test_otp_server(Fun, CAPem, ChainPem, PKeyPem) ->
+with_test_otp_server(Fun, CAPem, ChainPem, PKeyPem, PassphraseFun) ->
     [{server, CurrentServerOpts}] = ets:lookup(ssl_dist_opts, server),
     CurrentServerOptsWithAF =
         [cb_dist:address_family() | CurrentServerOpts],
@@ -743,8 +775,9 @@ with_test_otp_server(Fun, CAPem, ChainPem, PKeyPem) ->
     ChainEntries = public_key:pem_decode(ChainPem),
     ChainDer = [D || {'Certificate', D, not_encrypted} <- ChainEntries],
 
-    [{KeyType, KeyDer, not_encrypted}] = public_key:pem_decode(PKeyPem),
-    PKeyDer = {KeyType, KeyDer},
+    [{KeyType, _, _} = PKeyEntry] = public_key:pem_decode(PKeyPem),
+    PrivateKey = public_key:pem_entry_decode(PKeyEntry, PassphraseFun()),
+    {_, KeyDer, _} = public_key:pem_entry_encode(KeyType, PrivateKey),
 
     CAEntries = public_key:pem_decode(CAPem),
     CACertsDer = [D || {'Certificate', D, not_encrypted} <- CAEntries],
@@ -754,7 +787,7 @@ with_test_otp_server(Fun, CAPem, ChainPem, PKeyPem) ->
 
     ServerOpts = lists:map(
                    fun ({certfile, _}) -> {cert, Erl22Cert};
-                       ({keyfile, _}) -> {key, PKeyDer};
+                       ({keyfile, _}) -> {key, {KeyType, KeyDer}};
                        ({cacertfile, _}) -> {cacerts, Erl22CA};
                        (O) -> O
                    end, CurrentServerOptsWithAF),
