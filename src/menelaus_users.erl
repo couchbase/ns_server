@@ -87,7 +87,7 @@
 
 -define(MAX_USERS_ON_CE, 20).
 -define(LDAP_GROUPS_CACHE_SIZE, 1000).
--define(DEFAULT_PROPS, [name, user_roles, group_roles, passwordless,
+-define(DEFAULT_PROPS, [name, uuid, user_roles, group_roles, passwordless,
                         password_change_timestamp, groups, external_groups]).
 -define(DEFAULT_GROUP_PROPS, [description, roles, ldap_group_ref]).
 
@@ -389,7 +389,9 @@ build_auth({_, CurrentAuth}, Password) ->
     {abort, password_required} | {abort, too_many}.
 store_user({_UserName, Domain} = Identity, Name, Password, Roles,
            Groups, Limits) ->
+    UUID = get_user_uuid(Identity, misc:uuid_v4()),
     Props = [{name, Name} || Name =/= undefined] ++
+            [{uuid, UUID} || UUID =/= undefined] ++
             [{groups, Groups} || Groups =/= undefined],
     Snapshot = ns_bucket:get_snapshot(),
 
@@ -767,6 +769,13 @@ get_user_limits(Identity) ->
             Limits
     end.
 
+-spec get_user_uuid(rbac_identity(), binary() | undefined) -> binary() |
+                                                              undefined.
+get_user_uuid({_, local} = Identity, Default) ->
+    proplists:get_value(uuid, get_user_props_raw(Identity), Default);
+get_user_uuid(_, _) ->
+    undefined.
+
 memcached_user_info(User, Info) ->
     {[{<<"n">>, list_to_binary(User)} | Info]}.
 
@@ -865,7 +874,9 @@ upgrade(Version, Config, Nodes) ->
             ?VERSION_66 ->
                 ok;
             ?VERSION_70 ->
-                do_upgrade(Version, group)
+                do_upgrade(Version, group);
+            ?VERSION_NEO ->
+                ok
         end,
         sync_with_remotes(Nodes, Version),
         ok
@@ -885,11 +896,18 @@ maybe_upgrade_role_to_70(security_admin) ->
 maybe_upgrade_role_to_70(Role) ->
     [Role].
 
-upgrade_props(?VERSION_66, Props) ->
+upgrade_props(?VERSION_66, _Key, Props) ->
     %% remove junk user_roles property that might appear due to MB-39706
     lists:keydelete(user_roles, 1, Props);
-upgrade_props(?VERSION_70, Props) ->
-    upgrade_roles(fun maybe_upgrade_role_to_70/1, Props).
+upgrade_props(?VERSION_70, _Key, Props) ->
+    upgrade_roles(fun maybe_upgrade_role_to_70/1, Props);
+upgrade_props(?VERSION_NEO, Key, Props) ->
+    add_uuid(Key, Props).
+
+add_uuid({_, local}, Props) ->
+    lists:keystore(uuid, 1, Props, {uuid, misc:uuid_v4()});
+add_uuid(_, Props) ->
+    Props.
 
 upgrade_roles(Fun, Props) ->
     OldRoles = lists:sort(proplists:get_value(roles, Props)),
@@ -904,7 +922,7 @@ upgrade_roles(Fun, Props) ->
 do_upgrade(Version, UserOrGroup) ->
     UpdateFun =
         fun ({UOG, Key}, Props) when UOG =:= UserOrGroup ->
-                case upgrade_props(Version, Props) of
+                case upgrade_props(Version, Key, Props) of
                     Props ->
                         skip;
                     NewProps ->

@@ -228,6 +228,8 @@ user_to_json({Id, Domain}, Props, Limits) ->
     Is65 = cluster_compat_mode:is_cluster_65(),
     RolesJson = user_roles_to_json(Props, Is65),
     Name = proplists:get_value(name, Props),
+    %% UUID is only defined for local users in VERSION_NEO clusters.
+    UUID = proplists:get_value(uuid, Props),
     Groups = proplists:get_value(groups, Props),
     ExtGroups = proplists:get_value(external_groups, Props),
     Passwordless = proplists:get_value(passwordless, Props),
@@ -243,6 +245,7 @@ user_to_json({Id, Domain}, Props, Limits) ->
      [{external_groups, [list_to_binary(G) || G <- ExtGroups]}
           || ExtGroups =/= undefined, Is65] ++
      [{name, list_to_binary(Name)} || Name =/= undefined] ++
+     [{uuid, UUID} || UUID =/= undefined] ++
      [{passwordless, Passwordless} || Passwordless == true] ++
      [{password_change_date, PassChangeTime} || PassChangeTime =/= undefined]}.
 
