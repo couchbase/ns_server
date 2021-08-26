@@ -492,7 +492,7 @@ get_ssl_cipher_list([], Params) ->
       {<<"TLS 1.3">>, Ciphers13}]}.
 
 tls_config(Params) ->
-    KeyPath = iolist_to_binary(ns_ssl_services_setup:pkey_file_path()),
+    KeyPath = iolist_to_binary(ns_ssl_services_setup:unencrypted_pkey_file_path()),
     ChainPath = iolist_to_binary(ns_ssl_services_setup:chain_file_path()),
     CAPath = iolist_to_binary(ns_ssl_services_setup:ca_file_path()),
     MinVsn = case ns_ssl_services_setup:ssl_minimum_protocol(kv) of
@@ -528,7 +528,7 @@ generate_interfaces(MCDParams) ->
                       {Port, Value} = lists:keyfind(Port, 1, MCDParams),
                       Value
               end,
-    SSL = {[{key, list_to_binary(ns_ssl_services_setup:pkey_file_path())},
+    SSL = {[{key, list_to_binary(ns_ssl_services_setup:unencrypted_pkey_file_path())},
             {cert, list_to_binary(ns_ssl_services_setup:legacy_cert_path())}]},
     InterProps = [{[{port, GetPort(port)}]},
 

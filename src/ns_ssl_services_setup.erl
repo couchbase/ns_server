@@ -37,7 +37,8 @@
          honor_cipher_order/1,
          honor_cipher_order/2,
          set_certs/4,
-         chronicle_upgrade_to_NEO/1]).
+         chronicle_upgrade_to_NEO/1,
+         unencrypted_pkey_file_path/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -380,6 +381,8 @@ cert_file_path_erl22() ->
     filename:join(path_config:component_path(data, "config"), "cert_erl22.pem").
 legacy_cert_path() ->
     filename:join(path_config:component_path(data, "config"), "legacy_cert.pem").
+unencrypted_pkey_file_path() ->
+    filename:join(path_config:component_path(data, "config"), "unencrypted_pkey.pem").
 
 sync() ->
     ns_config:sync_announcements(),
@@ -674,6 +677,7 @@ save_node_certs_phase2() ->
             %% Can be removed when all the services and memcached switch to new
             %% cert format (where ca certs are kept separately)
             update_legacy_cert_file(),
+            update_legacy_unencrypted_key(Props), %% MUST BE REMOVED IN NEO
             ok = ssl:clear_pem_cache(),
             misc:create_marker(marker_path()),
             ok = file:delete(TmpFile);
@@ -712,6 +716,19 @@ update_legacy_cert_file() ->
          end,
     LegacyCert = lists:join(io_lib:nl(), Chain ++ CA),
     misc:atomic_write_file(legacy_cert_path(), LegacyCert).
+
+update_legacy_unencrypted_key(Props) ->
+    Settings = proplists:get_value(pkey_passphrase_settings, Props, []),
+    PassphraseFun = ns_secrets:get_pkey_pass(Settings),
+    {ok, B} = file:read_file(pkey_file_path()),
+    File = unencrypted_pkey_file_path(),
+    case public_key:pem_decode(B) of
+        [{_, _, not_encrypted}] -> misc:atomic_write_file(File, B);
+        [{ASNType, _, _} = Entry] ->
+            DecodedEntry = public_key:pem_entry_decode(Entry, PassphraseFun()),
+            Entry2 = public_key:pem_entry_encode(ASNType, DecodedEntry),
+            misc:atomic_write_file(File, public_key:pem_encode([Entry2]))
+    end.
 
 -spec get_user_name_from_client_cert(term()) -> string() | undefined | failed.
 get_user_name_from_client_cert(Val) ->
