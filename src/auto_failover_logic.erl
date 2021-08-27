@@ -588,24 +588,26 @@ attach_test_uuid(Node) ->
 attach_test_uuids(Nodes) ->
     [attach_test_uuid(N) || N <- Nodes].
 
-test_frame(Tries, Nodes, DownNodes, State) ->
+test_frame(Tries, Nodes, DownNodes, DownSG, State) ->
     NodesWithIDs = attach_test_uuids(Nodes),
     SvcConfig = [{kv, {{disable_auto_failover, false}, {nodes, Nodes}}}],
     test_frame(Tries, [], NodesWithIDs,
-               attach_test_uuids(DownNodes), State, SvcConfig,
+               attach_test_uuids(DownNodes), State, SvcConfig, DownSG,
                [{Tries, [], State}]).
 
-test_frame(0, Actions, _Nodes, _DownNodes, State, _SvcConfig, Report) ->
+test_frame(0, Actions, _Nodes, _DownNodes, State, _SvcConfig, _DownSG,
+           Report) ->
     ?log_debug("~n---------------~n~s~n----------------~n",
                [generate_report(Report, [])]),
     {Actions, State};
-test_frame(Times, Actions, Nodes, DownNodes, State, SvcConfig, Report) ->
-    ?assertEqual([], Actions),
+test_frame(Times, Actions, Nodes, DownNodes, State, SvcConfig, DownSG,
+           Report) ->
+    ?assertEqual(no_actions(), Actions),
     {NewActions, NewState} =
-        process_frame(Nodes, DownNodes, State, SvcConfig, []),
+        process_frame(Nodes, DownNodes, State, SvcConfig, DownSG),
     StateDiff = flatten_state(NewState) -- flatten_state(State),
     test_frame(Times - 1, NewActions, Nodes, DownNodes, NewState, SvcConfig,
-               [{Times - 1, NewActions, StateDiff} | Report]).
+               DownSG, [{Times - 1, NewActions, StateDiff} | Report]).
 
 generate_report([], Iolist) ->
     lists:flatten(Iolist);
@@ -619,93 +621,82 @@ flatten_state(#state{nodes_states = NS, services_state = SS,
                      down_server_group_state = DSGS}) ->
     NS ++ SS ++ [DSGS].
 
-expect_no_actions({Actions, State}) ->
-    ?assertEqual([], Actions),
-    State.
+no_actions() ->
+    [].
 
-expect_failover(Node, {Actions, State}) ->
-    ?assertEqual([{failover, attach_test_uuid(Node)}], Actions),
-    State.
+failover(Nodes) ->
+    [{failover, N} || N <- attach_test_uuids(Nodes)].
 
-expect_mail_down_warnings(Nodes, {Actions, State}) ->
-    ?assertEqual([{mail_down_warning, N} || N <- attach_test_uuids(Nodes)],
-                 Actions),
-    State.
+mail_down_warnings(Nodes) ->
+    [{mail_down_warning, N} || N <- attach_test_uuids(Nodes)].
 
-basic_kv_1_test() ->
-    functools:chain(
-      test_init(3),
-      [?cut(expect_no_actions(test_frame(1, [a, b, c], [], _))),
-       ?cut(expect_failover(b, test_frame(6, [a, b, c], [b], _)))]).
+test_body(Threshold, Nodes, DownSG, Steps) ->
+    lists:foldl(
+      fun ({Expected, NFrames, DownNodes}, State) ->
+              {Actions, NewState} = test_frame(NFrames, Nodes, DownNodes,
+                                               DownSG, State),
+              ?assertEqual(Expected, Actions),
+              NewState
+      end, test_init(Threshold), Steps).
 
-basic_kv_2_test() ->
-    expect_failover(b, test_frame(7, [a, b, c], [b], test_init(4))).
+pre_Neo_test_() ->
+    T = fun (Threshold, Nodes, Steps) ->
+                ?cut(test_body(Threshold, Nodes, [], Steps))
+        end,
 
-min_size_test_body(Threshold) ->
-    {Actions, State} = test_frame(Threshold + 3, [a, b], [b],
-                                  test_init(Threshold)),
-    ?assertMatch([{mail_too_small, _, _, _}], Actions),
-    test_frame(30, [a, b], [b], State).
+    MinSizeTest =
+        fun (Threshold) ->
+                {Actions, State} = test_frame(Threshold + 3, [a, b], [b],
+                                              [], test_init(Threshold)),
+                ?assertMatch([{mail_too_small, _, _, _}], Actions),
+                test_frame(30, [a, b], [b], [], State)
+        end,
 
-min_size_test() ->
-    min_size_test_body(2),
-    min_size_test_body(3),
-    min_size_test_body(4).
-
-min_size_and_increasing_test() ->
-    S = expect_no_actions(min_size_test_body(2)),
-    expect_failover(b, test_frame(5, [a, b, c], [b], S)).
-
-other_down_test() ->
-    Nodes = [a, b, c],
-    functools:chain(
-      test_init(3),
-      [?cut(expect_no_actions(test_frame(5, Nodes, [b], _))),
-       ?cut(expect_mail_down_warnings([b], test_frame(1, Nodes, [b, c], _))),
-       ?cut(expect_failover(b, test_frame(2, Nodes, [b], _))),
-       ?cut(expect_no_actions(test_frame(1, Nodes, [b, c], _))),
-       ?cut(expect_failover(b, test_frame(2, Nodes, [b], _)))]).
-
-two_down_at_same_time_test() ->
-    Nodes = [a, b, c, d],
-    functools:chain(
-      test_init(3),
-      [?cut(expect_no_actions(test_frame(3, Nodes, [b, c], _))),
-       ?cut(expect_mail_down_warnings([b, c],
-                                      test_frame(1, Nodes, [b, c], _)))]).
-
-two_down_at_same_time_with_shift_test() ->
-    Nodes = [a, b, c, d],
-    functools:chain(
-      test_init(3),
-      [?cut(expect_no_actions(test_frame(1, Nodes, [b], _))),
-       ?cut(expect_mail_down_warnings([b], test_frame(3, Nodes, [b, c], _))),
-       ?cut(expect_mail_down_warnings([c], test_frame(1, Nodes, [b, c], _)))]).
-
-multiple_mail_down_warning_test() ->
-    Nodes = [a, b, c],
-    functools:chain(
-      test_init(3),
-      [?cut(expect_no_actions(test_frame(4, Nodes, [b], _))),
-       ?cut(expect_mail_down_warnings([b], test_frame(1, Nodes, [b, c], _))),
-       %% Make sure not every tick sends out a message
-       ?cut(expect_no_actions(test_frame(2, Nodes, [b, c], _))),
-       ?cut(expect_mail_down_warnings([c], test_frame(1, Nodes, [b, c], _)))]).
-
-%% Test if mail_down_warning is sent again if node was up in between
-mail_down_warning_down_up_down_test() ->
-    Nodes = [a, b, c],
-    functools:chain(
-      test_init(3),
-      [?cut(expect_no_actions(test_frame(4, Nodes, [b], _))),
-       ?cut(expect_mail_down_warnings([b],
-                                      test_frame(1, Nodes, [b, c], _))),
-       %% Node is up again
-       ?cut(expect_no_actions(test_frame(1, Nodes, [], _))),
-       ?cut(expect_no_actions(test_frame(3, Nodes, [b], _))),
-       ?cut(expect_mail_down_warnings([b],
-                                      test_frame(1, Nodes, [b, c], _)))]).
-
+    [{"Basic one node failover",
+      T(3, [a, b, c], [{no_actions(), 1, []},
+                       {failover([b]), 6, [b]}])},
+     {"Basic one node failover 2",
+      T(4, [a, b, c], [{failover([b]), 7, [b]}])},
+     {"Min size 2", ?cut(MinSizeTest(2))},
+     {"Min size 3", ?cut(MinSizeTest(3))},
+     {"Min size 4", ?cut(MinSizeTest(4))},
+     {"Min size and increasing",
+      fun () ->
+              {Actions, State} = MinSizeTest(2),
+              ?assertEqual(no_actions(), Actions),
+              {Actions1, _} = test_frame(5, [a, b, c], [b], [], State),
+              ?assertEqual(failover([b]), Actions1)
+      end},
+     {"Other node down",
+      T(3, [a, b, c],
+        [{no_actions(), 5, [b]},
+         {mail_down_warnings([b]), 1, [b, c]},
+         {failover([b]), 2, [b]},
+         {no_actions(), 1, [b, c]},
+         {failover([b]), 2, [b]}])},
+     {"Two nodes down at the same time",
+      T(3, [a, b, c, d],
+        [{no_actions(), 3, [b, c]},
+         {mail_down_warnings([b, c]), 1, [b, c]}])},
+     {"Two nodes down at the same time with shift",
+      T(3, [a, b, c, d],
+        [{no_actions(), 1, [b]},
+         {mail_down_warnings([b]), 3, [b, c]},
+         {mail_down_warnings([c]), 1, [b, c]}])},
+     {"Multiple mail down warnings",
+      T(3, [a, b, c],
+        [{no_actions(), 4, [b]},
+         {mail_down_warnings([b]), 1, [b, c]},
+         %% Make sure not every tick sends out a message
+         {no_actions(), 2, [b, c]},
+         {mail_down_warnings([c]), 1, [b, c]}])},
+     {"Test if mail_down_warning is sent again if node was up in between",
+      T(3, [a, b, c],
+        [{no_actions(), 4, [b]},
+         {mail_down_warnings([b]), 1, [b, c]},
+         {no_actions(), 1, []},
+         {no_actions(), 3, [b]},
+         {mail_down_warnings([b]), 1, [b, c]}])}].
 
 filter_node_states_test() ->
     Test = fun (Nodes, NodesForStates) ->
