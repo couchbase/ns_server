@@ -5,7 +5,7 @@
   "version": "0.0.0",
   "scripts": {
     "rebuild": "rm -rf node_modules web_modules && npm install && snowpack",
-    "checks": "eslint app/**/*.js"
+    "checks": "eslint 'app/**/*.js'"
   },
   "dependencies": {
     "@angular/common": "8.2.14",
