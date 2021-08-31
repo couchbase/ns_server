@@ -56,8 +56,12 @@ create_snapshot(Timeout, Settings) ->
     end.
 
 delete_series(MatchPatterns, Start, End, Timeout, Settings) ->
-    Body = [{"start", Start}, {"end", End}] ++
-           [{"match[]", P} || P <- MatchPatterns],
+    Body = case Start of
+               min_possible_time ->
+                   [];
+               Start ->
+                   [{"start", Start}]
+           end ++ [{"end", End}] ++ [{"match[]", P} || P <- MatchPatterns],
 
     case post("/api/v1/admin/tsdb/delete_series", Body, Timeout, Settings) of
         {ok, no_content, _} -> ok;

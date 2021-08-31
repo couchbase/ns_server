@@ -82,7 +82,6 @@
      [{atom(), pos_integer(), pos_integer() | skip}]} |
     {pruning_interval, pos_integer()} |
     {truncate_max_age, pos_integer()} |
-    {min_truncation_interval, pos_integer()} |
     {decimation_match_patterns, [string()]} |
     {truncation_match_patterns, [string()]} |
     {token_file, string()} |
@@ -157,7 +156,6 @@ default_settings() ->
      {decimation_defs, decimation_definitions_default()},
      {pruning_interval, 60000}, %% frequency to try to prune stats (msecs)
      {truncate_max_age, 3*?SECS_IN_DAY}, %% age (secs) to truncate stats
-     {min_truncation_interval, 0}, %% Secs past max age to keep stats
      {decimation_match_patterns, ["{job=\"general\"}"]},
      {truncation_match_patterns, ["{job=~\".*_high_cardinality\"}"]},
      {token_file, "prometheus_token"},
@@ -1278,7 +1276,7 @@ run_prune_stats(Levels, LastPruningTime, Settings) ->
                      end,
     StatsTruncated = case proplists:get_bool(truncation_enabled, Settings) of
                          true ->
-                             run_truncate_stats(LastPruningTime, Settings);
+                             run_truncate_stats(Settings);
                          false ->
                              false
                      end,
@@ -1367,36 +1365,25 @@ build_decimation_summary(SortedDeletions) ->
           end, {First, 1, []}, Rest),
     Summary.
 
-run_truncate_stats(LastPruningTime, Settings) ->
+run_truncate_stats(Settings) ->
     Now = os:system_time(seconds),
     MaxAge = proplists:get_value(truncate_max_age, Settings),
-    %% Amount of time to not truncate stats even if they're older than the
-    %% maximum age.
-    MinTruncationInterval = proplists:get_value(min_truncation_interval,
-                                                Settings),
     End = Now - MaxAge,
     %% Each call truncates the little bit that has exceeded the age limit
     %% since the last call.  We might want to do this less frequently e.g.
     %% when a certain time frame is exceeded.
-    case End - LastPruningTime > MinTruncationInterval of
-        true ->
-            do_truncate_stats(LastPruningTime, End, Settings),
-            true;
-        false ->
-            false
-    end.
+    do_truncate_stats(End, Settings),
+    true.
 
-do_truncate_stats(StartTime, EndTime, Settings) ->
+do_truncate_stats(EndTime, Settings) ->
     %% Only high-cardinality stats are truncated
     MatchPatterns = proplists:get_value(truncation_match_patterns, Settings),
 
-    ?log_debug("Truncating stats from ~p (~p) to ~p (~p)",
-               [calendar:system_time_to_rfc3339(StartTime, [{offset, 0}]),
-                StartTime,
-                calendar:system_time_to_rfc3339(EndTime, [{offset, 0}]),
+    ?log_debug("Truncating stats older than ~p (~p)",
+               [calendar:system_time_to_rfc3339(EndTime, [{offset, 0}]),
                 EndTime]),
 
-    delete_series(MatchPatterns, StartTime, EndTime, 30000, Settings).
+    delete_series(MatchPatterns, min_possible_time, EndTime, 30000, Settings).
 
 delete_series(MatchPatterns, Start, End, Timeout, Settings) ->
 
