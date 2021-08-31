@@ -409,6 +409,13 @@ process_action({mail_down_warning, {Node, _UUID}}, S, _, _, _) ->
        "There was at least another node down.",
        [Node]),
     S;
+process_action({mail_down_warning_multi_node, {Node, _UUID}}, S, _, _, _) ->
+    ?log_info_and_email(
+       auto_failover_other_nodes_down,
+       "Could not auto-failover node (~p). "
+       "The list of nodes being down has changed.",
+       [Node]),
+    S;
 process_action({mail_auto_failover_disabled, Service, {Node, _}}, S, _, _, _) ->
     ?log_info_and_email(
        auto_failover_disabled,

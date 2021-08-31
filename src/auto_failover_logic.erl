@@ -303,8 +303,8 @@ process_frame(Nodes, DownNodes, State = #state{nodes_states = NodeStates,
     {{Actions, NewDownStates2}, NewState} =
         case DownSG of
             undefined ->
-                {decide_on_actions(NewDownStates1, State, SvcConfig,
-                                   undefined), State};
+                {decide_on_actions(DownStates, NewDownStates1, State,
+                                   SvcConfig), State};
             _ ->
                 DownSGState = get_down_sg_state(
                                 NewDownStates1, DownSG,
@@ -327,7 +327,7 @@ process_frame(Nodes, DownNodes, State = #state{nodes_states = NodeStates,
 
 process_with_group_failover(DownStates, State, SvcConfig,
                             #down_group_state{name = nil}) ->
-    decide_on_actions(DownStates, State, SvcConfig, 1);
+    decide_on_actions_pre_neo(DownStates, State, SvcConfig, 1);
 process_with_group_failover(DownStates, _, _,
                             #down_group_state{state = nearly_down}) ->
     {[], DownStates};
@@ -370,38 +370,73 @@ ready_for_failover(DownStates) ->
               false
       end, DownStates).
 
-decide_on_actions(DownStates, State, SvcConfig, MaxGroupSize) ->
-    case MaxGroupSize =/= undefined andalso
-        length(DownStates) > MaxGroupSize of
+decide_on_failover(DownStates, State, SvcConfig) ->
+    case ready_for_failover(DownStates) of
         true ->
-            issue_mail_down_warnings(DownStates);
+            DownNodes = get_node_names_and_uuids(DownStates),
+            DownNodesOrdset = ordsets:from_list(
+                                get_node_names(DownStates)),
+            {lists:flatmap(should_failover_node(
+                             State, _, SvcConfig,
+                             DownNodesOrdset), DownNodes), DownStates};
         false ->
-            case ready_for_failover(DownStates) of
-                true ->
-                    DownNodes = get_node_names_and_uuids(DownStates),
-                    DownNodesOrdset = ordsets:from_list(
-                                        get_node_names(DownStates)),
-                    {lists:flatmap(should_failover_node(
-                                     State, _, SvcConfig,
-                                     DownNodesOrdset), DownNodes), DownStates};
-                false ->
-                    {[], DownStates}
-            end
+            {[], DownStates}
     end.
 
-%% Return separate events for all nodes that are down.
-issue_mail_down_warnings(DownStates) ->
-    {Actions, NewDownStates} =
-        lists:foldl(
-          fun (#node_state{state = nearly_down, name = Node,
-                           mailed_down_warning = false} = S, {Warnings, DS}) ->
-                  {[{mail_down_warning, Node} | Warnings],
-                   [S#node_state{mailed_down_warning = true} | DS]};
-              %% Warning was already sent
-              (S, {Warnings, DS}) ->
-                  {Warnings, [S | DS]}
-          end, {[], []}, DownStates),
+decide_on_actions_pre_neo(DownStates, State, SvcConfig, MaxGroupSize) ->
+    case length(DownStates) > MaxGroupSize of
+        true ->
+            issue_mail_down_warnings_pre_Neo(DownStates);
+        false ->
+            decide_on_failover(DownStates, State, SvcConfig)
+    end.
+
+decide_on_actions(PrevDownStates, DownStates, State, SvcConfig) ->
+    case decide_on_failover(DownStates, State, SvcConfig) of
+        {[], DownStates} ->
+            issue_mail_down_warnings(PrevDownStates, DownStates);
+        ActionsAndStates ->
+            ActionsAndStates
+    end.
+
+maybe_issue_mail_down_warning(
+  Warning, S = #node_state{name = Node, mailed_down_warning = false},
+  true, {Warnings, DS}) ->
+    {[{Warning, Node} | Warnings],
+     [S#node_state{mailed_down_warning = true} | DS]};
+maybe_issue_mail_down_warning(_Warning, S, _, {Warnings, DS}) ->
+    {Warnings, [S | DS]}.
+
+fold_states(Fun, List) ->
+    {Actions, NewDownStates} = lists:foldl(Fun, {[], []}, List),
     {lists:reverse(Actions), lists:reverse(NewDownStates)}.
+
+%% Return separate events for all nodes that are down.
+issue_mail_down_warnings_pre_Neo(DownStates) ->
+    fold_states(
+      fun (#node_state{state = DownState} = S, Acc) ->
+              maybe_issue_mail_down_warning(
+                mail_down_warning, S, DownState =:= nearly_down, Acc)
+      end, DownStates).
+
+should_issue_mail_down_warning(
+  #node_state{state = failover}, #node_state{state = nearly_down}) ->
+    true;
+should_issue_mail_down_warning(
+  #node_state{state = nearly_down},
+  #node_state{state = nearly_down, down_counter = 0}) ->
+    true;
+should_issue_mail_down_warning(_, _) ->
+    false.
+
+issue_mail_down_warnings(PrevDownStates, DownStates) ->
+    fold_states(
+      fun ({PrevDownState, DownState}, Acc) ->
+              maybe_issue_mail_down_warning(
+                mail_down_warning_multi_node,
+                DownState,
+                should_issue_mail_down_warning(PrevDownState, DownState), Acc)
+      end, lists:zip(PrevDownStates, DownStates)).
 
 update_multi_services_state([], ServicesState) ->
     ServicesState;
