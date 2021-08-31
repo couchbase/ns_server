@@ -104,7 +104,9 @@ maybe_start_http_server(off, _Options) ->
 maybe_start_http_server(Type, Options) ->
     ServerOptions = generate_http_server_options(Options),
     LogOptions = [{K, V} || {K, V} <- ServerOptions,
-                            lists:member(K, [ssl, ssl_opts, ip, port])],
+                            lists:member(K, [ssl, ssl_opts, ip, port]),
+                            K =/= password],
+
     case mochiweb_http:start_link(ServerOptions) of
         {ok, Pid} ->
             ?log_info("Started web service with ~p", [LogOptions]),
