@@ -25,15 +25,15 @@
 
 handle_get_metrics(Req) ->
     Resp = menelaus_util:respond(Req, {200, [], chunked}),
-    ns_server_stats:report_prom_stats(fun (M) -> report_metric(M, Resp) end,
-                                      false),
+    ns_server_stats:report_prom_stats(
+      fun (M) -> report_metric(Req, M, Resp) end, false),
     Settings = prometheus_cfg:settings(),
     Services = proplists:get_value(external_prometheus_services, Settings),
     NsServerProps = proplists:get_value(ns_server, Services, []),
     case proplists:get_bool(high_cardinality_enabled, NsServerProps) of
         true ->
             ns_server_stats:report_prom_stats(
-              fun (M) -> report_metric(M, Resp) end, true);
+              fun (M) -> report_metric(Req, M, Resp) end, true);
         false -> ok
     end,
     AllTargets = proplists:get_value(targets, Settings),
@@ -64,7 +64,7 @@ handle_get_metrics(Req) ->
         [{MakeURL(Addr, "/_prometheusMetricsHigh", Type), AuthHeader(Type)}
          || {Type, Addr} <- HighCardTargets],
     [proxy_chunks_from_url(URL, Resp) || URL <- URLs],
-    mochiweb_response:write_chunk(<<>>, Resp).
+    menelaus_util:write_chunk(Req, <<>>, Resp).
 
 handle_sd_config(Req) ->
     Nodes = menelaus_web_node:get_hostnames(Req, any),
@@ -98,7 +98,7 @@ proxy_chunks(Req, Resp) ->
     case lhttpc:get_body_part(Req, ?METRICS_TIMEOUT) of
         {ok, {http_eob, _Trailers}} -> ok;
         {ok, Bin} when is_binary(Bin) ->
-            mochiweb_response:write_chunk(Bin, Resp),
+            menelaus_util:write_chunk(Req, Bin, Resp),
             proxy_chunks(Req, Resp);
         {error, _} = Error ->
             Error
@@ -107,9 +107,9 @@ proxy_chunks(Req, Resp) ->
 %% It is supposed to be used by local prometheus to collect ns_server metrics
 handle_get_local_metrics(IsHighCard, Req) ->
     Resp = menelaus_util:respond(Req, {200, [], chunked}),
-    ns_server_stats:report_prom_stats(fun (M) -> report_metric(M, Resp) end,
-                                      IsHighCard),
-    mochiweb_response:write_chunk(<<>>, Resp).
+    ns_server_stats:report_prom_stats(
+      fun (M) -> report_metric(Req, M, Resp) end, IsHighCard),
+    menelaus_util:write_chunk(Req, <<>>, Resp).
 
 handle_create_snapshot(Req) ->
     menelaus_util:ensure_local(Req),
@@ -153,16 +153,16 @@ ensure_allowed_prom_req("/api/v1/metadata" ++ _) -> ok;
 ensure_allowed_prom_req(_) ->
     menelaus_util:web_exception(404, "not found").
 
-report_metric({Metric, Labels, Value}, Resp) ->
+report_metric(Req, {Metric, Labels, Value}, Resp) ->
     LabelsIOList = [[name_to_iolist(K), <<"=\"">>, label_val_to_bin(V),
                      <<"\"">>] || {K, V} <- Labels],
     Line =
         [name_to_iolist(Metric), <<"{">>, lists:join(<<",">>, LabelsIOList),
          <<"} ">>, promQL:format_value(Value), <<"\n">>],
-    mochiweb_response:write_chunk(Line, Resp);
-report_metric({Prefix, Metric, Labels, Value}, Resp) ->
+    menelaus_util:write_chunk(Req, Line, Resp);
+report_metric(Req, {Prefix, Metric, Labels, Value}, Resp) ->
     Prefixed = [Prefix, <<"_">>, name_to_iolist(Metric)],
-    report_metric({Prefixed, Labels, Value}, Resp).
+    report_metric(Req, {Prefixed, Labels, Value}, Resp).
 
 name_to_iolist(A) when is_atom(A) -> atom_to_binary(A, latin1);
 name_to_iolist(A) -> A.

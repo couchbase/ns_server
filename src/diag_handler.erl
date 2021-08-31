@@ -431,7 +431,7 @@ handle_diag(Req) ->
                     end,
 
     Resp = handle_just_diag(Req, MaybeContDisp),
-    mochiweb_response:write_chunk(<<>>, Resp),
+    menelaus_util:write_chunk(Req, <<>>, Resp),
     trace_memory("Finished handling diag.").
 
 grab_per_node_diag() ->
@@ -452,7 +452,8 @@ grab_per_node_diag(Timeout) ->
 handle_just_diag(Req, Extra) ->
     Resp = menelaus_util:reply_ok(Req, "text/plain; charset=utf-8", chunked, Extra),
 
-    mochiweb_response:write_chunk(<<"logs:\n-------------------------------\n">>, Resp),
+    menelaus_util:write_chunk(
+      Req, <<"logs:\n-------------------------------\n">>, Resp),
     lists:foreach(fun (#log_entry{node = Node,
                                   module = Module,
                                   code = Code,
@@ -465,11 +466,18 @@ handle_just_diag(Req, Extra) ->
                                   CodeString = ns_log:code_string(Module, Code),
                                   Type = menelaus_alert:category_bin(Cat),
                                   TStampEpoch = misc:timestamp_to_time(TStamp, millisecond),
-                                  mochiweb_response:write_chunk(iolist_to_binary(diag_format_log_entry(Type, Code, Module, Node, TStampEpoch, CodeString, S)), Resp)
+                                  menelaus_util:write_chunk(
+                                    Req,
+                                    iolist_to_binary(
+                                      diag_format_log_entry(
+                                        Type, Code, Module, Node,
+                                        TStampEpoch, CodeString, S)),
+                                    Resp)
                           catch _:_ -> ok
                           end
                   end, lists:keysort(#log_entry.tstamp, ns_log:recent())),
-    mochiweb_response:write_chunk(<<"-------------------------------\n\n\n">>, Resp),
+    menelaus_util:write_chunk(
+      Req, <<"-------------------------------\n\n\n">>, Resp),
 
     mochiweb_response:write_chunk(
       <<"Event Logs:\n-------------------------------\n">>, Resp),
@@ -497,7 +505,7 @@ handle_just_diag(Req, Extra) ->
       <<"-------------------------------\n\n\n">>, Resp),
 
     Results = grab_per_node_diag(),
-    handle_per_node_just_diag(Resp, Results),
+    handle_per_node_just_diag(Req, Resp, Results),
 
     Buckets = lists:sort(fun (A,B) -> element(1, A) =< element(1, B) end,
                          ns_bucket:get_buckets()),
@@ -510,28 +518,29 @@ handle_just_diag(Req, Extra) ->
 
     [begin
          Text = io_lib:format(Fmt ++ "~n~n", Args),
-         mochiweb_response:write_chunk(list_to_binary(Text), Resp)
+         menelaus_util:write_chunk(Req, list_to_binary(Text), Resp)
      end || [Fmt | Args] <- Infos],
 
     Resp.
 
-write_chunk_format(Resp, Fmt, Args) ->
+write_chunk_format(Req, Resp, Fmt, Args) ->
     Text = io_lib:format(Fmt, Args),
-    mochiweb_response:write_chunk(list_to_binary(Text), Resp).
+    menelaus_util:write_chunk(Req, list_to_binary(Text), Resp).
 
-handle_per_node_just_diag(_Resp, []) ->
+handle_per_node_just_diag(_Req, _Resp, []) ->
     erlang:garbage_collect();
-handle_per_node_just_diag(Resp, [{Node, Diag} | Results]) ->
+handle_per_node_just_diag(Req, Resp, [{Node, Diag} | Results]) ->
     erlang:garbage_collect(),
 
     trace_memory("Processing diag info for node ~p", [Node]),
-    do_handle_per_node_just_diag(Resp, Node, Diag),
-    handle_per_node_just_diag(Resp, Results).
+    do_handle_per_node_just_diag(Req, Resp, Node, Diag),
+    handle_per_node_just_diag(Req, Resp, Results).
 
-do_handle_per_node_just_diag(Resp, Node, Failed) when not is_list(Failed) ->
-    write_chunk_format(Resp, "per_node_diag(~p) = ~p~n~n~n", [Node, Failed]);
-do_handle_per_node_just_diag(Resp, Node, PerNodeDiag) ->
-    do_handle_per_node_processes(Resp, Node, PerNodeDiag).
+do_handle_per_node_just_diag(Req, Resp, Node,
+                             Failed) when not is_list(Failed) ->
+    write_chunk_format(Req, Resp, "per_node_diag(~p) = ~p~n~n~n", [Node, Failed]);
+do_handle_per_node_just_diag(Req, Resp, Node, PerNodeDiag) ->
+    do_handle_per_node_processes(Req, Resp, Node, PerNodeDiag).
 
 get_other_node_processes(Key, PerNodeDiag) ->
     Processes = proplists:get_value(Key, PerNodeDiag, []),
@@ -544,18 +553,18 @@ get_other_node_processes(Key, PerNodeDiag) ->
             [Processes]
     end.
 
-write_processes(Resp, Node, Key, Processes) ->
+write_processes(Req, Resp, Node, Key, Processes) ->
     misc:executing_on_new_process(
       fun () ->
-              write_chunk_format(Resp, "per_node_~p(~p) =~n", [Key, Node]),
+              write_chunk_format(Req, Resp, "per_node_~p(~p) =~n", [Key, Node]),
               lists:foreach(
                 fun (Process) ->
-                        write_chunk_format(Resp, "     ~p~n", [Process])
+                        write_chunk_format(Req, Resp, "     ~p~n", [Process])
                 end, Processes),
-              mochiweb_response:write_chunk(<<"\n\n">>, Resp)
+              menelaus_util:write_chunk(Req, <<"\n\n">>, Resp)
       end).
 
-do_handle_per_node_processes(Resp, Node, PerNodeDiag) ->
+do_handle_per_node_processes(Req, Resp, Node, PerNodeDiag) ->
     erlang:garbage_collect(),
     trace_memory("Starting pretty printing processes for ~p", [Node]),
 
@@ -569,21 +578,21 @@ do_handle_per_node_processes(Resp, Node, PerNodeDiag) ->
                         lists:keydelete(babysitter_processes, 1,
                                         lists:keydelete(couchdb_processes, 1, PerNodeDiag))),
 
-    write_processes(Resp, Node, processes, Processes),
-    write_processes(Resp, Node, babysitter_processes, BabysitterProcesses),
-    write_processes(Resp, Node, couchdb_processes, CouchdbProcesses),
+    write_processes(Req, Resp, Node, processes, Processes),
+    write_processes(Req, Resp, Node, babysitter_processes, BabysitterProcesses),
+    write_processes(Req, Resp, Node, couchdb_processes, CouchdbProcesses),
 
     trace_memory("Finished pretty printing processes for ~p", [Node]),
-    do_handle_per_node_ets_tables(Resp, Node, DiagNoProcesses).
+    do_handle_per_node_ets_tables(Req, Resp, Node, DiagNoProcesses).
 
-print_ets_table(Resp, Node, Key, Table, Info, Values) ->
+print_ets_table(Req, Resp, Node, Key, Table, Info, Values) ->
     trace_memory("Printing ets table ~p for node ~p", [Table, Node]),
     misc:executing_on_new_process(
       fun () ->
-              do_print_ets_table(Resp, Node, Key, Table, Info, Values)
+              do_print_ets_table(Req, Resp, Node, Key, Table, Info, Values)
       end).
 
-do_print_ets_table(Resp, Node, Key, Table, [], grab_later) ->
+do_print_ets_table(Req, Resp, Node, Key, Table, [], grab_later) ->
     case get_ets_table_info(Table) of
         {ok, Info} ->
             ProducerFun =
@@ -599,34 +608,34 @@ do_print_ets_table(Resp, Node, Key, Table, [], grab_later) ->
                         end
                 end,
 
-            format_ets_table(Resp, Node, Key, Table, Info, ProducerFun);
+            format_ets_table(Req, Resp, Node, Key, Table, Info, ProducerFun);
         _Error ->
             ok
     end;
-do_print_ets_table(Resp, Node, Key, Table, Info, Values) ->
-    format_ets_table(Resp, Node, Key, Table, Info,
+do_print_ets_table(Req, Resp, Node, Key, Table, Info, Values) ->
+    format_ets_table(Req, Resp, Node, Key, Table, Info,
                      lists:foreach(_, Values)).
 
-format_ets_table(Resp, Node, Key, Table, Info, ProduceValues) ->
-    write_chunk_format(Resp, "per_node_~p(~p, ~p) =~n",
+format_ets_table(Req, Resp, Node, Key, Table, Info, ProduceValues) ->
+    write_chunk_format(Req, Resp, "per_node_~p(~p, ~p) =~n",
                        [Key, Node, Table]),
     case Info of
         [] ->
             ok;
         _ ->
-            write_chunk_format(Resp, "  Info: ~p~n", [Info])
+            write_chunk_format(Req, Resp, "  Info: ~p~n", [Info])
     end,
 
-    mochiweb_response:write_chunk(<<"  Values: \n">>, Resp),
-    case ProduceValues(?cut(write_chunk_format(Resp, "    ~p~n", [_]))) of
+    menelaus_util:write_chunk(Req, <<"  Values: \n">>, Resp),
+    case ProduceValues(?cut(write_chunk_format(Req, Resp, "    ~p~n", [_]))) of
         ok ->
             ok;
         Error ->
-            write_chunk_format(Resp, "    ~p~n", [Error])
+            write_chunk_format(Req, Resp, "    ~p~n", [Error])
     end,
-    mochiweb_response:write_chunk(<<"\n">>, Resp).
+    menelaus_util:write_chunk(Req, <<"\n">>, Resp).
 
-write_ets_tables(Resp, Node, Key, PerNodeDiag) ->
+write_ets_tables(Req, Resp, Node, Key, PerNodeDiag) ->
     trace_memory("Starting pretty printing ets tables for ~p", [{Node, Key}]),
     EtsTables = case proplists:get_value(Key, PerNodeDiag, []) of
                     grab_later ->
@@ -640,45 +649,45 @@ write_ets_tables(Resp, Node, Key, PerNodeDiag) ->
 
     lists:foreach(
       fun ({{Table, Info}, Values}) ->
-              print_ets_table(Resp, Node, Key, Table, Info, Values);
+              print_ets_table(Req, Resp, Node, Key, Table, Info, Values);
           ({Table, Values}) ->
-              print_ets_table(Resp, Node, Key, Table, [], Values)
+              print_ets_table(Req, Resp, Node, Key, Table, [], Values)
       end, EtsTables),
 
     trace_memory("Finished pretty printing ets tables for ~p", [{Node, Key}]),
     lists:keydelete(Key, 1, PerNodeDiag).
 
-do_handle_per_node_ets_tables(Resp, Node, PerNodeDiag) ->
-    PerNodeDiag1 = write_ets_tables(Resp, Node, ets_tables, PerNodeDiag),
-    PerNodeDiag2 = write_ets_tables(Resp, Node, couchdb_ets_tables, PerNodeDiag1),
-    do_continue_handling_per_node_just_diag(Resp, Node, PerNodeDiag2).
+do_handle_per_node_ets_tables(Req, Resp, Node, PerNodeDiag) ->
+    PerNodeDiag1 = write_ets_tables(Req, Resp, Node, ets_tables, PerNodeDiag),
+    PerNodeDiag2 = write_ets_tables(Req, Resp, Node, couchdb_ets_tables, PerNodeDiag1),
+    do_continue_handling_per_node_just_diag(Req, Resp, Node, PerNodeDiag2).
 
-do_continue_handling_per_node_just_diag(Resp, Node, Diag) ->
+do_continue_handling_per_node_just_diag(Req, Resp, Node, Diag) ->
     erlang:garbage_collect(),
 
     misc:executing_on_new_process(
       fun () ->
-              write_chunk_format(Resp, "per_node_diag(~p) =~n", [Node]),
-              write_chunk_format(Resp, "     ~p~n", [Diag])
+              write_chunk_format(Req, Resp, "per_node_diag(~p) =~n", [Node]),
+              write_chunk_format(Req, Resp, "     ~p~n", [Diag])
       end),
 
-    mochiweb_response:write_chunk(<<"\n\n">>, Resp).
+    menelaus_util:write_chunk(Req, <<"\n\n">>, Resp).
 
-handle_log(Resp, LogName) ->
+handle_log(Req, Resp, LogName) ->
     LogsHeader = io_lib:format("logs_node (~s):~n"
                                "-------------------------------~n", [LogName]),
-    mochiweb_response:write_chunk(list_to_binary(LogsHeader), Resp),
+    menelaus_util:write_chunk(Req, list_to_binary(LogsHeader), Resp),
     ns_log_browser:stream_logs(LogName,
-                               fun (Data) -> mochiweb_response:write_chunk(Data, Resp) end),
-    mochiweb_response:write_chunk(<<"-------------------------------\n">>, Resp).
+                               fun (Data) -> menelaus_util:write_chunk(Req, Data, Resp) end),
+    menelaus_util:write_chunk(Req, <<"-------------------------------\n">>, Resp).
 
 handle_sasl_logs(LogName, Req) ->
     FullLogName = LogName ++ ".log",
     case ns_log_browser:log_exists(FullLogName) of
         true ->
             Resp = menelaus_util:reply_ok(Req, "text/plain; charset=utf-8", chunked),
-            handle_log(Resp, FullLogName),
-            mochiweb_response:write_chunk(<<"">>, Resp);
+            handle_log(Req, Resp, FullLogName),
+            menelaus_util:write_chunk(Req, <<"">>, Resp);
         false ->
             menelaus_util:reply_text(Req, "Requested log file not found.\r\n", 404)
     end.
@@ -871,7 +880,7 @@ do_handle_diag_master_events(Req) ->
                            %% eat & ignore
                            Loop(Loop);
                        {write_chunk, Chunk} ->
-                           mochiweb_response:write_chunk(Chunk, Resp),
+                           menelaus_util:write_chunk(Req, Chunk, Resp),
                            Loop(Loop)
                    end
            end,

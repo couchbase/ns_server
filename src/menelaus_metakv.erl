@@ -131,17 +131,17 @@ handle_iterate(Req, Path, Continuous) ->
         false ->
             ok
     end,
-    RV = metakv:iterate_matching(Path, Continuous, output_kv(HTTPRes, _)),
+    RV = metakv:iterate_matching(Path, Continuous, output_kv(Req, HTTPRes, _)),
     case Continuous of
         true ->
             RV;
         false ->
-            mochiweb_response:write_chunk("", HTTPRes)
+            menelaus_util:write_chunk(Req, "", HTTPRes)
     end.
 
-output_kv(HTTPRes, {K, V}) ->
-    write_chunk(HTTPRes, null, K, base64:encode(V), false);
-output_kv(HTTPRes, {K, V, VC, Sensitive}) ->
+output_kv(Req, HTTPRes, {K, V}) ->
+    write_chunk(Req, HTTPRes, null, K, base64:encode(V), false);
+output_kv(Req, HTTPRes, {K, V, VC, Sensitive}) ->
     Rev0 = base64:encode(erlang:term_to_binary(VC)),
     {Rev, Value} = case V of
                        ?DELETED_MARKER ->
@@ -149,10 +149,12 @@ output_kv(HTTPRes, {K, V, VC, Sensitive}) ->
                        _ ->
                            {Rev0, base64:encode(V)}
                    end,
-    write_chunk(HTTPRes, Rev, K, Value, Sensitive).
+    write_chunk(Req, HTTPRes, Rev, K, Value, Sensitive).
 
-write_chunk(HTTPRes, Rev, Path, Value, Sensitive) ->
+write_chunk(Req, HTTPRes, Rev, Path, Value, Sensitive) ->
     ?metakv_debug("Sent ~s rev: ~s sensitive: ~p", [Path, Rev, Sensitive]),
-    mochiweb_response:write_chunk(
+    menelaus_util:write_chunk(
+      Req,
       ejson:encode({[{rev, Rev}, {path, Path}, {value, Value},
-                     {sensitive, Sensitive}]}), HTTPRes).
+                     {sensitive, Sensitive}]}),
+      HTTPRes).
