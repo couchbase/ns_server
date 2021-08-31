@@ -639,17 +639,14 @@ test_body(Threshold, Nodes, DownSG, Steps) ->
               NewState
       end, test_init(Threshold), Steps).
 
+get_sg(?VERSION_NEO) ->
+    undefined;
+get_sg(?VERSION_70) ->
+    [].
+
 pre_Neo_test_() ->
     T = fun (Threshold, Nodes, Steps) ->
-                ?cut(test_body(Threshold, Nodes, [], Steps))
-        end,
-
-    MinSizeTest =
-        fun (Threshold) ->
-                {Actions, State} = test_frame(Threshold + 3, [a, b], [b],
-                                              [], test_init(Threshold)),
-                ?assertMatch([{mail_too_small, _, _, _}], Actions),
-                test_frame(30, [a, b], [b], [], State)
+                ?cut(test_body(Threshold, Nodes, get_sg(?VERSION_70), Steps))
         end,
 
     [{"Basic one node failover",
@@ -657,16 +654,6 @@ pre_Neo_test_() ->
                        {failover([b]), 6, [b]}])},
      {"Basic one node failover 2",
       T(4, [a, b, c], [{failover([b]), 7, [b]}])},
-     {"Min size 2", ?cut(MinSizeTest(2))},
-     {"Min size 3", ?cut(MinSizeTest(3))},
-     {"Min size 4", ?cut(MinSizeTest(4))},
-     {"Min size and increasing",
-      fun () ->
-              {Actions, State} = MinSizeTest(2),
-              ?assertEqual(no_actions(), Actions),
-              {Actions1, _} = test_frame(5, [a, b, c], [b], [], State),
-              ?assertEqual(failover([b]), Actions1)
-      end},
      {"Other node down",
       T(3, [a, b, c],
         [{no_actions(), 5, [b]},
@@ -697,6 +684,31 @@ pre_Neo_test_() ->
          {no_actions(), 1, []},
          {no_actions(), 3, [b]},
          {mail_down_warnings([b]), 1, [b, c]}])}].
+
+min_size_test_() ->
+    MinSizeTest =
+        fun (Threshold, Ver) ->
+                {Actions, State} = test_frame(
+                                     Threshold + 3, [a, b], [b],
+                                     get_sg(Ver), test_init(Threshold)),
+                ?assertMatch([{mail_too_small, _, _, _}], Actions),
+                test_frame(30, [a, b], [b], get_sg(Ver), State)
+        end,
+    MinSizeAndIncreasing =
+        fun (Ver) ->
+                {Actions, State} = MinSizeTest(2, Ver),
+                ?assertEqual(no_actions(), Actions),
+                {Actions1, _} = test_frame(5, [a, b, c], [b], get_sg(Ver),
+                                           State),
+                ?assertEqual(failover([b]), Actions1)
+        end,
+    [{lists:flatten(
+        io_lib:format("Min size test. Threshold = ~p, Ver = ~p", [T, V])),
+      ?cut(MinSizeTest(T, V))} || T <- [2, 3, 4],
+                                  V <- [?VERSION_70, ?VERSION_NEO]] ++
+        [{lists:flatten(
+            io_lib:format("Min size and increasing. Ver = ~p", [V])),
+          ?cut(MinSizeAndIncreasing(V))} || V <- [?VERSION_70, ?VERSION_NEO]].
 
 filter_node_states_test() ->
     Test = fun (Nodes, NodesForStates) ->
