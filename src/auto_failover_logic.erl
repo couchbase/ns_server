@@ -24,18 +24,6 @@
 %% _alone_ in order to trigger autofailover
 -define(DOWN_GRACE_PERIOD, 2).
 
-%% Auto-failover is possible for a service only if the number of nodes
-%% in the cluster running that service is greater than the count specified
-%% below.
-%% E.g. to auto-failover kv (data) service, cluster needs atleast 3 data nodes.
--define(AUTO_FAILOVER_KV_NODE_COUNT, 2).
--define(AUTO_FAILOVER_INDEX_NODE_COUNT, 1).
--define(AUTO_FAILOVER_N1QL_NODE_COUNT, 1).
--define(AUTO_FAILOVER_FTS_NODE_COUNT, 1).
--define(AUTO_FAILOVER_EVENTING_NODE_COUNT, 1).
--define(AUTO_FAILOVER_CBAS_NODE_COUNT, 1).
--define(AUTO_FAILOVER_BACKUP_NODE_COUNT, 1).
-
 -record(node_state, {
           name :: term(),
           down_counter = 0 :: non_neg_integer(),
@@ -516,22 +504,10 @@ check_if_action_needed(ServicesState, Service, ActFun) ->
             ActFun(S)
     end.
 
-%% Helper to get the minimum node count.
 service_failover_min_node_count(kv) ->
-    ?AUTO_FAILOVER_KV_NODE_COUNT;
-service_failover_min_node_count(index) ->
-    ?AUTO_FAILOVER_INDEX_NODE_COUNT;
-service_failover_min_node_count(n1ql) ->
-    ?AUTO_FAILOVER_N1QL_NODE_COUNT;
-service_failover_min_node_count(fts) ->
-    ?AUTO_FAILOVER_FTS_NODE_COUNT;
-service_failover_min_node_count(eventing) ->
-    ?AUTO_FAILOVER_EVENTING_NODE_COUNT;
-service_failover_min_node_count(cbas) ->
-    ?AUTO_FAILOVER_CBAS_NODE_COUNT;
-service_failover_min_node_count(backup) ->
-    ?AUTO_FAILOVER_BACKUP_NODE_COUNT.
-
+    2;
+service_failover_min_node_count(_) ->
+    1.
 
 -ifdef(TEST).
 service_failover_min_node_count_test() ->
