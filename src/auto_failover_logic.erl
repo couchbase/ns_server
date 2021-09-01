@@ -659,7 +659,7 @@ test_frame(0, Actions, _Nodes, _DownNodes, State, _SvcConfig, _DownSG,
     {Actions, State};
 test_frame(Times, Actions, Nodes, DownNodes, State, SvcConfig, DownSG,
            Report) ->
-    ?assertEqual(no_actions(), Actions),
+    ?assertEqual([], Actions),
     {NewActions, NewState} =
         process_frame(Nodes, DownNodes, State, SvcConfig, DownSG),
     StateDiff = flatten_state(NewState) -- flatten_state(State),
@@ -678,18 +678,6 @@ flatten_state(#state{nodes_states = NS, services_state = SS,
                      down_server_group_state = DSGS}) ->
     NS ++ SS ++ [DSGS].
 
-no_actions() ->
-    [].
-
-failover(?VERSION_NEO, Nodes) ->
-    [{failover, [N || N <- attach_test_uuids(Nodes)]}];
-failover(?VERSION_70, Nodes) ->
-    [{failover, N} || N <- attach_test_uuids(Nodes)].
-
-
-mail_down_warnings(Nodes) ->
-    [{mail_down_warning, N} || N <- attach_test_uuids(Nodes)].
-
 test_body(Threshold, Nodes, DownSG, Steps) ->
     lists:foldl(
       fun ({Expected, NFrames, DownNodes}, State) ->
@@ -704,46 +692,95 @@ get_sg(?VERSION_NEO) ->
 get_sg(?VERSION_70) ->
     [].
 
-pre_Neo_test_() ->
-    T = fun (Threshold, Nodes, Steps) ->
-                ?cut(test_body(Threshold, Nodes, get_sg(?VERSION_70), Steps))
-        end,
+ver_suffix(Ver) ->
+    lists:flatten(io_lib:format(" Ver = ~p", [Ver])).
 
-    [{"Basic one node failover",
-      T(3, [a, b, c], [{no_actions(), 1, []},
-                       {failover(?VERSION_70, [b]), 6, [b]}])},
-     {"Basic one node failover 2",
-      T(4, [a, b, c], [{failover(?VERSION_70, [b]), 7, [b]}])},
-     {"Other node down",
-      T(3, [a, b, c],
-        [{no_actions(), 5, [b]},
-         {mail_down_warnings([b]), 1, [b, c]},
-         {failover(?VERSION_70, [b]), 2, [b]},
-         {no_actions(), 1, [b, c]},
-         {failover(?VERSION_70, [b]), 2, [b]}])},
-     {"Two nodes down at the same time",
-      T(3, [a, b, c, d],
-        [{no_actions(), 3, [b, c]},
-         {mail_down_warnings([b, c]), 1, [b, c]}])},
-     {"Two nodes down at the same time with shift",
-      T(3, [a, b, c, d],
-        [{no_actions(), 1, [b]},
-         {mail_down_warnings([b]), 3, [b, c]},
-         {mail_down_warnings([c]), 1, [b, c]}])},
-     {"Multiple mail down warnings",
-      T(3, [a, b, c],
-        [{no_actions(), 4, [b]},
-         {mail_down_warnings([b]), 1, [b, c]},
+compare_with(_Ver, no_actions) ->
+    [];
+compare_with(?VERSION_NEO, {failover, Nodes}) ->
+    [{failover, [N || N <- attach_test_uuids(Nodes)]}];
+compare_with(?VERSION_70, {failover, Nodes}) ->
+    [{failover, N} || N <- attach_test_uuids(Nodes)];
+compare_with(?VERSION_NEO, {mail_down_warnings, Nodes}) ->
+    [{mail_down_warning_multi_node, N} || N <- attach_test_uuids(Nodes)];
+compare_with(?VERSION_70, {mail_down_warnings, Nodes}) ->
+    [{mail_down_warning, N} || N <- attach_test_uuids(Nodes)].
+
+generate(Versions, Tests) ->
+    T = fun (Ver, Threshold, Nodes, Steps) ->
+                ?cut(test_body(Threshold, Nodes, get_sg(Ver), Steps))
+        end,
+    [{Title ++ ver_suffix(Ver),
+      T(Ver, Threshold, Nodes,
+        [{compare_with(Ver, CompareWith), Frames, DownNodes} ||
+            {CompareWith, Frames, DownNodes} <- Steps])} ||
+        {Title, Threshold, Nodes, Steps} <- Tests,
+        Ver <- Versions].
+
+pre_Neo_process_frame_test_() ->
+    generate(
+      [?VERSION_70],
+      [{"Two nodes down at the same time", 3, [a, b, c, d],
+        [{no_actions, 3, [b, c]},
+         {{mail_down_warnings, [b, c]}, 1, [b, c]}]},
+       {"Two nodes down at the same time with shift", 3, [a, b, c, d],
+        [{no_actions, 1, [b]},
+         {{mail_down_warnings, [b]}, 3, [b, c]},
+         {{mail_down_warnings, [c]}, 1, [b, c]}]},
+       {"Multiple mail down warnings", 3, [a, b, c],
+        [{no_actions, 4, [b]},
+         {{mail_down_warnings, [b]}, 1, [b, c]},
          %% Make sure not every tick sends out a message
-         {no_actions(), 2, [b, c]},
-         {mail_down_warnings([c]), 1, [b, c]}])},
-     {"Test if mail_down_warning is sent again if node was up in between",
-      T(3, [a, b, c],
-        [{no_actions(), 4, [b]},
-         {mail_down_warnings([b]), 1, [b, c]},
-         {no_actions(), 1, []},
-         {no_actions(), 3, [b]},
-         {mail_down_warnings([b]), 1, [b, c]}])}].
+         {no_actions, 2, [b, c]},
+         {{mail_down_warnings, [c]}, 1, [b, c]}]},
+       {"Test if mail_down_warning is sent again if node was up in between",
+        3, [a, b, c],
+        [{no_actions, 4, [b]},
+         {{mail_down_warnings, [b]}, 1, [b, c]},
+         {no_actions, 1, []},
+         {no_actions, 3, [b]},
+         {{mail_down_warnings, [b]}, 1, [b, c]}]}]).
+
+common_process_frame_test_() ->
+    generate(
+      [?VERSION_70, ?VERSION_NEO],
+      [{"Basic one node failover", 3, [a, b, c],
+        [{no_actions, 1, []},
+         {{failover, [b]}, 6, [b]}]},
+       {"Basic one node failover 2", 4, [a, b, c],
+        [{{failover, [b]}, 7, [b]}]},
+       {"Other node down.", 3, [a, b, c],
+        [{no_actions, 5, [b]},
+         {{mail_down_warnings, [b]}, 1, [b, c]},
+         {{failover, [b]}, 2, [b]},
+         {no_actions, 1, [b, c]},
+         {{failover, [b]}, 2, [b]}]}]).
+
+process_frame_test_() ->
+    generate(
+      [?VERSION_NEO],
+      [{"Basic 2 nodes down.", 3, [a, b, c, d],
+        [{no_actions, 5, [b, c]},
+         {{failover, [b, c]}, 1, [b, c]}]},
+       {"2 nodes down, 3rd node down and then up", 3, [a, b, c, d],
+        [{no_actions, 5, [b, c]},
+         {{mail_down_warnings, [b, c]}, 1, [b, c, d]},
+         {no_actions, 1, [a, b, c]},
+         {{failover, [b, c]}, 2, [b, c]}]},
+       {"Two nodes down at the same time", 3, [a, b, c, d],
+        [{no_actions, 5, [b, c]},
+         {{failover, [b, c]}, 1, [b, c]}]},
+       {"Two nodes down at the same time with shift", 3, [a, b, c, d],
+        [{no_actions, 1, [b]},
+         {{mail_down_warnings, [b]}, 4, [b, c]},
+         {{failover, [b, c]}, 2, [b, c]}]},
+       {"Test if mail_down_warning is sent again if node was up in between",
+        3, [a, b, c],
+        [{no_actions, 5, [b]},
+         {{mail_down_warnings, [b]}, 1, [b, c]},
+         {no_actions, 1, []},
+         {no_actions, 4, [b]},
+         {{mail_down_warnings, [b]}, 1, [b, c]}]}]).
 
 min_size_test_() ->
     MinSizeTest =
@@ -757,10 +794,10 @@ min_size_test_() ->
     MinSizeAndIncreasing =
         fun (Ver) ->
                 {Actions, State} = MinSizeTest(2, Ver),
-                ?assertEqual(no_actions(), Actions),
+                ?assertEqual(compare_with(Ver, no_actions), Actions),
                 {Actions1, _} = test_frame(5, [a, b, c], [b], get_sg(Ver),
                                            State),
-                ?assertEqual(failover(Ver, [b]), Actions1)
+                ?assertEqual(compare_with(Ver, {failover, [b]}), Actions1)
         end,
     [{lists:flatten(
         io_lib:format("Min size test. Threshold = ~p, Ver = ~p", [T, V])),
