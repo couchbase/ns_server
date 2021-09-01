@@ -423,24 +423,31 @@ process_action({mail_auto_failover_disabled, Service, {Node, _}}, S, _, _, _) ->
        "Auto-failover for ~s service is disabled.",
        [Node, ns_cluster_membership:user_friendly_service_name(Service)]),
     S;
+process_action({failover, NodesWithUUIDs}, S, DownNodes, NodeStatuses,
+               _Snapshot)
+  when is_list(NodesWithUUIDs) ->
+    Nodes = [N || {N, _} <- NodesWithUUIDs],
+    TrimmedNodes = trim_nodes(Nodes, S),
+    S1 =
+        case Nodes -- TrimmedNodes of
+            [] ->
+                S;
+            NotFailedOver ->
+                maybe_report_max_node_reached(
+                  NotFailedOver, max_nodes_error_msg(S), S)
+        end,
+    failover_nodes(TrimmedNodes, S1, DownNodes, NodeStatuses, true);
+%% pre-Neo only
 process_action({failover, {Node, _UUID}}, S, DownNodes, NodeStatuses,
                Snapshot) ->
     SG = ns_cluster_membership:get_node_server_group(Node, Snapshot),
     case allow_failover(SG, S, failover) of
         {false, ErrMsg} ->
-            case should_report(max_node_reached, S) of
-                true ->
-                    ?log_info_and_email(
-                       auto_failover_maximum_reached,
-                       "Could not auto-failover more nodes (~p). ~s",
-                       [Node, ErrMsg]),
-                    note_reported(max_node_reached, S);
-                false ->
-                    S
-            end;
+            maybe_report_max_node_reached([Node], ErrMsg, S);
         {true, UpdateCount} ->
             failover_nodes([Node], S, DownNodes, NodeStatuses, UpdateCount)
     end;
+% pre-Neo only
 process_action({failover_group, SG, Nodes0}, S, DownNodes, NodeStatuses, _) ->
     Nodes = [N || {N, _} <- Nodes0],
     case allow_failover(SG, S, failover_group) of
@@ -481,8 +488,28 @@ log_group_failover_attempt(SG, Nodes, State) ->
             State
     end.
 
-allow_failover(SG, #state{count = Count, max_count = Max,
-                          failed_over_server_groups = FOSGs}, Action) ->
+trim_nodes(Nodes, #state{count = Count, max_count = Max}) ->
+    lists:sublist(Nodes, Max - Count).
+
+max_nodes_error_msg(#state{max_count = Max}) ->
+    M = io_lib:format("Maximum number of auto-failover events "
+                      "(~p) has been reached.", [Max]),
+    lists:flatten(M).
+
+maybe_report_max_node_reached(Nodes, ErrMsg, S) ->
+    case should_report(max_node_reached, S) of
+        true ->
+            ?log_info_and_email(
+               auto_failover_maximum_reached,
+               "Could not auto-failover more nodes (~p). ~s",
+               [Nodes, ErrMsg]),
+            note_reported(max_node_reached, S);
+        false ->
+            S
+    end.
+
+allow_failover(SG, S = #state{count = Count, max_count = Max,
+                              failed_over_server_groups = FOSGs}, Action) ->
     case lists:member(SG, FOSGs) of
         true ->
             %% SG was partially failed over in the past; allow failover of
@@ -500,9 +527,7 @@ allow_failover(SG, #state{count = Count, max_count = Max,
             %% before resetting the count.
             case Count >= Max of
                 true ->
-                    M = io_lib:format("Maximum number of auto-failover events "
-                                      "(~p) has been reached.", [Max]),
-                    {false, lists:flatten(M)};
+                    {false, max_nodes_error_msg(S)};
                 false ->
                     case Action of
                         failover ->
@@ -523,6 +548,8 @@ allow_failover_group(FOSGs) ->
                       "server groups.", [FOSGs]),
     {false, lists:flatten(M)}.
 
+failover_nodes([], S, _DownNodes, _NodeStatuses, _UpdateCount) ->
+    S;
 failover_nodes(Nodes, S, DownNodes, NodeStatuses, UpdateCount) ->
     case ns_orchestrator:try_autofailover(Nodes) of
         ok ->
@@ -534,7 +561,7 @@ failover_nodes(Nodes, S, DownNodes, NodeStatuses, UpdateCount) ->
                            false ->
                                S#state.count;
                            true ->
-                               S#state.count + 1
+                               S#state.count + length(Nodes)
                        end,
             init_reported(S#state{count = NewCount});
         Error ->

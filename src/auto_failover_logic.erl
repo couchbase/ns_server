@@ -395,9 +395,28 @@ decide_on_actions(PrevDownStates, DownStates, State, SvcConfig) ->
     case decide_on_failover(DownStates, State, SvcConfig) of
         {[], DownStates} ->
             issue_mail_down_warnings(PrevDownStates, DownStates);
-        ActionsAndStates ->
-            ActionsAndStates
+        {Actions, NewDownStates} ->
+            {Failovers, Other} =
+                lists:splitwith(fun ({failover, _}) ->
+                                        true;
+                                    (_) ->
+                                        false
+                                end, Actions),
+            {combine_failovers(Failovers, Other, SvcConfig),
+             NewDownStates}
     end.
+
+combine_failovers([], Other, _SvcConfig) ->
+    Other;
+combine_failovers(Failovers, Other, SvcConfig) ->
+    FailoverNodes = [N || {failover, N} <- Failovers],
+    {KV, OtherServiceNodes} =
+        lists:splitwith(
+          fun ({NodeName, _}) ->
+                  NodeSvc = get_node_services(NodeName, SvcConfig),
+                  lists:member(kv, NodeSvc)
+          end, FailoverNodes),
+    [{failover, KV ++ OtherServiceNodes} | Other].
 
 maybe_issue_mail_down_warning(
   Warning, S = #node_state{name = Node, mailed_down_warning = false},
@@ -479,7 +498,7 @@ update_services_state_inner(ServicesState, Svc, Fun) ->
 should_failover_node(State, Node, SvcConfig, DownNodes) ->
     %% Find what services are running on the node
     {NodeName, _ID} = Node,
-    NodeSvc = get_node_services(NodeName, SvcConfig, []),
+    NodeSvc = get_node_services(NodeName, SvcConfig),
     %% Is this a dedicated node running only one service or collocated
     %% node running multiple services?
     case NodeSvc of
@@ -493,6 +512,9 @@ should_failover_node(State, Node, SvcConfig, DownNodes) ->
             should_failover_colocated_node(State, SvcConfig, NodeSvc, Node,
                                            DownNodes)
     end.
+
+get_node_services(NodeName, SvcConfig) ->
+    get_node_services(NodeName, SvcConfig, []).
 
 get_node_services(_, [], Acc) ->
     Acc;
@@ -659,8 +681,11 @@ flatten_state(#state{nodes_states = NS, services_state = SS,
 no_actions() ->
     [].
 
-failover(Nodes) ->
+failover(?VERSION_NEO, Nodes) ->
+    [{failover, [N || N <- attach_test_uuids(Nodes)]}];
+failover(?VERSION_70, Nodes) ->
     [{failover, N} || N <- attach_test_uuids(Nodes)].
+
 
 mail_down_warnings(Nodes) ->
     [{mail_down_warning, N} || N <- attach_test_uuids(Nodes)].
@@ -686,16 +711,16 @@ pre_Neo_test_() ->
 
     [{"Basic one node failover",
       T(3, [a, b, c], [{no_actions(), 1, []},
-                       {failover([b]), 6, [b]}])},
+                       {failover(?VERSION_70, [b]), 6, [b]}])},
      {"Basic one node failover 2",
-      T(4, [a, b, c], [{failover([b]), 7, [b]}])},
+      T(4, [a, b, c], [{failover(?VERSION_70, [b]), 7, [b]}])},
      {"Other node down",
       T(3, [a, b, c],
         [{no_actions(), 5, [b]},
          {mail_down_warnings([b]), 1, [b, c]},
-         {failover([b]), 2, [b]},
+         {failover(?VERSION_70, [b]), 2, [b]},
          {no_actions(), 1, [b, c]},
-         {failover([b]), 2, [b]}])},
+         {failover(?VERSION_70, [b]), 2, [b]}])},
      {"Two nodes down at the same time",
       T(3, [a, b, c, d],
         [{no_actions(), 3, [b, c]},
@@ -735,7 +760,7 @@ min_size_test_() ->
                 ?assertEqual(no_actions(), Actions),
                 {Actions1, _} = test_frame(5, [a, b, c], [b], get_sg(Ver),
                                            State),
-                ?assertEqual(failover([b]), Actions1)
+                ?assertEqual(failover(Ver, [b]), Actions1)
         end,
     [{lists:flatten(
         io_lib:format("Min size test. Threshold = ~p, Ver = ~p", [T, V])),
