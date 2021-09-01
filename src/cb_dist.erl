@@ -1045,18 +1045,24 @@ is_restartable_event(_) ->
     false.
 
 is_pkey_encrypted() ->
-    [{server, TLSOpts}] = ets:lookup(ssl_dist_opts, server),
-    case proplists:get_value(keyfile, TLSOpts) of
-        undefined -> false;
-        File ->
-            case erl_prim_loader:get_file(File) of
-                {ok, Pem, _} ->
-                    case public_key:pem_decode(Pem) of
-                        [{_, _, not_encrypted}] -> false;
-                        [{_, _, _}] -> true
-                    end;
-                error -> false
+    try ets:lookup(ssl_dist_opts, server) of
+        [{server, TLSOpts}] ->
+            case proplists:get_value(keyfile, TLSOpts) of
+                undefined -> false;
+                File ->
+                    case erl_prim_loader:get_file(File) of
+                        {ok, Pem, _} ->
+                            case public_key:pem_decode(Pem) of
+                                [{_, _, not_encrypted}] -> false;
+                                [{_, _, _}] -> true
+                            end;
+                        error -> false
+                    end
             end
+    catch
+        error:badarg ->
+            info_msg("TLS dist is not available", []),
+            false
     end.
 
 extract_pkey_passphrase() ->
