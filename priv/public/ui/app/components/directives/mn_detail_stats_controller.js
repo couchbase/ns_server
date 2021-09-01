@@ -8,6 +8,7 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
+import angular from "/ui/web_modules/angular.js";
 import mnStatisticsNewService from "/ui/app/mn_admin/mn_statistics_service.js";
 import mnStatisticsDescriptionService from "/ui/app/mn_admin/mn_statistics_description_service.js";
 import mnStatisticsChart from "/ui/app/mn_admin/mn_statistics_chart_directive.js";

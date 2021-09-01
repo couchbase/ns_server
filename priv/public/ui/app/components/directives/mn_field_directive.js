@@ -36,7 +36,7 @@ function mnFieldDirective() {
 
   return mnFieldDirective;
 
-  function controller($scope) {
+  function controller() {
 
   }
 }

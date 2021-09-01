@@ -16,7 +16,6 @@ import {pipe, combineLatest} from '../web_modules/rxjs.js';
 import {MnWizardService} from './mn.wizard.service.js';
 import {MnPoolsService} from './mn.pools.service.js';
 import {MnFormService} from "./mn.form.service.js";
-import {MnHelperService} from "./mn.helper.service.js";
 import {MnAuthService} from "./mn.auth.service.js";
 import {MnAdminService} from "./mn.admin.service.js";
 import {MnHttpGroupRequest} from "./mn.http.request.js";

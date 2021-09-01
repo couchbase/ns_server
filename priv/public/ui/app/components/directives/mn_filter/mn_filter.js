@@ -16,7 +16,7 @@ angular
   .module("mnFilter", [])
   .directive("mnFilter", mnFilterDirective);
 
-function mnFilterDirective($window) {
+function mnFilterDirective() {
   var mnFilter = {
     restrict: "A",
     scope: {
@@ -34,7 +34,7 @@ function mnFilterDirective($window) {
 
   return mnFilter;
 
-  function mnFilterController($scope) {
+  function mnFilterController() {
     var vm = this;
 
     vm.togglePopup = togglePopup;

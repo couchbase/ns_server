@@ -77,18 +77,18 @@ function appConfig($httpProvider, $stateProvider, $urlRouterProvider, $transitio
 
     if (!original.commonBucket) {
       let params = Object.assign({}, original);
-      ;(["bucket", "scenarioBucket", "collectionsBucket", "indexesBucket"])
-          .forEach(bucket => {
-            if (params[bucket]) {
-              params.commonBucket = params[bucket];
-              if (bucket != "bucket") {
-                //do not remove 'bucket' parameter since this is
-                //popular pluggable UI param, so we just pass it
-                //along with commonBucket parameter
-                delete params[bucket];
-              }
+      (["bucket", "scenarioBucket", "collectionsBucket", "indexesBucket"])
+        .forEach(bucket => {
+          if (params[bucket]) {
+            params.commonBucket = params[bucket];
+            if (bucket != "bucket") {
+              //do not remove 'bucket' parameter since this is
+              //popular pluggable UI param, so we just pass it
+              //along with commonBucket parameter
+              delete params[bucket];
             }
-          });
+          }
+        });
 
       if (params.commonBucket) {
         return trans.router.stateService.target(trans.to().name, params);
@@ -147,7 +147,6 @@ function appConfig($httpProvider, $stateProvider, $urlRouterProvider, $transitio
     from: "app.admin.**",
     to: "app.admin.**"
   }, function (trans) {
-    var mnPools = trans.injector().get('mnPools');
     var $rootScope = trans.injector().get('$rootScope');
     var mnPendingQueryKeeper = trans.injector().get('mnPendingQueryKeeper');
     var $uibModalStack = trans.injector().get('$uibModalStack');
@@ -195,7 +194,7 @@ function appConfig($httpProvider, $stateProvider, $urlRouterProvider, $transitio
     var mnPermissions = trans.injector().get('mnPermissions');
     var $parse = trans.injector().get('$parse');
     return mnPermissions.check().then(function() {
-      if (!!$parse(trans.to().data.permissions)(mnPermissions.export)) {
+      if ($parse(trans.to().data.permissions)(mnPermissions.export)) {
         return true;
       } else {
         return trans.router.stateService.target('app.admin.overview.statistics');
@@ -210,7 +209,7 @@ function appConfig($httpProvider, $stateProvider, $urlRouterProvider, $transitio
     var mnPoolDefault = trans.injector().get('mnPoolDefault');
     var $parse = trans.injector().get('$parse');
     return mnPoolDefault.get().then(function() {
-      if (!!$parse(trans.to().data.compat)(mnPoolDefault.export.compat)) {
+      if ($parse(trans.to().data.compat)(mnPoolDefault.export.compat)) {
         return true;
       } else {
         return trans.router.stateService.target('app.admin.overview.statistics');

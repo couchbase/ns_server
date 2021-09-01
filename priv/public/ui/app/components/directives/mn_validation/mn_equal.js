@@ -28,7 +28,7 @@ function mnEqualDirective() {
     function validate(value) {
       ctrl.$setValidity('mnEqual', (value === undefined ? "" : value) === attrs.mnEqual);
       return value;
-    };
+    }
 
     ctrl.$parsers.unshift(validate);
     ctrl.$formatters.push(validate);

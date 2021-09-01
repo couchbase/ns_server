@@ -81,13 +81,13 @@ class MnSecurityOtherComponent extends MnLifeCycleHooksToStream {
 
     shouldGetLogRedaction
       .pipe(withLatestFrom(mnPermissions.stream),
-            map(([logRedaction, permissions]) => permissions.cluster.admin.security.write),
+            map(([, permissions]) => permissions.cluster.admin.security.write),
             takeUntil(this.mnOnDestroy))
       .subscribe(this.maybeDisableField.bind(this, 'logRedactionLevel.logRedactionLevel'));
 
     uiSessionTimeout
       .pipe(withLatestFrom(mnPermissions.stream),
-            map(([uiSessionTimeout, permissions]) => permissions.cluster.admin.security.write),
+            map(([, permissions]) => permissions.cluster.admin.security.write),
             takeUntil(this.mnOnDestroy))
       .subscribe(this.maybeDisableField.bind(this, 'settingsSecurity.uiSessionTimeout'));
 

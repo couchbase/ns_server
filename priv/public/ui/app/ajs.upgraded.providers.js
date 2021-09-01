@@ -89,7 +89,7 @@ const MnAlertsServiceProvider = {
   deps: ['$injector']
 };
 
-class MnServersService {};
+class MnServersService {}
 const MnServersServiceProvider = {
   provide: MnServersService,
   useFactory: function MnServersServiceFactory(i) {
@@ -98,7 +98,7 @@ const MnServersServiceProvider = {
   deps: ['$injector']
 };
 
-class MnStatisticsNewService {};
+class MnStatisticsNewService {}
 const MnStatisticsNewServiceProvider = {
   provide: MnStatisticsNewService,
   useFactory: function MnStatisticsNewServiceFactory(i) {

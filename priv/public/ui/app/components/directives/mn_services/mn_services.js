@@ -17,7 +17,7 @@ angular
   .module('mnServices', [mnMemoryQuotaService])
   .directive('mnServices', mnServicesDirective);
 
-function mnServicesDirective(mnMemoryQuotaService) {
+function mnServicesDirective() {
   var mnServices = {
     restrict: 'A',
     scope: {

@@ -27,7 +27,7 @@ function mnLaunchpadDirective($timeout) {
 
   return mnLaunchpad;
 
-  function link($scope, $element, $attrs) {
+  function link($scope, $element) {
     $scope.$watch('launchpadSource', function (launchpadSource) {
       if (!launchpadSource) {
         return;

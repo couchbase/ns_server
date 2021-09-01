@@ -59,7 +59,7 @@ angular.module('app', [
   .constant("IEC", IEC)
   .run(appRun);
 
-function appRun($state, $urlRouter, $exceptionHandler, mnPools, $window, $rootScope, $location, $http, mnPrettyVersionFilter) {
+function appRun($state, $urlRouter, $exceptionHandler, mnPools, $window, $rootScope) {
 
   angular.element($window).on("storage", function (storage) {
     if (storage.key === "mnLogIn") {
@@ -81,11 +81,8 @@ function appRun($state, $urlRouter, $exceptionHandler, mnPools, $window, $rootSc
     originalOnerror && originalOnerror.apply($window, Array.prototype.slice.call(arguments));
   }
 
-  $http({method: "GET", url: "/versions"}).then(function (resp) {
-    var pools = resp.data;
-    var version = mnPrettyVersionFilter(pools.implementationVersion);
-    $rootScope.mnTitle = "Couchbase Server";
-  });
+
+  $rootScope.mnTitle = "Couchbase Server";
 
   $state.defaultErrorHandler(function (error) {
     error && $exceptionHandler(error);

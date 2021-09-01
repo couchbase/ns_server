@@ -158,6 +158,7 @@ class MnHelperService {
                 return isSubstring(filterValue, listItem[filterKey]);
               }
           }
+          return false;
         }) : [];
 
     // R.filter(R.compose(R.any(R.contains(val)), R.values))

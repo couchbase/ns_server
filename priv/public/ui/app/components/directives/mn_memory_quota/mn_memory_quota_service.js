@@ -72,7 +72,7 @@ function mnMemoryQuotaServiceFactory($http, $window, mnPoolDefault, mnHelper, IE
   }
   function isOnlyOneNodeWithService(nodes, services, service, isTakenIntoAccountPendingEject) {
     var nodesCount = 0;
-    var indexExists = _.each(nodes, function (node) {
+    _.each(nodes, function (node) {
       nodesCount += (_.indexOf(node.services, service) > -1 && !(isTakenIntoAccountPendingEject && node.pendingEject));
     });
     return nodesCount === 1 && services && (angular.isArray(services) ? (_.indexOf(services, service) > -1) : services[service]);

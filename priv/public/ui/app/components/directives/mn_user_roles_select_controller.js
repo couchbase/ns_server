@@ -119,6 +119,7 @@ function mnUserRolesSelectFormDirective(mnKeyspaceSelectorServiceDowngrade) {
           $scope.mnCollectionSelectorService.stream.doFocus.next(key);
           return true;
         }
+        return false;
       });
       if (isInvalid) {
         return;

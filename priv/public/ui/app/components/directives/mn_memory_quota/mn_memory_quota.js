@@ -10,16 +10,15 @@ licenses/APL2.txt.
 
 import angular from "/ui/web_modules/angular.js";
 import mnFocus from "/ui/app/components/directives/mn_focus.js";
-import mnMemoryQuotaService from "/ui/app/components/directives/mn_memory_quota/mn_memory_quota_service.js";
 import mnServices from "/ui/app/components/directives/mn_services/mn_services.js";
 
 export default "mnMemoryQuota";
 
 angular
-  .module('mnMemoryQuota', [mnServices, mnFocus, mnMemoryQuotaService])
+  .module('mnMemoryQuota', [mnServices, mnFocus])
   .directive('mnMemoryQuota', mnMemoryQuotaDirective);
 
-function mnMemoryQuotaDirective($window, mnMemoryQuotaService) {
+function mnMemoryQuotaDirective() {
   var mnMemoryQuota = {
     restrict: 'A',
     scope: {
