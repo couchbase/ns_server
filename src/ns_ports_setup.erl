@@ -242,17 +242,25 @@ format(Config, Name, Format, Keys) ->
                        end, Keys),
     lists:flatten(io_lib:format(Format, Values)).
 
-build_https_args(PortName, PortArg, CertArg, KeyArg, Config) ->
-    build_https_args(PortName, PortArg, "", CertArg, KeyArg, Config).
+build_https_args(PortName, PortArg, CertArg, KeyArg, CAArg, Config) ->
+    build_https_args(PortName, PortArg, "", CertArg, KeyArg, CAArg, Config).
 
-build_https_args(PortName, PortArg, PortPrefix, CertArg, KeyArg, Config) ->
+build_https_args(PortName, PortArg, PortPrefix, CertArg, KeyArg, CAArg,
+                 Config) ->
     case service_ports:get_port(PortName, Config) of
         undefined ->
             [];
-        Port ->
+        %% pass old style chain file to the services that haven't added support
+        %% for ca file yet
+        Port when CAArg == undefined ->
             [PortArg ++ "=" ++ PortPrefix ++ integer_to_list(Port),
              CertArg ++ "=" ++ ns_ssl_services_setup:legacy_cert_path(),
-             KeyArg ++ "=" ++ ns_ssl_services_setup:pkey_file_path()]
+             KeyArg ++ "=" ++ ns_ssl_services_setup:pkey_file_path()];
+        Port ->
+            [PortArg ++ "=" ++ PortPrefix ++ integer_to_list(Port),
+             CertArg ++ "=" ++ ns_ssl_services_setup:chain_file_path(),
+             KeyArg ++ "=" ++ ns_ssl_services_setup:pkey_file_path(),
+             CAArg ++ "=" ++ ns_ssl_services_setup:ca_file_path()]
     end.
 
 build_port_arg(ArgName, PortName, Config) ->
@@ -363,7 +371,7 @@ goport_args('query', Config, _Cmd, _NodeUUID) ->
         atom_to_list(cluster_compat_mode:is_enterprise()),
 
     HttpsArgs = build_https_args(ssl_query_port, "--https", ":",
-                                 "--certfile", "--keyfile", Config),
+                                 "--certfile", "--keyfile", undefined, Config),
     [DataStoreArg, HttpArg, CnfgStoreArg, EntArg] ++
         build_afamily_requirement("--") ++ HttpsArgs;
 
@@ -374,7 +382,7 @@ goport_args(projector, Config, _Cmd, _NodeUUID) ->
     MinidumpDir = path_config:minidump_dir(),
 
     build_https_args(projector_ssl_port, "--httpsPort", "--certFile",
-                     "--keyFile", Config) ++
+                     "--keyFile", undefined, Config) ++
     build_afamily_requirement("-") ++
     ["-kvaddrs=" ++ misc:local_url(LocalMemcachedPort, [no_scheme]),
      build_port_arg("-adminport", ":", projector_port, Config),
@@ -403,7 +411,7 @@ goport_args(indexer, Config, _Cmd, NodeUUID) ->
                      {"-streamMaintPort",   indexer_stmaint_port}], Config) ++
 
         build_https_args(indexer_https_port, "--httpsPort",
-                         "--certFile", "--keyFile", Config) ++
+                         "--certFile", "--keyFile", undefined, Config) ++
 
         build_afamily_requirement("-") ++
 
@@ -420,7 +428,7 @@ goport_args(backup, Config, _Cmd, NodeUUID) ->
                      {"-grpc-port", backup_grpc_port}], Config) ++
 
     build_https_args(backup_https_port, "-https-port", "-cert-path",
-                     "-key-path", Config) ++
+                     "-key-path", undefined, Config) ++
 
     build_afamily_requirement("-") ++
 
@@ -466,7 +474,7 @@ goport_args(fts, Config, _Cmd, NodeUUID) ->
     BindHttp = BuildHostPortArgs("-bindHttp", fts_http_port),
     BindHttps =
         build_https_args(fts_ssl_port, "-bindHttps", ":",
-                         "-tlsCertFile", "-tlsKeyFile", Config),
+                         "-tlsCertFile", "-tlsKeyFile", "-tlsCAFile", Config),
 
     BindGrpc = BuildHostPortArgs("-bindGrpc", fts_grpc_port),
     BindGrpcSsl = BuildHostPortArgs("-bindGrpcSsl", fts_grpc_ssl_port),
@@ -520,7 +528,7 @@ goport_args(eventing, Config, _Cmd, NodeUUID) ->
                      {"-debugPort", eventing_debug_port}], Config) ++
 
         build_https_args(eventing_https_port, "-adminsslport",
-                         "-certfile", "-keyfile", Config) ++
+                         "-certfile", "-keyfile", undefined, Config) ++
 
         build_afamily_requirement("-") ++
 
@@ -569,7 +577,7 @@ goport_args(cbas, Config, Cmd, NodeUUID) ->
                      {"-bindReplicationPort",  cbas_replication_port}],
                     Config) ++
         build_https_args(cbas_ssl_port, "-bindHttpsPort",
-                         "-tlsCertFile", "-tlsKeyFile", Config) ++
+                         "-tlsCertFile", "-tlsKeyFile", undefined, Config) ++
         [
          "-uuid=" ++ NodeUUID,
          "-serverAddress=" ++ misc:localhost(),
