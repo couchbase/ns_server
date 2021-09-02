@@ -1041,6 +1041,11 @@ is_restartable_event({error, timeout}) ->
     true;
 is_restartable_event({error, {tls_alert, {_, _}}}) ->
     true;
+%% Passphrase doesn't match pkey or missing passphrase
+%% We shouldn't crash in this case, just restart the listener (we try to update
+%% the passphrase on every listener start)
+is_restartable_event({error, {options, {keyfile, _, _}}}) ->
+    true;
 is_restartable_event(_) ->
     false.
 
