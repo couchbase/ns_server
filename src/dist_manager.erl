@@ -401,6 +401,16 @@ complete_rename(OldNode, RenameFun) ->
     %% immediately after rename is done. In order to avoid the race we need
     %% to make sure web server is restarted by the time the rename is finished.
     cluster_compat_mode:is_enterprise() andalso ns_ssl_services_setup:sync(),
+    %% Call ensure_config to make sure all the tls listerners are started
+    %% (TLS listeners might not be started yet after cb_dist restart).
+    %% When cb_dist is starting the config keys are still being renamed, so
+    %% it's possible that cb_dist could not extract pkey password from ns_config.
+    %% If so, ensure_config will force cb_dist to extract passphrase again and
+    %% start the tls listeners. Without this change cb_dist will start listeners
+    %% eventually, but it might be too late as during node addition
+    %% the node-in-cluster will try to connect to us immediately, so we can't
+    %% wait.
+    catch cb_dist:ensure_config(),
     misc:remove_marker(ns_cluster:rename_marker_path()).
 
 fixup_node_in_config(Old, New) ->
