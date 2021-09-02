@@ -187,30 +187,24 @@ with_decoded_object({KVList}, Validators) ->
 with_decoded_object(_, _) ->
     #state{errors = [{<<"_">>, <<"Unexpected Json">>}]}.
 
+validate_decoded_object(DecodedObject, Validators) ->
+    St = with_decoded_object(DecodedObject, Validators),
+    case St#state.errors of
+        [] ->
+            {value, prepare_params(St)};
+        _ ->
+            {error, {json, jsonify_errors(St#state.errors)}}
+    end.
+
 decoded_json(Name, Validators, State) ->
-    validate(
-      fun (DecodedObject) ->
-              St = with_decoded_object(DecodedObject, Validators),
-              case St#state.errors of
-                  [] ->
-                      {value, prepare_params(St)};
-                  _ ->
-                      {error, {json, jsonify_errors(St#state.errors)}}
-              end
-      end, Name, State).
+    validate(validate_decoded_object(_, Validators), Name, State).
 
 json(Name, Validators, State) ->
     validate(
       fun (BinJson) ->
               try ejson:decode(BinJson) of
                   Object ->
-                      St = with_decoded_object(Object, Validators),
-                      case St#state.errors of
-                          [] ->
-                              {value, prepare_params(St)};
-                          _ ->
-                              {error, {json, jsonify_errors(St#state.errors)}}
-                      end
+                      validate_decoded_object(Object, Validators)
               catch _:_ ->
                         {error, {json, {[{<<"_">>, <<"Invalid Json">>}]}}}
               end
