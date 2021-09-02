@@ -1010,13 +1010,17 @@ check_otp_tls_connectivity(Host, Port, AFamily) ->
     %% it should contain options from /etc/ssl_dist_opts.in).
     [{client, TLSOpts}] = ets:lookup(ssl_dist_opts, client),
     Opts = application:get_env(kernel, inet_dist_connect_options, []),
+    %% cb_dist might not have updated the password in ssl_dist_opts yet,
+    %% so update it here
+    PassFun = ns_secrets:get_pkey_pass(),
+    Opts2 = misc:update_proplist(Opts, [{password, PassFun()}]),
     SNIOpts = case inet:parse_address(Host) of
                   {ok, _} -> [];
                   _ -> [{server_name_indication, Host}]
               end,
     AllOpts = [binary, {active, false}, {packet, 4},
                AFamily, {nodelay, true}, {erl_dist, true}] ++ SNIOpts ++
-               lists:ukeysort(1, Opts ++ TLSOpts),
+               lists:ukeysort(1, Opts2 ++ TLSOpts),
     Timeout = net_kernel:connecttime(),
     case inet:getaddr(Host, AFamily) of
         {ok, IpAddr} ->
