@@ -74,16 +74,27 @@ translate_warning({{ca, Id}, Warning}) ->
     [{ca, Id} | warning_props(Warning)].
 
 jsonify_cert_props(Props) ->
-    lists:map(fun ({K, UTCSeconds}) when K =:= expires;
-                                         K =:= not_before;
-                                         K =:= not_after;
-                                         K =:= load_timestamp ->
-                      {K, format_time(UTCSeconds)};
-                  ({K, V}) when is_list(V) ->
-                      {K, list_to_binary(V)};
-                  (Pair) ->
-                      Pair
-              end, Props).
+    {lists:filtermap(
+       fun ({expires, UTCSeconds}) ->
+               {true, {expires, format_time(UTCSeconds)}};
+           ({not_after, UTCSeconds}) ->
+               {true, {notAfter, format_time(UTCSeconds)}};
+           ({not_before, UTCSeconds}) ->
+               {true, {notBefore, format_time(UTCSeconds)}};
+           ({load_timestamp, UTCSeconds}) ->
+               {true, {loadTimestamp, format_time(UTCSeconds)}};
+           ({load_host, H}) ->
+               {true, {loadHost, H}};
+           ({load_file, F}) ->
+               {true, {loadFile, F}};
+           ({K, _}) when K =:= subject;
+                         K =:= pem;
+                         K =:= id;
+                         K =:= type ->
+               true;
+           ({_, _}) ->
+               false
+       end, Props)}.
 
 handle_cluster_certificate_extended(Req) ->
     CertProps =
@@ -93,7 +104,7 @@ handle_cluster_certificate_extended(Req) ->
               ({id, _}) -> false;
               ({K, V}) -> {true, {K, V}}
           end, lists:last(ns_server_cert:trusted_CAs(props))),
-    CertJson = {jsonify_cert_props(CertProps)},
+    CertJson = jsonify_cert_props(CertProps),
     Warnings = [{translate_warning(W)} || W <- ns_server_cert:get_warnings()],
     menelaus_util:reply_json(Req, {[{cert, CertJson}, {warnings, Warnings}]}).
 
@@ -126,7 +137,7 @@ handle_load_ca_certs(Req) ->
             ns_ssl_services_setup:sync(),
             case netconfig_updater:ensure_tls_dist_started(Nodes) of
                 ok ->
-                    CertsJson = [{jsonify_cert_props(C)} || C <- NewCertsProps],
+                    CertsJson = [jsonify_cert_props(C) || C <- NewCertsProps],
                     menelaus_util:reply_json(Req, CertsJson, 200);
                 {error, ErrorMsg} ->
                     menelaus_util:reply_json(Req, ErrorMsg, 400)
@@ -231,7 +242,7 @@ handle_get_node_certificate(NodeId, Req) ->
                                 ({type, _}) -> true;
                                 (_) -> false
                             end, Props),
-                    CertJson = {jsonify_cert_props(Filtered)},
+                    CertJson = jsonify_cert_props(Filtered),
                     menelaus_util:reply_json(Req, CertJson)
             end;
         {error, {invalid_node, Reason}} ->
