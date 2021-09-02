@@ -374,6 +374,8 @@ pkey_file_path() ->
     filename:join(path_config:component_path(data, "config"), "pkey.pem").
 tmp_certs_and_key_file() ->
     filename:join(path_config:component_path(data, "config"), "certs.tmp").
+cert_info_file() ->
+    filename:join(path_config:component_path(data, "config"), "certs.info").
 
 ca_file_path_erl22() ->
     filename:join(path_config:component_path(data, "config"), "ca_erl22.pem").
@@ -593,31 +595,40 @@ maybe_store_ca_certs() ->
 
     ShouldUpdate.
 
-maybe_generate_node_certs() ->
-    Node = node(),
-    CertProps = ns_config:search(ns_config:latest(), {node, Node, node_cert},
-                                 []),
+generated_cert_version(ClusterCA, Hostname) ->
+    base64:encode(erlang:md5(term_to_binary({ClusterCA, Hostname}))).
 
-    case proplists:get_value(type, CertProps, generated) of
-        generated ->
-            ClusterCA = ns_server_cert:self_generated_ca(),
-            Hostname = misc:extract_node_address(Node),
-            case (proplists:get_value(ca, CertProps) =/= ClusterCA) orelse
-                 (proplists:get_value(hostname, CertProps) =/= Hostname) of
-                true ->
-                    case ns_server_cert:generate_node_certs(Hostname) of
-                        no_private_key ->
-                            ?log_warning("Node doesn't have private key, "
-                                         "skipping node cert generation"),
-                            false;
-                        {CA, CertChain, NodeKey} ->
-                            save_generated_certs(CA, CertChain, NodeKey, Hostname),
-                            true
-                    end;
-                false ->
-                    false
+maybe_generate_node_certs() ->
+    Hostname = misc:extract_node_address(node()),
+    %% We can't keep info for certs regeneration in node_cert key because during
+    %% rename it may extract wrong info by wrong nodename from ns_config.
+    %% Based on this wrong info it might decide to regenerate certs when it
+    %% should not.
+    ShouldGenerate =
+        case file:consult(cert_info_file()) of
+            {ok, [uploaded]} ->
+                false;
+            {ok, [{generated, OldVsn}]} ->
+                ClusterCA = ns_server_cert:self_generated_ca(),
+                case generated_cert_version(ClusterCA, Hostname) of
+                    OldVsn -> false;
+                    _ -> true
+                end;
+            {error, enoent} ->
+                true
+        end,
+    case ShouldGenerate of
+        true ->
+            case ns_server_cert:generate_node_certs(Hostname) of
+                no_private_key ->
+                    ?log_warning("Node doesn't have private key, "
+                                 "skipping node cert generation"),
+                    false;
+                {CA, CertChain, NodeKey} ->
+                    save_generated_certs(CA, CertChain, NodeKey, Hostname),
+                    true
             end;
-        uploaded ->
+        false ->
             false
     end.
 
@@ -670,6 +681,16 @@ save_node_certs_phase2() ->
             {node_certs, Props, Chain, PKey} = binary_to_term(Bin),
             ok = misc:atomic_write_file(chain_file_path(), Chain),
             ok = misc:atomic_write_file(pkey_file_path(), PKey),
+            CertsInfo = case proplists:get_value(type, Props) of
+                            generated ->
+                                Host = proplists:get_value(hostname, Props),
+                                CA = proplists:get_value(ca, Props),
+                                {generated, generated_cert_version(CA, Host)};
+                            uploaded ->
+                                uploaded
+                        end,
+            CertsInfoBin = iolist_to_binary(io_lib:format("~p.", [CertsInfo])),
+            ok = misc:atomic_write_file(cert_info_file(), CertsInfoBin),
             ?log_info("Node cert and pkey files updated"),
             %% Can be removed when upgraded to erl >= 23
             update_certs_erl22(),
