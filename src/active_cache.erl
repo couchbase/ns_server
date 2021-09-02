@@ -45,7 +45,8 @@
     value_lifetime,
     renew_interval,
     module,
-    generation_ref
+    generation_ref,
+    cache_exceptions
 }).
 
 %%%===================================================================
@@ -95,13 +96,15 @@ init([Name, Module, Args, Opts]) ->
             MaxParallel = proplists:get_value(max_parallel_procs, Opts, 100),
             ValueLifetime = proplists:get_value(value_lifetime, Opts, 1000),
             RenewInterval = proplists:get_value(renew_interval, Opts, infinity),
+            CacheExceptions = proplists:get_value(cache_exceptions, Opts, true),
             S = #s{table_name = Name,
                    max_size = MaxSize,
                    max_parallel_procs = MaxParallel,
                    value_lifetime = ValueLifetime,
                    renew_interval = RenewInterval,
                    module = Module,
-                   generation_ref = erlang:make_ref()},
+                   generation_ref = erlang:make_ref(),
+                   cache_exceptions = CacheExceptions},
             {ok, restart_renew_timer(restart_cleanup_timer(S))};
         {stop, Reason} -> {stop, Reason};
         ignore -> ignore
@@ -184,6 +187,17 @@ worker(Ref, Key, GetValue) ->
           end,
     {Ref, Key, GetValue, Res}.
 
+handle_res({Ref, Key, _GetValue, {exception, Exception} = Res}, From,
+           #s{generation_ref = Ref, cache_exceptions = false} = State) ->
+    case From of
+        undefined ->
+            ?log_error("Cache renew exception for key ~p:~n~p",
+                       [Key, Exception]);
+        _ ->
+            gen_server2:reply(From, Res)
+    end,
+    {noreply, State};
+
 handle_res({Ref, Key, GetValue, Res}, From, #s{table_name = Name,
                                                generation_ref = Ref} = State) ->
     maybe_evict(State),
@@ -192,6 +206,14 @@ handle_res({Ref, Key, GetValue, Res}, From, #s{table_name = Name,
             ets:insert(Name, {Key, Res, timestamp(), GetValue});
         _ -> ok
     end,
+
+    case Res of
+        {exception, Exception} when From =:= undefined ->
+            ?log_error("Cache renew exception for key ~p:~n~p",
+                       [Key, Exception]);
+        _ -> ok
+    end,
+
     From == undefined orelse gen_server2:reply(From, Res),
     {noreply, State};
 
@@ -383,6 +405,46 @@ change_opts_test() ->
           %% One more Ref means worker was restarted
           receive Ref -> ok end,
           misc:flush(Ref)
+      end).
+
+cache_exceptions_test() ->
+    with_cache_settings(
+      test_cache, [{cache_exceptions, true}],
+      fun () ->
+          R1 = rand:uniform(10000),
+          R2 = rand:uniform(10000),
+          try
+              false = get_value(test_cache, key1,
+                                fun () -> exit({test_exception, R1}) end)
+          catch
+              exit:{test_exception, N1} -> ?assertEqual(N1, R1)
+          end,
+          try
+              false = get_value(test_cache, key1,
+                                fun () -> exit({test_exception, R2}) end)
+          catch
+              exit:{test_exception, N2} -> ?assertEqual(N2, R1)
+          end
+      end).
+
+dont_cache_exceptions_test() ->
+    with_cache_settings(
+      test_cache, [{cache_exceptions, false}],
+      fun () ->
+          R1 = rand:uniform(10000),
+          R2 = rand:uniform(10000),
+          try
+              false = get_value(test_cache, key1,
+                                fun () -> exit({test_exception, R1}) end)
+          catch
+              exit:{test_exception, N1} -> ?assertEqual(N1, R1)
+          end,
+          try
+              false = get_value(test_cache, key1,
+                                fun () -> exit({test_exception, R2}) end)
+          catch
+              exit:{test_exception, N2} -> ?assertEqual(N2, R2)
+          end
       end).
 
 with_cache_settings(Name, Settings, Fun) ->
