@@ -766,16 +766,15 @@ generate_sasl_password() ->
     binary_to_list(couch_uuids:random()).
 
 generate_sasl_password(Props) ->
-    [{auth_type, sasl} |
-     case cluster_compat_mode:is_cluster_70() of
-         false ->
-             %% Backwards compatility with older releases that require
-             %% this property
-             lists:keystore(sasl_password, 1, Props,
-                            {sasl_password, generate_sasl_password()});
-         true ->
-             Props
-     end].
+    case cluster_compat_mode:is_cluster_70() of
+        false ->
+            %% Backwards compatility with older releases that require
+            %% this property
+            lists:keystore(sasl_password, 1, Props,
+                           {sasl_password, generate_sasl_password()});
+        true ->
+            Props
+    end.
 
 add_auth_type(Props) ->
     case cluster_compat_mode:is_cluster_NEO() of
