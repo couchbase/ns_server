@@ -218,7 +218,7 @@ get_fallback_salt() ->
 get_salt_and_iterations(Sha, Name) ->
     %% calculating it here to avoid performance shortcut
     FallbackSalt = base64:encode_to_string(
-                     crypto:hmac(Sha, Name, get_fallback_salt())),
+                     crypto:mac(hmac, Sha, Name, get_fallback_salt())),
     case find_auth_info(Sha, Name) of
         undefined ->
             {FallbackSalt, iterations()};
@@ -251,14 +251,14 @@ handle_client_first_message(Sha, Name, Nonce, Bare) ->
     reply_first_step(Sha, Sid, ServerMessage).
 
 calculate_client_proof(Sha, SaltedPassword, AuthMessage) ->
-    ClientKey = crypto:hmac(Sha, SaltedPassword, <<"Client Key">>),
+    ClientKey = crypto:mac(hmac, Sha, SaltedPassword, <<"Client Key">>),
     StoredKey = crypto:hash(Sha, ClientKey),
-    ClientSignature = crypto:hmac(Sha, StoredKey, AuthMessage),
+    ClientSignature = crypto:mac(hmac, Sha, StoredKey, AuthMessage),
     misc:bin_bxor(ClientKey, ClientSignature).
 
 calculate_server_proof(Sha, SaltedPassword, AuthMessage) ->
-    ServerKey = crypto:hmac(Sha, SaltedPassword, <<"Server Key">>),
-    crypto:hmac(Sha, ServerKey, AuthMessage).
+    ServerKey = crypto:mac(hmac, Sha, SaltedPassword, <<"Server Key">>),
+    crypto:mac(hmac, Sha, ServerKey, AuthMessage).
 
 handle_client_final_message(Sha, Sid, Nonce, Proof, ClientFinalMessage) ->
     case token_server:take(?MODULE, Sid) of
@@ -291,13 +291,13 @@ handle_proofs(Sha, SaltedPassword, Proof, AuthMessage) ->
     end.
 
 pbkdf2(Sha, Password, Salt, Iterations) ->
-    Initial = crypto:hmac(Sha, Password, <<Salt/binary, 1:32/integer>>),
+    Initial = crypto:mac(hmac, Sha, Password, <<Salt/binary, 1:32/integer>>),
     pbkdf2_iter(Sha, Password, Iterations - 1, Initial, Initial).
 
 pbkdf2_iter(_Sha, _Password, 0, _Prev, Acc) ->
     Acc;
 pbkdf2_iter(Sha, Password, Iteration, Prev, Acc) ->
-    Next = crypto:hmac(Sha, Password, Prev),
+    Next = crypto:mac(hmac, Sha, Password, Prev),
     pbkdf2_iter(Sha, Password, Iteration - 1, Next, crypto:exor(Next, Acc)).
 
 hash_password(Type, Password) ->

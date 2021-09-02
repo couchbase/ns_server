@@ -279,7 +279,8 @@ ns_server_ciphers() ->
             %% new installations
             case application:get_env(ssl_ciphers) of
                 {ok, Ciphers} -> Ciphers;
-                undefined -> ssl:cipher_suites() -- low_security_ciphers()
+                undefined -> ciphers:backwards_compatible_ciphers()
+                                 -- low_security_ciphers()
             end;
         List -> List
     end.

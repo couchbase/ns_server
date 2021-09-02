@@ -295,7 +295,7 @@ parse_url(Str, ReplacePairs) ->
             {error, Err} -> throw({error, {invalid_dn, DN, Err}})
         end,
 
-        ScopeLower = string:to_lower(Scope2),
+        ScopeLower = string:lowercase(Scope2),
         try
             ScopeLower =:= "" orelse parse_scope(ScopeLower)
         catch

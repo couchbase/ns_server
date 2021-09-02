@@ -137,7 +137,7 @@ hash_password(Password) ->
     {Salt, hash_password(Salt, Password)}.
 
 hash_password(Salt, Password) ->
-    crypto:hmac(sha, Salt, list_to_binary(Password)).
+    crypto:mac(hmac, sha, Salt, list_to_binary(Password)).
 
 is_bucket_auth(User, Password) ->
     case cluster_compat_mode:is_cluster_70() of
