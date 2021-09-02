@@ -110,7 +110,8 @@
          deactivate_bucket_data_on_this_node/1,
          config_upgrade_to_65/1,
          config_upgrade_to_66/1,
-         upgrade_to_chronicle/2]).
+         upgrade_to_chronicle/2,
+         chronicle_upgrade_to_NEO/1]).
 
 
 %%%===================================================================
@@ -1338,6 +1339,20 @@ config_upgrade_to_66(Config) ->
                           BCfg
                   end
           end).
+
+chronicle_upgrade_bucket(BucketName, ChronicleTxn) ->
+    PropsKey = sub_key(BucketName, props),
+    {ok, BucketConfig} = chronicle_upgrade:get_key(PropsKey, ChronicleTxn),
+    NewBucketConfig = lists:keydelete(auth_type, 1, BucketConfig),
+    chronicle_upgrade:set_key(PropsKey, NewBucketConfig, ChronicleTxn).
+
+chronicle_upgrade_to_NEO(ChronicleTxn) ->
+    {ok, BucketNames} = chronicle_upgrade:get_key(root(), ChronicleTxn),
+    lists:foldl(
+      fun (Name, Acc) ->
+              chronicle_upgrade_bucket(Name, Acc)
+      end, ChronicleTxn, BucketNames).
+
 
 -ifdef(TEST).
 min_live_copies_test() ->
