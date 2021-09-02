@@ -268,6 +268,16 @@
            value="lww"
            ng-disabled="!bucketConf.isNew">
         <label for="for-conflict-resolution-lww">Timestamp</label>
+        <span ng-if="pools.isDeveloperPreview">
+          <input
+            type="radio"
+            id="for-conflict-resolution-custom"
+            ng-model="bucketConf.conflictResolutionType"
+            name="conflictResolutionType"
+            value="custom"
+            ng-disabled="!bucketConf.isNew">
+          <label for="for-conflict-resolution-custom">Custom</label>
+        </span>
         <div
            class="error"
            ng-show="validation.result.errors.conflictResolutionType">
