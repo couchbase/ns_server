@@ -428,7 +428,7 @@ goport_args(backup, Config, _Cmd, NodeUUID) ->
                      {"-grpc-port", backup_grpc_port}], Config) ++
 
     build_https_args(backup_https_port, "-https-port", "-cert-path",
-                     "-key-path", undefined, Config) ++
+                     "-key-path", "-ca-path", Config) ++
 
     build_afamily_requirement("-") ++
 
