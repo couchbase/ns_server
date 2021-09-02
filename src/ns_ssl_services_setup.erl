@@ -38,7 +38,8 @@
          honor_cipher_order/2,
          set_certs/4,
          chronicle_upgrade_to_NEO/1,
-         unencrypted_pkey_file_path/0]).
+         unencrypted_pkey_file_path/0,
+         remove_node_certs/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -1047,3 +1048,9 @@ chronicle_upgrade_to_NEO(ChronicleTxn) ->
     ?log_info("Upgrading CA certs to NEO: setting ca_certificates to the "
               "following props:~n ~p", [Props]),
     chronicle_upgrade:set_key(ca_certificates, Props, ChronicleTxn).
+
+remove_node_certs() ->
+    ?log_warning("Removing node certificate and private key"),
+    file:delete(cert_info_file()),
+    file:delete(chain_file_path()),
+    file:delete(pkey_file_path()).

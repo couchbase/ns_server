@@ -1494,6 +1494,7 @@ perform_leave() ->
     chronicle_local:leave_cluster(),
 
     prometheus_cfg:wipe(),
+    ns_ssl_services_setup:remove_node_certs(),
 
     %% in order to disconnect from rest of nodes we need new cookie
     %% and explicit disconnect_node calls
