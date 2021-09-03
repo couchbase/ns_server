@@ -389,7 +389,7 @@ unencrypted_pkey_file_path() ->
     filename:join(path_config:component_path(data, "config"), "unencrypted_pkey.pem").
 
 sync() ->
-    ns_config:sync_announcements(),
+    chronicle_compat_events:sync(),
     %% First ping guarantees that async_ssl_reload has sent
     %% the notify_services message
     ok = gen_server:call(?MODULE, ping, infinity),

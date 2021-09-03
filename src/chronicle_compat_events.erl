@@ -25,7 +25,8 @@
          subscribe/1,
          subscribe/2,
          notify_if_key_changes/2,
-         start_refresh_worker/2]).
+         start_refresh_worker/2,
+         sync/0]).
 
 -export([init/1, handle_call/3]).
 
@@ -42,6 +43,10 @@ resume_chronicle() ->
 
 hush_chronicle() ->
     gen_server2:call(?MODULE, hush_chronicle).
+
+sync() ->
+    gen_server2:call(?MODULE, sync,
+                     ?get_timeout(chronicle_compat_events_sync, 30000)).
 
 init([]) ->
     ok = misc:wait_for_process(event_manager(), 10000),
@@ -91,7 +96,13 @@ handle_call(resume_chronicle, _From,
                    event_manager = EventManager,
                    kv_event_manager = KVEventManager} = State) ->
     Pid = subscribe_to_chronicle_events(EventManager, KVEventManager),
-    {reply, ok, State#state{chronicle_events_pid = Pid}}.
+    {reply, ok, State#state{chronicle_events_pid = Pid}};
+handle_call(sync, _From, #state{chronicle_events_pid = Pid} = State) ->
+    ns_config:sync_announcements(),
+    Pid == undefined orelse
+        gen_event:which_handlers(chronicle_kv:event_manager(kv)),
+    gen_event:which_handlers(event_manager()),
+    {reply, ok, State}.
 
 subscribe(Handler) ->
     ns_pubsub:subscribe_link(event_manager(), Handler).
