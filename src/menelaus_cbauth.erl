@@ -313,13 +313,18 @@ tls_config(Service, Config) ->
     CipherOpenSSLNames = [N2 || N <- Ciphers, N2 <- [ciphers:openssl_name(N)],
                                 N2 =/= undefined],
     MinTLSVsn = ns_ssl_services_setup:ssl_minimum_protocol(Service, Config),
+    PassFun = ns_secrets:get_pkey_pass(),
+    PassOpt = case PassFun() of
+                  undefined -> [];
+                  P -> [{privateKeyPassphrase, base64:encode(P)}]
+              end,
     {Label,
      {[{present, true},
        {minTLSVersion, MinTLSVsn},
        {cipherOrder, Order},
        {ciphers, CipherInts},
        {cipherNames, Ciphers},
-       {cipherOpenSSLNames, CipherOpenSSLNames}]}}.
+       {cipherOpenSSLNames, CipherOpenSSLNames}] ++ PassOpt}}.
 
 ciphers(Service, Config) ->
     case ns_ssl_services_setup:configured_ciphers_names(Service, Config) of
