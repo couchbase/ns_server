@@ -66,7 +66,9 @@ function mnTasksDetailsFactory($http, $cacheFactory, mnTasksService) {
       rv.inRecoveryMode = !!rv.tasksRecovery;
       rv.isLoadingSamples = !!_.detect(tasks, detectLoadingSamples);
       rv.stopRecoveryURI = rv.tasksRecovery && rv.tasksRecovery.stopURI;
-      rv.isSubtypeGraceful = rv.tasksRebalance.subtype === 'gracefulFailover';
+      rv.isSubtypeFailover =
+        !!(rv.tasksRebalance &&
+          ['gracefulFailover', 'failover'].includes(rv.tasksRebalance.subtype));
       rv.running = _.filter(tasks, function (task) {
         return task.status === "running";
       });

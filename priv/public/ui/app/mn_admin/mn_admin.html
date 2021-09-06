@@ -43,7 +43,9 @@
           </span>
         </div>
 
-        <h4 ng-if="adminCtl.tasks.tasksRebalance.statusId">Rebalance</h4>
+        <h4 ng-if="adminCtl.tasks.tasksRebalance.statusId">
+          {{adminCtl.tasks.isSubtypeFailover ? 'Failover' : 'Rebalance'}}
+        </h4>
         <div ng-if="adminCtl.tasks.tasksRebalance">
           <p class="desc relative"
              ng-if="adminCtl.tasks.tasksRebalance.statusId">
