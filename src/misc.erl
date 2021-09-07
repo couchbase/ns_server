@@ -3048,6 +3048,43 @@ is_fqdn_basic_validation_test() ->
     true = is_fqdn_basic_validation("ns_server33.services.co.woohoo").
 -endif.
 
+is_valid_iso_8601_utc(Time) ->
+    Pattern = "^(-?(?:[1-9][0-9]*)?[0-9]{4})-(1[0-2]|0[1-9])-(3[01]|""0[1-9]|"
+              "[12][0-9])T(2[0-3]|[01][0-9]):([0-5][0-9]):([0-5][0-9])(\\."
+              "[0-9]+)?(Z)?$",
+    case re:run(Time, Pattern) of
+        {match, _} ->
+            true;
+        nomatch ->
+            false
+    end.
+
+-ifdef(TEST).
+is_valid_iso_8601_utc_test() ->
+    true = is_valid_iso_8601_utc("2021-08-02T07:35:49Z"),
+    true = is_valid_iso_8601_utc("2021-08-02T07:35:49.050Z"),
+    true = is_valid_iso_8601_utc("2021-08-02T07:35:49.150Z"),
+    false = is_valid_iso_8601_utc("2021-08-02T07:35Z"),
+    false = is_valid_iso_8601_utc("dsdsd").
+
+-endif.
+is_valid_v4uuid(UUID) ->
+    Pattern = "[0-9a-fA-F]{8}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{4}"
+              "\-[0-9a-fA-F]{12}",
+    case re:run(UUID, Pattern) of
+        {match, _} ->
+           true;
+        nomatch ->
+           false
+    end.
+
+-ifdef(TEST).
+is_valid_v4uuid_test() ->
+    true = is_valid_v4uuid("fe27e478-38a1-4aa8-ba87-45244a0677f7"),
+    true = is_valid_v4uuid("ce8631a6-a348-42c5-b97c-cfdc0a49d283"),
+    false = is_valid_v4uuid("sdfsdfsdfsd").
+-endif.
+
 is_raw_ip(Host) ->
     case inet:parse_address(Host) of
         {ok, _} -> true;

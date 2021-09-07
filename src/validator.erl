@@ -39,6 +39,8 @@
          dir/2,
          email_address/2,
          time_duration/2,
+         iso_8601_utc/2,
+         v4uuid/2,
          has_params/1,
          unsupported/1,
          required/2,
@@ -457,6 +459,26 @@ email_address(Name, State) ->
                          false ->
                              {error, "The value must be a valid email address"}
                      end
+             end, Name, State).
+
+iso_8601_utc(Name, State) ->
+    validate(fun (Value) ->
+                case misc:is_valid_iso_8601_utc(Value) of
+                    true ->
+                        ok;
+                    false ->
+                        {error, "The value must be a valid ISO 8601 UTC"}
+                end
+             end, Name, State).
+
+v4uuid(Name, State) ->
+    validate(fun (Value) ->
+                case misc:is_valid_v4uuid(Value) of
+                    true ->
+                        ok;
+                    false ->
+                        {error, "The value must be a valid v4 UUID"}
+                end
              end, Name, State).
 
 %% Validates a subset of the golang time.duration values

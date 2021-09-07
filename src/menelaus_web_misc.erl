@@ -11,11 +11,14 @@
 
 -module(menelaus_web_misc).
 
+-define(MAX_EVENT_SIZE, 3*1024).
+
 -export([handle_uilogin/1,
          handle_uilogout/1,
          handle_can_use_cert_for_auth/1,
          handle_versions/1,
          handle_tasks/2,
+         handle_event_log_post/1,
          handle_log_post/1]).
 
 -import(menelaus_util,
@@ -99,3 +102,21 @@ handle_log_post(Req) ->
         _ ->
             reply_json(Req, {struct, Errors}, 400)
     end.
+
+handle_event_log_post(Req) ->
+    Log = mochiweb_request:recv_body(Req),
+
+    %% Validate Event JSON size.
+    case erlang:byte_size(Log) of
+        Size when Size > ?MAX_EVENT_SIZE ->
+            Msg = io_lib:format("Event JSON larger than ~p bytes",
+                                [?MAX_EVENT_SIZE]),
+            menelaus_util:web_exception(413, Msg);
+        _ ->
+            ok
+    end,
+
+    validator:handle(fun (_Values) ->
+                       event_log:log(Log),
+                       reply_json(Req, [], 200)
+                     end, Req, json, event_log:validators()).
