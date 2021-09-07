@@ -1047,7 +1047,7 @@ verify_net_config_allowed(State) ->
             validator:return_error(nodeEncryption, M, State);
         IsCommunity andalso AFamily =:= inet6 ->
             M = <<"IPv6 is not supported in community edition">>,
-            validator:return_error(nodeEncryption, M, State);
+            validator:return_error(afamily, M, State);
         AutoFailover ->
             M = "Can't change network configuration when auto-failover "
                 "is enabled.",
