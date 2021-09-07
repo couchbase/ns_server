@@ -114,33 +114,20 @@ accept(_LSocket) ->
     gen_server:call(?MODULE, {accept, self()}, infinity).
 
 -spec accept_connection(CBDistPid :: pid(),
-                        Acceptor :: {reference(), pid(), socket()},
+                        Acceptor :: {reference(), pid(), module(), socket()},
                         MyNode :: atom(),
                         Allowed :: any(),
                         SetupTime :: any()) ->
                             {ConRef :: reference(),
                              ConPid :: pid(),
-                             AcceptorPid :: pid()}.
-accept_connection(_, {ConRef, AcceptorPid, ConnectionSocket}, MyNode, Allowed,
-                  SetupTime) ->
-    Module = gen_server:call(?MODULE, {get_module_by_acceptor, AcceptorPid},
-                             infinity),
-    info_msg("Accepting connection from acceptor ~p using module ~p",
-             [AcceptorPid, Module]),
-    case Module =/= undefined of
-        true ->
-            ConPid = Module:accept_connection(AcceptorPid, ConnectionSocket,
-                                              MyNode, Allowed, SetupTime),
-            {ConRef, ConPid, AcceptorPid};
-        false ->
-            {ConRef,
-             spawn_opt(
-               fun () ->
-                       error_msg("** Connection from unknown acceptor ~p, "
-                                 "please reconnect ** ~n", [AcceptorPid]),
-                       ?shutdown(no_node)
-               end, [link]), AcceptorPid}
-    end.
+                             HandshakeProcPid :: pid()}.
+accept_connection(_, {ConRef, HandshakeProcPid, Module, ConnectionSocket},
+                  MyNode, Allowed, SetupTime) ->
+    info_msg("Accepting connection from ~p using module ~p",
+             [HandshakeProcPid, Module]),
+    ConPid = Module:accept_connection(HandshakeProcPid, ConnectionSocket,
+                                      MyNode, Allowed, SetupTime),
+    {ConRef, ConPid, HandshakeProcPid}.
 
 -spec select(Node :: atom()) -> true | false.
 select(Node) ->
@@ -403,29 +390,28 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({accept, AcceptorPid, ConSocket, _Family, _Protocol},
-            #s{kernel_pid = KernelPid,
-               connections = Connections,
-               acceptors = Acceptors} = State) ->
+handle_info({accept, HandshakeProcPid, ConSocket, Family, Protocol},
+            #s{kernel_pid = KernelPid, connections = Connections} = State)
+                                when Family =:= inet orelse Family =:= inet6,
+                                     Protocol =:= tcp orelse Protocol =:= tls ->
     Ref = make_ref(),
-    case proplists:get_value(AcceptorPid, Acceptors) of
-        {_, Module} ->
-            Con = #con{ref = Ref, mod = Module},
-            info_msg("Accepted new connection from ~p DistCtrl ~p: ~p",
-                     [AcceptorPid, ConSocket, Con]),
-            KernelPid ! {accept, self(), {Ref, AcceptorPid, ConSocket},
-                         ?family, ?proto},
-            {noreply, State#s{connections = [Con | Connections]}};
-        undefined ->
-            error_msg("Accept from unknown acceptor ~p DistCtrl ~p",
-                     [AcceptorPid, ConSocket]),
-            AcceptorPid ! {self(), unsupported_protocol},
-            {noreply, State}
-    end;
+    Module = netsettings2proto({Family, Protocol == tls}),
+    Con = #con{ref = Ref, mod = Module},
+    info_msg("Accepted new connection from ~p DistCtrl ~p: ~p",
+             [HandshakeProcPid, ConSocket, Con]),
+    KernelPid ! {accept, self(), {Ref, HandshakeProcPid, Module, ConSocket},
+                 ?family, ?proto},
+    {noreply, State#s{connections = [Con | Connections]}};
 
-handle_info({KernelPid, controller, {ConRef, ConPid, AcceptorPid}},
+handle_info({accept, HandshakeProcPid, ConSocket, Family, Protocol}, State) ->
+    error_msg("Accept for unknown family = ~p or protocol = ~p DistCtrl ~p",
+              [Family, Protocol, ConSocket]),
+    HandshakeProcPid ! {self(), unsupported_protocol},
+    {noreply, State};
+
+handle_info({KernelPid, controller, {ConRef, ConPid, HandshakeProcPid}},
             #s{kernel_pid = KernelPid} = State) ->
-    AcceptorPid ! {self(), controller, ConPid},
+    HandshakeProcPid ! {self(), controller, ConPid},
     {noreply, update_connection_pid(ConRef, ConPid, State)};
 
 handle_info({'EXIT', Kernel, Reason}, State = #s{kernel_pid = Kernel}) ->
