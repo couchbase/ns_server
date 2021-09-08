@@ -146,8 +146,8 @@ increment_down_state(NodeState, DownNodes, BigState, NodesChanged) ->
             NodeState
     end.
 
-log_master_activity(#node_state{state = _Same, down_counter = _SameCounter},
-                    #node_state{state = _Same, down_counter = _SameCounter}) ->
+log_master_activity(#node_state{state = Same, down_counter = SameCounter},
+                    #node_state{state = Same, down_counter = SameCounter}) ->
     ok;
 log_master_activity(#node_state{state = Prev, name = {Node, _} = Name} = NodeState,
                     #node_state{state = New, down_counter = NewCounter} = NewState) ->

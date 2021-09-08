@@ -731,9 +731,9 @@ vertex_match(PermissionVertex, FilterVertex) ->
     expanded_vertex_match(expand_vertex(PermissionVertex, all),
                           expand_vertex(FilterVertex, any)).
 
-expanded_vertex_match({_Same, Params}, {_Same, FilterParams}) ->
+expanded_vertex_match({Same, Params}, {Same, FilterParams}) ->
     vertex_params_match(Params, FilterParams);
-expanded_vertex_match(_Same, _Same) ->
+expanded_vertex_match(Same, Same) ->
     true;
 expanded_vertex_match(_, _) ->
     false.
