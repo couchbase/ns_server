@@ -55,7 +55,6 @@
 
 -record(s, {listeners = [],
             acceptors = [],
-            creation = undefined,
             kernel_pid = undefined,
             config = undefined,
             name = undefined,
@@ -67,6 +66,7 @@
 -define(proto, ?MODULE).
 -define(TERMINATE_TIMEOUT, 5000).
 -define(ENSURE_CONFIG_TIMEOUT, 10000).
+-define(CREATION, -1).
 
 -type socket() :: any().
 -type protocol() :: inet_tcp_dist | inet6_tcp_dist |
@@ -95,16 +95,16 @@ start_link() ->
 -spec listen(Name :: atom()) ->
     {ok, {LSocket :: any(),
           LocalTcpAddress :: #net_address{},
-          Creation :: pos_integer()}}.
+          Creation :: ?CREATION}}.
 listen(Name) when is_atom(Name) ->
     Pid = whereis(?MODULE),
     case gen_server:call(Pid, {listen, Name}, infinity) of
-        {ok, Creation} ->
+        ok ->
             Addr = #net_address{address = undefined,
                                 host = undefined,
                                 protocol = ?family,
                                 family = ?proto},
-            {ok, {Pid, Addr, Creation}};
+            {ok, {Pid, Addr, ?CREATION}};
         {error, _} = Error ->
             Error
     end.
@@ -231,10 +231,9 @@ init([]) ->
     Config = read_config(config_path(), true),
     info_msg("Starting cb_dist with config ~p", [Config]),
     process_flag(trap_exit,true),
-    {ok, #s{config = Config, creation = rand:uniform(4) - 1,
-            is_pkey_encrypted = is_pkey_encrypted()}}.
+    {ok, #s{config = Config, is_pkey_encrypted = is_pkey_encrypted()}}.
 
-handle_call({listen, Name}, _From, #s{creation = Creation} = State) ->
+handle_call({listen, Name}, _From, State) ->
     State1 = State#s{name = Name},
 
     Protos0 = get_protos(State1),
@@ -267,7 +266,7 @@ handle_call({listen, Name}, _From, #s{creation = Creation} = State) ->
     NotStartedRequired = Required -- [M || {M, _} <- Listeners],
     State2 = State1#s{listeners = Listeners},
     case NotStartedRequired of
-        [] -> {reply, {ok, Creation}, State2};
+        [] -> {reply, ok, State2};
         _ ->
             error_msg("Failed to start required dist listeners ~p. "
                       "Net kernel will not start", [NotStartedRequired]),
@@ -632,9 +631,10 @@ listen_proto({AddrType, Module}, NodeName) ->
     NameStr = atom_to_list(NodeName),
     Port = cb_epmd:port_for_node(Module, NameStr),
     info_msg("Starting ~p listener on ~p...", [Module, Port]),
+    ListenAddr = get_listen_addr(AddrType, Module),
     ListenFun =
         fun () ->
-                case Module:listen(NodeName) of
+                case Module:listen(NodeName, ListenAddr) of
                     {ok, _} = Res ->
                         info_msg("Started listener: ~p", [Module]),
                         maybe_register_on_epmd(Module, NodeName, Port),
@@ -642,7 +642,6 @@ listen_proto({AddrType, Module}, NodeName) ->
                     Error -> Error
                 end
         end,
-    ListenAddr = get_listen_addr(AddrType, Module),
     case with_dist_ip_and_port(ListenAddr, Port, ListenFun) of
         {ok, Res} -> {ok, Res};
         ignore ->
