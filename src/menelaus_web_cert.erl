@@ -13,7 +13,8 @@
 
 -include("ns_common.hrl").
 
--export([handle_cluster_certificate/1,
+-export([handle_get_trustedCAs/1,
+         handle_cluster_certificate/1,
          handle_regenerate_certificate/1,
          handle_load_ca_certs/1,
          handle_upload_cluster_ca/1, %% deprecated
@@ -23,6 +24,19 @@
          handle_client_cert_auth_settings_post/1]).
 
 -define(MAX_CLIENT_CERT_PREFIXES, ?get_param(max_prefixes, 10)).
+
+handle_get_trustedCAs(Req) ->
+    menelaus_util:assert_is_enterprise(),
+    Warnings = ns_server_cert:get_warnings(),
+    Json = lists:map(
+             fun (Props) ->
+                 CAId = proplists:get_value(id, Props),
+                 CAWarnings = [{warning_props(W)} || {{ca, Id}, W} <- Warnings,
+                                                     Id =:= CAId],
+                 {JSONObjProps} = jsonify_cert_props(Props),
+                 {JSONObjProps ++ [{warnings, CAWarnings}]}
+             end, ns_server_cert:trusted_CAs(props)),
+    menelaus_util:reply_json(Req, Json).
 
 handle_cluster_certificate(Req) ->
     menelaus_util:assert_is_enterprise(),
