@@ -102,17 +102,17 @@ walk_ast(Acc, [{attribute, _, module, {Module, _PmodArgs}}=H|T]) ->
 walk_ast(Acc, [{attribute, _, module, Module}=H|T]) ->
     put(module, Module),
     walk_ast([H|Acc], T);
-walk_ast(Acc, [{function, Line, Name, Arity, Clauses}|T]) ->
+walk_ast(Acc, [{function, Location, Name, Arity, Clauses}|T]) ->
     put(function, Name),
-    walk_ast([{function, Line, Name, Arity,
+    walk_ast([{function, Location, Name, Arity,
                walk_clauses([], Clauses)}|Acc], T);
 walk_ast(Acc, [H|T]) ->
     walk_ast([H|Acc], T).
 
 walk_clauses(Acc, []) ->
     lists:reverse(Acc);
-walk_clauses(Acc, [{clause, Line, Arguments, Guards, Body}|T]) ->
-    walk_clauses([{clause, Line, Arguments, Guards,
+walk_clauses(Acc, [{clause, Location, Arguments, Guards, Body}|T]) ->
+    walk_clauses([{clause, Location, Arguments, Guards,
                    walk_body([], Body)}|Acc], T).
 
 walk_body(Acc, []) ->
@@ -120,30 +120,30 @@ walk_body(Acc, []) ->
 walk_body(Acc, [H|T]) ->
     walk_body([transform(H) | Acc], T).
 
-transform({call, Line, {remote, _,
+transform({call, Location, {remote, _,
                         {atom, _, ale},
                         {atom, _, Fn}},
            [LoggerExpr]})
   when Fn =:= sync;
        Fn =:= get_effective_loglevel ->
 
-    {call, Line,
-     {remote, Line,
-      logger_impl_expr(LoggerExpr), {atom, Line, Fn}}, []};
-transform({call, Line, {remote, _,
+    {call, Location,
+     {remote, Location,
+      logger_impl_expr(LoggerExpr), {atom, Location, Fn}}, []};
+transform({call, Location, {remote, _,
                         {atom, _, ale},
                         {atom, _, Fn}},
            [LoggerExpr, LogLevelExpr]} = Stmt)
   when Fn =:= is_loglevel_enabled ->
     case valid_loglevel_expr(LogLevelExpr) of
         true ->
-            {call, Line,
-             {remote, Line,
-              logger_impl_expr(LoggerExpr), {atom, Line, Fn}}, [LogLevelExpr]};
+            {call, Location,
+             {remote, Location,
+              logger_impl_expr(LoggerExpr), {atom, Location, Fn}}, [LogLevelExpr]};
         false ->
             Stmt
     end;
-transform({call, Line, {remote, _,
+transform({call, Location, {remote, _,
                         {atom, _, ale},
                         {atom, _, LogFn}},
            [LoggerExpr, LogLevelExpr | Args]} = Stmt)
@@ -161,18 +161,18 @@ transform({call, Line, {remote, _,
                         extended_loglevel_expr(LogLevelExpr)
                 end,
 
-            emit_logger_call(LoggerExpr, LogLevelExpr1, transform(Args), Line);
+            emit_logger_call(LoggerExpr, LogLevelExpr1, transform(Args), Location);
         false ->
             Stmt
     end;
-transform({call, Line, {remote, _,
+transform({call, Location, {remote, _,
                         {atom, _, ale},
                         {atom, _, LogLevel} = LogLevelExpr},
            [LoggerExpr | Args]} = Stmt) ->
     case valid_loglevel(LogLevel) andalso
         valid_args(extended_loglevel(LogLevel), Args) of
         true ->
-            emit_logger_call(LoggerExpr, LogLevelExpr, transform(Args), Line);
+            emit_logger_call(LoggerExpr, LogLevelExpr, transform(Args), Location);
         false ->
             Stmt
     end;
@@ -183,31 +183,35 @@ transform(Stmt) when is_list(Stmt) ->
 transform(Stmt) ->
     Stmt.
 
-emit_logger_call(LoggerNameExpr, LogLevelExpr, Args, Line) ->
-    ArgsLine = get_line(LogLevelExpr),
+emit_logger_call(LoggerNameExpr, LogLevelExpr, Args, Location) ->
+    ArgsLocation = get_location(LogLevelExpr),
+    Line = case Location of
+               {L, _Col} -> L;
+               L when is_integer(L) -> L
+           end,
 
     {call, Line,
      {remote, Line,
       logger_impl_expr(LoggerNameExpr),
       LogLevelExpr},
-     [{atom, ArgsLine, get(module)},
-      {atom, ArgsLine, get(function)},
-      {integer, ArgsLine, Line} |
+     [{atom, ArgsLocation, get(module)},
+      {atom, ArgsLocation, get(function)},
+      {integer, ArgsLocation, Line} |
       Args]}.
 
-extended_loglevel_expr_rt(Line, Expr) ->
-    {call, Line,
-     {remote, Line,
-      {atom, Line, ale_codegen},
-      {atom, Line, extended_impl}},
+extended_loglevel_expr_rt(Location, Expr) ->
+    {call, Location,
+     {remote, Location,
+      {atom, Location, ale_codegen},
+      {atom, Location, extended_impl}},
      [Expr]}.
 
-extended_loglevel_expr({atom, Line, LogLevel}) ->
-    {atom, Line, ale_codegen:extended_impl(LogLevel)};
-extended_loglevel_expr({var, Line, _} = Expr) ->
-    extended_loglevel_expr_rt(Line, Expr);
-extended_loglevel_expr({call, Line, _, _} = Expr) ->
-    extended_loglevel_expr_rt(Line, Expr).
+extended_loglevel_expr({atom, Location, LogLevel}) ->
+    {atom, Location, ale_codegen:extended_impl(LogLevel)};
+extended_loglevel_expr({var, Location, _} = Expr) ->
+    extended_loglevel_expr_rt(Location, Expr);
+extended_loglevel_expr({call, Location, _, _} = Expr) ->
+    extended_loglevel_expr_rt(Location, Expr).
 
 extended_loglevel(LogLevel) ->
     ExtendedLogLevels = [list_to_atom([$x | atom_to_list(LL)])
@@ -228,12 +232,12 @@ valid_loglevel(LogLevel) ->
     NormLogLevel = normalize_loglevel(LogLevel),
     lists:member(NormLogLevel, ?LOGLEVELS).
 
-valid_loglevel_expr({atom, _Line, LogLevel}) ->
+valid_loglevel_expr({atom, _Location, LogLevel}) ->
     lists:member(LogLevel, ?LOGLEVELS);
 valid_loglevel_expr(_Other) ->
     true.
 
-get_line(Expr) ->
+get_location(Expr) ->
     element(2, Expr).
 
 valid_args(ExtendedCall, Args) ->
@@ -247,15 +251,15 @@ valid_args(ExtendedCall, Args) ->
     end.
 
 logger_impl_expr(LoggerExpr) ->
-    Line = get_line(LoggerExpr),
+    Location = get_location(LoggerExpr),
 
     case LoggerExpr of
         {atom, _, LoggerAtom} ->
-            {atom, Line, ale_codegen:logger_impl(LoggerAtom)};
+            {atom, Location, ale_codegen:logger_impl(LoggerAtom)};
         _ ->
-            {call, Line,
-             {remote, Line,
-              {atom, Line, ale_codegen},
-              {atom, Line, logger_impl}},
+            {call, Location,
+             {remote, Location,
+              {atom, Location, ale_codegen},
+              {atom, Location, logger_impl}},
              [LoggerExpr]}
     end.
