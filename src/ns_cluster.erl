@@ -960,7 +960,7 @@ expect_integer(PropName, Value) ->
         false -> erlang:exit({unexpected_json, not_integer, PropName})
     end.
 
-get_port_from_empd(OtpNode, AFamily, Encryption) ->
+get_port_from_epmd(OtpNode, AFamily, Encryption) ->
     Res = case cb_epmd:get_port(OtpNode, AFamily, Encryption, 5000)  of
               {port, Port, _Version} -> {ok, Port};
               noport -> {error, noport};
@@ -980,7 +980,7 @@ verify_otp_connectivity(OtpNode, Options) ->
     PortRes =
         case proplists:get_value(port, Options) of
             undefined ->
-                get_port_from_empd(OtpNode, NodeAFamily, NodeEncryption);
+                get_port_from_epmd(OtpNode, NodeAFamily, NodeEncryption);
             P ->
                 {ok, P}
         end,
