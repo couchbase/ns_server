@@ -11,11 +11,11 @@ licenses/APL2.txt.
 import {Injectable} from '@angular/core';
 import {HttpClient, HttpParams} from '@angular/common/http';
 import {NEVER} from 'rxjs';
-import {is} from 'ramda';
 import {switchMap, shareReplay, map} from 'rxjs/operators';
+import {clone, is} from 'ramda';
 
-import {MnHelperService} from './mn.helper.service.js';
 import {MnPermissions} from './ajs.upgraded.providers.js';
+import {MnHelperService} from './mn.helper.service.js';
 import {MnHttpRequest} from './mn.http.request.js';
 
 export {MnSettingsAutoCompactionService}
@@ -96,8 +96,8 @@ class MnSettingsAutoCompactionService {
 
   /**
    * Sets the initial values of the auto compaction settings form.
-   * AllowedTimePeriod is added on the basis it's key is
-   * present in the payload of the request.
+   * Fragmentation and AllowedTimePeriod keys are added on the basis
+   * they are present in the payload of the request.
    */
   getSettingsSource(settings) {
     let data = settings.autoCompactionSettings;
@@ -105,22 +105,62 @@ class MnSettingsAutoCompactionService {
     let source = {
       indexCompactionMode: data.indexCompactionMode,
       timePeriodFlag: this.isTimePeriodFlagChecked(data),
-      databaseFragmentationThreshold: this.setThresholdGroup(data.databaseFragmentationThreshold),
-      viewFragmentationThreshold: this.setThresholdGroup(data.viewFragmentationThreshold),
-      indexFragmentationThreshold: data.indexFragmentationThreshold,
-      indexCircularCompaction: {
-        daysOfWeek: this.mnHelperService.stringToObject(data.indexCircularCompaction.daysOfWeek),
-        interval: data.indexCircularCompaction.interval
-      },
       parallelDBAndViewCompaction: data.parallelDBAndViewCompaction,
       purgeInterval: settings.purgeInterval,
     };
+
+    if (data.databaseFragmentationThreshold) {
+      source.databaseFragmentationThreshold = this.setThresholdGroup(data.databaseFragmentationThreshold);
+    }
+
+    if (data.viewFragmentationThreshold) {
+      source.viewFragmentationThreshold = this.setThresholdGroup(data.viewFragmentationThreshold);
+    }
+
+    if (data.indexFragmentationThreshold) {
+      source.indexFragmentationThreshold = data.indexFragmentationThreshold;
+    }
+
+    if (data.indexCircularCompaction) {
+      source.indexCircularCompaction = {
+        daysOfWeek: this.mnHelperService.stringToObject(data.indexCircularCompaction.daysOfWeek),
+        interval: data.indexCircularCompaction.interval
+      }
+    }
 
     if (data.allowedTimePeriod) {
       source.allowedTimePeriod = data.allowedTimePeriod;
     }
 
     return source;
+  }
+
+  getAutoCompactionData(group) {
+    let values = clone(group.value);
+
+    if (values.databaseFragmentationThreshold) {
+      if (values.databaseFragmentationThreshold.size) {
+        values.databaseFragmentationThreshold.size = this.transformMBToBytes(values.databaseFragmentationThreshold.size);
+      }
+
+      delete values.viewFragmentationThreshold.sizeFlag;
+      delete values.viewFragmentationThreshold.percentageFlag;
+    }
+
+    if (values.viewFragmentationThreshold) {
+      if (values.viewFragmentationThreshold.size) {
+        values.viewFragmentationThreshold.size = this.transformMBToBytes(values.viewFragmentationThreshold.size);
+      }
+
+      delete values.databaseFragmentationThreshold.sizeFlag;
+      delete values.databaseFragmentationThreshold.percentageFlag;
+    }
+
+    values.purgeInterval = Number(values.purgeInterval);
+
+    delete values.timePeriodFlag;
+
+    return this.flattenData(values);
   }
 
   isFlagEnabled(value) {

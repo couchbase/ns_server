@@ -100,6 +100,12 @@ class MnAdminService {
       combineLatest(this.stream.failedOverNodes, this.stream.onlyActiveNodes)
       .pipe(map(([failedOver, onlyActive]) => failedOver.concat(onlyActive)));
 
+    this.stream.reallyActiveNodes = this.stream.onlyActiveNodes
+      .pipe(map(nodes => nodes.filter(node => !node.pendingEject)));
+
+    this.stream.reallyActiveKVNodes = this.stream.reallyActiveNodes
+      .pipe(map(nodes => nodes.filter(node => node.services.includes('kv'))));
+
     this.stream.isRebalancing =
       this.stream.getPoolsDefault.pipe(
         map(R.pipe(R.propEq('rebalanceStatus', 'none'), R.not)), distinctUntilChanged());
@@ -109,6 +115,9 @@ class MnAdminService {
 
     this.stream.maxBucketCount =
       this.stream.getPoolsDefault.pipe(pluck("maxBucketCount"), distinctUntilChanged());
+
+    this.stream.storageTotals =
+      this.stream.getPoolsDefault.pipe(pluck("storageTotals"), distinctUntilChanged());
 
     this.stream.uiSessionTimeout =
       this.stream.getPoolsDefault.pipe(pluck("uiSessionTimeout"), distinctUntilChanged());

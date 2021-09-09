@@ -1273,6 +1273,34 @@ section.error {
   background-color: #e07f82; /* .red-3 */
 }
 
+.mn-bar-usages .usage {
+  background-color: #efebe0;
+  height: .75rem;
+  margin-bottom: .25rem;
+  overflow: hidden;
+}
+.mn-bar-usages .usage .item {
+  position: relative;
+  float:left;
+}
+.mn-bar-usages .usage .usage-item-0 {
+  background-color: #8eb7e6; /* .blue-3 */
+}
+.mn-bar-usages .usage .usage-item-1 {
+  background-color: #b3cfef; /* .blue-4 */
+}
+.mn-bar-usages .usage .usage-item-2 {
+  background-color: #efebe0;  /* .gray-blue-3 */
+}
+.mn-bar-usages.overcommitted .usage .usage-item-2 {
+  background-color: #e07f82;  /* .gray-blue-3 */
+}
+
+/* bar usages specifics by case ----------------------------------------- */
+.mn-bar-usages.overcommitted .usage {
+  background-color: #e07f82; /* .red-3 */
+}
+
 /* minimum presentation of nodes list with checkboxes ----------------------- */
 .selectable-nodes-list {
   margin: 0;

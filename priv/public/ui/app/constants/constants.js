@@ -8,26 +8,6 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-let bucketsFormConfiguration = {
-  name: '',
-  conflictResolutionType: 'seqno',
-  bucketType: 'membase',
-  evictionPolicy: 'valueOnly',
-  evictionPolicyEphemeral: 'noEviction',
-  replicaNumber: "1",
-  replicaIndex: "0",
-  threadsNumber: "3",
-  flushEnabled: "0",
-  ramQuota: "0",
-  uri: '/pools/default/buckets',
-  purgeInterval: "3",
-  compressionMode: "passive",
-  durabilityMinLevel: "none",
-  maxTTL: 0,
-  storageBackend: 'couchstore',
-  fragmentationPercentage: 50
-};
-
 let daysOfWeek = [
   'Monday',
   'Tuesday',
@@ -82,7 +62,6 @@ let servicesEnterprise = ["kv", "n1ql", "index", "fts", "cbas", "eventing", "bac
 let servicesCE = ["kv", "index", "fts", "n1ql"];
 
 export {
-  bucketsFormConfiguration,
   daysOfWeek,
   knownAlerts,
   timeUnitToSeconds,

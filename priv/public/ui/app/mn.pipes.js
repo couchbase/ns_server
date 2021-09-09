@@ -30,7 +30,9 @@ export {
   MnFormatQuantity,
   MnFormatWarmupMessage,
   MnBucketsType,
+  MnConflictResolutionType,
   MnTruncate,
+  MnTruncateTo3Digits,
   MnFormatServices,
   MnOrderServices,
   MnStripPortHTML
@@ -53,6 +55,25 @@ class MnTruncate {
     } else {
       return value;
     }
+  }
+}
+
+class MnTruncateTo3Digits {
+  static get annotations() { return [
+    new Pipe({name: "mnTruncateTo3Digits"})
+  ]}
+
+  transform(value, minScale, roundMethod) {
+    if (!value) {
+      return 0;
+    }
+
+    let scale = [100, 10, 1, 0.1, 0.01, 0.001].find(v => value >= v) || 0.0001;
+    if (minScale != undefined && minScale > scale) {
+      scale = minScale;
+    }
+    scale = 100 / scale;
+    return Math[roundMethod || "round"](value * scale)/scale;
   }
 }
 
@@ -296,12 +317,14 @@ class MnFormatQuantity {
 
   static get parameters() { return [
     MnPrepareQuantity,
-    DecimalPipe
+    DecimalPipe,
+    MnTruncateTo3Digits
   ]}
 
-  constructor(mnPrepareQuantity, decimalPipe) {
+  constructor(mnPrepareQuantity, decimalPipe, mnTruncateTo3Digits) {
     this.mnPrepareQuantity = mnPrepareQuantity;
     this.decimalPipe = decimalPipe;
+    this.mnTruncateTo3Digits = mnTruncateTo3Digits;
   }
 
   transform(value, numberSystem, spacing) {
@@ -316,7 +339,7 @@ class MnFormatQuantity {
     }
 
     var t = this.mnPrepareQuantity.transform(value, numberSystem);
-    return [this.decimalPipe.transform(value/t[0]), spacing, t[1]].join('');
+    return [this.mnTruncateTo3Digits.transform(value/t[0], undefined, 'floor'), spacing, t[1]].join('');
   }
 }
 
@@ -355,6 +378,24 @@ class MnBucketsType {
     }
   }
 }
+
+class MnConflictResolutionType {
+  static get annotations() { return [
+    new Pipe({name: "mnConflictResolutionType"})
+  ]}
+
+  transform(type) {
+    switch (type) {
+      case 'lww':
+        return 'Timestamp';
+      case "seqno":
+        return 'Sequence Number';
+      case "custom":
+        return 'Custom';
+    }
+  }
+}
+
 
 class MnFormatServices {
   static get annotations() { return [

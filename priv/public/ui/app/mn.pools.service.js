@@ -58,6 +58,9 @@ class MnPoolsService {
     this.stream.isStrippingPort =
       this.stream.getSuccess.pipe(pluck("isStrippingPort"), distinctUntilChanged());
 
+    this.stream.isDeveloperPreview =
+      this.stream.getSuccess.pipe(pluck("isDeveloperPreview"), distinctUntilChanged());
+
     this.stream.mnServices =
       this.stream.isEnterprise
       .pipe(map(function (isEnterprise) {

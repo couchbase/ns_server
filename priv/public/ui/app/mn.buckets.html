@@ -1,5 +1,5 @@
 <!--
-Copyright 2018-Present Couchbase, Inc.
+Copyright 2021-Present Couchbase, Inc.
 
 Use of this software is governed by the Business Source License included in
 the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
@@ -7,6 +7,7 @@ file, in accordance with the Business Source License, use of this software will
 be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 -->
+
 
 <mn-element-cargo depot="alerts">
   <div
@@ -16,36 +17,52 @@ licenses/APL2.txt.
   </div>
   <div
      class="interim alert alert-warning"
-     [hidden]="!(maybeHideMaxBucketCountWarning | async)">
+     [hidden]="!(showMaxBucketWarning | async)">
     <p>Attention: Maximum number of buckets has been reached. For optimal performance, no more than {{maxBucketCount | async}} buckets are allowed.</p>
+    <a
+       (click)="visibleMaxBucketCountWarning.next(false)"
+       class="close">X</a>
   </div>
 </mn-element-cargo>
+
 <mn-element-cargo depot="actions">
   <div class="header-controls resp-xsml">
     <a
-       [hidden]="maybeHideAddBucketBuctton | async"
+       [hidden]="!(isNewBucketAllowed | async)"
        (click)="onAddBucketClick.next()">
       ADD BUCKET
     </a>
   </div>
 </mn-element-cargo>
 
-<!-- <div mn-spinner="!buckets.details" min-height="300px"> -->
-<!--   <div -->
-<!--      admin-ctl="adminCtl" -->
-<!--      mn-buckets-list -->
-<!--      buckets="buckets.details" -->
-<!--      pool-default="poolDefault" -->
-<!--      rbac="rbac"> -->
-<!--   </div> -->
-<!-- </div> -->
+<mn-main-spinner
+  [mnSpinnerValue]="(buckets | async) === null">
+</mn-main-spinner>
 
-<div class="cbui-table">
+<mn-input-filter
+   *ngIf="(buckets | async)?.length"
+   class="row flex-left"
+   [group]="filter.group"
+   mnPlaceholder="filter buckets...">
+</mn-input-filter>
+
+<div class="zero-content" *ngIf="!(buckets | async)?.length">
+  You have no data buckets. Use "ADD BUCKET" above to create one,
+  or load a <a uiSref="app.admin.settings.sampleBuckets">sample bucket</a> with data & indexes.
+</div>
+
+<div
+  class="cbui-table"
+  [hidden]="!(buckets | async)?.length">
   <div class="cbui-table-header">
     <span class="cbui-table-cell flex-grow-3">
       <span
-         class="sorter"
-         (click)="onSortByClick.next('name')">
+        class="sorter"
+        [ngClass]="{
+           'dynamic-active': (sorter.state | async)[0] == 'name',
+           'dynamic-inverted': (sorter.state | async)[1]
+         }"
+        (click)="sorter.click.next('name')">
         name
       </span>
     </span>
@@ -54,18 +71,10 @@ licenses/APL2.txt.
     <span class="cbui-table-cell">ops/sec</span>
     <span class="cbui-table-cell flex-grow-1-5 resp-hide-sml">RAM used/quota</span>
     <span class="cbui-table-cell resp-hide-med">disk used</span>
-    <span class="cbui-table-cell flex-grow-1-5 resp-hide-xsml"></span>
+    <span class="cbui-table-cell flex-grow-2-5 resp-hide-xsml"></span>
   </div>
-  <div
-     class="zero-content"
-     *ngIf="!(buckets | async)?.length">
-    You have no data buckets. Use "ADD BUCKET" above to create one,
-    or load a <a> <!-- ui-sref="app.admin.settings.sampleBuckets" --> sample bucket</a> with data & indexes.
-  </div>
-  <div
-     *ngFor="let bucket of (buckets | async); trackBy: trackByFn">
-    <!-- orderBy:mnSortableTable.sortableTableProperties.orderBy:mnSortableTable.sortableTableProperties.invert track by bucket.name -->
-    <mn-buckets-item [bucket]="bucket"></mn-buckets-item>
-
-  </div>
+  <mn-bucket-item
+    *ngFor="let bucket of (filteredBuckets | async); trackBy: trackBy;"
+    [bucket]="bucket">
+  </mn-bucket-item>
 </div>

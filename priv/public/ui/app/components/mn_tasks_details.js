@@ -62,6 +62,7 @@ function mnTasksDetailsFactory($http, $cacheFactory, mnTasksService) {
       rv.tasksRecovery = _.detect(tasks, detectRecoveryTasks);
       rv.tasksRebalance = _.detect(tasks, detectRebalanceTasks);
       rv.tasksWarmingUp = _.filter(tasks, detectWarmupTask);
+      rv.tasksBucketCompaction = _.filter(tasks, detectBucketCompactionTask);
       rv.inRebalance = !!(rv.tasksRebalance && rv.tasksRebalance.status === "running");
       rv.inRecoveryMode = !!rv.tasksRecovery;
       rv.isLoadingSamples = !!_.detect(tasks, detectLoadingSamples);
@@ -75,6 +76,8 @@ function mnTasksDetailsFactory($http, $cacheFactory, mnTasksService) {
       rv.isOrphanBucketTask = !!_.detect(tasks, detectOrphanBucketTask);
 
       mnTasksService.stream.tasksXDCRPlug.next(rv.tasksXDCR);
+      mnTasksService.stream.tasksWarmingUpPlug.next(rv.tasksWarmingUp);
+      mnTasksService.stream.tasksBucketCompactionPlug.next(rv.tasksBucketCompaction);
 
       let noCollectInfoTask = {
         nodesByStatus: {},
@@ -112,8 +115,12 @@ function mnTasksDetailsFactory($http, $cacheFactory, mnTasksService) {
     return taskInfo.type === "loadingSampleBucket" && taskInfo.status === "running";
   }
 
-  function detectWarmupTask(task) {
-    return task.type === 'warming_up' && task.status === 'running';
+  function detectWarmupTask(taskInfo) {
+    return taskInfo.type === 'warming_up' && taskInfo.status === 'running';
+  }
+
+  function detectBucketCompactionTask(taskInfo) {
+    return taskInfo.type === 'bucket_compaction';
   }
 
   function clearCache() {

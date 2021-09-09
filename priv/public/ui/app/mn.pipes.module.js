@@ -30,7 +30,9 @@ class MnPipesModule {
         pipes.MnFormatQuantity,
         pipes.MnFormatWarmupMessage,
         pipes.MnBucketsType,
+        pipes.MnConflictResolutionType,
         pipes.MnTruncate,
+        pipes.MnTruncateTo3Digits,
         pipes.MnFormatServices,
         pipes.MnOrderServices,
         pipes.MnStripPortHTML
@@ -48,7 +50,9 @@ class MnPipesModule {
         pipes.MnFormatQuantity,
         pipes.MnFormatWarmupMessage,
         pipes.MnBucketsType,
+        pipes.MnConflictResolutionType,
         pipes.MnTruncate,
+        pipes.MnTruncateTo3Digits,
         pipes.MnFormatServices,
         pipes.MnOrderServices,
         pipes.MnStripPortHTML
@@ -61,7 +65,8 @@ class MnPipesModule {
         pipes.MnBytesToMB,
         pipes.MnFormatQuantity,
         DecimalPipe,
-        pipes.MnFormatServices
+        pipes.MnFormatServices,
+        pipes.MnTruncateTo3Digits
       ]
     })
   ]}

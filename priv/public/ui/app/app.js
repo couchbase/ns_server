@@ -24,7 +24,6 @@ import mnFilters from './components/mn_filters.js';
 import mnHttp from './components/mn_http.js';
 import mnExceptionReporter from './components/mn_exception_reporter.js';
 import {
-  bucketsFormConfiguration,
   daysOfWeek,
   knownAlerts,
   timeUnitToSeconds,
@@ -50,7 +49,6 @@ angular.module('app', [
   uiBootstrap,
   mnAdmin
 ]).config(mnAppConfig)
-  .constant("bucketsFormConfiguration", bucketsFormConfiguration)
   .constant("daysOfWeek", daysOfWeek)
   .constant("knownAlerts", knownAlerts)
   .constant("timeUnitToSeconds", timeUnitToSeconds)

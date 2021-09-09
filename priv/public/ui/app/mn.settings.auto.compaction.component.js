@@ -8,18 +8,17 @@
   licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '@angular/core'
+import {Component, ChangeDetectionStrategy} from '@angular/core';
 import {UIRouter} from '@uirouter/angular';
-import {map, takeUntil} from 'rxjs/operators';
-import {pipe, combineLatest, merge} from 'rxjs';
-import {clone} from 'ramda';
 import {FormBuilder} from '@angular/forms';
+import {pipe, combineLatest, merge} from 'rxjs';
+import {map, takeUntil} from 'rxjs/operators';
 
+import {MnPermissions} from './ajs.upgraded.providers.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnFormService} from './mn.form.service.js';
 import {MnSettingsAutoCompactionService} from './mn.settings.auto.compaction.service.js';
 import {MnHelperService} from './mn.helper.service.js';
-import {MnPermissions} from './ajs.upgraded.providers.js';
 
 export {MnSettingsAutoCompactionComponent};
 
@@ -109,8 +108,10 @@ class MnSettingsAutoCompactionComponent extends MnLifeCycleHooksToStream {
         parallelDBAndViewCompaction: null,
         purgeInterval: null,
         timePeriodFlag: null
-      })
-      .setPackPipe(pipe(map(this.getAutoCompactionData.bind(this))))
+      });
+
+    this.form
+      .setPackPipe(pipe(map(mnSettingsAutoCompactionService.getAutoCompactionData.bind(mnSettingsAutoCompactionService, this.form.group))))
       .setSource(settingsSource)
       .setPostRequest(this.postAutoCompaction)
       .setValidation(this.postAutoCompactionValidation, this.hasWritePermissions)
@@ -176,32 +177,6 @@ class MnSettingsAutoCompactionComponent extends MnLifeCycleHooksToStream {
     this.maybeDisableField('parallelDBAndViewCompaction', hasPermission);
     this.maybeDisableField('indexCompactionMode', hasPermission);
     this.maybeDisableField('indexCircularCompaction', hasPermission);
-  }
-
-  getAutoCompactionData() {
-    let values = clone(this.form.group.value);
-
-    if (values.databaseFragmentationThreshold.size) {
-      values.databaseFragmentationThreshold.size = this.transformMBToBytes(values.databaseFragmentationThreshold.size);
-    }
-    if (values.viewFragmentationThreshold.size) {
-      values.viewFragmentationThreshold.size = this.transformMBToBytes(values.viewFragmentationThreshold.size);
-    }
-    if (values.indexCircularCompaction) {
-      values.indexCircularCompaction.daysOfWeek = this.stringifyValues(values.indexCircularCompaction.daysOfWeek)
-    } else {
-      delete values.indexCircularCompaction;
-    }
-
-    values.purgeInterval = Number(values.purgeInterval);
-
-    delete values.databaseFragmentationThreshold.sizeFlag;
-    delete values.databaseFragmentationThreshold.percentageFlag;
-    delete values.viewFragmentationThreshold.sizeFlag;
-    delete values.viewFragmentationThreshold.percentageFlag;
-    delete values.timePeriodFlag;
-
-    return this.flattenData(values);
   }
 
   toggleIndexFragmentation([hasPermission, mode]) {

@@ -235,11 +235,13 @@ class MnForm {
     return this;
   }
 
-  setValidation(validationPostRequest, permissionStream, validateOnStream) {
+  setValidation(validationPostRequest, permissionStream, validateOnStream, keepErrors) {
     validationPostRequest.response
       .pipe(takeUntil(this.component.mnOnDestroy))
       .subscribe(function () {
-        validationPostRequest.clearError();
+        if (!keepErrors) {
+          validationPostRequest.clearError();
+        }
       });
     //skip initialization of the form
     (permissionStream || new BehaviorSubject(true)).pipe(

@@ -23,6 +23,7 @@ import * as pluggableUIsModules from '/ui/pluggable-uis.js';
 import {MnPoolsServiceModule} from './mn.pools.service.js';
 import {MnAdminServiceModule} from './mn.admin.service.js';
 import {MnCollectionsServiceModule} from './mn.collections.service.js';
+import {MnBucketsServiceModule} from './mn.buckets.service.js';
 import {MnKeyspaceSelectorServiceModule} from "./mn.keyspace.selector.service.js";
 import {MnKeyspaceSelectorModule} from './mn.keyspace.selector.module.js';
 import {MnHelper} from './ajs.upgraded.providers.js';
@@ -95,7 +96,7 @@ let groupsState = {
 let bucketsState = {
   name: 'app.admin.buckets.**',
   url: '/buckets',
-  lazyLoad: mnLazyload(() => import('./mn_admin/mn_buckets_controller.js'), 'mnBuckets')
+  lazyLoad: mnLoadNgModule(() => import('./mn.buckets.module.js'), 'MnBucketsModule')
 };
 
 let authState = {
@@ -211,6 +212,7 @@ let mnAppImports = [
   MnCollectionsServiceModule,
   MnAdminServiceModule,
   MnPoolsServiceModule,
+  MnBucketsServiceModule,
   MnKeyspaceSelectorServiceModule,
   MnElementCraneModule.forRoot(),
   UIRouterUpgradeModule.forRoot({

@@ -8,9 +8,10 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {BehaviorSubject} from 'rxjs';
-import {shareReplay} from 'rxjs/operators';
 import {Injectable} from '@angular/core';
+import {BehaviorSubject} from 'rxjs';
+import {shareReplay, map} from 'rxjs/operators';
+import {groupBy, prop} from 'ramda';
 
 export {MnTasksService}
 
@@ -31,5 +32,14 @@ class MnTasksService {
     this.stream.taskCollectInfoPlug = new BehaviorSubject();
     this.stream.taskCollectInfo = this.stream.taskCollectInfoPlug
       .pipe(shareReplay({refCount: true, bufferSize: 1}));
+
+    this.stream.tasksWarmingUpPlug = new BehaviorSubject();
+    this.stream.tasksWarmingUp = this.stream.tasksWarmingUpPlug
+      .pipe(shareReplay({refCount: true, bufferSize: 1}));
+
+    this.stream.tasksBucketCompactionPlug = new BehaviorSubject();
+    this.stream.tasksCompactionByBucket = this.stream.tasksBucketCompactionPlug
+      .pipe(map(groupBy(prop('bucket'))),
+            shareReplay({refCount: true, bufferSize: 1}));
   }
 }

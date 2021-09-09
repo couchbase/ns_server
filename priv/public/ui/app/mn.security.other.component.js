@@ -10,18 +10,18 @@ licenses/APL2.txt.
 
 import {Component, ChangeDetectionStrategy} from '@angular/core';
 import {UIRouter} from '@uirouter/angular';
+import {FormBuilder} from '@angular/forms';
 import {combineLatest} from 'rxjs';
 import {map, takeUntil} from 'rxjs/operators';
-import {FormBuilder} from '@angular/forms';
+import {all} from 'ramda';
 
+import {MnPermissions} from './ajs.upgraded.providers.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnFormService} from './mn.form.service.js';
 import {MnSecurityService} from './mn.security.service.js';
 import {MnAdminService} from './mn.admin.service.js';
 import {MnPoolsService} from './mn.pools.service.js';
 import {MnHttpGroupRequest} from './mn.http.request.js';
-import {MnPermissions} from './ajs.upgraded.providers.js';
-import {all} from '../web_modules/ramda.js';
 
 export {MnSecurityOtherComponent};
 
