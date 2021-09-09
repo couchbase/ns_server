@@ -1,11 +1,11 @@
 <!--
-Copyright 2015-Present Couchbase, Inc.
+     Copyright 2015-Present Couchbase, Inc.
 
-Use of this software is governed by the Business Source License included in
-the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
-file, in accordance with the Business Source License, use of this software will
-be governed by the Apache License, Version 2.0, included in the file
-licenses/APL2.txt.
+     Use of this software is governed by the Business Source License included in
+     the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
+     file, in accordance with the Business Source License, use of this software will
+     be governed by the Apache License, Version 2.0, included in the file
+     licenses/APL2.txt.
 -->
 
 <div class="forms">
@@ -419,23 +419,25 @@ licenses/APL2.txt.
       </div>
     </div>
 
-    <div ng-show="bucketConf.bucketType === 'membase' || bucketConf.bucketType === 'ephemeral'">
-      <label class="inline">Minimum Durability Level</label>
-      <span
-         class="fa-stack icon-info"
-         uib-tooltip='Bucket Minimum Durability Level. The Data Service upgrades any write request to this minimum level of durability if the write level is lower than the minimum level. It will also upgrade an async write to a sync write if the minimum level is higher than none.'
-         tooltip-placement="right">
-        <span class="icon fa-circle-thin fa-stack-2x"></span>
-        <span class="icon fa-info fa-stack-1x"></span>
-      </span><br>
-      <div class="formrow">
-        <mn-select
-           name="durabilityMinLevel"
-           class="inline fix-width-3"
-           ng-model="bucketConf.durabilityMinLevel"
-           values="durabilityMinLevelOptions">
-        </mn-select>
+    <div
+       class="formrow"
+       ng-show="bucketConf.bucketType === 'membase' || bucketConf.bucketType === 'ephemeral'">
+      <div>
+        <label class="inline">Minimum Durability Level</label>
+        <span
+           class="fa-stack icon-info"
+           uib-tooltip='Bucket Minimum Durability Level. The Data Service upgrades any write request to this minimum level of durability if the write level is lower than the minimum level. It will also upgrade an async write to a sync write if the minimum level is higher than none.'
+           tooltip-placement="right">
+          <span class="icon fa-circle-thin fa-stack-2x"></span>
+          <span class="icon fa-info fa-stack-1x"></span>
+        </span>
       </div>
+      <mn-select
+         name="durabilityMinLevel"
+         class="inline fix-width-3"
+         ng-model="bucketConf.durabilityMinLevel"
+         values="durabilityMinLevelOptions">
+      </mn-select>
       <div
          class="error"
          ng-show="validation.result.errors.durability_min_level">
