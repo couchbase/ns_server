@@ -218,16 +218,24 @@ sanitize_tls_config({Cfg}) ->
        end, Cfg)}.
 
 push_tls_config() ->
-    TLSCfg = tls_config(memcached_params(ns_config:get())),
-    ?log_info("Pushing TLS config to memcached:~n~p",
-              [sanitize_tls_config(TLSCfg)]),
-    case ns_memcached:set_tls_config(TLSCfg) of
-        ok ->
-            ?log_info("Successfully pushed TLS config to memcached"),
-            ok;
-        {error, Reason} ->
-            ?log_error("Failed to push TLS config to memcached: ~p", [Reason]),
-            {error, Reason}
+    Config = ns_config:get(),
+    case cluster_compat_mode:tls_supported(Config) of
+        true ->
+            TLSCfg = tls_config(memcached_params(Config)),
+            ?log_info("Pushing TLS config to memcached:~n~p",
+                      [sanitize_tls_config(TLSCfg)]),
+            case ns_memcached:set_tls_config(TLSCfg) of
+                ok ->
+                    ?log_info("Successfully pushed TLS config to memcached"),
+                    ok;
+                {error, Reason} ->
+                    ?log_error("Failed to push TLS config to memcached: ~p",
+                               [Reason]),
+                    {error, Reason}
+            end;
+        false ->
+            ?log_info("Skip TLS config pushing to memcached in CE"),
+            ok
     end.
 
 apply_changed_memcached_config(DifferentConfig, State) ->

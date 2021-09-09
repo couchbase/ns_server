@@ -48,6 +48,7 @@
          is_developer_preview/1,
          get_cluster_capabilities/1,
          tls_supported/0,
+         tls_supported/1,
          preserve_durable_mutations/0]).
 
 %% NOTE: this is rpc:call-ed by mb_master
@@ -364,6 +365,9 @@ get_pretend_version() ->
 is_developer_preview() -> is_developer_preview(ns_config:latest()).
 is_developer_preview(Config) ->
     ns_config:search(Config, developer_preview_enabled, false).
+
+tls_supported(Config) ->
+    is_enterprise(Config).
 
 tls_supported() ->
     is_enterprise().
