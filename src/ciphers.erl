@@ -52,7 +52,7 @@ medium() ->
      <<"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256">>].
 
 backwards_compatible_ciphers() ->
-    backwards_compatible_ciphers('tlsv1.2').
+    backwards_compatible_ciphers('tlsv1.3').
 backwards_compatible_ciphers(Version) ->
     lists:map(
       fun(#{cipher := C, key_exchange := K,
@@ -66,7 +66,7 @@ backwards_compatible_ciphers(Version) ->
       end, ssl:cipher_suites(all, Version)).
 
 supported(ns_server) ->
-    [N || C <- ssl:cipher_suites(all, 'tlsv1.2'),
+    [N || C <- ssl:cipher_suites(all, 'tlsv1.3'),
           {ok, N} <- [cipher_name_by_code(
                         ssl_cipher_format:suite_map_to_bin(C))]];
 supported(fts) -> golang_ciphers({1, 13, 7});

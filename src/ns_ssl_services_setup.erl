@@ -185,7 +185,7 @@ supported_versions(MinVer) ->
         undefined ->
             Patches = proplists:get_value(couchbase_patches,
                                           ssl:versions(), []),
-            Versions0 = ['tlsv1.1', 'tlsv1.2'],
+            Versions0 = ['tlsv1.1', 'tlsv1.2',  'tlsv1.3'],
 
             Versions1 = case lists:member(tls_padding_check, Patches) of
                             true ->

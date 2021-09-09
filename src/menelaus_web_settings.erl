@@ -100,13 +100,8 @@ get_number(Min, Max, Default) ->
 get_string(SV) ->
     {ok, list_to_binary(string:strip(SV))}.
 
-tlsv1_3_services() ->
-    [S || S <- services_with_security_settings(),
-          S =/= ns_server].
-
-get_tls_version(SV, Service) ->
-    Supported = ['tlsv1.3' || lists:member(Service, tlsv1_3_services())] ++
-                    ['tlsv1.2', 'tlsv1.1', tlsv1],
+get_tls_version(SV) ->
+    Supported = ['tlsv1.3', 'tlsv1.2', 'tlsv1.1', tlsv1],
     SupportedStr = [atom_to_list(S) || S <- Supported],
     case lists:member(SV, SupportedStr) of
         true -> {ok, list_to_atom(SV)};
@@ -292,7 +287,7 @@ conf(security) ->
      {ui_session_timeout, uiSessionTimeout, undefined,
       get_number(60, 1000000, undefined)},
      {ssl_minimum_protocol, tlsMinVersion,
-      ns_ssl_services_setup:ssl_minimum_protocol([]), get_tls_version(_, all)},
+      ns_ssl_services_setup:ssl_minimum_protocol([]), get_tls_version(_)},
      {cipher_suites, cipherSuites,
       ns_ssl_services_setup:configured_ciphers_names(undefined, []),
       fun get_cipher_suites/1},
@@ -303,7 +298,7 @@ conf(security) ->
      {allow_non_local_ca_upload, allowNonLocalCACertUpload, false, fun get_bool/1}] ++
     [{{security_settings, S}, ns_cluster_membership:json_service_name(S),
       [{cipher_suites, cipherSuites, undefined, fun get_cipher_suites/1},
-       {ssl_minimum_protocol, tlsMinVersion, undefined, get_tls_version(_, S)},
+       {ssl_minimum_protocol, tlsMinVersion, undefined, get_tls_version(_)},
        {honor_cipher_order, honorCipherOrder, undefined, fun get_bool/1},
        {supported_ciphers, supportedCipherSuites, ciphers:supported(S),
         fun read_only/1}]} || S <- services_with_security_settings()];
@@ -997,13 +992,13 @@ build_kvs_test() ->
     ok.
 
 test_conf() ->
-    [{ssl_minimum_protocol,tlsMinVersion,unused, get_tls_version(_, all)},
+    [{ssl_minimum_protocol,tlsMinVersion,unused, get_tls_version(_)},
      {cipher_suites,cipherSuites,unused, fun get_cipher_suites/1},
      {secure_headers, responseHeaders, [], fun get_secure_headers/1},
      {honor_cipher_order,honorCipherOrder,unused, fun get_bool/1},
      {{security_settings, kv}, data,
       [{cipher_suites, cipherSuites, unused, fun get_cipher_suites/1},
-       {ssl_minimum_protocol, tlsMinVersion, unused, get_tls_version(_, kv)},
+       {ssl_minimum_protocol, tlsMinVersion, unused, get_tls_version(_)},
        {honor_cipher_order, honorCipherOrder, unused, fun get_bool/1},
        {supported_ciphers, supportedCipherSuites, unused, fun read_only/1}]},
      {not_allowed, notAllowed, nope,
