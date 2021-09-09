@@ -130,8 +130,8 @@ note_egress(Req, EgressFun) when is_function(EgressFun, 0) ->
         {true, UUID, _Limits} ->
             Egress = EgressFun(),
             Key = {UUID, egress},
-            ets:update_counter(?USER_TIMED_STATS, {UUID, egress},
-                               Egress, {Key, 0})
+            ets:update_counter(?USER_TIMED_STATS, Key, Egress, {Key, 0}),
+            ?MODULE ! {log_stat, Key}
     end;
 note_egress(_Req, chunked) ->
     ok;
@@ -155,10 +155,12 @@ init([]) ->
 handle_call({note_identity_request, Pid, UUID, Ingress}, _From, State) ->
     MRef = erlang:monitor(process, Pid),
     ets:insert_new(?PID_USER_TABLE, {Pid, MRef, UUID}),
-    ets:update_counter(?USER_STATS, {UUID, num_concurrent_requests}, 1,
-                       {{UUID, num_concurrent_requests}, 0}),
-    ets:update_counter(?USER_TIMED_STATS, {UUID, ingress}, Ingress,
-                       {{UUID, ingress}, 0}),
+    NRC = ets:update_counter(?USER_STATS, {UUID, num_concurrent_requests}, 1,
+                             {{UUID, num_concurrent_requests}, 0}),
+    IC = ets:update_counter(?USER_TIMED_STATS, {UUID, ingress}, Ingress,
+                            {{UUID, ingress}, 0}),
+    log_stats(num_concurrent_requests, UUID, NRC),
+    log_stats(ingress, UUID, IC),
     {reply, ok, State};
 handle_call(Request, _From, State) ->
     ?log_error("Got unknown request ~p", [Request]),
@@ -175,19 +177,31 @@ handle_cast({request_done, Pid}, State) ->
             Count = ets:update_counter(?USER_STATS,
                                        {UUID, num_concurrent_requests},
                                        -1),
-            true = (Count >= 0)
+            true = (Count >= 0),
+            log_stats(num_concurrent_requests, UUID, Count)
     end,
     {noreply, State};
 handle_cast(Cast, State) ->
     ?log_error("Got unknown cast ~p", [Cast]),
     {noreply, State}.
 
+handle_info({log_stat, {UUID, Stat} = Key} = Msg, State) ->
+    misc:flush(Msg),
+    case ets:lookup(?USER_TIMED_STATS, Key) of
+        [] ->
+            %% May have cleared the USER_TIMED_STATS
+            ok;
+        [{Key, Val}] ->
+            log_stats(Stat, UUID, Val)
+    end,
+    {noreply, State};
 handle_info({'DOWN', MRef, process, Pid, _Reason}, State) ->
     [{Pid, MRef, UUID}] = ets:take(?PID_USER_TABLE, Pid),
     Count = ets:update_counter(?USER_STATS,
                                {UUID, num_concurrent_requests},
                                -1),
     true = (Count >= 0),
+    log_stats(num_concurrent_requests, UUID, Count),
     {noreply, State};
 handle_info(clear_timed_stats, State) ->
     true = ets:delete_all_objects(?USER_TIMED_STATS),
@@ -227,6 +241,9 @@ check_user_restricted(UUID, Limits) ->
             false;
         _ ->
             Exceeded = [L || {_, L} <- RV],
+            [ns_server_stats:notify_counter(
+               {<<"limits_exceeded">>,
+                [{user_uuid, UUID}, {limit, L}]}) || L <- Exceeded],
             {true, Exceeded}
     end.
 
@@ -258,3 +275,12 @@ do_get_user_props(Identity) ->
         Limits ->
             {get_user_uuid(Identity), Limits}
     end.
+
+log_stats(num_concurrent_requests, UUID, Count) ->
+    ns_server_stats:notify_gauge(
+      {num_concurrent_requests, [{user_uuid, UUID}]}, Count);
+log_stats(Stat, UUID, Count) ->
+    StatBin = atom_to_binary(Stat, latin1),
+    ns_server_stats:notify_max(
+      {{<<StatBin/binary, "_1m_max">>, [{user_uuid, UUID}]}, 60000, 1000},
+      Count).
