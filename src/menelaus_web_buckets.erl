@@ -777,12 +777,19 @@ additional_bucket_params_validation(Params, Ctx) ->
     NumReplicas = get_value_from_parms_or_bucket(num_replicas, Params, Ctx),
     DurabilityLevel = get_value_from_parms_or_bucket(durability_min_level,
                                                      Params, Ctx),
-    Err1 = case {NumReplicas, DurabilityLevel} of
-               {3, none} -> [];
-               {3, _} -> [{durability_min_level,
-                           <<"Durability minimum level cannot be specified with "
-                             "3 replicas">>}];
-               {_, _} -> []
+    ClusterStorageTotals = Ctx#bv_ctx.cluster_storage_totals,
+    NodesCount = proplists:get_value(nodesCount, ClusterStorageTotals),
+
+    Err1 = case {NumReplicas, DurabilityLevel, NodesCount} of
+               {0, _, _} -> [];
+               {_, none, _} -> [];
+               {3, _, _} -> [{durability_min_level,
+                              <<"Durability minimum level cannot be specified with "
+                                "3 replicas">>}];
+               {_, _, 1} -> [{durability_min_level,
+                              <<"You do not have enough data servers to support this "
+                                "durability level">>}];
+               {_, _, _} -> []
            end,
 
     StorageMode = get_value_from_parms_or_bucket(storage_mode, Params, Ctx),
@@ -1939,8 +1946,10 @@ serve_streaming_short_bucket_info(BucketName, Req) ->
 -ifdef(TEST).
 %% for test
 basic_bucket_params_screening(IsNew, Name, Params, AllBuckets) ->
+    basic_bucket_params_screening(IsNew, Name, Params, AllBuckets, [{nodesCount, 2}]).
+basic_bucket_params_screening(IsNew, Name, Params, AllBuckets, ClusterStorageTotals) ->
     Version = cluster_compat_mode:supported_compat_version(),
-    Ctx = init_bucket_validation_context(IsNew, Name, AllBuckets, undefined,
+    Ctx = init_bucket_validation_context(IsNew, Name, AllBuckets, ClusterStorageTotals,
                                          false, false,
                                          Version, true,
                                          %% Change when developer_preview
