@@ -390,12 +390,12 @@ goport_args(projector, Config, _Cmd, _NodeUUID) ->
      misc:local_url(RestPort, [no_scheme])];
 
 goport_args(goxdcr, Config, _Cmd, _NodeUUID) ->
-    IsEnterprise = "-isEnterprise=" ++
-        atom_to_list(cluster_compat_mode:is_enterprise()),
+    IsEnterprise = cluster_compat_mode:is_enterprise(Config),
+    IsEnterpriseFlag = "-isEnterprise=" ++ atom_to_list(IsEnterprise),
     build_port_args([{"-sourceKVAdminPort", rest_port},
                      {"-xdcrRestPort", xdcr_rest_port}], Config) ++
-        [IsEnterprise | build_afamily_requirement("-")] ++
-        ["-caFile=" ++ ns_ssl_services_setup:ca_file_path()];
+        [IsEnterpriseFlag | build_afamily_requirement("-")] ++
+        ["-caFile=" ++ ns_ssl_services_setup:ca_file_path() || IsEnterprise];
 
 goport_args(indexer, Config, _Cmd, NodeUUID) ->
     {ok, LogDir} = application:get_env(ns_server, error_logger_mf_dir),
