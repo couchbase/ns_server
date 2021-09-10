@@ -1982,7 +1982,13 @@ basic_bucket_params_screening_test() ->
                     {num_vbuckets, 16},
                     {num_replicas, 3},
                     {servers, []},
-                    {ram_quota, 100 * ?MIB}]}],
+                    {ram_quota, 100 * ?MIB}]},
+                  {"fifth",
+                   [{type, membase},
+                    {num_vbuckets, 16},
+                    {num_replicas, 0},
+                    {servers, []},
+                    {ram_quota, 300 * ?MIB}]}],
 
     %% it is possible to create bucket with ok params
     {OK1, E1} = basic_bucket_params_screening(true, "mcd",
@@ -2145,6 +2151,54 @@ basic_bucket_params_screening_test() ->
                    AllBuckets),
     [] = E17,
     true = proplists:is_defined(ram_quota, OK17),
+
+    %% it is not possible to create or update a bucket with 1 and 2 replicas
+    %% and durability level that isn't none if there is one active kv node
+    MajorityDurabilityLevelReplicas = [{D, R} || D <- DurabilityLevels, R <- ["1", "2"]],
+
+    lists:map(
+      fun ({DurabilityLevel, ReplicaNumber}) ->
+              %% Create
+              {_OK18a, E18a} = basic_bucket_params_screening(
+                                 true, "ReplicaDurability",
+                                 [{"bucketType", "membase"},
+                                  {"ramQuota", "400"},
+                                  {"replicaNumber", ReplicaNumber},
+                                  {"durabilityMinLevel", DurabilityLevel}],
+                                 AllBuckets,
+                                 [{nodesCount, 1}]),
+              ?assertEqual([{durability_min_level,
+                             <<"You do not have enough data servers to "
+                               "support this durability level">>}],
+                           E18a),
+
+              %% Update
+              {_OK18b, E18b} = basic_bucket_params_screening(
+                                 false, "fifth",
+                                 [{"replicaNumber", ReplicaNumber},
+                                  {"durabilityMinLevel", DurabilityLevel}],
+                                 AllBuckets,
+                                 [{nodesCount, 1}]),
+              ?assertEqual([{durability_min_level,
+                             <<"You do not have enough data servers to "
+                               "support this durability level">>}],
+                           E18b)
+      end, MajorityDurabilityLevelReplicas),
+
+    %% it is possible to create a bucket with 1 and 2 replicas and
+    %% durability level that isn't none if there is more than one active kv node
+    lists:map(
+      fun ({DurabilityLevel, ReplicaNumber}) ->
+              {_OK19, E19} = basic_bucket_params_screening(
+                               true, "ReplicaDurability",
+                               [{"bucketType", "membase"},
+                                {"ramQuota", "400"},
+                                {"replicaNumber", ReplicaNumber},
+                                {"durabilityMinLevel", DurabilityLevel}],
+                               AllBuckets,
+                               [{nodesCount, 2}]),
+              [] = E19
+      end, MajorityDurabilityLevelReplicas),
 
     ok.
 
