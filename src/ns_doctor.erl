@@ -818,6 +818,7 @@ do_build_rebalance_task(Timeout) ->
                             [{lastReportURI, <<URI/binary, UUID/binary>>}]
                     end,
                 [{type, rebalance},
+                 {subtype, jsonify_rebalance_type(rebalance:type())},
                  {status, notRunning},
                  {statusIsStale, FullProgress =/= not_running},
                  {masterRequestTimedOut, (FullProgress =:= {error, timeout})}
