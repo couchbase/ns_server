@@ -371,7 +371,7 @@ goport_args('query', Config, _Cmd, _NodeUUID) ->
         atom_to_list(cluster_compat_mode:is_enterprise()),
 
     HttpsArgs = build_https_args(ssl_query_port, "--https", ":",
-                                 "--certfile", "--keyfile", undefined, Config),
+                                 "--certfile", "--keyfile", "--cafile", Config),
     [DataStoreArg, HttpArg, CnfgStoreArg, EntArg] ++
         build_afamily_requirement("--") ++ HttpsArgs;
 
