@@ -576,6 +576,9 @@ is_possible(FailoverNodes, AllowUnsafe) ->
     try
         case KVActiveNodes -- FailoverNodes of
             [] ->
+                ?log_error("Attempt to fail over last KV node. "
+                           "Failover nodes: ~p, KV nodes ~p",
+                           [FailoverNodes, ActiveNodes]),
                 throw(last_node);
             _ ->
                 ok
@@ -584,6 +587,8 @@ is_possible(FailoverNodes, AllowUnsafe) ->
             [] ->
                 ok;
             _ ->
+                ?log_error("Failover of unknown nodes ~p is requested. "
+                           "Known nodes: ~p", [FailoverNodes, NodesWanted]),
                 throw(unknown_node)
         end,
         case {AllowUnsafe, FailoverNodes -- ActiveNodes} of
@@ -595,6 +600,8 @@ is_possible(FailoverNodes, AllowUnsafe) ->
                 %% failover we allow failover of these nodes.
                 ok;
             {false, _} ->
+                ?log_error("Failover of inactive nodes ~p is requested. "
+                           "Active nodes: ~p", [FailoverNodes, ActiveNodes]),
                 throw(inactive_node)
         end
     catch
