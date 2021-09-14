@@ -123,15 +123,23 @@ handle_call({ensure_tls_dist_started, Nodes}, _From, State) ->
 
     case NotStartedTLSListeners of
         [] ->
-            NotConnected = lists:filter(
-                             fun (N) ->
+            NotConnected = fun () ->
+                               lists:filter(
+                                 fun (N) ->
                                      net_kernel:connect_node(N) =/= true
-                             end, Nodes),
-            case NotConnected of
+                                 end, Nodes)
+                           end,
+            NotConnectedNodes =
+                case misc:poll_for_condition(fun () -> NotConnected() == [] end,
+                                             30000, 1000) of
+                    true -> [];
+                    timeout -> NotConnected()
+                end,
+            case NotConnectedNodes of
                 [] ->
                     {reply, ok, State};
-                NotConnected ->
-                    Reason = format_error({not_connected, NotConnected}),
+                _ ->
+                    Reason = format_error({not_connected, NotConnectedNodes}),
                     {reply, {error, iolist_to_binary(Reason)}, State}
             end;
         NotStartedListeners ->
