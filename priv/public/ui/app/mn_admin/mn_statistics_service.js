@@ -846,6 +846,10 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
           size: "small",
           specificStat: true
         }, {
+          stats: {"@cbas.cbas_heap_memory_committed_bytes": true},
+          size: "small",
+          specificStat: true
+        }, {
           stats: {"@cbas.cbas_thread_count": true},
           size: "small",
           specificStat: true

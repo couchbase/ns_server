@@ -826,6 +826,11 @@ function get70CompatDesc() {
           unit: "number",
           title: "Analytics Pending Flush Operations",
           desc: "Number of pending flush operations per node."
+        },
+        "cbas_heap_memory_committed_bytes": {
+          unit: "bytes",
+          title: "Analytics Heap Committed",
+          desc: "Bytes of JVM heap committed for Analytics on this server."
         }
       }
     }
