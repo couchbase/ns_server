@@ -438,7 +438,7 @@ handle_call({engage_cluster, NodeKVListThunk}, _From, State) ->
     ?cluster_debug("engage_cluster(..) -> ~p", [RV]),
     {reply, RV, State};
 
-handle_call({complete_join, NodeKVListThunk}, From, State) ->
+handle_call({complete_join, NodeKVListThunk}, _From, State) ->
     NodeKVList = NodeKVListThunk(),
     ?cluster_debug("handling complete_join(~p)", [sanitize_node_info(NodeKVList)]),
     RV = do_complete_join(NodeKVList),
