@@ -12,6 +12,7 @@
 -module(menelaus_web_cert).
 
 -include("ns_common.hrl").
+-include("cut.hrl").
 
 -export([handle_get_trustedCAs/1,
          handle_delete_trustedCA/2,
@@ -29,13 +30,20 @@
 handle_get_trustedCAs(Req) ->
     menelaus_util:assert_is_enterprise(),
     Warnings = ns_server_cert:get_warnings(),
+    Nodes = ns_node_disco:nodes_wanted(),
     Json = lists:map(
              fun (Props) ->
                  CAId = proplists:get_value(id, Props),
+                 Pem = proplists:get_value(pem, Props, <<>>),
+                 CANodes = ns_server_cert:filter_nodes_by_ca(Nodes, Pem),
+                 BuildHostname = menelaus_web_node:build_node_hostname(
+                                   ns_config:latest(), _, misc:localhost()),
+                 CAHostnames = [BuildHostname(N) || N <- CANodes],
                  CAWarnings = [{warning_props(W)} || {{ca, Id}, W} <- Warnings,
                                                      Id =:= CAId],
                  {JSONObjProps} = jsonify_cert_props(Props),
-                 {JSONObjProps ++ [{warnings, CAWarnings}]}
+                 {JSONObjProps ++ [{warnings, CAWarnings},
+                                   {nodes, CAHostnames}]}
              end, ns_server_cert:trusted_CAs(props)),
     menelaus_util:reply_json(Req, Json).
 

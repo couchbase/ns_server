@@ -38,7 +38,8 @@
          get_chain_info/2,
          trusted_CAs/1,
          trusted_CAs_pre_NEO/1,
-         generate_node_certs/1]).
+         generate_node_certs/1,
+         filter_nodes_by_ca/2]).
 
 inbox_ca_path() ->
     filename:join(path_config:component_path(data, "inbox"), "CA").
