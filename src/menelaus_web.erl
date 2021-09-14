@@ -949,6 +949,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                        data, docs], delete},
                      fun menelaus_web_crud:handle_delete/5,
                      [BucketId, ScopeId, CollectionId, DocId]};
+                ["pools", "default", "trustedCAs", Id] ->
+                    {{[admin, security], write},
+                     fun menelaus_web_cert:handle_delete_trustedCA/2, [Id]};
                 ["controller", "cancelXCDR", XID] ->
                     {no_check, fun goxdcr_rest:proxy/2,
                      [menelaus_util:concat_url_path(

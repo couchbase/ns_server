@@ -10,6 +10,7 @@
 -module(ns_server_cert).
 
 -include("ns_common.hrl").
+-include("cut.hrl").
 
 -include_lib("public_key/include/public_key.hrl").
 
@@ -26,6 +27,7 @@
          load_CAs_from_inbox/0,
          add_CAs/2,
          add_CAs/3,
+         remove_CA/1,
          get_warnings/0,
          get_subject_fields_by_type/2,
          get_sub_alt_names_by_type/2,
@@ -834,6 +836,50 @@ add_CAs(Type, Pem, Opts) when is_binary(Pem),
         {error, Reason} ->
             {error, Reason}
     end.
+
+remove_CA(Id) ->
+    Res =
+        chronicle_kv:transaction(
+          kv, [ca_certificates, nodes_wanted],
+          fun (Snapshot) ->
+              {CAs, _Rev} = maps:get(ca_certificates, Snapshot,
+                                     {[], undefined}),
+              {Nodes, _NodesRev} = maps:get(nodes_wanted, Snapshot),
+              case lists:search(lists:member({id, Id}, _), CAs) of
+                  {value, Props} ->
+                      CA = proplists:get_value(pem, Props, <<>>),
+                      %% If a node cert is being uploaded at the same time,
+                      %% it might not be added in ns_config yet by the time
+                      %% we do this check. Because of this race condition it is
+                      %% actually possible that we remove CA that is "in use"
+                      %% by some node. It seems to be pretty hard to avoid this
+                      %% race with node_cert stored in ns_config, as we don't
+                      %% have common chronicle-ns_config transactions.
+                      NodesThatUseCA = filter_nodes_by_ca(Nodes, CA),
+                      case NodesThatUseCA of
+                          [] ->
+                              ToSet = lists:delete(Props, CAs),
+                              {commit, [{set, ca_certificates, ToSet}], Props};
+                          [_ | _] ->
+                              {abort, {error, {in_use, NodesThatUseCA}}}
+                      end;
+                  false ->
+                      {abort, {error, not_found}}
+              end
+          end, #{}),
+    case Res of
+        {ok, _, Props} -> {ok, Props};
+        {error, Reason} -> {error, Reason}
+    end.
+
+filter_nodes_by_ca(Nodes, CAPem) ->
+    CA = public_key:pem_decode(CAPem),
+    lists:filter(
+      fun (N) ->
+          CProps = ns_config:read_key_fast({node, N, node_cert}, []),
+          CertCAPem = proplists:get_value(ca, CProps, <<>>),
+          CA =:= public_key:pem_decode(CertCAPem)
+      end, Nodes).
 
 load_CAs_from_inbox() ->
     CAInbox = inbox_ca_path(),

@@ -14,6 +14,7 @@
 -include("ns_common.hrl").
 
 -export([handle_get_trustedCAs/1,
+         handle_delete_trustedCA/2,
          handle_cluster_certificate/1,
          handle_regenerate_certificate/1,
          handle_load_ca_certs/1,
@@ -37,6 +38,35 @@ handle_get_trustedCAs(Req) ->
                  {JSONObjProps ++ [{warnings, CAWarnings}]}
              end, ns_server_cert:trusted_CAs(props)),
     menelaus_util:reply_json(Req, Json).
+
+handle_delete_trustedCA(IdStr, Req) ->
+    menelaus_util:assert_is_enterprise(),
+    menelaus_util:assert_is_NEO(),
+    CurNodes = nodes(),
+    try list_to_integer(IdStr) of
+        Id ->
+            case ns_server_cert:remove_CA(Id) of
+                {ok, _} ->
+                    ns_ssl_services_setup:sync(),
+                    case netconfig_updater:ensure_tls_dist_started(CurNodes) of
+                        ok -> menelaus_util:reply(Req, 200);
+                        {error, ErrorMsg} ->
+                            menelaus_util:reply_json(Req, ErrorMsg, 400)
+                    end;
+                {error, not_found} ->
+                    menelaus_util:reply(Req, 200);
+                {error, {in_use, Nodes}} ->
+                    Hosts = [misc:extract_node_address(N) || N <- Nodes],
+                    HostsStr = lists:join(", ", Hosts),
+                    Msg = io_lib:format("The CA certificate is in use by the "
+                                        "following nodes: ~s", [HostsStr]),
+                    MsgBin = iolist_to_binary(Msg),
+                    menelaus_util:reply_json(Req, {[{error, MsgBin}]}, 400)
+            end
+    catch
+        error:badarg ->
+            menelaus_util:reply_json(Req, <<"Not found">>, 404)
+    end.
 
 handle_cluster_certificate(Req) ->
     menelaus_util:assert_is_enterprise(),
