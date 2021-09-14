@@ -57,6 +57,7 @@
          internal_settings/2,
          upload_cluster_ca/3,
          reload_node_certificate/3,
+         delete_cluster_ca/2,
          modify_index_storage_mode/2,
          master_password_change/2,
          data_key_rotation/2,
@@ -373,7 +374,9 @@ code(admin_password_reset) ->
 code(modify_analytics_settings) ->
     8267;
 code(update_scope) ->
-    8268.
+    8268;
+code(delete_cluster_ca) ->
+    8269.
 
 to_binary({list, List}) ->
     [to_binary(A) || A <- List];
@@ -747,6 +750,9 @@ upload_cluster_ca(Req, Subject, Expires) ->
     ExpiresDateTime = calendar:gregorian_seconds_to_datetime(Expires),
     put(upload_cluster_ca, Req, [{subject, Subject},
                                  {expires, format_iso8601(ExpiresDateTime, 0, "Z")}]).
+
+delete_cluster_ca(Req, Subject) ->
+    put(delete_cluster_ca, Req, [{subject, Subject}]).
 
 reload_node_certificate(Req, Subject, Expires) ->
     ExpiresDateTime = calendar:gregorian_seconds_to_datetime(Expires),

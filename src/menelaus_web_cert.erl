@@ -46,7 +46,9 @@ handle_delete_trustedCA(IdStr, Req) ->
     try list_to_integer(IdStr) of
         Id ->
             case ns_server_cert:remove_CA(Id) of
-                {ok, _} ->
+                {ok, Props} ->
+                    Subject = proplists:get_value(subject, Props),
+                    ns_audit:delete_cluster_ca(Req, Subject),
                     ns_ssl_services_setup:sync(),
                     case netconfig_updater:ensure_tls_dist_started(CurNodes) of
                         ok -> menelaus_util:reply(Req, 200);

@@ -1363,6 +1363,24 @@
               "limits" : "",
               "sessionid" : ""
           }
+      },
+      {
+          "id" : 8269,
+          "name" : "delete cluster ca",
+          "description" : "Delete cluster CA",
+          "sync" : false,
+          "enabled" : true,
+          "filtering_permitted" : false,
+          "mandatory_fields" : {
+              "timestamp" : "",
+              "real_userid" : {"domain" : "", "user" : ""},
+              "remote" : {"ip" : "", "port" : 1},
+              "local" : {"ip" : "", "port" : 1},
+              "subject" : ""
+          },
+          "optional_fields" : {
+              "sessionid" : ""
+          }
       }
     ]
 }
