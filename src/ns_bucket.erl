@@ -631,7 +631,9 @@ kv_backend_type(BucketConfig) ->
         %% KV requires a value but only accepts: couchdb, magma, rocksdb.
         %% So we've always passed couchdb for ephemeral buckets which KV
         %% will parse as an acceptable value but not use it.
-        ephemeral -> couchdb
+        ephemeral -> couchdb;
+        %% No storage for memcached buckets
+        undefined -> undefined
     end.
 
 %% Used for REST API compatibility.  This transforms the internal
