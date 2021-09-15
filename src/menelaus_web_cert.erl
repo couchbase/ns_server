@@ -218,6 +218,7 @@ handle_reload_node_certificate(Req) ->
     {PassphraseSettings} =
         case mochiweb_request:recv_body(Req) of
             undefined -> {[]};
+            <<>> -> {[]};
             Bin when is_binary(Bin) -> ejson:decode(Bin)
         end,
     case ns_server_cert:load_node_certs_from_inbox(PassphraseSettings) of
