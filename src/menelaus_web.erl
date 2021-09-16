@@ -162,39 +162,12 @@ loop(Req0, Config) ->
               {Path, _, _} = mochiweb_util:urlsplit_path(RawPath),
               PathTokens = lists:map(fun mochiweb_util:unquote/1,
                                      string:tokens(Path, "/")),
-
-              case is_throttled_request(PathTokens) of
-                  false ->
-                      loop_inner(Req, Config, Path, PathTokens);
-                  true ->
-                      request_throttler:request(
-                        rest,
-                        fun () ->
-                                loop_inner(Req, Config, Path, PathTokens)
-                        end,
-                        fun (_Error, Reason) ->
-                                Retry = integer_to_list(rand:uniform(10)),
-                                reply_text(Req, Reason, 503,
-                                           [{"Retry-After", Retry}])
-                        end)
-              end
+              request_throttler:request(
+                rest,
+                fun () ->
+                        loop_inner(Req, Config, Path, PathTokens)
+                end)
       end).
-
-is_throttled_request(["internalSettings"]) ->
-    false;
-is_throttled_request(["diag" | _]) ->
-    false;
-is_throttled_request(["couchBase" | _]) ->      % this gets throttled as capi request
-    false;
-%% this gets throttled via capi too
-is_throttled_request(["pools", _, "buckets", _BucketId, "docs"]) ->
-    false;
-is_throttled_request([?PLUGGABLE_UI | _]) ->
-    %% Requests for pluggable UI is not throttled here.
-    %% If necessary it is done in the service node.
-    false;
-is_throttled_request(_) ->
-    true.
 
 -type action() :: {done, term()} |
                   {local, fun()} |

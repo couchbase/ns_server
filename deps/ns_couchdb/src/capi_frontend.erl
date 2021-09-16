@@ -33,12 +33,6 @@ do_db_req(#httpd{path_parts=[DbName | _]} = Req, Fun) ->
                 fun (Req1, BucketConfig) ->
                         continue_do_db_req(Req1, BucketConfig, BucketName, VBucket, Fun)
                 end)
-      end,
-      fun (Error, Reason) ->
-              Retry = integer_to_list(rand:uniform(10)),
-              couch_httpd:send_json(Req, 503, [{"Retry-After", Retry}],
-                                    {[{<<"error">>, couch_util:to_binary(Error)},
-                                      {<<"reason">>, couch_util:to_binary(Reason)}]})
       end).
 
 verify_bucket_uuid(_, _, undefined) ->

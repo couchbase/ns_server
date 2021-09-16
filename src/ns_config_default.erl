@@ -339,10 +339,6 @@ default() ->
                              % count is the number of nodes that were auto-reprovisioned
                              {count, 0}]},
 
-     %% everything is unlimited by default
-     {{request_limit, rest}, undefined},
-     {{request_limit, capi}, undefined},
-     {drop_request_memory_threshold_mib, undefined},
      {password_policy, [{min_length, 6}, {must_present, []}]}] ++
         service_ports:default_config(IsEnterprise) ++
         rebalance_quirks:default_config().
