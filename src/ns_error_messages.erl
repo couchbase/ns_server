@@ -63,6 +63,8 @@ connection_error_message(timeout, Host, Port) ->
 connection_error_message("bad certificate", Host, Port) ->
     list_to_binary(io_lib:format("Got certificate mismatch while trying to send https request to ~s:~w",
                                  [Host, Port]));
+connection_error_message(keyfile, _, _) ->
+     <<"Invalid or encrypted keyfile.">>;
 connection_error_message(_, _, _) -> undefined.
 
 -spec decode_json_response_error({ok, term()} | {error, term()},
