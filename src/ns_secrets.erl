@@ -55,7 +55,9 @@ translate_options(Opts) -> Opts.
 
 %% dummy implementation
 extract_pkey_pass(PassSettings) ->
-    case proplists:get_value(<<"passphrase">>, PassSettings) of
-        undefined -> fun () -> undefined end;
-        P -> fun () -> binary_to_list(P) end
+    case proplists:get_value(type, PassSettings) of
+        plain ->
+            P = proplists:get_value(password, PassSettings),
+            fun () -> binary_to_list(P) end;
+        _ -> fun () -> undefined end
     end.

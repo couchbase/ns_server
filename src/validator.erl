@@ -79,6 +79,9 @@ handle(Fun, Req, qs, Validators) ->
     handle(Fun, Req, add_input_type(form, mochiweb_request:parse_qs(Req)),
            Validators);
 
+handle(Fun, Req, {JSONProps} = JSONObj, Validators) when is_list(JSONProps) ->
+    handle_one(Fun, Req, with_decoded_object(JSONObj, Validators));
+
 handle(Fun, Req, Args, Validators) ->
     handle_one(Fun, Req, functools:chain(#state{kv = Args}, Validators)).
 
@@ -272,7 +275,7 @@ validate(Fun, Name, State0) ->
     case get_value(Name, State) of
         undefined ->
             State;
-        Value ->
+        Value when is_function(Fun, 1) ->
             case Fun(Value) of
                 ok ->
                     State;
@@ -280,6 +283,15 @@ validate(Fun, Name, State0) ->
                     return_value(Name, V, State);
                 {error, Error} ->
                     return_error(Name, Error, State)
+            end;
+        Value when is_function(Fun, 2) ->
+            case Fun(Value, State) of
+                {ok, NewState} ->
+                    NewState;
+                {value, V, NewState} ->
+                    return_value(Name, V, NewState);
+                {error, Error, NewState} ->
+                    return_error(Name, Error, NewState)
             end
     end.
 

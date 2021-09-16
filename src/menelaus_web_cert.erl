@@ -255,29 +255,104 @@ assert_n2n_encryption_is_disabled() ->
 handle_reload_node_certificate(Req) ->
     menelaus_util:assert_is_enterprise(),
     Nodes = nodes(),
-    {PassphraseSettings} =
+    JSONData =
         case mochiweb_request:recv_body(Req) of
             undefined -> {[]};
             <<>> -> {[]};
-            Bin when is_binary(Bin) -> ejson:decode(Bin)
+            Bin when is_binary(Bin) ->
+                try ejson:decode(Bin)
+                catch _:_ ->
+                    menelaus_util:global_error_exception(400,
+                                                         <<"Invalid Json">>)
+                end
         end,
-    case ns_server_cert:load_node_certs_from_inbox(PassphraseSettings) of
-        {ok, Props} ->
-            ns_audit:reload_node_certificate(Req,
-                                             proplists:get_value(subject, Props),
-                                             proplists:get_value(not_after, Props)),
-            ns_ssl_services_setup:sync(),
-            case netconfig_updater:ensure_tls_dist_started(Nodes) of
-                ok ->
-                    menelaus_util:reply(Req, 200);
-                {error, ErrorMsg} ->
-                    menelaus_util:reply_json(Req, ErrorMsg, 400)
-            end;
-        {error, Error} ->
-            ?log_error("Error reloading node certificate: ~p", [Error]),
-            menelaus_util:reply_json(
-              Req, ns_error_messages:reload_node_certificate_error(Error), 400)
-    end.
+    validator:handle(
+      fun (Params) ->
+          PassphraseSettings =
+              proplists:get_value(privateKeyPassphrase, Params, []),
+          case ns_server_cert:load_node_certs_from_inbox(PassphraseSettings) of
+              {ok, Props} ->
+                  ns_audit:reload_node_certificate(
+                    Req,
+                    proplists:get_value(subject, Props),
+                    proplists:get_value(not_after, Props)),
+                  ns_ssl_services_setup:sync(),
+                  case netconfig_updater:ensure_tls_dist_started(Nodes) of
+                      ok ->
+                          menelaus_util:reply(Req, 200);
+                      {error, ErrorMsg} ->
+                          menelaus_util:reply_json(Req, ErrorMsg, 400)
+                  end;
+              {error, Error} ->
+                  ?log_error("Error reloading node certificate: ~p", [Error]),
+                  Msg = ns_error_messages:reload_node_certificate_error(Error),
+                  menelaus_util:reply_json(Req, Msg, 400)
+          end
+      end, Req, JSONData,
+      [validator:decoded_json(
+         privateKeyPassphrase,
+         [validator:required(type, _),
+          validator:one_of(type, ["script", "rest", "plain"], _),
+          validator:convert(type, binary_to_atom(_, latin1), _),
+          validate_required_keys(type, _)], _),
+       validator:unsupported(_)]).
+
+validate_required_keys(Name, State) ->
+    validator:validate(
+      fun (T, S) -> {ok, functools:chain(S, validators(T))} end, Name, State).
+
+validators(script) ->
+    [validator:required(path, _),
+     validate_script_path(path, _),
+     validator:unsupported(_)];
+validators(rest) ->
+    [validator:required(url, _),
+     validate_rest_url(url, _),
+     validator:decoded_json(httpsOpts, https_opts_validators(), _),
+     validator:unsupported(_)];
+validators(plain) ->
+    [validator:required(password, _),
+     validate_password(password, _),
+     validator:unsupported(_)].
+
+validate_script_path(Name, State) ->
+    validator:validate(
+      fun (Path) ->
+            case filelib:is_regular(Path) of
+                true ->
+                    {value, Path};
+                false ->
+                    {error, "File doesn't exist or not a regular file"}
+            end
+      end, Name, State).
+
+validate_rest_url(Name, State) ->
+    validator:validate(
+      fun (URL) ->
+            case uri_string:parse(URL) of
+                {error, _, _} -> {error, "Invalid url"};
+                #{host := Host} when Host =/= [] ->
+                    case URL of
+                        <<"http://", _/binary>> -> {value, URL};
+                        <<"https://", _/binary>> -> {value, URL};
+                        _ -> {error, "Invalid scheme in the URL"}
+                    end;
+                #{} ->
+                    {error, "Invalid url"}
+            end
+      end, Name, State).
+
+https_opts_validators() ->
+    [validator:boolean(verifyPeer, _),
+     validator:unsupported(_)].
+
+validate_password(Name, State) ->
+    validator:validate(
+      fun (Pass) when is_binary(Pass)->
+              {value, Pass};
+          (_) ->
+              {error, "Password must be a string"}
+      end, Name, State).
 
 handle_get_node_certificate(NodeId, Req) ->
     menelaus_util:assert_is_enterprise(),
