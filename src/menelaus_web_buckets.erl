@@ -786,6 +786,8 @@ additional_bucket_params_validation(Params, Ctx) ->
                {3, _, _} -> [{durability_min_level,
                               <<"Durability minimum level cannot be specified with "
                                 "3 replicas">>}];
+               %% memcached bucket
+               {undefined, undefined, _} -> [];
                {_, _, 1} -> [{durability_min_level,
                               <<"You do not have enough data servers to support this "
                                 "durability level">>}];
