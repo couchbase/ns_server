@@ -492,7 +492,7 @@ get_ssl_cipher_list([], Params) ->
       {<<"TLS 1.3">>, Ciphers13}]}.
 
 tls_config(Params) ->
-    KeyPath = iolist_to_binary(ns_ssl_services_setup:unencrypted_pkey_file_path()),
+    KeyPath = iolist_to_binary(ns_ssl_services_setup:pkey_file_path()),
     ChainPath = iolist_to_binary(ns_ssl_services_setup:chain_file_path()),
     CAPath = iolist_to_binary(ns_ssl_services_setup:ca_file_path()),
     MinVsn = case ns_ssl_services_setup:ssl_minimum_protocol(kv) of
@@ -510,13 +510,19 @@ tls_config(Params) ->
                      <<"enable">> -> <<"enabled">>;
                      <<"mandatory">> -> <<"mandatory">>
                  end,
+    PKeyPassFun = ns_secrets:get_pkey_pass(),
+    PasswordOpts = case PKeyPassFun() of
+                       undefined -> [];
+                       P -> [{<<"password">>, base64:encode(P)}]
+                   end,
     {[{<<"private key">>, KeyPath},
       {<<"certificate chain">>, ChainPath},
       {<<"CA file">>, CAPath},
       {<<"minimum version">>, MinVsn},
       {<<"cipher list">>, Ciphers},
       {<<"cipher order">>, CipherOrder},
-      {<<"client cert auth">>, AuthBinMcd}]}.
+      {<<"client cert auth">>, AuthBinMcd} |
+      PasswordOpts]}.
 
 format_ciphers(RFCCipherNames) ->
     OpenSSLNames = [Name || C <- RFCCipherNames,
