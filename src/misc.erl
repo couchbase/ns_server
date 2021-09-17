@@ -3261,7 +3261,7 @@ uuid_v4() ->
 
     list_to_binary(lists:flatten(
                      io_lib:format(
-                       "~8.16b-~4.16b-~4.16b-~2.16b~2.16b-~12.16b",
+                       "~8.16.0b-~4.16.0b-~4.16.0b-~2.16.0b~2.16.0b-~12.16.0b",
                        [TimeLow, TimeMid, TimeHiVersion,
                         ClockSeqHiReserved, ClockSeqLow,
                         Node]))).
