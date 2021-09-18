@@ -503,7 +503,7 @@ get_subject(Cert) ->
 
 verify_fun(Cert, Event, State) ->
     Subject = get_subject(Cert),
-    ?log_debug("Certificate verification event : ~p", [{Subject, Event}]),
+    ?log_debug("Certificate verification event:~n~p", [{Subject, Event}]),
 
     case Event of
         {bad_cert, invalid_issuer} ->
@@ -516,7 +516,7 @@ verify_fun(Cert, Event, State) ->
                     {fail, {invalid_issuer, Subject, LastSubject}}
             end;
         {bad_cert, Error} ->
-            ?log_error("Certificate ~p validation failed with reason ~p",
+            ?log_error("Certificate ~p validation failed with reason: ~p",
                        [Subject, Error]),
 
             Trace = erlang:process_info(self(), [current_stacktrace]),
@@ -524,13 +524,15 @@ verify_fun(Cert, Event, State) ->
             InitValidationState =
                 pubkey_cert:init_validation_state(OtpCert, State#verify_state.chain_len, []),
 
-            ?log_debug("Certificate validation trace:~n     Initial Context: ~p~n"
-                       "     Cert: ~p~n     Stack: ~p~n",
+            ?log_debug("Certificate validation trace:~n"
+                       "     Initial Context: ~p~n"
+                       "     Cert: ~p~n"
+                       "     Stack: ~p~n",
                        [InitValidationState, Cert, Trace]),
             {fail, {Error, Subject}};
         {extension, Ext} ->
             ?log_warning(
-               "Certificate ~p validation spotted an unknown extension ~p",
+               "Certificate ~p validation spotted an unknown extension:~n~p",
                [Subject, Ext]),
             {unknown, State};
         valid ->

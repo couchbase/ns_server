@@ -123,7 +123,7 @@ maybe_start_http_server(Type, Options) ->
 
     case mochiweb_http:start_link(ServerOptions) of
         {ok, Pid} ->
-            ?log_info("Started web service with ~p", [LogOptions]),
+            ?log_info("Started web service with options:~n~p", [LogOptions]),
             {ok, Pid};
         Other ->
             {Msg, Values} = {"Failed to start web service with ~p, Reason : ~p",
