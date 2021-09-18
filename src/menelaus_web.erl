@@ -85,14 +85,19 @@ generate_http_server_options(Options) ->
     {AppRoot, Options1} = get_option(approot, Options),
     {AFamily, Options2} = get_option(afamily, Options1),
     {Name, Options3} = get_option(name, Options2),
+    {SSLOptsFun, Options4} = get_option(ssl_opts_fun, Options3),
+    SSLOpts = case SSLOptsFun of
+                  undefined -> [];
+                  F when is_function(F) -> [{ssl_opts, F()}]
+              end,
     Plugins = menelaus_pluggable_ui:find_plugins(),
-    IsSSL = proplists:get_bool(ssl, Options3),
+    IsSSL = proplists:get_bool(ssl, Options4),
     Loop = fun (Req) ->
                    ?MODULE:loop(Req, {AppRoot, IsSSL, Plugins})
            end,
     [{ip, get_addr(AFamily, IsSSL)},
      {name, get_name(Name, AFamily)},
-     {loop, Loop}] ++ Options3.
+     {loop, Loop} | SSLOpts] ++ Options4.
 
 http_server(Options) ->
     ServerAFamily = proplists:get_value(afamily, Options),
@@ -103,9 +108,18 @@ maybe_start_http_server(off, _Options) ->
     ignore;
 maybe_start_http_server(Type, Options) ->
     ServerOptions = generate_http_server_options(Options),
-    LogOptions = [{K, V} || {K, V} <- ServerOptions,
-                            lists:member(K, [ssl, ssl_opts, ip, port]),
-                            K =/= password],
+    LogOptions = lists:filtermap(
+                   fun ({ssl, _}) -> true;
+                       ({ip, _}) -> true;
+                       ({port, _}) -> true;
+                       ({ssl_opts, L}) ->
+                            {true, lists:map(fun ({K, _}) when K =:= password;
+                                                               K =:= key ->
+                                                     {K, "********"};
+                                                 (KV) -> KV
+                                             end, L)};
+                       (_) -> false
+                   end, ServerOptions),
 
     case mochiweb_http:start_link(ServerOptions) of
         {ok, Pid} ->

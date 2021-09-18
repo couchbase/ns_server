@@ -360,7 +360,9 @@ start_link_rest_service() ->
         SSLPort ->
             Config3 = [{ssl, true},
                        {name, menelaus_web_ssl},
-                       {ssl_opts, ssl_server_opts()},
+                       %% Make it a fun to avoid printing of sensitive stuff
+                       %% like pkey password in progress reports
+                       {ssl_opts_fun, fun () -> ssl_server_opts() end},
                        {port, SSLPort}],
             menelaus_web:start_link(Config3)
     end.
