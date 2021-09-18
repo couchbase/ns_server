@@ -301,9 +301,17 @@ validate_required_keys(Name, State) ->
     validator:validate(
       fun (T, S) -> {ok, functools:chain(S, validators(T))} end, Name, State).
 
+%% Note that defaults are put here for a reason: if we change the defaults in
+%% future it should not affect existing installations as it may lead to a break.
 validators(script) ->
     [validator:required(path, _),
      validate_script_path(path, _),
+     validator:boolean(trim, _),
+     validator:default(trim, false, _),
+     validator:string_array(args, _),
+     validator:default(args, [], _),
+     validator:integer(timeout, _),
+     validator:default(timeout, 5000, _),
      validator:unsupported(_)];
 validators(rest) ->
     [validator:required(url, _),
