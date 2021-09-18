@@ -723,7 +723,7 @@ set_node_certificate_chain(Chain, PKey, PassphraseSettings) ->
             ChainEntries = lists:reverse(ChainEntriesReversed),
             NodeCert = hd(ChainEntries),
             ChainPem = public_key:pem_encode(ChainEntries),
-            PassphraseFun = ns_secrets:get_pkey_pass(PassphraseSettings),
+            PassphraseFun = ns_secrets:get_fresh_pkey_pass(PassphraseSettings),
             ValidationRes =
                 functools:sequence_(
                   [fun () ->

@@ -11,7 +11,8 @@
 -behaviour(active_cache).
 
 %% API
--export([start_link/0, get_pkey_pass/0, get_pkey_pass/1, reset/0]).
+-export([start_link/0, get_pkey_pass/0, get_pkey_pass/1,
+         get_fresh_pkey_pass/1, reset/0]).
 
 -export([init/1, translate_options/1]).
 
@@ -27,6 +28,11 @@ start_link() ->
                                                    {value_lifetime, 3600000},
                                                    {max_parallel_procs, 1},
                                                    {cache_exceptions, false}]).
+
+get_fresh_pkey_pass(PassSettings) ->
+    Key = {pkey_passphrase_fun, PassSettings},
+    Fun = fun () -> extract_pkey_pass(PassSettings) end,
+    active_cache:update_and_get_value(?MODULE, Key, Fun).
 
 get_pkey_pass() ->
     Props = ns_config:read_key_fast({node, node(), node_cert}, []),

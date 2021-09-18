@@ -20,6 +20,7 @@
 
 %% API
 -export([start_link/4,
+         update_and_get_value/3,
          get_value_and_touch/3,
          get_value/3,
          reload_opts/2,
@@ -56,6 +57,13 @@
 start_link(Name, Module, Args, Opts) ->
     gen_server2:start_link({local, Name}, ?MODULE,
                           [Name, Module, Args, Opts], []).
+
+update_and_get_value(Name, Key, GetValue) ->
+    Res = gen_server2:call(Name, {force_update, Key, GetValue}, ?REQ_TIMEOUT),
+    case Res of
+        {ok, Value} -> Value;
+        {exception, {C, E, ST}} -> erlang:raise(C, E, ST)
+    end.
 
 get_value_and_touch(Name, Key, GetValue) ->
     Res = get_value(Name, Key, GetValue),
@@ -115,6 +123,9 @@ handle_call({cache, Key, GetValue}, From, #s{table_name = Name} = State) ->
         [] -> {noreply, handle_req(Key, GetValue, From, State)};
         [{_, V, _, _}] -> {reply, V, State}
     end;
+
+handle_call({force_update, Key, GetValue}, From, #s{} = State) ->
+    {noreply, handle_req(Key, GetValue, From, State)};
 
 handle_call(flush, _From, State) ->
     {reply, ok, clean(State)};
