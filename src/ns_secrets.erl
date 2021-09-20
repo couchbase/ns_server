@@ -66,7 +66,50 @@ extract_pkey_pass(PassSettings) ->
             fun () -> binary_to_list(P) end;
         script ->
             extract_pkey_pass_with_script(PassSettings);
+        rest ->
+            extract_pkey_pass_with_rest(PassSettings);
         undefined ->
+            fun () -> undefined end
+    end.
+
+extract_pkey_pass_with_rest(PassSettings) ->
+    URL = binary_to_list(proplists:get_value(url, PassSettings)),
+    Timeout = proplists:get_value(timeout, PassSettings),
+    AddrSettings = case proplists:get_value(addressFamily, PassSettings) of
+                       undefined -> [];
+                       AF -> [AF]
+                   end,
+    HttpsOpts = proplists:get_value(httpsOpts, PassSettings),
+    VerifySettings = case HttpsOpts of
+                         undefined -> [];
+                         _ ->
+                             case proplists:get_value(verifyPeer, HttpsOpts,
+                                                      true) of
+                                 true ->
+                                     CA = ns_ssl_services_setup:ca_file_path(),
+                                     [{verify, verify_peer}, {cacertfile, CA}];
+                                 false ->
+                                     [{verify, verify_none}]
+                             end
+                     end,
+    Options = AddrSettings ++ VerifySettings,
+    try rest_utils:request(<<"pkey_passphrase">>, URL, "GET",
+                            [], <<>>, Timeout, [{connect_options, Options}]) of
+        {ok, {{Status, _}, _RespHeaders, RespBody}} when Status == 200 ->
+            fun () -> binary_to_list(RespBody) end;
+        {ok, {{Status, Reason}, _RespHeaders, _RespBody}} ->
+            ?log_error("PKey passphrase REST API call ~s returned ~p ~p",
+                       [URL, Status, Reason]),
+            fun () -> undefined end;
+        {error, Reason} ->
+            ?log_error("PKey passphrase REST API call ~s failed, reason:~n~p",
+                       [URL, Reason]),
+            fun () -> undefined end
+    catch
+        _:E:ST ->
+            ?log_error("PKey passphrase REST API call ~s crashed~n"
+                       "Exception: ~p~n"
+                       "Stacktrace: ~p", [URL, E, ST]),
             fun () -> undefined end
     end.
 

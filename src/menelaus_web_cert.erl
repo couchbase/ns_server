@@ -316,7 +316,20 @@ validators(script) ->
 validators(rest) ->
     [validator:required(url, _),
      validate_rest_url(url, _),
-     validator:decoded_json(httpsOpts, https_opts_validators(), _),
+     validator:validate(
+       fun (<<"https://", _/binary>>, S) ->
+               Validators =
+                   [validator:default(httpsOpts, {[]}, _),
+                    validator:decoded_json(httpsOpts, https_opts_validators(),
+                                           _)],
+               {ok, functools:chain(S, Validators)};
+           (_T, S) ->
+               {ok, S}
+       end, url, _),
+     validator:one_of(addressFamily, ["inet", "inet6"], _),
+     validator:convert(addressFamily, binary_to_atom(_, latin1), _),
+     validator:integer(timeout, _),
+     validator:default(timeout, 5000, _),
      validator:unsupported(_)];
 validators(plain) ->
     [validator:required(password, _),
@@ -352,6 +365,7 @@ validate_rest_url(Name, State) ->
 
 https_opts_validators() ->
     [validator:boolean(verifyPeer, _),
+     validator:default(verifyPeer, true, _),
      validator:unsupported(_)].
 
 validate_password(Name, State) ->

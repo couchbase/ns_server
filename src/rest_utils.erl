@@ -12,13 +12,18 @@
 -include("ns_common.hrl").
 
 -export([request/6,
+         request/7,
          get_json_local/4,
          get_json_local/5]).
 
 request(Type, URL, Method, Headers, Body, Timeout) ->
+    request(Type, URL, Method, Headers, Body, Timeout, []).
+
+request(Type, URL, Method, Headers, Body, Timeout, Options) ->
     Start = os:timestamp(),
+    DefaultOptions = [{pool, rest_lhttpc_pool}],
     RV = lhttpc:request(URL, Method, Headers, Body, Timeout,
-                        [{pool, rest_lhttpc_pool}]),
+                        misc:update_proplist(DefaultOptions, Options)),
     case RV of
         {ok, {{Code, _}, _, _}} ->
             Diff = timer:now_diff(os:timestamp(), Start),
