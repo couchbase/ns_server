@@ -8,19 +8,20 @@
   licenses/APL2.txt.
 */
 
-import { Component, ChangeDetectionStrategy } from '/ui/web_modules/@angular/core.js';
-import { MnLifeCycleHooksToStream } from './mn.core.js';
-import { MnFormService } from './mn.form.service.js';
-import { MnSettingsAutoCompactionService  } from './mn.settings.auto.compaction.service.js';
-import { MnHelperService } from './mn.helper.service.js';
-import { MnPermissions } from '/ui/app/ajs.upgraded.providers.js';
-import { UIRouter } from '/ui/web_modules/@uirouter/angular.js';
-import { map, takeUntil } from '/ui/web_modules/rxjs/operators.js';
-import { pipe, combineLatest, merge } from '/ui/web_modules/rxjs.js';
-import { clone } from '../web_modules/ramda.js';
-import { FormBuilder } from '/ui/web_modules/@angular/forms.js';
+import {Component, ChangeDetectionStrategy} from '@angular/core'
+import {UIRouter} from '@uirouter/angular';
+import {map, takeUntil} from 'rxjs/operators';
+import {pipe, combineLatest, merge} from 'rxjs';
+import {clone} from 'ramda';
+import {FormBuilder} from '@angular/forms';
 
-export { MnSettingsAutoCompactionComponent };
+import {MnLifeCycleHooksToStream} from './mn.core.js';
+import {MnFormService} from './mn.form.service.js';
+import {MnSettingsAutoCompactionService} from './mn.settings.auto.compaction.service.js';
+import {MnHelperService} from './mn.helper.service.js';
+import {MnPermissions} from './ajs.upgraded.providers.js';
+
+export {MnSettingsAutoCompactionComponent};
 
 class MnSettingsAutoCompactionComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [

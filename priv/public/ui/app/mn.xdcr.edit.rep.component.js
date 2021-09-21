@@ -8,12 +8,12 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
-import {combineLatest, pipe, BehaviorSubject} from '../web_modules/rxjs.js';
-import {map, withLatestFrom, takeUntil, pluck, first, startWith} from '../web_modules/rxjs/operators.js';
-import {find, where, includes, flip} from "../web_modules/ramda.js";
-import {UIRouter} from "../web_modules/@uirouter/angular.js";
-import {FormBuilder} from '../web_modules/@angular/forms.js';
+import {Component, ChangeDetectionStrategy} from '@angular/core';
+import {combineLatest, pipe, BehaviorSubject} from 'rxjs';
+import {map, withLatestFrom, takeUntil, pluck, first, startWith} from 'rxjs/operators';
+import {find, where, includes, flip} from 'ramda';
+import {UIRouter} from '@uirouter/angular';
+import {FormBuilder} from '@angular/forms';
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnXDCRService, collectionDelimiter} from "./mn.xdcr.service.js";

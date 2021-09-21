@@ -8,13 +8,13 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
+import angular from "angular";
 import mnUserRoles from "./mn_user_roles_controller.js";
 import mnRedaction from "./mn_redaction_controller.js";
 import mnCertificates from "./mn_certificates_controller.js";
 import mnRolesGroups from "./mn_roles_groups_controller.js";
-import mnElementCrane from "/ui/app/components/directives/mn_element_crane/mn_element_crane.js";
-import mnPluggableUiRegistry from "/ui/app/components/mn_pluggable_ui_registry.js";
+import mnElementCrane from "../components/directives/mn_element_crane/mn_element_crane.js";
+import mnPluggableUiRegistry from "../components/mn_pluggable_ui_registry.js";
 import mnSession from "./mn_session_controller.js";
 
 export default 'mnSecurity';

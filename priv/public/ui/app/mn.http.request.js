@@ -8,13 +8,14 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { Subject, of, merge, NEVER, zip } from '../web_modules/rxjs.js';
-import { HttpErrorResponse } from '../web_modules/@angular/common/http.js';
-import { catchError, switchMap, shareReplay, mapTo, filter, map,
-         tap } from '../web_modules/rxjs/operators.js';
-import { MnHelperService } from './mn.helper.service.js';
+import {Subject, of, merge, NEVER, zip } from 'rxjs';
+import {HttpErrorResponse } from '@angular/common/http';
+import {catchError, switchMap, shareReplay, mapTo, filter, map,
+        tap} from 'rxjs/operators';
 
-export { MnHttpRequest, MnHttpGroupRequest };
+import {MnHelperService} from './mn.helper.service.js';
+
+export {MnHttpRequest, MnHttpGroupRequest};
 
 class MnHttpGroupRequest {
   constructor(httpMap) {

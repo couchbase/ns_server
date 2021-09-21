@@ -7,10 +7,10 @@ file, in accordance with the Business Source License, use of this software will
 be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
-import {startWith } from '../web_modules/rxjs/operators.js';
-import { ChangeDetectionStrategy, Component } from '../web_modules/@angular/core.js';
+import {startWith} from 'rxjs/operators';
+import {ChangeDetectionStrategy, Component} from '@angular/core';
 
-export { MnInputFilterComponent };
+export {MnInputFilterComponent};
 
 class MnInputFilterComponent {
   static get annotations() { return [

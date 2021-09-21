@@ -13,7 +13,7 @@ import {NgModule,
         Component,
         ChangeDetectionStrategy,
         ElementRef,
-        Renderer2} from "../web_modules/@angular/core.js";
+        Renderer2} from '@angular/core';
 
 export {MnElementCraneModule,
         MnElementCraneService,

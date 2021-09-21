@@ -1,5 +1,5 @@
-import angular from "/ui/web_modules/angular.js";
-import CodeMirror from "/ui/web_modules/codemirror.js";
+import angular from "angular";
+import CodeMirror from "codemirror";
 import "./codemirror.javascript.js";
 
 export default 'ui.codemirror';

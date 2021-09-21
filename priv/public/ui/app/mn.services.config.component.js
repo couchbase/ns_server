@@ -8,11 +8,12 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
-import {MnLifeCycleHooksToStream} from './mn.core.js';
-import {merge, fromEvent} from '../web_modules/rxjs.js';
+import {Component, ChangeDetectionStrategy} from '@angular/core';
+import {merge, fromEvent} from 'rxjs';
 import {takeUntil, map, withLatestFrom, filter, switchMap,
-        first, throttleTime, distinctUntilChanged} from '../web_modules/rxjs/operators.js';
+        first, throttleTime, distinctUntilChanged} from 'rxjs/operators';
+
+import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnPoolsService} from './mn.pools.service.js';
 import {MnAdminService} from "./mn.admin.service.js";
 

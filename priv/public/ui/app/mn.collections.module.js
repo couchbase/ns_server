@@ -8,26 +8,25 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { NgModule } from '../web_modules/@angular/core.js';
-import { UIRouterModule } from "../web_modules/@uirouter/angular.js";
-import { ReactiveFormsModule } from '../web_modules/@angular/forms.js';
-import { NgbModule } from '../web_modules/@ng-bootstrap/ng-bootstrap.js';
-import { MnPipesModule } from './mn.pipes.module.js';
+import {NgModule} from '@angular/core';
+import {UIRouterModule} from '@uirouter/angular';
+import {ReactiveFormsModule} from '@angular/forms';
+import {NgbModule} from '@ng-bootstrap/ng-bootstrap';
 
-import { MnElementCraneModule } from './mn.element.crane.js';
-
-import { MnCollectionsComponent } from './mn.collections.component.js';
-import { MnCollectionsItemComponent } from './mn.collections.item.component.js';
-import { MnCollectionsScopeComponent } from './mn.collections.scope.component.js';
-import { MnCollectionsScopeDetailsComponent } from './mn.collections.scope.details.component.js';
-import { MnCollectionsService } from './mn.collections.service.js';
-import { MnSharedModule } from './mn.shared.module.js';
-import { MnInputFilterModule } from './mn.input.filter.module.js';
-import { MnSelectModule } from './mn.select.module.js';
-import { MnCollectionsAddScopeComponent } from './mn.collections.add.scope.component.js';
-import { MnCollectionsDeleteScopeComponent } from './mn.collections.delete.scope.component.js';
-import { MnCollectionsAddItemComponent} from './mn.collections.add.item.component.js';
-import { MnCollectionsDeleteItemComponent} from './mn.collections.delete.item.component.js';
+import {MnPipesModule} from './mn.pipes.module.js';
+import {MnElementCraneModule} from './mn.element.crane.js';
+import {MnCollectionsComponent} from './mn.collections.component.js';
+import {MnCollectionsItemComponent} from './mn.collections.item.component.js';
+import {MnCollectionsScopeComponent} from './mn.collections.scope.component.js';
+import {MnCollectionsScopeDetailsComponent} from './mn.collections.scope.details.component.js';
+import {MnCollectionsService} from './mn.collections.service.js';
+import {MnSharedModule} from './mn.shared.module.js';
+import {MnInputFilterModule} from './mn.input.filter.module.js';
+import {MnSelectModule} from './mn.select.module.js';
+import {MnCollectionsAddScopeComponent} from './mn.collections.add.scope.component.js';
+import {MnCollectionsDeleteScopeComponent} from './mn.collections.delete.scope.component.js';
+import {MnCollectionsAddItemComponent} from './mn.collections.add.item.component.js';
+import {MnCollectionsDeleteItemComponent} from './mn.collections.delete.item.component.js';
 
 let collectionsState = {
   url: '/collections?scopeDetails&scopesPage&collsPage',

@@ -8,12 +8,12 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import {downgradeInjectable} from "/ui/web_modules/@angular/upgrade/static.js";
-import _ from "/ui/web_modules/lodash.js";
-import {MnTasksService} from "../mn.tasks.service.js"
+import angular from 'angular';
+import _ from 'lodash';
+import {downgradeInjectable} from '@angular/upgrade/static';
+import {MnTasksService} from '../mn.tasks.service.js';
 
-export default "mnTasksDetails";
+export default 'mnTasksDetails';
 
 angular
   .module('mnTasksDetails', [])

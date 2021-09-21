@@ -8,10 +8,10 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import mnHelper from "/ui/app/components/mn_helper.js";
+import angular from 'angular';
+import mnHelper from './mn_helper.js';
 
-export default "mnStoreService";
+export default 'mnStoreService';
 
 angular
   .module('mnStoreService', [mnHelper])

@@ -1,4 +1,4 @@
-import angular from '/ui/web_modules/angular.js';
+import angular from 'angular';
 import './ace/ace-loader.js';
 import ace from './ace/ace.js';
 

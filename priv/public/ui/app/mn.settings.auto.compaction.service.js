@@ -8,16 +8,17 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { Injectable } from "/ui/web_modules/@angular/core.js";
-import { HttpClient, HttpParams } from '/ui/web_modules/@angular/common/http.js';
-import { MnHelperService } from './mn.helper.service.js';
-import { MnPermissions } from '/ui/app/ajs.upgraded.providers.js';
-import { switchMap, shareReplay, map } from '/ui/web_modules/rxjs/operators.js';
-import { NEVER } from '/ui/web_modules/rxjs.js';
-import { is } from '../web_modules/ramda.js';
-import { MnHttpRequest } from './mn.http.request.js';
+import {Injectable} from '@angular/core';
+import {HttpClient, HttpParams} from '@angular/common/http';
+import {NEVER} from 'rxjs';
+import {is} from 'ramda';
+import {switchMap, shareReplay, map} from 'rxjs/operators';
 
-export { MnSettingsAutoCompactionService }
+import {MnHelperService} from './mn.helper.service.js';
+import {MnPermissions} from './ajs.upgraded.providers.js';
+import {MnHttpRequest} from './mn.http.request.js';
+
+export {MnSettingsAutoCompactionService}
 
 class MnSettingsAutoCompactionService {
   static get annotations() { return [

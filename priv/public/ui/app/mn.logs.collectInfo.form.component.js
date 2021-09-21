@@ -8,21 +8,22 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {ChangeDetectionStrategy, Component} from '/ui/web_modules/@angular/core.js';
+import {ChangeDetectionStrategy, Component} from '@angular/core';
+import {Subject} from 'rxjs';
+import {FormBuilder, FormControl, Validators} from '@angular/forms';
+import {map, takeUntil, switchMap, filter, pairwise, startWith} from 'rxjs/operators';
+import {UIRouter} from '@uirouter/angular';
+import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
+
 import {MnLogsCollectInfoService} from './mn.logs.collectInfo.service.js';
 import {MnAdminService} from "./mn.admin.service.js";
 import {MnPoolsService} from "./mn.pools.service.js";
 import {MnFormService} from "./mn.form.service.js";
 import {MnLifeCycleHooksToStream} from "./mn.core.js";
-import {Subject} from '../web_modules/rxjs.js';
-import {FormBuilder, FormControl, Validators} from '../web_modules/@angular/forms.js';
-import {map, takeUntil, switchMap, filter, pairwise, startWith} from '../web_modules/rxjs/operators.js';
-import {UIRouter} from "../web_modules/@uirouter/angular.js";
-import {NgbModal} from '../web_modules/@ng-bootstrap/ng-bootstrap.js';
 import {MnTasksService} from './mn.tasks.service.js';
 import {MnClusterSummaryDialogComponent} from './mn.cluster.summary.dialog.component.js';
 
-export { MnLogsCollectInfoFormComponent };
+export {MnLogsCollectInfoFormComponent};
 
 class MnLogsCollectInfoFormComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [

@@ -8,9 +8,9 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import uiRouter from "/ui/web_modules/@uirouter/angularjs.js";
-import uiBootstrap from "/ui/web_modules/angular-ui-bootstrap.js";
+import angular from "angular";
+import uiRouter from "@uirouter/angularjs";
+import uiBootstrap from "angular-ui-bootstrap";
 
 export default "mnLostConnectionService";
 

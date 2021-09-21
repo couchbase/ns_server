@@ -8,10 +8,11 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
+import {Component, ChangeDetectionStrategy} from '@angular/core';
+import {FormControl} from '@angular/forms';
+
 import {MnPoolsService} from './mn.pools.service.js';
 import {MnWizardService} from './mn.wizard.service.js';
-import {FormControl} from "../web_modules/@angular/forms.js";
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 
 export {MnNodeStorageConfigComponent};

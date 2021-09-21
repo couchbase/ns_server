@@ -8,8 +8,8 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {ChangeDetectionStrategy, Component} from '/ui/web_modules/@angular/core.js';
-import {MnLifeCycleHooksToStream} from "./mn.core.js";
+import {ChangeDetectionStrategy, Component} from '@angular/core';
+import {MnLifeCycleHooksToStream} from './mn.core.js';
 
 export { MnLogsCollectInfoComponent };
 

@@ -8,9 +8,9 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js'
-import {takeUntil, startWith} from '../web_modules/rxjs/operators.js';
-import {FormBuilder} from '../web_modules/@angular/forms.js';
+import {Component, ChangeDetectionStrategy} from '@angular/core'
+import {takeUntil, startWith} from 'rxjs/operators';
+import {FormBuilder} from '@angular/forms';
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnXDCRService, collectionDelimiter} from "./mn.xdcr.service.js";

@@ -8,15 +8,15 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { NgModule } from '../web_modules/@angular/core.js';
-import { CommonModule } from '../web_modules/@angular/common.js';
-import { ReactiveFormsModule } from '../web_modules/@angular/forms.js';
-import { MnInputFilterModule } from './mn.input.filter.module.js';
+import {NgModule} from '@angular/core';
+import {CommonModule} from '@angular/common';
+import {ReactiveFormsModule} from '@angular/forms';
 
-import { MnKeyspaceSelectorComponent } from "./mn.keyspace.selector.component.js";
-import { MnFormService } from "./mn.form.service.js";
+import {MnInputFilterModule} from './mn.input.filter.module.js';
+import {MnKeyspaceSelectorComponent} from './mn.keyspace.selector.component.js';
+import {MnFormService} from './mn.form.service.js';
 
-export { MnKeyspaceSelectorModule };
+export {MnKeyspaceSelectorModule};
 
 class MnKeyspaceSelectorModule {
   static get annotations() { return [

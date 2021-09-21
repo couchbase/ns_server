@@ -8,13 +8,14 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import mnStatisticsNewService from "/ui/app/mn_admin/mn_statistics_service.js";
-import mnStatisticsDescriptionService from "/ui/app/mn_admin/mn_statistics_description_service.js";
-import mnStatisticsChart from "/ui/app/mn_admin/mn_statistics_chart_directive.js";
-import mnHelper from "/ui/app/components/mn_helper.js";
-import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
-import mnPermissions from "/ui/app/components/mn_permissions.js";
+import angular from 'angular';
+
+import mnStatisticsNewService from '../../mn_admin/mn_statistics_service.js';
+import mnStatisticsDescriptionService from '../../mn_admin/mn_statistics_description_service.js';
+import mnStatisticsChart from '../../mn_admin/mn_statistics_chart_directive.js';
+import mnHelper from '../mn_helper.js';
+import mnPoolDefault from '../mn_pool_default.js';
+import mnPermissions from '../mn_permissions.js';
 
 export default 'mnDetailStatsModule';
 

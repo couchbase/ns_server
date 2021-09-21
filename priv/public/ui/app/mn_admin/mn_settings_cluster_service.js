@@ -8,9 +8,9 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import mnPools from "/ui/app/components/mn_pools.js";
-import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
+import angular from "angular";
+import mnPools from "../components/mn_pools.js";
+import mnPoolDefault from "../components/mn_pool_default.js";
 
 export default "mnSettingsClusterService";
 

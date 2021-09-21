@@ -8,8 +8,8 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import mnSpinner from "/ui/app/components/directives/mn_spinner.js";
+import angular from "angular";
+import mnSpinner from "../components/directives/mn_spinner.js";
 import mnLogRedactionService from "./mn_redaction_service.js";
 
 export default "mnRedaction";

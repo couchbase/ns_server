@@ -8,7 +8,8 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js'
+import {Component, ChangeDetectionStrategy} from '@angular/core'
+
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnHelperService} from "./mn.helper.service.js";
 

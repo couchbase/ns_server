@@ -8,15 +8,16 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { Component, ChangeDetectionStrategy } from '../web_modules/@angular/core.js';
+import {Component, ChangeDetectionStrategy} from '@angular/core';
+import {UIRouter} from '@uirouter/angular';
+import {takeUntil, map, pluck, withLatestFrom } from 'rxjs/operators';
+import {pipe} from 'rxjs';
+import {FormControl, FormGroup, Validators} from '@angular/forms';
+
 import { MnLifeCycleHooksToStream } from './mn.core.js';
-import { UIRouter } from '../web_modules/@uirouter/angular.js';
-import { takeUntil, map, pluck, withLatestFrom } from '../web_modules/rxjs/operators.js';
-import { pipe } from '../web_modules/rxjs.js';
 import { MnFormService } from './mn.form.service.js';
 import { MnSettingsAlertsService } from './mn.settings.alerts.service.js';
 import { MnPermissions } from './ajs.upgraded.providers.js';
-import { FormControl, FormGroup, Validators } from '../web_modules/@angular/forms.js';
 import { knownAlerts } from './constants/constants.js';
 
 export { MnSettingsAlertsComponent };

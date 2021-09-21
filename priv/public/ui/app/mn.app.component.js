@@ -8,7 +8,7 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { Component } from '../web_modules/@angular/core.js';
+import { Component } from '@angular/core';
 
 export { MnAppComponent };
 

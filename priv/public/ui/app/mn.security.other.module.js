@@ -8,11 +8,12 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {NgModule} from '../web_modules/@angular/core.js';
-import {UIRouterModule} from "../web_modules/@uirouter/angular.js";
+import {NgModule} from '@angular/core';
+import {UIRouterModule} from '@uirouter/angular';
+import {NgbModule} from '@ng-bootstrap/ng-bootstrap';
+import {ReactiveFormsModule} from '@angular/forms';
+
 import {MnSharedModule} from './mn.shared.module.js';
-import {NgbModule} from '../web_modules/@ng-bootstrap/ng-bootstrap.js';
-import {ReactiveFormsModule} from '../web_modules/@angular/forms.js';
 import {MnSelectModule} from './mn.select.module.js';
 import {MnSecurityOtherComponent} from './mn.security.other.component.js';
 

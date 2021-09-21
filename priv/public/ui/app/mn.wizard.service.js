@@ -9,12 +9,13 @@ licenses/APL2.txt.
 */
 
 
-import {FormGroup, FormControl, Validators, FormArray} from "../web_modules/@angular/forms.js";
-import {Injectable} from "../web_modules/@angular/core.js";
-import {HttpClient, HttpParams} from '../web_modules/@angular/common/http.js';
-import _ from '../web_modules/lodash.js';
-import {BehaviorSubject, combineLatest} from '../web_modules/rxjs.js';
-import {switchMap, shareReplay, map, pluck} from '../web_modules/rxjs/operators.js';
+import {FormGroup, FormControl, Validators, FormArray} from '@angular/forms';
+import {Injectable} from '@angular/core';
+import {HttpClient, HttpParams} from '@angular/common/http';
+import _ from 'lodash';
+import {BehaviorSubject, combineLatest} from 'rxjs';
+import {switchMap, shareReplay, map, pluck} from 'rxjs/operators';
+
 import {MnHelperService} from './mn.helper.service.js';
 import {MnAdminService} from './mn.admin.service.js';
 import {MnPoolsService} from './mn.pools.service.js';

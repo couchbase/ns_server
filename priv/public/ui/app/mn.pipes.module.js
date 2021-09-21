@@ -9,8 +9,8 @@ licenses/APL2.txt.
 */
 
 import * as pipes from './mn.pipes.js';
-import { NgModule } from '../web_modules/@angular/core.js';
-import { DecimalPipe } from '../web_modules/@angular/common.js';
+import {NgModule} from '@angular/core';
+import {DecimalPipe} from '@angular/common';
 
 export { MnPipesModule };
 

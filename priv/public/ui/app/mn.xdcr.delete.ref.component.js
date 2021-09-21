@@ -8,9 +8,9 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
-import {NgbActiveModal} from '../web_modules/@ng-bootstrap/ng-bootstrap.js';
-import {map} from '../web_modules/rxjs/operators.js';
+import {Component, ChangeDetectionStrategy} from '@angular/core';
+import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
+import {map} from 'rxjs/operators';
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnXDCRService} from "./mn.xdcr.service.js";

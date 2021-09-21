@@ -8,11 +8,11 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import {fromEvent, Subject, timer} from "/ui/web_modules/rxjs.js";
-import {tap, switchMap, takeUntil} from "/ui/web_modules/rxjs/operators.js";
-import _ from "/ui/web_modules/lodash.js";
-import saveAs from "/ui/web_modules/file-saver.js";
+import angular from 'angular';
+import {fromEvent, Subject, timer} from 'rxjs';
+import {tap, switchMap, takeUntil} from 'rxjs/operators';
+import _ from 'lodash';
+import saveAs from 'file-saver';
 
 export default mnAdminController;
 
@@ -94,7 +94,7 @@ function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAle
   }
 
   async function showClusterInfoDialog() {
-    await import('/ui/app/mn_admin/mn_logs_service.js');
+    await import('./mn_logs_service.js');
     await $ocLazyLoad.load({name: 'mnLogsService'});
     var mnLogsService = $injector.get('mnLogsService');
     mnLogsService.showClusterInfoDialog();
@@ -102,14 +102,14 @@ function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAle
 
   async function showResetPasswordDialog() {
     vm.showUserDropdownMenu = false;
-    await import('/ui/app/mn_admin/mn_reset_password_dialog_controller.js');
+    await import('./mn_reset_password_dialog_controller.js');
     await $ocLazyLoad.load({name: 'mnResetPasswordDialog'});
     var mnResetPasswordDialogService = $injector.get('mnResetPasswordDialogService');
     mnResetPasswordDialogService.showDialog(whoami);
   }
 
   async function postStopRebalance() {
-    await import('/ui/app/mn_admin/mn_servers_service.js');
+    await import('./mn_servers_service.js');
     await $ocLazyLoad.load({name: 'mnServersService'});
     var mnServersService = $injector.get('mnServersService');
     return mnPromiseHelper(vm, mnServersService.stopRebalanceWithConfirm())
@@ -117,7 +117,7 @@ function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAle
   }
 
   function runDeveloperSettingsDialog() {
-    import('/ui/app/mn_admin/mn_developer_settings_controller.js')
+    import('./mn_developer_settings_controller.js')
       .then(function () {
         $ocLazyLoad.load({name: 'mnDeveloperSettings'});
         $uibModal.open({
@@ -128,7 +128,7 @@ function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAle
   }
 
   function runInternalSettingsDialog() {
-    import('/ui/app/mn_admin/mn_internal_settings_controller.js')
+    import('./mn_internal_settings_controller.js')
       .then(function () {
         $ocLazyLoad.load({name: 'mnInternalSettings'});
         $uibModal.open({
@@ -423,7 +423,7 @@ function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAle
 
 
 async function loadAndRunSessionService(mnOnDestroy, injector, compiler) {
-  let module = await import("/ui/app/mn.session.service.js");
+  let module = await import("../mn.session.service.js");
   let factory = await compiler.compileModuleAsync(module.MnSessionServiceModule);
   let moduleRef = factory.create(injector);
   let mnSessionService = moduleRef.injector.get(module.MnSessionService);
@@ -438,7 +438,7 @@ function loadAndRunMemoryQuotaDialog($uibModal, $ocLazyLoad, $injector, mnPoolDe
     if (poolsDefault.isEnterprise) {
       servicesToCheck = servicesToCheck.concat(["cbas", "eventing"]);
     }
-    await import("/ui/app/components/directives/mn_memory_quota/mn_memory_quota_service.js");
+    await import("../components/directives/mn_memory_quota/mn_memory_quota_service.js");
     await $ocLazyLoad.load({name: 'mnMemoryQuotaService'});
     var mnMemoryQuotaService = $injector.get('mnMemoryQuotaService');
 
@@ -449,7 +449,7 @@ function loadAndRunMemoryQuotaDialog($uibModal, $ocLazyLoad, $injector, mnPoolDe
       return;
     }
 
-    await import("/ui/app/mn_admin/memory_quota_dialog_controller.js");
+    await import("./memory_quota_dialog_controller.js");
     await $ocLazyLoad.load({name: 'mnMemoryQuotaDialogController'});
     $uibModal.open({
       windowTopClass: "without-titlebar-close",
@@ -472,14 +472,14 @@ function loadAndRunMemoryQuotaDialog($uibModal, $ocLazyLoad, $injector, mnPoolDe
 }
 
 async function loadAndRunPoorMansAlertsDialog($ocLazyLoad, $injector, resp) {
-  await import("/ui/app/mn_admin/mn_poor_mans_alerts_controller.js");
+  await import("./mn_poor_mans_alerts_controller.js");
   await $ocLazyLoad.load({name: 'mnPoorMansAlerts'});
   var mnPoorMansAlertsService = $injector.get('mnPoorMansAlertsService');
   mnPoorMansAlertsService.maybeShowAlerts(resp);
 }
 
 async function loadAndRunLauchpad($ocLazyLoad, $injector, vm) {
-  await import("/ui/app/mn_admin/mn_settings_notifications_service.js");
+  await import("./mn_settings_notifications_service.js");
   await $ocLazyLoad.load({name: 'mnSettingsNotificationsService'});
   var mnSettingsNotificationsService = $injector.get('mnSettingsNotificationsService');
 

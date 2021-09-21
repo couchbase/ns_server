@@ -1,6 +1,6 @@
-import angular from "/ui/web_modules/angular.js";
+import angular from 'angular';
 
-export default "mnJquery";
+export default 'mnJquery';
 
 angular
   .module('mnJquery', [])

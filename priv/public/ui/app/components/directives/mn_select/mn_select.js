@@ -8,10 +8,10 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
+import angular from 'angular';
 
-import mnSearch from "/ui/app/components/directives/mn_search/mn_search_directive.js";
-import mnHelper from "/ui/app/components/mn_helper.js";
+import mnSearch from "../mn_search/mn_search_directive.js";
+import mnHelper from "../../mn_helper.js";
 
 export default "mnSelect";
 

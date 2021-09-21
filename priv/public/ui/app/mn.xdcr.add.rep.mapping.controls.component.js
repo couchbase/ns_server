@@ -8,13 +8,13 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js'
-import {takeUntil, withLatestFrom, shareReplay} from '../web_modules/rxjs/operators.js';
-import {of, combineLatest} from "../web_modules/rxjs.js";
-import {MnHelperService} from "./mn.helper.service.js";
-import {FormBuilder} from '../web_modules/@angular/forms.js';
-import {MnXDCRService, collectionDelimiter} from "./mn.xdcr.service.js";
+import {Component, ChangeDetectionStrategy} from '@angular/core'
+import {takeUntil, withLatestFrom, shareReplay} from 'rxjs/operators';
+import {of, combineLatest} from 'rxjs';
+import {FormBuilder} from '@angular/forms';
 
+import {MnHelperService} from './mn.helper.service.js';
+import {MnXDCRService, collectionDelimiter} from './mn.xdcr.service.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 
 export {MnXDCRAddRepMappingControlsComponent};

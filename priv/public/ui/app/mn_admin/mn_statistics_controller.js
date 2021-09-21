@@ -8,19 +8,18 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import {equals} from '/ui/web_modules/ramda.js';
+import angular from 'angular';
+import {equals} from 'ramda';
+import uiBootstrap from 'angular-ui-bootstrap';
+import uiRouter from '@uirouter/angularjs';
 
-import uiBootstrap from "/ui/web_modules/angular-ui-bootstrap.js";
-import uiRouter from "/ui/web_modules/@uirouter/angularjs.js";
-
-import mnPoll from "/ui/app/components/mn_poll.js";
-import mnFilters from "/ui/app/components/mn_filters.js";
-import mnSpinner from "/ui/app/components/directives/mn_spinner.js";
-import mnMainSpinner from "/ui/app/components/directives/mn_main_spinner.js";
-import mnHelper from "/ui/app/components/mn_helper.js";
-import mnStoreService from "/ui/app/components/mn_store_service.js";
-import mnDropdown from "/ui/app/components/directives/mn_dropdown.js";
+import mnPoll from "../components/mn_poll.js";
+import mnFilters from "../components/mn_filters.js";
+import mnSpinner from "../components/directives/mn_spinner.js";
+import mnMainSpinner from "../components/directives/mn_main_spinner.js";
+import mnHelper from "../components/mn_helper.js";
+import mnStoreService from "../components/mn_store_service.js";
+import mnDropdown from "../components/directives/mn_dropdown.js";
 
 import mnStatisticsChart from "./mn_statistics_chart_directive.js";
 import mnStatisticsNewService from "./mn_statistics_service.js";

@@ -8,9 +8,9 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { Injectable } from '../web_modules/@angular/core.js';
-import { Subject } from '../web_modules/rxjs.js';
-import { tap, map } from '../web_modules/rxjs/operators.js';
+import {Injectable} from '@angular/core';
+import {Subject} from 'rxjs';
+import {tap, map} from 'rxjs/operators';
 
 export { MnAlertsService };
 

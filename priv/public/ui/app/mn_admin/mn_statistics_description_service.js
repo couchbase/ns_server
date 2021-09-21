@@ -8,10 +8,10 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
+import angular from "angular";
 
 import mnStatsDescription from "./mn_statistics_description.js";
-import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
+import mnPoolDefault from "../components/mn_pool_default.js";
 
 export default "mnStatisticsDescriptionService";
 

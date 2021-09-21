@@ -8,32 +8,32 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
+import angular from "angular";
 
-import uiRouter from "/ui/web_modules/@uirouter/angularjs.js";
-import uiBootstrap from "/ui/web_modules/angular-ui-bootstrap.js";
-import ngMessages from "/ui/web_modules/angular-messages.js";
+import uiRouter from "@uirouter/angularjs";
+import uiBootstrap from "angular-ui-bootstrap";
+import ngMessages from "angular-messages";
 
-import mnFilters from "/ui/app/components/mn_filters.js";
-import mnPoll from "/ui/app/components/mn_poll.js";
-import mnFocus from "/ui/app/components/directives/mn_focus.js";
-import mnPools from "/ui/app/components/mn_pools.js";
-import mnHelper from "/ui/app/components/mn_helper.js";
-import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
-import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
-import mnServices from "/ui/app/components/directives/mn_services/mn_services.js";
-import mnSpinner from "/ui/app/components/directives/mn_spinner.js";
-import mnMainSpinner from "/ui/app/components/directives/mn_main_spinner.js";
-import mnAutocompleteOff from "/ui/app/components/directives/mn_autocomplete_off.js";
-import mnStorageMode from "/ui/app/components/directives/mn_storage_mode/mn_storage_mode.js";
-import mnMemoryQuotaService from "/ui/app/components/directives/mn_memory_quota/mn_memory_quota_service.js";
-import mnWarmupProgress from "/ui/app/components/directives/mn_warmup_progress/mn_warmup_progress.js";
-import mnElementCrane from "/ui/app/components/directives/mn_element_crane/mn_element_crane.js";
-import mnSearch from "/ui/app/components/directives/mn_search/mn_search_directive.js";
-import mnBarUsage from "/ui/app/components/directives/mn_bar_usage/mn_bar_usage.js";
-import mnSortableTable from "/ui/app/components/directives/mn_sortable_table.js";
-import mnSelectableNodesList from "/ui/app/components/directives/mn_selectable_nodes_list.js";
-import mnServicesDiskPaths from "/ui/app/components/directives/mn_services_disk_paths.js";
+import mnFilters from "../components/mn_filters.js";
+import mnPoll from "../components/mn_poll.js";
+import mnFocus from "../components/directives/mn_focus.js";
+import mnPools from "../components/mn_pools.js";
+import mnHelper from "../components/mn_helper.js";
+import mnPromiseHelper from "../components/mn_promise_helper.js";
+import mnPoolDefault from "../components/mn_pool_default.js";
+import mnServices from "../components/directives/mn_services/mn_services.js";
+import mnSpinner from "../components/directives/mn_spinner.js";
+import mnMainSpinner from "../components/directives/mn_main_spinner.js";
+import mnAutocompleteOff from "../components/directives/mn_autocomplete_off.js";
+import mnStorageMode from "../components/directives/mn_storage_mode/mn_storage_mode.js";
+import mnMemoryQuotaService from "../components/directives/mn_memory_quota/mn_memory_quota_service.js";
+import mnWarmupProgress from "../components/directives/mn_warmup_progress/mn_warmup_progress.js";
+import mnElementCrane from "../components/directives/mn_element_crane/mn_element_crane.js";
+import mnSearch from "../components/directives/mn_search/mn_search_directive.js";
+import mnBarUsage from "../components/directives/mn_bar_usage/mn_bar_usage.js";
+import mnSortableTable from "../components/directives/mn_sortable_table.js";
+import mnSelectableNodesList from "../components/directives/mn_selectable_nodes_list.js";
+import mnServicesDiskPaths from "../components/directives/mn_services_disk_paths.js";
 
 import mnServersService from "./mn_servers_service.js";
 import mnServersListItemDetailsService from "./mn_servers_list_item_details_service.js";
@@ -48,7 +48,7 @@ import mnServersFailOverDialogController from "./mn_servers_failover_dialog_cont
 import mnServersEjectDialogController from "./mn_servers_eject_dialog_controller.js";
 import mnServersAddDialogController from "./mn_servers_add_dialog_controller.js";
 import mnMultipleFailoverDialogController from "./mn_multiple_failover_dialog.js";
-import mnClusterConfigurationService from "/ui/app/mn_wizard/mn_cluster_configuration/mn_cluster_configuration_service.js";
+import mnClusterConfigurationService from "../mn_wizard/mn_cluster_configuration/mn_cluster_configuration_service.js";
 
 
 export default "mnServers";

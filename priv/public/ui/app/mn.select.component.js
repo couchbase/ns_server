@@ -8,19 +8,20 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { ChangeDetectionStrategy, Component, ViewChild } from '../web_modules/@angular/core.js';
-import { MnLifeCycleHooksToStream } from "./mn.core.js";
-import { startWith, distinctUntilChanged } from '../web_modules/rxjs/operators.js';
-import { BehaviorSubject, Subject } from '../web_modules/rxjs.js';
-import { MnHelperService } from './mn.helper.service.js';
-import { FormBuilder } from "../web_modules/@angular/forms.js";
-import { is } from "../web_modules/ramda.js";
-import { pluck, shareReplay, map, takeUntil, withLatestFrom } from '../web_modules/rxjs/operators.js';
-import { NgbDropdown } from "../web_modules/@ng-bootstrap/ng-bootstrap.js";
+import {ChangeDetectionStrategy, Component, ViewChild} from '@angular/core';
+import {BehaviorSubject, Subject} from 'rxjs';
+import {FormBuilder} from '@angular/forms';
+import {is} from 'ramda';
+import {pluck, shareReplay, map, takeUntil, withLatestFrom,
+        startWith, distinctUntilChanged} from 'rxjs/operators';
+import {NgbDropdown} from '@ng-bootstrap/ng-bootstrap';
+
+import {MnLifeCycleHooksToStream} from "./mn.core.js";
+import {MnHelperService} from './mn.helper.service.js';
 
 let isString = is(String);
 
-export { MnSelectComponent };
+export {MnSelectComponent};
 
 class MnSelectComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [

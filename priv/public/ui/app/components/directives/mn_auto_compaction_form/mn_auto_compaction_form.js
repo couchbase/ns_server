@@ -8,14 +8,15 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
-import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
-import mnPermissions from "/ui/app/components/mn_permissions.js";
-import mnSettingsClusterService from "/ui/app/mn_admin/mn_settings_cluster_service.js";
-import mnPeriod from "/ui/app/components/directives/mn_period/mn_period.js";
+import angular from 'angular';
 
-export default "mnAutoCompactionForm";
+import mnPromiseHelper from '../../mn_promise_helper.js';
+import mnPoolDefault from '../../mn_pool_default.js';
+import mnPermissions from '../../mn_permissions.js';
+import mnSettingsClusterService from '../../../mn_admin/mn_settings_cluster_service.js';
+import mnPeriod from '../mn_period/mn_period.js';
+
+export default 'mnAutoCompactionForm';
 
 angular
   .module('mnAutoCompactionForm', [

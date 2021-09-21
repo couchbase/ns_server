@@ -8,15 +8,17 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { MnSelectComponent } from './mn.select.component.js';
-import { NgModule } from '../web_modules/@angular/core.js';
-import { CommonModule } from '../web_modules/@angular/common.js';
-import { MnSharedModule } from './mn.shared.module.js';
-import { NgbModule } from '../web_modules/@ng-bootstrap/ng-bootstrap.js';
-import { MnInputFilterModule } from './mn.input.filter.module.js';
-import { ReactiveFormsModule } from '../web_modules/@angular/forms.js';
 
-export { MnSelectModule }
+import {NgModule} from '@angular/core';
+import {CommonModule} from '@angular/common';
+import {NgbModule} from '@ng-bootstrap/ng-bootstrap';
+import {ReactiveFormsModule} from '@angular/forms';
+
+import {MnInputFilterModule} from './mn.input.filter.module.js';
+import {MnSharedModule} from './mn.shared.module.js';
+import {MnSelectComponent} from './mn.select.component.js';
+
+export {MnSelectModule}
 
 class MnSelectModule {
   static get annotations() { return [

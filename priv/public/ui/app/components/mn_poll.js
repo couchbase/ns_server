@@ -8,11 +8,12 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import _ from "/ui/web_modules/lodash.js";
-import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
+import angular from 'angular';
+import _ from 'lodash';
 
-export default "mnPoll";
+import mnPromiseHelper from './mn_promise_helper.js';
+
+export default 'mnPoll';
 
 angular
   .module("mnPoll", [mnPromiseHelper])

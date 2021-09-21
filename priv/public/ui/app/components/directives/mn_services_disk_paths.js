@@ -8,10 +8,10 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import mnClusterConfigurationService from "/ui/app/mn_wizard/mn_cluster_configuration/mn_cluster_configuration_service.js";
+import angular from 'angular';
+import mnClusterConfigurationService from '../../mn_wizard/mn_cluster_configuration/mn_cluster_configuration_service.js';
 
-export default "mnServicesDiskPaths";
+export default 'mnServicesDiskPaths';
 
 angular
   .module("mnServicesDiskPaths", [mnClusterConfigurationService])

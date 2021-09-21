@@ -8,14 +8,14 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { MnFocusDirective } from './mn.focus.directive.js';
-import { NgModule } from '../web_modules/@angular/core.js';
-import { CommonModule } from '../web_modules/@angular/common.js';
-import { ReactiveFormsModule } from '../web_modules/@angular/forms.js';
+import {NgModule} from '@angular/core';
+import {CommonModule} from '@angular/common';
+import {ReactiveFormsModule} from '@angular/forms';
 
-import { MnMainSpinnerDirective } from "./ajs.upgraded.components.js";
+import {MnFocusDirective} from './mn.focus.directive.js';
+import {MnMainSpinnerDirective} from './ajs.upgraded.components.js';
 
-export { MnSharedModule }
+export {MnSharedModule}
 
 class MnSharedModule {
   static get annotations() { return [

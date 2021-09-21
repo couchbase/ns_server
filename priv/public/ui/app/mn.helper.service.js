@@ -8,16 +8,15 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Injectable} from '../web_modules/@angular/core.js';
-import {BehaviorSubject, Subject, combineLatest, zip} from '../web_modules/rxjs.js';
+import {Injectable} from '@angular/core';
+import {BehaviorSubject, Subject, combineLatest, zip} from 'rxjs';
 import {scan, map, shareReplay, distinctUntilChanged,
         debounceTime, pluck, takeUntil, tap,
-        withLatestFrom, startWith, pairwise} from '../web_modules/rxjs/operators.js';
-import {not, sort, prop, descend, ascend, equals} from '../web_modules/ramda.js';
-import {FormBuilder} from "../web_modules/@angular/forms.js";
-import {UIRouter} from "../web_modules/@uirouter/angular.js";
-import ipaddr from "../web_modules/ipaddr.js";
-
+        withLatestFrom, startWith, pairwise} from 'rxjs/operators';
+import {not, sort, prop, descend, ascend, equals} from 'ramda';
+import {FormBuilder} from '@angular/forms';
+import {UIRouter} from '@uirouter/angular';
+import ipaddr from 'ipaddr';
 
 export {MnHelperService};
 

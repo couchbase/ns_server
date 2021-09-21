@@ -8,18 +8,19 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {NgModule, Injectable} from "../web_modules/@angular/core.js";
-import {ReactiveFormsModule} from '../web_modules/@angular/forms.js';
-import {HttpClient} from '../web_modules/@angular/common/http.js';
-import {NgbModule, NgbModal} from '../web_modules/@ng-bootstrap/ng-bootstrap.js';
-import {MnSharedModule} from './mn.shared.module.js';
-import {fromEvent, merge, NEVER, timer} from "../web_modules/rxjs.js";
+import {NgModule, Injectable} from '@angular/core';
+import {ReactiveFormsModule} from '@angular/forms';
+import {HttpClient} from '@angular/common/http';
+import {NgbModule, NgbModal} from '@ng-bootstrap/ng-bootstrap';
+import {fromEvent, merge, NEVER, timer} from 'rxjs';
 import {throttleTime, takeUntil, filter,
-        switchMap, map, shareReplay} from '../web_modules/rxjs/operators.js';
-import {not, compose} from "../web_modules/ramda.js";
-import {MnAuthService} from "./ajs.upgraded.providers.js";
-import {MnAdminService} from "./mn.admin.service.js";
-import {MnSessionTimeoutDialogComponent} from "./mn.session.timeout.dialog.component.js";
+        switchMap, map, shareReplay} from 'rxjs/operators';
+import {not, compose} from 'ramda';
+
+import {MnSharedModule} from './mn.shared.module.js';
+import {MnAuthService} from './ajs.upgraded.providers.js';
+import {MnAdminService} from './mn.admin.service.js';
+import {MnSessionTimeoutDialogComponent} from './mn.session.timeout.dialog.component.js';
 
 export {MnSessionService, MnSessionServiceModule};
 

@@ -1,5 +1,5 @@
-import angular from "/ui/web_modules/angular.js";
-import Sortable from "/ui/web_modules/sortablejs.js";
+import angular from "angular";
+import Sortable from "sortablejs";
 export default "ng-sortable";
 
 /**

@@ -8,15 +8,15 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { MnAlertsService, $rootScope } from './ajs.upgraded.providers.js';
-import { Injectable } from '../web_modules/@angular/core.js';
-import { FormBuilder, FormGroup } from '../web_modules/@angular/forms.js';
-import { BehaviorSubject, Subject, NEVER, merge } from "../web_modules/rxjs.js";
-import { map, tap, first, takeUntil, switchMap, mapTo,
-         shareReplay, filter, debounceTime, startWith} from "../web_modules/rxjs/operators.js";
+import {Injectable} from '@angular/core';
+import {FormBuilder, FormGroup} from '@angular/forms';
+import {BehaviorSubject, Subject, NEVER, merge} from 'rxjs';
+import {map, tap, first, takeUntil, switchMap, mapTo,
+        shareReplay, filter, debounceTime, startWith} from 'rxjs/operators';
 
+import {MnAlertsService, $rootScope} from './ajs.upgraded.providers.js';
 
-export { MnFormService };
+export {MnFormService};
 
 class MnFormService {
   static get annotations() { return [

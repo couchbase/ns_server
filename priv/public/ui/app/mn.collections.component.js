@@ -8,20 +8,19 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
-import {FormBuilder} from "../web_modules/@angular/forms.js";
-import {UIRouter} from "../web_modules/@uirouter/angular.js";
+import {Component, ChangeDetectionStrategy} from '@angular/core';
+import {FormBuilder} from '@angular/forms';
+import {UIRouter} from '@uirouter/angular';
 import {pluck, filter, switchMap, distinctUntilChanged, withLatestFrom,
-        shareReplay, takeUntil, map} from '../web_modules/rxjs/operators.js';
-import {combineLatest, Subject, timer, NEVER, of} from "../web_modules/rxjs.js";
-import {NgbModal} from "../web_modules/@ng-bootstrap/ng-bootstrap.js";
+        shareReplay, takeUntil, map} from 'rxjs/operators';
+import {combineLatest, Subject, timer, NEVER, of} from 'rxjs';
+import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
+
 import {MnPermissions, MnStatisticsNewService,
         MnServersService, $rootScope} from './ajs.upgraded.providers.js';
-
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnCollectionsService} from './mn.collections.service.js';
 import {MnCollectionsAddScopeComponent} from './mn.collections.add.scope.component.js';
-
 import {MnHelperService} from './mn.helper.service.js';
 
 export {MnCollectionsComponent};

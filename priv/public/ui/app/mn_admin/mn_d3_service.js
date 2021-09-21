@@ -8,17 +8,17 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import _ from "/ui/web_modules/lodash.js";
-import {select} from "/ui/web_modules/d3-selection.js";
-import {bisector} from "/ui/web_modules/d3-array.js";
-import {schemeTableau10} from "/ui/web_modules/d3-scale-chromatic.js";
-import {scaleTime, scaleLinear} from "/ui/web_modules/d3-scale.js";
-import {axisBottom, axisLeft, axisRight} from "/ui/web_modules/d3-axis.js";
-import {line as d3Line} from "/ui/web_modules/d3-shape.js";
-import {interpolateTransformSvg} from "/ui/web_modules/d3-interpolate.js";
-import {brushX, brushSelection} from "/ui/web_modules/d3-brush.js";
-import {max as d3Max} from "/ui/web_modules/d3-array.js"
+import angular from "angular";
+import _ from "lodash";
+import {select} from "d3-selection";
+import {bisector} from "d3-array";
+import {schemeTableau10} from "d3-scale-chromatic";
+import {scaleTime, scaleLinear} from "d3-scale";
+import {axisBottom, axisLeft, axisRight} from "d3-axis";
+import {line as d3Line} from "d3-shape";
+import {interpolateTransformSvg} from "d3-interpolate";
+import {brushX, brushSelection} from "d3-brush";
+import {max as d3Max} from "d3-array"
 
 export default "mnD3Service";
 

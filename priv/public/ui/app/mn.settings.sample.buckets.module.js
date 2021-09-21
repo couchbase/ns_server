@@ -8,11 +8,11 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {NgModule} from '../web_modules/@angular/core.js';
-import {UIRouterModule} from "../web_modules/@uirouter/angular.js";
-import {MnSharedModule} from './mn.shared.module.js';
-import {ReactiveFormsModule} from '../web_modules/@angular/forms.js';
+import {NgModule} from '@angular/core';
+import {UIRouterModule} from '@uirouter/angular';
+import {ReactiveFormsModule} from '@angular/forms';
 
+import {MnSharedModule} from './mn.shared.module.js';
 import {MnSettingsSampleBucketsComponent} from './mn.settings.sample.buckets.component.js';
 import {MnSettingsSampleBucketsService} from './mn.settings.sample.buckets.service.js';
 import {MnElementCraneModule} from "./mn.element.crane.js";

@@ -7,13 +7,13 @@
   be governed by the Apache License, Version 2.0, included in the file
   licenses/APL2.txt.
 */
+import {Component, ChangeDetectionStrategy} from '@angular/core';
+import {pluck, filter, shareReplay, map} from 'rxjs/operators';
+import {DatePipe} from '@angular/common';
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
-import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
-import {pluck, filter, shareReplay, map} from "../web_modules/rxjs/operators.js";
 import {MnLogsListService} from './mn.logs.list.service.js';
 import {MnHelperService} from './mn.helper.service.js';
-import {DatePipe} from '../web_modules/@angular/common.js';
 
 export {MnLogsListComponent};
 

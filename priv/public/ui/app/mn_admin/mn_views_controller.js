@@ -8,24 +8,25 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import uiSelect from "/ui/web_modules/ui-select.js";
-import uiRouter from "/ui/web_modules/@uirouter/angularjs.js";
-import uiBootstrap from "/ui/web_modules/angular-ui-bootstrap.js";
-import uiCodemirror from "/ui/libs/angular-ui-codemirror.js";
+import angular from "angular";
+import uiSelect from "ui-select";
+import uiRouter from "@uirouter/angularjs";
+import uiBootstrap from "angular-ui-bootstrap";
+import uiCodemirror from "angular-ui-codemirror";
+import {downgradeInjectable} from '@angular/upgrade/static';
 
-import ngSanitize from "/ui/web_modules/angular-sanitize.js";
-import ngMessages from "/ui/web_modules/angular-messages.js";
+import ngSanitize from "angular-sanitize";
+import ngMessages from "angular-messages";
 
-import mnCompaction from "/ui/app/components/mn_compaction.js";
-import mnHelper from "/ui/app/components/mn_helper.js";
-import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
-import mnPoll from "/ui/app/components/mn_poll.js";
-import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
-import mnSpinner from "/ui/app/components/directives/mn_spinner.js";
-import mnMainSpinner from "/ui/app/components/directives/mn_main_spinner.js";
+import mnCompaction from "../components/mn_compaction.js";
+import mnHelper from "../components/mn_helper.js";
+import mnPromiseHelper from "../components/mn_promise_helper.js";
+import mnPoll from "../components/mn_poll.js";
+import mnPoolDefault from "../components/mn_pool_default.js";
+import mnSpinner from "../components/directives/mn_spinner.js";
+import mnMainSpinner from "../components/directives/mn_main_spinner.js";
 
-import mnFilter from "/ui/app/components/directives/mn_filter/mn_filter.js";
+import mnFilter from "../components/directives/mn_filter/mn_filter.js";
 
 import mnViewsListService from "./mn_views_list_service.js";
 import mnViewsEditingService from "./mn_views_editing_service.js";
@@ -36,8 +37,8 @@ import mnViewsDeleteViewDialogController from "./mn_views_delete_view_dialog_con
 import mnViewsDeleteDdocDialogController from "./mn_views_delete_ddoc_dialog_controller.js";
 import mnViewsCreateDialogController from "./mn_views_create_dialog_controller.js";
 import mnViewsCopyDialogController from "./mn_views_copy_dialog_controller.js";
-import {downgradeInjectable} from '/ui/web_modules/@angular/upgrade/static.js';
-import {QwDialogService} from "/_p/ui/query/angular-directives/qw.dialog.service.js";
+
+import {QwDialogService} from "../../../_p/ui/query/angular-directives/qw.dialog.service.js";
 
 export default "mnViews";
 

@@ -8,18 +8,19 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { Injectable } from "../web_modules/@angular/core.js";
-import { HttpClient } from '../web_modules/@angular/common/http.js';
-import { BehaviorSubject, combineLatest, timer, of } from "../web_modules/rxjs.js";
-import { map, shareReplay, switchMap, throttleTime} from '../web_modules/rxjs/operators.js';
-import { pipe, filter, propEq, sortBy, prop, groupBy } from "../web_modules/ramda.js";
-import { MnStatsService } from "./mn.stats.service.js"
-import { MnTasksService } from './mn.tasks.service.js';
-import { MnHttpRequest } from './mn.http.request.js';
+import {Injectable} from '@angular/core';
+import {HttpClient} from '@angular/common/http';
+import {BehaviorSubject, combineLatest, timer, of} from 'rxjs';
+import {map, shareReplay, switchMap, throttleTime} from 'rxjs/operators';
+import {pipe, filter, propEq, sortBy, prop, groupBy} from 'ramda';
+
+import {MnStatsService} from "./mn.stats.service.js"
+import {MnTasksService} from './mn.tasks.service.js';
+import {MnHttpRequest} from './mn.http.request.js';
 
 let collectionDelimiter = ".";
 
-export { MnXDCRService, collectionDelimiter };
+export {MnXDCRService, collectionDelimiter};
 
 class MnXDCRService {
   static get annotations() { return [

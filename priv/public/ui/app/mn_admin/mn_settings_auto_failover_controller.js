@@ -8,11 +8,11 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import _ from "/ui/web_modules/lodash.js";
+import angular from "angular";
+import _ from "lodash";
 
-import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
-import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
+import mnPoolDefault from "../components/mn_pool_default.js";
+import mnPromiseHelper from "../components/mn_promise_helper.js";
 
 import mnSettingsClusterService from "./mn_settings_cluster_service.js";
 import mnSettingsAutoFailoverService from "./mn_settings_auto_failover_service.js";

@@ -8,10 +8,11 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import _ from "/ui/web_modules/lodash.js";
-import mnBucketsService from "/ui/app/mn_admin/mn_buckets_service.js";
-import {BehaviorSubject} from "/ui/web_modules/rxjs.js";
+import angular from 'angular';
+import _ from 'lodash';
+import {BehaviorSubject} from 'rxjs';
+
+import mnBucketsService from '../mn_admin/mn_buckets_service.js';
 
 export default "mnPermissions";
 

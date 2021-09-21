@@ -8,22 +8,24 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import uiBootstrap from "/ui/web_modules/angular-ui-bootstrap.js";
+import angular from 'angular';
+import uiBootstrap from 'angular-ui-bootstrap';
+import {Subject} from 'rxjs';
+import {takeUntil, filter} from 'rxjs/operators';
 
-import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
-import mnHelper from "/ui/app/components/mn_helper.js";
-import mnFilters from "/ui/app/components/mn_filters.js";
-import mnSpinner from "/ui/app/components/directives/mn_spinner.js";
-import mnMainSpinner from "/ui/app/components/directives/mn_main_spinner.js";
-import mnPoll from "/ui/app/components/mn_poll.js";
-import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
-import mnAlertsService from "/ui/app/components/mn_alerts.js";
-import mnPermissions from "/ui/app/components/mn_permissions.js";
-import mnSearch from "/ui/app/components/directives/mn_search/mn_search_directive.js";
-import mnSortableTable from "/ui/app/components/directives/mn_sortable_table.js";
-import mnElementCrane from "/ui/app/components/directives/mn_element_crane/mn_element_crane.js";
-import mnDetailStats from "/ui/app/components/directives/mn_detail_stats_controller.js";
+import mnPromiseHelper from "../components/mn_promise_helper.js";
+import mnHelper from "../components/mn_helper.js";
+import mnFilters from "../components/mn_filters.js";
+import mnSpinner from "../components/directives/mn_spinner.js";
+import mnMainSpinner from "../components/directives/mn_main_spinner.js";
+import mnPoll from "../components/mn_poll.js";
+import mnPoolDefault from "../components/mn_pool_default.js";
+import mnAlertsService from "../components/mn_alerts.js";
+import mnPermissions from "../components/mn_permissions.js";
+import mnSearch from "../components/directives/mn_search/mn_search_directive.js";
+import mnSortableTable from "../components/directives/mn_sortable_table.js";
+import mnElementCrane from "../components/directives/mn_element_crane/mn_element_crane.js";
+import mnDetailStats from "../components/directives/mn_detail_stats_controller.js";
 
 import mnStatisticsNewService from "./mn_statistics_service.js";
 import mnGsiService from "./mn_gsi_service.js";
@@ -31,9 +33,8 @@ import mnGsiService from "./mn_gsi_service.js";
 import {mnGsiItemController, mnGsiItemStatsController, mnGsiItemDetails} from "./mn_gsi_item_details.js";
 import mnFooterStatsController from "./mn_gsi_footer_controller.js";
 import mnGsiTableDirective from "./mn_gsi_table_directive.js";
-import mnKeyspaceSelectorDowngradeModule from "/ui/app/mn.keyspace.selector.downgrade.module.js"
-import {Subject} from "/ui/web_modules/rxjs.js";
-import {takeUntil, filter} from "/ui/web_modules/rxjs/operators.js";
+import mnKeyspaceSelectorDowngradeModule from "../mn.keyspace.selector.downgrade.module.js"
+
 export default 'mnGsi';
 
 angular

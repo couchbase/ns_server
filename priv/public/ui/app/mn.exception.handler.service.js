@@ -8,13 +8,13 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { Injectable } from '../web_modules/@angular/core.js';
-import { HttpClient, HttpErrorResponse } from '../web_modules/@angular/common/http.js';
-import { Subject } from '../web_modules/rxjs.js'
-import { take, filter, map } from '../web_modules/rxjs/operators.js';
-import { Rejection } from '../web_modules/@uirouter/core.js';
+import {Injectable} from '@angular/core';
+import {HttpClient, HttpErrorResponse} from '@angular/common/http';
+import {Subject} from 'rxjs'
+import {take, filter, map} from 'rxjs/operators';
+import {Rejection} from '@uirouter/core';
 
-export { MnExceptionHandlerService };
+export {MnExceptionHandlerService};
 
 class MnExceptionHandlerService {
   static get annotations() { return [

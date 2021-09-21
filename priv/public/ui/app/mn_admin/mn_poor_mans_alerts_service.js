@@ -8,12 +8,12 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import _ from "/ui/web_modules/lodash.js";
+import angular from "angular";
+import _ from "lodash";
+import uiRouter from "@uirouter/angularjs";
+import uiBootstrap from "angular-ui-bootstrap";
 
-import uiRouter from "/ui/web_modules/@uirouter/angularjs.js";
-import uiBootstrap from "/ui/web_modules/angular-ui-bootstrap.js";
-import mnHelper from "/ui/app/components/mn_helper.js";
+import mnHelper from "../components/mn_helper.js";
 
 export default "mnPoorMansAlertsService";
 

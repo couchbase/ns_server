@@ -8,19 +8,19 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import uiRouter from "/ui/web_modules/@uirouter/angularjs.js";
+import angular from "angular";
+import uiRouter from "@uirouter/angularjs";
 
-import mnPoll from "/ui/app/components/mn_poll.js";
-import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
-import mnHelper from "/ui/app/components/mn_helper.js";
-import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
+import mnPoll from "../components/mn_poll.js";
+import mnPromiseHelper from "../components/mn_promise_helper.js";
+import mnHelper from "../components/mn_helper.js";
+import mnPoolDefault from "../components/mn_pool_default.js";
 import mnBucketsService from "./mn_buckets_service.js";
 import mnServersService from "./mn_servers_service.js";
 import mnStatisticsNew from "./mn_statistics_controller.js";
-import mnMainSpinner from "/ui/app/components/directives/mn_main_spinner.js";
+import mnMainSpinner from "../components/directives/mn_main_spinner.js";
 
-import mnElementCrane from "/ui/app/components/directives/mn_element_crane/mn_element_crane.js";
+import mnElementCrane from "../components/directives/mn_element_crane/mn_element_crane.js";
 
 export default 'mnOverview';
 

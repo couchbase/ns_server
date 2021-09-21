@@ -8,11 +8,12 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
-import {FormGroup} from '../web_modules/@angular/forms.js';
-import {interval} from '../web_modules/rxjs.js';
-import {NgbActiveModal} from '../web_modules/@ng-bootstrap/ng-bootstrap.js';
-import {scan, startWith} from '../web_modules/rxjs/operators.js';
+import {Component, ChangeDetectionStrategy} from '@angular/core';
+import {FormGroup} from '@angular/forms';
+import {interval} from 'rxjs';
+import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
+import {scan, startWith} from 'rxjs/operators';
+
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 
 export {MnSessionTimeoutDialogComponent};

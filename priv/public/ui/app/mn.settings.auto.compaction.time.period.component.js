@@ -8,9 +8,9 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { Component, ChangeDetectionStrategy } from '/ui/web_modules/@angular/core.js';
+import {Component, ChangeDetectionStrategy} from '@angular/core';
 
-export { MnSettingsAutoCompactionTimePeriodComponent };
+export {MnSettingsAutoCompactionTimePeriodComponent};
 
 class MnSettingsAutoCompactionTimePeriodComponent {
   static get annotations() { return [

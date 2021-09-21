@@ -8,7 +8,7 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "../../web_modules/angular.js";
+import angular from "angular";
 import mnSpinner from "../components/directives/mn_spinner.js";
 import mnCertificatesService from "./mn_certificates_service.js";
 import mnHelper from "../components/mn_helper.js";

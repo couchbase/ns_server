@@ -8,14 +8,15 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { NgModule } from '/ui/web_modules/@angular/core.js';
-import { NgbModule } from '/ui/web_modules/@ng-bootstrap/ng-bootstrap.js';
-import { MnSharedModule } from './mn.shared.module.js';
-import { ReactiveFormsModule } from '/ui/web_modules/@angular/forms.js';
-import { MnSettingsAutoCompactionFormComponent } from './mn.settings.auto.compaction.form.component.js';
-import { MnSettingsAutoCompactionTimePeriodComponent } from './mn.settings.auto.compaction.time.period.component.js';
+import {NgModule} from '@angular/core';
+import {NgbModule} from '@ng-bootstrap/ng-bootstrap';
+import {ReactiveFormsModule} from '@angular/forms';
 
-export { MnSettingsAutoCompactionFormModule };
+import {MnSharedModule} from './mn.shared.module.js';
+import {MnSettingsAutoCompactionFormComponent} from './mn.settings.auto.compaction.form.component.js';
+import {MnSettingsAutoCompactionTimePeriodComponent} from './mn.settings.auto.compaction.time.period.component.js';
+
+export {MnSettingsAutoCompactionFormModule};
 
 class MnSettingsAutoCompactionFormModule {
   static get annotations() { return [

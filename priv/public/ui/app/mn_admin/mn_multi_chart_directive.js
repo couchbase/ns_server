@@ -7,8 +7,8 @@ file, in accordance with the Business Source License, use of this software will
 be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
-import angular from "/ui/web_modules/angular.js";
-import _ from "/ui/web_modules/lodash.js"
+import angular from "angular";
+import _ from "lodash"
 
 export default mnMultiChartDirective;
 

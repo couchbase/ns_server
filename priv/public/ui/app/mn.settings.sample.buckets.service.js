@@ -7,15 +7,15 @@ file, in accordance with the Business Source License, use of this software will
 be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
-import { Injectable } from "../web_modules/@angular/core.js";
-import { HttpClient } from '../web_modules/@angular/common/http.js';
-import { map, switchMap, shareReplay } from '../web_modules/rxjs/operators.js';
-import { MnHttpRequest } from './mn.http.request.js';
-import { MnBucketsService } from "./mn.buckets.service.js";
+import {Injectable} from '@angular/core';
+import {HttpClient} from '@angular/common/http';
+import {map, switchMap, shareReplay} from 'rxjs/operators';
+import {groupBy, prop} from 'ramda';
 
-import { groupBy, prop } from '../web_modules/ramda.js';
+import {MnHttpRequest} from './mn.http.request.js';
+import {MnBucketsService} from "./mn.buckets.service.js";
 
-export { MnSettingsSampleBucketsService }
+export {MnSettingsSampleBucketsService}
 
 class MnSettingsSampleBucketsService {
   static get annotations() { return [

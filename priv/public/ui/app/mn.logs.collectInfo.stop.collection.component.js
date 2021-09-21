@@ -8,13 +8,14 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {ChangeDetectionStrategy, Component} from '/ui/web_modules/@angular/core.js';
+import {ChangeDetectionStrategy, Component} from '@angular/core';
+import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
+
 import {MnLifeCycleHooksToStream} from './mn.core.js';
-import {NgbActiveModal} from '/ui/web_modules/@ng-bootstrap/ng-bootstrap.js';
 import {MnFormService} from './mn.form.service.js';
 import {MnLogsCollectInfoService} from './mn.logs.collectInfo.service.js';
 
-export { MnLogsCollectInfoStopCollectionComponent };
+export {MnLogsCollectInfoStopCollectionComponent};
 
 class MnLogsCollectInfoStopCollectionComponent extends MnLifeCycleHooksToStream {
 

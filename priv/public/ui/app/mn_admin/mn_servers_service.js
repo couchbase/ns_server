@@ -8,11 +8,11 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import _ from "/ui/web_modules/lodash.js";
+import angular from "angular";
+import _ from "lodash";
+import uiBootstrap from "angular-ui-bootstrap";
 
-import uiBootstrap from "/ui/web_modules/angular-ui-bootstrap.js";
-import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
+import mnPoolDefault from "../components/mn_pool_default.js";
 
 export default "mnServersService";
 

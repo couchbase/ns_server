@@ -1,8 +1,8 @@
 /*! ngclipboard - v1.1.1 - 2016-02-26
  * https://github.com/sachinchoolur/ngclipboard
  * Copyright (c) 2016 Sachin; Licensed MIT */
-import angular from "/ui/web_modules/angular.js";
-import Clipboard from "/ui/web_modules/clipboard.js";
+import angular from "angular";
+import Clipboard from "clipboard";
 var MODULE_NAME = 'ngclipboard';
 export default MODULE_NAME;
 

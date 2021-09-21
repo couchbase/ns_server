@@ -8,12 +8,14 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {NgModule} from '../web_modules/@angular/core.js';
+import {NgModule} from '@angular/core';
 
-import {ReactiveFormsModule} from '../web_modules/@angular/forms.js';
-import {HttpClientJsonpModule} from '../web_modules/@angular/common/http.js';
-import {CommonModule} from '../web_modules/@angular/common.js';
-import {NgbModule} from '../web_modules/@ng-bootstrap/ng-bootstrap.js';
+import {UIRouterModule} from '@uirouter/angular';
+import {UIRouterUpgradeModule} from '@uirouter/angular-hybrid';
+import {ReactiveFormsModule} from '@angular/forms';
+import {HttpClientJsonpModule, HttpClientModule, HTTP_INTERCEPTORS} from '@angular/common/http';
+import {CommonModule} from '@angular/common';
+import {NgbModule} from '@ng-bootstrap/ng-bootstrap';
 
 import {MnWizardComponent} from './mn.wizard.component.js';
 import {MnWizardWelcomeComponent} from './mn.wizard.welcome.component.js';
@@ -25,9 +27,6 @@ import {MnWizardService} from './mn.wizard.service.js';
 import {MnAuthService} from './mn.auth.service.js';
 import {MnSharedModule} from './mn.shared.module.js';
 import {MnPipesModule} from './mn.pipes.module.js';
-import {HttpClientModule} from '../web_modules/@angular/common/http.js';
-import {UIRouterModule} from '../web_modules/@uirouter/angular.js';
-import {UIRouterUpgradeModule} from '../web_modules/@uirouter/angular-hybrid.js';
 
 import {MnNodeStorageConfigComponent} from './mn.node.storage.config.component.js';
 import {MnHostnameConfigComponent} from './mn.hostname.config.component.js';
@@ -35,7 +34,6 @@ import {MnServicesConfigComponent} from './mn.services.config.component.js';
 import {MnStorageModeComponent} from './mn.storage.mode.component.js';
 import {MnPathFieldComponent} from './mn.path.field.component.js';
 
-import {HTTP_INTERCEPTORS} from '../web_modules/@angular/common/http.js';
 import {MnHttpInterceptor} from './mn.http.interceptor.js';
 
 let states = [{

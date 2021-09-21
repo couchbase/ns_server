@@ -8,11 +8,11 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
-import mnSessionService from "/ui/app/components/mn_session.js";
-import mnSpinner from "/ui/app/components/directives/mn_spinner.js";
-import mnMainSpinner from "/ui/app/components/directives/mn_main_spinner.js";
+import angular from "angular";
+import mnPromiseHelper from "../components/mn_promise_helper.js";
+import mnSessionService from "../components/mn_session.js";
+import mnSpinner from "../components/directives/mn_spinner.js";
+import mnMainSpinner from "../components/directives/mn_main_spinner.js";
 
 export default 'mnSession';
 

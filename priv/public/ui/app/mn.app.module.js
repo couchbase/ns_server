@@ -8,24 +8,27 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import app from "./app.js";
-import { ajsUpgradedProviders } from './ajs.upgraded.providers.js';
-import { MnAppService } from './mn.app.service.js';
-import { MnHelperService } from './mn.helper.service.js';
-import { MnTasksService } from './mn.tasks.service.js';
+// app import should go first in order to load AngularJS before
+// @angular/upgrade/static
+import app from './app.js';
 
-import { MnSecurityService } from './mn.security.service.js';
-import { MnServerGroupsService } from './mn.server.groups.service.js';
-import { mnAppImports } from './mn.app.imports.js';
-import { MnFormService } from './mn.form.service.js';
-import { MnHttpInterceptor } from './mn.http.interceptor.js';
-import { MnExceptionHandlerService } from './mn.exception.handler.service.js';
-import { NgModule, ErrorHandler } from '../web_modules/@angular/core.js';
-import { HTTP_INTERCEPTORS } from '../web_modules/@angular/common/http.js';
-import { UpgradeModule } from '../web_modules/@angular/upgrade/static.js';
-import { NgbModalConfig } from '../web_modules/@ng-bootstrap/ng-bootstrap.js';
+import {NgModule, ErrorHandler} from '@angular/core';
+import {HTTP_INTERCEPTORS} from '@angular/common/http';
+import {UpgradeModule} from '@angular/upgrade/static';
+import {NgbModalConfig} from '@ng-bootstrap/ng-bootstrap';
 
-export { MnAppModule };
+import {ajsUpgradedProviders} from './ajs.upgraded.providers.js';
+import {MnAppService} from './mn.app.service.js';
+import {MnHelperService} from './mn.helper.service.js';
+import {MnTasksService} from './mn.tasks.service.js';
+import {MnSecurityService} from './mn.security.service.js';
+import {MnServerGroupsService} from './mn.server.groups.service.js';
+import {mnAppImports} from './mn.app.imports.js';
+import {MnFormService} from './mn.form.service.js';
+import {MnHttpInterceptor} from './mn.http.interceptor.js';
+import {MnExceptionHandlerService} from './mn.exception.handler.service.js';
+
+export {MnAppModule};
 
 class MnAppModule {
   static get annotations() { return [

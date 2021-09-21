@@ -8,10 +8,10 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import saveAs from "/ui/web_modules/file-saver.js";
-import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
-import mnStatisticsDescriptionService from "/ui/app/mn_admin/mn_statistics_description_service.js";
+import angular from 'angular';
+import saveAs from 'file-saver';
+import mnPromiseHelper from "../components/mn_promise_helper.js";
+import mnStatisticsDescriptionService from "./mn_statistics_description_service.js";
 
 export default "mnDeveloperSettings";
 

@@ -8,12 +8,13 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { Injectable } from '../web_modules/@angular/core.js';
-import { pluck, distinctUntilChanged, shareReplay, map, switchMap } from '../web_modules/rxjs/operators.js';
-import { combineLatest } from "../web_modules/rxjs.js";
-import { HttpClient } from '../web_modules/@angular/common/http.js';
-import { MnBucketsService } from './mn.buckets.service.js';
-import { MnAdminService } from './mn.admin.service.js';
+import {Injectable} from '@angular/core';
+import {pluck, distinctUntilChanged, shareReplay, map, switchMap} from 'rxjs/operators';
+import {combineLatest} from 'rxjs';
+import {HttpClient} from '@angular/common/http';
+
+import {MnBucketsService} from './mn.buckets.service.js';
+import {MnAdminService} from './mn.admin.service.js';
 
 let bucketSpecificPermissions = [function (bucket) {
   var name = bucket.name;

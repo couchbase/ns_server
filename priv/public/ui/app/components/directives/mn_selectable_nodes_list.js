@@ -8,12 +8,13 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import _ from "/ui/web_modules/lodash.js";
-import mnFilters from "/ui/app/components/mn_filters.js";
-import mnSearch from "/ui/app/components/directives/mn_search/mn_search_directive.js";
+import angular from 'angular';
+import _ from 'lodash';
 
-export default "mnSelectableNodesList";
+import mnFilters from '../mn_filters.js';
+import mnSearch from './mn_search/mn_search_directive.js';
+
+export default 'mnSelectableNodesList';
 
 angular
   .module("mnSelectableNodesList", [mnFilters, mnSearch])

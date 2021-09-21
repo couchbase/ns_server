@@ -8,8 +8,8 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import uiBootstrap from "/ui/web_modules/angular-ui-bootstrap.js";
+import angular from 'angular';
+import uiBootstrap from 'angular-ui-bootstrap';
 
 import mnBucketsDeleteDialogController from "./mn_buckets_delete_dialog_controller.js";
 import mnBucketsDetailsController from "./mn_buckets_details_controller.js";
@@ -19,20 +19,20 @@ import mnBucketsListItemController from "./mn_buckets_list_item_controller.js";
 import mnBucketsList from "./mn_buckets_list_directive.js";
 import mnBucketsDetailsDialogService from "./mn_buckets_details_dialog_service.js";
 
-import mnHelper from "/ui/app/components/mn_helper.js";
-import mnBarUsage from "/ui/app/components/directives/mn_bar_usage/mn_bar_usage.js";
-import mnBucketsForm from "/ui/app/components/directives/mn_buckets_form/mn_buckets_form.js";
-import mnSearch from "/ui/app/components/directives/mn_search/mn_search_directive.js";
-import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
-import mnPoll from "/ui/app/components/mn_poll.js";
-import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
-import mnSpinner from "/ui/app/components/directives/mn_spinner.js";
-import mnMainSpinner from "/ui/app/components/directives/mn_main_spinner.js";
-import mnFilters from "/ui/app/components/mn_filters.js";
-import mnTasksDetails from "/ui/app/components/mn_tasks_details.js";
-import mnWarmupProgress from "/ui/app/components/directives/mn_warmup_progress/mn_warmup_progress.js";
-import mnElementCrane from "/ui/app/components/directives/mn_element_crane/mn_element_crane.js";
-import mnSortableTable from "/ui/app/components/directives/mn_sortable_table.js";
+import mnHelper from "../components/mn_helper.js";
+import mnBarUsage from "../components/directives/mn_bar_usage/mn_bar_usage.js";
+import mnBucketsForm from "../components/directives/mn_buckets_form/mn_buckets_form.js";
+import mnSearch from "../components/directives/mn_search/mn_search_directive.js";
+import mnPromiseHelper from "../components/mn_promise_helper.js";
+import mnPoll from "../components/mn_poll.js";
+import mnPoolDefault from "../components/mn_pool_default.js";
+import mnSpinner from "../components/directives/mn_spinner.js";
+import mnMainSpinner from "../components/directives/mn_main_spinner.js";
+import mnFilters from "../components/mn_filters.js";
+import mnTasksDetails from "../components/mn_tasks_details.js";
+import mnWarmupProgress from "../components/directives/mn_warmup_progress/mn_warmup_progress.js";
+import mnElementCrane from "../components/directives/mn_element_crane/mn_element_crane.js";
+import mnSortableTable from "../components/directives/mn_sortable_table.js";
 
 export default 'mnBuckets';
 

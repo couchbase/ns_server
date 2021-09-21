@@ -8,13 +8,13 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js'
-import {NgbModal} from "../web_modules/@ng-bootstrap/ng-bootstrap.js"
-import {takeUntil} from '../web_modules/rxjs/operators.js';
-import {Subject, BehaviorSubject} from "../web_modules/rxjs.js";
-import {UIRouter} from "../web_modules/@uirouter/angular.js";
-import {MnPermissions, $rootScope} from './ajs.upgraded.providers.js';
+import {Component, ChangeDetectionStrategy} from '@angular/core';
+import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
+import {takeUntil} from 'rxjs/operators';
+import {Subject, BehaviorSubject} from 'rxjs';
+import {UIRouter} from '@uirouter/angular';
 
+import {MnPermissions, $rootScope} from './ajs.upgraded.providers.js';
 import {MnLifeCycleHooksToStream, DetailsHashObserver} from './mn.core.js';
 import {MnCollectionsService} from './mn.collections.service.js';
 import {MnCollectionsDeleteScopeComponent} from './mn.collections.delete.scope.component.js';

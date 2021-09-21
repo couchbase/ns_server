@@ -7,10 +7,10 @@ file, in accordance with the Business Source License, use of this software will
 be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
+import {NgModule} from '@angular/core';
+import {CommonModule} from '@angular/common';
 
 import {MnTextExpanderComponent} from './mn.text.expander.component.js';
-import {NgModule} from '../web_modules/@angular/core.js';
-import {CommonModule} from '../web_modules/@angular/common.js';
 import {MnPipesModule} from './mn.pipes.module.js';
 
 export {MnTextExpanderModule}

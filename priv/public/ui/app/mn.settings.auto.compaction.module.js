@@ -8,15 +8,16 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { NgModule } from '/ui/web_modules/@angular/core.js';
-import { UIRouterModule } from "/ui/web_modules/@uirouter/angular.js";
-import { MnSharedModule } from './mn.shared.module.js';
-import { MnSettingsAutoCompactionComponent } from './mn.settings.auto.compaction.component.js';
-import { MnSettingsAutoCompactionService } from './mn.settings.auto.compaction.service.js';
-import { MnSettingsAutoCompactionFormModule } from './mn.settings.auto.compaction.form.module.js';
-import { ReactiveFormsModule } from '/ui/web_modules/@angular/forms.js';
-import { MnElementCraneModule } from "./mn.element.crane.js";
-import { MnHelperService } from './mn.helper.service.js';
+import {NgModule} from '@angular/core';
+import {UIRouterModule} from '@uirouter/angular';
+import {ReactiveFormsModule} from '@angular/forms';
+
+import {MnSharedModule} from './mn.shared.module.js';
+import {MnSettingsAutoCompactionComponent} from './mn.settings.auto.compaction.component.js';
+import {MnSettingsAutoCompactionService} from './mn.settings.auto.compaction.service.js';
+import {MnSettingsAutoCompactionFormModule} from './mn.settings.auto.compaction.form.module.js'
+import {MnElementCraneModule} from "./mn.element.crane.js";
+import {MnHelperService} from './mn.helper.service.js';
 
 const autoCompactionState = {
   url: "/autoCompaction",

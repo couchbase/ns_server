@@ -8,11 +8,12 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import mnFilters from "/ui/app/components/mn_filters.js";
-import _ from "/ui/web_modules/lodash.js";
+import angular from 'angular';
+import _ from 'lodash';
 
-export default "mnBarUsage";
+import mnFilters from '../../mn_filters.js';
+
+export default 'mnBarUsage';
 
 angular
   .module('mnBarUsage', [mnFilters])

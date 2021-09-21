@@ -8,12 +8,13 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { Injectable } from '../web_modules/@angular/core.js';
+import {Injectable} from '@angular/core';
+import {HttpParams} from '@angular/common/http';
+import {is} from 'ramda';
+import {throwError} from 'rxjs';
+import {tap, catchError} from 'rxjs/operators';
+
 import { MnAppService } from './mn.app.service.js';
-import { HttpParams } from '../web_modules/@angular/common/http.js';
-import { is } from '../web_modules/ramda.js';
-import { throwError } from '../web_modules/rxjs.js';
-import { tap, catchError } from '../web_modules/rxjs/operators.js';
 
 export { MnHttpInterceptor };
 

@@ -8,15 +8,16 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {ChangeDetectionStrategy, Component} from '../web_modules/@angular/core.js';
+import {ChangeDetectionStrategy, Component} from '@angular/core';
+import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
+import {ClipboardService} from 'ngx-clipboard';
+import {takeUntil, filter, map} from 'rxjs/operators';
+
 import {MnLifeCycleHooksToStream} from './mn.core.js';
-import {NgbActiveModal} from '../web_modules/@ng-bootstrap/ng-bootstrap.js';
-import {ClipboardService} from '../web_modules/ngx-clipboard.js';
 import {MnAlertsService} from './ajs.upgraded.providers.js';
 import {MnLogsCollectInfoService} from './mn.logs.collectInfo.service.js';
-import {takeUntil, filter, map} from '../web_modules/rxjs/operators.js';
 
-export { MnClusterSummaryDialogComponent };
+export {MnClusterSummaryDialogComponent};
 
 class MnClusterSummaryDialogComponent extends MnLifeCycleHooksToStream {
 

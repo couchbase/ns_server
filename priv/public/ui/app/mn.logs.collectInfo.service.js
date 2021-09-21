@@ -8,12 +8,14 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Injectable} from '../web_modules/@angular/core.js';
-import {NgbModal} from '../web_modules/@ng-bootstrap/ng-bootstrap.js';
-import {BehaviorSubject, combineLatest} from '../web_modules/rxjs.js';
+import {Injectable} from '@angular/core';
+import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
+import {BehaviorSubject, combineLatest} from 'rxjs';
 import {map, pluck, switchMap, shareReplay, filter,
-       distinctUntilChanged} from '../web_modules/rxjs/operators.js';
-import {HttpClient} from '../web_modules/@angular/common/http.js';
+        distinctUntilChanged} from 'rxjs/operators';
+import {HttpClient} from '@angular/common/http';
+
+
 import {MnHttpRequest} from './mn.http.request.js';
 import {MnAdminService} from './mn.admin.service.js';
 import {MnTasksService} from './mn.tasks.service.js';

@@ -8,15 +8,14 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js'
-import {NgbModal} from "../web_modules/@ng-bootstrap/ng-bootstrap.js"
-import {combineLatest, Subject} from "../web_modules/rxjs.js";
-import {pluck, map, shareReplay, takeUntil} from '../web_modules/rxjs/operators.js';
-import {UIRouter} from "../web_modules/@uirouter/angular.js";
+import {Component, ChangeDetectionStrategy} from '@angular/core';
+import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
+import {combineLatest, Subject} from 'rxjs';
+import {pluck, map, shareReplay, takeUntil} from 'rxjs/operators';
+import {UIRouter} from '@uirouter/angular';
+
 import {MnPermissions} from './ajs.upgraded.providers.js';
-
 import {MnLifeCycleHooksToStream, DetailsHashObserver} from './mn.core.js';
-
 import {MnXDCRService} from './mn.xdcr.service.js';
 import {MnXDCRErrorsComponent} from "./mn.xdcr.errors.component.js";
 

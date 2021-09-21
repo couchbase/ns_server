@@ -8,19 +8,19 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import _ from "/ui/web_modules/lodash.js";
-import {min as d3Min, max as d3Max} from "/ui/web_modules/d3-array.js"
+import angular from 'angular';
+import _ from 'lodash';
+import {min as d3Min, max as d3Max} from 'd3-array';
+import uiRouter from '@uirouter/angularjs';
 
-import uiRouter from "/ui/web_modules/@uirouter/angularjs.js";
-import mnFilters from "/ui/app/components/mn_filters.js";
-import mnHelper from "/ui/app/components/mn_helper.js";
+import mnFilters from "../components/mn_filters.js";
+import mnHelper from "../components/mn_helper.js";
 
 import mnD3Service from "./mn_d3_service.js";
 import mnStatisticsNewService from "./mn_statistics_service.js";
 import mnMultiChartDirective from "./mn_multi_chart_directive.js";
 
-import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
+import mnPoolDefault from "../components/mn_pool_default.js";
 
 export default "mnStatisticsChart";
 

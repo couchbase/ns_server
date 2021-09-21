@@ -8,11 +8,11 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { BehaviorSubject, Subject } from '../web_modules/rxjs.js';
-import { distinctUntilChanged, withLatestFrom, takeUntil,
-         map, pluck } from '../web_modules/rxjs/operators.js';
+import {BehaviorSubject, Subject} from 'rxjs';
+import {distinctUntilChanged, withLatestFrom, takeUntil,
+        map, pluck} from 'rxjs/operators';
 
-export { MnLifeCycleHooksToStream, DetailsHashObserver, singletonGuard };
+export {MnLifeCycleHooksToStream, DetailsHashObserver, singletonGuard};
 
 let componentLifecycleHooks = [
   "OnChanges",

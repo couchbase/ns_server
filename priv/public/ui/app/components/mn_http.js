@@ -8,10 +8,11 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import mnFilters from "/ui/app/components/mn_filters.js";
-import mnPendingQueryKeeper from "/ui/app/components/mn_pending_query_keeper.js";
-import _ from "/ui/web_modules/lodash.js";
+import angular from 'angular';
+import _ from 'lodash';
+
+import mnFilters from './mn_filters.js';
+import mnPendingQueryKeeper from './mn_pending_query_keeper.js';
 
 export default 'mnHttp';
 

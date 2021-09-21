@@ -8,11 +8,11 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
-import {pipe, BehaviorSubject} from '../web_modules/rxjs.js';
-import {withLatestFrom, map, takeUntil, startWith, filter} from '../web_modules/rxjs/operators.js';
-import {UIRouter} from '../web_modules/@uirouter/angular.js';
-import {FormBuilder, Validators} from '../web_modules/@angular/forms.js'
+import {Component, ChangeDetectionStrategy} from '@angular/core';
+import {pipe, BehaviorSubject} from 'rxjs';
+import {withLatestFrom, map, takeUntil, startWith, filter} from 'rxjs/operators';
+import {UIRouter} from '@uirouter/angular';
+import {FormBuilder, Validators} from '@angular/forms'
 
 import {MnAlertsService, $rootScope} from './ajs.upgraded.providers.js';
 

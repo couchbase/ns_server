@@ -8,10 +8,10 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Injectable} from "../web_modules/@angular/core.js";
-import {BehaviorSubject, Subject} from "../web_modules/rxjs.js";
-import {filter} from "../web_modules/rxjs/operators.js";
-import {HttpErrorResponse} from '../web_modules/@angular/common/http.js';
+import {Injectable} from '@angular/core';
+import {BehaviorSubject, Subject} from 'rxjs';
+import {filter} from 'rxjs/operators';
+import {HttpErrorResponse} from '@angular/common/http';
 
 export {MnAppService};
 

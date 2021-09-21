@@ -8,10 +8,10 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import _ from "/ui/web_modules/lodash.js";
+import angular from "angular";
+import _ from "lodash";
 
-import mnTasksDetails from "/ui/app/components/mn_tasks_details.js";
+import mnTasksDetails from "../components/mn_tasks_details.js";
 
 export default "mnViewsListService";
 

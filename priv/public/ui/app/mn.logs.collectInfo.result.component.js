@@ -8,13 +8,14 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {ChangeDetectionStrategy, Component} from '/ui/web_modules/@angular/core.js';
+import {ChangeDetectionStrategy, Component} from '@angular/core';
+import {UIRouter} from '@uirouter/angular';
+import {switchMap, filter} from 'rxjs/operators';
+
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnLogsCollectInfoService} from './mn.logs.collectInfo.service.js';
 import {MnAdminService} from './mn.admin.service.js';
-import {UIRouter} from '/ui/web_modules/@uirouter/angular.js';
 import {MnTasksService} from './mn.tasks.service.js';
-import {switchMap, filter} from "../web_modules/rxjs/operators.js";
 
 export { MnLogsCollectInfoResultComponent };
 

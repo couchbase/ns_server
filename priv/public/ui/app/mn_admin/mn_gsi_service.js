@@ -8,10 +8,11 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import { QwQueryService } from "/_p/ui/query/angular-services/qw.query.service.js";
-import {downgradeInjectable} from '/ui/web_modules/@angular/upgrade/static.js';
-import {MnHelperService} from '/ui/app/mn.helper.service.js';
+import angular from "angular";
+import {downgradeInjectable} from '@angular/upgrade/static';
+
+import {QwQueryService} from "../../../_p/ui/query/angular-services/qw.query.service.js";
+import {MnHelperService} from '../mn.helper.service.js';
 
 export default 'mnGsiService';
 

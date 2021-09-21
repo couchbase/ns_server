@@ -8,11 +8,11 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import mnFilters from "/ui/app/components/mn_filters.js";
-import mnEqual from "/ui/app/components/directives/mn_validation/mn_equal.js";
+import angular from "angular";
+import mnFilters from "../components/mn_filters.js";
+import mnEqual from "../components/directives/mn_validation/mn_equal.js";
 
-import mnAuthService from "/ui/app/mn_auth/mn_auth_service.js";
+import mnAuthService from "../mn_auth/mn_auth_service.js";
 import mnResetPasswordDialogService from "./mn_reset_password_dialog_service.js"
 
 export default "mnResetPasswordDialog";

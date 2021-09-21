@@ -8,12 +8,10 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { ChangeDetectionStrategy,
-         Directive,
-         ElementRef} from '../web_modules/@angular/core.js';
-import { BehaviorSubject } from '../web_modules/rxjs.js';
-import { filter, takeUntil } from '../web_modules/rxjs/operators.js';
-import { MnLifeCycleHooksToStream } from './mn.core.js';
+import {ChangeDetectionStrategy, Directive, ElementRef} from '@angular/core';
+import {BehaviorSubject} from 'rxjs';
+import {filter, takeUntil} from 'rxjs/operators';
+import {MnLifeCycleHooksToStream} from './mn.core.js';
 
 export { MnFocusDirective };
 

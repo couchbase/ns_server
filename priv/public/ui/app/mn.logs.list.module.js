@@ -8,13 +8,13 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {NgModule} from '../web_modules/@angular/core.js';
-import {CommonModule, DatePipe} from '../web_modules/@angular/common.js';
+import {NgModule} from '@angular/core';
+import {CommonModule, DatePipe} from '@angular/common';
+import {UIRouterModule} from '@uirouter/angular';
+
 import {MnSharedModule} from './mn.shared.module.js';
-import {UIRouterModule} from '../web_modules/@uirouter/angular.js';
 import {MnInputFilterModule} from './mn.input.filter.module.js';
 import {MnTextExpanderModule} from './mn.text.expander.module.js';
-
 import {MnLogsListService} from './mn.logs.list.service.js';
 import {MnLogsListComponent} from './mn.logs.list.component.js';
 

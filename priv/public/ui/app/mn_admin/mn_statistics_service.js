@@ -8,19 +8,19 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import _ from "/ui/web_modules/lodash.js";
-import {timeFormat} from "/ui/web_modules/d3-time-format.js";
+import angular from "angular";
+import _ from "lodash";
+import {timeFormat} from "d3-time-format";
 import {timeMinute,
         timeHour,
         timeDay,
         timeMonth,
-        timeYear} from "/ui/web_modules/d3-time.js";
+        timeYear} from "d3-time";
 
-import mnPoll from "/ui/app/components/mn_poll.js";
-import mnStoreService from "/ui/app/components/mn_store_service.js";
-import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
-import mnPermissions from "/ui/app/components/mn_pool_default.js";
+import mnPoll from "../components/mn_poll.js";
+import mnStoreService from "../components/mn_store_service.js";
+import mnPoolDefault from "../components/mn_pool_default.js";
+import mnPermissions from "../components/mn_pool_default.js";
 
 import mnServersService from "./mn_servers_service.js"
 import mnStatisticsDescriptionService from "./mn_statistics_description_service.js";

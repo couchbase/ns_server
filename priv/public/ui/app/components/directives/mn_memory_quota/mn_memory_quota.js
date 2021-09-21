@@ -8,11 +8,11 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import mnFocus from "/ui/app/components/directives/mn_focus.js";
-import mnServices from "/ui/app/components/directives/mn_services/mn_services.js";
+import angular from 'angular';
+import mnFocus from '../mn_focus.js';
+import mnServices from '../mn_services/mn_services.js';
 
-export default "mnMemoryQuota";
+export default 'mnMemoryQuota';
 
 angular
   .module('mnMemoryQuota', [mnServices, mnFocus])

@@ -8,14 +8,14 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import _ from "/ui/web_modules/lodash.js";
-import js_beautify from "/ui/web_modules/js-beautify.js";
-import mnFilters from "/ui/app/components/mn_filters.js";
-import mnPermissions from "/ui/app/components/mn_permissions.js";
+import angular from "angular";
+import _ from "lodash";
+import js_beautify from "js-beautify";
+import mnFilters from "../components/mn_filters.js";
+import mnPermissions from "../components/mn_permissions.js";
 import mnViewsListService from "./mn_views_list_service.js";
 import mnDocumentsService from "./mn_documents_service.js";
-import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
+import mnPoolDefault from "../components/mn_pool_default.js";
 
 export default "mnViewsEditingService";
 

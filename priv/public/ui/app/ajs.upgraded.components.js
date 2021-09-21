@@ -8,8 +8,8 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Directive, ElementRef, Injector} from '../web_modules/@angular/core.js';
-import {UpgradeComponent} from '../web_modules/@angular/upgrade/static.js';
+import {Directive, ElementRef, Injector} from '@angular/core';
+import {UpgradeComponent} from '@angular/upgrade/static';
 
 export {MnDetailStatsDirective, MnMainSpinnerDirective};
 

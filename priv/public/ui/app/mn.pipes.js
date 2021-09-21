@@ -8,13 +8,14 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { Pipe } from '../web_modules/@angular/core.js';
-import { DecimalPipe } from '../web_modules/@angular/common.js';
-import { MnHelperService } from './mn.helper.service.js';
-import { MnAdminService } from './mn.admin.service.js';
-import { is } from '../web_modules/ramda.js';
-import { servicesEnterprise } from '/ui/app/constants/constants.js';
-import { map } from "../web_modules/rxjs/operators.js";
+import {Pipe} from '@angular/core';
+import {DecimalPipe} from '@angular/common';
+import {is} from 'ramda';
+import {map} from 'rxjs/operators';
+
+import {MnHelperService} from './mn.helper.service.js';
+import {MnAdminService} from './mn.admin.service.js';
+import {servicesEnterprise} from './constants/constants.js';
 
 export {
   MnParseVersion,

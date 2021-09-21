@@ -1,4 +1,4 @@
-import CodeMirror from "/ui/web_modules/codemirror.js";
+import CodeMirror from "codemirror";
 
 CodeMirror.defineMode("javascript", function(config, parserConfig) {
   var indentUnit = config.indentUnit;

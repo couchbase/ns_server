@@ -8,16 +8,17 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { Component, ChangeDetectionStrategy } from '../web_modules/@angular/core.js';
-import { map, takeUntil, startWith, pairwise, shareReplay } from '../web_modules/rxjs/operators.js';
-import { combineLatest } from '../web_modules/rxjs.js';
-import { MnFormService } from './mn.form.service.js';
-import { MnAdminService } from './mn.admin.service.js';
-import { MnBucketsService } from "./mn.buckets.service.js";
-import { MnSettingsSampleBucketsService } from './mn.settings.sample.buckets.service.js';
-import { FormControl } from '../web_modules/@angular/forms.js';
+import {Component, ChangeDetectionStrategy} from '@angular/core';
+import {map, takeUntil, startWith, pairwise, shareReplay} from 'rxjs/operators';
+import {FormControl} from '@angular/forms';
+import {combineLatest} from 'rxjs';
 
-import { MnLifeCycleHooksToStream } from './mn.core.js';
+import {MnFormService} from './mn.form.service.js';
+import {MnAdminService} from './mn.admin.service.js';
+import {MnBucketsService} from './mn.buckets.service.js';
+import {MnSettingsSampleBucketsService} from './mn.settings.sample.buckets.service.js';
+
+import {MnLifeCycleHooksToStream} from './mn.core.js';
 
 export {MnSettingsSampleBucketsComponent};
 

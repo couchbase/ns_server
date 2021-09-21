@@ -8,41 +8,39 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
+import angular from "angular";
+import ngAnimate from "angular-animate";
+import uiSelect from "ui-select";
+import uiBootstrap from "angular-ui-bootstrap";
+import uiRouter from "@uirouter/angularjs";
+import {Injector, Compiler} from "@angular/core";
+import {downgradeInjectable} from "@angular/upgrade/static";
+
 import mnAdminController from "./mn_admin_controller.js";
-import {downgradeInjectable} from "/ui/web_modules/@angular/upgrade/static.js";
+import mnAlertsService from "../components/mn_alerts.js";
+import mnPoolDefault from "../components/mn_pool_default.js";
+import mnPoll from "../components/mn_poll.js";
+import mnFilters from "../components/mn_filters.js";
+import mnHelper from "../components/mn_helper.js";
+import mnSpinner from "../components/directives/mn_spinner.js";
+import mnMainSpinner from "../components/directives/mn_main_spinner.js";
+import mnLaunchpad from "../components/directives/mn_launchpad.js";
+import mnPluggableUiRegistry from "../components/mn_pluggable_ui_registry.js";
+import mnSettingsAutoFailoverService from "./mn_settings_auto_failover_service.js";
+import mnSettingsClusterService from "./mn_settings_cluster_service.js";
 
-import angular from "/ui/web_modules/angular.js";
-import ngAnimate from "/ui/web_modules/angular-animate.js";
-
-import uiBootstrap from "/ui/web_modules/angular-ui-bootstrap.js";
-import uiRouter from "/ui/web_modules/@uirouter/angularjs.js";
-
-import mnAlertsService from "/ui/app/components/mn_alerts.js";
-import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
-import mnPoll from "/ui/app/components/mn_poll.js";
-import mnFilters from "/ui/app/components/mn_filters.js";
-import mnHelper from "/ui/app/components/mn_helper.js";
-import mnSpinner from "/ui/app/components/directives/mn_spinner.js";
-import mnMainSpinner from "/ui/app/components/directives/mn_main_spinner.js";
-import mnLaunchpad from "/ui/app/components/directives/mn_launchpad.js";
-import mnPluggableUiRegistry from "/ui/app/components/mn_pluggable_ui_registry.js";
-import mnSettingsAutoFailoverService from "/ui/app/mn_admin/mn_settings_auto_failover_service.js";
-import mnSettingsClusterService from "/ui/app/mn_admin/mn_settings_cluster_service.js";
-
-import mnAuthService from "/ui/app/mn_auth/mn_auth_service.js";
-import mnPermissions from "/ui/app/components/mn_permissions.js";
-import mnElementCrane from "/ui/app/components/directives/mn_element_crane/mn_element_crane.js";
-import mnDragAndDrop from "/ui/app/components/directives/mn_drag_and_drop.js";
-import mnTasksDetails from "/ui/app/components/mn_tasks_details.js";
+import mnAuthService from "../mn_auth/mn_auth_service.js";
+import mnPermissions from "../components/mn_permissions.js";
+import mnElementCrane from "../components/directives/mn_element_crane/mn_element_crane.js";
+import mnDragAndDrop from "../components/directives/mn_drag_and_drop.js";
+import mnTasksDetails from "../components/mn_tasks_details.js";
 
 import mnLostConnection from "./mn_lost_connection_config.js";
 import {MnAdminService} from "../mn.admin.service.js";
 
-import uiSelect from "/ui/web_modules/ui-select.js";
-import {Injector, Compiler} from "/ui/web_modules/@angular/core.js";
-import mnDetailStatsModule from "/ui/app/components/directives/mn_detail_stats_controller.js";
+import mnDetailStatsModule from "../components/directives/mn_detail_stats_controller.js";
 
-import mnSelect from "/ui/app/components/directives/mn_select/mn_select.js";
+import mnSelect from "../components/directives/mn_select/mn_select.js";
 
 export default 'mnAdmin';
 

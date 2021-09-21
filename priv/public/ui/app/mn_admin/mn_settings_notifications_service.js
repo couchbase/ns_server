@@ -8,14 +8,14 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import _ from "/ui/web_modules/lodash.js";
+import angular from "angular";
+import _ from "lodash";
 
-import mnPools from "/ui/app/components/mn_pools.js";
-import mnFilters from "/ui/app/components/mn_filters.js";
-import mnPermissions from "/ui/app/components/mn_permissions.js";
-import mnTasksDetails from "/ui/app/components/mn_tasks_details.js";
-import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
+import mnPools from "../components/mn_pools.js";
+import mnFilters from "../components/mn_filters.js";
+import mnPermissions from "../components/mn_permissions.js";
+import mnTasksDetails from "../components/mn_tasks_details.js";
+import mnPoolDefault from "../components/mn_pool_default.js";
 
 import mnBucketsService from "./mn_buckets_service.js";
 import mnAnalyticsService from "./mn_analytics_service.js";

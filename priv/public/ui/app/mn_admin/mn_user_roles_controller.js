@@ -8,23 +8,23 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import _ from "/ui/web_modules/lodash.js";
-import uiSelect from "/ui/web_modules/ui-select.js";
+import angular from "angular";
+import _ from "lodash";
+import uiSelect from "ui-select";
 
-import mnHelper from "/ui/app/components/mn_helper.js";
-import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
-import mnPoll from "/ui/app/components/mn_poll.js";
-import mnSortableTable from "/ui/app/components/directives/mn_sortable_table.js";
-import mnSpinner from "/ui/app/components/directives/mn_spinner.js";
-import mnMainSpinner from "/ui/app/components/directives/mn_main_spinner.js";
-import mnEqual from "/ui/app/components/directives/mn_validation/mn_equal.js";
-import mnFilters from "/ui/app/components/mn_filters.js";
-import mnAutocompleteOff from "/ui/app/components/directives/mn_autocomplete_off.js";
-import mnFocus from "/ui/app/components/directives/mn_focus.js";
-import mnUserRolesSelect from "/ui/app/components/directives/mn_user_roles_select_controller.js";
-import mnFileReader from "/ui/app/components/mn_file_reader.js";
-import mnSearch from "/ui/app/components/directives/mn_search/mn_search_directive.js";
+import mnHelper from "../components/mn_helper.js";
+import mnPromiseHelper from "../components/mn_promise_helper.js";
+import mnPoll from "../components/mn_poll.js";
+import mnSortableTable from "../components/directives/mn_sortable_table.js";
+import mnSpinner from "../components/directives/mn_spinner.js";
+import mnMainSpinner from "../components/directives/mn_main_spinner.js";
+import mnEqual from "../components/directives/mn_validation/mn_equal.js";
+import mnFilters from "../components/mn_filters.js";
+import mnAutocompleteOff from "../components/directives/mn_autocomplete_off.js";
+import mnFocus from "../components/directives/mn_focus.js";
+import mnUserRolesSelect from "../components/directives/mn_user_roles_select_controller.js";
+import mnFileReader from "../components/mn_file_reader.js";
+import mnSearch from "../components/directives/mn_search/mn_search_directive.js";
 
 import mnUserRolesService from "./mn_user_roles_service.js";
 import mnAddLDAPDialogController from "./mn_add_ldap_dialog_controller.js";

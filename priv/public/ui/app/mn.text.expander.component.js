@@ -8,10 +8,10 @@
   licenses/APL2.txt.
 */
 
-import { ChangeDetectionStrategy, Component } from '../web_modules/@angular/core.js';
-import { MnHelperService } from './mn.helper.service.js';
+import {ChangeDetectionStrategy, Component} from '@angular/core';
+import {MnHelperService} from './mn.helper.service.js';
 
-export { MnTextExpanderComponent };
+export {MnTextExpanderComponent};
 
 class MnTextExpanderComponent {
   static get annotations() { return [

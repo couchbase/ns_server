@@ -8,14 +8,14 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
+import {Component, ChangeDetectionStrategy} from '@angular/core';
 import {pluck, scan, distinctUntilChanged, shareReplay,
-        takeUntil, startWith, map} from '../web_modules/rxjs/operators.js';
-import {Subject, combineLatest} from '../web_modules/rxjs.js';
-import {not, pipe, contains, all, equals} from '../web_modules/ramda.js';
-import {FormControl, FormGroup} from '../web_modules/@angular/forms.js';
+        takeUntil, startWith, map} from 'rxjs/operators';
+import {Subject, combineLatest} from 'rxjs';
+import {not, pipe, contains, all, equals} from 'ramda';
+import {FormControl, FormGroup} from '@angular/forms';
 
-import { MnLifeCycleHooksToStream } from './mn.core.js';
+import {MnLifeCycleHooksToStream} from './mn.core.js';
 
 export {MnSecurityAuditItemComponent};
 

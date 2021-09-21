@@ -8,18 +8,19 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {UIRouter} from '../web_modules/@uirouter/angular.js';
+import {UIRouter} from '@uirouter/angular';
+import {Component, ChangeDetectionStrategy} from '@angular/core';
+import {map, withLatestFrom, first, filter, startWith} from 'rxjs/operators';
+import {pipe, combineLatest} from 'rxjs';
+
 import {MnLifeCycleHooksToStream} from './mn.core.js';
-import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
-import {map, withLatestFrom, first, filter, startWith} from '../web_modules/rxjs/operators.js';
-import {pipe, combineLatest} from '../web_modules/rxjs.js';
 import {MnWizardService} from './mn.wizard.service.js';
 import {MnPoolsService} from './mn.pools.service.js';
-import {MnFormService} from "./mn.form.service.js";
-import {MnAuthService} from "./mn.auth.service.js";
-import {MnAdminService} from "./mn.admin.service.js";
-import {MnHttpGroupRequest} from "./mn.http.request.js";
-import {MnPools, $rootScope} from "./ajs.upgraded.providers.js";
+import {MnFormService} from './mn.form.service.js';
+import {MnAuthService} from './mn.auth.service.js';
+import {MnAdminService} from './mn.admin.service.js';
+import {MnHttpGroupRequest} from './mn.http.request.js';
+import {MnPools, $rootScope} from './ajs.upgraded.providers.js';
 
 export {MnWizardNewClusterConfigComponent};
 

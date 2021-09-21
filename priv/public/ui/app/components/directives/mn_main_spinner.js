@@ -8,9 +8,9 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import mnSpinner from "/ui/app/components/directives/mn_spinner.js";
-import mnHelper from "/ui/app/components/mn_helper.js";
+import angular from 'angular';
+import mnSpinner from "./mn_spinner.js";
+import mnHelper from "../mn_helper.js";
 
 export default "mnMainSpinnerModule";
 

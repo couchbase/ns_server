@@ -8,11 +8,11 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import {Subject} from "/ui/web_modules/rxjs.js";
-import mnKeyspaceSelectorDowngradeModule from "/ui/app/mn.keyspace.selector.downgrade.module.js"
+import angular from 'angular';
+import {Subject} from 'rxjs';
+import mnKeyspaceSelectorDowngradeModule from '../../mn.keyspace.selector.downgrade.module.js'
 
-export default "mnUserRolesSelect";
+export default 'mnUserRolesSelect';
 
 angular
   .module('mnUserRolesSelect', [mnKeyspaceSelectorDowngradeModule])

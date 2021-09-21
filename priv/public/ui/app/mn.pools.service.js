@@ -7,17 +7,18 @@ file, in accordance with the Business Source License, use of this software will
 be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
-import { singletonGuard } from './mn.core.js';
-import { NgModule } from '../web_modules/@angular/core.js';
-import { Injectable } from '../web_modules/@angular/core.js';
-import { HttpClient } from '../web_modules/@angular/common/http.js';
-import { BehaviorSubject } from '../web_modules/rxjs.js';
-import { switchMap, shareReplay, pluck,
-         distinctUntilChanged, map } from '../web_modules/rxjs/operators.js';
-import { servicesEnterprise } from '/ui/app/constants/constants.js';
-import { servicesCE } from '/ui/app/constants/constants.js';
 
-export { MnPoolsService, MnPoolsServiceModule };
+import {NgModule, Injectable} from '@angular/core';
+import {HttpClient} from '@angular/common/http';
+import {BehaviorSubject} from 'rxjs';
+import {switchMap, shareReplay, pluck,
+        distinctUntilChanged, map} from 'rxjs/operators';
+
+import {singletonGuard} from './mn.core.js';
+import {servicesEnterprise} from './constants/constants.js';
+import {servicesCE} from './constants/constants.js';
+
+export {MnPoolsService, MnPoolsServiceModule};
 
 let launchID =  (new Date()).valueOf() + '-' + ((Math.random() * 65536) >> 0);
 

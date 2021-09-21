@@ -8,13 +8,15 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
+import {Component, ChangeDetectionStrategy} from '@angular/core';
+import {combineLatest, of} from 'rxjs';
+import {takeUntil, map, first, startWith, filter} from 'rxjs/operators';
+import {not, any, all} from 'ramda';
+
 import {MnLifeCycleHooksToStream} from './mn.core.js';
-import {combineLatest, of} from '../web_modules/rxjs.js';
-import {takeUntil, map, first, startWith, filter} from '../web_modules/rxjs/operators.js';
 import {MnWizardService} from './mn.wizard.service.js';
 import {MnPoolsService} from './mn.pools.service.js';
-import {not, any, all} from '../web_modules/ramda.js';
+
 
 export {MnStorageModeComponent};
 

@@ -8,10 +8,10 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import mnMemoryQuotaService from "/ui/app/components/directives/mn_memory_quota/mn_memory_quota_service.js";
+import angular from 'angular';
+import mnMemoryQuotaService from '../mn_memory_quota/mn_memory_quota_service.js';
 
-export default "mnServices";
+export default 'mnServices';
 
 angular
   .module('mnServices', [mnMemoryQuotaService])

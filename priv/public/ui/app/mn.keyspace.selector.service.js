@@ -1,15 +1,23 @@
-import { NgModule } from '../web_modules/@angular/core.js';
-import { Injectable } from "../web_modules/@angular/core.js";
+/*
+  Copyright 2020-Present Couchbase, Inc.
 
-import { filter, withLatestFrom, pairwise, catchError,
-         startWith, switchMap, pluck, takeUntil,
-         mapTo, distinctUntilChanged, shareReplay, map } from '../web_modules/rxjs/operators.js';
-import { BehaviorSubject, Subject, NEVER, of, merge, fromEvent } from "../web_modules/rxjs.js";
+  Use of this software is governed by the Business Source License included in
+  the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
+  file, in accordance with the Business Source License, use of this software will
+  be governed by the Apache License, Version 2.0, included in the file
+  licenses/APL2.txt.
+*/
 
-import { MnHelperService } from './mn.helper.service.js';
-import { MnCollectionsService } from './mn.collections.service.js';
+import {NgModule, Injectable} from '@angular/core';
+import {filter, withLatestFrom, pairwise, catchError,
+        startWith, switchMap, pluck, takeUntil,
+        mapTo, distinctUntilChanged, shareReplay, map} from 'rxjs/operators';
+import {BehaviorSubject, Subject, NEVER, of, merge, fromEvent} from 'rxjs';
 
-export { MnKeyspaceSelectorServiceModule, MnKeyspaceSelectorService }
+import {MnHelperService} from './mn.helper.service.js';
+import {MnCollectionsService} from './mn.collections.service.js';
+
+export {MnKeyspaceSelectorServiceModule, MnKeyspaceSelectorService}
 
 class MnKeyspaceSelectorServiceModule {
   static get annotations() { return [

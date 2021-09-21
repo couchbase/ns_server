@@ -8,15 +8,16 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { Component, ChangeDetectionStrategy } from '/ui/web_modules/@angular/core.js';
-import { MnPoolsService } from './mn.pools.service.js';
-import { MnSettingsAutoCompactionService  } from './mn.settings.auto.compaction.service.js';
-import { MnHelperService } from './mn.helper.service.js';
-import { map } from '/ui/web_modules/rxjs/operators.js';
-import { combineLatest } from '/ui/web_modules/rxjs.js';
-import { MnLifeCycleHooksToStream } from './mn.core.js';
+import {Component, ChangeDetectionStrategy} from '@angular/core';
+import {map} from 'rxjs/operators';
+import {combineLatest} from 'rxjs';
 
-export { MnSettingsAutoCompactionFormComponent };
+import {MnPoolsService} from './mn.pools.service.js';
+import {MnSettingsAutoCompactionService} from './mn.settings.auto.compaction.service.js';
+import {MnHelperService} from './mn.helper.service.js';
+import {MnLifeCycleHooksToStream} from './mn.core.js';
+
+export {MnSettingsAutoCompactionFormComponent};
 
 class MnSettingsAutoCompactionFormComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [

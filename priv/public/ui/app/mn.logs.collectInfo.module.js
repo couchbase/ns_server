@@ -8,20 +8,21 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {MnLogsCollectInfoComponent} from "./mn.logs.collectInfo.component.js";
+import {NgModule} from '@angular/core';
+import {NgbModule} from '@ng-bootstrap/ng-bootstrap';
+import {CommonModule} from '@angular/common';
+import {ClipboardModule} from 'ngx-clipboard';
+import {ReactiveFormsModule} from '@angular/forms';
+import {UIRouterModule} from '@uirouter/angular';
+
+import {MnLogsCollectInfoComponent} from './mn.logs.collectInfo.component.js';
 import {MnLogsCollectInfoFormComponent} from './mn.logs.collectInfo.form.component.js';
 import {MnLogsCollectInfoResultComponent} from './mn.logs.collectInfo.result.component.js';
 import {MnLogsCollectInfoStopCollectionComponent} from './mn.logs.collectInfo.stop.collection.component.js';
 import {MnClusterSummaryDialogComponent} from './mn.cluster.summary.dialog.component.js';
 import {MnLogsCollectInfoService} from './mn.logs.collectInfo.service.js';
-import {NgModule} from '/ui/web_modules/@angular/core.js';
-import {NgbModule} from '/ui/web_modules/@ng-bootstrap/ng-bootstrap.js';
-import {CommonModule} from '/ui/web_modules/@angular/common.js';
-import {ClipboardModule} from '/ui/web_modules/ngx-clipboard.js';
 import {MnSharedModule} from './mn.shared.module.js';
 import {MnPipesModule} from "./mn.pipes.module.js";
-import {ReactiveFormsModule} from '/ui/web_modules/@angular/forms.js';
-import {UIRouterModule} from "/ui/web_modules/@uirouter/angular.js";
 import {MnSelectableNodesModule} from "./mn.selectable.nodes.module.js";
 
 

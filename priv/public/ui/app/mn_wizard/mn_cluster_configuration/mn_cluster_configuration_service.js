@@ -8,10 +8,11 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import mnPools from "/ui/app/components/mn_pools.js";
-import mnHelper from "/ui/app/components/mn_helper.js";
-import _ from "/ui/web_modules/lodash.js";
+import angular from "angular";
+import _ from "lodash";
+
+import mnPools from "../../components/mn_pools.js";
+import mnHelper from "../../components/mn_helper.js";
 
 export default "mnClusterConfigurationService";
 

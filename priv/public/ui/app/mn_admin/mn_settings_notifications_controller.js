@@ -8,9 +8,9 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
+import angular from "angular";
 
-import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
+import mnPromiseHelper from "../components/mn_promise_helper.js";
 import mnSettingsNotificationsService from "./mn_settings_notifications_service.js";
 import mnSettingsClusterService from "./mn_settings_cluster_service.js"
 

@@ -7,21 +7,19 @@ file, in accordance with the Business Source License, use of this software will
 be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
-import { singletonGuard } from './mn.core.js';
-import { NgModule } from '../web_modules/@angular/core.js';
-import { Injectable } from "../web_modules/@angular/core.js";
-import { HttpClient } from '../web_modules/@angular/common/http.js';
-import { MnHttpRequest } from './mn.http.request.js';
+import {NgModule, Injectable} from '@angular/core';
+import {HttpClient} from '@angular/common/http';
+import {BehaviorSubject} from 'rxjs';
+import {map, shareReplay} from 'rxjs/operators';
 
-import { BehaviorSubject } from "../web_modules/rxjs.js";
-import { map, shareReplay } from '../web_modules/rxjs/operators.js';
-
-import { MnBucketsService, MnBucketsServiceModule } from './mn.buckets.service.js';
-import { MnPermissions } from './ajs.upgraded.providers.js';
+import {MnHttpRequest} from './mn.http.request.js';
+import {singletonGuard} from './mn.core.js';
+import {MnBucketsService, MnBucketsServiceModule} from './mn.buckets.service.js';
+import {MnPermissions} from './ajs.upgraded.providers.js';
 
 const restApiBase = "/pools/default/buckets";
 
-export { MnCollectionsService, MnCollectionsServiceModule }
+export {MnCollectionsService, MnCollectionsServiceModule}
 
 class MnCollectionsServiceModule {
   static get annotations() { return [

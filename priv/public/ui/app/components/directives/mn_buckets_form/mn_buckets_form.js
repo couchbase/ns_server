@@ -8,16 +8,17 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import angular from "/ui/web_modules/angular.js";
-import _ from "/ui/web_modules/lodash.js";
-import mnFocus from "/ui/app/components/directives/mn_focus.js";
-import mnFilters from "/ui/app/components/mn_filters.js";
-import mnAutocompleteOff from "/ui/app/components/directives/mn_autocomplete_off.js";
-import mnPromiseHelper from "/ui/app/components/mn_promise_helper.js";
-import mnPermissions from "/ui/app/components/mn_permissions.js";
-import mnBarUsage from "/ui/app/components/directives/mn_bar_usage/mn_bar_usage.js";
-import mnUserRolesService from "/ui/app/mn_admin/mn_user_roles_service.js";
-import mnAutoCompactionForm from "/ui/app/components/directives/mn_auto_compaction_form/mn_auto_compaction_form.js";
+import angular from 'angular';
+import _ from 'lodash';
+
+import mnFocus from '../mn_focus.js';
+import mnFilters from '../../mn_filters.js';
+import mnAutocompleteOff from '../mn_autocomplete_off.js';
+import mnPromiseHelper from '../../mn_promise_helper.js';
+import mnPermissions from '../../mn_permissions.js';
+import mnBarUsage from '../mn_bar_usage/mn_bar_usage.js';
+import mnUserRolesService from '../../../mn_admin/mn_user_roles_service.js';
+import mnAutoCompactionForm from '../mn_auto_compaction_form/mn_auto_compaction_form.js';
 
 export default "mnBucketsForm";
 
