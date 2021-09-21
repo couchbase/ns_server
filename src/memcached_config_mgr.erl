@@ -505,13 +505,18 @@ tls_config(Params) ->
     CipherOrder = ns_ssl_services_setup:honor_cipher_order(kv),
     Auth = proplists:get_value(state, ns_ssl_services_setup:client_cert_auth()),
     AuthBin = iolist_to_binary(Auth),
+    AuthBinMcd = case AuthBin of
+                     <<"disable">> -> <<"disabled">>;
+                     <<"enable">> -> <<"enabled">>;
+                     <<"mandatory">> -> <<"mandatory">>
+                 end,
     {[{<<"private key">>, KeyPath},
       {<<"certificate chain">>, ChainPath},
       {<<"CA file">>, CAPath},
       {<<"minimum version">>, MinVsn},
       {<<"cipher list">>, Ciphers},
       {<<"cipher order">>, CipherOrder},
-      {<<"client cert auth">>, AuthBin}]}.
+      {<<"client cert auth">>, AuthBinMcd}]}.
 
 format_ciphers(RFCCipherNames) ->
     OpenSSLNames = [Name || C <- RFCCipherNames,
