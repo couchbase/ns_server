@@ -68,8 +68,8 @@ child_specs() ->
      {roles_cache, {roles_cache, start_link, []},
       {permanent, 5}, 1000, worker, []},
 
-     {request_throttler, {request_throttler, start_link, []},
-      permanent, 1000, worker, [request_throttler]},
+     {request_tracker, {request_tracker, start_link, []},
+      permanent, 1000, worker, [request_tracker]},
 
      {vbucket_map_mirror, {vbucket_map_mirror, start_link, []},
       permanent, brutal_kill, worker, []},

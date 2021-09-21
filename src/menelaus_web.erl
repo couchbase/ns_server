@@ -162,7 +162,7 @@ loop(Req0, Config) ->
               {Path, _, _} = mochiweb_util:urlsplit_path(RawPath),
               PathTokens = lists:map(fun mochiweb_util:unquote/1,
                                      string:tokens(Path, "/")),
-              request_throttler:request(
+              request_tracker:request(
                 rest,
                 fun () ->
                         loop_inner(Req, Config, Path, PathTokens)

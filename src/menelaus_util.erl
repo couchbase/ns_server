@@ -598,8 +598,8 @@ handle_streaming(Req, DataBody, HTTPRes, LastRes, {NotifyTag, _} = Update) ->
                 mochiweb_response:write_chunk("", HTTPRes),
                 exit(normal)
         end,
-    request_throttler:hibernate(Req, ?MODULE, handle_streaming_wakeup,
-                                [Req, DataBody, HTTPRes, Res, NotifyTag]).
+    request_tracker:hibernate(Req, ?MODULE, handle_streaming_wakeup,
+                              [Req, DataBody, HTTPRes, Res, NotifyTag]).
 
 streaming_inner(DataBody, HTTPRes, LastRes, Update) ->
     case DataBody(LastRes, Update) of

@@ -24,7 +24,7 @@ not_implemented(Arg, Rest) ->
 
 do_db_req(#httpd{path_parts=[DbName | _]} = Req, Fun) ->
 
-    request_throttler:request(
+    request_tracker:request(
       capi,
       fun () ->
               {BucketName, VBucket, UUID} = capi_utils:split_dbname_with_uuid(DbName),

@@ -8,7 +8,7 @@
 %% the file licenses/APL2.txt.
 %%
 
--module(request_throttler).
+-module(request_tracker).
 
 -include("ns_common.hrl").
 
@@ -25,7 +25,7 @@
 -record(state, {}).
 
 -define(TABLE, ?MODULE).
--define(HIBERNATE_TABLE, request_throttler_hibernations).
+-define(HIBERNATE_TABLE, request_tracker_hibernations).
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).

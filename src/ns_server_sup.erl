@@ -60,8 +60,8 @@ child_specs() ->
      {dir_size, {dir_size, start_link, []},
       permanent, 1000, worker, [dir_size]},
 
-     {request_throttler, {request_throttler, start_link, []},
-      permanent, 1000, worker, [request_throttler]},
+     {request_tracker, {request_tracker, start_link, []},
+      permanent, 1000, worker, [request_tracker]},
 
      {chronicle_kv_log, {chronicle_kv_log, start_link, []},
       permanent, 1000, worker, [chronicle_kv_log]},
