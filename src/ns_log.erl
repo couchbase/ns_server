@@ -10,21 +10,22 @@
 -module(ns_log).
 
 -include("ns_log.hrl").
+-include("ns_common.hrl").
 
--define(RB_SIZE, 3000). % Number of recent log entries
+-define(PENDING_MAX_SIZE, 3000). % Number of recent log entries
+-define(RECENT_MAX_SIZE, 3000). % Number of recent log entries
 -define(DUP_TIME, 15000000). % 15 secs in microsecs
--define(GC_TIME, 60000). % 60 secs in millisecs
+-define(DEDUP_TIME, 60000). % 60 secs in millisecs
 -define(SAVE_DELAY, 5000). % 5 secs in millisecs
 
--behaviour(gen_server).
+% The server_name used by gossip_replicator to register this server.
+-define(SERVER, ?MODULE).
+
+-behaviour(gossip_replicator).
 -behaviour(ns_log_categorizing).
 
 %% API
 -export([start_link/0]).
-
-%% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-         terminate/2, code_change/3]).
 
 -export([start_link_crash_consumer/0]).
 
@@ -34,17 +35,24 @@
 
 -export([ns_log_cat/1, ns_log_code_string/1]).
 
+%% exports for gossip_replicator.
+-export([init/1,
+         handle_add_log/4,
+         add_local_node_metadata/2,
+         strip_local_node_metadata/1,
+         merge_remote_logs/3,
+         merge_pending_list/3,
+         handle_info/3,
+         handle_notify/1]).
+
 -include("ns_common.hrl").
 
--record(state, {unique_recent,
-                dedup,
-                save_tref,
-                filename,
-                pending_recent = [],
-                pending_length = 0}).
+-record(ns_log_state, {dedup}).
 
 start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+    FileName = ns_config:search_node_prop(ns_config:get(), ns_log, filename),
+    gossip_replicator:start_link(?SERVER, [?MODULE, FileName, ?PENDING_MAX_SIZE,
+                                           ?RECENT_MAX_SIZE]).
 
 start_link_crash_consumer() ->
     {ok, proc_lib:spawn_link(fun crash_consumption_loop_tramp/0)}.
@@ -53,7 +61,8 @@ crash_consumption_loop_tramp() ->
     misc:delaying_crash(1000, fun crash_consumption_loop/0).
 
 crash_consumption_loop() ->
-    {Name, Status, Messages} = ns_crash_log:consume_oldest_message_from_inside_ns_server(),
+    {Name, Status, Messages} =
+      ns_crash_log:consume_oldest_message_from_inside_ns_server(),
     LogLevel = case Status of
                  0 ->
                      debug;
@@ -65,175 +74,97 @@ crash_consumption_loop() ->
             [Name, Status, Messages]),
     crash_consumption_loop().
 
+%%--------------------------------------------------------------------
+%%% callbacks for gossip_replicator.
+%%--------------------------------------------------------------------
 
-log_filename() ->
-    ns_config:search_node_prop(ns_config:get(), ns_log, filename).
+init(_Recent) ->
+    send_dedup_logs_msg(),
+    #ns_log_state{dedup=dict:new()}.
 
-read_logs(Filename) ->
-    case file:read_file(Filename) of
-        {ok, <<>>} -> [];
-        {ok, B} ->
-            try misc:decompress(B) of
-                B2 ->
-                    B2
-            catch error:Error ->
-                    ?log_error("Couldn't load logs from ~p. Apparently ns_logs file is corrupted: ~p",
-                               [Filename, Error]),
-                    []
-            end;
-        E ->
-            ?log_warning("Couldn't load logs from ~p (perhaps it's first startup): ~p", [Filename, E]),
-            []
-    end.
-
-init([]) ->
-    send_garbage_collect_msg(),
-    Filename = log_filename(),
-    Recent = read_logs(Filename),
-    %% initiate log syncing
-    self() ! sync,
-    erlang:process_flag(trap_exit, true),
-    {ok, #state{unique_recent=Recent,
-                dedup=dict:new(),
-                filename=Filename}}.
-
-delete_log() ->
-    file:delete(log_filename()).
-
-tail_of_length(List, N) ->
-    case length(List) - N of
-        X when X > 0 ->
-            lists:nthtail(X, List);
-        _ ->
-            List
-    end.
-
-order_entries(A = #log_entry{}, B = #log_entry{}) ->
-    A#log_entry{server_time = undefined} =< B#log_entry{server_time = undefined}.
-
-flush_pending(#state{pending_recent = []} = State) ->
-    State;
-flush_pending(#state{unique_recent = Recent,
-                     pending_recent = Pending} = State) ->
-    NewRecent = tail_of_length(lists:umerge(fun order_entries/2, lists:sort(fun order_entries/2, Pending),
-                                            Recent), ?RB_SIZE),
-    State#state{unique_recent = NewRecent,
-                pending_recent = [],
-                pending_length = 0}.
-
-add_pending(#state{pending_length = Length,
-                   pending_recent = Pending} = State, Entry) ->
-    NewState = State#state{pending_recent = [Entry | Pending],
-                           pending_length = Length+1},
-    case Length >= ?RB_SIZE of
+handle_add_log(Log, State0, _Pending, ReplicateFun) ->
+    {Dup, State} = is_duplicate_log(Log, State0),
+    case Dup of
         true ->
-            flush_pending(NewState);
-        _ -> NewState
-    end.
-
-%% Request for recent items.
-handle_call(recent, _From, StateBefore) ->
-    State = flush_pending(StateBefore),
-    {reply, State#state.unique_recent, State, hibernate}.
-
-%% Inbound logging request.
-handle_cast({log, Module, Node, Time, Code, Category, Fmt, Args},
-            State = #state{dedup=Dedup}) ->
-    Key = {Module, Code, Category, Fmt, Args},
-    case dict:find(Key, Dedup) of
-        {ok, {Count, FirstSeen, LastSeen}} ->
-            ?log_info("suppressing duplicate log ~p:~p(~p) because it's been "
-                      "seen ~p times in the past ~p secs (last seen ~p secs ago",
-                      [Module, Code, lists:flatten(io_lib:format(Fmt, Args)),
-                       Count+1, timer:now_diff(Time, FirstSeen) / 1000000,
-                       timer:now_diff(Time, LastSeen) / 1000000]),
-            Dedup2 = dict:store(Key, {Count+1, FirstSeen, Time}, Dedup),
-            {noreply, State#state{dedup=Dedup2}, hibernate};
-        error ->
-            Entry = #log_entry{node=Node, module=Module, code=Code, msg=Fmt,
-                               args=Args, cat=Category, tstamp=Time},
-            do_log(Entry),
-
-            Dedup2 = dict:store(Key, {0, Time, Time}, Dedup),
-            {noreply, State#state{dedup=Dedup2}, hibernate}
-    end;
-handle_cast({do_log, Entry}, State) ->
-    {noreply, schedule_save(add_pending(State, Entry)), hibernate};
-handle_cast({sync, SrcNode, Compressed}, StateBefore) ->
-    State = flush_pending(StateBefore),
-    Recent = State#state.unique_recent,
-    case misc:decompress(Compressed) of
-        Recent ->
-            {noreply, State, hibernate};
-        Logs ->
-            State1 = schedule_save(State),
-            NewRecent = tail_of_length(lists:umerge(fun order_entries/2, Recent, Logs),
-                                       ?RB_SIZE),
-            case NewRecent =/= Logs of
-                %% send back sync with fake src node. To avoid
-                %% infinite sync exchange just in case.
-                true -> send_sync_to(NewRecent, SrcNode, SrcNode);
-                _ -> nothing
-            end,
-            {noreply, State1#state{unique_recent=NewRecent}, hibernate}
-    end;
-handle_cast(_, State) ->
-    {noreply, State, hibernate}.
-
-send_sync_to(Recent, Node) ->
-    send_sync_to(Recent, Node, node()).
-
-send_sync_to(Recent, Node, Src) ->
-    gen_server:cast({?MODULE, Node}, {sync, Src, misc:compress(Recent)}).
-
-%% Not handling any other state.
-
-%% Nothing special.
-handle_info(garbage_collect, State) ->
-    send_garbage_collect_msg(),
-    {noreply, gc(State), hibernate};
-handle_info(sync, StateBefore) ->
-    State = flush_pending(StateBefore),
-    Recent = State#state.unique_recent,
-    erlang:send_after(5000 + rand:uniform(55000), self(), sync),
-    case nodes() of
-        [] -> ok;
-        Nodes ->
-            Node = lists:nth(rand:uniform(length(Nodes)), Nodes),
-            send_sync_to(Recent, Node)
+            ok;
+        false ->
+            ReplicateFun(Log)
     end,
-    {noreply, State, hibernate};
-handle_info(save, StateBefore = #state{filename=Filename}) ->
-    State = flush_pending(StateBefore),
-    Recent = State#state.unique_recent,
-    Compressed = misc:compress(Recent),
-    case misc:write_file(Filename, Compressed) of
-        ok -> ok;
-        E ->
-            ?log_error("unable to write log to ~p: ~p", [Filename, E])
-    end,
-    {noreply, State#state{save_tref=undefined}, hibernate};
-handle_info(_Info, State) ->
-    {noreply, State, hibernate}.
+    State.
 
-terminate(shutdown, State) ->
-    handle_info(save, State);
-terminate(_Reason, _State) ->
-    ok.
+add_local_node_metadata(Logs, State) ->
+    {Logs, State}.
 
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
+strip_local_node_metadata(Logs) ->
+    Logs.
+
+%% Merge Logs received from remote node with the logs on the local node.
+merge_remote_logs(LocalLogs, RemoteLogs, MaxLen) ->
+    tail_of_length(lists:umerge(fun order_entries/2,
+                                LocalLogs,
+                                RemoteLogs), MaxLen).
+
+%% NOTE: merge_pending_list/2 is minorly different from merge_remote_logs,
+%% in that the Pending list has to be sorted by order_entries/2, before the
+%% umerge/3 function is applied.
+merge_pending_list(Recent, Pending, MaxLen) ->
+    tail_of_length(lists:umerge(fun order_entries/2,
+                                lists:sort(fun order_entries/2, Pending),
+                                           Recent), MaxLen).
+
+handle_info(dedup_logs, State, ReplicatorFun) ->
+    send_dedup_logs_msg(),
+    handle_dedup_logs(State, ReplicatorFun);
+handle_info(_Info, State, _ReplicatorFun) ->
+    State.
+
+handle_notify(State) ->
+    State.
 
 %%--------------------------------------------------------------------
 %%% Internal functions
 %%--------------------------------------------------------------------
 
-gc(State = #state{dedup=Dupes}) ->
-    DupesList = gc(erlang:timestamp(), dict:to_list(Dupes), []),
-    State#state{dedup=dict:from_list(DupesList)}.
+is_duplicate_log(#log_entry{module = Module,
+                            code = Code, msg = Fmt, args = Args,
+                            cat = Category, tstamp = Time},
+                 #ns_log_state{dedup = Dedup} = State) ->
+    Key = {Module, Code, Category, Fmt, Args},
+    case dict:find(Key, Dedup) of
+        {ok, {Count, FirstSeen, LastSeen}} ->
+            ?log_info("suppressing duplicate log ~p:~p(~p) because it's been "
+                      "seen ~p times in the past ~p secs (last seen ~p secs "
+                      "ago", [Module, Code,
+                              lists:flatten(io_lib:format(Fmt, Args)),
+                              Count + 1,
+                              timer:now_diff(Time, FirstSeen) / 1000000,
+                              timer:now_diff(Time, LastSeen) / 1000000]),
+            Dedup2 = dict:store(Key, {Count+1, FirstSeen, Time}, Dedup),
+            {true, State#ns_log_state{dedup = Dedup2}};
+        error ->
+            Dedup2 = dict:store(Key, {0, Time, Time}, Dedup),
+            {false, State#ns_log_state{dedup = Dedup2}}
+    end.
 
-gc(_Now, [], DupesList) -> DupesList;
-gc(Now, [{Key, Value} | Rest], DupesList) ->
+tail_of_length(List, N) ->
+  case length(List) - N of
+      X when X > 0 ->
+          lists:nthtail(X, List);
+      _ ->
+          List
+  end.
+
+order_entries(A = #log_entry{}, B = #log_entry{}) ->
+    A#log_entry{server_time = undefined} =<
+        B#log_entry{server_time = undefined}.
+
+handle_dedup_logs(State = #ns_log_state{dedup=Dupes}, ReplicatorFun) ->
+    DupesList = dedup_logs(erlang:timestamp(), dict:to_list(Dupes), [],
+                           ReplicatorFun),
+    State#ns_log_state{dedup=dict:from_list(DupesList)}.
+
+dedup_logs(_Now, [], DupesList, _ReplicatorFun) -> DupesList;
+dedup_logs(Now, [{Key, Value} | Rest], DupesList, ReplicatorFun) ->
     {Count, FirstSeen, LastSeen} = Value,
     case timer:now_diff(Now, FirstSeen) >= ?DUP_TIME of
         true ->
@@ -249,35 +180,33 @@ gc(Now, [{Key, Value} | Rest], DupesList) ->
                                        args=Args ++ [Count, DiffLast],
                                        cat=Category,
 
-                                       tstamp=Now},
-                    do_log(Entry)
+                                       tstamp=Now,
+                                       server_time =
+                                       calendar:now_to_local_time(Now)},
+                    do_log(Entry, ReplicatorFun)
             end,
-            gc(Now, Rest, DupesList);
-        false -> gc(Now, Rest, [{Key, Value} | DupesList])
+            dedup_logs(Now, Rest, DupesList, ReplicatorFun);
+        false -> dedup_logs(Now, Rest, [{Key, Value} | DupesList],
+                            ReplicatorFun)
     end.
 
-schedule_save(State = #state{save_tref=undefined}) ->
-    TRef = erlang:send_after(?SAVE_DELAY, self(), save),
-    State#state{save_tref=TRef};
-schedule_save(State) ->
-    %% Don't reschedule if a save is already scheduled.
-    State.
+add_server_time(#log_entry{tstamp = TStamp} = Log) ->
+    Log#log_entry{server_time=calendar:now_to_local_time(TStamp)}.
 
-do_log(#log_entry{code=undefined} = Entry) ->
+do_log(#log_entry{code=undefined} = Log, ReplicatorFun) ->
     %% Code can be undefined if logging module doesn't define ns_log_cat
     %% function. We change the code to 0 for such cases. Note that it must be
     %% done before abcast-ing (not in handle_cast) because some of the nodes
     %% in the cluster can be of the older version (thus this case won't be
     %% handled there).
-    do_log(Entry#log_entry{code=0});
-do_log(#log_entry{code=Code, tstamp=TStamp} = Entry) when is_integer(Code) ->
-    EntryNew = Entry#log_entry{server_time=calendar:now_to_local_time(TStamp)},
+    do_log(Log#log_entry{code=0}, ReplicatorFun);
+do_log(#log_entry{code=Code} = Log0, ReplicatorFun) when is_integer(Code) ->
+    Log = add_server_time(Log0),
+    %% The ReplicatorFun is essentially gossip_replicator:replicate_log/2.
+    ReplicatorFun(Log).
 
-    Nodes = ns_node_disco:nodes_actual(),
-    gen_server:abcast(Nodes, ?MODULE, {do_log, EntryNew}).
-
-send_garbage_collect_msg() ->
-    erlang:send_after(?GC_TIME, self(), garbage_collect).
+send_dedup_logs_msg() ->
+    erlang:send_after(?DEDUP_TIME, self(), dedup_logs).
 
 %% API
 
@@ -308,18 +237,31 @@ log(Module, Node, Time, Category, Fmt, Args) ->
           Code, log_classification(), iolist(), list()) -> ok
       when Time :: {integer(), integer(), integer()},
            Code :: integer() | undefined.
+%% Code can be undefined if logging module doesn't define ns_log_cat
+%% function. We change the code to 0 for such cases. Note that it must be
+%% done before abcast-ing (not in handle_cast) because some of the nodes
+%% in the cluster can be of the older version (thus this case won't be
+%% handled there)
+log(Module, Node, Time, undefined, Category, Fmt, Args) ->
+    log(Module, Node, Time, 0, Category, Fmt, Args);
 log(Module, Node, Time, Code, Category, Fmt, Args) ->
-    gen_server:cast(?MODULE,
-                    {log, Module, Node, Time, Code, Category, Fmt, Args}).
+    Log = #log_entry{module = Module, node = Node, tstamp = Time,
+                     code = Code, cat = Category,
+                     msg = Fmt, args = Args,
+                     server_time = calendar:now_to_local_time(Time)},
+    gossip_replicator:add_log(?SERVER, Log).
 
 -spec recent() -> list(#log_entry{}).
 recent() ->
-    gen_server:call(?MODULE, recent).
+    gossip_replicator:recent(?SERVER).
 
 -spec recent(atom()) -> list(#log_entry{}).
 recent(Module) ->
-    [E || E <- gen_server:call(?MODULE, recent),
-          E#log_entry.module =:= Module ].
+    [E || E <- recent(),
+          E#log_entry.module =:= Module].
+
+delete_log() ->
+    gossip_replicator:delete_logs(ns_log).
 
 %% Example categorization -- pretty much exists for the test below, but
 %% this is what any module that logs should look like.

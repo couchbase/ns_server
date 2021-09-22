@@ -13,7 +13,7 @@
           node        :: atom(),
           module      :: atom(),
           code        :: undefined | integer(),
-          msg         :: string(),
+          msg         :: iolist(),
           args        :: list(),
           cat         :: log_classification(),
           server_time :: undefined | calendar:datetime1970()
