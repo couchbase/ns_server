@@ -257,7 +257,9 @@ build_https_args(PortName, PortArg, PortPrefix, CertArg, KeyArg, CAArg,
              CertArg ++ "=" ++ ns_ssl_services_setup:legacy_cert_path(),
              KeyArg ++ "=" ++ ns_ssl_services_setup:unencrypted_pkey_file_path()];
         Port when PortName == fts_ssl_port;
-                  PortName == cbas_ssl_port ->
+                  PortName == cbas_ssl_port;
+                  PortName == indexer_https_port;
+                  PortName == projector_ssl_port ->
             [PortArg ++ "=" ++ PortPrefix ++ integer_to_list(Port),
              CertArg ++ "=" ++ ns_ssl_services_setup:chain_file_path(),
              KeyArg ++ "=" ++ ns_ssl_services_setup:pkey_file_path(),
@@ -388,7 +390,7 @@ goport_args(projector, Config, _Cmd, _NodeUUID) ->
     MinidumpDir = path_config:minidump_dir(),
 
     build_https_args(projector_ssl_port, "--httpsPort", "--certFile",
-                     "--keyFile", undefined, Config) ++
+                     "--keyFile", "--caFile", Config) ++
     build_afamily_requirement("-") ++
     ["-kvaddrs=" ++ misc:local_url(LocalMemcachedPort, [no_scheme]),
      build_port_arg("-adminport", ":", projector_port, Config),
@@ -417,7 +419,7 @@ goport_args(indexer, Config, _Cmd, NodeUUID) ->
                      {"-streamMaintPort",   indexer_stmaint_port}], Config) ++
 
         build_https_args(indexer_https_port, "--httpsPort",
-                         "--certFile", "--keyFile", undefined, Config) ++
+                         "--certFile", "--keyFile", "--caFile", Config) ++
 
         build_afamily_requirement("-") ++
 
