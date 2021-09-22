@@ -298,9 +298,7 @@ build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx) ->
       {storageBackend, ns_bucket:storage_backend(BucketConfig)},
       {durabilityMinLevel, build_durability_min_level(BucketConfig)},
       build_pitr_dynamic_bucket_info(BucketConfig),
-      {fragmentationPercentage,
-       proplists:get_value(frag_percent, BucketConfig, 50)},
-      {memQuotaRatio, proplists:get_value(mem_quota_ratio, BucketConfig, 10)},
+      build_magma_bucket_info(BucketConfig),
       {conflictResolutionType,
        ns_bucket:conflict_resolution_type(BucketConfig)}],
      case cluster_compat_mode:is_enterprise() of
@@ -328,6 +326,17 @@ build_pitr_dynamic_bucket_info(BucketConfig) ->
             [{pitrEnabled, ns_bucket:pitr_enabled(BucketConfig)},
              {pitrGranularity, ns_bucket:pitr_granularity(BucketConfig)},
              {pitrMaxHistoryAge, ns_bucket:pitr_max_history_age(BucketConfig)}]
+    end.
+
+build_magma_bucket_info(BucketConfig) ->
+    case ns_bucket:storage_mode(BucketConfig) of
+        magma ->
+            [{fragmentationPercentage, proplists:get_value(frag_percent,
+                                                           BucketConfig, 50)},
+             {memQuotaRatio, proplists:get_value(mem_quota_ratio,
+                                                 BucketConfig, 10)}];
+        _ ->
+            []
     end.
 
 handle_sasl_buckets_streaming(_PoolId, Req) ->
