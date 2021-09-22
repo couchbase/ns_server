@@ -456,6 +456,8 @@ handle_config_change({node, _Node, address_family_only}, Parent) ->
     Parent ! afamily_requirement_changed;
 handle_config_change(cluster_compat_version, Parent) ->
     Parent ! ca_certificates_updated;
+handle_config_change(cluster_certs_epoch, Parent) ->
+    Parent ! cert_and_pkey_changed;
 handle_config_change(_OtherEvent, _Parent) ->
     ok.
 
@@ -611,17 +613,38 @@ maybe_generate_node_certs() ->
     %% rename it may extract wrong info by wrong nodename from ns_config.
     %% Based on this wrong info it might decide to regenerate certs when it
     %% should not.
+    CurCertsEpoch = certs_epoch(),
+    RemoveUploadedCertPreNeo =
+        (not cluster_compat_mode:is_cluster_NEO()) andalso
+        case ns_config:search(cert_and_pkey) of
+            {value, {_, _}} -> true;
+            _ -> false
+        end,
     ShouldGenerate =
         case file:consult(cert_info_file()) of
-            {ok, [uploaded]} ->
+            {ok, [{uploaded, CertsEpoch}]} when CertsEpoch < CurCertsEpoch ->
+                ?log_info("Regenerating certs because epoch has changed "
+                          "(~p -> ~p)", [CertsEpoch, CurCertsEpoch]),
+                true;
+            {ok, [{uploaded, _}]} when RemoveUploadedCertPreNeo ->
+                ?log_info("Regenerating certs because cluster is pre-NEO and "
+                          "cert_and_pkey doesn't seem to contain user's CA "
+                          "anymore"),
+                true;
+            {ok, [{uploaded, _CertsEpoch}]} ->
                 false;
             {ok, [{generated, OldVsn}]} ->
                 ClusterCA = ns_server_cert:self_generated_ca(),
                 case generated_cert_version(ClusterCA, Hostname) of
                     OldVsn -> false;
-                    _ -> true
+                    _ ->
+                        ?log_info("Regenerating certs because CA or hostname "
+                                  "has changed"),
+                        true
                 end;
             {error, enoent} ->
+                ?log_info("Regenerating certs because there are no certs on "
+                          "this node"),
                 true
         end,
     case ShouldGenerate of
@@ -665,6 +688,7 @@ save_node_certs(Type, CA, Chain, PKey, PassphraseSettings, Extra)
         ns_server_cert:get_chain_info(Chain, CA),
     UTCTime = calendar:universal_time(),
     LoadTime = calendar:datetime_to_gregorian_seconds(UTCTime),
+    CertsEpoch = certs_epoch(),
     Props = [{subject, iolist_to_binary(Subject)},
              {not_after, Expiration},
              {verified_with, erlang:md5(CA)},
@@ -672,7 +696,8 @@ save_node_certs(Type, CA, Chain, PKey, PassphraseSettings, Extra)
              {load_timestamp, LoadTime},
              {ca, CA},
              {pem, Chain},
-             {pkey_passphrase_settings, PassphraseSettings} | Extra],
+             {pkey_passphrase_settings, PassphraseSettings},
+             {certs_epoch, CertsEpoch} | Extra],
 
     Data = term_to_binary({node_certs, Props, Chain, PKey}),
 
@@ -686,6 +711,7 @@ save_node_certs_phase2() ->
     case file:read_file(TmpFile) of
         {ok, Bin} ->
             {node_certs, Props, Chain, PKey} = binary_to_term(Bin),
+            CertsEpoch = proplists:get_value(certs_epoch, Props),
             ok = misc:atomic_write_file(chain_file_path(), Chain),
             ok = misc:atomic_write_file(pkey_file_path(), PKey),
             CertsInfo = case proplists:get_value(type, Props) of
@@ -694,7 +720,7 @@ save_node_certs_phase2() ->
                                 CA = proplists:get_value(ca, Props),
                                 {generated, generated_cert_version(CA, Host)};
                             uploaded ->
-                                uploaded
+                                {uploaded, CertsEpoch}
                         end,
             CertsInfoBin = iolist_to_binary(io_lib:format("~p.", [CertsInfo])),
             ok = misc:atomic_write_file(cert_info_file(), CertsInfoBin),
@@ -710,6 +736,12 @@ save_node_certs_phase2() ->
             misc:create_marker(marker_path()),
             ok = file:delete(TmpFile);
         {error, enoent} -> file_not_found
+    end.
+
+certs_epoch() ->
+    case chronicle_kv:get(kv, cluster_certs_epoch) of
+        {ok, {N, _}} -> N;
+        {error, not_found} -> 0
     end.
 
 update_certs_erl22() ->

@@ -113,9 +113,24 @@ generate_and_set_cert_and_pkey(Force) ->
                           {ok, {OldPair, _}} when not Force ->
                               {abort, {ok, undefined, OldPair}};
                           _ ->
-                              Changes1 =  [{set, root_cert_and_pkey, NewPair}],
+                              Changes0 =
+                                  case Force of
+                                      true ->
+                                          Epoch =
+                                              case chronicle_kv:txn_get(
+                                                     cluster_certs_epoch,
+                                                     Txn) of
+                                                  {ok, {N, _}} -> N;
+                                                  {error, not_found} -> 0
+                                              end + 1,
+                                          [{set, cluster_certs_epoch, Epoch}];
+                                      false ->
+                                          []
+                                  end,
+                              Changes1 = [{set, root_cert_and_pkey, NewPair}],
                               {commit, Changes2, _} = AddCA(Txn),
-                              {commit, Changes1 ++ Changes2, NewPair}
+                              Changes = Changes0 ++ Changes1 ++ Changes2,
+                              {commit, Changes, NewPair}
                       end
                   end),
             Pair;
