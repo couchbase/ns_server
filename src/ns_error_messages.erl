@@ -289,6 +289,9 @@ reload_node_certificate_error({test_server_error, Reason}) ->
 reload_node_certificate_error(could_not_decrypt) ->
     <<"Failed to decrypt provided private key. Check password">>.
 
+node_certificate_warning(unused) ->
+    <<"This certificate is auto-generated and doesn't seem to be used by any "
+      "node anymore">>;
 node_certificate_warning(mismatch) ->
     <<"Certificate is not signed with cluster CA.">>;
 node_certificate_warning(expired) ->

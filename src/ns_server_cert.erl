@@ -1013,7 +1013,18 @@ get_warnings() ->
                       end,
                   ExpWarnings = expiration_warnings(CAProps),
                   Id = proplists:get_value(id, CAProps),
-                  [{{ca, Id}, W} || W <- SelfSignedWarnings ++ ExpWarnings]
+                  UnusedWarnings =
+                      case proplists:get_value(type, CAProps) of
+                          generated ->
+                              CAPem = proplists:get_value(pem, CAProps, <<>>),
+                              case filter_nodes_by_ca(Nodes, CAPem) of
+                                  [] -> [unused];
+                                  _ -> []
+                              end;
+                          _ -> []
+                      end,
+                  [{{ca, Id}, W} || W <- SelfSignedWarnings ++ ExpWarnings ++
+                                         UnusedWarnings]
           end, trusted_CAs(props)),
     NodeWarnings ++ CAWarnings.
 
