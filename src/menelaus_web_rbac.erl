@@ -1006,6 +1006,7 @@ service_user_limit_validators(clusterManager) ->
      validator:unsupported(_)];
 service_user_limit_validators(fts) ->
     [validator:integer(num_concurrent_requests, 1, infinity, _),
+     validator:integer(num_queries_per_min, 1, infinity, _),
      validator:integer(ingress_mib_per_min, 1, infinity, _),
      validator:integer(egress_mib_per_min, 1, infinity, _),
      validator:unsupported(_)];
