@@ -15,7 +15,8 @@
 -export([shutdown/1, get_node_info/1,
          get_task_list/2, cancel_task/3,
          get_current_topology/2,
-         prepare_topology_change/6, start_topology_change/6]).
+         prepare_topology_change/6, start_topology_change/6,
+         health_check/1, is_safe/2, get_label/1]).
 
 -define(RPC_TIMEOUT,       ?get_timeout(rpc, 60000)).
 -define(LONG_POLL_TIMEOUT, ?get_timeout(long_poll, 30000)).
@@ -43,10 +44,19 @@ start_topology_change(Pid, Id, Rev, Type, KeepNodes, EjectNodes) ->
     perform_call(Pid, "StartTopologyChange",
                  topology_change_req(Id, Rev, Type, KeepNodes, EjectNodes)).
 
+health_check(Service) ->
+    perform_call(get_label(Service), "HealthCheck", empty_req()).
+
+is_safe(Service, NodeIds) ->
+    perform_call(get_label(Service), "IsSafe", NodeIds).
+
+get_label(Service) when is_atom(Service) ->
+    atom_to_list(Service) ++ "-service_api".
+
 %% internal
-perform_call(Pid, Name, Arg) ->
+perform_call(PidOrLabel, Name, Arg) ->
     FullName = "ServiceAPI." ++ Name,
-    handle_result(json_rpc_connection:perform_call(Pid, FullName,
+    handle_result(json_rpc_connection:perform_call(PidOrLabel, FullName,
                                                    Arg, ?RPC_TIMEOUT)).
 
 handle_result({ok, null}) ->

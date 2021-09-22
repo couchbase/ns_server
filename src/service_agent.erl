@@ -321,9 +321,6 @@ code_change(_OldVsn, State, _Extra) ->
 server_name(Service) when is_atom(Service) ->
     list_to_atom(?MODULE_STRING ++ "-" ++ atom_to_list(Service)).
 
-conn_label(Service) ->
-    atom_to_list(Service) ++ "-service_api".
-
 spawn_connection_waiter(Agent, Service) ->
     proc_lib:spawn_link(
       fun () ->
@@ -333,7 +330,8 @@ spawn_connection_waiter(Agent, Service) ->
               Timeout = make_ref(),
               erlang:send_after(?CONNECTION_TIMEOUT, self(), Timeout),
 
-              wait_for_connection_loop(Agent, conn_label(Service), Timeout)
+              wait_for_connection_loop(
+                Agent, service_api:get_label(Service), Timeout)
       end).
 
 wait_for_connection_loop(Agent, WantedLabel, Timeout) ->
