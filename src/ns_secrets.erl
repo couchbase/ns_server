@@ -30,9 +30,7 @@ start_link() ->
                                                    {cache_exceptions, false}]).
 
 get_fresh_pkey_pass(PassSettings) ->
-    Key = {pkey_passphrase_fun, PassSettings},
-    Fun = fun () -> extract_pkey_pass(PassSettings) end,
-    active_cache:update_and_get_value(?MODULE, Key, Fun).
+    maybe_get_pkey_from_cache(update_and_get_value, PassSettings).
 
 get_pkey_pass() ->
     Props = ns_config:read_key_fast({node, node(), node_cert}, []),
@@ -40,9 +38,20 @@ get_pkey_pass() ->
     get_pkey_pass(PassSettings).
 
 get_pkey_pass(PassSettings) ->
-    Key = {pkey_passphrase_fun, PassSettings},
-    Fun = fun () -> extract_pkey_pass(PassSettings) end,
-    active_cache:get_value(?MODULE, Key, Fun).
+    maybe_get_pkey_from_cache(get_value, PassSettings).
+
+maybe_get_pkey_from_cache(CacheFunction, PassSettings) ->
+    %% Avoid caching of plain pkey pass because:
+    %%  - it's static and cheap to extract in this case;
+    %%  - passing it to active cache in key is unsafe as it might be logged in
+    %%    case of a crash.
+    case proplists:get_value(type, PassSettings) of
+        plain -> extract_pkey_pass(PassSettings);
+        _ ->
+            Key = {pkey_passphrase_fun, PassSettings},
+            Fun = fun () -> extract_pkey_pass(PassSettings) end,
+            active_cache:CacheFunction(?MODULE, Key, Fun)
+    end.
 
 reset() ->
     active_cache:flush(?MODULE).
