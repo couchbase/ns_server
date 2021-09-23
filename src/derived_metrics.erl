@@ -91,7 +91,8 @@ get_metric(<<"kv_vb_avg_queue_age_seconds">>) ->
 get_metric(<<"kv_vb_avg_total_queue_age_seconds">>) ->
     ratio(?cut(promQL:sum_without([<<"state">>],
                                   _(<<"kv_vb_queue_age_seconds">>))),
-          _(<<"kv_ep_diskqueue_items">>));
+          ?cut(promQL:sum_without([<<"state">>],
+                                  _(<<"kv_vb_queue_size">>))));
 get_metric(<<"kv_avg_disk_time_seconds">>) ->
     ratio(_(<<"kv_disk_seconds_sum">>), _(<<"kv_disk_seconds_count">>));
 get_metric(<<"kv_avg_bg_wait_time_seconds">>) ->

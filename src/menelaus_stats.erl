@@ -942,7 +942,7 @@ computed_stats_lazy_proplist(_) ->
                                     catch error:badarith -> 0
                                     end
                             end),
-    AvgTotalQueueAge = Z2(vb_total_queue_age, ep_diskqueue_items,
+    AvgTotalQueueAge = Z2(vb_total_queue_age, vb_total_queue_size,
                           fun (TotalAge, TotalCount) ->
                                   try TotalAge / TotalCount / 1000
                                   catch error:badarith -> 0

@@ -406,6 +406,10 @@ pre_70_stat_to_prom_query(Bucket, <<"vb_total_queue_age">>, _Opts) ->
     {ok, promQL:named(<<"kv_vb_total_queue_age">>,
                       promQL:convert_units(seconds, milliseconds,
                                            promQL:sum(M)))};
+pre_70_stat_to_prom_query(Bucket, <<"vb_total_queue_size">>, _Opts) ->
+    M = promQL:bucket_metric(<<"kv_vb_queue_size">>,
+                             list_to_binary(Bucket)),
+    {ok, promQL:named(<<"kv_vb_total_queue_size">>, promQL:sum(M))};
 pre_70_stat_to_prom_query(Bucket, <<"xdc_ops">>, Opts) ->
     M = {[{eq, <<"name">>, <<"kv_ops">>},
           {eq, <<"bucket">>, list_to_binary(Bucket)},
@@ -667,6 +671,8 @@ prom_name_to_pre_70_name(Bucket, {JSONProps}) ->
                 {ok, <<"ops">>};
             <<"kv_vb_total_queue_age">> ->
                 {ok, <<"vb_total_queue_age">>};
+            <<"kv_vb_total_queue_size">> ->
+                {ok, <<"vb_total_queue_size">>};
             <<"kv_xdc_ops">> ->
                 {ok, <<"xdc_ops">>};
             <<"kv_dcp_", Stat/binary>> ->
@@ -877,7 +883,7 @@ default_stat_list(_Bucket) ->
      bg_wait_count, bg_wait_total, disk_commit_count, disk_commit_total,
      disk_update_count, disk_update_total, couch_docs_disk_size,
      couch_docs_data_size, disk_write_queue, ep_ops_create, ep_ops_update,
-     misses, evictions, ops, vb_total_queue_age, xdc_ops,
+     misses, evictions, ops, vb_total_queue_age, vb_total_queue_size, xdc_ops,
      <<"spatial/*/accesses">>, <<"spatial/*/data_size">>,
      <<"spatial/*/disk_size">>, <<"views/*/accesses">>, <<"views/*/data_size">>,
      <<"views/*/disk_size">>].
