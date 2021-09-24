@@ -17,6 +17,11 @@
 -export([start_link/0,
          inhibit_view_compaction/2, uninhibit_view_compaction/2]).
 
+%% Misc
+-export([get_autocompaction_settings/1,
+         set_autocompaction_settings/1,
+         chronicle_upgrade_to_NEO/1]).
+
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
@@ -138,6 +143,40 @@ uninhibit_view_compaction(Bucket, Ref) ->
     gen_server:call(?MODULE,
                     {uninhibit_view_compaction, list_to_binary(Bucket), Ref},
                     infinity).
+
+get_autocompaction_settings(Config) ->
+    case cluster_compat_mode:is_cluster_NEO() of
+        true ->
+            get_autocompaction_from_chronicle();
+        false ->
+            get_autocompaction_from_ns_config(Config)
+    end.
+
+get_autocompaction_from_chronicle() ->
+    case chronicle_kv:get(kv, autocompaction) of
+        {ok, {Settings, _}} -> Settings;
+        {error, not_found} -> []
+    end.
+
+get_autocompaction_from_ns_config(Config) ->
+    case ns_config:search(Config, autocompaction) of
+        {value, Settings} -> Settings;
+        false -> []
+    end.
+
+set_autocompaction_settings(Settings) ->
+    case cluster_compat_mode:is_cluster_NEO() of
+        true ->
+            {ok, _} = chronicle_kv:set(kv, autocompaction, Settings),
+            ok;
+        false ->
+            ns_config:set(autocompaction, Settings)
+    end.
+
+chronicle_upgrade_to_NEO(ChronicleTxn) ->
+    Props = ns_config:search(ns_config:get(), autocompaction, []),
+    ?log_info("Upgrading autocompaction to NEO: ~n~p", [Props]),
+    chronicle_upgrade:set_key(autocompaction, Props, ChronicleTxn).
 
 %% gen_server callbacks
 init([]) ->
@@ -1112,7 +1151,7 @@ compaction_daemon_config(Config) ->
     daemon_config_to_record(Props).
 
 compaction_config_props(Config, BucketName) ->
-    Global = ns_config:search(Config, autocompaction, []),
+    Global = get_autocompaction_settings(Config),
     BucketConfig = get_bucket(BucketName),
     PerBucket = case proplists:get_value(autocompaction, BucketConfig, []) of
                     false -> [];

@@ -87,4 +87,5 @@ upgrade_to(?VERSION_70, UpgradeTxn) ->
      functools:chain(
        UpgradeTxn,
        [fun ns_ssl_services_setup:chronicle_upgrade_to_NEO/1,
-        fun ns_bucket:chronicle_upgrade_to_NEO/1])}.
+        fun ns_bucket:chronicle_upgrade_to_NEO/1,
+        fun compaction_daemon:chronicle_upgrade_to_NEO/1])}.

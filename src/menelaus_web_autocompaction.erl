@@ -57,10 +57,10 @@ build_global_settings(Config) ->
          {indexFragmentationThreshold,
           {[{percentage, Fragmentation}]}}],
 
-    case ns_config:search(Config, autocompaction) of
-        false ->
+    case compaction_daemon:get_autocompaction_settings(Config) of
+        [] ->
             do_build_settings([], IndexSettings);
-        {value, ACSettings} ->
+        ACSettings ->
             do_build_settings(ACSettings, IndexSettings)
     end.
 
@@ -108,7 +108,7 @@ handle_set_global_settings(Req) ->
         {true, {ok, _ACSettings, _}, _} ->
             reply_json(Req, {[{errors, {[]}}]}, 200);
         {false, {ok, ACSettings, MaybeIndex}, _} ->
-            ns_config:set(autocompaction, ACSettings),
+            compaction_daemon:set_autocompaction_settings(ACSettings),
 
             MaybePurgeInterval =
                 case PurgeIntervalRV of
