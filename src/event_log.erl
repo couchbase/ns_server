@@ -78,8 +78,8 @@ build_nodename() ->
 
 log(Event) ->
     {JSON} = ejson:decode(Event),
-    % Timestamp = binary_to_list(proplists:get_value(<<"timestamp">>, JSON)),
-    % Id = proplists:get_value(<<"uuid">>, JSON),
+    Timestamp = binary_to_list(proplists:get_value(<<"timestamp">>, JSON)),
+    Id = proplists:get_value(<<"uuid">>, JSON),
 
     %% Populate the node field for event logs received from the Services.
 
@@ -89,5 +89,4 @@ log(Event) ->
                 _ ->
                     JSON
            end,
-    ?log_debug("Event log JSON - ~p~n", [JSON1]).
-    % event_log_server:log(Timestamp, Id, JSON1).
+    event_log_server:log(Timestamp, Id, JSON1).
