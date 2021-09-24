@@ -42,6 +42,7 @@
          strip_local_node_metadata/1,
          merge_remote_logs/3,
          merge_pending_list/3,
+         modify_recent/2,
          handle_info/3,
          handle_notify/1]).
 
@@ -97,6 +98,12 @@ add_local_node_metadata(Logs, State) ->
 
 strip_local_node_metadata(Logs) ->
     Logs.
+
+%% We currently don't support changing the max number of user logs
+%% we store.
+
+modify_recent(Recent, _MaxLen) ->
+    Recent.
 
 %% Merge Logs received from remote node with the logs on the local node.
 merge_remote_logs(LocalLogs, RemoteLogs, MaxLen) ->

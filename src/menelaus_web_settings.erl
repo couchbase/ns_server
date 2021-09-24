@@ -240,6 +240,8 @@ services_with_security_settings() ->
 
 is_allowed_on_cluster([secure_headers]) ->
     cluster_compat_mode:is_cluster_70();
+is_allowed_on_cluster([event_logs_limit]) ->
+    cluster_compat_mode:is_cluster_NEO();
 is_allowed_on_cluster(_) ->
     true.
 
@@ -328,6 +330,8 @@ conf(internal) ->
       get_number(0, 99999, undefined)},
      {{request_limit, capi}, capiRequestLimit, undefined,
       get_number(0, 99999, undefined)},
+     {event_logs_limit, eventLogsLimit, 10000,
+      get_number(3000, 20000, 10000)},
      {drop_request_memory_threshold_mib, dropRequestMemoryThresholdMiB,
       undefined, get_number(0, 99999, undefined)},
      {gotraceback, gotraceback, <<"single">>, fun get_string/1},

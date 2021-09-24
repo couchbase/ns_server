@@ -16,8 +16,11 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--define(EVENTS_SIZE, 10000). % Default number of event log entries.
--define(PENDING_SIZE, 1000). % Max number of pending log entries.
+-define(DEFAULT_EVENTS_SIZE, 10000).
+
+%% Percentage value used to determine the max length of pending_list.
+%% Derived based on the max_events configured.
+-define(PENDING_LEN_PERCENT, 10).
 
 % The server_name used by gossip_replicator to register this server.
 -define(SERVER, ?MODULE).
@@ -37,6 +40,7 @@
          strip_local_node_metadata/1,
          merge_remote_logs/3,
          merge_pending_list/3,
+         modify_recent/2,
          handle_notify/1,
          handle_info/3]).
 
@@ -49,11 +53,25 @@
 -record(event_log_state, {seq_num}).
 
 start_link() ->
-    FileName = ns_config:search_node_prop(ns_config:get(), event_log, filename),
-    gossip_replicator:start_link(?SERVER, [?MODULE, FileName, ?PENDING_SIZE,
-                                           ?EVENTS_SIZE]).
+    Config = ns_config:get(),
+    FileName = ns_config:search_node_prop(Config, event_log, filename),
+    MaxEvents = get_event_logs_limit(),
+    MaxPending = compute_max_pending_len(MaxEvents),
+    gossip_replicator:start_link(?SERVER, [?MODULE, FileName, MaxPending,
+                                           MaxEvents]).
+
+ns_config_event_handler({event_logs_limit, MaxEvents}) ->
+    MaxPending = compute_max_pending_len(MaxEvents),
+    gossip_replicator:change_config(?SERVER, MaxEvents, MaxPending);
+ns_config_event_handler(_KV) ->
+    ok.
+
+get_event_logs_limit() ->
+   ns_config:read_key_fast(event_logs_limit, ?DEFAULT_EVENTS_SIZE).
 
 init(Recent) ->
+    ns_pubsub:subscribe_link(ns_config_events,
+                             fun ns_config_event_handler/1),
     %% Retrieve the max seq_num from previous logs if any.
     SeqNum = lists:foldl(fun(Log, MaxS) ->
                            max(MaxS, get_seqnum(Log))
@@ -101,6 +119,9 @@ add_local_node_metadata(Logs, #event_log_state{seq_num = SeqNum} = State) ->
 
 strip_local_node_metadata(Logs) ->
     strip_seqnum_in_logs(Logs).
+
+modify_recent(Recent, RecentMax) ->
+    lists:sublist(Recent, RecentMax).
 
 %% Logs in Pending list are ordered in the sequence they are received by the
 %% gossip_replictor gen_server and therefore have to sorted by order_entries/2
@@ -154,6 +175,9 @@ add_seqnum(Counter, Log) ->
 
 get_event(#log_entry{event = Event}) ->
     Event.
+
+compute_max_pending_len(MaxEventsLen) ->
+    (?PENDING_LEN_PERCENT * MaxEventsLen) div 100.
 
 %% APIS
 

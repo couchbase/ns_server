@@ -23,6 +23,7 @@
 -export([start_link/2,
          add_log/2,
          replicate_log/2,
+         change_config/3,
          recent/1,
          delete_logs/1]).
 
@@ -52,6 +53,7 @@
 -callback strip_local_node_metadata(logs()) -> logs().
 -callback merge_remote_logs(logs(), logs(), integer()) -> logs().
 -callback merge_pending_list(logs(), logs(), integer()) -> logs().
+-callback modify_recent(logs(), integer()) -> logs().
 -callback handle_notify(child_state()) -> child_state().
 -callback handle_info(term(), child_state(), fun()) -> child_state().
 
@@ -144,6 +146,17 @@ handle_cast({sync_all, SrcNode, RemoteLogs0},
             ok
     end,
     {noreply, StateNew};
+handle_cast({change_config, RecentMaxLen, PendingMaxLen},
+            #state{child_module = Mod} = State0) ->
+    %% flushing any pending logs and trim the unique_recent to
+    %% hold MaxRecent entries.
+    State = flush_pending_list(State0),
+    RecentNew = Mod:modify_recent(State#state.unique_recent, RecentMaxLen),
+    State1 = State#state{unique_recent = RecentNew,
+                         recent_len_max = RecentMaxLen,
+                         pending_max = PendingMaxLen},
+    StateNew = schedule_save(State1),
+    {noreply, StateNew};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -198,6 +211,9 @@ add_log(ServerName, Log) ->
 replicate_log(ServerName, Log) ->
     Nodes = ns_node_disco:nodes_actual(),
     gen_server:abcast(Nodes, ServerName, {log, Log}).
+
+change_config(ServerName, MaxRecent, MaxPending) ->
+    gen_server:cast(ServerName, {change_config, MaxRecent, MaxPending}).
 
 delete_logs(FileConfigKey) ->
     file:delete(log_filename(FileConfigKey)).
