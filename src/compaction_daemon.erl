@@ -1108,7 +1108,7 @@ ddoc_names(BucketName) ->
     capi_utils:fetch_ddoc_ids(BucketName).
 
 compaction_daemon_config(Config) ->
-    Props = ns_config:search_node_with_default(Config, compaction_daemon, []),
+    Props = ns_config:search(Config, {node, node(), compaction_daemon}, []),
     daemon_config_to_record(Props).
 
 compaction_config_props(Config, BucketName) ->
