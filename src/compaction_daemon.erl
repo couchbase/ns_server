@@ -1112,7 +1112,7 @@ compaction_daemon_config(Config) ->
     daemon_config_to_record(Props).
 
 compaction_config_props(Config, BucketName) ->
-    Global = ns_config:search_node_with_default(Config, autocompaction, []),
+    Global = ns_config:search(Config, autocompaction, []),
     BucketConfig = get_bucket(BucketName),
     PerBucket = case proplists:get_value(autocompaction, BucketConfig, []) of
                     false -> [];
