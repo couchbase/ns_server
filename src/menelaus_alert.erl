@@ -21,6 +21,8 @@
 -endif.
 
 -export([handle_logs/1,
+         handle_events/1,
+         handle_events_streaming/1,
          handle_settings_alerts/1,
          handle_settings_alerts_post/1,
          handle_settings_alerts_send_test_email/1,
@@ -28,20 +30,72 @@
          build_alerts_config/1,
          alert_keys/0,
          popup_alerts_config/0]).
+         %% handle_streaming_wakeup/5]).
 
 -export([category_bin/1]).
 
 -import(menelaus_util,
         [reply_json/2,
          reply_json/3,
-         reply/2]).
+         reply/2,
+         reply_ok/3,
+         encode_json/1,
+         reply_text/3]).
 
 %% External API
 
 -define(DEFAULT_LIMIT, 250).
+-define(DEFAULT_EVENTS_LIMIT, 250).
 
 handle_logs(Req) ->
     reply_json(Req, {struct, [{list, build_logs(mochiweb_request:parse_qs(Req))}]}).
+
+get_handle_events_params(Values) ->
+    SinceTime = proplists:get_value(sinceTime, Values),
+    Limit = case proplists:get_value(limit, Values) of
+                undefined ->
+                    ?DEFAULT_EVENTS_LIMIT;
+                L ->
+                    L
+            end,
+    {SinceTime, Limit}.
+
+handle_events_validators() ->
+    [validator:iso_8601_utc(sinceTime, _),
+     validator:integer(limit, _),
+     validator:unsupported(_)].
+
+handle_events(Req) ->
+    menelaus_util:assert_is_NEO(),
+    validator:handle(fun (Values) ->
+                       {SinceTime, Limit} = get_handle_events_params(Values),
+                       reply_json(Req,
+                                  event_log_server:build_events_json(SinceTime,
+                                                                     Limit))
+                     end, Req, qs, handle_events_validators()).
+
+handle_events_streaming(Req) ->
+    menelaus_util:assert_is_NEO(),
+    Ref = make_ref(),
+    Self = self(),
+    ns_pubsub:subscribe_link(event_log_events,
+                             fun (Arg) ->
+                               Self ! {Ref, Arg}
+                             end),
+    DataBody =
+      fun (undefined, _Update) ->
+            {SeqNum, Events} = event_log_server:recent(undefined),
+            {SeqNum, encode_json(Events)};
+          (PrevSeqNum, {_Ref, {seq_num, NewSeqNum}}) ->
+            case NewSeqNum =< PrevSeqNum of
+                true ->
+                    no_data;
+                false ->
+                    {SeqNum, Events} = event_log_server:recent(PrevSeqNum),
+                    {SeqNum, encode_json(Events)}
+            end
+      end,
+    menelaus_util:handle_streaming(Req, DataBody, Ref).
 
 %% @doc Handle the email alerts request.
 handle_settings_alerts(Req) ->

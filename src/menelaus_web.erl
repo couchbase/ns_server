@@ -353,6 +353,10 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[nodes], read}, fun menelaus_web_node:handle_node_statuses/1};
                 ["logs"] ->
                     {{[logs], read}, fun menelaus_alert:handle_logs/1};
+                ["events"] ->
+                    {{[logs], read}, fun menelaus_alert:handle_events/1};
+                ["eventsStreaming"] ->
+                    {{[logs], read}, fun menelaus_alert:handle_events_streaming/1};
                 ["logs", "rebalanceReport"] ->
                     {{[admin, logs], read},
                      fun menelaus_web_cluster_logs:handle_rebalance_report/1};

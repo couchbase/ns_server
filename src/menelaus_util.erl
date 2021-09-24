@@ -61,6 +61,7 @@
          require_auth/1,
          send_chunked/3,
          handle_streaming/2,
+         handle_streaming/3,
          assert_is_enterprise/0,
          assert_is_65/0,
          assert_is_66/0,
@@ -83,7 +84,7 @@
 -export([list_to_integer/1, list_to_float/1]).
 
 %% for hibernate
--export([handle_streaming_wakeup/4]).
+-export([handle_streaming_wakeup/5]).
 
 %% External API
 
@@ -557,57 +558,80 @@ send_chunked(Req, StatusCode, ExtraHeaders) ->
            mochiweb_response:write_chunk(<<>>, Resp)
        end).
 
-handle_streaming(F, Req) ->
-    HTTPRes = reply_ok(Req, "application/json; charset=utf-8", chunked),
+handle_streaming(FetchDataFun, Req) ->
     %% Register to get config state change messages.
     menelaus_event:register_watcher(self()),
+    DataBody =
+      fun (LastRes, Update) ->
+          {notify_watcher, UpdateID} = Update,
+          Res = FetchDataFun(stable, UpdateID),
+          case Res =:= LastRes of
+            true ->
+                no_data;
+            false ->
+                ResNormal = case Res of
+                                {just_write, Stuff} ->
+                                    Stuff;
+                                _ ->
+                                    FetchDataFun(unstable, UpdateID)
+                            end,
+                Encoded = case ResNormal of
+                              {write, Bin} -> Bin;
+                              _ -> encode_json(ResNormal)
+                          end,
+                {Res, Encoded}
+          end
+      end,
+    handle_streaming(Req, DataBody, notify_watcher).
+
+handle_streaming(Req, DataBody, NotifyTag) ->
+    HTTPRes = reply_ok(Req, "application/json; charset=utf-8", chunked),
     Sock = mochiweb_request:get(socket, Req),
     mochiweb_socket:setopts(Sock, [{active, true}]),
-    handle_streaming(F, Req, HTTPRes, undefined, undefined).
+    handle_streaming(Req, DataBody, HTTPRes, undefined,
+                     {NotifyTag, undefined}).
 
-streaming_inner(F, HTTPRes, LastRes, UpdateID) ->
-    Res = F(stable, UpdateID),
-    case Res =:= LastRes of
-        true ->
-            ok;
-        false ->
-            ResNormal = case Res of
-                            {just_write, Stuff} ->
-                                Stuff;
-                            _ ->
-                                F(unstable, UpdateID)
-                        end,
-            Encoded = case ResNormal of
-                          {write, Bin} -> Bin;
-                          _ -> encode_json(ResNormal)
-                      end,
-            mochiweb_response:write_chunk(Encoded, HTTPRes),
-            mochiweb_response:write_chunk("\n\n\n\n", HTTPRes)
-    end,
-    Res.
-
-handle_streaming(F, Req, HTTPRes, LastRes, UpdateID) ->
+handle_streaming(Req, DataBody, HTTPRes, LastRes, {NotifyTag, _} = Update) ->
     Res =
-        try streaming_inner(F, HTTPRes, LastRes, UpdateID)
+        try streaming_inner(DataBody, HTTPRes, LastRes, Update)
         catch exit:normal ->
                 mochiweb_response:write_chunk("", HTTPRes),
                 exit(normal)
         end,
     request_throttler:hibernate(Req, ?MODULE, handle_streaming_wakeup,
-                                [F, Req, HTTPRes, Res]).
+                                [Req, DataBody, HTTPRes, Res, NotifyTag]).
 
-handle_streaming_wakeup(F, Req, HTTPRes, Res) ->
-    UpdateID =
+streaming_inner(DataBody, HTTPRes, LastRes, Update) ->
+    case DataBody(LastRes, Update) of
+        no_data ->
+            LastRes;
+        {Res, Data} ->
+            mochiweb_response:write_chunk(Data, HTTPRes),
+            mochiweb_response:write_chunk("\n\n", HTTPRes),
+            Res
+    end.
+
+flush_notifications(NotifyTag, Value) ->
+    receive
+        {NotifyTag, NewValue} ->
+            flush_notifications(NotifyTag, NewValue)
+    after 0 ->
+        Value
+    end.
+
+handle_streaming_wakeup(DataBody, Req, HTTPRes, Res, NotifyTag) ->
+    NewValue =
         receive
-            {notify_watcher, ID} ->
+            {NotifyTag, Value} ->
                 timer:sleep(50),
-                menelaus_event:flush_watcher_notifications(ID);
+                flush_notifications(NotifyTag, Value);
             _ ->
                 exit(normal)
         after 25000 ->
                 timeout
         end,
-    handle_streaming(F, Req, HTTPRes, Res, UpdateID).
+    handle_streaming(DataBody, Req, HTTPRes, Res,
+                     {NotifyTag, NewValue}).
 
 assert_is_enterprise() ->
     case cluster_compat_mode:is_enterprise() of
