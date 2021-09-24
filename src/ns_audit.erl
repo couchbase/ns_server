@@ -66,7 +66,7 @@
          security_settings/2,
          start_log_collection/4,
          modify_log_redaction_settings/2,
-         modify_audit_settings/2,
+         modify_audit_settings/3,
          modify_index_settings/2,
          modify_query_curl_whitelist_setting/2,
          modify_query_settings/2,
@@ -808,13 +808,58 @@ modify_log_redaction_settings(Req, Settings) ->
     put(modify_log_redaction_settings, Req,
         [{log_redaction_default_cfg, {prepare_list(Settings)}}]).
 
-modify_audit_settings(Req, Settings) ->
+jsonify_audit_settings(Settings0) ->
+    Settings = lists:keysort(1, Settings0),
+    lists:foldr(fun ({K, V}, Acc) ->
+                        case K of
+                            log_path ->
+                                [{K, list_to_binary(V)} | Acc];
+                            enabled ->
+                                [{enabled_audit_ids, V} | Acc];
+                            disabled ->
+                                Acc;
+                            auditd_enabled ->
+                                Acc;
+                            _ ->
+                                [{K, V} | Acc]
+                        end
+                end, [], Settings).
+
+maybe_add_event_log(OldSettings, NewSettings) ->
+    case NewSettings of
+        [] ->
+            event_log:add_log(audit_disabled, OldSettings);
+        _ ->
+            Enabled =
+                proplists:get_value(auditd_enabled, OldSettings) =:= false
+                    andalso
+                    proplists:get_value(auditd_enabled, NewSettings) =:= true,
+
+            NewSettingsJson =
+                [{new_settings, {struct, jsonify_audit_settings(NewSettings)}}],
+
+            case Enabled of
+                true ->
+                    event_log:add_log(audit_enabled, NewSettingsJson);
+                false ->
+                    OldSettingsJson =
+                        [{old_settings,
+                         {struct, jsonify_audit_settings(OldSettings)}}],
+                    eventlog:add_log(audit_cfg_changed,
+                                     OldSettingsJson ++ NewSettingsJson)
+            end
+    end.
+
+modify_audit_settings(Req, Settings, OldSettings) ->
     case proplists:get_value(auditd_enabled, Settings, undefined) of
         false ->
-            sync_put(modify_audit_settings, Req, [{auditd_enabled, false}]);
+            sync_put(modify_audit_settings, Req, [{auditd_enabled, false}]),
+            maybe_add_event_log(OldSettings, []);
         _ ->
             put(modify_audit_settings, Req,
-                [prepare_audit_setting(S) || S <- Settings])
+                [prepare_audit_setting(S) || S <- Settings]),
+            maybe_add_event_log(Settings, OldSettings)
+
     end.
 
 prepare_audit_setting({enabled, List}) ->

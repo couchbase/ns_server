@@ -20,7 +20,15 @@
 -spec event_details(atom()) -> {integer(), atom(), atom(), binary()}.
 %% event_ids block for ns_server related events: [0-1023]
 event_details(node_join_success) ->
-    {0, ns_server, info, <<"Node successfully joined the cluster">>}.
+    {0, ns_server, info, <<"Node successfully joined the cluster">>};
+
+%% event_ids block for Security related events: [9216, ..., 10239]
+event_details(audit_enabled) ->
+    {9216, security, info, <<"Audit enabled">>};
+event_details(audit_disabled) ->
+    {9217, security, info, <<"Audit disabled">>};
+event_details(audit_cfg_changed) ->
+    {9218, security, info, <<"Audit configuration change">>}.
 
 jsonify(Key, Value) when is_list(Value) ->
     [{Key, list_to_binary(Value)}].

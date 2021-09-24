@@ -41,24 +41,24 @@ handle_post(Req) ->
     menelaus_util:assert_is_enterprise(),
 
     Config = ns_config:get(),
+    {OldSettings, _} = ns_audit_cfg:read_config(Config),
     validator:handle(
       fun (Values) ->
               Settings = [{key_api_to_config(ApiK), V} ||
                              {ApiK, V} <- pre_process_post(Config, Values)],
-
               case proplists:get_bool(auditd_enabled, Settings) of
                   true ->
                       ns_audit_cfg:sync_set_global(Settings),
-                      audit_modify_audit_settings(Req, Settings);
+                      audit_modify_audit_settings(Req, Settings, OldSettings);
                   false ->
-                      audit_modify_audit_settings(Req, Settings),
+                      audit_modify_audit_settings(Req, Settings, OldSettings),
                       ns_audit_cfg:set_global(Settings)
               end,
               menelaus_util:reply(Req, 200)
       end, Req, form, validators(Config)).
 
-audit_modify_audit_settings(Req, Settings) ->
-    ns_audit:modify_audit_settings(Req, Settings).
+audit_modify_audit_settings(Req, NewSettings, OldSettings) ->
+    ns_audit:modify_audit_settings(Req, NewSettings, OldSettings).
 
 reply_with_json_audit_descriptors(Req, Descriptors) ->
     Json =

@@ -23,7 +23,7 @@
          default_audit_json_path/0, get_log_path/0, get_uid/0]).
 
 -export([upgrade_descriptors/0, get_descriptors/1,
-         jsonifier/1, get_non_filterable_descriptors/0]).
+         jsonifier/1, get_non_filterable_descriptors/0, read_config/1]).
 
 -record(state, {global,
                 merged}).
@@ -241,13 +241,16 @@ write_audit_json(Params) ->
     ok = misc:atomic_write_file(Path, Bytes).
 
 read_config() ->
-    {case ns_config:search(audit) of
+    read_config(ns_config:latest()).
+
+read_config(Config) ->
+    {case ns_config:search(Config, audit) of
          {value, V} ->
              lists:keysort(1, V);
          false ->
              []
      end,
-     case ns_config:search({node, node(), audit}) of
+     case ns_config:search(Config, {node, node(), audit}) of
          {value, V} ->
              lists:keysort(1, V);
          false ->
