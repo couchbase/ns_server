@@ -71,6 +71,12 @@ child_specs() ->
      {ns_log, {ns_log, start_link, []},
       permanent, 1000, worker, [ns_log]},
 
+     {event_log_events, {gen_event, start_link, [{local, event_log_events}]},
+      permanent, 1000, worker, dynamic},
+
+     {event_log_server, {event_log_server, start_link, []},
+      permanent, 5000, worker, [event_log_server]},
+
      {initargs_updater, {initargs_updater, start_link, []},
       permanent, 1000, worker, [initargs_updater]},
 

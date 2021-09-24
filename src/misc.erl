@@ -3265,3 +3265,11 @@ uuid_v4() ->
                        [TimeLow, TimeMid, TimeHiVersion,
                         ClockSeqHiReserved, ClockSeqLow,
                         Node]))).
+
+tail_of_length(List, N) ->
+  case length(List) - N of
+      X when X > 0 ->
+          lists:nthtail(X, List);
+      _ ->
+          List
+  end.

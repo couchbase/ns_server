@@ -21,6 +21,7 @@
 
 -define(ISASL_PW, "isasl.pw").
 -define(NS_LOG, "ns_log").
+-define(EVENT_LOG, "event_log").
 
 get_current_version() ->
     %% This function identifies the version of the config and one of its
@@ -289,6 +290,7 @@ default() ->
      {{node, node(), port_servers}, []},
 
      {{node, node(), ns_log}, [{filename, filename:join(DataDir, ?NS_LOG)}]},
+     {{node, node(), event_log}, [{filename, filename:join(DataDir, ?EVENT_LOG)}]},
 
      %% Modifiers: menelaus
      %% Listeners: ? possibly ns_log

@@ -100,17 +100,17 @@ strip_local_node_metadata(Logs) ->
 
 %% Merge Logs received from remote node with the logs on the local node.
 merge_remote_logs(LocalLogs, RemoteLogs, MaxLen) ->
-    tail_of_length(lists:umerge(fun order_entries/2,
-                                LocalLogs,
-                                RemoteLogs), MaxLen).
+    misc:tail_of_length(lists:umerge(fun order_entries/2,
+                                     LocalLogs,
+                                     RemoteLogs), MaxLen).
 
 %% NOTE: merge_pending_list/2 is minorly different from merge_remote_logs,
 %% in that the Pending list has to be sorted by order_entries/2, before the
 %% umerge/3 function is applied.
 merge_pending_list(Recent, Pending, MaxLen) ->
-    tail_of_length(lists:umerge(fun order_entries/2,
-                                lists:sort(fun order_entries/2, Pending),
-                                           Recent), MaxLen).
+    misc:tail_of_length(lists:umerge(fun order_entries/2,
+                                     lists:sort(fun order_entries/2, Pending),
+                                                Recent), MaxLen).
 
 handle_info(dedup_logs, State, ReplicatorFun) ->
     send_dedup_logs_msg(),
@@ -145,14 +145,6 @@ is_duplicate_log(#log_entry{module = Module,
             Dedup2 = dict:store(Key, {0, Time, Time}, Dedup),
             {false, State#ns_log_state{dedup = Dedup2}}
     end.
-
-tail_of_length(List, N) ->
-  case length(List) - N of
-      X when X > 0 ->
-          lists:nthtail(X, List);
-      _ ->
-          List
-  end.
 
 order_entries(A = #log_entry{}, B = #log_entry{}) ->
     A#log_entry{server_time = undefined} =<
