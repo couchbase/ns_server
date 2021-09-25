@@ -256,7 +256,8 @@ build_https_args(PortName, PortArg, PortPrefix, CertArg, KeyArg, CAArg,
             [PortArg ++ "=" ++ PortPrefix ++ integer_to_list(Port),
              CertArg ++ "=" ++ ns_ssl_services_setup:legacy_cert_path(),
              KeyArg ++ "=" ++ ns_ssl_services_setup:unencrypted_pkey_file_path()];
-        Port when PortName == fts_ssl_port ->
+        Port when PortName == fts_ssl_port;
+                  PortName == cbas_ssl_port ->
             [PortArg ++ "=" ++ PortPrefix ++ integer_to_list(Port),
              CertArg ++ "=" ++ ns_ssl_services_setup:chain_file_path(),
              KeyArg ++ "=" ++ ns_ssl_services_setup:pkey_file_path(),
