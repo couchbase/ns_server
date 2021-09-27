@@ -57,14 +57,14 @@ handle_post_scope(Bucket, Req) ->
                                   ns_audit:update_scope(
                                     _, Bucket, Name,
                                     LimitsJSON, _)),
-                      handle_rv(Ret, Req);
+                      handle_rv(Ret, Req, Bucket);
                   _ ->
                       maybe_audit(RV, Req,
                                   ns_audit:create_scope(
                                     _, Bucket, Name,
                                     LimitsJSON, _)),
                       maybe_add_event_log(RV, Bucket, LimitsJSON),
-                      handle_rv(RV, Req)
+                      handle_rv(RV, Req, Bucket)
               end
       end, Req, form,
       scope_limit_validators(raw) ++ scope_validators(default_not_allowed)).
@@ -170,7 +170,7 @@ handle_post_collection(Bucket, Scope, Req) ->
                           ns_audit:create_collection(_, Bucket, Scope, Name,
                                                      _)),
               maybe_add_event_log(RV, Bucket, []),
-              handle_rv(RV, Req)
+              handle_rv(RV, Req, Bucket)
       end, Req, form, collection_validators(default_not_allowed)).
 
 handle_delete_scope(Bucket, Name, Req) ->
@@ -178,14 +178,14 @@ handle_delete_scope(Bucket, Name, Req) ->
     RV = collections:drop_scope(Bucket, Name),
     maybe_audit(RV, Req, ns_audit:drop_scope(_, Bucket, Name, _)),
     maybe_add_event_log(RV, Bucket, []),
-    handle_rv(RV, Req).
+    handle_rv(RV, Req, Bucket).
 
 handle_delete_collection(Bucket, Scope, Name, Req) ->
     assert_api_available(Bucket),
     RV = collections:drop_collection(Bucket, Scope, Name),
     maybe_audit(RV, Req, ns_audit:drop_collection(_, Bucket, Scope, Name, _)),
     maybe_add_event_log(RV, Bucket, []),
-    handle_rv(RV, Req).
+    handle_rv(RV, Req, Bucket).
 
 handle_set_manifest(Bucket, Req) ->
     assert_api_available(Bucket),
@@ -204,7 +204,7 @@ handle_set_manifest(Bucket, Req) ->
                                                 ValidOnUid, _)),
               %% Add event logs for each of the specific operation performed.
               maybe_add_event_log(RV, Bucket, []),
-              handle_rv(RV, Req)
+              handle_rv(RV, Req, Bucket)
       end, Req, json,
       [validator:required(scopes, _),
        validate_scopes(scopes, _),
@@ -344,6 +344,17 @@ nodes_validator(BucketNodes, Req, State) ->
               end
       end, nodes, State).
 
+log_stat_scope_limit_exceeded(BucketName, ScopeName) ->
+    ns_server_stats:notify_counter(
+      {<<"limits_exceeded">>,
+       [{bucket, BucketName},
+        {scope, ScopeName},
+        {limit, collection_limit}]}).
+
+maybe_log_scope_limit_stats(Bucket, Errors) ->
+    [log_stat_scope_limit_exceeded(Bucket, ScopeName) ||
+     {scope_limit, ScopeName, max_number_exceeded, num_collections} <- Errors].
+
 get_err_code_msg(forbidden) ->
     {"Operation is not allowed due to insufficient permissions", 403};
 get_err_code_msg(invalid_uid) ->
@@ -368,6 +379,10 @@ get_err_code_msg({scope_not_found, ScopeName}) ->
     {"Scope with name ~p is not found", [ScopeName], 404};
 get_err_code_msg(cannot_drop_default_scope) ->
     {"Deleting _default scope is not allowed", 400};
+get_err_code_msg({scope_limit, ScopeName,
+                  max_number_exceeded, num_collections}) ->
+    {"Maximum number of collections has been reached for scope ~p",
+     [ScopeName], 429};
 get_err_code_msg({max_number_exceeded, num_scopes}) ->
     {"Maximum number of scopes has been reached", 400};
 get_err_code_msg({max_number_exceeded, num_collections}) ->
@@ -389,17 +404,19 @@ get_formatted_err_msg(Error) ->
         {Msg, Params, Code} -> {io_lib:format(Msg, Params), Code}
     end.
 
-handle_rv({ok, {Uid, _}}, Req) ->
-    handle_rv({ok, Uid}, Req);
-handle_rv({ok, Uid}, Req) ->
+handle_rv({ok, {Uid, _}}, Req, Bucket) ->
+    handle_rv({ok, Uid}, Req, Bucket);
+handle_rv({ok, Uid}, Req, _Bucket) ->
     menelaus_util:reply_json(Req, {[{uid, Uid}]}, 200);
-handle_rv({errors, List}, Req) when is_list(List) ->
+handle_rv({errors, List}, Req, Bucket) when is_list(List) ->
+    maybe_log_scope_limit_stats(Bucket, List),
     Errors = lists:map(fun (Elem) ->
                                {Msg, _} = get_formatted_err_msg(Elem),
                                Msg
                        end, lists:usort(List)),
     menelaus_util:reply_json(Req, {[{errors, Errors}]}, 400);
-handle_rv(Error, Req) ->
+handle_rv(Error, Req, Bucket) ->
+    maybe_log_scope_limit_stats(Bucket, [Error]),
     {Msg, Code} = get_formatted_err_msg(Error),
     reply_global_error(Req, Msg, Code).
 
