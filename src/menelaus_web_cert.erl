@@ -164,8 +164,10 @@ handle_cluster_certificate_extended(Req) ->
 
 handle_regenerate_certificate(Req) ->
     menelaus_util:assert_is_enterprise(),
-    assert_n2n_encryption_is_disabled(),
-
+    case cluster_compat_mode:is_cluster_NEO() of
+        true -> ok;
+        false -> assert_n2n_encryption_is_disabled()
+    end,
     ns_server_cert:generate_and_set_cert_and_pkey(),
     ns_ssl_services_setup:sync(),
     ?log_info("Completed certificate regeneration"),
