@@ -585,7 +585,7 @@ verify_oper({create_collection, ScopeName, Name, _}, Manifest) ->
                   undefined ->
                       case cluster_compat_mode:should_enforce_limits() andalso
                            Limit =/= infinity andalso
-                           length(Collections) > Limit of
+                           length(Collections) >= Limit of
                           false ->
                               ok;
                           true ->
