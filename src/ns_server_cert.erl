@@ -64,27 +64,62 @@ this_node_uses_self_generated_certs(Config) ->
     generated == proplists:get_value(type, CertProps).
 
 self_generated_ca() ->
-    case ns_config:search(cert_and_pkey) of
-        {value, {CA, _}} -> CA;
-        %% for 7.0 mixed clusters
-        {value, {_, CA, _}} -> CA;
+    case cluster_compat_mode:is_cluster_NEO() of
+        true ->
+            case chronicle_kv:get(kv, root_cert_and_pkey) of
+                {ok, {{CA, _}, _}} -> CA;
+                {error, not_found} ->
+                    {CA, _} = generate_and_set_cert_and_pkey(false),
+                    CA
+            end;
         false ->
-            {CA, _} = generate_and_set_cert_and_pkey(false),
-            CA
+            case ns_config:search(cert_and_pkey) of
+                {value, {CA, _}} -> CA;
+                {value, {_, CA, _}} -> CA;
+                false ->
+                    {CA, _} = generate_and_set_cert_and_pkey(false),
+                    CA
+            end
     end.
 
 self_generated_ca_and_pkey() ->
-    case ns_config:search(cert_and_pkey) of
-        {value, {CA, PKey}} -> {CA, PKey};
-        %% for 7.0 mixed clusters
-        {value, {_, CA, PKey}} -> {CA, PKey};
-        false -> generate_and_set_cert_and_pkey(false)
+    case cluster_compat_mode:is_cluster_NEO() of
+        true ->
+            case chronicle_kv:get(kv, root_cert_and_pkey) of
+                {ok, {Pair, _}} -> Pair;
+                {error, not_found} -> generate_and_set_cert_and_pkey(false)
+            end;
+        false ->
+            case ns_config:search(cert_and_pkey) of
+                {value, {CA, PKey}} -> {CA, PKey};
+                {value, {_, CA, PKey}} -> {CA, PKey};
+                false -> generate_and_set_cert_and_pkey(false)
+            end
     end.
 
 generate_and_set_cert_and_pkey() ->
     generate_and_set_cert_and_pkey(true).
 
 generate_and_set_cert_and_pkey(Force) ->
+    case cluster_compat_mode:is_cluster_NEO() of
+        true ->
+            NewPair = generate_cert_and_pkey(),
+            {ok, _, Pair} =
+                chronicle_kv:transaction(
+                  kv, [root_cert_and_pkey],
+                  fun (#{root_cert_and_pkey := {OldPair, _}}) when not Force ->
+                          {abort, {ok, undefined, OldPair}};
+                      (#{}) ->
+                          {commit, [{set, root_cert_and_pkey, NewPair}],
+                           NewPair}
+                  end),
+            {ok, _} = add_CAs(generated, element(1, Pair)),
+            Pair;
+        false ->
+            generate_and_set_cert_and_pkey_pre_NEO(Force)
+    end.
+
+generate_and_set_cert_and_pkey_pre_NEO(Force) ->
     Pair = generate_cert_and_pkey(),
     RV = ns_config:run_txn(
            fun (Config, SetFn) ->
@@ -105,15 +140,6 @@ generate_and_set_cert_and_pkey(Force) ->
         {abort, OtherPair} ->
             OtherPair;
         _ ->
-            case cluster_compat_mode:is_cluster_NEO() of
-                true ->
-                    %% If we crash here the new cert will never get to
-                    %% ca_certificates
-                    {ok, _} = add_CAs(generated, element(1, Pair));
-                false ->
-                    %% It will be added during online upgrade
-                    ok
-            end,
             Pair
     end.
 
@@ -491,7 +517,10 @@ set_cluster_ca(CA) ->
     end.
 
 set_generated_ca(CA) ->
-    ns_config:set(cert_and_pkey, {CA, undefined}),
+    case cluster_compat_mode:is_cluster_NEO() of
+        true -> chronicle_kv:set(kv, root_cert_and_pkey, {CA, undefined});
+        false -> ns_config:set(cert_and_pkey, {CA, undefined})
+    end,
     {ok, _} = add_CAs(generated, CA),
     ok.
 
@@ -989,6 +1018,7 @@ get_warnings() ->
                       {value, Props} -> node_cert_warnings(TrustedCAs, Props);
                       false ->
                           %% Pre-NEO node:
+                          false = cluster_compat_mode:is_cluster_NEO(Config),
                           case ns_config:search(Config, {node, Node, cert}) of
                               {value, Props} ->
                                    node_cert_warnings(TrustedCAs, Props);

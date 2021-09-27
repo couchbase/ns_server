@@ -433,6 +433,8 @@ handle_config_change(ca_certificates, Parent) ->
     Parent ! ca_certificates_updated;
 handle_config_change(cert_and_pkey, Parent) ->
     Parent ! cert_and_pkey_changed;
+handle_config_change(root_cert_and_pkey, Parent) ->
+    Parent ! cert_and_pkey_changed;
 %% we're using this key to detect change of node() name
 handle_config_change({node, _Node, capi_port}, Parent) ->
     Parent ! cert_and_pkey_changed;
@@ -937,8 +939,17 @@ maybe_convert_pre_NEO_certs() ->
     case ShouldConvert of
         true ->
             ?log_info("Upgrading certs to NEO..."),
+            %% Use cert_and_pkey from ns_config because it contains information
+            %% about user uploaded CA (pre-NEO style)
+            %% Note: it should be ok to use it instead of root_cert_and_pkey
+            %%       from chronicle because (1) we don't remove it from
+            %%       ns_config during upgrade, and (2) user didn't have a chance
+            %%       to modify this node cert yet
             {value, CertAndPKey} = ns_config:search(cert_and_pkey),
             Type =
+                %% We must look at cert_and_pkey first because
+                %% {node, node(), cert} might be present even when node is using
+                %% generated certs
                 case CertAndPKey of
                     {_, _} -> generated;
                     {_, _, _} ->
@@ -951,10 +962,7 @@ maybe_convert_pre_NEO_certs() ->
 
             case Type of
                 generated ->
-                    CA = case CertAndPKey of
-                             {_, P, _} -> P;
-                             {P, _} -> P
-                         end,
+                    {ok, CA} = file:read_file(raw_ssl_cacert_key_path()),
                     {ok, NodeCert} = file:read_file(local_cert_path()),
                     {ok, NodePKey} = file:read_file(local_pkey_path()),
                     Hostname = misc:extract_node_address(node()),
@@ -1047,11 +1055,22 @@ user_set_ca_chain_path() ->
     filename:join(path_config:component_path(data, "config"),
                   "user-set-ca.pem").
 
-chronicle_upgrade_to_NEO(ChronicleTxn, Config) ->
-    Props = ns_server_cert:trusted_CAs_pre_NEO(Config),
+chronicle_upgrade_to_NEO(ChronicleTxn, NsConfig) ->
+    Props = ns_server_cert:trusted_CAs_pre_NEO(NsConfig),
     ?log_info("Upgrading CA certs to NEO: setting ca_certificates to the "
               "following props:~n ~p", [Props]),
-    chronicle_upgrade:set_key(ca_certificates, Props, ChronicleTxn).
+    ChronicleTxn2 =
+        case ns_config:search(NsConfig, cert_and_pkey) of
+            {value, {_, CA, Key}} ->
+                chronicle_upgrade:set_key(root_cert_and_pkey, {CA, Key},
+                                          ChronicleTxn);
+            {value, {CA, Key}} ->
+                chronicle_upgrade:set_key(root_cert_and_pkey, {CA, Key},
+                                          ChronicleTxn);
+            false ->
+                ChronicleTxn
+        end,
+    chronicle_upgrade:set_key(ca_certificates, Props, ChronicleTxn2).
 
 remove_node_certs() ->
     ?log_warning("Removing node certificate and private key"),

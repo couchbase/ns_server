@@ -425,6 +425,8 @@ prepare_to_join(RemoteNode, Cookie) ->
               %% opposed to incrementing the existing one, so we don't carry
               %% redundant history.
               {set_fresh, Pair};
+          %% We are getting rid of cert_and_pkey but we need it here to
+          %% correcly upgrade from pre-NEO:
           ({cert_and_pkey, V}) ->
               {set_initial, {cert_and_pkey, V}};
           ({K, _V}) ->
