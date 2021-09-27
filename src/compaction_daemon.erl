@@ -20,7 +20,7 @@
 %% Misc
 -export([get_autocompaction_settings/1,
          set_autocompaction_settings/1,
-         chronicle_upgrade_to_NEO/1]).
+         chronicle_upgrade_to_NEO/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
@@ -173,8 +173,8 @@ set_autocompaction_settings(Settings) ->
             ns_config:set(autocompaction, Settings)
     end.
 
-chronicle_upgrade_to_NEO(ChronicleTxn) ->
-    Props = ns_config:search(ns_config:get(), autocompaction, []),
+chronicle_upgrade_to_NEO(ChronicleTxn, Config) ->
+    Props = ns_config:search(Config, autocompaction, []),
     ?log_info("Upgrading autocompaction to NEO: ~n~p", [Props]),
     chronicle_upgrade:set_key(autocompaction, Props, ChronicleTxn).
 

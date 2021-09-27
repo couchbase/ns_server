@@ -12,6 +12,7 @@
 
 -module(chronicle_upgrade).
 
+-include("cut.hrl").
 -include("ns_common.hrl").
 
 -define(UPGRADE_PULL_TIMEOUT, ?get_timeout(upgrade_pull, 60000)).
@@ -35,10 +36,11 @@ set_key(Key, Value, {Snapshot, Txn}) ->
     {maps:put(Key, Value, Snapshot), Txn}.
 
 upgrade(Version, Nodes) ->
+    Config = ns_config:get(),
     RV = chronicle_kv:txn(
            kv,
            fun (Txn) ->
-                   {Changes, Txn} = upgrade_loop({#{}, Txn}, Version),
+                   {Changes, Txn} = upgrade_loop({#{}, Txn}, Version, Config),
                    {commit, maps:fold(
                               fun (K, V, Acc) ->
                                       [{set, K, V} | Acc]
@@ -63,7 +65,7 @@ upgrade(Version, Nodes) ->
             error
     end.
 
-upgrade_loop(UpgradeTxn, FinalVersion) ->
+upgrade_loop(UpgradeTxn, FinalVersion, Config) ->
     CurrentVersion =
         case get_key(cluster_compat_version, UpgradeTxn) of
             {error, not_found} ->
@@ -77,15 +79,16 @@ upgrade_loop(UpgradeTxn, FinalVersion) ->
         _ ->
             ?log_debug("Upgading chronicle from ~p. Final version = ~p",
                        [CurrentVersion, FinalVersion]),
-            {NewVersion, NewTxn} = upgrade_to(CurrentVersion, UpgradeTxn),
+            {NewVersion, NewTxn} = upgrade_to(CurrentVersion, UpgradeTxn,
+                                              Config),
             upgrade_loop(set_key(cluster_compat_version, NewVersion, NewTxn),
-                         FinalVersion)
+                         FinalVersion, Config)
     end.
 
-upgrade_to(?VERSION_70, UpgradeTxn) ->
+upgrade_to(?VERSION_70, UpgradeTxn, Config) ->
     {?VERSION_NEO,
      functools:chain(
        UpgradeTxn,
-       [fun ns_ssl_services_setup:chronicle_upgrade_to_NEO/1,
-        fun ns_bucket:chronicle_upgrade_to_NEO/1,
-        fun compaction_daemon:chronicle_upgrade_to_NEO/1])}.
+       [ns_ssl_services_setup:chronicle_upgrade_to_NEO(_, Config),
+        ns_bucket:chronicle_upgrade_to_NEO(_),
+        compaction_daemon:chronicle_upgrade_to_NEO(_, Config)])}.

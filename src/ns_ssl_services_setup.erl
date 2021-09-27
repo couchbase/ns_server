@@ -37,7 +37,7 @@
          honor_cipher_order/1,
          honor_cipher_order/2,
          set_certs/4,
-         chronicle_upgrade_to_NEO/1,
+         chronicle_upgrade_to_NEO/2,
          unencrypted_pkey_file_path/0,
          remove_node_certs/0]).
 
@@ -1047,8 +1047,8 @@ user_set_ca_chain_path() ->
     filename:join(path_config:component_path(data, "config"),
                   "user-set-ca.pem").
 
-chronicle_upgrade_to_NEO(ChronicleTxn) ->
-    Props = ns_server_cert:trusted_CAs_pre_NEO(ns_config:get()),
+chronicle_upgrade_to_NEO(ChronicleTxn, Config) ->
+    Props = ns_server_cert:trusted_CAs_pre_NEO(Config),
     ?log_info("Upgrading CA certs to NEO: setting ca_certificates to the "
               "following props:~n ~p", [Props]),
     chronicle_upgrade:set_key(ca_certificates, Props, ChronicleTxn).
