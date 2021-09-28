@@ -12,7 +12,9 @@
 -module(menelaus_web_stats).
 
 -export([handle_range_post/1, handle_range_get/2,
-         handle_get_settings/2, handle_post_settings/2,
+         handle_get_settings/2,
+         handle_get_internal_settings/2,
+         handle_post_settings/2,
          aggregate/2]).
 
 -include("ns_common.hrl").
@@ -29,8 +31,15 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
-
 params() ->
+    [{"prometheus.queryMaxSamples",
+      #{cfg_key => query_max_samples, type => pos_int}},
+     {"prometheus.retentionSize",
+      #{cfg_key => retention_size, type => pos_int}},
+     {"prometheus.retentionTime",
+      #{cfg_key => retention_time, type => pos_int}}].
+
+params_internal() ->
     Services = all_services(),
 
     [{"enabled",
@@ -57,11 +66,6 @@ params() ->
       #{cfg_key => derived_metrics_filter, type => derived_metrics_filter}},
      {"derivedMetricsCalculationInterval",
       #{cfg_key => derived_metrics_interval, type => pos_int_or_minus_one}},
-
-     {"prometheus.retentionSize",
-      #{cfg_key => retention_size, type => pos_int}},
-     {"prometheus.retentionTime",
-      #{cfg_key => retention_time, type => pos_int}},
      {"prometheus.walCompression",
       #{cfg_key => wal_compression, type => bool}},
      {"prometheus.authEnabled",
@@ -71,8 +75,6 @@ params() ->
         type => {one_of, string, ["debug", "info", "warn", "error"]}}},
      {"prometheus.maxBlockDuration",
       #{cfg_key => max_block_duration, type => pos_int}},
-     {"prometheus.queryMaxSamples",
-      #{cfg_key => query_max_samples, type => pos_int}},
      {"prometheus.loopbackDelta",
       #{cfg_key => loopback_delta, type => int}},
      {"prometheus.reportMetrics",
@@ -98,6 +100,7 @@ params() ->
       #{cfg_key => min_truncation_interval, type => non_neg_int}},
      {"tombstonesCleaningEnabled",
       #{cfg_key => clean_tombstones_enabled, type => bool}}] ++
+    params() ++
     [{"services." ++ N ++ ".highCardEnabled",
       #{cfg_key => [services, S, high_cardinality_enabled], type => bool}}
      || {S, N} <- Services] ++
@@ -193,6 +196,12 @@ prom_pattern(Str) ->
         {match, _} -> {value, Trimmed};
         nomatch -> {error, Msg}
     end.
+
+handle_get_internal_settings(Path, Req) ->
+    Settings = prometheus_cfg:with_applied_defaults(
+                 ns_config:read_key_fast(stats_settings, [])),
+    menelaus_web_settings2:handle_get(Path, params_internal(), fun type_spec/1,
+                                      Settings, Req).
 
 handle_get_settings(Path, Req) ->
     Settings = prometheus_cfg:with_applied_defaults(

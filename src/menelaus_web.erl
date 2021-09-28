@@ -380,6 +380,10 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[settings], read}, fun menelaus_alert:handle_settings_alerts/1};
                 ["settings", "stats"] ->
                     {{[settings], read}, fun menelaus_web_settings:handle_settings_stats/1};
+                ["internal", "settings", "metrics" | PathRest] ->
+                    {{[settings], read},
+                     fun menelaus_web_stats:handle_get_internal_settings/2,
+                     [PathRest]};
                 ["settings", "metrics" | PathRest] ->
                     {{[settings], read},
                      fun menelaus_web_stats:handle_get_settings/2, [PathRest]};
