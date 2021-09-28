@@ -209,7 +209,7 @@ verify_bucket_auth(#httpd{method = Method,
                             case Type =:= views of
                                 true ->
                                     {not_found,
-                                     <<"views are supported only on couchbase buckets">>};
+                                     <<"views are supported only on couchbase buckets with couchstore storage backend">>};
                                 false ->
                                     {not_found, no_couchbase_bucket_exists}
                             end

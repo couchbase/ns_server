@@ -1195,8 +1195,7 @@ num_replicas_changed(NumReplicas, Map) ->
     lists:any(?cut(ExpectedChainLength =/= length(_)), Map).
 
 can_have_views(BucketConfig) ->
-    storage_mode(BucketConfig) =:= couchstore orelse
-    storage_mode(BucketConfig) =:= magma.
+    storage_mode(BucketConfig) =:= couchstore.
 
 get_view_nodes(BucketConfig) ->
     case can_have_views(BucketConfig) of
