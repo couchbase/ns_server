@@ -51,7 +51,7 @@ function mnServersAddDialogController($scope, $rootScope, $q, $uibModal, mnServe
   function activate() {
     reset();
     if ($scope.poolDefault.isEnterprise) {
-      mnPromiseHelper(vm, mnCertificatesService.getDefaultCertificate())
+      mnPromiseHelper(vm, mnCertificatesService.getPoolsDefaultTrustedCAs())
         .applyToScope("certificate");
     }
     mnClusterConfigurationService.getSelfConfig().then(function (selfConfig) {

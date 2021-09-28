@@ -22,7 +22,8 @@ function mnCertificatesFactory($http, mnPoolDefault) {
   var mnCertificatesService = {
     getClientCertificateSettings: getClientCertificateSettings,
     postClientCertificateSettings: postClientCertificateSettings,
-    getDefaultCertificate: getDefaultCertificate
+    getPoolsDefaultTrustedCAs: getPoolsDefaultTrustedCAs,
+    deletePoolsDefaultTrustedCAs: deletePoolsDefaultTrustedCAs
   };
 
   return mnCertificatesService;
@@ -63,15 +64,26 @@ function mnCertificatesFactory($http, mnPoolDefault) {
     });
   }
 
-  function getDefaultCertificate() {
+  function getPoolsDefaultTrustedCAs() {
     return $http({
       method: 'GET',
-      url: '/pools/default/certificate',
-      params: {
-        extended: true
-      }
+      url: '/pools/default/trustedCAs'
     }).then(function (resp) {
-      return resp.data;
+      return resp.data && resp.data.map(cert => {
+        cert.subjectParsed = cert.subject.split(',').reduce((acc, kv) => {
+          let kv1 = kv.split("=");
+          acc[kv1[0].trim().toLowerCase()] = (kv1[1] && kv1[1].trim());
+          return acc;
+        }, {});
+        return cert;
+      });
+    });
+  }
+
+  function deletePoolsDefaultTrustedCAs(id) {
+    return $http({
+      method: 'DELETE',
+      url: '/pools/default/trustedCAs/' + encodeURIComponent(id)
     });
   }
 }

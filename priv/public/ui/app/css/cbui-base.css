@@ -807,7 +807,6 @@ h6 small {
 select[multiple="multiple"],
 textarea {
   width: 100%;
-  resize: vertical;
 }
 .input,
 input[type="email"],

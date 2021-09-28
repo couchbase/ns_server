@@ -12,17 +12,22 @@ import angular from "../../web_modules/angular.js";
 import mnSpinner from "../components/directives/mn_spinner.js";
 import mnCertificatesService from "./mn_certificates_service.js";
 import mnHelper from "../components/mn_helper.js";
+import uiBootstrap from "../../web_modules/angular-ui-bootstrap.js";
+import mnCertificatesDeleteDialogController from "./mn_certificates_delete_dialog_controller.js";
+import mnPoll from "../components/mn_poll.js";
 
 export default "mnCertificates";
 
 angular
-  .module("mnCertificates", [mnCertificatesService, mnSpinner, mnHelper])
-  .controller("mnCertController", mnCertController);
+  .module("mnCertificates", [mnCertificatesService, mnSpinner, mnHelper, uiBootstrap, mnPoll])
+  .controller("mnCertController", mnCertController)
+  .controller('mnCertificatesDeleteDialogController', mnCertificatesDeleteDialogController)
 
-function mnCertController($scope, mnCertificatesService, mnPromiseHelper, mnHelper) {
+function mnCertController($scope, mnCertificatesService, mnPromiseHelper, mnHelper, $uibModal, mnPoller) {
   var vm = this;
   vm.onSubmit = onSubmit;
   vm.reloadState = reloadState;
+  vm.showDeleteConfirmation = showDeleteConfirmation;
 
   activate();
 
@@ -46,8 +51,23 @@ function mnCertController($scope, mnCertificatesService, mnPromiseHelper, mnHelp
         }
       });
 
-    mnPromiseHelper(vm, mnCertificatesService.getDefaultCertificate())
-      .applyToScope("rootCertificate");
+    new mnPoller($scope, function () {
+      return mnCertificatesService.getPoolsDefaultTrustedCAs();
+    })
+      .setInterval(10000)
+      .subscribe("rootCertificate", vm)
+      .reloadOnScopeEvent("reloadGetPoolsDefaultTrustedCAs")
+      .cycle();
+  }
+
+  function showDeleteConfirmation(id) {
+    $uibModal.open({
+      templateUrl: 'app/mn_admin/mn_certificates_delete_dialog.html',
+      controller: 'mnCertificatesDeleteDialogController as certDeleteDialogCtrl',
+      resolve: {
+        id: mnHelper.wrapInFunction(id)
+      }
+    });
   }
 
   function reloadState() {

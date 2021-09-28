@@ -4012,3 +4012,12 @@ qw-collection-menu {
 qw-collection-menu select {
   display: inline-block !important;
 }
+/* list of properties for a certificate --------------------- */
+.certificate-props {
+  line-height: 2;
+  font-size: .75rem;
+}
+textarea.certificate-props {
+  max-width: 500px;
+  word-wrap: break-word;
+}
