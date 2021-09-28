@@ -45,7 +45,8 @@ start_topology_change(Pid, Id, Rev, Type, KeepNodes, EjectNodes) ->
                  topology_change_req(Id, Rev, Type, KeepNodes, EjectNodes)).
 
 health_check(Service) ->
-    perform_call(get_label(Service), "HealthCheck", empty_req()).
+    perform_call(get_label(Service), "HealthCheck", empty_req(),
+                 #{silent => true}).
 
 is_safe(Service, NodeIds) ->
     perform_call(get_label(Service), "IsSafe", NodeIds).
@@ -55,9 +56,13 @@ get_label(Service) when is_atom(Service) ->
 
 %% internal
 perform_call(PidOrLabel, Name, Arg) ->
+    perform_call(PidOrLabel, Name, Arg, #{}).
+
+perform_call(PidOrLabel, Name, Arg, Opts) ->
     FullName = "ServiceAPI." ++ Name,
-    handle_result(json_rpc_connection:perform_call(PidOrLabel, FullName,
-                                                   Arg, ?RPC_TIMEOUT)).
+    handle_result(json_rpc_connection:perform_call(
+                    PidOrLabel, FullName, Arg,
+                    maps:put(timeout, ?RPC_TIMEOUT, Opts))).
 
 handle_result({ok, null}) ->
     ok;

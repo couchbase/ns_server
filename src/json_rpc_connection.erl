@@ -38,12 +38,13 @@ label_to_name(Label) when is_list(Label)  ->
 start_link(Label, GetSocket) ->
     proc_lib:start_link(?MODULE, init, [{Label, GetSocket}]).
 
-perform_call(Label, Name, EJsonArg, Timeout) ->
+perform_call(Label, Name, EJsonArg, Opts = #{timeout := Timeout}) ->
     EJsonArgThunk = fun () -> EJsonArg end,
-    gen_server:call(label_to_name(Label), {call, Name, EJsonArgThunk}, Timeout).
+    gen_server:call(label_to_name(Label), {call, Name, EJsonArgThunk, Opts},
+                    Timeout).
 
 perform_call(Label, Name, EJsonArg) ->
-    perform_call(Label, Name, EJsonArg, infinity).
+    perform_call(Label, Name, EJsonArg, #{timeout => infinity}).
 
 reannounce(Pid) when is_pid(Pid) ->
     gen_server:cast(Pid, reannounce).
@@ -83,9 +84,9 @@ handle_cast(_Msg, _State) ->
 handle_info({chunk, Chunk}, #state{id_to_caller_tid = IdToCaller} = State) ->
     {KV} = ejson:decode(Chunk),
     {_, Id} = lists:keyfind(<<"id">>, 1, KV),
-    [{_, From}] = ets:lookup(IdToCaller, Id),
+    [{_, From, Silent}] = ets:lookup(IdToCaller, Id),
     ets:delete(IdToCaller, Id),
-    ale:debug(?JSON_RPC_LOGGER, "got response: ~p", [KV]),
+    Silent orelse ale:debug(?JSON_RPC_LOGGER, "got response: ~p", [KV]),
     {RV, Result} =
         case lists:keyfind(<<"error">>, 1, KV) of
             false ->
@@ -126,10 +127,12 @@ handle_info(Msg, State) ->
     ?log_debug("Unknown msg: ~p", [Msg]),
     {noreply, State}.
 
-handle_call({call, Name, EJsonArgThunk}, From, #state{counter = Counter,
-                                                      id_to_caller_tid = IdToCaller,
-                                                      sock = Sock} = State) ->
+handle_call({call, Name, EJsonArgThunk, Opts}, From,
+            #state{counter = Counter,
+                   id_to_caller_tid = IdToCaller,
+                   sock = Sock} = State) ->
     EJsonArg = EJsonArgThunk(),
+    Silent = maps:get(silent, Opts, false),
 
     NameB = if
                 is_list(Name) ->
@@ -149,10 +152,11 @@ handle_call({call, Name, EJsonArgThunk}, From, #state{counter = Counter,
               {id, Counter},
               {method, NameB}
               | MaybeParams]},
-    ale:debug(?JSON_RPC_LOGGER,
-              "sending jsonrpc call:~p", [ns_config_log:sanitize(EJSON, true)]),
+    Silent orelse
+        ale:debug(?JSON_RPC_LOGGER, "sending jsonrpc call:~p",
+                  [ns_config_log:sanitize(EJSON, true)]),
     ok = gen_tcp:send(Sock, [ejson:encode(EJSON) | <<"\n">>]),
-    ets:insert(IdToCaller, {Counter, From}),
+    ets:insert(IdToCaller, {Counter, From, Silent}),
     {noreply, State#state{counter = Counter + 1}}.
 
 terminate(_Reason, _State) ->
