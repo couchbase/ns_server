@@ -26,7 +26,7 @@
          erase_unknown_nodes/2,
          local_monitors/0,
          node_monitors/1,
-         supported_services/0,
+         supported_services/1,
          get_module/1,
          send_heartbeat/2, send_heartbeat/3,
          analyze_local_status/5]).
@@ -136,12 +136,22 @@ local_monitors() ->
     node_monitors(node()).
 
 node_monitors(Node) ->
-    Services = [S || S <- supported_services(),
-                     ns_cluster_membership:should_run_service(S, Node)],
-    [ns_server] ++ Services.
+    [ns_server] ++ supported_services(Node).
 
-supported_services() ->
-    [kv].
+supported_services(Node) ->
+    Snapshot = ns_cluster_membership:get_snapshot(),
+    [S || S <- supported_services_by_version(
+                 cluster_compat_mode:get_compat_version()),
+          ns_cluster_membership:should_run_service(Snapshot, S, Node)].
+
+supported_services_by_version(ClusterVersion) ->
+    [kv] ++
+        case cluster_compat_mode:is_version_NEO(ClusterVersion) of
+            true ->
+                [index];
+            false ->
+                []
+        end.
 
 get_module(Monitor) ->
     list_to_atom(atom_to_list(Monitor) ++ "_monitor").

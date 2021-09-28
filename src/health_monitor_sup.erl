@@ -58,9 +58,7 @@ is_notable_event(_) ->
     false.
 
 wanted_children() ->
-    Snapshot = ns_cluster_membership:get_snapshot(),
-    [S || S <- health_monitor:supported_services(),
-          ns_cluster_membership:should_run_service(Snapshot, S, node())].
+    health_monitor:supported_services(node()).
 
 running_children() ->
     [S || {{S, _}, _, _, _} <- supervisor:which_children(service_monitor_children_sup)].
