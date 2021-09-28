@@ -104,16 +104,20 @@ generate_and_set_cert_and_pkey(Force) ->
     case cluster_compat_mode:is_cluster_NEO() of
         true ->
             NewPair = generate_cert_and_pkey(),
+            {ok, AddCA} = add_CAs_txn_fun(generated, element(1, NewPair), []),
             {ok, _, Pair} =
-                chronicle_kv:transaction(
-                  kv, [root_cert_and_pkey],
-                  fun (#{root_cert_and_pkey := {OldPair, _}}) when not Force ->
-                          {abort, {ok, undefined, OldPair}};
-                      (#{}) ->
-                          {commit, [{set, root_cert_and_pkey, NewPair}],
-                           NewPair}
+                chronicle_kv:txn(
+                  kv,
+                  fun (Txn) ->
+                      case chronicle_kv:txn_get(root_cert_and_pkey, Txn) of
+                          {ok, {OldPair, _}} when not Force ->
+                              {abort, {ok, undefined, OldPair}};
+                          _ ->
+                              Changes1 =  [{set, root_cert_and_pkey, NewPair}],
+                              {commit, Changes2, _} = AddCA(Txn),
+                              {commit, Changes1 ++ Changes2, NewPair}
+                      end
                   end),
-            {ok, _} = add_CAs(generated, element(1, Pair)),
             Pair;
         false ->
             generate_and_set_cert_and_pkey_pre_NEO(Force)
@@ -856,15 +860,25 @@ with_test_otp_server(Fun, CAPem, ChainPem, PKeyPem, PassphraseFun) ->
 add_CAs(Type, Pem) ->
     add_CAs(Type, Pem, []).
 
-add_CAs(Type, Pem, Opts) when is_binary(Pem),
-                        (Type =:= uploaded) or (Type =:= generated) ->
+add_CAs(Type, Pem, Opts) ->
+    case add_CAs_txn_fun(Type, Pem, Opts) of
+        {ok, F} ->
+            {ok, _, R} = chronicle_kv:txn(kv, F),
+            {ok, R};
+        {error, _} = Error ->
+            Error
+    end.
+
+add_CAs_txn_fun(Type, Pem, Opts) when is_binary(Pem),
+                                 (Type =:= uploaded) or (Type =:= generated) ->
     SingleCert = proplists:get_bool(single_cert, Opts),
     case decode_certificates(Pem) of
         {ok, PemEntries} when SingleCert,
                               length(PemEntries) > 1 ->
             {error, too_many_entries};
         {ok, PemEntries} ->
-            load_CAs([cert_props(Type, E, []) || E <- PemEntries]);
+            CAProps = [cert_props(Type, E, []) || E <- PemEntries],
+            {ok, load_CAs_txn(CAProps, _)};
         {error, Reason} ->
             {error, Reason}
     end.
@@ -917,53 +931,52 @@ load_CAs_from_inbox() ->
     CAInbox = inbox_ca_path(),
     case read_CAs(CAInbox) of
         {ok, []} ->
+            ?log_warning("Appending empty list of certs"),
             {error, {CAInbox, empty}};
         {ok, NewCAs} ->
+            ?log_info("Trying to load the following CA certificates:~n~p",
+                      [NewCAs]),
             load_CAs(NewCAs);
         {error, R} ->
             {error, R}
     end.
 
 load_CAs(CAPropsList) ->
+    {ok, _, R} = chronicle_kv:txn(kv, load_CAs_txn(CAPropsList, _)),
+    {ok, R}.
+
+load_CAs_txn(CAPropsList, ChronicleTxn) ->
     UTCTime = calendar:universal_time(),
     LoadTime = calendar:datetime_to_gregorian_seconds(UTCTime),
-    {ok, _, AddedCAs} =
-        chronicle_kv:transaction(
-          kv, [ca_certificates],
-          fun (Snapshot) ->
-              {CAs, _Rev} = maps:get(ca_certificates, Snapshot,
-                                     {[], undefined}),
-              ToSet = maybe_append_CA_certs(CAs, CAPropsList, LoadTime),
-              NewCAs = ToSet -- CAs,
-              {commit, [{set, ca_certificates, ToSet}], NewCAs}
-          end, #{}),
-    {ok, AddedCAs}.
+    CAs = case chronicle_kv:txn_get(ca_certificates, ChronicleTxn) of
+              {ok, {V, _}} -> V;
+              {error, not_found} -> []
+          end,
+    ToSet = maybe_append_CA_certs(CAs, CAPropsList, LoadTime),
+    NewCAs = ToSet -- CAs,
+    {commit, [{set, ca_certificates, ToSet}], NewCAs}.
 
 maybe_append_CA_certs(CAs, [], _) ->
-    ?log_error("Appending empty list of certs"),
     CAs;
 maybe_append_CA_certs(CAs, CAPropsList, LoadTime) ->
     MaxId = lists:max([-1] ++ [proplists:get_value(id, CA) || CA <- CAs]),
-    {_, Res} = lists:foldl(
-                 fun (NewCA, {NextId, Acc}) ->
-                     L = lists:concat(
-                           [public_key:pem_decode(proplists:get_value(pem, CA))
-                            || CA <- Acc]),
-                     NewPem = proplists:get_value(pem, NewCA),
-                     [NewPemDecoded] = public_key:pem_decode(NewPem),
-                     case lists:member(NewPemDecoded, L) of
-                         true ->
-                             ?log_info("Not adding the following CA cert as "
-                                       "it is already added: ~p", [NewPem]),
-                             {NextId, Acc};
-                         false ->
-                             ?log_info("Adding new CA cert with id ~p: ~p",
-                                       [NextId, NewPem]),
-                             NewCA2 = [{id, NextId},
-                                       {load_timestamp, LoadTime} | NewCA],
-                             {NextId + 1, [NewCA2 | Acc]}
-                     end
-                 end, {MaxId + 1, CAs}, CAPropsList),
+    DecodedCAs = lists:concat(
+                   [public_key:pem_decode(proplists:get_value(pem, CA))
+                    || CA <- CAs]),
+    {_, Res, _} = lists:foldl(
+                    fun (NewCA, {NextId, Acc, DecodedAcc}) ->
+                        NewPem = proplists:get_value(pem, NewCA),
+                        [NewPemDecoded] = public_key:pem_decode(NewPem),
+                        case lists:member(NewPemDecoded, DecodedAcc) of
+                            true ->
+                                {NextId, Acc, DecodedAcc};
+                            false ->
+                                NewCA2 = [{id, NextId},
+                                          {load_timestamp, LoadTime} | NewCA],
+                                {NextId + 1, [NewCA2 | Acc],
+                                 [NewPemDecoded | DecodedAcc]}
+                        end
+                    end, {MaxId + 1, CAs, DecodedCAs}, CAPropsList),
     Res.
 
 read_CAs(CAPath) ->
