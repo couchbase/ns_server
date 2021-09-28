@@ -645,6 +645,10 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_alert:handle_settings_alerts_send_test_email/1};
                 ["settings", "stats"] ->
                     {{[settings], write}, fun menelaus_web_settings:handle_settings_stats_post/1};
+                ["internal", "settings", "metrics" | PathRest] ->
+                    {{[settings], write},
+                     fun menelaus_web_stats:handle_post_internal_settings/2,
+                     [PathRest]};
                 ["settings", "metrics" | PathRest] ->
                     {{[settings], write},
                      fun menelaus_web_stats:handle_post_settings/2, [PathRest]};

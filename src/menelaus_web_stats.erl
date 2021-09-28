@@ -15,6 +15,7 @@
          handle_get_settings/2,
          handle_get_internal_settings/2,
          handle_post_settings/2,
+         handle_post_internal_settings/2,
          aggregate/2]).
 
 -include("ns_common.hrl").
@@ -209,11 +210,16 @@ handle_get_settings(Path, Req) ->
     menelaus_web_settings2:handle_get(Path, params(), fun type_spec/1,
                                       Settings, Req).
 
+handle_post_internal_settings(Path, Req) ->
+    menelaus_web_settings2:handle_post(
+      apply_props(Path, _, _, internal), Path, params_internal(),
+      fun type_spec/1, Req).
+
 handle_post_settings(Path, Req) ->
     menelaus_web_settings2:handle_post(
-      apply_props(Path, _, _), Path, params(), fun type_spec/1, Req).
+      apply_props(Path, _, _, external), Path, params(), fun type_spec/1, Req).
 
-apply_props(Path, PropList, Req) ->
+apply_props(Path, PropList, Req, Type) ->
     OldProps = ns_config:read_key_fast(stats_settings, []),
     NewProps = lists:foldl(
                  fun ({KeyTokens, Value}, Acc) ->
@@ -221,7 +227,10 @@ apply_props(Path, PropList, Req) ->
                  end, OldProps, PropList),
     validate_metrics_settings(prometheus_cfg:with_applied_defaults(NewProps)),
     ns_config:set(stats_settings, NewProps),
-    handle_get_settings(Path, Req).
+    case Type of
+        internal -> handle_get_internal_settings(Path, Req);
+        external -> handle_get_settings(Path, Req)
+    end.
 
 validate_metrics_settings(Settings) ->
     case proplists:get_value(scrape_interval, Settings) <
