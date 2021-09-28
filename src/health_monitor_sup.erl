@@ -76,16 +76,19 @@ refresh_children() ->
     lists:foreach(fun start_child/1, ToStart),
     ok.
 
-child_specs(kv) ->
+additional_child_specs(kv) ->
     [{{kv, dcp_traffic_monitor}, {dcp_traffic_monitor, start_link, []},
       permanent, 1000, worker, [dcp_traffic_monitor]},
      {{kv, kv_stats_monitor}, {kv_stats_monitor, start_link, []},
-      permanent, 1000, worker, [kv_stats_monitor]},
-     {{kv, kv_monitor}, {kv_monitor, start_link, []},
-      permanent, 1000, worker, [kv_monitor]}];
+      permanent, 1000, worker, [kv_stats_monitor]}];
+additional_child_specs(_) ->
+    [].
+
 child_specs(Service) ->
-    ?log_debug("Unsupported service ~p", [Service]),
-    exit(unsupported_service).
+    Module = health_monitor:get_module(Service),
+    additional_child_specs(Service) ++
+        [{{Service, Module}, {Module, start_link, []},
+          permanent, 1000, worker, [Module]}].
 
 start_child(Service) ->
     Children = child_specs(Service),
