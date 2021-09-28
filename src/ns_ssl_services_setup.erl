@@ -592,6 +592,7 @@ maybe_store_ca_certs() ->
             %% Can be removed when all the services and memcached switch to new
             %% cert format (where ca certs are kept separately)
             update_legacy_cert_file(),
+            ok = ssl:clear_pem_cache(),
             misc:create_marker(marker_path());
         false ->
             ok
