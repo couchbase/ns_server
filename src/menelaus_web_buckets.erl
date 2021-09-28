@@ -1650,12 +1650,12 @@ parse_validate_mem_quota_ratio_inner(true = _IsEnterprise, true = _IsCompat,
                           fun do_parse_validate_mem_quota_ratio/1).
 
 do_parse_validate_mem_quota_ratio(Val) ->
-    case menelaus_util:parse_validate_number(Val, 10, 100) of
+    case menelaus_util:parse_validate_number(Val, 1, 85) of
         {ok, X} ->
             {ok, mem_quota_ratio, X};
         _Error ->
             {error, memQuotaRatio,
-             <<"Memory Quota Ratio must be between 10 and 100, "
+             <<"Memory Quota Ratio must be between 1 and 85, "
                "inclusive">>}
     end.
 

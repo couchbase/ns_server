@@ -59,7 +59,7 @@ params(membase, BucketName, BucketConfig, MemQuota, UUID) ->
      {"magma_fragmentation_percentage", [{reload, flush}],
       proplists:get_value(frag_percent, BucketConfig, 50)},
      {"magma_mem_quota_ratio", [{reload, flush}],
-      proplists:get_value(mem_quota_ratio, BucketConfig, 10)},
+      proplists:get_value(mem_quota_ratio, BucketConfig, 10) / 100},
      {"hlc_drift_ahead_threshold_us", [no_param, {reload, vbucket}],
       DriftAheadThreshold},
      {"hlc_drift_behind_threshold_us", [no_param, {reload, vbucket}],
@@ -172,6 +172,8 @@ value_to_string(V) when is_binary(V) ->
     binary_to_list(V);
 value_to_string(V) when is_integer(V) ->
     integer_to_list(V);
+value_to_string(V) when is_float(V) ->
+    float_to_list(V, [{decimals, 2}, compact]);
 value_to_string(V) when is_atom(V) ->
     atom_to_list(V);
 value_to_string(V) when is_list(V) ->
