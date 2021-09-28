@@ -333,8 +333,8 @@ build_magma_bucket_info(BucketConfig) ->
         magma ->
             [{fragmentationPercentage, proplists:get_value(frag_percent,
                                                            BucketConfig, 50)},
-             {memQuotaRatio, proplists:get_value(mem_quota_ratio,
-                                                 BucketConfig, 10)}];
+             {storageQuotaPercentage,
+              proplists:get_value(storage_quota_percentage, BucketConfig, 10)}];
         _ ->
             []
     end.
@@ -418,7 +418,8 @@ extract_bucket_props(Props) ->
     [X || X <-
               [lists:keyfind(Y, 1, Props) ||
                   Y <- [num_replicas, replica_index, ram_quota,
-                        durability_min_level, frag_percent, mem_quota_ratio,
+                        durability_min_level, frag_percent,
+                        storage_quota_percentage,
                         pitr_enabled, pitr_granularity, pitr_max_history_age,
                         moxi_port, autocompaction,
                         purge_interval, flush_enabled, num_threads,
@@ -915,8 +916,8 @@ validate_membase_bucket_params(CommonParams, Params,
          parse_validate_pitr_max_history_age(Params, IsNew, IsDeveloperPreview),
          parse_validate_frag_percent(Params, BucketConfig, IsNew, Version,
                                      IsEnterprise),
-         parse_validate_mem_quota_ratio(Params, BucketConfig, IsNew, Version,
-                                        IsEnterprise),
+         parse_validate_storage_quota_percentage(Params, BucketConfig, IsNew, Version,
+                                                 IsEnterprise),
          parse_validate_max_ttl(Params, BucketConfig, IsNew, IsEnterprise),
          parse_validate_compression_mode(Params, BucketConfig, IsNew,
                                          IsEnterprise)
@@ -1603,59 +1604,67 @@ do_parse_validate_frag_percent(Val) ->
                "inclusive">>}
     end.
 
-parse_validate_mem_quota_ratio(Params, BucketConfig, IsNew, Version,
-                               IsEnterprise) ->
-    Percent = proplists:get_value("memQuotaRatio", Params),
+parse_validate_storage_quota_percentage(Params, BucketConfig, IsNew, Version,
+                                        IsEnterprise) ->
+    Percent = proplists:get_value("storageQuotaPercentage", Params),
     IsCompat = cluster_compat_mode:is_version_NEO(Version),
     IsMagma = is_magma(Params, BucketConfig, IsNew),
-    parse_validate_mem_quota_ratio_inner(IsEnterprise, IsCompat, Percent,
-                                         BucketConfig, IsNew, IsMagma).
+    parse_validate_storage_quota_percentage_inner(IsEnterprise, IsCompat,
+                                                  Percent, BucketConfig, IsNew,
+                                                  IsMagma).
 
-parse_validate_mem_quota_ratio_inner(false = _IsEnterprise, _IsCompat,
-                                     undefined = _Percent, _BucketCfg, _IsNew,
-                                     _IsMagma) ->
+parse_validate_storage_quota_percentage_inner(false = _IsEnterprise, _IsCompat,
+                                              undefined = _Percent, _BucketCfg,
+                                              _IsNew, _IsMagma) ->
     %% Community edition but percent/ratio wasn't specified
     ignore;
-parse_validate_mem_quota_ratio_inner(_IsEnterprise, false = _IsCompat,
-                                     undefined = _Percent, _BucketCfg, _IsNew,
-                                     _IsMagma) ->
+parse_validate_storage_quota_percentage_inner(_IsEnterprise, false = _IsCompat,
+                                              undefined = _Percent, _BucketCfg,
+                                              _IsNew, _IsMagma) ->
     %% Not cluster compatible but percent/ratio wasn't specified
     ignore;
-parse_validate_mem_quota_ratio_inner(false = _IsEnterprise, _IsCompat, _Percent,
-                                     _BucketCfg, _IsNew, _IsMagma) ->
-    {error, memQuotaRatio,
-     <<"Memory Quota Ratio is supported in enterprise edition only">>};
-parse_validate_mem_quota_ratio_inner(_IsEnterprise, false = _IsCompat, _Percent,
-                                     _BucketCfg, _IsNew, _IsMagma) ->
-    {error, memQuotaRatio,
-     <<"Memory Quota Ratio cannot be set until the cluster is fully NEO">>};
-parse_validate_mem_quota_ratio_inner(true = _IsEnterprise, true = _IsCompat,
-                                     undefined, _BucketCfg, _IsNew,
-                                     false = _IsMagma) ->
-    %% Not a magma bucket and percent/ratio wasn't specified
+parse_validate_storage_quota_percentage_inner(false = _IsEnterprise, _IsCompat,
+                                           _Percent, _BucketCfg, _IsNew,
+                                           _IsMagma) ->
+    {error, storageQuotaPercentage,
+     <<"Storage Quota Percentage is supported in enterprise edition only">>};
+parse_validate_storage_quota_percentage_inner(_IsEnterprise, false = _IsCompat,
+                                              _Percent, _BucketCfg, _IsNew,
+                                              _IsMagma) ->
+    {error, storageQuotaPercentage,
+     <<"Storage Quota Percentage cannot be set until the cluster is fully "
+       "NEO">>};
+parse_validate_storage_quota_percentage_inner(true = _IsEnterprise,
+                                              true = _IsCompat, undefined,
+                                              _BucketCfg, _IsNew,
+                                              false = _IsMagma) ->
+    %% Not a magma bucket and percent wasn't specified
     ignore;
-parse_validate_mem_quota_ratio_inner(true = _IsEnterprise, true = _IsCompat,
-                                     _Percent, _BucketCfg, _IsNew,
-                                     false = _IsMagma) ->
-    {error, memQuotaRatio,
-     <<"Memory Quota Ratio is only used with Magma">>};
-parse_validate_mem_quota_ratio_inner(true = _IsEnterprise, true = _IsCompat,
-                                     Percent, BucketCfg, IsNew,
-                                     true = _IsMagma) ->
+parse_validate_storage_quota_percentage_inner(true = _IsEnterprise,
+                                              true = _IsCompat, _Percent,
+                                              _BucketCfg, _IsNew,
+                                              false = _IsMagma) ->
+    {error, storageQuotaPercentage,
+     <<"Storage Quota Percentage is only used with Magma">>};
+parse_validate_storage_quota_percentage_inner(true = _IsEnterprise,
+                                              true = _IsCompat, Percent,
+                                              BucketCfg, IsNew,
+                                              true = _IsMagma) ->
     DefaultVal = case IsNew of
                      true -> "10";
-                     false -> proplists:get_value(mem_quota_ratio, BucketCfg)
+                     false -> proplists:get_value(storage_quota_percentage,
+                                                  BucketCfg)
                  end,
     validate_with_missing(Percent, DefaultVal, IsNew,
-                          fun do_parse_validate_mem_quota_ratio/1).
+                          fun do_parse_validate_storage_quota_percentage/1).
 
-do_parse_validate_mem_quota_ratio(Val) ->
+do_parse_validate_storage_quota_percentage(Val) ->
     case menelaus_util:parse_validate_number(Val, 1, 85) of
         {ok, X} ->
-            {ok, mem_quota_ratio, X};
+            {ok, storage_quota_percentage, X};
         _Error ->
-            {error, memQuotaRatio,
-             <<"Memory Quota Ratio must be between 1 and 85, "
+            {error, storageQuotaPercentage,
+             <<"Storage Quota Percentage must be between 1 and 85, "
                "inclusive">>}
     end.
 

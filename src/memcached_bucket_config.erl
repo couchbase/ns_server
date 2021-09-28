@@ -58,8 +58,9 @@ params(membase, BucketName, BucketConfig, MemQuota, UUID) ->
       ns_bucket:pitr_max_history_age(BucketConfig)},
      {"magma_fragmentation_percentage", [{reload, flush}],
       proplists:get_value(frag_percent, BucketConfig, 50)},
+     %% The internal name, known by memcached, is a ratio so do the conversion.
      {"magma_mem_quota_ratio", [{reload, flush}],
-      proplists:get_value(mem_quota_ratio, BucketConfig, 10) / 100},
+      proplists:get_value(storageQuotaPercentage, BucketConfig, 10) / 100},
      {"hlc_drift_ahead_threshold_us", [no_param, {reload, vbucket}],
       DriftAheadThreshold},
      {"hlc_drift_behind_threshold_us", [no_param, {reload, vbucket}],
