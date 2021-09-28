@@ -130,26 +130,8 @@ analyze_kv_stats(Node, AllNodes) ->
     %% AllNodes contains each node's view of every other node.
     %% Since each node monitors only its local KV stats,
     %% we are interested only in the Node's view of itself.
-    case lists:keyfind(Node, 1, AllNodes) of
-        false ->
-            [];
-        {Node, active, View} ->
-            case proplists:get_value(Node, View, []) of
-                [] ->
-                    [];
-                Status ->
-                    case proplists:get_value(kv, Status, unknown) of
-                        unknown ->
-                            [];
-                        [] ->
-                            [];
-                        Buckets ->
-                            kv_stats_monitor:analyze_status(Buckets)
-                    end
-            end;
-        _ ->
-            []
-    end.
+    health_monitor:analyze_local_status(
+      Node, AllNodes, kv, kv_stats_monitor:analyze_status(_), []).
 
 check_ready_buckets(AllNodes, Node, Buckets) ->
     %% Initially, all buckets are considered not ready.

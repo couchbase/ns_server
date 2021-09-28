@@ -28,7 +28,8 @@
          node_monitors/1,
          supported_services/0,
          get_module/1,
-         send_heartbeat/2, send_heartbeat/3]).
+         send_heartbeat/2, send_heartbeat/3,
+         analyze_local_status/5]).
 
 -record(state, {
           nodes :: dict:dict(),
@@ -165,4 +166,26 @@ skip_heartbeats_to(MonModule) ->
         SkipList ->
             ?log_debug("~p skip heartbeats to ~p ~n", [MonModule, SkipList]),
             SkipList
+    end.
+
+analyze_local_status(Node, AllNodes, Service, Fun, Default) ->
+    case lists:keyfind(Node, 1, AllNodes) of
+        false ->
+            Default;
+        {Node, active, View} ->
+            case proplists:get_value(Node, View, []) of
+                [] ->
+                    Default;
+                Status ->
+                    case proplists:get_value(Service, Status, unknown) of
+                        unknown ->
+                            Default;
+                        [] ->
+                            Default;
+                        Stuff ->
+                            Fun(Stuff)
+                    end
+            end;
+        _ ->
+            Default
     end.
