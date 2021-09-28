@@ -59,6 +59,9 @@
          terminate/2,
          code_change/3]).
 
+-export([register_tick/3,
+         is_unhealthy/2]).
+
 -record(state, {
           buckets :: dict:dict(),
           %% Monitor disk failure stats only if auto-failover on
@@ -253,24 +256,27 @@ check_for_disk_issues_stats(CurrTS, Vals, {_, PastInfo}, NumSamples) ->
     %%       {stat2, {PrevVal2, PrevTS2, BitString}}, ...]
     %% If current value of a stat is greater than its previous value,
     %% then append "1" to the bit string. Otherwise append "0".
-    NewStatsInfo = lists:map(
-                     fun ({Stat, CurrVal}) ->
-                             case lists:keyfind(Stat, 1, PastInfo) of
-                                 false ->
-                                     {Stat, {CurrVal, CurrTS, <<0:1>>}};
-                                 {Stat, PrevInfo} ->
-                                     New = process_stat(CurrVal, CurrTS,
-                                                        PrevInfo, NumSamples),
-                                     {Stat, New}
-                             end
-                     end, Vals),
+    NewStatsInfo =
+        lists:map(
+          fun ({Stat, CurrVal}) ->
+                  NewBits =
+                      case lists:keyfind(Stat, 1, PastInfo) of
+                          false ->
+                              register_tick(true, <<>>, NumSamples);
+                          {Stat, {PrevVal, PrevTS, Bits}} ->
+                              Healthy =
+                                  CurrTS =:= PrevTS orelse CurrVal =< PrevVal,
+                              register_tick(Healthy, Bits, NumSamples)
+                      end,
+                  {Stat, {CurrVal, CurrTS, NewBits}}
+          end, Vals),
     check_for_disk_issues_stats_inner(NewStatsInfo, NumSamples).
 
 check_for_disk_issues_stats_inner(StatsInfo, NumSamples) ->
     Threshold = round(NumSamples * ?DISK_ISSUE_THRESHOLD / 100),
     Failures = lists:filtermap(
                  fun ({Stat, {_, _, Bits}}) ->
-                         case is_stat_increasing(Bits, Threshold) of
+                         case is_unhealthy(Bits, Threshold) of
                              true ->
                                  Err = proplists:get_value(Stat,
                                                            failure_stats()),
@@ -289,21 +295,14 @@ check_for_disk_issues_stats_inner(StatsInfo, NumSamples) ->
                    end,
     {BucketStatus, StatsInfo}.
 
-process_stat(CurrVal, CurrTS, {PrevVal, PrevTS, Bits}, NumSamples) ->
-    {NewVal, NewTS, NewBits0} = case CurrTS =:= PrevTS of
-                                    true ->
-                                        {PrevVal, PrevTS, <<Bits/bits, 0:1>>};
-                                    false ->
-                                        B = case CurrVal > PrevVal of
-                                                true ->
-                                                    <<1:1>>;
-                                                false ->
-                                                    <<0:1>>
-                                            end,
-                                        {CurrVal, CurrTS, <<Bits/bits, B/bits>>}
-                                end,
-    NewBits = remove_old_entries(NewBits0, NumSamples),
-    {NewVal, NewTS, NewBits}.
+register_tick(Healthy, Bits, NumSamples) ->
+    B = case Healthy of
+            true ->
+                <<0:1>>;
+            false ->
+                <<1:1>>
+        end,
+    remove_old_entries(<<Bits/bits, B/bits>>, NumSamples).
 
 remove_old_entries(Bits, NumSamples) ->
     Size = bit_size(Bits),
@@ -316,7 +315,7 @@ remove_old_entries(Bits, NumSamples) ->
             Bits
     end.
 
-is_stat_increasing(Bits, Threshold) ->
+is_unhealthy(Bits, Threshold) ->
     Size = bit_size(Bits),
     case <<0:Size>> =:= Bits of
         true ->
