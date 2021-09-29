@@ -107,6 +107,7 @@ roles() ->
        {[admin, security, external], none},
        {[admin, security], all},
        {[admin, logs], none},
+       {[admin, settings, metrics], none},
        {[{bucket, any}, data], none},
        {[{bucket, any}, views], none},
        {[{bucket, any}, n1ql], none},
@@ -118,6 +119,7 @@ roles() ->
        {[eventing], none},
        {[xdcr], none},
        {[settings, fts], none},
+       {[settings, metrics], none},
        {[], [read, list]}]},
      {security_admin_external, [],
       [{name, <<"External User Security Admin">>},
@@ -130,6 +132,7 @@ roles() ->
        {[admin, security, local], none},
        {[admin, security], all},
        {[admin, logs], none},
+       {[admin, settings], none},
        {[{bucket, any}, data], none},
        {[{bucket, any}, views], none},
        {[{bucket, any}, n1ql], none},
@@ -150,6 +153,7 @@ roles() ->
       [{[admin, internal], none},
        {[admin, security], none},
        {[admin, diag], [read]},
+       {[admin, settings, metrics], none},
        {[{bucket, any}, data], none},
        {[{bucket, any}, views], none},
        {[{bucket, any}, n1ql], none},
@@ -173,6 +177,7 @@ roles() ->
        {[eventing], all},
        {[analytics], all},
        {[buckets], all},
+       {[settings, metrics], none},
        {[], [read]}]},
      {backup_admin, [],
       [{name, <<"Backup Full Admin">>},
@@ -180,6 +185,7 @@ roles() ->
        {desc, <<"Can perform backup related tasks. This user can access "
                 "the web console">>}],
       [{[admin], none},
+       {[settings, metrics], none},
        {[], all}]},
      {bucket_admin, [bucket_name],
       [{name, <<"Bucket Admin">>},
@@ -201,6 +207,7 @@ roles() ->
        {[eventing], none},
        {[analytics], none},
        {[backup], none},
+       {[settings, metrics], none},
        {[], [read]}]},
      {scope_admin, ?RBAC_SCOPE_PARAMS,
       [{name, <<"Manage Scopes">>},
@@ -238,6 +245,7 @@ roles() ->
        {[eventing], none},
        {[analytics], none},
        {[backup], none},
+       {[settings, metrics], none},
        {[], [read]}]},
      {views_reader, [bucket_name],
       [{name, <<"Views Reader">>},
@@ -266,6 +274,7 @@ roles() ->
        {[eventing], none},
        {[analytics], none},
        {[backup], none},
+       {[settings, metrics], none},
        {[], [read]}]},
      {data_reader, ?RBAC_COLLECTION_PARAMS,
       [{name, <<"Data Reader">>},
@@ -1308,6 +1317,11 @@ admin_test() ->
     ?assertEqual(true, is_allowed({[buckets], create}, Roles)),
     ?assertEqual(true, is_allowed({[something, something], anything}, Roles)).
 
+cluster_admin_test() ->
+    Roles = compile_roles([cluster_admin], roles()),
+    ?assertEqual(true, is_allowed({[settings, metrics], any}, Roles)),
+    ?assertEqual(false, is_allowed({[admin, settings, metrics], any}, Roles)).
+
 eventing_admin_test() ->
     Roles = compile_roles([eventing_admin], roles()),
     ?assertEqual(false, is_allowed({[admin], any}, Roles)),
@@ -1337,6 +1351,10 @@ ro_admin_test() ->
     ?assertEqual(false, is_allowed({[admin, security], write}, Roles)),
     ?assertEqual(true, is_allowed({[admin, security], read}, Roles)),
     ?assertEqual(false, is_allowed({[admin, other], write}, Roles)),
+    ?assertEqual(false, is_allowed({[admin, settings, metrics], write}, Roles)),
+    ?assertEqual(true, is_allowed({[admin, settings, metrics], read}, Roles)),
+    ?assertEqual(false, is_allowed({[settings, metrics], write}, Roles)),
+    ?assertEqual(true, is_allowed({[settings, metrics], read}, Roles)),
     ?assertEqual(true, is_allowed({[anything], read}, Roles)),
     ?assertEqual(false, is_allowed({[anything], write}, Roles)).
 
