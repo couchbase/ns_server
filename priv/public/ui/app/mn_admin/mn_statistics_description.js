@@ -304,6 +304,7 @@ function getStatAdditionalConfig(statName) {
   case "@cbas-.cbas_failed_to_parse_records_count":
   case "@index-.index_num_docs_indexed":
   case "@index-.index_num_requests":
+  case "@index-.index_num_rows_returned":
   case "@fts-.fts_total_bytes_indexed":
   case "@fts-.fts_total_queries":
   case "@kv-.kv_ops":
@@ -358,7 +359,6 @@ function getStatAdditionalConfig(statName) {
 
   case "@fts-.fts_num_bytes_used_disk":
   case "@fts-.fts_num_files_on_disk":
-  case "@index-.index_num_rows_returned":
   case "@xdcr-.@items.xdcr_docs_failed_cr_source_total":
   case "@xdcr-.@items.xdcr_docs_written_total":
   case "@xdcr-.@items.xdcr_changes_left_total":
