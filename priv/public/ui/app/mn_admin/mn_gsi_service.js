@@ -10,19 +10,19 @@ licenses/APL2.txt.
 
 import angular from "angular";
 import {downgradeInjectable} from '@angular/upgrade/static';
-
 import {QwQueryService} from "../../../_p/ui/query/angular-services/qw.query.service.js";
 import {MnHelperService} from '../mn.helper.service.js';
+import mnPoolDefault from "../components/mn_pool_default.js";
 
 export default 'mnGsiService';
 
 angular
-  .module('mnGsiService', [])
+  .module('mnGsiService', [mnPoolDefault])
   .factory('qwQueryService', downgradeInjectable(QwQueryService))
   .factory('mnHelperService', downgradeInjectable(MnHelperService))
   .factory('mnGsiService', mnGsiServiceFactory);
 
-function mnGsiServiceFactory($http, $q, qwQueryService) {
+function mnGsiServiceFactory($http, $q, qwQueryService, mnPoolDefault) {
   var mnGsiService = {
     getIndexesState: getIndexesState,
     getIndexesStateMixed: getIndexesStateMixed,
@@ -35,11 +35,22 @@ function mnGsiServiceFactory($http, $q, qwQueryService) {
   return mnGsiService;
 
   function postDropIndex(row) {
+    // MB-48460 - only need 'default:' for 7.0 and later
     // new indexes have a scope and collection
-    var query = 'DROP INDEX default:`' + row.bucket + '`.`' +
-        (row.scope ? row.scope + '`.`' : '') +
-        (row.collection ? row.collection + '`.`' : '') +
+    let indexIdentifier =
+        (mnPoolDefault.export.compat.atLeast70 ? 'default:' : '') +
+        '`' + row.bucket + '`.`' +
+        (mnPoolDefault.export.compat.atLeast70 && row.scope ? row.scope + '`.`' : '') +
+        (mnPoolDefault.export.compat.atLeast70 && row.collection ? row.collection + '`.`' : '') +
         row.indexName + '`';
+    // MB-40229 - replica indexes must be removed with ALTER INDEX, others with DROP INDEX
+    var query;
+    if (row.numReplica > 0) {
+      query = 'ALTER INDEX ' + indexIdentifier + ' WITH {"action":"drop_replica","replicaId":' + row.replicaId + '};';
+    }
+    else {
+      query = 'DROP INDEX ' + indexIdentifier;
+    }
 
     return qwQueryService
       .executeQueryUtil(query, true);
