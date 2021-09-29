@@ -100,7 +100,9 @@ def main():
             usage()
             sys.exit()
 
-    cluster_run_lib.connect(**params)
+    ret = cluster_run_lib.connect(**params)
+    if ret:
+        usage()
 
 
 if __name__ == '__main__':

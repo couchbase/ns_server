@@ -597,8 +597,7 @@ def connect(num_nodes=0,
             set(["n" + str(i) for i in range(num_nodes)]) or \
             not set(reduce(lambda x, y: x + y, deploy.values(), [])) <= \
             valid_service_types:
-        usage()
-        sys.exit()
+        return 1
 
     password_mgr = PasswordManager("Administrator", "asdasd")
     handler = urllib.request.HTTPBasicAuthHandler(password_mgr)
@@ -675,3 +674,5 @@ def connect(num_nodes=0,
 
         o.open("http://{0}:{1}/controller/rebalance".format(addr, base_port),
                data).read()
+
+    return 0
