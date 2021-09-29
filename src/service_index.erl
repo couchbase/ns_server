@@ -60,6 +60,7 @@ status_mapping() ->
      {indexName, <<"indexName">>},
      {lastScanTime, <<"lastScanTime">>},
      {numReplica, <<"numReplica">>},
+     {replicaId, <<"replicaId">>},
      {bucket, <<"bucket">>},
      {scope, <<"scope">>},
      {collection, <<"collection">>},
