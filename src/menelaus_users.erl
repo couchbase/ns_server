@@ -256,7 +256,7 @@ maybe_update_passwordless(Identity, Auth, false, State = #state{passwordless = P
 handle_call(get_passwordless, _From, TableName, #state{passwordless = undefined} = State) ->
     Passwordless =
         pipes:run(
-          replicated_dets:select(TableName, {auth, '_'}, 100, true),
+          replicated_dets:select(TableName, {auth, '_'}, 100),
           ?make_consumer(
              pipes:fold(?producer(),
                         fun ({{auth, Identity}, Auth}, Acc) ->
