@@ -61,7 +61,7 @@ init([Module, Path]) ->
         fun (Key) ->
                 case Module:filter_event(Key) of
                     true ->
-                        gen_server:cast(Pid, {event, Key});
+                        Pid ! {event, Key};
                     false ->
                         ok
                 end
@@ -87,20 +87,21 @@ init([Module, Path]) ->
 terminate(_Reason, _State)     -> ok.
 code_change(_OldVsn, State, _) -> {ok, State}.
 
-handle_cast({event, Key}, State = #state{module = Module,
-                                         stuff = Stuff}) ->
-    case Module:handle_event(Key, Stuff) of
-        {changed, NewStuff} ->
-            {noreply, initiate_write(State#state{stuff = NewStuff})};
-        unchanged ->
-            {noreply, State}
-    end;
 handle_cast(full_reset, State = #state{module = Module}) ->
     {noreply, initiate_write(State#state{stuff = Module:init()})}.
 
 handle_call(sync, _From, State) ->
     {reply, ok, State}.
 
+handle_info({event, Key} = Event, State = #state{module = Module,
+                                                 stuff = Stuff}) ->
+    misc:flush(Event),
+    case Module:handle_event(Key, Stuff) of
+        {changed, NewStuff} ->
+            {noreply, initiate_write(State#state{stuff = NewStuff})};
+        unchanged ->
+            {noreply, State}
+    end;
 handle_info({retry_rename_and_refresh, Tries, SleepTime}, State) ->
     MaybeTRef = case rename_and_refresh(State, Tries, SleepTime) of
                     ok ->
