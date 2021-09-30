@@ -11,6 +11,9 @@
 
 -include("ns_common.hrl").
 
+%% Remove by OTP25
+-compile([{nowarn_deprecated_function, [{ http_uri,parse,1 }]}]).
+
 -export([start_link/3, start_link_ets_holder/0]).
 
 -export([maybe_build_cluster_logs_task/0]).

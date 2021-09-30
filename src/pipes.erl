@@ -25,7 +25,7 @@
 
 -export([read_file/1, read_file/2,
          write_file/1, write_file/2,
-         gzip/0, gzip/1, gunzip/0, gunzip/1,
+         gzip/0, gzip/1, gunzip/0,
          buffer/1, simple_buffer/1,
          marshal_terms/0, marshal_terms/1, unmarshal_terms/0,
          stream_table/1, unstream_table/1,
@@ -227,18 +227,12 @@ gzip_loop(Producer, Yield, Z) ->
     Yield(zlib:deflate(Z, <<>>, finish)).
 
 gunzip() ->
-    gunzip([]).
-
-gunzip(Options) ->
-    BufSize = proplists:get_value(bufsize, Options, 1024 * 1024),
-
     ?make_transducer(
        begin
            Z = zlib:open(),
 
            try
                zlib:inflateInit(Z, 15 bor ?GZIP_FORMAT),
-               zlib:setBufSize(Z, BufSize),
                gunzip_loop(?producer(), ?yield(), Z),
                zlib:inflateEnd(Z)
            after

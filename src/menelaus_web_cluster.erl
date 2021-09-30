@@ -16,6 +16,9 @@
 -include("ns_common.hrl").
 -include("menelaus_web.hrl").
 
+%% Remove by OTP25
+-compile([{nowarn_deprecated_function, [{ http_uri,parse,2 }]}]).
+
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
