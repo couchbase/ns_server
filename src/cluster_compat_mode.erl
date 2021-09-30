@@ -38,6 +38,7 @@
          is_enterprise/0,
          is_enterprise/1,
          should_enforce_limits/0,
+         should_enforce_limits/1,
          is_saslauthd_enabled/0,
          is_cbas_enabled/0,
          supported_compat_version/0,
@@ -166,6 +167,15 @@ is_cluster_NEO() ->
 
 is_cluster_NEO(Config) ->
     is_enabled(Config, ?VERSION_NEO).
+
+should_enforce_limits(Snapshot) ->
+    case maps:find(cluster_compat_version, Snapshot) of
+        {ok, {Version, _}} ->
+            ns_config:read_key_fast(enforce_limits, false) andalso
+                is_enabled_at(Version, ?VERSION_NEO);
+        error ->
+            false
+    end.
 
 should_enforce_limits() ->
     ns_config:read_key_fast(enforce_limits, false) andalso
