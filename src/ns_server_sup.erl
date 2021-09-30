@@ -165,6 +165,9 @@ child_specs() ->
       {gen_event, start_link, [{local, audit_events}]},
       permanent, brutal_kill, worker, dynamic},
 
+     {user_limits_cache, {user_request_throttler, start_limits_cache, []},
+      permanent, 1000, worker, [versioned_cache]},
+
      {user_request_throttler, {user_request_throttler, start_link, []},
       permanent, 1000, worker, [user_request_throttler]},
 

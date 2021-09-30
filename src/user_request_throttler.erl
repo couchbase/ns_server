@@ -22,7 +22,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/0]).
+-export([start_link/0, start_limits_cache/0]).
 
 %% gen server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
@@ -35,6 +35,10 @@
 -define(ONE_MINUTE, 60000).
 -define(MiB, 1024 * 1024).
 
+%% USER_UUID_LIMITS keep the mapping of user to it's uuid and limits.
+%% It's contents are skipped during ets collection, see diag_handler module.
+-define(USER_UUID_LIMITS, user_uuid_limits).
+
 %% PID_USER_TABLE tracks the request pid of the user.
 -define(PID_USER_TABLE, pid_user_table).
 
@@ -46,6 +50,25 @@
 -define(USER_TIMED_STATS, user_timed_stats).
 
 -record(state, {}).
+
+start_limits_cache() ->
+    LimitsFilter =
+        fun ({limits_version, _V}) ->
+                true;
+            (_) ->
+                false
+        end,
+    GetVersion =
+        fun () ->
+                {menelaus_users:get_limits_version()}
+        end,
+    GetEvents =
+        fun () ->
+                [{user_storage_events, LimitsFilter}]
+        end,
+
+    versioned_cache:start_link(
+      ?USER_UUID_LIMITS, 300, fun do_get_user_props/1, GetEvents, GetVersion).
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -79,11 +102,10 @@ is_throttled(Req) ->
             Identity = menelaus_auth:get_identity(Req),
             case Identity of
                 {_, local} ->
-                    case get_ns_server_limits(Identity) of
-                        [] ->
+                    case get_user_props(Identity) of
+                        undefined ->
                             false;
-                        Limits ->
-                            UUID = get_user_uuid(Identity),
+                        {UUID, Limits} ->
                             {true, UUID, Limits}
                     end;
                 _ ->
@@ -208,7 +230,7 @@ check_user_restricted(UUID, Limits) ->
             {true, Exceeded}
     end.
 
-get_user_uuid({_, local} = Identity) ->
+get_user_uuid(Identity) ->
     binary_to_list(menelaus_users:get_user_uuid(Identity)).
 
 get_ns_server_limits(Identity) ->
@@ -224,4 +246,15 @@ get_ns_server_limits(Identity) ->
                              Prop
                       end,
                       proplists:get_value(clusterManager, Limits, []))
+    end.
+
+get_user_props(Identity) ->
+    versioned_cache:get(?USER_UUID_LIMITS, Identity).
+
+do_get_user_props(Identity) ->
+    case get_ns_server_limits(Identity) of
+        [] ->
+            undefined;
+        Limits ->
+            {get_user_uuid(Identity), Limits}
     end.
