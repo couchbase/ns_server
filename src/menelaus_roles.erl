@@ -1352,7 +1352,7 @@ ro_admin_test() ->
     ?assertEqual(true, is_allowed({[admin, security], read}, Roles)),
     ?assertEqual(false, is_allowed({[admin, other], write}, Roles)),
     ?assertEqual(false, is_allowed({[admin, settings, metrics], write}, Roles)),
-    ?assertEqual(true, is_allowed({[admin, settings, metrics], read}, Roles)),
+    ?assertEqual(false, is_allowed({[admin, settings, metrics], read}, Roles)),
     ?assertEqual(false, is_allowed({[settings, metrics], write}, Roles)),
     ?assertEqual(true, is_allowed({[settings, metrics], read}, Roles)),
     ?assertEqual(true, is_allowed({[anything], read}, Roles)),
