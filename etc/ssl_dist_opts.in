@@ -1,6 +1,6 @@
-[{server,[{certfile, "@CONFIG_PREFIX@/cert_erl22.pem"},
+[{server,[{certfile, "@CONFIG_PREFIX@/chain.pem"},
           {keyfile, "@CONFIG_PREFIX@/pkey.pem"},
-          {cacertfile, "@CONFIG_PREFIX@/ca_erl22.pem"},
+          {cacertfile, "@CONFIG_PREFIX@/ca.pem"},
           {depth, 10},
           {reuse_sessions,false},
           {versions, ['tlsv1.2']},
