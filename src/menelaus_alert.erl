@@ -50,8 +50,28 @@
 handle_logs(Req) ->
     reply_json(Req, {struct, [{list, build_logs(mochiweb_request:parse_qs(Req))}]}).
 
+append_zero_msecs(SinceTime) ->
+    [$Z | Reverse] = lists:reverse(SinceTime),
+    lists:reverse(Reverse) ++ ".000Z".
+
 get_handle_events_params(Values) ->
-    SinceTime = proplists:get_value(sinceTime, Values),
+    SinceTime =
+        case proplists:get_value(sinceTime, Values) of
+            undefined ->
+                undefined;
+            T ->
+                %% Normalize the sinceTime before fetching the events by
+                %% appending zero millisecs if not present.
+                %% Timestamps on event logs have msec precision and the
+                %% comparator used to retrieve events within event_log_server
+                %% expects all timestamps to have msecs.
+                case misc:is_valid_iso_8601_utc(T, [required_msecs]) of
+                    false ->
+                        append_zero_msecs(T);
+                    true ->
+                        T
+               end
+        end,
     Limit = case proplists:get_value(limit, Values) of
                 undefined ->
                     ?DEFAULT_EVENTS_LIMIT;
@@ -61,7 +81,7 @@ get_handle_events_params(Values) ->
     {SinceTime, Limit}.
 
 handle_events_validators() ->
-    [validator:iso_8601_utc(sinceTime, _),
+    [validator:iso_8601_utc(sinceTime, [], _),
      validator:integer(limit, _),
      validator:unsupported(_)].
 

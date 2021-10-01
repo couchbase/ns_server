@@ -39,7 +39,7 @@
          dir/2,
          email_address/2,
          time_duration/2,
-         iso_8601_utc/2,
+         iso_8601_utc/3,
          v4uuid/2,
          has_params/1,
          unsupported/1,
@@ -473,9 +473,9 @@ email_address(Name, State) ->
                      end
              end, Name, State).
 
-iso_8601_utc(Name, State) ->
+iso_8601_utc(Name, Options, State) ->
     validate(fun (Value) ->
-                case misc:is_valid_iso_8601_utc(Value) of
+                case misc:is_valid_iso_8601_utc(Value, Options) of
                     true ->
                         ok;
                     false ->

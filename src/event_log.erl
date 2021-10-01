@@ -78,7 +78,7 @@ validators() ->
      validator:one_of(severity, valid_info_levels(), _),
 
      validator:required(timestamp, _), validator:string(timestamp, _),
-     validator:iso_8601_utc(timestamp, _),
+     validator:iso_8601_utc(timestamp, [required_msecs], _),
 
      validator:required(uuid, _), validator:string(uuid, _),
      validator:v4uuid(uuid, _),

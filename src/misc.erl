@@ -3053,10 +3053,17 @@ is_fqdn_basic_validation_test() ->
     true = is_fqdn_basic_validation("ns_server33.services.co.woohoo").
 -endif.
 
-is_valid_iso_8601_utc(Time) ->
-    Pattern = "^(-?(?:[1-9][0-9]*)?[0-9]{4})-(1[0-2]|0[1-9])-(3[01]|""0[1-9]|"
-              "[12][0-9])T(2[0-3]|[01][0-9]):([0-5][0-9]):([0-5][0-9])(\\."
-              "[0-9]+)?(Z)?$",
+is_valid_iso_8601_utc(Time, Options) ->
+    MsRegex = case Options of
+                  [required_msecs] ->
+                      "\.([0-9]{3}Z)$";
+                  _ ->
+                      "(\.[0-9]{3})?Z$"
+              end,
+
+    Pattern = "^([0-9]{4})-(1[0-2]|0[1-9])-(3[01]|0[1-9]|[12][0-9])T(2[0-3]|"
+              "[01][0-9]):([0-5][0-9]):([0-5][0-9])" ++ MsRegex,
+
     case re:run(Time, Pattern) of
         {match, _} ->
             true;
@@ -3066,11 +3073,25 @@ is_valid_iso_8601_utc(Time) ->
 
 -ifdef(TEST).
 is_valid_iso_8601_utc_test() ->
-    true = is_valid_iso_8601_utc("2021-08-02T07:35:49Z"),
-    true = is_valid_iso_8601_utc("2021-08-02T07:35:49.050Z"),
-    true = is_valid_iso_8601_utc("2021-08-02T07:35:49.150Z"),
-    false = is_valid_iso_8601_utc("2021-08-02T07:35Z"),
-    false = is_valid_iso_8601_utc("dsdsd").
+    true = is_valid_iso_8601_utc("2021-08-02T07:35:49Z", []),
+    true = is_valid_iso_8601_utc("2021-08-02T07:35:49.050Z", []),
+    true = is_valid_iso_8601_utc("2021-08-02T07:35:49.150Z", []),
+    false = is_valid_iso_8601_utc("2021-08-02T07:35:49.15010Z", []),
+    false = is_valid_iso_8601_utc("2021-08-02T07:35:49.15Z", []),
+    false = is_valid_iso_8601_utc("2021-08-02T07:35:49.1Z", []),
+    false = is_valid_iso_8601_utc("2021-08-02T07:35:49.Z", []),
+    false = is_valid_iso_8601_utc("2021-08-02T07:35:49.150", []),
+    false = is_valid_iso_8601_utc("2021-08-02T07:35Z", []),
+    true = is_valid_iso_8601_utc("2021-08-02T07:35:49.050Z", [required_msecs]),
+    true = is_valid_iso_8601_utc("2021-08-02T07:35:49.150Z", [required_msecs]),
+    false = is_valid_iso_8601_utc("2021-08-02T07:35:49.15010Z",
+                                  [required_msecs]),
+    false = is_valid_iso_8601_utc("2021-08-02T07:35:49.15Z", [required_msecs]),
+    false = is_valid_iso_8601_utc("2021-08-02T07:35:49.1Z", [required_msecs]),
+    false = is_valid_iso_8601_utc("2021-08-02T07:35:49.Z", [required_msecs]),
+    false = is_valid_iso_8601_utc("2021-08-02T07:35:49Z", [required_msecs]),
+    false = is_valid_iso_8601_utc("2021-08-02T07:35Z", [required_msecs]),
+    false = is_valid_iso_8601_utc("dsdsd", [required_msecs]).
 
 -endif.
 is_valid_v4uuid(UUID) ->
