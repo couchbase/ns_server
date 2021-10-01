@@ -450,7 +450,7 @@ goport_args(backup, Config, _Cmd, NodeUUID) ->
                                           service_ports:get_port(
                                             ssl_rest_port, Config), [ssl]),
      "-integrated-mode-user=@backup",
-     "-default-collect-logs-path=" ++ path_config:component_path(tmp),
+     "-tmp-dir=" ++ path_config:component_path(tmp),
      "-cbauth-host=" ++ misc:local_url(
                           service_ports:get_port(rest_port, Config),
                           [no_scheme])];
