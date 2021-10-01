@@ -200,7 +200,7 @@ recent(StartSeqNum) ->
       lists:foldl(
         fun(Log, {M, AccIn}) ->
              case get_seqnum(Log) of
-                 X when X >= StartSeqNum ->
+                 X when X > StartSeqNum ->
                      %% Accumulate the max seq_num from the list of
                      %% logs.
                      %% The streaming API consuming these logs will
