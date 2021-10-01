@@ -104,6 +104,15 @@ handle_log_post(Req) ->
     end.
 
 handle_event_log_post(Req) ->
+    %% If cluster_compat < 7.1.0, drop the log and return 200 ok.
+    case cluster_compat_mode:is_cluster_NEO() of
+        true ->
+            do_handle_event_log_post(Req);
+        false ->
+            reply_json(Req, [], 200)
+    end.
+
+do_handle_event_log_post(Req) ->
     Log = mochiweb_request:recv_body(Req),
 
     %% Validate Event JSON size.
