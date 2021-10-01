@@ -128,13 +128,6 @@ general_settings_lens_props(ClusterVersion) ->
         _ ->
             []
     end ++
-    case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_NEO) of
-        true ->
-            [{enablePageBloomFilter,
-              id_lens(<<"indexer.settings.enable_page_bloom_filter">>)}];
-        false ->
-            []
-    end ++
         [{indexerThreads,
           indexer_threads_lens()},
          {memorySnapshotInterval,
@@ -160,12 +153,6 @@ general_settings_defaults(ClusterVersion) ->
             [{redistributeIndexes, false},
              {numReplica, 0}];
         _ ->
-            []
-    end ++
-    case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_NEO) of
-        true ->
-            [{enablePageBloomFilter, false}];
-        false ->
             []
     end ++
         [{indexerThreads, 0},

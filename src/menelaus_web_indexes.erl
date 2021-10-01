@@ -35,12 +35,6 @@ settings_post_validators() ->
             _ ->
                 []
         end ++
-        case cluster_compat_mode:is_cluster_NEO() of
-            true ->
-                [validator:boolean(enablePageBloomFilter, _)];
-            false ->
-                []
-        end ++
         [validate_param(logLevel, _),
          validate_storage_mode(_),
          validator:unsupported(_)].
