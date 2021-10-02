@@ -142,7 +142,7 @@ function mnGsiItemDetails() {
 
     function getFormattedScanTime(row) {
       if (row && row.lastScanTime != 'NA')
-        return $filter('date')(Date.parse(row.lastScanTime), 'hh:mm:ss a, d MMM, y');
+        return $filter('date')(Date.parse(row.lastScanTime), 'hh:mm:ss a, d MMM, y', 'UTC');
       else
         return 'NA';
     }

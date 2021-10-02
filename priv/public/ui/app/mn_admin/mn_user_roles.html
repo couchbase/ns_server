@@ -62,14 +62,14 @@
     <div class="cbui-table-header padding-left">
       <span class="cbui-table-cell">
         <span
-          class="sorter"
-          ng-click="userRolesCtl.sortByChanged('id')"
-          ng-class="{'dynamic-active': userRolesCtl.isOrderBy('id'),
-                    'dynamic-inverted': userRolesCtl.isOrderBy('id')
-                    && userRolesCtl.isDesc()}">username</span>
+           class="sorter"
+           ng-click="userRolesCtl.sortByChanged('id')"
+           ng-class="{'dynamic-active': userRolesCtl.isOrderBy('id'),
+                  'dynamic-inverted': userRolesCtl.isOrderBy('id')
+                  && userRolesCtl.isDesc()}">username</span>
       </span>
       <span class="cbui-table-cell flex-grow-half"
-            ng-if="poolDefault.isEnterprise && poolDefault.compat.atLeast65">
+         ng-if="poolDefault.isEnterprise && poolDefault.compat.atLeast65">
         <span>groups</span>
       </span>
       <span class="cbui-table-cell flex-grow-3">
@@ -77,17 +77,17 @@
       </span>
       <span class="cbui-table-cell flex-grow-half resp-hide-xsml">
         <span class="sorter"
-              ng-click="userRolesCtl.sortByChanged('domain')"
-              ng-class="{'dynamic-active': userRolesCtl.isOrderBy('domain'),
-                        'dynamic-inverted': userRolesCtl.isOrderBy('domain')
-                        && userRolesCtl.isDesc()}">auth domain</span>
+           ng-click="userRolesCtl.sortByChanged('domain')"
+           ng-class="{'dynamic-active': userRolesCtl.isOrderBy('domain'),
+                     'dynamic-inverted': userRolesCtl.isOrderBy('domain')
+                     && userRolesCtl.isDesc()}">auth domain</span>
       </span>
       <span class="cbui-table-cell flex-grow-half resp-hide-sml">
         <span class="sorter"
-              ng-click="userRolesCtl.sortByChanged('password_change_timestamp')"
-              ng-class="{'dynamic-active': userRolesCtl.isOrderBy('password_change_timestamp'),
-                        'dynamic-inverted': userRolesCtl.isOrderBy('password_change_timestamp')
-                        && userRolesCtl.isDesc()}">password set</span>
+           ng-click="userRolesCtl.sortByChanged('password_change_timestamp')"
+           ng-class="{'dynamic-active': userRolesCtl.isOrderBy('password_change_timestamp'),
+                     'dynamic-inverted': userRolesCtl.isOrderBy('password_change_timestamp')
+                     && userRolesCtl.isDesc()}">password set</span>
       </span>
     </div>
     <section
@@ -101,7 +101,7 @@
           <span ng-show="user.passwordless" class="label lt-blue">no password</span>
         </span>
         <span class="cbui-table-cell flex-grow-half wrap"
-              ng-if="poolDefault.isEnterprise && poolDefault.compat.atLeast65">
+           ng-if="poolDefault.isEnterprise && poolDefault.compat.atLeast65">
           {{userRolesCtl.parseGroupNames(user)}}
         </span>
         <span class="cbui-table-cell flex-grow-3 wrap">
@@ -126,7 +126,7 @@
           {{user.domain === "local" ? "Couchbase" : "External"}}
         </span>
         <span class="cbui-table-cell flex-grow-half resp-hide-sml" title="{{:: user.password_change_date}}">
-          {{user.password_change_date | date:"d MMM, y"}}
+          {{user.password_change_date | date:"d MMM, y":'UTC'}}
         </span>
       </div>
       <div
@@ -140,8 +140,8 @@
         </p>
         <span>
           <button
-           class="outline"
-           ng-click="userRolesCtl.deleteUser(user)">Delete</button>
+             class="outline"
+             ng-click="userRolesCtl.deleteUser(user)">Delete</button>
           <button
              class="outline"
              ng-show="user.domain !== 'external' && user.domain !== 'saslauthd'"
@@ -155,12 +155,12 @@
   <div
      class="row pagination"
      ng-if="userRolesCtl.state.users.length">
-      <mn-select
-         class="inline fix-width-1"
-         ng-change="userRolesCtl.pageSizeChanged()"
-         ng-model="userRolesCtl.pageSize"
-         values="[10, 20, 50, 100]">
-      </mn-select>
+    <mn-select
+       class="inline fix-width-1"
+       ng-change="userRolesCtl.pageSizeChanged()"
+       ng-model="userRolesCtl.pageSize"
+       values="[10, 20, 50, 100]">
+    </mn-select>
     <span>
       <a
          ui-sref="(userRolesCtl.state.links.prev)"
@@ -184,5 +184,5 @@
     </span>
   </div>
   <div ng-show="userRolesCtl.filterField && !userRolesCtl.state.users.length"
-       class="zero-content text-left">no result</div>
+     class="zero-content text-left">no result</div>
 </div>

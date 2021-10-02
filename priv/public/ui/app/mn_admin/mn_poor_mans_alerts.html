@@ -16,7 +16,7 @@ licenses/APL2.txt.
      class="panel-content"
      mn-spinner="poorMansCtl.viewLoading">
     <span ng-repeat="alert in poorMansCtl.alerts">
-      <strong>[{{alert.serverTime | date:'d MMM, y, h:mm:ss a'}}]</strong> - {{alert.msg}} <br>
+      <strong>[{{alert.serverTime | date:'d MMM, y, h:mm:ss a':'UTC'}}]</strong> - {{alert.msg}} <br>
     </span>
   </div>
   <div class="panel-footer" ng-show="rbac.cluster.settings.write">

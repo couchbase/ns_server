@@ -50,10 +50,10 @@
           <p class="desc relative"
              ng-if="adminCtl.tasks.tasksRebalance.statusId">
             <span class="nowrap" ng-if="adminCtl.tasks.tasksRebalance.stageInfo.startTime">
-              <strong>start</strong> {{adminCtl.tasks.tasksRebalance.stageInfo.startTime | date:'d MMM HH:mm:ss'}}
+              <strong>start</strong> {{adminCtl.tasks.tasksRebalance.stageInfo.startTime | date:'d MMM HH:mm:ss':'UTC'}}
             </span>
             <span ng-show="adminCtl.tasks.tasksRebalance.stageInfo.completedTime.status" class="nowrap margin-left-half">
-              <strong>complete</strong> {{adminCtl.tasks.tasksRebalance.stageInfo.completedTime.time | date:'d MMM HH:mm:ss'}}
+              <strong>complete</strong> {{adminCtl.tasks.tasksRebalance.stageInfo.completedTime.time | date:'d MMM HH:mm:ss':'UTC'}}
             </span>
             <span class="nowrap margin-left-half" ng-class="{'rebalance-status-inprogress' : adminCtl.tasks.tasksRebalance.status == 'running'}">
               <strong>status</strong> {{adminCtl.tasks.tasksRebalance.status == "running" ? "in progress" :
