@@ -865,13 +865,8 @@ all_services_config(Config, Snapshot) ->
                            Snapshot, Service),
               %% Is auto-failover for the service disabled?
               ServiceKey = {auto_failover_disabled, Service},
-              DV = case Service of
-                       index ->
-                           %% Auto-failover disabled by default for index service.
-                           true;
-                       _ ->
-                           false
-                   end,
+              DV = not (cluster_compat_mode:is_cluster_NEO() orelse
+                        Service =/= index),
               AutoFailoverDisabled = ns_config:search(Config, ServiceKey, DV),
               {Service, {{disable_auto_failover, AutoFailoverDisabled},
                          {nodes, SvcNodes}}}
