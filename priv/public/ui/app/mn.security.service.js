@@ -10,13 +10,13 @@ licenses/APL2.txt.
 
 import {Injectable} from "../web_modules/@angular/core.js";
 import {HttpClient, HttpParams, HttpHeaders} from '../web_modules/@angular/common/http.js';
-import {BehaviorSubject, combineLatest, of} from '../web_modules/rxjs.js';
-import {switchMap, shareReplay, map, pluck} from '../web_modules/rxjs/operators.js';
+import {BehaviorSubject, combineLatest} from '../web_modules/rxjs.js';
+import {switchMap, shareReplay, map, pluck,
+        distinctUntilChanged} from '../web_modules/rxjs/operators.js';
 import {MnHttpRequest} from './mn.http.request.js';
 import {MnAdminService} from './mn.admin.service.js';
 import {MnPoolsService} from './mn.pools.service.js';
 import {MnPermissions} from './ajs.upgraded.providers.js';
-import {MN_HTTP_REQUEST_RESTRICTED} from './constants/constants.js';
 
 export {MnSecurityService};
 
@@ -37,9 +37,14 @@ class MnSecurityService {
 
     let isEnterprise = mnPoolsService.stream.isEnterprise;
     let compatVersion55 = mnAdminService.stream.compatVersion55;
-    let permissions = mnPermissions.stream;
+    let permissionsStream = mnPermissions.stream;
+    let settingsReadStream =
+        permissionsStream.pipe(pluck('cluster','settings','read'),
+                               distinctUntilChanged());
 
     this.stream = {};
+
+    this.mnAdminService = mnAdminService;
 
     this.stream.getSaslauthdAuth =
       (new BehaviorSubject()).pipe(
@@ -51,13 +56,18 @@ class MnSecurityService {
         switchMap(this.getCertificate.bind(this)),
         shareReplay({refCount: true, bufferSize: 1}));
 
-    let getLogRedaction =
+    this.stream.getSettingsSecurity =
+      (new BehaviorSubject())
+      .pipe(switchMap(this.getSettingsSecurity.bind(this)),
+            shareReplay({refCount: true, bufferSize: 1}));
+
+    this.stream.getLogRedaction =
       (new BehaviorSubject()).pipe(
         switchMap(this.getLogRedaction.bind(this)));
-    this.stream.shouldGetLogRedaction = combineLatest(isEnterprise, compatVersion55, permissions)
-      .pipe(switchMap(([isEnterprise, compatVersion55, permissions]) =>
-                        isEnterprise && compatVersion55 && permissions.cluster.settings.read ? getLogRedaction : of(MN_HTTP_REQUEST_RESTRICTED)),
-            shareReplay({refCount: true, bufferSize: 1}));
+
+    this.stream.getClusterEncryption =
+        this.stream.getSettingsSecurity
+        .pipe(pluck('clusterEncryptionLevel'));
 
     this.stream.getClientCertAuth =
       (new BehaviorSubject()).pipe(
@@ -78,16 +88,6 @@ class MnSecurityService {
       (new BehaviorSubject()).pipe(
         switchMap(this.getAuditNonFilterableDescriptors.bind(this)),
         shareReplay({refCount: true, bufferSize: 1}));
-
-    this.stream.getSettingsSecurity = (new BehaviorSubject())
-      .pipe(switchMap(this.getSettingsSecurity.bind(this)),
-            shareReplay({refCount: true, bufferSize: 1}));
-
-    let getClusterEncryption = this.stream.getSettingsSecurity
-      .pipe(pluck('clusterEncryptionLevel'));
-    this.stream.shouldGetClusterEncryption = isEnterprise
-      .pipe(switchMap(isEnterprise => isEnterprise ? getClusterEncryption : of(MN_HTTP_REQUEST_RESTRICTED)),
-            shareReplay({refCount: true, bufferSize: 1}));
 
     this.stream.postLogRedaction =
       new MnHttpRequest(this.postLogRedaction.bind(this))
@@ -114,11 +114,15 @@ class MnSecurityService {
       .addSuccess()
       .addError();
 
-    this.stream.otherSettings = combineLatest(
-      mnAdminService.stream.uiSessionTimeout.pipe(map(this.unpackSession.bind(this))),
-      this.stream.shouldGetLogRedaction.pipe(map(this.unpackLogRedaction.bind(this))),
-      this.stream.shouldGetClusterEncryption.pipe(map(this.unpackClusterEncryption.bind(this)))
-    ).pipe(map(this.getOtherSettings.bind(this)));
+    this.stream.prepareOtherSettingsFormValues =
+      combineLatest([
+        isEnterprise,
+        compatVersion55,
+        settingsReadStream
+      ])
+      .pipe(switchMap(this.getOtherSettingsSources.bind(this)),
+            map(this.getOtherSettings.bind(this)),
+            shareReplay({refCount: true, bufferSize: 1}));
   }
 
   postAudit(validate) {
@@ -182,27 +186,27 @@ class MnSecurityService {
     });
   }
 
-  unpackSession(session) {
-    return (session !== MN_HTTP_REQUEST_RESTRICTED) ? (Number(session) / 60) || 0 : null;
+  getOtherSettingsSources([isEnterprise, compatVersion55, settingsRead]) {
+    let sources = [
+      this.mnAdminService.stream.uiSessionTimeout
+    ];
+    if (isEnterprise) {
+      sources.push(this.stream.getClusterEncryption);
+      if (compatVersion55 && settingsRead) {
+        sources.push(this.stream.getLogRedaction);
+      }
+    }
+    return combineLatest(sources);
   }
 
-  unpackLogRedaction(redaction) {
-    return (redaction !== MN_HTTP_REQUEST_RESTRICTED) ?
-      redaction['logRedactionLevel'] : null;
-  }
-
-  unpackClusterEncryption(encryption) {
-    return (encryption !== MN_HTTP_REQUEST_RESTRICTED) ? (encryption || null) : null;
-  }
-
-  getOtherSettings([session, logRedaction, clusterEncryption]) {
+  getOtherSettings([session, encryption, redaction]) {
     return {
       logRedactionLevel: {
-        logRedactionLevel: logRedaction
+        logRedactionLevel: redaction ? redaction['logRedactionLevel'] : null
       },
       settingsSecurity: {
-        uiSessionTimeout: session,
-        clusterEncryptionLevel: clusterEncryption
+        uiSessionTimeout: (Number(session) / 60) || 0,
+        clusterEncryptionLevel: (encryption || null)
       }
     }
   }

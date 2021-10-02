@@ -11,7 +11,7 @@ licenses/APL2.txt.
 import {Component, ChangeDetectionStrategy} from '../web_modules/@angular/core.js';
 import {UIRouter} from '../web_modules/@uirouter/angular.js';
 import {combineLatest} from '../web_modules/rxjs.js';
-import {map, takeUntil, withLatestFrom} from '../web_modules/rxjs/operators.js';
+import {map, takeUntil} from '../web_modules/rxjs/operators.js';
 import {FormBuilder} from '../web_modules/@angular/forms.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnFormService} from './mn.form.service.js';
@@ -20,6 +20,7 @@ import {MnAdminService} from './mn.admin.service.js';
 import {MnPoolsService} from './mn.pools.service.js';
 import {MnHttpGroupRequest} from './mn.http.request.js';
 import {MnPermissions} from './ajs.upgraded.providers.js';
+import {all} from '../web_modules/ramda.js';
 
 export {MnSecurityOtherComponent};
 
@@ -45,23 +46,15 @@ class MnSecurityOtherComponent extends MnLifeCycleHooksToStream {
               mnPermissions, mnAdminService, mnPoolsService) {
     super();
 
-    this.isEnterprise = mnPoolsService.stream.isEnterprise;
+    let isEnterprise = mnPoolsService.stream.isEnterprise;
     let compatVersion55 = mnAdminService.stream.compatVersion55;
-    this.isEnterpriseAnd55 = combineLatest(this.isEnterprise, compatVersion55)
-      .pipe(map(([isEnterprise, compatVersion55]) => isEnterprise && compatVersion55));
-
-    this.mnPermissions = mnPermissions.stream;
-
-    this.postSettingsSecurity = mnSecurityService.stream.postSettingsSecurity;
-    this.postLogRedactionRequest = mnSecurityService.stream.postLogRedaction;
-
-    let uiSessionTimeout = mnAdminService.stream.uiSessionTimeout;
-    let shouldGetLogRedaction = mnSecurityService.stream.shouldGetLogRedaction;
-    let shouldGetClusterEncryption = mnSecurityService.stream.shouldGetClusterEncryption;
-    let otherSettings = mnSecurityService.stream.otherSettings;
+    let mnPermissionsStream = mnPermissions.stream;
+    let postSettingsSecurity = mnSecurityService.stream.postSettingsSecurity;
+    let postLogRedactionRequest = mnSecurityService.stream.postLogRedaction;
+    let prepareOtherSettingsFormValues = mnSecurityService.stream.prepareOtherSettingsFormValues;
 
     this.form = mnFormService.create(this)
-      .setSource(otherSettings)
+      .setSource(prepareOtherSettingsFormValues)
       .setFormGroup({
         logRedactionLevel: formBuilder.group({
           logRedactionLevel: null
@@ -71,55 +64,50 @@ class MnSecurityOtherComponent extends MnLifeCycleHooksToStream {
           clusterEncryptionLevel: null
         })
       })
-      .setPackPipe(map(this.prepareData.bind(this)))
+      .setPackPipe(map(this.packData.bind(this)))
       .setPostRequest(new MnHttpGroupRequest({
-        logRedactionLevel: this.postLogRedactionRequest,
-        settingsSecurity: this.postSettingsSecurity
+        logRedactionLevel: postLogRedactionRequest,
+        settingsSecurity: postSettingsSecurity
       }).addSuccess().addError())
       .setReset(uiRouter.stateService.reload)
       .successMessage("Settings saved successfully!");
 
-    shouldGetLogRedaction
-      .pipe(withLatestFrom(mnPermissions.stream),
-            map(([, permissions]) => permissions.cluster.admin.security.write),
-            takeUntil(this.mnOnDestroy))
-      .subscribe(this.maybeDisableField.bind(this, 'logRedactionLevel.logRedactionLevel'));
+    combineLatest(mnPermissionsStream, mnSecurityService.stream.getClusterEncryption)
+      .pipe(takeUntil(this.mnOnDestroy))
+      .subscribe(([permissions, encryptionLevel]) => {
+        let write = permissions.cluster.admin.security.write;
+        this.maybeDisableField('settingsSecurity.uiSessionTimeout', write);
+        this.maybeDisableField('logRedactionLevel.logRedactionLevel', write);
+        this.maybeDisableField('settingsSecurity.clusterEncryptionLevel',
+                               !!encryptionLevel && write);
+      });
 
-    uiSessionTimeout
-      .pipe(withLatestFrom(mnPermissions.stream),
-            map(([, permissions]) => permissions.cluster.admin.security.write),
-            takeUntil(this.mnOnDestroy))
-      .subscribe(this.maybeDisableField.bind(this, 'settingsSecurity.uiSessionTimeout'));
+    this.mnPermissions = mnPermissionsStream;
+    this.isEnterprise = isEnterprise;
+    this.postLogRedactionRequest = postLogRedactionRequest;
+    this.postSettingsSecurity = postSettingsSecurity;
+    this.isEnterpriseAnd55 = combineLatest(isEnterprise, compatVersion55).pipe(map(all(Boolean)));
 
-    shouldGetClusterEncryption
-      .pipe(withLatestFrom(mnPermissions.stream),
-            map(([clusterEncryptionLevel, permissions]) => clusterEncryptionLevel && permissions.cluster.admin.security.write),
-            takeUntil(this.mnOnDestroy))
-      .subscribe(this.maybeDisableField.bind(this, 'settingsSecurity.clusterEncryptionLevel'));
   }
 
-  prepareSessionData() {
-    let timeout = this.form.group.get("settingsSecurity.uiSessionTimeout").value;
-    return timeout ? (timeout * 60) : "";
-  }
-
-  prepareData() {
+  packData() {
     let formValue = this.form.group.value;
     let result = new Map();
 
-    if (formValue.logRedactionLevel.logRedactionLevel !== null) {
-      result.set('logRedactionLevel', formValue.logRedactionLevel);
-    }
-
-    let securityValue = {
-      uiSessionTimeout: this.prepareSessionData()
-    };
-
+    let timeout = formValue.settingsSecurity.uiSessionTimeout;
+    let redaction = formValue.logRedactionLevel.logRedactionLevel;
     let encryptionLevel = formValue.settingsSecurity.clusterEncryptionLevel;
+
+    let securityValue = {};
+    securityValue.uiSessionTimeout = timeout ? (timeout * 60) : "";
     if (encryptionLevel) {
       securityValue.clusterEncryptionLevel = encryptionLevel;
     }
+
     result.set('settingsSecurity', securityValue);
+    if (redaction !== null) {
+      result.set('logRedactionLevel', formValue.logRedactionLevel);
+    }
 
     return result;
   }
