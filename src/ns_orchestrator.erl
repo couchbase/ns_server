@@ -699,7 +699,7 @@ idle({failover, Nodes, AllowUnsafe}, From, _State) ->
 idle({start_failover, Nodes, AllowUnsafe}, From, _State) ->
     handle_start_failover(Nodes, AllowUnsafe, From, false, hard_failover);
 idle({try_autofailover, Nodes}, From, _State) ->
-    case ns_rebalancer:validate_autofailover(Nodes) of
+    case auto_failover:validate_kv_safety(Nodes) of
         {error, UnsafeBuckets} ->
             {keep_state_and_data,
              [{reply, From, {autofailover_unsafe, UnsafeBuckets}}]};

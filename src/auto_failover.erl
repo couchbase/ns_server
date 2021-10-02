@@ -36,7 +36,7 @@
 %%  max count.
 %%  E.g. cluster has a bucket with one replica. User has set max count to 2.
 %%  KVNode1 fails and is automatically failed over. KVNode2 fails. It's
-%%  auto-failover will be attempted but validate_autofailover() will prevent
+%%  auto-failover will be attempted but validate_kv_safety/1 will prevent
 %%  the failover because of unsafe bucket.
 %%  - Auto-failover of server groups is disabled by default.
 %%
@@ -63,7 +63,8 @@
          disable/1,
          reset_count/0,
          reset_count_async/0,
-         is_enabled/0]).
+         is_enabled/0,
+         validate_kv_safety/1]).
 
 %% For email alert notificatons
 -export([alert_keys/0]).
@@ -895,6 +896,40 @@ restart_on_compat_mode_change() ->
 
 send_tick_msg() ->
     erlang:send_after(get_tick_period(), self(), tick).
+
+validate_kv_safety(Nodes) ->
+    case ns_cluster_membership:service_nodes(Nodes, kv) of
+        [] ->
+            ok;
+        KVNodes ->
+            BucketPairs = ns_bucket:get_buckets(),
+            UnsafeBuckets =
+                [BucketName
+                 || {BucketName, BucketConfig} <- BucketPairs,
+                    validate_bucket_safety(BucketConfig, KVNodes)
+                        =:= false],
+            case UnsafeBuckets of
+                [] -> ok;
+                _ -> {error, UnsafeBuckets}
+            end
+    end.
+
+validate_bucket_safety(BucketConfig, Nodes) ->
+    case ns_bucket:bucket_type(BucketConfig) of
+        membase ->
+            case proplists:get_value(map, BucketConfig) of
+                undefined ->
+                    true;
+                Map ->
+                    not lists:any(fun ([undefined|_]) ->
+                                          true;
+                                      (_) ->
+                                          false
+                                  end, mb_map:promote_replicas(Map, Nodes))
+            end;
+        memcached ->
+            true
+    end.
 
 -ifdef(TEST).
 -define(FLAG, autofailover_unsafe).

@@ -23,7 +23,6 @@
 -endif.
 
 -export([check_graceful_failover_possible/2,
-         validate_autofailover/1,
          generate_initial_map/1,
          start_link_rebalance/5,
          move_vbuckets/2,
@@ -48,40 +47,6 @@
 %%
 %% API
 %%
-validate_autofailover(Nodes) ->
-    case ns_cluster_membership:service_nodes(Nodes, kv) of
-        [] ->
-            ok;
-        KVNodes ->
-            BucketPairs = ns_bucket:get_buckets(),
-            UnsafeBuckets =
-                [BucketName
-                 || {BucketName, BucketConfig} <- BucketPairs,
-                    validate_autofailover_bucket(BucketConfig, KVNodes)
-                        =:= false],
-            case UnsafeBuckets of
-                [] -> ok;
-                _ -> {error, UnsafeBuckets}
-            end
-    end.
-
-validate_autofailover_bucket(BucketConfig, Nodes) ->
-    case ns_bucket:bucket_type(BucketConfig) of
-        membase ->
-            case proplists:get_value(map, BucketConfig) of
-                undefined ->
-                    true;
-                Map ->
-                    not lists:any(fun ([undefined|_]) ->
-                                          true;
-                                      (_) ->
-                                          false
-                                  end, mb_map:promote_replicas(Map, Nodes))
-            end;
-        memcached ->
-            true
-    end.
-
 generate_vbucket_map_options(KeepNodes, BucketConfig) ->
     ServerGroups = ns_cluster_membership:server_groups(),
 
