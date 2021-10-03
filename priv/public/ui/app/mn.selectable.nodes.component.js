@@ -44,9 +44,8 @@ class MnSelectableNodesComponent extends MnLifeCycleHooksToStream {
 
     this.filter = mnHelperService.createFilter(this, ['hostname', 'groupName', 'services', 'status'], true, this.prepareFilteredValue.bind(this));
 
-    let nodesWithGroupName = mnServerGroupsService.stream.nodesWithGroupName;
-    this.nodes = nodesWithGroupName
-      .pipe(this.filter.pipe);
+    let nodesWithGroupName = mnServerGroupsService.stream.maybeGetServersWithGroups;
+    this.nodes = nodesWithGroupName.pipe(this.filter.pipe);
   }
 
   ngOnInit() {

@@ -81,11 +81,6 @@ let IEC = {
 let servicesEnterprise = ["kv", "n1ql", "index", "fts", "cbas", "eventing", "backup"];
 let servicesCE = ["kv", "index", "fts", "n1ql"];
 
-class MnHttpRequestRestricted {
-  constructor(){}
-}
-let MN_HTTP_REQUEST_RESTRICTED = new MnHttpRequestRestricted();
-
 export {
   bucketsFormConfiguration,
   daysOfWeek,
@@ -96,6 +91,5 @@ export {
   viewsPerPageLimit,
   IEC,
   servicesEnterprise,
-  servicesCE,
-  MN_HTTP_REQUEST_RESTRICTED
+  servicesCE
 };
