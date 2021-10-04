@@ -23,6 +23,38 @@ event_details(node_join_success) ->
     {0, ns_server, info, <<"Node successfully joined the cluster">>};
 event_details(service_started) ->
     {1, ns_server, info, <<"Service started">>};
+event_details(rebalance_initiated) ->
+    {2, ns_server, info, <<"Rebalance initiated">>};
+event_details(rebalance_completed) ->
+    {3, ns_server, info, <<"Rebalance completed">>};
+event_details(rebalance_failed) ->
+    {4, ns_server, error, <<"Rebalance failed">>};
+event_details(rebalance_interrupted) ->
+    {5, ns_server, info, <<"Rebalance interrupted">>};
+event_details(graceful_failover_initiated) ->
+    {6, ns_server, info, <<"Graceful failover initiated">>};
+event_details(graceful_failover_completed) ->
+    {7, ns_server, info, <<"Graceful failover completed">>};
+event_details(graceful_failover_failed) ->
+    {8, ns_server, error, <<"Graceful failover failed">>};
+event_details(graceful_failover_interrupted) ->
+    {9, ns_server, info, <<"Graceful failover interrupted">>};
+event_details(hard_failover_initiated) ->
+    {10, ns_server, info, <<"Hard failover initated">>};
+event_details(hard_failover_completed) ->
+    {11, ns_server, info, <<"Hard failover completed">>};
+event_details(hard_failover_failed) ->
+    {12, ns_server, error, <<"Hard failover failed">>};
+event_details(hard_failover_interrupted) ->
+    {13, ns_server, info, <<"Hard failover interrupted">>};
+event_details(auto_failover_initiated) ->
+    {14, ns_server, info, <<"Auto failover initiated">>};
+event_details(auto_failover_completed) ->
+    {15, ns_server, info, <<"Auto failover completed">>};
+event_details(auto_failover_failed) ->
+    {16, ns_server, error, <<"Auto failover failed">>};
+event_details(auto_failover_warning) ->
+    {17, ns_server, warn, <<"Auto failover warning">>};
 
 %% event_ids block for Security related events: [9216, ..., 10239]
 event_details(audit_enabled) ->

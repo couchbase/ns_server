@@ -503,6 +503,9 @@ maybe_report_max_node_reached(Nodes, ErrMsg, S) ->
                auto_failover_maximum_reached,
                "Could not auto-failover more nodes (~p). ~s",
                [Nodes, ErrMsg]),
+            event_log:add_log(auto_failover_warning,
+                              [{reason, list_to_binary(ErrMsg)},
+                               {nodes, {struct, Nodes}}]),
             note_reported(max_node_reached, S);
         false ->
             S
@@ -620,6 +623,9 @@ report_failover_error(Flag, ErrMsg, Nodes, State) ->
                auto_failover_node,
                "Could not automatically fail over nodes (~p). ~s",
                [Nodes, ErrMsg]),
+            event_log:add_log(auto_failover_warning,
+                              [{reason, list_to_binary(ErrMsg)},
+                               {nodes, {struct, Nodes}}]),
             note_reported(Flag, State);
         false ->
             State

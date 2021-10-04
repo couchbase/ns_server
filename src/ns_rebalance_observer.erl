@@ -80,7 +80,8 @@
                 nodes_info :: [{atom(), [node()]}],
                 type :: atom(),
                 rebalance_id :: binary(),
-                bucket_info :: dict:dict()}).
+                bucket_info :: dict:dict(),
+                rebalance_time :: #stat_info{}}).
 
 start_link(Stages, NodesInfo, Type, Id) ->
     gen_server:start_link(?SERVER, ?MODULE, {Stages, NodesInfo, Type, Id}, []).
@@ -164,7 +165,53 @@ init({Services, NodesInfo, Type, Id}) ->
                 nodes_info = NodesInfo,
                 type = Type,
                 rebalance_id = Id,
-                bucket_info = BucketLevelInfo}}.
+                bucket_info = BucketLevelInfo,
+                rebalance_time = #stat_info{start_time = os:timestamp()}}}.
+
+get_event(rebalance, success) ->
+    rebalance_completed;
+get_event(rebalance, failed) ->
+    rebalance_failed;
+get_event(rebalance, interrupted) ->
+    rebalance_interrupted;
+get_event(graceful_failover, success) ->
+    graceful_failover_completed;
+get_event(graceful_failover, failed) ->
+    graceful_failover_failed;
+get_event(graceful_failover, interrupted) ->
+    graceful_failover_interrupted;
+get_event(hard_failover, success) ->
+    hard_failover_completed;
+get_event(hard_failover, failed) ->
+    hard_failover_failed;
+get_event(hard_failover, interrupted) ->
+    hard_failover_interrupted;
+get_event(auto_failover, success) ->
+    auto_failover_completed;
+get_event(auto_failover, failed) ->
+    auto_failover_failed.
+
+add_event_log(#state{type = Type,
+                     nodes_info = NodesInfo,
+                     rebalance_id = Id,
+                     rebalance_time = #stat_info{start_time = StartTime,
+                                                 end_time = EndTime}},
+              ResultType, ExitInfo) ->
+    TimeTaken = rebalance_stage_info:diff_timestamp(EndTime, StartTime),
+    event_log:add_log(get_event(Type, ResultType),
+                      [{operation_id, Id},
+                       {nodes_info, {struct, NodesInfo}},
+                       {time_taken, TimeTaken},
+                       {completion_message, ExitInfo}]).
+
+maybe_add_event_log(#state{type = Type} = State,
+                    ResultType, ExitInfo) when Type =:= rebalance orelse
+                                               Type =:= graceful_failover orelse
+                                               Type =:= hard_failover orelse
+                                               Type =:= auto_failover ->
+    add_event_log(State, ResultType, ExitInfo);
+maybe_add_event_log(_, _, _) ->
+    ok.
 
 handle_call(get, _From, State) ->
     {reply, State, State};
@@ -185,14 +232,22 @@ handle_call({get_rebalance_info, Options}, _From,
                      {nodesInfo, {NodesInfo}},
                      {masterNode, atom_to_binary(node(), latin1)}],
     {reply, {ok, RebalanceInfo}, State};
-handle_call({record_rebalance_report, ExitInfo}, From,
-            #state{nodes_info = NodesInfo} = State) ->
+handle_call({record_rebalance_report, {ResultType, ExitInfo}}, From,
+            #state{nodes_info = NodesInfo,
+                   rebalance_time = TotalTime0} = State0) ->
+
+    TotalTime = TotalTime0#stat_info{end_time = os:timestamp()},
+    State = State0#state{rebalance_time = TotalTime},
+
     {_, {ok, RebalanceInfo}, NewState} = handle_call(
                                            {get_rebalance_info,
                                             [{add_vbucket_info, true}]},
                                            From,
                                            State),
-    Report = {RebalanceInfo ++ ExitInfo},
+
+    maybe_add_event_log(NewState, ResultType, ExitInfo),
+    Report = {RebalanceInfo ++ [{completionMessage, ExitInfo}]},
+
     KeepNodes = proplists:get_value(keep_nodes, NodesInfo, [node()]),
     RV = case ns_rebalance_report_manager:record_rebalance_report(
                 ejson:encode(Report), KeepNodes) of

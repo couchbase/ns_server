@@ -693,11 +693,11 @@ idle({update_bucket,
 idle({failover, Node}, From, _State) ->
     %% calls from pre-5.5 nodes
     {keep_state_and_data,
-     [{next_event, {call, From}, {failover, [Node], false}}]};
-idle({failover, Nodes, AllowUnsafe}, From, _State) ->
-    handle_start_failover(Nodes, AllowUnsafe, From, true);
+     [{next_event, {call, From}, {failover, [Node], false, hard_failover}}]};
+idle({failover, Nodes, AllowUnsafe, FailoverType}, From, _State) ->
+    handle_start_failover(Nodes, AllowUnsafe, From, true, FailoverType);
 idle({start_failover, Nodes, AllowUnsafe}, From, _State) ->
-    handle_start_failover(Nodes, AllowUnsafe, From, false);
+    handle_start_failover(Nodes, AllowUnsafe, From, false, hard_failover);
 idle({try_autofailover, Nodes}, From, _State) ->
     case ns_rebalancer:validate_autofailover(Nodes) of
         {error, UnsafeBuckets} ->
@@ -705,7 +705,8 @@ idle({try_autofailover, Nodes}, From, _State) ->
              [{reply, From, {autofailover_unsafe, UnsafeBuckets}}]};
         ok ->
             {keep_state_and_data,
-             [{next_event, {call, From}, {failover, Nodes, false}}]}
+             [{next_event, {call, From},
+              {failover, Nodes, false, auto_failover}}]}
     end;
 idle({start_graceful_failover, Node}, From, _State) when is_atom(Node) ->
     %% calls from pre-6.5 nodes
@@ -719,7 +720,9 @@ idle({start_graceful_failover, Nodes}, From, _State) ->
         get_graceful_fo_chk()}}]};
 idle({start_graceful_failover, Nodes, Id, RetryChk}, From, _State) ->
     ActiveNodes = ns_cluster_membership:active_nodes(),
-    NodesInfo = [{active_nodes, ActiveNodes}],
+    NodesInfo = [{active_nodes, ActiveNodes},
+                 {failover_nodes, Nodes},
+                 {master_node, node()}],
     Services = [kv],
     Type = graceful_failover,
     {ok, ObserverPid} = ns_rebalance_observer:start_link(
@@ -731,6 +734,9 @@ idle({start_graceful_failover, Nodes, Id, RetryChk}, From, _State) ->
                      "Starting graceful failover of nodes ~p. "
                      "Operation Id = ~s", [Nodes, Id]),
             Type = graceful_failover,
+            event_log:add_log(graceful_failover_initiated,
+                              [{nodes_info, {struct, NodesInfo}},
+                               {operation_id, Id}]),
             ns_cluster:counter_inc(Type, start),
             set_rebalance_status(Type, running, Pid),
 
@@ -788,7 +794,12 @@ idle({start_rebalance, KeepNodes, EjectNodes, FailedNodes, DeltaNodes,
                              "Operation Id = ~s",
                              [KeepNodes, EjectNodes, FailedNodes, RebalanceId])
             end,
-
+            event_log:add_log(rebalance_initiated,
+                              [{known_nodes, KeepNodes},
+                               {ejected_nodes, EjectNodes},
+                               {failover_nodes, FailedNodes},
+                               {delta_nodes, DeltaNodes},
+                               {rebalance_id, RebalanceId}]),
             ns_cluster:counter_inc(Type, start),
             set_rebalance_status(Type, running, Pid),
 
@@ -1220,11 +1231,11 @@ handle_rebalance_completion(ExitReason, State) ->
     cancel_stop_timer(State),
     maybe_reset_autofailover_count(ExitReason, State),
     maybe_reset_reprovision_count(ExitReason, State),
-    Msg = log_rebalance_completion(ExitReason, State),
+    {ResultType, Msg} = log_rebalance_completion(ExitReason, State),
     maybe_retry_rebalance(ExitReason, State),
     update_rebalance_counters(ExitReason, State),
     ns_rebalance_observer:record_rebalance_report(
-      [{completionMessage, list_to_binary(Msg)}]),
+      {ResultType, list_to_binary(Msg)}),
     update_rebalance_status(ExitReason, State),
     rpc:eval_everywhere(diag_handler, log_all_dcp_stats, []),
     terminate_observer(State),
@@ -1432,30 +1443,40 @@ maybe_reset_reprovision_count(_, _) ->
 log_rebalance_completion(
   ExitReason, #rebalancing_state{type = Type, abort_reason = AbortReason,
                                  rebalance_id = RebalanceId}) ->
-    {Severity, Fmt, Args} = get_log_msg(ExitReason, Type, AbortReason),
+    {ResultType, Severity, Fmt, Args} = get_log_msg(ExitReason,
+                                                    Type,
+                                                    AbortReason),
     ale:log(?USER_LOGGER, Severity, Fmt ++ "~nRebalance Operation Id = ~s",
             Args ++ [RebalanceId]),
-    lists:flatten(io_lib:format(Fmt, Args)).
+    {ResultType, lists:flatten(io_lib:format(Fmt, Args))}.
+
+% ResultType() is used to add an event log with the appropriate event-id
+% via rebalance_observer.
+-spec get_log_msg(any(), any(), any()) -> {ResultType :: success | failure |
+                                           interrupted,
+                                           LogLevel :: info | error,
+                                           Fmt :: io:format(),
+                                           Args :: [term()]}.
 
 get_log_msg(normal, Type, _) ->
-    {info, "~s completed successfully.",
+    {success, info, "~s completed successfully.",
      [rebalance_type2text(Type)]};
 get_log_msg({shutdown, stop}, Type, AbortReason) ->
     get_log_msg(AbortReason, Type);
 get_log_msg(Error, Type, undefined) ->
-    {error, "~s exited with reason ~p.",
+    {failure, error, "~s exited with reason ~p.",
      [rebalance_type2text(Type), Error]};
 get_log_msg(_Error, Type, AbortReason) ->
     get_log_msg(AbortReason, Type).
 
 get_log_msg({try_autofailover, _, Nodes}, Type) ->
-    {info, "~s interrupted due to auto-failover of nodes ~p.",
+    {interrupted, info, "~s interrupted due to auto-failover of nodes ~p.",
      [rebalance_type2text(Type), Nodes]};
 get_log_msg({rebalance_observer_terminated, Reason}, Type) ->
-    {error, "~s interrupted as observer exited with reason ~p.",
+    {failure, error, "~s interrupted as observer exited with reason ~p.",
      [rebalance_type2text(Type), Reason]};
 get_log_msg(user_stop, Type) ->
-    {info, "~s stopped by user.",
+    {interrupted, info, "~s stopped by user.",
      [rebalance_type2text(Type)]}.
 
 rebalance_type2text(rebalance) ->
@@ -1610,18 +1631,32 @@ check_for_unfinished_failover(Snapshot) ->
                                   [Nodes])}
     end.
 
-handle_start_failover(Nodes, AllowUnsafe, From, Wait) ->
+handle_start_failover(Nodes, AllowUnsafe, From, Wait, FailoverType) ->
     auto_rebalance:cancel_any_pending_retry_async("failover"),
 
     ActiveNodes = ns_cluster_membership:active_nodes(),
-    NodesInfo = [{active_nodes, ActiveNodes}],
+    NodesInfo = [{active_nodes, ActiveNodes},
+                 {failover_nodes, Nodes},
+                 {master_node, node()}],
     Id = couch_uuids:random(),
     {ok, ObserverPid} =
-        ns_rebalance_observer:start_link([], NodesInfo, failover, Id),
+        ns_rebalance_observer:start_link([], NodesInfo, FailoverType, Id),
     case failover:start(Nodes, AllowUnsafe) of
         {ok, Pid} ->
             ale:info(?USER_LOGGER, "Starting failover of nodes ~p. "
                      "Operation Id = ~s", [Nodes, Id]),
+            case FailoverType of
+                hard_failover ->
+                    event_log:add_log(hard_failover_initiated,
+                                      [{operation_id, Id},
+                                       {nodes_info, {struct, NodesInfo}},
+                                       {allow_unsafe, AllowUnsafe}]);
+                auto_failover ->
+                    event_log:add_log(auto_failover_initiated,
+                                      [{operation_id, Id},
+                                       {nodes_info, {struct, NodesInfo}},
+                                       {allow_unsafe, AllowUnsafe}])
+            end,
             Type = failover,
             ns_cluster:counter_inc(Type, start),
             set_rebalance_status(Type, running, Pid),
