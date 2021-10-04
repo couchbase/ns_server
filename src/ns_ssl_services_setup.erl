@@ -349,7 +349,7 @@ read_ca_certs(File) ->
     end.
 
 ssl_client_opts() ->
-    [{cacerts, ns_server_cert:trusted_CAs(der)},
+    [{cacertfile, ca_file_path()},
      {verify, verify_peer},
      {depth, ?ALLOWED_CERT_CHAIN_LENGTH}].
 
