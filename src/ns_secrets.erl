@@ -102,8 +102,9 @@ extract_pkey_pass_with_rest(PassSettings) ->
                              end
                      end,
     Options = AddrSettings ++ VerifySettings,
-    try rest_utils:request(<<"pkey_passphrase">>, URL, "GET",
-                            [], <<>>, Timeout, [{connect_options, Options}]) of
+    Headers = proplists:get_value(headers, PassSettings, []),
+    try rest_utils:request(<<"pkey_passphrase">>, URL, "GET", Headers, <<>>,
+                           Timeout, [{connect_options, Options}]) of
         {ok, {{Status, _}, _RespHeaders, RespBody}} when Status == 200 ->
             fun () -> binary_to_list(RespBody) end;
         {ok, {{Status, Reason}, _RespHeaders, _RespBody}} ->

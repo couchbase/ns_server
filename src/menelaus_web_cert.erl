@@ -155,6 +155,8 @@ jsonify_cert_props(Props) ->
                               {args, [iolist_to_binary(A) || A <- Args]};
                           ({httpsOpts, Opts}) ->
                               {httpsOpts, {Opts}};
+                          ({headers, Headers}) ->
+                              {headers, {Headers}};
                           (KV) ->
                               KV
                       end, PKeySettings)},
@@ -345,6 +347,18 @@ validators(rest) ->
      validator:convert(addressFamily, binary_to_atom(_, latin1), _),
      validator:integer(timeout, _),
      validator:default(timeout, 5000, _),
+     validator:validate(
+       fun ({Headers}) when is_list(Headers) ->
+               case lists:all(
+                      fun ({_, V}) when is_binary(V) -> true;
+                          ({_, _}) -> false
+                      end, Headers) of
+                   true -> {value, Headers};
+                   false -> {error, "Header values must be strings"}
+               end;
+           (_) -> {error, "Headers must be a JSON object"}
+       end, headers, _),
+     validator:default(headers, [], _),
      validator:unsupported(_)];
 validators(plain) ->
     [validator:required(password, _),
