@@ -80,12 +80,17 @@ do_build_settings(Settings, Extra) ->
                               [{databaseFragmentationThreshold, database_fragmentation_threshold},
                                {viewFragmentationThreshold, view_fragmentation_threshold}]),
 
+    MagmaFragPercent = case proplists:get_value(magma_fragmentation_percentage,
+                                                Settings) of
+                           undefined -> [];
+                           Pct -> [{magmaFragmentationPercentage, Pct}]
+                       end,
     {[{parallelDBAndViewCompaction, proplists:get_bool(parallel_db_and_view_compaction,
                                                        Settings)}
               | case proplists:get_value(allowed_time_period, Settings) of
                     undefined -> [];
                     V -> [{allowedTimePeriod, build_allowed_time_period(V)}]
-                end] ++ DBAndView ++ Extra}.
+                end] ++ MagmaFragPercent ++ DBAndView ++ Extra}.
 
 build_allowed_time_period(AllowedTimePeriod) ->
     {[{JSONName, proplists:get_value(CfgName, AllowedTimePeriod)}
@@ -278,6 +283,33 @@ do_parse_validate_purge_interval(Params, LowerLimit) ->
             RV
     end.
 
+parse_validate_magma_fragmentation_percentage(Params) ->
+    case cluster_compat_mode:is_cluster_NEO() of
+        true ->
+            Fun = mk_number_field_validator(10, 100, Params),
+            case Fun({"magmaFragmentationPercentage", magma_fragmentation_percentage,
+                      "magma fragmentation percentage"}) of
+                [{error, Field, Msg}]->
+                    [{error, iolist_to_binary(Field), Msg}];
+                RV ->
+                    case RV of
+                        [{ok, magma_fragmentation_percentage, FragPercent}] ->
+                            [{magma_fragmentation_percentage, FragPercent}];
+                        [] ->
+                            []
+                    end
+            end;
+        false ->
+            case proplists:get_value("magmaFragmentationPercentage", Params) of
+                undefined ->
+                    [];
+                _ ->
+                    [{error, "magmaFragementationPercentage",
+                      <<"Magma Fragmentation Percentage is not allowed until "
+                        "entire cluster is upgraded to NEO">>}]
+            end
+    end.
+
 parse_validate_settings(Params, ExpectIndex) ->
     PercResults = lists:flatmap(mk_number_field_validator(2, 100, Params),
                                 [{"databaseFragmentationThreshold[percentage]",
@@ -316,10 +348,15 @@ parse_validate_settings(Params, ExpectIndex) ->
         end,
     PeriodTimeResults = parse_and_validate_time_interval("allowedTimePeriod",
                                                         Params),
+    MagmaFragResults = parse_validate_magma_fragmentation_percentage(Params),
 
     Errors0 = [{iolist_to_binary(Field), Msg} ||
-                  {error, Field, Msg} <- lists:append([PercResults, ParallelResult, PeriodTimeResults,
-                                                       SizeResults, IndexResults])],
+                  {error, Field, Msg} <- lists:append([PercResults,
+                                                       ParallelResult,
+                                                       PeriodTimeResults,
+                                                       SizeResults,
+                                                       IndexResults,
+                                                       MagmaFragResults])],
     BadFields = lists:sort(["databaseFragmentationThreshold",
                             "viewFragmentationThreshold"]),
     Errors = case ordsets:intersection(lists:sort(proplists:get_keys(Params)),
@@ -339,6 +376,7 @@ parse_validate_settings(Params, ExpectIndex) ->
             MainFields =
                 [{F, V} || {ok, F, V} <- ParallelResult]
                 ++
+                MagmaFragResults ++
                 [{database_fragmentation_threshold, {
                     proplists:get_value(db_fragmentation_percentage, PercPList),
                     proplists:get_value(db_fragmentation_size, SizePList)}},
@@ -362,12 +400,15 @@ parse_validate_settings(Params, ExpectIndex) ->
 
 -ifdef(TEST).
 basic_parse_validate_settings_test() ->
-    %% TODO: Need to mock cluster_compat_mode:is_cluster_***
+    meck:new(cluster_compat_mode, [passthrough]),
+    meck:expect(cluster_compat_mode, is_cluster_NEO,
+                fun () -> true end),
     {ok, Stuff0, []} =
         parse_validate_settings([{"databaseFragmentationThreshold[percentage]", "10"},
                                  {"viewFragmentationThreshold[percentage]", "20"},
                                  {"indexFragmentationThreshold[size]", "42"},
                                  {"indexFragmentationThreshold[percentage]", "43"},
+                                 {"magmaFragmentationPercentage", "51"},
                                  {"parallelDBAndViewCompaction", "false"},
                                  {"allowedTimePeriod[fromHour]", "0"},
                                  {"allowedTimePeriod[fromMinute]", "1"},
@@ -381,15 +422,21 @@ basic_parse_validate_settings_test() ->
                                          {to_minute, 3},
                                          {abort_outside, false}]},
                   {database_fragmentation_threshold, {10, undefined}},
+                  {magma_fragmentation_percentage, 51},
                   {parallel_db_and_view_compaction, false},
                   {view_fragmentation_threshold, {20, undefined}}],
                  Stuff1),
+    meck:unload(cluster_compat_mode),
     ok.
 
 extra_field_parse_validate_settings_test() ->
+    meck:new(cluster_compat_mode, [passthrough]),
+    meck:expect(cluster_compat_mode, is_cluster_NEO,
+                fun () -> true end),
     {errors, Stuff0} =
         parse_validate_settings([{"databaseFragmentationThreshold", "10"},
                                  {"viewFragmentationThreshold", "20"},
+                                 {"magmaFragmentationPercentage", "77"},
                                  {"parallelDBAndViewCompaction", "false"},
                                  {"allowedTimePeriod[fromHour]", "0"},
                                  {"allowedTimePeriod[fromMinute]", "1"},
@@ -413,5 +460,6 @@ extra_field_parse_validate_settings_test() ->
                                 false),
     ?assertEqual([{<<"_">>, <<"Got unsupported fields: databaseFragmentationThreshold">>}],
                  Stuff1),
+    meck:unload(cluster_compat_mode),
     ok.
 -endif.

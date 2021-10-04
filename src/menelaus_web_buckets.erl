@@ -2282,6 +2282,9 @@ basic_bucket_params_screening_test() ->
     ok.
 
 basic_parse_validate_bucket_auto_compaction_settings_test() ->
+    meck:new(cluster_compat_mode, [passthrough]),
+    meck:expect(cluster_compat_mode, is_cluster_NEO,
+                fun () -> true end),
     Value0 = parse_validate_bucket_auto_compaction_settings([{"not_autoCompactionDefined", "false"},
                                                              {"databaseFragmentationThreshold[percentage]", "10"},
                                                              {"viewFragmentationThreshold[percentage]", "20"},
@@ -2321,6 +2324,7 @@ basic_parse_validate_bucket_auto_compaction_settings_test() ->
                   {parallel_db_and_view_compaction, false},
                   {view_fragmentation_threshold, {20, undefined}}],
                  Stuff1),
+    meck:unload(cluster_compat_mode),
     ok.
 
 parse_validate_pitr_max_history_age_test() ->

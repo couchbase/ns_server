@@ -174,7 +174,8 @@ set_autocompaction_settings(Settings) ->
     end.
 
 chronicle_upgrade_to_NEO(ChronicleTxn, Config) ->
-    Props = ns_config:search(Config, autocompaction, []),
+    Props0 = ns_config:search(Config, autocompaction, []),
+    Props = lists:append(Props0, [{magma_fragmentation_percentage, 50}]),
     ?log_info("Upgrading autocompaction to NEO: ~n~p", [Props]),
     chronicle_upgrade:set_key(autocompaction, Props, ChronicleTxn).
 
