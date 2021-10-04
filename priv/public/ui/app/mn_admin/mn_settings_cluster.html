@@ -167,7 +167,18 @@
              ng-show="settingsClusterCtl.showDataService"
              class="indent-1-5">
 
-            <label class="margin-top-half">Reader Thread Settings</label>
+            <label class="inline">Reader Thread Settings</label>
+            <span
+               class="fa-stack icon-info"
+               uib-tooltip-html="'<strong>Default</strong> The number of threads allocated is set to a balanced value which is reasonable for most workloads.<br>
+                                  <strong>Disk i/o optimized</strong> The number of threads allocated is equal to the number of CPU cores for the node.<br>
+                                  <strong>Fixed value</strong> The number of threads allocated is equal to the value selected from the pull-down menu.'"
+               tooltip-placement="auto top"
+               tooltip-trigger="mouseenter">
+              <span class="icon fa-circle-thin fa-stack-2x"></span>
+              <span class="icon fa-info fa-stack-1x"></span>
+            </span>
+            <br>
             <input
                type="radio"
                id="for-reader-default"
@@ -207,8 +218,11 @@
             <p class="desc max-width-6" ng-if="settingsClusterCtl.readerThreads == 'fixed'">
               Higher reader and writer thread counts reduce latency and improve
               transaction and synchronous write performance. They can also increase
-              CPU and write amplification. Consult Couchbase documentation before
-              setting these values.
+              CPU and write amplification. Consult
+              <a href="https://docs.couchbase.com/server/current/manage/manage-settings/general-settings.html#data-settings" target="_blank">
+                Couchbase documentation
+              </a>
+              before setting these values.
             </p>
             <div
                class="error"
@@ -216,7 +230,18 @@
               {{settingsClusterCtl.dataServiceSettingsErrors.num_reader_threads}}
             </div>
 
-            <label class="margin-top-half">Writer Thread Settings</label>
+            <label class="inline">Writer Thread Settings</label>
+            <span
+               class="fa-stack icon-info"
+               uib-tooltip-html="'<strong>Default</strong> The number of threads allocated is set to a balanced value which is reasonable for most workloads.<br>
+                                  <strong>Disk i/o optimized</strong> The number of threads allocated is equal to the number of CPU cores for the node.<br>
+                                  <strong>Fixed value</strong> The number of threads allocated is equal to the value selected from the pull-down menu.'"
+               tooltip-placement="auto top"
+               tooltip-trigger="mouseenter">
+              <span class="icon fa-circle-thin fa-stack-2x"></span>
+              <span class="icon fa-info fa-stack-1x"></span>
+            </span>
+            <br>
             <input
                type="radio"
                id="for-writer-default"
@@ -256,8 +281,11 @@
             <p class="desc max-width-6" ng-if="settingsClusterCtl.writerThreads == 'fixed'">
               Higher reader and writer thread counts reduce latency and improve
               transaction and synchronous write performance. They can also increase
-              CPU and write amplification. Consult Couchbase documentation before
-              setting these values.
+              CPU and write amplification. Consult
+              <a href="https://docs.couchbase.com/server/current/manage/manage-settings/general-settings.html#data-settings" target="_blank">
+                Couchbase documentation
+              </a>
+              before setting these values.
             </p>
             <div
                class="error"
