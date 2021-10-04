@@ -146,6 +146,19 @@ jsonify_cert_props(Props) ->
                          K =:= id;
                          K =:= type ->
                true;
+           ({pkey_passphrase_settings, PKeySettings}) ->
+               PKeySettingsJSON =
+                   {lists:map(
+                      fun ({password, _}) ->
+                              {password, <<"********">>};
+                          ({args, Args}) ->
+                              {args, [iolist_to_binary(A) || A <- Args]};
+                          ({httpsOpts, Opts}) ->
+                              {httpsOpts, {Opts}};
+                          (KV) ->
+                              KV
+                      end, PKeySettings)},
+               {true, {privateKeyPassphrase, PKeySettingsJSON}};
            ({_, _}) ->
                false
        end, Props)}.
@@ -394,6 +407,7 @@ handle_get_node_certificate(NodeId, Req) ->
                                 ({not_after, V}) -> {true, {expires, V}};
                                 ({pem, _}) -> true;
                                 ({type, _}) -> true;
+                                ({pkey_passphrase_settings, _}) -> true;
                                 (_) -> false
                             end, Props),
                     CertJson = jsonify_cert_props(Filtered),
