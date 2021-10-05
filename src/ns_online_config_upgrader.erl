@@ -61,7 +61,7 @@ do_upgrade_config(Config, FinalVersion) ->
             upgrade_compat_version(?VERSION_60);
         {value, Ver} ->
             {NewVersion, Upgrade} = upgrade(Ver, Config),
-            ChronicleUpgrade = maybe_upgrade_to_cronicle(NewVersion, Config),
+            ChronicleUpgrade = maybe_upgrade_to_chronicle(NewVersion, Config),
 
             ?log_info("Performing online config upgrade to ~p", [NewVersion]),
             upgrade_compat_version(NewVersion) ++
@@ -76,9 +76,9 @@ maybe_final_upgrade(?LATEST_VERSION_NUM) ->
 maybe_final_upgrade(_) ->
     [].
 
-maybe_upgrade_to_cronicle(?VERSION_70, Config) ->
+maybe_upgrade_to_chronicle(?VERSION_70, Config) ->
     chronicle_compat:upgrade(Config);
-maybe_upgrade_to_cronicle(_, _) ->
+maybe_upgrade_to_chronicle(_, _) ->
     [].
 
 %% Note: upgrade functions must ensure that they do not add entries to the
