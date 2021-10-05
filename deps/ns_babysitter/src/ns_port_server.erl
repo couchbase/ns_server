@@ -39,6 +39,7 @@
 
 %% Server state
 -record(state, {port :: port() | pid() | undefined,
+                os_pid :: undefined | integer(),
                 params :: tuple(),
                 messages,
                 logger :: atom(),
@@ -89,14 +90,16 @@ init(Fun) ->
 
     State = #state{logger = Logger,
                    port = undefined,
+                   os_pid = undefined,
                    params = Params2,
                    messages = ringbuffer:new(?KEEP_MESSAGES_BYTES)},
 
-    Port = case DontStart of
+    {Port, OsPid} = case DontStart of
                false -> port_open(Params2, State);
-               true -> undefined
+               true -> {undefined, undefined}
            end,
-    {ok, State#state{port = Port}}.
+    {ok, State#state{port = Port,
+                     os_pid = OsPid}}.
 
 handle_info({send_to_port, Msg}, #state{port = undefined} = State) ->
     ?log_debug("Got send_to_port when there's no port running yet. Will kill myself."),
@@ -147,6 +150,7 @@ handle_info({_Port, {exit_status, 0} = Msg}, State) ->
     {stop, normal, State};
 handle_info({_Port, {exit_status, Status}}, State) ->
     ns_crash_log:record_crash({port_name(State),
+                               get_os_pid(State),
                                Status,
                                get_death_messages(State)}),
     {stop, {abnormal, Status}, State};
@@ -159,7 +163,8 @@ handle_call(is_active, _From, #state{port = Port} = State) ->
 
 handle_call(activate, _From, #state{port = undefined,
                                     params = Params} = State) ->
-    State2 = State#state{port = port_open(Params, State)},
+    {Port, OsPid} = port_open(Params, State),
+    State2 = State#state{port = Port, os_pid = OsPid},
     {reply, ok, State2};
 handle_call(activate, _From, State) ->
     {reply, {error, already_active}, State}.
@@ -256,13 +261,18 @@ port_open({_Name, Cmd, Args, OptsIn}, #state{logger = Logger}) ->
                    Opts4
            end,
 
-    Port =
+    {Port, OsPid} =
         case ViaGoport of
             true ->
                 {ok, P} = goport:start_link(Cmd, Opts),
-                P;
+                {P, undefined};
             false ->
-                erlang:open_port({spawn_executable, Cmd}, Opts)
+                P = erlang:open_port({spawn_executable, Cmd}, Opts),
+                Pid = case erlang:port_info(P, os_pid) of
+                          {os_pid, Pid0} -> Pid0;
+                          _ -> undefined
+                      end,
+                {P, Pid}
         end,
 
     case WriteDataArg of
@@ -275,11 +285,14 @@ port_open({_Name, Cmd, Args, OptsIn}, #state{logger = Logger}) ->
     %% initiate initial delivery
     port_deliver(Port),
 
-    Port.
+    {Port, OsPid}.
 
 port_name(#state{params = Params}) ->
     {Name, _, _, _} = Params,
     Name.
+
+get_os_pid(#state{os_pid = Pid}) ->
+    Pid.
 
 port_write(Port, Data) when is_pid(Port) ->
     ok = goport:write(Port, Data);

@@ -62,7 +62,7 @@ crash_consumption_loop_tramp() ->
     misc:delaying_crash(1000, fun crash_consumption_loop/0).
 
 crash_consumption_loop() ->
-    {Name, Status, Messages} =
+    {Name, OsPid, Status, Messages} =
       ns_crash_log:consume_oldest_message_from_inside_ns_server(),
     LogLevel = case Status of
                  0 ->
@@ -73,6 +73,19 @@ crash_consumption_loop() ->
     ale:log(?USER_LOGGER, LogLevel,
             "Service '~p' exited with status ~p. Restarting. Messages:~n~s",
             [Name, Status, Messages]),
+    %% Add an event log only for memcached crashes for now.
+    case Name of
+        memcached ->
+            OsPidJSON = case OsPid of
+                            undefined ->
+                                [];
+                            _ ->
+                                [{os_pid, OsPid}]
+                        end,
+            event_log:add_log(memcached_crashed, OsPidJSON);
+        _ -> ok
+    end,
+
     crash_consumption_loop().
 
 %%--------------------------------------------------------------------

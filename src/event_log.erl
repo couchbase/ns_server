@@ -60,7 +60,11 @@ event_details(bucket_offline) ->
 event_details(bucket_cfg_changed) ->
     {8201, data, info, <<"Bucket configuration changed">>};
 event_details(memcached_cfg_changed) ->
-    {8202, data, info, <<"Memcached configuration changed">>}.
+    {8202, data, info, <<"Memcached configuration changed">>};
+event_details(bucket_autoreprovision) ->
+    {8203, data, info, <<"Bucket auto reprovisioned">>};
+event_details(memcached_crashed) ->
+    {8204, data, info, <<"Memcached crashed">>}.
 
 jsonify(Key, Value) when is_list(Value) ->
     [{Key, list_to_binary(Value)}].

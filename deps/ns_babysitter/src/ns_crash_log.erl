@@ -28,7 +28,8 @@
                 consumer_mref = undefined :: undefined | reference()
                }).
 
--type crash() :: {PortName :: atom(), StatusCode :: integer(), RecentMessages :: string()}.
+-type crash() :: {PortName :: atom(), OsPid :: undefined | integer(),
+                  StatusCode :: integer(), RecentMessages :: string()}.
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).

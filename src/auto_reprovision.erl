@@ -127,6 +127,18 @@ handle_call({reprovision_buckets, Buckets, UnsafeNodes}, _From,
                     false ->
                         ok
                 end,
+
+                UUIDs = ns_bucket:uuids(),
+                %% Add event log for all the buckets.
+                lists:foreach(fun (Bucket) ->
+                                      UUID = proplists:get_value(Bucket, UUIDs),
+                                      event_log:add_log(
+                                        bucket_autoreprovision,
+                                        [{bucket, Bucket},
+                                         {bucket_uuid, UUID},
+                                         {nodes, Candidates},
+                                         {restarted_on, UnsafeNodes}])
+                              end, Buckets),
                 {ok, State#state{count = NewCount}};
             Other ->
                 {{error, {reprovision_failed, Other}}, State}
