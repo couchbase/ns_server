@@ -15,7 +15,8 @@
 
 -include("ns_common.hrl").
 
--export([login_success/1,
+-export([prepare_list/1,
+         login_success/1,
          login_failure/1,
          session_expired/2,
          logout/1,
@@ -785,15 +786,8 @@ client_cert_auth(Req, ClientCertAuth) ->
     Val = [State, {PrefixesKey, {list, NewTriples}}],
     put(client_cert_auth, Req, Val).
 
-security_settings(Req, Settings) ->
-    Format = fun ({cipher_suites, deleted}) -> {cipher_suites, deleted};
-                 ({cipher_suites, List}) -> {cipher_suites, {list, List}};
-                 ({secure_headers, deleted}) -> {secure_headers, deleted};
-                 ({secure_headers, List}) -> {secure_headers, {propset, List}};
-                 (KV) -> KV
-             end,
-    put(security_settings, Req,
-        [{settings, {prepare_list([Format(S) || S <- Settings])}}]).
+security_settings(Req, SettingsJSON) ->
+    put(security_settings, Req, [{settings, {SettingsJSON}}]).
 
 license_settings(Req, Settings) ->
     put(license_settings, Req,

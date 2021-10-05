@@ -192,8 +192,36 @@ continue_handle_post(Req, Params, SettingsKey, ExtraConfigKey) ->
             reply_json(Req, {struct, InvalidParams}, 400);
         [] ->
             KVs = [{K, V} || {K, {ok, V}} <- ParsedParams],
-            update_config(supported_setting_names(), SettingsKey, KVs),
-            update_config(supported_extra_setting_names(), ExtraConfigKey, KVs),
+            {OS, NS} = case update_config(
+                              supported_setting_names(), SettingsKey, KVs) of
+                           {commit, _, {OS0, NS0}} ->
+                               {OS0, NS0};
+                           _ ->
+                               {[], []}
+                       end,
+            {EOS, ENS} = case update_config(
+                                supported_extra_setting_names(),
+                                ExtraConfigKey, KVs) of
+                             {commit, _, {EOS0, ENS0}} ->
+                                 {EOS0, ENS0};
+                             _ ->
+                                 {[], []}
+                         end,
+            %% Merge both the old settings and extra old settings, so that we
+            %% can add a single event log.
+            OldSettings = OS ++ EOS,
+            NewSettings = NS ++ ENS,
+
+            if
+                NewSettings =/= [] andalso NewSettings =/= OldSettings ->
+                    event_log:add_log(
+                      memcached_cfg_changed,
+                      [{old_settings, {struct, OldSettings}},
+                       {new_settings, {struct, NewSettings}}]);
+                true ->
+                    ok
+            end,
+
             handle_get(Req, SettingsKey, ExtraConfigKey, 202)
     end.
 
@@ -217,7 +245,7 @@ update_config(Settings, ConfigKey, KVs) ->
                               _ ->
                                   OldConfig
                           end,
-              {commit, NewConfig}
+              {commit, NewConfig, {OldValue, NewValue}}
       end).
 
 handle_node_setting_get(NodeName, SettingName, Req) ->

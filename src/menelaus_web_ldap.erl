@@ -37,7 +37,13 @@ handle_ldap_settings_post(Req) ->
       fun (Props, Req2) ->
           Props2 = [{Key, Val} || {[Key], Val} <- Props],
           ns_audit:ldap_settings(Req, prepare_ldap_settings(Props2)),
+          OldSettings = ldap_util:build_settings(),
           ldap_util:set_settings(Props2),
+          NewSettings = ldap_util:build_settings(),
+          event_log:add_log(
+            ldap_cfg_changed,
+            [{old_settings, {struct, prepare_ldap_settings(OldSettings)}},
+             {new_settings, {struct, prepare_ldap_settings(NewSettings)}}]),
           handle_ldap_settings(Req2)
       end, [], params(), fun type_spec/1, Req).
 

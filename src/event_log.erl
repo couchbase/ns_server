@@ -29,6 +29,14 @@ event_details(audit_disabled) ->
     {9217, security, info, <<"Audit disabled">>};
 event_details(audit_cfg_changed) ->
     {9218, security, info, <<"Audit configuration change">>};
+event_details(ldap_cfg_changed) ->
+    {9219, security, info, <<"LDAP configuration changed">>};
+event_details(security_cfg_changed) ->
+    {9220, security, info, <<"Security config changed">>};
+event_details(saslauthd_cfg_changed) ->
+    {9221, security, info, <<"sasldauth config changed">>};
+event_details(password_policy_changed) ->
+    {9222, security, info, <<"Password policy changed">>};
 
 %% event_ids block for Data related events: [8192, ... 9215]
 event_details(bucket_created) ->
@@ -50,7 +58,9 @@ event_details(bucket_online) ->
 event_details(bucket_offline) ->
     {8200, data, info, <<"Bucket offline">>};
 event_details(bucket_cfg_changed) ->
-    {8201, data, info, <<"Bucket configuration changed">>}.
+    {8201, data, info, <<"Bucket configuration changed">>};
+event_details(memcached_cfg_changed) ->
+    {8202, data, info, <<"Memcached configuration changed">>}.
 
 jsonify(Key, Value) when is_list(Value) ->
     [{Key, list_to_binary(Value)}].

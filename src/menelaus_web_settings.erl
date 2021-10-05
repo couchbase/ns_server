@@ -427,6 +427,15 @@ audit_fun(Type) ->
 handle_post(Type, Req) ->
     handle_post(Type, [], Req).
 
+jsonify_security_settings(Settings) ->
+    Format = fun ({cipher_suites, deleted}) -> {cipher_suites, deleted};
+                 ({cipher_suites, List}) -> {cipher_suites, {list, List}};
+                 ({secure_headers, deleted}) -> {secure_headers, deleted};
+                 ({secure_headers, List}) -> {secure_headers, {propset, List}};
+                 (KV) -> KV
+             end,
+    ns_audit:prepare_list([Format(S) || S <- Settings]).
+
 handle_post(Type, Keys, Req) ->
     %% NOTE: due to a potential restart we need to protect
     %%       ourselves from 'death signal' of parent
@@ -435,9 +444,20 @@ handle_post(Type, Keys, Req) ->
                          is_allowed_setting(Req, _)) of
         {ok, ToSet} ->
             case ns_config:run_txn(?cut(set_keys_in_txn(_1, _2, ToSet))) of
-                {commit, _, AuditProps} ->
-                    AuditFun = audit_fun(Type),
-                    ns_audit:AuditFun(Req, AuditProps),
+                {commit, _, {OldProps, NewProps}} ->
+                    case Type of
+                        security ->
+                            NewPropsJSON = jsonify_security_settings(NewProps),
+                            ns_audit:security_settings(Req, NewPropsJSON),
+                            OldPropsJSON = jsonify_security_settings(OldProps),
+                            event_log:add_log(
+                              security_cfg_changed,
+                              [{old_settings, {struct, OldPropsJSON}},
+                               {new_settings, {struct, NewPropsJSON}}]);
+                        _ ->
+                            AuditFun = audit_fun(Type),
+                            ns_audit:AuditFun(Req, NewProps)
+                    end,
                     reply_json(Req, []);
                 retry_needed ->
                     erlang:error(exceeded_retries)
@@ -448,28 +468,50 @@ handle_post(Type, Keys, Req) ->
     erlang:exit(normal).
 
 set_keys_in_txn(Cfg, SetFn, ToSet) ->
-    {NewCfg, AuditProps} =
+    {NewCfg, OldProps, NewProps} =
         lists:foldl(
-          fun ({[K], V}, {CfgAcc, AuditAcc}) ->
+          fun ({[K], V}, {CfgAcc, OldPropsAcc0, NewPropsAcc0}) ->
                   case ns_config:search(CfgAcc, K) of
-                      {value, V} -> {CfgAcc, AuditAcc};
-                      _ -> {SetFn(K, V, CfgAcc), AuditAcc#{K => V}}
+                      {value, V} ->
+                          {CfgAcc, OldPropsAcc0, NewPropsAcc0};
+                      {value, OV} ->
+                          {SetFn(K, V, CfgAcc), OldPropsAcc0#{K => OV},
+                           NewPropsAcc0#{K => V}};
+                       _ ->
+                          {SetFn(K, V, CfgAcc), OldPropsAcc0,
+                           NewPropsAcc0#{K => V}}
                   end;
-              ({[K, SubK], V}, {CfgAcc, AuditAcc}) ->
+              ({[K, SubK], V}, {CfgAcc, OldPropsAcc0, NewPropsAcc0}) ->
                   CurProps = ns_config:search(CfgAcc, K, []),
                   case proplists:lookup(SubK, CurProps) of
                       {SubK, V} ->
-                        {CfgAcc, AuditAcc};
+                          {CfgAcc, OldPropsAcc0, NewPropsAcc0};
+                      {value, OV} ->
+                          OldPropAcc =
+                            maps:update_with(K, fun ({L}) ->
+                                                        {[{SubK, OV} | L]}
+                                                end,
+                                             {[{SubK, OV}]}, OldPropsAcc0),
+                          NewProps = misc:update_proplist(CurProps,
+                                                          [{SubK, V}]),
+                          NewPropsAcc =
+                            maps:update_with(K, fun ({L}) ->
+                                                        {[{SubK, V} | L]}
+                                                end,
+                                             {[{SubK, V}]}, NewPropsAcc0),
+                          {SetFn(K, NewProps, CfgAcc), OldPropAcc, NewPropsAcc};
                       _ ->
-                        NewProps = misc:update_proplist(CurProps, [{SubK, V}]),
-                        NewAuditAcc =
+                          NewProps = misc:update_proplist(CurProps,
+                                                          [{SubK, V}]),
+                          NewPropsAcc =
                             maps:update_with(K,
                                              fun ({L}) -> {[{SubK, V} | L]} end,
-                                             {[{SubK, V}]}, AuditAcc),
-                        {SetFn(K, NewProps, CfgAcc), NewAuditAcc}
+                                             {[{SubK, V}]}, NewPropsAcc0),
+                          {SetFn(K, NewProps, CfgAcc), OldPropsAcc0,
+                           NewPropsAcc}
                   end
-          end, {Cfg, #{}}, ToSet),
-    {commit, NewCfg, maps:to_list(AuditProps)}.
+          end, {Cfg, #{}, #{}}, ToSet),
+    {commit, NewCfg, {maps:to_list(OldProps), maps:to_list(NewProps)}}.
 
 parse_post_data(Conf, Keys, Data, KeyValidator) ->
     InvertedConf = invert_conf(Conf),
