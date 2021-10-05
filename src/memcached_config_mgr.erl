@@ -554,7 +554,7 @@ generate_interfaces(MCDParams) ->
 
     IPv4Interfaces = lists:map(
                        fun ({Props}) ->
-                               IsSSL = proplists:is_defined(ssl, Props),
+                               IsSSL = proplists:is_defined(tls, Props),
                                Extra = [{host, get_host(inet, IsSSL)},
                                         {ipv4, misc:get_afamily_type(inet)},
                                         {ipv6, off}],
@@ -562,7 +562,7 @@ generate_interfaces(MCDParams) ->
                        end, InterProps),
     IPv6Interfaces = lists:map(
                        fun ({Props}) ->
-                               IsSSL = proplists:is_defined(ssl, Props),
+                               IsSSL = proplists:is_defined(tls, Props),
                                Extra = [{host, get_host(inet6, IsSSL)},
                                         {ipv4, off},
                                         {ipv6, misc:get_afamily_type(inet6)}],
