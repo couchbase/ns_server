@@ -22,6 +22,7 @@
          handle_upload_cluster_ca/1, %% deprecated
          handle_reload_node_certificate/1,
          handle_get_node_certificate/2,
+         handle_get_node_certificates/1,
          handle_client_cert_auth_settings/1,
          handle_client_cert_auth_settings_post/1]).
 
@@ -405,27 +406,34 @@ validate_password(Name, State) ->
               {error, "Password must be a string"}
       end, Name, State).
 
+handle_get_node_certificates(Req) ->
+    Nodes = ns_node_disco:nodes_wanted(),
+    Localhost = misc:localhost(),
+    NodeCerts =
+        lists:filtermap(
+          fun (N) ->
+              Hostname = menelaus_web_node:build_node_hostname(
+                           ns_config:latest(), N, Localhost),
+              case prepare_node_cert_info(N) of
+                  {ok, {JsonObjProplist}} ->
+                      {true, {[{node, Hostname} | JsonObjProplist]}};
+                  {error, not_found} ->
+                      false
+              end
+          end, Nodes),
+    menelaus_util:reply_json(Req, NodeCerts).
+
 handle_get_node_certificate(NodeId, Req) ->
     menelaus_util:assert_is_enterprise(),
 
     case menelaus_web_node:find_node_hostname(NodeId, Req) of
         {ok, Node} ->
-            case ns_server_cert:get_node_cert_info(Node) of
-                [] ->
-                    menelaus_util:reply_text(Req, <<"Certificate is not set up on this node">>, 404);
-                Props ->
-                    Filtered =
-                        lists:filtermap(
-                            fun ({subject, _}) -> true;
-                                %% Backward compat:
-                                ({not_after, V}) -> {true, {expires, V}};
-                                ({pem, _}) -> true;
-                                ({type, _}) -> true;
-                                ({pkey_passphrase_settings, _}) -> true;
-                                (_) -> false
-                            end, Props),
-                    CertJson = jsonify_cert_props(Filtered),
-                    menelaus_util:reply_json(Req, CertJson)
+            case prepare_node_cert_info(Node) of
+                {ok, CertJson} ->
+                    menelaus_util:reply_json(Req, CertJson);
+                {error, not_found} ->
+                    menelaus_util:reply_text(
+                      Req, <<"Certificate is not set up on this node">>, 404)
             end;
         {error, {invalid_node, Reason}} ->
             menelaus_util:reply_text(Req, Reason, 400);
@@ -434,6 +442,23 @@ handle_get_node_certificate(NodeId, Req) ->
               Req,
               <<"Node is not found, make sure the ip address/hostname matches the ip address/hostname used by Couchbase">>,
               404)
+    end.
+
+prepare_node_cert_info(Node) ->
+    case ns_server_cert:get_node_cert_info(Node) of
+        [] -> {error, not_found};
+        Props ->
+            Filtered =
+                lists:filtermap(
+                    fun ({subject, _}) -> true;
+                        %% Backward compat:
+                        ({not_after, V}) -> {true, {expires, V}};
+                        ({pem, _}) -> true;
+                        ({type, _}) -> true;
+                        ({pkey_passphrase_settings, _}) -> true;
+                        (_) -> false
+                    end, Props),
+            {ok, jsonify_cert_props(Filtered)}
     end.
 
 allowed_values(Key) ->

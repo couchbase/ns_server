@@ -349,6 +349,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_cert:handle_get_trustedCAs/1};
                 ["pools", "default", "certificate"] ->
                     {done, menelaus_web_cert:handle_cluster_certificate(Req)};
+                ["pools", "default", "certificates"] ->
+                    {{[admin, security], read},
+                     fun menelaus_web_cert:handle_get_node_certificates/1};
                 ["pools", "default", "certificate", "node", Node] ->
                     {{[admin, security], read},
                      fun menelaus_web_cert:handle_get_node_certificate/2, [Node]};
