@@ -251,6 +251,7 @@ build_https_args(PortName, PortArg, PortPrefix, CertArg, KeyArg, CAArg,
         undefined ->
             [];
         Port when PortName == fts_ssl_port;
+                  PortName == eventing_https_port;
                   PortName == cbas_ssl_port;
                   PortName == indexer_https_port;
                   PortName == projector_ssl_port ->
