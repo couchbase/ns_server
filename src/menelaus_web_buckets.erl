@@ -331,8 +331,10 @@ build_pitr_dynamic_bucket_info(BucketConfig) ->
 build_magma_bucket_info(BucketConfig) ->
     case ns_bucket:storage_mode(BucketConfig) of
         magma ->
+            Default = compaction_daemon:global_magma_frag_percent(),
             [{fragmentationPercentage, proplists:get_value(frag_percent,
-                                                           BucketConfig, 50)},
+                                                           BucketConfig,
+                                                           Default)},
              {storageQuotaPercentage,
               proplists:get_value(storage_quota_percentage, BucketConfig, 10)}];
         _ ->
@@ -1588,7 +1590,10 @@ parse_validate_frag_percent_inner(true = _IsEnterprise, true = _IsCompat,
                                   Percent, BucketCfg, IsNew,
                                   true = _IsMagma) ->
     DefaultVal = case IsNew of
-                     true -> "50";
+                     true ->
+                         Percent =
+                            compaction_daemon:global_magma_frag_percent(),
+                         integer_to_list(Percent);
                      false -> proplists:get_value(frag_percent, BucketCfg)
                  end,
     validate_with_missing(Percent, DefaultVal, IsNew,

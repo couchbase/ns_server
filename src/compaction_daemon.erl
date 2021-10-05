@@ -20,6 +20,7 @@
 %% Misc
 -export([get_autocompaction_settings/1,
          set_autocompaction_settings/1,
+         global_magma_frag_percent/0,
          chronicle_upgrade_to_NEO/2]).
 
 %% gen_server callbacks
@@ -113,6 +114,11 @@ get_last_rebalance_or_failover_timestamp_compat() ->
                     0
             end
     end.
+
+global_magma_frag_percent() ->
+    Config = ns_config:latest(),
+    GlobalSettings = get_autocompaction_settings(Config),
+    proplists:get_value(magma_fragmentation_percentage, GlobalSettings).
 
 %% While Pid is alive prevents autocompaction of views for given
 %% bucket and given node. Returned Ref can be used to uninhibit
