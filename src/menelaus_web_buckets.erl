@@ -415,21 +415,6 @@ handle_bucket_delete(_PoolId, BucketId, Req) ->
 respond_bucket_created(Req, PoolId, BucketId) ->
     reply(Req, 202, [{"Location", concat_url_path(["pools", PoolId, "buckets", BucketId])}]).
 
-%% returns pprop list with only props useful for ns_bucket
-extract_bucket_props(Props) ->
-    [X || X <-
-              [lists:keyfind(Y, 1, Props) ||
-                  Y <- [num_replicas, replica_index, ram_quota,
-                        durability_min_level, frag_percent,
-                        storage_quota_percentage,
-                        pitr_enabled, pitr_granularity, pitr_max_history_age,
-                        moxi_port, autocompaction,
-                        purge_interval, flush_enabled, num_threads,
-                        eviction_policy, conflict_resolution_type,
-                        drift_ahead_threshold_ms, drift_behind_threshold_ms,
-                        storage_mode, max_ttl, compression_mode]],
-          X =/= false].
-
 -record(bv_ctx, {
           validate_only,
           ignore_warnings,
@@ -514,7 +499,7 @@ handle_bucket_update_inner(BucketId, Req, Params, Limit) ->
             BucketType = proplists:get_value(bucketType, ParsedProps),
             StorageMode = proplists:get_value(storage_mode, ParsedProps,
                                               undefined),
-            UpdatedProps = extract_bucket_props(ParsedProps),
+            UpdatedProps = ns_bucket:extract_bucket_props(ParsedProps),
             case ns_orchestrator:update_bucket(BucketType, StorageMode,
                                                BucketId, UpdatedProps) of
                 ok ->
@@ -565,7 +550,7 @@ create_bucket(Req, Name, Params) ->
 do_bucket_create(Req, Name, ParsedProps) ->
     BucketType = proplists:get_value(bucketType, ParsedProps),
     StorageMode = proplists:get_value(storage_mode, ParsedProps, undefined),
-    BucketProps = extract_bucket_props(ParsedProps),
+    BucketProps = ns_bucket:extract_bucket_props(ParsedProps),
     maybe_cleanup_old_buckets(),
     case ns_orchestrator:create_bucket(BucketType, Name, BucketProps) of
         ok ->
@@ -691,10 +676,10 @@ handle_bucket_flush(_PoolId, Id, Req) ->
             reply_json(Req, {struct, [{'_', <<"Cannot flush buckets with outgoing XDCR">>}]}, 503)
     end.
 
-do_handle_bucket_flush(Id, Req) ->
-    case ns_orchestrator:flush_bucket(Id) of
+do_handle_bucket_flush(BucketName, Req) ->
+    case ns_orchestrator:flush_bucket(BucketName) of
         ok ->
-            ns_audit:flush_bucket(Req, Id),
+            ns_audit:flush_bucket(Req, BucketName),
             reply(Req, 200);
         rebalance_running ->
             reply_json(Req, {struct, [{'_', <<"Cannot flush buckets during rebalance">>}]}, 503);

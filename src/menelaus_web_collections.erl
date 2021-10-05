@@ -31,7 +31,7 @@ handle_get(Bucket, Req) ->
       Req, collections:manifest_json(menelaus_auth:get_identity(Req),
                                      Bucket, direct)).
 
-get_scope_audit_props(Limits) ->
+get_scope_props_json(Limits) ->
     Limits1 = case Limits of
                      no_limits ->
                          [];
@@ -49,29 +49,71 @@ handle_post_scope(Bucket, Req) ->
               Name = proplists:get_value(name, Values),
               Limits = proplists:get_value(limits, Values, no_limits),
               RV = collections:create_scope(Bucket, Name, Limits),
+              LimitsJSON = get_scope_props_json(Limits),
               case {RV, Limits} of
                   {{scope_already_exists, _}, L} when L =/= no_limits ->
                       Ret = collections:update_limits(Bucket, Name, Limits),
                       maybe_audit(Ret, Req,
                                   ns_audit:update_scope(
                                     _, Bucket, Name,
-                                    get_scope_audit_props(Limits), _)),
+                                    LimitsJSON, _)),
                       handle_rv(Ret, Req);
                   _ ->
                       maybe_audit(RV, Req,
                                   ns_audit:create_scope(
                                     _, Bucket, Name,
-                                    get_scope_audit_props(Limits), _)),
+                                    LimitsJSON, _)),
+                      maybe_add_event_log(RV, Bucket, LimitsJSON),
                       handle_rv(RV, Req)
               end
       end, Req, form,
       scope_limit_validators(raw) ++ scope_validators(default_not_allowed)).
 
+maybe_audit({ok, {Uid, _}}, Req, SuccessfulAuditFun) ->
+    SuccessfulAuditFun(Req, Uid);
 maybe_audit({ok, Uid}, Req, SuccessfulAuditFun) ->
     SuccessfulAuditFun(Req, Uid);
 maybe_audit(forbidden, Req, _SuccessfulAuditFun) ->
     ns_audit:auth_failure(Req);
 maybe_audit(_, _Req, _SuccessfulAuditFun) ->
+    ok.
+
+%% Add event logs for a specific set of operations.
+get_event_and_attributes({create_scope, Name, _}) ->
+    {scope_created, [{scope, Name}]};
+get_event_and_attributes({drop_scope, Name}) ->
+    {scope_deleted, [{scope, Name}]};
+get_event_and_attributes({create_collection, Scope, Collection, _}) ->
+    {collection_created, [{scope, Scope},
+                          {collection, Collection}]};
+get_event_and_attributes({drop_collection, Scope, Collection}) ->
+    {collection_deleted, [{scope, Scope},
+                          {collection, Collection}]};
+get_event_and_attributes(_) ->
+    ok.
+
+maybe_add_event_log({ok, {Uid, OperationsDone}}, Bucket, Extra) ->
+    JsonifyFun = fun (K, V) when is_list(V) ->
+                         {K, list_to_binary(V)};
+                     (K, V) ->
+                         {K, V}
+                 end,
+    lists:foreach(fun (Operation) ->
+                          case get_event_and_attributes(Operation) of
+                              {Event, Attributes} ->
+                                  AttrsJson =
+                                      [JsonifyFun(K, V) ||
+                                       {K, V} <- Attributes],
+                                  event_log:add_log(
+                                    Event,
+                                    [{bucket, list_to_binary(Bucket)}] ++
+                                    AttrsJson ++ Extra ++
+                                    [{new_manifest_id, Uid}]);
+                              _ ->
+                                  ok
+                          end
+                  end, OperationsDone);
+maybe_add_event_log(_, _, _) ->
     ok.
 
 service_scope_limit_validators(clusterManager) ->
@@ -127,6 +169,7 @@ handle_post_collection(Bucket, Scope, Req) ->
               maybe_audit(RV, Req,
                           ns_audit:create_collection(_, Bucket, Scope, Name,
                                                      _)),
+              maybe_add_event_log(RV, Bucket, []),
               handle_rv(RV, Req)
       end, Req, form, collection_validators(default_not_allowed)).
 
@@ -134,12 +177,14 @@ handle_delete_scope(Bucket, Name, Req) ->
     assert_api_available(Bucket),
     RV = collections:drop_scope(Bucket, Name),
     maybe_audit(RV, Req, ns_audit:drop_scope(_, Bucket, Name, _)),
+    maybe_add_event_log(RV, Bucket, []),
     handle_rv(RV, Req).
 
 handle_delete_collection(Bucket, Scope, Name, Req) ->
     assert_api_available(Bucket),
     RV = collections:drop_collection(Bucket, Scope, Name),
     maybe_audit(RV, Req, ns_audit:drop_collection(_, Bucket, Scope, Name, _)),
+    maybe_add_event_log(RV, Bucket, []),
     handle_rv(RV, Req).
 
 handle_set_manifest(Bucket, Req) ->
@@ -157,6 +202,8 @@ handle_set_manifest(Bucket, Req) ->
               maybe_audit(RV, Req,
                           ns_audit:set_manifest(_, Bucket, InputManifest,
                                                 ValidOnUid, _)),
+              %% Add event logs for each of the specific operation performed.
+              maybe_add_event_log(RV, Bucket, []),
               handle_rv(RV, Req)
       end, Req, json,
       [validator:required(scopes, _),
@@ -342,6 +389,8 @@ get_formatted_err_msg(Error) ->
         {Msg, Params, Code} -> {io_lib:format(Msg, Params), Code}
     end.
 
+handle_rv({ok, {Uid, _}}, Req) ->
+    handle_rv({ok, Uid}, Req);
 handle_rv({ok, Uid}, Req) ->
     menelaus_util:reply_json(Req, {[{uid, Uid}]}, 200);
 handle_rv({errors, List}, Req) when is_list(List) ->

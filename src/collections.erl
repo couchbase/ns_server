@@ -285,8 +285,8 @@ update(Bucket, Operation) ->
 
 update_inner(Bucket, Operation) ->
     case do_update(Bucket, Operation) of
-        {ok, _Rev, UID} ->
-            {ok, UID};
+        {ok, _Rev, {UID, OperationsDone}} ->
+            {ok, {UID, OperationsDone}};
         {not_changed, UID} ->
             {ok, UID};
         {error, Error} = RV ->
@@ -340,8 +340,8 @@ do_update_with_manifest(Bucket, Manifest, Operation, OtherBucketCounts,
                         LastSeenIds) ->
     ?log_debug("Perform operation ~p on manifest ~p of bucket ~p",
                [Operation, get_uid(Manifest), Bucket]),
-    case perform_operations(Manifest,
-                            compile_operation(Operation, Bucket, Manifest)) of
+    CompiledOperation = compile_operation(Operation, Bucket, Manifest),
+    case perform_operations(Manifest, CompiledOperation) of
         {ok, Manifest} ->
             {abort, {not_changed, uid(Manifest)}};
         {ok, NewManifest} ->
@@ -351,7 +351,7 @@ do_update_with_manifest(Bucket, Manifest, Operation, OtherBucketCounts,
                     case check_ids_limit(FinalManifest, LastSeenIds) of
                         [] ->
                             {commit, [{set, key(Bucket), FinalManifest}],
-                             uid(FinalManifest)};
+                             {uid(FinalManifest), CompiledOperation}};
                         BehindNodes ->
                             {abort, {error, {nodes_are_behind,
                                              [N || {N, _} <- BehindNodes]}}}

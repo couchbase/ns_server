@@ -268,6 +268,11 @@ handle_call(disable_traffic, _From, State) ->
                 ok ->
                     State2 = State#state{status=connected,
                                          start_time = os:timestamp()},
+                    BucketName = State2#state.bucket,
+                    UUID = ns_bucket:uuid(BucketName, direct),
+                    event_log:add_log(bucket_offline,
+                                      [{bucket, list_to_binary(BucketName)},
+                                       {bucket_uuid, UUID}]),
                     {reply, ok, State2};
                 {memcached_error, _, _} = Error ->
                     ?log_error("disabling traffic failed: ~p", [Error]),
@@ -289,6 +294,11 @@ handle_call(mark_warmed, _From, #state{status=Status,
                         Time = timer:now_diff(os:timestamp(), Start) div 1000000,
                         ?log_info("Bucket ~p marked as warmed in ~p seconds",
                                   [Bucket, Time]),
+                        UUID = ns_bucket:uuid(Bucket, direct),
+                        event_log:add_log(bucket_online,
+                                          [{bucket, list_to_binary(Bucket)},
+                                           {bucket_uuid, UUID},
+                                           {warmup_time, Time}]),
                         %% Make best effort to update the status of bucket
                         %% readiness on node.
                         gen_event:notify(buckets_events, {warmed, Bucket}),

@@ -606,6 +606,15 @@ idle({create_bucket, BucketType, BucketName, NewConfig}, From, _State) ->
         ok ->
             master_activity_events:note_bucket_creation(BucketName, BucketType,
                                                         NewConfig),
+            StorageMode = proplists:get_value(storage_mode, NewConfig,
+                                              undefined),
+            event_log:add_log(bucket_created,
+                              [{bucket, list_to_binary(BucketName)},
+                               {bucket_uuid,
+                                ns_bucket:uuid(BucketName, direct)},
+                               {bucket_type, ns_bucket:display_type(
+                                               BucketType, StorageMode)},
+                               {bucket_props, {struct, NewConfig}}]),
             request_janitor_run({bucket, BucketName});
         _ -> ok
     end,
@@ -621,11 +630,14 @@ idle({flush_bucket, BucketName}, From, _State) ->
     {keep_state_and_data, [{reply, From, RV}]};
 idle({delete_bucket, BucketName}, From, _State) ->
     menelaus_users:cleanup_bucket_roles(BucketName),
-
     Reply =
         case ns_bucket:delete_bucket(BucketName) of
             {ok, BucketConfig} ->
                 master_activity_events:note_bucket_deletion(BucketName),
+                BucketUUID = proplists:get_value(uuid, BucketConfig),
+                event_log:add_log(bucket_deleted, [{bucket,
+                                                    list_to_binary(BucketName)},
+                                                   {bucket_uuid, BucketUUID}]),
                 ns_janitor_server:delete_bucket_request(BucketName),
 
                 Nodes = ns_bucket:get_servers(BucketConfig),
@@ -1075,8 +1087,20 @@ perform_bucket_flushing(BucketName) ->
         {ok, BucketConfig} ->
             case proplists:get_value(flush_enabled, BucketConfig, false) of
                 true ->
-                    perform_bucket_flushing_with_config(BucketName,
-                                                        BucketConfig);
+                    RV = perform_bucket_flushing_with_config(BucketName,
+                                                             BucketConfig),
+                    case RV of
+                        ok ->
+                            UUID = ns_bucket:uuid(BucketName, direct),
+                            event_log:add_log(
+                              bucket_flushed,
+                              [{bucket, list_to_binary(BucketName)},
+                               {bucket_uuid, UUID}]),
+                            ok;
+
+                        _ ->
+                            RV
+                    end;
                 false ->
                     flush_disabled
             end

@@ -28,7 +28,29 @@ event_details(audit_enabled) ->
 event_details(audit_disabled) ->
     {9217, security, info, <<"Audit disabled">>};
 event_details(audit_cfg_changed) ->
-    {9218, security, info, <<"Audit configuration change">>}.
+    {9218, security, info, <<"Audit configuration change">>};
+
+%% event_ids block for Data related events: [8192, ... 9215]
+event_details(bucket_created) ->
+    {8192, data, info, <<"Bucket created">>};
+event_details(bucket_deleted) ->
+    {8193, data, info, <<"Bucket deleted">>};
+event_details(scope_created) ->
+    {8194, data, info, <<"Scope created">>};
+event_details(scope_deleted) ->
+    {8195, data, info, <<"Scope deleted">>};
+event_details(collection_created) ->
+    {8196, data, info, <<"Collection created">>};
+event_details(collection_deleted) ->
+    {8197, data, info, <<"Collection deleted">>};
+event_details(bucket_flushed) ->
+    {8198, data, info, <<"Bucket flushed">>};
+event_details(bucket_online) ->
+    {8199, data, info, <<"Bucket online">>};
+event_details(bucket_offline) ->
+    {8200, data, info, <<"Bucket offline">>};
+event_details(bucket_cfg_changed) ->
+    {8201, data, info, <<"Bucket configuration changed">>}.
 
 jsonify(Key, Value) when is_list(Value) ->
     [{Key, list_to_binary(Value)}].
@@ -117,6 +139,7 @@ add_log(Event, Extras) ->
                                  build_mandatory_attributes(Event),
                                  [{uuid, Id}],
                                  build_extra_attributes(Extras)]),
+
             event_log_server:log(Timestamp, Id, Log);
         false ->
             ok

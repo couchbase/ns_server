@@ -111,7 +111,8 @@
          config_upgrade_to_65/1,
          config_upgrade_to_66/1,
          upgrade_to_chronicle/2,
-         chronicle_upgrade_to_NEO/1]).
+         chronicle_upgrade_to_NEO/1,
+         extract_bucket_props/1]).
 
 
 %%%===================================================================
@@ -883,7 +884,7 @@ do_delete_bucket(chronicle, BucketName) ->
     RootKey = root(),
     PropsKey = sub_key(BucketName, props),
     RV = chronicle_kv:transaction(
-           kv, [RootKey, PropsKey, nodes_wanted],
+           kv, [RootKey, PropsKey, nodes_wanted, uuid_key(BucketName)],
            fun (Snapshot) ->
                    BucketNames = get_bucket_names(Snapshot),
                    case lists:member(BucketName, BucketNames) of
@@ -892,7 +893,7 @@ do_delete_bucket(chronicle, BucketName) ->
                        true ->
                            {ok, BucketConfig} =
                                get_bucket(BucketName, Snapshot),
-
+                           UUID = uuid(BucketName, Snapshot),
                            NodesWanted =
                                ns_cluster_membership:nodes_wanted(Snapshot),
                            KeysToDelete =
@@ -903,7 +904,7 @@ do_delete_bucket(chronicle, BucketName) ->
                            {commit,
                             [{set, RootKey, BucketNames -- [BucketName]} |
                              [{delete, K} || K <- KeysToDelete]],
-                            BucketConfig}
+                            [{uuid, UUID}] ++ BucketConfig}
                    end
            end),
     case RV of
@@ -922,7 +923,18 @@ update_bucket_props(Type, StorageMode, BucketName, Props) ->
     case lists:member(BucketName,
                       get_bucket_names_of_type({Type, StorageMode})) of
         true ->
-            update_bucket_props(BucketName, Props);
+            {ok, BucketConfig} = ns_bucket:get_bucket(BucketName),
+            PrevProps = extract_bucket_props(BucketConfig),
+            DisplayBucketType = ns_bucket:display_type(Type, StorageMode),
+
+            %% Update the bucket properties.
+            update_bucket_props(BucketName, Props),
+
+            event_log:add_log(bucket_cfg_changed,
+                              [{bucket, list_to_binary(BucketName)},
+                               {type, DisplayBucketType},
+                               {old_settings, {struct, PrevProps}},
+                               {new_settings, {struct, Props}}]);
         false ->
             {exit, {not_found, BucketName}, []}
     end.
@@ -1354,6 +1366,20 @@ chronicle_upgrade_to_NEO(ChronicleTxn) ->
               chronicle_upgrade_bucket(Name, Acc)
       end, ChronicleTxn, BucketNames).
 
+%% returns proplist with only props useful for ns_bucket
+extract_bucket_props(Props) ->
+    [X || X <-
+              [lists:keyfind(Y, 1, Props) ||
+                  Y <- [num_replicas, replica_index, ram_quota,
+                        durability_min_level, frag_percent,
+                        storage_quota_percentage,
+                        pitr_enabled, pitr_granularity, pitr_max_history_age,
+                        moxi_port, autocompaction,
+                        purge_interval, flush_enabled, num_threads,
+                        eviction_policy, conflict_resolution_type,
+                        drift_ahead_threshold_ms, drift_behind_threshold_ms,
+                        storage_mode, max_ttl, compression_mode]],
+          X =/= false].
 
 -ifdef(TEST).
 min_live_copies_test() ->
