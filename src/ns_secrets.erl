@@ -138,10 +138,10 @@ extract_pkey_pass_with_script(PassSettings) ->
                            end,
             ?log_info("Script executed successfully"),
             fun () -> binary_to_list(MaybeTrimmed) end;
-        {Status, _} ->
+        {Status, Output} ->
             ?log_error("External pkey passphrase script ~s ~p finished "
-                       "with exit status: ~p, ignoring returned data",
-                       [Path, Args, Status]),
+                       "with exit status: ~p:~n~s",
+                       [Path, Args, Status, Output]),
             fun () -> undefined end
     catch
         _:E:ST ->
