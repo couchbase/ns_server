@@ -40,11 +40,10 @@ handle_get_trustedCAs(Req) ->
                  BuildHostname = menelaus_web_node:build_node_hostname(
                                    ns_config:latest(), _, misc:localhost()),
                  CAHostnames = [BuildHostname(N) || N <- CANodes],
-                 CAWarnings = [{warning_props(W)} || {{ca, Id}, W} <- Warnings,
-                                                     Id =:= CAId],
-                 {JSONObjProps} = jsonify_cert_props(Props),
-                 {JSONObjProps ++ [{warnings, CAWarnings},
-                                   {nodes, CAHostnames}]}
+                 CAWarnings = [W || {{ca, Id}, W} <- Warnings, Id =:= CAId],
+                 {JSONObjProps} = jsonify_cert_props(
+                                    [{warnings, CAWarnings} | Props]),
+                 {JSONObjProps ++ [{nodes, CAHostnames}]}
              end, ns_server_cert:trusted_CAs(props)),
     menelaus_util:reply_json(Req, Json).
 
@@ -162,6 +161,8 @@ jsonify_cert_props(Props) ->
                               KV
                       end, PKeySettings)},
                {true, {privateKeyPassphrase, PKeySettingsJSON}};
+           ({warnings, Warnings}) ->
+               {true, {warnings, [{warning_props(W)} || W <- Warnings]}};
            ({_, _}) ->
                false
        end, Props)}.
@@ -409,12 +410,13 @@ validate_password(Name, State) ->
 handle_get_node_certificates(Req) ->
     Nodes = ns_node_disco:nodes_wanted(),
     Localhost = misc:localhost(),
+    AllWarnings = ns_server_cert:get_warnings(),
     NodeCerts =
         lists:filtermap(
           fun (N) ->
               Hostname = menelaus_web_node:build_node_hostname(
                            ns_config:latest(), N, Localhost),
-              case prepare_node_cert_info(N) of
+              case prepare_node_cert_info(N, AllWarnings) of
                   {ok, {JsonObjProplist}} ->
                       {true, {[{node, Hostname} | JsonObjProplist]}};
                   {error, not_found} ->
@@ -428,7 +430,7 @@ handle_get_node_certificate(NodeId, Req) ->
 
     case menelaus_web_node:find_node_hostname(NodeId, Req) of
         {ok, Node} ->
-            case prepare_node_cert_info(Node) of
+            case prepare_node_cert_info(Node, ns_server_cert:get_warnings()) of
                 {ok, CertJson} ->
                     menelaus_util:reply_json(Req, CertJson);
                 {error, not_found} ->
@@ -444,10 +446,12 @@ handle_get_node_certificate(NodeId, Req) ->
               404)
     end.
 
-prepare_node_cert_info(Node) ->
+prepare_node_cert_info(Node, AllWarnings) ->
     case ns_server_cert:get_node_cert_info(Node) of
         [] -> {error, not_found};
         Props ->
+            Warnings = [W || {{node, WarnNode}, W} <- AllWarnings,
+                             WarnNode =:= Node],
             Filtered =
                 lists:filtermap(
                     fun ({subject, _}) -> true;
@@ -458,7 +462,7 @@ prepare_node_cert_info(Node) ->
                         ({pkey_passphrase_settings, _}) -> true;
                         (_) -> false
                     end, Props),
-            {ok, jsonify_cert_props(Filtered)}
+            {ok, jsonify_cert_props([{warnings, Warnings} | Filtered])}
     end.
 
 allowed_values(Key) ->
