@@ -532,6 +532,9 @@ main_with_everything(StaticTerms, NSConfig, Node) ->
     NSLogPath = search_config(search_config_for_node(NSConfig, Node, ns_log, []),
                               filename,
                               ""),
+   EventLogPath = search_config(search_config_for_node(NSConfig, Node,
+                                                       event_log, []),
+                                filename, ""),
 
     Nodes = [node_host(N) || N <- confget(#config.nodes_wanted)],
 
@@ -556,6 +559,7 @@ main_with_everything(StaticTerms, NSConfig, Node) ->
          {path_config_datadir, DataDir},
          {node, Node},
          {ns_log_path, NSLogPath},
+         {event_log_path, EventLogPath},
          {log_path, search_config(StaticTerms, error_logger_mf_dir, "")},
          {memcached_admin, MCDAdmin},
          {memcached_logs_path, MCDLogs},

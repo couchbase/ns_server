@@ -1636,6 +1636,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
          for path in glob.glob(os.path.join(rebdir, "rebalance_report*"))],
 
         CollectFile("NS Log", read_guts(guts, "ns_log_path")),
+        CollectFile("Event Logs", read_guts(guts, "event_log_path")),
 
         AllOsTask("Phosphor Trace",
                   ["kv_trace_dump",
@@ -2150,6 +2151,9 @@ def main():
             "ns_log_path": os.path.join(
                 prefix,
                 "var/lib/couchbase/ns_log"),
+            "event_log_path": os.path.join(
+                prefix,
+                "var/lib/couchbase/event_log"),
             "log_path": os.path.join(
                 prefix,
                 "var/lib/couchbase/logs"),
