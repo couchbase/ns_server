@@ -13,6 +13,7 @@
 -include("cut.hrl").
 
 -include_lib("public_key/include/public_key.hrl").
+-include_lib("public_key/asn1/PKCS-FRAME.hrl").
 
 -export([decode_cert_chain/1,
          decode_single_certificate/1,
@@ -297,11 +298,15 @@ validate_pkey(PKeyPemBin, PassFun) ->
                     ?log_debug("Invalid pkey type: ~p", [Other]),
                     {error, {invalid_pkey, Type}}
             end;
-        [{_Type, _, _CipherInfo} = Entry] ->
-            try element(1, public_key:pem_entry_decode(Entry, PassFun())) of
-                'RSAPrivateKey' -> {ok, Entry};
-                'DSAPrivateKey' -> {ok, Entry};
-                Other ->
+        [{_Type, _, CipherInfo} = Entry] ->
+            try {supported_pkey_cipher(CipherInfo),
+                 element(1, public_key:pem_entry_decode(Entry, PassFun()))} of
+                {true, 'RSAPrivateKey'} -> {ok, Entry};
+                {true, 'DSAPrivateKey'} -> {ok, Entry};
+                {false, _} ->
+                    ?log_error("Unsupported pkey cipher: ~p", [CipherInfo]),
+                    {error, {invalid_pkey_cipher, CipherInfo}};
+                {true, Other} ->
                     ?log_debug("Invalid pkey type: ~p", [Other]),
                     {error, {invalid_pkey, Other}}
             catch
@@ -320,6 +325,10 @@ validate_pkey(PKeyPemBin, PassFun) ->
                        [{T, E, S}]),
             {error, malformed_pkey}
     end.
+
+%% Support PKCS-5v2 only
+supported_pkey_cipher({_Name, #'PBES2-params'{}}) -> true;
+supported_pkey_cipher({_Name, _}) -> false.
 
 validate_cert_and_pkey({'Certificate', DerCert, not_encrypted},
                        PKey, PassphraseFun) ->

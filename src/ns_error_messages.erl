@@ -266,6 +266,8 @@ reload_node_certificate_error({read_pkey, Path, Reason}) ->
 reload_node_certificate_error({read_chain, Path, Reason}) ->
     list_to_binary(io_lib:format("Unable to read certificate chain file ~s. ~s",
                                  [Path, file_read_error(Reason)]));
+reload_node_certificate_error({invalid_pkey_cipher, {_, _}}) ->
+    <<"Invalid private key cipher. Only PKCS#5 v2.0 algorithms are supported">>;
 reload_node_certificate_error({invalid_pkey, BadType}) ->
     list_to_binary(io_lib:format("Invalid private key type: ~s.",
                                  [BadType]));
