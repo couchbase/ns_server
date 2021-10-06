@@ -1555,7 +1555,7 @@ is_magma(_Params, BucketCfg, false = _IsNew) ->
 parse_validate_frag_percent(Params, BucketConfig, IsNew, Version,
                             IsEnterprise) ->
     Percent = proplists:get_value("fragmentationPercentage", Params),
-    IsCompat = cluster_compat_mode:is_version_70(Version),
+    IsCompat = cluster_compat_mode:is_version_NEO(Version),
     IsMagma = is_magma(Params, BucketConfig, IsNew),
     parse_validate_frag_percent_inner(IsEnterprise, IsCompat, Percent,
                                       BucketConfig, IsNew, IsMagma).
@@ -1575,7 +1575,8 @@ parse_validate_frag_percent_inner(false = _IsEnterprise, _IsCompat, _Percent,
 parse_validate_frag_percent_inner(_IsEnterprise, false = _IsCompat, _Percent,
                                   _BucketCfg, _IsNew, _IsMagma) ->
     {error, fragmentationPercentage,
-     <<"Fragmentation percentage cannot be set until the cluster is fully 7.0">>};
+     <<"Fragmentation percentage cannot be set until the cluster is fully "
+       "upgraded to NEO">>};
 parse_validate_frag_percent_inner(true = _IsEnterprise, true = _IsCompat,
                                   undefined, _BucketCfg, _IsNew,
                                   false = _IsMagma) ->
