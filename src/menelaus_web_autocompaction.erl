@@ -304,7 +304,7 @@ parse_validate_magma_fragmentation_percentage(Params) ->
                 undefined ->
                     [];
                 _ ->
-                    [{error, "magmaFragementationPercentage",
+                    [{error, "magmaFragmentationPercentage",
                       <<"Magma Fragmentation Percentage is not allowed until "
                         "entire cluster is upgraded to NEO">>}]
             end
@@ -403,29 +403,47 @@ basic_parse_validate_settings_test() ->
     meck:new(cluster_compat_mode, [passthrough]),
     meck:expect(cluster_compat_mode, is_cluster_NEO,
                 fun () -> true end),
-    {ok, Stuff0, []} =
-        parse_validate_settings([{"databaseFragmentationThreshold[percentage]", "10"},
-                                 {"viewFragmentationThreshold[percentage]", "20"},
-                                 {"indexFragmentationThreshold[size]", "42"},
-                                 {"indexFragmentationThreshold[percentage]", "43"},
-                                 {"magmaFragmentationPercentage", "51"},
-                                 {"parallelDBAndViewCompaction", "false"},
-                                 {"allowedTimePeriod[fromHour]", "0"},
-                                 {"allowedTimePeriod[fromMinute]", "1"},
-                                 {"allowedTimePeriod[toHour]", "2"},
-                                 {"allowedTimePeriod[toMinute]", "3"},
-                                 {"allowedTimePeriod[abortOutside]", "false"}], false),
+    Settings = [{"databaseFragmentationThreshold[percentage]", "10"},
+                {"viewFragmentationThreshold[percentage]", "20"},
+                {"indexFragmentationThreshold[size]", "42"},
+                {"indexFragmentationThreshold[percentage]", "43"},
+                {"magmaFragmentationPercentage", "51"},
+                {"parallelDBAndViewCompaction", "false"},
+                {"allowedTimePeriod[fromHour]", "0"},
+                {"allowedTimePeriod[fromMinute]", "1"},
+                {"allowedTimePeriod[toHour]", "2"},
+                {"allowedTimePeriod[toMinute]", "3"},
+                {"allowedTimePeriod[abortOutside]", "false"}],
+
+    Expected = [{allowed_time_period, [{from_hour, 0},
+                                       {to_hour, 2},
+                                       {from_minute, 1},
+                                       {to_minute, 3},
+                                       {abort_outside, false}]},
+                {database_fragmentation_threshold, {10, undefined}},
+                {magma_fragmentation_percentage, 51},
+                {parallel_db_and_view_compaction, false},
+                {view_fragmentation_threshold, {20, undefined}}],
+
+    {ok, Stuff0, []} = parse_validate_settings(Settings, false),
     Stuff1 = lists:sort(Stuff0),
-    ?assertEqual([{allowed_time_period, [{from_hour, 0},
-                                         {to_hour, 2},
-                                         {from_minute, 1},
-                                         {to_minute, 3},
-                                         {abort_outside, false}]},
-                  {database_fragmentation_threshold, {10, undefined}},
-                  {magma_fragmentation_percentage, 51},
-                  {parallel_db_and_view_compaction, false},
-                  {view_fragmentation_threshold, {20, undefined}}],
-                 Stuff1),
+    ?assertEqual(Expected, Stuff1),
+
+    meck:expect(cluster_compat_mode, is_cluster_NEO,
+                fun () -> false end),
+    Stuff2 = parse_validate_settings(Settings, false),
+    ?assertEqual(
+       {errors,[{<<"magmaFragmentationPercentage">>,
+         <<"Magma Fragmentation Percentage is not allowed until "
+           "entire cluster is upgraded to NEO">>}]},
+       Stuff2),
+
+    %% Show that magmaFragmentation isn't required
+    Settings3 = lists:keydelete("magmaFragmentationPercentage", 1, Settings),
+    Expected3 = lists:keydelete(magma_fragmentation_percentage, 1, Expected),
+    {ok, Stuff3, []} = parse_validate_settings(Settings3, false),
+    ?assertEqual(lists:sort(Expected3), lists:sort(Stuff3)),
+
     meck:unload(cluster_compat_mode),
     ok.
 
