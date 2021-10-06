@@ -1591,9 +1591,8 @@ parse_validate_frag_percent_inner(true = _IsEnterprise, true = _IsCompat,
                                   true = _IsMagma) ->
     DefaultVal = case IsNew of
                      true ->
-                         Percent =
-                            compaction_daemon:global_magma_frag_percent(),
-                         integer_to_list(Percent);
+                         Pct = compaction_daemon:global_magma_frag_percent(),
+                         integer_to_list(Pct);
                      false -> proplists:get_value(frag_percent, BucketCfg)
                  end,
     validate_with_missing(Percent, DefaultVal, IsNew,
