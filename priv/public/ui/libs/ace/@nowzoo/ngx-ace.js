@@ -1,3 +1,4 @@
+import '../ace-loader.js';
 import ace from '../ace.js';
 import "/ui/web_modules/common/tslib.es6-c4a4947b.js";
 import "/ui/web_modules/common/mergeMap-64c6f393.js";
