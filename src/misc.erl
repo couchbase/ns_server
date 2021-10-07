@@ -123,12 +123,17 @@ timestamp_utc_iso8601_basic() ->
     iso_8601_fmt_datetime(erlang:universaltime(), "", "").
 
 %% Time is as per erlang:timestamp/0
-timestamp_local_iso8601(Time) ->
-    LocalTime = calendar:now_to_local_time(Time),
+timestamp_iso8601(Time, Where) ->
     UTCTime = calendar:now_to_universal_time(Time),
-    UTCOffset = get_utc_offset(LocalTime, UTCTime),
     Millis = erlang:element(3, Time) div 1000,
-    iso_8601_fmt(LocalTime, Millis, UTCOffset).
+    case Where of
+        local ->
+            LocalTime = calendar:now_to_local_time(Time),
+            UTCOffset = get_utc_offset(LocalTime, UTCTime),
+            iso_8601_fmt(LocalTime, Millis, UTCOffset);
+        utc ->
+            iso_8601_fmt(UTCTime, Millis, {0,0})
+    end.
 
 -ifdef(TEST).
 iso_8601_fmt_test() ->

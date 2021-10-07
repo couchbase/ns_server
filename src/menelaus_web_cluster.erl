@@ -648,6 +648,12 @@ do_handle_add_node(Req, GroupUUID) ->
                    Services) of
                 {ok, OtpNode} ->
                     ns_audit:add_node(Req, Hostname, Port, User, GroupUUID, Services, OtpNode),
+                    ServicesJSON = [ns_cluster_membership:json_service_name(S)
+                                    || S <- Services],
+                    event_log:add_log(node_join_success,
+                                      [{node_added, list_to_binary(Hostname)},
+                                       {node_services, ServicesJSON}]),
+
                     reply_json(Req, {struct, [{otpNode, OtpNode}]}, 200);
                 {error, What, Message} ->
                     reply_json(Req, [Message], add_node_error_code(What))

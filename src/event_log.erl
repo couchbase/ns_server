@@ -1,5 +1,5 @@
 %% @author Couchbase <info@couchbase.com>
-%% @copyright 2010-Present Couchbase, Inc.
+%% @copyright 2021-Present Couchbase, Inc.
 %%
 %% Use of this software is governed by the Business Source License included
 %% in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
@@ -13,7 +13,14 @@
 -include("cut.hrl").
 
 -export([validators/0,
-         log/1]).
+         log/1,
+         add_log/1,
+         add_log/2]).
+
+-spec event_details(atom()) -> {integer(), atom(), atom(), binary()}.
+%% event_ids block for ns_server related events: [0-1023]
+event_details(node_join_success) ->
+    {0, ns_server, info, <<"Node successfully joined the cluster">>}.
 
 jsonify(Key, Value) when is_list(Value) ->
     [{Key, list_to_binary(Value)}].
@@ -75,6 +82,37 @@ validators() ->
 build_nodename() ->
     {_, Name} = misc:node_name_host(node()),
     jsonify(node, Name).
+
+build_event_details(Event) ->
+    {Code, Comp, Level, Desc} = event_details(Event),
+    [{event_id, Code}, {component, Comp},
+     {description, Desc}, {severity, Level}].
+
+build_mandatory_attributes(Event) ->
+    [build_event_details(Event), build_nodename()].
+
+build_extra_attributes([]) ->
+    [];
+build_extra_attributes(Extra) ->
+    [{extra_attributes, {struct, lists:flatten(Extra)}}].
+
+add_log(Event) ->
+    add_log(Event, []).
+
+add_log(Event, Extras) ->
+    %% Event logs are enabled only when all the nodes are at 7.1.0.
+    case cluster_compat_mode:is_cluster_NEO() of
+        true ->
+            Timestamp = misc:timestamp_iso8601(erlang:timestamp(), utc),
+            Id = misc:uuid_v4(),
+            Log = lists:flatten([jsonify(timestamp, Timestamp),
+                                 build_mandatory_attributes(Event),
+                                 [{uuid, Id}],
+                                 build_extra_attributes(Extras)]),
+            event_log_server:log(Timestamp, Id, Log);
+        false ->
+            ok
+    end.
 
 log(Event) ->
     {JSON} = ejson:decode(Event),

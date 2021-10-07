@@ -97,7 +97,7 @@ diff_timestamp(EndTS, StartTS) ->
 binarify_timestamp(false) ->
     false;
 binarify_timestamp(Time) ->
-    erlang:list_to_binary(misc:timestamp_local_iso8601(Time)).
+    erlang:list_to_binary(misc:timestamp_iso8601(Time, local)).
 
 get_per_stage_info(#stage_info{
                       per_stage_progress = PerStageProgress,
