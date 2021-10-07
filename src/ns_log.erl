@@ -63,7 +63,7 @@ crash_consumption_loop_tramp() ->
 
 crash_consumption_loop() ->
     {Name, OsPid, Status, Messages} =
-      ns_crash_log:consume_oldest_message_from_inside_ns_server(),
+      ns_babysitter_log:consume_oldest_message_from_inside_ns_server(),
     LogLevel = case Status of
                  0 ->
                      debug;

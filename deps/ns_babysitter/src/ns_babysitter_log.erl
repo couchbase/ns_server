@@ -6,7 +6,7 @@
 %% in that file, in accordance with the Business Source License, use of this
 %% software will be governed by the Apache License, Version 2.0, included in
 %% the file licenses/APL2.txt.
--module(ns_crash_log).
+-module(ns_babysitter_log).
 
 -include("ns_common.hrl").
 

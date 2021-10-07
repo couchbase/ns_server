@@ -23,7 +23,7 @@ init([]) ->
           child_specs()}}.
 
 child_specs() ->
-    [{ns_crash_log, {ns_crash_log, start_link, []},
+    [{ns_babysitter_log, {ns_babysitter_log, start_link, []},
       permanent, 1000, worker, []}] ++
         case ns_config_default:init_is_enterprise() of
             true ->

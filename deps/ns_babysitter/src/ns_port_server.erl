@@ -149,10 +149,10 @@ handle_info({_Port, {exit_status, 0} = Msg}, State) ->
     ?log_info("Got ~p from port ~p. Exiting normally", [Msg, port_name(State)]),
     {stop, normal, State};
 handle_info({_Port, {exit_status, Status}}, State) ->
-    ns_crash_log:record_crash({port_name(State),
-                               get_os_pid(State),
-                               Status,
-                               get_death_messages(State)}),
+    ns_babysitter_log:record_crash({port_name(State),
+                                    get_os_pid(State),
+                                    Status,
+                                    get_death_messages(State)}),
     {stop, {abnormal, Status}, State};
 handle_info({'EXIT', Port, Reason} = Exit, #state{port=Port} = State) ->
     ?log_error("Got unexpected exit signal from port: ~p. Exiting.", [Exit]),
