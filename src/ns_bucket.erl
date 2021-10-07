@@ -79,6 +79,7 @@
          storage_mode/1,
          storage_backend/1,
          raw_ram_quota/1,
+         magma_fragmentation_percentage/1,
          update_maps/3,
          update_buckets/3,
          set_bucket_config/2,
@@ -460,6 +461,23 @@ raw_ram_quota(Bucket) ->
     case proplists:get_value(ram_quota, Bucket) of
         X when is_integer(X) ->
             X
+    end.
+
+magma_fragmentation_percentage(BucketConfig) ->
+    BucketSetting =
+        case proplists:get_value(autocompaction, BucketConfig, false) of
+            false ->
+                false;
+            Settings ->
+                proplists:get_value(magma_fragmentation_percentage, Settings,
+                                    false)
+        end,
+
+    case BucketSetting of
+        false ->
+            compaction_daemon:global_magma_frag_percent();
+        Pct ->
+            Pct
     end.
 
 -define(FS_HARD_NODES_NEEDED, 4).

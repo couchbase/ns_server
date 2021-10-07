@@ -333,10 +333,8 @@ build_pitr_dynamic_bucket_info(BucketConfig) ->
 build_magma_bucket_info(BucketConfig) ->
     case ns_bucket:storage_mode(BucketConfig) of
         magma ->
-            Default = compaction_daemon:global_magma_frag_percent(),
-            [{fragmentationPercentage, proplists:get_value(frag_percent,
-                                                           BucketConfig,
-                                                           Default)},
+            Pct = ns_bucket:magma_fragmentation_percentage(BucketConfig),
+            [{fragmentationPercentage, Pct},
              {storageQuotaPercentage,
               proplists:get_value(storage_quota_percentage, BucketConfig,
                                   ?MAGMA_STORAGE_QUOTA_PERCENTAGE)}];
@@ -836,10 +834,27 @@ basic_bucket_params_screening(Ctx, Params) ->
     %% Basic parameter checking has been done. Take the non-error key/values
     %% and do additional checking (e.g. relationships between different
     %% keys).
-    OKs = [{K, V} || {ok, K, V} <- Candidates],
+    OKs0 = [{K, V} || {ok, K, V} <- Candidates],
+    %% TODO: remove once clients transition off fragmentationPercentage
+    OKs = maybe_adjust_frag_percents(OKs0),
     Errors =  [{K, V} || {error, K, V} <- Candidates],
     AdditionalErrors = additional_bucket_params_validation(OKs, Ctx),
     {OKs, Errors ++ AdditionalErrors}.
+
+%% TODO: deprecate once fragmentationPercentage is no longer used.
+%% Take the value specified in frag_percent and move it to the
+%% magma_fragmentation_percentage in the autocompaction settings.
+maybe_adjust_frag_percents(Params) ->
+    case proplists:get_value(frag_percent, Params) of
+        undefined ->
+            Params;
+        Pct ->
+            %% Only one autocompaction setting for magma
+            NewSettings = [{magma_fragmentation_percentage, Pct}],
+            NewParams = lists:keystore(autocompaction, 1, Params,
+                                       {autocompaction, NewSettings}),
+            proplists:delete(frag_percent, NewParams)
+    end.
 
 validate_common_params(#bv_ctx{bucket_name = BucketName,
                                bucket_config = BucketConfig, new = IsNew,
