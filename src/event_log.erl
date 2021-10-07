@@ -21,6 +21,8 @@
 %% event_ids block for ns_server related events: [0-1023]
 event_details(node_join_success) ->
     {0, ns_server, info, <<"Node successfully joined the cluster">>};
+event_details(service_started) ->
+    {1, ns_server, info, <<"Service started">>};
 
 %% event_ids block for Security related events: [9216, ..., 10239]
 event_details(audit_enabled) ->

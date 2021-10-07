@@ -83,7 +83,8 @@ child_specs() ->
      {timer_lag_recorder, {timer_lag_recorder, start_link, []},
       permanent, 1000, worker, []},
 
-     {ns_crash_log_consumer, {ns_log, start_link_crash_consumer, []},
+     {ns_babysitter_log_consumer,
+      {ns_log, start_link_babysitter_log_consumer, []},
       {permanent, 4}, 1000, worker, []},
 
      {prometheus_cfg, {prometheus_cfg, start_link, []},

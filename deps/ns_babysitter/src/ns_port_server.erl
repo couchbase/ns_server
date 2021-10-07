@@ -236,7 +236,7 @@ log(#state{logger = undefined} = State) ->
 log(_) ->
     ok.
 
-port_open({_Name, Cmd, Args, OptsIn}, #state{logger = Logger}) ->
+port_open({Name, Cmd, Args, OptsIn}, #state{logger = Logger}) ->
     %% Incoming options override existing ones (specified in proplists docs)
     Opts0 = OptsIn ++ [{args, Args}, exit_status,
                        stream, binary, stderr_to_stdout],
@@ -274,6 +274,8 @@ port_open({_Name, Cmd, Args, OptsIn}, #state{logger = Logger}) ->
                       end,
                 {P, Pid}
         end,
+
+    ns_babysitter_log:record_service_started(Name),
 
     case WriteDataArg of
         undefined ->

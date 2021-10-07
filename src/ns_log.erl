@@ -27,7 +27,7 @@
 %% API
 -export([start_link/0]).
 
--export([start_link_crash_consumer/0]).
+-export([start_link_babysitter_log_consumer/0]).
 
 -export([log/6, log/7, recent/0, recent/1, delete_log/0]).
 
@@ -55,15 +55,18 @@ start_link() ->
     gossip_replicator:start_link(?SERVER, [?MODULE, FileName, ?PENDING_MAX_SIZE,
                                            ?RECENT_MAX_SIZE]).
 
-start_link_crash_consumer() ->
-    {ok, proc_lib:spawn_link(fun crash_consumption_loop_tramp/0)}.
+start_link_babysitter_log_consumer() ->
+    {ok, proc_lib:spawn_link(fun babysitter_log_consumption_loop_tramp/0)}.
 
-crash_consumption_loop_tramp() ->
-    misc:delaying_crash(1000, fun crash_consumption_loop/0).
+babysitter_log_consumption_loop_tramp() ->
+    misc:delaying_crash(1000, fun babysitter_log_consumption_loop/0).
 
-crash_consumption_loop() ->
-    {Name, OsPid, Status, Messages} =
-      ns_babysitter_log:consume_oldest_message_from_inside_ns_server(),
+babysitter_log_consumption_loop() ->
+    consume_log(
+      ns_babysitter_log:get_oldest_message_from_inside_ns_server()),
+    babysitter_log_consumption_loop().
+
+consume_log({crash, {Name, OsPid, Status, Messages}}) ->
     LogLevel = case Status of
                  0 ->
                      debug;
@@ -84,9 +87,9 @@ crash_consumption_loop() ->
                         end,
             event_log:add_log(memcached_crashed, OsPidJSON);
         _ -> ok
-    end,
-
-    crash_consumption_loop().
+    end;
+consume_log({service_started, Name}) ->
+    event_log:add_log(service_started, [{name, Name}]).
 
 %%--------------------------------------------------------------------
 %%% callbacks for gossip_replicator.
