@@ -550,6 +550,15 @@ send_heartbeat_with_peers(Nodes, StateName, Peers) ->
 start_master(StateData) ->
     announce_leader(node()),
     {ok, Pid} = mb_master_sup:start_link(),
+    OldMaster = StateData#state.master,
+    OldMasterJSON = case OldMaster of
+                        undefined ->
+                            [];
+                        _ ->
+                            [{old_master, OldMaster}]
+                    end,
+    event_log:add_log(master_selected,
+                      [{new_master, node()}] ++ OldMasterJSON),
     StateData#state{child = Pid,
                     master = node(),
                     higher_priority_nodes = []}.

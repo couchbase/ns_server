@@ -55,6 +55,8 @@ event_details(auto_failover_failed) ->
     {16, ns_server, error, <<"Auto failover failed">>};
 event_details(auto_failover_warning) ->
     {17, ns_server, warn, <<"Auto failover warning">>};
+event_details(master_selected) ->
+    {18, ns_server, info, <<"Master selected">>};
 
 %% event_ids block for Security related events: [9216, ..., 10239]
 event_details(audit_enabled) ->
