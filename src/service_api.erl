@@ -45,11 +45,25 @@ start_topology_change(Pid, Id, Rev, Type, KeepNodes, EjectNodes) ->
                  topology_change_req(Id, Rev, Type, KeepNodes, EjectNodes)).
 
 health_check(Service) ->
-    perform_call(get_label(Service), "HealthCheck", empty_req(),
-                 #{silent => true}).
+    try do_perform_call(
+          get_label(Service), "HealthCheck", empty_req(), #{silent => true}) of
+        Result ->
+            handle_autofailover_result(Result)
+    catch T:E ->
+            ?log_debug("Exception while calling HealthCheck: ~p:~p", [T, E]),
+            {error, case {T, E} of
+                        {exit, {timeout, _}} ->
+                            "HealthCheck call resulted in timeout";
+                        {exit, {noproc, _}} ->
+                            "Connection to the service is lost";
+                        _ ->
+                            "Unknown error"
+                    end}
+    end.
 
 is_safe(Service, NodeIds) ->
-    perform_call(get_label(Service), "IsSafe", NodeIds).
+    handle_autofailover_result(
+      do_perform_call(get_label(Service), "IsSafe", NodeIds, #{})).
 
 get_label(Service) when is_atom(Service) ->
     atom_to_list(Service) ++ "-service_api".
@@ -59,10 +73,12 @@ perform_call(PidOrLabel, Name, Arg) ->
     perform_call(PidOrLabel, Name, Arg, #{}).
 
 perform_call(PidOrLabel, Name, Arg, Opts) ->
+    handle_result(do_perform_call(PidOrLabel, Name, Arg, Opts)).
+
+do_perform_call(PidOrLabel, Name, Arg, Opts) ->
     FullName = "ServiceAPI." ++ Name,
-    handle_result(json_rpc_connection:perform_call(
-                    PidOrLabel, FullName, Arg,
-                    maps:put(timeout, ?RPC_TIMEOUT, Opts))).
+    json_rpc_connection:perform_call(
+      PidOrLabel, FullName, Arg, maps:put(timeout, ?RPC_TIMEOUT, Opts)).
 
 handle_result({ok, null}) ->
     ok;
@@ -72,6 +88,15 @@ handle_result({error, Error}) when is_binary(Error) ->
     {error, map_error(Error)};
 handle_result({error, _} = Error) ->
     Error.
+
+handle_autofailover_result({ok, null}) ->
+    ok;
+handle_autofailover_result({ok, _} = Result) ->
+    Result;
+handle_autofailover_result({error, Error}) when is_binary(Error) ->
+    {error, binary_to_list(Error)};
+handle_autofailover_result({error, Error}) ->
+    {error, lists:flatten(io_lib:format("Unexpected error: ~p", [Error]))}.
 
 empty_req() ->
     {[]}.

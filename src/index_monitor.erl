@@ -25,6 +25,7 @@
           disk_failures = 0 :: integer(),
           prev_disk_failures :: integer() | undefined,
           last_tick_time = 0 :: integer(),
+          last_tick_error = ok :: ok | {error, string()},
           num_samples :: integer() | undefined,
           health_info = <<>> :: binary()
          }).
@@ -46,7 +47,9 @@ is_node_down(health_check_slow) ->
     {true, {"The index service took too long to respond to the health check",
             health_check_slow}};
 is_node_down(io_failed) ->
-    {true, {"I/O failures are detected by index service", io_failure}}.
+    {true, {"I/O failures are detected by index service", io_failure}};
+is_node_down({_, health_check_error} = Error) ->
+    {true, Error}.
 
 analyze_status(Node, AllNodes) ->
     health_monitor:analyze_local_status(
@@ -73,10 +76,12 @@ handle_cast({got_connection, Pid}, State) ->
     self() ! refresh,
     {noreply, State}.
 
-handle_call(get_nodes, _From, #state{tick = Tick,
-                                     num_samples = NumSamples,
-                                     health_info = HealthInfo,
-                                     last_tick_time = LastTickTime} = State) ->
+handle_call(get_nodes, _From,
+            #state{tick = Tick,
+                   num_samples = NumSamples,
+                   health_info = HealthInfo,
+                   last_tick_time = LastTickTime,
+                   last_tick_error = LastTickError} = State) ->
     Time =
         case Tick of
             tock ->
@@ -92,21 +97,35 @@ handle_call(get_nodes, _From, #state{tick = Tick,
                            [?MAX_HEALTH_CHECK_DURATION]),
                 health_check_slow;
             false ->
-                case is_unhealthy(HealthInfo, NumSamples) of
-                    true ->
-                        ?log_debug("Detected IO failure"),
-                        io_failed;
-                    false ->
-                        healthy
+                case LastTickError of
+                    {error, Error} ->
+                        ?log_debug("Detected health check error ~p", [Error]),
+                        {Error, health_check_error};
+                    ok ->
+                        case is_unhealthy(HealthInfo, NumSamples) of
+                            true ->
+                                ?log_debug("Detected IO failure"),
+                                io_failed;
+                            false ->
+                                healthy
+                        end
                 end
         end,
     {reply, dict:from_list([{node(), Status}]), State}.
 
-handle_info({tick, DiskFailures}, #state{tick = {tick, StartTS}} = State) ->
+handle_info({tick, HealthCheckResult},
+            #state{tick = {tick, StartTS}} = State) ->
     TS = os:timestamp(),
-    {noreply, State#state{tick = tock,
-                          disk_failures = DiskFailures,
-                          last_tick_time = timer:now_diff(TS, StartTS)}};
+    NewState = case HealthCheckResult of
+                   {ok, DiskFailures} ->
+                       State#state{disk_failures = DiskFailures,
+                                   last_tick_error = ok};
+                   {error, _} = Error ->
+                       State#state{last_tick_error = Error}
+               end,
+
+    {noreply, NewState#state{tick = tock,
+                             last_tick_time = timer:now_diff(TS, StartTS)}};
 
 handle_info(reload_config, State) ->
     NumSamples =
@@ -140,9 +159,12 @@ handle_info(refresh, #state{tick = tock,
     {noreply, resend_refresh_msg(initiate_health_check(NewState))}.
 
 health_check() ->
-    {ok, {[{<<"diskFailures">>, DiskFailures}]}} =
-        service_api:health_check(index),
-    DiskFailures.
+    case service_api:health_check(index) of
+        {ok, {[{<<"diskFailures">>, DiskFailures}]}} ->
+            {ok, DiskFailures};
+        {error, Error} ->
+            {error, Error}
+    end.
 
 resend_refresh_msg(#state{refresh_timer_ref = undefined} = State) ->
     Ref = erlang:send_after(?REFRESH_INTERVAL, self(), refresh),
