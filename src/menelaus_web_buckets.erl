@@ -1560,13 +1560,9 @@ parse_validate_frag_percent(Params, BucketConfig, IsNew, Version,
     parse_validate_frag_percent_inner(IsEnterprise, IsCompat, Percent,
                                       BucketConfig, IsNew, IsMagma).
 
-parse_validate_frag_percent_inner(false = _IsEnterprise, _IsCompat, undefined,
+parse_validate_frag_percent_inner(_IsEnterprise, _IsCompat, undefined,
                                   _BucketCfg, _IsNew, _IsMagma) ->
-    %% Community edition but percent wasn't specified
-    ignore;
-parse_validate_frag_percent_inner(_IsEnterprise, false = _IsCompat, undefined,
-                                  _BucketCfg, _IsNew, _IsMagma) ->
-    %% Not cluster compatible but percent wasn't specified
+    %% Percent wasn't specified
     ignore;
 parse_validate_frag_percent_inner(false = _IsEnterprise, _IsCompat, _Percent,
                                   _BucketCfg, _IsNew, _IsMagma) ->

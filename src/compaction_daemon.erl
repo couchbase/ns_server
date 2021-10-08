@@ -118,7 +118,9 @@ get_last_rebalance_or_failover_timestamp_compat() ->
 global_magma_frag_percent() ->
     Config = ns_config:latest(),
     GlobalSettings = get_autocompaction_settings(Config),
-    proplists:get_value(magma_fragmentation_percentage, GlobalSettings).
+    %% The default value is needed as changing a different autocompaction
+    %% setting zaps all the others (tracked by MB-48767).
+    proplists:get_value(magma_fragmentation_percentage, GlobalSettings, 50).
 
 %% While Pid is alive prevents autocompaction of views for given
 %% bucket and given node. Returned Ref can be used to uninhibit
