@@ -8,13 +8,17 @@
 %% the file licenses/APL2.txt.
 -module(ns_secrets).
 
--behaviour(active_cache).
+-behaviour(gen_server).
 
 %% API
--export([start_link/0, get_pkey_pass/0, get_pkey_pass/1,
-         get_fresh_pkey_pass/1, reset/0]).
+-export([start_link/0,
+         get_pkey_pass/0,
+         load_passphrase/1,
+         extract_pkey_pass/1]).
 
--export([init/1, translate_options/1]).
+%% gen_server callbacks
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2,
+         terminate/2]).
 
 -include("ns_common.hrl").
 
@@ -23,46 +27,41 @@
 %%%===================================================================
 
 start_link() ->
-    active_cache:start_link(?MODULE, ?MODULE, [], [{renew_interval, infinity},
-                                                   {max_size, 100},
-                                                   {value_lifetime, 3600000},
-                                                   {max_parallel_procs, 1},
-                                                   {cache_exceptions, false}]).
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-get_fresh_pkey_pass(PassSettings) ->
-    maybe_get_pkey_from_cache(update_and_get_value, PassSettings).
+load_passphrase(PassSettings) when is_list(PassSettings) ->
+    gen_server:call(?MODULE, {load_passphrase, fun () -> PassSettings end},
+                    30000).
 
 get_pkey_pass() ->
-    Props = ns_config:read_key_fast({node, node(), node_cert}, []),
-    PassSettings = proplists:get_value(pkey_passphrase_settings, Props, []),
-    get_pkey_pass(PassSettings).
-
-get_pkey_pass(PassSettings) ->
-    maybe_get_pkey_from_cache(get_value, PassSettings).
-
-maybe_get_pkey_from_cache(CacheFunction, PassSettings) ->
-    %% Avoid caching of plain pkey pass because:
-    %%  - it's static and cheap to extract in this case;
-    %%  - passing it to active cache in key is unsafe as it might be logged in
-    %%    case of a crash.
-    case proplists:get_value(type, PassSettings) of
-        plain -> extract_pkey_pass(PassSettings);
-        _ ->
-            Key = {pkey_passphrase_fun, PassSettings},
-            Fun = fun () -> extract_pkey_pass(PassSettings) end,
-            active_cache:CacheFunction(?MODULE, Key, Fun)
-    end.
-
-reset() ->
-    active_cache:flush(?MODULE).
+    gen_server:call(?MODULE, get_pkey_pass, 30000).
 
 %%%===================================================================
 %%% callbacks
 %%%===================================================================
 
-init([]) -> ok.
+init([]) -> {ok, #{}}.
 
-translate_options(Opts) -> Opts.
+handle_call({load_passphrase, PassSettingsFun}, _From, State) ->
+    Fun = case extract_pkey_pass(PassSettingsFun()) of
+              {ok, F} -> F;
+              {error, _} -> fun () -> undefined end
+          end,
+    {reply, ok, State#{pkey_passphrase_fun => Fun}};
+handle_call(get_pkey_pass, _From, State) ->
+    Res = maps:get(pkey_passphrase_fun, State, fun () -> undefined end),
+    {reply, Res, State};
+handle_call(_Request, _From, State) ->
+    {reply, unhandled, State}.
+
+handle_cast(_Msg, State) ->
+    {noreply, State}.
+
+handle_info(_Info, State) ->
+    {noreply, State}.
+
+terminate(_Reason, _State) ->
+    ok.
 
 %%%===================================================================
 %%% Internal functions
@@ -72,13 +71,13 @@ extract_pkey_pass(PassSettings) ->
     case proplists:get_value(type, PassSettings) of
         plain ->
             P = proplists:get_value(password, PassSettings),
-            fun () -> binary_to_list(P) end;
+            {ok, fun () -> binary_to_list(P) end};
         script ->
             extract_pkey_pass_with_script(PassSettings);
         rest ->
             extract_pkey_pass_with_rest(PassSettings);
         undefined ->
-            fun () -> undefined end
+            {ok, fun () -> undefined end}
     end.
 
 extract_pkey_pass_with_rest(PassSettings) ->
@@ -103,24 +102,26 @@ extract_pkey_pass_with_rest(PassSettings) ->
                      end,
     Options = AddrSettings ++ VerifySettings,
     Headers = proplists:get_value(headers, PassSettings, []),
+    ?log_info("Calling REST API: ~s", [URL]),
     try rest_utils:request(<<"pkey_passphrase">>, URL, "GET", Headers, <<>>,
                            Timeout, [{connect_options, Options}]) of
         {ok, {{Status, _}, _RespHeaders, RespBody}} when Status == 200 ->
-            fun () -> binary_to_list(RespBody) end;
+            ?log_info("PKey passphrase REST API call ~s succeded", [URL]),
+            {ok, fun () -> binary_to_list(RespBody) end};
         {ok, {{Status, Reason}, _RespHeaders, _RespBody}} ->
             ?log_error("PKey passphrase REST API call ~s returned ~p ~p",
                        [URL, Status, Reason]),
-            fun () -> undefined end;
+            {error, {rest_failed, URL, {status, Status}}};
         {error, Reason} ->
             ?log_error("PKey passphrase REST API call ~s failed, reason:~n~p",
                        [URL, Reason]),
-            fun () -> undefined end
+            {error, {rest_failed, URL, {error, Reason}}}
     catch
         _:E:ST ->
             ?log_error("PKey passphrase REST API call ~s crashed~n"
                        "Exception: ~p~n"
                        "Stacktrace: ~p", [URL, E, ST]),
-            fun () -> undefined end
+            {error, {rest_failed, URL, exception}}
     end.
 
 extract_pkey_pass_with_script(PassSettings) ->
@@ -137,18 +138,18 @@ extract_pkey_pass_with_script(PassSettings) ->
                                false -> P
                            end,
             ?log_info("Script executed successfully"),
-            fun () -> binary_to_list(MaybeTrimmed) end;
+            {ok, fun () -> binary_to_list(MaybeTrimmed) end};
         {Status, Output} ->
             ?log_error("External pkey passphrase script ~s ~p finished "
                        "with exit status: ~p:~n~s",
                        [Path, Args, Status, Output]),
-            fun () -> undefined end
+            {error, {script_execution_failed, {status, Status, Output}}}
     catch
         _:E:ST ->
             ?log_error("External pkey passphrase script execution "
                        "exception: ~s~nArgs: ~p~nException: ~p~n"
                        "Stacktrace: ~p", [Path, Args, E, ST]),
-            fun () -> undefined end
+            {error, {script_execution_failed, exception}}
     end.
 
 call_external_script(Path, Args, Timeout) ->

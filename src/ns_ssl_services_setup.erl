@@ -17,6 +17,8 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+-define(PKEY_REVALIDATION_INTERVAL, 5000).
+
 -export([start_link/0,
          start_link_capi_service/0,
          start_link_rest_service/0,
@@ -57,7 +59,8 @@
 -record(state, {reload_state,
                 client_cert_auth,
                 sec_settings_state,
-                afamily_requirement}).
+                afamily_requirement,
+                pkey_validation_timer}).
 
 start_link() ->
     case cluster_compat_mode:tls_supported() of
@@ -414,6 +417,8 @@ init([]) ->
     _ = save_node_certs_phase2(),
     maybe_store_ca_certs(),
     maybe_generate_node_certs(),
+    reload_pkey_passphrase(),
+    self() ! validate_pkey,
     RetrySvc = case misc:marker_exists(marker_path()) of
                    true ->
                        %% In case if we crashed in the middle of certs
@@ -495,6 +500,22 @@ handle_call(_, _From, State) ->
 
 handle_cast(_, State) ->
     {noreply, State}.
+
+handle_info(validate_pkey, State) ->
+    misc:flush(validate_pkey),
+    {_, NewState} = validate_pkey(State),
+    {noreply, NewState};
+
+handle_info(revalidate_pkey, State) ->
+    ?log_info("Revalidation of private key is triggered"),
+    reload_pkey_passphrase(),
+    {ShouldNotify, NewState} = validate_pkey(State),
+    case ShouldNotify of
+        true ->
+            {noreply, async_ssl_reload(pkey_passphrase_updated,
+                                       all_services(), NewState)};
+        false -> {noreply, NewState}
+    end;
 
 handle_info(ca_certificates_updated, #state{} = State) ->
     misc:flush(ca_certificates_updated),
@@ -728,6 +749,8 @@ save_node_certs_phase2() ->
             %% Can be removed when upgraded to erl >= 23
             update_certs_erl22(),
             ns_config:set({node, node(), node_cert}, Props),
+            reload_pkey_passphrase(),
+            self() ! validate_pkey,
             %% Can be removed when all the services and memcached switch to new
             %% cert format (where ca certs are kept separately)
             update_legacy_cert_file(),
@@ -736,6 +759,38 @@ save_node_certs_phase2() ->
             misc:create_marker(marker_path()),
             ok = file:delete(TmpFile);
         {error, enoent} -> file_not_found
+    end.
+
+reload_pkey_passphrase() ->
+    CertProps = ns_config:read_key_fast({node, node(), node_cert}, []),
+    PassSettings = proplists:get_value(pkey_passphrase_settings, CertProps, []),
+    ns_secrets:load_passphrase(PassSettings).
+
+validate_pkey(#state{pkey_validation_timer = TimerRef} = State) ->
+    catch erlang:cancel_timer(TimerRef),
+    KeyFile = pkey_file_path(),
+    Res =
+        case file:read_file(KeyFile) of
+            {ok, Key} ->
+                PassFun = ns_secrets:get_pkey_pass(),
+                case ns_server_cert:validate_pkey(Key, PassFun) of
+                    {ok, _} -> ok;
+                    {error, Error} -> {error, Error}
+                end;
+            {error, Error} ->
+                {error, {cannot_read_keyfile, KeyFile, Error}}
+        end,
+
+    case Res of
+        ok ->
+            ?log_info("Private key passphrase validation suceeded"),
+            {true, State#state{pkey_validation_timer = undefined}};
+        {error, Reason} ->
+            ?log_error("Private key passphrase validation failed: ~p",
+                       [Reason]),
+            NewTimerRef = erlang:send_after(?PKEY_REVALIDATION_INTERVAL,
+                                            self(), revalidate_pkey),
+            {false, State#state{pkey_validation_timer = NewTimerRef}}
     end.
 
 certs_epoch() ->
@@ -779,7 +834,7 @@ update_legacy_cert_file() ->
 
 update_legacy_unencrypted_key(Props) ->
     Settings = proplists:get_value(pkey_passphrase_settings, Props, []),
-    PassphraseFun = ns_secrets:get_pkey_pass(Settings),
+    {ok, PassphraseFun} = ns_secrets:extract_pkey_pass(Settings),
     {ok, B} = file:read_file(pkey_file_path()),
     File = unencrypted_pkey_file_path(),
     case public_key:pem_decode(B) of

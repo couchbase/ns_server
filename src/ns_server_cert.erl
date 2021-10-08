@@ -782,16 +782,20 @@ set_node_certificate_chain(Chain, PKey, PassphraseSettings) ->
             ChainEntries = lists:reverse(ChainEntriesReversed),
             NodeCert = hd(ChainEntries),
             ChainPem = public_key:pem_encode(ChainEntries),
-            PassphraseFun = ns_secrets:get_fresh_pkey_pass(PassphraseSettings),
             ValidationRes =
-                functools:sequence_(
-                  [fun () ->
-                       validate_cert_and_pkey(NodeCert, PKey, PassphraseFun)
-                   end,
-                   fun () ->
-                       validate_otp_server_certs(CAPem, ChainPem, PKey,
-                                                 PassphraseFun)
-                   end]),
+                case ns_secrets:extract_pkey_pass(PassphraseSettings) of
+                    {ok, PassFun} ->
+                        functools:sequence_(
+                          [fun () ->
+                               validate_cert_and_pkey(NodeCert, PKey, PassFun)
+                           end,
+                           fun () ->
+                               validate_otp_server_certs(CAPem, ChainPem, PKey,
+                                                         PassFun)
+                           end]);
+                    {error, _} = Error ->
+                        Error
+                end,
 
             case ValidationRes of
                 ok ->

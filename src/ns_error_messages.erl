@@ -289,7 +289,28 @@ reload_node_certificate_error({test_server_error, Reason}) ->
                                    "provided certificates: ~0p", [Reason],
                                    [{chars_limit, 80}]));
 reload_node_certificate_error(could_not_decrypt) ->
-    <<"Failed to decrypt provided private key. Check password">>.
+    <<"Failed to decrypt provided private key. Check password">>;
+reload_node_certificate_error({script_execution_failed,
+                               {status, Status, Output}}) ->
+    iolist_to_binary(io_lib:format("Script exited with status ~p:~n~s",
+                                   [Status, Output]));
+reload_node_certificate_error({script_execution_failed, exception}) ->
+    <<"Script executor crashed, see logs for details">>;
+reload_node_certificate_error({rest_failed, URL, {status, Status}}) ->
+    iolist_to_binary(io_lib:format("REST API call ~s returned ~p",
+                                   [URL, Status]));
+reload_node_certificate_error({rest_failed, URL, {error, Reason}}) ->
+    StrippedReason =
+        case Reason of
+            {Reason2, Stacktrace} when is_list(Stacktrace) -> Reason2;
+            _ -> Reason
+        end,
+    ReasonStr = ssl:format_error(StrippedReason),
+    iolist_to_binary(io_lib:format("REST API call ~s failed (~s)",
+                                   [URL, ReasonStr]));
+reload_node_certificate_error({rest_failed, URL, exception}) ->
+    iolist_to_binary(io_lib:format("REST API call ~s crashed, see logs for "
+                                   "details", [URL])).
 
 node_certificate_warning(unused) ->
     <<"This certificate is auto-generated and doesn't seem to be used by any "
