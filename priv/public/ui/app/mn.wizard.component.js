@@ -7,7 +7,7 @@ file, in accordance with the Business Source License, use of this software will
 be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
-import {first} from 'rxjs/operators';
+import {first, combineLatest} from 'rxjs/operators';
 import {FormGroup, FormControl} from '@angular/forms';
 import {Component, ChangeDetectionStrategy} from '@angular/core';
 
@@ -68,7 +68,9 @@ class MnWizardComponent extends MnLifeCycleHooksToStream {
         newClusterConfig.get("services").addControl("field", servicesToGroup(services, null));
       });
 
-    mnPoolsService.stream.isEnterprise.pipe(first())
+    let isEnterpriseStream = mnPoolsService.stream.isEnterprise.pipe(first());
+
+    isEnterpriseStream
       .subscribe(function (isEnterprise) {
         var storageMode = isEnterprise ? "plasma" : "forestdb";
         newClusterConfig.get("storageMode").setValue(storageMode);
@@ -81,12 +83,26 @@ class MnWizardComponent extends MnLifeCycleHooksToStream {
         mnWizardService.initialValues.storageMode = storageMode;
       });
 
-    mnWizardService.stream.initHddStorage.pipe(first())
-      .subscribe(function (initHdd) {
-        newClusterConfig.get("clusterStorage.storage").patchValue(initHdd);
-        joinCluster.get("clusterStorage.storage").patchValue(initHdd);
+    mnWizardService.stream.initHddStorage
+      .pipe(first(),
+            combineLatest(isEnterpriseStream))
+      .subscribe(function ([initHdd, isEnterprise]) {
+        setStorageConfigValues(newClusterConfig, initHdd, isEnterprise);
+        setStorageConfigValues(joinCluster, initHdd, isEnterprise);
 
         mnWizardService.initialValues.clusterStorage = initHdd;
       });
+
+    function setStorageConfigValues(config, initHdd, isEnterprise) {
+      if (isEnterprise) {
+        initHdd.cbas_path.forEach((dir, index) => {
+          config.get('clusterStorage.storage.cbas_path')
+            .setControl(index, new FormControl(null), {
+              emitEvent: false
+            });
+        });
+      }
+      config.get("clusterStorage.storage").patchValue(initHdd);
+    }
   }
 }
