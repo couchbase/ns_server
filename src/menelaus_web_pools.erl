@@ -205,6 +205,8 @@ do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
     IndexesVersion = list_to_binary(integer_to_list(IndexesVersion0)),
 
     GroupsV = erlang:phash2(ns_cluster_membership:server_groups()),
+    TrustedCertsV = erlang:phash2(ns_server_cert:trusted_CAs(props)),
+    TrustedCertsVBin = integer_to_binary(TrustedCertsV),
 
     PropList =
         [{name, list_to_binary(Id)},
@@ -227,6 +229,8 @@ do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
          {serverGroupsUri,
           <<"/pools/default/serverGroups?v=",
             (list_to_binary(integer_to_list(GroupsV)))/binary>>},
+         {trustedCAsURI, <<"/pools/default/trustedCAs?v=",
+                           TrustedCertsVBin/binary>>},
          {clusterName, list_to_binary(get_cluster_name())},
          {clusterEncryptionLevel,
           misc:get_effective_cluster_encryption_level(Config)},
