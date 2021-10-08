@@ -13,6 +13,7 @@
 -module(menelaus_web_autocompaction).
 
 -include("ns_common.hrl").
+-include("ns_bucket.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -20,7 +21,7 @@
 
 -export([handle_get_global_settings/1,
          handle_set_global_settings/1,
-         build_bucket_settings/1,
+         build_bucket_settings/2,
          build_global_settings/1,
          parse_validate_purge_interval/2,
          parse_validate_settings/2]).
@@ -59,15 +60,19 @@ build_global_settings(Config) ->
 
     case compaction_daemon:get_autocompaction_settings(Config) of
         [] ->
-            do_build_settings([], IndexSettings);
+            do_build_settings([], IndexSettings, global);
         ACSettings ->
-            do_build_settings(ACSettings, IndexSettings)
+            do_build_settings(ACSettings, IndexSettings, global)
     end.
 
-build_bucket_settings(Settings) ->
-    do_build_settings(Settings, []).
+build_bucket_settings(Settings, BackendStorage) ->
+    do_build_settings(Settings, [], BackendStorage).
 
-do_build_settings(Settings, Extra) ->
+do_build_settings(Settings, _Extra, magma) ->
+    Default = compaction_daemon:global_magma_frag_percent(),
+    {build_magma_fragmention_percentage(Settings, Default)};
+%% Build global or non-magma bucket settings
+do_build_settings(Settings, Extra, BackendStorageOrGlobal) ->
     PropFun = fun ({JSONName, CfgName}) ->
                       case proplists:get_value(CfgName, Settings) of
                           undefined -> [];
@@ -80,17 +85,25 @@ do_build_settings(Settings, Extra) ->
                               [{databaseFragmentationThreshold, database_fragmentation_threshold},
                                {viewFragmentationThreshold, view_fragmentation_threshold}]),
 
-    MagmaFragPercent = case proplists:get_value(magma_fragmentation_percentage,
-                                                Settings) of
-                           undefined -> [];
-                           Pct -> [{magmaFragmentationPercentage, Pct}]
-                       end,
+    MagmaFragPercent =
+        case BackendStorageOrGlobal of
+            global ->
+                build_magma_fragmention_percentage(Settings,
+                                                   ?MAGMA_FRAG_PERCENTAGE);
+            _ -> []
+        end,
+
     {[{parallelDBAndViewCompaction, proplists:get_bool(parallel_db_and_view_compaction,
                                                        Settings)}
               | case proplists:get_value(allowed_time_period, Settings) of
                     undefined -> [];
                     V -> [{allowedTimePeriod, build_allowed_time_period(V)}]
                 end] ++ MagmaFragPercent ++ DBAndView ++ Extra}.
+
+build_magma_fragmention_percentage(Settings, Default) ->
+    Pct = proplists:get_value(magma_fragmentation_percentage, Settings,
+                              Default),
+    [{magmaFragmentationPercentage, Pct}].
 
 build_allowed_time_period(AllowedTimePeriod) ->
     {[{JSONName, proplists:get_value(CfgName, AllowedTimePeriod)}

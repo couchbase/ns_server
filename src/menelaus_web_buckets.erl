@@ -156,9 +156,10 @@ build_auto_compaction_info(BucketConfig) ->
                 false ->
                     [{autoCompactionSettings, false}];
                 _ ->
+                    BackendStorage = ns_bucket:storage_backend(BucketConfig),
                     [{autoCompactionSettings,
                       menelaus_web_autocompaction:build_bucket_settings(
-                        ACSettings)}]
+                        ACSettings, BackendStorage)}]
             end;
         false ->
             case ns_bucket:storage_mode(BucketConfig) of
