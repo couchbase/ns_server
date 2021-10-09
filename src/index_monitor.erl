@@ -26,6 +26,7 @@
           prev_disk_failures :: integer() | undefined,
           last_tick_time = 0 :: integer(),
           last_tick_error = ok :: ok | {error, string()},
+          enabled = false :: boolean(),
           num_samples :: integer() | undefined,
           health_info = <<>> :: binary()
          }).
@@ -128,15 +129,22 @@ handle_info({tick, HealthCheckResult},
                              last_tick_time = timer:now_diff(TS, StartTS)}};
 
 handle_info(reload_config, State) ->
-    NumSamples =
-        case menelaus_web_auto_failover:get_failover_on_disk_issues(
-               auto_failover:get_cfg()) of
-            {false, _} ->
-                undefined;
-            {true, TimePeriod} ->
-                round((TimePeriod * 1000)/?REFRESH_INTERVAL)
+    Cfg = auto_failover:get_cfg(),
+    {Enabled, NumSamples} =
+        case auto_failover:is_enabled(Cfg) of
+            false ->
+                {false, undefined};
+            true ->
+                {true,
+                 case menelaus_web_auto_failover:get_failover_on_disk_issues(
+                        Cfg) of
+                     {false, _} ->
+                         undefined;
+                     {true, TimePeriod} ->
+                         round((TimePeriod * 1000)/?REFRESH_INTERVAL)
+                 end}
         end,
-    {noreply, State#state{num_samples = NumSamples}};
+    {noreply, State#state{num_samples = NumSamples, enabled = Enabled}};
 
 handle_info(refresh, #state{tick = {tick, StartTS},
                             health_info = HealthInfo,
@@ -158,7 +166,10 @@ handle_info(refresh, #state{tick = tock,
                            health_info = NewHealthInfo},
     {noreply, resend_refresh_msg(initiate_health_check(NewState))}.
 
-health_check() ->
+health_check(#state{enabled = false,
+                    disk_failures = DiskFailures}) ->
+    {ok, DiskFailures};
+health_check(#state{enabled = true}) ->
     case service_api:health_check(index) of
         {ok, {[{<<"diskFailures">>, DiskFailures}]}} ->
             {ok, DiskFailures};
@@ -177,7 +188,8 @@ initiate_health_check(#state{health_checker = HealthChecker,
                              tick = tock} = State) ->
     Self = self(),
     TS = os:timestamp(),
-    work_queue:submit_work(HealthChecker, ?cut(Self ! {tick, health_check()})),
+    work_queue:submit_work(HealthChecker,
+                           ?cut(Self ! {tick, health_check(State)})),
     State#state{tick = {tick, TS}}.
 
 register_tick(_Healthy, _HealthInfo, undefined) ->

@@ -64,6 +64,7 @@
          reset_count/0,
          reset_count_async/0,
          is_enabled/0,
+         is_enabled/1,
          validate_kv_safety/1]).
 
 %% For email alert notificatons
@@ -152,9 +153,13 @@ get_cfg(Config) ->
 upgrade_cfg(Config, Fun) ->
     [{set, auto_failover_cfg, Fun(get_cfg(Config))}].
 
+-spec is_enabled(list()) -> true | false.
+is_enabled(Cfg) ->
+    proplists:get_value(enabled, Cfg, false).
+
 -spec is_enabled() -> true | false.
 is_enabled() ->
-    proplists:get_value(enabled, get_cfg(), false).
+    is_enabled(get_cfg()).
 
 call(Call) ->
     misc:wait_for_global_name(?MODULE),
