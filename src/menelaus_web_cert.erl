@@ -61,7 +61,7 @@ handle_delete_trustedCA(IdStr, Req) ->
                     case netconfig_updater:ensure_tls_dist_started(CurNodes) of
                         ok -> menelaus_util:reply(Req, 200);
                         {error, ErrorMsg} ->
-                            menelaus_util:reply_json(Req, ErrorMsg, 400)
+                            menelaus_util:reply_global_error(Req, ErrorMsg)
                     end;
                 {error, not_found} ->
                     menelaus_util:reply(Req, 200);
@@ -71,7 +71,7 @@ handle_delete_trustedCA(IdStr, Req) ->
                     Msg = io_lib:format("The CA certificate is in use by the "
                                         "following nodes: ~s", [HostsStr]),
                     MsgBin = iolist_to_binary(Msg),
-                    menelaus_util:reply_json(Req, {[{error, MsgBin}]}, 400)
+                    menelaus_util:reply_global_error(Req, MsgBin)
             end
     catch
         error:badarg ->
@@ -191,6 +191,7 @@ handle_regenerate_certificate(Req) ->
     ns_audit:regenerate_certificate(Req),
     handle_cluster_certificate_simple(Req).
 
+%% deprecated, use menelaus_util:reply_global_error/2 instead
 reply_error(Req, Error) ->
     menelaus_util:reply_json(
       Req, {[{error, ns_error_messages:cert_validation_error_message(Error)}]}, 400).
