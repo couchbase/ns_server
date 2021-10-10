@@ -11,17 +11,17 @@ licenses/APL2.txt.
 import angular from 'angular';
 import _ from 'lodash';
 
-let mnPluggableUiRegistry = 'mnPluggableUiRegistry';
-export default mnPluggableUiRegistry;
+let MnPluggableUiRegistry = 'mnPluggableUiRegistry';
+export default MnPluggableUiRegistry;
 
 angular
-  .module(mnPluggableUiRegistry, [])
-  .provider(mnPluggableUiRegistry, mnPluggableUiRegistryProvider)
-  .factory('mnPluggableTabUtil', mnPluggableTabUtil)
-  .directive('mnPluggableUiTabs', mnPluggableUiTabs);
+  .module(MnPluggableUiRegistry, [])
+  .provider(MnPluggableUiRegistry, MnPluggableUiRegistryProvider)
+  .factory('mnPluggableTabUtil', MnPluggableTabUtil)
+  .directive('mnPluggableUiTabs', MnPluggableUiTabs);
 
 
-function mnPluggableTabUtil() {
+function MnPluggableTabUtil() {
 
   return {
     getTabTemplate: getTabTemplate
@@ -44,7 +44,7 @@ function mnPluggableTabUtil() {
 }
 
 
-function mnPluggableUiTabs(mnPluggableUiRegistry, mnPluggableTabUtil, $compile) {
+function MnPluggableUiTabs(mnPluggableUiRegistry, mnPluggableTabUtil, $compile) {
   return {
     link: link
   };
@@ -72,7 +72,7 @@ function mnPluggableUiTabs(mnPluggableUiRegistry, mnPluggableTabUtil, $compile) 
   }
 }
 
-function mnPluggableUiRegistryProvider() {
+function MnPluggableUiRegistryProvider() {
   var _configs = [];
 
   this.registerConfig = registerConfig;
