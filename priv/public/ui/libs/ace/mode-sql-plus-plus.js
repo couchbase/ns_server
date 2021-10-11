@@ -1,5 +1,5 @@
 import ace from './ace.js';
-import _ from "/ui/web_modules/lodash.js";
+import _ from "lodash";
 
 export default "mode-sql-plus-plus";
 
@@ -188,4 +188,3 @@ export default "mode-sql-plus-plus";
   });
 
 })();
-

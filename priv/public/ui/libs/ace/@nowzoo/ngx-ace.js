@@ -1,10 +1,10 @@
 import '../ace-loader.js';
 import ace from '../ace.js';
-import "/ui/web_modules/common/tslib.es6-c4a4947b.js";
-import "/ui/web_modules/common/mergeMap-64c6f393.js";
-import "/ui/web_modules/common/merge-183efbc7.js";
-import "/ui/web_modules/common/forkJoin-269e2e92.js";
-import "/ui/web_modules/common/share-d41e3509.js";
+import "common/tslib.es6-c4a4947b";
+import "common/mergeMap-64c6f393";
+import "common/merge-183efbc7";
+import "common/forkJoin-269e2e92";
+import "common/share-d41e3509";
 import {
     InjectionToken as e,
     Injectable as t,
@@ -19,12 +19,12 @@ import {
     Output as c,
     EventEmitter as p,
     NgModule as h
-} from "/ui/web_modules/@angular/core.js";
-import "/ui/web_modules/@angular/common.js";
-import "/ui/web_modules/@angular/platform-browser.js";
+} from "@angular/core";
+import "@angular/common";
+import "@angular/platform-browser";
 import {
   NG_VALUE_ACCESSOR as l
-} from "/ui/web_modules/@angular/forms.js";
+} from "@angular/forms";
 var m = {
         aceURL: ".."
     },
