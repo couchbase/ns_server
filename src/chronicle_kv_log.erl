@@ -47,16 +47,21 @@ calculate_diff(K, V, Diff, State) ->
      end, maps:put(K, V, State)}.
 
 log(K, V, R, State) ->
-    {NewV, NewState} =
-        case ns_bucket:sub_key_match(K) of
-            {true, _Bucket, props} ->
-                calculate_diff(K, V, fun ns_config_log:compute_bucket_diff/2,
-                               State);
-            {true, _Bucket, collections} ->
-                calculate_diff(K, V, fun collections:diff_manifests/2, State);
-            _ ->
-                {V, State}
-        end,
+    {NewV, NewState} = prepare_value(K, V, State),
     VB = list_to_binary(io_lib:print(NewV, 0, 80, 100)),
     ?log_debug("update (key: ~p, rev: ~p)~n~s", [K, R, VB]),
     NewState.
+
+prepare_value(root_cert_and_pkey, V, State) ->
+    Hash = base64:encode(crypto:hash(sha256, term_to_binary(V))),
+    {{sanitized, Hash}, State};
+prepare_value(K, V, State) ->
+    case ns_bucket:sub_key_match(K) of
+        {true, _Bucket, props} ->
+            calculate_diff(K, V, fun ns_config_log:compute_bucket_diff/2,
+                           State);
+        {true, _Bucket, collections} ->
+            calculate_diff(K, V, fun collections:diff_manifests/2, State);
+        _ ->
+            {V, State}
+    end.
