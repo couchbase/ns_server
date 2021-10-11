@@ -471,6 +471,31 @@ handle_just_diag(Req, Extra) ->
                   end, lists:keysort(#log_entry.tstamp, ns_log:recent())),
     mochiweb_response:write_chunk(<<"-------------------------------\n\n\n">>, Resp),
 
+    mochiweb_response:write_chunk(
+      <<"Event Logs:\n-------------------------------\n">>, Resp),
+
+    lists:foreach(fun (Event) ->
+                          JSON = try
+                                     menelaus_util:encode_json(Event)
+                                 catch
+                                     T:E:S ->
+                                         ?log_error(
+                                           "Event JSON encoding error - ~p~n"
+                                           "Event - ~p~n", [{T,E,S}, Event]),
+                                         encoding_error
+                                 end,
+                          case JSON of
+                              encoding_error ->
+                                  ok;
+                              _ ->
+                                  mochiweb_response:write_chunk([JSON, $\n],
+                                                                Resp)
+                          end
+                  end, event_log_server:build_events_json(undefined, -1)),
+
+    mochiweb_response:write_chunk(
+      <<"-------------------------------\n\n\n">>, Resp),
+
     Results = grab_per_node_diag(),
     handle_per_node_just_diag(Resp, Results),
 

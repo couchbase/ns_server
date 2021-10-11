@@ -89,9 +89,9 @@ handle_events(Req) ->
     menelaus_util:assert_is_NEO(),
     validator:handle(fun (Values) ->
                        {SinceTime, Limit} = get_handle_events_params(Values),
-                       reply_json(Req,
-                                  event_log_server:build_events_json(SinceTime,
-                                                                     Limit))
+                       Events = event_log_server:build_events_json(SinceTime,
+                                                                   Limit),
+                       reply_json(Req, {struct, [{events, Events}]})
                      end, Req, qs, handle_events_validators()).
 
 handle_events_streaming(Req) ->

@@ -236,9 +236,7 @@ build_events_json(MinTStamp, Limit) ->
                                   end, Logs0), Limit)
            end,
     %% Reverse the logs since they are stored in the descending order of time.
-    Events = [{struct, get_event(strip_seqnum(Log))} ||
-              Log <- lists:reverse(Logs)],
-    {struct, [{events, Events}]}.
+    [{struct, get_event(strip_seqnum(Log))} || Log <- lists:reverse(Logs)].
 
 -ifdef(TEST).
 order_entries_test() ->
