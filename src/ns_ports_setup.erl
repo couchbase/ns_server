@@ -250,19 +250,10 @@ build_https_args(PortName, PortArg, PortPrefix, CertArg, KeyArg, CAArg,
     case service_ports:get_port(PortName, Config) of
         undefined ->
             [];
-        Port when PortName == fts_ssl_port;
-                  PortName == eventing_https_port;
-                  PortName == cbas_ssl_port;
-                  PortName == indexer_https_port;
-                  PortName == projector_ssl_port ->
-            [PortArg ++ "=" ++ PortPrefix ++ integer_to_list(Port),
-             CertArg ++ "=" ++ ns_ssl_services_setup:chain_file_path(),
-             KeyArg ++ "=" ++ ns_ssl_services_setup:pkey_file_path(),
-             CAArg ++ "=" ++ ns_ssl_services_setup:ca_file_path()];
         Port ->
             [PortArg ++ "=" ++ PortPrefix ++ integer_to_list(Port),
              CertArg ++ "=" ++ ns_ssl_services_setup:chain_file_path(),
-             KeyArg ++ "=" ++ ns_ssl_services_setup:unencrypted_pkey_file_path(),
+             KeyArg ++ "=" ++ ns_ssl_services_setup:pkey_file_path(),
              CAArg ++ "=" ++ ns_ssl_services_setup:ca_file_path()]
     end.
 
