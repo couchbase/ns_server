@@ -14,7 +14,7 @@ import {UIRouter} from '@uirouter/core';
 
 import {MnAppModule} from './mn.app.module.js';
 
-platformBrowserDynamic().bootstrapModule(MnAppModule).then(platformRef => {
+platformBrowserDynamic().bootstrapModule(MnAppModule, {preserveWhitespaces: true}).then(platformRef => {
   const urlService = platformRef.injector.get(UIRouter).urlService;
   // Instruct UIRouter to listen to URL changes
   function startUIRouter() {
