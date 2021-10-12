@@ -104,6 +104,7 @@ upgrade(?VERSION_66, Config) ->
          index_settings_manager:config_upgrade_to_70(Config) ++
          query_settings_manager:config_upgrade_to_70(Config)};
 
-upgrade(?VERSION_70, _Config) ->
+upgrade(?VERSION_70, Config) ->
     {?VERSION_NEO,
-     menelaus_users:config_upgrade()}.
+     menelaus_users:config_upgrade() ++
+        index_settings_manager:config_upgrade_to_NEO(Config)}.

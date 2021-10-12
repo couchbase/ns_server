@@ -29,7 +29,8 @@
          is_enabled/0,
          known_settings/0,
          on_update/2,
-         config_upgrade_to_70/1]).
+         config_upgrade_to_70/1,
+         config_upgrade_to_NEO/1]).
 
 -import(json_settings_manager,
         [id_lens/1]).
@@ -239,11 +240,17 @@ compaction_lens() ->
     json_settings_manager:props_lens(compaction_lens_props()).
 
 config_upgrade_to_70(Config) ->
-    NewSettings = general_settings_defaults(?VERSION_70) --
-        general_settings_defaults(?VERSION_66),
+    config_upgrade_settings(Config, ?VERSION_66, ?VERSION_70).
+
+config_upgrade_to_NEO(Config) ->
+    config_upgrade_settings(Config, ?VERSION_70, ?VERSION_NEO).
+
+config_upgrade_settings(Config, OldVersion, NewVersion) ->
+    NewSettings = general_settings_defaults(NewVersion) --
+        general_settings_defaults(OldVersion),
     json_settings_manager:upgrade_existing_key(
       ?MODULE, Config, [{generalSettings, NewSettings}],
-      known_settings(?VERSION_70)).
+      known_settings(NewVersion)).
 
 -ifdef(TEST).
 defaults_test() ->
@@ -259,5 +266,11 @@ config_upgrade_test() ->
     [{set, {metakv, Meta}, Data}] = CmdList,
     ?assertEqual(<<"/indexing/settings/config">>, Meta),
     ?assertEqual(<<"{\"indexer.settings.rebalance.redistribute_indexes\":false,"
-                   "\"indexer.settings.num_replica\":0}">>, Data).
+                   "\"indexer.settings.num_replica\":0}">>, Data),
+
+    CmdList2 = config_upgrade_to_NEO([]),
+    [{set, {metakv, Meta2}, Data2}] = CmdList2,
+    ?assertEqual(<<"/indexing/settings/config">>, Meta2),
+    ?assertEqual(<<"{\"indexer.settings.enable_page_bloom_filter\":false}">>,
+                 Data2).
 -endif.
