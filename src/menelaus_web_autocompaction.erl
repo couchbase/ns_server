@@ -324,6 +324,25 @@ parse_validate_magma_fragmentation_percentage(Params) ->
     end.
 
 parse_validate_settings(Params, ExpectIndex) ->
+    case proplists:get_value("storageBackend", Params) of
+        "magma" ->
+            do_parse_validate_settings(Params, ExpectIndex, magma);
+        _ ->
+            do_parse_validate_settings(Params, ExpectIndex, not_magma)
+    end.
+
+do_parse_validate_settings(Params, _ExpectIndex, magma) ->
+    MagmaFragResults = parse_validate_magma_fragmentation_percentage(Params),
+    Errors = [{iolist_to_binary(Field), Msg} ||
+              {error, Field, Msg} <- lists:append([MagmaFragResults])],
+    case Errors of
+        [] ->
+            {ok, MagmaFragResults, []};
+        _ ->
+            {errors, Errors}
+    end;
+%% Non-magma bucket or global settings
+do_parse_validate_settings(Params, ExpectIndex, not_magma) ->
     PercResults = lists:flatmap(mk_number_field_validator(2, 100, Params),
                                 [{"databaseFragmentationThreshold[percentage]",
                                   db_fragmentation_percentage,
