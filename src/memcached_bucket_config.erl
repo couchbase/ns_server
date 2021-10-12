@@ -13,6 +13,7 @@
 -module(memcached_bucket_config).
 
 -include("ns_common.hrl").
+-include("ns_bucket.hrl").
 -include("cut.hrl").
 
 -record(cfg, {type, name, config, snapshot, engine_config, params}).
@@ -43,7 +44,7 @@ params(membase, BucketName, BucketConfig, MemQuota, UUID) ->
      {"alog_path", [], filename:join(DBSubDir, "access.log")},
      {"data_traffic_enabled", [], false},
      {"max_num_workers", maybe_restart(),
-      proplists:get_value(num_threads, BucketConfig, 3)},
+      proplists:get_value(num_threads, BucketConfig, ?NUM_WORKER_THREADS)},
      {"uuid", [], UUID},
      {"conflict_resolution_type", [],
       ns_bucket:conflict_resolution_type(BucketConfig)},
@@ -61,7 +62,8 @@ params(membase, BucketName, BucketConfig, MemQuota, UUID) ->
                           compaction_daemon:global_magma_frag_percent())},
      %% The internal name, known by memcached, is a ratio so do the conversion.
      {"magma_mem_quota_ratio", [{reload, flush}],
-      proplists:get_value(storage_quota_percentage, BucketConfig, 10) / 100},
+      proplists:get_value(storage_quota_percentage, BucketConfig,
+                          ?MAGMA_STORAGE_QUOTA_PERCENTAGE) / 100},
      {"hlc_drift_ahead_threshold_us", [no_param, {reload, vbucket}],
       DriftAheadThreshold},
      {"hlc_drift_behind_threshold_us", [no_param, {reload, vbucket}],
@@ -77,7 +79,8 @@ params(membase, BucketName, BucketConfig, MemQuota, UUID) ->
      {"max_ttl", [{reload, flush}], proplists:get_value(max_ttl, BucketConfig)},
      {"ht_locks", [], proplists:get_value(
                         ht_locks, BucketConfig,
-                        misc:getenv_int("MEMBASE_HT_LOCKS", 47))},
+                        misc:getenv_int("MEMBASE_HT_LOCKS",
+                                        ?MEMBASE_HT_LOCKS))},
      {"ht_size", [],
       proplists:get_value(ht_size, BucketConfig,
                           misc:getenv_int("MEMBASE_HT_SIZE", undefined))},

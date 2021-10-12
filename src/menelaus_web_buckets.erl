@@ -17,6 +17,7 @@
 -include("ns_common.hrl").
 -include("couch_db.hrl").
 -include("ns_stats.hrl").
+-include("ns_bucket.hrl").
 -include("cut.hrl").
 
 -define(MAGMA_MIN_RAMQUOTA, 256).
@@ -290,7 +291,8 @@ build_dynamic_bucket_info(streaming, _Id, _BucketConfig, _) ->
     [];
 build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx) ->
     [[{replicaNumber, ns_bucket:num_replicas(BucketConfig)},
-      {threadsNumber, proplists:get_value(num_threads, BucketConfig, 3)},
+      {threadsNumber, proplists:get_value(num_threads, BucketConfig,
+                                          ?NUM_WORKER_THREADS)},
       {quota, {[{ram, ns_bucket:ram_quota(BucketConfig)},
                 {rawRAM, ns_bucket:raw_ram_quota(BucketConfig)}]}},
       {basicStats, {build_bucket_stats(InfoLevel, Id, Ctx)}},
@@ -336,7 +338,8 @@ build_magma_bucket_info(BucketConfig) ->
                                                            BucketConfig,
                                                            Default)},
              {storageQuotaPercentage,
-              proplists:get_value(storage_quota_percentage, BucketConfig, 10)}];
+              proplists:get_value(storage_quota_percentage, BucketConfig,
+                                  ?MAGMA_STORAGE_QUOTA_PERCENTAGE)}];
         _ ->
             []
     end.
@@ -1448,13 +1451,16 @@ validate_with_missing(GivenValue, DefaultValue, IsNew, Fn) ->
     end.
 
 parse_validate_replicas_number(NumReplicas) ->
-    case menelaus_util:parse_validate_number(NumReplicas, 0, 3) of
+    case menelaus_util:parse_validate_number(NumReplicas, 0,
+                                             ?MAX_NUM_REPLICAS) of
         invalid ->
             {error, replicaNumber, <<"The replica number must be specified and must be a non-negative integer.">>};
         too_small ->
             {error, replicaNumber, <<"The replica number cannot be negative.">>};
         too_large ->
-            {error, replicaNumber, <<"Replica number larger than 3 is not supported.">>};
+            Msg = io_lib:format("Replica number larger than ~p is not "
+                                "supported.", [?MAX_NUM_REPLICAS]),
+            {error, replicaNumber, iolist_to_binary(Msg)};
         {ok, X} -> {ok, num_replicas, X}
     end.
 
@@ -1581,13 +1587,16 @@ parse_validate_frag_percent_inner(true = _IsEnterprise, true = _IsCompat,
                           fun do_parse_validate_frag_percent/1).
 
 do_parse_validate_frag_percent(Val) ->
-    case menelaus_util:parse_validate_number(Val, 10, 100) of
+    case menelaus_util:parse_validate_number(Val, ?MIN_MAGMA_FRAG_PERCENTAGE,
+                                             ?MAX_MAGMA_FRAG_PERCENTAGE) of
         {ok, X} ->
             {ok, frag_percent, X};
         _Error ->
-            {error, fragmentationPercentage,
-             <<"Fragmentation percentage must be between 10 and 100, "
-               "inclusive">>}
+            Msg = io_lib:format("Fragmentation percentage must be between ~p "
+                                "and ~p, inclusive",
+                                [?MIN_MAGMA_FRAG_PERCENTAGE,
+                                 ?MAX_MAGMA_FRAG_PERCENTAGE]),
+            {error, fragmentationPercentage, iolist_to_binary(Msg)}
     end.
 
 parse_validate_storage_quota_percentage(Params, BucketConfig, IsNew, Version,
@@ -1645,13 +1654,17 @@ parse_validate_storage_quota_percentage_inner(true = _IsEnterprise,
                           fun do_parse_validate_storage_quota_percentage/1).
 
 do_parse_validate_storage_quota_percentage(Val) ->
-    case menelaus_util:parse_validate_number(Val, 1, 85) of
+    case menelaus_util:parse_validate_number(Val,
+                                             ?MIN_MAGMA_STORAGE_QUOTA_PERCENTAGE,
+                                             ?MAX_MAGMA_STORAGE_QUOTA_PERCENTAGE) of
         {ok, X} ->
             {ok, storage_quota_percentage, X};
         _Error ->
-            {error, storageQuotaPercentage,
-             <<"Storage Quota Percentage must be between 1 and 85, "
-               "inclusive">>}
+            Msg = io_lib:format("Storage Quota Percentage must be between ~p "
+                                "and ~p, inclusive",
+                                [?MIN_MAGMA_STORAGE_QUOTA_PERCENTAGE,
+                                 ?MAX_MAGMA_STORAGE_QUOTA_PERCENTAGE]),
+            {error, storageQuotaPercentage, iolist_to_binary(Msg)}
     end.
 
 parse_validate_threads_number(Params, IsNew) ->
@@ -1663,16 +1676,23 @@ parse_validate_flush_enabled("1") -> {ok, flush_enabled, true};
 parse_validate_flush_enabled(_ReplicaValue) -> {error, flushEnabled, <<"flushEnabled can only be 1 or 0">>}.
 
 parse_validate_threads_number(NumThreads) ->
-    case menelaus_util:parse_validate_number(NumThreads, 2, 8) of
+    case menelaus_util:parse_validate_number(NumThreads,
+                                             ?MIN_NUM_WORKER_THREADS,
+                                             ?MAX_NUM_WORKER_THREADS) of
         invalid ->
-            {error, threadsNumber,
-             <<"The number of threads must be an integer between 2 and 8">>};
+            Msg = io_lib:format("The number of threads must be an integer "
+                                "between ~p and ~p, inclusive",
+                                [?MIN_NUM_WORKER_THREADS,
+                                 ?MAX_NUM_WORKER_THREADS]),
+            {error, threadsNumber, iolist_to_binary(Msg)};
         too_small ->
-            {error, threadsNumber,
-             <<"The number of threads can't be less than 2">>};
+            Msg = io_lib:format("The number of threads can't be less than ~p",
+                                [?MIN_NUM_WORKER_THREADS]),
+            {error, threadsNumber, iolist_to_binary(Msg)};
         too_large ->
-            {error, threadsNumber,
-             <<"The number of threads can't be greater than 8">>};
+            Msg = io_lib:format("The number of threads can't be greater "
+                                "than ~p", [?MAX_NUM_WORKER_THREADS]),
+            {error, threadsNumber, iolist_to_binary(Msg)};
         {ok, X} ->
             {ok, num_threads, X}
     end.
@@ -1734,13 +1754,18 @@ parse_validate_drift_ahead_threshold(Threshold) ->
     end.
 
 parse_validate_drift_behind_threshold(Threshold) ->
-    case menelaus_util:parse_validate_number(Threshold, 100, undefined) of
+    case menelaus_util:parse_validate_number(Threshold,
+                                             ?MIN_DRIFT_BEHIND_THRESHOLD,
+                                             undefined) of
         invalid ->
-            {error, driftBehindThresholdMs,
-             <<"The drift behind threshold must be an integer not less than 100ms">>};
+            Msg = io_lib:format("The drift behind threshold must be an "
+                                "integer not less than ~pms",
+                                [?MIN_DRIFT_BEHIND_THRESHOLD]),
+            {error, driftBehindThresholdMs, iolist_to_binary(Msg)};
         too_small ->
-            {error, driftBehindThresholdMs,
-             <<"The drift behind threshold can't be less than 100ms">>};
+            Msg = io_lib:format("The drift behind threshold can't be less "
+                                "than ~pms", [?MIN_DRIFT_BEHIND_THRESHOLD]),
+            {error, driftBehindThresholdMs, iolist_to_binary(Msg)};
         {ok, X} ->
             {ok, drift_behind_threshold_ms, X}
     end.

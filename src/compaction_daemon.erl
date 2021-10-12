@@ -12,6 +12,7 @@
 -behaviour(gen_server).
 
 -include("ns_common.hrl").
+-include("ns_bucket.hrl").
 
 %% API
 -export([start_link/0,
@@ -120,7 +121,8 @@ global_magma_frag_percent() ->
     GlobalSettings = get_autocompaction_settings(Config),
     %% The default value is needed as changing a different autocompaction
     %% setting zaps all the others (tracked by MB-48767).
-    proplists:get_value(magma_fragmentation_percentage, GlobalSettings, 50).
+    proplists:get_value(magma_fragmentation_percentage, GlobalSettings,
+                        ?MAGMA_FRAG_PERCENTAGE).
 
 %% While Pid is alive prevents autocompaction of views for given
 %% bucket and given node. Returned Ref can be used to uninhibit
