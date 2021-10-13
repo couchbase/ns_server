@@ -37,7 +37,7 @@
 
 %% exports for gossip_replicator.
 -export([init/1,
-         handle_add_log/4,
+         handle_add_log/3,
          add_local_node_metadata/2,
          strip_local_node_metadata/1,
          merge_remote_logs/3,
@@ -99,7 +99,7 @@ init(_Recent) ->
     send_dedup_logs_msg(),
     #ns_log_state{dedup=dict:new()}.
 
-handle_add_log(Log, State0, _Pending, ReplicateFun) ->
+handle_add_log(Log, State0, ReplicateFun) ->
     {Dup, State} = is_duplicate_log(Log, State0),
     case Dup of
         true ->

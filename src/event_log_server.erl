@@ -27,6 +27,10 @@
 
 -define(METADATA_SEQNUM, seq_num).
 
+%% Max time to hold onto recently received event log UUID's to help with
+%% deduplication.
+-define(DEDUP_GC_TIME, 60000). %% 60 secs in millsecs
+
 %% API
 -export([start_link/0]).
 
@@ -35,7 +39,7 @@
 
 %% exports for gossip_replicator.
 -export([init/1,
-         handle_add_log/4,
+         handle_add_log/3,
          add_local_node_metadata/2,
          strip_local_node_metadata/1,
          merge_remote_logs/3,
@@ -50,7 +54,8 @@
                     uuid        :: binary(),
                     event       :: term()}).
 
--record(event_log_state, {seq_num}).
+-record(event_log_state, {seq_num,
+                          dedup_list = []}).
 
 start_link() ->
     Config = ns_config:get(),
@@ -70,6 +75,7 @@ get_event_logs_limit() ->
    ns_config:read_key_fast(event_logs_limit, ?DEFAULT_EVENTS_SIZE).
 
 init(Recent) ->
+    send_dedup_gc_msg(),
     ns_pubsub:subscribe_link(ns_config_events,
                              fun ns_config_event_handler/1),
     %% Retrieve the max seq_num from previous logs if any.
@@ -85,29 +91,30 @@ init(Recent) ->
             handle_notify(#event_log_state{seq_num = SeqNum})
     end.
 
-handle_add_log(Log, State, Pending, ReplicateFun) ->
-    %% Check if the log is already present in pending list and accordingly
+handle_add_log(Log, #event_log_state{dedup_list = DedupList} = State,
+               ReplicateFun) ->
+    %% Check if the log is already present in dedup list and accordingly
     %% add the log.
-    %% NOTE: It can happen the duplicate log is flushed from the pending list.
-    %% Dedup against logs present in the gossip_replicator's unique_recent
-    %% list will happen when merge_pending_list is called.
+    %% NOTE: It can happen that a duplicate log's UUID is removed from the
+    %% dedup_list, dedup of such logs will happen when merge_pending_list is
+    %% called.
 
-    Id = Log#log_entry.uuid,
-    Filter = fun (L0) ->
-               L = strip_seqnum(L0),
-               case L#log_entry.uuid of
-                   Id -> true;
-                   _ -> false
-               end
-             end,
+    LogUUID = Log#log_entry.uuid,
+    IsDupFun = fun ({Id, _}) ->
+                       case Id of
+                           LogUUID -> true;
+                           _ -> false
+                       end
+               end,
 
-    case lists:any(Filter, Pending) of
+    case lists:any(IsDupFun, DedupList) of
         true ->
-            ok;
+            State;
         false ->
-            ReplicateFun(Log)
-    end,
-    State.
+            ReplicateFun(Log),
+            State#event_log_state{
+              dedup_list = [{LogUUID, erlang:timestamp()} | DedupList]}
+    end.
 
 add_local_node_metadata(Logs, #event_log_state{seq_num = SeqNum} = State) ->
     Len = length(Logs),
@@ -145,6 +152,15 @@ handle_notify(State) ->
     gen_event:notify(event_log_events, {seq_num, SeqNum}),
     State.
 
+handle_info(dedup_gc, #event_log_state{dedup_list = DedupList0} = State,
+            _ReplicateFun) ->
+    send_dedup_gc_msg(),
+    Now = erlang:timestamp(),
+    DedupList = lists:filter(fun ({_UUID, Time}) ->
+                                      timer:now_diff(Now, Time) / 1000
+                                           < ?DEDUP_GC_TIME
+                             end, DedupList0),
+    State#event_log_state{dedup_list = DedupList};
 handle_info(_Info, State, _ReplicatorFun) ->
     State.
 
@@ -152,6 +168,9 @@ handle_info(_Info, State, _ReplicatorFun) ->
 %%% Internal functions
 %%--------------------------------------------------------------------
 %%
+
+send_dedup_gc_msg() ->
+    erlang:send_after(?DEDUP_GC_TIME, self(), dedup_gc).
 
 order_entries([{?METADATA_SEQNUM, _} | A = #log_entry{}],
               [{?METADATA_SEQNUM, _} | B = #log_entry{}]) ->

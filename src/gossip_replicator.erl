@@ -47,7 +47,7 @@
 -type logs() :: [log()].
 
 -callback init(logs()) -> child_state().
--callback handle_add_log(log(), child_state(), logs(), fun()) -> child_state().
+-callback handle_add_log(log(), child_state(), fun()) -> child_state().
 -callback add_local_node_metadata(logs(), child_state()) ->
     {logs(), child_state()}.
 -callback strip_local_node_metadata(logs()) -> logs().
@@ -85,14 +85,13 @@ handle_call(recent, _From, State0) ->
     {reply, State#state.unique_recent, State}.
 
 %% Inbound logging request.
-handle_cast({add_log, Log}, State0 = #state{pending_list = Pending,
-                                            child_module = Mod,
+handle_cast({add_log, Log}, State0 = #state{child_module = Mod,
                                             child_servername = ServerName,
                                             child_state = ChildState0}) ->
     %% handle_add_log checks if the log is duplicate and calls the ReplicateFun
     %% if the log isn't a duplicate.
     ReplicateFun = ?cut(gossip_replicator:replicate_log(ServerName, _)),
-    ChildState = Mod:handle_add_log(Log, ChildState0, Pending, ReplicateFun),
+    ChildState = Mod:handle_add_log(Log, ChildState0, ReplicateFun),
     {noreply, State0#state{child_state = ChildState}};
 handle_cast({log, Log}, #state{child_state = ChildState} = State0) ->
     State = State0#state{child_state = ChildState},
