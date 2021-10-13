@@ -48,8 +48,9 @@ licenses/APL2.txt.
          [bucket]="item.source"></mn-xdcr-mapping>
 
       <mn-xdcr-settings
-         class="panel-content"
-         [form]="form"></mn-xdcr-settings>
+         [form]="form"
+         [validationRequest]="postSettingsReplicationsValidation"
+         class="panel-content"></mn-xdcr-settings>
     </div>
     <div
        *ngIf="(isEnterprise | async) && (compatVersion70 | async)"

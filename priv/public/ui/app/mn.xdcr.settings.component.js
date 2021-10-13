@@ -11,10 +11,11 @@ licenses/APL2.txt.
 import {Component, ChangeDetectionStrategy} from '@angular/core';
 
 import {MnLifeCycleHooksToStream} from "./mn.core.js";
-import {MnXDCRService} from "./mn.xdcr.service.js";
 import {MnPoolsService} from "./mn.pools.service.js";
 import {MnAdminService} from "./mn.admin.service.js";
 import {MnHelperService} from "./mn.helper.service.js";
+
+import {merge} from 'rxjs';
 
 export {MnXDCRSettingsComponent};
 
@@ -25,25 +26,28 @@ class MnXDCRSettingsComponent extends MnLifeCycleHooksToStream {
       templateUrl: "app/mn.xdcr.settings.html",
       changeDetection: ChangeDetectionStrategy.OnPush,
       inputs: [
-        "form"
+        "form",
+        "validationRequest"
       ]
     })
   ]}
 
   static get parameters() { return [
-    MnXDCRService,
     MnPoolsService,
     MnAdminService,
     MnHelperService
   ]}
 
-  constructor(mnXDCRService, mnPoolsService, mnAdminService, mnHelperService) {
+  constructor(mnPoolsService, mnAdminService, mnHelperService) {
     super();
 
     this.isEnterprise = mnPoolsService.stream.isEnterprise;
     this.compatVersion55 = mnAdminService.stream.compatVersion55;
-    this.error = mnXDCRService.stream.postSettingsReplicationsValidation.error;
-
     this.toggler = mnHelperService.createToggle();
+  }
+
+  ngOnInit() {
+    this.error = this.validationRequest.error;
+    this.success = this.validationRequest.success;
   }
 }

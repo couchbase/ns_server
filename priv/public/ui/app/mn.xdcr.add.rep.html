@@ -25,23 +25,23 @@ licenses/APL2.txt.
     <div class="width-10">
       <div
          class="error"
-         [hidden]="!(postCreateReplication.error | async)?._">
-        {{(postCreateReplication.error | async)?._}}
+         [hidden]="!(error | async)?._">
+        {{(error | async)?._}}
       </div>
       <div
          class="error error-field"
-         [hidden]="!(postCreateReplication.error | async)?.fromBucket">
-        {{(postCreateReplication.error | async)?.fromBucket}}
+         [hidden]="!(error | async)?.fromBucket">
+        {{(error | async)?.fromBucket}}
       </div>
       <div
          class="error error-field"
-         [hidden]="!(postCreateReplication.error | async)?.toCluster">
-        {{(postCreateReplication.error | async)?.toCluster}}
+         [hidden]="!(error | async)?.toCluster">
+        {{(error | async)?.toCluster}}
       </div>
       <div
          class="error error-field"
-         [hidden]="!(postCreateReplication.error | async)?.toBucket">
-        {{(postCreateReplication.error | async)?.toBucket}}
+         [hidden]="!(error | async)?.toBucket">
+        {{(error | async)?.toBucket}}
       </div>
 
       <form
@@ -107,6 +107,7 @@ licenses/APL2.txt.
 
       <mn-xdcr-settings
          [form]="form"
+         [validationRequest]="postCreateReplicationValidation"
          class="block"></mn-xdcr-settings>
     </div>
 

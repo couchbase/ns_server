@@ -65,13 +65,26 @@ class MnXDCRService {
 
     this.stream.postSettingsReplicationsValidation =
       new MnHttpRequest(this.postSettingsReplications(true).bind(this))
-      .addSuccess()
+      .addSuccess(map(parsePostCreateReplicationSuccess))
       .addError();
 
+    function parsePostCreateReplicationSuccess(data) {
+      return JSON.parse(data);
+    }
+
+    function extractPostCreateReplicationError(error) {
+      return (error && error.errors) || ({_: (error && error.error) || error});
+    }
+
     this.stream.postCreateReplication =
-      new MnHttpRequest(this.postCreateReplication.bind(this))
-      .addSuccess(map(data => JSON.parse(data)))
-      .addError(map(error => (error && error.errors) || ({_: (error && error.error) || error})));
+      new MnHttpRequest(this.postCreateReplication.bind(this, false))
+      .addSuccess(map(parsePostCreateReplicationSuccess))
+      .addError(map(extractPostCreateReplicationError));
+
+    this.stream.postCreateReplicationValidation =
+      new MnHttpRequest(this.postCreateReplication.bind(this, true))
+      .addSuccess(map(parsePostCreateReplicationSuccess))
+      .addError(map(extractPostCreateReplicationError));
 
     this.stream.postRemoteClusters =
       new MnHttpRequest(this.postRemoteClusters.bind(this))
@@ -214,8 +227,10 @@ class MnXDCRService {
                      {params: {"just_validate": validate ? 1 : 0}});
   }
 
-  postCreateReplication(data) {
-    return this.http.post("/controller/createReplication", data);
+  postCreateReplication(validate, data) {
+    return this.http.post("/controller/createReplication", data, {
+      params: {"just_validate": validate ? 1 : 0}
+    });
   }
 
   getRemoteClusters() {

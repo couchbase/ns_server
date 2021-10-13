@@ -61,6 +61,11 @@ licenses/APL2.txt.
        [hidden]="!(error | async)?.sourceNozzlePerNode">
       {{(error | async)?.sourceNozzlePerNode}}
     </div>
+    <div
+       class="alert alert-warning"
+       [hidden]="(error | async) || !(success | async)?.warnings?.sourceNozzlePerNode">
+      <p>{{(success | async)?.warnings?.sourceNozzlePerNode}}</p>
+    </div>
   </div>
 
   <div

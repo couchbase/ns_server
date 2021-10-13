@@ -9,7 +9,7 @@ licenses/APL2.txt.
 */
 
 import {Component, ChangeDetectionStrategy} from '@angular/core';
-import {pipe, BehaviorSubject} from 'rxjs';
+import {pipe, BehaviorSubject, merge} from 'rxjs';
 import {withLatestFrom, map, takeUntil, startWith, filter} from 'rxjs/operators';
 import {UIRouter} from '@uirouter/angular';
 import {FormBuilder, Validators} from '@angular/forms'
@@ -55,8 +55,11 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
     this.getSettingsReplications = mnXDCRService.stream.getSettingsReplications;
     this.remoteClusters = mnXDCRService.stream.getRemoteClustersFiltered.pipe(map((clusters)=> clusters.map((cluster) => cluster.name)));
     this.postCreateReplication = mnXDCRService.stream.postCreateReplication;
-    this.postSettingsReplicationsValidation =
-      mnXDCRService.stream.postSettingsReplicationsValidation;
+    this.postCreateReplicationValidation = mnXDCRService.stream.postCreateReplicationValidation;
+
+    this.error = merge(this.postCreateReplication.error,
+                       this.postCreateReplicationValidation.error);
+
 
     this.form = mnFormService.create(this)
       .setFormGroup({fromBucket: ["", [Validators.required]],
@@ -94,7 +97,7 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
                         map(mnXDCRService.prepareReplicationSettigns.bind(this))))
       .setSourceShared(this.getSettingsReplications)
       .setPostRequest(this.postCreateReplication)
-      .setValidation(this.postSettingsReplicationsValidation)
+      .setValidation(this.postCreateReplicationValidation)
       .clearErrors()
       .showGlobalSpinner()
       .success(data => {
