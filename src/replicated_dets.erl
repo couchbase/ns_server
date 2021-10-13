@@ -22,7 +22,7 @@
          select_with_update/4]).
 
 -export([init/1, init_after_ack/1, handle_call/3, handle_info/2,
-         get_id/1, get_value/1, find_doc/2, all_docs/1,
+         get_id/1, get_value/1, find_doc/2, all_docs/2,
          get_revision/1, set_revision/2, is_deleted/1, save_docs/2,
          handle_mass_update/3, on_replicate_in/1, on_replicate_out/1]).
 
@@ -198,8 +198,8 @@ find_doc(Id, #state{name = TableName}) ->
             false
     end.
 
-all_docs(Pid) ->
-    ?make_producer(select_from_dets(Pid, [{'_', [], ['$_']}], 500,
+all_docs(_Pid, #state{name = TableName}) ->
+    ?make_producer(select_from_dets(TableName, [{'_', [], ['$_']}], 500,
                                     fun (Batch) -> ?yield({batch, Batch}) end)).
 
 get_revision(#docv2{props = Props}) ->
@@ -246,7 +246,7 @@ handle_info(Msg, #state{child_module = ChildModule,
     {noreply, NewChildState} = ChildModule:handle_info(Msg, ChildState),
     {noreply, State#state{child_state = NewChildState}}.
 
-select_from_dets(TableName, MatchSpec, N, Yield) ->
+select_from_dets(TableName, MatchSpec, N, Yield) when is_atom(TableName) ->
     ?log_debug("Starting select with ~p", [{TableName, MatchSpec, N}]),
     ets:safe_fixtable(TableName, true),
     do_select_from_dets(TableName, MatchSpec, N, Yield),
