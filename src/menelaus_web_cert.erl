@@ -59,12 +59,12 @@ handle_delete_trustedCA(IdStr, Req) ->
                     ns_audit:delete_cluster_ca(Req, Subject),
                     ns_ssl_services_setup:sync(),
                     case netconfig_updater:ensure_tls_dist_started(CurNodes) of
-                        ok -> menelaus_util:reply(Req, 200);
+                        ok -> menelaus_util:reply(Req, 204);
                         {error, ErrorMsg} ->
                             menelaus_util:reply_global_error(Req, ErrorMsg)
                     end;
                 {error, not_found} ->
-                    menelaus_util:reply(Req, 200);
+                    menelaus_util:reply_text(Req, "Not found", 404);
                 {error, {in_use, Nodes}} ->
                     Hosts = [misc:extract_node_address(N) || N <- Nodes],
                     HostsStr = lists:join(", ", Hosts),
@@ -75,7 +75,7 @@ handle_delete_trustedCA(IdStr, Req) ->
             end
     catch
         error:badarg ->
-            menelaus_util:reply_json(Req, <<"Not found">>, 404)
+            menelaus_util:reply_text(Req, "Not found", 404)
     end.
 
 handle_cluster_certificate(Req) ->
