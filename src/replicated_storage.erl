@@ -11,7 +11,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/4, start_link_remote/5, wait_for_startup/0,
+-export([start_link/4, wait_for_startup/0,
          anounce_startup/1, sync_to_me/3]).
 
 -export([init/1, handle_call/3, handle_cast/2,
@@ -41,11 +41,6 @@
 start_link(Name, Module, InitParams, Replicator) ->
     proc_lib:start_link(?MODULE, init,
                         [[Name, Module, InitParams, Replicator]]).
-
-start_link_remote(Node, Name, Module, InitParams, Replicator) ->
-    misc:start_link(Node, misc, turn_into_gen_server,
-                    [{local, Name}, ?MODULE,
-                     [Module, InitParams, Replicator], []]).
 
 wait_for_startup() ->
     ?log_debug("Start waiting for startup"),
