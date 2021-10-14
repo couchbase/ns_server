@@ -839,8 +839,8 @@ maybe_add_event_log(OldSettings, NewSettings) ->
                     OldSettingsJson =
                         [{old_settings,
                          {struct, jsonify_audit_settings(OldSettings)}}],
-                    eventlog:add_log(audit_cfg_changed,
-                                     OldSettingsJson ++ NewSettingsJson)
+                    event_log:add_log(audit_cfg_changed,
+                                      OldSettingsJson ++ NewSettingsJson)
             end
     end.
 
