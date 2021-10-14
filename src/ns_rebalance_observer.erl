@@ -170,25 +170,25 @@ init({Services, NodesInfo, Type, Id}) ->
 
 get_event(rebalance, success) ->
     rebalance_completed;
-get_event(rebalance, failed) ->
+get_event(rebalance, failure) ->
     rebalance_failed;
 get_event(rebalance, interrupted) ->
     rebalance_interrupted;
 get_event(graceful_failover, success) ->
     graceful_failover_completed;
-get_event(graceful_failover, failed) ->
+get_event(graceful_failover, failure) ->
     graceful_failover_failed;
 get_event(graceful_failover, interrupted) ->
     graceful_failover_interrupted;
 get_event(hard_failover, success) ->
     hard_failover_completed;
-get_event(hard_failover, failed) ->
+get_event(hard_failover, failure) ->
     hard_failover_failed;
 get_event(hard_failover, interrupted) ->
     hard_failover_interrupted;
 get_event(auto_failover, success) ->
     auto_failover_completed;
-get_event(auto_failover, failed) ->
+get_event(auto_failover, failure) ->
     auto_failover_failed.
 
 add_event_log(#state{type = Type,
