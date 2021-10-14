@@ -74,8 +74,11 @@ init([]) ->
     ns_pubsub:subscribe_link(ns_config_events, EventHandler),
     UserEvents =
         case ns_node_disco:couchdb_node() == node() of
-            true -> {user_storage_events, ns_node_disco:ns_server_node()};
-            false -> user_storage_events
+            true ->
+                dist_manager:wait_for_node(fun ns_node_disco:ns_server_node/0),
+                {user_storage_events, ns_node_disco:ns_server_node()};
+            false ->
+                user_storage_events
         end,
     ns_pubsub:subscribe_link(UserEvents, EventHandler),
 
