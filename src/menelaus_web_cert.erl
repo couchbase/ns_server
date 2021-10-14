@@ -370,14 +370,36 @@ validators(plain) ->
 
 validate_script_path(Name, State) ->
     validator:validate(
-      fun (Path) ->
-            case filelib:is_regular(Path) of
+      fun (Path) when is_binary(Path) ->
+            case lists:member(<<"..">>, filename:split(Path)) of
                 true ->
-                    {value, Path};
+                    {error, "Path must not contain parent directory "
+                            "segments (..) for security reasons"};
                 false ->
-                    {error, "File doesn't exist or not a regular file"}
+                    ScriptsDir = iolist_to_binary(user_scripts_dir()),
+                    AbsPath = filename:join(ScriptsDir, Path),
+                    AbsPathTokens = filename:split(AbsPath),
+                    ScriptsDirTokens = filename:split(ScriptsDir),
+                    case lists:prefix(ScriptsDirTokens, AbsPathTokens) of
+                        true ->
+                            case filelib:is_regular(AbsPath) of
+                                true ->
+                                    {value, AbsPath};
+                                false ->
+                                    {error, io_lib:format(
+                                              "File ~s doesn't exist or not a "
+                                              "regular file", [AbsPath])}
+                            end;
+                        false ->
+                            {error, io_lib:format(
+                                      "Script must reside in ~s for security "
+                                      "reasons", [ScriptsDir])}
+                    end
             end
       end, Name, State).
+
+user_scripts_dir() ->
+    path_config:component_path(data, "scripts").
 
 validate_rest_url(Name, State) ->
     validator:validate(
