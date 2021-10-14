@@ -46,8 +46,15 @@ function mnSettingsAutoCompactionServiceFactory($http, $q, mnBytesToMBFilter, mn
   }
   function prepareSettingsForView(settings, isBucketsDetails) {
     var acSettings = settings.autoCompactionSettings;
-    prepareValuesForView(acSettings.databaseFragmentationThreshold);
-    prepareValuesForView(acSettings.viewFragmentationThreshold);
+
+    if (acSettings.databaseFragmentationThreshold) {
+      prepareValuesForView(acSettings.databaseFragmentationThreshold);
+    }
+
+    if (acSettings.viewFragmentationThreshold) {
+      prepareValuesForView(acSettings.viewFragmentationThreshold);
+    }
+
     if (isBucketsDetails) {
       delete acSettings.indexFragmentationThreshold;
       delete acSettings.indexCircularCompaction;
@@ -76,7 +83,7 @@ function mnSettingsAutoCompactionServiceFactory($http, $q, mnBytesToMBFilter, mn
     });
     return acSettings;
   }
-  function prepareVluesForSaving(holder) {
+  function prepareValuesForSaving(holder) {
     angular.forEach(['size', 'percentage'], function (fieldName) {
       if (!holder[fieldName + 'Flag']) {
         delete holder[fieldName];
@@ -98,6 +105,7 @@ function mnSettingsAutoCompactionServiceFactory($http, $q, mnBytesToMBFilter, mn
     if (!acSettings.allowedTimePeriodFlag) {
       delete acSettings.allowedTimePeriod;
     }
+
     if (acSettings.indexCircularCompaction) {
       acSettings.indexCompactionMode = acSettings.indexCircularCompactionFlag === true ? "circular" : "full";
       acSettings.indexCircularCompaction = {
@@ -107,18 +115,27 @@ function mnSettingsAutoCompactionServiceFactory($http, $q, mnBytesToMBFilter, mn
       delete acSettings.indexCircularCompactionFlag;
       delete acSettings.indexCircularCompactionDaysOfWeek;
     }
-    prepareVluesForSaving(acSettings.databaseFragmentationThreshold);
-    prepareVluesForSaving(acSettings.viewFragmentationThreshold);
+
+    if (acSettings.databaseFragmentationThreshold) {
+      prepareValuesForSaving(acSettings.databaseFragmentationThreshold);
+      delete acSettings.databaseFragmentationThreshold.sizeFlag;
+      delete acSettings.databaseFragmentationThreshold.percentageFlag;
+    }
+
+    if (acSettings.viewFragmentationThreshold) {
+      prepareValuesForSaving(acSettings.viewFragmentationThreshold);
+      delete acSettings.viewFragmentationThreshold.percentageFlag;
+      delete acSettings.viewFragmentationThreshold.sizeFlag;
+    }
+
     if (acSettings.indexFragmentationThreshold) {
-      prepareVluesForSaving(acSettings.indexFragmentationThreshold);
+      prepareValuesForSaving(acSettings.indexFragmentationThreshold);
       delete acSettings.indexFragmentationThreshold.sizeFlag;
       delete acSettings.indexFragmentationThreshold.percentageFlag;
     }
-    delete acSettings.databaseFragmentationThreshold.sizeFlag;
-    delete acSettings.viewFragmentationThreshold.percentageFlag;
-    delete acSettings.viewFragmentationThreshold.sizeFlag;
-    delete acSettings.databaseFragmentationThreshold.percentageFlag;
+
     delete acSettings.allowedTimePeriodFlag;
+
     return acSettings;
   }
   function getAutoCompaction(isBucketsDetails) {
