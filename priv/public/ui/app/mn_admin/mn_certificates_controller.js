@@ -54,7 +54,6 @@ function mnCertController($scope, mnCertificatesService, mnPromiseHelper, mnHelp
     new mnPoller($scope, function () {
       return mnCertificatesService.getPoolsDefaultTrustedCAs();
     })
-      .setInterval(10000)
       .subscribe("rootCertificate", vm)
       .reloadOnScopeEvent("reloadGetPoolsDefaultTrustedCAs")
       .cycle();

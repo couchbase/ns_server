@@ -225,6 +225,10 @@ function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAle
         $rootScope.$broadcast("reloadBucketStats");
       }
 
+      if (previous && previous.trustedCAsURI !== resp.trustedCAsURI) {
+        $rootScope.$broadcast("reloadGetPoolsDefaultTrustedCAs");
+      }
+
       if (previous && previous.serverGroupsUri !== resp.serverGroupsUri) {
         $rootScope.$broadcast("serverGroupsUriChanged");
       }
