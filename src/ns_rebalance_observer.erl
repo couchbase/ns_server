@@ -235,8 +235,11 @@ handle_call({get_rebalance_info, Options}, _From,
 handle_call({record_rebalance_report, {ResultType, ExitInfo}}, From,
             #state{nodes_info = NodesInfo,
                    rebalance_time = TotalTime0} = State0) ->
+    EndTime = os:timestamp(),
+    StartTime = TotalTime0#stat_info.start_time,
+    TimeTaken = rebalance_stage_info:diff_timestamp(EndTime, StartTime),
 
-    TotalTime = TotalTime0#stat_info{end_time = os:timestamp()},
+    TotalTime = TotalTime0#stat_info{end_time = EndTime},
     State = State0#state{rebalance_time = TotalTime},
 
     {_, {ok, RebalanceInfo}, NewState} = handle_call(
@@ -246,7 +249,14 @@ handle_call({record_rebalance_report, {ResultType, ExitInfo}}, From,
                                            State),
 
     maybe_add_event_log(NewState, ResultType, ExitInfo),
-    Report = {RebalanceInfo ++ [{completionMessage, ExitInfo}]},
+
+    Report = {RebalanceInfo ++
+              [{startTime,
+                rebalance_stage_info:binarify_timestamp(StartTime)},
+               {completedTime,
+                rebalance_stage_info:binarify_timestamp(EndTime)},
+               {timeTaken, TimeTaken},
+               {completionMessage, ExitInfo}]},
 
     KeepNodes = proplists:get_value(keep_nodes, NodesInfo, [node()]),
     RV = case ns_rebalance_report_manager:record_rebalance_report(
