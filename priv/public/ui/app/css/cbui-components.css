@@ -4014,6 +4014,8 @@ qw-collection-menu select {
 }
 /* list of properties for a certificate --------------------- */
 .certificate-props {
+  min-width: 250px;
+  word-wrap: break-word;
   line-height: 2;
   font-size: .75rem;
 }

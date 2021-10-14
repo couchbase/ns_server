@@ -17,26 +17,26 @@
     <label class="margin-bottom-half">Trusted Root Certificates</label>
     <div ng-repeat="cert in certCtl.rootCertificate track by $index" class="margin-bottom-2">
       <div class="row items-top flex-left resp-flex-column-med">
-        <div class="column certificate-props max-width-5">
+        <div class="column certificate-props" style="flex:1">
           <h5>
             {{cert.subjectParsed.cn}}
           </h5>
           <div class="nowrap">
             <strong>ID:</strong> {{cert.id}}
           </div>
-          <div ng-show="cert.loadTimestamp" class="nowrap">
+          <div ng-show="cert.loadTimestamp">
             <strong>Time Loaded:</strong> {{cert.loadTimestamp | date:'d MMM, y':'UTC'}}
           </div>
-          <div ng-show="cert.subject" class="nowrap">
+          <div ng-show="cert.subject">
             <strong>Subject:</strong> {{cert.subject}}
           </div>
-          <div ng-show="cert.notBefore" class="nowrap">
+          <div ng-show="cert.notBefore">
             <strong>Not Before:</strong> {{cert.notBefore | date:'d MMM, y':'UTC'}}
           </div>
-          <div ng-show="cert.notAfter" class="nowrap">
+          <div ng-show="cert.notAfter">
             <strong>Not After:</strong> {{cert.notAfter | date:'d MMM, y':'UTC'}}
           </div>
-          <div ng-show="cert.type" class="nowrap">
+          <div ng-show="cert.type">
             <strong>Type:</strong> {{cert.type}}
           </div>
           <div ng-show="cert.nodes.length">
@@ -59,6 +59,7 @@
           </div>
         </div>
         <textarea
+           style="flex:2"
            class="monospaced certificate-props"
            rows="15"
            autocorrect="off"
