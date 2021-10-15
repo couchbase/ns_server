@@ -51,8 +51,8 @@ subscribe_link(Name, Fun) ->
                           State :: any()) -> NewState :: any()),
                      InitState :: any()) -> pid().
 subscribe_link(Name, Fun, InitState) ->
-    case proc_lib:start(?MODULE, do_subscribe_link,
-                        [Name, Fun, InitState, self()]) of
+    case proc_lib:start_link(?MODULE, do_subscribe_link,
+                             [Name, Fun, InitState, self()]) of
         {error, Error} ->
             error(Error);
         Pid when is_pid(Pid) ->
@@ -115,8 +115,6 @@ msg_fun(Pid) ->
 
 do_subscribe_link(Name, Fun, State, Parent) ->
     process_flag(trap_exit, true),
-    erlang:link(Parent),
-
     Ref = make_ref(),
     Handler = {?MODULE, Ref},
     ok = gen_event:add_sup_handler(Name, Handler,
