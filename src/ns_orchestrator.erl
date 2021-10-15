@@ -693,9 +693,9 @@ idle({update_bucket,
 idle({failover, Node}, From, _State) ->
     %% calls from pre-5.5 nodes
     {keep_state_and_data,
-     [{next_event, {call, From}, {failover, [Node], false, hard_failover}}]};
-idle({failover, Nodes, AllowUnsafe, FailoverType}, From, _State) ->
-    handle_start_failover(Nodes, AllowUnsafe, From, true, FailoverType);
+     [{next_event, {call, From}, {failover, [Node], false}}]};
+idle({failover, Nodes, AllowUnsafe}, From, _State) ->
+    handle_start_failover(Nodes, AllowUnsafe, From, true, hard_failover);
 idle({start_failover, Nodes, AllowUnsafe}, From, _State) ->
     handle_start_failover(Nodes, AllowUnsafe, From, false, hard_failover);
 idle({try_autofailover, Nodes}, From, _State) ->
@@ -704,9 +704,7 @@ idle({try_autofailover, Nodes}, From, _State) ->
             {keep_state_and_data,
              [{reply, From, {autofailover_unsafe, UnsafeBuckets}}]};
         ok ->
-            {keep_state_and_data,
-             [{next_event, {call, From},
-              {failover, Nodes, false, auto_failover}}]}
+            handle_start_failover(Nodes, false, From, true, auto_failover)
     end;
 idle({start_graceful_failover, Node}, From, _State) when is_atom(Node) ->
     %% calls from pre-6.5 nodes
