@@ -738,6 +738,27 @@
               {{settingsClusterCtl.indexSettingsErrors.logLevel}}
             </div>
           </div>
+
+          <div
+             class="formrow"
+             ng-show="adminCtl.poolDefault.compat.atLeast71">
+            <label for="enablePageBloomFilter">
+              Bloom Filter
+            </label>
+            <input
+               type="checkbox"
+               id="enablePageBloomFilter"
+               ng-disabled="settingsClusterCtl.indexSettings.storageMode !== 'plasma' || !adminCtl.poolDefault.isEnterprise"
+               ng-model="settingsClusterCtl.indexSettings.enablePageBloomFilter">
+            <label for="enablePageBloomFilter" class="checkbox">
+              Enable Bloom Filter
+            </label>
+            <div
+               class="error error-field"
+               ng-show="settingsClusterCtl.indexSettingsErrors.enablePageBloomFilter">
+              {{settingsClusterCtl.indexSettingsErrors.enablePageBloomFilter}}
+            </div>
+          </div>
         </div>
 
         <div class="formrow margin-top-1-5" ng-if="rbac.cluster.xdcr.settings.read">

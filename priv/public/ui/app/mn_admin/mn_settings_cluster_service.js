@@ -181,6 +181,10 @@ function mnSettingsClusterServiceFactory($http, $q, IEC, mnPools, mnPoolDefault)
       fields.push("numReplica");
     }
 
+    if (mnPoolDefault.export.compat.atLeast71) {
+      fields.push("enablePageBloomFilter");
+    }
+
     fields
       .forEach(function (name) {
         if (data[name] !== undefined) {
