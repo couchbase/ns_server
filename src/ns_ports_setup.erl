@@ -356,7 +356,7 @@ build_afamily_requirement(Prefix) ->
     [Prefix ++ net_to_afamily(AF) ++ "=" ++
      atom_to_list(Type) || {AF, Type} <- misc:address_family_requirement()].
 
-goport_args('query', Config, _Cmd, _NodeUUID) ->
+goport_args('query', Config, _Cmd, NodeUUID) ->
     RestPort = service_ports:get_port(rest_port, Config),
     DataStoreArg = "--datastore=" ++ misc:local_url(RestPort, []),
     CnfgStoreArg = "--configstore=" ++ misc:local_url(RestPort, []),
@@ -366,7 +366,7 @@ goport_args('query', Config, _Cmd, _NodeUUID) ->
 
     HttpsArgs = build_https_args(ssl_query_port, "--https", ":",
                                  "--certfile", "--keyfile", "--cafile", Config),
-    [DataStoreArg, HttpArg, CnfgStoreArg, EntArg] ++
+    [DataStoreArg, HttpArg, CnfgStoreArg, EntArg, "-uuid=" ++ NodeUUID] ++
         build_afamily_requirement("--") ++ HttpsArgs;
 
 goport_args(projector, Config, _Cmd, _NodeUUID) ->
