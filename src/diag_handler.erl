@@ -342,11 +342,15 @@ get_ets_table_sanitizer(kv, _Info) ->
     skip;
 get_ets_table_sanitizer(menelaus_web_cache, _Info) ->
     {ok, fun ns_cluster:sanitize_node_info/1};
+get_ets_table_sanitizer(ns_couchdb_chronicle_dup, _Info) ->
+    {ok, fun ({K, V}) ->  {K, chronicle_kv_log:sanitize(K, V)} end};
 get_ets_table_sanitizer(_, Info) ->
     case proplists:get_value(name, Info) of
         ssl_otp_pem_cache ->
             skip;
         cookies ->
+            skip;
+        kv ->
             skip;
         _ ->
             {ok, ns_config_log:sanitize(_, true)}

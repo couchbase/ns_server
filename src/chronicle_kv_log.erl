@@ -11,6 +11,9 @@
 
 -behaviour(gen_server2).
 
+-export([sanitize/2]).
+
+%% gen_server callbacks:
 -export([start_link/0, init/1, handle_info/2]).
 
 -include("ns_common.hrl").
@@ -52,9 +55,12 @@ log(K, V, R, State) ->
     ?log_debug("update (key: ~p, rev: ~p)~n~s", [K, R, VB]),
     NewState.
 
-prepare_value(root_cert_and_pkey, V, State) ->
-    Hash = base64:encode(crypto:hash(sha256, term_to_binary(V))),
-    {{sanitized, Hash}, State};
+
+sanitize(root_cert_and_pkey, V) ->
+    {sanitized, base64:encode(crypto:hash(sha256, term_to_binary(V)))};
+sanitize(_, V) ->
+    V.
+
 prepare_value(K, V, State) ->
     case ns_bucket:sub_key_match(K) of
         {true, _Bucket, props} ->
@@ -63,5 +69,5 @@ prepare_value(K, V, State) ->
         {true, _Bucket, collections} ->
             calculate_diff(K, V, fun collections:diff_manifests/2, State);
         _ ->
-            {V, State}
+            {sanitize(K, V), State}
     end.
