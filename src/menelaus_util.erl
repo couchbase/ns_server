@@ -622,7 +622,7 @@ streaming_inner(Req, DataBody, HTTPRes, LastRes, Update) ->
             LastRes;
         {Res, Data} ->
             write_chunk(Req, Data, HTTPRes),
-            write_chunk(Req, "\n\n", HTTPRes),
+            write_chunk(Req, "\n\n\n\n", HTTPRes),
             Res
     end.
 
