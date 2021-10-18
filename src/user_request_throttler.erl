@@ -174,11 +174,7 @@ handle_cast({request_done, Pid}, State) ->
             ok;
         [{Pid, MRef, UUID}] ->
             erlang:demonitor(MRef, [flush]),
-            Count = ets:update_counter(?USER_STATS,
-                                       {UUID, num_concurrent_requests},
-                                       -1),
-            true = (Count >= 0),
-            log_stats(num_concurrent_requests, UUID, Count)
+            decrement_num_concurrent_request(UUID)
     end,
     {noreply, State};
 handle_cast(Cast, State) ->
@@ -197,11 +193,7 @@ handle_info({log_stat, {UUID, Stat} = Key} = Msg, State) ->
     {noreply, State};
 handle_info({'DOWN', MRef, process, Pid, _Reason}, State) ->
     [{Pid, MRef, UUID}] = ets:take(?PID_USER_TABLE, Pid),
-    Count = ets:update_counter(?USER_STATS,
-                               {UUID, num_concurrent_requests},
-                               -1),
-    true = (Count >= 0),
-    log_stats(num_concurrent_requests, UUID, Count),
+    decrement_num_concurrent_request(UUID),
     {noreply, State};
 handle_info(clear_timed_stats, State) ->
     true = ets:delete_all_objects(?USER_TIMED_STATS),
@@ -218,6 +210,18 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %% Internal
+decrement_num_concurrent_request(UUID) ->
+    Count = ets:update_counter(?USER_STATS,
+                               {UUID, num_concurrent_requests},
+                               -1),
+    case Count of
+        0 ->
+            ets:delete(?USER_STATS, {UUID, num_concurrent_requests});
+        _ ->
+            ok
+    end,
+    log_stats(num_concurrent_requests, UUID, Count).
+
 check_user_restricted(UUID, Limits) ->
     RV = lists:filter(
            fun ({Table, Key}) ->
