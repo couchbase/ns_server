@@ -742,9 +742,19 @@
           <div
              class="formrow"
              ng-show="adminCtl.poolDefault.compat.atLeast71">
-            <label for="enablePageBloomFilter">
+            <label
+               class="inline"
+               for="enablePageBloomFilter">
               Bloom Filter
             </label>
+            <span
+               class="fa-stack icon-info"
+               uib-tooltip="Bloom filters improve performance on indexing key lookups for keys that are absent at the cost of some additional memory."
+               tooltip-placement="auto right">
+              <span class="icon fa-circle-thin fa-stack-2x"></span>
+              <span class="icon fa-info fa-stack-1x"></span>
+            </span>
+            <br>
             <input
                type="checkbox"
                id="enablePageBloomFilter"
