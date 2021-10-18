@@ -140,9 +140,18 @@ node_monitors(Node) ->
 
 supported_services(Node) ->
     Snapshot = ns_cluster_membership:get_snapshot(),
-    [S || S <- supported_services_by_version(
-                 cluster_compat_mode:get_compat_version()),
-          ns_cluster_membership:should_run_service(Snapshot, S, Node)].
+    Services =
+        [S || S <- supported_services_by_version(
+                     cluster_compat_mode:get_compat_version()),
+              ns_cluster_membership:should_run_service(Snapshot, S, Node)],
+    %% we don't want services to trigger auto-failover to occur on an otherwise
+    %% healthy kv node
+    case lists:member(kv, Services) of
+        true ->
+            [kv];
+        false ->
+            Services
+    end.
 
 supported_services_by_version(ClusterVersion) ->
     [kv] ++
