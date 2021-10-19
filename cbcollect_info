@@ -1352,10 +1352,14 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
     fts_port = read_guts(guts, "fts_http_port")
     if fts_port:
         url = 'http://%s:%s/api/diag' % (local_url_addr, fts_port)
-        fts_tasks = [make_curl_task(name="FTS /api/diag: ",
-                                    user="@", password=memcached_pass,
-                                    url=url,
-                                    log_file="fts_diag.json", no_header=True)]
+        fts_tasks = [
+                make_curl_task(name="FTS /api/diag: ",
+                               user="@", password=memcached_pass,
+                               url=url,
+                               log_file="fts_diag.json", no_header=True),
+                *make_golang_profile_tasks('FTS', memcached_pass, fts_port,
+                                           'fts')
+        ]
 
     cbas_tasks = []
     cbas_port = read_guts(guts, "cbas_http_port")
