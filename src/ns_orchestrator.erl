@@ -1639,7 +1639,8 @@ handle_start_failover(Nodes, AllowUnsafe, From, Wait, FailoverType) ->
     Id = couch_uuids:random(),
     {ok, ObserverPid} =
         ns_rebalance_observer:start_link([], NodesInfo, FailoverType, Id),
-    case failover:start(Nodes, AllowUnsafe) of
+    case failover:start(Nodes, #{allow_unsafe => AllowUnsafe,
+                                 auto => FailoverType =:= auto_failover}) of
         {ok, Pid} ->
             ale:info(?USER_LOGGER, "Starting failover of nodes ~p. "
                      "Operation Id = ~s", [Nodes, Id]),

@@ -30,15 +30,15 @@
 -define(DATA_LOST, 1).
 -define(FAILOVER_OPS_TIMEOUT, ?get_timeout(failover_ops_timeout, 10000)).
 
-start(Nodes, AllowUnsafe) ->
+start(Nodes, Options) ->
     Parent = self(),
-    ?log_debug("Starting failover with Nodes = ~p, AllowUnsafe = ~p",
-               [Nodes, AllowUnsafe]),
-    case is_possible(Nodes, AllowUnsafe) of
+    ?log_debug("Starting failover with Nodes = ~p, Options = ~p",
+               [Nodes, Options]),
+    case is_possible(Nodes, Options) of
         ok ->
             Pid = proc_lib:spawn_link(
                     fun () ->
-                            case run(Nodes, AllowUnsafe, Parent) of
+                            case run(Nodes, Options, Parent) of
                                 ok ->
                                     ok;
                                 Error ->
@@ -58,11 +58,14 @@ start(Nodes, AllowUnsafe) ->
             Error
     end.
 
-run(Nodes, AllowUnsafe, Parent) when Nodes =/= [] ->
+allow_unsafe(Options) ->
+    maps:get(allow_unsafe, Options, false).
+
+run(Nodes, Options, Parent) when Nodes =/= [] ->
     Result = leader_activities:run_activity(
                failover, majority,
-               ?cut(activity_body(Nodes, AllowUnsafe, Parent)),
-               [{unsafe, AllowUnsafe}]),
+               ?cut(activity_body(Nodes, Options, Parent)),
+               [{unsafe, allow_unsafe(Options)}]),
 
     case Result of
         {leader_activities_error, _, {quorum_lost, _}} ->
@@ -73,14 +76,14 @@ run(Nodes, AllowUnsafe, Parent) when Nodes =/= [] ->
             Result
     end.
 
-activity_body(Nodes, AllowUnsafe, Parent) ->
-    case check_safeness(AllowUnsafe) of
+activity_body(Nodes, Options, Parent) ->
+    case check_safeness(allow_unsafe(Options)) of
         true ->
-            case maybe_restore_chronicle_quorum(Nodes,
-                                                AllowUnsafe) of
-                {ok, Props} ->
+            case maybe_restore_chronicle_quorum(Nodes, Options) of
+                {ok, NewOptions} ->
                     Parent ! started,
-                    orchestrate(Nodes, [durability_aware | Props]);
+                    orchestrate(Nodes,
+                                maps:put(durability_aware, true, NewOptions));
                 Error ->
                     Error
             end;
@@ -88,17 +91,15 @@ activity_body(Nodes, AllowUnsafe, Parent) ->
             orchestration_unsafe
     end.
 
-maybe_restore_chronicle_quorum(_FailedNodes, false) ->
-    {ok, []};
-maybe_restore_chronicle_quorum(FailedNodes, true) ->
-    case chronicle_compat:enabled() of
+maybe_restore_chronicle_quorum(FailedNodes, Options) ->
+    case allow_unsafe(Options) andalso chronicle_compat:enabled() of
         true ->
-            restore_chronicle_quorum(FailedNodes);
+            restore_chronicle_quorum(FailedNodes, Options);
         false ->
-            {ok, []}
+            {ok, Options}
     end.
 
-restore_chronicle_quorum(FailedNodes) ->
+restore_chronicle_quorum(FailedNodes, Options) ->
     ?log_info("Attempting quorum loss failover of = ~p", [FailedNodes]),
     Ref = erlang:make_ref(),
     case chronicle_master:start_failover(FailedNodes, Ref) of
@@ -106,7 +107,7 @@ restore_chronicle_quorum(FailedNodes) ->
             case check_chronicle_quorum() of
                 true ->
                     ns_cluster:counter_inc(quorum_failover_success),
-                    {ok, [{quorum_failover, Ref}]};
+                    {ok, maps:put(quorum_failover, Ref, Options)};
                 false ->
                     orchestration_unsafe
             end;
@@ -214,7 +215,7 @@ config_sync_nodes(FailedNodes) ->
 
 deactivate_nodes(Nodes, Options) ->
     ok = leader_activities:deactivate_quorum_nodes(Nodes),
-    case proplists:get_value(quorum_failover, Options) of
+    case maps:get(quorum_failover, Options, undefined) of
         undefined ->
             ale:info(?USER_LOGGER, "Deactivating failed over nodes ~p",
                      [Nodes]),
@@ -228,7 +229,7 @@ deactivate_nodes(Nodes, Options) ->
 %% @doc Fail one or more nodes. Doesn't eject the node from the cluster. Takes
 %% effect immediately.
 failover(Nodes, Options) ->
-    not proplists:is_defined(quorum_failover, Options) orelse
+    not maps:is_key(quorum_failover, Options) orelse
         failover_collections(),
     KVNodes = ns_cluster_membership:service_nodes(Nodes, kv),
     lists:umerge([failover_buckets(KVNodes, Options),
@@ -459,7 +460,7 @@ janitor_cleanup_options(FailedNodes, FailoverOptions) ->
 
 durability_aware(Options) ->
     cluster_compat_mode:preserve_durable_mutations() andalso
-        proplists:get_bool(durability_aware, Options).
+        maps:get(durability_aware, Options, false).
 
 fix_vbucket_map(FailoverNodes, Bucket, Map, Options) ->
     case durability_aware(Options) of
@@ -660,7 +661,7 @@ fix_vbucket_map_test_() ->
                    [[c, undefined, undefined],
                     [d, c, undefined],
                     [c, d, e]],
-                   fix_vbucket_map([a, b], "test", Map, [])),
+                   fix_vbucket_map([a, b], "test", Map, #{})),
                 ?assert(meck:validate(janitor_agent))
         end},
        {"durability aware",
@@ -684,7 +685,8 @@ fix_vbucket_map_test_() ->
                     [c, d, undefined],
                     [c, d, undefined],
                     [c, d, e]],
-                   fix_vbucket_map([a, b], "test", Map, [durability_aware])),
+                   fix_vbucket_map([a, b], "test", Map,
+                                   #{durability_aware => true})),
                 ?assert(meck:validate(janitor_agent))
         end}]).
 -endif.
