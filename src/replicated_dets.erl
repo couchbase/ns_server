@@ -217,9 +217,10 @@ is_deleted(#docv2{props = Props}) ->
 save_docs(Docs, #state{name = TableName,
                        child_module = ChildModule,
                        child_state = ChildState} = State) ->
+    OldDocs = [find_doc(get_id(Doc), State) || Doc <- Docs],
     ok = dets:insert(TableName, Docs),
     true = ets:insert(TableName, Docs),
-    NewChildState = ChildModule:on_save(Docs, ChildState),
+    NewChildState = ChildModule:on_save(Docs, OldDocs, ChildState),
     {ok, State#state{child_state = NewChildState}}.
 
 on_replicate_in(Doc) ->

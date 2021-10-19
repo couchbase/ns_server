@@ -39,6 +39,7 @@
          get_user_props/2,
          get_user_limits/1,
          get_user_uuid/1,
+         is_deleted_user/1,
          change_password/2,
 
 %% Group management:
@@ -79,13 +80,14 @@
         ]).
 
 %% callbacks for replicated_dets
--export([init/1, on_save/2, on_empty/1, handle_call/4, handle_info/2]).
+-export([init/1, on_save/3, on_empty/1, handle_call/4, handle_info/2]).
 
 -export([start_storage/0, start_replicator/0, start_auth_cache/0]).
 
 %% RPC'd from ns_couchdb node
 -export([get_auth_info_on_ns_server/1]).
 
+-define(UUID_USER_MAP, uuid_user_map).
 -define(MAX_USERS_ON_CE, 20).
 -define(LDAP_GROUPS_CACHE_SIZE, 1000).
 -define(DEFAULT_PROPS, [name, uuid, user_roles, group_roles, passwordless,
@@ -171,52 +173,88 @@ start_auth_cache() ->
 empty_storage() ->
     replicated_dets:empty(storage_name()).
 
+is_deleted_user(UUID) when is_list(UUID) ->
+    is_deleted_user(list_to_binary(UUID));
+is_deleted_user(UUID) when is_binary(UUID) ->
+    not ets:member(?UUID_USER_MAP, UUID).
+
 get_passwordless() ->
     gen_server:call(storage_name(), get_passwordless, infinity).
 
 init([]) ->
     _ = ets:new(versions_name(), [protected, named_table]),
     mru_cache:new(ldap_groups_cache, ?LDAP_GROUPS_CACHE_SIZE),
-    #state{base = init_versions()}.
+    _ = ets:new(?UUID_USER_MAP, [protected, set, named_table]),
+    %% notify versions after we build_uuid_user_map.
+    self() ! build_uuid_user_map,
+    #state{base = init_versions(false)}.
 
-init_versions() ->
+init_versions(Notify) ->
     Base = misc:rand_uniform(0, 16#100000000),
     ets:insert_new(versions_name(), [{user_version, 0, Base},
                                      {auth_version, 0, Base},
                                      {group_version, 0, Base},
                                      {limits_version, 0, Base}]),
-    gen_event:notify(user_storage_events, {user_version, {0, Base}}),
-    gen_event:notify(user_storage_events, {group_version, {0, Base}}),
-    gen_event:notify(user_storage_events, {auth_version, {0, Base}}),
-    gen_event:notify(user_storage_events, {limits_version, {0, Base}}),
+    maybe_notify_versions(Notify),
     Base.
 
-on_save(Docs, State) ->
+maybe_notify_versions(true) ->
+    notify_versions();
+maybe_notify_versions(_) ->
+    ok.
+
+notify_versions() ->
+    lists:foreach(fun (Key) ->
+                          [{Key, Ver, Base}] = ets:lookup(
+                                                 versions_name(), Key),
+                          gen_event:notify(user_storage_events,
+                                           {Key, {Ver, Base}})
+                  end, [user_version, group_version, auth_version,
+                        limits_version]).
+
+on_save(Docs, OldDocs, State) ->
     ProcessDoc =
-        fun ({group, _}, _Doc, S) ->
+        fun ({group, _}, _Doc, _OldDoc, S) ->
                 {{change_version, group_version}, S};
-            ({limits, _}, _Doc, S) ->
+            ({limits, _}, _Doc, _OldDoc, S) ->
                 {{change_version, limits_version}, S};
-            ({user, _}, _Doc, S) ->
+            ({user, Identity}, Doc, OldDoc, S) ->
+                case Identity of
+                    {_, local} ->
+                        case replicated_dets:is_deleted(Doc) of
+                            true ->
+                                Props = replicated_dets:get_value(OldDoc),
+                                UUID = proplists:get_value(uuid, Props),
+                                ets:delete(?UUID_USER_MAP, UUID);
+                            false ->
+                                Props = replicated_dets:get_value(Doc),
+                                UUID = proplists:get_value(uuid, Props),
+                                ets:insert_new(?UUID_USER_MAP,
+                                               {UUID, Identity})
+                        end;
+                    _ ->
+                        ok
+                end,
                 {{change_version, user_version}, S};
-            ({auth, Identity}, Doc, S) ->
+            ({auth, Identity}, Doc, _OldDoc, S) ->
                 {{change_version, auth_version},
                  maybe_update_passwordless(
                    Identity,
                    replicated_dets:get_value(Doc),
                    replicated_dets:is_deleted(Doc),
                    S)};
-            (_, _, S) ->
+            (_, _, _, S) ->
                 {undefined, S}
         end,
 
     {MessagesToSend, NewState} =
         lists:foldl(
-          fun (Doc, {MessagesAcc, StateAcc}) ->
+          fun ({Doc, OldDoc}, {MessagesAcc, StateAcc}) ->
                   {Message, NewState} =
-                      ProcessDoc(replicated_dets:get_id(Doc), Doc, StateAcc),
+                      ProcessDoc(replicated_dets:get_id(Doc), Doc, OldDoc,
+                                 StateAcc),
                   {sets:add_element(Message, MessagesAcc), NewState}
-          end, {sets:new(), State}, Docs),
+          end, {sets:new(), State}, lists:zip(Docs, OldDocs)),
     case sets:is_element({change_version, group_version}, MessagesToSend) of
         true -> mru_cache:flush(ldap_groups_cache);
         false -> ok
@@ -228,11 +266,23 @@ handle_info({change_version, Key} = Msg, #state{base = Base} = State) ->
     misc:flush(Msg),
     Ver = ets:update_counter(versions_name(), Key, 1),
     gen_event:notify(user_storage_events, {Key, {Ver, Base}}),
+    {noreply, State};
+handle_info(build_uuid_user_map, State) ->
+    pipes:run(menelaus_users:select_users({'_', local}, [uuid]),
+              ?make_consumer(
+                 pipes:foreach(
+                   ?producer(),
+                   fun ({{user, {_, local} = Identity}, [{uuid, UUID}]}) ->
+                           true = ets:insert_new(?UUID_USER_MAP,
+                                                 {UUID, Identity})
+                   end))),
+    notify_versions(),
     {noreply, State}.
 
 on_empty(_State) ->
     true = ets:delete_all_objects(versions_name()),
-    #state{base = init_versions()}.
+    true = ets:delete_all_objects(?UUID_USER_MAP),
+    #state{base = init_versions(true)}.
 
 maybe_update_passwordless(_Identity, _Value, _Deleted, State = #state{passwordless = undefined}) ->
     State;
