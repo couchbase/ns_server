@@ -819,16 +819,17 @@ jsonify_audit_settings(Settings0) ->
                         end
                 end, [], Settings).
 
-maybe_add_event_log(OldSettings, NewSettings) ->
+add_event_log(OldSettings, NewSettings) ->
+    OldSettingsJson = [{old_settings,
+                       {struct, jsonify_audit_settings(OldSettings)}}],
     case NewSettings of
         [] ->
-            event_log:add_log(audit_disabled, OldSettings);
+            event_log:add_log(audit_disabled, OldSettingsJson);
         _ ->
             Enabled =
                 proplists:get_value(auditd_enabled, OldSettings) =:= false
                     andalso
                     proplists:get_value(auditd_enabled, NewSettings) =:= true,
-
             NewSettingsJson =
                 [{new_settings, {struct, jsonify_audit_settings(NewSettings)}}],
 
@@ -836,23 +837,20 @@ maybe_add_event_log(OldSettings, NewSettings) ->
                 true ->
                     event_log:add_log(audit_enabled, NewSettingsJson);
                 false ->
-                    OldSettingsJson =
-                        [{old_settings,
-                         {struct, jsonify_audit_settings(OldSettings)}}],
                     event_log:add_log(audit_cfg_changed,
                                       OldSettingsJson ++ NewSettingsJson)
             end
     end.
 
-modify_audit_settings(Req, Settings, OldSettings) ->
-    case proplists:get_value(auditd_enabled, Settings, undefined) of
+modify_audit_settings(Req, NewSettings, OldSettings) ->
+    case proplists:get_value(auditd_enabled, NewSettings, undefined) of
         false ->
             sync_put(modify_audit_settings, Req, [{auditd_enabled, false}]),
-            maybe_add_event_log(OldSettings, []);
+            add_event_log(OldSettings, []);
         _ ->
             put(modify_audit_settings, Req,
-                [prepare_audit_setting(S) || S <- Settings]),
-            maybe_add_event_log(Settings, OldSettings)
+                [prepare_audit_setting(S) || S <- NewSettings]),
+            add_event_log(OldSettings, NewSettings)
 
     end.
 

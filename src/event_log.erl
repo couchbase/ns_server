@@ -64,7 +64,7 @@ event_details(audit_enabled) ->
 event_details(audit_disabled) ->
     {9217, security, info, <<"Audit disabled">>};
 event_details(audit_cfg_changed) ->
-    {9218, security, info, <<"Audit configuration change">>};
+    {9218, security, info, <<"Audit configuration changed">>};
 event_details(ldap_cfg_changed) ->
     {9219, security, info, <<"LDAP configuration changed">>};
 event_details(security_cfg_changed) ->
