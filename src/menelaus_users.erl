@@ -225,7 +225,10 @@ on_save(Docs, OldDocs, State) ->
                             true ->
                                 Props = replicated_dets:get_value(OldDoc),
                                 UUID = proplists:get_value(uuid, Props),
-                                ets:delete(?UUID_USER_MAP, UUID);
+                                ets:delete(?UUID_USER_MAP, UUID),
+                                gen_event:notify(
+                                  user_storage_events,
+                                  {local_user_deleted, UUID});
                             false ->
                                 Props = replicated_dets:get_value(Doc),
                                 UUID = proplists:get_value(uuid, Props),
