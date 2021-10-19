@@ -2221,7 +2221,8 @@ multi_call_test_setup_server() ->
                                 end,
                         {reply, Reply, {}}
                 end),
-    {ok, _} = gen_server:start_link({local, multi_call_server}, multi_call_server, [], []),
+    {ok, _} = gen_server:start({local, multi_call_server}, multi_call_server,
+                               [], []),
     ok.
 
 multi_call_test_setup() ->
