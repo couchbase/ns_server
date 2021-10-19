@@ -1643,18 +1643,10 @@ handle_start_failover(Nodes, AllowUnsafe, From, Wait, FailoverType) ->
         {ok, Pid} ->
             ale:info(?USER_LOGGER, "Starting failover of nodes ~p. "
                      "Operation Id = ~s", [Nodes, Id]),
-            case FailoverType of
-                hard_failover ->
-                    event_log:add_log(hard_failover_initiated,
-                                      [{operation_id, Id},
-                                       {nodes_info, {struct, NodesInfo}},
-                                       {allow_unsafe, AllowUnsafe}]);
-                auto_failover ->
-                    event_log:add_log(auto_failover_initiated,
-                                      [{operation_id, Id},
-                                       {nodes_info, {struct, NodesInfo}},
-                                       {allow_unsafe, AllowUnsafe}])
-            end,
+            Event = list_to_atom(atom_to_list(FailoverType) ++ "_initiated"),
+            event_log:add_log(Event, [{operation_id, Id},
+                                      {nodes_info, {struct, NodesInfo}},
+                                      {allow_unsafe, AllowUnsafe}]),
             Type = failover,
             ns_cluster:counter_inc(Type, start),
             set_rebalance_status(Type, running, Pid),
