@@ -312,10 +312,11 @@ handle_info(tick, State0) ->
     ServicesConfig = all_services_config(Config, Snapshot),
 
     {Actions, LogicState} =
-        auto_failover_logic:process_frame(attach_node_uuids(NonPendingNodes, NodeUUIDs),
-                                          attach_node_uuids(CurrentlyDown, NodeUUIDs),
-                                          State#state.auto_failover_logic_state,
-                                          ServicesConfig, DownSG),
+        auto_failover_logic:process_frame(
+          ns_cluster_membership:attach_node_uuids(NonPendingNodes, NodeUUIDs),
+          ns_cluster_membership:attach_node_uuids(CurrentlyDown, NodeUUIDs),
+          State#state.auto_failover_logic_state,
+          ServicesConfig, DownSG),
     NewState = lists:foldl(
                  fun(Action, S) ->
                          process_action(Action, S, DownNodes, NodeStatuses,
@@ -877,17 +878,6 @@ all_services_config(Config, Snapshot) ->
               {Service, {{disable_auto_failover, AutoFailoverDisabled},
                          {nodes, SvcNodes}}}
       end, AllServices).
-
-attach_node_uuids(Nodes, UUIDDict) ->
-    lists:map(
-      fun (Node) ->
-              case dict:find(Node, UUIDDict) of
-                  {ok, UUID} ->
-                      {Node, UUID};
-                  error ->
-                      {Node, undefined}
-              end
-      end, Nodes).
 
 restart_on_compat_mode_change() ->
     Self = self(),

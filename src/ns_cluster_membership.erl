@@ -602,8 +602,7 @@ json_service_name(ns_server) -> clusterManager;
 json_service_name(xdcr) -> xdcr;
 json_service_name(Service) -> Service.
 
-attach_node_uuids(Nodes, Config) ->
-    UUIDDict = ns_config:get_node_uuid_map(Config),
+attach_node_uuids(Nodes, UUIDDict) ->
     lists:map(
       fun (Node) ->
               case dict:find(Node, UUIDDict) of

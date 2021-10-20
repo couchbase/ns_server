@@ -1406,7 +1406,8 @@ get_graceful_fo_chk() ->
                   ns_cluster_membership:fetch_snapshot(_)],
                  #{ns_config => Cfg}),
     KnownNodes0 = ns_cluster_membership:nodes_wanted(Snapshot),
-    KnownNodes = ns_cluster_membership:attach_node_uuids(KnownNodes0, Cfg),
+    UUIDDict = ns_config:get_node_uuid_map(Cfg),
+    KnownNodes = ns_cluster_membership:attach_node_uuids(KnownNodes0, UUIDDict),
     FailedNodes = get_failed_nodes(Snapshot, KnownNodes0),
     [{known_nodes, KnownNodes}] ++ get_retry_check(Snapshot, FailedNodes).
 
