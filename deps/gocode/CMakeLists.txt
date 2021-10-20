@@ -18,11 +18,6 @@ GoInstall (TARGET ns_godu PACKAGE godu
   GOVERSION 1.8.5
   INSTALL_PATH bin/priv)
 
-GoInstall (TARGET ns_minify PACKAGE minify
-  GOPATH "${CMAKE_CURRENT_SOURCE_DIR}" "${GODEPSDIR}"
-  GOVERSION 1.8.5
-  INSTALL_PATH bin/priv)
-
 GoInstall (TARGET ns_gosecrets PACKAGE gosecrets
   GOPATH "${CMAKE_CURRENT_SOURCE_DIR}" "${GODEPSDIR}"
   GOVERSION 1.8.5
