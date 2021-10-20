@@ -104,7 +104,7 @@ class MnSettingsAutoCompactionService {
 
     let source = {
       indexCompactionMode: data.indexCompactionMode,
-      timePeriodFlag: this.isTimePeriodFlagChecked(data),
+      timePeriodFlag: !!data.allowedTimePeriod,
       parallelDBAndViewCompaction: data.parallelDBAndViewCompaction,
       purgeInterval: settings.purgeInterval,
     };
@@ -182,13 +182,5 @@ class MnSettingsAutoCompactionService {
       size: this.maybeDefaultSize(threshold.size),
       sizeFlag: this.isFlagEnabled(threshold.size)
     };
-  }
-
-  isTimePeriodFlagChecked(data) {
-    let view = data.viewFragmentationThreshold;
-    let database = data.databaseFragmentationThreshold;
-    let values = Object.values(view).concat(Object.values(database));
-
-    return data.allowedTimePeriod ? values.some(x => Number.isInteger(x)) : false;
   }
 }
