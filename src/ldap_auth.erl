@@ -79,6 +79,7 @@ with_query_connection(Settings, Fun) ->
 lookup_user(Username) ->
     Settings = ldap_util:build_settings(),
     Timeout = proplists:get_value(request_timeout, Settings),
+    ?log_debug("Looking up user ~p", [ns_config_log:tag_user_name(Username)]),
     with_query_connection(
       Settings,
       fun (Handle) ->
@@ -87,6 +88,8 @@ lookup_user(Username) ->
                     {ok, DN};
                 {ok, DN, _} ->
                     Query = DN ++ "?objectClass?base?(objectClass=*)",
+                    ?log_debug("Making sure DN ~p exists",
+                               [ns_config_log:tag_user_name(DN)]),
                     dn_query_with_handle(Handle, Query, [], Timeout);
                 {error, _} = Error ->
                     Error
@@ -97,9 +100,10 @@ get_user_DN(Username, Settings, Context) ->
     {_, Map} = proplists:get_value(user_dn_mapping, Settings),
     case map_user_to_DN(Username, Settings, Map, Context) of
         {ok, DN, ResolveType} ->
-            ?log_debug("Username->DN: Constructed DN: ~p for ~p",
+            ?log_debug("Username->DN: Constructed DN: ~p for ~p using ~p",
                        [ns_config_log:tag_user_name(DN),
-                        ns_config_log:tag_user_name(Username)]),
+                        ns_config_log:tag_user_name(Username),
+                        ResolveType]),
             {ok, DN, ResolveType};
         {error, Error} ->
             ?log_error("Username->DN: Mapping username to LDAP DN failed for "
@@ -170,13 +174,12 @@ user_groups(User, Settings) ->
       Settings,
       fun (Handle) ->
               Query = proplists:get_value(groups_query, Settings),
-              Res = get_groups(Handle, User, Settings, Query),
-              ?log_debug("Groups search for ~p: ~p",
-                         [ns_config_log:tag_user_name(User), Res]),
-              Res
+              get_groups(Handle, User, Settings, Query)
       end).
 
 get_groups(Handle, Username, Settings, QueryStr) ->
+    ?log_debug("Search groups for user ~p using query ~p",
+               [ns_config_log:tag_user_name(Username), QueryStr]),
     Timeout = proplists:get_value(request_timeout, Settings),
     GetDN =
         fun () ->
@@ -204,12 +207,25 @@ get_groups(Handle, Username, Settings, QueryStr) ->
                                [{"%u", [{default, EscapedUser}]},
                                 {"%D", GetDN}], Timeout),
         case NestedEnabled of
-            true -> {ok, get_nested_groups(QueryFun, UserGroups, UserGroups,
-                                           FailOnMaxDepth, MaxDepth)};
-            false -> {ok, UserGroups}
+            true ->
+                NestedGroups = get_nested_groups(
+                                 QueryFun, UserGroups, UserGroups,
+                                 FailOnMaxDepth, MaxDepth),
+                ?log_debug("Nested groups search for ~p returned ~b groups",
+                           [ns_config_log:tag_user_name(Username),
+                            length(NestedGroups)]),
+                {ok, NestedGroups};
+            false ->
+                ?log_debug("Groups search for ~p returned ~b groups",
+                           [ns_config_log:tag_user_name(Username),
+                            length(UserGroups)]),
+                {ok, UserGroups}
         end
     catch
-        throw:{error, _} = Error -> Error
+        throw:{error, _} = Error ->
+            ?log_error("Groups search for ~p returned error: ~p",
+                       [ns_config_log:tag_user_name(Username), Error]),
+            Error
     end.
 
 get_nested_groups(_QueryFun, [], Discovered, _, _MaxDepth) -> Discovered;

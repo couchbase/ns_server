@@ -272,14 +272,14 @@ eldap_search(Handle, SearchProps) ->
                 referrals = Refs}} ->
             Refs == [] orelse ?log_error("LDAP search continuations are not "
                                          "supported yet, ignoring: ~p", [Refs]),
-            ?log_debug("LDAP search res ~p: ~p", [SearchProps, Entries]),
+            ?log_debug("LDAP search returned ~b entries", [length(Entries)]),
             {ok, Entries};
         {ok, {referral, Refs}} ->
             ?log_error("LDAP referrals are not supported yet, ignoring: ~p",
                        [Refs]),
             {ok, []};
         {error, Reason} ->
-            ?log_error("LDAP search failed ~p: ~p", [SearchProps, Reason]),
+            ?log_error("LDAP search failed: ~p", [Reason]),
             {error, Reason}
     end.
 
