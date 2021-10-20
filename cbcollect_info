@@ -969,6 +969,7 @@ def make_os_tasks():
         LinuxTask("Kernel modules", "lsmod"),
         LinuxTask("Distro version", "cat /etc/redhat-release"),
         LinuxTask("Distro version", "cat /etc/oracle-release"),
+        LinuxTask("Distro version", "cat /etc/debian_version"),
         LinuxTask("Distro version", "lsb_release -a"),
         LinuxTask("Distro version", "cat /etc/SuSE-release"),
         LinuxTask("Distro version", "cat /etc/issue"),
