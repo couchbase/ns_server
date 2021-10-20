@@ -1034,11 +1034,18 @@ pre_NEO_files_to_remove() ->
      user_set_ca_chain_path()].
 
 should_convert_pre_neo_certs() ->
-    case ns_config:read_key_fast({node, node(), node_cert}, undefined) of
+    case ns_config:read_key_fast(cert_and_pkey, undefined) of
         undefined ->
-            lists:any(fun (P) -> filelib:is_file(P) end,
-                      pre_NEO_files_to_remove());
-        _ -> false
+            % The system has never been pre-neo, no need in upgrade
+            false;
+        _ ->
+            case ns_config:read_key_fast({node, node(), node_cert},
+                                         undefined) of
+                undefined ->
+                    lists:any(fun (P) -> filelib:is_file(P) end,
+                              pre_NEO_files_to_remove());
+                _ -> false
+            end
     end.
 
 raw_ssl_cacert_key_path() ->
