@@ -1172,7 +1172,7 @@ run_graceful_failover(Nodes) ->
                      end, 0, InterestingBuckets),
                    master_activity_events:note_rebalance_stage_completed(kv),
                    sleep_for_sdk_clients("graceful failover"),
-                   ok = failover:orchestrate(Nodes, #{}),
+                   {ok, []} = failover:orchestrate(Nodes, #{}),
 
                    ok
            end).

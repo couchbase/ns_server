@@ -65,7 +65,8 @@
          reset_count_async/0,
          is_enabled/0,
          is_enabled/1,
-         validate_kv_safety/1]).
+         validate_kv_safety/1,
+         validate_services_safety/2]).
 
 %% For email alert notificatons
 -export([alert_keys/0]).
@@ -84,6 +85,8 @@
 
 %% @doc Minimum number of active server groups needed for server group failover
 -define(MIN_ACTIVE_SERVER_GROUPS, 3).
+
+-define(SAFETY_CHECK_TIMEOUT, ?get_timeout(safety_check, 2000)).
 
 -record(state,
         { auto_failover_logic_state,
@@ -562,16 +565,16 @@ failover_nodes([], S, _DownNodes, _NodeStatuses, _UpdateCount) ->
     S;
 failover_nodes(Nodes, S, DownNodes, NodeStatuses, UpdateCount) ->
     case ns_orchestrator:try_autofailover(Nodes) of
-        ok ->
-            lists:foreach(
-              fun (Node) ->
-                      log_failover_success(Node, DownNodes, NodeStatuses)
-              end, Nodes),
+        {ok, UnsafeNodes} ->
+            FailedOver = Nodes -- [N || {N, _} <- UnsafeNodes],
+            [log_failover_success(N, DownNodes, NodeStatuses) ||
+                N <- FailedOver],
+            [log_unsafe_node(N) || N <- UnsafeNodes],
             NewCount = case UpdateCount of
                            false ->
                                S#state.count;
                            true ->
-                               S#state.count + length(Nodes)
+                               S#state.count + length(FailedOver)
                        end,
             init_reported(S#state{count = NewCount});
         Error ->
@@ -595,6 +598,13 @@ log_failover_success(Node, DownNodes, NodeStatuses) ->
                "Node (~p) was automatically failed over. Reason: ~s",
                [Node, Reason])
     end.
+
+log_unsafe_node({Node, {Service, Error}}) ->
+    ?log_info_and_email(
+       auto_failover_node,
+       "Could not automatically fail over node (~p) due to operation "
+       "being unsafe for service ~p. ~s",
+       [Node, Service, Error]).
 
 process_failover_error({autofailover_unsafe, UnsafeBuckets}, Nodes, S) ->
     ErrMsg = lists:flatten(io_lib:format("Would lose vbuckets in the"
@@ -925,6 +935,81 @@ validate_bucket_safety(BucketConfig, Nodes) ->
         memcached ->
             true
     end.
+
+has_safe_check(index) ->
+    cluster_compat_mode:is_cluster_NEO();
+has_safe_check(_) ->
+    false.
+
+service_safety_check(Service, DownNodes, UUIDDict) ->
+    ActiveNodes = ns_cluster_membership:service_active_nodes(Service),
+    case ActiveNodes -- DownNodes of
+        [] ->
+            {error, mail_too_small};
+        [FirstNode | _] = ServiceAliveNodes ->
+            NodeToCall =
+                case lists:member(node(), ServiceAliveNodes) of
+                    true ->
+                        node();
+                    false ->
+                        FirstNode
+                end,
+            ServiceDownNodes = ActiveNodes -- ServiceAliveNodes,
+            NodeIds = ns_cluster_membership:get_node_uuids(ServiceDownNodes,
+                                                           UUIDDict),
+            case rpc:call(NodeToCall, service_api, is_safe, [Service, NodeIds],
+                          ?SAFETY_CHECK_TIMEOUT) of
+                {badrpc, Error} ->
+                    ?log_warning("Failed to execute safety check for service ~p"
+                                 " on node ~p. Error = ~p",
+                                 [Service, NodeToCall, Error]),
+                    {error, "Safety check failed."};
+                Other ->
+                    Other
+            end
+    end.
+
+get_service_safety(Service, DownNodes, UUIDDict, Cache) ->
+    case has_safe_check(Service) of
+        true ->
+            case maps:find(Service, Cache) of
+                {ok, Res} ->
+                    {Res, Cache};
+                error ->
+                    Res = service_safety_check(Service, DownNodes, UUIDDict),
+                    {Res, maps:put(Service, Res, Cache)}
+            end;
+        false ->
+            {ok, Cache}
+    end.
+
+validate_services_safety([], _DownNodes, _UUIDDict, Cache) ->
+    {ok, Cache};
+validate_services_safety([Service | Rest], DownNodes, UUIDDict, Cache) ->
+    case get_service_safety(Service, DownNodes, UUIDDict, Cache) of
+        {ok, NewCache} ->
+            validate_services_safety(Rest, DownNodes, UUIDDict, NewCache);
+        {{error, Error}, NewCache} ->
+            {{error, Error}, Service, NewCache}
+    end.
+
+validate_services_safety(DownNodes, KVNodes) ->
+    NonKVNodes = DownNodes -- KVNodes,
+    UUIDDict = ns_config:get_node_uuid_map(ns_config:latest()),
+
+    {ValidNodes, UnsafeNodes, _} =
+        lists:foldl(
+          fun (Node, {Nodes, Errors, Cache}) ->
+                  Services = ns_cluster_membership:node_services(Node),
+                  case validate_services_safety(Services, DownNodes, UUIDDict,
+                                                Cache) of
+                      {ok, NewCache} ->
+                          {[Node | Nodes], Errors, NewCache};
+                      {{error, Error}, Service, NewCache} ->
+                          {Nodes, [{Node, {Service, Error}} | Errors], NewCache}
+                  end
+          end, {[], [], #{}}, NonKVNodes),
+    {KVNodes ++ ValidNodes, UnsafeNodes}.
 
 -ifdef(TEST).
 -define(FLAG, autofailover_unsafe).

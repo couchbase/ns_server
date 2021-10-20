@@ -182,7 +182,7 @@ start_failover(Nodes, AllowUnsafe) ->
     wait_for_orchestrator(),
     gen_statem:call(?SERVER, {start_failover, Nodes, AllowUnsafe}).
 
--spec try_autofailover(list()) -> ok |
+-spec try_autofailover(list()) -> {ok, list()} |
                                   {operation_running, list()}|
                                   retry_aborting_rebalance |
                                   in_recovery |
@@ -193,7 +193,12 @@ start_failover(Nodes, AllowUnsafe) ->
                                   {autofailover_unsafe, [bucket_name()]}.
 try_autofailover(Nodes) ->
     wait_for_orchestrator(),
-    gen_statem:call(?SERVER, {try_autofailover, Nodes}, infinity).
+    case gen_statem:call(?SERVER, {try_autofailover, Nodes}, infinity) of
+        ok ->
+            {ok, []};
+        Other ->
+            Other
+    end.
 
 -spec needs_rebalance() -> boolean().
 needs_rebalance() ->
@@ -1225,7 +1230,12 @@ terminate_observer(#rebalancing_state{rebalance_observer = undefined}) ->
 terminate_observer(#rebalancing_state{rebalance_observer = ObserverPid}) ->
     misc:unlink_terminate_and_wait(ObserverPid, kill).
 
+handle_rebalance_completion({shutdown, {ok, _}} = ExitReason, State) ->
+    handle_rebalance_completion(normal, ExitReason, State);
 handle_rebalance_completion(ExitReason, State) ->
+    handle_rebalance_completion(ExitReason, ExitReason, State).
+
+handle_rebalance_completion(ExitReason, ToReply, State) ->
     cancel_stop_timer(State),
     maybe_reset_autofailover_count(ExitReason, State),
     maybe_reset_reprovision_count(ExitReason, State),
@@ -1237,7 +1247,7 @@ handle_rebalance_completion(ExitReason, State) ->
     update_rebalance_status(ExitReason, State),
     rpc:eval_everywhere(diag_handler, log_all_dcp_stats, []),
     terminate_observer(State),
-    maybe_reply_to(ExitReason, State),
+    maybe_reply_to(ToReply, State),
     maybe_request_janitor_run(ExitReason, State),
 
     R = compat_mode_manager:consider_switching_compat_mode(),
@@ -1679,6 +1689,10 @@ maybe_reply_to(_, #rebalancing_state{reply_to = undefined}) ->
     ok;
 maybe_reply_to(normal, State) ->
     maybe_reply_to(ok, State);
+maybe_reply_to({shutdown, {ok, []}}, State) ->
+    maybe_reply_to(ok, State);
+maybe_reply_to({shutdown, {ok, UnsafeNodes}}, State) ->
+    maybe_reply_to({ok, UnsafeNodes}, State);
 maybe_reply_to({shutdown, stop}, State) ->
     maybe_reply_to(stopped_by_user, State);
 maybe_reply_to(Reason, #rebalancing_state{reply_to = ReplyTo}) ->

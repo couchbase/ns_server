@@ -39,8 +39,8 @@ start(Nodes, Options) ->
             Pid = proc_lib:spawn_link(
                     fun () ->
                             case run(Nodes, Options, Parent) of
-                                ok ->
-                                    ok;
+                                {ok, UnsafeNodes} ->
+                                    erlang:exit({shutdown, {ok, UnsafeNodes}});
                                 Error ->
                                     erlang:exit(Error)
                             end
@@ -152,18 +152,22 @@ orchestrate(Nodes, Options) when Nodes =/= [] ->
 
     Res =
         case config_sync_and_orchestrate(Nodes, Options) of
-            ok ->
-                ns_cluster:counter_inc(failover_complete),
-                ale:info(?USER_LOGGER, "Failed over ~p: ok", [Nodes]),
-                deactivate_nodes(Nodes, Options),
-                ok;
-            {failover_incomplete, ErrorNodes} ->
-                ns_cluster:counter_inc(failover_incomplete),
-                ale:error(?USER_LOGGER,
-                          "Failover couldn't complete on some nodes:~n~p",
-                          [ErrorNodes]),
-                deactivate_nodes(Nodes, Options),
-                ok;
+            {done, ErrorNodes, UnsafeNodes} ->
+                FailedOver = Nodes -- [N || {N, _} <- UnsafeNodes],
+                case ErrorNodes of
+                    [] ->
+                        ns_cluster:counter_inc(failover_complete),
+                        ale:info(?USER_LOGGER, "Failed over ~p: ok",
+                                 [FailedOver]);
+                    _ ->
+                        ns_cluster:counter_inc(failover_incomplete),
+                        ale:error(?USER_LOGGER,
+                                  "Failed over ~p. Failover couldn't complete "
+                                  "on some nodes:~n~p",
+                                  [FailedOver, ErrorNodes])
+                end,
+                deactivate_nodes(FailedOver, Options),
+                {ok, UnsafeNodes};
             Error ->
                 ns_cluster:counter_inc(failover_failed),
                 ale:error(?USER_LOGGER, "Failover failed with ~p", [Error]),
@@ -177,10 +181,8 @@ config_sync_and_orchestrate(Nodes, Options) ->
     case pre_failover_config_sync(Nodes, Options) of
         ok ->
             try failover(Nodes, Options) of
-                [] ->
-                    ok;
-                ErrorNodes ->
-                    {failover_incomplete, ErrorNodes}
+                {ErrorNodes, UnsafeNodes} ->
+                    {done, ErrorNodes, UnsafeNodes}
             catch throw:{failed, Bucket, Msg} ->
                     {failover_failed, Bucket, Msg}
             end;
@@ -232,8 +234,10 @@ failover(Nodes, Options) ->
     not maps:is_key(quorum_failover, Options) orelse
         failover_collections(),
     KVNodes = ns_cluster_membership:service_nodes(Nodes, kv),
-    lists:umerge([failover_buckets(KVNodes, Options),
-                  failover_services(Nodes)]).
+    KVErrorNodes = failover_buckets(KVNodes, Options),
+    {ServicesErrorNodes, UnsafeNodes} =
+        failover_services(Nodes, KVNodes, Options),
+    {lists:umerge([KVErrorNodes, ServicesErrorNodes]), UnsafeNodes}.
 
 failover_collections() ->
     [collections:bump_epoch(BucketName) ||
@@ -367,6 +371,18 @@ do_failover_bucket(membase, Bucket, BucketConfig, Nodes, Options) ->
       {node, N},
       {status, R},
       {vbuckets, node_vbuckets(Map, N)}] || N <- Nodes].
+
+failover_services(Nodes, KVNodes, #{auto := true}) ->
+    {ValidNodes, UnsafeNodes} =
+        auto_failover:validate_services_safety(Nodes, KVNodes),
+    {case ValidNodes of
+         [] ->
+             [];
+         ValidNodes ->
+             failover_services(ValidNodes)
+     end, UnsafeNodes};
+failover_services(Nodes, _, _) ->
+    {failover_services(Nodes), []}.
 
 failover_services(Nodes) ->
     Snapshot = ns_cluster_membership:get_snapshot(),

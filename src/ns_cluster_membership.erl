@@ -46,6 +46,7 @@
          remove_nodes/2,
          prepare_to_join/2,
          is_newly_added_node/1,
+         get_node_uuids/2,
          attach_node_uuids/2,
          fetch_snapshot/1,
          get_snapshot/1,
@@ -602,16 +603,19 @@ json_service_name(ns_server) -> clusterManager;
 json_service_name(xdcr) -> xdcr;
 json_service_name(Service) -> Service.
 
-attach_node_uuids(Nodes, UUIDDict) ->
+get_node_uuids(Nodes, UUIDDict) ->
     lists:map(
       fun (Node) ->
               case dict:find(Node, UUIDDict) of
                   {ok, UUID} ->
-                      {Node, UUID};
+                      UUID;
                   error ->
-                      {Node, undefined}
+                      undefined
               end
       end, Nodes).
+
+attach_node_uuids(Nodes, UUIDDict) ->
+    lists:zip(Nodes, get_node_uuids(Nodes, UUIDDict)).
 
 -ifdef(TEST).
 supported_services_for_version_test() ->
