@@ -28,7 +28,7 @@ export {MnSecurityOtherComponent};
 class MnSecurityOtherComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
-      templateUrl: new URL('./mn.security.other.html', import.meta.url).pathname,
+      templateUrl: 'app/mn.security.other.html',
       changeDetection: ChangeDetectionStrategy.OnPush
     })
   ]}

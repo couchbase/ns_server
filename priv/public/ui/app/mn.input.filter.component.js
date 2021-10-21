@@ -16,7 +16,7 @@ class MnInputFilterComponent {
   static get annotations() { return [
     new Component({
       selector: "mn-input-filter",
-      templateUrl: new URL('./mn.input.filter.html', import.meta.url).pathname,
+      templateUrl: 'app/mn.input.filter.html',
       inputs: [
         "group",
         "mnFocusStatus",

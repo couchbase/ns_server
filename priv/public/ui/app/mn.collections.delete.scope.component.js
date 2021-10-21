@@ -21,7 +21,7 @@ export {MnCollectionsDeleteScopeComponent}
 class MnCollectionsDeleteScopeComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
-      templateUrl: new URL('./mn.collections.delete.scope.html', import.meta.url).pathname,
+      templateUrl: 'app/mn.collections.delete.scope.html',
       changeDetection: ChangeDetectionStrategy.OnPush
     })
   ]}

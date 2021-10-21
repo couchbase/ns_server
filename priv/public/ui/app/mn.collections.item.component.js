@@ -24,7 +24,7 @@ class MnCollectionsItemComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
       selector: "mn-collections-item",
-      templateUrl: new URL('./mn.collections.item.html', import.meta.url).pathname,
+      templateUrl: 'app/mn.collections.item.html',
       changeDetection: ChangeDetectionStrategy.OnPush,
       inputs: [
         "collection",

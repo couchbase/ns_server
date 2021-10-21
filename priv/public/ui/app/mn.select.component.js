@@ -27,7 +27,7 @@ class MnSelectComponent extends MnLifeCycleHooksToStream {
   static get annotations() { return [
     new Component({
       selector: "mn-select",
-      templateUrl: new URL('./mn.select.html', import.meta.url).pathname,
+      templateUrl: 'app/mn.select.html',
       inputs: [
         "group",
         "mnFormControlName",
