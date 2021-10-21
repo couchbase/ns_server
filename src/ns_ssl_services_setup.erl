@@ -370,15 +370,17 @@ marker_path() ->
     filename:join(path_config:component_path(data, "config"), "reload_marker").
 
 ca_file_path() ->
-    filename:join(path_config:component_path(data, "config"), "ca.pem").
+    filename:join(certs_dir(), "ca.pem").
 chain_file_path() ->
-    filename:join(path_config:component_path(data, "config"), "chain.pem").
+    filename:join(certs_dir(), "chain.pem").
 pkey_file_path() ->
-    filename:join(path_config:component_path(data, "config"), "pkey.pem").
+    filename:join(certs_dir(), "pkey.pem").
 tmp_certs_and_key_file() ->
-    filename:join(path_config:component_path(data, "config"), "certs.tmp").
+    filename:join(certs_dir(), "certs.tmp").
 cert_info_file() ->
-    filename:join(path_config:component_path(data, "config"), "certs.info").
+    filename:join(certs_dir(), "certs.info").
+certs_dir() ->
+    filename:join(path_config:component_path(data, "config"), "certs").
 
 sync() ->
     chronicle_compat_events:sync(),
@@ -400,6 +402,14 @@ init([]) ->
     Self = self(),
     chronicle_compat_events:subscribe(handle_config_change(_, Self)),
 
+    CertsDir = certs_dir(),
+    case misc:mkdir_p(CertsDir) of
+        ok -> ok;
+        {error, Reason} ->
+            ?log_error("Cannot create certificates directory ~s, reason: ~p",
+                       [CertsDir, Reason]),
+            exit({certs_dir, CertsDir, Reason})
+    end,
     maybe_convert_pre_NEO_certs(),
     _ = save_node_certs_phase2(),
     maybe_store_ca_certs(),
