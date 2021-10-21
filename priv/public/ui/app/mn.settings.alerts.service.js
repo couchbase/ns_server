@@ -14,6 +14,7 @@ import {switchMap, shareReplay} from 'rxjs/operators';
 import {BehaviorSubject} from 'rxjs';
 
 import {MnHttpRequest} from './mn.http.request.js';
+import {singletonGuard} from './mn.core.js';
 
 export {MnSettingsAlertsService}
 
@@ -27,6 +28,8 @@ class MnSettingsAlertsService {
   ]}
 
   constructor(http) {
+    singletonGuard(MnSettingsAlertsService);
+
     this.http = http;
     this.stream = {};
 

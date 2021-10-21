@@ -15,7 +15,6 @@ import {UIRouterModule} from '@uirouter/angular';
 import {MnSharedModule} from './mn.shared.module.js';
 import {MnInputFilterModule} from './mn.input.filter.module.js';
 import {MnTextExpanderModule} from './mn.text.expander.module.js';
-import {MnLogsListService} from './mn.logs.list.service.js';
 import {MnLogsListComponent} from './mn.logs.list.component.js';
 
 let states = [{
@@ -42,7 +41,6 @@ class MnLogsListModule {
         MnSharedModule
       ],
       providers: [
-        MnLogsListService,
         DatePipe
       ]
     })

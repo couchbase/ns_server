@@ -9,12 +9,11 @@ licenses/APL2.txt.
 */
 
 import {Injectable} from '@angular/core';
-import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
 import {BehaviorSubject, combineLatest} from 'rxjs';
 import {map, pluck, switchMap, shareReplay, filter,
         distinctUntilChanged} from 'rxjs/operators';
 import {HttpClient} from '@angular/common/http';
-
+import {singletonGuard} from './mn.core.js';
 
 import {MnHttpRequest} from './mn.http.request.js';
 import {MnAdminService} from './mn.admin.service.js';
@@ -22,8 +21,6 @@ import {MnTasksService} from './mn.tasks.service.js';
 import {MnPoolsService} from './mn.pools.service.js';
 import {MnSecurityService} from './mn.security.service.js';
 import {MnPermissions} from './ajs.upgraded.providers.js';
-
-import {MnLogsCollectInfoStopCollectionComponent} from './mn.logs.collectInfo.stop.collection.component.js';
 
 export {MnLogsCollectInfoService};
 
@@ -36,16 +33,15 @@ class MnLogsCollectInfoService {
     HttpClient,
     MnAdminService,
     MnTasksService,
-    NgbModal,
     MnSecurityService,
     MnPoolsService,
     MnPermissions
   ]}
 
-  constructor(http, mnAdminService, mnTasksService, modalService, mnSecurityService, mnPoolsService, mnPermissions) {
-    this.modalService = modalService;
-    this.http = http;
+  constructor(http, mnAdminService, mnTasksService, mnSecurityService, mnPoolsService, mnPermissions) {
+    singletonGuard(MnLogsCollectInfoService);
 
+    this.http = http;
     this.stream = {};
 
     let isEnterprise = mnPoolsService.stream.isEnterprise;
@@ -106,10 +102,6 @@ class MnLogsCollectInfoService {
 
   getClusterInfo() {
     return this.http.get('/pools/default/terseClusterInfo?all=true');
-  }
-
-  cancelLogsCollection() {
-    this.modalService.open(MnLogsCollectInfoStopCollectionComponent);
   }
 
   formDataSources([isEnterprise, compatVersion55, serverGroupsRead]) {

@@ -10,11 +10,10 @@ licenses/APL2.txt.
 
 import {NgModule} from '@angular/core';
 import {CommonModule, Location} from '@angular/common';
-import {UIRouterUpgradeModule} from '@uirouter/angular-hybrid';
+import {UIRouterModule} from '@uirouter/angular';
 import {ReactiveFormsModule, Validators} from '@angular/forms';
 
 import {MnAuthComponent} from './mn.auth.component.js';
-import {MnAuthService} from './mn.auth.service.js';
 import {MnSharedModule} from './mn.shared.module.js';
 
 let authState = {
@@ -34,13 +33,12 @@ class MnAuthModule {
         CommonModule,
         ReactiveFormsModule,
         MnSharedModule,
-        UIRouterUpgradeModule.forChild({ states: [authState] })
+        UIRouterModule.forChild({ states: [authState] })
       ],
       entryComponents: [
         MnAuthComponent
       ],
       providers: [
-        MnAuthService,
         Validators,
         Location
       ]

@@ -21,6 +21,8 @@ import {MnAdminService} from './mn.admin.service.js';
 import {MnPoolsService} from './mn.pools.service.js';
 import {MnHttpRequest} from './mn.http.request.js';
 
+import {singletonGuard} from './mn.core.js';
+
 export {MnWizardService};
 
 function ipvOnlyValidator() {
@@ -117,6 +119,7 @@ class MnWizardService {
   ]}
 
   constructor(http, mnAdminService, mnHelperService, mnPoolsService) {
+    singletonGuard(MnWizardService);
     this.http = http;
     this.wizardForm = wizardForm;
     this.IEC = mnHelperService.IEC;

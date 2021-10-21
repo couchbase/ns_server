@@ -12,7 +12,6 @@ import {ChangeDetectionStrategy, Component} from '@angular/core';
 import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
 import {ClipboardService} from 'ngx-clipboard';
 import {takeUntil, filter, map} from 'rxjs/operators';
-
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnAlertsService} from './ajs.upgraded.providers.js';
 import {MnLogsCollectInfoService} from './mn.logs.collectInfo.service.js';
@@ -25,9 +24,6 @@ class MnClusterSummaryDialogComponent extends MnLifeCycleHooksToStream {
     new Component({
       selector: "mn-cluster-summary-dialog",
       templateUrl: "/ui/app/mn.cluster.summary.dialog.html",
-      providers: [
-        ClipboardService
-      ],
       changeDetection: ChangeDetectionStrategy.OnPush
     })
   ]}

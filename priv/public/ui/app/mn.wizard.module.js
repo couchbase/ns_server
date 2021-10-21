@@ -11,7 +11,6 @@ licenses/APL2.txt.
 import {NgModule} from '@angular/core';
 
 import {UIRouterModule} from '@uirouter/angular';
-import {UIRouterUpgradeModule} from '@uirouter/angular-hybrid';
 import {ReactiveFormsModule} from '@angular/forms';
 import {HttpClientJsonpModule, HttpClientModule, HTTP_INTERCEPTORS} from '@angular/common/http';
 import {CommonModule} from '@angular/common';
@@ -23,8 +22,6 @@ import {MnWizardSetupNewClusterComponent} from './mn.wizard.setup.new.cluster.co
 import {MnWizardNewClusterConfigComponent} from './mn.wizard.new.cluster.config.component.js';
 import {MnWizardTermsAndConditionsComponent} from './mn.wizard.terms.and.conditions.component.js';
 import {MnWizardJoinClusterComponent} from './mn.wizard.join.cluster.component.js';
-import {MnWizardService} from './mn.wizard.service.js';
-import {MnAuthService} from './mn.auth.service.js';
 import {MnSharedModule} from './mn.shared.module.js';
 import {MnPipesModule} from './mn.pipes.module.js';
 
@@ -79,8 +76,6 @@ class MnWizardModule {
         MnWizardJoinClusterComponent
       ],
       providers: [
-        MnWizardService,
-        MnAuthService,
         {
           provide: HTTP_INTERCEPTORS,
           useClass: MnHttpInterceptor,
@@ -88,11 +83,10 @@ class MnWizardModule {
         }
       ],
       imports: [
-        UIRouterUpgradeModule.forChild({
+        NgbModule,
+        UIRouterModule.forChild({
           states: states
         }),
-        NgbModule,
-        UIRouterModule,
         CommonModule,
         ReactiveFormsModule,
         MnSharedModule,

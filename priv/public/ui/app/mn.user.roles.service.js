@@ -11,6 +11,8 @@ licenses/APL2.txt.
 import {Injectable} from '@angular/core';
 import {HttpClient, HttpParams} from '@angular/common/http';
 
+import {singletonGuard} from './mn.core.js';
+
 export {MnUserRolesService};
 
 class MnUserRolesService {
@@ -23,6 +25,7 @@ class MnUserRolesService {
   ]}
 
   constructor(http) {
+    singletonGuard(MnUserRolesService);
     this.http = http;
   }
 

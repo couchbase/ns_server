@@ -8,21 +8,20 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {NgModule, Injectable} from '@angular/core';
-import {ReactiveFormsModule} from '@angular/forms';
+import {Injectable} from '@angular/core';
 import {HttpClient} from '@angular/common/http';
-import {NgbModule, NgbModal} from '@ng-bootstrap/ng-bootstrap';
+import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
 import {fromEvent, merge, NEVER, timer} from 'rxjs';
 import {throttleTime, takeUntil, filter,
         switchMap, map, shareReplay} from 'rxjs/operators';
 import {not, compose} from 'ramda';
 
-import {MnSharedModule} from './mn.shared.module.js';
 import {MnAuthService} from './ajs.upgraded.providers.js';
 import {MnAdminService} from './mn.admin.service.js';
 import {MnSessionTimeoutDialogComponent} from './mn.session.timeout.dialog.component.js';
+import {singletonGuard} from './mn.core.js';
 
-export {MnSessionService, MnSessionServiceModule};
+export {MnSessionService};
 
 class MnSessionService {
   static get annotations() { return [
@@ -37,6 +36,8 @@ class MnSessionService {
   ]}
 
   constructor(http, mnAuthService, mnAdminService, modalService) {
+    singletonGuard(MnSessionService);
+
     this.http = http;
     this.modalService = modalService;
     this.postUILogout = mnAuthService.logout;
@@ -148,25 +149,4 @@ class MnSessionService {
   logout() {
     this.postUILogout();
   }
-}
-
-class MnSessionServiceModule {
-  static get annotations() { return [
-    new NgModule({
-      entryComponents: [
-        MnSessionTimeoutDialogComponent
-      ],
-      declarations: [
-        MnSessionTimeoutDialogComponent
-      ],
-      imports: [
-        NgbModule,
-        ReactiveFormsModule,
-        MnSharedModule,
-      ],
-      providers: [
-        MnSessionService
-      ]
-    })
-  ]}
 }

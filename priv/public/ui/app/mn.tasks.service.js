@@ -13,6 +13,8 @@ import {BehaviorSubject} from 'rxjs';
 import {shareReplay, map} from 'rxjs/operators';
 import {groupBy, prop} from 'ramda';
 
+import {singletonGuard} from './mn.core.js';
+
 export {MnTasksService}
 
 class MnTasksService {
@@ -24,6 +26,8 @@ class MnTasksService {
   ]}
 
   constructor() {
+    singletonGuard(MnTasksService);
+
     this.stream = {};
     this.stream.tasksXDCRPlug = new BehaviorSubject();
     this.stream.tasksXDCR = this.stream.tasksXDCRPlug

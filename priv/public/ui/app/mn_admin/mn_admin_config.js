@@ -13,7 +13,6 @@ import ngAnimate from "angular-animate";
 import uiSelect from "ui-select";
 import uiBootstrap from "angular-ui-bootstrap";
 import uiRouter from "@uirouter/angularjs";
-import {Injector, Compiler} from "@angular/core";
 import {downgradeInjectable} from "@angular/upgrade/static";
 
 import mnAdminController from "./mn_admin_controller.js";
@@ -37,6 +36,7 @@ import mnTasksDetails from "../components/mn_tasks_details.js";
 
 import mnLostConnection from "./mn_lost_connection_config.js";
 import {MnAdminService} from "../mn.admin.service.js";
+import {MnSessionService} from "../mn.session.service.js";
 
 import mnDetailStatsModule from "../components/directives/mn_detail_stats_controller.js";
 
@@ -74,8 +74,7 @@ angular.module('mnAdmin', [
 ]).config(mnAdminConfig)
   .controller('mnAdminController', mnAdminController)
   .factory('mnAdminService', downgradeInjectable(MnAdminService))
-  .factory('injector', downgradeInjectable(Injector))
-  .factory('compiler', downgradeInjectable(Compiler))
+  .factory('mnSessionService', downgradeInjectable(MnSessionService));
 
 //https://github.com/angular-ui/ui-select/issues/1560
 angular.module('ui.select').run(function($animate) {

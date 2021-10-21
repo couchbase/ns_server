@@ -12,6 +12,7 @@ import {Injectable} from '@angular/core';
 import {BehaviorSubject, Subject} from 'rxjs';
 import {filter} from 'rxjs/operators';
 import {HttpErrorResponse} from '@angular/common/http';
+import {singletonGuard} from './mn.core.js';
 
 export {MnAppService};
 
@@ -21,6 +22,8 @@ class MnAppService {
   ]}
 
   constructor() {
+    singletonGuard(MnAppService);
+
     this.stream = {};
     this.stream.loading = new BehaviorSubject(false);
     this.stream.httpResponse = new Subject();

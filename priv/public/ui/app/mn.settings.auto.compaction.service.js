@@ -17,6 +17,7 @@ import {clone, is} from 'ramda';
 import {MnPermissions} from './ajs.upgraded.providers.js';
 import {MnHelperService} from './mn.helper.service.js';
 import {MnHttpRequest} from './mn.http.request.js';
+import {singletonGuard} from './mn.core.js';
 
 export {MnSettingsAutoCompactionService}
 
@@ -32,6 +33,7 @@ class MnSettingsAutoCompactionService {
   ]}
 
   constructor(http, mnHelperService, permissions) {
+    singletonGuard(MnSettingsAutoCompactionService);
     this.http = http;
     this.stream = {};
     this.mnHelperService = mnHelperService;

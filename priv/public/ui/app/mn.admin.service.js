@@ -7,7 +7,7 @@ file, in accordance with the Business Source License, use of this software will
 be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
-import {NgModule, Injectable} from '@angular/core';
+import {Injectable} from '@angular/core';
 
 import {BehaviorSubject, combineLatest} from 'rxjs';
 import {pluck, switchMap, shareReplay, map,
@@ -17,28 +17,14 @@ import * as R from 'ramda';
 
 import {singletonGuard} from './mn.core.js';
 import {MnPrettyVersion} from './mn.pipes.js';
-import {MnPoolsService, MnPoolsServiceModule} from './mn.pools.service.js';
+import {MnPoolsService} from './mn.pools.service.js';
 import {MnHttpRequest} from './mn.http.request.js';
 
-export {MnAdminService, MnAdminServiceModule};
+export {MnAdminService};
 
 // counterpart of ns_heart:effective_cluster_compat_version/0
 function encodeCompatVersion(major, minor) {
   return (major < 2) ? 1 : major * 0x10000 + minor;
-}
-
-class MnAdminServiceModule {
-  static get annotations() { return [
-    new NgModule({
-      imports: [
-        MnPoolsServiceModule
-      ],
-      providers: [
-        MnPrettyVersion,
-        MnAdminService
-      ]
-    })
-  ]}
 }
 
 class MnAdminService {

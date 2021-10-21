@@ -14,7 +14,6 @@ import {ReactiveFormsModule} from '@angular/forms';
 
 import {MnInputFilterModule} from './mn.input.filter.module.js';
 import {MnKeyspaceSelectorComponent} from './mn.keyspace.selector.component.js';
-import {MnFormService} from './mn.form.service.js';
 
 export {MnKeyspaceSelectorModule};
 
@@ -35,9 +34,6 @@ class MnKeyspaceSelectorModule {
         MnInputFilterModule,
         ReactiveFormsModule
       ],
-      providers: [
-        MnFormService
-      ]
     })
   ]}
 }

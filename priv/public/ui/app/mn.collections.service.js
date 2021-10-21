@@ -7,32 +7,19 @@ file, in accordance with the Business Source License, use of this software will
 be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
-import {NgModule, Injectable} from '@angular/core';
+import {Injectable} from '@angular/core';
 import {HttpClient} from '@angular/common/http';
 import {BehaviorSubject} from 'rxjs';
 import {map, shareReplay} from 'rxjs/operators';
 
 import {MnHttpRequest} from './mn.http.request.js';
-import {singletonGuard} from './mn.core.js';
-import {MnBucketsService, MnBucketsServiceModule} from './mn.buckets.service.js';
+import {MnBucketsService} from './mn.buckets.service.js';
 import {MnPermissions} from './ajs.upgraded.providers.js';
+import {singletonGuard} from './mn.core.js';
 
 const restApiBase = "/pools/default/buckets";
 
-export {MnCollectionsService, MnCollectionsServiceModule}
-
-class MnCollectionsServiceModule {
-  static get annotations() { return [
-    new NgModule({
-      imports: [
-        MnBucketsServiceModule
-      ],
-      providers: [
-        MnCollectionsService
-      ]
-    })
-  ]}
-}
+export {MnCollectionsService}
 
 class MnCollectionsService {
   static get annotations() { return [

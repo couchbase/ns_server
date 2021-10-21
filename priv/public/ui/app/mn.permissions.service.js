@@ -16,6 +16,8 @@ import {HttpClient} from '@angular/common/http';
 import {MnBucketsService} from './mn.buckets.service.js';
 import {MnAdminService} from './mn.admin.service.js';
 
+import {singletonGuard} from './mn.core.js';
+
 let bucketSpecificPermissions = [function (bucket) {
   var name = bucket.name;
   var basePermissions = [
@@ -104,6 +106,7 @@ class MnPermissionsService {
   ]}
 
   constructor(http, mnBucketsService, mnAdminService) {
+    singletonGuard(MnPermissionsService);
     this.http = http;
     this.stream = {};
 

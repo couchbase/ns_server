@@ -11,13 +11,18 @@ licenses/APL2.txt.
 import {Component, ChangeDetectionStrategy} from '@angular/core';
 import {Subject, combineLatest, timer, merge} from 'rxjs';
 import {distinctUntilChanged, pluck, map, shareReplay,
-  withLatestFrom, filter, takeUntil, switchMap, mapTo} from 'rxjs/operators';
+        withLatestFrom, filter, takeUntil, switchMap, mapTo} from 'rxjs/operators';
+import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnTasksService} from './mn.tasks.service.js';
 import {MnAdminService} from './mn.admin.service.js';
 import {MnBucketsService} from './mn.buckets.service.js';
 import {MnPermissions} from './ajs.upgraded.providers.js';
+
+import {MnBucketDialogComponent} from './mn.bucket.dialog.component.js';
+import {MnBucketDeleteDialogComponent} from './mn.bucket.delete.dialog.component.js';
+import {MnBucketFlushDialogComponent} from './mn.bucket.flush.dialog.component.js';
 
 export {MnBucketItemDetailsComponent};
 
@@ -40,16 +45,18 @@ class MnBucketItemDetailsComponent extends MnLifeCycleHooksToStream {
       MnBucketsService,
       MnAdminService,
       MnTasksService,
-      MnPermissions
+      MnPermissions,
+      NgbModal
     ];
   }
 
-  constructor(mnBucketsService, mnAdminService, mnTasksService, mnPermissions) {
+  constructor(mnBucketsService, mnAdminService, mnTasksService, mnPermissions, modalService) {
     super();
 
     this.permissions = mnPermissions.stream;
     this.mnTasksService = mnTasksService;
     this.mnBucketsService = mnBucketsService;
+    this.modalService = modalService;
 
     let currentBucket = this.mnOnChanges
       .pipe(pluck('bucket', 'currentValue'));
@@ -165,19 +172,28 @@ class MnBucketItemDetailsComponent extends MnLifeCycleHooksToStream {
     this.clickDelete
       .pipe(map(this.stopEvent.bind(this)),
             takeUntil(this.mnOnDestroy))
-      .subscribe(() => this.mnBucketsService.openDeleteBucketDialog(this.bucket));
+      .subscribe(() => {
+        let ref = this.modalService.open(MnBucketDeleteDialogComponent);
+        ref.componentInstance.bucket = this.bucket;
+      });
 
     this.clickEdit = new Subject();
     this.clickEdit
       .pipe(map(this.stopEvent.bind(this)),
             takeUntil(this.mnOnDestroy))
-      .subscribe(() => this.mnBucketsService.openEditBucketDialog(this.bucket));
+      .subscribe(() => {
+        let ref = this.modalService.open(MnBucketDialogComponent);
+        ref.componentInstance.bucket = this.bucket;
+      });
 
     this.clickFlush = new Subject();
     this.clickFlush
       .pipe(map(this.stopEvent.bind(this)),
             takeUntil(this.mnOnDestroy))
-      .subscribe(() => this.mnBucketsService.openFlushBucketDialog(this.bucket));
+      .subscribe(() => {
+        let ref = this.modalService.open(MnBucketFlushDialogComponent);
+        ref.componentInstance.bucket = this.bucket;
+      });
   }
 
   stopEvent(event) {

@@ -25,8 +25,7 @@ import { MnXDCRItemComponent } from "./mn.xdcr.item.component.js";
 import { MnXDCRItemDetailsComponent,
          MnReplicationStatus } from "./mn.xdcr.item.details.component.js";
 import { MnXDCRRefItemComponent } from "./mn.xdcr.ref.item.component.js";
-import { MnXDCRService } from "./mn.xdcr.service.js";
-import { MnStatsService } from './mn.stats.service.js';
+
 
 import { MnXDCRAddRefComponent } from "./mn.xdcr.add.ref.component.js";
 import { MnXDCRAddRepComponent } from "./mn.xdcr.add.rep.component.js";
@@ -151,10 +150,6 @@ class MnXDCRModule {
         MnPipesModule,
         MnSelectModule,
         UIRouterModule.forChild({ states: [XDCRState, AddXDCRState, EditXDCRState] })
-      ],
-      providers: [
-        MnXDCRService,
-        MnStatsService
       ]
     })
   ]}

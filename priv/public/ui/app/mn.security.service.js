@@ -20,6 +20,8 @@ import {MnAdminService} from './mn.admin.service.js';
 import {MnPoolsService} from './mn.pools.service.js';
 import {MnPermissions} from './ajs.upgraded.providers.js';
 
+import {singletonGuard} from './mn.core.js';
+
 export {MnSecurityService};
 
 class MnSecurityService {
@@ -35,6 +37,7 @@ class MnSecurityService {
   ]}
 
   constructor(http, mnAdminService, mnPoolsService, mnPermissions) {
+    singletonGuard(MnSecurityService);
     this.http = http;
 
     let isEnterprise = mnPoolsService.stream.isEnterprise;

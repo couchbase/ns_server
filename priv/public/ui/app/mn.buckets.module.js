@@ -18,7 +18,6 @@ import {MnSharedModule} from './mn.shared.module.js';
 import {MnBarUsageModule} from './mn.bar.usage.module.js';
 import {MnSelectModule} from './mn.select.module.js';
 import {MnWarmupProgressModule} from './mn.warmup.progress.module.js';
-import {MnSettingsAutoCompactionService} from "./mn.settings.auto.compaction.service.js";
 import {MnBucketsComponent} from './mn.buckets.component.js';
 import {MnInputFilterModule} from './mn.input.filter.module.js';
 import {MnPipesModule} from './mn.pipes.module.js';
@@ -26,6 +25,11 @@ import {MnElementCraneModule} from './mn.element.crane.js';
 import {MnSettingsAutoCompactionFormModule} from './mn.settings.auto.compaction.form.module.js';
 import {MnBucketItemComponent} from './mn.bucket.item.component.js';
 import {MnBucketItemDetailsComponent} from './mn.bucket.item.details.component.js';
+
+import {MnBucketDialogComponent} from './mn.bucket.dialog.component.js';
+import {MnBucketDeleteDialogComponent} from './mn.bucket.delete.dialog.component.js';
+import {MnBucketFlushDialogComponent} from './mn.bucket.flush.dialog.component.js';
+import {MnBucketFullDialogComponent} from './mn.bucket.full.dialog.component.js';
 
 let bucketsState = {
   url: "/buckets?openedBuckets",
@@ -54,10 +58,20 @@ class MnBucketsModule {
   static get annotations() {
     return [
       new NgModule({
+        entryComponents: [
+          MnBucketDialogComponent,
+          MnBucketDeleteDialogComponent,
+          MnBucketFlushDialogComponent,
+          MnBucketFullDialogComponent
+        ],
         declarations: [
           MnBucketsComponent,
           MnBucketItemComponent,
-          MnBucketItemDetailsComponent
+          MnBucketItemDetailsComponent,
+          MnBucketDialogComponent,
+          MnBucketDeleteDialogComponent,
+          MnBucketFlushDialogComponent,
+          MnBucketFullDialogComponent
         ],
         imports: [
           MnSharedModule,
@@ -71,9 +85,6 @@ class MnBucketsModule {
           MnSettingsAutoCompactionFormModule,
           ReactiveFormsModule,
           UIRouterModule.forChild({states: [bucketsState]})
-        ],
-        providers: [
-          MnSettingsAutoCompactionService
         ]
       })
     ]

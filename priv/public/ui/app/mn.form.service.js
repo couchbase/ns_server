@@ -13,6 +13,7 @@ import {FormBuilder, FormGroup} from '@angular/forms';
 import {BehaviorSubject, Subject, NEVER, merge} from 'rxjs';
 import {map, tap, first, takeUntil, switchMap, mapTo,
         shareReplay, filter, debounceTime, startWith} from 'rxjs/operators';
+import {singletonGuard} from './mn.core.js';
 
 import {MnAlertsService, $rootScope} from './ajs.upgraded.providers.js';
 
@@ -31,6 +32,8 @@ class MnFormService {
   ]}
 
   constructor(formBuilder, mnAlertsService, $rootScope, modalService) {
+    singletonGuard(MnFormService);
+
     this.formBuilder = formBuilder;
     this.mnAlertsService = mnAlertsService;
     this.modalService = modalService;

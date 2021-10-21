@@ -20,7 +20,6 @@ import {MnLogsCollectInfoFormComponent} from './mn.logs.collectInfo.form.compone
 import {MnLogsCollectInfoResultComponent} from './mn.logs.collectInfo.result.component.js';
 import {MnLogsCollectInfoStopCollectionComponent} from './mn.logs.collectInfo.stop.collection.component.js';
 import {MnClusterSummaryDialogComponent} from './mn.cluster.summary.dialog.component.js';
-import {MnLogsCollectInfoService} from './mn.logs.collectInfo.service.js';
 import {MnSharedModule} from './mn.shared.module.js';
 import {MnPipesModule} from "./mn.pipes.module.js";
 import {MnSelectableNodesModule} from "./mn.selectable.nodes.module.js";
@@ -78,9 +77,6 @@ class MnLogsCollectInfoModule {
       exports: [
         MnLogsCollectInfoFormComponent,
         MnLogsCollectInfoResultComponent
-      ],
-      providers: [
-        MnLogsCollectInfoService
       ]
     })
   ]}

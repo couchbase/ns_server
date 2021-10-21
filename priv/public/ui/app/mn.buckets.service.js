@@ -7,9 +7,8 @@ file, in accordance with the Business Source License, use of this software will
 be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
-import {NgModule, Injectable} from '@angular/core';
-import {NgbModule, NgbModal} from '@ng-bootstrap/ng-bootstrap';
-import {ReactiveFormsModule} from '@angular/forms';
+import {Injectable} from '@angular/core';
+import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
 import {HttpClient, HttpParams} from '@angular/common/http';
 import {pluck, switchMap, shareReplay,
   distinctUntilChanged, map, withLatestFrom} from 'rxjs/operators';
@@ -17,53 +16,13 @@ import {BehaviorSubject, timer, combineLatest} from 'rxjs';
 import {filter, anyPass, propEq} from 'ramda';
 
 import {singletonGuard} from './mn.core.js'
-import {MnAdminService, MnAdminServiceModule} from './mn.admin.service.js';
-import {MnSharedModule} from './mn.shared.module.js';
-import {MnBarUsageModule} from './mn.bar.usage.module.js';
-import {MnSelectModule} from './mn.select.module.js';
-import {MnSettingsAutoCompactionFormModule} from './mn.settings.auto.compaction.form.module.js';
+import {MnAdminService} from './mn.admin.service.js';
 import {MnPermissions} from './ajs.upgraded.providers.js';
 import {MnHttpRequest} from './mn.http.request.js';
 import {MnHelperService} from './mn.helper.service.js';
 import {MnSettingsAutoCompactionService} from './mn.settings.auto.compaction.service.js';
-import {MnBucketDialogComponent} from './mn.bucket.dialog.component.js';
-import {MnBucketDeleteDialogComponent} from './mn.bucket.delete.dialog.component.js';
-import {MnBucketFlushDialogComponent} from './mn.bucket.flush.dialog.component.js';
-import {MnBucketFullDialogComponent} from './mn.bucket.full.dialog.component.js';
 
-export {MnBucketsServiceModule, MnBucketsService};
-
-class MnBucketsServiceModule {
-  static get annotations() { return [
-    new NgModule({
-      declarations: [
-        MnBucketDialogComponent,
-        MnBucketDeleteDialogComponent,
-        MnBucketFlushDialogComponent,
-        MnBucketFullDialogComponent
-      ],
-      entryComponents: [
-        MnBucketDialogComponent,
-        MnBucketDeleteDialogComponent,
-        MnBucketFlushDialogComponent,
-        MnBucketFullDialogComponent
-      ],
-      imports: [
-        MnAdminServiceModule,
-        MnSharedModule,
-        ReactiveFormsModule,
-        MnBarUsageModule,
-        MnSelectModule,
-        NgbModule,
-        MnSettingsAutoCompactionFormModule
-      ],
-      providers: [
-        MnBucketsService,
-        MnSettingsAutoCompactionService
-      ]
-    })
-  ]}
-}
+export {MnBucketsService};
 
 class MnBucketsService {
   static get annotations() { return [
@@ -138,22 +97,6 @@ class MnBucketsService {
 
   isNewBucketAllowed([permissions, maxBucketsCountReached, isRebalancing]) {
     return permissions.cluster.buckets.create && !isRebalancing && !maxBucketsCountReached;
-  }
-
-  openAddBucketDialog([,storageTotals]) {
-    let ram = storageTotals.ram;
-    if (!ram || ram.quotaTotal === ram.quotaUsed) {
-      this.modalService.open(MnBucketFullDialogComponent);
-    } else {
-      this.modalService.open(MnBucketDialogComponent);
-    }
-  }
-
-  openEditBucketDialog(bucket) {
-    let ref = this.modalService.open(MnBucketDialogComponent);
-    if (bucket) {
-      ref.componentInstance.bucket = bucket;
-    }
   }
 
   getNodesCountByStatus(nodes) {
@@ -479,16 +422,6 @@ class MnBucketsService {
   createBucketFormData(bucket) {
     return this.stream.defaultAutoCompactionData
       .pipe(map(v => this.getBucketFormData(v, bucket)));
-  }
-
-  openDeleteBucketDialog(bucket) {
-    let ref = this.modalService.open(MnBucketDeleteDialogComponent);
-    ref.componentInstance.bucket = bucket;
-  }
-
-  openFlushBucketDialog(bucket) {
-    let ref = this.modalService.open(MnBucketFlushDialogComponent);
-    ref.componentInstance.bucket = bucket;
   }
 
   get(url) {

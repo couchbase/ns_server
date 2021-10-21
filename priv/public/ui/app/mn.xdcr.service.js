@@ -18,6 +18,8 @@ import {MnStatsService} from "./mn.stats.service.js"
 import {MnTasksService} from './mn.tasks.service.js';
 import {MnHttpRequest} from './mn.http.request.js';
 
+import {singletonGuard} from './mn.core.js';
+
 let collectionDelimiter = ".";
 
 export {MnXDCRService, collectionDelimiter};
@@ -34,6 +36,8 @@ class MnXDCRService {
   ]}
 
   constructor(http, mnStatsService, mnTasksService) {
+    singletonGuard(MnXDCRService);
+
     this.http = http;
 
     this.stream = {};

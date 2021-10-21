@@ -16,7 +16,7 @@ import saveAs from 'file-saver';
 
 export default mnAdminController;
 
-function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAlertsService, poolDefault, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, formatProgressMessageFilter, mnPrettyVersionFilter, mnLostConnectionService, mnPermissions, mnPools, whoami, mnBucketsService, $q, mnSettingsClusterService, $ocLazyLoad, $injector, mnAdminService, injector, compiler, mnHelper) {
+function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAlertsService, poolDefault, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, formatProgressMessageFilter, mnPrettyVersionFilter, mnLostConnectionService, mnPermissions, mnPools, whoami, mnBucketsService, $q, mnSettingsClusterService, $ocLazyLoad, $injector, mnAdminService, mnHelper, mnSessionService) {
   var vm = this;
 
   vm.poolDefault = poolDefault;
@@ -169,6 +169,7 @@ function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAle
   }
 
   function activate() {
+    mnSessionService.activate(mnOnDestroy);
 
     new mnPoller($scope, function () {
       return mnBucketsService.findMoxiBucket();
@@ -186,8 +187,6 @@ function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAle
         .reloadOnScopeEvent(["reloadServersPoller", "rebalanceFinished"])
         .cycle();
     }
-
-    loadAndRunSessionService(mnOnDestroy, injector, compiler);
 
     if (mnPermissions.export.cluster.settings.read) {
       loadAndRunLauchpad($ocLazyLoad, $injector, vm);
@@ -423,16 +422,6 @@ function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAle
     $scope.$on("maybeShowMemoryQuotaDialog",
                loadAndRunMemoryQuotaDialog($uibModal, $ocLazyLoad, $injector, mnPoolDefault));
   }
-}
-
-
-async function loadAndRunSessionService(mnOnDestroy, injector, compiler) {
-  let module = await import("../mn.session.service.js");
-  let factory = await compiler.compileModuleAsync(module.MnSessionServiceModule);
-  let moduleRef = factory.create(injector);
-  let mnSessionService = moduleRef.injector.get(module.MnSessionService);
-
-  mnSessionService.activate(mnOnDestroy);
 }
 
 function loadAndRunMemoryQuotaDialog($uibModal, $ocLazyLoad, $injector, mnPoolDefault) {

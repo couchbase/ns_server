@@ -8,7 +8,7 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import {NgModule, Injectable} from '@angular/core';
+import {Injectable} from '@angular/core';
 import {HttpClient} from '@angular/common/http';
 import {BehaviorSubject} from 'rxjs';
 import {switchMap, shareReplay, pluck,
@@ -18,20 +18,9 @@ import {singletonGuard} from './mn.core.js';
 import {servicesEnterprise} from './constants/constants.js';
 import {servicesCE} from './constants/constants.js';
 
-export {MnPoolsService, MnPoolsServiceModule};
+export {MnPoolsService};
 
 let launchID =  (new Date()).valueOf() + '-' + ((Math.random() * 65536) >> 0);
-
-class MnPoolsServiceModule {
-  static get annotations() { return [
-    new NgModule({
-      imports: [],
-      providers: [
-        MnPoolsService
-      ]
-    })
-  ]}
-}
 
 class MnPoolsService {
   static get annotations() { return [

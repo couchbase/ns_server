@@ -14,7 +14,7 @@ import { ReactiveFormsModule } from '@angular/forms';
 
 import { MnSharedModule } from './mn.shared.module.js';
 import { MnSettingsAlertsComponent } from './mn.settings.alerts.component.js';
-import { MnSettingsAlertsService } from './mn.settings.alerts.service.js';
+
 
 let alertsState = {
   url: "/alerts",
@@ -38,9 +38,6 @@ class MnSettingsAlertsModule {
         MnSharedModule,
         ReactiveFormsModule,
         UIRouterModule.forChild({ states: [alertsState] }),
-      ],
-      providers: [
-        MnSettingsAlertsService
       ]
     })
   ]}

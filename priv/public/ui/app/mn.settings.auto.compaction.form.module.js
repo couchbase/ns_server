@@ -15,7 +15,6 @@ import {ReactiveFormsModule} from '@angular/forms';
 import {MnSharedModule} from './mn.shared.module.js';
 import {MnSettingsAutoCompactionFormComponent} from './mn.settings.auto.compaction.form.component.js';
 import {MnSettingsAutoCompactionTimePeriodComponent} from './mn.settings.auto.compaction.time.period.component.js';
-import {MnSettingsAutoCompactionService} from './mn.settings.auto.compaction.service.js';
 
 export {MnSettingsAutoCompactionFormModule};
 
@@ -30,9 +29,6 @@ class MnSettingsAutoCompactionFormModule {
       declarations: [
         MnSettingsAutoCompactionFormComponent,
         MnSettingsAutoCompactionTimePeriodComponent
-      ],
-      providers: [
-        MnSettingsAutoCompactionService
       ],
       exports: [
         MnSettingsAutoCompactionFormComponent,

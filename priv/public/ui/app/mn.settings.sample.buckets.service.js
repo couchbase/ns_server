@@ -14,6 +14,7 @@ import {groupBy, prop} from 'ramda';
 
 import {MnHttpRequest} from './mn.http.request.js';
 import {MnBucketsService} from "./mn.buckets.service.js";
+import {singletonGuard} from './mn.core.js';
 
 export {MnSettingsSampleBucketsService}
 
@@ -28,6 +29,7 @@ class MnSettingsSampleBucketsService {
   ]}
 
   constructor(http, mnBucketsService) {
+    singletonGuard(MnSettingsSampleBucketsService);
     this.http = http;
     this.stream = {};
 

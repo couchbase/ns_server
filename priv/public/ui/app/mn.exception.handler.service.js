@@ -14,6 +14,8 @@ import {Subject} from 'rxjs'
 import {take, filter, map} from 'rxjs/operators';
 import {Rejection} from '@uirouter/core';
 
+import {singletonGuard} from './mn.core.js';
+
 export {MnExceptionHandlerService};
 
 class MnExceptionHandlerService {
@@ -26,6 +28,8 @@ class MnExceptionHandlerService {
   ]}
 
   constructor(http) {
+    singletonGuard(MnExceptionHandlerService);
+
     this.stream = {};
     this.http = http;
     this.errorReportsLimit = 8;

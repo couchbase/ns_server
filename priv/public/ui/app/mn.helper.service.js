@@ -18,6 +18,8 @@ import {FormBuilder} from '@angular/forms';
 import {UIRouter} from '@uirouter/angular';
 import ipaddr from 'ipaddr';
 
+import {singletonGuard} from './mn.core.js';
+
 export {MnHelperService};
 
 class MnHelperService {
@@ -46,6 +48,8 @@ class MnHelperService {
   }
 
   constructor(formBuilder, uiRouter) {
+    singletonGuard(MnHelperService);
+
     this.formBuilder = formBuilder;
     this.uiRouter = uiRouter;
   }

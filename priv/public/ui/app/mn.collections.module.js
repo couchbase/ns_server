@@ -19,7 +19,7 @@ import {MnCollectionsComponent} from './mn.collections.component.js';
 import {MnCollectionsItemComponent} from './mn.collections.item.component.js';
 import {MnCollectionsScopeComponent} from './mn.collections.scope.component.js';
 import {MnCollectionsScopeDetailsComponent} from './mn.collections.scope.details.component.js';
-import {MnCollectionsService} from './mn.collections.service.js';
+
 import {MnSharedModule} from './mn.shared.module.js';
 import {MnInputFilterModule} from './mn.input.filter.module.js';
 import {MnSelectModule} from './mn.select.module.js';
@@ -90,9 +90,6 @@ class MnCollectionsModule {
         MnSelectModule,
         MnElementCraneModule,
         UIRouterModule.forChild({ states: [collectionsState] })
-      ],
-      providers: [
-        MnCollectionsService
       ]
     })
   ]}

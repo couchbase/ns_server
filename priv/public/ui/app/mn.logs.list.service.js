@@ -12,6 +12,7 @@ import {Injectable} from '@angular/core';
 import {HttpClient} from '@angular/common/http';
 import {timer} from 'rxjs';
 import {switchMap, shareReplay} from 'rxjs/operators';
+import {singletonGuard} from './mn.core.js';
 
 export {MnLogsListService};
 
@@ -25,6 +26,7 @@ class MnLogsListService {
   ]}
 
   constructor(http) {
+    singletonGuard(MnLogsListService);
     this.http = http;
 
     this.stream = {};

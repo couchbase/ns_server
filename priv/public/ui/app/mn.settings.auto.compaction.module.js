@@ -14,10 +14,8 @@ import {ReactiveFormsModule} from '@angular/forms';
 
 import {MnSharedModule} from './mn.shared.module.js';
 import {MnSettingsAutoCompactionComponent} from './mn.settings.auto.compaction.component.js';
-import {MnSettingsAutoCompactionService} from './mn.settings.auto.compaction.service.js';
 import {MnSettingsAutoCompactionFormModule} from './mn.settings.auto.compaction.form.module.js'
 import {MnElementCraneModule} from "./mn.element.crane.js";
-import {MnHelperService} from './mn.helper.service.js';
 
 const autoCompactionState = {
   url: "/autoCompaction",
@@ -42,10 +40,6 @@ class MnSettingsAutoCompactionModule {
         ReactiveFormsModule,
         MnElementCraneModule,
         MnSettingsAutoCompactionFormModule
-      ],
-      providers: [
-        MnSettingsAutoCompactionService,
-        MnHelperService
       ]
     })
   ]}

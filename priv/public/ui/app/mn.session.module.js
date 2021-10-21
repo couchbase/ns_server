@@ -14,7 +14,6 @@ import {ReactiveFormsModule} from '@angular/forms';
 
 import {MnSharedModule} from './mn.shared.module.js';
 import {MnSessionComponent} from './mn.session.component.js';
-import {MnSessionServiceModule} from './mn.session.service.js';
 
 let sessionState = {
   url: '/session',
@@ -37,11 +36,9 @@ class MnSessionModule {
       ],
       imports: [
         ReactiveFormsModule,
-        MnSessionServiceModule,
         MnSharedModule,
         UIRouterModule.forChild({ states: [sessionState] })
-      ],
-      providers: []
+      ]
     })
   ]}
 }

@@ -12,6 +12,8 @@ import {Injectable} from '@angular/core';
 import {HttpClient} from '@angular/common/http';
 import {map} from 'rxjs/operators';
 
+import {singletonGuard} from './mn.core.js';
+
 export {MnStatsService};
 
 class MnStatsService {
@@ -24,6 +26,7 @@ class MnStatsService {
   ]}
 
   constructor(http) {
+    singletonGuard(MnStatsService);
     this.http = http;
 
     this.stream = {};

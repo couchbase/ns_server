@@ -13,18 +13,12 @@ import {BrowserModule} from '@angular/platform-browser';
 import {HttpClientModule} from '@angular/common/http';
 import {UIRouterModule, loadNgModule} from '@uirouter/angular';
 import {Rejection} from '@uirouter/core';
-import {UpgradeModule} from '@angular/upgrade/static';
 import {UIRouterUpgradeModule} from '@uirouter/angular-hybrid';
 
 import {MnPipesModule} from './mn.pipes.module.js';
 import {MnSharedModule} from './mn.shared.module.js';
 import {MnElementCraneModule} from './mn.element.crane.js';
-import * as pluggableUIsModules from '/ui/pluggable-uis.js';
-import {MnPoolsServiceModule} from './mn.pools.service.js';
-import {MnAdminServiceModule} from './mn.admin.service.js';
-import {MnCollectionsServiceModule} from './mn.collections.service.js';
-import {MnBucketsServiceModule} from './mn.buckets.service.js';
-import {MnKeyspaceSelectorServiceModule} from "./mn.keyspace.selector.service.js";
+import * as pluggableUIsModules from '../pluggable-uis.js';
 import {MnKeyspaceSelectorModule} from './mn.keyspace.selector.module.js';
 import {MnHelper} from './ajs.upgraded.providers.js';
 
@@ -202,19 +196,13 @@ function mnLoadNgModule(doImport, module) {
 
 let mnAppImports = [
   ...Object.values(pluggableUIsModules),
-  UpgradeModule,
   UIRouterModule,
   MnPipesModule,
   BrowserModule,
   CommonModule,
   HttpClientModule,
   MnSharedModule,
-  MnCollectionsServiceModule,
-  MnAdminServiceModule,
-  MnPoolsServiceModule,
-  MnBucketsServiceModule,
-  MnKeyspaceSelectorServiceModule,
-  MnElementCraneModule.forRoot(),
+  MnElementCraneModule,
   UIRouterUpgradeModule.forRoot({
     states: [
       authState,

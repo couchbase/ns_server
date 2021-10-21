@@ -16,6 +16,7 @@ import {HttpClient} from '@angular/common/http';
 
 import {MnPermissions} from './ajs.upgraded.providers.js';
 import {MnAdminService} from './mn.admin.service.js';
+import {singletonGuard} from './mn.core.js';
 
 export {MnServerGroupsService}
 
@@ -31,6 +32,7 @@ class MnServerGroupsService {
   ]}
 
   constructor(http, mnAdminService, mnPermissions) {
+    singletonGuard(MnServerGroupsService);
     this.http = http;
     let permissionsStream = mnPermissions.stream;
 

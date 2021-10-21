@@ -16,17 +16,39 @@ import {NgModule, ErrorHandler} from '@angular/core';
 import {HTTP_INTERCEPTORS} from '@angular/common/http';
 import {UpgradeModule} from '@angular/upgrade/static';
 import {NgbModalConfig} from '@ng-bootstrap/ng-bootstrap';
+import {ClipboardService} from 'ngx-clipboard';
+
+import {mnAppImports} from './mn.app.imports.js';
+import {MnHttpInterceptor} from './mn.http.interceptor.js';
 
 import {ajsUpgradedProviders} from './ajs.upgraded.providers.js';
 import {MnAppService} from './mn.app.service.js';
-import {MnHelperService} from './mn.helper.service.js';
 import {MnTasksService} from './mn.tasks.service.js';
 import {MnSecurityService} from './mn.security.service.js';
 import {MnServerGroupsService} from './mn.server.groups.service.js';
-import {mnAppImports} from './mn.app.imports.js';
 import {MnFormService} from './mn.form.service.js';
-import {MnHttpInterceptor} from './mn.http.interceptor.js';
 import {MnExceptionHandlerService} from './mn.exception.handler.service.js';
+import {MnCollectionsService} from './mn.collections.service.js';
+import {MnSettingsSampleBucketsService} from './mn.settings.sample.buckets.service.js';
+import {MnKeyspaceSelectorService} from './mn.keyspace.selector.service.js';
+import {MnHelperService} from './mn.helper.service.js';
+import {MnSettingsAutoCompactionService} from './mn.settings.auto.compaction.service.js';
+import {MnAuthService} from './mn.auth.service.js';
+import {MnElementCraneService} from './mn.element.crane.js';
+import {MnBucketsService} from './mn.buckets.service.js';
+import {MnWizardService} from './mn.wizard.service.js';
+import {MnLogsCollectInfoService} from './mn.logs.collectInfo.service.js';
+import {MnPermissionsService} from './mn.permissions.service.js';
+import {MnUserRolesService} from './mn.user.roles.service.js';
+import {MnPoolsService} from './mn.pools.service.js';
+import {MnAdminService} from './mn.admin.service.js';
+import {MnAlertsService} from './mn.alerts.service.js';
+import {MnXDCRService} from "./mn.xdcr.service.js";
+import {MnStatsService} from './mn.stats.service.js';
+import {MnSettingsAlertsService} from './mn.settings.alerts.service.js';
+import {MnLogsListService} from './mn.logs.list.service.js';
+import {MnSessionService} from './mn.session.service.js';
+
 
 export {MnAppModule};
 
@@ -45,12 +67,33 @@ class MnAppModule {
       // ],
       providers: [
         ...ajsUpgradedProviders,
-        MnSecurityService,
-        MnServerGroupsService,
+        ClipboardService,
         MnAppService,
         MnTasksService,
+        MnSecurityService,
+        MnServerGroupsService,
         MnFormService,
+        MnExceptionHandlerService,
+        MnCollectionsService,
+        MnSettingsSampleBucketsService,
+        MnKeyspaceSelectorService,
         MnHelperService,
+        MnSettingsAutoCompactionService,
+        MnAuthService,
+        MnElementCraneService,
+        MnBucketsService,
+        MnWizardService,
+        MnLogsCollectInfoService,
+        MnPermissionsService,
+        MnUserRolesService,
+        MnPoolsService,
+        MnAdminService,
+        MnAlertsService,
+        MnXDCRService,
+        MnStatsService,
+        MnSettingsAlertsService,
+        MnLogsListService,
+        MnSessionService,
         {
           provide: HTTP_INTERCEPTORS,
           useClass: MnHttpInterceptor,

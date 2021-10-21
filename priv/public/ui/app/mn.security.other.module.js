@@ -39,8 +39,7 @@ class MnSecurityOtherModule {
         ReactiveFormsModule,
         MnSelectModule,
         UIRouterModule.forChild({states: [securityOtherState]})
-      ],
-      providers: []
+      ]
     })
   ]}
 }

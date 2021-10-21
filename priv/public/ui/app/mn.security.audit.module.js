@@ -18,7 +18,6 @@ import {MnPipesModule} from './mn.pipes.module.js';
 import {MnSelectModule} from './mn.select.module.js';
 import {MnSecurityAuditComponent} from './mn.security.audit.component.js';
 import {MnSecurityAuditItemComponent} from './mn.security.audit.item.component.js';
-import {MnSecurityService} from './mn.security.service.js';
 
 let auditState = {
   url: '/audit',
@@ -47,9 +46,6 @@ class MnSecurityAuditModule {
         MnSharedModule,
         NgbModule,
         UIRouterModule.forChild({ states: [auditState] })
-      ],
-      providers: [
-        MnSecurityService
       ]
     })
   ]}

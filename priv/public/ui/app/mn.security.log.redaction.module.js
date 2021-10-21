@@ -15,7 +15,6 @@ import {NgbModule} from '@ng-bootstrap/ng-bootstrap';
 
 import {MnSharedModule} from './mn.shared.module.js';
 import {MnSecurityLogRedactionComponent} from './mn.security.log.redaction.component.js';
-import {MnSecurityService} from './mn.security.service.js';
 
 let logRedactionState = {
   url: '/redaction',
@@ -42,9 +41,6 @@ class MnSecurityLogRedactionModule {
         ReactiveFormsModule,
         MnSharedModule,
         UIRouterModule.forChild({ states: [logRedactionState] })
-      ],
-      providers: [
-        MnSecurityService
       ]
     })
   ]}

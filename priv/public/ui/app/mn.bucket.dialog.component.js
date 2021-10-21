@@ -38,7 +38,6 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
       inputs: [
         'bucket'
       ],
-      providers: [MnPermissionsService, MnUserRolesService],
       changeDetection: ChangeDetectionStrategy.OnPush
     })
   ]}

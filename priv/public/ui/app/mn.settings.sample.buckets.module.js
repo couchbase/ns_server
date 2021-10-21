@@ -14,7 +14,6 @@ import {ReactiveFormsModule} from '@angular/forms';
 
 import {MnSharedModule} from './mn.shared.module.js';
 import {MnSettingsSampleBucketsComponent} from './mn.settings.sample.buckets.component.js';
-import {MnSettingsSampleBucketsService} from './mn.settings.sample.buckets.service.js';
 import {MnElementCraneModule} from "./mn.element.crane.js";
 import {MnPipesModule} from "./mn.pipes.module.js";
 
@@ -43,9 +42,6 @@ class MnSettingsSampleBucketsModule {
         UIRouterModule.forChild({ states: [sampleBucketsState] }),
         ReactiveFormsModule,
         MnPipesModule
-      ],
-      providers: [
-        MnSettingsSampleBucketsService
       ]
     })
   ]}

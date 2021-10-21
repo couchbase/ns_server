@@ -20,12 +20,15 @@ export {MnElementCraneModule,
         MnElementCargoComponent,
         MnElementDepotComponent};
 
+import {singletonGuard} from './mn.core.js';
+
 class MnElementCraneService {
   static get annotations() { return [
     new Injectable()
   ]}
 
   constructor() {
+    singletonGuard(MnElementCraneService);
     this.depots = {};
   }
 
@@ -108,13 +111,6 @@ class MnElementDepotComponent {
 }
 
 class MnElementCraneModule {
-  static forRoot() {
-    return {
-      ngModule: MnElementCraneModule,
-      providers: [MnElementCraneService]
-    };
-  }
-
   static get annotations() { return [
     new NgModule({
       declarations: [

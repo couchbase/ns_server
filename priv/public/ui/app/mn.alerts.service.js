@@ -12,7 +12,7 @@ import {Injectable} from '@angular/core';
 import {Subject} from 'rxjs';
 import {tap, map} from 'rxjs/operators';
 
-export { MnAlertsService };
+export {MnAlertsService};
 
 class MnAlertsService {
   static get annotations() { return [

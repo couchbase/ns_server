@@ -11,7 +11,7 @@ licenses/APL2.txt.
 import {Injectable} from '@angular/core';
 import {HttpClient} from '@angular/common/http';
 import {map} from 'rxjs/operators';
-
+import {singletonGuard} from './mn.core.js';
 import {MnHttpRequest} from './mn.http.request.js';
 
 export {MnAuthService}
@@ -26,6 +26,7 @@ class MnAuthService {
   ]}
 
   constructor(http) {
+    singletonGuard(MnAuthService);
     this.http = http;
     this.stream = {};
 

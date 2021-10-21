@@ -11,6 +11,7 @@ licenses/APL2.txt.
 import {Component, ChangeDetectionStrategy} from '@angular/core';
 import {Subject, BehaviorSubject, combineLatest} from 'rxjs';
 import {map, takeUntil, withLatestFrom} from 'rxjs/operators';
+import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
 
 import {MnLifeCycleHooksToStream} from "./mn.core.js";
 import {MnBucketsService} from "./mn.buckets.service.js";
@@ -18,13 +19,16 @@ import {MnHelperService} from './mn.helper.service.js';
 import {MnAdminService} from './mn.admin.service.js';
 import {MnPermissions} from './ajs.upgraded.providers.js';
 
+import {MnBucketDialogComponent} from './mn.bucket.dialog.component.js';
+import {MnBucketFullDialogComponent} from './mn.bucket.full.dialog.component.js';
+
 export {MnBucketsComponent};
 
 class MnBucketsComponent extends MnLifeCycleHooksToStream {
   static get annotations() {
     return [
       new Component({
-        templateUrl: new URL("./mn.buckets.html", import.meta.url).pathname,
+        templateUrl: "app/mn.buckets.html",
         changeDetection: ChangeDetectionStrategy.OnPush
       })
     ]
@@ -35,13 +39,15 @@ class MnBucketsComponent extends MnLifeCycleHooksToStream {
       MnBucketsService,
       MnHelperService,
       MnAdminService,
-      MnPermissions
+      MnPermissions,
+      NgbModal
     ]
   }
 
-  constructor(mnBucketsService, mnHelperService, mnAdminService, mnPermissions) {
+  constructor(mnBucketsService, mnHelperService, mnAdminService, mnPermissions, modalService) {
     super();
 
+    this.modalService = modalService;
     this.filter = mnHelperService.createFilter(this);
     this.sorter = mnHelperService.createSorter("name");
 
@@ -58,7 +64,14 @@ class MnBucketsComponent extends MnLifeCycleHooksToStream {
     this.onAddBucketClick
       .pipe(withLatestFrom(mnAdminService.stream.storageTotals),
             takeUntil(this.mnOnDestroy))
-      .subscribe(mnBucketsService.openAddBucketDialog.bind(mnBucketsService));
+      .subscribe(([,storageTotals]) => {
+        let ram = storageTotals.ram;
+        if (!ram || ram.quotaTotal === ram.quotaUsed) {
+          this.modalService.open(MnBucketFullDialogComponent);
+        } else {
+          this.modalService.open(MnBucketDialogComponent);
+        }
+      });
 
     this.maxBucketCountReached =
       combineLatest(this.filteredBuckets,

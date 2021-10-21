@@ -11,11 +11,14 @@ licenses/APL2.txt.
 import {ChangeDetectionStrategy, Component} from '@angular/core';
 import {UIRouter} from '@uirouter/angular';
 import {switchMap, filter} from 'rxjs/operators';
+import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnLogsCollectInfoService} from './mn.logs.collectInfo.service.js';
 import {MnAdminService} from './mn.admin.service.js';
 import {MnTasksService} from './mn.tasks.service.js';
+
+import {MnLogsCollectInfoStopCollectionComponent} from './mn.logs.collectInfo.stop.collection.component.js';
 
 export { MnLogsCollectInfoResultComponent };
 
@@ -32,11 +35,14 @@ class MnLogsCollectInfoResultComponent extends MnLifeCycleHooksToStream {
     MnLogsCollectInfoService,
     MnAdminService,
     UIRouter,
-    MnTasksService
+    MnTasksService,
+    NgbModal
   ]}
 
-  constructor(mnLogsCollectInfoService, mnAdminService, uiRouter, mnTasksService) {
+  constructor(mnLogsCollectInfoService, mnAdminService, uiRouter, mnTasksService, modalService) {
     super();
+
+    this.modalService = modalService;
 
     this.mnLogsCollectInfoService = mnLogsCollectInfoService;
     this.uiRouter = uiRouter;
@@ -65,6 +71,6 @@ class MnLogsCollectInfoResultComponent extends MnLifeCycleHooksToStream {
   }
 
   stopCollection() {
-    this.mnLogsCollectInfoService.cancelLogsCollection();
+    this.modalService.open(MnLogsCollectInfoStopCollectionComponent);
   }
 }

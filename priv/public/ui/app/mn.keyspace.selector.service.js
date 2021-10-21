@@ -8,7 +8,7 @@
   licenses/APL2.txt.
 */
 
-import {NgModule, Injectable} from '@angular/core';
+import {Injectable} from '@angular/core';
 import {filter, withLatestFrom, pairwise, catchError,
         startWith, switchMap, pluck, takeUntil,
         mapTo, distinctUntilChanged, shareReplay, map} from 'rxjs/operators';
@@ -17,20 +17,9 @@ import {BehaviorSubject, Subject, NEVER, of, merge, fromEvent} from 'rxjs';
 import {MnHelperService} from './mn.helper.service.js';
 import {MnCollectionsService} from './mn.collections.service.js';
 
-export {MnKeyspaceSelectorServiceModule, MnKeyspaceSelectorService}
+import {singletonGuard} from './mn.core.js';
 
-class MnKeyspaceSelectorServiceModule {
-  static get annotations() { return [
-    new NgModule({
-      imports: [
-      ],
-      providers: [
-        MnKeyspaceSelectorService,
-        MnHelperService
-      ]
-    })
-  ];}
-}
+export {MnKeyspaceSelectorService}
 
 class MnKeyspaceSelectorService {
   static get annotations() { return [
@@ -43,6 +32,7 @@ class MnKeyspaceSelectorService {
   ];}
 
   constructor(mnHelperService, mnCollectionsService) {
+    singletonGuard(MnKeyspaceSelectorService);
     this.mnHelperService = mnHelperService;
     this.mnCollectionsService = mnCollectionsService;
   }

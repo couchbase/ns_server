@@ -15,8 +15,6 @@ import {MnPoolsService} from "./mn.pools.service.js";
 import {MnAdminService} from "./mn.admin.service.js";
 import {MnHelperService} from "./mn.helper.service.js";
 
-import {merge} from 'rxjs';
-
 export {MnXDCRSettingsComponent};
 
 class MnXDCRSettingsComponent extends MnLifeCycleHooksToStream {
