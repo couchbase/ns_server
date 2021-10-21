@@ -15,13 +15,11 @@ import mnCertificates from "./mn_certificates_controller.js";
 import mnRolesGroups from "./mn_roles_groups_controller.js";
 import mnElementCrane from "../components/directives/mn_element_crane/mn_element_crane.js";
 import mnPluggableUiRegistry from "../components/mn_pluggable_ui_registry.js";
-import mnSession from "./mn_session_controller.js";
 
 export default 'mnSecurity';
 
 angular
   .module('mnSecurity', [
-    mnSession,
     mnUserRoles,
     mnRedaction,
     mnCertificates,
