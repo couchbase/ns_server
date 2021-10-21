@@ -382,7 +382,6 @@ class MnBucketsService {
       durabilityMinLevel: 'none',
       storageBackend: 'couchstore',
       autoCompactionDefined: false,
-      fragmentationPercentage: 50,
       autoCompactionSettings
     };
   }
@@ -407,7 +406,6 @@ class MnBucketsService {
       durabilityMinLevel: bucket.durabilityMinLevel,
       storageBackend: bucket.storageBackend,
       autoCompactionDefined: !!bucket.autoCompactionSettings,
-      fragmentationPercentage: bucket.fragmentationPercentage
     };
 
     let autoCompaction = this.mnSettingsAutoCompactionService.getSettingsSource(

@@ -532,29 +532,14 @@ licenses/APL2.txt.
             <label for="for-auto-compaction-override">Override the default auto-compaction settings?</label>
           </div>
           <div
-             class="formrow checkbox-list"
-             [hidden]="(autoCompactionMode | async) !== 'magma'">
-            <label>Magma Fragmentation Threshold</label>
-            <div class="formrow form-inline">
-              <input
-                 formControlName="fragmentationPercentage"
-                 type="number">
-              <small> %</small>
-              <div
-                 class="error"
-                 [hidden]="!(httpError | async)?.errors?.fragmentationPercentage">
-                {{(httpError | async)?.errors?.fragmentationPercentage}}
-              </div>
-            </div>
-          </div>
-          <div
              class="formrow"
-             [hidden]="(autoCompactionMode | async) !== 'couchstore'">
+             [hidden]="!(autoCompactionDefined | async)">
             <mn-auto-compaction-form
                class="margin-bottom-2"
                [mnGroup]="form.group.get('autoCompactionSettings')"
                [mnErrors]="httpError"
-               isBucketSettings="true">
+               [isBucketSettings]="true"
+               [mnStorage]="autoCompactionMode">
             </mn-auto-compaction-form>
           </div>
         </div>

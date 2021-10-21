@@ -12,9 +12,9 @@ import {ChangeDetectionStrategy, Component} from '@angular/core';
 import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
 import {FormBuilder} from '@angular/forms';
 import {UIRouter} from '@uirouter/angular';
-import {Subject, BehaviorSubject, combineLatest} from 'rxjs';
+import {Subject, BehaviorSubject, combineLatest, pipe} from 'rxjs';
 import {map, merge, pluck, filter, shareReplay, startWith,
-  takeUntil, distinctUntilChanged} from 'rxjs/operators';
+  takeUntil, distinctUntilChanged, withLatestFrom} from 'rxjs/operators';
 
 import {MnAlertsService, MnPermissions} from './ajs.upgraded.providers.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
@@ -80,6 +80,8 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
     this.mnPermissionsService = mnPermissionsService;
     this.mnUserRolesService = mnUserRolesService;
     this.uiRouter = uiRouter;
+    this.isEnterprise = this.mnPoolsService.stream.isEnterprise;
+    this.compatVersion55 = this.mnAdminService.stream.compatVersion55;
   }
 
   ngOnInit() {
@@ -110,7 +112,6 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
         durabilityMinLevel: null,
         purgeInterval: null,
         autoCompactionDefined: null,
-        fragmentationPercentage: null,
         autoCompactionSettings: this.formBuilder.group({
           indexCompactionMode: null,
           allowedTimePeriod: this.formBuilder.group({
@@ -124,6 +125,7 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
             sizeFlag: null,
             percentage: null,
             size: null}),
+          magmaFragmentationPercentage: null,
           viewFragmentationThreshold: this.formBuilder.group({
             percentageFlag: null,
             sizeFlag: null,
@@ -133,7 +135,8 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
           purgeInterval: null,
           timePeriodFlag: null})}))
       .setSource(formData)
-      .setPackPipe(map(this.packData.bind(this)))
+      .setPackPipe(pipe(withLatestFrom(this.compatVersion55, this.isEnterprise),
+                   map(this.packData.bind(this))))
       .setPostRequest(postRequest)
       .setValidation(postValidation, undefined, undefined, true)
       .successMessage('Bucket settings saved successfully!')
@@ -179,8 +182,8 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
       .subscribe(this.onReplicaNumberEnabled.bind(this));
 
     this.showMaxTTL =
-      combineLatest(this.mnPoolsService.stream.isEnterprise,
-                    this.mnAdminService.stream.compatVersion55,
+      combineLatest(this.isEnterprise,
+                    this.compatVersion55,
                     this.bucketType)
       .pipe(map(this.isMaxTTLVisible.bind(this)));
 
@@ -198,7 +201,7 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
     this.showCompressionMode = this.showMaxTTL;
 
     this.showConflictResolution =
-      combineLatest(this.mnPoolsService.stream.isEnterprise,
+      combineLatest(this.isEnterprise,
                     this.bucketType)
       .pipe(map(this.isConflictResolutionVisible.bind(this)));
 
@@ -206,7 +209,7 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
       .pipe(map(this.setDurabilityMinLevelOptions.bind(this)));
 
     this.showStorageBackend =
-      combineLatest(this.mnPoolsService.stream.isEnterprise,
+      combineLatest(this.isEnterprise,
                     this.bucketType)
       .pipe(map(this.isStorageBackendVisible.bind(this)));
 
@@ -237,30 +240,6 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
 
       (['threadsNumber','evictionPolicy']).forEach(this.threadsEvictionWarning.bind(this));
     }
-
-    let autoCompactionFlagInputs = [
-      'autoCompactionSettings.databaseFragmentationThreshold.percentage',
-      'autoCompactionSettings.databaseFragmentationThreshold.size',
-      'autoCompactionSettings.viewFragmentationThreshold.percentage',
-      'autoCompactionSettings.viewFragmentationThreshold.size'
-    ];
-
-    autoCompactionFlagInputs.map(input => this.maybeDisableWhenChecked([`${input}Flag`, input]));
-
-    let thresholdFlags = combineLatest(
-      autoCompactionFlagInputs.map(input =>
-                                   this.form.group.get(`${input}Flag`).valueChanges));
-
-    thresholdFlags
-      .pipe(map((flags) => flags.some(v => v)),
-            takeUntil(this.mnOnDestroy))
-      .subscribe(v => this.maybeDisableField('autoCompactionSettings.timePeriodFlag', v));
-
-    combineLatest(thresholdFlags,
-                  this.form.group.get('autoCompactionSettings.timePeriodFlag').valueChanges)
-      .pipe(map(([flags, checked]) => flags.some(v => v) && checked),
-            takeUntil(this.mnOnDestroy))
-      .subscribe(v => this.maybeDisableField('autoCompactionSettings.allowedTimePeriod', v));
 
     let combinedPermissionsStreams =
       this.mnPermissionsService.generateBucketPermissions({
@@ -377,22 +356,26 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
     return permissions.cluster.admin.security.read && users.length;
   }
 
-  packData() {
+  packData([, compat55, isEnterprise]) {
     let formData = this.form.group.getRawValue();
 
     formData.flushEnabled = formData.flushEnabled ? 1 : 0;
     formData.replicaIndex = formData.replicaIndex ? 1 : 0;
-
-    if (formData.storageBackend === 'couchstore') {
-      delete formData.fragmentationPercentage;
-    }
 
     if (formData.bucketType !== 'membase') {
       delete formData.autoCompactionDefined;
     }
     if (formData.autoCompactionDefined) {
       let autoCompactionData = this.mnSettingsAutoCompactionService.getAutoCompactionData(this.form.group.get('autoCompactionSettings'));
-      formData = Object.assign(formData, autoCompactionData);
+      switch(formData.storageBackend) {
+        case 'magma':
+          formData.magmaFragmentationPercentage = autoCompactionData.magmaFragmentationPercentage;
+          break;
+        case 'couchstore':
+          formData = Object.assign(formData, autoCompactionData);
+          delete formData.magmaFragmentationPercentage;
+          break;
+      }
     }
     delete formData.autoCompactionSettings;
 
@@ -400,26 +383,37 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
       delete formData.conflictResolutionType;
     }
 
+    let checkPermissions = () => {
+      if (!isEnterprise || !compat55) {
+        delete formData.compressionMode;
+        delete formData.maxTTL;
+      }
+      if (!isEnterprise) {
+        delete formData.conflictResolutionType;
+        delete formData.storageBackend;
+      }
+    };
     switch (formData.bucketType) {
       case 'ephemeral':
         delete formData.autoCompactionDefined;
         delete formData.replicaIndex;
         delete formData.storageBackend;
-        delete formData.fragmentationPercentage;
         formData.evictionPolicy = formData.evictionPolicyEphemeral;
+        checkPermissions();
         break;
       case 'memcached':
         delete formData.autoCompactionDefined;
         delete formData.replicaNumber;
         delete formData.storageBackend;
-        delete formData.fragmentationPercentage;
+        delete formData.purgeInterval;
+        delete formData.evictionPolicy;
         break;
       case 'membase':
-        if (formData.storageBackend !== 'magma') {
-          delete formData.fragmentationPercentage;
-        }
+        checkPermissions();
         break;
     }
+
+    delete formData.evictionPolicyEphemeral;
 
     Object.keys(formData).forEach(key => {
       if (formData[key] === null || formData[key] === undefined) {

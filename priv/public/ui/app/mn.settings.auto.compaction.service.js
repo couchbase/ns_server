@@ -134,6 +134,8 @@ class MnSettingsAutoCompactionService {
       source.allowedTimePeriod = data.allowedTimePeriod;
     }
 
+    source.magmaFragmentationPercentage = data.magmaFragmentationPercentage;
+
     return source;
   }
 
@@ -142,7 +144,7 @@ class MnSettingsAutoCompactionService {
 
     if (values.databaseFragmentationThreshold) {
       if (values.databaseFragmentationThreshold.size) {
-        values.databaseFragmentationThreshold.size = this.transformMBToBytes(values.databaseFragmentationThreshold.size);
+        values.databaseFragmentationThreshold.size = this.mnHelperService.transformMBToBytes(values.databaseFragmentationThreshold.size);
       }
 
       delete values.viewFragmentationThreshold.sizeFlag;
@@ -151,7 +153,7 @@ class MnSettingsAutoCompactionService {
 
     if (values.viewFragmentationThreshold) {
       if (values.viewFragmentationThreshold.size) {
-        values.viewFragmentationThreshold.size = this.transformMBToBytes(values.viewFragmentationThreshold.size);
+        values.viewFragmentationThreshold.size = this.mnHelperService.transformMBToBytes(values.viewFragmentationThreshold.size);
       }
 
       delete values.databaseFragmentationThreshold.sizeFlag;
@@ -159,6 +161,7 @@ class MnSettingsAutoCompactionService {
     }
 
     values.purgeInterval = Number(values.purgeInterval);
+    values.magmaFragmentationPercentage = Number(values.magmaFragmentationPercentage);
 
     delete values.timePeriodFlag;
 

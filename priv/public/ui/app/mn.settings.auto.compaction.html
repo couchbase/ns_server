@@ -27,7 +27,7 @@
        class="margin-bottom-2"
        [mnGroup]="form.group"
        [mnErrors]="httpError"
-       isBucketSettings="false">
+       [isBucketSettings]="false">
     </mn-auto-compaction-form>
     <footer
       [hidden]="!(permissions | async)?.cluster.settings.write"

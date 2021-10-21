@@ -11,8 +11,8 @@
 import {Component, ChangeDetectionStrategy} from '@angular/core';
 import {UIRouter} from '@uirouter/angular';
 import {FormBuilder} from '@angular/forms';
-import {pipe, combineLatest, merge} from 'rxjs';
-import {map, takeUntil} from 'rxjs/operators';
+import {pipe, merge} from 'rxjs';
+import {map} from 'rxjs/operators';
 
 import {MnPermissions} from './ajs.upgraded.providers.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
@@ -78,6 +78,7 @@ class MnSettingsAutoCompactionComponent extends MnLifeCycleHooksToStream {
           percentage: null,
           size: null
         }),
+        magmaFragmentationPercentage: null,
         viewFragmentationThreshold: this.formBuilder.group({
           percentageFlag: null,
           sizeFlag: null,
@@ -121,75 +122,8 @@ class MnSettingsAutoCompactionComponent extends MnLifeCycleHooksToStream {
 
     this.form.group.disable();
 
-    this.thresholdFlags = combineLatest(
-      this.form.group.get('databaseFragmentationThreshold.percentageFlag').valueChanges,
-      this.form.group.get('databaseFragmentationThreshold.sizeFlag').valueChanges,
-      this.form.group.get('viewFragmentationThreshold.percentageFlag').valueChanges,
-      this.form.group.get('viewFragmentationThreshold.sizeFlag').valueChanges
-    );
-
     this.hasWritePermissions = this.permissions
         .pipe(map(permissions => permissions.cluster.settings.autocompaction.write));
-
-    this.hasWritePermissions
-      .pipe(takeUntil(this.mnOnDestroy))
-      .subscribe(this.initiallyEnabledControls.bind(this));
-
-    combineLatest(this.hasWritePermissions,
-                  this.thresholdFlags)
-      .pipe(map(([hasPermission, flags]) => hasPermission && flags.some(v => v)),
-            takeUntil(this.mnOnDestroy))
-      .subscribe(this.maybeDisableField.bind(this, 'timePeriodFlag'));
-
-    combineLatest(this.hasWritePermissions,
-                  this.thresholdFlags,
-                  this.form.group.get('timePeriodFlag').valueChanges)
-      .pipe(map(([hasPermission, flags, checked]) =>
-        hasPermission && flags.some(v => v) && checked),
-            takeUntil(this.mnOnDestroy))
-      .subscribe(this.maybeDisableField.bind(this, 'allowedTimePeriod'));
-
-    combineLatest(this.hasWritePermissions,
-                  this.form.group.get('indexCompactionMode').valueChanges)
-      .pipe(takeUntil(this.mnOnDestroy))
-      .subscribe(this.toggleIndexFragmentation.bind(this));
-
-    this.addThresholdToggle('databaseFragmentationThreshold.percentage');
-    this.addThresholdToggle('databaseFragmentationThreshold.size');
-    this.addThresholdToggle('viewFragmentationThreshold.percentage');
-    this.addThresholdToggle('viewFragmentationThreshold.size');
-  }
-
-  addThresholdToggle(control) {
-    return combineLatest(this.form.group.get(`${control}Flag`).valueChanges,
-                         this.hasWritePermissions)
-      .pipe(takeUntil(this.mnOnDestroy))
-      .subscribe(([flag, hasPermission]) =>
-        this.form.group.get(control)[flag && hasPermission ? 'enable' : 'disable']());
-  }
-
-  initiallyEnabledControls(hasPermission) {
-    this.maybeDisableField('databaseFragmentationThreshold.percentageFlag', hasPermission);
-    this.maybeDisableField('databaseFragmentationThreshold.sizeFlag', hasPermission);
-    this.maybeDisableField('viewFragmentationThreshold.percentageFlag', hasPermission);
-    this.maybeDisableField('viewFragmentationThreshold.sizeFlag', hasPermission);
-    this.maybeDisableField('purgeInterval', hasPermission);
-    this.maybeDisableField('parallelDBAndViewCompaction', hasPermission);
-    this.maybeDisableField('indexCompactionMode', hasPermission);
-    this.maybeDisableField('indexCircularCompaction', hasPermission);
-  }
-
-  toggleIndexFragmentation([hasPermission, mode]) {
-    let enabled = mode == "circular";
-
-    if (hasPermission) {
-      this.maybeDisableField('indexFragmentationThreshold', !enabled);
-      this.maybeDisableField('indexCircularCompaction', enabled);
-    }
-  }
-
-  maybeDisableField(control, enabled) {
-    this.form.group.get(control)[enabled ? "enable" : "disable"]();
   }
 
   cancel() {
