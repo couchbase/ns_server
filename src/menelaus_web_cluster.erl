@@ -475,40 +475,44 @@ do_handle_eject_post(Req, OtpNode) ->
             end
     end.
 
-validate_setup_services_post(Req) ->
-    Params = mochiweb_request:parse_post(Req),
-    case ns_config_auth:is_system_provisioned() of
-        true ->
-            {error, <<"cannot change node services after cluster is provisioned">>};
-        _ ->
-            ServicesString = proplists:get_value("services", Params, ""),
-            case parse_validate_services_list(ServicesString) of
-                {ok, Svcs} ->
-                    case lists:member(kv, Svcs) of
-                        true ->
-                            case ns_cluster:enforce_topology_limitation(Svcs) of
-                                ok ->
-                                    setup_services_check_quota(Svcs, Params);
-                                Error ->
-                                    Error
+setup_services_validators() ->
+    [validator:boolean(setDefaultMemQuotas, _),
+     validator:default(setDefaultMemQuotas, false, _),
+     validator:required(services, _),
+     validator:validate(
+      fun (ServicesString) ->
+          case ns_config_auth:is_system_provisioned() of
+              true ->
+                  {error, <<"cannot change node services after cluster is "
+                            "provisioned">>};
+              false ->
+                  case parse_validate_services_list(ServicesString) of
+                      {ok, Svcs} ->
+                            case lists:member(kv, Svcs) of
+                                true ->
+                                    case ns_cluster:enforce_topology_limitation(
+                                           Svcs) of
+                                        ok -> {value, Svcs};
+                                        Error -> Error
+                                    end;
+                                false ->
+                                    {error, <<"cannot setup first cluster "
+                                              "node without kv service">>}
                             end;
-                        false ->
-                            {error, <<"cannot setup first cluster node without kv service">>}
-                    end;
-                {error, Msg} ->
-                    {error, Msg}
-            end
-    end.
+                      {error, Msg} -> {error, Msg}
+                  end
+          end
+      end, services, _)].
 
-setup_services_check_quota(Services, Params) ->
-    Quotas = case proplists:get_value("setDefaultMemQuotas", Params, "false") of
-                 "false" ->
+setup_services_check_quota(Services, SetDefaultMemQuotas) ->
+    Quotas = case SetDefaultMemQuotas of
+                 false ->
                      lists:map(
                        fun(Service) ->
                                {ok, Quota} = memory_quota:get_quota(Service),
                                {Service, Quota}
                        end, memory_quota:aware_services());
-                 "true" ->
+                 true ->
                      do_update_with_default_quotas(memory_quota:default_quotas(Services))
              end,
 
@@ -518,7 +522,7 @@ setup_services_check_quota(Services, Params) ->
         _ ->
             case memory_quota:check_this_node_quotas(Services, Quotas) of
                 ok ->
-                    {ok, Services};
+                    ok;
                 {error, {total_quota_too_high, _, TotalQuota, MaxAllowed}} ->
                     Msg = io_lib:format("insufficient memory to satisfy memory quota "
                                         "for the services "
@@ -543,13 +547,24 @@ do_update_with_default_quotas(Quotas, RetriesLeft) ->
     end.
 
 handle_setup_services_post(Req) ->
-    case validate_setup_services_post(Req) of
-        {error, Error} ->
-            reply_json(Req, [Error], 400);
-        {ok, Services} ->
+    validator:handle(
+      fun (Props) ->
+          case do_setup_services_post(Req, Props) of
+              ok -> reply(Req, 200);
+              {error, Error} -> reply_json(Req, [Error], 400)
+          end
+      end, Req, form, setup_services_validators()).
+
+do_setup_services_post(Req, Props) ->
+    Services = proplists:get_value(services, Props),
+    SetDefaultMemQuotas = proplists:get_value(setDefaultMemQuotas, Props),
+    case setup_services_check_quota(Services, SetDefaultMemQuotas) of
+        ok ->
             ok = chronicle_compat:set({node, node(), services}, Services),
             ns_audit:setup_node_services(Req, node(), Services),
-            reply(Req, 200)
+            ok;
+        {error, Error} ->
+            {error, Error}
     end.
 
 validate_add_node_params(User, Password) ->
