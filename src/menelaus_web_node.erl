@@ -92,11 +92,9 @@ node_init_validators() ->
                true -> ok;
                false -> {error, "not supported when node is part of a cluster"}
            end
-       end, afamily, _),
-     validator:one_of(afamily, ["ipv4", "ipv6"], _),
-     validator:validate(fun ("ipv4") -> {value, inet};
-                            ("ipv6") -> {value, inet6}
-                        end, afamily, _),
+       end, afamily, _)] ++
+    afamily_validators() ++
+    [validator:validate(fun check_for_raw_addr/1, afamily, _),
      validator:default(afamily, unchanged, _),
      validator:validate(
        fun (_) ->
@@ -140,12 +138,24 @@ node_init(Req, Props) ->
             throw({error, 400, ErrorMsg})
     end,
 
-    case proplists:get_value(afamily, Props) of
-        unchanged -> ok;
-        AFamily ->
-            Encryption = cb_dist:external_encryption(),
-            CBDistCfg = [{afamily, AFamily},
-                         {externalListeners, [{AFamily, Encryption}]}],
+    case {proplists:get_value(afamily, Props),
+          proplists:get_value(afamilyOnly, Props)} of
+        {unchanged, undefined} -> ok;
+        {AFamily, AFamilyOnly}  ->
+            AFamilySettings =
+                case AFamily of
+                    unchanged -> [];
+                    _ ->
+                        Encryption = cb_dist:external_encryption(),
+                        [{afamily, AFamily},
+                         {externalListeners, [{AFamily, Encryption}]}]
+                end,
+            AFamilyOnlySettings =
+                case AFamilyOnly of
+                    undefined -> [];
+                    _ -> [{afamilyOnly, AFamilyOnly}]
+                end,
+            CBDistCfg = AFamilySettings ++ AFamilyOnlySettings,
             case netconfig_updater:apply_config(CBDistCfg) of
                 ok ->
                     %% Wait for web servers to restart
@@ -1063,16 +1073,9 @@ verify_net_config_allowed(State) ->
     end.
 
 net_config_validators(SafeAction) ->
+    afamily_validators() ++
+    node_encryption_validators() ++
     [validator:has_params(_),
-     validator:one_of(afamily, ["ipv4", "ipv6"], _),
-     validator:boolean(afamilyOnly, _),
-     validator:validate(fun ("ipv4") -> {value, inet};
-                            ("ipv6") -> {value, inet6}
-                        end, afamily, _),
-     validator:one_of(nodeEncryption, ["on", "off"], _),
-     validator:validate(fun ("on") -> {value, true};
-                            ("off") -> {value, false}
-                        end, nodeEncryption, _),
      validator:unsupported(_)] ++
      case SafeAction of
          true -> [];
@@ -1080,6 +1083,19 @@ net_config_validators(SafeAction) ->
              [verify_net_config_allowed(_),
               validator:validate(fun check_for_raw_addr/1, afamily, _)]
      end.
+
+afamily_validators() ->
+    [validator:one_of(afamily, ["ipv4", "ipv6"], _),
+     validator:boolean(afamilyOnly, _),
+     validator:validate(fun ("ipv4") -> {value, inet};
+                            ("ipv6") -> {value, inet6}
+                        end, afamily, _)].
+
+node_encryption_validators() ->
+    [validator:one_of(nodeEncryption, ["on", "off"], _),
+     validator:validate(fun ("on") -> {value, true};
+                            ("off") -> {value, false}
+                        end, nodeEncryption, _)].
 
 handle_setup_net_config(Req) ->
     menelaus_util:assert_is_65(),
