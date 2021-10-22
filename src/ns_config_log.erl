@@ -16,6 +16,7 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3, sanitize/1, sanitize/2, sanitize_value/1,
+         sanitize_value/2,
          compute_bucket_diff/2]).
 
 -include("ns_common.hrl").
@@ -213,7 +214,20 @@ sanitize(Config, TagUserTuples) ->
       end, Config).
 
 sanitize_value(Value) ->
-    {sanitized, base64:encode(crypto:hash(sha256, term_to_binary(Value)))}.
+    sanitize_value(Value, []).
+
+sanitize_value(Value0, Options) ->
+    Salt = case Options of
+               [add_salt] ->
+                   crypto:strong_rand_bytes(32);
+               _ ->
+                   <<>>
+           end,
+    Value = term_to_binary(Value0),
+    {sanitized,
+     base64:encode(crypto:hash(
+                     sha256,
+                     <<Value/binary, Salt/binary>>))}.
 
 log_kv({buckets = K, ?DELETED_MARKER = V}, State) ->
     log_common(K, V),

@@ -1128,8 +1128,8 @@ do_verify_domain_access(Req, Permission) ->
             menelaus_util:require_permission(Req, Permission)
     end.
 
-handle_put_user_validated(Identity, Name, Password, Roles, Groups,
-                          Limits, Req) ->
+handle_put_user_validated({User, Domain} = Identity, Name, Password, Roles,
+                          Groups, Limits, Req) ->
     GroupList = case Groups of
                     undefined -> [];
                     _ -> Groups
@@ -1157,6 +1157,12 @@ handle_put_user_validated(Identity, Name, Password, Roles, Groups,
         {commit, _} ->
             ns_audit:set_user(Req, Identity, UniqueRoles, Name, Groups,
                               Reason),
+            {_, SanitizedUser} = ns_config_log:sanitize_value(User, [add_salt]),
+            ?log_debug("User added - ~p:~p, ~p.",
+                       [ns_config_log:tag_user_name(User), Domain,
+                        SanitizedUser]),
+            event_log:add_log(user_added, [{user, SanitizedUser},
+                                           {domain, Domain}]),
             reply_put_delete_users(Req);
         {abort, {error, roles_validation, UnknownRoles}} ->
             menelaus_util:reply_error(
@@ -1187,6 +1193,14 @@ handle_delete_user(Domain, UserId, Req) ->
             case menelaus_users:delete_user(Identity) of
                 {commit, _} ->
                     ns_audit:delete_user(Req, Identity),
+                    {_, SanitizedUserId} = ns_config_log:sanitize_value(
+                                             UserId,
+                                             [add_salt]),
+                    ?log_debug("User deleted ~p:~p, ~p.",
+                               [ns_config_log:tag_user_name(UserId), T,
+                                SanitizedUserId]),
+                    event_log:add_log(user_deleted, [{user, SanitizedUserId},
+                                                     {domain, T}]),
                     reply_put_delete_users(Req);
                 {abort, {error, not_found}} ->
                     menelaus_util:reply_json(Req, <<"User was not found.">>,
@@ -1638,6 +1652,10 @@ do_store_group(GroupId, Description, UniqueRoles, LDAPGroup, Req) ->
         ok ->
             ns_audit:set_user_group(Req, GroupId, UniqueRoles, Description,
                                     LDAPGroup, Reason),
+            {_, SanitizedGroupId} = ns_config_log:sanitize_value(GroupId,
+                                                                 [add_salt]),
+            ?log_debug("Group added: ~p, ~p", [GroupId, SanitizedGroupId]),
+            event_log:add_log(group_added, [{group, SanitizedGroupId}]),
             menelaus_util:reply_json(Req, <<>>, 200);
         {error, {roles_validation, UnknownRoles}} ->
             menelaus_util:reply_error(
@@ -1655,6 +1673,10 @@ handle_delete_group(GroupId, Req) ->
     case menelaus_users:delete_group(GroupId) of
         ok ->
             ns_audit:delete_user_group(Req, GroupId),
+            {_, SanitizedGroupId} = ns_config_log:sanitize_value(GroupId,
+                                                                 [add_salt]),
+            ?log_debug("Group deleted: ~p, ~p", [GroupId, SanitizedGroupId]),
+            event_log:add_log(group_deleted, [{group, SanitizedGroupId}]),
             menelaus_util:reply_json(Req, <<>>, 200);
         {error, not_found} ->
             menelaus_util:reply_json(Req, <<"Group was not found.">>, 404)

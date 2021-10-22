@@ -73,6 +73,14 @@ event_details(saslauthd_cfg_changed) ->
     {9221, security, info, <<"sasldauth config changed">>};
 event_details(password_policy_changed) ->
     {9222, security, info, <<"Password policy changed">>};
+event_details(user_added) ->
+    {9223, security, info, <<"User added">>};
+event_details(user_deleted) ->
+    {9224, security, info, <<"User deleted">>};
+event_details(group_added) ->
+    {9225, security, info, <<"Group added">>};
+event_details(group_deleted) ->
+    {9226, security, info, <<"Group deleted">>};
 
 %% event_ids block for Data related events: [8192, ... 9215]
 event_details(bucket_created) ->
