@@ -372,6 +372,8 @@ do_failover_bucket(membase, Bucket, BucketConfig, Nodes, Options) ->
       {status, R},
       {vbuckets, node_vbuckets(Map, N)}] || N <- Nodes].
 
+failover_services(Nodes, _, #{skip_safety_check := true}) ->
+    {failover_services(Nodes), []};
 failover_services(Nodes, KVNodes, #{auto := true}) ->
     {ValidNodes, UnsafeNodes} =
         auto_failover:validate_services_safety(Nodes, KVNodes),

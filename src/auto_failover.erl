@@ -564,7 +564,7 @@ allow_failover_group(FOSGs) ->
 failover_nodes([], S, _DownNodes, _NodeStatuses, _UpdateCount) ->
     S;
 failover_nodes(Nodes, S, DownNodes, NodeStatuses, UpdateCount) ->
-    case ns_orchestrator:try_autofailover(Nodes) of
+    case try_autofailover(Nodes) of
         {ok, UnsafeNodes} ->
             FailedOver = Nodes -- [N || {N, _} <- UnsafeNodes],
             [log_failover_success(N, DownNodes, NodeStatuses) ||
@@ -579,6 +579,27 @@ failover_nodes(Nodes, S, DownNodes, NodeStatuses, UpdateCount) ->
             init_reported(S#state{count = NewCount});
         Error ->
             process_failover_error(Error, Nodes, S)
+    end.
+
+try_autofailover(Nodes) ->
+    case ns_cluster_membership:service_nodes(Nodes, kv) of
+        [] ->
+            {ValidNodes, UnsafeNodes} = validate_services_safety(Nodes, []),
+            case ValidNodes of
+                [] ->
+                    {ok, UnsafeNodes};
+                _ ->
+                    case ns_orchestrator:try_autofailover(
+                           ValidNodes, #{skip_safety_check => true}) of
+                        {ok, UN} ->
+                            UN = [],
+                            {ok, UnsafeNodes};
+                        Error ->
+                            Error
+                    end
+            end;
+        _ ->
+            ns_orchestrator:try_autofailover(Nodes, #{})
     end.
 
 log_failover_success(Node, DownNodes, NodeStatuses) ->

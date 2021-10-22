@@ -43,7 +43,7 @@
          flush_bucket/1,
          failover/2,
          start_failover/2,
-         try_autofailover/1,
+         try_autofailover/2,
          needs_rebalance/0,
          start_link/0,
          start_rebalance/3,
@@ -182,18 +182,19 @@ start_failover(Nodes, AllowUnsafe) ->
     wait_for_orchestrator(),
     gen_statem:call(?SERVER, {start_failover, Nodes, AllowUnsafe}).
 
--spec try_autofailover(list()) -> {ok, list()} |
-                                  {operation_running, list()}|
-                                  retry_aborting_rebalance |
-                                  in_recovery |
-                                  orchestration_unsafe |
-                                  config_sync_failed |
-                                  quorum_lost |
-                                  stopped_by_user |
-                                  {autofailover_unsafe, [bucket_name()]}.
-try_autofailover(Nodes) ->
+-spec try_autofailover(list(), map()) -> {ok, list()} |
+                                         {operation_running, list()}|
+                                         retry_aborting_rebalance |
+                                         in_recovery |
+                                         orchestration_unsafe |
+                                         config_sync_failed |
+                                         quorum_lost |
+                                         stopped_by_user |
+                                         {autofailover_unsafe, [bucket_name()]}.
+try_autofailover(Nodes, Options) ->
     wait_for_orchestrator(),
-    case gen_statem:call(?SERVER, {try_autofailover, Nodes}, infinity) of
+    case gen_statem:call(?SERVER, {try_autofailover, Nodes, Options},
+                         infinity) of
         ok ->
             {ok, []};
         Other ->
@@ -700,16 +701,17 @@ idle({failover, Node}, From, _State) ->
     {keep_state_and_data,
      [{next_event, {call, From}, {failover, [Node], false}}]};
 idle({failover, Nodes, AllowUnsafe}, From, _State) ->
-    handle_start_failover(Nodes, AllowUnsafe, From, true, hard_failover);
+    handle_start_failover(Nodes, AllowUnsafe, From, true, hard_failover, #{});
 idle({start_failover, Nodes, AllowUnsafe}, From, _State) ->
-    handle_start_failover(Nodes, AllowUnsafe, From, false, hard_failover);
-idle({try_autofailover, Nodes}, From, _State) ->
+    handle_start_failover(Nodes, AllowUnsafe, From, false, hard_failover, #{});
+idle({try_autofailover, Nodes, Options}, From, _State) ->
     case auto_failover:validate_kv_safety(Nodes) of
         {error, UnsafeBuckets} ->
             {keep_state_and_data,
              [{reply, From, {autofailover_unsafe, UnsafeBuckets}}]};
         ok ->
-            handle_start_failover(Nodes, false, From, true, auto_failover)
+            handle_start_failover(Nodes, false, From, true, auto_failover,
+                                  Options)
     end;
 idle({start_graceful_failover, Node}, From, _State) when is_atom(Node) ->
     %% calls from pre-6.5 nodes
@@ -927,7 +929,7 @@ rebalancing({request_janitor_run, _Item} = Msg, _State) ->
     keep_state_and_data.
 
 %% Synchronous rebalancing events
-rebalancing({try_autofailover, Nodes}, From,
+rebalancing({try_autofailover, Nodes, Options}, From,
             #rebalancing_state{type = Type} = State) ->
     case cluster_compat_mode:is_cluster_65() andalso
          menelaus_web_auto_failover:config_check_can_abort_rebalance() andalso
@@ -937,7 +939,8 @@ rebalancing({try_autofailover, Nodes}, From,
             {keep_state_and_data,
              [{reply, From, {operation_running, TypeStr}}]};
         true ->
-            case stop_rebalance(State, {try_autofailover, From, Nodes}) of
+            case stop_rebalance(State,
+                                {try_autofailover, From, Nodes, Options}) of
                 State ->
                     %% Unlikely event, that a user has stopped rebalance and
                     %% before rebalance has terminated we get an autofailover
@@ -1219,9 +1222,9 @@ do_cancel_stop_timer(TRef) when is_reference(TRef) ->
     after 0 -> ok
     end.
 
-rebalance_completed_next_state({try_autofailover, From, Nodes}) ->
+rebalance_completed_next_state({try_autofailover, From, Nodes, Options}) ->
     {next_state, idle, #idle_state{},
-     [{next_event, {call, From}, {try_autofailover, Nodes}}]};
+     [{next_event, {call, From}, {try_autofailover, Nodes, Options}}]};
 rebalance_completed_next_state(_) ->
     {next_state, idle, #idle_state{}}.
 
@@ -1478,7 +1481,7 @@ get_log_msg(Error, Type, undefined) ->
 get_log_msg(_Error, Type, AbortReason) ->
     get_log_msg(AbortReason, Type).
 
-get_log_msg({try_autofailover, _, Nodes}, Type) ->
+get_log_msg({try_autofailover, _, Nodes, _}, Type) ->
     {interrupted, info, "~s interrupted due to auto-failover of nodes ~p.",
      [rebalance_type2text(Type), Nodes]};
 get_log_msg({rebalance_observer_terminated, Reason}, Type) ->
@@ -1640,7 +1643,7 @@ check_for_unfinished_failover(Snapshot) ->
                                   [Nodes])}
     end.
 
-handle_start_failover(Nodes, AllowUnsafe, From, Wait, FailoverType) ->
+handle_start_failover(Nodes, AllowUnsafe, From, Wait, FailoverType, Options) ->
     auto_rebalance:cancel_any_pending_retry_async("failover"),
 
     ActiveNodes = ns_cluster_membership:active_nodes(),
@@ -1650,8 +1653,10 @@ handle_start_failover(Nodes, AllowUnsafe, From, Wait, FailoverType) ->
     Id = couch_uuids:random(),
     {ok, ObserverPid} =
         ns_rebalance_observer:start_link([], NodesInfo, FailoverType, Id),
-    case failover:start(Nodes, #{allow_unsafe => AllowUnsafe,
-                                 auto => FailoverType =:= auto_failover}) of
+    case failover:start(Nodes,
+                        maps:merge(#{allow_unsafe => AllowUnsafe,
+                                     auto => FailoverType =:= auto_failover},
+                                   Options)) of
         {ok, Pid} ->
             ale:info(?USER_LOGGER, "Starting failover of nodes ~p. "
                      "Operation Id = ~s", [Nodes, Id]),
