@@ -14,8 +14,6 @@ import uiRouter from "@uirouter/angularjs";
 import mnPluggableUiRegistry from "../components/mn_pluggable_ui_registry.js";
 import mnElementCrane from "../components/directives/mn_element_crane/mn_element_crane.js";
 
-import mnSession from "./mn_session_controller.js";
-
 import mnSettingsNotifications from "./mn_settings_notifications_controller.js";
 import mnSettingsCluster from "./mn_settings_cluster_controller.js";
 import mnSettingsAutoFailover from "./mn_settings_auto_failover_controller.js";
@@ -28,7 +26,6 @@ angular
     uiRouter,
     mnPluggableUiRegistry,
     mnElementCrane,
-    mnSession,
     mnSettingsNotifications,
     mnSettingsAutoFailover,
     mnSettingsCluster,
