@@ -710,22 +710,23 @@ default_settings_stats_config() ->
     [{send_stats, false}].
 
 handle_settings_stats_post(Req) ->
-    PostArgs = mochiweb_request:parse_post(Req),
-    SendStats = proplists:get_value("sendStats", PostArgs),
-    case validate_settings_stats(SendStats) of
-        error ->
-            reply_text(Req, "The value of \"sendStats\" must be true or false.", 400);
-        SendStats2 ->
-            ns_config:set(settings, [{stats, [{send_stats, SendStats2}]}]),
-            reply(Req, 200)
+    validator:handle(
+      fun (Props) ->
+          apply_stats_settings(Props),
+          reply(Req, 200)
+      end,
+      Req, form, [validator:required(sendStats, _) |
+                  settings_stats_validators()]).
+
+apply_stats_settings(Props) ->
+    SendStats = proplists:get_value(sendStats, Props),
+    case SendStats of
+        undefined -> ok;
+        _ -> ns_config:set(settings, [{stats, [{send_stats, SendStats}]}])
     end.
 
-validate_settings_stats(SendStats) ->
-    case SendStats of
-        "true" -> true;
-        "false" -> false;
-        _ -> error
-    end.
+settings_stats_validators() ->
+    [validator:boolean(sendStats, _)].
 
 %% @doc Settings to en-/disable auto-reprovision
 handle_settings_auto_reprovision(Req) ->
