@@ -1092,6 +1092,8 @@ def make_os_tasks():
                   "cat /proc/1/sched | head -n 1"),
         LinuxTask("Raw PID 1 control groups /proc/1/cgroup",
                   "cat /proc/1/cgroup"),
+        LinuxTask("SysFs Control Group data",
+                  "find /sys/fs/cgroup -type f -print0 | sort --zero-terminated | xargs --null grep . -H"),
         make_event_log_task(),
     ]
 
