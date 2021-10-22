@@ -832,50 +832,47 @@ is_not_a_bucket_port(Port) ->
                               || {_, Config} <- ns_bucket:get_buckets()]),
     not lists:member(Port, UsedPorts).
 
-validate_settings(Port, U, P) ->
-    case lists:all(fun erlang:is_list/1, [Port, U, P]) of
-        false -> [<<"All parameters must be given">>];
-        _ -> Candidates = [is_valid_port_number_or_error(Port),
-                           is_port_free(Port)
-                           orelse <<"Port is already in use">>,
-                           case {U, P} of
-                               {[], _} -> <<"Username and password are required.">>;
-                               {[_Head | _], P} ->
-                                   case menelaus_web_rbac:validate_cred(U, username) of
-                                       true ->
-                                           menelaus_web_rbac:validate_cred(P, password);
-                                       Msg ->
-                                           Msg
-                                   end
-                           end],
-             lists:filter(fun (E) -> E =/= true end,
-                          Candidates)
-    end.
-
 %% These represent settings for a cluster.  Node settings should go
 %% through the /node URIs
 handle_settings_web_post(Req) ->
-    menelaus_web_rbac:assert_no_users_upgrade(),
+    validator:handle(
+      fun (Props) ->
+          reply_json(Req, handle_settings_web_post(Req, Props)),
+          exit(normal)
+      end, Req, form, settings_web_post_validators()).
 
-    PostArgs = mochiweb_request:parse_post(Req),
-    ValidateOnly = proplists:get_value("just_validate", mochiweb_request:parse_qs(Req)) =:= "1",
+settings_web_post_validators() ->
+    [validator:required(port, _),
+     validator:required(username, _),
+     validator:required(password, _),
+     validator:validate(
+       fun (Port) ->
+          case is_valid_port_number_or_error(Port) of
+              true ->
+                  case is_port_free(Port) of
+                      true -> ok;
+                      false -> {error, "Port is already in use"}
+                  end;
+              Error ->
+                  {error, Error}
+         end
+       end, port, _),
+     validate_cred(username, username, _),
+     validate_cred(password, password, _)].
 
-    Port = proplists:get_value("port", PostArgs),
-    U = proplists:get_value("username", PostArgs),
-    P = proplists:get_value("password", PostArgs),
-    case validate_settings(Port, U, P) of
-        [_Head | _] = Errors ->
-            reply_json(Req, Errors, 400);
-        [] ->
-            case ValidateOnly of
-                true ->
-                    reply(Req, 200);
-                false ->
-                    do_handle_settings_web_post(Port, U, P, Req)
-            end
-    end.
+validate_cred(Name, Type, State) ->
+    validator:validate(
+      fun (Password) ->
+          case menelaus_web_rbac:validate_cred(Password, Type) of
+              true -> ok;
+              Error -> {error, Error}
+          end
+      end, Name, State).
 
-do_handle_settings_web_post(Port, U, P, Req) ->
+handle_settings_web_post(Req, Args) ->
+    Port = proplists:get_value(port, Args),
+    U = proplists:get_value(username, Args),
+    P = proplists:get_value(password, Args),
     PortInt = case Port of
                   "SAME" -> menelaus_web:webconfig(port);
                   _      -> list_to_integer(Port)
@@ -910,8 +907,7 @@ do_handle_settings_web_post(Port, U, P, Req) ->
     {PureHostName, _} = misc:split_host_port(mochiweb_request:get_header_value("host", Req), ""),
     NewHost = misc:join_host_port(PureHostName, PortInt),
     %% TODO: detect and support https when time will come
-    reply_json(Req, {struct, [{newBaseUri, list_to_binary("http://" ++ NewHost ++ "/")}]}),
-    exit(normal).
+    {struct, [{newBaseUri, list_to_binary("http://" ++ NewHost ++ "/")}]}.
 
 handle_reset_alerts(Req) ->
     Params = mochiweb_request:parse_qs(Req),
