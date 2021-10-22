@@ -569,14 +569,20 @@ failover_nodes(Nodes, S, DownNodes, NodeStatuses, UpdateCount) ->
             FailedOver = Nodes -- [N || {N, _} <- UnsafeNodes],
             [log_failover_success(N, DownNodes, NodeStatuses) ||
                 N <- FailedOver],
-            [log_unsafe_node(N) || N <- UnsafeNodes],
+            NewState = lists:foldl(fun log_unsafe_node/2, S, UnsafeNodes),
             NewCount = case UpdateCount of
                            false ->
-                               S#state.count;
+                               NewState#state.count;
                            true ->
-                               S#state.count + length(FailedOver)
+                               NewState#state.count + length(FailedOver)
                        end,
-            init_reported(S#state{count = NewCount});
+            NewState1 = NewState#state{count = NewCount},
+            case FailedOver of
+                [] ->
+                    NewState1;
+                _ ->
+                    init_reported(NewState1)
+            end;
         Error ->
             process_failover_error(Error, Nodes, S)
     end.
@@ -620,12 +626,19 @@ log_failover_success(Node, DownNodes, NodeStatuses) ->
                [Node, Reason])
     end.
 
-log_unsafe_node({Node, {Service, Error}}) ->
-    ?log_info_and_email(
-       auto_failover_node,
-       "Could not automatically fail over node (~p) due to operation "
-       "being unsafe for service ~p. ~s",
-       [Node, Service, Error]).
+log_unsafe_node({Node, {Service, Error}}, State) ->
+    Flag = {Node, Service, Error},
+    case should_report(Flag, State) of
+        true ->
+            ?log_info_and_email(
+               auto_failover_node,
+               "Could not automatically fail over node (~p) due to operation "
+               "being unsafe for service ~p. ~s",
+               [Node, Service, Error]),
+            note_reported(Flag, State);
+        false ->
+            State
+    end.
 
 process_failover_error({autofailover_unsafe, UnsafeBuckets}, Nodes, S) ->
     ErrMsg = lists:flatten(io_lib:format("Would lose vbuckets in the"
