@@ -23,7 +23,8 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--export([handle_engage_cluster2/1,
+-export([handle_cluster_init/1,
+         handle_engage_cluster2/1,
          handle_complete_join/1,
          handle_join/1,
          serve_node_services/1,
@@ -51,6 +52,83 @@
          reply_ok/3,
          parse_validate_port_number/1,
          handle_streaming/2]).
+
+handle_cluster_init(Req) ->
+    menelaus_web_rbac:assert_no_users_upgrade(),
+    %% NOTE: due to required restart we need to protect
+    %%       ourselves from 'death signal' of parent
+    erlang:process_flag(trap_exit, true),
+
+    handle_cluster_init(Req, 10),
+    %% NOTE: we have to stop this process because in case of
+    %%       ns_server restart it becomes orphan
+    erlang:exit(normal).
+
+handle_cluster_init(_Req, Retries) when Retries =< 0 ->
+    erlang:error(exceeded_retries);
+handle_cluster_init(Req, Retries) ->
+    Config = ns_config:get(),
+    Snapshot = chronicle_compat:get_snapshot(
+                 [ns_bucket:fetch_snapshot(all, _),
+                  ns_cluster_membership:fetch_snapshot(_)],
+                 #{ns_config => Config}),
+
+    validator:handle(
+      fun (Props) ->
+          try
+              Res = cluster_init(Req, Config, Props),
+              reply_json(Req, Res)
+          catch
+              throw:{error, Code, Msg} ->
+                  menelaus_util:global_error_exception(Code, Msg);
+              throw:retry_needed ->
+                  handle_cluster_init(Req, Retries - 1)
+          end
+      end, Req, form, cluster_init_validators(Config, Snapshot)).
+
+cluster_init(Req, Config, Params) ->
+    %% POST /pools/default
+    menelaus_web_pools:handle_pool_settings_post_body(Req, Config, Params),
+    %% POST /settings/stats
+    menelaus_web_settings:apply_stats_settings(Params),
+    %% POST /node/controller/setupServices
+    case do_setup_services_post(Req, Params) of
+        ok -> ok;
+        {error, ErrorMsg} -> throw({error, 400, ErrorMsg})
+    end,
+    %% setting of n2n encryption
+    case proplists:get_value(nodeEncryption, Params) of
+        undefined -> ok;
+        Encryption ->
+            AFamily = cb_dist:address_family(),
+            CBDistCfg = [{nodeEncryption, Encryption},
+                         {externalListeners, [{AFamily, Encryption}]}],
+            case netconfig_updater:apply_config(CBDistCfg) of
+                ok ->
+                    %% Wait for web servers to restart
+                    ns_config:sync_announcements(),
+                    menelaus_event:sync(chronicle_compat_events:event_manager()),
+                    cluster_compat_mode:is_enterprise() andalso
+                        ns_ssl_services_setup:sync();
+                {error, Msg} ->
+                    throw({error, 400, Msg})
+            end
+    end,
+    %% POST /settings/indexes
+    IndexerParams = [{storageMode, V} || {indexerStorageMode, V} <- Params],
+    menelaus_web_indexes:apply_indexes_settings(Req, IndexerParams),
+    %% POST /settings/web
+    menelaus_web_settings:handle_settings_web_post(Req, Params).
+
+cluster_init_validators(Config, Snapshot) ->
+    menelaus_web_pools:pool_settings_post_validators(Config, Snapshot) ++
+    menelaus_web_settings:settings_stats_validators() ++
+    setup_services_validators() ++
+    menelaus_web_node:node_encryption_validators() ++
+    menelaus_web_settings:settings_web_post_validators() ++
+    [menelaus_web_indexes:validate_storage_mode(indexerStorageMode, _),
+     validator:has_params(_),
+     validator:unsupported(_)].
 
 handle_engage_cluster2(Req) ->
     Body = mochiweb_request:recv_body(Req),

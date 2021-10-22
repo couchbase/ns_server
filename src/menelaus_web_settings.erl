@@ -27,6 +27,7 @@
 
 -export([handle_settings_web/1,
          handle_settings_web_post/1,
+         handle_settings_web_post/2,
 
          handle_reset_alerts/1,
 
@@ -50,7 +51,10 @@
          handle_reset_ciphers_suites/1,
 
          config_upgrade_to_65/1,
-         services_with_security_settings/0]).
+         services_with_security_settings/0,
+         settings_stats_validators/0,
+         apply_stats_settings/1,
+         settings_web_post_validators/0]).
 
 -import(menelaus_util,
         [parse_validate_number/3,

@@ -11,7 +11,8 @@
 
 -include("ns_common.hrl").
 -include("cut.hrl").
--export([handle_settings_get/1, handle_settings_post/1, handle_index_status/1]).
+-export([handle_settings_get/1, handle_settings_post/1, handle_index_status/1,
+         apply_indexes_settings/2, validate_storage_mode/2]).
 
 handle_settings_get(Req) ->
     Settings = get_settings(),
@@ -23,8 +24,7 @@ get_settings() ->
         [{storageMode, index_settings_manager:get(storageMode)}].
 
 settings_post_validators() ->
-    [validator:has_params(_),
-     validator:integer(indexerThreads, 0, 1024, _),
+    [validator:integer(indexerThreads, 0, 1024, _),
      validator:integer(memorySnapshotInterval, 1, infinity, _),
      validator:integer(stableSnapshotInterval, 1, infinity, _),
      validator:integer(maxRollbackPoints, 1, infinity, _)] ++
@@ -41,15 +41,14 @@ settings_post_validators() ->
             false ->
                 []
         end ++
-        [validate_param(logLevel, _),
-         validate_storage_mode(_),
-         validator:unsupported(_)].
+        [validate_param(logLevel, logLevel, _),
+         validate_storage_mode(storageMode, _)].
 
-validate_storage_mode(State) ->
+validate_storage_mode(Name, State) ->
     %% Note, at the beginning the storage mode will be empty. Once set,
     %% validate_param will prevent user from changing it back to empty
     %% since it is not one of the acceptable values.
-    State1 = validate_param(storageMode, State),
+    State1 = validate_param(Name, storageMode, State),
 
     %% Do not allow:
     %% - setting index storage mode to mem optimized or plasma in community edition
@@ -61,7 +60,7 @@ validate_storage_mode(State) ->
     %% - setting the storage mode to forestdb on a newly configured 5.0 enterprise cluster.
     IndexErr = "Changing the optimization mode of global indexes is not supported when index service nodes are present in the cluster. Please remove all index service nodes to change this option.",
 
-    OldValue = index_settings_manager:get(storageMode),
+    OldValue = index_settings_manager:get(Name),
     validator:validate(
       fun (Value) when Value =:= OldValue ->
               ok;
@@ -89,7 +88,7 @@ validate_storage_mode(State) ->
                               {error, IndexErr}
                       end
               end
-      end, storageMode, State1).
+      end, Name, State1).
 
 is_storage_mode_acceptable(Value) ->
     ReportError = fun(Msg) ->
@@ -138,10 +137,10 @@ acceptable_values(storageMode) ->
             end,
     [binary_to_list(X) || X <- Modes].
 
-validate_param(Name, State) ->
+validate_param(Name, InternalName, State) ->
     functools:chain(
       State,
-      [validator:one_of(Name, acceptable_values(Name), _),
+      [validator:one_of(Name, acceptable_values(InternalName), _),
        validator:convert(Name, fun list_to_binary/1, _)]).
 
 update_storage_mode(Req, Values) ->
@@ -164,16 +163,21 @@ update_settings(Key, Value) ->
 handle_settings_post(Req) ->
     validator:handle(
       fun (Values) ->
-              Values1 = update_storage_mode(Req, Values),
-              case Values1 of
-                  [] ->
-                      ok;
-                  _ ->
-                      ok = update_settings(generalSettings, Values1),
-                      ns_audit:modify_index_settings(Req, Values1)
-              end,
+              apply_indexes_settings(Req, Values),
               menelaus_util:reply_json(Req, {get_settings()})
-      end, Req, form, settings_post_validators()).
+      end, Req, form,
+      settings_post_validators() ++
+      [validator:has_params(_), validator:unsupported(_)]).
+
+apply_indexes_settings(Req, Values) ->
+    Values1 = update_storage_mode(Req, Values),
+    case Values1 of
+        [] ->
+            ok;
+        _ ->
+            ok = update_settings(generalSettings, Values1),
+            ns_audit:modify_index_settings(Req, Values1)
+    end.
 
 filter_indexes(Roles, Indexes) ->
     CollectionEnabled = collections:enabled(),

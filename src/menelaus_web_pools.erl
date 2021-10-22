@@ -20,8 +20,10 @@
          check_and_handle_pool_info/2,
          handle_pool_info_streaming/2,
          handle_pool_settings_post/1,
+         handle_pool_settings_post_body/3,
          handle_terse_cluster_info/1,
-         get_cluster_name/0]).
+         get_cluster_name/0,
+         pool_settings_post_validators/2]).
 
 %% for hibernate
 -export([handle_pool_info_wait_wake/4]).
@@ -382,10 +384,8 @@ get_cluster_name() ->
     ns_config:read_key_fast(cluster_name, "").
 
 pool_settings_post_validators(Config, Snapshot) ->
-    [validator:has_params(_),
-     validator:touch(clusterName, _),
-     validate_memory_quota(Config, Snapshot, _),
-     validator:unsupported(_)].
+    [validator:touch(clusterName, _),
+     validate_memory_quota(Config, Snapshot, _)].
 
 validate_memory_quota(Config, Snapshot, ValidatorState) ->
     QuotaFields =
@@ -474,32 +474,38 @@ do_handle_pool_settings_post(Req) ->
                  #{ns_config => Config}),
 
     validator:handle(
-      do_handle_pool_settings_post_body(Req, Config, _),
-      Req, form,
-      pool_settings_post_validators(Config, Snapshot)).
+      fun (Params) ->
+          handle_pool_settings_post_body(Req, Config, Params),
+          reply(Req, 200)
+      end, Req, form,
+      pool_settings_post_validators(Config, Snapshot) ++
+      [validator:has_params(_),
+       validator:unsupported(_)]).
 
-do_handle_pool_settings_post_body(Req, Config, Values) ->
-    case lists:keyfind(quotas, 1, Values) of
-        {_, Quotas} ->
-            case memory_quota:set_quotas(Config, Quotas) of
-                ok ->
-                    ok;
-                retry_needed ->
-                    throw(retry_needed)
-            end;
-        false ->
-            ok
-    end,
+handle_pool_settings_post_body(Req, Config, Values) ->
+    QuotaSupplied =
+        case lists:keyfind(quotas, 1, Values) of
+            {_, Quotas} ->
+                case memory_quota:set_quotas(Config, Quotas) of
+                    ok ->
+                        ok;
+                    retry_needed ->
+                        throw(retry_needed)
+                end,
+                true;
+            false ->
+                false
+        end,
+    NameSupplied =
+        case lists:keyfind(clusterName, 1, Values) of
+            {_, ClusterName} ->
+                ok = ns_config:set(cluster_name, ClusterName),
+                true;
+            false ->
+                false
+        end,
 
-    case lists:keyfind(clusterName, 1, Values) of
-        {_, ClusterName} ->
-            ok = ns_config:set(cluster_name, ClusterName);
-        false ->
-            ok
-    end,
-
-    do_audit_cluster_settings(Req),
-    reply(Req, 200).
+    (QuotaSupplied or NameSupplied) andalso do_audit_cluster_settings(Req).
 
 do_audit_cluster_settings(Req) ->
     %% this is obviously raceful, but since it's just audit...

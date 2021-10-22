@@ -49,7 +49,8 @@
          get_config/1,
          get_stability/1,
          get_local_addr/1,
-         get_snapshot/1]).
+         get_snapshot/1,
+         node_encryption_validators/0]).
 
 -import(menelaus_util,
         [local_addr/1,
