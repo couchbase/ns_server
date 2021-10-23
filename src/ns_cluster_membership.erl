@@ -33,6 +33,7 @@
          get_cluster_membership/2,
          rack_aware/1,
          get_node_server_group/2,
+         get_nodes_server_groups/2,
          activate/2,
          update_membership_sets/2,
          deactivate/2,
@@ -175,6 +176,19 @@ get_node_server_group_inner(Node, [SG | Rest]) ->
         false ->
             get_node_server_group_inner(Node, Rest)
     end.
+
+get_nodes_server_groups(Nodes, Groups) ->
+    NodeSet = sets:from_list(Nodes),
+    lists:filtermap(
+      fun (Group) ->
+              GroupNodes = proplists:get_value(nodes, Group),
+              case lists:any(sets:is_element(_, NodeSet), GroupNodes) of
+                  true ->
+                      {true, Group};
+                  false ->
+                      false
+              end
+      end, Groups).
 
 system_joinable() ->
     nodes_wanted() =:= [node()].

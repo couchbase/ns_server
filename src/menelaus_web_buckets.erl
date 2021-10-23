@@ -425,6 +425,7 @@ respond_bucket_created(Req, PoolId, BucketId) ->
           bucket_config,
           all_buckets,
           kv_nodes,
+          server_groups,
           cluster_storage_totals,
           cluster_version,
           is_enterprise,
@@ -444,18 +445,20 @@ init_bucket_validation_context(IsNew, BucketName, ValidateOnly,
            ns_cluster_membership:fetch_snapshot(_)], #{ns_config => Config}),
 
     KvNodes = ns_cluster_membership:service_active_nodes(Snapshot, kv),
+    ServerGroups = ns_cluster_membership:server_groups(Snapshot),
 
     init_bucket_validation_context(
       IsNew, BucketName,
       ns_bucket:get_buckets(Snapshot),
-      KvNodes,
+      KvNodes, ServerGroups,
       ns_storage_conf:cluster_storage_info(Config, Snapshot),
       ValidateOnly, IgnoreWarnings,
       cluster_compat_mode:get_compat_version(),
       cluster_compat_mode:is_enterprise(),
       cluster_compat_mode:is_developer_preview()).
 
-init_bucket_validation_context(IsNew, BucketName, AllBuckets, KvNodes,
+init_bucket_validation_context(IsNew, BucketName, AllBuckets,
+                               KvNodes, ServerGroups,
                                ClusterStorageTotals,
                                ValidateOnly, IgnoreWarnings,
                                ClusterVersion, IsEnterprise,
@@ -474,6 +477,7 @@ init_bucket_validation_context(IsNew, BucketName, AllBuckets, KvNodes,
        bucket_name = BucketName,
        all_buckets = AllBuckets,
        kv_nodes = KvNodes,
+       server_groups = ServerGroups,
        bucket_config = BucketConfig,
        cluster_storage_totals = ClusterStorageTotals,
        cluster_version = ClusterVersion,
@@ -630,10 +634,26 @@ num_replicas_warnings_validation(_Ctx, undefined) ->
     [];
 num_replicas_warnings_validation(Ctx, NReplicas) ->
     KvNodes = Ctx#bv_ctx.kv_nodes,
+    Groups = Ctx#bv_ctx.server_groups,
+
+    NumKvNodes = length(KvNodes),
+    MaxReplicas =
+        case ns_cluster_membership:rack_aware(Groups) of
+            true ->
+                KvGroups = ns_cluster_membership:get_nodes_server_groups(
+                             KvNodes, Groups),
+                NumGroups = length(KvGroups),
+
+                min(NumGroups, NumKvNodes) - 1;
+            false ->
+                NumKvNodes - 1
+        end,
+
     Warnings =
         if
-            length(KvNodes) =< NReplicas ->
-                ["you do not have enough data servers to support this number of replicas"];
+            NReplicas > MaxReplicas ->
+                ["you do not have enough data servers or "
+                 "server groups to support this number of replicas"];
             true ->
                 []
         end ++
@@ -2065,7 +2085,11 @@ basic_bucket_params_screening(IsNew, Name, Params, AllBuckets) ->
 
 basic_bucket_params_screening(IsNew, Name, Params, AllBuckets, KvNodes) ->
     Version = cluster_compat_mode:supported_compat_version(),
-    Ctx = init_bucket_validation_context(IsNew, Name, AllBuckets, KvNodes, [],
+    Groups = [[{uuid, N},
+               {name, N},
+               {nodes, [N]}] || N <- KvNodes],
+    Ctx = init_bucket_validation_context(IsNew, Name, AllBuckets,
+                                         KvNodes, Groups, [],
                                          false, false,
                                          Version, true,
                                          %% Change when developer_preview
