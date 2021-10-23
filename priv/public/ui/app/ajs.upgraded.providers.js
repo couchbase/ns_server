@@ -71,37 +71,37 @@ const MnPermissionsProvider = {
   deps: ['$injector']
 };
 
-class MnAuthService {}
-const MnAuthServiceProvider = {
-  provide: MnAuthService,
-  useFactory: function MnPoolsFactory(i) {
+class MnAuth {}
+const MnAuthProvider = {
+  provide: MnAuth,
+  useFactory: function MnAuthFactory(i) {
     return i.get('mnAuthService');
   },
   deps: ['$injector']
 };
 
-class MnAlertsService {}
-const MnAlertsServiceProvider = {
-  provide: MnAlertsService,
-  useFactory: function MnPoolsFactory(i) {
+class MnAlerts {}
+const MnAlertsProvider = {
+  provide: MnAlerts,
+  useFactory: function MnAlertsFactory(i) {
     return i.get('mnAlertsService');
   },
   deps: ['$injector']
 };
 
-class MnServersService {}
-const MnServersServiceProvider = {
-  provide: MnServersService,
-  useFactory: function MnServersServiceFactory(i) {
+class MnServers {}
+const MnServersProvider = {
+  provide: MnServers,
+  useFactory: function MnServersFactory(i) {
     return i.get('mnServersService');
   },
   deps: ['$injector']
 };
 
-class MnStatisticsNewService {}
-const MnStatisticsNewServiceProvider = {
-  provide: MnStatisticsNewService,
-  useFactory: function MnStatisticsNewServiceFactory(i) {
+class MnStatisticsNew {}
+const MnStatisticsNewProvider = {
+  provide: MnStatisticsNew,
+  useFactory: function MnStatisticsNewFactory(i) {
     return i.get('mnStatisticsNewService');
   },
   deps: ['$injector']
@@ -114,10 +114,10 @@ let ajsUpgradedProviders = [
   MnHelperProvider,
   MnPendingQueryKeeperProvider,
   MnPermissionsProvider,
-  MnAuthServiceProvider,
-  MnAlertsServiceProvider,
-  MnServersServiceProvider,
-  MnStatisticsNewServiceProvider,
+  MnAuthProvider,
+  MnAlertsProvider,
+  MnServersProvider,
+  MnStatisticsNewProvider,
   MnPoolDefaultProvider
 ];
 
@@ -129,9 +129,9 @@ export {
   MnHelper,
   MnPendingQueryKeeper,
   MnPermissions,
-  MnAuthService,
-  MnAlertsService,
-  MnServersService,
-  MnStatisticsNewService,
+  MnAuth,
+  MnAlerts,
+  MnServers,
+  MnStatisticsNew,
   MnPoolDefault
 };

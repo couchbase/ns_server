@@ -13,7 +13,7 @@ import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
 import {ClipboardService} from 'ngx-clipboard';
 import {takeUntil, filter, map} from 'rxjs/operators';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
-import {MnAlertsService} from './ajs.upgraded.providers.js';
+import {MnAlerts} from './ajs.upgraded.providers.js';
 import {MnLogsCollectInfoService} from './mn.logs.collectInfo.service.js';
 
 export {MnClusterSummaryDialogComponent};
@@ -31,15 +31,15 @@ class MnClusterSummaryDialogComponent extends MnLifeCycleHooksToStream {
   static get parameters() { return [
     NgbActiveModal,
     ClipboardService,
-    MnAlertsService,
+    MnAlerts,
     MnLogsCollectInfoService
   ]}
 
-  constructor(activeModal, clipboardService, mnAlertsService, mnLogsCollectInfoService) {
+  constructor(activeModal, clipboardService, mnAlerts, mnLogsCollectInfoService) {
     super();
 
     this.activeModal = activeModal;
-    this.mnAlertsService = mnAlertsService;
+    this.mnAlerts = mnAlerts;
 
     this.clusterInfo = mnLogsCollectInfoService.stream.clusterInfo
       .pipe(map(v => JSON.stringify(v, null, 2)));
@@ -57,15 +57,15 @@ class MnClusterSummaryDialogComponent extends MnLifeCycleHooksToStream {
 
   handleSuccessMessage() {
     this.activeModal.close();
-    this.mnAlertsService.formatAndSetAlerts('Text copied successfully!',
-                                            'success',
-                                            2500);
+    this.mnAlerts.formatAndSetAlerts('Text copied successfully!',
+                                     'success',
+                                     2500);
   }
 
   handleErrorMessage() {
     this.activeModal.close();
-    this.mnAlertsService.formatAndSetAlerts('Unable to copy text!',
-                                            'error',
-                                            2500);
+    this.mnAlerts.formatAndSetAlerts('Unable to copy text!',
+                                     'error',
+                                     2500);
   }
 }

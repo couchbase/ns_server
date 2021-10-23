@@ -16,8 +16,8 @@ import {pluck, filter, switchMap, distinctUntilChanged, withLatestFrom,
 import {combineLatest, Subject, timer, NEVER, of} from 'rxjs';
 import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
 
-import {MnPermissions, MnStatisticsNewService,
-        MnServersService, $rootScope} from './ajs.upgraded.providers.js';
+import {MnPermissions, MnStatisticsNew,
+        MnServers, $rootScope} from './ajs.upgraded.providers.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnCollectionsService} from './mn.collections.service.js';
 import {MnCollectionsAddScopeComponent} from './mn.collections.add.scope.component.js';
@@ -40,13 +40,13 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
     NgbModal,
     FormBuilder,
     MnHelperService,
-    MnServersService,
-    MnStatisticsNewService,
+    MnServers,
+    MnStatisticsNew,
     $rootScope
   ]}
 
   constructor(mnCollectionsService, mnPermissions, uiRouter, modalService,
-              formBuilder, mnHelperService, mnServersService, mnStatisticsNewService,
+              formBuilder, mnHelperService, mnServers, mnStatisticsNew,
               $rootScope) {
     super();
 
@@ -89,7 +89,7 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
 
     var statusClass = getBucketUrlParamDefined
         .pipe(map(item =>
-                  ("dynamic_" + mnServersService.addNodesByStatus(item.nodes).statusClass)),
+                  ("dynamic_" + mnServers.addNodesByStatus(item.nodes).statusClass)),
               shareReplay({refCount: true, bufferSize: 1}));
 
     getBucketUrlParamDefinedChanged
@@ -149,7 +149,7 @@ class MnCollectionsComponent extends MnLifeCycleHooksToStream {
     this.clickAddScope = clickAddScope;
     this.statusClass = statusClass;
     this.$scope = $rootScope.$new();
-    this.mnCollectionsStatsPoller = mnStatisticsNewService.createStatsPoller(this.$scope);
+    this.mnCollectionsStatsPoller = mnStatisticsNew.createStatsPoller(this.$scope);
   }
 
   ngOnDestroy() {

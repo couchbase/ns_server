@@ -15,7 +15,7 @@ import {map, tap, first, takeUntil, switchMap, mapTo,
         shareReplay, filter, debounceTime, startWith} from 'rxjs/operators';
 import {singletonGuard} from './mn.core.js';
 
-import {MnAlertsService, $rootScope} from './ajs.upgraded.providers.js';
+import {MnAlerts, $rootScope} from './ajs.upgraded.providers.js';
 
 export {MnFormService};
 
@@ -26,30 +26,30 @@ class MnFormService {
 
   static get parameters() { return [
     FormBuilder,
-    MnAlertsService,
+    MnAlerts,
     $rootScope
     // ngb.NgbModal
   ]}
 
-  constructor(formBuilder, mnAlertsService, $rootScope, modalService) {
+  constructor(formBuilder, mnAlerts, $rootScope, modalService) {
     singletonGuard(MnFormService);
 
     this.formBuilder = formBuilder;
-    this.mnAlertsService = mnAlertsService;
+    this.mnAlerts = mnAlerts;
     this.modalService = modalService;
     this.$rootScope = $rootScope;
   }
 
   create(component) {
-    return new MnForm(this.formBuilder, component, this.mnAlertsService, this.$rootScope);
+    return new MnForm(this.formBuilder, component, this.mnAlerts, this.$rootScope);
   }
 }
 
 class MnForm {
-  constructor(builder, component, mnAlertsService, $rootScope) {
+  constructor(builder, component, mnAlerts, $rootScope) {
     this.builder = builder;
     this.component = component;
-    this.mnAlertsService = mnAlertsService;
+    this.mnAlerts = mnAlerts;
     this.defaultPackPipe = map(this.getFormValue.bind(this));
     this.requestsChain = [];
     this.$rootScope = $rootScope;
@@ -111,12 +111,12 @@ class MnForm {
   }
 
   successMessage(message) {
-    this.success(() => this.mnAlertsService.formatAndSetAlerts(message, "success", 2500));
+    this.success(() => this.mnAlerts.formatAndSetAlerts(message, "success", 2500));
     return this;
   }
 
   errorMessage(message) {
-    this.error(() => this.mnAlertsService.formatAndSetAlerts(message, "error"));
+    this.error(() => this.mnAlerts.formatAndSetAlerts(message, "error"));
     return this;
   }
 

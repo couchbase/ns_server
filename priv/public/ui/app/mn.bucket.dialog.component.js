@@ -16,7 +16,7 @@ import {BehaviorSubject, combineLatest, pipe} from 'rxjs';
 import {map, merge, pluck, filter, shareReplay, startWith,
   takeUntil, distinctUntilChanged, withLatestFrom, combineLatest as combineLatestOp} from 'rxjs/operators';
 
-import {MnAlertsService, MnPermissions} from './ajs.upgraded.providers.js';
+import {MnAlerts, MnPermissions} from './ajs.upgraded.providers.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnPoolsService} from './mn.pools.service.js';
 import {MnAdminService} from './mn.admin.service.js';
@@ -51,7 +51,7 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
       FormBuilder,
       MnHelperService,
       MnBucketsService,
-      MnAlertsService,
+      MnAlerts,
       MnPermissions,
       MnPermissionsService,
       MnUserRolesService,
@@ -60,12 +60,12 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
   ]}
 
   constructor(activeModal, mnPoolsService, mnAdminService, mnFormService, formBuilder,
-      mnHelperService, mnBucketsService, mnAlertsService, mnPermissions, mnPermissionsService,
+      mnHelperService, mnBucketsService, mnAlerts, mnPermissions, mnPermissionsService,
       mnUserRolesService, mnSettingsAutoCompactionService, uiRouter) {
     super();
 
     this.activeModal = activeModal;
-    this.mnAlertsService = mnAlertsService;
+    this.mnAlerts = mnAlerts;
     this.mnPoolsService = mnPoolsService;
     this.mnAdminService = mnAdminService;
     this.mnBucketsService = mnBucketsService;

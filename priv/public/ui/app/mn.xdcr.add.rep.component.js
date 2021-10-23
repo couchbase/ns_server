@@ -14,7 +14,7 @@ import {withLatestFrom, map, takeUntil, startWith, filter} from 'rxjs/operators'
 import {UIRouter} from '@uirouter/angular';
 import {FormBuilder, Validators} from '@angular/forms'
 
-import {MnAlertsService, $rootScope} from './ajs.upgraded.providers.js';
+import {MnAlerts, $rootScope} from './ajs.upgraded.providers.js';
 
 import {MnLifeCycleHooksToStream} from "./mn.core.js";
 import {MnFormService} from "./mn.form.service.js";
@@ -39,14 +39,14 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
     MnXDCRService,
     MnBucketsService,
     MnAdminService,
-    MnAlertsService,
+    MnAlerts,
     $rootScope,
     UIRouter,
     FormBuilder
   ]}
 
   constructor(mnFormService, mnPoolsService, mnXDCRService, mnBucketsService, mnAdminService,
-              mnAlertsService, $rootScope, uiRouter, formBuilder) {
+              mnAlerts, $rootScope, uiRouter, formBuilder) {
     super();
 
     this.isEnterprise = mnPoolsService.stream.isEnterprise;
@@ -104,7 +104,7 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
         $rootScope.$broadcast("reloadTasksPoller");
         uiRouter.stateService.go('app.admin.replications').then(() => {
           var hasWarnings = !!(data.warnings && data.warnings.length);
-          mnAlertsService.formatAndSetAlerts(
+          mnAlerts.formatAndSetAlerts(
             hasWarnings ? data.warnings : "Replication created successfully!",
             hasWarnings ? 'warning': "success",
             hasWarnings ? 0 : 2500);

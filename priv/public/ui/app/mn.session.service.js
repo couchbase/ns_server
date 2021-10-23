@@ -16,7 +16,7 @@ import {throttleTime, takeUntil, filter,
         switchMap, map, shareReplay} from 'rxjs/operators';
 import {not, compose} from 'ramda';
 
-import {MnAuthService} from './ajs.upgraded.providers.js';
+import {MnAuth} from './ajs.upgraded.providers.js';
 import {MnAdminService} from './mn.admin.service.js';
 import {MnSessionTimeoutDialogComponent} from './mn.session.timeout.dialog.component.js';
 import {singletonGuard} from './mn.core.js';
@@ -30,17 +30,17 @@ class MnSessionService {
 
   static get parameters() { return [
     HttpClient,
-    MnAuthService,
+    MnAuth,
     MnAdminService,
     NgbModal
   ]}
 
-  constructor(http, mnAuthService, mnAdminService, modalService) {
+  constructor(http, mnAuth, mnAdminService, modalService) {
     singletonGuard(MnSessionService);
 
     this.http = http;
     this.modalService = modalService;
-    this.postUILogout = mnAuthService.logout;
+    this.postUILogout = mnAuth.logout;
 
     this.stream = {};
 
