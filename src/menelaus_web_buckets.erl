@@ -424,6 +424,7 @@ respond_bucket_created(Req, PoolId, BucketId) ->
           bucket_name,
           bucket_config,
           all_buckets,
+          kv_nodes,
           cluster_storage_totals,
           cluster_version,
           is_enterprise,
@@ -442,32 +443,29 @@ init_bucket_validation_context(IsNew, BucketName, ValidateOnly,
           [ns_bucket:fetch_snapshot(all, _),
            ns_cluster_membership:fetch_snapshot(_)], #{ns_config => Config}),
 
+    KvNodes = ns_cluster_membership:service_active_nodes(Snapshot, kv),
+
     init_bucket_validation_context(
       IsNew, BucketName,
       ns_bucket:get_buckets(Snapshot),
-      [{nodesCount,
-        length(ns_cluster_membership:service_active_nodes(Snapshot, kv))}
-       | ns_storage_conf:cluster_storage_info(Config, Snapshot)],
+      KvNodes,
+      ns_storage_conf:cluster_storage_info(Config, Snapshot),
       ValidateOnly, IgnoreWarnings,
       cluster_compat_mode:get_compat_version(),
       cluster_compat_mode:is_enterprise(),
       cluster_compat_mode:is_developer_preview()).
 
-init_bucket_validation_context(IsNew, BucketName, AllBuckets, ClusterStorageTotals,
+init_bucket_validation_context(IsNew, BucketName, AllBuckets, KvNodes,
+                               ClusterStorageTotals,
                                ValidateOnly, IgnoreWarnings,
                                ClusterVersion, IsEnterprise,
                                IsDeveloperPreview) ->
-    {BucketConfig, ExtendedTotals} =
+    BucketConfig =
         case lists:keyfind(BucketName, 1, AllBuckets) of
-            false -> {false, ClusterStorageTotals};
+            false ->
+                false;
             {_, V} ->
-                case ns_bucket:get_servers(V) of
-                    [] ->
-                        {V, ClusterStorageTotals};
-                    Servers ->
-                        ServersCount = length(Servers),
-                        {V, lists:keyreplace(nodesCount, 1, ClusterStorageTotals, {nodesCount, ServersCount})}
-                end
+                V
         end,
     #bv_ctx{
        validate_only = ValidateOnly,
@@ -475,8 +473,9 @@ init_bucket_validation_context(IsNew, BucketName, AllBuckets, ClusterStorageTota
        new = IsNew,
        bucket_name = BucketName,
        all_buckets = AllBuckets,
+       kv_nodes = KvNodes,
        bucket_config = BucketConfig,
-       cluster_storage_totals = ExtendedTotals,
+       cluster_storage_totals = ClusterStorageTotals,
        cluster_version = ClusterVersion,
        is_enterprise = IsEnterprise,
        is_developer_preview = IsDeveloperPreview
@@ -733,10 +732,10 @@ parse_bucket_params_without_warnings(Ctx, Params) ->
     HasRAMQuota = lists:keyfind(ram_quota, 1, OKs) =/= false,
     RAMSummary = if
                      HasRAMQuota ->
-                         interpret_ram_quota(CurrentBucket, OKs,
+                         interpret_ram_quota(Ctx, CurrentBucket, OKs,
                                              ClusterStorageTotals);
                      true ->
-                         interpret_ram_quota(CurrentBucket,
+                         interpret_ram_quota(Ctx, CurrentBucket,
                                              [{ram_quota, 0} | OKs],
                                              ClusterStorageTotals)
                  end,
@@ -777,9 +776,7 @@ additional_bucket_params_validation(Params, Ctx) ->
     NumReplicas = get_value_from_parms_or_bucket(num_replicas, Params, Ctx),
     DurabilityLevel = get_value_from_parms_or_bucket(durability_min_level,
                                                      Params, Ctx),
-    ClusterStorageTotals = Ctx#bv_ctx.cluster_storage_totals,
-    NodesCount = proplists:get_value(nodesCount, ClusterStorageTotals),
-
+    NodesCount = length(get_nodes(Ctx)),
     Err1 = case {NumReplicas, DurabilityLevel, NodesCount} of
                {0, _, _} -> [];
                {_, none, _} -> [];
@@ -1379,10 +1376,10 @@ ram_summary_to_proplist(V) ->
      ?PRAM(this_used, thisUsed),
      ?PRAM(free, free)].
 
-interpret_ram_quota(CurrentBucket, ParsedProps, ClusterStorageTotals) ->
+interpret_ram_quota(Ctx, CurrentBucket, ParsedProps, ClusterStorageTotals) ->
     RAMQuota = proplists:get_value(ram_quota, ParsedProps),
     OtherBucketsRAMQuota = proplists:get_value(other_buckets_ram_quota, ParsedProps, 0),
-    NodesCount = proplists:get_value(nodesCount, ClusterStorageTotals),
+    NodesCount = length(get_nodes(Ctx)),
     ParsedQuota = RAMQuota * NodesCount,
     PerNode = RAMQuota div ?MIB,
     ClusterTotals = proplists:get_value(ram, ClusterStorageTotals),
@@ -1408,6 +1405,14 @@ interpret_ram_quota(CurrentBucket, ParsedProps, ClusterStorageTotals) ->
                  this_alloc = ParsedQuota,
                  this_used = ThisUsed,
                  free = Total - OtherBuckets - ParsedQuota}.
+
+get_nodes(#bv_ctx{kv_nodes = KvNodes, bucket_config = BucketConfig}) ->
+    case BucketConfig of
+        false ->
+            KvNodes;
+        _ ->
+            ns_bucket:get_servers(BucketConfig)
+    end.
 
 -define(PHDD(K, KO), {KO, V#hdd_summary.K}).
 hdd_summary_to_proplist(V) ->
@@ -2055,10 +2060,12 @@ serve_streaming_short_bucket_info(BucketName, Req) ->
 -ifdef(TEST).
 %% for test
 basic_bucket_params_screening(IsNew, Name, Params, AllBuckets) ->
-    basic_bucket_params_screening(IsNew, Name, Params, AllBuckets, [{nodesCount, 2}]).
-basic_bucket_params_screening(IsNew, Name, Params, AllBuckets, ClusterStorageTotals) ->
+    basic_bucket_params_screening(IsNew, Name, Params, AllBuckets,
+                                  [node1, node2]).
+
+basic_bucket_params_screening(IsNew, Name, Params, AllBuckets, KvNodes) ->
     Version = cluster_compat_mode:supported_compat_version(),
-    Ctx = init_bucket_validation_context(IsNew, Name, AllBuckets, ClusterStorageTotals,
+    Ctx = init_bucket_validation_context(IsNew, Name, AllBuckets, KvNodes, [],
                                          false, false,
                                          Version, true,
                                          %% Change when developer_preview
@@ -2071,32 +2078,32 @@ basic_bucket_params_screening_test() ->
                    [{type, memcached},
                     {num_vbuckets, 16},
                     {num_replicas, 1},
-                    {servers, []},
+                    {servers, [node1, node2]},
                     {ram_quota, 76 * ?MIB},
                     {moxi_port, 33333}]},
                   {"default",
                    [{type, membase},
                     {num_vbuckets, 16},
                     {num_replicas, 1},
-                    {servers, []},
+                    {servers, [node1, node2]},
                     {ram_quota, 512 * ?MIB}]},
                   {"third",
                    [{type, membase},
                     {num_vbuckets, 16},
                     {num_replicas, 1},
-                    {servers, []},
+                    {servers, [node1, node2]},
                     {ram_quota, 768 * ?MIB}]},
                   {"fourth",
                    [{type, membase},
                     {num_vbuckets, 16},
                     {num_replicas, 3},
-                    {servers, []},
+                    {servers, [node1, node2]},
                     {ram_quota, 100 * ?MIB}]},
                   {"fifth",
                    [{type, membase},
                     {num_vbuckets, 16},
                     {num_replicas, 0},
-                    {servers, []},
+                    {servers, [node1]},
                     {ram_quota, 300 * ?MIB}]}],
 
     %% it is possible to create bucket with ok params
@@ -2275,7 +2282,7 @@ basic_bucket_params_screening_test() ->
                                   {"replicaNumber", ReplicaNumber},
                                   {"durabilityMinLevel", DurabilityLevel}],
                                  AllBuckets,
-                                 [{nodesCount, 1}]),
+                                 [node1]),
               ?assertEqual([{durability_min_level,
                              <<"You do not have enough data servers to "
                                "support this durability level">>}],
@@ -2287,7 +2294,7 @@ basic_bucket_params_screening_test() ->
                                  [{"replicaNumber", ReplicaNumber},
                                   {"durabilityMinLevel", DurabilityLevel}],
                                  AllBuckets,
-                                 [{nodesCount, 1}]),
+                                 [node1]),
               ?assertEqual([{durability_min_level,
                              <<"You do not have enough data servers to "
                                "support this durability level">>}],
@@ -2305,7 +2312,7 @@ basic_bucket_params_screening_test() ->
                                 {"replicaNumber", ReplicaNumber},
                                 {"durabilityMinLevel", DurabilityLevel}],
                                AllBuckets,
-                               [{nodesCount, 2}]),
+                               [node1, node2]),
               [] = E19
       end, MajorityDurabilityLevelReplicas),
 
