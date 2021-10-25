@@ -416,12 +416,16 @@ roles() ->
       [{name, <<"Query Manage Index">>},
        {folder, 'query'},
        {desc, <<"Can manage indexes for a given bucket, scope or collection. "
-                "This user can access the web console, but cannot read data.">>
+                "This user can access the web console, can read statistics "
+                "for a given bucket, scope or collection. This user cannot "
+                "read data.">>
        }],
       [{[{collection, ?RBAC_COLLECTION_PARAMS}, n1ql, index], all},
        {[{collection, ?RBAC_COLLECTION_PARAMS}, collections], [read]},
        {[{bucket, bucket_name}, settings], [read]},
+       {[{bucket, bucket_name}, stats], [read]},
        {[settings, indexes], [read]},
+       {[stats], [read]},
        {[ui], [read]},
        {[pools], [read]}]},
      {query_system_catalog, [],
