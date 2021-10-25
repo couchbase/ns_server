@@ -53,10 +53,6 @@ generate_vbucket_map_options(KeepNodes, BucketConfig) ->
     Tags = case [G || G <- ServerGroups,
                       proplists:get_value(nodes, G) =/= []] of
                [_] ->
-                   %% note that we don't need to handle this case
-                   %% specially; but unfortunately removing it would
-                   %% make 2.5 nodes always believe that rebalance is
-                   %% required in case there's only one server group
                    undefined;
                _ ->
                    Tags0 = [case proplists:get_value(uuid, G) of
