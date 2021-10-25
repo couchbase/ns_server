@@ -31,6 +31,7 @@
          actual_active_nodes/1,
          get_cluster_membership/1,
          get_cluster_membership/2,
+         rack_aware/1,
          get_node_server_group/2,
          activate/2,
          update_membership_sets/2,
@@ -152,6 +153,15 @@ get_cluster_membership(Node) ->
 get_cluster_membership(Node, Snapshot) ->
     chronicle_compat:get(Snapshot, {node, Node, membership},
                          #{default => inactiveAdded}).
+
+rack_aware(ServerGroups) ->
+    case [G || G <- ServerGroups,
+               proplists:get_value(nodes, G) =/= []] of
+        [_] ->
+            false;
+        _ ->
+            true
+    end.
 
 get_node_server_group(Node, Snapshot) ->
     get_node_server_group_inner(Node, server_groups(Snapshot)).

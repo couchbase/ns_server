@@ -50,11 +50,8 @@
 generate_vbucket_map_options(KeepNodes, BucketConfig) ->
     ServerGroups = ns_cluster_membership:server_groups(),
 
-    Tags = case [G || G <- ServerGroups,
-                      proplists:get_value(nodes, G) =/= []] of
-               [_] ->
-                   undefined;
-               _ ->
+    Tags = case ns_cluster_membership:rack_aware(ServerGroups) of
+               true ->
                    Tags0 = [case proplists:get_value(uuid, G) of
                                 T ->
                                     [{N, T} || N <- proplists:get_value(
@@ -73,7 +70,9 @@ generate_vbucket_map_options(KeepNodes, BucketConfig) ->
                            %% we raise exception
                            erlang:error(server_groups_race_detected)
                    end,
-                   TagsRV
+                   TagsRV;
+               false ->
+                   undefined
            end,
 
     Opts0 = ns_bucket:config_to_map_options(BucketConfig),
