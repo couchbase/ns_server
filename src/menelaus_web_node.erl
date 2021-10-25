@@ -50,7 +50,9 @@
          get_stability/1,
          get_local_addr/1,
          get_snapshot/1,
-         node_encryption_validators/0]).
+         node_encryption_validators/0,
+         node_init/2,
+         node_init_validators/0]).
 
 -import(menelaus_util,
         [local_addr/1,
@@ -78,11 +80,12 @@ handle_node_init(Req) ->
           %% NOTE: we have to stop this process because in case of
           %%       ns_server restart it becomes orphan
           erlang:exit(normal)
-      end, Req, form, node_init_validators()).
+      end, Req, form,
+      node_init_validators() ++
+      [validator:has_params(_), validator:unsupported(_)]).
 
 node_init_validators() ->
-    [validator:has_params(_),
-     validator:touch(dataPath, _),
+    [validator:touch(dataPath, _),
      validator:touch(indexPath, _),
      validator:touch(analyticsPath, _),
      validator:touch(eventingPath, _),
@@ -116,8 +119,7 @@ node_init_validators() ->
                    Msg = ns_error_messages:address_check_error(Hostname, Error),
                    {error, Msg}
            end
-       end, hostname, afamily, _),
-     validator:unsupported(_)].
+       end, hostname, afamily, _)].
 
 node_init(Req, Props) ->
     Settings =

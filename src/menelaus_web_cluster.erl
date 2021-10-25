@@ -60,6 +60,7 @@ handle_cluster_init(Req) ->
     erlang:process_flag(trap_exit, true),
 
     handle_cluster_init(Req, 10),
+
     %% NOTE: we have to stop this process because in case of
     %%       ns_server restart it becomes orphan
     erlang:exit(normal).
@@ -76,6 +77,7 @@ handle_cluster_init(Req, Retries) ->
     validator:handle(
       fun (Props) ->
           try
+              ok = menelaus_web_node:node_init(Req, Props),
               Res = cluster_init(Req, Config, Props),
               reply_json(Req, Res)
           catch
@@ -84,7 +86,9 @@ handle_cluster_init(Req, Retries) ->
               throw:retry_needed ->
                   handle_cluster_init(Req, Retries - 1)
           end
-      end, Req, form, cluster_init_validators(Config, Snapshot)).
+      end, Req, form,
+      menelaus_web_node:node_init_validators() ++
+      cluster_init_validators(Config, Snapshot)).
 
 cluster_init(Req, Config, Params) ->
     %% POST /pools/default
