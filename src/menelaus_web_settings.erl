@@ -430,35 +430,34 @@ jsonify_security_settings(Settings) ->
     json_builder:prepare_list([Format(S) || S <- Settings]).
 
 handle_post(Type, Keys, Req) ->
-    %% NOTE: due to a potential restart we need to protect
-    %%       ourselves from 'death signal' of parent
-    erlang:process_flag(trap_exit, true),
-    case parse_post_data(conf(Type), Keys, mochiweb_request:recv_body(Req),
-                         is_allowed_setting(Req, _)) of
-        {ok, ToSet} ->
-            case ns_config:run_txn(?cut(set_keys_in_txn(_1, _2, ToSet))) of
-                {commit, _, {OldProps, NewProps}} ->
-                    case Type of
-                        security ->
-                            NewPropsJSON = jsonify_security_settings(NewProps),
-                            ns_audit:security_settings(Req, NewPropsJSON),
-                            OldPropsJSON = jsonify_security_settings(OldProps),
-                            event_log:add_log(
-                              security_cfg_changed,
-                              [{old_settings, {struct, OldPropsJSON}},
-                               {new_settings, {struct, NewPropsJSON}}]);
-                        _ ->
-                            AuditFun = audit_fun(Type),
-                            ns_audit:AuditFun(Req, NewProps)
-                    end,
-                    reply_json(Req, []);
-                retry_needed ->
-                    erlang:error(exceeded_retries)
-            end;
-        {error, Errors} ->
-            reply_json(Req, {struct, [{errors, Errors}]}, 400)
-    end,
-    erlang:exit(normal).
+    menelaus_util:survive_web_server_restart(
+      fun () ->
+          case parse_post_data(conf(Type), Keys, mochiweb_request:recv_body(Req),
+                               is_allowed_setting(Req, _)) of
+              {ok, ToSet} ->
+                  case ns_config:run_txn(?cut(set_keys_in_txn(_1, _2, ToSet))) of
+                      {commit, _, {OldProps, NewProps}} ->
+                          case Type of
+                              security ->
+                                  NewPropsJSON = jsonify_security_settings(NewProps),
+                                  ns_audit:security_settings(Req, NewPropsJSON),
+                                  OldPropsJSON = jsonify_security_settings(OldProps),
+                                  event_log:add_log(
+                                    security_cfg_changed,
+                                    [{old_settings, {struct, OldPropsJSON}},
+                                     {new_settings, {struct, NewPropsJSON}}]);
+                              _ ->
+                                  AuditFun = audit_fun(Type),
+                                  ns_audit:AuditFun(Req, NewProps)
+                          end,
+                          reply_json(Req, []);
+                      retry_needed ->
+                          erlang:error(exceeded_retries)
+                  end;
+              {error, Errors} ->
+                  reply_json(Req, {struct, [{errors, Errors}]}, 400)
+          end
+      end).
 
 set_keys_in_txn(Cfg, SetFn, ToSet) ->
     {NewCfg, OldProps, NewProps} =

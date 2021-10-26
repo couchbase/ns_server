@@ -67,19 +67,16 @@
 handle_node_init(Req) ->
     validator:handle(
       fun (Props) ->
-          %% NOTE: due to required restart we need to protect
-          %%       ourselves from 'death signal' of parent
-          erlang:process_flag(trap_exit, true),
-          try
-              ok = node_init(Req, Props),
-              reply(Req, 200)
-          catch
-              throw:{error, Code, Msg} ->
-                 menelaus_util:global_error_exception(Code, Msg)
-          end,
-          %% NOTE: we have to stop this process because in case of
-          %%       ns_server restart it becomes orphan
-          erlang:exit(normal)
+          menelaus_util:survive_web_server_restart(
+            fun () ->
+                try
+                    ok = node_init(Req, Props),
+                    reply(Req, 200)
+                catch
+                    throw:{error, Code, Msg} ->
+                       menelaus_util:global_error_exception(Code, Msg)
+                end
+            end)
       end, Req, form,
       node_init_validators() ++
       [validator:has_params(_), validator:unsupported(_)]).
@@ -848,23 +845,21 @@ handle_node_settings_post(Node, Req) when is_atom(Node) ->
 
     case lists:member(Node, ns_node_disco:nodes_actual())  of
         true ->
-            %% NOTE: due to required restart we need to protect
-            %%       ourselves from 'death signal' of parent
-            Node == node() andalso erlang:process_flag(trap_exit, true),
-
-            case remote_api:apply_node_settings(Node, Params) of
-                not_changed ->
-                    reply(Req, 200);
-                ok  ->
-                    ns_audit:disk_storage_conf(Req, Node, Params),
-                    reply(Req, 200);
-                {error, Msgs} ->
-                    reply_json(Req, Msgs, 400)
-            end,
-
-            %% NOTE: we have to stop this process because in case of
-            %%       ns_server restart it becomes orphan
-            Node == node() andalso erlang:exit(normal);
+            Apply = fun () ->
+                        case remote_api:apply_node_settings(Node, Params) of
+                            not_changed ->
+                                reply(Req, 200);
+                            ok  ->
+                                ns_audit:disk_storage_conf(Req, Node, Params),
+                                reply(Req, 200);
+                            {error, Msgs} ->
+                                reply_json(Req, Msgs, 400)
+                        end
+                    end,
+            case Node == node() of
+                true -> menelaus_util:survive_web_server_restart(Apply);
+                false -> Apply()
+            end;
         false ->
             case lists:member(Node, ns_node_disco:nodes_wanted()) of
                 true ->
@@ -1104,20 +1099,21 @@ handle_setup_net_config(Req) ->
     menelaus_util:assert_is_65(),
     validator:handle(
       fun (Values) ->
-              erlang:process_flag(trap_exit, true),
-              case netconfig_updater:apply_config(Values) of
-                  ok ->
-                      %% Wait for web servers to restart
-                      ns_config:sync_announcements(),
-                      menelaus_event:sync(
-                        chronicle_compat_events:event_manager()),
-                      cluster_compat_mode:is_enterprise() andalso
-                          ns_ssl_services_setup:sync(),
-                      menelaus_util:reply(Req, 200);
-                  {error, Msg} ->
-                      menelaus_util:reply_global_error(Req, Msg)
-              end,
-              erlang:exit(normal)
+          menelaus_util:survive_web_server_restart(
+            fun () ->
+                case netconfig_updater:apply_config(Values) of
+                    ok ->
+                        %% Wait for web servers to restart
+                        ns_config:sync_announcements(),
+                        menelaus_event:sync(
+                          chronicle_compat_events:event_manager()),
+                        cluster_compat_mode:is_enterprise() andalso
+                            ns_ssl_services_setup:sync(),
+                        menelaus_util:reply(Req, 200);
+                    {error, Msg} ->
+                        menelaus_util:reply_global_error(Req, Msg)
+                end
+            end)
       end, Req, form, net_config_validators(false)).
 
 handle_change_external_listeners(disable_unused, Req) ->

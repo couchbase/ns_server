@@ -55,15 +55,8 @@
 
 handle_cluster_init(Req) ->
     menelaus_web_rbac:assert_no_users_upgrade(),
-    %% NOTE: due to required restart we need to protect
-    %%       ourselves from 'death signal' of parent
-    erlang:process_flag(trap_exit, true),
-
-    handle_cluster_init(Req, 10),
-
-    %% NOTE: we have to stop this process because in case of
-    %%       ns_server restart it becomes orphan
-    erlang:exit(normal).
+    menelaus_util:survive_web_server_restart(
+        fun () -> handle_cluster_init(Req, 10) end).
 
 handle_cluster_init(_Req, Retries) when Retries =< 0 ->
     erlang:error(exceeded_retries);
@@ -738,29 +731,29 @@ do_handle_add_node(Req, GroupUUID) ->
             Port = proplists:get_value(port, KV),
             Services = proplists:get_value(services, KV),
 
-            %% Possible restart of web servers during node addition can
-            %% stop this process. Protect ourselves with trap_exit.
-            process_flag(trap_exit, true),
-            case ns_cluster:add_node_to_group(
-                   Scheme, Hostname, Port,
-                   {User, Password},
-                   GroupUUID,
-                   Services) of
-                {ok, OtpNode} ->
-                    ns_audit:add_node(Req, Hostname, Port, User, GroupUUID, Services, OtpNode),
-                    ServicesJSON = [ns_cluster_membership:json_service_name(S)
-                                    || S <- Services],
-                    event_log:add_log(node_join_success,
-                                      [{node_added, list_to_binary(Hostname)},
-                                       {node_services, ServicesJSON}]),
+            menelaus_util:survive_web_server_restart(
+              fun () ->
+                  case ns_cluster:add_node_to_group(
+                         Scheme, Hostname, Port,
+                         {User, Password},
+                         GroupUUID,
+                         Services) of
+                      {ok, OtpNode} ->
+                          ns_audit:add_node(Req, Hostname, Port, User,
+                                            GroupUUID, Services, OtpNode),
+                          ServicesJSON =
+                              [ns_cluster_membership:json_service_name(S)
+                               || S <- Services],
+                          event_log:add_log(
+                            node_join_success,
+                            [{node_added, list_to_binary(Hostname)},
+                             {node_services, ServicesJSON}]),
 
-                    reply_json(Req, {struct, [{otpNode, OtpNode}]}, 200);
-                {error, What, Message} ->
-                    reply_json(Req, [Message], add_node_error_code(What))
-            end,
-            %% we have to stop this process because in case of
-            %% ns_server restart it becomes orphan
-            erlang:exit(normal);
+                          reply_json(Req, {struct, [{otpNode, OtpNode}]}, 200);
+                      {error, What, Message} ->
+                          reply_json(Req, [Message], add_node_error_code(What))
+                  end
+              end);
         {errors, ErrorList} ->
             reply_json(Req, ErrorList, 400)
     end.
