@@ -185,11 +185,14 @@ handle_regenerate_certificate(Req) ->
         true -> ok;
         false -> assert_n2n_encryption_is_disabled()
     end,
-    ns_server_cert:generate_and_set_cert_and_pkey(),
-    ns_ssl_services_setup:sync(),
-    ?log_info("Completed certificate regeneration"),
-    ns_audit:regenerate_certificate(Req),
-    handle_cluster_certificate_simple(Req).
+    menelaus_util:survive_web_server_restart(
+      fun () ->
+          ns_server_cert:generate_and_set_cert_and_pkey(),
+          ns_ssl_services_setup:sync(),
+          ?log_info("Completed certificate regeneration"),
+          ns_audit:regenerate_certificate(Req),
+          handle_cluster_certificate_simple(Req)
+      end).
 
 %% deprecated, use menelaus_util:reply_global_error/2 instead
 reply_error(Req, Error) ->

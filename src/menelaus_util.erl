@@ -77,7 +77,8 @@
          server_error_report/4,
          write_chunk/3,
          proxy_req/6,
-         respond/2]).
+         respond/2,
+         survive_web_server_restart/1]).
 
 %% Internal exports.
 -export([wake_up/4]).
@@ -727,6 +728,17 @@ stream_body(Req, Pid, Resp) ->
         {ok, {http_eob, _Trailers}} ->
             write_chunk(Req, <<>>, Resp)
     end.
+
+survive_web_server_restart(Fun) ->
+    %% NOTE: due to required restart we need to protect
+    %%       ourselves from 'death signal' of parent
+    erlang:process_flag(trap_exit, true),
+
+    Fun(),
+
+    %% NOTE: we have to stop this process because in case of
+    %%       ns_server restart it becomes orphan
+    erlang:exit(normal).
 
 -ifdef(TEST).
 compute_sec_headers_test() ->
