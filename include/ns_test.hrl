@@ -10,14 +10,15 @@
 -define(assertListsEqual(Expect, Expr),
         (fun () ->
                  __X = lists:sort(Expect),
-                 case lists:sort(Expr) of
-                     __X -> ok;
-                     __V -> erlang:error({assertListsEqual,
-                                          [{module, ?MODULE},
-                                           {line, ?LINE},
-                                           {expression, (??Expr)},
-                                           {missing, __X -- __V},
-                                           {extra, __V -- __X}]})
+                 __V = lists:sort(Expr),
+                 case __V =:= __X of
+                     true -> ok;
+                     false -> erlang:error({assertListsEqual,
+                                            [{module, ?MODULE},
+                                             {line, ?LINE},
+                                             {expression, (??Expr)},
+                                             {missing, __X -- __V},
+                                             {extra, __V -- __X}]})
                  end
          end)()).
 
