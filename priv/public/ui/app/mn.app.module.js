@@ -48,6 +48,10 @@ import {MnStatsService} from './mn.stats.service.js';
 import {MnSettingsAlertsService} from './mn.settings.alerts.service.js';
 import {MnLogsListService} from './mn.logs.list.service.js';
 import {MnSessionService} from './mn.session.service.js';
+import {MnViewsListService} from './mn.views.list.service.js';
+import {MnViewsEditingService} from './mn.views.editing.service.js';
+import {MnRouterService} from './mn.router.service.js';
+import {MnDocumentsService} from './mn.documents.service.js';
 
 
 export {MnAppModule};
@@ -94,6 +98,10 @@ class MnAppModule {
         MnSettingsAlertsService,
         MnLogsListService,
         MnSessionService,
+        MnViewsListService,
+        MnViewsEditingService,
+        MnRouterService,
+        MnDocumentsService,
         {
           provide: HTTP_INTERCEPTORS,
           useClass: MnHttpInterceptor,

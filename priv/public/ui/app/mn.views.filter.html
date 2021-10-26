@@ -1,5 +1,5 @@
 <!--
-Copyright 2015-Present Couchbase, Inc.
+Copyright 2021-Present Couchbase, Inc.
 
 Use of this software is governed by the Business Source License included in
 the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
@@ -9,53 +9,40 @@ licenses/APL2.txt.
 -->
 
 <div
-   uib-dropdown
-   class="mn-dropdown-menu"
-   auto-close="outsideClick"
-   on-toggle="mnFilterCtl.togglePopup(open)"
+   ngbDropdown
+   class="mn-dropdown-menu indent-1"
    style="position: relative;">
   <button
-     uib-dropdown-toggle
+     ngbDropdownToggle
      class="outline icon btn-small"
-     ng-class="{
-               'fa-angle-up': mnFilterCtl.showPopup,
-               'fa-angle-down': !mnFilterCtl.showPopup
-               }"
-     ng-disabled="mnFilterCtl.mnDisabled"></button>
+     (click)="caret.click.next()"
+     [ngClass]="(caret.state | async) ? 'fa-angle-up': 'fa-angle-down'"
+     ></button>
   <div
-     uib-dropdown-menu
+     ngbDropdownMenu
      class="panel dialog dialog-med"
      style="position: absolute; top: auto; left:0">
-    <form ng-submit="mnFilterCtl.togglePopup()">
+    <form
+       [formGroup]="mnForm.group"
+       (ngSubmit)="mnForm.submit.next()">
       <div class="panel-content forms">
-        <div
-           class="row formrow flex-right"
-           ng-show="mnFilterCtl.config.items.conflict">
-          <input
-             id="filter_conflicts"
-             ng-model="mnFilterCtl.config.params.conflicts"
-             type="checkbox">
-          <label for="filter_conflicts">conflicts</label>
-        </div>
-        <div
-           class="row formrow"
-           ng-show="mnFilterCtl.config.items.descending">
+        <div class="row formrow">
           <span class="width-6"></span>
           <span class="width-6">
             <input
                id="filter_descending"
-               ng-model="mnFilterCtl.config.params.descending"
+               formControlName="descending"
                type="checkbox">
             <label for="filter_descending">descending</label>
           </span>
         </div>
         <div
            class="row formrow"
-           ng-show="mnFilterCtl.config.items.startkey">
+           *ngIf="true">
           <label class="width-6" for="filter_startkey">startkey</label>
           <input
              id="filter_startkey"
-             ng-model="mnFilterCtl.config.params.startkey"
+             formControlName="startKey"
              type="text"
              class="width-6"
              autocorrect="off"
@@ -64,11 +51,11 @@ licenses/APL2.txt.
         </div>
         <div
            class="row formrow"
-           ng-show="mnFilterCtl.config.items.endkey">
+           *ngIf="true">
           <label class="width-6" for="filter_endkey">endkey</label>
           <input
              id="filter_endkey"
-             ng-model="mnFilterCtl.config.params.endkey"
+             formControlName="endKey"
              type="text"
              class="width-6"
              autocorrect="off"
@@ -77,11 +64,11 @@ licenses/APL2.txt.
         </div>
         <div
            class="row formrow"
-           ng-show="mnFilterCtl.config.items.startkeyDocid">
+           *ngIf="true">
           <label class="width-6" for="filter_startkey_docid">startkey_docid</label>
           <input
              id="filter_startkey_docid"
-             ng-model="mnFilterCtl.config.params.startkey_docid"
+             formControlName="startKeyDocId"
              type="text"
              class="width-6"
              autocorrect="off"
@@ -90,11 +77,11 @@ licenses/APL2.txt.
         </div>
         <div
            class="row formrow"
-           ng-show="mnFilterCtl.config.items.endkeyDocid">
+           *ngIf="true">
           <label class="width-6" for="filter_endkey_docid">endkey_docid</label>
           <input
              id="filter_endkey_docid"
-             ng-model="mnFilterCtl.config.params.endkey_docid"
+             formControlName="endKeyDocId"
              type="text"
              class="width-6"
              autocorrect="off"
@@ -103,24 +90,24 @@ licenses/APL2.txt.
         </div>
         <div
            class="row formrow"
-           ng-show="mnFilterCtl.config.items.group">
+           *ngIf="true">
           <span class="width-6"></span>
           <span class="width-6">
             <input
                id="filter_group"
                name="group"
-               ng-model="mnFilterCtl.config.params.group"
+               formControlName="group"
                type="checkbox">
             <label for="filter_group">group</label>
           </span>
         </div>
         <div
            class="row formrow"
-           ng-show="mnFilterCtl.config.items.groupLevel">
+           *ngIf="true">
           <label class="width-6" for="filter_group_level">group_level</label>
           <input
              id="filter_group_level"
-             ng-model="mnFilterCtl.config.params.group_level"
+             formControlName="group_level"
              type="text"
              class="width-6"
              autocorrect="off"
@@ -130,12 +117,12 @@ licenses/APL2.txt.
         </div>
         <div
            class="row formrow"
-           ng-show="mnFilterCtl.config.items.inclusiveEnd">
+           *ngIf="true">
           <span class="width-6"></span>
           <span class="width-6">
             <input
                id="filter_inclusive_end"
-               ng-model="mnFilterCtl.config.params.inclusive_end"
+               formControlName="inclusive_end"
                type="checkbox"
                ng-false-value="false"
                ng-true-value="true">
@@ -144,11 +131,11 @@ licenses/APL2.txt.
         </div>
         <div
            class="row formrow"
-           ng-show="mnFilterCtl.config.items.key">
+           *ngIf="true">
           <label class="width-6" for="filter_key">key</label>
           <input
              id="filter_key"
-             ng-model="mnFilterCtl.config.params.key"
+             formControlName="key"
              type="text"
              class="width-6"
              autocorrect="off"
@@ -158,11 +145,11 @@ licenses/APL2.txt.
         </div>
         <div
            class="row formrow"
-           ng-show="mnFilterCtl.config.items.keys">
+           *ngIf="true">
           <label class="width-6" for="filter_keys">keys</label>
           <input
              id="filter_keys"
-             ng-model="mnFilterCtl.config.params.keys"
+             formControlName="keys"
              type="text"
              class="width-6"
              autocorrect="off"
@@ -172,67 +159,61 @@ licenses/APL2.txt.
         </div>
         <div
            class="row formrow"
-           ng-show="mnFilterCtl.config.items.reduce">
+           *ngIf="true">
           <label class="width-6" for="filter_reduce">reduce</label>
             <div class="checkbox-list width-6">
-              <input
-                 type="radio"
-                 group="reduce"
-                 ng-model="mnFilterCtl.config.params.reduce"
-                 id="reduce_true"
-                 value="true"><!--
-           --><label for="reduce_true">true</label><!--
-           --><input
-                 type="radio"
-                 group="reduce"
-                 ng-model="mnFilterCtl.config.params.reduce"
-                 id="reduce_false"
-                 value="false"><!--
-           --><label for="reduce_false">false</label><!--
-           --><input
-                 type="radio"
-                 group="reduce"
-                 ng-model="mnFilterCtl.config.params.reduce"
-                 id="reduce_none"
-                 value=""><!--
-            --><label for="reduce_none">none</label>
+               <input
+                  type="radio"
+                  formControlName="reduce"
+                  id="reduce_true"
+                  value="true">
+               <label for="reduce_true">true</label>
+               <input
+                  type="radio"
+                  formControlName="reduce"
+                  id="reduce_false"
+                  value="false">
+               <label for="reduce_false">false</label>
+               <input
+                  type="radio"
+                  formControlName="reduce"
+                  id="reduce_none"
+                  value="">
+               <label for="reduce_none">none</label>
             </div>
         </div>
         <div
            class="row formrow"
-           ng-show="mnFilterCtl.config.items.stale">
+           *ngIf="true">
           <label class="width-6" for="filter_stale">stale</label>
             <div class="checkbox-list width-6">
             <input
                type="radio"
-               group="reduce"
-               ng-model="mnFilterCtl.config.params.stale"
+               formControlName="stale"
                id="stale_false"
-               value="false"><!--
-         --><label for="stale_false">false</label><!--
-         --><input
+               value="false">
+         <label for="stale_false">false</label>
+         <input
                type="radio"
-               group="reduce"
-               ng-model="mnFilterCtl.config.params.stale"
+               formControlName="stale"
                id="stale_update_after"
-               value="update_after"><!--
-         --><label for="stale_update_after">update_after</label><!--
-         --><input
+               value="update_after">
+         <label for="stale_update_after">update_after</label>
+         <input
                type="radio"
-               group="reduce"
-               ng-model="mnFilterCtl.config.params.stale"
+               formControlName="stale"
                id="stale_ok"
-               value="ok"><!--
-          --><label for="stale_ok">ok</label>
+               value="ok">
+          <label for="stale_ok">ok</label>
           </div>
         </div>
         <div
            class="row formrow"
-           ng-show="mnFilterCtl.config.items.connectionTimeout">
+           *ngIf="true">
           <label class="width-6" for="filter_connection_timeout">connection_timeout</label>
           <input
              id="filter_connection_timeout"
-             ng-model="mnFilterCtl.config.params.connection_timeout"
+             formControlName="connection_timeout"
              type="text"
              class="width-6"
              autocorrect="off"
@@ -242,8 +223,12 @@ licenses/APL2.txt.
         </div>
       </div>
       <div class="panel-footer">
-        <a ng-click="mnFilterCtl.onReset()">Reset</a>
-        <button type="submit">Save</button>
+        <a (click)="onReset()">
+          Reset
+        </a>
+        <button type="submit">
+           Save
+        </button>
       </div>
     </form>
   </div>

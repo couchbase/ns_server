@@ -107,7 +107,7 @@ let gsiState = {
 let viewsState = {
   name: "app.admin.views.**",
   url: "/views",
-  lazyLoad: mnLazyload(() => import('./mn_admin/mn_views_controller.js'), "mnViews")
+  lazyLoad: mnLoadNgModule('./mn.views.module.js', "MnViewsModule")
 };
 
 let settingsState = {

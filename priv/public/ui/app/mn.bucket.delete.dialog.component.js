@@ -36,10 +36,11 @@ class MnBucketDeleteDialogComponent extends MnLifeCycleHooksToStream {
     MnBucketsService
   ]}
 
-  constructor(activeModal, mnFormService, mnBucketsService) {
+  constructor(activeModal, mnFormService, mnBucketsService, uiRouter) {
     super();
 
     this.activeModal = activeModal;
+    this.uiRouter = uiRouter;
 
     this.form = mnFormService.create(this)
       .setFormGroup({})

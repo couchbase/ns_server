@@ -22,8 +22,7 @@ class MnTasksService {
     new Injectable()
   ]}
 
-  static get parameters() { return [
-  ]}
+  static get parameters() { return [] }
 
   constructor() {
     singletonGuard(MnTasksService);
@@ -45,5 +44,13 @@ class MnTasksService {
     this.stream.tasksCompactionByBucket = this.stream.tasksBucketCompactionPlug
       .pipe(map(groupBy(prop('bucket'))),
             shareReplay({refCount: true, bufferSize: 1}));
+
+    this.stream.tasksViewCompactionPlug = new BehaviorSubject([]);
+    this.stream.tasksCompactionByView = this.stream.tasksViewCompactionPlug
+        shareReplay({refCount: true, bufferSize: 1});
+
+    this.stream.tasksPlug = new BehaviorSubject();
+    this.stream.tasks = this.stream.tasksPlug
+      .pipe(shareReplay({refCount: true, bufferSize: 1}));
   }
 }

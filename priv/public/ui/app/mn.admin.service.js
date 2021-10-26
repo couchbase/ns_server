@@ -11,7 +11,8 @@ import {Injectable} from '@angular/core';
 
 import {BehaviorSubject, combineLatest} from 'rxjs';
 import {pluck, switchMap, shareReplay, map,
-         distinctUntilChanged, withLatestFrom} from 'rxjs/operators';
+        distinctUntilChanged, withLatestFrom,
+        filter} from 'rxjs/operators';
 import {HttpClient, HttpParams} from '@angular/common/http';
 import * as R from 'ramda';
 
@@ -137,6 +138,11 @@ class MnAdminService {
     this.stream.thisNode =
       this.stream.getPoolsDefault.pipe(pluck("nodes"),
                                        map(R.find(R.propEq('thisNode', true))));
+
+    this.stream.capiBase = this.stream.thisNode
+      .pipe(filter(node => node != undefined),
+            map(node => node.addressFamily == 'inet6' ? node.couchApiBaseHTTPS : node.couchApiBase));
+
     this.stream.memoryQuotas =
       this.stream.getPoolsDefault.pipe(
         withLatestFrom(mnPoolsService.stream.quotaServices),

@@ -20,9 +20,9 @@ licenses/APL2.txt.
     </div>
   </div>
   <div class="panel-footer">
-    <a  ng-click="$dismiss()">Cancel</a>
+    <a  (click)="activeModal.dismiss()">Cancel</a>
     <button
        type="submit"
-       ng-click="$close()">Overwrite Document</button>
+       (click)="form.submit.next()">Overwrite Document</button>
   </div>
 </div>

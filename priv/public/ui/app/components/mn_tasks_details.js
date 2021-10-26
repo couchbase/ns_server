@@ -1,5 +1,5 @@
 /*
-Copyright 2015-Present Couchbase, Inc.
+Copyright 2021-Present Couchbase, Inc.
 
 Use of this software is governed by the Business Source License included in
 the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
@@ -63,6 +63,7 @@ function mnTasksDetailsFactory($http, $cacheFactory, mnTasksService) {
       rv.tasksRebalance = _.detect(tasks, detectRebalanceTasks);
       rv.tasksWarmingUp = _.filter(tasks, detectWarmupTask);
       rv.tasksBucketCompaction = _.filter(tasks, detectBucketCompactionTask);
+      rv.tasksViewCompaction = _.filter(tasks, detectViewCompactionTask);
       rv.inRebalance = !!(rv.tasksRebalance && rv.tasksRebalance.status === "running");
       rv.inRecoveryMode = !!rv.tasksRecovery;
       rv.isLoadingSamples = !!_.detect(tasks, detectLoadingSamples);
@@ -78,6 +79,7 @@ function mnTasksDetailsFactory($http, $cacheFactory, mnTasksService) {
       mnTasksService.stream.tasksXDCRPlug.next(rv.tasksXDCR);
       mnTasksService.stream.tasksWarmingUpPlug.next(rv.tasksWarmingUp);
       mnTasksService.stream.tasksBucketCompactionPlug.next(rv.tasksBucketCompaction);
+      mnTasksService.stream.tasksViewCompactionPlug.next(rv.tasksBucketCompaction);
 
       let noCollectInfoTask = {
         nodesByStatus: {},
@@ -121,6 +123,10 @@ function mnTasksDetailsFactory($http, $cacheFactory, mnTasksService) {
 
   function detectBucketCompactionTask(taskInfo) {
     return taskInfo.type === 'bucket_compaction';
+  }
+
+  function detectViewCompactionTask(taskInfo) {
+    return taskInfo.type === 'view_compaction';
   }
 
   function clearCache() {

@@ -9,11 +9,12 @@ licenses/APL2.txt.
 */
 import {Injectable} from '@angular/core';
 import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
+
 import {HttpClient, HttpParams} from '@angular/common/http';
 import {pluck, switchMap, shareReplay,
   distinctUntilChanged, map, withLatestFrom} from 'rxjs/operators';
 import {BehaviorSubject, timer, combineLatest} from 'rxjs';
-import {filter, anyPass, propEq} from 'ramda';
+import {filter, anyPass, allPass, propEq} from 'ramda';
 
 import {singletonGuard} from './mn.core.js'
 import {MnAdminService} from './mn.admin.service.js';
@@ -63,6 +64,11 @@ class MnBucketsService {
                      acc[bucket.name] = bucket;
                      return acc;
                    }, {})),
+            shareReplay({refCount: true, bufferSize: 1}));
+
+    this.stream.bucketsMembaseCouchstore = this.stream.getBuckets
+      .pipe(map(filter(allPass([propEq('bucketType', 'membase'),
+                                propEq('storageBackend', 'couchstore')]))),
             shareReplay({refCount: true, bufferSize: 1}));
 
     this.stream.bucketsMembaseEphemeral = this.stream.getBuckets
