@@ -55,9 +55,21 @@
             <span ng-show="adminCtl.tasks.tasksRebalance.stageInfo.completedTime.status" class="nowrap margin-left-half">
               <strong>complete</strong> {{adminCtl.tasks.tasksRebalance.stageInfo.completedTime.time | date:'d MMM HH:mm:ss':'UTC'}}
             </span>
-            <span class="nowrap margin-left-half" ng-class="{'rebalance-status-inprogress' : adminCtl.tasks.tasksRebalance.status == 'running'}">
               <strong>status</strong> {{adminCtl.tasks.tasksRebalance.status == "running" ? "in progress" :
                                       adminCtl.tasks.tasksRebalance.errorMessage ? "failed" : "completed"}}
+            <span
+              class="nowrap"
+              ng-class="{'rebalance-status-inprogress' : adminCtl.tasks.tasksRebalance.status == 'running'}">
+              <span
+                class="fa-stack icon-info"
+                ng-if="adminCtl.tasks.tasksRebalance.errorMessage"
+                uib-tooltip="{{adminCtl.tasks.tasksRebalance.errorMessage}}"
+                tooltip-placement="auto bottom"
+                tooltip-append-to-body="true"
+                tooltip-trigger="mouseenter">
+                <span class="icon fa-circle-thin fa-stack-2x"></span>
+                <span class="icon fa-info fa-stack-1x"></span>
+              </span>
             </span>
           </p>
           <div class="alert margin-bottom-1 row"
