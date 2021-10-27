@@ -527,15 +527,20 @@ bucket_failover_safety(BucketConfig, ActiveNodes, LiveNodes) ->
                                 ?FS_OK
                         end
                 end,
-            ExtraSafety =
-                if
-                    length(LiveNodes) =< ReplicaNum andalso BaseSafety =/= ?FS_HARD_NODES_NEEDED ->
-                        %% if we don't have enough nodes to put all replicas on
-                        softNodesNeeded;
-                    true ->
-                        ok
-                end,
+            ExtraSafety = bucket_extra_safety(
+                            BaseSafety, ReplicaNum, ActiveNodes),
             {BaseSafety, ExtraSafety}
+    end.
+
+bucket_extra_safety(BaseSafety, _ReplicaNum, _ActiveNodes)
+  when BaseSafety =:= ?FS_HARD_NODES_NEEDED ->
+    ok;
+bucket_extra_safety(_BaseSafety, ReplicaNum, ActiveNodes) ->
+    case length(ActiveNodes) =< ReplicaNum of
+        true ->
+            softNodesNeeded;
+        false ->
+            ok
     end.
 
 failover_safety_rec(?FS_HARD_NODES_NEEDED, _ExtraSafety, _, _ActiveNodes, _LiveNodes) ->
