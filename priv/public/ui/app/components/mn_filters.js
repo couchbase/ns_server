@@ -66,7 +66,7 @@ function formatFailoverWarnings() {
     case 'hardNodesNeeded':
       return 'At least two servers with the data service are required to provide replication.';
     case 'softNodesNeeded':
-      return 'Additional active servers required to provide the desired number of replicas.';
+      return 'Additional active servers or server groups required to provide the desired number of replicas.';
     case 'softRebalanceNeeded':
       return 'Rebalance recommended, some data does not have the desired replicas configuration.';
     default: return warning;

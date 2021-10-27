@@ -486,7 +486,7 @@ magma_fragmentation_percentage(BucketConfig) ->
 -define(FS_SOFT_REBALANCE_NEEDED, 1).
 -define(FS_OK, 0).
 
-bucket_failover_safety(BucketConfig, ActiveNodes, LiveNodes) ->
+bucket_failover_safety(BucketConfig, ActiveNodes, LiveNodes, NumGroups) ->
     ReplicaNum = num_replicas(BucketConfig),
     case ReplicaNum of
         %% if replica count for bucket is 0 we cannot failover at all
@@ -528,27 +528,31 @@ bucket_failover_safety(BucketConfig, ActiveNodes, LiveNodes) ->
                         end
                 end,
             ExtraSafety = bucket_extra_safety(
-                            BaseSafety, ReplicaNum, ActiveNodes),
+                            BaseSafety, ReplicaNum, ActiveNodes, NumGroups),
             {BaseSafety, ExtraSafety}
     end.
 
-bucket_extra_safety(BaseSafety, _ReplicaNum, _ActiveNodes)
+bucket_extra_safety(BaseSafety, _ReplicaNum, _ActiveNodes, _NumGroups)
   when BaseSafety =:= ?FS_HARD_NODES_NEEDED ->
     ok;
-bucket_extra_safety(_BaseSafety, ReplicaNum, ActiveNodes) ->
-    case length(ActiveNodes) =< ReplicaNum of
+bucket_extra_safety(_BaseSafety, ReplicaNum, ActiveNodes, NumGroups) ->
+    case length(ActiveNodes) =< ReplicaNum orelse NumGroups =< ReplicaNum of
         true ->
             softNodesNeeded;
         false ->
             ok
     end.
 
-failover_safety_rec(?FS_HARD_NODES_NEEDED, _ExtraSafety, _, _ActiveNodes, _LiveNodes) ->
+failover_safety_rec(?FS_HARD_NODES_NEEDED, _ExtraSafety, _,
+                    _ActiveNodes, _LiveNodes, _NumGroups) ->
     {?FS_HARD_NODES_NEEDED, ok};
-failover_safety_rec(BaseSafety, ExtraSafety, [], _ActiveNodes, _LiveNodes) ->
+failover_safety_rec(BaseSafety, ExtraSafety, [],
+                    _ActiveNodes, _LiveNodes, _NumGroups) ->
     {BaseSafety, ExtraSafety};
-failover_safety_rec(BaseSafety, ExtraSafety, [BucketConfig | RestConfigs], ActiveNodes, LiveNodes) ->
-    {ThisBaseSafety, ThisExtraSafety} = bucket_failover_safety(BucketConfig, ActiveNodes, LiveNodes),
+failover_safety_rec(BaseSafety, ExtraSafety, [BucketConfig | RestConfigs],
+                    ActiveNodes, LiveNodes, NumGroups) ->
+    {ThisBaseSafety, ThisExtraSafety} =
+        bucket_failover_safety(BucketConfig, ActiveNodes, LiveNodes, NumGroups),
     NewBaseSafety = case BaseSafety < ThisBaseSafety of
                         true -> ThisBaseSafety;
                         _ -> BaseSafety
@@ -560,19 +564,33 @@ failover_safety_rec(BaseSafety, ExtraSafety, [BucketConfig | RestConfigs], Activ
                              ok
                      end,
     failover_safety_rec(NewBaseSafety, NewExtraSafety,
-                        RestConfigs, ActiveNodes, LiveNodes).
+                        RestConfigs, ActiveNodes, LiveNodes, NumGroups).
 
 -spec failover_warnings(map()) -> [failoverNeeded | rebalanceNeeded |
                                    hardNodesNeeded | softNodesNeeded].
 failover_warnings(Snapshot) ->
     ActiveNodes = ns_cluster_membership:service_active_nodes(Snapshot, kv),
     LiveNodes = ns_cluster_membership:service_actual_nodes(Snapshot, kv),
+
+    ServerGroups = ns_cluster_membership:server_groups(Snapshot),
+    NumGroups =
+        case ns_cluster_membership:rack_aware(ServerGroups) of
+            true ->
+                KvGroups =
+                    ns_cluster_membership:get_nodes_server_groups(
+                      ActiveNodes, ServerGroups),
+                length(KvGroups);
+            false ->
+                length(ActiveNodes)
+        end,
+
     {BaseSafety0, ExtraSafety}
         = failover_safety_rec(?FS_OK, ok,
                               [C || {_, C} <- get_buckets(Snapshot),
                                     membase =:= bucket_type(C)],
                               ActiveNodes,
-                              LiveNodes),
+                              LiveNodes,
+                              NumGroups),
     BaseSafety = case BaseSafety0 of
                      ?FS_HARD_NODES_NEEDED -> hardNodesNeeded;
                      ?FS_FAILOVER_NEEDED -> failoverNeeded;
