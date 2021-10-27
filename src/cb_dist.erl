@@ -20,6 +20,7 @@
 -include_lib("stdlib/include/ms_transform.hrl").
 
 -include("cut.hrl").
+-include("ns_common.hrl").
 
 % dist module callbacks, called from net_kernel
 -export([listen/1, accept/1, accept_connection/5,
@@ -65,6 +66,7 @@
 -define(family, ?MODULE).
 -define(proto, ?MODULE).
 -define(TERMINATE_TIMEOUT, 1000).
+-define(TERMINATE_ACCEPTOR_TIMEOUT, 10000).
 -define(ENSURE_CONFIG_TIMEOUT, 10000).
 -define(CREATION, -1).
 
@@ -593,22 +595,22 @@ remove_proto({_AddrType, Mod} = Listener,
     case proplists:get_value(Listener, Listeners) of
         {LSocket, _, _} ->
             info_msg("Closing listener ~p", [Listener]),
-            [erlang:unlink(P) || {P, M} <- Acceptors, M =:= Listener],
+            AcceptorProcs =
+                lists:flatmap(
+                  fun ({P, M}) when M =:= Listener ->
+                          erlang:unlink(P),
+                          Links = case erlang:process_info(P, links) of
+                                      undefined -> [];
+                                      {links, L} -> L
+                                  end,
+                          [P | Links];
+                      (_) ->
+                          []
+                  end, Acceptors),
+            info_msg("Full list of processes expected to stop: ~p",
+                     [AcceptorProcs]),
             catch Mod:close(LSocket),
-            lists:foreach(
-              fun (Proc) ->
-                      case misc:wait_for_process(Proc, ?TERMINATE_TIMEOUT) of
-                          ok -> ok;
-                          {error, Reason} ->
-                              error_msg("Wait for acceptor: ~p failed with "
-                                        "reason: ~p", [Proc, Reason]),
-                              exit(Proc, kill)
-                      end,
-                      %% Since we killed the acceptor flush the accept messages
-                      %% from it.
-                      flush_accept_messages(Proc)
-              end, lists:usort([P || {P, M} <- Acceptors, M =:= Listener])),
-
+            wait_for_acceptors(AcceptorProcs, Mod, ?TERMINATE_ACCEPTOR_TIMEOUT),
             State#s{listeners = proplists:delete(Listener, Listeners),
                     acceptors = [{P, M} || {P, M} <- Acceptors, M =/= Listener]};
         undefined ->
@@ -617,14 +619,40 @@ remove_proto({_AddrType, Mod} = Listener,
             State
     end.
 
-flush_accept_messages(AcceptorPid) ->
+wait_for_acceptors(Acceptors, Mod, Timeout) ->
+    MRefs = [{A, erlang:monitor(process, A)} || A <- Acceptors],
+    Deadline = erlang:monotonic_time(millisecond) + Timeout,
+    ok = do_wait_for_acceptors(Mod, Deadline, MRefs).
+
+do_wait_for_acceptors(_Mod, _Deadline, []) -> ok;
+do_wait_for_acceptors(Mod, Deadline, [{A, MRef} | MRefTail]) when is_pid(A) ->
+    Timeout = max(Deadline - erlang:monotonic_time(millisecond), 0),
+    {AFamily, EncryptionEnabled} = proto2netsettings(Mod),
+    Protocol = case EncryptionEnabled of
+                   true -> tls;
+                   false -> tcp
+               end,
     receive
-        {accept, AcceptorPid, _, _, _} = Msg ->
-            info_msg("Ignoring message from acceptor ~p", [Msg]),
-            flush_accept_messages(AcceptorPid)
+        {'DOWN', MRef, process, Pid, _Reason} ->
+            info_msg("Down from ~p", [Pid]),
+            do_wait_for_acceptors(Mod, Deadline, MRefTail);
+        {accept, AcceptorSpawn, _, AFamily, Protocol} ->
+            info_msg("Received accept from ~p/~p acceptor that is being shut "
+                     "down, will reply with unsupported_protocol",
+                     [AFamily, Protocol]),
+            AcceptorSpawn ! {self(), unsupported_protocol},
+            do_wait_for_acceptors(Mod, Deadline, [{A, MRef} | MRefTail])
     after
-        0 ->
-            ok
+        Timeout ->
+            error_msg("Wait for acceptor: ~p timed out", [A]),
+            exit(A, kill),
+            receive
+                {'DOWN', MRef, process, _, _} -> ok
+            after 60000 ->
+                 exit(must_not_happen)
+            end,
+            ?flush({accept, A, _, _, _}),
+            do_wait_for_acceptors(Mod, Deadline, MRefTail)
     end.
 
 listen_proto({AddrType, Module}, NodeName) ->
