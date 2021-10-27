@@ -48,7 +48,13 @@
 %% API
 %%
 generate_vbucket_map_options(KeepNodes, BucketConfig) ->
-    ServerGroups = ns_cluster_membership:server_groups(),
+    %% The set of server groups is limited to those containing KeepNodes. This
+    %% is because decide whether to generate a rack-aware map based on the
+    %% number of server groups. Only if there's more than one server group do
+    %% we want do generate a rack-aware map. But while there may be more than
+    %% one server group in the current configuration, there may be only one
+    %% left post-rebalance.
+    ServerGroups = ns_cluster_membership:get_nodes_server_groups(KeepNodes),
 
     Tags = case ns_cluster_membership:rack_aware(ServerGroups) of
                true ->

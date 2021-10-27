@@ -573,12 +573,12 @@ failover_warnings(Snapshot) ->
     LiveNodes = ns_cluster_membership:service_actual_nodes(Snapshot, kv),
 
     ServerGroups = ns_cluster_membership:server_groups(Snapshot),
+    KvGroups = ns_cluster_membership:get_nodes_server_groups(
+                 ActiveNodes, ServerGroups),
+
     NumGroups =
-        case ns_cluster_membership:rack_aware(ServerGroups) of
+        case ns_cluster_membership:rack_aware(KvGroups) of
             true ->
-                KvGroups =
-                    ns_cluster_membership:get_nodes_server_groups(
-                      ActiveNodes, ServerGroups),
                 length(KvGroups);
             false ->
                 length(ActiveNodes)

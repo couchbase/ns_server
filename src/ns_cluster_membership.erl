@@ -33,6 +33,7 @@
          get_cluster_membership/2,
          rack_aware/1,
          get_node_server_group/2,
+         get_nodes_server_groups/1,
          get_nodes_server_groups/2,
          activate/2,
          update_membership_sets/2,
@@ -176,6 +177,9 @@ get_node_server_group_inner(Node, [SG | Rest]) ->
         false ->
             get_node_server_group_inner(Node, Rest)
     end.
+
+get_nodes_server_groups(Nodes) ->
+    get_nodes_server_groups(Nodes, server_groups()).
 
 get_nodes_server_groups(Nodes, Groups) ->
     NodeSet = sets:from_list(Nodes),

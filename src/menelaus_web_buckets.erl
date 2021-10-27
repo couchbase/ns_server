@@ -425,7 +425,7 @@ respond_bucket_created(Req, PoolId, BucketId) ->
           bucket_config,
           all_buckets,
           kv_nodes,
-          server_groups,
+          max_replicas,
           cluster_storage_totals,
           cluster_version,
           is_enterprise,
@@ -463,6 +463,20 @@ init_bucket_validation_context(IsNew, BucketName, AllBuckets,
                                ValidateOnly, IgnoreWarnings,
                                ClusterVersion, IsEnterprise,
                                IsDeveloperPreview) ->
+    KvServerGroups =
+        ns_cluster_membership:get_nodes_server_groups(KvNodes, ServerGroups),
+    NumKvNodes = length(KvNodes),
+
+    %% Maximum number of replicas that we'll be able to place in the current
+    %% cluster configuration.
+    MaxReplicas =
+        case ns_cluster_membership:rack_aware(KvServerGroups) of
+            true ->
+                min(length(KvServerGroups), NumKvNodes) - 1;
+            false ->
+                NumKvNodes - 1
+        end,
+
     BucketConfig =
         case lists:keyfind(BucketName, 1, AllBuckets) of
             false ->
@@ -477,7 +491,7 @@ init_bucket_validation_context(IsNew, BucketName, AllBuckets,
        bucket_name = BucketName,
        all_buckets = AllBuckets,
        kv_nodes = KvNodes,
-       server_groups = ServerGroups,
+       max_replicas = MaxReplicas,
        bucket_config = BucketConfig,
        cluster_storage_totals = ClusterStorageTotals,
        cluster_version = ClusterVersion,
@@ -633,25 +647,9 @@ perform_warnings_validation(Ctx, ParsedProps, Errors) ->
 num_replicas_warnings_validation(_Ctx, undefined) ->
     [];
 num_replicas_warnings_validation(Ctx, NReplicas) ->
-    KvNodes = Ctx#bv_ctx.kv_nodes,
-    Groups = Ctx#bv_ctx.server_groups,
-
-    NumKvNodes = length(KvNodes),
-    MaxReplicas =
-        case ns_cluster_membership:rack_aware(Groups) of
-            true ->
-                KvGroups = ns_cluster_membership:get_nodes_server_groups(
-                             KvNodes, Groups),
-                NumGroups = length(KvGroups),
-
-                min(NumGroups, NumKvNodes) - 1;
-            false ->
-                NumKvNodes - 1
-        end,
-
     Warnings =
         if
-            NReplicas > MaxReplicas ->
+            NReplicas > Ctx#bv_ctx.max_replicas ->
                 ["you do not have enough data servers or "
                  "server groups to support this number of replicas"];
             true ->
