@@ -53,26 +53,32 @@ handle_delete_trustedCA(IdStr, Req) ->
     CurNodes = nodes(),
     try list_to_integer(IdStr) of
         Id ->
-            case ns_server_cert:remove_CA(Id) of
-                {ok, Props} ->
-                    Subject = proplists:get_value(subject, Props),
-                    ns_audit:delete_cluster_ca(Req, Subject),
-                    ns_ssl_services_setup:sync(),
-                    case netconfig_updater:ensure_tls_dist_started(CurNodes) of
-                        ok -> menelaus_util:reply(Req, 204);
-                        {error, ErrorMsg} ->
-                            menelaus_util:reply_global_error(Req, ErrorMsg)
-                    end;
-                {error, not_found} ->
-                    menelaus_util:reply_text(Req, "Not found", 404);
-                {error, {in_use, Nodes}} ->
-                    Hosts = [misc:extract_node_address(N) || N <- Nodes],
-                    HostsStr = lists:join(", ", Hosts),
-                    Msg = io_lib:format("The CA certificate is in use by the "
-                                        "following nodes: ~s", [HostsStr]),
-                    MsgBin = iolist_to_binary(Msg),
-                    menelaus_util:reply_global_error(Req, MsgBin)
-            end
+            menelaus_util:survive_web_server_restart(
+              fun () ->
+                  case ns_server_cert:remove_CA(Id) of
+                      {ok, Props} ->
+                          Subject = proplists:get_value(subject, Props),
+                          ns_audit:delete_cluster_ca(Req, Subject),
+                          ns_ssl_services_setup:sync(),
+                          case netconfig_updater:ensure_tls_dist_started(
+                                 CurNodes) of
+                              ok -> menelaus_util:reply(Req, 204);
+                              {error, ErrorMsg} ->
+                                  menelaus_util:reply_global_error(Req,
+                                                                   ErrorMsg)
+                          end;
+                      {error, not_found} ->
+                          menelaus_util:reply_text(Req, "Not found", 404);
+                      {error, {in_use, Nodes}} ->
+                          Hosts = [misc:extract_node_address(N) || N <- Nodes],
+                          HostsStr = lists:join(", ", Hosts),
+                          Msg = io_lib:format("The CA certificate is in use by "
+                                              "the following nodes: ~s",
+                                              [HostsStr]),
+                          MsgBin = iolist_to_binary(Msg),
+                          menelaus_util:reply_global_error(Req, MsgBin)
+                  end
+              end)
     catch
         error:badarg ->
             menelaus_util:reply_text(Req, "Not found", 404)
@@ -203,27 +209,32 @@ handle_load_ca_certs(Req) ->
     menelaus_util:assert_is_enterprise(),
     menelaus_util:assert_is_NEO(),
     Nodes = nodes(),
-    case ns_server_cert:load_CAs_from_inbox() of
-        {ok, NewCertsProps} ->
-            lists:foreach(
-              fun (Props) ->
-                  Subject = proplists:get_value(subject, Props),
-                  Expire = proplists:get_value(not_after, Props),
-                  ns_audit:upload_cluster_ca(Req, Subject, Expire)
-              end, NewCertsProps),
-            ns_ssl_services_setup:sync(),
-            case netconfig_updater:ensure_tls_dist_started(Nodes) of
-                ok ->
-                    CertsJson = [jsonify_cert_props(C) || C <- NewCertsProps],
-                    menelaus_util:reply_json(Req, CertsJson, 200);
-                {error, ErrorMsg} ->
-                    menelaus_util:reply_json(Req, ErrorMsg, 400)
-            end;
-        {error, Error} ->
-            ?log_error("Error loading CA certificates: ~p", [Error]),
-            menelaus_util:reply_json(
-              Req, ns_error_messages:load_CAs_from_inbox_error(Error), 400)
-    end.
+    menelaus_util:survive_web_server_restart(
+      fun () ->
+          case ns_server_cert:load_CAs_from_inbox() of
+              {ok, NewCertsProps} ->
+                  lists:foreach(
+                    fun (Props) ->
+                        Subject = proplists:get_value(subject, Props),
+                        Expire = proplists:get_value(not_after, Props),
+                        ns_audit:upload_cluster_ca(Req, Subject, Expire)
+                    end, NewCertsProps),
+                  ns_ssl_services_setup:sync(),
+                  case netconfig_updater:ensure_tls_dist_started(Nodes) of
+                      ok ->
+                          CertsJson = [jsonify_cert_props(C) ||
+                                       C <- NewCertsProps],
+                          menelaus_util:reply_json(Req, CertsJson, 200);
+                      {error, ErrorMsg} ->
+                          menelaus_util:reply_json(Req, ErrorMsg, 400)
+                  end;
+              {error, Error} ->
+                  ?log_error("Error loading CA certificates: ~p", [Error]),
+                  menelaus_util:reply_json(
+                    Req,
+                    ns_error_messages:load_CAs_from_inbox_error(Error), 400)
+          end
+      end).
 
 handle_upload_cluster_ca(Req) ->
     case (not cluster_compat_mode:is_cluster_NEO()) orelse
@@ -237,34 +248,37 @@ handle_upload_cluster_ca(Req) ->
         undefined ->
             reply_error(Req, empty_cert);
         PemEncodedCA ->
-            case cluster_compat_mode:is_cluster_NEO() of
-                true ->
-                    case ns_server_cert:add_CAs(uploaded, PemEncodedCA,
-                                                [{single_cert, true}]) of
-                        {ok, []} ->
-                            reply_error(Req, already_in_use);
-                        {ok, [Props]} ->
-                            ns_audit:upload_cluster_ca(
-                              Req,
-                              proplists:get_value(subject, Props),
-                              proplists:get_value(not_after, Props)),
-                            handle_cluster_certificate_extended(Req);
-                        {error, Error} ->
-                            reply_error(Req, Error)
-                    end;
-                false ->
-                    assert_n2n_encryption_is_disabled(),
-                    case ns_server_cert:set_cluster_ca(PemEncodedCA) of
-                        {ok, Props} ->
-                            ns_audit:upload_cluster_ca(
-                              Req,
-                              proplists:get_value(subject, Props),
-                              proplists:get_value(expires, Props)),
-                            handle_cluster_certificate_extended(Req);
-                        {error, Error} ->
-                            reply_error(Req, Error)
-                    end
-            end
+            menelaus_util:survive_web_server_restart(
+              fun () ->
+                  case cluster_compat_mode:is_cluster_NEO() of
+                      true ->
+                          case ns_server_cert:add_CAs(uploaded, PemEncodedCA,
+                                                      [{single_cert, true}]) of
+                              {ok, []} ->
+                                  reply_error(Req, already_in_use);
+                              {ok, [Props]} ->
+                                  ns_audit:upload_cluster_ca(
+                                    Req,
+                                    proplists:get_value(subject, Props),
+                                    proplists:get_value(not_after, Props)),
+                                  handle_cluster_certificate_extended(Req);
+                              {error, Error} ->
+                                  reply_error(Req, Error)
+                          end;
+                      false ->
+                          assert_n2n_encryption_is_disabled(),
+                          case ns_server_cert:set_cluster_ca(PemEncodedCA) of
+                              {ok, Props} ->
+                                  ns_audit:upload_cluster_ca(
+                                    Req,
+                                    proplists:get_value(subject, Props),
+                                    proplists:get_value(expires, Props)),
+                                  handle_cluster_certificate_extended(Req);
+                              {error, Error} ->
+                                  reply_error(Req, Error)
+                          end
+                  end
+              end)
     end.
 
 assert_n2n_encryption_is_disabled() ->
@@ -293,24 +307,31 @@ handle_reload_node_certificate(Req) ->
       fun (Params) ->
           PassphraseSettings =
               proplists:get_value(privateKeyPassphrase, Params, []),
-          case ns_server_cert:load_node_certs_from_inbox(PassphraseSettings) of
-              {ok, Props} ->
-                  ns_audit:reload_node_certificate(
-                    Req,
-                    proplists:get_value(subject, Props),
-                    proplists:get_value(not_after, Props)),
-                  ns_ssl_services_setup:sync(),
-                  case netconfig_updater:ensure_tls_dist_started(Nodes) of
-                      ok ->
-                          menelaus_util:reply(Req, 200);
-                      {error, ErrorMsg} ->
-                          menelaus_util:reply_json(Req, ErrorMsg, 400)
-                  end;
-              {error, Error} ->
-                  ?log_error("Error reloading node certificate: ~p", [Error]),
-                  Msg = ns_error_messages:reload_node_certificate_error(Error),
-                  menelaus_util:reply_json(Req, Msg, 400)
-          end
+
+          menelaus_util:survive_web_server_restart(
+            fun () ->
+                case ns_server_cert:load_node_certs_from_inbox(
+                       PassphraseSettings) of
+                    {ok, Props} ->
+                        ns_audit:reload_node_certificate(
+                          Req,
+                          proplists:get_value(subject, Props),
+                          proplists:get_value(not_after, Props)),
+                        ns_ssl_services_setup:sync(),
+                        case netconfig_updater:ensure_tls_dist_started(Nodes) of
+                            ok ->
+                                menelaus_util:reply(Req, 200);
+                            {error, ErrorMsg} ->
+                                menelaus_util:reply_json(Req, ErrorMsg, 400)
+                        end;
+                    {error, Error} ->
+                        ?log_error("Error reloading node certificate: ~p",
+                                   [Error]),
+                        Msg = ns_error_messages:reload_node_certificate_error(
+                                Error),
+                        menelaus_util:reply_json(Req, Msg, 400)
+                end
+            end)
       end, Req, JSONData,
       [validator:decoded_json(
          privateKeyPassphrase,
@@ -595,15 +616,18 @@ validate_client_cert_auth_prefixes(Prefixes, Cfg, Errors) ->
 handle_client_cert_auth_settings_post(Req) ->
     menelaus_util:assert_is_enterprise(),
 
-    try
-        JSON = menelaus_util:parse_json(Req),
-        do_handle_client_cert_auth_settings_post(Req, JSON)
-    catch
-        throw:{error, Msg} ->
-            menelaus_util:reply_json(Req, Msg, 400);
-        _:_ ->
-            menelaus_util:reply_json(Req, <<"Invalid JSON">>, 400)
-    end.
+    menelaus_util:survive_web_server_restart(
+      fun () ->
+          try
+              JSON = menelaus_util:parse_json(Req),
+              do_handle_client_cert_auth_settings_post(Req, JSON)
+          catch
+              throw:{error, Msg} ->
+                  menelaus_util:reply_json(Req, Msg, 400);
+              _:_ ->
+                  menelaus_util:reply_json(Req, <<"Invalid JSON">>, 400)
+          end
+      end).
 
 %% The client_cert_auth settings will be a JSON payload and it'll look like
 %% the following:
