@@ -67,12 +67,6 @@ func derToPKey(octets []byte) (pkey *rsa.PrivateKey) {
 
 var keyLength = 2048
 
-func init() {
-	if os.Getenv("COUCHBASE_SMALLER_PKEYS") == "1" {
-		keyLength = 1024
-	}
-}
-
 func main() {
 	var genereateLeaf bool
 	var commonName string

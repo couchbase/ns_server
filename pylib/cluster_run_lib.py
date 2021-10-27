@@ -454,7 +454,6 @@ def start_cluster(num_nodes=1,
         params['env']['ERL_CRASH_DUMP_BASE'] = crash_dump_base
         params['env']['ERL_CRASH_DUMP'] = crash_dump_base + '.babysitter'
 
-        params['env']['COUCHBASE_SMALLER_PKEYS'] = '1'
         params['env']['ERL_EPMD_RELAXED_COMMAND_CHECK'] = '1'
 
         params['close_fds'] = True
