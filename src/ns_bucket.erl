@@ -567,7 +567,8 @@ failover_safety_rec(BaseSafety, ExtraSafety, [BucketConfig | RestConfigs],
                         RestConfigs, ActiveNodes, LiveNodes, NumGroups).
 
 -spec failover_warnings(map()) -> [failoverNeeded | rebalanceNeeded |
-                                   hardNodesNeeded | softNodesNeeded].
+                                   hardNodesNeeded | softNodesNeeded |
+                                   unbalancedServerGroups].
 failover_warnings(Snapshot) ->
     ActiveNodes = ns_cluster_membership:service_active_nodes(Snapshot, kv),
     LiveNodes = ns_cluster_membership:service_actual_nodes(Snapshot, kv),
@@ -598,7 +599,27 @@ failover_warnings(Snapshot) ->
                      ?FS_SOFT_REBALANCE_NEEDED -> softRebalanceNeeded;
                      ?FS_OK -> ok
                  end,
-    [S || S <- [BaseSafety, ExtraSafety], S =/= ok].
+
+    Warnings = [S || S <- [BaseSafety, ExtraSafety], S =/= ok],
+    case cluster_compat_mode:is_cluster_NEO() andalso
+        not racks_balanced(KvGroups) of
+        true ->
+            [unbalancedServerGroups | Warnings];
+        false ->
+            Warnings
+    end.
+
+racks_balanced([]) ->
+    true;
+racks_balanced([Group | Rest]) ->
+    Nodes = proplists:get_value(nodes, Group),
+    GroupSize = length(Nodes),
+
+    lists:all(
+      fun (OtherGroup) ->
+              OtherNodes = proplists:get_value(nodes, OtherGroup),
+              length(OtherNodes) =:= GroupSize
+      end, Rest).
 
 map_to_replicas(Map) ->
     lists:foldr(

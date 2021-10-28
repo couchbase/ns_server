@@ -69,6 +69,8 @@ function formatFailoverWarnings() {
       return 'Additional active servers or server groups required to provide the desired number of replicas.';
     case 'softRebalanceNeeded':
       return 'Rebalance recommended, some data does not have the desired replicas configuration.';
+    case 'unbalancedServerGroups':
+      return 'Server groups are unbalanced; this may result in uneven load distrubution.';
     default: return warning;
     }
   };
