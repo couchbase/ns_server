@@ -425,7 +425,6 @@ roles() ->
        {[{bucket, bucket_name}, settings], [read]},
        {[{bucket, bucket_name}, stats], [read]},
        {[settings, indexes], [read]},
-       {[stats], [read]},
        {[ui], [read]},
        {[pools], [read]}]},
      {query_system_catalog, [],
