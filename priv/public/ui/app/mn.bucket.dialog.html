@@ -22,12 +22,13 @@ licenses/APL2.txt.
         <div class="row">
           <label>Name</label>
           <ng-template #authorizedUsers>
-            <div *ngFor="let user of ((users | async).slice(0, 3))">
+            <div *ngIf="!(users | async)" class="loading"></div>
+            <div *ngFor="let user of ((users | async)?.slice(0, 3))">
               {{user}}
             </div>
             <a
-               *ngIf="showUsersRedirect | async"
-               (click)="clickShowUsersRedirect.next()">
+               *ngIf="showUsersLink | async"
+               (click)="clickUsersLink.next()">
               more ...</a>
           </ng-template>
           <span
@@ -35,7 +36,9 @@ licenses/APL2.txt.
              [ngbTooltip]="authorizedUsers"
              triggers="click"
              placement="right">
-            <a class="cursor-pointer">
+            <a
+               class="cursor-pointer"
+               uiSref="app.admin.security.roles.user">
               <span class="text-smaller">authorized users</span>
             </a>
           </span>

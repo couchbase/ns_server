@@ -46,7 +46,7 @@ class MnAdminService {
     this.http = http;
     this.stream.etag = new BehaviorSubject();
 
-    this.stream.whomi =
+    this.stream.whoami =
       (new BehaviorSubject()).pipe(
         switchMap(this.getWhoami.bind(this)),
         shareReplay({refCount: true, bufferSize: 1})

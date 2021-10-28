@@ -37,20 +37,22 @@ class MnUserRolesService {
     });
   }
 
-  getUniqueUsers(permissions) {
+  getUniqueUsers(permissions, whoAmI) {
     let uniqUsers = {};
-    permissions.forEach(function (permission) {
-      permission.users.forEach(function (user) {
-        let name = "";
-        if (user.id.length > 16) {
-          name += (user.id.substring(0, 16) + "...");
-        } else {
-          name += user.id;
-        }
-        name += (" (" + (user.domain === "local" ? "couchbase" : user.domain) + ")");
 
-        uniqUsers[user.domain + user.id] = name;
-      });
+    function createUserName(user) {
+      let name = "";
+      if (user.id.length > 16) {
+        name += (user.id.substring(0, 16) + "...");
+      } else {
+        name += user.id;
+      }
+      name += (" (" + (user.domain === "local" ? "couchbase" : user.domain) + ")");
+      return name;
+    }
+    uniqUsers[whoAmI.domain + whoAmI.id] = createUserName(whoAmI);
+    permissions.forEach(function (permission) {
+      permission.users.forEach(user => uniqUsers[user.domain + user.id] = createUserName(user));
     });
 
     return Object.values(uniqUsers);

@@ -12,9 +12,9 @@ import {ChangeDetectionStrategy, Component} from '@angular/core';
 import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
 import {FormBuilder} from '@angular/forms';
 import {UIRouter} from '@uirouter/angular';
-import {Subject, BehaviorSubject, combineLatest, pipe} from 'rxjs';
+import {BehaviorSubject, combineLatest, pipe} from 'rxjs';
 import {map, merge, pluck, filter, shareReplay, startWith,
-  takeUntil, distinctUntilChanged, withLatestFrom} from 'rxjs/operators';
+  takeUntil, distinctUntilChanged, withLatestFrom, combineLatest as combineLatestOp} from 'rxjs/operators';
 
 import {MnAlertsService, MnPermissions} from './ajs.upgraded.providers.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
@@ -241,35 +241,25 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
       (['threadsNumber','evictionPolicy']).forEach(this.threadsEvictionWarning.bind(this));
     }
 
-    let combinedPermissionsStreams =
+    let usersByPermission =
       this.mnPermissionsService.generateBucketPermissions({
-         name: this.bucket ? this.bucket.name : '.'
+        name: this.bucket ? this.bucket.name : '.'
       }).map(permission =>
-             this.mnUserRolesService.getUsers({
-               permission: permission,
-               pageSize: 4
-             }));
+        this.mnUserRolesService.getUsers({
+          permission: permission,
+          pageSize: 4
+        }));
 
-    this.users = combineLatest(combinedPermissionsStreams)
-      .pipe(map(response => this.mnUserRolesService.getUniqueUsers(response)),
-            shareReplay({refCount: true, bufferSize: 1}));
+    this.users = this.mnAdminService.stream.whoami
+      .pipe(combineLatestOp(usersByPermission),
+            map(this.getAuthorizedUsers.bind(this)),
+            shareReplay(1));
 
-    this.showAuthorizedUsers =
-      combineLatest(this.users,
-                    this.permissions)
-      .pipe(map(this.isAuthorizedUsersVisible.bind(this)),
-            shareReplay({refCount: true, bufferSize: 1}));
+    this.showAuthorizedUsers = this.permissions
+      .pipe(map(this.isAuthorizedUsersVisible.bind(this)));
 
-    this.showUsersRedirect = this.showAuthorizedUsers
-      .pipe(map(usersCount => usersCount > 3));
-
-    this.clickShowUsersRedirect = new Subject();
-    this.clickShowUsersRedirect
-      .pipe(takeUntil(this.mnOnDestroy))
-      .subscribe(() => {
-        this.activeModal.dismiss();
-        this.uiRouter.stateService.go('app.admin.security.roles.user');
-      });
+    this.showUsersLink = this.users
+      .pipe(map(users => users.length > 3));
   }
 
   getBucketTotalRam(ramSummary) {
@@ -352,8 +342,12 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
     return enabled && error;
   }
 
-  isAuthorizedUsersVisible([users, permissions]) {
-    return permissions.cluster.admin.security.read && users.length;
+  isAuthorizedUsersVisible(permissions) {
+    return permissions.cluster.admin.security.read;
+  }
+
+  getAuthorizedUsers([whoAmI, ...usersByPermission]) {
+    return this.mnUserRolesService.getUniqueUsers(usersByPermission, whoAmI);
   }
 
   packData([, compat55, isEnterprise]) {
