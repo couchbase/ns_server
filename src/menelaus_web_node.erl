@@ -82,11 +82,11 @@ handle_node_init(Req) ->
       [validator:has_params(_), validator:unsupported(_)]).
 
 node_init_validators() ->
-    [validator:touch(dataPath, _),
-     validator:touch(indexPath, _),
-     validator:touch(analyticsPath, _),
-     validator:touch(eventingPath, _),
-     validator:touch(javaHome, _),
+    [validator:trimmed_string(dataPath, _),
+     validator:trimmed_string(indexPath, _),
+     validator:trimmed_string(analyticsPath, _),
+     validator:trimmed_string(eventingPath, _),
+     validator:trimmed_string(javaHome, _),
      validator:validate(
        fun (_) ->
            case ns_cluster_membership:system_joinable() of

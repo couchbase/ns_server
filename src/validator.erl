@@ -28,6 +28,7 @@
          convert/3,
          one_of/3,
          string/2,
+         trimmed_string/2,
          boolean/2,
          integer/2,
          integer/4,
@@ -346,15 +347,25 @@ one_of(Name, List, State) ->
               end
       end, Name, State).
 
+trimmed_string(Name, State) ->
+    string(Name, true, State).
+
 string(Name, State) ->
+    string(Name, false, State).
+
+string(Name, Trim, State) ->
     validate(
       case is_json(State) of
           true ->
-              fun (Binary) when is_binary(Binary) ->
+              fun (Binary) when is_binary(Binary), Trim ->
+                      {value, string:trim(binary_to_list(Binary))};
+                  (Binary) when is_binary(Binary) ->
                       {value, binary_to_list(Binary)};
                   (_) ->
                       {error, "Value must be json string"}
               end;
+          false when Trim ->
+              fun (S) -> {value, string:trim(S)} end;
           false ->
               fun (_) -> ok end
       end, Name, State).
