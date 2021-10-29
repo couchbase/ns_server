@@ -46,6 +46,11 @@ licenses/APL2.txt.
     novalidate>
     <div style="height:calc(100% - 112px);overflow:auto;" class="show-scrollbar">
       <div class="panel-content">
+        <div
+           class="error"
+           [hidden]="!(postClusterInitHttp.error | async)?.errors._">
+          {{(postClusterInitHttp.error | async)?.errors._}}
+        </div>
         <mn-hostname-config
            [isHostCfgEnabled]="true"
            [group]="newClusterConfigForm.get('clusterStorage')">

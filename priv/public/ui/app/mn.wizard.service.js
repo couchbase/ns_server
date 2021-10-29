@@ -143,6 +143,11 @@ class MnWizardService {
       .addSuccess()
       .addError();
 
+    this.stream.postClusterInitHttp =
+      new MnHttpRequest(this.postClusterInit.bind(this))
+      .addSuccess()
+      .addError();
+
     this.stream.diskStorageHttp =
       new MnHttpRequest(this.postDiskStorage.bind(this))
       .addSuccess()
@@ -365,6 +370,10 @@ class MnWizardService {
 
   postNodeInit(data) {
     return this.http.post('/nodeInit', data);
+  }
+
+  postClusterInit(data) {
+    return this.http.post('/clusterInit', data);
   }
 
   postDiskStorage(config) {

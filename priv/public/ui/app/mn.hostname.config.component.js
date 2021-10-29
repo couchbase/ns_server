@@ -40,6 +40,7 @@ class MnHostnameConfigComponent extends MnLifeCycleHooksToStream {
     super();
     this.focusFieldSubject = new BehaviorSubject(true);
     this.postNodeInitHttp = mnWizardService.stream.postNodeInitHttp;
+    this.postClusterInitHttp = mnWizardService.stream.postClusterInitHttp;
     this.setupNetConfigHttp = mnWizardService.stream.setupNetConfigHttp;
     this.enableExternalListenerHttp = mnWizardService.stream.enableExternalListenerHttp;
     this.isEnterprise = mnPoolsService.stream.isEnterprise;

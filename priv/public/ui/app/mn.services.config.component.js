@@ -16,6 +16,7 @@ import {takeUntil, map, withLatestFrom, filter, switchMap,
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnPoolsService} from './mn.pools.service.js';
 import {MnAdminService} from "./mn.admin.service.js";
+import {MnWizardService} from './mn.wizard.service.js';
 
 export {MnServicesConfigComponent};
 
@@ -36,12 +37,14 @@ class MnServicesConfigComponent extends MnLifeCycleHooksToStream {
 
   static get parameters() { return [
     MnAdminService,
-    MnPoolsService
+    MnPoolsService,
+    MnWizardService
   ]}
 
-  constructor(mnAdminService, mnPoolsService) {
+  constructor(mnAdminService, mnPoolsService, mnWizardService) {
     super();
     this.postPoolsDefaultValidation = mnAdminService.stream.postPoolsDefaultValidation;
+    this.postClusterInitHttp = mnWizardService.stream.postClusterInitHttp;
     this.isEnterprise = mnPoolsService.stream.isEnterprise;
     this.quotaServices = mnPoolsService.stream.quotaServices;
     this.mnServices = mnPoolsService.stream.mnServices;

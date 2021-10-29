@@ -12,7 +12,7 @@ import {UIRouter} from '@uirouter/angular';
 import {Component, ChangeDetectionStrategy} from '@angular/core';
 import {BehaviorSubject, pipe} from 'rxjs';
 import {filter, map, withLatestFrom,
-        switchMap} from 'rxjs/operators';
+        switchMap, combineLatest} from 'rxjs/operators';
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnWizardService} from './mn.wizard.service.js';
@@ -22,6 +22,7 @@ import {MnAuthService} from "./mn.auth.service.js";
 import {MnHttpGroupRequest} from "./mn.http.request.js";
 import {MnAdminService} from "./mn.admin.service.js";
 import {MnPools} from "./ajs.upgraded.providers.js";
+import {clone} from 'ramda';
 
 export {MnWizardTermsAndConditionsComponent};
 
@@ -78,33 +79,9 @@ class MnWizardTermsAndConditionsComponent extends MnLifeCycleHooksToStream {
     this.defaultForm
       .setPackPipe(pipe(
         filter(this.isValid.bind(this)),
-        map(this.getNodeInitConfig.bind(this))))
-      .setPostRequest(mnWizardService.stream.postNodeInitHttp)
-      .setPackPipe(pipe(
-        withLatestFrom(mnPoolsService.stream.mnServices),
-        map(([, services]) => ({
-          services: services.join(","),
-          setDefaultMemQuotas : true
-        }))
-      ))
-      .setPostRequest(mnWizardService.stream.servicesHttp)
-      .setPackPipe(pipe(
-        withLatestFrom(mnPoolsService.stream.isEnterprise),
-        map(this.getValues.bind(this))
-      ))
-      .setPostRequest(new MnHttpGroupRequest({
-        postPoolsDefault: mnAdminService.stream.postPoolsDefault,
-        statsHttp: mnWizardService.stream.statsHttp
-      }).addSuccess().addError())
-      .setPackPipe(pipe(
-        withLatestFrom(mnPoolsService.stream.isEnterprise),
-        map(this.getFinalConfig.bind(this))
-      ))
-      .setPostRequest(new MnHttpGroupRequest({
-        indexesHttp: mnWizardService.stream.indexesHttp,
-        authHttp: mnWizardService.stream.authHttp
-      })
-      .addSuccess().addError())
+        combineLatest(mnPoolsService.stream.mnServices, mnPoolsService.stream.isEnterprise),
+        map(this.getClusterInitConfig.bind(this))))
+      .setPostRequest(mnWizardService.stream.postClusterInitHttp)
       .setPackPipe(map(mnWizardService.getUserCreds.bind(mnWizardService)))
       .setPostRequest(mnAuthService.stream.postUILogin)
       .clearErrors()
@@ -135,27 +112,17 @@ class MnWizardTermsAndConditionsComponent extends MnLifeCycleHooksToStream {
       'https://www.couchbase.com/community-license-agreement04272021';
   }
 
-  getNodeInitConfig() {
-    return {
-      hostname: this.initialValues.hostname
-    };
-  }
-
-  getFinalConfig(isEnterprise) {
-    return {
-      indexesHttp: {
-        storageMode: isEnterprise[1] ? "plasma" : "forestdb"
-      },
-      authHttp: [this.wizardForm.newCluster.value.user, false]
-    };
-  }
-
-  getValues() {
-    return {
-      postPoolsDefault: {
-        clusterName: this.wizardForm.newCluster.get("clusterName").value
-      },
-      statsHttp: this.wizardForm.termsAndConditions.get("enableStats").value
-    };
+  getClusterInitConfig([, services, isEnterprise]) {
+    let userData = clone(this.wizardForm.newCluster.value.user);
+    delete userData.passwordVerify;
+    userData.port = "SAME";
+    return Object.assign({
+        hostname: this.initialValues.hostname,
+        services: services.join(","),
+        sendStats: this.wizardForm.termsAndConditions.get("enableStats").value,
+        clusterName: this.wizardForm.newCluster.get("clusterName").value,
+        setDefaultMemQuotas : true,
+        indexerStorageMode: isEnterprise ? "plasma" : "forestdb"
+      }, userData)
   }
 }

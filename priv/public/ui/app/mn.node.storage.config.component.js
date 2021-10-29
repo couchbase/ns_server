@@ -38,6 +38,7 @@ class MnNodeStorageConfigComponent extends MnLifeCycleHooksToStream {
     super();
     this.isEnterprise = mnPoolsService.stream.isEnterprise;
     this.postNodeInitHttp = mnWizardService.stream.postNodeInitHttp
+    this.postClusterInitHttp = mnWizardService.stream.postClusterInitHttp
   }
 
   addCbasPathField() {

@@ -26,7 +26,11 @@
          controlName="setup_db_path_input">
       </mn-path-field>
     </div>
-
+    <div
+       class="error"
+       [hidden]="!(postClusterInitHttp.error | async)?.errors?.path">
+      {{(postClusterInitHttp.error | async)?.errors.path}}
+    </div>
     <div class="formrow">
       <div class="row">
         <label for="setup_index_path_input">Indexes Disk Path</label>
@@ -38,6 +42,11 @@
       </mn-path-field>
     </div>
 
+    <div
+       class="error"
+       [hidden]="!(postClusterInitHttp.error | async)?.errors?.index_path">
+      {{(postClusterInitHttp.error | async)?.errors.index_path}}
+    </div>
     <div class="formrow" *ngIf="isEnterprise | async">
       <div class="row">
         <label for="setup_eventing_path_input">Eventing Disk Path</label>
@@ -48,7 +57,11 @@
          controlName="setup_eventing_path_input">
       </mn-path-field>
     </div>
-
+    <div
+       class="error"
+       [hidden]="!(postClusterInitHttp.error | async)?.errors?.eventing_path">
+      {{(postClusterInitHttp.error | async)?.errors.eventing_path}}
+    </div>
     <div class="formrow" *ngIf="isEnterprise | async">
       <div class="row">
         <label for="setup_cbas_path_input0">Analytics Disk Paths</label>
@@ -79,6 +92,10 @@
          (click)="removeCbasPathField()"
          type="button">-</button>
     </div>
-
+    <div
+       class="error"
+       [hidden]="!(postClusterInitHttp.error | async)?.errors?.cbas_path">
+      {{(postClusterInitHttp.error | async)?.errors.cbas_path}}
+    </div>
   </div>
 </div>
