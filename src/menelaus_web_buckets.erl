@@ -1900,7 +1900,10 @@ run_on_node({M, F, A}, Nodes, Req) ->
                 true ->
                     Node = menelaus_util:choose_node_consistently(Req, Nodes),
                     case rpc:call(Node, M, F, A) of
-                        {badrpc, _} = Error -> {error, Error};
+                        {badrpc, _} = Error ->
+                            ?log_error("RPC to node ~p (~p:~p) failed: ~p",
+                                       [Node, M, F, Error]),
+                            {error, Error};
                         Docs -> {ok, Docs}
                     end;
                 false -> {error, nonodes}
