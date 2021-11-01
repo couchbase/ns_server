@@ -172,11 +172,16 @@ handle_info(_Info, State, _ReplicatorFun) ->
 send_dedup_gc_msg() ->
     erlang:send_after(?DEDUP_GC_TIME, self(), dedup_gc).
 
-order_entries([{?METADATA_SEQNUM, _} | A = #log_entry{}],
-              [{?METADATA_SEQNUM, _} | B = #log_entry{}]) ->
-    A#log_entry.timestamp >= B#log_entry.timestamp;
-order_entries(A = #log_entry{}, B = #log_entry{}) ->
-    A#log_entry.timestamp >= B#log_entry.timestamp.
+order_entries([{?METADATA_SEQNUM, _} | #log_entry{timestamp = TimestampA,
+                                                  uuid = UUIDA}],
+              [{?METADATA_SEQNUM, _} | #log_entry{timestamp = TimestampB,
+                                                  uuid = UUIDB}]) ->
+    {TimestampA, UUIDA} >= {TimestampB, UUIDB};
+order_entries(#log_entry{timestamp = TimestampA,
+                         uuid = UUIDA},
+              #log_entry{timestamp = TimestampB,
+                         uuid = UUIDB}) ->
+    {TimestampA, UUIDA} >= {TimestampB, UUIDB}.
 
 strip_seqnum_in_logs(Logs) ->
     [strip_seqnum(Log) || Log <- Logs].
@@ -259,8 +264,49 @@ build_events_json(MinTStamp, Limit) ->
 
 -ifdef(TEST).
 order_entries_test() ->
-    A = #log_entry{timestamp="2021-08-23T05:24:32.585Z"},
-    B = #log_entry{timestamp="2021-08-23T05:24:09.625Z"},
-    [A,B] = lists:sort(fun order_entries/2, [A,B]),
-    [A,B] = lists:sort(fun order_entries/2, [B,A]).
+    A = #log_entry{timestamp="2021-08-23T05:24:32.585Z",
+                   uuid = "f493e1e4-4fe2-4cc8-87b1-10e615510f76"},
+    B = #log_entry{timestamp="2021-08-23T05:24:09.625Z",
+                   uuid = "7c5e1975-c8ff-4d23-a672-46a114e4a963"},
+    [A, B] = lists:sort(fun order_entries/2, [A, B]),
+    [A, B] = lists:sort(fun order_entries/2, [B, A]).
+
+merge_remote_logs_test() ->
+    A = #log_entry{timestamp = "2021-08-23T05:24:32.585Z",
+                   uuid = "f493e1e4-4fe2-4cc8-87b1-10e615510f76"},
+    B = #log_entry{timestamp = "2021-08-23T05:24:32.585Z",
+                   uuid = "7c5e1975-c8ff-4d23-a672-46a114e4a963"},
+    C = #log_entry{timestamp = "2021-08-23T05:24:30.585Z",
+                   uuid = "90d0ee97-5e19-471d-9d20-2372d54f0712"},
+
+    %% Assert the expected sorting order.
+    Logs = [A, B, C] = lists:sort(fun order_entries/2, [A, B, C]),
+
+    [A, B, C] = merge_remote_logs(Logs, [], 5),
+    [A, B, C] = merge_remote_logs([], Logs, 5),
+    [A, B, C] = merge_remote_logs(Logs, Logs, 5),
+    [A, B, C] = merge_remote_logs(Logs, [A], 5),
+    [A, B, C] = merge_remote_logs([A], Logs, 5),
+    [A, B, C] = merge_remote_logs(Logs, [B], 5),
+    [A, B, C] = merge_remote_logs([B], Logs, 5),
+    [A, B, C] = merge_remote_logs(Logs, [C], 5),
+    [A, B, C] = merge_remote_logs([C], Logs, 5),
+
+    [A, B, C] = merge_remote_logs(Logs, [B, C], 5),
+    [A, B, C] = merge_remote_logs([B, C], Logs, 5),
+
+    [A, B, C] = merge_remote_logs(Logs, [A, C], 5),
+    [A, B, C] = merge_remote_logs([A, C], Logs, 5),
+
+    [A, B, C] = merge_remote_logs(Logs, [A, B], 5),
+    [A, B, C] = merge_remote_logs([A, B], Logs, 5),
+    [A, B] = merge_remote_logs([A, B], Logs, 2),
+
+    D = #log_entry{timestamp = "2021-08-23T05:24:40.585Z",
+                   uuid = "c42f0f48-580c-45aa-bd29-56f6a6432469"},
+
+    [D, A, B, C] = merge_remote_logs(Logs, [D], 5),
+    [D, A, B, C] = merge_remote_logs([D], Logs, 5),
+    [D, A, B, C] = merge_remote_logs([D, B], Logs, 5),
+    [D, A, B, C] = merge_remote_logs(Logs, [D, B], 5).
 -endif.
