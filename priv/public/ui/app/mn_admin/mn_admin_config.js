@@ -37,6 +37,7 @@ import mnTasksDetails from "../components/mn_tasks_details.js";
 import mnLostConnection from "./mn_lost_connection_config.js";
 import {MnAdminService} from "../mn.admin.service.js";
 import {MnSessionService} from "../mn.session.service.js";
+import {MnStatsService} from "../mn.stats.service.js";
 
 import mnDetailStatsModule from "../components/directives/mn_detail_stats_controller.js";
 
@@ -74,7 +75,8 @@ angular.module('mnAdmin', [
 ]).config(mnAdminConfig)
   .controller('mnAdminController', mnAdminController)
   .factory('mnAdminService', downgradeInjectable(MnAdminService))
-  .factory('mnSessionService', downgradeInjectable(MnSessionService));
+  .factory('mnSessionService', downgradeInjectable(MnSessionService))
+  .factory('mnStatsServiceDowngraded', downgradeInjectable(MnStatsService));
 
 //https://github.com/angular-ui/ui-select/issues/1560
 angular.module('ui.select').run(function($animate) {
