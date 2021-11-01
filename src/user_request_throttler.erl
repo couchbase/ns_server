@@ -169,7 +169,7 @@ init([]) ->
     ns_pubsub:subscribe_link(user_storage_events,
                              user_storage_event(Self, _)),
     Self ! cleanup_deleted_user_stats,
-    timer:send_after(?ONE_MINUTE, Self, clear_timed_stats),
+    erlang:send_after(?ONE_MINUTE, Self, clear_timed_stats),
     {ok, #state{}}.
 
 handle_call({note_identity_request, Pid, UUID, Ingress}, _From, State) ->
@@ -237,9 +237,8 @@ handle_info({'DOWN', MRef, process, _Pid, Reason},
                    end;
                _ ->
                    ?log_debug("Failed cleanup_deleted_user_stats, retrying."),
-                   {ok, Ref} = timer:send_after(?ONE_MINUTE, self(),
-                                                cleanup_deleted_user_stats),
-                   Ref
+                   erlang:send_after(?ONE_MINUTE, self(),
+                                     cleanup_deleted_user_stats)
            end,
     {noreply, State#state{cleanup_mref = undefined,
                           cleanup_pending = false,
@@ -250,7 +249,7 @@ handle_info({'DOWN', MRef, process, Pid, _Reason}, State) ->
     {noreply, State};
 handle_info(clear_timed_stats, State) ->
     true = ets:delete_all_objects(?USER_TIMED_STATS),
-    timer:send_after(?ONE_MINUTE, self(), clear_timed_stats),
+    erlang:send_after(?ONE_MINUTE, self(), clear_timed_stats),
     {noreply, State};
 handle_info({local_user_deleted, UUID}, State) ->
     ?log_debug("Deleting stats for ~p", [UUID]),
@@ -283,7 +282,7 @@ code_change(_OldVsn, State, _Extra) ->
 cancel_timer(undefined) ->
     ok;
 cancel_timer(Tref) ->
-    timer:cancel(Tref).
+    erlang:cancel_timer(Tref).
 
 decrement_num_concurrent_request(UUID) ->
     case menelaus_users:is_deleted_user(UUID) of
