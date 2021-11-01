@@ -275,5 +275,5 @@ exports.Search = function(editor, isReplace, showOptions) {
 
 });
                 (function() {
-                    window.require(["ace/ext/searchbox"], function() {});
+                    ace.require(["ace/ext/searchbox"], function() {});
                 })();
