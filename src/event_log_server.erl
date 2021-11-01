@@ -133,11 +133,23 @@ modify_recent(Recent, RecentMax) ->
 %% Logs in Pending list are ordered in the sequence they are received by the
 %% gossip_replictor gen_server and therefore have to sorted by order_entries/2
 %% before being merged with the Recent Logs.
+%%
+%% Note: Pending list can have duplicate logs. Consider the following sequence
+%% of events:
+%%
+%% 1) A log with UUID1 was added. After a minute the log is removed from the
+%%    dedup_list via handle_info(dedup_gc, ...).
+%% 2) log with UUID1 is added again (due to a client re-try after more that 60
+%%    secs, highly unlikely, but can still happen).
+%% 3) Flush pending list wasn't called between 1 and 2.
+%%
+%% Pending list now has duplicate entries (2 logs with UUID1).
+%% Therefore as an extra caution sort 'Pending' list using lists:usort/2.
 merge_pending_list(Recent, Pending, MaxLen) ->
     lists:sublist(
       lists:umerge(fun order_entries/2,
                    Recent,
-                   lists:sort(fun order_entries/2, Pending)),
+                   lists:usort(fun order_entries/2, Pending)),
                    MaxLen).
 
 %% NOTE: Both RemoteLogs and LocalLogs are already sorted by order_entries/2.
