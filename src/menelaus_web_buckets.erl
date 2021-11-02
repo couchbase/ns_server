@@ -334,9 +334,7 @@ build_pitr_dynamic_bucket_info(BucketConfig) ->
 build_magma_bucket_info(BucketConfig) ->
     case ns_bucket:storage_mode(BucketConfig) of
         magma ->
-            Pct = ns_bucket:magma_fragmentation_percentage(BucketConfig),
-            [{fragmentationPercentage, Pct},
-             {storageQuotaPercentage,
+            [{storageQuotaPercentage,
               proplists:get_value(storage_quota_percentage, BucketConfig,
                                   ?MAGMA_STORAGE_QUOTA_PERCENTAGE)}];
         _ ->
@@ -850,27 +848,10 @@ basic_bucket_params_screening(Ctx, Params) ->
     %% Basic parameter checking has been done. Take the non-error key/values
     %% and do additional checking (e.g. relationships between different
     %% keys).
-    OKs0 = [{K, V} || {ok, K, V} <- Candidates],
-    %% TODO: remove once clients transition off fragmentationPercentage
-    OKs = maybe_adjust_frag_percents(OKs0),
+    OKs = [{K, V} || {ok, K, V} <- Candidates],
     Errors =  [{K, V} || {error, K, V} <- Candidates],
     AdditionalErrors = additional_bucket_params_validation(OKs, Ctx),
     {OKs, Errors ++ AdditionalErrors}.
-
-%% TODO: deprecate once fragmentationPercentage is no longer used.
-%% Take the value specified in frag_percent and move it to the
-%% magma_fragmentation_percentage in the autocompaction settings.
-maybe_adjust_frag_percents(Params) ->
-    case proplists:get_value(frag_percent, Params) of
-        undefined ->
-            Params;
-        Pct ->
-            %% Only one autocompaction setting for magma
-            NewSettings = [{magma_fragmentation_percentage, Pct}],
-            NewParams = lists:keystore(autocompaction, 1, Params,
-                                       {autocompaction, NewSettings}),
-            proplists:delete(frag_percent, NewParams)
-    end.
 
 validate_common_params(#bv_ctx{bucket_name = BucketName,
                                bucket_config = BucketConfig, new = IsNew,
@@ -935,8 +916,6 @@ validate_membase_bucket_params(CommonParams, Params,
          parse_validate_pitr_enabled(Params, IsNew, IsDeveloperPreview),
          parse_validate_pitr_granularity(Params, IsNew, IsDeveloperPreview),
          parse_validate_pitr_max_history_age(Params, IsNew, IsDeveloperPreview),
-         parse_validate_frag_percent(Params, BucketConfig, IsNew, Version,
-                                     IsEnterprise),
          parse_validate_storage_quota_percentage(Params, BucketConfig, IsNew, Version,
                                                  IsEnterprise),
          parse_validate_max_ttl(Params, BucketConfig, IsNew, IsEnterprise),
@@ -1581,62 +1560,6 @@ is_magma(Params, _BucketCfg, true = _IsNew) ->
     proplists:get_value("storageBackend", Params, "couchstore") =:= "magma";
 is_magma(_Params, BucketCfg, false = _IsNew) ->
     ns_bucket:storage_mode(BucketCfg) =:= magma.
-
-parse_validate_frag_percent(Params, BucketConfig, IsNew, Version,
-                            IsEnterprise) ->
-    Percent = proplists:get_value("fragmentationPercentage", Params),
-    IsCompat = cluster_compat_mode:is_version_NEO(Version),
-    IsMagma = is_magma(Params, BucketConfig, IsNew),
-    parse_validate_frag_percent_inner(IsEnterprise, IsCompat, Percent,
-                                      BucketConfig, IsNew, IsMagma).
-
-parse_validate_frag_percent_inner(_IsEnterprise, _IsCompat, undefined,
-                                  _BucketCfg, _IsNew, _IsMagma) ->
-    %% Percent wasn't specified
-    ignore;
-parse_validate_frag_percent_inner(false = _IsEnterprise, _IsCompat, _Percent,
-                                  _BucketCfg, _IsNew, _IsMagma) ->
-    {error, fragmentationPercentage,
-     <<"Fragmentation percentage is supported in enterprise edition only">>};
-parse_validate_frag_percent_inner(_IsEnterprise, false = _IsCompat, _Percent,
-                                  _BucketCfg, _IsNew, _IsMagma) ->
-    {error, fragmentationPercentage,
-     <<"Fragmentation percentage cannot be set until the cluster is fully "
-       "upgraded to NEO">>};
-parse_validate_frag_percent_inner(true = _IsEnterprise, true = _IsCompat,
-                                  undefined, _BucketCfg, _IsNew,
-                                  false = _IsMagma) ->
-    %% Not a magma bucket and percent wasn't specified
-    ignore;
-parse_validate_frag_percent_inner(true = _IsEnterprise, true = _IsCompat,
-                                  _Percent, _BucketCfg, _IsNew,
-                                  false = _IsMagma) ->
-    {error, fragmentationPercentage,
-     <<"Fragmentation percentage is only used with Magma">>};
-parse_validate_frag_percent_inner(true = _IsEnterprise, true = _IsCompat,
-                                  Percent, BucketCfg, IsNew,
-                                  true = _IsMagma) ->
-    DefaultVal = case IsNew of
-                     true ->
-                         Pct = compaction_daemon:global_magma_frag_percent(),
-                         integer_to_list(Pct);
-                     false -> proplists:get_value(frag_percent, BucketCfg)
-                 end,
-    validate_with_missing(Percent, DefaultVal, IsNew,
-                          fun do_parse_validate_frag_percent/1).
-
-do_parse_validate_frag_percent(Val) ->
-    case menelaus_util:parse_validate_number(Val, ?MIN_MAGMA_FRAG_PERCENTAGE,
-                                             ?MAX_MAGMA_FRAG_PERCENTAGE) of
-        {ok, X} ->
-            {ok, frag_percent, X};
-        _Error ->
-            Msg = io_lib:format("Fragmentation percentage must be between ~p "
-                                "and ~p, inclusive",
-                                [?MIN_MAGMA_FRAG_PERCENTAGE,
-                                 ?MAX_MAGMA_FRAG_PERCENTAGE]),
-            {error, fragmentationPercentage, iolist_to_binary(Msg)}
-    end.
 
 parse_validate_storage_quota_percentage(Params, BucketConfig, IsNew, Version,
                                         IsEnterprise) ->
