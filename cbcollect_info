@@ -1261,6 +1261,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
             make('SELECT requests.*, '
                  '"<ud>"||requests.statement||"</ud>" AS statement, '
                  '"<ud>"||requests.preparedText||"</ud>" AS preparedText, '
+                 '"<ud>"||meta().plan||"</ud>" AS plan, '
                  '"<ud>"||requests.namedArgs||"</ud>" AS namedArgs, '
                  '"<ud>"||requests.positionalArgs||"</ud>" AS positionalArgs, '
                  '"<ud>"||requests.users||"</ud>" AS users '
