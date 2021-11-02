@@ -125,6 +125,7 @@ function mnServersListItemDetailsController($scope, mnServersListItemDetailsServ
   }
 
   function getLatestStat(statName, stats) {
+    statName = statName.split(".").pop();
     return stats.stats[statName] && stats.stats[statName][$scope.node.hostname];
   }
 
