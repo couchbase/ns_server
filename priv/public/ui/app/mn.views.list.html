@@ -12,7 +12,7 @@
   <div class="header-controls resp-hide-sml">
     <a
         (click)="createDialog.next()"
-        [hidden]="!(isDevelopmentViews | async) || !(buckets | async).length">
+        [hidden]="!(showAddView | async)">
       ADD VIEW
     </a>
   </div>

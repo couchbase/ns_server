@@ -78,7 +78,7 @@ class MnViewsListComponent extends MnLifeCycleHooksToStream {
       .pipe(pluck('commonBucket'));
 
     this.type = uiRouter.globals.params$
-      .pipe(pluck('type'));
+      .pipe(pluck('type'), distinctUntilChanged());
 
     this.form = mnFormService.create(this)
       .setFormGroup({ item: null })
@@ -132,6 +132,31 @@ class MnViewsListComponent extends MnLifeCycleHooksToStream {
 
     this.isDevelopmentViews = this.type
       .pipe(map(this.isDevelopmentViews.bind(this)));
+
+    this.showAddView =
+      combineLatest(this.isDevelopmentViews,
+                    this.allowedBuckets,
+                    this.commonBucket)
+      .pipe(map(([isDevViews, buckets, commonBucket]) => {
+
+        if (!isDevViews || !buckets.length) {
+          return;
+        }
+
+        let bucket = buckets.find(b => b.name === commonBucket);
+
+        if (!bucket) {
+          return;
+        }
+
+        let bucketStatus = mnBucketsService.getNodesStatusClass(bucket.nodes);
+
+        if (bucketStatus !== "dynamic_healthy") {
+          return;
+        }
+
+        return true;
+      }));
 
     /* bucket dropdown */
 
