@@ -75,22 +75,37 @@ start_limits_cache() ->
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
+limit_exceeded_reply(Req, Exceeded) ->
+    Msg = iolist_to_binary(io_lib:format("Limit(s) exceeded ~p", [Exceeded])),
+    menelaus_util:reply_text(Req, Msg, 429).
+
 request(Req, ReqBody) ->
     case is_throttled(Req) of
         false ->
             ReqBody();
         {true, UUID, Limits} ->
+            %% We have to check if user is restricted outside gen_server. If we
+            %% do not do this then a rogue user can saturate the gen_server
+            %% starving the other users.
             case check_user_restricted(UUID, Limits) of
                 {true, Exceeded} ->
-                    Msg = iolist_to_binary(io_lib:format("Limit(s) exceeded ~p",
-                                                         [Exceeded])),
-                    menelaus_util:reply_text(Req, Msg, 429);
+                    limit_exceeded_reply(Req, Exceeded);
                 false ->
-                    ok = note_identity_request(Req, UUID),
-                    try
-                        ReqBody()
-                    after
-                        notify_request_done()
+                    %% We check if user is restricted again within gen_server
+                    %% because the time of check above, we may have allowed
+                    %% multiple requests from the same user, however only few of
+                    %% them maybe allowed according to limits set and/or the
+                    %% limits may have exceeded between the check and
+                    %% incrementing the user usage.
+                    case note_identity_request(Req, UUID, Limits) of
+                        ok ->
+                            try
+                                ReqBody()
+                            after
+                                notify_request_done()
+                            end;
+                        {error, LimitExceeded} ->
+                            limit_exceeded_reply(Req, LimitExceeded)
                     end
             end
     end.
@@ -117,12 +132,12 @@ is_throttled(Req) ->
             false
     end.
 
-note_identity_request(Req, UUID) ->
+note_identity_request(Req, UUID, Limits) ->
     Ingress = case mochiweb_request:recv_body(Req) of
                   undefined -> 0;
                   Body -> iolist_size(Body)
               end,
-    Call = {note_identity_request, self(), UUID, Ingress},
+    Call = {note_identity_request, self(), UUID, Ingress, Limits},
     gen_server:call(?MODULE, Call, infinity).
 
 note_egress(Req, EgressFun) when is_function(EgressFun, 0) ->
@@ -172,22 +187,29 @@ init([]) ->
     erlang:send_after(?ONE_MINUTE, Self, clear_timed_stats),
     {ok, #state{}}.
 
-handle_call({note_identity_request, Pid, UUID, Ingress}, _From, State) ->
-    MRef = erlang:monitor(process, Pid),
-    case menelaus_users:is_deleted_user(UUID) of
-        true ->
-            ok;
+handle_call({note_identity_request, Pid, UUID, Ingress, Limits}, _From, State) ->
+    case check_user_restricted(UUID, Limits) of
+        {true, Exceeded} ->
+            {reply, {error, Exceeded}, State};
         false ->
-            ets:insert_new(?PID_USER_TABLE, {Pid, MRef, UUID}),
-            NRC = ets:update_counter(?USER_STATS,
-                                     {UUID, num_concurrent_requests}, 1,
-                                     {{UUID, num_concurrent_requests}, 0}),
-            IC = ets:update_counter(?USER_TIMED_STATS, {UUID, ingress}, Ingress,
-                                    {{UUID, ingress}, 0}),
-            log_stats(num_concurrent_requests, UUID, NRC),
-            log_stats(ingress, UUID, IC)
-    end,
-    {reply, ok, State};
+            MRef = erlang:monitor(process, Pid),
+            case menelaus_users:is_deleted_user(UUID) of
+                true ->
+                    ok;
+                false ->
+                    ets:insert_new(?PID_USER_TABLE, {Pid, MRef, UUID}),
+                    NRC = ets:update_counter(
+                            ?USER_STATS,
+                            {UUID, num_concurrent_requests}, 1,
+                            {{UUID, num_concurrent_requests}, 0}),
+                    IC = ets:update_counter(
+                           ?USER_TIMED_STATS, {UUID, ingress}, Ingress,
+                           {{UUID, ingress}, 0}),
+                    log_stats(num_concurrent_requests, UUID, NRC),
+                    log_stats(ingress, UUID, IC)
+            end,
+            {reply, ok, State}
+    end;
 handle_call(Request, _From, State) ->
     ?log_error("Got unknown request ~p", [Request]),
     {reply, unhandled, State}.
