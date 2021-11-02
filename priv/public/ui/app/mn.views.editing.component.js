@@ -21,7 +21,7 @@ import { MnDocumentsService } from './mn.documents.service.js';
 import { MnViewsListService } from './mn.views.list.service.js';
 import { MnHelperService } from './mn.helper.service.js';
 import { MnFormService } from './mn.form.service.js';
-import { QwDialogService } from "/_p/ui/query/angular-directives/qw.dialog.service.js";
+import { QwDialogService } from '../../_p/ui/query/angular-directives/qw.dialog.service.js';
 
 import { MnViewsCreateDialogComponent } from './mn.views.create.dialog.component.js';
 

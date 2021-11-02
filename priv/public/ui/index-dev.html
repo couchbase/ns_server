@@ -1,0 +1,208 @@
+<!--
+     Copyright 2015-Present Couchbase, Inc.
+
+     Use of this software is governed by the Business Source License included in
+     the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
+     file, in accordance with the Business Source License, use of this software will
+     be governed by the Apache License, Version 2.0, included in the file
+     licenses/APL2.txt.
+-->
+
+<!doctype html>
+<html>
+  <head>
+    <title ng-bind="mnTitle">Couchbase Server</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+    <link rel="apple-touch-icon" sizes="180x180" href="../apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="../favicon-16x16.png">
+    <link rel="manifest" href="../manifest.json">
+    <link rel="mask-icon" href="../safari-pinned-tab.svg" color="#4287d6">
+    <meta name="apple-mobile-web-app-title" content="Couchbase Server">
+    <meta name="application-name" content="Couchbase Server">
+    <meta name="theme-color" content="#fff">
+
+    <link rel="stylesheet" type="text/css" href="app/css/cbui-base.css">
+    <link rel="stylesheet" type="text/css" href="app/css/cbui-layout.css">
+    <link rel="stylesheet" type="text/css" href="app/css/cbui-components.css">
+    <link rel="stylesheet" type="text/css" href="app/css/cbui-responsive.css">
+    <link rel="stylesheet" type="text/css" href="app/css/cbui-hybrid.css">
+
+    <link rel="stylesheet" type="text/css" href="app/css/font-awesome.css">
+    <link rel="stylesheet" type="text/css" href="app/css/modal.css">
+    <link rel="stylesheet" type="text/css" href="app/css/tooltip.css">
+    <link rel="stylesheet" type="text/css" href="libs/selectize.default.css">
+    <link rel="stylesheet" type="text/css" href="libs/angular-ui-select.css">
+    <link rel="stylesheet" type="text/css" href="libs/codemirror.css">
+
+    <link rel="stylesheet" type="text/css" href="../_p/ui/query/ui-current/query.css">
+    <link rel="stylesheet" type="text/css" href="../_p/ui/query/ui-current/data_display/qw-json-tree-table.css">
+
+    <link rel="stylesheet" type="text/css" href="../_p/ui/event/ui-current/fragments/styles.css">
+
+    <link rel="stylesheet" type="text/css" href="../_p/ui/fts/fts.css"/>
+    <link rel="stylesheet" type="text/css" href="../_p/ui/fts/lib/angular-ui-tree/dist/angular-ui-tree.min.css"/>
+
+    <script id="uib/template/modal/backdrop.html" type="text/ng-template">
+      <div
+         class="modal-backdrop in"
+         ng-class="{in: animate}"
+         ng-style="{'z-index': 1040 + (index && 1 || 0) + index*10}">
+      </div>
+    </script>
+    <script id="uib/template/modal/window.html" type="text/ng-template">
+      <div
+         tabindex="-1"
+         role="dialog"
+         class="row flex-center items-top dialog_main_wrapper break-word"
+         ng-class="windowTopClass"
+         ng-style="{'z-index': 1050 + index*10}">
+        <div class="panel dialog">
+          <a
+             class="ui-dialog-titlebar-close modal-close"
+             ng-click="$parent.$dismiss('X')">
+            X
+          </a>
+          <div ng-transclude></div>
+        </div>
+      </div>
+    </script>
+    <script id="uib/template/tooltip/tooltip-popup.html" type="text/ng-template">
+      <div class="tooltip"
+         tooltip-animation-class="fade"
+         uib-tooltip-classes
+         ng-class="{ in: isOpen() }">
+        <div class="tooltip-arrow"></div>
+        <div class="tooltip-inner" ng-bind="content"></div>
+      </div>
+    </script>
+    <script id="uib/template/tooltip/tooltip-template-popup.html" type="text/ng-template">
+      <div class="tooltip"
+         tooltip-animation-class="fade"
+         uib-tooltip-classes
+         ng-class="{ in: isOpen() }">
+        <div class="tooltip-arrow"></div>
+        <div class="tooltip-inner"
+           uib-tooltip-template-transclude="contentExp()"
+           tooltip-template-transclude-scope="originScope()"></div>
+      </div>
+    </script>
+    <script id="uib/template/tooltip/tooltip-html-popup.html" type="text/ng-template">
+      <div class="tooltip"
+         tooltip-animation-class="fade"
+         uib-tooltip-classes
+         ng-class="{ in: isOpen() }">
+        <div class="tooltip-arrow"></div>
+        <div class="tooltip-inner" ng-bind-html="contentExp()"></div>
+      </div>
+    </script>
+
+    <script src="libs/reflect-metadata.js"></script>
+    <script src="libs/zone.js"></script>
+
+
+    <script async src="libs/es-module-shims.min.js"></script>
+    <script type="importmap">
+     {
+         "imports": {
+             "common/tslib.es6-c4a4947b": "./web_modules/common/tslib.es6-c4a4947b.js",
+             "common/mergeMap-64c6f393": "./web_modules/common/mergeMap-64c6f393.js",
+             "common/merge-183efbc7": "./web_modules/common/merge-183efbc7.js",
+             "common/forkJoin-269e2e92": "./web_modules/common/forkJoin-269e2e92.js",
+             "common/share-d41e3509": "./web_modules/common/share-d41e3509.js",
+
+             "@uirouter/angularjs": "./web_modules/@uirouter/angularjs.js",
+             "angular": "./web_modules/angular.js",
+             "js-beautify": "./web_modules/js-beautify.js",
+             "lodash": "./web_modules/lodash.js",
+             "oclazyload": "./web_modules/oclazyload.js",
+             "clipboard": "./web_modules/clipboard.js",
+             "file-saver": "./web_modules/file-saver.js",
+             "codemirror": "./web_modules/codemirror.js",
+             "d3-array": "./web_modules/d3-array.js",
+             "d3-dsv": "./web_modules/d3-dsv.js",
+             "d3-format": "./web_modules/d3-format.js",
+             "d3-time": "./web_modules/d3-time.js",
+             "d3-time-format": "./web_modules/d3-time-format.js",
+             "d3-selection": "./web_modules/d3-selection.js",
+             "d3-scale-chromatic": "./web_modules/d3-scale-chromatic.js",
+             "d3-scale": "./web_modules/d3-scale.js",
+             "d3-axis": "./web_modules/d3-axis.js",
+             "d3-shape": "./web_modules/d3-shape.js",
+             "d3-brush": "./web_modules/d3-brush.js",
+             "d3-transition": "./web_modules/d3-transition.js",
+             "d3-interpolate": "./web_modules/d3-interpolate.js",
+             "d3-hierarchy": "./web_modules/d3-hierarchy.js",
+             "d3-zoom": "./web_modules/d3-zoom.js",
+             "angular-animate": "./web_modules/angular-animate.js",
+             "angular-messages": "./web_modules/angular-messages.js",
+             "angular-sanitize": "./web_modules/angular-sanitize.js",
+             "angular-ui-bootstrap": "./web_modules/angular-ui-bootstrap.js",
+             "@angular/common": "./web_modules/@angular/common.js",
+             "@angular/common/http": "./web_modules/@angular/common/http.js",
+             "@angular/compiler": "./web_modules/@angular/compiler.js",
+             "@angular/core": "./web_modules/@angular/core.js",
+             "@angular/forms": "./web_modules/@angular/forms.js",
+             "@angular/platform-browser": "./web_modules/@angular/platform-browser.js",
+             "@angular/platform-browser-dynamic": "./web_modules/@angular/platform-browser-dynamic.js",
+             "@angular/upgrade": "./web_modules/@angular/upgrade.js",
+             "@angular/upgrade/static": "./web_modules/@angular/upgrade/static.js",
+             "@ng-bootstrap/ng-bootstrap": "./web_modules/@ng-bootstrap/ng-bootstrap.js",
+             "rxjs": "./web_modules/rxjs.js",
+             "rxjs/operators": "./web_modules/rxjs/operators.js",
+             "@uirouter/rx": "./web_modules/@uirouter/rx.js",
+             "@uirouter/core": "./web_modules/@uirouter/core.js",
+             "@uirouter/angular": "./web_modules/@uirouter/angular.js",
+             "@uirouter/angular-hybrid": "./web_modules/@uirouter/angular-hybrid.js",
+             "ramda": "./web_modules/ramda.js",
+             "angular-ui-tree": "./web_modules/angular-ui-tree.js",
+             "sortablejs": "./web_modules/sortablejs.js",
+             "ipaddr": "./web_modules/ipaddr.js",
+             "ngx-clipboard": "./web_modules/ngx-clipboard.js",
+
+             "angular-ui-codemirror": "./libs/angular-ui-codemirror.js",
+             "ngclipboard": "./libs/ngclipboard.js",
+             "ace/ace": "./libs/ace/ace.js",
+             "ui-ace": "./libs/ui-ace.js",
+             "ace/ace-wrapper": "./libs/ace/ace-wrapper.js",
+             "ace/@nowzoo/ngx-ace": "./libs/ace/@nowzoo/ngx-ace.js",
+             "angular-legacy-sortable": "./libs/angular-legacy-sortable.js",
+             "ui-select": "./libs/ui-select.js",
+
+             "app": "./app/app.js",
+             "mn.core": "./app/mn.core.js",
+             "ajs.upgraded.providers": "./app/ajs.upgraded.providers.js",
+             "mn.app.imports": "./app/mn.app.imports.js",
+             "mn.element.crane": "./app/mn.element.crane.js",
+             "mn.select.module": "./app/mn.select.module.js",
+             "mn.admin.service": "./app/mn.admin.service.js",
+             "mn.pipes.module": "./app/mn.pipes.module.js",
+             "mn.shared.module": "./app/mn.shared.module.js",
+             "mn.http.interceptor": "./app/mn.http.interceptor.js",
+             "mn.input.filter.module": "./app/mn.input.filter.module.js",
+             "components/mn_alerts": "./app/components/mn_alerts.js",
+             "components/mn_jquery": "./app/components/mn_jquery.js",
+             "components/mn_pools": "./app/components/mn_pools.js",
+             "components/mn_poll": "./app/components/mn_poll.js",
+             "components/mn_helper": "./app/components/mn_helper.js",
+             "components/mn_pool_default": "./app/components/mn_pool_default.js",
+             "components/mn_permissions": "./app/components/mn_permissions.js",
+             "components/mn_pending_query_keeper": "./app/components/mn_pending_query_keeper.js",
+             "components/directives/mn_select/mn_select": "./app/components/directives/mn_select/mn_select.js",
+             "components/directives/mn_element_crane/mn_element_crane": "./app/components/directives/mn_element_crane/mn_element_crane.js",
+
+             "mn_admin/mn_servers_service": "./app/mn_admin/mn_servers_service.js",
+             "mn_admin/mn_statistics_service": "./app/mn_admin/mn_statistics_service.js",
+             "mn_admin/mn_statistics_description": "./app/mn_admin/mn_statistics_description.js",
+             "mn_admin/mn_statistics_chart_directive": "./app/mn_admin/mn_statistics_chart_directive.js",
+             "mn_admin/mn_gsi_footer_controller": "./app/mn_admin/mn_gsi_footer_controller.js",
+             "mn_admin/mn_documents_service": "./app/mn_admin/mn_documents_service.js"
+         }
+     }
+    </script>
+    <script src="app/main.js" type="module"></script>
+
+  </head>
+  <body ui-view=""></body>
+</html>

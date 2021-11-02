@@ -138,10 +138,18 @@ maybe_start_http_server(Type, Options) ->
             end
     end.
 
+get_approot() ->
+    case application:get_env(ns_server, approot) of
+        {ok, AppRoot} ->
+            AppRoot;
+        _ ->
+            menelaus_deps:local_path(["priv", "public"], ?MODULE)
+    end.
+
 webconfig() ->
     [{port, service_ports:get_port(rest_port)},
      {nodelay, true},
-     {approot, menelaus_deps:local_path(["priv","public"], ?MODULE)}].
+     {approot, get_approot()}].
 
 webconfig(Prop) ->
     proplists:get_value(Prop, webconfig()).
@@ -494,8 +502,6 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[tasks], read}, fun menelaus_web_misc:handle_tasks/2, ["default"]};
                 ["index.html"] ->
                     {done, redirect_permanently("/ui/index.html", Req)};
-                ["ui", "index.html"] ->
-                    {ui, IsSSL, fun handle_ui_root/4, [AppRoot, Path, Plugins]};
                 ["sasl_logs"] ->
                     {{[admin, logs], read}, fun diag_handler:handle_sasl_logs/1, []};
                 ["sasl_logs", LogName] ->
@@ -536,12 +542,8 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, internal], all},
                      fun stat_names_mappings:handle_stats_mapping_get/3,
                      [Section, StatTokens]};
-                ["ui", "pluggable-uis.js"] ->
-                    {ui, IsSSL, fun menelaus_pluggable_ui:handle_pluggable_uis_js/3,
-                     [Plugins, ?LATEST_UI_COMPAT_VERSION]};
                 [?PLUGGABLE_UI, "ui", RestPrefix | _] ->
-                    {ui, IsSSL, fun menelaus_pluggable_ui:maybe_serve_file/4,
-                     [RestPrefix, Plugins, nth_path_tail(Path, 3)]};
+                    {ui, IsSSL, fun handle_serve_file/4, [AppRoot, Path, 10]};
                 [?PLUGGABLE_UI, RestPrefix | _] ->
                     {no_check,
                      fun (PReq) ->
@@ -1115,14 +1117,6 @@ serve_ui_env(Req) ->
     menelaus_util:reply_json(Req,
                              {lists:ukeymerge(1, NodeSpecificUIEnv,
                                               lists:ukeymerge(1, GlobalUIEnv, UIEnvDefault))}).
-
-handle_ui_root(AppRoot, Path, Plugins, Req) ->
-    Filename = filename:join(AppRoot, Path),
-    menelaus_util:reply_ok(
-      Req,
-      "text/html; charset=utf8",
-      menelaus_pluggable_ui:inject_head_fragments(Filename, ?LATEST_UI_COMPAT_VERSION,
-                                                  Plugins)).
 
 handle_serve_file(AppRoot, Path, MaxAge, Req) ->
     menelaus_util:serve_file(

@@ -275,6 +275,7 @@ def erlang_args_for_node(i, ebin_path, extra_args, args_prefix, root_dir):
         "-ns_server", "config_path", f'"{static_config}"',
         "error_logger_mf_dir", quote_string_for_erl(logdir),
         "path_config_etcdir", f'"{os.path.join(ns_server_dir, "priv")}"',
+        "approot", quote_string_for_erl(ns_server_dir + "/../build/ui-build/public"),
         "path_config_bindir", quote_string_for_erl(PREFIX + "/bin"),
         "path_config_libdir", quote_string_for_erl(PREFIX + "/lib"),
         "path_config_datadir", quote_string_for_erl(datadir),
@@ -361,7 +362,6 @@ def start_cluster(num_nodes=1,
                   loglevel='debug',
                   prepend_extras=False,
                   pluggable_config=[],
-                  use_minified=False,
                   disable_autocomplete="{disable_autocomplete,false}",
                   pretend_version=None,
                   ipv6=False,
@@ -413,8 +413,6 @@ def start_cluster(num_nodes=1,
 
     ui_env = [disable_autocomplete]
 
-    extra_args += ["-ns_server", "use_minified",
-                   "true" if use_minified else "false"]
     extra_args += ["-ns_server", "ui_env", '[' + ','.join(ui_env) + ']']
 
     if pretend_version is not None:

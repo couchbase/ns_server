@@ -18,7 +18,7 @@ import {UIRouterUpgradeModule} from '@uirouter/angular-hybrid';
 import {MnPipesModule} from './mn.pipes.module.js';
 import {MnSharedModule} from './mn.shared.module.js';
 import {MnElementCraneModule} from './mn.element.crane.js';
-import * as pluggableUIsModules from '../pluggable-uis.js';
+import * as pluggableUIsModules from '../../pluggable-uis.js';
 import {MnKeyspaceSelectorModule} from './mn.keyspace.selector.module.js';
 import {MnHelper} from './ajs.upgraded.providers.js';
 
@@ -107,7 +107,7 @@ let gsiState = {
 let viewsState = {
   name: "app.admin.views.**",
   url: "/views",
-  lazyLoad: mnLoadNgModule('./mn.views.module.js', "MnViewsModule")
+  lazyLoad: mnLoadNgModule(() => import('./mn.views.module.js'), "MnViewsModule")
 };
 
 let settingsState = {

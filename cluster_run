@@ -45,7 +45,6 @@ usage: {program_name}
     [--loglevel=<level>] (logging level; default: 'debug')
     [--prepend-extras] (extra arguments)
     [--pluggable-config=<file name>] (plug-ins)
-    [--minified] (use minified files)
     [--disable-autocomplete] (disable auto-completion in UI)
     [--pretend-version=<version>
         When setting up a new cluster, spoof different version. Default
@@ -87,7 +86,7 @@ def main():
                                            "loglevel=",
                                            "prepend-extras",
                                            "pluggable-config=",
-                                           "minified", "disable-autocomplete",
+                                           "disable-autocomplete",
                                            "community",
                                            "pretend-version=", "afamily=",
                                            "dev-preview-default="])
@@ -127,8 +126,6 @@ def main():
             params['prepend_extras'] = True
         elif o == "--pluggable-config":
             params['pluggable_config'] = [a]
-        elif o == "--minified":
-            params['use_minified'] = True
         elif o == "--disable-autocomplete":
             params['disable_autocomplete'] = "{disable_autocomplete,true}"
         elif o == "--pretend-version":

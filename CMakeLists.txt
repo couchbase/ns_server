@@ -3,6 +3,7 @@ CMAKE_MINIMUM_REQUIRED (VERSION 3.13)
 PROJECT (ns_server)
 INCLUDE (FindCouchbaseErlang)
 INCLUDE (FindCouchbaseGo)
+INCLUDE (CouchbasePlugInUI)
 INCLUDE (ParseArguments)
 INCLUDE (CTest)
 
@@ -50,6 +51,43 @@ GET_FILENAME_COMPONENT (_couchdb_bin "${COUCHDB_BIN_DIR}" REALPATH)
 FILE (WRITE "${PROJECT_BINARY_DIR}/config.mk"
   "COUCHDB_SRC_DIR = ${_couchdb_src}\n"
   "COUCHDB_BIN_DIR = ${_couchdb_bin}\n")
+
+#build UI
+SET (NS_UI_SRC "${PROJECT_SOURCE_DIR}/priv/public/ui")
+SET (NS_UI_STAMP "${NS_UI_BUILD_DIR}/ns")
+SET (NS_UI_BIN "${NS_UI_PUB_DIR}/ui")
+
+FILE (MAKE_DIRECTORY "${NS_UI_PUB_DIR}")
+
+ADD_CUSTOM_COMMAND (OUTPUT "${NS_UI_BUILD_DIR}/out.js.stamp"
+  COMMAND "${PROJECT_BINARY_DIR}/deps/gomodules/minify/minify" "--in-dir=${NS_UI_PUB_DIR}" "--out-dir=${NS_UI_PUB_DIR}/jsout"
+  COMMAND "${CMAKE_COMMAND}" -E touch "${NS_UI_BUILD_DIR}/out.js.stamp"
+  DEPENDS ns_minify
+  DEPENDS "${NS_UI_BUILD_DIR}/fts.js.stamp"
+  DEPENDS "${NS_UI_BUILD_DIR}/backup.js.stamp"
+  DEPENDS "${NS_UI_BUILD_DIR}/event.js.stamp"
+  DEPENDS "${NS_UI_BUILD_DIR}/cbas.js.stamp"
+  DEPENDS "${NS_UI_BUILD_DIR}/query.js.stamp"
+  DEPENDS "${NS_UI_STAMP}.js.stamp"
+  VERBATIM)
+ADD_CUSTOM_TARGET (ui_build ALL
+  DEPENDS "${NS_UI_BUILD_DIR}/out.js.stamp"
+  VERBATIM)
+WATCH_AND_COPY_SOURCES (${NS_UI_SRC} ${NS_UI_BIN} ${NS_UI_STAMP} "ns")
+
+FILE (GLOB NS_UI_ICONS_IMGS_ETC "${NS_UI_SRC}/../*.*")
+FILE (COPY ${NS_UI_ICONS_IMGS_ETC} DESTINATION "${NS_UI_PUB_DIR}")
+
+INSTALL (DIRECTORY "${PROJECT_SOURCE_DIR}/priv/public/"
+  DESTINATION "${NS_UI_INSTALL_DIR}"
+  PATTERN "*_license_agreement.txt" EXCLUDE
+  PATTERN "*.js" EXCLUDE)
+INSTALL (DIRECTORY "${NS_UI_PUB_DIR}/jsout"
+  DESTINATION "${NS_UI_INSTALL_DIR}")
+INSTALL (FILES
+  "${NS_UI_SRC}/libs/reflect-metadata.js"
+  "${NS_UI_SRC}/libs/zone.js"
+  DESTINATION "${NS_UI_INSTALL_DIR}/ui/libs")
 
 # Various cleaning targets
 ADD_CUSTOM_TARGET (ns_realclean
@@ -208,9 +246,6 @@ ADD_DEPENDENCIES (ns_dialyzer_obsessive ns_server_all)
 # Install
 #
 INSTALL (DIRECTORY ebin DESTINATION "${INST_LIBDIR}/ns_server")
-INSTALL (DIRECTORY priv/public
-         DESTINATION "${INST_LIBDIR}/ns_server/priv"
-         PATTERN "*_license_agreement.txt" EXCLUDE)
 
 PyWrapper (SCRIPTS cbcollect_info)
 

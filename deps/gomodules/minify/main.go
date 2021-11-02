@@ -34,28 +34,29 @@ func main() {
 	}
 
 	result := api.Build(api.BuildOptions{
-		// MinifyWhitespace: true,
-		// // MinifyIdentifiers: true,
-		// MinifySyntax: true,
-		KeepNames: true,
-
-		AbsWorkingDir: *inDir + "/app",
-		Outdir: *outDir,
+		MinifyWhitespace: true,
+		// TODO: figure out why does't work
+		// MinifyIdentifiers: true,
+		MinifySyntax: true,
 
 		NodePaths: []string{
-			*inDir + "/web_modules",
-			*inDir + "/libs",
-			*inDir + "/app",
+			*inDir + "/ui/web_modules",
+			*inDir + "/ui/libs",
+			*inDir + "/ui/app",
 		},
 		EntryPoints: []string{
-			"main.js",
+			*inDir + "/ui/app/main.js",
 		},
+		Pure: []string{"console.log"},
+		KeepNames: true,
 		Bundle: true,
+		PreserveSymlinks: true,
 		Splitting: true,
 		Write: true,
-		Metafile: true,
 		Format: api.FormatESModule,
+		// LogLevel: api.LogLevelWarning,
 		LogLevel: api.LogLevelInfo,
+		Outdir: *outDir,
 		Engines: []api.Engine{
 			{api.EngineChrome, "93"},
 			{api.EngineFirefox, "92"},
