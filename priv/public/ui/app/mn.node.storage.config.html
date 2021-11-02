@@ -38,7 +38,7 @@
       </mn-path-field>
     </div>
 
-    <div class="formrow">
+    <div class="formrow" *ngIf="isEnterprise | async">
       <div class="row">
         <label for="setup_eventing_path_input">Eventing Disk Path</label>
         <small class="text-smaller">Path cannot be changed after setup</small>
