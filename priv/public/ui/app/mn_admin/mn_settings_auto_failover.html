@@ -120,17 +120,6 @@ licenses/APL2.txt.
           <span class="icon fa-warning"></span>
         </span>
       </div>
-      <div ng-if="adminCtl.poolDefault.compat.atLeast65 &&
-                  adminCtl.poolDefault.isEnterprise">
-        <input
-           type="checkbox"
-           id="for-can-abort-rebalance"
-           ng-disabled="!settingsAutoFailoverCtl.autoFailoverSettings.enabled || !rbac.cluster.settings.write"
-           ng-model="settingsAutoFailoverCtl.autoFailoverSettings.canAbortRebalance">
-        <label for="for-can-abort-rebalance" class="margin-right-zero">
-          Auto-failover can abort rebalance
-        </label>
-      </div>
     </div>
 
     <div class="margin-top2 margin-bottom-1">
