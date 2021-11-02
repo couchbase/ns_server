@@ -8,7 +8,7 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { Component, ChangeDetectionStrategy } from '/ui/web_modules/@angular/core.js';
+import { Component, ChangeDetectionStrategy } from '@angular/core';
 import { UIRouter } from '@uirouter/angular';
 import { MnLifeCycleHooksToStream } from './mn.core.js';
 import { NgbModal } from "@ng-bootstrap/ng-bootstrap";
@@ -22,7 +22,7 @@ import { MnTasksService } from './mn.tasks.service.js';
 import { MnBucketsService } from './mn.buckets.service.js';
 import { MnViewsListService } from './mn.views.list.service.js';
 
-import { MnPermissions } from '/ui/app/ajs.upgraded.providers.js';
+import { MnPermissions } from './ajs.upgraded.providers.js';
 
 import { MnViewsCreateDialogComponent } from './mn.views.create.dialog.component.js';
 import { MnViewsDeleteDialogDdocComponent } from './mn.views.delete.dialog.ddoc.component.js';

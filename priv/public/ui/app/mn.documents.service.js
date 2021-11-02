@@ -8,12 +8,12 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 
-import { Injectable } from "/ui/web_modules/@angular/core.js";
-import { HttpClient } from '/ui/web_modules/@angular/common/http.js';
-import { UIRouter } from '/ui/web_modules/@uirouter/angular.js';
+import { Injectable } from "@angular/core";
+import { HttpClient } from '@angular/common/http';
+import { UIRouter } from '@uirouter/angular';
 import { switchMap, shareReplay, pluck, withLatestFrom,
-         combineLatest, distinctUntilChanged } from '../web_modules/rxjs/operators.js';
-import { Subject, BehaviorSubject } from '../web_modules/rxjs.js';
+         combineLatest, distinctUntilChanged } from 'rxjs/operators';
+import { Subject, BehaviorSubject } from 'rxjs';
 
 export { MnDocumentsService }
 

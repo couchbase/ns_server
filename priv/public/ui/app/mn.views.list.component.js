@@ -17,7 +17,7 @@ import { intersection } from 'ramda';
 import { MnLifeCycleHooksToStream } from './mn.core.js';
 
 import { MnFormService } from './mn.form.service.js';
-import { MnPermissions } from '/ui/app/ajs.upgraded.providers.js';
+import { MnPermissions } from './ajs.upgraded.providers.js';
 import { MnRouterService } from './mn.router.service.js';
 import { MnViewsListService } from './mn.views.list.service.js';
 import { MnBucketsService } from './mn.buckets.service.js';

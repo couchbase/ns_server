@@ -15,7 +15,7 @@ import { switchMap, shareReplay, map, pluck, filter } from 'rxjs/operators';
 import { BehaviorSubject, timer, combineLatest } from 'rxjs';
 import { partition } from 'ramda';
 
-import { MnPermissions } from '/ui/app/ajs.upgraded.providers.js';
+import { MnPermissions } from './ajs.upgraded.providers.js';
 
 import { MnHttpRequest } from './mn.http.request.js';
 
