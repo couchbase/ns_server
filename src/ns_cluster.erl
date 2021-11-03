@@ -1490,6 +1490,11 @@ perform_actual_join(RemoteNode, NewCookie, ChronicleInfo) ->
     ?cluster_debug("pre-join merged config is:~n~p",
                    [ns_config_log:sanitize(ns_config:get())]),
 
+    %% New cluster's epoch overwrites "old" cluster's epoch,
+    %% but this node cert still contains epoch from the "old" cluster,
+    %% which is wrong. Reset it to the value from new cluster.
+    ns_ssl_services_setup:update_node_cert_epoch(),
+
     misc:remove_marker(join_marker_path()),
 
     ?cluster_debug("Join succeded, starting ns_server_cluster back", []),

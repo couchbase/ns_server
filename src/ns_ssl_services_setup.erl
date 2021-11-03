@@ -39,7 +39,8 @@
          honor_cipher_order/2,
          set_certs/4,
          chronicle_upgrade_to_NEO/2,
-         remove_node_certs/0]).
+         remove_node_certs/0,
+         update_node_cert_epoch/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -735,8 +736,7 @@ save_node_certs_phase2() ->
                             uploaded ->
                                 {uploaded, CertsEpoch}
                         end,
-            CertsInfoBin = iolist_to_binary(io_lib:format("~p.", [CertsInfo])),
-            ok = misc:atomic_write_file(cert_info_file(), CertsInfoBin),
+            save_cert_info(CertsInfo),
             ?log_info("Node cert and pkey files updated"),
             ns_config:set({node, node(), node_cert}, Props),
             reload_pkey_passphrase(),
@@ -746,6 +746,10 @@ save_node_certs_phase2() ->
             ok = file:delete(TmpFile);
         {error, enoent} -> file_not_found
     end.
+
+save_cert_info(CertsInfo) ->
+    CertsInfoBin = iolist_to_binary(io_lib:format("~p.", [CertsInfo])),
+    ok = misc:atomic_write_file(cert_info_file(), CertsInfoBin).
 
 reload_pkey_passphrase() ->
     CertProps = ns_config:read_key_fast({node, node(), node_cert}, []),
@@ -1111,3 +1115,28 @@ remove_node_certs() ->
     file:delete(cert_info_file()),
     file:delete(chain_file_path()),
     file:delete(pkey_file_path()).
+
+update_node_cert_epoch() ->
+    Epoch = certs_epoch(),
+    RV = ns_config:run_txn(
+           fun (Config, SetFn) ->
+               Key = {node, node(), node_cert},
+               case ns_config:search(Config, Key) of
+                   false -> {abort, no_cert};
+                   {value, Props} ->
+                       NewProps = misc:update_proplist(Props,
+                                                       [{certs_epoch, Epoch}]),
+                       Type = proplists:get_value(type, Props),
+                       {commit, SetFn(Key, NewProps, Config), Type}
+               end
+           end),
+    case RV of
+        {commit, _, generated} ->
+            ?log_info("Updated generated node cert epoch: ~p", [Epoch]);
+        {commit, _, uploaded} ->
+            save_cert_info({uploaded, Epoch}),
+            ?log_info("Updated uploaded node cert epoch: ~p", [Epoch]);
+        {abort, Reason} ->
+            ?log_info("Skipped node cert epoch update: ~p", [Reason])
+    end,
+    ok.
