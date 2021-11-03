@@ -950,6 +950,7 @@ update_bucket_props(Type, StorageMode, BucketName, Props) ->
 
             event_log:add_log(bucket_cfg_changed,
                               [{bucket, list_to_binary(BucketName)},
+                               {bucket_uuid, uuid(BucketName, direct)},
                                {type, DisplayBucketType},
                                {old_settings, {struct, PrevProps}},
                                {new_settings, {struct, Props}}]);
