@@ -614,13 +614,13 @@ idle({create_bucket, BucketType, BucketName, NewConfig}, From, _State) ->
                                                         NewConfig),
             StorageMode = proplists:get_value(storage_mode, NewConfig,
                                               undefined),
-            event_log:add_log(bucket_created,
-                              [{bucket, list_to_binary(BucketName)},
-                               {bucket_uuid,
-                                ns_bucket:uuid(BucketName, direct)},
-                               {bucket_type, ns_bucket:display_type(
-                                               BucketType, StorageMode)},
-                               {bucket_props, {struct, NewConfig}}]),
+            event_log:add_log(
+              bucket_created,
+              [{bucket, list_to_binary(BucketName)},
+               {bucket_uuid, ns_bucket:uuid(BucketName, direct)},
+               {bucket_type, ns_bucket:display_type(BucketType, StorageMode)},
+               {bucket_props,
+                {struct, ns_bucket:build_bucket_props_json(NewConfig)}}]),
             request_janitor_run({bucket, BucketName});
         _ -> ok
     end,

@@ -1001,8 +1001,10 @@ update_bucket_props(Type, StorageMode, BucketName, Props) ->
                               [{bucket, list_to_binary(BucketName)},
                                {bucket_uuid, uuid(BucketName, direct)},
                                {type, DisplayBucketType},
-                               {old_settings, {struct, PrevProps}},
-                               {new_settings, {struct, Props}}]);
+                               {old_settings,
+                                {struct, build_bucket_props_json(PrevProps)}},
+                               {new_settings,
+                                {struct, build_bucket_props_json(Props)}}]);
         false ->
             {exit, {not_found, BucketName}, []}
     end.
