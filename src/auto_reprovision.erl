@@ -134,7 +134,7 @@ handle_call({reprovision_buckets, Buckets, UnsafeNodes}, _From,
                                       UUID = proplists:get_value(Bucket, UUIDs),
                                       event_log:add_log(
                                         bucket_autoreprovision,
-                                        [{bucket, Bucket},
+                                        [{bucket, list_to_binary(Bucket)},
                                          {bucket_uuid, UUID},
                                          {nodes, Candidates},
                                          {restarted_on, UnsafeNodes}])
