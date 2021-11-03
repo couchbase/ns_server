@@ -74,7 +74,8 @@ function mnGsiItemController($scope, mnGsiService, mnStatisticsNewService, mnPoo
     }
   }, $scope);
 
-  if (!(isAtLeast70 && !$scope.rbac.cluster.stats.read)) {
+  let permissions = $scope.rbac.cluster.collection[row.bucket + ':.:.'];
+  if (permissions && permissions.stats.read) {
     $scope.$watch("mnUIStats", updateValues);
     $scope.$watch("row", updateValues);
   }

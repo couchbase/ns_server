@@ -83,7 +83,7 @@
    class="margin-top-1-5">
   <h4>Outgoing Replications
     <span
-       *ngIf="(permissions | async)?.cluster.stats.read"
+       *ngIf="(permissions | async)?.cluster.collection['.:.:.'].stats.read"
        [hidden]="!(getChangesLeftTotal | async)"
        class="label raised neutral">{{getChangesLeftTotal | async | mnFormatQuantity:1000}} mutations remaining</span></h4>
   <div

@@ -8,10 +8,10 @@
      licenses/APL2.txt.
 -->
 <mn-main-spinner
-   mn-spinner-value="rbac.cluster.stats.read && !statisticsNewCtl.scenarios">
+   mn-spinner-value="rbac.cluster.collection['.:.:.'].stats.read && !statisticsNewCtl.scenarios">
 </mn-main-spinner>
 
-<div ng-show="rbac.cluster.stats.read">
+<div ng-show="rbac.cluster.collection['.:.:.'].stats.read">
   <div class="row margin-bottom-1-5">
     <div class="row flex-left flex-wrap">
       <span>
@@ -157,7 +157,7 @@
 
   <div
      class="width-12 margin-bottom-4"
-     ng-show="rbac.cluster.stats.read"> <!-- wrapper around all chart groups -->
+     ng-show="rbac.cluster.collection['.:.:.'].stats.read"> <!-- wrapper around all chart groups -->
     <div
        ng-repeat="groupID in statisticsNewCtl.getSelectedScenario().groups track by ($index + groupID)"
        ng-attr-id="group-{{groupID}}"
@@ -351,6 +351,6 @@
     </div>
   </div>
 </div>
-<div ng-show="!rbac.cluster.stats.read">
+<div ng-show="!rbac.cluster.collection['.:.:.'].stats.read">
   <img src="../cb_logo_bug_white_2.svg" class="filter-gray" style="margin: 0 auto; width: 40%; display: block;">
 </div>

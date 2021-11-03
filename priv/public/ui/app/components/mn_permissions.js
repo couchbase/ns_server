@@ -43,6 +43,7 @@ function mnPermissionsProvider() {
       "cluster.bucket[" + name + "].n1ql.index!write",
       "cluster.bucket[" + name + "].collections!read",
       "cluster.bucket[" + name + "].collections!write",
+      "cluster.collection[" + name + ":.:.].stats!read",
       "cluster.collection[" + name + ":.:.].collections!read",
       "cluster.collection[" + name + ":.:.].collections!write"
 

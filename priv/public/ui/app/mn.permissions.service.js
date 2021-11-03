@@ -37,7 +37,9 @@ let bucketSpecificPermissions = [function (bucket) {
     "cluster.bucket[" + name + "].n1ql.index!write",
     "cluster.bucket[" + name + "].collections!read",
     "cluster.bucket[" + name + "].collections!write",
-    "cluster.bucket[" + name + "].collections!delete"
+    "cluster.collection[" + name + ":.:.].stats!read",
+    "cluster.collection[" + name + ":.:.].collections!read",
+    "cluster.collection[" + name + ":.:.].collections!write"
   ];
   if (bucket.name === "." || (bucket.bucketType === "membase")) {
     basePermissions = basePermissions.concat([
@@ -51,6 +53,7 @@ let bucketSpecificPermissions = [function (bucket) {
       "cluster.bucket[" + name + "].data!write",
       "cluster.bucket[" + name + "].data!read",
       "cluster.bucket[" + name + "].data.docs!read",
+      "cluster.bucket[" + name + "].data.docs!write",
       "cluster.bucket[" + name + "].data.docs!upsert"
     ]);
   }
@@ -60,6 +63,7 @@ let bucketSpecificPermissions = [function (bucket) {
 
 let interestingPermissions = ([
   "cluster.buckets!create",
+  "cluster.backup!all",
   "cluster.nodes!write",
   "cluster.pools!read",
   "cluster.server_groups!read",
@@ -82,12 +86,17 @@ let interestingPermissions = ([
   "cluster.pools!write",
   "cluster.settings.indexes!write",
   "cluster.admin.security!write",
-  "cluster.admin.security.external!write",
-  "cluster.admin.security.external!read",
   "cluster.admin.security.admin!write",
   "cluster.admin.security.admin!read",
+  "cluster.admin.security.external!write",
+  "cluster.admin.security.external!read",
+  "cluster.admin.security.local!read",
+  "cluster.admin.security.local!write",
   "cluster.samples!read",
   "cluster.nodes!read",
+  "cluster.admin.memcached!read",
+  "cluster.admin.memcached!write",
+  "cluster.eventing.functions!manage",
   "cluster.settings.autocompaction!read",
   "cluster.settings.autocompaction!write"
 ]).concat(bucketSpecificPermissions[0]({name: "."}));

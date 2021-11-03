@@ -73,7 +73,7 @@ licenses/APL2.txt.
     </span>
     <span class="cbui-table-cell text-right resp-hide-sml">
       <a
-         ng-if="!serversItemCtl.isNodeInactiveFailed && !serversItemCtl.isNodeUnhealthy && rbac.cluster.stats.read && rbac.cluster.bucket['.'].stats.read"
+         ng-if="!serversItemCtl.isNodeInactiveFailed && !serversItemCtl.isNodeUnhealthy && rbac.cluster.collection['.:.:.'].stats.read"
          title="{{'View Statistics for ' + node.hostname}}"
          ng-click="$event.stopPropagation()"
          ui-state="'app.admin.overview.statistics'"

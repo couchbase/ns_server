@@ -458,7 +458,7 @@ function mnStatisticsNewController($scope, mnStatisticsNewService, $state, $http
     vm.mnAdminStatsPoller.heartbeat
       .setInterval(mnStatisticsNewService.defaultZoomInterval(vm.zoom));
 
-    if ($scope.rbac.cluster.stats.read) {
+    if ($scope.rbac.cluster.collection['.:.:.'].stats.read) {
       vm.scenarioId = $state.params.scenario;
 
       new mnPoller($scope, function () {

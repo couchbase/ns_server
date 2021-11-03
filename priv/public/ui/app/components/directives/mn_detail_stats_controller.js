@@ -43,13 +43,7 @@ angular
 
 function controller(mnStatisticsNewService, mnStatisticsDescriptionService, mnHelper, $scope, mnPoolDefault, mnPermissions) {
   var vm = this;
-  vm.isComponentDisabled =
-    mnPoolDefault.export.compat.atLeast70 &&
-    !mnPermissions.export.cluster.stats.read;
 
-  if (vm.isComponentDisabled) {
-    return;
-  }
   vm.zoom = "minute";
   vm.onSelectZoom = onSelectZoom;
   vm.items = {};
@@ -66,6 +60,13 @@ function controller(mnStatisticsNewService, mnStatisticsDescriptionService, mnHe
   }
 
   function activate(selectedZoom) {
+    let permissions = mnPermissions.export.cluster.collection[vm.bucket + ':.:.'];
+    vm.isComponentDisabled = !(permissions && permissions.stats.read);
+
+    if (vm.isComponentDisabled) {
+      return;
+    }
+
     selectedZoom = selectedZoom || vm.zoom;
     vm.scope = $scope;
     vm.mnAdminStatsPoller = mnStatisticsNewService.mnAdminStatsPoller;
