@@ -113,8 +113,13 @@
          config_upgrade_to_66/1,
          upgrade_to_chronicle/2,
          chronicle_upgrade_to_NEO/1,
-         extract_bucket_props/1]).
+         extract_bucket_props/1,
+         build_bucket_props_json/1,
+         build_compaction_settings_json/1]).
 
+-import(json_builder,
+        [to_binary/1,
+         prepare_list/1]).
 
 %%%===================================================================
 %%% API
@@ -1443,6 +1448,46 @@ extract_bucket_props(Props) ->
                         drift_ahead_threshold_ms, drift_behind_threshold_ms,
                         storage_mode, max_ttl, compression_mode]],
           X =/= false].
+
+build_threshold({Percentage, Size}) ->
+    {prepare_list([{percentage, Percentage}, {size, Size}])}.
+
+build_bucket_props_json(Props) ->
+    lists:foldl(
+      fun ({autocompaction, false}, Acc) ->
+              Acc;
+          ({autocompaction, CProps}, Acc) ->
+              [{autocompaction,
+                {build_compaction_settings_json(CProps)}} | Acc];
+          ({K, V}, Acc) ->
+              [{K, to_binary(V)} | Acc]
+      end, [], Props).
+
+build_compaction_settings_json(Settings) ->
+    lists:foldl(
+      fun ({allowed_time_period, V}, Acc) ->
+              [{allowed_time_period, {prepare_list(V)}} | Acc];
+          ({database_fragmentation_threshold, V}, Acc) ->
+              [{database_fragmentation_threshold, build_threshold(V)} | Acc];
+          ({view_fragmentation_threshold, V}, Acc) ->
+              [{view_fragmentation_threshold, build_threshold(V)} | Acc];
+          ({purge_interval, _} = T, Acc) ->
+              [T | Acc];
+          ({parallel_db_and_view_compaction, _} = T, Acc) ->
+              [T | Acc];
+          ({index_fragmentation_percentage, _} = T, Acc) ->
+              [T | Acc];
+          ({index_compaction_mode, _} = T, Acc) ->
+              [T | Acc];
+          ({index_circular_compaction_days, _} = T, Acc) ->
+              [T | Acc];
+          ({index_circular_compaction_abort, _} = T, Acc) ->
+              [T | Acc];
+          ({index_circular_compaction_interval, V}, Acc) ->
+              [{index_circular_compaction_interval, {prepare_list(V)}} | Acc];
+          (_, Acc) ->
+              Acc
+      end, [], Settings).
 
 -ifdef(TEST).
 min_live_copies_test() ->

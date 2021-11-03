@@ -15,8 +15,7 @@
 
 -include("ns_common.hrl").
 
--export([prepare_list/1,
-         login_success/1,
+-export([login_success/1,
          login_failure/1,
          session_expired/2,
          logout/1,
@@ -94,6 +93,10 @@
 %% gen_server callbacks
 -export([init/1, handle_cast/2, handle_call/3,
          handle_info/2, terminate/2, code_change/3]).
+
+-import(json_builder,
+        [to_binary/1,
+         prepare_list/1]).
 
 -record(state, {queue, retries}).
 
@@ -379,20 +382,6 @@ code(update_scope) ->
 code(delete_cluster_ca) ->
     8269.
 
-to_binary({list, List}) ->
-    [to_binary(A) || A <- List];
-to_binary(A) when is_list(A) ->
-    iolist_to_binary(A);
-to_binary({propset, Props}) when is_list(Props) ->
-    {[kv_to_binary(A) || A <- Props]};
-to_binary({json, Json}) ->
-    Json;
-to_binary(A) ->
-    A.
-
-kv_to_binary({K, V}) ->
-    {key_to_binary(K), to_binary(V)}.
-
 now_to_iso8601(Now = {_, _, Microsecs}) ->
     LocalNow = calendar:now_to_local_time(Now),
 
@@ -442,23 +431,6 @@ get_remote(Req) ->
 
 get_local(Req) ->
     get_socket_name(Req, fun network:sockname/1).
-
-key_to_binary(A) when is_list(A) ->
-    iolist_to_binary(A);
-key_to_binary(A) when is_tuple(A) ->
-    iolist_to_binary(io_lib:format("~p", [A]));
-key_to_binary(A) ->
-    A.
-
-prepare_list(List) ->
-    lists:foldl(
-      fun ({_Key, undefined}, Acc) ->
-              Acc;
-          ({_Key, "undefined"}, Acc) ->
-              Acc;
-          ({Key, Value}, Acc) ->
-              [{key_to_binary(Key), to_binary(Value)} | Acc]
-      end, [], List).
 
 prepare(Req, Params) ->
     IdentityProps = case Req of
@@ -575,27 +547,17 @@ rebalance_initiated(Req, KnownNodes, EjectedNodes, DeltaRecoveryBuckets) ->
          {ejected_nodes, {list, EjectedNodes}},
          {delta_recovery_buckets, Buckets}]).
 
-build_bucket_props(Props) ->
-    lists:foldl(
-      fun ({autocompaction, false}, Acc) ->
-              Acc;
-          ({autocompaction, CProps}, Acc) ->
-              [{autocompaction, {build_compaction_settings(CProps)}} | Acc];
-          ({K, V}, Acc) ->
-              [{K, to_binary(V)} | Acc]
-      end, [], Props).
-
 create_bucket(Req, Name, Type, Props) ->
     put(create_bucket, Req,
         [{bucket_name, Name},
          {type, Type},
-         {props, {build_bucket_props(Props)}}]).
+         {props, {ns_bucket:build_bucket_props_json(Props)}}]).
 
 modify_bucket(Req, Name, Type, Props) ->
     put(modify_bucket, Req,
         [{bucket_name, Name},
          {type, Type},
-         {props, {build_bucket_props(Props)}}]).
+         {props, {ns_bucket:build_bucket_props_json(Props)}}]).
 
 delete_bucket(Req, Name) ->
     put(delete_bucket, Req, [{bucket_name, Name}]).
@@ -697,37 +659,8 @@ alert_email_sent(Sender, Recipients, Subject, Body) ->
         [{sender, Sender}, {recipients, {list, Recipients}},
          {subject, Subject}, {message, Body}]).
 
-build_threshold({Percentage, Size}) ->
-    {prepare_list([{percentage, Percentage}, {size, Size}])}.
-
-build_compaction_settings(Settings) ->
-    lists:foldl(
-      fun ({allowed_time_period, V}, Acc) ->
-              [{allowed_time_period, {prepare_list(V)}} | Acc];
-          ({database_fragmentation_threshold, V}, Acc) ->
-              [{database_fragmentation_threshold, build_threshold(V)} | Acc];
-          ({view_fragmentation_threshold, V}, Acc) ->
-              [{view_fragmentation_threshold, build_threshold(V)} | Acc];
-          ({purge_interval, _} = T, Acc) ->
-              [T | Acc];
-          ({parallel_db_and_view_compaction, _} = T, Acc) ->
-              [T | Acc];
-          ({index_fragmentation_percentage, _} = T, Acc) ->
-              [T | Acc];
-          ({index_compaction_mode, _} = T, Acc) ->
-              [T | Acc];
-          ({index_circular_compaction_days, _} = T, Acc) ->
-              [T | Acc];
-          ({index_circular_compaction_abort, _} = T, Acc) ->
-              [T | Acc];
-          ({index_circular_compaction_interval, V}, Acc) ->
-              [{index_circular_compaction_interval, {prepare_list(V)}} | Acc];
-          (_, Acc) ->
-              Acc
-      end, [], Settings).
-
 modify_compaction_settings(Req, Settings) ->
-    Data = build_compaction_settings(Settings),
+    Data = ns_bucket:build_compaction_settings_json(Settings),
     put(modify_compaction_settings, Req, Data).
 
 regenerate_certificate(Req) ->

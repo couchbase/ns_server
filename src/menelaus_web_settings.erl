@@ -423,7 +423,7 @@ jsonify_security_settings(Settings) ->
                  ({secure_headers, List}) -> {secure_headers, {propset, List}};
                  (KV) -> KV
              end,
-    ns_audit:prepare_list([Format(S) || S <- Settings]).
+    json_builder:prepare_list([Format(S) || S <- Settings]).
 
 handle_post(Type, Keys, Req) ->
     %% NOTE: due to a potential restart we need to protect
