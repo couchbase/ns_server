@@ -1485,6 +1485,8 @@ build_compaction_settings_json(Settings) ->
               [T | Acc];
           ({index_circular_compaction_interval, V}, Acc) ->
               [{index_circular_compaction_interval, {prepare_list(V)}} | Acc];
+          ({magma_fragmentation_percentage, _} = T, Acc) ->
+              [T | Acc];
           (_, Acc) ->
               Acc
       end, [], Settings).
