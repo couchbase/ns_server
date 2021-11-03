@@ -118,9 +118,8 @@ handle_cluster_certificate_simple(Req) ->
     menelaus_util:reply_ok(Req, "text/plain", Cert).
 
 format_time(UTCSeconds) ->
-    LocalTime = calendar:universal_time_to_local_time(
-                  calendar:gregorian_seconds_to_datetime(UTCSeconds)),
-    menelaus_util:format_server_time(LocalTime, 0).
+    DateTime = calendar:gregorian_seconds_to_datetime(UTCSeconds),
+    menelaus_util:format_server_time(DateTime, 0).
 
 warning_props({expires_soon, UTCSeconds}) ->
     [{message, ns_error_messages:node_certificate_warning(expires_soon)},
