@@ -588,7 +588,7 @@ node_vbuckets(Map, Node) ->
     [V || {V, Chain} <- misc:enumerate(Map, 0),
           lists:member(Node, Chain)].
 
-is_possible(FailoverNodes, AllowUnsafe) ->
+is_possible(FailoverNodes, Options) ->
     ActiveNodes = ns_cluster_membership:active_nodes(),
     KVActiveNodes = ns_cluster_membership:service_nodes(ActiveNodes, kv),
     NodesWanted = ns_node_disco:nodes_wanted(),
@@ -610,18 +610,22 @@ is_possible(FailoverNodes, AllowUnsafe) ->
                            "Known nodes: ~p", [FailoverNodes, NodesWanted]),
                 throw(unknown_node)
         end,
-        case {AllowUnsafe, FailoverNodes -- ActiveNodes} of
-            {_, []} ->
+        case FailoverNodes -- ActiveNodes of
+            [] ->
                 ok;
-            {true, _} ->
-                %% inactiveFailed and inactiveAdded nodes participate in
-                %% chronicle quorum, therefore, in case of unsafe quorum
-                %% failover we allow failover of these nodes.
-                ok;
-            {false, _} ->
-                ?log_error("Failover of inactive nodes ~p is requested. "
+            _ ->
+                case allow_unsafe(Options) of
+                    true ->
+                        %% inactiveFailed and inactiveAdded nodes participate in
+                        %% chronicle quorum, therefore, in case of unsafe quorum
+                        %% failover we allow failover of these nodes.
+                        ok;
+                    false ->
+                        ?log_error(
+                           "Failover of inactive nodes ~p is requested. "
                            "Active nodes: ~p", [FailoverNodes, ActiveNodes]),
-                throw(inactive_node)
+                        throw(inactive_node)
+                end
         end
     catch
         throw:Error ->
