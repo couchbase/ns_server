@@ -249,6 +249,14 @@ set_failover_on_disk_issues(Enabled, TP) ->
     [{?DATA_DISK_ISSUES_CONFIG_KEY, [{enabled, Enabled}, {timePeriod, TP}]}].
 
 parse_validate_server_group_failover(Args, CurrRV) ->
+    case cluster_compat_mode:is_cluster_NEO() of
+        false ->
+            parse_validate_server_group_failover_inner(Args, CurrRV);
+        true ->
+            CurrRV
+    end.
+
+parse_validate_server_group_failover_inner(Args, CurrRV) ->
     Key = "failoverServerGroup",
     case parse_validate_boolean_field(Key, '_', Args) of
         [{ok, _, Val}] ->
@@ -277,23 +285,19 @@ config_check_can_abort_rebalance() ->
 get_extra_settings(Config) ->
     case cluster_compat_mode:is_enterprise() of
         true ->
-            SGFO = proplists:get_value(?FAILOVER_SERVER_GROUP_CONFIG_KEY,
-                                       Config),
-            Max = proplists:get_value(?MAX_EVENTS_CONFIG_KEY, Config),
             {Enabled, TimePeriod} = get_failover_on_disk_issues(Config),
-            CanAbortRebalance =
-                case cluster_compat_mode:is_cluster_65() of
-                    true ->
-                        V = proplists:get_value(
-                              ?CAN_ABORT_REBALANCE_CONFIG_KEY, Config),
-                        [{canAbortRebalance, V}];
-                    false ->
-                        []
-                end,
-            [{failoverOnDataDiskIssues,
-              {struct, [{enabled, Enabled}, {timePeriod, TimePeriod}]}},
-             {failoverServerGroup, SGFO},
-             {maxCount, Max}] ++ CanAbortRebalance;
+            lists:flatten(
+              [{failoverOnDataDiskIssues,
+                {struct, [{enabled, Enabled}, {timePeriod, TimePeriod}]}},
+               {maxCount, proplists:get_value(?MAX_EVENTS_CONFIG_KEY, Config)},
+               [{canAbortRebalance,
+                 proplists:get_value(
+                   ?CAN_ABORT_REBALANCE_CONFIG_KEY, Config)} ||
+                   cluster_compat_mode:is_cluster_65()],
+               [{failoverServerGroup,
+                 proplists:get_value(?FAILOVER_SERVER_GROUP_CONFIG_KEY,
+                                     Config)} ||
+                   not cluster_compat_mode:is_cluster_NEO()]]);
         false ->
             []
     end.
@@ -301,16 +305,13 @@ get_extra_settings(Config) ->
 disable_extras(Config) ->
     case cluster_compat_mode:is_enterprise() of
         true ->
-            CanAbortRebalance =
-                case cluster_compat_mode:is_cluster_65() of
-                    true ->
-                        [{?CAN_ABORT_REBALANCE_CONFIG_KEY, false}];
-                    false ->
-                        []
-                end,
             {_, CurrTP} = get_failover_on_disk_issues(Config),
-            disable_failover_on_disk_issues(CurrTP) ++ CanAbortRebalance ++
-                [{?FAILOVER_SERVER_GROUP_CONFIG_KEY, false}];
+            lists:flatten(
+              [disable_failover_on_disk_issues(CurrTP),
+               [{?CAN_ABORT_REBALANCE_CONFIG_KEY, false} ||
+                   cluster_compat_mode:is_cluster_65()],
+               [{?FAILOVER_SERVER_GROUP_CONFIG_KEY, false} ||
+                   not cluster_compat_mode:is_cluster_NEO()]]);
         false ->
             []
     end.
