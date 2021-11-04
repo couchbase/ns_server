@@ -283,7 +283,8 @@ add_filter_headers({drop, Hdrs}) ->
     {drop, Hdrs ++ ["ns-server-ui",
                     "menelaus-auth-user",
                     "menelaus-auth-domain",
-                    "menelaus-auth-token"]};
+                    "menelaus-auth-token",
+                    "authorization"]};
 add_filter_headers(_HdrFilter) ->
     _HdrFilter.
 
