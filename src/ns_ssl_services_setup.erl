@@ -417,13 +417,22 @@ init([]) ->
     maybe_generate_node_certs(),
     reload_pkey_passphrase(),
     self() ! validate_pkey,
-    RetrySvc = case misc:marker_exists(marker_path()) of
-                   true ->
+    RetrySvc = case misc:consult_marker(marker_path()) of
+                   {ok, []} ->
+                       %% Treat it as all_services() for backward compat
+                       Self ! notify_services,
+                       all_services() -- [ssl_service];
+                   {ok, [Services]} ->
                        %% In case if we crashed in the middle of certs
                        %% generation. It should do nothing if "auto-generated"
                        %% certs are in order.
-                       Self ! notify_services,
-                       all_services() -- [ssl_service];
+                       ServicesToNotify = Services -- [ssl_service],
+                       case ServicesToNotify of
+                           [] -> [];
+                           _ ->
+                               Self ! notify_services,
+                               ServicesToNotify
+                       end;
                    false ->
                        []
                end,
@@ -608,10 +617,10 @@ maybe_store_ca_certs() ->
 
     case ShouldUpdate of
         true ->
+            create_marker(all_services()),
             ok = misc:atomic_write_file(Path, NewContent),
             ?log_info("CA file updated: ~b cert(s) written", [N]),
-            ok = ssl:clear_pem_cache(),
-            misc:create_marker(marker_path());
+            ok = ssl:clear_pem_cache();
         false ->
             ok
     end,
@@ -677,10 +686,11 @@ maybe_generate_node_certs() ->
     end.
 
 async_ssl_reload(Event, Services, #state{reload_state = ReloadState} = State) ->
-    misc:create_marker(marker_path()),
+    ReloadServices = lists:usort(Services ++ ReloadState),
+    create_marker(ReloadServices),
     self() ! notify_services,
     ?log_debug("Notify services ~p about ~p change", [Services, Event]),
-    State#state{reload_state = lists:usort(Services ++ ReloadState)}.
+    State#state{reload_state = ReloadServices}.
 
 sync_ssl_reload(State) ->
     NewState = State#state{reload_state = all_services()},
@@ -742,7 +752,7 @@ save_node_certs_phase2() ->
             reload_pkey_passphrase(),
             self() ! validate_pkey,
             ok = ssl:clear_pem_cache(),
-            misc:create_marker(marker_path()),
+            create_marker(all_services()),
             ok = file:delete(TmpFile);
         {error, enoent} -> file_not_found
     end.
@@ -876,7 +886,9 @@ san_field_to_type("email") -> rfc822Name.
 all_services() ->
     [cb_dist_tls, ssl_service, capi_ssl_service, xdcr_proxy, memcached, event].
 
-notify_services(#state{reload_state = []} = State) -> State;
+notify_services(#state{reload_state = []} = State) ->
+    catch misc:remove_marker(marker_path()),
+    State;
 notify_services(#state{reload_state = Reloads} = State) ->
     ?log_debug("Going to notify following services: ~p", [Reloads]),
 
@@ -896,15 +908,19 @@ notify_services(#state{reload_state = Reloads} = State) ->
         _ ->
             ?log_info("Succesfully notified services ~p", [Good])
     end,
-    case Bad of
+
+    NotNotifiedServices = [Svc || {_, Svc} <- Bad],
+
+    case NotNotifiedServices of
         [] ->
             misc:remove_marker(marker_path()),
             ok;
         _ ->
+            create_marker(NotNotifiedServices),
             ?log_info("Failed to notify some services. Will retry in 5 sec, ~p", [Bad]),
             erlang:send_after(5000, self(), notify_services)
     end,
-    State#state{reload_state = [Svc || {_, Svc} <- Bad]}.
+    State#state{reload_state = NotNotifiedServices}.
 
 notify_service(Service) ->
     RV = (catch do_notify_service(Service)),
@@ -1140,3 +1156,7 @@ update_node_cert_epoch() ->
             ?log_info("Skipped node cert epoch update: ~p", [Reason])
     end,
     ok.
+
+create_marker(Services) ->
+    Data = iolist_to_binary(io_lib:format("~p.", [Services])),
+    misc:create_marker(marker_path(), Data).
