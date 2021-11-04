@@ -800,11 +800,7 @@ idle({start_rebalance, KeepNodes, EjectNodes, FailedNodes, DeltaNodes,
                              [KeepNodes, EjectNodes, FailedNodes, RebalanceId])
             end,
             event_log:add_log(rebalance_initiated,
-                              [{known_nodes, KeepNodes},
-                               {ejected_nodes, EjectNodes},
-                               {failover_nodes, FailedNodes},
-                               {delta_nodes, DeltaNodes},
-                               {rebalance_id, RebalanceId}]),
+                              [{nodes_info, {struct, NodesInfo}}]),
             ns_cluster:counter_inc(Type, start),
             set_rebalance_status(Type, running, Pid),
 
