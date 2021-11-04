@@ -59,7 +59,8 @@ class MnBucketItemDetailsComponent extends MnLifeCycleHooksToStream {
     this.modalService = modalService;
 
     let currentBucket = this.mnOnChanges
-      .pipe(pluck('bucket', 'currentValue'));
+      .pipe(filter(v => v !== undefined),
+            pluck('bucket', 'currentValue'));
 
     this.bucketName = currentBucket
       .pipe(pluck('name'),

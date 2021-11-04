@@ -10,7 +10,7 @@ licenses/APL2.txt.
 
 import {Injectable} from '@angular/core';
 import {BehaviorSubject} from 'rxjs';
-import {shareReplay, map} from 'rxjs/operators';
+import {shareReplay, map, filter} from 'rxjs/operators';
 import {groupBy, prop} from 'ramda';
 
 import {singletonGuard} from './mn.core.js';
@@ -42,7 +42,8 @@ class MnTasksService {
 
     this.stream.tasksBucketCompactionPlug = new BehaviorSubject();
     this.stream.tasksCompactionByBucket = this.stream.tasksBucketCompactionPlug
-      .pipe(map(groupBy(prop('bucket'))),
+      .pipe(filter(v => v !== undefined),
+            map(groupBy(prop('bucket'))),
             shareReplay({refCount: true, bufferSize: 1}));
 
     this.stream.tasksViewCompactionPlug = new BehaviorSubject([]);
