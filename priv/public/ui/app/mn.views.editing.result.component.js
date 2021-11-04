@@ -11,10 +11,9 @@ licenses/APL2.txt.
 import { Component, ChangeDetectionStrategy } from '@angular/core';
 import { UIRouter } from '@uirouter/angular';
 import { MnLifeCycleHooksToStream } from './mn.core.js';
-import { take, pluck, filter, map, catchError,
-         withLatestFrom, takeUntil, startWith,
-         shareReplay } from 'rxjs/operators';
-import { Subject, combineLatest, of } from 'rxjs';
+import { take, pluck, filter, map, withLatestFrom,
+         takeUntil, startWith } from 'rxjs/operators';
+import { Subject, combineLatest } from 'rxjs';
 import { reject, equals, is } from 'ramda';
 
 import { MnFormService } from './mn.form.service.js';

@@ -13,6 +13,7 @@ import {CommonModule} from '@angular/common';
 import {ReactiveFormsModule} from '@angular/forms';
 
 import {MnFocusDirective} from './mn.focus.directive.js';
+import {MnSpinnerDirective} from './mn.spinner.directive.js';
 import {MnMainSpinnerDirective} from './ajs.upgraded.components.js';
 
 export {MnSharedModule}
@@ -27,7 +28,8 @@ class MnSharedModule {
       ],
       declarations: [
         MnFocusDirective,
-        MnMainSpinnerDirective
+        MnMainSpinnerDirective,
+        MnSpinnerDirective
         // mn.components.MnAutoCompactionForm,
         // mn.components.MnPeriod,
         // mn.components.MnServicesConfig,
@@ -37,6 +39,7 @@ class MnSharedModule {
       exports: [
         MnFocusDirective,
         MnMainSpinnerDirective,
+        MnSpinnerDirective,
         CommonModule
         // mn.components.MnServicesConfig,
         // mn.components.MnAutoCompactionForm,

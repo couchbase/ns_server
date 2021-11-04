@@ -10,9 +10,7 @@ licenses/APL2.txt.
 
 import { Injectable } from "@angular/core";
 import { HttpClient } from '@angular/common/http';
-import { switchMap, shareReplay } from 'rxjs/operators';
 import {MnHttpRequest} from './mn.http.request.js';
-import { BehaviorSubject } from 'rxjs';
 
 export { MnViewsEditingService }
 

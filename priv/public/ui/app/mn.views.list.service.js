@@ -104,7 +104,7 @@ class MnViewsListService {
     return this.http.get(url);
   }
 
-  getDdocs([bucket, ]) {
+  getDdocs([bucket,]) {
     return this.http.get(`/pools/default/buckets/${bucket}/ddocs`, { observe: 'response' });
   }
 

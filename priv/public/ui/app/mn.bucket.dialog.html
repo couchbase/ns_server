@@ -57,7 +57,7 @@ licenses/APL2.txt.
         </div>
       </div>
 
-      <div class="formrow">
+      <div class="formrow" [mnSpinner]="bucketRam | async">
         <label>Memory Quota <small>in megabytes per server node</small></label>
         <div class="form-inline margin-bottom-1">
           <input

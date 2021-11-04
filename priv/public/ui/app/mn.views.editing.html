@@ -44,7 +44,8 @@
 
       <div
         [hidden]="!(toggle.state | async)"
-        class="row items-top padded text-small">
+        class="row items-top padded text-small"
+        [mnSpinner]="getDdoc | async">
         <div
           class="column width-8"
           [hidden]="(hasWarnings | async)">

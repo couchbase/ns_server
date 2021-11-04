@@ -20,7 +20,6 @@ import {MnPoolsService} from './mn.pools.service.js';
 import {MnFormService} from './mn.form.service.js';
 import {MnAuthService} from './mn.auth.service.js';
 import {MnAdminService} from './mn.admin.service.js';
-import {MnHttpGroupRequest} from './mn.http.request.js';
 import {MnPools, $rootScope} from './ajs.upgraded.providers.js';
 
 export {MnWizardNewClusterConfigComponent};
@@ -88,7 +87,7 @@ class MnWizardNewClusterConfigComponent extends MnLifeCycleHooksToStream {
 
     mnPoolsService.stream.isEnterprise
       .pipe(first())
-      .subscribe(isEnterprise => {
+      .subscribe(() => {
         this.form
           .setPackPipe(pipe(
             filter(() => hostConfigField.valid),

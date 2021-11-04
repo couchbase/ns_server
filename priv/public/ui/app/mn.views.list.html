@@ -99,7 +99,7 @@
       </div>
 
       <div *ngIf="((getDdocsStatus | async) === 200) && (hasReadPermission | async)">
-        <div *ngFor="let row of (getDdocsOfType | async);">
+        <div *ngFor="let row of (getDdocsOfType | async)">
           <mn-views-list-item
             [viewId]="viewId | async"
             [ddocumentId]="ddocumentId | async"

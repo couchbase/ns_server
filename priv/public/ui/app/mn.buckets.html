@@ -53,7 +53,8 @@ licenses/APL2.txt.
 
 <div
   class="cbui-table"
-  [hidden]="!(buckets | async)?.length">
+  [hidden]="!(buckets | async)?.length"
+  [mnSpinner]="buckets | async">
   <div class="cbui-table-header">
     <span class="cbui-table-cell flex-grow-3">
       <span
