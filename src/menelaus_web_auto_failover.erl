@@ -39,9 +39,16 @@
 -define(FAILOVER_SERVER_GROUP_CONFIG_KEY, failover_server_group).
 
 -define(MAX_EVENTS_CONFIG_KEY, max_count).
--define(MAX_EVENTS_ALLOWED, 3).
 -define(MIN_EVENTS_ALLOWED, 1).
 -define(DEFAULT_EVENTS_ALLOWED, 1).
+
+max_events_allowed() ->
+    case cluster_compat_mode:is_cluster_NEO() of
+        true ->
+            100;
+        false ->
+            3
+    end.
 
 handle_settings_get(Req) ->
     Config = auto_failover:get_cfg(),
@@ -190,7 +197,7 @@ parse_validate_can_abort_rebalance_inner(Args, CurrRV) ->
 parse_validate_max_count(Args, CurrRV, Config) ->
     CurrMax = proplists:get_value(?MAX_EVENTS_CONFIG_KEY, Config),
     Min = ?MIN_EVENTS_ALLOWED,
-    Max = ?MAX_EVENTS_ALLOWED,
+    Max = max_events_allowed(),
     MaxCount = proplists:get_value("maxCount", Args, integer_to_list(CurrMax)),
     case parse_validate_number(MaxCount, Min, Max) of
         {ok, Val} ->
