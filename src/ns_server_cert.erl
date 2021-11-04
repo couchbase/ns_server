@@ -1113,11 +1113,14 @@ expiration_warnings(CertProps) ->
     end.
 
 is_trusted(CAPem, TrustedCAs) ->
-    Decoded = decode_single_certificate(CAPem),
-    lists:any(
-      fun (C) ->
-          Decoded == decode_single_certificate(C)
-      end, TrustedCAs).
+    case decode_single_certificate(CAPem) of
+        {error, _} -> false;
+        Decoded ->
+            lists:any(
+              fun (C) ->
+                  Decoded == decode_single_certificate(C)
+              end, TrustedCAs)
+    end.
 
 node_cert_warnings(TrustedCAs, NodeCertProps) ->
     MissingCAWarnings =
