@@ -1656,10 +1656,23 @@ handle_start_failover(Nodes, AllowUnsafe, From, Wait, FailoverType, Options) ->
         {ok, Pid} ->
             ale:info(?USER_LOGGER, "Starting failover of nodes ~p. "
                      "Operation Id = ~s", [Nodes, Id]),
+
             Event = list_to_atom(atom_to_list(FailoverType) ++ "_initiated"),
+
+            FailoverReasons = maps:get(failover_reasons, Options, []),
+            JSONFun = fun (V) when is_list(V) ->
+                              list_to_binary(V);
+                          (V) ->
+                              V
+                      end,
+            FailoverReasonsJSON = [{Node, JSONFun(Reason)} ||
+                                   {Node, Reason} <- FailoverReasons],
             event_log:add_log(Event, [{operation_id, Id},
                                       {nodes_info, {struct, NodesInfo}},
+                                      {failover_reason,
+                                       {struct, FailoverReasonsJSON}},
                                       {allow_unsafe, AllowUnsafe}]),
+
             Type = failover,
             ns_cluster:counter_inc(Type, start),
             set_rebalance_status(Type, running, Pid),

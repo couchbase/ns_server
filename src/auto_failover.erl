@@ -564,7 +564,8 @@ allow_failover_group(FOSGs) ->
 failover_nodes([], S, _DownNodes, _NodeStatuses, _UpdateCount) ->
     S;
 failover_nodes(Nodes, S, DownNodes, NodeStatuses, UpdateCount) ->
-    case try_autofailover(Nodes) of
+    FailoverReasons = failover_reasons(Nodes, DownNodes, NodeStatuses),
+    case try_autofailover(Nodes, FailoverReasons) of
         {ok, UnsafeNodes} ->
             FailedOver = Nodes -- [N || {N, _} <- UnsafeNodes],
             [log_failover_success(N, DownNodes, NodeStatuses) ||
@@ -587,7 +588,7 @@ failover_nodes(Nodes, S, DownNodes, NodeStatuses, UpdateCount) ->
             process_failover_error(Error, Nodes, S)
     end.
 
-try_autofailover(Nodes) ->
+try_autofailover(Nodes, FailoverReasons) ->
     case ns_cluster_membership:service_nodes(Nodes, kv) of
         [] ->
             {ValidNodes, UnsafeNodes} = validate_services_safety(Nodes, []),
@@ -596,7 +597,9 @@ try_autofailover(Nodes) ->
                     {ok, UnsafeNodes};
                 _ ->
                     case ns_orchestrator:try_autofailover(
-                           ValidNodes, #{skip_safety_check => true}) of
+                           ValidNodes,
+                           #{skip_safety_check => true,
+                             failover_reasons => FailoverReasons}) of
                         {ok, UN} ->
                             UN = [],
                             {ok, UnsafeNodes};
@@ -605,25 +608,40 @@ try_autofailover(Nodes) ->
                     end
             end;
         _ ->
-            ns_orchestrator:try_autofailover(Nodes, #{})
+            ns_orchestrator:try_autofailover(Nodes, #{failover_reasons =>
+                                                      FailoverReasons})
     end.
 
 log_failover_success(Node, DownNodes, NodeStatuses) ->
-    {_, DownInfo, _} = lists:keyfind(Node, 1, DownNodes),
-    case DownInfo of
-        unknown ->
-            ?log_info_and_email(
-               auto_failover_node,
-               "Node (~p) was automatically failed over.~n~p",
-               [Node, ns_doctor:get_node(Node, NodeStatuses)]);
-        {Reason, MARes} ->
-            MA = [atom_to_list(M) || M <- MARes],
-            master_activity_events:note_autofailover_done(Node,
-                                                          string:join(MA, ",")),
+    case failover_reason(Node, DownNodes, NodeStatuses) of
+        {Reason, MA} ->
+            master_activity_events:note_autofailover_done(Node, MA),
             ?log_info_and_email(
                auto_failover_node,
                "Node (~p) was automatically failed over. Reason: ~s",
-               [Node, Reason])
+               [Node, Reason]);
+        Reason ->
+            ?log_info_and_email(
+               auto_failover_node,
+               "Node (~p) was automatically failed over.~n~p", [Node, Reason])
+
+    end.
+
+failover_reasons(FailedOverNodes, DownNodes, NodeStatuses) ->
+    Fun = fun (N) ->
+                  {Reason, _} = failover_reason(N, DownNodes, NodeStatuses),
+                  {N, Reason}
+          end,
+    [Fun(Node) || Node <- FailedOverNodes].
+
+failover_reason(Node, DownNodes, NodeStatuses) ->
+    {_, DownInfo, _} = lists:keyfind(Node, 1, DownNodes),
+    case DownInfo of
+        unknown ->
+            ns_doctor:get_node(Node, NodeStatuses);
+        {Reason, MARes} ->
+            MA = [atom_to_list(M) || M <- MARes],
+            {Reason, string:join(MA, ",")}
     end.
 
 log_unsafe_node({Node, {Service, Error}}, State) ->
