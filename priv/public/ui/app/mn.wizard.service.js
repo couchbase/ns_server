@@ -173,9 +173,9 @@ class MnWizardService {
       .addSuccess()
       .addError();
 
-    this.stream.authHttp =
-      new MnHttpRequest(this.postAuth.bind(this))
-      .addSuccess()
+    this.stream.postSettingsWebHttp =
+      new MnHttpRequest(this.postSettingsWeb.bind(this))
+      .addSuccess(map(data => JSON.parse(data)))
       .addError();
 
     this.stream.querySettingsHttp =
@@ -410,7 +410,7 @@ class MnWizardService {
     return this.http.get('/settings/indexes');
   }
 
-  postAuth(user) {
+  postSettingsWeb(user) {
     var data = _.clone(user[0]);
     delete data.passwordVerify;
     data.port = "SAME";

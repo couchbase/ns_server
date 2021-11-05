@@ -40,7 +40,7 @@ class MnWizardSetupNewClusterComponent extends MnLifeCycleHooksToStream {
 
     this.focusFieldSubject = new BehaviorSubject("clusterName");
     this.uiRouter = uiRouter;
-    this.authHttp = mnWizardService.stream.authHttp;
+    this.postSettingsWebHttp = mnWizardService.stream.postSettingsWebHttp;
 
     this.form = mnFormService.create(this);
     this.form
@@ -48,7 +48,7 @@ class MnWizardSetupNewClusterComponent extends MnLifeCycleHooksToStream {
         filter(this.canSubmit.bind(this)),
         map(this.getValues.bind(this))))
       .setFormGroup(mnWizardService.wizardForm.newCluster)
-      .setPostRequest(this.authHttp)
+      .setPostRequest(this.postSettingsWebHttp)
       .showGlobalSpinner()
       .success(this.onSuccess.bind(this));
 
@@ -65,7 +65,10 @@ class MnWizardSetupNewClusterComponent extends MnLifeCycleHooksToStream {
     return !this.form.group.invalid;
   }
 
-  onSuccess() {
+  onSuccess(validation) {
+    if (Object.keys(validation.errors).length) {
+      return;
+    }
     this.uiRouter.stateService.go('app.wizard.termsAndConditions', null, {location: false});
   }
 }
