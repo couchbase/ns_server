@@ -1477,7 +1477,11 @@ define("ace/mode/json/json_parse",["require","exports","module"], function(requi
                     next();
                 }
             }
+            // MB-47850 - need to double-check for numbers like "0001" which don't parse
+            try {JSON.parse(string)} catch (e) {error("Bad number")}
+
             number = +string;
+
             if (isNaN(number)) {
                 error("Bad number");
             } else {
