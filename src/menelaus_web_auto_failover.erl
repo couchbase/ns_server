@@ -83,7 +83,7 @@ handle_settings_post(Req) ->
             ns_audit:enable_auto_failover(Req, Timeout, MaxCount, Extras),
             reply(Req, 200);
         {true, {error, Errors}} ->
-            reply_json(Req, {struct, [{errors, {struct, Errors}}]}, 200);
+            reply_json(Req, {struct, [{errors, {struct, Errors}}]}, 400);
         %% Validation only and no errors
         {true, _}->
             reply_json(Req, {struct, [{errors, null}]}, 200)

@@ -752,7 +752,7 @@ handle_settings_auto_reprovision_post(Req) ->
             Errors2 = [<<Msg/binary, "\n">> || {_, Msg} <- Errors],
             reply_text(Req, Errors2, 400);
         {true, {error, Errors}} ->
-            reply_json(Req, {struct, [{errors, {struct, Errors}}]}, 200);
+            reply_json(Req, {struct, [{errors, {struct, Errors}}]}, 400);
         %% Validation only and no errors
         {true, _}->
             reply_json(Req, {struct, [{errors, null}]}, 200)

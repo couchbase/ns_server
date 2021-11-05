@@ -98,25 +98,25 @@ validate_only(Req) ->
 
 handle_multiple(Fun, Req, States) when is_list(States) ->
     Errors = [E || #state{errors = E} <- States],
-    case validate_only(Req) of
+
+    ValidationSucceed = ([] == lists:flatten(Errors)),
+    case ValidationSucceed of
         true ->
-            report_errors_for_multiple(Req, Errors, 200);
+            case validate_only(Req) of
+                true -> report_errors_for_multiple(Req, Errors, 200);
+                false -> Fun([prepare_params(S) || S <- States])
+            end;
         false ->
-            case lists:flatten(Errors) of
-                [] ->
-                    Fun([prepare_params(S) || S <- States]);
-                _ ->
-                    report_errors_for_multiple(Req, Errors, 400)
-            end
+            report_errors_for_multiple(Req, Errors, 400)
     end.
 
 handle_one(Fun, Req, #state{errors = Errors} = State) ->
     case {validate_only(Req), Errors} of
-        {true, _} ->
-            report_errors_for_one(Req, Errors, 200);
         {false, []} ->
             Fun(prepare_params(State));
-        {false, _} ->
+        {true, []} ->
+            report_errors_for_one(Req, Errors, 200);
+        {_, _} ->
             report_errors_for_one(Req, Errors, 400)
     end.
 
