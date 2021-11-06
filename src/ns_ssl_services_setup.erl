@@ -351,7 +351,8 @@ read_ca_certs(File) ->
 ssl_client_opts() ->
     [{cacertfile, ca_file_path()},
      {verify, verify_peer},
-     {depth, ?ALLOWED_CERT_CHAIN_LENGTH}].
+     {depth, ?ALLOWED_CERT_CHAIN_LENGTH},
+     {reuse_sessions, false}].
 
 start_link_rest_service() ->
     case service_ports:get_port(ssl_rest_port) of
