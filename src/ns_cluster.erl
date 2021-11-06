@@ -141,16 +141,22 @@ engage_cluster_apply_certs(NodeKVList) ->
                     ok
             end,
             engage_cluster_apply_net_config(NodeKVList);
-        ClusterCA ->
-            case apply_certs(ClusterCA) of
+        _ClusterCA ->
+            case apply_certs() of
                 ok -> engage_cluster_apply_net_config(NodeKVList);
                 {error, _, _} = Error -> Error
             end
     end.
 
-apply_certs(ClusterCA) ->
-    case ns_server_cert:add_CAs(uploaded, ClusterCA) of
-        {ok, _} ->
+apply_certs() ->
+    ReadCAsRes = case ns_server_cert:load_CAs_from_inbox() of
+                    {ok, _} -> ok;
+                    {error, {_Dir, empty}} -> ok;
+                    {error, {_Dir, {read, enoent}}} -> ok;
+                    {error, _} = E -> E
+                end,
+    case ReadCAsRes of
+        ok ->
             %% We skip loading if certs in inbox are already loaded because of
             %% two reasons:
             %%  - We don't have passphrase settings for encrypted key, so if we
@@ -187,7 +193,7 @@ apply_certs(ClusterCA) ->
                     {error, apply_cert, Message}
             end;
         {error, Error} ->
-            Msg = io_lib:format("Error applying root CA: ~p", [Error]),
+            Msg = ns_error_messages:load_CAs_from_inbox_error(Error),
             {error, apply_cert, iolist_to_binary(Msg)}
     end.
 
