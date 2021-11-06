@@ -33,7 +33,6 @@
          get_subject_fields_by_type/2,
          get_sub_alt_names_by_type/2,
          get_node_cert_info/1,
-         tls_server_validation_options/0,
          set_generated_ca/1,
          validate_pkey/2,
          get_chain_info/2,
@@ -1168,12 +1167,3 @@ node_cert_warnings_pre_neo(TrustedCAs, Node, Config) ->
 
 get_node_cert_info(Node) ->
     ns_config:read_key_fast({node, Node, node_cert}, []).
-
-tls_server_validation_options() ->
-    case this_node_uses_self_generated_certs() of
-        true -> [];
-        false ->
-            [{verify, verify_peer},
-             {cacerts, trusted_CAs(der)},
-             {depth, ?ALLOWED_CERT_CHAIN_LENGTH}]
-    end.
