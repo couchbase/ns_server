@@ -395,7 +395,7 @@ class MnBucketsService {
   getBucketFormData(defaultAutoCompaction, bucket) {
     let result = {
       name: bucket.name,
-      ramQuotaMB: this.mnHelperService.transformBytesToMB(bucket.quota.ram),
+      ramQuotaMB: this.mnHelperService.transformBytesToMB(bucket.quota.rawRAM),
       bucketType: bucket.bucketType,
       replicaNumberEnabled: bucket.replicaNumber !== 0,
       replicaNumber: bucket.replicaNumber,
