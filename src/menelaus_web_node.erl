@@ -530,9 +530,12 @@ build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr) ->
                     L ->
                         [{[{afamily, AF}, {nodeEncryption, E}]} || {AF, E} <- L]
                 end,
+    ServerGroup = ns_cluster_membership:get_node_server_group(WantENode,
+                                                              Config),
 
     RV = [{hostname, build_node_hostname(Config, WantENode, LocalAddr)},
           {nodeUUID, NodeUUID},
+          {serverGroup, ServerGroup},
           {clusterCompatibility,
            cluster_compat_mode:effective_cluster_compat_version()},
           {version, list_to_binary(Version)},
