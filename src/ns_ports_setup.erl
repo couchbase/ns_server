@@ -299,7 +299,7 @@ goport_defs() ->
      #def{id = 'query',
           exe = "cbq-engine",
           service = n1ql,
-          rpc = 'cbq-engine',
+          rpc = n1ql,
           log = ?QUERY_LOG_FILENAME},
      #def{id = fts,
           exe = "cbft",
