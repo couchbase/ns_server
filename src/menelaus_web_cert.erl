@@ -121,11 +121,34 @@ format_time(UTCSeconds) ->
     DateTime = calendar:gregorian_seconds_to_datetime(UTCSeconds),
     menelaus_util:format_server_time(DateTime, 0).
 
+%% 'negligible' and 'severe' are not used currently hence the suppressing of
+%% the dialyzer warning
+-dialyzer({no_match, warning_severity_level/1}).
+warning_severity_level(negligible) -> 1;
+warning_severity_level(minimal) -> 2;
+warning_severity_level(significant) -> 3;
+warning_severity_level(serious) -> 4;
+warning_severity_level(severe) -> 5.
+
+warning_severity_props(N) ->
+    [{severity, warning_severity_level(N)},
+     {severityName, N}].
+
+warning_severity(expires_soon) -> significant;
+warning_severity(unused) -> minimal;
+warning_severity(mismatch) -> minimal;
+warning_severity(expired) -> serious;
+warning_severity(self_signed) -> minimal.
+
 warning_props({expires_soon, UTCSeconds}) ->
-    [{message, ns_error_messages:node_certificate_warning(expires_soon)},
-     {expires, format_time(UTCSeconds)}];
+    [{name, expires_soon},
+     {message, ns_error_messages:node_certificate_warning(expires_soon)},
+     {expires, format_time(UTCSeconds)} |
+     warning_severity_props(warning_severity(expires_soon))];
 warning_props(Warning) ->
-    [{message, ns_error_messages:node_certificate_warning(Warning)}].
+    [{name, Warning},
+     {message, ns_error_messages:node_certificate_warning(Warning)} |
+     warning_severity_props(warning_severity(Warning))].
 
 translate_warning({{node, Node}, Warning}) ->
     [{node, Node} | warning_props(Warning)];
