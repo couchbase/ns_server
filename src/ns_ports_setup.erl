@@ -13,7 +13,7 @@
 -export([start/0, setup_body_tramp/0,
          restart_memcached/0,
          sync/0, create_erl_node_spec/4,
-         shutdown_ports/0, build_cbauth_env_vars/2]).
+         shutdown_ports/0, build_cbauth_env_vars/2, get_rpc_prefix/1]).
 
 start() ->
     proc_lib:start_link(?MODULE, setup_body_tramp, []).
@@ -282,7 +282,7 @@ goport_defs() ->
                      rpc = goxdcr,
                      log = ?GOXDCR_LOG_FILENAME},
       n1ql => #def{exe = "cbq-engine",
-                   rpc = n1ql,
+                   rpc = 'cbq-engine',
                    log = ?QUERY_LOG_FILENAME},
       fts => #def{exe = "cbft",
                   rpc = fts,
@@ -296,6 +296,10 @@ goport_defs() ->
       backup => #def{exe = "backup",
                      rpc = backup,
                      log = ?BACKUP_LOG_FILENAME}}.
+
+get_rpc_prefix(Service) ->
+    #def{rpc = RPCService} = maps:get(Service, goport_defs()),
+    RPCService.
 
 build_goport_spec(Service, #def{exe = Executable,
                                 rpc = RPCService,

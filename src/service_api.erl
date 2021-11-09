@@ -66,7 +66,7 @@ is_safe(Service, NodeIds) ->
       do_perform_call(get_label(Service), "IsSafe", NodeIds, #{})).
 
 get_label(Service) when is_atom(Service) ->
-    atom_to_list(Service) ++ "-service_api".
+    atom_to_list(ns_ports_setup:get_rpc_prefix(Service)) ++ "-service_api".
 
 %% internal
 perform_call(PidOrLabel, Name, Arg) ->
