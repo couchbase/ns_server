@@ -957,15 +957,6 @@ validate_settings_paths(Paths) ->
 
     ResPaths.
 
-%% Basic port validation is done.
-%% The below port validations are not performed.
-%%  - Verify if all ports being setup for "external" have their particular
-%%    service enabled on the node.
-%%  - Verify if no two hostname:port pair are the same in a cluster.
-%% Reasoning behind not performing above validations is that the node can have
-%% "external" addresses configured before it has been added to the cluster, or
-%% it's services configured. Therefore, we keep port validation simple and trust
-%% the admin to setup "external" addresses correctly for the clients.
 parse_validate_ports(Params) ->
     lists:foldl(
       fun ({RestName, Value}, Acc) ->
@@ -1004,18 +995,44 @@ parse_validate_hostname(Hostname) ->
                      [?MAX_HOSTNAME_LENGTH]))
     end.
 
+%% The below port validations are performed:
+%%  - Provisioned: Verify if all ports being setup for "external" have their
+%%    particular service enabled on the node.
+%%  - Not Provisioned: If the node is not provisioned we allow modifying the
+%%    external ports for any service, because we don't know which ones will
+%%    eventually be selected.
 parse_validate_external_params(Params) ->
     Hostname = parse_validate_hostname(proplists:get_value("hostname", Params)),
     Ports = parse_validate_ports(proplists:delete("hostname", Params)),
-    [{external, [{hostname, Hostname}, {ports, Ports}]}].
+    Config = ns_config:get(),
+    ValidResponse = [{external, [{hostname, Hostname}, {ports, Ports}]}],
+    case ns_config_auth:is_system_provisioned(Config) of
+        true ->
+            case lists:all(
+                   lists:member(
+                     _, service_ports:services_port_keys(
+                          ns_cluster_membership:node_active_services(
+                            Config, node()))), [V || {V, _} <- Ports]) of
+                true ->
+                    ValidResponse;
+                false ->
+                    {error, <<"Cannot set services unavailable on the node">>}
+            end;
+        false ->
+            ValidResponse
+    end.
 
 %% This replaces any existing alternate_addresses config of this node.
 %% For now this is fine because external is only element in alternate_addresses.
 handle_node_altaddr_external(Req) ->
     Params = mochiweb_request:parse_post(Req),
-    External = parse_validate_external_params(Params),
-    ns_config:set({node, node(), alternate_addresses}, External),
-    menelaus_util:reply(Req, 200).
+    case parse_validate_external_params(Params) of
+        {error, M} ->
+            menelaus_util:reply_text(Req, M, 400);
+        External ->
+            ns_config:set({node, node(), alternate_addresses}, External),
+            menelaus_util:reply(Req, 200)
+    end.
 
 %% Delete alternate_addresses as external is the only element in
 %% alternate_addresses.
