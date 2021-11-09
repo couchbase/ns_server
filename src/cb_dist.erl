@@ -356,20 +356,18 @@ handle_call(restart_tls, _From, #s{connections = Connections,
     NewState = lists:foldl(fun remove_proto/2, State, TLSListeners),
 
     NewConnections =
-        lists:filtermap(
-          fun (#con{mod = Mod, pid = Pid, mon = Mon} = Con) ->
+        lists:filter(
+          fun (#con{mod = Mod, pid = Pid, mon = Mon}) ->
                   case proto2netsettings(Mod) of
                       {_, true = _Encryption} ->
-                          case Pid of
-                              undefined ->
-                                  {true, Con#con{pid = shutdown}};
-                              shutdown ->
-                                  {true, Con};
-                              _ ->
+                          if
+                              is_pid(Pid) ->
                                   info_msg("Closing connection ~p because of "
                                            "tls restart", [Pid]),
                                   close_dist_connection(Mon, Pid, KernelPid),
-                                  false
+                                  false;
+                              true ->
+                                  true
                           end;
                       {_, _} ->
                           true
@@ -591,7 +589,8 @@ start_ensure_config_timer(#s{} = State) ->
     State.
 
 remove_proto({_AddrType, Mod} = Listener,
-             #s{listeners = Listeners, acceptors = Acceptors} = State) ->
+             #s{listeners = Listeners, acceptors = Acceptors,
+                connections = Connections} = State) ->
     case proplists:get_value(Listener, Listeners) of
         {LSocket, _, _} ->
             info_msg("Closing listener ~p", [Listener]),
@@ -611,8 +610,16 @@ remove_proto({_AddrType, Mod} = Listener,
                      [AcceptorProcs]),
             catch Mod:close(LSocket),
             wait_for_acceptors(AcceptorProcs, Mod, ?TERMINATE_ACCEPTOR_TIMEOUT),
+            NewConnections =
+                lists:map(
+                  fun (#con{mod = CM, pid = undefined} = Con) when CM == Mod ->
+                          Con#con{pid = shutdown};
+                      (Con) ->
+                          Con
+                  end, Connections),
             State#s{listeners = proplists:delete(Listener, Listeners),
-                    acceptors = [{P, M} || {P, M} <- Acceptors, M =/= Listener]};
+                    acceptors = [{P, M} || {P, M} <- Acceptors, M =/= Listener],
+                    connections = NewConnections};
         undefined ->
             info_msg("ignoring closing of ~p because listener is not started",
                      [Listener]),
@@ -1012,7 +1019,7 @@ update_connection_pid(Ref, Pid, #s{connections = Connections} = State) ->
             info_msg("Removed connection: ~p", [Con]),
             State#s{connections = Rest};
         {value, #con{pid = shutdown}, Rest} ->
-            info_msg("Closing connection ~p because of tls restart", [Pid]),
+            info_msg("Closing connection ~p because acceptor is dead", [Pid]),
             %% No point in using close_dist_connection here as {KernelPid,
             %% disconnect} message is only useful after we forward the
             %% controller message to AcceptorPid(which no longer exists), and it
