@@ -665,7 +665,7 @@ do_wait_for_acceptors(Mod, Deadline, [{A, MRef} | MRefTail]) when is_pid(A) ->
 listen_proto({AddrType, Module}, NodeName) ->
     NameStr = atom_to_list(NodeName),
     Port = cb_epmd:port_for_node(Module, NameStr),
-    info_msg("Starting ~p listener on ~p...", [Module, Port]),
+    info_msg("Starting ~p listener on ~p...", [{AddrType, Module}, Port]),
     ListenAddr = get_listen_addr(AddrType, Module),
     ListenFun =
         fun () ->
@@ -799,7 +799,7 @@ read_terms_from_file(F) ->
 handle_reload_config(State) ->
     try read_config(config_path(), true) of
         Cfg ->
-            info_msg("Reloading configuration: ~p", [Cfg]),
+            info_msg("Reloading configuration:~n~p", [Cfg]),
             NewState = ensure_config(State#s{config = Cfg}),
             case not_started_required_listeners(NewState) of
                 [] ->
@@ -956,7 +956,7 @@ store_config(Cfg) ->
     CfgFile = cb_dist:config_path(),
     case store_config(CfgFile, Cfg) of
         ok ->
-            info_msg("Updated cb_dist config ~p: ~p", [CfgFile, Cfg]),
+            info_msg("Updated cb_dist config ~p:~n~p", [CfgFile, Cfg]),
             ok;
         {error, Reason} ->
             error_msg("Failed to save cb_dist config to ~p with reason: ~p",
