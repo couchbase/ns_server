@@ -196,8 +196,8 @@ find_executable(Name) ->
             V
     end.
 
-build_go_service_env_vars(SpecId) when SpecId =:= indexer;
-                                       SpecId =:= projector ->
+build_go_service_env_vars(Service) when Service =:= indexer;
+                                        Service =:= kv ->
     [{"GODEBUG", "madvdontneed=1"} | common_go_env_vars()];
 build_go_service_env_vars(_) ->
     common_go_env_vars().
@@ -279,73 +279,57 @@ get_writable_ix_subdir(SubDir) ->
     end,
     Dir.
 
--record(def, {id, exe, service, rpc, log}).
+-record(def, {exe, rpc, log}).
 
 goport_defs() ->
-    [#def{id = indexer,
-          exe = "indexer",
-          service = index,
-          rpc = index,
-          log = ?INDEXER_LOG_FILENAME},
-     #def{id = projector,
-          exe = "projector",
-          service = kv,
-          rpc = projector,
-          log = ?PROJECTOR_LOG_FILENAME},
-     #def{id = goxdcr,
-          exe = "goxdcr",
-          rpc = goxdcr,
-          log = ?GOXDCR_LOG_FILENAME},
-     #def{id = 'query',
-          exe = "cbq-engine",
-          service = n1ql,
-          rpc = n1ql,
-          log = ?QUERY_LOG_FILENAME},
-     #def{id = fts,
-          exe = "cbft",
-          service = fts,
-          rpc = fts,
-          log = ?FTS_LOG_FILENAME},
-     #def{id = cbas,
-          exe = "cbas",
-          service = cbas,
-          rpc = cbas,
-          log = ?CBAS_LOG_FILENAME},
-     #def{id = eventing,
-          exe = "eventing-producer",
-          service = eventing,
-          rpc = eventing,
-          log = ?EVENTING_LOG_FILENAME},
-     #def{id = backup,
-          exe = "backup",
-          service = backup,
-          rpc = backup,
-          log = ?BACKUP_LOG_FILENAME}].
+    #{index => #def{exe = "indexer",
+                    rpc = index,
+                    log = ?INDEXER_LOG_FILENAME},
+      kv => #def{exe = "projector",
+                 rpc = projector,
+                 log = ?PROJECTOR_LOG_FILENAME},
+      goxdcr => #def{exe = "goxdcr",
+                     rpc = goxdcr,
+                     log = ?GOXDCR_LOG_FILENAME},
+      n1ql => #def{exe = "cbq-engine",
+                   rpc = n1ql,
+                   log = ?QUERY_LOG_FILENAME},
+      fts => #def{exe = "cbft",
+                  rpc = fts,
+                  log = ?FTS_LOG_FILENAME},
+      cbas => #def{exe = "cbas",
+                   rpc = cbas,
+                   log = ?CBAS_LOG_FILENAME},
+      eventing => #def{exe = "eventing-producer",
+                       rpc = eventing,
+                       log = ?EVENTING_LOG_FILENAME},
+      backup => #def{exe = "backup",
+                     rpc = backup,
+                     log = ?BACKUP_LOG_FILENAME}}.
 
-build_goport_spec(#def{id = SpecId,
-                       exe = Executable,
-                       service = Service,
-                       rpc = RPCService,
-                       log = Log}, Config, Snapshot) ->
+build_goport_spec(Service, #def{exe = Executable,
+                                rpc = RPCService,
+                                log = Log}, Config, Snapshot) ->
     Cmd = find_executable(Executable),
     NodeUUID = ns_config:search(Config, {node, node(), uuid}, false),
     case Cmd =/= false andalso
         NodeUUID =/= false andalso
-        (Service =:= undefined orelse
+        (Service =:= goxdcr orelse
          ns_cluster_membership:should_run_service(Snapshot, Service, node())) of
         false ->
             [];
         _ ->
-            EnvVars = build_go_service_env_vars(SpecId) ++
+            EnvVars = build_go_service_env_vars(Service) ++
                       build_cbauth_env_vars(Config, RPCService),
-            Args = goport_args(SpecId, Config, Cmd, binary_to_list(NodeUUID)),
-            [{SpecId, Cmd, Args,
+            Args = goport_args(Service, Config, Cmd, binary_to_list(NodeUUID)),
+            [{Service, Cmd, Args,
               [via_goport, exit_status, stderr_to_stdout, {env, EnvVars}] ++
                   [{log, Log} || Log =/= undefined]}]
     end.
 
 build_goport_specs(Config, Snapshot) ->
-    [build_goport_spec(Def, Config, Snapshot) || Def <- goport_defs()].
+    [build_goport_spec(Service, Def, Config, Snapshot) ||
+        {Service, Def} <- maps:to_list(goport_defs())].
 
 net_to_afamily(inet) ->
     "ipv4";
@@ -356,7 +340,7 @@ build_afamily_requirement(Prefix) ->
     [Prefix ++ net_to_afamily(AF) ++ "=" ++
      atom_to_list(Type) || {AF, Type} <- misc:address_family_requirement()].
 
-goport_args('query', Config, _Cmd, NodeUUID) ->
+goport_args(n1ql, Config, _Cmd, NodeUUID) ->
     RestPort = service_ports:get_port(rest_port, Config),
     DataStoreArg = "--datastore=" ++ misc:local_url(RestPort, []),
     CnfgStoreArg = "--configstore=" ++ misc:local_url(RestPort, []),
@@ -369,7 +353,7 @@ goport_args('query', Config, _Cmd, NodeUUID) ->
     [DataStoreArg, HttpArg, CnfgStoreArg, EntArg, "-uuid=" ++ NodeUUID] ++
         build_afamily_requirement("--") ++ HttpsArgs;
 
-goport_args(projector, Config, _Cmd, _NodeUUID) ->
+goport_args(kv, Config, _Cmd, _NodeUUID) ->
     %% Projector is a component that is required by 2i
     RestPort = service_ports:get_port(rest_port, Config),
     LocalMemcachedPort = service_ports:get_port(memcached_port, Config),
@@ -391,7 +375,7 @@ goport_args(goxdcr, Config, _Cmd, _NodeUUID) ->
         [IsEnterpriseFlag | build_afamily_requirement("-")] ++
         ["-caFile=" ++ ns_ssl_services_setup:ca_file_path() || IsEnterprise];
 
-goport_args(indexer, Config, _Cmd, NodeUUID) ->
+goport_args(index, Config, _Cmd, NodeUUID) ->
     {ok, LogDir} = application:get_env(ns_server, error_logger_mf_dir),
     RestPort = service_ports:get_port(rest_port, Config),
     {ok, IdxDir} = ns_storage_conf:this_node_ixdir(),
