@@ -877,6 +877,10 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
           stats: {"@cbas.cbas_pending_flush_ops": true},
           size: "small",
           specificStat: true
+        }, {
+          stats: {"@system.sysproc_mem_resident_cbas": true},
+          size: "small",
+          specificStat: true
         }]
       }, {
         name: "Eventing",

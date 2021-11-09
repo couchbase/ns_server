@@ -57,7 +57,7 @@ function mnServersListItemDetailsController($scope, mnServersListItemDetailsServ
   let statsNames = [
     '@index.index_memory_used',
     '@fts.fts_num_bytes_used_ram',
-    '@cbas.cbas_heap_used',
+    '@system.sysproc_mem_resident_java_cbas',
     '@cbas.cbas_disk_used'
   ];
 

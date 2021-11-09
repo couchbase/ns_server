@@ -16,6 +16,8 @@ var labelOperators = {
   "@kv-.kv_dcp_producer_count_views+indexes.connection_type": "=~",
   "@kv-.kv_dcp_total_data_size_bytes_views+indexes.connection_type": "=~",
 
+  "@system.sysproc_mem_resident_java_cbas.proc": "=~",
+
   "@kv-.kv_dcp_backoff_other.connection_type": "not_any",
   "@kv-.kv_dcp_producer_count_other.connection_type": "not_any",
   "@kv-.kv_dcp_connection_count_other.connection_type": "not_any",
@@ -296,6 +298,17 @@ function getStatAdditionalConfig(statName) {
   case "@system.sys_cpu_utilization_rate":
   case "@cbas.cbas_system_load_average":
     return {nodesAggregation: "avg"};
+
+  case "@system.sysproc_mem_resident_java":
+    return {metric: {name: "sysproc_mem_resident", proc: "java"},
+            applyFunctions: ["sum"]};
+  case "@system.sysproc_mem_resident_cbas":
+    return {metric: {name: "sysproc_mem_resident", proc: "cbas"},
+            applyFunctions: ["sum"]};
+
+  case "@system.sysproc_mem_resident_java_cbas":
+    return {metric: {name: "sysproc_mem_resident", proc: "java|cbas"},
+            applyFunctions: ["sum"]};
 
   case "@index-.@items.index_fragmentation":
     return {nodesAggregation: "special", applyFunctions: ["sum"]};
@@ -758,6 +771,19 @@ function get70Mapping() {
 function get70CompatDesc() {
   return {
     "stats": {
+      "@system": {
+        "sysproc_mem_resident_java_cbas": null,
+        "sysproc_mem_resident_java": {
+          unit: "bytes",
+          title: "Java Sysproc Memory Resident",
+          desc: "The memory used for the Java system process."
+        },
+        "sysproc_mem_resident_cbas": {
+          unit: "bytes",
+          title: "Cbas Sysproc Memory Resident",
+          desc: "The memory used for the Cbas system process."
+        }
+      },
       "@kv-": {
         "kv_collection_item_count": null,
         "kv_collection_mem_used_bytes": null,
