@@ -82,7 +82,7 @@ prepare_delta_recovery_bucket(Pid, Bucket, NodeVBuckets, ActiveFailoverLogs) ->
     %% We do a lot of stuff as part of preparetion for delta recovery, and
     %% certain interactions with memcached are not optimized as of right now,
     %% hence a hefty timeout.
-    Timeout = ?get_timeout(prepare_delta_recovery_bucket,  180000),
+    Timeout = ?get_timeout(prepare_delta_recovery_bucket,  300000),
     {Nodes, Results} =
         call_prepare_delta_recovery_bucket(Pid, Bucket, NodeVBuckets,
                                            ActiveFailoverLogs, Timeout),
