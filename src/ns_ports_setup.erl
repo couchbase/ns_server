@@ -11,7 +11,7 @@
 -include("ns_common.hrl").
 
 -export([start/0, setup_body_tramp/0,
-         restart_port_by_name/1, restart_memcached/0,
+         restart_memcached/0,
          restart_xdcr_proxy/0, sync/0, create_erl_node_spec/4,
          shutdown_ports/0, build_cbauth_env_vars/2]).
 
