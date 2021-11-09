@@ -885,7 +885,7 @@ san_field_to_type("uri") -> uniformResourceIdentifier;
 san_field_to_type("email") -> rfc822Name.
 
 all_services() ->
-    [cb_dist_tls, ssl_service, capi_ssl_service, xdcr_proxy, memcached, event].
+    [cb_dist_tls, ssl_service, capi_ssl_service, memcached, event].
 
 notify_services(#state{reload_state = []} = State) ->
     catch misc:remove_marker(marker_path()),
@@ -955,8 +955,6 @@ do_notify_service(capi_ssl_service) ->
             ?log_info("Did not restart capi ssl service because is wasn't running"),
             ok
     end;
-do_notify_service(xdcr_proxy) ->
-    ns_ports_setup:restart_xdcr_proxy();
 do_notify_service(memcached) ->
     memcached_config_mgr:trigger_tls_config_push();
 do_notify_service(event) ->

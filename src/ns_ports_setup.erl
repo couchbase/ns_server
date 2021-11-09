@@ -12,7 +12,7 @@
 
 -export([start/0, setup_body_tramp/0,
          restart_memcached/0,
-         restart_xdcr_proxy/0, sync/0, create_erl_node_spec/4,
+         sync/0, create_erl_node_spec/4,
          shutdown_ports/0, build_cbauth_env_vars/2]).
 
 start() ->
@@ -48,19 +48,9 @@ setup_body() ->
     set_children_and_loop(Children, undefined, normal).
 
 restart_memcached() ->
-    {ok, _} = restart_port_by_name(memcached),
+    {ok, _} = ns_ports_manager:restart_port_by_name(
+                ns_server:get_babysitter_node(), memcached),
     ok.
-
-restart_xdcr_proxy() ->
-    case restart_port_by_name(xdcr_proxy) of
-        {ok, _} ->
-            ok;
-        Error ->
-            Error
-    end.
-
-restart_port_by_name(Name) ->
-    ns_ports_manager:restart_port_by_name(ns_server:get_babysitter_node(), Name).
 
 set_children(Children, Sup) ->
     Pid = ns_ports_manager:set_dynamic_children(ns_server:get_babysitter_node(), Children),
