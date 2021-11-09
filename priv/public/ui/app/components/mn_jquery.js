@@ -4,7 +4,7 @@ export default 'mnJquery';
 
 angular
   .module('mnJquery', [])
-  .factory('jQuery', jQueryFactory);
+  .factory('mnjQuery', jQueryFactory);
 
 function jQueryFactory() {
 /*! jQuery v3.5.1 | (c) JS Foundation and other contributors | jquery.org/license */
