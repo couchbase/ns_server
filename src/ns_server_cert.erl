@@ -1055,18 +1055,18 @@ get_warnings() ->
                   case ns_config:search(Config, {node, Node, node_cert}) of
                       {value, Props} -> node_cert_warnings(TrustedCAs, Props);
                       false ->
-                          %% Pre-NEO node:
-                          false = cluster_compat_mode:is_cluster_NEO(Config),
-                          case ns_config:search(Config, {node, Node, cert}) of
-                              {value, Props} ->
-                                   node_cert_warnings(TrustedCAs, Props);
-                              false ->
-                                   case ns_config:search(cert_and_pkey) of
-                                       {value, {_, _}} ->
-                                           [self_signed];
-                                       _ ->
-                                           [mismatch]
-                                   end
+                          case proplists:get_value(supported_compat_version,
+                                                   ns_doctor:get_node(Node)) of
+                              %% no info for this node yet (probably the node
+                              %% is joining the cluster right now)
+                              undefined ->
+                                  [];
+                              NodeVsn when NodeVsn < ?VERSION_NEO ->
+                                  node_cert_warnings_pre_neo(TrustedCAs,
+                                                             Node,
+                                                             Config);
+                              _NodeVsn ->
+                                  []
                           end
                   end,
               [{{node, Node}, W} || W <- Warnings]
@@ -1150,6 +1150,21 @@ node_cert_warnings(TrustedCAs, NodeCertProps) ->
         end,
 
     MissingCAWarnings ++ ExpirationWarnings ++ SelfSignedWarnings.
+
+node_cert_warnings_pre_neo(TrustedCAs, Node, Config) ->
+    case ns_config:search(Config, cert_and_pkey) of
+        {value, {_, _}} ->
+            [self_signed];
+        {value, {_, _, _}} ->
+            case ns_config:search(Config, {node, Node, cert}) of
+                {value, Props} ->
+                    node_cert_warnings(TrustedCAs, Props);
+                false ->
+                    [mismatch]
+            end;
+        _ ->
+          []
+    end.
 
 get_node_cert_info(Node) ->
     ns_config:read_key_fast({node, Node, node_cert}, []).
