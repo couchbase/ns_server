@@ -237,7 +237,7 @@ do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
          {clusterEncryptionLevel,
           misc:get_effective_cluster_encryption_level(Config)},
          {balanced, ns_cluster_membership:is_balanced()},
-         build_check_permissions_uri(InfoLevel, Id, Snapshot),
+         build_check_permissions_uri(Id, Snapshot),
          menelaus_web_node:build_memory_quota_info(Config),
          build_ui_params(InfoLevel, Snapshot),
          build_internal_params(InfoLevel),
@@ -275,15 +275,9 @@ build_ui_params(for_ui, Snapshot) ->
 build_ui_params(_, _) ->
     [].
 
-build_check_permissions_uri(InfoLevel, Id, Snapshot) ->
-    Params =
-        case InfoLevel of
-            for_ui ->
-                [{"v",
-                  menelaus_web_rbac:check_permissions_url_version(Snapshot)}];
-            _ ->
-                []
-        end,
+build_check_permissions_uri(Id, Snapshot) ->
+    Params = [{"v",
+               menelaus_web_rbac:check_permissions_url_version(Snapshot)}],
     {checkPermissionsURI, bin_concat_path(["pools", Id, "checkPermissions"],
                                           Params)}.
 
