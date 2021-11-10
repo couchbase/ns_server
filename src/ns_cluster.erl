@@ -189,6 +189,10 @@ apply_certs() ->
                     ?log_info("Custom certificate was loaded on the node "
                               "before joining. Props: ~p", [Props]),
                     ok;
+                {error, {read_chain, _, enoent}} ->
+                    ?log_info("Skipping apply_certs because certs don't "
+                              "exist"),
+                    ok;
                 {error, Error} ->
                     Message =
                         iolist_to_binary(
