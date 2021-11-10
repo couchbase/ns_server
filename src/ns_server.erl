@@ -138,6 +138,7 @@ do_init_logging() ->
     ok = start_disk_sink(disk_json_rpc, ?JSON_RPC_LOG_FILENAME),
 
     ok = start_sink(ns_log, ns_log_sink, []),
+    ok = start_sink(cb_log_counter, cb_log_counter_sink, []),
 
     lists:foreach(
       fun (Logger) ->
@@ -174,7 +175,8 @@ do_init_logging() ->
 
               %% no need to adjust loglevel for debug log since 'debug' is
               %% already the least restrictive loglevel
-              ok = ale:add_sink(Logger, disk_debug, LogLevel)
+              ok = ale:add_sink(Logger, disk_debug, LogLevel),
+              ok = ale:add_sink(Logger, cb_log_counter, LogLevel)
       end, MainFilesLoggers),
 
     ok = ale:add_sink(?ERROR_LOGGER, disk_debug, get_loglevel(?ERROR_LOGGER)),
