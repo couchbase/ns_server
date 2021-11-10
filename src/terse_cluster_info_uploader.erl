@@ -38,7 +38,7 @@ init([]) ->
 handle_info(refresh, State) ->
     misc:flush(refresh),
     try bucket_info_cache:build_node_services() of
-        {Rev, RevEpoch, Bin} ->
+        {Rev, RevEpoch, Bin, _NodesExtHash} ->
             ?log_debug("Refreshing terse cluster info with ~p", [Bin]),
             ok = ns_memcached:set_cluster_config(Rev, RevEpoch, Bin)
     catch T:E:Stack ->

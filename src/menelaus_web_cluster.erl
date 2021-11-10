@@ -1005,13 +1005,15 @@ handle_re_failover(Req) ->
     end.
 
 serve_node_services(Req) ->
-    {_Rev, _RevEpoch, Bin} = bucket_info_cache:build_node_services(),
+    {_Rev, _RevEpoch, Bin, _NodesExtHash} =
+        bucket_info_cache:build_node_services(),
     reply_ok(Req, "application/json", Bin).
 
 serve_node_services_streaming(Req) ->
     handle_streaming(
       fun (_, _UpdateID) ->
-              {_, _, V} = bucket_info_cache:build_node_services(),
+              {_Rev, _RevEpoc, V, _NodesExtHash} =
+                bucket_info_cache:build_node_services(),
               {just_write, {write, V}}
       end, Req).
 

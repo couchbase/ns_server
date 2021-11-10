@@ -385,12 +385,13 @@ build_node_services() ->
     case ets:lookup(bucket_info_cache, 'node_services') of
         [] ->
             case call_build_node_services() of
-                {ok, Rev, RevEpoch, V} -> {Rev, RevEpoch, V};
+                {ok, Rev, RevEpoch, V, NodesExtHash} ->
+                    {Rev, RevEpoch, V, NodesExtHash};
                 {T, E, Stack} ->
                     erlang:raise(T, E, Stack)
             end;
-        [{_, Rev, RevEpoch, V}] ->
-            {Rev, RevEpoch, V}
+        [{_, Rev, RevEpoch, V, NodesExtHash}] ->
+            {Rev, RevEpoch, V, NodesExtHash}
     end.
 
 call_build_node_services() ->
@@ -400,15 +401,16 @@ call_build_node_services() ->
               case ets:lookup(bucket_info_cache, 'node_services') of
                   [] ->
                       try do_build_node_services() of
-                          {Rev, RevEpoch, V} ->
+                          {Rev, RevEpoch, V, NodesExtHash} ->
                               ets:insert(bucket_info_cache,
-                                         {'node_services', Rev, RevEpoch, V}),
-                              {ok, Rev, RevEpoch, V}
+                                         {'node_services', Rev, RevEpoch, V,
+                                          NodesExtHash}),
+                              {ok, Rev, RevEpoch, V, NodesExtHash}
                       catch T:E:S ->
                               {T, E, S}
                       end;
-                  [{_, Rev, RevEpoch, V}] ->
-                      {ok, Rev, RevEpoch, V}
+                  [{_, Rev, RevEpoch, V, NodesExtHash}] ->
+                      {ok, Rev, RevEpoch, V, NodesExtHash}
               end
       end).
 
@@ -431,6 +433,7 @@ do_build_node_services() ->
 
     NEIs = build_nodes_ext(ns_cluster_membership:active_nodes(Snapshot),
                            Config, Snapshot, []),
+    NodesExtHash = integer_to_binary(erlang:phash2(NEIs)),
     Caps = build_cluster_capabilities(Config),
     Rev = compute_global_rev(Config, ChronicleRev),
     RevEpochJSON = build_global_rev_epoch(Config, Snapshot),
@@ -440,4 +443,4 @@ do_build_node_services() ->
                end,
     J = {[{rev, Rev},
           {nodesExt, NEIs}] ++ Caps ++ RevEpochJSON},
-    {Rev, RevEpoch, ejson:encode(J)}.
+    {Rev, RevEpoch, ejson:encode(J), NodesExtHash}.
