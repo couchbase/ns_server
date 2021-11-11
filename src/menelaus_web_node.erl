@@ -360,33 +360,38 @@ build_nodes_info_fun(#ctx{ns_config = Config,
     BucketsAll = ns_bucket:get_buckets(Snapshot),
     fun(WantENode, Bucket) ->
             InfoNode = ns_doctor:get_node(WantENode, NodeStatuses),
+            StableInfo =
+                [{clusterMembership,
+                  ns_cluster_membership:get_cluster_membership(
+                    WantENode, Snapshot)},
+                 {recoveryType,
+                  ns_cluster_membership:get_recovery_type(Snapshot, WantENode)},
+                 {status, build_node_status(WantENode, Bucket, InfoNode,
+                                            BucketsAll)},
+                 {otpNode, WantENode},
+                 build_node_info(Config, Snapshot, WantENode, InfoNode,
+                                 LocalAddr),
+                 OtpCookie,
+                 case Bucket of
+                     undefined ->
+                         build_couch_api_base(WantENode, LocalAddr);
+                     _ ->
+                         build_replication_info(Bucket, WantENode, NodeStatuses,
+                                                Snapshot)
+                 end,
+                 build_failover_status(Snapshot, WantENode)],
+            NodeHash = erlang:phash2(StableInfo),
+
             {struct,
-             lists:flatten(
-               [{clusterMembership,
-                 ns_cluster_membership:get_cluster_membership(
-                   WantENode, Snapshot)},
-                {recoveryType,
-                 ns_cluster_membership:get_recovery_type(Snapshot, WantENode)},
-                {status, build_node_status(WantENode, Bucket, InfoNode,
-                                           BucketsAll)},
-                {otpNode, WantENode},
-                build_node_info(Config, Snapshot, WantENode, InfoNode,
-                                LocalAddr),
-                OtpCookie,
-                case Bucket of
-                    undefined ->
-                        build_couch_api_base(WantENode, LocalAddr);
-                    _ ->
-                        build_replication_info(Bucket, WantENode, NodeStatuses,
-                                               Snapshot)
-                end,
-                build_failover_status(Snapshot, WantENode),
-                case Stability of
-                    stable ->
-                        [];
-                    unstable ->
-                        build_extra_node_info(Config, WantENode, InfoNode)
-                end])}
+             lists:flatten([StableInfo,
+                           [{nodeHash, NodeHash}],
+                           case Stability of
+                               stable ->
+                                   [];
+                               unstable ->
+                                   build_extra_node_info(Config, WantENode,
+                                                         InfoNode)
+                           end])}
     end.
 
 build_failover_status(Snapshot, Node) ->
