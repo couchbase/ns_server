@@ -90,7 +90,7 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
 
     let formData = this.bucket ?
       this.mnBucketsService.createBucketFormData(this.bucket) :
-      this.mnBucketsService.stream.initialFormData;
+      this.mnBucketsService.createInitialFormData(this.storageTotals);
 
     this.form = this.mnFormService.create(this)
       .setFormGroup(this.formBuilder.group({

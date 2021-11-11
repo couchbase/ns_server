@@ -103,9 +103,6 @@ class MnAdminService {
     this.stream.maxBucketCount =
       this.stream.getPoolsDefault.pipe(pluck("maxBucketCount"), distinctUntilChanged());
 
-    this.stream.storageTotals =
-      this.stream.getPoolsDefault.pipe(pluck("storageTotals"), distinctUntilChanged());
-
     this.stream.uiSessionTimeout =
       this.stream.getPoolsDefault.pipe(pluck("uiSessionTimeout"), distinctUntilChanged());
 

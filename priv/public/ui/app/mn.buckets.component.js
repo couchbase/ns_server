@@ -10,7 +10,7 @@ licenses/APL2.txt.
 
 import {Component, ChangeDetectionStrategy} from '@angular/core';
 import {Subject, BehaviorSubject, combineLatest} from 'rxjs';
-import {map, takeUntil, withLatestFrom} from 'rxjs/operators';
+import {map, takeUntil, switchMap} from 'rxjs/operators';
 import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
 
 import {MnLifeCycleHooksToStream} from "./mn.core.js";
@@ -62,14 +62,15 @@ class MnBucketsComponent extends MnLifeCycleHooksToStream {
 
     this.onAddBucketClick = new Subject();
     this.onAddBucketClick
-      .pipe(withLatestFrom(mnAdminService.stream.storageTotals),
+      .pipe(switchMap(() => mnAdminService.getPoolsDefault()),
             takeUntil(this.mnOnDestroy))
-      .subscribe(([,storageTotals]) => {
-        let ram = storageTotals.ram;
+      .subscribe((resp) => {
+        let ram = resp.storageTotals.ram;
         if (!ram || ram.quotaTotal === ram.quotaUsed) {
           this.modalService.open(MnBucketFullDialogComponent);
         } else {
-          this.modalService.open(MnBucketDialogComponent);
+          let ref = this.modalService.open(MnBucketDialogComponent);
+          ref.componentInstance.storageTotals = resp.storageTotals;
         }
       });
 
@@ -94,5 +95,4 @@ class MnBucketsComponent extends MnLifeCycleHooksToStream {
   trackBy(index, bucket) {
     return bucket.name;
   }
-
 }

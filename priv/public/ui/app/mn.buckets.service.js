@@ -46,6 +46,7 @@ class MnBucketsService {
     this.http = http;
     this.modalService = modalService;
     this.mnHelperService = mnHelperService;
+    this.mnAdminService = mnAdminService;
     this.mnSettingsAutoCompactionService = mnSettingsAutoCompactionService;
 
     this.stream.bucketsUri = mnAdminService.stream.getPoolsDefault
@@ -85,10 +86,6 @@ class MnBucketsService {
             shareReplay({refCount: true, bufferSize: 1}));
 
     this.stream.defaultAutoCompactionData = mnSettingsAutoCompactionService.stream.settingsSource;
-    this.stream.initialFormData = this.stream.defaultAutoCompactionData
-      .pipe(withLatestFrom(mnAdminService.stream.storageTotals,
-                           mnAdminService.stream.reallyActiveKVNodes),
-            map(this.unpackData.bind(this)));
 
     this.stream.deleteBucket =
       new MnHttpRequest(this.deleteBucket.bind(this))
@@ -362,11 +359,12 @@ class MnBucketsService {
       permissions.cluster.bucket[bucketName].flush;
   }
 
-  unpackData([autoCompactionSettings, totals, reallyActiveKVNodes]) {
+  unpackData([autoCompactionSettings, reallyActiveKVNodes], storageTotals) {
     let ramQuota = 0;
-    if (totals.ram) {
+    let ram = storageTotals.ram;
+    if (ram) {
       ramQuota = Math.floor(
-        (totals.ram.quotaTotal - totals.ram.quotaUsed) / reallyActiveKVNodes.length);
+        (ram.quotaTotal - ram.quotaUsed) / reallyActiveKVNodes.length);
     }
 
     return {
@@ -426,6 +424,12 @@ class MnBucketsService {
   createBucketFormData(bucket) {
     return this.stream.defaultAutoCompactionData
       .pipe(map(v => this.getBucketFormData(v, bucket)));
+  }
+
+  createInitialFormData(storageTotals) {
+    return this.stream.defaultAutoCompactionData
+      .pipe(withLatestFrom(this.mnAdminService.stream.reallyActiveKVNodes),
+            map(v => this.unpackData(v, storageTotals)));
   }
 
   get(url) {
