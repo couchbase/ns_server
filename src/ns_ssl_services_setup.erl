@@ -394,8 +394,9 @@ sync() ->
     ok = gen_server:call(?MODULE, ping, infinity).
 
 set_node_certificate_chain(CAEntry, Chain, PKey, PassphraseSettings) ->
-    gen_server:call(?MODULE, {set_node_certificate_chain, CAEntry, Chain, PKey,
-                              PassphraseSettings}, infinity).
+    gen_server:call(?MODULE, {set_node_certificate_chain, CAEntry, Chain,
+                              fun () -> PKey end,
+                              fun () -> PassphraseSettings end}, infinity).
 
 set_certs(Host, CA, NodeCert, NodeKey) ->
     gen_server:call(?MODULE, {set_certs, Host, CA, NodeCert, NodeKey}).
@@ -475,9 +476,10 @@ handle_config_change(_OtherEvent, _Parent) ->
     ok.
 
 
-handle_call({set_node_certificate_chain, CAEntry, Chain, PKey,
-             PassphraseSettings}, _From, State) ->
-    Props = save_uploaded_certs(CAEntry, Chain, PKey, PassphraseSettings),
+handle_call({set_node_certificate_chain, CAEntry, Chain, PKeyFun,
+             PassphraseSettingsFun}, _From, State) ->
+    Props = save_uploaded_certs(CAEntry, Chain, PKeyFun(),
+                                PassphraseSettingsFun()),
     {reply, {ok, Props}, sync_ssl_reload(State)};
 
 %% This is used in the case when this node is added to a cluster
