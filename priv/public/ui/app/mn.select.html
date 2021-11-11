@@ -46,7 +46,7 @@ licenses/APL2.txt.
              [attr.id]="'mn-select-' + id + '-' + i"
              [attr.name]="'mn-select-' + id"
              [value]="value"
-             (change)="selectOptionClickStream.next(value);">
+             (click)="selectOptionClickStream.next(value);">
           <label
              [attr.for]="'mn-select-' + id + '-' + i"
              class="width-12"
@@ -69,7 +69,7 @@ licenses/APL2.txt.
              [attr.id]="'mn-select-' + id + '-' + i"
              [attr.name]="'mn-select-' + id"
              [value]="value"
-             (change)="selectOptionClickStream.next(value);">
+             (click)="selectOptionClickStream.next(value);">
           <label
              [attr.for]="'mn-select-' + id + '-' + i"
              class="width-12"
@@ -92,7 +92,7 @@ licenses/APL2.txt.
              [attr.id]="'mn-select-' + id + '-' + i"
              [attr.name]="'mn-select-' + id"
              [value]="label"
-             (change)="selectLabelClickStream.next(label);">
+             (click)="selectLabelClickStream.next(label);">
           <label
              [attr.for]="'mn-select-' + id + '-' + i"
              class="width-12"
