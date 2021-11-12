@@ -7,13 +7,8 @@
   be governed by the Apache License, Version 2.0, included in the file
   licenses/APL2.txt.
 -->
-<span
-  class="pre-line">
-   {{ text|mnTruncate:((toggler.state | async) ? Infinity : limit)}}
-</span>
+<span class="pre-line">{{text|mnTruncate:((toggler.state | async) ? Infinity : limit):''}}</span>
 <a
    [hidden]="!isOverLimit"
-   (click)="toggler.click.next()">
-  {{(toggler.state | async) ?  'hide' : 'show...'}}
-</a>
+   (click)="toggler.click.next()">{{(toggler.state | async) ?  'hide' : 'show...'}}</a>
 
