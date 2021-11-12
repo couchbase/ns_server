@@ -275,6 +275,7 @@ is_allowed_setting(Req, K) ->
        end]).
 
 localhost_only_settings([allow_non_local_ca_upload]) -> true;
+localhost_only_settings([allow_http_node_addition]) -> true;
 localhost_only_settings(_) -> false.
 
 ee_only_settings([ssl_minimum_protocol]) -> true;
@@ -330,7 +331,8 @@ conf(internal) ->
      {gotraceback, gotraceback, <<"single">>, fun get_string/1},
      {{auto_failover_disabled, index}, indexAutoFailoverDisabled, true,
       fun get_bool/1},
-     {{cert, use_sha1}, certUseSha1, false, fun get_bool/1}];
+     {{cert, use_sha1}, certUseSha1, false, fun get_bool/1},
+     {allow_http_node_addition, httpNodeAddition, false, fun get_bool/1}];
 conf(developer_preview) ->
     [{developer_preview_enabled, enabled, false, fun only_true/1}];
 conf(failover) ->
