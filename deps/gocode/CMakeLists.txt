@@ -18,10 +18,6 @@ GoInstall (TARGET ns_godu PACKAGE godu
   GOVERSION 1.8.5
   INSTALL_PATH bin/priv)
 
-GoModBuild (TARGET ns_minify PACKAGE github.com/couchbase/ns_server/deps/gocode/src/minify
-  GOVERSION 1.13
-  OUTPUT minify)
-
 GoInstall (TARGET ns_gosecrets PACKAGE gosecrets
   GOPATH "${CMAKE_CURRENT_SOURCE_DIR}" "${GODEPSDIR}"
   GOVERSION 1.8.5
