@@ -887,8 +887,12 @@ do_add_node_with_connectivity(Scheme, RemoteAddr, RestPort, Auth, GroupUUID,
 
     Config = ns_config:get(),
 
+    IsEnterprise = cluster_compat_mode:is_enterprise(),
+
     Props1 =
         case ns_server_cert:this_node_uses_self_generated_certs(Config) of
+            _ when not IsEnterprise ->
+                [];
             false ->
                 %% We don't need clusterCA to be present when Neo node is
                 %% joining the cluster, but pre-NEO nodes expect clusterCA to be
@@ -918,8 +922,6 @@ do_add_node_with_connectivity(Scheme, RemoteAddr, RestPort, Auth, GroupUUID,
         end ++ Props,
 
     Options = [{connect_options, [misc:get_net_family()]}],
-
-    IsEnterprise = cluster_compat_mode:is_enterprise(),
 
     MustUseHttps =
         %% We don't want to pass generated key unencrypted
