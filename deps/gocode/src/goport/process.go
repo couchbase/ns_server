@@ -37,8 +37,8 @@ var (
 // Process is a thin wrapper around exec.Cmd and the pipes to communicate with
 // the process represented by the exec.Cmd.
 type Process struct {
-	cmd *exec.Cmd
-
+	cmd     *exec.Cmd
+	pid     int
 	stdinMu *sync.Mutex
 	stdin   io.WriteCloser
 
@@ -109,6 +109,7 @@ func StartProcess(path string, args []string) (*Process, error) {
 
 	p := &Process{
 		cmd: cmd,
+		pid: cmd.Process.Pid,
 
 		stdinMu: &sync.Mutex{},
 		stdin:   &CloseOnce{File: stdinW},

@@ -15,7 +15,7 @@
 -behavior(gen_server).
 
 -export([start_link/1, start_link/2,
-         deliver/1, write/2, close/2, shutdown/1]).
+         deliver/1, write/2, close/2, shutdown/1, get_child_os_pid/1]).
 
 %% gen_server
 -export([init/1,
@@ -49,7 +49,7 @@
               {write, binary()} |
               {close, stream()} |
               shutdown.
--type op_result() :: ok | {error, binary()}.
+-type op_result() :: ok | {ok, binary()} | {error, binary()}.
 -type delivery() :: {stream(),
                      {eol, binary()} | {noeol, binary()} | binary(),
                      pos_integer()}.
@@ -105,6 +105,9 @@ close(Pid, Stream) ->
 
 shutdown(Pid) ->
     gen_server:call(Pid, shutdown, infinity).
+
+get_child_os_pid(Pid) ->
+    gen_server:call(Pid, {op, get_child_os_pid}, infinity).
 
 %% callbacks
 init([Owner, Path, Opts]) ->
@@ -382,7 +385,9 @@ encode_op({ack, Bytes}) ->
 encode_op({close, Stream}) ->
     ["close:", encode_stream(Stream)];
 encode_op(shutdown) ->
-    "shutdown".
+    "shutdown";
+encode_op(get_child_os_pid) ->
+    "get_child_os_pid".
 
 encode_stream(stdin) ->
     "stdin";
@@ -536,6 +541,8 @@ handle_port_packet(Packet, State) ->
 
 process_port_packet(<<"ok">>, <<>>, State) ->
     handle_op_response(ok, State);
+process_port_packet(<<"ok">>, Rest, State) ->
+    handle_op_response({ok, Rest}, State);
 process_port_packet(<<"error">>, Error, State) ->
     handle_op_response({error, Error}, State);
 process_port_packet(<<"stdout">>, Data, State) ->

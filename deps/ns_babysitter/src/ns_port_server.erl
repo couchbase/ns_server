@@ -265,7 +265,15 @@ port_open({Name, Cmd, Args, OptsIn}, #state{logger = Logger}) ->
         case ViaGoport of
             true ->
                 {ok, P} = goport:start_link(Cmd, Opts),
-                {P, undefined};
+                %% Get the os_pid of the 'Process' goport spawns.
+                ChildPid = try
+                               {ok, Pid} = goport:get_child_os_pid(P),
+                               list_to_integer(binary_to_list(Pid))
+                           catch
+                               _:_ ->
+                                   undefined
+                           end,
+                {P, ChildPid};
             false ->
                 P = erlang:open_port({spawn_executable, Cmd}, Opts),
                 Pid = case erlang:port_info(P, os_pid) of

@@ -50,8 +50,9 @@ type loopState struct {
 	unackedBytes int
 	pendingWrite <-chan error
 
-	pendingOp     string
-	pendingOpChan <-chan error
+	pendingOp            string
+	pendingOpChan        <-chan error
+	pendingOpResultValue string
 
 	processState processState
 }
@@ -114,6 +115,7 @@ func (p *port) initLoopState() {
 
 	p.state.pendingOp = ""
 	p.state.pendingOpChan = nil
+	p.state.pendingOpResultValue = ""
 }
 
 func (p *port) getOpsChan() <-chan *Op {
@@ -248,6 +250,8 @@ func (p *port) handleOp(op *Op) {
 		ch = p.handleCloseStream(op.Arg)
 	case op.Name == "shutdown":
 		ch = p.handleShutdown()
+	case op.Name == "get_child_os_pid":
+		ch = p.handleGetChildOsPid()
 	default:
 		ch = p.handleUnknown(op.Name)
 	}
@@ -276,6 +280,13 @@ func (p *port) handleShutdown() <-chan error {
 
 	// Note that the channel is empty. The operation is responded to once
 	// we see the child terminate.
+	return ch
+}
+
+func (p *port) handleGetChildOsPid() <-chan error {
+	ch := make(chan error, 1)
+	p.state.pendingOpResultValue = strconv.Itoa(p.child.pid)
+	ch <- nil
 	return ch
 }
 
@@ -356,6 +367,11 @@ func (p *port) handleUnknown(cmd string) <-chan error {
 
 func (p *port) handleOpResult(err error) error {
 	resp := "ok"
+
+	if p.state.pendingOpResultValue != "" {
+		resp = fmt.Sprintf("ok:%s", p.state.pendingOpResultValue)
+	}
+
 	if err != nil {
 		resp = fmt.Sprintf("error:%s", err.Error())
 	}
@@ -366,6 +382,7 @@ func (p *port) handleOpResult(err error) error {
 func (p *port) noteOpDone() {
 	p.state.pendingOp = ""
 	p.state.pendingOpChan = nil
+	p.state.pendingOpResultValue = ""
 }
 
 func (p *port) noteWriteDone() {
@@ -414,8 +431,8 @@ func (p *port) loop() error {
 
 			p.handleOp(op)
 		case err := <-p.getPendingOpChan():
-			p.noteOpDone()
 			err = p.handleOpResult(err)
+			p.noteOpDone()
 			if err != nil {
 				return fmt.Errorf(
 					"failed to write to parent: %s",
