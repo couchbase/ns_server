@@ -524,7 +524,6 @@ goport_args(fts, Config, _Cmd, NodeUUID) ->
         "defaultMaxPartitionsPerPIndex=1024," ++
         "bleveMaxResultWindow=10000," ++
         "failoverAssignAllPrimaries=false," ++
-        "hideUI=true," ++
         "cbaudit=" ++ atom_to_list(cluster_compat_mode:is_enterprise()) ++
         "," ++
         "ftsMemoryQuota=" ++ integer_to_list(FTSMemoryQuota * 1024000) ++ "," ++
