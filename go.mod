@@ -1,4 +1,4 @@
-module ns_server_minify
+module github.com/couchbase/ns_server
 
 go 1.17
 
