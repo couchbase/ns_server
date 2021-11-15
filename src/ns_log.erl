@@ -76,18 +76,16 @@ consume_log({crash, {Name, OsPid, Status, Messages}}) ->
     ale:log(?USER_LOGGER, LogLevel,
             "Service '~p' exited with status ~p. Restarting. Messages:~n~s",
             [Name, Status, Messages]),
-    %% Add an event log only for memcached crashes for now.
-    case Name of
-        memcached ->
-            OsPidJSON = case OsPid of
-                            undefined ->
-                                [];
-                            _ ->
-                                [{os_pid, OsPid}]
-                        end,
-            event_log:add_log(memcached_crashed, OsPidJSON);
-        _ -> ok
-    end;
+
+    OsPidJSON = case OsPid of
+                    undefined ->
+                        [];
+                    _ ->
+                        [{os_pid, OsPid}]
+                end,
+
+    event_log:add_log(service_crashed, [{name, Name},
+                                        {exit_status, Status}] ++ OsPidJSON);
 consume_log({service_started, Name}) ->
     event_log:add_log(service_started, [{name, Name}]).
 

@@ -57,6 +57,8 @@ event_details(auto_failover_warning) ->
     {17, ns_server, warn, <<"Auto failover warning">>};
 event_details(master_selected) ->
     {18, ns_server, info, <<"Master selected">>};
+event_details(service_crashed) ->
+    {19, ns_server, info, <<"Service crashed">>};
 
 %% event_ids block for Security related events: [9216, ..., 10239]
 event_details(audit_enabled) ->
@@ -106,9 +108,7 @@ event_details(bucket_cfg_changed) ->
 event_details(memcached_cfg_changed) ->
     {8202, data, info, <<"Memcached configuration changed">>};
 event_details(bucket_autoreprovision) ->
-    {8203, data, info, <<"Bucket auto reprovisioned">>};
-event_details(memcached_crashed) ->
-    {8204, data, info, <<"Memcached crashed">>}.
+    {8203, data, info, <<"Bucket auto reprovisioned">>}.
 
 jsonify(Key, Value) when is_list(Value) ->
     [{Key, list_to_binary(Value)}].
