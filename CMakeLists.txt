@@ -258,6 +258,7 @@ PyWrapper (SCRIPTS cbcollect_info)
 
 INSTALL (PROGRAMS cbbrowse_logs DESTINATION bin)
 INSTALL (PROGRAMS scripts/cbdump-config scripts/dump-guts DESTINATION bin)
+INSTALL (PROGRAMS scripts/escript-wrapper DESTINATION bin)
 
 # Configure custom copies of scripts for installation
 SET (PREFIX "${CMAKE_INSTALL_PREFIX}")
