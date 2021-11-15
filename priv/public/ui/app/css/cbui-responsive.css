@@ -201,6 +201,9 @@
   .dialog-resizable {
     width: 98vw;
   }
+  .panel.width-520, a.supported-browsers-520  {
+    width: 100vw!important;
+  }
   input.filter-input,
   .filter-server input.filter-input {
     width: 47.5vw!important;
@@ -338,6 +341,9 @@
   .audit-module-body {
     padding: .5rem .75rem;
     line-height: 1.8;
+  }
+  .panel.width-520, a.supported-browsers-520 {
+    width: 100vw!important;
   }
 }
 
