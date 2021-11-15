@@ -59,16 +59,23 @@ SET (NS_UI_BIN "${NS_UI_PUB_DIR}/ui")
 
 FILE (MAKE_DIRECTORY "${NS_UI_PUB_DIR}")
 
+SET (_out_js_stamp_depends
+  "${NS_UI_BUILD_DIR}/fts.js.stamp"
+  "${NS_UI_BUILD_DIR}/query.js.stamp"
+  "${NS_UI_STAMP}.js.stamp")
+
+IF (BUILD_ENTERPRISE)
+  LIST (APPEND _out_js_stamp_depends
+    "${NS_UI_BUILD_DIR}/event.js.stamp"
+    "${NS_UI_BUILD_DIR}/cbas.js.stamp"
+    "${NS_UI_BUILD_DIR}/backup.js.stamp")
+ENDIF()
+
 ADD_CUSTOM_COMMAND (OUTPUT "${NS_UI_BUILD_DIR}/out.js.stamp"
   COMMAND "${PROJECT_BINARY_DIR}/deps/gomodules/minify/minify" "--in-dir=${NS_UI_PUB_DIR}" "--out-dir=${NS_UI_PUB_DIR}/jsout"
   COMMAND "${CMAKE_COMMAND}" -E touch "${NS_UI_BUILD_DIR}/out.js.stamp"
   DEPENDS ns_minify
-  DEPENDS "${NS_UI_BUILD_DIR}/fts.js.stamp"
-  DEPENDS "${NS_UI_BUILD_DIR}/backup.js.stamp"
-  DEPENDS "${NS_UI_BUILD_DIR}/event.js.stamp"
-  DEPENDS "${NS_UI_BUILD_DIR}/cbas.js.stamp"
-  DEPENDS "${NS_UI_BUILD_DIR}/query.js.stamp"
-  DEPENDS "${NS_UI_STAMP}.js.stamp"
+  DEPENDS "${_out_js_stamp_depends}"
   VERBATIM)
 ADD_CUSTOM_TARGET (ui_build ALL
   DEPENDS "${NS_UI_BUILD_DIR}/out.js.stamp"
