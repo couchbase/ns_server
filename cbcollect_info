@@ -1215,12 +1215,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                 AllOsTask("Chronicle dump",
                   [escript, chronicle_dump_path, "snapshot"] + files,
                   timeout=600,
-                  log_file="couchbase.log"),
-                CollectDirectory("Chronicle snapshot directory: "
-                                 f"{chronicle_snapshot_dir}",
-                                 chronicle_snapshot_dir,
-                                 os.path.join("chronicle",
-                                              "exported_snapshot"))]
+                  log_file="couchbase.log")]
 
     lookup_cmd = None
     for cmd in ["dig", "nslookup", "host"]:
@@ -2218,13 +2213,6 @@ def main():
         runner.collect_dir(snapshot_dir_path, "./stats_snapshot")
     else:
         log("Error: unable to retrieve statistics")
-
-    # Collect the contents of the chronicle directory
-    chronicle_dir_path = read_guts(guts, "chronicle_dir")
-    if chronicle_dir_path is not None:
-        runner.collect_dir(chronicle_dir_path, "./chronicle")
-    else:
-        log("Error: unable to gather chronicle files")
 
     fts_port = read_guts(guts, "fts_http_port")
     if fts_port:
