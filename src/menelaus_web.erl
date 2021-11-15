@@ -542,7 +542,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, internal], all},
                      fun stat_names_mappings:handle_stats_mapping_get/3,
                      [Section, StatTokens]};
-                [?PLUGGABLE_UI, "ui", RestPrefix | _] ->
+                [?PLUGGABLE_UI, "ui" | _] ->
                     {ui, IsSSL, fun handle_serve_file/4, [AppRoot, Path, 10]};
                 [?PLUGGABLE_UI, RestPrefix | _] ->
                     {no_check,
