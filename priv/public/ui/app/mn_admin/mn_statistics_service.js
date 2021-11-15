@@ -878,7 +878,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
           size: "small",
           specificStat: true
         }, {
-          stats: {"@system.sysproc_mem_resident_cbas": true},
+          stats: {"@system.sysproc_mem_resident_java_cbas": true},
           size: "small",
           specificStat: true
         }]

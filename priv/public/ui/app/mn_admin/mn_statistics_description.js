@@ -772,7 +772,11 @@ function get70CompatDesc() {
   return {
     "stats": {
       "@system": {
-        "sysproc_mem_resident_java_cbas": null,
+        "sysproc_mem_resident_java_cbas": {
+          unit: "bytes",
+          title: "Analytics Service Memory Resident",
+          desc: "The memory used for Analytics service (cbas process + java process resident memory)."
+        },
         "sysproc_mem_resident_java": {
           unit: "bytes",
           title: "Java Sysproc Memory Resident",
