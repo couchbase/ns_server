@@ -11,6 +11,7 @@ licenses/APL2.txt.
 import {NgModule} from '@angular/core';
 import {CommonModule, DatePipe} from '@angular/common';
 import {UIRouterModule} from '@uirouter/angular';
+import {NgbModule} from '@ng-bootstrap/ng-bootstrap';
 
 import {MnSharedModule} from './mn.shared.module.js';
 import {MnInputFilterModule} from './mn.input.filter.module.js';
@@ -38,7 +39,8 @@ class MnLogsListModule {
         CommonModule,
         MnInputFilterModule,
         MnTextExpanderModule,
-        MnSharedModule
+        MnSharedModule,
+        NgbModule
       ],
       providers: [
         DatePipe

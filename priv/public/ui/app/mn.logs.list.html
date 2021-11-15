@@ -71,7 +71,10 @@
         {{log.module}} {{log.code | number:'3.0-0'}}
       </span>
       <span class="cbui-table-cell cursor-pointer resp-sml">
-        <span>
+        <span
+           [ngbTooltip]="log.node"
+           placement="top auto"
+           triggers="click">
           {{log.node}}
         </span>
       </span>
