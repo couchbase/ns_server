@@ -73,13 +73,14 @@
                 Retry rebalance
               </label>
               <span
-                 class="icon-info-warning raised margin-left-half"
+                 class="icon-info-warning raised"
                  uib-tooltip-html="'<p>Do not enable this feature if the cluster is managed by the Couchbase Autonomous Operator or
                         your own scripts that trigger rebalance automatically upon failure or other conditions.</p>
                         <p>When this feature is enabled, Couchbase Server will automatically retry a failed rebalance after
                         the user-specified time period. If a rebalance fails, remember to cancel the pending retry before
                         atempting to perform any administrative operations on the cluster.</p>'"
-                 tooltip-placement="auto right">
+                 tooltip-placement="auto right"
+                 tooltip-trigger="mouseenter">
                 <span class="icon fa-warning"></span>
               </span>
               <div class="row flex-left text-medium flex-wrap">
@@ -133,9 +134,10 @@
                 Max moves per node during rebalance
               </label>
               <span
-                 class="icon-info-warning raised margin-left-half"
+                 class="icon-info-warning raised"
                  uib-tooltip="Increasing this value may increase rebalance speed but will also increase memory use and can cause a degradation in KV operation performance."
-                 tooltip-placement="auto right">
+                 tooltip-placement="auto right"
+                 tooltip-trigger="mouseenter">
                 <span class="icon fa-warning"></span>
               </span>
               <input
@@ -145,7 +147,8 @@
                  autocapitalize="off"
                  id="max_moves_per_node"
                  ng-disabled="!rbac.cluster.settings.write"
-                 ng-model="settingsClusterCtl.settingsRebalance.rebalanceMovesPerNode">
+                 ng-model="settingsClusterCtl.settingsRebalance.rebalanceMovesPerNode"
+                 class="max-width-2">
               <div
                  class="error error-form"
                  ng-show="!!settingsClusterCtl.settingsRebalanceErrors.rebalanceMovesPerNode">
