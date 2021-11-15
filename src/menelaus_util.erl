@@ -205,10 +205,10 @@ server_error_report(Req, Type, What, Stack) ->
               {trace, Stack}],
     {<<"Unexpected server error, request logged.">>, Report}.
 
-reply_server_error(Req, Type, What, Stack) ->
+reply_server_error_before_close(Req, Type, What, Stack) ->
     {Msg, Report} = server_error_report(Req, Type, What, Stack),
     ?log_error("Server error during processing: ~p", [Report]),
-    reply_json(Req, [Msg], 500).
+    reply_json(Req, [Msg], 500, [{"Connection", "close"}]).
 
 hibernate(Req, M, F, A) when is_atom(M), is_atom(F), is_list(A) ->
     erlang:hibernate(?MODULE, wake_up, [Req, M, F, A]).
@@ -227,7 +227,7 @@ handle_request(Req, Fun) ->
         throw:{web_exception, StatusCode, Message, ExtraHeaders} ->
             reply_text(Req, Message, StatusCode, ExtraHeaders);
         Type:What:Stack ->
-            reply_server_error(Req, Type, What, Stack),
+            reply_server_error_before_close(Req, Type, What, Stack),
             %% An unexpected error has occurred. Exit so as to not leave any
             %% residual state (e.g. late messages) around.
             erlang:exit(normal)
@@ -733,6 +733,11 @@ survive_web_server_restart(Fun) ->
     %% NOTE: due to required restart we need to protect
     %%       ourselves from 'death signal' of parent
     erlang:process_flag(trap_exit, true),
+
+    %% Ask mochiweb to send "Connection: close" header
+    %% otherwise the remote client might try to send another http request
+    %% in this connection and get a connection close as the result.
+    erlang:put(mochiweb_request_force_close, true),
 
     Fun(),
 
