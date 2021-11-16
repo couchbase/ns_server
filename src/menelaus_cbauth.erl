@@ -266,6 +266,7 @@ build_auth_info(#state{cert_version = CertVersion,
     PermissionsVersion = menelaus_web_rbac:check_permissions_url_version(
                            Snapshot),
     LimitsCheckURL = misc:local_url(Port, "/_cbauth/getUserLimits", []),
+    UuidCheckURL = misc:local_url(Port, "/_cbauth/getUserUuid", []),
     EUserFromCertURL = misc:local_url(Port, "/_cbauth/extractUserFromCert", []),
     ClusterDataEncrypt = misc:should_cluster_data_be_encrypted(),
     DisableNonSSLPorts = misc:disable_non_ssl_ports(),
@@ -280,6 +281,8 @@ build_auth_info(#state{cert_version = CertVersion,
      {permissionCheckURL, list_to_binary(PermissionCheckURL)},
      {permissionsVersion, PermissionsVersion},
      {limitsCheckURL, list_to_binary(LimitsCheckURL)},
+     {uuidCheckURL, list_to_binary(UuidCheckURL)},
+     {userVersion, user_version()},
      {authVersion, auth_version(Config)},
      {certVersion, CertVersion},
      {limitsConfig, LimitsConfig},
@@ -347,6 +350,10 @@ auth_version(Config) ->
           [ns_config_auth:get_admin_creds(Config),
            menelaus_users:get_auth_version(),
            ns_config:search_node(Config, prometheus_auth_info)]),
+    base64:encode(crypto:hash(sha, B)).
+
+user_version() ->
+    B = term_to_binary([menelaus_users:get_users_version()]),
     base64:encode(crypto:hash(sha, B)).
 
 client_cert_auth_version() ->

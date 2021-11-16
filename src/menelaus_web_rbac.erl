@@ -37,6 +37,7 @@
          check_user_limits_version/0,
          handle_check_permission_for_cbauth/1,
          handle_get_user_limits_for_cbauth/1,
+         handle_get_user_uuid_for_cbauth/1,
          forbidden_response/1,
          role_to_string/1,
          validate_cred/2,
@@ -1480,6 +1481,15 @@ handle_get_user_limits_for_cbauth(Req) ->
         _ ->
             menelaus_util:reply_json(Req, {[]}, 200)
     end.
+
+handle_get_user_uuid_for_cbauth(Req) ->
+    Params = mochiweb_request:parse_qs(Req),
+    User = proplists:get_value("user", Params),
+    Domain = list_to_existing_atom(proplists:get_value("domain", Params)),
+    UUID = menelaus_users:get_user_uuid({User, Domain}),
+    menelaus_util:reply_json(Req, {[{user, erlang:list_to_binary(User)},
+                                    {domain, Domain}] ++
+                                    [{uuid, UUID} || UUID =/= undefined]}).
 
 handle_check_permission_for_cbauth(Req) ->
     Params = mochiweb_request:parse_qs(Req),
