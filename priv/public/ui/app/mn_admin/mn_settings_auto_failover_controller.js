@@ -48,7 +48,6 @@ function mnSettingsAutoFailoverController($scope, $q, mnPromiseHelper, mnSetting
     if (mnPoolDefault.export.compat.atLeast55 &&
         mnPoolDefault.export.isEnterprise) {
       settings.failoverOnDataDiskIssues = vm.autoFailoverSettings.failoverOnDataDiskIssues;
-      settings.failoverServerGroup = vm.autoFailoverSettings.failoverServerGroup;
       settings.maxCount = vm.autoFailoverSettings.maxCount;
     }
     return settings;

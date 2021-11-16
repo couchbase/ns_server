@@ -103,25 +103,6 @@ licenses/APL2.txt.
           {{settingsAutoFailoverCtl.saveAutoFailoverSettingsErrors['failoverOnDataDiskIssues[timePeriod]']}}
         </div>
       </div>
-      <div ng-if="adminCtl.poolDefault.compat.atLeast55 &&
-                  adminCtl.poolDefault.isEnterprise">
-        <input
-           type="checkbox"
-           id="for-group-failover-enable"
-           ng-disabled="!settingsAutoFailoverCtl.autoFailoverSettings.enabled || !rbac.cluster.settings.write"
-           ng-model="settingsAutoFailoverCtl.autoFailoverSettings.failoverServerGroup">
-        <label for="for-group-failover-enable" class="margin-right-zero">
-          Enable auto-failover of server groups
-        </label>
-        <span
-           class="icon-info-warning raised"
-           uib-tooltip="DO NOT enable this unless you have set up homogenous server groups for failure scenarios
-                        (like racks/zones), have 3 or more server groups, and have the capacity to absorb the load of the failed-over group."
-           tooltip-placement="auto right"
-           tooltip-trigger="mouseenter">
-          <span class="icon fa-warning"></span>
-        </span>
-      </div>
     </div>
 
     <div class="margin-top2 margin-bottom-1">
