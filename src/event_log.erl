@@ -58,7 +58,7 @@ event_details(auto_failover_warning) ->
 event_details(master_selected) ->
     {18, ns_server, info, <<"Master selected">>};
 event_details(service_crashed) ->
-    {19, ns_server, info, <<"Service crashed">>};
+    {19, ns_server, error, <<"Service crashed">>};
 
 %% event_ids block for Security related events: [9216, ..., 10239]
 event_details(audit_enabled) ->
