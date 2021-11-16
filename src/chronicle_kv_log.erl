@@ -12,6 +12,7 @@
 -behaviour(gen_server2).
 
 -export([sanitize/2]).
+-export([sanitize_snapshot/2]).
 
 %% gen_server callbacks:
 -export([start_link/0, init/1, handle_info/2]).
@@ -60,6 +61,14 @@ sanitize(root_cert_and_pkey, V) ->
     {sanitized, base64:encode(crypto:hash(sha256, term_to_binary(V)))};
 sanitize(_, V) ->
     V.
+
+sanitize_snapshot(Mod, ModState) ->
+    case Mod of
+        chronicle_kv ->
+            chronicle_kv:sanitize_state(fun sanitize/2, ModState);
+        _ ->
+            ModState
+    end.
 
 prepare_value(K, V, State) ->
     case ns_bucket:sub_key_match(K) of

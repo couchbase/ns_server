@@ -911,9 +911,11 @@ def make_chronicle_snapshots_task(guts, initargs_path):
                  for f in os.scandir(chronicle_snapshot_dir)
                  if f.is_file() and f.name.endswith('.snapshot')]
 
-    return make_chronicle_dump_task("Chronicle dump",
-                                    ["snapshot"] + snapshots,
-                                    initargs_path)
+    return make_chronicle_dump_task(
+        "Chronicle dump",
+        ["snapshot",
+         "--sanitize", "chronicle_kv_log:sanitize_snapshot"] + snapshots,
+        initargs_path)
 
 def basedir():
     # We are installed in $INSTALL_DIR/lib/python, so need to go up three
