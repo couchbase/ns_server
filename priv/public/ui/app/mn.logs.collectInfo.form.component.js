@@ -22,6 +22,7 @@ import {MnFormService} from "./mn.form.service.js";
 import {MnLifeCycleHooksToStream} from "./mn.core.js";
 import {MnTasksService} from './mn.tasks.service.js';
 import {MnClusterSummaryDialogComponent} from './mn.cluster.summary.dialog.component.js';
+import {MnLogsCollectInfoStopCollectionComponent} from './mn.logs.collectInfo.stop.collection.component.js';
 
 export {MnLogsCollectInfoFormComponent};
 
@@ -149,7 +150,7 @@ class MnLogsCollectInfoFormComponent extends MnLifeCycleHooksToStream {
   }
 
   stopCollection() {
-    this.mnLogsCollectInfoService.cancelLogsCollection();
+    this.modalService.open(MnLogsCollectInfoStopCollectionComponent);
   }
 
   addNodes([nodesByOtpOld, nodesByOtpNew]) {
