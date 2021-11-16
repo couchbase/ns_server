@@ -885,6 +885,35 @@ def make_golang_profile_tasks(service_name, passwd, port, log_prefix, no_header=
 def make_redaction_task():
     return LiteralTask("Log Redaction", "RedactLevel:none")
 
+def make_chronicle_dump_task(name, args,
+                             initargs_path, log_file="couchbase.log"):
+    escript = exec_name("escript")
+    escript_wrapper = find_script("escript-wrapper")
+    chronicle_dump_path = find_script("chronicle_dump")
+
+    if escript_wrapper is None or chronicle_dump_path is None:
+        return []
+
+    return AllOsTask(name,
+                     [escript,
+                      escript_wrapper,
+                      "--initargs-path", initargs_path, "--",
+                      chronicle_dump_path] + args,
+                     timeout=600,
+                     log_file=log_file)
+
+def make_chronicle_snapshots_task(guts, initargs_path):
+    chronicle_snapshot_dir = read_guts(guts, "chronicle_snapshot_dir")
+    if chronicle_snapshot_dir is None:
+        return []
+
+    snapshots = [os.path.join(chronicle_snapshot_dir, f.name)
+                 for f in os.scandir(chronicle_snapshot_dir)
+                 if f.is_file() and f.name.endswith('.snapshot')]
+
+    return make_chronicle_dump_task("Chronicle dump",
+                                    ["snapshot"] + snapshots,
+                                    initargs_path)
 
 def basedir():
     # We are installed in $INSTALL_DIR/lib/python, so need to go up three
@@ -1201,21 +1230,6 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
         local_url_addr, read_guts(guts, "rest_port"))
 
     from distutils.spawn import find_executable
-
-    escript = exec_name("escript")
-    chronicle_dump_path = find_script("chronicle_dump")
-    chronicle_snapshot_dir = read_guts(guts, "chronicle_snapshot_dir")
-    chronicle_tasks = []
-    if chronicle_snapshot_dir is not None and chronicle_dump_path is not None:
-        files = [os.path.join(chronicle_snapshot_dir, f.name)
-                    for f in os.scandir(chronicle_snapshot_dir)
-                        if f.is_file() and f.name.endswith('.snapshot')]
-
-        chronicle_tasks = [
-                AllOsTask("Chronicle dump",
-                  [escript, chronicle_dump_path, "snapshot"] + files,
-                  timeout=600,
-                  log_file="couchbase.log")]
 
     lookup_cmd = None
     for cmd in ["dig", "nslookup", "host"]:
@@ -1656,7 +1670,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
 
     _tasks = flatten([getent_tasks,
                       lookup_tasks,
-                      chronicle_tasks,
+                      make_chronicle_snapshots_task(guts, initargs_path),
                       query_tasks,
                       index_tasks,
                       projector_tasks,
