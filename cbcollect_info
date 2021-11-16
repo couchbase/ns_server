@@ -917,6 +917,30 @@ def make_chronicle_snapshots_task(guts, initargs_path):
          "--sanitize", "chronicle_kv_log:sanitize_snapshot"] + snapshots,
         initargs_path)
 
+def make_chronicle_logs_task(guts, initargs_path):
+    chronicle_dir = read_guts(guts, "chronicle_dir")
+    if not chronicle_dir:
+        return []
+
+    pattern = os.path.join(chronicle_dir, "logs", "*.log")
+    logs = glob.glob(pattern)
+
+    def log_ix(path):
+        ix, _ = os.path.splitext(os.path.basename(path))
+
+        try:
+            return int(ix)
+        except ValueError:
+            return -1
+
+    logs.sort(key=log_ix)
+
+    return make_chronicle_dump_task(
+        "Chronicle logs",
+        ["log", "--sanitize", "chronicle_kv_log:sanitize_log"] + logs,
+        initargs_path,
+        log_file="chronicle_logs.log")
+
 def basedir():
     # We are installed in $INSTALL_DIR/lib/python, so need to go up three
     # levels
@@ -1673,6 +1697,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
     _tasks = flatten([getent_tasks,
                       lookup_tasks,
                       make_chronicle_snapshots_task(guts, initargs_path),
+                      make_chronicle_logs_task(guts, initargs_path),
                       query_tasks,
                       index_tasks,
                       projector_tasks,

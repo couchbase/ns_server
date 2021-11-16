@@ -12,7 +12,7 @@
 -behaviour(gen_server2).
 
 -export([sanitize/2]).
--export([sanitize_snapshot/2]).
+-export([sanitize_snapshot/2, sanitize_log/2]).
 
 %% gen_server callbacks:
 -export([start_link/0, init/1, handle_info/2]).
@@ -68,6 +68,14 @@ sanitize_snapshot(Mod, ModState) ->
             chronicle_kv:sanitize_state(fun sanitize/2, ModState);
         _ ->
             ModState
+    end.
+
+sanitize_log(Name, Command) ->
+    case Name of
+        kv ->
+            chronicle_kv:sanitize_command(fun sanitize/2, Command);
+        _ ->
+            Command
     end.
 
 prepare_value(K, V, State) ->
