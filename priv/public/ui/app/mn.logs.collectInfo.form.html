@@ -23,6 +23,7 @@
         Stop Collection
       </button>
       <button
+         *ngIf="(taskCollectInfo | async)?.status !== 'idle'"
          uiSref="app.admin.logs.collectInfo.result"
          class="outline">
         Show Current Collection
