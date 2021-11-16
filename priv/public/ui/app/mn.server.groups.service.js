@@ -49,21 +49,16 @@ class MnServerGroupsService {
 
     let serverGroupsReadStream =
         permissionsStream.pipe(pluck('cluster','server_groups','read'),
-                               distinctUntilChanged())
+                               distinctUntilChanged());
 
     this.stream.maybeGetServersWithGroups =
-      combineLatest([mnAdminService.stream.isGroupsAvailable,
-                     serverGroupsReadStream])
-      .pipe(switchMap(([isGroupsAvailable, serverGroupsRead]) => {
-        let maybeWithGroups =
-            isGroupsAvailable && serverGroupsRead ?
-            nodesWithGroupName : mnAdminService.stream.getNodes;
-        return combineLatest([
-          timer(0, 10000),
-          maybeWithGroups
-        ]);
+      combineLatest(mnAdminService.stream.isGroupsAvailable,
+                    serverGroupsReadStream,
+                    timer(0, 10000))
+      .pipe(switchMap(([isGroupsAvailable, serverGroupsRead,]) => {
+        let hasGroups = isGroupsAvailable && serverGroupsRead;
+        return hasGroups ? nodesWithGroupName : mnAdminService.stream.getNodes;
       }),
-            pluck(1),
             shareReplay({refCount: true, bufferSize: 1}));
   }
 
