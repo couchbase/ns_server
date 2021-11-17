@@ -310,7 +310,29 @@ reload_node_certificate_error({rest_failed, URL, {error, Reason}}) ->
                                    [URL, ReasonStr]));
 reload_node_certificate_error({rest_failed, URL, exception}) ->
     iolist_to_binary(io_lib:format("REST API call ~s crashed, see logs for "
-                                   "details", [URL])).
+                                   "details", [URL]));
+reload_node_certificate_error({p12cert, Path, Reason}) ->
+    ReasonStr = reload_node_certificate_error(Reason),
+    iolist_to_binary(io_lib:format("Failed to extract certificate chain from "
+                                   "p12 file \"~s\" (~s)",
+                                   [Path, ReasonStr]));
+reload_node_certificate_error({p12key, Path, Reason}) ->
+    ReasonStr = reload_node_certificate_error(Reason),
+    iolist_to_binary(io_lib:format("Failed to extract key from p12 file \"~s\" "
+                                   "(~s)", [Path, ReasonStr]));
+reload_node_certificate_error({openssl_error, _, {Status, Output}}) ->
+    iolist_to_binary(io_lib:format("OpenSSL returned status ~b: ~s",
+                                   [Status, string:trim(Output)]));
+reload_node_certificate_error({openssl_error, _, Reason}) ->
+    iolist_to_binary(io_lib:format("OpenSSL call failed: ~p", [Reason]));
+reload_node_certificate_error({no_openssl, Path}) ->
+    iolist_to_binary(io_lib:format("Openssl executable not found: ~s",
+                                   [Path]));
+reload_node_certificate_error({conflicting_certs, PemFile, P12File}) ->
+    iolist_to_binary(io_lib:format(
+                       "Conflicting cerificate files in the inbox directory: "
+                       "PEM(~s) and PKCS12(~s). Please remove one of them",
+                       [PemFile, P12File])).
 
 node_certificate_warning(unused) ->
     <<"This certificate is auto-generated and doesn't seem to be used by any "
