@@ -59,7 +59,7 @@ licenses/APL2.txt.
              id="auto_failover_maxcount"
              ng-model="settingsAutoFailoverCtl.autoFailoverSettings.maxCount"
              ng-disabled="!settingsAutoFailoverCtl.autoFailoverSettings.enabled || !rbac.cluster.settings.write"
-             class="input-small input-short-half">
+             class="input-small input-short-1">
           &nbsp;event{{settingsAutoFailoverCtl.autoFailoverSettings.maxCount !== 1 ? "s" : ""}}
         </span>
       </div>
@@ -150,7 +150,7 @@ licenses/APL2.txt.
              id="for-max-nodes"
              ng-model="settingsAutoFailoverCtl.reprovisionSettings.max_nodes"
              ng-disabled="!settingsAutoFailoverCtl.reprovisionSettings.enabled || !rbac.cluster.settings.write"
-             class="input-small input-short-half">
+             class="input-small input-short-1">
           &nbsp;node{{settingsAutoFailoverCtl.reprovisionSettings.max_nodes !== 1 ? "s" : ""}}&nbsp;
           <span
              class="fa-stack icon-info"
