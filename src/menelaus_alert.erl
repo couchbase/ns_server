@@ -82,7 +82,7 @@ get_handle_events_params(Values) ->
 
 handle_events_validators() ->
     [validator:iso_8601_utc(sinceTime, [], _),
-     validator:integer(limit, _),
+     validator:integer(limit, -1, infinity, _),
      validator:unsupported(_)].
 
 handle_events(Req) ->

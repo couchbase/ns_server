@@ -249,6 +249,9 @@ recent(StartSeqNum) ->
          end, {StartSeqNum, []}, recent()),
     {MaxSeqNum, [{struct, get_event(strip_seqnum(L))} || L <- Logs]}.
 
+-spec build_events_json(MinTStamp :: undefined | string(),
+                        Limit :: -1 | non_neg_integer()) ->
+        [term()].
 build_events_json(MinTStamp, Limit) ->
     Logs0 = recent(),
     Logs = case {MinTStamp, Limit} of
@@ -259,17 +262,25 @@ build_events_json(MinTStamp, Limit) ->
                {undefined, L} ->
                    misc:tail_of_length(Logs0, L);
                _ ->
-                   misc:tail_of_length(
-                     lists:filter(fun (Log0) ->
-                                    Log = strip_seqnum(Log0),
-                                    TStamp = Log#log_entry.timestamp,
-                                    if
-                                        TStamp >= MinTStamp ->
-                                            true;
-                                        true ->
-                                            false
-                                    end
-                                  end, Logs0), Limit)
+                   FilteredLogs = lists:filter(
+                                    fun (Log0) ->
+                                            Log = strip_seqnum(Log0),
+                                            TStamp = Log#log_entry.timestamp,
+                                            if
+                                                TStamp >= MinTStamp ->
+                                                    true;
+                                                true ->
+                                                    false
+                                            end
+                                    end, Logs0),
+                   %% Limit = -1 implies, return all logs. We validate 'Limit'
+                   %% is >= -1 before calling this function.
+                   case Limit of
+                       -1 ->
+                           FilteredLogs;
+                       L ->
+                           misc:tail_of_length(FilteredLogs, L)
+                   end
            end,
     %% Reverse the logs since they are stored in the descending order of time.
     [{struct, get_event(strip_seqnum(Log))} || Log <- lists:reverse(Logs)].
