@@ -59,16 +59,20 @@ SET (NS_UI_BIN "${NS_UI_PUB_DIR}/ui")
 
 FILE (MAKE_DIRECTORY "${NS_UI_PUB_DIR}")
 
-SET (_out_js_stamp_depends
-  "${NS_UI_BUILD_DIR}/fts.js.stamp"
-  "${NS_UI_BUILD_DIR}/query.js.stamp"
-  "${NS_UI_STAMP}.js.stamp")
+SET (_out_js_stamp_depends "${NS_UI_STAMP}.js.stamp")
+FUNCTION (_maybe_add_pluggable_ui_stamp p_ui_dir p_ui_stamp)
+  IF (EXISTS "${CMAKE_SOURCE_DIR}/${p_ui_dir}")
+    LIST (APPEND _out_js_stamp_depends "${NS_UI_BUILD_DIR}/${p_ui_stamp}")
+  ENDIF()
+ENDFUNCTION (_maybe_add_pluggable_ui_stamp)
+
+_maybe_add_pluggable_ui_stamp("cbft" "fts.js.stamp")
+_maybe_add_pluggable_ui_stamp("query-ui" "query.js.stamp")
 
 IF (BUILD_ENTERPRISE)
-  LIST (APPEND _out_js_stamp_depends
-    "${NS_UI_BUILD_DIR}/event.js.stamp"
-    "${NS_UI_BUILD_DIR}/cbas.js.stamp"
-    "${NS_UI_BUILD_DIR}/backup.js.stamp")
+  _maybe_add_pluggable_ui_stamp("goproj/src/github.com/couchbase/eventing" "event.js.stamp")
+  _maybe_add_pluggable_ui_stamp("cbbs" "backup.js.stamp")
+  _maybe_add_pluggable_ui_stamp("cbas-ui" "cbas.js.stamp")
 ENDIF()
 
 ADD_CUSTOM_COMMAND (OUTPUT "${NS_UI_BUILD_DIR}/out.js.stamp"
