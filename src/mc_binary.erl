@@ -21,7 +21,7 @@
          maybe_encode_uid_in_key/3]).
 
 -define(RECV_TIMEOUT,             ?get_timeout(recv, 120000)).
--define(QUICK_STATS_RECV_TIMEOUT, ?get_timeout(stats_recv, 180000)).
+-define(QUICK_STATS_RECV_TIMEOUT, ?get_timeout(stats_recv, 300000)).
 
 %% Functions to work with memcached binary protocol packets.
 

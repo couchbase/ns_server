@@ -30,8 +30,8 @@
 
 -define(CHECK_INTERVAL, 10000).
 -define(CHECK_WARMUP_INTERVAL, 500).
--define(TIMEOUT,             ?get_timeout(outer, 180000)).
--define(TIMEOUT_HEAVY,       ?get_timeout(outer_heavy, 180000)).
+-define(TIMEOUT,             ?get_timeout(outer, 300000)).
+-define(TIMEOUT_HEAVY,       ?get_timeout(outer_heavy, 300000)).
 -define(TIMEOUT_VERY_HEAVY,  ?get_timeout(outer_very_heavy, 360000)).
 -define(WARMED_TIMEOUT,      ?get_timeout(warmed, 5000)).
 -define(MARK_WARMED_TIMEOUT, ?get_timeout(mark_warmed, 5000)).
