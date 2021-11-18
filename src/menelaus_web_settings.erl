@@ -53,7 +53,8 @@
          services_with_security_settings/0,
          settings_stats_validators/0,
          apply_stats_settings/1,
-         settings_web_post_validators/0]).
+         settings_web_post_validators/0,
+         validate_allowed_hosts_list/1]).
 
 -import(menelaus_util,
         [parse_validate_number/3,

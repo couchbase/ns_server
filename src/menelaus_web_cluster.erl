@@ -114,6 +114,12 @@ cluster_init(Req, Config, Params) ->
     %% POST /settings/indexes
     IndexerParams = [{storageMode, V} || {indexerStorageMode, V} <- Params],
     menelaus_web_indexes:apply_indexes_settings(Req, IndexerParams),
+
+    case proplists:get_value(allowedHosts, Params) of
+        undefined -> ok;
+        AllowedHosts -> ns_config:set(allowed_hosts, AllowedHosts)
+    end,
+
     %% POST /settings/web
     menelaus_web_settings:handle_settings_web_post(Req, Params).
 
@@ -124,6 +130,19 @@ cluster_init_validators(Config, Snapshot) ->
     menelaus_web_node:node_encryption_validators() ++
     menelaus_web_settings:settings_web_post_validators() ++
     [menelaus_web_indexes:validate_storage_mode(indexerStorageMode, _),
+     validator:token_list(allowedHosts, ",", _),
+     validator:convert(allowedHosts,
+                       ?cut(lists:map(fun iolist_to_binary/1, _)), _),
+     validator:validate(
+       fun (Hosts) ->
+           case ns_config_auth:is_system_provisioned() of
+               true ->
+                  {error, <<"cannot change allowedHosts after cluster is "
+                            "provisioned">>};
+              false ->
+                  menelaus_web_settings:validate_allowed_hosts_list(Hosts)
+           end
+       end, allowedHosts, _),
      validator:has_params(_),
      validator:unsupported(_)].
 
