@@ -203,6 +203,148 @@ get_cipher_suites(Str) ->
         _:_ -> {error, "Invalid format. Expecting a list of ciphers."}
     end.
 
+get_allowed_hosts(Str) ->
+    try ejson:decode(Str) of
+        L when is_list(L) ->
+            case validate_allowed_hosts_list(L) of
+                ok -> {ok, L};
+                {error, Msg} -> {error, Msg}
+            end;
+        _ ->
+            {error, "Invalid format. Expecting a list of strings"}
+    catch
+        _:_ -> {error, "Invalid format. Expecting JSON list"}
+    end.
+
+
+validate_allowed_hosts_list(AllowedHostsList) ->
+    validate_allowed_hosts_list(AllowedHostsList, []).
+
+validate_allowed_hosts_list([], List) ->
+    case (length(List) > 1) andalso lists:member(any, List) of
+        false ->
+            ok;
+        true ->
+            {error, "'*' when present must be the only element in the list"}
+    end;
+validate_allowed_hosts_list([E | Tail], Acc) ->
+    case parse_allowed_host(E) of
+        {error, Msg} -> {error, Msg};
+        Res ->
+            case lists:member(Res, Acc) of
+                false -> validate_allowed_hosts_list(Tail, [Res | Acc]);
+                true -> {error, "Repetitions are not allowed"}
+            end
+    end.
+
+parse_allowed_host(<<"*">>) -> any;
+parse_allowed_host(<<>>) -> {error, "empty string not supported"};
+parse_allowed_host(BinStr) when is_binary(BinStr) ->
+    ErrorMsg = fun (Msg) ->
+                   lists:flatten(io_lib:format("\"~s\" - ~s", [BinStr, Msg]))
+               end,
+    TrimmedBinStr = string:trim(BinStr),
+    case inet:parse_address(binary_to_list(TrimmedBinStr)) of
+        {ok, IP} -> {ip, IP};
+        _ ->
+            case string:split(TrimmedBinStr, "/") of
+                [TrimmedBinStr] ->
+                    DomainLabels = string:split(string:lowercase(TrimmedBinStr),
+                                                ".", all),
+                    case DomainLabels of
+                        [_] ->
+                            {error, ErrorMsg("FQDN must contain more than "
+                                             "one label")};
+                        [HeadLabel | Tail] ->
+                            Checks =
+                                [?cut(check_fqdn_label(HeadLabel, 1))] ++
+                                %% We only support wildcards in the left-most
+                                %% label, see RFC6125 section-6.4.3
+                                [?cut(check_fqdn_label(L, 0)) || L <- Tail] ++
+                                [fun () ->
+                                     try binary_to_integer(lists:last(Tail)) of
+                                         _ ->
+                                            {error, "highest-level label in "
+                                                    "FQDN can't be entirely "
+                                                    "numeric"}
+                                     catch
+                                          _:_ -> ok
+                                     end
+                                 end],
+                            case functools:sequence_(Checks) of
+                                ok -> {fqdn, DomainLabels};
+                                {error, Msg} -> {error, ErrorMsg(Msg)}
+                            end
+                    end;
+                [IPBin, BitSuffixBin] ->
+                    case inet:parse_address(binary_to_list(IPBin)) of
+                        {ok, IP} ->
+                            IsIPv6 = misc:is_raw_ipv6(binary_to_list(IPBin)),
+                            try binary_to_integer(BitSuffixBin) of
+                                N when N >= 0, N =< 128, IsIPv6  ->
+                                    {cidr, IP, N};
+                                N when N >= 0, N =< 32 ->
+                                    {cidr, IP, N};
+                                _ ->
+                                    {error, ErrorMsg("invalid number of bits "
+                                                     "in CIDR")}
+                            catch
+                                _:_ ->
+                                    {error, ErrorMsg("not integer number of "
+                                                     "bits in CIDR")}
+                            end;
+                        _ ->
+                            {error, ErrorMsg("invalid IP in CIDR")}
+                    end
+            end
+    end.
+
+-ifdef(TEST).
+parse_allowed_host_test() ->
+    ?assertEqual(any, parse_allowed_host(<<"*">>)),
+    ?assertEqual({ip,{127,0,0,1}},
+                 parse_allowed_host(<<"127.0.0.1">>)),
+    ?assertEqual({cidr,{198,51,100,0},22},
+                 parse_allowed_host(<<"198.51.100.0/22">>)),
+    ?assertEqual({cidr,{8193,18528,18528,0,0,0,0,34952},32},
+                 parse_allowed_host(<<"2001:4860:4860::8888/32">>)),
+    ?assertEqual({ip,{8193,18528,18528,0,0,0,0,34952}},
+                 parse_allowed_host(<<"2001:4860:4860::8888">>)),
+    ?assertEqual({cidr,{8193,18528,18528,0,0,0,0,34952},128},
+                 parse_allowed_host(<<"2001:4860:4860::8888/128">>)),
+    ?assertEqual({fqdn,[<<"example">>,<<"com">>]},
+                 parse_allowed_host(<<"example.com">>)),
+    ?assertEqual({fqdn,[<<"*">>,<<"example">>,<<"com">>]},
+                 parse_allowed_host(<<"*.example.com">>)),
+    ?assertEqual({fqdn,[<<"test*test">>,<<"example">>,<<"com">>]},
+                 parse_allowed_host(<<"test*test.example.com">>)),
+    ?assertMatch({error, _}, parse_allowed_host(<<>>)),
+    ?assertMatch({error, _}, parse_allowed_host(<<"127.0.0.257">>)),
+    ?assertMatch({error, _}, parse_allowed_host(<<"127.0.0.257/23">>)),
+    ?assertMatch({error, _}, parse_allowed_host(<<"/">>)),
+    ?assertMatch({error, _}, parse_allowed_host(<<"/foo">>)),
+    ?assertMatch({error, _}, parse_allowed_host(<<"foo/">>)),
+    ?assertMatch({error, _}, parse_allowed_host(<<"//f/oo//">>)),
+    ?assertMatch({error, _}, parse_allowed_host(<<"198.51.100.0/33">>)),
+    ?assertMatch({error, _}, parse_allowed_host(<<"2001:4860:4860::888/129">>)),
+    ?assertMatch({error, _}, parse_allowed_host(<<"2001:4860:4860:::888">>)),
+    ?assertMatch({error, _}, parse_allowed_host(<<"test">>)),
+    ?assertMatch({error, _}, parse_allowed_host(<<"test*test*.example.com">>)),
+    ?assertMatch({error, _}, parse_allowed_host(<<"test.*.example.com">>)),
+    ?assertMatch({error, _}, parse_allowed_host(<<"*.*.example.com">>)).
+-endif.
+
+check_fqdn_label(_, Wildcards) when Wildcards < 0 ->
+    {error, "Too many wildcard characters, "
+            "or wildcard characters in wrong places"};
+check_fqdn_label(<<"xn--", _/binary>>, _) ->
+    ok;
+check_fqdn_label(Label, Wildcards) when is_binary(Label) ->
+    case string:split(Label, "*") of
+        [_] -> ok;
+        [_, Left] -> check_fqdn_label(Left, Wildcards - 1)
+    end.
+
 get_cluster_encryption(Level) ->
     SupportedLevels = ["control", "all", "strict"],
     IsCEncryptEnabled = misc:is_cluster_encryption_fully_enabled(),
@@ -275,6 +417,7 @@ is_allowed_setting(Req, K) ->
 
 localhost_only_settings([allow_non_local_ca_upload]) -> true;
 localhost_only_settings([allow_http_node_addition]) -> true;
+localhost_only_settings([allowed_hosts]) -> true;
 localhost_only_settings(_) -> false.
 
 ee_only_settings([ssl_minimum_protocol]) -> true;
@@ -299,7 +442,9 @@ conf(security) ->
       ns_ssl_services_setup:honor_cipher_order(undefined, []), fun get_bool/1},
      {cluster_encryption_level, clusterEncryptionLevel, control,
       fun get_cluster_encryption/1},
-     {allow_non_local_ca_upload, allowNonLocalCACertUpload, false, fun get_bool/1}] ++
+     {allow_non_local_ca_upload, allowNonLocalCACertUpload, false,
+      fun get_bool/1},
+     {allowed_hosts, allowedHosts, [<<"*">>], fun get_allowed_hosts/1}] ++
     [{{security_settings, S}, ns_cluster_membership:json_service_name(S),
       [{cipher_suites, cipherSuites, undefined, fun get_cipher_suites/1},
        {ssl_minimum_protocol, tlsMinVersion, undefined, get_tls_version(_)},
