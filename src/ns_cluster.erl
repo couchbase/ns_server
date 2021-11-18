@@ -787,18 +787,29 @@ maybe_rename(NewAddr, UserSupplied) ->
     end.
 
 check_add_possible(Body) ->
-    case ns_config_auth:is_system_provisioned() of
-        false -> {error, system_not_provisioned,
-                  <<"Adding nodes to not provisioned nodes is not allowed.">>};
-        true ->
+    EnsureProvisioned =
+        fun () ->
+            case ns_config_auth:is_system_provisioned() of
+                true -> ok;
+                false ->
+                    Msg = <<"Adding nodes to not provisioned nodes is not "
+                            "allowed.">>,
+                    {error, system_not_provisioned, Msg}
+            end
+        end,
+    NoRebalanceRunning =
+        fun () ->
             case rebalance:running() of
+                false -> ok;
                 true ->
                     Msg = <<"Node addition is disallowed while rebalance "
                             "is in progress">>,
-                    {error, rebalance_running, Msg};
-                false ->
-                    Body()
+                    {error, rebalance_running, Msg}
             end
+        end,
+    case functools:sequence_([EnsureProvisioned, NoRebalanceRunning]) of
+        ok -> Body();
+        Error -> Error
     end.
 
 do_add_node(Scheme, RemoteAddr, RestPort, Auth, GroupUUID, Services) ->
