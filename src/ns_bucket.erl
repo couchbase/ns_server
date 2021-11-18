@@ -1001,16 +1001,22 @@ update_bucket_props(Type, StorageMode, BucketName, Props) ->
                 ok ->
                     {ok, NewBucketConfig} = ns_bucket:get_bucket(BucketName),
                     NewProps = extract_bucket_props(NewBucketConfig),
-                    event_log:add_log(bucket_cfg_changed,
-                                      [{bucket, list_to_binary(BucketName)},
-                                       {bucket_uuid, uuid(BucketName, direct)},
-                                       {type, DisplayBucketType},
-                                       {old_settings,
-                                        {struct, build_bucket_props_json(
-                                                   PrevProps)}},
-                                       {new_settings,
-                                        {struct, build_bucket_props_json(
-                                                   NewProps)}}]),
+                    if
+                        PrevProps =/= NewProps ->
+                            event_log:add_log(
+                              bucket_cfg_changed,
+                              [{bucket, list_to_binary(BucketName)},
+                               {bucket_uuid, uuid(BucketName, direct)},
+                               {type, DisplayBucketType},
+                               {old_settings,
+                                {struct, build_bucket_props_json(
+                                           PrevProps)}},
+                               {new_settings,
+                                {struct, build_bucket_props_json(
+                                           NewProps)}}]);
+                        true ->
+                            ok
+                    end,
                     ok;
                 _ ->
                     RV
