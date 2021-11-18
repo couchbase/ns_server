@@ -332,7 +332,9 @@ reload_node_certificate_error({conflicting_certs, PemFile, P12File}) ->
     iolist_to_binary(io_lib:format(
                        "Conflicting cerificate files in the inbox directory: "
                        "PEM(~s) and PKCS12(~s). Please remove one of them",
-                       [PemFile, P12File])).
+                       [PemFile, P12File]));
+reload_node_certificate_error(empty_pass) ->
+    <<"Empty PKCS12 passwords are not supported for security reasons">>.
 
 node_certificate_warning(unused) ->
     <<"This certificate is auto-generated and doesn't seem to be used by any "

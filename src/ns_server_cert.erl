@@ -784,7 +784,15 @@ load_node_certs_from_files(ChainFile, KeyFile, PassphraseSettings) ->
 convert_p12_to_pem(InP12Path, OutCertPath, OutKeyPath, PassphraseSettings) ->
     case ns_secrets:extract_pkey_pass(PassphraseSettings) of
         {ok, PassFun} ->
-            extract_pem_from_p12(InP12Path, OutCertPath, OutKeyPath, PassFun);
+            case PassFun() =/= "" of
+                true ->
+                    extract_pem_from_p12(InP12Path, OutCertPath, OutKeyPath,
+                                         PassFun);
+                false ->
+                    %% Empty out password is not supported by openssl pkcs12
+                    %% when extracting keys from p12 file.
+                    {error, empty_pass}
+            end;
         {error, Reason} ->
             {error, Reason}
     end.
