@@ -26,6 +26,7 @@
 -behaviour(gen_server).
 
 -include("ns_common.hrl").
+-include("rbac.hrl").
 -include("cut.hrl").
 
 -define(CHECK_INTERVAL, 10000).
@@ -95,7 +96,7 @@
          warmup_stats/1,
          raw_stats/5,
          flush/1,
-         set/6, add/5, get/4, delete/4,
+         set/7, add/5, get/5, delete/5,
          get_from_replica/4,
          get_meta/4,
          get_xattrs/5,
@@ -366,11 +367,13 @@ assign_queue({set_vbucket, _, _, _}) -> #state.heavy_calls_queue;
 assign_queue({set_vbuckets, _}) -> #state.very_heavy_calls_queue;
 assign_queue({add, _KeyFun, _Uid, _VBucket, _ValueFun}) ->
     #state.heavy_calls_queue;
-assign_queue({get, _KeyFun, _Uid, _VBucket}) -> #state.heavy_calls_queue;
+assign_queue({get, _KeyFun, _Uid, _VBucket, _Identity}) ->
+    #state.heavy_calls_queue;
 assign_queue({get_from_replica, _Fun, _Uid, _VBucket}) ->
     #state.heavy_calls_queue;
-assign_queue({delete, _KeyFun, _Uid, _VBucket}) -> #state.heavy_calls_queue;
-assign_queue({set, _KeyFun, _Uid, _VBucket, _ValueFun, _Flags}) ->
+assign_queue({delete, _KeyFun, _Uid, _VBucket, _Identity}) ->
+    #state.heavy_calls_queue;
+assign_queue({set, _KeyFun, _Uid, _VBucket, _ValueFun, _Flags, _Identity}) ->
     #state.heavy_calls_queue;
 assign_queue({get_keys, _VBuckets, _Params}) -> #state.heavy_calls_queue;
 assign_queue({get_mass_dcp_docs_estimate, _VBuckets}) -> #state.very_heavy_calls_queue;
@@ -455,18 +458,46 @@ try_deliver_work(State, From, RestFroms, QueueSlot) ->
             erlang:setelement(QueueSlot, State3, queue:tail(Q))
     end.
 
+maybe_add_impersonate_user_frame_info(undefined, McHeader) ->
+    McHeader;
+maybe_add_impersonate_user_frame_info(Identity, McHeader) ->
+    %% Add the user on whose behalf @ns_server will perform a memcached
+    %% operation ('Oper').
+    %%
+    %% Protocol Specification:
+    %% http://src.couchbase.org/source/xref/trunk/kv_engine/docs/
+    %% BinaryProtocol.md#164
+
+    OnBehalfOf = case Identity of
+                     {User, external} ->
+                         iolist_to_binary([$^, User]);
+                     {User, _} ->
+                         list_to_binary(User)
+                 end,
+
+    McFrameInfo = #mc_frame_info{obj_id = ?IMPERSONATE_USER_ID,
+                                 obj_data = OnBehalfOf},
+    McHeader#mc_header{frame_infos = [McFrameInfo]}.
+
 handle_data_call(Command, KeyFun, CollectionsUid, VBucket, State) ->
     handle_data_call(Command, KeyFun, CollectionsUid, VBucket, #mc_entry{},
                      State).
 
-handle_data_call(Command, KeyFun, CollectionsUid, VBucket, McEntry,
+handle_data_call(Command, KeyFun, CollectionsUid, VBucket, McEntry, State) ->
+    handle_data_call(Command, KeyFun, CollectionsUid, VBucket, undefined,
+                     McEntry, State).
+
+handle_data_call(Command, KeyFun, CollectionsUid, VBucket, Identity, McEntry,
                  #state{worker_features = Features} = State) ->
     CollectionsEnabled = proplists:get_bool(collections, Features),
     EncodedKey = mc_binary:maybe_encode_uid_in_key(CollectionsEnabled,
                                                    CollectionsUid, KeyFun()),
+    McHeader0 = #mc_header{vbucket = VBucket},
+    McHeader = maybe_add_impersonate_user_frame_info(Identity, McHeader0),
+
     Reply = mc_client_binary:cmd(
               Command, State#state.sock, undefined, undefined,
-              {#mc_header{vbucket = VBucket},
+              {McHeader,
                McEntry#mc_entry{key = EncodedKey}}),
     {reply, Reply, State}.
 
@@ -518,20 +549,24 @@ do_handle_call(flush, _From, State) ->
     Reply = mc_client_binary:flush(State#state.sock),
     {reply, Reply, State};
 
-do_handle_call({delete, KeyFun, CollectionsUid, VBucket}, _From, State) ->
-    handle_data_call(?DELETE, KeyFun, CollectionsUid, VBucket, State);
-
-do_handle_call({set, KeyFun, CollectionsUid, VBucket, ValFun, Flags}, _From,
+do_handle_call({delete, KeyFun, CollectionsUid, VBucket, Identity}, _From,
                State) ->
-    handle_data_call(?SET, KeyFun, CollectionsUid, VBucket,
+    handle_data_call(?DELETE, KeyFun, CollectionsUid, VBucket, Identity,
+                     #mc_entry{}, State);
+
+do_handle_call({set, KeyFun, CollectionsUid, VBucket, ValFun, Flags,
+                Identity}, _From, State) ->
+    handle_data_call(?SET, KeyFun, CollectionsUid, VBucket, Identity,
                      #mc_entry{data = ValFun(), flag = Flags}, State);
 
 do_handle_call({add, KeyFun, CollectionsUid, VBucket, ValFun}, _From, State) ->
     handle_data_call(?ADD, KeyFun, CollectionsUid, VBucket,
                      #mc_entry{data = ValFun()}, State);
 
-do_handle_call({get, KeyFun, CollectionsUid, VBucket}, _From, State) ->
-    handle_data_call(?GET, KeyFun, CollectionsUid, VBucket, State);
+do_handle_call({get, KeyFun, CollectionsUid, VBucket, Identity}, _From,
+               State) ->
+    handle_data_call(?GET, KeyFun, CollectionsUid, VBucket, Identity,
+                     #mc_entry{}, State);
 
 do_handle_call({get_from_replica, KeyFun, CollectionsUid, VBucket}, _From,
                State) ->
@@ -915,11 +950,13 @@ add(Bucket, Key, CollectionsUid, VBucket, Value) ->
              fun () -> Value end}, ?TIMEOUT_HEAVY).
 
 %% @doc send get command to memcached instance
--spec get(bucket_name(), binary(), undefined | integer(), integer()) ->
+-spec get(bucket_name(), binary(), undefined | integer(), integer(),
+          undefined | rbac_identity()) ->
                  {ok, #mc_header{}, #mc_entry{}, any()}.
-get(Bucket, Key, CollectionsUid, VBucket) ->
+get(Bucket, Key, CollectionsUid, VBucket, Identity) ->
     do_call(server(Bucket), Bucket,
-            {get, fun () -> Key end, CollectionsUid, VBucket}, ?TIMEOUT_HEAVY).
+            {get, fun () -> Key end, CollectionsUid, VBucket, Identity},
+            ?TIMEOUT_HEAVY).
 
 %% @doc send get_from_replica command to memcached instance. for testing only
 -spec get_from_replica(bucket_name(), binary(), integer(), integer()) ->
@@ -959,23 +996,24 @@ get_xattrs(Bucket, Key, CollectionsUid, VBucket, Permissions) ->
       end, Bucket, [xattr | [collections || CollectionsUid =/= undefined]]).
 
 %% @doc send a delete command to memcached instance
--spec delete(bucket_name(), binary(), undefined | integer(), integer()) ->
+-spec delete(bucket_name(), binary(), undefined | integer(), integer(),
+             undefined | rbac_identity()) ->
                     {ok, #mc_header{}, #mc_entry{}, any()} |
                     {memcached_error, any(), any()}.
-delete(Bucket, Key, CollectionsUid, VBucket) ->
+delete(Bucket, Key, CollectionsUid, VBucket, Identity) ->
     do_call(server(Bucket), Bucket,
-            {delete, fun () -> Key end, CollectionsUid, VBucket},
+            {delete, fun () -> Key end, CollectionsUid, VBucket, Identity},
             ?TIMEOUT_HEAVY).
 
 %% @doc send a set command to memcached instance
 -spec set(bucket_name(), binary(), undefined | integer(), integer(),
-          binary(), integer()) ->
+          binary(), integer(), undefined | rbac_identity()) ->
                  {ok, #mc_header{}, #mc_entry{}, any()} |
                  {memcached_error, any(), any()}.
-set(Bucket, Key, CollectionsUid, VBucket, Value, Flags) ->
+set(Bucket, Key, CollectionsUid, VBucket, Value, Flags, Identity) ->
     do_call(server(Bucket), Bucket,
             {set, fun () -> Key end, CollectionsUid, VBucket,
-             fun () -> Value end, Flags}, ?TIMEOUT_HEAVY).
+             fun () -> Value end, Flags, Identity}, ?TIMEOUT_HEAVY).
 
 -spec update_with_rev(Bucket::bucket_name(), VBucket::vbucket_id(),
                       Id::binary(), Value::binary() | undefined, Rev :: rev(),

@@ -8,9 +8,16 @@
 %% the file licenses/APL2.txt.
 -define(HEADER_LEN, 24).
 -define(REQ_MAGIC, 16#80).
+-define(ALT_CLIENT_REQ_MAGIC, 16#08).
 -define(RES_MAGIC, 16#81).
 -define(SERVER_REQ_MAGIC,  16#82).
 -define(SERVER_RESP_MAGIC, 16#83).
+
+-define(FRAME_INFO_ESCAPE, 15).
+
+% Frame Info Identifiers.
+
+-define(IMPERSONATE_USER_ID, 4).
 
 % Command codes.
 -define(GET,         16#00).

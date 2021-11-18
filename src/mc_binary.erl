@@ -161,15 +161,46 @@ recv_body(Sock, #mc_header{extlen = ExtLen,
             {ok, Header, Entry}
     end.
 
-encode(req, Header, Entry) ->
+%%  Protocol Specification:
+%%  http://src.couchbase.org/source/xref/trunk/kv_engine/docs/
+%%  BinaryProtocol.md#92-104
+
+encode_frame_info(#mc_frame_info{obj_id = ObjId,
+                                 obj_data = ObjDataBin}) ->
+    ObjDataBinLen = bin_size(ObjDataBin),
+    case {ObjId, ObjDataBinLen} of
+        {Id, Len} when Id < ?FRAME_INFO_ESCAPE, Len < ?FRAME_INFO_ESCAPE ->
+            [<<Id:4, Len:4>>, ObjDataBin];
+        {Id, Len} when Id >= ?FRAME_INFO_ESCAPE, Len < ?FRAME_INFO_ESCAPE ->
+            RestId = Id - ?FRAME_INFO_ESCAPE,
+            [<<?FRAME_INFO_ESCAPE:4, Len:4, RestId:8>>, ObjDataBin];
+        {Id, Len} when Id < ?FRAME_INFO_ESCAPE, Len >= ?FRAME_INFO_ESCAPE ->
+            RestLen = Len - ?FRAME_INFO_ESCAPE,
+            [<<Id:4, ?FRAME_INFO_ESCAPE:4, RestLen:8>>, ObjDataBin];
+        {Id, Len} ->
+            RestId = Id - ?FRAME_INFO_ESCAPE,
+            RestLen = Len - ?FRAME_INFO_ESCAPE,
+            [<<?FRAME_INFO_ESCAPE:4, ?FRAME_INFO_ESCAPE:4, RestId:8,
+               RestLen:8>>, ObjDataBin]
+    end.
+
+encode_frame_infos(undefined) ->
+    [];
+encode_frame_infos(FrameInfos) ->
+    [bin(encode_frame_info(FrameInfo)) || FrameInfo <- FrameInfos].
+
+encode(req, #mc_header{frame_infos = undefined} = Header, Entry) ->
     encode(?REQ_MAGIC, Header, Entry);
+encode(req, Header, Entry) ->
+    encode(?ALT_CLIENT_REQ_MAGIC, Header, Entry);
 encode(res, Header, Entry) ->
     encode(?RES_MAGIC, Header, Entry);
 encode(server_res, Header, Entry) ->
     encode(?SERVER_RESP_MAGIC, Header, Entry);
 encode(Magic,
        #mc_header{opcode = Opcode, opaque = Opaque,
-                  vbucket = VBucket, status = Status},
+                  vbucket = VBucket, status = Status,
+                  frame_infos = FrameInfos},
        #mc_entry{ext = Ext, key = Key, cas = CAS,
                  data = Data, datatype = DataType}) ->
     ExtLen = bin_size(Ext),
@@ -179,12 +210,18 @@ encode(Magic,
             true -> Status;
             false -> VBucket
         end,
-    BodyLen = ExtLen + KeyLen + bin_size(Data),
-    [<<Magic:8, Opcode:8, KeyLen:16, ExtLen:8, DataType:8,
-       VBucketOrStatus:16, BodyLen:32, Opaque:32, CAS:64>>,
-     bin(Ext), bin(Key), bin(Data)].
+
+    FrameInfosEncoded = encode_frame_infos(FrameInfos),
+    FrameInfosEncodedLen = bin_size(FrameInfosEncoded),
+
+    BodyLen = ExtLen + KeyLen + FrameInfosEncodedLen + bin_size(Data),
+
+    [<<Magic:8, Opcode:8, FrameInfosEncodedLen:8, KeyLen:8, ExtLen:8,
+       DataType:8, VBucketOrStatus:16, BodyLen:32, Opaque:32, CAS:64>>,
+     bin(FrameInfosEncoded), bin(Ext), bin(Key), bin(Data)].
 
 is_response(?REQ_MAGIC) -> false;
+is_response(?ALT_CLIENT_REQ_MAGIC) -> false;
 is_response(?SERVER_REQ_MAGIC) -> false;
 is_response(?RES_MAGIC) -> true;
 is_response(?SERVER_RESP_MAGIC) -> true.

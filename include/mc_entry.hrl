@@ -14,10 +14,20 @@
                    data = undefined,
                    datatype = 0}).
 
+%% Record for encoding "flexible framing extras" a.k.a 'frame info' objects as
+%% described/defined in the link below.
+%%
+%% http://src.couchbase.org/source/xref/trunk/kv_engine/docs/
+%% BinaryProtocol.md#61-106
+
+-record(mc_frame_info, {obj_id = 0,
+                        obj_data = <<>> :: binary()}).
+
 -record(mc_header, {opcode = 0,
                     status = 0, % Used for both status & reserved field.
                     vbucket = 0,
                     keylen = undefined,
                     extlen = undefined,
                     bodylen = undefined,
-                    opaque = 0}).
+                    opaque = 0,
+                    frame_infos = undefined :: undefined | [#mc_frame_info{}]}).

@@ -17,6 +17,7 @@
 
 -export([get/3, set/3, set/4, delete/2]).
 -export([get/4, set/5, delete/3]).
+-export([get/5, set/6, delete/4]).
 
 -export([is_valid_json/1]).
 
@@ -43,39 +44,53 @@ set(BucketBin, DocId, Value) ->
 set(BucketBin, DocId, Value, Flags) ->
     set(BucketBin, DocId, undefined, Value, Flags).
 
-set(BucketBin, DocId, CollectionUid, Value, Flags) ->
+%% For cluster pre ?VERSION_71
+set(BucketBin, DocId, ColletionUid, Value, Flags) ->
+    set(BucketBin, DocId, ColletionUid, Value, Flags, undefined).
+
+set(BucketBin, DocId, CollectionUid, Value, Flags, Identity) ->
     Bucket = binary_to_list(BucketBin),
     {VBucket, _} = cb_util:vbucket_from_id(Bucket, DocId),
     {ok, Header, Entry, _} = ns_memcached:set(Bucket, DocId, CollectionUid,
-                                              VBucket, Value, Flags),
+                                              VBucket, Value, Flags,
+                                              Identity),
     handle_mutation_rv(Header, Entry).
 
 %% For cluster pre ?VERSION_70
 delete(BucketBin, DocId) ->
     delete(BucketBin, DocId, undefined).
 
+%% For cluster pre ?VERSION_71
 delete(BucketBin, DocId, CollectionUid) ->
+    delete(BucketBin, DocId, CollectionUid, undefined).
+
+delete(BucketBin, DocId, CollectionUid, Identity) ->
     Bucket = binary_to_list(BucketBin),
     {VBucket, _} = cb_util:vbucket_from_id(Bucket, DocId),
     {ok, Header, Entry, _} = ns_memcached:delete(Bucket, DocId, CollectionUid,
-                                                 VBucket),
+                                                 VBucket, Identity),
     handle_mutation_rv(Header, Entry).
 
 %% For cluster pre ?VERSION_70
 get(BucketBin, DocId, Options) ->
     get(BucketBin, DocId, undefined, Options).
 
+%% For cluster pre ?VERSION_71
 get(BucketBin, DocId, CollectionUid, Options) ->
+    get(BucketBin, DocId, CollectionUid, Options, undefined).
+
+get(BucketBin, DocId, CollectionUid, Options, Identity) ->
     Bucket = binary_to_list(BucketBin),
     {VBucket, _} = cb_util:vbucket_from_id(Bucket, DocId),
-    get_inner(Bucket, DocId, CollectionUid, VBucket, Options, 10).
+    get_inner(Bucket, DocId, CollectionUid, VBucket, Options, Identity, 10).
 
-get_inner(_Bucket, _DocId, _CollectionUid, _VBucket, _Options, 0) ->
+get_inner(_Bucket, _DocId, _CollectionUid, _VBucket, _Options, _Identity, 0) ->
     erlang:error(cas_retries_exceeded);
-get_inner(Bucket, DocId, CollectionUid, VBucket, Options, RetriesLeft) ->
+get_inner(Bucket, DocId, CollectionUid, VBucket, Options, Identity,
+          RetriesLeft) ->
     XAttrPermissions = proplists:get_value(xattrs_perm, Options, []),
     {ok, Header, Entry, _} = ns_memcached:get(Bucket, DocId, CollectionUid,
-                                              VBucket),
+                                              VBucket, Identity),
 
     case Header#mc_header.status of
         ?SUCCESS ->
@@ -102,7 +117,7 @@ get_inner(Bucket, DocId, CollectionUid, VBucket, Options, RetriesLeft) ->
                                [Bucket, ns_config_log:tag_doc_id(DocId),
                                 Reason]),
                     get_inner(Bucket, DocId, CollectionUid,
-                              VBucket, Options, RetriesLeft-1)
+                              VBucket, Options, Identity, RetriesLeft-1)
             end;
         ?KEY_ENOENT ->
             {not_found, missing};

@@ -221,12 +221,15 @@ encode_doc({Key, Value}) ->
           end,
     {struct, [{id, Key}, {doc, {struct, [Doc]}}]}.
 
-do_get(BucketId, DocId, CollectionUid, Options) ->
+do_get(BucketId, DocId, CollectionUid, Options, Req) ->
     BinaryBucketId = list_to_binary(BucketId),
     BinaryDocId = list_to_binary(DocId),
-    Args = [X || X <- [BinaryBucketId, BinaryDocId, CollectionUid,
-                       [ejson_body | Options]],
-                 X =/= undefined],
+    Args0 = [X || X <- [BinaryBucketId, BinaryDocId, CollectionUid,
+                        [ejson_body | Options]],
+                  X =/= undefined],
+
+    Args = Args0 ++ maybe_add_identity(Req),
+
     attempt(BinaryBucketId, BinaryDocId, capi_crud, get, Args).
 
 couch_errorjson_to_context(ErrData) ->
@@ -256,7 +259,7 @@ handle_get(BucketId, DocId, Req) ->
 
 do_handle_get(BucketId, DocId, CollectionUid, XAttrPermissions, Req) ->
     case do_get(BucketId, DocId, CollectionUid,
-                [{xattrs_perm, XAttrPermissions}]) of
+                [{xattrs_perm, XAttrPermissions}], Req) of
         {not_found, missing} ->
             menelaus_util:reply(Req, 404);
         {error, Msg} ->
@@ -271,12 +274,22 @@ do_handle_get(BucketId, DocId, CollectionUid, XAttrPermissions, Req) ->
             menelaus_util:reply_json(Req, Res)
     end.
 
+maybe_add_identity(Req) ->
+    %% In a mixed cluster with 7.0.x and 7.1.0 nodes, a 7.1.0 node can send via
+    %% menelaus_web_crud:attempt/5 a 'capi_crud:Oper' RPC request to a 7.0.x
+    %% node. Return Identity only when cluster_compact_mode is at 7.1.0.
+    Identity = menelaus_auth:get_identity(Req),
+    [I || I <- [Identity], cluster_compat_mode:is_cluster_NEO()].
+
 mutate(Req, Oper, BucketId, DocId, CollectionUid, Body, Flags) ->
     BinaryBucketId = list_to_binary(BucketId),
     BinaryDocId = list_to_binary(DocId),
 
-    Args = [X || X <- [BinaryBucketId, BinaryDocId, CollectionUid, Body, Flags],
-                 X =/= undefined],
+    Args0 = [X || X <- [BinaryBucketId, BinaryDocId, CollectionUid, Body,
+                        Flags], X =/= undefined],
+
+    Args = Args0 ++ maybe_add_identity(Req),
+
     case attempt(BinaryBucketId, BinaryDocId, capi_crud, Oper, Args) of
         ok ->
             ns_audit:mutate_doc(Req, Oper, BucketId, DocId),
