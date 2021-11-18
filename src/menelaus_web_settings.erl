@@ -385,7 +385,7 @@ is_allowed_on_cluster([event_logs_limit]) ->
 is_allowed_on_cluster(_) ->
     true.
 
-is_allowed_setting(Req, K) ->
+is_allowed_setting(OpType, Req, K) ->
     functools:sequence_(
       [fun () ->
            case cluster_compat_mode:is_enterprise() orelse
@@ -401,7 +401,7 @@ is_allowed_setting(Req, K) ->
            end
        end,
        fun () ->
-           case localhost_only_settings(K) of
+           case (OpType =/= get) andalso localhost_only_settings(K) of
                true ->
                    try menelaus_util:ensure_local(Req) of
                        ok -> ok
@@ -526,10 +526,10 @@ handle_get(Type, Keys, Req) ->
     Filter = fun (_, undefined) ->
                      false;
                  ([cluster_encryption_level = K], _) ->
-                     (ok == is_allowed_setting(Req, K)) andalso
+                     (ok == is_allowed_setting(get, Req, K)) andalso
                          misc:is_cluster_encryption_fully_enabled();
                  (K, _) ->
-                     ok == is_allowed_setting(Req, K)
+                     ok == is_allowed_setting(get, Req, K)
               end,
     Settings = build_kvs(conf(Type), ns_config:get(), Filter),
 
@@ -574,7 +574,7 @@ handle_post(Type, Keys, Req) ->
     menelaus_util:survive_web_server_restart(
       fun () ->
           case parse_post_data(conf(Type), Keys, mochiweb_request:recv_body(Req),
-                               is_allowed_setting(Req, _)) of
+                               is_allowed_setting(post, Req, _)) of
               {ok, ToSet} ->
                   case ns_config:run_txn(?cut(set_keys_in_txn(_1, _2, ToSet))) of
                       {commit, _, {OldProps, NewProps}} ->
@@ -715,7 +715,7 @@ find_key_to_delete(Conf, PKeys) ->
 handle_delete(Type, PKeys, Req) ->
     case find_key_to_delete(conf(Type), PKeys) of
         {ok, Keys} ->
-            case is_allowed_setting(Req, Keys) of
+            case is_allowed_setting(delete, Req, Keys) of
                 ok ->
                     case Keys of
                         [K] ->
