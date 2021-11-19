@@ -15,7 +15,8 @@
 %%
 %%  - processes are only registered on a master node
 %%  - processes live long
-%%  - there's no need to unregister processes
+%%  - names are unregistered only after the corresponding process has or about
+%%    to terminate
 %%  - it's uncommon to look for a name that is not registered
 %%
 %% Brief summary of how things work.
@@ -31,9 +32,8 @@
 %%  monitored and removed from the cache if the process itself or the link to
 %%  the master node dies.
 %%
-%%  - Since processes cannot be unregistered, there's no need to do anything
-%%  special about it. Cache invalidation relies on the regular Erlang
-%%  monitors.
+%%  - Since names are unregistered when the corresponding process dies, cache
+%%  invalidation relies on regular process monitors.
 
 -module(leader_registry).
 
@@ -66,12 +66,14 @@ start_link() ->
 register_name(Name, Pid) ->
     call({if_leader, {register_name, Name, Pid}}).
 
+%% It's assumed that unregister_name/1 is only called by the registered
+%% process itself when it's about to terminate.
 unregister_name(Name) ->
     call({if_leader, {unregister_name, Name}}).
 
 whereis_name(Name) ->
     case get_cached_name(Name) of
-        {ok, Pid} ->
+        {ok, Pid, _MRef} ->
             Pid;
         not_found ->
             call({whereis_name, Name});
@@ -165,7 +167,7 @@ handle_leader_call({unregister_name, Name}, From, State) ->
 
 handle_register_name(Name, Pid, From, State) ->
     case get_cached_name(Name) of
-        {ok, OtherPid} ->
+        {ok, OtherPid, _MRef} ->
             reply_error(From, {duplicate_name, Name, Pid, OtherPid}),
             State;
         not_found ->
@@ -174,13 +176,28 @@ handle_register_name(Name, Pid, From, State) ->
             State
     end.
 
-handle_unregister_name(_Name, From, State) ->
-    reply_error(From, not_supported),
+handle_unregister_name(Name, From, State) ->
+    {CallerPid, _} = From,
+    case get_cached_name(Name) of
+        {ok, Pid, MRef} ->
+            case Pid =:= CallerPid of
+                true ->
+                    ?log_info("Process ~p unregistered as '~p'", [Pid, Name]),
+                    erlang:demonitor(MRef, [flush]),
+                    invalidate_name(Name, Pid),
+                    reply(From, ok);
+                false ->
+                    reply_error(From, not_supported)
+            end;
+        not_found ->
+            reply(From, ok)
+    end,
+
     State.
 
 handle_whereis_name(Name, From, #state{leader = Leader} = State) ->
     case get_cached_name(Name) of
-        {ok, Pid} ->
+        {ok, Pid, _MRef} ->
             reply(From, Pid),
             State;
         not_found ->
@@ -259,13 +276,13 @@ maybe_cache_name(Name, Pid) when is_pid(Pid) ->
     case get_cached_name(Name) of
         not_found ->
             cache_name(Name, Pid);
-        {ok, CachedPid} ->
+        {ok, CachedPid, _MRef} ->
             true = (CachedPid =:= Pid)
     end.
 
 cache_name(Name, Pid) ->
-    _ = erlang:monitor(process, Pid),
-    true = ets:insert_new(?TABLE, [{{name, Name}, Pid},
+    MRef = erlang:monitor(process, Pid),
+    true = ets:insert_new(?TABLE, [{{name, Name}, Pid, MRef},
                                    {{pid, Pid}, Name}]),
     ok.
 
@@ -282,8 +299,9 @@ get_cached_name(Name) ->
     try ets:lookup(?TABLE, {name, Name}) of
         [] ->
             not_found;
-        [{_, Pid}] when is_pid(Pid) ->
-            {ok, Pid}
+        [{_, Pid, MRef}] when is_pid(Pid),
+                              is_reference(MRef) ->
+            {ok, Pid, MRef}
     catch
         error:badarg ->
             not_running

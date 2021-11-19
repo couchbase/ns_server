@@ -28,22 +28,33 @@ basic_test__() ->
     Wait = fun R() -> receive Msg -> Parent ! {self(), Msg}, R() end end,
 
     A = spawn_link(Wait),
-    B = spawn_link(Wait),
+    B = spawn_link(fun R() ->
+                           receive
+                               {unregister, Name} ->
+                                   leader_registry:unregister_name(Name),
+                                   Parent ! {self(), unregistered},
+                                   R();
+                               _ ->
+                                   R()
+                           end
+                   end),
+    C = spawn_link(Wait),
 
     undefined = leader_registry:whereis_name(a),
     undefined = leader_registry:whereis_name(b),
 
     ?assertExit(not_a_leader, leader_registry:register_name(a, A)),
+    ?assertExit(not_a_leader, leader_registry:unregister_name(a)),
 
     gen_event:sync_notify(leader_events, {new_leader, node()}),
 
-    yes = leader_registry:register_name(a, A),
-    A = leader_registry:whereis_name(a),
+    lists:foreach(
+      fun ({Name, Pid}) ->
+              yes = leader_registry:register_name(Name, Pid),
+              Pid = leader_registry:whereis_name(Name)
+      end, [{a, A}, {b, B}, {c, C}]),
 
     ?assertExit({duplicate_name, _, _, _}, leader_registry:register_name(a, B)),
-
-    yes = leader_registry:register_name(b, B),
-    B = leader_registry:whereis_name(b),
 
     leader_registry:send(a, test),
     receive
@@ -54,17 +65,33 @@ basic_test__() ->
             exit(no_message_received)
     end,
 
-    ?assertExit({badarg, _}, leader_registry:send(c, test)),
+    ?assertExit({badarg, _}, leader_registry:send(d, test)),
 
     misc:unlink_terminate_and_wait(A, shutdown),
     wait_not_registered(a),
 
+    ?assertExit(not_supported, leader_registry:unregister_name(b)),
+
+    leader_registry:send(b, {unregister, b}),
+    receive
+        {B, unregistered} ->
+            ok
+    after
+        1000 ->
+            exit(unregister_timeout)
+    end,
+    undefined = leader_registry:whereis_name(b),
+
+    %% Unknown names should work.
+    ok = leader_registry:unregister_name(b),
+
     gen_event:sync_notify(leader_events, {new_leader, undefined}),
     %% make sure leader_registry has processed the notification
     _ = sys:get_state(leader_registry),
-    undefined = leader_registry:whereis_name(b),
+    undefined = leader_registry:whereis_name(c),
 
-    misc:unlink_terminate_and_wait(B, shutdown).
+    misc:unlink_terminate_and_wait(B, shutdown),
+    misc:unlink_terminate_and_wait(C, shutdown).
 
 wait_not_registered(Name) ->
     wait_not_registered(Name, 1000).
