@@ -24,7 +24,7 @@ init([]) ->
          child_specs()}}.
 
 child_specs() ->
-    [{leader_registry_server, {leader_registry_server, start_link, []},
-      permanent, 1000, worker, [leader_registry_server]},
+    [{leader_registry, {leader_registry, start_link, []},
+      permanent, 1000, worker, [leader_registry]},
      {mb_master, {mb_master, start_link, []},
       permanent, infinity, supervisor, [mb_master]}].
