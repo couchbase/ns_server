@@ -784,8 +784,8 @@ function get70CompatDesc() {
         },
         "sysproc_mem_resident_cbas": {
           unit: "bytes",
-          title: "Cbas Sysproc Memory Resident",
-          desc: "The memory used for the Cbas system process."
+          title: "Analytics Sysproc Memory Resident",
+          desc: "The memory used for the Analytics system process."
         }
       },
       "@kv-": {
