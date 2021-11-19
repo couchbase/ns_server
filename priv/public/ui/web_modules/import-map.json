@@ -26,6 +26,7 @@
     "d3-array": "./d3-array.js",
     "d3-axis": "./d3-axis.js",
     "d3-brush": "./d3-brush.js",
+    "d3-collection": "./d3-collection.js",
     "d3-dsv": "./d3-dsv.js",
     "d3-format": "./d3-format.js",
     "d3-hierarchy": "./d3-hierarchy.js",
