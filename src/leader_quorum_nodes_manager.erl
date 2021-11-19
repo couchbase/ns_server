@@ -28,10 +28,7 @@
 -record(state, { quorum_nodes :: sets:set(node()) }).
 
 start_link() ->
-    leader_utils:ignore_if_new_orchestraction_disabled(
-      fun () ->
-              proc_lib:start_link(?MODULE, init, [[]])
-      end).
+    proc_lib:start_link(?MODULE, init, [[]]).
 
 set_quorum_nodes(Pid, QuorumNodes) ->
     gen_server2:call(Pid, {set_quorum_nodes, QuorumNodes}, infinity).

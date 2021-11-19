@@ -91,10 +91,7 @@
                }).
 
 start_link() ->
-    leader_utils:ignore_if_new_orchestraction_disabled(
-      fun () ->
-              gen_server2:start_link({local, ?SERVER}, ?MODULE, [], [])
-      end).
+    gen_server2:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 register_acquirer(Pid) ->
     call_register_internal_process(acquirer, Pid).
@@ -182,11 +179,6 @@ start_activity(Domain, Name, Quorum, Body, Opts) ->
     start_activity(node(), Domain, Name, Quorum, Body, Opts).
 
 start_activity(Node, Domain, Name, Quorum, Body, Opts) ->
-    pick_implementation(fun start_activity_regular/6,
-                        fun start_activity_bypass/6,
-                        [Node, Domain, Name, Quorum, Body, Opts]).
-
-start_activity_regular(Node, Domain, Name, Quorum, Body, Opts) ->
     ActivityToken = case get_activity_token() of
                         {ok, Token} ->
                             true = (Token#activity_token.domain =:= Domain),
@@ -205,25 +197,6 @@ start_activity_with_token(Node, ActivityToken, Name, Quorum, Body, Opts) ->
     call_wait_for_preconditions(Node, ActivityToken, Quorum, FinalOpts,
                                 start_activity, [Async, Name, Body]).
 
-start_activity_bypass(Node, _Domain, _Name, _Quorum, Body, _Opts) ->
-    AsyncBody = case Node =:= node() of
-                    true ->
-                        ?cut(run_body(Body));
-                    false ->
-                        {M, F, A} = Body,
-                        fun () ->
-                                case rpc:call(Node, M, F, A) of
-                                    {badrpc, _} = Error ->
-                                        throw(Error);
-                                    Other ->
-                                        Other
-                                end
-                        end
-                end,
-
-    Async = async:start(AsyncBody),
-    {ok, Async}.
-
 register_process(Name, Quorum) ->
     register_process(Name, Quorum, []).
 
@@ -234,29 +207,16 @@ register_process(DomainToken, Name, Quorum, Opts) ->
     register_process(default, DomainToken, Name, Quorum, Opts).
 
 register_process(Domain, DomainToken, Name, Quorum, Opts) ->
-    pick_implementation(fun register_process_regular/5,
-                        fun register_process_bypass/5,
-                        [Domain, DomainToken, Name, Quorum, Opts]).
-
-register_process_regular(Domain, DomainToken, Name, Quorum, Opts) ->
     {ok, ActivityToken} = call_wait_for_preconditions(
                             node(),
                             make_fresh_activity_token(Domain, DomainToken),
                             Quorum, Opts, register_process, [Name, self()]),
     set_activity_token(ActivityToken).
 
-register_process_bypass(_Domain, _DomainToken, _Name, _Quorum, _Opts) ->
-    ok.
-
 switch_quorum(NewQuorum) ->
     switch_quorum(NewQuorum, []).
 
 switch_quorum(NewQuorum, Opts) ->
-    pick_implementation(fun switch_quorum_regular/2,
-                        fun switch_quorum_bypass/2,
-                        [NewQuorum, Opts]).
-
-switch_quorum_regular(NewQuorum, Opts) ->
     Activity            = get_activity_pid(),
     {ok, ActivityToken} = get_activity_token(),
 
@@ -265,9 +225,6 @@ switch_quorum_regular(NewQuorum, Opts) ->
                                 ActivityToken,
                                 NewQuorum, EffectiveOpts,
                                 switch_quorum, [Activity]).
-
-switch_quorum_bypass(_NewQuorum, _Opts) ->
-    ok.
 
 activate_quorum_nodes(Nodes) ->
     activate_quorum_nodes(Nodes, []).
@@ -285,11 +242,6 @@ update_quorum_nodes(Fun) ->
     update_quorum_nodes(Fun, []).
 
 update_quorum_nodes(Fun, Opts) ->
-    pick_implementation(fun update_quorum_nodes_regular/2,
-                        fun update_quorum_nodes_bypass/2,
-                        [Fun, Opts]).
-
-update_quorum_nodes_regular(Fun, Opts) ->
     run_activity(update_quorum_nodes, majority,
                  fun () ->
                          {ok, Nodes} = call(get_quorum_nodes),
@@ -301,13 +253,6 @@ update_quorum_nodes_regular(Fun, Opts) ->
                                  Error
                          end
                  end, Opts).
-
-update_quorum_nodes_bypass(Fun, _Opts) ->
-    %% If we get there, it means that new orchestration is
-    %% disabled. We update the quorum nodes anyway in case in the
-    %% future the user goes back to new orchestration.
-    Nodes = leader_quorum_nodes_manager:get_quorum_nodes_unsafe(),
-    leader_quorum_nodes_manager:set_quorum_nodes_unsafe(Fun(Nodes)).
 
 %% gen_server callbacks
 init([]) ->
@@ -997,19 +942,6 @@ is_verbose(Activity) ->
 
 get_options(#activity{options = Options}) ->
     Options.
-
-must_bypass_server() ->
-    leader_utils:is_new_orchestration_disabled().
-
-pick_implementation(Regular, Bypass, Args) ->
-    Impl = case must_bypass_server() of
-               true ->
-                   Bypass;
-               false ->
-                   Regular
-           end,
-
-    erlang:apply(Impl, Args).
 
 inheritable_options() ->
     [{unsafe, true}].

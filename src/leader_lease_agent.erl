@@ -42,10 +42,7 @@
                  persisted_lease :: undefined | list() }).
 
 start_link() ->
-    leader_utils:ignore_if_new_orchestraction_disabled(
-      fun () ->
-              gen_server2:start_link({local, ?SERVER}, ?MODULE, [], [])
-      end).
+    gen_server2:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 get_current_lease() ->
     get_current_lease(node()).

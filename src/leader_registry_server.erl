@@ -60,10 +60,7 @@
 -record(state, { leader :: node() | undefined }).
 
 start_link() ->
-    leader_utils:ignore_if_new_orchestraction_disabled(
-      fun () ->
-              gen_server2:start_link({local, ?SERVER}, ?MODULE, [], [])
-      end).
+    gen_server2:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 %% actual implementation of the APIs
 register_name(Name, Pid) ->

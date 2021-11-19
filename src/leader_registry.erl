@@ -19,25 +19,13 @@
 -export([register_name/2, unregister_name/1, whereis_name/1, send/2]).
 
 register_name(Name, Pid) ->
-    wrap_registry_api(register_name, [Name, Pid]).
+    leader_registry_server:register_name(Name, Pid).
 
 unregister_name(Name) ->
-    wrap_registry_api(unregister_name, [Name]).
+    leader_registry_server:unregister_name(Name).
 
 whereis_name(Name) ->
-    wrap_registry_api(whereis_name, [Name]).
+    leader_registry_server:whereis_name(Name).
 
 send(Name, Msg) ->
-    wrap_registry_api(send, [Name, Msg]).
-
-%% internal
-backend() ->
-    case leader_utils:is_new_orchestration_disabled() of
-        true ->
-            global;
-        false ->
-            leader_registry_server
-    end.
-
-wrap_registry_api(Name, Args) ->
-    erlang:apply(backend(), Name, Args).
+    leader_registry_server:send(Name, Msg).

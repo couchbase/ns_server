@@ -12,20 +12,7 @@
 -include("cut.hrl").
 -include("ns_common.hrl").
 
--export([is_new_orchestration_disabled/0,
-         ignore_if_new_orchestraction_disabled/1,
-         live_nodes/0, live_nodes/1, live_nodes/2]).
-
-is_new_orchestration_disabled() ->
-    ns_config:read_key_fast(force_disable_new_orchestration, false).
-
-ignore_if_new_orchestraction_disabled(Body) ->
-    case is_new_orchestration_disabled() of
-        true ->
-            ignore;
-        false ->
-            Body()
-    end.
+-export([live_nodes/0, live_nodes/1, live_nodes/2]).
 
 live_nodes() ->
     live_nodes(ns_node_disco:nodes_wanted()).
