@@ -57,7 +57,8 @@
 
 -define(WHEREIS_NAME_REMOTE_TIMEOUT, ?get_timeout(whereis_name_remote, 15000)).
 
--record(state, { leader :: node() | undefined }).
+-record(state, { leader :: node() | undefined,
+                 pids :: #{pid() => {atom(), reference()}} }).
 
 start_link() ->
     gen_server2:start_link({local, ?SERVER}, ?MODULE, [], []).
@@ -73,7 +74,7 @@ unregister_name(Name) ->
 
 whereis_name(Name) ->
     case get_cached_name(Name) of
-        {ok, Pid, _MRef} ->
+        {ok, Pid} ->
             Pid;
         not_found ->
             call({whereis_name, Name});
@@ -111,7 +112,7 @@ init([]) ->
 
     %% At this point mb_master is not running yet, so we can't get the current
     %% leader, but we'll get an event with the master pretty soon.
-    {ok, #state{leader = undefined}}.
+    {ok, #state{leader = undefined, pids = #{}}}.
 
 handle_call({if_leader, Call}, From, State) ->
     case is_leader(State) of
@@ -167,37 +168,37 @@ handle_leader_call({unregister_name, Name}, From, State) ->
 
 handle_register_name(Name, Pid, From, State) ->
     case get_cached_name(Name) of
-        {ok, OtherPid, _MRef} ->
+        {ok, OtherPid} ->
             reply_error(From, {duplicate_name, Name, Pid, OtherPid}),
             State;
         not_found ->
-            cache_name(Name, Pid),
+            NewState = cache_name(Name, Pid, State),
             reply(From, yes),
-            State
+            NewState
     end.
 
 handle_unregister_name(Name, From, State) ->
     {CallerPid, _} = From,
     case get_cached_name(Name) of
-        {ok, Pid, MRef} ->
+        {ok, Pid} ->
             case Pid =:= CallerPid of
                 true ->
                     ?log_info("Process ~p unregistered as '~p'", [Pid, Name]),
-                    erlang:demonitor(MRef, [flush]),
-                    invalidate_name(Name, Pid),
-                    reply(From, ok);
+                    NewState = invalidate_name(Name, Pid, State),
+                    reply(From, ok),
+                    NewState;
                 false ->
-                    reply_error(From, not_supported)
+                    reply_error(From, not_supported),
+                    State
             end;
         not_found ->
-            reply(From, ok)
-    end,
-
-    State.
+            reply(From, ok),
+            State
+    end.
 
 handle_whereis_name(Name, From, #state{leader = Leader} = State) ->
     case get_cached_name(Name) of
-        {ok, Pid, _MRef} ->
+        {ok, Pid} ->
             reply(From, Pid),
             State;
         not_found ->
@@ -218,8 +219,8 @@ maybe_spawn_name_resolver(Name, From, State) ->
                           ?cut(resolve_name_on_leader(Name, State)),
                           fun (MaybePid, NewState) ->
                                   reply(From, MaybePid),
-                                  maybe_cache_name(Name, MaybePid),
-                                  {noreply, NewState}
+                                  {noreply,
+                                   maybe_cache_name(Name, MaybePid, NewState)}
                           end),
 
     State.
@@ -246,22 +247,20 @@ handle_new_leader(NewLeader, #state{leader = Leader} = State) ->
             State;
         false ->
             ?log_debug("New leader is ~p. Invalidating name cache.", [NewLeader]),
-            invalidate_everything(State),
-            State#state{leader = NewLeader}
+            invalidate_everything(State#state{leader = NewLeader})
     end.
 
 handle_job_death({resolver, Name}, _, Reason) ->
     ?log_error("Resolver for name '~p' failed with reason ~p", [Name, Reason]),
     {continue, undefined}.
 
-handle_down(MRef, Pid, Reason, State) ->
-    case ets:lookup(?TABLE, {pid, Pid}) of
-        [{_, Name}] ->
+handle_down(MRef, Pid, Reason, #state{pids = Pids} = State) ->
+    case maps:find(Pid, Pids) of
+        {ok, {Name, _}} ->
             ?log_info("Process ~p registered as '~p' terminated.",
                       [Pid, Name]),
-            invalidate_name(Name, Pid),
-            State;
-        [] ->
+            invalidate_name(Name, Pid, State);
+        error ->
             ?log_error("Received unexpected DOWN message: ~p",
                        [{MRef, Pid, Reason}]),
             State
@@ -270,38 +269,46 @@ handle_down(MRef, Pid, Reason, State) ->
 is_leader(#state{leader = Leader}) ->
     Leader =:= node().
 
-maybe_cache_name(_Name, undefined) ->
-    ok;
-maybe_cache_name(Name, Pid) when is_pid(Pid) ->
+maybe_cache_name(_Name, undefined, State) ->
+    State;
+maybe_cache_name(Name, Pid, State) when is_pid(Pid) ->
     case get_cached_name(Name) of
         not_found ->
-            cache_name(Name, Pid);
-        {ok, CachedPid, _MRef} ->
-            true = (CachedPid =:= Pid)
+            cache_name(Name, Pid, State);
+        {ok, CachedPid} ->
+            true = (CachedPid =:= Pid),
+            State
     end.
 
-cache_name(Name, Pid) ->
+cache_name(Name, Pid, #state{pids = Pids} = State) ->
     MRef = erlang:monitor(process, Pid),
-    true = ets:insert_new(?TABLE, [{{name, Name}, Pid, MRef},
-                                   {{pid, Pid}, Name}]),
-    ok.
+    true = ets:insert_new(?TABLE, {Name, Pid}),
+    State#state{pids = Pids#{Pid => {Name, MRef}}}.
 
-invalidate_everything(State) ->
+invalidate_everything(#state{pids = Pids} = State) ->
+    maps:foreach(
+      fun (_Pid, {_Name, MRef}) ->
+              erlang:demonitor(MRef, [flush])
+      end, Pids),
+
     lists:foreach(gen_server2:abort_queue(_, undefined, State),
                   gen_server2:get_active_queues()),
-    ets:delete_all_objects(?TABLE).
+    ets:delete_all_objects(?TABLE),
+    State#state{pids = #{}}.
 
-invalidate_name(Name, Pid) ->
-    ets:delete(?TABLE, {name, Name}),
-    ets:delete(?TABLE, {pid, Pid}).
+invalidate_name(Name, Pid, #state{pids = Pids} = State) ->
+    {{_, MRef}, NewPids} = maps:take(Pid, Pids),
+    erlang:demonitor(MRef, [flush]),
+
+    ets:delete(?TABLE, Name),
+    State#state{pids = NewPids}.
 
 get_cached_name(Name) ->
-    try ets:lookup(?TABLE, {name, Name}) of
+    try ets:lookup(?TABLE, Name) of
         [] ->
             not_found;
-        [{_, Pid, MRef}] when is_pid(Pid),
-                              is_reference(MRef) ->
-            {ok, Pid, MRef}
+        [{_, Pid}] when is_pid(Pid) ->
+            {ok, Pid}
     catch
         error:badarg ->
             not_running
