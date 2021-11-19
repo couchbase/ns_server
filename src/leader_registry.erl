@@ -75,7 +75,22 @@ unregister_name(Name) ->
 whereis_name(Name) ->
     case get_cached_name(Name) of
         {ok, Pid} ->
-            Pid;
+            %% The leader_registry process may not have yet processed the
+            %% death of the registered process. This may result in spurious
+            %% crashes: https://issues.couchbase.com/browse/MB-42727. So check
+            %% whether the process is alive. This is what 'global' does too to
+            %% address a similar race.
+            case node(Pid) =:= node() of
+                true ->
+                    case is_process_alive(Pid) of
+                        true ->
+                            Pid;
+                        false ->
+                            undefined
+                    end;
+                false ->
+                    Pid
+            end;
         not_found ->
             call({whereis_name, Name});
         not_running ->
@@ -169,8 +184,19 @@ handle_leader_call({unregister_name, Name}, From, State) ->
 handle_register_name(Name, Pid, From, State) ->
     case get_cached_name(Name) of
         {ok, OtherPid} ->
-            reply_error(From, {duplicate_name, Name, Pid, OtherPid}),
-            State;
+            %% The caller may have observed that the registered process has
+            %% died, but the corresponding DOWN signal has not yet been
+            %% delivered to leader_registry.
+            case is_process_alive(OtherPid) of
+                true ->
+                    reply_error(From, {duplicate_name, Name, Pid, OtherPid}),
+                    State;
+                false ->
+                    ?log_info("Unregistering dead "
+                              "process ~p as '~p'", [OtherPid, Name]),
+                    NewState = invalidate_name(Name, OtherPid, State),
+                    handle_register_name(Name, Pid, From, NewState)
+            end;
         not_found ->
             NewState = cache_name(Name, Pid, State),
             reply(From, yes),

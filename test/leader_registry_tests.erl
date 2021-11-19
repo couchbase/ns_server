@@ -68,7 +68,7 @@ basic_test__() ->
     ?assertExit({badarg, _}, leader_registry:send(d, test)),
 
     misc:unlink_terminate_and_wait(A, shutdown),
-    wait_not_registered(a),
+    undefined = leader_registry:whereis_name(a),
 
     ?assertExit(not_supported, leader_registry:unregister_name(b)),
 
@@ -93,16 +93,24 @@ basic_test__() ->
     misc:unlink_terminate_and_wait(B, shutdown),
     misc:unlink_terminate_and_wait(C, shutdown).
 
-wait_not_registered(Name) ->
-    wait_not_registered(Name, 1000).
+kill_test_() ->
+    {spawn,
+     {setup, fun setup/0, fun cleanup/1, fun kill_test__/0}}.
 
-wait_not_registered(Name, TimeLeft) ->
-    case leader_registry:whereis_name(Name) of
-        undefined ->
-            ok;
-        Pid when is_pid(Pid) andalso TimeLeft > 0 ->
-            timer:sleep(1),
-            wait_not_registered(Name, TimeLeft - 1);
-        Pid when is_pid(Pid) ->
-            exit({name_still_registered, Name, Pid})
-    end.
+kill_test__() ->
+    gen_event:sync_notify(leader_events, {new_leader, node()}),
+    kill_test_loop(1000).
+
+kill_test_loop(0) ->
+    ok;
+kill_test_loop(I) ->
+    undefined = leader_registry:whereis_name(a),
+
+    A = spawn_link(fun R() ->
+                           receive _ ->
+                                   R()
+                           end
+                   end),
+    yes = leader_registry:register_name(a, A),
+    misc:unlink_terminate_and_wait(A, kill),
+    kill_test_loop(I - 1).
