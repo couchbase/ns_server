@@ -260,7 +260,7 @@ handle_ensure_manifest(Bucket, Uid, Req) ->
                                                404)
               end
       end, Req, form,
-      [validator:integer(timeout, 0, 60000, _),
+      [validator:integer(timeout, 0, 300000, _),
        nodes_validator(BucketNodes, Req, _),
        validator:unsupported(_)]).
 
