@@ -786,7 +786,7 @@ maybe_rename(NewAddr, UserSupplied) ->
             renamed
     end.
 
-check_add_possible(Body) ->
+check_add_possible(RemoteAddr, Body) ->
     EnsureProvisioned =
         fun () ->
             case ns_config_auth:is_system_provisioned() of
@@ -807,13 +807,26 @@ check_add_possible(Body) ->
                     {error, rebalance_running, Msg}
             end
         end,
-    case functools:sequence_([EnsureProvisioned, NoRebalanceRunning]) of
+    CheckHostAllowed =
+        fun () ->
+            case is_host_allowed(RemoteAddr) of
+                true -> ok;
+                false ->
+                    Msg = io_lib:format(
+                            "Host ~s is not allowed to join. Check "
+                            "allowedHosts setting.", [RemoteAddr]),
+                    {error, not_allowed_host, iolist_to_binary(Msg)}
+            end
+        end,
+    case functools:sequence_([EnsureProvisioned, NoRebalanceRunning,
+                              CheckHostAllowed]) of
         ok -> Body();
         Error -> Error
     end.
 
 do_add_node(Scheme, RemoteAddr, RestPort, Auth, GroupUUID, Services) ->
     check_add_possible(
+      RemoteAddr,
       fun () ->
               do_add_node_allowed(Scheme, RemoteAddr, RestPort, Auth,
                                   GroupUUID, Services)
@@ -1594,6 +1607,217 @@ rename_marker_path() ->
 
 join_marker_path() ->
     path_config:component_path(data, "join_marker").
+
+is_host_allowed(Host) when is_list(Host) ->
+    AllowedHosts = ns_config:read_key_fast(allowed_hosts, [<<"*">>]),
+    ?log_info("Checking if host '~s' is allowed to join the cluster "
+              "(allowed hosts: ~1000p)", [Host, AllowedHosts]),
+    host_match_any(Host, [menelaus_web_settings:parse_allowed_host(AH)
+                          || AH <- AllowedHosts]).
+
+host_match_any(Host, AllowedHostsParsed) ->
+    lists:any(fun (Pattern) -> host_match(Host, Pattern) end,
+              AllowedHostsParsed).
+
+host_match(_, any) ->
+    true;
+host_match(Host, {ip, IP}) ->
+    case inet:parse_address(Host) of
+        {ok, IP} -> true;
+        {ok, _} -> false;
+        {error, einval} ->
+            case resolve(Host) of
+                {ok, IPs} -> lists:member(IP, [A || {A, _} <- IPs]);
+                {error, _} -> false
+            end
+    end;
+host_match(Host, {cidr, _, _} = CIDR) ->
+    case inet:parse_address(Host) of
+        {ok, IP} ->
+            cidr_match(IP, CIDR);
+        {error, einval} ->
+            case resolve(Host) of
+                {ok, IPs} ->
+                    lists:any(cidr_match(_, CIDR), [A || {A, _} <- IPs]);
+                {error, _} -> false
+            end
+    end;
+host_match(Host, {fqdn, Labels}) ->
+    case misc:is_raw_ip(Host) of
+        false ->
+            HostLabels = string:split(string:lowercase(iolist_to_binary(Host)),
+                                      ".", all),
+            fqdn_match(HostLabels, Labels, true);
+        true -> false
+    end.
+
+-ifdef(TEST).
+
+host_match_test() ->
+    ?assertEqual(true,  host_match("anything", any)),
+    ?assertEqual(true,  host_match("10.10.1.44", any)),
+    ?assertEqual(true,  host_match("127.0.0.1", {ip, {127,0,0,1}})),
+    ?assertEqual(true,  host_match("::1", {ip, {0,0,0,0,0,0,0,1}})),
+    ?assertEqual(true,  host_match("10.10.1.44",
+                                   {cidr, {10, 10, 1, 32}, 27})),
+    ?assertEqual(true,  host_match("exampLE.coM",
+                                   {fqdn, [<<"example">>, <<"com">>]})),
+    ?assertEqual(true,  host_match("3tesT-5.exampLE.coM",
+                                   {fqdn, [<<"*">>, <<"example">>,
+                                                <<"com">>]})),
+    ?assertEqual(true,  host_match("u3tesT-554s.exampLE.coM",
+                                   {fqdn, [<<"u3*54s">>, <<"example">>,
+                                           <<"com">>]})),
+    ?assertEqual(false, host_match("127.0.0.2", {ip, {127,0,0,1}})),
+    ?assertEqual(false, host_match("127.0.0.a", {ip, {127,0,0,1}})),
+    ?assertEqual(false, host_match("::1", {ip, {0,0,0,0,0,0,0,2}})),
+    ?assertEqual(false, host_match("10.10.1.90",
+                                   {cidr, {10, 10, 1, 32}, 27})),
+    ?assertEqual(false, host_match("test.exampLE.coM",
+                                   {fqdn, [<<"example">>, <<"com">>]})),
+    ?assertEqual(false, host_match("test.exampL3.coM",
+                                   {fqdn, [<<"test">>, <<"example">>,
+                                           <<"com">>]})),
+    ?assertEqual(false, host_match("3tesT-5.test.exampLE.coM",
+                                   {fqdn, [<<"*">>, <<"*">>,
+                                           <<"example">>, <<"com">>]})),
+    ?assertEqual(false, host_match("u3tesT-564s.exampLE.coM",
+                                   {fqdn, [<<"u3*54s">>, <<"example">>,
+                                           <<"com">>]})),
+    ?assertEqual(false, host_match("test1.test.example.com",
+                                   {fqdn, [<<"*">>, <<"example">>,
+                                           <<"com">>]})),
+    ?assertEqual(false, host_match("test.foo.example.com",
+                                   {fqdn, [<<"test">>, <<"*">>,
+                                           <<"example">>, <<"com">>]})),
+    ?assertEqual(false, host_match("*.example.com",
+                                   {fqdn, [<<"*">>, <<"example">>,
+                                           <<"com">>]})),
+    ok.
+
+cidr_match_test() ->
+    Match = fun (IPStr, CIDRStr) ->
+                {ok, IP} = inet:parse_address(IPStr),
+                CIDR = menelaus_web_settings:parse_allowed_host(
+                         list_to_binary(CIDRStr)),
+                cidr_match(IP, CIDR)
+            end,
+    ?assertEqual(true,  Match("::", "::/0")),
+    ?assertEqual(true,  Match("2001:4860::", "::/0")),
+    ?assertEqual(false, Match("2001:4860::", "::/16")),
+    ?assertEqual(false, Match("2001:4860::", "::/128")),
+
+    ?assertEqual(true,  Match("::", "0234::/1")),
+    ?assertEqual(true,  Match("7fff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+                              "0234::/1")),
+    ?assertEqual(false, Match("8000::", "0234::/1")),
+    ?assertEqual(false, Match("7fff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+                              "8201::/1")),
+    ?assertEqual(true,  Match("8000::", "8201::/1")),
+    ?assertEqual(true,  Match("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+                             "8201::/1")),
+
+    ?assertEqual(true,  Match("2001:4860::", "2001:4860::/32")),
+    ?assertEqual(true,  Match("2001:4860:ffff:ffff:ffff:ffff:ffff:ffff",
+                             "2001:4860::/32")),
+    ?assertEqual(true,  Match("2001:4860:4860::8887", "2001:4860::/32")),
+    ?assertEqual(false, Match("2001:4861:4860::8887", "2001:4860::/32")),
+    ?assertEqual(false, Match("2001:4859:4860::8887", "2001:4860::/32")),
+
+    ?assertEqual(true,  Match("2001:4860:ffff:ffff:ffff:ffff:ffff:1234",
+                              "2001:4860:ffff:ffff:ffff:ffff:ffff:1234/128")),
+    ?assertEqual(false, Match("2001:4860:ffff:ffff:ffff:ffff:ffff:1235",
+                              "2001:4860:ffff:ffff:ffff:ffff:ffff:1234/128")),
+
+    ?assertEqual(false, Match("2001:4860:ffff:ffff:ffff:ffff:ffff:fffd",
+                             "2001:4860:ffff:ffff:ffff:ffff:ffff:fffe/127")),
+    ?assertEqual(true,  Match("2001:4860:ffff:ffff:ffff:ffff:ffff:fffe",
+                              "2001:4860:ffff:ffff:ffff:ffff:ffff:fffe/127")),
+    ?assertEqual(true,  Match("2001:4860:ffff:ffff:ffff:ffff:ffff:ffff",
+                              "2001:4860:ffff:ffff:ffff:ffff:ffff:fffe/127")),
+    ?assertEqual(false, Match("2001:4861::",
+                              "2001:4860:ffff:ffff:ffff:ffff:ffff:fffe/127")),
+
+    ?assertEqual(true,  cidr_match({16#32, 16#ff, 16#ff, 16#ff},
+                                   {cidr, {16#ff, 16#ff, 16#ff, 16#ff}, 0})),
+
+    ?assertEqual(true,  cidr_match({16#ff, 16#ff, 16#ff, 16#ff},
+                                   {cidr, {16#ff, 16#ff, 16#ff, 16#ff}, 32})),
+    ?assertEqual(false, cidr_match({16#ff, 16#ff, 16#ff, 16#fe},
+                                   {cidr, {16#ff, 16#ff, 16#ff, 16#ff}, 32})),
+
+
+    ?assertEqual(false, cidr_match({2#01111111, 16#ff, 16#ff, 16#ff},
+                                   {cidr, {16#8f, 16#ff, 16#ff, 16#ff}, 1})),
+    ?assertEqual(true,  cidr_match({2#10000000, 16#00, 16#00, 16#00},
+                                   {cidr, {16#8f, 16#ff, 16#ff, 16#ff}, 1})),
+    ?assertEqual(true,  cidr_match({16#a4, 16#32, 16#43, 16#23},
+                                   {cidr, {16#8f, 16#ff, 16#ff, 16#ff}, 1})),
+    ?assertEqual(true,  cidr_match({16#ff, 16#ff, 16#ff, 16#ff},
+                                   {cidr, {16#8f, 16#ff, 16#ff, 16#ff}, 1})),
+
+    ?assertEqual(true,  cidr_match({16#00, 16#00, 16#00, 16#00},
+                                   {cidr, {16#7f, 16#ff, 16#ff, 16#ff}, 1})),
+    ?assertEqual(true,  cidr_match({16#7f, 16#ff, 16#ff, 16#ff},
+                                   {cidr, {16#7f, 16#ff, 16#ff, 16#ff}, 1})),
+    ?assertEqual(false, cidr_match({16#80, 16#00, 16#00, 16#00},
+                                   {cidr, {16#7f, 16#ff, 16#ff, 16#ff}, 1})),
+
+
+    ?assertEqual(true,  cidr_match({10, 10, 1, 44},
+                                   {cidr, {10, 10, 1, 32}, 27})),
+    ?assertEqual(false, cidr_match({10, 10, 1, 90},
+                                   {cidr, {10, 10, 1, 32}, 27})),
+    ?assertEqual(false, cidr_match({10, 10, 1, 31},
+                                   {cidr, {10, 10, 1, 32}, 27})).
+
+-endif.
+
+fqdn_match([], [], _) -> true;
+fqdn_match([], [_], _) -> false;
+fqdn_match([_], [], _) -> false;
+fqdn_match([E | T1], [E | T2], _) ->
+    case E of
+        <<"xn--", _/binary>> -> fqdn_match(T1, T2, false);
+        _ ->
+            case string:split(E, "*") of
+                [_] -> fqdn_match(T1, T2, false);
+                [_ | _] -> false
+            end
+    end;
+fqdn_match([_E1 | _T1], [_E2 | _T2], false) ->
+    false;
+fqdn_match([E1 | T1], [E2 | T2], true) ->
+    RE = iolist_to_binary(["^", string:replace(E2, "*", "[^.]*", all), "$"]),
+    case re:run(E1, RE, [{capture, none}]) of
+        match -> fqdn_match(T1, T2, false);
+        nomatch -> false
+    end.
+
+cidr_match(IP, {cidr, CidrIP, CidrBits}) ->
+    case size(IP) == size(CidrIP) of
+        true ->
+            DecimalIP = decimal_ip(IP),
+            DecimalCidrIP = decimal_ip(CidrIP),
+            Mask = cidr_mask(CidrIP, CidrBits),
+            (DecimalIP band Mask) == (DecimalCidrIP band Mask);
+        false -> false
+    end.
+
+%% IPv4
+decimal_ip(IP) when size(IP) == 4 ->
+    lists:foldl(fun (N, A) -> A bsl 8 + N end, 0, erlang:tuple_to_list(IP));
+%% IPv6
+decimal_ip(IP) when size(IP) == 8 ->
+    lists:foldl(fun (N, A) -> A bsl 16 + N end, 0, erlang:tuple_to_list(IP)).
+
+cidr_mask(IP, Bits) ->
+    TotalBits = case size(IP) of
+                    4 -> 32;
+                    8 -> 128
+                end,
+    lists:foldl(fun (_, A) -> A bsl 1 + 1 end, 0, lists:seq(1, Bits))
+        bsl (TotalBits - Bits).
 
 -ifdef(TEST).
 community_allowed_topologies_test() ->
