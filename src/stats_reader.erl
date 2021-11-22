@@ -13,8 +13,6 @@
 -module(stats_reader).
 
 -include("cut.hrl").
--include_lib("stdlib/include/qlc.hrl").
-
 -include("ns_common.hrl").
 -include("ns_stats.hrl").
 
