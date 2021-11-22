@@ -14,7 +14,7 @@
      class="alert alert-warning"><p>Insufficient RAM quota available to add the selected sample data. Please free up at least {{maxQuotaExceeded | async}}MiB of RAM quota in <a>cluster settings</a>.</p></div>
   <div
      [hidden]="!(isRebalancing | async)"
-     class="alert alert-warning"><p>Can not load samples during rebalance.</p></div>
+     class="alert alert-warning"><p>Cannot load samples during rebalance.</p></div>
   <div
      [hidden]="!(maxBucketsExceeded | async)"
      class="alert alert-warning"><p>Maximum number of buckets has been reached. For optimal performance, no more than {{maxBucketCount | async}} buckets are allowed.</p></div>
@@ -43,17 +43,14 @@
         {{error}}.
       </span>
     </div>
-    <div class="row width-480 items-top margin-top-1-5">
-      <div class="column">
-        <h4>Available Samples</h4>
-        <div class="formrow checkbox-list">
-          <div *ngFor="let bucket of (getSampleBuckets | async)">
-            <input
-               type="checkbox"
-               [attr.id]="'bucket' + bucket.name"
-               [formControlName]="bucket.name">
-            <label [attr.for]="'bucket' + bucket.name">&nbsp;{{bucket.name}}</label>
-          </div>
+    <div class="width-480">
+      <div class="formrow checkbox-list">
+        <div *ngFor="let bucket of (getSampleBuckets | async)">
+          <input
+             type="checkbox"
+             [attr.id]="'bucket' + bucket.name"
+             [formControlName]="bucket.name">
+          <label [attr.for]="'bucket' + bucket.name">&nbsp;{{bucket.name}}</label>
         </div>
       </div>
     </div>
