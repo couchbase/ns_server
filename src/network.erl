@@ -74,7 +74,7 @@ socket_close(Socket) ->
     {ok,
         {inet:ip_address(), inet:port_number()} |
          inet:returned_non_ip_address()} |
-        {error, inet:posix() | ssl:reason()}.
+        {error, inet:posix() | SslReason :: any()}.
 
 sockname({ssl, Socket}) ->
     ssl:sockname(Socket);
