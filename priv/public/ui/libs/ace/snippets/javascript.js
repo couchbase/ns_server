@@ -1,4 +1,4 @@
-define("ace/snippets/javascript",["require","exports","module"], function(require, exports, module) {
+window.ace.define("ace/snippets/javascript",["require","exports","module"], function(require, exports, module) {
 "use strict";
 
 exports.snippetText = "# Prototype\n\
