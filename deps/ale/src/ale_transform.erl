@@ -121,8 +121,8 @@ walk_body(Acc, [H|T]) ->
     walk_body([transform(H) | Acc], T).
 
 transform({call, Location, {remote, _,
-                        {atom, _, ale},
-                        {atom, _, Fn}},
+                            {atom, _, ale},
+                            {atom, _, Fn}},
            [LoggerExpr]})
   when Fn =:= sync;
        Fn =:= get_effective_loglevel ->
@@ -131,8 +131,8 @@ transform({call, Location, {remote, _,
      {remote, Location,
       logger_impl_expr(LoggerExpr), {atom, Location, Fn}}, []};
 transform({call, Location, {remote, _,
-                        {atom, _, ale},
-                        {atom, _, Fn}},
+                            {atom, _, ale},
+                            {atom, _, Fn}},
            [LoggerExpr, LogLevelExpr]} = Stmt)
   when Fn =:= is_loglevel_enabled ->
     case valid_loglevel_expr(LogLevelExpr) of
@@ -144,8 +144,8 @@ transform({call, Location, {remote, _,
             Stmt
     end;
 transform({call, Location, {remote, _,
-                        {atom, _, ale},
-                        {atom, _, LogFn}},
+                            {atom, _, ale},
+                            {atom, _, LogFn}},
            [LoggerExpr, LogLevelExpr | Args]} = Stmt)
   when LogFn =:= log; LogFn =:= xlog ->
     Extended = LogFn =:= xlog,
@@ -166,8 +166,8 @@ transform({call, Location, {remote, _,
             Stmt
     end;
 transform({call, Location, {remote, _,
-                        {atom, _, ale},
-                        {atom, _, LogLevel} = LogLevelExpr},
+                            {atom, _, ale},
+                            {atom, _, LogLevel} = LogLevelExpr},
            [LoggerExpr | Args]} = Stmt) ->
     case valid_loglevel(LogLevel) andalso
         valid_args(extended_loglevel(LogLevel), Args) of
