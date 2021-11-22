@@ -5,7 +5,8 @@ IF (NOT EXISTS "${COUCHBASE_PLT}")
   MESSAGE ("Generating ${COUCHBASE_PLT}...")
   EXECUTE_PROCESS (COMMAND "${CMAKE_COMMAND}" -E echo
     "${DIALYZER_EXECUTABLE}" --output_plt "${COUCHBASE_PLT}" --build_plt
-    --apps compiler crypto erts inets kernel os_mon sasl ssl stdlib xmerl
+    --apps compiler crypto erts inets kernel os_mon sasl ssl stdlib xmerl eldap
+           public_key
     ${_couchdb_bin_dir}/src/couchdb
     ${_couchdb_bin_dir}/src/couch_set_view
     ${_couchdb_bin_dir}/src/couch_view_parser
@@ -16,10 +17,13 @@ IF (NOT EXISTS "${COUCHBASE_PLT}")
     ${_couchdb_bin_dir}/src/etap
     ${_couchdb_bin_dir}/src/lhttpc
     ${_couchdb_bin_dir}/src/erlang-oauth
-    deps/gen_smtp)
+    ${_couchdb_bin_dir}/src/ejson
+    deps/gen_smtp
+    deps/chronicle)
 
   EXECUTE_PROCESS (COMMAND "${DIALYZER_EXECUTABLE}" --output_plt "${COUCHBASE_PLT}" --build_plt
-    --apps compiler crypto erts inets kernel os_mon sasl ssl stdlib xmerl
+    --apps compiler crypto erts inets kernel os_mon sasl ssl stdlib xmerl eldap
+           public_key
     ${_couchdb_bin_dir}/src/couchdb
     ${_couchdb_bin_dir}/src/couch_set_view
     ${_couchdb_bin_dir}/src/couch_view_parser
@@ -30,7 +34,9 @@ IF (NOT EXISTS "${COUCHBASE_PLT}")
     ${_couchdb_bin_dir}/src/etap
     ${_couchdb_bin_dir}/src/lhttpc
     ${_couchdb_bin_dir}/src/erlang-oauth
-    deps/gen_smtp)
+    ${_couchdb_bin_dir}/src/ejson
+    deps/gen_smtp
+    deps/chronicle)
 ENDIF (NOT EXISTS "${COUCHBASE_PLT}")
 
 # Compute list of .beam files
