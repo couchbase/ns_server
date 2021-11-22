@@ -60,7 +60,7 @@ function controller(mnStatisticsNewService, mnStatisticsDescriptionService, mnHe
   }
 
   function activate(selectedZoom) {
-    let permissions = mnPermissions.export.cluster.collection[vm.bucket + ':.:.'];
+    let permissions = mnPermissions.export.cluster.collection[(vm.bucket || ".") + ':.:.'];
     vm.isComponentDisabled = !(permissions && permissions.stats.read);
 
     if (vm.isComponentDisabled) {
