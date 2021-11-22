@@ -1011,8 +1011,8 @@ parse_validate_external_params(Params) ->
             case lists:all(
                    lists:member(
                      _, service_ports:services_port_keys(
-                          ns_cluster_membership:node_active_services(
-                            Config, node()))), [V || {V, _} <- Ports]) of
+                          [rest | ns_cluster_membership:node_active_services(
+                                    Config, node())])), [V || {V, _} <- Ports]) of
                 true ->
                     ValidResponse;
                 false ->
