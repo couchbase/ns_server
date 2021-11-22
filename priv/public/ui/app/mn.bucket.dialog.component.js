@@ -352,69 +352,79 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
 
   packData([, compat55, isEnterprise]) {
     let formData = this.form.group.getRawValue();
+    let saveData = {};
 
-    formData.flushEnabled = formData.flushEnabled ? 1 : 0;
-    formData.replicaIndex = formData.replicaIndex ? 1 : 0;
-
-    if (formData.bucketType !== 'membase') {
-      delete formData.autoCompactionDefined;
-    }
-    if (formData.autoCompactionDefined) {
-      let autoCompactionData = this.mnSettingsAutoCompactionService.getAutoCompactionData(this.form.group.get('autoCompactionSettings'));
-      switch(formData.storageBackend) {
-        case 'magma':
-          formData.magmaFragmentationPercentage = autoCompactionData.magmaFragmentationPercentage;
-          break;
-        case 'couchstore':
-          formData = Object.assign(formData, autoCompactionData);
-          delete formData.magmaFragmentationPercentage;
-          break;
-      }
-    }
-    delete formData.autoCompactionSettings;
-
-    if (this.bucket) {
-      delete formData.conflictResolutionType;
-    }
-
-    let checkPermissions = () => {
-      if (!isEnterprise || !compat55) {
-        delete formData.compressionMode;
-        delete formData.maxTTL;
-      }
-      if (!isEnterprise) {
-        delete formData.conflictResolutionType;
-        delete formData.storageBackend;
+    let copyProperty = (property) => {
+      if (formData[property] !== undefined && formData[property] !== null) {
+        saveData[property] = formData[property];
       }
     };
-    switch (formData.bucketType) {
-      case 'ephemeral':
-        delete formData.autoCompactionDefined;
-        delete formData.replicaIndex;
-        delete formData.storageBackend;
-        formData.evictionPolicy = formData.evictionPolicyEphemeral;
-        checkPermissions();
-        break;
-      case 'memcached':
-        delete formData.autoCompactionDefined;
-        delete formData.replicaNumber;
-        delete formData.storageBackend;
-        delete formData.purgeInterval;
-        delete formData.evictionPolicy;
-        break;
-      case 'membase':
-        checkPermissions();
-        break;
+    let copyProperties = (properties) => {
+      properties.forEach(copyProperty);
+    };
+
+    let isMembase = formData.bucketType === 'membase';
+    let isEphemeral = formData.bucketType === 'ephemeral';
+
+    copyProperty('name');
+    if (!this.bucket) {
+      copyProperty('bucketType');
     }
 
-    delete formData.evictionPolicyEphemeral;
+    if (isEnterprise && isMembase) {
+      copyProperty('storageBackend');
+    }
+    if (isMembase) {
+      copyProperties(['autoCompactionDefined', 'evictionPolicy']);
+    }
 
-    Object.keys(formData).forEach(key => {
-      if (formData[key] === null || formData[key] === undefined) {
-        delete formData[key];
+    if (isEphemeral) {
+      copyProperties(['purgeInterval', 'durabilityMinLevel']);
+      saveData['evictionPolicy'] = formData['evictionPolicyEphemeral'];
+    }
+
+    if (isMembase || isEphemeral) {
+      copyProperties(['threadsNumber', 'replicaNumber', 'durabilityMinLevel']);
+      if (isEnterprise && compat55) {
+        copyProperty('compressionMode');
+        if (!formData.maxTTLEnabled) {
+          saveData.maxTTL = 0;
+        } else {
+          copyProperty('maxTTL');
+        }
       }
-    });
+      if (!this.bucket) {
+        if (!isEphemeral) {
+          copyProperty('replicaIndex', true);
+          saveData.replicaIndex = saveData.replicaIndex ? 1 : 0;
+        }
 
-    return formData;
+        if (isEnterprise) {
+          copyProperty('conflictResolutionType');
+        }
+      }
+
+      if (formData.autoCompactionDefined) {
+        let autoCompactionData = this.mnSettingsAutoCompactionService.getAutoCompactionData(this.form.group.get('autoCompactionSettings'));
+        switch(formData.storageBackend) {
+          case 'magma':
+            saveData.magmaFragmentationPercentage = autoCompactionData.magmaFragmentationPercentage;
+            break;
+          case 'couchstore':
+            saveData = Object.assign(saveData, autoCompactionData);
+            delete saveData.magmaFragmentationPercentage;
+            break;
+        }
+      }
+    }
+
+    if (this.bucket && this.bucket.isWizard) {
+      copyProperty("otherBucketsRamQuotaMB");
+    }
+
+    copyProperties(['ramQuotaMB', 'flushEnabled']);
+    saveData.flushEnabled = saveData.flushEnabled ? 1 : 0;
+
+    return saveData;
   }
 }
