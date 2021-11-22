@@ -2677,6 +2677,14 @@ span.adder:hover {
   width: 100%;
   text-align: right;
 }
+.wb-results-extra {
+  margin: 0 auto;
+  padding: 2rem 0 0 0;
+  max-width: 520px;
+  min-width: 310px;
+  text-align: center;
+  font-size: .825rem
+}
 /* -- ACE search modifications --------------------------------------------- */
 .ace-search {
   background-color: #fff;
