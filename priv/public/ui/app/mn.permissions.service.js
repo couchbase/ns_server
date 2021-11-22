@@ -70,6 +70,8 @@ let interestingPermissions = ([
   "cluster.server_groups!write",
   "cluster.settings!read",
   "cluster.settings!write",
+  "cluster.settings.metrics!read",
+  "cluster.settings.metrics!write",
   "cluster.stats!read",
   "cluster.tasks!read",
   "cluster.settings.indexes!read",
