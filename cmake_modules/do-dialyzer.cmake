@@ -6,17 +6,31 @@ IF (NOT EXISTS "${COUCHBASE_PLT}")
   EXECUTE_PROCESS (COMMAND "${CMAKE_COMMAND}" -E echo
     "${DIALYZER_EXECUTABLE}" --output_plt "${COUCHBASE_PLT}" --build_plt
     --apps compiler crypto erts inets kernel os_mon sasl ssl stdlib xmerl
+    ${_couchdb_bin_dir}/src/couchdb
+    ${_couchdb_bin_dir}/src/couch_set_view
+    ${_couchdb_bin_dir}/src/couch_view_parser
+    ${_couchdb_bin_dir}/src/couch_index_merger
+    ${_couchdb_bin_dir}/src/mapreduce
     ${_couchdb_bin_dir}/src/mochiweb
-    ${_couchdb_bin_dir}/src/snappy ${_couchdb_bin_dir}/src/etap
+    ${_couchdb_bin_dir}/src/snappy
+    ${_couchdb_bin_dir}/src/etap
     ${_couchdb_bin_dir}/src/lhttpc
-    ${_couchdb_bin_dir}/src/erlang-oauth deps/gen_smtp/ebin)
+    ${_couchdb_bin_dir}/src/erlang-oauth
+    deps/gen_smtp)
 
   EXECUTE_PROCESS (COMMAND "${DIALYZER_EXECUTABLE}" --output_plt "${COUCHBASE_PLT}" --build_plt
     --apps compiler crypto erts inets kernel os_mon sasl ssl stdlib xmerl
+    ${_couchdb_bin_dir}/src/couchdb
+    ${_couchdb_bin_dir}/src/couch_set_view
+    ${_couchdb_bin_dir}/src/couch_view_parser
+    ${_couchdb_bin_dir}/src/couch_index_merger
+    ${_couchdb_bin_dir}/src/mapreduce
     ${_couchdb_bin_dir}/src/mochiweb
-    ${_couchdb_bin_dir}/src/snappy ${_couchdb_bin_dir}/src/etap
+    ${_couchdb_bin_dir}/src/snappy
+    ${_couchdb_bin_dir}/src/etap
     ${_couchdb_bin_dir}/src/lhttpc
-    ${_couchdb_bin_dir}/src/erlang-oauth deps/gen_smtp/ebin)
+    ${_couchdb_bin_dir}/src/erlang-oauth
+    deps/gen_smtp)
 ENDIF (NOT EXISTS "${COUCHBASE_PLT}")
 
 # Compute list of .beam files
@@ -32,18 +46,12 @@ EXECUTE_PROCESS (COMMAND "${CMAKE_COMMAND}" -E echo
   "${DIALYZER_EXECUTABLE}" --plt "${COUCHBASE_PLT}" ${DIALYZER_FLAGS}
   --apps ${beamfiles}
   deps/ale/ebin
-  ${_couchdb_bin_dir}/src/couchdb ${_couchdb_bin_dir}/src/couch_set_view ${_couchdb_bin_dir}/src/couch_view_parser
-  ${_couchdb_bin_dir}/src/couch_index_merger/ebin
-  ${_couchdb_bin_dir}/src/mapreduce
   deps/ns_babysitter/ebin
   ${couchdb_beamfiles})
 EXECUTE_PROCESS (RESULT_VARIABLE _failure
   COMMAND "${DIALYZER_EXECUTABLE}" --plt "${COUCHBASE_PLT}" ${DIALYZER_FLAGS}
   --apps ${beamfiles}
   deps/ale/ebin
-  ${_couchdb_bin_dir}/src/couchdb ${_couchdb_bin_dir}/src/couch_set_view ${_couchdb_bin_dir}/src/couch_view_parser
-  ${_couchdb_bin_dir}/src/couch_index_merger/ebin
-  ${_couchdb_bin_dir}/src/mapreduce
   deps/ns_babysitter/ebin
   ${couchdb_beamfiles})
 IF (_failure)
