@@ -34,7 +34,7 @@
 -record(state, {
           port_pid :: pid(),
           memcached_config :: binary(),
-          tls_config_timer = undefined :: erlang:reference()
+          tls_config_timer :: undefined | reference()
          }).
 
 start_link() ->
