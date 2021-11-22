@@ -91,6 +91,8 @@
 
 -export([parse_transform/2]).
 
+-define(CALL_LOGGER, '__call_logger').
+
 parse_transform(AST, _Options) ->
     walk_ast([], AST).
 
@@ -106,6 +108,16 @@ walk_ast(Acc, [{function, Location, Name, Arity, Clauses}|T]) ->
     put(function, Name),
     walk_ast([{function, Location, Name, Arity,
                walk_clauses([], Clauses)}|Acc], T);
+walk_ast(Acc, [{eof, Location} = EOF]) ->
+    Fns = lists:reverse(
+            lists:append([mk_call_logger(Location, 0),
+                          mk_call_logger(Location, 1),
+                          mk_call_logger(Location, 4),
+                          mk_call_logger(Location, 5),
+                          mk_call_logger(Location, 6),
+                          mk_call_logger(Location, 7)])),
+
+    walk_ast([EOF | Fns] ++ Acc, []);
 walk_ast(Acc, [H|T]) ->
     walk_ast([H|Acc], T).
 
@@ -120,6 +132,26 @@ walk_body(Acc, []) ->
 walk_body(Acc, [H|T]) ->
     walk_body([transform(H) | Acc], T).
 
+mk_call_logger(Location, NumArgs) ->
+    Arity = NumArgs + 2,
+    Args = [{var, Location, list_to_atom("Arg" ++ integer_to_list(I))} ||
+               I <- lists:seq(0, NumArgs - 1)],
+
+    [{attribute, Location, compile, {inline, [{?CALL_LOGGER, Arity}]}},
+     {attribute, Location, compile,
+      {nowarn_unused_function, [{?CALL_LOGGER, Arity}]}},
+     {function,
+      Location,
+      ?CALL_LOGGER, Arity,
+      [{clause,
+        Location,
+        [{var, Location, 'Logger'}, {var, Location, 'Fn'} | Args],
+        [],
+        [{call,
+          Location,
+          {remote, Location, {var, Location, 'Logger'}, {var, Location, 'Fn'}},
+          Args}]}]}].
+
 transform({call, Location, {remote, _,
                             {atom, _, ale},
                             {atom, _, Fn}},
@@ -128,8 +160,8 @@ transform({call, Location, {remote, _,
        Fn =:= get_effective_loglevel ->
 
     {call, Location,
-     {remote, Location,
-      logger_impl_expr(LoggerExpr), {atom, Location, Fn}}, []};
+     {atom, Location, ?CALL_LOGGER},
+     [logger_impl_expr(LoggerExpr), {atom, Location, Fn}]};
 transform({call, Location, {remote, _,
                             {atom, _, ale},
                             {atom, _, Fn}},
@@ -138,8 +170,10 @@ transform({call, Location, {remote, _,
     case valid_loglevel_expr(LogLevelExpr) of
         true ->
             {call, Location,
-             {remote, Location,
-              logger_impl_expr(LoggerExpr), {atom, Location, Fn}}, [LogLevelExpr]};
+             {atom, Location, ?CALL_LOGGER},
+             [logger_impl_expr(LoggerExpr),
+              {atom, Location, Fn},
+              LogLevelExpr]};
         false ->
             Stmt
     end;
@@ -190,14 +224,13 @@ emit_logger_call(LoggerNameExpr, LogLevelExpr, Args, Location) ->
                L when is_integer(L) -> L
            end,
 
-    {call, Line,
-     {remote, Line,
-      logger_impl_expr(LoggerNameExpr),
-      LogLevelExpr},
-     [{atom, ArgsLocation, get(module)},
+    {call, Location,
+     {atom, Location, ?CALL_LOGGER},
+     [logger_impl_expr(LoggerNameExpr),
+      LogLevelExpr,
+      {atom, ArgsLocation, get(module)},
       {atom, ArgsLocation, get(function)},
-      {integer, ArgsLocation, Line} |
-      Args]}.
+      {integer, ArgsLocation, Line} | Args]}.
 
 extended_loglevel_expr_rt(Location, Expr) ->
     {call, Location,
