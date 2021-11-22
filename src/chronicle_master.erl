@@ -433,13 +433,7 @@ handle_topology_oper({add_replica, Node, _, _}, Lock) ->
     ?log_debug("Cluster info: ~p", [ClusterInfo]),
     {ok, ClusterInfo};
 handle_topology_oper({remove_peer, Node}, Lock) ->
-    case chronicle:remove_peer(Lock, Node) of
-        ok ->
-            ok;
-        {not_member, _} ->
-            ?log_debug("Node ~p is not a member", [Node]),
-            ok
-    end;
+    ok = chronicle:remove_peer(Lock, Node);
 handle_topology_oper({activate_nodes, Nodes}, Lock) ->
     set_peer_roles(Lock, Nodes, voter);
 handle_topology_oper({deactivate_nodes, Nodes}, Lock) ->
