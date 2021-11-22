@@ -629,6 +629,7 @@ roles() ->
        {desc, <<"Can manage eventing functions for a given scope">>}],
       [{[{collection, [bucket_name, scope_name, any]}, eventing, function], [manage]},
        {[{collection, [bucket_name, scope_name, any]}, collections], [read]},
+       {[{bucket, bucket_name}, stats], [read]},
        {[ui], [read]},
        {[pools], [read]}]}
     ].
