@@ -139,7 +139,7 @@
 
           compaction_countdown_per_node :: dict:dict(), % node() -> non_neg_integer()
           in_flight_per_node :: dict:dict(),            % node() -> non_neg_integer() (I.e. counts current moves)
-          in_flight_compactions :: set:set(),           % set of nodes
+          in_flight_compactions :: sets:set(),          % set of nodes
 
           initial_move_counts :: dict:dict(),
           left_move_counts :: dict:dict()

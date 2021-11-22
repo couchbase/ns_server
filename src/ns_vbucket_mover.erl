@@ -44,7 +44,7 @@
                 pending_map_sync :: undefined | [{pid(), any()}],
                 moves_scheduler_state,
                 progress_callback :: progress_callback(),
-                all_nodes_set :: set:set()}).
+                all_nodes_set :: sets:set()}).
 
 %%
 %% API
