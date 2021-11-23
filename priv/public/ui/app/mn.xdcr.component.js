@@ -9,9 +9,11 @@ licenses/APL2.txt.
 */
 
 import {Component, ChangeDetectionStrategy} from '@angular/core';
-import {combineLatest, Subject} from 'rxjs';
+import {Subject} from 'rxjs';
 import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
-import {takeUntil, map} from 'rxjs/operators';
+import {takeUntil, map, pluck, distinctUntilChanged,
+        merge, mapTo, startWith, combineLatest, first,
+        shareReplay} from 'rxjs/operators';
 
 import {MnPermissions} from './ajs.upgraded.providers.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
@@ -56,15 +58,62 @@ class MnXDCRComponent extends MnLifeCycleHooksToStream {
     this.isEnterprise = mnPoolsService.stream.isEnterprise;
     this.permissions = mnPermissions.stream;
 
-    this.references =
-      mnXDCRService.stream.getRemoteClustersFiltered
-      .pipe(referenceSorter.pipe);
+    let getRemoteClustersFiltered =
+        mnXDCRService.stream.getRemoteClustersFiltered;
 
-    this.isNotEnterpriseAndHasClusters =
-      combineLatest(
-        this.isEnterprise,
-        this.references
-      ).pipe(map(([isEnterprise, ref]) => !isEnterprise && !!(ref && ref.length)));
+    let hasPermissionsToWrite =
+        this.permissions.pipe(map((p) => {
+          return p.cluster.xdcr.settings.read &&
+            p.cluster.xdcr.settings.write &&
+            p.cluster.bucket['.'].xdcr.write;
+        }), distinctUntilChanged());
+
+    let isTasksXDCROpen = this.tasksXDCR
+        .pipe(first(),
+              mapTo(true),
+              startWith(false));
+    let isGetRemoteClustersOpen = getRemoteClustersFiltered
+        .pipe(first(),
+              mapTo(true),
+              startWith(false),
+              shareReplay(1));
+    let hasReferences = getRemoteClustersFiltered
+        .pipe(pluck("length"),
+              map(Boolean),
+              startWith(false),
+              shareReplay(1));
+
+    this.isLoading = isGetRemoteClustersOpen
+      .pipe(merge(isTasksXDCROpen),
+            mapTo(false),
+            startWith(true),
+            distinctUntilChanged());
+
+    let isGetRemoteClustersOpenAndHasNoReferencesAndEnterpriseReady =
+        isGetRemoteClustersOpen
+        .pipe(combineLatest(hasReferences, this.isEnterprise),
+              map(([isGetRemoteClustersOpen, hasReferences,]) =>
+                isGetRemoteClustersOpen && !hasReferences));
+
+    this.isNoRemoteClustersDefinedVisible =
+      isGetRemoteClustersOpenAndHasNoReferencesAndEnterpriseReady
+      .pipe(startWith(false));
+
+    this.isOutgoingReplicationHidden =
+      isGetRemoteClustersOpenAndHasNoReferencesAndEnterpriseReady
+      .pipe(startWith(true));
+
+    this.isAddReplicationBtnHidden = hasReferences
+      .pipe(combineLatest(hasPermissionsToWrite),
+            map(([hasReferences, hasPermissions]) => !hasReferences || !hasPermissions),
+            shareReplay(1));
+
+    this.isNotPermittedWarningVisible = this.isEnterprise
+      .pipe(combineLatest(hasReferences),
+            map(([isEnterprise, hasReferences]) => !isEnterprise && hasReferences));
+
+    this.getRemoteClustersSorted = getRemoteClustersFiltered
+      .pipe(referenceSorter.pipe);
 
     this.onAddReference = onAddReference;
     this.referenceSorter = referenceSorter;

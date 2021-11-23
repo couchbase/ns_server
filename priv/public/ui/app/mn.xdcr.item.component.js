@@ -10,8 +10,9 @@ licenses/APL2.txt.
 
 import {Component, ChangeDetectionStrategy} from '@angular/core';
 import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
-import {combineLatest, Subject} from 'rxjs';
-import {pluck, map, shareReplay, takeUntil} from 'rxjs/operators';
+import {combineLatest, Subject, NEVER} from 'rxjs';
+import {pluck, map, shareReplay, takeUntil,
+        switchMap, startWith} from 'rxjs/operators';
 import {UIRouter} from '@uirouter/angular';
 
 import {MnPermissions} from './ajs.upgraded.providers.js';
@@ -62,6 +63,7 @@ class MnXDCRItemComponent extends MnLifeCycleHooksToStream {
     this.toBucket = itemStream.pipe(map(getTargetBucket));
     this.uiRouter = uiRouter;
     this.permissions = mnPermissions.stream;
+
     this.toCluster =
       combineLatest(
         itemStream,
@@ -74,16 +76,25 @@ class MnXDCRItemComponent extends MnLifeCycleHooksToStream {
   ngOnInit() {
     var detailsHashObserver = new DetailsHashObserver(
       this.uiRouter, this, "xdcrDetails", this.item.id);
-    var toggleClass = combineLatest(this.statusClass,
-                                    detailsHashObserver.stream.isOpened);
-    var sectionClass = toggleClass.pipe(map(([currentClass, isOpened]) =>
-                                            isOpened ? currentClass : ""));
-    var tableClass = toggleClass.pipe(map(([currentClass, isOpened]) =>
-                                          isOpened ? ""  : currentClass));
+    var isDetailsOpened = this.permissions
+        .pipe(switchMap((perm) => {
+          return perm.cluster.bucket[this.item.source].xdcr.read ?
+            detailsHashObserver.stream.isOpened : NEVER;
+        }),
+              startWith(false),
+              shareReplay(1));
+
+    var toggleClass =
+        combineLatest(this.statusClass, isDetailsOpened);
+    var sectionClass = toggleClass
+        .pipe(map(([currentClass, isOpened]) => isOpened ? currentClass : ""));
+    var tableClass = toggleClass
+        .pipe(map(([currentClass, isOpened]) => isOpened ? ""  : currentClass));
 
     this.sectionClass = sectionClass;
     this.tableClass = tableClass;
     this.detailsHashObserver = detailsHashObserver;
+    this.isDetailsOpened = isDetailsOpened;
   }
 
   getCluster(source) {

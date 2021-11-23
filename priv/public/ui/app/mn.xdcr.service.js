@@ -10,13 +10,15 @@ licenses/APL2.txt.
 
 import {Injectable} from '@angular/core';
 import {HttpClient} from '@angular/common/http';
-import {BehaviorSubject, combineLatest, timer, of} from 'rxjs';
-import {map, shareReplay, switchMap, throttleTime} from 'rxjs/operators';
+import {BehaviorSubject, combineLatest, timer, of, NEVER} from 'rxjs';
+import {map, shareReplay, switchMap, throttleTime,
+        pluck, distinctUntilChanged} from 'rxjs/operators';
 import {pipe, filter, propEq, sortBy, prop, groupBy} from 'ramda';
 
 import {MnStatsService} from "./mn.stats.service.js"
 import {MnTasksService} from './mn.tasks.service.js';
 import {MnHttpRequest} from './mn.http.request.js';
+import {MnPermissions} from './ajs.upgraded.providers.js';
 
 import {singletonGuard} from './mn.core.js';
 
@@ -32,10 +34,11 @@ class MnXDCRService {
   static get parameters() { return [
     HttpClient,
     MnStatsService,
-    MnTasksService
+    MnTasksService,
+    MnPermissions
   ]}
 
-  constructor(http, mnStatsService, mnTasksService) {
+  constructor(http, mnStatsService, mnTasksService, mnPermissions) {
     singletonGuard(MnXDCRService);
 
     this.http = http;
@@ -107,11 +110,16 @@ class MnXDCRService {
         .addSuccess(map(data => JSON.parse(data)))
         .addError(map(error => ({error: error.error || error})));
 
-    this.stream.getRemoteClusters =
-      combineLatest(timer(0, 10000),
-                    this.stream.updateRemoteClusters)
-      .pipe(switchMap(this.getRemoteClusters.bind(this)),
-            shareReplay({refCount: true, bufferSize: 1}));
+    let doGetRemoteClusters =
+        combineLatest(timer(0, 10000),
+                      this.stream.updateRemoteClusters)
+        .pipe(switchMap(this.getRemoteClusters.bind(this)),
+              shareReplay({refCount: true, bufferSize: 1}));
+
+    this.stream.getRemoteClusters = mnPermissions.stream
+      .pipe(pluck("cluster", "xdcr", "remote_clusters", "read"),
+            distinctUntilChanged(),
+            switchMap((canRead) => canRead ? doGetRemoteClusters : NEVER));
 
     this.stream.getRemoteClustersFiltered = this.stream.getRemoteClusters
       .pipe(map(pipe(filter(propEq('deleted', false)),

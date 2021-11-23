@@ -8,13 +8,13 @@
      licenses/APL2.txt.
 -->
 <mn-main-spinner
-   [mnSpinnerValue]="(references | async) === null">
+   [mnSpinnerValue]="(isLoading | async)">
 </mn-main-spinner>
 
 <mn-element-cargo depot="actions">
   <div class="header-controls resp-sml">
     <a
-       [hidden]="!(((permissions | async)?.cluster.xdcr.remote_clusters.read && (references | async)?.length) && (permissions | async)?.cluster.xdcr.settings.read && (permissions | async)?.cluster.xdcr.settings.write && (permissions | async)?.cluster.bucket['.'].xdcr.write)"
+       [hidden]="(isAddReplicationBtnHidden | async)"
        uiSref="app.admin.replications.add"
        class="resp-hide-sml">
       ADD REPLICATION
@@ -30,7 +30,7 @@
 
 <mn-element-cargo depot="alerts">
   <div
-     *ngIf="(isNotEnterpriseAndHasClusters | async)"
+     *ngIf="(isNotPermittedWarningVisible | async)"
      class="alert alert-warning">
     <p>
       Warning: use of XDCR is not permitted by the Couchbase Community Edition license. See
@@ -41,9 +41,9 @@
   </div>
 </mn-element-cargo>
 
-<div [hidden]="!(permissions | async)?.cluster.xdcr.remote_clusters.read">
+<div *ngIf="(permissions | async)?.cluster.xdcr.remote_clusters.read">
   <h4>Remote Clusters</h4>
-  <div class="cbui-table" [hidden]="!(references | async)?.length">
+  <div class="cbui-table" [hidden]="!(getRemoteClustersSorted | async)?.length">
     <div class="cbui-table-header padding-left">
       <span class="cbui-table-cell flex-grow-1-5">
         <span
@@ -59,11 +59,11 @@
       <span class="cbui-table-cell flex-grow-half resp-hide-sml"></span>
     </div>
     <mn-xdcr-ref-item
-       *ngFor="let ref of (references | async); trackBy: trackByFn"
+       *ngFor="let ref of (getRemoteClustersSorted | async); trackBy: trackByFn"
        [item]="ref"></mn-xdcr-ref-item>
   </div>
   <div
-     [hidden]="(references | async)?.length"
+     *ngIf="isNoRemoteClustersDefinedVisible | async"
      class="zero-content">
     <span [hidden]="!(isEnterprise | async)">
       No remote clusters defined. Use ADD REMOTE to set one up.
@@ -79,7 +79,7 @@
 
 <!-- Outgoing Replications ************************************************ -->
 <div
-   [hidden]="!((permissions | async)?.cluster.tasks.read && (references | async)?.length)"
+   [hidden]="isOutgoingReplicationHidden | async"
    class="margin-top-1-5">
   <h4>Outgoing Replications
     <span
@@ -105,7 +105,8 @@
   </div>
   <div [hidden]="(tasksXDCR | async)?.length" class="zero-content">
     <span [hidden]="!(isEnterprise | async)">
-      There are currently no replications defined. Use ADD REPLICATION to set one up.
+      There are currently no replications defined.
+      <span [hidden]="(isAddReplicationBtnHidden | async)"> Use ADD REPLICATION to set one up.</span>
     </span>
     <span [hidden]="(isEnterprise | async)">
       Use of cross-data center replication is not permitted by the Couchbase Community Edition license. See
