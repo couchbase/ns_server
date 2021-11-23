@@ -21,7 +21,7 @@ let alertsState = {
   name: "app.admin.settings.alerts",
   component: MnSettingsAlertsComponent,
   data: {
-    permissions: "cluster.admin.security.read"
+    permissions: "cluster.settings.read"
   }
 };
 
