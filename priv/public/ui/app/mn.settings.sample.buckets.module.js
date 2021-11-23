@@ -23,7 +23,7 @@ const sampleBucketsState = {
   name: "app.admin.settings.sampleBuckets",
   component: MnSettingsSampleBucketsComponent,
   data: {
-    permissions: "cluster.admin.security.read"
+    permissions: "cluster.settings.read"
   }
 };
 
