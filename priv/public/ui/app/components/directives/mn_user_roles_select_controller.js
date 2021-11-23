@@ -10,6 +10,7 @@ licenses/APL2.txt.
 
 import angular from 'angular';
 import {Subject} from 'rxjs';
+import {takeUntil, filter} from 'rxjs/operators';
 import mnKeyspaceSelectorDowngradeModule from '../../mn.keyspace.selector.downgrade.module.js'
 
 export default 'mnUserRolesSelect';
@@ -94,7 +95,6 @@ function mnUserRolesSelectFormDirective(mnKeyspaceSelectorServiceDowngrade) {
     var rolesConfigs = $scope.state.selectedRolesConfigs[$scope.item.role] || [];
     $scope.state.selectedRolesConfigs[$scope.item.role] = rolesConfigs;
 
-    $scope.submit = submit;
     $scope.del = del;
     $scope.isRoleDisabled = isRoleDisabled;
 
@@ -102,6 +102,11 @@ function mnUserRolesSelectFormDirective(mnKeyspaceSelectorServiceDowngrade) {
       mnOnDestroy.next();
       mnOnDestroy.complete();
     });
+
+    $scope.mnCollectionSelectorService.stream.step
+      .pipe(filter((isSelectionDone) => isSelectionDone === "ok"),
+            takeUntil(mnOnDestroy))
+      .subscribe(submit);
 
     function isRoleDisabled(role) {
       return role.role !== 'admin' && $scope.state.selectedRoles["admin"];
@@ -112,7 +117,7 @@ function mnUserRolesSelectFormDirective(mnKeyspaceSelectorServiceDowngrade) {
     }
 
     function submit() {
-      let result = $scope.mnCollectionSelectorService.stream.result
+      let result = $scope.mnCollectionSelectorService.stream.result;
       let resultValue = result.getValue();
       let isInvalid = Object.keys(resultValue).some(key => {
         if (resultValue[key] == null) {
