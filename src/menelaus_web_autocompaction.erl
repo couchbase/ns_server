@@ -246,12 +246,22 @@ parse_and_validate_time_interval(JSONName, Params) ->
     Res0 = lists:flatmap(mk_number_field_validator(0, 23, Params), Hours)
         ++ lists:flatmap(mk_number_field_validator(0, 59, Params), Mins)
         ++ parse_validate_boolean_field(Abort, abort_outside, Params),
+    Res1 = case length(Res0) of
+               0 ->
+                   Res0;
+               5 ->
+                   Res0;
+               _ ->
+                   Msg = "Must specify all of the following: fromHour, "
+                         "fromMinute, toHour, toMinute, abortOutside",
+                   Res0 ++ [{error, JSONName, iolist_to_binary(Msg)}]
+           end,
 
-    Err = lists:filter(fun ({error, _, _}) -> true; (_) -> false end, Res0),
+    Err = lists:filter(fun ({error, _, _}) -> true; (_) -> false end, Res1),
     %% If validation failed for any field then return error.
     case Err of
         [] ->
-            Res0;
+            Res1;
         _ ->
             Err
     end.
