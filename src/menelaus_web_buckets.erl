@@ -2267,6 +2267,18 @@ basic_parse_validate_bucket_auto_compaction_settings_test() ->
     meck:new(cluster_compat_mode, [passthrough]),
     meck:expect(cluster_compat_mode, is_cluster_NEO,
                 fun () -> true end),
+    meck:new(ns_config, [passthrough]),
+    meck:expect(ns_config, get,
+                fun () -> [] end),
+    meck:new(chronicle_kv, [passthrough]),
+    meck:expect(chronicle_kv, get,
+                fun (_, _) ->
+                        {ok,
+                         {[{database_fragmentation_threshold, {30, undefined}},
+                           {view_fragmentation_threshold, {30, undefined}},
+                           {magma_fragmentation_percentage, 50}],
+                          {<<"f663189bff34bd2523ee5ff25480d845">>, 4}}}
+                end),
     Value0 = parse_validate_bucket_auto_compaction_settings([{"not_autoCompactionDefined", "false"},
                                                              {"databaseFragmentationThreshold[percentage]", "10"},
                                                              {"viewFragmentationThreshold[percentage]", "20"},
@@ -2307,6 +2319,8 @@ basic_parse_validate_bucket_auto_compaction_settings_test() ->
                   {view_fragmentation_threshold, {20, undefined}}],
                  Stuff1),
     meck:unload(cluster_compat_mode),
+    meck:unload(ns_config),
+    meck:unload(chronicle_kv),
     ok.
 
 parse_validate_pitr_max_history_age_test() ->

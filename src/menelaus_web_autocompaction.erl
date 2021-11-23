@@ -343,25 +343,49 @@ do_parse_validate_settings(Params, _ExpectIndex, magma) ->
     end;
 %% Non-magma bucket or global settings
 do_parse_validate_settings(Params, ExpectIndex, not_magma) ->
-    PercResults = lists:flatmap(mk_number_field_validator(2, 100, Params),
-                                [{"databaseFragmentationThreshold[percentage]",
-                                  db_fragmentation_percentage,
-                                  "database fragmentation"},
-                                 {"viewFragmentationThreshold[percentage]",
-                                  view_fragmentation_percentage,
-                                  "view fragmentation"}]),
-    SizeResults = lists:flatmap(mk_number_field_validator(1, infinity, Params),
-                                [{"databaseFragmentationThreshold[size]",
-                                  db_fragmentation_size,
-                                  "database fragmentation size"},
-                                 {"viewFragmentationThreshold[size]",
-                                  view_fragmentation_size,
-                                  "view fragmentation size"}]),
+    GlobalSettings =
+        compaction_daemon:get_autocompaction_settings(ns_config:latest()),
+    {GDBFragPct, GDBFragSz} =
+        proplists:get_value(database_fragmentation_threshold, GlobalSettings),
+    {GViewFragPct, GViewFragSz} =
+        proplists:get_value(view_fragmentation_threshold, GlobalSettings),
+
+    PercValidator = mk_number_field_validator(2, 100, Params),
+    SizeValidator = mk_number_field_validator(1, infinity, Params),
+
+    ValidatorFun =
+        fun (Validator, {_, Key, _} = ValidatorParams, Default) ->
+                case Validator(ValidatorParams) of
+                    [] ->
+                        [{ok, Key, Default}];
+                    ValueOrError ->
+                        ValueOrError
+                end
+        end,
+
+    DBFragPct = ValidatorFun(PercValidator,
+                             {"databaseFragmentationThreshold[percentage]",
+                              db_fragmentation_percentage,
+                              "database fragmentation"}, GDBFragPct),
+    ViewFragPct = ValidatorFun(PercValidator,
+                               {"viewFragmentationThreshold[percentage]",
+                                view_fragmentation_percentage,
+                                "view fragmentation"}, GViewFragPct),
+    PercResults = DBFragPct ++ ViewFragPct,
+
+    DbFragSz = ValidatorFun(SizeValidator,
+                            {"databaseFragmentationThreshold[size]",
+                             db_fragmentation_size,
+                             "database fragmentation size"}, GDBFragSz),
+    ViewFragSz = ValidatorFun(SizeValidator,
+                              {"viewFragmentationThreshold[size]",
+                               view_fragmentation_size,
+                               "view fragmentation size"}, GViewFragSz),
+    SizeResults = DbFragSz ++ ViewFragSz,
 
     IndexResults =
         case ExpectIndex of
             true ->
-                PercValidator = mk_number_field_validator(2, 100, Params),
                 RV0 = PercValidator({"indexFragmentationThreshold[percentage]",
                                      index_fragmentation_percentage,
                                      "index fragmentation"}),
@@ -431,10 +455,35 @@ do_parse_validate_settings(Params, ExpectIndex, not_magma) ->
 
 
 -ifdef(TEST).
-basic_parse_validate_settings_test() ->
+setup_meck() ->
     meck:new(cluster_compat_mode, [passthrough]),
     meck:expect(cluster_compat_mode, is_cluster_NEO,
                 fun () -> true end),
+    meck:new(ns_config, [passthrough]),
+    meck:expect(ns_config, search,
+                fun (_, _) -> {value,
+                               [{database_fragmentation_threshold,
+                                 {30, undefined}},
+                                {view_fragmentation_threshold,
+                                 {30, undefined}}]}
+                end),
+    meck:new(chronicle_kv, [passthrough]),
+    meck:expect(chronicle_kv, get,
+                fun (_, _) ->
+                        {ok,
+                         {[{database_fragmentation_threshold, {30, undefined}},
+                           {view_fragmentation_threshold, {30, undefined}},
+                           {magma_fragmentation_percentage, 50}],
+                          {<<"f663189bff34bd2523ee5ff25480d845">>, 4}}}
+                end).
+
+teardown_meck() ->
+    meck:unload(cluster_compat_mode),
+    meck:unload(ns_config),
+    meck:unload(chronicle_kv).
+
+basic_parse_validate_settings_test() ->
+    setup_meck(),
     Settings = [{"databaseFragmentationThreshold[percentage]", "10"},
                 {"viewFragmentationThreshold[percentage]", "20"},
                 {"indexFragmentationThreshold[size]", "42"},
@@ -476,13 +525,11 @@ basic_parse_validate_settings_test() ->
     {ok, Stuff3, []} = parse_validate_settings(Settings3, false),
     ?assertEqual(lists:sort(Expected3), lists:sort(Stuff3)),
 
-    meck:unload(cluster_compat_mode),
+    teardown_meck(),
     ok.
 
 extra_field_parse_validate_settings_test() ->
-    meck:new(cluster_compat_mode, [passthrough]),
-    meck:expect(cluster_compat_mode, is_cluster_NEO,
-                fun () -> true end),
+    setup_meck(),
     {errors, Stuff0} =
         parse_validate_settings([{"databaseFragmentationThreshold", "10"},
                                  {"viewFragmentationThreshold", "20"},
@@ -510,6 +557,6 @@ extra_field_parse_validate_settings_test() ->
                                 false),
     ?assertEqual([{<<"_">>, <<"Got unsupported fields: databaseFragmentationThreshold">>}],
                  Stuff1),
-    meck:unload(cluster_compat_mode),
+    teardown_meck(),
     ok.
 -endif.
