@@ -45,6 +45,7 @@ class MnSettingsSampleBucketsComponent extends MnLifeCycleHooksToStream {
     this.isRebalancing = mnAdminService.stream.isRebalancing;
     this.maxBucketCount = mnAdminService.stream.maxBucketCount;
     this.postRequest = mnSettingsSampleBucketsService.stream.installSampleBuckets;
+    this.compatVersion70 = mnAdminService.stream.compatVersion70;
 
     this.form = mnFormService.create(this)
       .setFormGroup({})
@@ -88,11 +89,15 @@ class MnSettingsSampleBucketsComponent extends MnLifeCycleHooksToStream {
       .pipe(startWith(this.form.group.value),
             map(values => !Object.values(values).some(v => v)));
 
+    this.isNotCompatibleVersion = this.compatVersion70
+      .pipe(map(r => !r));
+
     this.isDisabled =
       combineLatest(this.bucketNotSelected,
                     this.isRebalancing,
                     this.maxQuotaExceeded,
-                    this.maxBucketsExceeded)
+                    this.maxBucketsExceeded,
+                    this.isNotCompatibleVersion)
       .pipe(map(conditions => conditions.every(c => !c)));
   }
 
