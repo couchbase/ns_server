@@ -59,6 +59,8 @@ class MnSettingsAutoCompactionComponent extends MnLifeCycleHooksToStream {
     this.transformMBToBytes = mnHelperService.transformMBToBytes;
     this.stringifyValues = mnHelperService.stringifyValues;
     this.flattenData = mnSettingsAutoCompactionService.flattenData;
+    this.hasWritePermissions = this.permissions
+      .pipe(map(permissions => permissions.cluster.settings.autocompaction.write));
 
     let settingsSource = mnSettingsAutoCompactionService.stream.settingsSource;
 
@@ -121,9 +123,6 @@ class MnSettingsAutoCompactionComponent extends MnLifeCycleHooksToStream {
       .successMessage("Settings saved successfully!");
 
     this.form.group.disable();
-
-    this.hasWritePermissions = this.permissions
-        .pipe(map(permissions => permissions.cluster.settings.autocompaction.write));
   }
 
   cancel() {
