@@ -232,7 +232,7 @@ SET (COUCHBASE_PLT "${_couchbase_plt}" CACHE FILEPATH
   "Full path to couchbase.plt for dialyzer targets" ${_force_plt})
 MESSAGE (STATUS "COUCHBASE_PLT set to ${COUCHBASE_PLT}")
 
-SET (dialyzer_args -Wno_return -Wno_improper_lists)
+SET (dialyzer_args -Wno_return -Wno_improper_lists -Wunknown)
 ADD_CUSTOM_TARGET (ns_dialyzer
   COMMAND "${CMAKE_COMMAND}" -D "COUCHDB_BIN_DIR=${COUCHDB_BIN_DIR}"
   -D "DIALYZER_EXECUTABLE=${DIALYZER_EXECUTABLE}"
