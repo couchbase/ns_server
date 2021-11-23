@@ -174,8 +174,8 @@
             <span
                class="fa-stack icon-info"
                uib-tooltip-html="'<strong>Default</strong> The number of threads allocated is set to a balanced value which is reasonable for most workloads.<br>
-                                  <strong>Disk i/o optimized</strong> The number of threads allocated is equal to the number of CPU cores for the node.<br>
-                                  <strong>Fixed value</strong> The number of threads allocated is equal to the value selected from the pull-down menu.'"
+                      <strong>Disk i/o optimized</strong> The number of threads allocated is equal to the number of CPU cores for the node.<br>
+                      <strong>Fixed value</strong> The number of threads allocated is equal to the value selected from the pull-down menu.'"
                tooltip-placement="auto top"
                tooltip-trigger="mouseenter">
               <span class="icon fa-circle-thin fa-stack-2x"></span>
@@ -237,8 +237,8 @@
             <span
                class="fa-stack icon-info"
                uib-tooltip-html="'<strong>Default</strong> The number of threads allocated is set to a balanced value which is reasonable for most workloads.<br>
-                                  <strong>Disk i/o optimized</strong> The number of threads allocated is equal to the number of CPU cores for the node.<br>
-                                  <strong>Fixed value</strong> The number of threads allocated is equal to the value selected from the pull-down menu.'"
+                      <strong>Disk i/o optimized</strong> The number of threads allocated is equal to the number of CPU cores for the node.<br>
+                      <strong>Fixed value</strong> The number of threads allocated is equal to the value selected from the pull-down menu.'"
                tooltip-placement="auto top"
                tooltip-trigger="mouseenter">
               <span class="icon fa-circle-thin fa-stack-2x"></span>
@@ -761,7 +761,7 @@
             <input
                type="checkbox"
                id="enablePageBloomFilter"
-               ng-disabled="settingsClusterCtl.indexSettings.storageMode !== 'plasma' || !adminCtl.poolDefault.isEnterprise"
+               ng-disabled="!rbac.cluster.settings.write || settingsClusterCtl.indexSettings.storageMode !== 'plasma' || !adminCtl.poolDefault.isEnterprise"
                ng-model="settingsClusterCtl.indexSettings.enablePageBloomFilter">
             <label for="enablePageBloomFilter" class="checkbox">
               Enable Bloom Filter
