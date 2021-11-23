@@ -487,6 +487,20 @@ color: #333;
   top: 2px;
   left: 1rem;
 }
+/* a clickable icon ----------------------------------------------------  */
+.icon-clickable {
+  font-size: 1.4rem!important;
+  color: #7babe2;
+  display: inline-block;
+  padding: 1rem;
+  cursor: pointer;
+}
+.icon-clickable:hover {
+  color: #555;
+}
+.icon-clickable:active {
+  color: #4287d6;
+}
 /* CBUI FLEXBOX TABLES -------------------------------------------------  */
 .cbui-table-body {
   background-color: #f6f7f9;
