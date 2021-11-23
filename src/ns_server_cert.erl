@@ -1008,8 +1008,14 @@ read_CAs(CAPath) ->
         {ok, Files} ->
             lists:foldl(
               fun (_, {error, R}) -> {error, R};
+                  %% Ignore filenames that start with dot, in order to avoid
+                  %% problems with files and dirs like .git, ..data, etc...
+                  ("." ++ _ = F, {ok, Acc}) ->
+                      ?log_debug("Ignoring file '~s'", [F]),
+                      {ok, Acc};
                   (F, {ok, Acc}) ->
                       FullPath = filename:join(CAPath, F),
+                      ?log_debug("Reading file '~s'", [FullPath]),
                       case read_ca_file(FullPath) of
                           {ok, CAPropsList} -> {ok, CAPropsList ++ Acc};
                           {error, R} -> {error, {FullPath, R}}
