@@ -311,7 +311,8 @@ do_update(Bucket, Operation) ->
                    chronicle_master:failover_opaque_key(),
                    cluster_compat_version],
               update_txn(Bucket, Operation, OtherBucketCounts,
-                         LastSeenIdsWithUUID, _))
+                         LastSeenIdsWithUUID, _),
+              #{read_consistency => quorum})
     end.
 
 update_txn(Bucket, Operation, OtherBucketCounts, {LastSeenIds, UUID},
