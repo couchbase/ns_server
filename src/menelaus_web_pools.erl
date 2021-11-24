@@ -220,7 +220,7 @@ do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
          build_controllers(UUID),
          build_rebalance_params(Id, UUID),
          {nodeStatusesUri, <<"/nodeStatuses">>},
-         build_node_services_uri(Config, Snapshot),
+         build_node_services_uri(),
          {maxBucketCount, ns_bucket:get_max_buckets()},
          {maxCollectionCount, collections:get_max_supported(num_collections)},
          {maxScopeCount, collections:get_max_supported(num_scopes)},
@@ -282,7 +282,7 @@ build_check_permissions_uri(Id, Snapshot) ->
     {checkPermissionsURI, bin_concat_path(["pools", Id, "checkPermissions"],
                                           Params)}.
 
-build_node_services_uri(Config, Snapshot) ->
+build_node_services_uri() ->
     {_Rev, _RevEpoch, _V, NodesExtHash} =
         bucket_info_cache:build_node_services(),
     {nodeServicesUri, <<"/pools/default/nodeServices?v=",
