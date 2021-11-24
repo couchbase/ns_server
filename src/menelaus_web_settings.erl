@@ -220,7 +220,27 @@ get_allowed_hosts(Str) ->
 
 
 validate_allowed_hosts_list(AllowedHostsList) ->
-    validate_allowed_hosts_list(AllowedHostsList, []).
+    case validate_allowed_hosts_list(AllowedHostsList, []) of
+        ok ->
+            CurrentHostnames = [H || N <- ns_node_disco:nodes_wanted(),
+                                     {_, H} <- [misc:node_name_host(N)],
+                                     H =/= misc:localhost_alias()],
+            lists:foldl(
+              fun (_, {error, _} = Error) -> Error;
+                  (Hostname, ok) ->
+                      case ns_cluster:is_host_allowed(Hostname,
+                                                      AllowedHostsList) of
+                          true -> ok;
+                          false ->
+                              Msg = io_lib:format(
+                                      "At least one cluster node (~s) doesn't "
+                                      "match the allowed hosts", [Hostname]),
+                              {error, lists:flatten(Msg)}
+                      end
+              end, ok, CurrentHostnames);
+        {error, _} = Error ->
+            Error
+    end.
 
 validate_allowed_hosts_list([], List) ->
     case (length(List) > 1) andalso lists:member(any, List) of

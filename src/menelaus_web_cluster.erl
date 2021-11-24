@@ -116,8 +116,9 @@ cluster_init(Req, Config, Params) ->
     menelaus_web_indexes:apply_indexes_settings(Req, IndexerParams),
 
     case proplists:get_value(allowedHosts, Params) of
-        undefined -> ok;
-        AllowedHosts -> ns_config:set(allowed_hosts, AllowedHosts)
+        unchanged -> ok;
+        AllowedHosts when is_list(AllowedHosts) ->
+            ns_config:set(allowed_hosts, AllowedHosts)
     end,
 
     %% POST /settings/web
@@ -143,6 +144,25 @@ cluster_init_validators(Config, Snapshot) ->
                   menelaus_web_settings:validate_allowed_hosts_list(Hosts)
            end
        end, allowedHosts, _),
+     %% setting it to 'unchanged' to make sure validate_relative is called
+     %% even if allowedHosts is not provided
+     validator:default(allowedHosts, unchanged, _),
+     validator:validate_relative(
+       fun (Hostname, AllowedHosts0) ->
+           AllowedHosts = case AllowedHosts0 of
+                              unchanged -> ns_cluster:allowed_hosts();
+                              _ -> AllowedHosts0
+                          end,
+           case ns_cluster:is_host_allowed(Hostname, AllowedHosts) of
+               true -> ok;
+               false ->
+                   Msg = io_lib:format(
+                           "Can't use '~s' as a node name because "
+                           "it is not allowed by the 'allowedHosts' setting",
+                           [Hostname]),
+                   {error, lists:flatten(Msg)}
+           end
+       end, hostname, allowedHosts, _),
      validator:has_params(_),
      validator:unsupported(_)].
 

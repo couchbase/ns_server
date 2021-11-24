@@ -57,7 +57,10 @@
          enforce_topology_limitation/1,
          rename_marker_path/0,
          sanitize_node_info/1,
-         verify_otp_connectivity/2]).
+         verify_otp_connectivity/2,
+         is_host_allowed/1,
+         is_host_allowed/2,
+         allowed_hosts/0]).
 
 %% debugging & diagnostic export
 -export([do_change_address/2]).
@@ -736,8 +739,17 @@ check_host_port_connectivity(Host, Port) ->
     end.
 
 -spec do_change_address(string(), boolean()) -> ok | not_renamed |
-                                                {address_save_failed, _} | not_self_started.
+                                                {address_save_failed, _} |
+                                                not_self_started.
 do_change_address(NewAddr, UserSupplied) ->
+    do_change_address(NewAddr, UserSupplied, undefined).
+
+-spec do_change_address(string(), boolean(), fun() | undefined) ->
+                                                ok | not_renamed |
+                                                {address_save_failed, _} |
+                                                not_self_started |
+                                                {validation_failed, any()}.
+do_change_address(NewAddr, UserSupplied, AddrValidationFun) ->
     NewAddr1 =
         case UserSupplied of
             false ->
@@ -747,7 +759,7 @@ do_change_address(NewAddr, UserSupplied) ->
         end,
 
     ?cluster_info("Change of address to ~p is requested.", [NewAddr1]),
-    case maybe_rename(NewAddr1, UserSupplied, undefined) of
+    case maybe_rename(NewAddr1, UserSupplied, AddrValidationFun) of
         not_renamed ->
             not_renamed;
         renamed ->
@@ -812,7 +824,10 @@ check_add_possible(RemoteAddr, Body) ->
         end,
     CheckHostAllowed =
         fun () ->
-            case is_host_allowed(RemoteAddr) of
+            AllowedHosts = allowed_hosts(),
+            ?log_info("Checking if host '~s' is allowed to join the cluster "
+                      "(allowed hosts: ~1000p)", [RemoteAddr, AllowedHosts]),
+            case is_host_allowed(RemoteAddr, AllowedHosts) of
                 true -> ok;
                 false ->
                     Msg = io_lib:format(
@@ -846,8 +861,17 @@ do_add_node_allowed(Scheme, RemoteAddr, RestPort, Auth, GroupUUID, Services) ->
         {ok, MyIP} ->
             R = case should_change_address() of
                     true ->
-                        case do_change_address(MyIP, false) of
+                        ValidationFun =
+                            fun (Addr) ->
+                                case is_host_allowed(Addr) of
+                                    true -> ok;
+                                    false -> {error, {not_allowed, Addr}}
+                                end
+                            end,
+                        case do_change_address(MyIP, false, ValidationFun) of
                             {address_save_failed, _} = E ->
+                                E;
+                            {validation_failed, _} = E ->
                                 E;
                             not_self_started ->
                                 ?cluster_debug("Haven't changed address because of not_self_started condition", []),
@@ -864,6 +888,13 @@ do_add_node_allowed(Scheme, RemoteAddr, RestPort, Auth, GroupUUID, Services) ->
                 ok ->
                     do_add_node_with_connectivity(Scheme, RemoteAddr, RestPort,
                                                   Auth, GroupUUID, Services);
+                {validation_failed, {not_allowed, Addr}} ->
+                    Msg = io_lib:format(
+                            "Could not use address '~s' for the node that is "
+                            "already part of the cluster because it doesn't "
+                            "seem to be allowed FQDN/IP. "
+                            "Check allowedHosts setting", [Addr]),
+                    {error, rename_failed, iolist_to_binary(Msg)};
                 {address_save_failed, Error} ->
                     Msg = io_lib:format(
                             "Could not save address after rename: ~p", [Error]),
@@ -1401,7 +1432,9 @@ do_engage_cluster_inner_tail(NodeKVList, Address, UserSupplied, Services) ->
             Msg = io_lib:format("Could not save address after rename: ~p",
                                 [Error1]),
             {error, rename_failed, iolist_to_binary(Msg)};
-        _ ->
+        Res when Res =:= ok;
+                 Res =:= not_renamed;
+                 Res =:= not_self_started ->
             %% we re-init node's cookie to support joining cloned
             %% nodes. If we don't do that cluster will be able to
             %% connect to this node too soon. And then initial set of
@@ -1611,10 +1644,13 @@ rename_marker_path() ->
 join_marker_path() ->
     path_config:component_path(data, "join_marker").
 
+allowed_hosts() ->
+    ns_config:read_key_fast(allowed_hosts, [<<"*">>]).
+
 is_host_allowed(Host) when is_list(Host) ->
-    AllowedHosts = ns_config:read_key_fast(allowed_hosts, [<<"*">>]),
-    ?log_info("Checking if host '~s' is allowed to join the cluster "
-              "(allowed hosts: ~1000p)", [Host, AllowedHosts]),
+    is_host_allowed(Host, allowed_hosts()).
+
+is_host_allowed(Host, AllowedHosts) ->
     host_match_any(Host, [menelaus_web_settings:parse_allowed_host(AH)
                           || AH <- AllowedHosts]).
 

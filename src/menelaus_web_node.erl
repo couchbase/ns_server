@@ -79,7 +79,20 @@ handle_node_init(Req) ->
             end)
       end, Req, form,
       node_init_validators() ++
-      [validator:has_params(_), validator:unsupported(_)]).
+      [validator:validate( %% Not putting this check in node_init_validators
+                           %% 'cause we don't want to do it in /clusterInit
+         fun (Hostname) ->
+             case ns_cluster:is_host_allowed(Hostname) of
+                 true -> ok;
+                 false ->
+                     Msg = io_lib:format(
+                             "Can't use '~s' as a node name because "
+                             "it is not allowed by the 'allowedHosts' setting",
+                             [Hostname]),
+                     {error, lists:flatten(Msg)}
+             end
+         end, hostname, _),
+       validator:has_params(_), validator:unsupported(_)]).
 
 node_init_validators() ->
     [validator:trimmed_string(dataPath, _),
@@ -710,7 +723,11 @@ handle_node_rename(Req) ->
     Reply =
         case proplists:get_value("hostname", Params) of
             undefined -> {error, <<"The name cannot be empty">>, 400};
-            Hostname -> do_node_rename(Req, Hostname)
+            Hostname ->
+                case ns_cluster:is_host_allowed(Hostname) of
+                    true -> do_node_rename(Req, Hostname);
+                    false -> {error, <<"Not allowed">>, 400}
+                end
         end,
 
     case Reply of
