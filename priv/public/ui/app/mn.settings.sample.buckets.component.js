@@ -13,6 +13,7 @@ import {map, takeUntil, startWith, pairwise, shareReplay,
         pluck, distinctUntilChanged} from 'rxjs/operators';
 import {FormControl} from '@angular/forms';
 import {combineLatest} from 'rxjs';
+import {not} from 'ramda';
 
 import {MnFormService} from './mn.form.service.js';
 import {MnAdminService} from './mn.admin.service.js';
@@ -92,20 +93,18 @@ class MnSettingsSampleBucketsComponent extends MnLifeCycleHooksToStream {
       .pipe(map(this.getQuotaExceeded.bind(this)),
             shareReplay({refCount: true, bufferSize: 1}));
 
-    this.bucketNotSelected = this.form.group.valueChanges
+    this.hasSelectedBuckets = this.form.group.valueChanges
       .pipe(startWith(this.form.group.value),
-            map(values => !Object.values(values).some(v => v)));
-
-    this.isNotCompatibleVersion = this.compatVersion70
-      .pipe(map(r => !r));
+            map(values => Object.values(values).some(v => v)));
 
     this.isDisabled =
-      combineLatest(this.bucketNotSelected,
+      combineLatest(this.hasSelectedBuckets.pipe(map(not)),
                     this.isRebalancing,
                     this.maxQuotaExceeded,
                     this.maxBucketsExceeded,
-                    this.isNotCompatibleVersion)
-      .pipe(map(conditions => conditions.every(c => !c)));
+                    this.compatVersion70.pipe(map(not)),
+                    hasClusterBucketsCreate.pipe(map(not)))
+      .pipe(map(conditions => conditions.some(v => v)));
   }
 
   addFormControls([[oldBuckets, buckets], hasPermission]) {
