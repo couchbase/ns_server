@@ -569,4 +569,28 @@ extra_field_parse_validate_settings_test() ->
                  Stuff1),
     teardown_meck(),
     ok.
+
+incomplete_settings_test() ->
+    setup_meck(),
+    {errors, Stuff0} =
+        parse_validate_settings([{"parallelDBAndViewCompaction", "false"},
+                                 {"allowedTimePeriod[fromHour]", "0"}],
+                                false),
+    ?assertEqual([{<<"allowedTimePeriod">>,
+                   <<"Must specify all of the following: fromHour, fromMinute, "
+                     "toHour, toMinute, abortOutside">>}],
+                 Stuff0),
+
+    {errors, Stuff1} =
+        parse_validate_settings([{"parallelDBAndViewCompaction", "false"},
+                                 {"indexCircularCompaction[interval][toMinute]",
+                                  "22"}],
+                                true),
+    ?assertEqual([{<<"indexCircularCompaction[interval]">>,
+                   <<"Must specify all of the following: fromHour, fromMinute, "
+                     "toHour, toMinute, abortOutside">>}],
+                 Stuff1),
+    teardown_meck(),
+    ok.
+
 -endif.
