@@ -9,7 +9,8 @@ licenses/APL2.txt.
 */
 
 import {Component, ChangeDetectionStrategy} from '@angular/core';
-import {map, takeUntil, startWith, pairwise, shareReplay} from 'rxjs/operators';
+import {map, takeUntil, startWith, pairwise, shareReplay,
+        pluck, distinctUntilChanged} from 'rxjs/operators';
 import {FormControl} from '@angular/forms';
 import {combineLatest} from 'rxjs';
 
@@ -18,6 +19,7 @@ import {MnAdminService} from './mn.admin.service.js';
 import {MnBucketsService} from './mn.buckets.service.js';
 import {MnSettingsSampleBucketsService} from './mn.settings.sample.buckets.service.js';
 
+import {MnPermissions} from './ajs.upgraded.providers.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 
 export {MnSettingsSampleBucketsComponent};
@@ -34,10 +36,11 @@ class MnSettingsSampleBucketsComponent extends MnLifeCycleHooksToStream {
     MnFormService,
     MnAdminService,
     MnBucketsService,
-    MnSettingsSampleBucketsService
+    MnSettingsSampleBucketsService,
+    MnPermissions
   ]}
 
-  constructor(mnFormService, mnAdminService, mnBucketsService, mnSettingsSampleBucketsService) {
+  constructor(mnFormService, mnAdminService, mnBucketsService, mnSettingsSampleBucketsService, mnPermissions) {
     super();
 
     this.getSampleBuckets = mnSettingsSampleBucketsService.stream.getSampleBuckets;
@@ -55,10 +58,14 @@ class MnSettingsSampleBucketsComponent extends MnLifeCycleHooksToStream {
       .clearErrors()
       .showGlobalSpinner();
 
-    this.getSampleBuckets
-      .pipe(startWith(null),
-            pairwise(),
-            takeUntil(this.mnOnDestroy))
+    let hasClusterBucketsCreate =
+        mnPermissions.stream.pipe(pluck("cluster", "buckets", "create"),
+                                  distinctUntilChanged());
+
+    combineLatest(this.getSampleBuckets.pipe(startWith(null),
+                                             pairwise()),
+                  hasClusterBucketsCreate)
+      .pipe(takeUntil(this.mnOnDestroy))
       .subscribe(this.addFormControls.bind(this));
 
     this.indexQueryNodes = mnAdminService.stream.allActiveNodes
@@ -101,18 +108,18 @@ class MnSettingsSampleBucketsComponent extends MnLifeCycleHooksToStream {
       .pipe(map(conditions => conditions.every(c => !c)));
   }
 
-  addFormControls([oldBuckets, buckets]) {
+  addFormControls([[oldBuckets, buckets], hasPermission]) {
     buckets.forEach((bucket, index) => {
       let bucketControl = this.form.group.get(bucket.name);
       if (bucketControl) {
-        bucketControl[bucket.installed ? 'disable' : 'enable']();
+        bucketControl[!hasPermission || bucket.installed ? 'disable' : 'enable']();
         if (bucket.installed != oldBuckets[index].installed) {
           bucketControl.patchValue(bucket.installed);
         }
       } else {
         this.form.group.addControl(bucket.name, new FormControl({
           value: bucket.installed,
-          disabled: bucket.installed
+          disabled: !hasPermission || bucket.installed
         }));
       }
     });
