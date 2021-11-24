@@ -461,7 +461,7 @@
     </a>
     <a
        mn-tab="servers"
-       ui-sref-active="currentnav"
+       ng-class="{currentnav: ('app.admin.servers.list' | includedByState) || ('app.admin.groups' | includedByState)}"
        ui-sref="app.admin.servers.list">
       Servers
     </a>
