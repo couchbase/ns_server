@@ -37,7 +37,7 @@ let viewsState = {
   abstract: true,
   data: {
     title: "Views",
-    permissions: "cluster.admin.security.read"
+    permissions: "cluster.bucket['.'].settings.read && cluster.bucket['.'].views.read"
   },
   views: {
     "main@app.admin": {
@@ -53,9 +53,6 @@ let viewsListState = {
     type:  {
       value: 'development'
     }
-  },
-  data: {
-    permissions: "cluster.admin.security.read"
   },
   views: {
     "main@app.admin": {
