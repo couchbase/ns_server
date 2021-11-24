@@ -130,17 +130,17 @@ licenses/APL2.txt.
     </mn-select>
   </div>
 
-  <footer class="footer-save">
+  <footer
+     class="footer-save"
+     [hidden]="!(mnPermissions | async)?.cluster.admin.security.write">
     <button
        type="submit"
        class="margin-right-2"
-       [disabled]="!(mnPermissions | async)?.cluster.admin.security.write"
        (click)="form.submit.next()">
       Save
     </button>
     <a
        class="text-medium"
-       [hidden]="!(mnPermissions | async)?.cluster.admin.security.write"
        (click)="form.reset.next()">Cancel/Reset</a>
   </footer>
 </form>

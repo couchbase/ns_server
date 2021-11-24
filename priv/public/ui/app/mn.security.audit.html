@@ -139,9 +139,10 @@
       </div>
     </div>
 
-    <footer class="footer-save">
+    <footer
+       class="footer-save"
+       [hidden]="!(securityWrite | async)">
       <button
-         [hidden]="!(securityWrite | async)"
          [disabled]="((httpError | async)?.errors | mnObjectKeys).length"
          class="margin-right-2">Save</button>
     </footer>

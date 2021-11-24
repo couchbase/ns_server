@@ -174,12 +174,13 @@
         </div>
       </div>
     </div>
-    <footer class="footer-save">
+    <footer
+       class="footer-save"
+       [hidden]="!(permissions | async)?.cluster.settings.write">
       <button
          type="submit"
          class="margin-right-2"
-         [disabled]="form.group.get('config').invalid"
-         [hidden]="!(permissions | async)?.cluster.settings.write">
+         [disabled]="form.group.get('config').invalid">
         Save
       </button>
       <a

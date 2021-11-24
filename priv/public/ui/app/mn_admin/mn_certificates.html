@@ -184,16 +184,15 @@
            ng-click="certCtl.clientCertSettings.prefixes.pop();"
            type="button">-</button>
       </div>
-      <footer class="footer-save">
+      <footer class="footer-save"
+         ng-show="rbac.cluster.admin.security.write">
         <button
            type="submit"
-           ng-disabled="!rbac.cluster.admin.security.write"
            class="margin-right-2">
           Save
         </button>
         <a
            class="text-medium"
-           ng-show="rbac.cluster.admin.security.write"
            ng-click="certCtl.reloadState()">
           Cancel/Reset</a>
       </footer>
