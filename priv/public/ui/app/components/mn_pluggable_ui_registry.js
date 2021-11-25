@@ -33,10 +33,8 @@ function MnPluggableTabUtil() {
       "\"class=\"" + (config.responsiveHide ? "resp-hide-sml " : "") +
       (tabBarName == "indexesTab" ? "pills" :
        "") +
-      "\"ui-sref=\"" + config.state +
-      (config.includedByState ?
-       "\"ng-class=\"{currentnav: ('" + config.includedByState + "' | includedByState)}\"" :
-       "\"ui-sref-active=\"currentnav\"") + ">" +
+      "\"ng-click=\"adminCtl.throttledStateGo.next('" + config.state + "')" +
+      "\"ng-class=\"{currentnav: ('" + (config.includedByState || config.state) + "' | includedByState)}\">" +
       config.name +
       "</a>";
   }

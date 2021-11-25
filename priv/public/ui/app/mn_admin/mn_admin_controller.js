@@ -10,7 +10,7 @@ licenses/APL2.txt.
 
 import angular from 'angular';
 import {fromEvent, Subject, timer} from 'rxjs';
-import {tap, switchMap, takeUntil} from 'rxjs/operators';
+import {tap, switchMap, takeUntil, distinctUntilChanged} from 'rxjs/operators';
 import _ from 'lodash';
 import saveAs from 'file-saver';
 
@@ -66,6 +66,15 @@ function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAle
     mnOnDestroy.next();
     mnOnDestroy.complete();
   });
+
+  let throttledStateGo = new Subject();
+
+  throttledStateGo
+    .pipe(distinctUntilChanged(),
+          takeUntil(mnOnDestroy))
+    .subscribe((state) => $state.go(state));
+
+  vm.throttledStateGo = throttledStateGo;
 
   function disableHoverEventDuringScroll() {
     let bodyElement = angular.element(document.querySelector("body"));
