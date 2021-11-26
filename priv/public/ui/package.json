@@ -4,7 +4,7 @@
   "exports": "./app/main.js",
   "version": "0.0.0",
   "scripts": {
-    "rebuild": "rm -rf node_modules web_modules && npm install && snowpack",
+    "rebuild": "rm -rf node_modules web_modules && npm install && snowpack && rm -rf node_modules",
     "checks": "eslint 'app/**/*.js'"
   },
   "dependencies": {
