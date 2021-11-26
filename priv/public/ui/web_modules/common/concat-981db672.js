@@ -1,2 +1,152 @@
-import{b as t}from"./tslib.es6-c4a4947b.js";import{k as e,a as r,d as o,h as s,f as n,l as i,n as a}from"./mergeMap-64c6f393.js";import{a as l}from"./merge-183efbc7.js";import{o as u}from"./filter-d76a729c.js";var c=function(r){function o(t){var e=r.call(this)||this;return e._value=t,e}return t(o,r),Object.defineProperty(o.prototype,"value",{get:function(){return this.getValue()},enumerable:!0,configurable:!0}),o.prototype._subscribe=function(t){var e=r.prototype._subscribe.call(this,t);return e&&!e.closed&&t.next(this._value),e},o.prototype.getValue=function(){if(this.hasError)throw this.thrownError;if(this.closed)throw new e;return this._value},o.prototype.next=function(t){r.prototype.next.call(this,this._value=t)},o}(r),h={};function p(){for(var t=[],e=0;e<arguments.length;e++)t[e]=arguments[e];var r=null,i=null;return o(t[t.length-1])&&(i=t.pop()),"function"==typeof t[t.length-1]&&(r=t.pop()),1===t.length&&s(t[0])&&(t=t[0]),n(t,i).lift(new f(r))}var f=function(){function t(t){this.resultSelector=t}return t.prototype.call=function(t,e){return e.subscribe(new v(t,this.resultSelector))},t}(),v=function(e){function r(t,r){var o=e.call(this,t)||this;return o.resultSelector=r,o.active=0,o.values=[],o.observables=[],o}return t(r,e),r.prototype._next=function(t){this.values.push(h),this.observables.push(t)},r.prototype._complete=function(){var t=this.observables,e=t.length;if(0===e)this.destination.complete();else{this.active=e,this.toRespond=e;for(var r=0;r<e;r++){var o=t[r];this.add(i(this,o,o,r))}}},r.prototype.notifyComplete=function(t){0==(this.active-=1)&&this.destination.complete()},r.prototype.notifyNext=function(t,e,r,o,s){var n=this.values,i=n[r],a=this.toRespond?i===h?--this.toRespond:this.toRespond:0;n[r]=e,0===a&&(this.resultSelector?this._tryResultSelector(n):this.destination.next(n.slice()))},r.prototype._tryResultSelector=function(t){var e;try{e=this.resultSelector.apply(this,t)}catch(t){return void this.destination.error(t)}this.destination.next(e)},r}(a);function y(){return l(1)}function b(){for(var t=[],e=0;e<arguments.length;e++)t[e]=arguments[e];return y()(u.apply(void 0,t))}export{c as B,f as C,b as a,y as b,p as c};
-//# sourceMappingURL=concat-981db672.js.map
+import { b as __extends } from './tslib.es6-c4a4947b.js';
+import { k as ObjectUnsubscribedError, a as Subject, d as isScheduler, h as isArray, f as fromArray, l as subscribeToResult, n as OuterSubscriber } from './mergeMap-64c6f393.js';
+import { a as mergeAll } from './merge-183efbc7.js';
+import { o as of } from './filter-d76a729c.js';
+
+/** PURE_IMPORTS_START tslib,_Subject,_util_ObjectUnsubscribedError PURE_IMPORTS_END */
+var BehaviorSubject = /*@__PURE__*/ (function (_super) {
+    __extends(BehaviorSubject, _super);
+    function BehaviorSubject(_value) {
+        var _this = _super.call(this) || this;
+        _this._value = _value;
+        return _this;
+    }
+    Object.defineProperty(BehaviorSubject.prototype, "value", {
+        get: function () {
+            return this.getValue();
+        },
+        enumerable: true,
+        configurable: true
+    });
+    BehaviorSubject.prototype._subscribe = function (subscriber) {
+        var subscription = _super.prototype._subscribe.call(this, subscriber);
+        if (subscription && !subscription.closed) {
+            subscriber.next(this._value);
+        }
+        return subscription;
+    };
+    BehaviorSubject.prototype.getValue = function () {
+        if (this.hasError) {
+            throw this.thrownError;
+        }
+        else if (this.closed) {
+            throw new ObjectUnsubscribedError();
+        }
+        else {
+            return this._value;
+        }
+    };
+    BehaviorSubject.prototype.next = function (value) {
+        _super.prototype.next.call(this, this._value = value);
+    };
+    return BehaviorSubject;
+}(Subject));
+
+/** PURE_IMPORTS_START tslib,_util_isScheduler,_util_isArray,_OuterSubscriber,_util_subscribeToResult,_fromArray PURE_IMPORTS_END */
+var NONE = {};
+function combineLatest() {
+    var observables = [];
+    for (var _i = 0; _i < arguments.length; _i++) {
+        observables[_i] = arguments[_i];
+    }
+    var resultSelector = null;
+    var scheduler = null;
+    if (isScheduler(observables[observables.length - 1])) {
+        scheduler = observables.pop();
+    }
+    if (typeof observables[observables.length - 1] === 'function') {
+        resultSelector = observables.pop();
+    }
+    if (observables.length === 1 && isArray(observables[0])) {
+        observables = observables[0];
+    }
+    return fromArray(observables, scheduler).lift(new CombineLatestOperator(resultSelector));
+}
+var CombineLatestOperator = /*@__PURE__*/ (function () {
+    function CombineLatestOperator(resultSelector) {
+        this.resultSelector = resultSelector;
+    }
+    CombineLatestOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new CombineLatestSubscriber(subscriber, this.resultSelector));
+    };
+    return CombineLatestOperator;
+}());
+var CombineLatestSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(CombineLatestSubscriber, _super);
+    function CombineLatestSubscriber(destination, resultSelector) {
+        var _this = _super.call(this, destination) || this;
+        _this.resultSelector = resultSelector;
+        _this.active = 0;
+        _this.values = [];
+        _this.observables = [];
+        return _this;
+    }
+    CombineLatestSubscriber.prototype._next = function (observable) {
+        this.values.push(NONE);
+        this.observables.push(observable);
+    };
+    CombineLatestSubscriber.prototype._complete = function () {
+        var observables = this.observables;
+        var len = observables.length;
+        if (len === 0) {
+            this.destination.complete();
+        }
+        else {
+            this.active = len;
+            this.toRespond = len;
+            for (var i = 0; i < len; i++) {
+                var observable = observables[i];
+                this.add(subscribeToResult(this, observable, observable, i));
+            }
+        }
+    };
+    CombineLatestSubscriber.prototype.notifyComplete = function (unused) {
+        if ((this.active -= 1) === 0) {
+            this.destination.complete();
+        }
+    };
+    CombineLatestSubscriber.prototype.notifyNext = function (outerValue, innerValue, outerIndex, innerIndex, innerSub) {
+        var values = this.values;
+        var oldVal = values[outerIndex];
+        var toRespond = !this.toRespond
+            ? 0
+            : oldVal === NONE ? --this.toRespond : this.toRespond;
+        values[outerIndex] = innerValue;
+        if (toRespond === 0) {
+            if (this.resultSelector) {
+                this._tryResultSelector(values);
+            }
+            else {
+                this.destination.next(values.slice());
+            }
+        }
+    };
+    CombineLatestSubscriber.prototype._tryResultSelector = function (values) {
+        var result;
+        try {
+            result = this.resultSelector.apply(this, values);
+        }
+        catch (err) {
+            this.destination.error(err);
+            return;
+        }
+        this.destination.next(result);
+    };
+    return CombineLatestSubscriber;
+}(OuterSubscriber));
+
+/** PURE_IMPORTS_START _mergeAll PURE_IMPORTS_END */
+function concatAll() {
+    return mergeAll(1);
+}
+
+/** PURE_IMPORTS_START _of,_operators_concatAll PURE_IMPORTS_END */
+function concat() {
+    var observables = [];
+    for (var _i = 0; _i < arguments.length; _i++) {
+        observables[_i] = arguments[_i];
+    }
+    return concatAll()(of.apply(void 0, observables));
+}
+
+export { BehaviorSubject as B, CombineLatestOperator as C, concat as a, concatAll as b, combineLatest as c };

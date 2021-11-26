@@ -1,2 +1,67 @@
-import{h as e,O as n,j as r,e as t,g as o}from"./mergeMap-64c6f393.js";function u(){for(var n=[],o=0;o<arguments.length;o++)n[o]=arguments[o];if(1===n.length){var u=n[0];if(e(u))return f(u,null);if(r(u)&&Object.getPrototypeOf(u)===Object.prototype){var c=Object.keys(u);return f(c.map((function(e){return u[e]})),c)}}if("function"==typeof n[n.length-1]){var i=n.pop();return f(n=1===n.length&&e(n[0])?n[0]:n,null).pipe(t((function(e){return i.apply(void 0,e)})))}return f(n,null)}function f(e,r){return new n((function(n){var t=e.length;if(0!==t)for(var u=new Array(t),f=0,c=0,i=function(i){var a=o(e[i]),p=!1;n.add(a.subscribe({next:function(e){p||(p=!0,c++),u[i]=e},error:function(e){return n.error(e)},complete:function(){++f!==t&&p||(c===t&&n.next(r?r.reduce((function(e,n,r){return e[n]=u[r],e}),{}):u),n.complete())}}))},a=0;a<t;a++)i(a);else n.complete()}))}export{u as f};
-//# sourceMappingURL=forkJoin-269e2e92.js.map
+import { h as isArray, O as Observable, j as isObject, e as map, g as from } from './mergeMap-64c6f393.js';
+
+/** PURE_IMPORTS_START _Observable,_util_isArray,_operators_map,_util_isObject,_from PURE_IMPORTS_END */
+function forkJoin() {
+    var sources = [];
+    for (var _i = 0; _i < arguments.length; _i++) {
+        sources[_i] = arguments[_i];
+    }
+    if (sources.length === 1) {
+        var first_1 = sources[0];
+        if (isArray(first_1)) {
+            return forkJoinInternal(first_1, null);
+        }
+        if (isObject(first_1) && Object.getPrototypeOf(first_1) === Object.prototype) {
+            var keys = Object.keys(first_1);
+            return forkJoinInternal(keys.map(function (key) { return first_1[key]; }), keys);
+        }
+    }
+    if (typeof sources[sources.length - 1] === 'function') {
+        var resultSelector_1 = sources.pop();
+        sources = (sources.length === 1 && isArray(sources[0])) ? sources[0] : sources;
+        return forkJoinInternal(sources, null).pipe(map(function (args) { return resultSelector_1.apply(void 0, args); }));
+    }
+    return forkJoinInternal(sources, null);
+}
+function forkJoinInternal(sources, keys) {
+    return new Observable(function (subscriber) {
+        var len = sources.length;
+        if (len === 0) {
+            subscriber.complete();
+            return;
+        }
+        var values = new Array(len);
+        var completed = 0;
+        var emitted = 0;
+        var _loop_1 = function (i) {
+            var source = from(sources[i]);
+            var hasValue = false;
+            subscriber.add(source.subscribe({
+                next: function (value) {
+                    if (!hasValue) {
+                        hasValue = true;
+                        emitted++;
+                    }
+                    values[i] = value;
+                },
+                error: function (err) { return subscriber.error(err); },
+                complete: function () {
+                    completed++;
+                    if (completed === len || !hasValue) {
+                        if (emitted === len) {
+                            subscriber.next(keys ?
+                                keys.reduce(function (result, key, i) { return (result[key] = values[i], result); }, {}) :
+                                values);
+                        }
+                        subscriber.complete();
+                    }
+                }
+            }));
+        };
+        for (var i = 0; i < len; i++) {
+            _loop_1(i);
+        }
+    });
+}
+
+export { forkJoin as f };

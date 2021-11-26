@@ -1,2 +1,115 @@
-import{i as t}from"./string-cfd0b55d.js";var e,a,n,r,s=180/Math.PI,l={translateX:0,translateY:0,rotate:0,skewX:0,scaleX:1,scaleY:1};function u(t,e,a,n,r,l){var u,o,i;return(u=Math.sqrt(t*t+e*e))&&(t/=u,e/=u),(i=t*a+e*n)&&(a-=t*i,n-=e*i),(o=Math.sqrt(a*a+n*n))&&(a/=o,n/=o,i/=o),t*n<e*a&&(t=-t,e=-e,i=-i,u=-u),{translateX:r,translateY:l,rotate:Math.atan2(e,t)*s,skewX:Math.atan(i)*s,scaleX:u,scaleY:o}}function o(e,a,n,r){function s(t){return t.length?t.pop()+" ":""}return function(l,u){var o=[],i=[];return l=e(l),u=e(u),function(e,r,s,l,u,o){if(e!==s||r!==l){var i=u.push("translate(",null,a,null,n);o.push({i:i-4,x:t(e,s)},{i:i-2,x:t(r,l)})}else(s||l)&&u.push("translate("+s+a+l+n)}(l.translateX,l.translateY,u.translateX,u.translateY,o,i),function(e,a,n,l){e!==a?(e-a>180?a+=360:a-e>180&&(e+=360),l.push({i:n.push(s(n)+"rotate(",null,r)-2,x:t(e,a)})):a&&n.push(s(n)+"rotate("+a+r)}(l.rotate,u.rotate,o,i),function(e,a,n,l){e!==a?l.push({i:n.push(s(n)+"skewX(",null,r)-2,x:t(e,a)}):a&&n.push(s(n)+"skewX("+a+r)}(l.skewX,u.skewX,o,i),function(e,a,n,r,l,u){if(e!==n||a!==r){var o=l.push(s(l)+"scale(",null,",",null,")");u.push({i:o-4,x:t(e,n)},{i:o-2,x:t(a,r)})}else 1===n&&1===r||l.push(s(l)+"scale("+n+","+r+")")}(l.scaleX,l.scaleY,u.scaleX,u.scaleY,o,i),l=u=null,function(t){for(var e,a=-1,n=i.length;++a<n;)o[(e=i[a]).i]=e.x(t);return o.join("")}}}var i=o((function(t){return"none"===t?l:(e||(e=document.createElement("DIV"),a=document.documentElement,n=document.defaultView),e.style.transform=t,t=n.getComputedStyle(a.appendChild(e),null).getPropertyValue("transform"),a.removeChild(e),u(+(t=t.slice(7,-1).split(","))[0],+t[1],+t[2],+t[3],+t[4],+t[5]))}),"px, ","px)","deg)"),c=o((function(t){return null==t?l:(r||(r=document.createElementNS("http://www.w3.org/2000/svg","g")),r.setAttribute("transform",t),(t=r.transform.baseVal.consolidate())?u((t=t.matrix).a,t.b,t.c,t.d,t.e,t.f):l)}),", ",")",")");export{i as a,c as i};
-//# sourceMappingURL=index-f3df269c.js.map
+import { i as interpolateNumber } from './string-cfd0b55d.js';
+
+var degrees = 180 / Math.PI;
+
+var identity = {
+  translateX: 0,
+  translateY: 0,
+  rotate: 0,
+  skewX: 0,
+  scaleX: 1,
+  scaleY: 1
+};
+
+function decompose(a, b, c, d, e, f) {
+  var scaleX, scaleY, skewX;
+  if (scaleX = Math.sqrt(a * a + b * b)) a /= scaleX, b /= scaleX;
+  if (skewX = a * c + b * d) c -= a * skewX, d -= b * skewX;
+  if (scaleY = Math.sqrt(c * c + d * d)) c /= scaleY, d /= scaleY, skewX /= scaleY;
+  if (a * d < b * c) a = -a, b = -b, skewX = -skewX, scaleX = -scaleX;
+  return {
+    translateX: e,
+    translateY: f,
+    rotate: Math.atan2(b, a) * degrees,
+    skewX: Math.atan(skewX) * degrees,
+    scaleX: scaleX,
+    scaleY: scaleY
+  };
+}
+
+var cssNode,
+    cssRoot,
+    cssView,
+    svgNode;
+
+function parseCss(value) {
+  if (value === "none") return identity;
+  if (!cssNode) cssNode = document.createElement("DIV"), cssRoot = document.documentElement, cssView = document.defaultView;
+  cssNode.style.transform = value;
+  value = cssView.getComputedStyle(cssRoot.appendChild(cssNode), null).getPropertyValue("transform");
+  cssRoot.removeChild(cssNode);
+  value = value.slice(7, -1).split(",");
+  return decompose(+value[0], +value[1], +value[2], +value[3], +value[4], +value[5]);
+}
+
+function parseSvg(value) {
+  if (value == null) return identity;
+  if (!svgNode) svgNode = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  svgNode.setAttribute("transform", value);
+  if (!(value = svgNode.transform.baseVal.consolidate())) return identity;
+  value = value.matrix;
+  return decompose(value.a, value.b, value.c, value.d, value.e, value.f);
+}
+
+function interpolateTransform(parse, pxComma, pxParen, degParen) {
+
+  function pop(s) {
+    return s.length ? s.pop() + " " : "";
+  }
+
+  function translate(xa, ya, xb, yb, s, q) {
+    if (xa !== xb || ya !== yb) {
+      var i = s.push("translate(", null, pxComma, null, pxParen);
+      q.push({i: i - 4, x: interpolateNumber(xa, xb)}, {i: i - 2, x: interpolateNumber(ya, yb)});
+    } else if (xb || yb) {
+      s.push("translate(" + xb + pxComma + yb + pxParen);
+    }
+  }
+
+  function rotate(a, b, s, q) {
+    if (a !== b) {
+      if (a - b > 180) b += 360; else if (b - a > 180) a += 360; // shortest path
+      q.push({i: s.push(pop(s) + "rotate(", null, degParen) - 2, x: interpolateNumber(a, b)});
+    } else if (b) {
+      s.push(pop(s) + "rotate(" + b + degParen);
+    }
+  }
+
+  function skewX(a, b, s, q) {
+    if (a !== b) {
+      q.push({i: s.push(pop(s) + "skewX(", null, degParen) - 2, x: interpolateNumber(a, b)});
+    } else if (b) {
+      s.push(pop(s) + "skewX(" + b + degParen);
+    }
+  }
+
+  function scale(xa, ya, xb, yb, s, q) {
+    if (xa !== xb || ya !== yb) {
+      var i = s.push(pop(s) + "scale(", null, ",", null, ")");
+      q.push({i: i - 4, x: interpolateNumber(xa, xb)}, {i: i - 2, x: interpolateNumber(ya, yb)});
+    } else if (xb !== 1 || yb !== 1) {
+      s.push(pop(s) + "scale(" + xb + "," + yb + ")");
+    }
+  }
+
+  return function(a, b) {
+    var s = [], // string constants and placeholders
+        q = []; // number interpolators
+    a = parse(a), b = parse(b);
+    translate(a.translateX, a.translateY, b.translateX, b.translateY, s, q);
+    rotate(a.rotate, b.rotate, s, q);
+    skewX(a.skewX, b.skewX, s, q);
+    scale(a.scaleX, a.scaleY, b.scaleX, b.scaleY, s, q);
+    a = b = null; // gc
+    return function(t) {
+      var i = -1, n = q.length, o;
+      while (++i < n) s[(o = q[i]).i] = o.x(t);
+      return s.join("");
+    };
+  };
+}
+
+var interpolateTransformCss = interpolateTransform(parseCss, "px, ", "px)", "deg)");
+var interpolateTransformSvg = interpolateTransform(parseSvg, ", ", ")", ")");
+
+export { interpolateTransformCss as a, interpolateTransformSvg as i };

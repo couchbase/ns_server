@@ -1,2 +1,493 @@
-import{d as t,i as n}from"./common/index-35caf4f7.js";import{e as o,c as i}from"./common/index-e88ffd88.js";import{m as e,s as r,t as s}from"./common/touch-775b0bb4.js";import{d as u,y as h}from"./common/nodrag-20481c62.js";import"./common/rgb-50db7803.js";import"./common/string-cfd0b55d.js";import"./common/index-f3df269c.js";import{i as c}from"./common/zoom-74300348.js";function a(t){return function(){return t}}function f(t,n,o){this.target=t,this.type=n,this.transform=o}function m(t,n,o){this.k=t,this.x=n,this.y=o}m.prototype={constructor:m,scale:function(t){return 1===t?this:new m(this.k*t,this.x,this.y)},translate:function(t,n){return 0===t&0===n?this:new m(this.k,this.x+this.k*t,this.y+this.k*n)},apply:function(t){return[t[0]*this.k+this.x,t[1]*this.k+this.y]},applyX:function(t){return t*this.k+this.x},applyY:function(t){return t*this.k+this.y},invert:function(t){return[(t[0]-this.x)/this.k,(t[1]-this.y)/this.k]},invertX:function(t){return(t-this.x)/this.k},invertY:function(t){return(t-this.y)/this.k},rescaleX:function(t){return t.copy().domain(t.range().map(this.invertX,this).map(t.invert,t))},rescaleY:function(t){return t.copy().domain(t.range().map(this.invertY,this).map(t.invert,t))},toString:function(){return"translate("+this.x+","+this.y+") scale("+this.k+")"}};var l=new m(1,0,0);function p(t){for(;!t.__zoom;)if(!(t=t.parentNode))return l;return t.__zoom}function y(){o.stopImmediatePropagation()}function v(){o.preventDefault(),o.stopImmediatePropagation()}function d(){return!o.ctrlKey&&!o.button}function z(){var t=this;return t instanceof SVGElement?(t=t.ownerSVGElement||t).hasAttribute("viewBox")?[[(t=t.viewBox.baseVal).x,t.y],[t.x+t.width,t.y+t.height]]:[[0,0],[t.width.baseVal.value,t.height.baseVal.value]]:[[0,0],[t.clientWidth,t.clientHeight]]}function _(){return this.__zoom||l}function g(){return-o.deltaY*(1===o.deltaMode?.05:o.deltaMode?1:.002)}function x(){return navigator.maxTouchPoints||"ontouchstart"in this}function k(t,n,o){var i=t.invertX(n[0][0])-o[0][0],e=t.invertX(n[1][0])-o[1][0],r=t.invertY(n[0][1])-o[0][1],s=t.invertY(n[1][1])-o[1][1];return t.translate(e>i?(i+e)/2:Math.min(0,i)||Math.max(0,e),s>r?(r+s)/2:Math.min(0,r)||Math.max(0,s))}function w(){var p,w,b=d,T=z,M=k,Y=g,j=x,X=[0,1/0],V=[[-1/0,-1/0],[1/0,1/0]],B=250,E=c,D=t("start","zoom","end"),I=0;function P(t){t.property("__zoom",_).on("wheel.zoom",N).on("mousedown.zoom",W).on("dblclick.zoom",C).filter(j).on("touchstart.zoom",F).on("touchmove.zoom",J).on("touchend.zoom touchcancel.zoom",L).style("touch-action","none").style("-webkit-tap-highlight-color","rgba(0,0,0,0)")}function S(t,n){return(n=Math.max(X[0],Math.min(X[1],n)))===t.k?t:new m(n,t.x,t.y)}function q(t,n,o){var i=n[0]-o[0]*t.k,e=n[1]-o[1]*t.k;return i===t.x&&e===t.y?t:new m(t.k,i,e)}function G(t){return[(+t[0][0]+ +t[1][0])/2,(+t[0][1]+ +t[1][1])/2]}function K(t,n,o){t.on("start.zoom",(function(){A(this,arguments).start()})).on("interrupt.zoom end.zoom",(function(){A(this,arguments).end()})).tween("zoom",(function(){var t=this,i=arguments,e=A(t,i),r=T.apply(t,i),s=null==o?G(r):"function"==typeof o?o.apply(t,i):o,u=Math.max(r[1][0]-r[0][0],r[1][1]-r[0][1]),h=t.__zoom,c="function"==typeof n?n.apply(t,i):n,a=E(h.invert(s).concat(u/h.k),c.invert(s).concat(u/c.k));return function(t){if(1===t)t=c;else{var n=a(t),o=u/n[2];t=new m(o,s[0]-n[0]*o,s[1]-n[1]*o)}e.zoom(null,t)}}))}function A(t,n,o){return!o&&t.__zooming||new H(t,n)}function H(t,n){this.that=t,this.args=n,this.active=0,this.extent=T.apply(t,n),this.taps=0}function N(){if(b.apply(this,arguments)){var t=A(this,arguments),o=this.__zoom,i=Math.max(X[0],Math.min(X[1],o.k*Math.pow(2,Y.apply(this,arguments)))),r=e(this);if(t.wheel)t.mouse[0][0]===r[0]&&t.mouse[0][1]===r[1]||(t.mouse[1]=o.invert(t.mouse[0]=r)),clearTimeout(t.wheel);else{if(o.k===i)return;t.mouse=[r,o.invert(r)],n(this),t.start()}v(),t.wheel=setTimeout(s,150),t.zoom("mouse",M(q(S(o,i),t.mouse[0],t.mouse[1]),t.extent,V))}function s(){t.wheel=null,t.end()}}function W(){if(!w&&b.apply(this,arguments)){var t=A(this,arguments,!0),i=r(o.view).on("mousemove.zoom",f,!0).on("mouseup.zoom",m,!0),s=e(this),c=o.clientX,a=o.clientY;u(o.view),y(),t.mouse=[s,this.__zoom.invert(s)],n(this),t.start()}function f(){if(v(),!t.moved){var n=o.clientX-c,i=o.clientY-a;t.moved=n*n+i*i>I}t.zoom("mouse",M(q(t.that.__zoom,t.mouse[0]=e(t.that),t.mouse[1]),t.extent,V))}function m(){i.on("mousemove.zoom mouseup.zoom",null),h(o.view,t.moved),v(),t.end()}}function C(){if(b.apply(this,arguments)){var t=this.__zoom,n=e(this),i=t.invert(n),s=t.k*(o.shiftKey?.5:2),u=M(q(S(t,s),n,i),T.apply(this,arguments),V);v(),B>0?r(this).transition().duration(B).call(K,u,n):r(this).call(P.transform,u)}}function F(){if(b.apply(this,arguments)){var t,i,e,r,u=o.touches,h=u.length,c=A(this,arguments,o.changedTouches.length===h);for(y(),i=0;i<h;++i)e=u[i],r=[r=s(this,u,e.identifier),this.__zoom.invert(r),e.identifier],c.touch0?c.touch1||c.touch0[2]===r[2]||(c.touch1=r,c.taps=0):(c.touch0=r,t=!0,c.taps=1+!!p);p&&(p=clearTimeout(p)),t&&(c.taps<2&&(p=setTimeout((function(){p=null}),500)),n(this),c.start())}}function J(){if(this.__zooming){var t,n,i,e,r=A(this,arguments),u=o.changedTouches,h=u.length;for(v(),p&&(p=clearTimeout(p)),r.taps=0,t=0;t<h;++t)n=u[t],i=s(this,u,n.identifier),r.touch0&&r.touch0[2]===n.identifier?r.touch0[0]=i:r.touch1&&r.touch1[2]===n.identifier&&(r.touch1[0]=i);if(n=r.that.__zoom,r.touch1){var c=r.touch0[0],a=r.touch0[1],f=r.touch1[0],m=r.touch1[1],l=(l=f[0]-c[0])*l+(l=f[1]-c[1])*l,y=(y=m[0]-a[0])*y+(y=m[1]-a[1])*y;n=S(n,Math.sqrt(l/y)),i=[(c[0]+f[0])/2,(c[1]+f[1])/2],e=[(a[0]+m[0])/2,(a[1]+m[1])/2]}else{if(!r.touch0)return;i=r.touch0[0],e=r.touch0[1]}r.zoom("touch",M(q(n,i,e),r.extent,V))}}function L(){if(this.__zooming){var t,n,i=A(this,arguments),e=o.changedTouches,s=e.length;for(y(),w&&clearTimeout(w),w=setTimeout((function(){w=null}),500),t=0;t<s;++t)n=e[t],i.touch0&&i.touch0[2]===n.identifier?delete i.touch0:i.touch1&&i.touch1[2]===n.identifier&&delete i.touch1;if(i.touch1&&!i.touch0&&(i.touch0=i.touch1,delete i.touch1),i.touch0)i.touch0[1]=this.__zoom.invert(i.touch0[0]);else if(i.end(),2===i.taps){var u=r(this).on("dblclick.zoom");u&&u.apply(this,arguments)}}}return P.transform=function(t,n,o){var i=t.selection?t.selection():t;i.property("__zoom",_),t!==i?K(t,n,o):i.interrupt().each((function(){A(this,arguments).start().zoom(null,"function"==typeof n?n.apply(this,arguments):n).end()}))},P.scaleBy=function(t,n,o){P.scaleTo(t,(function(){var t=this.__zoom.k,o="function"==typeof n?n.apply(this,arguments):n;return t*o}),o)},P.scaleTo=function(t,n,o){P.transform(t,(function(){var t=T.apply(this,arguments),i=this.__zoom,e=null==o?G(t):"function"==typeof o?o.apply(this,arguments):o,r=i.invert(e),s="function"==typeof n?n.apply(this,arguments):n;return M(q(S(i,s),e,r),t,V)}),o)},P.translateBy=function(t,n,o){P.transform(t,(function(){return M(this.__zoom.translate("function"==typeof n?n.apply(this,arguments):n,"function"==typeof o?o.apply(this,arguments):o),T.apply(this,arguments),V)}))},P.translateTo=function(t,n,o,i){P.transform(t,(function(){var t=T.apply(this,arguments),e=this.__zoom,r=null==i?G(t):"function"==typeof i?i.apply(this,arguments):i;return M(l.translate(r[0],r[1]).scale(e.k).translate("function"==typeof n?-n.apply(this,arguments):-n,"function"==typeof o?-o.apply(this,arguments):-o),t,V)}),i)},H.prototype={start:function(){return 1==++this.active&&(this.that.__zooming=this,this.emit("start")),this},zoom:function(t,n){return this.mouse&&"mouse"!==t&&(this.mouse[1]=n.invert(this.mouse[0])),this.touch0&&"touch"!==t&&(this.touch0[1]=n.invert(this.touch0[0])),this.touch1&&"touch"!==t&&(this.touch1[1]=n.invert(this.touch1[0])),this.that.__zoom=n,this.emit("zoom"),this},end:function(){return 0==--this.active&&(delete this.that.__zooming,this.emit("end")),this},emit:function(t){i(new f(P,t,this.that.__zoom),D.apply,D,[t,this.that,this.args])}},P.wheelDelta=function(t){return arguments.length?(Y="function"==typeof t?t:a(+t),P):Y},P.filter=function(t){return arguments.length?(b="function"==typeof t?t:a(!!t),P):b},P.touchable=function(t){return arguments.length?(j="function"==typeof t?t:a(!!t),P):j},P.extent=function(t){return arguments.length?(T="function"==typeof t?t:a([[+t[0][0],+t[0][1]],[+t[1][0],+t[1][1]]]),P):T},P.scaleExtent=function(t){return arguments.length?(X[0]=+t[0],X[1]=+t[1],P):[X[0],X[1]]},P.translateExtent=function(t){return arguments.length?(V[0][0]=+t[0][0],V[1][0]=+t[1][0],V[0][1]=+t[0][1],V[1][1]=+t[1][1],P):[[V[0][0],V[0][1]],[V[1][0],V[1][1]]]},P.constrain=function(t){return arguments.length?(M=t,P):M},P.duration=function(t){return arguments.length?(B=+t,P):B},P.interpolate=function(t){return arguments.length?(E=t,P):E},P.on=function(){var t=D.on.apply(D,arguments);return t===D?P:t},P.clickDistance=function(t){return arguments.length?(I=(t=+t)*t,P):Math.sqrt(I)},P}p.prototype=m.prototype;export{w as zoom,l as zoomIdentity,p as zoomTransform};
-//# sourceMappingURL=d3-zoom.js.map
+import { d as dispatch, i as interrupt } from './common/index-35caf4f7.js';
+import { e as event, c as customEvent } from './common/index-e88ffd88.js';
+import { m as mouse, s as select, t as touch } from './common/touch-775b0bb4.js';
+import { d as dragDisable, y as yesdrag } from './common/nodrag-20481c62.js';
+import './common/rgb-50db7803.js';
+import './common/string-cfd0b55d.js';
+import './common/index-f3df269c.js';
+import { i as interpolateZoom } from './common/zoom-74300348.js';
+
+function constant(x) {
+  return function() {
+    return x;
+  };
+}
+
+function ZoomEvent(target, type, transform) {
+  this.target = target;
+  this.type = type;
+  this.transform = transform;
+}
+
+function Transform(k, x, y) {
+  this.k = k;
+  this.x = x;
+  this.y = y;
+}
+
+Transform.prototype = {
+  constructor: Transform,
+  scale: function(k) {
+    return k === 1 ? this : new Transform(this.k * k, this.x, this.y);
+  },
+  translate: function(x, y) {
+    return x === 0 & y === 0 ? this : new Transform(this.k, this.x + this.k * x, this.y + this.k * y);
+  },
+  apply: function(point) {
+    return [point[0] * this.k + this.x, point[1] * this.k + this.y];
+  },
+  applyX: function(x) {
+    return x * this.k + this.x;
+  },
+  applyY: function(y) {
+    return y * this.k + this.y;
+  },
+  invert: function(location) {
+    return [(location[0] - this.x) / this.k, (location[1] - this.y) / this.k];
+  },
+  invertX: function(x) {
+    return (x - this.x) / this.k;
+  },
+  invertY: function(y) {
+    return (y - this.y) / this.k;
+  },
+  rescaleX: function(x) {
+    return x.copy().domain(x.range().map(this.invertX, this).map(x.invert, x));
+  },
+  rescaleY: function(y) {
+    return y.copy().domain(y.range().map(this.invertY, this).map(y.invert, y));
+  },
+  toString: function() {
+    return "translate(" + this.x + "," + this.y + ") scale(" + this.k + ")";
+  }
+};
+
+var identity = new Transform(1, 0, 0);
+
+transform.prototype = Transform.prototype;
+
+function transform(node) {
+  while (!node.__zoom) if (!(node = node.parentNode)) return identity;
+  return node.__zoom;
+}
+
+function nopropagation() {
+  event.stopImmediatePropagation();
+}
+
+function noevent() {
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}
+
+// Ignore right-click, since that should open the context menu.
+function defaultFilter() {
+  return !event.ctrlKey && !event.button;
+}
+
+function defaultExtent() {
+  var e = this;
+  if (e instanceof SVGElement) {
+    e = e.ownerSVGElement || e;
+    if (e.hasAttribute("viewBox")) {
+      e = e.viewBox.baseVal;
+      return [[e.x, e.y], [e.x + e.width, e.y + e.height]];
+    }
+    return [[0, 0], [e.width.baseVal.value, e.height.baseVal.value]];
+  }
+  return [[0, 0], [e.clientWidth, e.clientHeight]];
+}
+
+function defaultTransform() {
+  return this.__zoom || identity;
+}
+
+function defaultWheelDelta() {
+  return -event.deltaY * (event.deltaMode === 1 ? 0.05 : event.deltaMode ? 1 : 0.002);
+}
+
+function defaultTouchable() {
+  return navigator.maxTouchPoints || ("ontouchstart" in this);
+}
+
+function defaultConstrain(transform, extent, translateExtent) {
+  var dx0 = transform.invertX(extent[0][0]) - translateExtent[0][0],
+      dx1 = transform.invertX(extent[1][0]) - translateExtent[1][0],
+      dy0 = transform.invertY(extent[0][1]) - translateExtent[0][1],
+      dy1 = transform.invertY(extent[1][1]) - translateExtent[1][1];
+  return transform.translate(
+    dx1 > dx0 ? (dx0 + dx1) / 2 : Math.min(0, dx0) || Math.max(0, dx1),
+    dy1 > dy0 ? (dy0 + dy1) / 2 : Math.min(0, dy0) || Math.max(0, dy1)
+  );
+}
+
+function zoom() {
+  var filter = defaultFilter,
+      extent = defaultExtent,
+      constrain = defaultConstrain,
+      wheelDelta = defaultWheelDelta,
+      touchable = defaultTouchable,
+      scaleExtent = [0, Infinity],
+      translateExtent = [[-Infinity, -Infinity], [Infinity, Infinity]],
+      duration = 250,
+      interpolate = interpolateZoom,
+      listeners = dispatch("start", "zoom", "end"),
+      touchstarting,
+      touchending,
+      touchDelay = 500,
+      wheelDelay = 150,
+      clickDistance2 = 0;
+
+  function zoom(selection) {
+    selection
+        .property("__zoom", defaultTransform)
+        .on("wheel.zoom", wheeled)
+        .on("mousedown.zoom", mousedowned)
+        .on("dblclick.zoom", dblclicked)
+      .filter(touchable)
+        .on("touchstart.zoom", touchstarted)
+        .on("touchmove.zoom", touchmoved)
+        .on("touchend.zoom touchcancel.zoom", touchended)
+        .style("touch-action", "none")
+        .style("-webkit-tap-highlight-color", "rgba(0,0,0,0)");
+  }
+
+  zoom.transform = function(collection, transform, point) {
+    var selection = collection.selection ? collection.selection() : collection;
+    selection.property("__zoom", defaultTransform);
+    if (collection !== selection) {
+      schedule(collection, transform, point);
+    } else {
+      selection.interrupt().each(function() {
+        gesture(this, arguments)
+            .start()
+            .zoom(null, typeof transform === "function" ? transform.apply(this, arguments) : transform)
+            .end();
+      });
+    }
+  };
+
+  zoom.scaleBy = function(selection, k, p) {
+    zoom.scaleTo(selection, function() {
+      var k0 = this.__zoom.k,
+          k1 = typeof k === "function" ? k.apply(this, arguments) : k;
+      return k0 * k1;
+    }, p);
+  };
+
+  zoom.scaleTo = function(selection, k, p) {
+    zoom.transform(selection, function() {
+      var e = extent.apply(this, arguments),
+          t0 = this.__zoom,
+          p0 = p == null ? centroid(e) : typeof p === "function" ? p.apply(this, arguments) : p,
+          p1 = t0.invert(p0),
+          k1 = typeof k === "function" ? k.apply(this, arguments) : k;
+      return constrain(translate(scale(t0, k1), p0, p1), e, translateExtent);
+    }, p);
+  };
+
+  zoom.translateBy = function(selection, x, y) {
+    zoom.transform(selection, function() {
+      return constrain(this.__zoom.translate(
+        typeof x === "function" ? x.apply(this, arguments) : x,
+        typeof y === "function" ? y.apply(this, arguments) : y
+      ), extent.apply(this, arguments), translateExtent);
+    });
+  };
+
+  zoom.translateTo = function(selection, x, y, p) {
+    zoom.transform(selection, function() {
+      var e = extent.apply(this, arguments),
+          t = this.__zoom,
+          p0 = p == null ? centroid(e) : typeof p === "function" ? p.apply(this, arguments) : p;
+      return constrain(identity.translate(p0[0], p0[1]).scale(t.k).translate(
+        typeof x === "function" ? -x.apply(this, arguments) : -x,
+        typeof y === "function" ? -y.apply(this, arguments) : -y
+      ), e, translateExtent);
+    }, p);
+  };
+
+  function scale(transform, k) {
+    k = Math.max(scaleExtent[0], Math.min(scaleExtent[1], k));
+    return k === transform.k ? transform : new Transform(k, transform.x, transform.y);
+  }
+
+  function translate(transform, p0, p1) {
+    var x = p0[0] - p1[0] * transform.k, y = p0[1] - p1[1] * transform.k;
+    return x === transform.x && y === transform.y ? transform : new Transform(transform.k, x, y);
+  }
+
+  function centroid(extent) {
+    return [(+extent[0][0] + +extent[1][0]) / 2, (+extent[0][1] + +extent[1][1]) / 2];
+  }
+
+  function schedule(transition, transform, point) {
+    transition
+        .on("start.zoom", function() { gesture(this, arguments).start(); })
+        .on("interrupt.zoom end.zoom", function() { gesture(this, arguments).end(); })
+        .tween("zoom", function() {
+          var that = this,
+              args = arguments,
+              g = gesture(that, args),
+              e = extent.apply(that, args),
+              p = point == null ? centroid(e) : typeof point === "function" ? point.apply(that, args) : point,
+              w = Math.max(e[1][0] - e[0][0], e[1][1] - e[0][1]),
+              a = that.__zoom,
+              b = typeof transform === "function" ? transform.apply(that, args) : transform,
+              i = interpolate(a.invert(p).concat(w / a.k), b.invert(p).concat(w / b.k));
+          return function(t) {
+            if (t === 1) t = b; // Avoid rounding error on end.
+            else { var l = i(t), k = w / l[2]; t = new Transform(k, p[0] - l[0] * k, p[1] - l[1] * k); }
+            g.zoom(null, t);
+          };
+        });
+  }
+
+  function gesture(that, args, clean) {
+    return (!clean && that.__zooming) || new Gesture(that, args);
+  }
+
+  function Gesture(that, args) {
+    this.that = that;
+    this.args = args;
+    this.active = 0;
+    this.extent = extent.apply(that, args);
+    this.taps = 0;
+  }
+
+  Gesture.prototype = {
+    start: function() {
+      if (++this.active === 1) {
+        this.that.__zooming = this;
+        this.emit("start");
+      }
+      return this;
+    },
+    zoom: function(key, transform) {
+      if (this.mouse && key !== "mouse") this.mouse[1] = transform.invert(this.mouse[0]);
+      if (this.touch0 && key !== "touch") this.touch0[1] = transform.invert(this.touch0[0]);
+      if (this.touch1 && key !== "touch") this.touch1[1] = transform.invert(this.touch1[0]);
+      this.that.__zoom = transform;
+      this.emit("zoom");
+      return this;
+    },
+    end: function() {
+      if (--this.active === 0) {
+        delete this.that.__zooming;
+        this.emit("end");
+      }
+      return this;
+    },
+    emit: function(type) {
+      customEvent(new ZoomEvent(zoom, type, this.that.__zoom), listeners.apply, listeners, [type, this.that, this.args]);
+    }
+  };
+
+  function wheeled() {
+    if (!filter.apply(this, arguments)) return;
+    var g = gesture(this, arguments),
+        t = this.__zoom,
+        k = Math.max(scaleExtent[0], Math.min(scaleExtent[1], t.k * Math.pow(2, wheelDelta.apply(this, arguments)))),
+        p = mouse(this);
+
+    // If the mouse is in the same location as before, reuse it.
+    // If there were recent wheel events, reset the wheel idle timeout.
+    if (g.wheel) {
+      if (g.mouse[0][0] !== p[0] || g.mouse[0][1] !== p[1]) {
+        g.mouse[1] = t.invert(g.mouse[0] = p);
+      }
+      clearTimeout(g.wheel);
+    }
+
+    // If this wheel event won’t trigger a transform change, ignore it.
+    else if (t.k === k) return;
+
+    // Otherwise, capture the mouse point and location at the start.
+    else {
+      g.mouse = [p, t.invert(p)];
+      interrupt(this);
+      g.start();
+    }
+
+    noevent();
+    g.wheel = setTimeout(wheelidled, wheelDelay);
+    g.zoom("mouse", constrain(translate(scale(t, k), g.mouse[0], g.mouse[1]), g.extent, translateExtent));
+
+    function wheelidled() {
+      g.wheel = null;
+      g.end();
+    }
+  }
+
+  function mousedowned() {
+    if (touchending || !filter.apply(this, arguments)) return;
+    var g = gesture(this, arguments, true),
+        v = select(event.view).on("mousemove.zoom", mousemoved, true).on("mouseup.zoom", mouseupped, true),
+        p = mouse(this),
+        x0 = event.clientX,
+        y0 = event.clientY;
+
+    dragDisable(event.view);
+    nopropagation();
+    g.mouse = [p, this.__zoom.invert(p)];
+    interrupt(this);
+    g.start();
+
+    function mousemoved() {
+      noevent();
+      if (!g.moved) {
+        var dx = event.clientX - x0, dy = event.clientY - y0;
+        g.moved = dx * dx + dy * dy > clickDistance2;
+      }
+      g.zoom("mouse", constrain(translate(g.that.__zoom, g.mouse[0] = mouse(g.that), g.mouse[1]), g.extent, translateExtent));
+    }
+
+    function mouseupped() {
+      v.on("mousemove.zoom mouseup.zoom", null);
+      yesdrag(event.view, g.moved);
+      noevent();
+      g.end();
+    }
+  }
+
+  function dblclicked() {
+    if (!filter.apply(this, arguments)) return;
+    var t0 = this.__zoom,
+        p0 = mouse(this),
+        p1 = t0.invert(p0),
+        k1 = t0.k * (event.shiftKey ? 0.5 : 2),
+        t1 = constrain(translate(scale(t0, k1), p0, p1), extent.apply(this, arguments), translateExtent);
+
+    noevent();
+    if (duration > 0) select(this).transition().duration(duration).call(schedule, t1, p0);
+    else select(this).call(zoom.transform, t1);
+  }
+
+  function touchstarted() {
+    if (!filter.apply(this, arguments)) return;
+    var touches = event.touches,
+        n = touches.length,
+        g = gesture(this, arguments, event.changedTouches.length === n),
+        started, i, t, p;
+
+    nopropagation();
+    for (i = 0; i < n; ++i) {
+      t = touches[i], p = touch(this, touches, t.identifier);
+      p = [p, this.__zoom.invert(p), t.identifier];
+      if (!g.touch0) g.touch0 = p, started = true, g.taps = 1 + !!touchstarting;
+      else if (!g.touch1 && g.touch0[2] !== p[2]) g.touch1 = p, g.taps = 0;
+    }
+
+    if (touchstarting) touchstarting = clearTimeout(touchstarting);
+
+    if (started) {
+      if (g.taps < 2) touchstarting = setTimeout(function() { touchstarting = null; }, touchDelay);
+      interrupt(this);
+      g.start();
+    }
+  }
+
+  function touchmoved() {
+    if (!this.__zooming) return;
+    var g = gesture(this, arguments),
+        touches = event.changedTouches,
+        n = touches.length, i, t, p, l;
+
+    noevent();
+    if (touchstarting) touchstarting = clearTimeout(touchstarting);
+    g.taps = 0;
+    for (i = 0; i < n; ++i) {
+      t = touches[i], p = touch(this, touches, t.identifier);
+      if (g.touch0 && g.touch0[2] === t.identifier) g.touch0[0] = p;
+      else if (g.touch1 && g.touch1[2] === t.identifier) g.touch1[0] = p;
+    }
+    t = g.that.__zoom;
+    if (g.touch1) {
+      var p0 = g.touch0[0], l0 = g.touch0[1],
+          p1 = g.touch1[0], l1 = g.touch1[1],
+          dp = (dp = p1[0] - p0[0]) * dp + (dp = p1[1] - p0[1]) * dp,
+          dl = (dl = l1[0] - l0[0]) * dl + (dl = l1[1] - l0[1]) * dl;
+      t = scale(t, Math.sqrt(dp / dl));
+      p = [(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2];
+      l = [(l0[0] + l1[0]) / 2, (l0[1] + l1[1]) / 2];
+    }
+    else if (g.touch0) p = g.touch0[0], l = g.touch0[1];
+    else return;
+    g.zoom("touch", constrain(translate(t, p, l), g.extent, translateExtent));
+  }
+
+  function touchended() {
+    if (!this.__zooming) return;
+    var g = gesture(this, arguments),
+        touches = event.changedTouches,
+        n = touches.length, i, t;
+
+    nopropagation();
+    if (touchending) clearTimeout(touchending);
+    touchending = setTimeout(function() { touchending = null; }, touchDelay);
+    for (i = 0; i < n; ++i) {
+      t = touches[i];
+      if (g.touch0 && g.touch0[2] === t.identifier) delete g.touch0;
+      else if (g.touch1 && g.touch1[2] === t.identifier) delete g.touch1;
+    }
+    if (g.touch1 && !g.touch0) g.touch0 = g.touch1, delete g.touch1;
+    if (g.touch0) g.touch0[1] = this.__zoom.invert(g.touch0[0]);
+    else {
+      g.end();
+      // If this was a dbltap, reroute to the (optional) dblclick.zoom handler.
+      if (g.taps === 2) {
+        var p = select(this).on("dblclick.zoom");
+        if (p) p.apply(this, arguments);
+      }
+    }
+  }
+
+  zoom.wheelDelta = function(_) {
+    return arguments.length ? (wheelDelta = typeof _ === "function" ? _ : constant(+_), zoom) : wheelDelta;
+  };
+
+  zoom.filter = function(_) {
+    return arguments.length ? (filter = typeof _ === "function" ? _ : constant(!!_), zoom) : filter;
+  };
+
+  zoom.touchable = function(_) {
+    return arguments.length ? (touchable = typeof _ === "function" ? _ : constant(!!_), zoom) : touchable;
+  };
+
+  zoom.extent = function(_) {
+    return arguments.length ? (extent = typeof _ === "function" ? _ : constant([[+_[0][0], +_[0][1]], [+_[1][0], +_[1][1]]]), zoom) : extent;
+  };
+
+  zoom.scaleExtent = function(_) {
+    return arguments.length ? (scaleExtent[0] = +_[0], scaleExtent[1] = +_[1], zoom) : [scaleExtent[0], scaleExtent[1]];
+  };
+
+  zoom.translateExtent = function(_) {
+    return arguments.length ? (translateExtent[0][0] = +_[0][0], translateExtent[1][0] = +_[1][0], translateExtent[0][1] = +_[0][1], translateExtent[1][1] = +_[1][1], zoom) : [[translateExtent[0][0], translateExtent[0][1]], [translateExtent[1][0], translateExtent[1][1]]];
+  };
+
+  zoom.constrain = function(_) {
+    return arguments.length ? (constrain = _, zoom) : constrain;
+  };
+
+  zoom.duration = function(_) {
+    return arguments.length ? (duration = +_, zoom) : duration;
+  };
+
+  zoom.interpolate = function(_) {
+    return arguments.length ? (interpolate = _, zoom) : interpolate;
+  };
+
+  zoom.on = function() {
+    var value = listeners.on.apply(listeners, arguments);
+    return value === listeners ? zoom : value;
+  };
+
+  zoom.clickDistance = function(_) {
+    return arguments.length ? (clickDistance2 = (_ = +_) * _, zoom) : Math.sqrt(clickDistance2);
+  };
+
+  return zoom;
+}
+
+export { zoom, identity as zoomIdentity, transform as zoomTransform };

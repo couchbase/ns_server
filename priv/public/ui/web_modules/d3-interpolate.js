@@ -1,2 +1,196 @@
-import{R as t,r,d as e,e as s,C as u,h as l,b as h,n as b}from"./common/rgb-50db7803.js";export{f as interpolateBasis,g as interpolateBasisClosed,i as interpolateRgb,j as interpolateRgbBasis,k as interpolateRgbBasisClosed}from"./common/rgb-50db7803.js";import{r as m,d as y}from"./common/cubehelix-b37f4760.js";export{c as interpolateCubehelix,a as interpolateCubehelixLong}from"./common/cubehelix-b37f4760.js";export{i as interpolate,a as interpolateArray,d as interpolateDate,n as interpolateNumberArray,o as interpolateObject}from"./common/value-2cd045dd.js";export{i as interpolateNumber,a as interpolateString}from"./common/string-cfd0b55d.js";export{i as interpolateRound,p as piecewise}from"./common/piecewise-ef887050.js";export{a as interpolateTransformCss,i as interpolateTransformSvg}from"./common/index-f3df269c.js";export{i as interpolateZoom}from"./common/zoom-74300348.js";var w=6/29,v=3*w*w;function x(n){if(n instanceof M)return new M(n.l,n.a,n.b,n.opacity);if(n instanceof D)return S(n);n instanceof t||(n=r(n));var a,i,e=B(n.r),o=B(n.g),s=B(n.b),c=C((.2225045*e+.7168786*o+.0606169*s)/1);return e===o&&o===s?a=i=c:(a=C((.4360747*e+.3850649*o+.1430804*s)/.96422),i=C((.0139322*e+.0971045*o+.7141733*s)/.82521)),new M(116*c-16,500*(a-c),200*(c-i),n.opacity)}function N(t,n,r,a){return 1===arguments.length?x(t):new M(t,n,r,null==a?1:a)}function M(t,n,r,a){this.l=+t,this.a=+n,this.b=+r,this.opacity=+a}function C(t){return t>.008856451679035631?Math.pow(t,1/3):t/v+4/29}function H(t){return t>w?t*t*t:v*(t-4/29)}function R(t){return 255*(t<=.0031308?12.92*t:1.055*Math.pow(t,1/2.4)-.055)}function B(t){return(t/=255)<=.04045?t/12.92:Math.pow((t+.055)/1.055,2.4)}function L(t){if(t instanceof D)return new D(t.h,t.c,t.l,t.opacity);if(t instanceof M||(t=x(t)),0===t.a&&0===t.b)return new D(NaN,0<t.l&&t.l<100?0:NaN,t.l,t.opacity);var n=Math.atan2(t.b,t.a)*m;return new D(n<0?n+360:n,Math.sqrt(t.a*t.a+t.b*t.b),t.l,t.opacity)}function A(t,n,r,a){return 1===arguments.length?L(t):new D(t,n,r,null==a?1:a)}function D(t,n,r,a){this.h=+t,this.c=+n,this.l=+r,this.opacity=+a}function S(t){if(isNaN(t.h))return new M(t.l,0,0,t.opacity);var n=t.h*y;return new M(t.l,Math.cos(n)*t.c,Math.sin(n)*t.c,t.opacity)}function T(t){var n=t.length;return function(r){return t[Math.max(0,Math.min(n-1,Math.floor(r*n)))]}}function q(t,n){var r=l(+t,+n);return function(t){var n=r(t);return n-360*Math.floor(n/360)}}function z(t){return function(n,r){var a=t((n=h(n)).h,(r=h(r)).h),i=b(n.s,r.s),e=b(n.l,r.l),o=b(n.opacity,r.opacity);return function(t){return n.h=a(t),n.s=i(t),n.l=e(t),n.opacity=o(t),n+""}}}e(M,N,s(u,{brighter:function(t){return new M(this.l+18*(null==t?1:t),this.a,this.b,this.opacity)},darker:function(t){return new M(this.l-18*(null==t?1:t),this.a,this.b,this.opacity)},rgb:function(){var n=(this.l+16)/116,r=isNaN(this.a)?n:n+this.a/500,a=isNaN(this.b)?n:n-this.b/200;return r=.96422*H(r),n=1*H(n),a=.82521*H(a),new t(R(3.1338561*r-1.6168667*n-.4906146*a),R(-.9787684*r+1.9161415*n+.033454*a),R(.0719453*r-.2289914*n+1.4052427*a),this.opacity)}})),e(D,A,s(u,{brighter:function(t){return new D(this.h,this.c,this.l+18*(null==t?1:t),this.opacity)},darker:function(t){return new D(this.h,this.c,this.l-18*(null==t?1:t),this.opacity)},rgb:function(){return S(this).rgb()}}));var O=z(l),Z=z(b);function E(t,n){var r=b((t=N(t)).l,(n=N(n)).l),a=b(t.a,n.a),i=b(t.b,n.b),e=b(t.opacity,n.opacity);return function(n){return t.l=r(n),t.a=a(n),t.b=i(n),t.opacity=e(n),t+""}}function F(t){return function(n,r){var a=t((n=A(n)).h,(r=A(r)).h),i=b(n.c,r.c),e=b(n.l,r.l),o=b(n.opacity,r.opacity);return function(t){return n.h=a(t),n.c=i(t),n.l=e(t),n.opacity=o(t),n+""}}}var G=F(l),I=F(b);function J(t,n){for(var r=new Array(n),a=0;a<n;++a)r[a]=t(a/(n-1));return r}export{T as interpolateDiscrete,G as interpolateHcl,I as interpolateHclLong,O as interpolateHsl,Z as interpolateHslLong,q as interpolateHue,E as interpolateLab,J as quantize};
-//# sourceMappingURL=d3-interpolate.js.map
+import { R as Rgb, r as rgbConvert, d as define, e as extend, C as Color, h as hue$1, b as hsl$2, n as nogamma } from './common/rgb-50db7803.js';
+export { f as interpolateBasis, g as interpolateBasisClosed, i as interpolateRgb, j as interpolateRgbBasis, k as interpolateRgbBasisClosed } from './common/rgb-50db7803.js';
+import { r as rad2deg, d as deg2rad } from './common/cubehelix-b37f4760.js';
+export { c as interpolateCubehelix, a as interpolateCubehelixLong } from './common/cubehelix-b37f4760.js';
+export { i as interpolate, a as interpolateArray, d as interpolateDate, n as interpolateNumberArray, o as interpolateObject } from './common/value-2cd045dd.js';
+export { i as interpolateNumber, a as interpolateString } from './common/string-cfd0b55d.js';
+export { i as interpolateRound, p as piecewise } from './common/piecewise-ef887050.js';
+export { a as interpolateTransformCss, i as interpolateTransformSvg } from './common/index-f3df269c.js';
+export { i as interpolateZoom } from './common/zoom-74300348.js';
+
+// https://observablehq.com/@mbostock/lab-and-rgb
+var K = 18,
+    Xn = 0.96422,
+    Yn = 1,
+    Zn = 0.82521,
+    t0 = 4 / 29,
+    t1 = 6 / 29,
+    t2 = 3 * t1 * t1,
+    t3 = t1 * t1 * t1;
+
+function labConvert(o) {
+  if (o instanceof Lab) return new Lab(o.l, o.a, o.b, o.opacity);
+  if (o instanceof Hcl) return hcl2lab(o);
+  if (!(o instanceof Rgb)) o = rgbConvert(o);
+  var r = rgb2lrgb(o.r),
+      g = rgb2lrgb(o.g),
+      b = rgb2lrgb(o.b),
+      y = xyz2lab((0.2225045 * r + 0.7168786 * g + 0.0606169 * b) / Yn), x, z;
+  if (r === g && g === b) x = z = y; else {
+    x = xyz2lab((0.4360747 * r + 0.3850649 * g + 0.1430804 * b) / Xn);
+    z = xyz2lab((0.0139322 * r + 0.0971045 * g + 0.7141733 * b) / Zn);
+  }
+  return new Lab(116 * y - 16, 500 * (x - y), 200 * (y - z), o.opacity);
+}
+
+function lab(l, a, b, opacity) {
+  return arguments.length === 1 ? labConvert(l) : new Lab(l, a, b, opacity == null ? 1 : opacity);
+}
+
+function Lab(l, a, b, opacity) {
+  this.l = +l;
+  this.a = +a;
+  this.b = +b;
+  this.opacity = +opacity;
+}
+
+define(Lab, lab, extend(Color, {
+  brighter: function(k) {
+    return new Lab(this.l + K * (k == null ? 1 : k), this.a, this.b, this.opacity);
+  },
+  darker: function(k) {
+    return new Lab(this.l - K * (k == null ? 1 : k), this.a, this.b, this.opacity);
+  },
+  rgb: function() {
+    var y = (this.l + 16) / 116,
+        x = isNaN(this.a) ? y : y + this.a / 500,
+        z = isNaN(this.b) ? y : y - this.b / 200;
+    x = Xn * lab2xyz(x);
+    y = Yn * lab2xyz(y);
+    z = Zn * lab2xyz(z);
+    return new Rgb(
+      lrgb2rgb( 3.1338561 * x - 1.6168667 * y - 0.4906146 * z),
+      lrgb2rgb(-0.9787684 * x + 1.9161415 * y + 0.0334540 * z),
+      lrgb2rgb( 0.0719453 * x - 0.2289914 * y + 1.4052427 * z),
+      this.opacity
+    );
+  }
+}));
+
+function xyz2lab(t) {
+  return t > t3 ? Math.pow(t, 1 / 3) : t / t2 + t0;
+}
+
+function lab2xyz(t) {
+  return t > t1 ? t * t * t : t2 * (t - t0);
+}
+
+function lrgb2rgb(x) {
+  return 255 * (x <= 0.0031308 ? 12.92 * x : 1.055 * Math.pow(x, 1 / 2.4) - 0.055);
+}
+
+function rgb2lrgb(x) {
+  return (x /= 255) <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+}
+
+function hclConvert(o) {
+  if (o instanceof Hcl) return new Hcl(o.h, o.c, o.l, o.opacity);
+  if (!(o instanceof Lab)) o = labConvert(o);
+  if (o.a === 0 && o.b === 0) return new Hcl(NaN, 0 < o.l && o.l < 100 ? 0 : NaN, o.l, o.opacity);
+  var h = Math.atan2(o.b, o.a) * rad2deg;
+  return new Hcl(h < 0 ? h + 360 : h, Math.sqrt(o.a * o.a + o.b * o.b), o.l, o.opacity);
+}
+
+function hcl(h, c, l, opacity) {
+  return arguments.length === 1 ? hclConvert(h) : new Hcl(h, c, l, opacity == null ? 1 : opacity);
+}
+
+function Hcl(h, c, l, opacity) {
+  this.h = +h;
+  this.c = +c;
+  this.l = +l;
+  this.opacity = +opacity;
+}
+
+function hcl2lab(o) {
+  if (isNaN(o.h)) return new Lab(o.l, 0, 0, o.opacity);
+  var h = o.h * deg2rad;
+  return new Lab(o.l, Math.cos(h) * o.c, Math.sin(h) * o.c, o.opacity);
+}
+
+define(Hcl, hcl, extend(Color, {
+  brighter: function(k) {
+    return new Hcl(this.h, this.c, this.l + K * (k == null ? 1 : k), this.opacity);
+  },
+  darker: function(k) {
+    return new Hcl(this.h, this.c, this.l - K * (k == null ? 1 : k), this.opacity);
+  },
+  rgb: function() {
+    return hcl2lab(this).rgb();
+  }
+}));
+
+function discrete(range) {
+  var n = range.length;
+  return function(t) {
+    return range[Math.max(0, Math.min(n - 1, Math.floor(t * n)))];
+  };
+}
+
+function hue(a, b) {
+  var i = hue$1(+a, +b);
+  return function(t) {
+    var x = i(t);
+    return x - 360 * Math.floor(x / 360);
+  };
+}
+
+function hsl(hue) {
+  return function(start, end) {
+    var h = hue((start = hsl$2(start)).h, (end = hsl$2(end)).h),
+        s = nogamma(start.s, end.s),
+        l = nogamma(start.l, end.l),
+        opacity = nogamma(start.opacity, end.opacity);
+    return function(t) {
+      start.h = h(t);
+      start.s = s(t);
+      start.l = l(t);
+      start.opacity = opacity(t);
+      return start + "";
+    };
+  }
+}
+
+var hsl$1 = hsl(hue$1);
+var hslLong = hsl(nogamma);
+
+function lab$1(start, end) {
+  var l = nogamma((start = lab(start)).l, (end = lab(end)).l),
+      a = nogamma(start.a, end.a),
+      b = nogamma(start.b, end.b),
+      opacity = nogamma(start.opacity, end.opacity);
+  return function(t) {
+    start.l = l(t);
+    start.a = a(t);
+    start.b = b(t);
+    start.opacity = opacity(t);
+    return start + "";
+  };
+}
+
+function hcl$1(hue) {
+  return function(start, end) {
+    var h = hue((start = hcl(start)).h, (end = hcl(end)).h),
+        c = nogamma(start.c, end.c),
+        l = nogamma(start.l, end.l),
+        opacity = nogamma(start.opacity, end.opacity);
+    return function(t) {
+      start.h = h(t);
+      start.c = c(t);
+      start.l = l(t);
+      start.opacity = opacity(t);
+      return start + "";
+    };
+  }
+}
+
+var hcl$2 = hcl$1(hue$1);
+var hclLong = hcl$1(nogamma);
+
+function quantize(interpolator, n) {
+  var samples = new Array(n);
+  for (var i = 0; i < n; ++i) samples[i] = interpolator(i / (n - 1));
+  return samples;
+}
+
+export { discrete as interpolateDiscrete, hcl$2 as interpolateHcl, hclLong as interpolateHclLong, hsl$1 as interpolateHsl, hslLong as interpolateHslLong, hue as interpolateHue, lab$1 as interpolateLab, quantize };

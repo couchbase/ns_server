@@ -1,2 +1,38 @@
-import{m as t,e}from"./mergeMap-64c6f393.js";import{R as r}from"./ReplaySubject-8316d9c1.js";import{f as n}from"./filter-d76a729c.js";var s=function(){function s(s){this.name="@uirouter/rx",this.deregisterFns=[];var i=new r(1),a=i.pipe(t((function(t){return t.promise.then((function(){return t}),(function(){return null}))})),n((function(t){return!!t}))),u=a.pipe(e((function(t){return t.params()}))),o=new r(1);function c(t,e){var r={currentStates:s.stateRegistry.get(),registered:[],deregistered:[]};t&&(r[t]=e),o.next(r)}this.deregisterFns.push(s.transitionService.onStart({},(function(t){return i.next(t)}))),this.deregisterFns.push(s.stateRegistry.onStatesChanged(c)),c(null,null),Object.assign(s.globals,{start$:i,success$:a,params$:u,states$:o})}return s.prototype.dispose=function(){this.deregisterFns.forEach((function(t){return t()})),this.deregisterFns=[]},s}(),i=s;export{s as U,i as a};
-//# sourceMappingURL=ui-router-rx-04f7f595.js.map
+import { m as mergeMap, e as map } from './mergeMap-64c6f393.js';
+import { R as ReplaySubject } from './ReplaySubject-8316d9c1.js';
+import { f as filter } from './filter-d76a729c.js';
+
+/** @module rx */
+/** Augments UIRouterGlobals with observables for transition starts, successful transitions, and state parameters */
+var UIRouterRx = /** @class */ (function () {
+    function UIRouterRx(router) {
+        this.name = '@uirouter/rx';
+        this.deregisterFns = [];
+        var start$ = new ReplaySubject(1);
+        var success$ = start$.pipe(mergeMap(function (t) { return t.promise.then(function () { return t; }, function () { return null; }); }), filter(function (t) { return !!t; }));
+        var params$ = success$.pipe(map(function (transition) { return transition.params(); }));
+        var states$ = new ReplaySubject(1);
+        function onStatesChangedEvent(event, states) {
+            var changeEvent = {
+                currentStates: router.stateRegistry.get(),
+                registered: [],
+                deregistered: [],
+            };
+            if (event)
+                changeEvent[event] = states;
+            states$.next(changeEvent);
+        }
+        this.deregisterFns.push(router.transitionService.onStart({}, function (transition) { return start$.next(transition); }));
+        this.deregisterFns.push(router.stateRegistry.onStatesChanged(onStatesChangedEvent));
+        onStatesChangedEvent(null, null);
+        Object.assign(router.globals, { start$: start$, success$: success$, params$: params$, states$: states$ });
+    }
+    UIRouterRx.prototype.dispose = function () {
+        this.deregisterFns.forEach(function (deregisterFn) { return deregisterFn(); });
+        this.deregisterFns = [];
+    };
+    return UIRouterRx;
+}());
+var UIRouterRxPlugin = UIRouterRx;
+
+export { UIRouterRx as U, UIRouterRxPlugin as a };

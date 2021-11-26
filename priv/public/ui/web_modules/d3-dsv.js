@@ -1,2 +1,207 @@
-var r={},n={};function t(r){return new Function("d","return {"+r.map((function(r,n){return JSON.stringify(r)+": d["+n+'] || ""'})).join(",")+"}")}function e(r){var n=Object.create(null),t=[];return r.forEach((function(r){for(var e in r)e in n||t.push(n[e]=e)})),t}function o(r,n){var t=r+"",e=t.length;return e<n?new Array(n-e+1).join(0)+t:t}function a(r){var n,t=r.getUTCHours(),e=r.getUTCMinutes(),a=r.getUTCSeconds(),u=r.getUTCMilliseconds();return isNaN(r)?"Invalid Date":((n=r.getUTCFullYear())<0?"-"+o(-n,6):n>9999?"+"+o(n,6):o(n,4))+"-"+o(r.getUTCMonth()+1,2)+"-"+o(r.getUTCDate(),2)+(u?"T"+o(t,2)+":"+o(e,2)+":"+o(a,2)+"."+o(u,3)+"Z":a?"T"+o(t,2)+":"+o(e,2)+":"+o(a,2)+"Z":e||t?"T"+o(t,2)+":"+o(e,2)+"Z":"")}function u(o){var u=new RegExp('["'+o+"\n\r]"),i=o.charCodeAt(0);function f(t,e){var o,a=[],u=t.length,f=0,c=0,s=u<=0,l=!1;function d(){if(s)return n;if(l)return l=!1,r;var e,o,a=f;if(34===t.charCodeAt(a)){for(;f++<u&&34!==t.charCodeAt(f)||34===t.charCodeAt(++f););return(e=f)>=u?s=!0:10===(o=t.charCodeAt(f++))?l=!0:13===o&&(l=!0,10===t.charCodeAt(f)&&++f),t.slice(a+1,e-1).replace(/""/g,'"')}for(;f<u;){if(10===(o=t.charCodeAt(e=f++)))l=!0;else if(13===o)l=!0,10===t.charCodeAt(f)&&++f;else if(o!==i)continue;return t.slice(a,e)}return s=!0,t.slice(a,u)}for(10===t.charCodeAt(u-1)&&--u,13===t.charCodeAt(u-1)&&--u;(o=d())!==n;){for(var m=[];o!==r&&o!==n;)m.push(o),o=d();e&&null==(m=e(m,c++))||a.push(m)}return a}function c(r,n){return r.map((function(r){return n.map((function(n){return l(r[n])})).join(o)}))}function s(r){return r.map(l).join(o)}function l(r){return null==r?"":r instanceof Date?a(r):u.test(r+="")?'"'+r.replace(/"/g,'""')+'"':r}return{parse:function(r,n){var e,o,a=f(r,(function(r,a){if(e)return e(r,a-1);o=r,e=n?function(r,n){var e=t(r);return function(t,o){return n(e(t),o,r)}}(r,n):t(r)}));return a.columns=o||[],a},parseRows:f,format:function(r,n){return null==n&&(n=e(r)),[n.map(l).join(o)].concat(c(r,n)).join("\n")},formatBody:function(r,n){return null==n&&(n=e(r)),c(r,n).join("\n")},formatRows:function(r){return r.map(s).join("\n")},formatRow:s,formatValue:l}}var i=u(","),f=i.parse,c=i.parseRows,s=i.format,l=i.formatBody,d=i.formatRows,m=i.formatRow,p=i.formatValue,h=u("\t"),C=h.parse,g=h.parseRows,v=h.format,w=h.formatBody,T=h.formatRows,A=h.formatRow,R=h.formatValue;function j(r){for(var n in r){var t,e,o=r[n].trim();if(o)if("true"===o)o=!0;else if("false"===o)o=!1;else if("NaN"===o)o=NaN;else if(isNaN(t=+o)){if(!(e=o.match(/^([-+]\d{2})?\d{4}(-\d{2}(-\d{2})?)?(T\d{2}:\d{2}(:\d{2}(\.\d{3})?)?(Z|[-+]\d{2}:\d{2})?)?$/)))continue;N&&e[4]&&!e[7]&&(o=o.replace(/-/g,"/").replace(/T/," ")),o=new Date(o)}else o=t;else o=null;r[n]=o}return r}const N=new Date("2019-01-01T00:00").getHours()||new Date("2019-07-01T00:00").getHours();export{j as autoType,s as csvFormat,l as csvFormatBody,m as csvFormatRow,d as csvFormatRows,p as csvFormatValue,f as csvParse,c as csvParseRows,u as dsvFormat,v as tsvFormat,w as tsvFormatBody,A as tsvFormatRow,T as tsvFormatRows,R as tsvFormatValue,C as tsvParse,g as tsvParseRows};
-//# sourceMappingURL=d3-dsv.js.map
+var EOL = {},
+    EOF = {},
+    QUOTE = 34,
+    NEWLINE = 10,
+    RETURN = 13;
+
+function objectConverter(columns) {
+  return new Function("d", "return {" + columns.map(function(name, i) {
+    return JSON.stringify(name) + ": d[" + i + "] || \"\"";
+  }).join(",") + "}");
+}
+
+function customConverter(columns, f) {
+  var object = objectConverter(columns);
+  return function(row, i) {
+    return f(object(row), i, columns);
+  };
+}
+
+// Compute unique columns in order of discovery.
+function inferColumns(rows) {
+  var columnSet = Object.create(null),
+      columns = [];
+
+  rows.forEach(function(row) {
+    for (var column in row) {
+      if (!(column in columnSet)) {
+        columns.push(columnSet[column] = column);
+      }
+    }
+  });
+
+  return columns;
+}
+
+function pad(value, width) {
+  var s = value + "", length = s.length;
+  return length < width ? new Array(width - length + 1).join(0) + s : s;
+}
+
+function formatYear(year) {
+  return year < 0 ? "-" + pad(-year, 6)
+    : year > 9999 ? "+" + pad(year, 6)
+    : pad(year, 4);
+}
+
+function formatDate(date) {
+  var hours = date.getUTCHours(),
+      minutes = date.getUTCMinutes(),
+      seconds = date.getUTCSeconds(),
+      milliseconds = date.getUTCMilliseconds();
+  return isNaN(date) ? "Invalid Date"
+      : formatYear(date.getUTCFullYear()) + "-" + pad(date.getUTCMonth() + 1, 2) + "-" + pad(date.getUTCDate(), 2)
+      + (milliseconds ? "T" + pad(hours, 2) + ":" + pad(minutes, 2) + ":" + pad(seconds, 2) + "." + pad(milliseconds, 3) + "Z"
+      : seconds ? "T" + pad(hours, 2) + ":" + pad(minutes, 2) + ":" + pad(seconds, 2) + "Z"
+      : minutes || hours ? "T" + pad(hours, 2) + ":" + pad(minutes, 2) + "Z"
+      : "");
+}
+
+function dsv(delimiter) {
+  var reFormat = new RegExp("[\"" + delimiter + "\n\r]"),
+      DELIMITER = delimiter.charCodeAt(0);
+
+  function parse(text, f) {
+    var convert, columns, rows = parseRows(text, function(row, i) {
+      if (convert) return convert(row, i - 1);
+      columns = row, convert = f ? customConverter(row, f) : objectConverter(row);
+    });
+    rows.columns = columns || [];
+    return rows;
+  }
+
+  function parseRows(text, f) {
+    var rows = [], // output rows
+        N = text.length,
+        I = 0, // current character index
+        n = 0, // current line number
+        t, // current token
+        eof = N <= 0, // current token followed by EOF?
+        eol = false; // current token followed by EOL?
+
+    // Strip the trailing newline.
+    if (text.charCodeAt(N - 1) === NEWLINE) --N;
+    if (text.charCodeAt(N - 1) === RETURN) --N;
+
+    function token() {
+      if (eof) return EOF;
+      if (eol) return eol = false, EOL;
+
+      // Unescape quotes.
+      var i, j = I, c;
+      if (text.charCodeAt(j) === QUOTE) {
+        while (I++ < N && text.charCodeAt(I) !== QUOTE || text.charCodeAt(++I) === QUOTE);
+        if ((i = I) >= N) eof = true;
+        else if ((c = text.charCodeAt(I++)) === NEWLINE) eol = true;
+        else if (c === RETURN) { eol = true; if (text.charCodeAt(I) === NEWLINE) ++I; }
+        return text.slice(j + 1, i - 1).replace(/""/g, "\"");
+      }
+
+      // Find next delimiter or newline.
+      while (I < N) {
+        if ((c = text.charCodeAt(i = I++)) === NEWLINE) eol = true;
+        else if (c === RETURN) { eol = true; if (text.charCodeAt(I) === NEWLINE) ++I; }
+        else if (c !== DELIMITER) continue;
+        return text.slice(j, i);
+      }
+
+      // Return last token before EOF.
+      return eof = true, text.slice(j, N);
+    }
+
+    while ((t = token()) !== EOF) {
+      var row = [];
+      while (t !== EOL && t !== EOF) row.push(t), t = token();
+      if (f && (row = f(row, n++)) == null) continue;
+      rows.push(row);
+    }
+
+    return rows;
+  }
+
+  function preformatBody(rows, columns) {
+    return rows.map(function(row) {
+      return columns.map(function(column) {
+        return formatValue(row[column]);
+      }).join(delimiter);
+    });
+  }
+
+  function format(rows, columns) {
+    if (columns == null) columns = inferColumns(rows);
+    return [columns.map(formatValue).join(delimiter)].concat(preformatBody(rows, columns)).join("\n");
+  }
+
+  function formatBody(rows, columns) {
+    if (columns == null) columns = inferColumns(rows);
+    return preformatBody(rows, columns).join("\n");
+  }
+
+  function formatRows(rows) {
+    return rows.map(formatRow).join("\n");
+  }
+
+  function formatRow(row) {
+    return row.map(formatValue).join(delimiter);
+  }
+
+  function formatValue(value) {
+    return value == null ? ""
+        : value instanceof Date ? formatDate(value)
+        : reFormat.test(value += "") ? "\"" + value.replace(/"/g, "\"\"") + "\""
+        : value;
+  }
+
+  return {
+    parse: parse,
+    parseRows: parseRows,
+    format: format,
+    formatBody: formatBody,
+    formatRows: formatRows,
+    formatRow: formatRow,
+    formatValue: formatValue
+  };
+}
+
+var csv = dsv(",");
+
+var csvParse = csv.parse;
+var csvParseRows = csv.parseRows;
+var csvFormat = csv.format;
+var csvFormatBody = csv.formatBody;
+var csvFormatRows = csv.formatRows;
+var csvFormatRow = csv.formatRow;
+var csvFormatValue = csv.formatValue;
+
+var tsv = dsv("\t");
+
+var tsvParse = tsv.parse;
+var tsvParseRows = tsv.parseRows;
+var tsvFormat = tsv.format;
+var tsvFormatBody = tsv.formatBody;
+var tsvFormatRows = tsv.formatRows;
+var tsvFormatRow = tsv.formatRow;
+var tsvFormatValue = tsv.formatValue;
+
+function autoType(object) {
+  for (var key in object) {
+    var value = object[key].trim(), number, m;
+    if (!value) value = null;
+    else if (value === "true") value = true;
+    else if (value === "false") value = false;
+    else if (value === "NaN") value = NaN;
+    else if (!isNaN(number = +value)) value = number;
+    else if (m = value.match(/^([-+]\d{2})?\d{4}(-\d{2}(-\d{2})?)?(T\d{2}:\d{2}(:\d{2}(\.\d{3})?)?(Z|[-+]\d{2}:\d{2})?)?$/)) {
+      if (fixtz && !!m[4] && !m[7]) value = value.replace(/-/g, "/").replace(/T/, " ");
+      value = new Date(value);
+    }
+    else continue;
+    object[key] = value;
+  }
+  return object;
+}
+
+// https://github.com/d3/d3-dsv/issues/45
+const fixtz = new Date("2019-01-01T00:00").getHours() || new Date("2019-07-01T00:00").getHours();
+
+export { autoType, csvFormat, csvFormatBody, csvFormatRow, csvFormatRows, csvFormatValue, csvParse, csvParseRows, dsv as dsvFormat, tsvFormat, tsvFormatBody, tsvFormatRow, tsvFormatRows, tsvFormatValue, tsvParse, tsvParseRows };

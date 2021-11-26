@@ -1,2 +1,81 @@
-import{a as n,c as r,i as t}from"./rgb-50db7803.js";import{i as e,a as o}from"./string-cfd0b55d.js";function i(n,r){r||(r=[]);var t,e=n?Math.min(r.length,n.length):0,o=r.slice();return function(i){for(t=0;t<e;++t)o[t]=n[t]*(1-i)+r[t]*i;return o}}function a(n){return ArrayBuffer.isView(n)&&!(n instanceof DataView)}function f(n,r){return(a(r)?i:u)(n,r)}function u(n,r){var t,e=r?r.length:0,o=n?Math.min(e,n.length):0,i=new Array(o),a=new Array(e);for(t=0;t<o;++t)i[t]=l(n[t],r[t]);for(;t<e;++t)a[t]=r[t];return function(n){for(t=0;t<o;++t)a[t]=i[t](n);return a}}function s(n,r){var t=new Date;return n=+n,r=+r,function(e){return t.setTime(n*(1-e)+r*e),t}}function c(n,r){var t,e={},o={};for(t in null!==n&&"object"==typeof n||(n={}),null!==r&&"object"==typeof r||(r={}),r)t in n?e[t]=l(n[t],r[t]):o[t]=r[t];return function(n){for(t in e)o[t]=e[t](n);return o}}function l(f,l){var y,g=typeof l;return null==l||"boolean"===g?n(l):("number"===g?e:"string"===g?(y=r(l))?(l=y,t):o:l instanceof r?t:l instanceof Date?s:a(l)?i:Array.isArray(l)?u:"function"!=typeof l.valueOf&&"function"!=typeof l.toString||isNaN(l)?c:e)(f,l)}export{f as a,s as d,l as i,i as n,c as o};
-//# sourceMappingURL=value-2cd045dd.js.map
+import { a as constant, c as color, i as interpolateRgb } from './rgb-50db7803.js';
+import { i as interpolateNumber, a as interpolateString } from './string-cfd0b55d.js';
+
+function numberArray(a, b) {
+  if (!b) b = [];
+  var n = a ? Math.min(b.length, a.length) : 0,
+      c = b.slice(),
+      i;
+  return function(t) {
+    for (i = 0; i < n; ++i) c[i] = a[i] * (1 - t) + b[i] * t;
+    return c;
+  };
+}
+
+function isNumberArray(x) {
+  return ArrayBuffer.isView(x) && !(x instanceof DataView);
+}
+
+function array(a, b) {
+  return (isNumberArray(b) ? numberArray : genericArray)(a, b);
+}
+
+function genericArray(a, b) {
+  var nb = b ? b.length : 0,
+      na = a ? Math.min(nb, a.length) : 0,
+      x = new Array(na),
+      c = new Array(nb),
+      i;
+
+  for (i = 0; i < na; ++i) x[i] = interpolate(a[i], b[i]);
+  for (; i < nb; ++i) c[i] = b[i];
+
+  return function(t) {
+    for (i = 0; i < na; ++i) c[i] = x[i](t);
+    return c;
+  };
+}
+
+function date(a, b) {
+  var d = new Date;
+  return a = +a, b = +b, function(t) {
+    return d.setTime(a * (1 - t) + b * t), d;
+  };
+}
+
+function object(a, b) {
+  var i = {},
+      c = {},
+      k;
+
+  if (a === null || typeof a !== "object") a = {};
+  if (b === null || typeof b !== "object") b = {};
+
+  for (k in b) {
+    if (k in a) {
+      i[k] = interpolate(a[k], b[k]);
+    } else {
+      c[k] = b[k];
+    }
+  }
+
+  return function(t) {
+    for (k in i) c[k] = i[k](t);
+    return c;
+  };
+}
+
+function interpolate(a, b) {
+  var t = typeof b, c;
+  return b == null || t === "boolean" ? constant(b)
+      : (t === "number" ? interpolateNumber
+      : t === "string" ? ((c = color(b)) ? (b = c, interpolateRgb) : interpolateString)
+      : b instanceof color ? interpolateRgb
+      : b instanceof Date ? date
+      : isNumberArray(b) ? numberArray
+      : Array.isArray(b) ? genericArray
+      : typeof b.valueOf !== "function" && typeof b.toString !== "function" || isNaN(b) ? object
+      : interpolateNumber)(a, b);
+}
+
+export { array as a, date as d, interpolate as i, numberArray as n, object as o };

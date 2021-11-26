@@ -1,2 +1,74 @@
-import{b as t}from"./tslib.es6-c4a4947b.js";import{g as n,e as i,I as e,l as o,n as r}from"./mergeMap-64c6f393.js";function s(t,e){return"function"==typeof e?function(o){return o.pipe(s((function(o,r){return n(t(o,r)).pipe(i((function(t,n){return e(o,t,r,n)})))})))}:function(n){return n.lift(new u(t))}}var u=function(){function t(t){this.project=t}return t.prototype.call=function(t,n){return n.subscribe(new c(t,this.project))},t}(),c=function(n){function i(t,i){var e=n.call(this,t)||this;return e.project=i,e.index=0,e}return t(i,n),i.prototype._next=function(t){var n,i=this.index++;try{n=this.project(t,i)}catch(t){return void this.destination.error(t)}this._innerSub(n,t,i)},i.prototype._innerSub=function(t,n,i){var r=this.innerSubscription;r&&r.unsubscribe();var s=new e(this,void 0,void 0);this.destination.add(s),this.innerSubscription=o(this,t,n,i,s)},i.prototype._complete=function(){var t=this.innerSubscription;t&&!t.closed||n.prototype._complete.call(this),this.unsubscribe()},i.prototype._unsubscribe=function(){this.innerSubscription=null},i.prototype.notifyComplete=function(t){this.destination.remove(t),this.innerSubscription=null,this.isStopped&&n.prototype._complete.call(this)},i.prototype.notifyNext=function(t,n,i,e,o){this.destination.next(n)},i}(r);export{s};
-//# sourceMappingURL=switchMap-c513d696.js.map
+import { b as __extends } from './tslib.es6-c4a4947b.js';
+import { g as from, e as map, I as InnerSubscriber, l as subscribeToResult, n as OuterSubscriber } from './mergeMap-64c6f393.js';
+
+/** PURE_IMPORTS_START tslib,_OuterSubscriber,_InnerSubscriber,_util_subscribeToResult,_map,_observable_from PURE_IMPORTS_END */
+function switchMap(project, resultSelector) {
+    if (typeof resultSelector === 'function') {
+        return function (source) { return source.pipe(switchMap(function (a, i) { return from(project(a, i)).pipe(map(function (b, ii) { return resultSelector(a, b, i, ii); })); })); };
+    }
+    return function (source) { return source.lift(new SwitchMapOperator(project)); };
+}
+var SwitchMapOperator = /*@__PURE__*/ (function () {
+    function SwitchMapOperator(project) {
+        this.project = project;
+    }
+    SwitchMapOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new SwitchMapSubscriber(subscriber, this.project));
+    };
+    return SwitchMapOperator;
+}());
+var SwitchMapSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(SwitchMapSubscriber, _super);
+    function SwitchMapSubscriber(destination, project) {
+        var _this = _super.call(this, destination) || this;
+        _this.project = project;
+        _this.index = 0;
+        return _this;
+    }
+    SwitchMapSubscriber.prototype._next = function (value) {
+        var result;
+        var index = this.index++;
+        try {
+            result = this.project(value, index);
+        }
+        catch (error) {
+            this.destination.error(error);
+            return;
+        }
+        this._innerSub(result, value, index);
+    };
+    SwitchMapSubscriber.prototype._innerSub = function (result, value, index) {
+        var innerSubscription = this.innerSubscription;
+        if (innerSubscription) {
+            innerSubscription.unsubscribe();
+        }
+        var innerSubscriber = new InnerSubscriber(this, undefined, undefined);
+        var destination = this.destination;
+        destination.add(innerSubscriber);
+        this.innerSubscription = subscribeToResult(this, result, value, index, innerSubscriber);
+    };
+    SwitchMapSubscriber.prototype._complete = function () {
+        var innerSubscription = this.innerSubscription;
+        if (!innerSubscription || innerSubscription.closed) {
+            _super.prototype._complete.call(this);
+        }
+        this.unsubscribe();
+    };
+    SwitchMapSubscriber.prototype._unsubscribe = function () {
+        this.innerSubscription = null;
+    };
+    SwitchMapSubscriber.prototype.notifyComplete = function (innerSub) {
+        var destination = this.destination;
+        destination.remove(innerSub);
+        this.innerSubscription = null;
+        if (this.isStopped) {
+            _super.prototype._complete.call(this);
+        }
+    };
+    SwitchMapSubscriber.prototype.notifyNext = function (outerValue, innerValue, outerIndex, innerIndex, innerSub) {
+        this.destination.next(innerValue);
+    };
+    return SwitchMapSubscriber;
+}(OuterSubscriber));
+
+export { switchMap as s };

@@ -1,2 +1,66 @@
-var t=Math.SQRT2;function r(t){return((t=Math.exp(t))+1/t)/2}function a(a,n){var e,h,u=a[0],M=a[1],o=a[2],i=n[0],f=n[1],c=n[2],p=i-u,s=f-M,x=p*p+s*s;if(x<1e-12)h=Math.log(c/o)/t,e=function(r){return[u+r*p,M+r*s,o*Math.exp(t*r*h)]};else{var l=Math.sqrt(x),v=(c*c-o*o+4*x)/(2*o*2*l),g=(c*c-o*o-4*x)/(2*c*2*l),q=Math.log(Math.sqrt(v*v+1)-v),d=Math.log(Math.sqrt(g*g+1)-g);h=(d-q)/t,e=function(a){var n,e=a*h,i=r(q),f=o/(2*l)*(i*(n=t*e+q,((n=Math.exp(2*n))-1)/(n+1))-function(t){return((t=Math.exp(t))-1/t)/2}(q));return[u+f*p,M+f*s,o*i/r(t*e+q)]}}return e.duration=1e3*h,e}export{a as i};
-//# sourceMappingURL=zoom-74300348.js.map
+var rho = Math.SQRT2,
+    rho2 = 2,
+    rho4 = 4,
+    epsilon2 = 1e-12;
+
+function cosh(x) {
+  return ((x = Math.exp(x)) + 1 / x) / 2;
+}
+
+function sinh(x) {
+  return ((x = Math.exp(x)) - 1 / x) / 2;
+}
+
+function tanh(x) {
+  return ((x = Math.exp(2 * x)) - 1) / (x + 1);
+}
+
+// p0 = [ux0, uy0, w0]
+// p1 = [ux1, uy1, w1]
+function interpolateZoom(p0, p1) {
+  var ux0 = p0[0], uy0 = p0[1], w0 = p0[2],
+      ux1 = p1[0], uy1 = p1[1], w1 = p1[2],
+      dx = ux1 - ux0,
+      dy = uy1 - uy0,
+      d2 = dx * dx + dy * dy,
+      i,
+      S;
+
+  // Special case for u0 ≅ u1.
+  if (d2 < epsilon2) {
+    S = Math.log(w1 / w0) / rho;
+    i = function(t) {
+      return [
+        ux0 + t * dx,
+        uy0 + t * dy,
+        w0 * Math.exp(rho * t * S)
+      ];
+    };
+  }
+
+  // General case.
+  else {
+    var d1 = Math.sqrt(d2),
+        b0 = (w1 * w1 - w0 * w0 + rho4 * d2) / (2 * w0 * rho2 * d1),
+        b1 = (w1 * w1 - w0 * w0 - rho4 * d2) / (2 * w1 * rho2 * d1),
+        r0 = Math.log(Math.sqrt(b0 * b0 + 1) - b0),
+        r1 = Math.log(Math.sqrt(b1 * b1 + 1) - b1);
+    S = (r1 - r0) / rho;
+    i = function(t) {
+      var s = t * S,
+          coshr0 = cosh(r0),
+          u = w0 / (rho2 * d1) * (coshr0 * tanh(rho * s + r0) - sinh(r0));
+      return [
+        ux0 + u * dx,
+        uy0 + u * dy,
+        w0 * coshr0 / cosh(rho * s + r0)
+      ];
+    };
+  }
+
+  i.duration = S * 1000;
+
+  return i;
+}
+
+export { interpolateZoom as i };

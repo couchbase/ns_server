@@ -1,2 +1,179 @@
-var t=Array.prototype.slice;function n(t){return t}function r(t){return"translate("+(t+.5)+",0)"}function e(t){return"translate(0,"+(t+.5)+")"}function i(t){return function(n){return+t(n)}}function a(t){var n=Math.max(0,t.bandwidth()-1)/2;return t.round()&&(n=Math.round(n)),function(r){return+t(r)+n}}function u(){return!this.__axis}function o(o,c){var l=[],s=null,f=null,d=6,m=6,h=3,p=1===o||4===o?-1:1,g=4===o||2===o?"x":"y",k=1===o||3===o?r:e;function x(t){var r=null==s?c.ticks?c.ticks.apply(c,l):c.domain():s,e=null==f?c.tickFormat?c.tickFormat.apply(c,l):n:f,x=Math.max(d,0)+h,y=c.range(),M=+y[0]+.5,v=+y[y.length-1]+.5,_=(c.bandwidth?a:i)(c.copy()),A=t.selection?t.selection():t,F=A.selectAll(".domain").data([null]),V=A.selectAll(".tick").data(r,c).order(),z=V.exit(),H=V.enter().append("g").attr("class","tick"),b=V.select("line"),C=V.select("text");F=F.merge(F.enter().insert("path",".tick").attr("class","domain").attr("stroke","currentColor")),V=V.merge(H),b=b.merge(H.append("line").attr("stroke","currentColor").attr(g+"2",p*d)),C=C.merge(H.append("text").attr("fill","currentColor").attr(g,p*x).attr("dy",1===o?"0em":3===o?"0.71em":"0.32em")),t!==A&&(F=F.transition(t),V=V.transition(t),b=b.transition(t),C=C.transition(t),z=z.transition(t).attr("opacity",1e-6).attr("transform",(function(t){return isFinite(t=_(t))?k(t):this.getAttribute("transform")})),H.attr("opacity",1e-6).attr("transform",(function(t){var n=this.parentNode.__axis;return k(n&&isFinite(n=n(t))?n:_(t))}))),z.remove(),F.attr("d",4===o||2==o?m?"M"+p*m+","+M+"H0.5V"+v+"H"+p*m:"M0.5,"+M+"V"+v:m?"M"+M+","+p*m+"V0.5H"+v+"V"+p*m:"M"+M+",0.5H"+v),V.attr("opacity",1).attr("transform",(function(t){return k(_(t))})),b.attr(g+"2",p*d),C.attr(g,p*x).text(e),A.filter(u).attr("fill","none").attr("font-size",10).attr("font-family","sans-serif").attr("text-anchor",2===o?"start":4===o?"end":"middle"),A.each((function(){this.__axis=_}))}return x.scale=function(t){return arguments.length?(c=t,x):c},x.ticks=function(){return l=t.call(arguments),x},x.tickArguments=function(n){return arguments.length?(l=null==n?[]:t.call(n),x):l.slice()},x.tickValues=function(n){return arguments.length?(s=null==n?null:t.call(n),x):s&&s.slice()},x.tickFormat=function(t){return arguments.length?(f=t,x):f},x.tickSize=function(t){return arguments.length?(d=m=+t,x):d},x.tickSizeInner=function(t){return arguments.length?(d=+t,x):d},x.tickSizeOuter=function(t){return arguments.length?(m=+t,x):m},x.tickPadding=function(t){return arguments.length?(h=+t,x):h},x}function c(t){return o(1,t)}function l(t){return o(2,t)}function s(t){return o(3,t)}function f(t){return o(4,t)}export{s as axisBottom,f as axisLeft,l as axisRight,c as axisTop};
-//# sourceMappingURL=d3-axis.js.map
+var slice = Array.prototype.slice;
+
+function identity(x) {
+  return x;
+}
+
+var top = 1,
+    right = 2,
+    bottom = 3,
+    left = 4,
+    epsilon = 1e-6;
+
+function translateX(x) {
+  return "translate(" + (x + 0.5) + ",0)";
+}
+
+function translateY(y) {
+  return "translate(0," + (y + 0.5) + ")";
+}
+
+function number(scale) {
+  return function(d) {
+    return +scale(d);
+  };
+}
+
+function center(scale) {
+  var offset = Math.max(0, scale.bandwidth() - 1) / 2; // Adjust for 0.5px offset.
+  if (scale.round()) offset = Math.round(offset);
+  return function(d) {
+    return +scale(d) + offset;
+  };
+}
+
+function entering() {
+  return !this.__axis;
+}
+
+function axis(orient, scale) {
+  var tickArguments = [],
+      tickValues = null,
+      tickFormat = null,
+      tickSizeInner = 6,
+      tickSizeOuter = 6,
+      tickPadding = 3,
+      k = orient === top || orient === left ? -1 : 1,
+      x = orient === left || orient === right ? "x" : "y",
+      transform = orient === top || orient === bottom ? translateX : translateY;
+
+  function axis(context) {
+    var values = tickValues == null ? (scale.ticks ? scale.ticks.apply(scale, tickArguments) : scale.domain()) : tickValues,
+        format = tickFormat == null ? (scale.tickFormat ? scale.tickFormat.apply(scale, tickArguments) : identity) : tickFormat,
+        spacing = Math.max(tickSizeInner, 0) + tickPadding,
+        range = scale.range(),
+        range0 = +range[0] + 0.5,
+        range1 = +range[range.length - 1] + 0.5,
+        position = (scale.bandwidth ? center : number)(scale.copy()),
+        selection = context.selection ? context.selection() : context,
+        path = selection.selectAll(".domain").data([null]),
+        tick = selection.selectAll(".tick").data(values, scale).order(),
+        tickExit = tick.exit(),
+        tickEnter = tick.enter().append("g").attr("class", "tick"),
+        line = tick.select("line"),
+        text = tick.select("text");
+
+    path = path.merge(path.enter().insert("path", ".tick")
+        .attr("class", "domain")
+        .attr("stroke", "currentColor"));
+
+    tick = tick.merge(tickEnter);
+
+    line = line.merge(tickEnter.append("line")
+        .attr("stroke", "currentColor")
+        .attr(x + "2", k * tickSizeInner));
+
+    text = text.merge(tickEnter.append("text")
+        .attr("fill", "currentColor")
+        .attr(x, k * spacing)
+        .attr("dy", orient === top ? "0em" : orient === bottom ? "0.71em" : "0.32em"));
+
+    if (context !== selection) {
+      path = path.transition(context);
+      tick = tick.transition(context);
+      line = line.transition(context);
+      text = text.transition(context);
+
+      tickExit = tickExit.transition(context)
+          .attr("opacity", epsilon)
+          .attr("transform", function(d) { return isFinite(d = position(d)) ? transform(d) : this.getAttribute("transform"); });
+
+      tickEnter
+          .attr("opacity", epsilon)
+          .attr("transform", function(d) { var p = this.parentNode.__axis; return transform(p && isFinite(p = p(d)) ? p : position(d)); });
+    }
+
+    tickExit.remove();
+
+    path
+        .attr("d", orient === left || orient == right
+            ? (tickSizeOuter ? "M" + k * tickSizeOuter + "," + range0 + "H0.5V" + range1 + "H" + k * tickSizeOuter : "M0.5," + range0 + "V" + range1)
+            : (tickSizeOuter ? "M" + range0 + "," + k * tickSizeOuter + "V0.5H" + range1 + "V" + k * tickSizeOuter : "M" + range0 + ",0.5H" + range1));
+
+    tick
+        .attr("opacity", 1)
+        .attr("transform", function(d) { return transform(position(d)); });
+
+    line
+        .attr(x + "2", k * tickSizeInner);
+
+    text
+        .attr(x, k * spacing)
+        .text(format);
+
+    selection.filter(entering)
+        .attr("fill", "none")
+        .attr("font-size", 10)
+        .attr("font-family", "sans-serif")
+        .attr("text-anchor", orient === right ? "start" : orient === left ? "end" : "middle");
+
+    selection
+        .each(function() { this.__axis = position; });
+  }
+
+  axis.scale = function(_) {
+    return arguments.length ? (scale = _, axis) : scale;
+  };
+
+  axis.ticks = function() {
+    return tickArguments = slice.call(arguments), axis;
+  };
+
+  axis.tickArguments = function(_) {
+    return arguments.length ? (tickArguments = _ == null ? [] : slice.call(_), axis) : tickArguments.slice();
+  };
+
+  axis.tickValues = function(_) {
+    return arguments.length ? (tickValues = _ == null ? null : slice.call(_), axis) : tickValues && tickValues.slice();
+  };
+
+  axis.tickFormat = function(_) {
+    return arguments.length ? (tickFormat = _, axis) : tickFormat;
+  };
+
+  axis.tickSize = function(_) {
+    return arguments.length ? (tickSizeInner = tickSizeOuter = +_, axis) : tickSizeInner;
+  };
+
+  axis.tickSizeInner = function(_) {
+    return arguments.length ? (tickSizeInner = +_, axis) : tickSizeInner;
+  };
+
+  axis.tickSizeOuter = function(_) {
+    return arguments.length ? (tickSizeOuter = +_, axis) : tickSizeOuter;
+  };
+
+  axis.tickPadding = function(_) {
+    return arguments.length ? (tickPadding = +_, axis) : tickPadding;
+  };
+
+  return axis;
+}
+
+function axisTop(scale) {
+  return axis(top, scale);
+}
+
+function axisRight(scale) {
+  return axis(right, scale);
+}
+
+function axisBottom(scale) {
+  return axis(bottom, scale);
+}
+
+function axisLeft(scale) {
+  return axis(left, scale);
+}
+
+export { axisBottom, axisLeft, axisRight, axisTop };

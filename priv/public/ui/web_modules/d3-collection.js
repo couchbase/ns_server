@@ -1,2 +1,201 @@
-function n(){}function t(t,r){var e=new n;if(t instanceof n)t.each((function(n,t){e.set(t,n)}));else if(Array.isArray(t)){var i,u=-1,o=t.length;if(null==r)for(;++u<o;)e.set(u,t[u]);else for(;++u<o;)e.set(r(i=t[u],u,t),i)}else if(t)for(var s in t)e.set(s,t[s]);return e}function r(){var n,r,s,f=[],c=[];function a(e,i,u,o){if(i>=f.length)return null!=n&&e.sort(n),null!=r?r(e):e;for(var s,c,h,l=-1,v=e.length,p=f[i++],y=t(),$=u();++l<v;)(h=y.get(s=p(c=e[l])+""))?h.push(c):y.set(s,[c]);return y.each((function(n,t){o($,t,a(n,i,u,o))})),$}return s={object:function(n){return a(n,0,e,i)},map:function(n){return a(n,0,u,o)},entries:function(n){return function n(t,e){if(++e>f.length)return t;var i,u=c[e-1];return null!=r&&e>=f.length?i=t.entries():(i=[],t.each((function(t,r){i.push({key:r,values:n(t,e)})}))),null!=u?i.sort((function(n,t){return u(n.key,t.key)})):i}(a(n,0,u,o),0)},key:function(n){return f.push(n),s},sortKeys:function(n){return c[f.length-1]=n,s},sortValues:function(t){return n=t,s},rollup:function(n){return r=n,s}}}function e(){return{}}function i(n,t,r){n[t]=r}function u(){return t()}function o(n,t,r){n.set(t,r)}function s(){}n.prototype=t.prototype={constructor:n,has:function(n){return"$"+n in this},get:function(n){return this["$"+n]},set:function(n,t){return this["$"+n]=t,this},remove:function(n){var t="$"+n;return t in this&&delete this[t]},clear:function(){for(var n in this)"$"===n[0]&&delete this[n]},keys:function(){var n=[];for(var t in this)"$"===t[0]&&n.push(t.slice(1));return n},values:function(){var n=[];for(var t in this)"$"===t[0]&&n.push(this[t]);return n},entries:function(){var n=[];for(var t in this)"$"===t[0]&&n.push({key:t.slice(1),value:this[t]});return n},size:function(){var n=0;for(var t in this)"$"===t[0]&&++n;return n},empty:function(){for(var n in this)if("$"===n[0])return!1;return!0},each:function(n){for(var t in this)"$"===t[0]&&n(this[t],t.slice(1),this)}};var f=t.prototype;function c(n,t){var r=new s;if(n instanceof s)n.each((function(n){r.add(n)}));else if(n){var e=-1,i=n.length;if(null==t)for(;++e<i;)r.add(n[e]);else for(;++e<i;)r.add(t(n[e],e,n))}return r}function a(n){var t=[];for(var r in n)t.push(r);return t}function h(n){var t=[];for(var r in n)t.push(n[r]);return t}function l(n){var t=[];for(var r in n)t.push({key:r,value:n[r]});return t}s.prototype=c.prototype={constructor:s,has:f.has,add:function(n){return this["$"+(n+="")]=n,this},remove:f.remove,clear:f.clear,values:f.keys,size:f.size,empty:f.empty,each:f.each};export{l as entries,a as keys,t as map,r as nest,c as set,h as values};
-//# sourceMappingURL=d3-collection.js.map
+var prefix = "$";
+
+function Map() {}
+
+Map.prototype = map.prototype = {
+  constructor: Map,
+  has: function(key) {
+    return (prefix + key) in this;
+  },
+  get: function(key) {
+    return this[prefix + key];
+  },
+  set: function(key, value) {
+    this[prefix + key] = value;
+    return this;
+  },
+  remove: function(key) {
+    var property = prefix + key;
+    return property in this && delete this[property];
+  },
+  clear: function() {
+    for (var property in this) if (property[0] === prefix) delete this[property];
+  },
+  keys: function() {
+    var keys = [];
+    for (var property in this) if (property[0] === prefix) keys.push(property.slice(1));
+    return keys;
+  },
+  values: function() {
+    var values = [];
+    for (var property in this) if (property[0] === prefix) values.push(this[property]);
+    return values;
+  },
+  entries: function() {
+    var entries = [];
+    for (var property in this) if (property[0] === prefix) entries.push({key: property.slice(1), value: this[property]});
+    return entries;
+  },
+  size: function() {
+    var size = 0;
+    for (var property in this) if (property[0] === prefix) ++size;
+    return size;
+  },
+  empty: function() {
+    for (var property in this) if (property[0] === prefix) return false;
+    return true;
+  },
+  each: function(f) {
+    for (var property in this) if (property[0] === prefix) f(this[property], property.slice(1), this);
+  }
+};
+
+function map(object, f) {
+  var map = new Map;
+
+  // Copy constructor.
+  if (object instanceof Map) object.each(function(value, key) { map.set(key, value); });
+
+  // Index array by numeric index or specified key function.
+  else if (Array.isArray(object)) {
+    var i = -1,
+        n = object.length,
+        o;
+
+    if (f == null) while (++i < n) map.set(i, object[i]);
+    else while (++i < n) map.set(f(o = object[i], i, object), o);
+  }
+
+  // Convert object to map.
+  else if (object) for (var key in object) map.set(key, object[key]);
+
+  return map;
+}
+
+function nest() {
+  var keys = [],
+      sortKeys = [],
+      sortValues,
+      rollup,
+      nest;
+
+  function apply(array, depth, createResult, setResult) {
+    if (depth >= keys.length) {
+      if (sortValues != null) array.sort(sortValues);
+      return rollup != null ? rollup(array) : array;
+    }
+
+    var i = -1,
+        n = array.length,
+        key = keys[depth++],
+        keyValue,
+        value,
+        valuesByKey = map(),
+        values,
+        result = createResult();
+
+    while (++i < n) {
+      if (values = valuesByKey.get(keyValue = key(value = array[i]) + "")) {
+        values.push(value);
+      } else {
+        valuesByKey.set(keyValue, [value]);
+      }
+    }
+
+    valuesByKey.each(function(values, key) {
+      setResult(result, key, apply(values, depth, createResult, setResult));
+    });
+
+    return result;
+  }
+
+  function entries(map, depth) {
+    if (++depth > keys.length) return map;
+    var array, sortKey = sortKeys[depth - 1];
+    if (rollup != null && depth >= keys.length) array = map.entries();
+    else array = [], map.each(function(v, k) { array.push({key: k, values: entries(v, depth)}); });
+    return sortKey != null ? array.sort(function(a, b) { return sortKey(a.key, b.key); }) : array;
+  }
+
+  return nest = {
+    object: function(array) { return apply(array, 0, createObject, setObject); },
+    map: function(array) { return apply(array, 0, createMap, setMap); },
+    entries: function(array) { return entries(apply(array, 0, createMap, setMap), 0); },
+    key: function(d) { keys.push(d); return nest; },
+    sortKeys: function(order) { sortKeys[keys.length - 1] = order; return nest; },
+    sortValues: function(order) { sortValues = order; return nest; },
+    rollup: function(f) { rollup = f; return nest; }
+  };
+}
+
+function createObject() {
+  return {};
+}
+
+function setObject(object, key, value) {
+  object[key] = value;
+}
+
+function createMap() {
+  return map();
+}
+
+function setMap(map, key, value) {
+  map.set(key, value);
+}
+
+function Set() {}
+
+var proto = map.prototype;
+
+Set.prototype = set.prototype = {
+  constructor: Set,
+  has: proto.has,
+  add: function(value) {
+    value += "";
+    this[prefix + value] = value;
+    return this;
+  },
+  remove: proto.remove,
+  clear: proto.clear,
+  values: proto.keys,
+  size: proto.size,
+  empty: proto.empty,
+  each: proto.each
+};
+
+function set(object, f) {
+  var set = new Set;
+
+  // Copy constructor.
+  if (object instanceof Set) object.each(function(value) { set.add(value); });
+
+  // Otherwise, assume it’s an array.
+  else if (object) {
+    var i = -1, n = object.length;
+    if (f == null) while (++i < n) set.add(object[i]);
+    else while (++i < n) set.add(f(object[i], i, object));
+  }
+
+  return set;
+}
+
+function keys(map) {
+  var keys = [];
+  for (var key in map) keys.push(key);
+  return keys;
+}
+
+function values(map) {
+  var values = [];
+  for (var key in map) values.push(map[key]);
+  return values;
+}
+
+function entries(map) {
+  var entries = [];
+  for (var key in map) entries.push({key: key, value: map[key]});
+  return entries;
+}
+
+export { entries, keys, map, nest, set, values };

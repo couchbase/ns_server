@@ -1,2 +1,360 @@
-import{b as t}from"./tslib.es6-c4a4947b.js";import{b as e,d as r,l as n,n as i,o,p as s}from"./mergeMap-64c6f393.js";import{a as c}from"./concat-981db672.js";import{N as a}from"./Notification-9e07e457.js";import{a as u}from"./timer-a781bf0e.js";function h(t){return t instanceof Date&&!isNaN(+t)}function p(t,e){void 0===e&&(e=u);var r=h(t)?+t-e.now():Math.abs(t);return function(t){return t.lift(new f(r,e))}}var f=function(){function t(t,e){this.delay=t,this.scheduler=e}return t.prototype.call=function(t,e){return e.subscribe(new l(t,this.delay,this.scheduler))},t}(),l=function(e){function r(t,r,n){var i=e.call(this,t)||this;return i.delay=r,i.scheduler=n,i.queue=[],i.active=!1,i.errored=!1,i}return t(r,e),r.dispatch=function(t){for(var e=t.source,r=e.queue,n=t.scheduler,i=t.destination;r.length>0&&r[0].time-n.now()<=0;)r.shift().notification.observe(i);if(r.length>0){var o=Math.max(0,r[0].time-n.now());this.schedule(t,o)}else this.unsubscribe(),e.active=!1},r.prototype._schedule=function(t){this.active=!0,this.destination.add(t.schedule(r.dispatch,this.delay,{source:this,destination:this.destination,scheduler:t}))},r.prototype.scheduleNotification=function(t){if(!0!==this.errored){var e=this.scheduler,r=new d(e.now()+this.delay,t);this.queue.push(r),!1===this.active&&this._schedule(e)}},r.prototype._next=function(t){this.scheduleNotification(a.createNext(t))},r.prototype._error=function(t){this.errored=!0,this.queue=[],this.destination.error(t),this.unsubscribe()},r.prototype._complete=function(){this.scheduleNotification(a.createComplete()),this.unsubscribe()},r}(e),d=function(){return function(t,e){this.time=t,this.notification=e}}();function y(t,e){return function(r){return r.lift(new v(t,e))}}var v=function(){function t(t,e){this.compare=t,this.keySelector=e}return t.prototype.call=function(t,e){return e.subscribe(new m(t,this.compare,this.keySelector))},t}(),m=function(e){function r(t,r,n){var i=e.call(this,t)||this;return i.keySelector=n,i.hasKey=!1,"function"==typeof r&&(i.compare=r),i}return t(r,e),r.prototype.compare=function(t,e){return t===e},r.prototype._next=function(t){var e;try{var r=this.keySelector;e=r?r(t):t}catch(t){return this.destination.error(t)}var n=!1;if(this.hasKey)try{n=(0,this.compare)(this.key,e)}catch(t){return this.destination.error(t)}else this.hasKey=!0;n||(this.key=e,this.destination.next(t))},r}(e);function b(){for(var t=[],e=0;e<arguments.length;e++)t[e]=arguments[e];var n=t[t.length-1];return r(n)?(t.pop(),function(e){return c(t,e,n)}):function(e){return c(t,e)}}function _(t){return function(e){return e.lift(new x(t))}}var x=function(){function t(t){this.notifier=t}return t.prototype.call=function(t,e){var r=new w(t),i=n(r,this.notifier);return i&&!r.seenValue?(r.add(i),e.subscribe(r)):r},t}(),w=function(e){function r(t){var r=e.call(this,t)||this;return r.seenValue=!1,r}return t(r,e),r.prototype.notifyNext=function(t,e,r,n,i){this.seenValue=!0,this.complete()},r.prototype.notifyComplete=function(){},r}(i);function N(t,e,r){return function(n){return n.lift(new j(t,e,r))}}var j=function(){function t(t,e,r){this.nextOrObserver=t,this.error=e,this.complete=r}return t.prototype.call=function(t,e){return e.subscribe(new g(t,this.nextOrObserver,this.error,this.complete))},t}(),g=function(e){function r(t,r,n,i){var c=e.call(this,t)||this;return c._tapNext=o,c._tapError=o,c._tapComplete=o,c._tapError=n||o,c._tapComplete=i||o,s(r)?(c._context=c,c._tapNext=r):r&&(c._context=r,c._tapNext=r.next||o,c._tapError=r.error||o,c._tapComplete=r.complete||o),c}return t(r,e),r.prototype._next=function(t){try{this._tapNext.call(this._context,t)}catch(t){return void this.destination.error(t)}this.destination.next(t)},r.prototype._error=function(t){try{this._tapError.call(this._context,t)}catch(t){return void this.destination.error(t)}this.destination.error(t)},r.prototype._complete=function(){try{this._tapComplete.call(this._context)}catch(t){return void this.destination.error(t)}return this.destination.complete()},r}(e);function C(){for(var t=[],e=0;e<arguments.length;e++)t[e]=arguments[e];return function(e){var r;"function"==typeof t[t.length-1]&&(r=t.pop());var n=t;return e.lift(new k(n,r))}}var k=function(){function t(t,e){this.observables=t,this.project=e}return t.prototype.call=function(t,e){return e.subscribe(new O(t,this.observables,this.project))},t}(),O=function(e){function r(t,r,i){var o=e.call(this,t)||this;o.observables=r,o.project=i,o.toRespond=[];var s=r.length;o.values=new Array(s);for(var c=0;c<s;c++)o.toRespond.push(c);for(c=0;c<s;c++){var a=r[c];o.add(n(o,a,a,c))}return o}return t(r,e),r.prototype.notifyNext=function(t,e,r,n,i){this.values[r]=e;var o=this.toRespond;if(o.length>0){var s=o.indexOf(r);-1!==s&&o.splice(s,1)}},r.prototype.notifyComplete=function(){},r.prototype._next=function(t){if(0===this.toRespond.length){var e=[t].concat(this.values);this.project?this._tryProject(e):this.destination.next(e)}},r.prototype._tryProject=function(t){var e;try{e=this.project.apply(this,t)}catch(t){return void this.destination.error(t)}this.destination.next(e)},r}(i);export{N as a,p as b,y as d,h as i,b as s,_ as t,C as w};
-//# sourceMappingURL=withLatestFrom-853e2e94.js.map
+import { b as __extends } from './tslib.es6-c4a4947b.js';
+import { b as Subscriber, d as isScheduler, l as subscribeToResult, n as OuterSubscriber, o as noop, p as isFunction } from './mergeMap-64c6f393.js';
+import { a as concat } from './concat-981db672.js';
+import { N as Notification } from './Notification-9e07e457.js';
+import { a as async } from './timer-a781bf0e.js';
+
+/** PURE_IMPORTS_START  PURE_IMPORTS_END */
+function isDate(value) {
+    return value instanceof Date && !isNaN(+value);
+}
+
+/** PURE_IMPORTS_START tslib,_scheduler_async,_util_isDate,_Subscriber,_Notification PURE_IMPORTS_END */
+function delay(delay, scheduler) {
+    if (scheduler === void 0) {
+        scheduler = async;
+    }
+    var absoluteDelay = isDate(delay);
+    var delayFor = absoluteDelay ? (+delay - scheduler.now()) : Math.abs(delay);
+    return function (source) { return source.lift(new DelayOperator(delayFor, scheduler)); };
+}
+var DelayOperator = /*@__PURE__*/ (function () {
+    function DelayOperator(delay, scheduler) {
+        this.delay = delay;
+        this.scheduler = scheduler;
+    }
+    DelayOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new DelaySubscriber(subscriber, this.delay, this.scheduler));
+    };
+    return DelayOperator;
+}());
+var DelaySubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(DelaySubscriber, _super);
+    function DelaySubscriber(destination, delay, scheduler) {
+        var _this = _super.call(this, destination) || this;
+        _this.delay = delay;
+        _this.scheduler = scheduler;
+        _this.queue = [];
+        _this.active = false;
+        _this.errored = false;
+        return _this;
+    }
+    DelaySubscriber.dispatch = function (state) {
+        var source = state.source;
+        var queue = source.queue;
+        var scheduler = state.scheduler;
+        var destination = state.destination;
+        while (queue.length > 0 && (queue[0].time - scheduler.now()) <= 0) {
+            queue.shift().notification.observe(destination);
+        }
+        if (queue.length > 0) {
+            var delay_1 = Math.max(0, queue[0].time - scheduler.now());
+            this.schedule(state, delay_1);
+        }
+        else {
+            this.unsubscribe();
+            source.active = false;
+        }
+    };
+    DelaySubscriber.prototype._schedule = function (scheduler) {
+        this.active = true;
+        var destination = this.destination;
+        destination.add(scheduler.schedule(DelaySubscriber.dispatch, this.delay, {
+            source: this, destination: this.destination, scheduler: scheduler
+        }));
+    };
+    DelaySubscriber.prototype.scheduleNotification = function (notification) {
+        if (this.errored === true) {
+            return;
+        }
+        var scheduler = this.scheduler;
+        var message = new DelayMessage(scheduler.now() + this.delay, notification);
+        this.queue.push(message);
+        if (this.active === false) {
+            this._schedule(scheduler);
+        }
+    };
+    DelaySubscriber.prototype._next = function (value) {
+        this.scheduleNotification(Notification.createNext(value));
+    };
+    DelaySubscriber.prototype._error = function (err) {
+        this.errored = true;
+        this.queue = [];
+        this.destination.error(err);
+        this.unsubscribe();
+    };
+    DelaySubscriber.prototype._complete = function () {
+        this.scheduleNotification(Notification.createComplete());
+        this.unsubscribe();
+    };
+    return DelaySubscriber;
+}(Subscriber));
+var DelayMessage = /*@__PURE__*/ (function () {
+    function DelayMessage(time, notification) {
+        this.time = time;
+        this.notification = notification;
+    }
+    return DelayMessage;
+}());
+
+/** PURE_IMPORTS_START tslib,_Subscriber PURE_IMPORTS_END */
+function distinctUntilChanged(compare, keySelector) {
+    return function (source) { return source.lift(new DistinctUntilChangedOperator(compare, keySelector)); };
+}
+var DistinctUntilChangedOperator = /*@__PURE__*/ (function () {
+    function DistinctUntilChangedOperator(compare, keySelector) {
+        this.compare = compare;
+        this.keySelector = keySelector;
+    }
+    DistinctUntilChangedOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new DistinctUntilChangedSubscriber(subscriber, this.compare, this.keySelector));
+    };
+    return DistinctUntilChangedOperator;
+}());
+var DistinctUntilChangedSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(DistinctUntilChangedSubscriber, _super);
+    function DistinctUntilChangedSubscriber(destination, compare, keySelector) {
+        var _this = _super.call(this, destination) || this;
+        _this.keySelector = keySelector;
+        _this.hasKey = false;
+        if (typeof compare === 'function') {
+            _this.compare = compare;
+        }
+        return _this;
+    }
+    DistinctUntilChangedSubscriber.prototype.compare = function (x, y) {
+        return x === y;
+    };
+    DistinctUntilChangedSubscriber.prototype._next = function (value) {
+        var key;
+        try {
+            var keySelector = this.keySelector;
+            key = keySelector ? keySelector(value) : value;
+        }
+        catch (err) {
+            return this.destination.error(err);
+        }
+        var result = false;
+        if (this.hasKey) {
+            try {
+                var compare = this.compare;
+                result = compare(this.key, key);
+            }
+            catch (err) {
+                return this.destination.error(err);
+            }
+        }
+        else {
+            this.hasKey = true;
+        }
+        if (!result) {
+            this.key = key;
+            this.destination.next(value);
+        }
+    };
+    return DistinctUntilChangedSubscriber;
+}(Subscriber));
+
+/** PURE_IMPORTS_START _observable_concat,_util_isScheduler PURE_IMPORTS_END */
+function startWith() {
+    var array = [];
+    for (var _i = 0; _i < arguments.length; _i++) {
+        array[_i] = arguments[_i];
+    }
+    var scheduler = array[array.length - 1];
+    if (isScheduler(scheduler)) {
+        array.pop();
+        return function (source) { return concat(array, source, scheduler); };
+    }
+    else {
+        return function (source) { return concat(array, source); };
+    }
+}
+
+/** PURE_IMPORTS_START tslib,_OuterSubscriber,_util_subscribeToResult PURE_IMPORTS_END */
+function takeUntil(notifier) {
+    return function (source) { return source.lift(new TakeUntilOperator(notifier)); };
+}
+var TakeUntilOperator = /*@__PURE__*/ (function () {
+    function TakeUntilOperator(notifier) {
+        this.notifier = notifier;
+    }
+    TakeUntilOperator.prototype.call = function (subscriber, source) {
+        var takeUntilSubscriber = new TakeUntilSubscriber(subscriber);
+        var notifierSubscription = subscribeToResult(takeUntilSubscriber, this.notifier);
+        if (notifierSubscription && !takeUntilSubscriber.seenValue) {
+            takeUntilSubscriber.add(notifierSubscription);
+            return source.subscribe(takeUntilSubscriber);
+        }
+        return takeUntilSubscriber;
+    };
+    return TakeUntilOperator;
+}());
+var TakeUntilSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(TakeUntilSubscriber, _super);
+    function TakeUntilSubscriber(destination) {
+        var _this = _super.call(this, destination) || this;
+        _this.seenValue = false;
+        return _this;
+    }
+    TakeUntilSubscriber.prototype.notifyNext = function (outerValue, innerValue, outerIndex, innerIndex, innerSub) {
+        this.seenValue = true;
+        this.complete();
+    };
+    TakeUntilSubscriber.prototype.notifyComplete = function () {
+    };
+    return TakeUntilSubscriber;
+}(OuterSubscriber));
+
+/** PURE_IMPORTS_START tslib,_Subscriber,_util_noop,_util_isFunction PURE_IMPORTS_END */
+function tap(nextOrObserver, error, complete) {
+    return function tapOperatorFunction(source) {
+        return source.lift(new DoOperator(nextOrObserver, error, complete));
+    };
+}
+var DoOperator = /*@__PURE__*/ (function () {
+    function DoOperator(nextOrObserver, error, complete) {
+        this.nextOrObserver = nextOrObserver;
+        this.error = error;
+        this.complete = complete;
+    }
+    DoOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new TapSubscriber(subscriber, this.nextOrObserver, this.error, this.complete));
+    };
+    return DoOperator;
+}());
+var TapSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(TapSubscriber, _super);
+    function TapSubscriber(destination, observerOrNext, error, complete) {
+        var _this = _super.call(this, destination) || this;
+        _this._tapNext = noop;
+        _this._tapError = noop;
+        _this._tapComplete = noop;
+        _this._tapError = error || noop;
+        _this._tapComplete = complete || noop;
+        if (isFunction(observerOrNext)) {
+            _this._context = _this;
+            _this._tapNext = observerOrNext;
+        }
+        else if (observerOrNext) {
+            _this._context = observerOrNext;
+            _this._tapNext = observerOrNext.next || noop;
+            _this._tapError = observerOrNext.error || noop;
+            _this._tapComplete = observerOrNext.complete || noop;
+        }
+        return _this;
+    }
+    TapSubscriber.prototype._next = function (value) {
+        try {
+            this._tapNext.call(this._context, value);
+        }
+        catch (err) {
+            this.destination.error(err);
+            return;
+        }
+        this.destination.next(value);
+    };
+    TapSubscriber.prototype._error = function (err) {
+        try {
+            this._tapError.call(this._context, err);
+        }
+        catch (err) {
+            this.destination.error(err);
+            return;
+        }
+        this.destination.error(err);
+    };
+    TapSubscriber.prototype._complete = function () {
+        try {
+            this._tapComplete.call(this._context);
+        }
+        catch (err) {
+            this.destination.error(err);
+            return;
+        }
+        return this.destination.complete();
+    };
+    return TapSubscriber;
+}(Subscriber));
+
+/** PURE_IMPORTS_START tslib,_OuterSubscriber,_util_subscribeToResult PURE_IMPORTS_END */
+function withLatestFrom() {
+    var args = [];
+    for (var _i = 0; _i < arguments.length; _i++) {
+        args[_i] = arguments[_i];
+    }
+    return function (source) {
+        var project;
+        if (typeof args[args.length - 1] === 'function') {
+            project = args.pop();
+        }
+        var observables = args;
+        return source.lift(new WithLatestFromOperator(observables, project));
+    };
+}
+var WithLatestFromOperator = /*@__PURE__*/ (function () {
+    function WithLatestFromOperator(observables, project) {
+        this.observables = observables;
+        this.project = project;
+    }
+    WithLatestFromOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new WithLatestFromSubscriber(subscriber, this.observables, this.project));
+    };
+    return WithLatestFromOperator;
+}());
+var WithLatestFromSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(WithLatestFromSubscriber, _super);
+    function WithLatestFromSubscriber(destination, observables, project) {
+        var _this = _super.call(this, destination) || this;
+        _this.observables = observables;
+        _this.project = project;
+        _this.toRespond = [];
+        var len = observables.length;
+        _this.values = new Array(len);
+        for (var i = 0; i < len; i++) {
+            _this.toRespond.push(i);
+        }
+        for (var i = 0; i < len; i++) {
+            var observable = observables[i];
+            _this.add(subscribeToResult(_this, observable, observable, i));
+        }
+        return _this;
+    }
+    WithLatestFromSubscriber.prototype.notifyNext = function (outerValue, innerValue, outerIndex, innerIndex, innerSub) {
+        this.values[outerIndex] = innerValue;
+        var toRespond = this.toRespond;
+        if (toRespond.length > 0) {
+            var found = toRespond.indexOf(outerIndex);
+            if (found !== -1) {
+                toRespond.splice(found, 1);
+            }
+        }
+    };
+    WithLatestFromSubscriber.prototype.notifyComplete = function () {
+    };
+    WithLatestFromSubscriber.prototype._next = function (value) {
+        if (this.toRespond.length === 0) {
+            var args = [value].concat(this.values);
+            if (this.project) {
+                this._tryProject(args);
+            }
+            else {
+                this.destination.next(args);
+            }
+        }
+    };
+    WithLatestFromSubscriber.prototype._tryProject = function (args) {
+        var result;
+        try {
+            result = this.project.apply(this, args);
+        }
+        catch (err) {
+            this.destination.error(err);
+            return;
+        }
+        this.destination.next(result);
+    };
+    return WithLatestFromSubscriber;
+}(OuterSubscriber));
+
+export { tap as a, delay as b, distinctUntilChanged as d, isDate as i, startWith as s, takeUntil as t, withLatestFrom as w };

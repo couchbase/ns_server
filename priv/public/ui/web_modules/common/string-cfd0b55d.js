@@ -1,2 +1,70 @@
-function n(n,e){return n=+n,e=+e,function(r){return n*(1-r)+e*r}}var e=/[-+]?(?:\d+\.?\d*|\.?\d+)(?:[eE][-+]?\d+)?/g,r=new RegExp(e.source,"g");function t(t,u){var i,c,o,x=e.lastIndex=r.lastIndex=0,f=-1,l=[],a=[];for(t+="",u+="";(i=e.exec(t))&&(c=r.exec(u));)(o=c.index)>x&&(o=u.slice(x,o),l[f]?l[f]+=o:l[++f]=o),(i=i[0])===(c=c[0])?l[f]?l[f]+=c:l[++f]=c:(l[++f]=null,a.push({i:f,x:n(i,c)})),x=r.lastIndex;return x<u.length&&(o=u.slice(x),l[f]?l[f]+=o:l[++f]=o),l.length<2?a[0]?function(n){return function(e){return n(e)+""}}(a[0].x):function(n){return function(){return n}}(u):(u=a.length,function(n){for(var e,r=0;r<u;++r)l[(e=a[r]).i]=e.x(n);return l.join("")})}export{t as a,n as i};
-//# sourceMappingURL=string-cfd0b55d.js.map
+function interpolateNumber(a, b) {
+  return a = +a, b = +b, function(t) {
+    return a * (1 - t) + b * t;
+  };
+}
+
+var reA = /[-+]?(?:\d+\.?\d*|\.?\d+)(?:[eE][-+]?\d+)?/g,
+    reB = new RegExp(reA.source, "g");
+
+function zero(b) {
+  return function() {
+    return b;
+  };
+}
+
+function one(b) {
+  return function(t) {
+    return b(t) + "";
+  };
+}
+
+function interpolateString(a, b) {
+  var bi = reA.lastIndex = reB.lastIndex = 0, // scan index for next number in b
+      am, // current match in a
+      bm, // current match in b
+      bs, // string preceding current number in b, if any
+      i = -1, // index in s
+      s = [], // string constants and placeholders
+      q = []; // number interpolators
+
+  // Coerce inputs to strings.
+  a = a + "", b = b + "";
+
+  // Interpolate pairs of numbers in a & b.
+  while ((am = reA.exec(a))
+      && (bm = reB.exec(b))) {
+    if ((bs = bm.index) > bi) { // a string precedes the next number in b
+      bs = b.slice(bi, bs);
+      if (s[i]) s[i] += bs; // coalesce with previous string
+      else s[++i] = bs;
+    }
+    if ((am = am[0]) === (bm = bm[0])) { // numbers in a & b match
+      if (s[i]) s[i] += bm; // coalesce with previous string
+      else s[++i] = bm;
+    } else { // interpolate non-matching numbers
+      s[++i] = null;
+      q.push({i: i, x: interpolateNumber(am, bm)});
+    }
+    bi = reB.lastIndex;
+  }
+
+  // Add remains of b.
+  if (bi < b.length) {
+    bs = b.slice(bi);
+    if (s[i]) s[i] += bs; // coalesce with previous string
+    else s[++i] = bs;
+  }
+
+  // Special optimization for only a single match.
+  // Otherwise, interpolate each of the numbers and rejoin the string.
+  return s.length < 2 ? (q[0]
+      ? one(q[0].x)
+      : zero(b))
+      : (b = q.length, function(t) {
+          for (var i = 0, o; i < b; ++i) s[(o = q[i]).i] = o.x(t);
+          return s.join("");
+        });
+}
+
+export { interpolateString as a, interpolateNumber as i };

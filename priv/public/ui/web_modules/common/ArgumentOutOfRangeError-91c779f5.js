@@ -1,2 +1,14 @@
-var r=function(){function r(){return Error.call(this),this.message="argument out of range",this.name="ArgumentOutOfRangeError",this}return r.prototype=Object.create(Error.prototype),r}();export{r as A};
-//# sourceMappingURL=ArgumentOutOfRangeError-91c779f5.js.map
+/** PURE_IMPORTS_START  PURE_IMPORTS_END */
+var ArgumentOutOfRangeErrorImpl = /*@__PURE__*/ (function () {
+    function ArgumentOutOfRangeErrorImpl() {
+        Error.call(this);
+        this.message = 'argument out of range';
+        this.name = 'ArgumentOutOfRangeError';
+        return this;
+    }
+    ArgumentOutOfRangeErrorImpl.prototype = /*@__PURE__*/ Object.create(Error.prototype);
+    return ArgumentOutOfRangeErrorImpl;
+})();
+var ArgumentOutOfRangeError = ArgumentOutOfRangeErrorImpl;
+
+export { ArgumentOutOfRangeError as A };

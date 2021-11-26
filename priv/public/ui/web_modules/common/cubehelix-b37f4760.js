@@ -1,2 +1,91 @@
-import{R as t,r as s,d as a,e as n,C as i,l as h,m as r,n as o,h as c}from"./rgb-50db7803.js";var e=Math.PI/180,u=180/Math.PI,l=-.14861,f=1.78277,p=-.29227,w=-.90649,y=1.97294,M=y*w,b=y*f,g=f*p-w*l;function N(a){if(a instanceof v)return new v(a.h,a.s,a.l,a.opacity);a instanceof t||(a=s(a));var n=a.r/255,i=a.g/255,h=a.b/255,r=(g*h+M*n-b*i)/(g+M-b),o=h-r,c=(y*(i-r)-p*o)/w,e=Math.sqrt(c*c+o*o)/(y*r*(1-r)),l=e?Math.atan2(c,o)*u-120:NaN;return new v(l<0?l+360:l,e,r,a.opacity)}function m(t,s,a,n){return 1===arguments.length?N(t):new v(t,s,a,null==n?1:n)}function v(t,s,a,n){this.h=+t,this.s=+s,this.l=+a,this.opacity=+n}function d(t){return function s(a){function n(s,n){var i=t((s=m(s)).h,(n=m(n)).h),h=o(s.s,n.s),r=o(s.l,n.l),c=o(s.opacity,n.opacity);return function(t){return s.h=i(t),s.s=h(t),s.l=r(Math.pow(t,a)),s.opacity=c(t),s+""}}return a=+a,n.gamma=s,n}(1)}a(v,m,n(i,{brighter:function(t){return t=null==t?h:Math.pow(h,t),new v(this.h,this.s,this.l*t,this.opacity)},darker:function(t){return t=null==t?r:Math.pow(r,t),new v(this.h,this.s,this.l*t,this.opacity)},rgb:function(){var s=isNaN(this.h)?0:(this.h+120)*e,a=+this.l,n=isNaN(this.s)?0:this.s*a*(1-a),i=Math.cos(s),h=Math.sin(s);return new t(255*(a+n*(l*i+f*h)),255*(a+n*(p*i+w*h)),255*(a+n*(y*i)),this.opacity)}}));var I=d(c),P=d(o);export{P as a,m as b,I as c,e as d,u as r};
-//# sourceMappingURL=cubehelix-b37f4760.js.map
+import { R as Rgb, r as rgbConvert, d as define, e as extend, C as Color, l as brighter, m as darker, n as nogamma, h as hue } from './rgb-50db7803.js';
+
+var deg2rad = Math.PI / 180;
+var rad2deg = 180 / Math.PI;
+
+var A = -0.14861,
+    B = +1.78277,
+    C = -0.29227,
+    D = -0.90649,
+    E = +1.97294,
+    ED = E * D,
+    EB = E * B,
+    BC_DA = B * C - D * A;
+
+function cubehelixConvert(o) {
+  if (o instanceof Cubehelix) return new Cubehelix(o.h, o.s, o.l, o.opacity);
+  if (!(o instanceof Rgb)) o = rgbConvert(o);
+  var r = o.r / 255,
+      g = o.g / 255,
+      b = o.b / 255,
+      l = (BC_DA * b + ED * r - EB * g) / (BC_DA + ED - EB),
+      bl = b - l,
+      k = (E * (g - l) - C * bl) / D,
+      s = Math.sqrt(k * k + bl * bl) / (E * l * (1 - l)), // NaN if l=0 or l=1
+      h = s ? Math.atan2(k, bl) * rad2deg - 120 : NaN;
+  return new Cubehelix(h < 0 ? h + 360 : h, s, l, o.opacity);
+}
+
+function cubehelix(h, s, l, opacity) {
+  return arguments.length === 1 ? cubehelixConvert(h) : new Cubehelix(h, s, l, opacity == null ? 1 : opacity);
+}
+
+function Cubehelix(h, s, l, opacity) {
+  this.h = +h;
+  this.s = +s;
+  this.l = +l;
+  this.opacity = +opacity;
+}
+
+define(Cubehelix, cubehelix, extend(Color, {
+  brighter: function(k) {
+    k = k == null ? brighter : Math.pow(brighter, k);
+    return new Cubehelix(this.h, this.s, this.l * k, this.opacity);
+  },
+  darker: function(k) {
+    k = k == null ? darker : Math.pow(darker, k);
+    return new Cubehelix(this.h, this.s, this.l * k, this.opacity);
+  },
+  rgb: function() {
+    var h = isNaN(this.h) ? 0 : (this.h + 120) * deg2rad,
+        l = +this.l,
+        a = isNaN(this.s) ? 0 : this.s * l * (1 - l),
+        cosh = Math.cos(h),
+        sinh = Math.sin(h);
+    return new Rgb(
+      255 * (l + a * (A * cosh + B * sinh)),
+      255 * (l + a * (C * cosh + D * sinh)),
+      255 * (l + a * (E * cosh)),
+      this.opacity
+    );
+  }
+}));
+
+function cubehelix$1(hue) {
+  return (function cubehelixGamma(y) {
+    y = +y;
+
+    function cubehelix$1(start, end) {
+      var h = hue((start = cubehelix(start)).h, (end = cubehelix(end)).h),
+          s = nogamma(start.s, end.s),
+          l = nogamma(start.l, end.l),
+          opacity = nogamma(start.opacity, end.opacity);
+      return function(t) {
+        start.h = h(t);
+        start.s = s(t);
+        start.l = l(Math.pow(t, y));
+        start.opacity = opacity(t);
+        return start + "";
+      };
+    }
+
+    cubehelix$1.gamma = cubehelixGamma;
+
+    return cubehelix$1;
+  })(1);
+}
+
+var cubehelix$2 = cubehelix$1(hue);
+var cubehelixLong = cubehelix$1(nogamma);
+
+export { cubehelixLong as a, cubehelix as b, cubehelix$2 as c, deg2rad as d, rad2deg as r };

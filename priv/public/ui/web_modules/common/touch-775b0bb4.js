@@ -1,2 +1,47 @@
-import{S as e,r as n,e as t}from"./index-e88ffd88.js";function r(t){return"string"==typeof t?new e([[document.querySelector(t)]],[document.documentElement]):new e([[t]],n)}function c(){for(var e,n=t;e=n.sourceEvent;)n=e;return n}function o(e,n){var t=e.ownerSVGElement||e;if(t.createSVGPoint){var r=t.createSVGPoint();return r.x=n.clientX,r.y=n.clientY,[(r=r.matrixTransform(e.getScreenCTM().inverse())).x,r.y]}var c=e.getBoundingClientRect();return[n.clientX-c.left-e.clientLeft,n.clientY-c.top-e.clientTop]}function i(e){var n=c();return n.changedTouches&&(n=n.changedTouches[0]),o(e,n)}function a(e,n,t){arguments.length<3&&(t=n,n=c().changedTouches);for(var r,i=0,a=n?n.length:0;i<a;++i)if((r=n[i]).identifier===t)return o(e,r);return null}export{c as a,i as m,o as p,r as s,a as t};
-//# sourceMappingURL=touch-775b0bb4.js.map
+import { S as Selection, r as root, e as event } from './index-e88ffd88.js';
+
+function select(selector) {
+  return typeof selector === "string"
+      ? new Selection([[document.querySelector(selector)]], [document.documentElement])
+      : new Selection([[selector]], root);
+}
+
+function sourceEvent() {
+  var current = event, source;
+  while (source = current.sourceEvent) current = source;
+  return current;
+}
+
+function point(node, event) {
+  var svg = node.ownerSVGElement || node;
+
+  if (svg.createSVGPoint) {
+    var point = svg.createSVGPoint();
+    point.x = event.clientX, point.y = event.clientY;
+    point = point.matrixTransform(node.getScreenCTM().inverse());
+    return [point.x, point.y];
+  }
+
+  var rect = node.getBoundingClientRect();
+  return [event.clientX - rect.left - node.clientLeft, event.clientY - rect.top - node.clientTop];
+}
+
+function mouse(node) {
+  var event = sourceEvent();
+  if (event.changedTouches) event = event.changedTouches[0];
+  return point(node, event);
+}
+
+function touch(node, touches, identifier) {
+  if (arguments.length < 3) identifier = touches, touches = sourceEvent().changedTouches;
+
+  for (var i = 0, n = touches ? touches.length : 0, touch; i < n; ++i) {
+    if ((touch = touches[i]).identifier === identifier) {
+      return point(node, touch);
+    }
+  }
+
+  return null;
+}
+
+export { sourceEvent as a, mouse as m, point as p, select as s, touch as t };

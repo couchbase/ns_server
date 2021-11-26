@@ -1,2 +1,1241 @@
-import{s as n,b as t,t as r,i as e,j as u,a,q as o,e as i}from"./common/quantile-0d207231.js";import"./common/rgb-50db7803.js";import{i as c}from"./common/value-2cd045dd.js";import{i as f}from"./common/string-cfd0b55d.js";import{i as l,p as s}from"./common/piecewise-ef887050.js";import{c as h,p,g,e as m,a as d,f as v}from"./common/precisionRound-dc953fe5.js";import{t as y,s as M,a as w,u as N,b as k,c as b}from"./common/utcYear-c83ede8f.js";import{u as x,a as A,t as q,b as S,c as D,d as j,e as I,f as O}from"./common/utcMonth-4fcc394c.js";import{t as R,u as L}from"./common/defaultLocale-579b98ca.js";function E(n,t){switch(arguments.length){case 0:break;case 1:this.range(n);break;default:this.range(t).domain(n)}return this}function F(n,t){switch(arguments.length){case 0:break;case 1:"function"==typeof n?this.interpolator(n):this.range(n);break;default:this.domain(n),"function"==typeof t?this.interpolator(t):this.range(t)}return this}const P=Symbol("implicit");function T(){var n=new Map,t=[],r=[],e=P;function u(u){var a=u+"",o=n.get(a);if(!o){if(e!==P)return e;n.set(a,o=t.push(u))}return r[(o-1)%r.length]}return u.domain=function(r){if(!arguments.length)return t.slice();t=[],n=new Map;for(const e of r){const r=e+"";n.has(r)||n.set(r,t.push(e))}return u},u.range=function(n){return arguments.length?(r=Array.from(n),u):r.slice()},u.unknown=function(n){return arguments.length?(e=n,u):e},u.copy=function(){return T(t,r).unknown(e)},E.apply(u,arguments),u}function Q(){var t,r,e=T().unknown(void 0),u=e.domain,a=e.range,o=0,i=1,c=!1,f=0,l=0,s=.5;function h(){var e=u().length,h=i<o,p=h?i:o,g=h?o:i;t=(g-p)/Math.max(1,e-f+2*l),c&&(t=Math.floor(t)),p+=(g-p-t*(e-f))*s,r=t*(1-f),c&&(p=Math.round(p),r=Math.round(r));var m=n(e).map((function(n){return p+t*n}));return a(h?m.reverse():m)}return delete e.unknown,e.domain=function(n){return arguments.length?(u(n),h()):u()},e.range=function(n){return arguments.length?([o,i]=n,o=+o,i=+i,h()):[o,i]},e.rangeRound=function(n){return[o,i]=n,o=+o,i=+i,c=!0,h()},e.bandwidth=function(){return r},e.step=function(){return t},e.round=function(n){return arguments.length?(c=!!n,h()):c},e.padding=function(n){return arguments.length?(f=Math.min(1,l=+n),h()):f},e.paddingInner=function(n){return arguments.length?(f=Math.min(1,n),h()):f},e.paddingOuter=function(n){return arguments.length?(l=+n,h()):l},e.align=function(n){return arguments.length?(s=Math.max(0,Math.min(1,n)),h()):s},e.copy=function(){return Q(u(),[o,i]).round(c).paddingInner(f).paddingOuter(l).align(s)},E.apply(h(),arguments)}function U(n){var t=n.copy;return n.padding=n.paddingOuter,delete n.paddingInner,delete n.paddingOuter,n.copy=function(){return U(t())},n}function B(){return U(Q.apply(null,arguments).paddingInner(1))}function C(n){return+n}var Y=[0,1];function z(n){return n}function G(n,t){return(t-=n=+n)?function(r){return(r-n)/t}:(r=isNaN(t)?NaN:.5,function(){return r});var r}function H(n,t,r){var e=n[0],u=n[1],a=t[0],o=t[1];return u<e?(e=G(u,e),a=r(o,a)):(e=G(e,u),a=r(a,o)),function(n){return a(e(n))}}function J(n,r,e){var u=Math.min(n.length,r.length)-1,a=new Array(u),o=new Array(u),i=-1;for(n[u]<n[0]&&(n=n.slice().reverse(),r=r.slice().reverse());++i<u;)a[i]=G(n[i],n[i+1]),o[i]=e(r[i],r[i+1]);return function(r){var e=t(n,r,1,u)-1;return o[e](a[e](r))}}function K(n,t){return t.domain(n.domain()).range(n.range()).interpolate(n.interpolate()).clamp(n.clamp()).unknown(n.unknown())}function V(){var n,t,r,e,u,a,o=Y,i=Y,s=c,h=z;function p(){var n,t,r,c=Math.min(o.length,i.length);return h!==z&&(n=o[0],t=o[c-1],n>t&&(r=n,n=t,t=r),h=function(r){return Math.max(n,Math.min(t,r))}),e=c>2?J:H,u=a=null,g}function g(t){return isNaN(t=+t)?r:(u||(u=e(o.map(n),i,s)))(n(h(t)))}return g.invert=function(r){return h(t((a||(a=e(i,o.map(n),f)))(r)))},g.domain=function(n){return arguments.length?(o=Array.from(n,C),p()):o.slice()},g.range=function(n){return arguments.length?(i=Array.from(n),p()):i.slice()},g.rangeRound=function(n){return i=Array.from(n),s=l,p()},g.clamp=function(n){return arguments.length?(h=!!n||z,p()):h!==z},g.interpolate=function(n){return arguments.length?(s=n,p()):s},g.unknown=function(n){return arguments.length?(r=n,g):r},function(r,e){return n=r,t=e,p()}}function W(){return V()(z,z)}function X(n,t,e,u){var a,o=r(n,t,e);switch((u=h(null==u?",f":u)).type){case"s":var i=Math.max(Math.abs(n),Math.abs(t));return null!=u.precision||isNaN(a=m(o,i))||(u.precision=a),d(u,i);case"":case"e":case"g":case"p":case"r":null!=u.precision||isNaN(a=g(o,Math.max(Math.abs(n),Math.abs(t))))||(u.precision=a-("e"===u.type));break;case"f":case"%":null!=u.precision||isNaN(a=p(o))||(u.precision=a-2*("%"===u.type))}return v(u)}function Z(n){var t=n.domain;return n.ticks=function(n){var r=t();return e(r[0],r[r.length-1],null==n?10:n)},n.tickFormat=function(n,r){var e=t();return X(e[0],e[e.length-1],null==n?10:n,r)},n.nice=function(r){null==r&&(r=10);var e,a=t(),o=0,i=a.length-1,c=a[o],f=a[i];return f<c&&(e=c,c=f,f=e,e=o,o=i,i=e),(e=u(c,f,r))>0?(c=Math.floor(c/e)*e,f=Math.ceil(f/e)*e,e=u(c,f,r)):e<0&&(c=Math.ceil(c*e)/e,f=Math.floor(f*e)/e,e=u(c,f,r)),e>0?(a[o]=Math.floor(c/e)*e,a[i]=Math.ceil(f/e)*e,t(a)):e<0&&(a[o]=Math.ceil(c*e)/e,a[i]=Math.floor(f*e)/e,t(a)),n},n}function $(){var n=W();return n.copy=function(){return K(n,$())},E.apply(n,arguments),Z(n)}function _(n){var t;function r(n){return isNaN(n=+n)?t:n}return r.invert=r,r.domain=r.range=function(t){return arguments.length?(n=Array.from(t,C),r):n.slice()},r.unknown=function(n){return arguments.length?(t=n,r):t},r.copy=function(){return _(n).unknown(t)},n=arguments.length?Array.from(n,C):[0,1],Z(r)}function nn(n,t){var r,e=0,u=(n=n.slice()).length-1,a=n[e],o=n[u];return o<a&&(r=e,e=u,u=r,r=a,a=o,o=r),n[e]=t.floor(a),n[u]=t.ceil(o),n}function tn(n){return Math.log(n)}function rn(n){return Math.exp(n)}function en(n){return-Math.log(-n)}function un(n){return-Math.exp(-n)}function an(n){return isFinite(n)?+("1e"+n):n<0?0:n}function on(n){return function(t){return-n(-t)}}function cn(n){var t,r,u=n(tn,rn),a=u.domain,o=10;function i(){return t=function(n){return n===Math.E?Math.log:10===n&&Math.log10||2===n&&Math.log2||(n=Math.log(n),function(t){return Math.log(t)/n})}(o),r=function(n){return 10===n?an:n===Math.E?Math.exp:function(t){return Math.pow(n,t)}}(o),a()[0]<0?(t=on(t),r=on(r),n(en,un)):n(tn,rn),u}return u.base=function(n){return arguments.length?(o=+n,i()):o},u.domain=function(n){return arguments.length?(a(n),i()):a()},u.ticks=function(n){var u,i=a(),c=i[0],f=i[i.length-1];(u=f<c)&&(p=c,c=f,f=p);var l,s,h,p=t(c),g=t(f),m=null==n?10:+n,d=[];if(!(o%1)&&g-p<m){if(p=Math.floor(p),g=Math.ceil(g),c>0){for(;p<=g;++p)for(s=1,l=r(p);s<o;++s)if(!((h=l*s)<c)){if(h>f)break;d.push(h)}}else for(;p<=g;++p)for(s=o-1,l=r(p);s>=1;--s)if(!((h=l*s)<c)){if(h>f)break;d.push(h)}2*d.length<m&&(d=e(c,f,m))}else d=e(p,g,Math.min(g-p,m)).map(r);return u?d.reverse():d},u.tickFormat=function(n,e){if(null==e&&(e=10===o?".0e":","),"function"!=typeof e&&(e=v(e)),n===1/0)return e;null==n&&(n=10);var a=Math.max(1,o*n/u.ticks().length);return function(n){var u=n/r(Math.round(t(n)));return u*o<o-.5&&(u*=o),u<=a?e(n):""}},u.nice=function(){return a(nn(a(),{floor:function(n){return r(Math.floor(t(n)))},ceil:function(n){return r(Math.ceil(t(n)))}}))},u}function fn(){var n=cn(V()).domain([1,10]);return n.copy=function(){return K(n,fn()).base(n.base())},E.apply(n,arguments),n}function ln(n){return function(t){return Math.sign(t)*Math.log1p(Math.abs(t/n))}}function sn(n){return function(t){return Math.sign(t)*Math.expm1(Math.abs(t))*n}}function hn(n){var t=1,r=n(ln(t),sn(t));return r.constant=function(r){return arguments.length?n(ln(t=+r),sn(t)):t},Z(r)}function pn(){var n=hn(V());return n.copy=function(){return K(n,pn()).constant(n.constant())},E.apply(n,arguments)}function gn(n){return function(t){return t<0?-Math.pow(-t,n):Math.pow(t,n)}}function mn(n){return n<0?-Math.sqrt(-n):Math.sqrt(n)}function dn(n){return n<0?-n*n:n*n}function vn(n){var t=n(z,z),r=1;function e(){return 1===r?n(z,z):.5===r?n(mn,dn):n(gn(r),gn(1/r))}return t.exponent=function(n){return arguments.length?(r=+n,e()):r},Z(t)}function yn(){var n=vn(V());return n.copy=function(){return K(n,yn()).exponent(n.exponent())},E.apply(n,arguments),n}function Mn(){return yn.apply(null,arguments).exponent(.5)}function wn(n){return Math.sign(n)*n*n}function Nn(n){return Math.sign(n)*Math.sqrt(Math.abs(n))}function kn(){var n,t=W(),r=[0,1],e=!1;function u(r){var u=Nn(t(r));return isNaN(u)?n:e?Math.round(u):u}return u.invert=function(n){return t.invert(wn(n))},u.domain=function(n){return arguments.length?(t.domain(n),u):t.domain()},u.range=function(n){return arguments.length?(t.range((r=Array.from(n,C)).map(wn)),u):r.slice()},u.rangeRound=function(n){return u.range(n).round(!0)},u.round=function(n){return arguments.length?(e=!!n,u):e},u.clamp=function(n){return arguments.length?(t.clamp(n),u):t.clamp()},u.unknown=function(t){return arguments.length?(n=t,u):n},u.copy=function(){return kn(t.domain(),r).round(e).clamp(t.clamp()).unknown(n)},E.apply(u,arguments),Z(u)}function bn(){var n,r=[],e=[],u=[];function i(){var n=0,t=Math.max(1,e.length);for(u=new Array(t-1);++n<t;)u[n-1]=o(r,n/t);return c}function c(r){return isNaN(r=+r)?n:e[t(u,r)]}return c.invertExtent=function(n){var t=e.indexOf(n);return t<0?[NaN,NaN]:[t>0?u[t-1]:r[0],t<u.length?u[t]:r[r.length-1]]},c.domain=function(n){if(!arguments.length)return r.slice();r=[];for(let t of n)null==t||isNaN(t=+t)||r.push(t);return r.sort(a),i()},c.range=function(n){return arguments.length?(e=Array.from(n),i()):e.slice()},c.unknown=function(t){return arguments.length?(n=t,c):n},c.quantiles=function(){return u.slice()},c.copy=function(){return bn().domain(r).range(e).unknown(n)},E.apply(c,arguments)}function xn(){var n,r=0,e=1,u=1,a=[.5],o=[0,1];function i(r){return r<=r?o[t(a,r,0,u)]:n}function c(){var n=-1;for(a=new Array(u);++n<u;)a[n]=((n+1)*e-(n-u)*r)/(u+1);return i}return i.domain=function(n){return arguments.length?([r,e]=n,r=+r,e=+e,c()):[r,e]},i.range=function(n){return arguments.length?(u=(o=Array.from(n)).length-1,c()):o.slice()},i.invertExtent=function(n){var t=o.indexOf(n);return t<0?[NaN,NaN]:t<1?[r,a[0]]:t>=u?[a[u-1],e]:[a[t-1],a[t]]},i.unknown=function(t){return arguments.length?(n=t,i):i},i.thresholds=function(){return a.slice()},i.copy=function(){return xn().domain([r,e]).range(o).unknown(n)},E.apply(Z(i),arguments)}function An(){var n,r=[.5],e=[0,1],u=1;function a(a){return a<=a?e[t(r,a,0,u)]:n}return a.domain=function(n){return arguments.length?(r=Array.from(n),u=Math.min(r.length,e.length-1),a):r.slice()},a.range=function(n){return arguments.length?(e=Array.from(n),u=Math.min(r.length,e.length-1),a):e.slice()},a.invertExtent=function(n){var t=e.indexOf(n);return[r[t-1],r[t]]},a.unknown=function(t){return arguments.length?(n=t,a):n},a.copy=function(){return An().domain(r).range(e).unknown(n)},E.apply(a,arguments)}function qn(n){return new Date(n)}function Sn(n){return n instanceof Date?+n:+new Date(+n)}function Dn(n,t,e,u,a,o,c,f,l){var s=W(),h=s.invert,p=s.domain,g=l(".%L"),m=l(":%S"),d=l("%I:%M"),v=l("%I %p"),y=l("%a %d"),M=l("%b %d"),w=l("%B"),N=l("%Y"),k=[[c,1,1e3],[c,5,5e3],[c,15,15e3],[c,30,3e4],[o,1,6e4],[o,5,3e5],[o,15,9e5],[o,30,18e5],[a,1,36e5],[a,3,108e5],[a,6,216e5],[a,12,432e5],[u,1,864e5],[u,2,1728e5],[e,1,6048e5],[t,1,2592e6],[t,3,7776e6],[n,1,31536e6]];function b(r){return(c(r)<r?g:o(r)<r?m:a(r)<r?d:u(r)<r?v:t(r)<r?e(r)<r?y:M:n(r)<r?w:N)(r)}function x(t,e,u){if(null==t&&(t=10),"number"==typeof t){var a,o=Math.abs(u-e)/t,c=i((function(n){return n[2]})).right(k,o);return c===k.length?(a=r(e/31536e6,u/31536e6,t),t=n):c?(a=(c=k[o/k[c-1][2]<k[c][2]/o?c-1:c])[1],t=c[0]):(a=Math.max(r(e,u,t),1),t=f),t.every(a)}return t}return s.invert=function(n){return new Date(h(n))},s.domain=function(n){return arguments.length?p(Array.from(n,Sn)):p().map(qn)},s.ticks=function(n){var t,r=p(),e=r[0],u=r[r.length-1],a=u<e;return a&&(t=e,e=u,u=t),t=(t=x(n,e,u))?t.range(e,u+1):[],a?t.reverse():t},s.tickFormat=function(n,t){return null==t?b:l(t)},s.nice=function(n){var t=p();return(n=x(n,t[0],t[t.length-1]))?p(nn(t,n)):s},s.copy=function(){return K(s,Dn(n,t,e,u,a,o,c,f,l))},s}function jn(){return E.apply(Dn(w,D,M,y,S,q,A,x,R).domain([new Date(2e3,0,1),new Date(2e3,0,2)]),arguments)}function In(){return E.apply(Dn(b,O,k,N,I,j,A,x,L).domain([Date.UTC(2e3,0,1),Date.UTC(2e3,0,2)]),arguments)}function On(){var n,t,r,e,u,a=0,o=1,i=z,f=!1;function s(t){return isNaN(t=+t)?u:i(0===r?.5:(t=(e(t)-n)*r,f?Math.max(0,Math.min(1,t)):t))}function h(n){return function(t){var r,e;return arguments.length?([r,e]=t,i=n(r,e),s):[i(0),i(1)]}}return s.domain=function(u){return arguments.length?([a,o]=u,n=e(a=+a),t=e(o=+o),r=n===t?0:1/(t-n),s):[a,o]},s.clamp=function(n){return arguments.length?(f=!!n,s):f},s.interpolator=function(n){return arguments.length?(i=n,s):i},s.range=h(c),s.rangeRound=h(l),s.unknown=function(n){return arguments.length?(u=n,s):u},function(u){return e=u,n=u(a),t=u(o),r=n===t?0:1/(t-n),s}}function Rn(n,t){return t.domain(n.domain()).interpolator(n.interpolator()).clamp(n.clamp()).unknown(n.unknown())}function Ln(){var n=Z(On()(z));return n.copy=function(){return Rn(n,Ln())},F.apply(n,arguments)}function En(){var n=cn(On()).domain([1,10]);return n.copy=function(){return Rn(n,En()).base(n.base())},F.apply(n,arguments)}function Fn(){var n=hn(On());return n.copy=function(){return Rn(n,Fn()).constant(n.constant())},F.apply(n,arguments)}function Pn(){var n=vn(On());return n.copy=function(){return Rn(n,Pn()).exponent(n.exponent())},F.apply(n,arguments)}function Tn(){return Pn.apply(null,arguments).exponent(.5)}function Qn(){var n=[],r=z;function e(e){if(!isNaN(e=+e))return r((t(n,e,1)-1)/(n.length-1))}return e.domain=function(t){if(!arguments.length)return n.slice();n=[];for(let r of t)null==r||isNaN(r=+r)||n.push(r);return n.sort(a),e},e.interpolator=function(n){return arguments.length?(r=n,e):r},e.range=function(){return n.map((t,e)=>r(e/(n.length-1)))},e.quantiles=function(t){return Array.from({length:t+1},(r,e)=>o(n,e/t))},e.copy=function(){return Qn(r).domain(n)},F.apply(e,arguments)}function Un(){var n,t,r,e,u,a,o,i=0,f=.5,h=1,p=1,g=z,m=!1;function d(n){return isNaN(n=+n)?o:(n=.5+((n=+a(n))-t)*(p*n<p*t?e:u),g(m?Math.max(0,Math.min(1,n)):n))}function v(n){return function(t){var r,e,u;return arguments.length?([r,e,u]=t,g=s(n,[r,e,u]),d):[g(0),g(.5),g(1)]}}return d.domain=function(o){return arguments.length?([i,f,h]=o,n=a(i=+i),t=a(f=+f),r=a(h=+h),e=n===t?0:.5/(t-n),u=t===r?0:.5/(r-t),p=t<n?-1:1,d):[i,f,h]},d.clamp=function(n){return arguments.length?(m=!!n,d):m},d.interpolator=function(n){return arguments.length?(g=n,d):g},d.range=v(c),d.rangeRound=v(l),d.unknown=function(n){return arguments.length?(o=n,d):o},function(o){return a=o,n=o(i),t=o(f),r=o(h),e=n===t?0:.5/(t-n),u=t===r?0:.5/(r-t),p=t<n?-1:1,d}}function Bn(){var n=Z(Un()(z));return n.copy=function(){return Rn(n,Bn())},F.apply(n,arguments)}function Cn(){var n=cn(Un()).domain([.1,1,10]);return n.copy=function(){return Rn(n,Cn()).base(n.base())},F.apply(n,arguments)}function Yn(){var n=hn(Un());return n.copy=function(){return Rn(n,Yn()).constant(n.constant())},F.apply(n,arguments)}function zn(){var n=vn(Un());return n.copy=function(){return Rn(n,zn()).exponent(n.exponent())},F.apply(n,arguments)}function Gn(){return zn.apply(null,arguments).exponent(.5)}export{Q as scaleBand,Bn as scaleDiverging,Cn as scaleDivergingLog,zn as scaleDivergingPow,Gn as scaleDivergingSqrt,Yn as scaleDivergingSymlog,_ as scaleIdentity,P as scaleImplicit,$ as scaleLinear,fn as scaleLog,T as scaleOrdinal,B as scalePoint,yn as scalePow,bn as scaleQuantile,xn as scaleQuantize,kn as scaleRadial,Ln as scaleSequential,En as scaleSequentialLog,Pn as scaleSequentialPow,Qn as scaleSequentialQuantile,Tn as scaleSequentialSqrt,Fn as scaleSequentialSymlog,Mn as scaleSqrt,pn as scaleSymlog,An as scaleThreshold,jn as scaleTime,In as scaleUtc,X as tickFormat};
-//# sourceMappingURL=d3-scale.js.map
+import { s as sequence, b as bisect, t as tickStep, i as ticks, j as tickIncrement, a as ascending, q as quantile$1, e as bisector } from './common/quantile-0d207231.js';
+import './common/rgb-50db7803.js';
+import { i as interpolate } from './common/value-2cd045dd.js';
+import { i as interpolateNumber } from './common/string-cfd0b55d.js';
+import { i as interpolateRound, p as piecewise } from './common/piecewise-ef887050.js';
+import { c as formatSpecifier, p as precisionFixed, g as precisionRound, e as precisionPrefix, a as formatPrefix, f as format } from './common/precisionRound-dc953fe5.js';
+import { t as timeDay, s as sunday, a as timeYear, u as utcDay, b as utcSunday, c as utcYear } from './common/utcYear-c83ede8f.js';
+import { u as utcMillisecond, a as utcSecond, t as timeMinute, b as timeHour, c as timeMonth, d as utcMinute, e as utcHour, f as utcMonth } from './common/utcMonth-4fcc394c.js';
+import { t as timeFormat, u as utcFormat } from './common/defaultLocale-579b98ca.js';
+
+function initRange(domain, range) {
+  switch (arguments.length) {
+    case 0: break;
+    case 1: this.range(domain); break;
+    default: this.range(range).domain(domain); break;
+  }
+  return this;
+}
+
+function initInterpolator(domain, interpolator) {
+  switch (arguments.length) {
+    case 0: break;
+    case 1: {
+      if (typeof domain === "function") this.interpolator(domain);
+      else this.range(domain);
+      break;
+    }
+    default: {
+      this.domain(domain);
+      if (typeof interpolator === "function") this.interpolator(interpolator);
+      else this.range(interpolator);
+      break;
+    }
+  }
+  return this;
+}
+
+const implicit = Symbol("implicit");
+
+function ordinal() {
+  var index = new Map(),
+      domain = [],
+      range = [],
+      unknown = implicit;
+
+  function scale(d) {
+    var key = d + "", i = index.get(key);
+    if (!i) {
+      if (unknown !== implicit) return unknown;
+      index.set(key, i = domain.push(d));
+    }
+    return range[(i - 1) % range.length];
+  }
+
+  scale.domain = function(_) {
+    if (!arguments.length) return domain.slice();
+    domain = [], index = new Map();
+    for (const value of _) {
+      const key = value + "";
+      if (index.has(key)) continue;
+      index.set(key, domain.push(value));
+    }
+    return scale;
+  };
+
+  scale.range = function(_) {
+    return arguments.length ? (range = Array.from(_), scale) : range.slice();
+  };
+
+  scale.unknown = function(_) {
+    return arguments.length ? (unknown = _, scale) : unknown;
+  };
+
+  scale.copy = function() {
+    return ordinal(domain, range).unknown(unknown);
+  };
+
+  initRange.apply(scale, arguments);
+
+  return scale;
+}
+
+function band() {
+  var scale = ordinal().unknown(undefined),
+      domain = scale.domain,
+      ordinalRange = scale.range,
+      r0 = 0,
+      r1 = 1,
+      step,
+      bandwidth,
+      round = false,
+      paddingInner = 0,
+      paddingOuter = 0,
+      align = 0.5;
+
+  delete scale.unknown;
+
+  function rescale() {
+    var n = domain().length,
+        reverse = r1 < r0,
+        start = reverse ? r1 : r0,
+        stop = reverse ? r0 : r1;
+    step = (stop - start) / Math.max(1, n - paddingInner + paddingOuter * 2);
+    if (round) step = Math.floor(step);
+    start += (stop - start - step * (n - paddingInner)) * align;
+    bandwidth = step * (1 - paddingInner);
+    if (round) start = Math.round(start), bandwidth = Math.round(bandwidth);
+    var values = sequence(n).map(function(i) { return start + step * i; });
+    return ordinalRange(reverse ? values.reverse() : values);
+  }
+
+  scale.domain = function(_) {
+    return arguments.length ? (domain(_), rescale()) : domain();
+  };
+
+  scale.range = function(_) {
+    return arguments.length ? ([r0, r1] = _, r0 = +r0, r1 = +r1, rescale()) : [r0, r1];
+  };
+
+  scale.rangeRound = function(_) {
+    return [r0, r1] = _, r0 = +r0, r1 = +r1, round = true, rescale();
+  };
+
+  scale.bandwidth = function() {
+    return bandwidth;
+  };
+
+  scale.step = function() {
+    return step;
+  };
+
+  scale.round = function(_) {
+    return arguments.length ? (round = !!_, rescale()) : round;
+  };
+
+  scale.padding = function(_) {
+    return arguments.length ? (paddingInner = Math.min(1, paddingOuter = +_), rescale()) : paddingInner;
+  };
+
+  scale.paddingInner = function(_) {
+    return arguments.length ? (paddingInner = Math.min(1, _), rescale()) : paddingInner;
+  };
+
+  scale.paddingOuter = function(_) {
+    return arguments.length ? (paddingOuter = +_, rescale()) : paddingOuter;
+  };
+
+  scale.align = function(_) {
+    return arguments.length ? (align = Math.max(0, Math.min(1, _)), rescale()) : align;
+  };
+
+  scale.copy = function() {
+    return band(domain(), [r0, r1])
+        .round(round)
+        .paddingInner(paddingInner)
+        .paddingOuter(paddingOuter)
+        .align(align);
+  };
+
+  return initRange.apply(rescale(), arguments);
+}
+
+function pointish(scale) {
+  var copy = scale.copy;
+
+  scale.padding = scale.paddingOuter;
+  delete scale.paddingInner;
+  delete scale.paddingOuter;
+
+  scale.copy = function() {
+    return pointish(copy());
+  };
+
+  return scale;
+}
+
+function point() {
+  return pointish(band.apply(null, arguments).paddingInner(1));
+}
+
+function constant(x) {
+  return function() {
+    return x;
+  };
+}
+
+function number(x) {
+  return +x;
+}
+
+var unit = [0, 1];
+
+function identity(x) {
+  return x;
+}
+
+function normalize(a, b) {
+  return (b -= (a = +a))
+      ? function(x) { return (x - a) / b; }
+      : constant(isNaN(b) ? NaN : 0.5);
+}
+
+function clamper(a, b) {
+  var t;
+  if (a > b) t = a, a = b, b = t;
+  return function(x) { return Math.max(a, Math.min(b, x)); };
+}
+
+// normalize(a, b)(x) takes a domain value x in [a,b] and returns the corresponding parameter t in [0,1].
+// interpolate(a, b)(t) takes a parameter t in [0,1] and returns the corresponding range value x in [a,b].
+function bimap(domain, range, interpolate) {
+  var d0 = domain[0], d1 = domain[1], r0 = range[0], r1 = range[1];
+  if (d1 < d0) d0 = normalize(d1, d0), r0 = interpolate(r1, r0);
+  else d0 = normalize(d0, d1), r0 = interpolate(r0, r1);
+  return function(x) { return r0(d0(x)); };
+}
+
+function polymap(domain, range, interpolate) {
+  var j = Math.min(domain.length, range.length) - 1,
+      d = new Array(j),
+      r = new Array(j),
+      i = -1;
+
+  // Reverse descending domains.
+  if (domain[j] < domain[0]) {
+    domain = domain.slice().reverse();
+    range = range.slice().reverse();
+  }
+
+  while (++i < j) {
+    d[i] = normalize(domain[i], domain[i + 1]);
+    r[i] = interpolate(range[i], range[i + 1]);
+  }
+
+  return function(x) {
+    var i = bisect(domain, x, 1, j) - 1;
+    return r[i](d[i](x));
+  };
+}
+
+function copy(source, target) {
+  return target
+      .domain(source.domain())
+      .range(source.range())
+      .interpolate(source.interpolate())
+      .clamp(source.clamp())
+      .unknown(source.unknown());
+}
+
+function transformer() {
+  var domain = unit,
+      range = unit,
+      interpolate$1 = interpolate,
+      transform,
+      untransform,
+      unknown,
+      clamp = identity,
+      piecewise,
+      output,
+      input;
+
+  function rescale() {
+    var n = Math.min(domain.length, range.length);
+    if (clamp !== identity) clamp = clamper(domain[0], domain[n - 1]);
+    piecewise = n > 2 ? polymap : bimap;
+    output = input = null;
+    return scale;
+  }
+
+  function scale(x) {
+    return isNaN(x = +x) ? unknown : (output || (output = piecewise(domain.map(transform), range, interpolate$1)))(transform(clamp(x)));
+  }
+
+  scale.invert = function(y) {
+    return clamp(untransform((input || (input = piecewise(range, domain.map(transform), interpolateNumber)))(y)));
+  };
+
+  scale.domain = function(_) {
+    return arguments.length ? (domain = Array.from(_, number), rescale()) : domain.slice();
+  };
+
+  scale.range = function(_) {
+    return arguments.length ? (range = Array.from(_), rescale()) : range.slice();
+  };
+
+  scale.rangeRound = function(_) {
+    return range = Array.from(_), interpolate$1 = interpolateRound, rescale();
+  };
+
+  scale.clamp = function(_) {
+    return arguments.length ? (clamp = _ ? true : identity, rescale()) : clamp !== identity;
+  };
+
+  scale.interpolate = function(_) {
+    return arguments.length ? (interpolate$1 = _, rescale()) : interpolate$1;
+  };
+
+  scale.unknown = function(_) {
+    return arguments.length ? (unknown = _, scale) : unknown;
+  };
+
+  return function(t, u) {
+    transform = t, untransform = u;
+    return rescale();
+  };
+}
+
+function continuous() {
+  return transformer()(identity, identity);
+}
+
+function tickFormat(start, stop, count, specifier) {
+  var step = tickStep(start, stop, count),
+      precision;
+  specifier = formatSpecifier(specifier == null ? ",f" : specifier);
+  switch (specifier.type) {
+    case "s": {
+      var value = Math.max(Math.abs(start), Math.abs(stop));
+      if (specifier.precision == null && !isNaN(precision = precisionPrefix(step, value))) specifier.precision = precision;
+      return formatPrefix(specifier, value);
+    }
+    case "":
+    case "e":
+    case "g":
+    case "p":
+    case "r": {
+      if (specifier.precision == null && !isNaN(precision = precisionRound(step, Math.max(Math.abs(start), Math.abs(stop))))) specifier.precision = precision - (specifier.type === "e");
+      break;
+    }
+    case "f":
+    case "%": {
+      if (specifier.precision == null && !isNaN(precision = precisionFixed(step))) specifier.precision = precision - (specifier.type === "%") * 2;
+      break;
+    }
+  }
+  return format(specifier);
+}
+
+function linearish(scale) {
+  var domain = scale.domain;
+
+  scale.ticks = function(count) {
+    var d = domain();
+    return ticks(d[0], d[d.length - 1], count == null ? 10 : count);
+  };
+
+  scale.tickFormat = function(count, specifier) {
+    var d = domain();
+    return tickFormat(d[0], d[d.length - 1], count == null ? 10 : count, specifier);
+  };
+
+  scale.nice = function(count) {
+    if (count == null) count = 10;
+
+    var d = domain(),
+        i0 = 0,
+        i1 = d.length - 1,
+        start = d[i0],
+        stop = d[i1],
+        step;
+
+    if (stop < start) {
+      step = start, start = stop, stop = step;
+      step = i0, i0 = i1, i1 = step;
+    }
+
+    step = tickIncrement(start, stop, count);
+
+    if (step > 0) {
+      start = Math.floor(start / step) * step;
+      stop = Math.ceil(stop / step) * step;
+      step = tickIncrement(start, stop, count);
+    } else if (step < 0) {
+      start = Math.ceil(start * step) / step;
+      stop = Math.floor(stop * step) / step;
+      step = tickIncrement(start, stop, count);
+    }
+
+    if (step > 0) {
+      d[i0] = Math.floor(start / step) * step;
+      d[i1] = Math.ceil(stop / step) * step;
+      domain(d);
+    } else if (step < 0) {
+      d[i0] = Math.ceil(start * step) / step;
+      d[i1] = Math.floor(stop * step) / step;
+      domain(d);
+    }
+
+    return scale;
+  };
+
+  return scale;
+}
+
+function linear() {
+  var scale = continuous();
+
+  scale.copy = function() {
+    return copy(scale, linear());
+  };
+
+  initRange.apply(scale, arguments);
+
+  return linearish(scale);
+}
+
+function identity$1(domain) {
+  var unknown;
+
+  function scale(x) {
+    return isNaN(x = +x) ? unknown : x;
+  }
+
+  scale.invert = scale;
+
+  scale.domain = scale.range = function(_) {
+    return arguments.length ? (domain = Array.from(_, number), scale) : domain.slice();
+  };
+
+  scale.unknown = function(_) {
+    return arguments.length ? (unknown = _, scale) : unknown;
+  };
+
+  scale.copy = function() {
+    return identity$1(domain).unknown(unknown);
+  };
+
+  domain = arguments.length ? Array.from(domain, number) : [0, 1];
+
+  return linearish(scale);
+}
+
+function nice(domain, interval) {
+  domain = domain.slice();
+
+  var i0 = 0,
+      i1 = domain.length - 1,
+      x0 = domain[i0],
+      x1 = domain[i1],
+      t;
+
+  if (x1 < x0) {
+    t = i0, i0 = i1, i1 = t;
+    t = x0, x0 = x1, x1 = t;
+  }
+
+  domain[i0] = interval.floor(x0);
+  domain[i1] = interval.ceil(x1);
+  return domain;
+}
+
+function transformLog(x) {
+  return Math.log(x);
+}
+
+function transformExp(x) {
+  return Math.exp(x);
+}
+
+function transformLogn(x) {
+  return -Math.log(-x);
+}
+
+function transformExpn(x) {
+  return -Math.exp(-x);
+}
+
+function pow10(x) {
+  return isFinite(x) ? +("1e" + x) : x < 0 ? 0 : x;
+}
+
+function powp(base) {
+  return base === 10 ? pow10
+      : base === Math.E ? Math.exp
+      : function(x) { return Math.pow(base, x); };
+}
+
+function logp(base) {
+  return base === Math.E ? Math.log
+      : base === 10 && Math.log10
+      || base === 2 && Math.log2
+      || (base = Math.log(base), function(x) { return Math.log(x) / base; });
+}
+
+function reflect(f) {
+  return function(x) {
+    return -f(-x);
+  };
+}
+
+function loggish(transform) {
+  var scale = transform(transformLog, transformExp),
+      domain = scale.domain,
+      base = 10,
+      logs,
+      pows;
+
+  function rescale() {
+    logs = logp(base), pows = powp(base);
+    if (domain()[0] < 0) {
+      logs = reflect(logs), pows = reflect(pows);
+      transform(transformLogn, transformExpn);
+    } else {
+      transform(transformLog, transformExp);
+    }
+    return scale;
+  }
+
+  scale.base = function(_) {
+    return arguments.length ? (base = +_, rescale()) : base;
+  };
+
+  scale.domain = function(_) {
+    return arguments.length ? (domain(_), rescale()) : domain();
+  };
+
+  scale.ticks = function(count) {
+    var d = domain(),
+        u = d[0],
+        v = d[d.length - 1],
+        r;
+
+    if (r = v < u) i = u, u = v, v = i;
+
+    var i = logs(u),
+        j = logs(v),
+        p,
+        k,
+        t,
+        n = count == null ? 10 : +count,
+        z = [];
+
+    if (!(base % 1) && j - i < n) {
+      i = Math.floor(i), j = Math.ceil(j);
+      if (u > 0) for (; i <= j; ++i) {
+        for (k = 1, p = pows(i); k < base; ++k) {
+          t = p * k;
+          if (t < u) continue;
+          if (t > v) break;
+          z.push(t);
+        }
+      } else for (; i <= j; ++i) {
+        for (k = base - 1, p = pows(i); k >= 1; --k) {
+          t = p * k;
+          if (t < u) continue;
+          if (t > v) break;
+          z.push(t);
+        }
+      }
+      if (z.length * 2 < n) z = ticks(u, v, n);
+    } else {
+      z = ticks(i, j, Math.min(j - i, n)).map(pows);
+    }
+
+    return r ? z.reverse() : z;
+  };
+
+  scale.tickFormat = function(count, specifier) {
+    if (specifier == null) specifier = base === 10 ? ".0e" : ",";
+    if (typeof specifier !== "function") specifier = format(specifier);
+    if (count === Infinity) return specifier;
+    if (count == null) count = 10;
+    var k = Math.max(1, base * count / scale.ticks().length); // TODO fast estimate?
+    return function(d) {
+      var i = d / pows(Math.round(logs(d)));
+      if (i * base < base - 0.5) i *= base;
+      return i <= k ? specifier(d) : "";
+    };
+  };
+
+  scale.nice = function() {
+    return domain(nice(domain(), {
+      floor: function(x) { return pows(Math.floor(logs(x))); },
+      ceil: function(x) { return pows(Math.ceil(logs(x))); }
+    }));
+  };
+
+  return scale;
+}
+
+function log() {
+  var scale = loggish(transformer()).domain([1, 10]);
+
+  scale.copy = function() {
+    return copy(scale, log()).base(scale.base());
+  };
+
+  initRange.apply(scale, arguments);
+
+  return scale;
+}
+
+function transformSymlog(c) {
+  return function(x) {
+    return Math.sign(x) * Math.log1p(Math.abs(x / c));
+  };
+}
+
+function transformSymexp(c) {
+  return function(x) {
+    return Math.sign(x) * Math.expm1(Math.abs(x)) * c;
+  };
+}
+
+function symlogish(transform) {
+  var c = 1, scale = transform(transformSymlog(c), transformSymexp(c));
+
+  scale.constant = function(_) {
+    return arguments.length ? transform(transformSymlog(c = +_), transformSymexp(c)) : c;
+  };
+
+  return linearish(scale);
+}
+
+function symlog() {
+  var scale = symlogish(transformer());
+
+  scale.copy = function() {
+    return copy(scale, symlog()).constant(scale.constant());
+  };
+
+  return initRange.apply(scale, arguments);
+}
+
+function transformPow(exponent) {
+  return function(x) {
+    return x < 0 ? -Math.pow(-x, exponent) : Math.pow(x, exponent);
+  };
+}
+
+function transformSqrt(x) {
+  return x < 0 ? -Math.sqrt(-x) : Math.sqrt(x);
+}
+
+function transformSquare(x) {
+  return x < 0 ? -x * x : x * x;
+}
+
+function powish(transform) {
+  var scale = transform(identity, identity),
+      exponent = 1;
+
+  function rescale() {
+    return exponent === 1 ? transform(identity, identity)
+        : exponent === 0.5 ? transform(transformSqrt, transformSquare)
+        : transform(transformPow(exponent), transformPow(1 / exponent));
+  }
+
+  scale.exponent = function(_) {
+    return arguments.length ? (exponent = +_, rescale()) : exponent;
+  };
+
+  return linearish(scale);
+}
+
+function pow() {
+  var scale = powish(transformer());
+
+  scale.copy = function() {
+    return copy(scale, pow()).exponent(scale.exponent());
+  };
+
+  initRange.apply(scale, arguments);
+
+  return scale;
+}
+
+function sqrt() {
+  return pow.apply(null, arguments).exponent(0.5);
+}
+
+function square(x) {
+  return Math.sign(x) * x * x;
+}
+
+function unsquare(x) {
+  return Math.sign(x) * Math.sqrt(Math.abs(x));
+}
+
+function radial() {
+  var squared = continuous(),
+      range = [0, 1],
+      round = false,
+      unknown;
+
+  function scale(x) {
+    var y = unsquare(squared(x));
+    return isNaN(y) ? unknown : round ? Math.round(y) : y;
+  }
+
+  scale.invert = function(y) {
+    return squared.invert(square(y));
+  };
+
+  scale.domain = function(_) {
+    return arguments.length ? (squared.domain(_), scale) : squared.domain();
+  };
+
+  scale.range = function(_) {
+    return arguments.length ? (squared.range((range = Array.from(_, number)).map(square)), scale) : range.slice();
+  };
+
+  scale.rangeRound = function(_) {
+    return scale.range(_).round(true);
+  };
+
+  scale.round = function(_) {
+    return arguments.length ? (round = !!_, scale) : round;
+  };
+
+  scale.clamp = function(_) {
+    return arguments.length ? (squared.clamp(_), scale) : squared.clamp();
+  };
+
+  scale.unknown = function(_) {
+    return arguments.length ? (unknown = _, scale) : unknown;
+  };
+
+  scale.copy = function() {
+    return radial(squared.domain(), range)
+        .round(round)
+        .clamp(squared.clamp())
+        .unknown(unknown);
+  };
+
+  initRange.apply(scale, arguments);
+
+  return linearish(scale);
+}
+
+function quantile() {
+  var domain = [],
+      range = [],
+      thresholds = [],
+      unknown;
+
+  function rescale() {
+    var i = 0, n = Math.max(1, range.length);
+    thresholds = new Array(n - 1);
+    while (++i < n) thresholds[i - 1] = quantile$1(domain, i / n);
+    return scale;
+  }
+
+  function scale(x) {
+    return isNaN(x = +x) ? unknown : range[bisect(thresholds, x)];
+  }
+
+  scale.invertExtent = function(y) {
+    var i = range.indexOf(y);
+    return i < 0 ? [NaN, NaN] : [
+      i > 0 ? thresholds[i - 1] : domain[0],
+      i < thresholds.length ? thresholds[i] : domain[domain.length - 1]
+    ];
+  };
+
+  scale.domain = function(_) {
+    if (!arguments.length) return domain.slice();
+    domain = [];
+    for (let d of _) if (d != null && !isNaN(d = +d)) domain.push(d);
+    domain.sort(ascending);
+    return rescale();
+  };
+
+  scale.range = function(_) {
+    return arguments.length ? (range = Array.from(_), rescale()) : range.slice();
+  };
+
+  scale.unknown = function(_) {
+    return arguments.length ? (unknown = _, scale) : unknown;
+  };
+
+  scale.quantiles = function() {
+    return thresholds.slice();
+  };
+
+  scale.copy = function() {
+    return quantile()
+        .domain(domain)
+        .range(range)
+        .unknown(unknown);
+  };
+
+  return initRange.apply(scale, arguments);
+}
+
+function quantize() {
+  var x0 = 0,
+      x1 = 1,
+      n = 1,
+      domain = [0.5],
+      range = [0, 1],
+      unknown;
+
+  function scale(x) {
+    return x <= x ? range[bisect(domain, x, 0, n)] : unknown;
+  }
+
+  function rescale() {
+    var i = -1;
+    domain = new Array(n);
+    while (++i < n) domain[i] = ((i + 1) * x1 - (i - n) * x0) / (n + 1);
+    return scale;
+  }
+
+  scale.domain = function(_) {
+    return arguments.length ? ([x0, x1] = _, x0 = +x0, x1 = +x1, rescale()) : [x0, x1];
+  };
+
+  scale.range = function(_) {
+    return arguments.length ? (n = (range = Array.from(_)).length - 1, rescale()) : range.slice();
+  };
+
+  scale.invertExtent = function(y) {
+    var i = range.indexOf(y);
+    return i < 0 ? [NaN, NaN]
+        : i < 1 ? [x0, domain[0]]
+        : i >= n ? [domain[n - 1], x1]
+        : [domain[i - 1], domain[i]];
+  };
+
+  scale.unknown = function(_) {
+    return arguments.length ? (unknown = _, scale) : scale;
+  };
+
+  scale.thresholds = function() {
+    return domain.slice();
+  };
+
+  scale.copy = function() {
+    return quantize()
+        .domain([x0, x1])
+        .range(range)
+        .unknown(unknown);
+  };
+
+  return initRange.apply(linearish(scale), arguments);
+}
+
+function threshold() {
+  var domain = [0.5],
+      range = [0, 1],
+      unknown,
+      n = 1;
+
+  function scale(x) {
+    return x <= x ? range[bisect(domain, x, 0, n)] : unknown;
+  }
+
+  scale.domain = function(_) {
+    return arguments.length ? (domain = Array.from(_), n = Math.min(domain.length, range.length - 1), scale) : domain.slice();
+  };
+
+  scale.range = function(_) {
+    return arguments.length ? (range = Array.from(_), n = Math.min(domain.length, range.length - 1), scale) : range.slice();
+  };
+
+  scale.invertExtent = function(y) {
+    var i = range.indexOf(y);
+    return [domain[i - 1], domain[i]];
+  };
+
+  scale.unknown = function(_) {
+    return arguments.length ? (unknown = _, scale) : unknown;
+  };
+
+  scale.copy = function() {
+    return threshold()
+        .domain(domain)
+        .range(range)
+        .unknown(unknown);
+  };
+
+  return initRange.apply(scale, arguments);
+}
+
+var durationSecond = 1000,
+    durationMinute = durationSecond * 60,
+    durationHour = durationMinute * 60,
+    durationDay = durationHour * 24,
+    durationWeek = durationDay * 7,
+    durationMonth = durationDay * 30,
+    durationYear = durationDay * 365;
+
+function date(t) {
+  return new Date(t);
+}
+
+function number$1(t) {
+  return t instanceof Date ? +t : +new Date(+t);
+}
+
+function calendar(year, month, week, day, hour, minute, second, millisecond, format) {
+  var scale = continuous(),
+      invert = scale.invert,
+      domain = scale.domain;
+
+  var formatMillisecond = format(".%L"),
+      formatSecond = format(":%S"),
+      formatMinute = format("%I:%M"),
+      formatHour = format("%I %p"),
+      formatDay = format("%a %d"),
+      formatWeek = format("%b %d"),
+      formatMonth = format("%B"),
+      formatYear = format("%Y");
+
+  var tickIntervals = [
+    [second,  1,      durationSecond],
+    [second,  5,  5 * durationSecond],
+    [second, 15, 15 * durationSecond],
+    [second, 30, 30 * durationSecond],
+    [minute,  1,      durationMinute],
+    [minute,  5,  5 * durationMinute],
+    [minute, 15, 15 * durationMinute],
+    [minute, 30, 30 * durationMinute],
+    [  hour,  1,      durationHour  ],
+    [  hour,  3,  3 * durationHour  ],
+    [  hour,  6,  6 * durationHour  ],
+    [  hour, 12, 12 * durationHour  ],
+    [   day,  1,      durationDay   ],
+    [   day,  2,  2 * durationDay   ],
+    [  week,  1,      durationWeek  ],
+    [ month,  1,      durationMonth ],
+    [ month,  3,  3 * durationMonth ],
+    [  year,  1,      durationYear  ]
+  ];
+
+  function tickFormat(date) {
+    return (second(date) < date ? formatMillisecond
+        : minute(date) < date ? formatSecond
+        : hour(date) < date ? formatMinute
+        : day(date) < date ? formatHour
+        : month(date) < date ? (week(date) < date ? formatDay : formatWeek)
+        : year(date) < date ? formatMonth
+        : formatYear)(date);
+  }
+
+  function tickInterval(interval, start, stop) {
+    if (interval == null) interval = 10;
+
+    // If a desired tick count is specified, pick a reasonable tick interval
+    // based on the extent of the domain and a rough estimate of tick size.
+    // Otherwise, assume interval is already a time interval and use it.
+    if (typeof interval === "number") {
+      var target = Math.abs(stop - start) / interval,
+          i = bisector(function(i) { return i[2]; }).right(tickIntervals, target),
+          step;
+      if (i === tickIntervals.length) {
+        step = tickStep(start / durationYear, stop / durationYear, interval);
+        interval = year;
+      } else if (i) {
+        i = tickIntervals[target / tickIntervals[i - 1][2] < tickIntervals[i][2] / target ? i - 1 : i];
+        step = i[1];
+        interval = i[0];
+      } else {
+        step = Math.max(tickStep(start, stop, interval), 1);
+        interval = millisecond;
+      }
+      return interval.every(step);
+    }
+
+    return interval;
+  }
+
+  scale.invert = function(y) {
+    return new Date(invert(y));
+  };
+
+  scale.domain = function(_) {
+    return arguments.length ? domain(Array.from(_, number$1)) : domain().map(date);
+  };
+
+  scale.ticks = function(interval) {
+    var d = domain(),
+        t0 = d[0],
+        t1 = d[d.length - 1],
+        r = t1 < t0,
+        t;
+    if (r) t = t0, t0 = t1, t1 = t;
+    t = tickInterval(interval, t0, t1);
+    t = t ? t.range(t0, t1 + 1) : []; // inclusive stop
+    return r ? t.reverse() : t;
+  };
+
+  scale.tickFormat = function(count, specifier) {
+    return specifier == null ? tickFormat : format(specifier);
+  };
+
+  scale.nice = function(interval) {
+    var d = domain();
+    return (interval = tickInterval(interval, d[0], d[d.length - 1]))
+        ? domain(nice(d, interval))
+        : scale;
+  };
+
+  scale.copy = function() {
+    return copy(scale, calendar(year, month, week, day, hour, minute, second, millisecond, format));
+  };
+
+  return scale;
+}
+
+function time() {
+  return initRange.apply(calendar(timeYear, timeMonth, sunday, timeDay, timeHour, timeMinute, utcSecond, utcMillisecond, timeFormat).domain([new Date(2000, 0, 1), new Date(2000, 0, 2)]), arguments);
+}
+
+function utcTime() {
+  return initRange.apply(calendar(utcYear, utcMonth, utcSunday, utcDay, utcHour, utcMinute, utcSecond, utcMillisecond, utcFormat).domain([Date.UTC(2000, 0, 1), Date.UTC(2000, 0, 2)]), arguments);
+}
+
+function transformer$1() {
+  var x0 = 0,
+      x1 = 1,
+      t0,
+      t1,
+      k10,
+      transform,
+      interpolator = identity,
+      clamp = false,
+      unknown;
+
+  function scale(x) {
+    return isNaN(x = +x) ? unknown : interpolator(k10 === 0 ? 0.5 : (x = (transform(x) - t0) * k10, clamp ? Math.max(0, Math.min(1, x)) : x));
+  }
+
+  scale.domain = function(_) {
+    return arguments.length ? ([x0, x1] = _, t0 = transform(x0 = +x0), t1 = transform(x1 = +x1), k10 = t0 === t1 ? 0 : 1 / (t1 - t0), scale) : [x0, x1];
+  };
+
+  scale.clamp = function(_) {
+    return arguments.length ? (clamp = !!_, scale) : clamp;
+  };
+
+  scale.interpolator = function(_) {
+    return arguments.length ? (interpolator = _, scale) : interpolator;
+  };
+
+  function range(interpolate) {
+    return function(_) {
+      var r0, r1;
+      return arguments.length ? ([r0, r1] = _, interpolator = interpolate(r0, r1), scale) : [interpolator(0), interpolator(1)];
+    };
+  }
+
+  scale.range = range(interpolate);
+
+  scale.rangeRound = range(interpolateRound);
+
+  scale.unknown = function(_) {
+    return arguments.length ? (unknown = _, scale) : unknown;
+  };
+
+  return function(t) {
+    transform = t, t0 = t(x0), t1 = t(x1), k10 = t0 === t1 ? 0 : 1 / (t1 - t0);
+    return scale;
+  };
+}
+
+function copy$1(source, target) {
+  return target
+      .domain(source.domain())
+      .interpolator(source.interpolator())
+      .clamp(source.clamp())
+      .unknown(source.unknown());
+}
+
+function sequential() {
+  var scale = linearish(transformer$1()(identity));
+
+  scale.copy = function() {
+    return copy$1(scale, sequential());
+  };
+
+  return initInterpolator.apply(scale, arguments);
+}
+
+function sequentialLog() {
+  var scale = loggish(transformer$1()).domain([1, 10]);
+
+  scale.copy = function() {
+    return copy$1(scale, sequentialLog()).base(scale.base());
+  };
+
+  return initInterpolator.apply(scale, arguments);
+}
+
+function sequentialSymlog() {
+  var scale = symlogish(transformer$1());
+
+  scale.copy = function() {
+    return copy$1(scale, sequentialSymlog()).constant(scale.constant());
+  };
+
+  return initInterpolator.apply(scale, arguments);
+}
+
+function sequentialPow() {
+  var scale = powish(transformer$1());
+
+  scale.copy = function() {
+    return copy$1(scale, sequentialPow()).exponent(scale.exponent());
+  };
+
+  return initInterpolator.apply(scale, arguments);
+}
+
+function sequentialSqrt() {
+  return sequentialPow.apply(null, arguments).exponent(0.5);
+}
+
+function sequentialQuantile() {
+  var domain = [],
+      interpolator = identity;
+
+  function scale(x) {
+    if (!isNaN(x = +x)) return interpolator((bisect(domain, x, 1) - 1) / (domain.length - 1));
+  }
+
+  scale.domain = function(_) {
+    if (!arguments.length) return domain.slice();
+    domain = [];
+    for (let d of _) if (d != null && !isNaN(d = +d)) domain.push(d);
+    domain.sort(ascending);
+    return scale;
+  };
+
+  scale.interpolator = function(_) {
+    return arguments.length ? (interpolator = _, scale) : interpolator;
+  };
+
+  scale.range = function() {
+    return domain.map((d, i) => interpolator(i / (domain.length - 1)));
+  };
+
+  scale.quantiles = function(n) {
+    return Array.from({length: n + 1}, (_, i) => quantile$1(domain, i / n));
+  };
+
+  scale.copy = function() {
+    return sequentialQuantile(interpolator).domain(domain);
+  };
+
+  return initInterpolator.apply(scale, arguments);
+}
+
+function transformer$2() {
+  var x0 = 0,
+      x1 = 0.5,
+      x2 = 1,
+      s = 1,
+      t0,
+      t1,
+      t2,
+      k10,
+      k21,
+      interpolator = identity,
+      transform,
+      clamp = false,
+      unknown;
+
+  function scale(x) {
+    return isNaN(x = +x) ? unknown : (x = 0.5 + ((x = +transform(x)) - t1) * (s * x < s * t1 ? k10 : k21), interpolator(clamp ? Math.max(0, Math.min(1, x)) : x));
+  }
+
+  scale.domain = function(_) {
+    return arguments.length ? ([x0, x1, x2] = _, t0 = transform(x0 = +x0), t1 = transform(x1 = +x1), t2 = transform(x2 = +x2), k10 = t0 === t1 ? 0 : 0.5 / (t1 - t0), k21 = t1 === t2 ? 0 : 0.5 / (t2 - t1), s = t1 < t0 ? -1 : 1, scale) : [x0, x1, x2];
+  };
+
+  scale.clamp = function(_) {
+    return arguments.length ? (clamp = !!_, scale) : clamp;
+  };
+
+  scale.interpolator = function(_) {
+    return arguments.length ? (interpolator = _, scale) : interpolator;
+  };
+
+  function range(interpolate) {
+    return function(_) {
+      var r0, r1, r2;
+      return arguments.length ? ([r0, r1, r2] = _, interpolator = piecewise(interpolate, [r0, r1, r2]), scale) : [interpolator(0), interpolator(0.5), interpolator(1)];
+    };
+  }
+
+  scale.range = range(interpolate);
+
+  scale.rangeRound = range(interpolateRound);
+
+  scale.unknown = function(_) {
+    return arguments.length ? (unknown = _, scale) : unknown;
+  };
+
+  return function(t) {
+    transform = t, t0 = t(x0), t1 = t(x1), t2 = t(x2), k10 = t0 === t1 ? 0 : 0.5 / (t1 - t0), k21 = t1 === t2 ? 0 : 0.5 / (t2 - t1), s = t1 < t0 ? -1 : 1;
+    return scale;
+  };
+}
+
+function diverging() {
+  var scale = linearish(transformer$2()(identity));
+
+  scale.copy = function() {
+    return copy$1(scale, diverging());
+  };
+
+  return initInterpolator.apply(scale, arguments);
+}
+
+function divergingLog() {
+  var scale = loggish(transformer$2()).domain([0.1, 1, 10]);
+
+  scale.copy = function() {
+    return copy$1(scale, divergingLog()).base(scale.base());
+  };
+
+  return initInterpolator.apply(scale, arguments);
+}
+
+function divergingSymlog() {
+  var scale = symlogish(transformer$2());
+
+  scale.copy = function() {
+    return copy$1(scale, divergingSymlog()).constant(scale.constant());
+  };
+
+  return initInterpolator.apply(scale, arguments);
+}
+
+function divergingPow() {
+  var scale = powish(transformer$2());
+
+  scale.copy = function() {
+    return copy$1(scale, divergingPow()).exponent(scale.exponent());
+  };
+
+  return initInterpolator.apply(scale, arguments);
+}
+
+function divergingSqrt() {
+  return divergingPow.apply(null, arguments).exponent(0.5);
+}
+
+export { band as scaleBand, diverging as scaleDiverging, divergingLog as scaleDivergingLog, divergingPow as scaleDivergingPow, divergingSqrt as scaleDivergingSqrt, divergingSymlog as scaleDivergingSymlog, identity$1 as scaleIdentity, implicit as scaleImplicit, linear as scaleLinear, log as scaleLog, ordinal as scaleOrdinal, point as scalePoint, pow as scalePow, quantile as scaleQuantile, quantize as scaleQuantize, radial as scaleRadial, sequential as scaleSequential, sequentialLog as scaleSequentialLog, sequentialPow as scaleSequentialPow, sequentialQuantile as scaleSequentialQuantile, sequentialSqrt as scaleSequentialSqrt, sequentialSymlog as scaleSequentialSymlog, sqrt as scaleSqrt, symlog as scaleSymlog, threshold as scaleThreshold, time as scaleTime, utcTime as scaleUtc, tickFormat };

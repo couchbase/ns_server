@@ -1,2 +1,3559 @@
-import{b as n}from"../common/tslib.es6-c4a4947b.js";import{l as i,n as u,b as h,d as l,S as p,I as y,h as v,g as x,O as _,e as S,i as C,v as V,m as N,a as T}from"../common/mergeMap-64c6f393.js";export{m as flatMap,e as map,m as mergeMap}from"../common/mergeMap-64c6f393.js";import{m as I}from"../common/merge-183efbc7.js";export{a as mergeAll,r as refCount}from"../common/merge-183efbc7.js";import{n as j,A as O,a as B,d as E,T as A,z as W,Z as z}from"../common/zip-41358de8.js";export{g as groupBy}from"../common/zip-41358de8.js";import{C as k,a as P,B as R}from"../common/concat-981db672.js";export{b as concatAll}from"../common/concat-981db672.js";import{e as F,N as D,t as M}from"../common/Notification-9e07e457.js";import{R as Y}from"../common/ReplaySubject-8316d9c1.js";export{o as observeOn}from"../common/ReplaySubject-8316d9c1.js";import{f as L,o as K}from"../common/filter-d76a729c.js";export{f as filter}from"../common/filter-d76a729c.js";import{t as U,a as q,r as Z,i as G}from"../common/timer-a781bf0e.js";import{A as H}from"../common/ArgumentOutOfRangeError-91c779f5.js";import{E as J}from"../common/EmptyError-a9e17542.js";import{c as Q}from"../common/concatMap-326c8f32.js";export{c as concatMap}from"../common/concatMap-326c8f32.js";import{d as X,t as $}from"../common/shareReplay-5c54bf83.js";export{d as defaultIfEmpty,f as first,s as shareReplay,t as throwIfEmpty}from"../common/shareReplay-5c54bf83.js";import{d as tt,i as nt}from"../common/withLatestFrom-853e2e94.js";export{b as delay,d as distinctUntilChanged,s as startWith,t as takeUntil,a as tap,w as withLatestFrom}from"../common/withLatestFrom-853e2e94.js";import{t as it}from"../common/take-7bfdafe5.js";export{t as take}from"../common/take-7bfdafe5.js";import{m as et}from"../common/share-d41e3509.js";export{m as multicast,s as share}from"../common/share-d41e3509.js";import{s as rt}from"../common/switchMap-c513d696.js";export{s as switchMap}from"../common/switchMap-c513d696.js";function ot(t){return function(n){return n.lift(new st(t))}}var st=function(){function t(t){this.durationSelector=t}return t.prototype.call=function(t,n){return n.subscribe(new ut(t,this.durationSelector))},t}(),ut=function(t){function e(n,i){var e=t.call(this,n)||this;return e.durationSelector=i,e.hasValue=!1,e}return n(e,t),e.prototype._next=function(t){if(this.value=t,this.hasValue=!0,!this.throttled){var n=void 0;try{n=(0,this.durationSelector)(t)}catch(t){return this.destination.error(t)}var e=i(this,n);!e||e.closed?this.clearThrottle():this.add(this.throttled=e)}},e.prototype.clearThrottle=function(){var t=this.value,n=this.hasValue,i=this.throttled;i&&(this.remove(i),this.throttled=null,i.unsubscribe()),n&&(this.value=null,this.hasValue=!1,this.destination.next(t))},e.prototype.notifyNext=function(t,n,i,e){this.clearThrottle()},e.prototype.notifyComplete=function(){this.clearThrottle()},e}(u);function ct(t,n){return void 0===n&&(n=q),ot((function(){return U(t,n)}))}function ht(t){return function(n){return n.lift(new at(t))}}var at=function(){function t(t){this.closingNotifier=t}return t.prototype.call=function(t,n){return n.subscribe(new lt(t,this.closingNotifier))},t}(),lt=function(t){function e(n,e){var r=t.call(this,n)||this;return r.buffer=[],r.add(i(r,e)),r}return n(e,t),e.prototype._next=function(t){this.buffer.push(t)},e.prototype.notifyNext=function(t,n,i,e,r){var o=this.buffer;this.buffer=[],this.destination.next(o)},e}(u);function ft(t,n){return void 0===n&&(n=null),function(i){return i.lift(new pt(t,n))}}var pt=function(){function t(t,n){this.bufferSize=t,this.startBufferEvery=n,this.subscriberClass=n&&t!==n?bt:dt}return t.prototype.call=function(t,n){return n.subscribe(new this.subscriberClass(t,this.bufferSize,this.startBufferEvery))},t}(),dt=function(t){function i(n,i){var e=t.call(this,n)||this;return e.bufferSize=i,e.buffer=[],e}return n(i,t),i.prototype._next=function(t){var n=this.buffer;n.push(t),n.length==this.bufferSize&&(this.destination.next(n),this.buffer=[])},i.prototype._complete=function(){var n=this.buffer;n.length>0&&this.destination.next(n),t.prototype._complete.call(this)},i}(h),bt=function(t){function i(n,i,e){var r=t.call(this,n)||this;return r.bufferSize=i,r.startBufferEvery=e,r.buffers=[],r.count=0,r}return n(i,t),i.prototype._next=function(t){var n=this.bufferSize,i=this.startBufferEvery,e=this.buffers,r=this.count;this.count++,r%i==0&&e.push([]);for(var o=e.length;o--;){var s=e[o];s.push(t),s.length===n&&(e.splice(o,1),this.destination.next(s))}},i.prototype._complete=function(){for(var n=this.buffers,i=this.destination;n.length>0;){var e=n.shift();e.length>0&&i.next(e)}t.prototype._complete.call(this)},i}(h);function yt(t){var n=arguments.length,i=q;l(arguments[arguments.length-1])&&(i=arguments[arguments.length-1],n--);var e=null;n>=2&&(e=arguments[1]);var r=Number.POSITIVE_INFINITY;return n>=3&&(r=arguments[2]),function(n){return n.lift(new vt(t,e,r,i))}}var vt=function(){function t(t,n,i,e){this.bufferTimeSpan=t,this.bufferCreationInterval=n,this.maxBufferSize=i,this.scheduler=e}return t.prototype.call=function(t,n){return n.subscribe(new wt(t,this.bufferTimeSpan,this.bufferCreationInterval,this.maxBufferSize,this.scheduler))},t}(),mt=function(){return function(){this.buffer=[]}}(),wt=function(t){function i(n,i,e,r,o){var s=t.call(this,n)||this;s.bufferTimeSpan=i,s.bufferCreationInterval=e,s.maxBufferSize=r,s.scheduler=o,s.contexts=[];var u=s.openContext();if(s.timespanOnly=null==e||e<0,s.timespanOnly){var c={subscriber:s,context:u,bufferTimeSpan:i};s.add(u.closeAction=o.schedule(xt,i,c))}else{var h={subscriber:s,context:u},a={bufferTimeSpan:i,bufferCreationInterval:e,subscriber:s,scheduler:o};s.add(u.closeAction=o.schedule(gt,i,h)),s.add(o.schedule(_t,e,a))}return s}return n(i,t),i.prototype._next=function(t){for(var n,i=this.contexts,e=i.length,r=0;r<e;r++){var o=i[r],s=o.buffer;s.push(t),s.length==this.maxBufferSize&&(n=o)}n&&this.onBufferFull(n)},i.prototype._error=function(n){this.contexts.length=0,t.prototype._error.call(this,n)},i.prototype._complete=function(){for(var n=this.contexts,i=this.destination;n.length>0;){var e=n.shift();i.next(e.buffer)}t.prototype._complete.call(this)},i.prototype._unsubscribe=function(){this.contexts=null},i.prototype.onBufferFull=function(t){this.closeContext(t);var n=t.closeAction;if(n.unsubscribe(),this.remove(n),!this.closed&&this.timespanOnly){t=this.openContext();var i=this.bufferTimeSpan,e={subscriber:this,context:t,bufferTimeSpan:i};this.add(t.closeAction=this.scheduler.schedule(xt,i,e))}},i.prototype.openContext=function(){var t=new mt;return this.contexts.push(t),t},i.prototype.closeContext=function(t){this.destination.next(t.buffer);var n=this.contexts;(n?n.indexOf(t):-1)>=0&&n.splice(n.indexOf(t),1)},i}(h);function xt(t){var n=t.subscriber,i=t.context;i&&n.closeContext(i),n.closed||(t.context=n.openContext(),t.context.closeAction=this.schedule(t,t.bufferTimeSpan))}function _t(t){var n=t.bufferCreationInterval,i=t.bufferTimeSpan,e=t.subscriber,r=t.scheduler,o=e.openContext();e.closed||(e.add(o.closeAction=r.schedule(gt,i,{subscriber:e,context:o})),this.schedule(t,n))}function gt(t){var n=t.subscriber,i=t.context;n.closeContext(i)}function St(t,n){return function(i){return i.lift(new Ct(t,n))}}var Ct=function(){function t(t,n){this.openings=t,this.closingSelector=n}return t.prototype.call=function(t,n){return n.subscribe(new Vt(t,this.openings,this.closingSelector))},t}(),Vt=function(t){function e(n,e,r){var o=t.call(this,n)||this;return o.openings=e,o.closingSelector=r,o.contexts=[],o.add(i(o,e)),o}return n(e,t),e.prototype._next=function(t){for(var n=this.contexts,i=n.length,e=0;e<i;e++)n[e].buffer.push(t)},e.prototype._error=function(n){for(var i=this.contexts;i.length>0;){var e=i.shift();e.subscription.unsubscribe(),e.buffer=null,e.subscription=null}this.contexts=null,t.prototype._error.call(this,n)},e.prototype._complete=function(){for(var n=this.contexts;n.length>0;){var i=n.shift();this.destination.next(i.buffer),i.subscription.unsubscribe(),i.buffer=null,i.subscription=null}this.contexts=null,t.prototype._complete.call(this)},e.prototype.notifyNext=function(t,n,i,e,r){t?this.closeBuffer(t):this.openBuffer(n)},e.prototype.notifyComplete=function(t){this.closeBuffer(t.context)},e.prototype.openBuffer=function(t){try{var n=this.closingSelector.call(this,t);n&&this.trySubscribe(n)}catch(t){this._error(t)}},e.prototype.closeBuffer=function(t){var n=this.contexts;if(n&&t){var i=t.buffer,e=t.subscription;this.destination.next(i),n.splice(n.indexOf(t),1),this.remove(e),e.unsubscribe()}},e.prototype.trySubscribe=function(t){var n=this.contexts,e=new p,r={buffer:[],subscription:e};n.push(r);var o=i(this,t,r);!o||o.closed?this.closeBuffer(r):(o.context=r,this.add(o),e.add(o))},e}(u);function Nt(t){return function(n){return n.lift(new Tt(t))}}var Tt=function(){function t(t){this.closingSelector=t}return t.prototype.call=function(t,n){return n.subscribe(new It(t,this.closingSelector))},t}(),It=function(t){function e(n,i){var e=t.call(this,n)||this;return e.closingSelector=i,e.subscribing=!1,e.openBuffer(),e}return n(e,t),e.prototype._next=function(t){this.buffer.push(t)},e.prototype._complete=function(){var n=this.buffer;n&&this.destination.next(n),t.prototype._complete.call(this)},e.prototype._unsubscribe=function(){this.buffer=null,this.subscribing=!1},e.prototype.notifyNext=function(t,n,i,e,r){this.openBuffer()},e.prototype.notifyComplete=function(){this.subscribing?this.complete():this.openBuffer()},e.prototype.openBuffer=function(){var t=this.closingSubscription;t&&(this.remove(t),t.unsubscribe());var n,e=this.buffer;this.buffer&&this.destination.next(e),this.buffer=[];try{n=(0,this.closingSelector)()}catch(t){return this.error(t)}t=new p,this.closingSubscription=t,this.add(t),this.subscribing=!0,t.add(i(this,n)),this.subscribing=!1},e}(u);function jt(t){return function(n){var i=new Ot(t),e=n.lift(i);return i.caught=e}}var Ot=function(){function t(t){this.selector=t}return t.prototype.call=function(t,n){return n.subscribe(new Bt(t,this.selector,this.caught))},t}(),Bt=function(t){function e(n,i,e){var r=t.call(this,n)||this;return r.selector=i,r.caught=e,r}return n(e,t),e.prototype.error=function(n){if(!this.isStopped){var e=void 0;try{e=this.selector(n,this.caught)}catch(n){return void t.prototype.error.call(this,n)}this._unsubscribeAndRecycle();var r=new y(this,void 0,void 0);this.add(r),i(this,e,void 0,void 0,r)}},e}(u);function Et(t){return function(n){return n.lift(new k(t))}}function At(){for(var t=[],n=0;n<arguments.length;n++)t[n]=arguments[n];var i=null;return"function"==typeof t[t.length-1]&&(i=t.pop()),1===t.length&&v(t[0])&&(t=t[0].slice()),function(n){return n.lift.call(x([n].concat(t)),new k(i))}}function Wt(){for(var t=[],n=0;n<arguments.length;n++)t[n]=arguments[n];return function(n){return n.lift.call(P.apply(void 0,[n].concat(t)))}}function zt(t,n){return Q((function(){return t}),n)}function kt(t){return function(n){return n.lift(new Pt(t,n))}}var Pt=function(){function t(t,n){this.predicate=t,this.source=n}return t.prototype.call=function(t,n){return n.subscribe(new Rt(t,this.predicate,this.source))},t}(),Rt=function(t){function i(n,i,e){var r=t.call(this,n)||this;return r.predicate=i,r.source=e,r.count=0,r.index=0,r}return n(i,t),i.prototype._next=function(t){this.predicate?this._tryPredicate(t):this.count++},i.prototype._tryPredicate=function(t){var n;try{n=this.predicate(t,this.index++,this.source)}catch(t){return void this.destination.error(t)}n&&this.count++},i.prototype._complete=function(){this.destination.next(this.count),this.destination.complete()},i}(h);function Ft(t){return function(n){return n.lift(new Dt(t))}}var Dt=function(){function t(t){this.durationSelector=t}return t.prototype.call=function(t,n){return n.subscribe(new Mt(t,this.durationSelector))},t}(),Mt=function(t){function e(n,i){var e=t.call(this,n)||this;return e.durationSelector=i,e.hasValue=!1,e.durationSubscription=null,e}return n(e,t),e.prototype._next=function(t){try{var n=this.durationSelector.call(this,t);n&&this._tryNext(t,n)}catch(t){this.destination.error(t)}},e.prototype._complete=function(){this.emitValue(),this.destination.complete()},e.prototype._tryNext=function(t,n){var e=this.durationSubscription;this.value=t,this.hasValue=!0,e&&(e.unsubscribe(),this.remove(e)),(e=i(this,n))&&!e.closed&&this.add(this.durationSubscription=e)},e.prototype.notifyNext=function(t,n,i,e,r){this.emitValue()},e.prototype.notifyComplete=function(){this.emitValue()},e.prototype.emitValue=function(){if(this.hasValue){var n=this.value,i=this.durationSubscription;i&&(this.durationSubscription=null,i.unsubscribe(),this.remove(i)),this.value=null,this.hasValue=!1,t.prototype._next.call(this,n)}},e}(u);function Yt(t,n){return void 0===n&&(n=q),function(i){return i.lift(new Lt(t,n))}}var Lt=function(){function t(t,n){this.dueTime=t,this.scheduler=n}return t.prototype.call=function(t,n){return n.subscribe(new Kt(t,this.dueTime,this.scheduler))},t}(),Kt=function(t){function i(n,i,e){var r=t.call(this,n)||this;return r.dueTime=i,r.scheduler=e,r.debouncedSubscription=null,r.lastValue=null,r.hasValue=!1,r}return n(i,t),i.prototype._next=function(t){this.clearDebounce(),this.lastValue=t,this.hasValue=!0,this.add(this.debouncedSubscription=this.scheduler.schedule(Ut,this.dueTime,this))},i.prototype._complete=function(){this.debouncedNext(),this.destination.complete()},i.prototype.debouncedNext=function(){if(this.clearDebounce(),this.hasValue){var t=this.lastValue;this.lastValue=null,this.hasValue=!1,this.destination.next(t)}},i.prototype.clearDebounce=function(){var t=this.debouncedSubscription;null!==t&&(this.remove(t),t.unsubscribe(),this.debouncedSubscription=null)},i}(h);function Ut(t){t.debouncedNext()}function qt(t,n){return n?function(i){return new Ht(i,n).lift(new Zt(t))}:function(n){return n.lift(new Zt(t))}}var Zt=function(){function t(t){this.delayDurationSelector=t}return t.prototype.call=function(t,n){return n.subscribe(new Gt(t,this.delayDurationSelector))},t}(),Gt=function(t){function e(n,i){var e=t.call(this,n)||this;return e.delayDurationSelector=i,e.completed=!1,e.delayNotifierSubscriptions=[],e.index=0,e}return n(e,t),e.prototype.notifyNext=function(t,n,i,e,r){this.destination.next(t),this.removeSubscription(r),this.tryComplete()},e.prototype.notifyError=function(t,n){this._error(t)},e.prototype.notifyComplete=function(t){var n=this.removeSubscription(t);n&&this.destination.next(n),this.tryComplete()},e.prototype._next=function(t){var n=this.index++;try{var i=this.delayDurationSelector(t,n);i&&this.tryDelay(i,t)}catch(t){this.destination.error(t)}},e.prototype._complete=function(){this.completed=!0,this.tryComplete(),this.unsubscribe()},e.prototype.removeSubscription=function(t){t.unsubscribe();var n=this.delayNotifierSubscriptions.indexOf(t);return-1!==n&&this.delayNotifierSubscriptions.splice(n,1),t.outerValue},e.prototype.tryDelay=function(t,n){var e=i(this,t,n);e&&!e.closed&&(this.destination.add(e),this.delayNotifierSubscriptions.push(e))},e.prototype.tryComplete=function(){this.completed&&0===this.delayNotifierSubscriptions.length&&this.destination.complete()},e}(u),Ht=function(t){function i(n,i){var e=t.call(this)||this;return e.source=n,e.subscriptionDelay=i,e}return n(i,t),i.prototype._subscribe=function(t){this.subscriptionDelay.subscribe(new Jt(t,this.source))},i}(_),Jt=function(t){function i(n,i){var e=t.call(this)||this;return e.parent=n,e.source=i,e.sourceSubscribed=!1,e}return n(i,t),i.prototype._next=function(t){this.subscribeToSource()},i.prototype._error=function(t){this.unsubscribe(),this.parent.error(t)},i.prototype._complete=function(){this.unsubscribe(),this.subscribeToSource()},i.prototype.subscribeToSource=function(){this.sourceSubscribed||(this.sourceSubscribed=!0,this.unsubscribe(),this.source.subscribe(this.parent))},i}(h);function Qt(){return function(t){return t.lift(new Xt)}}var Xt=function(){function t(){}return t.prototype.call=function(t,n){return n.subscribe(new $t(t))},t}(),$t=function(t){function i(n){return t.call(this,n)||this}return n(i,t),i.prototype._next=function(t){t.observe(this.destination)},i}(h);function tn(t,n){return function(i){return i.lift(new nn(t,n))}}var nn=function(){function t(t,n){this.keySelector=t,this.flushes=n}return t.prototype.call=function(t,n){return n.subscribe(new en(t,this.keySelector,this.flushes))},t}(),en=function(t){function e(n,e,r){var o=t.call(this,n)||this;return o.keySelector=e,o.values=new Set,r&&o.add(i(o,r)),o}return n(e,t),e.prototype.notifyNext=function(t,n,i,e,r){this.values.clear()},e.prototype.notifyError=function(t,n){this._error(t)},e.prototype._next=function(t){this.keySelector?this._useKeySelector(t):this._finalizeNext(t,t)},e.prototype._useKeySelector=function(t){var n,i=this.destination;try{n=this.keySelector(t)}catch(t){return void i.error(t)}this._finalizeNext(n,t)},e.prototype._finalizeNext=function(t,n){var i=this.values;i.has(t)||(i.add(t),this.destination.next(n))},e}(u);function rn(t,n){return tt((function(i,e){return n?n(i[t],e[t]):i[t]===e[t]}))}function on(t,n){if(t<0)throw new H;var i=arguments.length>=2;return function(e){return e.pipe(L((function(n,i){return i===t})),it(1),i?X(n):$((function(){return new H})))}}function sn(){for(var t=[],n=0;n<arguments.length;n++)t[n]=arguments[n];return function(n){return P(n,K.apply(void 0,t))}}function un(t,n){return function(i){return i.lift(new cn(t,n,i))}}var cn=function(){function t(t,n,i){this.predicate=t,this.thisArg=n,this.source=i}return t.prototype.call=function(t,n){return n.subscribe(new hn(t,this.predicate,this.thisArg,this.source))},t}(),hn=function(t){function i(n,i,e,r){var o=t.call(this,n)||this;return o.predicate=i,o.thisArg=e,o.source=r,o.index=0,o.thisArg=e||o,o}return n(i,t),i.prototype.notifyComplete=function(t){this.destination.next(t),this.destination.complete()},i.prototype._next=function(t){var n=!1;try{n=this.predicate.call(this.thisArg,t,this.index++,this.source)}catch(t){return void this.destination.error(t)}n||this.notifyComplete(!1)},i.prototype._complete=function(){this.notifyComplete(!0)},i}(h);function an(){return function(t){return t.lift(new ln)}}var ln=function(){function t(){}return t.prototype.call=function(t,n){return n.subscribe(new fn(t))},t}(),fn=function(t){function e(n){var i=t.call(this,n)||this;return i.hasCompleted=!1,i.hasSubscription=!1,i}return n(e,t),e.prototype._next=function(t){this.hasSubscription||(this.hasSubscription=!0,this.add(i(this,t)))},e.prototype._complete=function(){this.hasCompleted=!0,this.hasSubscription||this.destination.complete()},e.prototype.notifyComplete=function(t){this.remove(t),this.hasSubscription=!1,this.hasCompleted&&this.destination.complete()},e}(u);function pn(t,n){return n?function(i){return i.pipe(pn((function(i,e){return x(t(i,e)).pipe(S((function(t,r){return n(i,t,e,r)})))})))}:function(n){return n.lift(new dn(t))}}var dn=function(){function t(t){this.project=t}return t.prototype.call=function(t,n){return n.subscribe(new bn(t,this.project))},t}(),bn=function(t){function e(n,i){var e=t.call(this,n)||this;return e.project=i,e.hasSubscription=!1,e.hasCompleted=!1,e.index=0,e}return n(e,t),e.prototype._next=function(t){this.hasSubscription||this.tryNext(t)},e.prototype.tryNext=function(t){var n,i=this.index++;try{n=this.project(t,i)}catch(t){return void this.destination.error(t)}this.hasSubscription=!0,this._innerSub(n,t,i)},e.prototype._innerSub=function(t,n,e){var r=new y(this,void 0,void 0);this.destination.add(r),i(this,t,n,e,r)},e.prototype._complete=function(){this.hasCompleted=!0,this.hasSubscription||this.destination.complete(),this.unsubscribe()},e.prototype.notifyNext=function(t,n,i,e,r){this.destination.next(n)},e.prototype.notifyError=function(t){this.destination.error(t)},e.prototype.notifyComplete=function(t){this.destination.remove(t),this.hasSubscription=!1,this.hasCompleted&&this.destination.complete()},e}(u);function yn(t,n,i){return void 0===n&&(n=Number.POSITIVE_INFINITY),void 0===i&&(i=void 0),n=(n||0)<1?Number.POSITIVE_INFINITY:n,function(e){return e.lift(new vn(t,n,i))}}var vn=function(){function t(t,n,i){this.project=t,this.concurrent=n,this.scheduler=i}return t.prototype.call=function(t,n){return n.subscribe(new mn(t,this.project,this.concurrent,this.scheduler))},t}(),mn=function(t){function e(n,i,e,r){var o=t.call(this,n)||this;return o.project=i,o.concurrent=e,o.scheduler=r,o.index=0,o.active=0,o.hasCompleted=!1,e<Number.POSITIVE_INFINITY&&(o.buffer=[]),o}return n(e,t),e.dispatch=function(t){var n=t.subscriber,i=t.result,e=t.value,r=t.index;n.subscribeToProjection(i,e,r)},e.prototype._next=function(t){var n=this.destination;if(n.closed)this._complete();else{var i=this.index++;if(this.active<this.concurrent){n.next(t);try{var r=(0,this.project)(t,i);if(this.scheduler){var o={subscriber:this,result:r,value:t,index:i};this.destination.add(this.scheduler.schedule(e.dispatch,0,o))}else this.subscribeToProjection(r,t,i)}catch(t){n.error(t)}}else this.buffer.push(t)}},e.prototype.subscribeToProjection=function(t,n,e){this.active++,this.destination.add(i(this,t,n,e))},e.prototype._complete=function(){this.hasCompleted=!0,this.hasCompleted&&0===this.active&&this.destination.complete(),this.unsubscribe()},e.prototype.notifyNext=function(t,n,i,e,r){this._next(n)},e.prototype.notifyComplete=function(t){var n=this.buffer;this.destination.remove(t),this.active--,n&&n.length>0&&this._next(n.shift()),this.hasCompleted&&0===this.active&&this.destination.complete()},e}(u);function wn(t){return function(n){return n.lift(new xn(t))}}var xn=function(){function t(t){this.callback=t}return t.prototype.call=function(t,n){return n.subscribe(new _n(t,this.callback))},t}(),_n=function(t){function i(n,i){var e=t.call(this,n)||this;return e.add(new p(i)),e}return n(i,t),i}(h);function gn(t,n){if("function"!=typeof t)throw new TypeError("predicate is not a function");return function(i){return i.lift(new Sn(t,i,!1,n))}}var Sn=function(){function t(t,n,i,e){this.predicate=t,this.source=n,this.yieldIndex=i,this.thisArg=e}return t.prototype.call=function(t,n){return n.subscribe(new Cn(t,this.predicate,this.source,this.yieldIndex,this.thisArg))},t}(),Cn=function(t){function i(n,i,e,r,o){var s=t.call(this,n)||this;return s.predicate=i,s.source=e,s.yieldIndex=r,s.thisArg=o,s.index=0,s}return n(i,t),i.prototype.notifyComplete=function(t){var n=this.destination;n.next(t),n.complete(),this.unsubscribe()},i.prototype._next=function(t){var n=this.predicate,i=this.thisArg,e=this.index++;try{n.call(i||this,t,e,this.source)&&this.notifyComplete(this.yieldIndex?e:t)}catch(t){this.destination.error(t)}},i.prototype._complete=function(){this.notifyComplete(this.yieldIndex?-1:void 0)},i}(h);function Vn(t,n){return function(i){return i.lift(new Sn(t,i,!0,n))}}function Nn(){return function(t){return t.lift(new Tn)}}var Tn=function(){function t(){}return t.prototype.call=function(t,n){return n.subscribe(new In(t))},t}(),In=function(t){function i(){return null!==t&&t.apply(this,arguments)||this}return n(i,t),i.prototype._next=function(t){},i}(h);function jn(){return function(t){return t.lift(new On)}}var On=function(){function t(){}return t.prototype.call=function(t,n){return n.subscribe(new Bn(t))},t}(),Bn=function(t){function i(n){return t.call(this,n)||this}return n(i,t),i.prototype.notifyComplete=function(t){var n=this.destination;n.next(t),n.complete()},i.prototype._next=function(t){this.notifyComplete(!1)},i.prototype._complete=function(){this.notifyComplete(!0)},i}(h);function En(t){return function(n){return 0===t?F():n.lift(new An(t))}}var An=function(){function t(t){if(this.total=t,this.total<0)throw new H}return t.prototype.call=function(t,n){return n.subscribe(new Wn(t,this.total))},t}(),Wn=function(t){function i(n,i){var e=t.call(this,n)||this;return e.total=i,e.ring=new Array,e.count=0,e}return n(i,t),i.prototype._next=function(t){var n=this.ring,i=this.total,e=this.count++;n.length<i?n.push(t):n[e%i]=t},i.prototype._complete=function(){var t=this.destination,n=this.count;if(n>0)for(var i=this.count>=this.total?this.total:this.count,e=this.ring,r=0;r<i;r++){var o=n++%i;t.next(e[o])}t.complete()},i}(h);function zn(t,n){var i=arguments.length>=2;return function(e){return e.pipe(t?L((function(n,i){return t(n,i,e)})):C,En(1),i?X(n):$((function(){return new J})))}}function kn(t){return function(n){return n.lift(new Pn(t))}}var Pn=function(){function t(t){this.value=t}return t.prototype.call=function(t,n){return n.subscribe(new Rn(t,this.value))},t}(),Rn=function(t){function i(n,i){var e=t.call(this,n)||this;return e.value=i,e}return n(i,t),i.prototype._next=function(t){this.destination.next(this.value)},i}(h);function Fn(){return function(t){return t.lift(new Dn)}}var Dn=function(){function t(){}return t.prototype.call=function(t,n){return n.subscribe(new Mn(t))},t}(),Mn=function(t){function i(n){return t.call(this,n)||this}return n(i,t),i.prototype._next=function(t){this.destination.next(D.createNext(t))},i.prototype._error=function(t){var n=this.destination;n.next(D.createError(t)),n.complete()},i.prototype._complete=function(){var t=this.destination;t.next(D.createComplete()),t.complete()},i}(h);function Yn(t,n){var i=!1;return arguments.length>=2&&(i=!0),function(e){return e.lift(new Ln(t,n,i))}}var Ln=function(){function t(t,n,i){void 0===i&&(i=!1),this.accumulator=t,this.seed=n,this.hasSeed=i}return t.prototype.call=function(t,n){return n.subscribe(new Kn(t,this.accumulator,this.seed,this.hasSeed))},t}(),Kn=function(t){function i(n,i,e,r){var o=t.call(this,n)||this;return o.accumulator=i,o._seed=e,o.hasSeed=r,o.index=0,o}return n(i,t),Object.defineProperty(i.prototype,"seed",{get:function(){return this._seed},set:function(t){this.hasSeed=!0,this._seed=t},enumerable:!0,configurable:!0}),i.prototype._next=function(t){if(this.hasSeed)return this._tryNext(t);this.seed=t,this.destination.next(t)},i.prototype._tryNext=function(t){var n,i=this.index++;try{n=this.accumulator(this.seed,t,i)}catch(t){this.destination.error(t)}this.seed=n,this.destination.next(n)},i}(h);function Un(t,n){return arguments.length>=2?function(i){return V(Yn(t,n),En(1),X(n))(i)}:function(n){return V(Yn((function(n,i,e){return t(n,i,e+1)})),En(1))(n)}}function qn(t){return Un("function"==typeof t?function(n,i){return t(n,i)>0?n:i}:function(t,n){return t>n?t:n})}function Zn(){for(var t=[],n=0;n<arguments.length;n++)t[n]=arguments[n];return function(n){return n.lift.call(I.apply(void 0,[n].concat(t)))}}function Gn(t,n,i){return void 0===i&&(i=Number.POSITIVE_INFINITY),"function"==typeof n?N((function(){return t}),n,i):("number"==typeof n&&(i=n),N((function(){return t}),i))}function Hn(t,n,i){return void 0===i&&(i=Number.POSITIVE_INFINITY),function(e){return e.lift(new Jn(t,n,i))}}var Jn=function(){function t(t,n,i){this.accumulator=t,this.seed=n,this.concurrent=i}return t.prototype.call=function(t,n){return n.subscribe(new Qn(t,this.accumulator,this.seed,this.concurrent))},t}(),Qn=function(t){function e(n,i,e,r){var o=t.call(this,n)||this;return o.accumulator=i,o.acc=e,o.concurrent=r,o.hasValue=!1,o.hasCompleted=!1,o.buffer=[],o.active=0,o.index=0,o}return n(e,t),e.prototype._next=function(t){if(this.active<this.concurrent){var n=this.index++,i=this.destination,e=void 0;try{e=(0,this.accumulator)(this.acc,t,n)}catch(t){return i.error(t)}this.active++,this._innerSub(e,t,n)}else this.buffer.push(t)},e.prototype._innerSub=function(t,n,e){var r=new y(this,void 0,void 0);this.destination.add(r),i(this,t,n,e,r)},e.prototype._complete=function(){this.hasCompleted=!0,0===this.active&&0===this.buffer.length&&(!1===this.hasValue&&this.destination.next(this.acc),this.destination.complete()),this.unsubscribe()},e.prototype.notifyNext=function(t,n,i,e,r){var o=this.destination;this.acc=n,this.hasValue=!0,o.next(n)},e.prototype.notifyComplete=function(t){var n=this.buffer;this.destination.remove(t),this.active--,n.length>0?this._next(n.shift()):0===this.active&&this.hasCompleted&&(!1===this.hasValue&&this.destination.next(this.acc),this.destination.complete())},e}(u);function Xn(t){return Un("function"==typeof t?function(n,i){return t(n,i)<0?n:i}:function(t,n){return t<n?t:n})}function $n(){for(var t=[],n=0;n<arguments.length;n++)t[n]=arguments[n];return 1===t.length&&v(t[0])&&(t=t[0]),function(n){return n.lift(new ti(t))}}var ti=function(){function t(t){this.nextSources=t}return t.prototype.call=function(t,n){return n.subscribe(new ni(t,this.nextSources))},t}(),ni=function(t){function e(n,i){var e=t.call(this,n)||this;return e.destination=n,e.nextSources=i,e}return n(e,t),e.prototype.notifyError=function(t,n){this.subscribeToNextSource()},e.prototype.notifyComplete=function(t){this.subscribeToNextSource()},e.prototype._error=function(t){this.subscribeToNextSource(),this.unsubscribe()},e.prototype._complete=function(){this.subscribeToNextSource(),this.unsubscribe()},e.prototype.subscribeToNextSource=function(){var t=this.nextSources.shift();if(t){var n=new y(this,void 0,void 0);this.destination.add(n),i(this,t,void 0,void 0,n)}else this.destination.complete()},e}(u);function ii(){return function(t){return t.lift(new ei)}}var ei=function(){function t(){}return t.prototype.call=function(t,n){return n.subscribe(new ri(t))},t}(),ri=function(t){function i(n){var i=t.call(this,n)||this;return i.hasPrev=!1,i}return n(i,t),i.prototype._next=function(t){var n;this.hasPrev?n=[this.prev,t]:this.hasPrev=!0,this.prev=t,n&&this.destination.next(n)},i}(h);function oi(t,n){return function(i){return[L(t,n)(i),L(j(t,n))(i)]}}function si(){for(var t=[],n=0;n<arguments.length;n++)t[n]=arguments[n];var i=t.length;if(0===i)throw new Error("list of properties cannot be empty.");return function(n){return S(ui(t,i))(n)}}function ui(t,n){return function(i){for(var e=i,r=0;r<n;r++){var o=e[t[r]];if(void 0===o)return;e=o}return e}}function ci(t){return t?et((function(){return new T}),t):et(new T)}function hi(t){return function(n){return et(new R(t))(n)}}function ai(){return function(t){return et(new O)(t)}}function li(t,n,i,e){i&&"function"!=typeof i&&(e=i);var r="function"==typeof i?i:void 0,o=new Y(t,n,e);return function(t){return et((function(){return o}),r)(t)}}function fi(){for(var t=[],n=0;n<arguments.length;n++)t[n]=arguments[n];return function(n){return 1===t.length&&v(t[0])&&(t=t[0]),n.lift.call(Z.apply(void 0,[n].concat(t)))}}function pi(t){return void 0===t&&(t=-1),function(n){return 0===t?F():t<0?n.lift(new di(-1,n)):n.lift(new di(t-1,n))}}var di=function(){function t(t,n){this.count=t,this.source=n}return t.prototype.call=function(t,n){return n.subscribe(new bi(t,this.count,this.source))},t}(),bi=function(t){function i(n,i,e){var r=t.call(this,n)||this;return r.count=i,r.source=e,r}return n(i,t),i.prototype.complete=function(){if(!this.isStopped){var n=this.source,i=this.count;if(0===i)return t.prototype.complete.call(this);i>-1&&(this.count=i-1),n.subscribe(this._unsubscribeAndRecycle())}},i}(h);function yi(t){return function(n){return n.lift(new vi(t))}}var vi=function(){function t(t){this.notifier=t}return t.prototype.call=function(t,n){return n.subscribe(new mi(t,this.notifier,n))},t}(),mi=function(t){function e(n,i,e){var r=t.call(this,n)||this;return r.notifier=i,r.source=e,r.sourceIsBeingSubscribedTo=!0,r}return n(e,t),e.prototype.notifyNext=function(t,n,i,e,r){this.sourceIsBeingSubscribedTo=!0,this.source.subscribe(this)},e.prototype.notifyComplete=function(n){if(!1===this.sourceIsBeingSubscribedTo)return t.prototype.complete.call(this)},e.prototype.complete=function(){if(this.sourceIsBeingSubscribedTo=!1,!this.isStopped){if(this.retries||this.subscribeToRetries(),!this.retriesSubscription||this.retriesSubscription.closed)return t.prototype.complete.call(this);this._unsubscribeAndRecycle(),this.notifications.next()}},e.prototype._unsubscribe=function(){var t=this.notifications,n=this.retriesSubscription;t&&(t.unsubscribe(),this.notifications=null),n&&(n.unsubscribe(),this.retriesSubscription=null),this.retries=null},e.prototype._unsubscribeAndRecycle=function(){var n=this._unsubscribe;return this._unsubscribe=null,t.prototype._unsubscribeAndRecycle.call(this),this._unsubscribe=n,this},e.prototype.subscribeToRetries=function(){var n;this.notifications=new T;try{n=(0,this.notifier)(this.notifications)}catch(n){return t.prototype.complete.call(this)}this.retries=n,this.retriesSubscription=i(this,n)},e}(u);function wi(t){return void 0===t&&(t=-1),function(n){return n.lift(new xi(t,n))}}var xi=function(){function t(t,n){this.count=t,this.source=n}return t.prototype.call=function(t,n){return n.subscribe(new _i(t,this.count,this.source))},t}(),_i=function(t){function i(n,i,e){var r=t.call(this,n)||this;return r.count=i,r.source=e,r}return n(i,t),i.prototype.error=function(n){if(!this.isStopped){var i=this.source,e=this.count;if(0===e)return t.prototype.error.call(this,n);e>-1&&(this.count=e-1),i.subscribe(this._unsubscribeAndRecycle())}},i}(h);function gi(t){return function(n){return n.lift(new Si(t,n))}}var Si=function(){function t(t,n){this.notifier=t,this.source=n}return t.prototype.call=function(t,n){return n.subscribe(new Ci(t,this.notifier,this.source))},t}(),Ci=function(t){function e(n,i,e){var r=t.call(this,n)||this;return r.notifier=i,r.source=e,r}return n(e,t),e.prototype.error=function(n){if(!this.isStopped){var e=this.errors,r=this.retries,o=this.retriesSubscription;if(r)this.errors=null,this.retriesSubscription=null;else{e=new T;try{r=(0,this.notifier)(e)}catch(n){return t.prototype.error.call(this,n)}o=i(this,r)}this._unsubscribeAndRecycle(),this.errors=e,this.retries=r,this.retriesSubscription=o,e.next(n)}},e.prototype._unsubscribe=function(){var t=this.errors,n=this.retriesSubscription;t&&(t.unsubscribe(),this.errors=null),n&&(n.unsubscribe(),this.retriesSubscription=null),this.retries=null},e.prototype.notifyNext=function(t,n,i,e,r){var o=this._unsubscribe;this._unsubscribe=null,this._unsubscribeAndRecycle(),this._unsubscribe=o,this.source.subscribe(this)},e}(u);function Vi(t){return function(n){return n.lift(new Ni(t))}}var Ni=function(){function t(t){this.notifier=t}return t.prototype.call=function(t,n){var e=new Ti(t),r=n.subscribe(e);return r.add(i(e,this.notifier)),r},t}(),Ti=function(t){function i(){var n=null!==t&&t.apply(this,arguments)||this;return n.hasValue=!1,n}return n(i,t),i.prototype._next=function(t){this.value=t,this.hasValue=!0},i.prototype.notifyNext=function(t,n,i,e,r){this.emitValue()},i.prototype.notifyComplete=function(){this.emitValue()},i.prototype.emitValue=function(){this.hasValue&&(this.hasValue=!1,this.destination.next(this.value))},i}(u);function Ii(t,n){return void 0===n&&(n=q),function(i){return i.lift(new ji(t,n))}}var ji=function(){function t(t,n){this.period=t,this.scheduler=n}return t.prototype.call=function(t,n){return n.subscribe(new Oi(t,this.period,this.scheduler))},t}(),Oi=function(t){function i(n,i,e){var r=t.call(this,n)||this;return r.period=i,r.scheduler=e,r.hasValue=!1,r.add(e.schedule(Bi,i,{subscriber:r,period:i})),r}return n(i,t),i.prototype._next=function(t){this.lastValue=t,this.hasValue=!0},i.prototype.notifyNext=function(){this.hasValue&&(this.hasValue=!1,this.destination.next(this.lastValue))},i}(h);function Bi(t){var n=t.subscriber,i=t.period;n.notifyNext(),this.schedule(t,i)}function Ei(t,n){return function(i){return i.lift(new Ai(t,n))}}var Ai=function(){function t(t,n){this.compareTo=t,this.comparator=n}return t.prototype.call=function(t,n){return n.subscribe(new Wi(t,this.compareTo,this.comparator))},t}(),Wi=function(t){function i(n,i,e){var r=t.call(this,n)||this;return r.compareTo=i,r.comparator=e,r._a=[],r._b=[],r._oneComplete=!1,r.destination.add(i.subscribe(new zi(n,r))),r}return n(i,t),i.prototype._next=function(t){this._oneComplete&&0===this._b.length?this.emit(!1):(this._a.push(t),this.checkValues())},i.prototype._complete=function(){this._oneComplete?this.emit(0===this._a.length&&0===this._b.length):this._oneComplete=!0,this.unsubscribe()},i.prototype.checkValues=function(){for(var t=this._a,n=this._b,i=this.comparator;t.length>0&&n.length>0;){var e=t.shift(),r=n.shift(),o=!1;try{o=i?i(e,r):e===r}catch(t){this.destination.error(t)}o||this.emit(!1)}},i.prototype.emit=function(t){var n=this.destination;n.next(t),n.complete()},i.prototype.nextB=function(t){this._oneComplete&&0===this._a.length?this.emit(!1):(this._b.push(t),this.checkValues())},i.prototype.completeB=function(){this._oneComplete?this.emit(0===this._a.length&&0===this._b.length):this._oneComplete=!0},i}(h),zi=function(t){function i(n,i){var e=t.call(this,n)||this;return e.parent=i,e}return n(i,t),i.prototype._next=function(t){this.parent.nextB(t)},i.prototype._error=function(t){this.parent.error(t),this.unsubscribe()},i.prototype._complete=function(){this.parent.completeB(),this.unsubscribe()},i}(h);function ki(t){return function(n){return n.lift(new Pi(t,n))}}var Pi=function(){function t(t,n){this.predicate=t,this.source=n}return t.prototype.call=function(t,n){return n.subscribe(new Ri(t,this.predicate,this.source))},t}(),Ri=function(t){function i(n,i,e){var r=t.call(this,n)||this;return r.predicate=i,r.source=e,r.seenValue=!1,r.index=0,r}return n(i,t),i.prototype.applySingleValue=function(t){this.seenValue?this.destination.error("Sequence contains more than one element"):(this.seenValue=!0,this.singleValue=t)},i.prototype._next=function(t){var n=this.index++;this.predicate?this.tryNext(t,n):this.applySingleValue(t)},i.prototype.tryNext=function(t,n){try{this.predicate(t,n,this.source)&&this.applySingleValue(t)}catch(t){this.destination.error(t)}},i.prototype._complete=function(){var t=this.destination;this.index>0?(t.next(this.seenValue?this.singleValue:void 0),t.complete()):t.error(new J)},i}(h);function Fi(t){return function(n){return n.lift(new Di(t))}}var Di=function(){function t(t){this.total=t}return t.prototype.call=function(t,n){return n.subscribe(new Mi(t,this.total))},t}(),Mi=function(t){function i(n,i){var e=t.call(this,n)||this;return e.total=i,e.count=0,e}return n(i,t),i.prototype._next=function(t){++this.count>this.total&&this.destination.next(t)},i}(h);function Yi(t){return function(n){return n.lift(new Li(t))}}var Li=function(){function t(t){if(this._skipCount=t,this._skipCount<0)throw new H}return t.prototype.call=function(t,n){return 0===this._skipCount?n.subscribe(new h(t)):n.subscribe(new Ki(t,this._skipCount))},t}(),Ki=function(t){function i(n,i){var e=t.call(this,n)||this;return e._skipCount=i,e._count=0,e._ring=new Array(i),e}return n(i,t),i.prototype._next=function(t){var n=this._skipCount,i=this._count++;if(i<n)this._ring[i]=t;else{var e=i%n,r=this._ring,o=r[e];r[e]=t,this.destination.next(o)}},i}(h);function Ui(t){return function(n){return n.lift(new qi(t))}}var qi=function(){function t(t){this.notifier=t}return t.prototype.call=function(t,n){return n.subscribe(new Zi(t,this.notifier))},t}(),Zi=function(t){function e(n,e){var r=t.call(this,n)||this;r.hasValue=!1;var o=new y(r,void 0,void 0);return r.add(o),r.innerSubscription=o,i(r,e,void 0,void 0,o),r}return n(e,t),e.prototype._next=function(n){this.hasValue&&t.prototype._next.call(this,n)},e.prototype.notifyNext=function(t,n,i,e,r){this.hasValue=!0,this.innerSubscription&&this.innerSubscription.unsubscribe()},e.prototype.notifyComplete=function(){},e}(u);function Gi(t){return function(n){return n.lift(new Hi(t))}}var Hi=function(){function t(t){this.predicate=t}return t.prototype.call=function(t,n){return n.subscribe(new Ji(t,this.predicate))},t}(),Ji=function(t){function i(n,i){var e=t.call(this,n)||this;return e.predicate=i,e.skipping=!0,e.index=0,e}return n(i,t),i.prototype._next=function(t){var n=this.destination;this.skipping&&this.tryCallPredicate(t),this.skipping||n.next(t)},i.prototype.tryCallPredicate=function(t){try{var n=this.predicate(t,this.index++);this.skipping=Boolean(n)}catch(t){this.destination.error(t)}},i}(h),Qi=function(t){function i(n,i,e){void 0===i&&(i=0),void 0===e&&(e=B);var r=t.call(this)||this;return r.source=n,r.delayTime=i,r.scheduler=e,(!G(i)||i<0)&&(r.delayTime=0),e&&"function"==typeof e.schedule||(r.scheduler=B),r}return n(i,t),i.create=function(t,n,e){return void 0===n&&(n=0),void 0===e&&(e=B),new i(t,n,e)},i.dispatch=function(t){var n=t.source,i=t.subscriber;return this.add(n.subscribe(i))},i.prototype._subscribe=function(t){var n=this.delayTime,e=this.source;return this.scheduler.schedule(i.dispatch,n,{source:e,subscriber:t})},i}(_);function Xi(t,n){return void 0===n&&(n=0),function(i){return i.lift(new $i(t,n))}}var $i=function(){function t(t,n){this.scheduler=t,this.delay=n}return t.prototype.call=function(t,n){return new Qi(n,this.delay,this.scheduler).subscribe(t)},t}();function te(){return rt(C)}function ne(t,n){return n?rt((function(){return t}),n):rt((function(){return t}))}function ie(t,n){return void 0===n&&(n=!1),function(i){return i.lift(new ee(t,n))}}var ee=function(){function t(t,n){this.predicate=t,this.inclusive=n}return t.prototype.call=function(t,n){return n.subscribe(new re(t,this.predicate,this.inclusive))},t}(),re=function(t){function i(n,i,e){var r=t.call(this,n)||this;return r.predicate=i,r.inclusive=e,r.index=0,r}return n(i,t),i.prototype._next=function(t){var n,i=this.destination;try{n=this.predicate(t,this.index++)}catch(t){return void i.error(t)}this.nextOrComplete(t,n)},i.prototype.nextOrComplete=function(t,n){var i=this.destination;Boolean(n)?i.next(t):(this.inclusive&&i.next(t),i.complete())},i}(h),oe={leading:!0,trailing:!1};function se(t,n){return void 0===n&&(n=oe),function(i){return i.lift(new ue(t,n.leading,n.trailing))}}var ue=function(){function t(t,n,i){this.durationSelector=t,this.leading=n,this.trailing=i}return t.prototype.call=function(t,n){return n.subscribe(new ce(t,this.durationSelector,this.leading,this.trailing))},t}(),ce=function(t){function e(n,i,e,r){var o=t.call(this,n)||this;return o.destination=n,o.durationSelector=i,o._leading=e,o._trailing=r,o._hasValue=!1,o}return n(e,t),e.prototype._next=function(t){this._hasValue=!0,this._sendValue=t,this._throttled||(this._leading?this.send():this.throttle(t))},e.prototype.send=function(){var t=this._hasValue,n=this._sendValue;t&&(this.destination.next(n),this.throttle(n)),this._hasValue=!1,this._sendValue=null},e.prototype.throttle=function(t){var n=this.tryDurationSelector(t);n&&this.add(this._throttled=i(this,n))},e.prototype.tryDurationSelector=function(t){try{return this.durationSelector(t)}catch(t){return this.destination.error(t),null}},e.prototype.throttlingDone=function(){var t=this._throttled,n=this._trailing;t&&t.unsubscribe(),this._throttled=null,n&&this.send()},e.prototype.notifyNext=function(t,n,i,e,r){this.throttlingDone()},e.prototype.notifyComplete=function(){this.throttlingDone()},e}(u);function he(t,n,i){return void 0===n&&(n=q),void 0===i&&(i=oe),function(e){return e.lift(new ae(t,n,i.leading,i.trailing))}}var ae=function(){function t(t,n,i,e){this.duration=t,this.scheduler=n,this.leading=i,this.trailing=e}return t.prototype.call=function(t,n){return n.subscribe(new le(t,this.duration,this.scheduler,this.leading,this.trailing))},t}(),le=function(t){function i(n,i,e,r,o){var s=t.call(this,n)||this;return s.duration=i,s.scheduler=e,s.leading=r,s.trailing=o,s._hasTrailingValue=!1,s._trailingValue=null,s}return n(i,t),i.prototype._next=function(t){this.throttled?this.trailing&&(this._trailingValue=t,this._hasTrailingValue=!0):(this.add(this.throttled=this.scheduler.schedule(fe,this.duration,{subscriber:this})),this.leading?this.destination.next(t):this.trailing&&(this._trailingValue=t,this._hasTrailingValue=!0))},i.prototype._complete=function(){this._hasTrailingValue?(this.destination.next(this._trailingValue),this.destination.complete()):this.destination.complete()},i.prototype.clearThrottle=function(){var t=this.throttled;t&&(this.trailing&&this._hasTrailingValue&&(this.destination.next(this._trailingValue),this._trailingValue=null,this._hasTrailingValue=!1),t.unsubscribe(),this.remove(t),this.throttled=null)},i}(h);function fe(t){t.subscriber.clearThrottle()}function pe(t){return void 0===t&&(t=q),function(n){return E((function(){return n.pipe(Yn((function(n,i){var e=n.current;return{value:i,current:t.now(),last:e}}),{current:t.now(),value:void 0,last:void 0}),S((function(t){var n=t.current,i=t.last,e=t.value;return new de(e,n-i)})))}))}}var de=function(){return function(t,n){this.value=t,this.interval=n}}();function be(t,n,i){return void 0===i&&(i=q),function(e){var r=nt(t),o=r?+t-i.now():Math.abs(t);return e.lift(new ye(o,r,n,i))}}var ye=function(){function t(t,n,i,e){this.waitFor=t,this.absoluteTimeout=n,this.withObservable=i,this.scheduler=e}return t.prototype.call=function(t,n){return n.subscribe(new ve(t,this.absoluteTimeout,this.waitFor,this.withObservable,this.scheduler))},t}(),ve=function(t){function e(n,i,e,r,o){var s=t.call(this,n)||this;return s.absoluteTimeout=i,s.waitFor=e,s.withObservable=r,s.scheduler=o,s.action=null,s.scheduleTimeout(),s}return n(e,t),e.dispatchTimeout=function(t){var n=t.withObservable;t._unsubscribeAndRecycle(),t.add(i(t,n))},e.prototype.scheduleTimeout=function(){var t=this.action;t?this.action=t.schedule(this,this.waitFor):this.add(this.action=this.scheduler.schedule(e.dispatchTimeout,this.waitFor,this))},e.prototype._next=function(n){this.absoluteTimeout||this.scheduleTimeout(),t.prototype._next.call(this,n)},e.prototype._unsubscribe=function(){this.action=null,this.scheduler=null,this.withObservable=null},e}(u);function me(t,n){return void 0===n&&(n=q),be(t,M(new A),n)}function we(t){return void 0===t&&(t=q),S((function(n){return new xe(n,t.now())}))}var xe=function(){return function(t,n){this.value=t,this.timestamp=n}}();function _e(t,n,i){return 0===i?[n]:(t.push(n),t)}function ge(){return Un(_e,[])}function Se(t){return function(n){return n.lift(new Ce(t))}}var Ce=function(){function t(t){this.windowBoundaries=t}return t.prototype.call=function(t,n){var e=new Ve(t),r=n.subscribe(e);return r.closed||e.add(i(e,this.windowBoundaries)),r},t}(),Ve=function(t){function i(n){var i=t.call(this,n)||this;return i.window=new T,n.next(i.window),i}return n(i,t),i.prototype.notifyNext=function(t,n,i,e,r){this.openWindow()},i.prototype.notifyError=function(t,n){this._error(t)},i.prototype.notifyComplete=function(t){this._complete()},i.prototype._next=function(t){this.window.next(t)},i.prototype._error=function(t){this.window.error(t),this.destination.error(t)},i.prototype._complete=function(){this.window.complete(),this.destination.complete()},i.prototype._unsubscribe=function(){this.window=null},i.prototype.openWindow=function(){var t=this.window;t&&t.complete();var n=this.destination,i=this.window=new T;n.next(i)},i}(u);function Ne(t,n){return void 0===n&&(n=0),function(i){return i.lift(new Te(t,n))}}var Te=function(){function t(t,n){this.windowSize=t,this.startWindowEvery=n}return t.prototype.call=function(t,n){return n.subscribe(new Ie(t,this.windowSize,this.startWindowEvery))},t}(),Ie=function(t){function i(n,i,e){var r=t.call(this,n)||this;return r.destination=n,r.windowSize=i,r.startWindowEvery=e,r.windows=[new T],r.count=0,n.next(r.windows[0]),r}return n(i,t),i.prototype._next=function(t){for(var n=this.startWindowEvery>0?this.startWindowEvery:this.windowSize,i=this.destination,e=this.windowSize,r=this.windows,o=r.length,s=0;s<o&&!this.closed;s++)r[s].next(t);var u=this.count-e+1;if(u>=0&&u%n==0&&!this.closed&&r.shift().complete(),++this.count%n==0&&!this.closed){var c=new T;r.push(c),i.next(c)}},i.prototype._error=function(t){var n=this.windows;if(n)for(;n.length>0&&!this.closed;)n.shift().error(t);this.destination.error(t)},i.prototype._complete=function(){var t=this.windows;if(t)for(;t.length>0&&!this.closed;)t.shift().complete();this.destination.complete()},i.prototype._unsubscribe=function(){this.count=0,this.windows=null},i}(h);function je(t){var n=q,i=null,e=Number.POSITIVE_INFINITY;return l(arguments[3])&&(n=arguments[3]),l(arguments[2])?n=arguments[2]:G(arguments[2])&&(e=arguments[2]),l(arguments[1])?n=arguments[1]:G(arguments[1])&&(i=arguments[1]),function(r){return r.lift(new Oe(t,i,e,n))}}var Oe=function(){function t(t,n,i,e){this.windowTimeSpan=t,this.windowCreationInterval=n,this.maxWindowSize=i,this.scheduler=e}return t.prototype.call=function(t,n){return n.subscribe(new Ee(t,this.windowTimeSpan,this.windowCreationInterval,this.maxWindowSize,this.scheduler))},t}(),Be=function(t){function i(){var n=null!==t&&t.apply(this,arguments)||this;return n._numberOfNextedValues=0,n}return n(i,t),i.prototype.next=function(n){this._numberOfNextedValues++,t.prototype.next.call(this,n)},Object.defineProperty(i.prototype,"numberOfNextedValues",{get:function(){return this._numberOfNextedValues},enumerable:!0,configurable:!0}),i}(T),Ee=function(t){function i(n,i,e,r,o){var s=t.call(this,n)||this;s.destination=n,s.windowTimeSpan=i,s.windowCreationInterval=e,s.maxWindowSize=r,s.scheduler=o,s.windows=[];var u=s.openWindow();if(null!==e&&e>=0){var c={subscriber:s,window:u,context:null},h={windowTimeSpan:i,windowCreationInterval:e,subscriber:s,scheduler:o};s.add(o.schedule(ze,i,c)),s.add(o.schedule(We,e,h))}else{var a={subscriber:s,window:u,windowTimeSpan:i};s.add(o.schedule(Ae,i,a))}return s}return n(i,t),i.prototype._next=function(t){for(var n=this.windows,i=n.length,e=0;e<i;e++){var r=n[e];r.closed||(r.next(t),r.numberOfNextedValues>=this.maxWindowSize&&this.closeWindow(r))}},i.prototype._error=function(t){for(var n=this.windows;n.length>0;)n.shift().error(t);this.destination.error(t)},i.prototype._complete=function(){for(var t=this.windows;t.length>0;){var n=t.shift();n.closed||n.complete()}this.destination.complete()},i.prototype.openWindow=function(){var t=new Be;return this.windows.push(t),this.destination.next(t),t},i.prototype.closeWindow=function(t){t.complete();var n=this.windows;n.splice(n.indexOf(t),1)},i}(h);function Ae(t){var n=t.subscriber,i=t.windowTimeSpan,e=t.window;e&&n.closeWindow(e),t.window=n.openWindow(),this.schedule(t,i)}function We(t){var n=t.windowTimeSpan,i=t.subscriber,e=t.scheduler,r=t.windowCreationInterval,o=i.openWindow(),s={action:this,subscription:null},u={subscriber:i,window:o,context:s};s.subscription=e.schedule(ze,n,u),this.add(s.subscription),this.schedule(t,r)}function ze(t){var n=t.subscriber,i=t.window,e=t.context;e&&e.action&&e.subscription&&e.action.remove(e.subscription),n.closeWindow(i)}function ke(t,n){return function(i){return i.lift(new Pe(t,n))}}var Pe=function(){function t(t,n){this.openings=t,this.closingSelector=n}return t.prototype.call=function(t,n){return n.subscribe(new Re(t,this.openings,this.closingSelector))},t}(),Re=function(t){function e(n,e,r){var o=t.call(this,n)||this;return o.openings=e,o.closingSelector=r,o.contexts=[],o.add(o.openSubscription=i(o,e,e)),o}return n(e,t),e.prototype._next=function(t){var n=this.contexts;if(n)for(var i=n.length,e=0;e<i;e++)n[e].window.next(t)},e.prototype._error=function(n){var i=this.contexts;if(this.contexts=null,i)for(var e=i.length,r=-1;++r<e;){var o=i[r];o.window.error(n),o.subscription.unsubscribe()}t.prototype._error.call(this,n)},e.prototype._complete=function(){var n=this.contexts;if(this.contexts=null,n)for(var i=n.length,e=-1;++e<i;){var r=n[e];r.window.complete(),r.subscription.unsubscribe()}t.prototype._complete.call(this)},e.prototype._unsubscribe=function(){var t=this.contexts;if(this.contexts=null,t)for(var n=t.length,i=-1;++i<n;){var e=t[i];e.window.unsubscribe(),e.subscription.unsubscribe()}},e.prototype.notifyNext=function(t,n,e,r,o){if(t===this.openings){var s=void 0;try{s=(0,this.closingSelector)(n)}catch(t){return this.error(t)}var u=new T,c=new p,h={window:u,subscription:c};this.contexts.push(h);var a=i(this,s,h);a.closed?this.closeWindow(this.contexts.length-1):(a.context=h,c.add(a)),this.destination.next(u)}else this.closeWindow(this.contexts.indexOf(t))},e.prototype.notifyError=function(t){this.error(t)},e.prototype.notifyComplete=function(t){t!==this.openSubscription&&this.closeWindow(this.contexts.indexOf(t.context))},e.prototype.closeWindow=function(t){if(-1!==t){var n=this.contexts,i=n[t],e=i.window,r=i.subscription;n.splice(t,1),e.complete(),r.unsubscribe()}},e}(u);function Fe(t){return function(n){return n.lift(new De(t))}}var De=function(){function t(t){this.closingSelector=t}return t.prototype.call=function(t,n){return n.subscribe(new Me(t,this.closingSelector))},t}(),Me=function(t){function e(n,i){var e=t.call(this,n)||this;return e.destination=n,e.closingSelector=i,e.openWindow(),e}return n(e,t),e.prototype.notifyNext=function(t,n,i,e,r){this.openWindow(r)},e.prototype.notifyError=function(t,n){this._error(t)},e.prototype.notifyComplete=function(t){this.openWindow(t)},e.prototype._next=function(t){this.window.next(t)},e.prototype._error=function(t){this.window.error(t),this.destination.error(t),this.unsubscribeClosingNotification()},e.prototype._complete=function(){this.window.complete(),this.destination.complete(),this.unsubscribeClosingNotification()},e.prototype.unsubscribeClosingNotification=function(){this.closingNotification&&this.closingNotification.unsubscribe()},e.prototype.openWindow=function(t){void 0===t&&(t=null),t&&(this.remove(t),t.unsubscribe());var n=this.window;n&&n.complete();var e,r=this.window=new T;this.destination.next(r);try{e=(0,this.closingSelector)()}catch(t){return this.destination.error(t),void this.window.error(t)}this.add(this.closingNotification=i(this,e))},e}(u);function Ye(){for(var t=[],n=0;n<arguments.length;n++)t[n]=arguments[n];return function(n){return n.lift.call(W.apply(void 0,[n].concat(t)))}}function Le(t){return function(n){return n.lift(new z(t))}}export{ot as audit,ct as auditTime,ht as buffer,ft as bufferCount,yt as bufferTime,St as bufferToggle,Nt as bufferWhen,jt as catchError,Et as combineAll,At as combineLatest,Wt as concat,zt as concatMapTo,kt as count,Ft as debounce,Yt as debounceTime,qt as delayWhen,Qt as dematerialize,tn as distinct,rn as distinctUntilKeyChanged,on as elementAt,sn as endWith,un as every,an as exhaust,pn as exhaustMap,yn as expand,wn as finalize,gn as find,Vn as findIndex,Nn as ignoreElements,jn as isEmpty,zn as last,kn as mapTo,Fn as materialize,qn as max,Zn as merge,Gn as mergeMapTo,Hn as mergeScan,Xn as min,$n as onErrorResumeNext,ii as pairwise,oi as partition,si as pluck,ci as publish,hi as publishBehavior,ai as publishLast,li as publishReplay,fi as race,Un as reduce,pi as repeat,yi as repeatWhen,wi as retry,gi as retryWhen,Vi as sample,Ii as sampleTime,Yn as scan,Ei as sequenceEqual,ki as single,Fi as skip,Yi as skipLast,Ui as skipUntil,Gi as skipWhile,Xi as subscribeOn,te as switchAll,ne as switchMapTo,En as takeLast,ie as takeWhile,se as throttle,he as throttleTime,pe as timeInterval,me as timeout,be as timeoutWith,we as timestamp,ge as toArray,Se as window,Ne as windowCount,je as windowTime,ke as windowToggle,Fe as windowWhen,Ye as zip,Le as zipAll};
-//# sourceMappingURL=operators.js.map
+import { b as __extends } from '../common/tslib.es6-c4a4947b.js';
+import { l as subscribeToResult, n as OuterSubscriber, b as Subscriber, d as isScheduler, S as Subscription, I as InnerSubscriber, h as isArray, g as from, O as Observable, e as map, i as identity, v as pipe, m as mergeMap, a as Subject } from '../common/mergeMap-64c6f393.js';
+export { m as flatMap, e as map, m as mergeMap } from '../common/mergeMap-64c6f393.js';
+import { m as merge$1 } from '../common/merge-183efbc7.js';
+export { a as mergeAll, r as refCount } from '../common/merge-183efbc7.js';
+import { n as not, A as AsyncSubject, a as asap, d as defer, T as TimeoutError, z as zip$1, Z as ZipOperator } from '../common/zip-41358de8.js';
+export { g as groupBy } from '../common/zip-41358de8.js';
+import { C as CombineLatestOperator, a as concat$1, B as BehaviorSubject } from '../common/concat-981db672.js';
+export { b as concatAll } from '../common/concat-981db672.js';
+import { e as empty, N as Notification, t as throwError } from '../common/Notification-9e07e457.js';
+import { R as ReplaySubject } from '../common/ReplaySubject-8316d9c1.js';
+export { o as observeOn } from '../common/ReplaySubject-8316d9c1.js';
+import { f as filter, o as of } from '../common/filter-d76a729c.js';
+export { f as filter } from '../common/filter-d76a729c.js';
+import { t as timer, a as async, r as race$1, i as isNumeric } from '../common/timer-a781bf0e.js';
+import { A as ArgumentOutOfRangeError } from '../common/ArgumentOutOfRangeError-91c779f5.js';
+import { E as EmptyError } from '../common/EmptyError-a9e17542.js';
+import { c as concatMap } from '../common/concatMap-326c8f32.js';
+export { c as concatMap } from '../common/concatMap-326c8f32.js';
+import { d as defaultIfEmpty, t as throwIfEmpty } from '../common/shareReplay-5c54bf83.js';
+export { d as defaultIfEmpty, f as first, s as shareReplay, t as throwIfEmpty } from '../common/shareReplay-5c54bf83.js';
+import { d as distinctUntilChanged, i as isDate } from '../common/withLatestFrom-853e2e94.js';
+export { b as delay, d as distinctUntilChanged, s as startWith, t as takeUntil, a as tap, w as withLatestFrom } from '../common/withLatestFrom-853e2e94.js';
+import { t as take } from '../common/take-7bfdafe5.js';
+export { t as take } from '../common/take-7bfdafe5.js';
+import { m as multicast } from '../common/share-d41e3509.js';
+export { m as multicast, s as share } from '../common/share-d41e3509.js';
+import { s as switchMap } from '../common/switchMap-c513d696.js';
+export { s as switchMap } from '../common/switchMap-c513d696.js';
+
+/** PURE_IMPORTS_START tslib,_OuterSubscriber,_util_subscribeToResult PURE_IMPORTS_END */
+function audit(durationSelector) {
+    return function auditOperatorFunction(source) {
+        return source.lift(new AuditOperator(durationSelector));
+    };
+}
+var AuditOperator = /*@__PURE__*/ (function () {
+    function AuditOperator(durationSelector) {
+        this.durationSelector = durationSelector;
+    }
+    AuditOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new AuditSubscriber(subscriber, this.durationSelector));
+    };
+    return AuditOperator;
+}());
+var AuditSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(AuditSubscriber, _super);
+    function AuditSubscriber(destination, durationSelector) {
+        var _this = _super.call(this, destination) || this;
+        _this.durationSelector = durationSelector;
+        _this.hasValue = false;
+        return _this;
+    }
+    AuditSubscriber.prototype._next = function (value) {
+        this.value = value;
+        this.hasValue = true;
+        if (!this.throttled) {
+            var duration = void 0;
+            try {
+                var durationSelector = this.durationSelector;
+                duration = durationSelector(value);
+            }
+            catch (err) {
+                return this.destination.error(err);
+            }
+            var innerSubscription = subscribeToResult(this, duration);
+            if (!innerSubscription || innerSubscription.closed) {
+                this.clearThrottle();
+            }
+            else {
+                this.add(this.throttled = innerSubscription);
+            }
+        }
+    };
+    AuditSubscriber.prototype.clearThrottle = function () {
+        var _a = this, value = _a.value, hasValue = _a.hasValue, throttled = _a.throttled;
+        if (throttled) {
+            this.remove(throttled);
+            this.throttled = null;
+            throttled.unsubscribe();
+        }
+        if (hasValue) {
+            this.value = null;
+            this.hasValue = false;
+            this.destination.next(value);
+        }
+    };
+    AuditSubscriber.prototype.notifyNext = function (outerValue, innerValue, outerIndex, innerIndex) {
+        this.clearThrottle();
+    };
+    AuditSubscriber.prototype.notifyComplete = function () {
+        this.clearThrottle();
+    };
+    return AuditSubscriber;
+}(OuterSubscriber));
+
+/** PURE_IMPORTS_START _scheduler_async,_audit,_observable_timer PURE_IMPORTS_END */
+function auditTime(duration, scheduler) {
+    if (scheduler === void 0) {
+        scheduler = async;
+    }
+    return audit(function () { return timer(duration, scheduler); });
+}
+
+/** PURE_IMPORTS_START tslib,_OuterSubscriber,_util_subscribeToResult PURE_IMPORTS_END */
+function buffer(closingNotifier) {
+    return function bufferOperatorFunction(source) {
+        return source.lift(new BufferOperator(closingNotifier));
+    };
+}
+var BufferOperator = /*@__PURE__*/ (function () {
+    function BufferOperator(closingNotifier) {
+        this.closingNotifier = closingNotifier;
+    }
+    BufferOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new BufferSubscriber(subscriber, this.closingNotifier));
+    };
+    return BufferOperator;
+}());
+var BufferSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(BufferSubscriber, _super);
+    function BufferSubscriber(destination, closingNotifier) {
+        var _this = _super.call(this, destination) || this;
+        _this.buffer = [];
+        _this.add(subscribeToResult(_this, closingNotifier));
+        return _this;
+    }
+    BufferSubscriber.prototype._next = function (value) {
+        this.buffer.push(value);
+    };
+    BufferSubscriber.prototype.notifyNext = function (outerValue, innerValue, outerIndex, innerIndex, innerSub) {
+        var buffer = this.buffer;
+        this.buffer = [];
+        this.destination.next(buffer);
+    };
+    return BufferSubscriber;
+}(OuterSubscriber));
+
+/** PURE_IMPORTS_START tslib,_Subscriber PURE_IMPORTS_END */
+function bufferCount(bufferSize, startBufferEvery) {
+    if (startBufferEvery === void 0) {
+        startBufferEvery = null;
+    }
+    return function bufferCountOperatorFunction(source) {
+        return source.lift(new BufferCountOperator(bufferSize, startBufferEvery));
+    };
+}
+var BufferCountOperator = /*@__PURE__*/ (function () {
+    function BufferCountOperator(bufferSize, startBufferEvery) {
+        this.bufferSize = bufferSize;
+        this.startBufferEvery = startBufferEvery;
+        if (!startBufferEvery || bufferSize === startBufferEvery) {
+            this.subscriberClass = BufferCountSubscriber;
+        }
+        else {
+            this.subscriberClass = BufferSkipCountSubscriber;
+        }
+    }
+    BufferCountOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new this.subscriberClass(subscriber, this.bufferSize, this.startBufferEvery));
+    };
+    return BufferCountOperator;
+}());
+var BufferCountSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(BufferCountSubscriber, _super);
+    function BufferCountSubscriber(destination, bufferSize) {
+        var _this = _super.call(this, destination) || this;
+        _this.bufferSize = bufferSize;
+        _this.buffer = [];
+        return _this;
+    }
+    BufferCountSubscriber.prototype._next = function (value) {
+        var buffer = this.buffer;
+        buffer.push(value);
+        if (buffer.length == this.bufferSize) {
+            this.destination.next(buffer);
+            this.buffer = [];
+        }
+    };
+    BufferCountSubscriber.prototype._complete = function () {
+        var buffer = this.buffer;
+        if (buffer.length > 0) {
+            this.destination.next(buffer);
+        }
+        _super.prototype._complete.call(this);
+    };
+    return BufferCountSubscriber;
+}(Subscriber));
+var BufferSkipCountSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(BufferSkipCountSubscriber, _super);
+    function BufferSkipCountSubscriber(destination, bufferSize, startBufferEvery) {
+        var _this = _super.call(this, destination) || this;
+        _this.bufferSize = bufferSize;
+        _this.startBufferEvery = startBufferEvery;
+        _this.buffers = [];
+        _this.count = 0;
+        return _this;
+    }
+    BufferSkipCountSubscriber.prototype._next = function (value) {
+        var _a = this, bufferSize = _a.bufferSize, startBufferEvery = _a.startBufferEvery, buffers = _a.buffers, count = _a.count;
+        this.count++;
+        if (count % startBufferEvery === 0) {
+            buffers.push([]);
+        }
+        for (var i = buffers.length; i--;) {
+            var buffer = buffers[i];
+            buffer.push(value);
+            if (buffer.length === bufferSize) {
+                buffers.splice(i, 1);
+                this.destination.next(buffer);
+            }
+        }
+    };
+    BufferSkipCountSubscriber.prototype._complete = function () {
+        var _a = this, buffers = _a.buffers, destination = _a.destination;
+        while (buffers.length > 0) {
+            var buffer = buffers.shift();
+            if (buffer.length > 0) {
+                destination.next(buffer);
+            }
+        }
+        _super.prototype._complete.call(this);
+    };
+    return BufferSkipCountSubscriber;
+}(Subscriber));
+
+/** PURE_IMPORTS_START tslib,_scheduler_async,_Subscriber,_util_isScheduler PURE_IMPORTS_END */
+function bufferTime(bufferTimeSpan) {
+    var length = arguments.length;
+    var scheduler = async;
+    if (isScheduler(arguments[arguments.length - 1])) {
+        scheduler = arguments[arguments.length - 1];
+        length--;
+    }
+    var bufferCreationInterval = null;
+    if (length >= 2) {
+        bufferCreationInterval = arguments[1];
+    }
+    var maxBufferSize = Number.POSITIVE_INFINITY;
+    if (length >= 3) {
+        maxBufferSize = arguments[2];
+    }
+    return function bufferTimeOperatorFunction(source) {
+        return source.lift(new BufferTimeOperator(bufferTimeSpan, bufferCreationInterval, maxBufferSize, scheduler));
+    };
+}
+var BufferTimeOperator = /*@__PURE__*/ (function () {
+    function BufferTimeOperator(bufferTimeSpan, bufferCreationInterval, maxBufferSize, scheduler) {
+        this.bufferTimeSpan = bufferTimeSpan;
+        this.bufferCreationInterval = bufferCreationInterval;
+        this.maxBufferSize = maxBufferSize;
+        this.scheduler = scheduler;
+    }
+    BufferTimeOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new BufferTimeSubscriber(subscriber, this.bufferTimeSpan, this.bufferCreationInterval, this.maxBufferSize, this.scheduler));
+    };
+    return BufferTimeOperator;
+}());
+var Context = /*@__PURE__*/ (function () {
+    function Context() {
+        this.buffer = [];
+    }
+    return Context;
+}());
+var BufferTimeSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(BufferTimeSubscriber, _super);
+    function BufferTimeSubscriber(destination, bufferTimeSpan, bufferCreationInterval, maxBufferSize, scheduler) {
+        var _this = _super.call(this, destination) || this;
+        _this.bufferTimeSpan = bufferTimeSpan;
+        _this.bufferCreationInterval = bufferCreationInterval;
+        _this.maxBufferSize = maxBufferSize;
+        _this.scheduler = scheduler;
+        _this.contexts = [];
+        var context = _this.openContext();
+        _this.timespanOnly = bufferCreationInterval == null || bufferCreationInterval < 0;
+        if (_this.timespanOnly) {
+            var timeSpanOnlyState = { subscriber: _this, context: context, bufferTimeSpan: bufferTimeSpan };
+            _this.add(context.closeAction = scheduler.schedule(dispatchBufferTimeSpanOnly, bufferTimeSpan, timeSpanOnlyState));
+        }
+        else {
+            var closeState = { subscriber: _this, context: context };
+            var creationState = { bufferTimeSpan: bufferTimeSpan, bufferCreationInterval: bufferCreationInterval, subscriber: _this, scheduler: scheduler };
+            _this.add(context.closeAction = scheduler.schedule(dispatchBufferClose, bufferTimeSpan, closeState));
+            _this.add(scheduler.schedule(dispatchBufferCreation, bufferCreationInterval, creationState));
+        }
+        return _this;
+    }
+    BufferTimeSubscriber.prototype._next = function (value) {
+        var contexts = this.contexts;
+        var len = contexts.length;
+        var filledBufferContext;
+        for (var i = 0; i < len; i++) {
+            var context_1 = contexts[i];
+            var buffer = context_1.buffer;
+            buffer.push(value);
+            if (buffer.length == this.maxBufferSize) {
+                filledBufferContext = context_1;
+            }
+        }
+        if (filledBufferContext) {
+            this.onBufferFull(filledBufferContext);
+        }
+    };
+    BufferTimeSubscriber.prototype._error = function (err) {
+        this.contexts.length = 0;
+        _super.prototype._error.call(this, err);
+    };
+    BufferTimeSubscriber.prototype._complete = function () {
+        var _a = this, contexts = _a.contexts, destination = _a.destination;
+        while (contexts.length > 0) {
+            var context_2 = contexts.shift();
+            destination.next(context_2.buffer);
+        }
+        _super.prototype._complete.call(this);
+    };
+    BufferTimeSubscriber.prototype._unsubscribe = function () {
+        this.contexts = null;
+    };
+    BufferTimeSubscriber.prototype.onBufferFull = function (context) {
+        this.closeContext(context);
+        var closeAction = context.closeAction;
+        closeAction.unsubscribe();
+        this.remove(closeAction);
+        if (!this.closed && this.timespanOnly) {
+            context = this.openContext();
+            var bufferTimeSpan = this.bufferTimeSpan;
+            var timeSpanOnlyState = { subscriber: this, context: context, bufferTimeSpan: bufferTimeSpan };
+            this.add(context.closeAction = this.scheduler.schedule(dispatchBufferTimeSpanOnly, bufferTimeSpan, timeSpanOnlyState));
+        }
+    };
+    BufferTimeSubscriber.prototype.openContext = function () {
+        var context = new Context();
+        this.contexts.push(context);
+        return context;
+    };
+    BufferTimeSubscriber.prototype.closeContext = function (context) {
+        this.destination.next(context.buffer);
+        var contexts = this.contexts;
+        var spliceIndex = contexts ? contexts.indexOf(context) : -1;
+        if (spliceIndex >= 0) {
+            contexts.splice(contexts.indexOf(context), 1);
+        }
+    };
+    return BufferTimeSubscriber;
+}(Subscriber));
+function dispatchBufferTimeSpanOnly(state) {
+    var subscriber = state.subscriber;
+    var prevContext = state.context;
+    if (prevContext) {
+        subscriber.closeContext(prevContext);
+    }
+    if (!subscriber.closed) {
+        state.context = subscriber.openContext();
+        state.context.closeAction = this.schedule(state, state.bufferTimeSpan);
+    }
+}
+function dispatchBufferCreation(state) {
+    var bufferCreationInterval = state.bufferCreationInterval, bufferTimeSpan = state.bufferTimeSpan, subscriber = state.subscriber, scheduler = state.scheduler;
+    var context = subscriber.openContext();
+    var action = this;
+    if (!subscriber.closed) {
+        subscriber.add(context.closeAction = scheduler.schedule(dispatchBufferClose, bufferTimeSpan, { subscriber: subscriber, context: context }));
+        action.schedule(state, bufferCreationInterval);
+    }
+}
+function dispatchBufferClose(arg) {
+    var subscriber = arg.subscriber, context = arg.context;
+    subscriber.closeContext(context);
+}
+
+/** PURE_IMPORTS_START tslib,_Subscription,_util_subscribeToResult,_OuterSubscriber PURE_IMPORTS_END */
+function bufferToggle(openings, closingSelector) {
+    return function bufferToggleOperatorFunction(source) {
+        return source.lift(new BufferToggleOperator(openings, closingSelector));
+    };
+}
+var BufferToggleOperator = /*@__PURE__*/ (function () {
+    function BufferToggleOperator(openings, closingSelector) {
+        this.openings = openings;
+        this.closingSelector = closingSelector;
+    }
+    BufferToggleOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new BufferToggleSubscriber(subscriber, this.openings, this.closingSelector));
+    };
+    return BufferToggleOperator;
+}());
+var BufferToggleSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(BufferToggleSubscriber, _super);
+    function BufferToggleSubscriber(destination, openings, closingSelector) {
+        var _this = _super.call(this, destination) || this;
+        _this.openings = openings;
+        _this.closingSelector = closingSelector;
+        _this.contexts = [];
+        _this.add(subscribeToResult(_this, openings));
+        return _this;
+    }
+    BufferToggleSubscriber.prototype._next = function (value) {
+        var contexts = this.contexts;
+        var len = contexts.length;
+        for (var i = 0; i < len; i++) {
+            contexts[i].buffer.push(value);
+        }
+    };
+    BufferToggleSubscriber.prototype._error = function (err) {
+        var contexts = this.contexts;
+        while (contexts.length > 0) {
+            var context_1 = contexts.shift();
+            context_1.subscription.unsubscribe();
+            context_1.buffer = null;
+            context_1.subscription = null;
+        }
+        this.contexts = null;
+        _super.prototype._error.call(this, err);
+    };
+    BufferToggleSubscriber.prototype._complete = function () {
+        var contexts = this.contexts;
+        while (contexts.length > 0) {
+            var context_2 = contexts.shift();
+            this.destination.next(context_2.buffer);
+            context_2.subscription.unsubscribe();
+            context_2.buffer = null;
+            context_2.subscription = null;
+        }
+        this.contexts = null;
+        _super.prototype._complete.call(this);
+    };
+    BufferToggleSubscriber.prototype.notifyNext = function (outerValue, innerValue, outerIndex, innerIndex, innerSub) {
+        outerValue ? this.closeBuffer(outerValue) : this.openBuffer(innerValue);
+    };
+    BufferToggleSubscriber.prototype.notifyComplete = function (innerSub) {
+        this.closeBuffer(innerSub.context);
+    };
+    BufferToggleSubscriber.prototype.openBuffer = function (value) {
+        try {
+            var closingSelector = this.closingSelector;
+            var closingNotifier = closingSelector.call(this, value);
+            if (closingNotifier) {
+                this.trySubscribe(closingNotifier);
+            }
+        }
+        catch (err) {
+            this._error(err);
+        }
+    };
+    BufferToggleSubscriber.prototype.closeBuffer = function (context) {
+        var contexts = this.contexts;
+        if (contexts && context) {
+            var buffer = context.buffer, subscription = context.subscription;
+            this.destination.next(buffer);
+            contexts.splice(contexts.indexOf(context), 1);
+            this.remove(subscription);
+            subscription.unsubscribe();
+        }
+    };
+    BufferToggleSubscriber.prototype.trySubscribe = function (closingNotifier) {
+        var contexts = this.contexts;
+        var buffer = [];
+        var subscription = new Subscription();
+        var context = { buffer: buffer, subscription: subscription };
+        contexts.push(context);
+        var innerSubscription = subscribeToResult(this, closingNotifier, context);
+        if (!innerSubscription || innerSubscription.closed) {
+            this.closeBuffer(context);
+        }
+        else {
+            innerSubscription.context = context;
+            this.add(innerSubscription);
+            subscription.add(innerSubscription);
+        }
+    };
+    return BufferToggleSubscriber;
+}(OuterSubscriber));
+
+/** PURE_IMPORTS_START tslib,_Subscription,_OuterSubscriber,_util_subscribeToResult PURE_IMPORTS_END */
+function bufferWhen(closingSelector) {
+    return function (source) {
+        return source.lift(new BufferWhenOperator(closingSelector));
+    };
+}
+var BufferWhenOperator = /*@__PURE__*/ (function () {
+    function BufferWhenOperator(closingSelector) {
+        this.closingSelector = closingSelector;
+    }
+    BufferWhenOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new BufferWhenSubscriber(subscriber, this.closingSelector));
+    };
+    return BufferWhenOperator;
+}());
+var BufferWhenSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(BufferWhenSubscriber, _super);
+    function BufferWhenSubscriber(destination, closingSelector) {
+        var _this = _super.call(this, destination) || this;
+        _this.closingSelector = closingSelector;
+        _this.subscribing = false;
+        _this.openBuffer();
+        return _this;
+    }
+    BufferWhenSubscriber.prototype._next = function (value) {
+        this.buffer.push(value);
+    };
+    BufferWhenSubscriber.prototype._complete = function () {
+        var buffer = this.buffer;
+        if (buffer) {
+            this.destination.next(buffer);
+        }
+        _super.prototype._complete.call(this);
+    };
+    BufferWhenSubscriber.prototype._unsubscribe = function () {
+        this.buffer = null;
+        this.subscribing = false;
+    };
+    BufferWhenSubscriber.prototype.notifyNext = function (outerValue, innerValue, outerIndex, innerIndex, innerSub) {
+        this.openBuffer();
+    };
+    BufferWhenSubscriber.prototype.notifyComplete = function () {
+        if (this.subscribing) {
+            this.complete();
+        }
+        else {
+            this.openBuffer();
+        }
+    };
+    BufferWhenSubscriber.prototype.openBuffer = function () {
+        var closingSubscription = this.closingSubscription;
+        if (closingSubscription) {
+            this.remove(closingSubscription);
+            closingSubscription.unsubscribe();
+        }
+        var buffer = this.buffer;
+        if (this.buffer) {
+            this.destination.next(buffer);
+        }
+        this.buffer = [];
+        var closingNotifier;
+        try {
+            var closingSelector = this.closingSelector;
+            closingNotifier = closingSelector();
+        }
+        catch (err) {
+            return this.error(err);
+        }
+        closingSubscription = new Subscription();
+        this.closingSubscription = closingSubscription;
+        this.add(closingSubscription);
+        this.subscribing = true;
+        closingSubscription.add(subscribeToResult(this, closingNotifier));
+        this.subscribing = false;
+    };
+    return BufferWhenSubscriber;
+}(OuterSubscriber));
+
+/** PURE_IMPORTS_START tslib,_OuterSubscriber,_InnerSubscriber,_util_subscribeToResult PURE_IMPORTS_END */
+function catchError(selector) {
+    return function catchErrorOperatorFunction(source) {
+        var operator = new CatchOperator(selector);
+        var caught = source.lift(operator);
+        return (operator.caught = caught);
+    };
+}
+var CatchOperator = /*@__PURE__*/ (function () {
+    function CatchOperator(selector) {
+        this.selector = selector;
+    }
+    CatchOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new CatchSubscriber(subscriber, this.selector, this.caught));
+    };
+    return CatchOperator;
+}());
+var CatchSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(CatchSubscriber, _super);
+    function CatchSubscriber(destination, selector, caught) {
+        var _this = _super.call(this, destination) || this;
+        _this.selector = selector;
+        _this.caught = caught;
+        return _this;
+    }
+    CatchSubscriber.prototype.error = function (err) {
+        if (!this.isStopped) {
+            var result = void 0;
+            try {
+                result = this.selector(err, this.caught);
+            }
+            catch (err2) {
+                _super.prototype.error.call(this, err2);
+                return;
+            }
+            this._unsubscribeAndRecycle();
+            var innerSubscriber = new InnerSubscriber(this, undefined, undefined);
+            this.add(innerSubscriber);
+            subscribeToResult(this, result, undefined, undefined, innerSubscriber);
+        }
+    };
+    return CatchSubscriber;
+}(OuterSubscriber));
+
+/** PURE_IMPORTS_START _observable_combineLatest PURE_IMPORTS_END */
+function combineAll(project) {
+    return function (source) { return source.lift(new CombineLatestOperator(project)); };
+}
+
+/** PURE_IMPORTS_START _util_isArray,_observable_combineLatest,_observable_from PURE_IMPORTS_END */
+function combineLatest() {
+    var observables = [];
+    for (var _i = 0; _i < arguments.length; _i++) {
+        observables[_i] = arguments[_i];
+    }
+    var project = null;
+    if (typeof observables[observables.length - 1] === 'function') {
+        project = observables.pop();
+    }
+    if (observables.length === 1 && isArray(observables[0])) {
+        observables = observables[0].slice();
+    }
+    return function (source) { return source.lift.call(from([source].concat(observables)), new CombineLatestOperator(project)); };
+}
+
+/** PURE_IMPORTS_START _observable_concat PURE_IMPORTS_END */
+function concat() {
+    var observables = [];
+    for (var _i = 0; _i < arguments.length; _i++) {
+        observables[_i] = arguments[_i];
+    }
+    return function (source) { return source.lift.call(concat$1.apply(void 0, [source].concat(observables))); };
+}
+
+/** PURE_IMPORTS_START _concatMap PURE_IMPORTS_END */
+function concatMapTo(innerObservable, resultSelector) {
+    return concatMap(function () { return innerObservable; }, resultSelector);
+}
+
+/** PURE_IMPORTS_START tslib,_Subscriber PURE_IMPORTS_END */
+function count(predicate) {
+    return function (source) { return source.lift(new CountOperator(predicate, source)); };
+}
+var CountOperator = /*@__PURE__*/ (function () {
+    function CountOperator(predicate, source) {
+        this.predicate = predicate;
+        this.source = source;
+    }
+    CountOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new CountSubscriber(subscriber, this.predicate, this.source));
+    };
+    return CountOperator;
+}());
+var CountSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(CountSubscriber, _super);
+    function CountSubscriber(destination, predicate, source) {
+        var _this = _super.call(this, destination) || this;
+        _this.predicate = predicate;
+        _this.source = source;
+        _this.count = 0;
+        _this.index = 0;
+        return _this;
+    }
+    CountSubscriber.prototype._next = function (value) {
+        if (this.predicate) {
+            this._tryPredicate(value);
+        }
+        else {
+            this.count++;
+        }
+    };
+    CountSubscriber.prototype._tryPredicate = function (value) {
+        var result;
+        try {
+            result = this.predicate(value, this.index++, this.source);
+        }
+        catch (err) {
+            this.destination.error(err);
+            return;
+        }
+        if (result) {
+            this.count++;
+        }
+    };
+    CountSubscriber.prototype._complete = function () {
+        this.destination.next(this.count);
+        this.destination.complete();
+    };
+    return CountSubscriber;
+}(Subscriber));
+
+/** PURE_IMPORTS_START tslib,_OuterSubscriber,_util_subscribeToResult PURE_IMPORTS_END */
+function debounce(durationSelector) {
+    return function (source) { return source.lift(new DebounceOperator(durationSelector)); };
+}
+var DebounceOperator = /*@__PURE__*/ (function () {
+    function DebounceOperator(durationSelector) {
+        this.durationSelector = durationSelector;
+    }
+    DebounceOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new DebounceSubscriber(subscriber, this.durationSelector));
+    };
+    return DebounceOperator;
+}());
+var DebounceSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(DebounceSubscriber, _super);
+    function DebounceSubscriber(destination, durationSelector) {
+        var _this = _super.call(this, destination) || this;
+        _this.durationSelector = durationSelector;
+        _this.hasValue = false;
+        _this.durationSubscription = null;
+        return _this;
+    }
+    DebounceSubscriber.prototype._next = function (value) {
+        try {
+            var result = this.durationSelector.call(this, value);
+            if (result) {
+                this._tryNext(value, result);
+            }
+        }
+        catch (err) {
+            this.destination.error(err);
+        }
+    };
+    DebounceSubscriber.prototype._complete = function () {
+        this.emitValue();
+        this.destination.complete();
+    };
+    DebounceSubscriber.prototype._tryNext = function (value, duration) {
+        var subscription = this.durationSubscription;
+        this.value = value;
+        this.hasValue = true;
+        if (subscription) {
+            subscription.unsubscribe();
+            this.remove(subscription);
+        }
+        subscription = subscribeToResult(this, duration);
+        if (subscription && !subscription.closed) {
+            this.add(this.durationSubscription = subscription);
+        }
+    };
+    DebounceSubscriber.prototype.notifyNext = function (outerValue, innerValue, outerIndex, innerIndex, innerSub) {
+        this.emitValue();
+    };
+    DebounceSubscriber.prototype.notifyComplete = function () {
+        this.emitValue();
+    };
+    DebounceSubscriber.prototype.emitValue = function () {
+        if (this.hasValue) {
+            var value = this.value;
+            var subscription = this.durationSubscription;
+            if (subscription) {
+                this.durationSubscription = null;
+                subscription.unsubscribe();
+                this.remove(subscription);
+            }
+            this.value = null;
+            this.hasValue = false;
+            _super.prototype._next.call(this, value);
+        }
+    };
+    return DebounceSubscriber;
+}(OuterSubscriber));
+
+/** PURE_IMPORTS_START tslib,_Subscriber,_scheduler_async PURE_IMPORTS_END */
+function debounceTime(dueTime, scheduler) {
+    if (scheduler === void 0) {
+        scheduler = async;
+    }
+    return function (source) { return source.lift(new DebounceTimeOperator(dueTime, scheduler)); };
+}
+var DebounceTimeOperator = /*@__PURE__*/ (function () {
+    function DebounceTimeOperator(dueTime, scheduler) {
+        this.dueTime = dueTime;
+        this.scheduler = scheduler;
+    }
+    DebounceTimeOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new DebounceTimeSubscriber(subscriber, this.dueTime, this.scheduler));
+    };
+    return DebounceTimeOperator;
+}());
+var DebounceTimeSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(DebounceTimeSubscriber, _super);
+    function DebounceTimeSubscriber(destination, dueTime, scheduler) {
+        var _this = _super.call(this, destination) || this;
+        _this.dueTime = dueTime;
+        _this.scheduler = scheduler;
+        _this.debouncedSubscription = null;
+        _this.lastValue = null;
+        _this.hasValue = false;
+        return _this;
+    }
+    DebounceTimeSubscriber.prototype._next = function (value) {
+        this.clearDebounce();
+        this.lastValue = value;
+        this.hasValue = true;
+        this.add(this.debouncedSubscription = this.scheduler.schedule(dispatchNext, this.dueTime, this));
+    };
+    DebounceTimeSubscriber.prototype._complete = function () {
+        this.debouncedNext();
+        this.destination.complete();
+    };
+    DebounceTimeSubscriber.prototype.debouncedNext = function () {
+        this.clearDebounce();
+        if (this.hasValue) {
+            var lastValue = this.lastValue;
+            this.lastValue = null;
+            this.hasValue = false;
+            this.destination.next(lastValue);
+        }
+    };
+    DebounceTimeSubscriber.prototype.clearDebounce = function () {
+        var debouncedSubscription = this.debouncedSubscription;
+        if (debouncedSubscription !== null) {
+            this.remove(debouncedSubscription);
+            debouncedSubscription.unsubscribe();
+            this.debouncedSubscription = null;
+        }
+    };
+    return DebounceTimeSubscriber;
+}(Subscriber));
+function dispatchNext(subscriber) {
+    subscriber.debouncedNext();
+}
+
+/** PURE_IMPORTS_START tslib,_Subscriber,_Observable,_OuterSubscriber,_util_subscribeToResult PURE_IMPORTS_END */
+function delayWhen(delayDurationSelector, subscriptionDelay) {
+    if (subscriptionDelay) {
+        return function (source) {
+            return new SubscriptionDelayObservable(source, subscriptionDelay)
+                .lift(new DelayWhenOperator(delayDurationSelector));
+        };
+    }
+    return function (source) { return source.lift(new DelayWhenOperator(delayDurationSelector)); };
+}
+var DelayWhenOperator = /*@__PURE__*/ (function () {
+    function DelayWhenOperator(delayDurationSelector) {
+        this.delayDurationSelector = delayDurationSelector;
+    }
+    DelayWhenOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new DelayWhenSubscriber(subscriber, this.delayDurationSelector));
+    };
+    return DelayWhenOperator;
+}());
+var DelayWhenSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(DelayWhenSubscriber, _super);
+    function DelayWhenSubscriber(destination, delayDurationSelector) {
+        var _this = _super.call(this, destination) || this;
+        _this.delayDurationSelector = delayDurationSelector;
+        _this.completed = false;
+        _this.delayNotifierSubscriptions = [];
+        _this.index = 0;
+        return _this;
+    }
+    DelayWhenSubscriber.prototype.notifyNext = function (outerValue, innerValue, outerIndex, innerIndex, innerSub) {
+        this.destination.next(outerValue);
+        this.removeSubscription(innerSub);
+        this.tryComplete();
+    };
+    DelayWhenSubscriber.prototype.notifyError = function (error, innerSub) {
+        this._error(error);
+    };
+    DelayWhenSubscriber.prototype.notifyComplete = function (innerSub) {
+        var value = this.removeSubscription(innerSub);
+        if (value) {
+            this.destination.next(value);
+        }
+        this.tryComplete();
+    };
+    DelayWhenSubscriber.prototype._next = function (value) {
+        var index = this.index++;
+        try {
+            var delayNotifier = this.delayDurationSelector(value, index);
+            if (delayNotifier) {
+                this.tryDelay(delayNotifier, value);
+            }
+        }
+        catch (err) {
+            this.destination.error(err);
+        }
+    };
+    DelayWhenSubscriber.prototype._complete = function () {
+        this.completed = true;
+        this.tryComplete();
+        this.unsubscribe();
+    };
+    DelayWhenSubscriber.prototype.removeSubscription = function (subscription) {
+        subscription.unsubscribe();
+        var subscriptionIdx = this.delayNotifierSubscriptions.indexOf(subscription);
+        if (subscriptionIdx !== -1) {
+            this.delayNotifierSubscriptions.splice(subscriptionIdx, 1);
+        }
+        return subscription.outerValue;
+    };
+    DelayWhenSubscriber.prototype.tryDelay = function (delayNotifier, value) {
+        var notifierSubscription = subscribeToResult(this, delayNotifier, value);
+        if (notifierSubscription && !notifierSubscription.closed) {
+            var destination = this.destination;
+            destination.add(notifierSubscription);
+            this.delayNotifierSubscriptions.push(notifierSubscription);
+        }
+    };
+    DelayWhenSubscriber.prototype.tryComplete = function () {
+        if (this.completed && this.delayNotifierSubscriptions.length === 0) {
+            this.destination.complete();
+        }
+    };
+    return DelayWhenSubscriber;
+}(OuterSubscriber));
+var SubscriptionDelayObservable = /*@__PURE__*/ (function (_super) {
+    __extends(SubscriptionDelayObservable, _super);
+    function SubscriptionDelayObservable(source, subscriptionDelay) {
+        var _this = _super.call(this) || this;
+        _this.source = source;
+        _this.subscriptionDelay = subscriptionDelay;
+        return _this;
+    }
+    SubscriptionDelayObservable.prototype._subscribe = function (subscriber) {
+        this.subscriptionDelay.subscribe(new SubscriptionDelaySubscriber(subscriber, this.source));
+    };
+    return SubscriptionDelayObservable;
+}(Observable));
+var SubscriptionDelaySubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(SubscriptionDelaySubscriber, _super);
+    function SubscriptionDelaySubscriber(parent, source) {
+        var _this = _super.call(this) || this;
+        _this.parent = parent;
+        _this.source = source;
+        _this.sourceSubscribed = false;
+        return _this;
+    }
+    SubscriptionDelaySubscriber.prototype._next = function (unused) {
+        this.subscribeToSource();
+    };
+    SubscriptionDelaySubscriber.prototype._error = function (err) {
+        this.unsubscribe();
+        this.parent.error(err);
+    };
+    SubscriptionDelaySubscriber.prototype._complete = function () {
+        this.unsubscribe();
+        this.subscribeToSource();
+    };
+    SubscriptionDelaySubscriber.prototype.subscribeToSource = function () {
+        if (!this.sourceSubscribed) {
+            this.sourceSubscribed = true;
+            this.unsubscribe();
+            this.source.subscribe(this.parent);
+        }
+    };
+    return SubscriptionDelaySubscriber;
+}(Subscriber));
+
+/** PURE_IMPORTS_START tslib,_Subscriber PURE_IMPORTS_END */
+function dematerialize() {
+    return function dematerializeOperatorFunction(source) {
+        return source.lift(new DeMaterializeOperator());
+    };
+}
+var DeMaterializeOperator = /*@__PURE__*/ (function () {
+    function DeMaterializeOperator() {
+    }
+    DeMaterializeOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new DeMaterializeSubscriber(subscriber));
+    };
+    return DeMaterializeOperator;
+}());
+var DeMaterializeSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(DeMaterializeSubscriber, _super);
+    function DeMaterializeSubscriber(destination) {
+        return _super.call(this, destination) || this;
+    }
+    DeMaterializeSubscriber.prototype._next = function (value) {
+        value.observe(this.destination);
+    };
+    return DeMaterializeSubscriber;
+}(Subscriber));
+
+/** PURE_IMPORTS_START tslib,_OuterSubscriber,_util_subscribeToResult PURE_IMPORTS_END */
+function distinct(keySelector, flushes) {
+    return function (source) { return source.lift(new DistinctOperator(keySelector, flushes)); };
+}
+var DistinctOperator = /*@__PURE__*/ (function () {
+    function DistinctOperator(keySelector, flushes) {
+        this.keySelector = keySelector;
+        this.flushes = flushes;
+    }
+    DistinctOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new DistinctSubscriber(subscriber, this.keySelector, this.flushes));
+    };
+    return DistinctOperator;
+}());
+var DistinctSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(DistinctSubscriber, _super);
+    function DistinctSubscriber(destination, keySelector, flushes) {
+        var _this = _super.call(this, destination) || this;
+        _this.keySelector = keySelector;
+        _this.values = new Set();
+        if (flushes) {
+            _this.add(subscribeToResult(_this, flushes));
+        }
+        return _this;
+    }
+    DistinctSubscriber.prototype.notifyNext = function (outerValue, innerValue, outerIndex, innerIndex, innerSub) {
+        this.values.clear();
+    };
+    DistinctSubscriber.prototype.notifyError = function (error, innerSub) {
+        this._error(error);
+    };
+    DistinctSubscriber.prototype._next = function (value) {
+        if (this.keySelector) {
+            this._useKeySelector(value);
+        }
+        else {
+            this._finalizeNext(value, value);
+        }
+    };
+    DistinctSubscriber.prototype._useKeySelector = function (value) {
+        var key;
+        var destination = this.destination;
+        try {
+            key = this.keySelector(value);
+        }
+        catch (err) {
+            destination.error(err);
+            return;
+        }
+        this._finalizeNext(key, value);
+    };
+    DistinctSubscriber.prototype._finalizeNext = function (key, value) {
+        var values = this.values;
+        if (!values.has(key)) {
+            values.add(key);
+            this.destination.next(value);
+        }
+    };
+    return DistinctSubscriber;
+}(OuterSubscriber));
+
+/** PURE_IMPORTS_START _distinctUntilChanged PURE_IMPORTS_END */
+function distinctUntilKeyChanged(key, compare) {
+    return distinctUntilChanged(function (x, y) { return compare ? compare(x[key], y[key]) : x[key] === y[key]; });
+}
+
+/** PURE_IMPORTS_START _util_ArgumentOutOfRangeError,_filter,_throwIfEmpty,_defaultIfEmpty,_take PURE_IMPORTS_END */
+function elementAt(index, defaultValue) {
+    if (index < 0) {
+        throw new ArgumentOutOfRangeError();
+    }
+    var hasDefaultValue = arguments.length >= 2;
+    return function (source) {
+        return source.pipe(filter(function (v, i) { return i === index; }), take(1), hasDefaultValue
+            ? defaultIfEmpty(defaultValue)
+            : throwIfEmpty(function () { return new ArgumentOutOfRangeError(); }));
+    };
+}
+
+/** PURE_IMPORTS_START _observable_concat,_observable_of PURE_IMPORTS_END */
+function endWith() {
+    var array = [];
+    for (var _i = 0; _i < arguments.length; _i++) {
+        array[_i] = arguments[_i];
+    }
+    return function (source) { return concat$1(source, of.apply(void 0, array)); };
+}
+
+/** PURE_IMPORTS_START tslib,_Subscriber PURE_IMPORTS_END */
+function every(predicate, thisArg) {
+    return function (source) { return source.lift(new EveryOperator(predicate, thisArg, source)); };
+}
+var EveryOperator = /*@__PURE__*/ (function () {
+    function EveryOperator(predicate, thisArg, source) {
+        this.predicate = predicate;
+        this.thisArg = thisArg;
+        this.source = source;
+    }
+    EveryOperator.prototype.call = function (observer, source) {
+        return source.subscribe(new EverySubscriber(observer, this.predicate, this.thisArg, this.source));
+    };
+    return EveryOperator;
+}());
+var EverySubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(EverySubscriber, _super);
+    function EverySubscriber(destination, predicate, thisArg, source) {
+        var _this = _super.call(this, destination) || this;
+        _this.predicate = predicate;
+        _this.thisArg = thisArg;
+        _this.source = source;
+        _this.index = 0;
+        _this.thisArg = thisArg || _this;
+        return _this;
+    }
+    EverySubscriber.prototype.notifyComplete = function (everyValueMatch) {
+        this.destination.next(everyValueMatch);
+        this.destination.complete();
+    };
+    EverySubscriber.prototype._next = function (value) {
+        var result = false;
+        try {
+            result = this.predicate.call(this.thisArg, value, this.index++, this.source);
+        }
+        catch (err) {
+            this.destination.error(err);
+            return;
+        }
+        if (!result) {
+            this.notifyComplete(false);
+        }
+    };
+    EverySubscriber.prototype._complete = function () {
+        this.notifyComplete(true);
+    };
+    return EverySubscriber;
+}(Subscriber));
+
+/** PURE_IMPORTS_START tslib,_OuterSubscriber,_util_subscribeToResult PURE_IMPORTS_END */
+function exhaust() {
+    return function (source) { return source.lift(new SwitchFirstOperator()); };
+}
+var SwitchFirstOperator = /*@__PURE__*/ (function () {
+    function SwitchFirstOperator() {
+    }
+    SwitchFirstOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new SwitchFirstSubscriber(subscriber));
+    };
+    return SwitchFirstOperator;
+}());
+var SwitchFirstSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(SwitchFirstSubscriber, _super);
+    function SwitchFirstSubscriber(destination) {
+        var _this = _super.call(this, destination) || this;
+        _this.hasCompleted = false;
+        _this.hasSubscription = false;
+        return _this;
+    }
+    SwitchFirstSubscriber.prototype._next = function (value) {
+        if (!this.hasSubscription) {
+            this.hasSubscription = true;
+            this.add(subscribeToResult(this, value));
+        }
+    };
+    SwitchFirstSubscriber.prototype._complete = function () {
+        this.hasCompleted = true;
+        if (!this.hasSubscription) {
+            this.destination.complete();
+        }
+    };
+    SwitchFirstSubscriber.prototype.notifyComplete = function (innerSub) {
+        this.remove(innerSub);
+        this.hasSubscription = false;
+        if (this.hasCompleted) {
+            this.destination.complete();
+        }
+    };
+    return SwitchFirstSubscriber;
+}(OuterSubscriber));
+
+/** PURE_IMPORTS_START tslib,_OuterSubscriber,_InnerSubscriber,_util_subscribeToResult,_map,_observable_from PURE_IMPORTS_END */
+function exhaustMap(project, resultSelector) {
+    if (resultSelector) {
+        return function (source) { return source.pipe(exhaustMap(function (a, i) { return from(project(a, i)).pipe(map(function (b, ii) { return resultSelector(a, b, i, ii); })); })); };
+    }
+    return function (source) {
+        return source.lift(new ExhaustMapOperator(project));
+    };
+}
+var ExhaustMapOperator = /*@__PURE__*/ (function () {
+    function ExhaustMapOperator(project) {
+        this.project = project;
+    }
+    ExhaustMapOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new ExhaustMapSubscriber(subscriber, this.project));
+    };
+    return ExhaustMapOperator;
+}());
+var ExhaustMapSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(ExhaustMapSubscriber, _super);
+    function ExhaustMapSubscriber(destination, project) {
+        var _this = _super.call(this, destination) || this;
+        _this.project = project;
+        _this.hasSubscription = false;
+        _this.hasCompleted = false;
+        _this.index = 0;
+        return _this;
+    }
+    ExhaustMapSubscriber.prototype._next = function (value) {
+        if (!this.hasSubscription) {
+            this.tryNext(value);
+        }
+    };
+    ExhaustMapSubscriber.prototype.tryNext = function (value) {
+        var result;
+        var index = this.index++;
+        try {
+            result = this.project(value, index);
+        }
+        catch (err) {
+            this.destination.error(err);
+            return;
+        }
+        this.hasSubscription = true;
+        this._innerSub(result, value, index);
+    };
+    ExhaustMapSubscriber.prototype._innerSub = function (result, value, index) {
+        var innerSubscriber = new InnerSubscriber(this, undefined, undefined);
+        var destination = this.destination;
+        destination.add(innerSubscriber);
+        subscribeToResult(this, result, value, index, innerSubscriber);
+    };
+    ExhaustMapSubscriber.prototype._complete = function () {
+        this.hasCompleted = true;
+        if (!this.hasSubscription) {
+            this.destination.complete();
+        }
+        this.unsubscribe();
+    };
+    ExhaustMapSubscriber.prototype.notifyNext = function (outerValue, innerValue, outerIndex, innerIndex, innerSub) {
+        this.destination.next(innerValue);
+    };
+    ExhaustMapSubscriber.prototype.notifyError = function (err) {
+        this.destination.error(err);
+    };
+    ExhaustMapSubscriber.prototype.notifyComplete = function (innerSub) {
+        var destination = this.destination;
+        destination.remove(innerSub);
+        this.hasSubscription = false;
+        if (this.hasCompleted) {
+            this.destination.complete();
+        }
+    };
+    return ExhaustMapSubscriber;
+}(OuterSubscriber));
+
+/** PURE_IMPORTS_START tslib,_OuterSubscriber,_util_subscribeToResult PURE_IMPORTS_END */
+function expand(project, concurrent, scheduler) {
+    if (concurrent === void 0) {
+        concurrent = Number.POSITIVE_INFINITY;
+    }
+    if (scheduler === void 0) {
+        scheduler = undefined;
+    }
+    concurrent = (concurrent || 0) < 1 ? Number.POSITIVE_INFINITY : concurrent;
+    return function (source) { return source.lift(new ExpandOperator(project, concurrent, scheduler)); };
+}
+var ExpandOperator = /*@__PURE__*/ (function () {
+    function ExpandOperator(project, concurrent, scheduler) {
+        this.project = project;
+        this.concurrent = concurrent;
+        this.scheduler = scheduler;
+    }
+    ExpandOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new ExpandSubscriber(subscriber, this.project, this.concurrent, this.scheduler));
+    };
+    return ExpandOperator;
+}());
+var ExpandSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(ExpandSubscriber, _super);
+    function ExpandSubscriber(destination, project, concurrent, scheduler) {
+        var _this = _super.call(this, destination) || this;
+        _this.project = project;
+        _this.concurrent = concurrent;
+        _this.scheduler = scheduler;
+        _this.index = 0;
+        _this.active = 0;
+        _this.hasCompleted = false;
+        if (concurrent < Number.POSITIVE_INFINITY) {
+            _this.buffer = [];
+        }
+        return _this;
+    }
+    ExpandSubscriber.dispatch = function (arg) {
+        var subscriber = arg.subscriber, result = arg.result, value = arg.value, index = arg.index;
+        subscriber.subscribeToProjection(result, value, index);
+    };
+    ExpandSubscriber.prototype._next = function (value) {
+        var destination = this.destination;
+        if (destination.closed) {
+            this._complete();
+            return;
+        }
+        var index = this.index++;
+        if (this.active < this.concurrent) {
+            destination.next(value);
+            try {
+                var project = this.project;
+                var result = project(value, index);
+                if (!this.scheduler) {
+                    this.subscribeToProjection(result, value, index);
+                }
+                else {
+                    var state = { subscriber: this, result: result, value: value, index: index };
+                    var destination_1 = this.destination;
+                    destination_1.add(this.scheduler.schedule(ExpandSubscriber.dispatch, 0, state));
+                }
+            }
+            catch (e) {
+                destination.error(e);
+            }
+        }
+        else {
+            this.buffer.push(value);
+        }
+    };
+    ExpandSubscriber.prototype.subscribeToProjection = function (result, value, index) {
+        this.active++;
+        var destination = this.destination;
+        destination.add(subscribeToResult(this, result, value, index));
+    };
+    ExpandSubscriber.prototype._complete = function () {
+        this.hasCompleted = true;
+        if (this.hasCompleted && this.active === 0) {
+            this.destination.complete();
+        }
+        this.unsubscribe();
+    };
+    ExpandSubscriber.prototype.notifyNext = function (outerValue, innerValue, outerIndex, innerIndex, innerSub) {
+        this._next(innerValue);
+    };
+    ExpandSubscriber.prototype.notifyComplete = function (innerSub) {
+        var buffer = this.buffer;
+        var destination = this.destination;
+        destination.remove(innerSub);
+        this.active--;
+        if (buffer && buffer.length > 0) {
+            this._next(buffer.shift());
+        }
+        if (this.hasCompleted && this.active === 0) {
+            this.destination.complete();
+        }
+    };
+    return ExpandSubscriber;
+}(OuterSubscriber));
+
+/** PURE_IMPORTS_START tslib,_Subscriber,_Subscription PURE_IMPORTS_END */
+function finalize(callback) {
+    return function (source) { return source.lift(new FinallyOperator(callback)); };
+}
+var FinallyOperator = /*@__PURE__*/ (function () {
+    function FinallyOperator(callback) {
+        this.callback = callback;
+    }
+    FinallyOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new FinallySubscriber(subscriber, this.callback));
+    };
+    return FinallyOperator;
+}());
+var FinallySubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(FinallySubscriber, _super);
+    function FinallySubscriber(destination, callback) {
+        var _this = _super.call(this, destination) || this;
+        _this.add(new Subscription(callback));
+        return _this;
+    }
+    return FinallySubscriber;
+}(Subscriber));
+
+/** PURE_IMPORTS_START tslib,_Subscriber PURE_IMPORTS_END */
+function find(predicate, thisArg) {
+    if (typeof predicate !== 'function') {
+        throw new TypeError('predicate is not a function');
+    }
+    return function (source) { return source.lift(new FindValueOperator(predicate, source, false, thisArg)); };
+}
+var FindValueOperator = /*@__PURE__*/ (function () {
+    function FindValueOperator(predicate, source, yieldIndex, thisArg) {
+        this.predicate = predicate;
+        this.source = source;
+        this.yieldIndex = yieldIndex;
+        this.thisArg = thisArg;
+    }
+    FindValueOperator.prototype.call = function (observer, source) {
+        return source.subscribe(new FindValueSubscriber(observer, this.predicate, this.source, this.yieldIndex, this.thisArg));
+    };
+    return FindValueOperator;
+}());
+var FindValueSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(FindValueSubscriber, _super);
+    function FindValueSubscriber(destination, predicate, source, yieldIndex, thisArg) {
+        var _this = _super.call(this, destination) || this;
+        _this.predicate = predicate;
+        _this.source = source;
+        _this.yieldIndex = yieldIndex;
+        _this.thisArg = thisArg;
+        _this.index = 0;
+        return _this;
+    }
+    FindValueSubscriber.prototype.notifyComplete = function (value) {
+        var destination = this.destination;
+        destination.next(value);
+        destination.complete();
+        this.unsubscribe();
+    };
+    FindValueSubscriber.prototype._next = function (value) {
+        var _a = this, predicate = _a.predicate, thisArg = _a.thisArg;
+        var index = this.index++;
+        try {
+            var result = predicate.call(thisArg || this, value, index, this.source);
+            if (result) {
+                this.notifyComplete(this.yieldIndex ? index : value);
+            }
+        }
+        catch (err) {
+            this.destination.error(err);
+        }
+    };
+    FindValueSubscriber.prototype._complete = function () {
+        this.notifyComplete(this.yieldIndex ? -1 : undefined);
+    };
+    return FindValueSubscriber;
+}(Subscriber));
+
+/** PURE_IMPORTS_START _operators_find PURE_IMPORTS_END */
+function findIndex(predicate, thisArg) {
+    return function (source) { return source.lift(new FindValueOperator(predicate, source, true, thisArg)); };
+}
+
+/** PURE_IMPORTS_START tslib,_Subscriber PURE_IMPORTS_END */
+function ignoreElements() {
+    return function ignoreElementsOperatorFunction(source) {
+        return source.lift(new IgnoreElementsOperator());
+    };
+}
+var IgnoreElementsOperator = /*@__PURE__*/ (function () {
+    function IgnoreElementsOperator() {
+    }
+    IgnoreElementsOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new IgnoreElementsSubscriber(subscriber));
+    };
+    return IgnoreElementsOperator;
+}());
+var IgnoreElementsSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(IgnoreElementsSubscriber, _super);
+    function IgnoreElementsSubscriber() {
+        return _super !== null && _super.apply(this, arguments) || this;
+    }
+    IgnoreElementsSubscriber.prototype._next = function (unused) {
+    };
+    return IgnoreElementsSubscriber;
+}(Subscriber));
+
+/** PURE_IMPORTS_START tslib,_Subscriber PURE_IMPORTS_END */
+function isEmpty() {
+    return function (source) { return source.lift(new IsEmptyOperator()); };
+}
+var IsEmptyOperator = /*@__PURE__*/ (function () {
+    function IsEmptyOperator() {
+    }
+    IsEmptyOperator.prototype.call = function (observer, source) {
+        return source.subscribe(new IsEmptySubscriber(observer));
+    };
+    return IsEmptyOperator;
+}());
+var IsEmptySubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(IsEmptySubscriber, _super);
+    function IsEmptySubscriber(destination) {
+        return _super.call(this, destination) || this;
+    }
+    IsEmptySubscriber.prototype.notifyComplete = function (isEmpty) {
+        var destination = this.destination;
+        destination.next(isEmpty);
+        destination.complete();
+    };
+    IsEmptySubscriber.prototype._next = function (value) {
+        this.notifyComplete(false);
+    };
+    IsEmptySubscriber.prototype._complete = function () {
+        this.notifyComplete(true);
+    };
+    return IsEmptySubscriber;
+}(Subscriber));
+
+/** PURE_IMPORTS_START tslib,_Subscriber,_util_ArgumentOutOfRangeError,_observable_empty PURE_IMPORTS_END */
+function takeLast(count) {
+    return function takeLastOperatorFunction(source) {
+        if (count === 0) {
+            return empty();
+        }
+        else {
+            return source.lift(new TakeLastOperator(count));
+        }
+    };
+}
+var TakeLastOperator = /*@__PURE__*/ (function () {
+    function TakeLastOperator(total) {
+        this.total = total;
+        if (this.total < 0) {
+            throw new ArgumentOutOfRangeError;
+        }
+    }
+    TakeLastOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new TakeLastSubscriber(subscriber, this.total));
+    };
+    return TakeLastOperator;
+}());
+var TakeLastSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(TakeLastSubscriber, _super);
+    function TakeLastSubscriber(destination, total) {
+        var _this = _super.call(this, destination) || this;
+        _this.total = total;
+        _this.ring = new Array();
+        _this.count = 0;
+        return _this;
+    }
+    TakeLastSubscriber.prototype._next = function (value) {
+        var ring = this.ring;
+        var total = this.total;
+        var count = this.count++;
+        if (ring.length < total) {
+            ring.push(value);
+        }
+        else {
+            var index = count % total;
+            ring[index] = value;
+        }
+    };
+    TakeLastSubscriber.prototype._complete = function () {
+        var destination = this.destination;
+        var count = this.count;
+        if (count > 0) {
+            var total = this.count >= this.total ? this.total : this.count;
+            var ring = this.ring;
+            for (var i = 0; i < total; i++) {
+                var idx = (count++) % total;
+                destination.next(ring[idx]);
+            }
+        }
+        destination.complete();
+    };
+    return TakeLastSubscriber;
+}(Subscriber));
+
+/** PURE_IMPORTS_START _util_EmptyError,_filter,_takeLast,_throwIfEmpty,_defaultIfEmpty,_util_identity PURE_IMPORTS_END */
+function last(predicate, defaultValue) {
+    var hasDefaultValue = arguments.length >= 2;
+    return function (source) { return source.pipe(predicate ? filter(function (v, i) { return predicate(v, i, source); }) : identity, takeLast(1), hasDefaultValue ? defaultIfEmpty(defaultValue) : throwIfEmpty(function () { return new EmptyError(); })); };
+}
+
+/** PURE_IMPORTS_START tslib,_Subscriber PURE_IMPORTS_END */
+function mapTo(value) {
+    return function (source) { return source.lift(new MapToOperator(value)); };
+}
+var MapToOperator = /*@__PURE__*/ (function () {
+    function MapToOperator(value) {
+        this.value = value;
+    }
+    MapToOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new MapToSubscriber(subscriber, this.value));
+    };
+    return MapToOperator;
+}());
+var MapToSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(MapToSubscriber, _super);
+    function MapToSubscriber(destination, value) {
+        var _this = _super.call(this, destination) || this;
+        _this.value = value;
+        return _this;
+    }
+    MapToSubscriber.prototype._next = function (x) {
+        this.destination.next(this.value);
+    };
+    return MapToSubscriber;
+}(Subscriber));
+
+/** PURE_IMPORTS_START tslib,_Subscriber,_Notification PURE_IMPORTS_END */
+function materialize() {
+    return function materializeOperatorFunction(source) {
+        return source.lift(new MaterializeOperator());
+    };
+}
+var MaterializeOperator = /*@__PURE__*/ (function () {
+    function MaterializeOperator() {
+    }
+    MaterializeOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new MaterializeSubscriber(subscriber));
+    };
+    return MaterializeOperator;
+}());
+var MaterializeSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(MaterializeSubscriber, _super);
+    function MaterializeSubscriber(destination) {
+        return _super.call(this, destination) || this;
+    }
+    MaterializeSubscriber.prototype._next = function (value) {
+        this.destination.next(Notification.createNext(value));
+    };
+    MaterializeSubscriber.prototype._error = function (err) {
+        var destination = this.destination;
+        destination.next(Notification.createError(err));
+        destination.complete();
+    };
+    MaterializeSubscriber.prototype._complete = function () {
+        var destination = this.destination;
+        destination.next(Notification.createComplete());
+        destination.complete();
+    };
+    return MaterializeSubscriber;
+}(Subscriber));
+
+/** PURE_IMPORTS_START tslib,_Subscriber PURE_IMPORTS_END */
+function scan(accumulator, seed) {
+    var hasSeed = false;
+    if (arguments.length >= 2) {
+        hasSeed = true;
+    }
+    return function scanOperatorFunction(source) {
+        return source.lift(new ScanOperator(accumulator, seed, hasSeed));
+    };
+}
+var ScanOperator = /*@__PURE__*/ (function () {
+    function ScanOperator(accumulator, seed, hasSeed) {
+        if (hasSeed === void 0) {
+            hasSeed = false;
+        }
+        this.accumulator = accumulator;
+        this.seed = seed;
+        this.hasSeed = hasSeed;
+    }
+    ScanOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new ScanSubscriber(subscriber, this.accumulator, this.seed, this.hasSeed));
+    };
+    return ScanOperator;
+}());
+var ScanSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(ScanSubscriber, _super);
+    function ScanSubscriber(destination, accumulator, _seed, hasSeed) {
+        var _this = _super.call(this, destination) || this;
+        _this.accumulator = accumulator;
+        _this._seed = _seed;
+        _this.hasSeed = hasSeed;
+        _this.index = 0;
+        return _this;
+    }
+    Object.defineProperty(ScanSubscriber.prototype, "seed", {
+        get: function () {
+            return this._seed;
+        },
+        set: function (value) {
+            this.hasSeed = true;
+            this._seed = value;
+        },
+        enumerable: true,
+        configurable: true
+    });
+    ScanSubscriber.prototype._next = function (value) {
+        if (!this.hasSeed) {
+            this.seed = value;
+            this.destination.next(value);
+        }
+        else {
+            return this._tryNext(value);
+        }
+    };
+    ScanSubscriber.prototype._tryNext = function (value) {
+        var index = this.index++;
+        var result;
+        try {
+            result = this.accumulator(this.seed, value, index);
+        }
+        catch (err) {
+            this.destination.error(err);
+        }
+        this.seed = result;
+        this.destination.next(result);
+    };
+    return ScanSubscriber;
+}(Subscriber));
+
+/** PURE_IMPORTS_START _scan,_takeLast,_defaultIfEmpty,_util_pipe PURE_IMPORTS_END */
+function reduce(accumulator, seed) {
+    if (arguments.length >= 2) {
+        return function reduceOperatorFunctionWithSeed(source) {
+            return pipe(scan(accumulator, seed), takeLast(1), defaultIfEmpty(seed))(source);
+        };
+    }
+    return function reduceOperatorFunction(source) {
+        return pipe(scan(function (acc, value, index) { return accumulator(acc, value, index + 1); }), takeLast(1))(source);
+    };
+}
+
+/** PURE_IMPORTS_START _reduce PURE_IMPORTS_END */
+function max(comparer) {
+    var max = (typeof comparer === 'function')
+        ? function (x, y) { return comparer(x, y) > 0 ? x : y; }
+        : function (x, y) { return x > y ? x : y; };
+    return reduce(max);
+}
+
+/** PURE_IMPORTS_START _observable_merge PURE_IMPORTS_END */
+function merge() {
+    var observables = [];
+    for (var _i = 0; _i < arguments.length; _i++) {
+        observables[_i] = arguments[_i];
+    }
+    return function (source) { return source.lift.call(merge$1.apply(void 0, [source].concat(observables))); };
+}
+
+/** PURE_IMPORTS_START _mergeMap PURE_IMPORTS_END */
+function mergeMapTo(innerObservable, resultSelector, concurrent) {
+    if (concurrent === void 0) {
+        concurrent = Number.POSITIVE_INFINITY;
+    }
+    if (typeof resultSelector === 'function') {
+        return mergeMap(function () { return innerObservable; }, resultSelector, concurrent);
+    }
+    if (typeof resultSelector === 'number') {
+        concurrent = resultSelector;
+    }
+    return mergeMap(function () { return innerObservable; }, concurrent);
+}
+
+/** PURE_IMPORTS_START tslib,_util_subscribeToResult,_OuterSubscriber,_InnerSubscriber PURE_IMPORTS_END */
+function mergeScan(accumulator, seed, concurrent) {
+    if (concurrent === void 0) {
+        concurrent = Number.POSITIVE_INFINITY;
+    }
+    return function (source) { return source.lift(new MergeScanOperator(accumulator, seed, concurrent)); };
+}
+var MergeScanOperator = /*@__PURE__*/ (function () {
+    function MergeScanOperator(accumulator, seed, concurrent) {
+        this.accumulator = accumulator;
+        this.seed = seed;
+        this.concurrent = concurrent;
+    }
+    MergeScanOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new MergeScanSubscriber(subscriber, this.accumulator, this.seed, this.concurrent));
+    };
+    return MergeScanOperator;
+}());
+var MergeScanSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(MergeScanSubscriber, _super);
+    function MergeScanSubscriber(destination, accumulator, acc, concurrent) {
+        var _this = _super.call(this, destination) || this;
+        _this.accumulator = accumulator;
+        _this.acc = acc;
+        _this.concurrent = concurrent;
+        _this.hasValue = false;
+        _this.hasCompleted = false;
+        _this.buffer = [];
+        _this.active = 0;
+        _this.index = 0;
+        return _this;
+    }
+    MergeScanSubscriber.prototype._next = function (value) {
+        if (this.active < this.concurrent) {
+            var index = this.index++;
+            var destination = this.destination;
+            var ish = void 0;
+            try {
+                var accumulator = this.accumulator;
+                ish = accumulator(this.acc, value, index);
+            }
+            catch (e) {
+                return destination.error(e);
+            }
+            this.active++;
+            this._innerSub(ish, value, index);
+        }
+        else {
+            this.buffer.push(value);
+        }
+    };
+    MergeScanSubscriber.prototype._innerSub = function (ish, value, index) {
+        var innerSubscriber = new InnerSubscriber(this, undefined, undefined);
+        var destination = this.destination;
+        destination.add(innerSubscriber);
+        subscribeToResult(this, ish, value, index, innerSubscriber);
+    };
+    MergeScanSubscriber.prototype._complete = function () {
+        this.hasCompleted = true;
+        if (this.active === 0 && this.buffer.length === 0) {
+            if (this.hasValue === false) {
+                this.destination.next(this.acc);
+            }
+            this.destination.complete();
+        }
+        this.unsubscribe();
+    };
+    MergeScanSubscriber.prototype.notifyNext = function (outerValue, innerValue, outerIndex, innerIndex, innerSub) {
+        var destination = this.destination;
+        this.acc = innerValue;
+        this.hasValue = true;
+        destination.next(innerValue);
+    };
+    MergeScanSubscriber.prototype.notifyComplete = function (innerSub) {
+        var buffer = this.buffer;
+        var destination = this.destination;
+        destination.remove(innerSub);
+        this.active--;
+        if (buffer.length > 0) {
+            this._next(buffer.shift());
+        }
+        else if (this.active === 0 && this.hasCompleted) {
+            if (this.hasValue === false) {
+                this.destination.next(this.acc);
+            }
+            this.destination.complete();
+        }
+    };
+    return MergeScanSubscriber;
+}(OuterSubscriber));
+
+/** PURE_IMPORTS_START _reduce PURE_IMPORTS_END */
+function min(comparer) {
+    var min = (typeof comparer === 'function')
+        ? function (x, y) { return comparer(x, y) < 0 ? x : y; }
+        : function (x, y) { return x < y ? x : y; };
+    return reduce(min);
+}
+
+/** PURE_IMPORTS_START tslib,_observable_from,_util_isArray,_OuterSubscriber,_InnerSubscriber,_util_subscribeToResult PURE_IMPORTS_END */
+function onErrorResumeNext() {
+    var nextSources = [];
+    for (var _i = 0; _i < arguments.length; _i++) {
+        nextSources[_i] = arguments[_i];
+    }
+    if (nextSources.length === 1 && isArray(nextSources[0])) {
+        nextSources = nextSources[0];
+    }
+    return function (source) { return source.lift(new OnErrorResumeNextOperator(nextSources)); };
+}
+var OnErrorResumeNextOperator = /*@__PURE__*/ (function () {
+    function OnErrorResumeNextOperator(nextSources) {
+        this.nextSources = nextSources;
+    }
+    OnErrorResumeNextOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new OnErrorResumeNextSubscriber(subscriber, this.nextSources));
+    };
+    return OnErrorResumeNextOperator;
+}());
+var OnErrorResumeNextSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(OnErrorResumeNextSubscriber, _super);
+    function OnErrorResumeNextSubscriber(destination, nextSources) {
+        var _this = _super.call(this, destination) || this;
+        _this.destination = destination;
+        _this.nextSources = nextSources;
+        return _this;
+    }
+    OnErrorResumeNextSubscriber.prototype.notifyError = function (error, innerSub) {
+        this.subscribeToNextSource();
+    };
+    OnErrorResumeNextSubscriber.prototype.notifyComplete = function (innerSub) {
+        this.subscribeToNextSource();
+    };
+    OnErrorResumeNextSubscriber.prototype._error = function (err) {
+        this.subscribeToNextSource();
+        this.unsubscribe();
+    };
+    OnErrorResumeNextSubscriber.prototype._complete = function () {
+        this.subscribeToNextSource();
+        this.unsubscribe();
+    };
+    OnErrorResumeNextSubscriber.prototype.subscribeToNextSource = function () {
+        var next = this.nextSources.shift();
+        if (!!next) {
+            var innerSubscriber = new InnerSubscriber(this, undefined, undefined);
+            var destination = this.destination;
+            destination.add(innerSubscriber);
+            subscribeToResult(this, next, undefined, undefined, innerSubscriber);
+        }
+        else {
+            this.destination.complete();
+        }
+    };
+    return OnErrorResumeNextSubscriber;
+}(OuterSubscriber));
+
+/** PURE_IMPORTS_START tslib,_Subscriber PURE_IMPORTS_END */
+function pairwise() {
+    return function (source) { return source.lift(new PairwiseOperator()); };
+}
+var PairwiseOperator = /*@__PURE__*/ (function () {
+    function PairwiseOperator() {
+    }
+    PairwiseOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new PairwiseSubscriber(subscriber));
+    };
+    return PairwiseOperator;
+}());
+var PairwiseSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(PairwiseSubscriber, _super);
+    function PairwiseSubscriber(destination) {
+        var _this = _super.call(this, destination) || this;
+        _this.hasPrev = false;
+        return _this;
+    }
+    PairwiseSubscriber.prototype._next = function (value) {
+        var pair;
+        if (this.hasPrev) {
+            pair = [this.prev, value];
+        }
+        else {
+            this.hasPrev = true;
+        }
+        this.prev = value;
+        if (pair) {
+            this.destination.next(pair);
+        }
+    };
+    return PairwiseSubscriber;
+}(Subscriber));
+
+/** PURE_IMPORTS_START _util_not,_filter PURE_IMPORTS_END */
+function partition(predicate, thisArg) {
+    return function (source) {
+        return [
+            filter(predicate, thisArg)(source),
+            filter(not(predicate, thisArg))(source)
+        ];
+    };
+}
+
+/** PURE_IMPORTS_START _map PURE_IMPORTS_END */
+function pluck() {
+    var properties = [];
+    for (var _i = 0; _i < arguments.length; _i++) {
+        properties[_i] = arguments[_i];
+    }
+    var length = properties.length;
+    if (length === 0) {
+        throw new Error('list of properties cannot be empty.');
+    }
+    return function (source) { return map(plucker(properties, length))(source); };
+}
+function plucker(props, length) {
+    var mapper = function (x) {
+        var currentProp = x;
+        for (var i = 0; i < length; i++) {
+            var p = currentProp[props[i]];
+            if (typeof p !== 'undefined') {
+                currentProp = p;
+            }
+            else {
+                return undefined;
+            }
+        }
+        return currentProp;
+    };
+    return mapper;
+}
+
+/** PURE_IMPORTS_START _Subject,_multicast PURE_IMPORTS_END */
+function publish(selector) {
+    return selector ?
+        multicast(function () { return new Subject(); }, selector) :
+        multicast(new Subject());
+}
+
+/** PURE_IMPORTS_START _BehaviorSubject,_multicast PURE_IMPORTS_END */
+function publishBehavior(value) {
+    return function (source) { return multicast(new BehaviorSubject(value))(source); };
+}
+
+/** PURE_IMPORTS_START _AsyncSubject,_multicast PURE_IMPORTS_END */
+function publishLast() {
+    return function (source) { return multicast(new AsyncSubject())(source); };
+}
+
+/** PURE_IMPORTS_START _ReplaySubject,_multicast PURE_IMPORTS_END */
+function publishReplay(bufferSize, windowTime, selectorOrScheduler, scheduler) {
+    if (selectorOrScheduler && typeof selectorOrScheduler !== 'function') {
+        scheduler = selectorOrScheduler;
+    }
+    var selector = typeof selectorOrScheduler === 'function' ? selectorOrScheduler : undefined;
+    var subject = new ReplaySubject(bufferSize, windowTime, scheduler);
+    return function (source) { return multicast(function () { return subject; }, selector)(source); };
+}
+
+/** PURE_IMPORTS_START _util_isArray,_observable_race PURE_IMPORTS_END */
+function race() {
+    var observables = [];
+    for (var _i = 0; _i < arguments.length; _i++) {
+        observables[_i] = arguments[_i];
+    }
+    return function raceOperatorFunction(source) {
+        if (observables.length === 1 && isArray(observables[0])) {
+            observables = observables[0];
+        }
+        return source.lift.call(race$1.apply(void 0, [source].concat(observables)));
+    };
+}
+
+/** PURE_IMPORTS_START tslib,_Subscriber,_observable_empty PURE_IMPORTS_END */
+function repeat(count) {
+    if (count === void 0) {
+        count = -1;
+    }
+    return function (source) {
+        if (count === 0) {
+            return empty();
+        }
+        else if (count < 0) {
+            return source.lift(new RepeatOperator(-1, source));
+        }
+        else {
+            return source.lift(new RepeatOperator(count - 1, source));
+        }
+    };
+}
+var RepeatOperator = /*@__PURE__*/ (function () {
+    function RepeatOperator(count, source) {
+        this.count = count;
+        this.source = source;
+    }
+    RepeatOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new RepeatSubscriber(subscriber, this.count, this.source));
+    };
+    return RepeatOperator;
+}());
+var RepeatSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(RepeatSubscriber, _super);
+    function RepeatSubscriber(destination, count, source) {
+        var _this = _super.call(this, destination) || this;
+        _this.count = count;
+        _this.source = source;
+        return _this;
+    }
+    RepeatSubscriber.prototype.complete = function () {
+        if (!this.isStopped) {
+            var _a = this, source = _a.source, count = _a.count;
+            if (count === 0) {
+                return _super.prototype.complete.call(this);
+            }
+            else if (count > -1) {
+                this.count = count - 1;
+            }
+            source.subscribe(this._unsubscribeAndRecycle());
+        }
+    };
+    return RepeatSubscriber;
+}(Subscriber));
+
+/** PURE_IMPORTS_START tslib,_Subject,_OuterSubscriber,_util_subscribeToResult PURE_IMPORTS_END */
+function repeatWhen(notifier) {
+    return function (source) { return source.lift(new RepeatWhenOperator(notifier)); };
+}
+var RepeatWhenOperator = /*@__PURE__*/ (function () {
+    function RepeatWhenOperator(notifier) {
+        this.notifier = notifier;
+    }
+    RepeatWhenOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new RepeatWhenSubscriber(subscriber, this.notifier, source));
+    };
+    return RepeatWhenOperator;
+}());
+var RepeatWhenSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(RepeatWhenSubscriber, _super);
+    function RepeatWhenSubscriber(destination, notifier, source) {
+        var _this = _super.call(this, destination) || this;
+        _this.notifier = notifier;
+        _this.source = source;
+        _this.sourceIsBeingSubscribedTo = true;
+        return _this;
+    }
+    RepeatWhenSubscriber.prototype.notifyNext = function (outerValue, innerValue, outerIndex, innerIndex, innerSub) {
+        this.sourceIsBeingSubscribedTo = true;
+        this.source.subscribe(this);
+    };
+    RepeatWhenSubscriber.prototype.notifyComplete = function (innerSub) {
+        if (this.sourceIsBeingSubscribedTo === false) {
+            return _super.prototype.complete.call(this);
+        }
+    };
+    RepeatWhenSubscriber.prototype.complete = function () {
+        this.sourceIsBeingSubscribedTo = false;
+        if (!this.isStopped) {
+            if (!this.retries) {
+                this.subscribeToRetries();
+            }
+            if (!this.retriesSubscription || this.retriesSubscription.closed) {
+                return _super.prototype.complete.call(this);
+            }
+            this._unsubscribeAndRecycle();
+            this.notifications.next();
+        }
+    };
+    RepeatWhenSubscriber.prototype._unsubscribe = function () {
+        var _a = this, notifications = _a.notifications, retriesSubscription = _a.retriesSubscription;
+        if (notifications) {
+            notifications.unsubscribe();
+            this.notifications = null;
+        }
+        if (retriesSubscription) {
+            retriesSubscription.unsubscribe();
+            this.retriesSubscription = null;
+        }
+        this.retries = null;
+    };
+    RepeatWhenSubscriber.prototype._unsubscribeAndRecycle = function () {
+        var _unsubscribe = this._unsubscribe;
+        this._unsubscribe = null;
+        _super.prototype._unsubscribeAndRecycle.call(this);
+        this._unsubscribe = _unsubscribe;
+        return this;
+    };
+    RepeatWhenSubscriber.prototype.subscribeToRetries = function () {
+        this.notifications = new Subject();
+        var retries;
+        try {
+            var notifier = this.notifier;
+            retries = notifier(this.notifications);
+        }
+        catch (e) {
+            return _super.prototype.complete.call(this);
+        }
+        this.retries = retries;
+        this.retriesSubscription = subscribeToResult(this, retries);
+    };
+    return RepeatWhenSubscriber;
+}(OuterSubscriber));
+
+/** PURE_IMPORTS_START tslib,_Subscriber PURE_IMPORTS_END */
+function retry(count) {
+    if (count === void 0) {
+        count = -1;
+    }
+    return function (source) { return source.lift(new RetryOperator(count, source)); };
+}
+var RetryOperator = /*@__PURE__*/ (function () {
+    function RetryOperator(count, source) {
+        this.count = count;
+        this.source = source;
+    }
+    RetryOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new RetrySubscriber(subscriber, this.count, this.source));
+    };
+    return RetryOperator;
+}());
+var RetrySubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(RetrySubscriber, _super);
+    function RetrySubscriber(destination, count, source) {
+        var _this = _super.call(this, destination) || this;
+        _this.count = count;
+        _this.source = source;
+        return _this;
+    }
+    RetrySubscriber.prototype.error = function (err) {
+        if (!this.isStopped) {
+            var _a = this, source = _a.source, count = _a.count;
+            if (count === 0) {
+                return _super.prototype.error.call(this, err);
+            }
+            else if (count > -1) {
+                this.count = count - 1;
+            }
+            source.subscribe(this._unsubscribeAndRecycle());
+        }
+    };
+    return RetrySubscriber;
+}(Subscriber));
+
+/** PURE_IMPORTS_START tslib,_Subject,_OuterSubscriber,_util_subscribeToResult PURE_IMPORTS_END */
+function retryWhen(notifier) {
+    return function (source) { return source.lift(new RetryWhenOperator(notifier, source)); };
+}
+var RetryWhenOperator = /*@__PURE__*/ (function () {
+    function RetryWhenOperator(notifier, source) {
+        this.notifier = notifier;
+        this.source = source;
+    }
+    RetryWhenOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new RetryWhenSubscriber(subscriber, this.notifier, this.source));
+    };
+    return RetryWhenOperator;
+}());
+var RetryWhenSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(RetryWhenSubscriber, _super);
+    function RetryWhenSubscriber(destination, notifier, source) {
+        var _this = _super.call(this, destination) || this;
+        _this.notifier = notifier;
+        _this.source = source;
+        return _this;
+    }
+    RetryWhenSubscriber.prototype.error = function (err) {
+        if (!this.isStopped) {
+            var errors = this.errors;
+            var retries = this.retries;
+            var retriesSubscription = this.retriesSubscription;
+            if (!retries) {
+                errors = new Subject();
+                try {
+                    var notifier = this.notifier;
+                    retries = notifier(errors);
+                }
+                catch (e) {
+                    return _super.prototype.error.call(this, e);
+                }
+                retriesSubscription = subscribeToResult(this, retries);
+            }
+            else {
+                this.errors = null;
+                this.retriesSubscription = null;
+            }
+            this._unsubscribeAndRecycle();
+            this.errors = errors;
+            this.retries = retries;
+            this.retriesSubscription = retriesSubscription;
+            errors.next(err);
+        }
+    };
+    RetryWhenSubscriber.prototype._unsubscribe = function () {
+        var _a = this, errors = _a.errors, retriesSubscription = _a.retriesSubscription;
+        if (errors) {
+            errors.unsubscribe();
+            this.errors = null;
+        }
+        if (retriesSubscription) {
+            retriesSubscription.unsubscribe();
+            this.retriesSubscription = null;
+        }
+        this.retries = null;
+    };
+    RetryWhenSubscriber.prototype.notifyNext = function (outerValue, innerValue, outerIndex, innerIndex, innerSub) {
+        var _unsubscribe = this._unsubscribe;
+        this._unsubscribe = null;
+        this._unsubscribeAndRecycle();
+        this._unsubscribe = _unsubscribe;
+        this.source.subscribe(this);
+    };
+    return RetryWhenSubscriber;
+}(OuterSubscriber));
+
+/** PURE_IMPORTS_START tslib,_OuterSubscriber,_util_subscribeToResult PURE_IMPORTS_END */
+function sample(notifier) {
+    return function (source) { return source.lift(new SampleOperator(notifier)); };
+}
+var SampleOperator = /*@__PURE__*/ (function () {
+    function SampleOperator(notifier) {
+        this.notifier = notifier;
+    }
+    SampleOperator.prototype.call = function (subscriber, source) {
+        var sampleSubscriber = new SampleSubscriber(subscriber);
+        var subscription = source.subscribe(sampleSubscriber);
+        subscription.add(subscribeToResult(sampleSubscriber, this.notifier));
+        return subscription;
+    };
+    return SampleOperator;
+}());
+var SampleSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(SampleSubscriber, _super);
+    function SampleSubscriber() {
+        var _this = _super !== null && _super.apply(this, arguments) || this;
+        _this.hasValue = false;
+        return _this;
+    }
+    SampleSubscriber.prototype._next = function (value) {
+        this.value = value;
+        this.hasValue = true;
+    };
+    SampleSubscriber.prototype.notifyNext = function (outerValue, innerValue, outerIndex, innerIndex, innerSub) {
+        this.emitValue();
+    };
+    SampleSubscriber.prototype.notifyComplete = function () {
+        this.emitValue();
+    };
+    SampleSubscriber.prototype.emitValue = function () {
+        if (this.hasValue) {
+            this.hasValue = false;
+            this.destination.next(this.value);
+        }
+    };
+    return SampleSubscriber;
+}(OuterSubscriber));
+
+/** PURE_IMPORTS_START tslib,_Subscriber,_scheduler_async PURE_IMPORTS_END */
+function sampleTime(period, scheduler) {
+    if (scheduler === void 0) {
+        scheduler = async;
+    }
+    return function (source) { return source.lift(new SampleTimeOperator(period, scheduler)); };
+}
+var SampleTimeOperator = /*@__PURE__*/ (function () {
+    function SampleTimeOperator(period, scheduler) {
+        this.period = period;
+        this.scheduler = scheduler;
+    }
+    SampleTimeOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new SampleTimeSubscriber(subscriber, this.period, this.scheduler));
+    };
+    return SampleTimeOperator;
+}());
+var SampleTimeSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(SampleTimeSubscriber, _super);
+    function SampleTimeSubscriber(destination, period, scheduler) {
+        var _this = _super.call(this, destination) || this;
+        _this.period = period;
+        _this.scheduler = scheduler;
+        _this.hasValue = false;
+        _this.add(scheduler.schedule(dispatchNotification, period, { subscriber: _this, period: period }));
+        return _this;
+    }
+    SampleTimeSubscriber.prototype._next = function (value) {
+        this.lastValue = value;
+        this.hasValue = true;
+    };
+    SampleTimeSubscriber.prototype.notifyNext = function () {
+        if (this.hasValue) {
+            this.hasValue = false;
+            this.destination.next(this.lastValue);
+        }
+    };
+    return SampleTimeSubscriber;
+}(Subscriber));
+function dispatchNotification(state) {
+    var subscriber = state.subscriber, period = state.period;
+    subscriber.notifyNext();
+    this.schedule(state, period);
+}
+
+/** PURE_IMPORTS_START tslib,_Subscriber PURE_IMPORTS_END */
+function sequenceEqual(compareTo, comparator) {
+    return function (source) { return source.lift(new SequenceEqualOperator(compareTo, comparator)); };
+}
+var SequenceEqualOperator = /*@__PURE__*/ (function () {
+    function SequenceEqualOperator(compareTo, comparator) {
+        this.compareTo = compareTo;
+        this.comparator = comparator;
+    }
+    SequenceEqualOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new SequenceEqualSubscriber(subscriber, this.compareTo, this.comparator));
+    };
+    return SequenceEqualOperator;
+}());
+var SequenceEqualSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(SequenceEqualSubscriber, _super);
+    function SequenceEqualSubscriber(destination, compareTo, comparator) {
+        var _this = _super.call(this, destination) || this;
+        _this.compareTo = compareTo;
+        _this.comparator = comparator;
+        _this._a = [];
+        _this._b = [];
+        _this._oneComplete = false;
+        _this.destination.add(compareTo.subscribe(new SequenceEqualCompareToSubscriber(destination, _this)));
+        return _this;
+    }
+    SequenceEqualSubscriber.prototype._next = function (value) {
+        if (this._oneComplete && this._b.length === 0) {
+            this.emit(false);
+        }
+        else {
+            this._a.push(value);
+            this.checkValues();
+        }
+    };
+    SequenceEqualSubscriber.prototype._complete = function () {
+        if (this._oneComplete) {
+            this.emit(this._a.length === 0 && this._b.length === 0);
+        }
+        else {
+            this._oneComplete = true;
+        }
+        this.unsubscribe();
+    };
+    SequenceEqualSubscriber.prototype.checkValues = function () {
+        var _c = this, _a = _c._a, _b = _c._b, comparator = _c.comparator;
+        while (_a.length > 0 && _b.length > 0) {
+            var a = _a.shift();
+            var b = _b.shift();
+            var areEqual = false;
+            try {
+                areEqual = comparator ? comparator(a, b) : a === b;
+            }
+            catch (e) {
+                this.destination.error(e);
+            }
+            if (!areEqual) {
+                this.emit(false);
+            }
+        }
+    };
+    SequenceEqualSubscriber.prototype.emit = function (value) {
+        var destination = this.destination;
+        destination.next(value);
+        destination.complete();
+    };
+    SequenceEqualSubscriber.prototype.nextB = function (value) {
+        if (this._oneComplete && this._a.length === 0) {
+            this.emit(false);
+        }
+        else {
+            this._b.push(value);
+            this.checkValues();
+        }
+    };
+    SequenceEqualSubscriber.prototype.completeB = function () {
+        if (this._oneComplete) {
+            this.emit(this._a.length === 0 && this._b.length === 0);
+        }
+        else {
+            this._oneComplete = true;
+        }
+    };
+    return SequenceEqualSubscriber;
+}(Subscriber));
+var SequenceEqualCompareToSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(SequenceEqualCompareToSubscriber, _super);
+    function SequenceEqualCompareToSubscriber(destination, parent) {
+        var _this = _super.call(this, destination) || this;
+        _this.parent = parent;
+        return _this;
+    }
+    SequenceEqualCompareToSubscriber.prototype._next = function (value) {
+        this.parent.nextB(value);
+    };
+    SequenceEqualCompareToSubscriber.prototype._error = function (err) {
+        this.parent.error(err);
+        this.unsubscribe();
+    };
+    SequenceEqualCompareToSubscriber.prototype._complete = function () {
+        this.parent.completeB();
+        this.unsubscribe();
+    };
+    return SequenceEqualCompareToSubscriber;
+}(Subscriber));
+
+/** PURE_IMPORTS_START tslib,_Subscriber,_util_EmptyError PURE_IMPORTS_END */
+function single(predicate) {
+    return function (source) { return source.lift(new SingleOperator(predicate, source)); };
+}
+var SingleOperator = /*@__PURE__*/ (function () {
+    function SingleOperator(predicate, source) {
+        this.predicate = predicate;
+        this.source = source;
+    }
+    SingleOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new SingleSubscriber(subscriber, this.predicate, this.source));
+    };
+    return SingleOperator;
+}());
+var SingleSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(SingleSubscriber, _super);
+    function SingleSubscriber(destination, predicate, source) {
+        var _this = _super.call(this, destination) || this;
+        _this.predicate = predicate;
+        _this.source = source;
+        _this.seenValue = false;
+        _this.index = 0;
+        return _this;
+    }
+    SingleSubscriber.prototype.applySingleValue = function (value) {
+        if (this.seenValue) {
+            this.destination.error('Sequence contains more than one element');
+        }
+        else {
+            this.seenValue = true;
+            this.singleValue = value;
+        }
+    };
+    SingleSubscriber.prototype._next = function (value) {
+        var index = this.index++;
+        if (this.predicate) {
+            this.tryNext(value, index);
+        }
+        else {
+            this.applySingleValue(value);
+        }
+    };
+    SingleSubscriber.prototype.tryNext = function (value, index) {
+        try {
+            if (this.predicate(value, index, this.source)) {
+                this.applySingleValue(value);
+            }
+        }
+        catch (err) {
+            this.destination.error(err);
+        }
+    };
+    SingleSubscriber.prototype._complete = function () {
+        var destination = this.destination;
+        if (this.index > 0) {
+            destination.next(this.seenValue ? this.singleValue : undefined);
+            destination.complete();
+        }
+        else {
+            destination.error(new EmptyError);
+        }
+    };
+    return SingleSubscriber;
+}(Subscriber));
+
+/** PURE_IMPORTS_START tslib,_Subscriber PURE_IMPORTS_END */
+function skip(count) {
+    return function (source) { return source.lift(new SkipOperator(count)); };
+}
+var SkipOperator = /*@__PURE__*/ (function () {
+    function SkipOperator(total) {
+        this.total = total;
+    }
+    SkipOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new SkipSubscriber(subscriber, this.total));
+    };
+    return SkipOperator;
+}());
+var SkipSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(SkipSubscriber, _super);
+    function SkipSubscriber(destination, total) {
+        var _this = _super.call(this, destination) || this;
+        _this.total = total;
+        _this.count = 0;
+        return _this;
+    }
+    SkipSubscriber.prototype._next = function (x) {
+        if (++this.count > this.total) {
+            this.destination.next(x);
+        }
+    };
+    return SkipSubscriber;
+}(Subscriber));
+
+/** PURE_IMPORTS_START tslib,_Subscriber,_util_ArgumentOutOfRangeError PURE_IMPORTS_END */
+function skipLast(count) {
+    return function (source) { return source.lift(new SkipLastOperator(count)); };
+}
+var SkipLastOperator = /*@__PURE__*/ (function () {
+    function SkipLastOperator(_skipCount) {
+        this._skipCount = _skipCount;
+        if (this._skipCount < 0) {
+            throw new ArgumentOutOfRangeError;
+        }
+    }
+    SkipLastOperator.prototype.call = function (subscriber, source) {
+        if (this._skipCount === 0) {
+            return source.subscribe(new Subscriber(subscriber));
+        }
+        else {
+            return source.subscribe(new SkipLastSubscriber(subscriber, this._skipCount));
+        }
+    };
+    return SkipLastOperator;
+}());
+var SkipLastSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(SkipLastSubscriber, _super);
+    function SkipLastSubscriber(destination, _skipCount) {
+        var _this = _super.call(this, destination) || this;
+        _this._skipCount = _skipCount;
+        _this._count = 0;
+        _this._ring = new Array(_skipCount);
+        return _this;
+    }
+    SkipLastSubscriber.prototype._next = function (value) {
+        var skipCount = this._skipCount;
+        var count = this._count++;
+        if (count < skipCount) {
+            this._ring[count] = value;
+        }
+        else {
+            var currentIndex = count % skipCount;
+            var ring = this._ring;
+            var oldValue = ring[currentIndex];
+            ring[currentIndex] = value;
+            this.destination.next(oldValue);
+        }
+    };
+    return SkipLastSubscriber;
+}(Subscriber));
+
+/** PURE_IMPORTS_START tslib,_OuterSubscriber,_InnerSubscriber,_util_subscribeToResult PURE_IMPORTS_END */
+function skipUntil(notifier) {
+    return function (source) { return source.lift(new SkipUntilOperator(notifier)); };
+}
+var SkipUntilOperator = /*@__PURE__*/ (function () {
+    function SkipUntilOperator(notifier) {
+        this.notifier = notifier;
+    }
+    SkipUntilOperator.prototype.call = function (destination, source) {
+        return source.subscribe(new SkipUntilSubscriber(destination, this.notifier));
+    };
+    return SkipUntilOperator;
+}());
+var SkipUntilSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(SkipUntilSubscriber, _super);
+    function SkipUntilSubscriber(destination, notifier) {
+        var _this = _super.call(this, destination) || this;
+        _this.hasValue = false;
+        var innerSubscriber = new InnerSubscriber(_this, undefined, undefined);
+        _this.add(innerSubscriber);
+        _this.innerSubscription = innerSubscriber;
+        subscribeToResult(_this, notifier, undefined, undefined, innerSubscriber);
+        return _this;
+    }
+    SkipUntilSubscriber.prototype._next = function (value) {
+        if (this.hasValue) {
+            _super.prototype._next.call(this, value);
+        }
+    };
+    SkipUntilSubscriber.prototype.notifyNext = function (outerValue, innerValue, outerIndex, innerIndex, innerSub) {
+        this.hasValue = true;
+        if (this.innerSubscription) {
+            this.innerSubscription.unsubscribe();
+        }
+    };
+    SkipUntilSubscriber.prototype.notifyComplete = function () {
+    };
+    return SkipUntilSubscriber;
+}(OuterSubscriber));
+
+/** PURE_IMPORTS_START tslib,_Subscriber PURE_IMPORTS_END */
+function skipWhile(predicate) {
+    return function (source) { return source.lift(new SkipWhileOperator(predicate)); };
+}
+var SkipWhileOperator = /*@__PURE__*/ (function () {
+    function SkipWhileOperator(predicate) {
+        this.predicate = predicate;
+    }
+    SkipWhileOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new SkipWhileSubscriber(subscriber, this.predicate));
+    };
+    return SkipWhileOperator;
+}());
+var SkipWhileSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(SkipWhileSubscriber, _super);
+    function SkipWhileSubscriber(destination, predicate) {
+        var _this = _super.call(this, destination) || this;
+        _this.predicate = predicate;
+        _this.skipping = true;
+        _this.index = 0;
+        return _this;
+    }
+    SkipWhileSubscriber.prototype._next = function (value) {
+        var destination = this.destination;
+        if (this.skipping) {
+            this.tryCallPredicate(value);
+        }
+        if (!this.skipping) {
+            destination.next(value);
+        }
+    };
+    SkipWhileSubscriber.prototype.tryCallPredicate = function (value) {
+        try {
+            var result = this.predicate(value, this.index++);
+            this.skipping = Boolean(result);
+        }
+        catch (err) {
+            this.destination.error(err);
+        }
+    };
+    return SkipWhileSubscriber;
+}(Subscriber));
+
+/** PURE_IMPORTS_START tslib,_Observable,_scheduler_asap,_util_isNumeric PURE_IMPORTS_END */
+var SubscribeOnObservable = /*@__PURE__*/ (function (_super) {
+    __extends(SubscribeOnObservable, _super);
+    function SubscribeOnObservable(source, delayTime, scheduler) {
+        if (delayTime === void 0) {
+            delayTime = 0;
+        }
+        if (scheduler === void 0) {
+            scheduler = asap;
+        }
+        var _this = _super.call(this) || this;
+        _this.source = source;
+        _this.delayTime = delayTime;
+        _this.scheduler = scheduler;
+        if (!isNumeric(delayTime) || delayTime < 0) {
+            _this.delayTime = 0;
+        }
+        if (!scheduler || typeof scheduler.schedule !== 'function') {
+            _this.scheduler = asap;
+        }
+        return _this;
+    }
+    SubscribeOnObservable.create = function (source, delay, scheduler) {
+        if (delay === void 0) {
+            delay = 0;
+        }
+        if (scheduler === void 0) {
+            scheduler = asap;
+        }
+        return new SubscribeOnObservable(source, delay, scheduler);
+    };
+    SubscribeOnObservable.dispatch = function (arg) {
+        var source = arg.source, subscriber = arg.subscriber;
+        return this.add(source.subscribe(subscriber));
+    };
+    SubscribeOnObservable.prototype._subscribe = function (subscriber) {
+        var delay = this.delayTime;
+        var source = this.source;
+        var scheduler = this.scheduler;
+        return scheduler.schedule(SubscribeOnObservable.dispatch, delay, {
+            source: source, subscriber: subscriber
+        });
+    };
+    return SubscribeOnObservable;
+}(Observable));
+
+/** PURE_IMPORTS_START _observable_SubscribeOnObservable PURE_IMPORTS_END */
+function subscribeOn(scheduler, delay) {
+    if (delay === void 0) {
+        delay = 0;
+    }
+    return function subscribeOnOperatorFunction(source) {
+        return source.lift(new SubscribeOnOperator(scheduler, delay));
+    };
+}
+var SubscribeOnOperator = /*@__PURE__*/ (function () {
+    function SubscribeOnOperator(scheduler, delay) {
+        this.scheduler = scheduler;
+        this.delay = delay;
+    }
+    SubscribeOnOperator.prototype.call = function (subscriber, source) {
+        return new SubscribeOnObservable(source, this.delay, this.scheduler).subscribe(subscriber);
+    };
+    return SubscribeOnOperator;
+}());
+
+/** PURE_IMPORTS_START _switchMap,_util_identity PURE_IMPORTS_END */
+function switchAll() {
+    return switchMap(identity);
+}
+
+/** PURE_IMPORTS_START _switchMap PURE_IMPORTS_END */
+function switchMapTo(innerObservable, resultSelector) {
+    return resultSelector ? switchMap(function () { return innerObservable; }, resultSelector) : switchMap(function () { return innerObservable; });
+}
+
+/** PURE_IMPORTS_START tslib,_Subscriber PURE_IMPORTS_END */
+function takeWhile(predicate, inclusive) {
+    if (inclusive === void 0) {
+        inclusive = false;
+    }
+    return function (source) {
+        return source.lift(new TakeWhileOperator(predicate, inclusive));
+    };
+}
+var TakeWhileOperator = /*@__PURE__*/ (function () {
+    function TakeWhileOperator(predicate, inclusive) {
+        this.predicate = predicate;
+        this.inclusive = inclusive;
+    }
+    TakeWhileOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new TakeWhileSubscriber(subscriber, this.predicate, this.inclusive));
+    };
+    return TakeWhileOperator;
+}());
+var TakeWhileSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(TakeWhileSubscriber, _super);
+    function TakeWhileSubscriber(destination, predicate, inclusive) {
+        var _this = _super.call(this, destination) || this;
+        _this.predicate = predicate;
+        _this.inclusive = inclusive;
+        _this.index = 0;
+        return _this;
+    }
+    TakeWhileSubscriber.prototype._next = function (value) {
+        var destination = this.destination;
+        var result;
+        try {
+            result = this.predicate(value, this.index++);
+        }
+        catch (err) {
+            destination.error(err);
+            return;
+        }
+        this.nextOrComplete(value, result);
+    };
+    TakeWhileSubscriber.prototype.nextOrComplete = function (value, predicateResult) {
+        var destination = this.destination;
+        if (Boolean(predicateResult)) {
+            destination.next(value);
+        }
+        else {
+            if (this.inclusive) {
+                destination.next(value);
+            }
+            destination.complete();
+        }
+    };
+    return TakeWhileSubscriber;
+}(Subscriber));
+
+/** PURE_IMPORTS_START tslib,_OuterSubscriber,_util_subscribeToResult PURE_IMPORTS_END */
+var defaultThrottleConfig = {
+    leading: true,
+    trailing: false
+};
+function throttle(durationSelector, config) {
+    if (config === void 0) {
+        config = defaultThrottleConfig;
+    }
+    return function (source) { return source.lift(new ThrottleOperator(durationSelector, config.leading, config.trailing)); };
+}
+var ThrottleOperator = /*@__PURE__*/ (function () {
+    function ThrottleOperator(durationSelector, leading, trailing) {
+        this.durationSelector = durationSelector;
+        this.leading = leading;
+        this.trailing = trailing;
+    }
+    ThrottleOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new ThrottleSubscriber(subscriber, this.durationSelector, this.leading, this.trailing));
+    };
+    return ThrottleOperator;
+}());
+var ThrottleSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(ThrottleSubscriber, _super);
+    function ThrottleSubscriber(destination, durationSelector, _leading, _trailing) {
+        var _this = _super.call(this, destination) || this;
+        _this.destination = destination;
+        _this.durationSelector = durationSelector;
+        _this._leading = _leading;
+        _this._trailing = _trailing;
+        _this._hasValue = false;
+        return _this;
+    }
+    ThrottleSubscriber.prototype._next = function (value) {
+        this._hasValue = true;
+        this._sendValue = value;
+        if (!this._throttled) {
+            if (this._leading) {
+                this.send();
+            }
+            else {
+                this.throttle(value);
+            }
+        }
+    };
+    ThrottleSubscriber.prototype.send = function () {
+        var _a = this, _hasValue = _a._hasValue, _sendValue = _a._sendValue;
+        if (_hasValue) {
+            this.destination.next(_sendValue);
+            this.throttle(_sendValue);
+        }
+        this._hasValue = false;
+        this._sendValue = null;
+    };
+    ThrottleSubscriber.prototype.throttle = function (value) {
+        var duration = this.tryDurationSelector(value);
+        if (!!duration) {
+            this.add(this._throttled = subscribeToResult(this, duration));
+        }
+    };
+    ThrottleSubscriber.prototype.tryDurationSelector = function (value) {
+        try {
+            return this.durationSelector(value);
+        }
+        catch (err) {
+            this.destination.error(err);
+            return null;
+        }
+    };
+    ThrottleSubscriber.prototype.throttlingDone = function () {
+        var _a = this, _throttled = _a._throttled, _trailing = _a._trailing;
+        if (_throttled) {
+            _throttled.unsubscribe();
+        }
+        this._throttled = null;
+        if (_trailing) {
+            this.send();
+        }
+    };
+    ThrottleSubscriber.prototype.notifyNext = function (outerValue, innerValue, outerIndex, innerIndex, innerSub) {
+        this.throttlingDone();
+    };
+    ThrottleSubscriber.prototype.notifyComplete = function () {
+        this.throttlingDone();
+    };
+    return ThrottleSubscriber;
+}(OuterSubscriber));
+
+/** PURE_IMPORTS_START tslib,_Subscriber,_scheduler_async,_throttle PURE_IMPORTS_END */
+function throttleTime(duration, scheduler, config) {
+    if (scheduler === void 0) {
+        scheduler = async;
+    }
+    if (config === void 0) {
+        config = defaultThrottleConfig;
+    }
+    return function (source) { return source.lift(new ThrottleTimeOperator(duration, scheduler, config.leading, config.trailing)); };
+}
+var ThrottleTimeOperator = /*@__PURE__*/ (function () {
+    function ThrottleTimeOperator(duration, scheduler, leading, trailing) {
+        this.duration = duration;
+        this.scheduler = scheduler;
+        this.leading = leading;
+        this.trailing = trailing;
+    }
+    ThrottleTimeOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new ThrottleTimeSubscriber(subscriber, this.duration, this.scheduler, this.leading, this.trailing));
+    };
+    return ThrottleTimeOperator;
+}());
+var ThrottleTimeSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(ThrottleTimeSubscriber, _super);
+    function ThrottleTimeSubscriber(destination, duration, scheduler, leading, trailing) {
+        var _this = _super.call(this, destination) || this;
+        _this.duration = duration;
+        _this.scheduler = scheduler;
+        _this.leading = leading;
+        _this.trailing = trailing;
+        _this._hasTrailingValue = false;
+        _this._trailingValue = null;
+        return _this;
+    }
+    ThrottleTimeSubscriber.prototype._next = function (value) {
+        if (this.throttled) {
+            if (this.trailing) {
+                this._trailingValue = value;
+                this._hasTrailingValue = true;
+            }
+        }
+        else {
+            this.add(this.throttled = this.scheduler.schedule(dispatchNext$1, this.duration, { subscriber: this }));
+            if (this.leading) {
+                this.destination.next(value);
+            }
+            else if (this.trailing) {
+                this._trailingValue = value;
+                this._hasTrailingValue = true;
+            }
+        }
+    };
+    ThrottleTimeSubscriber.prototype._complete = function () {
+        if (this._hasTrailingValue) {
+            this.destination.next(this._trailingValue);
+            this.destination.complete();
+        }
+        else {
+            this.destination.complete();
+        }
+    };
+    ThrottleTimeSubscriber.prototype.clearThrottle = function () {
+        var throttled = this.throttled;
+        if (throttled) {
+            if (this.trailing && this._hasTrailingValue) {
+                this.destination.next(this._trailingValue);
+                this._trailingValue = null;
+                this._hasTrailingValue = false;
+            }
+            throttled.unsubscribe();
+            this.remove(throttled);
+            this.throttled = null;
+        }
+    };
+    return ThrottleTimeSubscriber;
+}(Subscriber));
+function dispatchNext$1(arg) {
+    var subscriber = arg.subscriber;
+    subscriber.clearThrottle();
+}
+
+/** PURE_IMPORTS_START _scheduler_async,_scan,_observable_defer,_map PURE_IMPORTS_END */
+function timeInterval(scheduler) {
+    if (scheduler === void 0) {
+        scheduler = async;
+    }
+    return function (source) {
+        return defer(function () {
+            return source.pipe(scan(function (_a, value) {
+                var current = _a.current;
+                return ({ value: value, current: scheduler.now(), last: current });
+            }, { current: scheduler.now(), value: undefined, last: undefined }), map(function (_a) {
+                var current = _a.current, last = _a.last, value = _a.value;
+                return new TimeInterval(value, current - last);
+            }));
+        });
+    };
+}
+var TimeInterval = /*@__PURE__*/ (function () {
+    function TimeInterval(value, interval) {
+        this.value = value;
+        this.interval = interval;
+    }
+    return TimeInterval;
+}());
+
+/** PURE_IMPORTS_START tslib,_scheduler_async,_util_isDate,_OuterSubscriber,_util_subscribeToResult PURE_IMPORTS_END */
+function timeoutWith(due, withObservable, scheduler) {
+    if (scheduler === void 0) {
+        scheduler = async;
+    }
+    return function (source) {
+        var absoluteTimeout = isDate(due);
+        var waitFor = absoluteTimeout ? (+due - scheduler.now()) : Math.abs(due);
+        return source.lift(new TimeoutWithOperator(waitFor, absoluteTimeout, withObservable, scheduler));
+    };
+}
+var TimeoutWithOperator = /*@__PURE__*/ (function () {
+    function TimeoutWithOperator(waitFor, absoluteTimeout, withObservable, scheduler) {
+        this.waitFor = waitFor;
+        this.absoluteTimeout = absoluteTimeout;
+        this.withObservable = withObservable;
+        this.scheduler = scheduler;
+    }
+    TimeoutWithOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new TimeoutWithSubscriber(subscriber, this.absoluteTimeout, this.waitFor, this.withObservable, this.scheduler));
+    };
+    return TimeoutWithOperator;
+}());
+var TimeoutWithSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(TimeoutWithSubscriber, _super);
+    function TimeoutWithSubscriber(destination, absoluteTimeout, waitFor, withObservable, scheduler) {
+        var _this = _super.call(this, destination) || this;
+        _this.absoluteTimeout = absoluteTimeout;
+        _this.waitFor = waitFor;
+        _this.withObservable = withObservable;
+        _this.scheduler = scheduler;
+        _this.action = null;
+        _this.scheduleTimeout();
+        return _this;
+    }
+    TimeoutWithSubscriber.dispatchTimeout = function (subscriber) {
+        var withObservable = subscriber.withObservable;
+        subscriber._unsubscribeAndRecycle();
+        subscriber.add(subscribeToResult(subscriber, withObservable));
+    };
+    TimeoutWithSubscriber.prototype.scheduleTimeout = function () {
+        var action = this.action;
+        if (action) {
+            this.action = action.schedule(this, this.waitFor);
+        }
+        else {
+            this.add(this.action = this.scheduler.schedule(TimeoutWithSubscriber.dispatchTimeout, this.waitFor, this));
+        }
+    };
+    TimeoutWithSubscriber.prototype._next = function (value) {
+        if (!this.absoluteTimeout) {
+            this.scheduleTimeout();
+        }
+        _super.prototype._next.call(this, value);
+    };
+    TimeoutWithSubscriber.prototype._unsubscribe = function () {
+        this.action = null;
+        this.scheduler = null;
+        this.withObservable = null;
+    };
+    return TimeoutWithSubscriber;
+}(OuterSubscriber));
+
+/** PURE_IMPORTS_START _scheduler_async,_util_TimeoutError,_timeoutWith,_observable_throwError PURE_IMPORTS_END */
+function timeout(due, scheduler) {
+    if (scheduler === void 0) {
+        scheduler = async;
+    }
+    return timeoutWith(due, throwError(new TimeoutError()), scheduler);
+}
+
+/** PURE_IMPORTS_START _scheduler_async,_map PURE_IMPORTS_END */
+function timestamp(scheduler) {
+    if (scheduler === void 0) {
+        scheduler = async;
+    }
+    return map(function (value) { return new Timestamp(value, scheduler.now()); });
+}
+var Timestamp = /*@__PURE__*/ (function () {
+    function Timestamp(value, timestamp) {
+        this.value = value;
+        this.timestamp = timestamp;
+    }
+    return Timestamp;
+}());
+
+/** PURE_IMPORTS_START _reduce PURE_IMPORTS_END */
+function toArrayReducer(arr, item, index) {
+    if (index === 0) {
+        return [item];
+    }
+    arr.push(item);
+    return arr;
+}
+function toArray() {
+    return reduce(toArrayReducer, []);
+}
+
+/** PURE_IMPORTS_START tslib,_Subject,_OuterSubscriber,_util_subscribeToResult PURE_IMPORTS_END */
+function window(windowBoundaries) {
+    return function windowOperatorFunction(source) {
+        return source.lift(new WindowOperator(windowBoundaries));
+    };
+}
+var WindowOperator = /*@__PURE__*/ (function () {
+    function WindowOperator(windowBoundaries) {
+        this.windowBoundaries = windowBoundaries;
+    }
+    WindowOperator.prototype.call = function (subscriber, source) {
+        var windowSubscriber = new WindowSubscriber(subscriber);
+        var sourceSubscription = source.subscribe(windowSubscriber);
+        if (!sourceSubscription.closed) {
+            windowSubscriber.add(subscribeToResult(windowSubscriber, this.windowBoundaries));
+        }
+        return sourceSubscription;
+    };
+    return WindowOperator;
+}());
+var WindowSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(WindowSubscriber, _super);
+    function WindowSubscriber(destination) {
+        var _this = _super.call(this, destination) || this;
+        _this.window = new Subject();
+        destination.next(_this.window);
+        return _this;
+    }
+    WindowSubscriber.prototype.notifyNext = function (outerValue, innerValue, outerIndex, innerIndex, innerSub) {
+        this.openWindow();
+    };
+    WindowSubscriber.prototype.notifyError = function (error, innerSub) {
+        this._error(error);
+    };
+    WindowSubscriber.prototype.notifyComplete = function (innerSub) {
+        this._complete();
+    };
+    WindowSubscriber.prototype._next = function (value) {
+        this.window.next(value);
+    };
+    WindowSubscriber.prototype._error = function (err) {
+        this.window.error(err);
+        this.destination.error(err);
+    };
+    WindowSubscriber.prototype._complete = function () {
+        this.window.complete();
+        this.destination.complete();
+    };
+    WindowSubscriber.prototype._unsubscribe = function () {
+        this.window = null;
+    };
+    WindowSubscriber.prototype.openWindow = function () {
+        var prevWindow = this.window;
+        if (prevWindow) {
+            prevWindow.complete();
+        }
+        var destination = this.destination;
+        var newWindow = this.window = new Subject();
+        destination.next(newWindow);
+    };
+    return WindowSubscriber;
+}(OuterSubscriber));
+
+/** PURE_IMPORTS_START tslib,_Subscriber,_Subject PURE_IMPORTS_END */
+function windowCount(windowSize, startWindowEvery) {
+    if (startWindowEvery === void 0) {
+        startWindowEvery = 0;
+    }
+    return function windowCountOperatorFunction(source) {
+        return source.lift(new WindowCountOperator(windowSize, startWindowEvery));
+    };
+}
+var WindowCountOperator = /*@__PURE__*/ (function () {
+    function WindowCountOperator(windowSize, startWindowEvery) {
+        this.windowSize = windowSize;
+        this.startWindowEvery = startWindowEvery;
+    }
+    WindowCountOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new WindowCountSubscriber(subscriber, this.windowSize, this.startWindowEvery));
+    };
+    return WindowCountOperator;
+}());
+var WindowCountSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(WindowCountSubscriber, _super);
+    function WindowCountSubscriber(destination, windowSize, startWindowEvery) {
+        var _this = _super.call(this, destination) || this;
+        _this.destination = destination;
+        _this.windowSize = windowSize;
+        _this.startWindowEvery = startWindowEvery;
+        _this.windows = [new Subject()];
+        _this.count = 0;
+        destination.next(_this.windows[0]);
+        return _this;
+    }
+    WindowCountSubscriber.prototype._next = function (value) {
+        var startWindowEvery = (this.startWindowEvery > 0) ? this.startWindowEvery : this.windowSize;
+        var destination = this.destination;
+        var windowSize = this.windowSize;
+        var windows = this.windows;
+        var len = windows.length;
+        for (var i = 0; i < len && !this.closed; i++) {
+            windows[i].next(value);
+        }
+        var c = this.count - windowSize + 1;
+        if (c >= 0 && c % startWindowEvery === 0 && !this.closed) {
+            windows.shift().complete();
+        }
+        if (++this.count % startWindowEvery === 0 && !this.closed) {
+            var window_1 = new Subject();
+            windows.push(window_1);
+            destination.next(window_1);
+        }
+    };
+    WindowCountSubscriber.prototype._error = function (err) {
+        var windows = this.windows;
+        if (windows) {
+            while (windows.length > 0 && !this.closed) {
+                windows.shift().error(err);
+            }
+        }
+        this.destination.error(err);
+    };
+    WindowCountSubscriber.prototype._complete = function () {
+        var windows = this.windows;
+        if (windows) {
+            while (windows.length > 0 && !this.closed) {
+                windows.shift().complete();
+            }
+        }
+        this.destination.complete();
+    };
+    WindowCountSubscriber.prototype._unsubscribe = function () {
+        this.count = 0;
+        this.windows = null;
+    };
+    return WindowCountSubscriber;
+}(Subscriber));
+
+/** PURE_IMPORTS_START tslib,_Subject,_scheduler_async,_Subscriber,_util_isNumeric,_util_isScheduler PURE_IMPORTS_END */
+function windowTime(windowTimeSpan) {
+    var scheduler = async;
+    var windowCreationInterval = null;
+    var maxWindowSize = Number.POSITIVE_INFINITY;
+    if (isScheduler(arguments[3])) {
+        scheduler = arguments[3];
+    }
+    if (isScheduler(arguments[2])) {
+        scheduler = arguments[2];
+    }
+    else if (isNumeric(arguments[2])) {
+        maxWindowSize = arguments[2];
+    }
+    if (isScheduler(arguments[1])) {
+        scheduler = arguments[1];
+    }
+    else if (isNumeric(arguments[1])) {
+        windowCreationInterval = arguments[1];
+    }
+    return function windowTimeOperatorFunction(source) {
+        return source.lift(new WindowTimeOperator(windowTimeSpan, windowCreationInterval, maxWindowSize, scheduler));
+    };
+}
+var WindowTimeOperator = /*@__PURE__*/ (function () {
+    function WindowTimeOperator(windowTimeSpan, windowCreationInterval, maxWindowSize, scheduler) {
+        this.windowTimeSpan = windowTimeSpan;
+        this.windowCreationInterval = windowCreationInterval;
+        this.maxWindowSize = maxWindowSize;
+        this.scheduler = scheduler;
+    }
+    WindowTimeOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new WindowTimeSubscriber(subscriber, this.windowTimeSpan, this.windowCreationInterval, this.maxWindowSize, this.scheduler));
+    };
+    return WindowTimeOperator;
+}());
+var CountedSubject = /*@__PURE__*/ (function (_super) {
+    __extends(CountedSubject, _super);
+    function CountedSubject() {
+        var _this = _super !== null && _super.apply(this, arguments) || this;
+        _this._numberOfNextedValues = 0;
+        return _this;
+    }
+    CountedSubject.prototype.next = function (value) {
+        this._numberOfNextedValues++;
+        _super.prototype.next.call(this, value);
+    };
+    Object.defineProperty(CountedSubject.prototype, "numberOfNextedValues", {
+        get: function () {
+            return this._numberOfNextedValues;
+        },
+        enumerable: true,
+        configurable: true
+    });
+    return CountedSubject;
+}(Subject));
+var WindowTimeSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(WindowTimeSubscriber, _super);
+    function WindowTimeSubscriber(destination, windowTimeSpan, windowCreationInterval, maxWindowSize, scheduler) {
+        var _this = _super.call(this, destination) || this;
+        _this.destination = destination;
+        _this.windowTimeSpan = windowTimeSpan;
+        _this.windowCreationInterval = windowCreationInterval;
+        _this.maxWindowSize = maxWindowSize;
+        _this.scheduler = scheduler;
+        _this.windows = [];
+        var window = _this.openWindow();
+        if (windowCreationInterval !== null && windowCreationInterval >= 0) {
+            var closeState = { subscriber: _this, window: window, context: null };
+            var creationState = { windowTimeSpan: windowTimeSpan, windowCreationInterval: windowCreationInterval, subscriber: _this, scheduler: scheduler };
+            _this.add(scheduler.schedule(dispatchWindowClose, windowTimeSpan, closeState));
+            _this.add(scheduler.schedule(dispatchWindowCreation, windowCreationInterval, creationState));
+        }
+        else {
+            var timeSpanOnlyState = { subscriber: _this, window: window, windowTimeSpan: windowTimeSpan };
+            _this.add(scheduler.schedule(dispatchWindowTimeSpanOnly, windowTimeSpan, timeSpanOnlyState));
+        }
+        return _this;
+    }
+    WindowTimeSubscriber.prototype._next = function (value) {
+        var windows = this.windows;
+        var len = windows.length;
+        for (var i = 0; i < len; i++) {
+            var window_1 = windows[i];
+            if (!window_1.closed) {
+                window_1.next(value);
+                if (window_1.numberOfNextedValues >= this.maxWindowSize) {
+                    this.closeWindow(window_1);
+                }
+            }
+        }
+    };
+    WindowTimeSubscriber.prototype._error = function (err) {
+        var windows = this.windows;
+        while (windows.length > 0) {
+            windows.shift().error(err);
+        }
+        this.destination.error(err);
+    };
+    WindowTimeSubscriber.prototype._complete = function () {
+        var windows = this.windows;
+        while (windows.length > 0) {
+            var window_2 = windows.shift();
+            if (!window_2.closed) {
+                window_2.complete();
+            }
+        }
+        this.destination.complete();
+    };
+    WindowTimeSubscriber.prototype.openWindow = function () {
+        var window = new CountedSubject();
+        this.windows.push(window);
+        var destination = this.destination;
+        destination.next(window);
+        return window;
+    };
+    WindowTimeSubscriber.prototype.closeWindow = function (window) {
+        window.complete();
+        var windows = this.windows;
+        windows.splice(windows.indexOf(window), 1);
+    };
+    return WindowTimeSubscriber;
+}(Subscriber));
+function dispatchWindowTimeSpanOnly(state) {
+    var subscriber = state.subscriber, windowTimeSpan = state.windowTimeSpan, window = state.window;
+    if (window) {
+        subscriber.closeWindow(window);
+    }
+    state.window = subscriber.openWindow();
+    this.schedule(state, windowTimeSpan);
+}
+function dispatchWindowCreation(state) {
+    var windowTimeSpan = state.windowTimeSpan, subscriber = state.subscriber, scheduler = state.scheduler, windowCreationInterval = state.windowCreationInterval;
+    var window = subscriber.openWindow();
+    var action = this;
+    var context = { action: action, subscription: null };
+    var timeSpanState = { subscriber: subscriber, window: window, context: context };
+    context.subscription = scheduler.schedule(dispatchWindowClose, windowTimeSpan, timeSpanState);
+    action.add(context.subscription);
+    action.schedule(state, windowCreationInterval);
+}
+function dispatchWindowClose(state) {
+    var subscriber = state.subscriber, window = state.window, context = state.context;
+    if (context && context.action && context.subscription) {
+        context.action.remove(context.subscription);
+    }
+    subscriber.closeWindow(window);
+}
+
+/** PURE_IMPORTS_START tslib,_Subject,_Subscription,_OuterSubscriber,_util_subscribeToResult PURE_IMPORTS_END */
+function windowToggle(openings, closingSelector) {
+    return function (source) { return source.lift(new WindowToggleOperator(openings, closingSelector)); };
+}
+var WindowToggleOperator = /*@__PURE__*/ (function () {
+    function WindowToggleOperator(openings, closingSelector) {
+        this.openings = openings;
+        this.closingSelector = closingSelector;
+    }
+    WindowToggleOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new WindowToggleSubscriber(subscriber, this.openings, this.closingSelector));
+    };
+    return WindowToggleOperator;
+}());
+var WindowToggleSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(WindowToggleSubscriber, _super);
+    function WindowToggleSubscriber(destination, openings, closingSelector) {
+        var _this = _super.call(this, destination) || this;
+        _this.openings = openings;
+        _this.closingSelector = closingSelector;
+        _this.contexts = [];
+        _this.add(_this.openSubscription = subscribeToResult(_this, openings, openings));
+        return _this;
+    }
+    WindowToggleSubscriber.prototype._next = function (value) {
+        var contexts = this.contexts;
+        if (contexts) {
+            var len = contexts.length;
+            for (var i = 0; i < len; i++) {
+                contexts[i].window.next(value);
+            }
+        }
+    };
+    WindowToggleSubscriber.prototype._error = function (err) {
+        var contexts = this.contexts;
+        this.contexts = null;
+        if (contexts) {
+            var len = contexts.length;
+            var index = -1;
+            while (++index < len) {
+                var context_1 = contexts[index];
+                context_1.window.error(err);
+                context_1.subscription.unsubscribe();
+            }
+        }
+        _super.prototype._error.call(this, err);
+    };
+    WindowToggleSubscriber.prototype._complete = function () {
+        var contexts = this.contexts;
+        this.contexts = null;
+        if (contexts) {
+            var len = contexts.length;
+            var index = -1;
+            while (++index < len) {
+                var context_2 = contexts[index];
+                context_2.window.complete();
+                context_2.subscription.unsubscribe();
+            }
+        }
+        _super.prototype._complete.call(this);
+    };
+    WindowToggleSubscriber.prototype._unsubscribe = function () {
+        var contexts = this.contexts;
+        this.contexts = null;
+        if (contexts) {
+            var len = contexts.length;
+            var index = -1;
+            while (++index < len) {
+                var context_3 = contexts[index];
+                context_3.window.unsubscribe();
+                context_3.subscription.unsubscribe();
+            }
+        }
+    };
+    WindowToggleSubscriber.prototype.notifyNext = function (outerValue, innerValue, outerIndex, innerIndex, innerSub) {
+        if (outerValue === this.openings) {
+            var closingNotifier = void 0;
+            try {
+                var closingSelector = this.closingSelector;
+                closingNotifier = closingSelector(innerValue);
+            }
+            catch (e) {
+                return this.error(e);
+            }
+            var window_1 = new Subject();
+            var subscription = new Subscription();
+            var context_4 = { window: window_1, subscription: subscription };
+            this.contexts.push(context_4);
+            var innerSubscription = subscribeToResult(this, closingNotifier, context_4);
+            if (innerSubscription.closed) {
+                this.closeWindow(this.contexts.length - 1);
+            }
+            else {
+                innerSubscription.context = context_4;
+                subscription.add(innerSubscription);
+            }
+            this.destination.next(window_1);
+        }
+        else {
+            this.closeWindow(this.contexts.indexOf(outerValue));
+        }
+    };
+    WindowToggleSubscriber.prototype.notifyError = function (err) {
+        this.error(err);
+    };
+    WindowToggleSubscriber.prototype.notifyComplete = function (inner) {
+        if (inner !== this.openSubscription) {
+            this.closeWindow(this.contexts.indexOf(inner.context));
+        }
+    };
+    WindowToggleSubscriber.prototype.closeWindow = function (index) {
+        if (index === -1) {
+            return;
+        }
+        var contexts = this.contexts;
+        var context = contexts[index];
+        var window = context.window, subscription = context.subscription;
+        contexts.splice(index, 1);
+        window.complete();
+        subscription.unsubscribe();
+    };
+    return WindowToggleSubscriber;
+}(OuterSubscriber));
+
+/** PURE_IMPORTS_START tslib,_Subject,_OuterSubscriber,_util_subscribeToResult PURE_IMPORTS_END */
+function windowWhen(closingSelector) {
+    return function windowWhenOperatorFunction(source) {
+        return source.lift(new WindowOperator$1(closingSelector));
+    };
+}
+var WindowOperator$1 = /*@__PURE__*/ (function () {
+    function WindowOperator(closingSelector) {
+        this.closingSelector = closingSelector;
+    }
+    WindowOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new WindowSubscriber$1(subscriber, this.closingSelector));
+    };
+    return WindowOperator;
+}());
+var WindowSubscriber$1 = /*@__PURE__*/ (function (_super) {
+    __extends(WindowSubscriber, _super);
+    function WindowSubscriber(destination, closingSelector) {
+        var _this = _super.call(this, destination) || this;
+        _this.destination = destination;
+        _this.closingSelector = closingSelector;
+        _this.openWindow();
+        return _this;
+    }
+    WindowSubscriber.prototype.notifyNext = function (outerValue, innerValue, outerIndex, innerIndex, innerSub) {
+        this.openWindow(innerSub);
+    };
+    WindowSubscriber.prototype.notifyError = function (error, innerSub) {
+        this._error(error);
+    };
+    WindowSubscriber.prototype.notifyComplete = function (innerSub) {
+        this.openWindow(innerSub);
+    };
+    WindowSubscriber.prototype._next = function (value) {
+        this.window.next(value);
+    };
+    WindowSubscriber.prototype._error = function (err) {
+        this.window.error(err);
+        this.destination.error(err);
+        this.unsubscribeClosingNotification();
+    };
+    WindowSubscriber.prototype._complete = function () {
+        this.window.complete();
+        this.destination.complete();
+        this.unsubscribeClosingNotification();
+    };
+    WindowSubscriber.prototype.unsubscribeClosingNotification = function () {
+        if (this.closingNotification) {
+            this.closingNotification.unsubscribe();
+        }
+    };
+    WindowSubscriber.prototype.openWindow = function (innerSub) {
+        if (innerSub === void 0) {
+            innerSub = null;
+        }
+        if (innerSub) {
+            this.remove(innerSub);
+            innerSub.unsubscribe();
+        }
+        var prevWindow = this.window;
+        if (prevWindow) {
+            prevWindow.complete();
+        }
+        var window = this.window = new Subject();
+        this.destination.next(window);
+        var closingNotifier;
+        try {
+            var closingSelector = this.closingSelector;
+            closingNotifier = closingSelector();
+        }
+        catch (e) {
+            this.destination.error(e);
+            this.window.error(e);
+            return;
+        }
+        this.add(this.closingNotification = subscribeToResult(this, closingNotifier));
+    };
+    return WindowSubscriber;
+}(OuterSubscriber));
+
+/** PURE_IMPORTS_START _observable_zip PURE_IMPORTS_END */
+function zip() {
+    var observables = [];
+    for (var _i = 0; _i < arguments.length; _i++) {
+        observables[_i] = arguments[_i];
+    }
+    return function zipOperatorFunction(source) {
+        return source.lift.call(zip$1.apply(void 0, [source].concat(observables)));
+    };
+}
+
+/** PURE_IMPORTS_START _observable_zip PURE_IMPORTS_END */
+function zipAll(project) {
+    return function (source) { return source.lift(new ZipOperator(project)); };
+}
+
+export { audit, auditTime, buffer, bufferCount, bufferTime, bufferToggle, bufferWhen, catchError, combineAll, combineLatest, concat, concatMapTo, count, debounce, debounceTime, delayWhen, dematerialize, distinct, distinctUntilKeyChanged, elementAt, endWith, every, exhaust, exhaustMap, expand, finalize, find, findIndex, ignoreElements, isEmpty, last, mapTo, materialize, max, merge, mergeMapTo, mergeScan, min, onErrorResumeNext, pairwise, partition, pluck, publish, publishBehavior, publishLast, publishReplay, race, reduce, repeat, repeatWhen, retry, retryWhen, sample, sampleTime, scan, sequenceEqual, single, skip, skipLast, skipUntil, skipWhile, subscribeOn, switchAll, switchMapTo, takeLast, takeWhile, throttle, throttleTime, timeInterval, timeout, timeoutWith, timestamp, toArray, window, windowCount, windowTime, windowToggle, windowWhen, zip, zipAll };

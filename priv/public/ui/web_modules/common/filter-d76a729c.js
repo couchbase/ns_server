@@ -1,2 +1,61 @@
-import{b as t}from"./tslib.es6-c4a4947b.js";import{d as r,s as i,f as n,b as e}from"./mergeMap-64c6f393.js";function s(){for(var t=[],e=0;e<arguments.length;e++)t[e]=arguments[e];var s=t[t.length-1];return r(s)?(t.pop(),i(t,s)):n(t)}function o(t,r){return function(i){return i.lift(new a(t,r))}}var a=function(){function t(t,r){this.predicate=t,this.thisArg=r}return t.prototype.call=function(t,r){return r.subscribe(new c(t,this.predicate,this.thisArg))},t}(),c=function(r){function i(t,i,n){var e=r.call(this,t)||this;return e.predicate=i,e.thisArg=n,e.count=0,e}return t(i,r),i.prototype._next=function(t){var r;try{r=this.predicate.call(this.thisArg,t,this.count++)}catch(t){return void this.destination.error(t)}r&&this.destination.next(t)},i}(e);export{o as f,s as o};
-//# sourceMappingURL=filter-d76a729c.js.map
+import { b as __extends } from './tslib.es6-c4a4947b.js';
+import { d as isScheduler, s as scheduleArray, f as fromArray, b as Subscriber } from './mergeMap-64c6f393.js';
+
+/** PURE_IMPORTS_START _util_isScheduler,_fromArray,_scheduled_scheduleArray PURE_IMPORTS_END */
+function of() {
+    var args = [];
+    for (var _i = 0; _i < arguments.length; _i++) {
+        args[_i] = arguments[_i];
+    }
+    var scheduler = args[args.length - 1];
+    if (isScheduler(scheduler)) {
+        args.pop();
+        return scheduleArray(args, scheduler);
+    }
+    else {
+        return fromArray(args);
+    }
+}
+
+/** PURE_IMPORTS_START tslib,_Subscriber PURE_IMPORTS_END */
+function filter(predicate, thisArg) {
+    return function filterOperatorFunction(source) {
+        return source.lift(new FilterOperator(predicate, thisArg));
+    };
+}
+var FilterOperator = /*@__PURE__*/ (function () {
+    function FilterOperator(predicate, thisArg) {
+        this.predicate = predicate;
+        this.thisArg = thisArg;
+    }
+    FilterOperator.prototype.call = function (subscriber, source) {
+        return source.subscribe(new FilterSubscriber(subscriber, this.predicate, this.thisArg));
+    };
+    return FilterOperator;
+}());
+var FilterSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(FilterSubscriber, _super);
+    function FilterSubscriber(destination, predicate, thisArg) {
+        var _this = _super.call(this, destination) || this;
+        _this.predicate = predicate;
+        _this.thisArg = thisArg;
+        _this.count = 0;
+        return _this;
+    }
+    FilterSubscriber.prototype._next = function (value) {
+        var result;
+        try {
+            result = this.predicate.call(this.thisArg, value, this.count++);
+        }
+        catch (err) {
+            this.destination.error(err);
+            return;
+        }
+        if (result) {
+            this.destination.next(value);
+        }
+    };
+    return FilterSubscriber;
+}(Subscriber));
+
+export { filter as f, of as o };

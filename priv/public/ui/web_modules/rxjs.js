@@ -1,2 +1,727 @@
-import{b as s}from"./common/tslib.es6-c4a4947b.js";import{O as l,d as h,e as p,h as y,r as j,p as I,i as F,g as M,S as P,t as _}from"./common/mergeMap-64c6f393.js";export{k as ObjectUnsubscribedError,O as Observable,a as Subject,b as Subscriber,S as Subscription,U as UnsubscriptionError,x as config,g as from,i as identity,o as noop,u as observable,v as pipe,w as scheduled}from"./common/mergeMap-64c6f393.js";export{C as ConnectableObservable,m as merge}from"./common/merge-183efbc7.js";import{A as J,d as V,n as Y}from"./common/zip-41358de8.js";export{A as AsyncSubject,G as GroupedObservable,T as TimeoutError,a as asapScheduler,d as defer,z as zip}from"./common/zip-41358de8.js";export{B as BehaviorSubject,c as combineLatest,a as concat}from"./common/concat-981db672.js";import{a as K,A as L,E as D}from"./common/Notification-9e07e457.js";export{E as EMPTY,N as Notification,b as NotificationKind,S as Scheduler,e as empty,t as throwError}from"./common/Notification-9e07e457.js";export{R as ReplaySubject,q as queueScheduler}from"./common/ReplaySubject-8316d9c1.js";import{f as H}from"./common/filter-d76a729c.js";export{o as of}from"./common/filter-d76a729c.js";import{i as Q,a as W}from"./common/timer-a781bf0e.js";export{a as asyncScheduler,r as race,t as timer}from"./common/timer-a781bf0e.js";export{A as ArgumentOutOfRangeError}from"./common/ArgumentOutOfRangeError-91c779f5.js";export{E as EmptyError}from"./common/EmptyError-a9e17542.js";export{f as forkJoin}from"./common/forkJoin-269e2e92.js";export{N as NEVER,f as fromEvent,n as never}from"./common/never-2f7c2de7.js";var X=function(e){function r(r,t){var n=e.call(this,r,t)||this;return n.scheduler=r,n.work=t,n}return s(r,e),r.prototype.requestAsyncId=function(r,t,n){return void 0===n&&(n=0),null!==n&&n>0?e.prototype.requestAsyncId.call(this,r,t,n):(r.actions.push(this),r.scheduled||(r.scheduled=requestAnimationFrame((function(){return r.flush(null)}))))},r.prototype.recycleAsyncId=function(r,t,n){if(void 0===n&&(n=0),null!==n&&n>0||null===n&&this.delay>0)return e.prototype.recycleAsyncId.call(this,r,t,n);0===r.actions.length&&(cancelAnimationFrame(t),r.scheduled=void 0)},r}(K),Z=new(function(e){function r(){return null!==e&&e.apply(this,arguments)||this}return s(r,e),r.prototype.flush=function(e){this.active=!0,this.scheduled=void 0;var r,t=this.actions,n=-1,o=t.length;e=e||t.shift();do{if(r=e.execute(e.state,e.delay))break}while(++n<o&&(e=t.shift()));if(this.active=!1,r){for(;++n<o&&(e=t.shift());)e.unsubscribe();throw r}},r}(L))(X),$=function(e){function r(r,t){void 0===r&&(r=ee),void 0===t&&(t=Number.POSITIVE_INFINITY);var n=e.call(this,r,(function(){return n.frame}))||this;return n.maxFrames=t,n.frame=0,n.index=-1,n}return s(r,e),r.prototype.flush=function(){for(var e,r,t=this.actions,n=this.maxFrames;(r=t[0])&&r.delay<=n&&(t.shift(),this.frame=r.delay,!(e=r.execute(r.state,r.delay))););if(e){for(;r=t.shift();)r.unsubscribe();throw e}},r.frameTimeFactor=10,r}(L),ee=function(e){function r(r,t,n){void 0===n&&(n=r.index+=1);var o=e.call(this,r,t)||this;return o.scheduler=r,o.work=t,o.index=n,o.active=!0,o.index=r.index=n,o}return s(r,e),r.prototype.schedule=function(t,n){if(void 0===n&&(n=0),!this.id)return e.prototype.schedule.call(this,t,n);this.active=!1;var o=new r(this.scheduler,this.work);return this.add(o),o.schedule(t,n)},r.prototype.requestAsyncId=function(e,t,n){void 0===n&&(n=0),this.delay=e.frame+n;var o=e.actions;return o.push(this),o.sort(r.sortActions),!0},r.prototype.recycleAsyncId=function(e,r,t){},r.prototype._execute=function(r,t){if(!0===this.active)return e.prototype._execute.call(this,r,t)},r.sortActions=function(e,r){return e.delay===r.delay?e.index===r.index?0:e.index>r.index?1:-1:e.delay>r.delay?1:-1},r}(K);function re(e){return!!e&&(e instanceof l||"function"==typeof e.lift&&"function"==typeof e.subscribe)}function te(e,r,t){if(r){if(!h(r))return function(){for(var n=[],o=0;o<arguments.length;o++)n[o]=arguments[o];return te(e,t).apply(void 0,n).pipe(p((function(e){return y(e)?r.apply(void 0,e):r(e)})))};t=r}return function(){for(var r=[],n=0;n<arguments.length;n++)r[n]=arguments[n];var o,c=this,i={context:c,subject:o,callbackFunc:e,scheduler:t};return new l((function(n){if(t){var s={args:r,subscriber:n,params:i};return t.schedule(ne,0,s)}if(!o){o=new J;try{e.apply(c,r.concat([function(){for(var e=[],r=0;r<arguments.length;r++)e[r]=arguments[r];o.next(e.length<=1?e[0]:e),o.complete()}]))}catch(e){j(o)?o.error(e):console.warn(e)}}return o.subscribe(n)}))}}function ne(e){var r=this,t=e.args,n=e.subscriber,o=e.params,c=o.callbackFunc,i=o.context,s=o.scheduler,a=o.subject;if(!a){a=o.subject=new J;try{c.apply(i,t.concat([function(){for(var e=[],t=0;t<arguments.length;t++)e[t]=arguments[t];var n=e.length<=1?e[0]:e;r.add(s.schedule(oe,0,{value:n,subject:a}))}]))}catch(e){a.error(e)}}this.add(a.subscribe(n))}function oe(e){var r=e.value,t=e.subject;t.next(r),t.complete()}function ce(e,r,t){if(r){if(!h(r))return function(){for(var n=[],o=0;o<arguments.length;o++)n[o]=arguments[o];return ce(e,t).apply(void 0,n).pipe(p((function(e){return y(e)?r.apply(void 0,e):r(e)})))};t=r}return function(){for(var r=[],n=0;n<arguments.length;n++)r[n]=arguments[n];var o={subject:void 0,args:r,callbackFunc:e,scheduler:t,context:this};return new l((function(n){var c=o.context,i=o.subject;if(t)return t.schedule(ie,0,{params:o,subscriber:n,context:c});if(!i){i=o.subject=new J;try{e.apply(c,r.concat([function(){for(var e=[],r=0;r<arguments.length;r++)e[r]=arguments[r];var t=e.shift();t?i.error(t):(i.next(e.length<=1?e[0]:e),i.complete())}]))}catch(e){j(i)?i.error(e):console.warn(e)}}return i.subscribe(n)}))}}function ie(e){var r=this,t=e.params,n=e.subscriber,o=e.context,c=t.callbackFunc,i=t.args,s=t.scheduler,a=t.subject;if(!a){a=t.subject=new J;try{c.apply(o,i.concat([function(){for(var e=[],t=0;t<arguments.length;t++)e[t]=arguments[t];var n=e.shift();if(n)r.add(s.schedule(ae,0,{err:n,subject:a}));else{var o=e.length<=1?e[0]:e;r.add(s.schedule(se,0,{value:o,subject:a}))}}]))}catch(e){this.add(s.schedule(ae,0,{err:e,subject:a}))}}this.add(a.subscribe(n))}function se(e){var r=e.value,t=e.subject;t.next(r),t.complete()}function ae(e){var r=e.err;e.subject.error(r)}function ue(e,r,t){return t?ue(e,r).pipe(p((function(e){return y(e)?t.apply(void 0,e):t(e)}))):new l((function(t){var n,o=function(){for(var e=[],r=0;r<arguments.length;r++)e[r]=arguments[r];return t.next(1===e.length?e[0]:e)};try{n=e(o)}catch(e){return void t.error(e)}if(I(r))return function(){return r(o,n)}}))}function fe(e,r,t,n,o){var c,i;if(1==arguments.length){var s=e;i=s.initialState,r=s.condition,t=s.iterate,c=s.resultSelector||F,o=s.scheduler}else void 0===n||h(n)?(i=e,c=F,o=n):(i=e,c=n);return new l((function(e){var n=i;if(o)return o.schedule(le,0,{subscriber:e,iterate:t,condition:r,resultSelector:c,state:n});for(;;){if(r){var s=void 0;try{s=r(n)}catch(r){return void e.error(r)}if(!s){e.complete();break}}var a=void 0;try{a=c(n)}catch(r){return void e.error(r)}if(e.next(a),e.closed)break;try{n=t(n)}catch(r){return void e.error(r)}}}))}function le(e){var r=e.subscriber,t=e.condition;if(!r.closed){if(e.needIterate)try{e.state=e.iterate(e.state)}catch(e){return void r.error(e)}else e.needIterate=!0;if(t){var n=void 0;try{n=t(e.state)}catch(e){return void r.error(e)}if(!n)return void r.complete();if(r.closed)return}var o;try{o=e.resultSelector(e.state)}catch(e){return void r.error(e)}if(!r.closed&&(r.next(o),!r.closed))return this.schedule(e)}}function de(e,r,t){return void 0===r&&(r=D),void 0===t&&(t=D),V((function(){return e()?r:t}))}function he(e,r){return void 0===e&&(e=0),void 0===r&&(r=W),(!Q(e)||e<0)&&(e=0),r&&"function"==typeof r.schedule||(r=W),new l((function(t){return t.add(r.schedule(pe,e,{subscriber:t,counter:0,period:e})),t}))}function pe(e){var r=e.subscriber,t=e.counter,n=e.period;r.next(t),this.schedule({subscriber:r,counter:t+1,period:n},n)}function be(){for(var e=[],r=0;r<arguments.length;r++)e[r]=arguments[r];if(0===e.length)return D;var t=e[0],n=e.slice(1);return 1===e.length&&y(t)?be.apply(void 0,t):new l((function(e){var r=function(){return e.add(be.apply(void 0,n).subscribe(e))};return M(t).subscribe({next:function(r){e.next(r)},error:r,complete:r})}))}function me(e,r){return new l(r?function(t){var n=Object.keys(e),o=new P;return o.add(r.schedule(ve,0,{keys:n,index:0,subscriber:t,subscription:o,obj:e})),o}:function(r){for(var t=Object.keys(e),n=0;n<t.length&&!r.closed;n++){var o=t[n];e.hasOwnProperty(o)&&r.next([o,e[o]])}r.complete()})}function ve(e){var r=e.keys,t=e.index,n=e.subscriber,o=e.subscription,c=e.obj;if(!n.closed)if(t<r.length){var i=r[t];n.next([i,c[i]]),o.add(this.schedule({keys:r,index:t+1,subscriber:n,subscription:o,obj:c}))}else n.complete()}function ye(e,r,t){return[H(r,t)(new l(_(e))),H(Y(r,t))(new l(_(e)))]}function xe(e,r,t){return void 0===e&&(e=0),new l((function(n){void 0===r&&(r=e,e=0);var o=0,c=e;if(t)return t.schedule(je,0,{index:o,count:r,start:e,subscriber:n});for(;;){if(o++>=r){n.complete();break}if(n.next(c++),n.closed)break}}))}function je(e){var r=e.start,t=e.index,n=e.count,o=e.subscriber;t>=n?o.complete():(o.next(r),o.closed||(e.index=t+1,e.start=r+1,this.schedule(e)))}function ge(e,r){return new l((function(t){var n,o;try{n=e()}catch(e){return void t.error(e)}try{o=r(n)}catch(e){return void t.error(e)}var c=(o?M(o):D).subscribe(t);return function(){c.unsubscribe(),n&&n.unsubscribe()}}))}export{ee as VirtualAction,$ as VirtualTimeScheduler,Z as animationFrameScheduler,te as bindCallback,ce as bindNodeCallback,ue as fromEventPattern,fe as generate,de as iif,he as interval,re as isObservable,be as onErrorResumeNext,me as pairs,ye as partition,xe as range,ge as using};
-//# sourceMappingURL=rxjs.js.map
+import { b as __extends } from './common/tslib.es6-c4a4947b.js';
+import { O as Observable, d as isScheduler, e as map, h as isArray, r as canReportError, p as isFunction, i as identity, g as from, S as Subscription, t as subscribeTo } from './common/mergeMap-64c6f393.js';
+export { k as ObjectUnsubscribedError, O as Observable, a as Subject, b as Subscriber, S as Subscription, U as UnsubscriptionError, x as config, g as from, i as identity, o as noop, u as observable, v as pipe, w as scheduled } from './common/mergeMap-64c6f393.js';
+export { C as ConnectableObservable, m as merge } from './common/merge-183efbc7.js';
+import { A as AsyncSubject, d as defer, n as not } from './common/zip-41358de8.js';
+export { A as AsyncSubject, G as GroupedObservable, T as TimeoutError, a as asapScheduler, d as defer, z as zip } from './common/zip-41358de8.js';
+export { B as BehaviorSubject, c as combineLatest, a as concat } from './common/concat-981db672.js';
+import { a as AsyncAction, A as AsyncScheduler, E as EMPTY } from './common/Notification-9e07e457.js';
+export { E as EMPTY, N as Notification, b as NotificationKind, S as Scheduler, e as empty, t as throwError } from './common/Notification-9e07e457.js';
+export { R as ReplaySubject, q as queueScheduler } from './common/ReplaySubject-8316d9c1.js';
+import { f as filter } from './common/filter-d76a729c.js';
+export { o as of } from './common/filter-d76a729c.js';
+import { i as isNumeric, a as async } from './common/timer-a781bf0e.js';
+export { a as asyncScheduler, r as race, t as timer } from './common/timer-a781bf0e.js';
+export { A as ArgumentOutOfRangeError } from './common/ArgumentOutOfRangeError-91c779f5.js';
+export { E as EmptyError } from './common/EmptyError-a9e17542.js';
+export { f as forkJoin } from './common/forkJoin-269e2e92.js';
+export { N as NEVER, f as fromEvent, n as never } from './common/never-2f7c2de7.js';
+
+/** PURE_IMPORTS_START tslib,_AsyncAction PURE_IMPORTS_END */
+var AnimationFrameAction = /*@__PURE__*/ (function (_super) {
+    __extends(AnimationFrameAction, _super);
+    function AnimationFrameAction(scheduler, work) {
+        var _this = _super.call(this, scheduler, work) || this;
+        _this.scheduler = scheduler;
+        _this.work = work;
+        return _this;
+    }
+    AnimationFrameAction.prototype.requestAsyncId = function (scheduler, id, delay) {
+        if (delay === void 0) {
+            delay = 0;
+        }
+        if (delay !== null && delay > 0) {
+            return _super.prototype.requestAsyncId.call(this, scheduler, id, delay);
+        }
+        scheduler.actions.push(this);
+        return scheduler.scheduled || (scheduler.scheduled = requestAnimationFrame(function () { return scheduler.flush(null); }));
+    };
+    AnimationFrameAction.prototype.recycleAsyncId = function (scheduler, id, delay) {
+        if (delay === void 0) {
+            delay = 0;
+        }
+        if ((delay !== null && delay > 0) || (delay === null && this.delay > 0)) {
+            return _super.prototype.recycleAsyncId.call(this, scheduler, id, delay);
+        }
+        if (scheduler.actions.length === 0) {
+            cancelAnimationFrame(id);
+            scheduler.scheduled = undefined;
+        }
+        return undefined;
+    };
+    return AnimationFrameAction;
+}(AsyncAction));
+
+/** PURE_IMPORTS_START tslib,_AsyncScheduler PURE_IMPORTS_END */
+var AnimationFrameScheduler = /*@__PURE__*/ (function (_super) {
+    __extends(AnimationFrameScheduler, _super);
+    function AnimationFrameScheduler() {
+        return _super !== null && _super.apply(this, arguments) || this;
+    }
+    AnimationFrameScheduler.prototype.flush = function (action) {
+        this.active = true;
+        this.scheduled = undefined;
+        var actions = this.actions;
+        var error;
+        var index = -1;
+        var count = actions.length;
+        action = action || actions.shift();
+        do {
+            if (error = action.execute(action.state, action.delay)) {
+                break;
+            }
+        } while (++index < count && (action = actions.shift()));
+        this.active = false;
+        if (error) {
+            while (++index < count && (action = actions.shift())) {
+                action.unsubscribe();
+            }
+            throw error;
+        }
+    };
+    return AnimationFrameScheduler;
+}(AsyncScheduler));
+
+/** PURE_IMPORTS_START _AnimationFrameAction,_AnimationFrameScheduler PURE_IMPORTS_END */
+var animationFrame = /*@__PURE__*/ new AnimationFrameScheduler(AnimationFrameAction);
+
+/** PURE_IMPORTS_START tslib,_AsyncAction,_AsyncScheduler PURE_IMPORTS_END */
+var VirtualTimeScheduler = /*@__PURE__*/ (function (_super) {
+    __extends(VirtualTimeScheduler, _super);
+    function VirtualTimeScheduler(SchedulerAction, maxFrames) {
+        if (SchedulerAction === void 0) {
+            SchedulerAction = VirtualAction;
+        }
+        if (maxFrames === void 0) {
+            maxFrames = Number.POSITIVE_INFINITY;
+        }
+        var _this = _super.call(this, SchedulerAction, function () { return _this.frame; }) || this;
+        _this.maxFrames = maxFrames;
+        _this.frame = 0;
+        _this.index = -1;
+        return _this;
+    }
+    VirtualTimeScheduler.prototype.flush = function () {
+        var _a = this, actions = _a.actions, maxFrames = _a.maxFrames;
+        var error, action;
+        while ((action = actions[0]) && action.delay <= maxFrames) {
+            actions.shift();
+            this.frame = action.delay;
+            if (error = action.execute(action.state, action.delay)) {
+                break;
+            }
+        }
+        if (error) {
+            while (action = actions.shift()) {
+                action.unsubscribe();
+            }
+            throw error;
+        }
+    };
+    VirtualTimeScheduler.frameTimeFactor = 10;
+    return VirtualTimeScheduler;
+}(AsyncScheduler));
+var VirtualAction = /*@__PURE__*/ (function (_super) {
+    __extends(VirtualAction, _super);
+    function VirtualAction(scheduler, work, index) {
+        if (index === void 0) {
+            index = scheduler.index += 1;
+        }
+        var _this = _super.call(this, scheduler, work) || this;
+        _this.scheduler = scheduler;
+        _this.work = work;
+        _this.index = index;
+        _this.active = true;
+        _this.index = scheduler.index = index;
+        return _this;
+    }
+    VirtualAction.prototype.schedule = function (state, delay) {
+        if (delay === void 0) {
+            delay = 0;
+        }
+        if (!this.id) {
+            return _super.prototype.schedule.call(this, state, delay);
+        }
+        this.active = false;
+        var action = new VirtualAction(this.scheduler, this.work);
+        this.add(action);
+        return action.schedule(state, delay);
+    };
+    VirtualAction.prototype.requestAsyncId = function (scheduler, id, delay) {
+        if (delay === void 0) {
+            delay = 0;
+        }
+        this.delay = scheduler.frame + delay;
+        var actions = scheduler.actions;
+        actions.push(this);
+        actions.sort(VirtualAction.sortActions);
+        return true;
+    };
+    VirtualAction.prototype.recycleAsyncId = function (scheduler, id, delay) {
+        return undefined;
+    };
+    VirtualAction.prototype._execute = function (state, delay) {
+        if (this.active === true) {
+            return _super.prototype._execute.call(this, state, delay);
+        }
+    };
+    VirtualAction.sortActions = function (a, b) {
+        if (a.delay === b.delay) {
+            if (a.index === b.index) {
+                return 0;
+            }
+            else if (a.index > b.index) {
+                return 1;
+            }
+            else {
+                return -1;
+            }
+        }
+        else if (a.delay > b.delay) {
+            return 1;
+        }
+        else {
+            return -1;
+        }
+    };
+    return VirtualAction;
+}(AsyncAction));
+
+/** PURE_IMPORTS_START _Observable PURE_IMPORTS_END */
+function isObservable(obj) {
+    return !!obj && (obj instanceof Observable || (typeof obj.lift === 'function' && typeof obj.subscribe === 'function'));
+}
+
+/** PURE_IMPORTS_START _Observable,_AsyncSubject,_operators_map,_util_canReportError,_util_isArray,_util_isScheduler PURE_IMPORTS_END */
+function bindCallback(callbackFunc, resultSelector, scheduler) {
+    if (resultSelector) {
+        if (isScheduler(resultSelector)) {
+            scheduler = resultSelector;
+        }
+        else {
+            return function () {
+                var args = [];
+                for (var _i = 0; _i < arguments.length; _i++) {
+                    args[_i] = arguments[_i];
+                }
+                return bindCallback(callbackFunc, scheduler).apply(void 0, args).pipe(map(function (args) { return isArray(args) ? resultSelector.apply(void 0, args) : resultSelector(args); }));
+            };
+        }
+    }
+    return function () {
+        var args = [];
+        for (var _i = 0; _i < arguments.length; _i++) {
+            args[_i] = arguments[_i];
+        }
+        var context = this;
+        var subject;
+        var params = {
+            context: context,
+            subject: subject,
+            callbackFunc: callbackFunc,
+            scheduler: scheduler,
+        };
+        return new Observable(function (subscriber) {
+            if (!scheduler) {
+                if (!subject) {
+                    subject = new AsyncSubject();
+                    var handler = function () {
+                        var innerArgs = [];
+                        for (var _i = 0; _i < arguments.length; _i++) {
+                            innerArgs[_i] = arguments[_i];
+                        }
+                        subject.next(innerArgs.length <= 1 ? innerArgs[0] : innerArgs);
+                        subject.complete();
+                    };
+                    try {
+                        callbackFunc.apply(context, args.concat([handler]));
+                    }
+                    catch (err) {
+                        if (canReportError(subject)) {
+                            subject.error(err);
+                        }
+                        else {
+                            console.warn(err);
+                        }
+                    }
+                }
+                return subject.subscribe(subscriber);
+            }
+            else {
+                var state = {
+                    args: args, subscriber: subscriber, params: params,
+                };
+                return scheduler.schedule(dispatch, 0, state);
+            }
+        });
+    };
+}
+function dispatch(state) {
+    var _this = this;
+    var args = state.args, subscriber = state.subscriber, params = state.params;
+    var callbackFunc = params.callbackFunc, context = params.context, scheduler = params.scheduler;
+    var subject = params.subject;
+    if (!subject) {
+        subject = params.subject = new AsyncSubject();
+        var handler = function () {
+            var innerArgs = [];
+            for (var _i = 0; _i < arguments.length; _i++) {
+                innerArgs[_i] = arguments[_i];
+            }
+            var value = innerArgs.length <= 1 ? innerArgs[0] : innerArgs;
+            _this.add(scheduler.schedule(dispatchNext, 0, { value: value, subject: subject }));
+        };
+        try {
+            callbackFunc.apply(context, args.concat([handler]));
+        }
+        catch (err) {
+            subject.error(err);
+        }
+    }
+    this.add(subject.subscribe(subscriber));
+}
+function dispatchNext(state) {
+    var value = state.value, subject = state.subject;
+    subject.next(value);
+    subject.complete();
+}
+
+/** PURE_IMPORTS_START _Observable,_AsyncSubject,_operators_map,_util_canReportError,_util_isScheduler,_util_isArray PURE_IMPORTS_END */
+function bindNodeCallback(callbackFunc, resultSelector, scheduler) {
+    if (resultSelector) {
+        if (isScheduler(resultSelector)) {
+            scheduler = resultSelector;
+        }
+        else {
+            return function () {
+                var args = [];
+                for (var _i = 0; _i < arguments.length; _i++) {
+                    args[_i] = arguments[_i];
+                }
+                return bindNodeCallback(callbackFunc, scheduler).apply(void 0, args).pipe(map(function (args) { return isArray(args) ? resultSelector.apply(void 0, args) : resultSelector(args); }));
+            };
+        }
+    }
+    return function () {
+        var args = [];
+        for (var _i = 0; _i < arguments.length; _i++) {
+            args[_i] = arguments[_i];
+        }
+        var params = {
+            subject: undefined,
+            args: args,
+            callbackFunc: callbackFunc,
+            scheduler: scheduler,
+            context: this,
+        };
+        return new Observable(function (subscriber) {
+            var context = params.context;
+            var subject = params.subject;
+            if (!scheduler) {
+                if (!subject) {
+                    subject = params.subject = new AsyncSubject();
+                    var handler = function () {
+                        var innerArgs = [];
+                        for (var _i = 0; _i < arguments.length; _i++) {
+                            innerArgs[_i] = arguments[_i];
+                        }
+                        var err = innerArgs.shift();
+                        if (err) {
+                            subject.error(err);
+                            return;
+                        }
+                        subject.next(innerArgs.length <= 1 ? innerArgs[0] : innerArgs);
+                        subject.complete();
+                    };
+                    try {
+                        callbackFunc.apply(context, args.concat([handler]));
+                    }
+                    catch (err) {
+                        if (canReportError(subject)) {
+                            subject.error(err);
+                        }
+                        else {
+                            console.warn(err);
+                        }
+                    }
+                }
+                return subject.subscribe(subscriber);
+            }
+            else {
+                return scheduler.schedule(dispatch$1, 0, { params: params, subscriber: subscriber, context: context });
+            }
+        });
+    };
+}
+function dispatch$1(state) {
+    var _this = this;
+    var params = state.params, subscriber = state.subscriber, context = state.context;
+    var callbackFunc = params.callbackFunc, args = params.args, scheduler = params.scheduler;
+    var subject = params.subject;
+    if (!subject) {
+        subject = params.subject = new AsyncSubject();
+        var handler = function () {
+            var innerArgs = [];
+            for (var _i = 0; _i < arguments.length; _i++) {
+                innerArgs[_i] = arguments[_i];
+            }
+            var err = innerArgs.shift();
+            if (err) {
+                _this.add(scheduler.schedule(dispatchError, 0, { err: err, subject: subject }));
+            }
+            else {
+                var value = innerArgs.length <= 1 ? innerArgs[0] : innerArgs;
+                _this.add(scheduler.schedule(dispatchNext$1, 0, { value: value, subject: subject }));
+            }
+        };
+        try {
+            callbackFunc.apply(context, args.concat([handler]));
+        }
+        catch (err) {
+            this.add(scheduler.schedule(dispatchError, 0, { err: err, subject: subject }));
+        }
+    }
+    this.add(subject.subscribe(subscriber));
+}
+function dispatchNext$1(arg) {
+    var value = arg.value, subject = arg.subject;
+    subject.next(value);
+    subject.complete();
+}
+function dispatchError(arg) {
+    var err = arg.err, subject = arg.subject;
+    subject.error(err);
+}
+
+/** PURE_IMPORTS_START _Observable,_util_isArray,_util_isFunction,_operators_map PURE_IMPORTS_END */
+function fromEventPattern(addHandler, removeHandler, resultSelector) {
+    if (resultSelector) {
+        return fromEventPattern(addHandler, removeHandler).pipe(map(function (args) { return isArray(args) ? resultSelector.apply(void 0, args) : resultSelector(args); }));
+    }
+    return new Observable(function (subscriber) {
+        var handler = function () {
+            var e = [];
+            for (var _i = 0; _i < arguments.length; _i++) {
+                e[_i] = arguments[_i];
+            }
+            return subscriber.next(e.length === 1 ? e[0] : e);
+        };
+        var retValue;
+        try {
+            retValue = addHandler(handler);
+        }
+        catch (err) {
+            subscriber.error(err);
+            return undefined;
+        }
+        if (!isFunction(removeHandler)) {
+            return undefined;
+        }
+        return function () { return removeHandler(handler, retValue); };
+    });
+}
+
+/** PURE_IMPORTS_START _Observable,_util_identity,_util_isScheduler PURE_IMPORTS_END */
+function generate(initialStateOrOptions, condition, iterate, resultSelectorOrObservable, scheduler) {
+    var resultSelector;
+    var initialState;
+    if (arguments.length == 1) {
+        var options = initialStateOrOptions;
+        initialState = options.initialState;
+        condition = options.condition;
+        iterate = options.iterate;
+        resultSelector = options.resultSelector || identity;
+        scheduler = options.scheduler;
+    }
+    else if (resultSelectorOrObservable === undefined || isScheduler(resultSelectorOrObservable)) {
+        initialState = initialStateOrOptions;
+        resultSelector = identity;
+        scheduler = resultSelectorOrObservable;
+    }
+    else {
+        initialState = initialStateOrOptions;
+        resultSelector = resultSelectorOrObservable;
+    }
+    return new Observable(function (subscriber) {
+        var state = initialState;
+        if (scheduler) {
+            return scheduler.schedule(dispatch$2, 0, {
+                subscriber: subscriber,
+                iterate: iterate,
+                condition: condition,
+                resultSelector: resultSelector,
+                state: state
+            });
+        }
+        do {
+            if (condition) {
+                var conditionResult = void 0;
+                try {
+                    conditionResult = condition(state);
+                }
+                catch (err) {
+                    subscriber.error(err);
+                    return undefined;
+                }
+                if (!conditionResult) {
+                    subscriber.complete();
+                    break;
+                }
+            }
+            var value = void 0;
+            try {
+                value = resultSelector(state);
+            }
+            catch (err) {
+                subscriber.error(err);
+                return undefined;
+            }
+            subscriber.next(value);
+            if (subscriber.closed) {
+                break;
+            }
+            try {
+                state = iterate(state);
+            }
+            catch (err) {
+                subscriber.error(err);
+                return undefined;
+            }
+        } while (true);
+        return undefined;
+    });
+}
+function dispatch$2(state) {
+    var subscriber = state.subscriber, condition = state.condition;
+    if (subscriber.closed) {
+        return undefined;
+    }
+    if (state.needIterate) {
+        try {
+            state.state = state.iterate(state.state);
+        }
+        catch (err) {
+            subscriber.error(err);
+            return undefined;
+        }
+    }
+    else {
+        state.needIterate = true;
+    }
+    if (condition) {
+        var conditionResult = void 0;
+        try {
+            conditionResult = condition(state.state);
+        }
+        catch (err) {
+            subscriber.error(err);
+            return undefined;
+        }
+        if (!conditionResult) {
+            subscriber.complete();
+            return undefined;
+        }
+        if (subscriber.closed) {
+            return undefined;
+        }
+    }
+    var value;
+    try {
+        value = state.resultSelector(state.state);
+    }
+    catch (err) {
+        subscriber.error(err);
+        return undefined;
+    }
+    if (subscriber.closed) {
+        return undefined;
+    }
+    subscriber.next(value);
+    if (subscriber.closed) {
+        return undefined;
+    }
+    return this.schedule(state);
+}
+
+/** PURE_IMPORTS_START _defer,_empty PURE_IMPORTS_END */
+function iif(condition, trueResult, falseResult) {
+    if (trueResult === void 0) {
+        trueResult = EMPTY;
+    }
+    if (falseResult === void 0) {
+        falseResult = EMPTY;
+    }
+    return defer(function () { return condition() ? trueResult : falseResult; });
+}
+
+/** PURE_IMPORTS_START _Observable,_scheduler_async,_util_isNumeric PURE_IMPORTS_END */
+function interval(period, scheduler) {
+    if (period === void 0) {
+        period = 0;
+    }
+    if (scheduler === void 0) {
+        scheduler = async;
+    }
+    if (!isNumeric(period) || period < 0) {
+        period = 0;
+    }
+    if (!scheduler || typeof scheduler.schedule !== 'function') {
+        scheduler = async;
+    }
+    return new Observable(function (subscriber) {
+        subscriber.add(scheduler.schedule(dispatch$3, period, { subscriber: subscriber, counter: 0, period: period }));
+        return subscriber;
+    });
+}
+function dispatch$3(state) {
+    var subscriber = state.subscriber, counter = state.counter, period = state.period;
+    subscriber.next(counter);
+    this.schedule({ subscriber: subscriber, counter: counter + 1, period: period }, period);
+}
+
+/** PURE_IMPORTS_START _Observable,_from,_util_isArray,_empty PURE_IMPORTS_END */
+function onErrorResumeNext() {
+    var sources = [];
+    for (var _i = 0; _i < arguments.length; _i++) {
+        sources[_i] = arguments[_i];
+    }
+    if (sources.length === 0) {
+        return EMPTY;
+    }
+    var first = sources[0], remainder = sources.slice(1);
+    if (sources.length === 1 && isArray(first)) {
+        return onErrorResumeNext.apply(void 0, first);
+    }
+    return new Observable(function (subscriber) {
+        var subNext = function () { return subscriber.add(onErrorResumeNext.apply(void 0, remainder).subscribe(subscriber)); };
+        return from(first).subscribe({
+            next: function (value) { subscriber.next(value); },
+            error: subNext,
+            complete: subNext,
+        });
+    });
+}
+
+/** PURE_IMPORTS_START _Observable,_Subscription PURE_IMPORTS_END */
+function pairs(obj, scheduler) {
+    if (!scheduler) {
+        return new Observable(function (subscriber) {
+            var keys = Object.keys(obj);
+            for (var i = 0; i < keys.length && !subscriber.closed; i++) {
+                var key = keys[i];
+                if (obj.hasOwnProperty(key)) {
+                    subscriber.next([key, obj[key]]);
+                }
+            }
+            subscriber.complete();
+        });
+    }
+    else {
+        return new Observable(function (subscriber) {
+            var keys = Object.keys(obj);
+            var subscription = new Subscription();
+            subscription.add(scheduler.schedule(dispatch$4, 0, { keys: keys, index: 0, subscriber: subscriber, subscription: subscription, obj: obj }));
+            return subscription;
+        });
+    }
+}
+function dispatch$4(state) {
+    var keys = state.keys, index = state.index, subscriber = state.subscriber, subscription = state.subscription, obj = state.obj;
+    if (!subscriber.closed) {
+        if (index < keys.length) {
+            var key = keys[index];
+            subscriber.next([key, obj[key]]);
+            subscription.add(this.schedule({ keys: keys, index: index + 1, subscriber: subscriber, subscription: subscription, obj: obj }));
+        }
+        else {
+            subscriber.complete();
+        }
+    }
+}
+
+/** PURE_IMPORTS_START _util_not,_util_subscribeTo,_operators_filter,_Observable PURE_IMPORTS_END */
+function partition(source, predicate, thisArg) {
+    return [
+        filter(predicate, thisArg)(new Observable(subscribeTo(source))),
+        filter(not(predicate, thisArg))(new Observable(subscribeTo(source)))
+    ];
+}
+
+/** PURE_IMPORTS_START _Observable PURE_IMPORTS_END */
+function range(start, count, scheduler) {
+    if (start === void 0) {
+        start = 0;
+    }
+    return new Observable(function (subscriber) {
+        if (count === undefined) {
+            count = start;
+            start = 0;
+        }
+        var index = 0;
+        var current = start;
+        if (scheduler) {
+            return scheduler.schedule(dispatch$5, 0, {
+                index: index, count: count, start: start, subscriber: subscriber
+            });
+        }
+        else {
+            do {
+                if (index++ >= count) {
+                    subscriber.complete();
+                    break;
+                }
+                subscriber.next(current++);
+                if (subscriber.closed) {
+                    break;
+                }
+            } while (true);
+        }
+        return undefined;
+    });
+}
+function dispatch$5(state) {
+    var start = state.start, index = state.index, count = state.count, subscriber = state.subscriber;
+    if (index >= count) {
+        subscriber.complete();
+        return;
+    }
+    subscriber.next(start);
+    if (subscriber.closed) {
+        return;
+    }
+    state.index = index + 1;
+    state.start = start + 1;
+    this.schedule(state);
+}
+
+/** PURE_IMPORTS_START _Observable,_from,_empty PURE_IMPORTS_END */
+function using(resourceFactory, observableFactory) {
+    return new Observable(function (subscriber) {
+        var resource;
+        try {
+            resource = resourceFactory();
+        }
+        catch (err) {
+            subscriber.error(err);
+            return undefined;
+        }
+        var result;
+        try {
+            result = observableFactory(resource);
+        }
+        catch (err) {
+            subscriber.error(err);
+            return undefined;
+        }
+        var source = result ? from(result) : EMPTY;
+        var subscription = source.subscribe(subscriber);
+        return function () {
+            subscription.unsubscribe();
+            if (resource) {
+                resource.unsubscribe();
+            }
+        };
+    });
+}
+
+export { VirtualAction, VirtualTimeScheduler, animationFrame as animationFrameScheduler, bindCallback, bindNodeCallback, fromEventPattern, generate, iif, interval, isObservable, onErrorResumeNext, pairs, partition, range, using };

@@ -1,2 +1,178 @@
-import{b as t}from"./tslib.es6-c4a4947b.js";import{b as n,S as e,c as o,O as c,m as r,i as u,d as i,f as s}from"./mergeMap-64c6f393.js";function l(){return function(t){return t.lift(new a(t))}}var a=function(){function t(t){this.connectable=t}return t.prototype.call=function(t,n){var e=this.connectable;e._refCount++;var o=new b(t,e),c=n.subscribe(o);return o.closed||(o.connection=e.connect()),c},t}(),b=function(n){function e(t,e){var o=n.call(this,t)||this;return o.connectable=e,o}return t(e,n),e.prototype._unsubscribe=function(){var t=this.connectable;if(t){this.connectable=null;var n=t._refCount;if(n<=0)this.connection=null;else if(t._refCount=n-1,n>1)this.connection=null;else{var e=this.connection,o=t._connection;this.connection=null,!o||e&&o!==e||o.unsubscribe()}}else this.connection=null},e}(n),p=function(n){function o(t,e){var o=n.call(this)||this;return o.source=t,o.subjectFactory=e,o._refCount=0,o._isComplete=!1,o}return t(o,n),o.prototype._subscribe=function(t){return this.getSubject().subscribe(t)},o.prototype.getSubject=function(){var t=this._subject;return t&&!t.isStopped||(this._subject=this.subjectFactory()),this._subject},o.prototype.connect=function(){var t=this._connection;return t||(this._isComplete=!1,(t=this._connection=new e).add(this.source.subscribe(new h(this.getSubject(),this))),t.closed&&(this._connection=null,t=e.EMPTY)),t},o.prototype.refCount=function(){return l()(this)},o}(c),f=function(){var t=p.prototype;return{operator:{value:null},_refCount:{value:0,writable:!0},_subject:{value:null,writable:!0},_connection:{value:null,writable:!0},_subscribe:{value:t._subscribe},_isComplete:{value:t._isComplete,writable:!0},getSubject:{value:t.getSubject},connect:{value:t.connect},refCount:{value:t.refCount}}}(),h=function(n){function e(t,e){var o=n.call(this,t)||this;return o.connectable=e,o}return t(e,n),e.prototype._error=function(t){this._unsubscribe(),n.prototype._error.call(this,t)},e.prototype._complete=function(){this.connectable._isComplete=!0,this._unsubscribe(),n.prototype._complete.call(this)},e.prototype._unsubscribe=function(){var t=this.connectable;if(t){this.connectable=null;var n=t._connection;t._refCount=0,t._subject=null,t._connection=null,n&&n.unsubscribe()}},e}(o);function _(t){return void 0===t&&(t=Number.POSITIVE_INFINITY),r(u,t)}function v(){for(var t=[],n=0;n<arguments.length;n++)t[n]=arguments[n];var e=Number.POSITIVE_INFINITY,o=null,r=t[t.length-1];return i(r)?(o=t.pop(),t.length>1&&"number"==typeof t[t.length-1]&&(e=t.pop())):"number"==typeof r&&(e=t.pop()),null===o&&1===t.length&&t[0]instanceof c?t[0]:_(e)(s(t,o))}export{p as C,_ as a,f as c,v as m,l as r};
-//# sourceMappingURL=merge-183efbc7.js.map
+import { b as __extends } from './tslib.es6-c4a4947b.js';
+import { b as Subscriber, S as Subscription, c as SubjectSubscriber, O as Observable, m as mergeMap, i as identity, d as isScheduler, f as fromArray } from './mergeMap-64c6f393.js';
+
+/** PURE_IMPORTS_START tslib,_Subscriber PURE_IMPORTS_END */
+function refCount() {
+    return function refCountOperatorFunction(source) {
+        return source.lift(new RefCountOperator(source));
+    };
+}
+var RefCountOperator = /*@__PURE__*/ (function () {
+    function RefCountOperator(connectable) {
+        this.connectable = connectable;
+    }
+    RefCountOperator.prototype.call = function (subscriber, source) {
+        var connectable = this.connectable;
+        connectable._refCount++;
+        var refCounter = new RefCountSubscriber(subscriber, connectable);
+        var subscription = source.subscribe(refCounter);
+        if (!refCounter.closed) {
+            refCounter.connection = connectable.connect();
+        }
+        return subscription;
+    };
+    return RefCountOperator;
+}());
+var RefCountSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(RefCountSubscriber, _super);
+    function RefCountSubscriber(destination, connectable) {
+        var _this = _super.call(this, destination) || this;
+        _this.connectable = connectable;
+        return _this;
+    }
+    RefCountSubscriber.prototype._unsubscribe = function () {
+        var connectable = this.connectable;
+        if (!connectable) {
+            this.connection = null;
+            return;
+        }
+        this.connectable = null;
+        var refCount = connectable._refCount;
+        if (refCount <= 0) {
+            this.connection = null;
+            return;
+        }
+        connectable._refCount = refCount - 1;
+        if (refCount > 1) {
+            this.connection = null;
+            return;
+        }
+        var connection = this.connection;
+        var sharedConnection = connectable._connection;
+        this.connection = null;
+        if (sharedConnection && (!connection || sharedConnection === connection)) {
+            sharedConnection.unsubscribe();
+        }
+    };
+    return RefCountSubscriber;
+}(Subscriber));
+
+/** PURE_IMPORTS_START tslib,_Subject,_Observable,_Subscriber,_Subscription,_operators_refCount PURE_IMPORTS_END */
+var ConnectableObservable = /*@__PURE__*/ (function (_super) {
+    __extends(ConnectableObservable, _super);
+    function ConnectableObservable(source, subjectFactory) {
+        var _this = _super.call(this) || this;
+        _this.source = source;
+        _this.subjectFactory = subjectFactory;
+        _this._refCount = 0;
+        _this._isComplete = false;
+        return _this;
+    }
+    ConnectableObservable.prototype._subscribe = function (subscriber) {
+        return this.getSubject().subscribe(subscriber);
+    };
+    ConnectableObservable.prototype.getSubject = function () {
+        var subject = this._subject;
+        if (!subject || subject.isStopped) {
+            this._subject = this.subjectFactory();
+        }
+        return this._subject;
+    };
+    ConnectableObservable.prototype.connect = function () {
+        var connection = this._connection;
+        if (!connection) {
+            this._isComplete = false;
+            connection = this._connection = new Subscription();
+            connection.add(this.source
+                .subscribe(new ConnectableSubscriber(this.getSubject(), this)));
+            if (connection.closed) {
+                this._connection = null;
+                connection = Subscription.EMPTY;
+            }
+        }
+        return connection;
+    };
+    ConnectableObservable.prototype.refCount = function () {
+        return refCount()(this);
+    };
+    return ConnectableObservable;
+}(Observable));
+var connectableObservableDescriptor = /*@__PURE__*/ (function () {
+    var connectableProto = ConnectableObservable.prototype;
+    return {
+        operator: { value: null },
+        _refCount: { value: 0, writable: true },
+        _subject: { value: null, writable: true },
+        _connection: { value: null, writable: true },
+        _subscribe: { value: connectableProto._subscribe },
+        _isComplete: { value: connectableProto._isComplete, writable: true },
+        getSubject: { value: connectableProto.getSubject },
+        connect: { value: connectableProto.connect },
+        refCount: { value: connectableProto.refCount }
+    };
+})();
+var ConnectableSubscriber = /*@__PURE__*/ (function (_super) {
+    __extends(ConnectableSubscriber, _super);
+    function ConnectableSubscriber(destination, connectable) {
+        var _this = _super.call(this, destination) || this;
+        _this.connectable = connectable;
+        return _this;
+    }
+    ConnectableSubscriber.prototype._error = function (err) {
+        this._unsubscribe();
+        _super.prototype._error.call(this, err);
+    };
+    ConnectableSubscriber.prototype._complete = function () {
+        this.connectable._isComplete = true;
+        this._unsubscribe();
+        _super.prototype._complete.call(this);
+    };
+    ConnectableSubscriber.prototype._unsubscribe = function () {
+        var connectable = this.connectable;
+        if (connectable) {
+            this.connectable = null;
+            var connection = connectable._connection;
+            connectable._refCount = 0;
+            connectable._subject = null;
+            connectable._connection = null;
+            if (connection) {
+                connection.unsubscribe();
+            }
+        }
+    };
+    return ConnectableSubscriber;
+}(SubjectSubscriber));
+
+/** PURE_IMPORTS_START _mergeMap,_util_identity PURE_IMPORTS_END */
+function mergeAll(concurrent) {
+    if (concurrent === void 0) {
+        concurrent = Number.POSITIVE_INFINITY;
+    }
+    return mergeMap(identity, concurrent);
+}
+
+/** PURE_IMPORTS_START _Observable,_util_isScheduler,_operators_mergeAll,_fromArray PURE_IMPORTS_END */
+function merge() {
+    var observables = [];
+    for (var _i = 0; _i < arguments.length; _i++) {
+        observables[_i] = arguments[_i];
+    }
+    var concurrent = Number.POSITIVE_INFINITY;
+    var scheduler = null;
+    var last = observables[observables.length - 1];
+    if (isScheduler(last)) {
+        scheduler = observables.pop();
+        if (observables.length > 1 && typeof observables[observables.length - 1] === 'number') {
+            concurrent = observables.pop();
+        }
+    }
+    else if (typeof last === 'number') {
+        concurrent = observables.pop();
+    }
+    if (scheduler === null && observables.length === 1 && observables[0] instanceof Observable) {
+        return observables[0];
+    }
+    return mergeAll(concurrent)(fromArray(observables, scheduler));
+}
+
+export { ConnectableObservable as C, mergeAll as a, connectableObservableDescriptor as c, merge as m, refCount as r };
