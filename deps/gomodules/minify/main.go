@@ -48,6 +48,7 @@ func main() {
 			*inDir + "/ui/app/main.js",
 		},
 		Pure: []string{"console.log"},
+		Sourcemap: api.SourceMapLinked,
 		KeepNames: true,
 		Bundle: true,
 		PreserveSymlinks: true,
