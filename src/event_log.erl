@@ -40,7 +40,7 @@ event_details(graceful_failover_failed) ->
 event_details(graceful_failover_interrupted) ->
     {9, ns_server, info, <<"Graceful failover interrupted">>};
 event_details(hard_failover_initiated) ->
-    {10, ns_server, info, <<"Hard failover initated">>};
+    {10, ns_server, info, <<"Hard failover initiated">>};
 event_details(hard_failover_completed) ->
     {11, ns_server, info, <<"Hard failover completed">>};
 event_details(hard_failover_failed) ->
