@@ -73,6 +73,8 @@ class MnXDCRService {
       .addError();
 
     function parsePostCreateReplicationSuccess(data) {
+      //we should parse success response since XDCR
+      //warnings returns here
       return JSON.parse(data);
     }
 
