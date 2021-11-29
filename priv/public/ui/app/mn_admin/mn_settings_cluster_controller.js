@@ -66,7 +66,7 @@ function mnSettingsClusterController($scope, $q, $uibModal, mnPoolDefault, mnMem
     }
     var promise = mnSettingsClusterService.postIndexSettings(vm.indexSettings, true);
     mnPromiseHelper(vm, promise)
-      .catchErrorsFromSuccess("indexSettingsErrors");
+      .catchErrors("indexSettingsErrors");
   }, 500), true);
 
   let submitted;
