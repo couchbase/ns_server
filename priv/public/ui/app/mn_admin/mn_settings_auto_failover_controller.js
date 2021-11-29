@@ -66,7 +66,7 @@ function mnSettingsAutoFailoverController($scope, $q, mnPromiseHelper, mnSetting
         return;
       }
       mnPromiseHelper(vm, mnSettingsAutoFailoverService[method](dataFunc(), {just_validate: 1}))
-        .catchErrorsFromSuccess(function (rv) {
+        .catchErrors(function (rv) {
           vm[method + "Errors"] = rv;
           $scope.settingsClusterCtl[method + "Errors"] = rv;
         });
