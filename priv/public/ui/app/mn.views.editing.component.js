@@ -58,18 +58,12 @@ class MnViewsEditingComponent extends MnLifeCycleHooksToStream {
     this.mnHelperService = mnHelperService;
 
     this.postDdoc = mnViewsListService.stream.postDdoc;
+    this.viewId = uiRouter.globals.params$.pipe(pluck('viewId'));
+    this.ddocumentId = uiRouter.globals.params$.pipe(pluck('ddocumentId'));
+    this.commonBucket = uiRouter.globals.params$.pipe(pluck('commonBucket'));
+    this.type = uiRouter.globals.params$.pipe(pluck('type'));
 
-    this.viewId = uiRouter.globals.params$
-      .pipe(pluck('viewId'));
-
-    this.ddocumentId = uiRouter.globals.params$
-      .pipe(pluck('ddocumentId'));
-
-    this.commonBucket = uiRouter.globals.params$
-      .pipe(pluck('commonBucket'));
-
-    this.type = uiRouter.globals.params$
-      .pipe(pluck('type'));
+    this.toggle = mnHelperService.createToggle(false);
 
     this.saveForm = mnFormService.create(this)
       .setFormGroup({
@@ -97,9 +91,8 @@ class MnViewsEditingComponent extends MnLifeCycleHooksToStream {
                     this.commonBucket)
       .pipe(tap(([permissions, bucket]) => {
         if (!permissions.cluster.bucket[bucket]) {
-          return uiRouter.stateService.go('app.admin.views.list', { type: 'development' });
-        }}),
-        map(this.hasReadPermission.bind(this)));
+          return uiRouter.stateService.go('app.admin.views.list', { type: 'development' })}}),
+            map(this.hasReadPermission.bind(this)));
 
     this.hasWritePermission =
       combineLatest(this.permissions,
@@ -118,11 +111,13 @@ class MnViewsEditingComponent extends MnLifeCycleHooksToStream {
       this.saveForm.group.get('metaJson').setValue(js_beautify(JSON.stringify(doc.meta)));
     });
 
-    this.documentDoesNotExist = this.randomDocument
-      .pipe(catchError(err => {
-        if (err.status === 404) {
-          return of(true)
-        }}));
+    this.documentDoesNotExist =
+      this.randomDocument.pipe(
+        map(() => false),
+        catchError(err => {
+          if (err.status === 404) {
+            return of(true);
+          }}));
 
     this.thereAreNoDocs = this.commonBucket
       .pipe(switchMap(bucket => this.mnDocumentsService.getDocuments({ bucket })),
@@ -131,9 +126,11 @@ class MnViewsEditingComponent extends MnLifeCycleHooksToStream {
     this.largeDocument = this.randomDocument
       .pipe(map(doc => this.mnHelperService.byteCount(doc.json) > 256 * 1024));
 
-    this.hasWarnings = merge(this.documentDoesNotExist,
-                             this.largeDocument,
-                             this.thereAreNoDocs);
+    this.hasWarnings =
+      combineLatest(this.documentDoesNotExist,
+                    this.largeDocument,
+                    this.thereAreNoDocs)
+      .pipe(map(warnings => warnings.some(v => v)));
 
     this.mnViewsListService.stream.getDdoc
       .pipe(takeUntil(this.mnOnDestroy),
@@ -177,8 +174,6 @@ class MnViewsEditingComponent extends MnLifeCycleHooksToStream {
       .pipe(takeUntil(this.mnOnDestroy),
             withLatestFrom(this.type))
       .subscribe(this.setReduceValue.bind(this));
-
-    this.toggle = mnHelperService.createToggle(false);
   }
 
   ngAfterViewInit() {

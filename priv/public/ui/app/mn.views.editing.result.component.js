@@ -11,8 +11,8 @@ licenses/APL2.txt.
 import { Component, ChangeDetectionStrategy } from '@angular/core';
 import { UIRouter } from '@uirouter/angular';
 import { MnLifeCycleHooksToStream } from './mn.core.js';
-import { take, pluck, filter, map, withLatestFrom,
-         takeUntil, startWith } from 'rxjs/operators';
+import { pluck, map, withLatestFrom,
+         takeUntil, take, filter, startWith } from 'rxjs/operators';
 import { Subject, combineLatest } from 'rxjs';
 import { reject, equals, is } from 'ramda';
 
@@ -48,36 +48,18 @@ class MnViewsEditingResultComponent extends MnLifeCycleHooksToStream {
     this.uiRouter = uiRouter;
     this.capiBase = mnAdminService.stream.capiBase;
     this.mnDocumentsService = mnDocumentsService;
-
     this.getViewResult = mnViewsEditingService.stream.getViewResult.response;
 
-    this.ddocumentId = uiRouter.globals.params$
-      .pipe(pluck('ddocumentId'));
+    this.ddocumentId = uiRouter.globals.params$.pipe(pluck('ddocumentId'));
+    this.viewId = uiRouter.globals.params$.pipe(pluck('viewId'));
+    this.commonBucket = uiRouter.globals.params$.pipe(pluck('commonBucket'));
+    this.pageNumber = uiRouter.globals.params$.pipe(pluck('pageNumber'));
+    this.fullSet = uiRouter.globals.params$.pipe(pluck('full_set'));
 
-    this.viewId = uiRouter.globals.params$
-      .pipe(pluck('viewId'));
-
-    this.commonBucket = uiRouter.globals.params$
-      .pipe(pluck('commonBucket'));
-
-    this.pageNumber = uiRouter.globals.params$
-      .pipe(pluck('pageNumber'));
-
-    this.fullSet = uiRouter.globals.params$
-      .pipe(pluck('full_set'));
-
-    this.rows = this.getViewResult
-      .pipe(map(result => {
-        if (result.status == "500") {
-          return [];
-        }
-
-        return result.rows;
-      }));
-
-    this.showViewResultMessage =
-      combineLatest(this.pageNumber, this.rows)
-      .pipe(map(([pageNumber, rows]) => !is(Number, pageNumber) && !rows.length));
+    // If the pageNumber parameter is present,
+    // the results should persist on page reload.
+    this.areResultsPresent = this.pageNumber
+      .pipe(map(page => is(Number, page)));
 
     this.defaultFormGroup = {
       conflicts: null,
@@ -100,46 +82,33 @@ class MnViewsEditingResultComponent extends MnLifeCycleHooksToStream {
       .setFormGroup(this.defaultFormGroup)
       .hasNoPostRequest();
 
+    this.isDevelopmentDocument = this.ddocumentId
+      .pipe(map(id => id.includes('_design/dev_')));
+
+    this.rows = this.getViewResult
+      .pipe(map(response => response.status == "500" ? [] : response.rows));
+
     this.params = this.form.submit
       .pipe(startWith('stale=false&inclusive_end=true&connection_timeout=60000'),
             map(() => this.generateParamsString(this.form.group.value)));
 
-    this.isDevelopmentDocument = this.ddocumentId
-      .pipe(map(id => id.includes('_design/dev_')));
+    let upperRange =
+      this.pageNumber.pipe(map(page => viewsPerPageLimit + (page * viewsPerPageLimit)));
 
-    this.pageNumber
-      .pipe(take(1),
-            filter(n => is(Number, n)),
-            withLatestFrom(this.pageNumber,
-                           this.params,
-                           this.ddocumentId,
-                           this.viewId,
-                           this.commonBucket,
-                           this.fullSet))
-      .subscribe(this.onClickResult.bind(this));
+    let lowerRange =
+      upperRange.pipe(map(range => range - viewsPerPageLimit));
 
-    this.paginateParams = this.pageNumber
-      .pipe(map(pageNumber => {
-        if (!pageNumber) {
-          return [0, viewsPerPageLimit];
-        }
+    this.paginateParams = combineLatest(lowerRange, upperRange);
 
-        let upperRange = viewsPerPageLimit + (pageNumber * viewsPerPageLimit);
-        let lowerRange = upperRange - viewsPerPageLimit;
 
-        return [lowerRange, upperRange];
-      }));
-
-    this.maxPageNumber =
+    this.paginatedRows =
       combineLatest(this.rows,
-                    this.pageNumber)
-      .pipe(map(([rows, pageNumber]) => {
-        if (!is(Number, pageNumber) || !rows.length) {
-          return 0;
-        }
+                    this.paginateParams)
+      .pipe(map(([rows, range]) => rows.slice(range[0], range[1])));
 
-        return Math.floor(rows.length / viewsPerPageLimit);
-      }));
+    this.maxPageNumber = this.rows
+      .pipe(startWith([]),
+            map(rows => rows.length ? Math.floor(rows.length / viewsPerPageLimit) : 1));
 
     this.url =
       combineLatest(this.params,
@@ -149,25 +118,31 @@ class MnViewsEditingResultComponent extends MnLifeCycleHooksToStream {
       .pipe(map(([params, ddocumentId, viewId, commonBucket]) =>
           this.buildFullUrl(params, ddocumentId, viewId, commonBucket)));
 
-    this.paginatedRows =
-      combineLatest(this.rows,
-                    this.paginateParams)
-      .pipe(map(([rows, range]) => {
-        return rows.slice(range[0], range[1]);
-      }));
-
-    this.disablePrev = this.pageNumber
+    this.disablePrev =
+      combineLatest(this.pageNumber,
+                    this.areResultsPresent)
       .pipe(map(this.disablePrev.bind(this)));
 
     this.disableNext =
-      combineLatest(this.rows,
+      combineLatest(this.rows.pipe(startWith([])),
                     this.pageNumber,
-                    this.maxPageNumber)
+                    this.maxPageNumber,
+                    this.areResultsPresent)
       .pipe(map(this.disableNext.bind(this)));
 
     this.showNoResults =
-      combineLatest(this.rows, this.pageNumber)
-      .pipe(map(this.showNoResults.bind(this)));
+      this.rows.pipe(map(rows => !rows.length));
+
+    this.pageNumber.pipe(
+      filter(page => is(Number, page)),
+      take(1),
+      withLatestFrom(this.pageNumber,
+                     this.params,
+                     this.ddocumentId,
+                     this.viewId,
+                     this.commonBucket,
+                     this.fullSet))
+      .subscribe(this.onClickResult.bind(this));
 
     this.clickResult = new Subject();
     this.clickResult
@@ -194,12 +169,9 @@ class MnViewsEditingResultComponent extends MnLifeCycleHooksToStream {
 
     this.clickLoadDocument = new Subject();
     this.clickLoadDocument
-      .pipe(withLatestFrom(this.commonBucket))
-    .subscribe(this.loadDocument.bind(this))
-  }
-
-  showNoResults([rows, pageNumber]) {
-    return is(Number, pageNumber) && !rows.length;
+      .pipe(withLatestFrom(this.commonBucket),
+            takeUntil(this.mnOnDestroy))
+      .subscribe(this.loadDocument.bind(this))
   }
 
   generateParamsString(value) {
@@ -209,12 +181,12 @@ class MnViewsEditingResultComponent extends MnLifeCycleHooksToStream {
     return new URLSearchParams(params).toString();
   }
 
-  disablePrev(pageNumber) {
-    return !is(Number, pageNumber) || (pageNumber == 0);
+  disablePrev([pageNumber, resultsPresent]) {
+    return !resultsPresent || (pageNumber == 0);
   }
 
-  disableNext([rows, pageNumber, maxPage]) {
-    return !rows.length || (pageNumber >= maxPage);
+  disableNext([rows, pageNumber, maxPage, resultsPresent]) {
+    return !resultsPresent || !rows.length || (pageNumber >= maxPage);
   }
 
   onNextPage([, currentPage]) {

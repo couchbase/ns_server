@@ -100,8 +100,8 @@ licenses/APL2.txt.
           </td>
         </tr>
       </tbody>
-      <tbody [hidden]="!(showViewResultMessage | async)">
-        <tr>
+      <tbody>
+        <tr [hidden]="areResultsPresent | async">
           <td class="zero-content" colspan="2">
             To see the results of this view, click "Show Results" above.
           </td>
