@@ -30,6 +30,7 @@ build_group_uri(GroupPList) ->
     build_group_uri(proplists:get_value(uuid, GroupPList)).
 
 handle_server_groups(Req) ->
+    menelaus_util:assert_is_enterprise(),
     Groups = ns_cluster_membership:server_groups(),
     IncludeOtpCookie = menelaus_auth:has_permission({[admin, internal], all},
                                                     Req),
