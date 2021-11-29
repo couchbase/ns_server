@@ -1666,13 +1666,19 @@ handle_start_failover(Nodes, AllowUnsafe, From, Wait, FailoverType, Options) ->
                           (V) ->
                               V
                       end,
-            FailoverReasonsJSON = [{Node, JSONFun(Reason)} ||
-                                   {Node, Reason} <- FailoverReasons],
+            FOReasonsJSON = case FailoverReasons of
+                                 [] ->
+                                     [];
+                                 _ ->
+                                     [{failover_reason,
+                                       {struct,
+                                        [{Node, JSONFun(Reason)} ||
+                                         {Node, Reason} <- FailoverReasons]}}]
+                             end,
             event_log:add_log(Event, [{operation_id, Id},
                                       {nodes_info, {struct, NodesInfo}},
-                                      {failover_reason,
-                                       {struct, FailoverReasonsJSON}},
-                                      {allow_unsafe, AllowUnsafe}]),
+                                      {allow_unsafe, AllowUnsafe}] ++
+                                      FOReasonsJSON),
 
             Type = failover,
             ns_cluster:counter_inc(Type, start),
