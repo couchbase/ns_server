@@ -57,7 +57,7 @@ function mnSettingsClusterController($scope, $q, $uibModal, mnPoolDefault, mnMem
     }
     var promise = mnSettingsClusterService.postPoolsDefault(vm.memoryQuotaConfig, true);
     mnPromiseHelper(vm, promise)
-      .catchErrorsFromSuccess("memoryQuotaErrors");
+      .catchErrors("memoryQuotaErrors");
   }, 500), true);
 
   $scope.$watch('settingsClusterCtl.indexSettings', _.debounce(function (indexSettings, prevIndexSettings) {
