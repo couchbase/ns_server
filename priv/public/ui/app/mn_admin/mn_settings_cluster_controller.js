@@ -322,7 +322,7 @@ function mnSettingsClusterController($scope, $q, $uibModal, mnPoolDefault, mnMem
         $scope.$watch('settingsClusterCtl.retryRebalanceCfg', _.debounce(function (values) {
           mnPromiseHelper(vm, mnSettingsClusterService
                           .postSettingsRetryRebalance(values, {just_validate: 1}))
-            .catchErrorsFromSuccess("retryRebalanceErrors");
+            .catchErrors("retryRebalanceErrors");
         }, 500, {leading: true}), true);
       });
     }
