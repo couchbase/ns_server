@@ -171,6 +171,9 @@ build_nodename() ->
     {_, Name} = misc:node_name_host(node()),
     jsonify(node, Name).
 
+build_otp_nodename() ->
+    [{otp_node, node()}].
+
 build_event_details(Event) ->
     {Code, Comp, Level, Desc} = event_details(Event),
     [{event_id, Code}, {component, Comp},
@@ -195,6 +198,7 @@ add_log(Event, Extras) ->
             Id = misc:uuid_v4(),
             Log = lists:flatten([jsonify(timestamp, Timestamp),
                                  build_mandatory_attributes(Event),
+                                 build_otp_nodename(),
                                  [{uuid, Id}],
                                  build_extra_attributes(Extras)]),
 
