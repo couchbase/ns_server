@@ -175,7 +175,7 @@ class MnWizardService {
 
     this.stream.postSettingsWebHttp =
       new MnHttpRequest(this.postSettingsWeb.bind(this))
-      .addSuccess(map(data => JSON.parse(data)))
+      .addSuccess()
       .addError();
 
     this.stream.querySettingsHttp =

@@ -65,10 +65,7 @@ class MnWizardSetupNewClusterComponent extends MnLifeCycleHooksToStream {
     return !this.form.group.invalid;
   }
 
-  onSuccess(validation) {
-    if (Object.keys(validation.errors).length) {
-      return;
-    }
+  onSuccess() {
     this.uiRouter.stateService.go('app.wizard.termsAndConditions', null, {location: false});
   }
 }
