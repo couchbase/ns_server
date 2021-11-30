@@ -216,7 +216,7 @@ log(Event) ->
 
     JSON1 = case proplists:get_value(<<"node">>, JSON) of
                 undefined ->
-                    JSON ++ build_nodename();
+                    JSON ++ build_nodename() ++ build_otp_nodename();
                 _ ->
                     JSON
            end,
