@@ -125,10 +125,14 @@
             <div
                ng-repeat="(name, subStage) in service.subStages track by name"
                class="row margin-left-half margin-bottom-half margin-top-half">
-              <label>{{name == "deltaRecovery" ? "Delta Recovery Warmup" : name}}</label>
+              <label
+                 class="ellipsis"
+                 ng-attr-title="{{name}}">
+                {{name == "deltaRecovery" ? "Delta Recovery Warmup" : name}}
+              </label>
               <span
                  ng-show="subStage.timeTaken !== false"
-                 class="rebalance-stage-status">
+                 class="rebalance-stage-status nowrap">
                 <span
                    ng-show="subStage.completedTime"
                    class="rebalance-stage-success">
