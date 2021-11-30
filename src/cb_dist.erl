@@ -600,7 +600,12 @@ remove_proto({_AddrType, Mod} = Listener,
                           erlang:unlink(P),
                           Links = case erlang:process_info(P, links) of
                                       undefined -> [];
-                                      {links, L} -> L
+                                      {links, L} ->
+                                          %% Acceptor can be linked to newly
+                                          %% created Sockets (which are ports),
+                                          %% ignore them, we are interested in
+                                          %% processes only
+                                          [Pid || Pid <- L, is_pid(Pid)]
                                   end,
                           [P | Links];
                       (_) ->
