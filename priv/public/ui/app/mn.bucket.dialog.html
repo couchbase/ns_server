@@ -16,7 +16,8 @@ licenses/APL2.txt.
   <form
      novalidate
      [formGroup]="form.group"
-     (submit)="form.submit.next()">
+     (submit)="form.submit.next()"
+     [mnSpinner]="bucketRam | async">
     <div class="forms panel-content">
       <div class="formrow">
         <div class="row">
@@ -57,7 +58,7 @@ licenses/APL2.txt.
         </div>
       </div>
 
-      <div class="formrow" [mnSpinner]="bucketRam | async">
+      <div class="formrow">
         <label>Memory Quota <small>in megabytes per server node</small></label>
         <div class="form-inline margin-bottom-1">
           <input

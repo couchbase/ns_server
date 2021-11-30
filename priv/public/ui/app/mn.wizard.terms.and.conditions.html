@@ -35,7 +35,7 @@ licenses/APL2.txt.
       </div>
       <small [hidden]="(isEnterprise | async)">Community Edition</small>
 
-      <div class="formrow">
+      <div class="formrow" [mnSpinner]="license | async">
         <textarea class="text-smaller" rows="10" readonly="readonly">{{license | async}}</textarea>
       </div>
 

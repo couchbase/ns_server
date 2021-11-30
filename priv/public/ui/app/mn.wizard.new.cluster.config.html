@@ -24,7 +24,8 @@ licenses/APL2.txt.
        href="https://docs.couchbase.com/server/{{majorMinorVersion | async}}/learn/buckets-memory-and-storage/memory.html"
        target="_blank"
        rel="noopener noreferrer"
-       class="block margin-bottom-1">
+       class="block margin-bottom-1"
+       [mnSpinner]="majorMinorVersion | async">
       Learn more about memory quotas for Couchbase services.
     </a>
   </ng-template>
@@ -71,7 +72,7 @@ licenses/APL2.txt.
             </span>
             <small class="text-smaller">Per service / per node</small>
           </div>
-          <div>
+          <div [mnSpinner]="memoryQuotasFirst | async">
             <div
                class="error error-form"
                [hidden]="!(servicesHttp.error | async)">

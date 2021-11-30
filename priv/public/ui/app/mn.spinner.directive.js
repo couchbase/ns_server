@@ -37,7 +37,6 @@ class MnSpinnerDirective extends MnLifeCycleHooksToStream {
     this.loadingElement = this.renderer.createElement('div');
 
     this.renderer.addClass(this.loadingElement, 'spinner');
-    this.renderer.addClass(this.loadingElement, 'opacity');
     this.renderer.addClass(this.el.nativeElement, 'relative')
     this.renderer.appendChild(this.el.nativeElement, this.loadingElement);
   }
