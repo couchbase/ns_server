@@ -273,7 +273,7 @@ build_bucket_capabilities(BucketConfig) ->
             membase ->
                 Conditional =
                     [{collections, collections:enabled(BucketConfig)},
-                     {durableWrite, cluster_compat_mode:is_cluster_65()},
+                     {durableWrite, true},
                      {tombstonedUserXAttrs,
                       cluster_compat_mode:is_cluster_66()},
                      {couchapi, ns_bucket:can_have_views(BucketConfig)},

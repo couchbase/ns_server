@@ -1518,8 +1518,7 @@ is_cluster_encryption_fully_enabled() ->
         [N || N <- ns_node_disco:nodes_wanted(),
               not is_node_encryption_enabled(Cfg, N)],
 
-    cluster_compat_mode:is_cluster_65() andalso
-        cluster_compat_mode:is_enterprise() andalso
+    cluster_compat_mode:is_enterprise() andalso
         NonEncryptNodes =:= [].
 
 %% This function is not the same as (not is_cluster_encryption_fully_enabled())

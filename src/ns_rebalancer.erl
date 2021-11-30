@@ -478,8 +478,7 @@ rebalance_body(KeepNodes,
     KVKeep = ns_cluster_membership:service_nodes(KeepNodes, kv),
     lists:foreach(
       fun (Bucket) ->
-              not cluster_compat_mode:is_cluster_65() orelse
-                  deactivate_bucket_data_on_unknown_nodes(Bucket, KVKeep),
+              deactivate_bucket_data_on_unknown_nodes(Bucket, KVKeep),
               run_janitor_pre_rebalance(Bucket)
       end, ns_bucket:get_bucket_names()),
 
@@ -653,17 +652,8 @@ do_rebalance_membase_bucket(Bucket, Config,
     {FastForwardMap, MapOptions} =
         case ForcedMap of
             undefined ->
-                AdjustedMap =
-                    case cluster_compat_mode:is_cluster_65() of
-                        true ->
-                            NumReplicas = ns_bucket:num_replicas(Config),
-                            mb_map:align_replicas(Map, NumReplicas);
-                        false ->
-                            %% Expect equal length map pre 6.5, as the
-                            %% janitor fixes it for us.
-                            %% See fun ns_janitor:compute_vbucket_map_fixup.
-                            Map
-                    end,
+                NumReplicas = ns_bucket:num_replicas(Config),
+                AdjustedMap = mb_map:align_replicas(Map, NumReplicas),
                 generate_vbucket_map(AdjustedMap, KeepNodes, Config);
             _ ->
                 ForcedMap
@@ -1485,14 +1475,6 @@ get_buckets_to_delta_recovery_test() ->
 -endif.
 
 prepare_rebalance(Nodes) ->
-    case cluster_compat_mode:is_cluster_65() of
-        true ->
-            do_prepare_rebalance(Nodes);
-        false ->
-            ok
-    end.
-
-do_prepare_rebalance(Nodes) ->
     case rebalance_agent:prepare_rebalance(Nodes, self()) of
         ok ->
             ok;
@@ -1501,14 +1483,6 @@ do_prepare_rebalance(Nodes) ->
     end.
 
 unprepare_rebalance(Nodes) ->
-    case cluster_compat_mode:is_cluster_65() of
-        true ->
-            do_unprepare_rebalance(Nodes);
-        false ->
-            ok
-    end.
-
-do_unprepare_rebalance(Nodes) ->
     case rebalance_agent:unprepare_rebalance(Nodes, self()) of
         ok ->
             ok;
@@ -1519,14 +1493,6 @@ do_unprepare_rebalance(Nodes) ->
     end.
 
 prepare_delta_recovery(Nodes, BucketConfigs) ->
-    case cluster_compat_mode:is_cluster_65() of
-        true ->
-            do_prepare_delta_recovery(Nodes, BucketConfigs);
-        false ->
-            ok
-    end.
-
-do_prepare_delta_recovery(Nodes, BucketConfigs) ->
     Buckets = proplists:get_keys(BucketConfigs),
     case rebalance_agent:prepare_delta_recovery(Nodes, self(), Buckets) of
         ok ->
@@ -1557,17 +1523,6 @@ prepare_delta_recovery_buckets(DeltaRecoveryBuckets,
       end, DeltaRecoveryBuckets).
 
 prepare_one_delta_recovery_bucket(Bucket, BucketConfig, FailoverVBuckets) ->
-    case cluster_compat_mode:is_cluster_65() of
-        true ->
-            do_prepare_one_delta_recovery_bucket(Bucket, BucketConfig,
-                                                 FailoverVBuckets);
-        false ->
-            %% Assume all failover vbuckets are present on delta nodes in
-            %% compat mode.
-            dict:to_list(FailoverVBuckets)
-    end.
-
-do_prepare_one_delta_recovery_bucket(Bucket, BucketConfig, FailoverVBuckets) ->
     Map = proplists:get_value(map, BucketConfig, []),
     VBucketsToRecover =
         dict:fold(
@@ -1670,14 +1625,6 @@ find_active_nodes_of_vbuckets_test() ->
 -endif.
 
 complete_delta_recovery(Nodes) ->
-    case cluster_compat_mode:is_cluster_65() of
-        true ->
-            do_complete_delta_recovery(Nodes);
-        false ->
-            ok
-    end.
-
-do_complete_delta_recovery(Nodes) ->
     ?log_debug("Going to complete delta "
                "recovery preparation on nodes ~p", [Nodes]),
     case rebalance_agent:complete_delta_recovery(Nodes, self()) of

@@ -71,17 +71,12 @@ record_rebalance_report(Report, KeepNodes) ->
             gen_server2:call(?MODULE, {record_rebalance_report, Report},
                              infinity);
         false ->
-            case cluster_compat_mode:is_cluster_65() of
-                true ->
-                    CompressedReport = zlib:compress(Report),
-                    [Node | _] = KeepNodes,
-                    gen_server2:call({?MODULE, Node},
-                                     {record_compressed_rebalance_report,
-                                      CompressedReport},
-                                     ?FETCH_TIMEOUT);
-                false ->
-                    {error, not_supported}
-            end
+            CompressedReport = zlib:compress(Report),
+            [Node | _] = KeepNodes,
+            gen_server2:call({?MODULE, Node},
+                             {record_compressed_rebalance_report,
+                              CompressedReport},
+                             ?FETCH_TIMEOUT)
     end.
 
 %% -------------------------------------------------------------
@@ -265,13 +260,7 @@ fetch_rebalance_report_local(FileName, Dir) ->
             {error, unexpected_exception}
     end.
 
-fetch_rebalance_report_remote(ReqdReport, Dir) ->
-    case cluster_compat_mode:is_cluster_65() of
-        true -> fetch_rebalance_report_remote_inner(ReqdReport, Dir);
-        false -> {error, enoent}
-    end.
-
-fetch_rebalance_report_remote_inner({_, Info} = ReqdReport, Dir) ->
+fetch_rebalance_report_remote({_, Info} = ReqdReport, Dir) ->
     Node = proplists:get_value(node, Info),
     FN = proplists:get_value(filename, Info),
     case gen_server2:call({?MODULE, Node},

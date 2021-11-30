@@ -88,19 +88,7 @@ set_status(Type, Status, Pid) ->
            [{rebalance_status, Status},
             {rebalance_status_uuid, couch_uuids:random()},
             {rebalancer_pid, Pid},
-            {rebalance_type, Type}] ++
-               case cluster_compat_mode:is_cluster_65() of
-                   true ->
-                       [];
-                   false ->
-                       [{graceful_failover_pid,
-                         case Type of
-                             graceful_failover ->
-                                 Pid;
-                             _ ->
-                                 undefined
-                         end}]
-               end).
+            {rebalance_type, Type}]).
 
 start(KnownNodes, EjectedNodes, DeltaRecoveryBuckets) ->
     ns_orchestrator:start_rebalance(KnownNodes, EjectedNodes,

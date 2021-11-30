@@ -280,50 +280,18 @@ maybe_reset_replicas(Bucket, RebalancerPid, VBucket, Nodes, Quirks) ->
 set_dual_topology(Bucket, ActiveNode,
                   RebalancerPid, VBucket, VBucketRebalanceState,
                   OldTopology, NewTopology, AllBuiltNodes) ->
-    case cluster_compat_mode:is_cluster_65() of
-        true ->
-            DualTopology = [OldTopology, NewTopology],
-            set_vbucket_state_65(Bucket, ActiveNode, RebalancerPid,
-                                        VBucket, active, VBucketRebalanceState,
-                                        undefined, DualTopology),
-            %% We wait for seqno because we may not have sync write on NewChain
-            %% but have been committed on the OldChain.
-            wait_master_seqno_persisted_on_replicas(Bucket,
-                                                    VBucket, RebalancerPid,
-                                                    ActiveNode, AllBuiltNodes);
-        false ->
-            ok
-    end.
+    DualTopology = [OldTopology, NewTopology],
+    set_vbucket_state(Bucket, ActiveNode, RebalancerPid,
+                      VBucket, active, VBucketRebalanceState,
+                      undefined, DualTopology),
+    %% We wait for seqno because we may not have sync write on NewChain
+    %% but have been committed on the OldChain.
+    wait_master_seqno_persisted_on_replicas(Bucket, VBucket, RebalancerPid,
+                                            ActiveNode, AllBuiltNodes).
 
 set_vbucket_state(Bucket, Node, RebalancerPid, VBucket,
                   VBucketState, VBucketRebalanceState, ReplicateFrom,
                   Topology) ->
-    case cluster_compat_mode:is_cluster_65() of
-        true ->
-            set_vbucket_state_65(Bucket, Node,
-                                        RebalancerPid, VBucket, VBucketState,
-                                        VBucketRebalanceState,
-                                        ReplicateFrom, Topology);
-        false ->
-            set_vbucket_state_pre_65(Bucket, Node,
-                                            RebalancerPid, VBucket,
-                                            VBucketState, VBucketRebalanceState,
-                                            ReplicateFrom)
-    end.
-
-set_vbucket_state_pre_65(Bucket, Node,
-                                RebalancerPid, VBucket, VBucketState,
-                                VBucketRebalanceState, ReplicateFrom) ->
-    spawn_and_wait(
-      fun () ->
-              ok = janitor_agent:set_vbucket_state(
-                     Bucket, Node, RebalancerPid, VBucket,
-                     VBucketState, VBucketRebalanceState, ReplicateFrom)
-      end).
-
-set_vbucket_state_65(Bucket, Node, RebalancerPid, VBucket,
-                            VBucketState, VBucketRebalanceState, ReplicateFrom,
-                            Topology) ->
     spawn_and_wait(
       fun () ->
               ok = janitor_agent:set_vbucket_state(
@@ -561,15 +529,9 @@ on_move_done_body(RebalancerPid, WorkerPid, Bucket, VBucket, OldChain,
                   [NewMaster | _] = NewChain) ->
     update_vbucket_map(RebalancerPid, WorkerPid, Bucket, VBucket),
 
-    case cluster_compat_mode:is_cluster_65() of
-        true ->
-            %% Set topology on the NewMaster.
-            janitor_agent:set_vbucket_state(
-              Bucket, NewMaster, RebalancerPid, VBucket,
-              active, undefined, undefined, [NewChain]);
-        false ->
-            ok
-    end,
+    %% Set topology on the NewMaster.
+    janitor_agent:set_vbucket_state(Bucket, NewMaster, RebalancerPid, VBucket,
+                                    active, undefined, undefined, [NewChain]),
 
     update_replication_post_move(RebalancerPid, Bucket, VBucket, OldChain, NewChain),
 

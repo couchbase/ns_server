@@ -928,8 +928,7 @@ rebalancing({request_janitor_run, _Item} = Msg, _State) ->
 %% Synchronous rebalancing events
 rebalancing({try_autofailover, Nodes, Options}, From,
             #rebalancing_state{type = Type} = State) ->
-    case cluster_compat_mode:is_cluster_65() andalso
-         menelaus_web_auto_failover:config_check_can_abort_rebalance() andalso
+    case menelaus_web_auto_failover:config_check_can_abort_rebalance() andalso
          Type =/= failover of
         false ->
             TypeStr = binary_to_list(rebalance_type2text(Type)),
@@ -1596,37 +1595,9 @@ get_delta_recovery_nodes(Snapshot, Nodes) ->
               =:= delta].
 
 rebalance_allowed(Snapshot) ->
-    case cluster_compat_mode:is_cluster_65() of
+    case chronicle_compat:enabled() of
         true ->
-            case chronicle_compat:enabled() of
-                true ->
-                    check_for_unfinished_failover(Snapshot);
-                false ->
-                    ok
-            end;
-        false ->
-            functools:sequence_([?cut(check_for_passwordless_default(Snapshot)),
-                                 ?cut(check_for_moxi_buckets(Snapshot))])
-    end.
-
-check_for_moxi_buckets(Snapshot) ->
-    case [Name || {Name, BucketConfig} <- ns_bucket:get_buckets(Snapshot),
-                  ns_bucket:moxi_port(BucketConfig) =/= undefined] of
-        [] ->
-            ok;
-        Buckets ->
-            BucketsStr = string:join(Buckets, ","),
-            Msg = io_lib:format("Please remove proxy ports from the "
-                                "following buckets: ~s", [BucketsStr]),
-            {error, Msg}
-    end.
-
-check_for_passwordless_default(Snapshot) ->
-    case lists:member({"default", local},
-                      menelaus_users:get_passwordless()) andalso
-        lists:keymember("default", 1, ns_bucket:get_buckets(Snapshot)) of
-        true ->
-            {error, "Please reset password for user 'default'"};
+            check_for_unfinished_failover(Snapshot);
         false ->
             ok
     end.

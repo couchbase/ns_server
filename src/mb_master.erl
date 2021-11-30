@@ -66,13 +66,7 @@ master_node() ->
 %% Returns the master node according to Node. For mb_master's internal use
 %% only.
 master_node(Node, Timeout) ->
-    case cluster_compat_mode:is_cluster_65() of
-        true ->
-            gen_statem:call({?MODULE, Node}, master_node, Timeout);
-        false ->
-            gen_fsm:sync_send_all_state_event({?MODULE, Node},
-                                              master_node, Timeout)
-    end.
+    gen_statem:call({?MODULE, Node}, master_node, Timeout).
 
 %%
 %% gen_statem handlers
@@ -532,12 +526,9 @@ send_heartbeat_with_peers(Nodes, StateName, Peers) ->
         %% establish connection each time we try to send.
         %% + also exclude local node here
         AliveNodes = lists:filter(lists:member(_, nodes()), Nodes),
-        Is65 = cluster_compat_mode:is_cluster_65(),
         misc:parallel_map(
-          fun (Node) when Is65 ->
-                  catch erlang:send({?MODULE, Node}, Args, [noconnect]);
-              (Node) ->
-                  gen_fsm:send_event({?MODULE, Node}, Args)
+          fun (Node)  ->
+                  catch erlang:send({?MODULE, Node}, Args, [noconnect])
           end, AliveNodes, 2000),
         ok
     catch exit:timeout ->

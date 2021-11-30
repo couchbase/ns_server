@@ -23,8 +23,6 @@
          is_index_aware_rebalance_on/0,
          is_index_pausing_on/0,
          rebalance_ignore_view_compactions/0,
-         is_cluster_65/0,
-         is_cluster_65/1,
          is_version_65/1,
          is_cluster_66/0,
          is_cluster_66/1,
@@ -134,12 +132,6 @@ is_enabled(Config, FeatureVersion) ->
 
 is_version_65(ClusterVersion) ->
     is_enabled_at(ClusterVersion, ?VERSION_65).
-
-is_cluster_65() ->
-    is_cluster_65(ns_config:latest()).
-
-is_cluster_65(Config) ->
-    is_enabled(Config, ?VERSION_65).
 
 is_version_66(ClusterVersion) ->
     is_enabled_at(ClusterVersion, ?VERSION_66).
@@ -389,5 +381,4 @@ mb_master_advertised_version_test() ->
 -endif.
 
 preserve_durable_mutations() ->
-    is_cluster_65() andalso
-        ns_config:read_key_fast({failover, preserve_durable_mutations}, true).
+    ns_config:read_key_fast({failover, preserve_durable_mutations}, true).

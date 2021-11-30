@@ -660,7 +660,8 @@ assert_is_enterprise() ->
     end.
 
 assert_is_65() ->
-    assert_cluster_version(fun cluster_compat_mode:is_cluster_65/0).
+    %% XXX: clean up usage of this func
+    true.
 
 assert_is_66() ->
     assert_cluster_version(fun cluster_compat_mode:is_cluster_66/0).

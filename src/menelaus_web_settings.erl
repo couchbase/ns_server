@@ -335,13 +335,8 @@ conf(internal) ->
 conf(developer_preview) ->
     [{developer_preview_enabled, enabled, false, fun only_true/1}];
 conf(failover) ->
-    case cluster_compat_mode:is_cluster_65() of
-        true ->
-            [{{failover, preserve_durable_mutations}, preserveDurableMutations,
-              true, fun get_bool/1}];
-        false ->
-            []
-    end.
+    [{{failover, preserve_durable_mutations}, preserveDurableMutations,
+      true, fun get_bool/1}].
 
 build_kvs(Type) ->
     build_kvs(conf(Type), ns_config:get(), fun (_, _) -> true end).

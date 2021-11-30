@@ -225,12 +225,7 @@ local_node_status(Buckets0) ->
     ExpectedBuckets = ns_bucket:node_bucket_names(node()),
     ActiveBuckets = [Bucket || {Bucket, active} <- Buckets0],
     NoDataBuckets =
-        case cluster_compat_mode:is_cluster_65() of
-            false ->
-                [];
-            true ->
-                ExpectedBuckets -- ns_bucket:buckets_with_data_on_this_node()
-        end,
+        ExpectedBuckets -- ns_bucket:buckets_with_data_on_this_node(),
     Buckets = lists:keysort(
                 1, lists:foldl(fun (B, Acc) ->
                                        lists:keystore(B, 1, Acc, {B, no_data})

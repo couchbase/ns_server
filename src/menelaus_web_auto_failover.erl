@@ -165,14 +165,6 @@ parse_validate_extras_inner(Args, CurrRV, Config) ->
     end.
 
 parse_validate_can_abort_rebalance(Args, CurrRV) ->
-    case cluster_compat_mode:is_cluster_65() of
-        true ->
-            parse_validate_can_abort_rebalance_inner(Args, CurrRV);
-        false ->
-            CurrRV
-    end.
-
-parse_validate_can_abort_rebalance_inner(Args, CurrRV) ->
     StrKey = "canAbortRebalance",
     case parse_validate_boolean_field(StrKey, '_', Args) of
         [] ->
@@ -281,8 +273,7 @@ get_extra_settings(Config) ->
                {maxCount, proplists:get_value(?MAX_EVENTS_CONFIG_KEY, Config)},
                [{canAbortRebalance,
                  proplists:get_value(
-                   ?CAN_ABORT_REBALANCE_CONFIG_KEY, Config)} ||
-                   cluster_compat_mode:is_cluster_65()],
+                   ?CAN_ABORT_REBALANCE_CONFIG_KEY, Config)}],
                [{failoverServerGroup,
                  proplists:get_value(?FAILOVER_SERVER_GROUP_CONFIG_KEY,
                                      Config)} ||
@@ -297,8 +288,7 @@ disable_extras(Config) ->
             {_, CurrTP} = get_failover_on_disk_issues(Config),
             lists:flatten(
               [disable_failover_on_disk_issues(CurrTP),
-               [{?CAN_ABORT_REBALANCE_CONFIG_KEY, false} ||
-                   cluster_compat_mode:is_cluster_65()],
+               [{?CAN_ABORT_REBALANCE_CONFIG_KEY, false}],
                [{?FAILOVER_SERVER_GROUP_CONFIG_KEY, false} ||
                    not cluster_compat_mode:is_cluster_NEO()]]);
         false ->

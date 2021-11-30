@@ -1842,17 +1842,13 @@ run_on_node({M, F, A}, Nodes, Req) ->
         true -> {ok, erlang:apply(M, F, A)};
         _ when Nodes == [] -> {error, nonodes};
         _ ->
-            case cluster_compat_mode:is_cluster_65() of
-                true ->
-                    Node = menelaus_util:choose_node_consistently(Req, Nodes),
-                    case rpc:call(Node, M, F, A) of
-                        {badrpc, _} = Error ->
-                            ?log_error("RPC to node ~p (~p:~p) failed: ~p",
-                                       [Node, M, F, Error]),
-                            {error, Error};
-                        Docs -> {ok, Docs}
-                    end;
-                false -> {error, nonodes}
+            Node = menelaus_util:choose_node_consistently(Req, Nodes),
+            case rpc:call(Node, M, F, A) of
+                {badrpc, _} = Error ->
+                    ?log_error("RPC to node ~p (~p:~p) failed: ~p",
+                               [Node, M, F, Error]),
+                    {error, Error};
+                Docs -> {ok, Docs}
             end
     end.
 

@@ -85,8 +85,11 @@ get_replication_features() ->
                   %% versions are no longer supported.
                   {del_times, true},
                   {ssl, misc:should_cluster_data_be_encrypted()},
-                  {set_consumer_name, cluster_compat_mode:is_cluster_65()},
-                  {json, cluster_compat_mode:is_cluster_65()},
+                  %% Unconditionally setting 'set_consumer_name' and
+                  %% 'json' to true as features are negotiated starting
+                  %% with the 6.5 release
+                  {set_consumer_name, true},
+                  {json, true},
                   {del_user_xattr, cluster_compat_mode:is_cluster_66()}],
     misc:canonical_proplist(FeatureSet).
 

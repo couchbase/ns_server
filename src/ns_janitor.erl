@@ -430,23 +430,13 @@ compute_vbucket_map_fixup(Bucket, BucketConfig, States) ->
                   ignore -> OldChain;
                   _ -> NewChain
               end || {NewChain, OldChain} <- lists:zip(MapUpdates, Map)],
-    NewAdjustedMap = case cluster_compat_mode:is_cluster_65() of
-                         true ->
-                             %% Defer adjusting chain length to rebalance, at
-                             %% the time of writing this code the logic is in,
-                             %% ns_rebalancer:do_rebalance_membase_bucket.
-                             NewMap;
-                         false ->
-                             NumReplicas = ns_bucket:num_replicas(BucketConfig),
-                             mb_map:align_replicas(Map, NumReplicas)
-                     end,
-    NewBucketConfig = case NewAdjustedMap =:= Map of
+    NewBucketConfig = case NewMap =:= Map of
                           true ->
                               BucketConfig;
                           false ->
                               ?log_debug("Janitor decided to update vbucket map"),
                               lists:keyreplace(map, 1, BucketConfig,
-                                               {map, NewAdjustedMap})
+                                               {map, NewMap})
                       end,
     {NewBucketConfig, IgnoredVBuckets}.
 

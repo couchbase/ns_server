@@ -232,8 +232,7 @@ user_to_json({Id, Domain}, Props) ->
     user_to_json({Id, Domain}, Props, undefined).
 
 user_to_json({Id, Domain}, Props, Limits) ->
-    Is65 = cluster_compat_mode:is_cluster_65(),
-    RolesJson = user_roles_to_json(Props, Is65),
+    RolesJson = user_roles_to_json(Props),
     Name = proplists:get_value(name, Props),
     %% UUID is only defined for local users in VERSION_NEO clusters.
     UUID = proplists:get_value(uuid, Props),
@@ -247,16 +246,15 @@ user_to_json({Id, Domain}, Props, Limits) ->
       {domain, Domain},
       {roles, RolesJson}] ++
      jsonify_limits(Limits) ++
-     [{groups, [list_to_binary(G) || G <- Groups]} || Groups =/= undefined,
-                                                      Is65] ++
+     [{groups, [list_to_binary(G) || G <- Groups]} || Groups =/= undefined] ++
      [{external_groups, [list_to_binary(G) || G <- ExtGroups]}
-          || ExtGroups =/= undefined, Is65] ++
+          || ExtGroups =/= undefined] ++
      [{name, list_to_binary(Name)} || Name =/= undefined] ++
      [{uuid, UUID} || UUID =/= undefined] ++
      [{passwordless, Passwordless} || Passwordless == true] ++
      [{password_change_date, PassChangeTime} || PassChangeTime =/= undefined]}.
 
-user_roles_to_json(Props, true) ->
+user_roles_to_json(Props) ->
     UserRoles = proplists:get_value(user_roles, Props, []),
     GroupRoles = proplists:get_value(group_roles, Props, []),
     AddOrigin =
@@ -273,10 +271,7 @@ user_roles_to_json(Props, true) ->
     maps:fold(
        fun (Role, Origins, Acc) ->
            [{role_to_json(Role, Origins)}|Acc]
-       end, [], Map);
-user_roles_to_json(Props, false) ->
-    UserRoles = proplists:get_value(user_roles, Props, []),
-    [{role_to_json(Role)} || Role <- UserRoles].
+       end, [], Map).
 
 format_password_change_time(undefined) -> undefined;
 format_password_change_time(TS) ->
@@ -1044,14 +1039,10 @@ bad_roles_error(BadRoles) ->
       " malformed or role parameters are undefined: [~s]", [Str]).
 
 validate_user_groups(Name, State) ->
-    Is65 = cluster_compat_mode:is_cluster_65(),
     IsEnterprise = cluster_compat_mode:is_enterprise(),
     validator:validate(
       fun (GroupsRaw) when (GroupsRaw =/= "") andalso not IsEnterprise ->
               {error, "User groups require enterprise edition"};
-          (GroupsRaw) when (GroupsRaw =/= "") andalso not Is65 ->
-              {error, "User groups are not supported in "
-                      "mixed version clusters"};
           (GroupsRaw) ->
               Groups = parse_groups(GroupsRaw),
               case lists:filter(?cut(not menelaus_users:group_exists(_)),

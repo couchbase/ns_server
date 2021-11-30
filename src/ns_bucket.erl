@@ -1055,9 +1055,7 @@ set_map(Bucket, Map) ->
         true ->
             ok;
         different_length_chains ->
-            %% Never expect to set map with different_length_chains
-            %% pre-6.5.
-            true = cluster_compat_mode:is_cluster_65()
+            ok
     end,
     set_property(Bucket, map, Map, [],
                  master_activity_events:note_set_map(Bucket, Map, _)).

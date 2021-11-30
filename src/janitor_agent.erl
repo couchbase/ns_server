@@ -245,12 +245,7 @@ do_query_vbuckets(Bucket, Nodes, ExtraKeys, Options) ->
     Timeout = proplists:get_value(timeout, Options,
                                   ?WAIT_FOR_MEMCACHED_TIMEOUT),
 
-    CreateCall = case cluster_compat_mode:is_cluster_65() of
-                     false ->
-                         fun (_) -> query_vbucket_states end;
-                     true ->
-                         {query_vbuckets, _, ExtraKeys, Options}
-                 end,
+    CreateCall = {query_vbuckets, _, ExtraKeys, Options},
 
     NodeCalls = lists:map(fun ({N, VBs}) ->
                                   {N, CreateCall(VBs)};
@@ -267,18 +262,10 @@ do_query_vbuckets(Bucket, Nodes, ExtraKeys, Options) ->
 
 -spec mark_bucket_warmed(Bucket::bucket_name(),
                          [node()]) -> ok | {errors, [{node(), term()}]}.
-mark_bucket_warmed(Bucket, Nodes) ->
-    case cluster_compat_mode:is_cluster_65() of
-        true -> mark_bucket_warmed_65(Bucket, Nodes);
-        false -> mark_bucket_warmed_pre_65(Bucket, Nodes)
-    end.
 
-mark_bucket_warmed_65(Bucket, Nodes) ->
+mark_bucket_warmed(Bucket, Nodes) ->
     process_multicall_rv(
       multi_call(Bucket, Nodes, mark_warmed, ?WARMED_TIMEOUT)).
-
-mark_bucket_warmed_pre_65(Bucket, Nodes) ->
-    process_multicall_rv(ns_memcached:mark_warmed(Nodes, Bucket)).
 
 apply_new_bucket_config(Bucket, Servers, NewBucketConfig, undefined_timeout) ->
     apply_new_bucket_config(Bucket, Servers, NewBucketConfig,
@@ -290,14 +277,8 @@ apply_new_bucket_config(Bucket, Servers, NewBucketConfig, Timeout) ->
        ?cut(call_on_servers(Bucket, Servers, NewBucketConfig,
                             apply_new_config_replicas_phase, Timeout))]).
 
-format_apply_new_config_call(Call, BucketConfig) ->
-    case cluster_compat_mode:is_cluster_65() of
-        true -> {Call, BucketConfig};
-        false -> {Call, BucketConfig, []}
-    end.
-
 call_on_servers(Bucket, Servers, BucketConfig, Call, Timeout) ->
-    CompleteCall = format_apply_new_config_call(Call, BucketConfig),
+    CompleteCall = {Call, BucketConfig},
     Replies = misc:parallel_map(
                 ?cut({_1, catch call(Bucket, _1, CompleteCall, Timeout)}),
                 Servers, infinity),
@@ -1089,12 +1070,6 @@ decode_topology(Topology) ->
                        binary_to_existing_atom(Node, latin1)
                end, Chain) || Chain <- ejson:decode(Topology)].
 
-is_topology_same(active, Chain, MemcachedTopology) ->
-    cluster_compat_mode:is_cluster_65() =:= false orelse
-        [Chain] =:= MemcachedTopology;
-is_topology_same(_, _, _) ->
-    true.
-
 decode_value(state, V) ->
     erlang:list_to_existing_atom(V);
 decode_value(high_seqno, V) ->
@@ -1202,19 +1177,18 @@ handle_apply_new_config(Node, NewBucketConfig,
                             [] ->
                                 missing
                         end,
-                    {ActualState, ActualTopology} =
+                    ActualState =
                         case dict:find(VBucket, VBDetails) of
                             {ok, Val} ->
                                 StateVal = proplists:get_value(state, Val),
                                 %% Always expect "state" to be present.
                                 false = StateVal =:= undefined,
-                                {StateVal, proplists:get_value(topology, Val)};
+                                StateVal;
                             _ ->
-                                {missing, undefined}
+                                missing
                         end,
                     NewWanted = [WantedState | PrevWanted],
-                    case WantedState =:= ActualState andalso
-                        is_topology_same(WantedState, Chain, ActualTopology) of
+                    case WantedState =:= ActualState of
                         true ->
                             {VBucket + 1, ToSet, ToDelete, NewWanted};
                         false ->
@@ -1252,14 +1226,7 @@ handle_apply_new_config(Node, NewBucketConfig,
            BucketName, WantedReplications),
 
     %% then we're ok to change vbucket states
-    case cluster_compat_mode:is_cluster_65() of
-        true ->
-            ok = ns_memcached:set_vbuckets(BucketName, ToSet);
-        false ->
-            %% Do not set the Topology, only state of vbucket.
-            CompatToSet = [{VB, S, undefined} || {VB, S, _} <- ToSet],
-            ok = ns_memcached:set_vbuckets(BucketName, CompatToSet)
-    end,
+    ok = ns_memcached:set_vbuckets(BucketName, ToSet),
 
     %% and ok to delete vbuckets we want to delete
     ok = ns_memcached:delete_vbuckets(BucketName, ToDelete),

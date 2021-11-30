@@ -902,17 +902,7 @@ computed_stats_lazy_proplist(_) ->
                   fun (Gets, _Hits) when Gets == 0 -> 0; % this handles int and float 0
                       (Gets, Hits) -> Hits * 100/Gets
                   end),
-    %% Pre-6.5 nodes do not collect cmd_lookup.
-    %% Cache miss ratio will show up as 0 for such nodes when the statistics
-    %% are viewed from 6.5/post 6.5 nodes. So, use cmd_get
-    %% till the cluster is upgraded.
-    GetStat = case cluster_compat_mode:is_cluster_65() of
-                  true ->
-                      cmd_lookup;
-                  false ->
-                      cmd_get
-              end,
-    EPCacheMissRatio = Z2(ep_bg_fetched, GetStat,
+    EPCacheMissRatio = Z2(ep_bg_fetched, cmd_lookup,
                           fun (BGFetches, Gets) ->
                                   try BGFetches * 100 / Gets
                                   catch error:badarith -> 0

@@ -38,12 +38,7 @@ start_link() ->
     gen_server2:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 send_tick(Nodes, TS) ->
-    case cluster_compat_mode:is_cluster_65() of
-        true ->
-            gen_server2:abcast(Nodes, ?MODULE, {tick, node(), TS});
-        false ->
-            lists:foreach(notify(_, TS), Nodes)
-    end.
+    gen_server2:abcast(Nodes, ?MODULE, {tick, node(), TS}).
 
 time_offset_status() ->
     gen_server:call(?MODULE, get_time_offset_status).

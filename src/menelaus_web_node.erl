@@ -840,15 +840,6 @@ handle_node_settings_post(NodeStr, Req) when is_list(NodeStr) ->
         error:badarg -> menelaus_util:reply_not_found(Req)
     end;
 handle_node_settings_post(Node, Req) when is_atom(Node) ->
-    case cluster_compat_mode:is_cluster_65() of
-        false when Node =/= node() ->
-            menelaus_util:web_exception(
-              400, "Setting the disk storage path for other servers is "
-              "not yet supported.");
-        _ ->
-            ok
-    end,
-
     Params = mochiweb_request:parse_post(Req),
 
     case lists:member(Node, ns_node_disco:nodes_actual())  of
