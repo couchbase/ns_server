@@ -22,7 +22,6 @@
          get_from_config/3,
          update/2,
          config_default/0,
-         config_upgrade_to_65/1,
          config_upgrade_to_70/1
         ]).
 
@@ -61,13 +60,6 @@ config_default() ->
     {?QUERY_CONFIG_KEY, json_settings_manager:build_settings_json(
                           default_settings(?VERSION_60),
                           dict:new(), known_settings(?VERSION_60))}.
-
-config_upgrade_to_65(Config) ->
-    NewSettings = general_settings_defaults(?VERSION_65) --
-        general_settings_defaults(?VERSION_60),
-    json_settings_manager:upgrade_existing_key(
-      ?MODULE, Config, [{generalSettings, NewSettings}],
-      known_settings(?VERSION_65)).
 
 config_upgrade_to_70(Config) ->
     NewSettings = general_settings_defaults(?VERSION_70) --

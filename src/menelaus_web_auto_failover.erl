@@ -15,8 +15,7 @@
          handle_settings_post/1,
          handle_settings_reset_count/1,
          get_failover_on_disk_issues/1,
-         config_check_can_abort_rebalance/0,
-         config_upgrade_to_65/1]).
+         config_check_can_abort_rebalance/0]).
 
 -import(menelaus_util,
         [reply/2,
@@ -105,16 +104,6 @@ get_failover_on_disk_issues(Config) ->
             TimePeriod = proplists:get_value(timePeriod, Val),
             {Enabled, TimePeriod}
     end.
-
-config_upgrade_to_65(Config) ->
-    auto_failover:upgrade_cfg(
-      Config,
-      fun (Current) ->
-              CanAbortRebalance = cluster_compat_mode:is_enterprise(),
-              lists:keystore(?CAN_ABORT_REBALANCE_CONFIG_KEY, 1, Current,
-                             {?CAN_ABORT_REBALANCE_CONFIG_KEY,
-                              CanAbortRebalance})
-      end).
 
 %% Internal Functions
 

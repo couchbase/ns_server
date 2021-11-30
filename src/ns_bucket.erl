@@ -109,7 +109,6 @@
          buckets_with_data_on_this_node/0,
          activate_bucket_data_on_this_node/1,
          deactivate_bucket_data_on_this_node/1,
-         config_upgrade_to_65/1,
          config_upgrade_to_66/1,
          upgrade_to_chronicle/2,
          chronicle_upgrade_to_NEO/1,
@@ -1417,15 +1416,6 @@ upgrade_buckets(Config, Fun) ->
     NewBuckets = [{Name, Fun(Name, BucketConfig)} ||
                   {Name, BucketConfig} <-Buckets],
     [{set, buckets, [{configs, NewBuckets}]}].
-
-config_upgrade_to_65(Config) ->
-    MaxBuckets = case ns_config:search(Config, max_bucket_count) of
-                     false ->
-                         ?MAX_BUCKETS_SUPPORTED;
-                     {value, V} ->
-                         erlang:max(V, ?MAX_BUCKETS_SUPPORTED)
-                 end,
-    [{set, max_bucket_count, MaxBuckets}].
 
 config_upgrade_to_66(Config) ->
     upgrade_buckets(Config,

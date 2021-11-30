@@ -84,14 +84,6 @@ maybe_upgrade_to_chronicle(_, _) ->
 %% Note: upgrade functions must ensure that they do not add entries to the
 %% configuration which are already present.
 
-upgrade(?VERSION_60, Config) ->
-    {?VERSION_65,
-     menelaus_web_auto_failover:config_upgrade_to_65(Config) ++
-         ns_bucket:config_upgrade_to_65(Config) ++
-         auto_rebalance_settings:config_upgrade_to_65() ++
-         query_settings_manager:config_upgrade_to_65(Config) ++
-         menelaus_web_settings:config_upgrade_to_65(Config)};
-
 upgrade(?VERSION_65, Config) ->
     {?VERSION_66,
      menelaus_users:config_upgrade() ++

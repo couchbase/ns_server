@@ -50,7 +50,6 @@
 
          handle_reset_ciphers_suites/1,
 
-         config_upgrade_to_65/1,
          services_with_security_settings/0,
          settings_stats_validators/0,
          apply_stats_settings/1,
@@ -939,14 +938,6 @@ handle_reset_ciphers_suites(Req) ->
     ns_audit:security_settings(Req, [{cipher_suites, []}]),
     reset_per_service_cipher_suites(Req),
     reply_json(Req, {[]}).
-
-config_upgrade_to_65(Config) ->
-    case ns_config:search(Config, gotraceback) of
-        {value, <<"crash">>} ->
-            [{set, gotraceback, <<"single">>}];
-        _ ->
-            []
-    end.
 
 get_rebalance_moves_per_node() ->
     ns_config:read_key_fast(rebalance_moves_per_node,
