@@ -391,7 +391,8 @@ get_err_code_msg(cannot_drop_default_scope) ->
     {"Deleting _default scope is not allowed", 400};
 get_err_code_msg({scope_limit, ScopeName,
                   max_number_exceeded, num_collections}) ->
-    {"Maximum number of collections has been reached for scope ~p",
+    {{global_key, <<"limits">>},
+     "Maximum number of collections has been reached for scope ~p",
      [ScopeName], 429};
 get_err_code_msg({max_number_exceeded, num_scopes}) ->
     {"Maximum number of scopes has been reached", 400};
@@ -409,9 +410,14 @@ get_err_code_msg(Error) ->
     {"Unknown error ~p", [Error], 400}.
 
 get_formatted_err_msg(Error) ->
+    DefaultGlobalKey = <<"_">>,
     case get_err_code_msg(Error) of
-        {Msg, Code} -> {Msg, Code};
-        {Msg, Params, Code} -> {io_lib:format(Msg, Params), Code}
+        {Msg, Code} -> {DefaultGlobalKey, Msg, Code};
+        {Msg, Params, Code} -> {DefaultGlobalKey,
+                                io_lib:format(Msg, Params), Code};
+        {{global_key, GKey}, Msg, Params, Code} -> {GKey,
+                                                    io_lib:format(Msg, Params),
+                                                    Code}
     end.
 
 handle_rv({ok, {Uid, _}}, Req, Bucket) ->
@@ -421,15 +427,15 @@ handle_rv({ok, Uid}, Req, _Bucket) ->
 handle_rv({errors, List}, Req, Bucket) when is_list(List) ->
     maybe_log_scope_limit_stats(Req, Bucket, List),
     Errors = lists:map(fun (Elem) ->
-                               {Msg, _} = get_formatted_err_msg(Elem),
+                               {_, Msg, _} = get_formatted_err_msg(Elem),
                                Msg
                        end, lists:usort(List)),
     menelaus_util:reply_json(Req, {[{errors, Errors}]}, 400);
 handle_rv(Error, Req, Bucket) ->
     maybe_log_scope_limit_stats(Req, Bucket, [Error]),
-    {Msg, Code} = get_formatted_err_msg(Error),
-    reply_global_error(Req, Msg, Code).
+    {GKey, Msg, Code} = get_formatted_err_msg(Error),
+    reply_global_error(Req, GKey, Msg, Code).
 
-reply_global_error(Req, Msg, Code) ->
+reply_global_error(Req, Gkey, Msg, Code) ->
     menelaus_util:reply_json(
-      Req, {[{errors, {[{<<"_">>, iolist_to_binary(Msg)}]}}]}, Code).
+      Req, {[{errors, {[{Gkey, iolist_to_binary(Msg)}]}}]}, Code).

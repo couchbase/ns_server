@@ -26,7 +26,8 @@ assert_collection_uid(Bucket, Scope, Collection) ->
         {ok, Uid} ->
             Uid;
         Err ->
-            {Msg, Code} = menelaus_web_collections:get_formatted_err_msg(Err),
+            {_, Msg, Code} = menelaus_web_collections:get_formatted_err_msg(
+                               Err),
             menelaus_util:web_json_exception(Code,
                                              {[{error, iolist_to_binary(Msg)}]})
     end.
