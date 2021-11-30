@@ -58,8 +58,8 @@ update(Key, Value) ->
 
 config_default() ->
     {?QUERY_CONFIG_KEY, json_settings_manager:build_settings_json(
-                          default_settings(?VERSION_60),
-                          dict:new(), known_settings(?VERSION_60))}.
+                          default_settings(?VERSION_65),
+                          dict:new(), known_settings(?VERSION_65))}.
 
 config_upgrade_to_70(Config) ->
     NewSettings = general_settings_defaults(?VERSION_70) --

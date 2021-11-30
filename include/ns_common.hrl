@@ -229,7 +229,6 @@
 %% common memcached settings are ints which is usually 32-bits wide
 -define(MC_MAXINT, 16#7FFFFFFF).
 
--define(VERSION_60, [6, 0]).
 -define(VERSION_65, [6, 5]).
 -define(VERSION_66, [6, 6]).
 -define(VERSION_70, [7, 0]).
