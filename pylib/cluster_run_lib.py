@@ -40,6 +40,8 @@ base_backup_grpc_port = 7200
 node_start_timeout_s = 30
 default_username = "Administrator"
 default_pass = "asdasd"
+default_idx_storage_mode_ep = "plasma"
+default_idx_storage_mode_ce = "forestdb"
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
 ns_server_dir = os.path.dirname(script_dir)
@@ -643,6 +645,12 @@ def connect(num_nodes=0,
     if index_storage_mode is not None:
         o.open("http://{0}:{1}/settings/indexes".format(addr, base_port),
                do_encode("storageMode=" + index_storage_mode)).read()
+    elif community_edition:
+        o.open("http://{0}:{1}/settings/indexes".format(addr, base_port),
+               do_encode("storageMode=" + default_idx_storage_mode_ce)).read()
+    else:
+        o.open("http://{0}:{1}/settings/indexes".format(addr, base_port),
+               do_encode("storageMode=" + default_idx_storage_mode_ep)).read()
 
     for i in range(1, num_nodes):
         port = base_port + i

@@ -32,7 +32,7 @@ def usage():
             -s <memory size> (min 256) default: 256\n\
             -I <index memory size> default: 256\n\
             -M <index storage mode> (forestdb, plasma, memory_optimized)\n\
-               default: None\n\
+               default: Community: forestdb, Enterprise: plasma\n\
             -t <bucket type> (ephemeral, membase, memcached)\n\
                default: membase\n\
             -S <storage backend> (couchstore, magma)\n\
