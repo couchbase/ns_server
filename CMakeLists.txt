@@ -102,6 +102,10 @@ INSTALL (FILES
   "${NS_UI_SRC}/libs/reflect-metadata.js"
   "${NS_UI_SRC}/libs/zone.js"
   DESTINATION "${NS_UI_INSTALL_DIR}/ui/libs")
+INSTALL (FILES
+  "${NS_UI_SRC}/libs/ace/worker-javascript.js"
+  "${NS_UI_SRC}/libs/ace/worker-json.js"
+  DESTINATION "${NS_UI_INSTALL_DIR}/ui/libs/ace")
 
 # Various cleaning targets
 ADD_CUSTOM_TARGET (ns_realclean
