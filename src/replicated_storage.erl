@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 -export([start_link/4, wait_for_startup/0,
-         anounce_startup/1, sync_to_me/3]).
+         announce_startup/1, sync_to_me/3]).
 
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
@@ -56,7 +56,7 @@ wait_for_startup() ->
             exit(replicated_storage_not_available)
     end.
 
-anounce_startup(Pid) ->
+announce_startup(Pid) ->
     ?log_debug("Announce my startup to ~p", [Pid]),
     Pid ! {replicated_storege_pid, self()}.
 

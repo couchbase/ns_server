@@ -126,8 +126,8 @@ reset_master_vbucket(Bucket) ->
 %% replicated_storage callbacks
 
 init([Bucket, Replicator, ReplicationSrv]) ->
-    replicated_storage:anounce_startup(Replicator),
-    replicated_storage:anounce_startup(ReplicationSrv),
+    replicated_storage:announce_startup(Replicator),
+    replicated_storage:announce_startup(ReplicationSrv),
 
     EventManager = whereis(event_manager(Bucket)),
     true = is_pid(EventManager) andalso is_process_alive(EventManager),
