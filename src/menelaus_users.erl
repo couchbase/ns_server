@@ -185,32 +185,18 @@ init([]) ->
     _ = ets:new(versions_name(), [protected, named_table]),
     mru_cache:new(ldap_groups_cache, ?LDAP_GROUPS_CACHE_SIZE),
     _ = ets:new(?UUID_USER_MAP, [protected, set, named_table]),
-    %% notify versions after we build_uuid_user_map.
-    self() ! build_uuid_user_map,
-    #state{base = init_versions(false)}.
+    self() ! complete_init,
+    #state{}.
 
-init_versions(Notify) ->
+init_versions() ->
     Base = misc:rand_uniform(0, 16#100000000),
-    ets:insert_new(versions_name(), [{user_version, 0, Base},
-                                     {auth_version, 0, Base},
-                                     {group_version, 0, Base},
-                                     {limits_version, 0, Base}]),
-    maybe_notify_versions(Notify),
+    Versions =
+        [{V, 0, Base} ||
+            V <- [user_version, group_version, auth_version, limits_version]],
+    ets:insert_new(versions_name(), Versions),
+    [gen_event:notify(user_storage_events, {V, {0, Base}}) ||
+        {V, _, _} <- Versions],
     Base.
-
-maybe_notify_versions(true) ->
-    notify_versions();
-maybe_notify_versions(_) ->
-    ok.
-
-notify_versions() ->
-    lists:foreach(fun (Key) ->
-                          [{Key, Ver, Base}] = ets:lookup(
-                                                 versions_name(), Key),
-                          gen_event:notify(user_storage_events,
-                                           {Key, {Ver, Base}})
-                  end, [user_version, group_version, auth_version,
-                        limits_version]).
 
 on_save(Docs, OldDocs, State) ->
     ProcessDoc =
@@ -270,7 +256,7 @@ handle_info({change_version, Key} = Msg, #state{base = Base} = State) ->
     Ver = ets:update_counter(versions_name(), Key, 1),
     gen_event:notify(user_storage_events, {Key, {Ver, Base}}),
     {noreply, State};
-handle_info(build_uuid_user_map, State) ->
+handle_info(complete_init, #state{base = undefined}) ->
     pipes:run(menelaus_users:select_users({'_', local}, [uuid]),
               ?make_consumer(
                  pipes:foreach(
@@ -279,13 +265,12 @@ handle_info(build_uuid_user_map, State) ->
                            true = ets:insert_new(?UUID_USER_MAP,
                                                  {UUID, Identity})
                    end))),
-    notify_versions(),
-    {noreply, State}.
+    {noreply, #state{base = init_versions()}}.
 
 on_empty(_State) ->
     true = ets:delete_all_objects(versions_name()),
     true = ets:delete_all_objects(?UUID_USER_MAP),
-    #state{base = init_versions(true)}.
+    #state{base = init_versions()}.
 
 maybe_update_passwordless(_Identity, _Value, _Deleted, State = #state{passwordless = undefined}) ->
     State;
