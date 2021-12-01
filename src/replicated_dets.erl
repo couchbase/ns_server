@@ -133,8 +133,8 @@ handle_mass_update({Name, KeySpec, N, UpdateFun}, Updater, _State) ->
     {Errors, ParentState}.
 
 init([Name, ChildModule, InitParams, Path, Replicator]) ->
-    replicated_storage:announce_startup(Replicator),
     ChildState = ChildModule:init(InitParams),
+    replicated_storage:announce_startup(Replicator),
     init_ets(Name, protected),
     #state{name = Name,
            path = Path,
