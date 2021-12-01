@@ -707,45 +707,21 @@ trusted_CAs_pre_NEO(Config) ->
     CertAndPKey = ns_config:search(Config, cert_and_pkey),
     Extra = [{origin, upgrade}],
 
-    SelfGeneratedCAs =
-        case CertAndPKey of
-            {value, {_, SGCA, _}} ->
-                Nodes = ns_node_disco:nodes_wanted(),
-                ShouldUseSelfGeneratedCA =
-                    lists:any(
-                      fun (N) ->
-                          case ns_config:search(Config, {node, N, node_cert}) of
-                              {value, Props} ->
-                                  generated == proplists:get_value(type, Props);
-                              false ->
-                                  ?log_error("Node ~p doesn't seem to have "
-                                             "node_cert key in ns_config", [N]),
-                                  true
-                          end
-                      end, Nodes),
-                case ShouldUseSelfGeneratedCA of
-                    true ->
-                        {ok, [SGCADecoded]} = decode_certificates(SGCA),
-                        [[{id, 0} | cert_props(generated, SGCADecoded, Extra)]];
-                    false ->
-                        []
-                end;
-            {value, {SGCA, _}} ->
-                {ok, [SGCADecoded]} = decode_certificates(SGCA),
-                [[{id, 0} | cert_props(generated, SGCADecoded, Extra)]];
-            false -> []
+    PrepareCertProps =
+        fun (Id, Type, CAPem) ->
+            {ok, [CADecoded]} = decode_certificates(CAPem),
+            [{id, Id} | cert_props(Type, CADecoded, Extra)]
         end,
 
-    UploadedCAs =
-        case CertAndPKey of
-            {value, {CAProps, _, _}} ->
-                CA = proplists:get_value(pem, CAProps),
-                {ok, [CADecoded]} = decode_certificates(CA),
-                [[{id, 1} | cert_props(uploaded, CADecoded, Extra)]];
-            _ -> []
-        end,
-
-    UploadedCAs ++ SelfGeneratedCAs.
+    case CertAndPKey of
+        {value, {CAProps, SGCA, _}} ->
+            [PrepareCertProps(0, generated, SGCA),
+             PrepareCertProps(1, uploaded, proplists:get_value(pem, CAProps))];
+        {value, {SGCA, _}} ->
+            [PrepareCertProps(0, generated, SGCA)];
+        false ->
+            []
+    end.
 
 load_node_certs_from_inbox(PassphraseSettings) ->
     case file:read_file(inbox_chain_path()) of
