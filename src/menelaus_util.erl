@@ -64,7 +64,6 @@
          handle_streaming/2,
          handle_streaming/3,
          assert_is_enterprise/0,
-         assert_is_65/0,
          assert_is_66/0,
          assert_is_NEO/0,
          strip_json_struct/1,
@@ -658,10 +657,6 @@ assert_is_enterprise() ->
                           "This http API endpoint requires enterprise edition",
                           [{"X-enterprise-edition-needed", 1}])
     end.
-
-assert_is_65() ->
-    %% XXX: clean up usage of this func
-    true.
 
 assert_is_66() ->
     assert_cluster_version(fun cluster_compat_mode:is_cluster_66/0).

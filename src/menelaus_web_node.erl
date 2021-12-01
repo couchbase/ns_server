@@ -1112,7 +1112,6 @@ node_encryption_validators() ->
                         end, nodeEncryption, _)].
 
 handle_setup_net_config(Req) ->
-    menelaus_util:assert_is_65(),
     validator:handle(
       fun (Values) ->
           menelaus_util:survive_web_server_restart(
@@ -1138,7 +1137,6 @@ handle_change_external_listeners(disable_unused, Req) ->
         {error, Msg} -> menelaus_util:reply_global_error(Req, Msg)
     end;
 handle_change_external_listeners(Action, Req) ->
-    menelaus_util:assert_is_65(),
     validator:handle(
       fun (Props) ->
               case netconfig_updater:change_external_listeners(Action, Props) of

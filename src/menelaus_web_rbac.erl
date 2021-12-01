@@ -1794,8 +1794,7 @@ group_to_json(GroupId, Props) ->
           || Description =/= undefined]}.
 
 assert_groups_and_ldap_enabled() ->
-    menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_65().
+    menelaus_util:assert_is_enterprise().
 
 jsonify_profiles() ->
     ?make_transducer(

@@ -19,7 +19,6 @@
          handle_rebalance_report/1]).
 
 handle_rebalance_report(Req) ->
-    menelaus_util:assert_is_65(),
     validator:handle(do_handle_rebalance_report(Req, _), Req, qs,
                      [validator:length(reportID, 32, 32, _),
                       validator:unsupported(_)]).
