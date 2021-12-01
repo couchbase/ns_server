@@ -1029,6 +1029,7 @@ get_warnings() ->
     Config = ns_config:get(),
     Nodes = ns_node_disco:nodes_wanted(Config),
     TrustedCAs = trusted_CAs(pem),
+    IsNeo = cluster_compat_mode:is_cluster_NEO(),
     NodeWarnings =
         lists:flatmap(
           fun (Node) ->
@@ -1067,7 +1068,7 @@ get_warnings() ->
                           generated ->
                               CAPem = proplists:get_value(pem, CAProps, <<>>),
                               case filter_nodes_by_ca(Nodes, CAPem) of
-                                  [] -> [unused];
+                                  [] when IsNeo -> [unused];
                                   _ -> []
                               end;
                           _ -> []

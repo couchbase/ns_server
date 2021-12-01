@@ -36,6 +36,7 @@ handle_get_trustedCAs(Req) ->
              fun (Props) ->
                  CAId = proplists:get_value(id, Props),
                  Pem = proplists:get_value(pem, Props, <<>>),
+                 IsNeo = cluster_compat_mode:is_cluster_NEO(),
                  CANodes = ns_server_cert:filter_nodes_by_ca(Nodes, Pem),
                  BuildHostname = menelaus_web_node:build_node_hostname(
                                    ns_config:latest(), _, misc:localhost()),
@@ -43,7 +44,7 @@ handle_get_trustedCAs(Req) ->
                  CAWarnings = [W || {{ca, Id}, W} <- Warnings, Id =:= CAId],
                  {JSONObjProps} = jsonify_cert_props(
                                     [{warnings, CAWarnings} | Props]),
-                 {JSONObjProps ++ [{nodes, CAHostnames}]}
+                 {JSONObjProps ++ [{nodes, CAHostnames} || IsNeo]}
              end, ns_server_cert:trusted_CAs(props)),
     menelaus_util:reply_json(Req, Json).
 
