@@ -89,22 +89,17 @@ general_settings(Ver) ->
     [{queryTmpSpaceDir, "query.settings.tmp_space_dir",
       list_to_binary(path_config:component_path(tmp))},
      {queryTmpSpaceSize, "query.settings.tmp_space_size",
-      ?QUERY_TMP_SPACE_DEF_SIZE}] ++
-        case cluster_compat_mode:is_version_65(Ver) of
-            true ->
-                [{queryPipelineBatch,      "pipeline-batch",      16},
-                 {queryPipelineCap,        "pipeline-cap",        512},
-                 {queryScanCap,            "scan-cap",            512},
-                 {queryTimeout,            "timeout",             0},
-                 {queryPreparedLimit,      "prepared-limit",      16384},
-                 {queryCompletedLimit,     "completed-limit",     4000},
-                 {queryCompletedThreshold, "completed-threshold", 1000},
-                 {queryLogLevel,           "loglevel",            <<"info">>},
-                 {queryMaxParallelism,     "max-parallelism",     1},
-                 {queryN1QLFeatCtrl,       "n1ql-feat-ctrl",      12}];
-            false ->
-                []
-        end ++
+      ?QUERY_TMP_SPACE_DEF_SIZE},
+     {queryPipelineBatch,      "pipeline-batch",      16},
+     {queryPipelineCap,        "pipeline-cap",        512},
+     {queryScanCap,            "scan-cap",            512},
+     {queryTimeout,            "timeout",             0},
+     {queryPreparedLimit,      "prepared-limit",      16384},
+     {queryCompletedLimit,     "completed-limit",     4000},
+     {queryCompletedThreshold, "completed-threshold", 1000},
+     {queryLogLevel,           "loglevel",            <<"info">>},
+     {queryMaxParallelism,     "max-parallelism",     1},
+     {queryN1QLFeatCtrl,       "n1ql-feat-ctrl",      12}] ++
         case cluster_compat_mode:is_version_70(Ver) of
             true ->
                 [{queryTxTimeout,          "txtimeout",           <<"0ms">>},

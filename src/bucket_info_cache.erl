@@ -415,13 +415,9 @@ call_build_node_services() ->
       end).
 
 build_cluster_capabilities(Config) ->
-    case cluster_compat_mode:get_cluster_capabilities(Config) of
-        [] ->
-            [];
-        Caps ->
-            [{clusterCapabilitiesVer, [1, 0]},
-             {clusterCapabilities, {Caps}}]
-    end.
+    Caps = cluster_compat_mode:get_cluster_capabilities(Config),
+    [{clusterCapabilitiesVer, [1, 0]},
+     {clusterCapabilities, {Caps}}].
 
 do_build_node_services() ->
     Config = ns_config:get(),

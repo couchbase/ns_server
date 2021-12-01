@@ -23,7 +23,6 @@
          is_index_aware_rebalance_on/0,
          is_index_pausing_on/0,
          rebalance_ignore_view_compactions/0,
-         is_version_65/1,
          is_cluster_66/0,
          is_cluster_66/1,
          is_version_66/1,
@@ -59,13 +58,8 @@ n1ql_cluster_capabilities(?VERSION_65, true) ->
 n1ql_cluster_capabilities(?VERSION_65, false) ->
     [enhancedPreparedStatements].
 
-cluster_capabilities(Version, IsDP) ->
-    case is_version_65(Version) of
-        true ->
-            [{n1ql, n1ql_cluster_capabilities(?VERSION_65, IsDP)}];
-        false ->
-            []
-    end.
+cluster_capabilities(_Version, IsDP) ->
+    [{n1ql, n1ql_cluster_capabilities(?VERSION_65, IsDP)}].
 
 get_cluster_capabilities(Config) ->
     cluster_capabilities(get_compat_version(Config),
@@ -129,9 +123,6 @@ is_enabled(Config, FeatureVersion) ->
                 get_ns_config_compat_version(Config)
         end,
     is_enabled_at(CompatVersion, FeatureVersion).
-
-is_version_65(ClusterVersion) ->
-    is_enabled_at(ClusterVersion, ?VERSION_65).
 
 is_version_66(ClusterVersion) ->
     is_enabled_at(ClusterVersion, ?VERSION_66).
