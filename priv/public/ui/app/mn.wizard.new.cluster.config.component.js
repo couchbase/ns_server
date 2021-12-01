@@ -96,11 +96,21 @@ class MnWizardNewClusterConfigComponent extends MnLifeCycleHooksToStream {
           ))
           .setPostRequest(mnWizardService.stream.postClusterInitHttp);
 
+        /** We need to check for err === 0 for certificate specific errors
+         *  when using TLS. Certificates are regenerated during the middle
+         *  of postClusterInitHttp, which causes postUILogin to error or
+         *  more specifically, timeout.
+        */
         this.form
           .setPackPipe(map(mnWizardService.getUserCreds.bind(mnWizardService)))
           .setPostRequest(mnAuthService.stream.postUILogin)
           .clearErrors()
           .showGlobalSpinner()
+          .error(err => {
+            if (err === 0) {
+              window.location.reload();
+            }
+          })
           .success(() => {
             $rootScope.mnGlobalSpinnerFlag = true;
             mnPools.clearCache();
