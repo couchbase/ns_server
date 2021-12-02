@@ -192,6 +192,11 @@ build_pool_info(Id, Req, normal, Stability, LocalAddr, UpdateID) ->
 build_pool_info(Id, _Req, for_ui, Stability, LocalAddr, _UpdateID) ->
     do_build_pool_info(Id, for_ui, Stability, LocalAddr).
 
+server_groups_uri_json(GroupsV) ->
+    [{serverGroupsUri, <<"/pools/default/serverGroups?v=",
+                         (list_to_binary(integer_to_list(GroupsV)))/binary>>} ||
+        cluster_compat_mode:is_enterprise()].
+
 do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
     Ctx = menelaus_web_node:get_context({ip, LocalAddr}, false, Stability),
     Config = menelaus_web_node:get_config(Ctx),
@@ -229,9 +234,6 @@ do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
          {tasks, {struct, [{uri, TasksURI}]}},
          {counters, {struct, ns_cluster:counters()}},
          {indexStatusURI, <<"/indexStatus?v=", IndexesVersion/binary>>},
-         {serverGroupsUri,
-          <<"/pools/default/serverGroups?v=",
-            (list_to_binary(integer_to_list(GroupsV)))/binary>>},
          {trustedCAsURI, <<"/pools/default/trustedCAs?v=",
                            TrustedCertsVBin/binary>>},
          {clusterName, list_to_binary(get_cluster_name())},
@@ -242,7 +244,8 @@ do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
          menelaus_web_node:build_memory_quota_info(Config),
          build_ui_params(InfoLevel, Snapshot),
          build_internal_params(InfoLevel),
-         build_unstable_params(Ctx)],
+         build_unstable_params(Ctx),
+         server_groups_uri_json(GroupsV)],
     {struct, lists:flatten(PropList)}.
 
 build_rebalance_params(Id, UUID) ->

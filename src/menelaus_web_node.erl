@@ -490,6 +490,9 @@ alternate_addresses_json(Node, Config, Snapshot, WantedPorts) ->
     External = construct_ext_json(ExtHostname, ExtPorts),
     [{alternateAddresses, {struct, External}} || External =/= []].
 
+server_groups_json(ServerGroup) ->
+    [{serverGroup, ServerGroup} || cluster_compat_mode:is_enterprise()].
+
 construct_ext_json(undefined, _Ports) ->
     [];
 construct_ext_json(Hostname, []) ->
@@ -553,7 +556,6 @@ build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr) ->
 
     RV = [{hostname, build_node_hostname(Config, WantENode, LocalAddr)},
           {nodeUUID, NodeUUID},
-          {serverGroup, ServerGroup},
           {clusterCompatibility,
            cluster_compat_mode:effective_cluster_compat_version()},
           {version, list_to_binary(Version)},
@@ -567,7 +569,9 @@ build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr) ->
          ] ++ [{addressFamily, AFamily} || AFamily =/= undefined]
            ++ [{externalListeners, Listeners} || Listeners =/= undefined]
            ++ alternate_addresses_json(WantENode, Config, Snapshot,
-                                       WantedPorts),
+                                       WantedPorts)
+           ++ server_groups_json(ServerGroup),
+
     case WantENode =:= node() of
         true ->
             [{thisNode, true} | RV];
