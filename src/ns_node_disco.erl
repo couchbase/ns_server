@@ -182,6 +182,12 @@ handle_info({nodeup, Node, InfoList}, State) ->
 handle_info({nodedown, Node, InfoList}, State) ->
     ?user_log(?NODE_DOWN, "Node ~p saw that node ~p went down. Details: ~p",
               [node(), Node, InfoList]),
+    %% InfoList can be any term(), based on the erlang distribution being
+    %% used between the nodes - therefore print the entire term() instead of
+    %% trying to JSON-ifying it.
+    event_log:add_log(node_down, [{down_node, Node},
+                                  {reason, iolist_to_binary(
+                                             io_lib:format("~p",[InfoList]))}]),
     self() ! notify_clients,
     {noreply, State};
 
