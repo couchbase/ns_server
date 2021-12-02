@@ -265,7 +265,7 @@ handle_call({record_rebalance_report, {ResultType, ExitInfo}}, From,
                  ok;
              Err ->
                  ?log_info("Unable to record report ~p, Error ~p",
-                           [Report, Err]),
+                           [Report, Err], [{chars_limit, -1}]),
                  Err
          end,
     {reply, RV, NewState};
@@ -277,7 +277,8 @@ handle_cast({note, Event}, State) ->
     {noreply, handle_master_event(Event, State)};
 
 handle_cast({update_stats, BucketName, VBucket, NodeToDocsLeft}, State) ->
-    ?log_debug("Got update_stats: ~p, ~p", [VBucket, NodeToDocsLeft]),
+    ?log_debug("Got update_stats: ~p, ~p", [VBucket, NodeToDocsLeft],
+               [{chars_limit, -1}]),
     {noreply,
      update_move(
        State, BucketName, VBucket,
@@ -357,7 +358,7 @@ initiate_bucket_rebalance(BucketName, {Moves, UndefinedMoves}, OldState) ->
 
     SomeEstimates = lists:append(SomeEstimates0),
 
-    ?log_debug("Initial estimates:~n~p", [SomeEstimates]),
+    ?log_debug("Initial estimates:~n~p", [SomeEstimates], [{chars_limit, -1}]),
 
     BuiltMoves =
         [begin
@@ -394,7 +395,7 @@ initiate_bucket_rebalance(BucketName, {Moves, UndefinedMoves}, OldState) ->
                            || {VB, ChainBefore, ChainAfter, _} <- UndefinedMoves],
 
     AllMoves = BuiltMoves ++ BuiltUndefinedMoves,
-    ?log_debug("Moves:~n~p", [AllMoves]),
+    ?log_debug("Moves:~n~p", [AllMoves], [{chars_limit, -1}]),
     TmpState = update_vb_and_rep_info(OldState, BucketName,
                                       dict:from_list(AllMoves)),
     TmpState#state{bucket = BucketName}.
@@ -504,7 +505,7 @@ docs_left_updater_loop(Parent) ->
             ok;
         _ ->
             ?log_debug("Starting docs_left_updater_loop:~p~n~p",
-                       [BucketName, Moves])
+                       [BucketName, Moves], [{chars_limit, -1}])
     end,
     [update_docs_left_for_move(Parent, BucketName, VB, VBInfo)
      || {VB, VBInfo} <- Moves,
