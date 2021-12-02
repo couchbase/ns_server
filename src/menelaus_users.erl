@@ -257,7 +257,7 @@ handle_info({change_version, Key} = Msg, #state{base = Base} = State) ->
     gen_event:notify(user_storage_events, {Key, {Ver, Base}}),
     {noreply, State};
 handle_info(complete_init, #state{base = undefined}) ->
-    pipes:run(menelaus_users:select_users({'_', local}, [uuid]),
+    pipes:run(select_users({'_', local}, [uuid]),
               ?make_consumer(
                  pipes:foreach(
                    ?producer(),
