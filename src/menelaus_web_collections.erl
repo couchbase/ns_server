@@ -126,9 +126,7 @@ service_scope_limit_validators(index) ->
     [validator:integer(num_indexes, 1, infinity, _),
      validator:unsupported(_)];
 service_scope_limit_validators(kv) ->
-    [validator:integer(data_size_mib, 1,
-                       %% Bytes representation must fit an unsigned 64
-                       trunc(?MC_MAXUINT64 / 1024 / 1024), _),
+    [validator:integer(data_size, 1, infinity, _),
      validator:unsupported(_)].
 
 scope_limit_validators(Type) ->

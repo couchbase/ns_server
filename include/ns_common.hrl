@@ -226,9 +226,8 @@
 -define(DEFAULT_MAX_ROLLBACK_PTS_PLASMA, 2).
 -define(DEFAULT_MAX_ROLLBACK_PTS_FORESTDB, 5).
 
-%% common memcached settings are ints
+%% common memcached settings are ints which is usually 32-bits wide
 -define(MC_MAXINT, 16#7FFFFFFF).
--define(MC_MAXUINT64, 16#FFFFFFFFFFFFFFFF).
 
 -define(VERSION_60, [6, 0]).
 -define(VERSION_65, [6, 5]).
