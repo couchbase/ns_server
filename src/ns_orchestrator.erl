@@ -610,8 +610,9 @@ idle({create_bucket, BucketType, BucketName, NewConfig}, From, _State) ->
             end,
     case Reply of
         ok ->
+            NewConfigJSON = ns_bucket:build_bucket_props_json(NewConfig),
             master_activity_events:note_bucket_creation(BucketName, BucketType,
-                                                        NewConfig),
+                                                        NewConfigJSON),
             StorageMode = proplists:get_value(storage_mode, NewConfig,
                                               undefined),
             event_log:add_log(
@@ -620,7 +621,7 @@ idle({create_bucket, BucketType, BucketName, NewConfig}, From, _State) ->
                {bucket_uuid, ns_bucket:uuid(BucketName, direct)},
                {bucket_type, ns_bucket:display_type(BucketType, StorageMode)},
                {bucket_props,
-                {struct, ns_bucket:build_bucket_props_json(NewConfig)}}]),
+                {struct, NewConfigJSON}}]),
             request_janitor_run({bucket, BucketName});
         _ -> ok
     end,
