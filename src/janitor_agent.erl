@@ -118,8 +118,7 @@ maybe_send_warming(Parent, undefined, warming_up) ->
 maybe_send_warming(_Parent, Warming, _Reason) ->
     Warming.
 
--type query_vbuckets_call() :: query_vbucket_states |
-                               {query_vbuckets, [vbucket_id()], list(), list()}.
+-type query_vbuckets_call() :: {query_vbuckets, [vbucket_id()], list(), list()}.
 -spec wait_for_memcached([{node(), query_vbuckets_call()}], bucket_name(),
                          non_neg_integer()) -> [{node(),
                                                  {ok, list()} |
@@ -609,9 +608,6 @@ do_handle_call(complete_flush, _From, State) ->
     %% by orchestrator
     chronicle_compat:pull(),
     {reply, ok, consider_doing_flush(State)};
-do_handle_call(query_vbucket_states, _From, State) ->
-    {RV, NewState} = handle_query_vbuckets(query_vbucket_states, State),
-    {reply, RV, NewState};
 do_handle_call({query_vbuckets, _, _, _} = Call, _From, State) ->
     {RV, NewState} =
         handle_query_vbuckets(Call, State),
@@ -1105,9 +1101,6 @@ handle_query_vbuckets(Call, #state{bucket_name = BucketName,
     %% NOTE: uses 'outer' memcached timeout of 60 seconds
     {Fun, Options} =
         case Call of
-            query_vbucket_states ->
-                {?cut((catch ns_memcached:local_connected_and_list_vbuckets(
-                               BucketName))), []};
             {query_vbuckets, VBs, Keys, Opts} ->
                 {?cut((catch perform_query_vbuckets(Keys, VBs, BucketName))),
                  Opts}
