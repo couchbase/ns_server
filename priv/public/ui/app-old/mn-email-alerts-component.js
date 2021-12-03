@@ -135,7 +135,7 @@ mn.components.MnEmailAlerts =
       switch (name) {
       case this.alerts[0]: return 'Node was auto-failed-over';
       case this.alerts[1]: return 'Maximum number of auto-failed-over nodes was reached';
-      case this.alerts[2]: return 'Node wasn\'t auto-failed-over as other nodes are down at the same time';
+      case this.alerts[2]: return 'Node was not auto-failed-over as other nodes are down at the same time';
       case this.alerts[3]: return 'Node was not auto-failed-over as there are not enough nodes in the cluster running the same service';
       case this.alerts[4]: return 'Node was not auto-failed-over as auto-failover for one or more services running on the node is disabled';
       case this.alerts[5]: return 'Node\'s IP address has changed unexpectedly';

@@ -181,7 +181,7 @@ class MnSettingsAlertsComponent extends MnLifeCycleHooksToStream {
     switch (alert) {
       case knownAlerts[0]: return 'Node was auto-failed-over';
       case knownAlerts[1]: return 'Maximum number of auto-failed-over nodes was reached';
-      case knownAlerts[2]: return 'Node wasn\'t auto-failed-over as other nodes are down at the same time';
+      case knownAlerts[2]: return 'Node was not auto-failed-over as other nodes are down at the same time';
       case knownAlerts[3]: return 'Node was not auto-failed-over as there are not enough nodes in the cluster running the same service';
       case knownAlerts[4]: return 'Node was not auto-failed-over as auto-failover for one or more services running on the node is disabled';
       case knownAlerts[5]: return 'Node\'s IP address has changed unexpectedly';
