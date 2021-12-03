@@ -747,7 +747,7 @@ do_change_address(NewAddr, UserSupplied) ->
         end,
 
     ?cluster_info("Change of address to ~p is requested.", [NewAddr1]),
-    case maybe_rename(NewAddr1, UserSupplied) of
+    case maybe_rename(NewAddr1, UserSupplied, undefined) of
         not_renamed ->
             not_renamed;
         renamed ->
@@ -758,7 +758,7 @@ do_change_address(NewAddr, UserSupplied) ->
             Other
     end.
 
-maybe_rename(NewAddr, UserSupplied) ->
+maybe_rename(NewAddr, UserSupplied, AddrValidationFun) ->
     OldName = node(),
     OnRename =
         fun() ->
@@ -771,7 +771,8 @@ maybe_rename(NewAddr, UserSupplied) ->
                 remote_monitors:register_node_renaming_txn(self())
         end,
 
-    case dist_manager:adjust_my_address(NewAddr, UserSupplied, OnRename) of
+    case dist_manager:adjust_my_address(NewAddr, UserSupplied, OnRename,
+                                        AddrValidationFun) of
         nothing ->
             ?cluster_debug("Not renaming node.", []),
             not_renamed;
@@ -783,7 +784,9 @@ maybe_rename(NewAddr, UserSupplied) ->
             Error;
         net_restarted ->
             ?cluster_debug("Renamed node from ~p to ~p.", [OldName, node()]),
-            renamed
+            renamed;
+        {validation_failed, _} = Error ->
+            Error
     end.
 
 check_add_possible(RemoteAddr, Body) ->

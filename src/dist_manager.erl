@@ -21,7 +21,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--export([adjust_my_address/3, save_address_config/1,
+-export([adjust_my_address/4, save_address_config/1,
          ip_config_path/0, using_user_supplied_address/0, reset_address/0,
          wait_for_node/1, fixup_config/1, need_fixup/0, get_rename_txn_pid/0]).
 
@@ -238,11 +238,18 @@ decode_status({ok, _Pid}) ->
 decode_status({error, {{already_started, _Pid}, _Stack}}) ->
     false.
 
--spec adjust_my_address(string(), boolean(), fun()) ->
+-spec adjust_my_address(string(), boolean(), fun(), fun() | undefined) ->
                                net_restarted | not_self_started | nothing |
-                               {address_save_failed, term()}.
-adjust_my_address(MyIP, UserSupplied, OnRename) ->
-    gen_server:call(?MODULE, {adjust_my_address, MyIP, UserSupplied, OnRename}, infinity).
+                               {address_save_failed, term()} |
+                               {validation_failed, any()}.
+adjust_my_address(MyIP, UserSupplied, OnRename, AddrValidationFun) ->
+    case gen_server:call(?MODULE,
+                         {adjust_my_address, MyIP, UserSupplied, OnRename,
+                          AddrValidationFun},
+                         infinity) of
+        {exception, C, E, ST} -> erlang:raise(C, E, ST);
+        Res -> Res
+    end.
 
 %% Bring up distributed erlang.
 bringup(MyIP, UserSupplied) ->
@@ -323,9 +330,21 @@ get_rename_txn_pid() ->
             Pid
     end.
 
-handle_adjust_address(MyIP, UserSupplied, OnRename, State) ->
+handle_adjust_address(MyIP, UserSupplied, OnRename, AddrValidationFun, State) ->
     misc:executing_on_new_process(
-      ?cut(do_adjust_address(MyIP, UserSupplied, OnRename, State))).
+      ?cut(do_adjust_address(MyIP, UserSupplied, OnRename, AddrValidationFun,
+                             State))).
+
+do_adjust_address(MyIP, UserSupplied, OnRename, undefined, State) ->
+    do_adjust_address(MyIP, UserSupplied, OnRename, State);
+do_adjust_address(MyIP, UserSupplied, OnRename, AddrValidationFun, State) ->
+    try AddrValidationFun(MyIP) of
+        ok -> do_adjust_address(MyIP, UserSupplied, OnRename, State);
+        {error, Reason} -> {reply, {validation_failed, Reason}, State}
+    catch
+        C:E:ST ->
+            {reply, {exception, C, E, ST}, State}
+    end.
 
 do_adjust_address(MyIP, UserSupplied, OnRename,
                   State = #state{my_ip = MyOldIP}) ->
@@ -478,24 +497,29 @@ fixup_config(KV) ->
             KV
     end.
 
-handle_call({adjust_my_address, _, _, _}, _From,
+handle_call({adjust_my_address, _, _, _, _}, _From,
             #state{self_started = false} = State) ->
     {reply, not_self_started, State};
-handle_call({adjust_my_address, MyIP, true, OnRename}, From, State) ->
+handle_call({adjust_my_address, MyIP, true, OnRename, AddrValidationFun}, From,
+            State) ->
     case misc:is_localhost(MyIP) of
         true ->
-            handle_call({adjust_my_address, MyIP, false, OnRename}, From, State);
+            handle_call({adjust_my_address, MyIP, false, OnRename,
+                         AddrValidationFun}, From, State);
         false ->
-            handle_adjust_address(MyIP, true, OnRename, State)
+            handle_adjust_address(MyIP, true, OnRename, AddrValidationFun,
+                                  State)
     end;
-handle_call({adjust_my_address, _MyIP, false = _UserSupplied, _}, _From,
+handle_call({adjust_my_address, _MyIP, false = _UserSupplied, _, _}, _From,
             #state{user_supplied = true} = State) ->
     {reply, nothing, State};
-handle_call({adjust_my_address, MyOldIP, UserSupplied, _}, _From,
+handle_call({adjust_my_address, MyOldIP, UserSupplied, _, _}, _From,
             #state{my_ip = MyOldIP, user_supplied = UserSupplied} = State) ->
     {reply, nothing, State};
-handle_call({adjust_my_address, MyIP, UserSupplied, OnRename}, _From, State) ->
-    handle_adjust_address(MyIP, UserSupplied, OnRename, State);
+handle_call({adjust_my_address, MyIP, UserSupplied, OnRename,
+             AddrValidationFun}, _From, State) ->
+    handle_adjust_address(MyIP, UserSupplied, OnRename, AddrValidationFun,
+                          State);
 
 handle_call(using_user_supplied_address, _From,
             #state{user_supplied = UserSupplied} = State) ->
