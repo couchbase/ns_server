@@ -60,7 +60,7 @@ licenses/APL2.txt.
              ng-model="settingsAutoFailoverCtl.autoFailoverSettings.maxCount"
              ng-disabled="!settingsAutoFailoverCtl.autoFailoverSettings.enabled || !rbac.cluster.settings.write"
              class="input-small input-short-1">
-          &nbsp;event{{settingsAutoFailoverCtl.autoFailoverSettings.maxCount !== 1 ? "s" : ""}}
+          &nbsp;{{adminCtl.poolDefault.compat.atLeast71 ? 'node' : 'event'}}{{settingsAutoFailoverCtl.autoFailoverSettings.maxCount !== 1 ? "s" : ""}}
         </span>
       </div>
       <div
