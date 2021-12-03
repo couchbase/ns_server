@@ -249,25 +249,27 @@ recent(StartSeqNum) ->
          end, {StartSeqNum, []}, recent()),
     {MaxSeqNum, [{struct, get_event(strip_seqnum(L))} || L <- Logs]}.
 
--spec build_events_json(MinTStamp :: undefined | string(),
+-spec build_events_json(SinceTime :: undefined | string(),
                         Limit :: -1 | non_neg_integer()) ->
         [term()].
-build_events_json(MinTStamp, Limit) ->
+build_events_json(SinceTime, Limit) ->
     Logs0 = recent(),
-    Logs = case {MinTStamp, Limit} of
+    Logs = case {SinceTime, Limit} of
                {_, 0} ->
                    [];
                {undefined, -1} ->
                    Logs0;
                {undefined, L} ->
-                   misc:tail_of_length(Logs0, L);
+                   %% If SinceTime is 'undefined', return the most recent
+                   %% "Limit" number of logs.
+                   lists:sublist(Logs0, L);
                _ ->
                    FilteredLogs = lists:filter(
                                     fun (Log0) ->
                                             Log = strip_seqnum(Log0),
                                             TStamp = Log#log_entry.timestamp,
                                             if
-                                                TStamp >= MinTStamp ->
+                                                TStamp >= SinceTime ->
                                                     true;
                                                 true ->
                                                     false
