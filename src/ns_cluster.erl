@@ -181,20 +181,29 @@ apply_certs() ->
             %% when node is loaded via http (not https). In case of https
             %% certificates must already be loaded by this moment, we won't be
             %% able to establish a TLS connection for engage_cluster otherwise.
-            case ns_server_cert:are_certs_loaded() orelse
+            %% Note 3:
+            %% We only try loading non-pkcs12 certs here mostly because of the
+            %% following reasons:
+            %%  * This code is for backward compatibility only, and we don't
+            %%    have to be backward compatible when PKCS12 file is used.
+            %%    P12 file should always be loaded explicitly before the join;
+            %%  * We can't tell for sure if we already loaded
+            %%    certs from this file or not without a password (because in p12
+            %%    file cert chain is also encrypted).
+            InboxChainFile = ns_server_cert:inbox_chain_path(),
+            ShouldTryLoadCerts =
+                filelib:is_file(InboxChainFile) andalso
+                (not ns_server_cert:is_cert_loaded_from_file(InboxChainFile)),
+            case ShouldTryLoadCerts andalso
                  ns_server_cert:load_node_certs_from_inbox([]) of
-                true ->
-                    ?log_info("Certificates are already loaded, skipping "
-                              "apply_certs stage"),
+                false ->
+                    ?log_info("Certificates are already loaded or not "
+                              "provided, skipping apply_certs stage"),
                     ok;
                 {ok, Props} ->
                     ns_ssl_services_setup:sync(),
                     ?log_info("Custom certificate was loaded on the node "
                               "before joining. Props: ~p", [Props]),
-                    ok;
-                {error, {read_chain, _, enoent}} ->
-                    ?log_info("Skipping apply_certs because certs don't "
-                              "exist"),
                     ok;
                 {error, Error} ->
                     Message =

@@ -24,7 +24,7 @@
          self_generated_ca/0,
          set_cluster_ca/1, %% deprecated
          load_node_certs_from_inbox/1,
-         are_certs_loaded/0,
+         is_cert_loaded_from_file/1,
          load_CAs_from_inbox/0,
          add_CAs/2,
          add_CAs/3,
@@ -39,7 +39,8 @@
          trusted_CAs/1,
          trusted_CAs_pre_NEO/1,
          generate_node_certs/1,
-         filter_nodes_by_ca/2]).
+         filter_nodes_by_ca/2,
+         inbox_chain_path/0]).
 
 inbox_ca_path() ->
     filename:join(path_config:component_path(data, "inbox"), "CA").
@@ -850,8 +851,8 @@ call_openssl(OpensslCmd, Args, Env) ->
             end
     end.
 
-are_certs_loaded() ->
-    case file:read_file(inbox_chain_path()) of
+is_cert_loaded_from_file(ChainPath) ->
+    case file:read_file(ChainPath) of
         {ok, Chain} ->
             CurChain =
                 proplists:get_value(pem, get_node_cert_info(node()), <<>>),
