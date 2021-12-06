@@ -402,11 +402,11 @@ def start_cluster(num_nodes=1,
 
     extra_args += ["-ns_server", "loglevel_stderr", loglevel]
 
-    plugins_dir = os.path.join(ns_server_dir, '..', 'build',
-                               'cluster_run_ui_plugins')
+    plugins_dir = os.path.join(ns_server_dir, '..', 'install',
+                               'etc', 'couchbase')
     if os.path.isdir(plugins_dir):
         for f in os.listdir(plugins_dir):
-            if fnmatch.fnmatch(f, 'pluggable-ui-*.cluster_run.json'):
+            if fnmatch.fnmatch(f, 'pluggable-ui-*.json'):
                 pluggable_config.append(os.path.join(plugins_dir, f))
 
     if pluggable_config:
