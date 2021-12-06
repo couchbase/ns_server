@@ -254,6 +254,12 @@ low_security_ciphers_openssl() ->
      "RC4-MD5",
      "PSK-RC4-SHA",
      "RSA-PSK-RC4-SHA",
+     "ECDHE-ECDSA-3DES-EDE-CBC-SHA",
+     "ECDHE-RSA-3DES-EDE-CBC-SHA",
+     "DHE-RSA-3DES-EDE-CBC-SHA",
+     "DHE-DSS-3DES-EDE-CBC-SHA",
+     "ECDH-ECDSA-3DES-EDE-CBC-SHA",
+     "ECDH-RSA-3DES-EDE-CBC-SHA",
      "EXP-ADH-RC4-MD5",
      "EXP-RC4-MD5",
      "EXP-RC4-MD5"].
