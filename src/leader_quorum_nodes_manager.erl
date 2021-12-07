@@ -157,8 +157,25 @@ handle_quorum_nodes_updated(#state{quorum_nodes = QuorumNodes} = State) ->
                          "Our quorum nodes: ~p~n"
                          "Their quorum nodes: ~p",
                          [QuorumNodesList, NewQuorumNodesList]),
-            exit({quorum_nodes_update_conflict,
-                  QuorumNodesList, NewQuorumNodesList})
+
+            %% The idea here is that if our node thinks to be the leader, but
+            %% we somehow got a notification that some other node updated the
+            %% set of quorum nodes, that should mean that that other node also
+            %% thinks to be the leader and we neeed to terminate any leader
+            %% activities as soon as possible.
+            %%
+            %% But this case is also hit when we go through node rename, when
+            %% ns_config gets rewritten with the new node name. Detecting this
+            %% situation isn't very easy, and, it's actually ok to restart in
+            %% that case: in fact, after the rename all leader-related
+            %% processes are explicitly restarted anyway.
+            %%
+            %% Since the most common case when we hit this code is indeed
+            %% during node rename, to prevent any false alarms, terminate
+            %% quitely.
+            exit({shutdown,
+                  {quorum_nodes_update_conflict,
+                   QuorumNodesList, NewQuorumNodesList}})
     end.
 
 set_quorum_nodes_in_config(QuorumNodes) ->
