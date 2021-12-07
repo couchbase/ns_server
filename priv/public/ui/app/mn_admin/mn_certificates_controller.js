@@ -57,6 +57,12 @@ function mnCertController($scope, mnCertificatesService, mnPromiseHelper, mnHelp
       .subscribe("rootCertificate", vm)
       .reloadOnScopeEvent("reloadGetPoolsDefaultTrustedCAs")
       .cycle();
+
+    new mnPoller($scope, function () {
+      return mnCertificatesService.getNodeCertificateSettings();
+    })
+      .subscribe("nodeCertSettings", vm)
+      .cycle();
   }
 
   function showDeleteConfirmation(id) {

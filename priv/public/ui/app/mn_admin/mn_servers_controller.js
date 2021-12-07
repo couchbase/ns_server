@@ -87,7 +87,7 @@ angular
     mnClusterConfigurationService
   ])
   .config(["$stateProvider", configure])
-  .controller('mnServersController', ["$scope", "$state", "$uibModal", "mnPoolDefault", "mnPoller", "mnServersService", "mnHelper", "mnGroupsService", "mnPromiseHelper", "permissions", "mnStatisticsNewService", "pools", "poolDefault", mnServersController])
+  .controller('mnServersController', ["$scope", "$state", "$uibModal", "mnPoolDefault", "mnPoller", "mnServersService", "mnHelper", "mnGroupsService", "mnPromiseHelper", "permissions", "mnStatisticsNewService", "mnCertificatesService", "pools", "poolDefault", mnServersController])
   .controller('mnServersListItemDetailsController', mnServersListItemDetailsController)
   .controller("mnServersListItemController", mnServersListItemController)
   .controller('mnServersFailOverDialogController', mnServersFailOverDialogController)
@@ -134,7 +134,7 @@ function configure($stateProvider) {
     });
 }
 
-function mnServersController($scope, $state, $uibModal, mnPoolDefault, mnPoller, mnServersService, mnHelper, mnGroupsService, mnPromiseHelper, permissions, mnStatisticsNewService, pools, poolDefault) {
+function mnServersController($scope, $state, $uibModal, mnPoolDefault, mnPoller, mnServersService, mnHelper, mnGroupsService, mnPromiseHelper, permissions, mnStatisticsNewService, mnCertificatesService, pools, poolDefault) {
   var vm = this;
   vm.mnPoolDefault = mnPoolDefault.latestValue();
 
@@ -173,6 +173,11 @@ function mnServersController($scope, $state, $uibModal, mnPoolDefault, mnPoller,
       })
       .reloadOnScopeEvent(["mnPoolDefaultChanged", "reloadNodes"])
       .cycle();
+
+    mnPromiseHelper(vm, mnCertificatesService.getNodeCertificateSettingsByNode())
+      .applyToScope(certificatesByNode => {
+        vm.nodeCertificates = certificatesByNode;
+      });
 
     // $scope.$on("reloadServersPoller", function () {
     //   vm.showSpinner = true;

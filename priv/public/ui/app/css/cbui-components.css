@@ -2238,7 +2238,8 @@ span.adder:hover {
 }
 .service-widget.dynamic_unhealthy,
 .dynamic_inactiveFailed,
-.dynamic_unhealthy {
+.dynamic_unhealthy,
+.dynamic_healthy.major_cert_warning {
   border-left: 8px solid #d65558; /* red-2 */
   animation: pulse_unhealthy 3s infinite;
 }
@@ -2262,6 +2263,10 @@ span.adder:hover {
   50% {
     border-left-color: #fdedd3; /* orange-6 */
   }
+}
+
+.dynamic_healthy.minor_cert_warning {
+  border-left: 8px solid #f7a623;  /* orange-1 */
 }
 
 /* selecting user roles ------------------------------------------------  */

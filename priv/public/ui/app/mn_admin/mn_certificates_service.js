@@ -23,7 +23,9 @@ function mnCertificatesFactory($http, mnPoolDefault) {
     getClientCertificateSettings: getClientCertificateSettings,
     postClientCertificateSettings: postClientCertificateSettings,
     getPoolsDefaultTrustedCAs: getPoolsDefaultTrustedCAs,
-    deletePoolsDefaultTrustedCAs: deletePoolsDefaultTrustedCAs
+    deletePoolsDefaultTrustedCAs: deletePoolsDefaultTrustedCAs,
+    getNodeCertificateSettings: getNodeCertificateSettings,
+    getNodeCertificateSettingsByNode: getNodeCertificateSettingsByNode,
   };
 
   return mnCertificatesService;
@@ -34,6 +36,36 @@ function mnCertificatesFactory($http, mnPoolDefault) {
       url: '/settings/clientCertAuth',
     }).then(function (resp) {
       return resp.data;
+    });
+  }
+
+  function getNodeCertificateSettings() {
+    return $http({
+      method: 'GET',
+      url: '/pools/default/certificates',
+    }).then(function (resp) {
+      return resp.data;
+    });
+  }
+
+  function getNodeCertificateSettingsByNode() {
+    return mnCertificatesService.getNodeCertificateSettings().then(function (resp) {
+      let certificatesByNode = {};
+
+      resp.forEach(cert => {
+        if (cert.warnings) {
+          let severityValues = cert.warnings.reduce((acc, curr) => {
+            acc.push(curr.severity);
+            return acc;
+          }, []);
+
+          cert.highestSeverity = Math.max(severityValues);
+        }
+
+        certificatesByNode[cert.node] = cert;
+      });
+
+      return certificatesByNode;
     });
   }
 

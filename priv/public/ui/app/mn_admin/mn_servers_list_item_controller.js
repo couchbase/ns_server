@@ -14,8 +14,7 @@ export default mnServersListItemController;
 
 mnServersListItemController.$inject = ["$scope", "$rootScope", "$uibModal", "mnServersService", "mnMemoryQuotaService", "mnGsiService", "mnPromiseHelper", "mnPermissions", "mnPoolDefault"];
 function mnServersListItemController($scope, $rootScope, $uibModal, mnServersService, mnMemoryQuotaService, mnGsiService, mnPromiseHelper, mnPermissions, mnPoolDefault) {
-
-  var vm = this
+  var vm = this;
 
   vm.cancelEjectServer = cancelEjectServer;
   vm.cancelFailOverNode = cancelFailOverNode;
@@ -24,6 +23,8 @@ function mnServersListItemController($scope, $rootScope, $uibModal, mnServersSer
   vm.ejectServer = ejectServer;
   vm.disableRemoveBtn = disableRemoveBtn;
   vm.isFailOverDisabled = isFailOverDisabled;
+  vm.hasMinorCertWarning = hasMinorCertWarning;
+  vm.hasMajorCertWarning = hasMajorCertWarning;
 
   var ramUsageConf = {};
   var swapUsageConf = {};
@@ -194,5 +195,19 @@ function mnServersListItemController($scope, $rootScope, $uibModal, mnServersSer
   function cancelEjectServer(node) {
     mnServersService.removeFromPendingEject(node);
     $rootScope.$broadcast("reloadNodes");
+  }
+
+  function hasMajorCertWarning(node) {
+    let nodeCertificate = $scope.serversCtl.nodeCertificates &&
+      $scope.serversCtl.nodeCertificates[node.configuredHostname];
+
+    return nodeCertificate && nodeCertificate.highestSeverity > 2;
+  }
+
+  function hasMinorCertWarning(node) {
+    let nodeCertificate = $scope.serversCtl.nodeCertificates &&
+      $scope.serversCtl.nodeCertificates[node.configuredHostname];
+
+    return nodeCertificate && ((nodeCertificate.highestSeverity == 1) || (nodeCertificate.highestSeverity == 2));
   }
 }
