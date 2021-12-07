@@ -28,10 +28,14 @@
 %% @doc Notify the supervisor that the node's name has changed so it
 %% can restart children that care.
 node_name_changed() ->
-    {ok, _} = restartable:restart(?MODULE, ns_doctor_sup),
-    {ok, _} = restartable:restart(?MODULE, leader_services_sup),
-    ok.
-
+    case whereis(?MODULE) of
+        Pid when is_pid(Pid) ->
+            {ok, _} = restartable:restart(Pid, ns_doctor_sup),
+            {ok, _} = restartable:restart(Pid, leader_services_sup);
+        undefined ->
+            %% ns_server_sup has not started yet, no need to restart anything
+            ok
+    end.
 
 start_link() ->
     supervisor2:start_link({local, ?MODULE}, ?MODULE, []).

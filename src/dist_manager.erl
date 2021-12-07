@@ -430,6 +430,7 @@ complete_rename(OldNode, RenameFun) ->
     %% the node-in-cluster will try to connect to us immediately, so we can't
     %% wait.
     catch cb_dist:ensure_config(),
+    ns_server_sup:node_name_changed(),
     misc:remove_marker(ns_cluster:rename_marker_path()).
 
 fixup_node_in_config(Old, New) ->

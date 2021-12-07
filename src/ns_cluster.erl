@@ -772,7 +772,6 @@ do_change_address(NewAddr, UserSupplied, AddrValidationFun) ->
         not_renamed ->
             not_renamed;
         renamed ->
-            ns_server_sup:node_name_changed(),
             ?cluster_info("Renamed node. New name is ~p.", [node()]),
             ok;
         Other ->
