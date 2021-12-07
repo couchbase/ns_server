@@ -280,7 +280,9 @@ build_bucket_capabilities(BucketConfig) ->
                      {'subdoc.ReplaceBodyWithXattr',
                       cluster_compat_mode:is_cluster_70()},
                      {'subdoc.DocumentMacroSupport',
-                      cluster_compat_mode:is_cluster_70()}],
+                      cluster_compat_mode:is_cluster_70()},
+                     {'subdoc.ReviveDocument',
+                      cluster_compat_mode:is_cluster_NEO()}],
 
                 [C || {C, true} <- Conditional] ++
                     [dcp, cbhello, touch, cccp, xdcrCheckpointing, nodesExt,
