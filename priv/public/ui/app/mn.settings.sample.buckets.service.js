@@ -9,6 +9,7 @@ licenses/APL2.txt.
 */
 import {Injectable} from '@angular/core';
 import {HttpClient} from '@angular/common/http';
+import {HttpErrorResponse} from '@angular/common/http';
 import {map, switchMap, shareReplay} from 'rxjs/operators';
 import {groupBy, prop} from 'ramda';
 
@@ -44,7 +45,7 @@ class MnSettingsSampleBucketsService {
     this.stream.installSampleBuckets =
       new MnHttpRequest(this.installSampleBuckets.bind(this))
       .addSuccess()
-      .addError();
+      .addError(map(this.extractInstallSampleBucketsError));
   }
 
   getSampleBuckets() {
@@ -53,5 +54,9 @@ class MnSettingsSampleBucketsService {
 
   installSampleBuckets(selectedSamples) {
     return this.http.post('/sampleBuckets/install', selectedSamples);
+  }
+
+  extractInstallSampleBucketsError(errors) {
+    return (errors instanceof HttpErrorResponse) ? [errors.error] : errors;
   }
 }
