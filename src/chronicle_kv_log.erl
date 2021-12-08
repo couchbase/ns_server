@@ -24,16 +24,19 @@ start_link() ->
 
 init([]) ->
     Self = self(),
-    ns_pubsub:subscribe_link(chronicle_compat_events:kv_event_manager(),
-                             fun ({_, _, _} = Evt) ->
-                                     Self ! Evt;
-                                 (_) ->
-                                     ok
-                             end),
+    ns_pubsub:subscribe_link(
+      chronicle_compat_events:kv_event_manager(),
+      fun ({{key, K}, R, {updated, V}}) ->
+              Self ! {{key, K}, R, {updated, fun() -> V end}};
+          ({_, _, _} = Evt) ->
+              Self ! Evt;
+          (_) ->
+              ok
+      end),
     {ok, #{}}.
 
-handle_info({{key, K}, R, {updated, V}}, State) ->
-    NewState = log(K, V, R, State),
+handle_info({{key, K}, R, {updated, VFun}}, State) ->
+    NewState = log(K, VFun, R, State),
     {noreply, NewState, hibernate};
 handle_info({{key, K}, R, deleted}, State) ->
     ?log_debug("delete (key: ~p, rev: ~p)", [K, R]),
@@ -50,8 +53,8 @@ calculate_diff(K, V, Diff, State) ->
              V
      end, maps:put(K, V, State)}.
 
-log(K, V, R, State) ->
-    {NewV, NewState} = prepare_value(K, V, State),
+log(K, VFun, R, State) ->
+    {NewV, NewState} = prepare_value(K, VFun, State),
     VB = list_to_binary(io_lib:print(NewV, 0, 80, 100)),
     ?log_debug("update (key: ~p, rev: ~p)~n~s", [K, R, VB]),
     NewState.
@@ -78,7 +81,8 @@ sanitize_log(Name, Command) ->
             Command
     end.
 
-prepare_value(K, V, State) ->
+prepare_value(K, VFun, State) ->
+    V = VFun(),
     case ns_bucket:sub_key_match(K) of
         {true, _Bucket, props} ->
             calculate_diff(K, V, fun ns_config_log:compute_bucket_diff/2,
