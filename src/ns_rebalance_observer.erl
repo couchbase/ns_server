@@ -200,7 +200,7 @@ add_event_log(#state{type = Type,
     TimeTaken = rebalance_stage_info:diff_timestamp(EndTime, StartTime),
     event_log:add_log(get_event(Type, ResultType),
                       [{operation_id, Id},
-                       {nodes_info, {struct, NodesInfo}},
+                       {nodes_info, {NodesInfo}},
                        {time_taken, TimeTaken},
                        {completion_message, ExitInfo}]).
 

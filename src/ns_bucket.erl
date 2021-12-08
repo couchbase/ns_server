@@ -1008,11 +1008,9 @@ update_bucket_props(Type, StorageMode, BucketName, Props) ->
                                {bucket_uuid, uuid(BucketName, direct)},
                                {type, DisplayBucketType},
                                {old_settings,
-                                {struct, build_bucket_props_json(
-                                           PrevProps)}},
+                                {build_bucket_props_json(PrevProps)}},
                                {new_settings,
-                                {struct, build_bucket_props_json(
-                                           NewProps)}}]);
+                                {build_bucket_props_json(NewProps)}}]);
                         true ->
                             ok
                     end,

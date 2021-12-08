@@ -149,8 +149,8 @@ handle_saslauthd_auth_settings_post(Req) ->
             NewSettings = saslauthd_auth:build_settings(),
             event_log:add_log(
               saslauthd_cfg_changed,
-              [{old_settings, {struct, PrevSettings}},
-               {new_settings, {struct, NewSettings}}]),
+              [{old_settings, {PrevSettings}},
+               {new_settings, {NewSettings}}]),
             ns_audit:setup_saslauthd(Req, Props),
             handle_saslauthd_auth_settings(Req);
         {errors, Errors} ->
@@ -1571,8 +1571,8 @@ handle_post_password_policy(Req) ->
               NewSettings = ns_config:read_key_fast(password_policy, []),
               event_log:add_log(
                 password_policy_changed,
-                [{old_settings, {struct, PrevSettings}},
-                 {new_settings, {struct, NewSettings}}]),
+                [{old_settings, {PrevSettings}},
+                 {new_settings, {NewSettings}}]),
               ns_audit:password_policy(Req, Policy),
               menelaus_util:reply(Req, 200)
       end, Req, form, post_password_policy_validators()).

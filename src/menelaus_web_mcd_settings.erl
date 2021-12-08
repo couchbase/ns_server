@@ -216,8 +216,8 @@ continue_handle_post(Req, Params, SettingsKey, ExtraConfigKey) ->
                 NewSettings =/= [] andalso NewSettings =/= OldSettings ->
                     event_log:add_log(
                       memcached_cfg_changed,
-                      [{old_settings, {struct, OldSettings}},
-                       {new_settings, {struct, NewSettings}}]);
+                      [{old_settings, {OldSettings}},
+                       {new_settings, {NewSettings}}]);
                 true ->
                     ok
             end,

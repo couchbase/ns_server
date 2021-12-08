@@ -187,7 +187,7 @@ build_mandatory_attributes(Event) ->
 build_extra_attributes([]) ->
     [];
 build_extra_attributes(Extra) ->
-    [{extra_attributes, {struct, lists:flatten(Extra)}}].
+    [{extra_attributes, {lists:flatten(Extra)}}].
 
 add_log(Event) ->
     add_log(Event, []).

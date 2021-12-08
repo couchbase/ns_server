@@ -42,8 +42,8 @@ handle_ldap_settings_post(Req) ->
           NewSettings = ldap_util:build_settings(),
           event_log:add_log(
             ldap_cfg_changed,
-            [{old_settings, {struct, prepare_ldap_settings(OldSettings)}},
-             {new_settings, {struct, prepare_ldap_settings(NewSettings)}}]),
+            [{old_settings, {prepare_ldap_settings(OldSettings)}},
+             {new_settings, {prepare_ldap_settings(NewSettings)}}]),
           handle_ldap_settings(Req2)
       end, [], params(), fun type_spec/1, Req).
 

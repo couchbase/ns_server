@@ -754,7 +754,7 @@ jsonify_audit_settings(Settings0) ->
 
 add_event_log(OldSettings, NewSettings) ->
     OldSettingsJson = [{old_settings,
-                       {struct, jsonify_audit_settings(OldSettings)}}],
+                       {jsonify_audit_settings(OldSettings)}}],
     case NewSettings of
         [] ->
             event_log:add_log(audit_disabled, OldSettingsJson);
@@ -764,7 +764,7 @@ add_event_log(OldSettings, NewSettings) ->
                     andalso
                     proplists:get_value(auditd_enabled, NewSettings) =:= true,
             NewSettingsJson =
-                [{new_settings, {struct, jsonify_audit_settings(NewSettings)}}],
+                [{new_settings, {jsonify_audit_settings(NewSettings)}}],
 
             case Enabled of
                 true ->

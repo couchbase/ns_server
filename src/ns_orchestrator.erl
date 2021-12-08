@@ -620,8 +620,7 @@ idle({create_bucket, BucketType, BucketName, NewConfig}, From, _State) ->
               [{bucket, list_to_binary(BucketName)},
                {bucket_uuid, ns_bucket:uuid(BucketName, direct)},
                {bucket_type, ns_bucket:display_type(BucketType, StorageMode)},
-               {bucket_props,
-                {struct, NewConfigJSON}}]),
+               {bucket_props, {NewConfigJSON}}]),
             request_janitor_run({bucket, BucketName});
         _ -> ok
     end,
@@ -741,7 +740,7 @@ idle({start_graceful_failover, Nodes, Id, RetryChk}, From, _State) ->
                      "Operation Id = ~s", [Nodes, Id]),
             Type = graceful_failover,
             event_log:add_log(graceful_failover_initiated,
-                              [{nodes_info, {struct, NodesInfo}},
+                              [{nodes_info, {NodesInfo}},
                                {operation_id, Id}]),
             ns_cluster:counter_inc(Type, start),
             set_rebalance_status(Type, running, Pid),
@@ -802,7 +801,7 @@ idle({start_rebalance, KeepNodes, EjectNodes, FailedNodes, DeltaNodes,
             end,
             event_log:add_log(rebalance_initiated,
                               [{operation_id, RebalanceId},
-                               {nodes_info, {struct, NodesInfo}}]),
+                               {nodes_info, {NodesInfo}}]),
             ns_cluster:counter_inc(Type, start),
             set_rebalance_status(Type, running, Pid),
 
@@ -1643,12 +1642,11 @@ handle_start_failover(Nodes, AllowUnsafe, From, Wait, FailoverType, Options) ->
                                      [];
                                  _ ->
                                      [{failover_reason,
-                                       {struct,
-                                        [{Node, JSONFun(Reason)} ||
+                                       {[{Node, JSONFun(Reason)} ||
                                          {Node, Reason} <- FailoverReasons]}}]
                              end,
             event_log:add_log(Event, [{operation_id, Id},
-                                      {nodes_info, {struct, NodesInfo}},
+                                      {nodes_info, {NodesInfo}},
                                       {allow_unsafe, AllowUnsafe}] ++
                                       FOReasonsJSON),
 
