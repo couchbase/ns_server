@@ -697,6 +697,9 @@ footer {
 .overflow-hidden {
   overflow: hidden;
 }
+/* adds a comma before an element w/ class .comma-list AND non-zero content ...
+  if it follows another .comma-list element // "empty" for CSS is this:
+  <div class="comma-list"></div> */
 .comma-list:not(:empty) ~ .comma-list:not(:empty):before {
   content: ", ";
 }
