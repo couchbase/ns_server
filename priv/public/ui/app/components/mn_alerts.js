@@ -19,7 +19,7 @@ export default 'mnAlertsService';
 
 angular
   .module('mnAlertsService', [uiBootstrap, mnFilters])
-  .service('mnAlertsService', mnAlertsServiceFactory);
+  .service('mnAlertsService', ["$uibModal", "$rootScope", "$timeout", mnAlertsServiceFactory]);
 
 function mnAlertsServiceFactory($uibModal, $rootScope, $timeout) {
   var alerts = [];

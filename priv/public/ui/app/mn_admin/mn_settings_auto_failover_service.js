@@ -14,7 +14,7 @@ export default 'mnSettingsAutoFailoverService';
 
 angular
   .module('mnSettingsAutoFailoverService', [])
-  .factory('mnSettingsAutoFailoverService', mnSettingsAutoFailoverServiceFactory);
+  .factory('mnSettingsAutoFailoverService', ["$http", mnSettingsAutoFailoverServiceFactory]);
 
 function mnSettingsAutoFailoverServiceFactory($http) {
   var mnSettingsAutoFailoverService = {

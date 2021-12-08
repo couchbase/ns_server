@@ -10,6 +10,7 @@ licenses/APL2.txt.
 
 export default mnCertificatesDeleteDialogController;
 
+mnCertificatesDeleteDialogController.$inject = ["$scope", "$uibModalInstance", "mnCertificatesService", "mnPromiseHelper", "id"];
 function mnCertificatesDeleteDialogController($scope, $uibModalInstance, mnCertificatesService, mnPromiseHelper, id) {
   var vm = this;
 

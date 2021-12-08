@@ -16,7 +16,7 @@ export default 'mnCertificatesService';
 
 angular
   .module("mnCertificatesService", [mnPoolDefault])
-  .factory("mnCertificatesService", mnCertificatesFactory);
+  .factory("mnCertificatesService", ["$http", "mnPoolDefault", mnCertificatesFactory]);
 
 function mnCertificatesFactory($http, mnPoolDefault) {
   var mnCertificatesService = {

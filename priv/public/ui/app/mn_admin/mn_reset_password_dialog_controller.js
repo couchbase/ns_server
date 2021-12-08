@@ -24,7 +24,7 @@ angular
     mnAuthService,
     mnResetPasswordDialogService
   ])
-  .controller("mnResetPasswordDialogController", mnResetPasswordDialogController);
+  .controller("mnResetPasswordDialogController", ["mnResetPasswordDialogService", "mnPromiseHelper", "mnAuthService", "user", mnResetPasswordDialogController]);
 
 function mnResetPasswordDialogController(mnResetPasswordDialogService, mnPromiseHelper, mnAuthService, user) {
   var vm = this;

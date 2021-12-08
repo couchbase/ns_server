@@ -10,6 +10,7 @@ licenses/APL2.txt.
 
 export default mnServersAddDialogController;
 
+mnServersAddDialogController.$inject = ["$scope", "$rootScope", "$q", "$uibModal", "mnServersService", "$uibModalInstance", "mnHelper", "mnPromiseHelper", "groups", "mnClusterConfigurationService", "mnPoolDefault", "mnCertificatesService"];
 function mnServersAddDialogController($scope, $rootScope, $q, $uibModal, mnServersService, $uibModalInstance, mnHelper, mnPromiseHelper, groups, mnClusterConfigurationService, mnPoolDefault, mnCertificatesService) {
   var vm = this;
 

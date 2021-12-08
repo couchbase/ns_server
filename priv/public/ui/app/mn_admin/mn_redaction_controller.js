@@ -19,7 +19,7 @@ angular
     mnLogRedactionService,
     mnSpinner
   ])
-  .controller("mnRedactionController", mnRedactionController);
+  .controller("mnRedactionController", ["$scope", "mnLogRedactionService", "mnPromiseHelper", mnRedactionController]);
 
 function mnRedactionController($scope, mnLogRedactionService, mnPromiseHelper) {
   var vm = this;

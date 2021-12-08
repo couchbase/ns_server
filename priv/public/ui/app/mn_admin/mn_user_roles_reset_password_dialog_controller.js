@@ -10,6 +10,7 @@ licenses/APL2.txt.
 
 export default mnUserRolesResetPasswordDialogController;
 
+mnUserRolesResetPasswordDialogController.$inject = ["mnUserRolesService", "$uibModalInstance", "mnPromiseHelper", "user"];
 function mnUserRolesResetPasswordDialogController(mnUserRolesService, $uibModalInstance, mnPromiseHelper, user) {
   var vm = this;
 

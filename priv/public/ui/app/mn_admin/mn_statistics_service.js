@@ -37,7 +37,7 @@ angular
     mnPoolDefault,
     mnPermissions
   ])
-  .factory('mnStatisticsNewService', mnStatisticsNewServiceFactory);
+  .factory('mnStatisticsNewService', ["$http", "mnServersService", "mnPoller", "$rootScope", "mnStatisticsDescriptionService", "mnStoreService", "mnPoolDefault", "mnPermissions", mnStatisticsNewServiceFactory]);
 
 function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootScope, mnStatisticsDescriptionService, mnStoreService, mnPoolDefault, mnPermissions) {
   var rootScope = $rootScope.$new();

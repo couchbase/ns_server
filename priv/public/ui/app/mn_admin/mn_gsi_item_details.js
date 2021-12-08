@@ -13,6 +13,7 @@ import mnStatisticsDescription from "./mn_statistics_description.js";
 
 export {mnGsiItemController, mnGsiItemStatsController, mnGsiItemDetails};
 
+mnGsiItemStatsController.$inject = ["$scope"];
 function mnGsiItemStatsController($scope) {
   var vm = this;
   vm.zoom = "minute";
@@ -30,6 +31,7 @@ function mnGsiItemStatsController($scope) {
   }
 }
 
+mnGsiItemController.$inject = ["$scope", "mnGsiService", "mnStatisticsNewService", "mnPoolDefault", "mnPermissions"];
 function mnGsiItemController($scope, mnGsiService, mnStatisticsNewService, mnPoolDefault, mnPermissions) {
   var row = $scope.row;
 

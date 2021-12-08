@@ -20,7 +20,7 @@ angular
   .module('mnGsiService', [mnPoolDefault])
   .factory('qwQueryService', downgradeInjectable(QwQueryService))
   .factory('mnHelperService', downgradeInjectable(MnHelperService))
-  .factory('mnGsiService', mnGsiServiceFactory);
+  .factory('mnGsiService', ["$http", "$q", "qwQueryService", "mnPoolDefault", mnGsiServiceFactory]);
 
 function mnGsiServiceFactory($http, $q, qwQueryService, mnPoolDefault) {
   var mnGsiService = {

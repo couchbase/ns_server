@@ -17,7 +17,7 @@ export default "mnViewsListService";
 
 angular
   .module("mnViewsListService", [mnTasksDetails])
-  .factory("mnViewsListService", mnViewsListFactory);
+  .factory("mnViewsListService", ["$http", "$q", "mnTasksDetails", mnViewsListFactory]);
 
 function mnViewsListFactory($http, $q, mnTasksDetails) {
   var mnViewsListService = {

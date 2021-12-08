@@ -26,7 +26,7 @@ angular
     mnSettingsClusterService,
     mnSettingsAutoFailoverService
   ])
-  .controller('mnSettingsAutoFailoverController', mnSettingsAutoFailoverController);
+  .controller('mnSettingsAutoFailoverController', ["$scope", "$q", "mnPromiseHelper", "mnSettingsAutoFailoverService", "mnPoolDefault", "mnSettingsClusterService", mnSettingsAutoFailoverController]);
 
 function mnSettingsAutoFailoverController($scope, $q, mnPromiseHelper, mnSettingsAutoFailoverService, mnPoolDefault, mnSettingsClusterService) {
   var vm = this;

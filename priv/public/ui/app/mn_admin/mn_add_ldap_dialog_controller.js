@@ -10,6 +10,7 @@ licenses/APL2.txt.
 
 export default mnAddLDAPDialogController;
 
+mnAddLDAPDialogController.$inject = ["mnUserRolesService", "mnPromiseHelper", "$uibModalInstance"];
 function mnAddLDAPDialogController(mnUserRolesService, mnPromiseHelper, $uibModalInstance) {
   var vm = this;
 

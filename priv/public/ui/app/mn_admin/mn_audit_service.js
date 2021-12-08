@@ -17,7 +17,7 @@ export default 'mnAuditService';
 
 angular
   .module('mnAuditService', [mnPoolDefault])
-  .factory('mnAuditService', mnAuditServiceFactory);
+  .factory('mnAuditService', ["$http", "$q", "mnPoolDefault", "IEC", mnAuditServiceFactory]);
 
 function mnAuditServiceFactory($http, $q, mnPoolDefault, IEC) {
   var mnAuditService = {

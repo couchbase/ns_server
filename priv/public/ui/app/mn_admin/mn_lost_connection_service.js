@@ -19,7 +19,7 @@ angular
     uiRouter,
     uiBootstrap
   ])
-  .factory("mnLostConnectionService", mnLostConnectionFactory);
+  .factory("mnLostConnectionService", ["$interval", "$uibModalStack", "$window", "$state", mnLostConnectionFactory]);
 
 function mnLostConnectionFactory($interval, $uibModalStack, $window, $state) {
   var state = {

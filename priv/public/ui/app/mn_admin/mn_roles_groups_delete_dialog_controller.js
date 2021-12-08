@@ -10,6 +10,7 @@ licenses/APL2.txt.
 
 export default mnRolesGroupsDeleteDialogController;
 
+mnRolesGroupsDeleteDialogController.$inject = ["mnUserRolesService", "rolesGroup", "mnPromiseHelper", "$uibModalInstance"];
 function mnRolesGroupsDeleteDialogController(mnUserRolesService, rolesGroup, mnPromiseHelper, $uibModalInstance) {
   var vm = this;
   vm.grolesGroupsId = rolesGroup.id;

@@ -14,7 +14,7 @@ export default "mnDocumentsService";
 
 angular
   .module("mnDocumentsService", [])
-  .factory("mnDocumentsService", mnDocumentsFactory);
+  .factory("mnDocumentsService", ["$http", "$q", mnDocumentsFactory]);
 
 function mnDocumentsFactory($http, $q) {
   var mnDocumentsService = {

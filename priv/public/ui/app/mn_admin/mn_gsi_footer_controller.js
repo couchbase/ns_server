@@ -12,6 +12,7 @@ import mnStatsDesc from "./mn_statistics_description.js";
 
 export default mnGsiFooterController;
 
+mnGsiFooterController.$inject = ["$scope", "$rootScope", "$state", "mnStatisticsNewService", "mnPoolDefault", "mnPermissions", "$timeout"];
 function mnGsiFooterController($scope, $rootScope, $state, mnStatisticsNewService, mnPoolDefault, mnPermissions, $timeout) {
   var vm = this;
 

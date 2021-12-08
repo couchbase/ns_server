@@ -38,7 +38,7 @@ angular
       nodeName: "@?"
     },
     template: "<ng-include src=\"'/ui/app/components/directives/mn_detail_stats.html'\"></ng-include>",
-    controller: controller
+    controller: ["mnStatisticsNewService", "mnStatisticsDescriptionService", "mnHelper", "$scope", "mnPoolDefault", "mnPermissions", controller]
   });
 
 function controller(mnStatisticsNewService, mnStatisticsDescriptionService, mnHelper, $scope, mnPoolDefault, mnPermissions) {

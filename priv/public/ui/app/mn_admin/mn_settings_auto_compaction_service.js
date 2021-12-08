@@ -21,7 +21,7 @@ angular
     mnFilters,
     mnHelper
   ])
-  .factory('mnSettingsAutoCompactionService', mnSettingsAutoCompactionServiceFactory);
+  .factory('mnSettingsAutoCompactionService', ["$http", "$q", "mnBytesToMBFilter", "mnMBtoBytesFilter", "mnHelper", mnSettingsAutoCompactionServiceFactory]);
 
 function mnSettingsAutoCompactionServiceFactory($http, $q, mnBytesToMBFilter, mnMBtoBytesFilter, mnHelper) {
   var mnSettingsAutoCompactionService = {

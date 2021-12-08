@@ -10,6 +10,7 @@ licenses/APL2.txt.
 
 export default appConfig;
 
+appConfig.$inject = ["$httpProvider", "$stateProvider", "$urlRouterProvider", "$transitionsProvider", "$uibTooltipProvider", "$animateProvider", "$qProvider", "$sceDelegateProvider", "$locationProvider", "$uibModalProvider"];
 function appConfig($httpProvider, $stateProvider, $urlRouterProvider, $transitionsProvider, $uibTooltipProvider, $animateProvider, $qProvider, $sceDelegateProvider, $locationProvider, $uibModalProvider) {
   $httpProvider.defaults.headers.common['invalid-auth-response'] = 'on';
   $httpProvider.defaults.headers.common['Cache-Control'] = 'no-cache';

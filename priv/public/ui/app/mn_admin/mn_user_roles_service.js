@@ -19,7 +19,7 @@ export default "mnUserRolesService";
 
 angular
   .module("mnUserRolesService", [mnPoolDefault, mnStoreService, mnStatisticsNewService])
-  .factory("mnUserRolesService", mnUserRolesFactory);
+  .factory("mnUserRolesService", ["$q", "$http", "mnPoolDefault", "mnStoreService", "mnStatisticsNewService", mnUserRolesFactory]);
 
 function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisticsNewService) {
   var mnUserRolesService = {

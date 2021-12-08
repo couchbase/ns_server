@@ -10,6 +10,7 @@ licenses/APL2.txt.
 
 export default mnUserRolesDeleteDialogController;
 
+mnUserRolesDeleteDialogController.$inject = ["mnUserRolesService", "user", "mnPromiseHelper", "$uibModalInstance"];
 function mnUserRolesDeleteDialogController(mnUserRolesService, user, mnPromiseHelper, $uibModalInstance) {
   var vm = this;
   vm.username = user.id;

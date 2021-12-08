@@ -57,8 +57,8 @@ angular
     mnStatisticsNewService,
     mnKeyspaceSelectorDowngradeModule
   ])
-  .config(configure)
-  .controller('mnGsiController', mnGsiController)
+  .config(["$stateProvider", "$transitionsProvider", configure])
+  .controller('mnGsiController', ["$scope", "mnGsiService", "mnPoller", "$state", "mnKeyspaceSelectorServiceDowngrade", "poolDefault", mnGsiController])
   .controller('mnGsiFooterController', mnFooterStatsController)
   .controller('mnGsiItemController', mnGsiItemController)
   .controller('mnGsiItemStatsController', mnGsiItemStatsController)
@@ -139,8 +139,8 @@ function configure($stateProvider, $transitionsProvider) {
       }
     });
 }
-function mnGsiController($scope, mnGsiService, mnPoller, $state,
-                         mnKeyspaceSelectorServiceDowngrade, poolDefault) {
+
+function mnGsiController($scope, mnGsiService, mnPoller, $state, mnKeyspaceSelectorServiceDowngrade, poolDefault) {
   var vm = this;
 
   vm.setIndexesView = setIndexesView;

@@ -18,7 +18,7 @@ export default 'mnPromiseHelper';
 
 angular
   .module('mnPromiseHelper', [mnAlertsService, mnHelper])
-  .factory('mnPromiseHelper', mnPromiseHelperFactory);
+  .factory('mnPromiseHelper', ["mnAlertsService", "mnHelper", "$timeout", "$rootScope", mnPromiseHelperFactory]);
 
 function mnPromiseHelperFactory(mnAlertsService, mnHelper, $timeout, $rootScope) {
 

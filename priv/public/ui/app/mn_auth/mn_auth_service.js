@@ -17,7 +17,7 @@ export default 'mnAuthService';
 
 angular
   .module('mnAuthService', [mnPools, uiRouter])
-  .factory('mnAuthService', mnAuthServiceFactory);
+  .factory('mnAuthService', ["mnPools", "$http", "$uibModalStack", "$window", "$q", mnAuthServiceFactory]);
 
 function mnAuthServiceFactory(mnPools, $http, $uibModalStack, $window, $q) {
   var mnAuthService = {

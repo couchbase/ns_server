@@ -16,6 +16,7 @@ import saveAs from 'file-saver';
 
 export default mnAdminController;
 
+mnAdminController.$inject = ["$scope", "$rootScope", "$state", "$window", "$uibModal", "mnAlertsService", "poolDefault", "mnPromiseHelper", "pools", "mnPoller", "mnEtagPoller", "mnAuthService", "mnTasksDetails", "mnPoolDefault", "mnSettingsAutoFailoverService", "formatProgressMessageFilter", "mnPrettyVersionFilter", "mnLostConnectionService", "mnPermissions", "mnPools", "whoami", "mnBucketsService", "$q", "mnSettingsClusterService", "$ocLazyLoad", "$injector", "mnAdminService", "mnHelper", "mnSessionService"];
 function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAlertsService, poolDefault, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, formatProgressMessageFilter, mnPrettyVersionFilter, mnLostConnectionService, mnPermissions, mnPools, whoami, mnBucketsService, $q, mnSettingsClusterService, $ocLazyLoad, $injector, mnAdminService, mnHelper, mnSessionService) {
   var vm = this;
 

@@ -31,7 +31,7 @@ angular
     mnSettingsCluster,
     mnSettingsNotificationsService
   ])
-  .config(mnSettingsConfig)
+  .config(["$stateProvider", mnSettingsConfig])
   .controller("mnSettingsController", mnSettingsController);
 
 function mnSettingsController() {

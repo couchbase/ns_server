@@ -27,8 +27,8 @@ angular
     mnElementCrane,
     mnPluggableUiRegistry
   ])
-  .config(mnSecurityConfig)
-  .controller("mnSecurityController", mnSecurityController);
+  .config(["$stateProvider", mnSecurityConfig])
+  .controller("mnSecurityController", ["poolDefault", mnSecurityController]);
 
 function mnSecurityController(poolDefault) {
   var vm = this;

@@ -47,7 +47,7 @@ angular
     mnUserRolesService,
     mnSearch
   ])
-  .controller("mnRolesGroupsController", mnRolesGroupsController)
+  .controller("mnRolesGroupsController", ["$scope", "$uibModal", "mnPromiseHelper", "mnUserRolesService", "mnPoller", "mnHelper", "$state", mnRolesGroupsController])
   .controller("mnRolesGroupsDeleteDialogController", mnRolesGroupsDeleteDialogController)
   .controller("mnRolesGroupsAddDialogController", mnRolesGroupsAddDialogController);
 

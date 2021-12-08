@@ -16,10 +16,10 @@ export default 'mnExceptionReporter';
 
 angular
   .module("mnExceptionReporter", [])
-  .config(mnExceptionReporterConfig);
+  .config(["$provide", mnExceptionReporterConfig]);
 
 function mnExceptionReporterConfig($provide) {
-  $provide.decorator('$exceptionHandler', mnExceptionReporter)
+  $provide.decorator('$exceptionHandler', ["$delegate", "$injector", mnExceptionReporter])
 }
 
 function mnExceptionReporter($delegate, $injector) {

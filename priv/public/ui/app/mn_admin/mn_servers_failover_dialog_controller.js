@@ -10,6 +10,7 @@ licenses/APL2.txt.
 
 export default mnServersFailOverDialogController;
 
+mnServersFailOverDialogController.$inject = ["mnServersService", "mnPromiseHelper", "node", "$uibModalInstance", "$uibModal"];
 function mnServersFailOverDialogController(mnServersService, mnPromiseHelper, node, $uibModalInstance, $uibModal) {
   var vm = this;
 

@@ -10,6 +10,7 @@ licenses/APL2.txt.
 
 export default mnGroupsDeleteDialogController;
 
+mnGroupsDeleteDialogController.$inject = ["$uibModalInstance", "mnGroupsService", "mnPromiseHelper", "group"];
 function mnGroupsDeleteDialogController($uibModalInstance, mnGroupsService, mnPromiseHelper, group) {
   var vm = this;
 

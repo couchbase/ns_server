@@ -33,7 +33,7 @@ angular
     mnStatisticsNewService,
     mnPoolDefault
   ])
-  .directive("mnStatisticsChart", mnStatisticsNewChartDirective)
+  .directive("mnStatisticsChart", ["mnStatisticsNewService", "mnFormatQuantityFilter", "$state", "mnTruncateTo3DigitsFilter", "mnHelper", "mnPoolDefault", mnStatisticsNewChartDirective])
   .directive("mnMultiChart", mnMultiChartDirective);
 
 function mnStatisticsNewChartDirective(mnStatisticsNewService, mnFormatQuantityFilter, $state, mnTruncateTo3DigitsFilter, mnHelper, mnPoolDefault) {

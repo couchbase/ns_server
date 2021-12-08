@@ -34,10 +34,10 @@ func main() {
 	}
 
 	result := api.Build(api.BuildOptions{
-		MinifyWhitespace: true,
+		// MinifyWhitespace: true,
 		// TODO: figure out why does't work
 		// MinifyIdentifiers: true,
-		MinifySyntax: true,
+		// MinifySyntax: true,
 
 		NodePaths: []string{
 			*inDir + "/ui/web_modules",

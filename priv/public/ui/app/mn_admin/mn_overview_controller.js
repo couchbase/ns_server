@@ -37,8 +37,8 @@ angular
     mnElementCrane,
     mnMainSpinner
   ])
-  .config(mnOverviewConfig)
-  .controller('mnOverviewController', mnOverviewController);
+  .config(["$stateProvider", "$transitionsProvider", mnOverviewConfig])
+  .controller('mnOverviewController', ["$scope", "$rootScope", "mnBucketsService", "mnServersService", "mnPoller", "mnPromiseHelper", "mnHelper", "permissions", "pools", "mnPoolDefault", mnOverviewController]);
 
 function mnOverviewConfig($stateProvider, $transitionsProvider) {
   $transitionsProvider.onBefore({

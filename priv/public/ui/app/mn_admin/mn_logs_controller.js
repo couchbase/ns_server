@@ -41,7 +41,7 @@ angular.module('mnLogs', [
   mnLogRedactionService,
   mnGroupsService
 ])
-  .config(configure)
+  .config(["$stateProvider", configure])
   .controller('mnLogsController', mnLogsController)
 
 function configure($stateProvider) {

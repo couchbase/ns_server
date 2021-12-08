@@ -15,7 +15,7 @@ export default 'mnGroupsService';
 
 angular
   .module('mnGroupsService', [])
-  .factory('mnGroupsService', mnGroupsService);
+  .factory('mnGroupsService', ["$http", "$filter", mnGroupsService]);
 
 function mnGroupsService($http, $filter) {
   var mnGroupsService = {

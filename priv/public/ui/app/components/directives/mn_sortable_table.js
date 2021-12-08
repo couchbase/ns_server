@@ -15,7 +15,7 @@ export default 'mnSortableTable';
 angular
   .module('mnSortableTable', [])
   .directive('mnSortableTable', mnSortableTableDirective)
-  .directive('mnSortableTitle', mnSortableTitleDirective);
+  .directive('mnSortableTitle', ["$compile", mnSortableTitleDirective]);
 
 function mnSortableTitleDirective($compile) {
   var mnSortableTitle = {

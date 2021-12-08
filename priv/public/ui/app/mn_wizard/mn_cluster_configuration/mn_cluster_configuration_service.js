@@ -18,7 +18,7 @@ export default "mnClusterConfigurationService";
 
 angular
   .module('mnClusterConfigurationService', [mnHelper, mnPools])
-  .factory('mnClusterConfigurationService', mnClusterConfigurationServiceFactory);
+  .factory('mnClusterConfigurationService', ["$http", "mnHelper", "IEC", "mnPools", mnClusterConfigurationServiceFactory]);
 
 function mnClusterConfigurationServiceFactory($http, mnHelper, IEC, mnPools) {
   var mnClusterConfigurationService = {

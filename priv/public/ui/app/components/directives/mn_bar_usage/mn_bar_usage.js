@@ -17,7 +17,7 @@ export default 'mnBarUsage';
 
 angular
   .module('mnBarUsage', [mnFilters])
-  .directive('mnBarUsage', mnBarUsageDirective);
+  .directive('mnBarUsage', ["mnRescaleForSumFilter", mnBarUsageDirective]);
 
 function mnBarUsageDirective(mnRescaleForSumFilter) {
 
@@ -28,7 +28,7 @@ function mnBarUsageDirective(mnRescaleForSumFilter) {
     },
     isolate: false,
     templateUrl: 'app/components/directives/mn_bar_usage/mn_bar_usage.html',
-    controller: controller
+    controller: ["$scope", controller]
   };
 
   return mnBarUsage;

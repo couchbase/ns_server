@@ -14,7 +14,7 @@ export default "mnRootCertificateService";
 
 angular
   .module("mnRootCertificateService", [])
-  .factory("mnRootCertificateService", mnRootCertificateFactory);
+  .factory("mnRootCertificateService", ["$http", mnRootCertificateFactory]);
 
 function mnRootCertificateFactory($http) {
   var mnRootCertificateService = {

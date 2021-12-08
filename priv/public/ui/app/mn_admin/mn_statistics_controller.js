@@ -53,7 +53,7 @@ angular
   ])
   .controller('mnStatisticsNewController', mnStatisticsNewController)
   .controller('mnStatisticsGroupsController', mnStatisticsGroupsController)
-  .controller('mnStatisticsChartsController', mnStatisticsChartsController)
+  .controller('mnStatisticsChartsController', ["$scope", "$uibModal", "mnStatisticsNewService", "mnStoreService", "mnHelper", "mnUserRolesService", "$timeout", mnStatisticsChartsController])
   .controller('mnScenarioDialogController', mnScenarioDialogController)
   .controller('mnStatisticsDetailedChartController', mnStatisticsDetailedChartController)
   .controller('mnGroupDialogController', mnGroupDialogController)

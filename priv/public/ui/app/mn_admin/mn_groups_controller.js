@@ -42,8 +42,8 @@ angular
     mnPoolDefault,
     mnElementCrane
   ])
-  .config(configure)
-  .controller('mnGroupsController', mnGroupsController)
+  .config(["$stateProvider", configure])
+  .controller('mnGroupsController', ["$scope", "$uibModal", "mnGroupsService", "mnPromiseHelper", "mnHelper", "$window", "mnAlertsService", mnGroupsController])
   .controller('mnGroupsDeleteDialogController', mnGroupsDeleteDialogController)
   .controller('mnGroupsGroupDialogController', mnGroupsGroupDialogController);
 

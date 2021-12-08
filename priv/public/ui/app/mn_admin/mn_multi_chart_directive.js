@@ -12,6 +12,7 @@ import _ from "lodash"
 
 export default mnMultiChartDirective;
 
+mnMultiChartDirective.$inject = ["$window", "mnD3Service"];
 function mnMultiChartDirective($window, mnD3Service) {
   return {
     restrict: 'AE',
@@ -22,7 +23,7 @@ function mnMultiChartDirective($window, mnD3Service) {
       syncScope: "=?",
       statsPoller: "=?"
     },
-    controller: controller
+    controller: ["$element", "$scope", "$timeout", controller]
   };
 
   function controller($element, $scope, $timeout) {

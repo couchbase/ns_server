@@ -18,10 +18,10 @@ export default 'mnHttp';
 
 angular
   .module('mnHttp', [mnPendingQueryKeeper, mnFilters])
-  .factory('mnHttpInterceptor', mnHttpFactory)
-  .config(function ($httpProvider) {
+  .factory('mnHttpInterceptor', ["mnPendingQueryKeeper", "$q", "$timeout", "jQueryLikeParamSerializerFilter", "$exceptionHandler", mnHttpFactory])
+  .config(["$httpProvider", function ($httpProvider) {
     $httpProvider.interceptors.push('mnHttpInterceptor');
-  });
+  }]);
 
 function mnHttpFactory(mnPendingQueryKeeper, $q, $timeout, jQueryLikeParamSerializerFilter, $exceptionHandler) {
   var myHttpInterceptor = {

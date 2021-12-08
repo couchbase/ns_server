@@ -23,7 +23,7 @@ angular
     bindings: {
       mnSpinnerValue: "<"
     },
-    controller: controller
+    controller: ["$scope", "mnHelper", controller]
   });
 
 function controller($scope, mnHelper) {

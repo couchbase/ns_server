@@ -17,7 +17,7 @@ export default 'mnTasksDetails';
 
 angular
   .module('mnTasksDetails', [])
-  .factory('mnTasksDetails', mnTasksDetailsFactory)
+  .factory('mnTasksDetails', ["$http", "$cacheFactory", "mnTasksService", mnTasksDetailsFactory])
   .factory('mnTasksService', downgradeInjectable(MnTasksService));
 
 function mnTasksDetailsFactory($http, $cacheFactory, mnTasksService) {

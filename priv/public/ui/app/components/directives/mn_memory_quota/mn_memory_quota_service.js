@@ -18,7 +18,7 @@ export default "mnMemoryQuotaService";
 
 angular
   .module('mnMemoryQuotaService', [mnPoolDefault, mnHelper])
-  .factory('mnMemoryQuotaService', mnMemoryQuotaServiceFactory);
+  .factory('mnMemoryQuotaService', ["$http", "$window", "mnPoolDefault", "mnHelper", "IEC", mnMemoryQuotaServiceFactory]);
 
 function mnMemoryQuotaServiceFactory($http, $window, mnPoolDefault, mnHelper, IEC) {
   var mnMemoryQuotaService = {

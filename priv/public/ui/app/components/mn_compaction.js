@@ -15,7 +15,7 @@ export default 'mnCompaction';
 
 angular
   .module('mnCompaction', [])
-  .factory('mnCompaction', mnCompactionFactory);
+  .factory('mnCompaction', ["$interval", "$http", mnCompactionFactory]);
 
 function mnCompactionFactory($interval, $http) {
   var startedCompactions = {};

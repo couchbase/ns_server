@@ -23,7 +23,7 @@ angular
     uiBootstrap,
     mnHelper
   ])
-  .factory("mnPoorMansAlertsService", mnPoorMansAlertsFactory);
+  .factory("mnPoorMansAlertsService", ["$http", "$state", "$uibModal", "mnHelper", "$timeout", mnPoorMansAlertsFactory]);
 
 function mnPoorMansAlertsFactory($http, $state, $uibModal, mnHelper, $timeout) {
   var alerts = [];

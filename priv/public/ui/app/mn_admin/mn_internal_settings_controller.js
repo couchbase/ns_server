@@ -22,7 +22,7 @@ angular
     mnSpinner,
     mnInternalSettingsService
   ])
-  .controller("mnInternalSettingsController", mnInternalSettingsController);
+  .controller("mnInternalSettingsController", ["mnInternalSettingsService", "mnPromiseHelper", "mnPoolDefault", "$uibModalInstance", mnInternalSettingsController]);
 
 function mnInternalSettingsController(mnInternalSettingsService, mnPromiseHelper, mnPoolDefault, $uibModalInstance) {
   var vm = this;

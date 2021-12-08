@@ -15,7 +15,7 @@ export default 'mnServersListItemDetailsService';
 
 angular
   .module('mnServersListItemDetailsService', [])
-  .factory('mnServersListItemDetailsService', mnServersListItemDetailsFactory);
+  .factory('mnServersListItemDetailsService', ["$http", mnServersListItemDetailsFactory]);
 
 function mnServersListItemDetailsFactory($http) {
   var mnServersListItemDetailsService = {

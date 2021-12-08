@@ -86,8 +86,8 @@ angular
     mnStatisticsNewService,
     mnClusterConfigurationService
   ])
-  .config(configure)
-  .controller('mnServersController', mnServersController)
+  .config(["$stateProvider", configure])
+  .controller('mnServersController', ["$scope", "$state", "$uibModal", "mnPoolDefault", "mnPoller", "mnServersService", "mnHelper", "mnGroupsService", "mnPromiseHelper", "permissions", "mnStatisticsNewService", "pools", mnServersController])
   .controller('mnServersListItemDetailsController', mnServersListItemDetailsController)
   .controller("mnServersListItemController", mnServersListItemController)
   .controller('mnServersFailOverDialogController', mnServersFailOverDialogController)

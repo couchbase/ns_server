@@ -18,7 +18,7 @@ angular
   .module(MnPluggableUiRegistry, [])
   .provider(MnPluggableUiRegistry, MnPluggableUiRegistryProvider)
   .factory('mnPluggableTabUtil', MnPluggableTabUtil)
-  .directive('mnPluggableUiTabs', MnPluggableUiTabs);
+  .directive('mnPluggableUiTabs', ["mnPluggableUiRegistry", "mnPluggableTabUtil", "$compile", MnPluggableUiTabs]);
 
 
 function MnPluggableTabUtil() {

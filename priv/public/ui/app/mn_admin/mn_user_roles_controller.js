@@ -54,7 +54,7 @@ angular
     mnFileReader,
     mnSearch
   ])
-  .controller("mnUserRolesController", mnUserRolesController)
+  .controller("mnUserRolesController", ["$scope", "$uibModal", "mnPromiseHelper", "mnUserRolesService", "mnPoller", "mnHelper", "$state", "poolDefault", "permissions", mnUserRolesController])
   .controller("mnAddLDAPDialogController", mnAddLDAPDialogController)
   .controller("mnUserRolesDeleteDialogController", mnUserRolesDeleteDialogController)
   .controller("mnUserRolesResetPasswordDialogController", mnUserRolesResetPasswordDialogController)

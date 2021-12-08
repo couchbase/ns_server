@@ -20,7 +20,7 @@ angular
     mnSearch,
     mnHelper
   ])
-  .directive("mnSelect", mnSelectDirective);
+  .directive("mnSelect", ["mnHelper", mnSelectDirective]);
 
 function mnSelectDirective(mnHelper) {
   var mnSelect = {
@@ -43,7 +43,7 @@ function mnSelectDirective(mnHelper) {
     link: ($scope, $element, $attributes, controllers) => {
       controllers[0].setNgModelCtl(controllers[1]);
     },
-    controller: mnSelectController,
+    controller: ["$scope", "$element", "$attrs", mnSelectController],
     controllerAs: "vm",
     bindToController: true
   };

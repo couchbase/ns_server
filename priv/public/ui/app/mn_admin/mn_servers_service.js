@@ -18,7 +18,7 @@ export default "mnServersService";
 
 angular
   .module('mnServersService', [mnPoolDefault, uiBootstrap])
-  .factory('mnServersService', mnServersFactory);
+  .factory('mnServersService', ["$http", "$q", "$uibModal", "mnPoolDefault", mnServersFactory]);
 
 function mnServersFactory($http, $q, $uibModal, mnPoolDefault) {
   var pendingEject = [];

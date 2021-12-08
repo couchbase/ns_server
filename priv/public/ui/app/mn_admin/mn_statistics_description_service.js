@@ -19,7 +19,7 @@ angular
   .module('mnStatisticsDescriptionService', [
     mnPoolDefault
   ])
-  .factory('mnStatisticsDescriptionService', mnStatisticsDescriptionFactory);
+  .factory('mnStatisticsDescriptionService', ["$http", "$q", "mnPoolDefault", mnStatisticsDescriptionFactory]);
 
 function mnStatisticsDescriptionFactory($http, $q, mnPoolDefault) {
   return {

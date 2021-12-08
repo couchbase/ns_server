@@ -17,7 +17,7 @@ export default 'mnPoolDefault';
 
 angular
   .module('mnPoolDefault', [mnPools, mnHelper])
-  .factory('mnPoolDefault', mnPoolDefaultFactory);
+  .factory('mnPoolDefault', ["mnPools", "mnHelper", "$http", "$q", "$window", "$location", "$httpParamSerializerJQLike", "$state", mnPoolDefaultFactory]);
 
 function mnPoolDefaultFactory(mnPools, mnHelper, $http, $q, $window, $location, $httpParamSerializerJQLike, $state) {
   var latest = {};

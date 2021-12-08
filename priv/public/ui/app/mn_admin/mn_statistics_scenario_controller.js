@@ -10,6 +10,7 @@ licenses/APL2.txt.
 
 export default mnScenarioDialogController;
 
+mnScenarioDialogController.$inject = ["$scope", "$rootScope", "mnStatisticsNewService", "mnUserRolesService", "$state", "$document", "$uibModal", "mnStoreService"];
 function mnScenarioDialogController($scope, $rootScope, mnStatisticsNewService, mnUserRolesService, $state, $document, $uibModal, mnStoreService) {
   var vm = this;
 

@@ -24,7 +24,7 @@ function mnUserRolesSelectDirective() {
   var mnUserRolesSelect = {
     restrict: 'E',
     templateUrl: 'app/components/directives/mn_user_roles_select.html',
-    controller: mnUserRolesSelectController,
+    controller: ["$scope", mnUserRolesSelectController],
     scope: {
       state: "="
     }

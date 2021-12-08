@@ -31,7 +31,7 @@ function mnFormatStatsSections() {
   };
 }
 
-
+mnStatisticsNewChartBuilderController.$inject = ["$rootScope", "mnStatisticsNewService", "chart", "group", "scenario", "$uibModalInstance", "mnStatisticsDescriptionService", "$state", "mnFormatStatsSectionsFilter", "mnFormatServicesFilter", "mnStoreService", "mnUserRolesService"];
 function mnStatisticsNewChartBuilderController($rootScope, mnStatisticsNewService, chart, group, scenario, $uibModalInstance, mnStatisticsDescriptionService, $state, mnFormatStatsSectionsFilter, mnFormatServicesFilter, mnStoreService, mnUserRolesService) {
   var vm = this;
   vm.isEditing = !!chart;

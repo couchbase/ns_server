@@ -22,7 +22,7 @@ angular
     mnSettingsNotificationsService,
     mnSettingsClusterService
   ])
-  .controller('mnSettingsNotificationsController', mnSettingsNotificationsController);
+  .controller('mnSettingsNotificationsController', ["mnPromiseHelper", "mnSettingsNotificationsService", "pools", "mnSettingsClusterService", mnSettingsNotificationsController]);
 
 function mnSettingsNotificationsController(mnPromiseHelper, mnSettingsNotificationsService, pools, mnSettingsClusterService) {
   var vm = this;

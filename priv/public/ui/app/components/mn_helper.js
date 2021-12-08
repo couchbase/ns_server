@@ -17,7 +17,7 @@ export default 'mnHelper';
 
 angular
   .module('mnHelper', [mnPendingQueryKeeper])
-  .factory('mnHelper', mnHelperFactory);
+  .factory('mnHelper', ["$window", "$state", "$location", "$timeout", "$q", "$http", "mnPendingQueryKeeper", mnHelperFactory]);
 
 function mnHelperFactory($window, $state, $location, $timeout, $q, $http, mnPendingQueryKeeper) {
   var mnHelper = {

@@ -15,8 +15,8 @@ export default 'mnLostConnection';
 
 angular
   .module('mnLostConnection', [mnLostConnectionService])
-  .config(mnLostConnectionConfig)
-  .controller("mnLostConnectionController", mnLostConnectionController);
+  .config(["$httpProvider", mnLostConnectionConfig])
+  .controller("mnLostConnectionController", ["mnLostConnectionService", "$window", mnLostConnectionController]);
 
 function mnLostConnectionController(mnLostConnectionService, $window) {
   var vm = this;

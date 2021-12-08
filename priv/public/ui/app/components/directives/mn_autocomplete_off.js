@@ -18,7 +18,7 @@ export default 'mnAutocompleteOff';
 
 angular
   .module('mnAutocompleteOff', [])
-  .directive('mnAutocompleteOff', mnAutocompleteOff);
+  .directive('mnAutocompleteOff', ["$rootScope", mnAutocompleteOff]);
 
 function mnAutocompleteOff($rootScope) {
   var autocompleteOff = {

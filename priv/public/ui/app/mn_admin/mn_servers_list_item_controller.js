@@ -12,6 +12,7 @@ import _ from "lodash";
 
 export default mnServersListItemController;
 
+mnServersListItemController.$inject = ["$scope", "$rootScope", "$uibModal", "mnServersService", "mnMemoryQuotaService", "mnGsiService", "mnPromiseHelper", "mnPermissions", "mnPoolDefault"];
 function mnServersListItemController($scope, $rootScope, $uibModal, mnServersService, mnMemoryQuotaService, mnGsiService, mnPromiseHelper, mnPermissions, mnPoolDefault) {
 
   var vm = this

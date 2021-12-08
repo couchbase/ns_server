@@ -10,8 +10,8 @@ licenses/APL2.txt.
 
 export default mnRolesController;
 
-function mnRolesController($scope, poolDefault, mnHelper, $uibModal, permissions,
-                           mnUserRolesService, mnPoller, mnPromiseHelper) {
+mnRolesController.$inject = ["$scope", "poolDefault", "mnHelper", "$uibModal", "permissions", "mnUserRolesService", "mnPoller", "mnPromiseHelper"];
+function mnRolesController($scope, poolDefault, mnHelper, $uibModal, permissions, mnUserRolesService, mnPoller, mnPromiseHelper) {
   var vm = this;
   vm.addUser = addUser;
   vm.addRolesGroup = addRolesGroup;

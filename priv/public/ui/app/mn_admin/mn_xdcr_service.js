@@ -19,7 +19,7 @@ export default "mnXDCRService";
 
 angular
   .module('mnXDCRService', [mnPoolDefault, mnPools, mnFilters])
-  .factory('mnXDCRService', mnXDCRServiceFactory);
+  .factory('mnXDCRService', ["$q", "$http", "mnPoolDefault", "mnPools", "getStringBytesFilter", mnXDCRServiceFactory]);
 
 function mnXDCRServiceFactory($q, $http, mnPoolDefault, mnPools, getStringBytesFilter) {
   var mnXDCRService = {

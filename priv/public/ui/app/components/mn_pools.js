@@ -14,7 +14,7 @@ export default 'mnPools';
 
 angular
   .module('mnPools', [])
-  .factory('mnPools', mnPoolsFactory);
+  .factory('mnPools', ["$http", "$cacheFactory", mnPoolsFactory]);
 
 function mnPoolsFactory($http, $cacheFactory) {
   var mnPools = {

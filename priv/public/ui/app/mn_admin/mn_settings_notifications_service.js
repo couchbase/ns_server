@@ -46,7 +46,7 @@ angular.module('mnSettingsNotificationsService', [
   mnAuditService,
   mnUserRolesService,
   mnXDCRService
-]).factory('mnSettingsNotificationsService', function ($http, mnPoolDefault, mnBucketsService, mnPools, $q, $window, mnAnalyticsService, mnViewsListService, mnGsiService, mnAuditService, mnMBtoBytesFilter, mnPermissions, mnSettingsClusterService, mnSettingsAutoFailoverService, mnSettingsAutoCompactionService, mnTasksDetails, mnXDCRService, mnUserRolesService, mnStatsServiceDowngraded) {
+]).factory('mnSettingsNotificationsService', ["$http", "mnPoolDefault", "mnBucketsService", "mnPools", "$q", "$window", "mnAnalyticsService", "mnViewsListService", "mnGsiService", "mnAuditService", "mnMBtoBytesFilter", "mnPermissions", "mnSettingsClusterService", "mnSettingsAutoFailoverService", "mnSettingsAutoCompactionService", "mnTasksDetails", "mnXDCRService", "mnUserRolesService", "mnStatsServiceDowngraded", function ($http, mnPoolDefault, mnBucketsService, mnPools, $q, $window, mnAnalyticsService, mnViewsListService, mnGsiService, mnAuditService, mnMBtoBytesFilter, mnPermissions, mnSettingsClusterService, mnSettingsAutoFailoverService, mnSettingsAutoCompactionService, mnTasksDetails, mnXDCRService, mnUserRolesService, mnStatsServiceDowngraded) {
   var mnSettingsNotificationsService = {};
 
   function sumWithoutNull(array, average) {
@@ -534,4 +534,4 @@ angular.module('mnSettingsNotificationsService', [
 
 
   return mnSettingsNotificationsService;
-});
+}]);

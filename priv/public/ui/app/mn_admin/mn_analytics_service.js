@@ -19,7 +19,7 @@ export default "mnAnalyticsService";
 
 angular
   .module('mnAnalyticsService', [mnServersService, mnFilters, mnStatisticsNewService])
-  .factory('mnAnalyticsService', mnAnalyticsServiceFactory);
+  .factory('mnAnalyticsService', ["$http", "$q", "mnServersService", "mnCloneOnlyDataFilter", "mnFormatQuantityFilter", "mnParseHttpDateFilter", "timeUnitToSeconds", "mnStatisticsNewService", mnAnalyticsServiceFactory]);
 
 function mnAnalyticsServiceFactory($http, $q, mnServersService, mnCloneOnlyDataFilter, mnFormatQuantityFilter, mnParseHttpDateFilter, timeUnitToSeconds, mnStatisticsNewService) {
   var mnAnalyticsService = {

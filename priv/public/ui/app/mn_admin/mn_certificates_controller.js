@@ -20,7 +20,7 @@ export default "mnCertificates";
 
 angular
   .module("mnCertificates", [mnCertificatesService, mnSpinner, mnHelper, uiBootstrap, mnPoll])
-  .controller("mnCertController", mnCertController)
+  .controller("mnCertController", ["$scope", "mnCertificatesService", "mnPromiseHelper", "mnHelper", "$uibModal", "mnPoller", mnCertController])
   .controller('mnCertificatesDeleteDialogController', mnCertificatesDeleteDialogController)
 
 function mnCertController($scope, mnCertificatesService, mnPromiseHelper, mnHelper, $uibModal, mnPoller) {

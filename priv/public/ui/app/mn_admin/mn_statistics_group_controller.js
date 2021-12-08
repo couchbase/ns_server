@@ -10,6 +10,7 @@ licenses/APL2.txt.
 
 export default mnGroupDialogController;
 
+mnGroupDialogController.$inject = ["$rootScope", "$uibModalInstance", "mnUserRolesService", "mnPromiseHelper", "scenarioId", "mnStoreService"];
 function mnGroupDialogController($rootScope, $uibModalInstance, mnUserRolesService, mnPromiseHelper, scenarioId, mnStoreService) {
   var vm = this;
   vm.group = {

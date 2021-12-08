@@ -56,7 +56,7 @@ angular.module('app', [
   .constant("docBytesLimit", docBytesLimit)
   .constant("viewsPerPageLimit", viewsPerPageLimit)
   .constant("IEC", IEC)
-  .run(appRun);
+  .run(["$state", "$urlRouter", "$exceptionHandler", "mnPools", "$window", "$rootScope", appRun]);
 
 function appRun($state, $urlRouter, $exceptionHandler, mnPools, $window, $rootScope) {
 

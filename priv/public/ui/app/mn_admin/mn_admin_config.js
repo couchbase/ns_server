@@ -72,7 +72,7 @@ angular.module('mnAdmin', [
   mnSettingsClusterService,
   mnDetailStatsModule,
   mnSelect
-]).config(mnAdminConfig)
+]).config(["$stateProvider", "$urlMatcherFactoryProvider", "mnPluggableUiRegistryProvider", "$httpProvider", mnAdminConfig])
   .controller('mnAdminController', mnAdminController)
   .factory('mnAdminService', downgradeInjectable(MnAdminService))
   .factory('mnSessionService', downgradeInjectable(MnSessionService))

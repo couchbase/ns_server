@@ -10,6 +10,7 @@ licenses/APL2.txt.
 
 export default mnStatisticsDetailedChartController;
 
+mnStatisticsDetailedChartController.$inject = ["$scope", "$timeout", "$state", "chart", "items", "mnStatisticsNewService", "mnStatisticsNewScope"];
 function mnStatisticsDetailedChartController($scope, $timeout, $state, chart, items, mnStatisticsNewService, mnStatisticsNewScope) {
   var vm = this;
   vm.chart = Object.assign({}, chart, {size: "extra"});

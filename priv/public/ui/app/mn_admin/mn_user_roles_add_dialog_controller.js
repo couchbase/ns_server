@@ -12,6 +12,7 @@ import _ from "lodash";
 
 export default mnUserRolesAddDialogController;
 
+mnUserRolesAddDialogController.$inject = ["mnUserRolesService", "$uibModalInstance", "mnPromiseHelper", "user", "isLdapEnabled", "mnPoolDefault", "mnHelper", "$q", "isSaslauthdAuthEnabled", "$state", "permissions"];
 function mnUserRolesAddDialogController(mnUserRolesService, $uibModalInstance, mnPromiseHelper, user, isLdapEnabled, mnPoolDefault, mnHelper, $q, isSaslauthdAuthEnabled, $state, permissions) {
   var vm = this;
   vm.user = _.clone(user) || {

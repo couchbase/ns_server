@@ -14,7 +14,7 @@ export default "mnInternalSettingsService";
 
 angular
   .module("mnInternalSettingsService", [])
-  .factory("mnInternalSettingsService", mnInternalSettingsFactory);
+  .factory("mnInternalSettingsService", ["$http", mnInternalSettingsFactory]);
 
 function mnInternalSettingsFactory($http) {
   var mnInternalSettingsService = {

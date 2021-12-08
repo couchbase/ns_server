@@ -15,7 +15,7 @@ export default 'mnStoreService';
 
 angular
   .module('mnStoreService', [mnHelper])
-  .factory('mnStoreService', mnStoreServiceFactory);
+  .factory('mnStoreService', ["mnHelper", mnStoreServiceFactory]);
 
 function mnStoreServiceFactory(mnHelper) {
   var db = {};

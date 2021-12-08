@@ -17,7 +17,7 @@ export default 'mnEnv';
  */
 angular
   .module('mnEnv', [])
-  .factory('mnEnv', mnEnvFactory);
+  .factory('mnEnv', ["$http", mnEnvFactory]);
 
 function mnEnvFactory($http) {
 

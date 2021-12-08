@@ -27,7 +27,7 @@ function mnServicesDiskPathsDirective() {
       isDisabled: "=?"
     },
     templateUrl: "app/components/directives/mn_services_disk_paths.html",
-    controller: controller,
+    controller: ["$scope", "mnClusterConfigurationService", controller],
     controllerAs: "mnCtl"
   };
 

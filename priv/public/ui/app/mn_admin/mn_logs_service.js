@@ -16,7 +16,7 @@ export default "mnLogsService";
 
 angular
   .module('mnLogsService', [uiBootstrap, ngClipboard])
-  .service('mnLogsService', mnLogsServiceFactory);
+  .service('mnLogsService', ["$http", "$rootScope", "$uibModal", mnLogsServiceFactory]);
 
 function mnLogsServiceFactory($http, $rootScope, $uibModal) {
   var mnLogsService = {

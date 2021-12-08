@@ -14,7 +14,7 @@ export default 'mnBucketsStats';
 
 angular
   .module("mnBucketsStats", [])
-  .factory("mnBucketsStats", mnBucketsFactory);
+  .factory("mnBucketsStats", ["$http", "$cacheFactory", mnBucketsFactory]);
 
 function mnBucketsFactory($http, $cacheFactory) {
   var mnBucketsStats = {

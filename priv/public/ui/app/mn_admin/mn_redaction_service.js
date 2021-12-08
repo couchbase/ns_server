@@ -14,7 +14,7 @@ export default "mnLogRedactionService";
 
 angular
   .module("mnLogRedactionService", [])
-  .factory("mnLogRedactionService", mnRedactionFactory);
+  .factory("mnLogRedactionService", ["$http", mnRedactionFactory]);
 
 function mnRedactionFactory($http) {
   var mnLogRedactionService = {

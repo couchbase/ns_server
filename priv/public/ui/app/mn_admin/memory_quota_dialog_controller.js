@@ -26,7 +26,7 @@ angular.module('mnMemoryQuotaDialogController', [
   mnSettingsClusterService,
   mnMemoryQuota
 ])
-  .controller('mnMemoryQuotaDialogController', mnMemoryQuotaDialogController)
+  .controller('mnMemoryQuotaDialogController', ["$q", "$uibModalInstance", "mnPoolDefault", "mnPromiseHelper", "mnSettingsClusterService", "indexSettings", "memoryQuotaConfig", "firstTimeAddedServices", mnMemoryQuotaDialogController]);
 
 function mnMemoryQuotaDialogController($q, $uibModalInstance, mnPoolDefault, mnPromiseHelper, mnSettingsClusterService, indexSettings, memoryQuotaConfig, firstTimeAddedServices) {
   var vm = this;

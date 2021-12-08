@@ -15,7 +15,7 @@ export default "mnResetPasswordDialogService";
 
 angular
   .module("mnResetPasswordDialogService", [uiBootstrap])
-  .factory("mnResetPasswordDialogService", mnResetPasswordDialogFactory);
+  .factory("mnResetPasswordDialogService", ["$http", "$uibModal", "$q", mnResetPasswordDialogFactory]);
 
 function mnResetPasswordDialogFactory($http, $uibModal, $q) {
   var mnResetPasswordDialogService = {

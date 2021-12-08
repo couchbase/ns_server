@@ -17,8 +17,8 @@ export default 'mnPoll';
 
 angular
   .module("mnPoll", [mnPromiseHelper])
-  .factory("mnPoller", mnPollerFactory)
-  .factory("mnEtagPoller", mnEtagPollerFactory);
+  .factory("mnPoller", ["$q", "$timeout", "mnPromiseHelper", mnPollerFactory])
+  .factory("mnEtagPoller", ["mnPoller", mnEtagPollerFactory]);
 
 function mnEtagPollerFactory(mnPoller) {
   function EtagPoller(scope, request, doNotListenVisibilitychange) {

@@ -10,6 +10,7 @@ licenses/APL2.txt.
 
 export default mnServersEjectDialogController;
 
+mnServersEjectDialogController.$inject = ["$rootScope", "$uibModalInstance", "node", "warnings", "mnServersService"];
 function mnServersEjectDialogController($rootScope, $uibModalInstance, node, warnings, mnServersService) {
   var vm = this;
   vm.warningFlags = warnings;

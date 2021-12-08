@@ -16,7 +16,7 @@ export default "mnSettingsClusterService";
 
 angular
   .module('mnSettingsClusterService', [mnPools, mnPoolDefault])
-  .factory('mnSettingsClusterService', mnSettingsClusterServiceFactory);
+  .factory('mnSettingsClusterService', ["$http", "$q", "IEC", "mnPools", "mnPoolDefault", mnSettingsClusterServiceFactory]);
 
 function mnSettingsClusterServiceFactory($http, $q, IEC, mnPools, mnPoolDefault) {
   var mnSettingsClusterService = {

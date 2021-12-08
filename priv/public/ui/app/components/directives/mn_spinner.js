@@ -14,7 +14,7 @@ export default 'mnSpinner';
 
 angular
   .module('mnSpinner', [])
-  .directive('mnSpinner', mnSpinnerDirective);
+  .directive('mnSpinner', ["$compile", mnSpinnerDirective]);
 
 function mnSpinnerDirective($compile) {
   var directive = {

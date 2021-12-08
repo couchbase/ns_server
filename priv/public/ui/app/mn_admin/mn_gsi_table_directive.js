@@ -12,6 +12,7 @@ import {Subject} from 'rxjs';
 
 export default mnGsiTableDirective;
 
+mnGsiTableDirective.$inject = ["mnHelper"];
 function mnGsiTableDirective(mnHelper) {
   var mnGsiTable = {
     restrict: 'EA',
@@ -23,7 +24,7 @@ function mnGsiTableDirective(mnHelper) {
       pools: "=",
       nodeName: "@?"
     },
-    controller: mnGsiTableController,
+    controller: ["$scope", "mnHelperService", "mnPoolDefault", "mnStatisticsNewService", mnGsiTableController],
     controllerAs: "mnGsiTableCtl",
     templateUrl: 'app/mn_admin/mn_gsi_table_directive.html'
   };

@@ -30,7 +30,7 @@ function mnSelectableNodesListDirective() {
       mnSelectedNodesHolder: "="
     },
     templateUrl: "app/components/directives/mn_selectable_nodes_list.html",
-    controller: mnSelectableNodesListController,
+    controller: ["$scope", mnSelectableNodesListController],
     controllerAs: "mnThisCtl",
     bindToController: true
   };

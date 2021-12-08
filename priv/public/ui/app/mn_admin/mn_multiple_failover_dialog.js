@@ -10,6 +10,7 @@ licenses/APL2.txt.
 
 export default mnMultipleFailoverDialogController;
 
+mnMultipleFailoverDialogController.$inject = ["mnServersService", "mnPromiseHelper", "groups", "nodes", "$uibModalInstance", "$uibModal", "mnHelper", "allowUnsafe", "implementationVersion"];
 function mnMultipleFailoverDialogController(mnServersService, mnPromiseHelper, groups, nodes, $uibModalInstance, $uibModal, mnHelper, allowUnsafe, implementationVersion) {
   var vm = this;
 

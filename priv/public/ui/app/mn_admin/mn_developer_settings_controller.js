@@ -20,7 +20,7 @@ angular
     mnStatisticsDescriptionService,
     mnPromiseHelper
   ])
-  .controller("mnDeveloperSettingsController", mnDeveloperSettingsController);
+  .controller("mnDeveloperSettingsController", ["mnStatisticsDescriptionService", "mnPromiseHelper", mnDeveloperSettingsController]);
 
 function mnDeveloperSettingsController(mnStatisticsDescriptionService, mnPromiseHelper) {
   var vm = this;

@@ -41,7 +41,7 @@ angular.module('mnSettingsCluster', [
   mnXDCRService,
   mnSettingsClusterService,
   mnClusterConfigurationService,
-]).controller('mnSettingsClusterController', mnSettingsClusterController);
+]).controller('mnSettingsClusterController', ["$scope", "$q", "$uibModal", "mnPoolDefault", "mnMemoryQuotaService", "mnSettingsClusterService", "mnHelper", "mnPromiseHelper", "mnClusterConfigurationService", "mnXDCRService", mnSettingsClusterController]);
 
 function mnSettingsClusterController($scope, $q, $uibModal, mnPoolDefault, mnMemoryQuotaService, mnSettingsClusterService, mnHelper, mnPromiseHelper, mnClusterConfigurationService, mnXDCRService) {
   var vm = this;

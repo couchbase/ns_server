@@ -12,6 +12,7 @@ import _ from "lodash";
 
 export default mnRolesGroupsAddDialogController;
 
+mnRolesGroupsAddDialogController.$inject = ["mnUserRolesService", "$uibModalInstance", "mnPromiseHelper", "rolesGroup", "$state"];
 function mnRolesGroupsAddDialogController(mnUserRolesService, $uibModalInstance, mnPromiseHelper, rolesGroup, $state) {
   var vm = this;
   vm.rolesGroup = _.clone(rolesGroup) || {};

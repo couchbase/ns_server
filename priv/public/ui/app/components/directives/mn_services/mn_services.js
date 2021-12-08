@@ -26,7 +26,7 @@ function mnServicesDirective() {
       mnIsEnterprise: "="
     },
     templateUrl: 'app/components/directives/mn_services/mn_services.html',
-    controller: controller,
+    controller: ["mnMemoryQuotaService", controller],
     controllerAs: "mnServicesCtl",
     bindToController: true
   };

@@ -12,6 +12,7 @@ import mnStatsDesc from "./mn_statistics_description.js";
 
 export default mnServersListItemDetailsController;
 
+mnServersListItemDetailsController.$inject = ["$scope", "mnServersListItemDetailsService", "mnPromiseHelper", "mnStatisticsNewService", "mnPermissions", "mnPoolDefault", "mnOrderServicesFilter", "mnEllipsisiseOnLeftFilter"];
 function mnServersListItemDetailsController($scope, mnServersListItemDetailsService, mnPromiseHelper, mnStatisticsNewService, mnPermissions, mnPoolDefault, mnOrderServicesFilter, mnEllipsisiseOnLeftFilter) {
   var vm = this;
 

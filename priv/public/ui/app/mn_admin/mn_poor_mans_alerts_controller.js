@@ -22,7 +22,7 @@ angular
     mnPromiseHelper,
     mnPoorMansAlertsService
   ])
-  .controller("mnPoorMansAlertsController", mnPoorMansAlertsController);
+  .controller("mnPoorMansAlertsController", ["mnPromiseHelper", "mnPoorMansAlertsService", "alertsSilenceURL", "alerts", "$uibModalInstance", mnPoorMansAlertsController]);
 
 function mnPoorMansAlertsController(mnPromiseHelper, mnPoorMansAlertsService, alertsSilenceURL, alerts, $uibModalInstance) {
   var vm = this;

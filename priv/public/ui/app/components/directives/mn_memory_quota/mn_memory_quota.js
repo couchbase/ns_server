@@ -28,7 +28,7 @@ function mnMemoryQuotaDirective() {
       mnIsEnterprise: "="
     },
     templateUrl: 'app/components/directives/mn_memory_quota/mn_memory_quota.html',
-    controller: controller
+    controller: ["$scope", controller]
   };
 
   return mnMemoryQuota;

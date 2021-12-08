@@ -26,7 +26,7 @@ angular
     mnPromiseHelper,
     mnSettingsClusterService
   ])
-  .directive('mnAutoCompactionForm', mnAutoCompactionFormDirective);
+  .directive('mnAutoCompactionForm', ["$http", "daysOfWeek", "mnPermissions", "mnPoolDefault", "mnPromiseHelper", "mnSettingsClusterService", mnAutoCompactionFormDirective]);
 
 function mnAutoCompactionFormDirective($http, daysOfWeek, mnPermissions, mnPoolDefault, mnPromiseHelper, mnSettingsClusterService) {
   var mnAutoCompactionForm = {
@@ -39,7 +39,7 @@ function mnAutoCompactionFormDirective($http, daysOfWeek, mnPermissions, mnPoolD
     isolate: false,
     replace: true,
     templateUrl: 'app/components/directives/mn_auto_compaction_form/mn_auto_compaction_form.html',
-    controller: controller
+    controller: ["$scope", controller]
   };
 
   function controller($scope) {
