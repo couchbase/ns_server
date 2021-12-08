@@ -53,7 +53,7 @@ subscribe_to_events() ->
     Child = ns_pubsub:subscribe_link(
               {chronicle_kv:event_manager(kv), NsServer},
               fun ({{key, Key}, Rev, {updated, Value}}) ->
-                      Self ! {insert, Ref, Key, Value, Rev};
+                      Self ! {insert, Ref, Key, fun () -> Value end, Rev};
                   ({{key, Key}, Rev, deleted}) ->
                       Self ! {delete, Ref, Key, Rev};
                   (_) ->
@@ -79,8 +79,8 @@ handle_info({'EXIT', Child, Reason}, #state{child = Child}) ->
 handle_info({'EXIT', From, Reason}, State) ->
     ?log_debug("Received exit ~p from ~p", [Reason, From]),
     {stop, Reason, State};
-handle_info({insert, Ref, K, V, Rev}, State = #state{ref = Ref}) ->
-    insert(K, V, Rev),
+handle_info({insert, Ref, K, ValFun, Rev}, State = #state{ref = Ref}) ->
+    insert(K, ValFun(), Rev),
     {noreply, State};
 handle_info({delete, Ref, K, Rev}, State = #state{ref = Ref}) ->
     delete(K, Rev),
