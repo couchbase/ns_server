@@ -62,7 +62,7 @@ FILE (MAKE_DIRECTORY "${NS_UI_PUB_DIR}")
 SET (_out_js_stamp_depends "${NS_UI_STAMP}.js.stamp")
 FUNCTION (_maybe_add_pluggable_ui_stamp p_ui_dir p_ui_stamp)
   IF (EXISTS "${CMAKE_SOURCE_DIR}/${p_ui_dir}")
-    LIST (APPEND _out_js_stamp_depends "${NS_UI_BUILD_DIR}/${p_ui_stamp}")
+    SET (_out_js_stamp_depends ${_out_js_stamp_depends} "${NS_UI_BUILD_DIR}/${p_ui_stamp}" PARENT_SCOPE)
   ENDIF()
 ENDFUNCTION (_maybe_add_pluggable_ui_stamp)
 
