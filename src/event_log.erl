@@ -192,6 +192,14 @@ build_extra_attributes(Extra) ->
 add_log(Event) ->
     add_log(Event, []).
 
+%% 'Extras' should be encoded in a way that the ejson module can
+%% convert the Event Log into a JSON blob via ejson:encode/1.
+%%
+%% There are places in the code where JSON terms are encoded using
+%% {struct, ...} tuples - avoid using those when adding event logs, since that
+%% encoding was meant/used from the time when mochijson2 was being used as
+%% the JSON encoding library.
+
 add_log(Event, Extras) ->
     %% Event logs are enabled only when all the nodes are at 7.1.0.
     case cluster_compat_mode:is_cluster_NEO() of
@@ -204,7 +212,15 @@ add_log(Event, Extras) ->
                                  [{uuid, Id}],
                                  build_extra_attributes(Extras)]),
 
-            event_log_server:log(Timestamp, Id, Log);
+            %% Make sure the Log is a valid JSON term as expected
+            %% by ejson:encode/1.
+            try ejson:encode({Log}) of
+                _ -> event_log_server:log(Timestamp, Id, Log)
+            catch
+                T:E:S ->
+                    ?log_error("Event JSON encoding error - ~p~n"
+                               "Event - ~p~n", [{T, E, S}, Log])
+            end;
         false ->
             ok
     end.
