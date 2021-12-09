@@ -66,7 +66,7 @@ let serversState = {
 let logsState = {
   name: 'app.admin.logs.**',
   url: '/logs',
-  lazyLoad: mnLazyload(() => import('./mn_admin/mn_logs_controller.js'), "mnLogs")
+  lazyLoad: mnLoadNgModule(() => import('./mn.logs.module.js'), 'MnLogsModule')
 };
 
 let logsListState = {
