@@ -11,10 +11,10 @@ licenses/APL2.txt.
 import {Component, Pipe, ChangeDetectionStrategy} from '@angular/core'
 import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
 import {Subject, BehaviorSubject, pipe} from 'rxjs';
-import {pluck, map, shareReplay, takeUntil,
-        withLatestFrom, filter, combineLatest} from 'rxjs/operators';
+import {pluck, map, shareReplay, takeUntil, filter,
+        combineLatest, merge, mapTo, pairwise, startWith} from 'rxjs/operators';
 
-import {MnPermissions, $rootScope} from './ajs.upgraded.providers.js';
+import {MnPermissions} from './ajs.upgraded.providers.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnXDCRService} from './mn.xdcr.service.js';
 import {MnFormService} from "./mn.form.service.js";
@@ -40,16 +40,14 @@ class MnXDCRItemDetailsComponent extends MnLifeCycleHooksToStream {
     MnXDCRService,
     MnFormService,
     NgbModal,
-    $rootScope,
     MnHelperService
   ]}
 
-  constructor(mnPermissions, mnXDCRService, mnFormService, modalService, $rootScope, mnHelperService) {
+  constructor(mnPermissions, mnXDCRService, mnFormService, modalService, mnHelperService) {
     super();
 
     this.mnFormService = mnFormService;
     this.mnXDCRService = mnXDCRService;
-    this.$rootScope = $rootScope;
 
     var onDeleteReplication = new Subject();
     onDeleteReplication
@@ -78,28 +76,30 @@ class MnXDCRItemDetailsComponent extends MnLifeCycleHooksToStream {
                                  shareReplay({refCount: true, bufferSize: 1}));
     form
       .setFormGroup({})
-      .setPackPipe(pipe(withLatestFrom(status),
-                        filter(([, status]) => status !== "spinner"),
-                        map(([item,]) => [item.id, {
+      .setPackPipe(pipe(startWith(null),
+                        pairwise(),
+                        filter(([prevItem, item]) => !prevItem || prevItem.status !== item.status),
+                        map(([_, item]) => [item.id, {
                           pauseRequested: item.status !== "paused"
                         }])))
       .setPostRequest(this.mnXDCRService.stream.postPausePlayReplication)
-      .success(() => this.$rootScope.$broadcast("reloadTasksPoller"));
+      .hasNoHandler();
 
     this.form = form;
-    this.status = status;
-    this.statusClass = status.pipe(map(v => "fa-" + v));
+    this.status = status.pipe(merge(form.submit.pipe(pluck("status"))));
+    this.statusClass = status.pipe(merge(form.submit.pipe(mapTo("spinner"))),
+                                   map(v => "fa-" + v));
 
     this.replicationSettings = this.createGetSettingsReplicationsPipe(this.item.id);
     this.replicationSettings
       .pipe(takeUntil(this.mnOnDestroy))
       .subscribe(this.unpackReplicationMappings.bind(this));
-    this.areThereMappingRules = this.explicitMappingRules.pipe(
-      combineLatest(this.explicitMappingMigrationRules),
-      map(([mappingRules, mappingMigrationRules]) => {
-        return Object.keys(mappingRules).length || Object.keys(mappingMigrationRules).length;
-      })
-    );
+
+    this.areThereMappingRules = this.explicitMappingRules
+      .pipe(combineLatest(this.explicitMappingMigrationRules),
+            map(([mappingRules, mappingMigrationRules]) => {
+              return Object.keys(mappingRules).length || Object.keys(mappingMigrationRules).length;
+            }));
   }
 
   unpackReplicationMappings(v) {
@@ -110,14 +110,10 @@ class MnXDCRItemDetailsComponent extends MnLifeCycleHooksToStream {
   }
 
   getStatus(row) {
-    if (row.pauseRequested && row.status != 'paused') {
-      return 'spinner';
-    } else {
-      switch (row.status) {
-      case 'running': return 'pause';
-      case 'paused': return 'play';
-      default: return 'spinner';
-      }
+    switch (row.status) {
+    case 'running': return 'pause';
+    case 'paused': return 'play';
+    default: return 'spinner';
     }
   }
 }
@@ -129,8 +125,9 @@ class MnReplicationStatus {
 
   transform(status) {
     switch (status) {
-    case "spinner": return "Pausing";
+    case "running": return "Pausing";
     case "pause": return "Pause";
+    case "paused": return "Running";
     case "play": return "Run";
     }
   }
