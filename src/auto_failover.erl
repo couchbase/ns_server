@@ -670,9 +670,9 @@ process_failover_error({autofailover_unsafe, UnsafeBuckets}, Nodes, S) ->
                                          [UnsafeBuckets])),
     report_failover_error(autofailover_unsafe, ErrMsg, Nodes, S);
 process_failover_error(retry_aborting_rebalance, Nodes, S) ->
-     ?log_debug("Rebalance is being stopped by user, will retry auto-failover "
-                "of nodes, ~p", [Nodes]),
-     S;
+    ?log_debug("Rebalance is being stopped by user, will retry auto-failover "
+               "of nodes, ~p", [Nodes]),
+    S;
 process_failover_error({operation_running, Type} = Flag, Nodes, S) ->
     report_failover_error(Flag, Type ++ " is running.", Nodes, S);
 process_failover_error(in_recovery, Nodes, S) ->
