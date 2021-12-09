@@ -394,7 +394,12 @@ compute_local_tasks_hash(TaskNode, NodeInfo, Hash) ->
                   loadingSampleBucket ->
                       add_hash(Task, Acc);
                   xdcr ->
-                      add_hash(lists:keyfind(id, 1, Task), Acc);
+                      MaxVBReps = proplists:get_value(max_vbreps, Task, null),
+                      add_hash({xdcr,
+                                lists:keyfind(id, 1, Task),
+                                %% track on xdcr max_vbreps to change
+                                %% tasks hash when xdcr pause/play triggers
+                                {is_xdcr_paused, MaxVBReps =:= 0}}, Acc);
                   warming_up ->
                       add_hash({warming_up,
                                 lists:keyfind(bucket, 1, Task)}, Acc);
