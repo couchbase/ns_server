@@ -502,8 +502,14 @@ trim_nodes(Nodes, #state{count = Count, max_count = Max}) ->
     lists:sublist(Nodes, Max - Count).
 
 max_nodes_error_msg(#state{max_count = Max}) ->
-    M = io_lib:format("Maximum number of auto-failover events "
-                      "(~p) has been reached.", [Max]),
+    EventsStr = case cluster_compat_mode:is_cluster_NEO() of
+                    true ->
+                        nodes;
+                    false ->
+                        events
+                end,
+    M = io_lib:format("Maximum number of auto-failover ~p "
+                      "(~p) has been reached.", [EventsStr, Max]),
     lists:flatten(M).
 
 maybe_report_max_node_reached(Nodes, ErrMsg, S) ->
