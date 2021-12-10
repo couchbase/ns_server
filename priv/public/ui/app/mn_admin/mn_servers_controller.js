@@ -155,8 +155,7 @@ function mnServersController($scope, $state, $uibModal, mnPoolDefault, mnPoller,
 
   function activate() {
     mnHelper.initializeDetailsHashObserver(vm, 'openedServers', 'app.admin.servers.list');
-
-    if (permissions.cluster.server_groups.read) {
+    if (vm.mnPoolDefault.isGroupsAvailable && permissions.cluster.server_groups.read) {
       new mnPoller($scope, function () {
         return mnGroupsService.getGroupsByHostname();
       })
