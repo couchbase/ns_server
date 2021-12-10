@@ -55,7 +55,6 @@ class MnSecurityOtherComponent extends MnLifeCycleHooksToStream {
     let prepareOtherSettingsFormValues = mnSecurityService.stream.prepareOtherSettingsFormValues;
 
     this.form = mnFormService.create(this)
-      .setSource(prepareOtherSettingsFormValues)
       .setFormGroup({
         logRedactionLevel: formBuilder.group({
           logRedactionLevel: null
@@ -65,6 +64,7 @@ class MnSecurityOtherComponent extends MnLifeCycleHooksToStream {
           clusterEncryptionLevel: null
         })
       })
+      .setSource(prepareOtherSettingsFormValues)
       .setPackPipe(map(this.packData.bind(this)))
       .setPostRequest(new MnHttpGroupRequest({
         logRedactionLevel: postLogRedactionRequest,
