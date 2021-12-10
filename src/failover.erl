@@ -25,7 +25,8 @@
 
 -export([start/2, is_possible/2, orchestrate/2,
          get_failover_vbuckets/2, promote_max_replicas/4,
-         clear_failover_vbuckets_sets/1]).
+         clear_failover_vbuckets_sets/1,
+         nodes_needed_for_durability_failover/2]).
 
 -define(DATA_LOST, 1).
 -define(FAILOVER_OPS_TIMEOUT, ?get_timeout(failover_ops_timeout, 10000)).
@@ -493,13 +494,29 @@ should_promote_max_replica([Master | _] = Chain, FailoverNodes) ->
     lists:member(Master, FailoverNodes) andalso
         length([N || N <- Chain, not lists:member(N, FailoverNodes)]) > 1.
 
-promote_max_replicas(FailoverNodes, Bucket, Map, PromoteReplicaFun) ->
+map_and_nodes_to_query(FailoverNodes, Map, PromoteReplicaFun) ->
     MarkedMap = [{should_promote_max_replica(Chain, FailoverNodes),
                   PromoteReplicaFun(Chain)} || Chain <- Map],
 
     EnumeratedMap = misc:enumerate(MarkedMap, 0),
 
-    NodesToQuery = nodes_to_query(EnumeratedMap, FailoverNodes),
+    {EnumeratedMap, nodes_to_query(EnumeratedMap, FailoverNodes)}.
+
+nodes_needed_for_durability_failover(Map, FailoverNodes) ->
+    case cluster_compat_mode:preserve_durable_mutations() of
+        true ->
+            {_, NodesToQuery} =
+                map_and_nodes_to_query(
+                  FailoverNodes, Map, mb_map:promote_replica(_, FailoverNodes)),
+            [N || {N, _} <- NodesToQuery];
+        false ->
+            []
+    end.
+
+promote_max_replicas(FailoverNodes, Bucket, Map, PromoteReplicaFun) ->
+    {EnumeratedMap, NodesToQuery} =
+        map_and_nodes_to_query(FailoverNodes, Map, PromoteReplicaFun),
+
     %% failover_nodes option causes replications from failed over nodes to be
     %%                shut down on 6.6.3 nodes
     %% stop_replications - backward compatibility with 6.6.2 on which

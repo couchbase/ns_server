@@ -64,7 +64,7 @@
          reset_count_async/0,
          is_enabled/0,
          is_enabled/1,
-         validate_kv_safety/1,
+         validate_kv/2,
          validate_services_safety/2]).
 
 %% For email alert notificatons
@@ -567,7 +567,8 @@ failover_nodes([], S, _DownNodes, _NodeStatuses, _UpdateCount) ->
     S;
 failover_nodes(Nodes, S, DownNodes, NodeStatuses, UpdateCount) ->
     FailoverReasons = failover_reasons(Nodes, DownNodes, NodeStatuses),
-    case try_autofailover(Nodes, FailoverReasons) of
+    DownNodeNames = [N || {N, _, _} <- DownNodes],
+    case try_autofailover(Nodes, DownNodeNames, FailoverReasons) of
         {ok, UnsafeNodes} ->
             FailedOver = Nodes -- [N || {N, _} <- UnsafeNodes],
             [log_failover_success(N, DownNodes, NodeStatuses) ||
@@ -590,7 +591,7 @@ failover_nodes(Nodes, S, DownNodes, NodeStatuses, UpdateCount) ->
             process_failover_error(Error, Nodes, S)
     end.
 
-try_autofailover(Nodes, FailoverReasons) ->
+try_autofailover(Nodes, DownNodes, FailoverReasons) ->
     case ns_cluster_membership:service_nodes(Nodes, kv) of
         [] ->
             {ValidNodes, UnsafeNodes} = validate_services_safety(Nodes, []),
@@ -601,7 +602,8 @@ try_autofailover(Nodes, FailoverReasons) ->
                     case ns_orchestrator:try_autofailover(
                            ValidNodes,
                            #{skip_safety_check => true,
-                             failover_reasons => FailoverReasons}) of
+                             failover_reasons => FailoverReasons,
+                             down_nodes => DownNodes}) of
                         {ok, UN} ->
                             UN = [],
                             {ok, UnsafeNodes};
@@ -610,8 +612,9 @@ try_autofailover(Nodes, FailoverReasons) ->
                     end
             end;
         _ ->
-            ns_orchestrator:try_autofailover(Nodes, #{failover_reasons =>
-                                                      FailoverReasons})
+            ns_orchestrator:try_autofailover(
+              Nodes, #{failover_reasons => FailoverReasons,
+                       down_nodes => DownNodes})
     end.
 
 log_failover_success(Node, DownNodes, NodeStatuses) ->
@@ -665,6 +668,13 @@ process_failover_error({autofailover_unsafe, UnsafeBuckets}, Nodes, S) ->
                                          " following buckets: ~p",
                                          [UnsafeBuckets])),
     report_failover_error(autofailover_unsafe, ErrMsg, Nodes, S);
+process_failover_error({nodes_down, NodesNeeded, Buckets}, Nodes, S) ->
+    ErrMsg =
+        lists:flatten(
+          io_lib:format(
+            "Nodes ~p needed to preserve durability writes on buckets ~p "
+            "are down", [NodesNeeded, Buckets])),
+    report_failover_error(nodes_down, ErrMsg, Nodes, S);
 process_failover_error(retry_aborting_rebalance, Nodes, S) ->
     ?log_debug("Rebalance is being stopped by user, will retry auto-failover "
                "of nodes, ~p", [Nodes]),
@@ -956,38 +966,71 @@ restart_on_compat_mode_change() ->
 send_tick_msg() ->
     erlang:send_after(get_tick_period(), self(), tick).
 
-validate_kv_safety(Nodes) ->
+validate_kv(Nodes, DownNodes) ->
     case ns_cluster_membership:service_nodes(Nodes, kv) of
         [] ->
             ok;
         KVNodes ->
-            BucketPairs = ns_bucket:get_buckets(),
-            UnsafeBuckets =
-                [BucketName
-                 || {BucketName, BucketConfig} <- BucketPairs,
-                    validate_bucket_safety(BucketConfig, KVNodes)
-                        =:= false],
-            case UnsafeBuckets of
-                [] -> ok;
-                _ -> {error, UnsafeBuckets}
+            case validate_kv_safety(KVNodes) of
+                ok ->
+                    validate_durability_failover(KVNodes, DownNodes);
+                Error ->
+                    Error
             end
     end.
 
-validate_bucket_safety(BucketConfig, Nodes) ->
-    case ns_bucket:bucket_type(BucketConfig) of
-        membase ->
-            case proplists:get_value(map, BucketConfig) of
-                undefined ->
-                    true;
-                Map ->
-                    not lists:any(fun ([undefined|_]) ->
-                                          true;
-                                      (_) ->
-                                          false
-                                  end, mb_map:promote_replicas(Map, Nodes))
-            end;
-        memcached ->
-            true
+validate_kv_safety(Nodes) ->
+    case validate_membase_buckets(validate_bucket_safety(_, _, Nodes)) of
+        [] ->
+            ok;
+        UnsafeBuckets ->
+            {unsafe, [B || {B, _} <- UnsafeBuckets]}
+    end.
+
+validate_bucket_safety(_BucketName, Map, Nodes) ->
+    lists:any(fun ([undefined|_]) ->
+                      true;
+                  (_) ->
+                      false
+              end, mb_map:promote_replicas(Map, Nodes)).
+
+validate_membase_buckets(ValidateFun) ->
+    lists:filtermap(
+      fun ({BucketName, BucketConfig}) ->
+              case ns_bucket:bucket_type(BucketConfig) of
+                  membase ->
+                      case proplists:get_value(map, BucketConfig) of
+                          undefined ->
+                              false;
+                          Map ->
+                              ValidateFun(BucketName, Map)
+                      end;
+                  memcached ->
+                      false
+              end
+      end, ns_bucket:get_buckets()).
+
+validate_durability_failover(FailoverNodes, DownNodes) ->
+    case validate_membase_buckets(
+           validate_durability_failover_for_bucket(_, _, FailoverNodes,
+                                                   DownNodes)) of
+        [] ->
+            ok;
+        Errors ->
+            Buckets = [B || {B, _} <- Errors],
+            Nodes = lists:usort(lists:flatten([N || {_, N} <- Errors])),
+            {nodes_down, Nodes, Buckets}
+    end.
+
+validate_durability_failover_for_bucket(BucketName, Map, FailoverNodes,
+                                        DownNodes) ->
+    NodesNeeded =
+        failover:nodes_needed_for_durability_failover(Map, FailoverNodes),
+    case NodesNeeded -- DownNodes of
+        NodesNeeded ->
+            false;
+        AliveNodes ->
+            {true, {BucketName, NodesNeeded -- AliveNodes}}
     end.
 
 has_safe_check(index) ->

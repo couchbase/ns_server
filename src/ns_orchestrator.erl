@@ -182,15 +182,17 @@ start_failover(Nodes, AllowUnsafe) ->
     wait_for_orchestrator(),
     gen_statem:call(?SERVER, {start_failover, Nodes, AllowUnsafe}).
 
--spec try_autofailover(list(), map()) -> {ok, list()} |
-                                         {operation_running, list()}|
-                                         retry_aborting_rebalance |
-                                         in_recovery |
-                                         orchestration_unsafe |
-                                         config_sync_failed |
-                                         quorum_lost |
-                                         stopped_by_user |
-                                         {autofailover_unsafe, [bucket_name()]}.
+-spec try_autofailover(list(), map()) ->
+                              {ok, list()} |
+                              {operation_running, list()}|
+                              retry_aborting_rebalance |
+                              in_recovery |
+                              orchestration_unsafe |
+                              config_sync_failed |
+                              quorum_lost |
+                              stopped_by_user |
+                              {autofailover_unsafe, [bucket_name()]} |
+                              {nodes_down, [node()], [bucket_name()]}.
 try_autofailover(Nodes, Options) ->
     wait_for_orchestrator(),
     case gen_statem:call(?SERVER, {try_autofailover, Nodes, Options},
@@ -704,11 +706,15 @@ idle({failover, Nodes, AllowUnsafe}, From, _State) ->
     handle_start_failover(Nodes, AllowUnsafe, From, true, hard_failover, #{});
 idle({start_failover, Nodes, AllowUnsafe}, From, _State) ->
     handle_start_failover(Nodes, AllowUnsafe, From, false, hard_failover, #{});
-idle({try_autofailover, Nodes, Options}, From, _State) ->
-    case auto_failover:validate_kv_safety(Nodes) of
-        {error, UnsafeBuckets} ->
+idle({try_autofailover, Nodes, #{down_nodes := DownNodes} = Options}, From,
+     _State) ->
+    case auto_failover:validate_kv(Nodes, DownNodes) of
+        {unsafe, UnsafeBuckets} ->
             {keep_state_and_data,
              [{reply, From, {autofailover_unsafe, UnsafeBuckets}}]};
+        {nodes_down, NodesNeeded, Buckets} ->
+            {keep_state_and_data,
+             [{reply, From, {nodes_down, NodesNeeded, Buckets}}]};
         ok ->
             handle_start_failover(Nodes, false, From, true, auto_failover,
                                   Options)
