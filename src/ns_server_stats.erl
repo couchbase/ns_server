@@ -27,6 +27,8 @@
 -define(DEFAULT_HIST_UNIT, millisecond).
 -define(METRIC_PREFIX, <<"cm_">>).
 
+-define(CGROUPS_INFO_SIZE, 84).
+
 %% API
 -export([start_link/0]).
 
@@ -379,7 +381,7 @@ recv_data(Port) ->
 
 recv_data_loop(Port, <<Version:32/native,
                        StructSize:32/native, _/binary>> = Acc)
-  when Version =:= 5 ->
+  when Version =:= 6 ->
     recv_data_with_length(Port, Acc, StructSize - erlang:size(Acc));
 recv_data_loop(_, <<Version:32/native, _/binary>>) ->
     error({unsupported_portsigar_version, Version});
@@ -436,7 +438,8 @@ unpack_data({Bin, LocalStats}, PrevCounters, State) ->
 
     StructSize = erlang:size(Bin),
 
-    NowSamplesProcs0 = unpack_processes(Rest, State),
+    ProcessesBin = binary:part(Rest, 0, byte_size(Rest) - ?CGROUPS_INFO_SIZE),
+    NowSamplesProcs0 = unpack_processes(ProcessesBin, State),
 
     NowSamplesProcs =
         case NowSamplesProcs0 of
