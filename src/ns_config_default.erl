@@ -318,17 +318,6 @@ default() ->
      {replication, [{enabled, true}]},
      {log_redaction_default_cfg, [{redact_level, none}]},
 
-     {auto_failover_cfg, [{enabled, true},
-                          % timeout is the time (in seconds) a node needs to be
-                          % down before it is automatically faileovered
-                          {timeout, 120},
-                          % count is the number of nodes that were auto-failovered
-                          {count, 0},
-                          {failover_on_data_disk_issues, [{enabled, false},
-                                                          {timePeriod, 120}]},
-                          {failover_server_group, false},
-                          {max_count, 1},
-                          {failed_over_server_groups, []}]},
      % auto-reprovision (mostly applicable to ephemeral buckets) is the operation that
      % is carried out when memcached process on a node restarts within the auto-failover
      % timeout.
@@ -342,7 +331,8 @@ default() ->
      {password_policy, [{min_length, 6}, {must_present, []}]}] ++
         service_ports:default_config(IsEnterprise) ++
         rebalance_quirks:default_config() ++
-        auto_rebalance_settings:default_config().
+        auto_rebalance_settings:default_config() ++
+        menelaus_web_auto_failover:default_config(IsEnterprise).
 
 %% returns list of changes to config to upgrade it to current version.
 %% This will be invoked repeatedly by ns_config until list is empty.

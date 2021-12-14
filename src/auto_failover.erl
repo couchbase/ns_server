@@ -58,7 +58,6 @@
 -export([start_link/0,
          get_cfg/0,
          get_cfg/1,
-         upgrade_cfg/2,
          enable/3,
          disable/1,
          reset_count/0,
@@ -152,9 +151,6 @@ get_cfg() ->
 get_cfg(Config) ->
     {value, Cfg} = ns_config:search(Config, auto_failover_cfg),
     Cfg.
-
-upgrade_cfg(Config, Fun) ->
-    [{set, auto_failover_cfg, Fun(get_cfg(Config))}].
 
 -spec is_enabled(list()) -> true | false.
 is_enabled(Cfg) ->

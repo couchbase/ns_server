@@ -15,7 +15,8 @@
          handle_settings_post/1,
          handle_settings_reset_count/1,
          get_failover_on_disk_issues/1,
-         config_check_can_abort_rebalance/0]).
+         config_check_can_abort_rebalance/0,
+         default_config/1]).
 
 -import(menelaus_util,
         [reply/2,
@@ -40,6 +41,21 @@
 -define(MAX_EVENTS_CONFIG_KEY, max_count).
 -define(MIN_EVENTS_ALLOWED, 1).
 -define(DEFAULT_EVENTS_ALLOWED, 1).
+
+default_config(IsEnterprise) ->
+    [{auto_failover_cfg,
+      [{enabled, true},
+       % timeout is the time (in seconds) a node needs to be
+       % down before it is automatically faileovered
+       {timeout, 120},
+       % count is the number of nodes that were auto-failovered
+       {count, 0},
+       {failover_on_data_disk_issues, [{enabled, false},
+                                       {timePeriod, 120}]},
+       {failover_server_group, false},
+       {max_count, 1},
+       {failed_over_server_groups, []},
+       {?CAN_ABORT_REBALANCE_CONFIG_KEY, IsEnterprise}]}].
 
 max_events_allowed() ->
     case cluster_compat_mode:is_cluster_NEO() of
