@@ -341,7 +341,8 @@ default() ->
 
      {password_policy, [{min_length, 6}, {must_present, []}]}] ++
         service_ports:default_config(IsEnterprise) ++
-        rebalance_quirks:default_config().
+        rebalance_quirks:default_config() ++
+        auto_rebalance_settings:default_config().
 
 %% returns list of changes to config to upgrade it to current version.
 %% This will be invoked repeatedly by ns_config until list is empty.

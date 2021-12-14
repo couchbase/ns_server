@@ -19,11 +19,17 @@
 %% Retry rebalance after time period in seconds
 -define(RETRY_AFTER_DEFAULT, 300).
 
--export([get_retry_rebalance/0,
+-export([default_config/0,
+         get_retry_rebalance/0,
          set_retry_rebalance/1,
          get_retry_after/1,
          get_retry_max/1,
          is_retry_enabled/0]).
+
+default_config() ->
+    [{retry_rebalance, [{enabled, false},
+                        {after_time_period, ?RETRY_AFTER_DEFAULT},
+                        {max_attempts, ?RETRY_ATTEMPTS_DEFAULT}]}].
 
 get_retry_rebalance() ->
     get_retry_rebalance(ns_config:latest()).
