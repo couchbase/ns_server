@@ -9,6 +9,7 @@
 
 -module(cluster_compat_mode).
 
+-include("cut.hrl").
 -include("ns_common.hrl").
 
 -ifdef(TEST).
@@ -196,8 +197,10 @@ is_developer_preview_enabled_by_default() ->
 
 consider_switching_compat_mode() ->
     Config = ns_config:get(),
-    CurrentVersion = get_compat_version(Config),
-    case CurrentVersion =:= supported_compat_version() of
+    CompatVersion = get_compat_version(Config),
+    NsConfigVersion = get_ns_config_compat_version(Config),
+    case CompatVersion =:= NsConfigVersion
+        andalso CompatVersion =:= supported_compat_version() of
         true ->
             case is_developer_preview() of
                 false ->
@@ -216,7 +219,8 @@ consider_switching_compat_mode() ->
             end,
             ok;
         false ->
-            do_consider_switching_compat_mode(Config, CurrentVersion)
+            do_consider_switching_compat_mode(
+              Config, CompatVersion, NsConfigVersion)
     end.
 
 upgrades() ->
@@ -246,7 +250,7 @@ do_upgrades([{Version, Name, Module, Fun} | Rest],
 do_upgrades([_ | Rest], CurrentVersion, NewVersion, Config, NodesWanted) ->
     do_upgrades(Rest, CurrentVersion, NewVersion, Config, NodesWanted).
 
-do_consider_switching_compat_mode(Config, CurrentVersion) ->
+do_consider_switching_compat_mode(Config, CompatVersion, NsConfigVersion) ->
     NodesWanted = ns_node_disco:nodes_wanted(Config),
     NodesUp = lists:sort([node() | nodes()]),
     case ordsets:is_subset(NodesWanted, NodesUp) of
@@ -254,12 +258,12 @@ do_consider_switching_compat_mode(Config, CurrentVersion) ->
             NodeInfos = ns_doctor:get_nodes(),
             case consider_switching_compat_mode_loop(
                    NodeInfos, NodesWanted, supported_compat_version()) of
-                CurrentVersion ->
+                CompatVersion when CompatVersion =:= NsConfigVersion ->
                     ok;
                 AnotherVersion ->
-                    case is_enabled_at(AnotherVersion, CurrentVersion) of
+                    case is_enabled_at(AnotherVersion, CompatVersion) of
                         true ->
-                            case do_upgrades(CurrentVersion, AnotherVersion,
+                            case do_upgrades(CompatVersion, AnotherVersion,
                                              Config, NodesWanted) of
                                 ok ->
                                     do_switch_compat_mode(AnotherVersion,
@@ -271,14 +275,14 @@ do_consider_switching_compat_mode(Config, CurrentVersion) ->
                                        "version from ~p to ~p due to failure "
                                        "of ~p upgrade"
                                        "~nNodesWanted: ~p~nNodeInfos: ~p",
-                                       [CurrentVersion, AnotherVersion, Name,
+                                       [CompatVersion, AnotherVersion, Name,
                                         NodesWanted, NodeInfos])
                             end;
                         false ->
                             ?log_error("Refusing to downgrade the compat "
                                        "version from ~p to ~p."
                                        "~nNodesWanted: ~p~nNodeInfos: ~p",
-                                       [CurrentVersion, AnotherVersion,
+                                       [CompatVersion, AnotherVersion,
                                         NodesWanted, NodeInfos]),
                             ok
                     end
@@ -288,15 +292,20 @@ do_consider_switching_compat_mode(Config, CurrentVersion) ->
     end.
 
 do_switch_compat_mode(NewVersion, NodesWanted) ->
-    case upgrade_ns_config(NewVersion, NodesWanted) of
-        ok ->
-            chronicle_upgrade:upgrade(NewVersion, NodesWanted);
-        error ->
-            error
-    end.
+    functools:sequence_(
+      [?cut(upgrade_ns_config(min(NewVersion, ?VERSION_70), NodesWanted)),
+       ?cut(chronicle_upgrade:upgrade(NewVersion, NodesWanted)),
+       ?cut(upgrade_ns_config(NewVersion, NodesWanted))]).
 
 upgrade_ns_config(NewVersion, NodesWanted) ->
-    ns_online_config_upgrader:upgrade_config(NewVersion),
+    case ns_online_config_upgrader:upgrade_config(NewVersion) of
+        ok ->
+            complete_ns_config_upgrade(NodesWanted);
+        already_upgraded ->
+            ok
+    end.
+
+complete_ns_config_upgrade(NodesWanted) ->
     try
         case ns_config_rep:ensure_config_seen_by_nodes(NodesWanted) of
             ok -> ok;

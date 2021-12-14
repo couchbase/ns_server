@@ -81,7 +81,13 @@ default_settings() ->
      {circularCompaction, CircDefaults}].
 
 known_settings() ->
-    ClusterVersion = cluster_compat_mode:get_compat_version(),
+    %% Currently chronicle and ns_config upgrades are
+    %% non-atomic. Additionally, since 7.1 the cluster compat version resides
+    %% in chronicle. So it's possible for a node to observe an intermediate
+    %% state where chronicle is upgraded while ns_config is not. So in those
+    %% few places that rely on ns_config upgrades from pre-7.1 to 7.1,
+    %% cluster_compat_mode:get_ns_config_compat_version() must be used.
+    ClusterVersion = cluster_compat_mode:get_ns_config_compat_version(),
     known_settings(ClusterVersion).
 
 known_settings(ClusterVersion) ->

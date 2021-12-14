@@ -42,7 +42,7 @@ upgrade_config(NewVersion) ->
                    do_upgrade_config(_, NewVersion));
         false ->
             ?log_warning("ns_config is already upgraded to ~p", [NewVersion]),
-            ok
+            already_upgraded
     end.
 
 do_upgrade_config(Config, FinalVersion) ->
