@@ -19,6 +19,7 @@
          default_config/1,
          default_config/2,
          find_by_rest_name/1,
+         find_rest_name_by_port_key/1,
          services_port_keys/1,
          all_port_keys/0,
          get_external_host_and_ports/4,
@@ -215,6 +216,14 @@ find_by_rest_name(RestName) when is_list(RestName) ->
             undefined;
         Port ->
             Port#port.key
+    end.
+
+find_rest_name_by_port_key(PortKey) ->
+    case lists:keyfind(PortKey, #port.key, all_ports()) of
+        false ->
+            undefined;
+        Port ->
+            binary_to_list(Port#port.rest)
     end.
 
 get_internal_ports(Node, Config, Snapshot) ->

@@ -1019,15 +1019,21 @@ parse_validate_external_params(Params) ->
     ValidResponse = [{external, [{hostname, Hostname}, {ports, Ports}]}],
     case ns_config_auth:is_system_provisioned() of
         true ->
-            case lists:all(
-                   lists:member(
-                     _, service_ports:services_port_keys(
-                          [rest | ns_cluster_membership:node_services(
-                                    node())])), [V || {V, _} <- Ports]) of
-                true ->
+            Services = [rest | ns_cluster_membership:node_services(node())],
+            ServicePorts = service_ports:services_port_keys(Services),
+            {_Allowed, NotAllowed} =
+                lists:partition(lists:member(_, ServicePorts),
+                                [V || {V, _} <- Ports]),
+            case NotAllowed of
+                [] ->
                     ValidResponse;
-                false ->
-                    {error, <<"Cannot set services unavailable on the node">>}
+                _ ->
+                    NAPorts =[service_ports:find_rest_name_by_port_key(P) ||
+                              P <- NotAllowed],
+                    Msg = io_lib:format("Cannot set external ports ~p as "
+                                        "services are unavailable on the node.",
+                                        [NAPorts]),
+                    {error, Msg}
             end;
         false ->
             ValidResponse
