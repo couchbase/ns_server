@@ -1016,15 +1016,14 @@ parse_validate_hostname(Hostname) ->
 parse_validate_external_params(Params) ->
     Hostname = parse_validate_hostname(proplists:get_value("hostname", Params)),
     Ports = parse_validate_ports(proplists:delete("hostname", Params)),
-    Config = ns_config:get(),
     ValidResponse = [{external, [{hostname, Hostname}, {ports, Ports}]}],
-    case ns_config_auth:is_system_provisioned(Config) of
+    case ns_config_auth:is_system_provisioned() of
         true ->
             case lists:all(
                    lists:member(
                      _, service_ports:services_port_keys(
-                          [rest | ns_cluster_membership:node_active_services(
-                                    Config, node())])), [V || {V, _} <- Ports]) of
+                          [rest | ns_cluster_membership:node_services(
+                                    node())])), [V || {V, _} <- Ports]) of
                 true ->
                     ValidResponse;
                 false ->
