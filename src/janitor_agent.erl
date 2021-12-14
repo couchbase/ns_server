@@ -1066,6 +1066,11 @@ decode_topology(Topology) ->
                        binary_to_existing_atom(Node, latin1)
                end, Chain) || Chain <- ejson:decode(Topology)].
 
+is_topology_same(active, Chain, MemcachedTopology) ->
+    [Chain] =:= MemcachedTopology;
+is_topology_same(_, _, _) ->
+    true.
+
 decode_value(state, V) ->
     erlang:list_to_existing_atom(V);
 decode_value(high_seqno, V) ->
@@ -1170,18 +1175,19 @@ handle_apply_new_config(Node, NewBucketConfig,
                             [] ->
                                 missing
                         end,
-                    ActualState =
+                        {ActualState, ActualTopology} =
                         case dict:find(VBucket, VBDetails) of
                             {ok, Val} ->
                                 StateVal = proplists:get_value(state, Val),
                                 %% Always expect "state" to be present.
                                 false = StateVal =:= undefined,
-                                StateVal;
+                                {StateVal, proplists:get_value(topology, Val)};
                             _ ->
-                                missing
+                                {missing, undefined}
                         end,
                     NewWanted = [WantedState | PrevWanted],
-                    case WantedState =:= ActualState of
+                    case WantedState =:= ActualState andalso
+                         is_topology_same(WantedState, Chain, ActualTopology) of
                         true ->
                             {VBucket + 1, ToSet, ToDelete, NewWanted};
                         false ->
