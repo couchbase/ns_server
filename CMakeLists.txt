@@ -77,7 +77,10 @@ ENDIF()
 
 ADD_CUSTOM_COMMAND (OUTPUT "${NS_UI_BUILD_DIR}/out.js.stamp"
   COMMAND "${CMAKE_COMMAND}" -E rm -rf "${NS_UI_PUB_DIR}/jsout"
-  COMMAND "${PROJECT_BINARY_DIR}/deps/gomodules/minify/minify" "--in-dir=${NS_UI_PUB_DIR}" "--out-dir=${NS_UI_PUB_DIR}/jsout"
+  COMMAND "${PROJECT_BINARY_DIR}/deps/gomodules/minify/minify"
+  "--in-dir=${NS_UI_PUB_DIR}"
+  "--out-dir=${NS_UI_PUB_DIR}/jsout"
+  "--importmap-path=${NS_UI_PUB_DIR}/ui/importmap.json"
   COMMAND "${CMAKE_COMMAND}" -E touch "${NS_UI_BUILD_DIR}/out.js.stamp"
   DEPENDS ns_minify
   DEPENDS "${_out_js_stamp_depends}"
