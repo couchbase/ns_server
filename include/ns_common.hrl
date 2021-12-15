@@ -284,4 +284,6 @@
 -define(INTERNAL_CERT_USER, "@internal").
 -define(INTERNAL_CERT_EMAIL_DOMAIN, "internal.couchbase.com").
 
+-define(CPU_COUNT_VAR, "COUCHBASE_CPU_COUNT").
+-define(CGROUPS_INFO_SIZE, 84).
 -endif.
