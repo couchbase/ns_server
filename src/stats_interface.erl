@@ -109,8 +109,9 @@ buckets_interesting() ->
          couch_spatial_data_size, vb_active_num_non_resident, cmd_get, get_hits,
          ep_bg_fetched, ops],
 
+    BucketNames = ns_bucket:get_bucket_names(),
     [{Bucket, zero_not_existing_stats(Stats, BucketInterestingStats)}
-        || {Bucket, Stats} <- BucketStats].
+     || {Bucket, Stats} <- BucketStats, lists:member(Bucket, BucketNames)].
 
 from_nodes(Nodes, Function, Args, Timeout) ->
     {GoodRes, BadRes} = misc:multi_call(Nodes, ns_server_stats,
