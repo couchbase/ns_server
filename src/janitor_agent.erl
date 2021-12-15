@@ -645,24 +645,8 @@ do_handle_call({update_vbucket_state, VBucket, NormalState, RebalanceState,
 do_handle_call({delete_vbucket, VBucket} = Call, From, State) ->
     NewState = apply_new_vbucket_state(VBucket, missing, undefined, State),
     delegate_apply_vbucket_state(Call, From, NewState);
-do_handle_call({apply_new_config,
-                NewBucketConfig, IgnoredVBuckets}, From, State) ->
-    %% called on pre 6.5 clusters only
-    [] = IgnoredVBuckets,
-    do_handle_call({apply_new_config, NewBucketConfig}, From, State);
-do_handle_call({apply_new_config,
-                _Caller, NewBucketConfig, IgnoredVBuckets}, From, State) ->
-    %% called on pre 6.5 clusters only
-    [] = IgnoredVBuckets,
-    do_handle_call({apply_new_config, NewBucketConfig}, From, State);
 do_handle_call({apply_new_config, NewBucketConfig}, _From, State) ->
     handle_apply_new_config(NewBucketConfig, State);
-do_handle_call({apply_new_config_replicas_phase,
-                NewBucketConfig, IgnoredVBuckets}, From, State) ->
-    %% called on pre 6.5 clusters only
-    [] = IgnoredVBuckets,
-    do_handle_call({apply_new_config_replicas_phase, NewBucketConfig},
-                   From, State);
 do_handle_call({apply_new_config_replicas_phase, NewBucketConfig},
                _From, State) ->
     handle_apply_new_config_replicas_phase(NewBucketConfig, State);

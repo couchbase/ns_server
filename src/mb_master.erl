@@ -11,9 +11,6 @@
 
 -behaviour(gen_statem).
 
--compile({nowarn_deprecated_function, [{gen_fsm,send_event,2}]}).
--compile({nowarn_deprecated_function, [{gen_fsm,sync_send_all_state_event,3}]}).
-
 -include("cut.hrl").
 -include("ns_common.hrl").
 
@@ -499,10 +496,6 @@ handle_event(info, {'EXIT', _From, Reason} = Msg, _, _) ->
     exit(Reason);
 handle_event({call, From}, master_node, _State, StateData) ->
     {keep_state_and_data, [{reply, From, StateData#state.master}]};
-%% Backward compitibility: handle heartbeats from nodes that are older than
-%%                         6.5 where gen_fsm is running
-handle_event(info, {'$gen_event', Event}, _State, _StateData) ->
-    {keep_state_and_data, [{next_event, info, Event}]};
 handle_event(Type, Msg, State, StateData) ->
     ?log_warning("Got unexpected event ~p of type ~p in state ~p with data ~p",
                  [Msg, Type, State, StateData]),
