@@ -87,7 +87,7 @@ angular
     mnClusterConfigurationService
   ])
   .config(["$stateProvider", configure])
-  .controller('mnServersController', ["$scope", "$state", "$uibModal", "mnPoolDefault", "mnPoller", "mnServersService", "mnHelper", "mnGroupsService", "mnPromiseHelper", "permissions", "mnStatisticsNewService", "pools", mnServersController])
+  .controller('mnServersController', ["$scope", "$state", "$uibModal", "mnPoolDefault", "mnPoller", "mnServersService", "mnHelper", "mnGroupsService", "mnPromiseHelper", "permissions", "mnStatisticsNewService", "pools", "poolDefault", mnServersController])
   .controller('mnServersListItemDetailsController', mnServersListItemDetailsController)
   .controller("mnServersListItemController", mnServersListItemController)
   .controller('mnServersFailOverDialogController', mnServersFailOverDialogController)
@@ -134,7 +134,7 @@ function configure($stateProvider) {
     });
 }
 
-function mnServersController($scope, $state, $uibModal, mnPoolDefault, mnPoller, mnServersService, mnHelper, mnGroupsService, mnPromiseHelper, permissions, mnStatisticsNewService, pools) {
+function mnServersController($scope, $state, $uibModal, mnPoolDefault, mnPoller, mnServersService, mnHelper, mnGroupsService, mnPromiseHelper, permissions, mnStatisticsNewService, pools, poolDefault) {
   var vm = this;
   vm.mnPoolDefault = mnPoolDefault.latestValue();
 
@@ -155,7 +155,7 @@ function mnServersController($scope, $state, $uibModal, mnPoolDefault, mnPoller,
 
   function activate() {
     mnHelper.initializeDetailsHashObserver(vm, 'openedServers', 'app.admin.servers.list');
-    if (vm.mnPoolDefault.isGroupsAvailable && permissions.cluster.server_groups.read) {
+    if (poolDefault.isGroupsAvailable && permissions.cluster.server_groups.read) {
       new mnPoller($scope, function () {
         return mnGroupsService.getGroupsByHostname();
       })
