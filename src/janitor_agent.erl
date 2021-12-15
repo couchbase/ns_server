@@ -315,6 +315,8 @@ prepare_nodes_for_rebalance(Bucket, Nodes, RebalancerPid) ->
                    ?PREPARE_REBALANCE_TIMEOUT),
     BadReplies = lists:filter(fun ({_, ok}) ->
                                       false;
+                                  %% this clause is not needed after pre-Neo
+                                  %% support is discontinued
                                   ({_, {ok, _}}) ->
                                       false;
                                   (_) ->
@@ -619,9 +621,7 @@ do_handle_call({prepare_rebalance, Pid} = Call, _From,
         State#state{
           rebalance_only_vbucket_states =
               [undefined || _ <- State#state.rebalance_only_vbucket_states]},
-    {reply, {ok, [{version,
-                   cluster_compat_mode:mb_master_advertised_version()}]},
-     set_rebalance_mref(Call, Pid, State1)};
+    {reply, ok, set_rebalance_mref(Call, Pid, State1)};
 
 do_handle_call(finish_rebalance, _From, State) ->
     {reply, ok, State#state{rebalance_status = finished}};
