@@ -15,6 +15,12 @@ import (
 	"github.com/evanw/esbuild/pkg/api"
 )
 
+func printErrorAndExit(error string) {
+	log.Printf(error)
+	flag.Usage()
+	os.Exit(1)
+}
+
 func main() {
 	inDir := flag.String("in-dir", "", "path to js source dir (required)")
 	outDir := flag.String("out-dir", "", "path to js output dir (required)")
@@ -22,15 +28,11 @@ func main() {
 	log.SetFlags(0)
 
 	if *inDir == "" {
-		log.Printf("Error: path to js source dir must be specified\n")
-		flag.Usage()
-		os.Exit(1)
+		printErrorAndExit("Error: path to js source dir must be specified\n")
 	}
 
 	if *outDir == "" {
-		log.Printf("Error: path to js source dir must be specified\n")
-		flag.Usage()
-		os.Exit(1)
+		printErrorAndExit("Error: path to js source dir must be specified\n")
 	}
 
 	result := api.Build(api.BuildOptions{
