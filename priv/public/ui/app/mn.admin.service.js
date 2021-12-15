@@ -132,6 +132,12 @@ class MnAdminService {
       this.stream.implementationVersion.pipe(
         map(mnPrettyVersionPipe.transform.bind(mnPrettyVersionPipe)));
 
+    this.stream.isMixedMode =
+      this.stream.getPoolsDefault.pipe(pluck("compat"),
+                                       filter(versions => versions != undefined),
+                                       map(versions => Object.values(versions).some(v => v != true)),
+                                       shareReplay({refCount: true, bufferSize: 1}));
+
     this.stream.thisNode =
       this.stream.getPoolsDefault.pipe(pluck("nodes"),
                                        map(R.find(R.propEq('thisNode', true))));
