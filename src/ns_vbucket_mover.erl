@@ -135,7 +135,7 @@ init({Bucket, Nodes, OldMap, NewMap, ProgressCallback}) ->
 
     send_log_dcp_stats_msg(),
 
-    {ok, _} = janitor_agent:prepare_nodes_for_rebalance(Bucket, Nodes, self()),
+    ok = janitor_agent:prepare_nodes_for_rebalance(Bucket, Nodes, self()),
 
     ets:new(compaction_inhibitions, [named_table, private, set]),
     ets:new(workers, [named_table, private, set]),

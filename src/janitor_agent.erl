@@ -308,26 +308,19 @@ delete_vbucket_copies(Bucket, RebalancerPid, Nodes, VBucket) ->
                            {delete_vbucket, VBucket}, ?DELETE_VBUCKET_TIMEOUT)).
 
 -spec prepare_nodes_for_rebalance(bucket_name(), [node()], pid()) ->
-                                         {ok, [{node(), [integer()]}]} |
-                                         {errors, [{node(), term()}]}.
+                                         ok | {errors, [{node(), term()}]}.
 prepare_nodes_for_rebalance(Bucket, Nodes, RebalancerPid) ->
     {Replies, BadNodes} =
         multi_call(Bucket, Nodes, {prepare_rebalance, RebalancerPid},
                    ?PREPARE_REBALANCE_TIMEOUT),
-    {BadReplies, Versions} =
-        lists:foldl(fun ({_, ok}, {BRAcc, VAcc}) ->
-                            {BRAcc, VAcc};
-                        ({Node, {ok, [{version, Version}]}}, {BRAcc, VAcc}) ->
-                            {BRAcc, [{Node, Version} | VAcc]};
-                        (R, {BRAcc, VAcc}) ->
-                            {[R | BRAcc], VAcc}
-                    end, {[], []}, Replies),
-    case process_multicall_rv(BadReplies, BadNodes) of
-        ok ->
-            {ok, Versions};
-        Errors ->
-            Errors
-    end.
+    BadReplies = lists:filter(fun ({_, ok}) ->
+                                      false;
+                                  ({_, {ok, _}}) ->
+                                      false;
+                                  (_) ->
+                                      true
+                              end, Replies),
+    process_multicall_rv(BadReplies, BadNodes).
 
 finish_rebalance(Bucket, Nodes, RebalancerPid) ->
     process_multicall_rv(
