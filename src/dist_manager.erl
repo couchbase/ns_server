@@ -73,18 +73,6 @@ read_address_config() ->
             case read_address_config_from_path(IpPath) of
                 Address when is_list(Address) ->
                     {Address, false};
-                undefined ->
-                    %% Migration to 6.5
-                    %% If there is no "ip" file, it might be the case that
-                    %% node has default name. The problem is that default
-                    %% pre-6.5 name and default 6.5 name are different. Hence
-                    %% the migration. The idea is the following: if "nodefile"
-                    %% exists, but there is no ip or ip_start files, we should
-                    %% use 127.0.0.1 (or ::1) address (instead of cb.local)
-                    case nodefile_exists() of
-                        true -> {misc:localhost(), false};
-                        false -> undefined
-                    end;
                 Other ->
                     Other
             end
@@ -176,10 +164,6 @@ save_node(NodeName) ->
         {ok, NodeFile} -> save_node(NodeName, NodeFile);
         X -> X
     end.
-
-nodefile_exists() ->
-    {ok, NodeFile} = application:get_env(nodefile),
-    filelib:is_regular(NodeFile).
 
 init([]) ->
     register(?MODULE, self()),
