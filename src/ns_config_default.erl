@@ -279,13 +279,6 @@ default() ->
      %% Secure headers config
      {secure_headers, []},
 
-     %% This is needed, because we want REST API's on pre 6.5 nodes
-     %% to return proxy as 0, not as "undefined", so it doesn't break golang
-     %% components on those nodes, which expect numerical value
-     %% To be removed after the support of pre 6.5 nodes will be
-     %% discontinued
-     {{node, node(), moxi}, [{port, 0}]},
-
      %% removed since 4.0
      {{node, node(), port_servers}, []},
 
@@ -348,15 +341,6 @@ upgrade_config(Config) ->
     case ConfigVersion of
         CurrentVersion ->
             [];
-        %% The 6.0 release did not have any config changes so it retained
-        %% the same format as the 5.5.3 release. Thus there's no config
-        %% upgrade needed until we reach 6.0.4.
-        {5,5,3} ->
-            [{set, {node, node(), config_version}, {6,0,4}} |
-             upgrade_config_from_5_5_3_to_6_0_4(Config)];
-        {6,0,4} ->
-            [{set, {node, node(), config_version}, {6,5}} |
-             upgrade_config_from_6_0_4_to_6_5(Config)];
         {6,5} ->
             [{set, {node, node(), config_version}, {6,5,1}} |
              upgrade_config_from_6_5_to_6_5_1(Config)];
@@ -407,38 +391,6 @@ do_upgrade_sub_keys(SubKeys, Props, DefaultProps) ->
               Val = {SubKey, _} = lists:keyfind(SubKey, 1, DefaultProps),
               lists:keystore(SubKey, 1, Acc, Val)
       end, Props, SubKeys).
-
-rename_key(OldKey, NewKey, Config) ->
-    WholeOldKey = {node, node(), OldKey},
-    WholeNewKey = {node, node(), NewKey},
-    case ns_config:search(Config, WholeOldKey) of
-        {value, Val} ->
-            [{delete, WholeOldKey},
-             {set, WholeNewKey, Val}];
-        false ->
-            []
-    end.
-
-%% The 6.0 release had the same config format as the 5.5.3 release and
-%% so there's nothing to upgrade until we reach the 6.0.4 format.
-upgrade_config_from_5_5_3_to_6_0_4(Config) ->
-    DefaultConfig = default(),
-    do_upgrade_config_from_5_5_3_to_6_0_4(Config, DefaultConfig).
-
-do_upgrade_config_from_5_5_3_to_6_0_4(Config, DefaultConfig) ->
-    [upgrade_sub_keys(memcached, [admin_user], Config, DefaultConfig)].
-
-upgrade_config_from_6_0_4_to_6_5(Config) ->
-    DefaultConfig = default(),
-    do_upgrade_config_from_6_0_4_to_6_5(Config, DefaultConfig).
-
-do_upgrade_config_from_6_0_4_to_6_5(Config, DefaultConfig) ->
-    [upgrade_key(memcached_config, DefaultConfig),
-     upgrade_key(memcached_defaults, DefaultConfig),
-     upgrade_sub_keys(memcached, [dedicated_ssl_port],
-                      Config, DefaultConfig),
-     upgrade_key(moxi, DefaultConfig) |
-     rename_key(ldap_enabled, saslauthd_enabled, Config)].
 
 upgrade_config_from_6_5_to_6_5_1(Config) ->
     DefaultConfig = default(),
@@ -512,51 +464,6 @@ fixup(KV) ->
     dist_manager:fixup_config(KV).
 
 -ifdef(TEST).
-%% The 6.0 release had the same config format as the 5.5.3 release and
-%% so there's nothing to upgrade until we reach the 6.0.4 format.
-upgrade_5_5_3_to_6_0_4_test() ->
-    Cfg = [[{some_key, some_value},
-            {{node, node(), memcached}, [{old, info}, {admin_user, old}]}]],
-
-    Default = [{{node, node(), memcached}, [{some, stuff}, {admin_user, new}]}],
-
-    ?assertMatch([{set, {node, _, memcached}, [{old, info}, {admin_user, new}]}],
-                 do_upgrade_config_from_5_5_3_to_6_0_4(Cfg, Default)).
-
-upgrade_6_0_4_to_6_5_test() ->
-    Cfg1 = [[{some_key, some_value},
-             {{node, node(), memcached}, [{old, info}]},
-             {{node, node(), memcached_defaults}, [{k1, v1}]},
-             {{node, node(), memcached_config}, [{interfaces,
-                                                  [{[{x, y},
-                                                     {maxconn, 1}]}]}]},
-             {{node, node(), ldap_enabled}, true}]],
-    Default = [{{node, node(), memcached_config}, [{interfaces,
-                                                    [{[{x, y}]}]}]},
-               {{node, node(), memcached}, [{some, stuff},
-                                            {dedicated_ssl_port, 123}]},
-               {{node, node(), memcached_defaults}, [{k1, v1}, {k2, v2}]},
-               {{node, node(), moxi}, new_moxi_value}],
-
-    ?assertMatch([{set, {node, _, memcached_config}, [{interfaces,
-                                                       [{[{x, y}]}]}]},
-                  {set, {node, _, memcached_defaults}, [{k1, v1}, {k2, v2}]},
-                  {set, {node, _, memcached}, [{old, info},
-                                               {dedicated_ssl_port, 123}]},
-                  {set, {node, _, moxi}, new_moxi_value},
-                  {delete, {node, _, ldap_enabled}},
-                  {set, {node, _, saslauthd_enabled}, true}],
-                 do_upgrade_config_from_6_0_4_to_6_5(Cfg1, Default)),
-    Cfg2 = [[{some_key, some_value},
-             {{node, node(), memcached}, [{old, info}]}]],
-    ?assertMatch([{set, {node, _, memcached_config}, [{interfaces,
-                                                       [{[{x, y}]}]}]},
-                  {set, {node, _, memcached_defaults}, [{k1, v1}, {k2, v2}]},
-                  {set, {node, _, memcached}, [{old, info},
-                                               {dedicated_ssl_port, 123}]},
-                  {set, {node, _, moxi}, new_moxi_value}],
-                 do_upgrade_config_from_6_0_4_to_6_5(Cfg2, Default)).
-
 upgrade_6_5_to_6_5_1_test() ->
     Cfg = [[{some_key, some_value},
             {{node, node(), memcached}, [{old, info}, {admin_user, old}]}]],
@@ -597,10 +504,8 @@ all_upgrades_test_() ->
 
 test_all_upgrades() ->
     Default = default(),
-    %% The 6.0 release had the same config format as 5.5.3 so that is used
-    %% as the starting point for tests.
     KVs = misc:update_proplist(Default,
-                               [{{node, node(), config_version}, {5,5,3}}]),
+                               [{{node, node(), config_version}, {6,5}}]),
     Cfg = #config{dynamic = [KVs], uuid = <<"uuid">>},
     UpgradedCfg = ns_config:upgrade_config(Cfg, fun upgrade_config/1),
 
