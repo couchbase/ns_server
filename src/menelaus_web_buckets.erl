@@ -860,8 +860,7 @@ validate_common_params(#bv_ctx{bucket_name = BucketName,
      parse_validate_flush_enabled(Params, IsNew),
      validate_bucket_name(IsNew, BucketConfig, BucketName, AllBuckets),
      parse_validate_ram_quota(Params, BucketConfig),
-     parse_validate_other_buckets_ram_quota(Params),
-     validate_moxi_port(Params)].
+     parse_validate_other_buckets_ram_quota(Params)].
 
 validate_bucket_type_specific_params(CommonParams, Params,
                                      #bv_ctx{new = IsNew,
@@ -967,18 +966,6 @@ validate_bucket_name(true = _IsNew, _BucketConfig, BucketName, AllBuckets) ->
 validate_bucket_name(false = _IsNew, BucketConfig, _BucketName, _AllBuckets) ->
     true = (BucketConfig =/= false),
     {ok, currentBucket, BucketConfig}.
-
-validate_moxi_port(Params) ->
-    do_validate_moxi_port(proplists:get_value("proxyPort", Params)).
-
-do_validate_moxi_port(undefined) ->
-    ignore;
-do_validate_moxi_port("none") ->
-    %% needed for pre-6.5 clusters only
-    {ok, moxi_port, undefined};
-do_validate_moxi_port(_) ->
-    {error, proxyPort,
-     <<"Setting proxy port is not allowed on this version of the cluster">>}.
 
 get_bucket_type(false = _IsNew, BucketConfig, _Params)
   when is_list(BucketConfig) ->
@@ -2020,8 +2007,7 @@ basic_bucket_params_screening_test() ->
                     {num_vbuckets, 16},
                     {num_replicas, 1},
                     {servers, [node1, node2]},
-                    {ram_quota, 76 * ?MIB},
-                    {moxi_port, 33333}]},
+                    {ram_quota, 76 * ?MIB}]},
                   {"default",
                    [{type, membase},
                     {num_vbuckets, 16},

@@ -441,8 +441,7 @@ maybe_kill_epmd() ->
             ok
     end.
 
-%% This function is needed in two cases:
-%%  - migration for address family settings to 6.5
+%% This function is needed to:
 %%  - allow manual changes in dist_cfg file
 ensure_ns_config_settings_in_order() ->
     RV = ns_config:run_txn(

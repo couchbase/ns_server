@@ -538,25 +538,6 @@ handle_info({cleanup_done, UnsafeNodes, ID}, janitor_running,
 handle_info({timeout, _TRef, stop_timeout} = Msg, rebalancing, StateData) ->
     ?MODULE:rebalancing(Msg, StateData);
 
-%% Backward compitibility: handle messages from nodes that are older than
-%%                         6.5 which use gen_fsm api's
-%%
-%% Here we rely on the fact that gen_fsm:reply/2 and gen_statem:reply/2
-%% do essentially the same thing, so when we accept call from gen_fsm
-%% we actually can reply using gen_statem:reply/2 and that'll work.
-%% This assumption needs to be re-evaluated on the new erlang upgrade.
-%% This warning can be removed when vulcan support is dropped.
-
-handle_info({'$gen_sync_all_state_event', From, Event}, _StateName,
-            _StateData) ->
-    {keep_state_and_data, [{next_event, {call, From}, Event}]};
-handle_info({'$gen_sync_event', From, Event}, _StateName, _StateData) ->
-    {keep_state_and_data, [{next_event, {call, From}, Event}]};
-handle_info({'$gen_event', Event}, _StateName, _StateData) ->
-    {keep_state_and_data, [{next_event, cast, Event}]};
-
-%% end of backward compatibility code
-
 handle_info(Msg, StateName, StateData) ->
     ?log_warning("Got unexpected message ~p in state ~p with data ~p",
                  [Msg, StateName, StateData]),
@@ -719,10 +700,6 @@ idle({try_autofailover, Nodes, #{down_nodes := DownNodes} = Options}, From,
             handle_start_failover(Nodes, false, From, true, auto_failover,
                                   Options)
     end;
-idle({start_graceful_failover, Node}, From, _State) when is_atom(Node) ->
-    %% calls from pre-6.5 nodes
-    {keep_state_and_data,
-     [{next_event, {call, From}, {start_graceful_failover, [Node]}}]};
 idle({start_graceful_failover, Nodes}, From, _State) ->
     auto_rebalance:cancel_any_pending_retry_async("graceful failover"),
     {keep_state_and_data,
@@ -768,9 +745,6 @@ idle({start_graceful_failover, Nodes, Id, RetryChk}, From, _State) ->
             misc:unlink_terminate_and_wait(ObserverPid, kill),
             {keep_state_and_data, [{reply, From, RV}]}
     end;
-idle(rebalance_progress, From, _State) ->
-    %% called by pre-6.5 nodes
-    {keep_state_and_data, [{reply, From, not_running}]};
 %% NOTE: this is not remotely called but is used by maybe_start_rebalance
 idle({start_rebalance, KeepNodes, EjectNodes, FailedNodes, DeltaNodes,
       DeltaRecoveryBuckets, RebalanceId, RetryChk}, From, _State) ->
@@ -889,9 +863,6 @@ idle({ensure_janitor_run, Item}, From, State) ->
       end, idle, State).
 
 %% Synchronous janitor_running events
-janitor_running(rebalance_progress, From, _State) ->
-    %% called by pre-6.5 nodes
-    {keep_state_and_data, [{reply, From, not_running}]};
 janitor_running({ensure_janitor_run, Item}, From, State) ->
     do_request_janitor_run(
       Item,
@@ -970,9 +941,6 @@ rebalancing(stop_rebalance, From,
             #rebalancing_state{rebalancer = Pid} = State) ->
     ?log_debug("Sending stop to rebalancer: ~p", [Pid]),
     {keep_state, stop_rebalance(State, user_stop), [{reply, From, ok}]};
-rebalancing(rebalance_progress, From, _State) ->
-    %% called by pre-6.5 nodes
-    {keep_state_and_data, [{reply, From, rebalance:progress()}]};
 rebalancing(Event, From, _State) ->
     ?log_warning("Got event ~p while rebalancing.", [Event]),
     {keep_state_and_data, [{reply, From, rebalance_running}]}.
@@ -1009,9 +977,6 @@ recovery({recovery_map, Bucket, RecoveryUUID}, From, State) ->
      [{reply, From,
        call_recovery_server(State, recovery_map, [Bucket, RecoveryUUID])}]};
 
-recovery(rebalance_progress, From, _State) ->
-    %% called by pre-6.5 nodes
-    {keep_state_and_data, [{reply, From, not_running}]};
 recovery(stop_rebalance, From, _State) ->
     {keep_state_and_data, [{reply, From, not_rebalancing}]};
 recovery(_Event, From, _State) ->

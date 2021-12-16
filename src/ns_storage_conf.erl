@@ -271,23 +271,13 @@ update_cbas_dirs({ok, CBASDirs}) ->
     ns_config:set({node, node(), cbas_dirs}, CBASDirs).
 
 this_node_cbas_dirs() ->
-    node_cbas_dirs(ns_config:latest(), node(), []).
+    node_cbas_dirs(ns_config:latest(), node()).
 
-node_cbas_dirs(Config, Node, StorageConf) ->
+node_cbas_dirs(Config, Node) ->
    case cluster_compat_mode:is_cbas_enabled() of
         true ->
-            case ns_config:search_node(Node, Config, cbas_dirs) of
-                {value, V} ->
-                    V;
-                false ->
-                    %% Should only occur running mixed versions (e.g. during
-                    %% upgrade)
-                    %% TODO: Remove once 6.5 is the oldest supported
-                    %%       release
-                    IndexPath = proplists:get_value(index_path, StorageConf),
-                    true = IndexPath =/= undefined,
-                    [IndexPath]
-            end;
+           {value, Dirs} =  ns_config:search_node(Node, Config, cbas_dirs),
+           Dirs;
         false ->
             []
     end.
@@ -336,20 +326,11 @@ update_ev_dir({ok, EvDir}) ->
     ns_config:set({node, node(), eventing_dir}, EvDir).
 
 this_node_evdir() ->
-    {ok, node_ev_dir(ns_config:latest(), node(), [])}.
+    {ok, node_ev_dir(ns_config:latest(), node())}.
 
-node_ev_dir(Config, Node, StorageConf) ->
-    case ns_config:search_node(Node, Config, eventing_dir) of
-        {value, V} ->
-            V;
-        false ->
-            %% Should only occur running mixed versions (e.g. during upgrade).
-            %% Prior to 6.5, eventing used the index path
-            %% TODO: Remove once 6.5 is the oldest supported release.
-            IndexPath = proplists:get_value(index_path, StorageConf),
-            true = IndexPath =/= undefined,
-            IndexPath
-    end.
+node_ev_dir(Config, Node) ->
+    {value, Dir} = ns_config:search_node(Node, Config, eventing_dir),
+    Dir.
 
 % Returns a proplist of lists of proplists.
 %
@@ -376,10 +357,8 @@ storage_conf_from_node_status(Node, NodeStatus) ->
                   DBDir ->
                       [{path, DBDir},
                        {index_path, proplists:get_value(index_path, StorageConf, DBDir)},
-                       {cbas_dirs, node_cbas_dirs(ns_config:latest(),
-                                                  Node, StorageConf)},
-                       {eventing_path, node_ev_dir(ns_config:latest(), Node,
-                                                  StorageConf)},
+                       {cbas_dirs, node_cbas_dirs(ns_config:latest(), Node)},
+                       {eventing_path, node_ev_dir(ns_config:latest(), Node)},
                        {java_home, node_java_home(ns_config:latest(), Node)},
                        {quotaMb, none},
                        {state, ok}]
@@ -402,8 +381,8 @@ extract_node_storage_info(Config, Node, NodeInfo) ->
     StorageConf = proplists:get_value(node_storage_conf, NodeInfo, []),
     DiskPaths = [X || {PropName, X} <- StorageConf,
                       PropName =:= db_path orelse PropName =:= index_path] ++
-                 node_cbas_dirs(Config, Node, StorageConf) ++
-                 [node_ev_dir(Config, Node, StorageConf)],
+                 node_cbas_dirs(Config, Node) ++
+                 [node_ev_dir(Config, Node)],
     {DiskTotal, DiskUsed} = extract_disk_totals(DiskPaths, DiskStats),
     [{ram, [{total, RAMTotal},
             {used, RAMUsed}
