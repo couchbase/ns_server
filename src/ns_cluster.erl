@@ -228,26 +228,24 @@ engage_cluster_apply_net_config(NodeKVList) ->
 apply_net_config(NodeKVList) ->
     case ensure_dist_ports_match(NodeKVList) of
         ok ->
-            case extract_remote_cluster_net_settings(NodeKVList) of
-                {ok, AFamily, AFamilyOnly, NEncryption, Protos} ->
-                    ?log_info("Applying net config. AFamily: ~p, "
-                              "AFamilyOnly: ~p, "
-                              "NEncryption: ~p, "
-                              "DistProtos: ~p",
-                              [AFamily, AFamilyOnly, NEncryption, Protos]),
-                    Props = [{externalListeners, Protos},
-                             {afamily, AFamily},
-                             {afamilyOnly, AFamilyOnly},
-                             {nodeEncryption, NEncryption}],
-                    case netconfig_updater:apply_config(Props) of
-                        ok ->
-                            ns_config:sync_announcements(),
-                            menelaus_event:sync(chronicle_compat_events:event_manager()),
-                            cluster_compat_mode:is_enterprise() andalso
-                                ns_ssl_services_setup:sync(),
-                            ok;
-                        {error, Msg} -> {error, Msg}
-                    end;
+            {AFamily, AFamilyOnly, NEncryption, Protos} =
+                extract_remote_cluster_net_settings(NodeKVList),
+            ?log_info("Applying net config. AFamily: ~p, "
+                      "AFamilyOnly: ~p, "
+                      "NEncryption: ~p, "
+                      "DistProtos: ~p",
+                      [AFamily, AFamilyOnly, NEncryption, Protos]),
+            Props = [{externalListeners, Protos},
+                     {afamily, AFamily},
+                     {afamilyOnly, AFamilyOnly},
+                     {nodeEncryption, NEncryption}],
+            case netconfig_updater:apply_config(Props) of
+                ok ->
+                    ns_config:sync_announcements(),
+                    menelaus_event:sync(chronicle_compat_events:event_manager()),
+                    cluster_compat_mode:is_enterprise() andalso
+                        ns_ssl_services_setup:sync(),
+                    ok;
                 {error, Msg} -> {error, Msg}
             end;
         {error, Msg} -> {error, Msg}
@@ -268,54 +266,9 @@ extract_remote_cluster_net_settings(NodeKVList) ->
                                       false),
     AFamilyOnly = proplists:get_value(<<"addressFamilyOnly">>, NodeKVList,
                                       false),
-    case proplists:get_value(<<"addressFamily">>, NodeKVList) of
-        undefined ->
-            case pre_65_remote_node_address_family(NodeKVList) of
-                {ok, AF} -> {ok, AF, AFamilyOnly, NEncryption, Listeners};
-                {error, Msg} -> {error, Msg}
-            end;
-        AFamilyBin ->
-            AFamily = binary_to_atom(AFamilyBin, latin1),
-            {ok, AFamily, AFamilyOnly, NEncryption, Listeners}
-    end.
-
-%% Pre 6.5 nodes do not include address family info in engageCluster.
-%% In order to figure it out we can check the type of port that is used for
-%% distribution. If that port is ipv6 the remote node is ipv6 node.
-pre_65_remote_node_address_family(NodeKVList) ->
-    RemoteNodeBin = proplists:get_value(<<"otpNode">>, NodeKVList, <<>>),
-    RemoteNode = binary_to_atom(RemoteNodeBin, latin1),
-    {Name, Host} = misc:node_name_host(RemoteNode),
-    case {misc:is_raw_ip(Host), misc:is_raw_ipv6(Host)} of
-        {true, false} -> {ok, inet};
-        {true, true} -> {ok, inet6};
-        {false, _} ->
-            case pre_65_call_port_please(Name, Host) of
-                {ok, Port} ->
-                    case check_host_port_connectivity(Host, Port, inet6) of
-                        {ok, _} -> {ok, inet6};
-                        {error, _} -> {ok, inet}
-                    end;
-                {error, _} = Error ->
-                    Msg = ns_error_messages:verify_otp_connectivity_port_error(
-                            RemoteNode, Host, Error),
-                    {error, Msg}
-            end
-    end.
-
-pre_65_call_port_please(Name, Host) ->
-    case resolve(Host) of
-        {ok, IPList} ->
-            lists:foldl(
-              fun ({IP, _AFamily}, {error, _}) ->
-                      case erl_epmd:port_please(Name, IP, 5000) of
-                          {port, P, _} -> {ok, P};
-                          _ -> {error, noport}
-                      end;
-                  (_, Res) -> Res
-              end, {error, undefined}, IPList);
-        {error, Errors} -> {error, hd(Errors)}
-    end.
+    AFamilyBin = proplists:get_value(<<"addressFamily">>, NodeKVList),
+    AFamily = binary_to_atom(AFamilyBin, latin1),
+    {AFamily, AFamilyOnly, NEncryption, Listeners}.
 
 ensure_dist_ports_match(NodeKVList) ->
     {struct, Ports} = proplists:get_value(<<"ports">>, NodeKVList,
