@@ -431,22 +431,11 @@ handle_join_tail(Req, OtherScheme, OtherHost, OtherPort, OtherUser, OtherPswd,
                             H;
                         H -> H
                     end,
-                 NodeURL = build_node_url(OtherScheme, Host),
 
-                 AddNode = call_add_node(OtherScheme, OtherHost, OtherPort,
-                                         {OtherUser, OtherPswd}, AFamily,
-                                         _, Services),
-                 case AddNode(NodeURL) of
-                     {client_error, [<<"Unsupported protocol https">>]} ->
-                         %% Happens when adding a 6.5 node to a pre-6.5
-                         %% cluster
-                         ?log_warning("Node ~p:~p doesn't support adding nodes "
-                                      "via https; http will be used instead",
-                                      [OtherHost, OtherPort]),
-                         AddNode(build_node_url(http, Host));
-                     Other ->
-                         Other
-                 end;
+                 NodeURL = build_node_url(OtherScheme, Host),
+                 call_add_node(OtherScheme, OtherHost, OtherPort,
+                               {OtherUser, OtherPswd}, AFamily, NodeURL,
+                               Services);
              {error, Reason} ->
                     M = case ns_error_messages:connection_error_message(
                                Reason, OtherHost, OtherPort) of
