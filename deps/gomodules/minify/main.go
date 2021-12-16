@@ -12,38 +12,8 @@ import (
 	"flag"
 	"os"
 	"log"
-	"path/filepath"
 	"github.com/evanw/esbuild/pkg/api"
-	"io/ioutil"
-	"encoding/json"
 )
-
-type ImportMap struct {
-	Imports map[string]string
-}
-
-func getImportMapPlugin(importmapPath string) (api.Plugin) {
-	plan, _ := ioutil.ReadFile(importmapPath)
-	var importmap ImportMap
-	if err := json.Unmarshal(plan, &importmap); err != nil {
-		panic(err)
-	}
-	importBase := filepath.Dir(importmapPath)
-
-	return api.Plugin{
-		Name: "ImportMap",
-		Setup: func (build api.PluginBuild) {
-			build.OnResolve(api.OnResolveOptions{Filter: `^[^\.|\/]`},
-				func (args api.OnResolveArgs) (api.OnResolveResult, error) {
-					return api.OnResolveResult{
-						Path: filepath.Join(
-							importBase,
-							importmap.Imports[args.Path]),
-					}, nil
-				})
-		},
-	}
-}
 
 func printErrorAndExit(error string) {
 	log.Printf(error)
@@ -54,7 +24,6 @@ func printErrorAndExit(error string) {
 func main() {
 	inDir := flag.String("in-dir", "", "path to js source dir (required)")
 	outDir := flag.String("out-dir", "", "path to js output dir (required)")
-	importmapPath := flag.String("importmap-path", "", "path to importmap.json (required)")
 	flag.Parse()
 	log.SetFlags(0)
 
@@ -66,21 +35,21 @@ func main() {
 		printErrorAndExit("Error: path to js source dir must be specified\n")
 	}
 
-	if *importmapPath == "" {
-		printErrorAndExit("Error: path to importmap.json must be specified\n")
-	}
-
 	result := api.Build(api.BuildOptions{
 		MinifyWhitespace: true,
 		// TODO: figure out why does't work
 		// MinifyIdentifiers: true,
 		MinifySyntax: true,
 
+		NodePaths: []string{
+			*inDir + "/ui/web_modules",
+			*inDir + "/ui/libs",
+			*inDir + "/ui/app",
+		},
 		EntryPoints: []string{
 			*inDir + "/ui/app/main.js",
 		},
 		Pure: []string{"console.log"},
-		Plugins: []api.Plugin{getImportMapPlugin(*importmapPath)},
 		Sourcemap: api.SourceMapLinked,
 		KeepNames: true,
 		Bundle: true,
