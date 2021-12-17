@@ -20,6 +20,7 @@
 
 -behaviour(gen_server).
 
+-include("cut.hrl").
 -include("ns_common.hrl").
 
 -ifdef(TEST).
@@ -70,7 +71,10 @@ init([]) ->
     do_push(),
     % Schedule some random config syncs.
     schedule_config_sync(),
-    ok = ns_node_disco_rep_events:add_sup_handler(),
+
+    ns_pubsub:subscribe_link(ns_node_disco_events,
+                             handle_node_disco_event(Self, _)),
+
     {ok, #state{}}.
 
 merger_init() ->
@@ -283,9 +287,12 @@ ensure_config_seen_by_nodes(Nodes, Timeout) ->
     ns_config:sync_announcements(),
     synchronize_remote(Nodes, Timeout).
 
-pull_and_push([]) -> ok;
 pull_and_push(Nodes) ->
-    ?MODULE ! {pull_and_push, Nodes}.
+    pull_and_push(?MODULE, Nodes).
+
+pull_and_push(_ServerRef, []) -> ok;
+pull_and_push(ServerRef, Nodes) ->
+    ServerRef ! {pull_and_push, Nodes}.
 
 get_remote(Node, Timeout) ->
     Blob = ns_config_replica:get_compressed(Node, Timeout),
@@ -459,3 +466,18 @@ accumulate_pull_and_push_test() ->
     after 0 -> ok
     end.
 -endif.
+
+handle_node_disco_event(Parent, {ns_node_disco_events, Old, New}) ->
+    case New -- Old of
+        [] ->
+            ok;
+        NewNodes ->
+            ?log_debug("Detected new nodes (~p).  Moving config around.",
+                       [NewNodes]),
+            %% we know that new node will also try to replicate config
+            %% to/from us. So we half our traffic by enforcing
+            %% 'initiative' from higher node to lower node
+            pull_and_push(Parent, [N || N <- NewNodes, N < node()])
+    end;
+handle_node_disco_event(_, _) ->
+    ok.
