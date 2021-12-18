@@ -13,7 +13,8 @@ import ngAnimate from "angular-animate";
 import uiSelect from "ui-select";
 import uiBootstrap from "angular-ui-bootstrap";
 import uiRouter from "@uirouter/angularjs";
-import {downgradeInjectable} from "@angular/upgrade/static";
+import {downgradeInjectable, setAngularJSGlobal} from "@angular/upgrade/static";
+setAngularJSGlobal(angular);
 
 import mnAdminController from "./mn_admin_controller.js";
 import mnAlertsService from "../components/mn_alerts.js";

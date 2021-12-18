@@ -7,11 +7,12 @@ file, in accordance with the Business Source License, use of this software will
 be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
-//'angular' should be imported before each
+//setAngularJSGlobal should be called after each
 //@angular/upgrade/static to protect esbuild from crash
-import 'angular';
+import angular from 'angular';
 import {Directive, ElementRef, Injector} from '@angular/core';
-import {UpgradeComponent} from '@angular/upgrade/static';
+import {UpgradeComponent, setAngularJSGlobal} from '@angular/upgrade/static';
+setAngularJSGlobal(angular);
 
 export {MnDetailStatsDirective, MnMainSpinnerDirective};
 

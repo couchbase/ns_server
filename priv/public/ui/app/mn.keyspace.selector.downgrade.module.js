@@ -10,7 +10,9 @@ licenses/APL2.txt.
 
 import angular from 'angular';
 import {downgradeComponent,
-        downgradeInjectable} from '@angular/upgrade/static';
+        downgradeInjectable,
+        setAngularJSGlobal} from '@angular/upgrade/static';
+setAngularJSGlobal(angular);
 
 import {MnKeyspaceSelectorComponent} from "./mn.keyspace.selector.component.js";
 import {MnKeyspaceSelectorService} from './mn.keyspace.selector.service.js';

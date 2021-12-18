@@ -9,7 +9,8 @@ licenses/APL2.txt.
 */
 
 import angular from "angular";
-import {downgradeInjectable} from '@angular/upgrade/static';
+import {downgradeInjectable, setAngularJSGlobal} from '@angular/upgrade/static';
+setAngularJSGlobal(angular);
 import {QwQueryService} from "../../../_p/ui/query/angular-services/qw.query.service.js";
 import {MnHelperService} from '../mn.helper.service.js';
 import mnPoolDefault from "../components/mn_pool_default.js";

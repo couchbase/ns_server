@@ -10,7 +10,8 @@ licenses/APL2.txt.
 
 import angular from 'angular';
 import _ from 'lodash';
-import {downgradeInjectable} from '@angular/upgrade/static';
+import {downgradeInjectable, setAngularJSGlobal} from '@angular/upgrade/static';
+setAngularJSGlobal(angular);
 import {MnTasksService} from '../mn.tasks.service.js';
 
 export default 'mnTasksDetails';

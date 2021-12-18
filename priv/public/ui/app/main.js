@@ -8,9 +8,6 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
 import angular from 'angular';
-import {setAngularJSGlobal} from '@angular/upgrade/static';
-
-setAngularJSGlobal(angular);
 
 import {NgZone} from '@angular/core';
 import {platformBrowserDynamic} from '@angular/platform-browser-dynamic';

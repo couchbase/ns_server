@@ -9,12 +9,14 @@ licenses/APL2.txt.
 */
 
 // app import should go first in order to load AngularJS before
-// @angular/upgrade/static
 import app from './app.js';
 
 import {NgModule, ErrorHandler} from '@angular/core';
 import {HTTP_INTERCEPTORS} from '@angular/common/http';
-import {UpgradeModule} from '@angular/upgrade/static';
+import {UpgradeModule, setAngularJSGlobal} from '@angular/upgrade/static';
+import angular from 'angular';
+setAngularJSGlobal(angular);
+
 import {NgbModalConfig} from '@ng-bootstrap/ng-bootstrap';
 import {ClipboardService} from 'ngx-clipboard';
 

@@ -13,7 +13,8 @@ import angular from 'angular';
 import {MnElementCargoComponent,
         MnElementDepotComponent} from '../../../mn.element.crane.js';
 
-import {downgradeComponent} from '@angular/upgrade/static';
+import {downgradeComponent, setAngularJSGlobal} from '@angular/upgrade/static';
+setAngularJSGlobal(angular);
 
 export default 'mnElementCrane';
 
