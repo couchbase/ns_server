@@ -1152,7 +1152,7 @@ handle_apply_new_config(Node, NewBucketConfig,
                             [] ->
                                 missing
                         end,
-                        {ActualState, ActualTopology} =
+                    {ActualState, ActualTopology} =
                         case dict:find(VBucket, VBDetails) of
                             {ok, Val} ->
                                 StateVal = proplists:get_value(state, Val),
