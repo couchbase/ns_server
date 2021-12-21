@@ -900,11 +900,13 @@ set_manifest(Req, BucketName, InputManifest, ValidOnUid, Uid) ->
 
 auth_failure(Req) ->
     RawPath = mochiweb_request:get(raw_path, Req),
-    put(auth_failure, Req, [{raw_url, RawPath}]).
+    put(auth_failure, Req, [{raw_url, ns_config_log:tag_misc_item(RawPath)}]).
 
 rbac_info_retrieved(Req, Type) ->
     RawPath = mochiweb_request:get(raw_path, Req),
-    put(rbac_info_retrieved, Req, [{raw_url, RawPath}, {type, Type}]).
+    put(rbac_info_retrieved, Req, [{raw_url,
+                                    ns_config_log:tag_misc_item(RawPath)},
+                                   {type, Type}]).
 
 admin_password_reset(Req) ->
     put(admin_password_reset, Req, []).

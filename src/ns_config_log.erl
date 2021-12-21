@@ -27,7 +27,7 @@
 
 %% state sanitization
 -export([format_status/2, tag_user_data/1, tag_user_name/1, tag_doc_id/1,
-         tag_user_props/1]).
+         tag_user_props/1, tag_misc_item/1]).
 
 format_status(_Opt, [_PDict, State]) ->
     sanitize(State).
@@ -136,17 +136,20 @@ tag_user_props(Props) ->
     generic:transformt(?transform({name, N}, {name, tag_user_name(N)}),
                        Props).
 
-do_tag_doc_id(DocId) when is_list(DocId) ->
-    {ok, "<ud>" ++ DocId ++ "</ud>"};
-do_tag_doc_id(DocId) when is_binary(DocId) ->
-    {ok, Val} = do_tag_doc_id(binary_to_list(DocId)),
+do_tag_misc_item(Item) when is_list(Item) ->
+    {ok, "<ud>" ++ Item ++ "</ud>"};
+do_tag_misc_item(Item) when is_binary(Item) ->
+    {ok, Val} = do_tag_misc_item(binary_to_list(Item)),
     {ok, list_to_binary(Val)};
-do_tag_doc_id(_) ->
+do_tag_misc_item(_) ->
     continue.
 
-tag_doc_id(DocId) ->
-    {ok, Val} = do_tag_doc_id(DocId),
+tag_misc_item(Item) ->
+    {ok, Val} = do_tag_misc_item(Item),
     Val.
+
+tag_doc_id(DocId) ->
+    tag_misc_item(DocId).
 
 rewrite_tuples_with_vclock(Fun, Config) ->
     misc:rewrite_tuples(
