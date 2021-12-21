@@ -483,7 +483,7 @@ handle_just_diag(Req, Extra) ->
     menelaus_util:write_chunk(
       Req, <<"-------------------------------\n\n\n">>, Resp),
 
-    mochiweb_response:write_chunk(
+    menelaus_util:write_chunk(Req,
       <<"Event Logs:\n-------------------------------\n">>, Resp),
 
     lists:foreach(fun (Event) ->
@@ -500,12 +500,12 @@ handle_just_diag(Req, Extra) ->
                               encoding_error ->
                                   ok;
                               _ ->
-                                  mochiweb_response:write_chunk([JSON, $\n],
-                                                                Resp)
+                                  menelaus_util:write_chunk(Req, [JSON, $\n],
+                                                            Resp)
                           end
                   end, event_log_server:build_events_json(undefined, -1)),
 
-    mochiweb_response:write_chunk(
+    menelaus_util:write_chunk(Req,
       <<"-------------------------------\n\n\n">>, Resp),
 
     Results = grab_per_node_diag(),
