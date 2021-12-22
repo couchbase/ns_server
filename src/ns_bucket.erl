@@ -84,6 +84,7 @@
          set_bucket_config/2,
          set_fast_forward_map/2,
          set_map/2,
+         set_initial_map/3,
          set_map_opts/2,
          set_servers/2,
          update_bucket_props/2,
@@ -1039,15 +1040,78 @@ set_fast_forward_map(Bucket, Map) ->
     set_property(Bucket, fastForwardMap, Map, [],
                  master_activity_events:note_set_ff_map(Bucket, Map, _)).
 
-set_map(Bucket, Map) ->
+validate_map(Map) ->
     case mb_map:is_valid(Map) of
         true ->
             ok;
         different_length_chains ->
             ok
-    end,
+    end.
+
+set_map(Bucket, Map) ->
+    validate_map(Map),
     set_property(Bucket, map, Map, [],
                  master_activity_events:note_set_map(Bucket, Map, _)).
+
+validate_map_with_node_names(Snapshot, Servers) ->
+    Nodes = chronicle_compat:get(Snapshot, nodes_wanted, #{default => []}),
+    ordsets:is_subset(ordsets:from_list(Servers), ordsets:from_list(Nodes)).
+
+validate_init_map_trans(BucketName, Snapshot, Servers) ->
+    case get_bucket(BucketName, Snapshot) of
+        {ok, Config} ->
+            case validate_map_with_node_names(Snapshot, Servers) of
+                true ->
+                    {ok, Config};
+                false ->
+                    false
+            end;
+        not_present ->
+            false
+    end.
+
+% Update the initial map via a transaction that validates map with the
+% nodes_wanted in chronicle. This allows chronicle to reject the initial map set
+% transaction if node names have changed since then
+update_init_map_config(BucketName, Servers, Fun) ->
+    PropsKey = sub_key(BucketName, props),
+    RV =
+        chronicle_kv:transaction(
+          kv, [PropsKey, nodes_wanted],
+          fun (Snapshot) ->
+                  case validate_init_map_trans(BucketName, Snapshot, Servers) of
+                      {ok, Config} ->
+                          {commit, [{set, PropsKey, Fun(Config)}]};
+                      false ->
+                          {abort, mismatch}
+                  end
+          end),
+    case RV of
+        {ok, _} ->
+            ok;
+        Other ->
+            Other
+    end.
+
+set_init_map_property(Bucket, Map, Servers, Fun) ->
+    update_init_map_config(
+        Bucket,
+        Servers,
+        fun (OldConfig) ->
+            Fun(proplists:get_value(map, OldConfig, [])),
+            lists:keystore(map, 1, OldConfig, {map, Map})
+        end).
+
+set_initial_map(Bucket, Map, Servers) ->
+    case chronicle_compat:backend() of
+        ns_config ->
+            set_map(Bucket, Map);
+        chronicle ->
+            validate_map(Map),
+            set_init_map_property(Bucket, Map, Servers,
+                                  master_activity_events:note_set_map(Bucket,
+                                                                      Map, _))
+    end.
 
 set_map_opts(Bucket, Opts) ->
     set_property(Bucket, map_opts_hash, erlang:phash2(Opts)).
