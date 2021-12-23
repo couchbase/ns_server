@@ -969,7 +969,6 @@ is_port_free(StringPort) ->
         andalso Port =/= service_ports:get_port(memcached_ssl_port)
         andalso Port =/= service_ports:get_port(capi_port)
         andalso Port =/= 4369 %% default epmd port
-        andalso is_not_a_bucket_port(Port)
         andalso is_not_a_kernel_port(Port)
         andalso Port =/= service_ports:get_port(ssl_capi_port)
         andalso Port =/= service_ports:get_port(ssl_rest_port).
@@ -989,14 +988,6 @@ is_not_a_kernel_port(Port) ->
                       P1
               end,
     Port < MinPort orelse Port > MaxPort.
-
-is_not_a_bucket_port(Port) ->
-    UsedPorts = lists:filter(fun (undefined) -> false;
-                                 (_) -> true
-                             end,
-                             [proplists:get_value(moxi_port, Config)
-                              || {_, Config} <- ns_bucket:get_buckets()]),
-    not lists:member(Port, UsedPorts).
 
 %% These represent settings for a cluster.  Node settings should go
 %% through the /node URIs

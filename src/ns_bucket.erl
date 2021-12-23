@@ -60,7 +60,6 @@
          live_bucket_nodes_from_config/1,
          map_to_replicas/1,
          replicated_vbuckets/3,
-         moxi_port/1,
          name_conflict/1,
          name_conflict/2,
          names_conflict/2,
@@ -740,9 +739,6 @@ display_type(membase = _Type, ephemeral = _StorageMode) ->
 display_type(Type, _) ->
     Type.
 
-moxi_port(Bucket) ->
-    proplists:get_value(moxi_port, Bucket).
-
 get_servers(BucketConfig) ->
     proplists:get_value(servers, BucketConfig).
 
@@ -825,12 +821,7 @@ new_bucket_default_params(memcached) ->
      {ram_quota, 0}].
 
 cleanup_bucket_props(Props) ->
-    case proplists:get_value(moxi_port, Props) of
-        undefined ->
-            lists:keydelete(moxi_port, 1, Props);
-        _ ->
-            Props
-    end.
+    lists:keydelete(moxi_port, 1, Props).
 
 generate_sasl_password() ->
     binary_to_list(couch_uuids:random()).
@@ -1446,7 +1437,7 @@ extract_bucket_props(Props) ->
                         durability_min_level, frag_percent,
                         storage_quota_percentage,
                         pitr_enabled, pitr_granularity, pitr_max_history_age,
-                        moxi_port, autocompaction,
+                        autocompaction,
                         purge_interval, flush_enabled, num_threads,
                         eviction_policy, conflict_resolution_type,
                         drift_ahead_threshold_ms, drift_behind_threshold_ms,
