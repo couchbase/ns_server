@@ -188,6 +188,8 @@ default() ->
        {datatype_snappy, true},
        {num_reader_threads, <<"default">>},
        {num_writer_threads, <<"default">>},
+       {num_auxio_threads, <<"default">>},
+       {num_nonio_threads, <<"default">>},
        {num_storage_threads, <<"default">>}]},
 
      %% Memcached config
@@ -256,6 +258,8 @@ default() ->
         {system_connections, system_connections},
         {num_reader_threads, num_reader_threads},
         {num_writer_threads, num_writer_threads},
+        {num_auxio_threads, num_auxio_threads},
+        {num_nonio_threads, num_nonio_threads},
         {num_storage_threads, num_storage_threads},
 
         {logger,

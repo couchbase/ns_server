@@ -27,7 +27,9 @@ supported_setting_names() ->
     [{max_connections, {int, 2000, ?MC_MAXINT}},
      {num_reader_threads, fun validate_num_threads/1},
      {num_writer_threads, fun validate_num_threads/1},
-     {num_storage_threads, fun validate_num_storage_threads/1},
+     {num_auxio_threads, fun validate_num_storage_auxio_nonio_threads/1},
+     {num_nonio_threads, fun validate_num_storage_auxio_nonio_threads/1},
+     {num_storage_threads, fun validate_num_storage_auxio_nonio_threads/1},
      {system_connections, {int, 1000, ?MC_MAXINT}},
      {verbosity, {int, 0, ?MC_MAXINT}},
      {ssl_cipher_list, string},
@@ -167,8 +169,8 @@ validate_num_threads("default") -> {ok, <<"default">>};
 validate_num_threads("disk_io_optimized") -> {ok, <<"disk_io_optimized">>};
 validate_num_threads(Value) -> validate_param(Value, {int, 1, 64}).
 
-validate_num_storage_threads("default") -> {ok, <<"default">>};
-validate_num_storage_threads(Value) -> validate_param(Value, {int, 1, 64}).
+validate_num_storage_auxio_nonio_threads("default") -> {ok, <<"default">>};
+validate_num_storage_auxio_nonio_threads(Value) -> validate_param(Value, {int, 1, 64}).
 
 continue_handle_post(Req, Params, SettingsKey, ExtraConfigKey) ->
     ParsedParams =
