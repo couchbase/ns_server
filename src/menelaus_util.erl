@@ -640,7 +640,7 @@ flush_notifications(NotifyTag, Value) ->
         Value
     end.
 
-handle_streaming_wakeup(DataBody, Req, HTTPRes, Res, NotifyTag) ->
+handle_streaming_wakeup(Req, DataBody, HTTPRes, Res, NotifyTag) ->
     NewValue =
         receive
             {NotifyTag, Value} ->
@@ -651,7 +651,7 @@ handle_streaming_wakeup(DataBody, Req, HTTPRes, Res, NotifyTag) ->
         after 25000 ->
                 timeout
         end,
-    handle_streaming(DataBody, Req, HTTPRes, Res,
+    handle_streaming(Req, DataBody, HTTPRes, Res,
                      {NotifyTag, NewValue}).
 
 assert_is_enterprise() ->
