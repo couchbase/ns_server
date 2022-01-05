@@ -379,7 +379,14 @@ build_streaming_info(Id, Req, LocalAddr, UpdateID) ->
                       {Info, 1000, UpdateID}
               end,
               fun (_Key, _Value, OldUpdateID) ->
-                      UpdateID > OldUpdateID
+                      case {OldUpdateID, UpdateID} of
+                          {_, undefined} ->
+                              false;
+                          {undefined, _} ->
+                              true;
+                          {OldID, ID} ->
+                              ID > OldID
+                      end
               end);
         false ->
             exit(normal)
