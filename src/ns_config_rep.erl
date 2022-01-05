@@ -49,7 +49,8 @@
          pull_and_push/1, pull_from_one_node_directly/1,
          get_timeout/1]).
 
--export([get_remote/2, pull_remotes/1, pull_remotes/2, push_keys/1]).
+-export([get_remote/2, pull_remotes/1, pull_remotes/2,
+         push_keys/1, update_nodes/0]).
 
 -record(state, { nodes,
                  nodes_rev }).
@@ -331,6 +332,9 @@ pull_remotes(Nodes, PullTimeout) ->
 
 push_keys(Keys) ->
     ?MODULE ! {push_keys, Keys}.
+
+update_nodes() ->
+    ?MODULE ! update_nodes.
 
 %
 % Privates

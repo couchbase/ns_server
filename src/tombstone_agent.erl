@@ -248,6 +248,11 @@ handle_prepare_purge(Node, Rev, State) ->
             ok
     end,
 
+    %% Make sure that ns_config_rep_merger has an up-to-date view of the
+    %% cluster nodes. This is to prevent a race where a removed node
+    %% replicates purged keys back to the cluster.
+    ns_config_rep:update_nodes(),
+
     %% Make sure ns_config_rep_merger picks up the new timestamp and pushes
     %% everything to ns_config.
     ns_config_rep:synchronize_local(),
