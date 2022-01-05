@@ -30,6 +30,7 @@
 -define(PULL_TIMEOUT, ?get_timeout(pull, 10000)).
 -define(SELF_PULL_TIMEOUT, ?get_timeout(self_pull, 30000)).
 -define(SYNCHRONIZE_TIMEOUT, ?get_timeout(sync, 30000)).
+-define(QUORUM_FAILOVER_PULL_TIMEOUT, ?get_timeout(quorum_failover_pull, 5000)).
 
 -define(MERGING_EMERGENCY_THRESHOLD, ?get_param(merge_mailbox_threshold, 2000)).
 -define(MERGER_MAX_BLOBS_BATCH, ?get_param(merger_max_blobs_batch, 50)).
@@ -50,7 +51,8 @@
 
 -export([get_remote/2, pull_remotes/1, pull_remotes/2, push_keys/1]).
 
--record(state, {}).
+-record(state, { nodes,
+                 nodes_rev }).
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -64,18 +66,22 @@ init([]) ->
                              fun (Keys) ->
                                      Self ! {push_keys, Keys}
                              end),
+
+    chronicle_compat_events:notify_if_key_changes(
+      lists:member(_, [cluster_compat_version, nodes_wanted]), update_nodes),
+    State = update_nodes(#state{}),
+
     % Start with startup config sync.
     ?log_debug("init pulling", []),
-    pull_random_node(),
+    pull_random_node(State),
     ?log_debug("init pushing", []),
-    do_push(),
+    do_push(State),
     % Schedule some random config syncs.
     schedule_config_sync(),
 
     ns_pubsub:subscribe_link(ns_node_disco_events,
                              handle_node_disco_event(Self, _)),
-
-    {ok, #state{}}.
+    {ok, State}.
 
 merger_init() ->
     erlang:register(ns_config_rep_merger, self()),
@@ -147,8 +153,18 @@ handle_call(Msg, _From, State) ->
     ?log_warning("Unhandled call: ~p", [Msg]),
     {reply, error, State}.
 
-handle_cast({merge_compressed, _Blob} = Msg, State) ->
-    ns_config_rep_merger ! Msg,
+handle_cast({merge_compressed, Node, Rev, Blob}, State) ->
+    %% Neo and later.
+    case accept_merge(Node, Rev, State) of
+        true ->
+            merge_blob(Blob);
+        false ->
+            ok
+    end,
+    {noreply, State};
+handle_cast({merge_compressed, Blob}, State) ->
+    %% Pre-Neo
+    merge_blob(Blob),
     {noreply, State};
 handle_cast({sync_reply, StartTS, From}, State) ->
     EndTS = erlang:monotonic_time(microsecond),
@@ -177,7 +193,7 @@ accumulate_pull_and_push(Nodes) ->
 accumulate_push_keys(InitialKeys) ->
     accumulate_X(lists:sort(InitialKeys), push_keys).
 
-accumulate_and_push_keys(_Keys0, 0) ->
+accumulate_and_push_keys(_Keys0, 0, State) ->
     ns_server_stats:notify_counter(
       <<"ns_config_rep_push_keys_retries_exceeded">>),
     %% Exceeded retries count trying to get consistent keys/values for config
@@ -188,8 +204,8 @@ accumulate_and_push_keys(_Keys0, 0) ->
               "for config replication. The full config will be replicated."),
     KVs = lists:sort(ns_config:get_kv_list()),
     Keys = [K || {K, _} <- KVs],
-    do_push_keys(Keys, KVs);
-accumulate_and_push_keys(Keys0, RetriesLeft) ->
+    do_push_keys(Keys, KVs, State);
+accumulate_and_push_keys(Keys0, RetriesLeft, State) ->
     Keys = accumulate_push_keys(Keys0),
     AllConfigKV = ns_config:get_kv_list(),
     %% the following ensures that all queued ns_config_events_local
@@ -206,7 +222,7 @@ accumulate_and_push_keys(Keys0, RetriesLeft) ->
             %% ordering of these messages is irrelevant so we can
             %% resend and retry
             self() ! Msg,
-            accumulate_and_push_keys(Keys, RetriesLeft-1)
+            accumulate_and_push_keys(Keys, RetriesLeft-1, State)
     after 0 ->
             %% we know that AllConfigKV has exactly changes we've seen
             %% with {push_keys, ...}. I.e. there's no way config
@@ -231,27 +247,36 @@ accumulate_and_push_keys(Keys0, RetriesLeft) ->
             %% conflict-prone I think it should be ok. I.e. local
             %% mutation that is overwritten by conflicting incoming
             %% change is already bug.
-            do_push_keys(Keys, AllConfigKV)
+            do_push_keys(Keys, AllConfigKV, State)
     end.
 
 handle_info({push_keys, Keys0}, State) ->
-    accumulate_and_push_keys(Keys0, 10),
+    accumulate_and_push_keys(Keys0, 10, State),
     {noreply, State};
 handle_info({pull_and_push, Nodes}, State) ->
-    ?log_info("Replicating config to/from:~n~p", [Nodes]),
     FinalNodes = accumulate_pull_and_push(Nodes),
-    pull_one_node(FinalNodes, length(FinalNodes)),
+    NewState = update_nodes(State),
+    KnownNodes = [N || N <- FinalNodes, lists:member(N, NewState#state.nodes)],
+
+    ?log_info("Replicating config to/from:~n~p", [KnownNodes]),
+    pull_one_node(KnownNodes, length(KnownNodes)),
     RawKVList = ns_config:get_kv_list(?SELF_PULL_TIMEOUT),
-    do_push(RawKVList, FinalNodes),
+    Blob = misc:compress(RawKVList),
+    do_push(Blob, KnownNodes, NewState#state.nodes_rev),
     ?log_debug("config pull_and_push done.", []),
-    {noreply, State};
+    {noreply, NewState};
 handle_info(sync_random, State) ->
     schedule_config_sync(),
-    pull_random_node(1),
+    pull_random_node(1, State),
     {noreply, State};
 handle_info({'EXIT', _From, Reason} = Msg, _State) ->
     ?log_warning("Got exit message. Exiting: ~p", [Msg]),
     {stop, Reason};
+handle_info(update_nodes, State) ->
+    misc:flush(update_nodes),
+    NewState = update_nodes(State),
+    maybe_force_pull(NewState, State),
+    {noreply, NewState};
 handle_info(Msg, State) ->
     ?log_debug("Unhandled msg: ~p", [Msg]),
     {noreply, State}.
@@ -349,29 +374,36 @@ extract_kvs([K | Ks] = AllKs, [{CK,_} = KV | KVs], Acc) ->
             extract_kvs(AllKs, KVs, Acc)
     end.
 
-do_push_keys(Keys, AllKVs) ->
+do_push_keys(Keys, AllKVs, State) ->
     ?log_debug("Replicating some config keys (~p..)", [lists:sublist(Keys, 64)]),
     KVsToPush = extract_kvs(Keys, lists:sort(AllKVs), []),
-    do_push(KVsToPush).
+    do_push(KVsToPush, State).
 
-do_push() ->
-    do_push(ns_config:get_kv_list(?SELF_PULL_TIMEOUT)).
+do_push(State) ->
+    do_push(ns_config:get_kv_list(?SELF_PULL_TIMEOUT), State).
 
-do_push(RawKVList) ->
-    do_push(RawKVList, ns_node_disco:nodes_actual_other() ++ ns_node_disco:local_sub_nodes()).
-
-do_push(_RawKVList, []) ->
-    ok;
-do_push(RawKVList, OtherNodes) ->
+do_push(RawKVList, #state{nodes_rev = Revision} = State) ->
     Blob = misc:compress(RawKVList),
-    misc:parallel_map(fun(Node) ->
-                              gen_server:cast({ns_config_rep, Node},
-                                              {merge_compressed, Blob})
-                      end,
-                      OtherNodes, 2000).
+    do_push_local(Blob),
+    LiveNodes = live_other_nodes(State),
+    do_push(Blob, LiveNodes, Revision).
 
-pull_random_node()  -> pull_random_node(5).
-pull_random_node(N) -> pull_one_node(misc:shuffle(ns_node_disco:nodes_actual_other()), N).
+do_push(Blob, OtherNodes, Revision) ->
+    misc:parallel_map(send_blob(_, Revision, Blob), OtherNodes, 2000).
+
+send_blob(Node, undefined, Blob) ->
+    gen_server:cast({ns_config_rep, Node}, {merge_compressed, Blob});
+send_blob(Node, Revision, Blob) ->
+    gen_server:cast({ns_config_rep, Node},
+                    {merge_compressed, node(), Revision, Blob}).
+
+do_push_local(Blob) ->
+    do_push(Blob, ns_node_disco:local_sub_nodes(), undefined).
+
+pull_random_node(State)  -> pull_random_node(5, State).
+pull_random_node(N, State) ->
+    LiveNodes = live_other_nodes(State),
+    pull_one_node(misc:shuffle(LiveNodes), N).
 
 pull_one_node(Nodes, Tries) ->
     pull_one_node(Nodes, Tries, []).
@@ -431,7 +463,7 @@ merge_remote_configs(Fun, KVLists) ->
         false ->
             case ns_config:cas_remote_config(NewKVList, TouchedKeys, LocalKVList) of
                 true ->
-                    do_push(NewKVList -- LocalKVList, ns_node_disco:local_sub_nodes()),
+                    do_push_local(misc:compress(NewKVList -- LocalKVList)),
                     ok;
                 _ ->
                     ?log_warning("config cas failed. Retrying", []),
@@ -481,3 +513,96 @@ handle_node_disco_event(Parent, {ns_node_disco_events, Old, New}) ->
     end;
 handle_node_disco_event(_, _) ->
     ok.
+
+merge_blob(Blob) ->
+    ns_config_rep_merger ! {merge_compressed, Blob}.
+
+update_nodes(State) ->
+    case cluster_compat_mode:is_cluster_NEO() of
+        true ->
+            {ok, {Nodes, Rev}} = chronicle_kv:get(kv, nodes_wanted),
+            State#state{nodes = Nodes, nodes_rev = Rev};
+        false ->
+            State#state{nodes = ns_node_disco:nodes_wanted(),
+                        nodes_rev = undefined}
+    end.
+
+accept_merge(_Node, _OtherRev, #state{nodes_rev = undefined}) ->
+    %% This node/process has not switched to Neo yet. Accept all incoming
+    %% merge requests.
+    true;
+accept_merge(Node, OtherRev,
+             #state{nodes = Nodes, nodes_rev = OurRev}) ->
+    case chronicle:compare_revisions(OtherRev, OurRev) of
+        incompatible ->
+            %% Quorum failover happened. The other nodes is either part of the
+            %% new topology and are slightly ahead of us (in which case we
+            %% would want to accept the merge request), or its part of the
+            %% failed over partition (and we don't want to accept the
+            %% request). We could distinguish between these two situations if
+            %% the merge request was coupled with the corresponding failover
+            %% log. But that feels like too much trouble. Instead we'll resync
+            %% with all nodes once we've observed the change to nodes_wanted
+            %% that carries the new history id. Since quorum failover is
+            %% reserved for smaller clusters and is generally discouraged,
+            %% this feels ok to me.
+            ?log_info("Ignoring a merge request from ~w "
+                      "due to incompatible revisions. "
+                      "Our revision: ~w. "
+                      "Their revision: ~w",
+                      [Node, OurRev, OtherRev]),
+            false;
+        lt ->
+            %% The other node is potentially behind. Check that it's part of
+            %% the topology known to us.
+            Member = lists:member(Node, Nodes),
+            case Member of
+                false ->
+                    ?log_info("Ignoring a merge request from ~w "
+                              "which is not in peers.", [Node]);
+                _ ->
+                    ok
+            end,
+            Member;
+        _ ->
+            %% The other node is ahead. Even though it may not be a part of the
+            %% topology known to us, we trust it.
+            true
+    end.
+
+maybe_force_pull(#state{nodes_rev = NewRev} = NewState,
+                 #state{nodes_rev = OldRev}) ->
+    case NewRev =:= undefined orelse OldRev =:= undefined of
+        true ->
+            %% Still in pre-Neo compat mode. Nothing to be done.
+            ok;
+        false ->
+            case chronicle:compare_revisions(NewRev, OldRev) of
+                incompatible ->
+                    force_pull(NewState);
+                _ ->
+                    ok
+            end
+    end.
+
+force_pull(State) ->
+    OtherNodes = live_other_nodes(State),
+    case OtherNodes of
+        [] ->
+            ok;
+        _ ->
+            ?log_info("Going to pull config from nodes ~w "
+                      "after quorum failover", [OtherNodes]),
+            case pull_from_all_nodes(OtherNodes,
+                                     ?QUORUM_FAILOVER_PULL_TIMEOUT) of
+                ok ->
+                    ?log_info("Pulled config successfully");
+                Other ->
+                    %% Eventually our gossiping should propagate any
+                    %% potentially missing changes back to us.
+                    ?log_warning("Failed to pull config:~n~p", [Other])
+            end
+    end.
+
+live_other_nodes(#state{nodes = Nodes}) ->
+    ns_node_disco:only_live_nodes(Nodes -- [node()]).
