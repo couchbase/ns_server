@@ -70,6 +70,10 @@ init([]) ->
 
     chronicle_compat_events:notify_if_key_changes(
       lists:member(_, [cluster_compat_version, nodes_wanted]), update_nodes),
+
+    ns_pubsub:subscribe_link(ns_node_disco_events,
+                             handle_node_disco_event(Self, _)),
+
     State = update_nodes(#state{}),
 
     % Start with startup config sync.
@@ -79,9 +83,6 @@ init([]) ->
     do_push(State),
     % Schedule some random config syncs.
     schedule_config_sync(),
-
-    ns_pubsub:subscribe_link(ns_node_disco_events,
-                             handle_node_disco_event(Self, _)),
     {ok, State}.
 
 merger_init() ->
