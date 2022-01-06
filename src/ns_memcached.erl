@@ -31,6 +31,7 @@
 
 -define(CHECK_INTERVAL, 10000).
 -define(CHECK_WARMUP_INTERVAL, 500).
+-define(CONNECT_DONE_RETRY_INTERVAL, 500).
 -define(TIMEOUT,             ?get_timeout(outer, 300000)).
 -define(TIMEOUT_HEAVY,       ?get_timeout(outer_heavy, 300000)).
 -define(TIMEOUT_VERY_HEAVY,  ?get_timeout(outer_very_heavy, 360000)).
@@ -178,7 +179,7 @@ run_connect_phase(Parent, Bucket, WorkersCount) ->
              {error, _} = Error  ->
                  Error
          end,
-    gen_server:cast(Parent, {connect_done, WorkersCount, RV}).
+    Parent ! {connect_done, WorkersCount, RV}.
 
 get_worker_features() ->
     FeatureSet = [%% Always use json feature as the local memcached would have
@@ -662,10 +663,31 @@ do_handle_call({get_keys, VBuckets, Params}, _From,
 do_handle_call(_, _From, State) ->
     {reply, unhandled, State}.
 
-handle_cast({connect_done, WorkersCount, RV}, #state{bucket = Bucket,
+handle_cast(start_completed, #state{start_time=Start,
+                                    bucket=Bucket} = State) ->
+    ale:info(?USER_LOGGER, "Bucket ~p loaded on node ~p in ~p seconds.",
+             [Bucket, node(), timer:now_diff(os:timestamp(), Start) div 1000000]),
+    gen_event:notify(buckets_events, {loaded, Bucket}),
+    send_check_config_msg(State),
+    BucketConfig = case ns_bucket:get_bucket(State#state.bucket) of
+                       {ok, BC} -> BC;
+                       not_present -> []
+                   end,
+    NewStatus = case proplists:get_value(type, BucketConfig, unknown) of
+                    memcached ->
+                        %% memcached buckets are warmed up automagically
+                        gen_event:notify(buckets_events, {warmed, Bucket}),
+                        warmed;
+                    _ ->
+                        connected
+                end,
+    {noreply, State#state{status=NewStatus, warmup_stats=[]}}.
+
+handle_info({connect_done, WorkersCount, RV}, #state{bucket = Bucket,
                                                      status = OldStatus} = State) ->
     gen_event:notify(buckets_events, {started, Bucket}),
     erlang:process_flag(trap_exit, true),
+    Self = self(),
 
     case RV of
         {ok, Sock} ->
@@ -676,7 +698,6 @@ handle_cast({connect_done, WorkersCount, RV}, #state{bucket = Bucket,
                     ?log_info("Main ns_memcached connection established: ~p",
                               [RV]),
 
-                    Self = self(),
                     Self ! check_started,
 
                     InitialState = State#state{
@@ -707,6 +728,13 @@ handle_cast({connect_done, WorkersCount, RV}, #state{bucket = Bucket,
                       end),
 
                     {noreply, InitialState};
+                {error, {bucket_create_error,
+                         {memcached_error, key_eexists, _}}} ->
+                    ?log_debug("ensure_bucket failed as bucket ~p has not "
+                               "completed coming online", [Bucket]),
+                    erlang:send_after(?CONNECT_DONE_RETRY_INTERVAL, Self,
+                                      {connect_done, WorkersCount, RV}),
+                    {noreply, State};
                 Error ->
                     ?log_info("ensure_bucket failed: ~p", [Error]),
                     {stop, Error}
@@ -718,27 +746,6 @@ handle_cast({connect_done, WorkersCount, RV}, #state{bucket = Bucket,
             ?log_info("Failed to establish ns_memcached connection: ~p", [RV]),
             {stop, Error}
     end;
-
-handle_cast(start_completed, #state{start_time=Start,
-                                    bucket=Bucket} = State) ->
-    ale:info(?USER_LOGGER, "Bucket ~p loaded on node ~p in ~p seconds.",
-             [Bucket, node(), timer:now_diff(os:timestamp(), Start) div 1000000]),
-    gen_event:notify(buckets_events, {loaded, Bucket}),
-    send_check_config_msg(State),
-    BucketConfig = case ns_bucket:get_bucket(State#state.bucket) of
-                       {ok, BC} -> BC;
-                       not_present -> []
-                   end,
-    NewStatus = case proplists:get_value(type, BucketConfig, unknown) of
-                    memcached ->
-                        %% memcached buckets are warmed up automagically
-                        gen_event:notify(buckets_events, {warmed, Bucket}),
-                        warmed;
-                    _ ->
-                        connected
-                end,
-    {noreply, State#state{status=NewStatus, warmup_stats=[]}}.
-
 handle_info(check_started, #state{status=Status} = State)
   when Status =:= connected orelse Status =:= warmed ->
     %% XXX: doesn't appear this path is reachable... ensure that's the case
