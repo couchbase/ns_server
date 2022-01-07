@@ -50,8 +50,9 @@ class MnTasksService {
     this.stream.tasksCompactionByView = this.stream.tasksViewCompactionPlug
         shareReplay({refCount: true, bufferSize: 1});
 
-    this.stream.tasksPlug = new BehaviorSubject();
-    this.stream.tasks = this.stream.tasksPlug
-      .pipe(shareReplay({refCount: true, bufferSize: 1}));
+    this.stream.tasksLoadingSamplesPlug = new BehaviorSubject();
+    this.stream.tasksLoadingSamples = this.stream.tasksLoadingSamplesPlug
+      .pipe(filter(v => v !== undefined),
+            shareReplay({refCount: true, bufferSize: 1}));
   }
 }

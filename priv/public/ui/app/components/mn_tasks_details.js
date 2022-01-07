@@ -67,6 +67,7 @@ function mnTasksDetailsFactory($http, $cacheFactory, mnTasksService) {
       rv.tasksViewCompaction = _.filter(tasks, detectViewCompactionTask);
       rv.inRebalance = !!(rv.tasksRebalance && rv.tasksRebalance.status === "running");
       rv.inRecoveryMode = !!rv.tasksRecovery;
+      rv.loadingSamples = _.filter(tasks, detectLoadingSamples);
       rv.isLoadingSamples = !!_.detect(tasks, detectLoadingSamples);
       rv.stopRecoveryURI = rv.tasksRecovery && rv.tasksRecovery.stopURI;
       rv.isSubtypeFailover =
@@ -81,6 +82,7 @@ function mnTasksDetailsFactory($http, $cacheFactory, mnTasksService) {
       mnTasksService.stream.tasksWarmingUpPlug.next(rv.tasksWarmingUp);
       mnTasksService.stream.tasksBucketCompactionPlug.next(rv.tasksBucketCompaction);
       mnTasksService.stream.tasksViewCompactionPlug.next(rv.tasksBucketCompaction);
+      mnTasksService.stream.tasksLoadingSamples.next(rv.loadingSamples);
 
       let noCollectInfoTask = {
         nodesByStatus: {},

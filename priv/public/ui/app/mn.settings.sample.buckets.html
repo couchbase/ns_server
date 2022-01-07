@@ -11,7 +11,7 @@
 <mn-element-cargo depot="alerts">
   <div
      [hidden]="!(maxQuotaExceeded | async)"
-     class="alert alert-warning"><p>Insufficient RAM quota available to add the selected sample data. Please free up at least {{maxQuotaExceeded | async}}MiB of RAM quota in <a>cluster settings</a>.</p></div>
+     class="alert alert-warning"><p>Insufficient RAM quota available to add the selected sample data. Please free up at least {{maxQuotaExceeded | async}}MiB of RAM quota in <a uiSref="app.admin.settings.cluster">cluster settings</a>.</p></div>
   <div
      [hidden]="!(isRebalancing | async)"
      class="alert alert-warning"><p>Cannot load samples during rebalance.</p></div>
