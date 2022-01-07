@@ -261,7 +261,9 @@ handle_info(complete_init, #state{base = undefined}) ->
               ?make_consumer(
                  pipes:foreach(
                    ?producer(),
-                   fun ({{user, {_, local} = Identity}, [{uuid, UUID}]}) ->
+                   fun ({{user, {_, local} = Identity}, [{uuid, undefined}]}) ->
+                           ok;
+                       ({{user, {_, local} = Identity}, [{uuid, UUID}]}) ->
                            true = ets:insert_new(?UUID_USER_MAP,
                                                  {UUID, Identity})
                    end))),
