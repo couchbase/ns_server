@@ -84,7 +84,7 @@ class MnXDCRAddRefComponent extends MnLifeCycleHooksToStream {
   setInitialValues(isEnterprise) {
     var value;
     if (this.item) {
-      value = Object.assign({}, this.item);
+      value = clone(this.item);
     } else {
       value = {username: 'Administrator'};
     }
@@ -92,6 +92,9 @@ class MnXDCRAddRefComponent extends MnLifeCycleHooksToStream {
       value.encryptionType = "half";
     }
     this.form.group.patchValue(value, {emitEvent: false});
+    this.formHelper.group.patchValue({
+      useClientCertificate: !!value.clientCertificate || !!value.clientKey
+    });
   }
 
   pack() {
