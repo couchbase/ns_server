@@ -16,6 +16,7 @@ import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnFormService} from "./mn.form.service.js";
 import {MnPoolsService} from './mn.pools.service.js';
 import {MnXDCRService} from './mn.xdcr.service.js';
+import {clone} from 'ramda';
 
 export {MnXDCRAddRefComponent};
 
@@ -94,6 +95,11 @@ class MnXDCRAddRefComponent extends MnLifeCycleHooksToStream {
   }
 
   pack() {
-    return [this.form.group.value, this.item && this.item.name];
+    let value = clone(this.form.group.value);
+    if (!this.formHelper.group.value.useClientCertificate) {
+      value.clientCertificate = "";
+      value.clientKey = "";
+    }
+    return [value, this.item && this.item.name];
   }
 }
