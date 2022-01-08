@@ -101,5 +101,6 @@ upgrade(?VERSION_70, Config) ->
      menelaus_users:config_upgrade() ++
          index_settings_manager:config_upgrade_to_71(Config)};
 
-upgrade(?VERSION_71, _Config) ->
-    {?VERSION_MORPHEUS, []}.
+upgrade(?VERSION_71, Config) ->
+    {?VERSION_MORPHEUS,
+     menelaus_web_auto_failover:config_upgrade_to_MORPHEUS(Config)}.

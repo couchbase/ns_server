@@ -16,7 +16,8 @@
          handle_settings_reset_count/1,
          get_failover_on_disk_issues/1,
          config_check_can_abort_rebalance/0,
-         default_config/1]).
+         default_config/1,
+         config_upgrade_to_MORPHEUS/1]).
 
 -import(menelaus_util,
         [reply/2,
@@ -63,6 +64,10 @@ max_events_allowed() ->
         false ->
             3
     end.
+
+config_upgrade_to_MORPHEUS(Config) ->
+    [{set, auto_failover_cfg,
+      proplists:delete(can_abort_rebalance, auto_failover:get_cfg(Config))}].
 
 handle_settings_get(Req) ->
     Config = auto_failover:get_cfg(),
@@ -179,7 +184,15 @@ parse_validate_extras_inner(Args, CurrRV, Config) ->
             end
     end.
 
-parse_validate_can_abort_rebalance(Args, CurrRV) ->
+parse_validate_can_abort_rebalance(Args, CurrRv) ->
+    case cluster_compat_mode:is_cluster_MORPHEUS() of
+        false ->
+            parse_validate_can_abort_rebalance_inner(Args, CurrRv);
+        true ->
+            CurrRv
+    end.
+
+parse_validate_can_abort_rebalance_inner(Args, CurrRV) ->
     StrKey = "canAbortRebalance",
     case parse_validate_boolean_field(StrKey, '_', Args) of
         [] ->
@@ -276,7 +289,8 @@ boolean_err_msg(Key) ->
 
 config_check_can_abort_rebalance() ->
     proplists:get_value(?CAN_ABORT_REBALANCE_CONFIG_KEY,
-                        auto_failover:get_cfg(), false).
+                        auto_failover:get_cfg(),
+                        cluster_compat_mode:is_cluster_MORPHEUS()).
 
 get_extra_settings(Config) ->
     case cluster_compat_mode:is_enterprise() of
@@ -288,7 +302,8 @@ get_extra_settings(Config) ->
                {maxCount, proplists:get_value(?MAX_EVENTS_CONFIG_KEY, Config)},
                [{canAbortRebalance,
                  proplists:get_value(
-                   ?CAN_ABORT_REBALANCE_CONFIG_KEY, Config)}],
+                   ?CAN_ABORT_REBALANCE_CONFIG_KEY, Config)} ||
+                   not cluster_compat_mode:is_cluster_MORPHEUS()],
                [{failoverServerGroup,
                  proplists:get_value(?FAILOVER_SERVER_GROUP_CONFIG_KEY,
                                      Config)} ||
@@ -303,7 +318,8 @@ disable_extras(Config) ->
             {_, CurrTP} = get_failover_on_disk_issues(Config),
             lists:flatten(
               [disable_failover_on_disk_issues(CurrTP),
-               [{?CAN_ABORT_REBALANCE_CONFIG_KEY, false}],
+               [{?CAN_ABORT_REBALANCE_CONFIG_KEY, false} ||
+                   not cluster_compat_mode:is_cluster_MORPHEUS()],
                [{?FAILOVER_SERVER_GROUP_CONFIG_KEY, false} ||
                    not cluster_compat_mode:is_cluster_71()]]);
         false ->
