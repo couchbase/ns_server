@@ -53,6 +53,7 @@ collection_permissions_to_check([B, S, C]) ->
 
 bucket_permissions_to_check(Bucket) ->
     [{{[admin, internal, stats], read},         'SimpleStats'},
+     {{[{bucket, Bucket}, data, seqno], read},  'ReadSeqno'},
      {{[{bucket, Bucket}, data, dcp], read},    'DcpProducer'},
      {{[{bucket, Bucket}, data, dcp], write},   'DcpConsumer'}].
 
@@ -464,7 +465,9 @@ permissions_for_user_test_() ->
              meck:expect(cluster_compat_mode, is_enterprise,
                          fun () -> true end),
              meck:expect(cluster_compat_mode, get_compat_version,
-                         fun (_) -> ?VERSION_70 end)
+                         fun (_) -> ?VERSION_NEO end),
+             meck:expect(cluster_compat_mode, is_developer_preview,
+                         fun () -> false end)
      end,
      fun (_) ->
              meck:unload(cluster_compat_mode)
@@ -490,20 +493,22 @@ permissions_for_user_test_() ->
             {["test"], Read(BucketsPlusCollections)}]),
       Test([{data_reader, [{"test", <<"test_id">>}, any, any]}],
            ['SystemSettings'],
-           [{["test"], ['MetaRead', 'Read', 'XattrRead']}]),
+           [{["test"], ['MetaRead', 'Read', 'XattrRead', 'ReadSeqno']}]),
       Test([{data_reader, [{"default", <<"default_id">>}, {"s", 1}, any]}],
            ['SystemSettings'],
-           [{["default", 1], ['MetaRead', 'Read', 'XattrRead']}]),
+           [{["default"], ['ReadSeqno']},
+            {["default", 1], ['MetaRead', 'Read', 'XattrRead']}]),
       Test([{data_reader, [{"default", <<"default_id">>}, {"s", 1}, {"c", 1}]}],
            ['SystemSettings'],
-           [{["default", 1, 1], ['MetaRead', 'Read', 'XattrRead']}]),
+           [{["default"], ['ReadSeqno']},
+            {["default", 1, 1], ['MetaRead', 'Read', 'XattrRead']}]),
       Test([{data_dcp_reader, [{"test", <<"test_id">>}, any, any]}],
            ['IdleConnection','SystemSettings'],
            [{["test"], DataRead(BucketsPlusCollections)}]),
       Test([{data_dcp_reader,
              [{"default", <<"default_id">>}, {"s", 1}, {"c", 1}]}],
            ['IdleConnection','SystemSettings'],
-           [{["default"], ['DcpProducer']},
+           [{["default"], ['DcpProducer', 'ReadSeqno']},
             {["default", 1, 1], DataRead(JustCollections)}]),
       Test([{data_monitoring,
              [{"default", <<"default_id">>}, {"s", 1}, {"c", 1}]}],
@@ -524,5 +529,6 @@ permissions_for_user_test_() ->
            ['SystemSettings'],
            [{["test"], ['Delete', 'Insert', 'Upsert', 'XattrWrite']},
             {["default", 1], ['Delete', 'Insert', 'Upsert', 'XattrWrite']},
-            {["default", 2], ['MetaRead', 'Read', 'XattrRead']}])]}.
+            {["default", 2], ['MetaRead', 'Read', 'XattrRead']},
+            {["default"], ['ReadSeqno']}])]}.
 -endif.
