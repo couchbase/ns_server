@@ -34,7 +34,6 @@
 -define(DATA_DISK_ISSUES_CONFIG_KEY, failover_on_data_disk_issues).
 -define(MIN_DATA_DISK_ISSUES_TIMEPERIOD, 5). %% seconds
 -define(MAX_DATA_DISK_ISSUES_TIMEPERIOD, 3600). %% seconds
--define(DEFAULT_DATA_DISK_ISSUES_TIMEPERIOD, 120). %% seconds
 
 -define(FAILOVER_SERVER_GROUP_CONFIG_KEY, failover_server_group).
 
