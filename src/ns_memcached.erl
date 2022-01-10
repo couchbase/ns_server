@@ -1369,21 +1369,23 @@ server(Bucket) ->
 retrieve_warmup_stats(Sock) ->
     mc_client_binary:stats(Sock, <<"warmup">>, fun (K, V, Acc) -> [{K, V}|Acc] end, []).
 
-simulate_slow_warmup(Bucket) ->
-    TestCondition = {ep_slow_bucket_warmup, Bucket},
+simulate_slow_bucket_operation(Bucket, TestConditionName, Interval) ->
+    TestCondition = {TestConditionName, Bucket},
     case testconditions:get(TestCondition) of
         false ->
             false;
         0 ->
             false;
         Delay ->
-            NewDelay = case Delay =< ?CHECK_WARMUP_INTERVAL of
+            NewDelay = case Delay =< Interval of
                            true ->
                                0;
                            _ ->
-                               Delay - ?CHECK_WARMUP_INTERVAL
+                               Delay - Interval
                        end,
-            ?log_debug("Simulating slow warmup of bucket ~p. Pending delay ~p seconds", [Bucket, Delay/1000]),
+            ?log_debug("Simulating slow operation (~p) for bucket ~p. "
+                       "Pending delay ~p seconds",
+                       [TestConditionName, Bucket, Delay/1000]),
             testconditions:set(TestCondition, NewDelay),
             true
     end.
@@ -1392,7 +1394,8 @@ has_started({memcached_error, key_enoent, _}, _) ->
     %% this is memcached bucket, warmup is done :)
     true;
 has_started(Stats, Bucket) ->
-    case simulate_slow_warmup(Bucket) of
+    case simulate_slow_bucket_operation(Bucket, ep_slow_bucket_warmup,
+                                       ?CHECK_WARMUP_INTERVAL) of
         false ->
             has_started_inner(Stats);
         true ->
