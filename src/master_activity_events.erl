@@ -265,7 +265,6 @@ timestamper_body(Event, _Ignore) ->
 
 stream_events(Callback, State) ->
     Ref = make_ref(),
-    EofRef = make_ref(),
     Self = self(),
     Fun = fun (Arg, _Ignored) ->
                   Self ! {Ref, Arg},
@@ -273,23 +272,19 @@ stream_events(Callback, State) ->
           end,
     LinkPid = ns_pubsub:subscribe_link(master_activity_events, Fun, []),
     try
-        case stream_events_history_loop(master_activity_events_keeper:get_history(),
-                                        Callback, State, EofRef, undefined) of
-            {ok, NewState, LastTS} ->
-                CallPredicate =
-                    case LastTS of
-                        undefined ->
-                            fun (_) -> true end;
-                        _ ->
-                            fun (Event) ->
-                                    EventTS = element(1, Event),
-                                    timer:now_diff(EventTS, LastTS) > 0
-                            end
-                    end,
-                stream_events_loop(Ref, LinkPid, Callback, NewState, EofRef, CallPredicate);
-            {eof, RV} ->
-                RV
-        end
+        {ok, NewState, LastTS} = stream_events_history_loop(
+                                   master_activity_events_keeper:get_history(),
+                                   Callback, State, undefined),
+        CallPredicate = case LastTS of
+                            undefined ->
+                                fun (_) -> true end;
+                            _ ->
+                                fun (Event) ->
+                                        EventTS = element(1, Event),
+                                        timer:now_diff(EventTS, LastTS) > 0
+                                end
+                        end,
+        stream_events_loop(Ref, LinkPid, Callback, NewState, CallPredicate)
     after
         ns_pubsub:unsubscribe(LinkPid),
         stream_events_eat_leftover_messages(Ref)
@@ -301,24 +296,20 @@ event_to_formatted_iolist(Event) ->
 
 -spec format_some_history([[{atom(), any()}]]) -> iolist().
 format_some_history(Events) ->
-    Ref = make_ref(),
-    Callback = fun (Event, Acc, _Dummy) ->
+    Callback = fun (Event, Acc) ->
                        [event_to_formatted_iolist(Event) | Acc]
                end,
-    {ok, FinalAcc, _} = stream_events_history_loop(Events, Callback, [], Ref, undefined),
+    {ok, FinalAcc, _} = stream_events_history_loop(Events, Callback, [],
+                                                   undefined),
     lists:reverse(FinalAcc).
 
 
-stream_events_history_loop([], _Callback, State, _EofRef, LastTS) ->
+stream_events_history_loop([], _Callback, State, LastTS) ->
     {ok, State, LastTS};
-stream_events_history_loop([Event | HistoryRest], Callback, State, EofRef, _LastTS) ->
+stream_events_history_loop([Event | HistoryRest], Callback, State, _LastTS) ->
     EventTS = element(1, Event),
-    case Callback(Event, State, EofRef) of
-        {EofRef, RV} ->
-            {eof, RV};
-        NewState ->
-            stream_events_history_loop(HistoryRest, Callback, NewState, EofRef, EventTS)
-    end.
+    NewState = Callback(Event, State),
+    stream_events_history_loop(HistoryRest, Callback, NewState, EventTS).
 
 stream_events_eat_leftover_messages(Ref) ->
     receive
@@ -328,22 +319,21 @@ stream_events_eat_leftover_messages(Ref) ->
             ok
     end.
 
-stream_events_loop(Ref, LinkPid, Callback, State, EofRef, CallPredicate) ->
+stream_events_loop(Ref, LinkPid, Callback, State, CallPredicate) ->
     receive
         {'EXIT', LinkPid, _Reason} = LinkMsg ->
-            ?log_error("Got master_activity_events subscriber link death signal: ~p", [LinkMsg]),
+            ?log_error("Got master_activity_events subscriber link death signal"
+                       ": ~p", [LinkMsg]),
             LinkMsg;
         {Ref, Arg} ->
             case CallPredicate(Arg) of
                 true ->
-                    case Callback(Arg, State, EofRef) of
-                        {EofRef, RV} ->
-                            RV;
-                        NewState ->
-                            stream_events_loop(Ref, LinkPid, Callback, NewState, EofRef, CallPredicate)
-                    end;
+                    NewState = Callback(Arg, State),
+                    stream_events_loop(Ref, LinkPid, Callback, NewState,
+                                       CallPredicate);
                 false ->
-                    stream_events_loop(Ref, LinkPid, Callback, State, EofRef, CallPredicate)
+                    stream_events_loop(Ref, LinkPid, Callback, State,
+                                       CallPredicate)
             end
     end.
 

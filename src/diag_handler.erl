@@ -853,7 +853,8 @@ handle_diag_master_events(Req) ->
         undefined ->
             do_handle_diag_master_events(Req);
         _ ->
-            Body = master_activity_events:format_some_history(master_activity_events_keeper:get_history()),
+            Body = master_activity_events:format_some_history(
+                     master_activity_events_keeper:get_history()),
             menelaus_util:reply_ok(Req, "text/kind-of-json; charset=utf-8", Body)
     end.
 
@@ -865,7 +866,7 @@ do_handle_diag_master_events(Req) ->
     spawn_link(
       fun () ->
               master_activity_events:stream_events(
-                fun (Event, _Ignored, _Eof) ->
+                fun (Event, _Ignored) ->
                         IOList = master_activity_events:event_to_formatted_iolist(Event),
                         case IOList of
                             [] ->
