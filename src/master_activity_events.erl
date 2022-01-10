@@ -43,7 +43,7 @@
          note_compaction_uninhibit_started/2,
          note_compaction_uninhibit_done/2,
          note_forced_inhibited_view_compaction/1,
-         event_to_formatted_iolist/1,
+         event_to_formatted_iolist/2,
          format_some_history/1,
          note_dcp_replicator_start/5,
          note_dcp_add_stream/6,
@@ -274,7 +274,7 @@ stream_events(Callback, State) ->
     try
         {ok, NewState, LastTS} = stream_events_history_loop(
                                    master_activity_events_keeper:get_history(),
-                                   Callback, State, undefined),
+                                   Callback, State, undefined, ns_config:get()),
         CallPredicate = case LastTS of
                             undefined ->
                                 fun (_) -> true end;
@@ -284,32 +284,35 @@ stream_events(Callback, State) ->
                                         timer:now_diff(EventTS, LastTS) > 0
                                 end
                         end,
-        stream_events_loop(Ref, LinkPid, Callback, NewState, CallPredicate)
+        stream_events_loop(Ref, LinkPid, Callback, NewState, CallPredicate,
+                           ns_config:latest())
     after
         ns_pubsub:unsubscribe(LinkPid),
         stream_events_eat_leftover_messages(Ref)
     end.
 
-event_to_formatted_iolist(Event) ->
+event_to_formatted_iolist(Event, Config) ->
     [iolist_to_binary([mochijson2:encode({struct, JSON}), "\n"])
-     || JSON <- event_to_jsons(Event)].
+     || JSON <- event_to_jsons(Event, Config)].
 
 -spec format_some_history([[{atom(), any()}]]) -> iolist().
 format_some_history(Events) ->
-    Callback = fun (Event, Acc) ->
-                       [event_to_formatted_iolist(Event) | Acc]
+    Callback = fun (Event, Acc, Config) ->
+                       [event_to_formatted_iolist(Event, Config) | Acc]
                end,
     {ok, FinalAcc, _} = stream_events_history_loop(Events, Callback, [],
-                                                   undefined),
+                                                   undefined, ns_config:get()),
     lists:reverse(FinalAcc).
 
 
-stream_events_history_loop([], _Callback, State, LastTS) ->
+stream_events_history_loop([], _Callback, State, LastTS, _Config) ->
     {ok, State, LastTS};
-stream_events_history_loop([Event | HistoryRest], Callback, State, _LastTS) ->
+stream_events_history_loop([Event | HistoryRest], Callback, State, _LastTS,
+                           Config) ->
     EventTS = element(1, Event),
-    NewState = Callback(Event, State),
-    stream_events_history_loop(HistoryRest, Callback, NewState, EventTS).
+    NewState = Callback(Event, State, Config),
+    stream_events_history_loop(HistoryRest, Callback, NewState, EventTS,
+                               Config).
 
 stream_events_eat_leftover_messages(Ref) ->
     receive
@@ -319,7 +322,7 @@ stream_events_eat_leftover_messages(Ref) ->
             ok
     end.
 
-stream_events_loop(Ref, LinkPid, Callback, State, CallPredicate) ->
+stream_events_loop(Ref, LinkPid, Callback, State, CallPredicate, Config) ->
     receive
         {'EXIT', LinkPid, _Reason} = LinkMsg ->
             ?log_error("Got master_activity_events subscriber link death signal"
@@ -328,12 +331,12 @@ stream_events_loop(Ref, LinkPid, Callback, State, CallPredicate) ->
         {Ref, Arg} ->
             case CallPredicate(Arg) of
                 true ->
-                    NewState = Callback(Arg, State),
+                    NewState = Callback(Arg, State, Config),
                     stream_events_loop(Ref, LinkPid, Callback, NewState,
-                                       CallPredicate);
+                                       CallPredicate, Config);
                 false ->
                     stream_events_loop(Ref, LinkPid, Callback, State,
-                                       CallPredicate)
+                                       CallPredicate, Config)
             end
     end.
 
@@ -398,29 +401,29 @@ maybe_get_pids_node(Pid) when is_pid(Pid) ->
 maybe_get_pids_node(_PerhapsBinary) ->
     skip_this_pair_please.
 
-event_to_jsons({TS, rebalance_stage_started, Stage, Nodes}) ->
+event_to_jsons({TS, rebalance_stage_started, Stage, Nodes}, _Config) ->
     [format_simple_plist_as_json([{type, rebalanceStageStarted},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {stage, {list, Stage}},
                                   {nodes, {list, Nodes}}])];
 
-event_to_jsons({TS, rebalance_stage_completed, Stage}) ->
+event_to_jsons({TS, rebalance_stage_completed, Stage}, _Config) ->
     [format_simple_plist_as_json([{type, rebalanceStageCompleted},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {stage, {list, Stage}}])];
 
-event_to_jsons({TS, rebalance_stage_event, Stage, Text}) ->
+event_to_jsons({TS, rebalance_stage_event, Stage, Text}, _Config) ->
     [format_simple_plist_as_json([{type, rebalanceStageEvent},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {stage, {list, Stage}},
                                   {event, Text}])];
 
 event_to_jsons({TS, vbucket_state_change,
-                Bucket, Node, VBucketId, NewState, Meta}) ->
+                Bucket, Node, VBucketId, NewState, Meta}, Config) ->
     [format_simple_plist_as_json([{type, vbucketStateChange},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {bucket, Bucket},
-                                  {host, node_to_host(Node, ns_config:latest())},
+                                  {host, node_to_host(Node, Config)},
                                   {vbucket, VBucketId},
                                   {state, NewState},
                                   {meta, case Meta of
@@ -430,13 +433,13 @@ event_to_jsons({TS, vbucket_state_change,
                                                  {json, Meta}
                                          end}])];
 
-event_to_jsons({TS, set_ff_map, BucketName, undefined}) ->
+event_to_jsons({TS, set_ff_map, BucketName, undefined}, _Config) ->
     [format_simple_plist_as_json([{type, resetFastForwardMap},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {bucket, BucketName}])];
 
-event_to_jsons({TS, SetMap, BucketName, Diff}) when SetMap =:= set_map orelse SetMap =:= set_ff_map ->
-    Config = ns_config:get(),
+event_to_jsons({TS, SetMap, BucketName, Diff}, Config)
+  when SetMap =:= set_map orelse SetMap =:= set_ff_map ->
     [begin
          Type = case SetMap of
                     set_map -> updateMap;
@@ -450,8 +453,8 @@ event_to_jsons({TS, SetMap, BucketName, Diff}) when SetMap =:= set_map orelse Se
                  {chainAfter, [node_to_host(N, Config) || N <- NewChain]}]
      end || {I, OldChain, NewChain} <- Diff];
 
-event_to_jsons({TS, rebalance_start, Pid, KeepNodes, EjectNodes, FailedNodes, DeltaNodes}) ->
-    Config = ns_config:get(),
+event_to_jsons({TS, rebalance_start, Pid,
+                KeepNodes, EjectNodes, FailedNodes, DeltaNodes}, Config) ->
     [format_simple_plist_as_json(
        [{type, rebalanceStart},
         {ts, misc:time_to_epoch_float(TS)},
@@ -460,14 +463,15 @@ event_to_jsons({TS, rebalance_start, Pid, KeepNodes, EjectNodes, FailedNodes, De
         {ejectNodes, nodes_to_hosts(EjectNodes, Config)},
         {failedNodes, nodes_to_hosts(FailedNodes, Config)},
         {deltaNodes, nodes_to_hosts(DeltaNodes, Config)}])];
-event_to_jsons({TS, rebalance_end, Pid, Reason}) ->
+event_to_jsons({TS, rebalance_end, Pid, Reason}, _Config) ->
     [format_simple_plist_as_json([{type, rebalanceEnd},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {pid, Pid},
-                                  {reason, iolist_to_binary(io_lib:format("~p", [Reason]))}])];
+                                  {reason, iolist_to_binary(
+                                             io_lib:format("~p", [Reason]))}])];
 
-event_to_jsons({TS, vbucket_move_start, Pid, BucketName, Node, VBucketId, OldChain, NewChain}) ->
-    Config = ns_config:get(),
+event_to_jsons({TS, vbucket_move_start, Pid, BucketName, Node, VBucketId,
+                OldChain, NewChain}, Config) ->
     [format_simple_plist_as_json([{type, vbucketMoveStart},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {pid, Pid},
@@ -477,7 +481,8 @@ event_to_jsons({TS, vbucket_move_start, Pid, BucketName, Node, VBucketId, OldCha
      ++ [{chainBefore, [node_to_host(N, Config) || N <- OldChain]},
          {chainAfter, [node_to_host(N, Config) || N <- NewChain]}]];
 
-event_to_jsons({TS, vbucket_mover_terminate, BucketName, VBucketId, Pid, Reason}) ->
+event_to_jsons({TS, vbucket_mover_terminate,
+                BucketName, VBucketId, Pid, Reason}, _Config) ->
     [format_simple_plist_as_json([{type, vbucketMoverTerminate},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {pid, Pid},
@@ -486,27 +491,27 @@ event_to_jsons({TS, vbucket_mover_terminate, BucketName, VBucketId, Pid, Reason}
                                   {vbucket, VBucketId},
                                   {node, maybe_get_pids_node(Pid)}])];
 
-event_to_jsons({TS, vbucket_move_done, BucketName, VBucketId}) ->
+event_to_jsons({TS, vbucket_move_done, BucketName, VBucketId}, _Config) ->
     [format_simple_plist_as_json([{type, vbucketMoveDone},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {bucket, BucketName},
                                   {vbucket, VBucketId}])];
 
-event_to_jsons({TS, bucket_rebalance_started, BucketName, Pid}) ->
+event_to_jsons({TS, bucket_rebalance_started, BucketName, Pid}, _Config) ->
     [format_simple_plist_as_json([{type, bucketRebalanceStarted},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {bucket, BucketName},
                                   {pid, Pid},
                                   {node, maybe_get_pids_node(Pid)}])];
 
-event_to_jsons({TS, bucket_rebalance_ended, BucketName, Pid}) ->
+event_to_jsons({TS, bucket_rebalance_ended, BucketName, Pid}, _Config) ->
     [format_simple_plist_as_json([{type, bucketRebalanceEnded},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {bucket, BucketName},
                                   {pid, Pid},
                                   {node, maybe_get_pids_node(Pid)}])];
 
-event_to_jsons({TS, bucket_failover_started, BucketName, Nodes, Pid})
+event_to_jsons({TS, bucket_failover_started, BucketName, Nodes, Pid}, _Config)
   when is_list(Nodes) ->
     [format_simple_plist_as_json([{type, bucketFailoverStarted},
                                   {ts, misc:time_to_epoch_float(TS)},
@@ -515,110 +520,115 @@ event_to_jsons({TS, bucket_failover_started, BucketName, Nodes, Pid})
                                   {pid, Pid},
                                   {node, maybe_get_pids_node(Pid)}])];
 
-event_to_jsons({TS, bucket_failover_ended, BucketName, Nodes, Pid})
+event_to_jsons({TS, bucket_failover_ended, BucketName, Nodes, Pid}, Config)
   when is_list(Nodes) ->
     [format_simple_plist_as_json([{type, bucketFailoverEnded},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {bucket, BucketName},
-                                  {hosts, nodes_to_hosts(Nodes)},
+                                  {hosts, nodes_to_hosts(Nodes, Config)},
                                   {pid, Pid},
                                   {node, maybe_get_pids_node(Pid)}])];
 
-event_to_jsons({TS, failover, Nodes})
+event_to_jsons({TS, failover, Nodes}, Config)
   when is_list(Nodes) ->
     [format_simple_plist_as_json([{type, failover},
                                   {ts, misc:time_to_epoch_float(TS)},
-                                  {hosts, nodes_to_hosts(Nodes)}])];
+                                  {hosts, nodes_to_hosts(Nodes, Config)}])];
 
-event_to_jsons({TS, failover_ended}) ->
+event_to_jsons({TS, failover_ended}, _Config) ->
     [format_simple_plist_as_json([{type, failover},
                                   {ts, misc:time_to_epoch_float(TS)}])];
 
-event_to_jsons({TS, became_master, Node}) ->
+event_to_jsons({TS, became_master, Node}, Config) ->
     [format_simple_plist_as_json([{type, becameMaster},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {node, Node},
-                                  {host, node_to_host(Node, ns_config:latest())}])];
-event_to_jsons({TS, became_master}) ->
-    event_to_jsons({TS, became_master, 'nonode@unknown'});
+                                  {host, node_to_host(Node, Config)}])];
+event_to_jsons({TS, became_master}, Config) ->
+    event_to_jsons({TS, became_master, 'nonode@unknown'}, Config);
 
-event_to_jsons({TS, create_bucket, BucketName, BucketType, NewConfig}) ->
+event_to_jsons({TS, create_bucket,
+                BucketName, BucketType, NewConfig}, _Config) ->
     [format_simple_plist_as_json([{type, createBucket},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {bucket, BucketName},
                                   {bucketType, BucketType}])
      ++ [{params, {struct, format_simple_plist_as_json(NewConfig)}}]];
 
-event_to_jsons({TS, delete_bucket, BucketName}) ->
+event_to_jsons({TS, delete_bucket, BucketName}, _Config) ->
     [format_simple_plist_as_json([{type, deleteBucket},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {bucket, BucketName}])];
 
-event_to_jsons({TS, name_changed, NewName}) ->
+event_to_jsons({TS, name_changed, NewName}, Config) ->
     [format_simple_plist_as_json([{type, nameChanged},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {node, NewName},
-                                  {host, node_to_host(NewName, ns_config:get())}])];
+                                  {host, node_to_host(NewName, Config)}])];
 
-event_to_jsons({TS, indexing_initated, BucketName, Node, VBucket}) ->
+event_to_jsons({TS, indexing_initated, BucketName, Node, VBucket}, Config) ->
     [format_simple_plist_as_json([{type, indexingInitiated},
                                   {ts, misc:time_to_epoch_float(TS)},
-                                  {node, node_to_host(Node, ns_config:get())},
+                                  {node, node_to_host(Node, Config)},
                                   {bucket, BucketName},
                                   {vbucket, VBucket}])];
 
-event_to_jsons({TS, backfill_phase_started, BucketName, VBucket}) ->
+event_to_jsons({TS, backfill_phase_started, BucketName, VBucket}, _Config) ->
     [format_simple_plist_as_json([{type, backfillPhaseStarted},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {bucket, BucketName},
                                   {vbucket, VBucket}])];
 
-event_to_jsons({TS, backfill_phase_ended, BucketName, VBucket}) ->
+event_to_jsons({TS, backfill_phase_ended, BucketName, VBucket}, _Config) ->
     [format_simple_plist_as_json([{type, backfillPhaseEnded},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {bucket, BucketName},
                                   {vbucket, VBucket}])];
 
-event_to_jsons({TS, wait_index_updated_started, BucketName, Node, VBucket}) ->
+event_to_jsons({TS, wait_index_updated_started, BucketName, Node, VBucket},
+               Config) ->
     [format_simple_plist_as_json([{type, waitIndexUpdatedStarted},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {bucket, BucketName},
                                   {vbucket, VBucket},
-                                  {node, node_to_host(Node, ns_config:latest())}])];
+                                  {node, node_to_host(Node, Config)}])];
 
-event_to_jsons({TS, wait_index_updated_ended, BucketName, Node, VBucket}) ->
+event_to_jsons({TS, wait_index_updated_ended, BucketName, Node, VBucket},
+               Config) ->
     [format_simple_plist_as_json([{type, waitIndexUpdatedEnded},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {bucket, BucketName},
                                   {vbucket, VBucket},
-                                  {node, node_to_host(Node, ns_config:latest())}])];
+                                  {node, node_to_host(Node, Config)}])];
 
-event_to_jsons({TS, compaction_inhibited, BucketName, Node}) ->
+event_to_jsons({TS, compaction_inhibited, BucketName, Node}, Config) ->
     [format_simple_plist_as_json([{type, compactionInhibited},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {bucket, BucketName},
-                                  {node, node_to_host(Node, ns_config:latest())}])];
+                                  {node, node_to_host(Node, Config)}])];
 
-event_to_jsons({TS, compaction_uninhibit_started, BucketName, Node}) ->
+event_to_jsons({TS, compaction_uninhibit_started, BucketName, Node}, Config) ->
     [format_simple_plist_as_json([{type, compactionUninhibitStarted},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {bucket, BucketName},
-                                  {node, node_to_host(Node, ns_config:latest())}])];
+                                  {node, node_to_host(Node, Config)}])];
 
-event_to_jsons({TS, compaction_uninhibit_done, BucketName, Node}) ->
+event_to_jsons({TS, compaction_uninhibit_done, BucketName, Node}, Config) ->
     [format_simple_plist_as_json([{type, compactionUninhibitDone},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {bucket, BucketName},
-                                  {node, node_to_host(Node, ns_config:latest())}])];
+                                  {node, node_to_host(Node, Config)}])];
 
-event_to_jsons({TS, forced_inhibited_view_compaction, BucketName, Node}) ->
-    [format_simple_plist_as_json([{type, forcedPreviouslyInhibitedViewCompaction},
+event_to_jsons({TS, forced_inhibited_view_compaction, BucketName, Node},
+               Config) ->
+    [format_simple_plist_as_json([{type,
+                                   forcedPreviouslyInhibitedViewCompaction},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {bucket, BucketName},
-                                  {node, node_to_host(Node, ns_config:latest())}])];
+                                  {node, node_to_host(Node, Config)}])];
 
-event_to_jsons({TS, seqno_waiting_started, BucketName, VBucket, SeqNo, Nodes}) ->
-    Config = ns_config:get(),
+event_to_jsons({TS, seqno_waiting_started, BucketName, VBucket, SeqNo, Nodes},
+               Config) ->
     [format_simple_plist_as_json([{type, seqnoWaitingStarted},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {bucket, BucketName},
@@ -627,8 +637,8 @@ event_to_jsons({TS, seqno_waiting_started, BucketName, VBucket, SeqNo, Nodes}) -
                                   {node, node_to_host(N, Config)}])
      || N <- Nodes];
 
-event_to_jsons({TS, seqno_waiting_ended, BucketName, VBucket, SeqNo, Nodes}) ->
-    Config = ns_config:get(),
+event_to_jsons({TS, seqno_waiting_ended, BucketName, VBucket, SeqNo, Nodes},
+               Config) ->
     [format_simple_plist_as_json([{type, seqnoWaitingEnded},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {bucket, BucketName},
@@ -637,24 +647,27 @@ event_to_jsons({TS, seqno_waiting_ended, BucketName, VBucket, SeqNo, Nodes}) ->
                                   {node, node_to_host(N, Config)}])
      || N <- Nodes];
 
-event_to_jsons({TS, takeover_started, BucketName, VBucket, OldMaster, NewMaster}) ->
+event_to_jsons({TS, takeover_started, BucketName, VBucket, OldMaster,
+                NewMaster}, Config) ->
     [format_simple_plist_as_json([{type, takeoverStarted},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {bucket, BucketName},
                                   {vbucket, VBucket},
-                                  {oldMaster, node_to_host(OldMaster, ns_config:latest())},
-                                  {node, node_to_host(NewMaster, ns_config:latest())}])];
+                                  {oldMaster, node_to_host(OldMaster, Config)},
+                                  {node, node_to_host(NewMaster, Config)}])];
 
-event_to_jsons({TS, takeover_ended, BucketName, VBucket, OldMaster, NewMaster}) ->
+event_to_jsons({TS, takeover_ended, BucketName, VBucket, OldMaster,
+                NewMaster}, Config) ->
     [format_simple_plist_as_json([{type, takeoverEnded},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {bucket, BucketName},
                                   {vbucket, VBucket},
-                                  {oldMaster, node_to_host(OldMaster, ns_config:latest())},
-                                  {node, node_to_host(NewMaster, ns_config:latest())}])];
+                                  {oldMaster, node_to_host(OldMaster, Config)},
+                                  {node, node_to_host(NewMaster, Config)}])];
 
 event_to_jsons({TS, dcp_replicator_start,
-                Bucket, ConnName, ProducerNode, ConsumerConn, ProducerConn, Pid}) ->
+                Bucket, ConnName, ProducerNode,
+                ConsumerConn, ProducerConn, Pid}, _Config) ->
     [format_simple_plist_as_json([{type, dcpReplicatorStart},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {bucket, Bucket},
@@ -667,7 +680,7 @@ event_to_jsons({TS, dcp_replicator_start,
 
 event_to_jsons({TS, dcp_replicator_terminate,
                 Bucket, ConnName, ProducerNode, ConsumerConn, ProducerConn, Pid,
-                Reason}) ->
+                Reason}, _Config) ->
     [format_simple_plist_as_json([{type, dcpReplicatorTerminate},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {bucket, Bucket},
@@ -679,7 +692,8 @@ event_to_jsons({TS, dcp_replicator_terminate,
                                   {producerNode, ProducerNode},
                                   {consumerNode, maybe_get_pids_node(Pid)}])];
 
-event_to_jsons({TS, dcp_add_stream, Bucket, ConnName, VBucket, Opaque, Type, Side, Pid}) ->
+event_to_jsons({TS, dcp_add_stream, Bucket, ConnName, VBucket, Opaque,
+                Type, Side, Pid}, _Config) ->
     [format_simple_plist_as_json([{type, dcpAddStream},
                                   {side, Side},
                                   {ts, misc:time_to_epoch_float(TS)},
@@ -691,7 +705,8 @@ event_to_jsons({TS, dcp_add_stream, Bucket, ConnName, VBucket, Opaque, Type, Sid
                                   {pid, Pid},
                                   {node, maybe_get_pids_node(Pid)}])];
 
-event_to_jsons({TS, dcp_close_stream, Bucket, ConnName, VBucket, Opaque, Side, Pid}) ->
+event_to_jsons({TS, dcp_close_stream, Bucket, ConnName, VBucket,
+                Opaque, Side, Pid}, _Config) ->
     [format_simple_plist_as_json([{type, dcpCloseStream},
                                   {side, Side},
                                   {ts, misc:time_to_epoch_float(TS)},
@@ -703,7 +718,8 @@ event_to_jsons({TS, dcp_close_stream, Bucket, ConnName, VBucket, Opaque, Side, P
                                   {node, maybe_get_pids_node(Pid)}])];
 
 event_to_jsons({TS, DcpCloseAddResponse,
-                Bucket, ConnName, VBucket, Opaque, Side, Status, Success, Pid})
+                Bucket, ConnName, VBucket, Opaque, Side, Status, Success, Pid},
+               _Config)
   when DcpCloseAddResponse =:= dcp_add_stream_response;
        DcpCloseAddResponse =:= dcp_close_stream_response ->
 
@@ -730,7 +746,8 @@ event_to_jsons({TS, DcpCloseAddResponse,
                                   {pid, Pid},
                                   {node, maybe_get_pids_node(Pid)}])];
 
-event_to_jsons({TS, dcp_set_vbucket_state, Bucket, ConnName, VBucket, State, Pid}) ->
+event_to_jsons({TS, dcp_set_vbucket_state,
+                Bucket, ConnName, VBucket, State, Pid}, _Config) ->
     [format_simple_plist_as_json([{type, dcpSetVbucketState},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {bucket, Bucket},
@@ -740,14 +757,14 @@ event_to_jsons({TS, dcp_set_vbucket_state, Bucket, ConnName, VBucket, State, Pid
                                   {pid, Pid},
                                   {node, maybe_get_pids_node(Pid)}])];
 
-event_to_jsons({TS, set_service_map, Service, Nodes}) ->
+event_to_jsons({TS, set_service_map, Service, Nodes}, _Config) ->
     [[{nodes, Nodes} |
       format_simple_plist_as_json([{type, setServiceMap},
                                    {ts, misc:time_to_epoch_float(TS)},
                                    {service, Service}])]];
 
 event_to_jsons({TS, autofailover_node_state_change, Node, PrevState,
-                NewState, NewCounter}) ->
+                NewState, NewCounter}, _Config) ->
     [format_simple_plist_as_json([{type, autofailoverNodeStateChange},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {node, Node},
@@ -756,7 +773,7 @@ event_to_jsons({TS, autofailover_node_state_change, Node, PrevState,
                                   {newCounter, NewCounter}])];
 
 event_to_jsons({TS, autofailover_server_group_state_change, SG, PrevState,
-                NewState, NewCounter}) ->
+                NewState, NewCounter}, _Config) ->
     [format_simple_plist_as_json([{type, autofailoverServerGroupStateChange},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {serverGroup, SG},
@@ -764,11 +781,11 @@ event_to_jsons({TS, autofailover_server_group_state_change, SG, PrevState,
                                   {newState, NewState},
                                   {newCounter, NewCounter}])];
 
-event_to_jsons({TS, autofailover_done, Node, Reason}) ->
+event_to_jsons({TS, autofailover_done, Node, Reason}, _Config) ->
     [format_simple_plist_as_json([{type, autofailoverDone},
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {node, Node},
                                   {reason, Reason}])];
-event_to_jsons(Event) ->
+event_to_jsons(Event, _Config) ->
     ?log_warning("Got unknown kind of event: ~p", [Event]),
     [].

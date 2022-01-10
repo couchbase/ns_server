@@ -866,8 +866,11 @@ do_handle_diag_master_events(Req) ->
     spawn_link(
       fun () ->
               master_activity_events:stream_events(
-                fun (Event, _Ignored) ->
-                        IOList = master_activity_events:event_to_formatted_iolist(Event),
+                fun (Event, _Ignored, Config) ->
+                        IOList =
+                            master_activity_events:event_to_formatted_iolist(
+                              Event,
+                              Config),
                         case IOList of
                             [] ->
                                 ok;
