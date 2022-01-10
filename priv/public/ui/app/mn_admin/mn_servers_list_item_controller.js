@@ -28,6 +28,7 @@ function mnServersListItemController($scope, $rootScope, $uibModal, mnServersSer
   var ramUsageConf = {};
   var swapUsageConf = {};
   var cpuUsageConf = {};
+  var statisticsStateParams = {};
 
   activate();
 
@@ -46,12 +47,17 @@ function mnServersListItemController($scope, $rootScope, $uibModal, mnServersSer
 
     vm.isKVNode = isKVNode(node);
 
+    vm.getStatisticsStateParams = getStatisticsStateParams(node);
     vm.getRamUsageConf = getRamUsageConf(node);
     vm.getSwapUsageConf = getSwapUsageConf(node);
     vm.getCpuUsageConf = getCpuUsageConf(node);
   }
   function isKVNode(node) {
     return node.services.indexOf("kv") > -1;
+  }
+  function getStatisticsStateParams(node) {
+    statisticsStateParams.statsHostname = node.hostname;
+    return statisticsStateParams;
   }
   function getRamUsageConf(node) {
     var total = node.memoryTotal;

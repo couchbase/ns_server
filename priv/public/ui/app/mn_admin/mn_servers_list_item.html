@@ -77,7 +77,7 @@ licenses/APL2.txt.
          title="{{'View Statistics for ' + node.hostname}}"
          ng-click="$event.stopPropagation()"
          ui-state="'app.admin.overview.statistics'"
-         ui-state-params="{statsHostname: node.hostname}">
+         ui-state-params="serversItemCtl.getStatisticsStateParams">
         Statistics
       </a>
     </span>
