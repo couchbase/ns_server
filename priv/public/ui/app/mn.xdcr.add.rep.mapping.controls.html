@@ -62,7 +62,7 @@ licenses/APL2.txt.
   </span>
   <div
      [hidden]="!(filteredItems | async)?.length"
-     style="columns: 2 auto; column-gap: 0; border-bottom:none">
+     style="columns: 30rem auto; column-gap: 0; border-bottom:none;">
     <mn-xdcr-add-rep-mapping-item
        *ngFor="let coll of (filteredItems | async); trackBy: trackCollectionsBy"
        class="block nowrap padding-quarter"
