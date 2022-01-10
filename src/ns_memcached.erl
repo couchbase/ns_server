@@ -1282,6 +1282,18 @@ do_connect(Options) ->
     end.
 
 ensure_bucket(Sock, Bucket, BucketSelected) ->
+    %% This testpoint simulates the case where the bucket is not selectable
+    %% (returns enoent) but does exist so cannot be created.
+    case simulate_slow_bucket_operation(Bucket, slow_bucket_creation,
+                                        ?CONNECT_DONE_RETRY_INTERVAL) of
+        true ->
+            {error, {bucket_create_error,
+                     {memcached_error, key_eexists, not_used}}};
+        false ->
+            ensure_bucket_inner(Sock, Bucket, BucketSelected)
+    end.
+
+ensure_bucket_inner(Sock, Bucket, BucketSelected) ->
     %% Only catch exceptions when getting the bucket config. Once we're
     %% past that point and into the guts of this function there is code
     %% that may exit with reason {shutdown, reconfig} and that exit should
