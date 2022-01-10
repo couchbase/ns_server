@@ -106,6 +106,12 @@ class MnAdminService {
     this.stream.uiSessionTimeout =
       this.stream.getPoolsDefault.pipe(pluck("uiSessionTimeout"), distinctUntilChanged());
 
+    this.stream.isClusterEncryptionEnabled =
+      this.stream.getPoolsDefault.pipe(pluck("clusterEncryptionLevel"),
+                                       map(level => level !== "none"),
+                                       distinctUntilChanged(),
+                                       shareReplay({refCount: true, bufferSize: 1}));
+
     this.stream.failoverWarnings =
       this.stream.getPoolsDefault.pipe(pluck("failoverWarnings"),
                                        distinctUntilChanged(R.equals),

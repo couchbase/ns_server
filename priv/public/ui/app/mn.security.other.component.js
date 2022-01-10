@@ -53,6 +53,8 @@ class MnSecurityOtherComponent extends MnLifeCycleHooksToStream {
     let postSettingsSecurity = mnSecurityService.stream.postSettingsSecurity;
     let postLogRedactionRequest = mnSecurityService.stream.postLogRedaction;
     let prepareOtherSettingsFormValues = mnSecurityService.stream.prepareOtherSettingsFormValues;
+    this.majorMinorVersion = mnAdminService.stream.majorMinorVersion;
+    this.isClusterEncryptionEnabled = mnAdminService.stream.isClusterEncryptionEnabled;
 
     this.form = mnFormService.create(this)
       .setFormGroup({
@@ -73,14 +75,19 @@ class MnSecurityOtherComponent extends MnLifeCycleHooksToStream {
       .setReset(uiRouter.stateService.reload)
       .successMessage("Settings saved successfully!");
 
-    combineLatest(mnPermissionsStream, mnSecurityService.stream.getClusterEncryption)
+    mnPermissionsStream
       .pipe(takeUntil(this.mnOnDestroy))
-      .subscribe(([permissions, encryptionLevel]) => {
+      .subscribe((permissions) => {
         let write = permissions.cluster.admin.security.write;
         this.maybeDisableField('settingsSecurity.uiSessionTimeout', write);
         this.maybeDisableField('logRedactionLevel.logRedactionLevel', write);
-        this.maybeDisableField('settingsSecurity.clusterEncryptionLevel',
-                               !!encryptionLevel && write);
+      });
+
+    combineLatest(mnPermissionsStream, this.isClusterEncryptionEnabled)
+      .pipe(takeUntil(this.mnOnDestroy))
+      .subscribe(([permissions, enabled]) => {
+        let write = permissions.cluster.admin.security.write;
+        this.maybeDisableField('settingsSecurity.clusterEncryptionLevel', enabled && write);
       });
 
     this.mnPermissions = mnPermissionsStream;
@@ -88,7 +95,6 @@ class MnSecurityOtherComponent extends MnLifeCycleHooksToStream {
     this.postLogRedactionRequest = postLogRedactionRequest;
     this.postSettingsSecurity = postSettingsSecurity;
     this.isEnterpriseAnd55 = combineLatest(isEnterprise, compatVersion55).pipe(map(all(Boolean)));
-
   }
 
   packData() {

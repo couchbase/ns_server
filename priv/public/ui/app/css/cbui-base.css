@@ -317,6 +317,9 @@ small {
   font-size: .875rem;
   color: #000;
 }
+.font-weight-400 {
+  font-weight: 400;
+}
 strong,
 b {
   font-weight: 600;

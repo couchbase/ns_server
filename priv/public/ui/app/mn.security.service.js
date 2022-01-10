@@ -211,7 +211,7 @@ class MnSecurityService {
       },
       settingsSecurity: {
         uiSessionTimeout: (Number(session) / 60) || 0,
-        clusterEncryptionLevel: (encryption || null)
+        clusterEncryptionLevel: (encryption || 'control')
       }
     }
   }

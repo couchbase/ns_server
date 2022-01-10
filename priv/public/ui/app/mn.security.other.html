@@ -94,6 +94,22 @@ licenses/APL2.txt.
      [formGroup]="form.group"
      class="block margin-bottom-4">
     <ng-template #tooltipContent>
+      <p *ngIf="!(isClusterEncryptionEnabled | async)">
+        <span class="icon-info-warning">
+          <span class="icon fa-warning"></span>
+        </span> &nbsp;
+        <strong>
+          Cluster encryption is disabled. Please use
+          <a
+             href="https://docs.couchbase.com/server/{{majorMinorVersion | async}}/cli/cbcli/couchbase-cli.html"
+             target="_blank"
+             rel="noopener noreferrer">
+            Couchbase CLI
+          </a>
+          to enable it. Once enabled, you may change encryption levels here.
+          Altering the cluster encryption is disabled while auto-failover is enabled.
+        </strong>
+      </p>
       <p>Cluster encryption levels are:</p>
       <p class="margin-bottom-half">
         <strong>control</strong>:&nbsp; cluster management traffic is encrypted
@@ -105,28 +121,29 @@ licenses/APL2.txt.
         <strong>strict</strong>:&nbsp; all traffic between nodes is encrypted and no ports accepting unencrypted traffic are open
       </p>
       <p>Warning: setting the encryption level to strict may cause clients with unencrypted connections to have their service interrupted.</p>
-      <p>
-        <span class="icon-info-warning"><span class="icon fa-warning"></span></span> &nbsp;
-        <strong>Altering the encryption level is disabled while auto-failover is enabled.</strong>
-      </p>
     </ng-template>
     <label>Cluster Encryption
-      <span
-         class="fa-stack icon-info"
-         [ngbTooltip]="tooltipContent"
-         placement="right"
-         container="body">
-      <span class="icon fa-circle-thin fa-stack-2x"></span>
-      <span class="icon fa-info fa-stack-1x"></span>
-    </span>
+      <span (mouseleave)="tooltip.close()">
+        <span
+           class="fa-stack icon-info margin-left-quarter"
+           [ngbTooltip]="tooltipContent"
+           #tooltip="ngbTooltip"
+           placement="right"
+           triggers="manual"
+           tooltipClass="font-weight-400"
+           (mouseover)="tooltip.open()"
+           [autoClose]="false">
+          <span class="icon fa-circle-thin fa-stack-2x"></span>
+          <span class="icon fa-info fa-stack-1x"></span>
+        </span>
+      </span>
     </label>
     <mn-select
        class="inline fix-width-2"
        [group]="form.group"
        formGroupName="settingsSecurity"
        [values]="['control', 'all', 'strict']"
-       mnFormControlName="settingsSecurity.clusterEncryptionLevel"
-       mnPlaceholder="none">
+       mnFormControlName="settingsSecurity.clusterEncryptionLevel">
     </mn-select>
   </div>
 
