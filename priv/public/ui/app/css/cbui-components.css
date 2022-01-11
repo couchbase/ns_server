@@ -2357,6 +2357,19 @@ span.adder:hover {
 .pagination .pagination-page.active /* angular-ui-bootstrap */ {
   text-decoration: underline;
 }
+ul.pagination {
+  float: right;
+}
+ul.pagination li {
+  display: inline-block;
+  margin: 5px 5px 5px 5px;
+}
+ul.pagination li span {
+  background-color: #ececec;
+  padding-right: 4px;
+  padding-left: 4px;
+  color: #333;
+}
 
 /* CodeMirror JSON editor height ---------------------------------------- */
 .height-100 .CodeMirror {
