@@ -373,13 +373,33 @@ data_loss_possible(VBucket, Chain, States) ->
 maybe_reset_rebalance_status(Options) ->
     case proplists:get_bool(consider_resetting_rebalance_status, Options) of
         true ->
+            %% We can't run janitor when rebalance is running. This usually
+            %% means previous rebalance was stopped/terminated but we haven't
+            %% recorded the status as such.
+            Running = case rebalance:status() of
+                          running ->
+                              true;
+                          _ ->
+                              false
+                      end,
+            Msg = <<"Rebalance stopped by janitor.">>,
             rebalance:reset_status(
               fun () ->
                       ale:info(?USER_LOGGER,
                                "Resetting rebalance status "
                                "since it's not really running"),
-                      {none, <<"Rebalance stopped by janitor.">>}
-              end);
+                      {none, Msg}
+              end),
+
+            %% We do not wish to call record_rebalance_report inside the
+            %% transaction above, as this involves writing to file and hence can
+            %% stall the transaction.
+            %% Since this is mainly for the UI, we are ok with the report not
+            %% being strongly consistent with the status.
+            Running andalso
+                ns_rebalance_report_manager:record_rebalance_report(
+                  ejson:encode({[{completionMessage, Msg}]}),
+                  [node()]);
         false ->
             ok
     end.
