@@ -759,7 +759,8 @@ maybe_add_event_log(Settings, Settings) ->
    ok;
 maybe_add_event_log(OldSettings, NewSettings) ->
     TransformFun = fun (Settings) ->
-                           jsonify_audit_settings(Settings)
+                           jsonify_audit_settings(
+                             event_log:redact_keys(Settings, [disabled_users]))
                    end,
     OldSettingsJSON = [{old_settings, {TransformFun(OldSettings)}}],
     NewSettingsJSON = [{new_settings, {TransformFun(NewSettings)}}],

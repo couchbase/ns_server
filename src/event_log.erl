@@ -15,7 +15,8 @@
 -export([validators/0,
          log/1,
          add_log/1,
-         add_log/2]).
+         add_log/2,
+         redact_keys/2]).
 
 -spec event_details(atom()) -> {integer(), atom(), atom(), binary()}.
 %% event_ids block for ns_server related events: [0-1023]
@@ -111,6 +112,21 @@ event_details(memcached_cfg_changed) ->
     {8202, data, info, <<"Memcached configuration changed">>};
 event_details(bucket_autoreprovision) ->
     {8203, data, info, <<"Bucket auto reprovisioned">>}.
+
+%% Event logs shouldn't contain any PII - redact_keys/2 replaces all the keys
+%% in Keys (= [Key1, ..., KeyN]) with
+%% [{Key1, <<"redacted">>}, ...{KeyN, <<"redacted">>}] in Props0, if the Key
+%% exists.
+-spec redact_keys(Props0, Keys) -> Props when
+    Props0 :: [tuple()],
+    Props :: [tuple()],
+    Keys :: list().
+
+redact_keys(Props0, Keys) ->
+    lists:foldl(fun (Key, Props) ->
+                        lists:keyreplace(Key, 1, Props,
+                                         {Key, <<"redacted">>})
+                end, Props0, Keys).
 
 jsonify(Key, Value) when is_list(Value) ->
     [{Key, list_to_binary(Value)}].
