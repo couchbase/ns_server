@@ -29,6 +29,7 @@
          one_of/3,
          string/2,
          trimmed_string/2,
+         trimmed_string_multi_value/2,
          boolean/2,
          integer/2,
          integer/4,
@@ -347,6 +348,70 @@ one_of(Name, List, State) ->
               end
       end, Name, State).
 
+string_trim_logic(Trim, State) ->
+    case is_json(State) of
+        true ->
+            fun (Binary) when is_binary(Binary), Trim ->
+                    {value, string:trim(binary_to_list(Binary))};
+                (Binary) when is_binary(Binary) ->
+                    {value, binary_to_list(Binary)};
+                (_) ->
+                    {error, "Value must be json string"}
+            end;
+        false when Trim ->
+            fun (S) -> {value, string:trim(S)} end;
+        false ->
+            fun (_) -> ok end
+    end.
+
+get_all_values(LName, #state{kv = Props, errors = Errors}) ->
+    case lists:keymember(LName, 1, Errors) of
+        true ->
+            undefined;
+        false ->
+            case proplists:get_all_values(LName, Props) of
+                [] ->
+                    undefined;
+                Values ->
+                    Values
+            end
+    end.
+
+return_multi_value(LName, Values, #state{kv = Props} = State) ->
+    PrunedProps = proplists:delete(LName, Props),
+    UpdateAttrs = [{LName, X} || X <- Values],
+    NewKv = UpdateAttrs ++ PrunedProps,
+    State#state{kv = NewKv}.
+
+apply_multi_params(Fun, Values) ->
+    EvalRes = lists:map(Fun, Values),
+    case proplists:lookup_all(error, EvalRes) of
+        [] ->
+            V = [Y || {_, Y} <- EvalRes],
+            {values, V};
+        Errors ->
+            {errors, Errors}
+    end.
+
+validate_multi_params(Fun, Name, State0) ->
+    State = touch(Name, State0),
+    LName = name_to_list(Name),
+    case get_all_values(LName, State) of
+        undefined ->
+            State;
+        Values ->
+            case apply_multi_params(Fun, Values) of
+                {values, V} ->
+                    return_multi_value(LName, V, State);
+                {errors, Errors} ->
+                    [Error | _] = Errors,
+                    return_error(Name, Error, State)
+            end
+    end.
+
+trimmed_string_multi_value(Name, State) ->
+    validate_multi_params(string_trim_logic(true, State), Name, State).
+
 trimmed_string(Name, State) ->
     string(Name, true, State).
 
@@ -354,21 +419,7 @@ string(Name, State) ->
     string(Name, false, State).
 
 string(Name, Trim, State) ->
-    validate(
-      case is_json(State) of
-          true ->
-              fun (Binary) when is_binary(Binary), Trim ->
-                      {value, string:trim(binary_to_list(Binary))};
-                  (Binary) when is_binary(Binary) ->
-                      {value, binary_to_list(Binary)};
-                  (_) ->
-                      {error, "Value must be json string"}
-              end;
-          false when Trim ->
-              fun (S) -> {value, string:trim(S)} end;
-          false ->
-              fun (_) -> ok end
-      end, Name, State).
+    validate(string_trim_logic(Trim, State), Name, State).
 
 boolean(Name, State) ->
     functools:chain(State,
@@ -695,4 +746,44 @@ handle_proplist_invalid_value_test() ->
         handle_proplist(Args, validators_for_testing()),
     ?assertEqual("required_boolean", ErrorKey),
     ?assertEqual(ExpectedErrorMessage, ErrorMessage).
+
+handle_multi_value_string_trim_valid_test() ->
+    Kv = [{"key1", "  /Value1"}, {"key1", "  /Value2  "}, {"key2", "  /Value3"}],
+    StateArg = #state{kv = Kv},
+    RState = trimmed_string_multi_value(key1, StateArg),
+
+    % Test validator state output for key1 with multiple values
+    #state{kv = Rkv, touched = Rtouched, errors = RErrors} = RState,
+    ?assertEqual([], RErrors),
+    ?assertEqual(["key1"], Rtouched),
+    ?assertEqual(["/Value1", "/Value2"], proplists:get_all_values("key1", Rkv)),
+    ?assertEqual(["  /Value3"], proplists:get_all_values("key2", Rkv)),
+
+    % Test validator chained state output for key2 with single value
+    RState2 = trimmed_string_multi_value(key2, RState),
+    #state{kv = Rkv2, touched = Rtouched2, errors = RErrors2} = RState2,
+    ?assertEqual([], RErrors2),
+    ?assertEqual(["key2", "key1"], Rtouched2),
+    ?assertEqual(["/Value1", "/Value2"], proplists:get_all_values("key1", Rkv2)),
+    ?assertEqual(["/Value3"], proplists:get_all_values("key2", Rkv2)).
+
+handle_multi_value_string_trim_invalid_test() ->
+    Kv = [{{internal,input_type},json}, {"key1", <<"Value1"/utf8>>},
+          {"key1", "  /Value2"}, {"key2", "  /Value3"}],
+
+    % Validator for key1 should produce error
+    StateArg = #state{kv = Kv},
+    RState = trimmed_string_multi_value(key1, StateArg),
+    #state{errors = RErrors} = RState,
+    ?assertEqual([{"key1",{error,"Value must be json string"}}], RErrors),
+
+    % State should remain unchanged on same key validation
+    RState2 = trimmed_string_multi_value(key1, RState),
+    ?assertEqual(RState, RState2),
+
+    % Validator for key2 should produce error
+    RState3 = trimmed_string_multi_value(key2, RState2),
+    #state{errors = RErrors2} = RState3,
+    ?assertEqual([{"key2",{error,"Value must be json string"}},
+                  {"key1",{error,"Value must be json string"}}], RErrors2).
 -endif.

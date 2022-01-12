@@ -97,7 +97,7 @@ handle_node_init(Req) ->
 node_init_validators() ->
     [validator:trimmed_string(dataPath, _),
      validator:trimmed_string(indexPath, _),
-     validator:trimmed_string(analyticsPath, _),
+     validator:trimmed_string_multi_value(analyticsPath, _),
      validator:trimmed_string(eventingPath, _),
      validator:trimmed_string(javaHome, _),
      validator:validate(
