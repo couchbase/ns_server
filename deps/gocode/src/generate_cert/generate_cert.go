@@ -104,11 +104,11 @@ func main() {
 
 		leafPKey, err := rsa.GenerateKey(rand.Reader, keyLength)
 		mustNoErr(err)
-
 		leafTemplate := x509.Certificate{
 			SerialNumber: big.NewInt(time.Now().UnixNano()),
-			NotBefore:    earlyNotBefore,
-			NotAfter:     earlyNotAfter,
+			NotBefore:    time.Now().AddDate(0, 0, -1),
+			// testSSL.sh complains when certificate validity is longer than 824 days
+			NotAfter:     time.Now().AddDate(0, 0, 824),
 			Subject: pkix.Name{
 				CommonName: commonName,
 			},
