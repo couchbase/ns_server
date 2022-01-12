@@ -42,7 +42,8 @@
          get_ns_server_stats/0,
          add_histo/2,
          stale_histo_epoch_cleaner/0,
-         report_prom_stats/2]).
+         report_prom_stats/2,
+         report_prom_stats/3]).
 
 -type os_pid() :: integer().
 
@@ -149,6 +150,18 @@ notify_histogram(Metric, _Max, _Units, Val) when Val < 0 ->
 notify_max({Metric, Window, BucketSize}, Val) ->
     Now = erlang:monotonic_time(millisecond),
     notify_moving_window(max, Metric, Window, BucketSize, Now, ?MODULE, Val).
+
+report_prom_stats(ReportFun, IsHighCard, undefined) ->
+    report_prom_stats(ReportFun, IsHighCard);
+report_prom_stats(ReportFun, IsHighCard, Timeout) ->
+    case async:run_with_timeout(fun () ->
+                                    report_prom_stats(ReportFun, IsHighCard)
+                                end, Timeout) of
+        {ok, Res} -> Res;
+        {error, timeout} ->
+            ?log_debug("Metrics collection timed out (~p)", [Timeout]),
+            {error, timeout}
+    end.
 
 report_prom_stats(ReportFun, IsHighCard) ->
     Try = fun (Name, F) ->

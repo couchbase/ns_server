@@ -759,6 +759,7 @@ high_cardinality_jobs_config(Settings) ->
             scrape_interval => {"~bs", [Interval]},
             scrape_timeout => {"~bs", [Timeout]},
             metrics_path => <<"/_prometheusMetricsHigh">>,
+            params => #{timeout => [integer_to_binary(Timeout * 1000)]},
             basic_auth => #{username => list_to_binary(?USERNAME),
                             password_file => list_to_binary(TokenFile)},
             static_configs => [#{targets => [list_to_binary(Addr)]}],
@@ -788,6 +789,7 @@ generate_prometheus_configs(Settings) ->
             scrape_configs =>
               [#{job_name => <<"general">>,
                  metrics_path => <<"/_prometheusMetrics">>,
+                 params => #{timeout => [integer_to_binary(ScrapeTimeout * 1000)]},
                  basic_auth => #{username => list_to_binary(?USERNAME),
                                  password_file => list_to_binary(TokenFile)},
                  static_configs => [#{targets => TargetsBin}],

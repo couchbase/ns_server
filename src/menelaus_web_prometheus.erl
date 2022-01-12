@@ -106,9 +106,18 @@ proxy_chunks(Req, Resp) ->
 
 %% It is supposed to be used by local prometheus to collect ns_server metrics
 handle_get_local_metrics(IsHighCard, Req) ->
+    Timeout =
+        case proplists:get_value("timeout", mochiweb_request:parse_qs(Req)) of
+            undefined -> undefined;
+            Str ->
+                %% Reduce the timeout a little bit just to have some time left
+                %% to send the final chunk
+                ceil(erlang:list_to_integer(Str)*0.95)
+        end,
+
     Resp = menelaus_util:respond(Req, {200, [], chunked}),
     ns_server_stats:report_prom_stats(
-      fun (M) -> report_metric(Req, M, Resp) end, IsHighCard),
+      fun (M) -> report_metric(Req, M, Resp) end, IsHighCard, Timeout),
     menelaus_util:write_chunk(Req, <<>>, Resp).
 
 handle_create_snapshot(Req) ->
