@@ -417,7 +417,8 @@ upgrade_config_from_7_0_to_NEO(Config) ->
     do_upgrade_config_from_7_0_to_NEO(Config, DefaultConfig).
 
 do_upgrade_config_from_7_0_to_NEO(_Config, DefaultConfig) ->
-    [upgrade_key(memcached_config, DefaultConfig)].
+    [upgrade_key(memcached_config, DefaultConfig),
+     upgrade_key(memcached_defaults, DefaultConfig)].
 
 encrypt_config_val(Val) ->
     {ok, Encrypted} = encryption_service:encrypt(term_to_binary(Val)),
