@@ -764,7 +764,14 @@ function get70Mapping() {
 
     "@eventing.eventing_timeout_count": "@eventing.eventing/timeout_count",
     "@eventing.eventing_processed_count": "@eventing.eventing/processed_count",
-    "@eventing.eventing_failed_count": "@eventing.eventing/failed_count"
+    "@eventing.eventing_failed_count": "@eventing.eventing/failed_count",
+
+    //eventing items were added in 7.0 in UI so we don't actually have them
+    //in pre 7.0 descriptions
+    "@eventing-.@items.eventing_timeout_count": "@eventing-.@items.timeout_count",
+    "@eventing-.@items.eventing_processed_count": "@eventing-.@items.processed_count",
+    "@eventing-.@items.eventing_failed_count": "@eventing-.@items.failed_count",
+    "@eventing-.@items.eventing_dcp_backlog": "@eventing-.@items.dcp_backlog"
 
   });
 }
@@ -837,7 +844,11 @@ function get70CompatDesc() {
             unit: "number/sec",
             title: "Eventing Timeouts Rate",
             desc: "Execution timeouts while processing mutations per second."
-          }
+          },
+          "eventing_processed_count": null,
+          "eventing_failed_count": null,
+          "eventing_timeout_count": null,
+          "eventing_dcp_backlog": null
         }
       },
       "@cbas-": {
@@ -2011,7 +2022,7 @@ function get65CompatDesc() {
           title: "Failed Function Invocations",
           desc: "Count of times the function invocation failed. Per function."
         },
-        "eventing/dcp_backlog": { //deprecated in 7.0
+        "eventing/dcp_backlog": {
           unit: "number",
           title: "Eventing Backlog",
           desc: "Remaining mutations to be processed by the function. Per function."

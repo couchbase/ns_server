@@ -80,6 +80,7 @@
     "components/mn_alerts": "./app/components/mn_alerts.js",
     "components/mn_jquery": "./app/components/mn_jquery.js",
     "components/mn_pools": "./app/components/mn_pools.js",
+    "components/mn_filters": "./app/components/mn_filters.js",
     "components/mn_poll": "./app/components/mn_poll.js",
     "components/mn_helper": "./app/components/mn_helper.js",
     "components/mn_pool_default": "./app/components/mn_pool_default.js",
