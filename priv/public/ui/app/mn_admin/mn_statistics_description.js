@@ -424,9 +424,9 @@ function getStatAdditionalConfig(statName) {
     return {applyFunctions: ["irate"], bucket: null, metric: {name: "eventing_timeout_count"}};
 
   case "@eventing-.@items.eventing_failed_count":
+  case "@eventing-.@items.eventing_processed_count":
     return {bucket: null, nodesAggregation: "special"};
 
-  case "@eventing-.@items.eventing_processed_count":
   case "@eventing-.@items.eventing_timeout_count":
     return {bucket: null};
 
