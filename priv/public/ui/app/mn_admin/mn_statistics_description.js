@@ -428,6 +428,7 @@ function getStatAdditionalConfig(statName) {
     return {bucket: null, nodesAggregation: "special"};
 
   case "@eventing-.@items.eventing_timeout_count":
+  case "@eventing-.@items.eventing_dcp_backlog":
     return {bucket: null};
 
   case "@kv-.kv_cas_hits":
