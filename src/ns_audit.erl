@@ -752,40 +752,42 @@ jsonify_audit_settings(Settings0) ->
                         end
                 end, [], Settings).
 
-add_event_log(OldSettings, NewSettings) ->
-    OldSettingsJson = [{old_settings,
-                       {jsonify_audit_settings(OldSettings)}}],
-    case NewSettings of
-        [] ->
-            event_log:add_log(audit_disabled, OldSettingsJson);
-        _ ->
-            Enabled =
-                proplists:get_value(auditd_enabled, OldSettings) =:= false
-                    andalso
-                    proplists:get_value(auditd_enabled, NewSettings) =:= true,
-            NewSettingsJson =
-                [{new_settings, {jsonify_audit_settings(NewSettings)}}],
+get_new_audit_settings(OldSettings, NewKVs) ->
+    misc:update_proplist(OldSettings, NewKVs).
 
-            case Enabled of
-                true ->
-                    event_log:add_log(audit_enabled, NewSettingsJson);
-                false ->
-                    event_log:add_log(audit_cfg_changed,
-                                      OldSettingsJson ++ NewSettingsJson)
-            end
+maybe_add_event_log(Settings, Settings) ->
+   ok;
+maybe_add_event_log(OldSettings, NewSettings) ->
+    TransformFun = fun (Settings) ->
+                           jsonify_audit_settings(Settings)
+                   end,
+    OldSettingsJSON = [{old_settings, {TransformFun(OldSettings)}}],
+    NewSettingsJSON = [{new_settings, {TransformFun(NewSettings)}}],
+
+    case {proplists:get_bool(auditd_enabled, NewSettings),
+          proplists:get_bool(auditd_enabled, OldSettings)} of
+        {Same, Same} ->
+            event_log:add_log(audit_cfg_changed,
+                              OldSettingsJSON ++ NewSettingsJSON);
+        {true, false} ->
+            event_log:add_log(audit_enabled,
+                              NewSettingsJSON);
+        {false, true} ->
+            event_log:add_log(audit_disabled,
+                              OldSettingsJSON)
     end.
 
-modify_audit_settings(Req, NewSettings, OldSettings) ->
-    case proplists:get_value(auditd_enabled, NewSettings, undefined) of
+modify_audit_settings(Req, NewKVs, OldSettings) ->
+    NewSettings = get_new_audit_settings(OldSettings, NewKVs),
+    case proplists:get_bool(auditd_enabled, NewSettings) of
         false ->
-            sync_put(modify_audit_settings, Req, [{auditd_enabled, false}]),
-            add_event_log(OldSettings, []);
-        _ ->
+            sync_put(modify_audit_settings, Req, [{auditd_enabled, false}]);
+        true ->
             put(modify_audit_settings, Req,
-                [prepare_audit_setting(S) || S <- NewSettings]),
-            add_event_log(OldSettings, NewSettings)
-
-    end.
+                [prepare_audit_setting(S) || S <- NewKVs])
+    end,
+    maybe_add_event_log(lists:keysort(1, OldSettings),
+                        lists:keysort(1, NewSettings)).
 
 prepare_audit_setting({enabled, List}) ->
     {enabled, {list, List}};
