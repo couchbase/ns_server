@@ -257,7 +257,7 @@ angular.module('mnSettingsNotificationsService', [
       let interestedBuckets = bucketsList.byType.membase.concat(bucketsList.byType.ephemeral);
       _.each(perBucketStats, function (perBucketStat, index) {
         var bucketName = interestedBuckets[index].name;
-        var statsInfo = perBucketStat[index].data;
+        var statsInfo = perBucketStats[index].data;
         if (!statsInfo) {
           return;
         }
