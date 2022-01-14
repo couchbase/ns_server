@@ -184,7 +184,8 @@ handle_call(fetch_alert, _From, #state{queue=Alerts0, change_counter=Counter}=St
     %% suppress alert UI pop-ups.
     Alerts = lists:map(
                fun ({Key, Msg, Time, Offset}) ->
-                       {AlertKey, _Node} = Key,
+                       {AlertKey0, _Node} = Key,
+                       AlertKey = extract_alert_key(AlertKey0),
                        NoPopUp = not lists:member(AlertKey, PopUps),
                        {Key, Msg, Offset + Time, NoPopUp}
                end, Alerts0),
