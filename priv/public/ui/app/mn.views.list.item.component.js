@@ -19,7 +19,6 @@ import { combineLatest, timer, merge, Subject } from "rxjs";
 import { is, isEmpty } from 'ramda';
 
 import { MnTasksService } from './mn.tasks.service.js';
-import { MnBucketsService } from './mn.buckets.service.js';
 import { MnViewsListService } from './mn.views.list.service.js';
 
 import { MnPermissions } from './ajs.upgraded.providers.js';
@@ -50,12 +49,11 @@ class MnViewsListItemComponent extends MnLifeCycleHooksToStream {
     UIRouter,
     MnPermissions,
     MnTasksService,
-    MnBucketsService,
     MnViewsListService,
     NgbModal
   ]}
 
-  constructor(uiRouter, mnPermissions, mnTasksService, mnBucketsService, mnViewsListService, modalService) {
+  constructor(uiRouter, mnPermissions, mnTasksService, mnViewsListService, modalService) {
     super();
 
     this.permissions = mnPermissions.stream;
@@ -63,7 +61,6 @@ class MnViewsListItemComponent extends MnLifeCycleHooksToStream {
     this.uiRouter = uiRouter;
 
     this.mnTasksService = mnTasksService;
-    this.mnBucketsService = mnBucketsService;
     this.mnViewsListService = mnViewsListService;
 
     this.getDdocUrl = mnViewsListService.getDdocUrl;
@@ -85,6 +82,9 @@ class MnViewsListItemComponent extends MnLifeCycleHooksToStream {
       combineLatest(this.permissions,
                     this.commonBucket)
       .pipe(map(this.hasCompactPermission.bind(this)));
+
+    this.hasTasksReadPermission = this.permissions
+      .pipe(map(this.hasTasksReadPermission.bind(this)));
 
     this.hasWritePermission =
       combineLatest(this.permissions,
@@ -161,24 +161,28 @@ class MnViewsListItemComponent extends MnLifeCycleHooksToStream {
     this.compactionTask =
       combineLatest(this.mnTasksService.stream.tasksCompactionByView,
                     this.commonBucket)
-      .pipe(map(v => this.mnBucketsService.getCompactionTask(v)),
+      .pipe(map(v => this.mnViewsListService.getCompactionTask(v)),
             distinctUntilChanged());
 
     this.compactionProgress = this.compactionTask
-      .pipe(map(v => this.mnBucketsService.prepareCompactionProgressText(v)),
+      .pipe(map(v => this.mnViewsListService.prepareCompactionProgressText(v)),
             shareReplay({refCount: true, bufferSize: 1}));
+
+    this.hasProgressAndTasksReadPermission =
+      combineLatest(this.compactionProgress,
+                    this.hasTasksReadPermission)
+      .pipe(map(([progress, tasksRead]) => !!progress && !!tasksRead));
 
     this.showCompactBtn =
       combineLatest(this.compactionTask,
                     this.commonBucket,
-                    this.type,
                     this.permissions)
-      .pipe(map(v => this.mnBucketsService.showCompactBtn(v)));
+      .pipe(map(v => this.mnViewsListService.showCompactBtn(v)));
 
     this.clickCompact = new Subject();
     let postCompact = this.clickCompact
       .pipe(map(this.packCompactURL.bind(this)),
-            switchMap((url) => this.mnBucketsService.postCompact(url)),
+            switchMap((url) => this.mnViewsListService.postCompact(url)),
             shareReplay({refCount: true, bufferSize: 1}));
 
     let after10secsCompact = postCompact
@@ -192,7 +196,7 @@ class MnViewsListItemComponent extends MnLifeCycleHooksToStream {
       combineLatest(this.compactionTask,
                     this.commonBucket,
                     this.permissions)
-      .pipe(map(v => this.mnBucketsService.showCancelCompactBtn(v)));
+      .pipe(map(v => this.mnViewsListService.showCancelCompactBtn(v)));
 
     let cancelCompactURL = this.compactionTask
       .pipe(filter(v => !!v),
@@ -204,7 +208,7 @@ class MnViewsListItemComponent extends MnLifeCycleHooksToStream {
     let postCancelCompact =
       combineLatest(this.clickCancelCompact,
                     cancelCompactURL)
-      .pipe(switchMap(([, url]) => this.mnBucketsService.postCompact(url)),
+      .pipe(switchMap(([, url]) => this.mnViewsListService.postCompact(url)),
             shareReplay({refCount: true, bufferSize: 1}));
 
     let after10secsCancelCompact = postCancelCompact
@@ -244,6 +248,10 @@ class MnViewsListItemComponent extends MnLifeCycleHooksToStream {
   hasCompactPermission([permissions, bucket]) {
     return permissions.cluster.bucket[bucket] &&
       permissions.cluster.bucket[bucket].compact;
+  }
+
+  hasTasksReadPermission(permissions) {
+    return permissions.cluster.tasks.read;
   }
 
   showPublishButton(row) {

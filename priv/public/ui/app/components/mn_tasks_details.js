@@ -81,7 +81,7 @@ function mnTasksDetailsFactory($http, $cacheFactory, mnTasksService) {
       mnTasksService.stream.tasksXDCRPlug.next(rv.tasksXDCR);
       mnTasksService.stream.tasksWarmingUpPlug.next(rv.tasksWarmingUp);
       mnTasksService.stream.tasksBucketCompactionPlug.next(rv.tasksBucketCompaction);
-      mnTasksService.stream.tasksViewCompactionPlug.next(rv.tasksBucketCompaction);
+      mnTasksService.stream.tasksViewCompactionPlug.next(rv.tasksViewCompaction);
       mnTasksService.stream.tasksLoadingSamples.next(rv.loadingSamples);
 
       let noCollectInfoTask = {
@@ -129,7 +129,7 @@ function mnTasksDetailsFactory($http, $cacheFactory, mnTasksService) {
   }
 
   function detectViewCompactionTask(taskInfo) {
-    return taskInfo.type === 'view_compaction';
+    return taskInfo.type === 'view_compaction' || taskInfo.type === 'indexer';
   }
 
   function clearCache() {

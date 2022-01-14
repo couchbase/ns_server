@@ -13,7 +13,7 @@ import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { UIRouter } from '@uirouter/angular';
 import { switchMap, shareReplay, map, pluck, filter } from 'rxjs/operators';
 import { BehaviorSubject, timer, combineLatest } from 'rxjs';
-import { partition } from 'ramda';
+import { partition, compose, sortBy, reverse, prop, filter as ramdaFilter } from 'ramda';
 
 import { MnPermissions } from './ajs.upgraded.providers.js';
 
@@ -127,5 +127,35 @@ class MnViewsListService {
 
   addDevPrefix(id) {
     return id.replace("_design/", "_design/dev_");
+  }
+
+  prepareCompactionProgressText(compactionTask) {
+    return compactionTask ? (compactionTask.progress + '% complete') : '';
+  }
+
+  /* the bucket tasks are sorted in reverse alphabetical order,
+   * as view_compaction must take precedence over indexing tasks. */
+  getCompactionTask([compactionTasks, bucketName]) {
+    let sorter = compose(reverse(),
+                         sortBy(prop('type')),
+                         ramdaFilter(t => t.bucket == bucketName));
+
+    return compactionTasks && sorter(compactionTasks)[0];
+  }
+
+  showCompactBtn([compactionTask, bucketName, permissions]) {
+    return (!compactionTask || !compactionTask.cancelURI) &&
+            permissions.cluster.tasks.read &&
+            permissions.cluster.bucket[bucketName].compact;
+  }
+
+  showCancelCompactBtn([compactionTask, bucketName, permissions]) {
+    return (compactionTask && compactionTask.cancelURI) &&
+            permissions.cluster.tasks.read &&
+            permissions.cluster.bucket[bucketName].compact;
+  }
+
+  postCompact(postURL) {
+    return this.http.post(postURL);
   }
 }

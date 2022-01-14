@@ -14,8 +14,8 @@
               </span>
             </span>
             <span class="cbui-table-cell flex-grow-1">
-              <div>
-                <span>{{compactionProgress | async}}</span>
+              <div *ngIf="hasProgressAndTasksReadPermission | async">
+                <span>{{(compactionTask | async)?.type == 'indexer' ? "Indexing" : "Compacting"}} {{compactionProgress | async}}</span>
               </div>
             </span>
             <span class="cbui-table-cell flex-grow-2 wrap text-right">
@@ -27,7 +27,7 @@
               <button
                   type="button"
                   class="outline tight"
-                  [hidden]="!(hasCompactPermission | async) && (showCompactBtn | async)"
+                  [hidden]="!(showCompactBtn | async)"
                   [disabled]="(disableCompactBtn | async) || !(row.doc.json.views | mnObjectKeys).length"
                   (click)="clickCompact.next(row)">
                 Compact

@@ -218,4 +218,8 @@ class MnViewsListComponent extends MnLifeCycleHooksToStream {
   maybeDisableSelect(value) {
     this.form.group.get("item")[value.length ? "enable" : "disable"]({emitEvent: false});
   }
+
+  trackBy(_, row) {
+    return row.doc.meta.id;
+  }
 }
