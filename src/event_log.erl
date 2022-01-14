@@ -16,7 +16,8 @@
          log/1,
          add_log/1,
          add_log/2,
-         redact_keys/2]).
+         redact_keys/2,
+         maybe_add_log_settings_changed/4]).
 
 -spec event_details(atom()) -> {integer(), atom(), atom(), binary()}.
 %% event_ids block for ns_server related events: [0-1023]
@@ -204,6 +205,19 @@ build_extra_attributes([]) ->
     [];
 build_extra_attributes(Extra) ->
     [{extra_attributes, {lists:flatten(Extra)}}].
+
+maybe_add_log_settings_changed(Event, OldSettings, NewSettings, RedactKeys) ->
+    case lists:keysort(1, OldSettings) =/= lists:keysort(1, NewSettings) of
+        true ->
+            event_log:add_log(
+              Event,
+              [{old_settings, {redact_keys(OldSettings,
+                                           RedactKeys)}},
+               {new_settings, {redact_keys(NewSettings,
+                                           RedactKeys)}}]);
+        false ->
+            ok
+    end.
 
 add_log(Event) ->
     add_log(Event, []).

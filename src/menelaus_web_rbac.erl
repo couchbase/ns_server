@@ -139,19 +139,22 @@ parse_validate_saslauthd_settings(Params) ->
             {errors, Errors}
     end.
 
+sasldauth_cfg_redact_keys() ->
+    [admins, roAdmins].
+
 handle_saslauthd_auth_settings_post(Req) ->
     assert_is_saslauthd_enabled(),
 
     case parse_validate_saslauthd_settings(mochiweb_request:parse_post(Req)) of
-        {ok, Props} ->
-            PrevSettings = saslauthd_auth:build_settings(),
-            saslauthd_auth:set_settings(Props),
-            NewSettings = saslauthd_auth:build_settings(),
-            event_log:add_log(
+        {ok, NewSettings} ->
+            OldSettings = saslauthd_auth:build_settings(),
+            saslauthd_auth:set_settings(NewSettings),
+            event_log:maybe_add_log_settings_changed(
               saslauthd_cfg_changed,
-              [{old_settings, {PrevSettings}},
-               {new_settings, {NewSettings}}]),
-            ns_audit:setup_saslauthd(Req, Props),
+              OldSettings,
+              NewSettings,
+              sasldauth_cfg_redact_keys()),
+            ns_audit:setup_saslauthd(Req, NewSettings),
             handle_saslauthd_auth_settings(Req);
         {errors, Errors} ->
             menelaus_util:reply_json(Req, {Errors}, 400)
