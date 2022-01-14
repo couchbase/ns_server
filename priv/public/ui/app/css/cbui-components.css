@@ -1844,6 +1844,10 @@ input[type="checkbox"].fake-select + label:before {
 }
 
 /* custom select with bootstrap ----------------------------------------- */
+mn-select {
+  min-width: 0;
+}
+
 .mn-select {
   margin: 0;
   padding-right: 0;
