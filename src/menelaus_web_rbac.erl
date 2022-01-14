@@ -1569,13 +1569,10 @@ handle_post_password_policy(Req) ->
                         must_present_value(enforceDigits, digits, Values) ++
                         must_present_value(enforceSpecialChars, special,
                                            Values)}],
-              PrevSettings = ns_config:read_key_fast(password_policy, []),
+              OldSettings = ns_config:read_key_fast(password_policy, []),
               ns_config:set(password_policy, Policy),
-              NewSettings = ns_config:read_key_fast(password_policy, []),
-              event_log:add_log(
-                password_policy_changed,
-                [{old_settings, {PrevSettings}},
-                 {new_settings, {NewSettings}}]),
+              event_log:maybe_add_log_settings_changed(password_policy_changed,
+                                                       OldSettings, Policy, []),
               ns_audit:password_policy(Req, Policy),
               menelaus_util:reply(Req, 200)
       end, Req, form, post_password_policy_validators()).
