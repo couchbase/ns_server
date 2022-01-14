@@ -31,6 +31,9 @@ prepare_ldap_settings(Settings) ->
                                                   fun type_spec/1, Settings),
     Props.
 
+redact_ldap_cfg_keys() ->
+    [cacert].
+
 handle_ldap_settings_post(Req) ->
     menelaus_web_rbac:assert_groups_and_ldap_enabled(),
     menelaus_web_settings2:handle_post(
@@ -39,11 +42,12 @@ handle_ldap_settings_post(Req) ->
           ns_audit:ldap_settings(Req, prepare_ldap_settings(Props2)),
           OldSettings = ldap_util:build_settings(),
           ldap_util:set_settings(Props2),
-          NewSettings = ldap_util:build_settings(),
-          event_log:add_log(
+          NewSettings = misc:update_proplist(OldSettings, Props2),
+          event_log:maybe_add_log_settings_changed(
             ldap_cfg_changed,
-            [{old_settings, {prepare_ldap_settings(OldSettings)}},
-             {new_settings, {prepare_ldap_settings(NewSettings)}}]),
+            prepare_ldap_settings(OldSettings),
+            prepare_ldap_settings(NewSettings),
+            redact_ldap_cfg_keys()),
           handle_ldap_settings(Req2)
       end, [], params(), fun type_spec/1, Req).
 
@@ -167,6 +171,7 @@ type_spec(ldap_groups_query) ->
 type_spec(certificate) ->
     #{validators => [string, fun validate_cert/2],
       formatter => fun (undefined) -> ignore;
+                       (<<"redacted">>) -> {value, <<"redacted">>};
                        ({Cert, _Decoded}) -> {value, Cert}
                    end};
 type_spec(pkey) ->
