@@ -40,7 +40,8 @@
          trusted_CAs_pre_71/1,
          generate_node_certs/1,
          filter_nodes_by_ca/2,
-         inbox_chain_path/0]).
+         inbox_chain_path/0,
+         expiration_warnings/1]).
 
 inbox_ca_path() ->
     filename:join(path_config:component_path(data, "inbox"), "CA").

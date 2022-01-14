@@ -24,7 +24,8 @@
          handle_get_node_certificate/2,
          handle_get_node_certificates/1,
          handle_client_cert_auth_settings/1,
-         handle_client_cert_auth_settings_post/1]).
+         handle_client_cert_auth_settings_post/1,
+         format_time/1]).
 
 -define(MAX_CLIENT_CERT_PREFIXES, ?get_param(max_prefixes, 10)).
 

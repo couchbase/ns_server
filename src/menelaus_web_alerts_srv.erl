@@ -24,7 +24,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--export([alert_keys/0, config_upgrade_to_70/1]).
+-export([alert_keys/0, config_upgrade_to_70/1, config_upgrade_to_MORPHEUS/1]).
 
 %% @doc Hold client state for any alerts that need to be shown in
 %% the browser, is used by menelaus_web to piggy back for a transport
@@ -78,6 +78,10 @@ short_description(time_out_of_sync) ->
     "node time not in sync";
 short_description(disk_usage_analyzer_stuck) ->
     "disks usage worker is stuck and unresponsive";
+short_description(cert_expires_soon) ->
+    "certificate will expire soon";
+short_description(cert_expired) ->
+    "certificate has expired";
 short_description(Other) ->
     %% this case is needed for tests to work
     couch_util:to_list(Other).
@@ -109,7 +113,15 @@ errors(time_out_of_sync) ->
 errors(disk_usage_analyzer_stuck) ->
     "Disk usage worker is stuck on node \"~s\". Please ensure all mounts are "
         "accessible via \"df\" and consider killing any existing \"df\" "
-        "processes.".
+        "processes.";
+errors(node_cert_expires_soon) ->
+    "Server certificate for node ~s (subject: '~s') will expire at ~s.";
+errors(node_cert_expired) ->
+    "Server certificate for node ~s (subject: '~s') has expired.";
+errors(ca_expires_soon) ->
+    "Trusted CA certificate with ID=~b (subject: '~s') will expire at ~s.";
+errors(ca_expired) ->
+    "Trusted CA certificate with ID=~b (subject: '~s') has expired.".
 
 %% ------------------------------------------------------------------
 %% API Function Definitions
@@ -258,14 +270,31 @@ alert_keys() ->
     [ip, disk, overhead, ep_oom_errors, ep_item_commit_failed,
      audit_dropped_events, indexer_ram_max_usage,
      ep_clock_cas_drift_threshold_exceeded,
-     communication_issue, time_out_of_sync, disk_usage_analyzer_stuck].
+     communication_issue, time_out_of_sync, disk_usage_analyzer_stuck,
+     cert_expires_soon, cert_expired].
 
 config_upgrade_to_70(Config) ->
     case ns_config:search(Config, email_alerts) of
         false ->
             [];
         {value, EmailAlerts} ->
-            config_email_alerts_upgrade_to_70(EmailAlerts)
+            upgrade_alerts(
+              EmailAlerts,
+              [add_proplist_list_elem(alerts, time_out_of_sync, _),
+               add_proplist_kv(pop_up_alerts, alert_keys(), _)])
+    end.
+
+config_upgrade_to_MORPHEUS(Config) ->
+    case ns_config:search(Config, email_alerts) of
+        false ->
+            [];
+        {value, EmailAlerts} ->
+            upgrade_alerts(
+              EmailAlerts,
+              [add_proplist_list_elem(alerts, cert_expired, _),
+               add_proplist_list_elem(pop_up_alerts, cert_expired, _),
+               add_proplist_list_elem(alerts, cert_expires_soon, _),
+               add_proplist_list_elem(pop_up_alerts, cert_expires_soon, _)])
     end.
 
 %% ------------------------------------------------------------------
@@ -282,7 +311,7 @@ start_timer() ->
 global_checks() ->
     [oom, ip, write_fail, overhead, disk, audit_write_fail,
      indexer_ram_max_usage, cas_drift_threshold, communication_issue,
-     time_out_of_sync, disk_usage_analyzer_stuck].
+     time_out_of_sync, disk_usage_analyzer_stuck, certs].
 
 %% @doc fires off various checks
 check_alerts(Opaque, Hist, Stats) ->
@@ -485,6 +514,54 @@ check(time_out_of_sync, Opaque, _History, _Stats) ->
         false ->
             ok
     end,
+    Opaque;
+
+check(certs, Opaque, _History, _Stats) ->
+    CAAlerts =
+        case mb_master:master_node() == node() of
+            true ->
+                lists:flatmap(
+                  fun (CAProps) ->
+                      ExpWarnings = ns_server_cert:expiration_warnings(CAProps),
+                      Subject = proplists:get_value(subject, CAProps),
+                      Id = proplists:get_value(id, CAProps),
+                      [{{ca, Id, Subject}, W} || W <- ExpWarnings]
+                  end, ns_server_cert:trusted_CAs(props));
+            false ->
+                []
+        end,
+
+    LocalAlerts =
+        case ns_config:read_key_fast({node, node(), node_cert}, undefined) of
+            undefined -> [];
+            Props ->
+                lists:map(
+                  fun (W) ->
+                      Subject = proplists:get_value(subject, Props),
+                      {{node, Subject}, W}
+                  end, ns_server_cert:expiration_warnings(Props))
+        end,
+
+    lists:foreach(
+      fun ({{ca, Id, Subj}, expired}) ->
+              Error = fmt_to_bin(errors(ca_expired), [Id, Subj]),
+              global_alert({cert_expired, {ca, Id}}, Error);
+          ({{node, Subj}, expired}) ->
+              Host = misc:extract_node_address(node()),
+              Error = fmt_to_bin(errors(node_cert_expired), [Host, Subj]),
+              global_alert({cert_expired, {node, Host}}, Error);
+          ({{ca, Id, Subj}, {expires_soon, UTCSeconds}}) ->
+              Date = menelaus_web_cert:format_time(UTCSeconds),
+              Error = fmt_to_bin(errors(ca_expires_soon), [Id, Subj, Date]),
+              global_alert({cert_expires_soon, {ca, Id}}, Error);
+          ({{node, Subj}, {expires_soon, UTCSeconds}}) ->
+              Host = misc:extract_node_address(node()),
+              Date = menelaus_web_cert:format_time(UTCSeconds),
+              Error = fmt_to_bin(errors(node_cert_expires_soon),
+                                 [Host, Subj, Date]),
+              global_alert({cert_expires_soon, {node, Host}}, Error)
+      end, CAAlerts ++ LocalAlerts),
+
     Opaque.
 
 alert_if_time_out_of_sync({time_offset_status, true}) ->
@@ -683,12 +760,11 @@ add_proplist_list_elem(ListKey, Elem, PList) ->
     List = misc:expect_prop_value(ListKey, PList),
     misc:update_proplist(PList, [{ListKey, lists:usort([Elem | List])}]).
 
-config_email_alerts_upgrade_to_70(EmailAlerts) ->
+upgrade_alerts(EmailAlerts, Mutations) ->
     Result =
-        functools:chain(
-          EmailAlerts,
-          [add_proplist_list_elem(alerts, time_out_of_sync, _),
-           add_proplist_kv(pop_up_alerts, alert_keys(), _)]),
+        lists:foldl(
+          fun (Mutation, Acc) -> Mutation(Acc) end,
+          EmailAlerts, Mutations),
 
     case misc:sort_kv_list(Result) =:= misc:sort_kv_list(EmailAlerts) of
         true ->
