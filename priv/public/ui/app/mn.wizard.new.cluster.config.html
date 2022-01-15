@@ -30,7 +30,6 @@ licenses/APL2.txt.
     </a>
   </ng-template>
 
-  <!-- mn-spinner="clusterConfigurationCtl.viewLoading || !clusterConfigurationCtl.config.selfConfig" -->
   <div class="panel-header flex-left margin-bottom-quarter">
     <img
       src="../cb_logo_bug_white_2.svg"
@@ -40,11 +39,12 @@ licenses/APL2.txt.
     <h2>Couchbase &gt; New Cluster &gt; Configure </h2>
   </div>
   <form
-    class="forms"
-    style="height:inherit;"
-    [formGroup]="newClusterConfigForm"
-    (ngSubmit)="form.submit.next()"
-    novalidate>
+     class="forms"
+     style="height:inherit;"
+     [formGroup]="newClusterConfigForm"
+     (ngSubmit)="form.submit.next()"
+     [mnSpinner]="memoryQuotasFirst | async"
+     novalidate>
     <div style="height:calc(100% - 112px);overflow:auto;" class="show-scrollbar">
       <div class="panel-content">
         <div
@@ -72,7 +72,7 @@ licenses/APL2.txt.
             </span>
             <small class="text-smaller">Per service / per node</small>
           </div>
-          <div [mnSpinner]="memoryQuotasFirst | async">
+          <div>
             <div
                class="error error-form"
                [hidden]="!(servicesHttp.error | async)">
