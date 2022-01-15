@@ -10,7 +10,6 @@ licenses/APL2.txt.
 
 <div
   class="panel dialog-med dialog dialog-wizard">
-  <!-- mn-spinner="termsCtl.viewLoading"> -->
   <div class="panel-header flex-left">
     <img
       src="../cb_logo_bug_white_2.svg"
@@ -20,11 +19,12 @@ licenses/APL2.txt.
     <h2>Couchbase &gt; New Cluster</h2>
   </div>
   <form
-    [formGroup]="form.group"
-    #ngForm="ngForm"
-    (ngSubmit)="form.submit.next()"
-    class="forms"
-    novalidate>
+     [formGroup]="form.group"
+     #ngForm="ngForm"
+     (ngSubmit)="form.submit.next()"
+     [mnSpinner]="license | async"
+     class="forms"
+     novalidate>
     <div class="panel-content">
       <h4 class="inline">Terms and Conditions&nbsp;</h4>
       <small [hidden]="!(isEnterprise | async)">Enterprise Edition</small>
@@ -35,7 +35,7 @@ licenses/APL2.txt.
       </div>
       <small [hidden]="(isEnterprise | async)">Community Edition</small>
 
-      <div class="formrow" [mnSpinner]="license | async">
+      <div class="formrow">
         <textarea class="text-smaller" rows="10" readonly="readonly">{{license | async}}</textarea>
       </div>
 
