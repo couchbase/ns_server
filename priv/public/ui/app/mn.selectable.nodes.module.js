@@ -17,6 +17,8 @@ import {MnPipesModule} from './mn.pipes.module.js';
 import {MnSelectableNodesComponent} from './mn.selectable.nodes.component.js';
 import {MnSelectableNodeItemComponent} from './mn.selectable.node.item.component.js';
 
+import {MnSharedModule} from './mn.shared.module.js';
+
 export {MnSelectableNodesModule}
 
 class MnSelectableNodesModule {
@@ -26,7 +28,8 @@ class MnSelectableNodesModule {
         CommonModule,
         ReactiveFormsModule,
         MnInputFilterModule,
-        MnPipesModule
+        MnPipesModule,
+        MnSharedModule
       ],
       declarations: [
         MnSelectableNodesComponent,
