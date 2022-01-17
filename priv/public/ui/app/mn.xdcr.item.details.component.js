@@ -79,7 +79,7 @@ class MnXDCRItemDetailsComponent extends MnLifeCycleHooksToStream {
       .setPackPipe(pipe(startWith(null),
                         pairwise(),
                         filter(([prevItem, item]) => !prevItem || prevItem.status !== item.status),
-                        map(([_, item]) => [item.id, {
+                        map(([, item]) => [item.id, {
                           pauseRequested: item.status !== "paused"
                         }])))
       .setPostRequest(this.mnXDCRService.stream.postPausePlayReplication)

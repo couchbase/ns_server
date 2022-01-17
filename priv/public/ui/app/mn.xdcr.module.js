@@ -48,7 +48,7 @@ let XDCRState = {
   url: '/replications',
   name: "app.admin.replications",
   data: {
-    permissions: "cluster.tasks.read",
+    permissions: "cluster.tasks.read || cluster.xdcr.remote_clusters.read",
     title: "XDCR Replications"
   },
   params: {
