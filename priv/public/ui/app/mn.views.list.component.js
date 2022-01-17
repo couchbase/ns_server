@@ -13,7 +13,7 @@ import { UIRouter } from '@uirouter/angular';
 import { startWith, map, pluck, takeUntil, withLatestFrom, distinctUntilChanged } from 'rxjs/operators';
 import { Subject, combineLatest } from "rxjs";
 import { NgbModal } from "@ng-bootstrap/ng-bootstrap";
-import { intersection } from 'ramda';
+import { innerJoin } from 'ramda';
 import { MnLifeCycleHooksToStream } from './mn.core.js';
 
 import { MnFormService } from './mn.form.service.js';
@@ -58,7 +58,7 @@ class MnViewsListComponent extends MnLifeCycleHooksToStream {
 
     /* Stream to prevent magma buckets displaying in the bucket dropdown,
      * as they aren't filtered out in the views read permissions. */
-    this.allowedBuckets = mnBucketsService.stream.bucketsMembaseCouchstore;
+    this.bucketsMembaseCouchstore = mnBucketsService.stream.bucketsMembaseCouchstore;
     this.bucketNames = this.permissions
       .pipe(map(p => {
         if (Object.keys(p.bucketNames).length) {
@@ -70,9 +70,11 @@ class MnViewsListComponent extends MnLifeCycleHooksToStream {
 
     this.buckets =
       combineLatest(this.bucketNames,
-                    this.allowedBuckets)
-      .pipe(map(([bucketNames, allowed]) => intersection(bucketNames, allowed.map(bucket => bucket.name))),
-            startWith([]));
+                    this.bucketsMembaseCouchstore)
+      .pipe(map(([bucketNames, bucketsMembaseCouchstore]) =>
+        innerJoin((bucket, name) => {
+          return bucket.name === name;
+        }, bucketsMembaseCouchstore, bucketNames)));
 
     this.commonBucket = uiRouter.globals.params$
       .pipe(pluck('commonBucket'));
@@ -81,19 +83,7 @@ class MnViewsListComponent extends MnLifeCycleHooksToStream {
       .pipe(pluck('type'), distinctUntilChanged());
 
     this.form = mnFormService.create(this)
-      .setFormGroup({ item: null })
-      .setSource(mnViewsListService.stream.getDdocs);
-
-    combineLatest(this.commonBucket,
-                  this.bucketNames)
-      .pipe(takeUntil(this.mnOnDestroy))
-      .subscribe(([bucket, existingBuckets]) => {
-        if (existingBuckets.includes(bucket)) {
-          return this.form.group.get('item').patchValue(bucket);
-        } else {
-          return this.form.group.get('item').patchValue(null);
-        }
-      });
+      .setFormGroup({ item: null });
 
     this.getDdocsOfType =
       combineLatest(this.getDdocsByType,
@@ -135,7 +125,7 @@ class MnViewsListComponent extends MnLifeCycleHooksToStream {
 
     this.showAddView =
       combineLatest(this.isDevelopmentViews,
-                    this.allowedBuckets,
+                    this.bucketsMembaseCouchstore,
                     this.commonBucket)
       .pipe(map(([isDevViews, buckets, commonBucket]) => {
 
@@ -179,7 +169,11 @@ class MnViewsListComponent extends MnLifeCycleHooksToStream {
       .subscribe(([, ddocs]) => {
         let ref = modalService.open(MnViewsCreateDialogComponent);
         ref.componentInstance.ddocs = ddocs;
-      })
+      });
+
+    this.buckets
+      .pipe(takeUntil(this.mnOnDestroy))
+      .subscribe(this.maybeDisableSelect.bind(this));
   }
 
   hasWritePermission([permissions, bucket]) {
@@ -196,13 +190,17 @@ class MnViewsListComponent extends MnLifeCycleHooksToStream {
     return this.form.group.patchValue({ item });
   }
 
-  setBucketUrlParam(name, location) {
+  setBucketUrlParam(bucket, location) {
     return this.uiRouter.stateService.go('.', {
-      commonBucket: name ? name : null
+      commonBucket: bucket ? bucket.name : null
     }, {
       notify: false,
       location: location || true
     });
+  }
+
+  bucketValuesMapping(bucket) {
+    return bucket && bucket.name;
   }
 
   showErrors(ddocStatus) {
@@ -215,5 +213,9 @@ class MnViewsListComponent extends MnLifeCycleHooksToStream {
 
   isDevelopmentViews(type) {
     return type === "development";
+  }
+
+  maybeDisableSelect(value) {
+    this.form.group.get("item")[value.length ? "enable" : "disable"]({emitEvent: false});
   }
 }

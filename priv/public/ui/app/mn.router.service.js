@@ -41,13 +41,13 @@ class MnRouterService extends MnLifeCycleHooksToStream {
     let getBucketUrlParamDefined =
         combineLatest(getBucketUrlParam,
                       getBuckets)
-      .pipe(switchMap(([param, buckets]) => {
-        let hasBucket = buckets.find(bucket => bucket.name === param);
-        return hasBucket ? of(hasBucket) : NEVER;
-      }));
+        .pipe(switchMap(([param, buckets]) => {
+          let hasBucket = buckets.find(bucket => bucket.name === param);
+          return hasBucket ? of(hasBucket) : NEVER;
+        }));
 
     let getBucketUrlParamDefinedChanged = getBucketUrlParamDefined
-      .pipe(distinctUntilChanged((a, b) => a.name === b.name));
+        .pipe(distinctUntilChanged((a, b) => a.name === b.name));
 
     let bucketsWithParams = getBuckets
       .pipe(withLatestFrom(getBucketUrlParam));

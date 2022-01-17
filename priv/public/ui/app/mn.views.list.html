@@ -34,12 +34,13 @@
 <div [formGroup]="form.group">
   <div class="row resp-sml">
     <mn-select
-        class="margin-bottom-half"
-        [values]="buckets | async"
-        [group]="form.group"
-        mnPlaceholder="select bucket"
-        mnFormControlName="item"
-        hasSearch="true">
+       class="margin-bottom-half"
+       [values]="buckets | async"
+       [valuesMapping]="bucketValuesMapping"
+       [group]="form.group"
+       mnPlaceholder="select bucket"
+       mnFormControlName="item"
+       hasSearch="true">
     </mn-select>
     <span class="pills nowrap">
       <a
@@ -66,7 +67,7 @@
     <div class="cbui-table">
       <div
           class="zero-content"
-          [hidden]="(buckets | async).length">
+          [hidden]="(buckets | async)?.length">
         There are currently no Couchbase buckets and no views to show.
         <span [hidden]="!(hasCreatePermission | async)">
           Go to <a uiSref="app.admin.buckets">Buckets</a> to add one,
@@ -76,7 +77,7 @@
 
       <div
         class="zero-content"
-        [hidden]="!(buckets | async).length || (showZeroContent | async)">
+        [hidden]="!(buckets | async)?.length || (showZeroContent | async)">
         <span
           [hidden]="(hasDevDdocs | async) || !(isDevelopmentViews | async)">
           There are currently no design documents in development.
