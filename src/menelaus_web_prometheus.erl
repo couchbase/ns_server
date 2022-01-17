@@ -63,7 +63,7 @@ handle_get_metrics(Req) ->
             || {Type, Addr} <- AlmostAllTargets] ++
         [{MakeURL(Addr, "/_prometheusMetricsHigh", Type), AuthHeader(Type)}
          || {Type, Addr} <- HighCardTargets],
-    [proxy_chunks_from_url(URL, Resp) || URL <- URLs],
+    [proxy_chunks_from_url(URL, Req, Resp) || URL <- URLs],
     menelaus_util:write_chunk(Req, <<>>, Resp).
 
 handle_sd_config(Req) ->
@@ -76,14 +76,14 @@ handle_sd_config(Req) ->
     ExtraHeaders = [{"Content-Disposition", lists:flatten(ContentDisp)}],
     menelaus_util:reply_ok(Req, "text/yaml", YamlBin, ExtraHeaders).
 
-proxy_chunks_from_url({URL, AuthHeader}, Resp) ->
+proxy_chunks_from_url({URL, AuthHeader}, Req, Resp) ->
     Options = [{connect_timeout, ?METRICS_TIMEOUT},
                {partial_download, [{window_size, ?WINDOW_SIZE},
                                    {part_size, ?PART_SIZE}]}],
     Headers = [AuthHeader],
     case lhttpc:request(URL, 'GET', Headers, [], ?METRICS_TIMEOUT, Options) of
-        {ok, {{200, _}, _Hdrs, Req}} when is_pid(Req) ->
-            case proxy_chunks(Req, Resp) of
+        {ok, {{200, _}, _Hdrs, LHttpReqPid}} when is_pid(LHttpReqPid) ->
+            case proxy_chunks(LHttpReqPid, Req, Resp) of
                 ok -> ok;
                 {error, Error} ->
                     ?log_error("Got error while reading chunks from ~s:~n~p",
@@ -94,12 +94,12 @@ proxy_chunks_from_url({URL, AuthHeader}, Resp) ->
             ok
     end.
 
-proxy_chunks(Req, Resp) ->
-    case lhttpc:get_body_part(Req, ?METRICS_TIMEOUT) of
+proxy_chunks(LHttpReqPid, Req, Resp) ->
+    case lhttpc:get_body_part(LHttpReqPid, ?METRICS_TIMEOUT) of
         {ok, {http_eob, _Trailers}} -> ok;
         {ok, Bin} when is_binary(Bin) ->
             menelaus_util:write_chunk(Req, Bin, Resp),
-            proxy_chunks(Req, Resp);
+            proxy_chunks(LHttpReqPid, Req, Resp);
         {error, _} = Error ->
             Error
     end.
