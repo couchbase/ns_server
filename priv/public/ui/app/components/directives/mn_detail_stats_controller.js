@@ -78,7 +78,8 @@ function controller(mnStatisticsNewService, mnStatisticsDescriptionService, mnHe
     vm.charts = Object
       .keys(stats["@" + vm.service + "-"]["@items"])
       .filter(function (key) {
-        return stats["@" + vm.service + "-"]["@items"][key];
+        let item = stats["@" + vm.service + "-"]["@items"][key];
+        return item && !!item.desc;
       })
       .map(function (stat) {
         return {
