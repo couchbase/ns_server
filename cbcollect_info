@@ -1683,7 +1683,13 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
 
         CollectFile("NS Log", read_guts(guts, "ns_log_path")),
         CollectFile("Event Logs", read_guts(guts, "event_log_path")),
-
+        # MB-42657: For signal safety memcached writes crash output to a
+        # separate file with signal safe functions. At restart memcached will
+        # log the contents and discard the file. If there is no restart the file
+        # must be captured.
+        CollectFile("Memcached breakpad output",
+                    os.path.join(read_guts(guts, "memcached_logs_path"),
+                                 "memcached.log.breakpad.crash.txt")),
         AllOsTask("Phosphor Trace",
                   ["kv_trace_dump",
                    "-H", "%s:%s" % (local_url_addr,
