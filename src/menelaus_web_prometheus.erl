@@ -163,7 +163,7 @@ ensure_allowed_prom_req(_) ->
     menelaus_util:web_exception(404, "not found").
 
 report_metric(Req, {Metric, Labels, Value}, Resp) ->
-    LabelsIOList = [[name_to_iolist(K), <<"=\"">>, label_val_to_bin(V),
+    LabelsIOList = [[name_to_iolist(K), <<"=\"">>, format_label_value(V),
                      <<"\"">>] || {K, V} <- Labels],
     Line =
         [name_to_iolist(Metric), <<"{">>, lists:join(<<",">>, LabelsIOList),
@@ -175,6 +175,10 @@ report_metric(Req, {Prefix, Metric, Labels, Value}, Resp) ->
 
 name_to_iolist(A) when is_atom(A) -> atom_to_binary(A, latin1);
 name_to_iolist(A) -> A.
+
+format_label_value(Val) ->
+    ValBin = label_val_to_bin(Val),
+    re:replace(ValBin, <<"\"">>, <<"\\\\\"">>, [global, {return, binary}]).
 
 label_val_to_bin(N) when is_integer(N) -> integer_to_binary(N);
 label_val_to_bin(F) when is_float(F) -> float_to_binary(F);
