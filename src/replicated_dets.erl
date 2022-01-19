@@ -63,12 +63,7 @@ empty(Name) ->
 with_live_doc(TableName, Id, Default, Fun) ->
     case ets:lookup(TableName, Id) of
         [Doc] ->
-            case is_deleted(Doc) of
-                false ->
-                    Fun(Doc);
-                true ->
-                    Default
-            end;
+            Fun(Doc);
         [] ->
             Default
     end.
@@ -96,18 +91,14 @@ get_last_modified(Name, Id, Default) ->
 select(Name, KeySpec, N) ->
     DocSpec = #docv2{id = KeySpec, _ = '_'},
     MatchSpec = [{DocSpec, [], ['$_']}],
-
     ?make_producer(
-       select_from_dets(Name, MatchSpec, N,
-                        fun (Selection) ->
-                                lists:foreach(
-                                  fun (#docv2{id = Id, value = Value} = D) ->
-                                          case is_deleted(D) of
-                                              false -> ?yield({Id, Value});
-                                              true -> ok
-                                          end
-                                  end, Selection)
-                        end)).
+       select_from_table(Name, MatchSpec, N,
+                         fun (Selection) ->
+                                 lists:foreach(
+                                   fun (#docv2{id = Id, value = Value}) ->
+                                           ?yield({Id, Value})
+                                   end, Selection)
+                         end, ets)).
 
 select_with_update(Name, KeySpec, N, UpdateFun) ->
     gen_server:call(Name, {mass_update, {Name, KeySpec, N, UpdateFun}}, infinity).
@@ -176,7 +167,25 @@ do_open(Path, TableName, Tries) ->
                          {keypos, #docv2.id},
                          {file, Path}]) of
         {ok, TableName} ->
-            TableName = dets:to_ets(TableName, TableName),
+            DocSpec = #docv2{id = '_', value = '_', props = '_'},
+            MatchSpec = [{DocSpec, [], ['$_']}],
+            pipes:foreach(
+              ?make_producer(
+                 select_from_table(TableName, MatchSpec, 100,
+                                   fun(Selection) ->
+                                           lists:foreach(
+                                             fun(Entry) ->
+                                                     case is_deleted(Entry) of
+                                                         false ->
+                                                             ?yield(Entry);
+                                                         _ ->
+                                                             ok
+                                                     end
+                                             end, Selection)
+                                   end, dets)),
+              fun(Doc) ->
+                      true = ets:insert(TableName, Doc)
+              end),
             ok;
         Error ->
             ?log_error("Unable to open ~p, Error: ~p", [Path, Error]),
@@ -195,12 +204,17 @@ find_doc(Id, #state{name = TableName}) ->
         [Doc] ->
             Doc;
         [] ->
-            false
+            case dets:lookup(TableName, Id) of
+                [DDoc] -> DDoc;
+                [] -> false
+            end
     end.
 
 all_docs(_Pid, #state{name = TableName}) ->
-    ?make_producer(select_from_dets(TableName, [{'_', [], ['$_']}], 500,
-                                    fun (Batch) -> ?yield({batch, Batch}) end)).
+    ?make_producer(select_from_table(TableName, [{'_', [], ['$_']}], 500,
+                                     fun (Batch) ->
+                                             ?yield({batch, Batch})
+                                     end, dets)).
 
 get_revision(#docv2{props = Props}) ->
     proplists:get_value(rev, Props).
@@ -217,9 +231,25 @@ is_deleted(#docv2{props = Props}) ->
 save_docs(Docs, #state{name = TableName,
                        child_module = ChildModule,
                        child_state = ChildState} = State) ->
-    OldDocs = [find_doc(get_id(Doc), State) || Doc <- Docs],
+    {OldDocs, Live} =
+        lists:mapfoldl(
+          fun(Doc, Acc) ->
+                  {case ets:lookup(TableName, get_id(Doc)) of
+                       [Found] -> Found;
+                       [] -> false
+                   end,
+                   case is_deleted(Doc) of
+                       true ->
+                           %% The doc is deleted so we need to remove it
+                           %% from the ETS table.
+                           ets:delete(TableName, get_id(Doc)),
+                           Acc;
+                       false -> [Doc | Acc]
+                   end}
+          end, [], Docs),
     ok = dets:insert(TableName, Docs),
-    true = ets:insert(TableName, Docs),
+    %% Only insert live, non-deleted documents
+    true = ets:insert(TableName, Live),
     NewChildState = ChildModule:on_save(Docs, OldDocs, ChildState),
     {ok, State#state{child_state = NewChildState}}.
 
@@ -247,26 +277,29 @@ handle_info(Msg, #state{child_module = ChildModule,
     {noreply, NewChildState} = ChildModule:handle_info(Msg, ChildState),
     {noreply, State#state{child_state = NewChildState}}.
 
-select_from_dets(TableName, MatchSpec, N, Yield) when is_atom(TableName) ->
-    ?log_debug("Starting select with ~p", [{TableName, MatchSpec, N}]),
-    ets:safe_fixtable(TableName, true),
-    do_select_from_dets(TableName, MatchSpec, N, Yield),
-    ets:safe_fixtable(TableName, false),
+select_from_table(TableName, MatchSpec, N, Yield, Module) ->
+    ?log_debug("[~p] Starting select with ~p",
+               [Module, {TableName, MatchSpec, N}]),
+    Module:safe_fixtable(TableName, true),
+    do_select_from_table(TableName, MatchSpec, N, Yield, Module),
+    Module:safe_fixtable(TableName, false),
     ok.
 
-do_select_from_dets(TableName, MatchSpec, N, Yield) ->
-    case ets:select(TableName, MatchSpec, N) of
+do_select_from_table(TableName, MatchSpec, N, Yield, Module) ->
+    case Module:select(TableName, MatchSpec, N) of
         {Selection, Continuation} when is_list(Selection) ->
-            do_select_from_dets_continue(Selection, Continuation, Yield);
+            do_select_from_table_continue(Selection, Continuation,
+                                          Yield, Module);
         '$end_of_table' ->
             ok
     end.
 
-do_select_from_dets_continue(Selection, Continuation, Yield) ->
+do_select_from_table_continue(Selection, Continuation, Yield, Module) ->
     Yield(Selection),
-    case ets:select(Continuation) of
+    case Module:select(Continuation) of
         {Selection2, Continuation2} when is_list(Selection2) ->
-            do_select_from_dets_continue(Selection2, Continuation2, Yield);
+            do_select_from_table_continue(Selection2, Continuation2,
+                                          Yield, Module);
         '$end_of_table' ->
             ok
     end.

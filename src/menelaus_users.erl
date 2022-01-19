@@ -209,12 +209,21 @@ on_save(Docs, OldDocs, State) ->
                     {_, local} ->
                         case replicated_dets:is_deleted(Doc) of
                             true ->
-                                Props = replicated_dets:get_value(OldDoc),
-                                UUID = proplists:get_value(uuid, Props),
-                                ets:delete(?UUID_USER_MAP, UUID),
-                                gen_event:notify(
-                                  user_storage_events,
-                                  {local_user_deleted, UUID});
+                                case OldDoc of
+                                    false ->
+                                        %% we have received a deleted key, while
+                                        %% not having an existing entry for it.
+                                        %% In this case we don't need to do
+                                        %% anything.
+                                        ok;
+                                    _ ->
+                                        Props = replicated_dets:get_value(OldDoc),
+                                        UUID = proplists:get_value(uuid, Props),
+                                        ets:delete(?UUID_USER_MAP, UUID),
+                                        gen_event:notify(
+                                          user_storage_events,
+                                          {local_user_deleted, UUID})
+                                end;
                             false ->
                                 Props = replicated_dets:get_value(Doc),
                                 UUID = proplists:get_value(uuid, Props),
