@@ -30,23 +30,47 @@
 
 handle_get_trustedCAs(Req) ->
     menelaus_util:assert_is_enterprise(),
-    Warnings = ns_server_cert:get_warnings(),
+    %% Security admins should get all the information,
+    %% Everybody else should get only certificates
+    Extended = menelaus_roles:is_allowed({[admin, security], read},
+                                         menelaus_auth:get_identity(Req)),
+    Warnings = case Extended of
+                    true -> ns_server_cert:get_warnings();
+                    false -> []
+               end,
     Nodes = ns_node_disco:nodes_wanted(),
+
     Json = lists:map(
              fun (Props) ->
                  CAId = proplists:get_value(id, Props),
                  Pem = proplists:get_value(pem, Props, <<>>),
                  IsNeo = cluster_compat_mode:is_cluster_NEO(),
-                 CANodes = ns_server_cert:filter_nodes_by_ca(Nodes, Pem),
-                 BuildHostname = menelaus_web_node:build_node_hostname(
-                                   ns_config:latest(), _, misc:localhost()),
-                 CAHostnames = [BuildHostname(N) || N <- CANodes],
+                 CANodes =
+                     case Extended of
+                         true -> ns_server_cert:filter_nodes_by_ca(Nodes, Pem);
+                         false -> []
+                     end,
                  CAWarnings = [W || {{ca, Id}, W} <- Warnings, Id =:= CAId],
-                 {JSONObjProps} = jsonify_cert_props(
-                                    [{warnings, CAWarnings} | Props]),
-                 {JSONObjProps ++ [{nodes, CAHostnames} || IsNeo]}
+                 jsonify_cert_props(
+                   maybe_filter_cert_props(
+                     Props ++
+                     [{warnings, CAWarnings}] ++
+                     [{nodes, CANodes} || IsNeo], not Extended))
              end, ns_server_cert:trusted_CAs(props)),
     menelaus_util:reply_json(Req, Json).
+
+%% Leaving only info that can be extracted from certificates and ids
+maybe_filter_cert_props(Props, _ShouldFilter = true) ->
+    lists:filter(
+      fun ({id, _}) -> true;
+          ({pem, _}) -> true;
+          ({subject, _}) -> true;
+          ({not_before, _}) -> true;
+          ({not_after, _}) -> true;
+          (_) -> false
+      end, Props);
+maybe_filter_cert_props(Props, _ShouldFilter = false) ->
+    Props.
 
 handle_delete_trustedCA(IdStr, Req) ->
     menelaus_util:assert_is_enterprise(),
@@ -192,6 +216,10 @@ jsonify_cert_props(Props) ->
                {true, {privateKeyPassphrase, PKeySettingsJSON}};
            ({warnings, Warnings}) ->
                {true, {warnings, [{warning_props(W)} || W <- Warnings]}};
+           ({nodes, Nodes}) ->
+               BuildHostname = menelaus_web_node:build_node_hostname(
+                                 ns_config:latest(), _, misc:localhost()),
+               {true, {nodes, [BuildHostname(N) || N <- Nodes]}};
            ({_, _}) ->
                false
        end, Props)}.
