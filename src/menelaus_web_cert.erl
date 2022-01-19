@@ -402,7 +402,7 @@ validators(script) ->
     [validator:required(path, _),
      validate_script_path(path, _),
      validator:boolean(trim, _),
-     validator:default(trim, false, _),
+     validator:default(trim, true, _),
      validator:string_array(args, _),
      validator:default(args, [], _),
      validator:integer(timeout, _),
