@@ -233,6 +233,17 @@ mk_string_field_validator(AV, Params) ->
             end
     end.
 
+compare_from_and_to_time_validator([], _) -> [];
+compare_from_and_to_time_validator([{_, _, IntFromH}, {_, _, IntToH},
+                                    {_, _, IntFromM}, {_, _, IntToM}, _] = Res1, JSONName) ->
+    case IntFromH =:= IntToH andalso IntFromM =:= IntToM of
+        true ->
+            Msg = "Start time must not be the same as end time",
+            [{error, JSONName, iolist_to_binary(Msg)}];
+        _ ->
+            Res1
+    end.
+
 parse_and_validate_time_interval(JSONName, Params) ->
     FromH = JSONName ++ "[fromHour]",
     FromM = JSONName ++ "[fromMinute]",
@@ -261,7 +272,11 @@ parse_and_validate_time_interval(JSONName, Params) ->
     %% If validation failed for any field then return error.
     case Err of
         [] ->
-            Res1;
+            case JSONName of
+                "allowedTimePeriod" ->
+                    compare_from_and_to_time_validator(Res1, JSONName);
+                _ -> Res1
+            end;
         _ ->
             Err
     end.
@@ -416,7 +431,7 @@ do_parse_validate_settings(Params, ExpectIndex, not_magma) ->
                 X
         end,
     PeriodTimeResults = parse_and_validate_time_interval("allowedTimePeriod",
-                                                        Params),
+                                                         Params),
     MagmaFragResults = parse_validate_magma_fragmentation_percentage(Params),
 
     Errors0 = [{iolist_to_binary(Field), Msg} ||
@@ -574,6 +589,22 @@ extra_field_parse_validate_settings_test() ->
                                 false),
     ?assertEqual([{<<"_">>, <<"Got unsupported fields: databaseFragmentationThreshold">>}],
                  Stuff1),
+    teardown_meck(),
+    ok.
+
+compare_from_and_to_time_validator_test() ->
+    setup_meck(),
+    {errors, Stuff0} =
+        parse_validate_settings([{"parallelDBAndViewCompaction", "false"},
+                                 {"allowedTimePeriod[fromHour]", "1"},
+                                 {"allowedTimePeriod[fromMinute]", "2"},
+                                 {"allowedTimePeriod[toHour]", "1"},
+                                 {"allowedTimePeriod[toMinute]", "2"},
+                                 {"allowedTimePeriod[abortOutside]", "false"}],
+                                false),
+    ?assertEqual([{<<"allowedTimePeriod">>,
+                   <<"Start time must not be the same as end time">>}],
+                 Stuff0),
     teardown_meck(),
     ok.
 
