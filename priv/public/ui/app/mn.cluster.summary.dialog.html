@@ -14,7 +14,9 @@
     <a class="ui-dialog-titlebar-close modal-close" (click)="activeModal.dismiss()">X</a>
   </div>
 
-  <div style="height:calc(100% - 112px);overflow:auto;scroll:auto;margin:.5rem 0 0 0" class="show-scrollbar">
+  <div
+     [mnSpinner]="clusterInfo | async"
+     style="height:calc(100% - 112px);overflow:auto;scroll:auto;margin:.5rem 0 0 0" class="show-scrollbar">
     <div class="panel-content">
       <pre id="cluster_info" class="text-small">{{clusterInfo | async}}</pre>
     </div>
