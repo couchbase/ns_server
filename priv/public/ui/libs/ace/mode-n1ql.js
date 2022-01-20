@@ -256,7 +256,7 @@ export default "mode-n1ql";
     //////////////////////////////////////////////////////////////////////////////////////
 
     // certain keywords will get formatted onto their own line, some with indenting
-    var kw_regex_str = '\\b(?:' + sysCatalogs + ')|\\b(' + keywords + '|' + roles + '|' + builtinConstants + ')\\b';
+    var kw_regex_str = '\\b(?:' + sysCatalogs + ')|\\b(' + keywords + '|' + builtinConstants + ')\\b';
     var function_regex_str = '\\b(' + builtinFunctions + ')\\s*\\(';
 
     var formatter = require("ace/mode/query-formatter").create(kw_regex_str,function_regex_str);
