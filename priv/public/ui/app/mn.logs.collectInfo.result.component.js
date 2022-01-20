@@ -10,7 +10,7 @@ licenses/APL2.txt.
 
 import {ChangeDetectionStrategy, Component} from '@angular/core';
 import {UIRouter} from '@uirouter/angular';
-import {switchMap, filter} from 'rxjs/operators';
+import {switchMap, filter, skip} from 'rxjs/operators';
 import {NgbModal} from '@ng-bootstrap/ng-bootstrap';
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
@@ -56,6 +56,8 @@ class MnLogsCollectInfoResultComponent extends MnLifeCycleHooksToStream {
     this.disableStopCollection = this.postCancelLogsCollection.success
       .pipe(switchMap(() => this.taskCollectInfo),
             filter(taskCollectInfo => taskCollectInfo.status === 'running'));
+
+    this.collectInfoLoading = this.taskCollectInfo.pipe(skip(1));
   }
 
   identifyNode(index, node) {

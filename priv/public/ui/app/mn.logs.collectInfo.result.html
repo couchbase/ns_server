@@ -27,7 +27,7 @@
   </div>
 </div>
 
-<div>
+<div [mnSpinner]="(collectInfoLoading | async)">
   <div
      [attr.class]="'collection_status dynamic_' + (taskCollectInfo | async)?.status">
     <p>
