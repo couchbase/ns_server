@@ -128,12 +128,17 @@ perform_loading_task(Name, Quota) ->
                           ["--cluster", misc:join_host_port(Host, Port)]
                   end,
     BinDir = path_config:component_path(bin),
+    NumReplicas = case length(ns_cluster_membership:nodes_wanted()) of
+                      1 -> 0;
+                      _ -> 1
+                  end,
 
     Cmd = BinDir ++ "/cbimport",
     Args = ["json",
             "--bucket", Name,
             "--format", "sample",
             "--bucket-quota", integer_to_list(Quota),
+            "--bucket-replicas", integer_to_list(NumReplicas),
             "--threads", "2",
             "--verbose",
             "--dataset", "file://" ++ filename:join([BinDir, "..",
