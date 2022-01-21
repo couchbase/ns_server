@@ -26,7 +26,7 @@
          handle_info/2, terminate/2, code_change/3]).
 
 -export([start_link/6, maybe_connect/2,
-         connect_proxies/2, nuke_connection/4, terminate_and_wait/2]).
+         connect_proxies/3, nuke_connection/4, terminate_and_wait/2]).
 
 -export([get_socket/1, get_partner/1, get_conn_name/1, get_bucket/1]).
 
@@ -329,8 +329,7 @@ nuke_connection(Type, ConnName, Node, Bucket) ->
     ?log_debug("Nuke DCP connection ~p type ~p on node ~p", [ConnName, Type, Node]),
     disconnect(connect(Type, ConnName, Node, Bucket)).
 
-connect_proxies(Pid1, Pid2) ->
-    Sock1 = gen_server:call(Pid1, get_socket, infinity),
+connect_proxies(Pid1, Sock1, Pid2) ->
     Sock2 = gen_server:call(Pid2, get_socket, infinity),
 
     gen_server:cast(Pid1, {setup_proxy, Pid2, Sock2}),

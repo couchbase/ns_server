@@ -14,6 +14,7 @@
 -behaviour(gen_server).
 
 -include("ns_common.hrl").
+-include("cut.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -47,10 +48,35 @@ init({ConsumerNode, ProducerNode, Bucket, ConnName, RepFeatures}) ->
 
     {ok, ConsumerConn} = dcp_consumer_conn:start_link(ConnName, ConsumerNode,
                                                       Bucket, RepFeatures),
-    {ok, ProducerConn} = dcp_producer_conn:start_link(ConnName, ProducerNode,
-                                                      Bucket, RepFeatures),
+    ConsumerSock = gen_server:call(ConsumerConn, get_socket, infinity),
 
-    Proxies = dcp_proxy:connect_proxies(ConsumerConn, ProducerConn),
+    ?log_debug("Opened connection to local memcached ~p", [ConsumerConn]),
+
+    {ok, ProducerConn} = dcp_producer_conn:start_link(ConnName, ProducerNode,
+                                                      Bucket),
+
+    self() ! {connect_to_producer, ProducerConn, RepFeatures},
+
+    {ok, #state{
+            proxies = [{ConsumerConn, ConsumerSock}],
+            consumer_conn = ConsumerConn,
+            connection_name = ConnName,
+            producer_node = ProducerNode,
+            bucket = Bucket
+           }}.
+
+connect_to_producer(ProducerConn, RepFeatures,
+                    #state{
+                       proxies = [{ConsumerConn, ConsumerSock}],
+                       consumer_conn = ConsumerConn,
+                       connection_name = ConnName,
+                       producer_node = ProducerNode,
+                       bucket = Bucket
+                      } = State) ->
+    ok = dcp_producer_conn:connect(ProducerConn, RepFeatures),
+
+    Proxies = dcp_proxy:connect_proxies(ConsumerConn, ConsumerSock,
+                                        ProducerConn),
 
     ?log_debug("initiated new dcp replication with consumer side: ~p and "
                "producer side: ~p", [ConsumerConn, ProducerConn]),
@@ -59,13 +85,7 @@ init({ConsumerNode, ProducerNode, Bucket, ConnName, RepFeatures}) ->
                                                      ProducerNode, ConsumerConn,
                                                      ProducerConn),
 
-    {ok, #state{
-            proxies = Proxies,
-            consumer_conn = ConsumerConn,
-            connection_name = ConnName,
-            producer_node = ProducerNode,
-            bucket = Bucket
-           }}.
+    State#state{proxies = Proxies}.
 
 start_link(Name, ConsumerNode, ProducerNode, Bucket, ConnName, RepFeatures) ->
     %% We (and ep-engine actually) depend on this naming.
@@ -113,6 +133,9 @@ terminate(Reason, #state{proxies = Proxies,
     end,
     ok.
 
+handle_info({connect_to_producer, ProducerConn, RepFeatures}, State) ->
+    {noreply, spawn_and_wait(
+                ?cut(connect_to_producer(ProducerConn, RepFeatures, State)))};
 handle_info({'EXIT', _Pid, Reason}, State) ->
     {stop, Reason, State};
 handle_info(Msg, State) ->

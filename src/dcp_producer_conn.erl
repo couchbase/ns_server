@@ -15,14 +15,18 @@
 -include("mc_constants.hrl").
 -include("mc_entry.hrl").
 
--export([start_link/4, init/2, handle_packet/5, handle_call/4, handle_cast/3]).
+-export([start_link/3, init/2, handle_packet/5, handle_call/4, handle_cast/3,
+         connect/2]).
 
-start_link(ConnName, ProducerNode, Bucket, RepFeatures) ->
+start_link(ConnName, ProducerNode, Bucket) ->
     dcp_proxy:start_link(producer, ConnName, ProducerNode,
-                         Bucket, ?MODULE, [RepFeatures]).
+                         Bucket, ?MODULE, []).
 
-init([RepFeatures], ParentState) ->
-    {[], dcp_proxy:maybe_connect(ParentState, RepFeatures)}.
+connect(Pid, RepFeatures) ->
+    gen_server:call(Pid, {connect, RepFeatures}, infinity).
+
+init([], ParentState) ->
+    {[], ParentState}.
 
 handle_packet(request, ?DCP_SET_VBUCKET_STATE, Packet, State, ParentState) ->
     Consumer = dcp_proxy:get_partner(ParentState),
@@ -42,6 +46,8 @@ handle_packet(request, ?DCP_STREAM_END, Packet, State, ParentState) ->
 handle_packet(_, _, _, State, ParentState) ->
     {proxy, State, ParentState}.
 
+handle_call({connect, RepFeatures}, _From, State, ParentState) ->
+    {reply, ok, State, dcp_proxy:maybe_connect(ParentState, RepFeatures)};
 handle_call(Msg, _From, State, ParentState) ->
     ?rebalance_warning("Unhandled call: Msg = ~p, State = ~p", [Msg, State]),
     {reply, refused, State, ParentState}.
