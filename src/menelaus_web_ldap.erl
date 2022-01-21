@@ -226,8 +226,8 @@ validate_cert(Name, State) ->
           (Cert) ->
               BinCert = iolist_to_binary(Cert),
               case ns_server_cert:decode_single_certificate(BinCert) of
-                  {error, _} -> {error, "invalid certificate"};
-                  Decoded -> {value, {BinCert, Decoded}}
+                  {ok, Decoded} -> {value, {BinCert, Decoded}};
+                  {error, _} -> {error, "invalid certificate"}
               end
       end, Name, State).
 

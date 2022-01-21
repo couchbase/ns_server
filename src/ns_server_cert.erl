@@ -227,8 +227,8 @@ decode_cert_chain(CertPemBin) ->
 decode_cert_chain([], Res) -> {ok, lists:reverse(Res)};
 decode_cert_chain([Cert | Tail], Res) ->
     case decode_single_certificate(Cert) of
-        {error, _} = Err -> Err;
-        Der -> decode_cert_chain(Tail, [Der | Res])
+        {ok, Der} -> decode_cert_chain(Tail, [Der | Res]);
+        {error, _} = Err -> Err
     end.
 
 decode_single_certificate(CertPemBin) ->
@@ -236,10 +236,7 @@ decode_single_certificate(CertPemBin) ->
         malformed_cert ->
             {error, malformed_cert};
         [PemEntry] ->
-            case validate_cert_pem_entry(PemEntry) of
-                {ok, {'Certificate', DerCert, not_encrypted}} -> DerCert;
-                {error, Reason} -> {error, Reason}
-            end;
+            validate_cert_pem_entry(PemEntry);
         [] ->
             {error, malformed_cert};
         [_|_] ->
@@ -255,7 +252,7 @@ decode_certificates(CertPemBin) ->
               fun (_E, {error, R}) -> {error, R};
                   (E, {ok, Acc}) ->
                       case validate_cert_pem_entry(E) of
-                          {ok, Cert} -> {ok, [Cert | Acc]};
+                          {ok, DerCert} -> {ok, [DerCert | Acc]};
                           {error, R} -> {error, R}
                       end
               end, {ok, []}, PemEntries)
@@ -270,8 +267,8 @@ do_decode_certificates(CertPemBin) ->
             malformed_cert
     end.
 
-validate_cert_pem_entry({'Certificate', _, not_encrypted} = Cert) ->
-    {ok, Cert};
+validate_cert_pem_entry({'Certificate', Der, not_encrypted}) ->
+    {ok, Der};
 validate_cert_pem_entry({'Certificate', _, _}) ->
     {error, encrypted_certificate};
 validate_cert_pem_entry({BadType, _, _}) ->
@@ -366,9 +363,7 @@ extract_cert_and_pkey(Output) ->
     case split_certs(Output) of
         [Cert, PKey] ->
             case decode_single_certificate(Cert) of
-                {error, Error} ->
-                    erlang:exit({bad_generated_cert, Cert, Error});
-                _ ->
+                {ok, _} ->
                     %% We assume this function is used for self-generated
                     %% certs only, hence no password is used
                     case validate_pkey(PKey, fun () -> undefined end) of
@@ -376,7 +371,9 @@ extract_cert_and_pkey(Output) ->
                             {Cert, PKey};
                         Err ->
                             erlang:exit({bad_generated_pkey, PKey, Err})
-                    end
+                    end;
+                {error, Error} ->
+                    erlang:exit({bad_generated_cert, Cert, Error})
             end;
         Parts ->
             erlang:exit({bad_generate_cert_output, Parts})
@@ -440,9 +437,6 @@ convert_date({generalTime, [Y1, Y2, Y3, Y4 | Rest]}) ->
     Year = list_to_integer([Y1, Y2, Y3, Y4]),
     convert_date(Year, Rest).
 
-get_cert_info({'Certificate', DerCert, not_encrypted}) ->
-    get_der_info(DerCert).
-
 get_der_info(DerCert) ->
     Decoded = public_key:pkix_decode_cert(DerCert, otp),
     TBSCert = Decoded#'OTPCertificate'.tbsCertificate,
@@ -482,11 +476,10 @@ get_sub_alt_names_by_type(Cert, Type) ->
             {error, not_found}
     end.
 
+%% Deprecated
 parse_cluster_ca(CA) ->
     case decode_single_certificate(CA) of
-        {error, Error} ->
-            {error, Error};
-        RootCertDer ->
+        {ok, RootCertDer} ->
             try
                 {Subject, NotBefore, NotAfter} = get_der_info(RootCertDer),
                 UTC = calendar:datetime_to_gregorian_seconds(
@@ -503,7 +496,9 @@ parse_cluster_ca(CA) ->
                     ?log_error("Failed to get certificate info:~n~p~n~p",
                                [RootCertDer, {T, E, S}]),
                     {error, malformed_cert}
-            end
+            end;
+        {error, Error} ->
+            {error, Error}
     end.
 
 %% Deprecated. Can be used in pre-7.1 clusters only.
@@ -665,8 +660,8 @@ decode_and_validate_chain(CAs, Chain) ->
 
 get_chain_info(Chain, CA) when is_binary(Chain), is_binary(CA) ->
     lists:foldl(
-                fun (Cert, Acc) ->
-                    {NewSub, _, NewExpiration} = get_cert_info(Cert),
+                fun ({'Certificate', DerCert, not_encrypted}, Acc) ->
+                    {NewSub, _, NewExpiration} = get_der_info(DerCert),
                     case Acc of
                         undefined ->
                             {NewSub, NewExpiration};
@@ -704,7 +699,8 @@ trusted_CAs(Format) ->
             lists:map(
               fun (Props) ->
                   Pem = proplists:get_value(pem, Props),
-                  decode_single_certificate(Pem)
+                  {ok, Der} = decode_single_certificate(Pem),
+                  Der
               end, SortedCerts)
     end.
 
@@ -714,8 +710,8 @@ trusted_CAs_pre_71(Config) ->
 
     PrepareCertProps =
         fun (Id, Type, CAPem) ->
-            {ok, [CADecoded]} = decode_certificates(CAPem),
-            [{id, Id} | cert_props(Type, CADecoded, Extra)]
+            {ok, [CADer]} = decode_certificates(CAPem),
+            [{id, Id} | cert_props(Type, CADer, Extra)]
         end,
 
     case CertAndPKey of
@@ -990,11 +986,11 @@ add_CAs_txn_fun(Type, Pem, Opts) when is_binary(Pem),
     SingleCert = proplists:get_bool(single_cert, Opts),
     ExtraCertProps = proplists:get_value(extra_props, Opts, []),
     case decode_certificates(Pem) of
-        {ok, PemEntries} when SingleCert,
-                              length(PemEntries) > 1 ->
+        {ok, DerCerts} when SingleCert,
+                            length(DerCerts) > 1 ->
             {error, too_many_entries};
-        {ok, PemEntries} ->
-            CAProps = [cert_props(Type, E, ExtraCertProps) || E <- PemEntries],
+        {ok, DerCerts} ->
+            CAProps = [cert_props(Type, E, ExtraCertProps) || E <- DerCerts],
             {ok, load_CAs_txn(CAProps, _)};
         {error, Reason} ->
             {error, Reason}
@@ -1121,12 +1117,11 @@ read_ca_file(Path) ->
     case file:read_file(Path) of
         {ok, CertPemBin} ->
             case decode_certificates(CertPemBin) of
-                {ok, PemEntries} ->
+                {ok, DerCerts} ->
                     Host = misc:extract_node_address(node()),
                     Extras = [{load_host, iolist_to_binary(Host)},
                               {load_file, iolist_to_binary(Path)}],
-                    {ok, [cert_props(uploaded, E, Extras)
-                          || E <- PemEntries]};
+                    {ok, [cert_props(uploaded, E, Extras) || E <- DerCerts]};
                 {error, Reason} ->
                     {error, Reason}
             end;
@@ -1134,13 +1129,14 @@ read_ca_file(Path) ->
             {error, {read, Reason}}
     end.
 
-cert_props(Type, DecodedCert, Extras) ->
-    {Sub, NotBefore, NotAfter} = get_cert_info(DecodedCert),
+cert_props(Type, DerCert, Extras) when is_binary(DerCert) ->
+    {Sub, NotBefore, NotAfter} = get_der_info(DerCert),
     [{subject, iolist_to_binary(Sub)},
      {not_before, NotBefore},
      {not_after, NotAfter},
      {type, Type},
-     {pem, public_key:pem_encode([DecodedCert])}] ++ Extras.
+     {pem, public_key:pem_encode([{'Certificate', DerCert, not_encrypted}])}]
+     ++ Extras.
 
 get_warnings() ->
     Config = ns_config:get(),
@@ -1213,12 +1209,13 @@ expiration_warnings(CertProps) ->
 
 is_trusted(CAPem, TrustedCAs) ->
     case decode_single_certificate(CAPem) of
-        {error, _} -> false;
-        Decoded ->
+        {ok, Decoded} ->
             lists:any(
               fun (C) ->
-                  Decoded == decode_single_certificate(C)
-              end, TrustedCAs)
+                  {ok, Decoded} == decode_single_certificate(C)
+              end, TrustedCAs);
+        {error, _} ->
+            false
     end.
 
 node_cert_warnings(TrustedCAs, NodeCertProps) ->
