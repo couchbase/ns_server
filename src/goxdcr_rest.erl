@@ -18,7 +18,8 @@
          find_all_replication_docs/0,
          all_local_replication_infos/0,
          stats/1,
-         get_replications_with_remote_info/0]).
+         get_replications_with_remote_info/0,
+         get_certificates/0]).
 
 convert_header_name(Header) when is_atom(Header) ->
     atom_to_list(Header);
@@ -234,3 +235,20 @@ get_replications_with_remote_info() ->
               ClusterName = proplists:get_value(RemoteClusterUUID, RemoteClusters, <<"unknown">>),
               [{Id, BucketName, binary_to_list(ClusterName), RemoteBucket} | Acc]
       end, [], find_all_replication_docs()).
+
+get_certificates() ->
+    get_from_goxdcr(
+      fun (Json) ->
+              Extract = fun (What) ->
+                            lists:flatmap(
+                              fun ({Cluster}) ->
+                                  case proplists:get_value(What, Cluster) of
+                                      undefined -> [];
+                                      B -> ns_server_cert:split_certs(B)
+                                  end
+                              end, Json)
+                        end,
+              TrustedCerts = Extract(<<"certificate">>),
+              ClientCerts = Extract(<<"clientCertificate">>),
+              #{trusted_certs => TrustedCerts, client_certs => ClientCerts}
+      end, "/pools/default/remoteClusters", 30000).

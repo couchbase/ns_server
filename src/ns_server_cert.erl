@@ -41,7 +41,9 @@
          generate_node_certs/1,
          filter_nodes_by_ca/2,
          inbox_chain_path/0,
-         expiration_warnings/1]).
+         expiration_warnings/1,
+         split_certs/1,
+         cert_props/1]).
 
 inbox_ca_path() ->
     filename:join(path_config:component_path(data, "inbox"), "CA").
@@ -1129,6 +1131,9 @@ read_ca_file(Path) ->
             {error, {read, Reason}}
     end.
 
+cert_props(DerCert) ->
+    cert_props(undefined, DerCert, []).
+
 cert_props(Type, DerCert, Extras) when is_binary(DerCert) ->
     {Sub, NotBefore, NotAfter} = get_der_info(DerCert),
     [{subject, iolist_to_binary(Sub)},
@@ -1174,7 +1179,7 @@ get_warnings() ->
                           generated -> [self_signed];
                           _ -> []
                       end,
-                  ExpWarnings = expiration_warnings(CAProps),
+                  {_, ExpWarnings} = expiration_warnings(CAProps),
                   Id = proplists:get_value(id, CAProps),
                   UnusedWarnings =
                       case proplists:get_value(type, CAProps) of
@@ -1194,17 +1199,18 @@ get_warnings() ->
 expiration_warnings(CertProps) ->
     Now = calendar:datetime_to_gregorian_seconds(calendar:universal_time()),
     WarningDays = ns_config:read_key_fast({cert, expiration_warning_days}, 7),
-    WarningThreshold = Now + WarningDays * 24 * 60 * 60,
+    WarningSeconds = WarningDays * 24 * 60 * 60,
+    WarningThreshold = Now + WarningSeconds,
 
     Expire = proplists:get_value(expires, CertProps), %% For pre-7.1 only
     NotAfter = proplists:get_value(not_after, CertProps, Expire),
     case NotAfter of
         A when is_integer(A) andalso A =< Now ->
-            [expired];
+            {infinity, [expired]};
         A when is_integer(A) andalso A =< WarningThreshold ->
-            [{expires_soon, A}];
+            {NotAfter, [{expires_soon, A}]};
         _ ->
-            []
+            {NotAfter - WarningSeconds, []}
     end.
 
 is_trusted(CAPem, TrustedCAs) ->
@@ -1237,7 +1243,7 @@ node_cert_warnings(TrustedCAs, NodeCertProps) ->
                 end
         end,
 
-    ExpirationWarnings = expiration_warnings(NodeCertProps),
+    {_, ExpirationWarnings} = expiration_warnings(NodeCertProps),
 
     SelfSignedWarnings =
         case proplists:get_value(type, NodeCertProps) of

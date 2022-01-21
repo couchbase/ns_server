@@ -121,7 +121,15 @@ errors(node_cert_expired) ->
 errors(ca_expires_soon) ->
     "Trusted CA certificate with ID=~b (subject: '~s') will expire at ~s.";
 errors(ca_expired) ->
-    "Trusted CA certificate with ID=~b (subject: '~s') has expired.".
+    "Trusted CA certificate with ID=~b (subject: '~s') has expired.";
+errors(client_xdcr_cert_expires_soon) ->
+    "Client XDCR certificate (subject: '~s') will expire at ~s.";
+errors(client_xdcr_cert_expired) ->
+    "Client XDCR certificate (subject: '~s') has expired.";
+errors(xdcr_ca_expires_soon) ->
+    "XDCR CA certificate (subject: '~s') will expire at ~s.";
+errors(xdcr_ca_expired) ->
+    "XDCR CA certificate (subject: '~s') has expired.".
 
 %% ------------------------------------------------------------------
 %% API Function Definitions
@@ -311,7 +319,7 @@ start_timer() ->
 global_checks() ->
     [oom, ip, write_fail, overhead, disk, audit_write_fail,
      indexer_ram_max_usage, cas_drift_threshold, communication_issue,
-     time_out_of_sync, disk_usage_analyzer_stuck, certs].
+     time_out_of_sync, disk_usage_analyzer_stuck, certs, xdcr_certs].
 
 %% @doc fires off various checks
 check_alerts(Opaque, Hist, Stats) ->
@@ -522,7 +530,8 @@ check(certs, Opaque, _History, _Stats) ->
             true ->
                 lists:flatmap(
                   fun (CAProps) ->
-                      ExpWarnings = ns_server_cert:expiration_warnings(CAProps),
+                      {_, ExpWarnings} =
+                          ns_server_cert:expiration_warnings(CAProps),
                       Subject = proplists:get_value(subject, CAProps),
                       Id = proplists:get_value(id, CAProps),
                       [{{ca, Id, Subject}, W} || W <- ExpWarnings]
@@ -535,11 +544,12 @@ check(certs, Opaque, _History, _Stats) ->
         case ns_config:read_key_fast({node, node(), node_cert}, undefined) of
             undefined -> [];
             Props ->
+                {_, ExpWarnings} = ns_server_cert:expiration_warnings(Props),
                 lists:map(
                   fun (W) ->
                       Subject = proplists:get_value(subject, Props),
                       {{node, Subject}, W}
-                  end, ns_server_cert:expiration_warnings(Props))
+                  end, ExpWarnings)
         end,
 
     lists:foreach(
@@ -562,7 +572,94 @@ check(certs, Opaque, _History, _Stats) ->
               global_alert({cert_expires_soon, {node, Host}}, Error)
       end, CAAlerts ++ LocalAlerts),
 
-    Opaque.
+    Opaque;
+
+check(xdcr_certs, Opaque, _History, _Stats) ->
+    case mb_master:master_node() == node() of
+        true -> check_xdcr_certs(Opaque);
+        false -> Opaque
+    end.
+
+check_xdcr_certs(Opaque) ->
+    try goxdcr_rest:get_certificates() of
+        Info ->
+            WarningDays = ns_config:read_key_fast(
+                            {cert, expiration_warning_days}, undefined),
+            Hash = erlang:phash2({Info, WarningDays}),
+            Now = calendar:datetime_to_gregorian_seconds(
+                    calendar:universal_time()),
+
+            {NewOpaque, AlertsList} =
+                case dict:find(xdcr_certs_check, Opaque) of
+                    {ok, #{hash := Hash,
+                           retry_time := RetryTime,
+                           result := Res}} when Now < RetryTime ->
+                        {Opaque, Res};
+                    _ ->
+                        {RetryTime, Alerts} = calculate_xdcr_cert_alerts(Info),
+                        {dict:store(xdcr_certs_check,
+                                    #{hash => Hash,
+                                      retry_time => RetryTime,
+                                      result => Alerts},
+                                    Opaque), Alerts}
+                end,
+
+            lists:foreach(
+              fun ({{ca, Subj}, expired}) ->
+                      Error = fmt_to_bin(errors(xdcr_ca_expired), [Subj]),
+                      global_alert({cert_expired, {xdcr, Subj}}, Error);
+                  ({{client_cert, Subj}, expired}) ->
+                      Error = fmt_to_bin(errors(client_xdcr_cert_expired),
+                                         [Subj]),
+                      global_alert({cert_expired, {client_xdcr, Subj}}, Error);
+                  ({{ca, Subj}, {expires_soon, UTCSeconds}}) ->
+                      Date = menelaus_web_cert:format_time(UTCSeconds),
+                      Error = fmt_to_bin(errors(xdcr_ca_expires_soon),
+                                         [Subj, Date]),
+                      global_alert({cert_expires_soon, {xdcr, Subj}}, Error);
+                  ({{client_cert, Subj}, {expires_soon, UTCSeconds}}) ->
+                      Date = menelaus_web_cert:format_time(UTCSeconds),
+                      Error = fmt_to_bin(errors(client_xdcr_cert_expires_soon),
+                                         [Subj, Date]),
+                      global_alert({cert_expires_soon, {client_xdcr, Subj}},
+                                   Error)
+              end, AlertsList),
+
+            NewOpaque
+
+    catch
+        C:E:ST ->
+            ?log_error("Failed to extract certs info from xdcr: ~p:~p~n~p",
+                       [C, E, ST]),
+            Opaque
+    end.
+
+calculate_xdcr_cert_alerts(#{trusted_certs := TrustedCerts,
+                             client_certs := ClientCerts}) ->
+    AlertsFun =
+        fun (Certs, Type) ->
+            lists:foldl(
+              fun (C, {WarningsAcc, RecheckAcc}) ->
+                  case ns_server_cert:decode_single_certificate(C) of
+                      {ok, D} ->
+                          Props = ns_server_cert:cert_props(D),
+                          {RecheckTime, Warnings} =
+                              ns_server_cert:expiration_warnings(Props),
+                          Subject = proplists:get_value(subject, Props),
+                          {[{{Type, Subject}, W} || W <- Warnings] ++
+                           WarningsAcc,
+                           min(RecheckTime, RecheckAcc)};
+                      {error, E} ->
+                          ?log_debug("Failed to decode xdcr cert: ~p",
+                                     [E]),
+                          {WarningsAcc, RecheckAcc}
+                  end
+              end, {[], infinity}, Certs)
+        end,
+
+    {CAAlerts, CARecheckTime} = AlertsFun(TrustedCerts, ca),
+    {ClientAlerts, ClientRecheckTime} = AlertsFun(ClientCerts, client_cert),
+    {min(CARecheckTime, ClientRecheckTime), CAAlerts ++ ClientAlerts}.
 
 alert_if_time_out_of_sync({time_offset_status, true}) ->
     Err = fmt_to_bin(errors(time_out_of_sync), [node()]),
