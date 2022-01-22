@@ -92,6 +92,8 @@ add_node_to_group(Scheme, RemoteAddr, RestPort, Auth, GroupUUID, Services) ->
     RV.
 
 engage_cluster(NodeKVList) ->
+    ?cluster_debug("Processing engage cluster request with ~p.",
+                   [sanitize_node_info(NodeKVList)]),
     MyNode = node(),
     RawOtpNode = proplists:get_value(<<"otpNode">>, NodeKVList, <<"undefined">>),
     OtpNode = binary_to_atom(RawOtpNode, latin1),

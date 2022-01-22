@@ -435,11 +435,13 @@ sync() ->
     ok = gen_server:call(?MODULE, ping, infinity).
 
 set_node_certificate_chain(CAEntry, Chain, PKey, PassphraseSettings) ->
+    ?log_debug("Setting node certificate chain"),
     gen_server:call(?MODULE, {set_node_certificate_chain, CAEntry, Chain,
                               fun () -> PKey end,
                               fun () -> PassphraseSettings end}, infinity).
 
 set_certs(Host, CA, NodeCert, NodeKey) ->
+    ?log_debug("Setting certificates"),
     gen_server:call(?MODULE, {set_certs, Host, CA, NodeCert, ?cut(NodeKey)}).
 
 init([]) ->
@@ -648,6 +650,7 @@ prepare_ca_file_content() ->
     {length(CAs), iolist_to_binary(lists:join(io_lib:nl(), CAs))}.
 
 maybe_store_ca_certs() ->
+    ?log_debug("Considering to store CA certs"),
     %% just to trigger generation of ca cert if it's not generated yet
     _ = ns_server_cert:self_generated_ca(),
     {N, NewContent} = prepare_ca_file_content(),
@@ -662,6 +665,7 @@ maybe_store_ca_certs() ->
 
     case ShouldUpdate of
         true ->
+            ?log_debug("Updating CA file with ~p certificates", [N]),
             create_marker(all_services()),
             ok = misc:atomic_write_file(Path, NewContent),
             ?log_info("CA file updated: ~b cert(s) written", [N]),
