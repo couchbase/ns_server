@@ -224,8 +224,6 @@ default() ->
        %% how big log file needs to grow before memcached starts using
        %% next file
        {log_cyclesize, 1024*1024*10},
-       %% flush interval of memcached's logger in seconds
-       {log_sleeptime, 19},
        %% Milliseconds between log rotation runs.
        {log_rotation_period, 39003}]},
 
@@ -264,8 +262,7 @@ default() ->
 
         {logger,
          {[{filename, {"~s/~s", [log_path, log_prefix]}},
-           {cyclesize, log_cyclesize},
-           {sleeptime, log_sleeptime}]}},
+           {cyclesize, log_cyclesize}]}},
 
         {external_auth_service,
             {memcached_config_mgr, get_external_auth_service, []}},
