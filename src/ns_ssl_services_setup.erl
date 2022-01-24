@@ -55,6 +55,8 @@
 
 -behavior(gen_server).
 
+-define(TIMEOUT, ?get_timeout(default, 300000)).
+
 -record(state, {reload_state,
                 client_cert_auth,
                 sec_settings_state,
@@ -429,20 +431,21 @@ sync() ->
     chronicle_compat_events:sync(),
     %% First ping guarantees that async_ssl_reload has sent
     %% the notify_services message
-    ok = gen_server:call(?MODULE, ping, infinity),
+    ok = gen_server:call(?MODULE, ping, ?TIMEOUT),
     %% Second ping guarantees that the notify_services message message
     %% has been handled
-    ok = gen_server:call(?MODULE, ping, infinity).
+    ok = gen_server:call(?MODULE, ping, ?TIMEOUT).
 
 set_node_certificate_chain(CAEntry, Chain, PKey, PassphraseSettings) ->
     ?log_debug("Setting node certificate chain"),
     gen_server:call(?MODULE, {set_node_certificate_chain, CAEntry, Chain,
                               fun () -> PKey end,
-                              fun () -> PassphraseSettings end}, infinity).
+                              fun () -> PassphraseSettings end}, ?TIMEOUT).
 
 set_certs(Host, CA, NodeCert, NodeKey) ->
     ?log_debug("Setting certificates"),
-    gen_server:call(?MODULE, {set_certs, Host, CA, NodeCert, ?cut(NodeKey)}).
+    gen_server:call(?MODULE, {set_certs, Host, CA, NodeCert, ?cut(NodeKey)},
+                    ?TIMEOUT).
 
 init([]) ->
     Self = self(),
