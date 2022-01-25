@@ -3038,7 +3038,7 @@ input:checked + .toggle-control-body:before {
 /* controls & styles for hiding and showing the navigation sidebar ---------- */
 .sidebar-closer {
   position: absolute;
-  top: 480px;
+  top: 520px;
   left: -76px;
   display: flex;
   align-items: center;
@@ -3069,7 +3069,7 @@ nav.nav-sidebar-hidden {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  top: 494px;
+  top: 534px;
   left: -76px;
   width: 100px;
   height: 40px;
