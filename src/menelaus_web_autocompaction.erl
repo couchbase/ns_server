@@ -361,13 +361,16 @@ do_parse_validate_settings(Params, ExpectIndex, not_magma) ->
         proplists:get_value(view_fragmentation_threshold, GlobalSettings),
 
     PercValidator = mk_number_field_validator(2, 100, Params),
-    SizeValidator = mk_number_field_validator(1, infinity, Params),
+    %% Zero means no size is specified (converts to undefined below).
+    SizeValidator = mk_number_field_validator(0, infinity, Params),
 
     ValidatorFun =
         fun (Validator, {_, Key, _} = ValidatorParams, Default) ->
                 case Validator(ValidatorParams) of
                     [] ->
                         [{ok, Key, Default}];
+                    [{ok, Key, 0}] ->
+                        [{ok, Key, undefined}];
                     ValueOrError ->
                         ValueOrError
                 end
