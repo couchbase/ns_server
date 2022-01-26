@@ -375,6 +375,16 @@ h1 a:active {
   position: absolute;
   left: .5rem;
 }
+.permanent-scroll::-webkit-scrollbar {
+  -webkit-appearance: none;
+  width: 7px;
+}
+.permanent-scroll::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background-color: rgba(0, 0, 0, .5);
+  box-shadow: 0 0 1px rgba(255, 255, 255, .5);
+}
+
 .check:before {
   font-family: FontAwesome;
   content: "\f00c";
@@ -1087,6 +1097,9 @@ section.error {
 .alert-error a,
 .alert-error span {
   color: #cc2a2e;
+}
+.alert-error p span {
+  color: #333;
 }
 
 /* statistic charts ----------------------------------------------------- */

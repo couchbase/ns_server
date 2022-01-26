@@ -439,9 +439,11 @@
   </div>
   <div
      ng-repeat="alert in adminCtl.alerts"
-     class="animate-alert alert overflow-wrap enable-ng-animation"
+     class="animate-alert alert overflow-wrap overflow-hidden enable-ng-animation max-height-10"
      ng-class="['alert-' + alert.type]">
-    <p>{{alert.msg}}</p>
+    <p class="padding-1">
+      <span class="margin-right-half margin-left-half max-height-4 overflow-y-auto inline padding-left-half padding-right-half permanent-scroll">{{alert.msg}}</span>
+    </p>
     <a
        ng-click="adminCtl.closeAlert(alert)"
        class="close"

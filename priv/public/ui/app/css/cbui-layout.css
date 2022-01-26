@@ -452,6 +452,12 @@ footer {
   max-height: 550px;
   overflow: auto;
 }
+.max-height-4 {
+  max-height: 4rem;
+}
+.max-height-10 {
+  max-height: 10rem;
+}
 .min-height-0 {
   min-height: 0 !important;
 }
@@ -484,6 +490,9 @@ footer {
 }
 .margin-quarter {
   margin: .25rem !important;
+}
+.margin-half {
+  margin: .5rem !important;
 }
 .margin-1 {
   margin: 1rem !important;
@@ -693,6 +702,9 @@ footer {
 }
 .overflow-auto {
   overflow: auto;
+}
+.overflow-y-auto {
+  overflow-y: auto;
 }
 .overflow-hidden {
   overflow: hidden;
