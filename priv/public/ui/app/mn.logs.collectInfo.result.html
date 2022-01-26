@@ -12,16 +12,16 @@
   <div class="row flex-right" style="min-height:0;position:absolute;top:0;right:0;z-index:1">
     <span>
       <button
+         (click)="startNewCollection()"
+         class="outline">
+        Start New Collection
+      </button>
+      <button
          *ngIf="(taskCollectInfo | async)?.status === 'running'"
          (click)="stopCollection()"
          [disabled]="(disableStopCollection | async)"
          class="outline">
         Stop Collection
-      </button>
-      <button
-         (click)="startNewCollection()"
-         class="outline">
-        Start New Collection
       </button>
     </span>
   </div>
