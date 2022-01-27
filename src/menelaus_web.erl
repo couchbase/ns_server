@@ -1180,7 +1180,10 @@ perform_action(Req, {Permission, Fun, Args}) ->
         forbidden ->
             ns_audit:auth_failure(NewReq),
             menelaus_util:reply_json(
-              NewReq, menelaus_web_rbac:forbidden_response([Permission]), 403)
+              NewReq, menelaus_web_rbac:forbidden_response([Permission]), 403);
+        temporary_failure ->
+            Msg = <<"Temporary error occurred. Please try again later.">>,
+            menelaus_util:reply_json(NewReq, Msg, 503)
     end.
 
 check_uuid(F, Args, Req) ->

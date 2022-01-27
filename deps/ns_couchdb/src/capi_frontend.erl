@@ -173,7 +173,10 @@ with_verify_bucket_auth(Req, BinBucketName, UUID, Fun) ->
             throw({unauthorized, <<"password required">>});
         {forbidden, Permission} ->
             Resp = menelaus_web_rbac:forbidden_response([Permission]),
-            couch_httpd:send_json(Req, 403, Resp)
+            couch_httpd:send_json(Req, 403, Resp);
+        temporary_failure ->
+            Msg = <<"Temporary error occurred. Please try again later.">>,
+            couch_httpd:send_json(Req, 503, {[{message, Msg}]})
     end.
 
 verify_bucket_type_support(views = _OperType, BucketConfig) ->
@@ -210,8 +213,8 @@ verify_bucket_auth(#httpd{method = Method,
                     end;
                 {forbidden, _} ->
                     {forbidden, Permission};
-                {auth_failure, _} ->
-                    auth_failure
+                {Error, _} ->
+                    Error
             end
     end.
 

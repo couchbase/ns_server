@@ -251,9 +251,9 @@ is_internal(Req) ->
                    {token, auth_token()} |
                    {client_cert_auth, string()} |
                    {rbac_user_id(), rbac_password()}) ->
-                          false | {ok, rbac_identity()}.
+          {ok, rbac_identity()} | {error, auth_failure | temporary_failure}.
 authenticate(error) ->
-    false;
+    {error, auth_failure};
 authenticate(undefined) ->
     {ok, {"", anonymous}};
 authenticate({token, Token} = Param) ->
@@ -267,7 +267,7 @@ authenticate({token, Token} = Param) ->
                         false ->
                             {ok, {"", wrong_token}};
                         true ->
-                            false
+                            {error, auth_failure}
                     end;
                 {ok, Id} ->
                     {ok, Id}
@@ -289,7 +289,7 @@ authenticate({client_cert_auth, Username} = Param) ->
                         true ->
                             {ok, Identity};
                         false ->
-                            false
+                            {error, auth_failure}
                     end
             end;
         true ->
@@ -298,21 +298,25 @@ authenticate({client_cert_auth, Username} = Param) ->
     end;
 authenticate({Username, Password}) ->
     case ns_config_auth:authenticate(Username, Password) of
-        false ->
-            authenticate_external(Username, Password);
         {ok, Id} ->
-            {ok, Id}
+            {ok, Id};
+        {error, auth_failure}->
+            authenticate_external(Username, Password);
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 -spec authenticate_external(rbac_user_id(), rbac_password()) ->
-                                    false | {ok, rbac_identity()}.
+          {error, auth_failure} | {ok, rbac_identity()}.
 authenticate_external(Username, Password) ->
     case ns_node_disco:couchdb_node() == node() of
         false ->
             case saslauthd_auth:authenticate(Username, Password) orelse
                  ldap_auth_cache:authenticate(Username, Password) of
-                true -> {ok, {Username, external}};
-                false -> false
+                true ->
+                    {ok, {Username, external}};
+                false ->
+                    {error, auth_failure}
             end;
         true ->
             rpc:call(ns_node_disco:ns_server_node(), ?MODULE,
@@ -329,8 +333,8 @@ verify_login_creds(Auth) ->
                 _ ->
                     {forbidden, Identity, UIPermission}
             end;
-        false ->
-            auth_failure
+        {error, Type} ->
+            Type
     end.
 
 -spec uilogin(mochiweb_request(), list()) -> mochiweb_response().
@@ -364,6 +368,11 @@ uilogin(Req, Params) ->
             ns_audit:login_failure(
               apply_headers(Req, meta_headers(User))),
             menelaus_util:reply(Req, 400);
+        temporary_failure ->
+            ns_audit:login_failure(
+              apply_headers(Req, meta_headers(User))),
+            Msg = <<"Temporary error occurred. Please try again later.">>,
+            menelaus_util:reply_json(Req, Msg, 503);
         {forbidden, Identity, Permission} ->
             ns_audit:login_failure(
               apply_headers(Req, meta_headers(Identity))),
@@ -390,7 +399,8 @@ can_use_cert_for_auth(Req) ->
     end.
 
 -spec verify_rest_auth(mochiweb_request(), rbac_permission() | no_check) ->
-                              {auth_failure | forbidden | allowed, [{_, _}]}.
+                              {auth_failure | forbidden | allowed
+                              | temporary_failure, [{_, _}]}.
 verify_rest_auth(Req, Permission) ->
     Auth = extract_auth(Req),
     case Auth of
@@ -407,7 +417,7 @@ verify_rest_auth(Req, Permission) ->
             end;
         _ ->
             case authenticate(Auth) of
-                false ->
+                {error, auth_failure} ->
                     {auth_failure, meta_headers(get_rejected_user(Auth))};
                 {ok, {User, _} = Identity} ->
                     case extract_effective_identity(Identity, Req) of
@@ -422,7 +432,9 @@ verify_rest_auth(Req, Permission) ->
                                     end,
                             {check_permission(EffectiveIdentity, Permission),
                              meta_headers(EffectiveIdentity, Token)}
-                    end
+                    end;
+                {error, temporary_failure} ->
+                    {temporary_failure, []}
             end
     end.
 
@@ -480,7 +492,8 @@ parse_on_behalf_of_header(Header) ->
             error
     end.
 
--spec extract_identity_from_cert(binary()) -> auth_failure | tuple().
+-spec extract_identity_from_cert(binary()) ->
+          tuple() | auth_failure | temporary_failure.
 extract_identity_from_cert(CertDer) ->
     case ns_ssl_services_setup:get_user_name_from_client_cert(CertDer) of
         undefined ->
@@ -489,10 +502,10 @@ extract_identity_from_cert(CertDer) ->
             auth_failure;
         UName ->
             case authenticate({client_cert_auth, UName}) of
-                false ->
-                    auth_failure;
                 {ok, Identity} ->
-                    Identity
+                    Identity;
+                {error, Type} ->
+                    Type
             end
     end.
 

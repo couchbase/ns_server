@@ -90,13 +90,20 @@ admin_credentials_changed(User, Password) ->
 authenticate_special("@prometheus" = User, Password) ->
     prometheus_cfg:authenticate(User, Password);
 authenticate_special([$@ | _] = User, Password) ->
-    MemcachedPassword =
-        ns_config:search_node_prop(ns_config:latest(), memcached, admin_pass),
-    case misc:compare_secure(MemcachedPassword, Password) of
-        true ->
-            {ok, {User, admin}};
-        false ->
-            authenticate_admin(User, Password)
+    case ns_config:search_node_prop(ns_config:latest(),
+                                    memcached, admin_pass) of
+        undefined ->
+            %% Note that this can happen during node rename when the erlang node
+            %% name has changed, but we haven't renamed the node level config
+            %% entries.
+            {error, temporary_failure};
+        MemcachedPassword ->
+            case misc:compare_secure(MemcachedPassword, Password) of
+                true ->
+                    {ok, {User, admin}};
+                false ->
+                    authenticate_admin(User, Password)
+            end
     end;
 authenticate_special(User, Password) ->
     authenticate_admin(User, Password).
@@ -105,7 +112,7 @@ authenticate(Username, Password) ->
     case authenticate_special(Username, Password) of
         {ok, Id} ->
             {ok, Id};
-        false ->
+        {error, auth_failure} ->
             case menelaus_users:authenticate(Username, Password) of
                 true ->
                     {ok, {Username, local}};
@@ -116,9 +123,11 @@ authenticate(Username, Password) ->
                         true ->
                             {ok, {Username, bucket}};
                         false ->
-                            false
+                            {error, auth_failure}
                     end
-            end
+            end;
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 authenticate_admin(User, Password) ->
@@ -128,11 +137,13 @@ authenticate_admin(User, Password) ->
         {User, Auth} ->
             {Salt, Mac} = get_salt_and_mac(Auth),
             case misc:compare_secure(hash_password(Salt, Password), Mac) of
-                true -> {ok, {User, admin}};
-                false -> false
+                true ->
+                    {ok, {User, admin}};
+                false ->
+                    {error, auth_failure}
             end;
         {_, _} ->
-            false
+            {error, auth_failure}
     end.
 
 hash_password(Password) ->
