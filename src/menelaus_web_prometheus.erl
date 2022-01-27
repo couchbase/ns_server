@@ -159,6 +159,7 @@ ensure_allowed_prom_req("/api/v1/series" ++ _) -> ok;
 ensure_allowed_prom_req("/api/v1/labels" ++ _) -> ok;
 ensure_allowed_prom_req("/api/v1/label/" ++ _) -> ok;
 ensure_allowed_prom_req("/api/v1/metadata" ++ _) -> ok;
+ensure_allowed_prom_req("/federate" ++ _) -> ok;
 ensure_allowed_prom_req(_) ->
     menelaus_util:web_exception(404, "not found").
 
