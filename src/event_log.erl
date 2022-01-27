@@ -206,15 +206,17 @@ build_extra_attributes([]) ->
 build_extra_attributes(Extra) ->
     [{extra_attributes, {lists:flatten(Extra)}}].
 
-maybe_add_log_settings_changed(Event, OldSettings, NewSettings, RedactKeys) ->
+maybe_add_log_settings_changed(Event, OldSettings, NewSettings, RedactKeys)
+  when is_list(RedactKeys) ->
+    maybe_add_log_settings_changed(Event, OldSettings, NewSettings,
+                                   ?cut(redact_keys(_, RedactKeys)));
+maybe_add_log_settings_changed(Event, OldSettings, NewSettings, Fun) ->
     case lists:keysort(1, OldSettings) =/= lists:keysort(1, NewSettings) of
         true ->
             event_log:add_log(
               Event,
-              [{old_settings, {redact_keys(OldSettings,
-                                           RedactKeys)}},
-               {new_settings, {redact_keys(NewSettings,
-                                           RedactKeys)}}]);
+              [{old_settings, {Fun(OldSettings)}},
+               {new_settings, {Fun(NewSettings)}}]);
         false ->
             ok
     end.

@@ -32,7 +32,7 @@ prepare_ldap_settings(Settings) ->
     Props.
 
 redact_ldap_cfg_keys() ->
-    [cacert].
+    [cacert, client_tls_cert].
 
 handle_ldap_settings_post(Req) ->
     menelaus_web_rbac:assert_groups_and_ldap_enabled(),
@@ -43,11 +43,15 @@ handle_ldap_settings_post(Req) ->
           OldSettings = ldap_util:build_settings(),
           ldap_util:set_settings(Props2),
           NewSettings = misc:update_proplist(OldSettings, Props2),
-          event_log:maybe_add_log_settings_changed(
-            ldap_cfg_changed,
-            prepare_ldap_settings(OldSettings),
-            prepare_ldap_settings(NewSettings),
-            redact_ldap_cfg_keys()),
+          TFun = fun (Settings) ->
+                         RedactedSettings = event_log:redact_keys(
+                                              Settings, redact_ldap_cfg_keys()),
+                         prepare_ldap_settings(RedactedSettings)
+                 end,
+          event_log:maybe_add_log_settings_changed(ldap_cfg_changed,
+                                                   OldSettings,
+                                                   NewSettings,
+                                                   TFun),
           handle_ldap_settings(Req2)
       end, [], params(), fun type_spec/1, Req).
 
