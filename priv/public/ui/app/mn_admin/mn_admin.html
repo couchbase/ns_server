@@ -454,48 +454,48 @@
 <main>
   <nav
      class="nav-sidebar"
-     ng-class="{'resp-show-menu': showRespMenu, 'nav-sidebar-hidden': poolDefault.hideNavSidebar}"
+     ng-class="{'resp-show-menu' : showRespMenu, 'nav-sidebar-hidden' : poolDefault.hideNavSidebar}"
      ng-click="showRespMenu = !showRespMenu"
      mn-pluggable-ui-tabs
      mn-tab-bar-name="adminTab">
 
     <a
        mn-tab="overview"
-       ng-class="{currentnav: ('app.admin.overview.statistics' | includedByState)}"
-       ng-click="adminCtl.throttledStateGo.next('app.admin.overview.statistics')">
+       ui-sref="app.admin.overview.statistics"
+       ui-sref-active="currentnav">
       Dashboard
     </a>
     <a
        mn-tab="servers"
        ng-class="{currentnav: ('app.admin.servers.list' | includedByState) || ('app.admin.groups' | includedByState)}"
-       ng-click="adminCtl.throttledStateGo.next('app.admin.servers.list')">
+       ui-sref="app.admin.servers.list">
       Servers
     </a>
     <a
        mn-tab="buckets"
-       ng-click="adminCtl.throttledStateGo.next('app.admin.buckets')"
        ng-class="{currentnav: ('app.admin.collections' | includedByState) || ('app.admin.buckets' | includedByState)}"
-       ng-show="rbac.cluster.bucket['.'].settings.read">
+       ng-show="rbac.cluster.bucket['.'].settings.read"
+       ui-sref="app.admin.buckets">
       Buckets
     </a>
     <a
-       mn-tab="replications"
        ng-show="rbac.cluster.tasks.read"
-       ng-click="adminCtl.throttledStateGo.next('app.admin.replications')"
-       ng-class="{currentnav: ('app.admin.replications' | includedByState)}">
+       mn-tab="replications"
+       ui-sref-active="currentnav"
+       ui-sref="app.admin.replications">
       XDCR
     </a>
     <a
        ng-show="rbac.cluster.admin.security.read"
        mn-tab="security"
-       ng-click="adminCtl.throttledStateGo.next('app.admin.security.roles.user')"
-       ng-class="{currentnav: ('app.admin.security' | includedByState)}">
+       ng-class="{currentnav: ('app.admin.security' | includedByState)}"
+       ui-sref="app.admin.security.roles.user">
       Security
     </a>
     <a
        mn-tab="settings"
-       ng-click="adminCtl.throttledStateGo.next('app.admin.settings.cluster')"
-       ng-class="{currentnav: ('app.admin.settings' | includedByState)}">
+       ng-class="{currentnav: ('app.admin.settings' | includedByState)}"
+       ui-sref="app.admin.settings.cluster">
       <span
          ng-show="adminCtl.updates.sendStats && !!adminCtl.updates.newVersion"
          class="label neutral badge notify"
@@ -506,7 +506,7 @@
     </a>
     <a
        mn-tab="logs"
-       ng-click="adminCtl.throttledStateGo.next('app.admin.logs.list')"
+       ui-sref="app.admin.logs.list"
        ng-class="{currentnav: ('app.admin.logs' | includedByState)}"
        ng-show="rbac.cluster.logs.read">
       Logs
@@ -517,8 +517,8 @@
        mn-tab-bar-name="workbenchTab">
     </div>
     <a
-       ng-click="adminCtl.throttledStateGo.next('app.admin.views.list')"
        ng-show="rbac.cluster.bucket['.'].settings.read && rbac.cluster.bucket['.'].views.read"
+       ui-state="'app.admin.views.list'"
        ui-state-params="{bucket: rbac.bucketNames['.views!read'][0] || null}"
        ng-class="{currentnav: ('app.admin.views' | includedByState)}">Views</a>
 
