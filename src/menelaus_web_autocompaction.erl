@@ -658,4 +658,23 @@ use_global_default_test() ->
     teardown_meck(),
     ok.
 
+reset_fragmentation_size_test() ->
+    setup_meck(),
+
+    %% Setting fragmention size to zero resets the value to undefined.
+    Settings = [{"databaseFragmentationThreshold[size]", "0"},
+                {"viewFragmentationThreshold[size]", "0"},
+                {"parallelDBAndViewCompaction", "false"}],
+
+    Expected = [{parallel_db_and_view_compaction,false},
+                {database_fragmentation_threshold,
+                 {global_database_fragmentation_threshold, undefined}},
+                {view_fragmentation_threshold,
+                 {global_view_fragmentation_threshold, undefined}}],
+
+    {ok, Stuff, []} = parse_validate_settings(Settings, false),
+    ?assertEqual(Expected, Stuff),
+    teardown_meck(),
+    ok.
+
 -endif.
