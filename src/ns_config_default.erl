@@ -413,9 +413,13 @@ upgrade_config_from_7_0_to_NEO(Config) ->
     DefaultConfig = default(),
     do_upgrade_config_from_7_0_to_NEO(Config, DefaultConfig).
 
-do_upgrade_config_from_7_0_to_NEO(_Config, DefaultConfig) ->
+do_upgrade_config_from_7_0_to_NEO(Config, DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig),
-     upgrade_key(memcached_defaults, DefaultConfig)].
+     upgrade_key(memcached_defaults, DefaultConfig),
+     %% Do targeted upgrade of specific memcached keys/subkeys to preserve
+     %% any custom changes that may have been made.
+     upgrade_sub_keys(memcached, [{delete, log_sleeptime}],
+                      Config, DefaultConfig)].
 
 encrypt_config_val(Val) ->
     {ok, Encrypted} = encryption_service:encrypt(term_to_binary(Val)),
