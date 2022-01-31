@@ -35,7 +35,8 @@ function mnExceptionReporter($delegate, $injector) {
   return function (exception, cause) {
     if (
       exception instanceof Rejection &&
-        (exception.type === 2 || exception.type === 3 || exception.type === 5)
+        (exception.type === 2 || exception.type === 3 || exception.type === 5 ||
+         (exception.type === 6 && !exception.detail && !exception.cause))
     ) {
       return; //we are not interested in these Rejection exceptions;
     }
