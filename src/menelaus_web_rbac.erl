@@ -997,8 +997,11 @@ put_user_validators(Domain) ->
      validate_roles(roles, _)] ++
         case Domain of
             local ->
-                [validate_password(_),
-                 validate_limits(_)];
+                ValidateLimits = case cluster_compat_mode:is_cluster_NEO() of
+                                     true -> [validate_limits(_)];
+                                     false -> []
+                                 end,
+                [validate_password(_) | ValidateLimits];
             external ->
                 []
         end ++

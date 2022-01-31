@@ -130,6 +130,14 @@ service_scope_limit_validators(kv) ->
      validator:unsupported(_)].
 
 scope_limit_validators(Type) ->
+    case cluster_compat_mode:is_cluster_NEO() of
+        true ->
+            get_scope_limit_validators(Type);
+        false ->
+            []
+    end.
+
+get_scope_limit_validators(Type) ->
     Validators = [validator:decoded_json(
                     Service, service_scope_limit_validators(Service), _) ||
                   Service <- [clusterManager, fts, index, kv]] ++

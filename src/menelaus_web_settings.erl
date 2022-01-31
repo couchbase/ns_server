@@ -404,6 +404,8 @@ is_allowed_on_cluster([secure_headers]) ->
     cluster_compat_mode:is_cluster_70();
 is_allowed_on_cluster([event_logs_limit]) ->
     cluster_compat_mode:is_cluster_NEO();
+is_allowed_on_cluster([enforce_limits]) ->
+    cluster_compat_mode:is_cluster_NEO();
 is_allowed_on_cluster(_) ->
     true.
 
