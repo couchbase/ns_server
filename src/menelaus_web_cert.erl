@@ -129,8 +129,13 @@ handle_cluster_certificate(Req) ->
 assert_old_CAs() ->
     NoNewCAsUploaded =
         lists:all(
-          fun (P) -> upgrade == proplists:get_value(origin, P) end,
-          ns_server_cert:trusted_CAs(props)),
+          fun (P) ->
+              case proplists:get_value(origin, P) of
+                  upgrade -> true;
+                  upload_api -> true;
+                  _ -> false
+              end
+          end, ns_server_cert:trusted_CAs(props)),
     case NoNewCAsUploaded of
         true -> ok;
         false ->
@@ -309,8 +314,10 @@ handle_upload_cluster_ca(Req) ->
               fun () ->
                   case cluster_compat_mode:is_cluster_NEO() of
                       true ->
+                          AddOpts = [{single_cert, true},
+                                     {extra_props, [{origin, upload_api}]}],
                           case ns_server_cert:add_CAs(uploaded, PemEncodedCA,
-                                                      [{single_cert, true}]) of
+                                                      AddOpts) of
                               {ok, []} ->
                                   reply_error(Req, already_in_use);
                               {ok, [Props]} ->

@@ -987,12 +987,13 @@ add_CAs(Type, Pem, Opts) ->
 add_CAs_txn_fun(Type, Pem, Opts) when is_binary(Pem),
                                  (Type =:= uploaded) or (Type =:= generated) ->
     SingleCert = proplists:get_bool(single_cert, Opts),
+    ExtraCertProps = proplists:get_value(extra_props, Opts, []),
     case decode_certificates(Pem) of
         {ok, PemEntries} when SingleCert,
                               length(PemEntries) > 1 ->
             {error, too_many_entries};
         {ok, PemEntries} ->
-            CAProps = [cert_props(Type, E, []) || E <- PemEntries],
+            CAProps = [cert_props(Type, E, ExtraCertProps) || E <- PemEntries],
             {ok, load_CAs_txn(CAProps, _)};
         {error, Reason} ->
             {error, Reason}
