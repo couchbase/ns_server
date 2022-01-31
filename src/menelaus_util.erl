@@ -57,6 +57,7 @@
          format_server_time/1,
          format_server_time/2,
          ensure_local/1,
+         ensure_local/2,
          reply_global_error/2,
          reply_error/3,
          require_auth/1,
@@ -522,6 +523,9 @@ require_permission(Req, Permission) ->
     end.
 
 ensure_local(Req) ->
+    ensure_local(Req, undefined).
+
+ensure_local(Req, ExtraMsg) ->
     Socket = mochiweb_request:get(socket, Req),
     Address = case mochiweb_socket:peername(Socket) of
                   {ok, {Addr, _Port}} ->
@@ -533,7 +537,12 @@ ensure_local(Req) ->
         true ->
             ok;
         false ->
-            web_exception(400, "API is accessible from localhost only")
+            BasicMsg = "API is accessible from localhost only",
+            Msg = case ExtraMsg of
+                      undefined -> BasicMsg;
+                      _ -> io_lib:format("~s (~s)", [BasicMsg, ExtraMsg])
+                  end,
+            web_exception(400, lists:flatten(Msg))
     end.
 
 reply_global_error(Req, Error) ->

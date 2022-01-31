@@ -134,7 +134,9 @@ assert_old_CAs() ->
     case NoNewCAsUploaded of
         true -> ok;
         false ->
-            Err = <<"deprecated, please use /pools/default/trustedCAs">>,
+            Err = <<"this API is disabled, "
+                    "please use GET /pools/default/trustedCAs, "
+                    "see documentation for details">>,
             menelaus_util:web_exception(400, Err)
     end.
 
@@ -292,7 +294,11 @@ handle_upload_cluster_ca(Req) ->
     case (not cluster_compat_mode:is_cluster_NEO()) orelse
          ns_config:read_key_fast(allow_non_local_ca_upload, false) of
         true -> ok;
-        false -> menelaus_util:ensure_local(Req)
+        false ->
+            Msg = "this behavior can be changed by means of "
+                  "POST /settings/security/allowNonLocalCACertUpload, "
+                  "see documentation for details",
+            menelaus_util:ensure_local(Req, Msg)
     end,
 
     case mochiweb_request:recv_body(Req) of
