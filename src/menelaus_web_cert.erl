@@ -288,12 +288,12 @@ handle_load_ca_certs(Req) ->
       end).
 
 handle_upload_cluster_ca(Req) ->
+    menelaus_util:assert_is_enterprise(),
     case (not cluster_compat_mode:is_cluster_NEO()) orelse
          ns_config:read_key_fast(allow_non_local_ca_upload, false) of
         true -> ok;
         false -> menelaus_util:ensure_local(Req)
     end,
-    menelaus_util:assert_is_enterprise(),
 
     case mochiweb_request:recv_body(Req) of
         undefined ->
