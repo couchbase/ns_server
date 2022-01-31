@@ -255,9 +255,10 @@ function mnUserRolesFactory($q, $http, mnPoolDefault, mnStoreService, mnStatisti
     return $http.get("/settings/rbac/profiles/@self").then(null, function (resp) {
       switch (resp.status) {
       case "404":
-      default:
         resp.data = {};
         return resp;
+      default:
+        return $q.reject();
       }
     });
   }
