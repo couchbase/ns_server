@@ -143,21 +143,21 @@ class MnSettingsAutoCompactionService {
     let values = clone(group.value);
 
     if (values.databaseFragmentationThreshold) {
-      if (values.databaseFragmentationThreshold.size) {
-        values.databaseFragmentationThreshold.size = this.mnHelperService.transformMBToBytes(values.databaseFragmentationThreshold.size);
-      }
-
-      delete values.viewFragmentationThreshold.sizeFlag;
-      delete values.viewFragmentationThreshold.percentageFlag;
-    }
-
-    if (values.viewFragmentationThreshold) {
-      if (values.viewFragmentationThreshold.size) {
-        values.viewFragmentationThreshold.size = this.mnHelperService.transformMBToBytes(values.viewFragmentationThreshold.size);
-      }
+      values.databaseFragmentationThreshold.size = values.databaseFragmentationThreshold.size ?
+        this.mnHelperService.transformMBToBytes(values.databaseFragmentationThreshold.size) :
+        0;
 
       delete values.databaseFragmentationThreshold.sizeFlag;
       delete values.databaseFragmentationThreshold.percentageFlag;
+    }
+
+    if (values.viewFragmentationThreshold) {
+      values.viewFragmentationThreshold.size = values.viewFragmentationThreshold.size ?
+        this.mnHelperService.transformMBToBytes(values.viewFragmentationThreshold.size) :
+        0;
+
+      delete values.viewFragmentationThreshold.sizeFlag;
+      delete values.viewFragmentationThreshold.percentageFlag;
     }
 
     values.purgeInterval = Number(values.purgeInterval);
