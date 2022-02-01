@@ -20,18 +20,24 @@ licenses/APL2.txt.
        [mnClearDisabled]="true"
        mnName="{{step}}"
        mnPlaceholder="{{step}}...">
-      </mn-input-filter>
+    </mn-input-filter>
   </div>
 </form>
 
 <div *ngIf="(service.stream.showHideDropdown | async)">
-  <div
-     class="selector-scroll"
-     [hidden]="!(service.stream.list | async)?.length">
-    <a
-       (click)="form.submit.next(item)"
-       *ngFor="let item of (service.stream.list | async)">
-      {{item[service.filterKey]}}
-    </a>
+  <div *ngFor="let step of service.options.steps">
+    <div
+       class="selector-scroll"
+       *ngIf="(service.stream.step | async) === step">
+      <div
+         [style.min-height.rem]="(service.stream.list | async) ? null : 2.1"
+         [mnSpinner]="(service.stream.list | async) !== null">
+        <a
+           (click)="form.submit.next(item)"
+           *ngFor="let item of (service.stream.list | async)">
+          {{item[service.filterKey]}}
+        </a>
+      </div>
+    </div>
   </div>
 </div>

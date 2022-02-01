@@ -11,6 +11,7 @@ licenses/APL2.txt.
 import {NgModule} from '@angular/core';
 import {CommonModule} from '@angular/common';
 import {ReactiveFormsModule} from '@angular/forms';
+import {MnSharedModule} from './mn.shared.module.js';
 
 import {MnInputFilterModule} from './mn.input.filter.module.js';
 import {MnKeyspaceSelectorComponent} from './mn.keyspace.selector.component.js';
@@ -32,7 +33,8 @@ class MnKeyspaceSelectorModule {
       imports: [
         CommonModule,
         MnInputFilterModule,
-        ReactiveFormsModule
+        ReactiveFormsModule,
+        MnSharedModule
       ],
     })
   ]}
