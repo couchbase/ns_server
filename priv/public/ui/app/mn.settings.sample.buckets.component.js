@@ -91,7 +91,7 @@ class MnSettingsSampleBucketsComponent extends MnLifeCycleHooksToStream {
 
     this.maxQuotaExceeded =
       combineLatest(mnAdminService.stream.getPoolsDefault,
-                    mnAdminService.stream.getNodes,
+                    mnAdminService.stream.allActiveNodes,
                     this.selectedQuotas)
       .pipe(map(this.getQuotaExceeded.bind(this)),
             shareReplay({refCount: true, bufferSize: 1}));
@@ -132,12 +132,14 @@ class MnSettingsSampleBucketsComponent extends MnLifeCycleHooksToStream {
     });
   }
 
-  getQuotaExceeded([poolsDefault, servers, selectedQuotas]) {
-    let quotaNeeded = selectedQuotas.reduce((acc, val) => (acc + val), 0) * servers.length;
-    let { quotaTotal, quotaUsed } = poolsDefault.storageTotals.ram;
+  getQuotaExceeded([poolsDefault, activeServers, selectedQuotas]) {
+    let quotaNeeded = selectedQuotas.reduce((acc, val) =>
+      (acc + parseInt(val, 10)), 0) * activeServers.length;
 
-    if (quotaNeeded >= (quotaTotal - quotaUsed)) {
-      return Math.ceil(quotaNeeded - (quotaTotal - quotaUsed)) / 1024 / 1024 / servers.length
+    let {quotaTotal, quotaUsed} = poolsDefault.storageTotals.ram;
+
+    if (quotaNeeded > (quotaTotal - quotaUsed)) {
+      return Math.ceil(quotaNeeded - (quotaTotal - quotaUsed)) / 1024 / 1024 / activeServers.length;
     }
 
     return false;
@@ -160,6 +162,6 @@ class MnSettingsSampleBucketsComponent extends MnLifeCycleHooksToStream {
         acc.push(val)
       }
       return acc;
-    }, [])
+    }, []);
   }
 }
