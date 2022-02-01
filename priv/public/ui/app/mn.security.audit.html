@@ -120,7 +120,8 @@
            ngbTooltip="NOTE: Important events (shown in the checked-disabled state above) will
                   ALWAYS be logged. Even from these users."
            placement="right auto"
-           triggers="onmouseenter">
+           triggers="click"
+           [autoClose]="'outside'">
           <span class="icon fa-warning"></span>
         </span>
         <textarea
