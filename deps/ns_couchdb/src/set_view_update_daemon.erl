@@ -51,17 +51,24 @@ init([]) ->
 handle_call(Msg, _From, State) ->
     {stop, {unexpected_call, Msg}, State}.
 
-
-handle_cast(trigger_updates,
-            #state{num_changes=MinNumChanges,
-                   replica_num_changes=ReplicaMinNumChanges} = State) ->
-    Buckets = ns_bucket:node_bucket_names_of_type(ns_node_disco:ns_server_node(),
-                                                  persistent),
+trigger_update_logic(
+  #state{num_changes=MinNumChanges,
+         replica_num_changes=ReplicaMinNumChanges} = State) ->
+    Buckets =
+        ns_bucket:node_bucket_names_of_type(ns_node_disco:ns_server_node(),
+                                            persistent),
     lists:foreach(
       fun (Bucket) ->
-              ok = trigger_updates_for_bucket(Bucket,
-                                              MinNumChanges, ReplicaMinNumChanges)
-      end, Buckets),
+              ok = trigger_updates_for_bucket(
+                     Bucket, MinNumChanges, ReplicaMinNumChanges)
+      end, Buckets).
+
+handle_cast(trigger_updates, State) ->
+    try
+        trigger_update_logic(State)
+    catch T:E:S ->
+        ?log_error("Eating exception:~n~p", [{T, E, S}])
+    end,
     {noreply, schedule_timer(State)}.
 
 handle_info(config_changed, State) ->

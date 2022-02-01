@@ -33,8 +33,8 @@ start_link() ->
 
 init([]) ->
     {ok, { {one_for_one,
-            misc:get_env_default(max_r, 5),
-            misc:get_env_default(max_t, 10)}, child_specs()} }.
+            misc:get_env_default(max_r, 7),
+            misc:get_env_default(max_t, 15)}, child_specs()} }.
 
 child_specs() ->
     [

@@ -267,7 +267,7 @@ wait_for_node(Node) when is_atom(Node) ->
     ?log_debug("Waiting for connection to node ~p to be established", [Node]),
     wait_for_node(fun () -> Node end);
 wait_for_node(NodeFun) ->
-    wait_for_node(NodeFun, 100, 10).
+    wait_for_node(NodeFun, 100, 300).
 
 wait_for_node(NodeFun, _Time, 0) ->
     ?log_error("Failed to wait for node ~p", [NodeFun()]),
