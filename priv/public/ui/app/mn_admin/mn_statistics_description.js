@@ -373,6 +373,7 @@ function getStatAdditionalConfig(statName) {
   case "@fts-.fts_num_bytes_used_disk":
   case "@fts-.fts_num_files_on_disk":
   case "@xdcr-.@items.xdcr_docs_failed_cr_source_total":
+  case "@xdcr-.@items.xdcr_docs_failed_cr_target_total":
   case "@xdcr-.@items.xdcr_docs_written_total":
   case "@xdcr-.@items.xdcr_changes_left_total":
   case "@xdcr-.@items.xdcr_wtavg_docs_latency_seconds":
@@ -808,6 +809,15 @@ function get70CompatDesc() {
             unit: "number",
             title: "Index Write Queue",
             desc: "Number of documents queued to be indexed at the Indexer. Per Index."
+          }
+        }
+      },
+      "@xdcr-": {
+        "@items": {
+          "xdcr_docs_failed_cr_target_total": {
+            unit: "number",
+            title: "XDCR Mutations Skipped (target)",
+            desc: "Number of mutations that failed conflict resolution on the target side.  Per-replication. (measured from per-replication stat docs_failed_cr_target)"
           }
         }
       },

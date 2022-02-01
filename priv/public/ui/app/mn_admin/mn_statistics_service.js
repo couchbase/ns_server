@@ -908,6 +908,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
           specificStat: false
         }, {
           stats: {"@xdcr-.@items.docs_failed_cr_source": true,
+                  "@xdcr-.@items.xdcr_docs_failed_cr_target_total": true,
                   "@xdcr-.@items.docs_filtered": true},
           size: "small",
           specificStat: false
