@@ -349,7 +349,7 @@ eviction_policy(BucketConfig) ->
     Default = case storage_mode(BucketConfig) of
                   undefined -> value_only;
                   couchstore -> value_only;
-                  magma -> value_only;
+                  magma -> full_eviction;
                   ephemeral -> no_eviction
               end,
     proplists:get_value(eviction_policy, BucketConfig, Default).

@@ -1655,19 +1655,28 @@ parse_validate_threads_number(NumThreads) ->
 
 parse_validate_eviction_policy(Params, BCfg, IsNew) ->
     IsEphemeral = is_ephemeral(Params, BCfg, IsNew),
-    do_parse_validate_eviction_policy(Params, BCfg, IsEphemeral, IsNew).
+    IsMagma = is_magma(Params, BCfg, IsNew),
+    do_parse_validate_eviction_policy(Params, BCfg, IsEphemeral, IsNew,
+                                      IsMagma).
 
-do_parse_validate_eviction_policy(Params, _BCfg, false = _IsEphemeral, IsNew) ->
+do_parse_validate_eviction_policy(Params, _BCfg, false = _IsEphemeral, IsNew,
+                                  IsMagma) ->
+    Default = case IsMagma of
+                  false ->
+                      "valueOnly";
+                  true ->
+                      "fullEviction"
+              end,
     validate_with_missing(proplists:get_value("evictionPolicy", Params),
-                          "valueOnly", IsNew,
+                          Default, IsNew,
                           fun parse_validate_membase_eviction_policy/1);
 do_parse_validate_eviction_policy(Params, _BCfg, true = _IsEphemeral,
-                                  true = IsNew) ->
+                                  true = IsNew, _IsMagma) ->
     validate_with_missing(proplists:get_value("evictionPolicy", Params),
                           "noEviction", IsNew,
                           fun parse_validate_ephemeral_eviction_policy/1);
 do_parse_validate_eviction_policy(Params, BCfg, true = _IsEphemeral,
-                                  false = _IsNew) ->
+                                  false = _IsNew, _IsMagma) ->
     case proplists:get_value("evictionPolicy", Params) of
         undefined ->
             ignore;
