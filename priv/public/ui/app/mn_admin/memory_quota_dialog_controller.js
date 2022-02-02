@@ -16,6 +16,7 @@ import mnPoolDefault from '../components/mn_pool_default.js';
 import mnPromiseHelper from "../components/mn_promise_helper.js";
 import mnSettingsClusterService from "./mn_settings_cluster_service.js";
 import mnMemoryQuota from "../components/directives/mn_memory_quota/mn_memory_quota.js";
+import mnStorageMode from "../components/directives/mn_storage_mode/mn_storage_mode.js";
 
 export default 'mnMemoryQuotaDialogController';
 
@@ -24,7 +25,8 @@ angular.module('mnMemoryQuotaDialogController', [
   mnPoolDefault,
   mnPromiseHelper,
   mnSettingsClusterService,
-  mnMemoryQuota
+  mnMemoryQuota,
+  mnStorageMode
 ])
   .controller('mnMemoryQuotaDialogController', ["$q", "$uibModalInstance", "mnPoolDefault", "mnPromiseHelper", "mnSettingsClusterService", "indexSettings", "memoryQuotaConfig", "firstTimeAddedServices", mnMemoryQuotaDialogController]);
 

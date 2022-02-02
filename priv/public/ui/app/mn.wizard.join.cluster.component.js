@@ -18,7 +18,8 @@ import {MnWizardService} from './mn.wizard.service.js';
 import {MnAuthService} from "./mn.auth.service.js";
 import {MnFormService} from "./mn.form.service.js";
 import {MnPoolsService} from "./mn.pools.service.js"
-import {MnSecurityService} from "./mn.security.service.js"
+import {MnHelperService} from "./mn.helper.service.js";
+import {MnSecurityService} from "./mn.security.service.js";
 import {MnPools, $rootScope} from "./ajs.upgraded.providers.js";
 
 export {MnWizardJoinClusterComponent};
@@ -40,11 +41,14 @@ class MnWizardJoinClusterComponent extends MnLifeCycleHooksToStream {
     MnFormService,
     UIRouter,
     MnPools,
-    $rootScope
+    $rootScope,
+    MnHelperService
   ]}
 
-  constructor(mnPoolsService, mnSecurityService, mnWizardService, mnAuthService, mnFormService, uiRouter, mnPools, $rootScope) {
+  constructor(mnPoolsService, mnSecurityService, mnWizardService, mnAuthService, mnFormService, uiRouter, mnPools, $rootScope, mnHelperService) {
     super();
+
+    this.mnHelperService = mnHelperService;
 
     this.focusFieldSubject = new BehaviorSubject("hostname");
     this.joinClusterForm = mnWizardService.wizardForm.joinCluster;
@@ -87,7 +91,11 @@ class MnWizardJoinClusterComponent extends MnLifeCycleHooksToStream {
       .clearErrors()
       .showGlobalSpinner()
       .success(() => {
+        let services = this.joinClusterForm.get("services.flag");
+        let servicesAsObject =
+          this.mnHelperService.stringToObject(mnWizardService.getServicesValues(services).join(','));
         $rootScope.mnGlobalSpinnerFlag = true;
+        $rootScope.$broadcast("maybeShowMemoryQuotaDialog", servicesAsObject);
         mnPools.clearCache();
         uiRouter.urlRouter.sync();
       });

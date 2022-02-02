@@ -419,51 +419,9 @@ function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAle
       mnBucketsService.getBucketsByType();
     });
     $rootScope.$broadcast("reloadBucketStats");
-
-    $scope.$on("maybeShowMemoryQuotaDialog",
-               loadAndRunMemoryQuotaDialog($uibModal, $ocLazyLoad, $injector, mnPoolDefault));
   }
 }
 
-function loadAndRunMemoryQuotaDialog($uibModal, $ocLazyLoad, $injector, mnPoolDefault) {
-  return async function (event, services) {
-    var poolsDefault = await mnPoolDefault.get();
-    var servicesToCheck = ["index", "fts"];
-    if (poolsDefault.isEnterprise) {
-      servicesToCheck = servicesToCheck.concat(["cbas", "eventing"]);
-    }
-    await import("../components/directives/mn_memory_quota/mn_memory_quota_service.js");
-    await $ocLazyLoad.load({name: 'mnMemoryQuotaService'});
-    var mnMemoryQuotaService = $injector.get('mnMemoryQuotaService');
-
-    var firstTimeAddedServices =
-        mnMemoryQuotaService.getFirstTimeAddedServices(servicesToCheck,
-                                                       services, poolsDefault.nodes);
-    if (!firstTimeAddedServices.count) {
-      return;
-    }
-
-    await import("./memory_quota_dialog_controller.js");
-    await $ocLazyLoad.load({name: 'mnMemoryQuotaDialogController'});
-    $uibModal.open({
-      windowTopClass: "without-titlebar-close",
-      backdrop: 'static',
-      templateUrl: 'app/mn_admin/memory_quota_dialog.html',
-      controller: 'mnMemoryQuotaDialogController as memoryQuotaDialogCtl',
-      resolve: {
-        memoryQuotaConfig: function (mnMemoryQuotaService) {
-          return mnMemoryQuotaService.memoryQuotaConfig(services, true, false);
-        },
-        indexSettings: function (mnSettingsClusterService) {
-          return mnSettingsClusterService.getIndexSettings();
-        },
-        firstTimeAddedServices: function() {
-          return firstTimeAddedServices;
-        }
-      }
-    });
-  }
-}
 
 async function loadAndRunPoorMansAlertsDialog($ocLazyLoad, $injector, resp) {
   await import("./mn_poor_mans_alerts_controller.js");
