@@ -53,7 +53,7 @@ handle_call(Msg, _From, State) ->
 
 trigger_update_logic(
   #state{num_changes=MinNumChanges,
-         replica_num_changes=ReplicaMinNumChanges} = State) ->
+         replica_num_changes=ReplicaMinNumChanges}) ->
     Buckets =
         ns_bucket:node_bucket_names_of_type(ns_node_disco:ns_server_node(),
                                             persistent),
