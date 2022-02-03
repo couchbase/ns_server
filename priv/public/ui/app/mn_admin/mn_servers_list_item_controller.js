@@ -201,13 +201,13 @@ function mnServersListItemController($scope, $rootScope, $uibModal, mnServersSer
     let nodeCertificate = $scope.serversCtl.nodeCertificates &&
       $scope.serversCtl.nodeCertificates[node.configuredHostname];
 
-    return nodeCertificate && nodeCertificate.highestSeverity > 2;
+    return nodeCertificate && nodeCertificate.highestSeverity > 3;
   }
 
   function hasMinorCertWarning(node) {
     let nodeCertificate = $scope.serversCtl.nodeCertificates &&
       $scope.serversCtl.nodeCertificates[node.configuredHostname];
 
-    return nodeCertificate && ((nodeCertificate.highestSeverity == 1) || (nodeCertificate.highestSeverity == 2));
+    return nodeCertificate && (nodeCertificate.highestSeverity == 3);
   }
 }
