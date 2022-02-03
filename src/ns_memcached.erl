@@ -99,8 +99,8 @@
          flush/1,
          set/7, add/5, get/5, delete/5,
          get_from_replica/4,
-         get_meta/4,
-         get_xattrs/5,
+         get_meta/5,
+         get_xattrs/6,
          update_with_rev/7,
          get_seqno_stats/2,
          get_mass_dcp_docs_estimate/2,
@@ -119,7 +119,8 @@
          set_tls_config/1,
          get_failover_log/2,
          get_failover_logs/2,
-         get_collections_uid/1
+         get_collections_uid/1,
+         maybe_add_impersonate_user_frame_info/2
         ]).
 
 %% for ns_memcached_sockets_pool, memcached_file_refresh only
@@ -974,32 +975,33 @@ get_from_replica(Bucket, Key, CollectionsUid, VBucket) ->
             ?TIMEOUT_HEAVY).
 
 %% @doc send an get metadata command to memcached
--spec get_meta(bucket_name(), binary(), undefined | integer(), integer()) ->
+-spec get_meta(bucket_name(), binary(), undefined | integer(), integer(),
+               undefined | rbac_identity()) ->
                       {ok, rev(), integer(), integer()}
                           | {memcached_error, key_enoent, integer()}
                           | mc_error().
-get_meta(Bucket, Key, CollectionsUid, VBucket) ->
+get_meta(Bucket, Key, CollectionsUid, VBucket, Identity) ->
     EncodedKey = mc_binary:maybe_encode_uid_in_key(
                    CollectionsUid =/= undefined, CollectionsUid, Key),
     perform_very_long_call(
       fun (Sock) ->
               {reply, mc_client_binary:get_meta(Sock, EncodedKey,
-                                                VBucket)}
+                                                VBucket, Identity)}
       end, Bucket, [collections || CollectionsUid =/= undefined]).
 
 %% @doc get xattributes for specified key
 -spec get_xattrs(bucket_name(), binary(), undefined | integer(),
-                 integer(), [atom()]) ->
+                 integer(), [atom()], undefined | rbac_identity()) ->
                         {ok, integer(), [{binary(), term()}]}
                             | {memcached_error, key_enoent, integer()}
                             | mc_error().
-get_xattrs(Bucket, Key, CollectionsUid, VBucket, Permissions) ->
+get_xattrs(Bucket, Key, CollectionsUid, VBucket, Permissions, Identity) ->
     EncodedKey = mc_binary:maybe_encode_uid_in_key(
                    CollectionsUid =/= undefined, CollectionsUid, Key),
     perform_very_long_call(
       fun (Sock) ->
               {reply, mc_binary:get_xattrs(Sock, EncodedKey, VBucket,
-                                           Permissions)}
+                                           Permissions, Identity)}
       end, Bucket, [xattr | [collections || CollectionsUid =/= undefined]]).
 
 %% @doc send a delete command to memcached instance

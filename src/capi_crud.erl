@@ -102,11 +102,12 @@ get_inner(Bucket, DocId, CollectionUid, VBucket, Options, Identity,
                           end,
             try
                 {ok, Rev, _MetaFlags} = get_meta(Bucket, DocId, CollectionUid,
-                                                 VBucket, CAS),
+                                                 VBucket, CAS, Identity),
                 {ok, XAttrsJsonObj} = get_xattrs(Bucket, DocId,
                                                  CollectionUid,
                                                  VBucket, CAS,
-                                                 XAttrPermissions),
+                                                 XAttrPermissions,
+                                                 Identity),
                 {ok, #doc{id = DocId, body = Value, rev = Rev,
                           content_meta = ContentMeta},
                  XAttrsJsonObj}
@@ -129,16 +130,17 @@ get_inner(Bucket, DocId, CollectionUid, VBucket, Options, Identity,
             {error, Entry#mc_entry.data}
     end.
 
-get_meta(Bucket, DocId, CollectionUid, VBucket, CAS) ->
-    case ns_memcached:get_meta(Bucket, DocId, CollectionUid, VBucket) of
+get_meta(Bucket, DocId, CollectionUid, VBucket, CAS, Identity) ->
+    case ns_memcached:get_meta(Bucket, DocId, CollectionUid, VBucket,
+                               Identity) of
         {ok, Rev, CAS, MetaFlags} -> {ok, Rev, MetaFlags};
         {ok, _, _, _} -> {error, bad_cas};
         _ -> {error, bad_resp}
     end.
 
-get_xattrs(Bucket, DocId, CollectionUid, VBucket, CAS, Permissions) ->
+get_xattrs(Bucket, DocId, CollectionUid, VBucket, CAS, Permissions, Identity) ->
     case ns_memcached:get_xattrs(Bucket, DocId, CollectionUid,
-                                 VBucket, Permissions) of
+                                 VBucket, Permissions, Identity) of
         {ok, CAS, XAttrs} -> {ok, {[{<<"xattrs">>, {XAttrs}}]}};
         {ok, _, _} -> {error, bad_cas};
         Error -> Error

@@ -42,7 +42,7 @@
          set_vbuckets/2,
          stats/1,
          stats/4,
-         get_meta/3,
+         get_meta/4,
          update_with_rev/7,
          set_engine_param/4,
          enable_traffic/1,
@@ -61,7 +61,7 @@
          audit_put/3,
          audit_config_reload/1,
          refresh_rbac/1,
-         subdoc_multi_lookup/5,
+         subdoc_multi_lookup/6,
          get_failover_log/2,
          update_user_permissions/2,
          set_collections_manifest/2,
@@ -463,9 +463,12 @@ stats(Sock, Key, CB, CBData) ->
         Response -> process_error_response(Response)
     end.
 
-get_meta(Sock, Key, VBucket) ->
+get_meta(Sock, Key, VBucket, Identity) ->
+    McHeader0 = #mc_header{vbucket = VBucket},
+    McHeader =  ns_memcached:maybe_add_impersonate_user_frame_info(Identity,
+                                                                   McHeader0),
     case cmd(?CMD_GET_META, Sock, undefined, undefined,
-             {#mc_header{vbucket = VBucket},
+             {McHeader,
               #mc_entry{key = Key}}) of
         {ok, #mc_header{status=?SUCCESS},
              #mc_entry{ext = Ext, cas = CAS}, _NCB} ->
@@ -481,10 +484,13 @@ get_meta(Sock, Key, VBucket) ->
             process_error_response(Response)
     end.
 
-subdoc_multi_lookup(Sock, Key, VBucket, Paths, Options) ->
+subdoc_multi_lookup(Sock, Key, VBucket, Paths, Options, Identity) ->
     {SubDocFlags, SubDocDocFlags} = parse_subdoc_flags(Options),
     Ext = <<SubDocDocFlags:8>>,
-    Header = #mc_header{vbucket = VBucket},
+    Header0 = #mc_header{vbucket = VBucket},
+    Header = ns_memcached:maybe_add_impersonate_user_frame_info(Identity,
+                                                                Header0),
+
     Specs = [<<?CMD_SUBDOC_GET:8, SubDocFlags:8, (byte_size(P)):16, P/binary>>
                 || P <- Paths],
     Entry = #mc_entry{ext = Ext, key = Key, data = Specs},

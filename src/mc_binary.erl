@@ -17,7 +17,7 @@
          send/4, send/2, encode/3,
          quick_stats/4, quick_stats/5, quick_stats_append/3,
          decode_packet/1, decode_packet_ext/1,
-         get_keys/5, get_xattrs/4,
+         get_keys/5, get_xattrs/5,
          maybe_encode_uid_in_key/3]).
 
 -define(RECV_TIMEOUT,             ?get_timeout(recv, 120000)).
@@ -622,9 +622,10 @@ handle_include_docs(Sock, TRef, FetchLimit, Params, KeyTuples, Heap) ->
                                        NewKeyTuples, NewHeap)
     end.
 
-get_xattrs(Sock, DocId, VBucket, Permissions) ->
+get_xattrs(Sock, DocId, VBucket, Permissions, Identity) ->
     try
-        {Keys, CAS} = try_get_xattr(Sock, DocId, VBucket, <<"$XTOC">>),
+        {Keys, CAS} = try_get_xattr(Sock, DocId, VBucket, <<"$XTOC">>,
+                                    Identity),
         AllowedKeys = lists:filter(
                         fun (K) ->
                                 check_xattr_read_permission(K, Permissions)
@@ -634,7 +635,8 @@ get_xattrs(Sock, DocId, VBucket, Permissions) ->
         {Values, ResCAS} =
             lists:foldr(
                 fun (K, {Acc, _}) ->
-                        {V, NewCAS} = try_get_xattr(Sock, DocId, VBucket, K),
+                        {V, NewCAS} = try_get_xattr(Sock, DocId, VBucket, K,
+                                                    Identity),
                         {[{K, V}|Acc], NewCAS}
                 end, {[], CAS}, AllowedKeys),
         {ok, ResCAS, Values}
@@ -642,9 +644,9 @@ get_xattrs(Sock, DocId, VBucket, Permissions) ->
         error:{memcached_error, _, _} = Error -> Error
     end.
 
-try_get_xattr(Sock, DocId, VBucket, Key) ->
+try_get_xattr(Sock, DocId, VBucket, Key, Identity) ->
     case mc_client_binary:subdoc_multi_lookup(Sock, DocId, VBucket,
-                                              [Key], [xattr_path]) of
+                                              [Key], [xattr_path], Identity) of
         {ok, CAS, [JSON]} -> {ejson:decode(JSON), CAS};
         {memcached_error, _, _} = Error ->
             ?log_error("Subdoc multi lookup error: arguments: ~p ~p ~p ~p,"
