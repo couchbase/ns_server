@@ -116,6 +116,10 @@ tag_user_tuples_fun({docv2, {user, {U, D}}, V, _} = Doc) ->
     {stop, setelement(3, T, tag_user_props(V))};
 tag_user_tuples_fun({full_name, FullName}) when is_binary(FullName) ->
     {stop, {full_name, tag_user_name(FullName)}};
+tag_user_tuples_fun({raw_url, RawUrl}) ->
+    {stop, {raw_url, tag_misc_item(RawUrl)}};
+tag_user_tuples_fun({doc_id, DocId}) ->
+    {stop, {doc_id, tag_user_name(DocId)}};
 tag_user_tuples_fun({UName, Type}) when Type =:= local orelse
                                         Type =:= external orelse
                                         Type =:= admin ->

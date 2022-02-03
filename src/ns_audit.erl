@@ -824,11 +824,11 @@ modify_query_curl_whitelist_setting(Req, Values) ->
 
 read_doc(Req, BucketName, DocId) ->
     put(read_doc, Req, [{bucket_name, BucketName},
-                        {doc_id, ns_config_log:tag_user_name(DocId)}]).
+                        {doc_id, DocId}]).
 
 mutate_doc(Req, Oper, BucketName, DocId) ->
     put(mutate_doc, Req, [{bucket_name, BucketName},
-                          {doc_id, ns_config_log:tag_user_name(DocId)},
+                          {doc_id, DocId},
                           {operation, Oper}]).
 
 set_user_group(Req, Id, Roles, Description, LDAPGroup, Reason) ->
@@ -903,12 +903,11 @@ set_manifest(Req, BucketName, InputManifest, ValidOnUid, Uid) ->
 
 auth_failure(Req) ->
     RawPath = mochiweb_request:get(raw_path, Req),
-    put(auth_failure, Req, [{raw_url, ns_config_log:tag_misc_item(RawPath)}]).
+    put(auth_failure, Req, [{raw_url, RawPath}]).
 
 rbac_info_retrieved(Req, Type) ->
     RawPath = mochiweb_request:get(raw_path, Req),
-    put(rbac_info_retrieved, Req, [{raw_url,
-                                    ns_config_log:tag_misc_item(RawPath)},
+    put(rbac_info_retrieved, Req, [{raw_url, RawPath},
                                    {type, Type}]).
 
 admin_password_reset(Req) ->
