@@ -132,9 +132,8 @@ class MnSecurityAuditComponent extends MnLifeCycleHooksToStream {
         });
         result.disabled = result.disabled.join(',');
       }
-      if (value.disabledUsers) {
-        result.disabledUsers = value.disabledUsers.replace(/\/couchbase/gi,"/local");
-      }
+      var users = value.disabledUsers;
+      result.disabledUsers = users ? users.replace(/\/couchbase/gi,"/local") : "";
     }
     if (value.auditdEnabled) {
       result.rotateInterval = value.rotateInterval * this.formatTimeUnit(value.rotateUnit);
