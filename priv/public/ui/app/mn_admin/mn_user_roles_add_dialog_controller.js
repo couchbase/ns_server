@@ -26,6 +26,7 @@ function mnUserRolesAddDialogController(mnUserRolesService, $uibModalInstance, m
   vm.selectedRoles = {};
   vm.selectedGroupsRoles = {};
   vm.selectedGroups = {};
+  vm.state = {};
 
   vm.focusError = false;
   vm.selectedPanel = "roles";
