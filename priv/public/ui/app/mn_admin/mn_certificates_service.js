@@ -59,7 +59,7 @@ function mnCertificatesFactory($http, mnPoolDefault) {
             return acc;
           }, []);
 
-          cert.highestSeverity = Math.max(severityValues);
+          cert.highestSeverity = Math.max(...severityValues);
         }
 
         certificatesByNode[cert.node] = cert;
