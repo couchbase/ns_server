@@ -226,6 +226,15 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
                     this.storageBackend)
       .pipe(map(this.getAutoCompactionMode.bind(this)));
 
+    if (!this.bucket) {
+      this.storageBackend
+        .pipe(takeUntil(this.mnOnDestroy))
+        .subscribe(storageBackend => {
+          let eviction = (storageBackend === 'magma') ? 'fullEviction' : 'valueOnly';
+          this.form.group.get('evictionPolicy').patchValue(eviction);
+        });
+    }
+
     this.permissions
       .pipe(pluck("cluster", "settings", "write"),
             distinctUntilChanged(),
