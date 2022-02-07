@@ -133,7 +133,7 @@ assert_old_CAs() ->
               case proplists:get_value(origin, P) of
                   upgrade -> true;
                   upload_api -> true;
-                  _ -> false
+                  _ -> proplists:get_value(type, P) == generated
               end
           end, ns_server_cert:trusted_CAs(props)),
     case NoNewCAsUploaded of
