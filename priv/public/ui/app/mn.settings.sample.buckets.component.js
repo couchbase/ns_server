@@ -90,8 +90,7 @@ class MnSettingsSampleBucketsComponent extends MnLifeCycleHooksToStream {
             shareReplay({refCount: true, bufferSize: 1}));
 
     this.maxQuotaExceeded =
-      combineLatest(mnAdminService.stream.getPoolsDefault,
-                    mnAdminService.stream.allActiveNodes,
+      combineLatest(mnAdminService.stream.getPoolsDefault.pipe(pluck('storageTotals', 'ram')),
                     this.selectedQuotas)
       .pipe(map(this.getQuotaExceeded.bind(this)),
             shareReplay({refCount: true, bufferSize: 1}));
@@ -132,17 +131,19 @@ class MnSettingsSampleBucketsComponent extends MnLifeCycleHooksToStream {
     });
   }
 
-  getQuotaExceeded([poolsDefault, activeServers, selectedQuotas]) {
-    let quotaNeeded = selectedQuotas.reduce((acc, val) =>
-      (acc + parseInt(val, 10)), 0) * activeServers.length;
-
-    let {quotaTotal, quotaUsed} = poolsDefault.storageTotals.ram;
-
-    if (quotaNeeded > (quotaTotal - quotaUsed)) {
-      return Math.ceil(quotaNeeded - (quotaTotal - quotaUsed)) / 1024 / 1024 / activeServers.length;
+  getQuotaExceeded([ram, selectedQuotas]) {
+    if (!ram) {
+      return;
     }
 
-    return false;
+    let quotaNeeded = selectedQuotas.reduce((acc, val) =>
+      (acc + parseInt(val, 10)), 0);
+
+    let {quotaTotalPerNode, quotaUsedPerNode} = ram;
+
+    if (quotaNeeded > (quotaTotalPerNode - quotaUsedPerNode)) {
+      return Math.ceil(quotaNeeded - (quotaTotalPerNode - quotaUsedPerNode)) / 1024 / 1024;
+    }
   }
 
   areThereIndexQueryNodes(nodes) {
