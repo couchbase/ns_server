@@ -546,7 +546,6 @@ function mnMsToTime() {
     s = s % 60;
     h = Math.floor(m / 60);
     m = m % 60;
-    h = h % 24;
 
     return (h ? (h + ':') : '') +
       ((m > 9) ? m : ("0" + m)) + ":"  + ((s > 9) ? s : ("0" + s));
