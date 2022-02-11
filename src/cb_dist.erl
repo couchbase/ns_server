@@ -550,28 +550,18 @@ maybe_update_pkey_passphrase(Type, Mod,
             case extract_pkey_passphrase() of
                 {ok, PassFun} ->
                     Pass = PassFun(),
-                    MS = ets:fun2ms(
-                           fun ({T, [{password, _} | L]}) when T =:= Type ->
-                                    {T, [{password, Pass} | L]};
-                               ({T, L}) when T =:= Type ->
-                                    {T, [{password, Pass} | L]}
-                           end),
-                    try
-                        N = ets:select_replace(ssl_dist_opts, MS),
-                        info_msg("Updated ~p ssl_dist_opts records", [N]),
-                        case Pass of
-                            undefined ->
-                                error_msg("Extracted pkey passphrase is "
-                                          "undefined", []),
-                                false;
-                            _ -> true
-                        end
-                    catch
-                        error:badarg ->
-                            error_msg(
-                              "Failed to modify ssl_dist_opts, "
-                              "it will not work on vanilla erlang",
-                              []),
+                    case set_dist_tls_opts(Type, [{password, Pass}]) of
+                        ok ->
+                            info_msg("Updated ssl_dist_opts (password)", []),
+                            case Pass of
+                                undefined ->
+                                    error_msg("Extracted pkey passphrase is "
+                                              "undefined", []),
+                                    false;
+                                _ ->
+                                    true
+                            end;
+                        {error, not_supported} ->
                             false
                     end;
                 {error, not_available} ->
@@ -579,6 +569,39 @@ maybe_update_pkey_passphrase(Type, Mod,
             end;
         false ->
             true
+    end.
+
+set_dist_tls_opts(Type, UpdatedOpts) ->
+    case access_ssl_dist_opts_ets(lookup, [Type]) of
+        {ok, []} -> ok;
+        {ok, [{Type, Opts}]} ->
+            NewOpts = misc:update_proplist(Opts, UpdatedOpts),
+            %% Don't try to update if nothing has changed
+            %% This check is needed for the case when unpatched erlang is used.
+            %% The ets will be 'protected' then, and write will fail. But we
+            %% don't want to see an error in this case unless it's a real change
+            case lists:usort(NewOpts) == lists:usort(Opts) of
+                true -> ok;
+                false ->
+                    case access_ssl_dist_opts_ets(insert,
+                                                  [[{Type, NewOpts}]]) of
+                        {ok, _} -> ok;
+                        {error, Reason} -> {error, Reason}
+                    end
+            end;
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+access_ssl_dist_opts_ets(F, A) ->
+    try {ok, erlang:apply(ets, F, [ssl_dist_opts | A])}
+    catch
+        error:badarg ->
+            %% Not printing args here intentionally:
+            %% password might be present in args
+            error_msg("Failed to call '~p' for ssl_dist_opts ets table, "
+                      "it will not work on vanilla erlang", [F]),
+            {error, not_supported}
     end.
 
 start_ensure_config_timer(#s{ensure_config_timer = undefined} = State) ->
