@@ -22,6 +22,8 @@
 -include("cut.hrl").
 -include("ns_common.hrl").
 
+-define(CURRENT_CFG_VSN, 1).
+
 % dist module callbacks, called from net_kernel
 -export([listen/1, accept/1, accept_connection/5,
          setup/5, close/1, select/1, is_node_name/1, childspecs/0]).
@@ -782,14 +784,32 @@ conf(Prop, Conf) ->
 %% dist_cfg and we always need to start the preferred proto for local and
 %% external. Therefore, the defaults should reflect that for listeners.
 defaults(Conf) ->
-    [{preferred_external_proto, inet_tcp_dist},
+    [{config_vsn, ?CURRENT_CFG_VSN},
+     {preferred_external_proto, inet_tcp_dist},
      {preferred_local_proto, inet_tcp_dist},
      {local_listeners, [proplists:get_value(preferred_local_proto, Conf,
                                             inet_tcp_dist)]},
      {external_listeners, [proplists:get_value(preferred_external_proto, Conf,
                                                inet_tcp_dist)]}].
 
-transform_old_to_new_config(Dist) ->
+upgrade_config(Config) ->
+    case config_vsn(Config) of
+        ?CURRENT_CFG_VSN -> Config;
+        Vsn ->
+            info_msg("Upgrading config vsn ~p: ~p", [Vsn, Config]),
+            upgrade_config(upgrade(Vsn, Config))
+    end.
+
+config_vsn(Cfg) when is_tuple(Cfg) -> 0;
+config_vsn(Cfg) when is_list(Cfg) -> proplists:get_value(config_vsn, Cfg, 1).
+
+%% pre-6.5
+upgrade(0, Config) ->
+    Dist =
+        case Config of
+            {dist_type, D} -> D;
+            {dist_type, _, D} -> D
+        end,
     DistType = list_to_atom((atom_to_list(Dist) ++ "_dist")),
     true = is_valid_protocol(DistType),
     [{preferred_external_proto, DistType},
@@ -797,12 +817,8 @@ transform_old_to_new_config(Dist) ->
 
 read_config(File, IgnoreReadError) ->
     case read_terms_from_file(File) of
-        {ok, {dist_type, Dist}} ->
-            transform_old_to_new_config(Dist);
-        {ok, {dist_type, _, Dist}} ->
-            transform_old_to_new_config(Dist);
-        {ok, Val} ->
-            Val;
+        {ok, Cfg} ->
+            upgrade_config(Cfg);
         {error, read_error} when IgnoreReadError ->
             [];
         {error, Reason} ->
@@ -982,9 +998,10 @@ store_config(DCfgFile, DCfg) ->
 
 store_config(Cfg) ->
     CfgFile = cb_dist:config_path(),
-    case store_config(CfgFile, Cfg) of
+    VersionedCfg = misc:update_proplist(Cfg, [{config_vsn, ?CURRENT_CFG_VSN}]),
+    case store_config(CfgFile, VersionedCfg) of
         ok ->
-            info_msg("Updated cb_dist config ~p:~n~p", [CfgFile, Cfg]),
+            info_msg("Updated cb_dist config ~p:~n~p", [CfgFile, VersionedCfg]),
             ok;
         {error, Reason} ->
             error_msg("Failed to save cb_dist config to ~p with reason: ~p",
