@@ -69,15 +69,19 @@ var keyLength = 2048
 
 func main() {
 	var genereateLeaf bool
+	var isClient bool
 	var commonName string
 	var sanIPAddrsArg string
 	var sanDNSNamesArg string
+	var sanEmailsArg string
 	var useSha1 bool
 
 	flag.StringVar(&commonName, "common-name", "*", "common name field of certificate (hostname)")
 	flag.StringVar(&sanIPAddrsArg, "san-ip-addrs", "", "Subject Alternative Name IP addresses (comma separated)")
 	flag.StringVar(&sanDNSNamesArg, "san-dns-names", "", "Subject Alternative Name DNS names (comma separated)")
+	flag.StringVar(&sanEmailsArg, "san-emails", "", "Subject Alternative Name Emails (comma separated)")
 	flag.BoolVar(&genereateLeaf, "generate-leaf", false, "whether to generate leaf certificate (passing ca cert and pkey via environment variables)")
+	flag.BoolVar(&isClient, "client", false, "whether to add client auth extension")
 
 	flag.BoolVar(&useSha1, "use-sha1", false, "whether to use sha1 instead of default sha256 signature algorithm")
 
@@ -104,6 +108,12 @@ func main() {
 
 		leafPKey, err := rsa.GenerateKey(rand.Reader, keyLength)
 		mustNoErr(err)
+
+		authExt := x509.ExtKeyUsageServerAuth
+		if isClient {
+			authExt = x509.ExtKeyUsageClientAuth
+		}
+
 		leafTemplate := x509.Certificate{
 			SerialNumber: big.NewInt(time.Now().UnixNano()),
 			NotBefore:    time.Now().AddDate(0, 0, -1),
@@ -114,7 +124,7 @@ func main() {
 			},
 			KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 			SignatureAlgorithm:    caCert.SignatureAlgorithm,
-			ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+			ExtKeyUsage:           []x509.ExtKeyUsage{authExt},
 			BasicConstraintsValid: true,
 		}
 
@@ -133,6 +143,10 @@ func main() {
 
 		if sanDNSNamesArg != "" {
 			leafTemplate.DNSNames = strings.Split(sanDNSNamesArg, ",")
+		}
+
+		if sanEmailsArg != "" {
+			leafTemplate.EmailAddresses = strings.Split(sanEmailsArg, ",")
 		}
 
 		certDer, err := x509.CreateCertificate(rand.Reader, &leafTemplate, caCert, &leafPKey.PublicKey, pkey)
