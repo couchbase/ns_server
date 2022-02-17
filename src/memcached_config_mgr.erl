@@ -492,8 +492,9 @@ get_ssl_cipher_list([], Params) ->
       {<<"TLS 1.3">>, Ciphers13}]}.
 
 tls_config(Params) ->
-    KeyPath = iolist_to_binary(ns_ssl_services_setup:pkey_file_path()),
-    ChainPath = iolist_to_binary(ns_ssl_services_setup:chain_file_path()),
+    KeyPath = iolist_to_binary(ns_ssl_services_setup:pkey_file_path(node_cert)),
+    ChainPath =
+        iolist_to_binary(ns_ssl_services_setup:chain_file_path(node_cert)),
     CAPath = iolist_to_binary(ns_ssl_services_setup:ca_file_path()),
     MinVsn = case ns_ssl_services_setup:ssl_minimum_protocol(kv) of
                  'tlsv1' -> <<"TLS 1">>;

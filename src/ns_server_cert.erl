@@ -38,7 +38,7 @@
          get_chain_info/2,
          trusted_CAs/1,
          trusted_CAs_pre_71/1,
-         generate_node_certs/1,
+         generate_certs/2,
          filter_nodes_by_ca/2,
          inbox_chain_path/0,
          expiration_warnings/1,
@@ -172,13 +172,8 @@ generate_and_set_cert_and_pkey_pre_71(Force) ->
 
 generate_cert_and_pkey() ->
     StartTS = os:timestamp(),
-    Args = case ns_config:read_key_fast({cert, use_sha1}, false) of
-               true ->
-                   ["--use-sha1"];
-               false ->
-                   []
-           end,
-    RV = do_generate_cert_and_pkey(Args, []),
+    Sha1 = ns_config:read_key_fast({cert, use_sha1}, false),
+    RV = generate_certs(#{use_sha1 => Sha1}),
     EndTS = os:timestamp(),
 
     Diff = timer:now_diff(EndTS, StartTS),
@@ -186,19 +181,20 @@ generate_cert_and_pkey() ->
 
     RV.
 
-generate_node_certs(Host) ->
-    {CAPEM, PKeyPEM} = self_generated_ca_and_pkey(),
-    generate_node_certs(CAPEM, PKeyPEM, Host).
+generate_certs(Type, Arg) ->
+    case self_generated_ca_and_pkey() of
+        {_CAPem, undefined} ->
+            no_private_key;
+        {CAPem, _} = CACerts ->
+            {Cert, Key} = generate_certs(Type, Arg, CACerts),
+            {CAPem, Cert, Key}
+    end.
 
-generate_node_certs(_CAPEM, undefined, _Host) ->
-    no_private_key;
-generate_node_certs(CAPEM, PKeyPEM, Host) ->
-    SANArg =
-        case misc:is_raw_ip(Host) of
-            true -> "--san-ip-addrs=" ++ Host;
-            false -> "--san-dns-names=" ++ Host
-        end,
-
+generate_certs(node_cert, Host, CACerts) ->
+    SanArg = case misc:is_raw_ip(Host) of
+                 true -> san_ip_addrs;
+                 false -> san_dns_names
+             end,
     %% CN can't be longer than 64 characters. Since it will be used for
     %% displaying purposing only, it doesn't make sense to make it even
     %% that long
@@ -206,13 +202,48 @@ generate_node_certs(CAPEM, PKeyPEM, Host) ->
                         Host -> Host;
                         Shortened -> Shortened ++ "..."
                     end,
-    Args = ["--generate-leaf",
-            "--common-name=Couchbase Server Node (" ++ HostShortened ++ ")",
-            SANArg],
-    Env = [{"CACERT", binary_to_list(CAPEM)},
-           {"CAPKEY", binary_to_list(PKeyPEM)}],
-    {NodeCert, NodeKey} = do_generate_cert_and_pkey(Args, Env),
-    {CAPEM, NodeCert, NodeKey}.
+    generate_certs(
+      #{client => false,
+        common_name => "Couchbase Server Node (" ++ HostShortened ++ ")",
+        generate_leaf => CACerts,
+        SanArg => [Host]});
+generate_certs(client_cert, "@" ++ Name, CACerts) ->
+    N = integer_to_list(erlang:phash2(erlang:system_time())),
+    generate_certs(
+      #{client => true,
+        common_name => "Couchbase Internal Client (" ++ N ++ ")",
+        generate_leaf => CACerts,
+        san_emails => [Name ++ "@"?INTERNAL_CERT_EMAIL_DOMAIN]}).
+
+generate_certs(Cert) when is_map(Cert) ->
+    {Args, Env} =
+        maps:fold(
+          fun (common_name, CN, {A, E}) ->
+                  {["--common-name=" ++ CN | A], E};
+              (client, true, {A, E}) ->
+                  {["--client" | A], E};
+              (client, false, {A, E}) ->
+                  {A, E};
+              (generate_leaf, {CAPem, PKey}, {A, E}) ->
+                  {["--generate-leaf" | A],
+                   [{"CACERT", binary_to_list(CAPem)},
+                    {"CAPKEY", binary_to_list(PKey)} | E]};
+              (san_emails, Emails, {A, E}) ->
+                  EmailsStr = lists:flatten(lists:join(",", Emails)),
+                  {["--san-emails=" ++ EmailsStr | A], E};
+              (san_ip_addrs, Addrs, {A, E}) ->
+                  AddrsStr = lists:flatten(lists:join(",", Addrs)),
+                  {["--san-ip-addrs=" ++ AddrsStr | A], E};
+              (san_dns_names, Names, {A, E}) ->
+                  NamesStr = lists:flatten(lists:join(",", Names)),
+                  {["--san-dns-names=" ++ NamesStr | A], E};
+              (use_sha1, true, {A, E}) ->
+                  {["--use-sha1" | A], E};
+              (use_sha1, false, {A, E}) ->
+                  {A, E}
+          end, {[], []}, Cert),
+
+    do_generate_cert_and_pkey(Args, Env).
 
 do_generate_cert_and_pkey(Args, Env) ->
     {Status, Output} = misc:run_external_tool(path_config:component_path(bin, "generate_cert"), Args, Env),

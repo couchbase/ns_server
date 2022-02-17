@@ -242,8 +242,8 @@ build_https_args(PortName, PortArg, PortPrefix, CertArg, KeyArg, CAArg,
             [];
         Port ->
             [PortArg ++ "=" ++ PortPrefix ++ integer_to_list(Port),
-             CertArg ++ "=" ++ ns_ssl_services_setup:chain_file_path(),
-             KeyArg ++ "=" ++ ns_ssl_services_setup:pkey_file_path(),
+             CertArg ++ "=" ++ ns_ssl_services_setup:chain_file_path(node_cert),
+             KeyArg ++ "=" ++ ns_ssl_services_setup:pkey_file_path(node_cert),
              CAArg ++ "=" ++ ns_ssl_services_setup:ca_file_path()]
     end.
 

@@ -281,4 +281,7 @@
 %% PEER, CA, ROOT-CA; if 2 the path can be PEER, CA, CA, ROOT-CA, and so on.
 -define(ALLOWED_CERT_CHAIN_LENGTH, 10).
 
+-define(INTERNAL_CERT_USER, "@internal").
+-define(INTERNAL_CERT_EMAIL_DOMAIN, "internal.couchbase.com").
+
 -endif.

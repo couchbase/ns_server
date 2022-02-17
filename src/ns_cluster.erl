@@ -923,10 +923,11 @@ do_add_node_with_connectivity(Scheme, RemoteAddr, RestPort, Auth, GroupUUID,
                 [{<<"clusterCA">>, CA}];
             true ->
                 {CA, NewNodeCert, NewNodeKey} =
-                    case ns_server_cert:generate_node_certs(RemoteAddr) of
+                    case ns_server_cert:generate_certs(node_cert, RemoteAddr) of
                         no_private_key ->
                             _ = ns_server_cert:generate_and_set_cert_and_pkey(),
-                            ns_server_cert:generate_node_certs(RemoteAddr);
+                            ns_server_cert:generate_certs(node_cert,
+                                                          RemoteAddr);
                         Certs -> Certs
                     end,
                 %% Sending PKey only in case if this cluster uses
@@ -1535,7 +1536,7 @@ perform_actual_join(RemoteNode, NewCookie, ChronicleInfo) ->
     %% New cluster's epoch overwrites "old" cluster's epoch,
     %% but this node cert still contains epoch from the "old" cluster,
     %% which is wrong. Reset it to the value from new cluster.
-    ns_ssl_services_setup:update_node_cert_epoch(),
+    ns_ssl_services_setup:update_certs_epoch(),
 
     misc:remove_marker(join_marker_path()),
     netconfig_updater:maybe_kill_epmd(),

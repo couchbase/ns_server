@@ -23,8 +23,8 @@
 -export([start_link/0,
          start_link_capi_service/0,
          start_link_rest_service/0,
-         pkey_file_path/0,
-         chain_file_path/0,
+         pkey_file_path/1,
+         chain_file_path/1,
          ca_file_path/0,
          sync/0,
          ssl_minimum_protocol/1,
@@ -41,7 +41,7 @@
          set_certs/4,
          chronicle_upgrade_to_71/2,
          remove_node_certs/0,
-         update_node_cert_epoch/0]).
+         update_certs_epoch/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -383,8 +383,8 @@ ssl_server_opts() ->
           end
       end,
       ssl_auth_options() ++
-          [{keyfile, pkey_file_path()},
-           {certfile, chain_file_path()},
+          [{keyfile, pkey_file_path(node_cert)},
+           {certfile, chain_file_path(node_cert)},
            {versions, Versions},
            {cacerts, read_ca_certs(ca_file_path())},
            {dh, dh_params_der()},
@@ -432,14 +432,22 @@ marker_path() ->
 
 ca_file_path() ->
     filename:join(certs_dir(), "ca.pem").
-chain_file_path() ->
-    filename:join(certs_dir(), "chain.pem").
-pkey_file_path() ->
-    filename:join(certs_dir(), "pkey.pem").
-tmp_certs_and_key_file() ->
-    filename:join(certs_dir(), "certs.tmp").
-cert_info_file() ->
-    filename:join(certs_dir(), "certs.info").
+chain_file_path(node_cert) ->
+    filename:join(certs_dir(), "chain.pem");
+chain_file_path(client_cert) ->
+    filename:join(certs_dir(), "client_chain.pem").
+pkey_file_path(node_cert) ->
+    filename:join(certs_dir(), "pkey.pem");
+pkey_file_path(client_cert) ->
+    filename:join(certs_dir(), "client_pkey.pem").
+tmp_certs_and_key_file(node_cert) ->
+    filename:join(certs_dir(), "certs.tmp");
+tmp_certs_and_key_file(client_cert) ->
+    filename:join(certs_dir(), "client_certs.tmp").
+cert_info_file(node_cert) ->
+    filename:join(certs_dir(), "certs.info");
+cert_info_file(client_cert) ->
+    filename:join(certs_dir(), "client_certs.info").
 certs_dir() ->
     filename:join(path_config:component_path(data, "config"), "certs").
 
@@ -476,9 +484,11 @@ init([]) ->
             exit({certs_dir, CertsDir, Reason})
     end,
     maybe_convert_pre_71_certs(),
-    _ = save_node_certs_phase2(),
+    _ = save_certs_phase2(node_cert),
+    _ = save_certs_phase2(client_cert),
     maybe_store_ca_certs(),
     maybe_generate_node_certs(),
+    maybe_generate_client_certs(),
     reload_pkey_passphrase(),
     self() ! validate_pkey,
     RetrySvc = case misc:consult_marker(marker_path()) of
@@ -540,7 +550,7 @@ handle_config_change(_OtherEvent, _Parent) ->
 
 handle_call({set_node_certificate_chain, CAEntry, Chain, PKeyFun,
              PassphraseSettingsFun}, _From, State) ->
-    Props = save_uploaded_certs(CAEntry, Chain, PKeyFun(),
+    Props = save_uploaded_certs(node_cert, CAEntry, Chain, PKeyFun(),
                                 PassphraseSettingsFun()),
     {reply, {ok, Props}, sync_ssl_reload(State)};
 
@@ -556,7 +566,7 @@ handle_call({set_certs, Host, CA, NodeCert, NodeKeyFun}, _From, State) ->
     NodeCertUpdated =
         if
             (NodeCert =/= undefined) andalso (NodeKey =/= undefined) ->
-                save_generated_certs(CA, NodeCert, NodeKey, Host),
+                save_generated_certs(node_cert, CA, NodeCert, NodeKey, Host),
                 true;
             true ->
                 ?log_warning("Set certs: Node certs are not present. Ignoring"),
@@ -603,6 +613,7 @@ handle_info(cert_and_pkey_changed, #state{} = State) ->
     misc:flush(cert_and_pkey_changed),
     NeedReload =
         maybe_generate_node_certs() or
+        maybe_generate_client_certs() or
         case cluster_compat_mode:is_cluster_71() of
             true -> false;
             false -> maybe_store_ca_certs()
@@ -698,8 +709,10 @@ maybe_store_ca_certs() ->
 generated_cert_version(ClusterCA, Hostname) ->
     base64:encode(erlang:md5(term_to_binary({ClusterCA, Hostname}))).
 
-maybe_generate_node_certs() ->
-    Hostname = misc:extract_node_address(node()),
+maybe_generate_client_certs() ->
+    maybe_generate_certs(client_cert, ?INTERNAL_CERT_USER).
+
+should_regenerate_certs(CertInfoFile, CertType, Name) ->
     %% We can't keep info for certs regeneration in node_cert key because during
     %% rename it may extract wrong info by wrong nodename from ns_config.
     %% Based on this wrong info it might decide to regenerate certs when it
@@ -711,42 +724,47 @@ maybe_generate_node_certs() ->
             {value, {_, _}} -> true;
             _ -> false
         end,
-    ShouldGenerate =
-        case file:consult(cert_info_file()) of
-            {ok, [{uploaded, CertsEpoch}]} when CertsEpoch < CurCertsEpoch ->
-                ?log_info("Regenerating certs because epoch has changed "
-                          "(~p -> ~p)", [CertsEpoch, CurCertsEpoch]),
-                true;
-            {ok, [{uploaded, _}]} when RemoveUploadedCertPre71 ->
-                ?log_info("Regenerating certs because cluster is pre-7.1 and "
-                          "cert_and_pkey doesn't seem to contain user's CA "
-                          "anymore"),
-                true;
-            {ok, [{uploaded, _CertsEpoch}]} ->
-                false;
-            {ok, [{generated, OldVsn}]} ->
-                ClusterCA = ns_server_cert:self_generated_ca(),
-                case generated_cert_version(ClusterCA, Hostname) of
-                    OldVsn -> false;
-                    _ ->
-                        ?log_info("Regenerating certs because CA or hostname "
-                                  "has changed"),
-                        true
-                end;
-            {error, enoent} ->
-                ?log_info("Regenerating certs because there are no certs on "
-                          "this node"),
-                true
-        end,
+    case file:consult(CertInfoFile) of
+        {ok, [{uploaded, CertsEpoch}]} when CertsEpoch < CurCertsEpoch ->
+            ?log_info("Should regenerate ~p because epoch has changed "
+                      "(~p -> ~p)", [CertType, CertsEpoch, CurCertsEpoch]),
+            true;
+        {ok, [{uploaded, _}]} when RemoveUploadedCertPre71 ->
+            ?log_info("Should regenerate ~p because cluster is pre-7.1 and "
+                      "cert_and_pkey doesn't seem to contain user's CA "
+                      "anymore", [CertType]),
+            true;
+        {ok, [{uploaded, _CertsEpoch}]} ->
+            false;
+        {ok, [{generated, OldVsn}]} ->
+            ClusterCA = ns_server_cert:self_generated_ca(),
+            case generated_cert_version(ClusterCA, Name) of
+                OldVsn -> false;
+                _ ->
+                    ?log_info("Should regenerate ~p because CA or name in "
+                              "the certificate has changed", [CertType]),
+                    true
+            end;
+        {error, enoent} ->
+            ?log_info("Should regenerate ~p because there are no certs on "
+                      "this node", [CertType]),
+            true
+    end.
+
+maybe_generate_node_certs() ->
+    maybe_generate_certs(node_cert, misc:extract_node_address(node())).
+
+maybe_generate_certs(Type, Name) ->
+    ShouldGenerate = should_regenerate_certs(cert_info_file(Type), Type, Name),
     case ShouldGenerate of
         true ->
-            case ns_server_cert:generate_node_certs(Hostname) of
+            case ns_server_cert:generate_certs(Type, Name) of
                 no_private_key ->
                     ?log_warning("Node doesn't have private key, "
-                                 "skipping node cert generation"),
+                                 "skipping ~p generation", [Type]),
                     false;
                 {CA, CertChain, NodeKey} ->
-                    save_generated_certs(CA, CertChain, NodeKey, Hostname),
+                    save_generated_certs(Type, CA, CertChain, NodeKey, Name),
                     true
             end;
         false ->
@@ -764,15 +782,16 @@ sync_ssl_reload(State) ->
     NewState = State#state{reload_state = all_services()},
     notify_services(NewState).
 
-
-save_generated_certs(CA, Chain, PKey, Hostname) ->
-    save_node_certs(generated, CA, Chain, PKey, [], [{hostname, Hostname}]).
-save_uploaded_certs(CA, Chain, PKey, PassphraseSettings) ->
-    save_node_certs(uploaded, CA, Chain, PKey, PassphraseSettings, []).
+save_generated_certs(node_cert = Type, CA, Chain, PKey, Hostname) ->
+    save_certs(Type, CA, Chain, PKey, [], [{type, generated}, {hostname, Hostname}]);
+save_generated_certs(client_cert = Type, CA, Chain, PKey, Name) ->
+    save_certs(Type, CA, Chain, PKey, [], [{type, generated}, {name, Name}]).
+save_uploaded_certs(Type, CA, Chain, PKey, PassphraseSettings) ->
+    save_certs(Type, CA, Chain, PKey, PassphraseSettings, [{type, uploaded}]).
 
 %% CA, PKey and Chain are pem encoded
 %% Chain :: [NodeCert, IntermediateCert, ...]
-save_node_certs(Type, CA, Chain, PKey, PassphraseSettings, Extra)
+save_certs(Type, CA, Chain, PKey, PassphraseSettings, Extra)
                                                         when is_binary(CA),
                                                              is_binary(Chain),
                                                              is_binary(PKey) ->
@@ -784,52 +803,60 @@ save_node_certs(Type, CA, Chain, PKey, PassphraseSettings, Extra)
     Props = [{subject, iolist_to_binary(Subject)},
              {not_after, Expiration},
              {verified_with, erlang:md5(CA)},
-             {type, Type},
              {load_timestamp, LoadTime},
              {ca, CA},
              {pem, Chain},
              {pkey_passphrase_settings, PassphraseSettings},
              {certs_epoch, CertsEpoch} | Extra],
 
-    Data = term_to_binary({node_certs, Props, Chain, PKey}),
+    Data = term_to_binary({Type, Props, Chain, PKey}),
 
-    ok = misc:atomic_write_file(tmp_certs_and_key_file(), Data),
-    ?log_info("New node cert and pkey are written to tmp file"),
-    ok = save_node_certs_phase2(),
+    ok = misc:atomic_write_file(tmp_certs_and_key_file(Type), Data),
+    ?log_info("New ~p and pkey are written to tmp file", [Type]),
+    ok = save_certs_phase2(Type),
     Props.
 
-save_node_certs_phase2() ->
-    TmpFile = tmp_certs_and_key_file(),
+save_certs_phase2(Type) ->
+    TmpFile = tmp_certs_and_key_file(Type),
     case file:read_file(TmpFile) of
         {ok, Bin} ->
-            {node_certs, Props, Chain, PKey} = binary_to_term(Bin),
+            {_, Props, Chain, PKey} = binary_to_term(Bin),
             CertsEpoch = proplists:get_value(certs_epoch, Props),
-            ok = atomic_write_file_with_retry(chain_file_path(), Chain,
+            ok = atomic_write_file_with_retry(chain_file_path(Type), Chain,
                                               ?WRITE_RETRIES),
-            ok = atomic_write_file_with_retry(pkey_file_path(), PKey,
+            ok = atomic_write_file_with_retry(pkey_file_path(Type), PKey,
                                               ?WRITE_RETRIES),
             CertsInfo = case proplists:get_value(type, Props) of
-                            generated ->
+                            generated when Type == node_cert ->
                                 Host = proplists:get_value(hostname, Props),
                                 CA = proplists:get_value(ca, Props),
                                 {generated, generated_cert_version(CA, Host)};
+                            generated when Type == client_cert ->
+                                Name = proplists:get_value(name, Props),
+                                CA = proplists:get_value(ca, Props),
+                                {generated, generated_cert_version(CA, Name)};
                             uploaded ->
                                 {uploaded, CertsEpoch}
                         end,
-            save_cert_info(CertsInfo),
-            ?log_info("Node cert and pkey files updated"),
-            ns_config:set({node, node(), node_cert}, Props),
-            reload_pkey_passphrase(),
-            self() ! validate_pkey,
+            save_cert_info(Type, CertsInfo),
+            ?log_info("~p cert and pkey files updated", [Type]),
+            ns_config:set({node, node(), Type}, Props),
+            case Type of
+                node_cert ->
+                    reload_pkey_passphrase(),
+                    self() ! validate_pkey;
+                client_cert ->
+                    ok
+            end,
             ok = ssl:clear_pem_cache(),
             create_marker(all_services()),
             ok = file:delete(TmpFile);
         {error, enoent} -> file_not_found
     end.
 
-save_cert_info(CertsInfo) ->
+save_cert_info(Type, CertsInfo) ->
     CertsInfoBin = iolist_to_binary(io_lib:format("~p.", [CertsInfo])),
-    ok = misc:atomic_write_file(cert_info_file(), CertsInfoBin).
+    ok = misc:atomic_write_file(cert_info_file(Type), CertsInfoBin).
 
 reload_pkey_passphrase() ->
     CertProps = ns_config:read_key_fast({node, node(), node_cert}, []),
@@ -838,7 +865,7 @@ reload_pkey_passphrase() ->
 
 validate_pkey(#state{pkey_validation_timer = TimerRef} = State) ->
     catch erlang:cancel_timer(TimerRef),
-    KeyFile = pkey_file_path(),
+    KeyFile = pkey_file_path(node_cert),
     Res =
         case file:read_file(KeyFile) of
             {ok, Key} ->
@@ -1082,7 +1109,8 @@ maybe_convert_pre_71_certs() ->
                     {ok, NodePKey} = file:read_file(local_pkey_path()),
                     Hostname = misc:extract_node_address(node()),
                     ?log_info("Saving the following chain~n~p", [NodeCert]),
-                    _ = save_generated_certs(CA, NodeCert, NodePKey, Hostname);
+                    _ = save_generated_certs(node_cert, CA, NodeCert, NodePKey,
+                                             Hostname);
                 uploaded ->
                     %% Note: this user provided CA might be not the same as
                     %% in user provided CA cert in cert_and_pkey.
@@ -1102,7 +1130,7 @@ maybe_convert_pre_71_certs() ->
                     Chain = public_key:pem_encode(ChainDecoded),
                     {ok, NodePKey} = file:read_file(user_set_key_path()),
                     ?log_info("Saving the following chain~n~p", [Chain]),
-                    _ = save_uploaded_certs(CA, Chain, NodePKey, [])
+                    _ = save_uploaded_certs(node_cert, CA, Chain, NodePKey, [])
             end,
 
             FilesToRemove = pre_71_files_to_remove(),
@@ -1196,32 +1224,40 @@ chronicle_upgrade_to_71(ChronicleTxn, NsConfig) ->
 
 remove_node_certs() ->
     ?log_warning("Removing node certificate and private key"),
-    file:delete(cert_info_file()),
-    file:delete(chain_file_path()),
-    file:delete(pkey_file_path()).
+    file:delete(cert_info_file(node_cert)),
+    file:delete(cert_info_file(client_cert)),
+    file:delete(chain_file_path(node_cert)),
+    file:delete(chain_file_path(client_cert)),
+    file:delete(pkey_file_path(node_cert)),
+    file:delete(pkey_file_path(client_cert)).
 
-update_node_cert_epoch() ->
+update_certs_epoch() ->
+    update_cert_epoch(node_cert),
+    update_cert_epoch(client_cert).
+
+update_cert_epoch(Type) ->
     Epoch = certs_epoch(),
     RV = ns_config:run_txn(
            fun (Config, SetFn) ->
-               Key = {node, node(), node_cert},
+               Key = {node, node(), Type},
                case ns_config:search(Config, Key) of
                    false -> {abort, no_cert};
                    {value, Props} ->
                        NewProps = misc:update_proplist(Props,
                                                        [{certs_epoch, Epoch}]),
-                       Type = proplists:get_value(type, Props),
-                       {commit, SetFn(Key, NewProps, Config), Type}
+                       GeneratedOrUploaded = proplists:get_value(type, Props),
+                       {commit, SetFn(Key, NewProps, Config),
+                        GeneratedOrUploaded}
                end
            end),
     case RV of
         {commit, _, generated} ->
-            ?log_info("Updated generated node cert epoch: ~p", [Epoch]);
+            ?log_info("Updated generated ~p epoch: ~p", [Type, Epoch]);
         {commit, _, uploaded} ->
-            save_cert_info({uploaded, Epoch}),
-            ?log_info("Updated uploaded node cert epoch: ~p", [Epoch]);
+            save_cert_info(node_cert, {uploaded, Epoch}),
+            ?log_info("Updated uploaded ~p epoch: ~p", [Type, Epoch]);
         {abort, Reason} ->
-            ?log_info("Skipped node cert epoch update: ~p", [Reason])
+            ?log_info("Skipped ~p epoch update: ~p", [Type, Reason])
     end,
     ok.
 
