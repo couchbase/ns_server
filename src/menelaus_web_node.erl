@@ -546,6 +546,7 @@ build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr) ->
     AFamilyOnly = misc:get_afamily_only(Config, WantENode),
 
     NEncryption = misc:is_node_encryption_enabled(Config, WantENode),
+    N2NClientCert = cb_dist:client_cert_verification(),
     Listeners = case ns_config:search_node_with_default(WantENode, Config,
                                                         erl_external_listeners,
                                                         undefined) of
@@ -567,6 +568,7 @@ build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr) ->
           {ports, {PortsKV ++ DistPorts}},
           {services, ns_cluster_membership:node_services(Snapshot, WantENode)},
           {nodeEncryption, NEncryption},
+          {nodeEncryptionClientCertVerification, N2NClientCert},
           {addressFamilyOnly, AFamilyOnly},
           {configuredHostname, list_to_binary(ConfiguredHostname)}
          ] ++ [{addressFamily, AFamily} || AFamily =/= undefined]
@@ -1147,7 +1149,8 @@ afamily_validators() ->
      validator:changeable_in_enterprise_only(afamily, inet, _)].
 
 node_encryption_validators() ->
-    [validator:one_of(nodeEncryption, ["on", "off"], _),
+    [validator:boolean(clientCertVerification, _),
+     validator:one_of(nodeEncryption, ["on", "off"], _),
      validator:validate(fun ("on") -> {value, true};
                             ("off") -> {value, false}
                         end, nodeEncryption, _),

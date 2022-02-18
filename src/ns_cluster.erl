@@ -230,17 +230,19 @@ engage_cluster_apply_net_config(NodeKVList) ->
 apply_net_config(NodeKVList) ->
     case ensure_dist_ports_match(NodeKVList) of
         ok ->
-            {AFamily, AFamilyOnly, NEncryption, Protos} =
+            {AFamily, AFamilyOnly, NEncryption, Protos, ClientCert} =
                 extract_remote_cluster_net_settings(NodeKVList),
             ?log_info("Applying net config. AFamily: ~p, "
                       "AFamilyOnly: ~p, "
                       "NEncryption: ~p, "
-                      "DistProtos: ~p",
-                      [AFamily, AFamilyOnly, NEncryption, Protos]),
+                      "DistProtos: ~p"
+                      "ClientCert: ~p",
+                      [AFamily, AFamilyOnly, NEncryption, Protos, ClientCert]),
             Props = [{externalListeners, Protos},
                      {afamily, AFamily},
                      {afamilyOnly, AFamilyOnly},
-                     {nodeEncryption, NEncryption}],
+                     {nodeEncryption, NEncryption},
+                     {clientCertVerification, ClientCert}],
             case netconfig_updater:apply_config(Props) of
                 ok ->
                     ns_config:sync_announcements(),
@@ -270,7 +272,10 @@ extract_remote_cluster_net_settings(NodeKVList) ->
                                       false),
     AFamilyBin = proplists:get_value(<<"addressFamily">>, NodeKVList),
     AFamily = binary_to_atom(AFamilyBin, latin1),
-    {AFamily, AFamilyOnly, NEncryption, Listeners}.
+    N2NClientCert = proplists:get_value(
+                      <<"nodeEncryptionClientCertVerification">>,
+                      NodeKVList, false),
+    {AFamily, AFamilyOnly, NEncryption, Listeners, N2NClientCert}.
 
 ensure_dist_ports_match(NodeKVList) ->
     {Ports} = proplists:get_value(<<"ports">>, NodeKVList,

@@ -22,7 +22,7 @@
 -include("cut.hrl").
 -include("ns_common.hrl").
 
--define(CURRENT_CFG_VSN, 1).
+-define(CURRENT_CFG_VSN, 2).
 
 % dist module callbacks, called from net_kernel
 -export([listen/1, accept/1, accept_connection/5,
@@ -39,6 +39,7 @@
          address_family/0,
          external_encryption/0,
          external_listeners/0,
+         client_cert_verification/0,
          update_config/1,
          proto_to_encryption/1,
          format_error/1,
@@ -212,6 +213,9 @@ external_encryption() ->
 external_listeners() ->
     L = conf(external_listeners, get_config()),
     lists:usort([proto2netsettings(Proto) || Proto <- L]).
+
+client_cert_verification() ->
+    conf(client_cert_verification, get_config()).
 
 get_config() ->
     try status() of
@@ -523,6 +527,7 @@ start_acceptor({_AddrType, Mod} = Listener,
                       "listener: ~p", [Listener]),
             State;
         {LSocket, _, _} ->
+            maybe_update_client_cert_verification(Mod, State),
             case maybe_update_pkey_passphrase(server, Mod, State) of
                 true ->
                     try
@@ -543,6 +548,28 @@ start_acceptor({_AddrType, Mod} = Listener,
                              "available yet or undefined, waiting...", []),
                     start_ensure_config_timer(remove_proto(Listener, State))
             end
+    end.
+
+maybe_update_client_cert_verification(Mod, #s{config = Cfg}) ->
+    case proto_to_encryption(Mod) of
+        true ->
+            CertAuthOpts =
+                case conf(client_cert_verification, Cfg) of
+                    true ->
+                        [{fail_if_no_peer_cert, true}, {verify, verify_peer}];
+                    false ->
+                        [{fail_if_no_peer_cert, false}, {verify, verify_none}]
+                end,
+            case set_dist_tls_opts(server, CertAuthOpts) of
+                ok ->
+                    info_msg("Updated ssl_dist_opts ~p", [CertAuthOpts]);
+                {error, not_supported} ->
+                    error_msg("Ignoring client cert auth setting(~p), because "
+                              "underlying library doesn't support its "
+                              "modification", [CertAuthOpts])
+            end;
+        false ->
+            ok
     end.
 
 maybe_update_pkey_passphrase(Type, Mod,
@@ -790,7 +817,8 @@ defaults(Conf) ->
      {local_listeners, [proplists:get_value(preferred_local_proto, Conf,
                                             inet_tcp_dist)]},
      {external_listeners, [proplists:get_value(preferred_external_proto, Conf,
-                                               inet_tcp_dist)]}].
+                                               inet_tcp_dist)]},
+     {client_cert_verification, true}].
 
 upgrade_config(Config) ->
     case config_vsn(Config) of
@@ -803,6 +831,11 @@ upgrade_config(Config) ->
 config_vsn(Cfg) when is_tuple(Cfg) -> 0;
 config_vsn(Cfg) when is_list(Cfg) -> proplists:get_value(config_vsn, Cfg, 1).
 
+%% 6.5-7.0
+upgrade(1, Config) ->
+    %% client cert auth is disabled for clusters that upgrade to Morpheus
+    misc:update_proplist(Config, [{config_vsn, 2},
+                                  {client_cert_verification, false}]);
 %% pre-6.5
 upgrade(0, Config) ->
     Dist =
@@ -820,7 +853,7 @@ read_config(File, IgnoreReadError) ->
         {ok, Cfg} ->
             upgrade_config(Cfg);
         {error, read_error} when IgnoreReadError ->
-            [];
+            [{config_vsn, ?CURRENT_CFG_VSN}];
         {error, Reason} ->
             error_msg("Can't read cb_dist config file ~p: ~p", [File, Reason]),
             erlang:error({invalid_cb_dist_config, File, Reason})
@@ -963,8 +996,11 @@ import_props_to_config(Props, Cfg) ->
     CurListeners = proplists:get_value(external_listeners, Cfg),
     CurAFamily = proto_to_family(conf(preferred_external_proto, Cfg)),
     CurNEncr = proto_to_encryption(conf(preferred_external_proto, Cfg)),
+    CurClientAuth = conf(client_cert_verification, Cfg),
     NewAFamily = proplists:get_value(afamily, Props, CurAFamily),
     NewNEncr = proplists:get_value(nodeEncryption, Props, CurNEncr),
+    ClientCert = proplists:get_value(clientCertVerification, Props,
+                                     CurClientAuth),
     PrefExt = netsettings2proto({NewAFamily, NewNEncr}),
     PrefLocal = netsettings2proto({NewAFamily, false}),
     Listeners =
@@ -975,7 +1011,8 @@ import_props_to_config(Props, Cfg) ->
     [{external_listeners, Listeners} || Listeners =/= undefined] ++
     [{local_listeners, [PrefLocal]},
      {preferred_external_proto, PrefExt},
-     {preferred_local_proto, PrefLocal}].
+     {preferred_local_proto, PrefLocal},
+     {client_cert_verification, ClientCert}].
 
 store_config(DCfgFile, DCfg) ->
     DirName = filename:dirname(DCfgFile),

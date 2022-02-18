@@ -77,7 +77,9 @@ handle_call({apply_config, Config}, _From, State) ->
                       ({nodeEncryption, _}) ->
                           {nodeEncryption, cb_dist:external_encryption()};
                       ({externalListeners, _}) ->
-                          {externalListeners, cb_dist:external_listeners()}
+                          {externalListeners, cb_dist:external_listeners()};
+                      ({clientCertVerification, _}) ->
+                          {clientCertVerification, cb_dist:client_cert_verification()}
                   end, Config),
     Config2 = lists:usort(Config) -- CurConfig,
     CurConfig2 = lists:usort(CurConfig) -- Config,
@@ -213,6 +215,12 @@ apply_config_unprotected(Config) ->
             true -> change_local_dist_proto(AFamily, false);
             false -> ok
         end,
+        case need_listeners_restart(Config) of
+            true ->
+                ?log_info("Restarting cb_dist TLS listeners"),
+                cb_dist:restart_tls();
+            false -> ok
+        end,
         case need_external_update(Config) of
             true -> change_ext_dist_proto(AFamily, NEncrypt);
             false -> ok
@@ -233,6 +241,9 @@ apply_config_unprotected(Config) ->
             ?log_error("~s", [Msg]),
             {error, Msg}
     end.
+
+need_listeners_restart(Config) ->
+    proplists:get_value(clientCertVerification, Config) =/= undefined.
 
 need_local_update(Config) ->
     proplists:get_value(afamily, Config) =/= undefined.
