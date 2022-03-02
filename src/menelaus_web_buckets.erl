@@ -921,9 +921,12 @@ validate_membase_bucket_params(CommonParams, Params,
                                      IsEnterprise),
          parse_validate_durability_min_level(Params, BucketConfig, IsNew,
                                              Version),
-         parse_validate_pitr_enabled(Params, IsNew, IsDeveloperPreview),
-         parse_validate_pitr_granularity(Params, IsNew, IsDeveloperPreview),
-         parse_validate_pitr_max_history_age(Params, IsNew, IsDeveloperPreview),
+         parse_validate_pitr_enabled(Params, IsNew, IsDeveloperPreview,
+                                     IsEnterprise),
+         parse_validate_pitr_granularity(Params, IsNew, IsDeveloperPreview,
+                                         IsEnterprise),
+         parse_validate_pitr_max_history_age(Params, IsNew, IsDeveloperPreview,
+                                             IsEnterprise),
          parse_validate_storage_quota_percentage(Params, BucketConfig, IsNew, Version,
                                                  IsEnterprise),
          parse_validate_max_ttl(Params, BucketConfig, IsNew, IsEnterprise),
@@ -1195,6 +1198,11 @@ value_not_boolean_error(Param) ->
      list_to_binary(io_lib:format("~p must be true or false",
                                   [Param]))}.
 
+param_not_supported_in_ce_error(Param) ->
+    {error, Param,
+     list_to_binary(io_lib:format("~p can only be set in Enterprise edition",
+                                  [Param]))}.
+
 %% Point-in-time Recovery (PITR) parameter parsing and validation.
 
 pitr_not_developer_preview_error(Param) ->
@@ -1211,9 +1219,23 @@ parse_validate_pitr_param_not_dev_preview(Key, Params) ->
             ignore
     end.
 
-parse_validate_pitr_enabled(Params, _IsNew, false = _IsDeveloperPreview) ->
+%% PITR parameter parsing and validation when not in enterprise mode.
+parse_validate_pitr_param_not_enterprise(Key, Params) ->
+    case proplists:is_defined(Key, Params) of
+        true ->
+            param_not_supported_in_ce_error(Key);
+        false ->
+            ignore
+    end.
+
+parse_validate_pitr_enabled(Params, _IsNew, false = _IsDeveloperPreview,
+                            _IsEnterprise) ->
     parse_validate_pitr_param_not_dev_preview("pitrEnabled", Params);
-parse_validate_pitr_enabled(Params, IsNew, true = _IsDeveloperPreview) ->
+parse_validate_pitr_enabled(Params, _IsNew, true = _IsDeveloperPreview,
+                            false = _IsEnterprise) ->
+    parse_validate_pitr_param_not_enterprise("pitrEnabled", Params);
+parse_validate_pitr_enabled(Params, IsNew, true = _IsDeveloperPreview,
+                            true = _IsEnterprise) ->
     Result = menelaus_util:parse_validate_boolean_field("pitrEnabled",
                                                         '_', Params),
     case {Result, IsNew} of
@@ -1232,17 +1254,26 @@ parse_validate_pitr_enabled(Params, IsNew, true = _IsDeveloperPreview) ->
             value_not_boolean_error(pitrEnabled)
     end.
 
-parse_validate_pitr_granularity(Params, _IsNew, false = _IsDeveloperPreview) ->
+parse_validate_pitr_granularity(Params, _IsNew, false = _IsDeveloperPreview,
+                                _IsEnterprise) ->
     parse_validate_pitr_param_not_dev_preview("pitrGranularity", Params);
-parse_validate_pitr_granularity(Params, IsNew, true = _IsDeveloperPreview) ->
+parse_validate_pitr_granularity(Params, _IsNew, true = _IsDeveloperPreview,
+                                false = _IsEnterprise) ->
+    parse_validate_pitr_param_not_enterprise("pitrGranularity", Params);
+parse_validate_pitr_granularity(Params, IsNew, true = _IsDeveloperPreview,
+                                true = _IsEnterprise) ->
     parse_validate_pitr_numeric_param(Params, pitrGranularity,
                                       pitr_granularity, IsNew).
 
-parse_validate_pitr_max_history_age(Params, _IsNew,
-                                    false = _IsDeveloperPreview) ->
+parse_validate_pitr_max_history_age(Params, _IsNew, false = _IsDeveloperPreview,
+                                    _IsEnterprise) ->
     parse_validate_pitr_param_not_dev_preview("pitrMaxHistoryAge", Params);
+parse_validate_pitr_max_history_age(Params, _IsNew, true = _IsDeveloperPreview,
+                                    false = _IsEnterprise) ->
+    parse_validate_pitr_param_not_enterprise("pitrMaxHistoryAge", Params);
 parse_validate_pitr_max_history_age(Params, IsNew,
-                                    true = _IsDeveloperPreview) ->
+                                    true = _IsDeveloperPreview,
+                                    true = _IsEnterprise) ->
     parse_validate_pitr_numeric_param(Params, pitrMaxHistoryAge,
                                       pitr_max_history_age, IsNew).
 
