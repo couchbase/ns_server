@@ -25,7 +25,7 @@
          handle_bucket_node_stats/4,
          handle_stats_section_for_node/4,
          handle_specific_stat_for_buckets/4,
-         basic_stats/1,
+         basic_stats/2,
          bucket_disk_usage/1,
          bucket_ram_usage/1,
          build_bucket_stats_ops_response/4,
@@ -153,8 +153,8 @@ last_bucket_stats(memcached, BucketName, Nodes) ->
      {itemCount, ItemsCount},
      {memUsed, MemUsed}].
 
-basic_stats(BucketName) ->
-    {ok, BucketConfig} = ns_bucket:get_bucket(BucketName),
+basic_stats(BucketName, Snapshot) when is_map(Snapshot) ->
+    {ok, BucketConfig} = ns_bucket:get_bucket(BucketName, Snapshot),
     QuotaBytes = ns_bucket:ram_quota(BucketConfig),
     BucketType = ns_bucket:bucket_type(BucketConfig),
     BucketNodes = ns_bucket:live_bucket_nodes_from_config(BucketConfig),

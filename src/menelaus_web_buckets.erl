@@ -284,9 +284,11 @@ build_bucket_stats(for_ui, Id, Ctx) ->
                             ns_storage_conf:cluster_storage_info(Config,
                                                                  Snapshot)],
 
-    [{storageTotals, {StorageTotals}} | menelaus_stats:basic_stats(Id)];
-build_bucket_stats(_, Id, _) ->
-    menelaus_stats:basic_stats(Id).
+    [{storageTotals, {StorageTotals}} | menelaus_stats:basic_stats(Id,
+                                                                   Snapshot)];
+build_bucket_stats(_, Id, Ctx) ->
+    Snapshot = menelaus_web_node:get_snapshot(Ctx),
+    menelaus_stats:basic_stats(Id, Snapshot).
 
 build_dynamic_bucket_info(streaming, _Id, _BucketConfig, _) ->
     [];
