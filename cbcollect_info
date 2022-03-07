@@ -1053,7 +1053,7 @@ def make_os_tasks():
                   "find /proc/sys/kernel -type f -name '*core*' -print -exec cat '{}' ';'"),
         UnixTask("sysctl settings", "sysctl -a"),
         LinuxTask("Relevant lsof output",
-                  "echo %(programs)s | xargs -n1 pgrep | xargs -n1 -r -- lsof -n -p" % locals()),
+                  "echo %(programs)s | xargs -n1 pgrep -f | xargs -n1 -r -- lsof -n -p" % locals()),
         LinuxTask("LVM info", "lvdisplay"),
         LinuxTask("LVM info", "vgdisplay"),
         LinuxTask("LVM info", "pvdisplay"),
@@ -1125,10 +1125,10 @@ def make_os_tasks():
                   "/var/log/kern.log* 2>/dev/null",
                   log_file="syslog.tar.gz", no_header=True),
         LinuxTask("Relevant proc data", "echo %(programs)s | "
-                  "xargs -n1 pgrep | xargs -n1 -- sh -c 'echo $1; cat /proc/$1/status; cat /proc/$1/limits; "
+                  "xargs -n1 pgrep -f | xargs -n1 -- sh -c 'echo $1; cat /proc/$1/status; cat /proc/$1/limits; "
                   "cat /proc/$1/smaps; cat /proc/$1/numa_maps; cat /proc/$1/task/*/sched; echo' --" % locals()),
         LinuxTask("Processes' environment", "echo %(programs)s | "
-                  r"xargs -n1 pgrep | xargs -n1 -- sh -c 'echo $1; ( cat /proc/$1/environ | tr \\0 \\n | "
+                  r"xargs -n1 pgrep -f | xargs -n1 -- sh -c 'echo $1; ( cat /proc/$1/environ | tr \\0 \\n | "
                   "egrep -v ^CB_MASTER_PASSWORD=\|^CBAUTH_REVRPC_URL=); echo' --" % locals()),
         LinuxTask("Processes' stack",
                   "for program in %(programs)s; do for thread in $(pgrep --lightweight $program); "
