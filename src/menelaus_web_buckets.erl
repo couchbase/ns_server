@@ -20,7 +20,7 @@
 -include("ns_bucket.hrl").
 -include("cut.hrl").
 
--define(MAGMA_MIN_RAMQUOTA, 256).
+-define(DEFAULT_MAGMA_MIN_MEMORY_QUOTA, 1024).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -818,11 +818,14 @@ additional_bucket_params_validation(Params, Ctx) ->
 
     StorageMode = get_value_from_parms_or_bucket(storage_mode, Params, Ctx),
     RamQuota = get_value_from_parms_or_bucket(ram_quota, Params, Ctx),
+    MagmaMinMemoryQuota =
+        ns_config:read_key_fast(magma_min_memory_quota,
+                                ?DEFAULT_MAGMA_MIN_MEMORY_QUOTA),
 
     Err2 = case {StorageMode, RamQuota} of
                {magma, RamQuota}
-                 when RamQuota < ?MAGMA_MIN_RAMQUOTA * 1024 * 1024 ->
-                   RamQ = list_to_binary(integer_to_list(?MAGMA_MIN_RAMQUOTA)),
+                 when RamQuota < MagmaMinMemoryQuota * 1024 * 1024 ->
+                   RamQ = list_to_binary(integer_to_list(MagmaMinMemoryQuota)),
                    [{ramQuota,
                      <<"Ram quota for magma must be at least ", RamQ/binary,
                        " MiB">>}];
@@ -2051,6 +2054,11 @@ basic_bucket_params_screening(IsNew, Name, Params, AllBuckets, KvNodes) ->
     basic_bucket_params_screening(Ctx, Params).
 
 basic_bucket_params_screening_test() ->
+    meck:new(ns_config, [passthrough]),
+    meck:expect(ns_config, read_key_fast,
+                fun (_, Default) ->
+                        Default
+                end),
     AllBuckets = [{"mcd",
                    [{type, memcached},
                     {num_vbuckets, 16},
@@ -2291,6 +2299,8 @@ basic_bucket_params_screening_test() ->
                                [node1, node2]),
               [] = E19
       end, MajorityDurabilityLevelReplicas),
+
+    meck:unload(ns_config),
 
     ok.
 
