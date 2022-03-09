@@ -878,9 +878,7 @@ validate_bucket_type_specific_params(CommonParams, Params,
                                      #bv_ctx{new = IsNew,
                                              bucket_config = BucketConfig,
                                              cluster_version = Version,
-                                             is_enterprise = IsEnterprise,
-                                             is_developer_preview =
-                                                 IsDeveloperPreview}) ->
+                                             is_enterprise = IsEnterprise}) ->
     BucketType = get_bucket_type(IsNew, BucketConfig, Params),
 
     case BucketType of
@@ -889,8 +887,7 @@ validate_bucket_type_specific_params(CommonParams, Params,
                                              BucketConfig);
         membase ->
             validate_membase_bucket_params(CommonParams, Params, IsNew,
-                                           BucketConfig, Version, IsEnterprise,
-                                           IsDeveloperPreview);
+                                           BucketConfig, Version, IsEnterprise);
         _ ->
             validate_unknown_bucket_params(Params)
     end.
@@ -910,8 +907,7 @@ validate_memcached_bucket_params(CommonParams, Params, IsNew, BucketConfig) ->
      quota_size_error(CommonParams, memcached, IsNew, BucketConfig)].
 
 validate_membase_bucket_params(CommonParams, Params,
-                               IsNew, BucketConfig, Version, IsEnterprise,
-                               IsDeveloperPreview) ->
+                               IsNew, BucketConfig, Version, IsEnterprise) ->
     ReplicasNumResult = validate_replicas_number(Params, IsNew),
     BucketParams =
         [{ok, bucketType, membase},
@@ -924,12 +920,9 @@ validate_membase_bucket_params(CommonParams, Params,
                                      IsEnterprise),
          parse_validate_durability_min_level(Params, BucketConfig, IsNew,
                                              Version),
-         parse_validate_pitr_enabled(Params, IsNew, IsDeveloperPreview,
-                                     IsEnterprise),
-         parse_validate_pitr_granularity(Params, IsNew, IsDeveloperPreview,
-                                         IsEnterprise),
-         parse_validate_pitr_max_history_age(Params, IsNew, IsDeveloperPreview,
-                                             IsEnterprise),
+         parse_validate_pitr_enabled(Params, IsNew, IsEnterprise),
+         parse_validate_pitr_granularity(Params, IsNew, IsEnterprise),
+         parse_validate_pitr_max_history_age(Params, IsNew, IsEnterprise),
          parse_validate_storage_quota_percentage(Params, BucketConfig, IsNew, Version,
                                                  IsEnterprise),
          parse_validate_max_ttl(Params, BucketConfig, IsNew, IsEnterprise),
@@ -1208,20 +1201,6 @@ param_not_supported_in_ce_error(Param) ->
 
 %% Point-in-time Recovery (PITR) parameter parsing and validation.
 
-pitr_not_developer_preview_error(Param) ->
-    {error, Param,
-     <<"Point in time recovery is only supported in developer preview mode">>}.
-
-%% PITR parameter parsing and validation when not in developer preview mode.
-%% Specifying PITR params in production builds is not allowed.
-parse_validate_pitr_param_not_dev_preview(Key, Params) ->
-    case proplists:is_defined(Key, Params) of
-        true ->
-            pitr_not_developer_preview_error(Key);
-        false ->
-            ignore
-    end.
-
 %% PITR parameter parsing and validation when not in enterprise mode.
 parse_validate_pitr_param_not_enterprise(Key, Params) ->
     case proplists:is_defined(Key, Params) of
@@ -1231,14 +1210,9 @@ parse_validate_pitr_param_not_enterprise(Key, Params) ->
             ignore
     end.
 
-parse_validate_pitr_enabled(Params, _IsNew, false = _IsDeveloperPreview,
-                            _IsEnterprise) ->
-    parse_validate_pitr_param_not_dev_preview("pitrEnabled", Params);
-parse_validate_pitr_enabled(Params, _IsNew, true = _IsDeveloperPreview,
-                            false = _IsEnterprise) ->
+parse_validate_pitr_enabled(Params, _IsNew, false = _IsEnterprise) ->
     parse_validate_pitr_param_not_enterprise("pitrEnabled", Params);
-parse_validate_pitr_enabled(Params, IsNew, true = _IsDeveloperPreview,
-                            true = _IsEnterprise) ->
+parse_validate_pitr_enabled(Params, IsNew, true = _IsEnterprise) ->
     Result = menelaus_util:parse_validate_boolean_field("pitrEnabled",
                                                         '_', Params),
     case {Result, IsNew} of
@@ -1257,26 +1231,15 @@ parse_validate_pitr_enabled(Params, IsNew, true = _IsDeveloperPreview,
             value_not_boolean_error(pitrEnabled)
     end.
 
-parse_validate_pitr_granularity(Params, _IsNew, false = _IsDeveloperPreview,
-                                _IsEnterprise) ->
-    parse_validate_pitr_param_not_dev_preview("pitrGranularity", Params);
-parse_validate_pitr_granularity(Params, _IsNew, true = _IsDeveloperPreview,
-                                false = _IsEnterprise) ->
+parse_validate_pitr_granularity(Params, _IsNew, false = _IsEnterprise) ->
     parse_validate_pitr_param_not_enterprise("pitrGranularity", Params);
-parse_validate_pitr_granularity(Params, IsNew, true = _IsDeveloperPreview,
-                                true = _IsEnterprise) ->
+parse_validate_pitr_granularity(Params, IsNew, true = _IsEnterprise) ->
     parse_validate_pitr_numeric_param(Params, pitrGranularity,
                                       pitr_granularity, IsNew).
 
-parse_validate_pitr_max_history_age(Params, _IsNew, false = _IsDeveloperPreview,
-                                    _IsEnterprise) ->
-    parse_validate_pitr_param_not_dev_preview("pitrMaxHistoryAge", Params);
-parse_validate_pitr_max_history_age(Params, _IsNew, true = _IsDeveloperPreview,
-                                    false = _IsEnterprise) ->
+parse_validate_pitr_max_history_age(Params, _IsNew, false = _IsEnterprise) ->
     parse_validate_pitr_param_not_enterprise("pitrMaxHistoryAge", Params);
-parse_validate_pitr_max_history_age(Params, IsNew,
-                                    true = _IsDeveloperPreview,
-                                    true = _IsEnterprise) ->
+parse_validate_pitr_max_history_age(Params, IsNew, true = _IsEnterprise) ->
     parse_validate_pitr_numeric_param(Params, pitrMaxHistoryAge,
                                       pitr_max_history_age, IsNew).
 
