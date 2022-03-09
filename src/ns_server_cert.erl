@@ -21,6 +21,8 @@
          this_node_ca/1,
          this_node_uses_self_generated_certs/0,
          this_node_uses_self_generated_certs/1,
+         this_node_uses_self_generated_client_certs/0,
+         this_node_uses_self_generated_client_certs/1,
          self_generated_ca/0,
          set_cluster_ca/1, %% deprecated
          load_node_certs_from_inbox/1,
@@ -69,6 +71,13 @@ this_node_uses_self_generated_certs() ->
 
 this_node_uses_self_generated_certs(Config) ->
     CertProps = ns_config:search(Config, {node, node(), node_cert}, []),
+    generated == proplists:get_value(type, CertProps).
+
+this_node_uses_self_generated_client_certs() ->
+    this_node_uses_self_generated_client_certs(ns_config:latest()).
+
+this_node_uses_self_generated_client_certs(Config) ->
+    CertProps = ns_config:search(Config, {node, node(), client_cert}, []),
     generated == proplists:get_value(type, CertProps).
 
 self_generated_ca() ->
