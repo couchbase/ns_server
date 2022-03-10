@@ -46,9 +46,17 @@ handle_get_trustedCAs(Req) ->
                  CAId = proplists:get_value(id, Props),
                  Pem = proplists:get_value(pem, Props, <<>>),
                  Is71 = cluster_compat_mode:is_cluster_71(),
+                 IsMorpheus = cluster_compat_mode:is_cluster_MORPHEUS(),
                  CANodes =
                      case Extended of
-                         true -> ns_server_cert:filter_nodes_by_ca(Nodes, Pem);
+                         true -> ns_server_cert:filter_nodes_by_ca(node_cert,
+                                                                   Nodes, Pem);
+                         false -> []
+                     end,
+                 ClientCertCANodes =
+                     case Extended of
+                         true -> ns_server_cert:filter_nodes_by_ca(client_cert,
+                                                                   Nodes, Pem);
                          false -> []
                      end,
                  CAWarnings = [W || {{ca, Id}, W} <- Warnings, Id =:= CAId],
@@ -56,7 +64,9 @@ handle_get_trustedCAs(Req) ->
                    maybe_filter_cert_props(
                      Props ++
                      [{warnings, CAWarnings}] ++
-                     [{nodes, CANodes} || Is71], not Extended))
+                     [{nodes, CANodes} || Is71] ++
+                     [{client_cert_nodes, ClientCertCANodes} || IsMorpheus],
+                     not Extended))
              end, ns_server_cert:trusted_CAs(props)),
     menelaus_util:reply_json(Req, Json).
 
@@ -224,10 +234,11 @@ jsonify_cert_props(Props) ->
                {true, {privateKeyPassphrase, PKeySettingsJSON}};
            ({warnings, Warnings}) ->
                {true, {warnings, [{warning_props(W)} || W <- Warnings]}};
-           ({nodes, Nodes}) ->
+           ({NodesKey, Nodes}) when NodesKey == nodes;
+                                    NodesKey == client_cert_nodes ->
                BuildHostname = menelaus_web_node:build_node_hostname(
                                  ns_config:latest(), _, misc:localhost()),
-               {true, {nodes, [BuildHostname(N) || N <- Nodes]}};
+               {true, {NodesKey, [BuildHostname(N) || N <- Nodes]}};
            ({_, _}) ->
                false
        end, Props)}.

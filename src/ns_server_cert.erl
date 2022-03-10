@@ -41,7 +41,7 @@
          trusted_CAs/1,
          trusted_CAs_pre_71/1,
          generate_certs/2,
-         filter_nodes_by_ca/2,
+         filter_nodes_by_ca/3,
          inbox_chain_path/0,
          expiration_warnings/1,
          split_certs/1,
@@ -1057,13 +1057,16 @@ remove_CA(Id) ->
                       %% by some node. It seems to be pretty hard to avoid this
                       %% race with node_cert stored in ns_config, as we don't
                       %% have common chronicle-ns_config transactions.
-                      NodesThatUseCA = filter_nodes_by_ca(Nodes, CA),
+                      NodesThatUseCA =
+                          filter_nodes_by_ca(node_cert, Nodes, CA) ++
+                          filter_nodes_by_ca(client_cert, Nodes, CA),
                       case NodesThatUseCA of
                           [] ->
                               ToSet = lists:delete(Props, CAs),
                               {commit, [{set, ca_certificates, ToSet}], Props};
                           [_ | _] ->
-                              {abort, {error, {in_use, NodesThatUseCA}}}
+                              UniqueNodes = lists:usort(NodesThatUseCA),
+                              {abort, {error, {in_use, UniqueNodes}}}
                       end;
                   false ->
                       {abort, {error, not_found}}
@@ -1074,11 +1077,12 @@ remove_CA(Id) ->
         {error, Reason} -> {error, Reason}
     end.
 
-filter_nodes_by_ca(Nodes, CAPem) ->
+filter_nodes_by_ca(CertType, Nodes, CAPem) when CertType == node_cert;
+                                                CertType == client_cert ->
     CA = public_key:pem_decode(CAPem),
     lists:filter(
       fun (N) ->
-          CProps = ns_config:read_key_fast({node, N, node_cert}, []),
+          CProps = ns_config:read_key_fast({node, N, CertType}, []),
           CertCAPem = proplists:get_value(ca, CProps, <<>>),
           CA =:= public_key:pem_decode(CertCAPem)
       end, Nodes).
@@ -1226,7 +1230,7 @@ get_warnings() ->
                       case proplists:get_value(type, CAProps) of
                           generated ->
                               CAPem = proplists:get_value(pem, CAProps, <<>>),
-                              case filter_nodes_by_ca(Nodes, CAPem) of
+                              case filter_nodes_by_ca(node_cert, Nodes, CAPem) of
                                   [] when Is71 -> [unused];
                                   _ -> []
                               end;
