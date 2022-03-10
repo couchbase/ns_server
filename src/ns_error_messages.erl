@@ -40,6 +40,12 @@ connection_error_message({tls_alert, {handshake_failure, Str}}, Host, Port)
     list_to_binary(io_lib:format("Failed to establish TLS connection to ~s:~w. "
                                  "TLS handshake failure (~s)",
                                  [Host, Port, Str]));
+connection_error_message({tls_alert, {unknown_ca, Str}}, Host, Port)
+                                                            when is_list(Str) ->
+    list_to_binary(io_lib:format("Failed to establish TLS connection to ~s:~w. "
+                                 "The certificate is issued by unknown CA or "
+                                 "some of the intermediate certificates are "
+                                 "missing (~s)", [Host, Port, Str]));
 connection_error_message({tls_alert, M}, Host, Port) ->
     list_to_binary(io_lib:format("Failed to establish TLS connection to ~s:~w: ~p", [Host, Port, M]));
 connection_error_message({AFamily, nxdomain}, Host, _Port) ->
