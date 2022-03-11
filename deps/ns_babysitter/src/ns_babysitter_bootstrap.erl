@@ -1,11 +1,11 @@
 %% @author Couchbase <info@couchbase.com>
 %% @copyright 2013-Present Couchbase, Inc.
 %%
-%% Use of this software is governed by the Business Source License included
-%% in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
-%% in that file, in accordance with the Business Source License, use of this
-%% software will be governed by the Apache License, Version 2.0, included in
-%% the file licenses/APL2.txt.
+%% Use of this software is governed by the Business Source License included in
+%% the file licenses/BSL-Couchbase.txt.  As of the Change Date specified in that
+%% file, in accordance with the Business Source License, use of this software
+%% will be governed by the Apache License, Version 2.0, included in the file
+%% licenses/APL2.txt.
 -module(ns_babysitter_bootstrap).
 
 -export([start/0, stop/0, get_quick_stop/0, remote_stop/1]).
@@ -28,6 +28,8 @@ stop() ->
     %% when a user does "service couchbase-server stop").  The init:stop
     %% smoothly takes down all applications, unloads code, etc.
     (catch ?log_info("~s: got shutdown request. Terminating.", [os:getpid()])),
+    %% ... but in order to make this operation synchronous, we explicitly call:
+    application:stop(ns_babysitter),
     init:stop().
 
 remote_stop(Node) ->
