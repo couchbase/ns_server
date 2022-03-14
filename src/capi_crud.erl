@@ -24,7 +24,6 @@
 construct_error_context(Context) ->
     mochijson2:encode({[{error, [{"context", Context}]}]}).
 
-%% TODO: handle tmp failures here. E.g. during warmup
 handle_mutation_rv(#mc_header{status = ?SUCCESS} = _Header, _Entry) ->
     ok;
 handle_mutation_rv(#mc_header{status = ?KEY_ENOENT} = _Header, _Entry) ->
@@ -33,6 +32,8 @@ handle_mutation_rv(#mc_header{status = ?EINVAL} = _Header, Entry) ->
     {error, Entry#mc_entry.data};
 handle_mutation_rv(#mc_header{status = ?UNKNOWN_COLLECTION}, Entry) ->
     {error, Entry#mc_entry.data};
+handle_mutation_rv(#mc_header{status = ?ETMPFAIL}, _Entry) ->
+    {retry_needed, etmpfail};
 handle_mutation_rv(#mc_header{status = ?NOT_MY_VBUCKET} = _Header, _Entry) ->
     throw(not_my_vbucket).
 
@@ -126,6 +127,8 @@ get_inner(Bucket, DocId, CollectionUid, VBucket, Options, Identity,
             throw(not_my_vbucket);
         ?UNKNOWN_COLLECTION ->
             {error, Entry#mc_entry.data};
+        ?ETMPFAIL ->
+            {retry_needed, etmpfail};
         ?EINVAL ->
             {error, Entry#mc_entry.data}
     end.

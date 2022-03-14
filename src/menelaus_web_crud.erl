@@ -255,6 +255,10 @@ construct_error_reply(Msg) ->
              end,
     {struct, [{error, <<"bad_request">>}, {reason, Reason}]}.
 
+construct_etmpfail_error_reply() ->
+    {struct, [{error, <<"retry_needed">>},
+              {reason, <<"etmpfail returned from memcached">>}]}.
+
 handle_get(BucketId, DocId, Req) ->
     CollectionUid = assert_default_collection_uid(BucketId),
     XAttrPerm = get_xattrs_permissions(BucketId, "_default", "_default", Req),
@@ -267,6 +271,8 @@ do_handle_get(BucketId, DocId, CollectionUid, XAttrPermissions, Req) ->
             menelaus_util:reply(Req, 404);
         {error, Msg} ->
             menelaus_util:reply_json(Req, construct_error_reply(Msg), 400);
+        {retry_needed, etmpfail} ->
+            menelaus_util:reply_json(Req,construct_etmpfail_error_reply(), 503);
         {ok, EJSON, {XAttrs}} ->
             {Json} = capi_utils:couch_doc_to_json(EJSON, unparsed),
             ns_audit:read_doc(Req, BucketId, DocId),
@@ -334,6 +340,9 @@ handle_post(BucketId, DocId, CollectionUid, Req) ->
     case mutate(Req, set, BucketId, DocId, CollectionUid, Value, Flags) of
         ok ->
             menelaus_util:reply_json(Req, []);
+        {retry_needed, etmpfail} ->
+            menelaus_util:reply_json(Req, construct_etmpfail_error_reply(),
+                                     503);
         {error, Msg} ->
             menelaus_util:reply_json(Req, construct_error_reply(Msg), 400)
     end.
@@ -347,6 +356,9 @@ handle_delete(BucketId, DocId, CollectionUid, Req) ->
                 undefined, undefined) of
         ok ->
             menelaus_util:reply_json(Req, []);
+        {retry_needed, etmpfail} ->
+            menelaus_util:reply_json(Req, construct_etmpfail_error_reply(),
+                                     503);
         {error, Msg} ->
             menelaus_util:reply_json(Req, construct_error_reply(Msg), 400)
     end.
