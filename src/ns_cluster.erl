@@ -186,9 +186,9 @@ apply_certs() ->
             %%    is encrypted);
             %%  - No point in reloading the same certs twice anyway
             %% Note 1:
-            %% The check is implemented outside of load_node_certs_from_inbox
+            %% The check is implemented outside of load_certs_from_inbox
             %% because it actually does make sense calling
-            %% load_node_certs_from_inbox with unchanged cert files,
+            %% load_certs_from_inbox with unchanged cert files,
             %% when only passphrase settings change.
             %% Note 2:
             %% This loading of certs from engage_cluster is only useful
@@ -204,12 +204,12 @@ apply_certs() ->
             %%  * We can't tell for sure if we already loaded
             %%    certs from this file or not without a password (because in p12
             %%    file cert chain is also encrypted).
-            InboxChainFile = ns_server_cert:inbox_chain_path(),
+            InboxChainFile = ns_server_cert:inbox_chain_path(node_cert),
             ShouldTryLoadCerts =
                 filelib:is_file(InboxChainFile) andalso
                 (not ns_server_cert:is_cert_loaded_from_file(InboxChainFile)),
             case ShouldTryLoadCerts andalso
-                 ns_server_cert:load_node_certs_from_inbox([]) of
+                 ns_server_cert:load_certs_from_inbox(node_cert, []) of
                 false ->
                     ?log_info("Certificates are already loaded or not "
                               "provided, skipping apply_certs stage"),
@@ -1084,8 +1084,10 @@ verify_otp_connectivity(OtpNode, Options) ->
         {ok, Port} ->
             VerifyConnectivity =
                 case {NodeEncryption, TCPOnly} of
-                    {true, false} -> fun check_otp_tls_connectivity/3;
-                    _ -> fun check_host_port_connectivity/3
+                    {true, false} ->
+                        check_otp_tls_connectivity(_, _, _, Options);
+                    _ ->
+                        fun check_host_port_connectivity/3
                 end,
             case VerifyConnectivity(Host, Port, NodeAFamily) of
                 {ok, IP} -> {ok, IP};
@@ -1100,7 +1102,7 @@ verify_otp_connectivity(OtpNode, Options) ->
                                                                   Error)}
     end.
 
-check_otp_tls_connectivity(Host, Port, AFamily) ->
+check_otp_tls_connectivity(Host, Port, AFamily, Options) ->
     %% Building connect options the same way inet_tls_dist builds it.
     %% Note that ssl_dist_opts ets is populated by erlang ssl app (in our case
     %% it should contain options from /etc/ssl_dist_opts.in).
@@ -1117,10 +1119,21 @@ check_otp_tls_connectivity(Host, Port, AFamily) ->
     AllOpts = [binary, {active, false}, {packet, 4},
                AFamily, {nodelay, true}, {erl_dist, true}] ++ SNIOpts ++
                lists:ukeysort(1, Opts2 ++ TLSOpts),
+    AllOpts2 =
+        lists:foldl(
+          fun ({cert, Cert}, Acc) ->
+                  [{cert, Cert} |
+                   proplists:delete(certfile, proplists:delete(cert, Acc))];
+              ({key, Key}, Acc) ->
+                  [{key, Key} |
+                   proplists:delete(keyfile, proplists:delete(key, Acc))];
+              (_, Acc) ->
+                  Acc
+          end, AllOpts, Options),
     Timeout = net_kernel:connecttime(),
     case inet:getaddr(Host, AFamily) of
         {ok, IpAddr} ->
-            case ssl:connect(IpAddr, Port, AllOpts, Timeout) of
+            case ssl:connect(IpAddr, Port, AllOpts2, Timeout) of
                 {ok, TLSSocket} ->
                     {ok, {LocalIpAddr, _}} = ssl:sockname(TLSSocket),
                     catch ssl:close(TLSSocket),

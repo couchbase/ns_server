@@ -33,7 +33,7 @@
          client_cert_auth_state/0,
          client_cert_auth_state/1,
          get_user_name_from_client_cert/1,
-         set_node_certificate_chain/4,
+         set_certificate_chain/5,
          ssl_client_opts/0,
          configured_ciphers_names/2,
          honor_cipher_order/1,
@@ -460,9 +460,9 @@ sync() ->
     %% has been handled
     ok = gen_server:call(?MODULE, ping, ?TIMEOUT).
 
-set_node_certificate_chain(CAEntry, Chain, PKey, PassphraseSettings) ->
+set_certificate_chain(Type, CAEntry, Chain, PKey, PassphraseSettings) ->
     ?log_debug("Setting node certificate chain"),
-    gen_server:call(?MODULE, {set_node_certificate_chain, CAEntry, Chain,
+    gen_server:call(?MODULE, {set_certificate_chain, Type, CAEntry, Chain,
                               fun () -> PKey end,
                               fun () -> PassphraseSettings end}, ?TIMEOUT).
 
@@ -549,9 +549,9 @@ handle_config_change(_OtherEvent, _Parent) ->
     ok.
 
 
-handle_call({set_node_certificate_chain, CAEntry, Chain, PKeyFun,
+handle_call({set_certificate_chain, Type, CAEntry, Chain, PKeyFun,
              PassphraseSettingsFun}, _From, State) ->
-    Props = save_uploaded_certs(node_cert, CAEntry, Chain, PKeyFun(),
+    Props = save_uploaded_certs(Type, CAEntry, Chain, PKeyFun(),
                                 PassphraseSettingsFun()),
     {reply, {ok, Props}, sync_ssl_reload(State)};
 

@@ -20,7 +20,7 @@
          handle_regenerate_certificate/1,
          handle_load_ca_certs/1,
          handle_upload_cluster_ca/1, %% deprecated
-         handle_reload_node_certificate/1,
+         handle_reload_certificate/2,
          handle_get_node_certificate/2,
          handle_get_node_certificates/1,
          handle_client_cert_auth_settings/1,
@@ -365,7 +365,8 @@ assert_n2n_encryption_is_disabled() ->
               400, "Operation requires node-to-node encryption to be disabled")
     end.
 
-handle_reload_node_certificate(Req) ->
+handle_reload_certificate(Type, Req) when Type == node_cert;
+                                          Type == client_cert ->
     menelaus_util:assert_is_enterprise(),
     Nodes = nodes(),
     JSONData =
@@ -386,7 +387,8 @@ handle_reload_node_certificate(Req) ->
 
           menelaus_util:survive_web_server_restart(
             fun () ->
-                case ns_server_cert:load_node_certs_from_inbox(
+                case ns_server_cert:load_certs_from_inbox(
+                       Type,
                        PassphraseSettings) of
                     {ok, Props} ->
                         ns_audit:reload_node_certificate(
