@@ -25,7 +25,8 @@
          change_password/1,
          get_data_key/0,
          rotate_data_key/0,
-         maybe_clear_backup_key/1]).
+         maybe_clear_backup_key/1,
+         get_state/0]).
 
 data_key_store_path() ->
     filename:join(path_config:component_path(data, "config"), "encrypted_data_keys").
@@ -64,6 +65,10 @@ change_password(NewPassword) ->
 
 get_data_key() ->
     gen_server:call({?MODULE, ns_server:get_babysitter_node()}, get_data_key, infinity).
+
+get_state() ->
+    gen_server:call({?MODULE, ns_server:get_babysitter_node()}, get_state,
+                    infinity).
 
 rotate_data_key() ->
     gen_server:call({?MODULE, ns_server:get_babysitter_node()}, rotate_data_key, infinity).
@@ -157,14 +162,12 @@ init([]) ->
                 undefined
         end,
     State = start_gosecrets(),
-    Password =
-        case os:getenv("CB_MASTER_PASSWORD") of
-            false ->
-                "";
-            S ->
-                S
-        end,
-    ok = set_password(Password, State),
+    case os:getenv("CB_MASTER_PASSWORD") of
+        false ->
+            false;
+        Password ->
+            ok = set_password(Password, State)
+    end,
 
     EncryptedDataKey1 =
         case EncryptedDataKey of
@@ -204,6 +207,8 @@ handle_call({change_password, NewPassword}, _From, State) ->
        {change_password, NewPassword}, "Master password change", State), State};
 handle_call(get_data_key, _From, State) ->
     {reply, call_gosecrets(get_data_key, State), State};
+handle_call(get_state, _From, State) ->
+    {reply, call_gosecrets(get_state, State), State};
 handle_call(rotate_data_key, _From, State) ->
     {reply, call_gosecrets_and_store_data_key(rotate_data_key, "Data key rotation", State), State};
 handle_call({maybe_clear_backup_key, DataKey}, _From, State) ->
@@ -306,4 +311,6 @@ encode({change_password, Password}) ->
 encode(rotate_data_key) ->
     <<8>>;
 encode({maybe_clear_backup_key, DataKey}) ->
-    <<9, DataKey/binary>>.
+    <<9, DataKey/binary>>;
+encode(get_state) ->
+    <<10>>.

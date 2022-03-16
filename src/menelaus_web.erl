@@ -471,6 +471,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["internalSettings"] ->
                     {{[admin, settings], read},
                      fun menelaus_web_settings:handle_get/2, [internal]};
+                ["nodes", "self", "secretsManagement"] ->
+                    {{[admin, security], read},
+                     fun menelaus_web_secrets:handle_get_state/1};
                 ["nodes", NodeId] ->
                     {{[nodes], read}, fun menelaus_web_node:handle_node/2, [NodeId]};
                 ["nodes", "self", "xdcrSSLPorts"] ->

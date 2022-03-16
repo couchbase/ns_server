@@ -16,7 +16,8 @@
 -include("cut.hrl").
 
 -export([handle_change_master_password/1,
-         handle_rotate_data_key/1]).
+         handle_rotate_data_key/1,
+         handle_get_state/1]).
 
 handle_change_master_password(Req) ->
     menelaus_util:assert_is_enterprise(),
@@ -54,3 +55,7 @@ handle_rotate_data_key(Req) ->
             ns_audit:data_key_rotation(Req, Error),
             menelaus_util:reply_global_error(Req, Error ++ ". You might try one more time.")
     end.
+
+handle_get_state(Req) ->
+    {ok, Rv} = encryption_service:get_state(),
+    menelaus_util:reply_json(Req, {struct, [{state, Rv}]}).

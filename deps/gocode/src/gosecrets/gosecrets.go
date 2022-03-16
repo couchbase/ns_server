@@ -15,6 +15,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha1"
+	"crypto/subtle"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -32,6 +33,7 @@ const nIterations = 4096
 var hmacFun = sha1.New
 
 var salt = [8]byte{20, 183, 239, 38, 44, 214, 22, 141}
+var emptyString = []byte("")
 
 type encryptionService struct {
 	lockKey          []byte
@@ -46,6 +48,8 @@ func main() {
 	s := &encryptionService{
 		reader: bufio.NewReader(os.Stdin),
 	}
+
+	s.lockKey = generateLockKey(emptyString)
 	for {
 		s.processCommand()
 	}
@@ -141,8 +145,18 @@ func (s *encryptionService) processCommand() {
 		s.cmdRotateDataKey()
 	case 9:
 		s.cmdClearBackupKey(data)
+	case 10:
+		s.cmdGetState()
 	default:
 		panic(fmt.Sprintf("Unknown command %v", command))
+	}
+}
+
+func (s *encryptionService) cmdGetState() {
+	if subtle.ConstantTimeCompare(s.lockKey, generateLockKey(emptyString)) == 1 {
+		replySuccessWithData([]byte("default"))
+	} else {
+		replySuccessWithData([]byte("user_configured"))
 	}
 }
 
