@@ -400,7 +400,7 @@ handle_event({call, From},
               DeltaRecoveryBuckets, RebalanceId, RetryChk},
              _StateName, _State) ->
     Snapshot = chronicle_compat:get_snapshot(
-                 [ns_bucket:fetch_snapshot(all, _),
+                 [ns_bucket:fetch_snapshot(all, _, [uuid, props]),
                   ns_cluster_membership:fetch_snapshot(_),
                   chronicle_master:fetch_snapshot(_)]),
 
@@ -1382,7 +1382,7 @@ graceful_failover_retry_ok(Chk) ->
 get_graceful_fo_chk() ->
     Cfg = ns_config:get(),
     Snapshot = chronicle_compat:get_snapshot(
-                 [ns_bucket:fetch_snapshot(all, _),
+                 [ns_bucket:fetch_snapshot(all, _, [uuid, props]),
                   ns_cluster_membership:fetch_snapshot(_)],
                  #{ns_config => Cfg}),
     KnownNodes0 = ns_cluster_membership:nodes_wanted(Snapshot),

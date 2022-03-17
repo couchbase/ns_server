@@ -572,7 +572,7 @@ buckets_in_use() ->
     Node = node(),
     Snapshot =
         chronicle_compat:get_snapshot(
-          [ns_bucket:fetch_snapshot(all, _),
+          [ns_bucket:fetch_snapshot(all, _, [props]),
            ns_cluster_membership:fetch_snapshot(_)],
           #{read_consistency => quorum}),
     Services = ns_cluster_membership:node_services(Snapshot, Node),

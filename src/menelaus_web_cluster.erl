@@ -63,7 +63,7 @@ handle_cluster_init(_Req, Retries) when Retries =< 0 ->
 handle_cluster_init(Req, Retries) ->
     Config = ns_config:get(),
     Snapshot = chronicle_compat:get_snapshot(
-                 [ns_bucket:fetch_snapshot(all, _),
+                 [ns_bucket:fetch_snapshot(all, _, [props]),
                   ns_cluster_membership:fetch_snapshot(_)],
                  #{ns_config => Config}),
 

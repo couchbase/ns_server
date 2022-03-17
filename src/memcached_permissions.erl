@@ -304,7 +304,7 @@ memcached_admin_json(AU) ->
     jsonify_user({AU, local}, {[all], all}).
 
 jsonify_users(Users, RoleDefinitions, ClusterAdmin, PromUser) ->
-    Snapshot = ns_bucket:get_snapshot(),
+    Snapshot = ns_bucket:get_snapshot(all, [collections, uuid]),
     ?make_transducer(
        begin
            ?yield(object_start),

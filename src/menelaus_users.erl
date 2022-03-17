@@ -404,7 +404,7 @@ make_props_state(ItemList) ->
              lists:member(user_roles, ItemList) orelse
              lists:member(group_roles, ItemList) of
             true -> {menelaus_roles:get_definitions(public),
-                     ns_bucket:get_snapshot()};
+                     ns_bucket:get_snapshot(all, [collections, uuid])};
             false -> {undefined, undefined}
         end,
     {Passwordless, Definitions, Snapshot}.
@@ -443,7 +443,7 @@ store_user({_UserName, Domain} = Identity, Name, Password, Roles,
     Props = [{name, Name} || Name =/= undefined] ++
             [{uuid, UUID} || UUID =/= undefined] ++
             [{groups, Groups} || Groups =/= undefined],
-    Snapshot = ns_bucket:get_snapshot(),
+    Snapshot = ns_bucket:get_snapshot(all, [collections, uuid]),
 
     CurrentAuth = replicated_dets:get(storage_name(), {auth, Identity}),
     case check_limit(Identity) of
@@ -628,7 +628,7 @@ get_roles(Identity) ->
 %% Groups functions
 
 store_group(Identity, Description, Roles, LDAPGroup) ->
-    Snapshot = ns_bucket:get_snapshot(),
+    Snapshot = ns_bucket:get_snapshot(all, [collections, uuid]),
     case menelaus_roles:validate_roles(Roles, Snapshot) of
         {NewRoles, []} ->
             Props = [{description, Description} || Description =/= undefined] ++
@@ -876,8 +876,8 @@ filter_out_invalid_roles(Props, Definitions, Snapshot) ->
 
 cleanup_bucket_roles(BucketName) ->
     ?log_debug("Delete all roles for bucket ~p", [BucketName]),
-    Snapshot = ns_bucket:remove_from_snapshot(BucketName,
-                                              ns_bucket:get_snapshot()),
+    Snapshot = ns_bucket:remove_from_snapshot(
+                 BucketName, ns_bucket:get_snapshot(all, [collections, uuid])),
 
     Definitions = menelaus_roles:get_definitions(all),
     UpdateFun =

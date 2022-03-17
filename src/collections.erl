@@ -403,7 +403,7 @@ bump_id(Manifest, ID) ->
     bump_id(Manifest, ID, 1).
 
 other_bucket_counts(Bucket) ->
-    Snapshot = ns_bucket:get_snapshot(),
+    Snapshot = ns_bucket:get_snapshot(all, [collections]),
     Buckets = ns_bucket:get_bucket_names(Snapshot),
     lists:foldl(
       fun (B, {AccS, AccC} = Acc) ->

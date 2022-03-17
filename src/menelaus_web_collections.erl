@@ -247,7 +247,7 @@ validate_collections(Name, State) ->
 handle_ensure_manifest(Bucket, Uid, Req) ->
     assert_api_available(Bucket),
     UidInt = convert_uid(Uid),
-    Snapshot = ns_bucket:get_snapshot(Bucket),
+    Snapshot = ns_bucket:get_snapshot(Bucket, [uuid, props]),
     {ok, BucketConfig} = ns_bucket:get_bucket(Bucket, Snapshot),
 
     BucketNodes = ns_bucket:live_bucket_nodes_from_config(BucketConfig),

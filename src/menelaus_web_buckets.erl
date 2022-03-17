@@ -447,7 +447,7 @@ init_bucket_validation_context(IsNew, BucketName, ValidateOnly,
     Config = ns_config:get(),
     Snapshot =
         chronicle_compat:get_snapshot(
-          [ns_bucket:fetch_snapshot(all, _),
+          [ns_bucket:fetch_snapshot(all, _, [props]),
            ns_cluster_membership:fetch_snapshot(_)], #{ns_config => Config}),
 
     KvNodes = ns_cluster_membership:service_active_nodes(Snapshot, kv),

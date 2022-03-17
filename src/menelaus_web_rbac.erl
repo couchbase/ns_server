@@ -208,7 +208,7 @@ maybe_remove_security_roles(Req, Snapshot, Roles) ->
         end.
 
 handle_get_roles(Req) ->
-    Snapshot = ns_bucket:get_snapshot(),
+    Snapshot = ns_bucket:get_snapshot(all, [collections, uuid]),
     validator:handle(
       fun (Values) ->
               Permission = proplists:get_value(permission, Values),
@@ -334,7 +334,8 @@ handle_get_users(Path, Domain, Req) ->
 get_roles_for_users_filtering(undefined) ->
     all;
 get_roles_for_users_filtering(Permission) ->
-    get_roles_by_permission(Permission, ns_bucket:get_snapshot()).
+    get_roles_by_permission(Permission,
+                            ns_bucket:get_snapshot(all, [collections, uuid])).
 
 handle_get_users_with_domain(Req, DomainAtom, Path) ->
     Query = mochiweb_request:parse_qs(Req),
@@ -1067,7 +1068,7 @@ parse_groups(GroupsStr) ->
     [string:trim(G) || G <- GroupsTokens].
 
 validate_roles(Name, State) ->
-    Snapshot = ns_bucket:get_snapshot(),
+    Snapshot = ns_bucket:get_snapshot(all, [collections, uuid]),
     validator:validate(
       fun (RawRoles) ->
               Roles = parse_roles(RawRoles),
@@ -1111,7 +1112,7 @@ overlap(List1, List2) ->
 
 get_security_roles() ->
     [R || {R, _} <- menelaus_roles:get_security_roles(
-                      ns_bucket:get_snapshot())].
+                      ns_bucket:get_snapshot(all, [collections, uuid]))].
 
 verify_domain_access(Req, {_UserId, Domain})
   when Domain =:= local orelse Domain =:= external ->
@@ -1909,7 +1910,7 @@ handle_put_profile(RawIdentity, Req) ->
 handle_get_uiroles(Req) ->
     menelaus_util:require_permission(Req, {[admin, security], read}),
 
-    Snapshot = ns_bucket:get_snapshot(),
+    Snapshot = ns_bucket:get_snapshot(all, [collections, uuid]),
     Roles =
         maybe_remove_security_roles(
           Req, Snapshot, menelaus_roles:get_visible_role_definitions()),

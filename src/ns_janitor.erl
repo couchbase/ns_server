@@ -34,7 +34,7 @@
 cleanup(Bucket, Options) ->
     Snapshot =
         chronicle_compat:get_snapshot(
-          [ns_bucket:fetch_snapshot(Bucket, _),
+          [ns_bucket:fetch_snapshot(Bucket, _, [props]),
            ns_cluster_membership:fetch_snapshot(_)]),
     case ns_bucket:get_bucket(Bucket, Snapshot) of
         not_present ->

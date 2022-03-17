@@ -857,7 +857,7 @@ find_object(Name, Find) when is_list(Name) ->
     end.
 
 params_version() ->
-    params_version(ns_bucket:get_snapshot()).
+    params_version(ns_bucket:get_snapshot(all, [collections, uuid])).
 
 -spec params_version(map()) -> term().
 params_version(Snapshot) ->
@@ -999,7 +999,7 @@ build_compiled_roles(Identity) ->
                        [ns_config_log:tag_user_data(Identity)]),
             Definitions = get_definitions(all),
             compile_roles(get_roles(Identity), Definitions,
-                          ns_bucket:get_snapshot());
+                          ns_bucket:get_snapshot(all, [collections, uuid]));
         true ->
             ?log_debug("Retrieve compiled roles for user ~p from ns_server "
                        "node", [ns_config_log:tag_user_data(Identity)]),

@@ -32,8 +32,8 @@
          failover_warnings/1,
          root/0,
          sub_key/2,
-         get_snapshot/0,
          get_snapshot/1,
+         get_snapshot/2,
          fetch_snapshot/2,
          fetch_snapshot/3,
          sub_key_match/1,
@@ -173,11 +173,11 @@ fetch_snapshot(all, Txn, SubKeys) ->
 fetch_snapshot(Bucket, Txn, SubKeys) ->
     chronicle_compat:txn_get_many([root() | all_keys([Bucket], SubKeys)], Txn).
 
-get_snapshot() ->
-    get_snapshot(all).
-
 get_snapshot(Bucket) ->
-    chronicle_compat:get_snapshot([fetch_snapshot(Bucket, _)], #{}).
+    get_snapshot(Bucket, all_sub_keys()).
+
+get_snapshot(Bucket, SubKeys) ->
+    chronicle_compat:get_snapshot([fetch_snapshot(Bucket, _, SubKeys)], #{}).
 
 upgrade_to_chronicle(Buckets, NodesWanted) ->
     BucketConfigs = proplists:get_value(configs, Buckets, []),
@@ -305,7 +305,7 @@ get_buckets() ->
 get_buckets(direct) ->
     case chronicle_compat:backend() of
         chronicle ->
-            get_buckets(get_snapshot());
+            get_buckets(get_snapshot(all, [props]));
         ns_config ->
             get_buckets(ns_config:latest())
     end;
@@ -1383,7 +1383,7 @@ uuid(Bucket, Snapshot) when is_map(Snapshot) ->
     end.
 
 uuids() ->
-    uuids(get_snapshot()).
+    uuids(get_snapshot(all, [uuid])).
 
 uuids(Snapshot) ->
     [{Name, uuid(Name, Snapshot)} || Name <- get_bucket_names(Snapshot)].
