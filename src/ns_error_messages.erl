@@ -9,6 +9,7 @@
 %%
 -module(ns_error_messages).
 
+-include("ns_common.hrl").
 -include("cut.hrl").
 
 -export([decode_json_response_error/3,
@@ -340,7 +341,12 @@ reload_node_certificate_error({conflicting_certs, PemFile, P12File}) ->
                        "PEM(~s) and PKCS12(~s). Please remove one of them",
                        [PemFile, P12File]));
 reload_node_certificate_error(empty_pass) ->
-    <<"Empty PKCS12 passwords are not supported for security reasons">>.
+    <<"Empty PKCS12 passwords are not supported for security reasons">>;
+reload_node_certificate_error(bad_cert_identity) ->
+    "@" ++ Name = ?INTERNAL_CERT_USER,
+    NameBin = list_to_binary(Name),
+    <<"Internal client certificate must contain "
+      "SAN.email=", NameBin/binary ,"@"?INTERNAL_CERT_EMAIL_DOMAIN>>.
 
 node_certificate_warning(unused) ->
     <<"This certificate is auto-generated and doesn't seem to be used by any "

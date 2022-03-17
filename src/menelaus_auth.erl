@@ -275,6 +275,8 @@ authenticate({token, Token} = Param) ->
         true ->
             rpc:call(ns_node_disco:ns_server_node(), ?MODULE, authenticate, [Param])
     end;
+authenticate({client_cert_auth, "@" ++ _ = Username}) ->
+    {ok, {Username, admin}};
 authenticate({client_cert_auth, Username} = Param) ->
     %% Just returning the username as the request is already authenticated based
     %% on the client certificate.

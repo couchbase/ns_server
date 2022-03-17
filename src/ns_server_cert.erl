@@ -46,7 +46,8 @@
          expiration_warnings/1,
          split_certs/1,
          cert_props/1,
-         cert_expiration_warning_days/0]).
+         cert_expiration_warning_days/0,
+         extract_internal_client_cert_user/1]).
 
 inbox_ca_path() ->
     filename:join(path_config:component_path(data, "inbox"), "CA").
@@ -929,6 +930,9 @@ set_certificate_chain(Type, Chain, PKey, PassphraseSettings) ->
                            end,
                            fun () ->
                                validate_otp_certs(Type, ChainPem, PKey, PassFun)
+                           end,
+                           fun () ->
+                               validate_cert_identity(Type, LeafCert)
                            end]);
                     {error, _} = Error ->
                         Error
@@ -1345,3 +1349,26 @@ get_node_cert_info(Node) ->
 
 cert_expiration_warning_days() ->
     ns_config:read_key_fast({cert, expiration_warning_days}, 30).
+
+extract_internal_client_cert_user(Cert) ->
+    case get_sub_alt_names_by_type(Cert, rfc822Name) of
+        {error, not_found} ->
+            {error, not_found};
+        Emails ->
+            fun FindInternalEmail ([]) -> {error, not_found};
+                FindInternalEmail ([Email | T]) ->
+                    case string:split(Email, "@") of
+                        [Name, ?INTERNAL_CERT_EMAIL_DOMAIN] ->
+                            {ok, "@" ++ Name};
+                        _ ->
+                            FindInternalEmail(T)
+                    end
+            end (Emails)
+    end.
+
+validate_cert_identity(node_cert, _) -> ok;
+validate_cert_identity(client_cert, {'Certificate', DerCert, not_encrypted}) ->
+    case extract_internal_client_cert_user(DerCert) of
+        {ok, _UserName} -> ok;
+        {error, not_found} -> {error, bad_cert_identity}
+    end.

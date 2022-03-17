@@ -911,7 +911,7 @@ certs_epoch() ->
 
 -spec get_user_name_from_client_cert(term()) -> string() | undefined | failed.
 get_user_name_from_client_cert(Val) ->
-    ClientAuth = ns_ssl_services_setup:client_cert_auth(),
+    ClientAuth = client_cert_auth(),
     {state, State} = lists:keyfind(state, 1, ClientAuth),
     case Val of
         {ssl, SSLSock} ->
@@ -935,11 +935,15 @@ get_user_name_from_client_cert(Val) ->
 
 get_user_name_from_client_cert(Cert, ClientAuth) ->
     Triples = proplists:get_value(prefixes, ClientAuth),
-    case get_user_name_from_client_cert_inner(Cert, Triples) of
-        {error, _} ->
-            failed;
-        Username ->
-            Username
+    case ns_server_cert:extract_internal_client_cert_user(Cert) of
+        {ok, User} -> User;
+        {error, not_found} ->
+            case get_user_name_from_client_cert_inner(Cert, Triples) of
+                {error, _} ->
+                    failed;
+                Username ->
+                    Username
+            end
     end.
 
 get_user_name_from_client_cert_inner(_Cert, []) ->
