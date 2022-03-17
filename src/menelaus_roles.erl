@@ -1188,8 +1188,7 @@ filter_out_invalid_roles_test() ->
                    {role2, [bucket_name],
                     [{name,<<"">>},{desc, <<"">>}],
                     [{[{bucket,bucket_name},n1ql,update],[execute]}]}],
-    Snapshot = ns_bucket:toy_buckets([{"bucket1",
-                                       [{uuid, <<"id1">>}, {props, []}]}]),
+    Snapshot = ns_bucket:toy_buckets([{"bucket1", [{uuid, <<"id1">>}]}]),
     ?assertEqual([{role1, [{"bucket1", <<"id1">>}]}],
                  filter_out_invalid_roles(Roles, Definitions, Snapshot)).
 
@@ -1241,9 +1240,8 @@ object_match_with_collections_test() ->
                                      [{collection, ["b1", any, any]}])).
 
 toy_buckets_props() ->
-    [{"test", [{uuid, <<"test_id">>}, {props, []}]},
-     {"default", [{uuid, <<"default_id">>}, {props, []},
-                  {collections, toy_manifest()}]}].
+    [{"test", [{uuid, <<"test_id">>}]},
+     {"default", [{uuid, <<"default_id">>}, {collections, toy_manifest()}]}].
 
 toy_buckets() ->
     ns_bucket:toy_buckets(toy_buckets_props()).
@@ -1725,8 +1723,8 @@ params_version_test() ->
 
     Version1 = Test(toy_buckets_props()),
     Version2 = Test(lists:keydelete("test", 1, toy_buckets_props())),
-    Version3 = Test(Update([{uuid, <<"test_id1">>}, {props, []}])),
-    Version4 = Test(Update([{uuid, <<"test_id">>}, {props, []},
+    Version3 = Test(Update([{uuid, <<"test_id1">>}])),
+    Version4 = Test(Update([{uuid, <<"test_id">>},
                             {collections, toy_manifest()}])),
     ?assertNotEqual(Version1, Version2),
     ?assertNotEqual(Version1, Version3),

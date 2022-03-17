@@ -421,9 +421,8 @@ permissions_for_user_test_() ->
                    {"s1", [{uid, 2}, {collections, [{"c",  [{uid, 3}]}]}]}]}],
     Snapshot =
         ns_bucket:toy_buckets(
-          [{"test", [{props, []}, {uuid, <<"test_id">>}]},
-           {"default", [{props, []}, {uuid, <<"default_id">>},
-                        {collections, Manifest}]}]),
+          [{"test", [{uuid, <<"test_id">>}]},
+           {"default", [{uuid, <<"default_id">>}, {collections, Manifest}]}]),
 
     All = fun (L) -> lists:usort([P || {_, P} <- L]) end,
     Read = fun (L) -> lists:usort([P || {{_, read}, P} <- L]) end,
