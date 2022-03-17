@@ -399,7 +399,7 @@ make_props(Id, Props, ItemList, {Passwordless, Definitions,
 make_props_state(ItemList) ->
     Passwordless = lists:member(passwordless, ItemList) andalso
                        get_passwordless(),
-    {Definitions, Buckets} =
+    {Definitions, Snapshot} =
         case lists:member(roles, ItemList) orelse
              lists:member(user_roles, ItemList) orelse
              lists:member(group_roles, ItemList) of
@@ -407,7 +407,7 @@ make_props_state(ItemList) ->
                      ns_bucket:get_snapshot()};
             false -> {undefined, undefined}
         end,
-    {Passwordless, Definitions, Buckets}.
+    {Passwordless, Definitions, Snapshot}.
 
 select_auth_infos(KeySpec) ->
     replicated_dets:select(storage_name(), {auth, KeySpec}, 100).
