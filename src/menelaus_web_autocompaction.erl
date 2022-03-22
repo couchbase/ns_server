@@ -312,7 +312,15 @@ parse_and_validate_extra_index_settings(Params) ->
 parse_validate_purge_interval(Params, ephemeral) ->
     do_parse_validate_purge_interval(Params, 0.0007);
 parse_validate_purge_interval(Params, _) ->
-    do_parse_validate_purge_interval(Params, 0.04).
+    MinInterval = case cluster_compat_mode:is_cluster_MORPHEUS() of
+                      true ->
+                          %% 14.4 minutes
+                          0.01;
+                      false ->
+                          %% 57.6 minutes
+                          0.04
+                  end,
+    do_parse_validate_purge_interval(Params, MinInterval).
 
 do_parse_validate_purge_interval(Params, LowerLimit) ->
     Fun = mk_number_field_validator(LowerLimit, 60, Params, list_to_float),
