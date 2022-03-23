@@ -1198,7 +1198,7 @@ get_warnings() ->
 
 expiration_warnings(CertProps) ->
     Now = calendar:datetime_to_gregorian_seconds(calendar:universal_time()),
-    WarningDays = ns_config:read_key_fast({cert, expiration_warning_days}, 7),
+    WarningDays = ns_config:read_key_fast({cert, expiration_warning_days}, 30),
     WarningSeconds = WarningDays * 24 * 60 * 60,
     WarningThreshold = Now + WarningSeconds,
 
