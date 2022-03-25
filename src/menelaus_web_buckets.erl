@@ -326,9 +326,17 @@ build_pitr_dynamic_bucket_info(BucketConfig) ->
             %% memcached buckets don't support pitr.
             [];
         _ ->
-            [{pitrEnabled, ns_bucket:pitr_enabled(BucketConfig)},
-             {pitrGranularity, ns_bucket:pitr_granularity(BucketConfig)},
-             {pitrMaxHistoryAge, ns_bucket:pitr_max_history_age(BucketConfig)}]
+            case cluster_compat_mode:is_cluster_MORPHEUS() of
+                true ->
+                    [{pitrEnabled,
+                      ns_bucket:pitr_enabled(BucketConfig)},
+                     {pitrGranularity,
+                      ns_bucket:pitr_granularity(BucketConfig)},
+                     {pitrMaxHistoryAge,
+                      ns_bucket:pitr_max_history_age(BucketConfig)}];
+                false ->
+                    []
+            end
     end.
 
 build_magma_bucket_info(BucketConfig) ->
@@ -846,7 +854,23 @@ additional_bucket_params_validation(Params, Ctx) ->
                    []
            end,
 
-    Err1 ++ Err2.
+    PitrGranularity = get_value_from_parms_or_bucket(pitr_granularity,
+                                                     Params, Ctx),
+    PitrMaxHistoryAge = get_value_from_parms_or_bucket(pitr_max_history_age,
+                                                       Params, Ctx),
+    Err3 = case {PitrGranularity, PitrMaxHistoryAge} of
+               {undefined, undefined} ->
+                   %% memcached buckets don't support pitr
+                   [];
+               {Granularity, MaxAge} when Granularity > MaxAge ->
+                   [{pitrGranularity,
+                     <<"PITR granularity must be less than or equal to max "
+                       "history age">>}];
+               {_, _} ->
+                   []
+           end,
+
+    Err1 ++ Err2 ++ Err3.
 
 %% Get the value from the params. If it wasn't specified and this isn't
 %% a bucket creation then get the existing value from the bucket config.
