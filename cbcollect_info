@@ -27,13 +27,43 @@ import shutil
 import errno
 import hashlib
 import uuid
-import io
 import configparser
 from datetime import datetime, timedelta, tzinfo
+import array
+import mmap
 from io import BytesIO, StringIO
-from collections import namedtuple
+from typing import BinaryIO, Dict, List, Optional, Iterable, Pattern, Tuple, TypeVar, Union, IO, Any
+from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
+from enum import Enum, unique
+from io import BytesIO, StringIO
+from abc import ABC, abstractmethod
 
-CollectedFile = namedtuple('CollectedFile', ['filename', 'relative_name'])
+""" Represents opaque 'data' from the C context """
+_CData = TypeVar("_CData")
+
+""" This is a copy of python's own type for allowed buffer type(s) """
+ReadableBuffer = Union[bytes, bytearray, memoryview, array.array,
+                       mmap.mmap, _CData]
+
+""" A type representing one of the log processors """
+LogProcessors = Union["RegularLogProcessor",
+                      "AccessLogProcessor",
+                      "CouchbaseLogProcessor"]
+
+""" Type of allowed writers """
+WriterType = Union[BytesIO, IO[bytes], "Writer"]
+
+""" The default size of a single '.read()' operation """
+READ_SIZE: int = 64 * 1024
+
+""" The default log file """
+DEFAULT_LOG: str = "couchbase.log"
+
+""" Files that are included in redaction, but aren't ran through redactor """
+BINARY_FILE_EXTS: Tuple[str, str] = (".gz", ".dmp")
+
+""" Files in this list will be completely skipped in the redacted zip """
+OMIT_IN_REDACT_ZIP: List[str] = ["users.dets"]
 
 # This is a facility that provides a functionality similar to atexit from the
 # standard library. We don't use the latter for the following reasons.
@@ -55,6 +85,8 @@ CollectedFile = namedtuple('CollectedFile', ['filename', 'relative_name'])
 # So AltExitC is a solution to these issues. It terminates the process as soon
 # as possible by calling os._exit(). The price is that the cleanup actions
 # need to be registered with AltExitC and synchronization is a concern.
+
+
 class AltExitC(object):
     def __init__(self):
         self.list = []
@@ -88,10 +120,51 @@ class AltExitC(object):
 
 AltExit = AltExitC()
 
-class FSyncedFile(object):
+
+class Writer(ABC):
+    """
+    Abstract base class for all of our writers. This is probably the "proper"
+    method to use instead of overriding things that don't fit quite right
+    for this use case. All our writers override this and combine in layers
+    to provide a unified, streaming, interface.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    @abstractmethod
+    def write(self, buf: ReadableBuffer) -> int:
+        """
+        This is the main method used by all the writers. It uses the same buffer
+        type as most of the common python ones, for maximum interop between
+        them.
+        """
+        pass
+
+    @abstractmethod
+    def flush(self):
+        """"
+        Some writers may maintain internal buffers, so this allows callers to
+        flush out anything remaining in the buffer. This is especially useful
+        if you are finished reading from the source and need to write the final
+        bit that's still buffered.
+        """
+        pass
+
+    def close(self):
+        """
+        Close is not required because many of the implementors will be passed
+        in the underlying stream(s). If we were to close those inside the
+        object and outside of it, that would be problematic/needless.
+        """
+        pass
+
+
+class FSyncedFile(Writer):
     SYNC_BYTES = 16 * 1024 * 1024
 
     def __init__(self, *args, **kwargs):
+        super().__init__()
         self._file = open(*args, **kwargs)
         self._written = 0
 
@@ -104,11 +177,17 @@ class FSyncedFile(object):
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()
 
+    def flush(self):
+        """
+        Choosing not to fsync here so we don't do it too often.
+        """
+        self._file.flush()
+
     def close(self):
         self._sync()
         self._file.close()
 
-    def write(self, buf):
+    def write(self, buf: ReadableBuffer):
         n = self._file.write(buf)
 
         self._written += n
@@ -121,6 +200,7 @@ class FSyncedFile(object):
     def _sync(self):
         self._file.flush()
         os.fsync(self._file.fileno())
+
 
 # Currently we decode bytes in this file via LATIN1. The reason for this is that
 # UTF8 (which is the default in python) is a decoding which can fail - i.e. not
@@ -160,8 +240,8 @@ class LocalTZ(tzinfo):
 
 local_tz = LocalTZ()
 log_stream = StringIO()
-local_addr = None
-local_url_addr = None
+local_addr: Optional[str] = None
+local_url_addr: Optional[str] = None
 
 
 def set_local_addr(ipv6):
@@ -172,7 +252,7 @@ def set_local_addr(ipv6):
     local_url_addr = "[::1]" if ipv6 else "127.0.0.1"
 
 
-log_line = None
+log_line: Optional[str] = None
 
 
 def buffer_log_line(message, new_line):
@@ -213,6 +293,10 @@ def generate_hash(val):
 
 
 class AccessLogProcessor:
+    salt: str
+    column_parser: Pattern[str]
+    urls_to_redact: List[List[Any]]
+
     def __init__(self, salt):
         self.salt = salt
         self.column_parser = re.compile(
@@ -228,7 +312,7 @@ class AccessLogProcessor:
                                 self._process_user, "user"],
                                ['/pools/default/buckets',
                                 re.compile(r'\/(?:[^\/\s#&]+)\/docs\/'
-                                           '(?P<docid>[^\/\s#&]+)$'),
+                                           '(?P<docid>[^\\/\\s#&]+)$'),
                                 self._process_docid, "docid"]]
 
     def _process_url(self, surl):
@@ -273,11 +357,13 @@ class AccessLogProcessor:
 
 
 class RegularLogProcessor:
-    rexes = [re.compile('(<ud>)(.+?)(</ud>)'),
-             # Redact the rest of the line in the case we encounter
-             # log-redaction-salt. Needed to redact pre-6.5 debug logs
-             # as well as occurence in couchbase.log
-             re.compile('(log-redaction-salt)(.+)')]
+    salt: str
+    rexes: List[Pattern[str]] = [
+        re.compile("(<ud>)(.+?)(</ud>)"),
+        # Redact the rest of the line in the case we encounter
+        # log-redaction-salt. Needed to redact pre-6.5 debug logs
+        # as well as occurence in couchbase.log
+        re.compile("(log-redaction-salt)(.+)")]
 
     def __init__(self, salt):
         self.salt = salt
@@ -305,130 +391,329 @@ class CouchbaseLogProcessor(RegularLogProcessor):
         if "RedactLevel" in line:
             # salt + salt to maintain consistency with other
             # occurances of hashed salt in the logs.
-            return 'RedactLevel:partial,HashOfSalt:%s\n' \
-                % generate_hash(self.salt + self.salt).hexdigest()
+            return "RedactLevel:partial,HashOfSalt:" \
+                f"{generate_hash(self.salt + self.salt).hexdigest()}\n"
         else:
             return self._process_line(line)
 
 
-class LogRedactor:
-    def __init__(self, salt, tmpdir, default_name):
-        self.default_name = default_name
-        self.target_dir = os.path.join(tmpdir, "redacted")
-        os.makedirs(self.target_dir)
+class ZipStream:
+    """
+    This is a wrapper around a normal ZipFile that offers an interface into it
+    that lets us systematically write to individual files, in a specific way.
 
-        self.access_log = AccessLogProcessor(salt)
-        self.couchbase_log = CouchbaseLogProcessor(salt)
-        self.regular_log = RegularLogProcessor(salt)
+    Specifically, we must make sure to properly fill in the 'ZipInfo' with a
+    compress_type, despite setting it on the main ZipFile upon creation.
+    Otherwise the files will be written without compression.
 
-    def _process_file(self, ifile, ofile, processor):
-        # Don't try to catch any errors here as we want failures (e.g.
-        # due to disk full) to abort the collection.  This will allow
-        # the cause of the failure to be fixed and collection retried.
-        # The one exception is when creating the directory for the output
-        # file which may already exist (e.g. stats related files in the
-        # same directory).
-        with open(ifile, 'r', newline='', encoding=LATIN1) as inp:
-            try:
-                os.makedirs(os.path.dirname(ofile))
-            except OSError as exc:
-                if exc.errno != errno.EEXIST:
-                    raise
+    Beneath this, the zipfile is given a stream into the underlying file
+    through the FSyncFile, so that we periodically sync to disk and don't just
+    do one large fsync at the end.
+    """
+    _fp: FSyncedFile
+    _zipfile: ZipFile
+    _prefix: Optional[str]
 
-            with FSyncedFile(ofile, 'w+', newline='', encoding=LATIN1) as out:
-                for line in inp:
-                    out.write(processor.do(line))
+    def __init__(self, zipfile: str, prefix: Optional[str]):
+        self._fp = FSyncedFile(zipfile, "wb")
+        self._zipfile = ZipFile(self._fp, mode="w", compression=ZIP_DEFLATED)
+        self._prefix = prefix
 
-    def redact_file(self, name, ifile, relative_name):
-        ofile = os.path.join(self.target_dir, relative_name)
+    def open(self, path: str) -> "ZippedFileStream":
+        """
+        This will open a specific file in a ZipFile and return a
+        ZippedFileStream which can be written into.
+        """
+        fullfilename = path
+        if self._prefix:
+            fullfilename = f"{self._prefix}/{path}"
+
+        zinfo = ZipInfo(fullfilename, date_time=self.get_time_tuple_now())
+        zinfo.compress_type = ZIP_DEFLATED
+        zfile: IO[bytes] = self._zipfile.open(zinfo, mode="w")
+        return ZippedFileStream(path, zfile)
+
+    def close(self):
+        self._fp.flush()
+        self._zipfile.close()
+        self._fp.close()
+
+    @staticmethod
+    def get_time_tuple_now():
+        now = datetime.now()
+        return (now.year, now.month, now.day, now.hour, now.minute, now.second)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self.close()
+
+
+class ZippedFileStream(Writer):
+    """
+    Individual file inside of a zipfile as a buffered stream object.
+    """
+    _filename: str
+    _inner: IO[bytes]
+
+    def __init__(self, filename: str, inner: IO[bytes]):
+        super().__init__()
+        self._filename = filename
+        self._inner = inner
+
+    def write(self, b: ReadableBuffer) -> int:
+        """
+        Overriden write function from Writer.
+        """
+        return write_readable_buffer(b, self._inner)
+
+    def close(self):
+        self.flush()
+        return self._inner.close()
+
+    def flush(self):
+        return self._inner.flush()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        self.close()
+
+
+def write_readable_buffer(b: ReadableBuffer, writer: WriterType) -> int:
+    return writer.write(convert_to_bytes(b))
+
+
+def convert_to_bytes(b: ReadableBuffer) -> bytes:
+    """
+    The only reason for this nasty 'if isinstance' chain is that technically
+    this interface takes a number of different types (as defined by the
+    ReadableBuffer type) and some require slight conversions before being
+    passed as bytes to the inner write which only takes bytes as input.
+    """
+    if isinstance(b, (bytes, bytearray)):
+        return b
+    if isinstance(b, mmap.mmap):
+        return b.read()
+    if isinstance(b, (array.array, memoryview)):
+        return b.tobytes()
+    else:
+        raise Exception("Cannot support this input buffer type")
+
+
+class RedactStream(Writer):
+    _inner: WriterType
+    _salt_value: str
+    _filename: str
+    _wraparound: List[str] = []
+
+    """
+    The redaction stream - redacts lines of text that pass through it.
+    """
+
+    def __init__(self, inner: WriterType, salt_value: str, filename: str):
+        super().__init__()
+        self._inner = inner
+        self._salt_value = salt_value
+        self._filename = filename
+        self._wraparound = []
+
+    def write(self, buf: ReadableBuffer) -> int:
+        """
+        Overridden write function of Writer. Decide whether or not to apply the
+        redaction. Certain filetypes are categorically skipped (.gz, .dmp).
+        """
+        # skip binary files (don't redact)
+        if self._filename.endswith(BINARY_FILE_EXTS):
+            return self.write_passthrough(buf)
+
+        # normal redaction path
+        return self.write_redacted(buf)
+
+    def write_redacted(self, buf: ReadableBuffer):
+        """
+        Redact, and then write, the buffer. This is slightly more complex than
+        other parts of the streaming pipeline.
+
+        This function takes the buffer, converts it all to a string, and then
+        splits it into lines. If there are chunks at the end, that aren't
+        terminated by a newline, we hold onto it until we receive more data
+        that does.
+
+        This list of non-terminated strings will accumulate until we get a
+        newline, and we can combine all the chunks into a logical line and
+        pass that to the redactor, which requires the data to be in lines
+        and not just random chunks of text.
+        """
+
+        chunk = convert_to_bytes(buf).decode(LATIN1)
+        lines = chunk.splitlines(keepends=True)
+        last = None
+        if not lines[-1].endswith(os.linesep):
+            last = lines.pop()
+
+        written: int = 0
+        for line in lines:
+            # if we have a portion leftover, write that first, and then clear
+            # it so we don't write it again
+            if self._wraparound:
+                combined = f"{''.join(self._wraparound)}{line}"
+                assert(combined.endswith(os.linesep))
+                written = written + \
+                    write_readable_buffer(self.process_line(combined),
+                                          self._inner)
+                self._wraparound.clear()
+            else:
+                # write the normal line
+                written = written + \
+                    write_readable_buffer(self.process_line(line), self._inner)
+        if last:
+            # Append any remaining string to our temporary list of non null
+            # terminated strings that will eventually be combined as a full
+            # line to be processed. In practice it doesn't seem like we
+            # generally end up with more than one chunk in the queue before
+            # flushing to redactors.
+            self._wraparound.append(last)
+
+        return written
+
+    def write_passthrough(self, chunk: ReadableBuffer):
+        return write_readable_buffer(chunk, self._inner)
+
+    def flush(self):
+        """
+        Make sure we flush the remaining wrap-around data. This is especially
+        important when we finish with a file, but it didn't also end with a
+        newline.
+        """
+        if self._wraparound:
+            self._inner.write(''.join(self._wraparound).encode(LATIN1))
+            self._wraparound.clear()
+
+        return self._inner.flush()
+
+    def process_line(self, line: str) -> bytes:
+        return self._redact_line(self._pick_redactor(self._filename),
+                                 line).encode(LATIN1)
+
+    def _pick_redactor(self, name: str):
         if "http_access" in name:
-            self._process_file(ifile, ofile, self.access_log)
-        elif name == self.default_name:
-            self._process_file(ifile, ofile, self.couchbase_log)
+            return AccessLogProcessor(self._salt_value)
+        elif name == DEFAULT_LOG:
+            return CouchbaseLogProcessor(self._salt_value)
         else:
-            self._process_file(ifile, ofile, self.regular_log)
-        return ofile
+            return RegularLogProcessor(self._salt_value)
+
+    def _redact_line(self, redactor: LogProcessors, line: str) -> str:
+        return redactor.do(line)
 
 
-class Task(object):
-    privileged = False
-    no_header = False
-    num_samples = 1
-    interval = 0
+class DoubleStream(Writer):
+    _first: Writer
+    _second: Writer
 
-    def __init__(self, description, command, timeout=None, **kwargs):
+    def __init__(self, first: Writer, second: Writer):
+        super().__init__()
+        self._first = first
+        self._second = second
+
+    def write(self, buf: ReadableBuffer) -> int:
+        first = self._first.write(buf)
+        second = self._second.write(buf)
+        self.flush()
+        return first or second or 0
+
+    def flush(self):
+        self._first.flush()
+        self._second.flush()
+
+
+@unique
+class Platform(Enum):
+    SUNOS5 = "sunos5"
+    SOLARIS = "solaris"
+    LINUX = "linux"
+    WIN32 = "win32"
+    CYGWIN = "cygwin"
+    DARWIN = "darwin"
+
+
+class Task:
+    platforms: List[Platform] = []
+    output_file: str
+    description: str = ""
+    command: Union[str, List[str]] = ""
+    timeout: Optional[int] = None
+    use_shell: bool
+    artifacts: Optional[List[str]] = None
+    num_samples: int = 1
+    interval: int = 0
+    suppress_append_newline: bool = False
+    to_stdin: Optional[str] = None
+    no_header: bool = False
+    change_dir: Union[bool, str] = False
+    addenv: Optional[Iterable[Tuple[str, str]]] = None
+    privileged: bool = False
+    is_posix: bool = (os.name == "posix")
+    extra_flags: Dict[str, str] = {}
+    zip_relative_path: Optional[str] = None
+    _task_runner: Optional["TaskRunner"] = None
+
+    def __init__(self, description, command, timeout=None,
+                 log_file=DEFAULT_LOG, artifacts=None, num_samples=1,
+                 interval=0, suppress_append_newline=False, to_stdin=None,
+                 no_header=False, change_dir=False, addenv=None,
+                 privileged=False):
+        self.output_file = log_file
         self.description = description
         self.command = command
         self.timeout = timeout
-        self.__dict__.update(kwargs)
-        self._is_posix = (os.name == 'posix')
+        self.use_shell = not isinstance(self.command, list)
+        self.artifacts = artifacts
+        self.num_samples = num_samples
+        self.interval = interval
+        self.suppress_append_newline = suppress_append_newline
+        self.to_stdin = to_stdin
+        self.no_header = no_header
+        self.change_dir = change_dir
+        self.addenv = addenv
+        self.privileged = privileged
+        self.is_posix = (os.name == "posix")
 
-    def _platform_popen_flags(self):
-        flags = {}
-        if self._is_posix:
-            flags['preexec_fn'] = os.setpgrp
+    def execute(self, outstream: Writer):
+        log(f"{self.description} ({self.command}) - ", new_line=False)
+        if not self.no_header:
+            self.header(outstream, self)
+        bad_result = None
+        for i in range(self.num_samples):
+            if i > 0:
+                log(f"Taking sample {i + 1} after {self.interval}"
+                    " seconds - ", new_line=False)
+                time.sleep(self.interval)
 
-        return flags
+            res = self.on_execute(outstream)
+            if res != 0:
+                bad_result = res
+        if bad_result:
+            return bad_result
+        return 0
 
-    def _can_kill(self, p):
-        if self._is_posix:
-            return True
-
-        return hasattr(p, 'kill')
-
-    def _kill(self, p):
-        if self._is_posix:
-            group_pid = os.getpgid(p.pid)
-            os.killpg(group_pid, signal.SIGKILL)
-        else:
-            p.kill()
-
-    def _env_flags(self):
-        flags = {}
-        if hasattr(self, 'addenv'):
-            env = os.environ.copy()
-            env.update(self.addenv)
-            flags['env'] = env
-
-        return flags
-
-    def _cwd_flags(self):
-        flags = {}
-        if getattr(self, 'change_dir', False):
-            cwd = self._task_runner.tmpdir
-            if isinstance(self.change_dir, str):
-                cwd = self.change_dir
-
-            flags['cwd'] = cwd
-
-        return flags
-
-    def _extra_flags(self):
-        flags = self._env_flags()
-        flags.update(self._platform_popen_flags())
-        flags.update(self._cwd_flags())
-
-        return flags
-
-    def set_task_runner(self, runner):
-        self._task_runner = runner
-
-    def execute(self, fp):
-        """Run the task"""
-        use_shell = not isinstance(self.command, list)
+    def on_execute(self, outstream: Writer):
+        p = None
         extra_flags = self._extra_flags()
         try:
             p = subprocess.Popen(self.command, bufsize=-1,
                                  stdin=subprocess.PIPE,
                                  stdout=subprocess.PIPE,
                                  stderr=subprocess.STDOUT,
-                                 shell=use_shell,
+                                 shell=self.use_shell,
                                  **extra_flags)
-            if hasattr(self, 'to_stdin'):
+            if self.to_stdin and p.stdin:
                 p.stdin.write(self.to_stdin.encode())
-
-            p.stdin.close()
-
+            if p.stdin:
+                p.stdin.close()
         except OSError as e:
             # if use_shell is False then Popen may raise exception
             # if binary is missing. In this case we mimic what
@@ -436,21 +721,27 @@ class Task(object):
             # setting non-zero status code. It's might also
             # automatically handle things like "failed to fork due
             # to some system limit".
-            fp.write(f"Failed to execute {self.command}: {e}\n".encode())
+            outstream.write(
+                f"Failed to execute {self.command}: {e}\n".encode())
             return 127
-
         except IOError as e:
             if e.errno == errno.EPIPE:
-                fp.write(f"Ignoring broken pipe on stdin for {self.command}\n".encode())
+                outstream.write(
+                    f"Ignoring broken pipe on stdin for {self.command}\n".encode())
             else:
                 raise
+
+        if p:
+            stdout = p.stdout
+        else:
+            raise Exception("No stdout attached to process")
 
         from threading import Timer, Event
 
         timer = None
-        timer_fired = Event()
+        timer_fired: Event = Event()
 
-        if self.timeout is not None and self._can_kill(p):
+        if self.timeout is not None and self.can_kill(p):
             def on_timeout():
                 try:
                     self._kill(p)
@@ -459,67 +750,287 @@ class Task(object):
                     pass
 
                 timer_fired.set()
-
             timer = Timer(self.timeout, on_timeout)
             timer.start()
 
-        last_char_written = None
-
         try:
-            while True:
-                data = p.stdout.read(64 * 1024)
+            last_char_written = None
+            while True and stdout is not None:
+                data: bytes = stdout.read(READ_SIZE)
                 if not data:
                     break
-                fp.write(data)
+                outstream.write(data)
                 last_char_written = data[-1:]
+            self.maybe_append_newline(outstream, last_char_written)
         finally:
             if timer is not None:
                 timer.cancel()
                 timer.join()
-
                 # there's a tiny chance that command succeeds just before
                 # timer is fired; that would result in a spurious timeout
                 # message
-                if timer_fired.isSet():
-                    fp.write(f"`{self.command}` timed out after {self.timeout} seconds\n".encode())
-                    log("[Command timed out after %s seconds] - " %
-                        (self.timeout), new_line=False)
+                if timer_fired.is_set():
+                    outstream.write(f"`{self.command}` timed out "
+                                    f"after {self.timeout} seconds\n".encode())
+                    log(f"[Command timed out after {self.timeout} seconds] - ",
+                        new_line=False)
+            if stdout:
+                stdout.close()
 
-        self.maybe_append_newline(fp, last_char_written)
+        code = 0
+        if p:
+            code = p.wait()
 
-        return p.wait()
+        if stdout:
+            stdout.close()
 
-    def maybe_append_newline(self, fp, last_char):
+        outstream.flush()
+        return code
+
+    def will_run(self):
+        """Determine if this task will run on this platform."""
+        return Platform[sys.platform.upper()] in self.platforms
+
+    def satisfies_preconditions(self) -> bool:
+        if self.privileged and os.getuid() != 0:
+            log("skipped (needs root privs)")
+            return False
+        return True
+
+    def maybe_append_newline(self, fp, last_char: Optional[bytes]):
         """Append a newline (if appropriate) to ensure that the next
         header starts on a new line.
         """
-
-        if hasattr(self, 'suppress_append_newline'):
+        if self.suppress_append_newline:
             return
-
         if self.no_header:
             # The "no_header" attribute indicates that this task
             # produces a single result which does not contain a header.
             # Thus, we shouldn't append a new line to the result.
             return
+        if last_char and last_char.decode() != os.linesep:
+            fp.write(os.linesep.encode(LATIN1))
 
-        if last_char != b'\n':
-            fp.write(b'\n')
+    @staticmethod
+    def log_result(result):
+        if result == 0 or result is None:
+            log("OK")
+        else:
+            log(f"Exit code {result}")
 
-    def will_run(self):
-        """Determine if this task will run on this platform."""
-        return sys.platform in self.platforms
+    @staticmethod
+    def header(fp: Writer, task: "Task"):
+        separator = "=" * 78
+        subtitle = task.command
+        if isinstance(task.command, list):
+            subtitle = " ".join(task.command)
+        message = f"{separator}\n{task.description}\n{subtitle}\n{separator}\n"
+        fp.write(message.encode())
+
+    def can_kill(self, p: subprocess.Popen):
+        if self.is_posix:
+            return True
+        return hasattr(p, "kill")
+
+    def set_task_runner(self, runner: "TaskRunner"):
+        self._task_runner = runner
+
+    def _kill(self, p: subprocess.Popen):
+        if self.is_posix:
+            group_pid = os.getpgid(p.pid)
+            os.killpg(group_pid, signal.SIGKILL)
+        else:
+            p.kill()
+
+    def _extra_flags(self) -> Dict[str, Any]:
+        flags = self._env_flags()
+        flags.update(self._platform_popen_flags())
+        flags.update(self._cwd_flags())
+        return flags
+
+    def _cwd_flags(self) -> Dict[str, str]:
+        flags = {}
+        if self.change_dir and self._task_runner:
+            cwd = self._task_runner.tmpdir
+            if isinstance(self.change_dir, str):
+                cwd = self.change_dir
+            flags["cwd"] = cwd
+        return flags
+
+    def _platform_popen_flags(self) -> Dict[str, Any]:
+        flags = {}
+        if self.is_posix:
+            flags["preexec_fn"] = os.setpgrp
+        return flags
+
+    def _env_flags(self) -> Dict[str, Any]:
+        flags = {}
+        if self.addenv:
+            env = os.environ.copy()
+            env.update(self.addenv)
+            flags["env"] = env
+        return flags
+
+    def __repr__(self):
+        return f"<{self.__class__.__qualname__}: {self.__dict__}>"
+
+    def __str__(self):
+        return f"<{self.__class__.__qualname__}: {self.__dict__}>"
 
 
-class TaskRunner(object):
-    default_name = "couchbase.log"
+class SolarisTask(Task):
+    platforms = [Platform.SUNOS5, Platform.SOLARIS]
 
-    def __init__(self, verbosity=0, task_regexp='', tmp_dir=None,
-                 salt_value=""):
-        # A dictionary with an instance of CollectedFile as the key and
-        # full path name as the value
-        self.files = {}
-        self._fps = {}
+
+class LinuxTask(Task):
+    platforms = [Platform.LINUX]
+
+
+class WindowsTask(Task):
+    platforms = [Platform.WIN32, Platform.CYGWIN]
+
+
+class MacOSXTask(Task):
+    platforms = [Platform.DARWIN]
+
+
+class UnixTask(SolarisTask, LinuxTask, MacOSXTask):
+    platforms = SolarisTask.platforms + LinuxTask.platforms \
+        + MacOSXTask.platforms
+
+
+class AllOsTask(UnixTask, WindowsTask):
+    platforms = UnixTask.platforms + WindowsTask.platforms
+
+
+class LiteralTask(AllOsTask):
+    literal: str
+
+    def __init__(self, description, literal, timeout=None,
+                 log_file=DEFAULT_LOG, no_header=False):
+        self.description = description
+        self.literal = literal
+        self.timeout = timeout
+        self.output_file = log_file
+        self.no_header = no_header
+
+    def on_execute(self, outstream: Writer):
+        literal = f"{self.literal}\n"
+        outstream.write(literal.encode())
+        outstream.flush()
+        return 0
+
+
+class CollectFileTask(AllOsTask):
+    def __init__(self, description, file_path, zip_relative: str = ""):
+        self.description = description
+        self.output_file = file_path
+        if zip_relative == "":
+            zip_relative = os.path.basename(file_path)
+        self.zip_relative_path = zip_relative
+        self.no_header = True
+
+    def on_execute(self, outstream: Writer):
+        try:
+            with open(self.output_file, "rb") as f:
+                while True:
+                    res = f.read(READ_SIZE)
+                    if not res:
+                        break
+                    outstream.write(res)
+                outstream.flush()
+                return 0
+        except FileNotFoundError:
+            log(f"File doesn't exist: {self.output_file} -- ", new_line=False)
+            return 1
+
+    @staticmethod
+    def create_directory_collection_tasks(dir_path, relative_path_base):
+        tasks = []
+        for dirpath, _, filenames in os.walk(dir_path):
+            for f in filenames:
+                full_path = os.path.join(dirpath, f)
+                relative_path = os.path.relpath(full_path, dir_path)
+                path_in_zip = os.path.join(relative_path_base, relative_path)
+                task = CollectFileTask(f"Collecting {full_path}",
+                                       full_path,
+                                       zip_relative=path_in_zip)
+                tasks.append(task)
+        return tasks
+
+    def satisfies_preconditions(self) -> bool:
+        return os.path.exists(self.output_file)
+
+
+class MetaTask:
+    subtasks: List["Task"] = []
+    tmp_dir: Optional[str] = None
+    pending_artifacts: List["MetaTask"] = []
+    output_file: str
+
+    def __init__(self, *subtasks: Task, filename=DEFAULT_LOG,
+                 tmp_dir=None):
+        self.output_file = filename
+        self.subtasks = list(subtasks)
+        self.tmp_dir = tmp_dir
+        self.pending_artifacts = []
+
+    def execute_all(self, outstream: Writer):
+        for task in self.subtasks:
+            if hasattr(self, "_task_runner") and self._task_runner:
+                task.set_task_runner(self._task_runner)
+
+            if task.satisfies_preconditions():
+                Task.log_result(task.execute(outstream))
+
+            # Handle artifacts created during that task
+            # Note: We cannot just add more items to the current set of
+            # iterating metatasks but instead must just run this directly
+            # after.
+            self.add_pending_artifacts(task)
+
+    def add_pending_artifacts(self, task: Task):
+        if task.artifacts:
+            for artifact in task.artifacts:
+                path = artifact
+                if not os.path.isabs(path) and self.tmp_dir:
+                    # We assume that "relative" artifacts are produced
+                    # in the self.tmpdir
+                    path = os.path.join(self.tmp_dir, artifact)
+                relative_name = os.path.basename(path)
+                t = MetaTask(CollectFileTask(f"Collect {artifact}", path,
+                                             zip_relative=relative_name),
+                             filename=relative_name, tmp_dir=self.tmp_dir)
+                t.set_task_runner(self._task_runner)
+                self.pending_artifacts.append(t)
+
+    def append(self, item: Task):
+        self.subtasks.append(item)
+
+    def set_task_runner(self, runner: Optional["TaskRunner"]):
+        self._task_runner = runner
+
+    def get_artifacts(self):
+        return self.pending_artifacts
+
+    def satisfies_preconditions(self) -> bool:
+        for t in self.subtasks:
+            # If any of the preconditions are valid in this metatask, run it.
+            if t.satisfies_preconditions():
+                return True
+        return False
+
+
+class TaskRunner:
+    task_regexp: Pattern
+    tmpdir: str
+    zip_out: ZipStream
+    redacted_zip_out: Optional[ZipStream] = None
+    zip_name: str
+    zip_name_redacted: Optional[str] = None
+
+    def __init__(self, zipfile, verbosity=0, task_regexp="", tmp_dir=None,
+                 salt_value="", prefix=None):
         self.verbosity = verbosity
         self.start_time = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
         self.salt_value = salt_value
@@ -545,231 +1056,98 @@ class TaskRunner(object):
         log("Using temporary dir {0}".format(os.path.split(self.tmpdir)[0]))
 
         self.task_regexp = re.compile(task_regexp)
-
         AltExit.register(self.finalize)
 
-    def close_files(self):
-        for fp in self._fps.values():
-            try:
-                fp.close()
-            except:
-                pass
+        self.zip_name = zipfile
+        self.zip_out = ZipStream(self.zip_name, prefix)
+        redact_zip_file: str = zipfile[:-4] + "-redacted" + zipfile[-4:]
+        self.zip_name_redacted = redact_zip_file
+        if self.salt_value:
+            self.redacted_zip_out = ZipStream(self.zip_name_redacted, prefix)
+
+    def run_tasks(self, *tasks: Task):
+        categorized = self._categorize_tasks(*tasks, tmp_dir=self.tmpdir)
+        for _, metatask in categorized.items():
+            metatask.set_task_runner(self)
+            self.run(metatask)
+
+    def run(self, task: MetaTask):
+        self._run_metatask(task)
+
+    def literal_task(self, description, value, **kwargs):
+        return LiteralTask(description, value, **kwargs)
+
+    def close(self):
+        """
+        Closes the zipfile(s) used. This is only needed in tests if you need to
+        use the zipfiles before the taskrunner is dropped / finalized.
+        """
+        self.zip_out.close()
+        if self.redacted_zip_out:
+            self.redacted_zip_out.close()
 
     def finalize(self):
+        self.close()
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
-    def collect_file(self, filename, relative_name=None):
-        """Add a file to the list of files collected. Used to capture the exact
-        file (including timestamps) from the Couchbase instance.
-
-        filename - Absolute path to file to collect.
-        relative_name - Path to use in the final .zip bundle. Typically this
-                        is the basename of the path.  But can include a
-                        directory structure if that is wanted in the bundle.
-        """
-        if relative_name is None:
-            relative_name = os.path.basename(filename)
-        collected_file = CollectedFile(filename, relative_name)
-        if collected_file not in self.files:
-            if os.path.isfile(filename):
-                self.files[collected_file] = filename
-            else:
-                log(f"Failed to collect file {filename}: file does not exist")
-        else:
-            log("Unable to collect file '%s' - already collected." % filename)
-
-    def collect_dir(self, directory_path, relative_path_base):
-        for dirpath, dirnames, filenames in os.walk(directory_path):
-            for f in filenames:
-                full_path = os.path.join(dirpath, f)
-                relative_path = os.path.relpath(full_path, directory_path)
-                path_in_zip = os.path.join(relative_path_base, relative_path)
-                self.collect_file(full_path, path_in_zip)
-
-    def header(self, fp, title, subtitle):
-        separator = '=' * 78
-        if isinstance(subtitle, list):
-            subtitle = " ".join(subtitle)
-        message = f"{separator}\n{title}\n{subtitle}\n{separator}\n"
-        fp.write(message.encode())
-        fp.flush()
-
-    def log_result(self, result):
-        if result == 0:
-            log("OK")
-        else:
-            log("Exit code %d" % result)
-
-    def run_tasks(self, tasks):
+    def _categorize_tasks(self, *tasks: Task, tmp_dir=None):
+        output: Dict[str, MetaTask] = {}
         for task in tasks:
-            self.run(task)
-
-    def run(self, task):
-        if self.task_regexp.match(task.description) is None:
-            log("Skipping task %s because "
-                "it doesn't match '%s'" % (task.description,
-                                           self.task_regexp.pattern))
-        else:
-            self._run(task)
-
-    def _get_fp(self, path):
-        if path not in self._fps:
-            self._fps[path] = FSyncedFile(path, 'wb+')
-
-        return self._fps[path]
-
-    def _run(self, task):
-        """Run a task with a file descriptor corresponding to its log file"""
-        if task.will_run():
-            log("%s (%s) - " % (task.description, task.command), new_line=False)
-            if task.privileged and os.getuid() != 0:
-                log("skipped (needs root privs)")
-                return
-
-            task.set_task_runner(self)
-
-            filename = getattr(task, 'log_file', self.default_name)
-            collected_file = CollectedFile(filename, os.path.basename(filename))
-            fullname = os.path.join(self.tmpdir, collected_file.filename)
-            self.files.setdefault(collected_file, fullname)
-
-            fp = self._get_fp(fullname)
-            if not task.no_header:
-                self.header(fp, task.description, task.command)
-
-            for i in range(task.num_samples):
-                if i > 0:
-                    log("Taking sample %d after %f seconds - " %
-                        (i + 1, task.interval), new_line=False)
-                    time.sleep(task.interval)
-                result = task.execute(fp)
-                self.log_result(result)
-
-            for artifact in getattr(task, 'artifacts', []):
-                path = artifact
-                if not os.path.isabs(path):
-                    # We assume that "relative" artifacts are produced
-                    # in the self.tmpdir
-                    path = os.path.join(self.tmpdir, path)
-
-                self.collect_file(path)
-
-        elif self.verbosity >= 2:
-            log('Skipping "%s" (%s): not for platform %s' %
-                (task.description, task.command, sys.platform))
-
-    def literal(self, description, value, **kwargs):
-        self.run(LiteralTask(description, value, **kwargs))
-
-    def redact_and_zip(self, filename, node):
-        files = []
-        redactor = LogRedactor(self.salt_value, self.tmpdir, self.default_name)
-
-        for collected_file, fullname in self.files.items():
-            name = collected_file.filename
-            if "users.dets" in name:
+            if self.task_regexp and self.task_regexp.match(
+                    task.description) is None:
+                log(f"Skipping task {task.description} because "
+                    f"it doesn't match '{self.task_regexp.pattern}'")
                 continue
-            elif name.lower().endswith(('.gz', '.dmp')):
-                files.append((fullname, collected_file.relative_name))
+            if not task.will_run():
+                continue
+            task.set_task_runner(self)
+            entry = output.get(task.output_file)
+            if entry:
+                entry.append(task)
             else:
-                redacted_file = redactor.redact_file(
-                        name, fullname, collected_file.relative_name)
-                files.append((redacted_file, collected_file.relative_name))
+                if task.zip_relative_path:
+                    outfile = task.zip_relative_path
+                else:
+                    outfile = task.output_file
+                output[task.output_file] = MetaTask(task, filename=outfile,
+                                                    tmp_dir=tmp_dir)
+        return output
 
-        prefix = f"cbcollect_info_{node}_{self.start_time}"
-        TaskRunner.make_zip(prefix, filename, files)
+    def _run_metatask(self, metatask: MetaTask):
+        # If the required precondition(s) fail, skip the task. Right now this
+        # is only really used to make sure we don't create empty files for
+        # CollectFileTask's that don't point to real files.
+        if not metatask.satisfies_preconditions():
+            return
 
-    def zip(self, filename, node):
-        prefix = f"cbcollect_info_{node}_{self.start_time}"
+        if self.redacted_zip_out:
+            if metatask.output_file not in OMIT_IN_REDACT_ZIP:
+                self._write_both(metatask)
+            else:
+                self._write_unredacted(metatask)
+        else:
+            self._write_unredacted(metatask)
 
-        files = []
-        for collected_file, fullname in self.files.items():
-            files.append((fullname, collected_file.relative_name))
-        TaskRunner.make_zip(prefix, filename, files)
+        # Handle artifacts created by that metatask
+        for artifact in metatask.get_artifacts():
+            self._run_metatask(artifact)
 
-    @staticmethod
-    def make_zip(prefix, filename, files):
-        from zipfile import ZipFile, ZIP_DEFLATED
-        with FSyncedFile(filename, 'w+b') as fp:
-            zf = ZipFile(fp, mode='w', compression=ZIP_DEFLATED)
-            try:
-                for name, relative_name in files:
-                    try:
-                        zf.write(name, f"{prefix}/{relative_name}")
-                    except IOError as e:
-                        # Skipping file(s) we cannot zip. The file may have been
-                        # purged from under us.
-                        log("Failed to zip file %s, error (%s): %s" %
-                            (name, e.errno, e.strerror))
-            finally:
-                zf.close()
+    def _write_both(self, metatask: MetaTask):
+        if self.redacted_zip_out:
+            with self.redacted_zip_out.open(metatask.output_file) as rlogfile:
+                redact = RedactStream(rlogfile, self.salt_value,
+                                      metatask.output_file)
+                with self.zip_out.open(metatask.output_file) as logfile:
+                    double = DoubleStream(redact, logfile)
+                    metatask.execute_all(double)
 
-
-class SolarisTask(Task):
-    platforms = ['sunos5', 'solaris']
-
-
-class LinuxTask(Task):
-    platforms = ['linux']
-
-
-class WindowsTask(Task):
-    platforms = ['win32', 'cygwin']
-
-
-class MacOSXTask(Task):
-    platforms = ['darwin']
-
-
-class UnixTask(SolarisTask, LinuxTask, MacOSXTask):
-    platforms = SolarisTask.platforms + LinuxTask.platforms + MacOSXTask.platforms
-
-
-class AllOsTask(UnixTask, WindowsTask):
-    platforms = UnixTask.platforms + WindowsTask.platforms
-
-
-class LiteralTask(AllOsTask):
-    def __init__(self, description, literal, **kwargs):
-        self.description = description
-        self.command = ''
-        self.literal = literal
-        self.__dict__.update(kwargs)
-
-    def execute(self, fp):
-        fp.write(self.literal.encode() + b'\n')
-        return 0
-
-
-class CollectDirectory(AllOsTask):
-    def __init__(self, description, dir_path, relative_output_path, **kwargs):
-        self.description = description
-        self.command = ''
-        self.dir_path = dir_path
-        self.relative_output_path = relative_output_path
-        self.__dict__.update(kwargs)
-
-    def execute(self, fp):
-        self._task_runner.collect_dir(self.dir_path, self.relative_output_path)
-        fp.write(f"Collected directory {self.dir_path}\n".encode())
-        return 0
-
-
-class CollectFile(AllOsTask):
-    def __init__(self, description, file_path, **kwargs):
-        self.description = description
-        self.command = ''
-        self.file_path = file_path
-        self.__dict__.update(kwargs)
-
-    def execute(self, fp):
-        self._task_runner.collect_file(self.file_path)
-        fp.write(f"Collected file {self.file_path}\n".encode())
-        return 0
+    def _write_unredacted(self, metatask: MetaTask):
+        with self.zip_out.open(metatask.output_file) as logfile:
+            metatask.execute_all(logfile)
 
 
 def make_curl_task(name, user, password, url,
-                   timeout=60, log_file="couchbase.log", base_task=AllOsTask,
+                   timeout=60, log_file=DEFAULT_LOG, base_task=AllOsTask,
                    **kwargs):
     return base_task(name, ["curl", "-sS", "-k", "--proxy", "", "-K-", url],
                      timeout=timeout,
@@ -777,8 +1155,9 @@ def make_curl_task(name, user, password, url,
                      to_stdin="--user %s:%s" % (user, password),
                      **kwargs)
 
+
 def make_curl_post_task(name, user, password, url, timeout=60,
-                        log_file="couchbase.log", post_data="",
+                        log_file=DEFAULT_LOG, post_data="",
                         base_task=AllOsTask, **kwargs):
     return base_task(name, ["curl", "-sS", "-X", "POST", "--proxy", "", "-K-",
                      url],
@@ -818,7 +1197,7 @@ def get_diag_password(guts):
 
     # Don't append a newline to the result, since that would corrupt
     # the password.
-    task = AllOsTask("get diag password", command, timeout=60,
+    task = AllOsTask("get diag password", command, timeout=60, no_header=True,
                      suppress_append_newline=True)
     output_bytes = BytesIO()
     status = task.execute(output_bytes)
@@ -830,7 +1209,7 @@ def get_diag_password(guts):
 
 
 def make_query_statement_task(statement, user, password, port,
-                              logfile="couchbase.log", **kwargs):
+                              logfile=DEFAULT_LOG, **kwargs):
     url = "http://%s:%s/query/service?statement=%s" % (
         local_url_addr, port, urllib.parse.quote(statement))
 
@@ -847,9 +1226,21 @@ def make_cbas_statement_task(statement, user, password, port):
                           user=user, password=password, url=url)
 
 
-def make_index_task(name, api, passwd, index_port, logfile="couchbase.log", **kwargs):
+def make_index_task(
+        name,
+        api,
+        passwd,
+        index_port,
+        logfile=DEFAULT_LOG,
+        **kwargs):
     index_url = f'http://{local_url_addr}:{index_port}/{api}'
-    return make_curl_task(name, "@", passwd, index_url, log_file=logfile, **kwargs)
+    return make_curl_task(
+        name,
+        "@",
+        passwd,
+        index_url,
+        log_file=logfile,
+        **kwargs)
 
 
 def make_golang_profile_tasks(service_name, passwd, port, log_prefix,
@@ -883,16 +1274,24 @@ def make_golang_profile_tasks(service_name, passwd, port, log_prefix,
         api_url = f'{base_url}/{api}'
         name = f'{service_name} {descr}: '
         logfile = f'{log_prefix}{postfix}.log'
-        tasks.append(make_curl_task(name, '@', passwd, api_url, log_file=logfile,
-                                    no_header=no_header, **kwargs))
+        tasks.append(
+            make_curl_task(
+                name,
+                '@',
+                passwd,
+                api_url,
+                log_file=logfile,
+                no_header=no_header,
+                **kwargs))
     return tasks
 
 
 def make_redaction_task():
     return LiteralTask("Log Redaction", "RedactLevel:none")
 
+
 def make_chronicle_dump_task(name, args,
-                             initargs_path, log_file="couchbase.log"):
+                             initargs_path, log_file=DEFAULT_LOG):
     escript = exec_name("escript")
     escript_wrapper = find_script("escript-wrapper")
     chronicle_dump_path = find_script("chronicle_dump")
@@ -908,6 +1307,7 @@ def make_chronicle_dump_task(name, args,
                      timeout=600,
                      log_file=log_file)
 
+
 def make_chronicle_snapshots_task(guts, initargs_path):
     chronicle_snapshot_dir = read_guts(guts, "chronicle_snapshot_dir")
     if chronicle_snapshot_dir is None:
@@ -922,6 +1322,7 @@ def make_chronicle_snapshots_task(guts, initargs_path):
         ["snapshot",
          "--sanitize", "chronicle_kv_log:sanitize_snapshot"] + snapshots,
         initargs_path)
+
 
 def make_chronicle_logs_task(guts, initargs_path):
     chronicle_dir = read_guts(guts, "chronicle_dir")
@@ -946,6 +1347,7 @@ def make_chronicle_logs_task(guts, initargs_path):
         ["log", "--sanitize", "chronicle_kv_log:sanitize_log"] + logs,
         initargs_path,
         log_file="chronicle_logs.log")
+
 
 def basedir():
     # We are installed in $INSTALL_DIR/lib/python, so need to go up three
@@ -1188,8 +1590,10 @@ def populate_guts_with_additional_info(guts):
     add_bucket_info(guts)
     add_chronicle_snapshot_dir(guts)
 
+
 def add_chronicle_snapshot_dir(guts):
     guts["chronicle_snapshot_dir"] = get_chronicle_snapshot_dir(guts)
+
 
 def add_required_data_paths(guts):
     data_dir = guts.get("path_config_datadir")
@@ -1198,8 +1602,10 @@ def add_required_data_paths(guts):
     guts["indexer_breakpad_minidump_dir"] = os.path.join(data_dir, "crash")
     guts["users_storage_path"] = os.path.join(data_dir, "config", "users.dets")
     guts["dist_cfg_path"] = os.path.join(data_dir, "config", "dist_cfg")
-    guts["memcached_cert_pem"] = os.path.join(data_dir, "config", "memcached-cert.pem")
-    guts["local_ssl_cert_pem"] = os.path.join(data_dir, "config", "local-ssl-cert.pem")
+    guts["memcached_cert_pem"] = os.path.join(
+        data_dir, "config", "memcached-cert.pem")
+    guts["local_ssl_cert_pem"] = os.path.join(
+        data_dir, "config", "local-ssl-cert.pem")
     guts["chronicle_dir"] = os.path.join(data_dir, "config", "chronicle")
     guts["localtoken_path"] = os.path.join(data_dir, "localtoken")
 
@@ -1214,13 +1620,14 @@ def add_bucket_info(guts):
     buckets = []
     try:
         buckets = [f.name for f in os.scandir(dbdir)
-            if f.is_dir() and not f.name.startswith(('.', '@'))]
+                   if f.is_dir() and not f.name.startswith(('.', '@'))]
     except IOError as e:
         log("add_bucket_info failed to walk data dir " +
             "I/O error(%s): %s directory:%s" % (e.errno, e.strerror, dbdir))
 
     log(f"Adding persistent buckets '{buckets}' to server guts")
     guts["persistent_buckets"] = buckets
+
 
 def add_db_idx_dirs(guts):
     couch_ini_files = read_guts(guts, "couch_inis").split(";"),
@@ -1235,6 +1642,7 @@ def add_db_idx_dirs(guts):
             guts["idx_dir"] = config['couchdb']['view_index_dir']
         except KeyError:
             pass
+
 
 def winquote_path(s):
     return '"' + s.replace("\\\\", "\\").replace('/', "\\") + '"'
@@ -1292,7 +1700,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
     query_tasks = []
     query_port = read_guts(guts, "query_port")
     if query_port:
-        def make(statement, logfile="couchbase.log", **kwargs):
+        def make(statement, logfile=DEFAULT_LOG, **kwargs):
             return make_query_statement_task(statement, user="@",
                                              password=memcached_pass,
                                              port=query_port,
@@ -1386,15 +1794,15 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
             *make_golang_profile_tasks('GoXDCR', memcached_pass, goxdcr_port,
                                        'goxdcr'),
             make_curl_task(name='GoXDCR RemoteClusters: ',
-                                    user="@", password=memcached_pass,
-                                    url=rc_url, timeout=300,
-                                    log_file="goxdcr_remote_clusters.json",
-                                    no_header=True),
+                           user="@", password=memcached_pass,
+                           url=rc_url, timeout=300,
+                           log_file="goxdcr_remote_clusters.json",
+                           no_header=True),
             make_curl_task(name='GoXDCR Replications: ',
-                                    user="@", password=memcached_pass,
-                                    url=rp_url, timeout=300,
-                                    log_file="goxdcr_replications.json",
-                                    no_header=True)
+                           user="@", password=memcached_pass,
+                           url=rp_url, timeout=300,
+                           log_file="goxdcr_replications.json",
+                           no_header=True)
         ]
 
     fts_tasks = []
@@ -1402,12 +1810,12 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
     if fts_port:
         url = 'http://%s:%s/api/diag' % (local_url_addr, fts_port)
         fts_tasks = [
-                make_curl_task(name="FTS /api/diag: ",
-                               user="@", password=memcached_pass,
-                               url=url,
-                               log_file="fts_diag.json", no_header=True),
-                *make_golang_profile_tasks('FTS', memcached_pass, fts_port,
-                                           'fts')
+            make_curl_task(name="FTS /api/diag: ",
+                           user="@", password=memcached_pass,
+                           url=url,
+                           log_file="fts_diag.json", no_header=True),
+            *make_golang_profile_tasks('FTS', memcached_pass, fts_port,
+                                       'fts')
         ]
 
     cbas_tasks = []
@@ -1475,9 +1883,12 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                 password=memcached_pass,
                 url=f"http://{local_url_addr}:{backup_port}/internal/v1/serviceInfo",
             ),
-            *make_golang_profile_tasks('Backup', memcached_pass, backup_port,
-                                       'backup')
-        ]
+            *
+            make_golang_profile_tasks(
+                'Backup',
+                memcached_pass,
+                backup_port,
+                'backup')]
 
     _tasks = [
         UnixTask("Directory structure",
@@ -1552,7 +1963,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                        password=memcached_pass,
                        url='http://%s:%s/diag/ale' % (
                            local_url_addr, read_guts(guts, "rest_port")),
-                       log_file="couchbase.log"),
+                       log_file=DEFAULT_LOG),
 
         [AllOsTask("couchbase logs (%s)" % name, "cbbrowse_logs %s" % name,
                    addenv=[("REPORT_DIR", read_guts(guts, "log_path"))],
@@ -1676,27 +2087,31 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                    addenv=[("CB_PASSWORD", memcached_pass)])
          for stat in ([], ["subdoc_execute", "snappy_decompress", "json_validate"])],
 
-        CollectFile("Users storage", read_guts(guts, "users_storage_path")),
+        CollectFileTask(
+            "Users storage", read_guts(
+                guts, "users_storage_path")),
 
-        CollectFile("Dist configuration (dist_cfg)", read_guts(guts, "dist_cfg_path")),
+        CollectFileTask(
+            "Dist configuration (dist_cfg)", read_guts(
+                guts, "dist_cfg_path")),
 
-        CollectFile("Memcached cert (memcached-cert.pem)",
-                    read_guts(guts, "memcached_cert_pem")),
-        CollectFile("Local SSL cert (local-ssl-cert.pem)",
-                    read_guts(guts, "local_ssl_cert_pem")),
+        CollectFileTask("Memcached cert (memcached-cert.pem)",
+                        read_guts(guts, "memcached_cert_pem")),
+        CollectFileTask("Local SSL cert (local-ssl-cert.pem)",
+                        read_guts(guts, "local_ssl_cert_pem")),
 
-        [CollectFile("Rebalance Report: %s" % path, path)
+        [CollectFileTask("Rebalance Report: %s" % path, path)
          for path in glob.glob(os.path.join(rebdir, "rebalance_report*"))],
 
-        CollectFile("NS Log", read_guts(guts, "ns_log_path")),
-        CollectFile("Event Logs", read_guts(guts, "event_log_path")),
+        CollectFileTask("NS Log", read_guts(guts, "ns_log_path")),
+        CollectFileTask("Event Logs", read_guts(guts, "event_log_path")),
         # MB-42657: For signal safety memcached writes crash output to a
         # separate file with signal safe functions. At restart memcached will
         # log the contents and discard the file. If there is no restart the file
         # must be captured.
-        CollectFile("Memcached breakpad output",
-                    os.path.join(read_guts(guts, "memcached_logs_path"),
-                                 "memcached.log.breakpad.crash.txt")),
+        CollectFileTask("Memcached breakpad output",
+                        os.path.join(read_guts(guts, "memcached_logs_path"),
+                                     "memcached.log.breakpad.crash.txt")),
         AllOsTask("Phosphor Trace",
                   ["kv_trace_dump",
                    "-H", "%s:%s" % (local_url_addr,
@@ -1965,7 +2380,7 @@ def post_rest_api(description, api, guts):
                "-u", user_and_password, url]
     # Don't append a newline to the result, since that would corrupt
     # the snapshot.
-    task = AllOsTask(description, command, timeout=60,
+    task = AllOsTask(description, command, timeout=60, no_header=True,
                      suppress_append_newline=True)
     output_bytes = BytesIO()
     status = task.execute(output_bytes)
@@ -1980,16 +2395,21 @@ def export_chronicle_snapshot(guts):
     return post_rest_api("Export chronicle snapshot",
                          "_exportChronicleSnapshot", guts)
 
+
 def get_chronicle_snapshot_dir(guts):
     path = export_chronicle_snapshot(guts)
     if path is not None and os.path.exists(os.path.join(path, "kv.snapshot")):
         return path
     # We expect this code path to trigger when the server isn't running.
-    snapshots_path = os.path.join(read_guts(guts, "chronicle_dir"), "snapshots")
+    snapshots_path = os.path.join(
+        read_guts(
+            guts,
+            "chronicle_dir"),
+        "snapshots")
     try:
         max_seqno = max([int(i) for i in os.listdir(snapshots_path)])
         return os.path.join(snapshots_path, str(max_seqno))
-    except:
+    except BaseException:
         return None
 
 
@@ -2158,15 +2578,12 @@ def main():
         do_upload_and_exit(args[0], options.just_upload_into,
                            options.upload_proxy, tmp_dir=options.tmp_dir)
 
-    runner = TaskRunner(verbosity=options.verbosity,
-                        task_regexp=options.task_regexp,
-                        tmp_dir=options.tmp_dir,
-                        salt_value=options.salt_value)
     # We want this at the top of couchbase.log
-    runner.run(make_redaction_task())
+    all_tasks = []
+    all_tasks.append(make_redaction_task())
 
     if not options.product_only:
-        runner.run_tasks(make_os_tasks())
+        all_tasks.extend(make_os_tasks())
 
     initargs_variants = [
         os.path.abspath(
@@ -2187,16 +2604,15 @@ def main():
 
     for initargs_path in initargs_variants:
         d = get_server_guts(initargs_path)
-        # print("for initargs: %s got:\n%s" % (initargs_path, d))
         if len(d) > 0:
             guts = d
             guts_initargs_path = os.path.abspath(initargs_path)
             break
 
+    prefix = None
     if guts is None:
         log("Couldn't read server guts. Using some default values.")
 
-        prefix = None
         if platform.system() == 'Windows':
             prefix = 'c:/Program Files/Couchbase/Server'
         elif platform.system() == 'Darwin':
@@ -2232,13 +2648,32 @@ def main():
     populate_guts_with_additional_info(guts)
 
     memcached_password = get_diag_password(guts)
-
     zip_node = read_guts(guts, "node")
-    runner.literal(
+    zip_filename = args[0]
+    if zip_filename[-4:] != ".zip":
+        zip_filename = f"{zip_filename}.zip"
+
+    # Salt value is going to represent redaction, to some extent. We don't
+    # need both variables for our needs but we need to just leave salt_value
+    # empty if we don't want redaction.
+    salt_value = ""
+    if options.redact_level != "none":
+        log("Redacting log files to level: %s" % options.redact_level)
+        salt_value = options.salt_value
+
+    start_time = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
+    folder_name = f"cbcollect_info_{zip_node}_{start_time}"
+    runner = TaskRunner(zip_filename, prefix=folder_name,
+                        salt_value=salt_value,
+                        tmp_dir=options.tmp_dir,
+                        verbosity=options.verbosity,
+                        task_regexp=options.task_regexp)
+
+    diag_header_task = runner.literal_task(
         "product diag header", "Found server initargs at %s (%d)" %
         (guts_initargs_path, len(guts)))
-
-    runner.run_tasks(make_product_task(guts, guts_initargs_path,
+    all_tasks.append(diag_header_task)
+    all_tasks.extend(make_product_task(guts, guts_initargs_path,
                                        memcached_password, options))
 
     # Collect breakpad crash dumps.
@@ -2249,7 +2684,7 @@ def main():
             guts, "memcached_breakpad_minidump_dir")
         for dump in glob.glob(os.path.join(
                 memcached_breakpad_minidump_dir, "*.dmp")):
-            runner.collect_file(dump)
+            all_tasks.append(CollectFileTask(f"Collecting file {dump}", dump))
 
         # Collect indexer breakpad minidumps
         index_port = read_guts(guts, "indexer_http_port")
@@ -2259,18 +2694,23 @@ def main():
             if memcached_breakpad_minidump_dir != indexer_breakpad_minidump_dir:
                 for dump in glob.glob(os.path.join(
                         indexer_breakpad_minidump_dir, "*.dmp")):
-                    runner.collect_file(dump)
+                    all_tasks.append(
+                        CollectFileTask(
+                            f"Collecting file {dump}", dump))
 
     # Collect ASan / UBSan log files (sanitized builds)
     for sanitizer_log in glob.glob(os.path.join(
             read_guts(guts, "log_path"), "sanitizers.log.*")):
-        runner.collect_file(sanitizer_log)
+        all_tasks.append(CollectFileTask(f"Collecting file {sanitizer_log}",
+                                         sanitizer_log))
 
     # Collect prometheus stats files
     cleanup_old_prometheus_stats(guts)
     snapshot_dir_path = get_prometheus_stats(guts)
     if snapshot_dir_path is not None:
-        runner.collect_dir(snapshot_dir_path, "./stats_snapshot")
+        tasks = CollectFileTask.create_directory_collection_tasks(
+            snapshot_dir_path, "./stats_snapshot")
+        all_tasks.extend(tasks)
     else:
         log("Error: unable to retrieve statistics")
 
@@ -2279,7 +2719,7 @@ def main():
         idx_dir = read_guts(guts, "idx_dir")
         for dump in glob.glob(os.path.join(
                 idx_dir, "@fts", "dumps", "*.dump.txt")):
-            runner.collect_file(dump)
+            all_tasks.append(CollectFileTask(f"Collecting file {dump}", dump))
 
     addr = zip_node.split("@")[-1]
     if addr == "127.0.0.1" or addr == "::1":
@@ -2289,17 +2729,12 @@ def main():
     if options.verbosity:
         log("Python version: %s" % sys.version)
 
-    runner.literal("cbcollect_info log", log_stream.getvalue(),
-                   log_file="cbcollect_info.log", no_header=True)
-
-    # Close any open files so all content is flushed to disk.
-    runner.close_files()
-
-    if options.redact_level != "none":
-        log("Redacting log files to level: %s" % options.redact_level)
-        runner.redact_and_zip(redact_zip_file, zip_node)
-
-    runner.zip(zip_filename, zip_node)
+    runner.run_tasks(*all_tasks)
+    log_task = runner.literal_task("cbcollect_info log", log_stream.getvalue(),
+                                   log_file="cbcollect_info.log",
+                                   no_header=True)
+    runner.run_tasks(log_task)
+    runner.close()
 
     cleanup_old_prometheus_stats(guts)
 
