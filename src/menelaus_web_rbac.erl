@@ -1335,7 +1335,7 @@ handle_reset_admin_password(Req) ->
                 {ok, Password} ->
                     ns_audit:admin_password_reset(Req),
                     menelaus_util:reply_json(
-                      Req, {struct, [{password, list_to_binary(Password)}]});
+                      Req, {[{password, list_to_binary(Password)}]});
                 {error, Error} ->
                     menelaus_util:reply_global_error(Req, Error)
             end

@@ -922,12 +922,13 @@ handle_diag_vbuckets(Req) ->
                                            diag_vbucket_per_node(BucketName, Node)
                                    end, Nodes, 30000),
     PerNodeStates = lists:zip(Nodes,
-                              [{struct, [{K, {struct, dict:to_list(V)}} || {K, V} <- dict:to_list(Dict)]}
+                              [{[{K, {dict:to_list(V)}}
+                                 || {K, V} <- dict:to_list(Dict)]}
                                || Dict <- RawPerNode]),
-    JSON = {struct, [{name, list_to_binary(BucketName)},
-                     {bucketMap, proplists:get_value(map, BucketConfig, [])},
-                     %% {ffMap, proplists:get_value(fastForwardMap, BucketConfig, [])},
-                     {perNodeStates, {struct, PerNodeStates}}]},
+    JSON = {[{name, list_to_binary(BucketName)},
+             {bucketMap, proplists:get_value(map, BucketConfig, [])},
+             %% {ffMap, proplists:get_value(fastForwardMap, BucketConfig, [])},
+             {perNodeStates, {PerNodeStates}}]},
     Hash = integer_to_list(erlang:phash2(JSON)),
     ExtraHeaders = [{"Cache-Control", "must-revalidate"},
                     {"ETag", Hash}],

@@ -83,7 +83,7 @@ handle_effective_get(Name, Req) ->
                       fun ({K, V}, Acc) ->
                               lists:keystore(K, 1, Acc, {K, V})
                       end, [], lists:append([KVsDefault, KVsGlobal, KVsLocal])),
-              reply_json(Req, {struct, KVs}, 200)
+              reply_json(Req, {KVs}, 200)
       end).
 
 handle_node_get(Name, Req) ->
@@ -121,7 +121,7 @@ build_setting_kvs(SettingsKey, ExtraConfigKey) ->
 
 handle_get(Req, SettingsKey, ExtraConfigKey, Status) ->
     KVs = build_setting_kvs(SettingsKey, ExtraConfigKey),
-    reply_json(Req, {struct, KVs}, Status).
+    reply_json(Req, {KVs}, Status).
 
 handle_global_post(Req) ->
     handle_post(Req, memcached, memcached_config_extra).
@@ -146,7 +146,7 @@ handle_post(Req, SettingsKey, ExtraConfigKey) ->
             continue_handle_post(Req, Params, SettingsKey, ExtraConfigKey);
         _ ->
             Msg = io_lib:format("Unknown POST parameters: ~p", [UnknownParams]),
-            reply_json(Req, {struct, [{'_', iolist_to_binary(Msg)}]}, 400)
+            reply_json(Req, {[{'_', iolist_to_binary(Msg)}]}, 400)
     end.
 
 validate_param(Value, {int, Min, Max}) ->
@@ -191,7 +191,7 @@ continue_handle_post(Req, Params, SettingsKey, ExtraConfigKey) ->
                                end],
     case InvalidParams of
         [_|_] ->
-            reply_json(Req, {struct, InvalidParams}, 400);
+            reply_json(Req, {InvalidParams}, 400);
         [] ->
             KVs = [{K, V} || {K, {ok, V}} <- ParsedParams],
             {OS, NS} = case update_config(
@@ -262,7 +262,7 @@ handle_node_setting_get(NodeName, SettingName, Req) ->
                   [] ->
                       reply_json(Req, [], 404);
                   [Value] ->
-                      reply_json(Req, {struct, [{value, Value}]})
+                      reply_json(Req, {[{value, Value}]})
               end
       end).
 

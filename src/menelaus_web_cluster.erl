@@ -168,7 +168,7 @@ cluster_init_validators(Config, Snapshot) ->
 
 handle_engage_cluster2(Req) ->
     Body = mochiweb_request:recv_body(Req),
-    {struct, NodeKVList} = mochijson2:decode(Body),
+    {NodeKVList} = ejson:decode(Body),
     %% a bit kludgy, but 100% correct way to protect ourselves when
     %% everything will restart.
     process_flag(trap_exit, true),
@@ -222,7 +222,7 @@ handle_engage_cluster2(Req) ->
             %% 127.0.0.1 and thus join attempt in CBSE-385 would be
             %% prevented at completeJoin step which would be sent to
             %% 127.0.0.1 (joiner) and bounced.
-            {struct, Result} = menelaus_web_node:build_full_node_info(node()),
+            {Result} = menelaus_web_node:build_full_node_info(node()),
             {_, _} = CompatTuple = lists:keyfind(<<"clusterCompatibility">>, 1, NodeKVList),
             ThreeXCompat = cluster_compat_mode:effective_cluster_compat_version_for(
                              cluster_compat_mode:supported_compat_version()),
@@ -235,14 +235,14 @@ handle_engage_cluster2(Req) ->
                     _ ->
                         Result
                 end,
-            reply_json(Req, {struct, ResultWithCompat});
+            reply_json(Req, {ResultWithCompat});
         {error, _What, Message} ->
             reply_json(Req, [Message], 400)
     end,
     exit(normal).
 
 handle_complete_join(Req) ->
-    {struct, NodeKVList} = mochijson2:decode(mochiweb_request:recv_body(Req)),
+    {NodeKVList} = ejson:decode(mochiweb_request:recv_body(Req)),
     erlang:process_flag(trap_exit, true),
     case ns_cluster:complete_join(NodeKVList) of
         {ok, _} ->
@@ -421,7 +421,7 @@ handle_join_tail(Req, OtherScheme, OtherHost, OtherPort, OtherUser, OtherPswd,
                  Host =
                     case Hostname of
                         undefined ->
-                            {struct, MyPList} =
+                            {MyPList} =
                                 menelaus_web_node:build_full_node_info(
                                   {ip, MyIP}, node()),
                             HostnamePort =
@@ -777,7 +777,7 @@ do_handle_add_node(Req, GroupUUID) ->
                             [{node_added, list_to_binary(Hostname)},
                              {node_services, ServicesJSON}]),
 
-                          reply_json(Req, {struct, [{otpNode, OtpNode}]}, 200);
+                          reply_json(Req, {[{otpNode, OtpNode}]}, 200);
                       {error, What, Message} ->
                           reply_json(Req, [Message], add_node_error_code(What))
                   end
@@ -935,7 +935,7 @@ handle_rebalance(Req) ->
     Params = mochiweb_request:parse_post(Req),
     case string:tokens(proplists:get_value("knownNodes", Params, ""),",") of
         [] ->
-            reply_json(Req, {struct, [{empty_known_nodes, 1}]}, 400);
+            reply_json(Req, {[{empty_known_nodes, 1}]}, 400);
         KnownNodesS ->
             EjectedNodesS = string:tokens(proplists:get_value("ejectedNodes",
                                                               Params, ""), ","),
@@ -951,7 +951,7 @@ handle_rebalance(Req) ->
                                            end,
                     do_handle_rebalance(Req, KnownNodesS, EjectedNodesS, DeltaRecoveryBuckets);
                 _ ->
-                    reply_json(Req, {struct, [{mismatch, 1}]}, 400)
+                    reply_json(Req, {[{mismatch, 1}]}, 400)
             end
     end.
 
@@ -965,15 +965,15 @@ do_handle_rebalance(Req, KnownNodesS, EjectedNodesS, DeltaRecoveryBuckets) ->
         in_progress ->
             reply(Req, 200);
         nodes_mismatch ->
-            reply_json(Req, {struct, [{mismatch, 1}]}, 400);
+            reply_json(Req, {[{mismatch, 1}]}, 400);
         delta_recovery_not_possible ->
-            reply_json(Req, {struct, [{deltaRecoveryNotPossible, 1}]}, 400);
+            reply_json(Req, {[{deltaRecoveryNotPossible, 1}]}, 400);
         no_active_nodes_left ->
             reply_text(Req, "No active nodes left", 400);
         in_recovery ->
             reply_text(Req, "Cluster is in recovery mode.", 503);
         no_kv_nodes_left ->
-            reply_json(Req, {struct, [{noKVNodesLeft, 1}]}, 400);
+            reply_json(Req, {[{noKVNodesLeft, 1}]}, 400);
         ok ->
             ns_audit:rebalance_initiated(Req, KnownNodes, EjectedNodes, DeltaRecoveryBuckets),
             reply(Req, 200)
@@ -983,13 +983,13 @@ handle_rebalance_progress(_PoolId, Req) ->
     case rebalance:progress() of
         {running, PerNode} ->
             PerNodeJson = [{atom_to_binary(Node, latin1),
-                            {struct, [{progress, Progress}]}}
+                            {[{progress, Progress}]}}
                            || {Node, Progress} <- PerNode],
             Status = [{status, <<"running">>} | PerNodeJson],
-            reply_json(Req, {struct, Status}, 200);
+            reply_json(Req, {Status}, 200);
         not_running ->
             Status = [{status, <<"none">>} | get_rebalance_error()],
-            reply_json(Req, {struct, Status}, 200);
+            reply_json(Req, {Status}, 200);
         {error, timeout} = Err ->
             reply_json(Req, {[Err]}, 503)
     end.
@@ -1101,10 +1101,10 @@ do_handle_set_recovery_type(Req, Type, Params) ->
                     ns_audit:enter_node_recovery(Req, Node, Type),
                     reply_json(Req, [], 200);
                 bad_node ->
-                    reply_json(Req, {struct, [{otpNode, OtpNodeErrorMsg}]}, 400)
+                    reply_json(Req, {[{otpNode, OtpNodeErrorMsg}]}, 400)
             end;
         _ ->
-            reply_json(Req, {struct, Errors}, 400)
+            reply_json(Req, {Errors}, 400)
     end.
 
 

@@ -58,4 +58,4 @@ handle_rotate_data_key(Req) ->
 
 handle_get_state(Req) ->
     {ok, Rv} = encryption_service:get_state(),
-    menelaus_util:reply_json(Req, {struct, [{state, Rv}]}).
+    menelaus_util:reply_json(Req, {[{state, Rv}]}).

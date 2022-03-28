@@ -110,15 +110,16 @@ add_couch_api_base_loop([], _BucketName, _BucketUUID, _LocalAddr, _F, _Dict, CAP
     CAPINodes ++ NonCAPINodes;
 add_couch_api_base_loop([Node | RestNodes],
                         BucketName, BucketUUID, LocalAddr, F, Dict, CAPINodes, NonCAPINodes) ->
-    {struct, KV} = F(Node, BucketName),
+    {KV} = F(Node, BucketName),
     case dict:find(Node, Dict) of
         {ok, V} when V =/= [] ->
             %% note this is generally always expected, but let's play safe just in case
-            S = {struct, add_couch_api_base(BucketName, BucketUUID, KV, Node, LocalAddr)},
+            S = {add_couch_api_base(BucketName, BucketUUID, KV, Node,
+                                    LocalAddr)},
             add_couch_api_base_loop(RestNodes, BucketName, BucketUUID,
                                     LocalAddr, F, Dict, [S | CAPINodes], NonCAPINodes);
         _ ->
-            S = {struct, KV},
+            S = {KV},
             add_couch_api_base_loop(RestNodes, BucketName, BucketUUID,
                                     LocalAddr, F, Dict, CAPINodes, [S | NonCAPINodes])
     end.
@@ -244,9 +245,7 @@ build_bucket_info(Id, Ctx, InfoLevel, SkipMap) ->
         {localRandomKeyUri,
          bucket_info_cache:build_pools_uri(["buckets", Id, "localRandomKey"])},
         {controllers, {build_controllers(Id, BucketConfig)}},
-        {nodes,
-         menelaus_util:strip_json_struct(
-           build_bucket_nodes_info(Id, BucketUUID, BucketConfig, Ctx))},
+        {nodes, build_bucket_nodes_info(Id, BucketUUID, BucketConfig, Ctx)},
         {stats,
          {[{uri, bucket_info_cache:build_pools_uri(["buckets", Id, "stats"])},
            {directoryURI,
@@ -411,11 +410,17 @@ handle_bucket_delete(_PoolId, BucketId, Req) ->
             ?MENELAUS_WEB_LOG(?BUCKET_DELETED, "Deleted bucket \"~s\"~n", [BucketId]),
             reply(Req, 200);
         rebalance_running ->
-            reply_json(Req, {struct, [{'_', <<"Cannot delete buckets during rebalance.\r\n">>}]}, 503);
+            reply_json(Req, {[{'_',
+                               <<"Cannot delete buckets during rebalance.\r\n">>
+                              }]}, 503);
         in_recovery ->
-            reply_json(Req, {struct, [{'_', <<"Cannot delete buckets when cluster is in recovery mode.\r\n">>}]}, 503);
+            reply_json(Req, {[{'_',
+                               <<"Cannot delete buckets when cluster is in "
+                                 "recovery mode.\r\n">>}]}, 503);
         {shutdown_failed, _} ->
-            reply_json(Req, {struct, [{'_', <<"Bucket deletion not yet complete, but will continue.\r\n">>}]}, 500);
+            reply_json(Req, {[{'_',
+                               <<"Bucket deletion not yet complete, but will "
+                                 "continue.\r\n">>}]}, 500);
         {exit, {not_found, _}, _} ->
             reply_text(Req, "The bucket to be deleted was not found.\r\n", 404)
     end.
@@ -517,8 +522,7 @@ handle_bucket_update_inner(BucketId, Req, Params, Limit) ->
     case {Ctx#bv_ctx.validate_only, Ctx#bv_ctx.ignore_warnings,
           parse_bucket_params(Ctx, Params)} of
         {_, _, {errors, Errors, JSONSummaries}} ->
-            RV = {struct, [{errors, {struct, Errors}},
-                           {summaries, {struct, JSONSummaries}}]},
+            RV = {[{errors, {Errors}}, {summaries, {JSONSummaries}}]},
             reply_json(Req, RV, 400);
         {false, _, {ok, ParsedProps, _}} ->
             BucketType = proplists:get_value(bucketType, ParsedProps),
@@ -547,12 +551,12 @@ handle_bucket_update_inner(BucketId, Req, Params, Limit) ->
                     handle_bucket_update_inner(BucketId, Req, Params, Limit-1)
             end;
         {true, true, {ok, _, JSONSummaries}} ->
-            reply_json(Req, {struct, [{errors, {struct, []}},
-                                      {summaries, {struct, JSONSummaries}}]}, 200);
+            reply_json(Req, {[{errors, {[]}},
+                              {summaries, {JSONSummaries}}]}, 200);
         {true, false, {ok, ParsedProps, JSONSummaries}} ->
             FinalErrors = perform_warnings_validation(Ctx, ParsedProps, []),
-            reply_json(Req, {struct, [{errors, {struct, FinalErrors}},
-                                      {summaries, {struct, JSONSummaries}}]},
+            reply_json(Req, {[{errors, {FinalErrors}},
+                              {summaries, {JSONSummaries}}]},
                        case FinalErrors of
                            [] -> 202;
                            _ -> 400
@@ -600,32 +604,33 @@ do_bucket_create(Req, Name, Params, Ctx) ->
     MaxBuckets = ns_bucket:get_max_buckets(),
     case length(Ctx#bv_ctx.all_buckets) >= MaxBuckets of
         true ->
-            {{struct, [{'_', iolist_to_binary(io_lib:format("Cannot create more than ~w buckets", [MaxBuckets]))}]}, 400};
+            {{[{'_',
+                iolist_to_binary(io_lib:format(
+                                   "Cannot create more than ~w buckets",
+                                   [MaxBuckets]))}]}, 400};
         false ->
             case {Ctx#bv_ctx.validate_only, Ctx#bv_ctx.ignore_warnings,
                   parse_bucket_params(Ctx, Params)} of
                 {_, _, {errors, Errors, JSONSummaries}} ->
-                    {{struct, [{errors, {struct, Errors}},
-                               {summaries, {struct, JSONSummaries}}]}, 400};
+                    {{[{errors, {Errors}},
+                       {summaries, {JSONSummaries}}]}, 400};
                 {false, _, {ok, ParsedProps, _}} ->
                     case do_bucket_create(Req, Name, ParsedProps) of
                         ok -> ok;
                         {errors, Errors} ->
                             ?log_debug("Failed to create bucket '~s' with 40X error(s): ~p",
                                        [Name, Errors]),
-                            {{struct, Errors}, 400};
+                            {{Errors}, 400};
                         {errors_500, Errors} ->
                             ?log_debug("Failed to create bucket '~s' with 50X error(s): ~p",
                                        [Name, Errors]),
-                            {{struct, Errors}, 503}
+                            {{Errors}, 503}
                     end;
                 {true, true, {ok, _, JSONSummaries}} ->
-                    {{struct, [{errors, {struct, []}},
-                               {summaries, {struct, JSONSummaries}}]}, 200};
+                    {{[{errors, {[]}}, {summaries, {JSONSummaries}}]}, 200};
                 {true, false, {ok, ParsedProps, JSONSummaries}} ->
                     FinalErrors = perform_warnings_validation(Ctx, ParsedProps, []),
-                    {{struct, [{errors, {struct, FinalErrors}},
-                               {summaries, {struct, JSONSummaries}}]},
+                    {{[{errors, {FinalErrors}}, {summaries, {JSONSummaries}}]},
                      case FinalErrors of
                          [] -> 200;
                          _ -> 400
@@ -698,7 +703,9 @@ handle_bucket_flush(_PoolId, Id, Req) ->
         false ->
             do_handle_bucket_flush(Id, Req);
         true ->
-            reply_json(Req, {struct, [{'_', <<"Cannot flush buckets with outgoing XDCR">>}]}, 503)
+            reply_json(Req, {[{'_',
+                               <<"Cannot flush buckets with outgoing XDCR">>}]},
+                       503)
     end.
 
 do_handle_bucket_flush(BucketName, Req) ->
@@ -707,15 +714,22 @@ do_handle_bucket_flush(BucketName, Req) ->
             ns_audit:flush_bucket(Req, BucketName),
             reply(Req, 200);
         rebalance_running ->
-            reply_json(Req, {struct, [{'_', <<"Cannot flush buckets during rebalance">>}]}, 503);
+            reply_json(Req, {[{'_',
+                               <<"Cannot flush buckets during rebalance">>}]},
+                       503);
         in_recovery ->
-            reply_json(Req, {struct, [{'_', <<"Cannot flush buckets when cluster is in recovery mode">>}]}, 503);
+            reply_json(Req, {[{'_',
+                               <<"Cannot flush buckets when cluster is in "
+                                 "recovery mode">>}]}, 503);
         bucket_not_found ->
             reply(Req, 404);
         flush_disabled ->
-            reply_json(Req, {struct, [{'_', <<"Flush is disabled for the bucket">>}]}, 400);
+            reply_json(Req, {[{'_',
+                               <<"Flush is disabled for the bucket">>}]}, 400);
         _ ->
-            reply_json(Req, {struct, [{'_', <<"Flush failed with unexpected error. Check server logs for details.">>}]}, 500)
+            reply_json(Req, {[{'_',
+                               <<"Flush failed with unexpected error. "
+                                 "Check server logs for details.">>}]}, 500)
     end.
 
 
@@ -764,8 +778,8 @@ parse_bucket_params_without_warnings(Ctx, Params) ->
                                              ClusterStorageTotals)
                  end,
     HDDSummary = interpret_hdd_quota(CurrentBucket, OKs, ClusterStorageTotals, Ctx),
-    JSONSummaries = [{ramSummary, {struct, ram_summary_to_proplist(RAMSummary)}},
-                     {hddSummary, {struct, hdd_summary_to_proplist(HDDSummary)}}],
+    JSONSummaries = [{ramSummary, {ram_summary_to_proplist(RAMSummary)}},
+                     {hddSummary, {hdd_summary_to_proplist(HDDSummary)}}],
     Errors2 = case {CurrentBucket, IsNew} of
                   {undefined, _} -> Errors;
                   {_, true} -> Errors;
@@ -1944,11 +1958,10 @@ handle_set_ddoc_update_min_changes(_PoolId, Bucket, DDocIdStr, Req) ->
                 [] ->
                     complete_update_ddoc_options(Req, Bucket, DDoc, Options1);
                 _ ->
-                    reply_json(Req, {struct, Errors}, 400)
+                    reply_json(Req, {Errors}, 400)
             end;
         {not_found, _} ->
-            reply_json(Req, {struct, [{'_',
-                                       <<"Design document not found">>}]}, 400)
+            reply_json(Req, {[{'_', <<"Design document not found">>}]}, 400)
     end.
 
 complete_update_ddoc_options(Req, Bucket, #doc{body={Body0}}= DDoc, Options0) ->
@@ -1980,19 +1993,16 @@ do_handle_local_random_key(Bucket, CollectionUId, Req) ->
                             Nodes, Req),
     case Res of
         {ok, Key} ->
-            reply_json(Req, {struct,
-                             [{ok, true},
+            reply_json(Req, {[{ok, true},
                               {key, Key}]});
         {memcached_error, key_enoent, _} ->
             ?log_debug("No keys were found for bucket ~p. Fallback to all docs approach.", [Bucket]),
-            reply_json(Req, {struct,
-                             [{ok, false},
+            reply_json(Req, {[{ok, false},
                               {error, <<"fallback_to_all_docs">>}]}, 404);
         {memcached_error, Status, Msg} ->
             ?log_error("Unable to retrieve random key for bucket ~p. Memcached returned error ~p. ~p",
                        [Bucket, Status, Msg]),
-            reply_json(Req, {struct,
-                             [{ok, false}]}, 404)
+            reply_json(Req, {[{ok, false}]}, 404)
     end.
 
 build_terse_bucket_info(BucketName) ->

@@ -627,7 +627,9 @@ pick_latest_cluster_collect_task(AllNodeTasks) ->
                              false -> []
                          end,
 
-            PerNode = [{N, {struct, [{couch_util:to_binary(K), couch_util:to_binary(V)} || {K, V} <- KV]}}
+            PerNode = [{N,
+                        {[{couch_util:to_binary(K),
+                           couch_util:to_binary(V)} || {K, V} <- KV]}}
                        || {N, KV} <- proplists:get_value(perNode, Task, [])],
 
             RefreshProp = case StatusProp of
@@ -646,7 +648,7 @@ pick_latest_cluster_collect_task(AllNodeTasks) ->
 
             FinalTask = [{node, Node},
                          {type, clusterLogsCollection},
-                         {perNode, {struct, PerNode}}]
+                         {perNode, {PerNode}}]
                 ++ ProgressProp ++ TSProp ++ StatusProp ++ RefreshProp,
 
             [FinalTask]
@@ -718,7 +720,7 @@ do_build_tasks_list(NodesDict, PoolId, AllRepDocs, Buckets, RebStatusTimeout) ->
                   {PrioA, task_name(A, TypeA)} =< {PrioB, task_name(B, TypeB)}
           end, Tasks0),
 
-    [{struct, V} || V <- Tasks1].
+    [{V} || V <- Tasks1].
 
 build_xdcr_tasks(TasksDict, AllRepDocs) ->
     [begin
@@ -809,8 +811,8 @@ do_build_rebalance_task(Timeout) ->
                                     TotalRebalanceProgress * 100.0 / RebalanceNodesCount
                             end},
                  {perNode,
-                  {struct, [{Node, {struct, [{progress, Progress * 100}]}}
-                            || {Node, Progress} <- PerNode]}},
+                  {[{Node, {[{progress, Progress * 100}]}}
+                    || {Node, Progress} <- PerNode]}},
                  {detailedProgress, DetailedProgress}] ++ RebalanceInfo;
             FullProgress ->
                 ReportURI =
@@ -861,13 +863,13 @@ build_orphan_buckets_tasks(Buckets, NodesDict) ->
 get_detailed_progress() ->
     case ns_rebalance_observer:get_detailed_progress() of
         {ok, GlobalDetails, PerNode} ->
-            PerNodeJSON0 = [{N, {struct, [{ingoing, {struct, Ingoing}},
-                                          {outgoing, {struct, Outgoing}}]}} ||
-                               {N, Ingoing, Outgoing} <- PerNode],
-            PerNodeJSON = {struct, PerNodeJSON0},
-            {struct, GlobalDetails ++ [{perNode, PerNodeJSON}]};
+            PerNodeJSON0 = [{N, {[{ingoing, {Ingoing}},
+                                  {outgoing, {Outgoing}}]}} ||
+                            {N, Ingoing, Outgoing} <- PerNode],
+            PerNodeJSON = {PerNodeJSON0},
+            {GlobalDetails ++ [{perNode, PerNodeJSON}]};
         _ ->
-            {struct, []}
+            {[]}
     end.
 
 task_type(Task) ->

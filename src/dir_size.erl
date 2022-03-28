@@ -58,7 +58,7 @@ init(ProgramName) ->
 
 decode_reply(Dir, IOList) ->
     Data = erlang:iolist_to_binary(IOList),
-    {struct, Decoded} = mochijson2:decode(Data),
+    {Decoded} = ejson:decode(Data),
     Size = proplists:get_value(<<"size">>, Decoded),
     ErrorCount = proplists:get_value(<<"errorCount">>, Decoded),
     case ErrorCount of

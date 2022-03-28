@@ -37,8 +37,7 @@ implementation_version(Versions) ->
 build_versions() ->
     Versions = ns_info:version(),
     [{implementationVersion, implementation_version(Versions)},
-     {componentsVersion, {struct,
-                          lists:map(fun ({K,V}) ->
+     {componentsVersion, {lists:map(fun ({K,V}) ->
                                             {K, list_to_binary(V)}
                                     end,
                                     Versions)}}].

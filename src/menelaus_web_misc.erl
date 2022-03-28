@@ -45,7 +45,7 @@ handle_can_use_cert_for_auth(Req) ->
     menelaus_util:reply_json(Req, {[{cert_for_auth, RV}]}).
 
 handle_versions(Req) ->
-    reply_json(Req, {struct, menelaus_web_cache:get_static_value(versions)}).
+    reply_json(Req, {menelaus_web_cache:get_static_value(versions)}).
 
 handle_tasks(PoolId, Req) ->
     DefaultTimeout = integer_to_list(?REBALANCE_OBSERVER_TASK_DEFAULT_TIMEOUT),
@@ -56,7 +56,7 @@ handle_tasks(PoolId, Req) ->
         {ok, RebTimeout} ->
             do_handle_tasks(PoolId, Req, RebTimeout);
         _ ->
-            reply_json(Req, {struct, [{rebalanceStatusTimeout, <<"invalid">>}]}, 400)
+            reply_json(Req, {[{rebalanceStatusTimeout, <<"invalid">>}]}, 400)
     end.
 
 do_handle_tasks(PoolId, Req, RebTimeout) ->
@@ -100,7 +100,7 @@ handle_log_post(Req) ->
                     {list_to_atom(Component), unknown, -1}, undefined, Msg, []),
             reply_json(Req, []);
         _ ->
-            reply_json(Req, {struct, Errors}, 400)
+            reply_json(Req, {Errors}, 400)
     end.
 
 handle_event_log_post(Req) ->

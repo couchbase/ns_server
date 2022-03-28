@@ -32,9 +32,9 @@ handle_get(Req) ->
     Map = [ begin
                 Name = filename:basename(Path, ".zip"),
                 Installed = lists:member(Name, Buckets),
-                {struct, [{name, list_to_binary(Name)},
-                          {installed, Installed},
-                          {quotaNeeded, ?SAMPLE_BUCKET_QUOTA}]}
+                {[{name, list_to_binary(Name)},
+                  {installed, Installed},
+                  {quotaNeeded, ?SAMPLE_BUCKET_QUOTA}]}
             end || Path <- list_sample_files() ],
 
     reply_json(Req, Map).
@@ -76,7 +76,7 @@ process_post(Req, Samples) ->
 
 try_decode(Body) ->
     try
-        {ok, mochijson2:decode(Body)}
+        {ok, ejson:decode(Body)}
     catch
         throw:invalid_utf8 ->
             {error, "Invalid JSON: Illegal UTF-8 character"};

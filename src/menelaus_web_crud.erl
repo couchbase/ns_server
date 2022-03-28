@@ -116,15 +116,15 @@ handle_list(BucketId, CollectionUid, Req) ->
     catch
         throw:bad_request ->
             menelaus_util:reply_json(Req,
-                                     {struct, [{error, <<"bad_request">>},
-                                               {reason, <<"bad request">>}]}, 400)
+                                     {[{error, <<"bad_request">>},
+                                       {reason, <<"bad request">>}]}, 400)
     end.
 
 do_handle_list(Req, _Bucket, _Params, 0) ->
     menelaus_util:reply_json(
       Req,
-      {struct, [{error, <<"max_retry">>},
-                {reason, <<"could not get consistent vbucket map">>}]}, 503);
+      {[{error, <<"max_retry">>},
+        {reason, <<"could not get consistent vbucket map">>}]}, 503);
 do_handle_list(Req, Bucket, {Skip, Limit, Params}, N) ->
     NodeVBuckets = dict:to_list(vbucket_map_mirror:must_node_vbuckets_dict(Bucket)),
 
@@ -135,22 +135,22 @@ do_handle_list(Req, Bucket, {Skip, Limit, Params}, N) ->
         {ok, Heap} ->
             Heap1 = handle_skip(Heap, Skip),
             menelaus_util:reply_json(Req,
-                                     {struct, [{rows, handle_limit(Heap1, Limit)}]});
+                                     {[{rows, handle_limit(Heap1, Limit)}]});
         {error, {memcached_error, not_my_vbucket}} ->
             timer:sleep(1000),
             do_handle_list(Req, Bucket, {Skip, Limit, Params}, N - 1);
         {error, {memcached_error, not_supported}} ->
             menelaus_util:reply_json(Req,
-                                     {struct, [{error, memcached_error},
-                                               {reason, not_supported}]}, 501);
+                                     {[{error, memcached_error},
+                                       {reason, not_supported}]}, 501);
         {error, {memcached_error, Type}} ->
             menelaus_util:reply_json(Req,
-                                     {struct, [{error, memcached_error},
-                                               {reason, Type}]}, 500);
+                                     {[{error, memcached_error},
+                                       {reason, Type}]}, 500);
         {error, Error} ->
             menelaus_util:reply_json(Req,
-                                     {struct, [{error, couch_util:to_binary(Error)},
-                                               {reason, <<"unknown error">>}]}, 500)
+                                     {[{error, couch_util:to_binary(Error)},
+                                       {reason, <<"unknown error">>}]}, 500)
     end.
 
 build_keys_heap(Bucket, NodeVBuckets, Params, Identity) ->
@@ -214,7 +214,7 @@ do_handle_limit(Heap, Limit, R) ->
     end.
 
 encode_doc({Key, undefined}) ->
-    {struct, [{id, Key}]};
+    {[{id, Key}]};
 encode_doc({Key, Value}) ->
     Doc = case Value of
               {binary, V} ->
@@ -222,7 +222,7 @@ encode_doc({Key, Value}) ->
               {json, V} ->
                   {json, V}
           end,
-    {struct, [{id, Key}, {doc, {struct, [Doc]}}]}.
+    {[{id, Key}, {doc, {[Doc]}}]}.
 
 do_get(BucketId, DocId, CollectionUid, Options, Req) ->
     BinaryBucketId = list_to_binary(BucketId),
@@ -236,9 +236,9 @@ do_get(BucketId, DocId, CollectionUid, Options, Req) ->
     attempt(BinaryBucketId, BinaryDocId, capi_crud, get, Args).
 
 couch_errorjson_to_context(ErrData) ->
-    ErrStruct = mochijson2:decode(ErrData),
-    {struct, JsonData} = ErrStruct,
-    {struct, Error} = proplists:get_value(<<"error">>, JsonData),
+    ErrStruct = ejson:decode(ErrData),
+    {JsonData} = ErrStruct,
+    {Error} = proplists:get_value(<<"error">>, JsonData),
     Context = proplists:get_value(<<"context">>, Error),
     case Context of
         undefined -> throw(invalid_json);
@@ -253,11 +253,11 @@ construct_error_reply(Msg) ->
                     ?log_debug("Unknown error format ~p", [Msg]),
                     <<"unknown error">>
              end,
-    {struct, [{error, <<"bad_request">>}, {reason, Reason}]}.
+    {[{error, <<"bad_request">>}, {reason, Reason}]}.
 
 construct_etmpfail_error_reply() ->
-    {struct, [{error, <<"retry_needed">>},
-              {reason, <<"etmpfail returned from memcached">>}]}.
+    {[{error, <<"retry_needed">>},
+      {reason, <<"etmpfail returned from memcached">>}]}.
 
 handle_get(BucketId, DocId, Req) ->
     CollectionUid = assert_default_collection_uid(BucketId),

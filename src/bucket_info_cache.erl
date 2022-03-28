@@ -121,9 +121,8 @@ maybe_build_ext_hostname(Node) ->
     end.
 
 alternate_addresses_json(Node, Config, Snapshot, WantedPorts) ->
-    menelaus_util:strip_json_struct(
-      menelaus_web_node:alternate_addresses_json(Node, Config, Snapshot,
-                                                 WantedPorts)).
+    menelaus_web_node:alternate_addresses_json(Node, Config, Snapshot,
+                                               WantedPorts).
 
 build_nodes_ext([] = _Nodes, _Config, _Snapshot, NodesExtAcc) ->
     lists:reverse(NodesExtAcc);

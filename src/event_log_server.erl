@@ -247,7 +247,7 @@ recent(StartSeqNum) ->
                      {M, AccIn}
              end
          end, {StartSeqNum, []}, recent()),
-    {MaxSeqNum, [{struct, get_event(strip_seqnum(L))} || L <- Logs]}.
+    {MaxSeqNum, [{get_event(strip_seqnum(L))} || L <- Logs]}.
 
 -spec build_events_json(SinceTime :: undefined | string(),
                         Limit :: -1 | non_neg_integer()) ->
@@ -285,7 +285,7 @@ build_events_json(SinceTime, Limit) ->
                    end
            end,
     %% Reverse the logs since they are stored in the descending order of time.
-    [{struct, get_event(strip_seqnum(Log))} || Log <- lists:reverse(Logs)].
+    [{get_event(strip_seqnum(Log))} || Log <- lists:reverse(Logs)].
 
 -ifdef(TEST).
 order_entries_test() ->

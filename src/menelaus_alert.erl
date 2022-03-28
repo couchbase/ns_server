@@ -48,7 +48,7 @@
 -define(DEFAULT_EVENTS_LIMIT, 250).
 
 handle_logs(Req) ->
-    reply_json(Req, {struct, [{list, build_logs(mochiweb_request:parse_qs(Req))}]}).
+    reply_json(Req, {[{list, build_logs(mochiweb_request:parse_qs(Req))}]}).
 
 append_zero_msecs(SinceTime) ->
     [$Z | Reverse] = lists:reverse(SinceTime),
@@ -91,7 +91,7 @@ handle_events(Req) ->
                        {SinceTime, Limit} = get_handle_events_params(Values),
                        Events = event_log_server:build_events_json(SinceTime,
                                                                    Limit),
-                       reply_json(Req, {struct, [{events, Events}]})
+                       reply_json(Req, {[{events, Events}]})
                      end, Req, qs, handle_events_validators()).
 
 handle_events_streaming(Req) ->
@@ -120,7 +120,7 @@ handle_events_streaming(Req) ->
 %% @doc Handle the email alerts request.
 handle_settings_alerts(Req) ->
     {value, Config} = ns_config:search(email_alerts),
-    reply_json(Req, {struct, build_alerts_json(Config)}).
+    reply_json(Req, {build_alerts_json(Config)}).
 
 %% @doc Handle the email alerts post.
 handle_settings_alerts_post(Req) ->
@@ -150,8 +150,7 @@ build_alerts_json(Config) ->
      {sender, list_to_binary(proplists:get_value(sender, Config))},
      {enabled, proplists:get_value(enabled, Config)},
      {emailServer,
-      {struct,
-       [{user, list_to_binary(proplists:get_value(user, Server))},
+      {[{user, list_to_binary(proplists:get_value(user, Server))},
         {pass, <<"">>},
         {host, list_to_binary(proplists:get_value(host, Server))},
         {port, proplists:get_value(port, Server)},
@@ -262,7 +261,7 @@ send_test_message(Req, Subject, Body, Config) ->
                         R
                 end,
 
-            reply_json(Req, {struct, [{error, couch_util:to_binary(Msg)}]}, 400)
+            reply_json(Req, {[{error, couch_util:to_binary(Msg)}]}, 400)
     end.
 
 -spec alert_keys_string_list() -> [string()].
@@ -346,8 +345,7 @@ build_log_structs(LogEntriesIn, MinTStamp, Limit) ->
                       S when is_list(S) ->
                           CodeString = ns_log:code_string(Module, Code),
                           S1 = ns_log:prepare_message(Module, Code, S),
-                          [{struct,
-                            [{node, Node},
+                          [{[{node, Node},
                              {type, category_bin(Cat)},
                              {code, Code},
                              {module, list_to_binary(atom_to_list(Module))},

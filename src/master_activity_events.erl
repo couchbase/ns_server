@@ -292,7 +292,7 @@ stream_events(Callback, State) ->
     end.
 
 event_to_formatted_iolist(Event, Config) ->
-    [iolist_to_binary([mochijson2:encode({struct, JSON}), "\n"])
+    [iolist_to_binary([ejson:encode({JSON}), "\n"])
      || JSON <- event_to_jsons(Event, Config)].
 
 -spec format_some_history([[{atom(), any()}]]) -> iolist().
@@ -553,7 +553,7 @@ event_to_jsons({TS, create_bucket,
                                   {ts, misc:time_to_epoch_float(TS)},
                                   {bucket, BucketName},
                                   {bucketType, BucketType}])
-     ++ [{params, {struct, format_simple_plist_as_json(NewConfig)}}]];
+     ++ [{params, {format_simple_plist_as_json(NewConfig)}}]];
 
 event_to_jsons({TS, delete_bucket, BucketName}, _Config) ->
     [format_simple_plist_as_json([{type, deleteBucket},

@@ -588,11 +588,11 @@ handle_client_cert_auth_settings(Req) ->
     Cca = ns_ssl_services_setup:client_cert_auth(),
     State = list_to_binary(proplists:get_value(state, Cca)),
     Prefixes = [begin
-                    {struct, [{list_to_binary(atom_to_list(K)), list_to_binary(V)}
-                              || {K, V} <- Triple]}
+                    {[{list_to_binary(atom_to_list(K)), list_to_binary(V)}
+                      || {K, V} <- Triple]}
                 end || Triple <- proplists:get_value(prefixes, Cca, [])],
 
-    Out = {struct, [{<<"state">>, State}, {<<"prefixes">>, Prefixes}]},
+    Out = {[{<<"state">>, State}, {<<"prefixes">>, Prefixes}]},
     menelaus_util:reply_json(Req, Out).
 
 validate_client_cert_auth_param(Key, Val) ->
@@ -713,7 +713,7 @@ handle_client_cert_auth_settings_post(Req) ->
 %%     ]
 %% }
 do_handle_client_cert_auth_settings_post(Req, JSON) ->
-    {struct, Data} = JSON,
+    {Data} = JSON,
     StateRaw = proplists:get_value(<<"state">>, Data),
     PrefixesRaw = proplists:get_value(<<"prefixes">>, Data),
 
@@ -739,7 +739,7 @@ do_handle_client_cert_auth_settings_post(Req, JSON) ->
             menelaus_util:reply_json(Req, list_to_binary(Err), 400);
         false ->
             Prefixes = [[{binary_to_list(K), binary_to_list(V)} || {K, V} <- Triple]
-                        || {struct, Triple} <- PrefixesRaw],
+                        || {Triple} <- PrefixesRaw],
 
             {Cfg0, Errors0} = validate_client_cert_auth_state(State, Prefixes, [], []),
             {Cfg, Errors} = validate_client_cert_auth_prefixes(Prefixes, Cfg0, Errors0),

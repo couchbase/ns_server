@@ -99,7 +99,7 @@ add_tls_options("http://" ++ _, Options) -> Options.
 decode_json_response_ext({ok, {{200 = _StatusCode, _} = _StatusLine,
                                _Headers, Body} = _Result},
                          _Method, _Request) ->
-    try mochijson2:decode(Body) of
+    try ejson:decode(Body) of
         X -> {ok, X}
     catch
         Type:What:Stack ->
@@ -110,7 +110,7 @@ decode_json_response_ext({ok, {{200 = _StatusCode, _} = _StatusLine,
 decode_json_response_ext({ok, {{400 = _StatusCode, _} = _StatusLine,
                                _Headers, Body} = _Result} = Response,
                          Method, Request) ->
-    try mochijson2:decode(Body) of
+    try ejson:decode(Body) of
         X -> {client_error, X}
     catch
         _:_ ->

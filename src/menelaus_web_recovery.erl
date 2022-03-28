@@ -79,15 +79,14 @@ handle_commit_vbucket(_PoolId, Bucket, Req) ->
 
 %% internal
 build_start_recovery_reply(UUID, RecoveryMap) ->
-    {struct, [{uuid, UUID},
-              {code, ok},
-              {recoveryMap, build_recovery_map_json(RecoveryMap)}]}.
+    {[{uuid, UUID},
+      {code, ok},
+      {recoveryMap, build_recovery_map_json(RecoveryMap)}]}.
 
 build_recovery_map_json(RecoveryMap) ->
     dict:fold(
       fun (Node, VBuckets, Acc) ->
-              JSON = {struct, [{node, Node},
-                               {vbuckets, VBuckets}]},
+              JSON = {[{node, Node}, {vbuckets, VBuckets}]},
               [JSON | Acc]
       end, [], RecoveryMap).
 
@@ -96,7 +95,7 @@ reply_common(Req, Reply) ->
     Code = reply_code(Reply),
     Extra = build_common_reply_extra(Reply),
 
-    JSON = {struct, [{code, Code} | Extra]},
+    JSON = {[{code, Code} | Extra]},
     reply_json(Req, JSON, Status).
 
 build_common_reply_extra(Reply) when is_atom(Reply) ->

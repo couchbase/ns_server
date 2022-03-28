@@ -387,7 +387,7 @@ grab_warmup_task(Bucket) ->
               {bucket, list_to_binary(Bucket)},
               {node, node()},
               {recommendedRefreshPeriod, 2.0},
-              {stats, {struct, Stats}}]]
+              {stats, {Stats}}]]
     end.
 
 grab_warmup_tasks() ->

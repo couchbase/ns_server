@@ -172,7 +172,7 @@ get_reprovision_cfg() ->
     chronicle_compat:get(direct, auto_reprovision_cfg, #{required => true}).
 
 jsonify_cfg() ->
-    {struct, get_reprovision_cfg()}.
+    {get_reprovision_cfg()}.
 
 get_reprovision_info() ->
     RCfg = get_reprovision_cfg(),

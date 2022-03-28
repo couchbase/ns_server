@@ -22,7 +22,7 @@
 -export([is_valid_json/1]).
 
 construct_error_context(Context) ->
-    mochijson2:encode({[{error, [{"context", Context}]}]}).
+    ejson:encode({[{error, {[{"context", Context}]}}]}).
 
 handle_mutation_rv(#mc_header{status = ?SUCCESS} = _Header, _Entry) ->
     ok;

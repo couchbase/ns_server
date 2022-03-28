@@ -56,19 +56,17 @@ handle_pools(Req) ->
             menelaus_web_cache:get_static_value(package_variant)}
            | get_content_for_provisioned_system()],
     RV = RV1 ++ menelaus_web_cache:get_static_value(versions),
-    reply_json(Req, {struct, RV}).
+    reply_json(Req, {RV}).
 
 get_content_for_provisioned_system() ->
     {Pools, Settings, UUID} =
         case ns_config_auth:is_system_provisioned() of
             true ->
                 UUID1 = menelaus_web:get_uuid(),
-                Pools1 = [{struct,
-                           [{name, <<"default">>},
+                Pools1 = [{[{name, <<"default">>},
                             {uri, <<"/pools/default?uuid=", UUID1/binary>>},
                             {streamingUri, <<"/poolsStreaming/default?uuid=", UUID1/binary>>}]}],
-                Settings1 = {struct,
-                             [{<<"maxParallelIndexers">>,
+                Settings1 = {[{<<"maxParallelIndexers">>,
                                <<"/settings/maxParallelIndexers?uuid=", UUID1/binary>>},
                               {<<"viewUpdateDaemon">>,
                                <<"/settings/viewUpdateDaemon?uuid=", UUID1/binary>>}]},
@@ -103,16 +101,15 @@ handle_pool_info(Id, Req) ->
     end.
 
 pool_info(Id, Req, InfoLevel, Stability, LocalAddr, UpdateID) ->
-    {struct,Info} = build_pool_info(Id, Req, InfoLevel, Stability,
-                                    LocalAddr, UpdateID),
+    {Info} = build_pool_info(Id, Req, InfoLevel, Stability,
+                             LocalAddr, UpdateID),
     Buckets = proplists:get_value(bucketNames, Info),
     FilteredBuckets = menelaus_auth:filter_accessible_buckets(
-                        fun ({struct, [{bucketName, B}, _UUID]}) ->
+                        fun ({[{bucketName, B}, _UUID]}) ->
                                 {[{bucket, binary_to_list(B)}, settings], read}
                         end,
                         Buckets, Req),
-    {struct, lists:keyreplace(bucketNames, 1, Info,
-                              {bucketNames, FilteredBuckets})}.
+    {lists:keyreplace(bucketNames, 1, Info, {bucketNames, FilteredBuckets})}.
 
 handle_pool_info_wait(Req, Id, LocalAddr, PassedETag, UpdateID) ->
     Info = pool_info(Id, Req, for_ui, stable, LocalAddr, UpdateID),
@@ -143,9 +140,8 @@ handle_pool_info_wait_tail(Req, Id, LocalAddr, ETag, UpdateID) ->
     %% consume all notifications
     LastID = menelaus_event:flush_watcher_notifications(UpdateID),
     %% and reply
-    {struct, PList} = pool_info(Id, Req, for_ui, unstable, LocalAddr,
-                                      LastID),
-    Info = {struct, [{etag, list_to_binary(ETag)} | PList]},
+    {PList} = pool_info(Id, Req, for_ui, unstable, LocalAddr, LastID),
+    Info = {[{etag, list_to_binary(ETag)} | PList]},
     reply_ok(Req, "application/json", encode_json(Info),
              menelaus_auth:maybe_refresh_token(Req)),
     %% this will cause some extra latency on ui perhaps,
@@ -231,8 +227,8 @@ do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
          {maxScopeCount, collections:get_max_supported(num_scopes)},
          {autoCompactionSettings,
           menelaus_web_autocompaction:build_global_settings(Config)},
-         {tasks, {struct, [{uri, TasksURI}]}},
-         {counters, {struct, ns_cluster:counters()}},
+         {tasks, {[{uri, TasksURI}]}},
+         {counters, {ns_cluster:counters()}},
          {indexStatusURI, <<"/indexStatus?v=", IndexesVersion/binary>>},
          {trustedCAsURI, <<"/pools/default/trustedCAs?v=",
                            TrustedCertsVBin/binary>>},
@@ -246,7 +242,7 @@ do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
          build_internal_params(InfoLevel),
          build_unstable_params(Ctx),
          server_groups_uri_json(GroupsV)],
-    {struct, lists:flatten(PropList)}.
+    {lists:flatten(PropList)}.
 
 build_rebalance_params(Id, UUID) ->
     RebalanceStatus = case rebalance:running() of
@@ -310,26 +306,25 @@ build_buckets_info(Id, UUID, Nodes, Snapshot) ->
         erlang:phash2(Buckets)
         bxor erlang:phash2(
                [{proplists:get_value(hostname, KV),
-                 proplists:get_value(status, KV)} || {struct, KV} <- Nodes]),
-    [{buckets, {struct,
-                [{uri, bin_concat_path(["pools", Id, "buckets"],
+                 proplists:get_value(status, KV)} || {KV} <- Nodes]),
+    [{buckets, {[{uri, bin_concat_path(["pools", Id, "buckets"],
                                        [{"v", BucketsVer},
                                         {"uuid", UUID}])},
                  {terseBucketsBase, <<"/pools/default/b/">>},
                  {terseStreamingBucketsBase, <<"/pools/default/bs/">>}]}},
-     {bucketNames, [{struct, [{bucketName, list_to_binary(BucketName)},
-                              {uuid, BucketUUID}]}
+     {bucketNames, [{[{bucketName, list_to_binary(BucketName)},
+                      {uuid, BucketUUID}]}
                     || {BucketName, BucketUUID} <- Buckets]}].
 
 build_controller(Name, UUID) ->
     build_controller(Name, atom_to_list(Name), UUID).
 
 build_controller(Name, Endpoint, UUID) ->
-    {Name, {struct, [{uri, build_controller_uri(Endpoint, UUID)}]}}.
+    {Name, {[{uri, build_controller_uri(Endpoint, UUID)}]}}.
 
 build_uri_with_validation(Name, Endpoint, UUID) ->
-    {Name, {struct, [{uri, build_uri_with_uuid(Endpoint, UUID)},
-                     {validateURI, build_validate_uri(Endpoint)}]}}.
+    {Name, {[{uri, build_uri_with_uuid(Endpoint, UUID)},
+             {validateURI, build_validate_uri(Endpoint)}]}}.
 
 build_controller_uri(Endpoint, UUID) ->
     build_uri_with_uuid(["/controller/", Endpoint], UUID).
@@ -342,8 +337,7 @@ build_validate_uri(Endpoint) ->
 
 build_controllers(UUID) ->
     {controllers,
-     {struct,
-      [build_controller(addNode, "addNodeV2", UUID),
+     {[build_controller(addNode, "addNodeV2", UUID),
        build_controller(rebalance, UUID),
        build_controller(failOver, UUID),
        build_controller(startGracefulFailover, UUID),
@@ -354,13 +348,11 @@ build_controllers(UUID) ->
        build_uri_with_validation(setAutoCompaction,
                                  "/controller/setAutoCompaction", UUID),
        {clusterLogsCollection,
-        {struct,
-         [{startURI, build_controller_uri("startLogsCollection", UUID)},
+        {[{startURI, build_controller_uri("startLogsCollection", UUID)},
           {cancelURI, build_controller_uri("cancelLogsCollection", UUID)}]}},
        %% TODO Why is this such a special case?
        {replication,
-        {struct,
-         [{createURI, build_controller_uri("createReplication", UUID)},
+        {[{createURI, build_controller_uri("createReplication", UUID)},
           {validateURI, build_validate_uri("/controller/createReplication")}]
         }}]}}.
 
@@ -374,8 +366,8 @@ build_alerts(UUID) ->
 build_one_alert({_Key, Msg, Time, DisablePopUp}) ->
     LocalTime = calendar:now_to_local_time(misc:time_to_timestamp(Time)),
     StrTime = format_server_time(LocalTime),
-    {struct, [{msg, Msg}, {serverTime, StrTime},
-              {disableUIPopUp, DisablePopUp}]}.
+    {[{msg, Msg}, {serverTime, StrTime},
+      {disableUIPopUp, DisablePopUp}]}.
 
 handle_pool_info_streaming(Id, Req) ->
     LocalAddr = local_addr(Req),
@@ -541,7 +533,7 @@ cluster_info_props(Req) ->
       fun (Cfg) ->
               AFCfg = [{K, V} || {K, V} <- auto_failover:get_cfg(Cfg),
                                  lists:member(K, [enabled, timeout])],
-              {struct, AFCfg}
+              {AFCfg}
       end},
      {autoReprovision, fun auto_reprovision:jsonify_cfg/0},
      {orchestrator,
@@ -556,7 +548,7 @@ cluster_info_props(Req) ->
      {quotaInfo,
       fun (Cfg) ->
               QuotaInfo = menelaus_web_node:build_memory_quota_info(Cfg),
-              {struct, QuotaInfo}
+              {QuotaInfo}
       end},
      {clusterCompatVersion,
       fun (Cfg) ->
@@ -574,7 +566,7 @@ cluster_info_props(Req) ->
      {nodes,
       fun () ->
               [begin
-                   {struct, Props} =
+                   {Props} =
                        menelaus_web_node:build_full_node_info(Req, N),
                    glean_node_details(Props)
                end || N <- ns_node_disco:nodes_wanted()]
@@ -604,7 +596,7 @@ get_terse_cluster_info(ReqdPropNames, Props) ->
                            false
                    end
            end, Props),
-    {struct, RV}.
+    {RV}.
 
 extract_bucket_specific_data() ->
     BktsInfo =
@@ -613,26 +605,26 @@ extract_bucket_specific_data() ->
                   CommonProps = [{ramQuota, ns_bucket:raw_ram_quota(BCfg)}],
                   BProps = case ns_bucket:bucket_type(BCfg) of
                                memcached ->
-                                   {BName, {struct, CommonProps}};
+                                   {BName, {CommonProps}};
                                _ ->
                                    NumReplicas = ns_bucket:num_replicas(BCfg),
                                    EvictP = ns_bucket:eviction_policy(BCfg),
                                    Props = [{numReplicas, NumReplicas},
                                             {evictionPolicy, EvictP}],
-                                   {BName, {struct, Props ++ CommonProps}}
+                                   {BName, {Props ++ CommonProps}}
                            end,
                   {ns_bucket:display_type(BCfg), BProps}
           end, ns_bucket:get_buckets()),
 
-    {struct, [{DT, {struct, AllBProps}} || {DT, AllBProps} <- BktsInfo]}.
+        {[{DT, {AllBProps}} || {DT, AllBProps} <- BktsInfo]}.
 
 glean_node_details(NodeInfo) ->
-    {struct, SysStats} = proplists:get_value(systemStats, NodeInfo),
+    {SysStats} = proplists:get_value(systemStats, NodeInfo),
     SwapTotal = proplists:get_value(swap_total, SysStats),
     SwapUsed = proplists:get_value(swap_used, SysStats),
 
-    {struct, SC} = proplists:get_value(storage, NodeInfo),
-    [{struct, SConf0}] = proplists:get_value(hdd, SC),
+    {SC} = proplists:get_value(storage, NodeInfo),
+    [{SConf0}] = proplists:get_value(hdd, SC),
     SConf =
         lists:foldl(
           fun({Name, Key}, Acc) ->
@@ -646,8 +638,7 @@ glean_node_details(NodeInfo) ->
                       memoryTotal, memoryFree, clusterMembership,
                       status, services, nodeUUID],
 
-    {struct,
-     misc:proplist_keyfilter(lists:member(_, KeysOfInterest), NodeInfo) ++
+    {misc:proplist_keyfilter(lists:member(_, KeysOfInterest), NodeInfo) ++
          [{swapTotal, SwapTotal},
           {swapUsed, SwapUsed},
-          {storageConf, {struct, SConf}}]}.
+          {storageConf, {SConf}}]}.

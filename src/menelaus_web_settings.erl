@@ -634,7 +634,7 @@ handle_post(Type, Keys, Req) ->
                               erlang:error(exceeded_retries)
                       end;
                   {error, Errors} ->
-                      reply_json(Req, {struct, [{errors, Errors}]}, 400)
+                      reply_json(Req, {[{errors, Errors}]}, 400)
               end
       end).
 
@@ -791,14 +791,13 @@ handle_delete(Type, PKeys, Req) ->
                 {error, Msg} ->
                     M = io_lib:format("~s - ~s",
                                       [string:join(PKeys, "."), Msg]),
-                    reply_json(Req, {struct, [{errors, [iolist_to_binary(M)]}]},
-                               400)
+                    reply_json(Req, {[{errors, [iolist_to_binary(M)]}]}, 400)
             end;
         {error, not_found} ->
             M = io_lib:format("Unknown key ~s", [string:join(PKeys, ".")]),
-            reply_json(Req, {struct, [{errors, [iolist_to_binary(M)]}]}, 404);
+            reply_json(Req, {[{errors, [iolist_to_binary(M)]}]}, 404);
         {error, not_supported} ->
-            reply_json(Req, {struct, [{errors, [<<"Not supported">>]}]}, 400)
+            reply_json(Req, {[{errors, [<<"Not supported">>]}]}, 400)
     end.
 
 handle_settings_max_parallel_indexers(Req) ->
@@ -819,8 +818,8 @@ handle_settings_max_parallel_indexers(Req) ->
                 V2
         end,
 
-    reply_json(Req, {struct, [{globalValue, GlobalValue},
-                              {nodes, {struct, [{node(), ThisNodeValue}]}}]}).
+    reply_json(Req, {[{globalValue, GlobalValue},
+                      {nodes, {[{node(), ThisNodeValue}]}}]}).
 
 handle_settings_max_parallel_indexers_post(Req) ->
     Params = mochiweb_request:parse_post(Req),
@@ -831,7 +830,9 @@ handle_settings_max_parallel_indexers_post(Req) ->
             handle_settings_max_parallel_indexers(Req);
         Error ->
             reply_json(
-              Req, {struct, [{'_', iolist_to_binary(io_lib:format("Invalid globalValue: ~p", [Error]))}]}, 400)
+              Req, {[{'_',
+                      iolist_to_binary(io_lib:format("Invalid globalValue: ~p",
+                                                     [Error]))}]}, 400)
     end.
 
 handle_settings_view_update_daemon(Req) ->
@@ -845,9 +846,9 @@ handle_settings_view_update_daemon(Req) ->
     true = (UpdateMinChanges =/= undefined),
     true = (UpdateMinChanges =/= undefined),
 
-    reply_json(Req, {struct, [{updateInterval, UpdateInterval},
-                              {updateMinChanges, UpdateMinChanges},
-                              {replicaUpdateMinChanges, ReplicaUpdateMinChanges}]}).
+    reply_json(Req, {[{updateInterval, UpdateInterval},
+                      {updateMinChanges, UpdateMinChanges},
+                      {replicaUpdateMinChanges, ReplicaUpdateMinChanges}]}).
 
 handle_settings_view_update_daemon_post(Req) ->
     Params = mochiweb_request:parse_post(Req),
@@ -882,7 +883,7 @@ handle_settings_view_update_daemon_post(Req) ->
             ns_config:set(set_view_update_daemon, MergedProps),
             handle_settings_view_update_daemon(Req);
         _ ->
-            reply_json(Req, {struct, Errors}, 400)
+            reply_json(Req, {Errors}, 400)
     end.
 
 handle_settings_web(Req) ->
@@ -896,12 +897,11 @@ build_settings_web() ->
                U ->
                    U
            end,
-    {struct, [{port, Port},
-              {username, list_to_binary(User)}]}.
+    {[{port, Port}, {username, list_to_binary(User)}]}.
 
 %% @doc Settings to en-/disable stats sending to some remote server
 handle_settings_stats(Req) ->
-    reply_json(Req, {struct, build_settings_stats()}).
+    reply_json(Req, {build_settings_stats()}).
 
 build_settings_stats() ->
     Defaults = default_settings_stats_config(),
@@ -956,10 +956,10 @@ handle_settings_auto_reprovision_post(Req) ->
             Errors2 = [<<Msg/binary, "\n">> || {_, Msg} <- Errors],
             reply_text(Req, Errors2, 400);
         {true, {error, Errors}} ->
-            reply_json(Req, {struct, [{errors, {struct, Errors}}]}, 400);
+            reply_json(Req, {[{errors, {Errors}}]}, 400);
         %% Validation only and no errors
         {true, _}->
-            reply_json(Req, {struct, [{errors, null}]}, 200)
+            reply_json(Req, {[{errors, null}]}, 200)
     end.
 
 validate_settings_auto_reprovision(Enabled, MaxNodes) ->
@@ -1101,7 +1101,7 @@ handle_settings_web_post(Req, Args) ->
     {PureHostName, _} = misc:split_host_port(mochiweb_request:get_header_value("host", Req), ""),
     NewHost = misc:join_host_port(PureHostName, PortInt),
     %% TODO: detect and support https when time will come
-    {struct, [{newBaseUri, list_to_binary("http://" ++ NewHost ++ "/")}]}.
+    {[{newBaseUri, list_to_binary("http://" ++ NewHost ++ "/")}]}.
 
 handle_reset_alerts(Req) ->
     Params = mochiweb_request:parse_qs(Req),

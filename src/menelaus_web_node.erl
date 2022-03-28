@@ -214,8 +214,8 @@ storage_conf_to_json(S) ->
               {StorageType,
                lists:map(
                  fun (LocationPropList) ->
-                         {struct, lists:map(fun location_prop_to_json/1,
-                                            LocationPropList)}
+                         {lists:map(fun location_prop_to_json/1,
+                                    LocationPropList)}
                  end,
                  Locations)}
       end,
@@ -239,29 +239,27 @@ build_full_node_info(Req, Node) ->
     Ctx = get_context(Req, true, unstable),
     Config = get_config(Ctx),
     Snapshot = get_snapshot(Ctx),
-    {struct, KV} = (build_nodes_info_fun(Ctx))(Node, undefined),
+    {KV} = (build_nodes_info_fun(Ctx))(Node, undefined),
     NodeStatus = ns_doctor:get_node(Node),
     StorageConf =
         ns_storage_conf:storage_conf_from_node_status(Node, NodeStatus),
-    R = {struct, storage_conf_to_json(StorageConf)},
+    R = {storage_conf_to_json(StorageConf)},
     DiskData = proplists:get_value(disk_data, NodeStatus, []),
 
     Fields = [{availableStorage,
-               {struct,
-                [{hdd, [{struct, [{path, list_to_binary(Path)},
-                                  {sizeKBytes, SizeKBytes},
-                                  {usagePercent, UsagePercent}]}
+               {[{hdd, [{[{path, list_to_binary(Path)},
+                          {sizeKBytes, SizeKBytes},
+                          {usagePercent, UsagePercent}]}
                         || {Path, SizeKBytes, UsagePercent} <- DiskData]}]}},
               {storageTotals,
-               {struct,
-                [{Type, {struct, PropList}}
+               {[{Type, {PropList}}
                  || {Type, PropList} <-
-                        ns_storage_conf:nodes_storage_info(
-                          [Node], Config, Snapshot)]}},
+                    ns_storage_conf:nodes_storage_info(
+                      [Node], Config, Snapshot)]}},
               {storage, R}] ++ KV ++
         build_memory_quota_info(Config),
-    {struct, lists:filter(fun (X) -> X =/= undefined end,
-                                   Fields)}.
+    {lists:filter(fun (X) -> X =/= undefined end,
+                  Fields)}.
 
 build_memory_quota_info(Config) ->
     lists:map(
@@ -395,8 +393,7 @@ build_nodes_info_fun(#ctx{ns_config = Config,
                  build_failover_status(Snapshot, WantENode)],
             NodeHash = erlang:phash2(StableInfo),
 
-            {struct,
-             lists:flatten([StableInfo,
+            {lists:flatten([StableInfo,
                            [{nodeHash, NodeHash}],
                            case Stability of
                                stable ->
@@ -458,9 +455,9 @@ build_extra_node_info(Config, Node, InfoNode) ->
                              end,
 
     NodesBucketMemoryAllocated = NodesBucketMemoryTotal,
-    [{systemStats, {struct, proplists:get_value(system_stats, InfoNode, [])}},
+    [{systemStats, {proplists:get_value(system_stats, InfoNode, [])}},
      {interestingStats,
-      {struct, proplists:get_value(interesting_stats, InfoNode, [])}},
+      {proplists:get_value(interesting_stats, InfoNode, [])}},
      %% TODO: deprecate this in API (we need 'stable' "startupTStamp"
      %% first)
      {uptime, list_to_binary(integer_to_list(UpSecs))},
@@ -494,7 +491,7 @@ alternate_addresses_json(Node, Config, Snapshot, WantedPorts) ->
         service_ports:get_external_host_and_ports(
           Node, Config, Snapshot, WantedPorts),
     External = construct_ext_json(ExtHostname, ExtPorts),
-    [{alternateAddresses, {struct, External}} || External =/= []].
+    [{alternateAddresses, {External}} || External =/= []].
 
 server_groups_json(ServerGroup) ->
     [{serverGroup, ServerGroup} || cluster_compat_mode:is_enterprise()].
@@ -502,10 +499,10 @@ server_groups_json(ServerGroup) ->
 construct_ext_json(undefined, _Ports) ->
     [];
 construct_ext_json(Hostname, []) ->
-    [{external, {struct, [{hostname, list_to_binary(Hostname)}]}}];
+    [{external, {[{hostname, list_to_binary(Hostname)}]}}];
 construct_ext_json(Hostname, Ports) ->
-    [{external, {struct, [{hostname, list_to_binary(Hostname)},
-                          {ports, {struct, Ports}}]}}].
+    [{external, {[{hostname, list_to_binary(Hostname)},
+                  {ports, {Ports}}]}}].
 
 build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr) ->
     Versions = proplists:get_value(version, InfoNode, []),
@@ -567,7 +564,7 @@ build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr) ->
           {version, list_to_binary(Version)},
           {os, list_to_binary(OS)},
           {cpuCount, CpuCount},
-          {ports, {struct, PortsKV ++ DistPorts}},
+          {ports, {PortsKV ++ DistPorts}},
           {services, ns_cluster_membership:node_services(Snapshot, WantENode)},
           {nodeEncryption, NEncryption},
           {addressFamilyOnly, AFamilyOnly},
@@ -615,16 +612,15 @@ handle_bucket_node_list(BucketName, Req) ->
     %% part of our approach for dealing with query stats
     NHs = get_hostnames(Req, active),
     Servers =
-        [{struct,
-          [{hostname, Hostname},
+        [{[{hostname, Hostname},
            {uri, bin_concat_path(["pools", "default", "buckets", BucketName,
                                   "nodes", Hostname])},
-           {stats, {struct, [{uri,
-                              bin_concat_path(
-                                ["pools", "default", "buckets", BucketName,
-                                 "nodes", Hostname, "stats"])}]}}]}
+           {stats, {[{uri,
+                      bin_concat_path(
+                        ["pools", "default", "buckets", BucketName,
+                         "nodes", Hostname, "stats"])}]}}]}
          || {_, Hostname} <- NHs],
-    reply_json(Req, {struct, [{servers, Servers}]}).
+    reply_json(Req, {[{servers, Servers}]}).
 
 normalize_hostport(HostPortStr, Req) ->
     LocalAddr = local_addr(Req),
@@ -675,9 +671,9 @@ handle_bucket_node_info(BucketName, Hostname, Req) ->
                              ["pools", "default", "buckets", BucketName,
                               "nodes", Hostname, "stats"]),
             reply_json(Req,
-                       {struct, [{hostname, list_to_binary(Hostname)},
-                                 {bucket, {struct, [{uri, BucketURI}]}},
-                                 {stats, {struct, [{uri, NodeStatsURI}]}}]})
+                       {[{hostname, list_to_binary(Hostname)},
+                         {bucket, {[{uri, BucketURI}]}},
+                         {stats, {[{uri, NodeStatsURI}]}}]})
     end.
 
 average_failover_safenesses(Node, NodeInfos, BucketsAll) ->
@@ -714,15 +710,14 @@ handle_node_statuses(Req) ->
                             ns_cluster_membership:node_services(Snapshot, N)),
                   V = case proplists:get_bool(down, InfoNode) of
                           true ->
-                              {struct, [{status, unhealthy},
-                                        {otpNode, N},
-                                        {dataless, Dataless},
-                                        {replication,
-                                         average_failover_safenesses(
-                                           N, OldStatuses, BucketsAll)}]};
+                              {[{status, unhealthy},
+                                {otpNode, N},
+                                {dataless, Dataless},
+                                {replication,
+                                 average_failover_safenesses(
+                                   N, OldStatuses, BucketsAll)}]};
                           false ->
-                              {struct,
-                               [{status, healthy},
+                              {[{status, healthy},
                                 {gracefulFailoverPossible,
                                  graceful_failover_possible(N, BucketsAll)},
                                 {otpNode, N},
@@ -732,7 +727,7 @@ handle_node_statuses(Req) ->
                       end,
                   {build_node_hostname(Config, N, LocalAddr), V}
           end, ns_node_disco:nodes_wanted(Snapshot)),
-    reply_json(Req, {struct, NodeStatuses}, 200).
+    reply_json(Req, {NodeStatuses}, 200).
 
 graceful_failover_possible(Node, Buckets) ->
     case ns_rebalancer:check_graceful_failover_possible([Node], Buckets) of
@@ -798,7 +793,7 @@ handle_node_self_xdcr_ssl_ports(Req) ->
                      {httpsCAPI, service_ports:get_port(ssl_capi_port)}] ++
                 alternate_addresses_json(node(), ns_config:latest(), Snapshot,
                                          [ssl_capi_port, ssl_rest_port]),
-            reply_json(Req, {struct, Ports})
+            reply_json(Req, {Ports})
     end.
 
 validate_path({java_home, JavaHome}, _) ->

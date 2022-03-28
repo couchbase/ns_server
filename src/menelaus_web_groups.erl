@@ -43,11 +43,11 @@ handle_server_groups(Req) ->
                   {addNodeURI, bin_concat_path(["pools", "default",
                                                 "serverGroups", UUIDBin, "addNode"])},
                   {nodes, [Fun(N, undefined) || N <- proplists:get_value(nodes, G, [])]}],
-             {struct, L}
+             {L}
          end || G <- Groups],
     V = list_to_binary(integer_to_list(erlang:phash2(Groups))),
-    reply_json(Req, {struct, [{groups, J},
-                              {uri, <<"/pools/default/serverGroups?rev=",V/binary>>}]}).
+    reply_json(Req, {[{groups, J},
+                      {uri, <<"/pools/default/serverGroups?rev=",V/binary>>}]}).
 
 handle_server_groups_put(Req) ->
     menelaus_util:assert_is_enterprise(),
@@ -95,7 +95,7 @@ server_groups_put_txn(Cfg, JSON, Rev) ->
                 {abort, {parse_error, <<"Bad input">>}};
               throw:{group_parse_error, Parsed} ->
                 {abort, {parse_error, [<<"Bad input">>,
-                                       [{struct, PL} || PL <- Parsed]], 400}}
+                                       [{PL} || PL <- Parsed]], 400}}
         end,
     case ParsedGroups of
         {abort, _} = Abort ->
@@ -187,7 +187,7 @@ parse_validate_groups_payload_inner(ParsedGroups, Groups, Nodes) ->
 
 parse_server_groups(NodesSet, JSON) ->
     case JSON of
-        {struct, JPlist} ->
+        {JPlist} ->
             L = proplists:get_value(<<"groups">>, JPlist),
             case is_list(L) of
                 true -> ok;
@@ -198,7 +198,7 @@ parse_server_groups(NodesSet, JSON) ->
             erlang:throw(group_parse_error)
     end.
 
-parse_single_group(NodesSet, {struct, G}) ->
+parse_single_group(NodesSet, {G}) ->
     Nodes = proplists:get_value(<<"nodes">>, G),
     case is_list(Nodes) of
         false ->
@@ -206,7 +206,7 @@ parse_single_group(NodesSet, {struct, G}) ->
         _ ->
             Ns =
                 [case NodesEl of
-                     {struct, PList} ->
+                     {PList} ->
                          case proplists:get_value(<<"otpNode">>, PList) of
                              undefined ->
                                  erlang:throw(group_parse_error);
@@ -241,10 +241,10 @@ handle_server_groups_post(Req) ->
                 ok ->
                     reply_json(Req, []);
                 already_exists ->
-                    reply_json(Req, {struct, [{name, <<"already exists">>}]}, 400)
+                    reply_json(Req, {[{name, <<"already exists">>}]}, 400)
             end;
         {errors, Errors} ->
-            reply_json(Req, {struct, Errors}, 400)
+            reply_json(Req, {Errors}, 400)
     end.
 
 find_group_by_prop(Prop, Value, Groups) ->
@@ -325,10 +325,10 @@ handle_server_group_update(GroupUUID, Req) ->
                 not_found ->
                     reply_json(Req, [], 404);
                 already_exists ->
-                    reply_json(Req, {struct, [{name, <<"already exists">>}]}, 400)
+                    reply_json(Req, {[{name, <<"already exists">>}]}, 400)
             end;
         {errors, Errors} ->
-            reply_json(Req, {struct, Errors}, 400)
+            reply_json(Req, {Errors}, 400)
     end.
 
 do_group_update(GroupUUID, Name, Req) ->
@@ -367,7 +367,7 @@ handle_server_group_delete(GroupUUID, Req) ->
         not_found ->
             reply_json(Req, [], 404);
         not_empty ->
-            reply_json(Req, {struct, [{'_', <<"group is not empty">>}]}, 400)
+            reply_json(Req, {[{'_', <<"group is not empty">>}]}, 400)
     end.
 
 do_group_delete(GroupUUID, Req) ->

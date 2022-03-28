@@ -67,7 +67,6 @@
          assert_is_enterprise/0,
          assert_is_66/0,
          assert_is_71/0,
-         strip_json_struct/1,
          choose_node_consistently/2,
          compute_sec_headers/0,
          web_exception/2,
@@ -355,7 +354,7 @@ get_option(Option, Options) ->
      proplists:delete(Option, Options)}.
 
 parse_json(Req) ->
-    mochijson2:decode(mochiweb_request:recv_body(Req)).
+    ejson:decode(mochiweb_request:recv_body(Req)).
 
 parse_boolean(Value) ->
     case Value of
@@ -463,23 +462,11 @@ local_addr(Req) ->
     {ok, {Address, _Port}} = network:sockname(Socket),
     misc:maybe_add_brackets(inet:ntoa(Address)).
 
-strip_json_struct({struct, Pairs}) -> {strip_json_struct(Pairs)};
-strip_json_struct(List) when is_list(List) ->
-    [strip_json_struct(E) || E <- List];
-strip_json_struct({Key, Value}) -> {Key, strip_json_struct(Value)};
-strip_json_struct(Other) -> Other.
-
 encode_json(JSON) ->
-    Stripped = try strip_json_struct(JSON)
-               catch T1:E1:Stack1 ->
-                       ?log_debug("errored while stripping:~n~p", [JSON]),
-                       erlang:raise(T1, E1, Stack1)
-               end,
-
     try
-        ejson:encode(Stripped)
+        ejson:encode(JSON)
     catch T:E:Stack ->
-            ?log_debug("errored while sending:~n~p~n->~n~p", [JSON, Stripped]),
+            ?log_debug("errored while sending:~n~p", [JSON]),
             erlang:raise(T, E, Stack)
     end.
 
@@ -550,8 +537,8 @@ reply_global_error(Req, Error) ->
 
 reply_error(Req, Field, Error) ->
     reply_json(
-      Req, {struct, [{errors, {struct, [{iolist_to_binary([Field]),
-                                         iolist_to_binary([Error])}]}}]}, 400).
+      Req, {[{errors, {[{iolist_to_binary([Field]),
+                         iolist_to_binary([Error])}]}}]}, 400).
 
 require_auth(Req) ->
     case {mochiweb_request:get_header_value("invalid-auth-response", Req),

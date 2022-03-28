@@ -76,7 +76,7 @@ handle_settings_get(Req) ->
     Count = proplists:get_value(count, Config),
     Settings0 = [{enabled, Enabled}, {timeout, Timeout}, {count, Count}],
     Settings =  Settings0 ++ get_extra_settings(Config),
-    reply_json(Req, {struct, Settings}).
+    reply_json(Req, {Settings}).
 
 handle_settings_post(Req) ->
     ValidateOnly = proplists:get_value(
@@ -103,10 +103,10 @@ handle_settings_post(Req) ->
             ns_audit:enable_auto_failover(Req, Timeout, MaxCount, Extras),
             reply(Req, 200);
         {true, {error, Errors}} ->
-            reply_json(Req, {struct, [{errors, {struct, Errors}}]}, 400);
+            reply_json(Req, {[{errors, {Errors}}]}, 400);
         %% Validation only and no errors
         {true, _}->
-            reply_json(Req, {struct, [{errors, null}]}, 200)
+            reply_json(Req, {[{errors, null}]}, 200)
     end.
 
 %% @doc Resets the number of nodes that were automatically failovered to zero
@@ -298,7 +298,7 @@ get_extra_settings(Config) ->
             {Enabled, TimePeriod} = get_failover_on_disk_issues(Config),
             lists:flatten(
               [{failoverOnDataDiskIssues,
-                {struct, [{enabled, Enabled}, {timePeriod, TimePeriod}]}},
+                {[{enabled, Enabled}, {timePeriod, TimePeriod}]}},
                {maxCount, proplists:get_value(?MAX_EVENTS_CONFIG_KEY, Config)},
                [{canAbortRebalance,
                  proplists:get_value(

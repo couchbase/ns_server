@@ -67,7 +67,7 @@ handle_start_collect_logs(Req) ->
             case maybe_do_preflight_checks(BaseURL, ProxyInfo, Options) of
                 {error, Message} ->
                     menelaus_util:reply_json(Req,
-                                             {struct, [{'_', Message}]},
+                                             {[{'_', Message}]},
                                              400);
                 ok ->
                     case cluster_logs_sup:start_collect_logs(
@@ -81,8 +81,7 @@ handle_start_collect_logs(Req) ->
                         already_started ->
                             menelaus_util:reply_json(
                               Req,
-                              {struct,
-                               [{'_', <<"Logs collection task is "
+                              {[{'_', <<"Logs collection task is "
                                         "already started">>}]}, 400)
                     end
             end;
@@ -91,7 +90,7 @@ handle_start_collect_logs(Req) ->
                           {Field, Msg} = stringify_one_node_upload_error(E),
                           {Field, iolist_to_binary(Msg)}
                       end || E <- RawErrors],
-            menelaus_util:reply_json(Req, {struct, lists:flatten(Errors)}, 400)
+            menelaus_util:reply_json(Req, {lists:flatten(Errors)}, 400)
     end.
 
 maybe_do_preflight_checks(BaseURL, ProxyInfo, Options) ->

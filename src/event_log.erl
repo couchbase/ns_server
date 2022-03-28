@@ -226,11 +226,6 @@ add_log(Event) ->
 
 %% 'Extras' should be encoded in a way that the ejson module can
 %% convert the Event Log into a JSON blob via ejson:encode/1.
-%%
-%% There are places in the code where JSON terms are encoded using
-%% {struct, ...} tuples - avoid using those when adding event logs, since that
-%% encoding was meant/used from the time when mochijson2 was being used as
-%% the JSON encoding library.
 
 add_log(Event, Extras) ->
     %% Event logs are enabled only when all the nodes are at 7.1.0.

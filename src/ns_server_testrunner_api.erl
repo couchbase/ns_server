@@ -47,13 +47,13 @@ get_active_vbuckets(Bucket) ->
 
 process_memcached_error_response({ok, #mc_header{status=Status}, #mc_entry{data=Msg},
                                   _NCB}) ->
-    {struct, [{result, error},
-              {status, mc_client_binary:map_status(Status)},
-              {message, Msg}]};
+    {[{result, error},
+      {status, mc_client_binary:map_status(Status)},
+      {message, Msg}]};
 process_memcached_error_response({Err, _, _, _}) ->
-    {struct, [{result, error},
-              {status, Err},
-              {message, "Unknown error"}]}.
+    {[{result, error},
+      {status, Err},
+      {message, "Unknown error"}]}.
 
 get_default_collection_uid() ->
     case collections:enabled() of
@@ -67,7 +67,7 @@ add_document(Bucket, VBucket, Key, Value) ->
 add_document(Bucket, VBucket, Key, CollectionUid, Value) ->
     {json, case ns_memcached:add(Bucket, Key, CollectionUid, VBucket, Value) of
                {ok, #mc_header{status=?SUCCESS}, _, _} ->
-                   {struct, [{result, ok}]};
+                   {[{result, ok}]};
                Error ->
                    process_memcached_error_response(Error)
            end}.
@@ -79,20 +79,21 @@ get_document_replica(Bucket, VBucket, Key, CollectionUid) ->
     {json, case ns_memcached:get_from_replica(Bucket, Key, CollectionUid,
                                               VBucket) of
                {ok, #mc_header{status=?SUCCESS}, #mc_entry{data = Data}, _} ->
-                   {struct, [{result, ok},
-                             {value, Data}]};
+                   {[{result, ok},
+                     {value, Data}]};
                Error ->
                    process_memcached_error_response(Error)
            end}.
 
 grab_all_xdcr_checkpoints(BucketName, Timeout) ->
     Fn = fun () ->
-                 {json, {struct, capi_utils:capture_local_master_docs(BucketName, Timeout)}}
+                 {json, {capi_utils:capture_local_master_docs(BucketName,
+                                                              Timeout)}}
          end,
     rpc:call(ns_node_disco:couchdb_node(), erlang, apply, [Fn, []]).
 
 grab_all_goxdcr_checkpoints() ->
-    {json, {struct, metakv:iterate_matching(?XDCR_CHECKPOINT_PATTERN)}}.
+    {json, {metakv:iterate_matching(?XDCR_CHECKPOINT_PATTERN)}}.
 
 shutdown_nicely() ->
     ns_babysitter_bootstrap:remote_stop(ns_server:get_babysitter_node()).
