@@ -451,6 +451,8 @@ ee_only_settings([cipher_suites]) -> true;
 ee_only_settings([honor_cipher_order]) -> true;
 ee_only_settings([magma_min_memory_quota]) -> true;
 ee_only_settings([{security_settings, _} | _]) -> true;
+ee_only_settings([allow_non_local_ca_upload]) -> true;
+ee_only_settings([secure_headers]) -> true;
 ee_only_settings(_) -> false.
 
 conf(security) ->
