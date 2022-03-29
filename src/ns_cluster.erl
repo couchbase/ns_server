@@ -1131,20 +1131,38 @@ check_otp_tls_connectivity(Host, Port, AFamily, Options) ->
                   Acc
           end, AllOpts, Options),
     Timeout = net_kernel:connecttime(),
-    case inet:getaddr(Host, AFamily) of
-        {ok, IpAddr} ->
+    try
+        IpAddr =
+            case inet:getaddr(Host, AFamily) of
+                {ok, A} -> A;
+                {error, _} = Error0 -> throw(Error0)
+            end,
+
+        TLSSocket =
             case ssl:connect(IpAddr, Port, AllOpts2, Timeout) of
-                {ok, TLSSocket} ->
-                    {ok, {LocalIpAddr, _}} = ssl:sockname(TLSSocket),
+                {ok, S} -> S;
+                {error, _} = Error1 -> throw(Error1)
+            end,
+
+        LocalIpAddr =
+            case ssl:sockname(TLSSocket) of
+                {ok, {Addr, _}} ->
                     catch ssl:close(TLSSocket),
-                    ?log_debug("Successfully checked OTP TLS connectivity to "
-                               "~p(~p):~p", [Host, IpAddr, Port]),
-                    {ok, inet:ntoa(LocalIpAddr)};
-                {error, _} = Error ->
-                    Error
-            end;
-        {error, _} = Error ->
-            Error
+                    Addr;
+                {error, _} = Error2 ->
+                    ?log_error("Established test connecton but could "
+                               "not extract sockname: ~p", [Error2]),
+                    throw(Error2)
+            end,
+
+        ?log_debug("Successfully checked OTP TLS connectivity to ~p(~p):~p",
+                   [Host, IpAddr, Port]),
+
+        {ok, inet:ntoa(LocalIpAddr)}
+
+    catch
+        throw:{error, Reason} ->
+            {error, Reason}
     end.
 
 do_add_node_engaged(NodeKVList, Auth, GroupUUID, Services, Scheme) ->
