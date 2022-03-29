@@ -1144,6 +1144,21 @@ check_otp_tls_connectivity(Host, Port, AFamily, Options) ->
                 {error, _} = Error1 -> throw(Error1)
             end,
 
+        %% Work around for a bug where ssl:connect retuns ok in case when
+        %% the client cert is incorrect (TLS 1.3 only). Seems like the alert
+        %% arrives immediatelly after the handshake, hence the timeout.
+        %% In case if cert is ok, this function always waits for 1 second
+        %% unfortunatelly.
+        case ssl:connection_information(TLSSocket, [protocol]) of
+            {ok, [{protocol, 'tlsv1.3'}]} ->
+                case ssl:recv(TLSSocket, 1, 1000) of
+                    {error, {tls_alert, _} = Alert} -> throw({error, Alert});
+                    {error, closed} -> throw({error, unknown});
+                    _ -> ok
+                end;
+            _ -> ok
+        end,
+
         LocalIpAddr =
             case ssl:sockname(TLSSocket) of
                 {ok, {Addr, _}} ->
