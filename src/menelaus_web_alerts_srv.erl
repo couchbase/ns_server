@@ -877,11 +877,13 @@ type_spec(undefined) ->
 
 params() ->
     [{"maxOverheadPerc", #{type => {int, 0, 100},
-                           cfg_key => max_overhead_perc}},
+                           cfg_key => [alert_limits, max_overhead_perc]}},
      {"maxDiskUsedPerc", #{type => {int, 0, 100},
-                           cfg_key => max_disk_used}},
+                           cfg_key => [alert_limits, max_disk_used]}},
      {"maxIndexerRamPerc", #{type => {int, 0, 100},
-                             cfg_key => max_indexer_ram}}].
+                             cfg_key => [alert_limits, max_indexer_ram]}},
+     {"certExpirationDays", #{type => pos_int,
+                              cfg_key => cert_exp_alert_days}}].
 
 build_alert_limits() ->
     case ns_config:search(alert_limits) of
@@ -892,15 +894,27 @@ build_alert_limits() ->
     end.
 
 handle_settings_alerts_limits_get(Req) ->
+    CertWarnDays = ns_server_cert:cert_expiration_warning_days(),
     menelaus_web_settings2:handle_get([], params(), fun type_spec/1,
-                                      build_alert_limits(), Req).
+                                      [{alert_limits, build_alert_limits()},
+                                       {cert_exp_alert_days, CertWarnDays}], Req).
 
 handle_settings_alerts_limits_post(Req) ->
     menelaus_web_settings2:handle_post(
         fun (Params, Req2) ->
-            NewParams = [{Key, Val} || {[Key], Val} <- Params],
-            NewLimits = misc:update_proplist(build_alert_limits(), NewParams),
-            ns_config:set(alert_limits, NewLimits),
+            case [{Key, Val} || {[alert_limits, Key], Val} <- Params] of
+                [] -> ok;
+                NewParams ->
+                    NewLimits = misc:update_proplist(build_alert_limits(),
+                                                     NewParams),
+                    ns_config:set(alert_limits, NewLimits)
+            end,
+            case proplists:get_value([cert_exp_alert_days], Params) of
+                undefined -> ok;
+                CertWarningDays ->
+                    ns_config:set({cert, expiration_warning_days},
+                                  CertWarningDays)
+            end,
             handle_settings_alerts_limits_get(Req2)
         end, [], params(), fun type_spec/1, Req).
 

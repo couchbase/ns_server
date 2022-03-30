@@ -43,7 +43,8 @@
          inbox_chain_path/0,
          expiration_warnings/1,
          split_certs/1,
-         cert_props/1]).
+         cert_props/1,
+         cert_expiration_warning_days/0]).
 
 inbox_ca_path() ->
     filename:join(path_config:component_path(data, "inbox"), "CA").
@@ -1198,7 +1199,7 @@ get_warnings() ->
 
 expiration_warnings(CertProps) ->
     Now = calendar:datetime_to_gregorian_seconds(calendar:universal_time()),
-    WarningDays = ns_config:read_key_fast({cert, expiration_warning_days}, 30),
+    WarningDays = cert_expiration_warning_days(),
     WarningSeconds = WarningDays * 24 * 60 * 60,
     WarningThreshold = Now + WarningSeconds,
 
@@ -1270,3 +1271,6 @@ node_cert_warnings_pre_71(TrustedCAs, Node, Config) ->
 
 get_node_cert_info(Node) ->
     ns_config:read_key_fast({node, Node, node_cert}, []).
+
+cert_expiration_warning_days() ->
+    ns_config:read_key_fast({cert, expiration_warning_days}, 30).
