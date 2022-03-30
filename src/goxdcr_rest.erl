@@ -237,18 +237,23 @@ get_replications_with_remote_info() ->
       end, [], find_all_replication_docs()).
 
 get_certificates() ->
-    get_from_goxdcr(
-      fun (Json) ->
-              Extract = fun (What) ->
-                            lists:flatmap(
-                              fun ({Cluster}) ->
-                                  case proplists:get_value(What, Cluster) of
-                                      undefined -> [];
-                                      B -> ns_server_cert:split_certs(B)
-                                  end
-                              end, Json)
-                        end,
-              TrustedCerts = Extract(<<"certificate">>),
-              ClientCerts = Extract(<<"clientCertificate">>),
-              #{trusted_certs => TrustedCerts, client_certs => ClientCerts}
-      end, "/pools/default/remoteClusters", 30000).
+    Res =
+        get_from_goxdcr(
+          fun (Json) ->
+                  Extract = fun (What) ->
+                                lists:flatmap(
+                                  fun ({Cluster}) ->
+                                      case proplists:get_value(What, Cluster) of
+                                          undefined -> [];
+                                          B -> ns_server_cert:split_certs(B)
+                                      end
+                                  end, Json)
+                            end,
+                  TrustedCerts = Extract(<<"certificate">>),
+                  ClientCerts = Extract(<<"clientCertificate">>),
+                  #{trusted_certs => TrustedCerts, client_certs => ClientCerts}
+          end, "/pools/default/remoteClusters", 30000),
+    case Res of
+        [] -> #{trusted_certs => [], client_certs => []};
+        _ -> Res
+    end.
