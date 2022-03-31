@@ -907,6 +907,7 @@ validate_memcached_bucket_params(CommonParams, Params, IsNew, BucketConfig) ->
 
 validate_membase_bucket_params(CommonParams, Params,
                                IsNew, BucketConfig, Version, IsEnterprise) ->
+    AllowPitr = cluster_compat_mode:is_version_MORPHEUS(Version),
     ReplicasNumResult = validate_replicas_number(Params, IsNew),
     BucketParams =
         [{ok, bucketType, membase},
@@ -919,9 +920,12 @@ validate_membase_bucket_params(CommonParams, Params,
                                      IsEnterprise),
          parse_validate_durability_min_level(Params, BucketConfig, IsNew,
                                              Version),
-         parse_validate_pitr_enabled(Params, IsNew, IsEnterprise),
-         parse_validate_pitr_granularity(Params, IsNew, IsEnterprise),
-         parse_validate_pitr_max_history_age(Params, IsNew, IsEnterprise),
+         parse_validate_pitr_enabled(Params, IsNew, AllowPitr,
+                                     IsEnterprise),
+         parse_validate_pitr_granularity(Params, IsNew, AllowPitr,
+                                         IsEnterprise),
+         parse_validate_pitr_max_history_age(Params, IsNew, AllowPitr,
+                                             IsEnterprise),
          parse_validate_storage_quota_percentage(Params, BucketConfig, IsNew, Version,
                                                  IsEnterprise),
          parse_validate_max_ttl(Params, BucketConfig, IsNew, IsEnterprise),
@@ -1200,6 +1204,19 @@ param_not_supported_in_ce_error(Param) ->
 
 %% Point-in-time Recovery (PITR) parameter parsing and validation.
 
+pitr_not_supported_error(Param) ->
+    {error, Param,
+     <<"Point in time recovery is not supported until cluster is fully "
+        "Morpheus">>}.
+
+parse_validate_pitr_param_not_supported(Key, Params) ->
+    case proplists:is_defined(Key, Params) of
+        true ->
+            pitr_not_supported_error(Key);
+        false ->
+            ignore
+    end.
+
 %% PITR parameter parsing and validation when not in enterprise mode.
 parse_validate_pitr_param_not_enterprise(Key, Params) ->
     case proplists:is_defined(Key, Params) of
@@ -1209,9 +1226,14 @@ parse_validate_pitr_param_not_enterprise(Key, Params) ->
             ignore
     end.
 
-parse_validate_pitr_enabled(Params, _IsNew, false = _IsEnterprise) ->
+parse_validate_pitr_enabled(Params, _IsNew, false = _AllowPitr,
+                            _IsEnterprise) ->
+    parse_validate_pitr_param_not_supported("pitrEnabled", Params);
+parse_validate_pitr_enabled(Params, _IsNew, true = _AllowPitr,
+                            false = _IsEnterprise) ->
     parse_validate_pitr_param_not_enterprise("pitrEnabled", Params);
-parse_validate_pitr_enabled(Params, IsNew, true = _IsEnterprise) ->
+parse_validate_pitr_enabled(Params, IsNew, true = _AllowPitr,
+                            true = _IsEnterprise) ->
     Result = menelaus_util:parse_validate_boolean_field("pitrEnabled",
                                                         '_', Params),
     case {Result, IsNew} of
@@ -1230,15 +1252,25 @@ parse_validate_pitr_enabled(Params, IsNew, true = _IsEnterprise) ->
             value_not_boolean_error(pitrEnabled)
     end.
 
-parse_validate_pitr_granularity(Params, _IsNew, false = _IsEnterprise) ->
+parse_validate_pitr_granularity(Params, _IsNew, false = _AllowPitr,
+                                _IsEnterprise) ->
+    parse_validate_pitr_param_not_supported("pitrGranularity", Params);
+parse_validate_pitr_granularity(Params, _IsNew, true = _AllowPitr,
+                                false = _IsEnterprise) ->
     parse_validate_pitr_param_not_enterprise("pitrGranularity", Params);
-parse_validate_pitr_granularity(Params, IsNew, true = _IsEnterprise) ->
+parse_validate_pitr_granularity(Params, IsNew, true = _AllowPitr,
+                                true = _IsEnterprise) ->
     parse_validate_pitr_numeric_param(Params, pitrGranularity,
                                       pitr_granularity, IsNew).
 
-parse_validate_pitr_max_history_age(Params, _IsNew, false = _IsEnterprise) ->
+parse_validate_pitr_max_history_age(Params, _IsNew, false = _AllowPitr,
+                                    _IsEnterprise) ->
+    parse_validate_pitr_param_not_supported("pitrMaxHistoryAge", Params);
+parse_validate_pitr_max_history_age(Params, _IsNew, true = _AllowPitr,
+                                    false = _IsEnterprise) ->
     parse_validate_pitr_param_not_enterprise("pitrMaxHistoryAge", Params);
-parse_validate_pitr_max_history_age(Params, IsNew, true = _IsEnterprise) ->
+parse_validate_pitr_max_history_age(Params, IsNew, true = _AllowPitr,
+                                    true = _IsEnterprise) ->
     parse_validate_pitr_numeric_param(Params, pitrMaxHistoryAge,
                                       pitr_max_history_age, IsNew).
 

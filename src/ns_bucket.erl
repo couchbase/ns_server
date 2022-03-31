@@ -111,6 +111,7 @@
          config_upgrade_to_66/1,
          upgrade_to_chronicle/2,
          chronicle_upgrade_to_71/1,
+         chronicle_upgrade_to_Morpheus/1,
          extract_bucket_props/1,
          build_bucket_props_json/1,
          build_compaction_settings_json/1]).
@@ -1476,7 +1477,13 @@ config_upgrade_to_66(Config) ->
                   end
           end).
 
-chronicle_upgrade_bucket(BucketName, ChronicleTxn) ->
+chronicle_upgrade_bucket(Func, BucketNames, ChronicleTxn) ->
+    lists:foldl(
+      fun (Name, Acc) ->
+              Func(Name, Acc)
+      end, ChronicleTxn, BucketNames).
+
+chronicle_upgrade_bucket_to_71(BucketName, ChronicleTxn) ->
     PropsKey = sub_key(BucketName, props),
     {ok, BucketConfig} = chronicle_upgrade:get_key(PropsKey, ChronicleTxn),
     NewBucketConfig = lists:keydelete(auth_type, 1, BucketConfig),
@@ -1484,10 +1491,25 @@ chronicle_upgrade_bucket(BucketName, ChronicleTxn) ->
 
 chronicle_upgrade_to_71(ChronicleTxn) ->
     {ok, BucketNames} = chronicle_upgrade:get_key(root(), ChronicleTxn),
-    lists:foldl(
-      fun (Name, Acc) ->
-              chronicle_upgrade_bucket(Name, Acc)
-      end, ChronicleTxn, BucketNames).
+    chronicle_upgrade_bucket(chronicle_upgrade_bucket_to_71(_, _),
+                             BucketNames, ChronicleTxn).
+
+chronicle_upgrade_bucket_to_Morpheus(BucketName, ChronicleTxn) ->
+    PropsKey = sub_key(BucketName, props),
+    AddProps = [{pitr_enabled, false},
+                {pitr_granularity,
+                 ns_bucket:attribute_default(pitr_granularity)},
+                {pitr_max_history_age,
+                 ns_bucket:attribute_default(pitr_max_history_age)}],
+    {ok, BucketConfig} = chronicle_upgrade:get_key(PropsKey, ChronicleTxn),
+    NewBucketConfig = misc:merge_proplists(fun (_, L, _) -> L end, AddProps,
+                                           BucketConfig),
+    chronicle_upgrade:set_key(PropsKey, NewBucketConfig, ChronicleTxn).
+
+chronicle_upgrade_to_Morpheus(ChronicleTxn) ->
+    {ok, BucketNames} = chronicle_upgrade:get_key(root(), ChronicleTxn),
+    chronicle_upgrade_bucket(chronicle_upgrade_bucket_to_Morpheus(_, _),
+                             BucketNames, ChronicleTxn).
 
 %% returns proplist with only props useful for ns_bucket
 extract_bucket_props(Props) ->
