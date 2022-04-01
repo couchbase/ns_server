@@ -485,7 +485,14 @@ call_add_node(OtherScheme, OtherHost, OtherPort, Creds, AFamily,
                 {SVCPayload, "/controller/addNodeV2"}
         end,
 
-    Options = [{connect_options, [AFamily]}],
+    TLSOpts = case OtherScheme of
+                  https ->
+                      ns_ssl_services_setup:external_tls_client_opts(
+                        ns_config:latest());
+                  http -> []
+              end,
+
+    Options = [{connect_options, [AFamily | TLSOpts]}],
 
     Res = menelaus_rest:json_request_hilevel(
             post,
