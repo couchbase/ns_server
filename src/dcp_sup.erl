@@ -72,6 +72,7 @@ kill_replicator(Bucket, {ProducerNode, RepFeatures} = ChildId) ->
 %% This could mean that the ongoing rebalance can fail and we are ok with that
 %% as it can be restarted.
 get_replication_features() ->
+    CertAuth = ns_ssl_services_setup:client_cert_auth_state() =:= "mandatory",
     FeatureSet = [%% Unconditionally setting 'xattr' to true as xattr feature
                   %% must be negotiated by default in post-5.0 clusters.
                   {xattr, true},
@@ -85,6 +86,7 @@ get_replication_features() ->
                   %% versions are no longer supported.
                   {del_times, true},
                   {ssl, misc:should_cluster_data_be_encrypted()},
+                  {cert_auth, CertAuth},
                   %% Unconditionally setting 'set_consumer_name' and
                   %% 'json' to true as features are negotiated starting
                   %% with the 6.5 release
