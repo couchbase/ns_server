@@ -627,7 +627,8 @@ validate_client_cert_auth_state(StateVal, Prefixes, Cfg, Errors) ->
                     {Cfg, [E | Errors]};
                 false ->
                     case StateVal =:= "mandatory" andalso
-                        misc:should_cluster_data_be_encrypted() of
+                        misc:should_cluster_data_be_encrypted() andalso
+                        not cluster_compat_mode:is_cluster_MORPHEUS() of
                         false -> {[CfgPair | Cfg], Errors};
                         true ->
                             M = "Cannot set 'state' to 'mandatory' when "
