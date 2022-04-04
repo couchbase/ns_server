@@ -621,10 +621,10 @@ handle_post(Type, Keys, Req) ->
                                                                  NewPropsJSON),
                                       OldPropsJSON =
                                           jsonify_security_settings(OldProps),
-                                      event_log:add_log(
+                                      event_log:maybe_add_log_settings_changed(
                                         security_cfg_changed,
-                                        [{old_settings, {OldPropsJSON}},
-                                         {new_settings, {NewPropsJSON}}]);
+                                        OldPropsJSON,
+                                        NewPropsJSON, []);
                                   _ ->
                                       AuditFun = audit_fun(Type),
                                       ns_audit:AuditFun(Req, NewProps)
