@@ -168,8 +168,7 @@ func main() {
 			Subject: pkix.Name{
 				CommonName: commonName,
 			},
-			KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-			ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+			KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
 			BasicConstraintsValid: true,
 		}
 
