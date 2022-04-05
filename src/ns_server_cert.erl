@@ -47,7 +47,8 @@
          split_certs/1,
          cert_props/1,
          cert_expiration_warning_days/0,
-         extract_internal_client_cert_user/1]).
+         extract_internal_client_cert_user/1,
+         invalid_client_cert_nodes/4]).
 
 inbox_ca_path() ->
     filename:join(path_config:component_path(data, "inbox"), "CA").
@@ -1070,6 +1071,47 @@ add_CAs_txn_fun(Type, Pem, Opts) when is_binary(Pem),
             {error, Reason}
     end.
 
+cluster_uses_client_certs(Config) ->
+    cluster_uses_client_certs(
+      ns_config:search(Config, cluster_encryption_level, control),
+      ns_ssl_services_setup:client_cert_auth_state(),
+      cb_dist:external_encryption(),
+      cb_dist:client_cert_verification()).
+
+cluster_uses_client_certs(strict, "mandatory",
+                          _N2NEncryption, _N2NClientCerts) -> true;
+cluster_uses_client_certs(all, "mandatory",
+                          _N2NEncryption, _N2NClientCerts) -> true;
+cluster_uses_client_certs(_DataEncryption, _ClientCertAuth,
+                          true, true) -> true;
+cluster_uses_client_certs(_DataEncryption, _ClientCertAuth,
+                          _N2NEncryption, _N2NClientCerts) -> false.
+
+
+invalid_client_cert_nodes(DataEncryption, ClientCertAuth,
+                          N2NEncryption, N2NClientCerts) ->
+    ClientCertIsUsed =
+        cluster_uses_client_certs(
+          DataEncryption, ClientCertAuth, N2NEncryption, N2NClientCerts),
+
+    case ClientCertIsUsed of
+        true ->
+            Nodes = ns_node_disco:nodes_wanted(),
+            filter_out_trusted_client_cert_CAs(Nodes);
+        false ->
+            []
+    end.
+
+filter_out_trusted_client_cert_CAs(Nodes) ->
+    DecodedTrustedCAs = [public_key:pem_decode(CA) || CA <- trusted_CAs(pem)],
+    lists:filter(
+      fun (N) ->
+          CProps = ns_config:read_key_fast({node, N, client_cert}, []),
+          CertCAPem = proplists:get_value(ca, CProps, <<>>),
+          DecodedCertCA = public_key:pem_decode(CertCAPem),
+          not lists:member(DecodedCertCA, DecodedTrustedCAs)
+      end, Nodes).
+
 remove_CA(Id) ->
     Res =
         chronicle_kv:transaction(
@@ -1088,9 +1130,16 @@ remove_CA(Id) ->
                       %% by some node. It seems to be pretty hard to avoid this
                       %% race with node_cert stored in ns_config, as we don't
                       %% have common chronicle-ns_config transactions.
+                      ClusterUsesClientCert =
+                          cluster_uses_client_certs(ns_config:latest()),
                       NodesThatUseCA =
                           filter_nodes_by_ca(node_cert, Nodes, CA) ++
-                          filter_nodes_by_ca(client_cert, Nodes, CA),
+                          case ClusterUsesClientCert of
+                              true ->
+                                  filter_nodes_by_ca(client_cert, Nodes, CA);
+                              false ->
+                                  []
+                          end,
                       case NodesThatUseCA of
                           [] ->
                               ToSet = lists:delete(Props, CAs),

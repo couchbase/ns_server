@@ -1154,7 +1154,24 @@ node_encryption_validators() ->
      validator:validate(fun ("on") -> {value, true};
                             ("off") -> {value, false}
                         end, nodeEncryption, _),
-     validator:changeable_in_enterprise_only(nodeEncryption, false, _)].
+     validator:changeable_in_enterprise_only(nodeEncryption, false, _),
+     validator:validate_multiple(
+       fun (Encr, ClientVer) ->
+            ClientVer2 = case ClientVer of
+                             undefined -> cb_dist:client_cert_verification();
+                             _ -> ClientVer
+                         end,
+            Encr2 = case Encr of
+                        undefined -> cb_dist:external_encryption();
+                        _ -> Encr
+                    end,
+            menelaus_web_cert:validate_client_cert_CAs(
+              ns_config:search(ns_config:latest(), cluster_encryption_level,
+                               control),
+              ns_ssl_services_setup:client_cert_auth_state(),
+              Encr2,
+              ClientVer2)
+       end, [nodeEncryption, clientCertVerification], _)].
 
 handle_setup_net_config(Req) ->
     validator:handle(

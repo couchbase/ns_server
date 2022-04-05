@@ -374,7 +374,13 @@ get_cluster_encryption(Level) ->
     IsMandatory = (ns_ssl_services_setup:client_cert_auth_state() =:=
                        "mandatory"),
     IsMorpheus = cluster_compat_mode:is_cluster_MORPHEUS(),
+    LevelAtom = list_to_atom(Level),
     IsStrictPossible = cluster_compat_mode:is_cluster_70(),
+    ClientCertValidation = menelaus_web_cert:validate_client_cert_CAs(
+                             LevelAtom,
+                             ns_ssl_services_setup:client_cert_auth_state(),
+                             cb_dist:external_encryption(),
+                             cb_dist:client_cert_verification()),
 
     if
         not IsCEncryptEnabled  ->
@@ -395,8 +401,11 @@ get_cluster_encryption(Level) ->
             M = "Can't set cluster encryption level to 'strict' "
                 "in mixed version clusters.",
             {error, M};
+        ClientCertValidation /= ok ->
+            {error, BinMsg} = ClientCertValidation,
+            {error, binary_to_list(BinMsg)};
         true ->
-            {ok, list_to_atom(Level)}
+            {ok, LevelAtom}
     end.
 
 services_with_security_settings() ->

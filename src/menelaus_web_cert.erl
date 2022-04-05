@@ -25,7 +25,8 @@
          handle_get_node_certificates/1,
          handle_client_cert_auth_settings/1,
          handle_client_cert_auth_settings_post/1,
-         format_time/1]).
+         format_time/1,
+         validate_client_cert_CAs/4]).
 
 -define(MAX_CLIENT_CERT_PREFIXES, ?get_param(max_prefixes, 10)).
 
@@ -762,6 +763,11 @@ do_handle_client_cert_auth_settings_post(Req, JSON) ->
     {Cfg0, Errors0} = validate_client_cert_auth_state(State, Prefixes, [], []),
     {Cfg, Errors} = validate_client_cert_auth_prefixes(Prefixes, Cfg0, Errors0),
 
+    case validate_client_cert_CAs(State) of
+        ok -> ok;
+        {error, ReasonBinMsg} -> throw({error, ReasonBinMsg})
+    end,
+
     case Errors of
         [] -> ok;
         _ ->
@@ -776,4 +782,26 @@ do_handle_client_cert_auth_settings_post(Req, JSON) ->
             ns_config:set(client_cert_auth, Cfg),
             ns_audit:client_cert_auth(Req, Cfg),
             menelaus_util:reply(Req, 202)
+    end.
+
+validate_client_cert_CAs(ClientCertAuth) ->
+    validate_client_cert_CAs(
+           ns_config:search(ns_config:latest(), cluster_encryption_level,
+                            control),
+           ClientCertAuth,
+           cb_dist:external_encryption(),
+           cb_dist:client_cert_verification()).
+
+validate_client_cert_CAs(DataEncryption, ClientCertAuth,
+                         N2NEncryption, N2NClientCerts) ->
+    case ns_server_cert:invalid_client_cert_nodes(
+           DataEncryption, ClientCertAuth, N2NEncryption, N2NClientCerts) of
+        [] -> ok;
+        BadClientCertNodes ->
+            Hosts = [H || N <- BadClientCertNodes,
+                          {_, H} <- [misc:node_name_host(N)]],
+            HostsStr = lists:join(", ", Hosts),
+            Msg = io_lib:format("Client certificates for the following nodes "
+                                "are issued by untrusted CA's: ~s", [HostsStr]),
+            {error, iolist_to_binary(Msg)}
     end.
