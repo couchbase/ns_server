@@ -745,31 +745,35 @@ do_handle_client_cert_auth_settings_post(Req, JSON) ->
             end
     end,
 
-    State = binary_to_list(StateRaw),
     case length(PrefixesRaw) > ?MAX_CLIENT_CERT_PREFIXES of
         true ->
             Err = io_lib:format("Maximum number of prefixes supported is ~p",
                                 [?MAX_CLIENT_CERT_PREFIXES]),
-            menelaus_util:reply_json(Req, list_to_binary(Err), 400);
+            throw({error, list_to_binary(Err)});
         false ->
-            Prefixes = [[{binary_to_list(K), binary_to_list(V)} || {K, V} <- Triple]
-                        || {Triple} <- PrefixesRaw],
+            ok
+    end,
 
-            {Cfg0, Errors0} = validate_client_cert_auth_state(State, Prefixes, [], []),
-            {Cfg, Errors} = validate_client_cert_auth_prefixes(Prefixes, Cfg0, Errors0),
+    State = binary_to_list(StateRaw),
 
-            case Errors of
-                [] ->
-                    case ns_ssl_services_setup:client_cert_auth() of
-                        Cfg ->
-                            menelaus_util:reply(Req, 200);
-                        _ ->
-                            ns_config:set(client_cert_auth, Cfg),
-                            ns_audit:client_cert_auth(Req, Cfg),
-                            menelaus_util:reply(Req, 202)
-                    end;
-                _ ->
-                    Out = [list_to_binary(Msg) || {error, Msg} <- Errors],
-                    menelaus_util:reply_json(Req, Out, 400)
-            end
+    Prefixes = [[{binary_to_list(K), binary_to_list(V)} || {K, V} <- Triple]
+                || {Triple} <- PrefixesRaw],
+
+    {Cfg0, Errors0} = validate_client_cert_auth_state(State, Prefixes, [], []),
+    {Cfg, Errors} = validate_client_cert_auth_prefixes(Prefixes, Cfg0, Errors0),
+
+    case Errors of
+        [] -> ok;
+        _ ->
+            Out = [list_to_binary(Msg) || {error, Msg} <- Errors],
+            throw({error, Out})
+    end,
+
+    case ns_ssl_services_setup:client_cert_auth() of
+        Cfg ->
+            menelaus_util:reply(Req, 200);
+        _ ->
+            ns_config:set(client_cert_auth, Cfg),
+            ns_audit:client_cert_auth(Req, Cfg),
+            menelaus_util:reply(Req, 202)
     end.
