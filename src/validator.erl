@@ -23,6 +23,7 @@
          touch/2,
          validate/3,
          validate_relative/4,
+         validate_multiple/3,
          json_array/3,
          get_value/2,
          convert/3,
@@ -307,6 +308,22 @@ validate_relative(Fun, Name, NameRel, State) ->
                       Fun(V, VRel)
               end
       end, Name, State).
+
+validate_multiple(Fun, Names, State) ->
+    {Values, NewState} = lists:mapfoldl(
+                           fun (N, Acc) ->
+                               Acc2 = touch(N, Acc),
+                               {get_value(N, Acc2), Acc2}
+                           end, State, Names),
+    AllUndefined = lists:all(fun (V) -> V == undefined end, Values),
+    case AllUndefined of
+        true -> NewState;
+        false ->
+            case erlang:apply(Fun, Values) of
+                ok -> NewState;
+                {error, Error} -> return_error("_", Error, NewState)
+            end
+    end.
 
 convert(Name, Fun, State) ->
     validate(?cut({value, Fun(_)}), Name, State).
