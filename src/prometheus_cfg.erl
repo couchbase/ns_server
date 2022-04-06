@@ -75,6 +75,11 @@
     {scrape_interval, pos_integer()} |
     {scrape_timeout, pos_integer()} |
     {snapshot_timeout_msecs, pos_integer()} |
+    {query_request_timeout, pos_integer()} |
+    {quit_request_timeout, pos_integer()} |
+    {reload_request_timeout, pos_integer()} |
+    {delete_series_request_timeout, pos_integer()} |
+    {clean_tombstones_request_timeout, pos_integer()} |
     {decimation_enabled, true | false} |
     {truncation_enabled, true | false} |
     {clean_tombstones_enabled, true | false} |
@@ -150,6 +155,11 @@ default_settings() ->
      {scrape_interval, 10}, %% in seconds
      {scrape_timeout, 10}, %% in seconds
      {snapshot_timeout_msecs, 30000}, %% in milliseconds
+     {query_request_timeout, ?DEFAULT_PROMETHEUS_TIMEOUT},
+     {quit_request_timeout, ?DEFAULT_PROMETHEUS_TIMEOUT},
+     {reload_request_timeout, ?DEFAULT_PROMETHEUS_TIMEOUT},
+     {delete_series_request_timeout, 30000}, %% in msecs
+     {clean_tombstones_request_timeout, 30000}, %% in msecs
      {decimation_enabled, false},
      {truncation_enabled, false},
      {clean_tombstones_enabled, false},
@@ -666,7 +676,7 @@ terminate_prometheus(#s{prometheus_port = undefined} = State) -> State;
 terminate_prometheus(#s{prometheus_port = PortServer,
                         cur_settings = Settings} = State) ->
     ?log_debug("Terminating Prometheus gracefully"),
-    case prometheus:quit(?DEFAULT_PROMETHEUS_TIMEOUT, Settings) of
+    case prometheus:quit(undefined, Settings) of
         ok ->
             case misc:wait_for_process(PortServer,
                                        ?PROMETHEUS_SHUTDOWN_TIMEOUT) of
@@ -691,7 +701,7 @@ terminate_prometheus(#s{prometheus_port = PortServer,
 
 try_config_reload(#s{cur_settings = Settings} = State) ->
     ?log_debug("Reloading prometheus config"),
-    case prometheus:reload(?DEFAULT_PROMETHEUS_TIMEOUT, Settings) of
+    case prometheus:reload(undefined, Settings) of
         ok ->
             ?log_debug("Config successfully reloaded"),
             cancel_reload_timer(State);
@@ -1116,8 +1126,8 @@ intervals_calculation_period(Settings) ->
 scrapes_info(Settings) ->
     Query = io_lib:format("scrape_samples_scraped[~bs:1m]",
                           [?MAX_SCRAPE_INTERVAL]),
-    case prometheus:query(lists:flatten(Query), undefined,
-                          ?DEFAULT_PROMETHEUS_TIMEOUT, Settings) of
+    case prometheus:query(lists:flatten(Query), undefined, undefined,
+                          Settings) of
         {ok, JSON} ->
             lists:map(
               fun ({Props}) ->
@@ -1311,7 +1321,8 @@ run_decimate_stats(Levels, LastPruningTime, Settings) ->
 
     lists:map(
       fun ({_Coarseness, StartTime, EndTime}) ->
-              delete_series(MatchPatterns, StartTime, EndTime, 30000, Settings)
+              delete_series(MatchPatterns, StartTime, EndTime, undefined,
+                            Settings)
       end, Deletions),
 
     %% Let caller know if any deletions were done
@@ -1378,7 +1389,8 @@ do_truncate_stats(EndTime, Settings) ->
                [calendar:system_time_to_rfc3339(EndTime, [{offset, 0}]),
                 EndTime]),
 
-    delete_series(MatchPatterns, min_possible_time, EndTime, 30000, Settings).
+    delete_series(MatchPatterns, min_possible_time, EndTime, undefined,
+                  Settings).
 
 delete_series(MatchPatterns, Start, End, Timeout, Settings) ->
 
@@ -1392,7 +1404,7 @@ delete_series(MatchPatterns, Start, End, Timeout, Settings) ->
 
 clean_tombstones(Settings) ->
     ?log_debug("Cleaning tombstones"),
-    case prometheus:clean_tombstones(30000, Settings) of
+    case prometheus:clean_tombstones(undefined, Settings) of
         ok -> ok;
         {error, Reason} ->
             ?log_error("Failed to clean tombstones: ~p", [Reason]),

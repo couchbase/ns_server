@@ -24,20 +24,29 @@
 -type prom_query() :: string() | binary().
 -type prom_timestamp() :: number().
 -type prom_step() :: pos_integer() | string().
--type http_timeout() :: non_neg_integer().
+-type http_timeout() :: non_neg_integer() | undefined.
 -type successful_post() :: {ok, json, {[JSONObject :: term()]}} |
                            {ok, text, BinString :: binary()} |
                            {ok, no_content, BinString :: binary()}.
 
+determine_timeout(undefined, Settings, TimeoutName) ->
+    Timeout = proplists:get_value(TimeoutName, Settings),
+    true = is_number(Timeout) andalso Timeout >= 0,
+    Timeout;
+determine_timeout(Timeout, _Settings, _TimeoutName) ->
+    Timeout.
+
 -spec quit(http_timeout(), prometheus_cfg:stats_settings()) -> ok | error().
-quit(Timeout, Settings) ->
+quit(Timeout0, Settings) ->
+    Timeout = determine_timeout(Timeout0, Settings, quit_request_timeout),
     case post("/-/quit", [], Timeout, Settings) of
         {ok, text, _} -> ok;
         {error, Reason} -> {error, Reason}
     end.
 
 -spec reload(http_timeout(), prometheus_cfg:stats_settings()) -> ok | error().
-reload(Timeout, Settings) ->
+reload(Timeout0, Settings) ->
+    Timeout = determine_timeout(Timeout0, Settings, reload_request_timeout),
     case post("/-/reload", [], Timeout, Settings) of
         {ok, text, _} -> ok;
         {error, Reason} -> {error, Reason}
@@ -45,7 +54,9 @@ reload(Timeout, Settings) ->
 
 -spec create_snapshot(http_timeout(), prometheus_cfg:stats_settings()) ->
                                     {ok, PathToSnapshot :: string()} | error().
-create_snapshot(Timeout, Settings) ->
+create_snapshot(Timeout0, Settings) ->
+    Timeout = determine_timeout(Timeout0, Settings,
+                                snapshot_timeout_msecs),
     case post("/api/v1/admin/tsdb/snapshot", [], Timeout, Settings) of
         {ok, json, {Data}} ->
             SnapshotName = proplists:get_value(<<"name">>, Data, {[]}),
@@ -55,7 +66,12 @@ create_snapshot(Timeout, Settings) ->
             {error, Reason}
     end.
 
-delete_series(MatchPatterns, Start, End, Timeout, Settings) ->
+-spec delete_series(string(), number() | min_possible_time, number(),
+                    http_timeout(), prometheus_cfg:stats_settings()) ->
+    ok | error().
+delete_series(MatchPatterns, Start, End, Timeout0, Settings) ->
+    Timeout = determine_timeout(Timeout0, Settings,
+                                delete_series_request_timeout),
     Body = case Start of
                min_possible_time ->
                    [];
@@ -68,7 +84,11 @@ delete_series(MatchPatterns, Start, End, Timeout, Settings) ->
         {error, Reason} -> {error, Reason}
     end.
 
-clean_tombstones(Timeout, Settings) ->
+-spec clean_tombstones(http_timeout(), prometheus_cfg:stats_settings()) ->
+    ok | error().
+clean_tombstones(Timeout0, Settings) ->
+    Timeout = determine_timeout(Timeout0, Settings,
+                                clean_tombstones_request_timeout),
     case post("/api/v1/admin/tsdb/clean_tombstones", [], Timeout, Settings) of
         {ok, no_content, _} -> ok;
         {error, Reason} -> {error, Reason}
@@ -81,7 +101,8 @@ clean_tombstones(Timeout, Settings) ->
                   Timeout :: http_timeout(),
                   prometheus_cfg:stats_settings()) ->
                                                 {ok, metrics_data()} | error().
-query_range(Query, Start, End, Step, Timeout, Settings) ->
+query_range(Query, Start, End, Step, Timeout0, Settings) ->
+    Timeout = determine_timeout(Timeout0, Settings, query_request_timeout),
     wait_async(
       fun (H) ->
           query_range_async(Query, Start, End, Step, Timeout, Settings, H)
@@ -98,7 +119,8 @@ query_range_async(Query, Start, End, Step, Timeout, Settings, Handler)
                   when is_integer(Step) ->
     StepStr = integer_to_list(Step) ++ "s",
     query_range_async(Query, Start, End, StepStr, Timeout, Settings, Handler);
-query_range_async(Query, Start, End, Step, Timeout, Settings, Handler) ->
+query_range_async(Query, Start, End, Step, Timeout0, Settings, Handler) ->
+    Timeout = determine_timeout(Timeout0, Settings, query_request_timeout),
     proplists:get_bool(log_queries, Settings) andalso
         ?log_debug("Query range: ~s Start: ~p End: ~p Step: ~p Timeout: ~p",
                    [Query, Start, End, Step, Timeout]),
@@ -118,7 +140,8 @@ query_range_async(Query, Start, End, Step, Timeout, Settings, Handler) ->
             Time :: prom_timestamp() | undefined,
             Timeout :: http_timeout(),
             prometheus_cfg:stats_settings()) -> {ok, metrics_data()} | error().
-query(Query, Time, Timeout, Settings) ->
+query(Query, Time, Timeout0, Settings) ->
+    Timeout = determine_timeout(Timeout0, Settings, query_request_timeout),
     wait_async(fun (H) -> query_async(Query, Time, Timeout, Settings, H) end,
                Timeout).
 
@@ -127,7 +150,8 @@ query(Query, Time, Timeout, Settings) ->
                   Timeout :: http_timeout(),
                   prometheus_cfg:stats_settings(),
                   fun(({ok, metrics_data()} | error()) -> ok)) -> ok.
-query_async(Query, Time, Timeout, Settings, Handler) ->
+query_async(Query, Time, Timeout0, Settings, Handler) ->
+    Timeout = determine_timeout(Timeout0, Settings, query_request_timeout),
     proplists:get_bool(log_queries, Settings) andalso
         ?log_debug("Query: ~s Time: ~p Timeout: ~p ms",
                    [Query, Time, Timeout]),

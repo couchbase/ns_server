@@ -20,7 +20,7 @@
          failover_safeness_level/1,
          latest/2]).
 
--define(DEFAULT_TIMEOUT, 5000).
+-define(DEFAULT_TIMEOUT, ?get_timeout(default, 5000)).
 -define(IRATE_INTERVAL, "1m").
 
 current_items_total(Bucket) when is_list(Bucket) ->
@@ -172,7 +172,7 @@ failover_safeness_level(Bucket) ->
     QueryIOL = io_lib:format("cm_failover_safeness_level{bucket=`~s`}[~bs]",
                              [Bucket, Interval * 2]),
     Query = lists:flatten(QueryIOL),
-    case prometheus:query(Query, undefined, ?DEFAULT_TIMEOUT, Settings) of
+    case prometheus:query(Query, undefined, undefined, Settings) of
         {ok, [{Props} | _]} ->
             Values = proplists:get_value(<<"values">>, Props),
             [Timestamp, Val] = lists:last(Values),
@@ -185,7 +185,7 @@ failover_safeness_level(Bucket) ->
     end.
 
 latest(Query, NameParser) ->
-    latest(Query, NameParser, ?DEFAULT_TIMEOUT).
+    latest(Query, NameParser, undefined).
 latest(Query, NameParser, Timeout) ->
     Settings = prometheus_cfg:settings(),
     case prometheus:query(Query, undefined, Timeout, Settings) of

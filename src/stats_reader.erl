@@ -277,7 +277,7 @@ get_stats(Period, Step, N, StatList, #state{bucket=Bucket,
 
 run_queries([], _StartTS, _EndTS, _Step, _Settings, Res) -> {ok, Res};
 run_queries([Q | Tail], StartTS, EndTS, Step, Settings, Res) ->
-    case prometheus:query_range(Q, StartTS, EndTS, Step, 5000, Settings) of
+    case prometheus:query_range(Q, StartTS, EndTS, Step, undefined, Settings) of
         {ok, JSONList} ->
             run_queries(Tail, StartTS, EndTS, Step, Settings, JSONList ++ Res);
         {error, Error} ->

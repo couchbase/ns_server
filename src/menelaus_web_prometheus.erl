@@ -123,8 +123,7 @@ handle_get_local_metrics(IsHighCard, Req) ->
 handle_create_snapshot(Req) ->
     menelaus_util:ensure_local(Req),
     Settings = prometheus_cfg:settings(),
-    Timeout = proplists:get_value(snapshot_timeout_msecs, Settings),
-    case prometheus:create_snapshot(Timeout, Settings) of
+    case prometheus:create_snapshot(undefined, Settings) of
         {ok, Response} ->
             menelaus_util:reply_text(Req, Response, 200);
         {error, timeout} ->
