@@ -22,6 +22,10 @@
 -include("cut.hrl").
 -include("ns_common.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -define(CURRENT_CFG_VSN, 2).
 
 % dist module callbacks, called from net_kernel
@@ -632,6 +636,49 @@ access_ssl_dist_opts_ets(F, A) ->
                       "it will not work on vanilla erlang", [F]),
             {error, not_supported}
     end.
+
+
+-ifdef(TEST).
+
+set_dist_tls_opts_test() ->
+    misc:executing_on_new_process(
+      fun () ->
+          ets:new(ssl_dist_opts, [public, set, named_table]),
+          ?assertEqual({ok, []}, access_ssl_dist_opts_ets(lookup, [client])),
+          ?assertEqual(ok, set_dist_tls_opts(client, [{d, 5}, {e, 6}])),
+          ?assertEqual({ok, []}, access_ssl_dist_opts_ets(lookup, [client])),
+          ets:insert(ssl_dist_opts, [{server, [{a, 1}, {b, 2}]},
+                                     {client, [{c, 3}, {d, 4}]}]),
+          ?assertEqual({ok, [{client, [{c, 3}, {d, 4}]}]},
+                       access_ssl_dist_opts_ets(lookup, [client])),
+          ?assertEqual(ok, set_dist_tls_opts(client, [{d, 5}, {e, 6}])),
+          {ok, [{client, PL}]} = access_ssl_dist_opts_ets(lookup, [client]),
+          ?assertEqual(3, length(PL)),
+          ?assertEqual(3, proplists:get_value(c, PL)),
+          ?assertEqual(5, proplists:get_value(d, PL)),
+          ?assertEqual(6, proplists:get_value(e, PL)),
+          ?assertEqual({ok, [{server, [{a, 1}, {b, 2}]}]},
+                       access_ssl_dist_opts_ets(lookup, [server]))
+      end).
+
+set_dist_tls_opts_protected_test() ->
+    misc:executing_on_new_process(
+      fun () ->
+          ets:new(ssl_dist_opts, [protected, set, named_table]),
+          ets:insert(ssl_dist_opts, [{server, [{a, 1}, {b, 2}]},
+                                     {client, [{c, 3}, {d, 4}]}]),
+          misc:executing_on_new_process(
+            fun () ->
+                ?assertEqual({ok,[{client,[{c,3},{d,4}]}]},
+                             access_ssl_dist_opts_ets(lookup, [client])),
+                ?assertEqual(ok,
+                             set_dist_tls_opts(client, [{d, 4}, {c, 3}])),
+                ?assertEqual({error, not_supported},
+                             set_dist_tls_opts(client, [{d, 5}]))
+            end)
+      end).
+
+-endif.
 
 start_ensure_config_timer(#s{ensure_config_timer = undefined} = State) ->
     Ref = erlang:send_after(?ENSURE_CONFIG_TIMEOUT, self(),
