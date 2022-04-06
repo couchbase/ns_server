@@ -1273,6 +1273,7 @@ get_warnings() ->
     Nodes = ns_node_disco:nodes_wanted(Config),
     TrustedCAs = trusted_CAs(pem),
     Is71 = cluster_compat_mode:is_cluster_71(),
+    IsMorpheus = cluster_compat_mode:is_cluster_MORPHEUS(),
     NodeWarnings =
         lists:flatmap(
           fun (Node) ->
@@ -1296,6 +1297,7 @@ get_warnings() ->
                   end,
               [{{node, Node}, W} || W <- Warnings]
           end, Nodes),
+    ClusterUsesClientCert = cluster_uses_client_certs(Config),
     CAWarnings =
         lists:flatmap(
           fun (CAProps) ->
@@ -1310,10 +1312,23 @@ get_warnings() ->
                       case proplists:get_value(type, CAProps) of
                           generated ->
                               CAPem = proplists:get_value(pem, CAProps, <<>>),
-                              case filter_nodes_by_ca(node_cert, Nodes, CAPem) of
-                                  [] when Is71 -> [unused];
-                                  _ -> []
-                              end;
+                              UnusedNode =
+                                  case filter_nodes_by_ca(node_cert, Nodes, CAPem) of
+                                      [] when Is71 -> true;
+                                      _ -> false
+                                  end,
+                              UnusedClient =
+                                  case ClusterUsesClientCert and IsMorpheus of
+                                      true ->
+                                          case filter_nodes_by_ca(
+                                                 client_cert, Nodes, CAPem) of
+                                              [] -> true;
+                                              _ -> false
+                                          end;
+                                      false ->
+                                          true
+                                  end,
+                              [unused || UnusedNode and UnusedClient];
                           _ -> []
                       end,
                   [{{ca, Id}, W} || W <- SelfSignedWarnings ++ ExpWarnings ++
