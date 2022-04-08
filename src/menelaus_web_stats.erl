@@ -58,8 +58,6 @@ params_internal() ->
       #{cfg_key => query_request_timeout, type => pos_int}},
      {"requestTimeouts.quit",
       #{cfg_key => quit_request_timeout, type => pos_int}},
-     {"requestTimeouts.reload",
-      #{cfg_key => reload_request_timeout, type => pos_int}},
      {"requestTimeouts.deleteSeries",
       #{cfg_key => delete_series_request_timeout, type => pos_int}},
      {"requestTimeouts.cleanTombstones",
