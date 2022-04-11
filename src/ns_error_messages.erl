@@ -47,6 +47,10 @@ connection_error_message({tls_alert, {unknown_ca, Str}}, Host, Port)
                                  "The certificate is issued by unknown CA or "
                                  "some of the intermediate certificates are "
                                  "missing (~s)", [Host, Port, Str]));
+connection_error_message({tls_alert, {certificate_required, Str}}, Host, Port) ->
+    list_to_binary(io_lib:format("Failed to establish TLS connection to ~s:~w. "
+                                 "Certificate is required (~s)",
+                                 [Host, Port, Str]));
 connection_error_message({tls_alert, M}, Host, Port) ->
     list_to_binary(io_lib:format("Failed to establish TLS connection to ~s:~w: ~p", [Host, Port, M]));
 connection_error_message({AFamily, nxdomain}, Host, _Port) ->
@@ -286,7 +290,13 @@ reload_node_certificate_error(malformed_pkey) ->
     <<"Malformed or unsupported private key format">>;
 reload_node_certificate_error(n2n_enabled) ->
     <<"Operation requires node-to-node encryption to be disabled">>;
-reload_node_certificate_error({test_connection_failed, Host, Msg}) ->
+reload_node_certificate_error({test_cert_failed, client, Host, Msg}) ->
+    iolist_to_binary(io_lib:format(
+      "TLS connection to ~s with provided client certificates failed. "
+      "Please make sure that the client certificate is issued by a trusted CA. "
+      "Details: ~s",
+      [Host, Msg]));
+reload_node_certificate_error({test_cert_failed, server, Host, Msg}) ->
     iolist_to_binary(io_lib:format(
       "TLS connection to a test server with provided certificates failed. "
       "Please make sure the node certificate contains '~s' in SAN. Details: ~s",

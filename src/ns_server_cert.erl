@@ -970,10 +970,10 @@ validate_otp_certs(client_cert, ChainPem, PKeyPem, PassphraseFun) ->
                 {error, _, Msg} ->
                     ?log_error(
                       "Could not establish test connection to "
-                      "test otp server with reason: ~p", [Msg]),
+                      "otp server with reason: ~p", [Msg]),
                     Host = misc:extract_node_address(
                              Node, cb_dist:address_family()),
-                    {error, {test_connection_failed, Host, Msg}}
+                    {error, {test_cert_failed, client, Host, Msg}}
             end;
         false -> ok
     end;
@@ -993,7 +993,7 @@ validate_otp_certs(node_cert, ChainPem, PKeyPem, PassphraseFun) ->
                             [Port, Msg]),
                           Host = misc:extract_node_address(
                                    Node, cb_dist:address_family()),
-                          {error, {test_connection_failed, Host, Msg}}
+                          {error, {test_cert_failed, server, Host, Msg}}
                   end
               end, ChainPem, PKeyPem, PassphraseFun);
         false -> ok
