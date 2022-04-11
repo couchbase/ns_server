@@ -35,7 +35,9 @@
          get_user_name_from_client_cert/1,
          set_certificate_chain/5,
          tls_client_opts/1,
-         external_tls_client_opts/1,
+         tls_client_certs_opts/0,
+         tls_peer_verification_client_opts/0,
+         tls_no_peer_verification_client_opts/0,
          configured_ciphers_names/2,
          honor_cipher_order/1,
          honor_cipher_order/2,
@@ -410,29 +412,23 @@ read_ca_certs(File) ->
 
 tls_client_opts(Config) ->
     tls_peer_verification_client_opts() ++
-    tls_client_certs_opts(Config).
-
-external_tls_client_opts(Config) ->
-    case ns_server_cert:this_node_uses_self_generated_certs(Config) of
-        true -> [{verify, verify_none}];
-        false -> tls_peer_verification_client_opts()
-    end ++
-    tls_client_certs_opts(Config).
-
-tls_client_certs_opts(Config) ->
     case ns_ssl_services_setup:client_cert_auth_state(Config) of
-        "mandatory" ->
-            [{certfile, chain_file_path(client_cert)},
-             {keyfile, pkey_file_path(client_cert)}];
-        _ ->
-            []
+        "mandatory" -> tls_client_certs_opts();
+        _ -> []
     end.
+
+tls_client_certs_opts() ->
+    [{certfile, chain_file_path(client_cert)},
+     {keyfile, pkey_file_path(client_cert)}].
 
 tls_peer_verification_client_opts() ->
     [{cacertfile, ca_file_path()},
      {verify, verify_peer},
      {depth, ?ALLOWED_CERT_CHAIN_LENGTH},
      {reuse_sessions, false}].
+
+tls_no_peer_verification_client_opts() ->
+    [{verify, verify_none}].
 
 start_link_rest_service() ->
     case service_ports:get_port(ssl_rest_port) of

@@ -934,13 +934,9 @@ do_add_node_with_connectivity(Scheme, RemoteAddr, RestPort, Auth, GroupUUID,
              {<<"isDeveloperPreview">>, IsPreviewCluster}]
         ++ NodeInfo ++ CertProps,
 
-    TLSOpts = case Scheme of
-                  https ->
-                      ns_ssl_services_setup:external_tls_client_opts(Config);
-                  http ->
-                      []
-              end,
-    Options = [{connect_options, [misc:get_net_family() | TLSOpts]}],
+    GeneratedCerts = ns_server_cert:this_node_uses_self_generated_certs(Config),
+    Options = [{connect_options, [misc:get_net_family()]},
+               {server_verification, not GeneratedCerts}],
 
     MustUseHttps =
         (not ns_config:read_key_fast(allow_http_node_addition, false)) and
@@ -1272,18 +1268,13 @@ do_add_node_engaged_inner(ChronicleInfo, {Scheme, Hostname, Port},
 
     %% Making sure peer verification is enabled even when this node uses
     %% self-signed certs (starting from 7.1)
-    %% (peer verification is on by default in menelaus_rest, so here we are
-    %% disabling it if cluster is old and node doesn't have certs provisioned)
-    TLSOpts = case {Scheme, cluster_compat_mode:is_cluster_71()} of
-                  {https, false} ->
-                      ns_ssl_services_setup:external_tls_client_opts(
-                        ns_config:latest());
-                  _ -> []
-              end,
-
-    Options = [{connect_options, [misc:get_net_family() | TLSOpts]},
+    GeneratedCerts = ns_server_cert:this_node_uses_self_generated_certs(
+                       ns_config:latest()),
+    Options = [{connect_options, [misc:get_net_family()]},
                {timeout, ?COMPLETE_TIMEOUT},
-               {connect_timeout, ?COMPLETE_TIMEOUT}],
+               {connect_timeout, ?COMPLETE_TIMEOUT},
+               {server_verification, cluster_compat_mode:is_cluster_71() orelse
+                                     (not GeneratedCerts)}],
 
     case post_json([Scheme, Hostname, Port, "/completeJoin"],
                    Auth, Options, Struct) of

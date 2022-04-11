@@ -314,11 +314,23 @@ parse_join_cluster_params(Params, ThisIsJoin) ->
         end,
     OtherUser = proplists:get_value("user", Params),
     OtherPswd = proplists:get_value("password", Params),
+    OtherClientCert = proplists:get_value("clientCertAuth", Params, "false"),
+
+    ClientCertAuthErrors =
+        case OtherClientCert of
+            "true" -> [];
+            "false" -> [];
+            _ ->
+                Err = io_lib:format("invalid clientCertAuth value: ~p",
+                                    [OtherClientCert]),
+                [iolist_to_binary(Err)]
+        end,
 
     AddNodeErrors =
         case ThisIsJoin of
             false ->
-                KnownParams = ["hostname", "user", "password", "services"],
+                KnownParams = ["hostname", "user", "password", "services",
+                               "clientCertAuth"],
                 UnknownParams = [K || {K, _} <- Params,
                                       not lists:member(K, KnownParams)],
                 case UnknownParams of
@@ -344,8 +356,10 @@ parse_join_cluster_params(Params, ThisIsJoin) ->
                        end
                end,
 
-    BasePList = [{user, OtherUser},
-                 {password, OtherPswd}],
+    BasePList = case OtherClientCert of
+                    "true" -> [{client_cert_auth, true}];
+                    _ -> [{user, OtherUser}, {password, OtherPswd}]
+                end,
 
     MissingFieldErrors = [iolist_to_binary([atom_to_list(F), <<" is missing">>])
                           || {F, V} <- BasePList,
@@ -376,6 +390,7 @@ parse_join_cluster_params(Params, ThisIsJoin) ->
                         end,
 
     Errors = MissingFieldErrors ++ HostnameError ++ AddNodeErrors ++
+        ClientCertAuthErrors ++
         case Services of
             {error, ServicesError} ->
                 [ServicesError];
@@ -405,15 +420,20 @@ handle_join_clean_node(Req) ->
             OtherScheme = proplists:get_value(scheme, Fields),
             OtherHost = proplists:get_value(host, Fields),
             OtherPort = proplists:get_value(port, Fields),
-            OtherUser = proplists:get_value(user, Fields),
-            OtherPswd = proplists:get_value(password, Fields),
+            OtherAuth = case proplists:get_bool(client_cert_auth, Fields) of
+                            true -> client_cert_auth;
+                            false ->
+                                User = proplists:get_value(user, Fields),
+                                Pswd = proplists:get_value(password, Fields),
+                                {basic_auth, User, Pswd}
+                        end,
             Services = proplists:get_value(services, Fields),
             Hostname = proplists:get_value(new_node_hostname, Fields),
-            handle_join_tail(Req, OtherScheme, OtherHost, OtherPort, OtherUser,
-                             OtherPswd, Services, Hostname)
+            handle_join_tail(Req, OtherScheme, OtherHost, OtherPort, OtherAuth,
+                             Services, Hostname)
     end.
 
-handle_join_tail(Req, OtherScheme, OtherHost, OtherPort, OtherUser, OtherPswd,
+handle_join_tail(Req, OtherScheme, OtherHost, OtherPort, OtherCreds,
                  Services, Hostname) ->
     process_flag(trap_exit, true),
     RV = case ns_cluster:check_host_port_connectivity(OtherHost, OtherPort) of
@@ -434,8 +454,7 @@ handle_join_tail(Req, OtherScheme, OtherHost, OtherPort, OtherUser, OtherPswd,
 
                  NodeURL = build_node_url(OtherScheme, Host),
                  call_add_node(OtherScheme, OtherHost, OtherPort,
-                               {OtherUser, OtherPswd}, AFamily, NodeURL,
-                               Services);
+                               OtherCreds, AFamily, NodeURL, Services);
              {error, Reason} ->
                     M = case ns_error_messages:connection_error_message(
                                Reason, OtherHost, OtherPort) of
@@ -470,9 +489,21 @@ build_node_url(Scheme, Host) ->
 
 call_add_node(OtherScheme, OtherHost, OtherPort, Creds, AFamily,
               ThisNodeURL, Services) ->
-    BasePayload = [{<<"hostname">>, list_to_binary(ThisNodeURL)},
-                   {<<"user">>, []},
-                   {<<"password">>, []}],
+
+    IsClientCertAuthMandatory =
+        (ns_ssl_services_setup:client_cert_auth_state() =:= "mandatory"),
+
+    BasePayload = [{<<"hostname">>, list_to_binary(ThisNodeURL)}] ++
+                   case IsClientCertAuthMandatory of
+                       true ->
+                           %% Letting the-cluster-node know that it should use
+                           %% client cert for authentication when adding this
+                           %% node
+                           [{<<"clientCertAuth">>, true}];
+                       false ->
+                           [{<<"user">>, []},
+                            {<<"password">>, []}]
+                   end,
 
     {Payload, Endpoint} =
         case Services =:= ns_cluster_membership:default_services() of
@@ -485,14 +516,10 @@ call_add_node(OtherScheme, OtherHost, OtherPort, Creds, AFamily,
                 {SVCPayload, "/controller/addNodeV2"}
         end,
 
-    TLSOpts = case OtherScheme of
-                  https ->
-                      ns_ssl_services_setup:external_tls_client_opts(
-                        ns_config:latest());
-                  http -> []
-              end,
-
-    Options = [{connect_options, [AFamily | TLSOpts]}],
+    GeneratedCerts = ns_server_cert:this_node_uses_self_generated_certs(
+                       ns_config:latest()),
+    Options = [{connect_options, [AFamily]},
+               {server_verification, not GeneratedCerts}],
 
     Res = menelaus_rest:json_request_hilevel(
             post,
@@ -742,12 +769,16 @@ add_node_error_code(_) ->
 
 do_handle_add_node(Req, GroupUUID) ->
     %% parameter example: hostname=epsilon.local, user=Administrator, password=asd!23
+    %% parameter example: hostname=epsilon.local, clientCertAuth=true
     Params = mochiweb_request:parse_post(Req),
-
     Parsed = case parse_join_cluster_params(Params, false) of
                  {ok, ParsedKV} ->
-                     case validate_add_node_params(proplists:get_value(user, ParsedKV),
-                                                   proplists:get_value(password, ParsedKV)) of
+                     U = proplists:get_value(user, ParsedKV),
+                     P = proplists:get_value(password, ParsedKV),
+                     case proplists:get_bool(client_cert_auth, ParsedKV) orelse
+                          validate_add_node_params(U, P) of
+                         true ->
+                             {ok, ParsedKV};
                          [] ->
                              {ok, ParsedKV};
                          CredErrors ->
@@ -759,8 +790,14 @@ do_handle_add_node(Req, GroupUUID) ->
 
     case Parsed of
         {ok, KV} ->
-            User = proplists:get_value(user, KV),
-            Password = proplists:get_value(password, KV),
+            {Auth, AuditUser} =
+                case proplists:get_bool(client_cert_auth, KV) of
+                    true -> {client_cert_auth, "<client_cert>"};
+                    false ->
+                        User = proplists:get_value(user, KV),
+                        Password = proplists:get_value(password, KV),
+                        {{basic_auth, User, Password}, User}
+                end,
             Scheme = proplists:get_value(scheme, KV),
             Hostname = proplists:get_value(host, KV),
             Port = proplists:get_value(port, KV),
@@ -770,11 +807,11 @@ do_handle_add_node(Req, GroupUUID) ->
               fun () ->
                   case ns_cluster:add_node_to_group(
                          Scheme, Hostname, Port,
-                         {User, Password},
+                         Auth,
                          GroupUUID,
                          Services) of
                       {ok, OtpNode} ->
-                          ns_audit:add_node(Req, Hostname, Port, User,
+                          ns_audit:add_node(Req, Hostname, Port, AuditUser,
                                             GroupUUID, Services, OtpNode),
                           ServicesJSON =
                               [ns_cluster_membership:json_service_name(S)

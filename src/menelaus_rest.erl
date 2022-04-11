@@ -67,9 +67,9 @@ is_auth_header_lc("ns-server-ui") ->
 is_auth_header_lc(_) ->
     false.
 
-rest_add_auth(Headers, {User, Password}) ->
+rest_add_auth(Headers, {basic_auth, User, Password}) ->
     [basic_auth_header(User, Password) | Headers];
-rest_add_auth(Headers, undefined) ->
+rest_add_auth(Headers, client_cert_auth) ->
     Headers.
 
 rest_add_mime_type(Headers, undefined) ->
@@ -82,15 +82,29 @@ rest_request(Method, URL, Headers, MimeType, Body, Auth, HTTPOptions) ->
     NewHeaders = rest_add_mime_type(NewHeaders0, MimeType),
     Timeout = proplists:get_value(timeout, HTTPOptions, 30000),
     HTTPOptions1 = lists:keydelete(timeout, 1, HTTPOptions),
-    HTTPOptions2 = add_tls_options(URL, HTTPOptions1),
-    lhttpc:request(URL, Method, NewHeaders, Body, Timeout, HTTPOptions2).
 
-add_tls_options("https://" ++ _, Options) ->
+    VerifyServer = proplists:get_value(server_verification, HTTPOptions1, true),
+    HTTPOptions2 = lists:keydelete(server_verification, 1, HTTPOptions1),
+
+    HTTPOptions3 = add_tls_options(URL, HTTPOptions2, Auth, VerifyServer),
+    lhttpc:request(URL, Method, NewHeaders, Body, Timeout, HTTPOptions3).
+
+add_tls_options("https://" ++ _, Options, Auth, VerifyServer) ->
     ConnectOptions = proplists:get_value(connect_options, Options, []),
-    TLSOptions = ns_ssl_services_setup:tls_client_opts(ns_config:latest()),
+    TLSOptions =
+        case VerifyServer of
+            true ->
+                ns_ssl_services_setup:tls_peer_verification_client_opts();
+            false ->
+                ns_ssl_services_setup:tls_no_peer_verification_client_opts()
+        end ++
+        case Auth of
+            client_cert_auth -> ns_ssl_services_setup:tls_client_certs_opts();
+            {basic_auth, _, _} -> []
+        end,
     NewConnectOptions = misc:update_proplist(TLSOptions, ConnectOptions),
     misc:update_proplist(Options, [{connect_options, NewConnectOptions}]);
-add_tls_options("http://" ++ _, Options) -> Options.
+add_tls_options("http://" ++ _, Options, _, _) -> Options.
 
 decode_json_response_ext({ok, {{200 = _StatusCode, _} = _StatusLine,
                                _Headers, Body} = _Result},
@@ -119,7 +133,7 @@ decode_json_response_ext(Response, Method, Request) ->
 -spec json_request_hilevel(atom(),
                            {atom(), string(), string() | integer(), string(), string(), iolist()}
                            | {atom(), string(), string() | integer(), string()},
-                           undefined | {string(), string()},
+                           client_cert_auth | {basic_auth, string(), string()},
                            [any()]) ->
                                   %% json response payload
                                   {ok, any()} |
