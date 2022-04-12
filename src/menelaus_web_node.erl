@@ -439,7 +439,8 @@ build_extra_node_info(Config, Node, InfoNode) ->
     SigarMemTotal = proplists:get_value(mem_total, SystemStats),
     SigarMemFree = proplists:get_value(mem_free, SystemStats),
     {MemoryTotal, MemoryFree} =
-        case SigarMemTotal =:= undefined orelse SigarMemFree =:= undefined of
+        case SigarMemTotal =:= undefined orelse
+             SigarMemFree =:= undefined orelse SigarMemTotal =:= 0 of
             true ->
                 {MemoryTotalErlang, MemoryTotalErlang - MemoryAllocedErlang};
             _ ->
