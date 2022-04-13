@@ -55,6 +55,7 @@
          apply_stats_settings/1,
          settings_web_post_validators/0,
          validate_allowed_hosts_list/1,
+         get_tls_version/1,
          parse_allowed_host/1]).
 
 -import(menelaus_util,
@@ -106,8 +107,8 @@ get_string(SV) ->
     {ok, list_to_binary(string:strip(SV))}.
 
 get_tls_version(SV) ->
-    Supported = ['tlsv1.3', 'tlsv1.2', 'tlsv1.1', tlsv1],
-    SupportedStr = [atom_to_list(S) || S <- Supported],
+    SupportedStr = [atom_to_list(S) || S <- lists:sort(
+                                              maps:keys(?TLS_VERSIONS))],
     case lists:member(SV, SupportedStr) of
         true -> {ok, list_to_atom(SV)};
         false ->

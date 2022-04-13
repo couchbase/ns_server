@@ -42,6 +42,7 @@
          honor_cipher_order/1,
          honor_cipher_order/2,
          set_certs/6,
+         get_supported_tls_versions/2,
          chronicle_upgrade_to_71/2,
          remove_node_certs/0,
          update_certs_epoch/0]).
@@ -186,29 +187,41 @@ dh_params_der() ->
       9,135,41,60,75,4,202,133,173,72,6,69,167,89,112,174,40,
       229,171,2,1,2>>.
 
-supported_versions(MinVer) ->
-    case application:get_env(ssl_versions) of
-        {ok, Versions} ->
-            Versions;
-        undefined ->
-            Patches = proplists:get_value(couchbase_patches,
-                                          ssl:versions(), []),
-            Versions0 = ['tlsv1.1', 'tlsv1.2',  'tlsv1.3'],
+max_tls_version() ->
+    sorted_map_head(?TLS_VERSIONS, fun(V1, V2) -> V1 >= V2 end).
 
-            Versions1 = case lists:member(tls_padding_check, Patches) of
-                            true ->
-                                ['tlsv1' | Versions0];
-                            false ->
-                                Versions0
-                        end,
-            case lists:dropwhile(fun (Ver) -> Ver < MinVer end, Versions1) of
-                [] ->
-                    ?log_warning("Incorrect ssl_minimum_protocol ~p was ignored.", [MinVer]),
-                    Versions1;
-                Versions ->
-                    Versions
-            end
-    end.
+min_tls_version() ->
+    sorted_map_head(?TLS_VERSIONS, fun(V1, V2) -> V1 =< V2 end).
+
+sorted_map_head(Map, PredicateFun) ->
+    hd(lists:usort(
+         fun({_, V1}, {_, V2}) ->
+                 PredicateFun(V1, V2)
+         end, maps:to_list(Map))).
+
+%% Valid TLS version: [tlsv1, 'tlsv1.1', 'tlsv1.2', 'tlsv1.3']
+%% 'none' can be used as an unbounded end for a range
+-spec(get_supported_tls_versions(atom(), atom()) -> [atom()]).
+get_supported_tls_versions(none, MaxVsn) when is_atom(MaxVsn) ->
+    get_supported_tls_versions(element(1, min_tls_version()), MaxVsn);
+get_supported_tls_versions(MinVsn, none) when is_atom(MinVsn) ->
+    get_supported_tls_versions(MinVsn, element(1, max_tls_version()));
+get_supported_tls_versions(MinVsn, MaxVsn) when is_atom(MinVsn), is_atom(MaxVsn) ->
+    Min = case maps:get(MinVsn, ?TLS_VERSIONS, not_found) of
+              not_found -> erlang:error(badarg);
+              VMin -> VMin
+          end,
+    Max = case maps:get(MaxVsn, ?TLS_VERSIONS, not_found) of
+              not_found -> erlang:error(badarg);
+              VMax -> VMax
+          end,
+    Allowed = maps:filter(fun (_, V) ->
+                                  V =< Max andalso V >= Min
+                          end, ?TLS_VERSIONS),
+    lists:sort(maps:keys(Allowed)).
+
+supported_versions(MinVer) ->
+    get_supported_tls_versions(MinVer, none).
 
 ssl_minimum_protocol(Service) ->
     ssl_minimum_protocol(Service, ns_config:latest()).
@@ -1433,3 +1446,34 @@ time_left_to_client_cert_regen() ->
         _ ->
             infinity
     end.
+
+
+-ifdef(TEST).
+
+check_tls_min_max_test() ->
+    Versions = get_supported_tls_versions('tlsv1.1', 'tlsv1.2'),
+    ?assertEqual(Versions, ['tlsv1.1', 'tlsv1.2']),
+    Versions2 = get_supported_tls_versions('tlsv1.1', 'tlsv1.3'),
+    ?assertEqual(Versions2, ['tlsv1.1', 'tlsv1.2', 'tlsv1.3']),
+    Versions3 = get_supported_tls_versions(none, 'tlsv1.3'),
+    ?assertEqual(Versions3, [tlsv1, 'tlsv1.1', 'tlsv1.2', 'tlsv1.3']),
+    Versions4 = get_supported_tls_versions('tlsv1.2', none),
+    ?assertEqual(Versions4, ['tlsv1.2', 'tlsv1.3']),
+    Versions5 = get_supported_tls_versions(none, none),
+    ?assertEqual(Versions5, [tlsv1, 'tlsv1.1', 'tlsv1.2', 'tlsv1.3']),
+    Versions6 = get_supported_tls_versions(none, tlsv1),
+    ?assertEqual(Versions6, [tlsv1]),
+    ?assertError(badarg, get_supported_tls_versions('tlsv1.4', 'another-atom')),
+    ?assertError(badarg, get_supported_tls_versions(tlsv1, 'tlsv1.4')),
+    Versions7 = get_supported_tls_versions(tlsv1, none),
+    ?assertEqual(Versions7, [tlsv1, 'tlsv1.1', 'tlsv1.2', 'tlsv1.3']),
+    Versions8 = get_supported_tls_versions(none, tlsv1),
+    ?assertEqual(Versions8, [tlsv1]),
+    Versions9 = get_supported_tls_versions(tlsv1, 'tlsv1.2'),
+    ?assertEqual(Versions9, [tlsv1, 'tlsv1.1', 'tlsv1.2']),
+    Vsn = max_tls_version(),
+    ?assertEqual(Vsn, {'tlsv1.3', 3}),
+    Vsn2 = min_tls_version(),
+    ?assertEqual(Vsn2, {tlsv1, 0}).
+
+-endif.

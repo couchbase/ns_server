@@ -152,7 +152,8 @@ params() ->
      {"cacert", #{type => certificate}},
      {"clientTLSCert", #{cfg_key => client_tls_cert, type => certificate}},
      {"clientTLSKey", #{cfg_key => client_tls_key, type => pkey}},
-     {"extraTLSOpts", #{cfg_key => extra_tls_opts, type => tls_opts}}].
+     {"extraTLSOpts", #{cfg_key => extra_tls_opts, type => tls_opts}},
+     {"maxTLSVersion", #{cfg_key => max_tls_version, type => max_tls_version}}].
 
 validation_params("connectivity") -> [];
 validation_params("authentication") ->
@@ -202,6 +203,12 @@ type_spec(tls_opts) ->
                            Str = io_lib:format("~p", [Sanitized]),
                            {value, iolist_to_binary(Str)}
                    end};
+type_spec(max_tls_version) ->
+    #{validators => [string, fun validate_ldap_tls_version/2],
+      formatter => fun (undefined) -> ignore;
+                       (Version) when is_atom(Version) ->
+                           {value, Version}
+                       end};
 type_spec(bind_method) ->
     #{validators => [{one_of, existing_atom, ["Simple", "SASLExternal",
                                               "None"]}],
@@ -339,6 +346,19 @@ handle_invalidate_ldap_cache(Req) ->
             Msg = io_lib:format("Invalidation failed on nodes: ~p", [BadNodes]),
             menelaus_util:reply_json(Req, iolist_to_binary(Msg), 500)
     end.
+
+validate_ldap_tls_version(Name, State) ->
+    validator:validate(
+      fun ("") ->
+              {value, undefined};
+          (Other) ->
+              case menelaus_web_settings:get_tls_version(Other) of
+                  {ok, Value} ->
+                      {value, Value};
+                  M ->
+                      M
+              end
+      end, Name, State).
 
 invalidate_ldap_cache() ->
     ldap_auth_cache:flush(),

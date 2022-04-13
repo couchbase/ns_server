@@ -58,6 +58,14 @@ ssl_options(Host, Settings) ->
             undefined -> []; %% not a default, but value == undefined
             L -> L
         end,
+
+    MaxTlsVersion =
+        case proplists:get_value(max_tls_version, Settings) of
+            undefined -> []; %% not a default, but value == undefined
+            T -> [{versions,
+                   ns_ssl_services_setup:get_supported_tls_versions(none, T)}]
+        end,
+
     %% Remove {password, _} wrap.
     %% In case if a value in opts contains sensitive information (like
     %% a password or a private key) it might be protected by such a wrap.
@@ -68,7 +76,8 @@ ssl_options(Host, Settings) ->
                   fun ({K, {password, V}}) -> {K, V};
                       (KV) -> KV
                   end, ExtraOptsUnprepared),
-    misc:update_proplist(ClientAuthOpts ++ PeerVerificationOpts, ExtraOpts).
+    misc:update_proplist(ClientAuthOpts ++ PeerVerificationOpts
+                         ++ MaxTlsVersion, ExtraOpts).
 
 client_cert_auth_enabled(Settings) ->
     Encryption = proplists:get_value(encryption, Settings),
