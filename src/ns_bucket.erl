@@ -99,7 +99,7 @@
          config_to_map_options/1,
          can_have_views/1,
          get_view_nodes/1,
-         get_num_vbuckets/0,
+         get_default_num_vbuckets/0,
          get_max_buckets/0,
          uuid_key/1,
          uuid/2,
@@ -793,7 +793,7 @@ is_valid_bucket_name_inner([Char | Rest]) ->
 get_max_buckets() ->
     ns_config:read_key_fast(max_bucket_count, ?MAX_BUCKETS_SUPPORTED).
 
-get_num_vbuckets() ->
+get_default_num_vbuckets() ->
     case ns_config:search(couchbase_num_vbuckets_default) of
         false ->
             misc:getenv_int("COUCHBASE_NUM_VBUCKETS", 1024);
@@ -803,7 +803,7 @@ get_num_vbuckets() ->
 
 new_bucket_default_params(membase) ->
     [{type, membase},
-     {num_vbuckets, get_num_vbuckets()},
+     {num_vbuckets, get_default_num_vbuckets()},
      {num_replicas, 1},
      {ram_quota, 0},
      {replication_topology, star},

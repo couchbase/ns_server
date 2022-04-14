@@ -398,7 +398,7 @@ goport_args(index, Config, _Cmd, NodeUUID) ->
 
         build_afamily_requirement("-") ++
 
-        ["-vbuckets=" ++ integer_to_list(ns_bucket:get_num_vbuckets()),
+        ["-vbuckets=" ++ integer_to_list(ns_bucket:get_default_num_vbuckets()),
          "-cluster=" ++ misc:local_url(RestPort, [no_scheme]),
          "-storageDir=" ++ IdxDir2,
          "-diagDir=" ++ path_config:minidump_dir(),
@@ -484,7 +484,7 @@ goport_args(fts, Config, _Cmd, NodeUUID) ->
         "maxReplicasAllowed=" ++ integer_to_list(MaxReplicasAllowed) ++ "," ++
         "bucketTypesAllowed=" ++ BucketTypesAllowed ++ "," ++
         "http2=" ++ atom_to_list(cluster_compat_mode:is_enterprise()) ++ "," ++
-        "vbuckets=" ++ integer_to_list(ns_bucket:get_num_vbuckets()) ++
+        "vbuckets=" ++ integer_to_list(ns_bucket:get_default_num_vbuckets()) ++
         build_afamily_requirement(","),
     [
      "-cfg=metakv",
@@ -518,7 +518,7 @@ goport_args(eventing, Config, _Cmd, NodeUUID) ->
         ["-dir=" ++ filename:join(EvDir, "@eventing"),
          "-uuid=" ++ NodeUUID,
          "-diagdir=" ++ path_config:minidump_dir(),
-         "-vbuckets=" ++ integer_to_list(ns_bucket:get_num_vbuckets())];
+         "-vbuckets=" ++ integer_to_list(ns_bucket:get_default_num_vbuckets())];
 
 goport_args(cbas, Config, Cmd, NodeUUID) ->
     CBASDirs = [filename:join([Token], "@analytics") ||
