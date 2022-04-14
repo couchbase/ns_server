@@ -511,7 +511,7 @@ conf(internal) ->
      {max_bucket_count, maxBucketCount, ?MAX_BUCKETS_SUPPORTED,
       get_number(1, 8192)},
      {magma_min_memory_quota, magmaMinMemoryQuota, 1024,
-      get_number(256, 1024, 1024)},
+      get_number(100, 1024, 1024)},
      {event_logs_limit, eventLogsLimit, 10000,
       get_number(3000, 20000, 10000)},
      {gotraceback, gotraceback, <<"single">>, fun get_string/1},
