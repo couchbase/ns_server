@@ -430,6 +430,7 @@ goport_args(index, Config, _Cmd, NodeUUID) ->
 
         build_afamily_requirement("-") ++
 
+        %% XXX: MB-51825 Remove -vbuckets
         ["-vbuckets=" ++ integer_to_list(ns_bucket:get_default_num_vbuckets()),
          "-cluster=" ++ misc:local_url(RestPort, [no_scheme]),
          "-storageDir=" ++ IdxDir2,
@@ -516,6 +517,7 @@ goport_args(fts, Config, _Cmd, NodeUUID) ->
         "maxReplicasAllowed=" ++ integer_to_list(MaxReplicasAllowed) ++ "," ++
         "bucketTypesAllowed=" ++ BucketTypesAllowed ++ "," ++
         "http2=" ++ atom_to_list(cluster_compat_mode:is_enterprise()) ++ "," ++
+        %% XXX: MB- 51824 remove vbuckets=
         "vbuckets=" ++ integer_to_list(ns_bucket:get_default_num_vbuckets()) ++
         build_afamily_requirement(","),
     [
@@ -550,6 +552,7 @@ goport_args(eventing, Config, _Cmd, NodeUUID) ->
         ["-dir=" ++ filename:join(EvDir, "@eventing"),
          "-uuid=" ++ NodeUUID,
          "-diagdir=" ++ path_config:minidump_dir(),
+         %% XXX: MB-51836 Remove -vbuckets
          "-vbuckets=" ++ integer_to_list(ns_bucket:get_default_num_vbuckets())];
 
 goport_args(cbas, Config, Cmd, NodeUUID) ->

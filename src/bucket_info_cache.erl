@@ -197,7 +197,7 @@ build_num_vbuckets(BucketConfig) ->
         memcached ->
             [];
         membase ->
-            {numVBuckets, ns_bucket:get_default_num_vbuckets()}
+            {numVBuckets, ns_bucket:get_num_vbuckets(BucketConfig)}
     end.
 
 build_name_and_locator(Id, BucketConfig) ->

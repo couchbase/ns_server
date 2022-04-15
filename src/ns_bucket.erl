@@ -100,6 +100,8 @@
          can_have_views/1,
          get_view_nodes/1,
          get_default_num_vbuckets/0,
+         allow_variable_num_vbuckets/0,
+         get_num_vbuckets/1,
          get_max_buckets/0,
          uuid_key/1,
          uuid/2,
@@ -800,6 +802,18 @@ get_default_num_vbuckets() ->
         {value, X} ->
             X
     end.
+
+allow_variable_num_vbuckets() ->
+    case cluster_compat_mode:is_cluster_elixir() of
+        false ->
+            false;
+        true ->
+            Profile = ns_config:search_node_with_default(?CONFIG_PROFILE, []),
+            proplists:get_bool(allow_variable_num_vbuckets, Profile)
+    end.
+
+get_num_vbuckets(BucketConfig) ->
+    proplists:get_value(num_vbuckets, BucketConfig).
 
 new_bucket_default_params(membase) ->
     [{type, membase},
@@ -1517,7 +1531,7 @@ extract_bucket_props(Props) ->
               [lists:keyfind(Y, 1, Props) ||
                   Y <- [num_replicas, replica_index, ram_quota,
                         durability_min_level, frag_percent,
-                        storage_quota_percentage,
+                        storage_quota_percentage, num_vbuckets,
                         pitr_enabled, pitr_granularity, pitr_max_history_age,
                         autocompaction,
                         purge_interval, flush_enabled, num_threads,

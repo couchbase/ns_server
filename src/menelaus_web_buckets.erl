@@ -951,6 +951,7 @@ validate_membase_bucket_params(CommonParams, Params,
         [{ok, bucketType, membase},
          ReplicasNumResult,
          parse_validate_replica_index(Params, ReplicasNumResult, IsNew),
+         parse_validate_num_vbuckets(Params, BucketConfig, IsNew),
          parse_validate_threads_number(Params, IsNew),
          parse_validate_eviction_policy(Params, BucketConfig, IsNew),
          quota_size_error(CommonParams, membase, IsNew, BucketConfig),
@@ -1691,6 +1692,46 @@ do_parse_validate_storage_quota_percentage(Val) ->
             {error, storageQuotaPercentage, iolist_to_binary(Msg)}
     end.
 
+parse_validate_num_vbuckets(Params, BucketConfig, IsNew) ->
+    NumVBs = proplists:get_value("numVBuckets", Params),
+    IsEnabled = ns_bucket:allow_variable_num_vbuckets(),
+    do_parse_validate_num_vbuckets(NumVBs, BucketConfig, IsNew, IsEnabled).
+
+do_parse_validate_num_vbuckets(undefined, _BucketConfig, false = _IsNew,
+                               _IsEnabled) ->
+    ignore;
+do_parse_validate_num_vbuckets(NumVBs, BucketConfig, false = _IsNew,
+                               _IsEnabled) ->
+    CurVal = integer_to_list(proplists:get_value(num_vbuckets, BucketConfig)),
+    case NumVBs =:= CurVal of
+        true ->
+            ignore;
+        false ->
+            {error, numVbuckets,
+             <<"Number of vbuckets cannot be modified">>}
+    end;
+do_parse_validate_num_vbuckets(NumVBs, _BucketConfig, true = _IsNew,
+                               false = _IsEnabled) when NumVBs =/= undefined ->
+    {error, numVbuckets,
+     <<"Support for variable number of vbuckets is not enabled">>};
+do_parse_validate_num_vbuckets(NumVBs, _BucketConfig, true = IsNew,
+                               _IsEnabled) ->
+    DefaultVal = integer_to_list(ns_bucket:get_default_num_vbuckets()),
+    validate_with_missing(NumVBs, DefaultVal, IsNew,
+                          fun validate_num_vbuckets/1).
+
+validate_num_vbuckets(Val) ->
+    case menelaus_util:parse_validate_number(Val, ?MIN_NUM_VBUCKETS,
+                                             ?MAX_NUM_VBUCKETS) of
+        {ok, X} ->
+            {ok, num_vbuckets, X};
+        _Error ->
+            Msg = io_lib:format("Number of vbuckets must be an integer "
+                                "between ~p and ~p",
+                                [?MIN_NUM_VBUCKETS, ?MAX_NUM_VBUCKETS]),
+            {error, numVbuckets, list_to_binary(Msg)}
+    end.
+
 parse_validate_threads_number(Params, IsNew) ->
     validate_with_missing(proplists:get_value("threadsNumber", Params),
                           "3", IsNew, fun parse_validate_threads_number/1).
@@ -2091,6 +2132,15 @@ basic_bucket_params_screening_test() ->
                 fun (_, Default) ->
                         Default
                 end),
+    meck:expect(ns_config, search,
+                fun (couchbase_num_vbuckets_default) ->
+                        {value, 1024}
+                end),
+    meck:expect(ns_config, search_node_with_default,
+                fun (_, Default) -> Default end),
+    meck:new(cluster_compat_mode, [passthrough]),
+    meck:expect(cluster_compat_mode, is_cluster_elixir,
+                fun () -> true end),
     AllBuckets = [{"mcd",
                    [{type, memcached},
                     {num_vbuckets, 16},
@@ -2333,12 +2383,15 @@ basic_bucket_params_screening_test() ->
       end, MajorityDurabilityLevelReplicas),
 
     meck:unload(ns_config),
+    meck:unload(cluster_compat_mode),
 
     ok.
 
 basic_parse_validate_bucket_auto_compaction_settings_test() ->
     meck:new(cluster_compat_mode, [passthrough]),
     meck:expect(cluster_compat_mode, is_cluster_71,
+                fun () -> true end),
+    meck:expect(cluster_compat_mode, is_cluster_elixir,
                 fun () -> true end),
     meck:new(ns_config, [passthrough]),
     meck:expect(ns_config, get,
