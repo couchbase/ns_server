@@ -509,25 +509,13 @@ init([]) ->
     maybe_generate_client_certs(),
     reload_pkey_passphrase(),
     self() ! validate_pkey,
-    RetrySvc = case misc:consult_marker(marker_path()) of
-                   {ok, []} ->
-                       %% Treat it as all_services() for backward compat
-                       Self ! notify_services,
-                       all_services() -- [ssl_service];
-                   {ok, [Services]} ->
-                       %% In case if we crashed in the middle of certs
-                       %% generation. It should do nothing if "auto-generated"
-                       %% certs are in order.
-                       ServicesToNotify = Services -- [ssl_service],
-                       case ServicesToNotify of
-                           [] -> [];
-                           _ ->
-                               Self ! notify_services,
-                               ServicesToNotify
-                       end;
-                   false ->
-                       []
-               end,
+    %% Note that it should do nothing if "auto-generated"
+    %% certs are in order (not regenerated).
+    RetrySvc = read_services_from_marker() -- [ssl_service],
+    case RetrySvc of
+        [] -> ok;
+        _ -> Self ! notify_services
+    end,
     {ok, #state{reload_state = RetrySvc,
                 sec_settings_state = security_settings_state(),
                 afamily_requirement = misc:address_family_requirement(),
@@ -570,7 +558,7 @@ handle_call({set_certificate_chain, Type, CAEntry, Chain, PKeyFun,
              PassphraseSettingsFun}, _From, State) ->
     Props = save_uploaded_certs(Type, CAEntry, Chain, PKeyFun(),
                                 PassphraseSettingsFun()),
-    {reply, {ok, Props}, sync_ssl_reload(State)};
+    {reply, {ok, Props}, read_marker_and_reload_ssl(State)};
 
 %% This is used in the case when this node is added to a cluster
 %% and that cluster pushes generated node certs to us (only in the case when
@@ -582,30 +570,21 @@ handle_call({set_certs, Host, CA, NodeCert, NodeKeyFun, ClientCert,
     NodeKey = NodeKeyFun(),
     ClientKey = ClientKeyFun(),
     ns_server_cert:set_generated_ca(CA),
-    CAUpdated = maybe_store_ca_certs(),
-    NodeCertUpdated =
-        if
-            (NodeCert =/= undefined) andalso (NodeKey =/= undefined) ->
-                save_generated_certs(node_cert, CA, NodeCert, NodeKey, Host),
-                true;
-            true ->
-                ?log_warning("Set certs: Node certs are not present. Ignoring"),
-                false
-        end,
-    ClientCertUpdated =
-        if
-            (ClientCert =/= undefined) andalso (ClientKey =/= undefined) ->
-                save_generated_certs(client_cert, CA, ClientCert, ClientKey,
-                                     ?INTERNAL_CERT_USER),
-                true;
-            true ->
-                ?log_warning("Set certs: Client certs are not present. Ignoring"),
-                false
-        end,
-    case CAUpdated or NodeCertUpdated or ClientCertUpdated of
-        true -> {reply, ok, sync_ssl_reload(State)};
-        false -> {reply, ok, State}
-    end;
+    maybe_store_ca_certs(),
+    if
+        (NodeCert =/= undefined) andalso (NodeKey =/= undefined) ->
+            save_generated_certs(node_cert, CA, NodeCert, NodeKey, Host);
+        true ->
+            ?log_warning("Set certs: Node certs are not present. Ignoring")
+    end,
+    if
+        (ClientCert =/= undefined) andalso (ClientKey =/= undefined) ->
+            save_generated_certs(client_cert, CA, ClientCert, ClientKey,
+                                 ?INTERNAL_CERT_USER);
+        true ->
+            ?log_warning("Set certs: Client certs are not present. Ignoring")
+    end,
+    {reply, ok, read_marker_and_reload_ssl(State)};
 handle_call(ping, _From, State) ->
     {reply, ok, State};
 handle_call(_, _From, State) ->
@@ -632,26 +611,20 @@ handle_info(revalidate_pkey, State) ->
 
 handle_info(ca_certificates_updated, #state{} = State) ->
     misc:flush(ca_certificates_updated),
-    case maybe_store_ca_certs() of
-        true -> {noreply, sync_ssl_reload(State)};
-        false -> {noreply, State}
-    end;
+    maybe_store_ca_certs(),
+    {noreply, read_marker_and_reload_ssl(State)};
 
 %% It means either we generated new cluster CA cert or hostname changed
 handle_info(cert_and_pkey_changed, #state{} = State) ->
     ?log_info("cert_and_pkey changed"),
     misc:flush(cert_and_pkey_changed),
-    NeedReload =
-        maybe_generate_node_certs() or
-        maybe_generate_client_certs() or
-        case cluster_compat_mode:is_cluster_71() of
-            true -> false;
-            false -> maybe_store_ca_certs()
-        end,
-    case NeedReload of
-        true -> {noreply, sync_ssl_reload(State)};
-        false -> {noreply, State}
-    end;
+    maybe_generate_node_certs(),
+    maybe_generate_client_certs(),
+    case cluster_compat_mode:is_cluster_71() of
+        true -> false;
+        false -> maybe_store_ca_certs()
+    end,
+    {noreply, read_marker_and_reload_ssl(State)};
 
 handle_info(afamily_requirement_changed,
             #state{afamily_requirement = Current} = State) ->
@@ -808,8 +781,10 @@ async_ssl_reload(Event, Services, #state{reload_state = ReloadState} = State) ->
     ?log_debug("Notify services ~p about ~p change", [Services, Event]),
     State#state{reload_state = ReloadServices}.
 
-sync_ssl_reload(State) ->
-    NewState = State#state{reload_state = all_services()},
+read_marker_and_reload_ssl(#state{reload_state = ReloadServices} = State) ->
+    NewReloadServices =
+        lists:usort(read_services_from_marker() ++ ReloadServices),
+    NewState = State#state{reload_state = NewReloadServices},
     notify_services(NewState).
 
 save_generated_certs(node_cert = Type, CA, Chain, PKey, Hostname) ->
@@ -879,7 +854,12 @@ save_certs_phase2(Type) ->
                     ok
             end,
             ok = ssl:clear_pem_cache(),
-            create_marker(all_services()),
+            %% No need to reload all the services when client cert is updated
+            ServicesToReload = case Type of
+                                   node_cert -> all_services();
+                                   client_cert -> [cb_dist_tls, event]
+                               end,
+            add_services_to_marker(ServicesToReload),
             ok = file:delete(TmpFile);
         {error, enoent} -> file_not_found
     end.
@@ -1020,6 +1000,7 @@ all_services() ->
 notify_services(#state{reload_state = []} = State) ->
     catch misc:remove_marker(marker_path()),
     State;
+%% Note: This function assumes that the reload marker exists on disk
 notify_services(#state{reload_state = Reloads} = State) ->
     ?log_debug("Going to notify following services: ~p", [Reloads]),
 
@@ -1299,6 +1280,9 @@ create_marker(Services) ->
     Data = iolist_to_binary(io_lib:format("~p.", [Services])),
     misc:create_marker(marker_path(), Data).
 
+add_services_to_marker(Services) ->
+    create_marker(lists:usort(read_services_from_marker() ++ Services)).
+
 %% It's possible that the target file is open while we are trying to write to it.
 %% On windows it leads to {error, eacces}. If we assume that consumers of that
 %% file don't keep it open for long, simple retry should solve this problem.
@@ -1381,3 +1365,14 @@ atomic_write_file_with_retry_test() ->
         meck:unload(timer)
     end.
 -endif.
+
+read_services_from_marker() ->
+    case misc:consult_marker(marker_path()) of
+        {ok, []} ->
+            %% Treat it as all_services() for backward compat
+            all_services();
+        {ok, [Services]} ->
+            Services;
+        false ->
+            []
+    end.
