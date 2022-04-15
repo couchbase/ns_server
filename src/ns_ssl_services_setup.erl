@@ -65,7 +65,8 @@
                 client_cert_auth,
                 sec_settings_state,
                 afamily_requirement,
-                pkey_validation_timer}).
+                pkey_validation_timer,
+                client_cert_regenerate_timer}).
 
 start_link() ->
     case cluster_compat_mode:tls_supported() of
@@ -516,10 +517,11 @@ init([]) ->
         [] -> ok;
         _ -> Self ! notify_services
     end,
-    {ok, #state{reload_state = RetrySvc,
-                sec_settings_state = security_settings_state(),
-                afamily_requirement = misc:address_family_requirement(),
-                client_cert_auth = client_cert_auth()}}.
+    {ok, restart_regenerate_client_cert_timer(
+           #state{reload_state = RetrySvc,
+                  sec_settings_state = security_settings_state(),
+                  afamily_requirement = misc:address_family_requirement(),
+                  client_cert_auth = client_cert_auth()})}.
 
 handle_config_change(ca_certificates, Parent) ->
     Parent ! ca_certificates_updated;
@@ -669,6 +671,11 @@ handle_info(notify_services, State) ->
     misc:flush(notify_services),
     {noreply, notify_services(State)};
 
+handle_info(regenerate_client_cert, State) ->
+    ?log_info("Received regenerate_client_cert message"),
+    maybe_generate_client_certs(),
+    {noreply, read_marker_and_reload_ssl(State)};
+
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -742,7 +749,19 @@ should_regenerate_certs(CertInfoFile, CertType, Name) ->
         {ok, [{generated, OldVsn}]} ->
             ClusterCA = ns_server_cert:self_generated_ca(),
             case generated_cert_version(ClusterCA, Name) of
-                OldVsn -> false;
+                OldVsn when CertType == client_cert ->
+                    case time_left_to_client_cert_regen() of
+                        infinity ->
+                            false;
+                        N when N < 10000 ->
+                            ?log_info("Should regerate ~p because time has "
+                                      "come", [CertType]),
+                            true;
+                        _ ->
+                            false
+                    end;
+                OldVsn ->
+                    false;
                 _ ->
                     ?log_info("Should regenerate ~p because CA or name in "
                               "the certificate has changed", [CertType]),
@@ -779,13 +798,14 @@ async_ssl_reload(Event, Services, #state{reload_state = ReloadState} = State) ->
     create_marker(ReloadServices),
     self() ! notify_services,
     ?log_debug("Notify services ~p about ~p change", [Services, Event]),
-    State#state{reload_state = ReloadServices}.
+    restart_regenerate_client_cert_timer(
+      State#state{reload_state = ReloadServices}).
 
 read_marker_and_reload_ssl(#state{reload_state = ReloadServices} = State) ->
     NewReloadServices =
         lists:usort(read_services_from_marker() ++ ReloadServices),
     NewState = State#state{reload_state = NewReloadServices},
-    notify_services(NewState).
+    restart_regenerate_client_cert_timer(notify_services(NewState)).
 
 save_generated_certs(node_cert = Type, CA, Chain, PKey, Hostname) ->
     save_certs(Type, CA, Chain, PKey, [], [{type, generated}, {hostname, Hostname}]);
@@ -1375,4 +1395,41 @@ read_services_from_marker() ->
             Services;
         false ->
             []
+    end.
+
+restart_regenerate_client_cert_timer(
+                    #state{client_cert_regenerate_timer = undefined} = State) ->
+    TimeLeft = time_left_to_client_cert_regen(),
+    ?log_debug("Time left before client cert regeneration: ~p", [TimeLeft]),
+    case TimeLeft of
+        infinity -> State;
+        Timeout ->
+            Ref = erlang:send_after(max(Timeout, 10000), self(),
+                                    regenerate_client_cert),
+            State#state{client_cert_regenerate_timer = Ref}
+    end;
+restart_regenerate_client_cert_timer(
+                    #state{client_cert_regenerate_timer = OldRef} = State) ->
+    catch erlang:cancel_timer(OldRef),
+    misc:flush(regenerate_client_cert),
+    restart_regenerate_client_cert_timer(
+      State#state{client_cert_regenerate_timer = undefined}).
+
+time_left_to_client_cert_regen() ->
+    Props = ns_config:read_key_fast({node, node(), client_cert}, []),
+    case proplists:get_value(type, Props) of
+        generated ->
+            case proplists:get_value(not_after, Props) of
+                undefined -> infinity;
+                NotAfterGregSec ->
+                    Window = ?get_timeout(client_cert_regen_window_sec,
+                                          60*60*24*7),
+                    RegenGregSec = NotAfterGregSec - Window,
+                    GMTDateTime = calendar:universal_time(),
+                    CurGregSec =
+                        calendar:datetime_to_gregorian_seconds(GMTDateTime),
+                    max(RegenGregSec - CurGregSec, 0) * 1000
+            end;
+        _ ->
+            infinity
     end.
