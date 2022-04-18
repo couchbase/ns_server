@@ -188,8 +188,17 @@ build_short_bucket_info(Id, BucketConfig, Snapshot) ->
      {uuid, BucketUUID},
      {uri, build_pools_uri(["buckets", Id], BucketUUID)},
      {streamingUri, build_pools_uri(["bucketsStreaming", Id], BucketUUID)},
+     build_num_vbuckets(BucketConfig),
      build_bucket_capabilities(BucketConfig),
      build_collections_manifest_id(Id, Snapshot)].
+
+build_num_vbuckets(BucketConfig) ->
+    case ns_bucket:bucket_type(BucketConfig) of
+        memcached ->
+            [];
+        membase ->
+            {numVBuckets, ns_bucket:get_num_vbuckets()}
+    end.
 
 build_name_and_locator(Id, BucketConfig) ->
     [{name, list_to_binary(Id)},
