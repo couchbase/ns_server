@@ -543,7 +543,9 @@
               "local" : {"ip" : "", "port" : 1}
           },
           "optional_fields" : {
-              "sessionid" : ""
+              "sessionid" : "",
+              "dropUploadedCertificates" : true,
+              "forceResetCACertificate" : true
           }
       },
       {

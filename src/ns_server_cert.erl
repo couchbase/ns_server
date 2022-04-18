@@ -17,7 +17,7 @@
 
 -export([decode_cert_chain/1,
          decode_single_certificate/1,
-         generate_and_set_cert_and_pkey/0,
+         generate_cluster_CA/2,
          this_node_ca/1,
          this_node_uses_self_generated_certs/0,
          this_node_uses_self_generated_certs/1,
@@ -96,7 +96,7 @@ self_generated_ca() ->
             case chronicle_kv:get(kv, root_cert_and_pkey) of
                 {ok, {{CA, _}, _}} -> CA;
                 {error, not_found} ->
-                    {CA, _} = generate_and_set_cert_and_pkey(false),
+                    {CA, _} = ensure_cluster_CA(),
                     CA
             end;
         false ->
@@ -104,7 +104,7 @@ self_generated_ca() ->
                 {value, {CA, _}} -> CA;
                 {value, {_, CA, _}} -> CA;
                 false ->
-                    {CA, _} = generate_and_set_cert_and_pkey(false),
+                    {CA, _} = ensure_cluster_CA(),
                     CA
             end
     end.
@@ -114,42 +114,48 @@ self_generated_ca_and_pkey() ->
         true ->
             case chronicle_kv:get(kv, root_cert_and_pkey) of
                 {ok, {Pair, _}} -> Pair;
-                {error, not_found} -> generate_and_set_cert_and_pkey(false)
+                {error, not_found} -> ensure_cluster_CA()
             end;
         false ->
             case ns_config:search(cert_and_pkey) of
                 {value, {CA, PKey}} -> {CA, PKey};
                 {value, {_, CA, PKey}} -> {CA, PKey};
-                false -> generate_and_set_cert_and_pkey(false)
+                false -> ensure_cluster_CA()
             end
     end.
 
-generate_and_set_cert_and_pkey() ->
-    generate_and_set_cert_and_pkey(true).
+ensure_cluster_CA() ->
+    generate_cluster_CA(false, false).
 
-generate_and_set_cert_and_pkey(Force) ->
+generate_cluster_CA(ForceRegenerateCA, DropUploadedCerts) ->
     case cluster_compat_mode:is_cluster_71() of
         true ->
             NewPair = generate_cert_and_pkey(),
             {ok, AddCA} = add_CAs_txn_fun(generated, element(1, NewPair), []),
+            ReadEpoch =
+                fun (Txn) ->
+                    case chronicle_kv:txn_get(cluster_certs_epoch, Txn) of
+                        {ok, {N, _}} -> N;
+                        {error, not_found} -> 0
+                    end
+                end,
             {ok, _, Pair} =
                 chronicle_kv:txn(
                   kv,
                   fun (Txn) ->
                       case chronicle_kv:txn_get(root_cert_and_pkey, Txn) of
-                          {ok, {OldPair, _}} when not Force ->
+                          {ok, {OldPair, _}} when not ForceRegenerateCA,
+                                                  not DropUploadedCerts ->
                               {abort, {ok, undefined, OldPair}};
+                          {ok, {OldPair, _}} when not ForceRegenerateCA  ->
+                              Epoch = ReadEpoch(Txn) + 1,
+                              {commit, [{set, cluster_certs_epoch, Epoch}],
+                               OldPair};
                           _ ->
                               Changes0 =
-                                  case Force of
+                                  case DropUploadedCerts of
                                       true ->
-                                          Epoch =
-                                              case chronicle_kv:txn_get(
-                                                     cluster_certs_epoch,
-                                                     Txn) of
-                                                  {ok, {N, _}} -> N;
-                                                  {error, not_found} -> 0
-                                              end + 1,
+                                          Epoch = ReadEpoch(Txn) + 1,
                                           [{set, cluster_certs_epoch, Epoch}];
                                       false ->
                                           []
@@ -162,7 +168,7 @@ generate_and_set_cert_and_pkey(Force) ->
                   end),
             Pair;
         false ->
-            generate_and_set_cert_and_pkey_pre_71(Force)
+            generate_and_set_cert_and_pkey_pre_71(ForceRegenerateCA)
     end.
 
 generate_and_set_cert_and_pkey_pre_71(Force) ->

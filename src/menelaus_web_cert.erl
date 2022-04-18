@@ -262,14 +262,25 @@ handle_regenerate_certificate(Req) ->
         true -> ok;
         false -> assert_n2n_encryption_is_disabled()
     end,
-    menelaus_util:survive_web_server_restart(
-      fun () ->
-          ns_server_cert:generate_and_set_cert_and_pkey(),
-          ns_ssl_services_setup:sync(),
-          ?log_info("Completed certificate regeneration"),
-          ns_audit:regenerate_certificate(Req),
-          handle_cluster_certificate_simple(Req)
-      end).
+    validator:handle(
+      fun (Params) ->
+          ForceResetCA = proplists:get_value(forceResetCACertificate,
+                                             Params, true),
+          DropUploadedCerts = proplists:get_value(dropUploadedCertificates,
+                                                  Params, true),
+          menelaus_util:survive_web_server_restart(
+            fun () ->
+                ns_server_cert:generate_cluster_CA(ForceResetCA,
+                                                   DropUploadedCerts),
+                ns_ssl_services_setup:sync(),
+                ?log_info("Completed handling of regenerate_certificate call "
+                          "(~p)", [Params]),
+                ns_audit:regenerate_certificate(Req, Params),
+                handle_cluster_certificate_simple(Req)
+            end)
+      end, Req, qs, [validator:boolean(dropUploadedCertificates, _),
+                     validator:boolean(forceResetCACertificate, _ ),
+                     validator:unsupported(_)]).
 
 %% deprecated, use menelaus_util:reply_global_error/2 instead
 reply_error(Req, Error) ->

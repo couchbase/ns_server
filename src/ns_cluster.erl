@@ -978,7 +978,7 @@ engage_cluster_certs_props(Config, RemoteAddr) ->
         fun (Type, Arg) ->
             case ns_server_cert:generate_certs(Type, Arg) of
                 no_private_key ->
-                    _ = ns_server_cert:generate_and_set_cert_and_pkey(),
+                    _ = ns_server_cert:generate_cluster_CA(true, false),
                     ns_server_cert:generate_certs(Type, Arg);
                 Certs -> Certs
             end

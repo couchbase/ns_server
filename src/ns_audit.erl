@@ -52,7 +52,7 @@
          alerts/2,
          alert_email_sent/4,
          modify_compaction_settings/2,
-         regenerate_certificate/1,
+         regenerate_certificate/2,
          setup_saslauthd/2,
          internal_settings/2,
          upload_cluster_ca/3,
@@ -663,8 +663,8 @@ modify_compaction_settings(Req, Settings) ->
     Data = ns_bucket:build_compaction_settings_json(Settings),
     put(modify_compaction_settings, Req, Data).
 
-regenerate_certificate(Req) ->
-    put(regenerate_certificate, Req, []).
+regenerate_certificate(Req, Params) ->
+    put(regenerate_certificate, Req, Params).
 
 build_saslauthd_users(asterisk) ->
     default;
