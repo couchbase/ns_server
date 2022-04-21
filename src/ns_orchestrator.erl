@@ -62,6 +62,7 @@
 -define(SERVER, {via, leader_registry, ?MODULE}).
 
 -define(DELETE_BUCKET_TIMEOUT,  ?get_timeout(delete_bucket, 30000)).
+-define(DELETE_MAGMA_BUCKET_TIMEOUT,  ?get_timeout(delete_bucket, 300000)).
 -define(FLUSH_BUCKET_TIMEOUT,   ?get_timeout(flush_bucket, 60000)).
 -define(CREATE_BUCKET_TIMEOUT,  ?get_timeout(create_bucket, 5000)).
 -define(JANITOR_RUN_TIMEOUT,    ?get_timeout(ensure_janitor_run, 30000)).
@@ -633,14 +634,20 @@ idle({delete_bucket, BucketName}, From, _State) ->
                 Pred = fun (Active) ->
                                not lists:member(BucketName, Active)
                        end,
+                Timeout = case ns_bucket:kv_backend_type(BucketConfig) of
+                              magma ->
+                                  ?DELETE_MAGMA_BUCKET_TIMEOUT;
+                              _ ->
+                                  ?DELETE_BUCKET_TIMEOUT
+                          end,
                 LeftoverNodes =
-                    case wait_for_nodes(Nodes, Pred, ?DELETE_BUCKET_TIMEOUT) of
+                    case wait_for_nodes(Nodes, Pred, Timeout) of
                         ok ->
                             [];
                         {timeout, LeftoverNodes0} ->
                             ?log_warning("Nodes ~p failed to delete bucket ~p "
-                                         "within expected time.",
-                                         [LeftoverNodes0, BucketName]),
+                                         "within expected time (~p msecs).",
+                                         [LeftoverNodes0, BucketName, Timeout]),
                             LeftoverNodes0
                     end,
 
