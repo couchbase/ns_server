@@ -289,6 +289,8 @@ reload_node_certificate_error({invalid_pkey, BadType}) ->
                                  [BadType]));
 reload_node_certificate_error(cert_pkey_mismatch) ->
     <<"Provided certificate doesn't match provided private key">>;
+reload_node_certificate_error(no_ec_parameters) ->
+    <<"Provided certificate doesn't seem to contain EC parameters">>;
 reload_node_certificate_error(too_many_pkey_entries) ->
     <<"Provided private key contains incorrect number of entries">>;
 reload_node_certificate_error(malformed_pkey) ->

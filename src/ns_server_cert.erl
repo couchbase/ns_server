@@ -333,14 +333,18 @@ validate_cert_pem_entry({'Certificate', _, _}) ->
 validate_cert_pem_entry({BadType, _, _}) ->
     {error, {invalid_certificate_type, BadType}}.
 
+-define(SUPPORTED_PKEY_TYPE(T), (T) == 'RSAPrivateKey';
+                                (T) == 'DSAPrivateKey';
+                                (T) == 'ECPrivateKey').
+
 validate_pkey(PKeyPemBin, PassFun) ->
     try public_key:pem_decode(PKeyPemBin) of
         [{Type, _, not_encrypted} = Entry] ->
             case Type of
                 'PrivateKeyInfo' ->
                     try element(1, public_key:pem_entry_decode(Entry)) of
-                        'RSAPrivateKey' -> {ok, Entry};
-                        'DSAPrivateKey' -> {ok, Entry};
+                        T when ?SUPPORTED_PKEY_TYPE(T) ->
+                            {ok, Entry};
                         Other ->
                             ?log_debug("Invalid pkey type: ~p", [Other]),
                             {error, {invalid_pkey, Other}}
@@ -350,9 +354,7 @@ validate_pkey(PKeyPemBin, PassFun) ->
                                        [Ex, ST]),
                             {error, malformed_pkey}
                     end;
-                'RSAPrivateKey' ->
-                    {ok, Entry};
-                'DSAPrivateKey' ->
+                _ when ?SUPPORTED_PKEY_TYPE(Type) ->
                     {ok, Entry};
                 Other ->
                     ?log_debug("Invalid pkey type: ~p", [Other]),
@@ -361,8 +363,8 @@ validate_pkey(PKeyPemBin, PassFun) ->
         [{_Type, _, CipherInfo} = Entry] ->
             try {supported_pkey_cipher(CipherInfo),
                  element(1, public_key:pem_entry_decode(Entry, PassFun()))} of
-                {true, 'RSAPrivateKey'} -> {ok, Entry};
-                {true, 'DSAPrivateKey'} -> {ok, Entry};
+                {true, T} when ?SUPPORTED_PKEY_TYPE(T) ->
+                    {ok, Entry};
                 {false, _} ->
                     ?log_error("Unsupported pkey cipher: ~p", [CipherInfo]),
                     {error, {invalid_pkey_cipher, CipherInfo}};
@@ -394,24 +396,41 @@ validate_cert_and_pkey({'Certificate', DerCert, not_encrypted},
                        PKey, PassphraseFun) ->
     case validate_pkey(PKey, PassphraseFun) of
         {ok, DerKey} ->
-            DecodedCert = public_key:pkix_decode_cert(DerCert, otp),
-
-            TBSCert = DecodedCert#'OTPCertificate'.tbsCertificate,
-            PublicKeyInfo = TBSCert#'OTPTBSCertificate'.subjectPublicKeyInfo,
-            PublicKey = PublicKeyInfo#'OTPSubjectPublicKeyInfo'.subjectPublicKey,
             DecodedKey = public_key:pem_entry_decode(DerKey, PassphraseFun()),
 
             Msg = <<"1234567890">>,
             Signature = public_key:sign(Msg, sha, DecodedKey),
-            case public_key:verify(Msg, sha, Signature, PublicKey) of
-                true ->
-                    ok;
-                false ->
-                    {error, cert_pkey_mismatch}
-            end;
+            verify_signature(Msg, sha, Signature, DerCert);
         Err ->
             Err
     end.
+
+verify_signature(Msg, DigestType, Signature, DerCert) ->
+    DecodedCert = public_key:pkix_decode_cert(DerCert, otp),
+
+    TBSCert = DecodedCert#'OTPCertificate'.tbsCertificate,
+    PublicKeyInfo = TBSCert#'OTPTBSCertificate'.subjectPublicKeyInfo,
+    Verify =
+        fun (PublicKey) ->
+            case public_key:verify(Msg, DigestType, Signature, PublicKey) of
+                true -> ok;
+                false -> {error, cert_pkey_mismatch}
+            end
+        end,
+    case PublicKeyInfo#'OTPSubjectPublicKeyInfo'.subjectPublicKey of
+        #'ECPoint'{} = ECP ->
+            case PublicKeyInfo#'OTPSubjectPublicKeyInfo'.algorithm of
+                #'PublicKeyAlgorithm'{parameters = Params} ->
+                    Verify({ECP, Params});
+                _ ->
+                    ?log_debug("Failed to extract EC parameters from "
+                               "PublicKeyInfo: ~p", [PublicKeyInfo]),
+                    {error, no_ec_parameters}
+            end;
+        PK ->
+            Verify(PK)
+    end.
+
 
 split_certs(PEMCerts) ->
     Begin = <<"-----BEGIN">>,
