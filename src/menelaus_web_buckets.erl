@@ -2010,7 +2010,9 @@ handle_local_random_key(Bucket, Req) ->
     do_handle_local_random_key(Bucket, CollectionUid, Req).
 
 do_handle_local_random_key(Bucket, CollectionUId, Req) ->
-    Nodes = ns_cluster_membership:service_active_nodes(kv),
+    {ok, BucketConfig} = ns_bucket:get_bucket(Bucket),
+    Nodes = ns_bucket:get_servers(BucketConfig),
+
     Args = [X || X <- [Bucket, CollectionUId],
                  X =/= undefined],
     {ok, Res} = run_on_node({ns_memcached, get_random_key, Args},
@@ -2020,11 +2022,13 @@ do_handle_local_random_key(Bucket, CollectionUId, Req) ->
             reply_json(Req, {[{ok, true},
                               {key, Key}]});
         {memcached_error, key_enoent, _} ->
-            ?log_debug("No keys were found for bucket ~p. Fallback to all docs approach.", [Bucket]),
+            ?log_debug("No keys were found for bucket ~p. "
+                       "Fallback to all docs approach.", [Bucket]),
             reply_json(Req, {[{ok, false},
                               {error, <<"fallback_to_all_docs">>}]}, 404);
         {memcached_error, Status, Msg} ->
-            ?log_error("Unable to retrieve random key for bucket ~p. Memcached returned error ~p. ~p",
+            ?log_error("Unable to retrieve random key for bucket ~p. "
+                       "Memcached returned error ~p. ~p",
                        [Bucket, Status, Msg]),
             reply_json(Req, {[{ok, false}]}, 404)
     end.
