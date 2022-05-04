@@ -20,7 +20,9 @@
 start_link() ->
     Options = [{name, ?MODULE},
                {connection_timeout, 30000},
-               {pool_size_per_dest, 10000}],
+               %% Use majority of the memcached "system" connection limit
+               %% while leaving some for non pool users.
+               {pool_size_per_dest, 4000}],
     ns_connection_pool:start_link(Options).
 
 take_socket(Options) ->
