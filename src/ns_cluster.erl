@@ -686,7 +686,7 @@ check_host_port_connectivity(Host, Port, AFamily) ->
                            "~p:~p", [Host, Port]),
                 {ok, inet:ntoa(IpAddr)}
             after
-                inet:close(Socket)
+                gen_tcp:close(Socket)
             end;
         {error, nxdomain} ->
             {error, {AFamily, nxdomain}};
