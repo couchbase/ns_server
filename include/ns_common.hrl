@@ -285,7 +285,6 @@
 -define(INTERNAL_CERT_EMAIL_DOMAIN, "internal.couchbase.com").
 
 -define(CPU_COUNT_VAR, "COUCHBASE_CPU_COUNT").
--define(CGROUPS_INFO_SIZE, 84).
 %% List of available tls versions:
 %% You should be able to simply update these macros to include or remove tls
 %% versions that we support or no longer support and a number of different
