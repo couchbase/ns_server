@@ -96,6 +96,10 @@
                      ?CMD_COLLECTIONS_GET_MANIFEST.
 
 
+report_counter(Function) ->
+    ns_server_stats:notify_counter({<<"memcached_cmd">>,
+                                    [{<<"cmd">>, Function}]}).
+
 %% A memcached client that speaks binary protocol.
 -spec cmd(mc_opcode(), port(), recv_callback(), any(),
           {#mc_header{}, #mc_entry{}}) ->
@@ -186,6 +190,7 @@ auth(Sock, {<<"PLAIN">>, {ForName, AuthName, undefined}}) ->
     auth(Sock, {<<"PLAIN">>, {ForName, AuthName, <<>>}});
 
 auth(Sock, {<<"PLAIN">>, {ForName, AuthName, AuthPswd}}) ->
+    report_counter(?FUNCTION_NAME),
     BinForName  = mc_binary:bin(ForName),
     BinAuthName = mc_binary:bin(AuthName),
     BinAuthPswd = mc_binary:bin(AuthPswd),
@@ -206,6 +211,7 @@ auth(_Sock, _UnknownMech) ->
 
 % -------------------------------------------------
 create_bucket(Sock, BucketName, Engine, Config, Timeout) ->
+    report_counter(?FUNCTION_NAME),
     case cmd(?CMD_CREATE_BUCKET, Sock, undefined, undefined,
              {#mc_header{},
               #mc_entry{key = BucketName,
@@ -218,6 +224,7 @@ create_bucket(Sock, BucketName, Engine, Config, Timeout) ->
 
 %% This can take an arbitrary period of time.
 delete_bucket(Sock, BucketName, Options) ->
+    report_counter(?FUNCTION_NAME),
     Force = proplists:get_bool(force, Options),
     Config = io_lib:format("force=~s", [Force]),
     case cmd(?CMD_DELETE_BUCKET, Sock, undefined, undefined,
@@ -230,6 +237,7 @@ delete_bucket(Sock, BucketName, Options) ->
     end.
 
 delete_vbucket(Sock, VBucket) ->
+    report_counter(?FUNCTION_NAME),
     case cmd(?CMD_DELETE_VBUCKET, Sock, undefined, undefined,
              construct_delete_vbucket_packet(VBucket),
              ?VB_DELETE_TIMEOUT) of
@@ -246,6 +254,7 @@ construct_delete_vbucket_packet(VBucket) ->
     {#mc_header{vbucket = VBucket}, #mc_entry{}}.
 
 sync_delete_vbucket(Sock, VBucket) ->
+    report_counter(?FUNCTION_NAME),
     case cmd(?CMD_DELETE_VBUCKET, Sock, undefined, undefined,
              {#mc_header{vbucket = VBucket}, #mc_entry{data = <<"async=0">>}},
              infinity) of
@@ -255,6 +264,7 @@ sync_delete_vbucket(Sock, VBucket) ->
     end.
 
 flush(Sock) ->
+    report_counter(?FUNCTION_NAME),
     case cmd(?FLUSH, Sock, undefined, undefined,
              {#mc_header{},
               #mc_entry{}}) of
@@ -275,6 +285,7 @@ hello_features(Features) ->
     [F || F <- Features, proplists:is_defined(F, FeaturesMap)].
 
 hello(Sock, AgentName, ClientFeatures) ->
+    report_counter(?FUNCTION_NAME),
     FeaturesMap = hello_features_map(),
     Features = [<<V:16>> || {F, V} <- FeaturesMap,
                             proplists:get_bool(F, ClientFeatures)],
@@ -306,6 +317,7 @@ vbucket_state_to_atom(_) ->
     unknown.
 
 refresh_isasl(Sock) ->
+    report_counter(?FUNCTION_NAME),
     case cmd(?CMD_ISASL_REFRESH, Sock, undefined, undefined, {#mc_header{}, #mc_entry{}}) of
         {ok, #mc_header{status=?SUCCESS}, _, _} ->
             ok;
@@ -313,6 +325,7 @@ refresh_isasl(Sock) ->
     end.
 
 noop(Sock) ->
+    report_counter(?FUNCTION_NAME),
     case cmd(?NOOP, Sock, undefined, undefined, {#mc_header{}, #mc_entry{}}) of
         {ok, #mc_header{status=?SUCCESS}, #mc_entry{}, _NCB} ->
             ok;
@@ -320,6 +333,7 @@ noop(Sock) ->
     end.
 
 select_bucket(Sock, BucketName) ->
+    report_counter(?FUNCTION_NAME),
     case cmd(?CMD_SELECT_BUCKET, Sock, undefined, undefined,
              {#mc_header{},
               #mc_entry{key = BucketName}}) of
@@ -345,6 +359,7 @@ engine_param_type_to_int(vbucket) ->
 -spec set_engine_param(port(), binary(), binary(),
                        flush | tap | checkpoint | dcp | vbucket) -> ok | mc_error().
 set_engine_param(Sock, Key, Value, Type) ->
+    report_counter(?FUNCTION_NAME),
     ParamType = engine_param_type_to_int(Type),
     Entry = #mc_entry{key = Key,
                       data = Value,
@@ -366,6 +381,7 @@ set_vbucket(Sock, VBucket, VBucketState) ->
     set_vbucket(Sock, VBucket, VBucketState, undefined).
 
 set_vbucket(Sock, VBucket, VBucketState, VBInfo) ->
+    report_counter(?FUNCTION_NAME),
     case cmd(?CMD_SET_VBUCKET, Sock, undefined, undefined,
              construct_set_vbucket_packet({VBucket, VBucketState, VBInfo})) of
         {ok, #mc_header{status=?SUCCESS}, _ME, _NCB} -> ok;
@@ -433,6 +449,7 @@ do_pipeline_send_recv(Sock, Opcode, Requests, Timeout) ->
     end.
 
 compact_vbucket(Sock, VBucket, PurgeBeforeTS, PurgeBeforeSeqNo, DropDeletes) ->
+    report_counter(?FUNCTION_NAME),
     DD = case DropDeletes of
              true ->
                  1;
@@ -452,6 +469,7 @@ stats(Sock) ->
     stats(Sock, <<>>, fun (K, V, Acc) -> [{K, V}|Acc] end, []).
 
 stats(Sock, Key, CB, CBData) ->
+    report_counter(?FUNCTION_NAME),
     case cmd(?STAT, Sock,
              fun (_MH, ME, CD) ->
                      CB(ME#mc_entry.key, ME#mc_entry.data, CD)
@@ -464,6 +482,7 @@ stats(Sock, Key, CB, CBData) ->
     end.
 
 get_meta(Sock, Key, VBucket, Identity) ->
+    report_counter(?FUNCTION_NAME),
     McHeader0 = #mc_header{vbucket = VBucket},
     McHeader =  ns_memcached:maybe_add_impersonate_user_frame_info(Identity,
                                                                    McHeader0),
@@ -485,6 +504,7 @@ get_meta(Sock, Key, VBucket, Identity) ->
     end.
 
 subdoc_multi_lookup(Sock, Key, VBucket, Paths, Options, Identity) ->
+    report_counter(?FUNCTION_NAME),
     {SubDocFlags, SubDocDocFlags} = parse_subdoc_flags(Options),
     Ext = <<SubDocDocFlags:8>>,
     Header0 = #mc_header{vbucket = VBucket},
@@ -560,6 +580,7 @@ rev_to_mcd_ext({SeqNo, <<CASPart:64, Exp:32, Flg:32>>}) ->
 
 
 do_update_with_rev(Sock, VBucket, Key, Value, Rev, CAS, OpCode) ->
+    report_counter(?FUNCTION_NAME),
     Ext = rev_to_mcd_ext(Rev),
     Hdr = #mc_header{vbucket = VBucket},
     Entry = #mc_entry{key = Key, data = Value, ext = Ext, cas = CAS},
@@ -572,6 +593,7 @@ do_update_with_rev(Sock, VBucket, Key, Value, Rev, CAS, OpCode) ->
     end.
 
 enable_traffic(Sock) ->
+    report_counter(?FUNCTION_NAME),
     case cmd(?CMD_ENABLE_TRAFFIC, Sock, undefined, undefined,
              {#mc_header{}, #mc_entry{}}) of
         {ok, #mc_header{status=?SUCCESS}, _, _} ->
@@ -581,6 +603,7 @@ enable_traffic(Sock) ->
     end.
 
 disable_traffic(Sock) ->
+    report_counter(?FUNCTION_NAME),
     case cmd(?CMD_DISABLE_TRAFFIC, Sock, undefined, undefined,
              {#mc_header{}, #mc_entry{}}) of
         {ok, #mc_header{status=?SUCCESS}, _, _} ->
@@ -739,6 +762,7 @@ process_error_response(#mc_header{status=Status}, #mc_entry{data=Msg}) ->
     {memcached_error, map_status(Status), Msg}.
 
 wait_for_seqno_persistence(Sock, VBucket, SeqNo) ->
+    report_counter(?FUNCTION_NAME),
     RV = cmd(?CMD_SEQNO_PERSISTENCE, Sock, undefined, undefined,
              {#mc_header{vbucket = VBucket},
               #mc_entry{key = <<"">>,
@@ -786,6 +810,7 @@ get_mass_dcp_docs_estimate(Sock, VBuckets) ->
           end || VB <- VBuckets]}.
 
 set_cluster_config(Sock, Bucket, Rev, RevEpoch0, Blob) ->
+    report_counter(?FUNCTION_NAME),
 
     %% The extra field towards memcached holds Rev and RevEpoch,
     %% which are already a part of the JSON Blob.
@@ -826,6 +851,7 @@ get_random_key(Sock, CollectionsUid) ->
     end.
 
 get_random_key(Sock, Header, Entry) ->
+    report_counter(?FUNCTION_NAME),
     RV = cmd(?CMD_GET_RANDOM_KEY, Sock, undefined, undefined,
              {Header, Entry},
              infinity),
@@ -837,6 +863,7 @@ get_random_key(Sock, Header, Entry) ->
     end.
 
 config_validate(Sock, Body) ->
+    report_counter(?FUNCTION_NAME),
     RV = cmd(?CMD_CONFIG_VALIDATE, Sock, undefined, undefined,
              {#mc_header{}, #mc_entry{data = Body}},
              infinity),
@@ -846,6 +873,7 @@ config_validate(Sock, Body) ->
     end.
 
 config_reload(Sock) ->
+    report_counter(?FUNCTION_NAME),
     RV = cmd(?CMD_CONFIG_RELOAD, Sock, undefined, undefined,
              {#mc_header{}, #mc_entry{}},
              infinity),
@@ -855,6 +883,7 @@ config_reload(Sock) ->
     end.
 
 audit_put(Sock, Code, Body) ->
+    report_counter(?FUNCTION_NAME),
     RV = cmd(?CMD_AUDIT_PUT, Sock, undefined, undefined,
              {#mc_header{}, #mc_entry{data = Body, ext = <<Code:32>>}},
              infinity),
@@ -864,6 +893,7 @@ audit_put(Sock, Code, Body) ->
     end.
 
 audit_config_reload(Sock) ->
+    report_counter(?FUNCTION_NAME),
     RV = cmd(?CMD_AUDIT_CONFIG_RELOAD, Sock, undefined, undefined,
              {#mc_header{}, #mc_entry{}},
              infinity),
@@ -873,6 +903,7 @@ audit_config_reload(Sock) ->
     end.
 
 refresh_rbac(Sock) ->
+    report_counter(?FUNCTION_NAME),
     RV = cmd(?CMD_RBAC_REFRESH, Sock, undefined, undefined, {#mc_header{}, #mc_entry{}}),
     case process_error_response(RV) of
         {memcached_error, success, _} -> ok;
@@ -888,6 +919,7 @@ unpack_failover_log(Body) ->
     unpack_failover_log_loop(Body, []).
 
 get_failover_log(Sock, VB) ->
+    report_counter(?FUNCTION_NAME),
     case cmd(?CMD_GET_FAILOVER_LOG, Sock, undefined, undefined,
              {#mc_header{vbucket = VB}, #mc_entry{}}) of
         {ok, #mc_header{status = ?SUCCESS}, ME, _NCB} ->
@@ -897,6 +929,7 @@ get_failover_log(Sock, VB) ->
     end.
 
 set_collections_manifest(Sock, Blob) ->
+    report_counter(?FUNCTION_NAME),
     RV = cmd(?CMD_COLLECTIONS_SET_MANIFEST, Sock, undefined, undefined,
              {#mc_header{}, #mc_entry{data = Blob}},
              infinity),
@@ -908,6 +941,7 @@ set_collections_manifest(Sock, Blob) ->
     end.
 
 get_collections_manifest(Sock) ->
+    report_counter(?FUNCTION_NAME),
     case cmd(?CMD_COLLECTIONS_GET_MANIFEST, Sock, undefined, undefined,
              {#mc_header{}, #mc_entry{}}) of
         {ok, #mc_header{status = ?SUCCESS}, ME, _NCB} ->
@@ -917,6 +951,7 @@ get_collections_manifest(Sock) ->
     end.
 
 update_user_permissions(Sock, RBACJson) ->
+    report_counter(?FUNCTION_NAME),
     Data = ejson:encode(RBACJson),
     case cmd(?MC_UPDATE_USER_PERMISSIONS, Sock, undefined, undefined,
              {#mc_header{}, #mc_entry{data = Data}}) of
@@ -925,6 +960,7 @@ update_user_permissions(Sock, RBACJson) ->
     end.
 
 set_tls_config(Sock, TLSConfigJSON) ->
+    report_counter(?FUNCTION_NAME),
     Data = ejson:encode(TLSConfigJSON),
     case cmd(?CMD_IFCONFIG, Sock, undefined, undefined,
              {#mc_header{}, #mc_entry{key = <<"tls">>, data = Data}}) of
