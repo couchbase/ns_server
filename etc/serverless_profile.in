@@ -1,5 +1,5 @@
 {name, "serverless"}.
-%% {enable_system_scope, true}.
+{enable_system_scope, true}.
 {allow_variable_num_vbuckets, true}.
 
 %% Example service keys %%

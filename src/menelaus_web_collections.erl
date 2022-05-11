@@ -151,8 +151,9 @@ get_scope_limit_validators(Type) ->
 
 scope_validators(default_not_allowed) ->
     scope_validators([]);
-scope_validators(default_allowed) ->
-    scope_validators(["_default"]);
+scope_validators(special_allowed) ->
+    scope_validators(["_default", "_system"] ++
+                     collections:system_collections());
 scope_validators(Exceptions) ->
     [validator:required(name, _),
      validator:string(name, _),
@@ -238,11 +239,11 @@ validate_scopes(Name, State) ->
       scope_limit_validators(decoded) ++
           [validate_collections(collections, _),
            check_duplicates(collections, _) |
-           scope_validators(default_allowed)],
+           scope_validators(special_allowed)],
       State).
 
 validate_collections(Name, State) ->
-    validator:json_array(Name, collection_validators(default_allowed), State).
+    validator:json_array(Name, collection_validators(special_allowed), State).
 
 handle_ensure_manifest(Bucket, Uid, Req) ->
     assert_api_available(Bucket),

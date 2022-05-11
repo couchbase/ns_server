@@ -1179,6 +1179,18 @@ external_auth_polling_interval() ->
 
 
 -ifdef(TEST).
+setup_meck() ->
+    meck:new(cluster_compat_mode, [passthrough]),
+    meck:expect(cluster_compat_mode, is_cluster_elixir,
+                fun () -> true end),
+    meck:new(ns_config, [passthrough]),
+    meck:expect(ns_config, search_node_with_default,
+                fun (_, Default) -> Default end).
+
+teardown_meck() ->
+    meck:unload(cluster_compat_mode),
+    meck:unload(ns_config).
+
 filter_out_invalid_roles_test() ->
     Roles = [{role1, [{"bucket1", <<"id1">>}]},
              {role2, [{"bucket2", <<"id2">>}]}],
@@ -1716,7 +1728,10 @@ produce_roles_by_permission_test_() ->
                            [[any]]),
             {[{bucket, "wrong"}, data, docs], insert})}]}.
 
+
 params_version_test() ->
+    setup_meck(),
+
     Test = ?cut(params_version(ns_bucket:toy_buckets(_))),
     Update = ?cut(lists:keyreplace("test", 1, toy_buckets_props(),
                                    {"test", _})),
@@ -1728,7 +1743,9 @@ params_version_test() ->
                             {collections, toy_manifest()}])),
     ?assertNotEqual(Version1, Version2),
     ?assertNotEqual(Version1, Version3),
-    ?assertNotEqual(Version1, Version4).
+    ?assertNotEqual(Version1, Version4),
+
+    teardown_meck().
 
 validate_roles(Roles) ->
     lists:all(
@@ -1758,9 +1775,13 @@ validate_roles(Roles) ->
       end, Roles).
 
 roles_format_test() ->
+    setup_meck(),
+
     ?assert(validate_roles(roles())),
     ?assert(validate_roles(menelaus_old_roles:roles_pre_71())),
     ?assert(validate_roles(menelaus_old_roles:roles_pre_70())),
-    ?assert(validate_roles(menelaus_old_roles:roles_pre_66())).
+    ?assert(validate_roles(menelaus_old_roles:roles_pre_66())),
+
+    teardown_meck().
 
 -endif.

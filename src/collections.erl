@@ -34,6 +34,7 @@
          create_collection/4,
          drop_scope/2,
          drop_collection/3,
+         system_collections/0,
          bump_epoch/1,
          wait_for_manifest_uid/5,
          convert_uid_from_memcached/1,
@@ -100,6 +101,14 @@ change(Key) ->
     key_match(Key) =/= false.
 
 default_manifest() ->
+    case is_system_scope_enabled() of
+        false ->
+            manifest_without_system_scope();
+        true ->
+            manifest_with_system_scope()
+    end.
+
+manifest_without_system_scope() ->
     [{uid, 0},
      {next_uid, 1},
      {next_scope_uid, 8},
@@ -112,6 +121,41 @@ default_manifest() ->
          {collections,
           [{"_default",
             [{uid, 0}]}]}]}]}].
+
+system_collections() ->
+    ["_eventing", "_mobile", "_query"].
+
+manifest_with_system_scope() ->
+    {NextId, Collections} =
+        lists:foldl(
+          fun (Name, {Id, Cols}) ->
+                  {Id + 1, [{Name, [{uid, Id}]}] ++ Cols}
+          end, {8, []}, system_collections()),
+
+    [{uid, 0},
+     {next_uid, 1},
+     {next_scope_uid, 9},
+     {next_coll_uid, NextId},
+     {num_scopes, 1},
+     {num_collections, length(system_collections())},
+     {scopes,
+      [{"_default",
+        [{uid, 0},
+         {collections,
+          [{"_default",
+            [{uid, 0}]}]}]},
+       {"_system",
+        [{uid, 8},
+         {collections, Collections}]}]}].
+
+is_system_scope_enabled() ->
+    case cluster_compat_mode:is_cluster_elixir() of
+        false ->
+            false;
+        true ->
+            Profile = ns_config:search_node_with_default(?CONFIG_PROFILE, []),
+            proplists:get_bool(enable_system_scope, Profile)
+    end.
 
 default_kvs(Buckets, Nodes) ->
     lists:flatmap(
