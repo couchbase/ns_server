@@ -86,6 +86,8 @@ get_replication_features() ->
                   %% versions are no longer supported.
                   {del_times, true},
                   {ssl, misc:should_cluster_data_be_encrypted()},
+                  %% Not used directly but we need it to make sure we restart
+                  %% replications when client_cert_auth_state change
                   {cert_auth, CertAuth},
                   %% Unconditionally setting 'set_consumer_name' and
                   %% 'json' to true as features are negotiated starting

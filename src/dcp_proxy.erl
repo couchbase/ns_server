@@ -252,14 +252,9 @@ connect(Type, ConnName, Node, Bucket, RepFeatures) ->
 
     {ok, Sock} = connect_inner(Cfg, Node, RepFeatures),
 
-    case proplists:get_bool(ssl, RepFeatures) andalso
-         proplists:get_bool(cert_auth, RepFeatures) andalso Node =/= node() of
-        true -> ok;
-        false ->
-            ok = mc_client_binary:auth(Sock, {<<"PLAIN">>,
-                                              {list_to_binary(Username),
-                                               list_to_binary(Password)}})
-    end,
+    ok = mc_client_binary:auth(Sock, {<<"PLAIN">>,
+                                      {list_to_binary(Username),
+                                       list_to_binary(Password)}}),
     ok = mc_client_binary:select_bucket(Sock, Bucket),
 
     %% Negotiate XAttr and Snappy features if they are to be enabled.
