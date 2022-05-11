@@ -94,7 +94,7 @@ upgrade_to(?VERSION_70, UpgradeTxn, Config) ->
         compaction_daemon:chronicle_upgrade_to_71(_, Config)])};
 
 upgrade_to(?VERSION_71, UpgradeTxn, _Config) ->
-    {?VERSION_MORPHEUS,
+    {?VERSION_ELIXIR,
      functools:chain(
        UpgradeTxn,
-       [ns_bucket:chronicle_upgrade_to_Morpheus(_)])}.
+       [ns_bucket:chronicle_upgrade_to_elixir(_)])}.

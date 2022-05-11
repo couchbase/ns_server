@@ -312,7 +312,7 @@ parse_and_validate_extra_index_settings(Params) ->
 parse_validate_purge_interval(Params, ephemeral) ->
     do_parse_validate_purge_interval(Params, 0.0007);
 parse_validate_purge_interval(Params, _) ->
-    MinInterval = case cluster_compat_mode:is_cluster_MORPHEUS() of
+    MinInterval = case cluster_compat_mode:is_cluster_elixir() of
                       true ->
                           %% 14.4 minutes
                           0.01;

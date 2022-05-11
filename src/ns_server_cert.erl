@@ -1298,7 +1298,7 @@ get_warnings() ->
     Nodes = ns_node_disco:nodes_wanted(Config),
     TrustedCAs = trusted_CAs(pem),
     Is71 = cluster_compat_mode:is_cluster_71(),
-    IsMorpheus = cluster_compat_mode:is_cluster_MORPHEUS(),
+    IsElixir = cluster_compat_mode:is_cluster_elixir(),
     NodeWarnings =
         lists:flatmap(
           fun (Node) ->
@@ -1343,7 +1343,7 @@ get_warnings() ->
                                       _ -> false
                                   end,
                               UnusedClient =
-                                  case ClusterUsesClientCert and IsMorpheus of
+                                  case ClusterUsesClientCert and IsElixir of
                                       true ->
                                           case filter_nodes_by_ca(
                                                  client_cert, Nodes, CAPem) of

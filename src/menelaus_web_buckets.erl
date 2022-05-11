@@ -326,7 +326,7 @@ build_pitr_dynamic_bucket_info(BucketConfig) ->
             %% memcached buckets don't support pitr.
             [];
         _ ->
-            case cluster_compat_mode:is_cluster_MORPHEUS() of
+            case cluster_compat_mode:is_cluster_elixir() of
                 true ->
                     [{pitrEnabled,
                       ns_bucket:pitr_enabled(BucketConfig)},
@@ -945,7 +945,7 @@ validate_memcached_bucket_params(CommonParams, Params, IsNew, BucketConfig) ->
 
 validate_membase_bucket_params(CommonParams, Params,
                                IsNew, BucketConfig, Version, IsEnterprise) ->
-    AllowPitr = cluster_compat_mode:is_version_MORPHEUS(Version),
+    AllowPitr = cluster_compat_mode:is_version_elixir(Version),
     ReplicasNumResult = validate_replicas_number(Params, IsNew),
     BucketParams =
         [{ok, bucketType, membase},
@@ -1245,7 +1245,7 @@ param_not_supported_in_ce_error(Param) ->
 pitr_not_supported_error(Param) ->
     {error, Param,
      <<"Point in time recovery is not supported until cluster is fully "
-        "Morpheus">>}.
+        "Elixir">>}.
 
 parse_validate_pitr_param_not_supported(Key, Params) ->
     case proplists:is_defined(Key, Params) of

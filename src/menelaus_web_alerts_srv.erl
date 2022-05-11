@@ -27,7 +27,7 @@
          terminate/2, code_change/3, handle_settings_alerts_limits_post/1,
          handle_settings_alerts_limits_get/1]).
 
--export([alert_keys/0, config_upgrade_to_70/1, config_upgrade_to_MORPHEUS/1]).
+-export([alert_keys/0, config_upgrade_to_70/1, config_upgrade_to_elixir/1]).
 
 %% @doc Hold client state for any alerts that need to be shown in
 %% the browser, is used by menelaus_web to piggy back for a transport
@@ -295,7 +295,7 @@ config_upgrade_to_70(Config) ->
                add_proplist_kv(pop_up_alerts, alert_keys(), _)])
     end.
 
-config_upgrade_to_MORPHEUS(Config) ->
+config_upgrade_to_elixir(Config) ->
     case ns_config:search(Config, email_alerts) of
         false ->
             [];

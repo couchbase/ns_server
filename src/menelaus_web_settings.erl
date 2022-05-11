@@ -374,7 +374,7 @@ get_cluster_encryption(Level) ->
     ValidLevel = lists:member(Level, SupportedLevels),
     IsMandatory = (ns_ssl_services_setup:client_cert_auth_state() =:=
                        "mandatory"),
-    IsMorpheus = cluster_compat_mode:is_cluster_MORPHEUS(),
+    IsElixir = cluster_compat_mode:is_cluster_elixir(),
     LevelAtom = list_to_atom(Level),
     IsStrictPossible = cluster_compat_mode:is_cluster_70(),
     ClientCertValidation = menelaus_web_cert:validate_client_cert_CAs(
@@ -393,7 +393,7 @@ get_cluster_encryption(Level) ->
                               [SupportedLevels]),
             {error, lists:flatten(M)};
         IsMandatory andalso (Level =:= "all" orelse Level =:= "strict") andalso
-        not IsMorpheus ->
+        not IsElixir ->
             M = "Can't set cluster encryption level to '" ++ Level ++
                 "' when client certificate authentication state is set "
                 "to 'mandatory'.",

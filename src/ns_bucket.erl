@@ -111,7 +111,7 @@
          config_upgrade_to_66/1,
          upgrade_to_chronicle/2,
          chronicle_upgrade_to_71/1,
-         chronicle_upgrade_to_Morpheus/1,
+         chronicle_upgrade_to_elixir/1,
          extract_bucket_props/1,
          build_bucket_props_json/1,
          build_compaction_settings_json/1]).
@@ -1494,7 +1494,7 @@ chronicle_upgrade_to_71(ChronicleTxn) ->
     chronicle_upgrade_bucket(chronicle_upgrade_bucket_to_71(_, _),
                              BucketNames, ChronicleTxn).
 
-chronicle_upgrade_bucket_to_Morpheus(BucketName, ChronicleTxn) ->
+chronicle_upgrade_bucket_to_elixir(BucketName, ChronicleTxn) ->
     PropsKey = sub_key(BucketName, props),
     AddProps = [{pitr_enabled, false},
                 {pitr_granularity,
@@ -1506,9 +1506,9 @@ chronicle_upgrade_bucket_to_Morpheus(BucketName, ChronicleTxn) ->
                                            BucketConfig),
     chronicle_upgrade:set_key(PropsKey, NewBucketConfig, ChronicleTxn).
 
-chronicle_upgrade_to_Morpheus(ChronicleTxn) ->
+chronicle_upgrade_to_elixir(ChronicleTxn) ->
     {ok, BucketNames} = chronicle_upgrade:get_key(root(), ChronicleTxn),
-    chronicle_upgrade_bucket(chronicle_upgrade_bucket_to_Morpheus(_, _),
+    chronicle_upgrade_bucket(chronicle_upgrade_bucket_to_elixir(_, _),
                              BucketNames, ChronicleTxn).
 
 %% returns proplist with only props useful for ns_bucket

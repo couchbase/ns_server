@@ -293,7 +293,7 @@ build_bucket_capabilities(BucketConfig) ->
                      {'subdoc.ReviveDocument',
                       cluster_compat_mode:is_cluster_71()},
                      {preserveExpiry,
-                      cluster_compat_mode:is_cluster_MORPHEUS()}],
+                      cluster_compat_mode:is_cluster_elixir()}],
 
                 [C || {C, true} <- Conditional] ++
                     [dcp, cbhello, touch, cccp, xdcrCheckpointing, nodesExt,

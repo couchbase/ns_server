@@ -17,7 +17,7 @@
          get_failover_on_disk_issues/1,
          config_check_can_abort_rebalance/0,
          default_config/1,
-         config_upgrade_to_MORPHEUS/1]).
+         config_upgrade_to_elixir/1]).
 
 -import(menelaus_util,
         [reply/2,
@@ -65,7 +65,7 @@ max_events_allowed() ->
             3
     end.
 
-config_upgrade_to_MORPHEUS(Config) ->
+config_upgrade_to_elixir(Config) ->
     [{set, auto_failover_cfg,
       proplists:delete(can_abort_rebalance, auto_failover:get_cfg(Config))}].
 
@@ -185,7 +185,7 @@ parse_validate_extras_inner(Args, CurrRV, Config) ->
     end.
 
 parse_validate_can_abort_rebalance(Args, CurrRv) ->
-    case cluster_compat_mode:is_cluster_MORPHEUS() of
+    case cluster_compat_mode:is_cluster_elixir() of
         false ->
             parse_validate_can_abort_rebalance_inner(Args, CurrRv);
         true ->
@@ -290,7 +290,7 @@ boolean_err_msg(Key) ->
 config_check_can_abort_rebalance() ->
     proplists:get_value(?CAN_ABORT_REBALANCE_CONFIG_KEY,
                         auto_failover:get_cfg(),
-                        cluster_compat_mode:is_cluster_MORPHEUS()).
+                        cluster_compat_mode:is_cluster_elixir()).
 
 get_extra_settings(Config) ->
     case cluster_compat_mode:is_enterprise() of
@@ -303,7 +303,7 @@ get_extra_settings(Config) ->
                [{canAbortRebalance,
                  proplists:get_value(
                    ?CAN_ABORT_REBALANCE_CONFIG_KEY, Config)} ||
-                   not cluster_compat_mode:is_cluster_MORPHEUS()],
+                   not cluster_compat_mode:is_cluster_elixir()],
                [{failoverServerGroup,
                  proplists:get_value(?FAILOVER_SERVER_GROUP_CONFIG_KEY,
                                      Config)} ||
@@ -319,7 +319,7 @@ disable_extras(Config) ->
             lists:flatten(
               [disable_failover_on_disk_issues(CurrTP),
                [{?CAN_ABORT_REBALANCE_CONFIG_KEY, false} ||
-                   not cluster_compat_mode:is_cluster_MORPHEUS()],
+                   not cluster_compat_mode:is_cluster_elixir()],
                [{?FAILOVER_SERVER_GROUP_CONFIG_KEY, false} ||
                    not cluster_compat_mode:is_cluster_71()]]);
         false ->
