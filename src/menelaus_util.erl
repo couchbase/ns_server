@@ -685,12 +685,18 @@ choose_node_consistently(Req, Nodes) ->
     lists:nth(N, Nodes).
 
 proxy_req({Scheme, Host, Port, AFamily}, Path, Headers, Timeout,
-          RespHeaderFilterFun, Req) ->
+          RespHeaderFilterFun, Req) when is_atom(Scheme) ->
     Method = mochiweb_request:get(method, Req),
     Body = get_body(Req),
+    TLSOpts = case Scheme of
+                  https ->
+                      ns_ssl_services_setup:tls_client_opts(ns_config:latest());
+                  http ->
+                      []
+              end,
     Options = [{partial_download, [{window_size, ?WINDOW_SIZE},
                                    {part_size, ?PART_SIZE}]},
-               {connect_options, [AFamily]}],
+               {connect_options, [AFamily | TLSOpts]}],
     Resp = lhttpc:request(Host, Port, Scheme =:= https, Path, Method, Headers,
                           Body, Timeout, Options),
     handle_resp(Resp, RespHeaderFilterFun, Req).
