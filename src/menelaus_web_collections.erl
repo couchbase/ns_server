@@ -383,6 +383,11 @@ get_err_code_msg(uid_mismatch) ->
 get_err_code_msg({cannot_create_default_collection, ScopeName}) ->
     {"Cannot create _default collection in scope ~p. Creation of _default "
      "collection is not allowed.", [ScopeName], 400};
+get_err_code_msg({cannot_create_collection_in_system_scope}) ->
+    {"cannot create collection in '_system' scope", 400};
+get_err_code_msg({cannot_drop_system_collection, Scope, Collection}) ->
+    {"Cannot drop system collection ~p for scope ~p",
+     [Collection, Scope], 400};
 get_err_code_msg({cannot_modify_collection, Scope, Collection}) ->
     {"Cannot modify collection properties for Scope ~p Collection ~p",
      [Scope, Collection], 400};
@@ -398,6 +403,8 @@ get_err_code_msg({scope_not_found, ScopeName}) ->
     {"Scope with name ~p is not found", [ScopeName], 404};
 get_err_code_msg(cannot_drop_default_scope) ->
     {"Deleting _default scope is not allowed", 400};
+get_err_code_msg(cannot_drop_system_scope) ->
+    {"Deleting _system scope is not allowed", 400};
 get_err_code_msg({scope_limit, ScopeName,
                   max_number_exceeded, num_collections}) ->
     {{global_key, <<"limits">>},
