@@ -1122,10 +1122,38 @@ invalid_client_cert_nodes(DataEncryption, ClientCertAuth,
     case ClientCertIsUsed of
         true ->
             Nodes = ns_node_disco:nodes_wanted(),
-            filter_out_trusted_client_cert_CAs(Nodes);
+            NodesWithUntrustedCA = filter_out_trusted_client_cert_CAs(Nodes),
+            NodesOldCA = filter_out_nodes_where_CA_has_no_server_auth(Nodes),
+            #{untrusted_ca => NodesWithUntrustedCA,
+              ca_with_server_auth_EKU => NodesOldCA};
         false ->
-            []
+            #{untrusted_ca => [],
+              ca_with_server_auth_EKU => []}
     end.
+
+cert_contains_server_auth_EKU(Pem) ->
+    [{'Certificate', Der, not_encrypted}] = public_key:pem_decode(Pem),
+    DecodedCert = public_key:pkix_decode_cert(Der, otp),
+    TBSCert = DecodedCert#'OTPCertificate'.tbsCertificate,
+    Extensions = TBSCert#'OTPTBSCertificate'.extensions,
+    lists:any(
+      fun (#'Extension'{extnID = ?'id-ce-extKeyUsage', extnValue = L})
+                                                            when is_list(L) ->
+              lists:member(?'id-kp-serverAuth', L);
+          (_) ->
+              false
+      end, Extensions).
+
+filter_out_nodes_where_CA_has_no_server_auth(Nodes) ->
+    IsOldCA = cert_contains_server_auth_EKU(self_generated_ca()),
+    lists:filter(
+      fun (N) ->
+          CProps = ns_config:read_key_fast({node, N, client_cert}, []),
+          case proplists:get_value(type, CProps) of
+              generated when IsOldCA -> true;
+              _ -> false
+          end
+      end, Nodes).
 
 filter_out_trusted_client_cert_CAs(Nodes) ->
     DecodedTrustedCAs = [public_key:pem_decode(CA) || CA <- trusted_CAs(pem)],

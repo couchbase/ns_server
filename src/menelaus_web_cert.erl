@@ -805,13 +805,27 @@ validate_client_cert_CAs(ClientCertAuth) ->
 
 validate_client_cert_CAs(DataEncryption, ClientCertAuth,
                          N2NEncryption, N2NClientCerts) ->
+    FormatNodes =
+        fun (Ns) ->
+            Hosts = [H || N <- Ns, {_, H} <- [misc:node_name_host(N)]],
+            lists:join(", ", Hosts)
+        end,
+
     case ns_server_cert:invalid_client_cert_nodes(
            DataEncryption, ClientCertAuth, N2NEncryption, N2NClientCerts) of
-        [] -> ok;
-        BadClientCertNodes ->
-            Hosts = [H || N <- BadClientCertNodes,
-                          {_, H} <- [misc:node_name_host(N)]],
-            HostsStr = lists:join(", ", Hosts),
+        #{untrusted_ca := [], ca_with_server_auth_EKU := []} -> ok;
+        #{untrusted_ca := [], ca_with_server_auth_EKU := Nodes} ->
+            HostsStr = FormatNodes(Nodes),
+            Msg = io_lib:format(
+                    "Auto-generated client certificates for the following "
+                    "nodes were issued by a deprecated internal CA: ~s. Please "
+                    "either upload custom client certificates for those nodes, "
+                    "or regenerate self-signed certificates by using "
+                    "POST /controller/regenerateCertificate?"
+                    "dropUploadedCertificates=false", [HostsStr]),
+            {error, iolist_to_binary(Msg)};
+        #{untrusted_ca := Nodes, ca_with_server_auth_EKU := _} ->
+            HostsStr = FormatNodes(Nodes),
             Msg = io_lib:format("Client certificates for the following nodes "
                                 "are issued by untrusted CA's: ~s", [HostsStr]),
             {error, iolist_to_binary(Msg)}
