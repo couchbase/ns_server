@@ -68,7 +68,8 @@
             name = undefined,
             ensure_config_timer = undefined,
             connections = [] :: [#con{}],
-            is_pkey_encrypted = false}).
+            is_pkey_encrypted = #{client => false, server => false},
+            client_passphrase_updated = false}).
 
 -define(family, ?MODULE).
 -define(proto, ?MODULE).
@@ -162,7 +163,7 @@ setup(Node, Type, MyNode, LongOrShortNames, SetupTime) ->
             %% dist modules expect self() to be net_kernel
             with_registered_connection(
               ?cut(Mod:setup(Node, Type, MyNode, LongOrShortNames, SetupTime)),
-              Mod)
+              Mod, Node)
     catch
         _:Error ->
             spawn_opt(
@@ -243,10 +244,14 @@ init([]) ->
     Config = read_config(config_path(), true),
     info_msg("Starting cb_dist with config ~p", [Config]),
     process_flag(trap_exit,true),
-    {ok, #s{config = Config, is_pkey_encrypted = is_pkey_encrypted()}}.
+    PKeysEncrypted = #{client => is_pkey_encrypted(client),
+                       server => is_pkey_encrypted(server)},
+    {ok, #s{config = Config, is_pkey_encrypted = PKeysEncrypted}}.
 
 handle_call({listen, Name}, _From, State) ->
-    State1 = State#s{name = Name},
+             %% We have name now, so we can try extracting client pkey
+             %% passphrase if we need it
+    State1 = maybe_update_client_pkey_passphrase(State#s{name = Name}),
 
     Protos0 = get_protos(State1),
 
@@ -334,12 +339,14 @@ handle_call(status, _From, #s{listeners = Listeners,
                               acceptors = Acceptors,
                               name = Name,
                               config = Config,
-                              connections = Connections} = State) ->
+                              connections = Connections,
+                              is_pkey_encrypted = IsPKeyEncrypted} = State) ->
     {reply, [{name, Name},
              {config, Config},
              {listeners, Listeners},
              {acceptors, Acceptors},
-             {connections, Connections}], State};
+             {connections, Connections},
+             {is_pkey_encrypted, IsPKeyEncrypted}], State};
 
 handle_call({update_config, Props}, _From, #s{config = Cfg} = State) ->
     case store_config(import_props_to_config(Props, Cfg)) of
@@ -347,13 +354,28 @@ handle_call({update_config, Props}, _From, #s{config = Cfg} = State) ->
         {error, _} = Error -> {reply, Error, State}
     end;
 
-handle_call({register_connection, Mod}, _From,
-            #s{connections = Connections} = State) ->
-    maybe_update_pkey_passphrase(client, Mod, State),
-    Ref = make_ref(),
-    Con = #con{ref = Ref, mod = Mod, pid = undefined},
-    info_msg("Added connection ~p", [Con]),
-    {reply, Ref, State#s{connections = [Con | Connections]}};
+handle_call({register_outgoing_connection, Mod}, _From,
+            #s{connections = Connections,
+               is_pkey_encrypted = #{client := IsPKeyEncrypted}} = State) ->
+    {CanAddConnection, NewState} =
+        case proto_to_encryption(Mod) andalso IsPKeyEncrypted of
+            true ->
+                S = maybe_update_client_pkey_passphrase(State),
+                {S#s.client_passphrase_updated, S};
+            false ->
+                {true, State}
+        end,
+    case CanAddConnection of
+        true ->
+            Ref = make_ref(),
+            Con = #con{ref = Ref, mod = Mod, pid = undefined},
+            info_msg("Added connection ~p", [Con]),
+            {reply, {ok, Ref}, NewState#s{connections = [Con | Connections]}};
+        false ->
+            info_msg("Can't register new connection because there is no pkey "
+                     "pass", []),
+            {reply, {error, no_pkey_passphrase}, NewState}
+    end;
 
 handle_call({update_connection_pid, Ref, Pid}, _From, State) ->
     {reply, ok, update_connection_pid(Ref, Pid, State)};
@@ -388,10 +410,12 @@ handle_call(restart_tls, _From, #s{connections = Connections,
       ssl_pem_cache:name(dist),
       {unconditionally_clear_pem_cache, self()},
       infinity),
-
+    PKeysEncrypted = #{client => is_pkey_encrypted(client),
+                       server => is_pkey_encrypted(server)},
     {reply, ok, ensure_config(NewState#s{
                                 connections = NewConnections,
-                                is_pkey_encrypted = is_pkey_encrypted()})};
+                                is_pkey_encrypted = PKeysEncrypted,
+                                client_passphrase_updated = false})};
 
 handle_call(_Request, _From, State) ->
     {noreply, State}.
@@ -532,7 +556,7 @@ start_acceptor({_AddrType, Mod} = Listener,
             State;
         {LSocket, _, _} ->
             maybe_update_client_cert_verification(Mod, State),
-            case maybe_update_pkey_passphrase(server, Mod, State) of
+            case maybe_update_server_pkey_passphrase(Mod, State) of
                 true ->
                     try
                         APid = Mod:accept(LSocket),
@@ -576,20 +600,43 @@ maybe_update_client_cert_verification(Mod, #s{config = Cfg}) ->
             ok
     end.
 
-maybe_update_pkey_passphrase(Type, Mod,
-                             #s{is_pkey_encrypted = IsPKeyEncrypted}) ->
-    case proto_to_encryption(Mod) andalso IsPKeyEncrypted of
+maybe_update_client_pkey_passphrase(
+    #s{client_passphrase_updated = true} = State) ->
+    State;
+maybe_update_client_pkey_passphrase(
+    #s{client_passphrase_updated = false} = State) ->
+    Encr = lists:any(fun proto_to_encryption/1,
+                     [M || {_, M} <- get_required_protos(State)]),
+    case Encr of
         true ->
-            case extract_pkey_passphrase() of
+            case maybe_update_pkey_passphrase(client, State) of
+                true -> State#s{client_passphrase_updated = true};
+                false -> start_ensure_config_timer(State)
+            end;
+        false ->
+            State
+    end.
+
+maybe_update_server_pkey_passphrase(Mod, State) ->
+    case proto_to_encryption(Mod) of
+        true -> maybe_update_pkey_passphrase(server, State);
+        false -> true
+    end.
+
+maybe_update_pkey_passphrase(Type, #s{is_pkey_encrypted = IsPKeyEncrypted}) ->
+    case IsPKeyEncrypted of
+        #{Type := true} ->
+            case extract_pkey_passphrase(Type) of
                 {ok, PassFun} ->
                     Pass = PassFun(),
                     case set_dist_tls_opts(Type, [{password, Pass}]) of
                         ok ->
-                            info_msg("Updated ssl_dist_opts (password)", []),
+                            info_msg("Updated ~p ssl_dist_opts (password)",
+                                     [Type]),
                             case Pass of
                                 undefined ->
-                                    error_msg("Extracted pkey passphrase is "
-                                              "undefined", []),
+                                    error_msg("Extracted ~p pkey passphrase is "
+                                              "undefined", [Type]),
                                     false;
                                 _ ->
                                     true
@@ -600,7 +647,7 @@ maybe_update_pkey_passphrase(Type, Mod,
                 {error, not_available} ->
                     false
             end;
-        false ->
+        _ ->
             true
     end.
 
@@ -955,7 +1002,8 @@ ensure_config(#s{listeners = Listeners} = State) ->
                          State, ToRemove),
     State3 = lists:foldl(fun (P, S) -> add_proto(P, S) end,
                          State2, ToAdd),
-    State3.
+    maybe_update_client_pkey_passphrase(State3).
+
 
 get_protos(#s{name = Name, config = Config}) ->
     case cb_epmd:is_local_node(Name) of
@@ -1128,18 +1176,32 @@ proto2netsettings(inet6_tcp_dist) -> {inet6, false};
 proto2netsettings(inet_tls_dist) -> {inet, true};
 proto2netsettings(inet6_tls_dist) -> {inet6, true}.
 
-with_registered_connection(Fun, Module) ->
-    Ref = gen_server:call(?MODULE, {register_connection, Module}, infinity),
-    try Fun() of
-        Pid ->
-            gen_server:call(?MODULE, {update_connection_pid, Ref, Pid},
-                            infinity),
-            Pid
-    catch
-        C:E:ST ->
-            gen_server:call(?MODULE, {update_connection_pid, Ref, undefined},
-                            infinity),
-            erlang:raise(C, E, ST)
+with_registered_connection(Fun, Module, Node) ->
+    RegRes = gen_server:call(?MODULE,
+                             {register_outgoing_connection, Module}, infinity),
+    case RegRes of
+        {ok, Ref} ->
+            try Fun() of
+                Pid ->
+                    gen_server:call(?MODULE, {update_connection_pid, Ref, Pid},
+                                    infinity),
+                    Pid
+            catch
+                C:E:ST ->
+                    gen_server:call(?MODULE,
+                                    {update_connection_pid, Ref, undefined},
+                                    infinity),
+                    erlang:raise(C, E, ST)
+            end;
+        {error, no_pkey_passphrase} ->
+            %% This might happen once during node start if some process attempts
+            %% to connect to other nodes before ns_ssl_services_setup start
+            spawn_opt(
+              fun () ->
+                  error_msg("** Connection to ~p failed. Client private key "
+                            "passphrase is missing or no loaded yet ", [Node]),
+                  ?shutdown2(Node, no_pkey_passphrase)
+              end, [link])
     end.
 
 update_connection_pid(Ref, Pid, #s{connections = Connections} = State) ->
@@ -1198,9 +1260,9 @@ is_restartable_event({error, {options, {keyfile, _, _}}}) ->
 is_restartable_event(_) ->
     false.
 
-is_pkey_encrypted() ->
-    try ets:lookup(ssl_dist_opts, server) of
-        [{server, TLSOpts}] ->
+is_pkey_encrypted(Type) when Type == server; Type == client ->
+    try ets:lookup(ssl_dist_opts, Type) of
+        [{Type, TLSOpts}] ->
             case proplists:get_value(keyfile, TLSOpts) of
                 undefined -> false;
                 File ->
@@ -1219,15 +1281,20 @@ is_pkey_encrypted() ->
             false
     end.
 
-extract_pkey_passphrase() ->
-    case application:get_env(cb_dist_pkey_pass_mfa) of
+extract_pkey_passphrase(Type) ->
+    Key = case Type of
+              server -> cb_dist_pkey_pass_mfa;
+              client -> cb_dist_client_pkey_pass_mfa
+          end,
+    case application:get_env(Key) of
         undefined ->
-            error_msg("Missing cb_dist_pkey_pass_mfa env", []),
+            error_msg("Missing ~p env", [Key]),
             {error, not_available};
         {ok, {M, F, A}} ->
             try erlang:apply(M, F, A) of
                 PassFun when is_function(PassFun) ->
-                    info_msg("Successfully extracted pkey passphrase", []),
+                    info_msg("Successfully extracted ~p pkey passphrase",
+                             [Type]),
                     {ok, PassFun}
             catch
                 _:_ -> {error, not_available}
