@@ -1112,7 +1112,7 @@ check_otp_tls_connectivity(Host, Port, AFamily, Options) ->
     Opts = application:get_env(kernel, inet_dist_connect_options, []),
     %% cb_dist might not have updated the password in ssl_dist_opts yet,
     %% so update it here
-    PassFun = ns_secrets:get_pkey_pass(),
+    PassFun = ns_secrets:get_pkey_pass(client_cert),
     Opts2 = misc:update_proplist(Opts, [{password, PassFun()}]),
     SNIOpts = case inet:parse_address(Host) of
                   {ok, _} -> [];
@@ -1127,8 +1127,10 @@ check_otp_tls_connectivity(Host, Port, AFamily, Options) ->
                   [{cert, Cert} |
                    proplists:delete(certfile, proplists:delete(cert, Acc))];
               ({key, Key}, Acc) ->
-                  [{key, Key} |
-                   proplists:delete(keyfile, proplists:delete(key, Acc))];
+                  [{key, Key} | functools:chain(
+                                  Acc, [proplists:delete(key, _),
+                                        proplists:delete(keyfile, _),
+                                        proplists:delete(password, _)])];
               (_, Acc) ->
                   Acc
           end, AllOpts, Options),

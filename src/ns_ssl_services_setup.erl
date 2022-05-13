@@ -376,9 +376,9 @@ ssl_server_opts() ->
         case ns_node_disco:couchdb_node() == node() of
             true ->
                 rpc:call(ns_node_disco:ns_server_node(), ns_secrets,
-                         get_pkey_pass, []);
+                         get_pkey_pass, [node_cert]);
             false ->
-                ns_secrets:get_pkey_pass()
+                ns_secrets:get_pkey_pass(node_cert)
         end,
     CipherSuites = ns_server_ciphers(),
     Order = honor_cipher_order(ns_server),
@@ -521,8 +521,10 @@ init([]) ->
     maybe_store_ca_certs(),
     maybe_generate_node_certs(),
     maybe_generate_client_certs(),
-    reload_pkey_passphrase(),
-    self() ! validate_pkey,
+    reload_pkey_passphrase(node_cert),
+    reload_pkey_passphrase(client_cert),
+    self() ! {validate_pkey, node_cert},
+    self() ! {validate_pkey, client_cert},
     %% Note that it should do nothing if "auto-generated"
     %% certs are in order (not regenerated).
     RetrySvc = read_services_from_marker() -- [ssl_service],
@@ -608,19 +610,19 @@ handle_call(_, _From, State) ->
 handle_cast(_, State) ->
     {noreply, State}.
 
-handle_info(validate_pkey, State) ->
-    misc:flush(validate_pkey),
-    {_, NewState} = validate_pkey(State),
+handle_info({validate_pkey, Type}, State) ->
+    misc:flush({validate_pkey, Type}),
+    {_, NewState} = validate_pkey(Type, State),
     {noreply, NewState};
 
-handle_info(revalidate_pkey, State) ->
-    ?log_info("Revalidation of private key is triggered"),
-    reload_pkey_passphrase(),
-    {ShouldNotify, NewState} = validate_pkey(State),
+handle_info({revalidate_pkey, Type}, State) ->
+    ?log_info("Revalidation of ~p private key is triggered", [Type]),
+    reload_pkey_passphrase(Type),
+    {ShouldNotify, NewState} = validate_pkey(Type, State),
     case ShouldNotify of
         true ->
             {noreply, async_ssl_reload(pkey_passphrase_updated,
-                                       all_services(), NewState)};
+                                       services_to_reload(Type), NewState)};
         false -> {noreply, NewState}
     end;
 
@@ -879,20 +881,11 @@ save_certs_phase2(Type) ->
             save_cert_info(Type, CertsInfo),
             ?log_info("~p cert and pkey files updated", [Type]),
             ns_config:set({node, node(), Type}, Props),
-            case Type of
-                node_cert ->
-                    reload_pkey_passphrase(),
-                    self() ! validate_pkey;
-                client_cert ->
-                    ok
-            end,
+            reload_pkey_passphrase(Type),
+            self() ! {validate_pkey, Type},
             ok = ssl:clear_pem_cache(),
             %% No need to reload all the services when client cert is updated
-            ServicesToReload = case Type of
-                                   node_cert -> all_services();
-                                   client_cert -> [cb_dist_tls, event]
-                               end,
-            add_services_to_marker(ServicesToReload),
+            add_services_to_marker(services_to_reload(Type)),
             ok = file:delete(TmpFile);
         {error, enoent} -> file_not_found
     end.
@@ -901,18 +894,18 @@ save_cert_info(Type, CertsInfo) ->
     CertsInfoBin = iolist_to_binary(io_lib:format("~p.", [CertsInfo])),
     ok = misc:atomic_write_file(cert_info_file(Type), CertsInfoBin).
 
-reload_pkey_passphrase() ->
-    CertProps = ns_config:read_key_fast({node, node(), node_cert}, []),
+reload_pkey_passphrase(Type) ->
+    CertProps = ns_config:read_key_fast({node, node(), Type}, []),
     PassSettings = proplists:get_value(pkey_passphrase_settings, CertProps, []),
-    ns_secrets:load_passphrase(PassSettings).
+    ns_secrets:load_passphrase(Type, PassSettings).
 
-validate_pkey(#state{pkey_validation_timer = TimerRef} = State) ->
+validate_pkey(Type, #state{pkey_validation_timer = TimerRef} = State) ->
     catch erlang:cancel_timer(TimerRef),
-    KeyFile = pkey_file_path(node_cert),
+    KeyFile = pkey_file_path(Type),
     Res =
         case file:read_file(KeyFile) of
             {ok, Key} ->
-                PassFun = ns_secrets:get_pkey_pass(),
+                PassFun = ns_secrets:get_pkey_pass(Type),
                 case ns_server_cert:validate_pkey(Key, PassFun) of
                     {ok, _} -> ok;
                     {error, Error} -> {error, Error}
@@ -923,13 +916,14 @@ validate_pkey(#state{pkey_validation_timer = TimerRef} = State) ->
 
     case Res of
         ok ->
-            ?log_info("Private key passphrase validation suceeded"),
+            ?log_info("Private key (~p) passphrase validation suceeded",
+                      [Type]),
             {true, State#state{pkey_validation_timer = undefined}};
         {error, Reason} ->
-            ?log_error("Private key passphrase validation failed: ~p",
-                       [Reason]),
+            ?log_error("Private key (~p) passphrase validation failed: ~p",
+                       [Type, Reason]),
             NewTimerRef = erlang:send_after(?PKEY_REVALIDATION_INTERVAL,
-                                            self(), revalidate_pkey),
+                                            self(), {revalidate_pkey, Type}),
             {false, State#state{pkey_validation_timer = NewTimerRef}}
     end.
 
@@ -1447,6 +1441,8 @@ time_left_to_client_cert_regen() ->
             infinity
     end.
 
+services_to_reload(node_cert) -> all_services();
+services_to_reload(client_cert) -> [cb_dist_tls, event].
 
 -ifdef(TEST).
 

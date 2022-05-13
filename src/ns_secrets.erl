@@ -12,8 +12,8 @@
 
 %% API
 -export([start_link/0,
-         get_pkey_pass/0,
-         load_passphrase/1,
+         get_pkey_pass/1,
+         load_passphrase/2,
          extract_pkey_pass/1]).
 
 %% gen_server callbacks
@@ -29,12 +29,13 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-load_passphrase(PassSettings) when is_list(PassSettings) ->
-    gen_server:call(?MODULE, {load_passphrase, fun () -> PassSettings end},
+load_passphrase(Type, PassSettings) when is_list(PassSettings) ->
+    gen_server:call(?MODULE,
+                    {load_passphrase, Type, fun () -> PassSettings end},
                     30000).
 
-get_pkey_pass() ->
-    gen_server:call(?MODULE, get_pkey_pass, 30000).
+get_pkey_pass(Type) when Type == node_cert; Type == client_cert ->
+    gen_server:call(?MODULE, {get_pkey_pass, Type}, 30000).
 
 %%%===================================================================
 %%% callbacks
@@ -42,14 +43,14 @@ get_pkey_pass() ->
 
 init([]) -> {ok, #{}}.
 
-handle_call({load_passphrase, PassSettingsFun}, _From, State) ->
+handle_call({load_passphrase, Type, PassSettingsFun}, _From, State) ->
     Fun = case extract_pkey_pass(PassSettingsFun()) of
               {ok, F} -> F;
               {error, _} -> fun () -> undefined end
           end,
-    {reply, ok, State#{pkey_passphrase_fun => Fun}};
-handle_call(get_pkey_pass, _From, State) ->
-    Res = maps:get(pkey_passphrase_fun, State, fun () -> undefined end),
+    {reply, ok, State#{{pkey_passphrase_fun, Type} => Fun}};
+handle_call({get_pkey_pass, Type}, _From, State) ->
+    Res = maps:get({pkey_passphrase_fun, Type}, State, fun () -> undefined end),
     {reply, Res, State};
 handle_call(_Request, _From, State) ->
     {reply, unhandled, State}.

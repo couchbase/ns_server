@@ -511,7 +511,7 @@ tls_config(Params) ->
                      <<"enable">> -> <<"enabled">>;
                      <<"mandatory">> -> <<"mandatory">>
                  end,
-    PKeyPassFun = ns_secrets:get_pkey_pass(),
+    PKeyPassFun = ns_secrets:get_pkey_pass(node_cert),
     PasswordOpts = case PKeyPassFun() of
                        undefined -> [];
                        P -> [{<<"password">>, base64:encode(P)}]
