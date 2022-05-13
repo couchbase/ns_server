@@ -405,6 +405,12 @@ get_err_code_msg(cannot_drop_default_scope) ->
     {"Deleting _default scope is not allowed", 400};
 get_err_code_msg(cannot_drop_system_scope) ->
     {"Deleting _system scope is not allowed", 400};
+get_err_code_msg({bucket_limit, max_number_exceeded, num_collections, Num}) ->
+    {"Maximum number of collections (~p) for this bucket has been reached",
+     [Num], 429};
+get_err_code_msg({bucket_limit, max_number_exceeded, num_scopes, Num}) ->
+    {"Maximum number of scopes (~p) for this bucket has been reached",
+     [Num], 429};
 get_err_code_msg({scope_limit, ScopeName,
                   max_number_exceeded, num_collections}) ->
     {{global_key, <<"limits">>},

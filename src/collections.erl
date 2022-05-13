@@ -157,6 +157,26 @@ is_system_scope_enabled() ->
             proplists:get_bool(enable_system_scope, Profile)
     end.
 
+max_collections_per_bucket() ->
+    Default = get_max_supported(num_collections),
+    case cluster_compat_mode:is_cluster_elixir() of
+        false ->
+            Default;
+        true ->
+            Profile = ns_config:search_node_with_default(?CONFIG_PROFILE, []),
+            proplists:get_value(max_collections_per_bucket, Profile, Default)
+    end.
+
+max_scopes_per_bucket() ->
+    Default = get_max_supported(num_scopes),
+    case cluster_compat_mode:is_cluster_elixir() of
+        false ->
+            Default;
+        true ->
+            Profile = ns_config:search_node_with_default(?CONFIG_PROFILE, []),
+            proplists:get_value(max_scopes_per_bucket, Profile, Default)
+    end.
+
 default_kvs(Buckets, Nodes) ->
     lists:flatmap(
       fun (Bucket) ->
@@ -342,9 +362,12 @@ update_inner(Bucket, Operation) ->
 do_update(Bucket, Operation) ->
     ?log_debug("Performing operation ~p on bucket ~p", [Operation, Bucket]),
     %% Derive the total collection and scope that exist outside of this
-    %% bucket context. We will use this information to check_cluster_limits
-    %% later on.
+    %% bucket context. We will use this information to check_limits later on.
     OtherBucketCounts = other_bucket_counts(Bucket),
+
+    %% Likewise for per-bucket limits.
+    ScopeCollectionLimits = {max_scopes_per_bucket(),
+                             max_collections_per_bucket()},
 
     case get_last_seen_uids(Bucket, Operation) of
         not_found ->
@@ -355,12 +378,12 @@ do_update(Bucket, Operation) ->
                    chronicle_master:failover_opaque_key(),
                    cluster_compat_version],
               update_txn(Bucket, Operation, OtherBucketCounts,
-                         LastSeenIdsWithUUID, _),
+                         ScopeCollectionLimits, LastSeenIdsWithUUID, _),
               #{read_consistency => quorum})
     end.
 
-update_txn(Bucket, Operation, OtherBucketCounts, {LastSeenIds, UUID},
-           Snapshot) ->
+update_txn(Bucket, Operation, OtherBucketCounts, ScopeCollectionLimits,
+           {LastSeenIds, UUID}, Snapshot) ->
     case Operation =/= bump_epoch andalso
         maps:is_key(chronicle_master:failover_opaque_key(), Snapshot) of
         true ->
@@ -375,7 +398,7 @@ update_txn(Bucket, Operation, OtherBucketCounts, {LastSeenIds, UUID},
                         Manifest ->
                             do_update_with_manifest(
                               Bucket, Manifest, Operation, OtherBucketCounts,
-                              LastSeenIds, Snapshot)
+                              ScopeCollectionLimits, LastSeenIds, Snapshot)
                     end;
                 false ->
                     {abort, {error, not_found}}
@@ -383,7 +406,7 @@ update_txn(Bucket, Operation, OtherBucketCounts, {LastSeenIds, UUID},
     end.
 
 do_update_with_manifest(Bucket, Manifest, Operation, OtherBucketCounts,
-                        LastSeenIds, Snapshot) ->
+                        ScopeCollectionLimits, LastSeenIds, Snapshot) ->
     ?log_debug("Perform operation ~p on manifest ~p of bucket ~p",
                [Operation, get_uid(Manifest), Bucket]),
     CompiledOperation = compile_operation(Operation, Bucket, Manifest),
@@ -391,7 +414,9 @@ do_update_with_manifest(Bucket, Manifest, Operation, OtherBucketCounts,
         {ok, Manifest} ->
             {abort, {not_changed, uid(Manifest)}};
         {ok, NewManifest} ->
-            case check_cluster_limits(NewManifest, OtherBucketCounts) of
+
+            case check_limits(NewManifest, OtherBucketCounts,
+                              ScopeCollectionLimits) of
                 ok ->
                     FinalManifest = advance_manifest_id(Operation, NewManifest),
                     case check_ids_limit(FinalManifest, LastSeenIds) of
@@ -460,18 +485,41 @@ other_bucket_counts(Bucket) ->
               end
       end, {0, 0}, lists:delete(Bucket, Buckets)).
 
-check_cluster_limits(NewManifest, {OtherScopeTotal, OtherCollectionTotal}) ->
-    TotalScopes = get_counter(NewManifest, num_scopes) + OtherScopeTotal,
-    TotalCollections = get_counter(NewManifest, num_collections) +
-                       OtherCollectionTotal,
-    case check_limit(num_scopes, TotalScopes) of
+check_limits(NewManifest, {OtherScopeTotal, OtherCollectionTotal},
+             {MaxScopesPerBucket, MaxCollectionsPerBucket}) ->
+    NumScopes = get_counter(NewManifest, num_scopes),
+    NumCollections = get_counter(NewManifest, num_collections),
+    TotalScopes = NumScopes + OtherScopeTotal,
+    TotalCollections = NumCollections + OtherCollectionTotal,
+
+    case check_bucket_limit(num_scopes, NumScopes, MaxScopesPerBucket) of
         ok ->
-            check_limit(num_collections, TotalCollections);
+            case check_bucket_limit(num_collections, NumCollections,
+                                    MaxCollectionsPerBucket) of
+                ok ->
+                    case check_cluster_limit(num_scopes, TotalScopes) of
+                        ok ->
+                            check_cluster_limit(num_collections,
+                                                TotalCollections);
+                        Error ->
+                            Error
+                    end;
+                Error ->
+                    Error
+            end;
         Error ->
             Error
     end.
 
-check_limit(Counter, TotalInCluster) ->
+check_bucket_limit(Counter, Number, Max) ->
+    case Number > Max of
+        false ->
+            ok;
+        true ->
+            {bucket_limit, max_number_exceeded, Counter, Max}
+    end.
+
+check_cluster_limit(Counter, TotalInCluster) ->
     case TotalInCluster > get_max_supported(Counter) of
         false ->
             ok;

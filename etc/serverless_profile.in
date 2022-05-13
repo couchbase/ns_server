@@ -1,6 +1,8 @@
 {name, "serverless"}.
 {enable_system_scope, true}.
 {allow_variable_num_vbuckets, true}.
+{max_scopes_per_bucket, 100}.
+{max_collections_per_bucket, 100}.
 
 %% Example service keys %%
 %% {{goxdcr, ipv4}, "required"}.
