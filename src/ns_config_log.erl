@@ -217,6 +217,8 @@ sanitize(Config, TagUserTuples) ->
               {stop, {cookie, ns_cookie_manager:sanitize_cookie(Cookie)}};
           ({privateKeyPassphrase, _}) ->
               {stop, {privateKeyPassphrase, "*****"}};
+          ({clientPrivateKeyPassphrase, _}) ->
+              {stop, {clientPrivateKeyPassphrase, "*****"}};
           ({UName, {auth, Auth}}) ->
               {stop, {tag_user_name(UName),
                       {auth, sanitize(Auth, TagUserTuples)}}};

@@ -1022,7 +1022,8 @@ san_field_to_type("uri") -> uniformResourceIdentifier;
 san_field_to_type("email") -> rfc822Name.
 
 all_services() ->
-    [cb_dist_tls, ssl_service, capi_ssl_service, memcached, event].
+    [cb_dist_tls, ssl_service, capi_ssl_service, memcached, server_cert_event,
+     client_cert_event].
 
 notify_services(#state{reload_state = []} = State) ->
     catch misc:remove_marker(marker_path()),
@@ -1095,8 +1096,10 @@ do_notify_service(capi_ssl_service) ->
     end;
 do_notify_service(memcached) ->
     memcached_config_mgr:trigger_tls_config_push();
-do_notify_service(event) ->
+do_notify_service(server_cert_event) ->
     gen_event:notify(ssl_service_events, cert_changed);
+do_notify_service(client_cert_event) ->
+    gen_event:notify(ssl_service_events, client_cert_changed);
 do_notify_service(cb_dist_tls) ->
     cb_dist:restart_tls().
 
@@ -1441,8 +1444,8 @@ time_left_to_client_cert_regen() ->
             infinity
     end.
 
-services_to_reload(node_cert) -> all_services();
-services_to_reload(client_cert) -> [cb_dist_tls, event].
+services_to_reload(node_cert) -> all_services() -- [client_cert_event];
+services_to_reload(client_cert) -> [cb_dist_tls, client_cert_event].
 
 -ifdef(TEST).
 

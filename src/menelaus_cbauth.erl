@@ -23,6 +23,7 @@
 -record(state, {cbauth_info = undefined,
                 rpc_processes = [],
                 cert_version,
+                client_cert_version,
                 client_cert_auth_version}).
 
 -include("ns_common.hrl").
@@ -40,6 +41,7 @@ init([]) ->
     ns_pubsub:subscribe_link(ssl_service_events, fun ssl_service_event/1),
     json_rpc_connection_sup:reannounce(),
     {ok, #state{cert_version = new_cert_version(),
+                client_cert_version = new_cert_version(),
                 client_cert_auth_version = client_cert_auth_version()}}.
 
 new_cert_version() ->
@@ -64,8 +66,8 @@ handle_config_event(_) ->
 user_storage_event(_Event) ->
     ?MODULE ! maybe_notify_cbauth.
 
-ssl_service_event(_Event) ->
-    ?MODULE ! ssl_service_event.
+ssl_service_event(Event) ->
+    ?MODULE ! {ssl_service_event, Event}.
 
 terminate(_Reason, _State)     -> ok.
 code_change(_OldVsn, State, _) -> {ok, State}.
@@ -120,7 +122,10 @@ handle_cast({Msg, Label, Pid}, #state{rpc_processes = Processes,
     {noreply, State#state{rpc_processes = NewProcesses,
                           cbauth_info = Info}}.
 
-handle_info(ssl_service_event, State) ->
+handle_info({ssl_service_event, client_cert_changed}, State) ->
+    self() ! maybe_notify_cbauth,
+    {noreply, State#state{client_cert_version = new_cert_version()}};
+handle_info({ssl_service_event, _}, State) ->
     self() ! maybe_notify_cbauth,
     {noreply, State#state{cert_version = new_cert_version()}};
 handle_info(client_cert_auth_event, State) ->
@@ -242,6 +247,7 @@ build_node_info(N, User, Config, Snapshot) ->
       {ports, Ports}] ++ Local}.
 
 build_auth_info(#state{cert_version = CertVersion,
+                       client_cert_version = ClientCertVersion,
                        client_cert_auth_version = ClientCertAuthVersion}) ->
     Config = ns_config:get(),
     Snapshot =
@@ -284,6 +290,7 @@ build_auth_info(#state{cert_version = CertVersion,
      {userVersion, user_version()},
      {authVersion, auth_version(Config)},
      {certVersion, CertVersion},
+     {clientCertVersion, ClientCertVersion},
      {limitsConfig, LimitsConfig},
      {extractUserFromCertURL, list_to_binary(EUserFromCertURL)},
      {clientCertAuthState, list_to_binary(CcaState)},
@@ -320,13 +327,18 @@ tls_config(Service, Config) ->
                   undefined -> [];
                   P -> [{privateKeyPassphrase, base64:encode(P)}]
               end,
+    ClientPassFun = ns_secrets:get_pkey_pass(client_cert),
+    ClientPassOpt = case ClientPassFun() of
+                        undefined -> [];
+                        P2 -> [{clientPrivateKeyPassphrase, base64:encode(P2)}]
+                    end,
     {Label,
      {[{present, true},
        {minTLSVersion, MinTLSVsn},
        {cipherOrder, Order},
        {ciphers, CipherInts},
        {cipherNames, Ciphers},
-       {cipherOpenSSLNames, CipherOpenSSLNames}] ++ PassOpt}}.
+       {cipherOpenSSLNames, CipherOpenSSLNames}] ++ PassOpt ++ ClientPassOpt}}.
 
 ciphers(Service, Config) ->
     case ns_ssl_services_setup:configured_ciphers_names(Service, Config) of
