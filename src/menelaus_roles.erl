@@ -173,6 +173,8 @@ roles() ->
       [{[admin], none},
        {[xdcr], none},
        {[{bucket, any}, xdcr], none},
+       %% This role is intentionally given this powerful permission
+       %% (see MB-42835).
        {[{bucket, any}], all},
        {[n1ql], all},
        {[eventing], all},
@@ -221,9 +223,11 @@ roles() ->
        {folder, bucket},
        {desc, <<"Full access to bucket data. This user cannot access the web "
                 "console and is intended only for application access. This "
-                "user can read and write data.">>},
+                "user can read and write data except for the _system scope "
+                "which can only be read.">>},
        {ce, true}],
-      [{[{bucket, bucket_name}, data], all},
+      [{[{collection, [bucket_name, "_system", any]}, data], [read]},
+       {[{bucket, bucket_name}, data], all},
        {[{bucket, bucket_name}, views], all},
        {[{bucket, bucket_name}, n1ql, index], all},
        {[{bucket, bucket_name}, n1ql], [execute]},
