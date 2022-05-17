@@ -1,0 +1,10 @@
+{name, "serverless"}.
+%% {enable_system_scope, true}.
+%% {allow_variable_num_vbuckets, true}.
+
+%% Example service keys %%
+%% {{goxdcr, ipv4}, "required"}.
+%% {{fts, auth}, "cbauth"}.
+%% {{fts, bindHttps}, ":19200"}.
+%% {{fts, serverSslPort}, "19000"}.
+%% {{fts, cfg}, "metakv"}.

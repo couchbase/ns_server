@@ -14,12 +14,14 @@
 -export([start/2, stop/1, get_loglevel/1, setup_node_names/0,
          get_babysitter_node/0, get_babysitter_cookie/0, get_babysitter_pid/0,
          read_cookie_file/1,
-         start_disk_sink/2, get_disk_sink_rotation_opts/1, adjust_loglevel/2]).
+         start_disk_sink/2, get_disk_sink_rotation_opts/1, adjust_loglevel/2,
+         profile_env/0]).
 
 -include("ns_common.hrl").
 -include_lib("ale/include/ale.hrl").
 
 -define(BABYSITTER_NODE_PREFIX, "babysitter_of_").
+-define(PROFILE_ENV, "CB_CONFIG_PROFILE").
 
 log_pending() ->
     receive
@@ -34,6 +36,7 @@ start(_Type, _Args) ->
     setup_env(),
     setup_static_config(),
     init_logging(),
+    setup_server_profile(),
 
     %% To initialize logging static config must be setup thus this weird
     %% machinery is required to log messages from setup_static_config().
@@ -76,13 +79,32 @@ setup_env() ->
               end, EnvArgs)
     end.
 
+
+-spec(profile_env() -> atom()).
+profile_env() ->
+    case os:getenv(?PROFILE_ENV) of
+        false ->
+            ?DEFAULT_PROFILE;
+        V ->
+            erlang:list_to_atom(V)
+    end.
+
+setup_server_profile() ->
+    {ok, Path} = application:get_env(ns_server, config_profile_path),
+    application:set_env(ns_server, ?CONFIG_PROFILE, load_config(Path)).
+
+load_config(Path) ->
+    case file:consult(Path) of
+        {ok, T} when is_list(T) ->
+            T;
+        {error, Reason} ->
+            Msg = io_lib:format("failed to read static config: ~s with error: ~p. It must be readable file with list of pairs~n",
+                                [Path, Reason]),
+            erlang:error(lists:flatten(Msg))
+    end.
+
 setup_static_config() ->
-    Terms = case file:consult(get_config_path()) of
-                {ok, T} when is_list(T) ->
-                    T;
-                _ ->
-                    erlang:error("failed to read static config: " ++ get_config_path() ++ ". It must be readable file with list of pairs~n")
-            end,
+    Terms = load_config(get_config_path()),
     self() ! {info, "Static config terms:~n~p", [Terms]},
     lists:foreach(fun ({K,V}) ->
                           case application:get_env(ns_server, K) of

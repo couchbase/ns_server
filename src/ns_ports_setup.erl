@@ -326,8 +326,9 @@ build_goport_spec(Service, #def{exe = Executable,
         _ ->
             EnvVars = build_go_service_env_vars(Service) ++
                       build_cbauth_env_vars(Config, RPCService),
+            ProfileArgs = service_profile_args(Service),
             Args = goport_args(Service, Config, Cmd, binary_to_list(NodeUUID)),
-            [{Service, Cmd, Args,
+            [{Service, Cmd, Args ++ ProfileArgs,
               [via_goport, exit_status, stderr_to_stdout, {env, EnvVars}] ++
                   [{log, Log} || Log =/= undefined]}]
     end.
@@ -344,6 +345,33 @@ net_to_afamily(inet6) ->
 build_afamily_requirement(Prefix) ->
     [Prefix ++ net_to_afamily(AF) ++ "=" ++
      atom_to_list(Type) || {AF, Type} <- misc:address_family_requirement()].
+
+format_profile_arg(Key, Value) when is_atom(Key) ->
+    format_profile_arg(atom_to_list(Key), Value);
+format_profile_arg(Key, Value) when is_atom(Value) ->
+    format_profile_arg(Key, atom_to_list(Value));
+format_profile_arg(Key, Value) when is_binary(Value) ->
+    format_profile_arg(Key, binary_to_list(Value));
+format_profile_arg(Key, Value) when is_binary(Key) ->
+    format_profile_arg(binary_to_list(Key), Value);
+format_profile_arg(Key, Value) when is_number(Value) ->
+    format_profile_arg(Key, integer_to_list(Value));
+format_profile_arg(Key, Value) when is_list(Key), is_list(Value) ->
+    "-" ++ Key ++ "=" ++ Value.
+
+service_profile_args(Service) ->
+    {value, Profile} = ns_config:search_node(?CONFIG_PROFILE),
+    lists:filtermap(
+      fun ({{Svc, Key}, Val}) ->
+              case Service =:= Svc of
+                  true ->
+                      {true, format_profile_arg(Key, Val)};
+                  _ ->
+                      false
+              end;
+          (_) ->
+              false
+      end, Profile).
 
 goport_args(n1ql, Config, _Cmd, NodeUUID) ->
     RestPort = service_ports:get_port(rest_port, Config),

@@ -292,4 +292,11 @@
 -define(TLS_VERSIONS, #{'tlsv1.3'=> 3, 'tlsv1.2' => 2,
                         'tlsv1.1' => 1, tlsv1 => 0}).
 
+%% Known Elixir profiles
+-define(SERVERLESS_PROFILE, serverless).
+-define(DEFAULT_PROFILE, default).
+
+%% Key used to retreive configuration profiles from application env.
+-define(CONFIG_PROFILE, config_profile).
+
 -endif.

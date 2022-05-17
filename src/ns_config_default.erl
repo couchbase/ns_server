@@ -99,6 +99,7 @@ default() ->
 
     {ok, LogDir} = application:get_env(ns_server, error_logger_mf_dir),
 
+    ProfileData = application:get_env(ns_server, ?CONFIG_PROFILE, []),
     {AuditGlobalLogs, AuditLocalLogs} =
         case misc:get_env_default(path_audit_log, []) of
             [] ->
@@ -182,6 +183,9 @@ default() ->
        {breakpad_enabled, true},
        %% Location that Breakpad should write minidumps upon memcached crash.
        {breakpad_minidump_dir_path, BreakpadMinidumpDir},
+
+       %% Configuration profile
+       {deployment_model, ns_server:profile_env()},
        {dedupe_nmvb_maps, false},
        {je_malloc_conf, JeMallocConfDefault},
        {tracing_enabled, IsEnterprise},
@@ -216,6 +220,7 @@ default() ->
        {config_path, path_config:default_memcached_config_path()},
        {audit_file, ns_audit_cfg:default_audit_json_path()},
        {rbac_file, filename:join(path_config:component_path(data, "config"), "memcached.rbac")},
+       {configuration_profile, erlang:atom_to_list(ns_server:profile_env())},
        {log_path, LogDir},
        %% Prefix of the log files within the log path that should be rotated.
        {log_prefix, "memcached.log"},
@@ -241,6 +246,7 @@ default() ->
 
         {admin, {"~s", [admin_user]}},
 
+        {deployment_model, {"~s", [configuration_profile]}},
         {verbosity, verbosity},
         {audit_file, {"~s", [audit_file]}},
         {rbac_file, {"~s", [rbac_file]}},
@@ -283,6 +289,7 @@ default() ->
      %% removed since 4.0
      {{node, node(), port_servers}, []},
 
+     {{node, node(), ?CONFIG_PROFILE}, ProfileData},
      {{node, node(), ns_log}, [{filename, filename:join(DataDir, ?NS_LOG)}]},
      {{node, node(), event_log}, [{filename, filename:join(DataDir, ?EVENT_LOG)}]},
 
