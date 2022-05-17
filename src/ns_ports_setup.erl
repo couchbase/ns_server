@@ -10,6 +10,10 @@
 
 -include("ns_common.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([start/0, setup_body_tramp/0,
          restart_memcached/0,
          sync/0, create_erl_node_spec/4,
@@ -647,3 +651,38 @@ memcached_spec(Config) ->
       port_server_dont_start,
       stream]
     }.
+
+
+-ifdef(TEST).
+format_profile_arg_test() ->
+    Key1 = format_profile_arg(key1, "value1"),
+    ?assertEqual(Key1, "-key1=value1"),
+    Key2 = format_profile_arg(key2, valueatom),
+    ?assertEqual(Key2, "-key2=valueatom"),
+    Key3 = format_profile_arg(key3, <<"value-binary">>),
+    ?assertEqual(Key3, "-key3=value-binary"),
+    Key4 = format_profile_arg(key4, 1234),
+    ?assertEqual(Key4, "-key4=1234"),
+    Key5 = format_profile_arg("key5", true),
+    ?assertEqual(Key5, "-key5=true"),
+    Key6 = format_profile_arg(<<"key6">>, true),
+    ?assertEqual(Key6, "-key6=true").
+
+
+service_profile_args_test() ->
+    meck:new(ns_config),
+    meck:expect(ns_config, search_node,
+                fun (_) ->
+                        {value, [{name, "default"},
+                                 {{goxdcr, key1}, "value1"},
+                                 {{goxdcr, key2}, 1234},
+                                 {{cbas, featureA}, "on"}]}
+                end),
+    Args = service_profile_args(goxdcr),
+    ?assertEqual(["-key1=value1", "-key2=1234"], Args),
+    Args2 = service_profile_args(cbas),
+    ?assertEqual(["-featureA=on"], Args2),
+    meck:unload(ns_config),
+    ok.
+
+-endif.
