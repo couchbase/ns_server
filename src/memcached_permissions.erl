@@ -56,6 +56,7 @@ bucket_permissions_to_check(Bucket) ->
 global_permissions_to_check() ->
     [{{[stats, memcached], read},           'Stats'},
      {{[admin, internal, stats], read},     'Stats'},
+     {{[admin, internal, throttle], write}, 'BucketThrottleManagement'},
      {{[buckets], create},                  'BucketManagement'},
      {{[admin, memcached, node], write},    'NodeManagement'},
      {{[admin, memcached, session], write}, 'SessionManagement'},
