@@ -343,10 +343,18 @@ build_magma_bucket_info(BucketConfig) ->
     case ns_bucket:storage_mode(BucketConfig) of
         magma ->
             [{storageQuotaPercentage,
-              proplists:get_value(storage_quota_percentage, BucketConfig,
-                                  ?MAGMA_STORAGE_QUOTA_PERCENTAGE)}];
-        _ ->
-            []
+              proplists:get_value(storage_quota_percentage,
+                                  BucketConfig,
+                                  ?MAGMA_STORAGE_QUOTA_PERCENTAGE)}]
+                ++
+                case ns_config:search_profile_key(name, "default") =:= "serverless" of
+                    true ->
+                        [{magmaMaxShards,
+                          proplists:get_value(magma_max_shards, BucketConfig,
+                                              ?DEFAULT_MAGMA_SHARDS)}];
+                    false -> []
+                end;
+        _ -> []
     end.
 
 handle_sasl_buckets_streaming(_PoolId, Req) ->
@@ -950,6 +958,7 @@ validate_membase_bucket_params(CommonParams, Params,
     BucketParams =
         [{ok, bucketType, membase},
          ReplicasNumResult,
+         parse_validate_max_magma_shards(Params, BucketConfig, Version, IsNew),
          parse_validate_replica_index(Params, ReplicasNumResult, IsNew),
          parse_validate_num_vbuckets(Params, BucketConfig, IsNew),
          parse_validate_threads_number(Params, IsNew),
@@ -1068,6 +1077,70 @@ validate_bucket_purge_interval(Params, _BucketConfig, true = IsNew) ->
 validate_bucket_purge_interval(Params, BucketConfig, false = IsNew) ->
     BucketType = ns_bucket:external_bucket_type(BucketConfig),
     parse_validate_bucket_purge_interval(Params, atom_to_list(BucketType), IsNew).
+
+parse_validate_max_magma_shards(Params, BucketConfig, _Version, false) ->
+    Request = proplists:get_value("magmaMaxShards", Params),
+    Current = case proplists:get_value(magma_max_shards, BucketConfig) of
+                  Num when is_number(Num) ->
+                      integer_to_list(Num);
+                  _ ->
+                      undefined
+              end,
+    case Request =:= Current of
+        true ->
+            ignore;
+        false ->
+            {error, magmaMaxShards,
+             <<"Number of maximum magma shards cannot be modified after bucket creation">>}
+    end;
+parse_validate_max_magma_shards(Params, _BucketConfig, Version, true) ->
+    case proplists:is_defined("magmaMaxShards", Params) of
+        true ->
+            case ns_config:search_profile_key({magma, can_set_max_shards},
+                                              false) of
+                false ->
+                    {error, magmaMaxShards,
+                     <<"Cannot set maximum magma shards in this configuration profile">>};
+                true ->
+                    case proplists:get_value("storageBackend", Params) =:= "magma" of
+                        false ->
+                            {error, magmaMaxShards,
+                             <<"Cannot set maximum magma shards on non-magma storage backend">>};
+                        true ->
+                            case cluster_compat_mode:is_version_elixir(Version) of
+                                false ->
+                                    {error, magmaMaxShards,
+                                     <<"Not allowed until entire cluster is upgraded to elixir">>};
+                                true ->
+                                    parse_validate_max_magma_shards_inner(Params)
+                            end
+                    end
+            end;
+        false ->
+            ignore
+    end.
+
+parse_validate_max_magma_shards_inner(Params) ->
+    case proplists:get_value("bucketType", Params) =:= "ephemeral" of
+        true ->
+            {error, magmaMaxShards, <<"Not supported for ephemeral buckets">>};
+        false ->
+            RangeMsg = erlang:list_to_binary(
+                         io_lib:format("Must be an integer between ~p and ~p",
+                                       [?MIN_MAGMA_SHARDS, ?MAX_MAGMA_SHARDS])),
+            case proplists:get_value("magmaMaxShards", Params) of
+                N when is_list(N), length(N) > 0 ->
+                    case (catch list_to_integer(N)) of
+                        Num when is_integer(Num), Num >= ?MIN_MAGMA_SHARDS,
+                                 Num =< ?MAX_MAGMA_SHARDS ->
+                            {ok, magma_max_shards, Num};
+                        _ ->
+                            {error, magmaMaxShards, RangeMsg}
+                    end;
+                _ ->
+                    {error, magmaMaxShards, RangeMsg}
+            end
+    end.
 
 parse_validate_bucket_purge_interval(Params, "couchbase", IsNew) ->
     parse_validate_bucket_purge_interval(Params, "membase", IsNew);
@@ -2141,6 +2214,14 @@ basic_bucket_params_screening_test() ->
     meck:new(cluster_compat_mode, [passthrough]),
     meck:expect(cluster_compat_mode, is_cluster_elixir,
                 fun () -> true end),
+    meck:expect(ns_config, search_profile_key,
+                fun (_, Default) ->
+                        Default
+                end),
+    meck:expect(ns_config, search_node_with_default,
+                fun (_, Default) ->
+                        Default
+                end),
     AllBuckets = [{"mcd",
                    [{type, memcached},
                     {num_vbuckets, 16},
@@ -2396,6 +2477,14 @@ basic_parse_validate_bucket_auto_compaction_settings_test() ->
     meck:new(ns_config, [passthrough]),
     meck:expect(ns_config, get,
                 fun () -> [] end),
+    meck:expect(ns_config, search_profile_key,
+                fun (_, Default) ->
+                        Default
+                end),
+    meck:expect(ns_config, search_node_with_default,
+                fun (_, Default) ->
+                        Default
+                end),
     meck:new(chronicle_kv, [passthrough]),
     meck:expect(chronicle_kv, get,
                 fun (_, _) ->
@@ -2570,4 +2659,67 @@ parse_validate_pitr_max_history_age_test() ->
                  IsNewFalse),
     Expected10 = ignore,
     ?assertEqual(Expected10, Result10).
+
+parse_validate_max_magma_shards_test() ->
+    meck:new(ns_config, [passthrough]),
+    meck:expect(ns_config, search_profile_key,
+                fun (_, Default) ->
+                        Default
+                end),
+    Params = [{"bucketType", "membase"},
+              {"ramQuota", "400"},
+              {"replicaNumber", "3"},
+              {"durabilityMinLevel", "majority"},
+              {"magmaMaxShards", "101"}],
+    BucketConfig = [],
+    Version = [7, 2],
+
+    Resp = parse_validate_max_magma_shards(Params, BucketConfig, Version, true),
+    ?assertEqual(Resp,
+                 {error, magmaMaxShards,
+                  <<"Cannot set maximum magma shards in this configuration profile">>}),
+
+    Resp2 = parse_validate_max_magma_shards(Params, BucketConfig, Version, false),
+    ?assertEqual(Resp2,
+                 {error, magmaMaxShards,
+                  <<"Number of maximum magma shards cannot be modified after bucket creation">>}),
+
+    meck:expect(ns_config, search_profile_key,
+                fun (_, _) ->
+                        true
+                end),
+    Params2 = [{"bucketType", "membase"},
+              {"ramQuota", "400"},
+              {"replicaNumber", "3"},
+              {"durabilityMinLevel", "majority"},
+              {"magmaMaxShards", "10000"}],
+    Resp3 = parse_validate_max_magma_shards(Params2, BucketConfig, Version, true),
+    ?assertEqual(Resp3,
+                 {error,magmaMaxShards,
+                  <<"Cannot set maximum magma shards on non-magma storage backend">>}),
+
+    Msg = erlang:list_to_binary(
+            io_lib:format("Must be an integer between ~p and ~p",
+                          [?MIN_MAGMA_SHARDS, ?MAX_MAGMA_SHARDS])),
+    Params4 = [{"bucketType", "membase"},
+               {"ramQuota", "400"},
+               {"replicaNumber", "3"},
+               {"durabilityMinLevel", "majority"},
+               {"magmaMaxShards", "10000"},
+               {"storageBackend", "magma"}],
+    Resp4 = parse_validate_max_magma_shards(Params4, BucketConfig, Version, true),
+    ?assertEqual(Resp4, {error, magmaMaxShards, Msg}),
+
+    Params5 = [{"bucketType", "membase"},
+               {"ramQuota", "400"},
+               {"replicaNumber", "3"},
+               {"durabilityMinLevel", "majority"},
+               {"magmaMaxShards", "100"},
+               {"storageBackend", "magma"}],
+    Resp5 = parse_validate_max_magma_shards(Params5, BucketConfig, Version, true),
+    ?assertEqual(Resp5, {ok, magma_max_shards, 100}),
+
+    meck:unload(ns_config),
+    ok.
+
 -endif.

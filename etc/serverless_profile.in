@@ -3,6 +3,7 @@
 {allow_variable_num_vbuckets, true}.
 {max_scopes_per_bucket, 100}.
 {max_collections_per_bucket, 100}.
+{{magma, can_set_max_shards}, true}.
 
 %% Example service keys %%
 %% {{goxdcr, ipv4}, "required"}.

@@ -84,8 +84,9 @@ params(membase, BucketName, BucketConfig, MemQuota, UUID) ->
       proplists:get_value(ht_size, BucketConfig,
                           misc:getenv_int("MEMBASE_HT_SIZE", undefined))},
      {"compression_mode", [{reload, flush}],
-      proplists:get_value(compression_mode, BucketConfig)}];
-
+      proplists:get_value(compression_mode, BucketConfig)},
+     {"max_num_shards", [],
+      ns_bucket:magma_max_shards(BucketConfig, ?DEFAULT_MAGMA_SHARDS)}];
 params(memcached, _BucketName, _BucketConfig, MemQuota, UUID) ->
     [{"cache_size", [], MemQuota},
      {"uuid", [], UUID}].

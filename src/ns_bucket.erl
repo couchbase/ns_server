@@ -78,6 +78,7 @@
          storage_backend/1,
          raw_ram_quota/1,
          magma_fragmentation_percentage/1,
+         magma_max_shards/2,
          update_maps/3,
          update_buckets/3,
          set_bucket_config/2,
@@ -482,6 +483,9 @@ magma_fragmentation_percentage(BucketConfig) ->
         Pct ->
             Pct
     end.
+
+magma_max_shards(BucketConfig, Default) ->
+    proplists:get_value(magma_max_shards, BucketConfig, Default).
 
 -define(FS_HARD_NODES_NEEDED, 4).
 -define(FS_FAILOVER_NEEDED, 3).
@@ -1533,11 +1537,11 @@ extract_bucket_props(Props) ->
                         durability_min_level, frag_percent,
                         storage_quota_percentage, num_vbuckets,
                         pitr_enabled, pitr_granularity, pitr_max_history_age,
-                        autocompaction,
-                        purge_interval, flush_enabled, num_threads,
-                        eviction_policy, conflict_resolution_type,
+                        autocompaction, purge_interval, flush_enabled,
+                        num_threads, eviction_policy, conflict_resolution_type,
                         drift_ahead_threshold_ms, drift_behind_threshold_ms,
-                        storage_mode, max_ttl, compression_mode]],
+                        storage_mode, max_ttl, compression_mode,
+                        magma_max_shards]],
           X =/= false].
 
 build_threshold({Percentage, Size}) ->
