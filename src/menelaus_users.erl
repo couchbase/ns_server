@@ -69,7 +69,7 @@
          cleanup_bucket_roles/1,
          get_passwordless/0,
          get_salt_and_mac/1,
-         memcached_user_info/2,
+         obsolete_get_salt_and_mac/1,
 
 %% Backward compatibility:
          upgrade/3,
@@ -564,16 +564,16 @@ delete_user({_, Domain} = Identity) ->
 
 get_salt_and_mac(Auth) ->
     case proplists:get_value(<<"hash">>, Auth) of
-        undefined ->
-            SaltAndMacBase64 =
-                binary_to_list(proplists:get_value(<<"plain">>, Auth)),
-            <<Salt:16/binary, Mac:20/binary>> = base64:decode(SaltAndMacBase64),
-            [{<<"a">>, ?SHA1_HASH},
-             {<<"s">>, base64:encode(Salt)},
-             {<<"h">>, base64:encode(Mac)}];
-        {Props} ->
-            Props
+        undefined -> obsolete_get_salt_and_mac(Auth);
+        {Props} -> Props
     end.
+
+obsolete_get_salt_and_mac(Auth) ->
+    SaltAndMacBase64 = binary_to_list(proplists:get_value(<<"plain">>, Auth)),
+    <<Salt:16/binary, Mac:20/binary>> = base64:decode(SaltAndMacBase64),
+    [{<<"a">>, ?SHA1_HASH},
+     {<<"s">>, base64:encode(Salt)},
+     {<<"h">>, base64:encode(Mac)}].
 
 has_scram_hashes(Auth) ->
     proplists:is_defined(<<"sha1">>, Auth).
@@ -834,9 +834,6 @@ get_user_uuid({_, local} = Identity, Default) ->
     proplists:get_value(uuid, get_user_props_raw(Identity), Default);
 get_user_uuid(_, _) ->
     undefined.
-
-memcached_user_info(User, Info) ->
-    {[{<<"n">>, list_to_binary(User)} | Info]}.
 
 build_scram_auth(Password) ->
     BuildAuth =

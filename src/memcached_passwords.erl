@@ -129,8 +129,17 @@ get_user_uuid(true, Identity) ->
             [{uuid, UUID}]
     end.
 
+memcached_user_info(User, Auth) ->
+    Auth2 = lists:map(
+           fun ({<<"plain">>, _}) ->
+                   Props = menelaus_users:obsolete_get_salt_and_mac(Auth),
+                   {<<"hash">>, {Props}};
+               (Other) ->
+                   Other
+           end, Auth),
+    {[{<<"n">>, list_to_binary(User)} | Auth2]}.
+
 jsonify_auth(Users, AdminPass, RestCreds, PromAuth) ->
-    MakeAuthInfo = fun menelaus_users:memcached_user_info/2,
     EnforceLimits = cluster_compat_mode:should_enforce_limits(),
     ?make_transducer(
        begin
@@ -143,19 +152,19 @@ jsonify_auth(Users, AdminPass, RestCreds, PromAuth) ->
                    undefined ->
                        undefined;
                    {User, Auth} ->
-                       ?yield({json, MakeAuthInfo(User, Auth)}),
+                       ?yield({json, memcached_user_info(User, Auth)}),
                        User
                end,
 
            case PromAuth of
                {PUser, PAuth} ->
-                   ?yield({json, MakeAuthInfo(PUser, PAuth)}),
+                   ?yield({json, memcached_user_info(PUser, PAuth)}),
                    PUser;
                undefined -> ok
            end,
 
            AdminAuth = menelaus_users:build_scram_auth(AdminPass),
-           [?yield({json, MakeAuthInfo(U, AdminAuth)}) || U <- Users],
+           [?yield({json, memcached_user_info(U, AdminAuth)}) || U <- Users],
 
            pipes:foreach(
              ?producer(),
@@ -171,7 +180,7 @@ jsonify_auth(Users, AdminPass, RestCreds, PromAuth) ->
                              Limits = get_user_limits_json(EnforceLimits,
                                                            Identity),
                              UUID = get_user_uuid(EnforceLimits, Identity),
-                             ?yield({json, MakeAuthInfo(
+                             ?yield({json, memcached_user_info(
                                              UserName,
                                              UUID ++ Limits ++ Auth)})
                      end
