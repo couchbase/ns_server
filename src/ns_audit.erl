@@ -124,7 +124,8 @@ do_obscure_session_id({sessionid, SessionId}) ->
     %% as it allows tracking all the actions related to the sessionid. This
     %% wouldn't be possible if it were obscured using something like "******".
     Salt = scram_sha:get_fallback_salt(),
-    ObscuredId = ns_config_auth:hash_password(Salt, binary_to_list(SessionId)),
+    ObscuredId = crypto:mac(hmac, sha, Salt, SessionId),
+
     {stop, {sessionid, misc:hexify(ObscuredId)}};
 do_obscure_session_id(_Other) ->
     continue.

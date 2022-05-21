@@ -94,7 +94,9 @@ producer(#state{users = Users,
 
 get_admin_auth_json({User, {password, {Salt, Mac}}}) ->
     %% this happens after upgrade to 5.0, before the first password change
-    {User, menelaus_users:build_plain_auth(Salt, Mac)};
+    {User, menelaus_users:format_plain_auth([{<<"a">>, ?SHA1_HASH},
+                                             {<<"s">>, base64:encode(Salt)},
+                                             {<<"h">>, base64:encode(Mac)}])};
 get_admin_auth_json({User, {auth, Auth}}) ->
     {User, Auth};
 get_admin_auth_json(_) ->

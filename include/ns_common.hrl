@@ -302,4 +302,7 @@
 -define(DEFAULT_PROFILE_DATA, [{name, ?DEFAULT_PROFILE_STR}]).
 
 -define(SYSTEM_SCOPE_NAME, "_system").
+
+-define(SHA1_HASH, <<"SHA-1">>).
+
 -endif.

@@ -64,8 +64,7 @@
          authenticate/2,
          authenticate_with_info/2,
          build_scram_auth/1,
-         build_plain_auth/1,
-         build_plain_auth/2,
+         format_plain_auth/1,
          empty_storage/0,
          cleanup_bucket_roles/1,
          get_passwordless/0,
@@ -419,16 +418,15 @@ build_auth(false, Password) ->
 build_auth({_, _}, undefined) ->
     same;
 build_auth({_, CurrentAuth}, Password) ->
-    {Salt, Mac} = get_salt_and_mac(CurrentAuth),
-    case ns_config_auth:hash_password(Salt, Password) of
-        Mac ->
+    case authenticate_with_info(CurrentAuth, Password) of
+        true ->
             case has_scram_hashes(CurrentAuth) of
                 false ->
                     build_scram_auth(Password);
                 _ ->
                     same
             end;
-        _ ->
+        false ->
             build_scram_auth(Password)
     end.
 
@@ -565,9 +563,17 @@ delete_user({_, Domain} = Identity) ->
     end.
 
 get_salt_and_mac(Auth) ->
-    SaltAndMacBase64 = binary_to_list(proplists:get_value(<<"plain">>, Auth)),
-    <<Salt:16/binary, Mac:20/binary>> = base64:decode(SaltAndMacBase64),
-    {Salt, Mac}.
+    case proplists:get_value(<<"hash">>, Auth) of
+        undefined ->
+            SaltAndMacBase64 =
+                binary_to_list(proplists:get_value(<<"plain">>, Auth)),
+            <<Salt:16/binary, Mac:20/binary>> = base64:decode(SaltAndMacBase64),
+            [{<<"a">>, ?SHA1_HASH},
+             {<<"s">>, base64:encode(Salt)},
+             {<<"h">>, base64:encode(Mac)}];
+        {Props} ->
+            Props
+    end.
 
 has_scram_hashes(Auth) ->
     proplists:is_defined(<<"sha1">>, Auth).
@@ -605,8 +611,7 @@ get_auth_info_on_ns_server(Identity) ->
 
 -spec authenticate_with_info(list(), rbac_password()) -> boolean().
 authenticate_with_info(Auth, Password) ->
-    {Salt, Mac} = get_salt_and_mac(Auth),
-    misc:compare_secure(ns_config_auth:hash_password(Salt, Password), Mac).
+    ns_config_auth:check_hash(get_salt_and_mac(Auth), Password).
 
 get_user_props(Identity) ->
     get_user_props(Identity, ?DEFAULT_PROPS).
@@ -846,12 +851,10 @@ build_scram_auth(Password) ->
         [BuildAuth(Sha) || Sha <- scram_sha:supported_types()].
 
 build_plain_auth(Password) ->
-    {Salt, Mac} = ns_config_auth:hash_password(Password),
-    build_plain_auth(Salt, Mac).
+    format_plain_auth(ns_config_auth:new_password_hash(?SHA1_HASH, Password)).
 
-build_plain_auth(Salt, Mac) ->
-    SaltAndMac = <<Salt/binary, Mac/binary>>,
-    [{<<"plain">>, base64:encode(SaltAndMac)}].
+format_plain_auth(HashInfo) ->
+    [{<<"hash">>, {HashInfo}}].
 
 rbac_upgrade_key(_) ->
     rbac_upgrade_key().

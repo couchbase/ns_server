@@ -23,8 +23,9 @@
          get_admin_creds/1,
          is_system_provisioned/0,
          is_system_provisioned/1,
-         hash_password/1,
-         hash_password/2]).
+         new_password_hash/2,
+         hash_password/2,
+         check_hash/2]).
 
 admin_cfg_key() ->
     rest_creds.
@@ -67,7 +68,9 @@ get_password(Node, special) when is_atom(Node)->
     ns_config:search_node_prop(Node, ns_config:latest(), memcached, admin_pass).
 
 get_salt_and_mac({password, {Salt, Mac}}) ->
-    {Salt, Mac};
+    [{<<"a">>, ?SHA1_HASH},
+     {<<"s">>, base64:encode(Salt)},
+     {<<"h">>, base64:encode(Mac)}];
 get_salt_and_mac({auth, Auth}) ->
     menelaus_users:get_salt_and_mac(Auth).
 
@@ -81,8 +84,8 @@ get_admin_creds(Config) ->
 
 admin_credentials_changed(User, Password) ->
     case get_admin_creds(ns_config:latest()) of
-        {User, {Salt, Mac}} ->
-            hash_password(Salt, Password) =/= Mac;
+        {User, HashInfo} ->
+            not check_hash(HashInfo, Password);
         _ ->
             true
     end.
@@ -135,8 +138,7 @@ authenticate_admin(User, Password) ->
         null ->
             {ok, {User, admin}};
         {User, Auth} ->
-            {Salt, Mac} = get_salt_and_mac(Auth),
-            case misc:compare_secure(hash_password(Salt, Password), Mac) of
+            case check_hash(get_salt_and_mac(Auth), Password) of
                 true ->
                     {ok, {User, admin}};
                 false ->
@@ -146,12 +148,27 @@ authenticate_admin(User, Password) ->
             {error, auth_failure}
     end.
 
-hash_password(Password) ->
-    Salt = crypto:strong_rand_bytes(16),
-    {Salt, hash_password(Salt, Password)}.
+check_hash(HashInfo, Password) ->
+    Hash1 = base64:decode(proplists:get_value(<<"h">>, HashInfo)),
+    Hash2 = hash_password(HashInfo, Password),
+    misc:compare_secure(Hash2, Hash1).
 
-hash_password(Salt, Password) ->
-    crypto:mac(hmac, sha, Salt, list_to_binary(Password)).
+new_password_hash(Type, Password) ->
+    Info = new_hash_info(Type),
+    [{<<"h">>, base64:encode(hash_password(Info, Password))} | Info].
+
+new_hash_info(T) ->
+    [{<<"a">>, T} | new_hash_info_int(T)].
+
+new_hash_info_int(?SHA1_HASH) ->
+    [{<<"s">>, base64:encode(crypto:strong_rand_bytes(16))}].
+
+hash_password(HashInfo, Password) ->
+    case proplists:get_value(<<"a">>, HashInfo) of
+        ?SHA1_HASH ->
+            Salt = base64:decode(proplists:get_value(<<"s">>, HashInfo)),
+            crypto:mac(hmac, sha, Salt, list_to_binary(Password))
+    end.
 
 is_bucket_auth(User, Password) ->
     case cluster_compat_mode:is_cluster_70() of
