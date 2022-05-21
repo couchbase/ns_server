@@ -1077,8 +1077,9 @@ handle_settings_web_post(Req, Args) ->
     Port = proplists:get_value(port, Args),
     U = proplists:get_value(username, Args),
     P = proplists:get_value(password, Args),
+    CurPort = menelaus_web:webconfig(port),
     PortInt = case Port of
-                  "SAME" -> menelaus_web:webconfig(port);
+                  "SAME" -> CurPort;
                   _      -> list_to_integer(Port)
               end,
 
@@ -1087,7 +1088,7 @@ handle_settings_web_post(Req, Args) ->
     %% HTTP request at hand can be completed.
     process_flag(trap_exit, true),
 
-    case Port =/= PortInt orelse
+    case PortInt =/= CurPort orelse
         ns_config_auth:admin_credentials_changed(U, P) of
         false -> ok; % No change.
         true ->
