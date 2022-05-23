@@ -20,7 +20,8 @@ IF (NOT EXISTS "${COUCHBASE_PLT}")
     ${_couchdb_bin_dir}/src/erlang-oauth
     ${_couchdb_bin_dir}/src/ejson
     deps/gen_smtp
-    deps/chronicle)
+    deps/chronicle
+    deps/enacl)
 ENDIF (NOT EXISTS "${COUCHBASE_PLT}")
 
 # Compute list of .beam files
