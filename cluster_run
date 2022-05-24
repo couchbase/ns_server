@@ -61,6 +61,7 @@ usage: {program_name}
        running at 6.5, and the other two running the "trunk" version.
 
     [--community] (boot as Community Edition)
+    [--serverless] (boot with serverless profile)
     [--dev-preview-default=<true|false>]
         Sets the default value of developer preview enabled mode.
         This flag only has an effect if the cluster is being set up
@@ -87,7 +88,7 @@ def main():
                                            "prepend-extras",
                                            "pluggable-config=",
                                            "disable-autocomplete",
-                                           "community",
+                                           "community", "serverless",
                                            "pretend-version=", "afamily=",
                                            "dev-preview-default="])
     except getopt.GetoptError as err:
@@ -141,6 +142,8 @@ def main():
                 assert False, "invalid address family"
         elif o == "--community":
             params['force_community'] = True
+        elif o == "--serverless":
+            params['run_serverless'] = True
         else:
             assert False, "unhandled options"
 

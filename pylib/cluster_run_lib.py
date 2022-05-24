@@ -236,7 +236,8 @@ def abs_path_join(*args):
     return os.path.abspath(os.path.join(*args))
 
 
-def erlang_args_for_node(i, ebin_path, extra_args, args_prefix, root_dir):
+def erlang_args_for_node(i, ebin_path, extra_args, args_prefix, root_dir,
+        run_serverless):
     logdir = abs_path_join(root_dir, "logs", f"n_{i}")
 
     args = args_prefix + ["erl", "+MMmcs" "30",
@@ -259,7 +260,10 @@ def erlang_args_for_node(i, ebin_path, extra_args, args_prefix, root_dir):
     cb_dist_config = os.path.join(datadir, "config", "dist_cfg")
     hosts_file = os.path.join(ns_server_dir, "etc", "hosts.cfg")
     static_config = os.path.join(ns_server_dir, "etc", "static_config.in")
-    profile = os.getenv("CB_CONFIG_PROFILE", "default")
+    if run_serverless:
+        profile = "serverless"
+    else:
+        profile = os.getenv("CB_CONFIG_PROFILE", "default")
     config_profile = os.path.join(ns_server_dir, "etc", f"{profile}_profile.in")
 
     args += [
@@ -371,6 +375,7 @@ def start_cluster(num_nodes=1,
                   pretend_version=None,
                   ipv6=False,
                   force_community=False,
+                  run_serverless=False,
                   dev_preview_default=None,
                   args=[],
                   root_dir=ns_server_dir,
@@ -438,7 +443,7 @@ def start_cluster(num_nodes=1,
             pass
 
         args = erlang_args_for_node(node_num, ebin_path, extra_args,
-                                    prepend_args, root_dir)
+                                    prepend_args, root_dir, run_serverless)
 
         params = {}
 
