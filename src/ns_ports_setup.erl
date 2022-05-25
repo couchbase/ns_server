@@ -563,9 +563,7 @@ goport_args(eventing, Config, _Cmd, NodeUUID) ->
 
         ["-dir=" ++ filename:join(EvDir, "@eventing"),
          "-uuid=" ++ NodeUUID,
-         "-diagdir=" ++ path_config:minidump_dir(),
-         %% XXX: MB-51836 Remove -vbuckets
-         "-vbuckets=" ++ integer_to_list(ns_bucket:get_default_num_vbuckets())];
+         "-diagdir=" ++ path_config:minidump_dir()];
 
 goport_args(cbas, Config, Cmd, NodeUUID) ->
     CBASDirs = [filename:join([Token], "@analytics") ||
