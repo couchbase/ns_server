@@ -517,8 +517,6 @@ goport_args(fts, Config, _Cmd, NodeUUID) ->
         "maxReplicasAllowed=" ++ integer_to_list(MaxReplicasAllowed) ++ "," ++
         "bucketTypesAllowed=" ++ BucketTypesAllowed ++ "," ++
         "http2=" ++ atom_to_list(cluster_compat_mode:is_enterprise()) ++ "," ++
-        %% XXX: MB- 51824 remove vbuckets=
-        "vbuckets=" ++ integer_to_list(ns_bucket:get_default_num_vbuckets()) ++
         build_afamily_requirement(","),
     [
      "-cfg=metakv",
