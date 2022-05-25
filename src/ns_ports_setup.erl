@@ -447,9 +447,7 @@ goport_args(index, Config, _Cmd, NodeUUID) ->
 
         build_afamily_requirement("-") ++
 
-        %% XXX: MB-51825 Remove -vbuckets
-        ["-vbuckets=" ++ integer_to_list(ns_bucket:get_default_num_vbuckets()),
-         "-cluster=" ++ misc:local_url(RestPort, [no_scheme]),
+        ["-cluster=" ++ misc:local_url(RestPort, [no_scheme]),
          "-storageDir=" ++ IdxDir2,
          "-diagDir=" ++ path_config:minidump_dir(),
          "-logDir=" ++ LogDir,
