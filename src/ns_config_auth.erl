@@ -13,6 +13,9 @@
 
 -include("ns_common.hrl").
 
+-define(DEFAULT_ARG2ID_TIME, 3).
+-define(DEFAULT_ARG2ID_MEM, 8388608). %% in bytes
+
 -export([authenticate/2,
          set_admin_credentials/2,
          get_user/1,
@@ -160,11 +163,23 @@ new_password_hash(Type, Password) ->
 new_hash_info(T) ->
     [{<<"a">>, T} | new_hash_info_int(T)].
 
+new_hash_info_int(?ARGON2ID_HASH) ->
+    SaltSize = enacl:pwhash_SALTBYTES(),
+    [{<<"s">>, base64:encode(crypto:strong_rand_bytes(SaltSize))},
+     {<<"t">>, ns_config:read_key_fast(argon2id_time, ?DEFAULT_ARG2ID_TIME)},
+     {<<"m">>, ns_config:read_key_fast(argon2id_mem, ?DEFAULT_ARG2ID_MEM)},
+     {<<"p">>, 1}]; %% we support only p=1 because enacl+libsodium always uses 1
 new_hash_info_int(?SHA1_HASH) ->
     [{<<"s">>, base64:encode(crypto:strong_rand_bytes(16))}].
 
 hash_password(HashInfo, Password) ->
     case proplists:get_value(<<"a">>, HashInfo) of
+        ?ARGON2ID_HASH ->
+            Salt = base64:decode(proplists:get_value(<<"s">>, HashInfo)),
+            Ops = proplists:get_value(<<"t">>, HashInfo),
+            Mem = proplists:get_value(<<"m">>, HashInfo),
+            1 = proplists:get_value(<<"p">>, HashInfo),
+            enacl:pwhash(Password, Salt, Ops, Mem, argon2id13);
         ?SHA1_HASH ->
             Salt = base64:decode(proplists:get_value(<<"s">>, HashInfo)),
             crypto:mac(hmac, sha, Salt, list_to_binary(Password))

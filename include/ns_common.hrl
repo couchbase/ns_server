@@ -303,6 +303,7 @@
 
 -define(SYSTEM_SCOPE_NAME, "_system").
 
+-define(ARGON2ID_HASH, <<"argon2id">>).
 -define(SHA1_HASH, <<"SHA-1">>).
 
 -endif.

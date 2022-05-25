@@ -851,7 +851,8 @@ build_scram_auth(Password) ->
         [BuildAuth(Sha) || Sha <- scram_sha:supported_types()].
 
 build_plain_auth(Password) ->
-    format_plain_auth(ns_config_auth:new_password_hash(?SHA1_HASH, Password)).
+    HashType = ns_config:read_key_fast(password_hash_alg, ?ARGON2ID_HASH),
+    format_plain_auth(ns_config_auth:new_password_hash(HashType, Password)).
 
 format_plain_auth(HashInfo) ->
     [{<<"hash">>, {HashInfo}}].
