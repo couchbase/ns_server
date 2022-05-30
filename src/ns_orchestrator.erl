@@ -620,6 +620,7 @@ idle({flush_bucket, BucketName}, From, _State) ->
     {keep_state_and_data, [{reply, From, RV}]};
 idle({delete_bucket, BucketName}, From, _State) ->
     menelaus_users:cleanup_bucket_roles(BucketName),
+    throttle_service_settings:remove_bucket_settings(BucketName),
     Reply =
         case ns_bucket:delete_bucket(BucketName) of
             {ok, BucketConfig} ->

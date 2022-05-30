@@ -4,6 +4,7 @@
 {max_scopes_per_bucket, 100}.
 {max_collections_per_bucket, 100}.
 {{magma, can_set_max_shards}, true}.
+{enable_throttle_settings, true}.
 
 %% Example service keys %%
 %% {{goxdcr, ipv4}, "required"}.

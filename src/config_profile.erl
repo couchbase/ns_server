@@ -78,7 +78,7 @@ is_serverless() ->
             false
     end.
 
--spec(search_profile_key(term()) -> {value, term()} | false).
+-spec(search_profile_key(term()) -> term()).
 search_profile_key(Key) ->
     search_profile_key(Key, false).
 

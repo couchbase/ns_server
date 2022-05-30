@@ -471,6 +471,12 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "license"] ->
                     {{[admin, license], read},
                      fun menelaus_web_license:handle_settings_get/1};
+                ["settings", "throttle"] ->
+                    {{[admin, settings], read},
+                        fun throttle_service_settings:handle_settings_throttle_get/1};
+                ["settings", "throttle", BucketId] ->
+                    {{[admin, settings], read},
+                        fun throttle_service_settings:handle_settings_throttle_get/2, [BucketId]};
                 ["internalSettings"] ->
                     {{[admin, settings], read},
                      fun menelaus_web_settings:handle_get/2, [internal]};
@@ -723,6 +729,12 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "license", "validate"] ->
                     {{[admin, license], write},
                      fun menelaus_web_license:handle_settings_validate_post/1};
+                ["settings", "throttle"] ->
+                    {{[admin, settings], write},
+                        fun throttle_service_settings:handle_settings_throttle_post/1};
+                ["settings", "throttle", BucketId] ->
+                    {{[admin, settings], write},
+                        fun throttle_service_settings:handle_settings_throttle_post/2, [BucketId]};
                 ["internalSettings"] ->
                     {{[admin, settings], write},
                      fun menelaus_web_settings:handle_post/2, [internal]};
