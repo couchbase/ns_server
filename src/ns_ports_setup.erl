@@ -263,11 +263,9 @@ build_https_args(PortName, PortArg, PortPrefix, CertArg, KeyArg, ClientCertArg,
             [PortArg ++ "=" ++ PortPrefix ++ integer_to_list(Port),
              CertArg ++ "=" ++ ns_ssl_services_setup:chain_file_path(node_cert),
              KeyArg ++ "=" ++ ns_ssl_services_setup:pkey_file_path(node_cert),
-             CAArg ++ "=" ++ ns_ssl_services_setup:ca_file_path()] ++
-            [ClientCertArg ++ "=" ++ ClientCertPath
-                || ClientCertArg =/= undefined] ++
-            [ClientKeyArg ++ "=" ++ ClientKeyPath
-                || ClientKeyArg =/= undefined]
+             CAArg ++ "=" ++ ns_ssl_services_setup:ca_file_path(),
+             ClientCertArg ++ "=" ++ ClientCertPath,
+             ClientKeyArg ++ "=" ++ ClientKeyPath]
     end.
 
 build_port_arg(ArgName, PortName, Config) ->
@@ -395,8 +393,9 @@ goport_args(n1ql, Config, _Cmd, NodeUUID) ->
     ServerlessArgs = "--serverless=" ++
         erlang:atom_to_list(config_profile:is_serverless()),
     HttpsArgs = build_https_args(ssl_query_port, "--https", ":",
-                                 "--certfile", "--keyfile", undefined,
-                                 undefined, "--cafile", Config),
+                                 "--certfile", "--keyfile",
+                                 "--clientCertFile", "--clientKeyFile",
+                                 "--cafile", Config),
     [DataStoreArg, HttpArg, CnfgStoreArg, EntArg, "-uuid=" ++ NodeUUID,
      ServerlessArgs] ++ build_afamily_requirement("--") ++ HttpsArgs;
 
@@ -408,7 +407,8 @@ goport_args(kv, Config, _Cmd, _NodeUUID) ->
 
     ["--deploymentModel=" ++ config_profile:name()] ++
     build_https_args(projector_ssl_port, "--httpsPort", "--certFile",
-                     "--keyFile", undefined, undefined, "--caFile", Config) ++
+                     "--keyFile", "--clientCertFile", "--clientKeyFile",
+                     "--caFile", Config) ++
     build_afamily_requirement("-") ++
     ["-kvaddrs=" ++ misc:local_url(LocalMemcachedPort, [no_scheme]),
      build_port_arg("-adminport", ":", projector_port, Config),
@@ -418,10 +418,14 @@ goport_args(kv, Config, _Cmd, _NodeUUID) ->
 goport_args(goxdcr, Config, _Cmd, _NodeUUID) ->
     IsEnterprise = cluster_compat_mode:is_enterprise(Config),
     IsEnterpriseFlag = "-isEnterprise=" ++ atom_to_list(IsEnterprise),
+    ClientCertPath = ns_ssl_services_setup:chain_file_path(client_cert),
+    ClientKeyPath = ns_ssl_services_setup:pkey_file_path(client_cert),
     build_port_args([{"-sourceKVAdminPort", rest_port},
                      {"-xdcrRestPort", xdcr_rest_port}], Config) ++
         [IsEnterpriseFlag | build_afamily_requirement("-")] ++
-        ["-caFile=" ++ ns_ssl_services_setup:ca_file_path() || IsEnterprise];
+        ["-caFile=" ++ ns_ssl_services_setup:ca_file_path() || IsEnterprise] ++
+        ["-clientCertFile=" ++ ClientCertPath || IsEnterprise] ++
+        ["-clientKeyFile=" ++ ClientKeyPath || IsEnterprise];
 
 goport_args(index, Config, _Cmd, NodeUUID) ->
     {ok, LogDir} = application:get_env(ns_server, error_logger_mf_dir),
@@ -437,7 +441,8 @@ goport_args(index, Config, _Cmd, NodeUUID) ->
                      {"-streamMaintPort",   indexer_stmaint_port}], Config) ++
 
         build_https_args(indexer_https_port, "--httpsPort",
-                         "--certFile", "--keyFile", undefined, undefined,
+                         "--certFile", "--keyFile",
+                         "--clientCertFile", "--clientKeyFile",
                          "--caFile", Config) ++
 
         build_afamily_requirement("-") ++
@@ -457,7 +462,8 @@ goport_args(backup, Config, _Cmd, NodeUUID) ->
                      {"-grpc-port", backup_grpc_port}], Config) ++
 
     build_https_args(backup_https_port, "-https-port", "-cert-path",
-                     "-key-path", undefined, undefined, "-ca-path", Config) ++
+                     "-key-path", "-client-cert-path", "-client-key-path",
+                     "-ca-path", Config) ++
 
     build_afamily_requirement("-") ++
 
@@ -503,7 +509,8 @@ goport_args(fts, Config, _Cmd, NodeUUID) ->
     BindHttp = BuildHostPortArgs("-bindHttp", fts_http_port),
     BindHttps =
         build_https_args(fts_ssl_port, "-bindHttps", ":",
-                         "-tlsCertFile", "-tlsKeyFile", undefined, undefined,
+                         "-tlsCertFile", "-tlsKeyFile",
+                         "-clientCertFile", "-clientKeyFile",
                          "-tlsCAFile", Config),
 
     BindGrpc = BuildHostPortArgs("-bindGrpc", fts_grpc_port),
@@ -557,8 +564,8 @@ goport_args(eventing, Config, _Cmd, NodeUUID) ->
                      {"-debugPort", eventing_debug_port}], Config) ++
 
         build_https_args(eventing_https_port, "-adminsslport",
-                         "-certfile", "-keyfile", undefined, undefined,
-                         "-cafile", Config) ++
+                         "-certfile", "-keyfile", "-clientcertfile",
+                         "-clientkeyfile", "-cafile", Config) ++
 
         build_afamily_requirement("-") ++
 
