@@ -454,7 +454,8 @@ goport_args(index, Config, _Cmd, NodeUUID) ->
          "-diagDir=" ++ path_config:minidump_dir(),
          "-logDir=" ++ LogDir,
          "-nodeUUID=" ++ NodeUUID,
-         "-isEnterprise=" ++ atom_to_list(cluster_compat_mode:is_enterprise())];
+         "-isEnterprise=" ++ atom_to_list(cluster_compat_mode:is_enterprise()),
+         "--deploymentModel=" ++ ns_config:search_profile_key(name, "default")];
 
 goport_args(backup, Config, _Cmd, NodeUUID) ->
     build_port_args([{"-http-port", backup_http_port},
