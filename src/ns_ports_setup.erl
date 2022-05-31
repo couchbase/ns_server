@@ -411,6 +411,7 @@ goport_args(kv, Config, _Cmd, _NodeUUID) ->
     LocalMemcachedPort = service_ports:get_port(memcached_port, Config),
     MinidumpDir = path_config:minidump_dir(),
 
+    ["--deploymentModel=" ++ ns_config:search_profile_key(name, "default")] ++
     build_https_args(projector_ssl_port, "--httpsPort", "--certFile",
                      "--keyFile", undefined, undefined, "--caFile", Config) ++
     build_afamily_requirement("-") ++
