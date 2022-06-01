@@ -380,7 +380,15 @@ extract_kvs([K | Ks] = AllKs, [{CK,_} = KV | KVs], Acc) ->
     end.
 
 do_push_keys(Keys, AllKVs, State) ->
-    ?log_debug("Replicating some config keys (~p..)", [lists:sublist(Keys, 64)]),
+    TrimmedList =
+        lists:filter(?cut(not ns_config_log:frequently_changed_key(_)),
+                     lists:sublist(Keys, 64)),
+    case TrimmedList of
+        [] ->
+            ok;
+        _ ->
+            ?log_debug("Replicating some config keys (~p..)", [TrimmedList])
+    end,
     KVsToPush = extract_kvs(Keys, lists:sort(AllKVs), []),
     do_push(KVsToPush, State).
 

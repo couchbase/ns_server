@@ -17,7 +17,8 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3, sanitize/1, sanitize/2, sanitize_value/1,
          sanitize_value/2,
-         compute_bucket_diff/2]).
+         compute_bucket_diff/2,
+         frequently_changed_key/1]).
 
 -include("ns_common.hrl").
 -include("ns_config.hrl").
@@ -274,7 +275,19 @@ log_common(K, V) ->
     %% These can get pretty big, so pre-format them for the logger.
     {_, VS} = sanitize({K, V}),
     VB = list_to_binary(io_lib:print(VS, 0, 80, 100)),
-    ?log_debug("config change:~n~p ->~n~s", [K, VB]).
+    case frequently_changed_key(K) of
+        true ->
+            ok;
+        false ->
+            ?log_debug("config change:~n~p ->~n~s", [K, VB])
+    end.
+
+frequently_changed_key({local_changes_count, _}) ->
+    true;
+frequently_changed_key({metakv, <<"/throttle/report", _/binary>>}) ->
+    true;
+frequently_changed_key(_) ->
+    false.
 
 sort_buckets(Buckets) ->
     Configs = proplists:get_value(configs, Buckets, []),
