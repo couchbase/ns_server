@@ -923,7 +923,9 @@ warmed(Node, Bucket, Timeout) ->
     try
         do_call({server(Bucket), Node}, Bucket, warmed, Timeout)
     catch
-        _:_ ->
+        T:E:Stack ->
+            ?log_debug("Failure to check if bucket ~p is warmed on ~p.~n~p",
+                       [Bucket, Node, {T, E, Stack}]),
             false
     end.
 
