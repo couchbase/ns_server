@@ -812,8 +812,7 @@ allow_variable_num_vbuckets() ->
         false ->
             false;
         true ->
-            Profile = ns_config:search_node_with_default(?CONFIG_PROFILE, []),
-            proplists:get_bool(allow_variable_num_vbuckets, Profile)
+            config_profile:get_bool(allow_variable_num_vbuckets)
     end.
 
 get_num_vbuckets(BucketConfig) ->

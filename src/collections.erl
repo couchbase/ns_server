@@ -153,8 +153,7 @@ is_system_scope_enabled() ->
         false ->
             false;
         true ->
-            Profile = ns_config:search_node_with_default(?CONFIG_PROFILE, []),
-            proplists:get_bool(enable_system_scope, Profile)
+            config_profile:get_bool(enable_system_scope)
     end.
 
 max_collections_per_bucket() ->
@@ -163,8 +162,7 @@ max_collections_per_bucket() ->
         false ->
             Default;
         true ->
-            Profile = ns_config:search_node_with_default(?CONFIG_PROFILE, []),
-            proplists:get_value(max_collections_per_bucket, Profile, Default)
+            config_profile:get_value(max_collection_per_bucket, Default)
     end.
 
 max_scopes_per_bucket() ->
@@ -173,8 +171,7 @@ max_scopes_per_bucket() ->
         false ->
             Default;
         true ->
-            Profile = ns_config:search_node_with_default(?CONFIG_PROFILE, []),
-            proplists:get_value(max_scopes_per_bucket, Profile, Default)
+            config_profile:get_value(max_scopes_per_bucket, Default)
     end.
 
 default_kvs(Buckets, Nodes) ->

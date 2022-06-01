@@ -57,8 +57,6 @@
          search_node_with_default/2,
          search_node_with_default/3,
          search_node_with_default/4,
-         search_profile_key/1,
-         search_profile_key/2,
          reload/0]).
 
 -export([compute_global_rev/1]).
@@ -427,35 +425,6 @@ set_sub_kvlist(PList, [ {SubKey, Value} | Rest ]) ->
             RV -> RV
         end,
     set_sub_kvlist(NewPList, Rest).
-
--spec(search_profile_key(term(), term()) -> term()).
-search_profile_key(Key, Default) ->
-    ProfileData = search_node(?CONFIG_PROFILE),
-    case lookup_profile_key(ProfileData, Key) of
-        {value, Value} ->
-            Value;
-        _ ->
-            Default
-    end.
-
--spec(search_profile_key(term()) -> false | {value, term()}).
-search_profile_key(Key) ->
-    case search_node(?CONFIG_PROFILE) of
-        {value, ProfileData} ->
-            lookup_profile_key(ProfileData, Key);
-        false ->
-            false
-    end.
-
-lookup_profile_key(ProfileData, Key) when is_list(ProfileData) ->
-    case proplists:lookup(Key, ProfileData) of
-        {Key, Value} ->
-            {value, Value};
-        _ ->
-            false
-    end;
-lookup_profile_key(_, _) ->
-    false.
 
 clear(Keep) -> gen_server:call(?MODULE, {clear, Keep}).
 

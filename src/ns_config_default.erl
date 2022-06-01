@@ -99,7 +99,7 @@ default() ->
 
     {ok, LogDir} = application:get_env(ns_server, error_logger_mf_dir),
 
-    ProfileData = application:get_env(ns_server, ?CONFIG_PROFILE, []),
+    ProfileData = config_profile:env_data(),
     {AuditGlobalLogs, AuditLocalLogs} =
         case misc:get_env_default(path_audit_log, []) of
             [] ->
@@ -185,7 +185,7 @@ default() ->
        {breakpad_minidump_dir_path, BreakpadMinidumpDir},
 
        %% Configuration profile
-       {deployment_model, ns_server:profile_env()},
+       {deployment_model, config_profile:env()},
        {dedupe_nmvb_maps, false},
        {je_malloc_conf, JeMallocConfDefault},
        {tracing_enabled, IsEnterprise},
@@ -220,7 +220,7 @@ default() ->
        {config_path, path_config:default_memcached_config_path()},
        {audit_file, ns_audit_cfg:default_audit_json_path()},
        {rbac_file, filename:join(path_config:component_path(data, "config"), "memcached.rbac")},
-       {configuration_profile, erlang:atom_to_list(ns_server:profile_env())},
+       {configuration_profile, erlang:atom_to_list(config_profile:env())},
        {log_path, LogDir},
        %% Prefix of the log files within the log path that should be rotated.
        {log_prefix, "memcached.log"},

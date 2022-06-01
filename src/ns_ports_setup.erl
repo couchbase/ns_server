@@ -372,7 +372,7 @@ format_profile_arg(Key, Value) when is_list(Key), is_list(Value) ->
     "-" ++ Key ++ "=" ++ Value.
 
 service_profile_args(Service) ->
-    {value, Profile} = ns_config:search_node(?CONFIG_PROFILE),
+    ProfileData = config_profile:get(),
     lists:filtermap(
       fun ({{Svc, Key}, Val}) ->
               case Service =:= Svc of
@@ -383,7 +383,7 @@ service_profile_args(Service) ->
               end;
           (_) ->
               false
-      end, Profile).
+      end, ProfileData).
 
 goport_args(n1ql, Config, _Cmd, NodeUUID) ->
     RestPort = service_ports:get_port(rest_port, Config),
@@ -393,12 +393,7 @@ goport_args(n1ql, Config, _Cmd, NodeUUID) ->
     EntArg = "--enterprise=" ++
         atom_to_list(cluster_compat_mode:is_enterprise()),
     ServerlessArgs = "--serverless=" ++
-        case ns_config:search_profile_key(name, "default") of
-            "serverless" ->
-                "true";
-            _ ->
-                "false"
-        end,
+        erlang:atom_to_list(config_profile:is_serverless()),
     HttpsArgs = build_https_args(ssl_query_port, "--https", ":",
                                  "--certfile", "--keyfile", undefined,
                                  undefined, "--cafile", Config),
@@ -411,7 +406,7 @@ goport_args(kv, Config, _Cmd, _NodeUUID) ->
     LocalMemcachedPort = service_ports:get_port(memcached_port, Config),
     MinidumpDir = path_config:minidump_dir(),
 
-    ["--deploymentModel=" ++ ns_config:search_profile_key(name, "default")] ++
+    ["--deploymentModel=" ++ config_profile:name()] ++
     build_https_args(projector_ssl_port, "--httpsPort", "--certFile",
                      "--keyFile", undefined, undefined, "--caFile", Config) ++
     build_afamily_requirement("-") ++
@@ -455,7 +450,7 @@ goport_args(index, Config, _Cmd, NodeUUID) ->
          "-logDir=" ++ LogDir,
          "-nodeUUID=" ++ NodeUUID,
          "-isEnterprise=" ++ atom_to_list(cluster_compat_mode:is_enterprise()),
-         "--deploymentModel=" ++ ns_config:search_profile_key(name, "default")];
+         "--deploymentModel=" ++ config_profile:name()];
 
 goport_args(backup, Config, _Cmd, NodeUUID) ->
     build_port_args([{"-http-port", backup_http_port},
@@ -692,19 +687,19 @@ format_profile_arg_test() ->
 
 
 service_profile_args_test() ->
-    meck:new(ns_config),
-    meck:expect(ns_config, search_node,
-                fun (_) ->
-                        {value, [{name, "default"},
-                                 {{goxdcr, key1}, "value1"},
-                                 {{goxdcr, key2}, 1234},
-                                 {{cbas, featureA}, "on"}]}
+    meck:new(config_profile),
+    meck:expect(config_profile, get,
+                fun () ->
+                        [{name, "default"},
+                         {{goxdcr, key1}, "value1"},
+                         {{goxdcr, key2}, 1234},
+                         {{cbas, featureA}, "on"}]
                 end),
     Args = service_profile_args(goxdcr),
     ?assertEqual(["-key1=value1", "-key2=1234"], Args),
     Args2 = service_profile_args(cbas),
     ?assertEqual(["-featureA=on"], Args2),
-    meck:unload(ns_config),
+    meck:unload(config_profile),
     ok.
 
 -endif.

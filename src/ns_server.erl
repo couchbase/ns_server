@@ -14,14 +14,12 @@
 -export([start/2, stop/1, get_loglevel/1, setup_node_names/0,
          get_babysitter_node/0, get_babysitter_cookie/0, get_babysitter_pid/0,
          read_cookie_file/1,
-         start_disk_sink/2, get_disk_sink_rotation_opts/1, adjust_loglevel/2,
-         profile_env/0]).
+         start_disk_sink/2, get_disk_sink_rotation_opts/1, adjust_loglevel/2]).
 
 -include("ns_common.hrl").
 -include_lib("ale/include/ale.hrl").
 
 -define(BABYSITTER_NODE_PREFIX, "babysitter_of_").
--define(PROFILE_ENV, "CB_CONFIG_PROFILE").
 
 log_pending() ->
     receive
@@ -79,19 +77,9 @@ setup_env() ->
               end, EnvArgs)
     end.
 
-
--spec(profile_env() -> atom()).
-profile_env() ->
-    case os:getenv(?PROFILE_ENV) of
-        false ->
-            ?DEFAULT_PROFILE;
-        V ->
-            erlang:list_to_atom(V)
-    end.
-
 setup_server_profile() ->
     {ok, Path} = application:get_env(ns_server, config_profile_path),
-    application:set_env(ns_server, ?CONFIG_PROFILE, load_config(Path)).
+    config_profile:set_env_data(load_config(Path)).
 
 load_config(Path) ->
     case file:consult(Path) of

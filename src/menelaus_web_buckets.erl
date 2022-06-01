@@ -347,7 +347,7 @@ build_magma_bucket_info(BucketConfig) ->
                                   BucketConfig,
                                   ?MAGMA_STORAGE_QUOTA_PERCENTAGE)}]
                 ++
-                case ns_config:search_profile_key(name, "default") =:= "serverless" of
+                case config_profile:search({magma, can_set_max_shards}, false) of
                     true ->
                         [{magmaMaxShards,
                           proplists:get_value(magma_max_shards, BucketConfig,
@@ -1096,8 +1096,7 @@ parse_validate_max_magma_shards(Params, BucketConfig, _Version, false) ->
 parse_validate_max_magma_shards(Params, _BucketConfig, Version, true) ->
     case proplists:is_defined("magmaMaxShards", Params) of
         true ->
-            case ns_config:search_profile_key({magma, can_set_max_shards},
-                                              false) of
+            case config_profile:search({magma, can_set_max_shards}, false) of
                 false ->
                     {error, magmaMaxShards,
                      <<"Cannot set maximum magma shards in this configuration profile">>};
@@ -2200,6 +2199,11 @@ basic_bucket_params_screening(IsNew, Name, Params, AllBuckets, KvNodes) ->
     basic_bucket_params_screening(Ctx, Params).
 
 basic_bucket_params_screening_test() ->
+    meck:new(config_profile, [passthrough]),
+    meck:expect(config_profile, search,
+                fun (_, Default) ->
+                        Default
+                end),
     meck:new(ns_config, [passthrough]),
     meck:expect(ns_config, read_key_fast,
                 fun (_, Default) ->
@@ -2214,10 +2218,6 @@ basic_bucket_params_screening_test() ->
     meck:new(cluster_compat_mode, [passthrough]),
     meck:expect(cluster_compat_mode, is_cluster_elixir,
                 fun () -> true end),
-    meck:expect(ns_config, search_profile_key,
-                fun (_, Default) ->
-                        Default
-                end),
     meck:expect(ns_config, search_node_with_default,
                 fun (_, Default) ->
                         Default
@@ -2464,6 +2464,7 @@ basic_bucket_params_screening_test() ->
       end, MajorityDurabilityLevelReplicas),
 
     meck:unload(ns_config),
+    meck:unload(config_profile),
     meck:unload(cluster_compat_mode),
 
     ok.
@@ -2477,11 +2478,12 @@ basic_parse_validate_bucket_auto_compaction_settings_test() ->
     meck:new(ns_config, [passthrough]),
     meck:expect(ns_config, get,
                 fun () -> [] end),
-    meck:expect(ns_config, search_profile_key,
+    meck:expect(ns_config, search_node_with_default,
                 fun (_, Default) ->
                         Default
                 end),
-    meck:expect(ns_config, search_node_with_default,
+    meck:new(config_profile, [passthrough]),
+    meck:expect(config_profile, search,
                 fun (_, Default) ->
                         Default
                 end),
@@ -2535,6 +2537,7 @@ basic_parse_validate_bucket_auto_compaction_settings_test() ->
                  Stuff1),
     meck:unload(cluster_compat_mode),
     meck:unload(ns_config),
+    meck:unload(config_profile),
     meck:unload(chronicle_kv),
     ok.
 
@@ -2661,8 +2664,8 @@ parse_validate_pitr_max_history_age_test() ->
     ?assertEqual(Expected10, Result10).
 
 parse_validate_max_magma_shards_test() ->
-    meck:new(ns_config, [passthrough]),
-    meck:expect(ns_config, search_profile_key,
+    meck:new(config_profile, [passthrough]),
+    meck:expect(config_profile, search,
                 fun (_, Default) ->
                         Default
                 end),
@@ -2684,7 +2687,7 @@ parse_validate_max_magma_shards_test() ->
                  {error, magmaMaxShards,
                   <<"Number of maximum magma shards cannot be modified after bucket creation">>}),
 
-    meck:expect(ns_config, search_profile_key,
+    meck:expect(config_profile, search,
                 fun (_, _) ->
                         true
                 end),
@@ -2719,7 +2722,7 @@ parse_validate_max_magma_shards_test() ->
     Resp5 = parse_validate_max_magma_shards(Params5, BucketConfig, Version, true),
     ?assertEqual(Resp5, {ok, magma_max_shards, 100}),
 
-    meck:unload(ns_config),
+    meck:unload(config_profile),
     ok.
 
 -endif.
