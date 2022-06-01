@@ -562,7 +562,9 @@ roles() ->
                 "only for use by Sync Gateway. This user can read and "
                 "write data, manage indexes and views, and read some "
                 "cluster information.">>}],
-      [{[{bucket, bucket_name}, data], all},
+      [{[{collection, [bucket_name, "_system", "_mobile"]}, data], all},
+       {[{collection, [bucket_name, "_system", any]}, data], none},
+       {[{bucket, bucket_name}, data], all},
        {[{bucket, bucket_name}, views], all},
        {[{bucket, bucket_name}, n1ql, index], all},
        {[{bucket, bucket_name}, n1ql], [execute]},
@@ -680,6 +682,8 @@ get_public_definitions(Version) when Version < ?VERSION_70 ->
     menelaus_old_roles:roles_pre_70();
 get_public_definitions(Version) when Version < ?VERSION_71 ->
     menelaus_old_roles:roles_pre_71();
+get_public_definitions(Version) when Version < ?VERSION_ELIXIR ->
+    menelaus_old_roles:roles_pre_elixir();
 get_public_definitions(_) ->
     roles() ++ maybe_add_developer_preview_roles().
 
@@ -806,8 +810,12 @@ substitute_params(Params, ParamDefinitions, Permissions) ->
 substitute_param(any, _ParamPairs) ->
     any;
 substitute_param(Param, ParamPairs) ->
-    {Param, Subst} = lists:keyfind(Param, 1, ParamPairs),
-    Subst.
+    case lists:keyfind(Param, 1, ParamPairs) of
+        {Param, Subst} ->
+            Subst;
+        false ->
+            Param
+    end.
 
 compile_param(bucket_name, Name, Snapshot) ->
     find_object(Name,
