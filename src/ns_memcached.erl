@@ -202,7 +202,8 @@ do_worker_init(State) ->
     ok = mc_client_binary:select_bucket(Sock, State#state.bucket),
     State#state{sock = Sock}.
 
-worker_loop(Parent, #state{sock = Sock} = State, PrevCounterSlot) ->
+worker_loop(Parent, #state{sock = Sock,
+                           bucket = Bucket} = State, PrevCounterSlot) ->
     ok = inet:setopts(Sock, [{active, once}]),
     {Msg, From, StartTS, CounterSlot} = gen_server:call(Parent, {get_work, PrevCounterSlot}, infinity),
     case inet:setopts(Sock, [{active, false}]) of
@@ -230,13 +231,14 @@ worker_loop(Parent, #state{sock = Sock} = State, PrevCounterSlot) ->
         {reply, R, State} ->
             gen_server:reply(From, R);
         {compromised_reply, R, State} ->
-            ?log_warning("Call ~p (return value ~p) compromised our connection. Reconnecting.",
-                         [Msg, R]),
+            ?log_warning(
+               "Call ~p (return value ~p) compromised connection for bucket"
+               " ~p. Reconnecting.", [Msg, R, Bucket]),
             gen_server:reply(From, R),
             error({compromised_reply, R})
     end,
 
-    verify_report_long_call(StartTS, WorkStartTS, State, Msg, []),
+    verify_report_long_call(Bucket, StartTS, WorkStartTS, State, Msg, []),
     worker_loop(Parent, State, CounterSlot).
 
 handle_call({get_work, CounterSlot}, From, #state{work_requests = Froms} = State) ->
@@ -338,7 +340,7 @@ perform_very_long_call(Fun, Bucket, Options) ->
               Result
       end, Bucket, Options).
 
-verify_report_long_call(StartTS, ActualStartTS, State, Msg, RV) ->
+verify_report_long_call(Bucket, StartTS, ActualStartTS, State, Msg, RV) ->
     try
         RV
     after
@@ -354,7 +356,8 @@ verify_report_long_call(StartTS, ActualStartTS, State, Msg, RV) ->
           QDiff div 1000),
         if
             Diff > ?SLOW_CALL_THRESHOLD_MICROS ->
-                ?log_debug("call ~p took too long: ~p us", [Msg, Diff]);
+                ?log_debug("Call ~p for bucket ~p took too long: ~p us",
+                           [Msg, Bucket, Diff]);
             true ->
                 ok
         end
