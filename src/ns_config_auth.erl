@@ -15,6 +15,7 @@
 
 -define(DEFAULT_ARG2ID_TIME, 3).
 -define(DEFAULT_ARG2ID_MEM, 8388608). %% in bytes
+-define(DEFAULT_PBKDF2_ITER, 10000).
 
 -export([authenticate/2,
          set_admin_credentials/2,
@@ -169,6 +170,10 @@ new_hash_info_int(?ARGON2ID_HASH) ->
      {<<"t">>, ns_config:read_key_fast(argon2id_time, ?DEFAULT_ARG2ID_TIME)},
      {<<"m">>, ns_config:read_key_fast(argon2id_mem, ?DEFAULT_ARG2ID_MEM)},
      {<<"p">>, 1}]; %% we support only p=1 because enacl+libsodium always uses 1
+new_hash_info_int(?PBKDF2_HASH) ->
+    [{<<"s">>, base64:encode(crypto:strong_rand_bytes(64))},
+     {<<"i">>, ns_config:read_key_fast(pbkdf2_sha512_iterations,
+                                       ?DEFAULT_PBKDF2_ITER)}];
 new_hash_info_int(?SHA1_HASH) ->
     [{<<"s">>, base64:encode(crypto:strong_rand_bytes(16))}].
 
@@ -180,6 +185,10 @@ hash_password(HashInfo, Password) ->
             Mem = proplists:get_value(<<"m">>, HashInfo),
             1 = proplists:get_value(<<"p">>, HashInfo),
             enacl:pwhash(Password, Salt, Ops, Mem, argon2id13);
+        ?PBKDF2_HASH ->
+            Salt = base64:decode(proplists:get_value(<<"s">>, HashInfo)),
+            Iterations = proplists:get_value(<<"i">>, HashInfo),
+            scram_sha:pbkdf2(sha512, Password, Salt, Iterations);
         ?SHA1_HASH ->
             Salt = base64:decode(proplists:get_value(<<"s">>, HashInfo)),
             crypto:mac(hmac, sha, Salt, list_to_binary(Password))

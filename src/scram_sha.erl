@@ -30,7 +30,8 @@
          hash_password/2,
          auth_info_key/1,
          supported_types/0,
-         get_fallback_salt/0]).
+         get_fallback_salt/0,
+         pbkdf2/4]).
 
 %% callback for token_server
 -export([init/0]).
