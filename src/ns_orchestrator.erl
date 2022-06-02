@@ -92,6 +92,13 @@ start_link() ->
 wait_for_orchestrator() ->
     misc:wait_for_global_name(?MODULE).
 
+call(Msg) ->
+    wait_for_orchestrator(),
+    gen_statem:call(?SERVER, Msg).
+
+call(Msg, Timeout) ->
+    wait_for_orchestrator(),
+    gen_statem:call(?SERVER, Msg, Timeout).
 
 -spec create_bucket(memcached|membase, nonempty_string(), list()) ->
                            ok | {error, {already_exists, nonempty_string()}} |
@@ -101,9 +108,7 @@ wait_for_orchestrator() ->
                            {error, {need_more_space, list()}} |
                            rebalance_running | in_recovery.
 create_bucket(BucketType, BucketName, NewConfig) ->
-    wait_for_orchestrator(),
-    gen_statem:call(?SERVER, {create_bucket, BucketType, BucketName,
-                              NewConfig}, infinity).
+    call({create_bucket, BucketType, BucketName, NewConfig}, infinity).
 
 -spec update_bucket(memcached|membase, undefined|couchstore|magma|ephemeral,
                     nonempty_string(), list()) ->
@@ -111,10 +116,8 @@ create_bucket(BucketType, BucketName, NewConfig) ->
                            {error, {need_more_space, list()}} |
                            rebalance_running | in_recovery.
 update_bucket(BucketType, StorageMode, BucketName, UpdatedProps) ->
-    wait_for_orchestrator(),
-    gen_statem:call(?SERVER, {update_bucket, BucketType,
-                              StorageMode, BucketName,
-                              UpdatedProps}, infinity).
+    call({update_bucket, BucketType, StorageMode, BucketName, UpdatedProps},
+         infinity).
 
 %% Deletes bucket. Makes sure that once it returns it's already dead.
 %% In implementation we make sure config deletion is propagated to
@@ -130,8 +133,7 @@ update_bucket(BucketType, StorageMode, BucketName, UpdatedProps) ->
                            {shutdown_failed, [node()]} |
                            {exit, {not_found, bucket_name()}, _}.
 delete_bucket(BucketName) ->
-    wait_for_orchestrator(),
-    gen_statem:call(?SERVER, {delete_bucket, BucketName}, infinity).
+    call({delete_bucket, BucketName}, infinity).
 
 -spec flush_bucket(bucket_name()) ->
                           ok |
@@ -145,8 +147,7 @@ delete_bucket(BucketName) ->
                           {flush_wait_failed, _, _} |
                           {old_style_flush_failed, _, _}.
 flush_bucket(BucketName) ->
-    wait_for_orchestrator(),
-    gen_statem:call(?SERVER, {flush_bucket, BucketName}, infinity).
+    call({flush_bucket, BucketName}, infinity).
 
 -spec failover([node()], boolean()) ->
                       ok |
@@ -166,8 +167,7 @@ flush_bucket(BucketName) ->
                       %% other options are also covered
                       any().
 failover(Nodes, AllowUnsafe) ->
-    wait_for_orchestrator(),
-    gen_statem:call(?SERVER, {failover, Nodes, AllowUnsafe}, infinity).
+    call({failover, Nodes, AllowUnsafe}, infinity).
 
 -spec start_failover([node()], boolean()) ->
                             ok |
@@ -183,8 +183,7 @@ failover(Nodes, AllowUnsafe) ->
                             %% other options are also covered
                             any().
 start_failover(Nodes, AllowUnsafe) ->
-    wait_for_orchestrator(),
-    gen_statem:call(?SERVER, {start_failover, Nodes, AllowUnsafe}).
+    call({start_failover, Nodes, AllowUnsafe}).
 
 -spec try_autofailover(list(), map()) ->
                               {ok, list()} |
@@ -198,9 +197,7 @@ start_failover(Nodes, AllowUnsafe) ->
                               {autofailover_unsafe, [bucket_name()]} |
                               {nodes_down, [node()], [bucket_name()]}.
 try_autofailover(Nodes, Options) ->
-    wait_for_orchestrator(),
-    case gen_statem:call(?SERVER, {try_autofailover, Nodes, Options},
-                         infinity) of
+    case call({try_autofailover, Nodes, Options}, infinity) of
         ok ->
             {ok, []};
         Other ->
@@ -280,27 +277,17 @@ ensure_janitor_run(Item) ->
                              in_recovery | delta_recovery_not_possible |
                              no_kv_nodes_left | {need_more_space, list()}.
 start_rebalance(KnownNodes, EjectNodes, DeltaRecoveryBuckets) ->
-    maybe_start_rebalance({maybe_start_rebalance, KnownNodes, EjectNodes,
-                           DeltaRecoveryBuckets}).
-
-%% TODO: Make this a generic Call function
-maybe_start_rebalance(Call) ->
-    wait_for_orchestrator(),
-    gen_statem:call(?SERVER, Call).
+    call({maybe_start_rebalance, KnownNodes, EjectNodes, DeltaRecoveryBuckets}).
 
 retry_rebalance(rebalance, Params, Id, Chk) ->
-    maybe_start_rebalance({maybe_start_rebalance,
-                           proplists:get_value(known_nodes, Params),
-                           proplists:get_value(eject_nodes, Params),
-                           proplists:get_value(delta_recovery_buckets, Params),
-                           Id, Chk});
+    call({maybe_start_rebalance,
+          proplists:get_value(known_nodes, Params),
+          proplists:get_value(eject_nodes, Params),
+          proplists:get_value(delta_recovery_buckets, Params), Id, Chk});
 
 retry_rebalance(graceful_failover, Params, Id, Chk) ->
-    wait_for_orchestrator(),
-    gen_statem:call(?SERVER,
-                    {maybe_retry_graceful_failover,
-                     proplists:get_value(nodes, Params),
-                     Id, Chk}).
+    call({maybe_retry_graceful_failover,
+          proplists:get_value(nodes, Params), Id, Chk}).
 
 -spec start_graceful_failover([node()]) ->
                                      ok | in_progress | in_recovery |
@@ -315,13 +302,11 @@ retry_rebalance(graceful_failover, Params, Id, Chk) ->
                                      %% all other options are also covered
                                      any().
 start_graceful_failover(Nodes) ->
-    wait_for_orchestrator(),
-    gen_statem:call(?SERVER, {start_graceful_failover, Nodes}).
+    call({start_graceful_failover, Nodes}).
 
 -spec stop_rebalance() -> ok | not_rebalancing.
 stop_rebalance() ->
-    wait_for_orchestrator(),
-    gen_statem:call(?SERVER, stop_rebalance).
+    call(stop_rebalance).
 
 -spec start_recovery(bucket_name()) ->
                             {ok, UUID, RecoveryMap} |
@@ -334,8 +319,7 @@ stop_rebalance() ->
                                 when UUID :: binary(),
                                      RecoveryMap :: dict:dict().
 start_recovery(Bucket) ->
-    wait_for_orchestrator(),
-    gen_statem:call(?SERVER, {start_recovery, Bucket}).
+    call({start_recovery, Bucket}).
 
 -spec recovery_status() -> not_in_recovery | {ok, Status}
                                when Status :: [{bucket, bucket_name()} |
@@ -347,16 +331,14 @@ recovery_status() ->
         false ->
             not_in_recovery;
         _ ->
-            wait_for_orchestrator(),
-            gen_statem:call(?SERVER, recovery_status)
+            call(recovery_status)
     end.
 
 -spec recovery_map(bucket_name(), UUID) -> bad_recovery | {ok, RecoveryMap}
                                                when RecoveryMap :: dict:dict(),
                                                     UUID :: binary().
 recovery_map(Bucket, UUID) ->
-    wait_for_orchestrator(),
-    gen_statem:call(?SERVER, {recovery_map, Bucket, UUID}).
+    call({recovery_map, Bucket, UUID}).
 
 -spec commit_vbucket(bucket_name(), UUID, vbucket_id()) ->
                             ok | recovery_completed |
@@ -364,14 +346,12 @@ recovery_map(Bucket, UUID) ->
                             {error, {failed_nodes, [node()]}}
                                 when UUID :: binary().
 commit_vbucket(Bucket, UUID, VBucket) ->
-    wait_for_orchestrator(),
-    gen_statem:call(?SERVER, {commit_vbucket, Bucket, UUID, VBucket}).
+    call({commit_vbucket, Bucket, UUID, VBucket}).
 
 -spec stop_recovery(bucket_name(), UUID) -> ok | bad_recovery
                                                 when UUID :: binary().
 stop_recovery(Bucket, UUID) ->
-    wait_for_orchestrator(),
-    gen_statem:call(?SERVER, {stop_recovery, Bucket, UUID}).
+    call({stop_recovery, Bucket, UUID}).
 
 -spec is_recovery_running() -> boolean().
 is_recovery_running() ->
