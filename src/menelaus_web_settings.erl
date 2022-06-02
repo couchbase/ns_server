@@ -174,6 +174,15 @@ get_secure_headers(Json) ->
             {error, "Invalid format. Expecting a json."}
     end.
 
+get_pwhash(AlgStr) ->
+    AlgBin = list_to_binary(AlgStr),
+    case AlgBin of
+        ?ARGON2ID_HASH -> {ok, AlgBin};
+        ?SHA1_HASH -> {ok, AlgBin};
+        ?PBKDF2_HASH -> {ok, AlgBin};
+        _ -> {error, "not supported hash"}
+    end.
+
 get_cipher_suites(Str) ->
     try ejson:decode(Str) of
         L when is_list(L) ->
@@ -483,7 +492,8 @@ conf(security) ->
       fun get_cluster_encryption/1},
      {allow_non_local_ca_upload, allowNonLocalCACertUpload, false,
       fun get_bool/1},
-     {allowed_hosts, allowedHosts, [<<"*">>], fun get_allowed_hosts/1}] ++
+     {allowed_hosts, allowedHosts, [<<"*">>], fun get_allowed_hosts/1},
+     {password_hash_alg, passwordHashAlg, ?DEFAULT_PWHASH, fun get_pwhash/1}] ++
     [{{security_settings, S}, ns_cluster_membership:json_service_name(S),
       [{cipher_suites, cipherSuites, undefined, fun get_cipher_suites/1},
        {ssl_minimum_protocol, tlsMinVersion, undefined, get_tls_version(_)},

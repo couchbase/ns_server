@@ -303,6 +303,7 @@
 
 -define(SYSTEM_SCOPE_NAME, "_system").
 
+-define(DEFAULT_PWHASH, ?ARGON2ID_HASH).
 -define(ARGON2ID_HASH, <<"argon2id">>).
 -define(PBKDF2_HASH, <<"pbkdf2-hmac-sha512">>).
 -define(SHA1_HASH, <<"SHA-1">>).
