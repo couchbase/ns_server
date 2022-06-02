@@ -262,6 +262,12 @@ filter_scopes_with_roles(Bucket, Scopes, Roles) ->
                 Roles)
       end, Scopes).
 
+filter_system_scopes(Scopes) ->
+    lists:filter(
+      fun ({"_system", _Scope}) -> false;
+          ({_, _}) -> true
+      end, Scopes).
+
 filter_collections_with_roles(Bucket, Scopes, Roles) ->
     lists:filtermap(
       fun ({ScopeName, Scope}) ->
@@ -622,12 +628,15 @@ diff_manifests(NewManifest, OldManifest) ->
     lists:keyreplace(scopes, 1, NewManifest,
                      {scopes_diff, diff_scopes(OldScopes, NewScopes)}).
 
-compile_operation({set_manifest, Roles, RequiredScopes, CheckUid},
+compile_operation({set_manifest, Roles, RequiredScopes0, CheckUid},
                   Bucket, Manifest) ->
+    RequiredScopes = filter_system_scopes(RequiredScopes0),
     case filter_scopes_with_roles(Bucket, RequiredScopes, Roles) of
         RequiredScopes ->
             FilteredCurScopes = filter_scopes_with_roles(
-                                  Bucket, get_scopes(Manifest), Roles),
+                                  Bucket,
+                                  filter_system_scopes(get_scopes(Manifest)),
+                                  Roles),
             %% scope admin can delete it's own scope.
             [{check_uid, CheckUid} |
              get_operations(FilteredCurScopes, RequiredScopes)];
