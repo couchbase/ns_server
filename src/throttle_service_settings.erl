@@ -63,6 +63,9 @@ attributes() ->
 key_map() ->
     [{PKey, MKey} || {PKey, MKey, _} <- attributes()].
 
+%% Default config will be provided based on the Profile settings that
+%% specify if throttling is enabled. This function is used by ns_config
+%% to build the default settings
 default_config(Profile) ->
     case proplists:get_bool(enable_throttle_settings, Profile) of
         true ->
