@@ -39,12 +39,12 @@ throttle_limit_params() ->
                               cfg_key => index_throttle_limit}},
      {"ftsThrottleLimit", #{type => non_neg_int,
                             cfg_key => fts_throttle_limit}},
-     {"queryThrottleLimit", #{type => non_neg_int,
-                              cfg_key => query_throttle_limit}},
-     {"syncGwThrottleReadLimit", #{type => non_neg_int,
-                                   cfg_key => syncgw_throttle_read_limit}},
-     {"syncGwThrottleWriteLimit", #{type => non_neg_int,
-                                    cfg_key => syncgw_throttle_write_limit}}].
+     {"n1qlThrottleLimit", #{type => non_neg_int,
+                              cfg_key => n1ql_throttle_limit}},
+     {"sgwReadThrottleLimit", #{type => non_neg_int,
+                                   cfg_key => sgw_read_throttle_limit}},
+     {"sgwWriteThrottleLimit", #{type => non_neg_int,
+                                    cfg_key => sgw_write_throttle_limit}}].
 
 attributes() ->
     [{kv_throttle_limit,
@@ -53,12 +53,12 @@ attributes() ->
       <<"throttle.settings.limit.index">>, 5000},
      {fts_throttle_limit,
       <<"throttle.settings.limit.fts">>, 5000},
-     {query_throttle_limit,
-      <<"throttle.settings.limit.query">>, 5000},
-     {syncgw_throttle_read_limit,
-      <<"throttle.settings.limit.syncgw.read">>, 2500},
-     {syncgw_throttle_write_limit,
-      <<"throttle.settings.limit.syncgw.write">>, 2500}].
+     {n1ql_throttle_limit,
+      <<"throttle.settings.limit.n1ql">>, 5000},
+     {sgw_read_throttle_limit,
+      <<"throttle.settings.limit.sgw.read">>, 2500},
+     {sgw_write_throttle_limit,
+      <<"throttle.settings.limit.sgw.write">>, 2500}].
 
 key_map() ->
     [{PKey, MKey} || {PKey, MKey, _} <- attributes()].
