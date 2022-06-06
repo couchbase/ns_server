@@ -51,7 +51,12 @@ get() ->
 
 -spec(get(list()) -> list()).
 get(Default) ->
-    ns_config:search_node_with_default(?CONFIG_PROFILE, Default).
+    case cluster_compat_mode:is_cluster_elixir() of
+        false ->
+            Default;
+        true ->
+            ns_config:search_node_with_default(?CONFIG_PROFILE, Default)
+    end.
 
 -spec(get_value(term(), term()) -> term()).
 get_value(Key, Default) ->
@@ -69,6 +74,9 @@ search(Key) ->
 search(Key, Default) ->
     search_profile_key(Key, Default).
 
+%% @doc WARNING: Please only use this in certain situations. Instead you should
+%% be enabling features by individual flags inside the profile and not a blanket
+%% check for if we are using the "serverless" profile. You have been warned.
 -spec(is_serverless() -> boolean()).
 is_serverless() ->
     case name() of
@@ -84,7 +92,7 @@ search_profile_key(Key) ->
 
 -spec(search_profile_key(term(), term()) -> term()).
 search_profile_key(Key, Default) ->
-    ProfileData = ns_config:search_node_with_default(?CONFIG_PROFILE, []),
+    ProfileData = config_profile:get(),
     case lookup_profile_key(ProfileData, Key) of
         {value, Value} ->
             Value;
@@ -99,6 +107,4 @@ lookup_profile_key(ProfileData, Key) when is_list(ProfileData) ->
             {value, Value};
         _ ->
             false
-    end;
-lookup_profile_key(_, _) ->
-    false.
+    end.
