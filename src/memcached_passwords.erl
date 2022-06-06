@@ -137,7 +137,7 @@ memcached_user_info(User, Auth) ->
                (Other) ->
                    Other
            end, Auth),
-    {[{<<"n">>, list_to_binary(User)} | Auth2]}.
+    {list_to_binary(User), {Auth2}}.
 
 jsonify_auth(Users, AdminPass, RestCreds, PromAuth) ->
     EnforceLimits = cluster_compat_mode:should_enforce_limits(),
@@ -145,26 +145,26 @@ jsonify_auth(Users, AdminPass, RestCreds, PromAuth) ->
        begin
            ?yield(object_start),
            ?yield({kv_start, <<"users">>}),
-           ?yield(array_start),
+           ?yield(object_start),
 
            ClusterAdmin =
                case get_admin_auth_json(RestCreds) of
                    undefined ->
                        undefined;
                    {User, Auth} ->
-                       ?yield({json, memcached_user_info(User, Auth)}),
+                       ?yield({kv, memcached_user_info(User, Auth)}),
                        User
                end,
 
            case PromAuth of
                {PUser, PAuth} ->
-                   ?yield({json, memcached_user_info(PUser, PAuth)}),
+                   ?yield({kv, memcached_user_info(PUser, PAuth)}),
                    PUser;
                undefined -> ok
            end,
 
            AdminAuth = menelaus_users:build_auth(AdminPass),
-           [?yield({json, memcached_user_info(U, AdminAuth)}) || U <- Users],
+           [?yield({kv, memcached_user_info(U, AdminAuth)}) || U <- Users],
 
            pipes:foreach(
              ?producer(),
@@ -180,12 +180,12 @@ jsonify_auth(Users, AdminPass, RestCreds, PromAuth) ->
                              Limits = get_user_limits_json(EnforceLimits,
                                                            Identity),
                              UUID = get_user_uuid(EnforceLimits, Identity),
-                             ?yield({json, memcached_user_info(
-                                             UserName,
-                                             UUID ++ Limits ++ Auth)})
+                             ?yield({kv, memcached_user_info(
+                                           UserName,
+                                           UUID ++ Limits ++ Auth)})
                      end
              end),
-           ?yield(array_end),
+           ?yield(object_end),
            ?yield(kv_end),
            ?yield(object_end)
        end).
