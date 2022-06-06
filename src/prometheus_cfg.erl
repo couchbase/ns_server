@@ -609,7 +609,7 @@ ns_to_prometheus_filename() ->
 generate_prometheus_auth_info(Settings) ->
     Token = menelaus_web_rbac:gen_password({256, [uppercase, lowercase,
                                                   digits]}),
-    AuthInfo = menelaus_users:build_scram_auth(Token),
+    AuthInfo = menelaus_users:build_auth(Token),
     ns_config:set({node, node(), prometheus_auth_info},
                   {?USERNAME, {auth, AuthInfo}}),
     TokenFile = token_file(Settings),

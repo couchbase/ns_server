@@ -163,7 +163,7 @@ jsonify_auth(Users, AdminPass, RestCreds, PromAuth) ->
                undefined -> ok
            end,
 
-           AdminAuth = menelaus_users:build_scram_auth(AdminPass),
+           AdminAuth = menelaus_users:build_auth(AdminPass),
            [?yield({json, memcached_user_info(U, AdminAuth)}) || U <- Users],
 
            pipes:foreach(

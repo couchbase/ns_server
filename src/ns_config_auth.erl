@@ -35,7 +35,7 @@ admin_cfg_key() ->
     rest_creds.
 
 set_admin_credentials(User, Password) ->
-    Auth = {auth, menelaus_users:build_scram_auth(Password)},
+    Auth = {auth, menelaus_users:build_auth(Password)},
     ns_config:set(admin_cfg_key(), {User, Auth}).
 
 get_admin_user_and_auth() ->

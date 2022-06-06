@@ -23,15 +23,18 @@
 -define(SHA256_DIGEST_SIZE, 32).
 -define(SHA512_DIGEST_SIZE, 64).
 
+-define(SALT_KEY,       <<"s">>).
+-define(STORED_KEY_KEY, <<"c">>).
+-define(SERVER_KEY_KEY, <<"k">>).
+-define(ITERATIONS_KEY, <<"i">>).
+
 -export([start_link/0,
          authenticate/1,
          meta_header/0,
          get_resp_headers_from_req/1,
-         hash_password/2,
-         auth_info_key/1,
-         supported_types/0,
          get_fallback_salt/0,
-         pbkdf2/4]).
+         pbkdf2/4,
+         build_auth/1]).
 
 %% callback for token_server
 -export([init/0]).
@@ -41,6 +44,19 @@ start_link() ->
 
 init() ->
     ok.
+
+build_auth(Password) ->
+    BuildAuth =
+        fun (Type) ->
+                {Salt, StoredKey, ServerKey, Iterations} =
+                    hash_password(Type, Password),
+                {auth_info_key(Type),
+                    {[{?SALT_KEY, base64:encode(Salt)},
+                      {?STORED_KEY_KEY, base64:encode(StoredKey)},
+                      {?SERVER_KEY_KEY, base64:encode(ServerKey)},
+                      {?ITERATIONS_KEY, Iterations}]}}
+        end,
+    [BuildAuth(Sha) || Sha <- supported_types()].
 
 meta_header() ->
     "menelaus-auth-scram-sha_reply".
@@ -90,12 +106,8 @@ parse_authorization_header_prefix("SHA-1 " ++ Rest) ->
 parse_authorization_header_prefix(_) ->
     error.
 
-auth_info_key(sha512) ->
-    <<"sha512">>;
-auth_info_key(sha256) ->
-    <<"sha256">>;
-auth_info_key(sha) ->
-    <<"sha1">>.
+auth_info_key(Sha) ->
+    list_to_binary(string:lowercase(www_authenticate_prefix(Sha))).
 
 parse_authorization_header(Value) ->
     Sections = string:tokens(Value, ","),
@@ -224,16 +236,30 @@ get_salt_and_iterations(Sha, Name) ->
         undefined ->
             {FallbackSalt, iterations()};
         {Props, _} ->
-            {binary_to_list(proplists:get_value(<<"s">>, Props)),
-             proplists:get_value(<<"i">>, Props)}
+            {binary_to_list(proplists:get_value(?SALT_KEY, Props)),
+             proplists:get_value(?ITERATIONS_KEY, Props)}
     end.
 
-get_salted_password_and_domain(Sha, Name) ->
+get_stored_key_server_key_and_domain(Sha, Name) ->
     case find_auth_info(Sha, Name) of
         undefined ->
-            {<<"anything">>, undefined};
+            FakeStoredKey =
+                case Sha of
+                    sha ->
+                        base64:decode(<<"9nbr9LPJFG4o8P2PH9UOs1MwODE=">>);
+                    sha256 ->
+                        base64:decode(<<"fQdTU3Z91UeP+uBk/0KLy66JUJLp"
+                                        "eId7erChaNFj1sg=">>);
+                    sha512 ->
+                        base64:decode(<<"uBzsbvc6YGcfor9GFPJ+xlPtAh5O"
+                                        "9ubyHTHEYXpyAm5vxPyXSrnotSM6"
+                                        "sTVDLAYkgh+OFJzQ2KeqXH2Q/2gXzA==">>)
+                end,
+            {FakeStoredKey, <<"anything">>, undefined};
         {Props, Domain} ->
-            {base64:decode(proplists:get_value(<<"h">>, Props)), Domain}
+            {base64:decode(proplists:get_value(?STORED_KEY_KEY, Props)),
+             base64:decode(proplists:get_value(?SERVER_KEY_KEY, Props)),
+             Domain}
     end.
 
 -record(memo, {auth_message,
@@ -241,55 +267,53 @@ get_salted_password_and_domain(Sha, Name) ->
                nonce}).
 
 handle_client_first_message(Sha, Name, Nonce, Bare) ->
-    {Salt, IterationCount} = get_salt_and_iterations(Sha, Name),
+    {SaltBase64, IterationCount} = get_salt_and_iterations(Sha, Name),
     ServerNonce = Nonce ++ gen_nonce(),
     ServerMessage =
-        server_first_message(ServerNonce, Salt, IterationCount),
+        server_first_message(ServerNonce, SaltBase64, IterationCount),
     Memo = #memo{auth_message = Bare ++ "," ++ ServerMessage,
                  name = Name,
                  nonce = ServerNonce},
     Sid = token_server:generate(?MODULE, Memo),
     reply_first_step(Sha, Sid, ServerMessage).
 
-calculate_client_proof(Sha, SaltedPassword, AuthMessage) ->
-    ClientKey = crypto:mac(hmac, Sha, SaltedPassword, <<"Client Key">>),
-    StoredKey = crypto:hash(Sha, ClientKey),
-    ClientSignature = crypto:mac(hmac, Sha, StoredKey, AuthMessage),
-    misc:bin_bxor(ClientKey, ClientSignature).
 
-calculate_server_proof(Sha, SaltedPassword, AuthMessage) ->
-    ServerKey = crypto:mac(hmac, Sha, SaltedPassword, <<"Server Key">>),
+
+server_signature(Sha, ServerKey, AuthMessage) ->
     crypto:mac(hmac, Sha, ServerKey, AuthMessage).
 
-handle_client_final_message(Sha, Sid, Nonce, Proof, ClientFinalMessage) ->
+handle_client_final_message(Sha, Sid, Nonce, ClientProof, ClientFinalMessage) ->
     case token_server:take(?MODULE, Sid) of
         false ->
             auth_failure;
         {ok, #memo{auth_message = AuthMessage,
                    name = Name,
                    nonce = ServerNonce}} ->
-            {SaltedPassword, Domain} =
-                get_salted_password_and_domain(Sha, Name),
+            {StoredKey, ServerKey, Domain} =
+                get_stored_key_server_key_and_domain(Sha, Name),
             FullAuthMessage = AuthMessage ++ "," ++ ClientFinalMessage,
-            ServerProof = handle_proofs(Sha, SaltedPassword, Proof,
-                                        FullAuthMessage),
-            case {misc:compare_secure(Nonce, ServerNonce), Domain,
-                  ServerProof} of
-                {true, D, P} when D =/= undefined, P =/= error ->
-                    reply_success(Sid, {Name, Domain}, ServerProof);
+            AuthRes = check_stored_key(Sha, ClientProof, StoredKey,
+                                       FullAuthMessage),
+            IsSameNonce = misc:compare_secure(Nonce, ServerNonce),
+            ServerSignature = server_signature(Sha, ServerKey, FullAuthMessage),
+
+            case IsSameNonce and (Domain =/= undefined) and AuthRes of
+                true ->
+                    reply_success(Sid, {Name, Domain}, ServerSignature);
                 _ ->
                     auth_failure
             end
     end.
 
-handle_proofs(Sha, SaltedPassword, Proof, AuthMessage) ->
-    ClientProof = calculate_client_proof(Sha, SaltedPassword, AuthMessage),
-    case misc:compare_secure(Proof, base64:encode_to_string(ClientProof)) of
-        false ->
-            error;
-        true ->
-            calculate_server_proof(Sha, SaltedPassword, AuthMessage)
-    end.
+%% Calculate stored key based on the client proof and compare it
+%% with the stored key saved in auth info.
+%% It they match, the user is authenticated
+check_stored_key(Sha, ClientProofBase64, StoredKey, AuthMessage) ->
+    ClientProof = base64:decode(ClientProofBase64),
+    ClientSignature = client_signature(Sha, StoredKey, AuthMessage),
+    ClientKey = misc:bin_bxor(ClientSignature, ClientProof),
+    ReStoredKey = stored_key(Sha, ClientKey),
+    misc:compare_secure(ReStoredKey, StoredKey).
 
 pbkdf2(Sha, Password, Salt, Iterations) ->
     Initial = crypto:mac(hmac, Sha, Password, <<Salt/binary, 1:32/integer>>),
@@ -309,8 +333,11 @@ hash_password(Type, Password) ->
               sha512 -> ?SHA512_DIGEST_SIZE
           end,
     Salt = crypto:strong_rand_bytes(Len),
-    Hash = pbkdf2(Type, Password, Salt, Iterations),
-    {Salt, Hash, Iterations}.
+    SaltedPassword = pbkdf2(Type, Password, Salt, Iterations),
+    ClientKey = client_key(Type, SaltedPassword),
+    StoredKey = stored_key(Type, ClientKey),
+    ServerKey = server_key(Type, SaltedPassword),
+    {Salt, StoredKey, ServerKey, Iterations}.
 
 iterations() ->
     ns_config:read_key_fast(memcached_password_hash_iterations, 4000).
@@ -318,6 +345,17 @@ iterations() ->
 supported_types() ->
     [sha512, sha256, sha].
 
+server_key(Sha, SaltedPassword) ->
+    crypto:mac(hmac, Sha, SaltedPassword, <<"Server Key">>).
+
+client_key(Sha, SaltedPassword) ->
+    crypto:mac(hmac, Sha, SaltedPassword, <<"Client Key">>).
+
+stored_key(Sha, ClientKey) ->
+    crypto:hash(Sha, ClientKey).
+
+client_signature(Sha, StoredKey, AuthMessage) ->
+    crypto:mac(hmac, Sha, StoredKey, AuthMessage).
 
 -ifdef(TEST).
 build_client_first_message(Sha, Nonce, User) ->
@@ -351,6 +389,12 @@ build_client_final_message(Sha, Sid, Nonce, SaltedPassword, Message) ->
     {Prefix ++ " data=" ++ base64:encode_to_string(Data) ++ ",sid=" ++ Sid,
      FullMessage}.
 
+calculate_client_proof(Sha, SaltedPassword, AuthMessage) ->
+    ClientKey = client_key(Sha, SaltedPassword),
+    StoredKey = stored_key(Sha, ClientKey),
+    ClientSignature = client_signature(Sha, StoredKey, AuthMessage),
+    misc:bin_bxor(ClientKey, ClientSignature).
+
 check_server_proof(Sha, Sid, SaltedPassword, Message, Header) ->
     Prefix = "Isid=" ++ Sid ++ ",data=",
     "v=" ++ ProofFromServer =
@@ -359,6 +403,8 @@ check_server_proof(Sha, Sid, SaltedPassword, Message, Header) ->
     Proof = calculate_server_proof(Sha, SaltedPassword, Message),
     ?assertEqual(ProofFromServer, base64:encode_to_string(Proof)).
 
+calculate_server_proof(Sha, SaltedPassword, AuthMessage) ->
+    server_signature(Sha, server_key(Sha, SaltedPassword), AuthMessage).
 
 client_auth(Sha, User, Password, Nonce) ->
     {ToSend, ClientFirstMessage} =
@@ -444,7 +490,7 @@ setup_t() ->
     Password = "qwerty",
     Nonce = gen_nonce(),
 
-    Auth = menelaus_users:build_scram_auth(Password),
+    Auth = menelaus_users:build_auth(Password),
     ns_config:test_setup([{rest_creds, {User, {auth, Auth}}}]),
     {User, Password, Nonce, Pid}.
 

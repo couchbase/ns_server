@@ -63,7 +63,7 @@
 %% Actions:
          authenticate/2,
          authenticate_with_info/2,
-         build_scram_auth/1,
+         build_auth/1,
          format_plain_auth/1,
          empty_storage/0,
          cleanup_bucket_roles/1,
@@ -414,7 +414,7 @@ select_auth_infos(KeySpec) ->
 build_auth(false, undefined) ->
     password_required;
 build_auth(false, Password) ->
-    build_scram_auth(Password);
+    build_auth(Password);
 build_auth({_, _}, undefined) ->
     same;
 build_auth({_, CurrentAuth}, Password) ->
@@ -422,12 +422,12 @@ build_auth({_, CurrentAuth}, Password) ->
         true ->
             case has_scram_hashes(CurrentAuth) of
                 false ->
-                    build_scram_auth(Password);
+                    build_auth(Password);
                 _ ->
                     same
             end;
         false ->
-            build_scram_auth(Password)
+            build_auth(Password)
     end.
 
 -spec store_user(rbac_identity(), rbac_user_name(), rbac_password(),
@@ -835,17 +835,8 @@ get_user_uuid({_, local} = Identity, Default) ->
 get_user_uuid(_, _) ->
     undefined.
 
-build_scram_auth(Password) ->
-    BuildAuth =
-        fun (Type) ->
-                {S, H, I} = scram_sha:hash_password(Type, Password),
-                {scram_sha:auth_info_key(Type),
-                    {[{<<"h">>, base64:encode(H)},
-                      {<<"s">>, base64:encode(S)},
-                      {<<"i">>, I}]}}
-        end,
-    build_plain_auth(Password) ++
-        [BuildAuth(Sha) || Sha <- scram_sha:supported_types()].
+build_auth(Password) ->
+    build_plain_auth(Password) ++ scram_sha:build_auth(Password).
 
 build_plain_auth(Password) ->
     HashType = ns_config:read_key_fast(password_hash_alg, ?DEFAULT_PWHASH),
