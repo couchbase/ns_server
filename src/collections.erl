@@ -703,9 +703,9 @@ verify_oper({create_collection, ScopeName, Name, _}, Manifest, Snapshot) ->
                       {collection_already_exists, ScopeName, Name}
               end
       end, ScopeName, Manifest);
-verify_oper({drop_collection, ScopeName, "_" ++ _ = CollectionName}, _Manifest,
+verify_oper({drop_collection, "_system", "_" ++ _ = CollectionName}, _Manifest,
             _Snapshot) ->
-    {cannot_drop_system_collection, ScopeName, CollectionName};
+    {cannot_drop_system_collection, "_system", CollectionName};
 verify_oper({drop_collection, ScopeName, Name}, Manifest, _Snapshot) ->
     with_collection(fun (_) -> ok end, ScopeName, Name, Manifest);
 verify_oper({modify_collection, ScopeName, Name}, _Manifest, _Snapshot) ->
