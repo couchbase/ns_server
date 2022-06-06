@@ -562,8 +562,8 @@ roles() ->
                 "only for use by Sync Gateway. This user can read and "
                 "write data, manage indexes and views, and read some "
                 "cluster information.">>}],
-      [{[{collection, [bucket_name, "_system", "_mobile"]}, data], all},
-       {[{collection, [bucket_name, "_system", any]}, data], none},
+      [{[{collection, [bucket_name, ?SYSTEM_SCOPE_NAME, "_mobile"]}, data], all},
+       {[{collection, [bucket_name, ?SYSTEM_SCOPE_NAME, any]}, data], none},
        {[{bucket, bucket_name}, data], all},
        {[{bucket, bucket_name}, views], all},
        {[{bucket, bucket_name}, n1ql, index], all},

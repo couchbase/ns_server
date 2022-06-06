@@ -152,7 +152,7 @@ get_scope_limit_validators(Type) ->
 scope_validators(default_not_allowed) ->
     scope_validators([]);
 scope_validators(special_allowed) ->
-    scope_validators(["_default", "_system"] ++
+    scope_validators(["_default", ?SYSTEM_SCOPE_NAME] ++
                      collections:system_collections());
 scope_validators(Exceptions) ->
     [validator:required(name, _),

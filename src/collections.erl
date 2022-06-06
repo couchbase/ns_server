@@ -144,7 +144,7 @@ manifest_with_system_scope() ->
          {collections,
           [{"_default",
             [{uid, 0}]}]}]},
-       {"_system",
+       {?SYSTEM_SCOPE_NAME,
         [{uid, 8},
          {collections, Collections}]}]}].
 
@@ -264,7 +264,7 @@ filter_scopes_with_roles(Bucket, Scopes, Roles) ->
 
 filter_system_scopes(Scopes) ->
     lists:filter(
-      fun ({"_system", _Scope}) -> false;
+      fun ({?SYSTEM_SCOPE_NAME, _Scope}) -> false;
           ({_, _}) -> true
       end, Scopes).
 
@@ -673,14 +673,15 @@ verify_oper({create_scope, Name, _Limits}, Manifest, _Snapshot) ->
     end;
 verify_oper({drop_scope, "_default"}, _Manifest, _Snapshot) ->
     cannot_drop_default_scope;
-verify_oper({drop_scope, "_system"}, _Manifest, _Snapshot) ->
+verify_oper({drop_scope, ?SYSTEM_SCOPE_NAME}, _Manifest, _Snapshot) ->
     cannot_drop_system_scope;
 verify_oper({drop_scope, Name}, Manifest, _Snapshot) ->
     with_scope(fun (_) -> ok end, Name, Manifest);
 verify_oper({create_collection, ScopeName, "_default", _}, _Manifest,
             _Snapshot) ->
     {cannot_create_default_collection, ScopeName};
-verify_oper({create_collection, "_system", _Name, _}, _Manifest, _Snapshot) ->
+verify_oper({create_collection, ?SYSTEM_SCOPE_NAME, _Name, _},
+            _Manifest, _Snapshot) ->
     {cannot_create_collection_in_system_scope};
 verify_oper({create_collection, ScopeName, Name, _}, Manifest, Snapshot) ->
     with_scope(
@@ -703,9 +704,9 @@ verify_oper({create_collection, ScopeName, Name, _}, Manifest, Snapshot) ->
                       {collection_already_exists, ScopeName, Name}
               end
       end, ScopeName, Manifest);
-verify_oper({drop_collection, "_system", "_" ++ _ = CollectionName}, _Manifest,
-            _Snapshot) ->
-    {cannot_drop_system_collection, "_system", CollectionName};
+verify_oper({drop_collection, ?SYSTEM_SCOPE_NAME, "_" ++ _ = CollectionName},
+            _Manifest, _Snapshot) ->
+    {cannot_drop_system_collection, ?SYSTEM_SCOPE_NAME, CollectionName};
 verify_oper({drop_collection, ScopeName, Name}, Manifest, _Snapshot) ->
     with_collection(fun (_) -> ok end, ScopeName, Name, Manifest);
 verify_oper({modify_collection, ScopeName, Name}, _Manifest, _Snapshot) ->

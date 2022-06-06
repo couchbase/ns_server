@@ -299,4 +299,5 @@
 %% Key used to retreive configuration profiles from application env.
 -define(CONFIG_PROFILE, config_profile).
 
+-define(SYSTEM_SCOPE_NAME, "_system").
 -endif.
