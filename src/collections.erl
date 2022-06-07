@@ -132,8 +132,8 @@ manifest_with_system_scope() ->
                   {Id + 1, [{Name, [{uid, Id}, {"system", true}]}] ++ Cols}
           end, {8, []}, system_collections()),
 
-    [{uid, 0},
-     {next_uid, 1},
+    [{uid, 1},
+     {next_uid, 2},
      {next_scope_uid, 9},
      {next_coll_uid, NextId},
      {num_scopes, 1},
