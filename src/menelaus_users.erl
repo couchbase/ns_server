@@ -942,6 +942,8 @@ upgrade_props(?VERSION_70, RecType, _Key, Props) when RecType == user;
     {ok, upgrade_roles(fun maybe_upgrade_role_to_70/1, Props)};
 upgrade_props(?VERSION_71, user, Key, Props) ->
     {ok, add_uuid(Key, Props)};
+upgrade_props(?VERSION_ELIXIR, auth, _Key, AuthProps) ->
+    {ok, scram_sha:fix_pre_elixir_auth_info(AuthProps)};
 upgrade_props(_Vsn, _RecType, _Key, _Props) ->
     skip.
 
@@ -1017,6 +1019,16 @@ upgrade_test_() ->
             ?assert(is_binary(proplists:get_value(uuid, Props)))
         end,
 
+    CheckAuth =
+        fun (User, AuthType, Expected) ->
+            fun () ->
+                Props = get_props_raw(auth, {User, local}),
+                {Actual} = proplists:get_value(AuthType, Props, []),
+                ?assertEqual(lists:sort(Expected),
+                             lists:sort(Actual))
+            end
+        end,
+
     Test =
         fun (Version, Users, Checks) ->
                 {lists:flatten(io_lib:format("Upgrade to ~p", [Version])),
@@ -1063,6 +1075,24 @@ upgrade_test_() ->
       Test(?VERSION_71,
            SetUsers([{"user1", [admin]},
                      {"user2", [{bucket_admin, ["test"]}]}]),
-           [?cut([CheckUUID(U) || U <- ["user1", "user2"]])])]}.
+           [?cut([CheckUUID(U) || U <- ["user1", "user2"]])]),
+      Test(?VERSION_ELIXIR,
+           [{{auth, {"migrated-user", local}},
+             [{<<"hash">>, {[anything]}},
+              {<<"scram-sha-1">>, {[anything]}}]}],
+           [CheckAuth("migrated-user", <<"hash">>, [anything]),
+            CheckAuth("migrated-user", <<"scram-sha-1">>, [anything])]),
+      Test(?VERSION_ELIXIR,
+           [{{auth, {"not-migrated-user", local}},
+             [{<<"hash">>, {[anything]}},
+              {<<"sha1">>, {[{<<"s">>, <<"0ues3mfZqA4OjuljBI/uQY5L0jI=">>},
+                             {<<"h">>, <<"kZlCBy+TU+meqxR7rJfg9mS1LZA=">>},
+                             {<<"i">>, 4000}]}}]}],
+           [CheckAuth("not-migrated-user", <<"hash">>, [anything]),
+            CheckAuth("not-migrated-user", <<"scram-sha-1">>,
+                      [{<<"c">>, <<"APXjupUS+LktBEirfdNtNtCYChk=">>},
+                       {<<"k">>, <<"Vkelr1rzrz9tT0Z/AhLvKJVuWJs=">>},
+                       {<<"s">>, <<"0ues3mfZqA4OjuljBI/uQY5L0jI=">>},
+                       {<<"i">>, 4000}])])]}.
 
 -endif.
