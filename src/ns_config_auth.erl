@@ -72,9 +72,9 @@ get_password(Node, special) when is_atom(Node)->
     ns_config:search_node_prop(Node, ns_config:latest(), memcached, admin_pass).
 
 get_salt_and_mac({password, {Salt, Mac}}) ->
-    [{<<"a">>, ?SHA1_HASH},
-     {<<"s">>, base64:encode(Salt)},
-     {<<"h">>, base64:encode(Mac)}];
+    [{?HASH_ALG_KEY, ?SHA1_HASH},
+     {?SALT_KEY, base64:encode(Salt)},
+     {?HASH_KEY, base64:encode(Mac)}];
 get_salt_and_mac({auth, Auth}) ->
     menelaus_users:get_salt_and_mac(Auth).
 
@@ -153,44 +153,46 @@ authenticate_admin(User, Password) ->
     end.
 
 check_hash(HashInfo, Password) ->
-    Hash1 = base64:decode(proplists:get_value(<<"h">>, HashInfo)),
+    Hash1 = base64:decode(proplists:get_value(?HASH_KEY, HashInfo)),
     Hash2 = hash_password(HashInfo, Password),
     misc:compare_secure(Hash2, Hash1).
 
 new_password_hash(Type, Password) ->
     Info = new_hash_info(Type),
-    [{<<"h">>, base64:encode(hash_password(Info, Password))} | Info].
+    [{?HASH_KEY, base64:encode(hash_password(Info, Password))} | Info].
 
 new_hash_info(T) ->
-    [{<<"a">>, T} | new_hash_info_int(T)].
+    [{?HASH_ALG_KEY, T} | new_hash_info_int(T)].
 
 new_hash_info_int(?ARGON2ID_HASH) ->
     SaltSize = enacl:pwhash_SALTBYTES(),
-    [{<<"s">>, base64:encode(crypto:strong_rand_bytes(SaltSize))},
-     {<<"t">>, ns_config:read_key_fast(argon2id_time, ?DEFAULT_ARG2ID_TIME)},
-     {<<"m">>, ns_config:read_key_fast(argon2id_mem, ?DEFAULT_ARG2ID_MEM)},
-     {<<"p">>, 1}]; %% we support only p=1 because enacl+libsodium always uses 1
+    [{?SALT_KEY, base64:encode(crypto:strong_rand_bytes(SaltSize))},
+     {?ARGON_TIME_KEY,
+        ns_config:read_key_fast(argon2id_time, ?DEFAULT_ARG2ID_TIME)},
+     {?ARGON_MEM_KEY,
+        ns_config:read_key_fast(argon2id_mem, ?DEFAULT_ARG2ID_MEM)},
+     {?ARGON_THREADS_KEY, 1}]; %% we support only p=1 because enacl+libsodium always uses 1
 new_hash_info_int(?PBKDF2_HASH) ->
-    [{<<"s">>, base64:encode(crypto:strong_rand_bytes(64))},
-     {<<"i">>, ns_config:read_key_fast(pbkdf2_sha512_iterations,
-                                       ?DEFAULT_PBKDF2_ITER)}];
+    [{?SALT_KEY, base64:encode(crypto:strong_rand_bytes(64))},
+     {?PBKDF2_ITER_KEY, ns_config:read_key_fast(pbkdf2_sha512_iterations,
+                                                ?DEFAULT_PBKDF2_ITER)}];
 new_hash_info_int(?SHA1_HASH) ->
-    [{<<"s">>, base64:encode(crypto:strong_rand_bytes(16))}].
+    [{?SALT_KEY, base64:encode(crypto:strong_rand_bytes(16))}].
 
 hash_password(HashInfo, Password) ->
-    case proplists:get_value(<<"a">>, HashInfo) of
+    case proplists:get_value(?HASH_ALG_KEY, HashInfo) of
         ?ARGON2ID_HASH ->
-            Salt = base64:decode(proplists:get_value(<<"s">>, HashInfo)),
-            Ops = proplists:get_value(<<"t">>, HashInfo),
-            Mem = proplists:get_value(<<"m">>, HashInfo),
-            1 = proplists:get_value(<<"p">>, HashInfo),
+            Salt = base64:decode(proplists:get_value(?SALT_KEY, HashInfo)),
+            Ops = proplists:get_value(?ARGON_TIME_KEY, HashInfo),
+            Mem = proplists:get_value(?ARGON_MEM_KEY, HashInfo),
+            1 = proplists:get_value(?ARGON_THREADS_KEY, HashInfo),
             enacl:pwhash(Password, Salt, Ops, Mem, argon2id13);
         ?PBKDF2_HASH ->
-            Salt = base64:decode(proplists:get_value(<<"s">>, HashInfo)),
-            Iterations = proplists:get_value(<<"i">>, HashInfo),
+            Salt = base64:decode(proplists:get_value(?SALT_KEY, HashInfo)),
+            Iterations = proplists:get_value(?PBKDF2_ITER_KEY, HashInfo),
             scram_sha:pbkdf2(sha512, Password, Salt, Iterations);
         ?SHA1_HASH ->
-            Salt = base64:decode(proplists:get_value(<<"s">>, HashInfo)),
+            Salt = base64:decode(proplists:get_value(?SALT_KEY, HashInfo)),
             crypto:mac(hmac, sha, Salt, list_to_binary(Password))
     end.
 

@@ -13,6 +13,7 @@
 
 -module(scram_sha).
 
+-include("ns_common.hrl").
 -include("cut.hrl").
 
 -ifdef(TEST).
@@ -22,16 +23,6 @@
 -define(SHA_DIGEST_SIZE, 20).
 -define(SHA256_DIGEST_SIZE, 32).
 -define(SHA512_DIGEST_SIZE, 64).
-
--define(SALT_KEY,       <<"s">>).
--define(STORED_KEY_KEY, <<"c">>).
--define(SERVER_KEY_KEY, <<"k">>).
--define(ITERATIONS_KEY, <<"i">>).
-
-%% Pre elixir names:
--define(OLD_SALT_KEY,       <<"s">>).
--define(OLD_HASH_KEY,       <<"h">>).
--define(OLD_ITERATIONS_KEY, <<"i">>).
 
 -export([start_link/0,
          authenticate/1,
@@ -57,10 +48,10 @@ build_auth(Password) ->
                 {Salt, StoredKey, ServerKey, Iterations} =
                     hash_password(Type, Password),
                 {auth_info_key(Type),
-                    {[{?SALT_KEY, base64:encode(Salt)},
-                      {?STORED_KEY_KEY, base64:encode(StoredKey)},
-                      {?SERVER_KEY_KEY, base64:encode(ServerKey)},
-                      {?ITERATIONS_KEY, Iterations}]}}
+                    {[{?SCRAM_SALT_KEY, base64:encode(Salt)},
+                      {?SCRAM_STORED_KEY_KEY, base64:encode(StoredKey)},
+                      {?SCRAM_SERVER_KEY_KEY, base64:encode(ServerKey)},
+                      {?SCRAM_ITERATIONS_KEY, Iterations}]}}
         end,
     [BuildAuth(Sha) || Sha <- supported_types()].
 
@@ -79,17 +70,17 @@ fix_pre_elixir_auth_info(Props) ->
                     end,
               NewParams =
                   lists:flatmap(
-                    fun ({?OLD_ITERATIONS_KEY, I}) ->
-                            [{?ITERATIONS_KEY, I}];
-                        ({?OLD_SALT_KEY, S}) ->
-                            [{?SALT_KEY, S}];
-                        ({?OLD_HASH_KEY, SPasswordBase64}) ->
+                    fun ({?OLD_SCRAM_ITERATIONS_KEY, I}) ->
+                            [{?SCRAM_ITERATIONS_KEY, I}];
+                        ({?OLD_SCRAM_SALT_KEY, S}) ->
+                            [{?SCRAM_SALT_KEY, S}];
+                        ({?OLD_SCRAM_HASH_KEY, SPasswordBase64}) ->
                             SPassword = base64:decode(SPasswordBase64),
                             ClientKey = client_key(Sha, SPassword),
                             StoredKey = stored_key(Sha, ClientKey),
                             ServerKey = server_key(Sha, SPassword),
-                            [{?STORED_KEY_KEY, base64:encode(StoredKey)},
-                             {?SERVER_KEY_KEY, base64:encode(ServerKey)}]
+                            [{?SCRAM_STORED_KEY_KEY, base64:encode(StoredKey)},
+                             {?SCRAM_SERVER_KEY_KEY, base64:encode(ServerKey)}]
                     end, Params),
               {auth_info_key(Sha), {NewParams}};
           (KV) -> KV
@@ -274,8 +265,8 @@ get_salt_and_iterations(Sha, Name) ->
         undefined ->
             {FallbackSalt, iterations()};
         {Props, _} ->
-            {binary_to_list(proplists:get_value(?SALT_KEY, Props)),
-             proplists:get_value(?ITERATIONS_KEY, Props)}
+            {binary_to_list(proplists:get_value(?SCRAM_SALT_KEY, Props)),
+             proplists:get_value(?SCRAM_ITERATIONS_KEY, Props)}
     end.
 
 get_stored_key_server_key_and_domain(Sha, Name) ->
@@ -295,8 +286,8 @@ get_stored_key_server_key_and_domain(Sha, Name) ->
                 end,
             {FakeStoredKey, <<"anything">>, undefined};
         {Props, Domain} ->
-            {base64:decode(proplists:get_value(?STORED_KEY_KEY, Props)),
-             base64:decode(proplists:get_value(?SERVER_KEY_KEY, Props)),
+            {base64:decode(proplists:get_value(?SCRAM_STORED_KEY_KEY, Props)),
+             base64:decode(proplists:get_value(?SCRAM_SERVER_KEY_KEY, Props)),
              Domain}
     end.
 

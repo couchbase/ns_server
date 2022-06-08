@@ -223,8 +223,10 @@ sanitize(Config, TagUserTuples) ->
           ({UName, {auth, Auth}}) ->
               {stop, {tag_user_name(UName),
                       {auth, sanitize(Auth, TagUserTuples)}}};
-          ({<<"h">>, V}) ->
-              {stop, {<<"h">>, sanitize_value(V)}};
+          ({?HASH_KEY, V}) ->
+              {stop, {?HASH_KEY, sanitize_value(V)}};
+          ({?OLD_HASH_KEY, V}) ->
+              {stop, {?OLD_HASH_KEY, sanitize_value(V)}};
           ({<<"plain">>, V}) ->
               {stop, {<<"plain">>, sanitize_value(V)}};
           ({Key, ListUsers}) when Key =:= disabled_users orelse

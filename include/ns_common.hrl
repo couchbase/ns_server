@@ -308,4 +308,22 @@
 -define(PBKDF2_HASH, <<"pbkdf2-hmac-sha512">>).
 -define(SHA1_HASH, <<"SHA-1">>).
 
+-define(HASH_KEY,             <<"hash">>).
+-define(SALT_KEY,             <<"salt">>).
+-define(HASH_ALG_KEY,         <<"algorithm">>).
+-define(ARGON_TIME_KEY,       <<"time">>).
+-define(ARGON_MEM_KEY,        <<"memory">>).
+-define(ARGON_THREADS_KEY,    <<"parallelism">>).
+-define(PBKDF2_ITER_KEY,      <<"iterations">>).
+-define(SCRAM_STORED_KEY_KEY, <<"stored_key">>).
+-define(SCRAM_SERVER_KEY_KEY, <<"server_key">>).
+-define(SCRAM_SALT_KEY,       <<"salt">>).
+-define(SCRAM_ITERATIONS_KEY, <<"iterations">>).
+
+%% Pre-elixir keys (do not change these values):
+-define(OLD_HASH_KEY,             <<"h">>).
+-define(OLD_SCRAM_SALT_KEY,       <<"s">>).
+-define(OLD_SCRAM_HASH_KEY,       <<"h">>).
+-define(OLD_SCRAM_ITERATIONS_KEY, <<"i">>).
+
 -endif.

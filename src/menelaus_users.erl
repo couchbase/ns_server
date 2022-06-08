@@ -571,9 +571,9 @@ get_salt_and_mac(Auth) ->
 obsolete_get_salt_and_mac(Auth) ->
     SaltAndMacBase64 = binary_to_list(proplists:get_value(<<"plain">>, Auth)),
     <<Salt:16/binary, Mac:20/binary>> = base64:decode(SaltAndMacBase64),
-    [{<<"a">>, ?SHA1_HASH},
-     {<<"s">>, base64:encode(Salt)},
-     {<<"h">>, base64:encode(Mac)}].
+    [{?HASH_ALG_KEY, ?SHA1_HASH},
+     {?SALT_KEY, base64:encode(Salt)},
+     {?HASH_KEY, base64:encode(Mac)}].
 
 has_scram_hashes(Auth) ->
     proplists:is_defined(<<"sha1">>, Auth).
@@ -1085,14 +1085,17 @@ upgrade_test_() ->
       Test(?VERSION_ELIXIR,
            [{{auth, {"not-migrated-user", local}},
              [{<<"hash">>, {[anything]}},
-              {<<"sha1">>, {[{<<"s">>, <<"0ues3mfZqA4OjuljBI/uQY5L0jI=">>},
-                             {<<"h">>, <<"kZlCBy+TU+meqxR7rJfg9mS1LZA=">>},
-                             {<<"i">>, 4000}]}}]}],
+              {<<"sha1">>,
+               {[{?OLD_SCRAM_SALT_KEY, <<"0ues3mfZqA4OjuljBI/uQY5L0jI=">>},
+                 {?OLD_SCRAM_HASH_KEY, <<"kZlCBy+TU+meqxR7rJfg9mS1LZA=">>},
+                 {?OLD_SCRAM_ITERATIONS_KEY, 4000}]}}]}],
            [CheckAuth("not-migrated-user", <<"hash">>, [anything]),
             CheckAuth("not-migrated-user", <<"scram-sha-1">>,
-                      [{<<"c">>, <<"APXjupUS+LktBEirfdNtNtCYChk=">>},
-                       {<<"k">>, <<"Vkelr1rzrz9tT0Z/AhLvKJVuWJs=">>},
-                       {<<"s">>, <<"0ues3mfZqA4OjuljBI/uQY5L0jI=">>},
-                       {<<"i">>, 4000}])])]}.
+                      [{?SCRAM_STORED_KEY_KEY,
+                        <<"APXjupUS+LktBEirfdNtNtCYChk=">>},
+                       {?SCRAM_SERVER_KEY_KEY,
+                        <<"Vkelr1rzrz9tT0Z/AhLvKJVuWJs=">>},
+                       {?SCRAM_SALT_KEY, <<"0ues3mfZqA4OjuljBI/uQY5L0jI=">>},
+                       {?SCRAM_ITERATIONS_KEY, 4000}])])]}.
 
 -endif.

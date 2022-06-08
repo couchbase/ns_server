@@ -94,9 +94,9 @@ producer(#state{users = Users,
 
 get_admin_auth_json({User, {password, {Salt, Mac}}}) ->
     %% this happens after upgrade to 5.0, before the first password change
-    {User, menelaus_users:format_plain_auth([{<<"a">>, ?SHA1_HASH},
-                                             {<<"s">>, base64:encode(Salt)},
-                                             {<<"h">>, base64:encode(Mac)}])};
+    {User, menelaus_users:format_plain_auth([{?HASH_ALG_KEY, ?SHA1_HASH},
+                                             {?SALT_KEY, base64:encode(Salt)},
+                                             {?HASH_KEY, base64:encode(Mac)}])};
 get_admin_auth_json({User, {auth, Auth}}) ->
     {User, Auth};
 get_admin_auth_json(_) ->
@@ -144,8 +144,7 @@ jsonify_auth(Users, AdminPass, RestCreds, PromAuth) ->
     ?make_transducer(
        begin
            ?yield(object_start),
-           ?yield({kv_start, <<"users">>}),
-           ?yield(object_start),
+           ?yield({kv, {<<"@@version@@">>, 2}}),
 
            ClusterAdmin =
                case get_admin_auth_json(RestCreds) of
@@ -185,8 +184,6 @@ jsonify_auth(Users, AdminPass, RestCreds, PromAuth) ->
                                            UUID ++ Limits ++ Auth)})
                      end
              end),
-           ?yield(object_end),
-           ?yield(kv_end),
            ?yield(object_end)
        end).
 
