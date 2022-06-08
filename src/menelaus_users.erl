@@ -617,10 +617,10 @@ get_user_props(Identity) ->
     get_user_props(Identity, ?DEFAULT_PROPS).
 
 get_user_props(Identity, ItemList) ->
-    make_props(Identity, get_user_props_raw(Identity), ItemList).
+    make_props(Identity, get_props_raw(user, Identity), ItemList).
 
-get_user_props_raw(Identity) ->
-    replicated_dets:get(storage_name(), {user, Identity}, []).
+get_props_raw(Type, Identity) when Type == user; Type == group; Type == auth ->
+    replicated_dets:get(storage_name(), {Type, Identity}, []).
 
 -spec user_exists(rbac_identity()) -> boolean().
 user_exists(Identity) ->
@@ -690,11 +690,11 @@ get_group_props(GroupId) ->
     get_group_props(GroupId, ?DEFAULT_GROUP_PROPS).
 
 get_group_props(GroupId, Items) ->
-    Props = replicated_dets:get(storage_name(), {group, GroupId}, []),
+    Props = get_props_raw(group, GroupId),
     make_group_props(Props, Items).
 
 get_group_props(GroupId, Items, Definitions, Buckets) ->
-    Props = replicated_dets:get(storage_name(), {group, GroupId}, []),
+    Props = get_props_raw(group, GroupId),
     make_group_props(Props, Items, {[], Definitions, Buckets}).
 
 group_exists(GroupId) ->
@@ -831,7 +831,7 @@ get_user_uuid(Identity) ->
 -spec get_user_uuid(rbac_identity(), binary() | undefined) -> binary() |
                                                               undefined.
 get_user_uuid({_, local} = Identity, Default) ->
-    proplists:get_value(uuid, get_user_props_raw(Identity), Default);
+    proplists:get_value(uuid, get_props_raw(user, Identity), Default);
 get_user_uuid(_, _) ->
     undefined.
 
@@ -915,15 +915,7 @@ upgrade(Version, Config, Nodes) ->
         ok = ns_config_rep:ensure_config_seen_by_nodes(Nodes),
         sync_with_remotes(Nodes, Version),
 
-        do_upgrade(Version, user),
-        case Version of
-            ?VERSION_66 ->
-                ok;
-            ?VERSION_70 ->
-                do_upgrade(Version, group);
-            ?VERSION_71 ->
-                ok
-        end,
+        do_upgrade(Version),
         sync_with_remotes(Nodes, Version),
         ok
     catch T:E:S ->
@@ -942,13 +934,16 @@ maybe_upgrade_role_to_70(security_admin) ->
 maybe_upgrade_role_to_70(Role) ->
     [Role].
 
-upgrade_props(?VERSION_66, _Key, Props) ->
+upgrade_props(?VERSION_66, user, _Key, Props) ->
     %% remove junk user_roles property that might appear due to MB-39706
-    lists:keydelete(user_roles, 1, Props);
-upgrade_props(?VERSION_70, _Key, Props) ->
-    upgrade_roles(fun maybe_upgrade_role_to_70/1, Props);
-upgrade_props(?VERSION_71, Key, Props) ->
-    add_uuid(Key, Props).
+    {ok, lists:keydelete(user_roles, 1, Props)};
+upgrade_props(?VERSION_70, RecType, _Key, Props) when RecType == user;
+                                                      RecType == group ->
+    {ok, upgrade_roles(fun maybe_upgrade_role_to_70/1, Props)};
+upgrade_props(?VERSION_71, user, Key, Props) ->
+    {ok, add_uuid(Key, Props)};
+upgrade_props(_Vsn, _RecType, _Key, _Props) ->
+    skip.
 
 add_uuid({_, local}, Props) ->
     lists:keystore(uuid, 1, Props, {uuid, misc:uuid_v4()});
@@ -965,15 +960,17 @@ upgrade_roles(Fun, Props) ->
             lists:keyreplace(roles, 1, Props, {roles, NewRoles})
     end.
 
-do_upgrade(Version, UserOrGroup) ->
+do_upgrade(Version) ->
     UpdateFun =
-        fun ({UOG, Key}, Props) when UOG =:= UserOrGroup ->
-                case upgrade_props(Version, Key, Props) of
-                    Props ->
+        fun ({RecType, Key}, Props) ->
+                case upgrade_props(Version, RecType, Key, Props) of
+                    skip ->
                         skip;
-                    NewProps ->
+                    {ok, Props} ->
+                        skip;
+                    {ok, NewProps} ->
                         ?log_debug("Upgrade ~p from ~p to ~p",
-                                   [{UOG, ns_config_log:tag_user_data(Key)},
+                                   [{RecType, ns_config_log:tag_user_data(Key)},
                                     ns_config_log:tag_user_props(Props),
                                     ns_config_log:tag_user_props(NewProps)]),
                         {update, NewProps}
@@ -981,14 +978,14 @@ do_upgrade(Version, UserOrGroup) ->
         end,
 
     [] = replicated_dets:select_with_update(
-           storage_name(), {UserOrGroup, '_'}, 100, UpdateFun).
+           storage_name(), '_', 100, UpdateFun).
 
 -ifdef(TEST).
 
 upgrade_test_() ->
     CheckUser =
         fun (Id, Name) ->
-                Props = get_user_props_raw({Id, local}),
+                Props = get_props_raw(user, {Id, local}),
                 ?assertEqual([name, roles],
                              lists:sort(proplists:get_keys(Props))),
                 ?assertEqual(Name, proplists:get_value(name, Props))
@@ -996,14 +993,17 @@ upgrade_test_() ->
 
     SetRoles =
         ?cut([{Id, [{roles, Roles}, {name, "Test"}]} || {Id, Roles} <- _]),
+    SetGroups =
+        ?cut(SetRoles([{{group, Id}, Roles} || {Id, Roles} <- _])),
+    SetUsers =
+        ?cut(SetRoles([{{user, {Id, local}}, Roles} || {Id, Roles} <- _])),
 
     CheckRoles =
         fun (List) ->
                 fun () ->
                         lists:foreach(
-                          fun ({Id, Expected}) ->
-                                  CheckUser(Id, "Test"),
-                                  Props = get_user_props_raw({Id, local}),
+                          fun ({Type, Id, Expected}) ->
+                                  Props = get_props_raw(Type, Id),
                                   Actual = proplists:get_value(roles, Props),
                                   ?assertEqual(lists:sort(Expected),
                                                lists:sort(Actual))
@@ -1011,15 +1011,21 @@ upgrade_test_() ->
                 end
         end,
 
+    CheckUUID =
+        fun (User)  ->
+            Props = get_props_raw(user, {User, local}),
+            ?assert(is_binary(proplists:get_value(uuid, Props)))
+        end,
+
     Test =
-        fun (Version, Users, Check) ->
+        fun (Version, Users, Checks) ->
                 {lists:flatten(io_lib:format("Upgrade to ~p", [Version])),
                  fun () ->
                          [replicated_dets:toy_set(
-                            storage_name(), {user, {Id, local}}, Props) ||
+                            storage_name(), Id, Props) ||
                              {Id, Props} <- Users],
-                         do_upgrade(Version, user),
-                         Check()
+                         do_upgrade(Version),
+                         [C() || C <- Checks]
                  end}
         end,
     {foreach,
@@ -1034,16 +1040,29 @@ upgrade_test_() ->
              ets:delete(storage_name())
      end,
      [Test(?VERSION_66,
-           [{"user",
+           [{{user, {"user", local}},
              [{roles, [admin]}, {name, "Test"}, {user_roles, [admin]}]}],
-           ?cut(CheckUser("user", "Test"))),
+           [?cut(CheckUser("user", "Test"))]),
       Test(?VERSION_70,
-           SetRoles([{"user1", [admin, {bucket_admin, ["test"]}]},
+           SetUsers([{"user1", [admin, {bucket_admin, ["test"]}]},
                      {"user2", [{data_reader, [any]},
-                                {data_writer, ["test"]}]}]),
-           CheckRoles(
-             [{"user1", [admin, {bucket_admin, ["test"]}]},
-              {"user2", [{data_reader, [any, any, any]},
-                         {data_writer, ["test", any, any]}]}]))]}.
+                                {data_writer, ["test"]}]}]) ++
+           SetGroups([{"group1", [admin, {bucket_admin, ["test"]}]},
+                      {"group2", [{data_reader, [any]},
+                                  {data_writer, ["test"]}]}]),
+           [CheckRoles(
+             [{user, {"user1", local}, [admin, {bucket_admin, ["test"]}]},
+              {user, {"user2", local}, [{data_reader, [any, any, any]},
+                                        {data_writer, ["test", any, any]}]},
+              {group, "group1", [admin, {bucket_admin, ["test"]}]},
+              {group, "group2", [{data_reader, [any, any, any]},
+                                 {data_writer, ["test", any, any]}]}
+                                 ]),
+            ?cut(CheckUser("user1", "Test")),
+            ?cut(CheckUser("user2", "Test"))]),
+      Test(?VERSION_71,
+           SetUsers([{"user1", [admin]},
+                     {"user2", [{bucket_admin, ["test"]}]}]),
+           [?cut([CheckUUID(U) || U <- ["user1", "user2"]])])]}.
 
 -endif.
