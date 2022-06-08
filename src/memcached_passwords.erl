@@ -136,7 +136,7 @@ memcached_user_info(User, Auth) ->
                    {<<"hash">>, {Props}};
                (Other) ->
                    Other
-           end, Auth),
+           end, scram_sha:fix_pre_elixir_auth_info(Auth)),
     {list_to_binary(User), {Auth2}}.
 
 jsonify_auth(Users, AdminPass, RestCreds, PromAuth) ->
