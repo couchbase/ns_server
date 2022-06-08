@@ -493,7 +493,13 @@ conf(security) ->
      {allow_non_local_ca_upload, allowNonLocalCACertUpload, false,
       fun get_bool/1},
      {allowed_hosts, allowedHosts, [<<"*">>], fun get_allowed_hosts/1},
-     {password_hash_alg, passwordHashAlg, ?DEFAULT_PWHASH, fun get_pwhash/1}] ++
+     {password_hash_alg, passwordHashAlg, ?DEFAULT_PWHASH, fun get_pwhash/1},
+     {argon2id_time, argon2idTime, ?DEFAULT_ARG2ID_TIME,
+      get_number(1, 4294967295)},
+     {argon2id_mem, argon2idMem, ?DEFAULT_ARG2ID_MEM,
+      get_number(8192, 4398046510080)},
+     {pbkdf2_sha512_iterations, pbkdf2HmacSha512Iterations,
+      ?DEFAULT_PBKDF2_ITER, get_number(1, 10000000)}] ++
     [{{security_settings, S}, ns_cluster_membership:json_service_name(S),
       [{cipher_suites, cipherSuites, undefined, fun get_cipher_suites/1},
        {ssl_minimum_protocol, tlsMinVersion, undefined, get_tls_version(_)},

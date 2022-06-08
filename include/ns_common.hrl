@@ -308,6 +308,10 @@
 -define(PBKDF2_HASH, <<"pbkdf2-hmac-sha512">>).
 -define(SHA1_HASH, <<"SHA-1">>).
 
+-define(DEFAULT_ARG2ID_TIME, 3).
+-define(DEFAULT_ARG2ID_MEM, 8388608). %% in bytes
+-define(DEFAULT_PBKDF2_ITER, 10000).
+
 -define(HASH_KEY,             <<"hash">>).
 -define(SALT_KEY,             <<"salt">>).
 -define(HASH_ALG_KEY,         <<"algorithm">>).

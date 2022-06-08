@@ -13,10 +13,6 @@
 
 -include("ns_common.hrl").
 
--define(DEFAULT_ARG2ID_TIME, 3).
--define(DEFAULT_ARG2ID_MEM, 8388608). %% in bytes
--define(DEFAULT_PBKDF2_ITER, 10000).
-
 -export([authenticate/2,
          set_admin_credentials/2,
          get_user/1,
