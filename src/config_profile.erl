@@ -10,9 +10,7 @@
 
 -include("ns_common.hrl").
 
--export([env/0,
-         set_env_data/1,
-         env_data/0,
+-export([set_data/1,
          name/0,
          get/0,
          get/1,
@@ -20,30 +18,23 @@
          search/2,
          get_value/2,
          get_bool/1,
-         is_serverless/0]).
+         is_serverless/0,
+         load/0,
+         load/1,
+         default/0]).
 
--define(PROFILE_ENV, "CB_CONFIG_PROFILE").
+-define(PROFILE_FILE, "/etc/couchbase.d/config_profile").
 
--spec(env() -> atom()).
-env() ->
-    case os:getenv(?PROFILE_ENV) of
-        false ->
-            ?DEFAULT_PROFILE;
-        V ->
-            erlang:list_to_atom(V)
-    end.
+%% Key used to retreive configuration profiles from application env.
+-define(CONFIG_PROFILE, config_profile).
 
--spec(set_env_data(term()) -> 'ok').
-set_env_data(Value) ->
+-spec(set_data(term()) -> 'ok').
+set_data(Value) ->
     application:set_env(ns_server, ?CONFIG_PROFILE, Value).
-
--spec(env_data() -> list()).
-env_data() ->
-    application:get_env(ns_server, ?CONFIG_PROFILE, []).
 
 -spec(name() -> string()).
 name() ->
-    search_profile_key(name, erlang:atom_to_list(env())).
+    search_profile_key(name, ?DEFAULT_PROFILE_STR).
 
 -spec(get() -> list()).
 get() ->
@@ -51,12 +42,7 @@ get() ->
 
 -spec(get(list()) -> list()).
 get(Default) ->
-    case cluster_compat_mode:is_cluster_elixir() of
-        false ->
-            Default;
-        true ->
-            ns_config:search_node_with_default(?CONFIG_PROFILE, Default)
-    end.
+    application:get_env(ns_server, ?CONFIG_PROFILE, Default).
 
 -spec(get_value(term(), term()) -> term()).
 get_value(Key, Default) ->
@@ -80,7 +66,7 @@ search(Key, Default) ->
 -spec(is_serverless() -> boolean()).
 is_serverless() ->
     case name() of
-        "serverless" ->
+        ?SERVERLESS_PROFILE_STR ->
             true;
         _ ->
             false
@@ -108,3 +94,26 @@ lookup_profile_key(ProfileData, Key) when is_list(ProfileData) ->
         _ ->
             false
     end.
+
+-spec(load() -> string()).
+load() ->
+    load(?PROFILE_FILE).
+
+-spec(load(string()) -> string()).
+load(?PROFILE_FILE = Path) ->
+    case file:read_file(Path) of
+        {ok, <<>>} ->
+            ?DEFAULT_PROFILE_STR;
+        {ok, <<_:1/binary, _/binary>> = Binary} ->
+            string:trim(binary_to_list(Binary));
+        {error, enoent} ->
+            ?log_warning("Could not load profile file (~p) because it does not exist",
+                         [Path]),
+            ?DEFAULT_PROFILE_STR;
+        {error, Reason} ->
+            erlang:error(Reason)
+    end.
+
+-spec(default() -> [{name, string()}]).
+default() ->
+    ?DEFAULT_PROFILE_DATA.

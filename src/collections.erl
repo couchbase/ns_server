@@ -149,15 +149,30 @@ manifest_with_system_scope() ->
          {collections, Collections}]}]}].
 
 is_system_scope_enabled() ->
-    config_profile:get_bool(enable_system_scope).
+    case cluster_compat_mode:is_cluster_elixir() of
+        false ->
+            false;
+        true ->
+            config_profile:get_bool(enable_system_scope)
+    end.
 
 max_collections_per_bucket() ->
-    config_profile:get_value(max_collection_per_bucket,
-                             get_max_supported(num_collections)).
+    Default = get_max_supported(num_collections),
+    case cluster_compat_mode:is_cluster_elixir() of
+        false ->
+            Default;
+        true ->
+            config_profile:get_value(max_collection_per_bucket, Default)
+    end.
 
 max_scopes_per_bucket() ->
-    config_profile:get_value(max_scopes_per_bucket,
-                             get_max_supported(num_scopes)).
+    Default = get_max_supported(num_scopes),
+    case cluster_compat_mode:is_cluster_elixir() of
+        false ->
+            Default;
+        true ->
+            config_profile:get_value(max_scopes_per_bucket, Default)
+    end.
 
 default_kvs(Buckets, Nodes) ->
     lists:flatmap(

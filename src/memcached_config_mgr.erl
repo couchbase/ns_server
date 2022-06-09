@@ -373,6 +373,10 @@ memcached_params(Config) ->
 
     McdParams0 ++ GlobalMcdParams ++ DefaultMcdParams.
 
+expand_profile_config(Props) ->
+    proplists:delete(deployment_model, Props) ++
+        [{deployment_model, list_to_binary(config_profile:name())}].
+
 memcached_config(Config) ->
     {value, McdConf} = ns_config:search(Config, {node, node(),
                                                  memcached_config}),
@@ -380,6 +384,7 @@ memcached_config(Config) ->
     McdParams = memcached_params(Config),
 
     {Props} = expand_memcached_config(McdConf, McdParams),
+    ProfileProps = expand_profile_config(Props),
     ExtraProps = ns_config:search(Config,
                                   {node, node(), memcached_config_extra}, []),
     ExtraPropsG = ns_config:search(Config, memcached_config_extra, []),
@@ -394,7 +399,7 @@ memcached_config(Config) ->
         lists:foldl(
           fun (List, Acc) ->
                   normalize_memcached_props(List, Acc)
-          end, [], [ExtraPropsG, ExtraProps, RootProp, Props]),
+          end, [], [ExtraPropsG, ExtraProps, RootProp, ProfileProps]),
 
     misc:ejson_encode_pretty({lists:sort(FinalProps)}).
 

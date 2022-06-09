@@ -294,10 +294,12 @@
 
 %% Known Elixir profiles
 -define(SERVERLESS_PROFILE, serverless).
--define(DEFAULT_PROFILE, default).
+-define(SERVERLESS_PROFILE_STR, "serverless").
 
-%% Key used to retreive configuration profiles from application env.
--define(CONFIG_PROFILE, config_profile).
+%% Default profile macros/constants
+-define(DEFAULT_PROFILE_STR, "default").
+-define(DEFAULT_PROFILE_BIN, <<?DEFAULT_PROFILE_STR>>).
+-define(DEFAULT_PROFILE_DATA, [{name, ?DEFAULT_PROFILE_STR}]).
 
 -define(SYSTEM_SCOPE_NAME, "_system").
 -endif.

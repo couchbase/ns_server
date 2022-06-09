@@ -816,7 +816,12 @@ get_default_num_vbuckets() ->
     end.
 
 allow_variable_num_vbuckets() ->
-    config_profile:get_bool(allow_variable_num_vbuckets).
+    case cluster_compat_mode:is_cluster_elixir() of
+        false ->
+            false;
+        true ->
+            config_profile:get_bool(allow_variable_num_vbuckets)
+    end.
 
 get_num_vbuckets(BucketConfig) ->
     proplists:get_value(num_vbuckets, BucketConfig).

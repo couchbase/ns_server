@@ -307,8 +307,8 @@ SET (BIN_PREFIX "${PREFIX}")
 CONFIGURE_FILE (etc/static_config.in "${_etcdir}/couchbase/static_config" @ONLY)
 
 # Config profiles
-CONFIGURE_FILE (etc/default_profile.in "${_etcdir}/couchbase/default_profile" @ONLY)
-CONFIGURE_FILE (etc/serverless_profile.in "${_etcdir}/couchbase/serverless_profile" @ONLY)
+CONFIGURE_FILE (etc/default_profile "${_etcdir}/couchbase/default_profile" @ONLY)
+CONFIGURE_FILE (etc/serverless_profile "${_etcdir}/couchbase/serverless_profile" @ONLY)
 
 INSTALL (FILES etc/hosts.cfg DESTINATION "${_etcdir}/couchbase")
 

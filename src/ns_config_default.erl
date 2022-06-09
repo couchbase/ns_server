@@ -98,8 +98,6 @@ default() ->
     JeMallocConfDefault = je_malloc_conf_default(),
 
     {ok, LogDir} = application:get_env(ns_server, error_logger_mf_dir),
-
-    ProfileData = config_profile:env_data(),
     {AuditGlobalLogs, AuditLocalLogs} =
         case misc:get_env_default(path_audit_log, []) of
             [] ->
@@ -185,7 +183,7 @@ default() ->
        {breakpad_minidump_dir_path, BreakpadMinidumpDir},
 
        %% Configuration profile
-       {deployment_model, config_profile:env()},
+       {deployment_model, ?DEFAULT_PROFILE_BIN},
        {dedupe_nmvb_maps, false},
        {je_malloc_conf, JeMallocConfDefault},
        {tracing_enabled, IsEnterprise},
@@ -220,7 +218,7 @@ default() ->
        {config_path, path_config:default_memcached_config_path()},
        {audit_file, ns_audit_cfg:default_audit_json_path()},
        {rbac_file, filename:join(path_config:component_path(data, "config"), "memcached.rbac")},
-       {configuration_profile, erlang:atom_to_list(config_profile:env())},
+       {configuration_profile, ?DEFAULT_PROFILE_STR},
        {log_path, LogDir},
        %% Prefix of the log files within the log path that should be rotated.
        {log_prefix, "memcached.log"},
@@ -289,7 +287,6 @@ default() ->
      %% removed since 4.0
      {{node, node(), port_servers}, []},
 
-     {{node, node(), ?CONFIG_PROFILE}, ProfileData},
      {{node, node(), ns_log}, [{filename, filename:join(DataDir, ?NS_LOG)}]},
      {{node, node(), event_log}, [{filename, filename:join(DataDir, ?EVENT_LOG)}]},
 
@@ -334,7 +331,7 @@ default() ->
         rebalance_quirks:default_config() ++
         auto_rebalance_settings:default_config() ++
         menelaus_web_auto_failover:default_config(IsEnterprise) ++
-        throttle_service_settings:default_config(ProfileData).
+        throttle_service_settings:default_config(config_profile:get()).
 
 %% returns list of changes to config to upgrade it to current version.
 %% This will be invoked repeatedly by ns_config until list is empty.

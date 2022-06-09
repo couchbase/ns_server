@@ -260,11 +260,6 @@ def erlang_args_for_node(i, ebin_path, extra_args, args_prefix, root_dir,
     cb_dist_config = os.path.join(datadir, "config", "dist_cfg")
     hosts_file = os.path.join(ns_server_dir, "etc", "hosts.cfg")
     static_config = os.path.join(ns_server_dir, "etc", "static_config.in")
-    if run_serverless:
-        profile = "serverless"
-    else:
-        profile = os.getenv("CB_CONFIG_PROFILE", "default")
-    config_profile = os.path.join(ns_server_dir, "etc", f"{profile}_profile.in")
 
     args += [
         "-name", "babysitter_of_n_{0}@cb.local".format(i),
@@ -281,7 +276,6 @@ def erlang_args_for_node(i, ebin_path, extra_args, args_prefix, root_dir,
             babysittercookiefile),
         "-ns_babysitter", "nodefile", quote_string_for_erl(babysitternodefile),
         "-ns_server", "config_path", f'"{static_config}"',
-        "-ns_server", "config_profile_path", f'"{config_profile}"',
         "error_logger_mf_dir", quote_string_for_erl(logdir),
         "path_config_etcdir", f'"{os.path.join(ns_server_dir, "priv")}"',
         "approot", quote_string_for_erl(ns_server_dir + "/../build/ui-build/public"),

@@ -248,8 +248,7 @@ _start() {
         -ns_babysitter cookiefile "\"$COOKIEFILE\"" \
         -ns_babysitter nodefile "\"$NODEFILE\"" \
         -ns_babysitter pidfile "\"$PIDFILE\"" \
-        -ns_server config_path "\"$STATIC_CONFIG_PATH\"" \
-        -ns_server config_profile_path "\"$CONFIG_PROFILE_PATH\""
+        -ns_server config_path "\"$STATIC_CONFIG_PATH\""
 }
 
 _stop() {

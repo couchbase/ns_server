@@ -142,8 +142,6 @@ def main():
                 assert False, "invalid address family"
         elif o == "--community":
             params['force_community'] = True
-        elif o == "--serverless":
-            params['run_serverless'] = True
         else:
             assert False, "unhandled options"
 

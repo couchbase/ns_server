@@ -78,8 +78,34 @@ setup_env() ->
     end.
 
 setup_server_profile() ->
-    {ok, Path} = application:get_env(ns_server, config_profile_path),
-    config_profile:set_env_data(load_config(Path)).
+    ProfileName = case os:getenv("CB_FORCE_PROFILE") of
+                      Str when is_list(Str), length(Str) > 0 -> Str;
+                      _ -> config_profile:load()
+                  end,
+    {Data, N} = case application:get_env(ns_server, config_path) of
+                    {ok, Path} ->
+                        File = filename:join(filename:dirname(Path),
+                                             string:join([ProfileName, "_profile"],
+                                                         "")),
+                        case (catch load_config(File)) of
+                            {'EXIT', Err} ->
+                                {config_profile:default(),
+                                 case ProfileName =/= ?DEFAULT_PROFILE_STR of
+                                     true ->
+                                         ?log_warning("Could not load config profile '~p', loading 'default'.. Error: ~p",
+                                                      [ProfileName, Err]),
+                                         ?DEFAULT_PROFILE_STR;
+                                     false ->
+                                         ProfileName
+                                 end};
+                            Config ->
+                                {Config, ProfileName}
+                        end;
+                    _ ->
+                        {config_profile:default(), ?DEFAULT_PROFILE_STR}
+                end,
+    ?log_debug("Using profile '~s': ~p", [N, Data]),
+    config_profile:set_data(Data).
 
 load_config(Path) ->
     case file:consult(Path) of
