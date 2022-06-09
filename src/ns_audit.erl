@@ -148,15 +148,32 @@ handle_call({log, Code, Body, IsSync}, From, #state{queue = Queue} = State) ->
     %% information hidden.
     ?log_debug("Audit ~p: ~p", [Code,
                                 ns_config_log:tag_user_data(ObscuredBody)]),
-    EncodedBody = ejson:encode({ObscuredBody}),
-    Continuation =
-        case IsSync of
-            true -> fun (Res) -> gen_server:reply(From, Res) end;
-            false -> fun (_) -> ok end
+
+    %% While the above debug log is very useful when triaging issues (to
+    %% see which audited operations are occurring), we should save cycles
+    %% if audit logging is disabled by not sending it to memcached (which
+    %% will just throw it away).
+    AuditEnabled = ns_audit_cfg:is_enabled(),
+    NewQueue =
+        case AuditEnabled of
+            false ->
+                CleanedQueue;
+            true ->
+                EncodedBody = ejson:encode({ObscuredBody}),
+                Continuation =
+                    case IsSync of
+                        true ->
+                            fun (Res) -> gen_server:reply(From, Res) end;
+                        false ->
+                            fun (_) -> ok end
+                    end,
+                self() ! send,
+                queue:in({Code, EncodedBody, Continuation}, CleanedQueue)
         end,
-    NewQueue = queue:in({Code, EncodedBody, Continuation}, CleanedQueue),
-    self() ! send,
-    case IsSync of
+
+    %% For synchronous audits, if the audit wasn't queued then we send the
+    %% response now as there's no deferred "Continuation".
+    case IsSync andalso AuditEnabled of
         true -> {noreply, State#state{queue = NewQueue}};
         false -> {reply, ok, State#state{queue = NewQueue}}
     end;
