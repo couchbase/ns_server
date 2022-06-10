@@ -966,6 +966,10 @@ validate_common_params(#bv_ctx{bucket_name = BucketName,
      parse_validate_ram_quota(Params, BucketConfig),
      parse_validate_other_buckets_ram_quota(Params)].
 
+validate_bucket_placer_params(Params, IsNew) ->
+    [parse_validate_bucket_placer_param(width, weight, Params, IsNew),
+     parse_validate_bucket_placer_param(weight, width, Params, IsNew)].
+
 validate_bucket_type_specific_params(CommonParams, Params,
                                      #bv_ctx{new = IsNew,
                                              bucket_config = BucketConfig,
@@ -1029,7 +1033,9 @@ validate_membase_bucket_params(CommonParams, Params,
          | validate_bucket_auto_compaction_settings(Params)],
 
     validate_bucket_purge_interval(Params, BucketConfig, IsNew) ++
-        get_conflict_resolution_type_and_thresholds(Params, BucketConfig, IsNew) ++
+        get_conflict_resolution_type_and_thresholds(
+          Params, BucketConfig, IsNew) ++
+        validate_bucket_placer_params(Params, IsNew) ++
         BucketParams.
 
 validate_unknown_bucket_params(Params) ->
@@ -1999,6 +2005,28 @@ do_parse_validate_other_buckets_ram_quota(Value) ->
         _ ->
             {error, otherBucketsRamQuotaMB,
              <<"The other buckets RAM Quota must be a positive integer.">>}
+    end.
+
+parse_validate_bucket_placer_param(What, Other, Params, IsNew) ->
+    Err = ?cut(iolist_to_binary(io_lib:format(_, [What]))),
+
+    case proplists:get_value(atom_to_list(What), Params) of
+        undefined ->
+            case {IsNew, proplists:get_value(atom_to_list(Other), Params)} of
+                {true, Val} when Val =/= undefined ->
+                    {error, What, Err("~p must be specified")};
+                _ ->
+                    ignore
+            end;
+        Value ->
+            case menelaus_util:parse_validate_number(Value, 1, undefined) of
+                invalid ->
+                    {error, What, Err("~p must be integer")};
+                too_small ->
+                    {error, What, Err("~p must be 1 or more")};
+                {ok, X} ->
+                    {ok, What, X}
+            end
     end.
 
 parse_validate_conflict_resolution_type("seqno") ->

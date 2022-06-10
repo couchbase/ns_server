@@ -117,7 +117,9 @@
          chronicle_upgrade_to_elixir/1,
          extract_bucket_props/1,
          build_bucket_props_json/1,
-         build_compaction_settings_json/1]).
+         build_compaction_settings_json/1,
+         get_width/1,
+         get_weight/1]).
 
 -import(json_builder,
         [to_binary/1,
@@ -1548,7 +1550,7 @@ extract_bucket_props(Props) ->
                         num_threads, eviction_policy, conflict_resolution_type,
                         drift_ahead_threshold_ms, drift_behind_threshold_ms,
                         storage_mode, max_ttl, compression_mode,
-                        magma_max_shards]],
+                        magma_max_shards, weight, width]],
           X =/= false].
 
 build_threshold({Percentage, Size}) ->
@@ -1592,6 +1594,12 @@ build_compaction_settings_json(Settings) ->
           (_, Acc) ->
               Acc
       end, [], Settings).
+
+get_width(Props) ->
+    proplists:get_value(width, Props).
+
+get_weight(Props) ->
+    proplists:get_value(weight, Props).
 
 -ifdef(TEST).
 min_live_copies_test() ->
