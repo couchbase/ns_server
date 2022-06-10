@@ -99,15 +99,15 @@ handle_autofailover_result({error, Error}) ->
     {error, lists:flatten(io_lib:format("Unexpected error: ~p", [Error]))}.
 
 empty_req() ->
-    {[]}.
+    {[] ++ maybe_add_additional_info()}.
 
 get_req(Rev, Timeout) ->
     {[{rev, encode_rev(Rev)},
-      {timeout, encode_timeout(Timeout)}]}.
+      {timeout, encode_timeout(Timeout)}] ++ maybe_add_additional_info()}.
 
 cancel_task_req(Id, Rev) when is_binary(Id) ->
     {[{id, Id},
-      {rev, encode_rev(Rev)}]}.
+      {rev, encode_rev(Rev)}] ++ maybe_add_additional_info()}.
 
 topology_change_req(Id, Rev, Type, KeepNodes, EjectNodes) ->
     true = is_binary(Id),
@@ -116,7 +116,16 @@ topology_change_req(Id, Rev, Type, KeepNodes, EjectNodes) ->
       {currentTopologyRev, encode_rev(Rev)},
       {type, encode_topology_change_type(Type)},
       {keepNodes, encode_keep_nodes(KeepNodes)},
-      {ejectNodes, encode_eject_nodes(EjectNodes)}]}.
+      {ejectNodes, encode_eject_nodes(EjectNodes)}] ++
+     maybe_add_additional_info()}.
+
+maybe_add_additional_info() ->
+    case cluster_compat_mode:is_cluster_elixir() of
+        false ->
+            [];
+        true ->
+            [{serviceApiVersion, "1.0"}]
+    end.
 
 encode_rev(undefined) ->
     null;
@@ -145,7 +154,20 @@ encode_node_info(Props) ->
 
     {[{nodeId, Id},
       {priority, Priority},
-      {opaque, Opaque}]}.
+      {opaque, Opaque}] ++ conditional_node_info(Id)}.
+
+conditional_node_info(NodeId) ->
+    case cluster_compat_mode:is_cluster_elixir() of
+        false ->
+            [];
+        true ->
+            Config = ns_config:get(),
+            UuidToNodeMap = ns_config:get_uuid_node_map(Config),
+            {ok, Node} = dict:find(NodeId, UuidToNodeMap),
+            ServerGroup = ns_cluster_membership:get_node_server_group(Node,
+                                                                      Config),
+            [{serverGroup, ServerGroup}]
+    end.
 
 encode_keep_nodes(KeepNodes) ->
     lists:map(
