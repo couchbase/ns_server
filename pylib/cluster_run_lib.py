@@ -236,8 +236,7 @@ def abs_path_join(*args):
     return os.path.abspath(os.path.join(*args))
 
 
-def erlang_args_for_node(i, ebin_path, extra_args, args_prefix, root_dir,
-        run_serverless):
+def erlang_args_for_node(i, ebin_path, extra_args, args_prefix, root_dir):
     logdir = abs_path_join(root_dir, "logs", f"n_{i}")
 
     args = args_prefix + ["erl", "+MMmcs" "30",
@@ -437,7 +436,7 @@ def start_cluster(num_nodes=1,
             pass
 
         args = erlang_args_for_node(node_num, ebin_path, extra_args,
-                                    prepend_args, root_dir, run_serverless)
+                                    prepend_args, root_dir)
 
         params = {}
 
@@ -446,6 +445,10 @@ def start_cluster(num_nodes=1,
         if 'env' not in params:
             params['env'] = {}
             params['env'].update(os.environ)
+
+        if run_serverless:
+            params['env']['CB_FORCE_PROFILE'] = "serverless"
+
         path = params['env']['PATH']
         path = (PREFIX + "/bin") + os.pathsep + path
         if 'ERL_FULLSWEEP_AFTER' not in params['env']:
