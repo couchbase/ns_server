@@ -48,11 +48,11 @@
     "d3-zoom": "1.8.3",
     "file-saver": "2.0.2",
     "ipaddr.js": "2.0.1",
-    "js-beautify": "1.10.3",
+    "js-beautify": "1.14.3",
     "lodash": "3.3.0",
     "ngx-clipboard": "12.3.1",
     "oclazyload": "1.1.0",
-    "ramda": "0.26.1",
+    "ramda": "0.28.0",
     "rxjs": "6.5.3",
     "sortablejs": "1.10.2",
     "zone.js": "^0.9.1"
