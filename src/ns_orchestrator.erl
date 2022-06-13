@@ -98,6 +98,7 @@ wait_for_orchestrator() ->
                            {error, {still_exists, nonempty_string()}} |
                            {error, {port_conflict, integer()}} |
                            {error, {invalid_name, nonempty_string()}} |
+                           {error, {need_more_space, list()}} |
                            rebalance_running | in_recovery.
 create_bucket(BucketType, BucketName, NewConfig) ->
     wait_for_orchestrator(),
@@ -106,9 +107,9 @@ create_bucket(BucketType, BucketName, NewConfig) ->
 
 -spec update_bucket(memcached|membase, undefined|couchstore|magma|ephemeral,
                     nonempty_string(), list()) ->
-                           ok | {exit, {not_found, nonempty_string()}, []}
-                               | rebalance_running
-                               | in_recovery.
+                           ok | {exit, {not_found, nonempty_string()}, []} |
+                           {error, {need_more_space, list()}} |
+                           rebalance_running | in_recovery.
 update_bucket(BucketType, StorageMode, BucketName, UpdatedProps) ->
     wait_for_orchestrator(),
     gen_statem:call(?SERVER, {update_bucket, BucketType,
@@ -586,8 +587,14 @@ idle({create_bucket, BucketType, BucketName, NewConfig}, From, _State) ->
                         true ->
                             {error, {still_exists, BucketName}};
                         _ ->
-                            ns_bucket:create_bucket(BucketType, BucketName,
-                                                    NewConfig)
+                            case bucket_placer:place_bucket(
+                                   BucketName, NewConfig) of
+                                {ok, NewConfig1} ->
+                                    ns_bucket:create_bucket(
+                                      BucketType, BucketName, NewConfig1);
+                                {error, BadZones} ->
+                                    {error, {need_more_space, BadZones}}
+                            end
                     end;
                 true ->
                     {error, {already_exists, BucketName}}
@@ -677,15 +684,21 @@ idle({update_bucket, membase, BucketName, UpdatedProps}, From, _State) ->
        {update_bucket, membase, couchstore, BucketName, UpdatedProps}}]};
 idle({update_bucket,
       BucketType, StorageMode, BucketName, UpdatedProps}, From, _State) ->
-    Reply = ns_bucket:update_bucket_props(BucketType, StorageMode,
-                                          BucketName, UpdatedProps),
-    case Reply of
-        ok ->
-            %% request janitor run to fix map if the replica # has changed
-            request_janitor_run({bucket, BucketName});
-        _ ->
-            ok
-    end,
+    Reply =
+        case bucket_placer:place_bucket(BucketName, UpdatedProps) of
+            {ok, NewUpdatedProps} ->
+                case ns_bucket:update_bucket_props(
+                       BucketType, StorageMode, BucketName, NewUpdatedProps) of
+                    ok ->
+                        %% request janitor run to fix map if the replica # has
+                        %% changed
+                        request_janitor_run({bucket, BucketName});
+                    _ ->
+                        ok
+                end;
+            {error, BadZones} ->
+                {error, {need_more_space, BadZones}}
+        end,
     {keep_state_and_data, [{reply, From, Reply}]};
 idle({failover, Node}, From, _State) ->
     %% calls from pre-5.5 nodes

@@ -609,6 +609,8 @@ handle_bucket_update_inner(BucketId, Req, Params, Limit) ->
                     reply_text(Req,
                                "Cannot update bucket "
                                "while recovery is in progress.", 503);
+                {error, {need_more_space, Zones}} ->
+                    reply_text(Req, need_more_space_error(Zones), 400);
                 {exit, {not_found, _}, _} ->
                     %% if this happens then our validation raced, so repeat everything
                     handle_bucket_update_inner(BucketId, Req, Params, Limit-1)
@@ -639,6 +641,10 @@ create_bucket(Req, Name, Params) ->
     Ctx = init_bucket_validation_context(true, Name, false, false),
     do_bucket_create(Req, Name, Params, Ctx).
 
+need_more_space_error(Zones) ->
+    iolist_to_binary(
+      io_lib:format("Need more space in availability zones ~p.", [Zones])).
+
 do_bucket_create(Req, Name, ParsedProps) ->
     BucketType = proplists:get_value(bucketType, ParsedProps),
     StorageMode = proplists:get_value(storage_mode, ParsedProps, undefined),
@@ -657,6 +663,8 @@ do_bucket_create(Req, Name, ParsedProps) ->
             {errors_500, [{'_', <<"Bucket with given name still exists">>}]};
         {error, {invalid_name, _}} ->
             {errors, [{name, <<"Name is invalid.">>}]};
+        {error, {need_more_space, Zones}} ->
+            {errors, [{'_', need_more_space_error(Zones)}]};
         rebalance_running ->
             {errors_500, [{'_', <<"Cannot create buckets during rebalance">>}]};
         in_recovery ->
@@ -967,8 +975,13 @@ validate_common_params(#bv_ctx{bucket_name = BucketName,
      parse_validate_other_buckets_ram_quota(Params)].
 
 validate_bucket_placer_params(Params, IsNew) ->
-    [parse_validate_bucket_placer_param(width, weight, Params, IsNew),
-     parse_validate_bucket_placer_param(weight, width, Params, IsNew)].
+    case bucket_placer:is_enabled() of
+        true ->
+            [parse_validate_bucket_placer_param(width, weight, Params, IsNew),
+             parse_validate_bucket_placer_param(weight, width, Params, IsNew)];
+        false ->
+            []
+    end.
 
 validate_bucket_type_specific_params(CommonParams, Params,
                                      #bv_ctx{new = IsNew,

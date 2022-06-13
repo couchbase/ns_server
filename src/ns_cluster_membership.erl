@@ -26,6 +26,7 @@
          server_groups/1,
          active_nodes/0,
          active_nodes/1,
+         active_nodes/2,
          inactive_added_nodes/0,
          actual_active_nodes/0,
          actual_active_nodes/1,
@@ -140,6 +141,9 @@ active_nodes() ->
 
 active_nodes(Snapshot) ->
     get_nodes_with_status(Snapshot, active).
+
+active_nodes(Snapshot, Nodes) ->
+    get_nodes_with_status(Snapshot, Nodes, active).
 
 inactive_added_nodes() ->
     get_nodes_with_status(inactiveAdded).

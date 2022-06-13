@@ -119,7 +119,8 @@
          build_bucket_props_json/1,
          build_compaction_settings_json/1,
          get_width/1,
-         get_weight/1]).
+         get_weight/1,
+         get_desired_servers/1]).
 
 -import(json_builder,
         [to_binary/1,
@@ -1550,7 +1551,7 @@ extract_bucket_props(Props) ->
                         num_threads, eviction_policy, conflict_resolution_type,
                         drift_ahead_threshold_ms, drift_behind_threshold_ms,
                         storage_mode, max_ttl, compression_mode,
-                        magma_max_shards, weight, width]],
+                        magma_max_shards, weight, width, desired_servers]],
           X =/= false].
 
 build_threshold({Percentage, Size}) ->
@@ -1563,6 +1564,8 @@ build_bucket_props_json(Props) ->
           ({autocompaction, CProps}, Acc) ->
               [{autocompaction,
                 {build_compaction_settings_json(CProps)}} | Acc];
+          ({desired_servers, V}, Acc) ->
+              [{desired_servers, [to_binary(El) || El <- V]} | Acc];
           ({K, V}, Acc) ->
               [{K, to_binary(V)} | Acc]
       end, [], Props).
@@ -1600,6 +1603,9 @@ get_width(Props) ->
 
 get_weight(Props) ->
     proplists:get_value(weight, Props).
+
+get_desired_servers(Props) ->
+    proplists:get_value(desired_servers, Props).
 
 -ifdef(TEST).
 min_live_copies_test() ->
