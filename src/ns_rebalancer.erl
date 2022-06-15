@@ -604,17 +604,27 @@ rebalance_memcached_bucket(BucketName, KeepKVNodes) ->
     ns_bucket:set_servers(BucketName, KeepKVNodes),
     master_activity_events:note_bucket_rebalance_ended(BucketName).
 
+calculate_servers(BucketConfig, KeepKVNodes, EjectNodes) ->
+    case ns_bucket:get_desired_servers(BucketConfig) of
+        undefined ->
+            {KeepKVNodes, ordsets:intersection(
+                            lists:sort(ns_bucket:get_servers(BucketConfig)),
+                            lists:sort(EjectNodes))};
+        DesiredServers ->
+           {DesiredServers,
+            ns_bucket:get_servers(BucketConfig) -- DesiredServers}
+    end.
+
 rebalance_membase_bucket(BucketName, BucketConfig, ProgressFun,
                          KeepKVNodes, EjectNodes, ForcedMap) ->
-    %% Only start one bucket at a time to avoid
-    %% overloading things
-    ThisEjected = ordsets:intersection(
-                    lists:sort(ns_bucket:get_servers(BucketConfig)),
-                    lists:sort(EjectNodes)),
-    ThisLiveNodes = KeepKVNodes ++ ThisEjected,
+    {Servers, ServersToRemove} =
+        calculate_servers(BucketConfig, KeepKVNodes, EjectNodes),
+
+    ThisLiveNodes = Servers ++ ServersToRemove,
 
     ns_bucket:set_servers(BucketName, ThisLiveNodes),
-    ?rebalance_info("Waiting for bucket ~p to be ready on ~p", [BucketName, ThisLiveNodes]),
+    ?rebalance_info("Waiting for bucket ~p to be ready on ~p", [BucketName,
+                                                                ThisLiveNodes]),
     case janitor_agent:check_bucket_ready(BucketName, ThisLiveNodes,
                                           ?REBALANCER_READINESS_WAIT_TIMEOUT) of
         ready ->
@@ -631,12 +641,12 @@ rebalance_membase_bucket(BucketName, BucketConfig, ProgressFun,
     master_activity_events:note_bucket_rebalance_started(BucketName),
     {NewMap, MapOptions} =
         do_rebalance_membase_bucket(BucketName, NewConf,
-                                    KeepKVNodes, ProgressFun, ForcedMap),
+                                    Servers, ProgressFun, ForcedMap),
     ns_bucket:set_map_opts(BucketName, MapOptions),
     ns_bucket:update_bucket_props(BucketName,
                                   [{deltaRecoveryMap, undefined}]),
     master_activity_events:note_bucket_rebalance_ended(BucketName),
-    verify_replication(BucketName, KeepKVNodes, NewMap).
+    verify_replication(BucketName, Servers, NewMap).
 
 run_janitor_pre_rebalance(BucketName) ->
     case ns_janitor:cleanup(BucketName,
@@ -652,14 +662,14 @@ run_janitor_pre_rebalance(BucketName) ->
 %% either return ok or exit with reason 'stopped' or whatever reason
 %% was given by whatever failed.
 do_rebalance_membase_bucket(Bucket, Config,
-                            KeepNodes, ProgressFun, ForcedMap) ->
+                            Servers, ProgressFun, ForcedMap) ->
     Map = proplists:get_value(map, Config),
     {FastForwardMap, MapOptions} =
         case ForcedMap of
             undefined ->
                 NumReplicas = ns_bucket:num_replicas(Config),
                 AdjustedMap = mb_map:align_replicas(Map, NumReplicas),
-                generate_vbucket_map(AdjustedMap, KeepNodes, Config);
+                generate_vbucket_map(AdjustedMap, Servers, Config);
             _ ->
                 ForcedMap
         end,
@@ -667,7 +677,7 @@ do_rebalance_membase_bucket(Bucket, Config,
     ns_bucket:update_vbucket_map_history(FastForwardMap, MapOptions),
     ?rebalance_debug("Target map options: ~p (hash: ~p)",
                      [MapOptions, erlang:phash2(MapOptions)]),
-    {run_mover(Bucket, Config, KeepNodes, ProgressFun, Map, FastForwardMap),
+    {run_mover(Bucket, Config, Servers, ProgressFun, Map, FastForwardMap),
      MapOptions}.
 
 sleep_for_sdk_clients(Type) ->

@@ -413,11 +413,17 @@ check_server_list(Bucket, BucketConfig, Snapshot, Options) ->
     Servers = ns_bucket:get_servers(BucketConfig),
     ActiveKVNodes = ns_cluster_membership:service_active_nodes(Snapshot, kv) --
                         proplists:get_value(failover_nodes, Options, []),
-    do_check_server_list(Bucket, Servers, ActiveKVNodes).
+    do_check_server_list(Bucket, BucketConfig, Servers, ActiveKVNodes).
 
-do_check_server_list(_Bucket, [], ActiveKVNodes) ->
-    {update_servers, ActiveKVNodes};
-do_check_server_list(Bucket, Servers, ActiveKVNodes) when is_list(Servers) ->
+do_check_server_list(_Bucket, BucketConfig, [], ActiveKVNodes) ->
+    DesiredServers = case ns_bucket:get_desired_servers(BucketConfig) of
+                         undefined ->
+                             ActiveKVNodes;
+                         Servers ->
+                             Servers
+                     end,
+    {update_servers, DesiredServers};
+do_check_server_list(Bucket, _, Servers, ActiveKVNodes) when is_list(Servers) ->
     %% We don't expect for buckets to refer to servers that are not active. We
     %% can't guarantee this though due to weaknesses of ns_config. The best we
     %% can do if we detect a mismatch is to complain and have a human
@@ -784,8 +790,9 @@ data_loss_possible_test() ->
 
 check_server_list_test() ->
     ?assertEqual({update_servers, [a, b, c]},
-                 do_check_server_list("bucket", [], [a, b, c])),
-    ?assertEqual(ok, do_check_server_list("bucket", [a, b], [a, b, c])),
-    ?assertEqual(ok, do_check_server_list("bucket", [a, b], [a, c, b])),
-    ?assertMatch({error, _}, do_check_server_list("bucket", [a, b, c], [a, b])).
+                 do_check_server_list("bucket", [], [], [a, b, c])),
+    ?assertEqual(ok, do_check_server_list("bucket", [], [a, b], [a, b, c])),
+    ?assertEqual(ok, do_check_server_list("bucket", [], [a, b], [a, c, b])),
+    ?assertMatch({error, _}, do_check_server_list("bucket", [], [a, b, c],
+                                                  [a, b])).
 -endif.
