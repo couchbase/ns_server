@@ -777,8 +777,17 @@ bucket_needs_rebalance(BucketConfig, Nodes) ->
                 [] ->
                     false;
                 _ ->
+                    {DesiredServers, Width} =
+                        case ns_bucket:get_desired_servers(BucketConfig) of
+                            undefined ->
+                                {Nodes, length(Nodes)};
+                            Other ->
+                                {Other, ns_bucket:get_width(BucketConfig)}
+                        end,
                     ns_bucket:num_replicas_changed(BucketConfig) orelse
-                        lists:sort(Nodes) =/= lists:sort(Servers) orelse
+                        Width =/= length(DesiredServers) orelse
+                        lists:sort(DesiredServers) =/= lists:sort(Servers)
+                        orelse
                         map_needs_rebalance(Servers, BucketConfig)
             end;
         memcached ->
