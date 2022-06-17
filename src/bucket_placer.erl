@@ -9,6 +9,11 @@
 -module(bucket_placer).
 
 -include("cut.hrl").
+-include("ns_common.hrl").
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([is_enabled/0, place_bucket/2]).
 
@@ -160,3 +165,71 @@ priority({_, #node{weight = W1, buckets = BM1}},
         _ ->
             W1 =< W2
     end.
+
+-ifdef(TEST).
+populate_nodes(Zones) ->
+    ServerGroups = [[{name, Z}, {nodes, Nodes}] || {Z, Nodes} <- Zones],
+    NodesWanted = [N || {_, Nodes} <- Zones, N <- Nodes],
+    NodeKeys = [[{{node, N, membership}, active},
+                 {{node, N, services}, [kv]}] || N <- NodesWanted],
+    KVList = lists:flatten([[{server_groups, ServerGroups},
+                             {nodes_wanted, NodesWanted}], NodeKeys]),
+    maps:from_list([{K, {V, no_rev}} || {K, V} <- KVList]).
+
+apply_bucket_to_snapshot(Name, Props, Snapshot) ->
+    Buckets = ns_bucket:get_bucket_names(Snapshot),
+    S1 = maps:put(ns_bucket:root(),
+                  {lists:usort([Name | Buckets]), no_rev}, Snapshot),
+    maps:put(ns_bucket:sub_key(Name, props), {Props, no_rev}, S1).
+
+verify_bucket(Name, Zones, Snapshot) ->
+    {ok, Props} = ns_bucket:get_bucket(Name, Snapshot),
+    Width = ns_bucket:get_width(Props),
+    DesiredServers = ns_bucket:get_desired_servers(Props),
+    ?assertEqual({Name, Width * length(Zones)}, {Name, length(DesiredServers)}).
+
+success_placement(Name, Props, Params, Zones, Snapshot) ->
+    RV = do_place_bucket(Name, Props, Params, Snapshot),
+    ?assertMatch({Name, {ok, _}}, {Name, RV}),
+    {ok, NewProps} = RV,
+    NewSnapshot = apply_bucket_to_snapshot(Name, NewProps, Snapshot),
+    verify_bucket(Name, Zones, NewSnapshot),
+    NewSnapshot.
+
+failed_placement(Name, Props, Params, Zones, Snapshot) ->
+    RV = do_place_bucket(Name, Props, Params, Snapshot),
+    ?assertMatch({Name, {error, _}}, {Name, RV}),
+    {error, ZonesList} = RV,
+    ?assertEqual(lists:sort(ZonesList), lists:sort(Zones)).
+
+bucket_placer_test_() ->
+    Zones = [{z1, [a1, b1, c1]}, {z2, [a2, b2, c2]}, {z3, [a3, b3, c3]}],
+    ZoneNames = [Z || {Z, _} <- Zones],
+
+    Params = #params{weight_limit = 6},
+    Snapshot = maps:put(ns_bucket:root(), {[], no_rev}, populate_nodes(Zones)),
+
+    SuccessPlacement = success_placement(_, _, Params, ZoneNames, _),
+    FailedPlacement = failed_placement(_, _, Params, ZoneNames, _),
+
+    [{"Bucket placement test",
+      fun () ->
+              Snapshot1 =
+                  functools:chain(
+                    Snapshot,
+                    [SuccessPlacement("B1", [{width, 1}, {weight, 1}], _),
+                     SuccessPlacement("B2", [{width, 3}, {weight, 3}], _),
+                     SuccessPlacement("B1", [{width, 2}, {weight, 2}], _)]),
+
+              FailedPlacement("B3", [{width, 2}, {weight, 2}], Snapshot1),
+              SuccessPlacement("B3", [{width, 1}, {weight, 2}], Snapshot1),
+
+              functools:chain(
+                Snapshot1,
+                [SuccessPlacement("B1", [{width, 1}, {weight, 1}], _),
+                 SuccessPlacement("B3", [{width, 2}, {weight, 2}], _)]),
+
+              FailedPlacement("B1", [{width, 2}, {weight, 4}], Snapshot1)
+      end}].
+
+-endif.
