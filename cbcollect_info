@@ -2707,7 +2707,7 @@ def main():
     snapshot_dir_path = get_prometheus_stats(guts)
     if snapshot_dir_path is not None:
         tasks = CollectFileTask.create_directory_collection_tasks(
-            snapshot_dir_path, "./stats_snapshot")
+            snapshot_dir_path, "stats_snapshot")
         all_tasks.extend(tasks)
     else:
         log("Error: unable to retrieve statistics")
