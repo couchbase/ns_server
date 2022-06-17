@@ -1,0 +1,4 @@
+components:
+    enacl:
+        bd-id: e72b97ab-d670-4214-803a-d6af3ea7ac28
+        versions: [ "v1.2.1" ]
