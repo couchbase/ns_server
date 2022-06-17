@@ -78,6 +78,8 @@ def usage():
 
 
 def main():
+    libpath = os.path.join(currentdir, '..', 'install', 'lib')
+    os.environ["LD_LIBRARY_PATH"] = f'{libpath}:{os.environ.get("LD_LIBRARY_PATH", "")}'
     try:
         optlist, args = getopt.gnu_getopt(sys.argv[1:], "hn:p:",
                                           ["help", "start-index=", "nodes=",
