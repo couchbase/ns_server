@@ -905,6 +905,9 @@ failover_reply({config_sync_failed, _}) ->
     failover_reply(config_sync_failed);
 failover_reply(last_node) ->
     {400, "Last active node cannot be failed over."};
+failover_reply({last_node_for_bucket, B}) ->
+    {400, io_lib:format("Last server for bucket ~p cannot be failed over.",
+                       [B])};
 failover_reply(not_graceful) ->
     {400, "Failover cannot be done gracefully (would lose vbuckets)."};
 failover_reply(non_kv_node) ->

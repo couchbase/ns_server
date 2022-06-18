@@ -153,6 +153,7 @@ flush_bucket(BucketName) ->
                       rebalance_running |
                       in_recovery |
                       last_node |
+                      {last_node_for_bucket, list()} |
                       unknown_node |
                       orchestration_unsafe |
                       config_sync_failed |
@@ -173,6 +174,7 @@ failover(Nodes, AllowUnsafe) ->
                             rebalance_running |
                             in_recovery |
                             last_node |
+                            {last_node_for_bucket, list()} |
                             unknown_node |
                             {incompatible_with_previous, [atom()]} |
                             %% the following is needed just to trick the dialyzer;
@@ -303,7 +305,9 @@ retry_rebalance(graceful_failover, Params, Id, Chk) ->
 -spec start_graceful_failover([node()]) ->
                                      ok | in_progress | in_recovery |
                                      non_kv_node | not_graceful | unknown_node |
-                                     last_node | {config_sync_failed, any()} |
+                                     last_node |
+                                     {last_node_for_bucket, list()} |
+                                     {config_sync_failed, any()} |
                                      %% the following is needed just to trick
                                      %% the dialyzer; otherwise it wouldn't
                                      %% let the callers cover what it believes

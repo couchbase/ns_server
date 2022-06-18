@@ -641,10 +641,25 @@ is_possible(FailoverNodes, Options) ->
                            "Active nodes: ~p", [FailoverNodes, ActiveNodes]),
                         throw(inactive_node)
                 end
-        end
+        end,
+        check_last_server(ns_bucket:get_buckets(), FailoverNodes)
     catch
         throw:Error ->
             Error
+    end.
+
+check_last_server([], _FailoverNodes) ->
+    ok;
+check_last_server([{BucketName, BucketConfig} | Rest], FailoverNodes) ->
+    Servers = ns_bucket:get_servers(BucketConfig),
+    case Servers -- FailoverNodes of
+        [] ->
+            ?log_error("Attempt to fail over the last server for bucket ~p. "
+                       "Failover nodes: ~p, KV nodes ~p",
+                       [BucketName, FailoverNodes, Servers]),
+            throw({last_node_for_bucket, BucketName});
+        _ ->
+            check_last_server(Rest, FailoverNodes)
     end.
 
 get_failover_vbuckets(Config, Node) ->
