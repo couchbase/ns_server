@@ -274,7 +274,9 @@ default() ->
             {memcached_config_mgr, get_external_auth_service, []}},
         {active_external_users_push_interval,
             {memcached_config_mgr, get_external_users_push_interval, []}},
-        {prometheus, {memcached_config_mgr, prometheus_cfg, []}}
+        {prometheus, {memcached_config_mgr, prometheus_cfg, []}},
+        {sasl_mechanisms, {memcached_config_mgr, sasl_mechanisms, []}},
+        {ssl_sasl_mechanisms, {memcached_config_mgr, sasl_mechanisms, []}}
        ]}},
 
      {memory_quota, KvQuota},
@@ -353,14 +355,17 @@ upgrade_config(Config) ->
             [{set, {node, node(), config_version}, {6,5,1}} |
              upgrade_config_from_6_5_to_6_5_1(Config)];
         {6,5,1} ->
-                [{set, {node, node(), config_version}, {7,0}} |
-                 upgrade_config_from_6_5_1_to_7_0(Config)];
+            [{set, {node, node(), config_version}, {7,0}} |
+             upgrade_config_from_6_5_1_to_7_0(Config)];
         {7,0} ->
+            [{set, {node, node(), config_version}, {7,1}} |
+             upgrade_config_from_7_0_to_7_1(Config)];
+        {7,1} ->
             %% When upgrading to the latest config_version always upgrade
             %% service_ports.
             service_ports:offline_upgrade(Config) ++
                 [{set, {node, node(), config_version}, CurrentVersion} |
-                 upgrade_config_from_7_0_to_7_1(Config)];
+                 upgrade_config_from_7_1_to_elixir(Config)];
         OldVersion ->
             ?log_error("Detected an attempt to offline upgrade from "
                        "unsupported version ~p. Terminating.", [OldVersion]),
@@ -427,6 +432,13 @@ do_upgrade_config_from_7_0_to_7_1(Config, DefaultConfig) ->
      %% any custom changes that may have been made.
      upgrade_sub_keys(memcached, [{delete, log_sleeptime}],
                       Config, DefaultConfig)].
+
+upgrade_config_from_7_1_to_elixir(Config) ->
+    DefaultConfig = default(),
+    do_upgrade_config_from_7_1_to_elixir(Config, DefaultConfig).
+
+do_upgrade_config_from_7_1_to_elixir(_Config, DefaultConfig) ->
+    [upgrade_key(memcached_config, DefaultConfig)].
 
 encrypt_config_val(Val) ->
     {ok, Encrypted} = encryption_service:encrypt(term_to_binary(Val)),

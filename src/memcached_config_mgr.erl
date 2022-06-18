@@ -25,7 +25,8 @@
          get_external_auth_service/2,
          should_enforce_limits/2,
          is_external_auth_service_enabled/0,
-         prometheus_cfg/2]).
+         prometheus_cfg/2,
+         sasl_mechanisms/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -139,6 +140,9 @@ is_notable_config_key({security_settings, kv}) -> true;
 is_notable_config_key(ldap_settings) -> true;
 is_notable_config_key(saslauthd_auth_settings) -> true;
 is_notable_config_key(enforce_limits) -> true;
+is_notable_config_key(scram_sha1_enabled) -> true;
+is_notable_config_key(scram_sha256_enabled) -> true;
+is_notable_config_key(scram_sha512_enabled) -> true;
 is_notable_config_key(_) ->
     false.
 
@@ -539,6 +543,15 @@ format_ciphers(RFCCipherNames) ->
 prometheus_cfg([], _Params) ->
     {[{port, service_ports:get_port(memcached_prometheus)},
       {family, ns_config:read_key_fast({node, node(), address_family}, inet)}]}.
+
+sasl_mechanisms([], _Params) ->
+    list_to_binary(lists:join(" ", auth_mechs())).
+
+auth_mechs() ->
+    ["SCRAM-SHA512" || ns_config:read_key_fast(scram_sha512_enabled, true)] ++
+    ["SCRAM-SHA256" || ns_config:read_key_fast(scram_sha256_enabled, true)] ++
+    ["SCRAM-SHA1"   || ns_config:read_key_fast(scram_sha1_enabled,   true)] ++
+    ["PLAIN"].
 
 generate_interfaces(MCDParams) ->
     GetPort = fun (Port) ->
