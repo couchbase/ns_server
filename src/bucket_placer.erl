@@ -49,8 +49,7 @@ do_place_bucket(BucketName, Props, Params, Snapshot) ->
     case RV of
         {ok, Servers} ->
             DesiredServers = lists:sort(lists:flatten(Servers)),
-            {ok, lists:keystore(desired_servers, 1, Props,
-                                {desired_servers, DesiredServers})};
+            {ok, ns_bucket:update_desired_servers(DesiredServers, Props)};
         Error ->
             Error
     end.

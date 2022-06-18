@@ -87,6 +87,7 @@
          set_initial_map/3,
          set_map_opts/2,
          set_servers/2,
+         remove_servers/2,
          update_bucket_props/2,
          update_bucket_props/4,
          node_bucket_names/1,
@@ -120,7 +121,8 @@
          build_compaction_settings_json/1,
          get_width/1,
          get_weight/1,
-         get_desired_servers/1]).
+         get_desired_servers/1,
+         update_desired_servers/2]).
 
 -import(json_builder,
         [to_binary/1,
@@ -1144,6 +1146,21 @@ set_map_opts(Bucket, Opts) ->
 set_servers(Bucket, Servers) ->
     set_property(Bucket, servers, Servers).
 
+remove_servers(Bucket, Nodes) ->
+    ok = update_bucket_config(
+           Bucket,
+           fun (OldConfig) ->
+                   Servers = get_servers(OldConfig),
+                   C1 = lists:keystore(servers, 1, OldConfig,
+                                       {servers, Servers -- Nodes}),
+                   case get_desired_servers(OldConfig) of
+                       undefined ->
+                           C1;
+                       DesiredServers ->
+                           update_desired_servers(DesiredServers -- Nodes, C1)
+                   end
+           end).
+
 % Update the bucket config atomically.
 update_bucket_config(BucketName, Fun) ->
     update_bucket_config(chronicle_compat:backend(), BucketName, Fun).
@@ -1606,6 +1623,10 @@ get_weight(Props) ->
 
 get_desired_servers(Props) ->
     proplists:get_value(desired_servers, Props).
+
+update_desired_servers(DesiredServers, BucketConfig) ->
+    lists:keystore(desired_servers, 1, BucketConfig,
+                   {desired_servers, DesiredServers}).
 
 -ifdef(TEST).
 min_live_copies_test() ->

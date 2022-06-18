@@ -361,12 +361,12 @@ failover_bucket(Bucket, BucketConfig, Nodes, Options) ->
 
     Result.
 
-do_failover_bucket(memcached, Bucket, BucketConfig, Nodes, _Options) ->
-    failover_memcached_bucket(Nodes, Bucket, BucketConfig),
+do_failover_bucket(memcached, Bucket, _BucketConfig, Nodes, _Options) ->
+    failover_memcached_bucket(Nodes, Bucket),
     [];
 do_failover_bucket(membase, Bucket, BucketConfig, Nodes, Options) ->
     Map = proplists:get_value(map, BucketConfig, []),
-    R = failover_membase_bucket(Nodes, Bucket, BucketConfig, Map, Options),
+    R = failover_membase_bucket(Nodes, Bucket, Map, Options),
 
     [[{bucket, Bucket},
       {node, N},
@@ -416,27 +416,27 @@ failover_service(Snapshot, Service, Nodes) ->
       {status, Result},
       {service, Service}] || Node <- Nodes].
 
-failover_memcached_bucket(Nodes, Bucket, BucketConfig) ->
-    remove_nodes_from_server_list(Nodes, Bucket, BucketConfig).
+failover_memcached_bucket(Nodes, Bucket) ->
+    ns_bucket:remove_servers(Bucket, Nodes).
 
-failover_membase_bucket(Nodes, Bucket, BucketConfig, [], _Options) ->
+failover_membase_bucket(Nodes, Bucket, [], _Options) ->
     %% this is possible if bucket just got created and ns_janitor didn't get a
     %% chance to create a map yet; or alternatively, if it failed to do so
     %% because, for example, one of the nodes was down
-    failover_membase_bucket_with_no_map(Nodes, Bucket, BucketConfig);
-failover_membase_bucket(Nodes, Bucket, BucketConfig, Map, Options) ->
-    failover_membase_bucket_with_map(Nodes, Bucket, BucketConfig, Map, Options).
+    failover_membase_bucket_with_no_map(Nodes, Bucket);
+failover_membase_bucket(Nodes, Bucket, Map, Options) ->
+    failover_membase_bucket_with_map(Nodes, Bucket, Map, Options).
 
-failover_membase_bucket_with_no_map(Nodes, Bucket, BucketConfig) ->
-    ?log_debug("Skipping failover of bucket ~p because it has no vbuckets. "
-               "Config:~n~p", [Bucket, BucketConfig]),
+failover_membase_bucket_with_no_map(Nodes, Bucket) ->
+    ?log_debug("Skipping failover of bucket ~p because it has no vbuckets.",
+               [Bucket]),
 
     %% we still need to make sure to remove ourselves from the bucket server
     %% list
-    remove_nodes_from_server_list(Nodes, Bucket, BucketConfig),
+    ns_bucket:remove_servers(Bucket, Nodes),
     ok.
 
-failover_membase_bucket_with_map(Nodes, Bucket, BucketConfig, Map, Options) ->
+failover_membase_bucket_with_map(Nodes, Bucket, Map, Options) ->
     NewMap = fix_vbucket_map(Nodes, Bucket, Map, Options),
     true = (NewMap =/= undefined),
 
@@ -454,7 +454,7 @@ failover_membase_bucket_with_map(Nodes, Bucket, BucketConfig, Map, Options) ->
 
     ns_bucket:set_fast_forward_map(Bucket, undefined),
     ns_bucket:set_map(Bucket, NewMap),
-    remove_nodes_from_server_list(Nodes, Bucket, BucketConfig),
+    ns_bucket:remove_servers(Bucket, Nodes),
 
     CleanupOptions = janitor_cleanup_options(Nodes, Options),
     case (catch ns_janitor:cleanup(Bucket, CleanupOptions)) of
@@ -598,10 +598,6 @@ find_max_replica(Chain, NodeStates) ->
                                           end, ChainStates),
             MaxReplica
     end.
-
-remove_nodes_from_server_list(Nodes, Bucket, BucketConfig) ->
-    Servers = ns_bucket:get_servers(BucketConfig),
-    ns_bucket:set_servers(Bucket, Servers -- Nodes).
 
 node_vbuckets(Map, Node) ->
     [V || {V, Chain} <- misc:enumerate(Map, 0),
