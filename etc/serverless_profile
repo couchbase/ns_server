@@ -3,6 +3,7 @@
 {allow_variable_num_vbuckets, true}.
 {max_scopes_per_bucket, 100}.
 {max_collections_per_bucket, 100}.
+{cluster_scope_collection_limit, unlimited}.
 {{magma, can_set_max_shards}, true}.
 {enable_throttle_settings, true}.
 

@@ -323,9 +323,24 @@ jsonify_manifest(Manifest, WithDefaults) ->
     {[{uid, uid(Manifest)}, {scopes, ScopesJson}]}.
 
 get_max_supported(num_scopes) ->
-    ns_config:read_key_fast(max_scopes_count, ?MAX_SCOPES_SUPPORTED);
+    get_max_supported_inner(max_scopes_count, ?MAX_SCOPES_SUPPORTED);
 get_max_supported(num_collections) ->
-    ns_config:read_key_fast(max_collections_count, ?MAX_COLLECTIONS_SUPPORTED).
+    get_max_supported_inner(max_collections_count, ?MAX_COLLECTIONS_SUPPORTED).
+
+get_max_supported_inner(Type, Max) ->
+    case ns_config:search(Type) of
+        {_, Value} ->
+            Value;
+        false ->
+            case config_profile:get_value(cluster_scope_collection_limit,
+                                          false) of
+                unlimited ->
+                    %% Effectively no limit
+                    ?MC_MAXINT;
+                false ->
+                    Max
+            end
+    end.
 
 update_limits(Bucket, Name, Limits) ->
     update(Bucket, {update_limits, Name, Limits}).
