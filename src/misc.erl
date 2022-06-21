@@ -991,6 +991,10 @@ expect_prop_value(K, List) ->
         error:X -> erlang:error(X, [K, List])
     end.
 
+
+find_proplist(Prop, Value, ListOfPropLists) ->
+    lists:search(?cut(proplists:get_value(Prop, _) =:= Value), ListOfPropLists).
+
 %% true iff given path is absolute
 is_absolute_path(Path) ->
     Normalized = filename:join([Path]),

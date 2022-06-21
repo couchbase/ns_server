@@ -247,15 +247,12 @@ handle_server_groups_post(Req) ->
             reply_json(Req, {Errors}, 400)
     end.
 
-find_group_by_prop(Prop, Value, Groups) ->
-    lists:search(?cut(proplists:get_value(Prop, _) =:= Value), Groups).
-
 do_handle_server_groups_post(Name, Req) ->
     RV = chronicle_compat:transaction(
            [server_groups],
            fun (Snapshot) ->
                    Groups = ns_cluster_membership:server_groups(Snapshot),
-                   case find_group_by_prop(name, Name, Groups) of
+                   case misc:find_proplist(name, Name, Groups) of
                        false ->
                            UUID = couch_uuids:random(),
                            true = is_binary(UUID),
@@ -336,8 +333,8 @@ do_group_update(GroupUUID, Name, Req) ->
            [server_groups],
            fun (Snapshot) ->
                    Groups = ns_cluster_membership:server_groups(Snapshot),
-                   case {find_group_by_prop(uuid, GroupUUID, Groups),
-                         find_group_by_prop(name, Name, Groups)} of
+                   case {misc:find_proplist(uuid, GroupUUID, Groups),
+                         misc:find_proplist(name, Name, Groups)} of
                        {false, _} ->
                            {abort, not_found};
                        {_, {value, _}} ->
@@ -375,7 +372,7 @@ do_group_delete(GroupUUID, Req) ->
            [server_groups],
            fun (Snapshot) ->
                    Groups = ns_cluster_membership:server_groups(Snapshot),
-                   case find_group_by_prop(uuid, GroupUUID, Groups) of
+                   case misc:find_proplist(uuid, GroupUUID, Groups) of
                        false ->
                            {abort, not_found};
                        {value, Victim} ->
