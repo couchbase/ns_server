@@ -81,6 +81,7 @@
          magma_max_shards/2,
          update_maps/3,
          update_buckets/3,
+         multi_prop_update/2,
          set_bucket_config/2,
          set_fast_forward_map/2,
          set_map/2,
@@ -1211,22 +1212,32 @@ update_maps(ns_config, Buckets, OnMap, ExtraSets) ->
                  end, AllBuckets), ExtraSets}
       end);
 update_maps(chronicle, Buckets, OnMap, ExtraSets) ->
+    Updaters = [{B, OnMap} || B <- Buckets],
+    multi_prop_update(map, Updaters, ExtraSets).
+
+multi_prop_update(_Key, []) ->
+    ok;
+multi_prop_update(Key, Values) ->
+    Updaters = [{B, fun (_, _) -> V end} || {B, V} <- Values],
+    multi_prop_update(Key, Updaters, []).
+
+multi_prop_update(Key, Updaters, ExtraSets) ->
     {ok, _} =
         chronicle_kv:transaction(
-          kv, [sub_key(N, props) || N <- Buckets],
+          kv, [sub_key(N, props) || {N, _} <- Updaters],
           fun (Snapshot) ->
                   Sets =
                       lists:filtermap(
-                        fun (Name) ->
+                        fun ({Name, Updater}) ->
                                 case get_bucket(Name, Snapshot) of
                                     {ok, BC} ->
                                         {true, {set, sub_key(Name, props),
                                                 misc:key_update(
-                                                  map, BC, OnMap(Name, _))}};
+                                                  Key, BC, Updater(Name, _))}};
                                     not_present ->
                                         false
                                 end
-                        end, Buckets),
+                        end, Updaters),
                   {commit, Sets ++ [{set, K, V} || {K, V} <- ExtraSets]}
           end),
     ok.
