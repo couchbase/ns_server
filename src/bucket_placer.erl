@@ -15,7 +15,9 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--export([is_enabled/0, place_bucket/2]).
+-export([is_enabled/0,
+         place_bucket/2,
+         rebalance/1]).
 
 -record(params, {weight_limit}).
 
@@ -44,8 +46,10 @@ place_bucket(BucketName, Props) ->
     end.
 
 do_place_bucket(BucketName, Props, Params, Snapshot) ->
-    RV = on_zones(calculate_desired_servers(_, BucketName, Props, Params),
-                  Snapshot),
+    RV = on_zones(
+           fun (_, Nodes) ->
+                   calculate_desired_servers(Nodes, BucketName, Props, Params)
+           end, get_eligible_buckets(Snapshot), Snapshot),
     case RV of
         {ok, Servers} ->
             DesiredServers = lists:sort(lists:flatten(Servers)),
@@ -58,16 +62,15 @@ get_eligible_buckets(Snapshot) ->
     lists:filter(fun ({_, P}) -> ns_bucket:get_width(P) =/= undefined end,
                  ns_bucket:get_buckets(Snapshot)).
 
-on_zones(Fun, Snapshot) ->
+on_zones(Fun, Buckets, Snapshot) ->
     Groups = ns_cluster_membership:server_groups(Snapshot),
-    Buckets = get_eligible_buckets(Snapshot),
 
     Results =
         lists:map(
           fun (Group) ->
-                  Nodes = construct_zone(proplists:get_value(nodes, Group),
-                                         Snapshot, Buckets),
-                  Fun(Nodes)
+                  AllGroupNodes = proplists:get_value(nodes, Group),
+                  Nodes = construct_zone(AllGroupNodes, Snapshot, Buckets),
+                  Fun(AllGroupNodes, Nodes)
           end, Groups),
 
     {Good, Bad} =
@@ -163,6 +166,86 @@ priority({_, #node{weight = W1, buckets = BM1}},
             X1 > X2;
         _ ->
             W1 =< W2
+    end.
+
+rebalance(KeepNodes) ->
+    rebalance(KeepNodes, get_params(), get_snapshot()).
+
+rebalance(KeepNodes, Params, Snapshot) ->
+    Buckets = get_eligible_buckets(Snapshot),
+
+    SortedByWeight =
+        lists:sort(fun ({_, Props1}, {_, Props2}) ->
+                           ns_bucket:get_weight(Props1) >=
+                               ns_bucket:get_weight(Props2)
+                   end, Buckets),
+
+    case on_zones(rebalance(_, _, KeepNodes, SortedByWeight, Params),
+                  Buckets, Snapshot) of
+        {ok, Res} ->
+            {ok, massage_rebalance_result(Res, SortedByWeight)};
+        Error ->
+            Error
+    end.
+
+zip_servers([[] | _], Acc) ->
+    lists:reverse(Acc);
+zip_servers(ResultsForZones, Acc) ->
+    zip_servers([Rest || [_ | Rest] <- ResultsForZones],
+                [lists:sort(
+                   lists:flatten([Hd || [Hd | _] <- ResultsForZones])) | Acc]).
+
+massage_rebalance_result(Res, Buckets) ->
+    lists:filtermap(
+      fun ({{BucketName, Props}, Servers}) ->
+              case ns_bucket:get_desired_servers(Props) of
+                  Servers ->
+                      false;
+                  _ ->
+                      {true, {BucketName, Servers}}
+              end
+      end, lists:zip(Buckets, zip_servers(Res, []))).
+
+rebalance(AllGroupNodes, Nodes, KeepNodes, Buckets, Params) ->
+    DesiredNodes =
+        misc:update_proplist(
+          [{N, empty_node()} || N <- lists:filter(
+                                       lists:member(_, AllGroupNodes),
+                                       KeepNodes)],
+          lists:filter(fun ({Name, _}) ->
+                               lists:member(Name, KeepNodes)
+                       end, Nodes)),
+
+    case place_buckets_on_nodes(DesiredNodes, Buckets, Params, []) of
+        {ok, Servers} ->
+            {ok, Servers};
+        error ->
+            EmptyZone = [{N, empty_node()} || {N, _} <- DesiredNodes],
+            case place_buckets_on_nodes(EmptyZone, Buckets, Params, []) of
+                {ok, Servers} ->
+                    {ok, Servers};
+                error ->
+                    error
+            end
+    end.
+
+place_buckets_on_nodes(_Nodes, [], _Params, AccServers) ->
+    {ok, lists:reverse(AccServers)};
+place_buckets_on_nodes(Nodes, [{BucketName, Props} | Rest], Params,
+                       AccServers) ->
+    case calculate_desired_servers(Nodes, BucketName, Props, Params) of
+        error ->
+            error;
+        {ok, Servers} ->
+            NewProps = ns_bucket:update_desired_servers(Servers, Props),
+            NewNodes =
+                lists:map(
+                  fun ({NName, NStruct}) ->
+                          {NName, apply_buckets_to_node(
+                                    NName, NStruct, [{BucketName, NewProps}])}
+                  end, Nodes),
+            place_buckets_on_nodes(NewNodes, Rest, Params,
+                                   [Servers | AccServers])
     end.
 
 -ifdef(TEST).
