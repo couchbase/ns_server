@@ -247,6 +247,18 @@ start_link_rebalance(KeepNodes, EjectNodes,
                          end
                  end, delta_recovery_not_possible),
 
+               check_rebalance_condition(
+                 fun () ->
+                         case bucket_placer:rebalance(KVKeep) of
+                             {ok, Res} ->
+                                 ok = ns_bucket:multi_prop_update(
+                                        desired_servers, Res),
+                                 ok;
+                             {error, Zones} ->
+                                 {error, {need_more_space, Zones}}
+                         end
+                 end),
+
                proc_lib:init_ack({ok, self()}),
 
                master_activity_events:note_rebalance_start(
@@ -256,15 +268,28 @@ start_link_rebalance(KeepNodes, EjectNodes,
                          DeltaNodes, DeltaRecoveryBucketNames)
        end, []]).
 
-check_rebalance_condition(Check, Error) ->
-    Fail = check_test_condition(Error) =/= ok,
+check_rebalance_condition(Check) ->
+    check_rebalance_condition(Check, undefined).
 
-    case Fail orelse not Check() of
-        true ->
-            proc_lib:init_ack({error, Error}),
-            exit(normal);
-        false ->
-            ok
+check_rebalance_condition(Check, Error) ->
+    case check_test_condition(Error) of
+        ok ->
+            case Check() of
+                true ->
+                    ok;
+                ok ->
+                    ok;
+                Other ->
+                    proc_lib:init_ack({error, case Other of
+                                                  false ->
+                                                      Error;
+                                                  {error, E} ->
+                                                      E
+                                              end}),
+                    exit(normal)
+            end;
+        _ ->
+            Error
     end.
 
 move_vbuckets(Bucket, Moves) ->
@@ -1319,6 +1344,8 @@ drop_old_2i_indexes(KeepNodes) ->
 %%
 %% 'Kind' can be a bucket or a service.
 %%
+check_test_condition(undefined) ->
+    ok;
 check_test_condition(Step) ->
     check_test_condition(Step, []).
 

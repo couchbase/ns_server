@@ -278,7 +278,7 @@ ensure_janitor_run(Item) ->
                              ok | in_progress | already_balanced |
                              nodes_mismatch | no_active_nodes_left |
                              in_recovery | delta_recovery_not_possible |
-                             no_kv_nodes_left.
+                             no_kv_nodes_left | {need_more_space, list()}.
 start_rebalance(KnownNodes, EjectNodes, DeltaRecoveryBuckets) ->
     maybe_start_rebalance({maybe_start_rebalance, KnownNodes, EjectNodes,
                            DeltaRecoveryBuckets}).

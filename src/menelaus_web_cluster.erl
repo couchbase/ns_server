@@ -1021,6 +1021,8 @@ do_handle_rebalance(Req, KnownNodesS, EjectedNodesS, DeltaRecoveryBuckets) ->
             reply_text(Req, "Cluster is in recovery mode.", 503);
         no_kv_nodes_left ->
             reply_json(Req, {[{noKVNodesLeft, 1}]}, 400);
+        {need_more_space, Zones} ->
+            reply_json(Req, {[{need_more_space, Zones}]}, 400);
         ok ->
             ns_audit:rebalance_initiated(Req, KnownNodes, EjectedNodes, DeltaRecoveryBuckets),
             reply(Req, 200)
