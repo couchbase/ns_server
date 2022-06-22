@@ -823,12 +823,9 @@ idle({start_rebalance, KeepNodes, EjectNodes, FailedNodes, DeltaNodes,
                                 type = Type,
                                 rebalance_id = RebalanceId},
              [{reply, From, ok}]};
-        {error, no_kv_nodes_left} ->
+        {error, Error} ->
             misc:unlink_terminate_and_wait(ObserverPid, kill),
-            {keep_state_and_data, [{reply, From, no_kv_nodes_left}]};
-        {error, delta_recovery_not_possible} ->
-            misc:unlink_terminate_and_wait(ObserverPid, kill),
-            {keep_state_and_data, [{reply, From, delta_recovery_not_possible}]}
+            {keep_state_and_data, [{reply, From, Error}]}
     end;
 idle({move_vbuckets, Bucket, Moves}, From, _State) ->
     Id = couch_uuids:random(),

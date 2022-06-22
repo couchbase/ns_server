@@ -227,35 +227,45 @@ start_link_rebalance(KeepNodes, EjectNodes,
     proc_lib:start_link(
       erlang, apply,
       [fun () ->
-               FailKvChk = check_test_condition(no_kv_nodes_left) =/= ok,
-
                KVKeep = ns_cluster_membership:service_nodes(KeepNodes, kv),
-               case KVKeep =:= [] orelse FailKvChk of
-                   true ->
-                       proc_lib:init_ack({error, no_kv_nodes_left}),
-                       exit(normal);
-                   false ->
-                       ok
-               end,
+               check_rebalance_condition(fun () -> KVKeep =/= [] end,
+                                         no_kv_nodes_left),
 
                KVDeltaNodes = ns_cluster_membership:service_nodes(DeltaNodes,
                                                                   kv),
-               BucketConfigs = ns_bucket:get_buckets(),
                %% Pre-emptive check to see if delta recovery is possible.
-               case build_delta_recovery_buckets(KVKeep, KVDeltaNodes,
-                                                 BucketConfigs, DeltaRecoveryBucketNames) of
-                   {ok, _DeltaRecoveryBucketTuples} ->
-                       proc_lib:init_ack({ok, self()}),
+               check_rebalance_condition(
+                 fun () ->
+                         BucketConfigs = ns_bucket:get_buckets(),
+                         case build_delta_recovery_buckets(
+                                KVKeep, KVDeltaNodes,
+                                BucketConfigs, DeltaRecoveryBucketNames) of
+                             {ok, _DeltaRecoveryBucketTuples} ->
+                                 true;
+                             {error, not_possible} ->
+                                 false
+                         end
+                 end, delta_recovery_not_possible),
 
-                       master_activity_events:note_rebalance_start(
-                         self(), KeepNodes, EjectNodes, FailedNodes, DeltaNodes),
+               proc_lib:init_ack({ok, self()}),
 
-                       rebalance(KeepNodes, EjectNodes, FailedNodes,
-                                 DeltaNodes, DeltaRecoveryBucketNames);
-                   {error, not_possible} ->
-                       proc_lib:init_ack({error, delta_recovery_not_possible})
-               end
+               master_activity_events:note_rebalance_start(
+                 self(), KeepNodes, EjectNodes, FailedNodes, DeltaNodes),
+
+               rebalance(KeepNodes, EjectNodes, FailedNodes,
+                         DeltaNodes, DeltaRecoveryBucketNames)
        end, []]).
+
+check_rebalance_condition(Check, Error) ->
+    Fail = check_test_condition(Error) =/= ok,
+
+    case Fail orelse not Check() of
+        true ->
+            proc_lib:init_ack({error, Error}),
+            exit(normal);
+        false ->
+            ok
+    end.
 
 move_vbuckets(Bucket, Moves) ->
     {ok, Config} = ns_bucket:get_bucket(Bucket),
