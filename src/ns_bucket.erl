@@ -816,7 +816,8 @@ get_max_buckets() ->
 get_default_num_vbuckets() ->
     case ns_config:search(couchbase_num_vbuckets_default) of
         false ->
-            misc:getenv_int("COUCHBASE_NUM_VBUCKETS", 1024);
+            misc:getenv_int("COUCHBASE_NUM_VBUCKETS",
+              config_profile:get_value(default_num_vbuckets, 1024));
         {value, X} ->
             X
     end.
