@@ -158,7 +158,7 @@ unpack_global(Bin) ->
       MemUsed:64/native,
       MemActualUsed:64/native,
       MemActualFree:64/native,
-      AllocStall:64/native,
+      AllocStall0:64/native,
       _/binary>> = Bin,
 
     CgroupsInfo = unpack_cgroups_info(Bin),
@@ -189,6 +189,12 @@ unpack_global(Bin) ->
                  cpu_irq_ms => CPUIrqMS,
                  cpu_stolen_ms => CPUStolenMS},
 
+    %% In the extremely rare case where sigar is unable to obtain the
+    %% allocstall stat it returns -1.
+    AllocStall = case AllocStall0 =:= 16#ffffffffffffffff of
+                      true -> 0;
+                      false -> AllocStall0
+                  end,
     Gauges =
         [{cpu_cores_available, CoresAvailable},
          {cpu_host_cores_available, HostCoresAvailable},
