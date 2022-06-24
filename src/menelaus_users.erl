@@ -839,11 +839,25 @@ build_auth(Password) ->
     build_plain_auth(Password) ++ scram_sha:build_auth(Password).
 
 build_plain_auth(Password) ->
-    HashType = ns_config:read_key_fast(password_hash_alg, ?DEFAULT_PWHASH),
-    format_plain_auth(ns_config_auth:new_password_hash(HashType, Password)).
+    case cluster_compat_mode:is_cluster_elixir() of
+        true ->
+            HashType = ns_config:read_key_fast(password_hash_alg,
+                                               ?DEFAULT_PWHASH),
+            format_plain_auth(ns_config_auth:new_password_hash(HashType,
+                                                               Password));
+        false ->
+            format_pre_elixir_plain_auth(
+              ns_config_auth:new_password_hash(?SHA1_HASH, Password))
+    end.
 
 format_plain_auth(HashInfo) ->
     [{<<"hash">>, {HashInfo}}].
+
+format_pre_elixir_plain_auth(HashInfo) ->
+    Salt = base64:decode(proplists:get_value(?SALT_KEY, HashInfo)),
+    Mac = base64:decode(proplists:get_value(?HASH_KEY, HashInfo)),
+    SaltAndMac = <<Salt/binary, Mac/binary>>,
+    [{<<"plain">>, base64:encode(SaltAndMac)}].
 
 rbac_upgrade_key(_) ->
     rbac_upgrade_key().

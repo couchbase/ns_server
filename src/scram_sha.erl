@@ -43,15 +43,25 @@ init() ->
     ok.
 
 build_auth(Password) ->
+    IsElixir = cluster_compat_mode:is_cluster_elixir(),
     BuildAuth =
-        fun (Type) ->
+        fun (Type) when IsElixir ->
                 {Salt, StoredKey, ServerKey, Iterations} =
                     hash_password(Type, Password),
                 {auth_info_key(Type),
                     {[{?SCRAM_SALT_KEY, base64:encode(Salt)},
                       {?SCRAM_STORED_KEY_KEY, base64:encode(StoredKey)},
                       {?SCRAM_SERVER_KEY_KEY, base64:encode(ServerKey)},
-                      {?SCRAM_ITERATIONS_KEY, Iterations}]}}
+                      {?SCRAM_ITERATIONS_KEY, Iterations}]}};
+            (Type) ->
+                {Salt, _StoredKey, _ServerKey, Iterations} =
+                    hash_password(Type, Password),
+                SaltedPassword = salted_password(Type, Password, Salt,
+                                                 Iterations),
+                {pre_elixir_auth_info_key(Type),
+                    {[{?OLD_SCRAM_SALT_KEY, base64:encode(Salt)},
+                      {?OLD_SCRAM_HASH_KEY, base64:encode(SaltedPassword)},
+                      {?OLD_SCRAM_ITERATIONS_KEY, Iterations}]}}
         end,
     [BuildAuth(Sha) || Sha <- supported_types(), enabled(Sha)].
 
@@ -136,6 +146,10 @@ parse_authorization_header_prefix(_) ->
 
 auth_info_key(Sha) ->
     list_to_binary(string:lowercase(www_authenticate_prefix(Sha))).
+
+pre_elixir_auth_info_key(sha512) -> <<"sha512">>;
+pre_elixir_auth_info_key(sha256) -> <<"sha256">>;
+pre_elixir_auth_info_key(sha) -> <<"sha1">>.
 
 parse_authorization_header(Value) ->
     Sections = string:tokens(Value, ","),
@@ -368,7 +382,7 @@ hash_password(Type, Password) ->
               sha512 -> ?SHA512_DIGEST_SIZE
           end,
     Salt = crypto:strong_rand_bytes(Len),
-    SaltedPassword = pbkdf2(Type, Password, Salt, Iterations),
+    SaltedPassword = salted_password(Type, Password, Salt, Iterations),
     ClientKey = client_key(Type, SaltedPassword),
     StoredKey = stored_key(Type, ClientKey),
     ServerKey = server_key(Type, SaltedPassword),
@@ -391,6 +405,9 @@ stored_key(Sha, ClientKey) ->
 
 client_signature(Sha, StoredKey, AuthMessage) ->
     crypto:mac(hmac, Sha, StoredKey, AuthMessage).
+
+salted_password(Sha, Password, Salt, Iterations) ->
+    pbkdf2(Sha, Password, Salt, Iterations).
 
 -ifdef(TEST).
 build_client_first_message(Sha, Nonce, User) ->
@@ -451,7 +468,7 @@ client_auth(Sha, User, Password, Nonce) ->
             {Sid, Salt, Iterations, ServerNonce, ServerFirstMessage} =
                 parse_server_first_response(Sha, Nonce, Header),
 
-            SaltedPassword = pbkdf2(Sha, Password, Salt, Iterations),
+            SaltedPassword = salted_password(Sha, Password, Salt, Iterations),
             {ToSend1, ForProof} =
                 build_client_final_message(
                   Sha, Sid, ServerNonce, SaltedPassword,

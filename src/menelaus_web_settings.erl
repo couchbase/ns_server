@@ -427,6 +427,20 @@ is_allowed_on_cluster([enforce_limits]) ->
     cluster_compat_mode:is_cluster_71();
 is_allowed_on_cluster([magma_min_memory_quota]) ->
     cluster_compat_mode:is_cluster_71();
+is_allowed_on_cluster([password_hash_alg]) ->
+    cluster_compat_mode:is_cluster_elixir();
+is_allowed_on_cluster([scram_sha1_enabled]) ->
+    cluster_compat_mode:is_cluster_elixir();
+is_allowed_on_cluster([scram_sha256_enabled]) ->
+    cluster_compat_mode:is_cluster_elixir();
+is_allowed_on_cluster([scram_sha512_enabled]) ->
+    cluster_compat_mode:is_cluster_elixir();
+is_allowed_on_cluster([argon2id_time]) ->
+    cluster_compat_mode:is_cluster_elixir();
+is_allowed_on_cluster([argon2id_mem]) ->
+    cluster_compat_mode:is_cluster_elixir();
+is_allowed_on_cluster([pbkdf2_sha512_iterations]) ->
+    cluster_compat_mode:is_cluster_elixir();
 is_allowed_on_cluster(_) ->
     true.
 
