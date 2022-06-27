@@ -275,6 +275,7 @@ build_bucket_info(Id, Ctx, InfoLevel, MayExposeAuth, SkipMap) ->
         build_auto_compaction_info(BucketConfig),
         build_purge_interval_info(BucketConfig),
         build_replica_index(BucketConfig),
+        build_bucket_placer_params(BucketConfig),
         build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx),
         [build_sasl_password(BucketConfig) || MayExposeAuth]])}.
 
@@ -287,6 +288,14 @@ build_authType(BucketConfig) ->
             %% until there are no supported pre-7.0 versions that can
             %% replicate to us.
             [{authType, sasl}]
+    end.
+
+build_bucket_placer_params(BucketConfig) ->
+    case ns_bucket:get_width(BucketConfig) of
+        undefined ->
+            [];
+        Width ->
+            [{width, Width}, {weight, ns_bucket:get_weight(BucketConfig)}]
     end.
 
 build_sasl_password(BucketConfig) ->
