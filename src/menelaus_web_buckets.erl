@@ -977,8 +977,10 @@ validate_common_params(#bv_ctx{bucket_name = BucketName,
 validate_bucket_placer_params(Params, IsNew) ->
     case bucket_placer:is_enabled() of
         true ->
-            [parse_validate_bucket_placer_param(width, weight, Params, IsNew),
-             parse_validate_bucket_placer_param(weight, width, Params, IsNew)];
+            [parse_validate_bucket_placer_param(width, weight, 1,
+                                                Params, IsNew),
+             parse_validate_bucket_placer_param(weight, width, 0,
+                                                Params, IsNew)];
         false ->
             []
     end.
@@ -2020,23 +2022,25 @@ do_parse_validate_other_buckets_ram_quota(Value) ->
              <<"The other buckets RAM Quota must be a positive integer.">>}
     end.
 
-parse_validate_bucket_placer_param(What, Other, Params, IsNew) ->
-    Err = ?cut(iolist_to_binary(io_lib:format(_, [What]))),
+parse_validate_bucket_placer_param(What, Other, LowerLimit, Params, IsNew) ->
+    Err = ?cut(iolist_to_binary(io_lib:format(_, _))),
 
     case proplists:get_value(atom_to_list(What), Params) of
         undefined ->
             case {IsNew, proplists:get_value(atom_to_list(Other), Params)} of
                 {true, Val} when Val =/= undefined ->
-                    {error, What, Err("~p must be specified")};
+                    {error, What, Err("~p must be specified", [What])};
                 _ ->
                     ignore
             end;
         Value ->
-            case menelaus_util:parse_validate_number(Value, 1, undefined) of
+            case menelaus_util:parse_validate_number(Value, LowerLimit,
+                                                     undefined) of
                 invalid ->
-                    {error, What, Err("~p must be integer")};
+                    {error, What, Err("~p must be integer", [What])};
                 too_small ->
-                    {error, What, Err("~p must be 1 or more")};
+                    {error, What, Err("~p must be ~p or more",
+                                      [What, LowerLimit])};
                 {ok, X} ->
                     {ok, What, X}
             end

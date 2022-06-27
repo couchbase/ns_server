@@ -313,6 +313,15 @@ bucket_placer_test_() ->
 
               FailedPlacement("B1", [{width, 2}, {weight, 4}], Snapshot1)
       end},
+     {"Weight = 0",
+      fun () ->
+              functools:chain(
+                Snapshot,
+                [SuccessPlacement("B1", [{width, 3}, {weight, 6}], _),
+                 SuccessPlacement("B2", [{width, 2}, {weight, 0}], _),
+                 SuccessPlacement("B3", [{width, 2}, {weight, 0}], _),
+                 FailedPlacement("B3", [{width, 2}, {weight, 1}], _)])
+      end},
      {"Rebalance of balanced zone is a no op",
       fun () ->
               AllNodes = lists:flatten([N || {_, N} <- Zones]),
