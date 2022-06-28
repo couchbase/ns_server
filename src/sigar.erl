@@ -192,9 +192,10 @@ unpack_global(Bin) ->
     %% In the extremely rare case where sigar is unable to obtain the
     %% allocstall stat it returns -1.
     AllocStall = case AllocStall0 =:= 16#ffffffffffffffff of
-                      true -> 0;
-                      false -> AllocStall0
-                  end,
+                     true -> 0;
+                     false -> AllocStall0
+                 end,
+
     Gauges =
         [{cpu_cores_available, CoresAvailable},
          {cpu_host_cores_available, HostCoresAvailable},
