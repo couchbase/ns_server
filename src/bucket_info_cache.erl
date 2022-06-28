@@ -276,6 +276,14 @@ build_pools_uri(Tail, UUID) ->
       ["pools", "default"] ++ Tail,
       [{"bucket_uuid", UUID} || UUID =/= undefined]).
 
+maybe_range_scan_capability(BucketConfig) ->
+    case ns_bucket:is_persistent(BucketConfig) of
+        true ->
+            [{rangeScan, cluster_compat_mode:is_cluster_elixir()}];
+        false ->
+            []
+    end.
+
 build_bucket_capabilities(BucketConfig) ->
     Caps =
         case ns_bucket:bucket_type(BucketConfig) of
@@ -293,7 +301,8 @@ build_bucket_capabilities(BucketConfig) ->
                      {'subdoc.ReviveDocument',
                       cluster_compat_mode:is_cluster_71()},
                      {preserveExpiry,
-                      cluster_compat_mode:is_cluster_elixir()}],
+                      cluster_compat_mode:is_cluster_elixir()}] ++
+                     maybe_range_scan_capability(BucketConfig),
 
                 [C || {C, true} <- Conditional] ++
                     [dcp, cbhello, touch, cccp, xdcrCheckpointing, nodesExt,
