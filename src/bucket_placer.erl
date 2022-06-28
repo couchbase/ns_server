@@ -268,7 +268,13 @@ verify_bucket(Name, Zones, Snapshot) ->
     {ok, Props} = ns_bucket:get_bucket(Name, Snapshot),
     Width = ns_bucket:get_width(Props),
     DesiredServers = ns_bucket:get_desired_servers(Props),
-    ?assertEqual({Name, Width * length(Zones)}, {Name, length(DesiredServers)}).
+    lists:foreach(
+      fun ({Z, ZNodes}) ->
+              ZServers = lists:filter(lists:member(_, ZNodes), DesiredServers),
+              ?assertEqual({Name, Z, Width}, {Name, Z, length(ZServers)})
+      end, Zones),
+    AllZoneNodes = lists:flatten([NList || {_, NList} <- Zones]),
+    ?assertEqual({Name, []}, {Name, DesiredServers -- AllZoneNodes}).
 
 success_placement(Name, Props, Params, Zones, Snapshot) ->
     RV = do_place_bucket(Name, Props, Params, Snapshot),
@@ -291,7 +297,7 @@ bucket_placer_test_() ->
     Params = #params{weight_limit = 6},
     Snapshot = maps:put(ns_bucket:root(), {[], no_rev}, populate_nodes(Zones)),
 
-    SuccessPlacement = success_placement(_, _, Params, ZoneNames, _),
+    SuccessPlacement = success_placement(_, _, Params, Zones, _),
     FailedPlacement = failed_placement(_, _, Params, ZoneNames, _),
 
     [{"Bucket placement test",
