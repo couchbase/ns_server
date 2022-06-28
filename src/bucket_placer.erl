@@ -284,6 +284,16 @@ success_placement(Name, Props, Params, Zones, Snapshot) ->
     verify_bucket(Name, Zones, NewSnapshot),
     NewSnapshot.
 
+apply_rebalance_rv_to_snapshot(RV, Snapshot) ->
+    ?assertMatch({ok, _}, RV),
+    {ok, NewServers} = RV,
+    lists:foldl(
+      fun ({BucketName, Servers}, Acc) ->
+              {ok, Props} = ns_bucket:get_bucket(BucketName, Acc),
+              NewProps = ns_bucket:update_desired_servers(Servers, Props),
+              apply_bucket_to_snapshot(BucketName, NewProps, Acc)
+      end, Snapshot, NewServers).
+
 failed_placement(Name, Props, Params, Zones, Snapshot) ->
     RV = do_place_bucket(Name, Props, Params, Snapshot),
     ?assertMatch({Name, {error, _}}, {Name, RV}),
@@ -293,12 +303,42 @@ failed_placement(Name, Props, Params, Zones, Snapshot) ->
 bucket_placer_test_() ->
     Zones = [{z1, [a1, b1, c1]}, {z2, [a2, b2, c2]}, {z3, [a3, b3, c3]}],
     ZoneNames = [Z || {Z, _} <- Zones],
+    AllNodes = lists:flatten([N || {_, N} <- Zones]),
 
     Params = #params{weight_limit = 6},
     Snapshot = maps:put(ns_bucket:root(), {[], no_rev}, populate_nodes(Zones)),
 
     SuccessPlacement = success_placement(_, _, Params, Zones, _),
     FailedPlacement = failed_placement(_, _, Params, ZoneNames, _),
+
+    PreRebalanceSnapshot =
+        fun (B2Width) ->
+                functools:chain(
+                  Snapshot,
+                  [SuccessPlacement("B1", [{width, 2}, {weight, 2}], _),
+                   SuccessPlacement("B2", [{width, B2Width}, {weight, 3}], _)])
+        end,
+
+    VerifyRebalance =
+        fun (RV, Ejected, S) ->
+                BucketNames = ns_bucket:get_bucket_names(S),
+                NewZones = [{N, Nodes -- Ejected} || {N, Nodes} <- Zones],
+                S1 = apply_rebalance_rv_to_snapshot(RV, S),
+                [verify_bucket(Name, NewZones, S1) || Name <- BucketNames]
+        end,
+
+    Failover =
+        fun (S1) ->
+                S2 = lists:foldl(
+                       fun ({Name, Props}, Acc) ->
+                               DesiredServers =
+                                   ns_bucket:get_desired_servers(Props),
+                               NewProps = ns_bucket:update_desired_servers(
+                                            DesiredServers -- [c1], Props),
+                               apply_bucket_to_snapshot(Name, NewProps, Acc)
+                       end, S1, ns_bucket:get_buckets(S1)),
+                {rebalance(AllNodes -- [c1], Params, S2), S2}
+        end,
 
     [{"Bucket placement test",
       fun () ->
@@ -330,15 +370,27 @@ bucket_placer_test_() ->
       end},
      {"Rebalance of balanced zone is a no op",
       fun () ->
-              AllNodes = lists:flatten([N || {_, N} <- Zones]),
-              Snapshot1 =
-                  functools:chain(
-                    Snapshot,
-                    [SuccessPlacement("B1", [{width, 2}, {weight, 2}], _),
-                     SuccessPlacement("B2", [{width, 3}, {weight, 3}], _)]),
-
+              Snapshot1 = PreRebalanceSnapshot(3),
               RV = rebalance(AllNodes, Params, Snapshot1),
               ?assertEqual({ok, []}, RV)
+      end},
+     {"Rebalancing the node out",
+      fun () ->
+              Snapshot1 = PreRebalanceSnapshot(3),
+              RV = rebalance(AllNodes -- [c1], Params, Snapshot1),
+              ?assertEqual({error, [z1]}, RV),
+
+              Snapshot2 = SuccessPlacement("B2", [{width, 2}, {weight, 3}],
+                                           Snapshot1),
+              RV1 = rebalance(AllNodes -- [c1], Params, Snapshot2),
+              VerifyRebalance(RV1, [c1], Snapshot2)
+      end},
+     {"Recovery after failover",
+      fun () ->
+              RV = Failover(PreRebalanceSnapshot(3)),
+              ?assertMatch({{error, [z1]}, _}, RV),
+              {RV1, Snapshot1} = Failover(PreRebalanceSnapshot(2)),
+              VerifyRebalance(RV1, [c1], Snapshot1)
       end}].
 
 -endif.
