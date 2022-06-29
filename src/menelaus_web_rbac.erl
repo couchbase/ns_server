@@ -39,6 +39,7 @@
          handle_check_permission_for_cbauth/1,
          handle_get_user_limits_for_cbauth/1,
          handle_get_user_uuid_for_cbauth/1,
+         handle_get_user_buckets_for_cbauth/1,
          forbidden_response/1,
          role_to_string/1,
          validate_cred/2,
@@ -1468,6 +1469,16 @@ check_user_limits_version() ->
     B = term_to_binary([menelaus_users:get_limits_version()]),
     base64:encode(crypto:hash(sha, B)).
 
+get_accessible_buckets(Identity) ->
+    Roles = menelaus_roles:get_compiled_roles(Identity),
+    lists:filter(
+      fun (Bucket) ->
+              lists:any(
+                menelaus_roles:is_allowed(_, Roles),
+                [{[{collection, [Bucket, any, any]}, data, docs], any},
+                 {[{collection, [Bucket, any, any]}, collections], any}])
+      end, ns_bucket:get_bucket_names()).
+
 handle_get_user_limits_for_cbauth(Req) ->
     Params = mochiweb_request:parse_qs(Req),
     Identity = {proplists:get_value("user", Params),
@@ -1481,6 +1492,13 @@ handle_get_user_limits_for_cbauth(Req) ->
         _ ->
             menelaus_util:reply_json(Req, {[]}, 200)
     end.
+
+handle_get_user_buckets_for_cbauth(Req) ->
+    Params = mochiweb_request:parse_qs(Req),
+    Identity = {proplists:get_value("user", Params),
+                list_to_existing_atom(proplists:get_value("domain", Params))},
+    Buckets = [list_to_binary(B) || B <- get_accessible_buckets(Identity)],
+    menelaus_util:reply_json(Req, Buckets, 200).
 
 handle_get_user_uuid_for_cbauth(Req) ->
     Params = mochiweb_request:parse_qs(Req),
