@@ -19,7 +19,7 @@
          place_bucket/2,
          rebalance/1]).
 
--record(params, {weight_limit}).
+-record(params, {weight_limit, tenant_limit}).
 
 -record(node, {weight, buckets}).
 
@@ -29,8 +29,12 @@ is_enabled() ->
 get_weight_limit() ->
     config_profile:get_value(bucket_weight_limit, 10000).
 
+get_tenant_limit() ->
+    config_profile:get_value(tenant_limit, 25).
+
 get_params() ->
-    #params{weight_limit = get_weight_limit()}.
+    #params{weight_limit = get_weight_limit(),
+            tenant_limit = get_tenant_limit()}.
 
 get_snapshot() ->
     chronicle_compat:get_snapshot(
@@ -115,7 +119,8 @@ apply_buckets_to_node(NodeName, InitialNode, Buckets) ->
 
 apply_bucket_to_node(#node{weight = W, buckets = BM} = Node, BucketName,
                      Props) ->
-    Node#node{weight = W + weight_diff(BM, BucketName, Props),
+    {WeightDiff, _} = params_diff(BM, BucketName, Props),
+    Node#node{weight = W + WeightDiff,
               buckets = maps:put(BucketName, Props, BM)}.
 
 remove_bucket_from_node(#node{weight = W, buckets = BM} = Node, BucketName) ->
@@ -145,19 +150,21 @@ calculate_desired_servers(Nodes, BucketName, Props, Params) ->
             {ok, [N || {N, _} <- Trimmed]}
     end.
 
-weight_diff(BucketsMap, BucketName, Props) ->
+params_diff(BucketsMap, BucketName, Props) ->
     case maps:find(BucketName, BucketsMap) of
         {ok, OldProps} ->
-            ns_bucket:get_weight(Props) - ns_bucket:get_weight(OldProps);
+            {ns_bucket:get_weight(Props) - ns_bucket:get_weight(OldProps), 0};
         error ->
-            ns_bucket:get_weight(Props)
+            {ns_bucket:get_weight(Props), 1}
     end.
 
 bucket_placement_possible(#node{buckets = BucketsMap, weight = TotalWeight},
                           BucketName, Props,
-                          #params{weight_limit = WeightLimit}) ->
-    TotalWeight + weight_diff(BucketsMap, BucketName, Props)
-        =< WeightLimit.
+                          #params{weight_limit = WeightLimit,
+                                  tenant_limit = TenantLimit}) ->
+    {WeightDiff, TenantDiff} = params_diff(BucketsMap, BucketName, Props),
+    TotalWeight + WeightDiff =< WeightLimit andalso
+        maps:size(BucketsMap) + TenantDiff =< TenantLimit.
 
 priority({_, #node{weight = W1, buckets = BM1}},
          {_, #node{weight = W2, buckets = BM2}}, BucketName) ->
@@ -305,7 +312,7 @@ bucket_placer_test_() ->
     ZoneNames = [Z || {Z, _} <- Zones],
     AllNodes = lists:flatten([N || {_, N} <- Zones]),
 
-    Params = #params{weight_limit = 6},
+    Params = #params{weight_limit = 6, tenant_limit = 3},
     Snapshot = maps:put(ns_bucket:root(), {[], no_rev}, populate_nodes(Zones)),
 
     SuccessPlacement = success_placement(_, _, Params, Zones, _),
@@ -367,6 +374,15 @@ bucket_placer_test_() ->
                  SuccessPlacement("B2", [{width, 2}, {weight, 0}], _),
                  SuccessPlacement("B3", [{width, 2}, {weight, 0}], _),
                  FailedPlacement("B3", [{width, 2}, {weight, 1}], _)])
+      end},
+     {"Tenant limit test",
+      fun () ->
+              functools:chain(
+                Snapshot,
+                [SuccessPlacement("B1", [{width, 3}, {weight, 0}], _),
+                 SuccessPlacement("B2", [{width, 3}, {weight, 0}], _),
+                 SuccessPlacement("B3", [{width, 3}, {weight, 0}], _),
+                 FailedPlacement("B4", [{width, 1}, {weight, 0}], _)])
       end},
      {"Rebalance of balanced zone is a no op",
       fun () ->
