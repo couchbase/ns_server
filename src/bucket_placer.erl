@@ -19,9 +19,9 @@
          place_bucket/2,
          rebalance/1]).
 
--record(params, {weight_limit, tenant_limit}).
+-record(params, {weight_limit, tenant_limit, memory_quota}).
 
--record(node, {weight, buckets}).
+-record(node, {weight, memory_used, buckets}).
 
 is_enabled() ->
     config_profile:get_bool(enable_bucket_placer).
@@ -33,8 +33,10 @@ get_tenant_limit() ->
     config_profile:get_value(tenant_limit, 25).
 
 get_params() ->
+    {ok, MemQuota} = memory_quota:get_quota(kv),
     #params{weight_limit = get_weight_limit(),
-            tenant_limit = get_tenant_limit()}.
+            tenant_limit = get_tenant_limit(),
+            memory_quota = MemQuota * ?MIB}.
 
 get_snapshot() ->
     chronicle_compat:get_snapshot(
@@ -100,7 +102,7 @@ construct_zone(AllGroupNodes, Snapshot, Buckets) ->
     [{N, construct_node(N, Buckets)} || N <- Nodes].
 
 empty_node() ->
-    #node{weight = 0, buckets = maps:new()}.
+    #node{weight = 0, memory_used = 0, buckets = maps:new()}.
 
 construct_node(NodeName, Buckets) ->
     apply_buckets_to_node(NodeName, empty_node(), Buckets).
@@ -117,10 +119,11 @@ apply_buckets_to_node(NodeName, InitialNode, Buckets) ->
               end
       end, InitialNode, Buckets).
 
-apply_bucket_to_node(#node{weight = W, buckets = BM} = Node, BucketName,
-                     Props) ->
-    {WeightDiff, _} = params_diff(BM, BucketName, Props),
+apply_bucket_to_node(#node{weight = W, buckets = BM, memory_used = M} = Node,
+                     BucketName, Props) ->
+    {WeightDiff, _, MemDiff} = params_diff(BM, BucketName, Props),
     Node#node{weight = W + WeightDiff,
+              memory_used = M + MemDiff,
               buckets = maps:put(BucketName, Props, BM)}.
 
 remove_bucket_from_node(#node{weight = W, buckets = BM} = Node, BucketName) ->
@@ -153,18 +156,24 @@ calculate_desired_servers(Nodes, BucketName, Props, Params) ->
 params_diff(BucketsMap, BucketName, Props) ->
     case maps:find(BucketName, BucketsMap) of
         {ok, OldProps} ->
-            {ns_bucket:get_weight(Props) - ns_bucket:get_weight(OldProps), 0};
+            {ns_bucket:get_weight(Props) - ns_bucket:get_weight(OldProps), 0,
+             ns_bucket:raw_ram_quota(Props) -
+                 ns_bucket:raw_ram_quota(OldProps)};
         error ->
-            {ns_bucket:get_weight(Props), 1}
+            {ns_bucket:get_weight(Props), 1, ns_bucket:raw_ram_quota(Props)}
     end.
 
-bucket_placement_possible(#node{buckets = BucketsMap, weight = TotalWeight},
+bucket_placement_possible(#node{buckets = BucketsMap, weight = TotalWeight,
+                                memory_used = MemoryUsed},
                           BucketName, Props,
                           #params{weight_limit = WeightLimit,
-                                  tenant_limit = TenantLimit}) ->
-    {WeightDiff, TenantDiff} = params_diff(BucketsMap, BucketName, Props),
+                                  tenant_limit = TenantLimit,
+                                  memory_quota = MemoryQuota}) ->
+    {WeightDiff, TenantDiff, MemoryDiff} =
+        params_diff(BucketsMap, BucketName, Props),
     TotalWeight + WeightDiff =< WeightLimit andalso
-        maps:size(BucketsMap) + TenantDiff =< TenantLimit.
+        maps:size(BucketsMap) + TenantDiff =< TenantLimit andalso
+        MemoryUsed + MemoryDiff =< MemoryQuota.
 
 priority({_, #node{weight = W1, buckets = BM1}},
          {_, #node{weight = W2, buckets = BM2}}, BucketName) ->
@@ -283,8 +292,11 @@ verify_bucket(Name, Zones, Snapshot) ->
     AllZoneNodes = lists:flatten([NList || {_, NList} <- Zones]),
     ?assertEqual({Name, []}, {Name, DesiredServers -- AllZoneNodes}).
 
+with_default_ram_quota(Props) ->
+    misc:merge_proplists(fun (_, L, _) -> L end, Props, [{ram_quota, 1}]).
+
 success_placement(Name, Props, Params, Zones, Snapshot) ->
-    RV = do_place_bucket(Name, Props, Params, Snapshot),
+    RV = do_place_bucket(Name, with_default_ram_quota(Props), Params, Snapshot),
     ?assertMatch({Name, {ok, _}}, {Name, RV}),
     {ok, NewProps} = RV,
     NewSnapshot = apply_bucket_to_snapshot(Name, NewProps, Snapshot),
@@ -302,7 +314,7 @@ apply_rebalance_rv_to_snapshot(RV, Snapshot) ->
       end, Snapshot, NewServers).
 
 failed_placement(Name, Props, Params, Zones, Snapshot) ->
-    RV = do_place_bucket(Name, Props, Params, Snapshot),
+    RV = do_place_bucket(Name, with_default_ram_quota(Props), Params, Snapshot),
     ?assertMatch({Name, {error, _}}, {Name, RV}),
     {error, ZonesList} = RV,
     ?assertEqual(lists:sort(ZonesList), lists:sort(Zones)).
@@ -312,7 +324,7 @@ bucket_placer_test_() ->
     ZoneNames = [Z || {Z, _} <- Zones],
     AllNodes = lists:flatten([N || {_, N} <- Zones]),
 
-    Params = #params{weight_limit = 6, tenant_limit = 3},
+    Params = #params{weight_limit = 6, tenant_limit = 3, memory_quota = 10},
     Snapshot = maps:put(ns_bucket:root(), {[], no_rev}, populate_nodes(Zones)),
 
     SuccessPlacement = success_placement(_, _, Params, Zones, _),
@@ -383,6 +395,16 @@ bucket_placer_test_() ->
                  SuccessPlacement("B2", [{width, 3}, {weight, 0}], _),
                  SuccessPlacement("B3", [{width, 3}, {weight, 0}], _),
                  FailedPlacement("B4", [{width, 1}, {weight, 0}], _)])
+      end},
+     {"Memory quota test",
+      fun () ->
+              functools:chain(
+                Snapshot,
+                [SuccessPlacement("B1", [{width, 3}, {weight, 0},
+                                         {ram_quota, 8}], _),
+                 SuccessPlacement("B2", [{width, 3}, {weight, 0},
+                                         {ram_quota, 2}], _),
+                 FailedPlacement("B3", [{width, 1}, {weight, 0}], _)])
       end},
      {"Rebalance of balanced zone is a no op",
       fun () ->
