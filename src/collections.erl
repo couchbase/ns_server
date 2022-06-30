@@ -153,7 +153,7 @@ is_system_scope_enabled() ->
 
 max_collections_per_bucket() ->
     Default = get_max_supported(num_collections),
-    config_profile:get_value(max_collection_per_bucket, Default).
+    config_profile:get_value(max_collections_per_bucket, Default).
 
 max_scopes_per_bucket() ->
     Default = get_max_supported(num_scopes),
