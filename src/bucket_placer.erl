@@ -17,7 +17,8 @@
 
 -export([is_enabled/0,
          place_bucket/2,
-         rebalance/1]).
+         rebalance/1,
+         get_node_status_fun/1]).
 
 -record(params, {weight_limit, tenant_limit, memory_quota}).
 
@@ -264,6 +265,34 @@ place_buckets_on_nodes(Nodes, [{BucketName, Props} | Rest], Params,
                                    [Servers | AccServers])
     end.
 
+construct_json(Weight, NBuckets, Memory) ->
+    {[{kv, {[{buckets, NBuckets}, {memory, Memory}, {weight, Weight}]}}]}.
+
+get_node_status_fun(Snapshot) ->
+    case is_enabled() of
+        false ->
+            fun (_) -> [] end;
+        true ->
+            get_node_status_fun(Snapshot, get_params())
+    end.
+
+get_node_status_fun(Snapshot, #params{weight_limit = WeightLimit,
+                                      tenant_limit = TenantLimit,
+                                      memory_quota = MemQuota}) ->
+    Limits = {limits, construct_json(WeightLimit, TenantLimit, MemQuota)},
+    {ok, NodesList} = on_zones(fun (_, Nodes) -> {ok, Nodes} end,
+                               get_eligible_buckets(Snapshot), Snapshot),
+    NodesMap = maps:from_list(lists:flatten(NodesList)),
+    fun (Node) ->
+            case maps:find(Node, NodesMap) of
+                {ok, #node{weight = W, memory_used = M, buckets = B}} ->
+                    [Limits,
+                     {utilization, construct_json(W, maps:size(B), M)}];
+                error ->
+                    []
+            end
+    end.
+
 -ifdef(TEST).
 populate_nodes(Zones) ->
     ServerGroups = [[{name, Z}, {nodes, Nodes}] || {Z, Nodes} <- Zones],
@@ -405,6 +434,22 @@ bucket_placer_test_() ->
                  SuccessPlacement("B2", [{width, 3}, {weight, 0},
                                          {ram_quota, 2}], _),
                  FailedPlacement("B3", [{width, 1}, {weight, 0}], _)])
+      end},
+     {"Node status fun",
+      fun () ->
+              S1 = functools:chain(
+                     Snapshot,
+                     [SuccessPlacement("B1", [{width, 3}, {weight, 3},
+                                              {ram_quota, 5}], _),
+                      SuccessPlacement("B2", [{width, 3}, {weight, 2},
+                                              {ram_quota, 2}], _)]),
+              Fun = get_node_status_fun(S1, Params),
+              ?assertEqual(
+                 [{limits,
+                   {[{kv, {[{buckets, 3}, {memory, 10}, {weight, 6}]}}]}},
+                  {utilization,
+                   {[{kv, {[{buckets, 2}, {memory, 7}, {weight, 5}]}}]}}],
+                 Fun(a2))
       end},
      {"Rebalance of balanced zone is a no op",
       fun () ->

@@ -108,7 +108,7 @@ handle_bucket_info(_PoolId, Id, Req) ->
 
 build_bucket_nodes_info(BucketName, BucketUUID, BucketConfig, Ctx) ->
     %% Only list nodes this bucket is mapped to
-    F = menelaus_web_node:build_nodes_info_fun(Ctx),
+    F = menelaus_web_node:build_nodes_info_fun(Ctx, true),
     Nodes = ns_bucket:get_servers(BucketConfig),
     %% NOTE: there's potential inconsistency here between BucketConfig
     %% and (potentially more up-to-date) vbuckets dict. Given that

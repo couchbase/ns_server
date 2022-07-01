@@ -35,14 +35,14 @@ handle_server_groups(Req) ->
     IncludeOtpCookie = menelaus_auth:has_permission({[admin, internal], all},
                                                     Req),
     Ctx = menelaus_web_node:get_context(Req, IncludeOtpCookie, unstable),
-    Fun = menelaus_web_node:build_nodes_info_fun(Ctx),
+    Fun = menelaus_web_node:build_nodes_info_fun(Ctx, false),
     J = [begin
              UUIDBin = proplists:get_value(uuid, G),
              L = [{name, proplists:get_value(name, G)},
                   {uri, build_group_uri(UUIDBin)},
                   {addNodeURI, bin_concat_path(["pools", "default",
                                                 "serverGroups", UUIDBin, "addNode"])},
-                  {nodes, [Fun(N, undefined) || N <- proplists:get_value(nodes, G, [])]}],
+                  {nodes, [Fun(N) || N <- proplists:get_value(nodes, G, [])]}],
              {L}
          end || G <- Groups],
     V = list_to_binary(integer_to_list(erlang:phash2(Groups))),

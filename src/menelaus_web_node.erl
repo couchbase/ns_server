@@ -24,7 +24,7 @@
          build_full_node_info/1,
          build_full_node_info/2,
          build_memory_quota_info/1,
-         build_nodes_info_fun/1,
+         build_nodes_info_fun/2,
          build_nodes_info/1,
          build_node_hostname/3,
          handle_bucket_node_list/2,
@@ -239,7 +239,7 @@ build_full_node_info(Req, Node) ->
     Ctx = get_context(Req, true, unstable),
     Config = get_config(Ctx),
     Snapshot = get_snapshot(Ctx),
-    {KV} = (build_nodes_info_fun(Ctx))(Node, undefined),
+    {KV} = (build_nodes_info_fun(Ctx, false))(Node),
     NodeStatus = ns_doctor:get_node(Node),
     StorageConf =
         ns_storage_conf:storage_conf_from_node_status(Node, NodeStatus),
@@ -269,8 +269,8 @@ build_memory_quota_info(Config) ->
       end, memory_quota:aware_services(Config)).
 
 build_nodes_info(Ctx = #ctx{snapshot = Snapshot}) ->
-    F = build_nodes_info_fun(Ctx),
-    [F(N, undefined) || N <- ns_node_disco:nodes_wanted(Snapshot)].
+    F = build_nodes_info_fun(Ctx, false),
+    [F(N) || N <- ns_node_disco:nodes_wanted(Snapshot)].
 
 %% builds health/warmup status of given node (w.r.t. given Bucket if
 %% not undefined)
@@ -354,11 +354,17 @@ get_snapshot(#ctx{snapshot = Snapshot}) ->
 get_local_addr(#ctx{local_addr = LocalAddr}) ->
     LocalAddr.
 
-build_nodes_info_fun(#ctx{ns_config = Config,
-                          snapshot = Snapshot,
-                          include_cookie = IncludeOtpCookie,
-                          stability = Stability,
-                          local_addr = LocalAddr}) ->
+build_nodes_info_fun(Ctx, false) ->
+    Fun = do_build_nodes_info_fun(Ctx, false),
+    Fun(_, undefined);
+build_nodes_info_fun(Ctx, true) ->
+    do_build_nodes_info_fun(Ctx, true).
+
+do_build_nodes_info_fun(#ctx{ns_config = Config,
+                             snapshot = Snapshot,
+                             include_cookie = IncludeOtpCookie,
+                             stability = Stability,
+                             local_addr = LocalAddr}, WithBucket) ->
     OtpCookie =
         case IncludeOtpCookie of
             true ->
@@ -369,6 +375,15 @@ build_nodes_info_fun(#ctx{ns_config = Config,
     NodeStatuses = ns_doctor:get_nodes(),
 
     BucketsAll = ns_bucket:get_buckets(Snapshot),
+
+    BucketPlacerInfoBuilder =
+        case WithBucket of
+            true ->
+                fun (_) -> [] end;
+            false ->
+                bucket_placer:get_node_status_fun(Snapshot)
+        end,
+
     fun(WantENode, Bucket) ->
             InfoNode = ns_doctor:get_node(WantENode, NodeStatuses),
             StableInfo =
@@ -390,7 +405,8 @@ build_nodes_info_fun(#ctx{ns_config = Config,
                          build_replication_info(Bucket, WantENode, NodeStatuses,
                                                 Snapshot)
                  end,
-                 build_failover_status(Snapshot, WantENode)],
+                 build_failover_status(Snapshot, WantENode),
+                 BucketPlacerInfoBuilder(WantENode)],
             NodeHash = erlang:phash2(StableInfo),
 
             {lists:flatten([StableInfo,
