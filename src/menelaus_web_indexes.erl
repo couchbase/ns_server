@@ -22,16 +22,24 @@ handle_settings_get(Req) ->
 enterprise_only_settings() ->
     [redistributeIndexes, enablePageBloomFilter].
 
+serverless_only_settings() ->
+    [memHighThreshold, memLowThreshold].
+
 maybe_filter_settings(Settings) ->
-    case cluster_compat_mode:is_enterprise() of
-        true ->
-            Settings;
-        false ->
-            lists:filter(
-              fun ({Key, _Value}) ->
-                      not lists:member(Key, enterprise_only_settings())
-              end, Settings)
-    end.
+    FilterOutSettings =
+        lists:flatten([enterprise_only_settings() ||
+                       not cluster_compat_mode:is_enterprise()] ++
+                      [serverless_only_settings() ||
+                       not config_profile:is_serverless()]),
+    maybe_filter_settings(Settings, FilterOutSettings).
+
+maybe_filter_settings(Settings, []) ->
+    Settings;
+maybe_filter_settings(Settings, FilterOutSettings) ->
+    lists:filter(
+      fun( {Key, _Value}) ->
+              not lists:member(Key, FilterOutSettings)
+      end, Settings).
 
 get_settings() ->
     Settings =
@@ -60,6 +68,14 @@ settings_post_validators() ->
              cluster_compat_mode:is_enterprise() of
             true ->
                 [validator:boolean(enablePageBloomFilter, _)];
+            false ->
+                []
+        end ++
+        case cluster_compat_mode:is_cluster_elixir() andalso
+             config_profile:is_serverless() of
+            true ->
+                [validator:integer(memHighThreshold, 0, 100, _),
+                 validator:integer(memLowThreshold, 0, 100, _)];
             false ->
                 []
         end ++

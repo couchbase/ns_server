@@ -30,7 +30,8 @@
          known_settings/0,
          on_update/2,
          config_upgrade_to_70/1,
-         config_upgrade_to_71/1]).
+         config_upgrade_to_71/1,
+         config_upgrade_to_elixir/1]).
 
 -import(json_settings_manager,
         [id_lens/1]).
@@ -142,6 +143,15 @@ general_settings_lens_props(ClusterVersion) ->
         false ->
             []
     end ++
+    case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_ELIXIR) of
+        true ->
+            [{memHighThreshold,
+              id_lens(<<"indexer.settings.thresholds.mem_high">>)},
+             {memLowThreshold,
+              id_lens(<<"indexer.settings.thresholds.mem_low">>)}];
+        false ->
+            []
+    end ++
         [{indexerThreads,
           indexer_threads_lens()},
          {memorySnapshotInterval,
@@ -173,6 +183,15 @@ general_settings_defaults(ClusterVersion) ->
     case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_71) of
         true ->
             [{enablePageBloomFilter, false}];
+        false ->
+            []
+    end ++
+    case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_ELIXIR) of
+        true ->
+            [{memHighThreshold,
+              config_profile:get_value({indexer, mem_high_threshold}, 80)},
+             {memLowThreshold,
+              config_profile:get_value({indexer, mem_low_threshold}, 60)}];
         false ->
             []
     end ++
@@ -252,6 +271,9 @@ config_upgrade_to_70(Config) ->
 config_upgrade_to_71(Config) ->
     config_upgrade_settings(Config, ?VERSION_70, ?VERSION_71).
 
+config_upgrade_to_elixir(Config) ->
+    config_upgrade_settings(Config, ?VERSION_71, ?VERSION_ELIXIR).
+
 config_upgrade_settings(Config, OldVersion, NewVersion) ->
     NewSettings = general_settings_defaults(NewVersion) --
         general_settings_defaults(OldVersion),
@@ -279,5 +301,12 @@ config_upgrade_test() ->
     [{set, {metakv, Meta2}, Data2}] = CmdList2,
     ?assertEqual(<<"/indexing/settings/config">>, Meta2),
     ?assertEqual(<<"{\"indexer.settings.enable_page_bloom_filter\":false}">>,
-                 Data2).
+                 Data2),
+
+    CmdList3 = config_upgrade_to_elixir([]),
+    [{set, {metakv, Meta3}, Data3}] = CmdList3,
+    ?assertEqual(<<"/indexing/settings/config">>, Meta3),
+    ?assertEqual(<<"{\"indexer.settings.thresholds.mem_high\":80,"
+                   "\"indexer.settings.thresholds.mem_low\":60}">>,
+                 Data3).
 -endif.

@@ -10,6 +10,8 @@
 {enable_throttle_settings, true}.
 {num_reader_writer_threads, 64}.
 {{indexer, num_replica}, 1}.
+{{indexer, mem_high_threshold}, 80}.
+{{indexer, mem_low_threshold}, 60}.
 
 %% Example service keys %%
 %% {{goxdcr, ipv4}, "required"}.
