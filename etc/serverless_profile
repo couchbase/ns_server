@@ -9,6 +9,7 @@
 {{magma, can_set_max_shards}, true}.
 {enable_throttle_settings, true}.
 {num_reader_writer_threads, 64}.
+{{indexer, num_replica}, 1}.
 
 %% Example service keys %%
 %% {{goxdcr, ipv4}, "required"}.

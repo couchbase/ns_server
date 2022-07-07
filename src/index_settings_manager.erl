@@ -164,8 +164,9 @@ default_rollback_points() ->
 general_settings_defaults(ClusterVersion) ->
     case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_70) of
         true ->
+            NumReplica = config_profile:get_value({indexer, num_replica}, 0),
             [{redistributeIndexes, false},
-             {numReplica, 0}];
+             {numReplica, NumReplica}];
         _ ->
             []
     end ++
