@@ -430,10 +430,6 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
       }
     }
 
-    if (this.bucket && this.bucket.isWizard) {
-      copyProperty("otherBucketsRamQuotaMB");
-    }
-
     copyProperties(['ramQuotaMB', 'flushEnabled']);
     saveData.flushEnabled = saveData.flushEnabled ? 1 : 0;
 
