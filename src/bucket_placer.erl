@@ -18,7 +18,8 @@
 -export([is_enabled/0,
          place_bucket/2,
          rebalance/1,
-         get_node_status_fun/1]).
+         get_node_status_fun/1,
+         is_balanced/3]).
 
 -record(params, {weight_limit, tenant_limit, memory_quota}).
 
@@ -291,6 +292,22 @@ get_node_status_fun(Snapshot, #params{weight_limit = WeightLimit,
                 error ->
                     []
             end
+    end.
+
+is_balanced(BucketConfig, Servers, DesiredServers) ->
+    case lists:sort(DesiredServers) =/= lists:sort(Servers) of
+        true ->
+            false;
+        false ->
+            Width = ns_bucket:get_width(BucketConfig),
+            lists:all(
+              fun (Group) ->
+                      AllGroupNodes = proplists:get_value(nodes, Group),
+                      GroupServers = lists:filter(
+                                       lists:member(_, AllGroupNodes),
+                                       Servers),
+                      length(GroupServers) =:= Width
+              end, ns_cluster_membership:server_groups())
     end.
 
 -ifdef(TEST).

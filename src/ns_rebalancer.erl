@@ -812,21 +812,21 @@ bucket_needs_rebalance(BucketConfig, Nodes) ->
                 [] ->
                     false;
                 _ ->
-                    {DesiredServers, Width} =
-                        case ns_bucket:get_desired_servers(BucketConfig) of
-                            undefined ->
-                                {Nodes, length(Nodes)};
-                            Other ->
-                                {Other, ns_bucket:get_width(BucketConfig)}
-                        end,
                     ns_bucket:num_replicas_changed(BucketConfig) orelse
-                        Width =/= length(DesiredServers) orelse
-                        lists:sort(DesiredServers) =/= lists:sort(Servers)
+                        not are_servers_balanced(BucketConfig, Servers, Nodes)
                         orelse
                         map_needs_rebalance(Servers, BucketConfig)
             end;
         memcached ->
             lists:sort(Nodes) =/= lists:sort(Servers)
+    end.
+
+are_servers_balanced(BucketConfig, Servers, Nodes) ->
+    case ns_bucket:get_desired_servers(BucketConfig) of
+        undefined ->
+            lists:sort(Nodes) =:= lists:sort(Servers);
+        DesiredServers ->
+            bucket_placer:is_balanced(BucketConfig, Servers, DesiredServers)
     end.
 
 map_needs_rebalance(Servers, BucketConfig) ->
