@@ -980,8 +980,7 @@ validate_common_params(#bv_ctx{bucket_name = BucketName,
     [{ok, name, BucketName},
      parse_validate_flush_enabled(Params, IsNew),
      validate_bucket_name(IsNew, BucketConfig, BucketName, AllBuckets),
-     parse_validate_ram_quota(Params, BucketConfig),
-     parse_validate_other_buckets_ram_quota(Params)].
+     parse_validate_ram_quota(Params, BucketConfig)].
 
 validate_bucket_placer_params(Params, IsNew) ->
     case bucket_placer:is_enabled() of
@@ -1587,7 +1586,6 @@ ram_summary_to_proplist(V) ->
 
 interpret_ram_quota(Ctx, CurrentBucket, ParsedProps, ClusterStorageTotals) ->
     RAMQuota = proplists:get_value(ram_quota, ParsedProps),
-    OtherBucketsRAMQuota = proplists:get_value(other_buckets_ram_quota, ParsedProps, 0),
     NodesCount = length(get_nodes(Ctx)),
     ParsedQuota = RAMQuota * NodesCount,
     PerNode = RAMQuota div ?MIB,
@@ -1599,7 +1597,7 @@ interpret_ram_quota(Ctx, CurrentBucket, ParsedProps, ClusterStorageTotals) ->
                   ns_bucket:ram_quota(CurrentBucket);
               _ ->
                   0
-          end + OtherBucketsRAMQuota * NodesCount,
+          end,
     ThisUsed = case CurrentBucket of
                    [_|_] ->
                        menelaus_stats:bucket_ram_usage(
@@ -2014,21 +2012,6 @@ do_parse_validate_ram_quota(Value, _BucketConfig) ->
             {error, ramQuota, <<"The RAM Quota cannot be negative.">>};
         {ok, X} ->
             {ok, ram_quota, X * ?MIB}
-    end.
-
-parse_validate_other_buckets_ram_quota(Params) ->
-    do_parse_validate_other_buckets_ram_quota(
-      proplists:get_value("otherBucketsRamQuotaMB", Params)).
-
-do_parse_validate_other_buckets_ram_quota(undefined) ->
-    {ok, other_buckets_ram_quota, 0};
-do_parse_validate_other_buckets_ram_quota(Value) ->
-    case menelaus_util:parse_validate_number(Value, 0, undefined) of
-        {ok, X} ->
-            {ok, other_buckets_ram_quota, X * ?MIB};
-        _ ->
-            {error, otherBucketsRamQuotaMB,
-             <<"The other buckets RAM Quota must be a positive integer.">>}
     end.
 
 parse_validate_bucket_placer_param(What, Other, LowerLimit, Params, IsNew) ->
