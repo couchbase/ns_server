@@ -582,6 +582,10 @@ init_bucket_validation_context(IsNew, BucketName, AllBuckets,
        is_developer_preview = IsDeveloperPreview
       }.
 
+format_error_response(Errors, JSONSummaries) ->
+    {[{errors, {Errors}} |
+      [{summaries, {JSONSummaries}} || JSONSummaries =/= undefined]]}.
+
 handle_bucket_update(_PoolId, BucketId, Req) ->
     menelaus_web_rbac:assert_no_users_upgrade(),
     Params = mochiweb_request:parse_post(Req),
@@ -594,8 +598,7 @@ handle_bucket_update_inner(BucketId, Req, Params, Limit) ->
     case {Ctx#bv_ctx.validate_only, Ctx#bv_ctx.ignore_warnings,
           parse_bucket_params(Ctx, Params)} of
         {_, _, {errors, Errors, JSONSummaries}} ->
-            RV = {[{errors, {Errors}}, {summaries, {JSONSummaries}}]},
-            reply_json(Req, RV, 400);
+            reply_json(Req, format_error_response(Errors, JSONSummaries), 400);
         {false, _, {ok, ParsedProps, _}} ->
             BucketType = proplists:get_value(bucketType, ParsedProps),
             StorageMode = proplists:get_value(storage_mode, ParsedProps,
@@ -625,12 +628,10 @@ handle_bucket_update_inner(BucketId, Req, Params, Limit) ->
                     handle_bucket_update_inner(BucketId, Req, Params, Limit-1)
             end;
         {true, true, {ok, _, JSONSummaries}} ->
-            reply_json(Req, {[{errors, {[]}},
-                              {summaries, {JSONSummaries}}]}, 200);
+            reply_json(Req, format_error_response([], JSONSummaries), 200);
         {true, false, {ok, ParsedProps, JSONSummaries}} ->
             FinalErrors = perform_warnings_validation(Ctx, ParsedProps, []),
-            reply_json(Req, {[{errors, {FinalErrors}},
-                              {summaries, {JSONSummaries}}]},
+            reply_json(Req, format_error_response(FinalErrors, JSONSummaries),
                        case FinalErrors of
                            [] -> 202;
                            _ -> 400
@@ -692,8 +693,7 @@ do_bucket_create(Req, Name, Params, Ctx) ->
             case {Ctx#bv_ctx.validate_only, Ctx#bv_ctx.ignore_warnings,
                   parse_bucket_params(Ctx, Params)} of
                 {_, _, {errors, Errors, JSONSummaries}} ->
-                    {{[{errors, {Errors}},
-                       {summaries, {JSONSummaries}}]}, 400};
+                    {format_error_response(Errors, JSONSummaries), 400};
                 {false, _, {ok, ParsedProps, _}} ->
                     case do_bucket_create(Req, Name, ParsedProps) of
                         ok -> ok;
@@ -707,10 +707,11 @@ do_bucket_create(Req, Name, Params, Ctx) ->
                             {{Errors}, 503}
                     end;
                 {true, true, {ok, _, JSONSummaries}} ->
-                    {{[{errors, {[]}}, {summaries, {JSONSummaries}}]}, 200};
+                    {format_error_response([], JSONSummaries), 200};
                 {true, false, {ok, ParsedProps, JSONSummaries}} ->
-                    FinalErrors = perform_warnings_validation(Ctx, ParsedProps, []),
-                    {{[{errors, {FinalErrors}}, {summaries, {JSONSummaries}}]},
+                    FinalErrors =
+                        perform_warnings_validation(Ctx, ParsedProps, []),
+                    {format_error_response(FinalErrors, JSONSummaries),
                      case FinalErrors of
                          [] -> 200;
                          _ -> 400
