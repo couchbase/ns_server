@@ -1351,7 +1351,7 @@ config_to_map_options(Config) ->
 
 get_vbmap_history_size() ->
     %% Not set in config through any means, but gives us a tunable parameter.
-    ns_config:read_key_fast(vbmap_history_size, ?VBMAP_HISTORY_SIZE).
+    ns_config:read_key_fast(vbmap_history_size, get_max_buckets()).
 
 update_vbucket_map_history(Map, SanifiedOptions) ->
     History = past_vbucket_maps(),
