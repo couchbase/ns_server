@@ -2,7 +2,7 @@
 {enable_system_scope, true}.
 {enable_bucket_placer, true}.
 {allow_variable_num_vbuckets, true}.
-{default_num_vbuckets, 48}.
+{default_num_vbuckets, 64}.
 {max_scopes_per_bucket, 100}.
 {max_collections_per_bucket, 100}.
 {cluster_scope_collection_limit, unlimited}.
