@@ -104,7 +104,8 @@ cluster_init(Req, Config, Params) ->
                 ok ->
                     %% Wait for web servers to restart
                     ns_config:sync_announcements(),
-                    menelaus_event:sync(chronicle_compat_events:event_manager()),
+                    menelaus_event:sync(
+                      chronicle_compat_events:event_manager()),
                     cluster_compat_mode:is_enterprise() andalso
                         ns_ssl_services_setup:sync();
                 {error, Msg} ->
@@ -223,15 +224,21 @@ handle_engage_cluster2(Req) ->
             %% prevented at completeJoin step which would be sent to
             %% 127.0.0.1 (joiner) and bounced.
             {Result} = menelaus_web_node:build_full_node_info(node()),
-            {_, _} = CompatTuple = lists:keyfind(<<"clusterCompatibility">>, 1, NodeKVList),
-            ThreeXCompat = cluster_compat_mode:effective_cluster_compat_version_for(
-                             cluster_compat_mode:supported_compat_version()),
+            {_, _} = CompatTuple =
+                lists:keyfind(<<"clusterCompatibility">>, 1, NodeKVList),
+            ThreeXCompat =
+                cluster_compat_mode:effective_cluster_compat_version_for(
+                  cluster_compat_mode:supported_compat_version()),
             ResultWithCompat =
                 case CompatTuple of
                     {_, V} when V < ThreeXCompat ->
-                        ?log_info("Lowering our advertised clusterCompatibility in order to enable joining older cluster"),
-                        Result3 = lists:keyreplace(<<"clusterCompatibility">>, 1, Result, CompatTuple),
-                        lists:keyreplace(clusterCompatibility, 1, Result3, CompatTuple);
+                        ?log_info("Lowering our advertised clusterCompatibility"
+                                  " in order to enable joining older cluster"),
+                        Result3 =
+                            lists:keyreplace(<<"clusterCompatibility">>, 1,
+                                             Result, CompatTuple),
+                        lists:keyreplace(clusterCompatibility, 1, Result3,
+                                         CompatTuple);
                     _ ->
                         Result
                 end,
@@ -255,14 +262,14 @@ handle_complete_join(Req) ->
 handle_join(Req) ->
     %% paths:
     %%  cluster secured, admin logged in:
-    %%           after creds work and node join happens,
-    %%           200 returned with Location header pointing
-    %%           to new /pool/default
+    %%         after creds work and node join happens,
+    %%         200 returned with Location header pointing
+    %%         to new /pool/default
     %%  cluster not secured, after node join happens,
-    %%           a 200 returned with Location header to new /pool/default,
-    %%           401 if request had
+    %%         a 200 returned with Location header to new /pool/default,
+    %%         401 if request had
     %%  cluster either secured or not:
-    %%           a 400 with json error message when join fails for whatever reason
+    %%         a 400 with json error message when join fails for whatever reason
     %%
     %% parameter example: clusterMemberHostIp=192%2E168%2E0%2E1&
     %%                    clusterMemberPort=8091&
@@ -270,7 +277,8 @@ handle_join(Req) ->
     %%
     case ns_config_auth:is_system_provisioned() of
         true ->
-            Msg = <<"Node is already provisioned. To join use controller/addNode api of the cluster">>,
+            Msg = <<"Node is already provisioned. "
+                    "To join use controller/addNode api of the cluster">>,
             reply_json(Req, [Msg], 400);
         false ->
             handle_join_clean_node(Req)
@@ -280,7 +288,8 @@ parse_validate_services_list(ServicesList) ->
     KnownServices = ns_cluster_membership:supported_services(),
     ServicePairs = [{erlang:atom_to_list(S), S} || S <- KnownServices],
     ServiceStrings = string:tokens(ServicesList, ","),
-    FoundServices = [{SN, lists:keyfind(SN, 1, ServicePairs)} || SN <- ServiceStrings],
+    FoundServices =
+        [{SN, lists:keyfind(SN, 1, ServicePairs)} || SN <- ServiceStrings],
     UnknownServices = [SN || {SN, false} <- FoundServices],
     case UnknownServices of
         [_|_] ->
@@ -600,13 +609,15 @@ do_handle_eject_post(Req, OtpNode) ->
             case lists:member(OtpNode, ns_node_disco:nodes_wanted()) of
                 true ->
                     ns_cluster:leave(OtpNode),
-                    ?MENELAUS_WEB_LOG(?NODE_EJECTED, "Node ejected: ~p from node: ~p",
+                    ?MENELAUS_WEB_LOG(?NODE_EJECTED,
+                                      "Node ejected: ~p from node: ~p",
                                       [OtpNode, erlang:node()]),
                     ns_audit:remove_node(Req, OtpNode),
                     reply(Req, 200);
                 false ->
                                                 % Node doesn't exist.
-                    ?MENELAUS_WEB_LOG(0018, "Request to eject nonexistant server failed.  Requested node: ~p",
+                    ?MENELAUS_WEB_LOG(0018, "Request to eject nonexistant "
+                                      "server failed.  Requested node: ~p",
                                       [OtpNode]),
                     reply_text(Req, "Server does not exist.\n", 400)
             end
@@ -650,7 +661,8 @@ setup_services_check_quota(Services, SetDefaultMemQuotas) ->
                                {Service, Quota}
                        end, memory_quota:aware_services());
                  true ->
-                     do_update_with_default_quotas(memory_quota:default_quotas(Services))
+                     do_update_with_default_quotas(
+                       memory_quota:default_quotas(Services))
              end,
 
     case Quotas of
@@ -661,11 +673,12 @@ setup_services_check_quota(Services, SetDefaultMemQuotas) ->
                 ok ->
                     ok;
                 {error, {total_quota_too_high, _, TotalQuota, MaxAllowed}} ->
-                    Msg = io_lib:format("insufficient memory to satisfy memory quota "
-                                        "for the services "
-                                        "(requested quota is ~bMB, "
-                                        "maximum allowed quota for the node is ~bMB)",
-                                        [TotalQuota, MaxAllowed]),
+                    Msg = io_lib:format(
+                            "insufficient memory to satisfy memory quota "
+                            "for the services "
+                            "(requested quota is ~bMB, "
+                            "maximum allowed quota for the node is ~bMB)",
+                            [TotalQuota, MaxAllowed]),
                     {error, iolist_to_binary(Msg)}
             end
     end.
@@ -705,15 +718,18 @@ do_setup_services_post(Req, Props) ->
     end.
 
 validate_add_node_params(User, Password) ->
-    Candidates = case lists:member(undefined, [User, Password]) of
-                     true -> [<<"Missing required parameter.">>];
-                     _ -> [case {User, Password} of
-                               {[], []} -> true;
-                               {[_Head | _], [_PasswordHead | _]} -> true;
-                               {[], [_PasswordHead | _]} -> <<"If a username is not specified, a password must not be supplied.">>;
-                               _ -> <<"A password must be supplied.">>
-                           end]
-                 end,
+    Candidates =
+        case lists:member(undefined, [User, Password]) of
+            true -> [<<"Missing required parameter.">>];
+            _ -> [case {User, Password} of
+                      {[], []} -> true;
+                      {[_Head | _], [_PasswordHead | _]} -> true;
+                      {[], [_PasswordHead | _]} ->
+                          <<"If a username is not specified, a password must "
+                            "not be supplied.">>;
+                      _ -> <<"A password must be supplied.">>
+                  end]
+        end,
     lists:filter(fun (E) -> E =/= true end, Candidates).
 
 malformed_url_message(Hostname) ->
@@ -768,7 +784,8 @@ add_node_error_code(_) ->
     400.
 
 do_handle_add_node(Req, GroupUUID) ->
-    %% parameter example: hostname=epsilon.local, user=Administrator, password=asd!23
+    %% parameter example:
+    %%    hostname=epsilon.local, user=Administrator, password=asd!23
     %% parameter example: hostname=epsilon.local, clientCertAuth=true
     Params = mochiweb_request:parse_post(Req),
     Parsed = case parse_join_cluster_params(Params, false) of
@@ -991,18 +1008,24 @@ handle_rebalance(Req) ->
                                 catch error:badarg -> true end],
             case UnknownNodes of
                 [] ->
-                    DeltaRecoveryBuckets = case proplists:get_value("deltaRecoveryBuckets", Params) of
-                                               undefined -> all;
-                                               RawRecoveryBuckets ->
-                                                   [BucketName || BucketName <- string:tokens(RawRecoveryBuckets, ",")]
-                                           end,
-                    do_handle_rebalance(Req, KnownNodesS, EjectedNodesS, DeltaRecoveryBuckets);
+                    DeltaRecoveryBuckets =
+                        case proplists:get_value("deltaRecoveryBuckets",
+                                                 Params) of
+                            undefined -> all;
+                            RawRecoveryBuckets ->
+                                [BucketName || BucketName <-
+                                                   string:tokens(
+                                                     RawRecoveryBuckets, ",")]
+                        end,
+                    do_handle_rebalance(Req, KnownNodesS, EjectedNodesS,
+                                        DeltaRecoveryBuckets);
                 _ ->
                     reply_json(Req, {[{mismatch, 1}]}, 400)
             end
     end.
 
--spec do_handle_rebalance(any(), [string()], [string()], all | [bucket_name()]) -> any().
+-spec do_handle_rebalance(any(), [string()], [string()],
+                          all | [bucket_name()]) -> any().
 do_handle_rebalance(Req, KnownNodesS, EjectedNodesS, DeltaRecoveryBuckets) ->
     EjectedNodes = [list_to_existing_atom(N) || N <- EjectedNodesS],
     KnownNodes = [list_to_existing_atom(N) || N <- KnownNodesS],
@@ -1024,7 +1047,8 @@ do_handle_rebalance(Req, KnownNodesS, EjectedNodesS, DeltaRecoveryBuckets) ->
         {need_more_space, Zones} ->
             reply_json(Req, {[{need_more_space, Zones}]}, 400);
         ok ->
-            ns_audit:rebalance_initiated(Req, KnownNodes, EjectedNodes, DeltaRecoveryBuckets),
+            ns_audit:rebalance_initiated(Req, KnownNodes, EjectedNodes,
+                                         DeltaRecoveryBuckets),
             reply(Req, 200)
     end.
 
@@ -1116,32 +1140,36 @@ do_handle_set_recovery_type(Req, Type, Params) ->
                    undefined
            end,
 
-    OtpNodeErrorMsg = <<"invalid node name or node can't be used for delta recovery">>,
+    OtpNodeErrorMsg =
+        <<"invalid node name or node can't be used for delta recovery">>,
 
     NodeSvcs = ns_cluster_membership:node_services(ns_config:latest(), Node),
-    NotKVIndex = not lists:member(kv, NodeSvcs) andalso not lists:member(index, NodeSvcs),
+    NotKVIndex = not lists:member(kv, NodeSvcs) andalso
+        not lists:member(index, NodeSvcs),
 
-    Errors = lists:flatten(
-               [case Type of
-                    undefined ->
-                        [{recoveryType, <<"recovery type must be either 'delta' or 'full'">>}];
-                    _ ->
-                        []
-                end,
+    Errors =
+        lists:flatten(
+          [case Type of
+               undefined ->
+                   [{recoveryType,
+                     <<"recovery type must be either 'delta' or 'full'">>}];
+               _ ->
+                   []
+           end,
 
-                case Node of
-                    undefined ->
-                        [{otpNode, OtpNodeErrorMsg}];
-                    _ ->
-                        []
-                end,
+           case Node of
+               undefined ->
+                   [{otpNode, OtpNodeErrorMsg}];
+               _ ->
+                   []
+           end,
 
-                case Type =:= delta andalso NotKVIndex of
-                    true ->
-                        [{otpNode, OtpNodeErrorMsg}];
-                    false ->
-                        []
-                end]),
+           case Type =:= delta andalso NotKVIndex of
+               true ->
+                   [{otpNode, OtpNodeErrorMsg}];
+               false ->
+                   []
+           end]),
 
     case Errors of
         [] ->
@@ -1162,7 +1190,8 @@ parse_validate_services_list_test() ->
     meck:new(cluster_compat_mode, [passthrough]),
     meck:expect(cluster_compat_mode, is_enterprise, fun () -> true end),
     {error, _} = parse_validate_services_list(""),
-    ?assertEqual({ok, [index, kv, n1ql]}, parse_validate_services_list("n1ql,kv,index")),
+    ?assertEqual({ok, [index, kv, n1ql]},
+                 parse_validate_services_list("n1ql,kv,index")),
     {ok, [kv]} = parse_validate_services_list("kv"),
     {error, _} = parse_validate_services_list("n1ql,kv,s"),
     ?assertMatch({error, _}, parse_validate_services_list("neeql,kv")),
@@ -1186,8 +1215,10 @@ hostname_parsing_test() ->
             "http://[::1]:10000"],
 
     ExpectedResults = [{http, "host",1025},
-                       {error, [<<"The port number must be greater than 1023 and less than 65536.">>]},
-                       {error, [<<"The port number must be greater than 1023 and less than 65536.">>]},
+                       {error, [<<"The port number must be greater than 1023 "
+                                  "and less than 65536.">>]},
+                       {error, [<<"The port number must be greater than 1023 "
+                                  "and less than 65536.">>]},
                        {http, "host", 8000},
                        {error, [<<"Unsupported protocol ftp">>]},
                        {http, "host", 8091},
