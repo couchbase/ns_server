@@ -1,6 +1,7 @@
 {name, "serverless"}.
 {enable_system_scope, true}.
 {enable_bucket_placer, true}.
+{max_buckets_supported, 100}.
 {allow_variable_num_vbuckets, true}.
 {default_num_vbuckets, 64}.
 {max_scopes_per_bucket, 100}.

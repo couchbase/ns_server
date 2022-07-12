@@ -811,7 +811,9 @@ is_valid_bucket_name_inner([Char | Rest]) ->
     end.
 
 get_max_buckets() ->
-    ns_config:read_key_fast(max_bucket_count, ?MAX_BUCKETS_SUPPORTED).
+    Default = config_profile:get_value(max_buckets_supported,
+                                       ?MAX_BUCKETS_SUPPORTED),
+    ns_config:read_key_fast(max_bucket_count, Default).
 
 get_default_num_vbuckets() ->
     case ns_config:search(couchbase_num_vbuckets_default) of

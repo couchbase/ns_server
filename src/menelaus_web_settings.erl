@@ -540,7 +540,7 @@ conf(internal) ->
       get_number(1, 1024)},
      {{couchdb, max_parallel_replica_indexers}, maxParallelReplicaIndexers,
       <<>>, get_number(1, 1024)},
-     {max_bucket_count, maxBucketCount, ?MAX_BUCKETS_SUPPORTED,
+     {max_bucket_count, maxBucketCount, ns_bucket:get_max_buckets(),
       get_number(1, 8192)},
      {magma_min_memory_quota, magmaMinMemoryQuota, 1024,
       get_number(100, 1024, 1024)},
