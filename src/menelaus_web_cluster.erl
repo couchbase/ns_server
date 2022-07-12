@@ -995,28 +995,28 @@ handle_start_graceful_failover(Req) ->
             reply_text(Req, ErrorMsg, 400)
     end.
 
+parse_list_param(Param, Params, Default) ->
+    case proplists:get_value(Param, Params) of
+        undefined ->
+            Default;
+        Str ->
+            string:tokens(Str, ",")
+    end.
+
 handle_rebalance(Req) ->
     Params = mochiweb_request:parse_post(Req),
-    case string:tokens(proplists:get_value("knownNodes", Params, ""),",") of
+    case parse_list_param("knownNodes", Params, []) of
         [] ->
             reply_json(Req, {[{empty_known_nodes, 1}]}, 400);
         KnownNodesS ->
-            EjectedNodesS = string:tokens(proplists:get_value("ejectedNodes",
-                                                              Params, ""), ","),
+            EjectedNodesS = parse_list_param("ejectedNodes", Params, []),
             UnknownNodes = [S || S <- EjectedNodesS ++ KnownNodesS,
                                 try list_to_existing_atom(S), false
                                 catch error:badarg -> true end],
             case UnknownNodes of
                 [] ->
                     DeltaRecoveryBuckets =
-                        case proplists:get_value("deltaRecoveryBuckets",
-                                                 Params) of
-                            undefined -> all;
-                            RawRecoveryBuckets ->
-                                [BucketName || BucketName <-
-                                                   string:tokens(
-                                                     RawRecoveryBuckets, ",")]
-                        end,
+                        parse_list_param("deltaRecoveryBuckets", Params, all),
                     do_handle_rebalance(Req, KnownNodesS, EjectedNodesS,
                                         DeltaRecoveryBuckets);
                 _ ->
