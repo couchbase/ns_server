@@ -432,7 +432,7 @@ rebalance_topology_aware_service(Service, KeepNodes, EjectNodes, DeltaNodes) ->
 
     misc:with_trap_exit(
       fun () ->
-              {Pid, MRef} = service_rebalancer:spawn_monitor_rebalance(
+              {Pid, MRef} = service_manager:spawn_monitor_rebalance(
                               Service, KeepNodes,
                               EjectNodes, DeltaNodes, ProgressCallback),
 

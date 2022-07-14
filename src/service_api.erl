@@ -23,28 +23,29 @@
 -define(LONG_POLL_TIMEOUT, ?get_timeout(long_poll, 30000)).
 
 shutdown(Pid) ->
-    perform_rebalance_call(Pid, "Shutdown", empty_req()).
+    perform_service_manager_call(Pid, "Shutdown", empty_req()).
 
 get_node_info(Pid) ->
-    perform_rebalance_call(Pid, "GetNodeInfo", empty_req()).
+    perform_service_manager_call(Pid, "GetNodeInfo", empty_req()).
 
 get_task_list(Pid, Rev) ->
-    perform_rebalance_call(Pid, "GetTaskList", get_req(Rev, ?LONG_POLL_TIMEOUT)).
+    perform_service_manager_call(Pid, "GetTaskList",
+                                 get_req(Rev, ?LONG_POLL_TIMEOUT)).
 
 cancel_task(Pid, Id, Rev) ->
-    perform_rebalance_call(Pid, "CancelTask", cancel_task_req(Id, Rev)).
+    perform_service_manager_call(Pid, "CancelTask", cancel_task_req(Id, Rev)).
 
 get_current_topology(Pid, Rev) ->
-    perform_rebalance_call(Pid, "GetCurrentTopology",
+    perform_service_manager_call(Pid, "GetCurrentTopology",
                            get_req(Rev, ?LONG_POLL_TIMEOUT)).
 
 prepare_topology_change(Pid, Id, Rev, Type, KeepNodes, EjectNodes) ->
-    perform_rebalance_call(
+    perform_service_manager_call(
       Pid, "PrepareTopologyChange",
       topology_change_req(Id, Rev, Type, KeepNodes, EjectNodes)).
 
 start_topology_change(Pid, Id, Rev, Type, KeepNodes, EjectNodes) ->
-    perform_rebalance_call(
+    perform_service_manager_call(
       Pid, "StartTopologyChange",
       topology_change_req(Id, Rev, Type, KeepNodes, EjectNodes)).
 
@@ -78,10 +79,10 @@ get_label(Service) when is_atom(Service) ->
     atom_to_list(ns_ports_setup:get_rpc_prefix(Service)) ++ "-service_api".
 
 %% internal
-perform_rebalance_call(PidOrLabel, Name, Arg) ->
+perform_service_manager_call(PidOrLabel, Name, Arg) ->
     case perform_call(PidOrLabel, Name, Arg, #{timeout => ?RPC_TIMEOUT}) of
         {error, Error} when is_binary(Error) ->
-            {error, map_rebalance_error(Error)};
+            {error, map_service_manager_error(Error)};
         {error, _} = Error ->
             Error;
         Other ->
@@ -185,12 +186,12 @@ encode_keep_nodes(KeepNodes) ->
 encode_eject_nodes(Nodes) ->
     [encode_node_info(N) || N <- Nodes].
 
-map_rebalance_error(?ERROR_NOT_FOUND) ->
+map_service_manager_error(?ERROR_NOT_FOUND) ->
     not_found;
-map_rebalance_error(?ERROR_CONFLICT) ->
+map_service_manager_error(?ERROR_CONFLICT) ->
     conflict;
-map_rebalance_error(?ERROR_NOT_SUPPORTED) ->
+map_service_manager_error(?ERROR_NOT_SUPPORTED) ->
     operation_not_supported;
-map_rebalance_error(?ERROR_RECOVERY_IMPOSSIBLE) ->
+map_service_manager_error(?ERROR_RECOVERY_IMPOSSIBLE) ->
     recovery_impossible;
-map_rebalance_error(Error) -> {unknown_error, Error}.
+map_service_manager_error(Error) -> {unknown_error, Error}.

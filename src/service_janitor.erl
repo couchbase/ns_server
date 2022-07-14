@@ -107,10 +107,10 @@ do_orchestrate_initial_rebalance(Service) ->
     EjectNodes = [],
     DeltaNodes = [],
 
-    {Pid, MRef} = service_rebalancer:spawn_monitor_rebalance(Service, KeepNodes,
-                                                             EjectNodes,
-                                                             DeltaNodes,
-                                                             ProgressCallback),
+    {Pid, MRef} = service_manager:spawn_monitor_rebalance(Service, KeepNodes,
+                                                          EjectNodes,
+                                                          DeltaNodes,
+                                                          ProgressCallback),
     receive
         {'DOWN', MRef, _, Pid, Reason} ->
             case Reason of
@@ -220,7 +220,7 @@ orchestrate_service_failover(Service, Nodes) ->
       ?cut(do_orchestrate_service_failover(Service, Nodes))).
 
 do_orchestrate_service_failover(Service, Nodes) ->
-    {Pid, MRef} = service_rebalancer:spawn_monitor_failover(Service, Nodes),
+    {Pid, MRef} = service_manager:spawn_monitor_failover(Service, Nodes),
 
     receive
         {'DOWN', MRef, _, Pid, Reason} ->

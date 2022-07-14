@@ -19,7 +19,7 @@
 -export([start_link/1]).
 -export([get_status/2]).
 -export([wait_for_agents/3]).
--export([set_rebalancer/3, unset_rebalancer/3]).
+-export([set_service_manager/3, unset_service_manager/3]).
 -export([get_node_infos/3, prepare_rebalance/7, start_rebalance/7]).
 -export([spawn_connection_waiter/2]).
 -export([init/1, handle_call/3, handle_cast/2,
@@ -46,16 +46,16 @@
           conn :: undefined | pid(),
           conn_mref :: undefined | reference(),
 
-          rebalancer :: undefined | pid(),
-          rebalancer_mref :: undefined | reference(),
-          rebalance_worker :: undefined | pid(),
-          rebalance_waiters :: undefined | queue:queue(),
-          rebalance_observer :: undefined | pid(),
+          service_manager :: undefined | pid(),
+          service_manager_mref :: undefined | reference(),
+          task_runner :: undefined | pid(),
+          task_runner_queue :: undefined | queue:queue(),
+          task_observer :: undefined | pid(),
 
           tasks :: undefined | {revision(), [any()]},
           topology :: undefined | {revision(), #topology{}},
 
-          tasks_worker :: undefined | pid(),
+          get_tasks_worker :: undefined | pid(),
           topology_worker :: undefined | pid()
          }).
 
@@ -102,32 +102,34 @@ wait_for_agents_loop(Service, Nodes, Acc, Timeout) ->
             end
     end.
 
-set_rebalancer(Service, Nodes, Rebalancer) ->
+set_service_manager(Service, Nodes, Manager) ->
     Result = multi_call(Nodes, Service,
-                        {set_rebalancer, Rebalancer}, ?OUTER_TIMEOUT),
-    handle_multicall_result(Service, set_rebalancer, Result, fun just_ok/1).
+                        {set_service_manager, Manager}, ?OUTER_TIMEOUT),
+    handle_multicall_result(Service, set_service_manager, Result, fun just_ok/1).
 
-unset_rebalancer(Service, Nodes, Rebalancer) ->
+unset_service_manager(Service, Nodes, Manager) ->
     Result = multi_call(Nodes, Service,
-                        {if_rebalance, Rebalancer, unset_rebalancer}, ?OUTER_TIMEOUT),
-    handle_multicall_result(Service, unset_rebalancer, Result, fun just_ok/1).
+                        {if_service_manager, Manager, unset_service_manager},
+                        ?OUTER_TIMEOUT),
+    handle_multicall_result(Service, unset_service_manager, Result, fun just_ok/1).
 
-get_node_infos(Service, Nodes, Rebalancer) ->
+get_node_infos(Service, Nodes, Manager) ->
     Result = multi_call(Nodes, Service,
-                        {if_rebalance, Rebalancer, get_node_info}, ?OUTER_TIMEOUT),
+                        {if_service_manager, Manager, get_node_info},
+                        ?OUTER_TIMEOUT),
     handle_multicall_result(Service, get_node_infos, Result).
 
-prepare_rebalance(Service, Nodes, Rebalancer, RebalanceId, Type, KeepNodes, EjectNodes) ->
+prepare_rebalance(Service, Nodes, Manager, RebalanceId, Type, KeepNodes, EjectNodes) ->
     Result = multi_call(Nodes, Service,
-                        {if_rebalance, Rebalancer,
+                        {if_service_manager, Manager,
                          {prepare_rebalance, RebalanceId, Type, KeepNodes, EjectNodes}},
                         ?OUTER_TIMEOUT),
     handle_multicall_result(Service, prepare_rebalance, Result, fun just_ok/1).
 
-start_rebalance(Service, Node, Rebalancer, RebalanceId, Type, KeepNodes, EjectNodes) ->
+start_rebalance(Service, Node, Manager, RebalanceId, Type, KeepNodes, EjectNodes) ->
     Observer = self(),
     gen_server:call({server_name(Service), Node},
-                    {if_rebalance, Rebalancer,
+                    {if_service_manager, Manager,
                      {start_rebalance, RebalanceId, Type, KeepNodes, EjectNodes, Observer}},
                     ?OUTER_TIMEOUT).
 
@@ -158,28 +160,30 @@ handle_call(get_status, _From, #state{service = Service,
     {reply, Status, State};
 handle_call(get_agent, _From, State) ->
     {reply, {ok, self()}, State};
-handle_call({set_rebalancer, Pid} = Call, _From,
-            #state{rebalancer = Rebalancer} = State0) ->
+handle_call({set_service_manager, Pid} = Call, _From,
+            #state{service_manager = Manager} = State0) ->
     State =
-        case Rebalancer of
+        case Manager of
             undefined ->
                 State0;
             _ ->
-                ?log_info("Got set_rebalance call ~p when "
-                          "rebalance is already running. Old rebalancer: ~p. "
-                          "Going to abort the old rebalance.",
-                          [Call, Rebalancer]),
-                handle_unset_rebalancer(State0)
+                ?log_info("Got set_service_manager call ~p when "
+                          "another service manager call is already running."
+                          "Old service manager: ~p. "
+                          "Going to abort the previous service manager call.",
+                          [Call, Manager]),
+                handle_unset_service_manager(State0)
         end,
-    {reply, ok, handle_set_rebalancer(Pid, State)};
-handle_call({if_rebalance, Pid, Call} = FullCall, From,
-            #state{rebalancer = Rebalancer} = State) ->
-    case Pid =:= Rebalancer of
+    {reply, ok, handle_set_service_manager(Pid, State)};
+handle_call({if_service_manager, Pid, Call} = FullCall, From,
+            #state{service_manager = Manager} = State) ->
+    case Pid =:= Manager of
         true ->
-            handle_rebalance_call(Call, From, State);
+            do_handle_call(Call, From, State);
         false ->
-            ?log_error("Got rebalance-only call ~p that "
-                       "doesn't match rebalancer pid ~p", [FullCall, Rebalancer]),
+            ?log_error("Got service-agent call ~p that "
+                       "doesn't match service-manager pid ~p", [FullCall,
+                                                                Manager]),
             {reply, nack, State}
     end;
 handle_call(Call, From, State) ->
@@ -216,12 +220,13 @@ handle_cast(Cast, State) ->
                  [Cast, State]),
     {noreply, State}.
 
-handle_info({rebalance_call_reply, RV}, #state{rebalance_waiters = Waiters} = State) ->
+handle_info({task_call_reply, RV}, #state{task_runner_queue = Waiters}
+            = State) ->
     {{value, From}, NewWaiters} = queue:out(Waiters),
     gen_server:reply(From, RV),
-    {noreply, State#state{rebalance_waiters = NewWaiters}};
-handle_info({set_rebalance_observer, Observer}, State) ->
-    {noreply, handle_set_rebalance_observer(Observer, State)};
+    {noreply, State#state{task_runner_queue = NewWaiters}};
+handle_info({set_task_observer, Observer}, State) ->
+    {noreply, handle_set_task_observer(Observer, State)};
 handle_info({new_tasks, Tasks}, State) ->
     {noreply, handle_new_tasks(Tasks, State)};
 handle_info({new_topology, Topology}, State) ->
@@ -229,10 +234,11 @@ handle_info({new_topology, Topology}, State) ->
 handle_info({'EXIT', Pid, Reason}, State) ->
     ?log_error("Linked process ~p died with reason ~p. Terminating", [Pid, Reason]),
     {stop, {linked_process_died, Pid, {node(), Reason}}, State};
-handle_info({'DOWN', MRef, _, _, Reason}, #state{rebalancer = Pid,
-                                                 rebalancer_mref = MRef} = State) ->
-    ?log_error("Rebalancer ~p died unexpectedly: ~p", [Pid, Reason]),
-    {noreply, handle_unset_rebalancer(State)};
+handle_info({'DOWN', MRef, _, _, Reason},
+            #state{service_manager = Pid,
+                   service_manager_mref = MRef} = State) ->
+    ?log_error("Service Manager ~p died unexpectedly: ~p", [Pid, Reason]),
+    {noreply, handle_unset_service_manager(State)};
 handle_info({'DOWN', MRef, _, _, Reason}, #state{service = Service,
                                                  conn_mref = MRef} = State) ->
     ?log_error("Lost json rpc connection for service ~p, reason ~p. Terminating.",
@@ -245,10 +251,10 @@ handle_info(Msg, State) ->
 
 terminate(Reason, #state{service = Service,
                          conn = Conn,
-                         tasks_worker = TasksWorker,
+                         get_tasks_worker = GetTasksWorker,
                          topology_worker = TopologyWorker,
-                         rebalance_worker = RebalanceWorker}) ->
-    Pids = [P || P <- [TasksWorker, TopologyWorker, RebalanceWorker],
+                         task_runner = TaskRunner}) ->
+    Pids = [P || P <- [GetTasksWorker, TopologyWorker, TaskRunner],
                  P =/= undefined],
     ok = misc:terminate_and_wait(Pids, Reason),
 
@@ -315,7 +321,7 @@ handle_connection(Conn, State) ->
     end.
 
 do_handle_connection(Conn, #state{service = Service,
-                                  rebalance_worker = Worker} = State) ->
+                                  task_runner = TaskRunner} = State) ->
     ?log_debug("Observed new json rpc connection for ~p: ~p",
                [Service, Conn]),
 
@@ -327,11 +333,11 @@ do_handle_connection(Conn, #state{service = Service,
 
     State4 = start_long_poll_workers(State3),
 
-    case Worker of
+    case TaskRunner of
         undefined ->
             ok;
-        _ when is_pid(Worker) ->
-            pass_connection(Worker, Conn)
+        _ when is_pid(TaskRunner) ->
+            pass_connection(TaskRunner, Conn)
     end,
 
     State4.
@@ -340,38 +346,39 @@ handle_lost_connection(State) ->
     State#state{conn = undefined,
                 conn_mref = undefined}.
 
-handle_set_rebalancer(Pid, #state{conn = Conn} = State) ->
+handle_set_service_manager(Pid, #state{conn = Conn} = State) ->
     MRef = erlang:monitor(process, Pid),
-    Worker = start_rebalance_worker(),
+    TaskRunner = start_task_runner(),
 
     case Conn of
         undefined ->
             ok;
         _ when is_pid(Conn) ->
-            pass_connection(Worker, Conn)
+            pass_connection(TaskRunner, Conn)
     end,
 
-    State#state{rebalancer = Pid,
-                rebalancer_mref = MRef,
-                rebalance_worker = Worker,
-                rebalance_waiters = queue:new(),
-                rebalance_observer = undefined}.
+    State#state{service_manager = Pid,
+                service_manager_mref = MRef,
+                task_runner = TaskRunner,
+                task_runner_queue = queue:new(),
+                task_observer = undefined}.
 
-handle_unset_rebalancer(#state{rebalancer = Pid,
-                               rebalancer_mref = MRef,
-                               rebalance_worker = Worker,
-                               rebalance_waiters = Waiters} = State)
+handle_unset_service_manager(#state{service_manager = Pid,
+                                    service_manager_mref = MRef,
+                                    task_runner = TaskRunner,
+                                    task_runner_queue = Waiters} = State)
   when is_pid(Pid) ->
     erlang:demonitor(MRef, [flush]),
 
-    misc:unlink_terminate_and_wait(Worker, {shutdown, rebalance_terminated}),
+    misc:unlink_terminate_and_wait(TaskRunner,
+                                   {shutdown, service_manager_terminated}),
 
     lists:foreach(
       fun (Waiter) ->
-              gen_server:reply(Waiter, {error, rebalance_terminated})
+              gen_server:reply(Waiter, {error, service_manager_terminated})
       end, queue:to_list(Waiters)),
 
-    drop_rebalance_messages(),
+    drop_messages(),
 
     %% It's possible that we never saw the json-rpc connection. It might
     %% happen in the following scenario. A one node cluster is initialized
@@ -394,18 +401,18 @@ handle_unset_rebalancer(#state{rebalancer = Pid,
                     start_long_poll_workers(S3)
             end, State),
 
-    State1#state{rebalancer = undefined,
-                 rebalancer_mref = undefined,
-                 rebalance_worker = undefined,
-                 rebalance_waiters = undefined,
-                 rebalance_observer = undefined}.
+    State1#state{service_manager = undefined,
+                 service_manager_mref = undefined,
+                 task_runner = undefined,
+                 task_runner_queue = undefined,
+                 task_observer = undefined}.
 
 when_have_connection(Fun, #state{conn = Conn,
-                                 tasks_worker = TasksWorker,
+                                 get_tasks_worker = GetTasksWorker,
                                  topology_worker = TopologyWorker} = State) ->
     case Conn of
         undefined ->
-            undefined = TasksWorker,
+            undefined = GetTasksWorker,
             undefined = TopologyWorker,
 
             State;
@@ -413,36 +420,38 @@ when_have_connection(Fun, #state{conn = Conn,
             Fun(State)
     end.
 
-drop_rebalance_messages() ->
+drop_messages() ->
     receive
-        {rebalance_call_reply, _} ->
-            drop_rebalance_messages();
-        {set_rebalance_observer, _} ->
-            drop_rebalance_messages()
+        {task_call_reply, _} ->
+            drop_messages();
+        {set_task_observer, _} ->
+            drop_messages()
     after
         0 -> ok
     end.
 
-handle_rebalance_call(unset_rebalancer, _From, State) ->
-    {reply, ok, handle_unset_rebalancer(State)};
-handle_rebalance_call(get_node_info, From, State) ->
-    run_on_worker(From, State, fun handle_get_node_info/1);
-handle_rebalance_call({prepare_rebalance, Id, Type, KeepNodes, EjectNodes}, From, State) ->
-    run_on_worker(
+do_handle_call(unset_service_manager, _From, State) ->
+    {reply, ok, handle_unset_service_manager(State)};
+do_handle_call(get_node_info, From, State) ->
+    run_on_task_runner(From, State, fun handle_get_node_info/1);
+do_handle_call({prepare_rebalance, Id, Type, KeepNodes, EjectNodes}, From,
+               State) ->
+    run_on_task_runner(
       From, State,
       fun (Conn) ->
               handle_prepare_rebalance(Conn, Id, Type, KeepNodes, EjectNodes)
       end);
-handle_rebalance_call({start_rebalance, Id, Type, KeepNodes, EjectNodes, Observer}, From, State) ->
+do_handle_call({start_rebalance, Id, Type, KeepNodes, EjectNodes, Observer},
+               From, State) ->
     Self = self(),
-    run_on_worker(
+    run_on_task_runner(
       From, State,
       fun (Conn) ->
               handle_start_rebalance(Conn, Id, Type, KeepNodes,
                                      EjectNodes, Self, Observer)
       end);
-handle_rebalance_call(Call, From, State) ->
-    ?log_error("Unexpected rebalance call ~p from ~p when in state~n~p",
+do_handle_call(Call, From, State) ->
+    ?log_error("Unexpected call ~p from ~p when in state~n~p",
                [Call, From, State]),
     {reply, nack, State}.
 
@@ -546,36 +555,36 @@ process_topology({Props}) ->
                     is_balanced = IsBalanced,
                     messages = Messages}}.
 
-run_on_worker(From, #state{rebalance_worker = Worker,
-                           rebalance_waiters = Waiters} = State, Body) ->
+run_on_task_runner(From, #state{task_runner = TaskRunner,
+                                task_runner_queue = Waiters} = State, Body) ->
     Parent = self(),
     NewWaiters = queue:in(From, Waiters),
 
     work_queue:submit_work(
-      Worker,
+      TaskRunner,
       fun () ->
               Conn = erlang:get(connection),
               true = is_pid(Conn),
 
               RV = Body(Conn),
-              Parent ! {rebalance_call_reply, RV}
+              Parent ! {task_call_reply, RV}
       end),
 
-    {noreply, State#state{rebalance_waiters = NewWaiters}}.
+    {noreply, State#state{task_runner_queue = NewWaiters}}.
 
-start_rebalance_worker() ->
+start_task_runner() ->
     {ok, Pid} = work_queue:start_link(),
-    work_queue:submit_work(Pid, fun rebalance_worker_init/0),
+    work_queue:submit_work(Pid, fun task_runner_init/0),
     Pid.
 
-rebalance_worker_init() ->
+task_runner_init() ->
     receive
         {connection, Conn} ->
             erlang:put(connection, Conn)
     end.
 
-pass_connection(Worker, Conn) ->
-    Worker ! {connection, Conn}.
+pass_connection(TaskRunner, Conn) ->
+    TaskRunner ! {connection, Conn}.
 
 start_long_poll_worker(Conn, Tag, Initial, GrabFun) ->
     true = is_pid(Conn),
@@ -620,28 +629,28 @@ start_long_poll_workers(#state{tasks = Tasks,
 
 do_start_long_poll_workers(Tasks, Topology,
                            #state{conn = Conn,
-                                  tasks_worker = undefined,
+                                  get_tasks_worker = undefined,
                                   topology_worker = undefined} = State) ->
-    TasksWorker = start_long_poll_worker(Conn, new_tasks,
-                                         Tasks, fun grab_tasks/2),
+    GetTasksWorker = start_long_poll_worker(Conn, new_tasks,
+                                            Tasks, fun grab_tasks/2),
     TopologyWorker = start_long_poll_worker(Conn, new_topology,
                                             Topology, fun grab_topology/2),
-    State#state{tasks_worker = TasksWorker,
+    State#state{get_tasks_worker = GetTasksWorker,
                 topology_worker = TopologyWorker}.
 
 cleanup_topology({Rev, Topology}) ->
     {Rev, Topology#topology{nodes = []}}.
 
-terminate_long_poll_workers(#state{tasks_worker = TasksWorker,
+terminate_long_poll_workers(#state{get_tasks_worker = GetTasksWorker,
                                    topology_worker = TopologyWorker} = State) ->
-    true = (TasksWorker =/= undefined),
+    true = (GetTasksWorker =/= undefined),
     true = (TopologyWorker =/= undefined),
 
-    Workers = [TopologyWorker, TasksWorker],
+    Workers = [TopologyWorker, GetTasksWorker],
     lists:foreach(fun erlang:unlink/1, Workers),
     misc:terminate_and_wait(Workers, kill),
 
-    State#state{tasks_worker = undefined,
+    State#state{get_tasks_worker = undefined,
                 topology_worker = undefined}.
 
 restart_long_poll_workers(State) ->
@@ -684,66 +693,66 @@ handle_start_rebalance(Conn, Id, Type, KeepNodes, EjectNodes, Agent, Observer) -
 
     case RV of
         ok ->
-            Agent ! {set_rebalance_observer, Observer};
+            Agent ! {set_task_observer, Observer};
         _ ->
             ok
     end,
 
     RV.
 
-handle_set_rebalance_observer(Observer, State) ->
+handle_set_task_observer(Observer, State) ->
     State1 = restart_long_poll_workers(State),
-    State1#state{rebalance_observer = Observer}.
+    State1#state{task_observer = Observer}.
 
 handle_new_tasks(Tasks, State) ->
     State1 = State#state{tasks = Tasks},
     validate_new_tasks(State1),
     handle_new_tasks_if_rebalance(State1).
 
-validate_new_tasks(#state{rebalancer = undefined} = State) ->
+validate_new_tasks(#state{service_manager = undefined} = State) ->
     [] = find_stale_tasks(State);
 validate_new_tasks(_) ->
     ok.
 
-handle_new_tasks_if_rebalance(#state{rebalance_observer = undefined} = State) ->
+handle_new_tasks_if_rebalance(#state{task_observer = undefined} = State) ->
     State;
-handle_new_tasks_if_rebalance(#state{rebalance_observer = Observer,
+handle_new_tasks_if_rebalance(#state{task_observer = Observer,
                                      tasks = {_Rev, Tasks}} = State)
   when is_pid(Observer) ->
     case find_tasks_by_type(?TASK_TYPE_REBALANCE, Tasks) of
         [] ->
-            handle_rebalance_done(Observer, State);
+            handle_task_done(Observer, State);
         [Task] ->
             case must_get(status, Task) of
                 ?TASK_STATUS_RUNNING ->
-                    handle_rebalance_running(Observer, Task, State);
+                    handle_task_running(Observer, Task, State);
                 ?TASK_STATUS_FAILED ->
-                    handle_rebalance_failed(Observer, Task, State)
+                    handle_task_failed(Observer, Task, State)
             end
     end.
 
-handle_rebalance_done(Observer, State) ->
-    report_rebalance_done(Observer),
-    State#state{rebalance_observer = undefined}.
+handle_task_done(Observer, State) ->
+    report_task_done(Observer),
+    State#state{task_observer = undefined}.
 
-report_rebalance_done(Observer) ->
-    Observer ! rebalance_done.
+report_task_done(Observer) ->
+    Observer ! task_done.
 
-handle_rebalance_running(Observer, Task, State) ->
+handle_task_running(Observer, Task, State) ->
     Progress = must_get(progress, Task),
-    report_rebalance_progress(Observer, Progress),
+    report_task_progress(Observer, Progress),
     State.
 
-report_rebalance_progress(Observer, Progress) ->
-    Observer ! {rebalance_progress, Progress}.
+report_task_progress(Observer, Progress) ->
+    Observer ! {task_progress, Progress}.
 
-handle_rebalance_failed(Observer, Task, State) ->
+handle_task_failed(Observer, Task, State) ->
     Error = get_default(errorMessage, Task, <<"unknown">>),
-    report_rebalance_failed(Observer, Error),
-    handle_unset_rebalancer(State).
+    report_task_failed(Observer, Error),
+    handle_unset_service_manager(State).
 
-report_rebalance_failed(Observer, Error) ->
-    Observer ! {rebalance_failed, Error}.
+report_task_failed(Observer, Error) ->
+    Observer ! {task_failed, Error}.
 
 handle_new_topology({Rev, Topology}, #state{node_uuid_map = Map} = State) ->
     #topology{node_uuids = UUIDs} = Topology,
