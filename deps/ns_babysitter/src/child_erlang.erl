@@ -88,10 +88,10 @@ child_start(Arg) ->
     try
         do_child_start(Arg)
     catch T:E:S ->
-            io:format("Crap ~p:~p~n~p~n", [T, E, S]),
-            (catch ?log_debug("Crap to start:  ~p:~p~n~p~n", [T, E, S])),
-            timer:sleep(1000),
-            misc:halt(3)
+        io:format("Can't start process ~p:~p~n~p~n", [T, E, S]),
+        (catch ?log_debug("Can't start process: ~p:~p~n~p~n", [T, E, S])),
+        timer:sleep(1000),
+        misc:halt(3)
     end.
 
 do_child_start([ModuleToBootAsString]) ->
