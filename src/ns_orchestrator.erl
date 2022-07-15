@@ -277,13 +277,14 @@ ensure_janitor_run(Item) ->
                              in_recovery | delta_recovery_not_possible |
                              no_kv_nodes_left | {need_more_space, list()}.
 start_rebalance(KnownNodes, EjectNodes, DeltaRecoveryBuckets) ->
-    call({maybe_start_rebalance, KnownNodes, EjectNodes, DeltaRecoveryBuckets}).
+    call({maybe_start_rebalance,
+          #{known_nodes => KnownNodes,
+            eject_nodes => EjectNodes,
+            delta_recovery_buckets => DeltaRecoveryBuckets}}).
 
 retry_rebalance(rebalance, Params, Id, Chk) ->
     call({maybe_start_rebalance,
-          proplists:get_value(known_nodes, Params),
-          proplists:get_value(eject_nodes, Params),
-          proplists:get_value(delta_recovery_buckets, Params), Id, Chk});
+          maps:merge(maps:from_list(Params), #{id => Id, chk => Chk})});
 
 retry_rebalance(graceful_failover, Params, Id, Chk) ->
     call({maybe_retry_graceful_failover,
@@ -372,19 +373,31 @@ init([]) ->
 
     {ok, idle, #idle_state{}, {{timeout, janitor}, 0, run_janitor}}.
 
+%% called remotely from pre-Elixir nodes
 handle_event({call, From},
              {maybe_start_rebalance, KnownNodes, EjectedNodes,
               DeltaRecoveryBuckets}, _StateName, _State) ->
-    auto_rebalance:cancel_any_pending_retry_async("manual rebalance"),
     {keep_state_and_data,
      [{next_event, {call, From},
-       {maybe_start_rebalance, KnownNodes, EjectedNodes,
-        DeltaRecoveryBuckets, couch_uuids:random(), undefined}}]};
+       {maybe_start_rebalance,
+        #{known_nodes => KnownNodes,
+          eject_nodes => EjectedNodes,
+          delta_recovery_buckets => DeltaRecoveryBuckets}}}]};
 
-handle_event({call, From},
-             {maybe_start_rebalance, KnownNodes, EjectedNodes,
-              DeltaRecoveryBuckets, RebalanceId, RetryChk},
+handle_event({call, From}, {maybe_start_rebalance,
+                            Params = #{known_nodes := KnownNodes,
+                                       eject_nodes := EjectedNodes}},
              _StateName, _State) ->
+    NewParams =
+        case maps:is_key(id, Params) of
+            false ->
+                auto_rebalance:cancel_any_pending_retry_async(
+                  "manual rebalance"),
+                Params#{id => couch_uuids:random()};
+            true ->
+                Params
+        end,
+
     Snapshot = chronicle_compat:get_snapshot(
                  [ns_bucket:fetch_snapshot(all, _, [uuid, props]),
                   ns_cluster_membership:fetch_snapshot(_),
@@ -405,21 +418,22 @@ handle_event({call, From},
                 _ ->
                     case rebalance_allowed(Snapshot) of
                         ok ->
-                            case retry_ok(Snapshot, FailedNodes, RetryChk) of
+                            case retry_ok(Snapshot, FailedNodes, NewParams) of
                                 false ->
                                     {keep_state_and_data,
                                      [{reply, From, retry_check_failed}]};
                                 NewChk ->
-                                    StartEvent = {start_rebalance,
-                                                  KeepNodes,
-                                                  EjectedNodes -- FailedNodes,
-                                                  FailedNodes,
-                                                  DeltaNodes,
-                                                  DeltaRecoveryBuckets,
-                                                  RebalanceId,
-                                                  NewChk},
+                                    NewParams1 =
+                                        NewParams#{
+                                          keep_nodes => KeepNodes,
+                                          eject_nodes =>
+                                              EjectedNodes -- FailedNodes,
+                                          failed_nodes => FailedNodes,
+                                          delta_nodes => DeltaNodes,
+                                          chk => NewChk},
                                     {keep_state_and_data,
-                                     [{next_event, {call, From}, StartEvent}]}
+                                     [{next_event, {call, From},
+                                       {start_rebalance, NewParams1}}]}
                             end;
                         {error, Msg} ->
                             set_rebalance_status(rebalance, {none, Msg},
@@ -751,8 +765,14 @@ idle({start_graceful_failover, Nodes, Id, RetryChk}, From, _State) ->
             {keep_state_and_data, [{reply, From, RV}]}
     end;
 %% NOTE: this is not remotely called but is used by maybe_start_rebalance
-idle({start_rebalance, KeepNodes, EjectNodes, FailedNodes, DeltaNodes,
-      DeltaRecoveryBuckets, RebalanceId, RetryChk}, From, _State) ->
+idle({start_rebalance, Params = #{keep_nodes := KeepNodes,
+                                  eject_nodes := EjectNodes,
+                                  failed_nodes := FailedNodes,
+                                  delta_nodes := DeltaNodes,
+                                  delta_recovery_buckets :=
+                                      DeltaRecoveryBuckets,
+                                  id := RebalanceId}}, From, _State) ->
+
     NodesInfo = [{active_nodes, KeepNodes ++ EjectNodes},
                  {keep_nodes, KeepNodes},
                  {eject_nodes, EjectNodes},
@@ -762,9 +782,7 @@ idle({start_rebalance, KeepNodes, EjectNodes, FailedNodes, DeltaNodes,
     Services = ns_cluster_membership:cluster_supported_services(),
     {ok, ObserverPid} = ns_rebalance_observer:start_link(
                           Services, NodesInfo, Type, RebalanceId),
-    case ns_rebalancer:start_link_rebalance(KeepNodes, EjectNodes,
-                                            FailedNodes, DeltaNodes,
-                                            DeltaRecoveryBuckets) of
+    case ns_rebalancer:start_link_rebalance(Params) of
         {ok, Pid} ->
             case DeltaNodes =/= [] of
                 true ->
@@ -797,7 +815,7 @@ idle({start_rebalance, KeepNodes, EjectNodes, FailedNodes, DeltaNodes,
                                 eject_nodes = EjectNodes,
                                 failed_nodes = FailedNodes,
                                 delta_recov_bkts = DeltaRecoveryBuckets,
-                                retry_check = RetryChk,
+                                retry_check = maps:get(chk, Params, undefined),
                                 to_failover = [],
                                 abort_reason = undefined,
                                 type = Type,
@@ -926,10 +944,7 @@ rebalancing({try_autofailover, Nodes, Options}, From,
                     {keep_state, NewState}
             end
     end;
-rebalancing({start_rebalance, _KeepNodes, _EjectNodes,
-             _FailedNodes, _DeltaNodes, _DeltaRecoveryBuckets,
-             _RebalanceId, _RetryChk},
-            From, _State) ->
+rebalancing({start_rebalance, _Params}, From, _State) ->
     ale:info(?USER_LOGGER,
              "Not rebalancing because rebalance is already in progress.~n"),
     {keep_state_and_data, [{reply, From, in_progress}]};
@@ -1324,10 +1339,10 @@ retry_rebalance(_, _) ->
 %% Fail the retry if there are newly failed over nodes,
 %% server group configuration has changed or buckets have been added
 %% or deleted or their replica count changed.
-retry_ok(Snapshot, FailedNodes, undefined) ->
-    get_retry_check(Snapshot, FailedNodes);
-retry_ok(Snapshot, FailedNodes, RetryChk) ->
-    retry_ok(RetryChk, get_retry_check(Snapshot, FailedNodes)).
+retry_ok(Snapshot, FailedNodes, #{chk := RetryChk}) ->
+    retry_ok(RetryChk, get_retry_check(Snapshot, FailedNodes));
+retry_ok(Snapshot, FailedNodes, _) ->
+    get_retry_check(Snapshot, FailedNodes).
 
 retry_ok(Chk, Chk) ->
     Chk;

@@ -24,7 +24,7 @@
 
 -export([check_graceful_failover_possible/2,
          generate_initial_map/1,
-         start_link_rebalance/5,
+         start_link_rebalance/1,
          move_vbuckets/2,
          unbalanced/2,
          bucket_needs_rebalance/2,
@@ -222,8 +222,12 @@ push_ns_config(Nodes) ->
             end
     end.
 
-start_link_rebalance(KeepNodes, EjectNodes,
-                     FailedNodes, DeltaNodes, DeltaRecoveryBucketNames) ->
+start_link_rebalance(#{keep_nodes := KeepNodes,
+                       eject_nodes := EjectNodes,
+                       failed_nodes := FailedNodes,
+                       delta_nodes := DeltaNodes,
+                       delta_recovery_buckets :=
+                           DeltaRecoveryBucketNames}) ->
     proc_lib:start_link(
       erlang, apply,
       [fun () ->
