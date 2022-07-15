@@ -1156,7 +1156,7 @@ handle_put_user_validated({User, Domain} = Identity, Name, Password, Roles,
 
     verify_domain_access(Req, Identity),
 
-    verify_ldap_access(Req, ?EXTERNAL_WRITE, LdapMapGroups),
+    verify_ldap_access(Req, LdapMapGroups),
 
     Reason = case menelaus_users:user_exists(Identity) of
                  true -> updated;
@@ -1610,13 +1610,13 @@ assert_no_users_upgrade() ->
               503, "Not allowed during cluster upgrade.")
     end.
 
-verify_ldap_access(Req, Permission, ExistingMapping) ->
-    verify_ldap_access(Req, Permission, ExistingMapping, false).
+verify_ldap_access(Req, ExistingMapping) ->
+    verify_ldap_access(Req, ExistingMapping, false).
 
-verify_ldap_access(_Req, _Permission, false, false) ->
+verify_ldap_access(_Req, false, false) ->
     ok;
-verify_ldap_access(Req, Permission, _ExistingMapping, _NewMapping) ->
-    menelaus_util:require_permission(Req, Permission).
+verify_ldap_access(Req, _ExistingMapping, _NewMapping) ->
+    menelaus_util:require_permission(Req, ?EXTERNAL_WRITE).
 
 handle_put_group(GroupId, Req) ->
     assert_groups_and_ldap_enabled(),
@@ -1636,7 +1636,7 @@ handle_put_group(GroupId, Req) ->
                           Roles ++ menelaus_users:get_group_roles(GroupId))),
 
                       verify_ldap_access(
-                        Req, ?EXTERNAL_WRITE,
+                        Req,
                         menelaus_users:has_group_ldap_ref(GroupId),
                         not menelaus_users:is_empty_ldap_group_ref(LDAPGroup)),
 
@@ -1692,8 +1692,7 @@ handle_delete_group(GroupId, Req) ->
     assert_groups_and_ldap_enabled(),
     verify_security_roles_access(
       Req, ?SECURITY_WRITE, menelaus_users:get_group_roles(GroupId)),
-    verify_ldap_access(Req, ?EXTERNAL_WRITE,
-                       menelaus_users:has_group_ldap_ref(GroupId)),
+    verify_ldap_access(Req, menelaus_users:has_group_ldap_ref(GroupId)),
 
     case menelaus_users:delete_group(GroupId) of
         ok ->
