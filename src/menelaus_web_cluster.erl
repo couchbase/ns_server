@@ -1005,30 +1005,30 @@ parse_list_param(Param, Params, Default) ->
 
 handle_rebalance(Req) ->
     Params = mochiweb_request:parse_post(Req),
-    case parse_list_param("knownNodes", Params, []) of
-        [] ->
-            reply_json(Req, {[{empty_known_nodes, 1}]}, 400);
-        KnownNodesS ->
-            EjectedNodesS = parse_list_param("ejectedNodes", Params, []),
-            UnknownNodes = [S || S <- EjectedNodesS ++ KnownNodesS,
-                                try list_to_existing_atom(S), false
-                                catch error:badarg -> true end],
-            case UnknownNodes of
-                [] ->
-                    DeltaRecoveryBuckets =
-                        parse_list_param("deltaRecoveryBuckets", Params, all),
-                    do_handle_rebalance(Req, KnownNodesS, EjectedNodesS,
-                                        DeltaRecoveryBuckets);
-                _ ->
-                    reply_json(Req, {[{mismatch, 1}]}, 400)
-            end
+    try parse_rebalance_params(Params) of
+        Parsed -> do_handle_rebalance(Req, Parsed)
+    catch Error ->
+            reply_json(Req, {[{Error, 1}]}, 400)
     end.
 
--spec do_handle_rebalance(any(), [string()], [string()],
-                          all | [bucket_name()]) -> any().
-do_handle_rebalance(Req, KnownNodesS, EjectedNodesS, DeltaRecoveryBuckets) ->
-    EjectedNodes = [list_to_existing_atom(N) || N <- EjectedNodesS],
-    KnownNodes = [list_to_existing_atom(N) || N <- KnownNodesS],
+parse_rebalance_params(Params) ->
+    KnownNodesS = parse_list_param("knownNodes", Params, []),
+    KnownNodesS =/= [] orelse throw(empty_known_nodes),
+
+    EjectedNodesS = parse_list_param("ejectedNodes", Params, []),
+    UnknownNodes = [S || S <- EjectedNodesS ++ KnownNodesS,
+                         try list_to_existing_atom(S), false
+                         catch error:badarg -> true end],
+    UnknownNodes =:= [] orelse throw(mismatch),
+
+    DeltaRecoveryBuckets =
+        parse_list_param("deltaRecoveryBuckets", Params, all),
+
+    [[list_to_existing_atom(N) || N <- KnownNodesS],
+     [list_to_existing_atom(N) || N <- EjectedNodesS],
+     DeltaRecoveryBuckets].
+
+do_handle_rebalance(Req, [KnownNodes, EjectedNodes, DeltaRecoveryBuckets]) ->
     case rebalance:start(KnownNodes, EjectedNodes, DeltaRecoveryBuckets) of
         already_balanced ->
             reply(Req, 200);
