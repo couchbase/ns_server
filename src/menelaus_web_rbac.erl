@@ -1128,15 +1128,7 @@ get_security_roles() ->
 verify_domain_access(Req, {_UserId, Domain})
   when Domain =:= local orelse Domain =:= external ->
     Permission = get_domain_access_permission(write, Domain),
-    do_verify_domain_access(Req, Permission).
-
-do_verify_domain_access(Req, Permission) ->
-    case menelaus_auth:has_permission(Permission, Req) of
-        true ->
-            ok;
-        false ->
-            menelaus_util:require_permission(Req, Permission)
-    end.
+    menelaus_util:require_permission(Req, Permission).
 
 handle_put_user_validated({User, Domain} = Identity, Name, Password, Roles,
                           Groups, Limits, Req) ->
@@ -1888,7 +1880,7 @@ verify_domain_access_for_profiles(_Req, _Op, _Identity, self) ->
     ok;
 verify_domain_access_for_profiles(Req, Op, {_, Domain}, _RawIdentity) ->
     Permission = get_domain_access_permission(Op, Domain),
-    do_verify_domain_access(Req, Permission).
+    menelaus_util:require_permission(Req, Permission).
 
 handle_get_profile(RawIdentity, Req) ->
     Identity = get_identity_for_profiles(RawIdentity, Req),
