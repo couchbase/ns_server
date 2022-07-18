@@ -1083,15 +1083,14 @@ validate_roles(Name, State) ->
     validator:validate(
       fun (RawRoles) ->
               Roles = parse_roles(RawRoles),
-
               BadRoles = [BadRole || BadRole = {error, _} <- Roles],
-              case BadRoles of
-                  [] ->
+              GoodRoles = Roles -- BadRoles,
+              {_, MoreBadRoles} =
+                  menelaus_roles:validate_roles(GoodRoles, Snapshot),
+              case {BadRoles, MoreBadRoles} of
+                  {[], []} ->
                       {value, Roles};
                   _ ->
-                      GoodRoles = Roles -- BadRoles,
-                      {_, MoreBadRoles} =
-                          menelaus_roles:validate_roles(GoodRoles, Snapshot),
                       {error, bad_roles_error(
                                 [Raw || {error, Raw} <- BadRoles] ++
                                     [role_to_string(R) || R <- MoreBadRoles])}
