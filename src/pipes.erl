@@ -21,7 +21,7 @@
 
 -export([compose/1, compose/2, run/3, run/2,
          fold/3, foreach/2, filter/1, filterfold/2, map/1, collect/0,
-         stream_list/1]).
+         stream_list/1, filtermap/1]).
 
 -export([read_file/1, read_file/2,
          write_file/1, write_file/2,
@@ -89,6 +89,18 @@ filterfold(Fun, AccInit) ->
 -spec map(fun ((Event1) -> Event2)) -> transducer(Event1, Event2).
 map(Fun) ->
     ?make_transducer(foreach(?producer(), ?cut(?yield(Fun(_))))).
+
+-spec filtermap(fun ((Event1) -> {true, Event2} | boolean())) -> transducer(Event1, Event2).
+filtermap(Fun) ->
+    ?make_transducer(
+      foreach(?producer(),
+              fun (Event) ->
+                  case Fun(Event) of
+                      {true, NewEvent} -> ?yield(NewEvent);
+                      true -> ?yield(Event);
+                      false -> ok
+                  end
+              end)).
 
 -spec stream_list([Elem]) -> producer(Elem).
 stream_list(List) ->

@@ -58,7 +58,8 @@
          handle_put_profile/2,
          handle_lookup_ldap_user/2,
          gen_password/1,
-         handle_get_uiroles/1
+         handle_get_uiroles/1,
+         handle_backup/1
 ]).
 
 -define(MIN_USERS_PAGE_SIZE, 2).
@@ -1983,6 +1984,222 @@ build_ui_values(scope_name, Scopes) ->
         {Name, Scope} <- Scopes];
 build_ui_values(collection_name, Collections) ->
     [build_ui_value(Name, []) || {Name, _} <- Collections].
+
+
+handle_backup(Req) ->
+    menelaus_util:assert_is_enterprise(),
+    validator:handle(
+      handle_backup(Req, _), Req, qs,
+      [validator:validate_multi_params(fun parse_backup_filter/1, include, _),
+       validator:validate_multi_params(fun parse_backup_filter/1, exclude, _)]).
+
+parse_backup_filter("user:local:" ++ WC) ->
+    case parse_backup_wc(WC) of
+        {value, Re} -> {value, {user, local, Re}};
+        {error, _} = Err -> Err
+    end;
+parse_backup_filter("user:external:" ++ WC) ->
+    case parse_backup_wc(WC) of
+        {value, Re} -> {value, {user, domain, Re}};
+        {error, _} = Err -> Err
+    end;
+parse_backup_filter("user:*:" ++ WC) ->
+    case parse_backup_wc(WC) of
+        {value, Re} -> {value, {user, any, Re}};
+        {error, _} = Err -> Err
+    end;
+parse_backup_filter("group:" ++ WC) ->
+    case parse_backup_wc(WC) of
+        {value, Re} -> {value, {group, Re}};
+        {error, _} = Err -> Err
+    end;
+parse_backup_filter("admin") ->
+    {value, admin};
+parse_backup_filter("*") ->
+    {value, any};
+parse_backup_filter("permission:" ++ Perm) ->
+    case parse_permission(Perm) of
+        error ->
+            {error, Perm ++ " - malformed permission"};
+        Permission ->
+            {value, {permission, Permission}}
+    end;
+parse_backup_filter(Invalid) ->
+    {error, Invalid ++ " -invalid filter"}.
+
+parse_backup_wc(WC) ->
+    Id = re:replace(WC, <<"\\*">>, <<"A">>, [global, {return, list}]),
+    case validate_cred(Id, username) of
+        true ->
+            Re = re:replace(WC, <<"\\*">>, <<".*">>, [global, {return, binary}]),
+            {ok, CRe} = re:compile(<<"^", Re/binary, "$">>),
+            {value, CRe};
+        Error ->
+            {error, Error}
+    end.
+
+handle_backup(Req, Params) ->
+    ExcludeFilters = proplists:get_all_values(exclude, Params),
+    IncludeFilters = proplists:get_all_values(include, Params),
+    UsersProducer =
+        pipes:compose([menelaus_users:select_users('_',
+                                                   [name, user_roles, groups]),
+                       security_filter(Req),
+                       backup_filter(ExcludeFilters, IncludeFilters),
+                       add_auth_transducer(),
+                       jsonify_backup_users(false)]),
+    GroupsProducer =
+        pipes:compose([menelaus_users:select_groups('_'),
+                       security_filter(Req),
+                       ldap_ref_filter(Req),
+                       backup_filter(ExcludeFilters, IncludeFilters),
+                       jsonify_backup_groups()]),
+
+    AdminProducer =
+        case ns_config_auth:get_admin_user_and_auth() of
+            {AdminName, {auth, AdminAuth}} ->
+                AdminId = {AdminName, admin},
+                AdminRoles = [{user_roles, menelaus_roles:get_roles(AdminId)}],
+                AdminObj = {{user, AdminId}, AdminRoles},
+                pipes:compose([?make_producer(?yield(AdminObj)),
+                               security_filter(Req),
+                               backup_filter(ExcludeFilters, IncludeFilters),
+                               pipes:map(fun ({U, P}) -> {U, P, AdminAuth} end),
+                               jsonify_backup_users(true),
+                               ?make_transducer(pipes:foreach(?producer(),
+                                                fun (P) ->
+                                                    ?yield({kv_start,
+                                                            <<"admin">>}),
+                                                    ?yield(P),
+                                                    ?yield(kv_end)
+                                                end))]);
+            _ ->
+                ?make_producer(ok)
+        end,
+    pipes:run(?make_producer(
+                 begin
+                    ?yield(object_start),
+                    ?yield({kv, {<<"version">>, <<"1">>}}),
+                    AdminProducer(?yield()),
+                    ?yield({kv_start, <<"users">>}),
+                    ?yield(array_start),
+                    UsersProducer(?yield()),
+                    ?yield(array_end),
+                    ?yield(kv_end),
+                    ?yield({kv_start, <<"groups">>}),
+                    ?yield(array_start),
+                    GroupsProducer(?yield()),
+                    ?yield(array_end),
+                    ?yield(kv_end),
+                    ?yield(object_end)
+                 end),
+              [sjson:encode_extended_json([{compact, true},
+                                           {strict, false}]),
+               pipes:simple_buffer(2048)],
+              menelaus_util:send_chunked(
+                Req, 200, [{"Content-Type", "application/json"}])).
+
+jsonify_backup_users(IsAdmin) ->
+    ?make_transducer(
+       begin
+           pipes:foreach(
+             ?producer(),
+             fun ({{user, {Id, Domain}}, Props, Auth}) ->
+                 Name = proplists:get_value(name, Props),
+                 Roles = proplists:get_value(user_roles, Props),
+                 Groups = proplists:get_value(groups, Props),
+                 Json = {[{id, list_to_binary(Id)}] ++
+                         [{domain, Domain} || not IsAdmin] ++
+                         [{groups, [list_to_binary(G)
+                                    || G <- Groups]} || Groups /= undefined] ++
+                         [{roles, [list_to_binary(role_to_string(R))
+                                   || R <- Roles]} || (not IsAdmin) andalso
+                                                      Roles /= undefined] ++
+                         [{name, list_to_binary(Name)} || Name /= undefined] ++
+                         [{auth, {Auth}}]},
+                 ?yield({json, Json})
+             end)
+       end).
+
+jsonify_backup_groups() ->
+    ?make_transducer(
+       begin
+           pipes:foreach(
+             ?producer(),
+             fun ({{group, Name}, Props}) ->
+                 Descr = proplists:get_value(description, Props),
+                 Roles = proplists:get_value(roles, Props),
+                 LdapRef = proplists:get_value(ldap_group_ref, Props),
+                 Json = {[{name, list_to_binary(Name)}] ++
+                         [{description, list_to_binary(Descr)}
+                          || Descr /= undefined] ++
+                         [{roles, [list_to_binary(role_to_string(R))
+                                   || R <- Roles]} || Roles /= undefined] ++
+                         [{ldap_group_ref, list_to_binary(LdapRef)}
+                          || LdapRef /= undefined]},
+                 ?yield({json, Json})
+             end)
+       end).
+
+add_auth_transducer() ->
+    pipes:filtermap(
+      fun ({{user, Identity}, Params}) ->
+          case menelaus_users:get_auth_info(Identity) of
+              false -> false;
+              Auth -> {true, {{user, Identity}, Params, Auth}}
+          end
+      end).
+
+backup_filter(Exclude, Include) ->
+    pipes:filterfold(?cut(apply_backup_filters(_1, Exclude, Include, _2)), #{}).
+
+apply_backup_filters(Obj, ExcludeFilters, IncludeFilters, Cache) ->
+    case any_backup_filter_matches(Obj, ExcludeFilters, Cache) of
+        {true, Cache2} ->
+            any_backup_filter_matches(Obj, IncludeFilters, Cache2);
+        {false, Cache2} ->
+            {true, Cache2}
+    end.
+
+any_backup_filter_matches(_Obj, [], Cache) -> {false, Cache};
+any_backup_filter_matches(Obj, [Filter | Tail], Cache) ->
+    case backup_filter_match(Filter, Obj, Cache) of
+        {true, NewCache} -> {true, NewCache};
+        {false, NewCache} -> any_backup_filter_matches(Obj, Tail, NewCache)
+    end.
+
+backup_filter_match(any, _, Cache) ->
+    {true, Cache};
+backup_filter_match({user, DomainFilter, Re}, {{user, {Id, Domain}}, _}, Cache) ->
+    {((DomainFilter == any) orelse (DomainFilter == Domain)) andalso
+     (match == re:run(Id, Re, [global, {capture, none}])), Cache};
+backup_filter_match({group, Re}, {{group, Name}, _}, Cache) ->
+    {match == re:run(Name, Re, [global, {capture, none}]), Cache};
+backup_filter_match(admin, {{user, {_, admin}}, _}, Cache) ->
+    {true, Cache};
+backup_filter_match({permission, Perm}, Obj, Cache) ->
+    {RoleNames, NewCache} =
+        case maps:find({roles, Perm}, Cache) of
+            {ok, R} -> {R, Cache};
+            error ->
+                R = get_roles_for_users_filtering(Perm),
+                RNames = [Name || {Name, _} <- R],
+                {RNames, Cache#{{roles, Perm} => RNames}}
+        end,
+
+    PermGroupsHash = maps:get({groups, Perm}, NewCache, #{}),
+
+    {Res, NewPermGroupsHash} =
+        case Obj of
+            {{user, _}, _} = User ->
+                has_role(User, RoleNames, PermGroupsHash);
+            {{group, Group}, _} ->
+                has_role_in_groups([Group], RoleNames, PermGroupsHash)
+        end,
+
+    {Res, NewCache#{{groups, Perm} => NewPermGroupsHash}};
+backup_filter_match(_, _, Cache) ->
+    {false, Cache}.
 
 -ifdef(TEST).
 role_to_string_test() ->

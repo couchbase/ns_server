@@ -24,6 +24,7 @@
          validate/3,
          validate_relative/4,
          validate_multiple/3,
+         validate_multi_params/3,
          json_array/3,
          get_value/2,
          convert/3,
