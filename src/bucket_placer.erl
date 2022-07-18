@@ -255,7 +255,7 @@ rebalance_zone(AllGroupNodes, KeepNodes, Buckets, Params, Snapshot) ->
                        end, Nodes)),
 
     case place_buckets_on_nodes(DesiredNodes, Buckets, Params, []) of
-        {ok, Servers} ->
+        {ok, Servers, _} ->
             {ok, Servers};
         error ->
             defragment_zone([N || {N, _} <- DesiredNodes], Buckets, Params)
@@ -267,11 +267,19 @@ defragment_zone(AllGroupNodes, KeepNodes, Buckets, Params) ->
     defragment_zone(DesiredNodes, Buckets, Params).
 
 defragment_zone(Nodes, Buckets, Params) ->
+    case do_defragment_zone(Nodes, Buckets, Params) of
+        {ok, Servers, _} ->
+            {ok, Servers};
+        error ->
+            error
+    end.
+
+do_defragment_zone(Nodes, Buckets, Params) ->
     EmptyZone = [{N, empty_node()} || N <- Nodes],
     place_buckets_on_nodes(EmptyZone, Buckets, Params, []).
 
-place_buckets_on_nodes(_Nodes, [], _Params, AccServers) ->
-    {ok, lists:reverse(AccServers)};
+place_buckets_on_nodes(Nodes, [], _Params, AccServers) ->
+    {ok, lists:reverse(AccServers), Nodes};
 place_buckets_on_nodes(Nodes, [{BucketName, Props} | Rest], Params,
                        AccServers) ->
     case calculate_desired_servers(Nodes, BucketName, Props, Params) of
@@ -289,6 +297,11 @@ place_buckets_on_nodes(Nodes, [{BucketName, Props} | Rest], Params,
                                    [Servers | AccServers])
     end.
 
+construct_json(error) ->
+    {[{kv, {[{error, <<"Need more space">>}]}}]};
+construct_json(#node{weight = W, memory_used = M, buckets = B}) ->
+    construct_json(W, maps:size(B), M).
+
 construct_json(Weight, NBuckets, Memory) ->
     {[{kv, {[{buckets, NBuckets}, {memory, Memory}, {weight, Weight}]}}]}.
 
@@ -302,16 +315,29 @@ get_node_status_fun(Snapshot) ->
 
 get_node_status_fun(Snapshot, #params{weight_limit = WeightLimit,
                                       tenant_limit = TenantLimit,
-                                      memory_quota = MemQuota}) ->
+                                      memory_quota = MemQuota} = Params) ->
     Limits = {limits, construct_json(WeightLimit, TenantLimit, MemQuota)},
-    {ok, NodesList} = on_zones(fun (_, Nodes) -> {ok, Nodes} end,
-                               get_eligible_buckets(Snapshot), Snapshot),
+    Buckets = get_eligible_buckets(Snapshot),
+
+    Fun =
+        fun (AllGroupNodes, Nodes) ->
+                case do_defragment_zone(AllGroupNodes, Buckets, Params) of
+                    error ->
+                        {ok, [{Name, {Node, error}} || {Name, Node} <- Nodes]};
+                    {ok, _Servers, DefragmentedNodes} ->
+                        {ok, [{Name, {Node, Defragmented}} ||
+                                 {{Name, Node}, {Name, Defragmented}} <-
+                                     lists:zip(Nodes, DefragmentedNodes)]}
+                end
+        end,
+
+    {ok, NodesList} = on_zones(Fun, Buckets, Snapshot),
     NodesMap = maps:from_list(lists:flatten(NodesList)),
     fun (Node) ->
             case maps:find(Node, NodesMap) of
-                {ok, #node{weight = W, memory_used = M, buckets = B}} ->
-                    [Limits,
-                     {utilization, construct_json(W, maps:size(B), M)}];
+                {ok, {N, D}} ->
+                    [Limits, {utilization, construct_json(N)},
+                     {defragmented, construct_json(D)}];
                 error ->
                     []
             end
@@ -488,6 +514,8 @@ bucket_placer_test_() ->
                  [{limits,
                    {[{kv, {[{buckets, 3}, {memory, 10}, {weight, 6}]}}]}},
                   {utilization,
+                   {[{kv, {[{buckets, 2}, {memory, 7}, {weight, 5}]}}]}},
+                  {defragmented,
                    {[{kv, {[{buckets, 2}, {memory, 7}, {weight, 5}]}}]}}],
                  Fun(a2))
       end},
