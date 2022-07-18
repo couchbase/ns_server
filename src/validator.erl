@@ -403,7 +403,7 @@ return_multi_value(LName, Values, #state{kv = Props} = State) ->
 
 apply_multi_params(Fun, Values) ->
     EvalRes = lists:map(Fun, Values),
-    case proplists:lookup_all(error, EvalRes) of
+    case proplists:get_all_values(error, EvalRes) of
         [] ->
             V = [Y || {_, Y} <- EvalRes],
             {values, V};
@@ -793,7 +793,7 @@ handle_multi_value_string_trim_invalid_test() ->
     StateArg = #state{kv = Kv},
     RState = trimmed_string_multi_value(key1, StateArg),
     #state{errors = RErrors} = RState,
-    ?assertEqual([{"key1",{error,"Value must be json string"}}], RErrors),
+    ?assertEqual([{"key1", "Value must be json string"}], RErrors),
 
     % State should remain unchanged on same key validation
     RState2 = trimmed_string_multi_value(key1, RState),
@@ -802,6 +802,6 @@ handle_multi_value_string_trim_invalid_test() ->
     % Validator for key2 should produce error
     RState3 = trimmed_string_multi_value(key2, RState2),
     #state{errors = RErrors2} = RState3,
-    ?assertEqual([{"key2",{error,"Value must be json string"}},
-                  {"key1",{error,"Value must be json string"}}], RErrors2).
+    ?assertEqual([{"key2", "Value must be json string"},
+                  {"key1", "Value must be json string"}], RErrors2).
 -endif.
