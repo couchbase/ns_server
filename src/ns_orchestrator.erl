@@ -46,7 +46,7 @@
          try_autofailover/2,
          needs_rebalance/0,
          start_link/0,
-         start_rebalance/3,
+         start_rebalance/4,
          retry_rebalance/4,
          stop_rebalance/0,
          start_recovery/1,
@@ -271,16 +271,19 @@ ensure_janitor_run(Item) ->
               end
       end, ?JANITOR_RUN_TIMEOUT, 1000).
 
--spec start_rebalance([node()], [node()], all | [bucket_name()]) ->
+-spec start_rebalance([node()], [node()], all | [bucket_name()],
+                      [list()]) ->
                              ok | in_progress | already_balanced |
                              nodes_mismatch | no_active_nodes_left |
                              in_recovery | delta_recovery_not_possible |
                              no_kv_nodes_left | {need_more_space, list()}.
-start_rebalance(KnownNodes, EjectNodes, DeltaRecoveryBuckets) ->
+start_rebalance(KnownNodes, EjectNodes, DeltaRecoveryBuckets,
+                DefragmentZones) ->
     call({maybe_start_rebalance,
           #{known_nodes => KnownNodes,
             eject_nodes => EjectNodes,
-            delta_recovery_buckets => DeltaRecoveryBuckets}}).
+            delta_recovery_buckets => DeltaRecoveryBuckets,
+            defragment_zones => DefragmentZones}}).
 
 retry_rebalance(rebalance, Params, Id, Chk) ->
     call({maybe_start_rebalance,

@@ -1007,8 +1007,10 @@ handle_rebalance(Req) ->
     Params = mochiweb_request:parse_post(Req),
     try parse_rebalance_params(Params) of
         Parsed -> do_handle_rebalance(Req, Parsed)
-    catch Error ->
-            reply_json(Req, {[{Error, 1}]}, 400)
+    catch Error when is_atom(Error) ->
+            reply_json(Req, {[{Error, 1}]}, 400);
+          Error when is_list(Error) ->
+            reply_text(Req, Error, 400)
     end.
 
 parse_rebalance_params(Params) ->
@@ -1024,12 +1026,31 @@ parse_rebalance_params(Params) ->
     DeltaRecoveryBuckets =
         parse_list_param("deltaRecoveryBuckets", Params, all),
 
+    DefragmentZones =
+        case parse_list_param("defragmentZones", Params, undefined) of
+            undefined ->
+                [];
+            DefragmentZonesS ->
+                bucket_placer:is_enabled() orelse
+                    throw("Option defragmentZones requires bucket placer to be "
+                          "enabled"),
+
+                DefragmentZonesB = [list_to_binary(Z) || Z <- DefragmentZonesS],
+                ZoneNames = [proplists:get_value(name, G) ||
+                                G <- ns_cluster_membership:server_groups()],
+                DefragmentZonesB -- ZoneNames =:= [] orelse
+                    throw("Nonexistent groups in defragmentZones list"),
+                DefragmentZonesB
+        end,
+
     [[list_to_existing_atom(N) || N <- KnownNodesS],
      [list_to_existing_atom(N) || N <- EjectedNodesS],
-     DeltaRecoveryBuckets].
+     DeltaRecoveryBuckets, DefragmentZones].
 
-do_handle_rebalance(Req, [KnownNodes, EjectedNodes, DeltaRecoveryBuckets]) ->
-    case rebalance:start(KnownNodes, EjectedNodes, DeltaRecoveryBuckets) of
+do_handle_rebalance(Req, [KnownNodes, EjectedNodes, DeltaRecoveryBuckets,
+                          DefragmentZones]) ->
+    case rebalance:start(KnownNodes, EjectedNodes, DeltaRecoveryBuckets,
+                         DefragmentZones) of
         already_balanced ->
             reply(Req, 200);
         in_progress ->

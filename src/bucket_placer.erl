@@ -17,7 +17,7 @@
 
 -export([is_enabled/0,
          place_bucket/2,
-         rebalance/1,
+         rebalance/2,
          get_node_status_fun/1,
          is_balanced/3]).
 
@@ -71,14 +71,19 @@ get_eligible_buckets(Snapshot) ->
                  ns_bucket:get_buckets(Snapshot)).
 
 on_zones(Fun, Buckets, Snapshot) ->
+    on_groups(fun (AllGroupNodes, _Group) ->
+                      Nodes = construct_zone(AllGroupNodes, Snapshot, Buckets),
+                      Fun(AllGroupNodes, Nodes)
+              end, Snapshot).
+
+on_groups(Fun, Snapshot) ->
     Groups = ns_cluster_membership:server_groups(Snapshot),
 
     Results =
         lists:map(
           fun (Group) ->
                   AllGroupNodes = proplists:get_value(nodes, Group),
-                  Nodes = construct_zone(AllGroupNodes, Snapshot, Buckets),
-                  Fun(AllGroupNodes, Nodes)
+                  Fun(AllGroupNodes, Group)
           end, Groups),
 
     {Good, Bad} =
@@ -186,10 +191,12 @@ priority({_, #node{weight = W1, buckets = BM1}},
             W1 =< W2
     end.
 
-rebalance(KeepNodes) ->
-    rebalance(KeepNodes, get_params(), get_snapshot()).
+rebalance(KeepNodes, undefined) ->
+    rebalance(KeepNodes, []);
+rebalance(KeepNodes, DefragmentZones) ->
+    rebalance(KeepNodes, DefragmentZones, get_params(), get_snapshot()).
 
-rebalance(KeepNodes, Params, Snapshot) ->
+rebalance(KeepNodes, DefragmentZones, Params, Snapshot) ->
     Buckets = get_eligible_buckets(Snapshot),
 
     SortedByWeight =
@@ -198,8 +205,20 @@ rebalance(KeepNodes, Params, Snapshot) ->
                                ns_bucket:get_weight(Props2)
                    end, Buckets),
 
-    case on_zones(rebalance(_, _, KeepNodes, SortedByWeight, Params),
-                  Buckets, Snapshot) of
+    Fun =
+        fun (AllGroupNodes, Group) ->
+                case lists:member(proplists:get_value(name, Group),
+                                  DefragmentZones) of
+                    true ->
+                        defragment_zone(AllGroupNodes, KeepNodes,
+                                        SortedByWeight, Params);
+                    false ->
+                        rebalance_zone(AllGroupNodes, KeepNodes, SortedByWeight,
+                                       Params, Snapshot)
+                end
+        end,
+
+    case on_groups(Fun, Snapshot) of
         {ok, Res} ->
             {ok, massage_rebalance_result(Res, SortedByWeight)};
         Error ->
@@ -224,7 +243,8 @@ massage_rebalance_result(Res, Buckets) ->
               end
       end, lists:zip(Buckets, zip_servers(Res, []))).
 
-rebalance(AllGroupNodes, Nodes, KeepNodes, Buckets, Params) ->
+rebalance_zone(AllGroupNodes, KeepNodes, Buckets, Params, Snapshot) ->
+    Nodes = construct_zone(AllGroupNodes, Snapshot, Buckets),
     DesiredNodes =
         misc:update_proplist(
           [{N, empty_node()} || N <- lists:filter(
@@ -238,14 +258,17 @@ rebalance(AllGroupNodes, Nodes, KeepNodes, Buckets, Params) ->
         {ok, Servers} ->
             {ok, Servers};
         error ->
-            EmptyZone = [{N, empty_node()} || {N, _} <- DesiredNodes],
-            case place_buckets_on_nodes(EmptyZone, Buckets, Params, []) of
-                {ok, Servers} ->
-                    {ok, Servers};
-                error ->
-                    error
-            end
+            defragment_zone([N || {N, _} <- DesiredNodes], Buckets, Params)
     end.
+
+defragment_zone(AllGroupNodes, KeepNodes, Buckets, Params) ->
+    DesiredNodes = lists:filter(lists:member(_, AllGroupNodes),
+                                KeepNodes),
+    defragment_zone(DesiredNodes, Buckets, Params).
+
+defragment_zone(Nodes, Buckets, Params) ->
+    EmptyZone = [{N, empty_node()} || N <- Nodes],
+    place_buckets_on_nodes(EmptyZone, Buckets, Params, []).
 
 place_buckets_on_nodes(_Nodes, [], _Params, AccServers) ->
     {ok, lists:reverse(AccServers)};
@@ -402,7 +425,7 @@ bucket_placer_test_() ->
                                             DesiredServers -- [c1], Props),
                                apply_bucket_to_snapshot(Name, NewProps, Acc)
                        end, S1, ns_bucket:get_buckets(S1)),
-                {rebalance(AllNodes -- [c1], Params, S2), S2}
+                {rebalance(AllNodes -- [c1], [], Params, S2), S2}
         end,
 
     [{"Bucket placement test",
@@ -471,18 +494,18 @@ bucket_placer_test_() ->
      {"Rebalance of balanced zone is a no op",
       fun () ->
               Snapshot1 = PreRebalanceSnapshot(3),
-              RV = rebalance(AllNodes, Params, Snapshot1),
+              RV = rebalance(AllNodes, [], Params, Snapshot1),
               ?assertEqual({ok, []}, RV)
       end},
      {"Rebalancing the node out",
       fun () ->
               Snapshot1 = PreRebalanceSnapshot(3),
-              RV = rebalance(AllNodes -- [c1], Params, Snapshot1),
+              RV = rebalance(AllNodes -- [c1], [], Params, Snapshot1),
               ?assertEqual({error, [z1]}, RV),
 
               Snapshot2 = SuccessPlacement("B2", [{width, 2}, {weight, 3}],
                                            Snapshot1),
-              RV1 = rebalance(AllNodes -- [c1], Params, Snapshot2),
+              RV1 = rebalance(AllNodes -- [c1], [], Params, Snapshot2),
               VerifyRebalance(RV1, [c1], Snapshot2)
       end},
      {"Recovery after failover",

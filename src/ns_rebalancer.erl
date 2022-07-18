@@ -227,7 +227,7 @@ start_link_rebalance(#{keep_nodes := KeepNodes,
                        failed_nodes := FailedNodes,
                        delta_nodes := DeltaNodes,
                        delta_recovery_buckets :=
-                           DeltaRecoveryBucketNames}) ->
+                           DeltaRecoveryBucketNames} = Params) ->
     proc_lib:start_link(
       erlang, apply,
       [fun () ->
@@ -253,7 +253,11 @@ start_link_rebalance(#{keep_nodes := KeepNodes,
 
                check_rebalance_condition(
                  fun () ->
-                         case bucket_placer:rebalance(KVKeep) of
+                         %% defragment_zones can be missing in map if called
+                         %% from pre-Elixir nodes
+                         case bucket_placer:rebalance(
+                                KVKeep, maps:get(defragment_zones, Params,
+                                                 undefined)) of
                              {ok, Res} ->
                                  ok = ns_bucket:multi_prop_update(
                                         desired_servers, Res),
