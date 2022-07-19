@@ -1004,10 +1004,29 @@ validate_password(State) ->
               end
       end, password, State).
 
-put_user_validators(Domain) ->
+put_user_validators(Domain, Req, GetUserIdFun) ->
+    ExtraRolesFun =
+        fun (State) ->
+            Id = {_, Domain} = GetUserIdFun(State),
+            %% Domain is validated above but it can fail the validation
+            %% so it will be undefined here and lead to get_roles crash
+            case Domain == local orelse Domain == external of
+                true -> menelaus_users:get_roles(Id);
+                false -> []
+            end ++
+            case validator:get_value(groups, State) of
+                undefined -> [];
+                Groups ->
+                    lists:append([menelaus_users:get_group_roles(G)
+                                  || G <- Groups])
+            end
+        end,
+
     [validator:touch(name, _),
-     validate_user_groups(groups, _),
-     validate_roles(roles, _)] ++
+     validate_user_groups(groups, Req, _),
+     validate_roles(roles, _),
+     validator_verify_security_roles_access(roles, Req, ?SECURITY_WRITE,
+                                            ExtraRolesFun, _)] ++
         case Domain of
             local ->
                 ValidateLimits = case cluster_compat_mode:is_cluster_71() of
@@ -1057,7 +1076,7 @@ bad_roles_error(BadRoles) ->
       "Cannot assign roles to user because the following roles are unknown,"
       " malformed or role parameters are undefined: [~s]", [Str]).
 
-validate_user_groups(Name, State) ->
+validate_user_groups(Name, Req, State) ->
     IsEnterprise = cluster_compat_mode:is_enterprise(),
     validator:validate(
       fun (GroupsRaw) when (GroupsRaw =/= "") andalso not IsEnterprise ->
@@ -1066,7 +1085,12 @@ validate_user_groups(Name, State) ->
               Groups = parse_groups(GroupsRaw),
               case lists:filter(?cut(not menelaus_users:group_exists(_)),
                                 Groups) of
-                  [] -> {value, Groups};
+                  [] ->
+                      HasLdapRef =
+                          lists:any(fun menelaus_users:has_group_ldap_ref/1,
+                                    Groups),
+                      verify_ldap_access(Req, HasLdapRef),
+                      {value, Groups};
                   BadGroups ->
                       BadGroupsStr = string:join(BadGroups, ","),
                       ErrorStr = io_lib:format("Groups do not exist: ~s",
@@ -1108,7 +1132,17 @@ handle_put_user_with_identity({_UserId, Domain} = Identity, Req) ->
                                         proplists:get_value(groups, Values),
                                         proplists:get_value(limits, Values),
                                         Req)
-      end, Req, form, put_user_validators(Domain)).
+      end, Req, form, put_user_validators(Domain, Req,
+                                          fun (_) -> Identity end)).
+
+validator_verify_security_roles_access(RolesName, Req, Permission,
+                                       ExtraRolesFun, State) ->
+    ExtraRoles = ExtraRolesFun(State),
+    validator:validate(
+      fun (Roles) ->
+          AllRoles = lists:usort(Roles ++ ExtraRoles),
+          verify_security_roles_access(Req, Permission, AllRoles)
+      end, RolesName, State).
 
 verify_security_roles_access(Req, Permission, Roles) ->
     case overlap(Roles, get_security_roles()) of
@@ -1132,23 +1166,9 @@ verify_domain_access(Req, {_UserId, Domain})
 
 handle_put_user_validated({User, Domain} = Identity, Name, Password, Roles,
                           Groups, Limits, Req) ->
-    GroupList = case Groups of
-                    undefined -> [];
-                    _ -> Groups
-                end,
-    GroupRoles = lists:concat([menelaus_users:get_group_roles(G)
-                                   || G <- GroupList]),
-    LdapMapGroups = lists:any(fun menelaus_users:has_group_ldap_ref/1,
-                              GroupList),
     UniqueRoles = lists:usort(Roles),
-    OldRoles = menelaus_users:get_roles(Identity),
-
-    verify_security_roles_access(
-      Req, ?SECURITY_WRITE, lists:usort(GroupRoles ++ Roles ++ OldRoles)),
 
     verify_domain_access(Req, Identity),
-
-    verify_ldap_access(Req, LdapMapGroups),
 
     Reason = case menelaus_users:user_exists(Identity) of
                  true -> updated;
@@ -1602,6 +1622,16 @@ assert_no_users_upgrade() ->
               503, "Not allowed during cluster upgrade.")
     end.
 
+validator_verify_group_ldap_access(LdapRefName, GetGroupIdFun, Req, State) ->
+    ExistingNonEmpty = menelaus_users:has_group_ldap_ref(GetGroupIdFun(State)),
+    NewNonEmpty =
+        case validator:get_value(LdapRefName, State) of
+            undefined -> false;
+            LdapRef -> not menelaus_users:is_empty_ldap_group_ref(LdapRef)
+        end,
+    verify_ldap_access(Req, ExistingNonEmpty, NewNonEmpty),
+    State.
+
 verify_ldap_access(Req, ExistingMapping) ->
     verify_ldap_access(Req, ExistingMapping, false).
 
@@ -1622,28 +1652,25 @@ handle_put_group(GroupId, Req) ->
                       UniqueRoles = lists:usort(Roles),
                       LDAPGroup = proplists:get_value(ldap_group_ref, Values),
 
-                      verify_security_roles_access(
-                        Req, ?SECURITY_WRITE,
-                        lists:usort(
-                          Roles ++ menelaus_users:get_group_roles(GroupId))),
-
-                      verify_ldap_access(
-                        Req,
-                        menelaus_users:has_group_ldap_ref(GroupId),
-                        not menelaus_users:is_empty_ldap_group_ref(LDAPGroup)),
-
                       do_store_group(GroupId, Description, UniqueRoles,
                                      LDAPGroup, Req)
-              end, Req, form, put_group_validators());
+              end, Req, form, put_group_validators(Req, fun (_) -> GroupId end));
         Error ->
             menelaus_util:reply_global_error(Req, Error)
     end.
 
-put_group_validators() ->
+put_group_validators(Req, GetGroupNameFun) ->
+    ExtraRolesFun = fun (State) ->
+                        menelaus_users:get_group_roles(GetGroupNameFun(State))
+                    end,
     [validator:touch(description, _),
      validator:required(roles, _),
      validate_roles(roles, _),
+     validator_verify_security_roles_access(roles, Req, ?SECURITY_WRITE,
+                                            ExtraRolesFun, _),
      validate_ldap_ref(ldap_group_ref, _),
+     validator_verify_group_ldap_access(ldap_group_ref,
+                                        GetGroupNameFun, Req, _),
      validator:unsupported(_)].
 
 validate_ldap_ref(Name, State) ->
