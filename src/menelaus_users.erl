@@ -430,12 +430,13 @@ build_auth({_, CurrentAuth}, Password) ->
             build_auth(Password)
     end.
 
--spec store_user(rbac_identity(), rbac_user_name(), rbac_password(),
+-spec store_user(rbac_identity(), rbac_user_name(),
+                 {password, rbac_password()} | {auth, rbac_auth()},
                  [rbac_role()], [rbac_group_id()],
                  [{atom(), [{atom(), term()}]}]) ->
-    {commit, ok} | {abort, {error, roles_validation, _}} |
+    {commit, ok} | {abort, {roles_validation, _}} |
     {abort, password_required} | {abort, too_many}.
-store_user({_UserName, Domain} = Identity, Name, Password, Roles,
+store_user({_UserName, Domain} = Identity, Name, PasswordOrAuth, Roles,
            Groups, Limits) ->
     UUID = get_user_uuid(Identity, misc:uuid_v4()),
     Props = [{name, Name} || Name =/= undefined] ++
@@ -446,18 +447,21 @@ store_user({_UserName, Domain} = Identity, Name, Password, Roles,
     CurrentAuth = replicated_dets:get(storage_name(), {auth, Identity}),
     case check_limit(Identity) of
         true ->
-            case Domain of
-                external ->
+            case {Domain, PasswordOrAuth} of
+                {external, _} ->
                     store_user_with_auth(Identity, Props, same, Roles, Limits,
                                          Snapshot);
-                local ->
+                {local, {password, Password}} ->
                     case build_auth(CurrentAuth, Password) of
                         password_required ->
                             {abort, password_required};
                         Auth ->
                             store_user_with_auth(Identity, Props, Auth, Roles,
                                                  Limits, Snapshot)
-                    end
+                    end;
+                {local, {auth, Auth}} ->
+                    store_user_with_auth(Identity, Props, Auth, Roles,
+                                         Limits, Snapshot)
             end;
         false ->
             {abort, too_many}
@@ -491,7 +495,7 @@ store_user_with_auth(Identity, Props, Auth, Roles, Limits, Snapshot) ->
                                       Auth, Limits),
             {commit, ok};
         {_, BadRoles} ->
-            {abort, {error, roles_validation, BadRoles}}
+            {abort, {roles_validation, BadRoles}}
     end.
 
 store_user_validated(Identity, Props, Auth, Limits) ->

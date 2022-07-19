@@ -67,6 +67,9 @@
         {rbac_permission_object(), rbac_operation()}.
 -type rbac_all_param_values() :: [{[atom()], [[rbac_role_param()]]}].
 
+-type rbac_auth() :: [{AuthType :: binary(),
+                       {[{Key :: binary(), Value :: binary() | integer()}]}}].
+
 -define(RBAC_SCOPE_PARAMS, [bucket_name, scope_name]).
 -define(RBAC_COLLECTION_PARAMS, [bucket_name, scope_name, collection_name]).
 

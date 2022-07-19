@@ -1078,6 +1078,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, security], write},
                      fun menelaus_web_rbac:handle_put_profile/2,
                      [{UserId, Domain}]};
+                ["settings", "rbac", "backup"] ->
+                    {{[admin, security], write},
+                     fun menelaus_web_rbac:handle_backup_restore/1};
                 ["pools", "default", "buckets", Id, "scopes"] ->
                     {{[{collection, [Id, any, any]}, collections], write},
                      fun menelaus_web_collections:handle_set_manifest/2, [Id]};

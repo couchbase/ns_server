@@ -59,7 +59,8 @@
          handle_lookup_ldap_user/2,
          gen_password/1,
          handle_get_uiroles/1,
-         handle_backup/1
+         handle_backup/1,
+         handle_backup_restore/1
 ]).
 
 -define(MIN_USERS_PAGE_SIZE, 2).
@@ -1004,7 +1005,8 @@ validate_password(State) ->
               end
       end, password, State).
 
-put_user_validators(Domain, Req, GetUserIdFun) ->
+put_user_validators(Req, GetUserIdFun, GroupCheckFun, ValidatePassword,
+                    ValidateLimits) ->
     ExtraRolesFun =
         fun (State) ->
             Id = {_, Domain} = GetUserIdFun(State),
@@ -1023,21 +1025,16 @@ put_user_validators(Domain, Req, GetUserIdFun) ->
         end,
 
     [validator:touch(name, _),
-     validate_user_groups(groups, Req, _),
+     validate_user_groups(groups, GroupCheckFun, Req, _),
      validate_roles(roles, _),
      validator_verify_security_roles_access(roles, Req, ?SECURITY_WRITE,
                                             ExtraRolesFun, _)] ++
-        case Domain of
-            local ->
-                ValidateLimits = case cluster_compat_mode:is_cluster_71() of
-                                     true -> [validate_limits(_)];
-                                     false -> []
-                                 end,
-                [validate_password(_) | ValidateLimits];
-            external ->
-                []
-        end ++
-        [validator:unsupported(_)].
+    [validate_password(_) || ValidatePassword] ++
+    case ValidateLimits andalso cluster_compat_mode:is_cluster_71() of
+        true -> [validate_limits(_)];
+        false -> []
+    end ++
+    [validator:unsupported(_)].
 
 service_user_limit_validators(clusterManager) ->
     [validator:integer(num_concurrent_requests, 1, infinity, _),
@@ -1076,14 +1073,14 @@ bad_roles_error(BadRoles) ->
       "Cannot assign roles to user because the following roles are unknown,"
       " malformed or role parameters are undefined: [~s]", [Str]).
 
-validate_user_groups(Name, Req, State) ->
+validate_user_groups(Name, GroupCheckFun, Req, State) ->
     IsEnterprise = cluster_compat_mode:is_enterprise(),
     validator:validate(
       fun (GroupsRaw) when (GroupsRaw =/= "") andalso not IsEnterprise ->
               {error, "User groups require enterprise edition"};
           (GroupsRaw) ->
               Groups = parse_groups(GroupsRaw),
-              case lists:filter(?cut(not menelaus_users:group_exists(_)),
+              case lists:filter(?cut(not GroupCheckFun(_)),
                                 Groups) of
                   [] ->
                       HasLdapRef =
@@ -1125,15 +1122,12 @@ validate_roles(Name, State) ->
 handle_put_user_with_identity({_UserId, Domain} = Identity, Req) ->
     validator:handle(
       fun (Values) ->
-              handle_put_user_validated(Identity,
-                                        proplists:get_value(name, Values),
-                                        proplists:get_value(password, Values),
-                                        proplists:get_value(roles, Values, []),
-                                        proplists:get_value(groups, Values),
-                                        proplists:get_value(limits, Values),
-                                        Req)
-      end, Req, form, put_user_validators(Domain, Req,
-                                          fun (_) -> Identity end)).
+              verify_domain_access(Req, Identity),
+              reply(do_store_user(Identity, Values, Req), Req)
+      end, Req, form, put_user_validators(Req,
+                                          fun (_) -> Identity end,
+                                          menelaus_users:group_exists(_),
+                                          Domain == local, Domain == local)).
 
 validator_verify_security_roles_access(RolesName, Req, Permission,
                                        ExtraRolesFun, State) ->
@@ -1164,17 +1158,24 @@ verify_domain_access(Req, {_UserId, Domain})
     Permission = get_domain_access_permission(write, Domain),
     menelaus_util:require_permission(Req, Permission).
 
-handle_put_user_validated({User, Domain} = Identity, Name, Password, Roles,
-                          Groups, Limits, Req) ->
+do_store_user({User, Domain} = Identity, Props, Req) ->
+    Name = proplists:get_value(name, Props),
+    PassOrAuth = case proplists:get_value(auth, Props) of
+                     undefined ->
+                         {password, proplists:get_value(password, Props)};
+                     A ->
+                         {auth, A}
+                 end,
+    Roles = proplists:get_value(roles, Props, []),
+    Groups = proplists:get_value(groups, Props),
+    Limits = proplists:get_value(limits, Props),
     UniqueRoles = lists:usort(Roles),
-
-    verify_domain_access(Req, Identity),
 
     Reason = case menelaus_users:user_exists(Identity) of
                  true -> updated;
                  false -> added
              end,
-    case menelaus_users:store_user(Identity, Name, Password,
+    case menelaus_users:store_user(Identity, Name, PassOrAuth,
                                    UniqueRoles, Groups, Limits) of
         {commit, _} ->
             ns_audit:set_user(Req, Identity, UniqueRoles, Name, Groups,
@@ -1185,18 +1186,8 @@ handle_put_user_validated({User, Domain} = Identity, Name, Password, Roles,
                         SanitizedUser]),
             event_log:add_log(user_added, [{user, SanitizedUser},
                                            {domain, Domain}]),
-            reply_put_delete_users(Req);
-        {abort, {error, roles_validation, UnknownRoles}} ->
-            menelaus_util:reply_error(
-              Req, "roles",
-              bad_roles_error([role_to_string(UR) || UR <- UnknownRoles]));
-        {abort, password_required} ->
-            menelaus_util:reply_error(Req, "password",
-                                      "Password is required for new user.");
-        {abort, too_many} ->
-            menelaus_util:reply_error(
-              Req, "_",
-              "You cannot create any more users on Community Edition.")
+            ok;
+        {abort, Error} -> {error, Error}
     end.
 
 handle_delete_user(Domain, UserId, Req) ->
@@ -1647,13 +1638,7 @@ handle_put_group(GroupId, Req) ->
         true ->
             validator:handle(
               fun (Values) ->
-                      Description = proplists:get_value(description, Values),
-                      Roles = proplists:get_value(roles, Values),
-                      UniqueRoles = lists:usort(Roles),
-                      LDAPGroup = proplists:get_value(ldap_group_ref, Values),
-
-                      do_store_group(GroupId, Description, UniqueRoles,
-                                     LDAPGroup, Req)
+                      reply(do_store_group(GroupId, Values, Req), Req)
               end, Req, form, put_group_validators(Req, fun (_) -> GroupId end));
         Error ->
             menelaus_util:reply_global_error(Req, Error)
@@ -1686,7 +1671,11 @@ validate_ldap_ref(Name, State) ->
               end
       end, Name, State).
 
-do_store_group(GroupId, Description, UniqueRoles, LDAPGroup, Req) ->
+do_store_group(GroupId, Props, Req) ->
+    Description = proplists:get_value(description, Props),
+    Roles = proplists:get_value(roles, Props),
+    UniqueRoles = lists:usort(Roles),
+    LDAPGroup = proplists:get_value(ldap_group_ref, Props),
     Reason = case menelaus_users:group_exists(GroupId) of
                  true -> updated;
                  false -> added
@@ -1700,12 +1689,24 @@ do_store_group(GroupId, Description, UniqueRoles, LDAPGroup, Req) ->
                                                                  [add_salt]),
             ?log_debug("Group added: ~p, ~p", [GroupId, SanitizedGroupId]),
             event_log:add_log(group_added, [{group, SanitizedGroupId}]),
-            menelaus_util:reply_json(Req, <<>>, 200);
-        {error, {roles_validation, UnknownRoles}} ->
-            menelaus_util:reply_error(
-              Req, "roles",
-              bad_roles_error([role_to_string(UR) || UR <- UnknownRoles]))
+            ok;
+        {error, {roles_validation, _UnknownRoles}} = Error ->
+            Error
     end.
+
+reply(ok, Req) ->
+    menelaus_util:reply_json(Req, <<>>, 200);
+reply({error, {roles_validation, UnknownRoles}}, Req) ->
+    menelaus_util:reply_error(
+      Req, "roles",
+      bad_roles_error([role_to_string(UR) || UR <- UnknownRoles]));
+reply({error, password_required}, Req) ->
+    menelaus_util:reply_error(Req, "password",
+                              "Password is required for new user.");
+reply({error, too_many}, Req) ->
+    menelaus_util:reply_error(
+      Req, "_",
+      "You cannot create any more users on Community Edition.").
 
 handle_delete_group(GroupId, Req) ->
     assert_groups_and_ldap_enabled(),
@@ -2227,6 +2228,241 @@ backup_filter_match({permission, Perm}, Obj, Cache) ->
     {Res, NewCache#{{groups, Perm} => NewPermGroupsHash}};
 backup_filter_match(_, _, Cache) ->
     {false, Cache}.
+
+handle_backup_restore(Req) ->
+    menelaus_util:assert_is_enterprise(),
+    validator:handle(
+      handle_backup_restore_validated(Req, _), Req, form,
+      [validator:required(backup, _),
+       validator:json(
+         backup,
+         [validator:required(version, _),
+          validator:validate(
+            fun (<<"1">>) -> {value, 1};
+                (Vsn) -> {error, io_lib:format("Unsupported backup version: ~p",
+                                               [Vsn])}
+            end, version, _),
+          validate_backup_admin(admin, _),
+          validate_backup_groups(groups, Req, _),
+          validator:default(groups, [], _),
+          validate_backup_users(users, groups, Req, _),
+          validator:default(users, [], _),
+          validator:unsupported(_)], _)]).
+
+handle_backup_restore_validated(Req, Params) ->
+    Backup = proplists:get_value(backup, Params),
+    Admin = proplists:get_value(admin, Backup),
+    case Admin of
+        undefined -> ok;
+        _ ->
+            AdminId = proplists:get_value(id, Admin),
+            AdminAuth = proplists:get_value(auth, Admin),
+            ok = ns_config_auth:set_admin_with_auth(AdminId, AdminAuth),
+            ns_audit:password_change(Req, {AdminId, admin}),
+            menelaus_ui_auth:reset()
+    end,
+    Groups = proplists:get_value(groups, Backup),
+    lists:foreach(
+      fun ({GroupProps}) ->
+          GroupId = proplists:get_value(name, GroupProps),
+          ok = do_store_group(GroupId, proplists:delete(name, GroupProps), Req)
+      end, Groups),
+
+    Users = proplists:get_value(users, Backup),
+    lists:foreach(
+      fun ({UserProps}) ->
+          Id = proplists:get_value(id, UserProps),
+          Domain = proplists:get_value(domain, UserProps),
+          Identity = {Id, Domain},
+          UserProps2 = proplists:delete(domain,
+                                        proplists:delete(id, UserProps)),
+          case do_store_user(Identity, UserProps2, Req) of
+              ok -> ok;
+              {error, too_many} ->
+                  Msg = <<"You cannot create any more users">>,
+                  menelaus_util:global_error_exception(400, Msg)
+          end
+      end, Users),
+    reply(ok, Req).
+
+validate_backup_admin(Name, State) ->
+    validator:decoded_json(
+      Name,
+      [validator:required(id, _),
+       validator:string(id, _),
+       validator_validate_id(id, _),
+       validator:required(auth, _),
+       validate_auth(auth, _),
+       validator:validate(
+         fun (_) ->
+             case ns_config_auth:is_system_provisioned() of
+                 true -> ok;
+                 false ->
+                     {error, "Can't import admin, system is not provisioned"}
+             end
+         end, id, _),
+       validator:unsupported(_)],
+      State).
+
+validate_backup_users(Name, GroupsName, Req, State) ->
+    ParsedGroups = case validator:get_value(GroupsName, State) of
+                       undefined -> [];
+                       G -> G
+                   end,
+    GroupsMap = maps:from_list([{proplists:get_value(name, GProps), true}
+                                || {GProps} <- ParsedGroups]),
+    GroupExistsFun =
+        fun (G) ->
+            maps:is_key(G, GroupsMap) orelse menelaus_users:group_exists(G)
+        end,
+    GetUserIdFun = fun (S) ->
+                       {validator:get_value(id, S),
+                        validator:get_value(domain, S)}
+                   end,
+
+    validator:json_array(
+      Name,
+      [validator:required(id, _),
+       validator:string(id, _),
+       validator_validate_id(id, _),
+       validator:default(domain, <<"local">>, _),
+       validator:string(domain, _),
+       validator:validate(
+         fun (D) ->
+             case domain_to_atom(D) of
+                 unknown -> {error, io_lib:format("invalid domain: ~s", [D])};
+                 DAtom ->
+                    verify_domain_access(Req, {"", DAtom}),
+                    {value, DAtom}
+             end
+         end, domain, _),
+       validator:string(name, _),
+       validator:default(roles, [], _),
+       validator:string_array(roles, _),
+       validator_join(roles, ",", _),
+       validator:string_array(groups, _),
+       validator_join(groups, ",", _),
+       validate_auth(auth, _) |
+       put_user_validators(Req, GetUserIdFun, GroupExistsFun, false, false)],
+      State).
+
+validator_join(Name, Sep, State) ->
+    validator:validate(?cut({value, lists:flatten(lists:join(Sep, _))}),
+                       Name, State).
+
+validate_auth(Name, State) ->
+    State1 =
+        case validator:get_value(domain, State) of
+            local -> validator:required(auth, State);
+            _ -> State
+        end,
+    State2 = convert_to_json_obj(
+               Name,
+               validator:decoded_json(
+                 Name,
+                 [validate_hash_auth(hash, _),
+                  validate_scram_auth('scram-sha-512', _),
+                  validate_scram_auth('scram-sha-256', _),
+                  validate_scram_auth('scram-sha-1', _),
+                  validator:unsupported(_)],
+                 State1)),
+    validator:validate(
+      fun ({AuthProps}) -> {value, AuthProps} end, Name, State2).
+
+convert_to_json_obj(Name, State) ->
+    validator:validate(
+      fun (Props) ->
+          {value, {lists:map(
+                     fun ({Key, Value}) ->
+                         {atom_to_binary(Key), Value}
+                     end,
+                     Props)}}
+      end, Name, State).
+
+validate_hash_auth(Name, State) ->
+    convert_to_json_obj(
+      Name,
+      validator:decoded_json(
+        Name,
+        [validator:required(algorithm, _),
+         validator:one_of(algorithm,
+                          [?ARGON2ID_HASH, ?PBKDF2_HASH, ?SHA1_HASH], _),
+         validator:required(hash, _),
+         base64_binary(hash, _),
+         fun (S) ->
+             Alg = validator:get_value(algorithm, S),
+             functools:chain(S, alg_hash_validators(Alg))
+         end,
+         validator:unsupported(_)],
+        State)).
+
+alg_hash_validators(?ARGON2ID_HASH) ->
+    [validator:required(salt, _),
+     base64_binary(salt, _),
+     validator:required(memory, _),
+     validator:integer(memory, ?ARGON_MEM_MIN, ?ARGON_MEM_MAX, _),
+     validator:required(time, _),
+     validator:integer(time, ?ARGON_TIME_MIN, ?ARGON_TIME_MAX, _),
+     validator:required(parallelism, _),
+     validator:validate(fun (1) -> ok;
+                            (_) -> {error, "Parallelism must be 1"}
+                        end, parallelism, _)];
+alg_hash_validators(?PBKDF2_HASH) ->
+    [validator:required(salt, _),
+     base64_binary(salt, _),
+     validator:required(iterations, _),
+     validator:integer(iterations, ?PBKDF2_ITER_MIN, ?PBKDF2_ITER_MAX, _)];
+alg_hash_validators(?SHA1_HASH) ->
+    [validator:required(salt, _),
+     base64_binary(salt, _)].
+
+validate_scram_auth(Name, State) ->
+    convert_to_json_obj(
+      Name,
+      validator:decoded_json(
+        Name,
+        [validator:required(iterations, _),
+         validator:integer(iterations, ?PBKDF2_ITER_MIN, ?PBKDF2_ITER_MAX, _),
+         validator:required(salt, _),
+         base64_binary(salt, _),
+         validator:required(server_key, _),
+         base64_binary(server_key, _),
+         validator:required(stored_key, _),
+         base64_binary(stored_key, _),
+         validator:unsupported(_)],
+        State)).
+
+base64_binary(Name, State) ->
+    validator:validate(
+      fun (B) ->
+              try base64:decode(B) of _ -> ok
+              catch _:_ -> {error, "Value must be a base64 encoded binary"}
+              end
+      end, Name, State).
+
+validate_backup_groups(Name, Req, State) ->
+    validator:json_array(
+      Name,
+      [validator:required(name, _),
+       validator:string(name, _),
+       validator_validate_id(name, _),
+       validator:string(description, _),
+       validator:string(ldap_group_ref, _),
+       validator:default(roles, [], _),
+       validator:string_array(roles, _),
+       %% need this step because validate_roles expects it to be a comma
+       %% separated list of roles
+       validator_join(roles, ",", _) |
+       put_group_validators(Req, validator:get_value(name, _))], State).
+
+validator_validate_id(Name, State) ->
+   validator:validate(fun (Group) ->
+                          BinName = atom_to_binary(Name),
+                          case validate_id(Group, BinName) of
+                              true -> ok;
+                              Error -> {error, Error}
+                          end
+                      end, Name, State).
 
 -ifdef(TEST).
 role_to_string_test() ->

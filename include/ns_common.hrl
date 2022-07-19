@@ -323,6 +323,14 @@
 -define(SCRAM_SALT_KEY,       <<"salt">>).
 -define(SCRAM_ITERATIONS_KEY, <<"iterations">>).
 
+-define(ARGON_MEM_MIN, 8_192).
+-define(ARGON_MEM_MAX, 4_398_046_510_080).
+-define(ARGON_TIME_MIN, 1).
+-define(ARGON_TIME_MAX, 4_294_967_295).
+
+-define(PBKDF2_ITER_MIN, 1).
+-define(PBKDF2_ITER_MAX, 10_000_000).
+
 %% Pre-elixir keys (do not change these values):
 -define(OLD_HASH_KEY,             <<"h">>).
 -define(OLD_SCRAM_SALT_KEY,       <<"s">>).

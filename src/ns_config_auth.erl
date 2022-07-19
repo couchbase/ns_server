@@ -15,6 +15,7 @@
 
 -export([authenticate/2,
          set_admin_credentials/2,
+         set_admin_with_auth/2,
          get_user/1,
          get_password/1,
          get_password/2,
@@ -31,8 +32,10 @@ admin_cfg_key() ->
     rest_creds.
 
 set_admin_credentials(User, Password) ->
-    Auth = {auth, menelaus_users:build_auth(Password)},
-    ns_config:set(admin_cfg_key(), {User, Auth}).
+    set_admin_with_auth(User, menelaus_users:build_auth(Password)).
+
+set_admin_with_auth(User, Auth) ->
+    ns_config:set(admin_cfg_key(), {User, {auth, Auth}}).
 
 get_admin_user_and_auth() ->
     get_admin_user_and_auth(ns_config:latest()).
