@@ -80,11 +80,8 @@ loop(GetNodes, StorageFrontend, OldRemoteNodes) ->
                         pipes:foreach(
                           Producer,
                           fun (Docs) ->
-                                  lists:foreach(
-                                    fun (Node) ->
-                                            replicate_changes_to_node(
-                                              StorageFrontend, Node, Docs)
-                                    end, NewNodes)
+                              replicate_changes_to_nodes(StorageFrontend,
+                                                         NewNodes, Docs)
                           end)
                 end,
                 ActualNodes;
@@ -115,16 +112,23 @@ loop(GetNodes, StorageFrontend, OldRemoteNodes) ->
 
     loop(GetNodes, StorageFrontend, NewRemoteNodes).
 
-replicate_changes_to_node(StorageFrontend, Node, {batch, Docs})
+replicate_changes_to_nodes(StorageFrontend, Nodes, {batch, Docs})
   when is_list(Docs) andalso Docs =/= [] ->
     CompressedBatch = misc:compress(Docs),
-    ?log_debug("Sending batch of size ~p to ~p", [size(CompressedBatch), Node]),
-    gen_server:cast({StorageFrontend, Node}, {replicated_batch, CompressedBatch});
-replicate_changes_to_node(StorageFrontend, Node, Docs) when is_list(Docs) ->
+    ?log_debug("Sending batch of size ~p to ~p", [size(CompressedBatch), Nodes]),
     lists:foreach(
-      fun ({Id, Doc}) ->
-              replicate_change_to_node(StorageFrontend, Node, Id, Doc)
-      end, Docs).
+      fun (Node) ->
+          gen_server:cast({StorageFrontend, Node},
+                          {replicated_batch, CompressedBatch})
+      end, Nodes);
+replicate_changes_to_nodes(StorageFrontend, Nodes, Docs) when is_list(Docs) ->
+    lists:foreach(
+      fun (Node) ->
+          lists:foreach(
+            fun ({Id, Doc}) ->
+                replicate_change_to_node(StorageFrontend, Node, Id, Doc)
+            end, Docs)
+      end, Nodes).
 
 replicate_change_to_node(StorageFrontend, Node, Id, Doc) ->
     ?log_debug("Sending ~p to ~p", [ns_config_log:tag_user_data(Id), Node]),
