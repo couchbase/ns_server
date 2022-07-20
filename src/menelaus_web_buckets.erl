@@ -845,51 +845,64 @@ parse_bucket_params(Ctx, Params) ->
 
 parse_bucket_params_without_warnings(Ctx, Params) ->
     {OKs, Errors} = basic_bucket_params_screening(Ctx ,Params),
-    ClusterStorageTotals = Ctx#bv_ctx.cluster_storage_totals,
     IsNew = Ctx#bv_ctx.new,
     CurrentBucket = proplists:get_value(currentBucket, OKs),
-    HasRAMQuota = lists:keyfind(ram_quota, 1, OKs) =/= false,
-    RAMSummary = if
-                     HasRAMQuota ->
-                         interpret_ram_quota(Ctx, CurrentBucket, OKs,
-                                             ClusterStorageTotals);
-                     true ->
-                         interpret_ram_quota(Ctx, CurrentBucket,
-                                             [{ram_quota, 0} | OKs],
-                                             ClusterStorageTotals)
-                 end,
-    HDDSummary = interpret_hdd_quota(CurrentBucket, OKs, ClusterStorageTotals, Ctx),
-    JSONSummaries = [{ramSummary, {ram_summary_to_proplist(RAMSummary)}},
-                     {hddSummary, {hdd_summary_to_proplist(HDDSummary)}}],
-    Errors2 = case {CurrentBucket, IsNew} of
-                  {undefined, _} -> Errors;
-                  {_, true} -> Errors;
-                  {_, false} ->
-                      case {proplists:get_value(bucketType, OKs),
-                            ns_bucket:bucket_type(CurrentBucket)} of
-                          {undefined, _} -> Errors;
-                          {NewType, NewType} -> Errors;
-                          {_NewType, _OldType} ->
-                              [{bucketType, <<"Cannot change bucket type.">>}
-                               | Errors]
-                      end
-              end,
-    RAMErrors =
-        if
-            RAMSummary#ram_summary.free < 0 ->
-                [{ramQuota, <<"RAM quota specified is too large to be provisioned into this cluster.">>}];
-            RAMSummary#ram_summary.this_alloc < RAMSummary#ram_summary.this_used ->
-                [{ramQuota, <<"RAM quota cannot be set below current usage.">>}];
-            true ->
-                []
-        end,
-    TotalErrors = RAMErrors ++ Errors2,
-    if
-        TotalErrors =:= [] ->
+
+    {RAMErrors, JSONSummaries} =
+        process_ram_and_storage(Ctx, CurrentBucket, OKs),
+
+    case RAMErrors ++ Errors ++
+        validate_bucket_type(CurrentBucket, IsNew, OKs) of
+        [] ->
             {ok, OKs, JSONSummaries};
-        true ->
+        TotalErrors ->
             {errors, TotalErrors, JSONSummaries, OKs}
     end.
+
+validate_bucket_type(undefined, _IsNew, _Props) ->
+    [];
+validate_bucket_type(_, true, _Props) ->
+    [];
+validate_bucket_type(CurrentBucket, false, Props) ->
+    CurrentType = ns_bucket:bucket_type(CurrentBucket),
+    case proplists:get_value(bucketType, Props) of
+        undefined ->
+            [];
+        CurrentType ->
+            [];
+        _ ->
+            [{bucketType, <<"Cannot change bucket type.">>}]
+    end.
+
+process_ram_and_storage(Ctx, CurrentBucket, ParsedProps) ->
+    ClusterStorageTotals = Ctx#bv_ctx.cluster_storage_totals,
+
+    Props = case proplists:is_defined(ram_quota, ParsedProps) of
+                false ->
+                    [{ram_quota, 0} | ParsedProps];
+                true ->
+                    ParsedProps
+            end,
+
+    RAMSummary =
+        interpret_ram_quota(Ctx, CurrentBucket, Props, ClusterStorageTotals),
+
+    HDDSummary =
+        interpret_hdd_quota(CurrentBucket, Props, ClusterStorageTotals, Ctx),
+
+    JSONSummaries = [{ramSummary, {ram_summary_to_proplist(RAMSummary)}},
+                     {hddSummary, {hdd_summary_to_proplist(HDDSummary)}}],
+
+    {validate_ram(RAMSummary), JSONSummaries}.
+
+validate_ram(#ram_summary{free = Free}) when Free < 0 ->
+    [{ramQuota, <<"RAM quota specified is too large to be provisioned into "
+                  "this cluster.">>}];
+validate_ram(#ram_summary{this_alloc = Alloc, this_used = Used})
+  when Alloc < Used ->
+    [{ramQuota, <<"RAM quota cannot be set below current usage.">>}];
+validate_ram(_) ->
+    [].
 
 additional_bucket_params_validation(Params, Ctx) ->
     NumReplicas = get_value_from_parms_or_bucket(num_replicas, Params, Ctx),
