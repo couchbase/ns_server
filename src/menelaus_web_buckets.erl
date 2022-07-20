@@ -875,6 +875,18 @@ validate_bucket_type(CurrentBucket, false, Props) ->
     end.
 
 process_ram_and_storage(Ctx, CurrentBucket, ParsedProps) ->
+    PropsToCheck = case CurrentBucket of
+                       undefined ->
+                           ParsedProps;
+                       _ ->
+                           CurrentBucket
+                   end,
+    process_ram_and_storage(Ctx, CurrentBucket, ParsedProps,
+                            proplists:is_defined(width, PropsToCheck)).
+
+process_ram_and_storage(_Ctx, _CurrentBucket, _ParsedProps, true) ->
+    {[], undefined};
+process_ram_and_storage(Ctx, CurrentBucket, ParsedProps, false) ->
     ClusterStorageTotals = Ctx#bv_ctx.cluster_storage_totals,
 
     Props = case proplists:is_defined(ram_quota, ParsedProps) of
