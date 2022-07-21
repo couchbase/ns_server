@@ -17,7 +17,7 @@
 
 -behaviour(replicated_storage).
 
--export([start_link/5, set/3, delete/2, get/2, get/3,
+-export([start_link/5, set/3, change_multiple/2, delete/2, get/2, get/3,
          get_last_modified/3, select/3, empty/1,
          select_with_update/4]).
 
@@ -45,6 +45,15 @@ start_link(ChildModule, InitParams, Name, Path, Replicator) ->
 
 set(Name, Id, Value) ->
     gen_server:call(Name, {interactive_update, update_doc(Id, Value)}, infinity).
+
+change_multiple(Name, Docs) when is_list(Docs) ->
+    gen_server:call(
+      Name,
+      {interactive_update_multi,
+       lists:map(fun ({set, Id, Val}) -> update_doc(Id, Val);
+                     ({delete, Id}) -> delete_doc(Id)
+                 end, Docs)},
+      infinity).
 
 delete(Name, Id) ->
     gen_server:call(Name, {interactive_update, delete_doc(Id)}, infinity).
@@ -231,6 +240,7 @@ is_deleted(#docv2{props = Props}) ->
 save_docs(Docs, #state{name = TableName,
                        child_module = ChildModule,
                        child_state = ChildState} = State) ->
+    ?log_debug("Saving ~b docs", [length(Docs)]),
     {OldDocs, Live} =
         lists:mapfoldl(
           fun(Doc, Acc) ->
@@ -251,6 +261,7 @@ save_docs(Docs, #state{name = TableName,
     %% Only insert live, non-deleted documents
     true = ets:insert(TableName, Live),
     NewChildState = ChildModule:on_save(Docs, OldDocs, ChildState),
+    ?log_debug("save complete"),
     {ok, State#state{child_state = NewChildState}}.
 
 on_replicate_in(Doc) ->

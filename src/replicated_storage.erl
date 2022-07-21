@@ -81,37 +81,51 @@ handle_call({interactive_update, Doc}, _From,
             #state{child_module = Module,
                    child_state = ChildState,
                    replicator = Replicator} = State) ->
-    Rand = misc:rand_uniform(0, 16#100000000),
-    RandBin = <<Rand:32/integer>>,
-    {NewRev, FoundType} =
-        case Module:find_doc(Module:get_id(Doc), ChildState) of
-            false ->
-                {{1, RandBin}, missing};
-            ExistingDoc ->
-                {Pos, _DiskRev} = Module:get_revision(ExistingDoc),
-                Deleted = Module:is_deleted(ExistingDoc),
-                FoundType0 = case Deleted of
-                                 true ->
-                                     deleted;
-                                 false ->
-                                     existent
-                             end,
-                {{Pos + 1, RandBin}, FoundType0}
-        end,
-
-    case Module:is_deleted(Doc) andalso FoundType =/= existent of
-        true ->
-            {reply, {not_found, FoundType}, State};
-        false ->
-            NewDoc = Module:set_revision(Doc, NewRev),
-            ?log_debug("Writing interactively saved doc ~p",
-                       [ns_config_log:sanitize(NewDoc, true)]),
-            case Module:save_docs([NewDoc], ChildState) of
+    case prepare_doc_update(Doc, State) of
+        {doc, PreparedDoc} ->
+            case Module:save_docs([PreparedDoc], ChildState) of
                 {ok, NewChildState} ->
-                    Replicator ! {replicate_change, Module:get_id(NewDoc),
-                                  Module:on_replicate_out(NewDoc)},
+                    Replicator ! {replicate_change, Module:get_id(PreparedDoc),
+                                  Module:on_replicate_out(PreparedDoc)},
                     {reply, ok, State#state{child_state = NewChildState}};
                 {error, Error} ->
+                    {reply, Error, State}
+            end;
+        {not_found, FoundType} ->
+            {reply, {not_found, FoundType}, State}
+    end;
+handle_call({interactive_update_multi, Docs}, _From,
+            #state{child_module = Module,
+                   child_state = ChildState,
+                   replicator = Replicator} = State) ->
+    ?log_debug("Starting interactive update for ~b docs", [length(Docs)]),
+    GoodDocs =
+        lists:filtermap(
+          fun (Doc) ->
+              case prepare_doc_update(Doc, State) of
+                  {doc, PreparedDoc} ->
+                      {true, PreparedDoc};
+                  {not_found, _} ->
+                      ?log_debug("Ignoring deletion of the doc because it "
+                                 "doesn't exist: ~p",
+                                 [ns_config_log:sanitize(Doc, true)]),
+                      false
+              end
+          end, Docs),
+
+    case [] == GoodDocs of
+        true ->
+            ?log_debug("Interactive update complete (nothing to update)"),
+            {reply, ok, State};
+        false ->
+            case Module:save_docs(GoodDocs, ChildState) of
+                {ok, NewChildState} ->
+                    ToReplicate = [Module:on_replicate_out(D) || D <- GoodDocs],
+                    Replicator ! {replicate_changes, ToReplicate},
+                    ?log_debug("Interactive update complete"),
+                    {reply, ok, State#state{child_state = NewChildState}};
+                {error, Error} ->
+                    ?log_debug("Interactive update error: ~p", [Error]),
                     {reply, Error, State}
             end
     end;
@@ -185,6 +199,36 @@ handle_info(Msg, #state{child_module = Module, child_state = ChildState} = State
 
 terminate(_Reason, _State) ->
     ok.
+
+prepare_doc_update(Doc, #state{child_module = Module,
+                               child_state = ChildState}) ->
+    Rand = misc:rand_uniform(0, 16#100000000),
+    RandBin = <<Rand:32/integer>>,
+    {NewRev, FoundType} =
+        case Module:find_doc(Module:get_id(Doc), ChildState) of
+            false ->
+                {{1, RandBin}, missing};
+            ExistingDoc ->
+                {Pos, _DiskRev} = Module:get_revision(ExistingDoc),
+                Deleted = Module:is_deleted(ExistingDoc),
+                FoundType0 = case Deleted of
+                                 true ->
+                                     deleted;
+                                 false ->
+                                     existent
+                             end,
+                {{Pos + 1, RandBin}, FoundType0}
+        end,
+
+    case Module:is_deleted(Doc) andalso FoundType =/= existent of
+        true ->
+            {not_found, FoundType};
+        false ->
+            NewDoc = Module:set_revision(Doc, NewRev),
+            ?log_debug("Writing interactively saved doc ~p",
+                       [ns_config_log:sanitize(NewDoc, true)]),
+            {doc, NewDoc}
+    end.
 
 handle_replication_update(Docs, NeedLog,
                           #state{child_module = Module,

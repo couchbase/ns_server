@@ -65,6 +65,11 @@ loop(GetNodes, StorageFrontend, OldRemoteNodes) ->
                             StorageFrontend, Node, Id, Doc)
                   end, RemoteNodes),
                 RemoteNodes;
+            {replicate_changes, Docs} ->
+                {_ActualNodes, RemoteNodes} = NodesFun(),
+                replicate_changes_to_nodes(StorageFrontend, RemoteNodes,
+                                           {batch, Docs}),
+                RemoteNodes;
             {replicate_newnodes_docs, Producer} ->
                 {ActualNodes, RemoteNodes} = NodesFun(),
                 case ActualNodes -- RemoteNodes of
