@@ -177,7 +177,7 @@ send_error_json(Req, Errors, Code) ->
 
 json_array(Name, Validators, State) ->
     validate(
-      fun (JsonArray) ->
+      fun (JsonArray) when is_list(JsonArray) ->
               States = [with_decoded_object(Elem, Validators) ||
                            Elem <- JsonArray],
               Errors = [ErrorList || #state{errors = ErrorList} <- States],
@@ -187,7 +187,9 @@ json_array(Name, Validators, State) ->
                   _ ->
                       {error, {json, [jsonify_errors(ErrorList) ||
                                          ErrorList <- Errors]}}
-              end
+              end;
+          (_) ->
+              {error, "The value must be a json array"}
       end, Name, State).
 
 with_decoded_object({KVList}, Validators) ->
