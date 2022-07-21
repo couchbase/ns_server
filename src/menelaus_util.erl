@@ -67,6 +67,7 @@
          assert_is_enterprise/0,
          assert_is_66/0,
          assert_is_71/0,
+         assert_config_profile_flag/1,
          choose_node_consistently/2,
          compute_sec_headers/0,
          web_exception/2,
@@ -652,14 +653,9 @@ handle_streaming_wakeup(Req, DataBody, HTTPRes, Res, NotifyTag) ->
                      {NotifyTag, NewValue}).
 
 assert_is_enterprise() ->
-    case cluster_compat_mode:is_enterprise() of
-        true ->
-            ok;
-        _ ->
-            web_exception(400,
-                          "This http API endpoint requires enterprise edition",
-                          [{"X-enterprise-edition-needed", 1}])
-    end.
+    assert(fun cluster_compat_mode:is_enterprise/0,
+           "This http API endpoint requires enterprise edition",
+           [{"X-enterprise-edition-needed", 1}]).
 
 assert_is_66() ->
     assert_cluster_version(fun cluster_compat_mode:is_cluster_66/0).
@@ -668,13 +664,22 @@ assert_is_71() ->
     assert_cluster_version(fun cluster_compat_mode:is_cluster_71/0).
 
 assert_cluster_version(Fun) ->
+    assert(
+      Fun, "This http API endpoint isn't supported in mixed version clusters").
+
+assert_config_profile_flag(Flag) ->
+    assert(?cut(config_profile:get_bool(Flag)),
+           "Operation not allowed in this config profile").
+
+assert(Fun, Error) ->
+    assert(Fun, Error, []).
+
+assert(Fun, Error, Headers) ->
     case Fun() of
         true ->
             ok;
         false ->
-            web_exception(
-              400, "This http API endpoint isn't supported in mixed version "
-              "clusters")
+            web_exception(400, Error, Headers)
     end.
 
 choose_node_consistently(Req, Nodes) ->

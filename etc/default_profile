@@ -1,4 +1,5 @@
 {name, "default"}.
+{enable_auto_rebalance_settings, true}.
 
 %% Example service keys %%
 %% {{goxdcr, ipv4}, "required"}.

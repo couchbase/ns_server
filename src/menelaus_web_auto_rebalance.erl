@@ -64,5 +64,5 @@ reply_with_retry_settings(Req) ->
     menelaus_util:reply_json(Req, {Settings}).
 
 assert_api_supported() ->
-    menelaus_util:assert_is_enterprise().
-
+    menelaus_util:assert_is_enterprise(),
+    menelaus_util:assert_config_profile_flag(enable_auto_rebalance_settings).
