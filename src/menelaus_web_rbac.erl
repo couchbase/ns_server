@@ -1177,7 +1177,7 @@ do_store_user({User, Domain} = Identity, Props, Req) ->
              end,
     case menelaus_users:store_user(Identity, Name, PassOrAuth,
                                    UniqueRoles, Groups, Limits) of
-        {commit, _} ->
+        ok ->
             ns_audit:set_user(Req, Identity, UniqueRoles, Name, Groups,
                               Reason),
             {_, SanitizedUser} = ns_config_log:sanitize_value(User, [add_salt]),
@@ -1187,7 +1187,7 @@ do_store_user({User, Domain} = Identity, Props, Req) ->
             event_log:add_log(user_added, [{user, SanitizedUser},
                                            {domain, Domain}]),
             ok;
-        {abort, Error} -> {error, Error}
+        {error, Error} -> {error, Error}
     end.
 
 handle_delete_user(Domain, UserId, Req) ->
@@ -2268,21 +2268,22 @@ handle_backup_restore_validated(Req, Params) ->
           ok = do_store_group(GroupId, proplists:delete(name, GroupProps), Req)
       end, Groups),
 
-    Users = proplists:get_value(users, Backup),
-    lists:foreach(
-      fun ({UserProps}) ->
-          Id = proplists:get_value(id, UserProps),
-          Domain = proplists:get_value(domain, UserProps),
-          Identity = {Id, Domain},
-          UserProps2 = proplists:delete(domain,
-                                        proplists:delete(id, UserProps)),
-          case do_store_user(Identity, UserProps2, Req) of
-              ok -> ok;
-              {error, too_many} ->
-                  Msg = <<"You cannot create any more users">>,
-                  menelaus_util:global_error_exception(400, Msg)
-          end
-      end, Users),
+    Users = lists:map(
+              fun ({UserProps}) ->
+                  Auth = proplists:get_value(auth, UserProps),
+                  Id = proplists:get_value(id, UserProps),
+                  Domain = proplists:get_value(domain, UserProps),
+                  Identity = {Id, Domain},
+                  {Identity, [{pass_or_auth, {auth, Auth}} | UserProps]}
+              end, proplists:get_value(users, Backup)),
+
+    case menelaus_users:store_users(Users) of
+        ok -> ok;
+        {error, too_many} ->
+            Msg = <<"You cannot create any more users">>,
+            menelaus_util:global_error_exception(400, Msg)
+    end,
+
     reply(ok, Req).
 
 validate_backup_admin(Name, State) ->

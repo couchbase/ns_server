@@ -24,6 +24,7 @@
 -export([
 %% User management:
          store_user/6,
+         store_users/1,
          delete_user/1,
          select_users/1,
          select_users/2,
@@ -434,38 +435,70 @@ build_auth({_, CurrentAuth}, Password) ->
                  {password, rbac_password()} | {auth, rbac_auth()},
                  [rbac_role()], [rbac_group_id()],
                  [{atom(), [{atom(), term()}]}]) ->
-    {commit, ok} | {abort, {roles_validation, _}} |
-    {abort, password_required} | {abort, too_many}.
-store_user({_UserName, Domain} = Identity, Name, PasswordOrAuth, Roles,
+    ok | {error, {roles_validation, _}} |
+    {error, password_required} | {error, too_many}.
+store_user(Identity, Name, PasswordOrAuth, Roles,
            Groups, Limits) ->
-    UUID = get_user_uuid(Identity, misc:uuid_v4()),
     Props = [{name, Name} || Name =/= undefined] ++
-            [{uuid, UUID} || UUID =/= undefined] ++
-            [{groups, Groups} || Groups =/= undefined],
-    Snapshot = ns_bucket:get_snapshot(all, [collections, uuid]),
+            [{groups, Groups} || Groups =/= undefined] ++
+            [{pass_or_auth, PasswordOrAuth},
+             {roles, Roles},
+             {limits, Limits}],
+    store_users([{Identity, Props}]).
 
-    CurrentAuth = replicated_dets:get(storage_name(), {auth, Identity}),
-    case check_limit(Identity) of
-        true ->
-            case {Domain, PasswordOrAuth} of
-                {external, _} ->
-                    store_user_with_auth(Identity, Props, same, Roles, Limits,
-                                         Snapshot);
-                {local, {password, Password}} ->
-                    case build_auth(CurrentAuth, Password) of
-                        password_required ->
-                            {abort, password_required};
-                        Auth ->
-                            store_user_with_auth(Identity, Props, Auth, Roles,
-                                                 Limits, Snapshot)
-                    end;
-                {local, {auth, Auth}} ->
-                    store_user_with_auth(Identity, Props, Auth, Roles,
-                                         Limits, Snapshot)
-            end;
-        false ->
-            {abort, too_many}
+store_users(Users) ->
+    Snapshot = ns_bucket:get_snapshot(all, [collections, uuid]),
+    case prepare_store_users_docs(Snapshot, Users) of
+        {ok, PreparedDocs} ->
+            ok = replicated_dets:change_multiple(storage_name(), PreparedDocs);
+        {error, _} = Error ->
+            Error
     end.
+
+prepare_store_users_docs(Snapshot, Users) ->
+    try
+        {ok, lists:flatmap(prepare_store_user(Snapshot, _), Users)}
+    catch
+        throw:{error, _} = Error -> Error
+    end.
+
+prepare_store_user(Snapshot, {{_, Domain} = Identity, Props}) ->
+    UUID = get_user_uuid(Identity, misc:uuid_v4()),
+    Name = proplists:get_value(name, Props),
+    Groups = proplists:get_value(groups, Props),
+    PasswordOrAuth = proplists:get_value(pass_or_auth, Props),
+    Roles = proplists:get_value(roles, Props),
+    Limits = proplists:get_value(limits, Props),
+
+    UserProps = [{name, Name} || Name =/= undefined] ++
+                [{uuid, UUID} || UUID =/= undefined] ++
+                [{groups, Groups} || Groups =/= undefined],
+
+    UserProps2 =
+        case menelaus_roles:validate_roles(Roles, Snapshot) of
+            {NewRoles, []} -> [{roles, NewRoles} | UserProps];
+            {_, BadRoles} -> throw({error, {roles_validation, BadRoles}})
+        end,
+
+    case check_limit(Identity) of
+        true -> ok;
+        false -> throw({error, too_many})
+    end,
+
+    Auth =
+        case {Domain, PasswordOrAuth} of
+            {external, _} -> same;
+            {local, {password, Password}} ->
+                CurrentAuth = replicated_dets:get(storage_name(),
+                                                  {auth, Identity}),
+                case build_auth(CurrentAuth, Password) of
+                    password_required -> throw({error, password_required});
+                    A -> A
+                end;
+            {local, {auth, A}} -> A
+        end,
+
+    store_user_changes(Identity, UserProps2, Auth, Limits).
 
 count_users() ->
     pipes:run(select_users('_', []),
@@ -488,49 +521,30 @@ check_limit(Identity) ->
             end
     end.
 
-store_user_with_auth(Identity, Props, Auth, Roles, Limits, Snapshot) ->
-    case menelaus_roles:validate_roles(Roles, Snapshot) of
-        {NewRoles, []} ->
-            ok = store_user_validated(Identity, [{roles, NewRoles} | Props],
-                                      Auth, Limits),
-            {commit, ok};
-        {_, BadRoles} ->
-            {abort, {roles_validation, BadRoles}}
-    end.
-
-store_user_validated(Identity, Props, Auth, Limits) ->
+store_user_changes(Identity, Props, Auth, Limits) ->
     case replicated_dets:get(storage_name(), {user, Identity}) of
         false ->
-            _ = replicated_dets:delete(storage_name(), {limits, Identity}),
-            _ = delete_profile(Identity);
+            [{delete, {limits, Identity}},
+             {delete, profile_key(Identity)}];
         _ ->
-            ok
-    end,
-    ok = replicated_dets:set(storage_name(), {user, Identity}, Props),
-    case store_auth(Identity, Auth) of
-        ok ->
-            ok;
-        unchanged ->
-            ok
-    end,
-    maybe_change_limits(Identity, Limits).
+            []
+    end ++
+    [{set, {user, Identity}, Props}] ++
+    [{set, {auth, Identity}, Auth} || Auth /= same] ++
+    apply_limits_changes(Identity, Limits).
 
-maybe_change_limits(_Identity, undefined) ->
-    ok;
-maybe_change_limits(Identity, []) ->
-    case replicated_dets:delete(storage_name(), {limits, Identity}) of
-        ok -> ok;
-        {not_found, _} -> ok
-    end;
-maybe_change_limits(Identity, Limits) ->
+apply_limits_changes(_Identity, undefined) ->
+    [];
+apply_limits_changes(Identity, []) ->
+    [{delete, {limits, Identity}}];
+apply_limits_changes(Identity, Limits) ->
     Sorted = lists:usort([{S, lists:usort(L)} || {S, L} <- Limits]),
     CurLimits = get_user_limits(Identity),
     case CurLimits =:= Sorted of
         true ->
-            ok;
+            [];
         false ->
-            ok = replicated_dets:set(storage_name(), {limits, Identity},
-                                     Sorted)
+            [{set, {limits, Identity}, Sorted}]
     end.
 
 store_auth(_Identity, same) ->
