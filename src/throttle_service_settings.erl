@@ -18,7 +18,6 @@
          handle_settings_throttle_get/1,
          handle_settings_throttle_get/2,
          remove_bucket_settings/1,
-         is_enabled/0,
          default_config/1]).
 
 -import(menelaus_util,
