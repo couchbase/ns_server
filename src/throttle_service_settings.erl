@@ -26,7 +26,10 @@
 -define(THROTTLE_CONFIG_KEY, <<"/throttle/settings/config">>).
 
 is_enabled() ->
-    config_profile:search(enable_throttle_settings).
+    config_profile:get_bool(enable_throttle_settings).
+
+assert_api_enabled() ->
+    menelaus_util:assert_config_profile_flag(enable_throttle_settings).
 
 throttle_limits_type_spec(undefined) ->
     undefined.
@@ -93,32 +96,21 @@ get_metakv_props() ->
             end
     end.
 
-not_allowed_error(Req) ->
-    reply_json(Req,
-               {[{errors,
-                  [<<"Operation not allowed in this config profile">>]}]},
-               400).
-
 get_limits(KeyMap) ->
     CurrProps = get_metakv_props(),
     [{PKey, proplists:get_value(MKey, CurrProps)} ||
         {PKey, MKey} <- KeyMap,
         proplists:is_defined(MKey, CurrProps)].
 
-get_throttle_settings(Req, false = _isEnabled) ->
-    not_allowed_error(Req);
-get_throttle_settings(Req, true = _isEnabled) ->
+handle_settings_throttle_get(Req) ->
+    assert_api_enabled(),
     CurrThrottleLimits = get_limits(key_map()),
     menelaus_web_settings2:handle_get([], throttle_limit_params(),
                                       fun throttle_limits_type_spec/1,
                                       CurrThrottleLimits, Req).
 
-handle_settings_throttle_get(Req) ->
-    get_throttle_settings(Req, is_enabled()).
-
-get_bucket_throttle_settings(_BucketId, Req, false = _isEnabled) ->
-    not_allowed_error(Req);
-get_bucket_throttle_settings(BucketId, Req, true = _isEnabled) ->
+handle_settings_throttle_get(BucketId, Req) ->
+    assert_api_enabled(),
     BucketThrottleKeys = [{Key, get_bucket_key(BucketId, Key)} ||
                              {Key, _} <- key_map()],
     CurrThrottleLimits = get_limits(BucketThrottleKeys),
@@ -126,17 +118,13 @@ get_bucket_throttle_settings(BucketId, Req, true = _isEnabled) ->
                                       fun throttle_limits_type_spec/1,
                                       CurrThrottleLimits, Req).
 
-handle_settings_throttle_get(BucketId, Req) ->
-    get_bucket_throttle_settings(BucketId, Req, is_enabled()).
-
 apply_throttle_params(NewParams) ->
     CurrProps = get_metakv_props(),
     UpdateProps = misc:update_proplist(CurrProps, NewParams),
     metakv:set(?THROTTLE_CONFIG_KEY, ejson:encode({UpdateProps})).
 
-set_throttle_settings(Req, false = _isEnabled) ->
-    not_allowed_error(Req);
-set_throttle_settings(Req, true = _isEnabled) ->
+handle_settings_throttle_post(Req) ->
+    assert_api_enabled(),
     menelaus_web_settings2:handle_post(
       fun(Params, Req2) ->
               NewParams = [{proplists:get_value(PKey, key_map()), Val} ||
@@ -145,12 +133,7 @@ set_throttle_settings(Req, true = _isEnabled) ->
               handle_settings_throttle_get(Req2)
       end, [], throttle_limit_params(), fun throttle_limits_type_spec/1, Req).
 
-handle_settings_throttle_post(Req) ->
-    set_throttle_settings(Req, is_enabled()).
-
-set_bucket_throttle_settings(_BucketId, Req, false = _IsEnabled) ->
-    not_allowed_error(Req);
-set_bucket_throttle_settings(BucketId, Req, true = _IsEnabled) ->
+set_bucket_throttle_settings(BucketId, Req) ->
     menelaus_web_settings2:handle_post(
       fun(Params, Req2) ->
               NewParams = [{get_bucket_key(BucketId, PKey), Val} ||
@@ -160,11 +143,12 @@ set_bucket_throttle_settings(BucketId, Req, true = _IsEnabled) ->
       end, [], throttle_limit_params(), fun throttle_limits_type_spec/1, Req).
 
 handle_settings_throttle_post(BucketId, Req) ->
+    assert_api_enabled(),
     case ns_bucket:get_bucket(BucketId) of
         not_present ->
             reply_json(Req, {[{errors, [<<"Bucket does not exist">>]}]}, 400);
         _ ->
-            set_bucket_throttle_settings(BucketId, Req, is_enabled())
+            set_bucket_throttle_settings(BucketId, Req)
     end.
 
 remove_bucket_settings(_BucketId, false = _IsEnabled) ->
