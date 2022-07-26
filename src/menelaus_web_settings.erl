@@ -629,9 +629,6 @@ handle_get(Type, Keys, Req) ->
 handle_get(Type, Req) ->
     handle_get(Type, [], Req).
 
-audit_fun(Type) ->
-    list_to_atom(atom_to_list(Type) ++ "_settings").
-
 handle_post(Type, Req) ->
     handle_post(Type, [], Req).
 
@@ -660,8 +657,8 @@ handle_post(Type, Keys, Req) ->
                                   security ->
                                       NewPropsJSON =
                                           jsonify_security_settings(NewProps),
-                                      ns_audit:security_settings(Req,
-                                                                 NewPropsJSON),
+                                      ns_audit:settings(Req, security,
+                                                        {json, NewPropsJSON}),
                                       OldPropsJSON =
                                           jsonify_security_settings(OldProps),
                                       event_log:maybe_add_log_settings_changed(
@@ -669,8 +666,7 @@ handle_post(Type, Keys, Req) ->
                                         OldPropsJSON,
                                         NewPropsJSON, []);
                                   _ ->
-                                      AuditFun = audit_fun(Type),
-                                      ns_audit:AuditFun(Req, NewProps)
+                                      ns_audit:settings(Req, Type, NewProps)
                               end,
                               reply_json(Req, []);
                           retry_needed ->
@@ -822,13 +818,12 @@ handle_delete(Type, PKeys, Req) ->
                     case Keys of
                         [K] ->
                             ns_config:delete(K),
-                            AuditFun = audit_fun(Type),
-                            ns_audit:AuditFun(Req, [{K, deleted}]),
+                            ns_audit:settings(Req, Type, [{K, deleted}]),
                             reply_json(Req, []);
                         [K, SK] ->
                             ns_config:update_key(K, proplists:delete(SK, _)),
-                            AuditFun = audit_fun(Type),
-                            ns_audit:AuditFun(Req, [{K, {[{SK, deleted}]}}]),
+                            ns_audit:settings(Req, Type,
+                                              [{K, {[{SK, deleted}]}}]),
                             reply_json(Req, [])
                     end;
                 {error, Msg} ->
@@ -1158,9 +1153,9 @@ reset_per_service_cipher_suites(Req) ->
               case ns_config:update_key({security_settings, S},
                                         proplists:delete(cipher_suites, _)) of
                   ok ->
-                      ns_audit:security_settings(
-                        Req, [{{security_settings, S},
-                               {[{cipher_suites, deleted}]}}]);
+                      ns_audit:settings(
+                        Req, security, [{{security_settings, S},
+                                         {[{cipher_suites, deleted}]}}]);
                   {throw, {config_key_not_found, _}, _} ->
                       not_found
               end
@@ -1169,7 +1164,7 @@ reset_per_service_cipher_suites(Req) ->
 handle_reset_ciphers_suites(Req) ->
     menelaus_util:assert_is_enterprise(),
     ns_config:set(cipher_suites, []),
-    ns_audit:security_settings(Req, [{cipher_suites, []}]),
+    ns_audit:settings(Req, security, [{cipher_suites, {list, []}}]),
     reset_per_service_cipher_suites(Req),
     reply_json(Req, {[]}).
 

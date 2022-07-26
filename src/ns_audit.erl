@@ -54,7 +54,7 @@
          modify_compaction_settings/2,
          regenerate_certificate/2,
          setup_saslauthd/2,
-         internal_settings/2,
+         settings/3,
          upload_cluster_ca/3,
          reload_node_certificate/3,
          delete_cluster_ca/2,
@@ -63,26 +63,18 @@
          data_key_rotation/2,
          password_policy/2,
          client_cert_auth/2,
-         security_settings/2,
          start_log_collection/4,
          modify_log_redaction_settings/2,
          modify_audit_settings/3,
-         modify_index_settings/2,
-         modify_query_curl_whitelist_setting/2,
-         modify_query_settings/2,
-         modify_analytics_settings/2,
          read_doc/3,
          mutate_doc/4,
          set_user_group/6,
          delete_user_group/2,
          ldap_settings/2,
-         developer_preview_settings/2,
-         license_settings/2,
          set_user_profile/3,
          delete_user_profile/2,
          enable_auto_reprovision/2,
          disable_auto_reprovision/1,
-         failover_settings/2,
          auth_failure/1,
          rbac_info_retrieved/2,
          admin_password_reset/1
@@ -695,9 +687,6 @@ setup_saslauthd(Req, Props) ->
          {admins, build_saslauthd_users(misc:expect_prop_value(admins, Props))},
          {ro_admins, build_saslauthd_users(misc:expect_prop_value(roAdmins, Props))}]).
 
-internal_settings(Req, Settings) ->
-    put(internal_settings, Req, [{settings, {prepare_list(Settings)}}]).
-
 upload_cluster_ca(Req, Subject, Expires) ->
     ExpiresDateTime = calendar:gregorian_seconds_to_datetime(Expires),
     put(upload_cluster_ca, Req, [{subject, Subject},
@@ -737,12 +726,21 @@ client_cert_auth(Req, ClientCertAuth) ->
     Val = [State, {PrefixesKey, {list, NewTriples}}],
     put(client_cert_auth, Req, Val).
 
-security_settings(Req, SettingsJSON) ->
-    put(security_settings, Req, [{settings, {SettingsJSON}}]).
-
-license_settings(Req, Settings) ->
-    put(license_settings, Req,
-        [{settings, {prepare_list(Settings)}}]).
+settings(Req, Key, Settings) ->
+    Settings1 = case Settings of
+                    {json, S} ->
+                        S;
+                    _ ->
+                        prepare_list(Settings)
+                end,
+    Settings2 =
+        lists:map(fun ({{K, SubK}, V}) when K =:= Key ->
+                          {SubK, V};
+                      (KV) ->
+                          KV
+                  end, Settings1),
+    AuditKey = list_to_atom(atom_to_list(Key) ++ "_settings"),
+    put(AuditKey, Req, [{settings, {Settings2}}]).
 
 start_log_collection(Req, Nodes, BaseURL, Options) ->
     put(start_log_collection, Req,
@@ -827,19 +825,6 @@ print_audit_records(Queue) ->
             print_audit_records(NewQueue)
     end.
 
-modify_index_settings(Req, Settings) ->
-    put(modify_index_settings, Req, [{settings, {prepare_list(Settings)}}]).
-
-modify_analytics_settings(Req, Settings) ->
-    put(modify_analytics_settings, Req, [{settings, {prepare_list(Settings)}}]).
-
-modify_query_settings(Req, Settings) ->
-    put(modify_query_settings, Req, [{settings, {prepare_list(Settings)}}]).
-
-modify_query_curl_whitelist_setting(Req, Values) ->
-    Setting = [{curl_whitelist, ejson:encode({Values})}],
-    modify_query_settings(Req, Setting).
-
 read_doc(Req, BucketName, DocId) ->
     put(read_doc, Req, [{bucket_name, BucketName},
                         {doc_id, DocId}]).
@@ -868,10 +853,6 @@ prepare_ldap_setting({hosts, List}) -> {hosts, {list, List}};
 prepare_ldap_setting({userDNMapping = K, JSON}) -> {K, ejson:encode(JSON)};
 prepare_ldap_setting(Default) -> Default.
 
-developer_preview_settings(Req, Settings) ->
-    put(developer_preview_settings, Req,
-        [{settings, {prepare_list(Settings)}}]).
-
 set_user_profile(Req, Identity, Json) ->
     put(set_user_profile, Req,
         [{identity, get_identity(Identity)},
@@ -879,11 +860,6 @@ set_user_profile(Req, Identity, Json) ->
 
 delete_user_profile(Req, Identity) ->
     put(delete_user_profile, Req, [{identity, get_identity(Identity)}]).
-
-failover_settings(Req, Settings) ->
-    Settings1 = [{K, V} || {{failover, K}, V} <- Settings],
-    put(failover_settings, Req,
-        [{settings, {prepare_list(Settings1)}}]).
 
 get_scope_params(BucketName, ScopeName, Props, Uid) ->
     [{bucket_name, BucketName},

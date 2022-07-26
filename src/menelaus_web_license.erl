@@ -29,7 +29,7 @@ handle_settings_post(Req) ->
     validator:handle(
       fun (Props) ->
               set_settings(Props),
-              ns_audit:license_settings(Req, prepare_settings(Props)),
+              ns_audit:settings(Req, license, prepare_settings(Props)),
               handle_settings_get(Req)
       end, Req, form, settings_validators()).
 

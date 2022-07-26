@@ -214,7 +214,7 @@ apply_indexes_settings(Req, Values) ->
             ok;
         _ ->
             ok = update_settings(generalSettings, Values1),
-            ns_audit:modify_index_settings(Req, Values1)
+            ns_audit:settings(Req, modify_index, Values1)
     end.
 
 filter_indexes(Roles, Indexes) ->

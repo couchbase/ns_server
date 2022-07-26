@@ -45,7 +45,7 @@ handle_settings_post(Req) ->
                       ok;
                   _ ->
                       ok = update_settings(generalSettings, Values),
-                      ns_audit:modify_analytics_settings(Req, Values)
+                      ns_audit:settings(Req, modify_analytics, Values)
               end,
               menelaus_util:reply_json(Req, {get_settings()})
       end, Req, form, settings_post_validators()).
