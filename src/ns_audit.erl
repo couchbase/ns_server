@@ -390,7 +390,9 @@ code(modify_analytics_settings) ->
 code(update_scope) ->
     8268;
 code(delete_cluster_ca) ->
-    8269.
+    8269;
+code(serverless_settings) ->
+    8270.
 
 now_to_iso8601(Now = {_, _, Microsecs}) ->
     LocalNow = calendar:now_to_local_time(Now),

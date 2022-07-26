@@ -441,6 +441,8 @@ is_allowed_on_cluster([argon2id_mem]) ->
     cluster_compat_mode:is_cluster_elixir();
 is_allowed_on_cluster([pbkdf2_sha512_iterations]) ->
     cluster_compat_mode:is_cluster_elixir();
+is_allowed_on_cluster([{serverless, _}]) ->
+    bucket_placer:is_enabled();
 is_allowed_on_cluster(_) ->
     true.
 
@@ -456,7 +458,9 @@ is_allowed_setting(OpType, Req, K) ->
        fun () ->
            case is_allowed_on_cluster(K) of
                true -> ok;
-               false -> {error, <<"not supported in mixed version clusters">>}
+               false ->
+                   {error, <<"not supported or is not available until entire "
+                             "cluster is upgraded">>}
            end
        end,
        fun () ->
@@ -555,7 +559,11 @@ conf(developer_preview) ->
     [{developer_preview_enabled, enabled, false, fun only_true/1}];
 conf(failover) ->
     [{{failover, preserve_durable_mutations}, preserveDurableMutations,
-      true, fun get_bool/1}].
+      true, fun get_bool/1}];
+conf(serverless) ->
+    [{{serverless, bucket_weight_limit}, bucketWeightLimit, 10000,
+      get_number(1, 100000)},
+     {{serverless, tenant_limit}, tenantLimit, 25, get_number(1, 10000)}].
 
 build_kvs(Type) ->
     build_kvs(conf(Type), ns_config:get(), fun (_, _) -> true end).

@@ -377,6 +377,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "failover"] ->
                     {{[settings], read}, fun menelaus_web_settings:handle_get/2,
                      [failover]};
+                ["settings", "serverless"] ->
+                    {{[admin, settings], read},
+                     fun menelaus_web_settings:handle_get/2, [serverless]};
                 ["settings", "autoFailover"] ->
                     {{[settings], read}, fun menelaus_web_auto_failover:handle_settings_get/1};
                 ["settings", "autoReprovision"] ->
@@ -661,6 +664,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "failover"] ->
                     {{[settings], write},
                      fun menelaus_web_settings:handle_post/2, [failover]};
+                ["settings", "serverless"] ->
+                    {{[admin, settings], write},
+                     fun menelaus_web_settings:handle_post/2, [serverless]};
                 ["settings", "autoFailover", "resetCount"] ->
                     {{[settings], write}, fun menelaus_web_auto_failover:handle_settings_reset_count/1};
                 ["settings", "autoReprovision"] ->

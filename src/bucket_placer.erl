@@ -29,10 +29,10 @@ is_enabled() ->
     config_profile:get_bool(enable_bucket_placer).
 
 get_weight_limit() ->
-    config_profile:get_value(bucket_weight_limit, 10000).
+    ns_config:read_key_fast({serverless, bucket_weight_limit}, 10000).
 
 get_tenant_limit() ->
-    config_profile:get_value(tenant_limit, 25).
+    ns_config:read_key_fast({serverless, tenant_limit}, 25).
 
 get_params() ->
     {ok, MemQuota} = memory_quota:get_quota(kv),
