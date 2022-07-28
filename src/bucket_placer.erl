@@ -54,10 +54,8 @@ place_bucket(BucketName, Props) ->
     end.
 
 do_place_bucket(BucketName, Props, Params, Snapshot) ->
-    RV = on_zones(
-           fun (_, Nodes) ->
-                   calculate_desired_servers(Nodes, BucketName, Props, Params)
-           end, get_eligible_buckets(Snapshot), Snapshot),
+    RV = on_zones(calculate_desired_servers(_, BucketName, Props, Params),
+                  get_eligible_buckets(Snapshot), Snapshot),
     case RV of
         {ok, Servers} ->
             DesiredServers = lists:sort(lists:flatten(Servers)),
@@ -71,9 +69,8 @@ get_eligible_buckets(Snapshot) ->
                  ns_bucket:get_buckets(Snapshot)).
 
 on_zones(Fun, Buckets, Snapshot) ->
-    on_groups(fun (AllGroupNodes, _Group) ->
-                      Nodes = construct_zone(AllGroupNodes, Snapshot, Buckets),
-                      Fun(AllGroupNodes, Nodes)
+    on_groups(fun (GroupNodes, _Group) ->
+                      Fun(construct_zone(GroupNodes, Buckets))
               end, Snapshot).
 
 on_groups(Fun, Snapshot) ->
@@ -82,8 +79,8 @@ on_groups(Fun, Snapshot) ->
     Results =
         lists:map(
           fun (Group) ->
-                  AllGroupNodes = proplists:get_value(nodes, Group),
-                  Fun(AllGroupNodes, Group)
+                  Fun(get_eligible_nodes(proplists:get_value(nodes, Group),
+                                         Snapshot), Group)
           end, Groups),
 
     {Good, Bad} =
@@ -99,13 +96,12 @@ on_groups(Fun, Snapshot) ->
             {error, [proplists:get_value(name, G) || {G, error} <- Bad]}
     end.
 
-construct_zone(AllGroupNodes, Snapshot, Buckets) ->
-    Nodes =
-        ns_cluster_membership:service_nodes(
-          Snapshot,
-          ns_cluster_membership:active_nodes(
-            Snapshot, AllGroupNodes),
-          kv),
+get_eligible_nodes(AllGroupNodes, Snapshot) ->
+    ns_cluster_membership:service_nodes(
+      Snapshot, ns_cluster_membership:active_nodes(Snapshot, AllGroupNodes),
+      kv).
+
+construct_zone(Nodes, Buckets) ->
     [{N, construct_node(N, Buckets)} || N <- Nodes].
 
 empty_node() ->
@@ -206,15 +202,15 @@ rebalance(KeepNodes, DefragmentZones, Params, Snapshot) ->
                    end, Buckets),
 
     Fun =
-        fun (AllGroupNodes, Group) ->
+        fun (GroupNodes, Group) ->
                 case lists:member(proplists:get_value(name, Group),
                                   DefragmentZones) of
                     true ->
-                        defragment_zone(AllGroupNodes, KeepNodes,
+                        defragment_zone(GroupNodes, KeepNodes,
                                         SortedByWeight, Params);
                     false ->
-                        rebalance_zone(AllGroupNodes, KeepNodes, SortedByWeight,
-                                       Params, Snapshot)
+                        rebalance_zone(GroupNodes, KeepNodes, SortedByWeight,
+                                       Params)
                 end
         end,
 
@@ -243,13 +239,11 @@ massage_rebalance_result(Res, Buckets) ->
               end
       end, lists:zip(Buckets, zip_servers(Res, []))).
 
-rebalance_zone(AllGroupNodes, KeepNodes, Buckets, Params, Snapshot) ->
-    Nodes = construct_zone(AllGroupNodes, Snapshot, Buckets),
+rebalance_zone(GroupNodes, KeepNodes, Buckets, Params) ->
+    Nodes = construct_zone(GroupNodes, Buckets),
     DesiredNodes =
         misc:update_proplist(
-          [{N, empty_node()} || N <- lists:filter(
-                                       lists:member(_, AllGroupNodes),
-                                       KeepNodes)],
+          [{N, empty_node()} || N <- KeepNodes, lists:member(N, GroupNodes)],
           lists:filter(fun ({Name, _}) ->
                                lists:member(Name, KeepNodes)
                        end, Nodes)),
@@ -261,9 +255,8 @@ rebalance_zone(AllGroupNodes, KeepNodes, Buckets, Params, Snapshot) ->
             defragment_zone([N || {N, _} <- DesiredNodes], Buckets, Params)
     end.
 
-defragment_zone(AllGroupNodes, KeepNodes, Buckets, Params) ->
-    DesiredNodes = lists:filter(lists:member(_, AllGroupNodes),
-                                KeepNodes),
+defragment_zone(GroupNodes, KeepNodes, Buckets, Params) ->
+    DesiredNodes = lists:filter(lists:member(_, GroupNodes), KeepNodes),
     defragment_zone(DesiredNodes, Buckets, Params).
 
 defragment_zone(Nodes, Buckets, Params) ->
@@ -320,8 +313,9 @@ get_node_status_fun(Snapshot, #params{weight_limit = WeightLimit,
     Buckets = get_eligible_buckets(Snapshot),
 
     Fun =
-        fun (AllGroupNodes, Nodes) ->
-                case do_defragment_zone(AllGroupNodes, Buckets, Params) of
+        fun (Nodes) ->
+                case do_defragment_zone(
+                       [N || {N, _} <- Nodes], Buckets, Params) of
                     error ->
                         {ok, [{Name, {Node, error}} || {Name, Node} <- Nodes]};
                     {ok, _Servers, DefragmentedNodes} ->
