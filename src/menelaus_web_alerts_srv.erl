@@ -27,7 +27,8 @@
          terminate/2, code_change/3, handle_settings_alerts_limits_post/1,
          handle_settings_alerts_limits_get/1]).
 
--export([alert_keys/0, config_upgrade_to_70/1, config_upgrade_to_elixir/1]).
+-export([alert_keys/0, config_upgrade_to_70/1, config_upgrade_to_71/1,
+         config_upgrade_to_elixir/1]).
 
 %% @doc Hold client state for any alerts that need to be shown in
 %% the browser, is used by menelaus_web to piggy back for a transport
@@ -53,6 +54,11 @@
 
 %% Amount of time to wait before reporting communication issues (s)
 -define(COMMUNICATION_ISSUE_TIMEOUT, 60 * 5).
+
+%% Default memory thresholds (in percents)
+-define(MEM_NOTICE_PERC, -1).
+-define(MEM_WARN_PERC, 90).
+-define(MEM_CRIT_PERC, 95).
 
 -export([start_link/0, stop/0, local_alert/2, global_alert/2,
          fetch_alerts/0, consume_alerts/1]).
@@ -85,6 +91,8 @@ short_description(cert_expires_soon) ->
     "certificate will expire soon";
 short_description(cert_expired) ->
     "certificate has expired";
+short_description(memory_threshold) ->
+    "system memory usage threshold exceeded";
 short_description(Other) ->
     %% this case is needed for tests to work
     couch_util:to_list(Other).
@@ -132,7 +140,16 @@ errors(client_xdcr_cert_expired) ->
 errors(xdcr_ca_expires_soon) ->
     "XDCR CA certificate (subject: '~s') will expire at ~s.";
 errors(xdcr_ca_expired) ->
-    "XDCR CA certificate (subject: '~s') has expired.".
+    "XDCR CA certificate (subject: '~s') has expired.";
+errors(memory_critical) ->
+    "CRITICAL: On node ~s ~p memory use is ~.2f% of total available "
+    "memory, above the critical threshold of ~b%.";
+errors(memory_warning) ->
+    "Warning: On node ~s ~p memory use is ~.2f% of total available "
+    "memory, above the warning threshold of ~b%.";
+errors(memory_notice) ->
+    "Notice: On node ~s ~p memory use is ~.2f% of total available "
+    "memory, above the notice threshold of ~b%.".
 
 %% ------------------------------------------------------------------
 %% API Function Definitions
@@ -282,9 +299,13 @@ alert_keys() ->
      audit_dropped_events, indexer_ram_max_usage,
      ep_clock_cas_drift_threshold_exceeded,
      communication_issue, time_out_of_sync, disk_usage_analyzer_stuck,
-     cert_expires_soon, cert_expired].
+     cert_expires_soon, cert_expired, memory_threshold].
 
 config_upgrade_to_70(Config) ->
+    %% memory_threshold is excluded from alerts and pop_up_alerts here for
+    %% backward compatibility reasons (because it was added in a minor
+    %% release). It can be removed when memory_alert_email is added as
+    %% a proper alert (first major release after 7.1).
     case ns_config:search(Config, email_alerts) of
         false ->
             [];
@@ -292,7 +313,19 @@ config_upgrade_to_70(Config) ->
             upgrade_alerts(
               EmailAlerts,
               [add_proplist_list_elem(alerts, time_out_of_sync, _),
-               add_proplist_kv(pop_up_alerts, alert_keys(), _)])
+               add_proplist_kv(pop_up_alerts,
+                               alert_keys() -- [memory_threshold], _)])
+    end.
+
+config_upgrade_to_71(Config) ->
+    case ns_config:search(Config, email_alerts) of
+        false ->
+            [];
+        {value, EmailAlerts} ->
+            upgrade_alerts(
+              EmailAlerts,
+              [add_proplist_list_elem(pop_up_alerts, A, _)
+               || A <- auto_failover:alert_keys()])
     end.
 
 config_upgrade_to_elixir(Config) ->
@@ -322,7 +355,8 @@ start_timer() ->
 global_checks() ->
     [oom, ip, write_fail, overhead, disk, audit_write_fail,
      indexer_ram_max_usage, cas_drift_threshold, communication_issue,
-     time_out_of_sync, disk_usage_analyzer_stuck, certs, xdcr_certs].
+     time_out_of_sync, disk_usage_analyzer_stuck, certs, xdcr_certs,
+     memory_threshold].
 
 %% @doc fires off various checks
 check_alerts(Opaque, Hist, Stats) ->
@@ -592,6 +626,71 @@ check(xdcr_certs, Opaque, _History, _Stats) ->
     case mb_master:master_node() == node() of
         true -> check_xdcr_certs(Opaque);
         false -> Opaque
+    end;
+
+check(memory_threshold, Opaque, _History, Stats) ->
+    case proplists:get_value("@system", Stats) of
+        undefined ->
+            ?log_debug("Skipping memory threshold check as there is no "
+                       "system stats: ~p", [Stats]),
+            ok;
+        SysStats ->
+            Free = proplists:get_value(mem_actual_free, SysStats),
+            Used = proplists:get_value(mem_actual_used, SysStats),
+            case is_number(Free) andalso is_number(Used) andalso
+                 (Free + Used) > 0 of
+                true ->
+                    check_memory_threshold(Used, Used + Free, system);
+                false ->
+                    ?log_debug("Skipping memory threshold check as there is no "
+                               "mem stats: ~p", [SysStats]),
+                    ok
+            end,
+
+            CGLimit = proplists:get_value(mem_cgroup_limit, SysStats),
+            CGUsed = proplists:get_value(mem_cgroup_used, SysStats),
+
+            case is_number(CGUsed) andalso is_number(CGLimit) andalso
+                 CGLimit > 0 of
+                true ->
+                    check_memory_threshold(CGUsed, CGLimit, cgroup);
+                false ->
+                    ok
+            end
+    end,
+    Opaque.
+
+check_memory_threshold(MemUsed, MemTotal, Type) ->
+    Percentage = (MemUsed * 100) / MemTotal,
+    {value, Config} = ns_config:search(alert_limits),
+    Threshold1 = proplists:get_value(memory_notice_threshold,
+                                     Config, ?MEM_NOTICE_PERC),
+    Threshold2 = proplists:get_value(memory_warning_threshold,
+                                     Config, ?MEM_WARN_PERC),
+    Threshold3 = proplists:get_value(memory_critical_threshold,
+                                     Config, ?MEM_CRIT_PERC),
+
+    Res =
+        if
+            Threshold3 >= 0 andalso Percentage >= Threshold3 ->
+                {alert, memory_critical, Threshold3};
+            Threshold2 >= 0 andalso Percentage >= Threshold2 ->
+                {alert, memory_warning, Threshold2};
+            Threshold1 >= 0 andalso Percentage >= Threshold1 ->
+                {alert, memory_notice, Threshold1};
+            true ->
+                ok
+        end,
+
+    case Res of
+        ok -> ok;
+        {alert, Error, Threshold} when is_float(Percentage),
+                                       is_integer(Threshold) ->
+            Node = node(),
+            Host = misc:extract_node_address(Node),
+            Err = fmt_to_bin(errors(Error),
+                             [Host, Type, Percentage, Threshold]),
+            global_alert({memory_threshold, {Node, Threshold, Type}}, Err)
     end.
 
 check_xdcr_certs(Opaque) ->
@@ -842,7 +941,7 @@ maybe_send_out_email_alert({Key0, Node}, Message) ->
         true ->
             Key = extract_alert_key(Key0),
 
-            {value, Config} = ns_config:search(email_alerts),
+            Config = menelaus_alert:get_config(),
             case proplists:get_bool(enabled, Config) of
                 true ->
                     Description = short_description(Key),
@@ -876,7 +975,6 @@ upgrade_alerts(EmailAlerts, Mutations) ->
         lists:foldl(
           fun (Mutation, Acc) -> Mutation(Acc) end,
           EmailAlerts, Mutations),
-
     case misc:sort_kv_list(Result) =:= misc:sort_kv_list(EmailAlerts) of
         true ->
             %% No change due to upgrade
@@ -896,7 +994,19 @@ params() ->
      {"maxIndexerRamPerc", #{type => {int, 0, 100},
                              cfg_key => [alert_limits, max_indexer_ram]}},
      {"certExpirationDays", #{type => pos_int,
-                              cfg_key => cert_exp_alert_days}}].
+                              cfg_key => cert_exp_alert_days}},
+     {"memoryNoticeThreshold", #{type => {int, -1, 100},
+                                 cfg_key => [alert_limits,
+                                             memory_notice_threshold],
+                                 default => ?MEM_NOTICE_PERC}},
+     {"memoryWarningThreshold", #{type => {int, -1, 100},
+                                  cfg_key => [alert_limits,
+                                              memory_warning_threshold],
+                                  default => ?MEM_WARN_PERC}},
+     {"memoryCriticalThreshold", #{type => {int, -1, 100},
+                                   cfg_key => [alert_limits,
+                                               memory_critical_threshold],
+                                   default => ?MEM_CRIT_PERC}}].
 
 build_alert_limits() ->
     case ns_config:search(alert_limits) of
@@ -1008,7 +1118,7 @@ config_update_to_70_test() ->
     Expected3 =
         [{alerts, [ip, communication_issue, time_out_of_sync]},
          {enabled, false},
-         {pop_up_alerts, alert_keys()}],
+         {pop_up_alerts, alert_keys() -- [memory_threshold]}],
     [{set, email_alerts, Actual3}] = config_upgrade_to_70(Config3),
     ?assertEqual(misc:sort_kv_list(Expected3), misc:sort_kv_list(Actual3)),
 
@@ -1021,7 +1131,7 @@ config_update_to_70_test() ->
     Expected4 =
         [{alerts, [ip, communication_issue, time_out_of_sync]},
          {enabled, false},
-         {pop_up_alerts, alert_keys()}],
+         {pop_up_alerts, alert_keys() -- [memory_threshold]}],
     [{set, email_alerts, Actual4}] = config_upgrade_to_70(Config4),
     ?assertEqual(misc:sort_kv_list(Expected4), misc:sort_kv_list(Actual4)).
 
