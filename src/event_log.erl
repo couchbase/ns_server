@@ -154,13 +154,15 @@ is_valid_event_id(Id, "security") when Id >= 9*1024, Id < 10*1024 ->
     ok;
 is_valid_event_id(Id, "views") when Id >= 10*1024, Id < 11*1024 ->
     ok;
+is_valid_event_id(Id, "regulator") when Id >= 11*1024, Id < 12*1024 ->
+    ok;
 is_valid_event_id(Id, Service) ->
     {error, io_lib:format("event_id ~p outside the allocated block for ~p",
                           [Id, list_to_atom(Service)])}.
 
 valid_component() ->
     ["ns_server", "query", "indexing", "search", "eventing", "analytics",
-     "backup", "xdcr", "data", "security", "views"].
+     "backup", "xdcr", "data", "security", "views", "regulator"].
 
 valid_info_levels() ->
     ["info", "error", "warn", "fatal"].
