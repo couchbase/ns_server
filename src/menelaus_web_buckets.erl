@@ -2060,15 +2060,23 @@ parse_validate_bucket_placer_param(What, Other, LowerLimit, Params, IsNew,
                     ignore
             end;
         Value ->
-            case menelaus_util:parse_validate_number(Value, LowerLimit,
-                                                     undefined) of
-                invalid ->
-                    {error, What, Err("~p must be integer", [What])};
-                too_small ->
-                    {error, What, Err("~p must be ~p or more",
-                                      [What, LowerLimit])};
-                {ok, X} ->
-                    {ok, What, X}
+            case IsNew orelse
+                proplists:get_value(What, BucketConfig) =/= undefined of
+                false ->
+                    {error, What, Err("~p cannot be updated since it was not "
+                                      "specified during the bucket creation",
+                                      [What])};
+                true ->
+                    case menelaus_util:parse_validate_number(Value, LowerLimit,
+                                                             undefined) of
+                        invalid ->
+                            {error, What, Err("~p must be integer", [What])};
+                        too_small ->
+                            {error, What, Err("~p must be ~p or more",
+                                              [What, LowerLimit])};
+                        {ok, X} ->
+                            {ok, What, X}
+                    end
             end
     end.
 
