@@ -36,7 +36,8 @@ let knownAlerts = [
   'time_out_of_sync',
   'disk_usage_analyzer_stuck',
   'cert_expired',
-  'cert_expires_soon'
+  'cert_expires_soon',
+  'memory_threshold'
 ];
 
 let timeUnitToSeconds = {
