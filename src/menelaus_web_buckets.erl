@@ -1008,13 +1008,13 @@ validate_common_params(#bv_ctx{bucket_name = BucketName,
      validate_bucket_name(IsNew, BucketConfig, BucketName, AllBuckets),
      parse_validate_ram_quota(Params, BucketConfig)].
 
-validate_bucket_placer_params(Params, IsNew) ->
+validate_bucket_placer_params(Params, IsNew, BucketConfig) ->
     case bucket_placer:is_enabled() of
         true ->
             [parse_validate_bucket_placer_param(width, weight, 1,
-                                                Params, IsNew),
+                                                Params, IsNew, BucketConfig),
              parse_validate_bucket_placer_param(weight, width, 0,
-                                                Params, IsNew)];
+                                                Params, IsNew, BucketConfig)];
         false ->
             []
     end.
@@ -1084,7 +1084,7 @@ validate_membase_bucket_params(CommonParams, Params,
     validate_bucket_purge_interval(Params, BucketConfig, IsNew) ++
         get_conflict_resolution_type_and_thresholds(
           Params, BucketConfig, IsNew) ++
-        validate_bucket_placer_params(Params, IsNew) ++
+        validate_bucket_placer_params(Params, IsNew, BucketConfig) ++
         BucketParams.
 
 validate_unknown_bucket_params(Params) ->
@@ -2040,7 +2040,8 @@ do_parse_validate_ram_quota(Value, _BucketConfig) ->
             {ok, ram_quota, X * ?MIB}
     end.
 
-parse_validate_bucket_placer_param(What, Other, LowerLimit, Params, IsNew) ->
+parse_validate_bucket_placer_param(What, Other, LowerLimit, Params, IsNew,
+                                   BucketConfig) ->
     Err = ?cut(iolist_to_binary(io_lib:format(_, _))),
 
     case proplists:get_value(atom_to_list(What), Params) of
@@ -2048,6 +2049,13 @@ parse_validate_bucket_placer_param(What, Other, LowerLimit, Params, IsNew) ->
             case {IsNew, proplists:get_value(atom_to_list(Other), Params)} of
                 {true, Val} when Val =/= undefined ->
                     {error, What, Err("~p must be specified", [What])};
+                {false, _} ->
+                    case proplists:get_value(What, BucketConfig) of
+                        undefined ->
+                            ignore;
+                        V ->
+                            {ok, What, V}
+                    end;
                 _ ->
                     ignore
             end;
