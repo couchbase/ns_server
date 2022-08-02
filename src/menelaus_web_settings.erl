@@ -12,6 +12,7 @@
 -module(menelaus_web_settings).
 
 -include("ns_common.hrl").
+-include("ns_bucket.hrl").
 -include("cut.hrl").
 
 -ifdef(TEST).
@@ -443,6 +444,12 @@ is_allowed_on_cluster([pbkdf2_sha512_iterations]) ->
     cluster_compat_mode:is_cluster_elixir();
 is_allowed_on_cluster([{serverless, _}]) ->
     bucket_placer:is_enabled();
+is_allowed_on_cluster([kv_storage_limit]) ->
+    config_profile:get_bool(enable_storage_limits);
+is_allowed_on_cluster([index_storage_limit]) ->
+    config_profile:get_bool(enable_storage_limits);
+is_allowed_on_cluster([fts_storage_limit]) ->
+    config_profile:get_bool(enable_storage_limits);
 is_allowed_on_cluster(_) ->
     true.
 
@@ -546,6 +553,12 @@ conf(internal) ->
       <<>>, get_number(1, 1024)},
      {max_bucket_count, maxBucketCount, ns_bucket:get_max_buckets(),
       get_number(1, 8192)},
+     {kv_storage_limit, dataStorageLimit, ?DEFAULT_KV_STORAGE_LIMIT,
+      get_number(?MIN_KV_STORAGE_LIMIT, ?MAX_KV_STORAGE_LIMIT)},
+     {index_storage_limit, indexStorageLimit, ?DEFAULT_INDEX_STORAGE_LIMIT,
+      get_number(?MIN_INDEX_STORAGE_LIMIT, ?MAX_INDEX_STORAGE_LIMIT)},
+     {fts_storage_limit, searchStorageLimit, ?DEFAULT_FTS_STORAGE_LIMIT,
+      get_number(?MIN_FTS_STORAGE_LIMIT, ?MAX_FTS_STORAGE_LIMIT)},
      {magma_min_memory_quota, magmaMinMemoryQuota, 1024,
       get_number(100, 1024, 1024)},
      {event_logs_limit, eventLogsLimit, 10000,
