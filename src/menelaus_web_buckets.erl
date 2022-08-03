@@ -1054,6 +1054,7 @@ validate_memcached_bucket_params(CommonParams, Params, IsNew, BucketConfig) ->
 validate_membase_bucket_params(CommonParams, Params,
                                IsNew, BucketConfig, Version, IsEnterprise) ->
     AllowPitr = cluster_compat_mode:is_version_elixir(Version),
+    AllowStorageLimit = config_profile:get_bool(enable_storage_limits),
     ReplicasNumResult = validate_replicas_number(Params, IsNew),
     BucketParams =
         [{ok, bucketType, membase},
@@ -1076,6 +1077,12 @@ validate_membase_bucket_params(CommonParams, Params,
                                              IsEnterprise),
          parse_validate_storage_quota_percentage(Params, BucketConfig, IsNew, Version,
                                                  IsEnterprise),
+         parse_validate_kv_storage_limit(Params, BucketConfig, IsNew,
+                                         AllowStorageLimit),
+         parse_validate_index_storage_limit(Params, BucketConfig, IsNew,
+                                            AllowStorageLimit),
+         parse_validate_fts_storage_limit(Params, BucketConfig, IsNew,
+                                          AllowStorageLimit),
          parse_validate_max_ttl(Params, BucketConfig, IsNew, IsEnterprise),
          parse_validate_compression_mode(Params, BucketConfig, IsNew,
                                          IsEnterprise)
@@ -1863,6 +1870,77 @@ do_parse_validate_storage_quota_percentage(Val) ->
                                 [?MIN_MAGMA_STORAGE_QUOTA_PERCENTAGE,
                                  ?MAX_MAGMA_STORAGE_QUOTA_PERCENTAGE]),
             {error, storageQuotaPercentage, iolist_to_binary(Msg)}
+    end.
+
+parse_validate_kv_storage_limit(Params, BucketConfig, IsNew, IsEnabled) ->
+    Limit = proplists:get_value("dataStorageLimit", Params),
+    do_parse_validate_storage_limit("dataStorageLimit", kv_storage_limit,
+                                    Limit, BucketConfig, IsNew, IsEnabled).
+
+parse_validate_index_storage_limit(Params, BucketConfig, IsNew, IsEnabled) ->
+    Limit = proplists:get_value("indexStorageLimit", Params),
+    do_parse_validate_storage_limit("indexStorageLimit", index_storage_limit,
+                                    Limit, BucketConfig, IsNew, IsEnabled).
+
+parse_validate_fts_storage_limit(Params, BucketConfig, IsNew, IsEnabled) ->
+    Limit = proplists:get_value("searchStorageLimit", Params),
+    do_parse_validate_storage_limit("searchStorageLimit", fts_storage_limit,
+                                    Limit, BucketConfig, IsNew, IsEnabled).
+
+do_parse_validate_storage_limit(_Param, _InternalName, undefined, _BucketConfig,
+                                _IsNew, false = _IsEnabled) ->
+    ignore;
+do_parse_validate_storage_limit(Param, _InternalName, _Limit, _BucketConfig,
+                                _IsNew, false = _IsEnabled) ->
+    Msg = io_lib:format("~p is not supported with this config profile",
+                        [Param]),
+    {error, Param, list_to_binary(Msg)};
+do_parse_validate_storage_limit(_Param, InternalName, Limit, BucketConfig,
+                                IsNew, _IsEnabled) ->
+    DefaultLimitInt =
+        case IsNew of
+            true -> default_storage_limit(InternalName);
+            false -> proplists:get_value(InternalName, BucketConfig)
+        end,
+    DefaultLimit = integer_to_list(DefaultLimitInt),
+    Fun = validate_storage_limit_fun(InternalName),
+    validate_with_missing(Limit, DefaultLimit, IsNew, Fun).
+
+validate_storage_limit_fun(kv_storage_limit) ->
+    fun do_parse_validate_kv_storage_limit/1;
+validate_storage_limit_fun(index_storage_limit) ->
+    fun do_parse_validate_index_storage_limit/1;
+validate_storage_limit_fun(fts_storage_limit) ->
+    fun do_parse_validate_fts_storage_limit/1.
+
+default_storage_limit(kv_storage_limit) -> ?DEFAULT_KV_STORAGE_LIMIT;
+default_storage_limit(index_storage_limit) -> ?DEFAULT_INDEX_STORAGE_LIMIT;
+default_storage_limit(fts_storage_limit) -> ?DEFAULT_FTS_STORAGE_LIMIT.
+
+do_parse_validate_kv_storage_limit(Val) ->
+    do_validate_storage_limit("dataStorageLimit", kv_storage_limit,
+                              Val,
+                              ?MIN_KV_STORAGE_LIMIT, ?MAX_KV_STORAGE_LIMIT).
+
+do_parse_validate_index_storage_limit(Val) ->
+    do_validate_storage_limit("indexStorageLimit", index_storage_limit,
+                              Val,
+                              ?MIN_INDEX_STORAGE_LIMIT,
+                              ?MAX_INDEX_STORAGE_LIMIT).
+
+do_parse_validate_fts_storage_limit(Val) ->
+    do_validate_storage_limit("searchStorageLimit", fts_storage_limit,
+                              Val,
+                              ?MIN_FTS_STORAGE_LIMIT, ?MAX_FTS_STORAGE_LIMIT).
+
+do_validate_storage_limit(Param, InternalName, Val, Min, Max) ->
+    case menelaus_util:parse_validate_number(Val, Min, Max) of
+        {ok, X} ->
+            {ok, InternalName, X};
+        Error ->
+            Msg = io_lib:format("~p must be an integer between ~p and ~p",
+                                [Param, Min, Max]),
+            {error, Param, list_to_binary(Msg)}
     end.
 
 parse_validate_num_vbuckets(Params, BucketConfig, IsNew) ->
