@@ -50,6 +50,7 @@ handle_pools(Req) ->
     RV1 = [{isAdminCreds, true},
            {isROAdminCreds, false},
            {isEnterprise, Enterprise},
+           {isServerless, config_profile:is_serverless()},
            {allowedServices, AllowedServices},
            {isDeveloperPreview, cluster_compat_mode:is_developer_preview()},
            {packageVariant,
