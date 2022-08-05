@@ -279,6 +279,9 @@ child_specs() ->
      {rebalance_agent, {rebalance_agent, start_link, []},
       permanent, 5000, worker, []},
 
+     {kv_hibernation_agent, {kv_hibernation_agent, start_link, []},
+      permanent, 5000, worker, []},
+
      {ns_rebalance_report_manager, {ns_rebalance_report_manager, start_link, []},
       permanent, 1000, worker, []},
 

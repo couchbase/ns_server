@@ -28,19 +28,35 @@
 -export([pause_bucket/2,
          resume_bucket/2]).
 
+-type supported_services() ::  index | fts.
+
 -spec build_remote_path(
-        Service :: atom(),
+        For :: kv | supported_services(),
         RemotePath :: string()) -> string().
-build_remote_path(Service, RemotePath) ->
-    filename:join(RemotePath, atom_to_list(Service)).
+build_remote_path(For, RemotePath) ->
+    filename:join(RemotePath, atom_to_list(For)).
+
+-spec register_worker(For :: kv | supported_services()) -> true.
+register_worker(For) ->
+    WorkerName = list_to_atom(?MODULE_STRING ++ "-worker-" ++
+                              atom_to_list(For)),
+    erlang:register(WorkerName, self()).
 
 supported_services() ->
     [index, fts].
 
-build_workers_params(RemotePath) ->
+build_service_workers_params(RemotePath) ->
     [{Service, ns_cluster_membership:service_active_nodes(Service),
       build_remote_path(Service, RemotePath)}
      || Service <- supported_services()].
+
+build_kv_worker_params(Bucket, RemotePath) ->
+    {kv, ns_bucket:live_bucket_nodes(Bucket),
+     build_remote_path(kv, RemotePath)}.
+
+build_workers_params(Bucket, RemotePath) ->
+    [build_kv_worker_params(Bucket, RemotePath) |
+     build_service_workers_params(RemotePath)].
 
 pause_bucket(Bucket, RemotePath) ->
     spawn_link_hibernation_manager(
@@ -62,22 +78,34 @@ spawn_link_hibernation_manager(Op, Body) ->
       end).
 
 do_pause_bucket(Bucket, RemotePath) ->
-    WorkerParams = build_workers_params(RemotePath),
+    WorkersParams = build_workers_params(Bucket, RemotePath),
+
+    KVNodes = ns_bucket:live_bucket_nodes(Bucket),
+
+    ok = kv_hibernation_agent:prepare_pause_bucket(Bucket, KVNodes, self()),
 
     ok = hibernation_utils:run_hibernation_op(
-           fun ({Service, Nodes, RP}) ->
+           fun ({For, Nodes, RP}) ->
+                   register_worker(For),
                    pause_bucket_body(
-                     Service, Bucket, RP, Nodes)
-           end, WorkerParams, ?PAUSE_BUCKET_TIMEOUT).
+                     For, Bucket, RP, Nodes)
+           end, WorkersParams, ?PAUSE_BUCKET_TIMEOUT),
 
-pause_bucket_body(Service, Bucket, RemotePath, Nodes) ->
+    kv_hibernation_agent:unprepare_pause_bucket(Bucket, KVNodes).
+
+-spec pause_bucket_body(For, Bucket, RemotePath, Nodes) -> ok
+    when For :: kv | supported_services(),
+         Bucket :: bucket_name(),
+         RemotePath :: string(),
+         Nodes :: [node()].
+pause_bucket_body(For, Bucket, RemotePath, Nodes) ->
     ProgressCallback = fun (_) -> ok end,
 
     service_manager:with_trap_exit_spawn_monitor_pause_bucket(
-      Service, Bucket, RemotePath, Nodes, ProgressCallback, #{}).
+      For, Bucket, RemotePath, Nodes, ProgressCallback, #{}).
 
 do_resume_bucket(Bucket, RemotePath) ->
-    WorkerParams = build_workers_params(RemotePath),
+    WorkersParams = build_workers_params(Bucket, RemotePath),
 
     %% Resume is performed in 2 stages.
     %%
@@ -92,19 +120,27 @@ do_resume_bucket(Bucket, RemotePath) ->
     %% entire Resume operation is aborted.
 
     ok = hibernation_utils:run_hibernation_op(
-           fun ({Service, Nodes, RP}) ->
+           fun ({For, Nodes, RP}) ->
+                   register_worker(For),
                    resume_bucket_body(
-                     Service, Bucket, RP, true, Nodes)
-           end, WorkerParams, ?RESUME_BUCKET_DRY_RUN_TIMEOUT),
+                     For, Bucket, RP, true, Nodes)
+           end, WorkersParams, ?RESUME_BUCKET_DRY_RUN_TIMEOUT),
 
     ok = hibernation_utils:run_hibernation_op(
-           fun ({Service, Nodes, RP}) ->
+           fun ({For, Nodes, RP}) ->
+                   register_worker(For),
                    resume_bucket_body(
-                     Service, Bucket, RP, false, Nodes)
-           end, WorkerParams, ?RESUME_BUCKET_TIMEOUT).
+                     For, Bucket, RP, false, Nodes)
+           end, WorkersParams, ?RESUME_BUCKET_TIMEOUT).
 
-resume_bucket_body(Service, Bucket, RemotePath, DryRun, Nodes) ->
+-spec resume_bucket_body(For, Bucket, RemotePath, DryRun, Nodes) -> ok
+    when For :: kv | supported_services(),
+         Bucket :: bucket_name(),
+         RemotePath :: string(),
+         DryRun :: true | false,
+         Nodes :: [node()].
+resume_bucket_body(For, Bucket, RemotePath, DryRun, Nodes) ->
     ProgressCallback = fun (_) -> ok end,
 
     service_manager:with_trap_exit_spawn_monitor_resume_bucket(
-      Service, Bucket, RemotePath, DryRun, Nodes, ProgressCallback, #{}).
+      For, Bucket, RemotePath, DryRun, Nodes, ProgressCallback, #{}).

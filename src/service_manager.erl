@@ -28,6 +28,13 @@
                              remote_path :: string(),
                              dry_run :: boolean()}).
 
+%% TODO: These default timeouts are a function of the blobStorage
+%% upload/download speeds and the size of the data - therefore needs
+%% re-evaluation.
+
+-define(PAUSE_BUCKET_TIMEOUT, infinity).
+-define(RESUME_BUCKET_TIMEOUT, infinity).
+
 -record(state, { parent :: pid(),
                  service_manager :: pid(),
                  service :: service(),
@@ -56,8 +63,16 @@ with_trap_exit_spawn_monitor_failover(Service, KeepNodes, Opts) ->
 
 with_trap_exit_spawn_monitor_pause_bucket(
   Service, Bucket, RemotePath, Nodes, ProgressCallback, Opts) ->
+    OpBody =
+        case Service of
+            kv ->
+                fun kv_pause_bucket_op/2;
+            _ ->
+                fun pause_bucket_op/5
+        end,
+
     with_trap_exit_spawn_monitor(Service, pause_bucket, Nodes,
-                                 fun pause_bucket_op/5,
+                                 OpBody,
                                  #pause_bucket_args{
                                     bucket = Bucket,
                                     remote_path = RemotePath},
@@ -65,8 +80,16 @@ with_trap_exit_spawn_monitor_pause_bucket(
 
 with_trap_exit_spawn_monitor_resume_bucket(
   Service, Bucket, RemotePath, DryRun, Nodes, ProgressCallback, Opts) ->
+    OpBody =
+        case Service of
+            kv ->
+                fun kv_resume_bucket_op/2;
+            _ ->
+                fun resume_bucket_op/5
+        end,
+
     with_trap_exit_spawn_monitor(Service, resume_bucket, Nodes,
-                                 fun resume_bucket_op/5,
+                                 OpBody,
                                  #resume_bucket_args{
                                     bucket = Bucket,
                                     remote_path = RemotePath,
@@ -143,6 +166,10 @@ run_op(#state{parent = Parent} = State) ->
             exit(Reason)
     end.
 
+wait_for_agents(#state{service = kv,
+                       all_nodes = Nodes}) ->
+    {ok, Agents} = kv_hibernation_agent:get_agents(Nodes),
+    Agents;
 wait_for_agents(#state{op_type = Type,
                        service = Service,
                        all_nodes = AllNodes}) ->
@@ -163,20 +190,31 @@ wait_for_agents_default_timeout(pause_bucket) ->
 wait_for_agents_default_timeout(resume_bucket) ->
     10000.
 
+set_service_manager(#state{service = kv,
+                           all_nodes = Nodes,
+                           service_manager = Manager}) ->
+    ok = kv_hibernation_agent:set_service_manager(Nodes, Manager);
 set_service_manager(#state{service = Service,
                            all_nodes = AllNodes,
                            service_manager = Manager}) ->
     ok = service_agent:set_service_manager(Service, AllNodes, Manager).
 
-unset_service_manager(#state{service = Service,
-                             all_nodes = AllNodes,
-                             service_manager = Manager}) ->
-    case service_agent:unset_service_manager(Service, AllNodes, Manager) of
+unset_service_manager_inner(#state{service = kv,
+                                   all_nodes = Nodes,
+                                   service_manager = Manager}) ->
+    kv_hibernation_agent:unset_service_manager(Nodes, Manager);
+unset_service_manager_inner(#state{service = Service,
+                                   all_nodes = Nodes,
+                                   service_manager = Manager}) ->
+    service_agent:unset_service_manager(Service, Nodes, Manager).
+
+unset_service_manager(#state{service = Service} = State) ->
+    case unset_service_manager_inner(State) of
         ok ->
             ok;
         Other ->
-            ?log_warning("Failed to unset "
-                         "service_manager on some nodes:~n~p", [Other])
+            ?log_warning("Failed to unset service_manager (~p) "
+                         "on some nodes:~n~p", [Service, Other])
     end.
 
 run_op_worker(#state{parent = Parent, op_type = Type} = State) ->
@@ -208,6 +246,8 @@ run_op_worker(#state{parent = Parent, op_type = Type} = State) ->
               end
       end).
 
+do_run_op(#state{service = kv} = State) ->
+    do_run_kv_op(State);
 do_run_op(#state{op_body = OpBody,
                  op_args = OpArgs,
                  service = Service,
@@ -351,3 +391,42 @@ pick_leader(NodeInfos, KeepNodes) ->
           end, NodeInfos),
 
     Leader.
+
+do_run_kv_op(#state{
+                all_nodes = Nodes,
+                op_type = Op,
+                op_body = OpBody,
+                op_args = OpArgs} = State) ->
+    ?log_debug("Starting kv hibernation operation: ~p, on Nodes: ~p",
+               [Op, Nodes]),
+
+    OpBody(State, OpArgs).
+
+kv_pause_bucket_op(#state{
+                      all_nodes = Nodes,
+                      service_manager = Manager},
+                   #pause_bucket_args{
+                      bucket = Bucket,
+                      remote_path = RemotePath}) ->
+
+    %% Kill all the DCP replications for this bucket.
+    ok = replication_manager:set_incoming_replication_map(Bucket, []),
+
+    hibernation_utils:run_hibernation_op(
+      fun (Node) ->
+              ok = kv_hibernation_agent:pause_bucket(
+                     Bucket, RemotePath, Node, Manager)
+      end, Nodes, ?PAUSE_BUCKET_TIMEOUT).
+
+kv_resume_bucket_op(#state{
+                       all_nodes = Nodes,
+                       service_manager = Manager},
+                    #resume_bucket_args{
+                       bucket = Bucket,
+                       remote_path = RemotePath,
+                       dry_run = _DryRun}) ->
+    hibernation_utils:run_hibernation_op(
+      fun (Node) ->
+              ok = kv_hibernation_agent:resume_bucket(
+                     Bucket, RemotePath, Node, Manager)
+      end, Nodes, ?RESUME_BUCKET_TIMEOUT).
