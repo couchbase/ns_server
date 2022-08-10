@@ -338,7 +338,9 @@ config_upgrade_to_elixir(Config) ->
               [add_proplist_list_elem(alerts, cert_expired, _),
                add_proplist_list_elem(pop_up_alerts, cert_expired, _),
                add_proplist_list_elem(alerts, cert_expires_soon, _),
-               add_proplist_list_elem(pop_up_alerts, cert_expires_soon, _)])
+               add_proplist_list_elem(pop_up_alerts, cert_expires_soon, _)] ++
+              [add_proplist_list_elem(pop_up_alerts, A, _)
+               || A <- auto_failover:alert_keys()])
     end.
 
 %% ------------------------------------------------------------------
