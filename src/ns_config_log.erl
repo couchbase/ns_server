@@ -286,7 +286,7 @@ log_common(K, V) ->
 
 frequently_changed_key({local_changes_count, _}) ->
     true;
-frequently_changed_key({metakv, <<"/throttle/report", _/binary>>}) ->
+frequently_changed_key({metakv, <<"/regulator/report", _/binary>>}) ->
     true;
 frequently_changed_key(_) ->
     false.
