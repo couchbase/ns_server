@@ -55,7 +55,15 @@ settings_post_validators_70() ->
              validator:boolean(queryCleanupLostAttempts, _),
              validator:time_duration(queryCleanupWindow, _),
              validator:convert(queryCleanupWindow, fun list_to_binary/1, _),
-             validator:integer(queryNumAtrs, _)];
+             validator:integer(queryNumAtrs, _)] ++
+                case cluster_compat_mode:is_cluster_elixir() of
+                    true ->
+                        [validator:default(queryNodeQuota, 0, _),
+                         validator:integer(queryNodeQuota, _),
+                         validator:range(queryNodeQuota, 0, infinity, _)];
+                    false ->
+                        []
+                end;
         false ->
             []
     end.

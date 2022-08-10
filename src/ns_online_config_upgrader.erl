@@ -106,4 +106,5 @@ upgrade(?VERSION_71, Config) ->
     {?VERSION_ELIXIR,
      menelaus_web_auto_failover:config_upgrade_to_elixir(Config) ++
         menelaus_web_alerts_srv:config_upgrade_to_elixir(Config) ++
-        index_settings_manager:config_upgrade_to_elixir(Config)}.
+        index_settings_manager:config_upgrade_to_elixir(Config) ++
+        query_settings_manager:config_upgrade_to_elixir(Config)}.
