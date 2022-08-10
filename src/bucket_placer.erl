@@ -71,15 +71,16 @@ get_eligible_buckets(Snapshot) ->
 on_zones(Fun, Buckets, Snapshot) ->
     on_groups(fun (GroupNodes, _Group) ->
                       Fun(construct_zone(GroupNodes, Buckets))
-              end, Snapshot).
+              end, undefined, Snapshot).
 
-on_groups(Fun, Snapshot) ->
+on_groups(Fun, KeepNodes, Snapshot)  ->
     Groups = ns_cluster_membership:server_groups(Snapshot),
 
     Results =
         lists:map(
           fun (Group) ->
                   Fun(get_eligible_nodes(proplists:get_value(nodes, Group),
+                                         KeepNodes,
                                          Snapshot), Group)
           end, Groups),
 
@@ -96,10 +97,19 @@ on_groups(Fun, Snapshot) ->
             {error, [proplists:get_value(name, G) || {G, error} <- Bad]}
     end.
 
-get_eligible_nodes(AllGroupNodes, Snapshot) ->
-    ns_cluster_membership:service_nodes(
-      Snapshot, ns_cluster_membership:active_nodes(Snapshot, AllGroupNodes),
-      kv).
+%% Returns the list of eligible nodes to which a bucket may be assigned.
+%% If a topology change is happening the nodes that will be active after
+%% the topology change should be provided in the KeepNode list. If it's
+%% not a topology change situation, the list of KeepNodes should be
+%% undefined.
+-spec get_eligible_nodes([node()], [node()] | undefined, any()) -> [node()].
+
+get_eligible_nodes(AllGroupNodes, KeepNodes, Snapshot) ->
+    Actives = ns_cluster_membership:active_nodes(Snapshot, AllGroupNodes),
+    ActivePlusKeep = [N || N <- AllGroupNodes,
+                           lists:member(N, Actives) orelse
+                           (KeepNodes =/= undefined andalso lists:member(N, KeepNodes))],
+    ns_cluster_membership:service_nodes(Snapshot, ActivePlusKeep, kv).
 
 construct_zone(Nodes, Buckets) ->
     [{N, construct_node(N, Buckets)} || N <- Nodes].
@@ -214,7 +224,7 @@ rebalance(KeepNodes, DefragmentZones, Params, Snapshot) ->
                 end
         end,
 
-    case on_groups(Fun, Snapshot) of
+    case on_groups(Fun, KeepNodes, Snapshot) of
         {ok, Res} ->
             {ok, massage_rebalance_result(Res, SortedByWeight)};
         Error ->
