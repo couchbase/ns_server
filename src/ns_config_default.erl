@@ -306,9 +306,9 @@ default() ->
                        {host, "localhost"},
                        {port, 25},
                        {encrypt, false}]},
-       {alerts, alert_keys_no_memory_check() },
+       {alerts, menelaus_alert:alert_keys()},
        %% The alerts which should produce UI pop-ups.
-       {pop_up_alerts, alert_keys_no_memory_check()}
+       {pop_up_alerts, menelaus_alert:alert_keys()}
       ]},
      {alert_limits, [
        %% Maximum percentage of overhead compared to max bucket size (%)
@@ -337,13 +337,6 @@ default() ->
         auto_rebalance_settings:default_config() ++
         menelaus_web_auto_failover:default_config(IsEnterprise) ++
         throttle_service_settings:default_config(config_profile:get()).
-
-%% memory_threshold is excluded from alerts and pop_up_alerts here for
-%% backward compatibility reasons (because it was added in a minor
-%% release). It can be removed when memory_alert_email is added as
-%% a proper alert (first major release after 7.1).
-alert_keys_no_memory_check() ->
-    menelaus_alert:alert_keys() -- [memory_threshold].
 
 %% returns list of changes to config to upgrade it to current version.
 %% This will be invoked repeatedly by ns_config until list is empty.

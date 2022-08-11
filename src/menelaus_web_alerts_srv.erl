@@ -338,7 +338,11 @@ config_upgrade_to_elixir(Config) ->
               [add_proplist_list_elem(alerts, cert_expired, _),
                add_proplist_list_elem(pop_up_alerts, cert_expired, _),
                add_proplist_list_elem(alerts, cert_expires_soon, _),
-               add_proplist_list_elem(pop_up_alerts, cert_expires_soon, _)] ++
+               add_proplist_list_elem(pop_up_alerts, cert_expires_soon, _),
+               move_memory_alert_email_alerts(alerts,
+                                              memory_alert_email, _),
+               move_memory_alert_email_alerts(pop_up_alerts,
+                                              memory_alert_popup, _)] ++
               [add_proplist_list_elem(pop_up_alerts, A, _)
                || A <- auto_failover:alert_keys()])
     end.
@@ -965,6 +969,12 @@ add_proplist_kv(Key, Value, PList) ->
             PList
       end.
 
+move_memory_alert_email_alerts(Key, NsConfigKey, PList) ->
+    {case ns_config:read_key_fast(NsConfigKey, true) of
+         true -> add_proplist_list_elem(Key, memory_threshold, PList);
+         false -> PList
+     end, [{delete, NsConfigKey}]}.
+
 %% If it is not already present, add Elem to the value of the proplist
 %% member {ListKey, <list_value>}, which is assumed to exist and have a
 %% list value.
@@ -973,17 +983,22 @@ add_proplist_list_elem(ListKey, Elem, PList) ->
     misc:update_proplist(PList, [{ListKey, lists:usort([Elem | List])}]).
 
 upgrade_alerts(EmailAlerts, Mutations) ->
-    Result =
+    {Result, ExtraNsCfgChanges} =
         lists:foldl(
-          fun (Mutation, Acc) -> Mutation(Acc) end,
-          EmailAlerts, Mutations),
+          fun (Mutation, {Acc, OtherChanges}) ->
+              case Mutation(Acc) of
+                  {NewAcc, Extra} -> {NewAcc, OtherChanges ++ Extra};
+                  NewAcc when is_list(EmailAlerts) -> {NewAcc, OtherChanges}
+              end
+          end,
+          {EmailAlerts, []}, Mutations),
     case misc:sort_kv_list(Result) =:= misc:sort_kv_list(EmailAlerts) of
         true ->
             %% No change due to upgrade
             [];
         false ->
             [{set, email_alerts, Result}]
-    end.
+    end ++ ExtraNsCfgChanges.
 
 type_spec(undefined) ->
     undefined.

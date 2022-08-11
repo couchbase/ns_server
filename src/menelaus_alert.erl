@@ -152,10 +152,16 @@ handle_settings_alerts_post(Req) ->
                   end,
 
               Config2 =
-                  functools:chain(
-                    Config,
-                    [SetMemAlertKey(memory_alert_email, alerts, _),
-                     SetMemAlertKey(memory_alert_popup, pop_up_alerts, _)]),
+                  case cluster_compat_mode:is_cluster_elixir() of
+                      true ->
+                          Config;
+                      false ->
+                          functools:chain(
+                            Config,
+                            [SetMemAlertKey(memory_alert_email, alerts, _),
+                             SetMemAlertKey(memory_alert_popup,
+                                            pop_up_alerts, _)])
+                  end,
 
               ns_config:set(email_alerts, Config2),
               ns_audit:alerts(Req, Config2),
@@ -432,9 +438,14 @@ get_config() ->
                     Cfg
             end
         end,
-    functools:chain(Config,
-                    [ReplaceMemAlertKey(memory_alert_email, alerts, _),
-                     ReplaceMemAlertKey(memory_alert_popup, pop_up_alerts, _)]).
+    case cluster_compat_mode:is_cluster_elixir() of
+        true -> Config;
+        false ->
+            functools:chain(Config,
+                            [ReplaceMemAlertKey(memory_alert_email, alerts, _),
+                             ReplaceMemAlertKey(memory_alert_popup,
+                                                pop_up_alerts, _)])
+    end.
 
 -ifdef(TEST).
 validate_all_params_correct_test() ->
