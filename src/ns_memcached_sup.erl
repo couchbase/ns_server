@@ -32,7 +32,4 @@ child_specs(BucketName) ->
     [{{ns_memcached, BucketName}, {ns_memcached, start_link, [BucketName]},
       %% sometimes bucket deletion is slow. NOTE: we're not deleting
       %% bucket on system shutdown anymore
-      permanent, 86400000, worker, [ns_memcached]},
-     {{terse_bucket_info_uploader, BucketName},
-      {terse_bucket_info_uploader, start_link, [BucketName]},
-      permanent, 1000, worker, []}].
+      permanent, 86400000, worker, [ns_memcached]}].

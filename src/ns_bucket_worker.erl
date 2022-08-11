@@ -22,6 +22,7 @@
 -define(TIMEOUT, ?get_timeout(default, 60000)).
 
 -record(state, {running_buckets   :: [bucket_name()],
+                running_uploaders :: [bucket_name()],
                 transient_buckets :: undefined |
                                      {pid(), reference(), [bucket_name()]}}).
 
@@ -55,6 +56,7 @@ init([]) ->
 
     self() ! update_buckets,
     {ok, #state{running_buckets = [],
+                running_uploaders = [],
                 transient_buckets = undefined}}.
 
 handle_call({start_transient_buckets, Buckets, Pid}, _From, State) ->
@@ -87,7 +89,20 @@ update_buckets(#state{running_buckets = RunningBuckets} = State) ->
     start_buckets(ToStart),
     stop_buckets(ToStop),
 
-    State#state{running_buckets = NewBuckets}.
+    State1 = manage_terse_bucket_uploaders(State),
+
+    State1#state{running_buckets = NewBuckets}.
+
+manage_terse_bucket_uploaders(
+  #state{running_uploaders = RunningUploaders} = State) ->
+    AllBuckets = ns_bucket:get_bucket_names(),
+    ToStart = AllBuckets -- RunningUploaders,
+    ToStop = RunningUploaders -- AllBuckets,
+
+    start_uploaders(ToStart),
+    stop_uploaders(ToStop),
+
+    State#state{running_uploaders = AllBuckets}.
 
 compute_buckets_to_run(State) ->
     RegularBuckets = ns_bucket:node_bucket_names(node()),
@@ -121,6 +136,22 @@ stop_one_bucket(Bucket) ->
     after
         diag_handler:disarm_timeout(TimeoutPid)
     end.
+
+start_uploaders(Buckets) ->
+    lists:foreach(fun start_one_uploader/1, Buckets).
+
+start_one_uploader(Bucket) ->
+    ?log_debug("Starting uploader for bucket: ~p", [Bucket]),
+    ok = ns_bucket_sup:start_uploader(Bucket).
+
+stop_uploaders(Buckets) ->
+    lists:foreach(fun stop_one_uploader/1, Buckets).
+
+stop_one_uploader(Bucket) ->
+    %% XXX: if the bucket is a config-only bucket then it is not being
+    %% deleted from kv and thus will leak any associated resources.
+    ?log_debug("Stopping uploader for bucket: ~p", [Bucket]),
+    ok = ns_bucket_sup:stop_uploader(Bucket).
 
 handle_start_transient_buckets(Buckets, Pid, State) ->
     %% Make sure we start/stop all buckets that need to be

@@ -1353,9 +1353,9 @@ ensure_bucket_inner(Sock, Bucket, BucketSelected) ->
 do_ensure_bucket(Sock, Bucket, BConf, true) ->
     ensure_selected_bucket(Sock, Bucket, BConf);
 do_ensure_bucket(Sock, Bucket, BConf, false) ->
-    case mc_client_binary:select_bucket(Sock, Bucket) of
+    case select_and_ensure_bucket(Sock, Bucket, BConf) of
         ok ->
-            ensure_selected_bucket(Sock, Bucket, BConf);
+            ok;
         {memcached_error, key_enoent, _} ->
             {ok, DBSubDir} =
                 ns_storage_conf:this_node_bucket_dbdir(Bucket),
@@ -1382,6 +1382,24 @@ do_ensure_bucket(Sock, Bucket, BConf, false) ->
                 Error ->
                     {error, {bucket_create_error, Error}}
             end;
+        Other ->
+            Other
+    end.
+
+select_and_ensure_bucket(Sock, Bucket, BConf) ->
+    case mc_client_binary:select_bucket(Sock, Bucket) of
+        ok ->
+            case ensure_selected_bucket(Sock, Bucket, BConf) of
+                ok ->
+                    ok;
+                {error, config_only_bucket} ->
+                    %% Have to deselect the bucket otherwise the only thing
+                    %% kv allows is get_cluster_config.
+                    ok = mc_client_binary:deselect_bucket(Sock),
+                    {memcached_error, key_enoent, config_only_bucket}
+            end;
+        {memcached_error, key_enoent, _} = Err ->
+            Err;
         Error ->
             {error, {bucket_select_error, Error}}
     end.
@@ -1394,6 +1412,8 @@ ensure_selected_bucket(Sock, Bucket, BConf) ->
               "Restarting bucket ~p due to configuration change",
               [Bucket]),
             exit({shutdown, reconfig});
+        {error, _} = Error ->
+            Error;
         ok ->
             ok
     end.

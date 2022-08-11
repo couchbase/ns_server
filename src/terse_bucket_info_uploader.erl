@@ -82,12 +82,26 @@ flush_refresh_msgs(BucketName) ->
 refresh_cluster_config(BucketName) ->
     case bucket_info_cache:terse_bucket_info(BucketName) of
         {ok, Rev, RevEpoch, Blob} ->
-            ok = ns_memcached:set_cluster_config(BucketName, Rev, RevEpoch, Blob);
+            case ns_memcached_sockets_pool:executing_on_socket(
+                   fun (Sock) ->
+                           mc_client_binary:set_cluster_config(Sock,
+                                                               BucketName,
+                                                               Rev,
+                                                               RevEpoch,
+                                                               Blob)
+                   end) of
+                ok ->
+                    ok;
+                {memcached_error,key_enoent,undefined} ->
+                    %% XXX: memcached currently doesn't create config-only
+                    %% buckets for non-serverless.
+                    ok
+            end;
         not_present ->
             ?log_debug("Bucket ~s is dead", [BucketName]),
             ok;
         {T, E, Stack} = Exception ->
-            ?log_error("Got exception trying to get terse bucket info: ~p",
+            ?log_error("Got exception trying to set terse bucket info: ~p",
                        [Exception]),
             timer:sleep(10000),
             erlang:raise(T, E, Stack)

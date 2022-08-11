@@ -163,15 +163,20 @@ get(BucketName) ->
     end.
 
 query_stats(Sock) ->
-    {ok, Stats} =
-        mc_binary:quick_stats(
-          Sock, <<>>,
-          fun (<<"ep_", Name/binary>>, V, Dict) ->
-                  dict:store(binary_to_list(Name), V, Dict);
-              (_, _, Dict) ->
-                  Dict
-          end, dict:new()),
-    Stats.
+    case mc_binary:quick_stats(
+           Sock, <<>>,
+           fun (<<"ep_", Name/binary>>, V, Dict) ->
+                   dict:store(binary_to_list(Name), V, Dict);
+               (_, _, Dict) ->
+                   Dict
+           end, dict:new()) of
+        {ok, Stats} ->
+            {ok, Stats};
+        {memcached_error, not_supported, undefined} ->
+            %% This is the method the memcached team has told us to use
+            %% to identify a config-only bucket.
+            {error, config_only_bucket}
+    end.
 
 value_to_string(V) when is_binary(V) ->
     binary_to_list(V);
@@ -227,20 +232,24 @@ maybe_update_param(Sock, Stats, BucketName, {Name, Props, Value}) ->
     end.
 
 ensure(Sock, #cfg{type = membase, name = BucketName, params = Params}) ->
-    Stats = query_stats(Sock),
-    Restart =
-        lists:any(
-          fun ({Name, Props, Value}) ->
-                  lists:member(restart, Props) andalso
+    case query_stats(Sock) of
+        {ok, Stats} ->
+            Restart =
+            lists:any(
+              fun ({Name, Props, Value}) ->
+                      lists:member(restart, Props) andalso
                       has_changed(BucketName, Name,
                                   value_to_binary(Value), Stats)
-          end, Params),
-    case Restart of
-        true ->
-            restart;
-        false ->
-            lists:foreach(
-              maybe_update_param(Sock, Stats, BucketName, _), Params)
+              end, Params),
+            case Restart of
+                true ->
+                    restart;
+                false ->
+                    lists:foreach(
+                      maybe_update_param(Sock, Stats, BucketName, _), Params)
+            end;
+        Error ->
+            Error
     end;
 ensure(Sock, #cfg{type = memcached}) ->
     %% TODO: change max size of memcached bucket also
