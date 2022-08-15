@@ -553,4 +553,122 @@ async_trap_exit_test() ->
     Aborter = spawn(fun() -> async:abort(A) end),
     Child ! go,
     ok = misc:wait_for_process(Aborter, infinity).
+
+async_tree_does_not_collapse_test() ->
+    %% 1. Spawn 2 child asyncs (Child1 and Child2) via a parent async.
+    %% 2. Child1 doesn't get terminated even when Child2 has terminated.
+    %% 3. Eventually parent async timeouts.
+
+    AsyncChildsFun =
+        fun () ->
+            Child1 = async:start(fun() ->
+                                         process_flag(trap_exit, true),
+                                         receive
+                                             {'EXIT', _, _} ->
+                                                 ok
+                                         end
+                                 end),
+            Child2 = async:start(fun() -> exit(not_ok) end),
+            Children = [Child1, Child2],
+
+            try
+                async:wait_many(Children)
+            after
+                async:abort_many(Children)
+            end
+        end,
+
+    {error, timeout} = async:run_with_timeout(AsyncChildsFun, 100).
+
+async_tree_collapses_test() ->
+    %% 1. Spawn 2 child asyncs (Child1 and Child2) via a parent Async.
+    %% 2. Child1 exit with a non-normal exit and Child2 gets terminated.
+
+    0 = ?flush(_),
+    GrandParent = self(),
+
+    AsyncChildsFun =
+        fun () ->
+                Child1 = async:start(fun() -> exit(not_ok) end),
+                Child2 = async:start(
+                           fun() ->
+                                   process_flag(trap_exit, true),
+                                   receive
+                                       {'EXIT', _, shutdown} ->
+                                           GrandParent ! grandchild_shutdown,
+                                           ok
+                                   end
+                           end),
+                Children = [Child1, Child2],
+
+                try
+                    async:wait_many(Children)
+                after
+                    async:abort_many(Children)
+                end
+        end,
+
+    ?assertExit(not_ok, async:run_with_timeout(AsyncChildsFun, 1000)),
+
+    GrandChildShutdown = receive
+                             grandchild_shutdown ->
+                                 true
+                         after
+                             1000 ->
+                                 ?flush(grandchild_shutdown),
+                                 false
+                         end,
+
+    ?assert(GrandChildShutdown),
+    0 = ?flush(_).
+
+async_interruptible_test() ->
+    0 = ?flush(_),
+    GrandParent = self(),
+
+    Pid = erlang:spawn(
+            fun () ->
+                    erlang:process_flag(trap_exit, true),
+                    async:with(
+                      fun () ->
+                              erlang:process_flag(trap_exit, true),
+                              receive
+                                  {'EXIT', _, shutdown} ->
+                                      GrandParent ! grandchild_shutdown
+                              end
+                      end,
+                      fun (Async) ->
+                              GrandParent ! grandchild_spawned,
+                              try
+                                  async:wait(Async, [interruptible])
+                              catch
+                                  throw:{interrupted, {'EXIT', _, Reason}} ->
+                                      async:abort(Async),
+                                      exit(Reason)
+                              end
+                      end)
+            end),
+
+    receive
+        grandchild_spawned ->
+            ok
+    after
+        500 ->
+            ?flush(grandchild_spawned),
+            ?assert(false)
+    end,
+
+    exit(Pid, shutdown),
+
+    GrandChildShutdown = receive
+                             grandchild_shutdown ->
+                                 true
+                         after
+                             500 ->
+                                 ?flush(grandchild_shutdown),
+                                 false
+                         end,
+
+    ?assert(GrandChildShutdown),
+    0 = ?flush(_).
 -endif.
