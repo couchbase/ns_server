@@ -17,10 +17,7 @@
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
 
--export([remote_set_password/1]).
-
--export([set_password/1,
-         decrypt/1,
+-export([decrypt/1,
          encrypt/1,
          change_password/1,
          get_data_key/0,
@@ -31,27 +28,9 @@
 data_key_store_path() ->
     filename:join(path_config:component_path(data, "config"), "encrypted_data_keys").
 
-remote_set_password([Node]) ->
-    remote_set_password([Node, os:getenv("SETPASSWORD")]);
-remote_set_password([Node, Password]) when is_list(Password) ->
-    N = list_to_atom(Node),
-    RV = rpc:call(N, encryption_service, set_password, [Password]),
-
-    %% This API will be called from couchbase-cli. Mapping the return values to
-    %% different exit codes so the cli need not scrape the stdout of the process
-    %% that calls this to ascertain the outcome.
-    ExitCode = case RV of
-                   ok                   -> 0;
-                   retry                -> 101;
-                   {error, not_allowed} -> 102;
-                   {badrpc, nodedown}   -> 103;
-                   auth_failure         -> 104;
-                   _                    -> 105
-               end,
-    init:stop(ExitCode).
-
-set_password(Password) ->
-    gen_server:call(?MODULE, {set_password, Password}, infinity).
+port_file_path() ->
+    filename:join(path_config:component_path(data),
+                  "couchbase-server.babysitter.smport").
 
 encrypt(Data) ->
     gen_server:call({?MODULE, ns_server:get_babysitter_node()}, {encrypt, Data}, infinity).
@@ -87,55 +66,79 @@ prompt_the_password(EncryptedDataKey, State) ->
             _ ->
                 undefined
         end,
-    RV = prompt_the_password(EncryptedDataKey, State, StdIn, 3),
-    case StdIn of
-        undefined ->
-            ok;
-        _ ->
-            port_close(StdIn)
-    end,
-    RV.
+    try
+        prompt_the_password(EncryptedDataKey, State, StdIn, 3)
+    after
+        case StdIn of
+            undefined ->
+                ok;
+            _ ->
+                port_close(StdIn)
+        end
+    end.
 
 prompt_the_password(EncryptedDataKey, State, StdIn, Tries) ->
-    prompt_the_password(EncryptedDataKey, State, StdIn, Tries, Tries).
+    case open_udp_socket() of
+        {ok, Socket} ->
+            try
+                save_port_file(Socket),
+                prompt_the_password(EncryptedDataKey, State, StdIn,
+                                    Tries, Tries, Socket)
+            after
+                file:delete(port_file_path()),
+                catch gen_udp:close(Socket)
+            end;
+        {error, _} ->
+            ns_babysitter_bootstrap:stop(),
+            shutdown
+    end.
 
-prompt_the_password(EncryptedDataKey, State, StdIn, Try, Tries) ->
-    ?log_debug("Waiting for the master password to be supplied. Attempt ~p", [Tries - Try + 1]),
+prompt_the_password(EncryptedDataKey, State, StdIn, Try, Tries, Socket) ->
+    {ok, {Addr, Port}} = inet:sockname(Socket),
+    ?log_debug("Waiting for the master password to be supplied (UDP: ~p:~b). "
+               "Attempt ~p", [Addr, Port, Tries - Try + 1]),
     receive
         {StdIn, M} ->
             ?log_error("Password prompt interrupted: ~p", [M]),
             ns_babysitter_bootstrap:stop(),
             shutdown;
-        {'$gen_call', From, {set_password, P}} ->
-            ok = set_password(P, State),
+        {udp, Socket, FromAddr, FromPort, Password} ->
+            ok = set_password(Password, State),
             case EncryptedDataKey of
                 undefined ->
-                    confirm_set_password(From, P);
+                    confirm_set_password(Socket, FromAddr, FromPort, Password);
                 _ ->
                     Ret = call_gosecrets({set_data_key, EncryptedDataKey}, State),
                     case Ret of
                         ok ->
-                            confirm_set_password(From, P);
+                            confirm_set_password(Socket, FromAddr, FromPort,
+                                                 Password);
                         Error ->
                             ?log_error("Incorrect master password. Error: ~p", [Error]),
-                            maybe_retry_prompt_the_password(EncryptedDataKey, State, StdIn, From, Try, Tries)
+                            maybe_retry_prompt_the_password(
+                              EncryptedDataKey, State, StdIn, FromAddr,
+                              FromPort, Try, Tries, Socket)
                     end
             end
     end.
 
-confirm_set_password(From, Password) ->
+confirm_set_password(Socket, FromAddr, FromPort, Password) ->
+    ?log_info("Password accepted"),
     application:set_env(ns_babysitter, master_password, Password),
-    gen_server:reply(From, ok),
+    gen_udp:send(Socket, FromAddr, FromPort, <<"ok">>),
     ok.
 
-maybe_retry_prompt_the_password(_EncryptedDataKey, _State, _StdIn, ReplyTo, 1, _Tries) ->
-    gen_server:reply(ReplyTo, auth_failure),
+maybe_retry_prompt_the_password(_EncryptedDataKey, _State, _StdIn, FromAddr,
+                                FromPort, 1, _Tries, Socket) ->
+    gen_udp:send(Socket, FromAddr, FromPort, <<"auth_failure">>),
     ?log_error("Incorrect master password!"),
     ns_babysitter_bootstrap:stop(),
     auth_failure;
-maybe_retry_prompt_the_password(EncryptedDataKey, State, StdIn, ReplyTo, Try, Tries) ->
-    gen_server:reply(ReplyTo, retry),
-    prompt_the_password(EncryptedDataKey, State, StdIn, Try - 1, Tries).
+maybe_retry_prompt_the_password(EncryptedDataKey, State, StdIn, FromAddr,
+                                FromPort, Try, Tries, Socket) ->
+    gen_udp:send(Socket, FromAddr, FromPort, <<"retry">>),
+    timer:sleep(1000),
+    prompt_the_password(EncryptedDataKey, State, StdIn, Try - 1, Tries, Socket).
 
 set_password(Password, State) ->
     ?log_debug("Sending password to gosecrets"),
@@ -185,12 +188,16 @@ init([]) ->
             ok;
         Error ->
             ?log_error("Incorrect master password. Error: ~p", [Error]),
-            recover_or_prompt_password(EncryptedDataKey, State)
+            try
+                recover_or_prompt_password(EncryptedDataKey, State)
+            catch
+                C:E:ST ->
+                    ?log_error("Unhandled exception: ~p~n~p", [E, ST]),
+                    erlang:raise(C, E, ST)
+            end
     end,
     {ok, State}.
 
-handle_call({set_password, _}, _From, State) ->
-    {reply, {error, not_allowed}, State};
 handle_call({encrypt, Data}, _From, State) ->
     {reply, call_gosecrets({encrypt, Data}, State), State};
 handle_call({decrypt, Data}, _From, State) ->
@@ -314,3 +321,31 @@ encode({maybe_clear_backup_key, DataKey}) ->
     <<9, DataKey/binary>>;
 encode(get_state) ->
     <<10>>.
+
+save_port_file(Socket) ->
+    {ok, {Addr, Port}} = inet:sockname(Socket),
+    AFBin = case size(Addr) of
+                4 -> <<"inet">>;
+                8 -> <<"inet6">>
+            end,
+    PortBin = integer_to_binary(Port),
+    misc:atomic_write_file(port_file_path(),
+                           <<AFBin/binary, " ", PortBin/binary>>).
+
+open_udp_socket() ->
+    case open_udp_socket(inet) of
+        {ok, S} ->
+            {ok, S};
+        {error, Reason1} ->
+            ?log_warning("Failed to open TCPv4 UDP port: ~p", [Reason1]),
+            case open_udp_socket(inet6) of
+                {ok, S} ->
+                    {ok, S};
+                {error, Reason2} ->
+                    ?log_error("Failed to open TCPv6 UDP port: ~p", [Reason2]),
+                    {error, {Reason1, Reason2}}
+            end
+    end.
+
+open_udp_socket(AFamily) ->
+    gen_udp:open(0, [AFamily, {ip, loopback}, {active, true}]).
