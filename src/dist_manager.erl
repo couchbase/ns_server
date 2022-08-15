@@ -257,8 +257,9 @@ bringup(MyIP, UserSupplied) ->
 
     ok = configure_net_kernel(),
     ns_server:setup_node_names(),
-
-    erlang:set_cookie(ns_node_disco:couchdb_node(), ns_server:get_babysitter_cookie()),
+    BabysitterCookie =  ns_server:get_babysitter_cookie(),
+    erlang:set_cookie(ns_server:get_babysitter_node(), BabysitterCookie),
+    erlang:set_cookie(ns_node_disco:couchdb_node(), BabysitterCookie),
 
     %% Rv can be false in case -name has been passed to erl but we still need
     %% to save the node name to be able to shutdown the server gracefully.

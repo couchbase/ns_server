@@ -310,8 +310,8 @@ read_cookie_file(FilePath) ->
     list_to_atom(Cookie2).
 
 get_babysitter_cookie() ->
-    {ok, CookieFile} = application:get_env(ns_babysitter, cookiefile),
-    read_cookie_file(CookieFile).
+    {ok, Cookie} = application:get_env(ns_server, babysitter_cookie),
+    Cookie.
 
 get_babysitter_node() ->
     {ok, Node} = application:get_env(ns_server, babysitter_node),

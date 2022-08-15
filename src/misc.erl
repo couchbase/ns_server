@@ -303,7 +303,7 @@ rm_rf_loop(DirName, [F | Files]) ->
     end.
 
 generate_cookie() ->
-    binary_to_atom(misc:hexify(crypto:strong_rand_bytes(32)), latin1).
+    binary_to_atom(misc:hexify(crypto:strong_rand_bytes(?COOKIE_LEN)), latin1).
 
 nthreplace(N, E, List) ->
   lists:sublist(List, N-1) ++ [E] ++ lists:nthtail(N, List).

@@ -150,7 +150,10 @@ create_erl_node_spec(Type, Args, EnvArgsVar, ErlangArgs) ->
 
     Env = [{EnvArgsVar, misc:inspect_term(EnvArgs)} | Env0],
 
-    Options0 = [use_stdio, {env, Env}],
+    Cookie = atom_to_binary(erlang:get_cookie(ns_server:get_babysitter_node())),
+    ?COOKIE_HEX_LEN = size(Cookie),
+    Options0 = [use_stdio, {env, Env},
+                {write_data, <<"COOKIE:", Cookie/binary, "\n">>}],
     Options =
         case misc:get_env_default(dont_suppress_stderr_logger, false) of
             true ->

@@ -60,7 +60,7 @@ start(_, _) ->
 
     ?log_info("babysitter cookie: ~p~n",
               [ns_cookie_manager:sanitize_cookie(Cookie)]),
-    write_required_file(cookiefile, Cookie, "babysitter cookie"),
+
     maybe_write_file(nodefile, node(), "babysitter node name"),
 
     make_pidfile(),
@@ -71,15 +71,6 @@ start(_, _) ->
     true = os:unsetenv("https_proxy"),
 
     ns_babysitter_sup:start_link().
-
-write_required_file(Env, Content, Name) ->
-    case application:get_env(Env) of
-        {ok, File} ->
-            do_write_file(Content, File, Name);
-        _ ->
-            erlang:error("A required parameter for the ns_server "
-                         "application is missing!")
-    end.
 
 maybe_write_file(Env, Content, Name) ->
     case application:get_env(Env) of

@@ -18,7 +18,7 @@
 -export([start/2, stop/1]).
 
 %% child_erlang callbacks
--export([start/0, stop/0]).
+-export([start/1, stop/0, should_read_cookie/0]).
 
 -include("ns_common.hrl").
 -include_lib("ale/include/ale.hrl").
@@ -27,7 +27,8 @@
 %% Application callbacks
 %% ===================================================================
 
-start() ->
+start(Cookie) ->
+    application:set_env(ns_server, babysitter_cookie, Cookie),
     application:start(ns_couchdb, permanent).
 
 start(_StartType, _StartArgs) ->
@@ -42,8 +43,7 @@ start(_StartType, _StartArgs) ->
 
     ok = dist_manager:configure_net_kernel(),
 
-    {ok, CookieFile} = application:get_env(ns_couchdb, cookiefile),
-    Cookie = ns_server:read_cookie_file(CookieFile),
+    {ok, Cookie} = application:get_env(ns_server, babysitter_cookie),
     erlang:set_cookie(node(), Cookie),
 
     NsServer = ns_node_disco:ns_server_node(),
@@ -65,6 +65,9 @@ start(_StartType, _StartArgs) ->
 
 stop(_State) ->
     ok.
+
+should_read_cookie() ->
+    true.
 
 %% called by child_erlang when we're asked to exit.
 stop() ->

@@ -342,4 +342,7 @@
 -define(OLD_SCRAM_HASH_KEY,       <<"h">>).
 -define(OLD_SCRAM_ITERATIONS_KEY, <<"i">>).
 
+-define(COOKIE_LEN, 32).
+-define(COOKIE_HEX_LEN, (?COOKIE_LEN * 2)).
+
 -endif.

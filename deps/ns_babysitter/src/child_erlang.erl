@@ -81,8 +81,10 @@ open_port_args() ->
            end,
     Env = [{"NS_SERVER_BABYSITTER_PID", os:getpid()},
            {"CHILD_ERLANG_ENV_ARGS", misc:inspect_term(AppEnvArgs)} | Env0],
-
-    {ErlPath, AllArgs, [{env, Env}, exit_status, use_stdio, stream, eof]}.
+    Cookie = atom_to_binary(erlang:get_cookie()),
+    ?COOKIE_HEX_LEN = size(Cookie),
+    {ErlPath, AllArgs, [{env, Env}, exit_status, use_stdio, stream, eof,
+                        {write_data, <<"COOKIE:", Cookie/binary, "\n">>}]}.
 
 child_start(Arg) ->
     try
@@ -108,7 +110,14 @@ do_child_start([ModuleToBootAsString]) ->
     erlang:group_leader(StdErr, erlang:whereis(application_controller)),
 
     BootModule = list_to_atom(ModuleToBootAsString),
-    BootModule:start(),
+    Cookie =
+        case BootModule:should_read_cookie() of
+            true ->
+                read_cookie();
+            false ->
+                nocookie
+        end,
+    BootModule:start(Cookie),
     %% NOTE: win32 support in erlang handles {fd, 0, 1} specially and
     %% does the right thing. {fd, 0, 0} would not work for example
     Port = erlang:open_port({fd, 0, 1}, [in, stream, binary, eof]),
@@ -144,10 +153,41 @@ child_loop(Port, BootModule) ->
             (catch ?log_debug("--------------~n!!! Message from parent: ~s~n------------~n~n", [Msg])),
             BootModule:stop(),
             misc:halt(0);
+        {'EXIT', OtherPort, normal} when is_port(OtherPort),
+                                         OtherPort =/= Port ->
+            %% this message arrives for a port that is started for cookie
+            %% reading, this is expected
+            child_loop(Port, BootModule);
         Unexpected ->
             io:format("Got unexpected message: ~p~n", [Unexpected]),
             (catch ?log_debug("Got unexpected message: ~p~n", [Unexpected])),
             timer:sleep(3000),
+            misc:halt(1)
+    end.
+
+read_cookie() ->
+    Port = erlang:open_port({fd, 0, 1}, [in, stream, binary, eof]),
+    try
+        read_cookie(Port)
+    after
+        erlang:port_close(Port)
+    end.
+
+read_cookie(Port) ->
+    receive
+        {Port, {data, <<"COOKIE:", CookieBin:?COOKIE_HEX_LEN/binary, "\n">>}} ->
+            binary_to_atom(CookieBin);
+        Unexpected ->
+            io:format("Waiting for cookie, got unexpected message: ~p~n",
+                      [Unexpected]),
+            (catch ?log_debug("Waiting for cookie, got unexpected message:"
+                              " ~p~n", [Unexpected])),
+            timer:sleep(3000),
+            misc:halt(1)
+    after
+        60000 ->
+            io:format("Cookie read timeout. Exiting~n"),
+            (catch ?log_debug("Cookie read timeout. Exiting~n")),
             misc:halt(1)
     end.
 

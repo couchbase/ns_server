@@ -11,12 +11,13 @@
 -include_lib("kernel/include/logger.hrl").
 -include("ns_common.hrl").
 
--export([start/0, stop/0, ensure_os_mon/0]).
+-export([start/1, stop/0, ensure_os_mon/0, should_read_cookie/0]).
 
-start() ->
+start(Cookie) ->
     try
         %% Check disk space every minute instead of every 30
         application:set_env(os_mon, disk_space_check_interval, 1),
+        application:set_env(ns_server, babysitter_cookie, Cookie),
 
         Apps = [ale, asn1, crypto, public_key, ssl,
                 lhttpc, inets, sasl, os_mon, ns_server],
@@ -72,3 +73,6 @@ ensure_os_mon() ->
         Pid when is_pid(Pid) ->
             ok
     end.
+
+should_read_cookie() ->
+    true.

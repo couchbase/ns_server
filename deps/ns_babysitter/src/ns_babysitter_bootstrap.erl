@@ -8,11 +8,15 @@
 %% licenses/APL2.txt.
 -module(ns_babysitter_bootstrap).
 
--export([start/0, stop/0, get_quick_stop/0, remote_stop/1]).
+-export([start/0, start/1, stop/0, get_quick_stop/0, remote_stop/1,
+         should_read_cookie/0]).
 
 -include("ns_common.hrl").
 
 start() ->
+    start(nocookie).
+
+start(nocookie) ->
     try
         ok = application:start(ale),
         ok = application:start(sasl),
@@ -41,6 +45,9 @@ remote_stop(Node) ->
                          1
                  end,
     init:stop(ExitStatus).
+
+should_read_cookie() ->
+    false.
 
 get_quick_stop() ->
     fun quick_stop/0.
