@@ -106,7 +106,12 @@ wait_many(Pids) ->
     wait_many(Pids, []).
 
 wait_many(Pids, Flags) ->
-    call_many(Pids, get_result, Flags).
+    case proplists:get_bool(exit_on_first_error, Flags) of
+        false ->
+            call_many(Pids, get_result, Flags);
+        true ->
+            call_many_and_exit_on_first_error(Pids, get_result, Flags)
+    end.
 
 wait_any(Pids) ->
     wait_any(Pids, []).
@@ -354,6 +359,64 @@ call_many(Pids, Req, Flags) ->
         demonitor_asyncs(PidMRefs)
     end.
 
+call_many_and_exit_on_first_error(Pids, Req, Flags) ->
+    Interruptible = proplists:get_bool(interruptible, Flags),
+
+    Parent = self(),
+    Ref = make_ref(),
+
+    CallerPids =
+        lists:map(
+          fun (Pid) ->
+                  spawn_link(
+                    fun () ->
+                            R = call(Pid, Req, Flags),
+                            Parent ! {'$async_result', Ref,
+                                      {self(), Pid, R}}
+                    end)
+          end, Pids),
+
+    try
+        Results = call_many_and_exit_on_first_error_receive_loop(
+                    [], Ref, Pids, Interruptible),
+        lists:map(
+          fun (Pid) ->
+                  lists:keyfind(Pid, 1, Results)
+          end, Pids)
+    after
+        misc:unlink_terminate_many(CallerPids, shutdown),
+        abort_many(Pids)
+    end.
+
+call_many_and_exit_on_first_error_receive_loop(
+  Results, Ref, Pids, Interruptible) ->
+    receive
+        {'$async_result', Ref, {CallerPid, Pid, R}} ->
+            %% Unlink the caller process once it is has sent a
+            %% {'async_result', _, _} message.
+            erlang:unlink(CallerPid),
+
+            %% The process calling wait_many/2,3 could be trapping an exit -
+            %% flush the mailbox of any 'EXIT' message from the CallerPid.
+            case process_info(self(), trap_exit) of
+                {trap_exit, true} ->
+                    misc:flush({'EXIT', CallerPid, _});
+                {trap_exit, false} ->
+                    ok
+            end,
+
+            ResultsNew = [{Pid, R} | Results],
+            case length(ResultsNew) =:= length(Pids) of
+                true ->
+                    ResultsNew;
+                false ->
+                    call_many_and_exit_on_first_error_receive_loop(
+                      ResultsNew, Ref, Pids, Interruptible)
+            end;
+        {'EXIT', _Pid, _Reason} = Exit when Interruptible ->
+            throw({interrupted, Exit})
+    end.
+
 call_any(Pids, Req, Flags) ->
     PidMRefs = monitor_asyncs(Pids),
     try
@@ -416,6 +479,13 @@ recv_resp_handle_down(Reason) ->
 recv_many(PidMRefs, Flags) ->
     Interruptible = proplists:get_bool(interruptible, Flags),
     [{Pid, recv_resp(MRef, Interruptible)} || {Pid, MRef} <- PidMRefs].
+
+
+%% NOTE: The ordering of the messages in the mailbox for the process executing
+%% recv_any can be changed, given how it is implemented.
+%%
+%% See a detailed discussion at:
+%% https://review.couchbase.org/c/ns_server/+/178908/4..7/src/async.erl#b458
 
 recv_any(PidMRefs, Flags) ->
     Interruptible = proplists:get_bool(interruptible, Flags),
@@ -670,5 +740,261 @@ async_interruptible_test() ->
                          end,
 
     ?assert(GrandChildShutdown),
+    0 = ?flush(_).
+
+async_tree_collapses_2_test() ->
+    %% 1. Spawn 2 child asyncs (Child1 and Child2) via a parent Async.
+    %% 2. Child2 exits with a non-normal exit and Child1 gets terminated.
+    %%
+    %% The parent async returns the error on which Child2 async exited with.
+
+    0 = ?flush(_),
+    GrandParent = self(),
+
+    AsyncChildsFun =
+        fun () ->
+                Child1 = async:start(
+                           fun() ->
+                                   process_flag(trap_exit, true),
+                                   receive
+                                       {'EXIT', _, shutdown} ->
+                                           GrandParent ! grandchild_shutdown,
+                                           ok
+                                   end
+                           end),
+                Child2 = async:start(fun() -> exit(not_ok) end),
+                Children = [Child1, Child2],
+
+                async:wait_many(Children, [exit_on_first_error, interruptible])
+        end,
+
+    ?assertExit({child_died, not_ok},
+                async:run_with_timeout(AsyncChildsFun, 1000)),
+
+    GrandChildShutdown = receive
+                             grandchild_shutdown ->
+                                 true
+                         after
+                             1000 ->
+                                 ?flush(grandchild_shutdown),
+                                 false
+                         end,
+
+    ?assert(GrandChildShutdown),
+    0 = ?flush(_).
+
+async_tree_success_test() ->
+    %% 1. Spawn two child asyncs 'a' and 'b'.
+    %% 2. Collect the results returned from the Child asyncs and confirm both
+    %%    'a' and 'b' were received.
+    AsyncChildsFun =
+        fun () ->
+                async:with_many(
+                  fun (C) -> C end, [a, b],
+                  fun (Asyncs) ->
+                          async:wait_many(Asyncs, [exit_on_first_error])
+                  end)
+        end,
+
+    {ok, Res} = async:run_with_timeout(AsyncChildsFun, 1000),
+
+    AsyncsResults = [R || {_, R} <- Res],
+
+    ?assertEqual(AsyncsResults, [a, b]).
+
+async_tree_success_1_test() ->
+    %% 1. Spawn two 'monitor'-ed child asyncs 'a' and 'b'.
+    %% 2. Collect the results returned from the Child asyncs and confirm both
+    %%    'a' and 'b' were received and that the returned result is in the order
+    %%    in which the asyncs were spawned despite 'a' being slower than 'b'.
+    AsyncChildsFun =
+        fun () ->
+                async:with_many(
+                  fun ({Sleep, C}) ->
+                          case Sleep of
+                              true ->
+                                  timer:sleep(100);
+                              false ->
+                                  ok
+                          end,
+                          C
+                  end, [{true, a}, {false, b}], [{monitor}],
+                  fun (Asyncs) ->
+                          async:wait_many(Asyncs, [exit_on_first_error])
+                  end)
+        end,
+
+    {ok, Res} = async:run_with_timeout(AsyncChildsFun, 1000),
+
+    AsyncsResults = [R || {_, R} <- Res],
+
+    ?assertEqual(AsyncsResults, [a, b]).
+
+run_ntimes(N, Fun) ->
+    lists:foreach(
+      fun (_) ->
+              Fun()
+      end, lists:seq(1, N)).
+
+%% Randomized tests to test 'exit_on_first_error' flag.
+async_randomized_test_success_test() ->
+    run_ntimes(100, ?cut(async_randomized_test_success(
+                           100 + rand:uniform(50)))).
+
+async_randomized_test_success(NumChildren) ->
+    Children = [list_to_atom("child-" ++ integer_to_list(N))
+                ||  N <- lists:seq(1, NumChildren)],
+
+    AsyncChildrenFun =
+        fun () ->
+                async:with_many(
+                  fun (C) ->
+                          timer:sleep(rand:uniform(5)),
+                          C
+                  end, Children,
+                  fun (Asyncs) ->
+                          async:wait_many(Asyncs, [exit_on_first_error])
+                  end)
+        end,
+
+    {ok, Res} = async:run_with_timeout(AsyncChildrenFun, 1500),
+
+    AsyncsResults = [R || {_, R} <- Res],
+
+    ?assertEqual(AsyncsResults, Children).
+
+async_randomized_test_failure_test() ->
+    run_ntimes(100, ?cut(async_randomized_test_failure(
+                           100 + rand:uniform(50)))).
+
+async_randomized_test_failure(NumChildren) ->
+
+    %% Create 3 sets of Asyncs:
+    %% 1. FaultyChildren - which sleep for 1 msec to 5 msecs and exit with
+    %% 'not_ok' error.
+    %% 2. SlowChildren - which don't run to completion.
+    %% 3. FastChildren - which exit normally.
+
+    %% We monitor all these process in the Executor process and when one of the
+    %% FaultyChildren exits all of the processes should be aborted. We assert
+    %% all of them have been aborted by checking we have received 'NumChildren'
+    %% 'DOWN' messages.
+
+    Children = [list_to_atom("child-" ++ integer_to_list(N))
+                ||  N <- lists:seq(1, NumChildren)],
+
+    {FaultyChildren, RestChildren} =
+        lists:split(rand:uniform(NumChildren - 2), Children),
+    {SlowChildren, _} =
+        lists:split(rand:uniform(length(RestChildren)), RestChildren),
+
+    0 = ?flush(_),
+
+    Parent = self(),
+
+    Executor =
+        spawn(
+          fun () ->
+                  Executor = self(),
+                  AsyncChildrenFun =
+                      fun () ->
+                              async:with_many(
+                                fun (C) ->
+                                        Executor ! {monitor, self()},
+                                        receive
+                                            proceed ->
+                                                ok
+                                        end,
+
+                                        case lists:member(C, FaultyChildren) of
+                                            true ->
+                                                timer:sleep(rand:uniform(5)),
+                                                exit(not_ok);
+                                            false ->
+                                                case lists:member(
+                                                       C, SlowChildren) of
+                                                    true ->
+                                                        receive
+                                                            alien_message ->
+                                                                %% wait forever.
+                                                                ok
+                                                        end;
+                                                    false ->
+                                                        ok
+                                                end
+                                        end
+                                end, Children,
+                                fun (Asyncs) ->
+                                        async:wait_many(
+                                          Asyncs, [exit_on_first_error])
+                                end)
+                      end,
+                  MonitorAllAsyncsAndProceedFun =
+                      fun F (Pids) ->
+                              receive
+                                  {monitor, Pid} ->
+                                      erlang:monitor(process, Pid),
+                                      Pids1 = [Pid | Pids],
+
+                                      case length(Pids1) =:= NumChildren of
+                                          true ->
+                                              lists:foreach(
+                                                fun (P) ->
+                                                        P ! proceed
+                                                end, Pids1);
+                                          false ->
+                                              F(Pids1)
+                                      end
+                              end
+                      end,
+
+                  Res =
+                      try
+                          async:with(
+                            AsyncChildrenFun, [{abort_after, 1500}],
+                            fun (Async) ->
+                                    MonitorAllAsyncsAndProceedFun([]),
+                                    async:wait(Async)
+                            end),
+                          %% There are faulty children and the above async run
+                          %% should error out and therefore it's 'not_ok' if it
+                          %% completed successfully.
+                          not_ok
+                      catch
+                          exit:timeout ->
+                              {error, timeout};
+                          exit:{child_died, not_ok} ->
+                              %% Once of the faultyChildren have exited and
+                              %% therefore convert this to a 'ok'.
+                              ok
+                      end,
+
+                  TestResult =
+                      case Res of
+                          ok ->
+                              NumDownMsgs = ?flush({'DOWN', _, process, _, _}),
+
+                              case NumDownMsgs =:= NumChildren of
+                                  true ->
+                                      ok;
+                                  false ->
+                                      {error, all_asyncs_not_aborted}
+                              end;
+                          Error ->
+                              Error
+                      end,
+                  Parent ! {rand_test_result, TestResult}
+          end),
+
+    receive
+        {rand_test_result, TestResult} ->
+            ?assertEqual(ok, TestResult)
+    after
+        2000 ->
+            exit(Executor, kill),
+            ?flush({rand_test_result, _}),
+            ?assert(false)
+    end,
+
     0 = ?flush(_).
 -endif.

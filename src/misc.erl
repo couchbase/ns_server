@@ -2834,12 +2834,18 @@ with_trap_exit_test_() ->
 %% that the Pid is terminated even the caller dies right in between unlink and
 %% exit.
 unlink_terminate(Pid, Reason) ->
+    unlink_terminate_many([Pid], Reason).
+
+unlink_terminate_many(Pids, Reason) ->
     with_trap_exit(
       fun () ->
-              terminate(Pid, Reason),
-              unlink(Pid),
-              %% the process might have died before we unlinked
-              ?flush({'EXIT', Pid, _})
+              lists:foreach(
+                fun (Pid) ->
+                        terminate(Pid, Reason),
+                        unlink(Pid),
+                        %% the process might have died before we unlinked
+                        ?flush({'EXIT', Pid, _})
+                end, Pids)
       end).
 
 %% Unlink, terminate and wait for the completion.
