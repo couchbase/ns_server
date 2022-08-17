@@ -362,19 +362,13 @@ initiate_bucket_rebalance(BucketName, {Moves, UndefinedMoves}, OldState) ->
 
     BuiltMoves =
         [begin
-             {_, {MasterEstimate, MasterChkItems}} = lists:keyfind({MasterNode, VB}, 1, SomeEstimates),
+             {_, {MasterEstimate, _}} = lists:keyfind({MasterNode, VB}, 1, SomeEstimates),
              RBStats =
                  [begin
                       {_, {ReplicaEstimate, _}} = lists:keyfind({Replica, VB}, 1, SomeEstimates),
                       Estimate = case ReplicaEstimate =< MasterEstimate of
                                      true ->
-                                         %% in this case we assume no backfill
-                                         %% is required; but the number of
-                                         %% items to be transferred can't be
-                                         %% less than the number of items in
-                                         %% open checkpoint
-                                         max(MasterChkItems,
-                                             MasterEstimate - ReplicaEstimate);
+                                         MasterEstimate - ReplicaEstimate;
                                      _ ->
                                          MasterEstimate
                                  end,
@@ -1074,7 +1068,7 @@ setup_test_ns_rebalance_observer() ->
     meck:new(janitor_agent, [passthrough]),
     meck:expect(janitor_agent, get_mass_dcp_docs_estimate,
                 fun (_, _, VBs) ->
-                        {ok, lists:duplicate(length(VBs), {0, 0, random_state})}
+                        {ok, lists:duplicate(length(VBs), {10, 2, random_state})}
                 end),
     meck:expect(janitor_agent, get_dcp_docs_estimate,
                 fun (_, _, VB, _) ->
@@ -1213,12 +1207,12 @@ rebalance() ->
                                       {inDocsLeft, _}]}}]}}]}]}]}},
                          {replicationInfo,
                           {[{n_0,
-                             {[{inDocsTotal, _},
+                             {[{inDocsTotal, 0},
                                {inDocsLeft, 0},
                                {outDocsTotal, _},
                                {outDocsLeft, 0}]}},
                             {n_1,
-                             {[{inDocsTotal, _},
+                             {[{inDocsTotal, 0},
                                {inDocsLeft, 0},
                                {outDocsTotal, _},
                                {outDocsLeft, 0}]}}]}},
