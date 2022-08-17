@@ -767,6 +767,12 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["controller", "startFailover"] ->
                     {{[pools], write},
                      fun menelaus_web_cluster:handle_start_failover/1};
+                ["controller", "pause"] ->
+                    {{[admin, internal], all},
+                        fun menelaus_web_buckets:handle_pause/1};
+                ["controller", "resume"] ->
+                    {{[admin, internal], all},
+                        fun menelaus_web_buckets:handle_resume/1};
                 ["controller", "startGracefulFailover"] ->
                     {{[pools], write}, fun menelaus_web_cluster:handle_start_graceful_failover/1};
                 ["controller", "rebalance"] ->

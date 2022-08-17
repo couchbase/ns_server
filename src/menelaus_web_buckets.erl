@@ -34,6 +34,8 @@
          handle_bucket_update/3,
          handle_bucket_create/2,
          create_bucket/3,
+         handle_pause/1,
+         handle_resume/1,
          handle_bucket_flush/3,
          handle_compact_bucket/3,
          handle_purge_compact_bucket/3,
@@ -731,6 +733,39 @@ handle_bucket_create(PoolId, Req) ->
         {Struct, Code} ->
             reply_json(Req, Struct, Code)
     end.
+
+assert_pause_resume_api_enabled() ->
+    menelaus_util:assert_config_profile_flag(enable_pause_resume).
+
+check_remote_path("s3://" ++ _REST = _RemotePath) ->
+    ok.
+
+validate_remote_path(Name, State) ->
+    validator:validate(
+      fun (Value) ->
+              try check_remote_path(Value)
+              catch _:_ -> {error, "Invalid remote path"}
+              end
+      end, Name, State).
+
+validators_pause_resume() ->
+    [validator:required(bucket, _), validator:string(bucket, _),
+     validator:required(remote_path, _), validator:string(remote_path, _),
+     validate_remote_path(remote_path, _)].
+
+process_req(Req, HandlerFunc) ->
+    validator:handle(fun (Params) ->
+                             HandlerFunc(Params),
+                             menelaus_util:reply_json(Req, [], 200)
+                     end, Req, json, validators_pause_resume()).
+
+handle_pause(Req) ->
+    assert_pause_resume_api_enabled(),
+    process_req(Req, fun(_)-> ok end).
+
+handle_resume(Req) ->
+    assert_pause_resume_api_enabled(),
+    process_req(Req, fun(_)-> ok end).
 
 perform_warnings_validation(Ctx, ParsedProps, Errors) ->
     Errors ++
