@@ -1937,7 +1937,7 @@ do_validate_storage_limit(Param, InternalName, Val, Min, Max) ->
     case menelaus_util:parse_validate_number(Val, Min, Max) of
         {ok, X} ->
             {ok, InternalName, X};
-        Error ->
+        _Error ->
             Msg = io_lib:format("~p must be an integer between ~p and ~p",
                                 [Param, Min, Max]),
             {error, Param, list_to_binary(Msg)}
