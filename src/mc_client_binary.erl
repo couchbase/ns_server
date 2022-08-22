@@ -226,11 +226,18 @@ create_bucket(Sock, BucketName, Engine, Config, Timeout) ->
 delete_bucket(Sock, BucketName, Options) ->
     report_counter(?FUNCTION_NAME),
     Force = proplists:get_bool(force, Options),
-    Config = io_lib:format("force=~s", [Force]),
+    Config0 = [{force, Force}] ++
+        case proplists:get_value(type, Options) of
+            undefined ->
+                [];
+            Value ->
+                [{type, Value}]
+        end,
+    Config = ejson:encode({Config0}),
     case cmd(?CMD_DELETE_BUCKET, Sock, undefined, undefined,
              {#mc_header{},
               #mc_entry{key = BucketName,
-                        data = iolist_to_binary(Config)}}, infinity) of
+                        data = Config}}, infinity) of
         {ok, #mc_header{status=?SUCCESS}, _ME, _NCB} ->
             ok;
         Response -> process_error_response(Response)

@@ -148,10 +148,25 @@ stop_uploaders(Buckets) ->
     lists:foreach(fun stop_one_uploader/1, Buckets).
 
 stop_one_uploader(Bucket) ->
-    %% XXX: if the bucket is a config-only bucket then it is not being
-    %% deleted from kv and thus will leak any associated resources.
     ?log_debug("Stopping uploader for bucket: ~p", [Bucket]),
-    ok = ns_bucket_sup:stop_uploader(Bucket).
+    ok = ns_bucket_sup:stop_uploader(Bucket),
+    delete_config_only_bucket(Bucket).
+
+delete_config_only_bucket(Bucket) ->
+    case (catch ns_memcached_sockets_pool:executing_on_socket(
+                  fun (Sock) ->
+                          mc_client_binary:delete_bucket(
+                            Sock, Bucket, [{type, 'ClusterConfigOnly'}])
+                  end)) of
+        ok ->
+            ok;
+        {memcached_error, key_enoent, undefined} ->
+            %% Bucket deleted already by ns_memcached terminating
+            ok;
+        Error ->
+            ?log_error("Failed to delete config-only bucket ~p: ~p",
+                       [Bucket, Error])
+    end.
 
 handle_start_transient_buckets(Buckets, Pid, State) ->
     %% Make sure we start/stop all buckets that need to be
