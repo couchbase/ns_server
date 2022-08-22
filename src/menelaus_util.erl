@@ -67,6 +67,7 @@
          assert_is_enterprise/0,
          assert_is_66/0,
          assert_is_71/0,
+         assert_is_elixir/0,
          assert_config_profile_flag/1,
          choose_node_consistently/2,
          compute_sec_headers/0,
@@ -662,6 +663,9 @@ assert_is_66() ->
 
 assert_is_71() ->
     assert_cluster_version(fun cluster_compat_mode:is_cluster_71/0).
+
+assert_is_elixir() ->
+    assert_cluster_version(fun cluster_compat_mode:is_cluster_elixir/0).
 
 assert_cluster_version(Fun) ->
     assert(
