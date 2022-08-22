@@ -1174,8 +1174,10 @@ get_bucket_type(false = _IsNew, BucketConfig, _Params)
   when is_list(BucketConfig) ->
     ns_bucket:bucket_type(BucketConfig);
 get_bucket_type(_IsNew, _BucketConfig, Params) ->
+    DisallowMemcached = config_profile:get_bool(disallow_memcached_buckets),
     case proplists:get_value("bucketType", Params) of
-        "memcached" -> memcached;
+        "memcached" when DisallowMemcached =/= true ->
+            memcached;
         "membase" -> membase;
         "couchbase" -> membase;
         "ephemeral" -> membase;
