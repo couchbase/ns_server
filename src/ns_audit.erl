@@ -155,9 +155,9 @@ handle_call({log, Code, Body, IsSync}, From, #state{queue = Queue} = State) ->
                 Continuation =
                     case IsSync of
                         true ->
-                            fun (Res) -> gen_server:reply(From, Res) end;
+                            {true, From};
                         false ->
-                            fun (_) -> ok end
+                            false
                     end,
                 self() ! send,
                 queue:in({Code, EncodedBody, Continuation}, CleanedQueue)
@@ -197,7 +197,9 @@ maybe_backup(Queue) ->
     case queue:is_empty(Queue) of
         false ->
             ?log_warning("Backup non empty audit queue"),
-            case misc:write_file(backup_path(), term_to_binary(Queue)) of
+            case misc:write_file(backup_path(),
+                                 term_to_binary(
+                                   convert_to_async_response(Queue))) of
                 ok ->
                     ok;
                 Error ->
@@ -207,6 +209,18 @@ maybe_backup(Queue) ->
             ok
     end.
 
+convert_to_async_response(Queue) ->
+    queue:fold(
+      %% "_Fun" is invalid if it has been saved to disk. It can contain either
+      %% a closure (before 7.1.2) or {true, From} | false (after 7.1.2).
+      %% "From" is never saved to disk and all synchronous ({true, From})
+      %% calls are converted to "false" because pids() also cannot be safely
+      %% saved and loaded from disk.
+      fun ({Code, Body, _Fun}, Acc) ->
+              queue:in({Code, Body, false}, Acc)
+      end,
+      queue:new(), Queue).
+
 restore_backup(Binary) ->
     try binary_to_term(Binary, [safe]) of
         Queue ->
@@ -214,7 +228,7 @@ restore_backup(Binary) ->
                 true ->
                     ?log_info("Audit queue was restored from the backup"),
                     self() ! send,
-                    Queue;
+                    convert_to_async_response(Queue);
                 false ->
                     ?log_error("Backup content is not a proper queue"),
                     error
@@ -474,17 +488,22 @@ sync_put(Code, Req, Params) ->
     Body = prepare(Req, Params),
     ok = gen_server:call(?MODULE, {log, Code, Body, true}).
 
+maybe_reply({true, From}, Response) ->
+    gen_server:reply(From, Response);
+maybe_reply(false, _Response) ->
+    ok.
+
 send_to_memcached(Queue) ->
     case queue:out(Queue) of
         {empty, Queue} ->
             {ok, Queue};
-        {{value, {Code, EncodedBody, Continuation}}, NewQueue} ->
+        {{value, {Code, EncodedBody, IsSync}}, NewQueue} ->
             case (catch ns_memcached_sockets_pool:executing_on_socket(
                           fun (Sock) ->
                                   mc_client_binary:audit_put(Sock, code(Code), EncodedBody)
                           end)) of
                 ok ->
-                    Continuation(ok),
+                    maybe_reply(IsSync, ok),
                     send_to_memcached(NewQueue);
                 Error ->
                     ?log_debug(
@@ -821,9 +840,9 @@ print_audit_records(Queue) ->
     case queue:out(Queue) of
         {empty, _} ->
             ok;
-        {{value, {_, _, Continuation} = V}, NewQueue} ->
+        {{value, {_, _, IsSync} = V}, NewQueue} ->
             ?log_info("Dropped audit entry: ~p", [V]),
-            Continuation({error, dropped}),
+            maybe_reply(IsSync, {error, dropped}),
             print_audit_records(NewQueue)
     end.
 
@@ -908,3 +927,53 @@ rbac_info_retrieved(Req, Type) ->
 
 admin_password_reset(Req) ->
     put(admin_password_reset, Req, []).
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+%% Had to reimplement some aspects of the backup logic to get a functioning,
+%% isolated test. Otherwise there were issues with paths from the test context.
+maybe_backup_test() ->
+    TestFile = "test_audit.bak",
+    try
+        L = [{X, Y, fun (_Resp) ->
+                            error("this should never be called")
+                    end}
+             || {X, Y} <- [{code1, "1"}, {code2, "2"}, {code3, "3"}]],
+        case misc:write_file(TestFile, term_to_binary(queue:from_list(L))) of
+            ok ->
+                ok;
+            Error ->
+                WriteErr = io_lib:format("Failed to write backup: ~p", [Error]),
+                exit(WriteErr)
+        end,
+        Q2 = case file:read_file(TestFile) of
+                 {ok, Binary} ->
+                     Resp = restore_backup(Binary),
+                     ?assertEqual(process_info(self(), message_queue_len),
+                                  {message_queue_len, 1}),
+                     ?flush(send),
+                     ?assertEqual(process_info(self(), message_queue_len),
+                                  {message_queue_len, 0}),
+                     Resp;
+                 X ->
+                     ReadErr = io_lib:format("Failed to restore backup: ~p", [X]),
+                     exit(ReadErr)
+             end,
+
+        %% make sure that we have successfully replaced all anonymous functions
+        %% with 'false'. This effectively converted all the synchronous requests
+        %% to asynchronous requests.
+        lists:foreach(fun ({_, _, Val}) -> ?assertEqual(Val, false) end,
+                      queue:to_list(Q2))
+    after
+        case file:delete(TestFile) of
+            ok ->
+                ok;
+            Err ->
+                DeleteErr = io_lib:format("Unable to delete backup: ~p", [Err]),
+                exit(DeleteErr)
+        end
+    end.
+
+-endif.
