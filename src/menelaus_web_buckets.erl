@@ -1932,10 +1932,15 @@ do_parse_validate_storage_limit(Param, _InternalName, _Limit, _BucketConfig,
     {error, Param, list_to_binary(Msg)};
 do_parse_validate_storage_limit(_Param, InternalName, Limit, BucketConfig,
                                 IsNew, _IsEnabled) ->
+    GlobalDefault =
+        ns_config:read_key_fast(InternalName,
+                                default_storage_limit(InternalName)),
     DefaultLimitInt =
         case IsNew of
-            true -> default_storage_limit(InternalName);
-            false -> proplists:get_value(InternalName, BucketConfig)
+            true -> GlobalDefault;
+            false -> proplists:get_value(InternalName,
+                                         BucketConfig,
+                                         GlobalDefault)
         end,
     DefaultLimit = integer_to_list(DefaultLimitInt),
     Fun = validate_storage_limit_fun(InternalName),
