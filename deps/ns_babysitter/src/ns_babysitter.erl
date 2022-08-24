@@ -233,6 +233,7 @@ read_disk_log_index_file(Path) ->
 
 make_pidfile() ->
     case application:get_env(ns_babysitter, pidfile) of
+        {ok, ""} -> ok;
         {ok, PidFile} -> make_pidfile(PidFile);
         X -> X
     end.
@@ -246,6 +247,7 @@ make_pidfile(PidFile) ->
 
 delete_pidfile() ->
     case application:get_env(ns_babysitter, pidfile) of
+        {ok, ""} -> ok;
         {ok, PidFile} -> delete_pidfile(PidFile);
         X -> X
     end.

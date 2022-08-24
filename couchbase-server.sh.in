@@ -210,6 +210,14 @@ _drop_old_crashdumps () {
 
 
 _start() {
+    maybe_pidfile=""
+    if [ $1 == "--with-pidfile" ]; then
+        maybe_pidfile="$PIDFILE"
+    fi
+    # Shifting arguments in order to remove the first arg because we just have
+    # handled it
+    shift
+
     _prepare_datadir
     _check_datadir_writeable "start Couchbase Server"
 
@@ -246,10 +254,11 @@ _start() {
         -run ns_babysitter_bootstrap -- \
         -couch_ini $couch_start_arguments \
         -ns_babysitter nodefile "\"$NODEFILE\"" \
-        -ns_babysitter pidfile "\"$PIDFILE\"" \
+        -ns_babysitter pidfile "\"$maybe_pidfile\"" \
         -ns_server config_path "\"$STATIC_CONFIG_PATH\""
 }
 
+# This function assumes that _start created a pidfile
 _stop() {
     [ -f "$COOKIEFILE" -a -f "$NODEFILE" ] || return 1
 
@@ -282,6 +291,7 @@ _stop() {
     return $errcode
 }
 
+# This function assumes that _start created a pidfile
 _status() {
     if [ ! -f "$PIDFILE" ]; then
         echo "Couchbase Server is not running"
@@ -345,7 +355,7 @@ _parse_options () {
 
     if [ "$1" == "--start" ]
     then
-      _start -detached
+      _start --with-pidfile -detached
       # No "exit" is required here because _start does an exec.
     fi
 
@@ -390,7 +400,7 @@ _parse_options () {
        esac
     done
 
-    _start $*
+    _start --without-pidfile $*
 }
 
 _parse_options $*
