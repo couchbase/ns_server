@@ -1593,9 +1593,12 @@ extract_bucket_props(Props) ->
                         num_threads, eviction_policy, conflict_resolution_type,
                         drift_ahead_threshold_ms, drift_behind_threshold_ms,
                         storage_mode, max_ttl, compression_mode,
+                        magma_max_shards, weight, width, desired_servers,
                         kv_storage_limit, index_storage_limit,
                         fts_storage_limit,
-                        magma_max_shards, weight, width, desired_servers]],
+                        kv_throttle_limit, index_throttle_limit,
+                        fts_throttle_limit, n1ql_throttle_limit,
+                        sgw_read_throttle_limit, sgw_write_throttle_limit]],
           X =/= false].
 
 build_threshold({Percentage, Size}) ->

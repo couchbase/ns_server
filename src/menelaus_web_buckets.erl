@@ -1090,6 +1090,7 @@ validate_membase_bucket_params(CommonParams, Params,
                                IsNew, BucketConfig, Version, IsEnterprise) ->
     AllowPitr = cluster_compat_mode:is_version_elixir(Version),
     AllowStorageLimit = config_profile:get_bool(enable_storage_limits),
+    AllowThrottleLimit = config_profile:get_bool(enable_throttle_limits),
     ReplicasNumResult = validate_replicas_number(Params, IsNew),
     BucketParams =
         [{ok, bucketType, membase},
@@ -1120,8 +1121,10 @@ validate_membase_bucket_params(CommonParams, Params,
                                           AllowStorageLimit),
          parse_validate_max_ttl(Params, BucketConfig, IsNew, IsEnterprise),
          parse_validate_compression_mode(Params, BucketConfig, IsNew,
-                                         IsEnterprise)
-         | validate_bucket_auto_compaction_settings(Params)],
+                                         IsEnterprise)] ++
+         parse_validate_throttle_limits(Params, BucketConfig, IsNew,
+                                        AllowThrottleLimit) ++
+         validate_bucket_auto_compaction_settings(Params),
 
     validate_bucket_purge_interval(Params, BucketConfig, IsNew) ++
         get_conflict_resolution_type_and_thresholds(
@@ -1911,32 +1914,39 @@ do_parse_validate_storage_quota_percentage(Val) ->
 
 parse_validate_kv_storage_limit(Params, BucketConfig, IsNew, IsEnabled) ->
     Limit = proplists:get_value("dataStorageLimit", Params),
-    do_parse_validate_storage_limit("dataStorageLimit", kv_storage_limit,
-                                    Limit, BucketConfig, IsNew, IsEnabled).
+    do_parse_validate_limit("dataStorageLimit", kv_storage_limit,
+                            Limit, BucketConfig, IsNew, IsEnabled).
 
 parse_validate_index_storage_limit(Params, BucketConfig, IsNew, IsEnabled) ->
     Limit = proplists:get_value("indexStorageLimit", Params),
-    do_parse_validate_storage_limit("indexStorageLimit", index_storage_limit,
-                                    Limit, BucketConfig, IsNew, IsEnabled).
+    do_parse_validate_limit("indexStorageLimit", index_storage_limit,
+                            Limit, BucketConfig, IsNew, IsEnabled).
 
 parse_validate_fts_storage_limit(Params, BucketConfig, IsNew, IsEnabled) ->
     Limit = proplists:get_value("searchStorageLimit", Params),
-    do_parse_validate_storage_limit("searchStorageLimit", fts_storage_limit,
-                                    Limit, BucketConfig, IsNew, IsEnabled).
+    do_parse_validate_limit("searchStorageLimit", fts_storage_limit,
+                            Limit, BucketConfig, IsNew, IsEnabled).
 
-do_parse_validate_storage_limit(_Param, _InternalName, undefined, _BucketConfig,
-                                _IsNew, false = _IsEnabled) ->
+parse_validate_throttle_limits(Params, BucketConfig, IsNew, IsEnabled) ->
+    LimitFunc = ?cut(proplists:get_value(_, Params)),
+    [do_parse_validate_limit(Param, Key, LimitFunc(atom_to_list(Param)),
+                             BucketConfig,
+                             IsNew, IsEnabled) ||
+        {Param, Key, _} <- bucket_info_cache:get_throttle_attributes()].
+
+do_parse_validate_limit(_Param, _InternalName, undefined, _BucketConfig,
+                        _IsNew, false = _IsEnabled) ->
     ignore;
-do_parse_validate_storage_limit(Param, _InternalName, _Limit, _BucketConfig,
-                                _IsNew, false = _IsEnabled) ->
+do_parse_validate_limit(Param, _InternalName, _Limit, _BucketConfig,
+                        _IsNew, false = _IsEnabled) ->
     Msg = io_lib:format("~p is not supported with this config profile",
                         [Param]),
     {error, Param, list_to_binary(Msg)};
-do_parse_validate_storage_limit(_Param, InternalName, Limit, BucketConfig,
-                                IsNew, _IsEnabled) ->
+do_parse_validate_limit(_Param, InternalName, Limit, BucketConfig,
+                        IsNew, _IsEnabled) ->
     GlobalDefault =
         ns_config:read_key_fast(InternalName,
-                                default_storage_limit(InternalName)),
+                                default_limit(InternalName)),
     DefaultLimitInt =
         case IsNew of
             true -> GlobalDefault;
@@ -1945,37 +1955,57 @@ do_parse_validate_storage_limit(_Param, InternalName, Limit, BucketConfig,
                                          GlobalDefault)
         end,
     DefaultLimit = integer_to_list(DefaultLimitInt),
-    Fun = validate_storage_limit_fun(InternalName),
+    Fun = validate_limit_fun(InternalName),
     validate_with_missing(Limit, DefaultLimit, IsNew, Fun).
 
-validate_storage_limit_fun(kv_storage_limit) ->
-    fun do_parse_validate_kv_storage_limit/1;
-validate_storage_limit_fun(index_storage_limit) ->
-    fun do_parse_validate_index_storage_limit/1;
-validate_storage_limit_fun(fts_storage_limit) ->
-    fun do_parse_validate_fts_storage_limit/1.
+validate_limit_fun(kv_storage_limit) ->
+    ?cut(do_validate_limit("dataStorageLimit", kv_storage_limit,
+         _, ?MIN_KV_STORAGE_LIMIT, ?MAX_KV_STORAGE_LIMIT));
+validate_limit_fun(index_storage_limit) ->
+    ?cut(do_validate_limit("indexStorageLimit", index_storage_limit,
+         _, ?MIN_INDEX_STORAGE_LIMIT, ?MAX_INDEX_STORAGE_LIMIT));
+validate_limit_fun(fts_storage_limit) ->
+    ?cut(do_validate_limit("searchStorageLimit", fts_storage_limit,
+         _, ?MIN_FTS_STORAGE_LIMIT, ?MAX_FTS_STORAGE_LIMIT));
+validate_limit_fun(kv_throttle_limit) ->
+    ?cut(do_validate_limit("dataThrottleLimit", kv_throttle_limit,
+         _, ?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT));
+validate_limit_fun(index_throttle_limit) ->
+    ?cut(do_validate_limit("indexThrottleLimit", index_throttle_limit,
+         _, ?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT));
+validate_limit_fun(fts_throttle_limit) ->
+    ?cut(do_validate_limit("searchThrottleLimit", fts_throttle_limit,
+         _, ?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT));
+validate_limit_fun(n1ql_throttle_limit) ->
+    ?cut(do_validate_limit("queryThrottleLimit", n1ql_throttle_limit,
+         _, ?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT));
+validate_limit_fun(sgw_read_throttle_limit) ->
+    ?cut(do_validate_limit("sgwReadThrottleLimit", sgw_read_throttle_limit,
+         _, ?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT));
+validate_limit_fun(sgw_write_throttle_limit) ->
+    ?cut(do_validate_limit("sgwWriteThrottleLimit", sgw_write_throttle_limit,
+         _, ?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT)).
 
-default_storage_limit(kv_storage_limit) -> ?DEFAULT_KV_STORAGE_LIMIT;
-default_storage_limit(index_storage_limit) -> ?DEFAULT_INDEX_STORAGE_LIMIT;
-default_storage_limit(fts_storage_limit) -> ?DEFAULT_FTS_STORAGE_LIMIT.
+default_limit(kv_storage_limit) ->
+    ?DEFAULT_KV_STORAGE_LIMIT;
+default_limit(index_storage_limit) ->
+    ?DEFAULT_INDEX_STORAGE_LIMIT;
+default_limit(fts_storage_limit) ->
+    ?DEFAULT_FTS_STORAGE_LIMIT;
+default_limit(kv_throttle_limit) ->
+    ?DEFAULT_KV_THROTTLE_LIMIT;
+default_limit(index_throttle_limit) ->
+    ?DEFAULT_INDEX_THROTTLE_LIMIT;
+default_limit(fts_throttle_limit) ->
+    ?DEFAULT_FTS_THROTTLE_LIMIT;
+default_limit(n1ql_throttle_limit) ->
+    ?DEFAULT_N1QL_THROTTLE_LIMIT;
+default_limit(sgw_read_throttle_limit) ->
+    ?DEFAULT_SGW_READ_THROTTLE_LIMIT;
+default_limit(sgw_write_throttle_limit) ->
+    ?DEFAULT_SGW_WRITE_THROTTLE_LIMIT.
 
-do_parse_validate_kv_storage_limit(Val) ->
-    do_validate_storage_limit("dataStorageLimit", kv_storage_limit,
-                              Val,
-                              ?MIN_KV_STORAGE_LIMIT, ?MAX_KV_STORAGE_LIMIT).
-
-do_parse_validate_index_storage_limit(Val) ->
-    do_validate_storage_limit("indexStorageLimit", index_storage_limit,
-                              Val,
-                              ?MIN_INDEX_STORAGE_LIMIT,
-                              ?MAX_INDEX_STORAGE_LIMIT).
-
-do_parse_validate_fts_storage_limit(Val) ->
-    do_validate_storage_limit("searchStorageLimit", fts_storage_limit,
-                              Val,
-                              ?MIN_FTS_STORAGE_LIMIT, ?MAX_FTS_STORAGE_LIMIT).
-
-do_validate_storage_limit(Param, InternalName, Val, Min, Max) ->
+do_validate_limit(Param, InternalName, Val, Min, Max) ->
     case menelaus_util:parse_validate_number(Val, Min, Max) of
         {ok, X} ->
             {ok, InternalName, X};
