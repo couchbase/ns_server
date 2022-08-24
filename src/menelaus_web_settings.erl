@@ -450,6 +450,18 @@ is_allowed_on_cluster([index_storage_limit]) ->
     config_profile:get_bool(enable_storage_limits);
 is_allowed_on_cluster([fts_storage_limit]) ->
     config_profile:get_bool(enable_storage_limits);
+is_allowed_on_cluster([kv_throttle_limit]) ->
+    config_profile:get_bool(enable_throttle_limits);
+is_allowed_on_cluster([index_throttle_limit]) ->
+    config_profile:get_bool(enable_throttle_limits);
+is_allowed_on_cluster([fts_throttle_limit]) ->
+    config_profile:get_bool(enable_throttle_limits);
+is_allowed_on_cluster([n1ql_throttle_limit]) ->
+    config_profile:get_bool(enable_throttle_limits);
+is_allowed_on_cluster([sgw_read_throttle_limit]) ->
+    config_profile:get_bool(enable_throttle_limits);
+is_allowed_on_cluster([sgw_write_throttle_limit]) ->
+    config_profile:get_bool(enable_throttle_limits);
 is_allowed_on_cluster(_) ->
     true.
 
@@ -559,6 +571,20 @@ conf(internal) ->
       get_number(?MIN_INDEX_STORAGE_LIMIT, ?MAX_INDEX_STORAGE_LIMIT)},
      {fts_storage_limit, searchStorageLimit, ?DEFAULT_FTS_STORAGE_LIMIT,
       get_number(?MIN_FTS_STORAGE_LIMIT, ?MAX_FTS_STORAGE_LIMIT)},
+     {kv_throttle_limit, kvThrottleLimit, ?DEFAULT_KV_THROTTLE_LIMIT,
+      get_number(?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT)},
+     {index_throttle_limit, indexThrottleLimit, ?DEFAULT_INDEX_THROTTLE_LIMIT,
+      get_number(?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT)},
+     {fts_throttle_limit, ftsThrottleLimit, ?DEFAULT_FTS_THROTTLE_LIMIT,
+      get_number(?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT)},
+     {n1ql_throttle_limit, n1qlThrottleLimit, ?DEFAULT_N1QL_THROTTLE_LIMIT,
+      get_number(?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT)},
+     {sgw_read_throttle_limit, sgwReadThrottleLimit,
+      ?DEFAULT_SGW_READ_THROTTLE_LIMIT,
+      get_number(?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT)},
+     {sgw_write_throttle_limit, sgwWriteThrottleLimit,
+      ?DEFAULT_SGW_WRITE_THROTTLE_LIMIT,
+      get_number(?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT)},
      {magma_min_memory_quota, magmaMinMemoryQuota, 1024,
       get_number(100, 1024, 1024)},
      {event_logs_limit, eventLogsLimit, 10000,

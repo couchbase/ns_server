@@ -9,7 +9,7 @@
 {max_collections_per_bucket, 100}.
 {cluster_scope_collection_limit, unlimited}.
 {{magma, can_set_max_shards}, true}.
-{enable_throttle_settings, true}.
+{enable_throttle_limits, true}.
 {enable_storage_limits, true}.
 {num_reader_writer_threads, 64}.
 {enable_auto_rebalance_settings, false}.

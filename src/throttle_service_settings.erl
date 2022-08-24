@@ -26,10 +26,10 @@
 -define(THROTTLE_CONFIG_KEY, <<"/throttle/settings/config">>).
 
 is_enabled() ->
-    config_profile:get_bool(enable_throttle_settings).
+    config_profile:get_bool(enable_throttle_limits).
 
 assert_api_enabled() ->
-    menelaus_util:assert_config_profile_flag(enable_throttle_settings).
+    menelaus_util:assert_config_profile_flag(enable_throttle_limits).
 
 throttle_limits_type_spec(undefined) ->
     undefined.
@@ -69,7 +69,7 @@ key_map() ->
 %% specify if throttling is enabled. This function is used by ns_config
 %% to build the default settings
 default_config(Profile) ->
-    case proplists:get_bool(enable_throttle_settings, Profile) of
+    case proplists:get_bool(enable_throttle_limits, Profile) of
         true ->
             Defaults = [{Key, Val} || {_, Key, Val} <- attributes()],
             [{{metakv, ?THROTTLE_CONFIG_KEY}, ejson:encode({Defaults})}];
