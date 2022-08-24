@@ -133,6 +133,10 @@ errors(ca_expires_soon) ->
     "Trusted CA certificate with ID=~b (subject: '~s') will expire at ~s.";
 errors(ca_expired) ->
     "Trusted CA certificate with ID=~b (subject: '~s') has expired.";
+errors(client_cert_expired) ->
+    "Client certificate on node ~s (subject: '~s') has expired.";
+errors(client_cert_expires_soon) ->
+    "Client certificate on node ~s (subject: '~s') will expire at ~s.";
 errors(client_xdcr_cert_expires_soon) ->
     "Client XDCR certificate (subject: '~s') will expire at ~s.";
 errors(client_xdcr_cert_expired) ->
@@ -606,6 +610,20 @@ check(certs, Opaque, _History, _Stats) ->
                   end, ExpWarnings)
         end,
 
+    ClientAlerts =
+        case ns_config:read_key_fast({node, node(), client_cert}, undefined) of
+            undefined ->
+                [];
+            ClientProps ->
+                {_, ClientExpWarnings} =
+                    ns_server_cert:expiration_warnings(ClientProps),
+                lists:map(
+                    fun (W) ->
+                        Subject = proplists:get_value(subject, ClientProps),
+                        {{client, Subject}, W}
+                    end, ClientExpWarnings)
+        end,
+
     lists:foreach(
       fun ({{ca, Id, Subj}, expired}) ->
               Error = fmt_to_bin(errors(ca_expired), [Id, Subj]),
@@ -613,7 +631,13 @@ check(certs, Opaque, _History, _Stats) ->
           ({{node, Subj}, expired}) ->
               Host = misc:extract_node_address(node()),
               Error = fmt_to_bin(errors(node_cert_expired), [Host, Subj]),
-              global_alert({cert_expired, {node, Host}}, Error);
+              global_alert({cert_expired,
+                  {node, Host}, {type, server}}, Error);
+          ({{client, Subj}, expired}) ->
+              Host = misc:extract_node_address(node()),
+              Error = fmt_to_bin(errors(client_cert_expired), [Host, Subj]),
+              global_alert({cert_expired,
+                  {node, Host}, {type, client}}, Error);
           ({{ca, Id, Subj}, {expires_soon, UTCSeconds}}) ->
               Date = menelaus_web_cert:format_time(UTCSeconds),
               Error = fmt_to_bin(errors(ca_expires_soon), [Id, Subj, Date]),
@@ -623,8 +647,17 @@ check(certs, Opaque, _History, _Stats) ->
               Date = menelaus_web_cert:format_time(UTCSeconds),
               Error = fmt_to_bin(errors(node_cert_expires_soon),
                                  [Host, Subj, Date]),
-              global_alert({cert_expires_soon, {node, Host}}, Error)
-      end, CAAlerts ++ LocalAlerts),
+              global_alert({cert_expires_soon,
+                  {node, Host}, {type, server}}, Error);
+          ({{client, Subj}, {expires_soon, UTCSeconds}}) ->
+              Host = misc:extract_node_address(node()),
+              Date = menelaus_web_cert:format_time(UTCSeconds),
+              Error = fmt_to_bin(errors(client_cert_expires_soon),
+                  [Host, Subj, Date]),
+              global_alert({cert_expires_soon,
+                  {node, Host}, {type, client}}, Error)
+
+      end, CAAlerts ++ LocalAlerts ++ ClientAlerts),
 
     Opaque;
 
