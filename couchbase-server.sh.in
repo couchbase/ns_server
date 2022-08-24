@@ -35,7 +35,6 @@ LOCAL_CONFIG_DIR="@PREFIX@/etc/couchdb/local.d"
 LOCAL_CONFIG_FILE="@PREFIX@/etc/couchdb/local.ini"
 
 PIDFILE="@PREFIX@/var/lib/couchbase/couchbase-server.pid"
-COOKIEFILE="@PREFIX@/var/lib/couchbase/couchbase-server.babysitter.cookie"
 NODEFILE="@PREFIX@/var/lib/couchbase/couchbase-server.babysitter.node"
 STATIC_CONFIG_PATH="@PREFIX@/etc/couchbase/static_config"
 CB_DATA_DIR="@PREFIX@/var/lib/couchbase"
@@ -260,35 +259,39 @@ _start() {
 
 # This function assumes that _start created a pidfile
 _stop() {
-    [ -f "$COOKIEFILE" -a -f "$NODEFILE" ] || return 1
-
-    _check_file_readable "$COOKIEFILE" "stop Couchbase Server"
-
-    cookie=`cat "$COOKIEFILE"`
-    node=`cat "$NODEFILE"`
-
-    erl \
-        -name 'executioner@cb.local' \
-        -kernel dist_config_file "\"$CB_DIST_CFG_FILE\"" \
-                inetrc "\"$HOSTS_CFG_FILE\"" \
-        -proto_dist cb \
-        -epmd_module cb_epmd \
-        -start_epmd false \
-        -ssl_dist_optfile $SSL_DIST_OPTFILE \
-        -noshell \
-        -hidden \
-        -setcookie "$cookie" \
-        -eval "ns_babysitter_bootstrap:remote_stop('$node')"
-
-    errcode=$?
-
-    if [ $errcode -eq 0 ]; then
-        rm "$COOKIEFILE" "$NODEFILE"
-
-        epmd -kill >/dev/null
+    if [ ! -f "$PIDFILE" ]; then
+        echo "Pid file ($PIDFILE) is missing"
+        return 0
     fi
 
-    return $errcode
+    _check_file_readable "$PIDFILE" "stop"
+
+    pid=`cat "$PIDFILE"`
+
+    if [ -z $pid ]; then
+        echo "Pid file ($PIDFILE) is empty"
+        return 4
+    fi
+
+    if ! _status &> /dev/null; then
+        echo "Couchbase Server is not running"
+        return 0
+    fi
+
+    kill -s TERM $pid
+    retries=90
+    while kill -0 "$pid" 2>/dev/null; do
+        sleep 1;
+        retries=$((retries-1))
+        if [ $retries -lt 1 ]; then
+            echo "Gracefull stop timed out"
+            return 2
+        fi
+    done
+
+    rm "$NODEFILE"
+
+    epmd -kill >/dev/null
 }
 
 # This function assumes that _start created a pidfile
