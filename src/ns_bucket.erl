@@ -1593,6 +1593,8 @@ extract_bucket_props(Props) ->
                         num_threads, eviction_policy, conflict_resolution_type,
                         drift_ahead_threshold_ms, drift_behind_threshold_ms,
                         storage_mode, max_ttl, compression_mode,
+                        kv_storage_limit, index_storage_limit,
+                        fts_storage_limit,
                         magma_max_shards, weight, width, desired_servers]],
           X =/= false].
 
