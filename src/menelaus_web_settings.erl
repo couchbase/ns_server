@@ -385,7 +385,8 @@ get_cluster_encryption(Level) ->
     IsMandatory = (ns_ssl_services_setup:client_cert_auth_state() =:=
                        "mandatory"),
     IsElixir = cluster_compat_mode:is_cluster_elixir(),
-    IsStrictPossible = cluster_compat_mode:is_cluster_70(),
+    IsStrictPossibleCompat = cluster_compat_mode:is_cluster_70(),
+    IsStrictPossibleUnencDist = misc:cluster_has_external_unencrpted_dist(),
     if
         not IsCEncryptEnabled  ->
             M = "Can't set cluster encryption level when cluster encryption "
@@ -401,9 +402,15 @@ get_cluster_encryption(Level) ->
                 "' when client certificate authentication state is set "
                 "to 'mandatory'.",
             {error, M};
-        Level =:= "strict" andalso not IsStrictPossible ->
+        Level =:= "strict" andalso not IsStrictPossibleCompat ->
             M = "Can't set cluster encryption level to 'strict' "
                 "in mixed version clusters.",
+            {error, M};
+        Level =:= "strict" andalso IsStrictPossibleUnencDist ->
+            M = "Can't set cluster encryption level to 'strict' when "
+                "unencrypted distributions have not yet been torn down. Re-run "
+                "node-to-node-encryption setup to disable unencrypted "
+                "distibutions.",
             {error, M};
         true ->
             LevelAtom = list_to_atom(Level),

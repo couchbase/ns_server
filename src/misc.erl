@@ -1513,6 +1513,24 @@ is_strict_possible() ->
 is_ipv6() ->
     get_net_family() == inet6.
 
+-spec has_external_unencrypted_dist(term(), atom()) -> true | false.
+has_external_unencrypted_dist(Cfg, Node) ->
+    case ns_config:search_node(Node, Cfg, erl_external_listeners) of
+        false ->
+            false;
+        {value, Dists} ->
+            not lists:all(fun ({_, EncEnabled}) -> EncEnabled end, Dists)
+    end.
+
+%% Finds configured external unencrypted distributions. Used when setting the
+%% cluster_encryption_level to strict as we should not allow that if we have any
+%% unencrypted listeners.
+-spec cluster_has_external_unencrpted_dist() -> true | false.
+cluster_has_external_unencrpted_dist() ->
+    Cfg = ns_config:latest(),
+    [] =/= [N || N <- ns_node_disco:nodes_wanted(),
+                 has_external_unencrypted_dist(Cfg, N)].
+
 -spec is_node_encryption_enabled(term(), atom()) -> true | false.
 is_node_encryption_enabled(Cfg, Node) ->
     ns_config:search_node(Node, Cfg, node_encryption) =:= {value, true}.
