@@ -78,6 +78,7 @@
 -export([active_buckets/0,
          warmed_buckets/0,
          warmed_buckets/1,
+         get_all_buckets_details/0,
          mark_warmed/2,
          mark_warmed/1,
          disable_traffic/2,
@@ -1633,6 +1634,25 @@ set_tls_config(Config) ->
               ok -> {reply, ok};
               {memcached_error, S, Msg} -> {reply, {error, {S, Msg}}}
           end
+      end).
+
+get_all_buckets_details() ->
+    perform_very_long_call(
+      fun (Sock) ->
+              case mc_client_binary:stats(Sock, <<"bucket_details">>,
+                                          fun (K, V, Acc) ->
+                                                  [{K, V} | Acc]
+                                          end, []) of
+                  {ok, BucketsDetailsRaw} ->
+                      {BucketDetails} =
+                        ejson:decode(proplists:get_value(<<"bucket details">>,
+                                                         BucketsDetailsRaw)),
+                      Buckets = proplists:get_value(<<"buckets">>,
+                                                    BucketDetails),
+                      {reply, Buckets};
+                  Err ->
+                      {reply, Err}
+              end
       end).
 
 -spec get_failover_log(bucket_name(), vbucket_id()) ->
