@@ -91,8 +91,17 @@ update_buckets(#state{running_buckets = RunningBuckets} = State) ->
 
     State1 = manage_terse_bucket_uploaders(State),
 
+    cleanup_orphan_buckets(State1),
+
     State1#state{running_buckets = NewBuckets}.
 
+%% The terse bucket uploader (TBU) sends CCCP information to memcached so
+%% that SDKs can bootstrap against memcached. The TBU does this on all
+%% nodes even if the "real" bucket doesn't run on this node and even
+%% if this node isn't a kv node.
+%% Sending the CCCP info to memcached results in a config-only bucket
+%% getting created. If the "real" bucket does run on this node then the
+%% create_bucket request to memcached will replace the config-only bucket.
 manage_terse_bucket_uploaders(
   #state{running_uploaders = RunningUploaders} = State) ->
     AllBuckets = ns_bucket:get_bucket_names(),
@@ -164,6 +173,9 @@ delete_config_only_bucket(Bucket) ->
             %% Bucket deleted already by ns_memcached terminating
             ok;
         Error ->
+            %% The deletion failed which leaves the bucket in memcached. The
+            %% resources used by a config-only bucket are minimal and the
+            %% deletion will be retried the next time update_buckets is run.
             ?log_error("Failed to delete config-only bucket ~p: ~p",
                        [Bucket, Error])
     end.
@@ -254,3 +266,24 @@ transient_buckets(#state{transient_buckets = undefined}) ->
     [];
 transient_buckets(#state{transient_buckets = {_Pid, _MRef, Buckets}}) ->
     Buckets.
+
+%% Check if memcached has any config-only buckets which are not associated
+%% with a running uploader and delete them.
+cleanup_orphan_buckets(#state{running_uploaders = RunningUploaders}) ->
+    Buckets = ns_memcached:get_all_buckets_details(),
+
+    lists:foreach(
+      fun({Bucket}) ->
+              Name = binary_to_list(proplists:get_value(<<"name">>, Bucket)),
+              IsOrphan = not lists:member(Name, RunningUploaders),
+              Type = binary_to_list(proplists:get_value(<<"type">>, Bucket)),
+              case {IsOrphan, Type} of
+                  {true, "ClusterConfigOnly"} ->
+                      ?log_debug("Deleting orphan config-only bucket ~p",
+                                 [Name]),
+                      delete_config_only_bucket(Name),
+                      ok;
+                  {_, _} ->
+                      ok
+              end
+      end, Buckets).
