@@ -39,7 +39,6 @@
          activate/2,
          update_membership_sets/2,
          deactivate/2,
-         failover/2,
          re_failover/1,
          system_joinable/0,
          is_balanced/0,
@@ -235,9 +234,6 @@ is_newly_added_node(Node) ->
 
 is_balanced() ->
     not ns_orchestrator:needs_rebalance().
-
-failover(Nodes, AllowUnsafe) ->
-    ns_orchestrator:failover(Nodes, AllowUnsafe).
 
 get_failover_node(NodeString) ->
     true = is_list(NodeString),

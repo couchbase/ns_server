@@ -772,10 +772,13 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["pools", "default", "serverGroups", UUID, "addNodeV2"] ->
                     {{[pools], write}, fun menelaus_web_cluster:handle_add_node_to_group/2, [UUID]};
                 ["controller", "failOver"] ->
-                    {{[pools], write}, fun menelaus_web_cluster:handle_failover/1};
+                    {{[pools], write},
+                     fun menelaus_web_cluster:handle_start_hard_failover/2,
+                     [false]};
                 ["controller", "startFailover"] ->
                     {{[pools], write},
-                     fun menelaus_web_cluster:handle_start_failover/1};
+                     fun menelaus_web_cluster:handle_start_hard_failover/2,
+                     [true]};
                 ["controller", "pause"] ->
                     {{[admin, internal], all},
                         fun menelaus_web_buckets:handle_pause/1};

@@ -34,8 +34,7 @@
          handle_eject_post/1,
          handle_add_node/1,
          handle_add_node_to_group/2,
-         handle_failover/1,
-         handle_start_failover/1,
+         handle_start_hard_failover/2,
          handle_start_graceful_failover/1,
          handle_rebalance/1,
          handle_re_add_node/1,
@@ -965,21 +964,19 @@ failover_audit_and_reply(RV, Req, Nodes, Type) ->
             reply_text(Req, Message, Code)
     end.
 
-handle_failover(Req) ->
-    case parse_hard_failover_args(Req) of
-        {ok, Nodes, AllowUnsafe} ->
-            failover_audit_and_reply(
-              ns_cluster_membership:failover(Nodes, AllowUnsafe),
-              Req, Nodes, hard);
-        {error, ErrorMsg} ->
-            reply_text(Req, ErrorMsg, 400)
-    end.
+%% When the 1st Param is true the failover is done asynchronously;
+%% when false, the failover is done synchronously.
 
-handle_start_failover(Req) ->
+handle_start_hard_failover(true, Req) ->
+    do_handle_start_hard_failover(Req, fun ns_orchestrator:start_failover/2);
+handle_start_hard_failover(false, Req) ->
+    do_handle_start_hard_failover(Req, fun ns_orchestrator:failover/2).
+
+do_handle_start_hard_failover(Req, FailoverBody) ->
     case parse_hard_failover_args(Req) of
         {ok, Nodes, AllowUnsafe} ->
             failover_audit_and_reply(
-              ns_orchestrator:start_failover(Nodes, AllowUnsafe),
+              FailoverBody(Nodes, AllowUnsafe),
               Req, Nodes, hard);
         {error, ErrorMsg} ->
             reply_text(Req, ErrorMsg, 400)
