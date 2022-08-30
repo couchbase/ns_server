@@ -21,8 +21,8 @@
          handle_load_ca_certs/1,
          handle_upload_cluster_ca/1, %% deprecated
          handle_reload_certificate/2,
-         handle_get_node_certificate/2,
-         handle_get_node_certificates/1,
+         handle_get_certificates/2,
+         handle_get_certificate/3,
          handle_client_cert_auth_settings/1,
          handle_client_cert_auth_settings_post/1,
          format_time/1,
@@ -194,7 +194,8 @@ warning_props(Warning) ->
      {message, ns_error_messages:node_certificate_warning(Warning)} |
      warning_severity_props(warning_severity(Warning))].
 
-translate_warning({{node, Node}, Warning}) ->
+translate_warning({{CertType, Node}, Warning})
+    when CertType =:= node_cert; CertType == client_cert ->
     [{node, Node} | warning_props(Warning)];
 translate_warning({{ca, Id}, Warning}) ->
     [{ca, Id} | warning_props(Warning)].
@@ -544,51 +545,63 @@ validate_password(Name, State) ->
               {error, "Password must be a string"}
       end, Name, State).
 
-handle_get_node_certificates(Req) ->
+handle_get_certificates(CertType, Req)
+    when CertType =:= node_cert orelse CertType =:= client_cert ->
     Nodes = ns_node_disco:nodes_wanted(),
     Localhost = misc:localhost(),
     AllWarnings = ns_server_cert:get_warnings(),
-    NodeCerts =
+    NodeSpecificCerts =
         lists:filtermap(
           fun (N) ->
               Hostname = menelaus_web_node:build_node_hostname(
                            ns_config:latest(), N, Localhost),
-              case prepare_node_cert_info(N, AllWarnings) of
+              case prepare_cert_info(CertType, N, AllWarnings) of
                   {ok, {JsonObjProplist}} ->
                       {true, {[{node, Hostname} | JsonObjProplist]}};
                   {error, not_found} ->
                       false
               end
           end, Nodes),
-    menelaus_util:reply_json(Req, NodeCerts).
+    menelaus_util:reply_json(Req, NodeSpecificCerts).
 
-handle_get_node_certificate(NodeId, Req) ->
+handle_get_certificate(CertType, NodeId, Req)
+    when CertType =:= node_cert orelse CertType =:= client_cert ->
     menelaus_util:assert_is_enterprise(),
 
     case menelaus_web_node:find_node_hostname(NodeId, Req) of
         {ok, Node} ->
-            case prepare_node_cert_info(Node, ns_server_cert:get_warnings()) of
+            case
+                prepare_cert_info(
+                    CertType, Node, ns_server_cert:get_warnings()) of
                 {ok, CertJson} ->
                     menelaus_util:reply_json(Req, CertJson);
                 {error, not_found} ->
                     menelaus_util:reply_text(
-                      Req, <<"Certificate is not set up on this node">>, 404)
+                        Req,
+                        get_cert_not_found_error_msg(CertType),
+                        404)
             end;
         {error, {invalid_node, Reason}} ->
             menelaus_util:reply_text(Req, Reason, 400);
         {error, not_found} ->
             menelaus_util:reply_text(
               Req,
-              <<"Node is not found, make sure the ip address/hostname matches the ip address/hostname used by Couchbase">>,
+                get_cert_not_found_error_msg(not_found),
               404)
     end.
 
-prepare_node_cert_info(Node, AllWarnings) ->
-    case ns_server_cert:get_node_cert_info(Node) of
+prepare_cert_info(CertType, Node, AllWarnings)
+    when CertType =:= node_cert; CertType =:= client_cert ->
+
+    case ns_server_cert:get_cert_info(CertType, Node) of
         [] -> {error, not_found};
         Props ->
-            Warnings = [W || {{node, WarnNode}, W} <- AllWarnings,
-                             WarnNode =:= Node],
+            Warnings =
+                [W ||
+                    {{CT, WarnNode}, W} <- AllWarnings,
+                    WarnNode =:= Node,
+                    CT =:= CertType
+                ],
             Filtered =
                 lists:filtermap(
                     fun ({subject, _}) -> true;
@@ -830,3 +843,24 @@ validate_client_cert_CAs(DataEncryption, ClientCertAuth,
                                 "are issued by untrusted CA's: ~s", [HostsStr]),
             {error, iolist_to_binary(Msg)}
     end.
+
+%%-----------------------------------------------------------------------------
+%% get_cert_not_found_error_msg
+%%
+%% This function returns the proper error message when an error
+%% happens during fetching the certificate through APIs.
+%%
+%%-----------------------------------------------------------------------------
+
+-spec get_cert_not_found_error_msg(
+    node_cert | client_cert | not_found) -> binary().
+
+get_cert_not_found_error_msg(node_cert) ->
+    <<"Certificate is not set up on this node">>;
+
+get_cert_not_found_error_msg(client_cert) ->
+    <<"Client cert not found on this node">>;
+
+get_cert_not_found_error_msg(not_found) ->
+    <<"Node is not found, make sure the ip address/hostname matches the"
+        " ip address/hostname used by Couchbase">>.

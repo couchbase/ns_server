@@ -34,7 +34,7 @@
          get_warnings/0,
          get_subject_fields_by_type/2,
          get_sub_alt_names_by_type/2,
-         get_node_cert_info/1,
+         get_cert_info/2,
          set_generated_ca/1,
          validate_pkey/2,
          get_chain_info/2,
@@ -930,7 +930,7 @@ is_cert_loaded_from_file(ChainPath) ->
     case file:read_file(ChainPath) of
         {ok, Chain} ->
             CurChain =
-                proplists:get_value(pem, get_node_cert_info(node()), <<>>),
+                proplists:get_value(pem, get_cert_info(node_cert, node()), <<>>),
             [CurNodePemEntry | _] = public_key:pem_decode(CurChain),
             case public_key:pem_decode(Chain) of
                 [CurNodePemEntry | _] -> true;
@@ -1327,6 +1327,16 @@ get_warnings() ->
     TrustedCAs = trusted_CAs(pem),
     Is71 = cluster_compat_mode:is_cluster_71(),
     IsElixir = cluster_compat_mode:is_cluster_elixir(),
+    ClientWarnings =
+        lists:flatmap(
+            fun (Node) ->
+                Warnings =
+                    case ns_config:search(Config, {node, Node, client_cert}) of
+                        {value, Props} -> node_cert_warnings(TrustedCAs, Props);
+                        false -> []
+                    end,
+                [{{client_cert, Node}, W} || W <- Warnings]
+            end, Nodes),
     NodeWarnings =
         lists:flatmap(
           fun (Node) ->
@@ -1348,7 +1358,7 @@ get_warnings() ->
                                   []
                           end
                   end,
-              [{{node, Node}, W} || W <- Warnings]
+              [{{node_cert, Node}, W} || W <- Warnings]
           end, Nodes),
     ClusterUsesClientCert = cluster_uses_client_certs(Config),
     CAWarnings =
@@ -1387,7 +1397,7 @@ get_warnings() ->
                   [{{ca, Id}, W} || W <- SelfSignedWarnings ++ ExpWarnings ++
                                          UnusedWarnings]
           end, trusted_CAs(props)),
-    NodeWarnings ++ CAWarnings.
+    ClientWarnings ++ NodeWarnings ++ CAWarnings.
 
 expiration_warnings(CertProps) ->
     Now = calendar:datetime_to_gregorian_seconds(calendar:universal_time()),
@@ -1461,8 +1471,11 @@ node_cert_warnings_pre_71(TrustedCAs, Node, Config) ->
           []
     end.
 
-get_node_cert_info(Node) ->
-    ns_config:read_key_fast({node, Node, node_cert}, []).
+get_cert_info(node_cert, Node) ->
+    ns_config:read_key_fast({node, Node, node_cert}, []);
+
+get_cert_info(client_cert, Node) ->
+    ns_config:read_key_fast({node, Node, client_cert}, []).
 
 cert_expiration_warning_days() ->
     ns_config:read_key_fast({cert, expiration_warning_days}, 30).

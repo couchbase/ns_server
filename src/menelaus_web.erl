@@ -332,10 +332,16 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {done, menelaus_web_cert:handle_cluster_certificate(Req)};
                 ["pools", "default", "certificates"] ->
                     {{[admin, security], read},
-                     fun menelaus_web_cert:handle_get_node_certificates/1};
+                     fun menelaus_web_cert:handle_get_certificates/2, [node_cert]};
                 ["pools", "default", "certificate", "node", Node] ->
                     {{[admin, security], read},
-                     fun menelaus_web_cert:handle_get_node_certificate/2, [Node]};
+                     fun menelaus_web_cert:handle_get_certificate/3, [node_cert, Node]};
+                ["pools", "default", "certificates", "client"] ->
+                    {{[admin, security], read},
+                     fun menelaus_web_cert:handle_get_certificates/2, [client_cert]};
+                ["pools", "default", "certificate", "node", Node, "client"] ->
+                    {{[admin, security], read},
+                     fun menelaus_web_cert:handle_get_certificate/3, [client_cert, Node]};
                 ["pools", "default", "settings", "memcached", "global"] ->
                     {{[admin, memcached], read}, fun menelaus_web_mcd_settings:handle_global_get/1};
                 ["pools", "default", "settings", "memcached", "effective", Node] ->
