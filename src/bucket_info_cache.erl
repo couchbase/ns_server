@@ -24,8 +24,7 @@
          build_short_bucket_info/3,
          build_name_and_locator/2,
          build_vbucket_map/2,
-         build_ddocs/2,
-         get_throttle_attributes/0]).
+         build_ddocs/2]).
 
 %% for diagnostics
 -export([submit_full_reset/0]).
@@ -193,7 +192,6 @@ build_short_bucket_info(Id, BucketConfig, Snapshot) ->
      build_num_vbuckets(BucketConfig),
      build_bucket_capabilities(BucketConfig),
      build_storage_limits(BucketConfig),
-     build_throttle_limits(BucketConfig),
      build_collections_manifest_id(Id, Snapshot)].
 
 build_num_vbuckets(BucketConfig) ->
@@ -325,28 +323,6 @@ build_storage_limits(BucketConfig) ->
             [{dataStorageLimit, ns_bucket:kv_storage_limit(BucketConfig)},
              {indexStorageLimit, ns_bucket:index_storage_limit(BucketConfig)},
              {searchStorageLimit, ns_bucket:fts_storage_limit(BucketConfig)}]
-    end.
-
-get_throttle_attributes() ->
-    [{dataThrottleLimit,
-      kv_throttle_limit, ?DEFAULT_KV_THROTTLE_LIMIT},
-     {indexThrottleLimit,
-      index_throttle_limit, ?DEFAULT_INDEX_THROTTLE_LIMIT},
-     {searchThrottleLimit,
-      fts_throttle_limit, ?DEFAULT_FTS_THROTTLE_LIMIT},
-     {queryThrottleLimit,
-      n1ql_throttle_limit, ?DEFAULT_N1QL_THROTTLE_LIMIT},
-     {sgwReadThrottleLimit,
-      sgw_read_throttle_limit, ?DEFAULT_SGW_READ_THROTTLE_LIMIT},
-     {sgwWriteThrottleLimit,
-      sgw_write_throttle_limit, ?DEFAULT_SGW_WRITE_THROTTLE_LIMIT}].
-
-build_throttle_limits(BucketConfig) ->
-    case config_profile:get_bool(enable_throttle_limits) of
-        false -> [];
-        true ->
-            [{Param, proplists:get_value(Key, BucketConfig, Default)} ||
-                {Param, Key, Default} <- get_throttle_attributes()]
     end.
 
 %% Clients expect these revisions to grow monotonically.

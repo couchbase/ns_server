@@ -278,8 +278,36 @@ build_bucket_info(Id, Ctx, InfoLevel, MayExposeAuth, SkipMap) ->
         build_purge_interval_info(BucketConfig),
         build_replica_index(BucketConfig),
         build_bucket_placer_params(BucketConfig),
+        build_throttle_limits(BucketConfig),
         build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx),
         [build_sasl_password(BucketConfig) || MayExposeAuth]])}.
+
+get_throttle_attributes() ->
+    [{dataThrottleLimit,
+      kv_throttle_limit, ?DEFAULT_KV_THROTTLE_LIMIT},
+     {indexThrottleLimit,
+      index_throttle_limit, ?DEFAULT_INDEX_THROTTLE_LIMIT},
+     {searchThrottleLimit,
+      fts_throttle_limit, ?DEFAULT_FTS_THROTTLE_LIMIT},
+     {queryThrottleLimit,
+      n1ql_throttle_limit, ?DEFAULT_N1QL_THROTTLE_LIMIT},
+     {sgwReadThrottleLimit,
+      sgw_read_throttle_limit, ?DEFAULT_SGW_READ_THROTTLE_LIMIT},
+     {sgwWriteThrottleLimit,
+      sgw_write_throttle_limit, ?DEFAULT_SGW_WRITE_THROTTLE_LIMIT}].
+
+get_throttle_default(Key, Default) ->
+    ns_config:read_key_fast(Key, Default).
+
+build_throttle_limits(BucketConfig) ->
+    case config_profile:get_bool(enable_throttle_limits) of
+        false -> [];
+        true ->
+            [{Param, proplists:get_value(Key,
+                                         BucketConfig,
+                                         get_throttle_default(Key, Default))} ||
+                {Param, Key, Default} <- get_throttle_attributes()]
+    end.
 
 build_authType(BucketConfig) ->
     case cluster_compat_mode:is_cluster_71() of
@@ -1932,7 +1960,8 @@ parse_validate_throttle_limits(Params, BucketConfig, IsNew, IsEnabled) ->
     [do_parse_validate_limit(Param, Key, LimitFunc(atom_to_list(Param)),
                              BucketConfig,
                              IsNew, IsEnabled) ||
-        {Param, Key, _} <- bucket_info_cache:get_throttle_attributes()].
+        {Param, Key, _} <- get_throttle_attributes(),
+        proplists:is_defined(atom_to_list(Param), Params)].
 
 do_parse_validate_limit(_Param, _InternalName, undefined, _BucketConfig,
                         _IsNew, false = _IsEnabled) ->
