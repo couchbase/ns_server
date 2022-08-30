@@ -533,7 +533,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                                        Plugins]};
                 ["sampleBuckets"] -> {{[samples], read}, fun menelaus_web_samples:handle_get/1};
                 ["_metakv" | _] ->
-                    {{[admin, internal], all}, fun menelaus_metakv:handle_get/2, [Path]};
+                    {{[admin, metakv], all}, fun menelaus_metakv:handle_get/2, [Path]};
                 ["_goxdcr", "controller", "bucketSettings", _Bucket] ->
                     XdcrPath = drop_prefix(mochiweb_request:get(raw_path, Req)),
                     {{[admin, internal], all},
@@ -923,7 +923,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["_log"] ->
                     {{[admin, internal], all}, fun menelaus_web_misc:handle_log_post/1};
                 ["_event"] ->
-                    {{[admin, internal], all}, fun menelaus_web_misc:handle_event_log_post/1};
+                    {{[admin, event], all}, fun menelaus_web_misc:handle_event_log_post/1};
                 ["_goxdcr", "regexpValidation"] ->
                     {no_check, fun goxdcr_rest:proxy/2,
                      [menelaus_util:concat_url_path(
@@ -1045,7 +1045,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, internal], all},
                      fun goxdcr_rest:proxy/2, [XdcrPath]};
                 ["_metakv" | _] ->
-                    {{[admin, internal], all}, fun menelaus_metakv:handle_delete/2, [Path]};
+                    {{[admin, metakv], all}, fun menelaus_metakv:handle_delete/2, [Path]};
                 [?PLUGGABLE_UI, RestPrefix | _] ->
                     {no_check,
                      fun (PReq) ->
@@ -1099,7 +1099,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     XdcrPath = mochiweb_request:get(raw_path, Req),
                     {{[admin, internal], all}, fun goxdcr_rest:proxy/2, [XdcrPath]};
                 ["_metakv" | _] ->
-                    {{[admin, internal], all}, fun menelaus_metakv:handle_put/2, [Path]};
+                    {{[admin, metakv], all}, fun menelaus_metakv:handle_put/2, [Path]};
                 [?PLUGGABLE_UI, RestPrefix | _] ->
                     {no_check,
                      fun (PReq) ->
