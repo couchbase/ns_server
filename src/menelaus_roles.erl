@@ -669,6 +669,23 @@ add_replication_developer_roles(true) ->
 add_replication_developer_roles(false) ->
     [].
 
+maybe_add_serverless_roles() ->
+    add_serverless_roles(config_profile:is_serverless()).
+
+add_serverless_roles(true) ->
+    [{regulator_access, [],
+      [{name, <<"Regulator Access">>},
+       {folder, admin},
+       {desc, <<"Can access a limited number of REST endpoints.">>}],
+      [{[pools], [read]},
+       {[{bucket, any}, settings], [read]},
+       {[admin, event], all},
+       {[admin, metakv], all},
+       %% Needed for /internalSettings
+       {[admin, settings], [read]}]}];
+add_serverless_roles(false) ->
+    [].
+
 -spec get_definitions(all | public) -> [rbac_role_def(), ...].
 get_definitions(Type) ->
     get_definitions(ns_config:latest(), Type).
@@ -689,7 +706,9 @@ get_public_definitions(Version) when Version < ?VERSION_71 ->
 get_public_definitions(Version) when Version < ?VERSION_ELIXIR ->
     menelaus_old_roles:roles_pre_elixir();
 get_public_definitions(_) ->
-    roles() ++ maybe_add_developer_preview_roles().
+    roles() ++
+        maybe_add_developer_preview_roles() ++
+        maybe_add_serverless_roles().
 
 -spec object_match(
         rbac_permission_object(), rbac_permission_pattern_object()) ->
@@ -1381,6 +1400,27 @@ ro_admin_test() ->
     ?assertEqual(false, is_allowed({[settings, metrics], write}, Roles)),
     ?assertEqual(true, is_allowed({[settings, metrics], read}, Roles)),
     ?assertEqual(true, is_allowed({[anything], read}, Roles)),
+    ?assertEqual(false, is_allowed({[anything], write}, Roles)).
+
+regulator_access_test() ->
+    Roles = compile_roles([regulator_access],
+                          roles() ++ add_serverless_roles(true)),
+    ?assertEqual(false, is_allowed({[{bucket, "test"}, data], read}, Roles)),
+    ?assertEqual(false,
+                 is_allowed({[{bucket, "test"}, something], read}, Roles)),
+    ?assertEqual(false,
+                 is_allowed({[{bucket, "test"}, something], write}, Roles)),
+    ?assertEqual(false, is_allowed({[admin, security], write}, Roles)),
+    ?assertEqual(false, is_allowed({[admin, security], read}, Roles)),
+    ?assertEqual(true, is_allowed({[admin, event], write}, Roles)),
+    ?assertEqual(true, is_allowed({[admin, event], read}, Roles)),
+    ?assertEqual(true, is_allowed({[admin, metakv], write}, Roles)),
+    ?assertEqual(false, is_allowed({[admin, other], write}, Roles)),
+    ?assertEqual(false, is_allowed({[admin, settings, metrics], write}, Roles)),
+    ?assertEqual(true, is_allowed({[admin, settings, metrics], read}, Roles)),
+    ?assertEqual(false, is_allowed({[settings, metrics], write}, Roles)),
+    ?assertEqual(false, is_allowed({[settings, metrics], read}, Roles)),
+    ?assertEqual(false, is_allowed({[anything], read}, Roles)),
     ?assertEqual(false, is_allowed({[anything], write}, Roles)).
 
 bucket_views_admin_check_global(Roles) ->
