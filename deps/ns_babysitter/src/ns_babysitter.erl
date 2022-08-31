@@ -61,8 +61,6 @@ start(_, _) ->
     ?log_info("babysitter cookie: ~p~n",
               [ns_cookie_manager:sanitize_cookie(Cookie)]),
 
-    maybe_write_file(nodefile, node(), "babysitter node name"),
-
     make_pidfile(),
 
     % Clear the HTTP proxy environment variables as they are honored, when they
@@ -71,19 +69,6 @@ start(_, _) ->
     true = os:unsetenv("https_proxy"),
 
     ns_babysitter_sup:start_link().
-
-maybe_write_file(Env, Content, Name) ->
-    case application:get_env(Env) of
-        {ok, File} ->
-            do_write_file(Content, File, Name);
-        _ ->
-            ok
-    end.
-
-do_write_file(Content, File, Name) ->
-    ok = filelib:ensure_dir(File),
-    ok = misc:atomic_write_file(File, erlang:atom_to_list(Content) ++ "\n"),
-    ?log_info("Saved ~s to ~s", [Name, File]).
 
 log_pending() ->
     receive

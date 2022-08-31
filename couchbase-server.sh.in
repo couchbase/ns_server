@@ -35,7 +35,6 @@ LOCAL_CONFIG_DIR="@PREFIX@/etc/couchdb/local.d"
 LOCAL_CONFIG_FILE="@PREFIX@/etc/couchdb/local.ini"
 
 PIDFILE="@PREFIX@/var/lib/couchbase/couchbase-server.pid"
-NODEFILE="@PREFIX@/var/lib/couchbase/couchbase-server.babysitter.node"
 STATIC_CONFIG_PATH="@PREFIX@/etc/couchbase/static_config"
 CB_DATA_DIR="@PREFIX@/var/lib/couchbase"
 SSL_DIST_OPTFILE="@PREFIX@/etc/couchbase/ssl_dist_opts"
@@ -252,7 +251,6 @@ _start() {
         $* \
         -run ns_babysitter_bootstrap -- \
         -couch_ini $couch_start_arguments \
-        -ns_babysitter nodefile "\"$NODEFILE\"" \
         -ns_babysitter pidfile "\"$maybe_pidfile\"" \
         -ns_server config_path "\"$STATIC_CONFIG_PATH\""
 }
@@ -288,8 +286,6 @@ _stop() {
             return 2
         fi
     done
-
-    rm "$NODEFILE"
 
     epmd -kill >/dev/null
 }

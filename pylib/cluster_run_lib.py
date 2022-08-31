@@ -251,8 +251,6 @@ def erlang_args_for_node(i, ebin_path, extra_args, args_prefix, root_dir):
     datadir = abs_path_join(root_dir, 'data', f'n_{i}')
     tempdir = abs_path_join(root_dir, 'tmp')
     nodefile = os.path.join(datadir, "nodefile")
-    babysitternodefile = os.path.join(
-        datadir, "couchbase-server.babysitter.node")
     ssloptfile = generate_ssl_dist_optfile(datadir)
     cb_dist_config = os.path.join(datadir, "config", "dist_cfg")
     hosts_file = os.path.join(ns_server_dir, "etc", "hosts.cfg")
@@ -269,7 +267,6 @@ def erlang_args_for_node(i, ebin_path, extra_args, args_prefix, root_dir):
         "-kernel", "inetrc", f"\"{hosts_file}\"",
         "-kernel", "external_tcp_port", "21400",
         "-kernel", "external_tls_port", "21450",
-        "-ns_babysitter", "nodefile", quote_string_for_erl(babysitternodefile),
         "-ns_server", "config_path", f'"{static_config}"',
         "error_logger_mf_dir", quote_string_for_erl(logdir),
         "path_config_etcdir", f'"{os.path.join(ns_server_dir, "priv")}"',
