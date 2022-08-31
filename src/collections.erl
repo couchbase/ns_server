@@ -129,7 +129,7 @@ manifest_with_system_scope() ->
     {NextId, Collections} =
         lists:foldl(
           fun (Name, {Id, Cols}) ->
-                  {Id + 1, [{Name, [{uid, Id}, {"system", true}]}] ++ Cols}
+                  {Id + 1, [{Name, [{uid, Id}, {"metered", false}]}] ++ Cols}
           end, {8, []}, system_collections()),
 
     [{uid, 1},
