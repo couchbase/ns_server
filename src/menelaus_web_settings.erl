@@ -546,7 +546,9 @@ conf(security) ->
      {argon2id_mem, argon2idMem, ?DEFAULT_ARG2ID_MEM,
       get_number(?ARGON_MEM_MIN, ?ARGON_MEM_MAX)},
      {pbkdf2_sha512_iterations, pbkdf2HmacSha512Iterations,
-      ?DEFAULT_PBKDF2_ITER, get_number(?PBKDF2_ITER_MIN, ?PBKDF2_ITER_MAX)}] ++
+      ?DEFAULT_PBKDF2_ITER, get_number(?PBKDF2_ITER_MIN, ?PBKDF2_ITER_MAX)},
+     {memcached_password_hash_iterations, scramShaIterations,
+      ?DEFAULT_SCRAM_ITER, get_number(?PBKDF2_ITER_MIN, ?PBKDF2_ITER_MAX)}] ++
     [{{security_settings, S}, ns_cluster_membership:json_service_name(S),
       [{cipher_suites, cipherSuites, undefined, fun get_cipher_suites/1},
        {ssl_minimum_protocol, tlsMinVersion, undefined, get_tls_version(_)},

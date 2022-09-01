@@ -389,7 +389,8 @@ hash_password(Type, Password) ->
     {Salt, StoredKey, ServerKey, Iterations}.
 
 iterations() ->
-    ns_config:read_key_fast(memcached_password_hash_iterations, 4000).
+    ns_config:read_key_fast(memcached_password_hash_iterations,
+                            ?DEFAULT_SCRAM_ITER).
 
 supported_types() ->
     [sha512, sha256, sha].
