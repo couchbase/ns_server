@@ -310,7 +310,7 @@
 -define(DEFAULT_ARG2ID_TIME, 3).
 -define(DEFAULT_ARG2ID_MEM, 8388608). %% in bytes
 -define(DEFAULT_PBKDF2_ITER, 10000).
--define(DEFAULT_SCRAM_ITER, 4000).
+-define(DEFAULT_SCRAM_ITER, 15000).
 
 -define(HASH_KEY,             <<"hash">>).
 -define(SALT_KEY,             <<"salt">>).
