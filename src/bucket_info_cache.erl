@@ -191,7 +191,6 @@ build_short_bucket_info(Id, BucketConfig, Snapshot) ->
      {streamingUri, build_pools_uri(["bucketsStreaming", Id], BucketUUID)},
      build_num_vbuckets(BucketConfig),
      build_bucket_capabilities(BucketConfig),
-     build_storage_limits(BucketConfig),
      build_collections_manifest_id(Id, Snapshot)].
 
 build_num_vbuckets(BucketConfig) ->
@@ -315,15 +314,6 @@ build_bucket_capabilities(BucketConfig) ->
 
     [{bucketCapabilitiesVer, ''},
      {bucketCapabilities, Caps}].
-
-build_storage_limits(BucketConfig) ->
-    case config_profile:get_bool(enable_storage_limits) of
-        false -> [];
-        true ->
-            [{dataStorageLimit, ns_bucket:kv_storage_limit(BucketConfig)},
-             {indexStorageLimit, ns_bucket:index_storage_limit(BucketConfig)},
-             {searchStorageLimit, ns_bucket:fts_storage_limit(BucketConfig)}]
-    end.
 
 %% Clients expect these revisions to grow monotonically.
 %% This doesn't handle chronicle quorum failovers, but we may

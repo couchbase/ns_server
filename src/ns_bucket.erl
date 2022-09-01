@@ -68,9 +68,6 @@
          pitr_enabled/1,
          pitr_granularity/1,
          pitr_max_history_age/1,
-         kv_storage_limit/1,
-         index_storage_limit/1,
-         fts_storage_limit/1,
          attribute_default/1,
          attribute_min/1,
          attribute_max/1,
@@ -463,18 +460,6 @@ pitr_max_history_age(BucketConfig) ->
             proplists:get_value(pitr_max_history_age, BucketConfig,
                                 attribute_default(pitr_max_history_age))
     end.
-
-kv_storage_limit(BucketConfig) ->
-    proplists:get_value(kv_storage_limit, BucketConfig,
-                        ?DEFAULT_KV_STORAGE_LIMIT).
-
-index_storage_limit(BucketConfig) ->
-    proplists:get_value(index_storage_limit, BucketConfig,
-                        ?DEFAULT_INDEX_STORAGE_LIMIT).
-
-fts_storage_limit(BucketConfig) ->
-    proplists:get_value(fts_storage_limit, BucketConfig,
-                        ?DEFAULT_FTS_STORAGE_LIMIT).
 
 %% returns bucket ram quota multiplied by number of nodes this bucket
 %% resides on. I.e. gives amount of ram quota that will be used by

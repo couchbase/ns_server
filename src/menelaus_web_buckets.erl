@@ -278,9 +278,18 @@ build_bucket_info(Id, Ctx, InfoLevel, MayExposeAuth, SkipMap) ->
         build_purge_interval_info(BucketConfig),
         build_replica_index(BucketConfig),
         build_bucket_placer_params(BucketConfig),
+        build_storage_limits(BucketConfig),
         build_throttle_limits(BucketConfig),
         build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx),
         [build_sasl_password(BucketConfig) || MayExposeAuth]])}.
+
+get_internal_default(Key, Default) ->
+    ns_config:read_key_fast(Key, Default).
+
+get_storage_attributes() ->
+    [{dataStorageLimit, kv_storage_limit, ?DEFAULT_KV_STORAGE_LIMIT},
+     {indexStorageLimit, index_storage_limit, ?DEFAULT_INDEX_STORAGE_LIMIT},
+     {searchStorageLimit, fts_storage_limit, ?DEFAULT_FTS_THROTTLE_LIMIT}].
 
 get_throttle_attributes() ->
     [{dataThrottleLimit,
@@ -296,18 +305,23 @@ get_throttle_attributes() ->
      {sgwWriteThrottleLimit,
       sgw_write_throttle_limit, ?DEFAULT_SGW_WRITE_THROTTLE_LIMIT}].
 
-get_throttle_default(Key, Default) ->
-    ns_config:read_key_fast(Key, Default).
-
-build_throttle_limits(BucketConfig) ->
-    case config_profile:get_bool(enable_throttle_limits) of
+build_limits(BucketConfig, ProfileKey, AttributesFunc) ->
+    case config_profile:get_bool(ProfileKey) of
         false -> [];
         true ->
             [{Param, proplists:get_value(Key,
                                          BucketConfig,
-                                         get_throttle_default(Key, Default))} ||
-                {Param, Key, Default} <- get_throttle_attributes()]
+                                         get_internal_default(Key, Default))} ||
+                {Param, Key, Default} <- AttributesFunc()]
     end.
+
+build_storage_limits(BucketConfig) ->
+    build_limits(BucketConfig, enable_storage_limits,
+                 ?cut(get_storage_attributes())).
+
+build_throttle_limits(BucketConfig) ->
+    build_limits(BucketConfig, enable_throttle_limits,
+                 ?cut(get_throttle_attributes())).
 
 build_authType(BucketConfig) ->
     case cluster_compat_mode:is_cluster_71() of
@@ -1141,17 +1155,13 @@ validate_membase_bucket_params(CommonParams, Params,
                                              IsEnterprise),
          parse_validate_storage_quota_percentage(Params, BucketConfig, IsNew, Version,
                                                  IsEnterprise),
-         parse_validate_kv_storage_limit(Params, BucketConfig, IsNew,
-                                         AllowStorageLimit),
-         parse_validate_index_storage_limit(Params, BucketConfig, IsNew,
-                                            AllowStorageLimit),
-         parse_validate_fts_storage_limit(Params, BucketConfig, IsNew,
-                                          AllowStorageLimit),
          parse_validate_max_ttl(Params, BucketConfig, IsNew, IsEnterprise),
          parse_validate_compression_mode(Params, BucketConfig, IsNew,
                                          IsEnterprise)] ++
-         parse_validate_throttle_limits(Params, BucketConfig, IsNew,
-                                        AllowThrottleLimit) ++
+         parse_validate_limits(Params, BucketConfig, IsNew, AllowStorageLimit,
+                               ?cut(get_storage_attributes())) ++
+         parse_validate_limits(Params, BucketConfig, IsNew, AllowThrottleLimit,
+                               ?cut(get_throttle_attributes())) ++
          validate_bucket_auto_compaction_settings(Params),
 
     validate_bucket_purge_interval(Params, BucketConfig, IsNew) ++
@@ -1940,27 +1950,12 @@ do_parse_validate_storage_quota_percentage(Val) ->
             {error, storageQuotaPercentage, iolist_to_binary(Msg)}
     end.
 
-parse_validate_kv_storage_limit(Params, BucketConfig, IsNew, IsEnabled) ->
-    Limit = proplists:get_value("dataStorageLimit", Params),
-    do_parse_validate_limit("dataStorageLimit", kv_storage_limit,
-                            Limit, BucketConfig, IsNew, IsEnabled).
-
-parse_validate_index_storage_limit(Params, BucketConfig, IsNew, IsEnabled) ->
-    Limit = proplists:get_value("indexStorageLimit", Params),
-    do_parse_validate_limit("indexStorageLimit", index_storage_limit,
-                            Limit, BucketConfig, IsNew, IsEnabled).
-
-parse_validate_fts_storage_limit(Params, BucketConfig, IsNew, IsEnabled) ->
-    Limit = proplists:get_value("searchStorageLimit", Params),
-    do_parse_validate_limit("searchStorageLimit", fts_storage_limit,
-                            Limit, BucketConfig, IsNew, IsEnabled).
-
-parse_validate_throttle_limits(Params, BucketConfig, IsNew, IsEnabled) ->
+parse_validate_limits(Params, BucketConfig, IsNew, IsEnabled, AttrsFunc) ->
     LimitFunc = ?cut(proplists:get_value(_, Params)),
     [do_parse_validate_limit(Param, Key, LimitFunc(atom_to_list(Param)),
                              BucketConfig,
                              IsNew, IsEnabled) ||
-        {Param, Key, _} <- get_throttle_attributes(),
+        {Param, Key, _} <- AttrsFunc(),
         proplists:is_defined(atom_to_list(Param), Params)].
 
 do_parse_validate_limit(_Param, _InternalName, undefined, _BucketConfig,
