@@ -682,7 +682,29 @@ add_serverless_roles(true) ->
        {[admin, event], all},
        {[admin, metakv], all},
        %% Needed for /internalSettings
-       {[admin, settings], [read]}]}];
+       {[admin, settings], [read]}]},
+     %% The query_manage_index_regular role is the same as the
+     %% query_manage_index role with the exception that it cannot manage
+     %% parameterized indexes and cannot alter normal indexes.
+     {query_manage_index_regular, ?RBAC_COLLECTION_PARAMS,
+      [{name, <<"Query Manage Index (Regular)">>},
+       {folder, 'query'},
+       {desc, <<"Can manage (except for altering) indexes for a given bucket, "
+                "scope or collection. Cannot manage parameterized indexes."
+                "This user can access the web console, can read statistics "
+                "for a given bucket, scope or collection. This user cannot "
+                "read data.">>
+       }],
+      [{[{collection, ?RBAC_COLLECTION_PARAMS}, n1ql, index, parameterized],
+        none},
+       {[{collection, ?RBAC_COLLECTION_PARAMS}, n1ql, index],
+        [create, drop, list, build]},
+       {[{collection, ?RBAC_COLLECTION_PARAMS}, collections], [read]},
+       {[{bucket, bucket_name}, settings], [read]},
+       {[{bucket, bucket_name}, stats], [read]},
+       {[settings, indexes], [read]},
+       {[ui], [read]},
+       {[pools], [read]}]}];
 add_serverless_roles(false) ->
     [].
 
