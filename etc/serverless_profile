@@ -17,6 +17,8 @@
 {{indexer, num_replica}, 1}.
 {{indexer, mem_high_threshold}, 80}.
 {{indexer, mem_low_threshold}, 60}.
+{{prometheus, default_high_card_services},
+    [index, fts, kv, cbas, eventing, ns_server, n1ql]}.
 
 %% Example service keys %%
 %% {{goxdcr, ipv4}, "required"}.

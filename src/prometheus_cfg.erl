@@ -141,6 +141,9 @@ settings() ->
 
 -spec default_settings() -> [stats_setting()].
 default_settings() ->
+    HighCardServices = config_profile:get_value({prometheus,
+                                                 default_high_card_services},
+                                                ?DEFAULT_HIGH_CARD_SERVICES),
     [{enabled, true},
      {retention_size, 1024}, %% in MB
      {retention_time, 365}, %% in days
@@ -180,9 +183,9 @@ default_settings() ->
                 [{S, [{high_cardinality_enabled, true},
                       {high_cardinality_scrape_interval, ?AUTO_CALCULATED},
                       {high_cardinality_scrape_timeout, ?AUTO_CALCULATED}]}
-                        || S <- ?DEFAULT_HIGH_CARD_SERVICES -- [ns_server]]},
+                        || S <- HighCardServices -- [ns_server]]},
      {external_prometheus_services, [{S, [{high_cardinality_enabled, true}]}
-                                        || S <- ?DEFAULT_HIGH_CARD_SERVICES]},
+                                        || S <- HighCardServices]},
      {prometheus_metrics_enabled, false},
      {prometheus_metrics_scrape_interval, 60}, %% in seconds
      {listen_addr_type, loopback},
