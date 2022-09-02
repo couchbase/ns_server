@@ -131,6 +131,7 @@ create_erl_node_spec(Type, Args, EnvArgsVar, ErlangArgs) ->
                           "disk_sink_opts" -> true;
                           "ssl_ciphers" -> true;
                           "net_kernel_verbosity" -> true;
+                          "config_profile" -> true;
                           _ -> false
                       end],
     EnvArgs = Args ++ EnvArgsTail,

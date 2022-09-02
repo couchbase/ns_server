@@ -84,7 +84,12 @@ start_link_capi_service() ->
         undefined ->
             ignore;
         SSLPort ->
-            do_start_link_capi_service(SSLPort)
+            case config_profile:get_bool({couchdb, enabled}) of
+                true ->
+                    do_start_link_capi_service(SSLPort);
+                false ->
+                    ignore
+            end
     end.
 
 do_start_link_capi_service(SSLPort) ->
