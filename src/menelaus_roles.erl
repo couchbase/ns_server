@@ -108,6 +108,8 @@ roles() ->
        {[admin, security, external], none},
        {[admin, security], all},
        {[admin, logs], none},
+       {[admin, event], none},
+       {[admin, metakv], none},
        {[admin, settings, metrics], none},
        {[{bucket, any}, data], none},
        {[{bucket, any}, views], none},
@@ -133,6 +135,8 @@ roles() ->
        {[admin, security, local], none},
        {[admin, security], all},
        {[admin, logs], none},
+       {[admin, event], none},
+       {[admin, metakv], none},
        {[admin, settings], none},
        {[{bucket, any}, data], none},
        {[{bucket, any}, views], none},
@@ -154,6 +158,8 @@ roles() ->
       [{[admin, internal], none},
        {[admin, security], none},
        {[admin, diag], [read]},
+       {[admin, event], none},
+       {[admin, metakv], none},
        {[admin, settings, metrics], none},
        {[{bucket, any}, data], none},
        {[{bucket, any}, views], none},
@@ -1444,6 +1450,43 @@ regulator_access_test() ->
     ?assertEqual(false, is_allowed({[settings, metrics], read}, Roles)),
     ?assertEqual(false, is_allowed({[anything], read}, Roles)),
     ?assertEqual(false, is_allowed({[anything], write}, Roles)).
+
+%% Extracts all the role names and bucket argument (if applicable).
+extract_all_names(Roles) ->
+    lists:foldl(
+      fun ({Name, [], _Description, _Filters}, AccIn) ->
+              [{Name, []} | AccIn];
+          ({Name, [bucket_name], _Description, _Filters}, AccIn) ->
+              [{Name, ["default"]} | AccIn];
+          ({Name, ?RBAC_SCOPE_PARAMS, _Description, _Filters}, AccIn) ->
+              [{Name, ["default", "s"]} | AccIn];
+          ({Name, ?RBAC_COLLECTION_PARAMS, _Description, _Filters},
+           AccIn) ->
+              [{Name, ["default", "s", "c"]} | AccIn]
+      end, [], Roles).
+
+remove_exempted_names(AllNames, ExemptedNames) ->
+    lists:filter(
+      fun ({Name, _}) ->
+              not lists:member(Name, ExemptedNames)
+      end, AllNames).
+
+roles_with_admin_event_metakv_permissions() ->
+    [regulator_access, admin].
+
+%% Ensure none of the roles, except those who are granted permission,
+%% have access to the admin event/metakv permission.
+admin_event_metakv_permissions_test() ->
+    AllRoles = roles() ++ add_serverless_roles(true),
+    AllNames0 = extract_all_names(AllRoles),
+    AllNames =
+        remove_exempted_names(AllNames0,
+                              roles_with_admin_event_metakv_permissions()),
+    Roles = compile_roles(AllNames, AllRoles),
+
+    ?assertEqual(false, is_allowed({[admin, event], write}, Roles)),
+    ?assertEqual(false, is_allowed({[admin, event], read}, Roles)),
+    ?assertEqual(false, is_allowed({[admin, metakv], write}, Roles)).
 
 bucket_views_admin_check_global(Roles) ->
     ?assertEqual(false, is_allowed({[xdcr], read}, Roles)),
