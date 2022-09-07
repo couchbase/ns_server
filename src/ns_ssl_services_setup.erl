@@ -84,7 +84,9 @@ start_link_capi_service() ->
         undefined ->
             ignore;
         SSLPort ->
-            case config_profile:get_bool({couchdb, enabled}) of
+            Profile = application:get_env(ns_server, ?CONFIG_PROFILE,
+                                          ?DEFAULT_PROFILE_DATA),
+            case proplists:get_bool({couchdb, enabled}, Profile) of
                 true ->
                     do_start_link_capi_service(SSLPort);
                 false ->

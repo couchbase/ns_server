@@ -812,21 +812,31 @@ is_valid_bucket_name_inner([Char | Rest]) ->
     end.
 
 get_max_buckets() ->
-    Default = config_profile:get_value(max_buckets_supported,
-                                       ?MAX_BUCKETS_SUPPORTED),
-    ns_config:read_key_fast(max_bucket_count, Default).
+    ns_config:read_key_fast(max_bucket_count,
+                            proplists:get_value(
+                              max_buckets_supported,
+                              application:get_env(ns_server, ?CONFIG_PROFILE,
+                                                  ?DEFAULT_PROFILE_DATA),
+                              ?MAX_BUCKETS_SUPPORTED)).
 
 get_default_num_vbuckets() ->
     case ns_config:search(couchbase_num_vbuckets_default) of
         false ->
             misc:getenv_int("COUCHBASE_NUM_VBUCKETS",
-              config_profile:get_value(default_num_vbuckets, 1024));
+                            proplists:get_value(
+                              default_num_vbuckets,
+                              application:get_env(ns_server,
+                                                  ?CONFIG_PROFILE,
+                                                  ?DEFAULT_PROFILE_DATA), 1024));
         {value, X} ->
             X
     end.
 
 allow_variable_num_vbuckets() ->
-    config_profile:get_bool(allow_variable_num_vbuckets).
+    proplists:get_bool(allow_variable_num_vbuckets,
+                       application:get_env(ns_server,
+                                           ?CONFIG_PROFILE,
+                                           ?DEFAULT_PROFILE_DATA)).
 
 get_num_vbuckets(BucketConfig) ->
     proplists:get_value(num_vbuckets, BucketConfig).

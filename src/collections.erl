@@ -149,15 +149,21 @@ manifest_with_system_scope() ->
          {collections, Collections}]}]}].
 
 is_system_scope_enabled() ->
-    config_profile:get_bool(enable_system_scope).
+    proplists:get_bool(enable_system_scope,
+                       application:get_env(ns_server, ?CONFIG_PROFILE,
+                                           ?DEFAULT_PROFILE_DATA)).
 
 max_collections_per_bucket() ->
     Default = get_max_supported(num_collections),
-    config_profile:get_value(max_collections_per_bucket, Default).
+    proplists:get_value(max_collections_per_bucket,
+                        application:get_env(ns_server, ?CONFIG_PROFILE,
+                                            ?DEFAULT_PROFILE_DATA), Default).
 
 max_scopes_per_bucket() ->
     Default = get_max_supported(num_scopes),
-    config_profile:get_value(max_scopes_per_bucket, Default).
+    proplists:get_value(max_scopes_per_bucket,
+                        application:get_env(ns_server, ?CONFIG_PROFILE,
+                                            ?DEFAULT_PROFILE_DATA), Default).
 
 default_kvs(Buckets, Nodes) ->
     lists:flatmap(
@@ -317,8 +323,10 @@ get_max_supported_inner(Type, Max) ->
         {_, Value} ->
             Value;
         false ->
-            case config_profile:get_value(cluster_scope_collection_limit,
-                                          false) of
+            Profile = application:get_env(ns_server, ?CONFIG_PROFILE,
+                                          ?DEFAULT_PROFILE_DATA),
+            case proplists:get_value(cluster_scope_collection_limit,
+                                     Profile, false) of
                 unlimited ->
                     %% Effectively no limit
                     ?MC_MAXINT;

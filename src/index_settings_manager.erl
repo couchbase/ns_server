@@ -174,7 +174,11 @@ default_rollback_points() ->
 general_settings_defaults(ClusterVersion) ->
     case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_70) of
         true ->
-            NumReplica = config_profile:get_value({indexer, num_replica}, 0),
+            NumReplica = proplists:get_value(
+                           {indexer, num_replica},
+                           application:get_env(ns_server,
+                                               ?CONFIG_PROFILE,
+                                               ?DEFAULT_PROFILE_DATA), 0),
             [{redistributeIndexes, false},
              {numReplica, NumReplica}];
         _ ->
@@ -188,10 +192,12 @@ general_settings_defaults(ClusterVersion) ->
     end ++
     case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_ELIXIR) of
         true ->
+            Profile = application:get_env(ns_server, ?CONFIG_PROFILE,
+                                          ?DEFAULT_PROFILE_DATA),
             [{memHighThreshold,
-              config_profile:get_value({indexer, mem_high_threshold}, 80)},
+              proplists:get_value({indexer, mem_high_threshold}, Profile, 80)},
              {memLowThreshold,
-              config_profile:get_value({indexer, mem_low_threshold}, 60)}];
+              proplists:get_value({indexer, mem_low_threshold}, Profile, 60)}];
         false ->
             []
     end ++

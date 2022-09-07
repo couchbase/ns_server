@@ -77,35 +77,58 @@ setup_env() ->
               end, EnvArgs)
     end.
 
+-spec load_profile() -> string().
+load_profile() ->
+    load_profile(?PROFILE_FILE).
+
+-spec load_profile(string()) -> string().
+load_profile(?PROFILE_FILE = Path) ->
+    case file:read_file(Path) of
+        {ok, <<>>} ->
+            ?DEFAULT_PROFILE_STR;
+        {ok, <<_:1/binary, _/binary>> = Binary} ->
+            string:trim(binary_to_list(Binary));
+        {error, enoent} ->
+            ?log_warning(
+               "Could not load profile file (~p) because it does not exist",
+               [Path]
+              ),
+            ?DEFAULT_PROFILE_STR;
+        {error, Reason} ->
+            erlang:error(Reason)
+    end.
+
 setup_server_profile() ->
-    ProfileName = case os:getenv("CB_FORCE_PROFILE") of
-                      Str when is_list(Str), length(Str) > 0 -> Str;
-                      _ -> config_profile:load()
-                  end,
-    {Data, N} = case application:get_env(ns_server, config_path) of
-                    {ok, Path} ->
-                        File = filename:join(filename:dirname(Path),
-                                             string:join([ProfileName, "_profile"],
-                                                         "")),
-                        case (catch load_config(File)) of
-                            {'EXIT', Err} ->
-                                {config_profile:default(),
-                                 case ProfileName =/= ?DEFAULT_PROFILE_STR of
-                                     true ->
-                                         ?log_warning("Could not load config profile '~p', loading 'default'.. Error: ~p",
-                                                      [ProfileName, Err]),
-                                         ?DEFAULT_PROFILE_STR;
-                                     false ->
-                                         ProfileName
-                                 end};
-                            Config ->
-                                {Config, ProfileName}
-                        end;
-                    _ ->
-                        {config_profile:default(), ?DEFAULT_PROFILE_STR}
-                end,
+    ProfileName =
+        case os:getenv("CB_FORCE_PROFILE") of
+            Str when is_list(Str), length(Str) > 0 -> Str;
+            _ -> load_profile()
+        end,
+    {Data, N} =
+        case application:get_env(ns_server, config_path) of
+            {ok, Path} ->
+                File = filename:join(filename:dirname(Path), string:join([ProfileName, "_profile"], "")),
+                case (catch load_config(File)) of
+                    {'EXIT', Err} ->
+                        {?DEFAULT_PROFILE_DATA,
+                         case ProfileName =/= ?DEFAULT_PROFILE_STR of
+                             true ->
+                                 ?log_warning(
+                                    "Could not load config profile '~p', loading 'default'.. Error: ~p",
+                                    [ProfileName, Err]
+                                   ),
+                                 ?DEFAULT_PROFILE_STR;
+                             false ->
+                                 ProfileName
+                         end};
+                    Config ->
+                        {Config, ProfileName}
+                end;
+            _ ->
+                {?DEFAULT_PROFILE_DATA, ?DEFAULT_PROFILE_STR}
+        end,
     ?log_debug("Using profile '~s': ~p", [N, Data]),
-    config_profile:set_data(Data).
+    application:set_env(ns_server, ?CONFIG_PROFILE, Data).
 
 load_config(Path) ->
     case file:consult(Path) of

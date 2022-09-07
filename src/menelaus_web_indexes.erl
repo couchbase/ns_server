@@ -26,11 +26,16 @@ serverless_only_settings() ->
     [memHighThreshold, memLowThreshold].
 
 maybe_filter_settings(Settings) ->
+    IsServerless = proplists:get_value(name,
+                                       application:get_env(ns_server,
+                                                           ?CONFIG_PROFILE,
+                                                           ?DEFAULT_PROFILE_DATA),
+                                       "default") =:= "serverless",
     FilterOutSettings =
         lists:flatten([enterprise_only_settings() ||
-                       not cluster_compat_mode:is_enterprise()] ++
-                      [serverless_only_settings() ||
-                       not config_profile:is_serverless()]),
+                          not cluster_compat_mode:is_enterprise()] ++
+                          [serverless_only_settings() ||
+                              not IsServerless]),
     maybe_filter_settings(Settings, FilterOutSettings).
 
 maybe_filter_settings(Settings, []) ->
@@ -72,7 +77,12 @@ settings_post_validators() ->
                 []
         end ++
         case cluster_compat_mode:is_cluster_elixir() andalso
-             config_profile:is_serverless() of
+            proplists:get_value(
+              name,
+              application:get_env(ns_server,
+                                  ?CONFIG_PROFILE,
+                                  ?DEFAULT_PROFILE_DATA),
+              "default") =:= "serverless" of
             true ->
                 [validator:integer(memHighThreshold, 0, 100, _),
                  validator:integer(memLowThreshold, 0, 100, _)];

@@ -26,7 +26,9 @@
 -define(THROTTLE_CONFIG_KEY, <<"/throttle/settings/config">>).
 
 is_enabled() ->
-    config_profile:get_bool(enable_throttle_limits).
+    proplists:get_bool(enable_throttle_limits,
+                       application:get_env(ns_server, ?CONFIG_PROFILE,
+                                           ?DEFAULT_PROFILE_DATA)).
 
 assert_api_enabled() ->
     menelaus_util:assert_config_profile_flag(enable_throttle_limits).

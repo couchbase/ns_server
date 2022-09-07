@@ -379,7 +379,13 @@ memcached_params(Config) ->
 
 expand_profile_config(Props) ->
     proplists:delete(deployment_model, Props) ++
-        [{deployment_model, list_to_binary(config_profile:name())}].
+        [{deployment_model,
+          list_to_binary(
+            proplists:get_value(name,
+                                application:get_env(ns_server,
+                                                    ?CONFIG_PROFILE,
+                                                    ?DEFAULT_PROFILE_DATA),
+                                "default"))}].
 
 memcached_config(Config) ->
     {value, McdConf} = ns_config:search(Config, {node, node(),

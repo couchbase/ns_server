@@ -291,6 +291,10 @@
 -define(TLS_VERSIONS, #{'tlsv1.3'=> 3, 'tlsv1.2' => 2,
                         'tlsv1.1' => 1, tlsv1 => 0}).
 
+
+-define(CONFIG_PROFILE, config_profile).
+-define(PROFILE_FILE, "/etc/couchbase.d/config_profile").
+
 %% Known Elixir profiles
 -define(SERVERLESS_PROFILE, serverless).
 -define(SERVERLESS_PROFILE_STR, "serverless").
