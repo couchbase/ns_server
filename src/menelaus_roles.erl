@@ -294,7 +294,8 @@ roles() ->
                 "This user cannot access the web console and is intended only "
                 "for application access. This user can read data, but cannot "
                 "write it.">>}],
-      [{[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs], [read]},
+      [{[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs],
+        [read, range_scan]},
        {[{bucket, bucket_name}, settings], [read]},
        {[pools], [read]}]},
      {data_writer, ?RBAC_COLLECTION_PARAMS,
@@ -1587,17 +1588,35 @@ replication_admin_test() ->
 
 compile_and_assert(Role, Permissions, Params, Results) ->
     Roles = compile_roles([{Role, Params}], roles()),
-    ?assertEqual(Results, lists:map(is_allowed(_, Roles), Permissions)).
+    ?assertEqual(Results, lists:map(
+        fun (Permission) ->
+            {Object, Operations} = Permission,
+            case is_list(Operations) of
+                true ->
+                    lists:all(fun(Operation) ->
+                                is_allowed({Object, Operation}, Roles)
+                              end, Operations);
+                false ->
+                    is_allowed(Permission, Roles)
+            end
+        end, Permissions)).
 
 data_reader_collection_test_() ->
     Permissions =
-        [{[{collection, ["default", "s", "c"]}, data, docs], read},
-         {[{collection, ["default", "s", "c1"]}, data, docs], read},
-         {[{collection, ["default", "s", "c2"]}, data, docs], read},
-         {[{scope, ["default", "s"]}, data, docs], read},
-         {[{scope, ["default", "s1"]}, data, docs], read},
-         {[{scope, ["default", "s2"]}, data, docs], read},
-         {[{bucket, "default"}, data, docs], read},
+        [{[{collection, ["default", "s", "c"]}, data, docs],
+             [read, range_scan]},
+         {[{collection, ["default", "s", "c1"]}, data, docs],
+             [read, range_scan]},
+         {[{collection, ["default", "s", "c2"]}, data, docs],
+             [read, range_scan]},
+         {[{scope, ["default", "s"]}, data, docs],
+             [read, range_scan]},
+         {[{scope, ["default", "s1"]}, data, docs],
+             [read, range_scan]},
+         {[{scope, ["default", "s2"]}, data, docs],
+             [read, range_scan]},
+         {[{bucket, "default"}, data, docs],
+             [read, range_scan]},
          {[{bucket, "default"}, settings], read}],
 
     Test = ?cut(fun () ->

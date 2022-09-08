@@ -42,6 +42,7 @@ collection_permissions_to_check([B, S, C]) ->
      {{[{collection, [B, S, C]}, data, docs], insert},    'Insert'},
      {{[{collection, [B, S, C]}, data, docs], delete},    'Delete'},
      {{[{collection, [B, S, C]}, data, docs], upsert},    'Upsert'},
+     {{[{collection, [B, S, C]}, data, docs], range_scan}, 'RangeScan'},
      {{[{collection, [B, S, C]}, data, meta], write},     'MetaWrite'},
      {{[{collection, [B, S, C]}, data, sxattr], read},    'SystemXattrRead'},
      {{[{collection, [B, S, C]}, data, sxattr], write},   'SystemXattrWrite'},
@@ -489,13 +490,13 @@ permissions_for_user_test_() ->
             {["test"], Read(BucketsPlusCollections)}]),
       Test([{data_reader, [{"test", <<"test_id">>}, any, any]}],
            ['SystemSettings'],
-           [{["test"], ['Read']}]),
+           [{["test"], ['Read', 'RangeScan']}]),
       Test([{data_reader, [{"default", <<"default_id">>}, {"s", 1}, any]}],
            ['SystemSettings'],
-           [{["default", 1], ['Read']}]),
+           [{["default", 1], ['Read', 'RangeScan']}]),
       Test([{data_reader, [{"default", <<"default_id">>}, {"s", 1}, {"c", 1}]}],
            ['SystemSettings'],
-           [{["default", 1, 1], ['Read']}]),
+           [{["default", 1, 1], ['Read', 'RangeScan']}]),
       Test([{data_dcp_reader, [{"test", <<"test_id">>}, any, any]}],
            ['IdleConnection','SystemSettings'],
            [{["test"], DataRead(BucketsPlusCollections)}]),
@@ -523,5 +524,5 @@ permissions_for_user_test_() ->
            ['SystemSettings'],
            [{["test"], ['Delete', 'Insert', 'Upsert']},
             {["default", 1], ['Delete', 'Insert', 'Upsert']},
-            {["default", 2], ['Read']}])]}.
+            {["default", 2], ['Read', 'RangeScan']}])]}.
 -endif.
