@@ -62,7 +62,9 @@ init([]) ->
              {ns_server_nodes_sup, {ns_server_nodes_sup, start_link, []},
               permanent, infinity, supervisor, [ns_server_nodes_sup]}),
            {remote_api, {remote_api, start_link, []},
-            permanent, 1000, worker, [remote_api]}
+            permanent, 1000, worker, [remote_api]},
+           {ns_gc_runner, {ns_gc_runner, start_link, []},
+            permanent, 1000, worker, [ns_gc_runner]}
           ]}}.
 
 %% @doc Start ns_server and couchdb
