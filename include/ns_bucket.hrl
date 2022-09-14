@@ -10,6 +10,8 @@
 %% @doc Bucket related macros
 %%
 
+-include("ns_common.hrl").
+
 -define(MAGMA_FRAG_PERCENTAGE, 50).
 -define(MIN_MAGMA_FRAG_PERCENTAGE, 10).
 -define(MAX_MAGMA_FRAG_PERCENTAGE, 100).
@@ -52,5 +54,5 @@
 -define(DEFAULT_N1QL_THROTTLE_LIMIT, 5000).
 -define(DEFAULT_SGW_READ_THROTTLE_LIMIT, 2500).
 -define(DEFAULT_SGW_WRITE_THROTTLE_LIMIT, 2500).
--define(MIN_THROTTLE_LIMIT, 0).
--define(MAX_THROTTLE_LIMIT, 1000000).
+-define(MIN_THROTTLE_LIMIT, -1).
+-define(MAX_THROTTLE_LIMIT, ?MC_MAXINT).
