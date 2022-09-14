@@ -15,6 +15,10 @@
 -include("mc_constants.hrl").
 -include("mc_entry.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([start_link/4,
          setup_streams/2, takeover/2, maybe_close_stream/2, shut_connection/2]).
 
@@ -320,15 +324,65 @@ handle_cast({set_vbucket_state, Packet},
 %%
 %% Producer has ended a stream.
 %%
+%% Do nothing if the connection is already shutdown.
 handle_cast({producer_stream_end, _Packet}, #state{state = shut} = State,
             ParentState) ->
-    %% Do nothing if the connection is already shutdown.
     {noreply, State, ParentState};
+%% We are in the middle of setting up streams and saw a stream end.
+handle_cast({producer_stream_end, Packet},
+            #state{state = #stream_state{to_add = ToAdd}} = State,
+            ParentState) ->
+    {Header, Body} = mc_binary:decode_packet(Packet),
+
+    StreamToEnd = Header#mc_header.vbucket,
+    Opaque = Header#mc_header.opaque,
+    <<Status:32>> = Body#mc_entry.ext,
+
+    NoPartitionFun =
+        fun() ->
+            %% As we are still setting up streams, handle a producer_stream_end
+            %% if we don't have a stream as an error as we would normally
+            %% expect to see a DCP_ADD_STREAM response instead (we would hang
+            %% forever if we ignored this case).
+            case lists:keytake(Opaque, 1, ToAdd) of
+                {value, {Opaque}, _} ->
+                    %% We are in the process of adding this stream (we have not
+                    %% yet seen a DCP_ADD_STREAM response) and we just got a
+                    %% stream_end, this is unexpected, crash the proxy.
+                    ?log_error("Unexpected stream end as we found a stream in "
+                        "to_add for vBucket ~p with opaque ~p and status ~p",
+                        [StreamToEnd, Header#mc_header.opaque, Status]),
+                    erlang:error({unexpected_stream_end, StreamToEnd});
+                false ->
+                    %% No stream currently being added for this vBucket
+                    State
+            end
+        end,
+
+    handle_stream_end(State, ParentState, StreamToEnd, NoPartitionFun);
+%% Handle any other state in which we see a stream end (idle or takeover).
 handle_cast({producer_stream_end, Packet}, State, ParentState) ->
     {Header, _Body} = mc_binary:decode_packet(Packet),
-
-    %% Does the vBucket have an active stream?
     StreamToEnd = Header#mc_header.vbucket,
+
+    handle_stream_end(
+        State,
+        ParentState,
+        StreamToEnd,
+        fun() ->
+            %% Don't do anything in the case in which we don't have a stream. Of
+            %% particular note is a takeover stream, which we do not need to
+            %% process as we use the DCP_SET_VBUCKET_STATE message to
+            %% identify the end of takeover.
+            State
+        end);
+
+handle_cast(Msg, State, ParentState) ->
+    ?rebalance_warning("Unhandled cast: Msg = ~p, State = ~p", [Msg, State]),
+    {noreply, State, ParentState}.
+
+handle_stream_end(State, ParentState, StreamToEnd, NoPartitionFun) ->
+    %% Does the vBucket have an active stream?
     NewState = case has_partition(StreamToEnd, State) of
                    true ->
                        %% There is an active stream for the vbucket.
@@ -356,26 +410,12 @@ handle_cast({producer_stream_end, Packet}, State, ParentState) ->
                        %%    vbucket.
                        %% 3. This is a takeover stream.
                        %%
-                       %% In all 3 cases, we do nothing.
-                       %%
-                       %% Case 2: We will not handle race scenarios where
-                       %% consumer is trying to add a stream for a vbucket
-                       %% for which producer sends a stream end.
-                       %%
-                       %% Case 3:
-                       %% The producer sends stream end message at the end of
-                       %% dcp takeover.
-                       %% But, we do not need to process it because ns_server
-                       %% uses DCP_SET_VBUCKET_STATE change to indentify
-                       %% end of takeover.
-                       %%
-                       State
+                       %% We allow the caller to deal with this scenario via
+                       %% NoPartitionFun.
+                       NoPartitionFun()
                end,
-    {noreply, NewState, ParentState};
+    {noreply, NewState, ParentState}.
 
-handle_cast(Msg, State, ParentState) ->
-    ?rebalance_warning("Unhandled cast: Msg = ~p, State = ~p", [Msg, State]),
-    {noreply, State, ParentState}.
 
 process_stream_response(Header, ignore, Errors, close_stream, producer,
                         _ParentState) ->
@@ -536,3 +576,90 @@ get_opaque_for_partition(Partition) ->
 get_partition_for_opaque(Opaque) ->
     Opaque.
 
+-ifdef(TEST).
+construct_dcp_packet(Magic,Opcode, VBucket, Opaque, Status) ->
+    <<Magic:8,
+        Opcode:8,
+        0:16, % key len
+        4:8, % extlen - 4 for status
+        0:8, % datatype
+        VBucket:16,
+        4:32, % bodylen - 4 for status
+        Opaque:32,
+        0:64, % cas
+        Status:32>>.
+
+construct_dcp_response(Opcode, VBucket, Opaque, Status) ->
+    construct_dcp_packet(?RES_MAGIC, Opcode, VBucket, Opaque, Status).
+
+%% Test that we don't hang when we receive a producer_stream_end without seeing
+%% a DCP_ADD_STREAM packet from the consumer.
+%% Prior to the fix for this issue this test would timeout after the eunit
+%% timeout waiting for a response to setup_streams.
+test_stream_end_seen_without_add_stream_rsp_during_setup(Partitions) ->
+    %% Setup:
+    %% We expect the proxy to crash so trap exits
+    process_flag(trap_exit, true),
+    meck:new(dcp_proxy, [passthrough]),
+    meck:expect(dcp_proxy, maybe_connect,
+        fun (ParentState, _) ->
+            ParentState
+        end),
+
+    meck:new(dcp_commands, [passthrough]),
+    meck:new(network, [passthrough]),
+    meck:expect(network, socket_setopts,
+        fun(_,_) ->
+            ok
+        end),
+    meck:expect(network, socket_send,
+        fun(_,_) ->
+            ok
+        end),
+
+    {ok, Pid} = dcp_consumer_conn:start_link([],[],[], []),
+
+    %% Test body:
+    %% dcp_commands:add_stream/4 will be called from setup_streams which is
+    %% called manually during the test. It just fires a command via
+    %% mc_client_binary which we don't care about here (we are mocking away
+    %% anything network related). We will use this function to fire a
+    %% producer_stream_end which should be  processed immediately after
+    %% setup_streams returns (no DCP_ADD_STREAM will have been processed) but
+    %% before it responds to the caller (us later on).
+    meck:expect(dcp_commands, add_stream,
+        fun(_,_,_,_) ->
+            %% We cast this message so we'll process it after we finish the
+            %% current message (setup_streams).
+            gen_server:cast(Pid, {producer_stream_end,
+                construct_dcp_response(
+                    ?DCP_STREAM_END,
+                    0, %VBucket
+                    0, %Opaque
+                    ?NOT_MY_VBUCKET)})
+        end),
+
+    %% Set up a stream to get us in the correct state for the test (to_add=[0]).
+    %% The rest of the test is implemented via the mock calls.
+    try
+        setup_streams(Pid, Partitions),
+        erlang:error({failure, "Expected to crash before setup_streams"
+                                "replied"})
+    catch
+        _:_ ->
+            []
+    end,
+
+    %% Teardown:
+    %% No need to stop the gen_server, it will have crashed
+    meck:unload(network),
+    meck:unload(dcp_proxy),
+    meck:unload(dcp_commands).
+
+stream_end_seen_without_add_stream_response_during_setup_test() ->
+    test_stream_end_seen_without_add_stream_rsp_during_setup([0]).
+
+stream_end_seen_without_add_stream_response_during_setup_two_streams_test() ->
+    test_stream_end_seen_without_add_stream_rsp_during_setup([0,1]).
+
+-endif.
