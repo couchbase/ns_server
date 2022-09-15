@@ -22,33 +22,37 @@
 -define(LONG_POLL_TIMEOUT, ?get_timeout(long_poll, 30000)).
 
 shutdown(Pid) ->
-    perform_call(Pid, "Shutdown", empty_req()).
+    perform_rebalance_call(Pid, "Shutdown", empty_req()).
 
 get_node_info(Pid) ->
-    perform_call(Pid, "GetNodeInfo", empty_req()).
+    perform_rebalance_call(Pid, "GetNodeInfo", empty_req()).
 
 get_task_list(Pid, Rev) ->
-    perform_call(Pid, "GetTaskList", get_req(Rev, ?LONG_POLL_TIMEOUT)).
+    perform_rebalance_call(Pid, "GetTaskList", get_req(Rev, ?LONG_POLL_TIMEOUT)).
 
 cancel_task(Pid, Id, Rev) ->
-    perform_call(Pid, "CancelTask", cancel_task_req(Id, Rev)).
+    perform_rebalance_call(Pid, "CancelTask", cancel_task_req(Id, Rev)).
 
 get_current_topology(Pid, Rev) ->
-    perform_call(Pid, "GetCurrentTopology", get_req(Rev, ?LONG_POLL_TIMEOUT)).
+    perform_rebalance_call(Pid, "GetCurrentTopology",
+                           get_req(Rev, ?LONG_POLL_TIMEOUT)).
 
 prepare_topology_change(Pid, Id, Rev, Type, KeepNodes, EjectNodes) ->
-    perform_call(Pid, "PrepareTopologyChange",
-                 topology_change_req(Id, Rev, Type, KeepNodes, EjectNodes)).
+    perform_rebalance_call(
+      Pid, "PrepareTopologyChange",
+      topology_change_req(Id, Rev, Type, KeepNodes, EjectNodes)).
 
 start_topology_change(Pid, Id, Rev, Type, KeepNodes, EjectNodes) ->
-    perform_call(Pid, "StartTopologyChange",
-                 topology_change_req(Id, Rev, Type, KeepNodes, EjectNodes)).
+    perform_rebalance_call(
+      Pid, "StartTopologyChange",
+      topology_change_req(Id, Rev, Type, KeepNodes, EjectNodes)).
 
 health_check(Service) ->
-    try do_perform_call(
-          get_label(Service), "HealthCheck", empty_req(), #{silent => true}) of
+    try perform_call(
+          get_label(Service), "HealthCheck", empty_req(),
+          #{silent => true, timeout => ?RPC_TIMEOUT}) of
         Result ->
-            handle_autofailover_result(Result)
+            handle_result(Result)
     catch T:E ->
             ?log_debug("Exception while calling HealthCheck: ~p:~p", [T, E]),
             {error, case {T, E} of
@@ -62,41 +66,38 @@ health_check(Service) ->
     end.
 
 is_safe(Service, NodeIds) ->
-    handle_autofailover_result(
-      do_perform_call(get_label(Service), "IsSafe", NodeIds, #{})).
+    handle_result(perform_call(get_label(Service), "IsSafe", NodeIds,
+                               #{timeout => ?RPC_TIMEOUT})).
 
 get_label(Service) when is_atom(Service) ->
     atom_to_list(ns_ports_setup:get_rpc_prefix(Service)) ++ "-service_api".
 
 %% internal
-perform_call(PidOrLabel, Name, Arg) ->
-    perform_call(PidOrLabel, Name, Arg, #{}).
+perform_rebalance_call(PidOrLabel, Name, Arg) ->
+    case perform_call(PidOrLabel, Name, Arg, #{timeout => ?RPC_TIMEOUT}) of
+        {error, Error} when is_binary(Error) ->
+            {error, map_rebalance_error(Error)};
+        {error, _} = Error ->
+            Error;
+        Other ->
+            handle_oks(Other)
+    end.
 
 perform_call(PidOrLabel, Name, Arg, Opts) ->
-    handle_result(do_perform_call(PidOrLabel, Name, Arg, Opts)).
-
-do_perform_call(PidOrLabel, Name, Arg, Opts) ->
     FullName = "ServiceAPI." ++ Name,
-    json_rpc_connection:perform_call(
-      PidOrLabel, FullName, Arg, maps:put(timeout, ?RPC_TIMEOUT, Opts)).
+    json_rpc_connection:perform_call(PidOrLabel, FullName, Arg, Opts).
 
-handle_result({ok, null}) ->
+handle_oks({ok, null}) ->
     ok;
-handle_result({ok, _} = Result) ->
-    Result;
+handle_oks({ok, _} = Result) ->
+    Result.
+
 handle_result({error, Error}) when is_binary(Error) ->
-    {error, map_error(Error)};
-handle_result({error, _} = Error) ->
-    Error.
-
-handle_autofailover_result({ok, null}) ->
-    ok;
-handle_autofailover_result({ok, _} = Result) ->
-    Result;
-handle_autofailover_result({error, Error}) when is_binary(Error) ->
     {error, binary_to_list(Error)};
-handle_autofailover_result({error, Error}) ->
-    {error, lists:flatten(io_lib:format("Unexpected error: ~p", [Error]))}.
+handle_result({error, Error}) ->
+    {error, lists:flatten(io_lib:format("Unexpected error: ~p", [Error]))};
+handle_result(Other) ->
+    handle_oks(Other).
 
 empty_req() ->
     {[] ++ maybe_add_additional_info()}.
@@ -179,12 +180,12 @@ encode_keep_nodes(KeepNodes) ->
 encode_eject_nodes(Nodes) ->
     [encode_node_info(N) || N <- Nodes].
 
-map_error(?ERROR_NOT_FOUND) ->
+map_rebalance_error(?ERROR_NOT_FOUND) ->
     not_found;
-map_error(?ERROR_CONFLICT) ->
+map_rebalance_error(?ERROR_CONFLICT) ->
     conflict;
-map_error(?ERROR_NOT_SUPPORTED) ->
+map_rebalance_error(?ERROR_NOT_SUPPORTED) ->
     operation_not_supported;
-map_error(?ERROR_RECOVERY_IMPOSSIBLE) ->
+map_rebalance_error(?ERROR_RECOVERY_IMPOSSIBLE) ->
     recovery_impossible;
-map_error(Error) -> {unknown_error, Error}.
+map_rebalance_error(Error) -> {unknown_error, Error}.
