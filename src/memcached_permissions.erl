@@ -57,13 +57,23 @@ bucket_permissions_to_check(Bucket) ->
 global_permissions_to_check() ->
     [{{[stats, memcached], read},           'Stats'},
      {{[admin, internal, stats], read},     'Stats'},
-     {{[admin, internal, throttle], write}, 'BucketThrottleManagement'},
-     {{[buckets], create},                  'BucketManagement'},
-     {{[admin, memcached, node], write},    'NodeManagement'},
-     {{[admin, memcached, session], write}, 'SessionManagement'},
      {{[admin, memcached, idle], write},    'IdleConnection'},
-     {{[admin, security, audit], write},    'AuditManagement'},
+     {{[admin, memcached], all},            'Administrator'},
      {{[pools], read},                      'SystemSettings'}].
+
+metered_users() ->
+    ["@cbq-engine", "@goxdcr", "@backup"].
+
+other_users_privileges(User) ->
+    ['Administrator', 'Audit', 'IdleConnection', 'Impersonate',
+     'SystemSettings', 'Stats'] ++
+        case lists:member(User, metered_users()) of
+            true -> [];
+            false -> ['Unmetered']
+        end.
+
+admin_user_privileges() ->
+    ['NodeSupervisor', 'BucketThrottleManagement', 'Unthrottled'].
 
 start_link() ->
     Path = ns_config:search_node_prop(ns_config:latest(), memcached, rbac_file),
@@ -302,8 +312,13 @@ jsonify_user({UserName, Domain}, {GlobalPermissions, BucketPermissions}) ->
     Global = {privileges, GlobalPermissions},
     {list_to_binary(UserName), {[Buckets, Global, {domain, Domain}]}}.
 
-memcached_admin_json(AU) ->
-    jsonify_user({AU, local}, {[all], all}).
+memcached_admin_json("@ns_server" = User) ->
+    Privileges =
+        lists:usort(admin_user_privileges() ++ other_users_privileges(User)),
+    jsonify_user({User, local}, {Privileges, all});
+memcached_admin_json(User) ->
+    Privileges = other_users_privileges(User),
+    jsonify_user({User, local}, {Privileges, all}).
 
 jsonify_users(Users, RoleDefinitions, ClusterAdmin, PromUser) ->
     Snapshot = ns_bucket:get_snapshot(all, [collections, uuid]),

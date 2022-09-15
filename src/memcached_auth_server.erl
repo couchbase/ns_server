@@ -299,7 +299,7 @@ mcd_update_user_permissions(RBACJson) ->
 
 -ifdef(TEST).
 process_data_test() ->
-    Roles = [[{[admin, security], all},
+    Roles = [[{[admin, memcached], all},
               {[{bucket, any}], [read]}],
              [{[{bucket, "b1"}, data, docs], [insert, upsert]},
               {[{bucket, "b2"}, data, xattr], [write]}]],
@@ -327,7 +327,7 @@ process_data_test() ->
                     {[{<<"User2">>,
                        {[{<<"buckets">>,
                           {[{<<"b1">>, {[{<<"privileges">>, [_|_]}]}}]}},
-                         {<<"privileges">>, [_]},
+                         {<<"privileges">>, [_|_]},
                          {<<"domain">>, <<"external">>}]}}]}}
                   ]}) -> ok
             end),
