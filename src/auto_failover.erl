@@ -1047,19 +1047,16 @@ has_safe_check(_) ->
     false.
 
 service_safety_check(Service, DownNodes, UUIDDict) ->
-    ActiveNodes = ns_cluster_membership:service_active_nodes(Service),
-    case ActiveNodes -- DownNodes of
-        [] ->
+    Snapshot = ns_cluster_membership:get_snapshot(),
+    case ns_cluster_membership:pick_service_node(
+           Snapshot, Service, DownNodes) of
+        undefined ->
             {error, mail_too_small};
-        [FirstNode | _] = ServiceAliveNodes ->
-            NodeToCall =
-                case lists:member(node(), ServiceAliveNodes) of
-                    true ->
-                        node();
-                    false ->
-                        FirstNode
-                end,
-            ServiceDownNodes = ActiveNodes -- ServiceAliveNodes,
+        NodeToCall ->
+            ActiveNodes =
+                ns_cluster_membership:service_active_nodes(Snapshot, Service),
+            ServiceDownNodes =
+                lists:filter(lists:member(_, ActiveNodes), DownNodes),
             NodeIds = ns_cluster_membership:get_node_uuids(ServiceDownNodes,
                                                            UUIDDict),
             case rpc:call(NodeToCall, service_api, is_safe, [Service, NodeIds],

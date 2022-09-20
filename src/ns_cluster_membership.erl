@@ -82,7 +82,9 @@
          should_run_service/3,
          user_friendly_service_name/1,
          json_service_name/1,
-         get_max_replicas/2]).
+         get_max_replicas/2,
+         pick_service_node/2,
+         pick_service_node/3]).
 
 fetch_snapshot(Txn) ->
     Snapshot =
@@ -624,6 +626,24 @@ service_nodes(Snapshot, Nodes, Service) ->
     [N || N <- Nodes,
           ServiceC <- node_services(Snapshot, N),
           ServiceC =:= Service].
+
+pick_service_node(Snapshot, Service) ->
+    pick_service_node(Snapshot, Service, []).
+
+pick_service_node(Snapshot, Service, DownNodes) ->
+    ActiveNodes = ns_cluster_membership:service_active_nodes(Snapshot, Service),
+
+    case ActiveNodes -- DownNodes of
+        [] ->
+            undefined;
+        [FirstNode | _] = ServiceAliveNodes ->
+            case lists:member(node(), ServiceAliveNodes) of
+                true ->
+                    node();
+                false ->
+                    FirstNode
+            end
+    end.
 
 user_friendly_service_name(kv) ->
     "data";
