@@ -105,7 +105,7 @@ handle_result(Other) ->
     handle_oks(Other).
 
 empty_req() ->
-    {[] ++ maybe_add_additional_info()}.
+    {[]}.
 
 get_req(Rev, Timeout) ->
     {[{rev, encode_rev(Rev)},
