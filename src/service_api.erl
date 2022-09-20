@@ -16,7 +16,8 @@
          get_task_list/2, cancel_task/3,
          get_current_topology/2,
          prepare_topology_change/6, start_topology_change/6,
-         health_check/1, is_safe/2, get_label/1]).
+         health_check/1, is_safe/2, get_label/1,
+         get_defragmented_utilization/2]).
 
 -define(RPC_TIMEOUT,       ?get_timeout(rpc, 60000)).
 -define(LONG_POLL_TIMEOUT, ?get_timeout(long_poll, 30000)).
@@ -68,6 +69,10 @@ health_check(Service) ->
 is_safe(Service, NodeIds) ->
     handle_result(perform_call(get_label(Service), "IsSafe", NodeIds,
                                #{timeout => ?RPC_TIMEOUT})).
+
+get_defragmented_utilization(Service, Timeout) ->
+    handle_result(perform_call(get_label(Service), "GetDefragmentedUtilization",
+                               empty_req(), #{timeout => Timeout})).
 
 get_label(Service) when is_atom(Service) ->
     atom_to_list(ns_ports_setup:get_rpc_prefix(Service)) ++ "-service_api".

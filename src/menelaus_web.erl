@@ -353,6 +353,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["pools", "default", "stats", "range" | PathLeft] ->
                     {{[{collection, [any, any, any]}, stats], read},
                      fun menelaus_web_stats:handle_range_get/2, [PathLeft]};
+                ["pools", "default", "services", Service, "defragmented"] ->
+                    {{[pools], read},
+                     fun menelaus_web_pools:handle_defragmented/2, [Service]};
                 ["nodeStatuses"] ->
                     {{[nodes], read}, fun menelaus_web_node:handle_node_statuses/1};
                 ["logs"] ->

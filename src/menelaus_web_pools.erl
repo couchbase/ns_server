@@ -23,7 +23,8 @@
          handle_pool_settings_post_body/3,
          handle_terse_cluster_info/1,
          get_cluster_name/0,
-         pool_settings_post_validators/2]).
+         pool_settings_post_validators/2,
+         handle_defragmented/2]).
 
 %% for hibernate
 -export([handle_pool_info_wait_wake/4]).
@@ -39,6 +40,11 @@
          format_server_time/1,
          handle_streaming/2,
          reply/2]).
+
+%% The timeout value is based on indexer's claim that the computation can
+%% take around 10 minutes. This could be subject to change.
+-define(DEFRAGMENTED_UTILIZATION_TIMEOUT,
+        ?get_timeout(get_defragmented_utilization, 1000 * 60 * 20)).
 
 handle_pools(Req) ->
     %% TODO RBAC for the time being let's tell the UI that the user is admin
@@ -643,3 +649,37 @@ glean_node_details(NodeInfo) ->
          [{swapTotal, SwapTotal},
           {swapUsed, SwapUsed},
           {storageConf, {SConf}}]}.
+
+handle_defragmented(ServiceStr, Req) ->
+    menelaus_util:assert_is_enterprise(),
+    menelaus_util:assert_config_profile_flag(enable_bucket_placer),
+
+    SupportedServices =
+        [atom_to_list(S) ||
+            S <- ns_cluster_membership:cluster_supported_services()],
+
+    ServiceStr =/= "kv" orelse
+        menelaus_util:web_exception(
+          400, "KV service is not supported by this API"),
+
+    lists:member(ServiceStr, SupportedServices) orelse
+        menelaus_util:web_exception(404, "Unsupported service"),
+
+    Service = list_to_existing_atom(ServiceStr),
+    case ns_cluster_membership:pick_service_node(direct, Service) of
+        undefined ->
+            menelaus_util:web_exception(404, "Service not available");
+        Node ->
+            case rpc:call(Node, service_api, get_defragmented_utilization,
+                          [Service, ?DEFRAGMENTED_UTILIZATION_TIMEOUT],
+                          ?DEFRAGMENTED_UTILIZATION_TIMEOUT) of
+                {badrpc, Error} ->
+                    menelaus_util:web_exception(
+                      500, io_lib:format("Error contacting service node: ~p",
+                                         [Error]));
+                {error, Error} ->
+                    menelaus_util:web_exception(500, Error);
+                {ok, {[{<<"Info">>, Result}]}} ->
+                    menelaus_util:reply_json(Req, Result)
+            end
+    end.
