@@ -50,12 +50,7 @@ handle_pools(Req) ->
     RV1 = [{isAdminCreds, true},
            {isROAdminCreds, false},
            {isEnterprise, Enterprise},
-           {configProfile,
-            list_to_binary(
-              proplists:get_value(name,
-                                  application:get_env(ns_server, ?CONFIG_PROFILE,
-                                                      ?DEFAULT_PROFILE_DATA),
-                                  "default"))},
+           {configProfile, list_to_binary(config_profile:name())},
            {allowedServices, AllowedServices},
            {isDeveloperPreview, cluster_compat_mode:is_developer_preview()},
            {packageVariant,

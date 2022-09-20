@@ -677,10 +677,7 @@ add_replication_developer_roles(false) ->
     [].
 
 maybe_add_serverless_roles() ->
-    Profile = application:get_env(ns_server, ?CONFIG_PROFILE,
-                                  ?DEFAULT_PROFILE_DATA),
-    add_serverless_roles(
-      proplists:get_value(name, Profile, "default") =:= "serverless").
+    add_serverless_roles(config_profile:is_serverless()).
 
 add_serverless_roles(true) ->
     [{regulator_access, [],

@@ -374,6 +374,7 @@ format_profile_arg(Key, Value) when is_list(Key), is_list(Value) ->
     "-" ++ Key ++ "=" ++ Value.
 
 service_profile_args(Service) ->
+    ProfileData = config_profile:get(),
     lists:filtermap(
       fun ({{Svc, Key}, Val}) ->
               case Service =:= Svc of
@@ -384,8 +385,7 @@ service_profile_args(Service) ->
               end;
           (_) ->
               false
-      end, application:get_env(ns_server, ?CONFIG_PROFILE,
-                               ?DEFAULT_PROFILE_DATA)).
+      end, ProfileData).
 
 goport_args(n1ql, Config, _Cmd, NodeUUID) ->
     RestPort = service_ports:get_port(rest_port, Config),
@@ -394,11 +394,8 @@ goport_args(n1ql, Config, _Cmd, NodeUUID) ->
     HttpArg = build_port_arg("--http", ":", query_port, Config),
     EntArg = "--enterprise=" ++
         atom_to_list(cluster_compat_mode:is_enterprise()),
-    Profile = application:get_env(ns_server, ?CONFIG_PROFILE,
-                                  ?DEFAULT_PROFILE_DATA),
     ServerlessArgs = "--serverless=" ++
-        erlang:atom_to_list(
-          proplists:get_value(name, Profile, "default") =:= "serverless"),
+        erlang:atom_to_list(config_profile:is_serverless()),
     HttpsArgs = build_https_args(ssl_query_port, "--https", ":",
                                  "--certfile", "--keyfile",
                                  "--clientCertFile", "--clientKeyFile",
@@ -411,9 +408,8 @@ goport_args(kv, Config, _Cmd, _NodeUUID) ->
     RestPort = service_ports:get_port(rest_port, Config),
     LocalMemcachedPort = service_ports:get_port(memcached_port, Config),
     MinidumpDir = path_config:minidump_dir(),
-    Profile = application:get_env(ns_server, ?CONFIG_PROFILE,
-                                  ?DEFAULT_PROFILE_DATA),
-    ["--deploymentModel=" ++ proplists:get_value(name, Profile, "default")] ++
+
+    ["--deploymentModel=" ++ config_profile:name()] ++
     build_https_args(projector_ssl_port, "--httpsPort", "--certFile",
                      "--keyFile", "--clientCertFile", "--clientKeyFile",
                      "--caFile", Config) ++
@@ -440,8 +436,6 @@ goport_args(index, Config, _Cmd, NodeUUID) ->
     RestPort = service_ports:get_port(rest_port, Config),
     {ok, IdxDir} = ns_storage_conf:this_node_ixdir(),
     IdxDir2 = filename:join(IdxDir, "@2i"),
-    Profile = application:get_env(ns_server, ?CONFIG_PROFILE,
-                                  ?DEFAULT_PROFILE_DATA),
 
     build_port_args([{"-adminPort",         indexer_admin_port},
                      {"-scanPort",          indexer_scan_port},
@@ -463,7 +457,7 @@ goport_args(index, Config, _Cmd, NodeUUID) ->
          "-logDir=" ++ LogDir,
          "-nodeUUID=" ++ NodeUUID,
          "-isEnterprise=" ++ atom_to_list(cluster_compat_mode:is_enterprise()),
-         "--deploymentModel=" ++ proplists:get_value(name, Profile, "default")];
+         "--deploymentModel=" ++ config_profile:name()];
 
 goport_args(backup, Config, _Cmd, NodeUUID) ->
     build_port_args([{"-http-port", backup_http_port},
@@ -533,16 +527,13 @@ goport_args(fts, Config, _Cmd, NodeUUID) ->
                              true -> "membase:ephemeral";
                              false -> "membase"
                          end,
-
-    Profile = application:get_env(ns_server, ?CONFIG_PROFILE,
-                                  ?DEFAULT_PROFILE_DATA),
     Options =
         "startCheckServer=skip," ++
         "slowQueryLogTimeout=5s," ++
         "defaultMaxPartitionsPerPIndex=1024," ++
         "bleveMaxResultWindow=10000," ++
         "failoverAssignAllPrimaries=false," ++
-        "deploymentModel=" ++ proplists:get_value(name, Profile) ++ "," ++
+        "deploymentModel=" ++ config_profile:name() ++ "," ++
         "cbaudit=" ++ atom_to_list(cluster_compat_mode:is_enterprise()) ++
         "," ++
         "ftsMemoryQuota=" ++ integer_to_list(FTSMemoryQuota * 1024000) ++ "," ++
@@ -703,15 +694,19 @@ format_profile_arg_test() ->
 
 
 service_profile_args_test() ->
-    application:set_env(ns_server, config_profile, [{name, "default"},
-                                                    {{goxdcr, key1}, "value1"},
-                                                    {{goxdcr, key2}, 1234},
-                                                    {{cbas, featureA}, "on"}]),
+    meck:new(config_profile),
+    meck:expect(config_profile, get,
+                fun () ->
+                        [{name, "default"},
+                         {{goxdcr, key1}, "value1"},
+                         {{goxdcr, key2}, 1234},
+                         {{cbas, featureA}, "on"}]
+                end),
     Args = service_profile_args(goxdcr),
     ?assertEqual(["-key1=value1", "-key2=1234"], Args),
     Args2 = service_profile_args(cbas),
     ?assertEqual(["-featureA=on"], Args2),
-    application:unset_env(ns_server, config_profile),
+    meck:unload(config_profile),
     ok.
 
 -endif.

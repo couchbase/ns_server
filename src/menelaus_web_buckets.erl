@@ -306,9 +306,7 @@ get_throttle_attributes() ->
       sgw_write_throttle_limit, ?DEFAULT_SGW_WRITE_THROTTLE_LIMIT}].
 
 build_limits(BucketConfig, ProfileKey, AttributesFunc) ->
-    Profile = application:get_env(ns_server, ?CONFIG_PROFILE,
-                                  ?DEFAULT_PROFILE_DATA),
-    case proplists:get_bool(ProfileKey, Profile) of
+    case config_profile:get_bool(ProfileKey) of
         false -> [];
         true ->
             [{Param, proplists:get_value(Key,
@@ -448,10 +446,7 @@ build_magma_bucket_info(BucketConfig) ->
                                   BucketConfig,
                                   ?MAGMA_STORAGE_QUOTA_PERCENTAGE)}]
                 ++
-                case proplists:get_bool({magma, can_set_max_shards},
-                                        application:get_env(ns_server,
-                                                            ?CONFIG_PROFILE,
-                                                            ?DEFAULT_PROFILE_DATA)) of
+                case config_profile:search({magma, can_set_max_shards}, false) of
                     true ->
                         [{magmaMaxShards,
                           proplists:get_value(magma_max_shards, BucketConfig,
@@ -1135,11 +1130,9 @@ validate_memcached_bucket_params(CommonParams, Params, IsNew, BucketConfig) ->
 
 validate_membase_bucket_params(CommonParams, Params,
                                IsNew, BucketConfig, Version, IsEnterprise) ->
-    Profile = application:get_env(ns_server, ?CONFIG_PROFILE,
-                                  ?DEFAULT_PROFILE_DATA),
     AllowPitr = cluster_compat_mode:is_version_elixir(Version),
-    AllowStorageLimit = proplists:get_bool(enable_storage_limits, Profile),
-    AllowThrottleLimit = proplists:get_bool(enable_throttle_limits, Profile),
+    AllowStorageLimit = config_profile:get_bool(enable_storage_limits),
+    AllowThrottleLimit = config_profile:get_bool(enable_throttle_limits),
     ReplicasNumResult = validate_replicas_number(Params, IsNew),
     BucketParams =
         [{ok, bucketType, membase},
@@ -1222,11 +1215,7 @@ get_bucket_type(false = _IsNew, BucketConfig, _Params)
   when is_list(BucketConfig) ->
     ns_bucket:bucket_type(BucketConfig);
 get_bucket_type(_IsNew, _BucketConfig, Params) ->
-    DisallowMemcached = proplists:get_bool(
-                          disallow_memcached_buckets,
-                          application:get_env(ns_server,
-                                              ?CONFIG_PROFILE,
-                                              ?DEFAULT_PROFILE_DATA)),
+    DisallowMemcached = config_profile:get_bool(disallow_memcached_buckets),
     case proplists:get_value("bucketType", Params) of
         "memcached" when DisallowMemcached =/= true ->
             memcached;
@@ -1294,9 +1283,7 @@ parse_validate_max_magma_shards(Params, BucketConfig, _Version, false) ->
 parse_validate_max_magma_shards(Params, _BucketConfig, Version, true) ->
     case proplists:is_defined("magmaMaxShards", Params) of
         true ->
-            Profile = application:get_env(ns_server, ?CONFIG_PROFILE,
-                                          ?DEFAULT_PROFILE_DATA),
-            case proplists:get_bool({magma, can_set_max_shards}, Profile) of
+            case config_profile:search({magma, can_set_max_shards}, false) of
                 false ->
                     {error, magmaMaxShards,
                      <<"Cannot set maximum magma shards in this configuration profile">>};
@@ -2512,6 +2499,11 @@ basic_bucket_params_screening(IsNew, Name, Params, AllBuckets, KvNodes) ->
     basic_bucket_params_screening(Ctx, Params).
 
 basic_bucket_params_screening_test() ->
+    meck:new(config_profile, [passthrough]),
+    meck:expect(config_profile, search,
+                fun (_, Default) ->
+                        Default
+                end),
     meck:new(ns_config, [passthrough]),
     meck:expect(ns_config, read_key_fast,
                 fun (_, Default) ->
@@ -2772,6 +2764,7 @@ basic_bucket_params_screening_test() ->
       end, MajorityDurabilityLevelReplicas),
 
     meck:unload(ns_config),
+    meck:unload(config_profile),
     meck:unload(cluster_compat_mode),
 
     ok.
@@ -2789,6 +2782,11 @@ basic_parse_validate_bucket_auto_compaction_settings_test() ->
                 fun (_, Default) ->
                         Default
                 end),
+    meck:new(config_profile, [passthrough]),
+    meck:expect(config_profile, search,
+                fun (_, Default) ->
+                        Default
+                end),
     meck:new(chronicle_kv, [passthrough]),
     meck:expect(chronicle_kv, get,
                 fun (_, _) ->
@@ -2798,38 +2796,35 @@ basic_parse_validate_bucket_auto_compaction_settings_test() ->
                            {magma_fragmentation_percentage, 50}],
                           {<<"f663189bff34bd2523ee5ff25480d845">>, 4}}}
                 end),
-    Value0 = parse_validate_bucket_auto_compaction_settings(
-               [{"not_autoCompactionDefined", "false"},
-                {"databaseFragmentationThreshold[percentage]", "10"},
-                {"viewFragmentationThreshold[percentage]", "20"},
-                {"parallelDBAndViewCompaction", "false"},
-                {"allowedTimePeriod[fromHour]", "0"},
-                {"allowedTimePeriod[fromMinute]", "1"},
-                {"allowedTimePeriod[toHour]", "2"},
-                {"allowedTimePeriod[toMinute]", "3"},
-                {"allowedTimePeriod[abortOutside]", "false"}]),
+    Value0 = parse_validate_bucket_auto_compaction_settings([{"not_autoCompactionDefined", "false"},
+                                                             {"databaseFragmentationThreshold[percentage]", "10"},
+                                                             {"viewFragmentationThreshold[percentage]", "20"},
+                                                             {"parallelDBAndViewCompaction", "false"},
+                                                             {"allowedTimePeriod[fromHour]", "0"},
+                                                             {"allowedTimePeriod[fromMinute]", "1"},
+                                                             {"allowedTimePeriod[toHour]", "2"},
+                                                             {"allowedTimePeriod[toMinute]", "3"},
+                                                             {"allowedTimePeriod[abortOutside]", "false"}]),
     ?assertMatch(nothing, Value0),
-    Value1 = parse_validate_bucket_auto_compaction_settings(
-               [{"autoCompactionDefined", "false"},
-                {"databaseFragmentationThreshold[percentage]", "10"},
-                {"viewFragmentationThreshold[percentage]", "20"},
-                {"parallelDBAndViewCompaction", "false"},
-                {"allowedTimePeriod[fromHour]", "0"},
-                {"allowedTimePeriod[fromMinute]", "1"},
-                {"allowedTimePeriod[toHour]", "2"},
-                {"allowedTimePeriod[toMinute]", "3"},
-                {"allowedTimePeriod[abortOutside]", "false"}]),
+    Value1 = parse_validate_bucket_auto_compaction_settings([{"autoCompactionDefined", "false"},
+                                                             {"databaseFragmentationThreshold[percentage]", "10"},
+                                                             {"viewFragmentationThreshold[percentage]", "20"},
+                                                             {"parallelDBAndViewCompaction", "false"},
+                                                             {"allowedTimePeriod[fromHour]", "0"},
+                                                             {"allowedTimePeriod[fromMinute]", "1"},
+                                                             {"allowedTimePeriod[toHour]", "2"},
+                                                             {"allowedTimePeriod[toMinute]", "3"},
+                                                             {"allowedTimePeriod[abortOutside]", "false"}]),
     ?assertMatch(false, Value1),
-    {ok, Stuff0} = parse_validate_bucket_auto_compaction_settings(
-                     [{"autoCompactionDefined", "true"},
-                      {"databaseFragmentationThreshold[percentage]", "10"},
-                      {"viewFragmentationThreshold[percentage]", "20"},
-                      {"parallelDBAndViewCompaction", "false"},
-                      {"allowedTimePeriod[fromHour]", "0"},
-                      {"allowedTimePeriod[fromMinute]", "1"},
-                      {"allowedTimePeriod[toHour]", "2"},
-                      {"allowedTimePeriod[toMinute]", "3"},
-                      {"allowedTimePeriod[abortOutside]", "false"}]),
+    {ok, Stuff0} = parse_validate_bucket_auto_compaction_settings([{"autoCompactionDefined", "true"},
+                                                                   {"databaseFragmentationThreshold[percentage]", "10"},
+                                                                   {"viewFragmentationThreshold[percentage]", "20"},
+                                                                   {"parallelDBAndViewCompaction", "false"},
+                                                                   {"allowedTimePeriod[fromHour]", "0"},
+                                                                   {"allowedTimePeriod[fromMinute]", "1"},
+                                                                   {"allowedTimePeriod[toHour]", "2"},
+                                                                   {"allowedTimePeriod[toMinute]", "3"},
+                                                                   {"allowedTimePeriod[abortOutside]", "false"}]),
     Stuff1 = lists:sort(Stuff0),
     ?assertEqual([{allowed_time_period, [{from_hour, 0},
                                          {to_hour, 2},
@@ -2842,6 +2837,7 @@ basic_parse_validate_bucket_auto_compaction_settings_test() ->
                  Stuff1),
     meck:unload(cluster_compat_mode),
     meck:unload(ns_config),
+    meck:unload(config_profile),
     meck:unload(chronicle_kv),
     ok.
 
@@ -2968,7 +2964,11 @@ parse_validate_pitr_max_history_age_test() ->
     ?assertEqual(Expected10, Result10).
 
 parse_validate_max_magma_shards_test() ->
-    application:set_env(ns_server, config_profile, [{name, "default"}]),
+    meck:new(config_profile, [passthrough]),
+    meck:expect(config_profile, search,
+                fun (_, Default) ->
+                        Default
+                end),
     Params = [{"bucketType", "membase"},
               {"ramQuota", "400"},
               {"replicaNumber", "3"},
@@ -2987,9 +2987,10 @@ parse_validate_max_magma_shards_test() ->
                  {error, magmaMaxShards,
                   <<"Number of maximum magma shards cannot be modified after bucket creation">>}),
 
-    Serverless = [{name, "serverless"}, {{magma, can_set_max_shards}, true}],
-    application:set_env(ns_server, config_profile, Serverless),
-
+    meck:expect(config_profile, search,
+                fun (_, _) ->
+                        true
+                end),
     Params2 = [{"bucketType", "membase"},
               {"ramQuota", "400"},
               {"replicaNumber", "3"},
@@ -3020,7 +3021,8 @@ parse_validate_max_magma_shards_test() ->
                {"storageBackend", "magma"}],
     Resp5 = parse_validate_max_magma_shards(Params5, BucketConfig, Version, true),
     ?assertEqual(Resp5, {ok, magma_max_shards, 100}),
-    application:unset_env(ns_server, config_profile),
+
+    meck:unload(config_profile),
     ok.
 
 -endif.

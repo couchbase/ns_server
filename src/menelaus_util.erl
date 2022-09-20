@@ -672,10 +672,7 @@ assert_cluster_version(Fun) ->
       Fun, "This http API endpoint isn't supported in mixed version clusters").
 
 assert_config_profile_flag(Flag) ->
-    assert(?cut(proplists:get_bool(Flag,
-                                   application:get_env(ns_server,
-                                                       ?CONFIG_PROFILE,
-                                                       ?DEFAULT_PROFILE_DATA))),
+    assert(?cut(config_profile:get_bool(Flag)),
            "Operation not allowed in this config profile").
 
 assert(Fun, Error) ->

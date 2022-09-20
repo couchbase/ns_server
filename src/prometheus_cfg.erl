@@ -141,12 +141,9 @@ settings() ->
 
 -spec default_settings() -> [stats_setting()].
 default_settings() ->
-    Profile = application:get_env(ns_server, ?CONFIG_PROFILE,
-                                  ?DEFAULT_PROFILE_DATA),
-    HighCardServices = proplists:get_value({prometheus,
-                                            default_high_card_services},
-                                           Profile,
-                                           ?DEFAULT_HIGH_CARD_SERVICES),
+    HighCardServices = config_profile:get_value({prometheus,
+                                                 default_high_card_services},
+                                                ?DEFAULT_HIGH_CARD_SERVICES),
     [{enabled, true},
      {retention_size, 1024}, %% in MB
      {retention_time, 365}, %% in days

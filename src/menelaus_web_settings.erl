@@ -427,9 +427,6 @@ get_cluster_encryption(Level) ->
 services_with_security_settings() ->
     [kv, fts, index, eventing, n1ql, cbas, backup, ns_server].
 
-get_serverless_profile() ->
-    application:get_env(ns_server, ?CONFIG_PROFILE, ?DEFAULT_PROFILE_DATA).
-
 is_allowed_on_cluster([secure_headers]) ->
     cluster_compat_mode:is_cluster_70();
 is_allowed_on_cluster([event_logs_limit]) ->
@@ -455,23 +452,23 @@ is_allowed_on_cluster([pbkdf2_sha512_iterations]) ->
 is_allowed_on_cluster([{serverless, _}]) ->
     bucket_placer:is_enabled();
 is_allowed_on_cluster([kv_storage_limit]) ->
-    proplists:get_bool(enable_storage_limits, get_serverless_profile());
+    config_profile:get_bool(enable_storage_limits);
 is_allowed_on_cluster([index_storage_limit]) ->
-    proplists:get_bool(enable_storage_limits, get_serverless_profile());
+    config_profile:get_bool(enable_storage_limits);
 is_allowed_on_cluster([fts_storage_limit]) ->
-    proplists:get_bool(enable_storage_limits, get_serverless_profile());
+    config_profile:get_bool(enable_storage_limits);
 is_allowed_on_cluster([kv_throttle_limit]) ->
-    proplists:get_bool(enable_throttle_limits, get_serverless_profile());
+    config_profile:get_bool(enable_throttle_limits);
 is_allowed_on_cluster([index_throttle_limit]) ->
-    proplists:get_bool(enable_throttle_limits, get_serverless_profile());
+    config_profile:get_bool(enable_throttle_limits);
 is_allowed_on_cluster([fts_throttle_limit]) ->
-    proplists:get_bool(enable_throttle_limits, get_serverless_profile());
+    config_profile:get_bool(enable_throttle_limits);
 is_allowed_on_cluster([n1ql_throttle_limit]) ->
-    proplists:get_bool(enable_throttle_limits, get_serverless_profile());
+    config_profile:get_bool(enable_throttle_limits);
 is_allowed_on_cluster([sgw_read_throttle_limit]) ->
-    proplists:get_bool(enable_throttle_limits, get_serverless_profile());
+    config_profile:get_bool(enable_throttle_limits);
 is_allowed_on_cluster([sgw_write_throttle_limit]) ->
-    proplists:get_bool(enable_throttle_limits, get_serverless_profile());
+    config_profile:get_bool(enable_throttle_limits);
 is_allowed_on_cluster(_) ->
     true.
 

@@ -107,16 +107,14 @@ default() ->
         end,
 
     ScramshaFallbackSalt = crypto:strong_rand_bytes(12),
-    Profile = application:get_env(ns_server, ?CONFIG_PROFILE,
-                                  ?DEFAULT_PROFILE_DATA),
 
     [{{node, node(), config_version}, get_current_version()},
      {directory, path_config:component_path(data, "config")},
      {{node, node(), is_enterprise}, IsEnterprise},
      {{node, node(), saslauthd_enabled}, SASLAuthdEnabled},
      {index_aware_rebalance_disabled, false},
-     {max_bucket_count, proplists:get_value(max_buckets_supported, Profile,
-                                            ?MAX_BUCKETS_SUPPORTED)},
+     {max_bucket_count, config_profile:get_value(max_buckets_supported,
+                                                 ?MAX_BUCKETS_SUPPORTED)},
      {autocompaction, [{database_fragmentation_threshold, {30, undefined}},
                        {view_fragmentation_threshold, {30, undefined}}]},
      {set_view_update_daemon,
@@ -192,9 +190,9 @@ default() ->
        {tracing_enabled, IsEnterprise},
        {datatype_snappy, true},
        {num_reader_threads,
-         proplists:get_value(num_reader_writer_threads, Profile, <<"default">>)},
+         config_profile:get_value(num_reader_writer_threads, <<"default">>)},
        {num_writer_threads,
-         proplists:get_value(num_reader_writer_threads, Profile, <<"default">>)},
+         config_profile:get_value(num_reader_writer_threads, <<"default">>)},
        {num_auxio_threads, <<"default">>},
        {num_nonio_threads, <<"default">>},
        {num_storage_threads, <<"default">>}]},
@@ -338,8 +336,7 @@ default() ->
         rebalance_quirks:default_config() ++
         auto_rebalance_settings:default_config() ++
         menelaus_web_auto_failover:default_config(IsEnterprise) ++
-        throttle_service_settings:default_config(Profile).
-
+        throttle_service_settings:default_config(config_profile:get()).
 
 %% returns list of changes to config to upgrade it to current version.
 %% This will be invoked repeatedly by ns_config until list is empty.

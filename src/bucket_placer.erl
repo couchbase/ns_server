@@ -26,9 +26,7 @@
 -record(node, {weight, memory_used, buckets}).
 
 is_enabled() ->
-    proplists:get_bool(enable_bucket_placer,
-                       application:get_env(ns_server, ?CONFIG_PROFILE,
-                                           ?DEFAULT_PROFILE_DATA)).
+    config_profile:get_bool(enable_bucket_placer).
 
 get_weight_limit() ->
     ns_config:read_key_fast({serverless, bucket_weight_limit}, 10000).
