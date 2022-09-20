@@ -65,4 +65,11 @@ reply_with_retry_settings(Req) ->
 
 assert_api_supported() ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_config_profile_flag(enable_auto_rebalance_settings).
+    case config_profile:get_bool(disable_auto_rebalance_settings) of
+        true ->
+            menelaus_util:web_exception(
+              400,
+              "Operation not allowed in this config profile", []);
+        false ->
+            ok
+    end.
