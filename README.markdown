@@ -12,7 +12,7 @@ Build dependencies include:
 Building:
 
 You should use top level make file and repo manifest as explained
-here: https://github.com/membase/manifest/blob/master/README.markdown
+here: https://github.com/couchbase/manifest/blob/master/README.markdown
 
 ## Runtime dependencies
 
