@@ -1,4 +1,5 @@
 {name, "default"}.
+{{couchdb, enabled}, true}.
 {enable_auto_rebalance_settings, true}.
 
 %% Example service keys %%
