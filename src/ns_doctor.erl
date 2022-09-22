@@ -700,6 +700,7 @@ do_build_tasks_list(NodesDict, PoolId, AllRepDocs, Buckets, RebStatusTimeout) ->
     WarmupTasks = build_warmup_tasks(AllRawTasks),
     CollectTask = pick_latest_cluster_collect_task(AllNodeTasks),
     RebalanceTask = build_rebalance_task(RebStatusTimeout),
+    HibernationTask = hibernation_utils:build_hibernation_task(),
     RecoveryTask = build_recovery_task(PoolId),
     OrphanBucketsTasks = build_orphan_buckets_tasks(Buckets, NodesDict),
     GSITask = build_gsi_task(),
@@ -707,7 +708,7 @@ do_build_tasks_list(NodesDict, PoolId, AllRepDocs, Buckets, RebStatusTimeout) ->
     Tasks0 = lists:append([CompactionAndIndexingTasks, XDCRTasks,
                            SampleBucketTasks, WarmupTasks, CollectTask,
                            RebalanceTask, RecoveryTask, OrphanBucketsTasks,
-                           GSITask]),
+                           GSITask, HibernationTask]),
 
     Tasks1 =
         lists:sort(
@@ -881,6 +882,8 @@ task_priority(recovery) ->
 task_priority(orphanBucket) ->
     0;
 task_priority(rebalance) ->
+    1;
+task_priority(hibernation) ->
     1;
 task_priority(xdcr) ->
     2;

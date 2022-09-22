@@ -9,7 +9,12 @@
 
 -module(hibernation_utils).
 
--export([run_hibernation_op/3]).
+-include("cut.hrl").
+
+-export([run_hibernation_op/3,
+         set_hibernation_status/2,
+         update_hibernation_status/1,
+         build_hibernation_task/0]).
 
 run_hibernation_op(Body, Args, Timeout) ->
     case async:run_with_timeout(
@@ -21,4 +26,60 @@ run_hibernation_op(Body, Args, Timeout) ->
             Result;
         {error, timeout} ->
             exit(timeout)
+    end.
+
+get_hibernation_status(Snapshot) ->
+    chronicle_compat:get(Snapshot, hibernation_status, #{default => undefined}).
+
+set_hibernation_status(Bucket, Status) ->
+    chronicle_compat:set_multiple(
+      [{hibernation_status, Status},
+       {hibernation_uuid, couch_uuids:random()},
+       {hibernation_bucket, Bucket}]).
+
+update_hibernation_status(Status) ->
+    chronicle_kv:transaction(
+      kv, [hibernation_status],
+      fun (Snapshot) ->
+              case get_hibernation_status(Snapshot) of
+                  {Op, running} ->
+                      {commit, [{set, hibernation_status, {Op, Status}}]};
+                  _ ->
+                      {abort, ok}
+              end
+      end),
+    ok.
+
+keys() ->
+    [hibernation_status, hibernation_uuid, hibernation_bucket].
+
+fetch_snapshot(Txn) ->
+    chronicle_compat:txn_get_many(keys(), Txn).
+
+build_task_prop(_, undefined) ->
+    [];
+build_task_prop(hibernation_status, {Op, Status}) when is_atom(Status) ->
+    [{op, Op}, {status, Status}];
+build_task_prop(hibernation_bucket, Bucket) when is_list(Bucket) ->
+    [{bucket, list_to_binary(Bucket)}];
+build_task_prop(hibernation_uuid, UUID) when is_binary(UUID) ->
+    [{id, UUID}].
+
+build_hibernation_task() ->
+    Snapshot = chronicle_compat:get_snapshot([fetch_snapshot(_)]),
+    TaskProps = [begin
+                     Val = chronicle_compat:get(Snapshot, Key,
+                                                #{default => undefined}),
+                     build_task_prop(Key, Val)
+                 end
+                 || Key <- keys()],
+    Task = lists:flatten(TaskProps),
+    case Task of
+        [] ->
+            [];
+        _ ->
+            [[{type, hibernation} | Task] ++
+             [{isStale,
+               leader_registry:whereis_name(ns_orchestrator) =:= undefined}]]
+
     end.

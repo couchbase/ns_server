@@ -967,6 +967,7 @@ idle({{bucket_hibernation_op, {start, Op}}, [Bucket, RemotePath]},
     ale:info(?USER_LOGGER, "Starting hibernation operation (~p) for bucket: "
                            "~p. RemotePath - ~p.", [Op, Bucket, RemotePath]),
 
+    hibernation_utils:set_hibernation_status(Bucket, {Op, running}),
     {next_state, bucket_hibernation,
      #bucket_hibernation_state{hibernation_manager = Manager,
                                bucket = Bucket,
@@ -1886,14 +1887,16 @@ handle_hibernation_manager_exit(normal, Bucket, pause_bucket) ->
     case handle_delete_bucket(Bucket) of
         ok ->
             ale:debug(?USER_LOGGER, "pause_bucket done for Bucket ~p.",
-                      [Bucket]);
+                      [Bucket]),
+            hibernation_utils:update_hibernation_status(completed);
         Reason ->
             handle_hibernation_manager_exit({bucket_delete_failed, Reason},
                                             Bucket, pause_bucket)
     end;
 
 handle_hibernation_manager_exit(normal, Bucket, resume_bucket) ->
-    ale:debug(?USER_LOGGER, "resume_bucket done for Bucket ~p.", [Bucket]);
+    ale:debug(?USER_LOGGER, "resume_bucket done for Bucket ~p.", [Bucket]),
+    hibernation_utils:update_hibernation_status(completed);
 
 handle_hibernation_manager_exit(shutdown , Bucket, Op) ->
     handle_hibernation_manager_shutdown(shutdown, Bucket, Op);
@@ -1901,11 +1904,13 @@ handle_hibernation_manager_exit({shutdown, _} = Reason, Bucket, Op) ->
     handle_hibernation_manager_shutdown(Reason, Bucket, Op);
 handle_hibernation_manager_exit(Reason, Bucket, Op) ->
     ale:error(?USER_LOGGER, "~p for Bucket ~p failed. Reason: ~p",
-              [Op, Bucket, Reason]).
+              [Op, Bucket, Reason]),
+    hibernation_utils:update_hibernation_status(failed).
 
 handle_hibernation_manager_shutdown(Reason, Bucket, Op) ->
     ale:debug(?USER_LOGGER, "~p for Bucket ~p stopped. Reason: ~p.",
-              [Op, Bucket, Reason]).
+              [Op, Bucket, Reason]),
+    hibernation_utils:update_hibernation_status(stopped).
 
 -spec not_running(Op :: pause_bucket | resume_bucket) -> atom().
 not_running(Op) ->

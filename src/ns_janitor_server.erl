@@ -222,7 +222,11 @@ do_run_cleanup(compat_mode) ->
 do_run_cleanup(services) ->
     service_janitor:cleanup();
 do_run_cleanup({bucket, Bucket}) ->
-    ns_janitor:cleanup(Bucket, [consider_resetting_rebalance_status]).
+    ns_janitor:cleanup(Bucket, [consider_resetting_rebalance_status]);
+do_run_cleanup(update_hibernation_status_failed) ->
+    %% Reset hibernation_status if ns_orchestrator crashed before it could be
+    %% marked 'completed'.
+    hibernation_utils:update_hibernation_status(failed).
 
 get_unsafe_nodes_from_reprovision_list(ReprovisionList) ->
     %% It is possible that when the janitor cleanup is working its way through
@@ -239,7 +243,7 @@ get_unsafe_nodes_from_reprovision_list(ReprovisionList) ->
 
 get_janitor_items() ->
     Buckets = [{bucket, B} || B <- ns_bucket:get_bucket_names_of_type(membase)],
-    [compat_mode, services | Buckets].
+    [compat_mode, services, update_hibernation_status_failed | Buckets].
 
 do_request_janitor_run(Request, #state{janitor_requests=Requests} = State) ->
     {Oper, NewRequests} = add_janitor_request(Request, Requests),
