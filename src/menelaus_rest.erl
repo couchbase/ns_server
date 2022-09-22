@@ -103,7 +103,13 @@ add_tls_options("https://" ++ _, Options, Auth, VerifyServer) ->
             {basic_auth, _, _} -> []
         end,
     NewConnectOptions = misc:update_proplist(TLSOptions, ConnectOptions),
-    misc:update_proplist(Options, [{connect_options, NewConnectOptions}]);
+
+    RawTLSOptions =
+        misc:update_proplist(Options, [{connect_options, NewConnectOptions}]),
+
+    ns_ssl_services_setup:merge_ns_config_tls_options(
+        client, ?MODULE, RawTLSOptions);
+
 add_tls_options("http://" ++ _, Options, _, _) -> Options.
 
 decode_json_response_ext({ok, {{200 = _StatusCode, _} = _StatusLine,

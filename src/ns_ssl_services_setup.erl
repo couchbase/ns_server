@@ -35,6 +35,7 @@
          get_user_name_from_client_cert/1,
          set_certificate_chain/5,
          tls_client_opts/1,
+         merge_ns_config_tls_options/3,
          tls_client_certs_opts/0,
          tls_peer_verification_client_opts/0,
          tls_no_peer_verification_client_opts/0,
@@ -376,6 +377,22 @@ ssl_auth_options() ->
              {verify, verify_peer}, {depth, ?ALLOWED_CERT_CHAIN_LENGTH}]
     end.
 
+-spec merge_ns_config_tls_options(client|server, atom(), list()) -> list().
+
+merge_ns_config_tls_options(OptionKey, Mod, TLSOptions) ->
+    NsConfigKey = {tls_options, OptionKey, Mod},
+    NsConfigOptions =
+        ns_config:read_key_fast(NsConfigKey, []),
+
+    NsConfigOptPasswordRemoved =
+        lists:map(
+            fun ({K, {password, V}}) -> {K, V};
+                (KV) -> KV
+            end, NsConfigOptions),
+
+    misc:update_proplist(TLSOptions, NsConfigOptPasswordRemoved).
+
+
 ssl_server_opts() ->
     PassphraseFun =
         case ns_node_disco:couchdb_node() == node() of
@@ -395,26 +412,28 @@ ssl_server_opts() ->
     %% all connections to the server are closed
     Versions = supported_versions(ssl_minimum_protocol(ns_server)),
     VersionsSet = sets:from_list(Versions, [{version, 2}]),
-    lists:filter(
-      fun ({Key, _}) ->
-          case tls_option_versions(Key) of
-              all -> true;
-              List when is_list(List) ->
-                  not sets:is_disjoint(sets:from_list(List, [{version, 2}]),
-                                       VersionsSet)
-          end
-      end,
-      ssl_auth_options() ++
-          [{keyfile, pkey_file_path(node_cert)},
-           {certfile, chain_file_path(node_cert)},
-           {versions, Versions},
-           {cacerts, read_ca_certs(ca_file_path())},
-           {dh, dh_params_der()},
-           {ciphers, CipherSuites},
-           {honor_cipher_order, Order},
-           {secure_renegotiate, true},
-           {client_renegotiation, ClientReneg},
-           {password, PassphraseFun()}]).
+    RawTLSOptions =
+        lists:filter(
+          fun ({Key, _}) ->
+              case tls_option_versions(Key) of
+                  all -> true;
+                  List when is_list(List) ->
+                      not sets:is_disjoint(sets:from_list(List, [{version, 2}]),
+                                           VersionsSet)
+              end
+          end,
+          ssl_auth_options() ++
+              [{keyfile, pkey_file_path(node_cert)},
+               {certfile, chain_file_path(node_cert)},
+               {versions, Versions},
+               {cacerts, read_ca_certs(ca_file_path())},
+               {dh, dh_params_der()},
+               {ciphers, CipherSuites},
+               {honor_cipher_order, Order},
+               {secure_renegotiate, true},
+               {client_renegotiation, ClientReneg},
+               {password, PassphraseFun()}]),
+    merge_ns_config_tls_options(server, ?MODULE, RawTLSOptions).
 
 tls_option_versions(secure_renegotiate) -> [tlsv1, 'tlsv1.1', 'tlsv1.2'];
 tls_option_versions(client_renegotiation) -> [tlsv1, 'tlsv1.1', 'tlsv1.2'];
@@ -430,11 +449,13 @@ read_ca_certs(File) ->
     end.
 
 tls_client_opts(Config) ->
-    tls_peer_verification_client_opts() ++
-    case ns_ssl_services_setup:client_cert_auth_state(Config) of
-        "mandatory" -> tls_client_certs_opts();
-        _ -> []
-    end.
+    RawTLSOptions =
+        tls_peer_verification_client_opts() ++
+        case ns_ssl_services_setup:client_cert_auth_state(Config) of
+            "mandatory" -> tls_client_certs_opts();
+            _ -> []
+        end,
+    merge_ns_config_tls_options(client, ?MODULE, RawTLSOptions).
 
 tls_client_certs_opts() ->
     [{certfile, chain_file_path(client_cert)},
