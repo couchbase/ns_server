@@ -12,6 +12,10 @@
 -include("ns_common.hrl").
 -include("cut.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 %% TODO: These default timeouts are a function of the blobStorage
 %% upload/download speeds and the size of the data - therefore needs
 %% re-evaluation.
@@ -144,3 +148,151 @@ resume_bucket_body(For, Bucket, RemotePath, DryRun, Nodes) ->
 
     service_manager:with_trap_exit_spawn_monitor_resume_bucket(
       For, Bucket, RemotePath, DryRun, Nodes, ProgressCallback, #{}).
+
+-ifdef(TEST).
+
+meck_base_modules() ->
+    [ns_cluster_membership, ns_config, ns_bucket, kv_hibernation_agent,
+     service_manager].
+
+meck_expect_base() ->
+    meck:new(meck_base_modules(), [passthrough]),
+
+    meck:expect(ns_cluster_membership,
+                service_active_nodes,
+                fun (_) ->
+                       [node_a, node_b]
+                end),
+    meck:expect(ns_config, get_timeout,
+                fun (_, Default) ->
+                        Default
+                end),
+    meck:expect(ns_bucket, live_bucket_nodes,
+                fun (_) ->
+                        [node_a, node_b]
+                end),
+    meck:expect(ns_bucket, update_bucket_props,
+                fun (_, _) ->
+                        ok
+                end),
+    meck:expect(kv_hibernation_agent, prepare_pause_bucket,
+                fun (_, _, _) ->
+                        ok
+                end),
+    meck:expect(kv_hibernation_agent, unprepare_pause_bucket,
+                fun (_, _) ->
+                        ok
+                end).
+
+hibernation_op_success() ->
+    timer:sleep(100 + rand:uniform(100)),
+    ok.
+
+hibernation_op_fail(Service) ->
+    case Service of
+        kv ->
+            timer:sleep(100 + rand:uniform(100)),
+            exit(not_ok);
+        indexer ->
+            timer:sleep(500);
+        fts ->
+            timer:sleep(rand:uniform(200)),
+            exit(not_ok)
+    end.
+
+run_test_and_assert(TestBody, SuccessTag, FailureTag) ->
+    0 = ?flush(_),
+    Parent = self(),
+
+    erlang:spawn(
+      fun () ->
+              erlang:process_flag(trap_exit, true),
+              Manager =
+                  erlang:spawn_link(TestBody),
+
+              receive
+                  {'EXIT', Manager, Reason} ->
+                      case Reason of
+                          normal ->
+                              Parent ! {test_result, exit_normal};
+                          _ ->
+                              Parent ! {test_result, exit_not_normal}
+                      end
+              end
+      end),
+
+    TestSuccess =
+        receive
+            {test_result, SuccessTag} ->
+                true;
+            {test_result, FailureTag} ->
+                false
+        after
+            1500 ->
+                ?flush({test_result, _}),
+                false
+        end,
+
+    ?assertEqual(TestSuccess, true),
+    0 = ?flush(_).
+
+hibernation_manager_test() ->
+    {foreach,
+     fun meck_expect_base/0,
+     fun () ->
+             meck:unload(meck_base_modules())
+     end,
+     [{"Pause Bucket Success",
+       fun () ->
+               meck:expect(service_manager,
+                           with_trap_exit_spawn_monitor_pause_bucket,
+                           fun (_Service, _Bucket, _RemotePath, _Nodes,
+                                _ProgressCallback, _Opts) ->
+                                   hibernation_op_success()
+                           end),
+
+               run_test_and_assert(
+                 ?cut(do_pause_bucket("foo", "foo-remote-path")),
+                 exit_normal, exit_not_normal)
+       end
+       },
+      {"Pause Bucket Failure",
+       fun () ->
+               meck:expect(service_manager,
+                           with_trap_exit_spawn_monitor_pause_bucket,
+                           fun (Service, _Bucket, _RemotePath, _Nodes,
+                                _ProgressCallback, _Opts) ->
+                                   hibernation_op_fail(Service)
+                           end),
+
+               run_test_and_assert(
+                 ?cut(do_pause_bucket("foo", "foo-remote-path")),
+                 exit_not_normal, exit_normal)
+       end},
+      {"Resume Bucket Success",
+       fun () ->
+              meck:expect(service_manager,
+                          with_trap_exit_spawn_monitor_resume_bucket,
+                          fun (_Service, _Bucket, _RemotePath, _DryRun, _Nodes,
+                               _ProgressCallback, _Opts) ->
+                                  hibernation_op_success()
+                          end),
+
+              run_test_and_assert(
+                ?cut(do_resume_bucket("foo", "foo-remote-path")),
+                exit_normal, exit_not_normal)
+      end},
+      {"Resume Bucket Failure",
+       fun () ->
+              meck:expect(service_manager,
+                          with_trap_exit_spawn_monitor_resume_bucket,
+                          fun (Service, _Bucket, _RemotePath, _DryRun, _Nodes,
+                               _ProgressCallback, _Opts) ->
+                                  hibernation_op_fail(Service)
+                          end),
+
+              run_test_and_assert(
+                ?cut(do_resume_bucket("foo", "foo-remote-path")),
+                exit_not_normal, exit_normal)
+      end}]}.
+-endif.
