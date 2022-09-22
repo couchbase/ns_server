@@ -289,7 +289,7 @@ get_internal_default(Key, Default) ->
 get_storage_attributes() ->
     [{dataStorageLimit, kv_storage_limit, ?DEFAULT_KV_STORAGE_LIMIT},
      {indexStorageLimit, index_storage_limit, ?DEFAULT_INDEX_STORAGE_LIMIT},
-     {searchStorageLimit, fts_storage_limit, ?DEFAULT_FTS_THROTTLE_LIMIT}].
+     {searchStorageLimit, fts_storage_limit, ?DEFAULT_FTS_STORAGE_LIMIT}].
 
 get_throttle_attributes() ->
     [{dataThrottleLimit,
