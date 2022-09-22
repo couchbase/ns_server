@@ -22,6 +22,7 @@
         [reply_json/2,
          reply_json/3]).
 
+-define(COUCHDB_REQUIRED_SAMPLES, ["gamesim-sample", "beer-sample"]).
 -define(SAMPLES_LOADING_TIMEOUT, 120000).
 -define(SAMPLE_BUCKET_QUOTA_MB, 200).
 -define(SAMPLE_BUCKET_QUOTA, 1024 * 1024 * ?SAMPLE_BUCKET_QUOTA_MB).
@@ -39,12 +40,39 @@ handle_get(Req) ->
 
     reply_json(Req, Map).
 
+-spec none_use_couchdb(Samples :: [binary()]) -> boolean().
+none_use_couchdb(Samples) ->
+    lists:all(samples_without_couchdb(_), Samples).
+
+-spec samples_without_couchdb(Name :: binary()) -> Return :: boolean().
+samples_without_couchdb(Name) when is_binary(Name) ->
+    not lists:member(binary_to_list(Name), ?COUCHDB_REQUIRED_SAMPLES).
+
 handle_post(Req) ->
     menelaus_util:assert_is_71(),
     menelaus_web_rbac:assert_no_users_upgrade(),
     case try_decode(mochiweb_request:recv_body(Req)) of
-        {ok, Samples} ->
-            process_post(Req, Samples);
+        {ok, Samples} when is_list(Samples), not is_binary(Samples) ->
+            case config_profile:get_bool({couchdb, disabled})
+                and none_use_couchdb(Samples) of
+                true ->
+                    process_post(Req, Samples);
+                false ->
+                    SampleNames =
+                        lists:map(
+                          fun (FullPath) ->
+                                  list_to_binary(
+                                    filename:basename(FullPath, ".zip"))
+                          end, list_sample_files()),
+                    Err = io_lib:format(
+                            "Attempted to load invalid samples for current configuration profile. "
+                            "Attempted: ~p, Valid: ~p", [Samples, SampleNames]),
+                    reply_json(Req, list_to_binary(Err), 400)
+            end;
+        {ok, _Samples} ->
+            reply_json(
+              Req,
+              list_to_binary("A [list] of names must be specified."), 400);
         {error, Error} ->
             reply_json(Req, list_to_binary(Error), 400)
     end.
@@ -100,8 +128,17 @@ start_loading_sample(Req, Name) ->
 
 list_sample_files() ->
     BinDir = path_config:component_path(bin),
-    filelib:wildcard(filename:join([BinDir, "..", "samples", "*.zip"])).
-
+    AllSamples = filelib:wildcard(
+                   filename:join([BinDir, "..", "samples", "*.zip"])),
+    case config_profile:get_bool({couchdb, disabled}) of
+        true ->
+            lists:filter(
+              ?cut(samples_without_couchdb(
+                     list_to_binary(
+                       filename:basename(_, ".zip")))), AllSamples);
+        false ->
+            AllSamples
+    end.
 
 sample_exists(Name) ->
     BinDir = path_config:component_path(bin),
@@ -140,7 +177,7 @@ check_quota(Samples) ->
     end.
 
 
-check_valid_samples(Samples) when is_list(Samples) ->
+check_valid_samples(Samples) ->
     Errors = [begin
                   case ns_bucket:name_conflict(binary_to_list(Name)) of
                       true ->
@@ -160,9 +197,7 @@ check_valid_samples(Samples) when is_list(Samples) ->
             ok;
         X ->
             X
-    end;
-check_valid_samples(_Samples) ->
-    [{error, list_to_binary("A [list] of names must be specified.")}].
+    end.
 
 format_MB(X) ->
     integer_to_list(misc:ceiling(X / 1024 / 1024)) ++ "MB".
