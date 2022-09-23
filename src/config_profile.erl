@@ -38,7 +38,7 @@ name() ->
 
 -spec(get() -> list()).
 get() ->
-    config_profile:get([]).
+    config_profile:get(?DEFAULT_PROFILE_DATA).
 
 -spec(get(list()) -> list()).
 get(Default) ->
