@@ -581,10 +581,17 @@ time_duration(Name, State) ->
            "Must be in the form of number{ns|us|ms|s|m|h}",
            State).
 
-has_params(#state{kv = []} = State) ->
-    return_error("_", "Request should have parameters", State);
-has_params(State) ->
-    State.
+%% Validate whether a request has parameters
+-spec has_params(State :: #state{}) -> #state{}.
+has_params(#state{kv = Kv} = State) ->
+    case lists:filter(
+           fun ({{internal, _}, _}) -> false;
+               (_) -> true
+           end,
+           Kv) of
+        [] -> return_error("_", "Request should have parameters", State);
+        _ -> State
+    end.
 
 unsupported(#state{kv = Props, touched = Touched, errors = Errors} = State) ->
     NewErrors =
@@ -806,4 +813,41 @@ handle_multi_value_string_trim_invalid_test() ->
     #state{errors = RErrors2} = RState3,
     ?assertEqual([{"key2", "Value must be json string"},
                   {"key1", "Value must be json string"}], RErrors2).
+
+has_params_test() ->
+
+    %% Validate presence of params
+    Kv1 = [{key, value}],
+    State1 = #state{kv=Kv1},
+    ?assertEqual(has_params(State1), State1),
+
+    %% Validate internal state fields don't interfere with presence of params
+    Kv2 = [{{internal,input_type},json}, {key, value}],
+    State2 = #state{kv=Kv2},
+    ?assertEqual(has_params(State2), State2),
+
+    %% Validate adding new internal state fields doesn't interfere with presence
+    %% of params
+    Kv3 = [{{internal,input_type},json}, {{internal,other_type},other_value},
+           {key, value}],
+    State3 = #state{kv=Kv3},
+    ?assertEqual(has_params(State3), State3),
+
+    %% Validate internal state fields are not considered params
+    Kv4 = [{{internal,input_type},json}],
+    State4 = #state{kv=Kv4},
+    #state{errors=RErrors4} = has_params(State4),
+    ?assertEqual([{"_", "Request should have parameters"}], RErrors4),
+
+    %% Validate new internal state fields are not considered params
+    Kv5 = [{{internal,input_type},json}, {{internal,other_type},other_value}],
+    State5 = #state{kv=Kv5},
+    #state{errors=RErrors5} = has_params(State5),
+    ?assertEqual([{"_", "Request should have parameters"}], RErrors5),
+
+    %% Validate absense of params with no internal state fields
+    Kv6 = [],
+    State6 = #state{kv=Kv6},
+    #state{errors=RErrors6} = has_params(State6),
+    ?assertEqual([{"_", "Request should have parameters"}], RErrors6).
 -endif.
