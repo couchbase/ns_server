@@ -92,9 +92,8 @@ analyze_status(Node, AllNodes) ->
     end.
 
 is_node_down(needs_attention) ->
-    {true, {"The data service did not respond for the duration of the " ++
-                "auto-failover threshold. Either none of the buckets have " ++
-                "warmed up or there is an issue with the data service.",
+    {true, {"The data service did not respond. Either none of the buckets " ++
+                "have warmed up or there is an issue with the data service.",
             no_buckets_ready}};
 is_node_down(States) ->
     {true, is_node_down(States, [], none)}.

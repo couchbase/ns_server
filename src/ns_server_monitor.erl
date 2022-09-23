@@ -60,7 +60,7 @@ annotate_status(empty) ->
     {recv_ts, erlang:monotonic_time()}.
 
 is_node_down(needs_attention) ->
-    {true, {"The cluster manager did not respond for the duration of the auto-failover threshold.", cluster_manager_down}};
+    {true, {"The cluster manager did not respond.", cluster_manager_down}};
 is_node_down(_) ->
     false.
 
