@@ -23,12 +23,4 @@
 {{indexer, units_low_threshold}, 40}.
 {{prometheus, default_high_card_services},
     [index, fts, kv, cbas, eventing, ns_server, n1ql]}.
-{{couchdb, enabled}, false}.
 {{couchdb, disabled}, true}.
-
-%% Example service keys %%
-%% {{goxdcr, ipv4}, "required"}.
-%% {{fts, auth}, "cbauth"}.
-%% {{fts, bindHttps}, ":19200"}.
-%% {{fts, serverSslPort}, "19000"}.
-%% {{fts, cfg}, "metakv"}.
