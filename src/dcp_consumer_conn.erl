@@ -21,9 +21,9 @@
 -export([init/2, handle_packet/5, handle_call/4, handle_cast/3]).
 
 -record(stream_state, {owner :: {pid(), any()},
-                       to_add :: [vbucket_id()],
-                       to_close :: [vbucket_id()],
-                       to_close_on_producer :: [vbucket_id()] | ignore,
+                       to_add :: [non_neg_integer()],
+                       to_close :: [non_neg_integer()],
+                       to_close_on_producer :: [non_neg_integer()] | ignore,
                        errors :: [{non_neg_integer(), vbucket_id()}],
                        next_state = idle :: idle | shut
                       }).
@@ -178,17 +178,26 @@ handle_call({setup_streams, Partitions}, From,
             {reply, ok, State, ParentState};
         _ ->
             StartStreamRequests =
-                lists:map(fun (Partition) ->
-                                  add_stream(Sock, Partition, Partition, add, ParentState),
-                                  {Partition}
-                          end, StreamsToStart),
+                lists:map(
+                    fun (Partition) ->
+                        Opaque = get_opaque_for_partition(Partition),
+                        add_stream(Sock,
+                            Partition,
+                            Opaque,
+                            add,
+                            ParentState),
+                        {Opaque}
+                    end, StreamsToStart),
 
-            StopStreamRequests = lists:map(fun (Partition) ->
-                                                   Producer = dcp_proxy:get_partner(ParentState),
-                                                   close_stream(Sock, Partition, Partition, ParentState),
-                                                   gen_server:cast(Producer, {close_stream, Partition}),
-                                                   {Partition}
-                                           end, StreamsToStop),
+            StopStreamRequests =
+                lists:map(
+                    fun (Partition) ->
+                        Opaque = get_opaque_for_partition(Partition),
+                        Producer = dcp_proxy:get_partner(ParentState),
+                        close_stream(Sock, Partition, Opaque, ParentState),
+                        gen_server:cast(Producer, {close_stream, Partition}),
+                        {Opaque}
+                    end, StreamsToStop),
 
             ?log_debug("Setup DCP streams:~nCurrent ~w~nStreams to open ~w~nStreams to close ~w~n",
                        [CurrentPartitions, StreamsToStart, StreamsToStop]),
@@ -375,7 +384,8 @@ process_stream_response(Header, ignore, Errors, close_stream, producer,
     {error, ignore, Errors};
 process_stream_response(Header, PendingPartitions, Errors, Type, Side, ParentState) ->
     case lists:keytake(Header#mc_header.opaque, 1, PendingPartitions) of
-        {value, {Partition}, N} ->
+        {value, {Opaque}, N} ->
+            Partition = get_partition_for_opaque(Opaque),
             Status = Header#mc_header.status,
             Success = is_successful_stream_response(Type, Status),
 
@@ -513,3 +523,16 @@ note_set_vbucket_state(Partition, RawVbState, ParentState) ->
     VbState = mc_client_binary:vbucket_state_to_atom(RawVbState),
 
     master_activity_events:note_dcp_set_vbucket_state(Bucket, ConnName, Partition, VbState).
+
+%% Memcached takes a user (us) supplied opaque when setting up DCP Consumers.
+%% It then passes the opaque back in various responses which we use for
+%% mapping in some states. We just use the vBucket ID (Partition) for this
+%% opaque and the functions get_opaque_for_partition/1 and
+%% get_partition_for_opaque/1 encapsulate that logic for clarity of usage
+%% elsewhere.
+get_opaque_for_partition(Partition) ->
+    Partition.
+
+get_partition_for_opaque(Opaque) ->
+    Opaque.
+
