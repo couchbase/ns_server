@@ -12,7 +12,6 @@
 
 -module(menelaus_web_samples).
 
--include("ns_common.hrl").
 -include("cut.hrl").
 
 -export([handle_get/1,
@@ -23,7 +22,6 @@
          reply_json/3]).
 
 -define(COUCHDB_REQUIRED_SAMPLES, ["gamesim-sample", "beer-sample"]).
--define(SAMPLES_LOADING_TIMEOUT, 120000).
 -define(SAMPLE_BUCKET_QUOTA_MB, 200).
 -define(SAMPLE_BUCKET_QUOTA, 1024 * 1024 * ?SAMPLE_BUCKET_QUOTA_MB).
 
