@@ -1895,6 +1895,17 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                 'backup')]
 
     _tasks = [
+        AllOsTask("Phosphor Trace",
+                  ["kv_trace_dump",
+                   "-H", "%s:%s" % (local_url_addr,
+                                    read_guts(guts, "memcached_dedicated_port")),
+                   "-u", read_guts(guts, "memcached_admin"),
+                   "kv_trace.json"],
+                  timeout=120,
+                  log_file="stats.log",
+                  change_dir=True,
+                  artifacts=["kv_trace.json"],
+                  addenv=[("CB_PASSWORD", memcached_pass)]),
         UnixTask("Directory structure",
                  ["ls", "-lRai", root]),
         UnixTask("Database directory structure",
@@ -1945,7 +1956,6 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                  ["sh", "-c", 'for i in "$@"; do echo "file: $i"; cat "$i"; done',
                      "--"] + read_guts(guts, "couch_inis").split(";"),
                  log_file="ini.log"),
-
         make_curl_task(name="couchbase diags",
                        user="@",
                        password=memcached_pass,
@@ -2114,17 +2124,6 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
         CollectFileTask("Memcached breakpad output",
                         os.path.join(read_guts(guts, "memcached_logs_path"),
                                      "memcached.log.breakpad.crash.txt")),
-        AllOsTask("Phosphor Trace",
-                  ["kv_trace_dump",
-                   "-H", "%s:%s" % (local_url_addr,
-                                    read_guts(guts, "memcached_dedicated_port")),
-                   "-u", read_guts(guts, "memcached_admin"),
-                   "kv_trace.json"],
-                  timeout=120,
-                  log_file="stats.log",
-                  change_dir=True,
-                  artifacts=["kv_trace.json"],
-                  addenv=[("CB_PASSWORD", memcached_pass)]),
     ]
 
     _tasks = flatten([getent_tasks,
