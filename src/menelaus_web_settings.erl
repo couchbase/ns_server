@@ -1278,6 +1278,7 @@ test_conf() ->
        {ssl_minimum_protocol, tlsMinVersion, unused, get_tls_version(_)},
        {honor_cipher_order, honorCipherOrder, unused, fun get_bool/1},
        {supported_ciphers, supportedCipherSuites, unused, fun read_only/1}]},
+     {storage_limit, storageLimit, 5, get_number(0, 15)},
      {not_allowed, notAllowed, nope,
       fun (_) -> error(should_not_be_called) end}].
 
@@ -1289,6 +1290,7 @@ parse_post_data_test() ->
     KeyValidator = fun ([not_allowed]) -> {error, <<"not allowed">>};
                        (_) -> ok
                    end,
+    GetNumberErr = <<"storageLimit - The value must be between 0 and 15.">>,
     ?assertEqual({ok, []}, parse_post_data(Conf, [], <<>>, KeyValidator)),
     ?assertEqual({ok, [{[secure_headers],
                         [{"Strict-Transport-Security",
@@ -1323,6 +1325,14 @@ parse_post_data_test() ->
                  parse_post_data(Conf, ["data", "tlsMinVersion"],
                                  <<"tlsv1.3">>,
                                  KeyValidator)),
+    ?assertEqual({ok, [{[storage_limit], 0}]},
+                  parse_post_data(Conf, [], "storageLimit=0", KeyValidator)),
+    ?assertEqual({ok, [{[storage_limit], 15}]},
+                  parse_post_data(Conf, [], "storageLimit=15", KeyValidator)),
+    ?assertEqual({error, [GetNumberErr]},
+                  parse_post_data(Conf, [], "storageLimit=-1", KeyValidator)),
+    ?assertEqual({error, [GetNumberErr]},
+                  parse_post_data(Conf, [], "storageLimit=16", KeyValidator)),
     ?assertEqual({error, [<<"Unknown key unknown1">>,
                           <<"Unknown key unknown2.tlsMinVersion">>,
                           <<"data.cipherSuites - Invalid format. "

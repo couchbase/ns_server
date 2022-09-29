@@ -36,15 +36,15 @@
 
 %% Storage limits in GiBs
 -define(DEFAULT_KV_STORAGE_LIMIT, 500).
--define(MIN_KV_STORAGE_LIMIT, 1).
+-define(MIN_KV_STORAGE_LIMIT, -1).
 -define(MAX_KV_STORAGE_LIMIT, 100000).
 
 -define(DEFAULT_INDEX_STORAGE_LIMIT, 500).
--define(MIN_INDEX_STORAGE_LIMIT, 1).
+-define(MIN_INDEX_STORAGE_LIMIT, -1).
 -define(MAX_INDEX_STORAGE_LIMIT, 100000).
 
 -define(DEFAULT_FTS_STORAGE_LIMIT, 500).
--define(MIN_FTS_STORAGE_LIMIT, 1).
+-define(MIN_FTS_STORAGE_LIMIT, -1).
 -define(MAX_FTS_STORAGE_LIMIT, 100000).
 
 %% Throttle limits in units of Read Units Ops and Write Units Ops
