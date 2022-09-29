@@ -1,5 +1,10 @@
 {name, "default"}.
+{{couchdb, enabled}, true}.
+{enable_auto_rebalance_settings, true}.
 
-%% NOTE: do not modify this profile, but instead modify the other profile(s) that
-%% would be effected, instead. If this file isn't found, the default profile will
-%% only contain the 'name' key.
+%% Example service keys %%
+%% {{goxdcr, ipv4}, "required"}.
+%% {{fts, auth}, "cbauth"}.
+%% {{fts, bindHttps}, ":19200"}.
+%% {{fts, serverSslPort}, "19000"}.
+%% {{fts, cfg}, "metakv"}.

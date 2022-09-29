@@ -12,7 +12,7 @@
 {enable_throttle_limits, true}.
 {enable_storage_limits, true}.
 {num_reader_writer_threads, 64}.
-{disable_auto_rebalance_settings, true}.
+{enable_auto_rebalance_settings, false}.
 {disallow_memcached_buckets, true}.
 {{indexer, num_replica}, 1}.
 {{indexer, mem_high_threshold}, 80}.
