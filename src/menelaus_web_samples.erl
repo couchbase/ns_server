@@ -42,32 +42,38 @@ handle_get(Req) ->
 
 -spec none_use_couchdb(Samples :: [binary()]) -> boolean().
 none_use_couchdb(Samples) ->
-    lists:all(samples_without_couchdb(_), Samples).
+    lists:all(?cut(samples_without_couchdb(binary_to_list(_))), Samples).
 
--spec samples_without_couchdb(Name :: binary()) -> Return :: boolean().
-samples_without_couchdb(Name) when is_binary(Name) ->
-    not lists:member(binary_to_list(Name), ?COUCHDB_REQUIRED_SAMPLES).
+-spec samples_without_couchdb(Name :: string()) -> Return :: boolean().
+samples_without_couchdb(Name) when is_list(Name) ->
+    not lists:member(string:trim(Name), ?COUCHDB_REQUIRED_SAMPLES).
 
 handle_post(Req) ->
     menelaus_util:assert_is_71(),
     menelaus_web_rbac:assert_no_users_upgrade(),
     case try_decode(mochiweb_request:recv_body(Req)) of
         {ok, Samples} when is_list(Samples), not is_binary(Samples) ->
-            case config_profile:get_bool({couchdb, disabled})
-                and none_use_couchdb(Samples) of
+            case config_profile:get_bool({couchdb, disabled}) of
                 true ->
-                    process_post(Req, Samples);
+                    case none_use_couchdb(Samples) of
+                        true ->
+                            process_post(Req, Samples);
+                        false ->
+                            SampleNames =
+                                lists:map(
+                                  fun (FullPath) ->
+                                          list_to_binary(
+                                            filename:basename(FullPath, ".zip"))
+                                  end, list_sample_files()),
+                            Err =
+                                list_to_binary(
+                                  io_lib:format(
+                                    "Attempted to load invalid samples for current configuration profile. "
+                                    "Attempted: ~p, Valid: ~p", [Samples, SampleNames])),
+                            reply_json(Req, Err, 400)
+                    end;
                 false ->
-                    SampleNames =
-                        lists:map(
-                          fun (FullPath) ->
-                                  list_to_binary(
-                                    filename:basename(FullPath, ".zip"))
-                          end, list_sample_files()),
-                    Err = io_lib:format(
-                            "Attempted to load invalid samples for current configuration profile. "
-                            "Attempted: ~p, Valid: ~p", [Samples, SampleNames]),
-                    reply_json(Req, list_to_binary(Err), 400)
+                    process_post(Req, Samples)
             end;
         {ok, _Samples} ->
             reply_json(
@@ -134,8 +140,7 @@ list_sample_files() ->
         true ->
             lists:filter(
               ?cut(samples_without_couchdb(
-                     list_to_binary(
-                       filename:basename(_, ".zip")))), AllSamples);
+                     filename:basename(_, ".zip"))), AllSamples);
         false ->
             AllSamples
     end.
