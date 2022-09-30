@@ -1173,7 +1173,7 @@ node_encryption_validators() ->
                         end, nodeEncryption, _),
      validator:changeable_in_enterprise_only(nodeEncryption, false, _),
      validator:validate_multiple(
-       fun (Encr, ClientVer) ->
+       fun ([Encr, ClientVer]) ->
             ClientVer2 = case ClientVer of
                              undefined -> cb_dist:client_cert_verification();
                              _ -> ClientVer

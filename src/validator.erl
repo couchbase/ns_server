@@ -321,10 +321,15 @@ validate_multiple(Fun, Names, State) ->
     AllUndefined = lists:all(fun (V) -> V == undefined end, Values),
     case AllUndefined of
         true -> NewState;
-        false ->
-            case erlang:apply(Fun, Values) of
+        false when is_function(Fun, 1) ->
+            case Fun(Values) of
                 ok -> NewState;
                 {error, Error} -> return_error("_", Error, NewState)
+            end;
+        false when is_function(Fun, 2) ->
+            case Fun(Values, NewState) of
+                {ok, NewState1} ->
+                    NewState1
             end
     end.
 
