@@ -148,7 +148,13 @@ general_settings_lens_props(ClusterVersion) ->
             [{memHighThreshold,
               id_lens(<<"indexer.settings.thresholds.mem_high">>)},
              {memLowThreshold,
-              id_lens(<<"indexer.settings.thresholds.mem_low">>)}];
+              id_lens(<<"indexer.settings.thresholds.mem_low">>)},
+             {blobStorageScheme,
+              id_lens(<<"indexer.settings.rebalance.blob_storage_scheme">>)},
+             {blobStorageBucket,
+              id_lens(<<"indexer.settings.rebalance.blob_storage_bucket">>)},
+             {blobStoragePrefix,
+              id_lens(<<"indexer.settings.rebalance.blob_storage_prefix">>)}];
         false ->
             []
     end ++
@@ -191,7 +197,10 @@ general_settings_defaults(ClusterVersion) ->
             [{memHighThreshold,
               config_profile:get_value({indexer, mem_high_threshold}, 80)},
              {memLowThreshold,
-              config_profile:get_value({indexer, mem_low_threshold}, 60)}];
+              config_profile:get_value({indexer, mem_low_threshold}, 60)},
+             {blobStorageScheme, <<"">>},
+             {blobStorageBucket, <<"">>},
+             {blobStoragePrefix, <<"">>}];
         false ->
             []
     end ++
@@ -307,6 +316,9 @@ config_upgrade_test() ->
     [{set, {metakv, Meta3}, Data3}] = CmdList3,
     ?assertEqual(<<"/indexing/settings/config">>, Meta3),
     ?assertEqual(<<"{\"indexer.settings.thresholds.mem_high\":80,"
+                   "\"indexer.settings.rebalance.blob_storage_scheme\":\"\","
+                   "\"indexer.settings.rebalance.blob_storage_prefix\":\"\","
+                   "\"indexer.settings.rebalance.blob_storage_bucket\":\"\","
                    "\"indexer.settings.thresholds.mem_low\":60}">>,
                  Data3).
 -endif.

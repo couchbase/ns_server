@@ -23,7 +23,8 @@ enterprise_only_settings() ->
     [redistributeIndexes, enablePageBloomFilter].
 
 serverless_only_settings() ->
-    [memHighThreshold, memLowThreshold].
+    [memHighThreshold, memLowThreshold] ++
+    rebalance_blob_storage_params().
 
 maybe_filter_settings(Settings) ->
     FilterOutSettings =
@@ -46,6 +47,38 @@ get_settings() ->
         index_settings_manager:get(generalSettings) ++
         [{storageMode, index_settings_manager:get(storageMode)}],
     maybe_filter_settings(Settings).
+
+rebalance_blob_storage_params() ->
+    [blobStorageScheme, blobStorageBucket, blobStoragePrefix].
+
+valid_rebalance_blob_storage_param(blobStorageScheme, State) ->
+    validator:one_of(blobStorageScheme, ["s3"], State);
+valid_rebalance_blob_storage_param(_Param, State) ->
+    State.
+
+rebalance_blob_storage_params_validator() ->
+    Params = rebalance_blob_storage_params(),
+
+    % Validation should pass if:
+    % 1. None of the rebalanceBlobStorage Params are present.
+    % 2. Or if all of the rebalanceBlobStorage Params are present and are all
+    %    valid.
+    [validator:validate_multiple(
+       fun (_Values, State) ->
+               NewState =
+                   functools:chain(
+                     State,
+                     lists:foldr(
+                       fun (Param, Acc) ->
+                               [validator:required(Param, _),
+                                validator:string(Param, _),
+                                valid_rebalance_blob_storage_param(Param, _),
+                                validator:convert(
+                                  Param, fun list_to_binary/1, _)
+                                | Acc]
+                       end, [], Params)),
+               {ok, NewState}
+       end, Params, _)].
 
 settings_post_validators() ->
     [validator:integer(indexerThreads, 0, 1024, _),
@@ -75,7 +108,8 @@ settings_post_validators() ->
              config_profile:is_serverless() of
             true ->
                 [validator:integer(memHighThreshold, 0, 100, _),
-                 validator:integer(memLowThreshold, 0, 100, _)];
+                 validator:integer(memLowThreshold, 0, 100, _)] ++
+                rebalance_blob_storage_params_validator();
             false ->
                 []
         end ++
