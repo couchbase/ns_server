@@ -252,9 +252,9 @@ do_upgrades([], _, _, _, _) ->
 do_upgrades([{Version, Name, Module, Fun} | Rest],
             CurrentVersion, NewVersion, Config, NodesWanted)
   when CurrentVersion < Version andalso NewVersion >= Version ->
-    ?log_debug("Initiating ~p upgrade due to version change from ~p to ~p "
-               "(target version: ~p)",
-               [Name, CurrentVersion, Version, NewVersion]),
+    ?log_info("Initiating ~p upgrade due to version change from ~p to ~p "
+              "(target version: ~p)",
+              [Name, CurrentVersion, Version, NewVersion]),
     case Module:Fun(Version, Config, NodesWanted) of
         ok ->
             do_upgrades(Rest, CurrentVersion, NewVersion, Config, NodesWanted);
@@ -307,12 +307,13 @@ do_consider_switching_compat_mode(Config, CompatVersion, NsConfigVersion) ->
 
 do_switch_compat_mode(NewVersion, NodesWanted) ->
     functools:sequence_(
-      [?cut(upgrade_ns_config(min(NewVersion, ?VERSION_70), NodesWanted)),
+      [?cut(upgrade_ns_config(min(NewVersion, ?VERSION_70), NewVersion,
+                              NodesWanted)),
        ?cut(chronicle_upgrade:upgrade(NewVersion, NodesWanted)),
-       ?cut(upgrade_ns_config(NewVersion, NodesWanted))]).
+       ?cut(upgrade_ns_config(NewVersion, NewVersion, NodesWanted))]).
 
-upgrade_ns_config(NewVersion, NodesWanted) ->
-    case ns_online_config_upgrader:upgrade_config(NewVersion) of
+upgrade_ns_config(NewVersion, FinalVersion, NodesWanted) ->
+    case ns_online_config_upgrader:upgrade_config(NewVersion, FinalVersion) of
         ok ->
             complete_ns_config_upgrade(NodesWanted);
         already_upgraded ->

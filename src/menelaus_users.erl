@@ -935,12 +935,13 @@ sync_with_remotes(Nodes, Version) ->
 
 upgrade(Version, Config, Nodes) ->
     try
+        ?log_info("Upgrading users database to ~p", [Version]),
         Key = rbac_upgrade_key(Version),
         case ns_config:search(Config, Key) of
             false ->
                 ns_config:set(Key, started);
             {value, started} ->
-                ?log_debug("Found unfinished roles upgrade. Continue.")
+                ?log_info("Found unfinished roles upgrade. Continue.")
         end,
 
         %% propagate upgrade key to nodes
@@ -948,7 +949,9 @@ upgrade(Version, Config, Nodes) ->
         sync_with_remotes(Nodes, Version),
 
         do_upgrade(Version),
+        ?log_info("Users database was upgraded to ~p", [Version]),
         sync_with_remotes(Nodes, Version),
+        ?log_info("Users database upgrade was delivered to ~p", [Nodes]),
         ok
     catch T:E:S ->
             ale:error(?USER_LOGGER, "Unsuccessful user storage upgrade.~n~p",
