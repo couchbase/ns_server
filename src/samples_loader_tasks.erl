@@ -17,12 +17,13 @@
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
 
--export([start_loading_sample/2, get_tasks/1]).
+-export([start_loading_sample/3, get_tasks/1]).
 
--export([perform_loading_task/2]).
+-export([perform_loading_task/3]).
 
-start_loading_sample(Name, Quota) ->
-    gen_server:call(?MODULE, {start_loading_sample, Name, Quota}, infinity).
+start_loading_sample(Sample, Bucket, Quota) ->
+    gen_server:call(?MODULE, {start_loading_sample, Sample, Bucket, Quota},
+                    infinity).
 
 get_tasks(Timeout) ->
     gen_server:call(?MODULE, get_tasks, Timeout).
@@ -39,12 +40,13 @@ init([]) ->
     erlang:process_flag(trap_exit, true),
     {ok, #state{}}.
 
-handle_call({start_loading_sample, Name, Quota}, _From, #state{tasks = Tasks} = State) ->
-    case lists:keyfind(Name, 1, Tasks) of
+handle_call({start_loading_sample, Sample, Bucket, Quota}, _From,
+            #state{tasks = Tasks} = State) ->
+    case lists:keyfind(Bucket, 1, Tasks) of
         false ->
-            Pid = start_new_loading_task(Name, Quota),
+            Pid = start_new_loading_task(Sample, Bucket, Quota),
             ns_heart:force_beat(),
-            NewState = State#state{tasks = [{Name, Pid} | Tasks]},
+            NewState = State#state{tasks = [{Bucket, Pid} | Tasks]},
             {reply, ok, maybe_pass_token(NewState)};
         _ ->
             {reply, already_started, State}
@@ -107,10 +109,10 @@ maybe_pass_token(#state{token_pid = undefined,
 maybe_pass_token(State) ->
     State.
 
-start_new_loading_task(Name, Quota) ->
-    proc_lib:spawn_link(?MODULE, perform_loading_task, [Name, Quota]).
+start_new_loading_task(Sample, Bucket, Quota) ->
+    proc_lib:spawn_link(?MODULE, perform_loading_task, [Sample, Bucket, Quota]).
 
-perform_loading_task(Name, Quota) ->
+perform_loading_task(Sample, Bucket, Quota) ->
     receive
         allowed_to_go -> ok
     end,
@@ -135,14 +137,14 @@ perform_loading_task(Name, Quota) ->
 
     Cmd = BinDir ++ "/cbimport",
     Args = ["json",
-            "--bucket", Name,
+            "--bucket", Bucket,
             "--format", "sample",
             "--bucket-quota", integer_to_list(Quota),
             "--bucket-replicas", integer_to_list(NumReplicas),
             "--threads", "2",
             "--verbose",
             "--dataset", "file://" ++ filename:join([BinDir, "..",
-                                        "samples", Name ++ ".zip"])] ++
+                                        "samples", Sample ++ ".zip"])] ++
             ClusterOpts,
 
     Env = [{"CB_USERNAME", "@ns_server"},

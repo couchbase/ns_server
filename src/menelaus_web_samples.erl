@@ -40,24 +40,50 @@ handle_get(Req) ->
 
     reply_json(Req, Map).
 
--spec none_use_couchdb(Samples :: [binary()]) -> boolean().
+-spec none_use_couchdb(Samples :: [{binary(), binary()}]) -> boolean().
 none_use_couchdb(Samples) ->
-    lists:all(?cut(samples_without_couchdb(binary_to_list(_))), Samples).
+    lists:all(
+      fun ({Sample, _Bucket}) ->
+              samples_without_couchdb(binary_to_list(Sample))
+      end, Samples).
 
 -spec samples_without_couchdb(Name :: string()) -> Return :: boolean().
 samples_without_couchdb(Name) when is_list(Name) ->
     not lists:member(string:trim(Name), ?COUCHDB_REQUIRED_SAMPLES).
+
+build_samples_input_list(Samples) ->
+    lists:foldl(
+      fun ({[{<<"sample">>, Sample},{<<"bucket">>, Bucket}]}, AccIn) ->
+              [{Sample, Bucket} | AccIn];
+          (Sample, AccIn) ->
+              [{Sample, Sample} | AccIn]
+      end, [], Samples).
+
+%% There are two types of input to this request. The classic/original input
+%% is a list of  names (e.g. ["travel-sample", "beer-sample"]) where the
+%% data is found is <name>.zip and the bucket of name <name> does not
+%% already exist and will be created and loaded.
+%%
+%% The second input is a list of json objects each of which consists of list
+%% of [{"sample", <sample-name>}, {"bucket", <bucket-name>}] where
+%% <sample-name>.zip contains the data and <bucket-name> is the destination
+%% bucket (which may or may not already exist).
+%%
+%% Thee two types of input are normalized into a list of tuples to facilitate
+%% common handling of the two.
+%% [{<sample-name>, <bucket-name>]}
 
 handle_post(Req) ->
     menelaus_util:assert_is_71(),
     menelaus_web_rbac:assert_no_users_upgrade(),
     case try_decode(mochiweb_request:recv_body(Req)) of
         {ok, Samples} when is_list(Samples), not is_binary(Samples) ->
+            Samples2 = build_samples_input_list(Samples),
             case config_profile:get_bool({couchdb, disabled}) of
                 true ->
-                    case none_use_couchdb(Samples) of
+                    case none_use_couchdb(Samples2) of
                         true ->
-                            process_post(Req, Samples);
+                            process_post(Req, Samples2);
                         false ->
                             SampleNames =
                                 lists:map(
@@ -73,7 +99,7 @@ handle_post(Req) ->
                             reply_json(Req, Err, 400)
                     end;
                 false ->
-                    process_post(Req, Samples)
+                    process_post(Req, Samples2)
             end;
         {ok, _Samples} ->
             reply_json(
@@ -119,15 +145,16 @@ try_decode(Body) ->
     end.
 
 start_loading_samples(Req, Samples) ->
-    lists:foreach(fun (Sample) ->
-                          start_loading_sample(Req, binary_to_list(Sample))
+    lists:foreach(fun ({Sample, Bucket}) ->
+                          start_loading_sample(Req, binary_to_list(Sample),
+                                              binary_to_list(Bucket))
                   end, Samples).
 
-start_loading_sample(Req, Name) ->
-    case samples_loader_tasks:start_loading_sample(Name,
+start_loading_sample(Req, Sample, Bucket) ->
+    case samples_loader_tasks:start_loading_sample(Sample, Bucket,
                                                    ?SAMPLE_BUCKET_QUOTA_MB) of
         ok ->
-            ns_audit:start_loading_sample(Req, Name);
+            ns_audit:start_loading_sample(Req, Bucket);
         already_started ->
             ok
     end.
@@ -181,22 +208,46 @@ check_quota(Samples) ->
             ok
     end.
 
+check_sample_exists(Sample) ->
+    case sample_exists(Sample) of
+        false ->
+            Err2 = ["Sample ", Sample, " is not a valid sample."],
+            {error, list_to_binary(Err2)};
+        true -> ok
+    end.
 
 check_valid_samples(Samples) ->
-    Errors = [begin
-                  case ns_bucket:name_conflict(binary_to_list(Name)) of
-                      true ->
-                          Err1 = ["Sample bucket ", Name, " is already loaded."],
-                          {error, list_to_binary(Err1)};
-                      _ ->
-                          case sample_exists(Name) of
-                              false ->
-                                  Err2 = ["Sample ", Name, " is not a valid sample."],
-                                  {error, list_to_binary(Err2)};
-                              _ -> ok
-                          end
-                  end
-              end || Name <- Samples],
+    Errors =
+        lists:foldl(
+          fun ({Sample, Sample}, AccIn) ->
+                  %% Classic case where data is loaded into non-existent
+                  %% bucket with the same name as the sample data.
+                  RV =
+                    case ns_bucket:name_conflict(binary_to_list(Sample)) of
+                        true ->
+                            Err1 = ["Sample bucket ", Sample,
+                                    " is already loaded."],
+                            {error, list_to_binary(Err1)};
+                        false ->
+                            check_sample_exists(Sample)
+                    end,
+                    [RV | AccIn];
+              ({Sample, Bucket}, AccIn) ->
+                  %% Newer case where the bucket must already exist.
+                  RV =
+                    case ns_bucket:name_conflict(binary_to_list(Bucket)) of
+                        false ->
+                            Err1 =
+                                ["Sample bucket ", Bucket,
+                                 " must already exist and will be loaded "
+                                 "with the sample data."],
+                            {error, list_to_binary(Err1)};
+                        true ->
+                            check_sample_exists(Sample)
+                    end,
+                  [RV | AccIn]
+          end, [], Samples),
+
     case [X || X <- Errors, X =/= ok] of
         [] ->
             ok;
