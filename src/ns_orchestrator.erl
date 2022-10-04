@@ -785,26 +785,28 @@ idle({start_rebalance, Params = #{keep_nodes := KeepNodes,
     Services = ns_cluster_membership:cluster_supported_services(),
     {ok, ObserverPid} = ns_rebalance_observer:start_link(
                           Services, NodesInfo, Type, RebalanceId),
+    {Msg, MsgParams} =
+        case DeltaNodes of
+            [] ->
+                {"Starting rebalance, KeepNodes = ~p, "
+                 "EjectNodes = ~p, Failed over and being ejected "
+                 "nodes = ~p; no delta recovery nodes; "
+                 "Operation Id = ~s",
+                 [KeepNodes, EjectNodes, FailedNodes, RebalanceId]};
+            _ ->
+                {"Starting rebalance, KeepNodes = ~p, "
+                 "EjectNodes = ~p, Failed over and being ejected "
+                 "nodes = ~p, Delta recovery nodes = ~p, "
+                 " Delta recovery buckets = ~p; "
+                 "Operation Id = ~s",
+                 [KeepNodes, EjectNodes, FailedNodes, DeltaNodes,
+                  DeltaRecoveryBuckets, RebalanceId]}
+        end,
+
+    ?log_info(Msg, MsgParams),
     case ns_rebalancer:start_link_rebalance(Params) of
         {ok, Pid} ->
-            case DeltaNodes =/= [] of
-                true ->
-                    ale:info(?USER_LOGGER,
-                             "Starting rebalance, KeepNodes = ~p, "
-                             "EjectNodes = ~p, Failed over and being ejected "
-                             "nodes = ~p, Delta recovery nodes = ~p, "
-                             " Delta recovery buckets = ~p; "
-                             "Operation Id = ~s",
-                             [KeepNodes, EjectNodes, FailedNodes, DeltaNodes,
-                              DeltaRecoveryBuckets, RebalanceId]);
-                _ ->
-                    ale:info(?USER_LOGGER,
-                             "Starting rebalance, KeepNodes = ~p, "
-                             "EjectNodes = ~p, Failed over and being ejected "
-                             "nodes = ~p; no delta recovery nodes; "
-                             "Operation Id = ~s",
-                             [KeepNodes, EjectNodes, FailedNodes, RebalanceId])
-            end,
+            ale:info(?USER_LOGGER, Msg, MsgParams),
             event_log:add_log(rebalance_initiated,
                               [{operation_id, RebalanceId},
                                {nodes_info, {NodesInfo}}]),
@@ -825,6 +827,8 @@ idle({start_rebalance, Params = #{keep_nodes := KeepNodes,
                                 rebalance_id = RebalanceId},
              [{reply, From, ok}]};
         {error, Error} ->
+            ?log_info("Rebalance ~p was not started due to error: ~p",
+                      [RebalanceId, Error]),
             misc:unlink_terminate_and_wait(ObserverPid, kill),
             {keep_state_and_data, [{reply, From, Error}]}
     end;
