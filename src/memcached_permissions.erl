@@ -64,13 +64,27 @@ global_permissions_to_check() ->
 metered_users() ->
     ["@cbq-engine", "@goxdcr", "@backup"].
 
+bucket_throttle_users() ->
+    %% The KV regulator runs in the projector process, and (currently) uses
+    %% the "@projector" user to interact with KV.
+    ["@projector"].
+
+metered_privilege(User) ->
+    case lists:member(User, metered_users()) of
+        true -> [];
+        false -> ['Unmetered']
+    end.
+
+bucket_throttle_privilege(User) ->
+    case lists:member(User, bucket_throttle_users()) of
+        true -> ['BucketThrottleManagement'];
+        false -> []
+    end.
+
 other_users_privileges(User) ->
     ['Administrator', 'Audit', 'IdleConnection', 'Impersonate',
-     'SystemSettings', 'Stats'] ++
-        case lists:member(User, metered_users()) of
-            true -> [];
-            false -> ['Unmetered']
-        end.
+     'SystemSettings', 'Stats'] ++ metered_privilege(User)
+        ++ bucket_throttle_privilege(User).
 
 admin_user_privileges() ->
     ['NodeSupervisor', 'BucketThrottleManagement', 'Unthrottled'].
