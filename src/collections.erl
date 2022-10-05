@@ -123,7 +123,7 @@ manifest_without_system_scope() ->
             [{uid, 0}]}]}]}]}].
 
 system_collections() ->
-    ["_eventing", "_mobile", "_query"].
+    ["_eventing", "_mobile", "_query", "_regulator"].
 
 manifest_with_system_scope() ->
     {NextId, Collections} =
