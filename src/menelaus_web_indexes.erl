@@ -23,7 +23,8 @@ enterprise_only_settings() ->
     [redistributeIndexes, enablePageBloomFilter].
 
 serverless_only_settings() ->
-    [memHighThreshold, memLowThreshold] ++
+    [memHighThreshold, memLowThreshold,
+     unitsHighThreshold, unitsLowThreshold] ++
     rebalance_blob_storage_params().
 
 maybe_filter_settings(Settings) ->
@@ -108,7 +109,9 @@ settings_post_validators() ->
              config_profile:is_serverless() of
             true ->
                 [validator:integer(memHighThreshold, 0, 100, _),
-                 validator:integer(memLowThreshold, 0, 100, _)] ++
+                 validator:integer(memLowThreshold, 0, 100, _),
+                 validator:integer(unitsHighThreshold, 0, 100, _),
+                 validator:integer(unitsLowThreshold, 0, 100, _)] ++
                 rebalance_blob_storage_params_validator();
             false ->
                 []

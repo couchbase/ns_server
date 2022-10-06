@@ -149,6 +149,10 @@ general_settings_lens_props(ClusterVersion) ->
               id_lens(<<"indexer.settings.thresholds.mem_high">>)},
              {memLowThreshold,
               id_lens(<<"indexer.settings.thresholds.mem_low">>)},
+             {unitsHighThreshold,
+              id_lens(<<"indexer.settings.thresholds.units_high">>)},
+             {unitsLowThreshold,
+              id_lens(<<"indexer.settings.thresholds.units_low">>)},
              {blobStorageScheme,
               id_lens(<<"indexer.settings.rebalance.blob_storage_scheme">>)},
              {blobStorageBucket,
@@ -195,9 +199,13 @@ general_settings_defaults(ClusterVersion) ->
     case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_ELIXIR) of
         true ->
             [{memHighThreshold,
-              config_profile:get_value({indexer, mem_high_threshold}, 80)},
+              config_profile:get_value({indexer, mem_high_threshold}, 70)},
              {memLowThreshold,
-              config_profile:get_value({indexer, mem_low_threshold}, 60)},
+              config_profile:get_value({indexer, mem_low_threshold}, 50)},
+             {unitsHighThreshold,
+              config_profile:get_value({indexer, units_high_threshold}, 60)},
+             {unitsLowThreshold,
+              config_profile:get_value({indexer, units_low_threshold}, 40)},
              {blobStorageScheme, <<"">>},
              {blobStorageBucket, <<"">>},
              {blobStoragePrefix, <<"">>}];
@@ -315,10 +323,12 @@ config_upgrade_test() ->
     CmdList3 = config_upgrade_to_elixir([]),
     [{set, {metakv, Meta3}, Data3}] = CmdList3,
     ?assertEqual(<<"/indexing/settings/config">>, Meta3),
-    ?assertEqual(<<"{\"indexer.settings.thresholds.mem_high\":80,"
+    ?assertEqual(<<"{\"indexer.settings.thresholds.mem_high\":70,"
+                   "\"indexer.settings.thresholds.units_low\":40,"
                    "\"indexer.settings.rebalance.blob_storage_scheme\":\"\","
                    "\"indexer.settings.rebalance.blob_storage_prefix\":\"\","
                    "\"indexer.settings.rebalance.blob_storage_bucket\":\"\","
-                   "\"indexer.settings.thresholds.mem_low\":60}">>,
+                   "\"indexer.settings.thresholds.units_high\":60,"
+                   "\"indexer.settings.thresholds.mem_low\":50}">>,
                  Data3).
 -endif.

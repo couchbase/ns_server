@@ -15,8 +15,10 @@
 {enable_auto_rebalance_settings, false}.
 {disallow_memcached_buckets, true}.
 {{indexer, num_replica}, 1}.
-{{indexer, mem_high_threshold}, 80}.
-{{indexer, mem_low_threshold}, 60}.
+{{indexer, mem_high_threshold}, 70}.
+{{indexer, mem_low_threshold}, 50}.
+{{indexer, units_high_threshold}, 60}.
+{{indexer, units_low_threshold}, 40}.
 {{prometheus, default_high_card_services},
     [index, fts, kv, cbas, eventing, ns_server, n1ql]}.
 {{couchdb, enabled}, false}.
