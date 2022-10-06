@@ -178,7 +178,6 @@ roles() ->
                 "the web console">>}],
       [{[admin], none},
        {[xdcr], none},
-       {[{collection, [any, ?SYSTEM_SCOPE_NAME, any]}, data], [read]},
        {[{bucket, any}, xdcr], none},
        %% This role is intentionally given this powerful permission
        %% (see MB-42835).
@@ -233,7 +232,7 @@ roles() ->
                 "user can read and write data except for the _system scope "
                 "which can only be read.">>},
        {ce, true}],
-      [{[{collection, [bucket_name, ?SYSTEM_SCOPE_NAME, any]}, data], [read]},
+      [{[{collection, [bucket_name, "_system", any]}, data], [read]},
        {[{bucket, bucket_name}, data], all},
        {[{bucket, bucket_name}, views], all},
        {[{bucket, bucket_name}, n1ql, index], all},
@@ -306,8 +305,7 @@ roles() ->
                 "This user cannot access the web console and is intended only "
                 "for application access. This user can write data, but cannot "
                 "read it.">>}],
-      [{[{collection, [bucket_name, ?SYSTEM_SCOPE_NAME, any]}, data], none},
-       {[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs],
+      [{[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs],
         [insert, upsert, delete]},
        {[{bucket, bucket_name}, settings], [read]},
        {[pools], [read]}]},
@@ -394,8 +392,7 @@ roles() ->
        {desc, <<"Can execute an UPDATE statement on a given bucket, scope or "
                 "collection to update data. This user can access the web "
                 "console and write data, but cannot read it.">>}],
-      [{[{collection, [bucket_name, ?SYSTEM_SCOPE_NAME, any]}, data], none},
-       {[{collection, ?RBAC_COLLECTION_PARAMS}, n1ql, update], [execute]},
+      [{[{collection, ?RBAC_COLLECTION_PARAMS}, n1ql, update], [execute]},
        {[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs], [upsert]},
        {[{bucket, bucket_name}, settings], [read]},
        {[ui], [read]},
@@ -407,7 +404,6 @@ roles() ->
                 "collection to add data. This user can access the web console "
                 "and insert data, but cannot read it.">>}],
       [{[{collection, ?RBAC_COLLECTION_PARAMS}, n1ql, insert], [execute]},
-       {[{collection, [bucket_name, ?SYSTEM_SCOPE_NAME, any]}, data], none},
        {[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs], [insert]},
        {[{bucket, bucket_name}, settings], [read]},
        {[ui], [read]},
@@ -418,8 +414,7 @@ roles() ->
        {desc, <<"Can execute a DELETE statement on a given bucket, scope or "
                 "collection to delete data. This user can access the web "
                 "console, but cannot read data. This user can delete data.">>}],
-      [{[{collection, [bucket_name, ?SYSTEM_SCOPE_NAME, any]}, data], none},
-       {[{collection, ?RBAC_COLLECTION_PARAMS}, n1ql, delete], [execute]},
+      [{[{collection, ?RBAC_COLLECTION_PARAMS}, n1ql, delete], [execute]},
        {[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs], [delete]},
        {[{bucket, bucket_name}, settings], [read]},
        {[ui], [read]},
@@ -1521,10 +1516,10 @@ extract_all_names(Roles) ->
           ({Name, [bucket_name], _Description, _Filters}, AccIn) ->
               [{Name, ["default"]} | AccIn];
           ({Name, ?RBAC_SCOPE_PARAMS, _Description, _Filters}, AccIn) ->
-              [{Name, ["default", any]} | AccIn];
+              [{Name, ["default", "s"]} | AccIn];
           ({Name, ?RBAC_COLLECTION_PARAMS, _Description, _Filters},
            AccIn) ->
-              [{Name, ["default", any, any]} | AccIn]
+              [{Name, ["default", "s", "c"]} | AccIn]
       end, [], Roles).
 
 remove_exempted_names(AllNames, ExemptedNames) ->
@@ -1549,26 +1544,6 @@ admin_event_metakv_permissions_test() ->
     ?assertEqual(false, is_allowed({[admin, event], write}, Roles)),
     ?assertEqual(false, is_allowed({[admin, event], read}, Roles)),
     ?assertEqual(false, is_allowed({[admin, metakv], write}, Roles)).
-
-roles_with_non_read_system_scope_permissions() ->
-    [admin, mobile_sync_gateway, backup_admin, data_backup].
-
-%% Ensure no unexpected role has non-read access to the _system scope.
-no_system_scope_access_test() ->
-    AllRoles = roles() ++ add_serverless_roles(true),
-    AllNames0 = extract_all_names(AllRoles),
-    AllNames =
-        remove_exempted_names(AllNames0,
-                              roles_with_non_read_system_scope_permissions()),
-    Roles = compile_roles(AllNames, AllRoles),
-
-    lists:map(
-      fun (Operation) ->
-              ?assertEqual(false,
-                           is_allowed({[{collection,
-                                         ["default", ?SYSTEM_SCOPE_NAME, any]},
-                                        data, docs], Operation}, Roles))
-      end, [write, insert, upsert, delete]).
 
 bucket_views_admin_check_global(Roles) ->
     ?assertEqual(false, is_allowed({[xdcr], read}, Roles)),
