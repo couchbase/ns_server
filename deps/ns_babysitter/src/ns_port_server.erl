@@ -240,8 +240,12 @@ port_open({Name, Cmd, Args, OptsIn}, #state{logger = Logger}) ->
     %% Incoming options override existing ones (specified in proplists docs)
     Opts0 = OptsIn ++ [{args, Args}, exit_status,
                        stream, binary, stderr_to_stdout],
-
-    WriteDataArg = proplists:get_value(write_data, Opts0),
+    WriteDataArg = case proplists:get_value(write_data, Opts0) of
+        Fun when is_function(Fun) ->
+            Fun();
+        Other ->
+            Other
+    end,
     Opts1 = lists:keydelete(write_data, 1, Opts0),
     Opts3 = case lists:delete(ns_server_no_stderr_to_stdout, Opts1) of
                 Opts1 ->

@@ -84,7 +84,16 @@ open_port_args() ->
     Cookie = atom_to_binary(erlang:get_cookie()),
     ?COOKIE_HEX_LEN = size(Cookie),
     {ErlPath, AllArgs, [{env, Env}, exit_status, use_stdio, stream, eof,
-                        {write_data, <<"COOKIE:", Cookie/binary, "\n">>}]}.
+                        {write_data,
+                            %% Whilst we could just pass the cookie manually
+                            %% we would also end up logging it in SASL
+                            %% progress reports et. al. and we don't want to
+                            %% leak it in the logs so we instead pass as
+                            %% function returning the cookie as a result to
+                            %% avoid logging the actual cookie.
+                            fun() ->
+                                <<"COOKIE:", Cookie/binary, "\n">>
+                            end}]}.
 
 child_start(Arg) ->
     try

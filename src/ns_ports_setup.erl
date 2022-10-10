@@ -152,8 +152,17 @@ create_erl_node_spec(Type, Args, EnvArgsVar, ErlangArgs) ->
 
     Cookie = atom_to_binary(erlang:get_cookie(ns_server:get_babysitter_node())),
     ?COOKIE_HEX_LEN = size(Cookie),
-    Options0 = [use_stdio, {env, Env},
-                {write_data, <<"COOKIE:", Cookie/binary, "\n">>}],
+    Options0 = [use_stdio,
+                {env, Env},
+                {write_data,
+                    %% Whilst we could just pass the cookie manually we would
+                    %% also end up logging it in SASL progress reports et. al.
+                    %% and we don't want to leak it in the logs so we instead
+                    %% pass as function returning the cookie as a result to
+                    %% avoid logging the actual cookie.
+                    fun() ->
+                        <<"COOKIE:", Cookie/binary, "\n">>
+                    end}],
     Options =
         case misc:get_env_default(dont_suppress_stderr_logger, false) of
             true ->
