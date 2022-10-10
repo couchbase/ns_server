@@ -1167,15 +1167,20 @@ def make_curl_post_task(name, user, password, url, timeout=60,
                      **kwargs)
 
 
-def make_cbstats_all_buckets_task(kind, memcached_pass, guts):
+def make_cbstats_task(kind, memcached_pass, guts, extra_args=""):
     port = read_guts(guts, "memcached_dedicated_port")
     user = read_guts(guts, "memcached_admin")
     return AllOsTask("memcached stats %s" % kind,
-                     flatten(["cbstats", "-a", "%s:%s" %
-                              (local_url_addr, port), kind, "-u", user]),
+                     flatten(["cbstats", "%s:%s" % (local_url_addr, port),
+                              kind, "-u", user, extra_args]),
                      log_file="stats.log",
                      timeout=60,
                      addenv=[("CB_PASSWORD", memcached_pass)])
+
+
+def make_cbstats_all_buckets_task(kind, memcached_pass, guts):
+    # The extra arg "-a" tells cbstats to iterate over all Buckets
+    return make_cbstats_task(kind, memcached_pass, guts, "-a")
 
 
 def get_local_token(guts):
@@ -1985,10 +1990,12 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                       "kvstore", "kvtimings", "memory",
                       "prev-vbucket", ["responses", "all"],
                       "runtimes", "scheduler", "scopes",
-                      "tasks",
                       "timings", "uuid",
                       "vbucket-details", "vbucket-seqno",
                       "warmup", "workload"]],
+
+        [make_cbstats_task(kind, memcached_pass, guts)
+         for kind in ["tasks-all"]],
 
         [AllOsTask("memcached mcstat %s" % kind,
                    flatten(["mcstat", "-h",
