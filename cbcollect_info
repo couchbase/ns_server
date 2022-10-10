@@ -1167,7 +1167,7 @@ def make_curl_post_task(name, user, password, url, timeout=60,
                      **kwargs)
 
 
-def make_cbstats_task(kind, memcached_pass, guts):
+def make_cbstats_all_buckets_task(kind, memcached_pass, guts):
     port = read_guts(guts, "memcached_dedicated_port")
     user = read_guts(guts, "memcached_admin")
     return AllOsTask("memcached stats %s" % kind,
@@ -1977,7 +1977,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                       "analytics_trace.json", "analytics_access.log", "analytics_cbas_debug.log",
                       "indexer_stats.log", "backup_service.log"]],
 
-        [make_cbstats_task(kind, memcached_pass, guts)
+        [make_cbstats_all_buckets_task(kind, memcached_pass, guts)
          for kind in ["all", "checkpoint", "collections", "config",
                       "dcp", "dcpagg",
                       ["diskinfo", "detail"], ["dispatcher", "logs"],
