@@ -47,6 +47,7 @@ supported_setting_names() ->
      {tcp_keepalive_idle, {int, 0, ?MC_MAXINT}},
      {tcp_keepalive_interval, {int, 0, ?MC_MAXINT}},
      {tcp_keepalive_probes, {int, 0, ?MC_MAXINT}},
+     {tcp_user_timeout, {int, 0, ?MC_MAXINT}},
      {always_collect_trace_info, bool},
      {connection_limit_mode, {one_of, ["disconnect", "recycle"]}},
      {free_connection_pool_size, {int, 0, ?MC_MAXINT}},
