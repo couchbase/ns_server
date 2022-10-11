@@ -704,27 +704,29 @@ invoke_vbmap(CurrentMap, Nodes, NumVBuckets, NumSlaves, NumReplicas, Tags, UseGr
 
     VbmapPath = path_config:component_path(bin, VbmapName),
     DiagPath = path_config:tempfile("vbmap_diag", ""),
+    PrevMapFile = path_config:tempfile("prev-vbmap", ".json"),
 
     try
-        {ok, Map} = do_invoke_vbmap(VbmapPath, DiagPath, CurrentMap, Nodes,
-                                    NumVBuckets, NumSlaves, NumReplicas, Tags,
-                                    UseGreedy),
+        {ok, Map} = do_invoke_vbmap(VbmapPath, DiagPath, PrevMapFile,
+                                    CurrentMap, Nodes, NumVBuckets, NumSlaves,
+                                    NumReplicas, Tags, UseGreedy),
         Map
     after
-        file:delete(DiagPath)
+        file:delete(DiagPath),
+        file:delete(PrevMapFile)
     end.
 
-do_invoke_vbmap(VbmapPath, DiagPath,
+do_invoke_vbmap(VbmapPath, DiagPath, PrevMapFile,
                 CurrentMap, Nodes, NumVBuckets, NumSlaves, NumReplicas, Tags,
                 UseGreedy) ->
     misc:executing_on_new_process(
       fun () ->
-              do_invoke_vbmap_body(VbmapPath, DiagPath, CurrentMap, Nodes,
-                                   NumVBuckets, NumSlaves, NumReplicas, Tags,
-                                   UseGreedy)
+              do_invoke_vbmap_body(VbmapPath, DiagPath, PrevMapFile, CurrentMap,
+                                   Nodes, NumVBuckets, NumSlaves, NumReplicas,
+                                   Tags, UseGreedy)
       end).
 
-do_invoke_vbmap_body(VbmapPath, DiagPath, CurrentMap, Nodes,
+do_invoke_vbmap_body(VbmapPath, DiagPath, PrevMapFile, CurrentMap, Nodes,
                      NumVBuckets, NumSlaves, NumReplicas, Tags,
                      UseGreedy) ->
     NumNodes = length(Nodes),
@@ -750,8 +752,6 @@ do_invoke_vbmap_body(VbmapPath, DiagPath, CurrentMap, Nodes,
     NodeIdMap = dict:from_list(NodeIdList),
 
     IdVbMap = make_vbmap_with_node_ids(NodeIdMap, CurrentMap),
-
-    PrevMapFile = path_config:tempfile("prev-vbmap", ".json"),
 
     ChainsWritten =
         case write_vbmap_to_file(IdVbMap, PrevMapFile) of
