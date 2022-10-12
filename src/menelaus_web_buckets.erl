@@ -987,11 +987,19 @@ process_ram_and_storage(Ctx, CurrentBucket, ParsedProps, false) ->
 validate_ram(#ram_summary{free = Free}) when Free < 0 ->
     [{ramQuota, <<"RAM quota specified is too large to be provisioned into "
                   "this cluster.">>}];
-validate_ram(#ram_summary{this_alloc = Alloc, this_used = Used})
-  when Alloc < Used ->
-    [{ramQuota, <<"RAM quota cannot be set below current usage.">>}];
-validate_ram(_) ->
-    [].
+validate_ram(#ram_summary{this_alloc = Alloc, this_used = Used}) ->
+    %% All buckets should have the same quota, but only since Elixir has
+    %% memcached supported a graceful quota reduction to values below the
+    %% current RAM usage. As such, we should keep the existing check against
+    %% RAM usage for mixed mode clusters as setting a quota below RAM usage
+    %% on any pre-Elixir memcached will result in a period of temporary
+    %% failures while memory is reduced.
+    case cluster_compat_mode:is_cluster_elixir() of
+        false when Alloc < Used ->
+            [{ramQuota, <<"RAM quota cannot be set below current usage.">>}];
+        _ ->
+            []
+    end.
 
 additional_bucket_params_validation(Params, Ctx) ->
     NumReplicas = get_value_from_parms_or_bucket(num_replicas, Params, Ctx),
@@ -3024,5 +3032,36 @@ parse_validate_max_magma_shards_test() ->
 
     meck:unload(config_profile),
     ok.
+
+validate_ram_used_elixir_test() ->
+    meck:new(cluster_compat_mode),
+    meck:expect(cluster_compat_mode, is_cluster_elixir, fun () -> true end),
+
+    ?assertEqual([],
+        validate_ram(#ram_summary{this_alloc = 1, this_used = 2})),
+
+    ?assertEqual([],
+        validate_ram(#ram_summary{this_alloc = 2, this_used = 2})),
+
+    ?assertEqual([],
+        validate_ram(#ram_summary{this_alloc = 3, this_used = 2})),
+
+    meck:unload(cluster_compat_mode).
+
+validate_ram_used_pre_elixir_test() ->
+    meck:new(cluster_compat_mode),
+    meck:expect(cluster_compat_mode, is_cluster_elixir, fun () -> false end),
+
+    ?assertEqual(
+        [{ramQuota, <<"RAM quota cannot be set below current usage.">>}],
+        validate_ram(#ram_summary{this_alloc = 1, this_used = 2})),
+
+    ?assertEqual([],
+        validate_ram(#ram_summary{this_alloc = 2, this_used = 2})),
+
+    ?assertEqual([],
+        validate_ram(#ram_summary{this_alloc = 3, this_used = 2})),
+
+    meck:unload(cluster_compat_mode).
 
 -endif.
