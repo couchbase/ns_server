@@ -17,7 +17,8 @@
 -export([start/0, setup_body_tramp/0,
          restart_memcached/0,
          sync/0, create_erl_node_spec/4,
-         shutdown_ports/0, build_cbauth_env_vars/2, get_rpc_prefix/1]).
+         shutdown_ports/0, build_cbauth_env_vars/2, get_rpc_prefix/1,
+         remote_build_cbauth_revrpc_url/1]).
 
 start() ->
     proc_lib:start_link(?MODULE, setup_body_tramp, []).
@@ -181,11 +182,11 @@ dynamic_children(Mode) ->
 
 do_dynamic_children(shutdown, Config) ->
     [memcached_spec(Config),
-     saslauthd_port_spec(Config)];
+     saslauthd_port_spec()];
 do_dynamic_children(normal, Config) ->
     Snapshot = ns_cluster_membership:get_snapshot(),
     [memcached_spec(Config),
-     saslauthd_port_spec(Config)] ++
+     saslauthd_port_spec()] ++
         build_goport_specs(Config, Snapshot).
 
 expand_specs(Specs, Config) ->
@@ -225,13 +226,34 @@ common_go_env_vars() ->
                end,
     TraceBack ++ MaxProcs.
 
-build_cbauth_env_vars(Config, RPCService) ->
-    true = (RPCService =/= undefined),
+build_cbauth_env_vars(Config, RPCService) when RPCService =/= undefined ->
+    [{"CBAUTH_REVRPC_URL",  build_cbauth_revrpc_url(Config, RPCService)}].
+
+build_cbauth_dynamic_remote_env_vars(RPCService) ->
+    [{"CBAUTH_REVRPC_URL",
+     {dynamic, {?MODULE, remote_build_cbauth_revrpc_url, [RPCService]}}}].
+
+remote_build_cbauth_revrpc_url(RPCService) ->
+    %% Here we assume:
+    %% 1. this function is running in babysitter
+    %% 2. babysitter is connected to a single node only, and that node is
+    %%    ns_server.
+    %% We can't make ns_server nodename a parameter because it will lead
+    %% to service restarts during node rename.
+    true = is_pid(whereis(ns_child_ports_sup)),
+    [NsServer] = nodes(hidden),
+    rpc:call(NsServer, ?MODULE, build_cbauth_revrpc_url, [ns_config:latest(),
+                                                          RPCService]).
+
+build_cbauth_revrpc_url(Config, RPCService) when is_atom(RPCService) ->
+    RPCServiceStr = atom_to_list(RPCService),
+    build_cbauth_revrpc_url(Config, RPCServiceStr);
+build_cbauth_revrpc_url(Config, RPCServiceStr) ->
     RestPort = service_ports:get_port(rest_port, Config),
     User = mochiweb_util:quote_plus(ns_config_auth:get_user(special)),
-    Password = mochiweb_util:quote_plus(ns_config_auth:get_password(special)),
-    URL = misc:local_url(RestPort, atom_to_list(RPCService), [{user_info, {User, Password}}]),
-    [{"CBAUTH_REVRPC_URL", URL}].
+    Password = mochiweb_util:quote_plus(
+                 ns_config_auth:get_password(node(), Config, special)),
+    misc:local_url(RestPort, RPCServiceStr, [{user_info, {User, Password}}]).
 
 expand_args({Name, Cmd, ArgsIn, OptsIn}, Config) ->
     %% Expand arguments
@@ -245,7 +267,9 @@ expand_args({Name, Cmd, ArgsIn, OptsIn}, Config) ->
     Opts = lists:map(
              fun ({env, Env}) ->
                      {env, lists:map(
-                             fun ({Var, {Format, Keys}}) ->
+                             fun ({Var, {dynamic, MFA}}) ->
+                                     {Var, {dynamic, MFA}};
+                                 ({Var, {Format, Keys}}) ->
                                      {Var, format(Config, Name, Format, Keys)};
                                  (X) -> X
                              end, Env)};
@@ -348,7 +372,7 @@ build_goport_spec(Service, #def{exe = Executable,
             [];
         _ ->
             EnvVars = build_go_service_env_vars(Service) ++
-                      build_cbauth_env_vars(Config, RPCService),
+                      build_cbauth_dynamic_remote_env_vars(RPCService),
             ProfileArgs = service_profile_args(Service),
             Args = goport_args(Service, Config, Cmd, binary_to_list(NodeUUID)),
             [{Service, Cmd, Args ++ ProfileArgs,
@@ -642,14 +666,14 @@ goport_args(cbas, Config, Cmd, NodeUUID) ->
         build_afamily_requirement("-") ++
         ["-javaHome=" ++ JavaHome || JavaHome =/= undefined].
 
-saslauthd_port_spec(Config) ->
+saslauthd_port_spec() ->
     Cmd = find_executable("saslauthd-port"),
     case Cmd =/= false of
         true ->
             [{saslauthd_port, Cmd, [],
               [use_stdio, exit_status, stderr_to_stdout,
                {env, common_go_env_vars() ++
-                     build_cbauth_env_vars(Config, saslauthd)}]}];
+                     build_cbauth_dynamic_remote_env_vars(saslauthd)}]}];
         _ ->
             []
     end.

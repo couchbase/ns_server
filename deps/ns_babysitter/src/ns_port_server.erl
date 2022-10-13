@@ -256,13 +256,19 @@ port_open({Name, Cmd, Args, OptsIn}, #state{logger = Logger}) ->
     ViaGoport = proplists:get_value(via_goport, Opts3, false),
     Opts4 = proplists:delete(via_goport, Opts3),
 
+    Opts5 =
+        case misc:key_update(env, Opts4, fun expand_dynamic_env/1) of
+            false -> Opts4;
+            Opts4Updated -> Opts4Updated
+        end,
+
     %% don't split port output into lines if all we need to do is to redirect
     %% it into a file
     Opts = case Logger of
                undefined ->
-                   [{line, 8192} | Opts4];
+                   [{line, 8192} | Opts5];
                _ ->
-                   Opts4
+                   Opts5
            end,
 
     {Port, OsPid} =
@@ -300,6 +306,14 @@ port_open({Name, Cmd, Args, OptsIn}, #state{logger = Logger}) ->
     port_deliver(Port),
 
     {Port, OsPid}.
+
+expand_dynamic_env(EnvList) ->
+    lists:map(
+      fun ({Key, {dynamic, {M, F, A}}}) ->
+              {Key, erlang:apply(M, F, A)};
+          (KV) ->
+              KV
+      end, EnvList).
 
 port_name(#state{params = Params}) ->
     {Name, _, _, _} = Params,

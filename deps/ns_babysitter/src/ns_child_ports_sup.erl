@@ -49,45 +49,23 @@ do_send_command(PortName, Command) ->
     {ok, Pid}.
 
 -spec set_dynamic_children([any()]) -> pid().
-set_dynamic_children(NCAOs) ->
-    RequestedIds = [sanitize(NCAO) || NCAO <- NCAOs],
+set_dynamic_children(RequestedIds) ->
     CurrentIds = [erlang:element(1, C) || C <- supervisor:which_children(?MODULE)],
     IdsToTerminate = CurrentIds -- RequestedIds,
-
-    RequestedIdsParams = lists:zip(RequestedIds, NCAOs),
-    IdsParamsToLaunch = lists:filter(fun ({Id, _NCAO}) ->
-                                             not lists:member(Id, CurrentIds)
-                                     end, RequestedIdsParams),
+    IdsToLaunch = RequestedIds -- CurrentIds,
 
     PidBefore = erlang:whereis(?MODULE),
 
-    lists:foreach(fun(Id) ->
-                          terminate_port(Id)
-                  end,
-                  IdsToTerminate),
-    lists:foreach(fun({Id, NCAO}) ->
-                          launch_port(Id, NCAO)
-                  end,
-                  IdsParamsToLaunch),
+    lists:foreach(fun terminate_port/1, IdsToTerminate),
+    lists:foreach(fun launch_port/1, IdsToLaunch),
 
     PidAfter = erlang:whereis(?MODULE),
     PidBefore = PidAfter.
 
-sanitize_value(Value) ->
-    crypto:hash(sha256, term_to_binary(Value)).
-
-sanitize(Struct) ->
-    misc:rewrite_tuples(
-      fun ({"CBAUTH_REVRPC_URL", V}) ->
-              {stop, {"CBAUTH_REVRPC_URL", sanitize_value(V)}};
-          (_Other) ->
-              continue
-      end, Struct).
-
-launch_port(Id, NCAO) ->
-    ?log_info("supervising port: ~p", [Id]),
+launch_port(NCAO) ->
+    ?log_info("supervising port: ~p", [NCAO]),
     {ok, _C} = supervisor:start_child(?MODULE,
-                                      create_child_spec(Id, NCAO)).
+                                      create_child_spec(NCAO)).
 
 create_ns_server_supervisor_spec() ->
     {ErlCmd, NSServerArgs, NSServerOpts} = child_erlang:open_port_args(),
@@ -100,16 +78,16 @@ create_ns_server_supervisor_spec() ->
               end,
 
     NCAO = {ns_server, ErlCmd, NSServerArgs, Options},
-    create_child_spec(NCAO, NCAO).
+    create_child_spec(NCAO).
 
-create_child_spec(Id, {Name, Cmd, Args, Opts}) ->
+create_child_spec({Name, _Cmd, _Args, _Opts} = Id) ->
     %% wrap parameters into function here to protect passwords
     %% that could be inside those parameters from being logged
     restartable:spec(
       {Id,
        {supervisor_cushion, start_link,
         [Name, 5000, infinity, ns_port_server, start_link,
-         [fun() -> {Name, Cmd, Args, Opts} end]]},
+         [fun() -> Id end]]},
        permanent, 86400000, worker,
        [ns_port_server]}).
 
