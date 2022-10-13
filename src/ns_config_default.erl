@@ -17,7 +17,7 @@
 -endif.
 
 -export([default/0, upgrade_config/1, get_current_version/0, encrypt_and_save/1,
-         decrypt/1, fixup/1, init_is_enterprise/0]).
+         decrypt/1, fixup/1, init_is_enterprise/0, generate_internal_pass/0]).
 
 -define(ISASL_PW, "isasl.pw").
 -define(NS_LOG, "ns_log").

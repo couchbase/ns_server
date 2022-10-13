@@ -14,7 +14,7 @@
          handle_extract_user_from_cert_post/1]).
 -behaviour(gen_server).
 
--export([start_link/0]).
+-export([start_link/0, sync/0, sync/1]).
 
 
 -export([init/1, handle_call/3, handle_cast/2,
@@ -31,6 +31,12 @@
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+
+sync() ->
+    sync(node()).
+
+sync(Node) ->
+    gen_server:call({?MODULE, Node}, sync, infinity).
 
 init([]) ->
     ns_pubsub:subscribe_link(json_rpc_events, fun json_rpc_event/1),
@@ -94,6 +100,9 @@ is_interesting(enforce_limits) -> true;
 is_interesting({security_settings, _}) -> true;
 is_interesting({node, N, prometheus_auth_info}) when N =:= node() -> true;
 is_interesting(Key) -> collections:key_match(Key) =/= false.
+
+handle_call(sync, _From, State) ->
+    {reply, ok, State};
 
 handle_call(_Msg, _From, State) ->
     {reply, not_implemented, State}.

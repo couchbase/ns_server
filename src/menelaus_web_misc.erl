@@ -19,7 +19,8 @@
          handle_versions/1,
          handle_tasks/2,
          handle_event_log_post/1,
-         handle_log_post/1]).
+         handle_log_post/1,
+         handle_rotate_internal_creds/1]).
 
 -import(menelaus_util,
         [reply_json/2,
@@ -129,3 +130,8 @@ do_handle_event_log_post(Req) ->
                        event_log:log(Log),
                        reply_json(Req, [], 200)
                      end, Req, json, event_log:validators()).
+
+handle_rotate_internal_creds(Req) ->
+    menelaus_util:assert_is_elixir(),
+    cb_creds_rotation:rotate_password(),
+    reply_json(Req, [], 200).
