@@ -316,7 +316,7 @@
 -define(DEFAULT_PBKDF2_ITER, 10000).
 -define(DEFAULT_SCRAM_ITER, 15000).
 
--define(HASH_KEY,             <<"hash">>).
+-define(HASHES_KEY,           <<"hashes">>).
 -define(SALT_KEY,             <<"salt">>).
 -define(HASH_ALG_KEY,         <<"algorithm">>).
 -define(ARGON_TIME_KEY,       <<"time">>).

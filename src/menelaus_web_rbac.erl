@@ -2390,8 +2390,8 @@ validate_hash_auth(Name, State) ->
         [validator:required(algorithm, _),
          validator:one_of(algorithm,
                           [?ARGON2ID_HASH, ?PBKDF2_HASH, ?SHA1_HASH], _),
-         validator:required(hash, _),
-         base64_binary(hash, _),
+         validator:required(hashes, _),
+         base64_binary_list(hashes, _),
          fun (S) ->
              Alg = validator:get_value(algorithm, S),
              functools:chain(S, alg_hash_validators(Alg))
@@ -2428,20 +2428,36 @@ validate_scram_auth(Name, State) ->
          validator:integer(iterations, ?PBKDF2_ITER_MIN, ?PBKDF2_ITER_MAX, _),
          validator:required(salt, _),
          base64_binary(salt, _),
-         validator:required(server_key, _),
-         base64_binary(server_key, _),
-         validator:required(stored_key, _),
-         base64_binary(stored_key, _),
+         validator:json_array(hashes,
+                              [validator:required(server_key, _),
+                               base64_binary(server_key, _),
+                               validator:required(stored_key, _),
+                               base64_binary(stored_key, _)],
+                              _),
          validator:unsupported(_)],
         State)).
 
 base64_binary(Name, State) ->
+    validator:validate(fun is_base64/1, Name, State).
+
+base64_binary_list(Name, State) ->
     validator:validate(
-      fun (B) ->
-              try base64:decode(B) of _ -> ok
-              catch _:_ -> {error, "Value must be a base64 encoded binary"}
-              end
+      fun (L) when is_list(L) ->
+              case [E || B <- L, {error, E} <- [is_base64(B)]] of
+                  [] -> ok;
+                  [_ | _] ->
+                      {error, "Value must be a list of base64 encoded binaries"}
+              end;
+          (_) ->
+              {error, "Value must be a list of base64 encoded binaries"}
       end, Name, State).
+
+is_base64(B) ->
+    try base64:decode(B) of
+        _ -> ok
+    catch _:_ ->
+        {error, "Value must be a base64 encoded binary"}
+    end.
 
 validate_backup_groups(Name, Req, State) ->
     validator:json_array(

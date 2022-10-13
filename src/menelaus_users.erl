@@ -415,7 +415,7 @@ select_auth_infos(KeySpec) ->
 build_auth(false, undefined) ->
     password_required;
 build_auth(false, Password) ->
-    build_auth(Password);
+    build_auth([Password]);
 build_auth({_, _}, undefined) ->
     same;
 build_auth({_, CurrentAuth}, Password) ->
@@ -423,12 +423,12 @@ build_auth({_, CurrentAuth}, Password) ->
         true ->
             case has_scram_hashes(CurrentAuth) of
                 false ->
-                    build_auth(Password);
+                    build_auth([Password]);
                 _ ->
                     same
             end;
         false ->
-            build_auth(Password)
+            build_auth([Password])
     end.
 
 -spec store_user(rbac_identity(), rbac_user_name(),
@@ -591,7 +591,7 @@ obsolete_get_salt_and_mac(Auth) ->
     <<Salt:16/binary, Mac:20/binary>> = base64:decode(SaltAndMacBase64),
     [{?HASH_ALG_KEY, ?SHA1_HASH},
      {?SALT_KEY, base64:encode(Salt)},
-     {?HASH_KEY, base64:encode(Mac)}].
+     {?HASHES_KEY, [base64:encode(Mac)]}].
 
 has_scram_hashes(Auth) ->
     proplists:is_defined(<<"sha1">>, Auth).
@@ -853,19 +853,19 @@ get_user_uuid({_, local} = Identity, Default) ->
 get_user_uuid(_, _) ->
     undefined.
 
-build_auth(Password) ->
-    build_plain_auth(Password) ++ scram_sha:build_auth(Password).
+build_auth(Passwords) ->
+    build_plain_auth(Passwords) ++ scram_sha:build_auth(Passwords).
 
-build_plain_auth(Password) ->
+build_plain_auth(Passwords) ->
     case cluster_compat_mode:is_cluster_elixir() of
         true ->
             HashType = ns_config:read_key_fast(password_hash_alg,
                                                ?DEFAULT_PWHASH),
             format_plain_auth(ns_config_auth:new_password_hash(HashType,
-                                                               Password));
+                                                               Passwords));
         false ->
             format_pre_elixir_plain_auth(
-              ns_config_auth:new_password_hash(?SHA1_HASH, Password))
+              ns_config_auth:new_password_hash(?SHA1_HASH, Passwords))
     end.
 
 format_plain_auth(HashInfo) ->
@@ -873,7 +873,8 @@ format_plain_auth(HashInfo) ->
 
 format_pre_elixir_plain_auth(HashInfo) ->
     Salt = base64:decode(proplists:get_value(?SALT_KEY, HashInfo)),
-    Mac = base64:decode(proplists:get_value(?HASH_KEY, HashInfo)),
+    [Hash | _] = proplists:get_value(?HASHES_KEY, HashInfo),
+    Mac = base64:decode(Hash),
     SaltAndMac = <<Salt/binary, Mac/binary>>,
     [{<<"plain">>, base64:encode(SaltAndMac)}].
 
@@ -1136,10 +1137,10 @@ upgrade_test_() ->
                  {?OLD_SCRAM_ITERATIONS_KEY, 4000}]}}]}],
            [CheckAuth("not-migrated-user", <<"hash">>, [anything]),
             CheckAuth("not-migrated-user", <<"scram-sha-1">>,
-                      [{?SCRAM_STORED_KEY_KEY,
-                        <<"APXjupUS+LktBEirfdNtNtCYChk=">>},
-                       {?SCRAM_SERVER_KEY_KEY,
-                        <<"Vkelr1rzrz9tT0Z/AhLvKJVuWJs=">>},
+                      [{?HASHES_KEY, [{[{?SCRAM_STORED_KEY_KEY,
+                                         <<"APXjupUS+LktBEirfdNtNtCYChk=">>},
+                                        {?SCRAM_SERVER_KEY_KEY,
+                                         <<"Vkelr1rzrz9tT0Z/AhLvKJVuWJs=">>}]}]},
                        {?SCRAM_SALT_KEY, <<"0ues3mfZqA4OjuljBI/uQY5L0jI=">>},
                        {?SCRAM_ITERATIONS_KEY, 4000}])])]}.
 

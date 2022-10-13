@@ -223,8 +223,8 @@ sanitize(Config, TagUserTuples) ->
           ({UName, {auth, Auth}}) ->
               {stop, {tag_user_name(UName),
                       {auth, sanitize(Auth, TagUserTuples)}}};
-          ({?HASH_KEY, V}) ->
-              {stop, {?HASH_KEY, sanitize_value(V)}};
+          ({?HASHES_KEY, V}) ->
+              {stop, {?HASHES_KEY, sanitize_value(V)}};
           ({?OLD_HASH_KEY, V}) ->
               {stop, {?OLD_HASH_KEY, sanitize_value(V)}};
           ({<<"plain">>, V}) ->

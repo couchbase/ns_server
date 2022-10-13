@@ -32,7 +32,7 @@ admin_cfg_key() ->
     rest_creds.
 
 set_admin_credentials(User, Password) ->
-    set_admin_with_auth(User, menelaus_users:build_auth(Password)).
+    set_admin_with_auth(User, menelaus_users:build_auth([Password])).
 
 set_admin_with_auth(User, Auth) ->
     ns_config:set(admin_cfg_key(), {User, {auth, Auth}}).
@@ -73,7 +73,7 @@ get_password(Node, special) when is_atom(Node)->
 get_salt_and_mac({password, {Salt, Mac}}) ->
     [{?HASH_ALG_KEY, ?SHA1_HASH},
      {?SALT_KEY, base64:encode(Salt)},
-     {?HASH_KEY, base64:encode(Mac)}];
+     {?HASHES_KEY, [base64:encode(Mac)]}];
 get_salt_and_mac({auth, Auth}) ->
     menelaus_users:get_salt_and_mac(Auth).
 
@@ -152,13 +152,18 @@ authenticate_admin(User, Password) ->
     end.
 
 check_hash(HashInfo, Password) ->
-    Hash1 = base64:decode(proplists:get_value(?HASH_KEY, HashInfo)),
-    Hash2 = hash_password(HashInfo, Password),
-    misc:compare_secure(Hash2, Hash1).
+    Base64Hashes = proplists:get_value(?HASHES_KEY, HashInfo),
+    Hashes = [base64:decode(H) || H <- Base64Hashes],
+    Hash1 = hash_password(HashInfo, Password),
+    %% Even if the first hash matches, we should compare all of them anyway
+    %% for security reasons (timing attack)
+    Results = [misc:compare_secure(Hash2, Hash1) || Hash2 <- Hashes],
+    lists:any(fun functools:id/1, Results).
 
-new_password_hash(Type, Password) ->
+new_password_hash(Type, Passwords) ->
     Info = new_hash_info(Type),
-    [{?HASH_KEY, base64:encode(hash_password(Info, Password))} | Info].
+    Hashes = [base64:encode(hash_password(Info, P)) || P <- Passwords],
+    [{?HASHES_KEY, Hashes} | Info].
 
 new_hash_info(T) ->
     [{?HASH_ALG_KEY, T} | new_hash_info_int(T)].
