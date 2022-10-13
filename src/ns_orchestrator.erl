@@ -14,6 +14,10 @@
 -include("ns_common.hrl").
 -include("cut.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 %% Constants and definitions
 
 -record(idle_state, {}).
@@ -46,7 +50,7 @@
          try_autofailover/2,
          needs_rebalance/0,
          start_link/0,
-         start_rebalance/4,
+         start_rebalance/5,
          retry_rebalance/4,
          stop_rebalance/0,
          start_recovery/1,
@@ -272,19 +276,21 @@ ensure_janitor_run(Item) ->
       end, ?JANITOR_RUN_TIMEOUT, 1000).
 
 -spec start_rebalance([node()], [node()], all | [bucket_name()],
-                      [list()]) ->
+                      [list()], all | [atom()]) ->
                              {ok, binary()} | ok | in_progress |
                              already_balanced | nodes_mismatch |
                              no_active_nodes_left | in_recovery |
                              delta_recovery_not_possible | no_kv_nodes_left |
-                             {need_more_space, list()}.
+                             {need_more_space, list()} |
+                             {must_rebalance_services, list()}.
 start_rebalance(KnownNodes, EjectNodes, DeltaRecoveryBuckets,
-                DefragmentZones) ->
+                DefragmentZones, Services) ->
     call({maybe_start_rebalance,
           #{known_nodes => KnownNodes,
             eject_nodes => EjectNodes,
             delta_recovery_buckets => DeltaRecoveryBuckets,
-            defragment_zones => DefragmentZones}}).
+            defragment_zones => DefragmentZones,
+            services => Services}}).
 
 retry_rebalance(rebalance, Params, Id, Chk) ->
     call({maybe_start_rebalance,
@@ -434,8 +440,13 @@ handle_event({call, From}, {maybe_start_rebalance,
                      Other ->
                          Other
                  end,
+        EjectedLiveNodes = EjectedNodes -- FailedNodes,
+
+        Services = maps:get(services, Params, all),
+        validate_services(Services, KeepNodes, EjectedLiveNodes, Snapshot),
+
         NewParams1 = NewParams#{keep_nodes => KeepNodes,
-                                eject_nodes => EjectedNodes -- FailedNodes,
+                                eject_nodes => EjectedLiveNodes,
                                 failed_nodes => FailedNodes,
                                 delta_nodes => DeltaNodes,
                                 chk => NewChk},
@@ -779,7 +790,16 @@ idle({start_rebalance, Params = #{keep_nodes := KeepNodes,
                  {delta_nodes, DeltaNodes},
                  {failed_nodes, FailedNodes}],
     Type = rebalance,
-    Services = ns_cluster_membership:cluster_supported_services(),
+
+    {Services, ServicesMsg} =
+        case maps:get(services, Params, all) of
+            all ->
+                {ns_cluster_membership:cluster_supported_services(), []};
+            CustomServices ->
+                {CustomServices,
+                 lists:flatten(io_lib:format(
+                                 " Services = ~p;", [CustomServices]))}
+        end,
     {ok, ObserverPid} = ns_rebalance_observer:start_link(
                           Services, NodesInfo, Type, RebalanceId),
     DeltaRecoveryMsg =
@@ -796,9 +816,10 @@ idle({start_rebalance, Params = #{keep_nodes := KeepNodes,
     Msg = lists:flatten(
             io_lib:format(
               "Starting rebalance, KeepNodes = ~p, EjectNodes = ~p, "
-              "Failed over and being ejected nodes = ~p; ~s; Operation Id = ~s",
+              "Failed over and being ejected nodes = ~p; ~s;~s "
+              "Operation Id = ~s",
               [KeepNodes, EjectNodes, FailedNodes, DeltaRecoveryMsg,
-               RebalanceId])),
+               ServicesMsg, RebalanceId])),
 
     ?log_info(Msg),
     case ns_rebalancer:start_link_rebalance(Params) of
@@ -1601,6 +1622,41 @@ rebalance_allowed(Snapshot) ->
             ok
     end.
 
+validate_services(all, _, _, _) ->
+    ok;
+validate_services(Services, KeepNodes, NodesToEject, Snapshot) ->
+    case get_uninitialized_services(Services, KeepNodes, Snapshot) ++
+        get_unejected_services(Services, NodesToEject, Snapshot) of
+        [] ->
+            ok;
+        NeededServices ->
+            throw({must_rebalance_services, lists:usort(NeededServices)})
+    end.
+
+get_uninitialized_services(all, _KeepNodes, _Snapshot) ->
+    [];
+get_uninitialized_services(Services, KeepNodes, Snapshot) ->
+    UninitializedServices =
+        lists:flatmap(
+          fun(Node) ->
+                  NodeServices =
+                      ns_cluster_membership:node_services(Snapshot, Node)
+                      -- [kv],
+                  lists:filter(
+                    ?cut(not lists:member(
+                               Node, ns_cluster_membership:get_service_map(
+                                       Snapshot, _))),
+                    NodeServices)
+          end, KeepNodes),
+    lists:usort(UninitializedServices) -- Services.
+
+get_unejected_services(all, _NodesToEject, _Snapshot) ->
+    [];
+get_unejected_services(Services, NodesToEject, Snapshot) ->
+    lists:usort(
+      lists:flatmap(ns_cluster_membership:node_services(Snapshot, _),
+                    NodesToEject)) -- Services.
+
 check_for_unfinished_failover(Snapshot) ->
     case chronicle_master:get_prev_failover_nodes(Snapshot) of
         [] ->
@@ -1687,3 +1743,36 @@ maybe_reply_to({shutdown, stop}, State) ->
     maybe_reply_to(stopped_by_user, State);
 maybe_reply_to(Reason, #rebalancing_state{reply_to = ReplyTo}) ->
     gen_statem:reply(ReplyTo, Reason).
+
+-ifdef(TEST).
+
+get_uninitialized_services_test() ->
+    Snapshot =
+        #{{node, n1 ,services} => {[index, kv], rev},
+          {node, n2 ,services} => {[index, kv, n1ql], rev},
+          {service_map, index} => {[n1, n2], rev},
+          {service_map, n1ql} => {[n2], rev}},
+    ?assertEqual([], get_uninitialized_services([kv], [n1, n2], Snapshot)),
+    ?assertEqual([], get_uninitialized_services(all, [n1, n2], Snapshot)),
+
+    Snapshot1 = maps:merge(Snapshot,
+                           #{{service_map, index} => {[n1], rev},
+                             {service_map, n1ql} => {[], rev}}),
+
+    ?assertEqual(
+       [index, n1ql],
+       lists:sort(get_uninitialized_services([kv], [n1, n2], Snapshot1))),
+    ?assertEqual([], get_uninitialized_services(all, [n1, n2], Snapshot1)).
+
+get_unejected_services_test() ->
+    Snapshot =
+        #{{node, n1 ,services} => {[index, kv], rev},
+          {node, n2 ,services} => {[index, kv, n1ql], rev}},
+    ?assertEqual([index, n1ql],
+                 lists:sort(get_unejected_services([kv], [n2], Snapshot))),
+    ?assertEqual([], get_unejected_services([kv], [], Snapshot)),
+    ?assertEqual([kv], get_unejected_services(
+                         [index, n1ql], [n1, n2], Snapshot)),
+    ?assertEqual([], get_unejected_services(all, [n2], Snapshot)).
+
+-endif.

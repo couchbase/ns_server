@@ -65,6 +65,8 @@
          handle_streaming/2,
          handle_streaming/3,
          assert_is_enterprise/0,
+         assert_is_enterprise/1,
+         assert_profile_flag/2,
          assert_is_66/0,
          assert_is_71/0,
          assert_is_elixir/0,
@@ -653,10 +655,23 @@ handle_streaming_wakeup(Req, DataBody, HTTPRes, Res, NotifyTag) ->
     handle_streaming(Req, DataBody, HTTPRes, Res,
                      {NotifyTag, NewValue}).
 
+param_error_prefix(ParamName) ->
+    io_lib:format("Parameter ~p requires ", [ParamName]).
+
 assert_is_enterprise() ->
     assert(fun cluster_compat_mode:is_enterprise/0,
            "This http API endpoint requires enterprise edition",
            [{"X-enterprise-edition-needed", 1}]).
+
+assert_is_enterprise(ParamName) ->
+    assert(fun cluster_compat_mode:is_enterprise/0,
+           [param_error_prefix(ParamName), "enterprise edition"],
+           [{"X-enterprise-edition-needed", 1}]).
+
+assert_profile_flag(Flag, ParamName) ->
+    assert(?cut(config_profile:get_bool(Flag)),
+           [param_error_prefix(ParamName),
+            io_lib:format("config profile flag ~p to be set.", [Flag])]).
 
 assert_is_66() ->
     assert_cluster_version(fun cluster_compat_mode:is_cluster_66/0).

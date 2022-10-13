@@ -15,6 +15,7 @@
 {num_writer_threads, 64}.
 {enable_auto_rebalance_settings, false}.
 {disallow_memcached_buckets, true}.
+{allow_per_service_rebalance, true}.
 {{indexer, num_replica}, 1}.
 {{indexer, mem_high_threshold}, 70}.
 {{indexer, mem_low_threshold}, 50}.

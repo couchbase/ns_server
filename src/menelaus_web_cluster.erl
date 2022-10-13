@@ -1039,14 +1039,30 @@ parse_rebalance_params(Params) ->
                 DefragmentZonesB
         end,
 
+    Services = case proplists:get_value("services", Params) of
+                   undefined ->
+                       all;
+                   ServicesList ->
+                       menelaus_util:assert_is_enterprise("services"),
+                       menelaus_util:assert_profile_flag(
+                         allow_per_service_rebalance, "services"),
+                       case parse_validate_services_list(ServicesList) of
+                           {ok, S} ->
+                               S;
+                           {error, Error} ->
+                               throw(Error)
+                       end
+               end,
+
     [[list_to_existing_atom(N) || N <- KnownNodesS],
      [list_to_existing_atom(N) || N <- EjectedNodesS],
-     DeltaRecoveryBuckets, DefragmentZones].
+     DeltaRecoveryBuckets, DefragmentZones, Services].
 
 do_handle_rebalance(Req, [KnownNodes, EjectedNodes, DeltaRecoveryBuckets,
-                          DefragmentZones]) ->
+                          DefragmentZones, Services] = Params) ->
+    ?log_info("Starting rebalance with params ~p", [Params]),
     case rebalance:start(KnownNodes, EjectedNodes, DeltaRecoveryBuckets,
-                         DefragmentZones) of
+                         DefragmentZones, Services) of
         already_balanced ->
             reply(Req, 200);
         in_progress ->
@@ -1063,6 +1079,8 @@ do_handle_rebalance(Req, [KnownNodes, EjectedNodes, DeltaRecoveryBuckets,
             reply_json(Req, {[{noKVNodesLeft, 1}]}, 400);
         {need_more_space, Zones} ->
             reply_json(Req, {[{need_more_space, Zones}]}, 400);
+        {must_rebalance_services, S} ->
+            reply_json(Req, {[{must_rebalance_services, S}]}, 400);
         % pre-elixir responses
         ok ->
             ns_audit:rebalance_initiated(Req, KnownNodes, EjectedNodes,
