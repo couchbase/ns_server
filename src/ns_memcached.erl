@@ -1262,7 +1262,7 @@ do_connect(Options) ->
     Config = ns_config:get(),
     Port = service_ports:get_port(memcached_dedicated_port, Config),
     User = ns_config:search_node_prop(Config, memcached, admin_user),
-    Pass = ns_config:search_node_prop(Config, memcached, admin_pass),
+    Pass = ns_config_auth:get_password(node(), Config, special),
     AFamilies = proplists:get_value(try_afamily, Options,
                                     [misc:get_net_family()]),
     HelloFeatures = proplists:delete(try_afamily, Options),

@@ -21,7 +21,7 @@
 -include("pipes.hrl").
 
 -record(state, {users,
-                admin_pass,
+                admin_passwords,
                 rest_creds,
                 prometheus_auth}).
 
@@ -33,16 +33,13 @@ sync() ->
     memcached_cfg:sync(?MODULE).
 
 format_status(State) ->
-    State#state{admin_pass="*****"}.
+    State#state{admin_passwords="*****"}.
 
 init() ->
     Config = ns_config:get(),
-    AU = ns_config:search_node_prop(Config, memcached, admin_user),
-    Users = ns_config:search_node_prop(Config, memcached, other_users, []),
-    AP = ns_config:search_node_prop(Config, memcached, admin_pass),
 
-    #state{users = [AU | Users],
-           admin_pass = AP,
+    #state{users = extract_users(Config),
+           admin_passwords = extract_passwords(Config),
            rest_creds = ns_config_auth:get_admin_user_and_auth(),
            prometheus_auth = prometheus_cfg:get_auth_info()}.
 
@@ -56,6 +53,8 @@ filter_event(rest_creds) ->
     true;
 filter_event({node, Node, prometheus_auth_info}) when Node =:= node() ->
     true;
+filter_event({node, Node, memcached}) ->
+    Node =:= dist_manager:this_node();
 filter_event(_Key) ->
     false.
 
@@ -81,14 +80,24 @@ handle_event({node, Node, prometheus_auth_info},
             unchanged;
         Other ->
             {changed, State#state{prometheus_auth = Other}}
+    end;
+handle_event({node, _Node, memcached}, #state{} = State) ->
+    Config = ns_config:get(),
+    NewState = State#state{users = extract_users(Config),
+                           admin_passwords = extract_passwords(Config)},
+    case NewState =/= State of
+        true ->
+            {changed, NewState};
+        false ->
+            unchanged
     end.
 
 producer(#state{users = Users,
-                admin_pass = AP,
+                admin_passwords = AdminPasswords,
                 rest_creds = RestCreds,
                 prometheus_auth = PromAuth}) ->
     pipes:compose([menelaus_users:select_auth_infos({'_', local}),
-                   jsonify_auth(Users, AP, RestCreds, PromAuth),
+                   jsonify_auth(Users, AdminPasswords, RestCreds, PromAuth),
                    sjson:encode_extended_json([{compact, false},
                                                {strict, false}])]).
 
@@ -135,7 +144,7 @@ memcached_user_info(User, Auth) ->
         menelaus_users:upgrade_props(?VERSION_ELIXIR, auth, User, Auth),
     {list_to_binary(User), {NewAuth}}.
 
-jsonify_auth(Users, AdminPass, RestCreds, PromAuth) ->
+jsonify_auth(Users, AdminPasswords, RestCreds, PromAuth) ->
     EnforceLimits = cluster_compat_mode:should_enforce_limits(),
     ?make_transducer(
        begin
@@ -158,7 +167,7 @@ jsonify_auth(Users, AdminPass, RestCreds, PromAuth) ->
                undefined -> ok
            end,
 
-           AdminAuth = menelaus_users:build_auth([AdminPass]),
+           AdminAuth = menelaus_users:build_auth(AdminPasswords),
            [?yield({kv, memcached_user_info(U, AdminAuth)}) || U <- Users],
 
            pipes:foreach(
@@ -185,3 +194,11 @@ jsonify_auth(Users, AdminPass, RestCreds, PromAuth) ->
 
 refresh() ->
     memcached_refresh:refresh(isasl).
+
+extract_passwords(Config) ->
+    lists:usort(
+      ns_config_auth:get_special_passwords(dist_manager:this_node(), Config)).
+
+extract_users(Config) ->
+    [ns_config:search_node_prop(Config, memcached, admin_user) |
+     ns_config:search_node_prop(Config, memcached, other_users, [])].

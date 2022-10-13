@@ -239,11 +239,11 @@ build_node_info(N, User, Config, Snapshot) ->
                 _ ->
                     []
             end,
+    Password = ns_config_auth:get_password(N, Config, special),
     {[{host, erlang:list_to_binary(Host)},
       {user, erlang:list_to_binary(User)},
       {other_users, ns_config:search_node_prop(N, Config, memcached, other_users, [])},
-      {password,
-       erlang:list_to_binary(ns_config:search_node_prop(N, Config, memcached, admin_pass))},
+      {password, erlang:list_to_binary(Password)},
       {ports, Ports}] ++ Local}.
 
 build_auth_info(#state{cert_version = CertVersion,
@@ -281,7 +281,9 @@ build_auth_info(#state{cert_version = CertVersion,
                       cluster_compat_mode:should_enforce_limits()},
                      {userLimitsVersion,
                       menelaus_web_rbac:check_user_limits_version()}]},
-
+    SpecialPasswords = ns_config_auth:get_special_passwords(
+                         dist_manager:this_node(), Config),
+    SpecialPasswordsBin = [list_to_binary(P) || P <- SpecialPasswords],
     [{nodes, Nodes},
      {authCheckURL, list_to_binary(AuthCheckURL)},
      {permissionCheckURL, list_to_binary(PermissionCheckURL)},
@@ -299,6 +301,7 @@ build_auth_info(#state{cert_version = CertVersion,
      {clientCertAuthVersion, ClientCertAuthVersion},
      {clusterEncryptionConfig, {[{encryptData, ClusterDataEncrypt},
                                  {disableNonSSLPorts, DisableNonSSLPorts}]}},
+     {specialPasswords, SpecialPasswordsBin},
      {tlsConfig, [tls_config(S, Config) || S <- TLSServices]}].
 
 tls_config(Service, Config) ->

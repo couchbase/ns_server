@@ -219,7 +219,7 @@ default() ->
        {admin_user, "@ns_server"},
        {other_users, ["@cbq-engine", "@projector", "@goxdcr", "@index", "@fts",
                       "@eventing", "@cbas", "@backup"]},
-       {admin_pass, binary_to_list(couch_uuids:random())},
+       {admin_pass, {v2, [generate_internal_pass()]}},
        {engines,
         [{membase,
           [{engine, path_config:component_path(lib, "memcached/ep.so")},
@@ -506,6 +506,9 @@ decrypt(Config) ->
 
 fixup(KV) ->
     dist_manager:fixup_config(KV).
+
+generate_internal_pass() ->
+    binary_to_list(couch_uuids:random()).
 
 -ifdef(TEST).
 upgrade_6_5_to_6_5_1_test() ->

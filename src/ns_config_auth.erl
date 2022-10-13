@@ -12,6 +12,7 @@
 -module(ns_config_auth).
 
 -include("ns_common.hrl").
+-include("cut.hrl").
 
 -export([authenticate/2,
          set_admin_credentials/2,
@@ -19,6 +20,8 @@
          get_user/1,
          get_password/1,
          get_password/2,
+         get_password/3,
+         get_special_passwords/2,
          admin_credentials_changed/2,
          get_admin_user_and_auth/0,
          get_admin_creds/1,
@@ -67,8 +70,21 @@ get_user(admin) ->
 get_password(special) ->
     get_password(node(), special).
 
-get_password(Node, special) when is_atom(Node)->
-    ns_config:search_node_prop(Node, ns_config:latest(), memcached, admin_pass).
+get_password(Node, special) ->
+    get_password(Node, ns_config:latest(), special).
+
+get_password(Node, Config, special) ->
+    case get_special_passwords(Node, Config) of
+        [] -> undefined;
+        [Pass | _] -> Pass
+    end.
+
+get_special_passwords(Node, Config) when is_atom(Node)->
+    case ns_config:search_node_prop(Node, Config, memcached, admin_pass) of
+        undefined -> [];
+        {v2, Passwords} -> Passwords;
+        Password when is_list(Password) -> [Password]
+    end.
 
 get_salt_and_mac({password, {Salt, Mac}}) ->
     [{?HASH_ALG_KEY, ?SHA1_HASH},
@@ -96,15 +112,11 @@ admin_credentials_changed(User, Password) ->
 authenticate_special("@prometheus" = User, Password) ->
     prometheus_cfg:authenticate(User, Password);
 authenticate_special([$@ | _] = User, Password) ->
-    case ns_config:search_node_prop(ns_config:latest(),
-                                    memcached, admin_pass) of
-        undefined ->
-            %% Note that this can happen during node rename when the erlang node
-            %% name has changed, but we haven't renamed the node level config
-            %% entries.
+    case get_special_passwords(node(), ns_config:latest()) of
+        [] ->
             {error, temporary_failure};
-        MemcachedPassword ->
-            case misc:compare_secure(MemcachedPassword, Password) of
+        SpecPasswords ->
+            case misc:compare_secure_many(Password, SpecPasswords) of
                 true ->
                     {ok, {User, admin}};
                 false ->
@@ -155,10 +167,7 @@ check_hash(HashInfo, Password) ->
     Base64Hashes = proplists:get_value(?HASHES_KEY, HashInfo),
     Hashes = [base64:decode(H) || H <- Base64Hashes],
     Hash1 = hash_password(HashInfo, Password),
-    %% Even if the first hash matches, we should compare all of them anyway
-    %% for security reasons (timing attack)
-    Results = [misc:compare_secure(Hash2, Hash1) || Hash2 <- Hashes],
-    lists:any(fun functools:id/1, Results).
+    misc:compare_secure_many(Hash1, Hashes).
 
 new_password_hash(Type, Passwords) ->
     Info = new_hash_info(Type),

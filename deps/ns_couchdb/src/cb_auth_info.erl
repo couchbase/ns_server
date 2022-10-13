@@ -33,7 +33,7 @@ handle_call(get, _From, State) ->
     Reply = try
         Config = ns_config:get(),
         AU = ns_config:search_node_prop(Config, memcached, admin_user),
-        AP = ns_config:search_node_prop(Config, memcached, admin_pass),
+        AP = ns_config_auth:get_password(node(), Config, special),
         {auth, ?l2b(AU), ?l2b(AP)}
     catch _:_Error ->
         {error, server_not_ready}

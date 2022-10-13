@@ -2927,6 +2927,28 @@ delay(I) ->
     delay(I-1).
 -endif.
 
+%% Even if the first hash matches, we should compare all of them anyway
+%% for security reasons (timing attack)
+compare_secure_many(X, ListOfY) ->
+    Results = [misc:compare_secure(X, Y) || Y <- ListOfY],
+    lists:foldl(fun (R, Acc) -> R or Acc end, false, Results).
+
+-ifdef(TEST).
+
+compare_secure_many_test() ->
+    ?assertEqual(false, compare_secure_many("", [])),
+    ?assertEqual(false, compare_secure_many("abc", [])),
+    ?assertEqual(false, compare_secure_many("", ["abcd"])),
+    ?assertEqual(false, compare_secure_many("abc", ["abc1"])),
+    ?assertEqual(false, compare_secure_many("abc", ["abd"])),
+    ?assertEqual(true, compare_secure_many("abc", ["abc"])),
+    ?assertEqual(true, compare_secure_many("abc", ["abc1", "abc"])),
+    ?assertEqual(true, compare_secure_many("abc", ["abc", "abc"])),
+    ?assertEqual(true, compare_secure_many("abc", ["abc", "abc2"])),
+    ?assertEqual(false, compare_secure_many("abc", ["abc1", "abc2"])).
+
+-endif.
+
 %% Compare two strings or binaries for equality without short-circuits
 %% to avoid timing attacks.
 compare_secure(<<X/binary>>, <<Y/binary>>) ->

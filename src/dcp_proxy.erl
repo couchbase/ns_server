@@ -248,7 +248,7 @@ connect(Type, ConnName, Node, Bucket) ->
 connect(Type, ConnName, Node, Bucket, RepFeatures) ->
     Cfg = ns_config:latest(),
     Username = ns_config:search_node_prop(Node, Cfg, memcached, admin_user),
-    Password = ns_config:search_node_prop(Node, Cfg, memcached, admin_pass),
+    Password = ns_config_auth:get_password(Node, Cfg, special),
 
     {ok, Sock} = connect_inner(Cfg, Node, RepFeatures),
 

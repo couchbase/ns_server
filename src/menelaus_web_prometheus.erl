@@ -53,9 +53,11 @@ handle_get_metrics(Req) ->
     Config = ns_config:latest(),
     AuthHeader =
         fun (kv) ->
+                Pass = ns_config_auth:get_password(dist_manager:this_node(),
+                                                   Config, special),
                 menelaus_rest:basic_auth_header(
                   ns_config:search_node_prop(Config, memcached, admin_user),
-                  ns_config:search_node_prop(Config, memcached, admin_pass));
+                  Pass);
             (_) ->
                 menelaus_rest:special_auth_header()
         end,
