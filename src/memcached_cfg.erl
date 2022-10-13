@@ -37,7 +37,8 @@
                 module,
                 retry_timer,
                 path,
-                tmp_path}).
+                tmp_path,
+                sync_froms = []}).
 
 format_status(_Opt, [_PDict, #state{module = Mod, stuff = Stuff} = State]) ->
     case erlang:function_exported(Mod, format_status, 1) of
@@ -49,7 +50,8 @@ format_status(_Opt, [_PDict, #state{module = Mod, stuff = Stuff} = State]) ->
 
 sync(Module) ->
     ns_config:sync_announcements(),
-    gen_server:call(Module, sync, infinity).
+    gen_server:call(Module, sync, infinity),
+    memcached_refresh:sync().
 
 start_link(Module, Path) ->
     gen_server:start_link({local, Module}, ?MODULE, [Module, Path], []).
@@ -90,8 +92,10 @@ code_change(_OldVsn, State, _) -> {ok, State}.
 handle_cast(full_reset, State = #state{module = Module}) ->
     {noreply, initiate_write(State#state{stuff = Module:init()})}.
 
-handle_call(sync, _From, State) ->
-    {reply, ok, State}.
+handle_call(sync, _From, #state{retry_timer = undefined} = State) ->
+    {reply, ok, State};
+handle_call(sync, From, #state{sync_froms = Froms} = State) ->
+    {noreply, State#state{sync_froms = [From | Froms]}}.
 
 handle_info({event, Key} = Event, State = #state{module = Module,
                                                  stuff = Stuff}) ->
@@ -103,18 +107,22 @@ handle_info({event, Key} = Event, State = #state{module = Module,
             {noreply, State}
     end;
 handle_info({retry_rename_and_refresh, Tries, SleepTime}, State) ->
-    MaybeTRef = case rename_and_refresh(State, Tries, SleepTime) of
-                    ok ->
-                        %% Rename was successful
-                        undefined;
-                    TRef ->
-                        %% Error still happened so new timer started.
-                        TRef
-                end,
-    {noreply, State#state{retry_timer = MaybeTRef}};
+    NewState = case rename_and_refresh(State, Tries, SleepTime) of
+                   ok ->
+                       %% Rename was successful
+                       reply_to_syncs(State#state{retry_timer = undefined});
+                   TRef ->
+                       %% Error still happened so new timer started.
+                       State#state{retry_timer = TRef}
+               end,
+    {noreply, NewState};
 
 handle_info(_Info, State) ->
     {noreply, State}.
+
+reply_to_syncs(#state{sync_froms = Froms} = State) ->
+    [gen_server:reply(F, ok) || F <- lists:reverse(Froms)],
+    State#state{sync_froms = []}.
 
 cancel_retry_timer(undefined) ->
     ok;
@@ -130,8 +138,8 @@ initiate_write(#state{retry_timer = TRef} = State) ->
     cancel_retry_timer(TRef),
     case write_cfg(State) of
         ok ->
-            State#state{retry_timer = undefined};
-        NewTRef ->
+            reply_to_syncs(State#state{retry_timer = undefined});
+        NewTRef when is_reference(NewTRef) ->
             %% Rename failed and needs to be retried
             State#state{retry_timer = NewTRef}
     end.
@@ -167,7 +175,8 @@ rename_and_refresh(#state{path = Path,
     case memcached_refresh:apply_to_file(TmpPath, Path) of
         ok ->
             ok = Module:refresh(),
-            ?log_debug("Successfully renamed ~p to ~p", [TmpPath, Path]);
+            ?log_debug("Successfully renamed ~p to ~p", [TmpPath, Path]),
+            ok;
         {error, Reason} ->
             %% It's likely the rename failed as the destination file is
             %% open by memcached. Retrying will allow it to finish up
