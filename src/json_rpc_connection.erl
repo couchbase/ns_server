@@ -24,7 +24,9 @@
 -record(state, {label :: string(),
                 counter :: non_neg_integer(),
                 sock :: port(),
-                id_to_caller_tid :: ets:tid()}).
+                id_to_caller_tid :: ets:tid(),
+                url_fun = fun () -> undefined end
+                                        :: fun (() -> string() | undefined)}).
 
 -define(PREFIX, "json_rpc_connection-").
 
@@ -69,6 +71,14 @@ init({Label, GetSocket}) ->
                [Label, self()]),
     gen_event:notify(json_rpc_events, {started, Label, self()}),
 
+    chronicle_compat_events:notify_if_key_changes(
+      fun ({node, Node, memcached}) -> Node == dist_manager:this_node();
+          (_) -> false
+      end,
+      update_url),
+
+    self() ! update_url,
+
     gen_server:enter_loop(?MODULE, [],
                           #state{label = Label,
                                  counter = 0,
@@ -84,7 +94,7 @@ handle_cast(_Msg, _State) ->
 handle_info({chunk, Chunk}, #state{id_to_caller_tid = IdToCaller} = State) ->
     {KV} = ejson:decode(Chunk),
     {_, Id} = lists:keyfind(<<"id">>, 1, KV),
-    [{_, From, Silent}] = ets:lookup(IdToCaller, Id),
+    [{_, Continuation, Silent}] = ets:lookup(IdToCaller, Id),
     ets:delete(IdToCaller, Id),
     Silent orelse ale:debug(?JSON_RPC_LOGGER, "got response: ~p", [KV]),
     {RV, Result} =
@@ -113,7 +123,7 @@ handle_info({chunk, Chunk}, #state{id_to_caller_tid = IdToCaller} = State) ->
                 {error, _} ->
                     Result
             end,
-    gen_server:reply(From, Reply),
+    Continuation(Reply),
     case RV of
         stop ->
             {stop, {error, rpc_error}, State};
@@ -123,11 +133,18 @@ handle_info({chunk, Chunk}, #state{id_to_caller_tid = IdToCaller} = State) ->
 handle_info(socket_closed, State) ->
     ?log_debug("Socket closed"),
     {stop, shutdown, State};
+handle_info(update_url, State) ->
+    misc:flush(update_url),
+    {noreply, start_update_revrpc_url(State)};
 handle_info(Msg, State) ->
     ?log_debug("Unknown msg: ~p", [Msg]),
     {noreply, State}.
 
-handle_call({call, Name, EJsonArgThunk, Opts}, From,
+handle_call({call, Name, EJsonArgThunk, Opts}, From, State) ->
+    Continuation = fun (Reply) -> gen_server:reply(From, Reply) end,
+    {noreply, start_call(Name, EJsonArgThunk, Opts, Continuation, State)}.
+
+start_call(Name, EJsonArgThunk, Opts, ResHandler,
             #state{counter = Counter,
                    id_to_caller_tid = IdToCaller,
                    sock = Sock} = State) ->
@@ -156,8 +173,8 @@ handle_call({call, Name, EJsonArgThunk, Opts}, From,
         ale:debug(?JSON_RPC_LOGGER, "sending jsonrpc call:~p",
                   [ns_config_log:sanitize(EJSON, true)]),
     ok = gen_tcp:send(Sock, [ejson:encode(EJSON) | <<"\n">>]),
-    ets:insert(IdToCaller, {Counter, From, Silent}),
-    {noreply, State#state{counter = Counter + 1}}.
+    ets:insert(IdToCaller, {Counter, ResHandler, Silent}),
+    State#state{counter = Counter + 1}.
 
 terminate(_Reason, _State) ->
     ok.
@@ -193,4 +210,32 @@ receiver_handle_data(Parent, Data) ->
             receiver_handle_data(Parent, Rest);
         [SingleChunk] ->
             SingleChunk
+    end.
+
+start_update_revrpc_url(#state{label = Label, url_fun = PrevURLFun} = State) ->
+    URL = ns_ports_setup:build_cbauth_revrpc_url(ns_config:latest(),
+                                                 Label),
+    case URL == PrevURLFun() of
+        true ->
+            State;
+        false ->
+            EJsonArgThunk = fun () -> {[{newURL, list_to_binary(URL)}]} end,
+            Continuation =
+                fun ({ok, {Props}}) ->
+                        case proplists:get_value(<<"isSucc">>, Props) of
+                            true ->
+                                ok;
+                            false ->
+                                Descr = proplists:get_value(<<"description">>,
+                                                            Props),
+                                exit({update_revrpc_url_failed, Descr})
+                        end;
+                    ({error, Reason}) ->
+                        exit({update_revrpc_url_failed, Reason})
+                end,
+            start_call("revrpc.UpdateURL",
+                       EJsonArgThunk,
+                       #{timeout => infinity},
+                       Continuation,
+                       State#state{url_fun = fun () -> URL end})
     end.

@@ -28,8 +28,13 @@ handle_rpc_connect(Req) ->
     "/" ++ Path = mochiweb_request:get(path, Req),
     Sock = mochiweb_request:get(socket, Req),
     menelaus_util:reply(Req, 200),
-    ok = start_handler(Path, Sock),
-    erlang:exit(normal).
+    case string:split(Path, "/", trailing) of
+        [_, "test"] ->
+            ok;
+        _ ->
+            ok = start_handler(Path, Sock),
+            erlang:exit(normal)
+    end.
 
 start_handler(Label, Sock) ->
     Ref = make_ref(),

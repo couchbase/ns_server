@@ -18,7 +18,7 @@
          restart_memcached/0,
          sync/0, create_erl_node_spec/4,
          shutdown_ports/0, build_cbauth_env_vars/2, get_rpc_prefix/1,
-         remote_build_cbauth_revrpc_url/1]).
+         build_cbauth_revrpc_url/2, remote_build_cbauth_revrpc_url/1]).
 
 start() ->
     proc_lib:start_link(?MODULE, setup_body_tramp, []).
