@@ -462,7 +462,7 @@ interesting_stats_total_rec([ThisStats | RestStats], Key, Acc) ->
 do_cluster_storage_info([], _, _) -> [];
 do_cluster_storage_info(NodeInfos, Config, Snapshot) ->
     NodesCount = length(NodeInfos),
-    RAMQuotaUsedPerNode = memory_quota:get_total_buckets_ram_quota(Snapshot),
+    RAMQuotaUsedPerNode = memory_quota:get_max_node_ram_quota(Snapshot),
     RAMQuotaUsed = RAMQuotaUsedPerNode * NodesCount,
 
     RAMQuotaTotalPerNode =

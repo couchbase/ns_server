@@ -13,13 +13,14 @@
 
 -include("ns_common.hrl").
 -include("ns_config.hrl").
+-include("cut.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
 -export([this_node_memory_data/0,
-         get_total_buckets_ram_quota/1,
+         get_max_node_ram_quota/1,
          check_quotas/4,
          check_this_node_quotas/2,
          get_quota/1,
@@ -59,11 +60,43 @@ memory_data() ->
                                             cgroup_memory_data()),
     {TotalMemory, TotalUsed, ProcInfo}.
 
-get_total_buckets_ram_quota(Snapshot) ->
+add_quota_for_servers(Quota, Servers, NodesMap, Pos) ->
     lists:foldl(
-      fun ({_, BucketConfig}, RAMQuota) ->
-              ns_bucket:raw_ram_quota(BucketConfig) + RAMQuota
-      end, 0, ns_bucket:get_buckets(Snapshot)).
+      fun (S, NM) ->
+              maps:update_with(
+                S, ?cut(setelement(Pos, _1, element(Pos, _1) + Quota)), NM)
+      end, NodesMap, Servers).
+
+get_max_node_ram_quota(Snapshot) ->
+    case bucket_placer:is_enabled() of
+        false ->
+            lists:foldl(
+              fun ({_, BucketConfig}, RAMQuota) ->
+                      ns_bucket:raw_ram_quota(BucketConfig) + RAMQuota
+              end, 0, ns_bucket:get_buckets(Snapshot));
+        true ->
+            Nodes = ns_cluster_membership:nodes_wanted(Snapshot),
+            NodesWithQuotas =
+                lists:foldl(
+                  fun ({_, BucketConfig}, NodesMap) ->
+                          Quota = ns_bucket:raw_ram_quota(BucketConfig),
+                          Servers = ns_bucket:get_servers(BucketConfig),
+                          DesiredServers =
+                              case ns_bucket:get_desired_servers(
+                                     BucketConfig) of
+                                  undefined -> [];
+                                  DS -> DS
+                              end,
+                          functools:chain(
+                            NodesMap,
+                            [add_quota_for_servers(Quota, Servers, _, 1),
+                             add_quota_for_servers(Quota, DesiredServers, _,
+                                                   2)])
+                  end, maps:from_keys(Nodes, {0, 0}),
+                  ns_bucket:get_buckets(Snapshot)),
+            lists:max(
+              [max(X, Y) || {_, {X, Y}} <- maps:to_list(NodesWithQuotas)])
+    end.
 
 allowed_memory_usage_max(MemSupData) ->
     {MaxMemoryBytes0, _, _} = MemSupData,
@@ -176,9 +209,8 @@ min_quota(cbas) ->
 min_quota(eventing) ->
     256.
 
-
 check_service_quota(kv, Quota, Snapshot) ->
-    BucketsQuota = get_total_buckets_ram_quota(Snapshot) div ?MIB,
+    BucketsQuota = get_max_node_ram_quota(Snapshot) div ?MIB,
     MinMemoryMB = erlang:max(min_quota(kv), BucketsQuota),
     check_min_quota(kv, MinMemoryMB, Quota);
 check_service_quota(Service, Quota, _) ->
