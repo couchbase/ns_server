@@ -366,11 +366,24 @@ reload_node_certificate_error(bad_cert_identity) ->
     "@" ++ Name = ?INTERNAL_CERT_USER,
     NameBin = list_to_binary(Name),
     <<"Internal client certificate must contain "
-      "SAN.email=", NameBin/binary ,"@"?INTERNAL_CERT_EMAIL_DOMAIN>>.
+    "SAN.email=", NameBin/binary ,"@"?INTERNAL_CERT_EMAIL_DOMAIN>>;
+
+reload_node_certificate_error(bad_server_cert_san) ->
+    reload_node_certificate_error(
+        {bad_server_cert_san, misc:extract_node_address(node())});
+
+reload_node_certificate_error({bad_server_cert_san, HostName}) ->
+    iolist_to_binary(io_lib:format(
+                        "Unable to validate certificate on host: ~s. "
+                        "Please make sure the certificate on this host "
+                        "contains host name '~s' in Subject Alternative Name. "
+                        "Refer to Couchbase docs for more info on how to "
+                        "create node certificates",
+                        [HostName, HostName])).
 
 node_certificate_warning(unused) ->
     <<"This certificate is auto-generated and doesn't seem to be used by any "
-      "node anymore">>;
+      "node anymore.">>;
 node_certificate_warning(mismatch) ->
     <<"Certificate is not signed with cluster CA.">>;
 node_certificate_warning(expired) ->
@@ -378,7 +391,9 @@ node_certificate_warning(expired) ->
 node_certificate_warning(expires_soon) ->
     <<"Certificate will expire soon.">>;
 node_certificate_warning(self_signed) ->
-    <<"Out-of-the-box certificates are self-signed. To further secure your system, you must create new X.509 certificates signed by a trusted CA.">>.
+    <<"Out-of-the-box certificates are self-signed. To further secure your system, you must create new X.509 certificates signed by a trusted CA.">>;
+node_certificate_warning(cert_san_invalid) ->
+    <<"Address specified in cert SAN part can't be verified.">>.
 
 not_absolute_path(Param) ->
     Msg = io_lib:format("An absolute path is required for ~p", [Param]),

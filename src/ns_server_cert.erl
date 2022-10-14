@@ -47,7 +47,8 @@
          cert_props/1,
          cert_expiration_warning_days/0,
          extract_internal_client_cert_user/1,
-         invalid_client_cert_nodes/4]).
+         invalid_client_cert_nodes/4,
+         verify_cert_hostname_strict/2]).
 
 inbox_ca_path() ->
     filename:join(path_config:component_path(data, "inbox"), "CA").
@@ -949,30 +950,37 @@ set_certificate_chain(Type, Chain, PKey, PassphraseSettings) ->
             ValidationRes =
                 case ns_secrets:extract_pkey_pass(PassphraseSettings) of
                     {ok, PassFun} ->
-                        functools:sequence_(
-                          [fun () ->
-                               validate_cert_and_pkey(LeafCert, PKey, PassFun)
-                           end,
-                           fun () ->
-                               validate_otp_certs(Type, ChainPem, PKey, PassFun)
-                           end,
-                           fun () ->
-                               validate_cert_identity(Type, LeafCert)
-                           end]);
+                        ValidationResult =
+                            functools:sequence_([
+                                fun () ->
+                                    validate_cert_and_pkey(
+                                      LeafCert, PKey, PassFun)
+                                end,
+                                fun () ->
+                                    validate_otp_certs(
+                                      Type, ChainPem, PKey, PassFun)
+                                end]),
+                        case ValidationResult of
+                            ok -> validate_cert_identity(Type, LeafCert);
+                            {error, _} -> ValidationResult
+                        end;
                     {error, _} = Error ->
                         Error
                 end,
 
             case ValidationRes of
-                ok ->
-                    ns_ssl_services_setup:set_certificate_chain(
-                           Type,
-                           CAPem,
-                           ChainPem,
-                           PKey,
-                           PassphraseSettings);
                 {error, Reason} ->
-                    {error, Reason}
+                    {error, Reason};
+                {ok, WarningList} ->
+                    {ok, Props} =
+                        ns_ssl_services_setup:set_certificate_chain(
+                            Type,
+                            CAPem,
+                            ChainPem,
+                            PKey,
+                            PassphraseSettings),
+
+                    {ok, Props, WarningList}
             end;
         {error, Reason} ->
             {error, Reason}
@@ -1331,7 +1339,9 @@ get_warnings() ->
             fun (Node) ->
                 Warnings =
                     case ns_config:search(Config, {node, Node, client_cert}) of
-                        {value, Props} -> node_cert_warnings(TrustedCAs, Props);
+                        {value, Props} ->
+                            node_cert_warnings(client_cert, Node, TrustedCAs,
+                                               Props);
                         false -> []
                     end,
                 [{{client_cert, Node}, W} || W <- Warnings]
@@ -1341,7 +1351,9 @@ get_warnings() ->
           fun (Node) ->
               Warnings =
                   case ns_config:search(Config, {node, Node, node_cert}) of
-                      {value, Props} -> node_cert_warnings(TrustedCAs, Props);
+                      {value, Props} ->
+                          node_cert_warnings(node_cert, Node, TrustedCAs,
+                                             Props);
                       false ->
                           case proplists:get_value(supported_compat_version,
                                                    ns_doctor:get_node(Node)) of
@@ -1426,7 +1438,7 @@ is_trusted(CAPem, TrustedCAs) ->
             false
     end.
 
-node_cert_warnings(TrustedCAs, NodeCertProps) ->
+node_cert_warnings(Type, Node, TrustedCAs, NodeCertProps) ->
     MissingCAWarnings =
         case proplists:get_value(ca, NodeCertProps) of
             undefined ->
@@ -1453,7 +1465,19 @@ node_cert_warnings(TrustedCAs, NodeCertProps) ->
             _ -> []
         end,
 
-    MissingCAWarnings ++ ExpirationWarnings ++ SelfSignedWarnings.
+    NodeNameNotMatchWarnings =
+        case Type of
+            node_cert ->
+                case verify_cert_hostname(Node, NodeCertProps) of
+                    {ok, WarningList} -> WarningList;
+                    {error, _Err} -> []
+                end;
+            client_cert ->
+                []
+        end,
+
+    MissingCAWarnings ++ ExpirationWarnings ++
+        SelfSignedWarnings ++ NodeNameNotMatchWarnings.
 
 node_cert_warnings_pre_71(TrustedCAs, Node, Config) ->
     case ns_config:search(Config, cert_and_pkey) of
@@ -1462,7 +1486,7 @@ node_cert_warnings_pre_71(TrustedCAs, Node, Config) ->
         {value, {_, _, _}} ->
             case ns_config:search(Config, {node, Node, cert}) of
                 {value, Props} ->
-                    node_cert_warnings(TrustedCAs, Props);
+                    node_cert_warnings(node_cert, Node, TrustedCAs, Props);
                 false ->
                     [mismatch]
             end;
@@ -1495,9 +1519,69 @@ extract_internal_client_cert_user(Cert) ->
             end (Emails)
     end.
 
-validate_cert_identity(node_cert, _) -> ok;
+-spec validate_cert_identity(node_cert|client_cert, tuple()) ->
+    {ok, WarningList::list()} | {error, atom()}.
+
 validate_cert_identity(client_cert, {'Certificate', DerCert, not_encrypted}) ->
     case extract_internal_client_cert_user(DerCert) of
-        {ok, _UserName} -> ok;
+        {ok, _UserName} -> {ok, []};
         {error, not_found} -> {error, bad_cert_identity}
+    end;
+
+validate_cert_identity(node_cert, NodeCert) ->
+    verify_cert_hostname(node(), NodeCert).
+
+% function name: verify_cert_hostname_strict
+% Possible outputs of verify_cert_hostname are:
+% ok with empty/not empty warning list and error. Sometimes, we are
+% only interested in ok/error, so we map anything other than ok to error.
+
+verify_cert_hostname_strict(Node, NodeCertProps) ->
+    case verify_cert_hostname(Node, NodeCertProps) of
+        {ok, []} -> ok;
+        {ok, _WarningList} -> error;
+        {error, _Err} -> error
+    end.
+
+verify_cert_hostname(Node, NodeCert) ->
+    NeedsValidation =
+        ns_config:read_key_fast(validate_node_cert_san, true) andalso
+        cluster_compat_mode:is_enterprise(),
+    verify_cert_hostname(NeedsValidation, Node, NodeCert).
+
+verify_cert_hostname(true = NeedsValidation, Node, CertProps)
+    when is_list(CertProps) ->
+    Chain = proplists:get_value(pem, CertProps, <<>>),
+    case decode_chain(Chain) of
+        {error, _} ->
+            {error, invalid_chain};
+        [] ->
+            {error, invalid_chain};
+        PemEntriesReversed ->
+            ChainEntries = lists:reverse(PemEntriesReversed),
+            verify_cert_hostname(NeedsValidation, Node, hd(ChainEntries))
+    end;
+
+verify_cert_hostname(true, Node, {'Certificate', DerCert, not_encrypted}) ->
+    ValidReferenceIDs = prepare_reference_ids(Node),
+    case public_key:pkix_verify_hostname(DerCert, ValidReferenceIDs) of
+        true -> {ok, []};
+        false ->
+            NodeNameIsFixed = not ns_cluster_membership:system_joinable(),
+            case NodeNameIsFixed of
+                true -> {error, bad_server_cert_san};
+                false -> {ok, [cert_san_invalid]}
+            end
+    end;
+
+verify_cert_hostname(false, _Node, _DerCert) ->
+    {ok, []}.
+
+prepare_reference_ids(Node) ->
+    Host = misc:extract_node_address(Node),
+    case inet:parse_address(Host) of
+        {ok, IP} ->
+            [{ip, IP}];
+        {error, einval} ->
+            [{dns_id, Host}]
     end.

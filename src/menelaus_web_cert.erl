@@ -182,7 +182,8 @@ warning_severity(expires_soon) -> significant;
 warning_severity(unused) -> minimal;
 warning_severity(mismatch) -> minimal;
 warning_severity(expired) -> serious;
-warning_severity(self_signed) -> minimal.
+warning_severity(self_signed) -> minimal;
+warning_severity(cert_san_invalid) -> minimal.
 
 warning_props({expires_soon, UTCSeconds}) ->
     [{name, expires_soon},
@@ -403,7 +404,7 @@ handle_reload_certificate(Type, Req) when Type == node_cert;
                 case ns_server_cert:load_certs_from_inbox(
                        Type,
                        PassphraseSettings) of
-                    {ok, Props} ->
+                    {ok, Props, WarningList} ->
                         ns_audit:reload_node_certificate(
                           Req,
                           proplists:get_value(subject, Props),
@@ -411,7 +412,12 @@ handle_reload_certificate(Type, Req) when Type == node_cert;
                         ns_ssl_services_setup:sync(),
                         case netconfig_updater:ensure_tls_dist_started(Nodes) of
                             ok ->
-                                menelaus_util:reply(Req, 200);
+                                WarningProps =
+                                    [{warning_props(W)}  || W <- WarningList],
+                                ?log_debug("Certificate reloaded with warnings:"
+                                           " ~p", [WarningProps]),
+                                menelaus_util:reply_json(
+                                    Req, {[{warnings, WarningProps}]}, 200);
                             {error, ErrorMsg} ->
                                 menelaus_util:reply_json(Req, ErrorMsg, 400)
                         end;
