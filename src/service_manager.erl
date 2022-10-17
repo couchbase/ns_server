@@ -14,17 +14,19 @@
 
 -export([with_trap_exit_spawn_monitor_rebalance/6,
          with_trap_exit_spawn_monitor_failover/3,
-         with_trap_exit_spawn_monitor_pause_bucket/6,
-         with_trap_exit_spawn_monitor_resume_bucket/7]).
+         with_trap_exit_spawn_monitor_pause_bucket/7,
+         with_trap_exit_spawn_monitor_resume_bucket/8]).
 
 -record(rebalance_args, {keep_nodes = [] :: [node()],
                          eject_nodes = [] :: [node()],
                          delta_nodes = [] :: [node()]}).
 
 -record(pause_bucket_args, {bucket :: bucket_name(),
+                            snapshot :: map(),
                             remote_path :: string()}).
 
 -record(resume_bucket_args, {bucket :: bucket_name(),
+                             serverMapping :: #{node() => node()},
                              remote_path :: string(),
                              dry_run :: boolean()}).
 
@@ -62,7 +64,7 @@ with_trap_exit_spawn_monitor_failover(Service, KeepNodes, Opts) ->
                                  fun (_) -> ok end, Opts).
 
 with_trap_exit_spawn_monitor_pause_bucket(
-  Service, Bucket, RemotePath, Nodes, ProgressCallback, Opts) ->
+  Service, Bucket, Snapshot, RemotePath, Nodes, ProgressCallback, Opts) ->
     OpBody =
         case Service of
             kv ->
@@ -75,11 +77,14 @@ with_trap_exit_spawn_monitor_pause_bucket(
                                  OpBody,
                                  #pause_bucket_args{
                                     bucket = Bucket,
+                                    snapshot = Snapshot,
                                     remote_path = RemotePath},
                                  ProgressCallback, Opts).
 
 with_trap_exit_spawn_monitor_resume_bucket(
-  Service, Bucket, RemotePath, DryRun, Nodes, ProgressCallback, Opts) ->
+  Service, Bucket, ServerMapping, RemotePath,
+  DryRun, Nodes, ProgressCallback, Opts) ->
+
     OpBody =
         case Service of
             kv ->
@@ -92,6 +97,7 @@ with_trap_exit_spawn_monitor_resume_bucket(
                                  OpBody,
                                  #resume_bucket_args{
                                     bucket = Bucket,
+                                    serverMapping = ServerMapping,
                                     remote_path = RemotePath,
                                     dry_run = DryRun},
                                  ProgressCallback, Opts).
@@ -407,11 +413,9 @@ kv_pause_bucket_op(#state{
                       service_manager = Manager},
                    #pause_bucket_args{
                       bucket = Bucket,
+                      snapshot = Snapshot,
                       remote_path = RemotePath}) ->
-
-    %% Kill all the DCP replications for this bucket.
-    ok = replication_manager:set_incoming_replication_map(Bucket, []),
-
+    ok = hibernation_utils:upload_metadata_to_s3(Bucket, Snapshot, RemotePath),
     hibernation_utils:run_hibernation_op(
       fun (Node) ->
               ok = kv_hibernation_agent:pause_bucket(
@@ -423,10 +427,13 @@ kv_resume_bucket_op(#state{
                        service_manager = Manager},
                     #resume_bucket_args{
                        bucket = Bucket,
-                       remote_path = RemotePath,
-                       dry_run = _DryRun}) ->
+                       serverMapping = ServerMapping,
+                       remote_path = RemotePath}) ->
     hibernation_utils:run_hibernation_op(
       fun (Node) ->
+              {ok, OldNodeName} = maps:find(Node, ServerMapping),
+              SourceRemotePath = hibernation_utils:get_node_data_remote_path(
+                                   RemotePath, OldNodeName),
               ok = kv_hibernation_agent:resume_bucket(
-                     Bucket, RemotePath, Node, Manager)
+                     Bucket, SourceRemotePath, Node, Manager)
       end, Nodes, ?RESUME_BUCKET_TIMEOUT).

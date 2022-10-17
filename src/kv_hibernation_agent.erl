@@ -182,7 +182,8 @@ handle_info({'DOWN', MRef, process, Pid, _Reason} = DownMsg,
 handle_info({'DOWN', MRef, process, Pid, _Reason} = DownMsg,
             #state{bucket = Bucket,
                    hibernation_manager = {Pid, MRef},
-                   worker = Worker} = State) ->
+                   worker = Worker,
+                   op = Op} = State) ->
     %% Received when hibernation_manager crashes.
     %%
     %% We need to unpause any bucket that was paused. It can happen that
@@ -194,6 +195,7 @@ handle_info({'DOWN', MRef, process, Pid, _Reason} = DownMsg,
 
     maybe_terminate_worker(Worker),
 
+    Op = pause_bucket,
     do_unpause_bucket(Bucket),
     {noreply, functools:chain(
                 State,
@@ -268,14 +270,41 @@ handle_sub_call({hibernation_op, _},
                                bucket = Bucket} = State) ->
     {reply, State, {error, {hibernation_op_running, {Op, Bucket}}}}.
 
-do_pause_bucket(_Bucket, _RemotePath) ->
-    ok.
+append_path_separator(Path) ->
+    false = misc:is_windows(),
+    Path ++ "/".
 
-do_resume_bucket(_Bucket, _RemotePath) ->
-    ok.
+do_pause_bucket(Bucket, RemotePath) ->
+    ?log_info("Starting pause Bucket: ~p, RemotePath: ~p",
+              [Bucket, RemotePath]),
 
-do_unpause_bucket(_Bucket) ->
-    ok.
+    %% Kill all the DCP replications for this bucket.
+    ok = replication_manager:set_incoming_replication_map(Bucket, []),
+
+    ok = ns_memcached:pause_bucket(Bucket),
+
+    SourcePath =  append_path_separator(
+                    hibernation_utils:get_bucket_data_component_path(Bucket)),
+    DestPath = hibernation_utils:get_bucket_data_remote_path(RemotePath, node(),
+                                                             Bucket),
+
+    ?log_info("Pause Bucket: ~p, Source: ~p, Dest: ~p",
+              [Bucket, SourcePath, DestPath]),
+    ok = hibernation_utils:sync_s3(SourcePath, DestPath, to).
+
+do_resume_bucket(Bucket, RemotePath) ->
+    SourcePath = append_path_separator(RemotePath),
+    DestPath = hibernation_utils:get_data_component_path(),
+    ?log_info("Resume Bucket: ~p, Source: ~p, Dest: ~p",
+              [Bucket, SourcePath, DestPath]),
+
+    %% On a new resume, we cleanup any old data for previously failed resumes
+    ok = ns_storage_conf:delete_unused_buckets_db_files(),
+
+    ok = hibernation_utils:sync_s3(SourcePath, DestPath, from).
+
+do_unpause_bucket(Bucket) ->
+    ok = ns_memcached:unpause_bucket(Bucket).
 
 run_on_worker(Op, OpBody) ->
     Parent = self(),

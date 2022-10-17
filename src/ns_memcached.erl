@@ -94,6 +94,8 @@
          local_connected_and_list_vbucket_details/2,
          set_vbucket/3, set_vbucket/4,
          set_vbuckets/2,
+         pause_bucket/1,
+         unpause_bucket/1,
          stats/2,
          warmup_stats/1,
          raw_stats/5,
@@ -674,6 +676,13 @@ do_handle_call({get_keys, VBuckets, Params, Identity}, _From,
             {compromised_reply, RV, State}
     end;
 
+do_handle_call(pause_bucket_stub, _From, State) ->
+    ?log_debug("Pause stub called"),
+    {reply, ok, State};
+do_handle_call(unpause_bucket_stub, _From, State) ->
+    ?log_debug("UnPause stub called"),
+    {reply, ok, State};
+
 do_handle_call(_, _From, State) ->
     {reply, unhandled, State}.
 
@@ -1184,6 +1193,14 @@ set_vbuckets(Bucket, ToSet) ->
             do_call(server(Bucket), Bucket,
                     {set_vbuckets, ToSet}, ?TIMEOUT_VERY_HEAVY)
     end.
+
+-spec pause_bucket(bucket_name()) -> ok | {error, any()}.
+pause_bucket(Bucket) ->
+    do_call(server(Bucket), Bucket, pause_bucket_stub, ?TIMEOUT_VERY_HEAVY).
+
+-spec unpause_bucket(bucket_name()) -> ok | {error, any()}.
+unpause_bucket(Bucket) ->
+    do_call(server(Bucket), Bucket, unpause_bucket_stub, ?TIMEOUT_VERY_HEAVY).
 
 -spec stats(bucket_name(), binary() | string()) ->
                    {ok, [{binary(), binary()}]} | mc_error().

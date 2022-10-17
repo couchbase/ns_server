@@ -25,6 +25,7 @@
          kv_backend_type/1,
          num_replicas_changed/1,
          create_bucket/3,
+         restore_bucket/4,
          delete_bucket/1,
          display_type/1,
          display_type/2,
@@ -89,6 +90,7 @@
          set_initial_map/4,
          set_map_opts/2,
          set_servers/2,
+         set_restored_attributes/3,
          remove_servers/2,
          update_bucket_props/2,
          update_bucket_props/4,
@@ -124,6 +126,7 @@
          get_width/1,
          get_weight/1,
          get_desired_servers/1,
+         get_hibernation_state/1,
          update_desired_servers/2]).
 
 -import(json_builder,
@@ -880,12 +883,24 @@ create_bucket(BucketType, BucketName, NewConfig) ->
                              NewConfig),
     MergedConfig1 = generate_sasl_password(MergedConfig0),
     MergedConfig = add_auth_type(MergedConfig1),
+    BucketUUID = couch_uuids:random(),
+    Manifest = collections:default_manifest(),
     do_create_bucket(chronicle_compat:backend(), BucketName,
-                     MergedConfig),
+                     MergedConfig, BucketUUID, Manifest),
     %% The janitor will handle creating the map.
     ok.
 
-do_create_bucket(ns_config, BucketName, Config) ->
+restore_bucket(BucketName, NewConfig, BucketUUID, Manifest) ->
+    case is_valid_bucket_name(BucketName) of
+        true ->
+            do_create_bucket(chronicle, BucketName, NewConfig, BucketUUID,
+                             Manifest),
+            ok;
+        {error, _} ->
+            {error, {invalid_bucket_name, BucketName}}
+    end.
+
+do_create_bucket(ns_config, BucketName, Config, BucketUUID, _Manifest) ->
     ns_config:update_sub_key(
       buckets, configs,
       fun (List) ->
@@ -894,10 +909,9 @@ do_create_bucket(ns_config, BucketName, Config) ->
                   Tuple ->
                       exit({already_exists, Tuple})
               end,
-              BucketUUID = couch_uuids:random(),
               [{BucketName, [{uuid, BucketUUID} | Config]} | List]
       end);
-do_create_bucket(chronicle, BucketName, Config) ->
+do_create_bucket(chronicle, BucketName, Config, BucketUUID, Manifest) ->
     {ok, _} =
         chronicle_kv:transaction(
           kv, [root(), nodes_wanted],
@@ -907,22 +921,22 @@ do_create_bucket(chronicle, BucketName, Config) ->
                       true ->
                           {abort, already_exists};
                       false ->
-                          {commit, create_bucket_sets(
-                                     BucketName, BucketNames, Config) ++
-                               collections_sets(BucketName, Config, Snapshot)}
+                          {commit, create_bucket_sets(BucketName, BucketNames,
+                                                      BucketUUID, Config) ++
+                                   collections_sets(BucketName, Config,
+                                                    Snapshot, Manifest)}
                   end
           end).
 
-create_bucket_sets(Bucket, Buckets, Config) ->
+create_bucket_sets(Bucket, Buckets, BucketUUID, Config) ->
     [{set, root(), lists:usort([Bucket | Buckets])},
      {set, sub_key(Bucket, props), Config},
-     {set, uuid_key(Bucket), couch_uuids:random()}].
+     {set, uuid_key(Bucket), BucketUUID}].
 
-collections_sets(Bucket, Config, Snapshot) ->
+collections_sets(Bucket, Config, Snapshot, Manifest) ->
     case collections:enabled(Config) of
         true ->
             Nodes = ns_cluster_membership:nodes_wanted(Snapshot),
-            Manifest = collections:default_manifest(),
             [{set, collections:key(Bucket), Manifest} |
              [collections:last_seen_ids_set(Node, Bucket, Manifest) ||
                  Node <- Nodes]];
@@ -1132,6 +1146,24 @@ set_initial_map(Bucket, Map, Servers, MapOpts) ->
                         [{map, Map}, {map_opts_hash, erlang:phash2(MapOpts)}])
               end)
     end.
+
+set_restored_attributes_property(Bucket, Map, ServerList, Fun) ->
+    update_bucket_config(
+        Bucket,
+        fun (OldConfig) ->
+            OldConfig1 =
+                functools:chain(OldConfig,
+                                [proplists:delete(hibernation_state, _),
+                                 proplists:delete(servers, _)]),
+            Fun(proplists:get_value(map, OldConfig1, [])),
+            OldConfig1 ++ [{map, Map}, {servers, ServerList}]
+        end).
+
+set_restored_attributes(Bucket, Map, ServerList) ->
+    validate_map(Map),
+    set_restored_attributes_property(Bucket, Map, ServerList,
+                                     master_activity_events:note_set_map(Bucket,
+                                     Map, _)).
 
 set_map_opts(Bucket, Opts) ->
     set_property(Bucket, map_opts_hash, erlang:phash2(Opts)).
@@ -1622,6 +1654,9 @@ build_compaction_settings_json(Settings) ->
           (_, Acc) ->
               Acc
       end, [], Settings).
+
+get_hibernation_state(Props) ->
+    proplists:get_value(hibernation_state, Props).
 
 get_width(Props) ->
     proplists:get_value(width, Props).

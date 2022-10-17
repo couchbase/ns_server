@@ -280,6 +280,7 @@ build_bucket_info(Id, Ctx, InfoLevel, MayExposeAuth, SkipMap) ->
         build_purge_interval_info(BucketConfig),
         build_replica_index(BucketConfig),
         build_bucket_placer_params(BucketConfig),
+        build_hibernation_state(BucketConfig),
         build_storage_limits(BucketConfig),
         build_throttle_limits(BucketConfig),
         build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx),
@@ -342,6 +343,14 @@ build_bucket_placer_params(BucketConfig) ->
             [];
         Width ->
             [{width, Width}, {weight, ns_bucket:get_weight(BucketConfig)}]
+    end.
+
+build_hibernation_state(BucketConfig) ->
+    case ns_bucket:get_hibernation_state(BucketConfig) of
+        undefined ->
+            [];
+        State ->
+            {hibernation_state, State}
     end.
 
 build_sasl_password(BucketConfig) ->
