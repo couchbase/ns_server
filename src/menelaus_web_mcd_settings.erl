@@ -23,6 +23,10 @@
         [reply_json/2,
          reply_json/3]).
 
+%% Updates to these settings go to the '{node, node(), memcached}' or
+%% 'memcached' keys depending on whether the write is per-node or global.
+%% These change values of keys in memcached.json.
+
 supported_setting_names() ->
     [{max_connections, {int, 2000, ?MC_MAXINT}},
      {num_reader_threads, fun validate_num_threads/1},
@@ -40,6 +44,10 @@ supported_setting_names() ->
      {dedupe_nmvb_maps, bool},
      {tracing_enabled, bool},
      {datatype_snappy, bool}].
+
+%% Updates to these settings go to the '{node, node(), memcached_config_extra}'
+%% or 'memcached_config_extra' keys depending on whether the write is per-node
+%% or global. These add new keys to memcached.json.
 
 supported_extra_setting_names() ->
     [{default_reqs_per_event, {int, 0, ?MC_MAXINT}},

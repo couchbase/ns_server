@@ -171,6 +171,14 @@ default() ->
 
      {{node, node(), audit}, AuditLocalLogs},
 
+     %% The {node, node(), memcached}, memcached and
+     %% {node, node(), memcached_defaults} keys are parameters that are
+     %% used to set the values of the keys in memcached.json.
+     %%
+     %% There’s a pecking order. Parameter values in the per-node memcached
+     %% key override the global memcached key which override the per-node
+     %% memcached_defaults. (There are no global memcached defaults.)
+
      {memcached, []},
 
      {{node, node(), memcached_defaults},
@@ -232,6 +240,9 @@ default() ->
        {log_cyclesize, 1024*1024*10},
        %% Milliseconds between log rotation runs.
        {log_rotation_period, 39003}]},
+
+     %% This section defines the "schema" for the memcached.json file. Each
+     %% of the keys ends up as a key in the JSON object in the file.
 
      {{node, node(), memcached_config},
       {[
