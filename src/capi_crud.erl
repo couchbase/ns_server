@@ -28,6 +28,10 @@ handle_mutation_rv(#mc_header{status = ?SUCCESS} = _Header, _Entry) ->
     ok;
 handle_mutation_rv(#mc_header{status = ?KEY_ENOENT} = _Header, _Entry) ->
     {error, construct_error_context(<<"Key doesn't exist">>)};
+handle_mutation_rv(#mc_header{status = ?LIMIT_EXCEEDED} = _Header, _Entry) ->
+    {error,
+     construct_error_context(
+       <<"Ingress disabled due to exceeding configured storage limit">>)};
 handle_mutation_rv(#mc_header{status = ?EINVAL} = _Header, Entry) ->
     {error, Entry#mc_entry.data};
 handle_mutation_rv(#mc_header{status = ?UNKNOWN_COLLECTION}, Entry) ->
