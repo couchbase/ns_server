@@ -11,7 +11,8 @@
 {{magma, can_set_max_shards}, true}.
 {enable_throttle_limits, true}.
 {enable_storage_limits, true}.
-{num_reader_writer_threads, 64}.
+{num_reader_threads, 64}.
+{num_writer_threads, 64}.
 {enable_auto_rebalance_settings, false}.
 {disallow_memcached_buckets, true}.
 {{indexer, num_replica}, 1}.
