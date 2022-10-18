@@ -32,7 +32,7 @@ get_current_version() ->
     %% changed in 6.0.4 after 6.5.0 had shipped.  As 6.5.0 had no knowledge
     %% of the 6.0.4 version (as it didn't exist when 6.5.0 shipped) it
     %% was unable to perform an upgrade.
-    list_to_tuple(?VERSION_71).
+    list_to_tuple(?VERSION_ELIXIR).
 
 get_data_dir() ->
     RawDir = path_config:component_path(data),
@@ -448,7 +448,8 @@ upgrade_config_from_7_1_to_elixir(Config) ->
     do_upgrade_config_from_7_1_to_elixir(Config, DefaultConfig).
 
 do_upgrade_config_from_7_1_to_elixir(_Config, DefaultConfig) ->
-    [upgrade_key(memcached_config, DefaultConfig)].
+    [upgrade_key(memcached_config, DefaultConfig),
+     upgrade_key(memcached_defaults, DefaultConfig)].
 
 encrypt_config_val(Val) ->
     {ok, Encrypted} = encryption_service:encrypt(term_to_binary(Val)),
