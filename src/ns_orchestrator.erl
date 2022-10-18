@@ -406,46 +406,42 @@ handle_event({call, From}, {maybe_start_rebalance,
                   ns_cluster_membership:fetch_snapshot(_),
                   chronicle_master:fetch_snapshot(_)]),
 
-    case {EjectedNodes -- KnownNodes,
-          lists:sort(ns_cluster_membership:nodes_wanted(Snapshot)),
-          lists:sort(KnownNodes)} of
-        {[], X, X} ->
-            MaybeKeepNodes = KnownNodes -- EjectedNodes,
-            FailedNodes = get_failed_nodes(Snapshot, KnownNodes),
-            KeepNodes = MaybeKeepNodes -- FailedNodes,
-            DeltaNodes = get_delta_recovery_nodes(Snapshot, KeepNodes),
-            case KeepNodes of
-                [] ->
-                    {keep_state_and_data,
-                     [{reply, From, no_active_nodes_left}]};
-                _ ->
-                    case rebalance_allowed(Snapshot) of
-                        ok ->
-                            case retry_ok(Snapshot, FailedNodes, NewParams) of
-                                false ->
-                                    {keep_state_and_data,
-                                     [{reply, From, retry_check_failed}]};
-                                NewChk ->
-                                    NewParams1 =
-                                        NewParams#{
-                                          keep_nodes => KeepNodes,
-                                          eject_nodes =>
-                                              EjectedNodes -- FailedNodes,
-                                          failed_nodes => FailedNodes,
-                                          delta_nodes => DeltaNodes,
-                                          chk => NewChk},
-                                    {keep_state_and_data,
-                                     [{next_event, {call, From},
-                                       {start_rebalance, NewParams1}}]}
-                            end;
-                        {error, Msg} ->
-                            set_rebalance_status(rebalance, {none, Msg},
-                                                 undefined),
-                            {keep_state_and_data, [{reply, From, ok}]}
-                    end
-            end;
-        _ ->
-            {keep_state_and_data, [{reply, From, nodes_mismatch}]}
+    try
+        case {EjectedNodes -- KnownNodes,
+              lists:sort(ns_cluster_membership:nodes_wanted(Snapshot)),
+              lists:sort(KnownNodes)} of
+            {[], X, X} ->
+                ok;
+            _ ->
+                throw(nodes_mismatch)
+        end,
+        MaybeKeepNodes = KnownNodes -- EjectedNodes,
+        FailedNodes = get_failed_nodes(Snapshot, KnownNodes),
+        KeepNodes = MaybeKeepNodes -- FailedNodes,
+        DeltaNodes = get_delta_recovery_nodes(Snapshot, KeepNodes),
+
+        KeepNodes =/= [] orelse throw(no_active_nodes_left),
+        case rebalance_allowed(Snapshot) of
+            ok -> ok;
+            {error, Msg} ->
+                set_rebalance_status(rebalance, {none, Msg}, undefined),
+                throw(ok)
+        end,
+        NewChk = case retry_ok(Snapshot, FailedNodes, NewParams) of
+                     false ->
+                         throw(retry_check_failed);
+                     Other ->
+                         Other
+                 end,
+        NewParams1 = NewParams#{keep_nodes => KeepNodes,
+                                eject_nodes => EjectedNodes -- FailedNodes,
+                                failed_nodes => FailedNodes,
+                                delta_nodes => DeltaNodes,
+                                chk => NewChk},
+        {keep_state_and_data,
+         [{next_event, {call, From}, {start_rebalance, NewParams1}}]}
+    catch
+        throw:Error -> {keep_state_and_data, [{reply, From, Error}]}
     end;
 
 handle_event({call, From}, {maybe_retry_graceful_failover, Nodes, Id, Chk},
