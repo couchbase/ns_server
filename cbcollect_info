@@ -1170,9 +1170,9 @@ def make_curl_post_task(name, user, password, url, timeout=60,
 def make_cbstats_task(kind, memcached_pass, guts, extra_args=""):
     port = read_guts(guts, "memcached_dedicated_port")
     user = read_guts(guts, "memcached_admin")
-    return AllOsTask("memcached stats %s" % kind,
-                     flatten(["cbstats", "%s:%s" % (local_url_addr, port),
-                              kind, "-u", user, extra_args]),
+    return AllOsTask(f"memcached stats {kind}",
+                     f"cbstats {local_url_addr}:{port} -u {user} {kind} "
+                     f"{extra_args}",
                      log_file="stats.log",
                      timeout=60,
                      addenv=[("CB_PASSWORD", memcached_pass)])
