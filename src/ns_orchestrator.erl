@@ -273,10 +273,11 @@ ensure_janitor_run(Item) ->
 
 -spec start_rebalance([node()], [node()], all | [bucket_name()],
                       [list()]) ->
-                             ok | in_progress | already_balanced |
-                             nodes_mismatch | no_active_nodes_left |
-                             in_recovery | delta_recovery_not_possible |
-                             no_kv_nodes_left | {need_more_space, list()}.
+                             {ok, binary()} | ok | in_progress |
+                             already_balanced | nodes_mismatch |
+                             no_active_nodes_left | in_recovery |
+                             delta_recovery_not_possible | no_kv_nodes_left |
+                             {need_more_space, list()}.
 start_rebalance(KnownNodes, EjectNodes, DeltaRecoveryBuckets,
                 DefragmentZones) ->
     call({maybe_start_rebalance,
@@ -808,6 +809,13 @@ idle({start_rebalance, Params = #{keep_nodes := KeepNodes,
                                {nodes_info, {NodesInfo}}]),
             ns_cluster:counter_inc(Type, start),
             set_rebalance_status(Type, running, Pid),
+            ReturnValue =
+                case cluster_compat_mode:is_cluster_elixir() of
+                    true ->
+                        {ok, RebalanceId};
+                    false ->
+                        ok
+                end,
 
             {next_state, rebalancing,
              #rebalancing_state{rebalancer = Pid,
@@ -821,7 +829,7 @@ idle({start_rebalance, Params = #{keep_nodes := KeepNodes,
                                 abort_reason = undefined,
                                 type = Type,
                                 rebalance_id = RebalanceId},
-             [{reply, From, ok}]};
+             [{reply, From, ReturnValue}]};
         {error, Error} ->
             ?log_info("Rebalance ~p was not started due to error: ~p",
                       [RebalanceId, Error]),

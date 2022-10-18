@@ -1064,10 +1064,16 @@ do_handle_rebalance(Req, [KnownNodes, EjectedNodes, DeltaRecoveryBuckets,
             reply_json(Req, {[{noKVNodesLeft, 1}]}, 400);
         {need_more_space, Zones} ->
             reply_json(Req, {[{need_more_space, Zones}]}, 400);
+        % pre-elixir responses
         ok ->
             ns_audit:rebalance_initiated(Req, KnownNodes, EjectedNodes,
+                DeltaRecoveryBuckets),
+            reply(Req, 200);
+        % elixir and next versions response
+        {ok, RebalanceId} ->
+            ns_audit:rebalance_initiated(Req, KnownNodes, EjectedNodes,
                                          DeltaRecoveryBuckets),
-            reply(Req, 200)
+            reply_json(Req, {[{rebalance_id, RebalanceId}]}, 200)
     end.
 
 handle_rebalance_progress(_PoolId, Req) ->
