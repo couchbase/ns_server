@@ -202,7 +202,10 @@ default() ->
          config_profile:get_value(num_reader_writer_threads, <<"default">>)},
        {num_auxio_threads, <<"default">>},
        {num_nonio_threads, <<"default">>},
-       {num_storage_threads, <<"default">>}]},
+       {num_storage_threads, <<"default">>},
+       {tcp_keepalive_idle, 360},
+       {tcp_keepalive_interval, 10},
+       {tcp_keepalive_probes, 3}]},
 
      %% Memcached config
      {{node, node(), memcached},
@@ -286,7 +289,10 @@ default() ->
             {memcached_config_mgr, get_external_users_push_interval, []}},
         {prometheus, {memcached_config_mgr, prometheus_cfg, []}},
         {sasl_mechanisms, {memcached_config_mgr, sasl_mechanisms, []}},
-        {ssl_sasl_mechanisms, {memcached_config_mgr, sasl_mechanisms, []}}
+        {ssl_sasl_mechanisms, {memcached_config_mgr, sasl_mechanisms, []}},
+        {tcp_keepalive_idle, tcp_keepalive_idle},
+        {tcp_keepalive_interval, tcp_keepalive_interval},
+        {tcp_keepalive_probes, tcp_keepalive_probes}
        ]}},
 
      {memory_quota, KvQuota},

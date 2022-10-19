@@ -43,7 +43,10 @@ supported_setting_names() ->
      {breakpad_minidump_dir_path, string},
      {dedupe_nmvb_maps, bool},
      {tracing_enabled, bool},
-     {datatype_snappy, bool}].
+     {datatype_snappy, bool},
+     {tcp_keepalive_idle, {int, 0, ?MC_MAXINT}},
+     {tcp_keepalive_interval, {int, 0, ?MC_MAXINT}},
+     {tcp_keepalive_probes, {int, 0, ?MC_MAXINT}}].
 
 %% Updates to these settings go to the '{node, node(), memcached_config_extra}'
 %% or 'memcached_config_extra' keys depending on whether the write is per-node
