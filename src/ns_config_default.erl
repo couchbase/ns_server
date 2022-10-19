@@ -192,7 +192,6 @@ default() ->
        {breakpad_minidump_dir_path, BreakpadMinidumpDir},
 
        %% Configuration profile
-       {deployment_model, ?DEFAULT_PROFILE_BIN},
        {dedupe_nmvb_maps, false},
        {je_malloc_conf, JeMallocConfDefault},
        {tracing_enabled, IsEnterprise},
@@ -229,7 +228,6 @@ default() ->
        {config_path, path_config:default_memcached_config_path()},
        {audit_file, ns_audit_cfg:default_audit_json_path()},
        {rbac_file, filename:join(path_config:component_path(data, "config"), "memcached.rbac")},
-       {configuration_profile, ?DEFAULT_PROFILE_STR},
        {log_path, LogDir},
        %% Prefix of the log files within the log path that should be rotated.
        {log_prefix, "memcached.log"},
@@ -258,7 +256,7 @@ default() ->
 
         {admin, {"~s", [admin_user]}},
 
-        {deployment_model, {"~s", [configuration_profile]}},
+        {deployment_model, {memcached_config_mgr, get_config_profile, []}},
         {verbosity, verbosity},
         {audit_file, {"~s", [audit_file]}},
         {rbac_file, {"~s", [rbac_file]}},

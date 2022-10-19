@@ -26,7 +26,8 @@
          should_enforce_limits/2,
          is_external_auth_service_enabled/0,
          prometheus_cfg/2,
-         sasl_mechanisms/2]).
+         sasl_mechanisms/2,
+         get_config_profile/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -377,9 +378,8 @@ memcached_params(Config) ->
 
     McdParams0 ++ GlobalMcdParams ++ DefaultMcdParams.
 
-expand_profile_config(Props) ->
-    proplists:delete(deployment_model, Props) ++
-        [{deployment_model, list_to_binary(config_profile:name())}].
+get_config_profile([], _Params) ->
+    list_to_binary(config_profile:name()).
 
 memcached_config(Config) ->
     {value, McdConf} = ns_config:search(Config, {node, node(),
@@ -388,7 +388,6 @@ memcached_config(Config) ->
     McdParams = memcached_params(Config),
 
     {Props} = expand_memcached_config(McdConf, McdParams),
-    ProfileProps = expand_profile_config(Props),
     ExtraProps = ns_config:search(Config,
                                   {node, node(), memcached_config_extra}, []),
     ExtraPropsG = ns_config:search(Config, memcached_config_extra, []),
@@ -403,7 +402,7 @@ memcached_config(Config) ->
         lists:foldl(
           fun (List, Acc) ->
                   normalize_memcached_props(List, Acc)
-          end, [], [ExtraPropsG, ExtraProps, RootProp, ProfileProps]),
+          end, [], [ExtraPropsG, ExtraProps, RootProp, Props]),
 
     misc:ejson_encode_pretty({lists:sort(FinalProps)}).
 
