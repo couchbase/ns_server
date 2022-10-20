@@ -505,7 +505,6 @@ rebalance_body(KeepNodes,
                DeltaNodes, DeltaRecoveryBucketNames) ->
     LiveNodes = KeepNodes ++ EjectNodesAll,
     LiveKVNodes = ns_cluster_membership:service_nodes(LiveNodes, kv),
-    KVDeltaNodes = ns_cluster_membership:service_nodes(DeltaNodes, kv),
 
     prepare_rebalance(LiveNodes),
 
@@ -531,26 +530,15 @@ rebalance_body(KeepNodes,
     %% Fetch new BucketConfigs and re build DeltaRecoveryBuckets, as janitor run
     %% might have updated vbucket map.
     BucketConfigs = ns_bucket:get_buckets(),
-    DeltaRecoveryBuckets = case build_delta_recovery_buckets(
-                                  KVKeep, KVDeltaNodes,
-                                  BucketConfigs, DeltaRecoveryBucketNames) of
-                               {ok, DRB} ->
-                                   DRB;
-                               {error, not_possible} ->
-                                   throw({error, delta_recovery_not_possible})
-                           end,
-    master_activity_events:note_rebalance_stage_started(
-      [kv, kv_delta_recovery], KVDeltaNodes),
-    ok = apply_delta_recovery_buckets(DeltaRecoveryBuckets,
-                                      KVDeltaNodes, BucketConfigs),
-    ok = check_test_condition(after_apply_delta_recovery),
+
+    DeltaRecoveryBuckets =
+        delta_recovery(KVKeep, DeltaNodes, BucketConfigs,
+                       DeltaRecoveryBucketNames),
 
     ok = chronicle_compat:set_multiple(
            ns_cluster_membership:clear_recovery_type_sets(KeepNodes) ++
                failover:clear_failover_vbuckets_sets(KeepNodes)),
 
-    master_activity_events:note_rebalance_stage_completed(
-      [kv, kv_delta_recovery]),
     ok = service_janitor:cleanup(),
 
     ok = chronicle_master:activate_nodes(KeepNodes),
@@ -583,6 +571,29 @@ rebalance_body(KeepNodes,
     eject_nodes(EjectNowNodes),
 
     ok.
+
+delta_recovery(_, _, _, []) ->
+    [];
+delta_recovery(KVKeep, DeltaNodes, BucketConfigs, DeltaRecoveryBucketNames) ->
+    KVDeltaNodes = ns_cluster_membership:service_nodes(DeltaNodes, kv),
+
+    DeltaRecoveryBuckets = case build_delta_recovery_buckets(
+                                  KVKeep, KVDeltaNodes,
+                                  BucketConfigs, DeltaRecoveryBucketNames) of
+                               {ok, DRB} ->
+                                   DRB;
+                               {error, not_possible} ->
+                                   throw({error, delta_recovery_not_possible})
+                           end,
+    master_activity_events:note_rebalance_stage_started(
+      [kv, kv_delta_recovery], KVDeltaNodes),
+    ok = apply_delta_recovery_buckets(DeltaRecoveryBuckets,
+                                      KVDeltaNodes, BucketConfigs),
+    ok = check_test_condition(after_apply_delta_recovery),
+
+    master_activity_events:note_rebalance_stage_completed(
+      [kv, kv_delta_recovery]),
+    DeltaRecoveryBuckets.
 
 make_progress_fun(BucketCompletion, NumBuckets) ->
     fun (P) ->
