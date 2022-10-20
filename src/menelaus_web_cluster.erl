@@ -136,13 +136,13 @@ cluster_init_validators(Config, Snapshot) ->
                        ?cut(lists:map(fun iolist_to_binary/1, _)), _),
      validator:validate(
        fun (Hosts) ->
-           case ns_config_auth:is_system_provisioned() of
-               true ->
-                  {error, <<"cannot change allowedHosts after cluster is "
-                            "provisioned">>};
-              false ->
-                  menelaus_web_settings:validate_allowed_hosts_list(Hosts)
-           end
+               case ns_config_auth:is_system_provisioned() of
+                   true ->
+                       {error, "cannot change allowedHosts after cluster is "
+                        "provisioned"};
+                   false ->
+                       menelaus_web_settings:validate_allowed_hosts_list(Hosts)
+               end
        end, allowedHosts, _),
      %% setting it to 'unchanged' to make sure validate_relative is called
      %% even if allowedHosts is not provided
@@ -160,7 +160,7 @@ cluster_init_validators(Config, Snapshot) ->
                            "Can't use '~s' as a node name because "
                            "it is not allowed by the 'allowedHosts' setting",
                            [Hostname]),
-                   {error, lists:flatten(Msg)}
+                   {error, Msg}
            end
        end, hostname, allowedHosts, _),
      validator:has_params(_),
@@ -292,13 +292,12 @@ parse_validate_services_list(ServicesList) ->
     UnknownServices = [SN || {SN, false} <- FoundServices],
     case UnknownServices of
         [_|_] ->
-            Msg = io_lib:format("Unknown services: ~p", [UnknownServices]),
-            {error, iolist_to_binary(Msg)};
+            {error, io_lib:format("Unknown services: ~p", [UnknownServices])};
         [] ->
             RV = lists:usort([S || {_, {_, S}} <- FoundServices]),
             case RV of
                 [] ->
-                    {error, <<"At least one service has to be selected">>};
+                    {error, "At least one service has to be selected"};
                 _ ->
                     {ok, RV}
             end
@@ -359,8 +358,8 @@ parse_join_cluster_params(Params, ThisIsJoin) ->
                        case parse_validate_services_list(SvcParams) of
                            {ok, Svcs} ->
                                {ok, Svcs};
-                           SvcsError ->
-                               SvcsError
+                           {error, Error} ->
+                               {error, iolist_to_binary(Error)}
                        end
                end,
 
@@ -630,8 +629,8 @@ setup_services_validators() ->
       fun (ServicesString) ->
           case ns_config_auth:is_system_provisioned() of
               true ->
-                  {error, <<"cannot change node services after cluster is "
-                            "provisioned">>};
+                  {error, "cannot change node services after cluster is "
+                   "provisioned"};
               false ->
                   case parse_validate_services_list(ServicesString) of
                       {ok, Svcs} ->
@@ -643,8 +642,8 @@ setup_services_validators() ->
                                         Error -> Error
                                     end;
                                 false ->
-                                    {error, <<"cannot setup first cluster "
-                                              "node without kv service">>}
+                                    {error, "cannot setup first cluster "
+                                     "node without kv service"}
                             end;
                       {error, Msg} -> {error, Msg}
                   end
