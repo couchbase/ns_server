@@ -56,7 +56,7 @@ func main() {
 }
 
 func (s *encryptionService) readCommand() (byte, []byte) {
-	var size uint16
+	var size uint32
 	err := binary.Read(s.reader, binary.BigEndian, &size)
 	if err == io.EOF {
 		// parent died. close normally
@@ -89,7 +89,7 @@ func reportReadError(err error) {
 }
 
 func doReply(data []byte) {
-	err := binary.Write(os.Stdout, binary.BigEndian, uint16(len(data)))
+	err := binary.Write(os.Stdout, binary.BigEndian, uint32(len(data)))
 	if err != nil {
 		panic(fmt.Sprintf("Error writing data %v", err))
 	}

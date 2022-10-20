@@ -257,7 +257,10 @@ start_gosecrets() ->
                    process_flag(trap_exit, true),
                    Path = path_config:component_path(bin, "gosecrets"),
                    ?log_debug("Starting ~p", [Path]),
-                   Port = open_port({spawn_executable, Path}, [{packet, 2}, binary, hide]),
+                   Port =
+                       open_port(
+                         {spawn_executable, Path},
+                         [{packet, 4}, binary, hide]),
                    proc_lib:init_ack({ok, self()}),
                    gosecrets_loop(Port, Parent)
            end, []]),
