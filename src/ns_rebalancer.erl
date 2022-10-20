@@ -941,16 +941,19 @@ wait_for_mover(Pid) ->
                 _ ->
                     exit({mover_crashed, Reason})
             end;
-        {'EXIT', _Pid, {shutdown, stop} = Stop} ->
-            ?log_debug("Got rebalance stop request"),
-            TimeoutPid = diag_handler:arm_timeout(
-                           5000,
-                           fun (_) ->
-                                   ?log_debug("Observing slow rebalance stop (mover pid: ~p)", [Pid]),
-                                   timeout_diag_logger:log_diagnostics(slow_rebalance_stop)
-                           end),
+        {'EXIT', _Pid, shutdown} ->
+            ?log_debug("Got ns_vbucket_mover shutdown request"),
+            TimeoutPid =
+                diag_handler:arm_timeout(
+                  5000,
+                  fun (_) ->
+                          ?log_debug("Observing slow ns_vbucket_mover "
+                                     "stop (mover pid: ~p)", [Pid]),
+                          timeout_diag_logger:log_diagnostics(
+                            slow_ns_vbucket_mover_stop)
+                  end),
             try
-                terminate_mover(Pid, Stop)
+                terminate_mover(Pid, shutdown)
             after
                 diag_handler:disarm_timeout(TimeoutPid)
             end;
@@ -1794,6 +1797,54 @@ do_unbalanced_test() ->
     false = do_unbalanced(Map1, Servers),
 
     meck:unload(ns_config).
+
+run_mover_termination_test() ->
+    DummyMoverProcessFun =
+        fun () ->
+                erlang:spawn_link(
+                  fun () ->
+                          process_flag(trap_exit, true),
+                          %% Live until asked to die!!
+                          receive
+                              {'EXIT', _, Reason} ->
+                                  exit(Reason)
+                          end
+                  end)
+        end,
+
+    Parent = self(),
+
+    %% Abstracting a lot of the leader_activity code with a simple
+    %% misc:executing_on_new_process/1 call.
+    RebalanceProcess =
+        erlang:spawn(
+          fun () ->
+                  misc:executing_on_new_process(
+                    fun () ->
+                            misc:with_trap_exit(
+                                fun () ->
+                                        Pid = DummyMoverProcessFun(),
+                                        Parent ! {mover_pid, Pid},
+                                        wait_for_mover(Pid)
+                                end)
+                    end)
+          end),
+
+    receive
+        {mover_pid, Pid} ->
+            MRef = erlang:monitor(process, Pid),
+            exit(RebalanceProcess, {shutdown, stop}),
+
+            receive
+                {'DOWN', MRef, _, _, Reason} ->
+                    ?assertEqual(shutdown, Reason)
+            after 2500 ->
+                      erlang:demonitor(MRef, [flush]),
+                      ?assert(false, "Timeout waiting mover pid shutdown.")
+            end
+    after 5000 ->
+              ?assert(false, "Timeout waiting for mover pid to be spawned.")
+    end.
 -endif.
 
 complete_delta_recovery(Nodes) ->
