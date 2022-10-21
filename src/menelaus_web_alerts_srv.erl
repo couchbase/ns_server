@@ -207,6 +207,8 @@ stop() ->
 init([]) ->
     start_timer(),
     maybe_enable_auto_failover_popup_alerts(),
+    ns_pubsub:subscribe_link(ns_config_events,
+                             fun email_config_change_callback/1),
     {ok, #state{}}.
 
 
@@ -236,18 +238,22 @@ handle_call(fetch_alert, _From, #state{queue=Alerts0, change_counter=Counter}=St
                end, Alerts0),
 
     {reply, {lists:reverse(Alerts), list_to_binary(integer_to_list(Counter))}, State};
-
-handle_call({add_alert, Key, Val}, _, #state{queue=Msgs, history=Hist, change_counter=Counter}=State) ->
+handle_call({add_alert, Key, Val}, _, #state{queue = Msgs, history = Hist,
+                                             change_counter = Counter} = State) ->
     case lists:keyfind(Key, 1, Hist) of
         false ->
             Time   = erlang:monotonic_time(),
             Offset = erlang:time_offset(),
 
             MsgTuple = {Key, Val, Time, Offset},
-            maybe_send_out_email_alert(Key, Val),
-            {reply, ok, State#state{history=[MsgTuple | Hist],
-                                    queue=[MsgTuple | lists:keydelete(Key, 1, Msgs)],
-                                    change_counter=Counter+1}};
+            MaybeSent = maybe_send_out_email_alert(Key, Val),
+
+            {reply, ok,
+             State#state{
+               history = [erlang:append_element(MsgTuple, MaybeSent) | Hist],
+               queue = [MsgTuple | lists:keydelete(Key, 1, Msgs)],
+               change_counter = Counter + 1
+              }};
         _ ->
             {reply, ignored, State}
     end.
@@ -255,7 +261,23 @@ handle_call({add_alert, Key, Val}, _, #state{queue=Msgs, history=Hist, change_co
 
 handle_cast(stop, State) ->
     {stop, normal, State};
-
+handle_cast(flush_queued_alerts, #state{history = Hist} = State) ->
+    ?flush(flush_queued_alerts),
+    Config = menelaus_alert:get_config(),
+    NewHistory =
+        case proplists:get_bool(enabled, Config) of
+            true ->
+                lists:map(
+                  fun ({K, V, T, O, false}) ->
+                          {K, V, T, O, maybe_send_out_email_alert(K, V)};
+                      (Tuple) ->
+                          Tuple
+                  end,
+                  Hist);
+            false ->
+                Hist
+        end,
+    {noreply, State#state{history = NewHistory}};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -424,6 +446,23 @@ maybe_enable_auto_failover_popup_alerts_txn(EnabledKey, OldConfig, SetFn) ->
                     end
             end
     end.
+
+%% @doc Sends any previously queued email alerts. Generally called when we first
+%% enable the email alerts and we need to flush any existing alerts that haven't
+%% been sent yet. Only done through gen_server callback because we need access
+%% to process state.
+maybe_send_queued_email() ->
+    gen_server:cast(?MODULE, flush_queued_alerts).
+
+email_config_change_callback({email_alerts, AlertCfg}) ->
+    case proplists:get_bool(enabled, AlertCfg) of
+        true ->
+            maybe_send_queued_email();
+        false ->
+            ok
+    end;
+email_config_change_callback(_) ->
+    ok.
 
 %% @doc Remind myself to check the alert status
 start_timer() ->
@@ -1015,7 +1054,7 @@ expire_history(Hist) ->
     Now     = erlang:monotonic_time(),
     Timeout = erlang:convert_time_unit(?ALERT_TIMEOUT, second, native),
 
-    [ Item || Item = {_Key, _Msg, Time, _Offset} <- Hist, Now - Time < Timeout ].
+    [ Item || Item = {_Key, _Msg, Time, _Offset, _} <- Hist, Now - Time < Timeout ].
 
 
 %% @doc Lookup old value and test for increase
@@ -1054,12 +1093,13 @@ maybe_send_out_email_alert({Key0, Node}, Message) ->
             case proplists:get_bool(enabled, Config) of
                 true ->
                     Description = short_description(Key),
-                    ns_mail:send_alert_async(Key, Description, Message, Config);
+                    ns_mail:send_alert_async(Key, Description, Message, Config),
+                    true;
                 false ->
-                    ok
+                    false
             end;
         false ->
-            ok
+            false
     end.
 
 %% Add {Key, Value} to PList if there is no member whose first element
@@ -1199,6 +1239,7 @@ basic_test() ->
         fun () -> true end),
     meck:expect(ns_config, read_key_fast, fun(_, _) -> true end),
 
+    {ok, _} = gen_event:start_link({local, ns_config_events}),
     {ok, Pid} = ?MODULE:start_link(),
 
     %% return empty alerts configuration so that no attempts to send anything
