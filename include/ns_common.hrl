@@ -359,4 +359,9 @@
                 __TRUE
         end).
 
+-define(INT_CREDS_ROTATION_INT_KEY, int_creds_rotation_interval).
+-define(INT_CREDS_ROTATION_INT_DEFAULT, 1800000).
+-define(INT_CREDS_PROTECTION_SLEEP_KEY, int_creds_protection_sleep).
+-define(INT_CREDS_PROTECTION_SLEEP_DEFAULT, 30000).
+
 -endif.

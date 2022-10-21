@@ -280,4 +280,7 @@ child_specs() ->
       permanent, 5000, worker, []},
 
      {ns_rebalance_report_manager, {ns_rebalance_report_manager, start_link, []},
-      permanent, 1000, worker, []}].
+      permanent, 1000, worker, []},
+
+     {creds_rotation, {cb_creds_rotation, start_link, []},
+      permanent, 1000, worker, [creds_rotation]}].

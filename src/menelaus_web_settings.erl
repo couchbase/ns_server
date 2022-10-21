@@ -548,7 +548,11 @@ conf(security) ->
      {pbkdf2_sha512_iterations, pbkdf2HmacSha512Iterations,
       ?DEFAULT_PBKDF2_ITER, get_number(?PBKDF2_ITER_MIN, ?PBKDF2_ITER_MAX)},
      {memcached_password_hash_iterations, scramShaIterations,
-      ?DEFAULT_SCRAM_ITER, get_number(?PBKDF2_ITER_MIN, ?PBKDF2_ITER_MAX)}] ++
+      ?DEFAULT_SCRAM_ITER, get_number(?PBKDF2_ITER_MIN, ?PBKDF2_ITER_MAX)},
+     {?INT_CREDS_ROTATION_INT_KEY,
+      intCredsRotationInterval,
+      ?INT_CREDS_ROTATION_INT_DEFAULT,
+      fun parse_int_creds_rotation_int/1}] ++
     [{{security_settings, S}, ns_cluster_membership:json_service_name(S),
       [{cipher_suites, cipherSuites, undefined, fun get_cipher_suites/1},
        {ssl_minimum_protocol, tlsMinVersion, undefined, get_tls_version(_)},
@@ -1244,6 +1248,15 @@ handle_settings_rebalance_post(Req) ->
        validator:integer(rebalanceMovesPerNode, ?MIN_OF_MAX_MOVES_PER_NODE,
                          ?MAX_OF_MAX_MOVES_PER_NODE, _),
        validator:unsupported(_)]).
+
+parse_int_creds_rotation_int("0") ->
+    %% Zero means "disabled"
+    {ok, 0};
+parse_int_creds_rotation_int(Str) ->
+    %% We need an upper limit because there is a limit for the time param in
+    %% erlang:send_after/3. It can be pretty big but for us 1 year should
+    %% be enough.
+    (get_number(cb_creds_rotation:extract_protection_sleep(), 31536000000))(Str).
 
 -ifdef(TEST).
 build_kvs_test() ->
