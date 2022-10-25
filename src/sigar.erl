@@ -132,7 +132,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 spawn_sigar(Name, BabysitterPid) ->
     Path = path_config:component_path(bin, "sigar_port"),
-    ?log_info("Spawing sigar process '~s'(~p) with babysitter pid: ~p",
+    ?log_info("Spawning sigar process '~s'(~p) with babysitter pid: ~p",
               [Name, Path, BabysitterPid]),
     open_port({spawn_executable, Path},
               [stream, use_stdio, exit_status, binary, eof,
