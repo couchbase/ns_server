@@ -9,6 +9,7 @@
 %%
 -module(menelaus_web_auto_failover).
 
+-include("cut.hrl").
 -include("ns_common.hrl").
 
 -export([handle_settings_get/1,
@@ -21,11 +22,7 @@
 
 -import(menelaus_util,
         [reply/2,
-         reply_json/2,
-         reply_json/3,
-         reply_text/3,
-         parse_validate_number/3,
-         parse_validate_boolean_field/3]).
+         reply_json/2]).
 
 -define(AUTO_FAILOVER_MIN_TIMEOUT, ?get_param(auto_failover_min_timeout, 5)).
 -define(AUTO_FAILOVER_MIN_CE_TIMEOUT, 30).
@@ -78,36 +75,37 @@ handle_settings_get(Req) ->
     Settings =  Settings0 ++ get_extra_settings(Config),
     reply_json(Req, {Settings}).
 
-handle_settings_post(Req) ->
-    ValidateOnly = proplists:get_value(
-                     "just_validate", mochiweb_request:parse_qs(Req)) =:= "1",
+handle_settings_post_validated(Req, Props) ->
     Config = auto_failover:get_cfg(),
-    case {ValidateOnly,
-          validate_settings_auto_failover(
-            mochiweb_request:parse_post(Req), Config)} of
-        {false, false} ->
-            auto_failover:disable(disable_extras(Config)),
-            ns_audit:disable_auto_failover(Req),
-            reply(Req, 200);
-        {false, {error, Errors}} ->
-            Errors1 = [<<Msg/binary, "\n">> || {_, Msg} <- Errors],
-            reply_text(Req, Errors1, 400);
-        {false, Params} ->
-            Timeout = proplists:get_value(timeout, Params),
-            %% maxCount will not be set for CE and pre-upgrade so use the
-            %% default.
-            MaxCount = proplists:get_value(maxCount, Params,
-                                           ?DEFAULT_EVENTS_ALLOWED),
-            Extras = proplists:get_value(extras, Params),
+    case proplists:get_value(enabled, Props) of
+        true ->
+            Timeout = proplists:get_value(timeout, Props),
+            case cluster_compat_mode:is_enterprise() of
+                true ->
+                    %% maxCount will not be set pre-upgrade so use the default.
+                    CurrMax = proplists:get_value(?MAX_EVENTS_CONFIG_KEY,
+                                                  Config,
+                                                  ?DEFAULT_EVENTS_ALLOWED),
+                    MaxCount = proplists:get_value(maxCount, Props, CurrMax);
+                false ->
+                    %% maxCount will not be set for CE so use the default.
+                    MaxCount = proplists:get_value(maxCount, Props,
+                                                   ?DEFAULT_EVENTS_ALLOWED)
+            end,
+            Extras = process_extras(Props, Config),
             auto_failover:enable(Timeout, MaxCount, Extras),
-            ns_audit:enable_auto_failover(Req, Timeout, MaxCount, Extras),
-            reply(Req, 200);
-        {true, {error, Errors}} ->
-            reply_json(Req, {[{errors, {Errors}}]}, 400);
-        %% Validation only and no errors
-        {true, _}->
-            reply_json(Req, {[{errors, null}]}, 200)
-    end.
+            ns_audit:enable_auto_failover(Req, Timeout, MaxCount, Extras);
+        false ->
+            auto_failover:disable(disable_extras(Config)),
+            ns_audit:disable_auto_failover(Req)
+    end,
+    reply(Req, 200).
+
+handle_settings_post(Req) ->
+    validator:handle(
+      handle_settings_post_validated(Req, _), Req, form,
+      settings_validators() ++
+      [validator:unsupported(_)]).
 
 %% @doc Resets the number of nodes that were automatically failovered to zero
 handle_settings_reset_count(Req) ->
@@ -126,130 +124,119 @@ get_failover_on_disk_issues(Config) ->
     end.
 
 %% Internal Functions
-
-validate_settings_auto_failover(Args, Config) ->
-    case parse_validate_boolean_field("enabled", '_', Args) of
-        [{ok, _, true}] ->
-            parse_validate_other_params(Args, Config);
-        [{ok, _, false}] ->
-            false;
-        _ ->
-            {error, boolean_err_msg(enabled)}
-    end.
-
-parse_validate_other_params(Args, Config) ->
-    Min = case cluster_compat_mode:is_enterprise() of
-              true ->
-                  ?AUTO_FAILOVER_MIN_TIMEOUT;
-              false ->
-                  ?AUTO_FAILOVER_MIN_CE_TIMEOUT
-          end,
-    Max = ?AUTO_FAILOVER_MAX_TIMEOUT,
-    Timeout = proplists:get_value("timeout", Args),
-    case parse_validate_number(Timeout, Min, Max) of
-        {ok, Val} ->
-            parse_validate_extras(Args, [{timeout, Val}, {extras, []}],
-                                  Config);
-        _ ->
-            {error, range_err_msg(timeout, Min, Max)}
-    end.
-
-parse_validate_extras(Args, CurrRV, Config) ->
+get_min_timeout() ->
     case cluster_compat_mode:is_enterprise() of
         true ->
-            parse_validate_extras_inner(Args, CurrRV, Config);
+            ?AUTO_FAILOVER_MIN_TIMEOUT;
         false ->
-            %% TODO - Check for unsupported params
-            CurrRV
+            ?AUTO_FAILOVER_MIN_CE_TIMEOUT
     end.
 
-parse_validate_extras_inner(Args, CurrRV, Config) ->
-    NewRV0 = parse_validate_max_count(Args, CurrRV, Config),
-    case NewRV0 of
-        {error, _}  ->
-            NewRV0;
-        _ ->
-            NewRV1 = parse_validate_failover_disk_issues(Args, NewRV0, Config),
-            case NewRV1 of
-                {error, _} ->
-                    NewRV1;
-                _ ->
-                    NewRV2 = parse_validate_server_group_failover(Args, NewRV1),
-                    case NewRV2 of
-                        {error, _} ->
-                            NewRV2;
-                        _ ->
-                            parse_validate_can_abort_rebalance(Args, NewRV2)
-                    end
-            end
+validate_enabled_param(KeyEnabled, KeyTime, State) ->
+    validator:validate_multiple(
+      fun ([EVal, TVal]) ->
+              case {EVal, TVal =:= undefined} of
+                  {true, true} ->
+                      {error,
+                       io_lib:format("~s is true. A value must be supplied for "
+                                     "~s", [KeyEnabled, KeyTime])};
+                  {undefined, false} ->
+                      {error,
+                       io_lib:format("~s must be true for ~s to take effect",
+                                     [KeyEnabled, KeyTime])};
+                  {_, _} -> ok
+              end
+      end, [KeyEnabled, KeyTime], State).
+
+settings_validators() ->
+    [validator:required(enabled, _),
+     validator:boolean(enabled, _),
+     validator:integer(timeout, get_min_timeout(),
+                       ?AUTO_FAILOVER_MAX_TIMEOUT, _),
+     validate_enabled_param(enabled, timeout, _)] ++
+    settings_extras_validators().
+
+settings_extras_validators() ->
+    case cluster_compat_mode:is_enterprise() of
+        true ->
+            maxcount_validators() ++
+            disk_issues_validators() ++
+            server_group_validators() ++
+            can_abort_rebalance_validators();
+        false ->
+            []
     end.
 
-parse_validate_can_abort_rebalance(Args, CurrRv) ->
+maxcount_validators() ->
+    [validator:integer(maxCount, ?MIN_EVENTS_ALLOWED, max_events_allowed(), _)].
+
+disk_issues_validators() ->
+    KeyEnabled = 'failoverOnDataDiskIssues[enabled]',
+    KeyTimePeriod = 'failoverOnDataDiskIssues[timePeriod]',
+    [validator:boolean(KeyEnabled, _),
+     validator:integer(KeyTimePeriod, ?MIN_DATA_DISK_ISSUES_TIMEPERIOD,
+                       ?MAX_DATA_DISK_ISSUES_TIMEPERIOD, _),
+     validate_enabled_param(KeyEnabled, KeyTimePeriod, _)].
+
+server_group_validators() ->
+    case cluster_compat_mode:is_cluster_71() of
+        false ->
+            [validator:boolean(failoverServerGroup, _)];
+        true ->
+            []
+    end.
+
+can_abort_rebalance_validators() ->
     case cluster_compat_mode:is_cluster_elixir() of
         false ->
-            parse_validate_can_abort_rebalance_inner(Args, CurrRv);
+            [validator:boolean(canAbortRebalance, _)];
         true ->
-            CurrRv
+            []
     end.
 
-parse_validate_can_abort_rebalance_inner(Args, CurrRV) ->
-    StrKey = "canAbortRebalance",
-    case parse_validate_boolean_field(StrKey, '_', Args) of
-        [] ->
-            CurrRV;
-        [{ok, _, Value}] ->
-            add_extras([{?CAN_ABORT_REBALANCE_CONFIG_KEY, Value}], CurrRV);
-        [{error, _, _}] ->
-            {error, boolean_err_msg(StrKey)}
-    end.
-
-parse_validate_max_count(Args, CurrRV, Config) ->
-    CurrMax = proplists:get_value(?MAX_EVENTS_CONFIG_KEY, Config),
-    Min = ?MIN_EVENTS_ALLOWED,
-    Max = max_events_allowed(),
-    MaxCount = proplists:get_value("maxCount", Args, integer_to_list(CurrMax)),
-    case parse_validate_number(MaxCount, Min, Max) of
-        {ok, Val} ->
-            [{maxCount, Val} | CurrRV];
-        _->
-            {error, range_err_msg(maxCount, Min, Max)}
-    end.
-
-parse_validate_failover_disk_issues(Args, CurrRV, Config) ->
-    Key = "failoverOnDataDiskIssues",
-    KeyEnabled = Key ++ "[enabled]",
-    KeyTimePeriod = Key ++ "[timePeriod]",
-
-    TimePeriod = proplists:get_value(KeyTimePeriod, Args),
-    Min = ?MIN_DATA_DISK_ISSUES_TIMEPERIOD,
-    Max = ?MAX_DATA_DISK_ISSUES_TIMEPERIOD,
-    TimePeriodParsed = parse_validate_number(TimePeriod, Min, Max),
-
-    case parse_validate_boolean_field(KeyEnabled, '_', Args) of
-        [{ok, _, true}] ->
-            case TimePeriodParsed of
-                {ok, Val} ->
-                    Extra = set_failover_on_disk_issues(true, Val),
-                    add_extras(Extra, CurrRV);
-                _ ->
-                    {error, range_err_msg(KeyTimePeriod, Min, Max)}
-            end;
-        [{ok, _, false}] ->
+process_failover_on_disk_issues(Props, Config, Extras) ->
+    KeyEnabled = 'failoverOnDataDiskIssues[enabled]',
+    KeyTimePeriod = 'failoverOnDataDiskIssues[timePeriod]',
+    TimePeriod = proplists:get_value(KeyTimePeriod, Props),
+    DiskEnabled = proplists:get_value(KeyEnabled, Props),
+    case DiskEnabled of
+        true ->
+            Extra = set_failover_on_disk_issues(true, TimePeriod),
+            add_extras(Extra, Extras);
+        false ->
             {_, CurrTP} = get_failover_on_disk_issues(Config),
             Extra = disable_failover_on_disk_issues(CurrTP),
-            add_extras(Extra, CurrRV);
-        [] ->
-            case TimePeriodParsed =/= invalid of
-                true ->
-                    %% User has passed the timePeriod paramater
-                    %% but enabled is missing.
-                    {error, boolean_err_msg(KeyEnabled)};
-                false ->
-                    CurrRV
-            end;
-        _ ->
-            {error, boolean_err_msg(KeyEnabled)}
+            add_extras(Extra, Extras);
+        undefined ->
+            Extras
     end.
+
+process_failover_server_group(Props, Extras) ->
+    FailoverServerGroup = proplists:get_value(failoverServerGroup, Props),
+    case FailoverServerGroup of
+        Val when is_boolean(Val) ->
+            Extra = [{?FAILOVER_SERVER_GROUP_CONFIG_KEY, Val}],
+            add_extras(Extra, Extras);
+        _ ->
+            Extras
+    end.
+
+process_can_abort_rebalance(Props, Extras) ->
+    CanAbortRebalance = proplists:get_value(canAbortRebalance, Props),
+    case CanAbortRebalance of
+        Val when is_boolean(Val) ->
+            Extra = [{?CAN_ABORT_REBALANCE_CONFIG_KEY, Val}],
+            add_extras(Extra, Extras);
+        _  ->
+            Extras
+    end.
+
+process_extras(Props, Config) ->
+    Extras = functools:chain([{extras, []}],
+                             [process_failover_on_disk_issues(Props, Config, _),
+                              process_failover_server_group(Props, _),
+                              process_can_abort_rebalance(Props, _)]),
+    proplists:get_value(extras, Extras).
 
 disable_failover_on_disk_issues(TP) ->
     set_failover_on_disk_issues(false, TP).
@@ -257,35 +244,9 @@ disable_failover_on_disk_issues(TP) ->
 set_failover_on_disk_issues(Enabled, TP) ->
     [{?DATA_DISK_ISSUES_CONFIG_KEY, [{enabled, Enabled}, {timePeriod, TP}]}].
 
-parse_validate_server_group_failover(Args, CurrRV) ->
-    case cluster_compat_mode:is_cluster_71() of
-        false ->
-            parse_validate_server_group_failover_inner(Args, CurrRV);
-        true ->
-            CurrRV
-    end.
-
-parse_validate_server_group_failover_inner(Args, CurrRV) ->
-    Key = "failoverServerGroup",
-    case parse_validate_boolean_field(Key, '_', Args) of
-        [{ok, _, Val}] ->
-            Extra = [{?FAILOVER_SERVER_GROUP_CONFIG_KEY, Val}],
-            add_extras(Extra, CurrRV);
-        [] ->
-            CurrRV;
-        _ ->
-            {error, boolean_err_msg(Key)}
-    end.
-
 add_extras(Add, CurrRV) ->
     {extras, Old} = lists:keyfind(extras, 1, CurrRV),
     lists:keyreplace(extras, 1, CurrRV, {extras, Add ++ Old}).
-
-range_err_msg(Key, Min, Max) ->
-    [{Key, list_to_binary(io_lib:format("The value of \"~s\" must be a positive integer in a range from ~p to ~p", [Key, Min, Max]))}].
-
-boolean_err_msg(Key) ->
-    [{Key, list_to_binary(io_lib:format("The value of \"~s\" must be true or false", [Key]))}].
 
 config_check_can_abort_rebalance() ->
     proplists:get_value(?CAN_ABORT_REBALANCE_CONFIG_KEY,

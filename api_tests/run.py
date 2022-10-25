@@ -24,6 +24,7 @@ sys.path.append(pylib)
 import cluster_run_lib
 import testlib
 import dummy_test
+import auto_failover_test
 
 tmp_cluster_dir = os.path.join(scriptdir, "test_cluster_data")
 
