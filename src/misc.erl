@@ -3278,3 +3278,36 @@ read_cpu_count_env() ->
                     exit({invalid_cpu_count, CoresStr})
             end
     end.
+
+maybe_log_tls_key(Socket, Protocol, Host, Port) ->
+    case Protocol of
+        ssl ->
+            {ok, Info} =
+                ssl:connection_information(Socket, [keep_secrets, keylog]),
+            case Info of
+                [{keep_secrets, true}, {keylog, KeyLogItems}] ->
+                    ?log_warning("Logging tls keys", []),
+
+                    {ok, {_, LocalPort}} = ssl:sockname(Socket),
+
+                    LogFileStart = io_lib:format(
+                                     "------ Connection from port ~p to ~s:~p,"
+                                     " key.log file start ",
+                                     [LocalPort, Host, Port]),
+
+                    KeyLog = lists:join(io_lib:nl(), KeyLogItems),
+
+                    LogFileEnd =
+                        "------------------------------------"
+                        " key.log file end "
+                        "------------------------------------",
+
+                    KeyLogFile = io_lib:format(
+                                   <<"~-90..-s~n~s~n~s~n">>,
+                                   [LogFileStart, KeyLog, LogFileEnd]),
+
+                    ?tls_key_log(KeyLogFile);
+                _ -> ok
+            end;
+        _ -> ok
+    end.

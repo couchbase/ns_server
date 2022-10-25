@@ -76,6 +76,7 @@
 -define(EVENTING_LOG_FILENAME, "eventing.log").
 -define(CBAS_LOG_FILENAME, "analytics_info.log").
 -define(BACKUP_LOG_FILENAME, "backup_service.log").
+-define(TLS_KEY_LOG_FILENAME, "key.log").
 
 -define(NS_SERVER_LOGGER, ns_server).
 -define(COUCHDB_LOGGER, couchdb).
@@ -94,6 +95,7 @@
 -define(METAKV_LOGGER, metakv).
 -define(JSON_RPC_LOGGER, json_rpc).
 -define(CHRONICLE_ALE_LOGGER, chronicle).
+-define(TLS_KEY_LOGGER, tls_key).
 
 -define(LOGGERS, [?NS_SERVER_LOGGER,
                   ?USER_LOGGER, ?MENELAUS_LOGGER,
@@ -186,6 +188,8 @@
 
 -define(metakv_debug(Format, Args), ale:debug(?METAKV_LOGGER, Format, Args)).
 -define(metakv_debug(Msg), ale:debug(?METAKV_LOGGER, Msg)).
+
+-define(tls_key_log(Msg), ale:debug(?TLS_KEY_LOGGER, Msg)).
 
 -define(get_timeout(Op, Default), ns_config:get_timeout({?MODULE, Op}, Default)).
 -define(get_param(Param, Default),

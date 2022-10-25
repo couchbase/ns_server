@@ -14,7 +14,8 @@
 -export([start/2, stop/1, get_loglevel/1, setup_node_names/0,
          get_babysitter_node/0, get_babysitter_cookie/0, get_babysitter_pid/0,
          read_cookie_file/1,
-         start_disk_sink/2, get_disk_sink_rotation_opts/1, adjust_loglevel/2]).
+         start_disk_sink/2, get_disk_sink_rotation_opts/1, adjust_loglevel/2,
+         set_tls_key_log/1]).
 
 -include("ns_common.hrl").
 -include_lib("ale/include/ale.hrl").
@@ -157,12 +158,12 @@ init_logging() ->
 
 do_init_logging() ->
     StdLoggers = [?ALE_LOGGER, ?ERROR_LOGGER],
-    AllLoggers = [?CHRONICLE_ALE_LOGGER | StdLoggers] ++ ?LOGGERS,
+    AllLoggers = [?TLS_KEY_LOGGER, ?CHRONICLE_ALE_LOGGER | StdLoggers] ++ ?LOGGERS,
 
     lists:foreach(
       fun (Logger) ->
               ale:stop_logger(Logger)
-      end, ?LOGGERS ++ [?ACCESS_LOGGER, ?CHRONICLE_ALE_LOGGER]),
+      end, ?LOGGERS ++ [?ACCESS_LOGGER, ?CHRONICLE_ALE_LOGGER, ?TLS_KEY_LOGGER]),
 
     ok = start_disk_sink(disk_default, ?DEFAULT_LOG_FILENAME),
     ok = start_disk_sink(disk_error, ?ERRORS_LOG_FILENAME),
@@ -174,6 +175,7 @@ do_init_logging() ->
     ok = start_disk_sink(disk_access_int, ?INT_ACCESS_LOG_FILENAME),
     ok = start_disk_sink(disk_metakv, ?METAKV_LOG_FILENAME),
     ok = start_disk_sink(disk_json_rpc, ?JSON_RPC_LOG_FILENAME),
+    ok = start_disk_sink(disk_tls_key_log, ?TLS_KEY_LOG_FILENAME),
 
     ok = start_sink(ns_log, ns_log_sink, []),
     ok = start_sink(cb_log_counter, cb_log_counter_sink, []),
@@ -192,13 +194,16 @@ do_init_logging() ->
 
     ok = ale:start_logger(?ACCESS_LOGGER, debug, menelaus_access_log_formatter),
     ok = ale:start_logger(?CHRONICLE_ALE_LOGGER, debug, chronicle_local),
+    ok = ale:start_logger(?TLS_KEY_LOGGER, debug, ale_noop_formatter),
+
 
     OverrideLoglevels = [{?STATS_LOGGER, warn},
                          {?NS_DOCTOR_LOGGER, warn}],
 
     MainFilesLoggers = AllLoggers --
         [?XDCR_LOGGER, ?ERROR_LOGGER,
-         ?METAKV_LOGGER, ?JSON_RPC_LOGGER],
+         ?METAKV_LOGGER, ?JSON_RPC_LOGGER,
+         ?TLS_KEY_LOGGER],
 
     lists:foreach(
       fun (Logger) ->
@@ -234,6 +239,7 @@ do_init_logging() ->
     ok = ale:add_sink(?METAKV_LOGGER, disk_metakv, get_loglevel(?METAKV_LOGGER)),
 
     ok = ale:add_sink(?JSON_RPC_LOGGER, disk_json_rpc, get_loglevel(?JSON_RPC_LOGGER)),
+    ok = ale:add_sink(?TLS_KEY_LOGGER, disk_tls_key_log, get_loglevel(?TLS_KEY_LOGGER)),
 
     case misc:get_env_default(dont_suppress_stderr_logger, false) of
         true ->
@@ -300,3 +306,8 @@ get_babysitter_pid() ->
                         ?BABYSITTER_NODE_PREFIX ++ _ -> os:getpid();
                         _ -> os:getenv("NS_SERVER_BABYSITTER_PID")
                     end).
+
+%% To enable TLS key logging for debugging purposes, we use a diag/eval to
+%% call this function, so this is not a dead function. Do not remove.
+set_tls_key_log(Value) ->
+    ns_config:set({node, node(), tls_key_log}, Value).

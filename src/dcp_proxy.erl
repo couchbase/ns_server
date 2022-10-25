@@ -288,7 +288,20 @@ connect_inner(Cfg, Node, RepFeatures) ->
                 {tcp, SOpts, TcpPort}
         end,
 
-    network:socket_connect(Protocol, Host, Port, Opts, ?CONNECT_TIMEOUT).
+    KeyLog = ns_config:search_node_with_default(tls_key_log, false),
+
+    case {Protocol, KeyLog} of
+        {ssl, true} ->
+            AllOpts =  [{keep_secrets, true} | Opts];
+        _ ->
+            AllOpts = Opts
+    end,
+
+    {ok, Socket} = network:socket_connect(Protocol, Host, Port, AllOpts,
+                                          ?CONNECT_TIMEOUT),
+
+    misc:maybe_log_tls_key(Socket, Protocol, Host, Port),
+    {ok, Socket}.
 
 negotiate_features(Sock, Type, ConnName, Features) ->
     HelloFeatures = mc_client_binary:hello_features(Features),
