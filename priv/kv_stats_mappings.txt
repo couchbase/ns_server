@@ -200,7 +200,7 @@ mem_used_estimate bytes kv_mem_used_estimate_bytes{} bytes
 ep_mem_low_wat_percent percent kv_ep_mem_low_wat_percent_ratio{} ratio
 ep_mem_high_wat_percent percent kv_ep_mem_high_wat_percent_ratio{} ratio
 bytes bytes kv_total_memory_used_bytes{} bytes
-ep_kv_size bytes kv_memory_used_bytes{for="hashtable"} bytes
+ep_kv_size bytes kv_ep_key_value_size_bytes{} bytes
 ep_blob_num count kv_ep_blob_num{} count
 ep_blob_overhead bytes kv_memory_overhead_bytes{for="blobs"} bytes
 ep_value_size bytes kv_memory_used_bytes{for="blobs"} bytes
