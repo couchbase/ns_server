@@ -1266,6 +1266,7 @@ def make_golang_profile_tasks(service_name, passwd, port, log_prefix,
     # The tuple is in the format (Description, Log Postfix, API URL).
     # If new profiling is ever needed, can add a new item to this list.
     apis = [('Go Routine Dump', '_pprof', 'debug/pprof/goroutine?debug=1'),
+            ('Go Routine Dump2', '_pprof2', 'debug/pprof/goroutine?debug=2'),
             ('CPU Profile', '_cprof', 'debug/pprof/profile?seconds=30'),
             ('Memory Profile', '_mprof', 'debug/pprof/heap?debug=1')]
 
@@ -1276,6 +1277,8 @@ def make_golang_profile_tasks(service_name, passwd, port, log_prefix,
 
     tasks = []
     for descr, postfix, api in apis:
+        if postfix == "_pprof2" and service_name != "Query":
+            continue
         api_url = f'{base_url}/{api}'
         name = f'{service_name} {descr}: '
         logfile = f'{log_prefix}{postfix}.log'
