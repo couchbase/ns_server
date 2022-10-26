@@ -459,14 +459,15 @@ prepare_to_join(RemoteNode, Cookie) ->
               skip;
           ({{node, _, services}, _}) ->
               erase;
-          ({{node, Node, _}, _} = Pair) when Node =:= MyNode ->
+          ({{node, Node, Key}, Value}) when Node =:= MyNode ->
               %% Attach a fresh vector clock to the value. This will cause an
               %% intentional conflict with any non-deleted values from
               %% previous incarnations of this (or other of the same) node in
               %% the cluster we are joining. We create a fresh vector clock as
               %% opposed to incrementing the existing one, so we don't carry
               %% redundant history.
-              {set_fresh, Pair};
+              NewValue = pre_elixir_node_key_clean_up(Key, Value),
+              {set_fresh, {{node, Node, Key}, NewValue}};
           %% We are getting rid of cert_and_pkey but we need it here to
           %% correcly upgrade from pre-7.1:
           ({cert_and_pkey, V}) ->
@@ -489,6 +490,21 @@ prepare_to_join(RemoteNode, Cookie) ->
       fun ({Key, Value}) ->
               ns_config:set_initial(Key, Value)
       end, InitialKVs).
+
+%% This is needed for the case when elixir node is added to pre-elixir cluster
+pre_elixir_node_key_clean_up(memcached, List) ->
+    Res = misc:key_update(
+            admin_pass,
+            List,
+            fun ({v2, [Password | _]}) -> Password;
+                (Password) when is_list(Password) -> Password
+            end),
+    case Res of
+        false -> List;
+        NewList when is_list(NewList) -> NewList
+    end;
+pre_elixir_node_key_clean_up(_Key, Value) ->
+    Value.
 
 supported_services() ->
     supported_services(cluster_compat_mode:is_enterprise()).
