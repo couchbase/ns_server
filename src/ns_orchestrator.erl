@@ -782,28 +782,28 @@ idle({start_rebalance, Params = #{keep_nodes := KeepNodes,
     Services = ns_cluster_membership:cluster_supported_services(),
     {ok, ObserverPid} = ns_rebalance_observer:start_link(
                           Services, NodesInfo, Type, RebalanceId),
-    {Msg, MsgParams} =
+    DeltaRecoveryMsg =
         case DeltaNodes of
             [] ->
-                {"Starting rebalance, KeepNodes = ~p, "
-                 "EjectNodes = ~p, Failed over and being ejected "
-                 "nodes = ~p; no delta recovery nodes; "
-                 "Operation Id = ~s",
-                 [KeepNodes, EjectNodes, FailedNodes, RebalanceId]};
+                "no delta recovery nodes";
             _ ->
-                {"Starting rebalance, KeepNodes = ~p, "
-                 "EjectNodes = ~p, Failed over and being ejected "
-                 "nodes = ~p, Delta recovery nodes = ~p, "
-                 " Delta recovery buckets = ~p; "
-                 "Operation Id = ~s",
-                 [KeepNodes, EjectNodes, FailedNodes, DeltaNodes,
-                  DeltaRecoveryBuckets, RebalanceId]}
+                lists:flatten(
+                  io_lib:format(
+                    "Delta recovery nodes = ~p, Delta recovery buckets = ~p;",
+                    [DeltaNodes, DeltaRecoveryBuckets]))
         end,
 
-    ?log_info(Msg, MsgParams),
+    Msg = lists:flatten(
+            io_lib:format(
+              "Starting rebalance, KeepNodes = ~p, EjectNodes = ~p, "
+              "Failed over and being ejected nodes = ~p; ~s; Operation Id = ~s",
+              [KeepNodes, EjectNodes, FailedNodes, DeltaRecoveryMsg,
+               RebalanceId])),
+
+    ?log_info(Msg),
     case ns_rebalancer:start_link_rebalance(Params) of
         {ok, Pid} ->
-            ale:info(?USER_LOGGER, Msg, MsgParams),
+            ale:info(?USER_LOGGER, Msg),
             event_log:add_log(rebalance_initiated,
                               [{operation_id, RebalanceId},
                                {nodes_info, {NodesInfo}}]),
