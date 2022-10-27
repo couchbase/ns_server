@@ -86,7 +86,7 @@
          set_bucket_config/2,
          set_fast_forward_map/2,
          set_map/2,
-         set_initial_map/3,
+         set_initial_map/4,
          set_map_opts/2,
          set_servers/2,
          remove_servers/2,
@@ -1120,24 +1120,22 @@ update_init_map_config(BucketName, Servers, Fun) ->
             Other
     end.
 
-set_init_map_property(Bucket, Map, Servers, Fun) ->
-    update_init_map_config(
-        Bucket,
-        Servers,
-        fun (OldConfig) ->
-            Fun(proplists:get_value(map, OldConfig, [])),
-            lists:keystore(map, 1, OldConfig, {map, Map})
-        end).
-
-set_initial_map(Bucket, Map, Servers) ->
+set_initial_map(Bucket, Map, Servers, MapOpts) ->
     case chronicle_compat:backend() of
         ns_config ->
+            set_map_opts(Bucket, MapOpts),
             set_map(Bucket, Map);
         chronicle ->
             validate_map(Map),
-            set_init_map_property(Bucket, Map, Servers,
-                                  master_activity_events:note_set_map(Bucket,
-                                                                      Map, _))
+            update_init_map_config(
+              Bucket, Servers,
+              fun (OldConfig) ->
+                      OldMap = proplists:get_value(map, OldConfig, []),
+                      master_activity_events:note_set_map(Bucket, Map, OldMap),
+                      misc:update_proplist(
+                        OldConfig,
+                        [{map, Map}, {map_opts_hash, erlang:phash2(MapOpts)}])
+              end)
     end.
 
 set_map_opts(Bucket, Opts) ->

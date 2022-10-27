@@ -110,8 +110,7 @@ set_initial_map(Map, Servers, MapOpts, Bucket, BucketConfig, Options) ->
             ok
     end,
 
-    ns_bucket:set_map_opts(Bucket, MapOpts),
-    ok = ns_bucket:set_initial_map(Bucket, Map, Servers),
+    ok = ns_bucket:set_initial_map(Bucket, Map, Servers, MapOpts),
 
     push_config(Options).
 
