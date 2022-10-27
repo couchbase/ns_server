@@ -812,12 +812,19 @@ do_unbalanced(Map, Servers) ->
             {?get_param(max_replica_count_range, ?MAX_REPLICA_COUNT_RANGE),
              ReplicasCounts}]).
 
+is_bucket_initialized(BucketConfig) ->
+    proplists:get_value(map, BucketConfig) =/= undefined.
+
 bucket_needs_rebalance(BucketConfig, Nodes) ->
     Servers = ns_bucket:get_servers(BucketConfig),
     case proplists:get_value(type, BucketConfig) of
         membase ->
-            case Servers of
-                [] ->
+            case is_bucket_initialized(BucketConfig) of
+                false ->
+                    %% Buckets that are not yet initialized are considered to
+                    %% be balanced.
+                    %% The reason is that they do need to be janitored but they
+                    %% don't require a rebalance.
                     false;
                 _ ->
                     ns_bucket:num_replicas_changed(BucketConfig) orelse
@@ -838,17 +845,14 @@ are_servers_balanced(BucketConfig, Servers, Nodes) ->
     end.
 
 map_needs_rebalance(Servers, BucketConfig) ->
-    case proplists:get_value(map, BucketConfig) of
-        undefined ->
+    Map = proplists:get_value(map, BucketConfig),
+    true = Map =/= undefined,
+    case map_options_changed(Servers, BucketConfig) of
+        true ->
             true;
-        Map ->
-            case map_options_changed(Servers, BucketConfig) of
-                true ->
-                    true;
-                {false, MapOpts} ->
-                    unbalanced(Map, BucketConfig) andalso
-                        incompatible_with_past_map(Servers, MapOpts, Map)
-            end
+        {false, MapOpts} ->
+            unbalanced(Map, BucketConfig) andalso
+                incompatible_with_past_map(Servers, MapOpts, Map)
     end.
 
 map_options_changed(Servers, BucketConfig) ->
