@@ -79,7 +79,9 @@ handle_call({apply_config, Config}, _From, State) ->
                       ({externalListeners, _}) ->
                           {externalListeners, cb_dist:external_listeners()};
                       ({clientCertVerification, _}) ->
-                          {clientCertVerification, cb_dist:client_cert_verification()}
+                          {clientCertVerification, cb_dist:client_cert_verification()};
+                      ({keepSecrets, _}) ->
+                          {keepSecrets, cb_dist:keep_secrets()}
                   end, Config),
     Config2 = lists:usort(Config) -- CurConfig,
     CurConfig2 = lists:usort(CurConfig) -- Config,

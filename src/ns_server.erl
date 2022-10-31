@@ -310,4 +310,5 @@ get_babysitter_pid() ->
 %% To enable TLS key logging for debugging purposes, we use a diag/eval to
 %% call this function, so this is not a dead function. Do not remove.
 set_tls_key_log(Value) ->
-    ns_config:set({node, node(), tls_key_log}, Value).
+    ns_config:set({node, node(), tls_key_log}, Value),
+    netconfig_updater:apply_config([{keepSecrets, Value}]).

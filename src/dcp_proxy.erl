@@ -299,9 +299,23 @@ connect_inner(Cfg, Node, RepFeatures) ->
 
     {ok, Socket} = network:socket_connect(Protocol, Host, Port, AllOpts,
                                           ?CONNECT_TIMEOUT),
-
-    misc:maybe_log_tls_key(Socket, Protocol, Host, Port),
+    maybe_log_tls_keys(Protocol, KeyLog, Socket, Host, Port),
     {ok, Socket}.
+
+maybe_log_tls_keys(Protocol, KeyLog, Socket, Host, Port) ->
+    case {Protocol, KeyLog} of
+        {ssl, true} ->
+            case ssl:sockname(Socket) of
+                {ok, {LocalAddr, LocalPort}} ->
+                    misc:maybe_log_tls_keys(Socket,
+                                       inet_parse:ntoa(LocalAddr),
+                                       LocalPort, Host, Port);
+                {error, Reason} ->
+                    ?log_error("TLS key logging failed. "
+                               "Error: ~p", [Reason])
+            end;
+        _ -> ok
+    end.
 
 negotiate_features(Sock, Type, ConnName, Features) ->
     HelloFeatures = mc_client_binary:hello_features(Features),

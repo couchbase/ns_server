@@ -44,6 +44,7 @@
          external_encryption/0,
          external_listeners/0,
          client_cert_verification/0,
+         keep_secrets/0,
          update_config/1,
          proto_to_encryption/1,
          format_error/1,
@@ -174,6 +175,53 @@ setup(Node, Type, MyNode, LongOrShortNames, SetupTime) ->
               end, [link])
     end.
 
+post_tls_setup(SSLSocket, Type) ->
+    try
+        %% To avoid a gen_server:call in get_config/0 we check whether tls
+        %% key logging is enabled by checking ssl_dist_opts for the keep_secrets
+        %% option (required for tlsv1.3 but safely ignored for tlsv1.2)
+        case ets:lookup(ssl_dist_opts, Type) of
+            [{Type, TLSOpts}] ->
+                case proplists:get_value(keep_secrets, TLSOpts) of
+                    true ->
+                        %% We catch any errors here as it is possible for
+                        %% cb_dist to be used before the logger is started
+                        maybe_log_tls_keys(SSLSocket, Type);
+                    _ -> ok
+                end
+        end
+    catch
+        _:Error ->
+            ?log_error("TLS key logging failed. Error: ~p", [Error])
+    end.
+
+maybe_log_tls_keys(SSLSocket, Type) ->
+    case ssl:peername(SSLSocket) of
+        {ok, {PeerAddr, PeerPort}} ->
+            case ssl:sockname(SSLSocket) of
+                {ok, {SockAddr, SockPort}} ->
+                    PeerAddrStr = inet_parse:ntoa(PeerAddr),
+                    SockAddrStr = inet_parse:ntoa(SockAddr),
+                    {ClientAddr, ClientPort, ServerAddr, ServerPort} =
+                        case Type of
+                            server -> {PeerAddrStr, PeerPort,
+                                       SockAddrStr, SockPort};
+                            client -> {SockAddrStr, SockPort,
+                                       PeerAddrStr, PeerPort}
+                        end,
+
+                    misc:maybe_log_tls_keys(SSLSocket,
+                                       ClientAddr, ClientPort,
+                                       ServerAddr, ServerPort);
+                {error, Reason} ->
+                    ?log_error("TLS key logging failed. "
+                               "Error: ~p", [Reason])
+            end;
+        {error, Reason} ->
+            ?log_error("TLS key logging failed. "
+                       "Error: ~p", [Reason])
+    end.
+
 -spec is_node_name(Node :: atom()) -> true | false.
 is_node_name(Node) ->
     select(Node).
@@ -222,6 +270,9 @@ external_listeners() ->
 client_cert_verification() ->
     conf(client_cert_verification, get_config()).
 
+keep_secrets() ->
+    conf(keep_secrets, get_config()).
+
 get_config() ->
     try status() of
         Status -> proplists:get_value(config, Status, [])
@@ -246,6 +297,7 @@ init([]) ->
     process_flag(trap_exit,true),
     PKeysEncrypted = #{client => is_pkey_encrypted(client),
                        server => is_pkey_encrypted(server)},
+    application:set_env(kernel, cb_dist_post_tls_setup, post_tls_setup(_, _)),
     {ok, #s{config = Config, is_pkey_encrypted = PKeysEncrypted}}.
 
 handle_call({listen, Name}, _From, State) ->
@@ -355,15 +407,20 @@ handle_call({update_config, Props}, _From, #s{config = Cfg} = State) ->
     end;
 
 handle_call({register_outgoing_connection, Mod}, _From,
-            #s{connections = Connections,
+            #s{connections = Connections, config=Config,
                is_pkey_encrypted = #{client := IsPKeyEncrypted}} = State) ->
     {CanAddConnection, NewState} =
-        case proto_to_encryption(Mod) andalso IsPKeyEncrypted of
+        case proto_to_encryption(Mod) of
             true ->
-                S = maybe_update_client_pkey_passphrase(State),
-                {S#s.client_passphrase_updated, S};
-            false ->
-                {true, State}
+                maybe_update_keep_secrets(client, Config),
+                case IsPKeyEncrypted of
+                    true ->
+                        S = maybe_update_client_pkey_passphrase(State),
+                        {S#s.client_passphrase_updated, S};
+                    false ->
+                        {true, State}
+                end;
+            false -> {true, State}
         end,
     case CanAddConnection of
         true ->
@@ -548,7 +605,8 @@ add_proto(Listener,
     end.
 
 start_acceptor({_AddrType, Mod} = Listener,
-               #s{listeners = Listeners, acceptors = Acceptors} = State) ->
+               #s{listeners = Listeners, acceptors = Acceptors,
+                   config = Config} = State) ->
     case proplists:get_value(Listener, Listeners) of
         undefined ->
             error_msg("Ignoring attempt to start an acceptor for unknown "
@@ -559,6 +617,7 @@ start_acceptor({_AddrType, Mod} = Listener,
             case maybe_update_server_pkey_passphrase(Mod, State) of
                 true ->
                     try
+                        maybe_update_keep_secrets(server, Config),
                         APid = Mod:accept(LSocket),
                         true = is_pid(APid),
                         info_msg("Started acceptor ~p: ~p", [Mod, APid]),
@@ -649,6 +708,16 @@ maybe_update_pkey_passphrase(Type, #s{is_pkey_encrypted = IsPKeyEncrypted}) ->
             end;
         _ ->
             true
+    end.
+
+maybe_update_keep_secrets(Type, Config) ->
+    Value = conf(keep_secrets, Config),
+    case set_dist_tls_opts(Type, [{keep_secrets, Value}]) of
+        ok ->
+            info_msg("Updated ~p ssl_dist_opts (keep_secrets) - ~p",
+                     [Type, Value]);
+        {error, not_supported} ->
+            false
     end.
 
 set_dist_tls_opts(Type, UpdatedOpts) ->
@@ -912,7 +981,8 @@ defaults(Conf) ->
                                             inet_tcp_dist)]},
      {external_listeners, [proplists:get_value(preferred_external_proto, Conf,
                                                inet_tcp_dist)]},
-     {client_cert_verification, true}].
+     {client_cert_verification, true},
+     {keep_secrets, false}].
 
 upgrade_config(Config) ->
     case config_vsn(Config) of
@@ -1092,10 +1162,13 @@ import_props_to_config(Props, Cfg) ->
     CurAFamily = proto_to_family(conf(preferred_external_proto, Cfg)),
     CurNEncr = proto_to_encryption(conf(preferred_external_proto, Cfg)),
     CurClientAuth = conf(client_cert_verification, Cfg),
+    CurKeepSecrets = conf(keep_secrets, Cfg),
     NewAFamily = proplists:get_value(afamily, Props, CurAFamily),
     NewNEncr = proplists:get_value(nodeEncryption, Props, CurNEncr),
     ClientCert = proplists:get_value(clientCertVerification, Props,
                                      CurClientAuth),
+    KeepSecrets = proplists:get_value(keepSecrets, Props,
+                                     CurKeepSecrets),
     PrefExt = netsettings2proto({NewAFamily, NewNEncr}),
     PrefLocal = netsettings2proto({NewAFamily, false}),
     Listeners =
@@ -1107,7 +1180,8 @@ import_props_to_config(Props, Cfg) ->
     [{local_listeners, [PrefLocal]},
      {preferred_external_proto, PrefExt},
      {preferred_local_proto, PrefLocal},
-     {client_cert_verification, ClientCert}].
+     {client_cert_verification, ClientCert},
+     {keep_secrets, KeepSecrets}].
 
 store_config(DCfgFile, DCfg) ->
     DirName = filename:dirname(DCfgFile),

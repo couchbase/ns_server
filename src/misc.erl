@@ -3279,35 +3279,27 @@ read_cpu_count_env() ->
             end
     end.
 
-maybe_log_tls_key(Socket, Protocol, Host, Port) ->
-    case Protocol of
-        ssl ->
-            {ok, Info} =
-                ssl:connection_information(Socket, [keep_secrets, keylog]),
-            case Info of
-                [{keep_secrets, true}, {keylog, KeyLogItems}] ->
-                    ?log_warning("Logging tls keys", []),
+maybe_log_tls_keys(SSLSocket, ClientAddr, ClientPort, ServerAddr, ServerPort) ->
+    case ssl:connection_information(SSLSocket, [keylog]) of
+        {ok, [{keylog, KeyLogItems}]} ->
+            LogFileStart = io_lib:format(
+                             "------ Connection from ~s:~p to ~s:~p,"
+                             " key.log file start ",
+                             [ClientAddr, ClientPort, ServerAddr, ServerPort]),
 
-                    {ok, {_, LocalPort}} = ssl:sockname(Socket),
+            KeyLog = lists:join(io_lib:nl(), KeyLogItems),
 
-                    LogFileStart = io_lib:format(
-                                     "------ Connection from port ~p to ~s:~p,"
-                                     " key.log file start ",
-                                     [LocalPort, Host, Port]),
+            LogFileEnd =
+                "------------------------------------"
+                " key.log file end "
+                "------------------------------------",
 
-                    KeyLog = lists:join(io_lib:nl(), KeyLogItems),
+            KeyLogFile = io_lib:format(
+                           <<"~-90..-s~n~s~n~s~n">>,
+                           [LogFileStart, KeyLog, LogFileEnd]),
 
-                    LogFileEnd =
-                        "------------------------------------"
-                        " key.log file end "
-                        "------------------------------------",
-
-                    KeyLogFile = io_lib:format(
-                                   <<"~-90..-s~n~s~n~s~n">>,
-                                   [LogFileStart, KeyLog, LogFileEnd]),
-
-                    ?tls_key_log(KeyLogFile);
-                _ -> ok
-            end;
+            ?tls_key_log(KeyLogFile),
+            ?log_debug("Logged tls keys for connection from ~s:~p to ~s:~p",
+                       [ClientAddr, ClientPort, ServerAddr, ServerPort]);
         _ -> ok
     end.
