@@ -525,7 +525,7 @@ build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr) ->
     Versions = proplists:get_value(version, InfoNode, []),
     Version = proplists:get_value(ns_server, Versions, "unknown"),
     OS = proplists:get_value(system_arch, InfoNode, "unknown"),
-    CpuCount = proplists:get_value(cpu_count, InfoNode, unknown),
+    CpuCount = proplists:get_value(cpu_count, InfoNode, 0),
     NodeUUID = ns_config:search_node_with_default(WantENode, Config, uuid,
                                                   undefined),
     ConfiguredHostname =
