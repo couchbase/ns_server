@@ -1077,12 +1077,12 @@ do_handle_rebalance(Req, [KnownNodes, EjectedNodes, DeltaRecoveryBuckets,
             reply_text(Req, "Cluster is in recovery mode.", 503);
         no_kv_nodes_left ->
             reply_json(Req, {[{noKVNodesLeft, 1}]}, 400);
-        % pre-elixir responses
+        %% pre-elixir responses
         ok ->
             ns_audit:rebalance_initiated(Req, KnownNodes, EjectedNodes,
-                DeltaRecoveryBuckets),
+                                         DeltaRecoveryBuckets),
             reply(Req, 200);
-        % elixir and next versions response
+        %% elixir and next versions response
         {ok, RebalanceId} ->
             ns_audit:rebalance_initiated(Req, KnownNodes, EjectedNodes,
                                          DeltaRecoveryBuckets),
