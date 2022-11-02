@@ -1077,10 +1077,6 @@ do_handle_rebalance(Req, [KnownNodes, EjectedNodes, DeltaRecoveryBuckets,
             reply_text(Req, "Cluster is in recovery mode.", 503);
         no_kv_nodes_left ->
             reply_json(Req, {[{noKVNodesLeft, 1}]}, 400);
-        {need_more_space, Zones} ->
-            reply_json(Req, {[{need_more_space, Zones}]}, 400);
-        {must_rebalance_services, S} ->
-            reply_json(Req, {[{must_rebalance_services, S}]}, 400);
         % pre-elixir responses
         ok ->
             ns_audit:rebalance_initiated(Req, KnownNodes, EjectedNodes,
@@ -1090,7 +1086,9 @@ do_handle_rebalance(Req, [KnownNodes, EjectedNodes, DeltaRecoveryBuckets,
         {ok, RebalanceId} ->
             ns_audit:rebalance_initiated(Req, KnownNodes, EjectedNodes,
                                          DeltaRecoveryBuckets),
-            reply_json(Req, {[{rebalance_id, RebalanceId}]}, 200)
+            reply_json(Req, {[{rebalance_id, RebalanceId}]}, 200);
+        OtherError ->
+            reply_json(Req, {[OtherError]}, 400)
     end.
 
 handle_rebalance_progress(_PoolId, Req) ->
