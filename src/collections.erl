@@ -150,7 +150,7 @@ manifest_without_system_scope(BucketConf) ->
               get_default_collection_props(BucketConf)}]}]}]}].
 
 system_collections() ->
-    ["_eventing", "_mobile", "_query", "_regulator"].
+    ["_eventing", "_mobile", "_query", "_regulator", "_transactions"].
 
 manifest_with_system_scope(BucketConf) ->
     {NextId, Collections} =
