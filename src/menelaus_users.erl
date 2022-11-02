@@ -70,13 +70,13 @@
          cleanup_bucket_roles/1,
          get_passwordless/0,
          get_salt_and_mac/1,
-         obsolete_get_salt_and_mac/1,
 
 %% Backward compatibility:
          upgrade/3,
          config_upgrade/0,
          upgrade_in_progress/0,
-         upgrade_in_progress/1
+         upgrade_in_progress/1,
+         upgrade_props/4
         ]).
 
 %% callbacks for replicated_dets
@@ -978,7 +978,9 @@ upgrade_props(?VERSION_70, RecType, _Key, Props) when RecType == user;
 upgrade_props(?VERSION_71, user, Key, Props) ->
     {ok, add_uuid(Key, Props)};
 upgrade_props(?VERSION_ELIXIR, auth, _Key, AuthProps) ->
-    {ok, scram_sha:fix_pre_elixir_auth_info(AuthProps)};
+    {ok, functools:chain(AuthProps,
+                         [scram_sha:fix_pre_elixir_auth_info(_),
+                          get_rid_of_plain_key(_)])};
 upgrade_props(_Vsn, _RecType, _Key, _Props) ->
     skip.
 
@@ -986,6 +988,14 @@ add_uuid({_, local}, Props) ->
     lists:keystore(uuid, 1, Props, {uuid, misc:uuid_v4()});
 add_uuid(_, Props) ->
     Props.
+
+get_rid_of_plain_key(Auth) ->
+    lists:map(
+      fun ({<<"plain">>, _}) ->
+              {<<"hash">>, {obsolete_get_salt_and_mac(Auth)}};
+          (Other) ->
+              Other
+      end, Auth).
 
 upgrade_roles(Fun, Props) ->
     OldRoles = lists:sort(proplists:get_value(roles, Props)),

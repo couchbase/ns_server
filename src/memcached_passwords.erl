@@ -130,14 +130,9 @@ get_user_uuid(true, Identity) ->
     end.
 
 memcached_user_info(User, Auth) ->
-    Auth2 = lists:map(
-           fun ({<<"plain">>, _}) ->
-                   Props = menelaus_users:obsolete_get_salt_and_mac(Auth),
-                   {<<"hash">>, {Props}};
-               (Other) ->
-                   Other
-           end, scram_sha:fix_pre_elixir_auth_info(Auth)),
-    {list_to_binary(User), {Auth2}}.
+    {ok, NewAuth} =
+        menelaus_users:upgrade_props(?VERSION_ELIXIR, auth, User, Auth),
+    {list_to_binary(User), {NewAuth}}.
 
 jsonify_auth(Users, AdminPass, RestCreds, PromAuth) ->
     EnforceLimits = cluster_compat_mode:should_enforce_limits(),
