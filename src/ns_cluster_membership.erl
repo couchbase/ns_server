@@ -60,6 +60,7 @@
          supported_services/1,
          supported_services_for_version/2,
          cluster_supported_services/0,
+         hosted_services/1,
          topology_aware_services/0,
          topology_aware_services_for_version/1,
          default_services/0,
@@ -552,6 +553,10 @@ supported_services_for_version(ClusterVersion, IsEnterprise) ->
 cluster_supported_services() ->
     supported_services_for_version(cluster_compat_mode:get_compat_version(),
                                    cluster_compat_mode:is_enterprise()).
+
+hosted_services(Snapshot) ->
+    lists:usort(
+      lists:flatmap(node_services(Snapshot, _), nodes_wanted(Snapshot))).
 
 default_services() ->
     [kv].

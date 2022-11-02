@@ -281,7 +281,8 @@ ensure_janitor_run(Item) ->
                              no_active_nodes_left | in_recovery |
                              delta_recovery_not_possible | no_kv_nodes_left |
                              {need_more_space, list()} |
-                             {must_rebalance_services, list()}.
+                             {must_rebalance_services, list()} |
+                             {unhosted_services, list()}.
 start_rebalance(KnownNodes, EjectNodes, DeltaRecoveryBuckets,
                 DefragmentZones, Services) ->
     call({maybe_start_rebalance,
@@ -1624,6 +1625,12 @@ rebalance_allowed(Snapshot) ->
 validate_services(all, _, _, _) ->
     ok;
 validate_services(Services, KeepNodes, NodesToEject, Snapshot) ->
+    case Services -- ns_cluster_membership:hosted_services(Snapshot) of
+        [] ->
+            ok;
+        ExtraServices ->
+            throw({unhosted_services, ExtraServices})
+    end,
     case get_uninitialized_services(Services, KeepNodes, Snapshot) ++
         get_unejected_services(Services, NodesToEject, Snapshot) of
         [] ->
