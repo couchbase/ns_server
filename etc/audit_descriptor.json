@@ -810,9 +810,7 @@
           "filtering_permitted" : false,
           "mandatory_fields": {
               "timestamp": "",
-              "real_userid": {"domain": "", "user": ""},
-              "hostname": "",
-              "version": 1
+              "real_userid": {"domain": "", "user": ""}
           },
           "optional_fields": {
               "auditd_enabled": true,
