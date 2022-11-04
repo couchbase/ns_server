@@ -916,7 +916,24 @@ set_manifest(Req, BucketName, InputManifest, ValidOnUid, Uid) ->
         [{bucket_name, BucketName}, {input_manifest, InputManifest},
          {valid_on_uid, ValidOnUid}, {new_manifest_uid, Uid}]).
 
-auth_failure(Req) ->
+auth_failure(Req0) ->
+    Req =
+        case menelaus_auth:get_identity(Req0) of
+            {[], anonymous} ->
+                %% This handles the case where an authentication failure has
+                %% occurred because the request didn't have authorization
+                %% information. This  leads to ns_server adding arbitrary
+                %% identity, including the 'anonymous' domain, in order to
+                %% check permissions for the request.
+                %% memcached doesn't allow the 'anonymous' domain and since
+                %% the identity was arbitrarily added it is now removed.
+                menelaus_auth:delete_headers(Req0,
+                                             ["menelaus-auth-user",
+                                              "menelaus-auth-domain"]);
+            _ ->
+                Req0
+        end,
+
     RawPath = mochiweb_request:get(raw_path, Req),
     put(auth_failure, Req, [{raw_url, RawPath}]).
 

@@ -33,6 +33,7 @@
          is_meta_header/1,
          verify_rest_auth/2,
          verify_local_token/1,
+         delete_headers/2,
          apply_headers/2]).
 
 %% rpc from ns_couchdb node
@@ -135,13 +136,29 @@ assert_no_meta_headers(Req) ->
 apply_headers(Req, []) ->
     Req;
 apply_headers(Req, Headers) ->
+    do_update_headers(Req, Headers, apply).
+
+delete_headers(Req, []) ->
+    Req;
+delete_headers(Req, Headers) ->
+    do_update_headers(Req, Headers, delete).
+
+do_update_headers(Req, Headers, Op) ->
     AllHeaders =
         lists:foldl(
           fun ({Header, Val}, H) ->
-                  mochiweb_headers:enter(Header, Val, H)
+                  true = Op =:= apply,
+                  mochiweb_headers:enter(Header, Val, H);
+              (Header, H) ->
+                  true = Op =:= delete,
+                  mochiweb_headers:delete_any(Header, H)
           end, mochiweb_request:get(headers, Req), Headers),
-    mochiweb_request:new(mochiweb_request:get(socket, Req), mochiweb_request:get(method, Req), mochiweb_request:get(raw_path, Req),
-                         mochiweb_request:get(version, Req), AllHeaders).
+
+    mochiweb_request:new(mochiweb_request:get(socket, Req),
+                         mochiweb_request:get(method, Req),
+                         mochiweb_request:get(raw_path, Req),
+                         mochiweb_request:get(version, Req),
+                         AllHeaders).
 
 meta_headers(undefined) ->
     [];
