@@ -384,23 +384,33 @@ config_email_alerts_upgrade(Config, Upgrade) ->
     end.
 
 config_upgrade_to_elixir(Config) ->
-    case ns_config:search(Config, email_alerts) of
-        false ->
-            [];
-        {value, EmailAlerts} ->
-            upgrade_alerts(
-              EmailAlerts,
-              [add_proplist_list_elem(alerts, cert_expired, _),
-               add_proplist_list_elem(pop_up_alerts, cert_expired, _),
-               add_proplist_list_elem(alerts, cert_expires_soon, _),
-               add_proplist_list_elem(pop_up_alerts, cert_expires_soon, _),
-               move_memory_alert_email_alerts(alerts,
-                                              memory_alert_email, _),
-               move_memory_alert_email_alerts(pop_up_alerts,
-                                              memory_alert_popup, _)] ++
-              [add_proplist_list_elem(pop_up_alerts, A, _)
-               || A <- auto_failover:alert_keys()])
-    end.
+    Ret = case ns_config:search(Config, email_alerts) of
+              false ->
+                  [];
+              {value, EmailAlerts} ->
+                  upgrade_alerts(
+                    EmailAlerts,
+                    [add_proplist_list_elem(alerts, cert_expired, _),
+                     add_proplist_list_elem(pop_up_alerts, cert_expired, _),
+                     add_proplist_list_elem(alerts, cert_expires_soon, _),
+                     add_proplist_list_elem(pop_up_alerts,
+                                            cert_expires_soon, _),
+                     move_memory_alert_email_alerts(alerts,
+                                                    memory_alert_email, _),
+                     move_memory_alert_email_alerts(pop_up_alerts,
+                                                    memory_alert_popup, _)] ++
+                        [add_proplist_list_elem(pop_up_alerts, A, _)
+                         || A <- auto_failover:alert_keys()])
+          end,
+    %% MB-53122 noted that upgrades from 6.6 did not enable auto failover pop up
+    %% alerts. We fixed this issue via upgrades, but we had already released
+    %% early versions of 7.0 and without a compat mode change could not fix the
+    %% issue for customers already on 7.0 via upgrade. Instead, startup of this
+    %% module would enable the alerts and write the config key
+    %% "popup_alerts_auto_failover_upgrade_70_fixed" to prevent them from being
+    %% enabled over and over. Upgrade removes the need for the key, and so we
+    %% can tidy it up here.
+    Ret ++ [{delete, popup_alerts_auto_failover_upgrade_70_fixed}].
 
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
@@ -417,9 +427,7 @@ config_upgrade_to_elixir(Config) ->
 %% (popup_alerts_auto_failover_upgrade_70_fixed) to prevent us from
 %% re-enabling the auto failover popups multiple times.
 %%
-%% We can remove this code in merge forwards to newer major/minor versions
-%% which fix the bug in their upgrade paths, it's only necessary on the
-%% 7.0.X branch to fix the previously broken upgrade.
+%% We can remove this code when 7.1 is the minimal supported version
 maybe_enable_auto_failover_popup_alerts() ->
     EnabledKey = popup_alerts_auto_failover_upgrade_70_fixed,
     Enabled = ns_config:read_key_fast(EnabledKey, false),
@@ -1653,4 +1661,29 @@ config_upgrade_to_72_test() ->
                       {enabled, false}],
     [{set, email_alerts, Alerts}] = config_upgrade_to_72(Config),
     ?assertEqual(misc:sort_kv_list(ExpectedAlerts), misc:sort_kv_list(Alerts)).
+
+config_upgrade_to_elixir_test() ->
+    Config1 = [],
+    Expected1 = [{delete, popup_alerts_auto_failover_upgrade_70_fixed}],
+    ?assertEqual(Expected1, config_upgrade_to_elixir(Config1)),
+
+    Config2 =
+        [[{email_alerts,
+            [{pop_up_alerts, [ip, disk]}, {enabled, false},
+             {alerts, [ip, time_out_of_sync, communication_issue]}]}]],
+    Expected2 =
+        [{set, email_alerts,
+            [{pop_up_alerts,
+                [auto_failover_cluster_too_small, auto_failover_disabled,
+                 auto_failover_maximum_reached, auto_failover_node,
+                 auto_failover_other_nodes_down, cert_expired,
+                 cert_expires_soon, disk, ip, memory_threshold]},
+             {alerts,
+                 [cert_expired, cert_expires_soon, communication_issue, ip,
+                  memory_threshold, time_out_of_sync]},
+             {enabled,false}]},
+         {delete,memory_alert_email},
+         {delete,memory_alert_popup}] ++ Expected1,
+    ?assertEqual(Expected2, config_upgrade_to_elixir(Config2)).
+
 -endif.
