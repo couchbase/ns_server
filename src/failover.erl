@@ -365,8 +365,21 @@ do_failover_bucket(memcached, Bucket, _BucketConfig, Nodes, _Options) ->
     failover_memcached_bucket(Nodes, Bucket),
     [];
 do_failover_bucket(membase, Bucket, BucketConfig, Nodes, Options) ->
+    Servers = ns_bucket:get_servers(BucketConfig) -- Nodes,
     Map = proplists:get_value(map, BucketConfig, []),
-    R = failover_membase_bucket(Nodes, Bucket, Map, Options),
+    case ns_bucket:get_hibernation_state(BucketConfig) of
+        pausing ->
+            ok = hibernation_utils:unpause_bucket(Bucket, Servers);
+        _ ->
+            ok
+    end,
+
+    %% Bread crumb to inform the janitor that bucket has already been checked
+    %% for a failed hibernation pause status, and it doesn't require for
+    %% unpause to be re-issued during the janitor run
+    Options1 = maps:put(unpause_checked_hint, true, Options),
+
+    R = failover_membase_bucket(Nodes, Bucket, Map, Options1),
 
     [[{bucket, Bucket},
       {node, N},
@@ -473,11 +486,20 @@ failover_membase_bucket_with_map(Nodes, Bucket, Map, Options) ->
             janitor_failed
     end.
 
+maybe_add_hibernation_hint(FailoverOptions) ->
+    case maps:get(unpause_checked_hint, FailoverOptions, false) of
+        true ->
+            [{unpause_checked_hint, true}];
+        _ ->
+            []
+    end.
+
 janitor_cleanup_options(FailedNodes, FailoverOptions) ->
     [{sync_nodes, config_sync_nodes(FailedNodes)},
      {failover_nodes, FailedNodes},
      {pull_config, false},
-     {push_config, durability_aware(FailoverOptions)}].
+     {push_config, durability_aware(FailoverOptions)}] ++
+        maybe_add_hibernation_hint(FailoverOptions).
 
 durability_aware(Options) ->
     cluster_compat_mode:preserve_durable_mutations() andalso

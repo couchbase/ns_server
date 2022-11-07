@@ -58,10 +58,8 @@ cleanup_membase_bucket(Bucket, Options, BucketConfig, Snapshot) ->
         leader_activities:run_activity(
           {ns_janitor, Bucket, cleanup}, majority,
           fun () ->
-                  {ok, cleanup_with_membase_bucket_check_servers(Bucket,
-                                                                 AllOptions,
-                                                                 BucketConfig,
-                                                                 Snapshot)}
+                  {ok, cleanup_with_membase_bucket_check_hibernation(
+                         Bucket, AllOptions, BucketConfig, Snapshot)}
           end,
           [quiet]),
 
@@ -86,6 +84,56 @@ update_servers(Bucket, Servers, Options) ->
     ns_bucket:set_servers(Bucket, Servers),
     push_config(Options).
 
+unpause_bucket(Bucket, Nodes, Options) ->
+    case proplists:get_value(unpause_checked_hint, Options, false) of
+        true ->
+            ok;
+        false ->
+            hibernation_utils:unpause_bucket(Bucket, Nodes)
+    end.
+
+handle_hibernation_cleanup(Bucket, Options, BucketConfig, State = pausing) ->
+    Servers = ns_bucket:get_servers(BucketConfig),
+    case unpause_bucket(Bucket, Servers, Options) of
+        ok ->
+            ns_bucket:clear_hibernation_state(Bucket),
+            ?log_debug("Cleared hibernation state"),
+            cleanup(Bucket, Options);
+        _ ->
+            {error, hibernation_cleanup_failed, State}
+    end;
+handle_hibernation_cleanup(Bucket, _Options, _BucketConfig, State = resuming) ->
+    %% A bucket in "resuming" hibernation state during janitor cleanup is an
+    %% inactive bucket with no server list or map. It does not exist in
+    %% memcached so cleanup of it mostly involves a delete from the config.
+    case ns_bucket:delete_bucket(Bucket) of
+        {ok, _} ->
+            ns_janitor_server:delete_bucket_request(Bucket);
+        _ ->
+            {error, hibernation_cleanup_failed, State}
+    end.
+
+requires_cleanup(BucketConfig) ->
+    case ns_bucket:get_hibernation_state(BucketConfig) of
+        pausing ->
+            true;
+        resuming ->
+            true;
+        _ ->
+            false
+    end.
+
+cleanup_with_membase_bucket_check_hibernation(Bucket, Options, BucketConfig,
+                                              Snapshot) ->
+    case requires_cleanup(BucketConfig) of
+        true ->
+            State = ns_bucket:get_hibernation_state(BucketConfig),
+            handle_hibernation_cleanup(Bucket, Options, BucketConfig, State);
+        false ->
+            cleanup_with_membase_bucket_check_servers(Bucket, Options,
+                                                      BucketConfig, Snapshot)
+    end.
+
 cleanup_with_membase_bucket_check_map(Bucket, Options, BucketConfig) ->
     case proplists:get_value(map, BucketConfig, []) of
         [] ->
@@ -99,7 +147,8 @@ cleanup_with_membase_bucket_check_map(Bucket, Options, BucketConfig) ->
 
             cleanup(Bucket, Options);
         _ ->
-            cleanup_with_membase_bucket_vbucket_map(Bucket, Options, BucketConfig)
+            cleanup_with_membase_bucket_vbucket_map(Bucket, Options,
+                                                    BucketConfig)
     end.
 
 set_initial_map(Map, Servers, MapOpts, Bucket, BucketConfig, Options) ->

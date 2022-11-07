@@ -111,7 +111,7 @@ unpause_bucket(Bucket) ->
     BucketNodes = ns_bucket:get_servers(BucketConfig),
     unpause_bucket(Bucket, BucketNodes).
 
-unpause_bucket(Bucket, BucketNodes) ->
+unpause_bucket(Bucket, BucketNodes) when BucketNodes =/= [] ->
     misc:with_trap_exit(
       fun () ->
               {Worker, Ref} =

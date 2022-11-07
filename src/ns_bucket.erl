@@ -92,6 +92,7 @@
          set_servers/2,
          set_restored_attributes/3,
          remove_servers/2,
+         clear_hibernation_state/1,
          update_bucket_props/2,
          update_bucket_props/4,
          node_bucket_names/1,
@@ -1184,6 +1185,13 @@ remove_servers(Bucket, Nodes) ->
                        DesiredServers ->
                            update_desired_servers(DesiredServers -- Nodes, C1)
                    end
+           end).
+
+clear_hibernation_state(Bucket) ->
+    ok = update_bucket_config(
+           Bucket,
+           fun (OldConfig) ->
+                   proplists:delete(hibernation_state, OldConfig)
            end).
 
 % Update the bucket config atomically.

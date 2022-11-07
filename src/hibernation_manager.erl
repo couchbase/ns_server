@@ -96,6 +96,8 @@ do_pause_bucket(Bucket, RemotePath) ->
     WorkersParams = build_workers_params(RemotePath, KvNodes, Snapshot),
 
     ok = kv_hibernation_agent:prepare_pause_bucket(Bucket, KvNodes, self()),
+
+    ok = ns_bucket:update_bucket_props(Bucket, [{hibernation_state, pausing}]),
     ok = hibernation_utils:run_hibernation_op(
            fun ({For, Nodes, RP}) ->
                    register_worker(For),
@@ -103,6 +105,7 @@ do_pause_bucket(Bucket, RemotePath) ->
                      For, Bucket, Snapshot, RP, Nodes)
            end, WorkersParams, ?PAUSE_BUCKET_TIMEOUT),
 
+    ok = ns_bucket:update_bucket_props(Bucket, [{hibernation_state, paused}]),
     kv_hibernation_agent:unprepare_pause_bucket(Bucket, KvNodes).
 
 -spec pause_bucket_body(For, Bucket, Snapshot, RemotePath, Nodes) -> ok
