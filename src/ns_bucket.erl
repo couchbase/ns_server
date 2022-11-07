@@ -130,7 +130,8 @@
          get_desired_servers/1,
          get_hibernation_state/1,
          update_desired_servers/2,
-         update_servers/2]).
+         update_servers/2,
+         get_expected_servers/1]).
 
 -import(json_builder,
         [to_binary/1,
@@ -468,13 +469,13 @@ pitr_max_history_age(BucketConfig) ->
     end.
 
 %% returns bucket ram quota multiplied by number of nodes this bucket
-%% resides on. I.e. gives amount of ram quota that will be used by
-%% across the cluster for this bucket.
+%% will reside after initial cleanup. I.e. gives amount of ram quota that will
+%% be used by across the cluster for this bucket.
 -spec ram_quota([{_,_}]) -> integer().
 ram_quota(Bucket) ->
     case proplists:get_value(ram_quota, Bucket) of
         X when is_integer(X) ->
-            X * length(get_servers(Bucket))
+            X * length(get_expected_servers(Bucket))
     end.
 
 %% returns bucket ram quota for _single_ node. Each node will subtract
@@ -1686,6 +1687,22 @@ update_desired_servers(DesiredServers, BucketConfig) ->
     lists:keystore(desired_servers, 1, BucketConfig,
                    {desired_servers, DesiredServers}).
 
+-spec get_expected_servers([{_,_}]) -> [node()].
+%% Use this to get the list of servers that the bucket will be on after creation
+get_expected_servers(BucketConfig) ->
+    case get_servers(BucketConfig) of
+        [] ->
+            case get_desired_servers(BucketConfig) of
+                %% If desired servers is undefined then this is not a serverless
+                %% cluster.
+                %% When the servers list has not yet been populated we assume
+                %% that the bucket will be placed on all nodes.
+                undefined -> ns_cluster_membership:service_active_nodes(kv);
+                Nodes -> Nodes
+            end;
+        Nodes -> Nodes
+    end.
+
 -ifdef(TEST).
 min_live_copies_test() ->
     ?assertEqual(min_live_copies([node1], []), undefined),
@@ -1697,4 +1714,20 @@ min_live_copies_test() ->
     Map2 = [[undefined, node2], [node2, node1]],
     ?assertEqual(1, min_live_copies([node1, node2], [{map, Map2}])),
     ?assertEqual(0, min_live_copies([node1, node3], [{map, Map2}])).
+
+get_expected_servers_test() ->
+    meck:new(ns_cluster_membership, [passthrough]),
+    meck:expect(ns_cluster_membership, service_active_nodes,
+                fun (_) -> [node1, node2] end),
+    %% By default get the servers list
+    ?assertEqual([node1], get_expected_servers([{servers, [node1]}])),
+    %% When servers is not yet populated, check desired servers
+    ?assertEqual([node1], get_expected_servers([{servers, []},
+                                                {desired_servers, [node1]}])),
+    %% Default to all kv nodes, when desired_servers is undefined
+    ?assertEqual([node1, node2], get_expected_servers([{servers, []}])),
+    %% Current server's list takes precedent over desired_servers when populated
+    ?assertEqual([node1], get_expected_servers([{servers, [node1]},
+                                                {desired_servers, [node2]}])),
+    meck:unload(ns_cluster_membership).
 -endif.

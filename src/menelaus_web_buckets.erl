@@ -1808,7 +1808,7 @@ get_nodes(#bv_ctx{kv_nodes = KvNodes, bucket_config = BucketConfig}) ->
         false ->
             KvNodes;
         _ ->
-            ns_bucket:get_servers(BucketConfig)
+            ns_bucket:get_expected_servers(BucketConfig)
     end.
 
 -define(PHDD(K, KO), {KO, V#hdd_summary.K}).
@@ -3135,4 +3135,87 @@ validate_ram_used_pre_elixir_test() ->
 
     meck:unload(cluster_compat_mode).
 
+validate_ram_quota_before_server_list_populated_test() ->
+    meck:new(chronicle_compat, [passthrough]),
+    meck:expect(chronicle_compat,
+                backend, fun() -> ns_config end),
+
+    meck:new(ns_config),
+    meck:expect(ns_config,
+                search_prop, fun(_, buckets, configs, []) -> [] end),
+    meck:expect(ns_config,
+                latest, fun() -> 'latest-config-marker' end),
+
+    meck:new(menelaus_stats),
+    %% We aren't interested in this
+    meck:expect(menelaus_stats,
+                bucket_ram_usage, fun(_) -> 0 end),
+
+    meck:new(ns_cluster_membership, [passthrough]),
+    meck:expect(ns_cluster_membership, service_active_nodes,
+                fun (_) -> [node1] end),
+
+    %% BucketConfig before the server list has been populated, Ram quota: 1MiB
+    BucketConfig = [{ram_quota, ?MIB}, {servers, []}],
+
+    %% Bucket is currently using the entire quota, 1MiB
+    ClusterStorageTotals = [{ram, [{quotaUsedPerNode, ?MIB},
+                                   {quotaTotalPerNode, ?MIB}]}],
+    Ctx = #bv_ctx{
+             bucket_config=BucketConfig,
+             %% Pretend to have 1 node in kv_nodes
+             kv_nodes = [node1],
+             cluster_storage_totals=ClusterStorageTotals
+            },
+
+    %% Attempt to increase ram_quota to 2MiB
+    ParsedProps = [{ram_quota, 2*?MIB}],
+
+    Summary = interpret_ram_quota(Ctx, BucketConfig, ParsedProps,
+                                  ClusterStorageTotals),
+
+    ?assertEqual(#ram_summary{
+                    % Total cluster quota is still 1MiB
+                    total=?MIB,
+                    % There are no other buckets
+                    other_buckets=0,
+                    % New per node quota in MiB
+                    per_node=2,
+                    % Node count is still 1
+                    nodes_count=1,
+                    % We are trying to allocate 2MiB
+                    this_alloc=2*?MIB,
+                    % this_used is irrelevant
+                    this_used=0,
+                    % total - other - new quota = free
+                    % 1MiB  - 0     - 2MiB      = -1MiB
+                    free=-?MIB},
+                 Summary),
+
+    meck:unload(chronicle_compat),
+    meck:unload(ns_config),
+    meck:unload(menelaus_stats).
+
+validate_dura_min_level_before_server_list_populated_test() ->
+    meck:new(ns_config, [passthrough]),
+    meck:expect(ns_config,
+                read_key_fast, fun(_, Default) -> Default end),
+    %% BucketConfig before the server list has been populated
+    BucketConfig = [{servers, []},
+                    {desired_servers, [node1]},
+                    {num_replicas, 1}],
+    Ctx = #bv_ctx{
+             bucket_config=BucketConfig,
+             %% Pretend to have 2 nodes in kv_nodes
+             kv_nodes = [node1, node2],
+             new = false
+            },
+    %% Attempt to increase durability_min_level to majority
+    Params = [{durability_min_level, majority}],
+    Errors = additional_bucket_params_validation(Params, Ctx),
+    ?assertEqual([{durability_min_level,
+                   <<"You do not have enough data servers to support this "
+                     "durability level">>}],
+                 Errors),
+    meck:unload(ns_config).
 -endif.
