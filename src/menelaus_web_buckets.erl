@@ -2983,7 +2983,7 @@ parse_validate_max_magma_shards_test() ->
               {"durabilityMinLevel", "majority"},
               {"magmaMaxShards", "101"}],
     BucketConfig = [],
-    Version = [7, 2],
+    Version = ?VERSION_ELIXIR,
 
     Resp = parse_validate_max_magma_shards(Params, BucketConfig, Version, true),
     ?assertEqual(Resp,
