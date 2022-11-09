@@ -443,7 +443,8 @@ handle_event({call, From}, {maybe_start_rebalance,
         EjectedLiveNodes = EjectedNodes -- FailedNodes,
 
         Services = maps:get(services, Params, all),
-        validate_services(Services, KeepNodes, EjectedLiveNodes, Snapshot),
+        validate_services(Services, KeepNodes, EjectedLiveNodes, DeltaNodes,
+                          Snapshot),
 
         NewParams1 = NewParams#{keep_nodes => KeepNodes,
                                 eject_nodes => EjectedLiveNodes,
@@ -1622,9 +1623,11 @@ rebalance_allowed(Snapshot) ->
             ok
     end.
 
-validate_services(all, _, _, _) ->
+validate_services(all, _, _, _, _) ->
     ok;
-validate_services(Services, KeepNodes, NodesToEject, Snapshot) ->
+validate_services(_, _, _, DeltaNodes, _) when DeltaNodes =/= [] ->
+    throw({must_rebalance_services, all});
+validate_services(Services, KeepNodes, NodesToEject, [], Snapshot) ->
     case Services -- ns_cluster_membership:hosted_services(Snapshot) of
         [] ->
             ok;
