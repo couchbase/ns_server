@@ -79,7 +79,7 @@
          require_permission/2,
          server_error_report/4,
          write_chunk/3,
-         proxy_req/6,
+         proxy_req/7,
          respond/2,
          survive_web_server_restart/1]).
 
@@ -709,12 +709,13 @@ choose_node_consistently(Req, Nodes) ->
     lists:nth(N, Nodes).
 
 proxy_req({Scheme, Host, Port, AFamily}, Path, Headers, Timeout,
-          RespHeaderFilterFun, Req) when is_atom(Scheme) ->
+          RespHeaderFilterFun, ExtraConnectOpts, Req) when is_atom(Scheme) ->
     Method = mochiweb_request:get(method, Req),
     Body = get_body(Req),
     TLSOpts = case Scheme of
                   https ->
-                      ns_ssl_services_setup:tls_client_opts(ns_config:latest());
+                      ns_ssl_services_setup:tls_client_opts(ns_config:latest(),
+                                                            ExtraConnectOpts);
                   http ->
                       []
               end,

@@ -34,7 +34,7 @@
          client_cert_auth_state/1,
          get_user_name_from_client_cert/1,
          set_certificate_chain/5,
-         tls_client_opts/1,
+         tls_client_opts/2,
          merge_ns_config_tls_options/3,
          tls_client_certs_opts/0,
          tls_peer_verification_client_opts/0,
@@ -475,14 +475,15 @@ read_ca_certs(File) ->
             []
     end.
 
-tls_client_opts(Config) ->
+tls_client_opts(Config, PresetOpts) ->
     RawTLSOptions =
         tls_peer_verification_client_opts() ++
-        case ns_ssl_services_setup:client_cert_auth_state(Config) of
+        case client_cert_auth_state(Config) of
             "mandatory" -> tls_client_certs_opts();
             _ -> []
         end,
-    merge_ns_config_tls_options(client, ?MODULE, RawTLSOptions).
+    RawTLSOptions2 = misc:update_proplist(RawTLSOptions, PresetOpts),
+    merge_ns_config_tls_options(client, ?MODULE, RawTLSOptions2).
 
 tls_client_certs_opts() ->
     [{certfile, chain_file_path(client_cert)},

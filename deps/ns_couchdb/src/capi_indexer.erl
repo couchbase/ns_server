@@ -181,7 +181,7 @@ build_remote_set_specs(Mod, Node, BucketName, DDocId, ViewName, VBuckets) ->
                               true ->
                                   {{ssl, Node},
                                    ns_ssl_services_setup:tls_client_opts(
-                                     ns_config:latest())};
+                                     ns_config:latest(), [])};
                               false ->
                                   {Node, []}
                           end,

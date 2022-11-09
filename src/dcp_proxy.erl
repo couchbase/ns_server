@@ -282,7 +282,7 @@ connect_inner(Cfg, Node, RepFeatures) ->
     {Protocol, Opts, Port} =
         case proplists:get_bool(ssl, RepFeatures) andalso Node =/= node() of
             true ->
-                {ssl, SOpts ++ ns_ssl_services_setup:tls_client_opts(Cfg),
+                {ssl, SOpts ++ ns_ssl_services_setup:tls_client_opts(Cfg, []),
                  SslPort};
             false ->
                 {tcp, SOpts, TcpPort}
