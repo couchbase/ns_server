@@ -1633,8 +1633,6 @@ validate_services(Services, KeepNodes, NodesToEject, Snapshot) ->
             throw({must_rebalance_services, lists:usort(NeededServices)})
     end.
 
-get_uninitialized_services(all, _KeepNodes, _Snapshot) ->
-    [];
 get_uninitialized_services(Services, KeepNodes, Snapshot) ->
     UninitializedServices =
         lists:flatmap(
@@ -1650,8 +1648,6 @@ get_uninitialized_services(Services, KeepNodes, Snapshot) ->
           end, KeepNodes),
     lists:usort(UninitializedServices) -- Services.
 
-get_unejected_services(all, _NodesToEject, _Snapshot) ->
-    [];
 get_unejected_services(Services, NodesToEject, Snapshot) ->
     lists:usort(
       lists:flatmap(ns_cluster_membership:node_services(Snapshot, _),
@@ -1753,7 +1749,6 @@ get_uninitialized_services_test() ->
           {service_map, index} => {[n1, n2], rev},
           {service_map, n1ql} => {[n2], rev}},
     ?assertEqual([], get_uninitialized_services([kv], [n1, n2], Snapshot)),
-    ?assertEqual([], get_uninitialized_services(all, [n1, n2], Snapshot)),
 
     Snapshot1 = maps:merge(Snapshot,
                            #{{service_map, index} => {[n1], rev},
@@ -1761,8 +1756,7 @@ get_uninitialized_services_test() ->
 
     ?assertEqual(
        [index, n1ql],
-       lists:sort(get_uninitialized_services([kv], [n1, n2], Snapshot1))),
-    ?assertEqual([], get_uninitialized_services(all, [n1, n2], Snapshot1)).
+       lists:sort(get_uninitialized_services([kv], [n1, n2], Snapshot1))).
 
 get_unejected_services_test() ->
     Snapshot =
@@ -1772,7 +1766,6 @@ get_unejected_services_test() ->
                  lists:sort(get_unejected_services([kv], [n2], Snapshot))),
     ?assertEqual([], get_unejected_services([kv], [], Snapshot)),
     ?assertEqual([kv], get_unejected_services(
-                         [index, n1ql], [n1, n2], Snapshot)),
-    ?assertEqual([], get_unejected_services(all, [n2], Snapshot)).
+                         [index, n1ql], [n1, n2], Snapshot)).
 
 -endif.
