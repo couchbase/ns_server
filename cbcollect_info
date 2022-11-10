@@ -1268,7 +1268,7 @@ def make_golang_profile_tasks(service_name, passwd, port, log_prefix,
     apis = [('Go Routine Dump', '_pprof', 'debug/pprof/goroutine?debug=1'),
             ('Go Routine Dump2', '_pprof2', 'debug/pprof/goroutine?debug=2'),
             ('CPU Profile', '_cprof', 'debug/pprof/profile?seconds=30'),
-            ('Memory Profile', '_mprof', 'debug/pprof/heap?debug=1')]
+            ('Memory Profile', '_mprof', 'debug/pprof/heap')]
 
     # Iterate through each API, create the full URL, and then append the
     # resulting cURL task to the list of tasks
