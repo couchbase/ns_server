@@ -390,8 +390,30 @@ merge_ns_config_tls_options(OptionKey, Mod, TLSOptions) ->
                 (KV) -> KV
             end, NsConfigOptions),
 
-    misc:update_proplist(TLSOptions, NsConfigOptPasswordRemoved).
+    TLSOptions2 = misc:update_proplist(TLSOptions, NsConfigOptPasswordRemoved),
+    cleanup_options(TLSOptions2).
 
+cleanup_options(Opts) ->
+    %% ssl.erl fails if some option dependencies are not satisfied, but since
+    %% we build options dynamically and since they come from different sources
+    %% it may happen that some opts contradict each other. In most cases
+    %% it is safe to just drop one of the option as it doesn't make any sense
+    %% when another option is present. For example, there is no need in
+    %% in the reuse_sessions opt when tls version is strictly 1.3, so it's ok to
+    %% just drop it.
+    %% This is not a comprehensive cleaning, for a full list of dependencies see
+    %% assert_option_dependency in ssl.erl.
+    SupportedVersions = proplists:get_value(supported, ssl:versions()),
+    VersionsSet = sets:from_list(
+                    proplists:get_value(versions, Opts, SupportedVersions),
+                    [{version, 2}]),
+    CheckVsn = fun (all) -> true;
+                   (NeededVersions) ->
+                       not sets:is_disjoint(sets:from_list(NeededVersions,
+                                                           [{version, 2}]),
+                                            VersionsSet)
+               end,
+    lists:filter(fun ({K, _}) -> CheckVsn(tls_option_versions(K)) end, Opts).
 
 ssl_server_opts() ->
     PassphraseFun =
@@ -411,32 +433,37 @@ ssl_server_opts() ->
     %% web server doesn't load new CA (after cert rotation) until
     %% all connections to the server are closed
     Versions = supported_versions(ssl_minimum_protocol(ns_server)),
-    VersionsSet = sets:from_list(Versions, [{version, 2}]),
     RawTLSOptions =
-        lists:filter(
-          fun ({Key, _}) ->
-              case tls_option_versions(Key) of
-                  all -> true;
-                  List when is_list(List) ->
-                      not sets:is_disjoint(sets:from_list(List, [{version, 2}]),
-                                           VersionsSet)
-              end
-          end,
-          ssl_auth_options() ++
-              [{keyfile, pkey_file_path(node_cert)},
-               {certfile, chain_file_path(node_cert)},
-               {versions, Versions},
-               {cacerts, read_ca_certs(ca_file_path())},
-               {dh, dh_params_der()},
-               {ciphers, CipherSuites},
-               {honor_cipher_order, Order},
-               {secure_renegotiate, true},
-               {client_renegotiation, ClientReneg},
-               {password, PassphraseFun()}]),
+        ssl_auth_options() ++
+            [{keyfile, pkey_file_path(node_cert)},
+             {certfile, chain_file_path(node_cert)},
+             {versions, Versions},
+             {cacerts, read_ca_certs(ca_file_path())},
+             {dh, dh_params_der()},
+             {ciphers, CipherSuites},
+             {honor_cipher_order, Order},
+             {secure_renegotiate, true},
+             {client_renegotiation, ClientReneg},
+             {password, PassphraseFun()}],
     merge_ns_config_tls_options(server, ?MODULE, RawTLSOptions).
 
-tls_option_versions(secure_renegotiate) -> [tlsv1, 'tlsv1.1', 'tlsv1.2'];
-tls_option_versions(client_renegotiation) -> [tlsv1, 'tlsv1.1', 'tlsv1.2'];
+tls_option_versions(anti_replay) -> ['tlsv1.3'];
+tls_option_versions(beast_mitigation) -> ['tlsv1'];
+tls_option_versions(client_renegotiation) -> ['tlsv1','tlsv1.1','tlsv1.2'];
+tls_option_versions(early_data) -> ['tlsv1.3'];
+tls_option_versions(cookie) -> ['tlsv1.3'];
+tls_option_versions(key_update_at) -> ['tlsv1.3'];
+tls_option_versions(next_protocols_advertised) -> ['tlsv1','tlsv1.1','tlsv1.2'];
+tls_option_versions(padding_check) -> ['tlsv1'];
+tls_option_versions(psk_identity) -> ['tlsv1','tlsv1.1','tlsv1.2'];
+tls_option_versions(secure_renegotiate) -> ['tlsv1','tlsv1.1','tlsv1.2'];
+tls_option_versions(reuse_session) -> ['tlsv1','tlsv1.1','tlsv1.2'];
+tls_option_versions(reuse_sessions) -> ['tlsv1','tlsv1.1','tlsv1.2'];
+tls_option_versions(session_tickets) -> ['tlsv1.3'];
+tls_option_versions(srp_identity) -> ['tlsv1','tlsv1.1','tlsv1.2'];
+tls_option_versions(supported_groups) -> ['tlsv1.3'];
+tls_option_versions(use_ticket) -> ['tlsv1.3'];
+tls_option_versions(user_lookup_fun) -> ['tlsv1','tlsv1.1','tlsv1.2'];
 tls_option_versions(_) -> all.
 
 read_ca_certs(File) ->
