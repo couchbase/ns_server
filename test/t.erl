@@ -37,13 +37,16 @@
 -include("ns_common.hrl").
 -include_lib("ale/include/ale.hrl").
 
--export([start/0, start_eunit/0, start_triq/0, config/1]).
+-export([start/0, start/1, start_eunit/0, start_triq/0, config/1]).
 
 %% Used by cluster_run --dont-start.
 -export([fake_loggers/0]).
 
 start() ->
     run_tests(all).
+
+start(Filter) ->
+    run_tests(all, Filter).
 
 start_eunit() ->
     run_tests(eunit).
@@ -52,9 +55,12 @@ start_triq() ->
     run_tests(triq).
 
 run_tests(Enabled) ->
+    run_tests(Enabled, undefined).
+
+run_tests(Enabled, Filter) ->
     fake_loggers(),
     setup_paths(),
-    Modules = get_modules(),
+    Modules = get_modules(Filter),
     FailedTests =
         lists:flatmap(
           fun ({Name, Runner}) ->
@@ -78,12 +84,21 @@ test_runners(Enabled) when is_list(Enabled) ->
                 lists:member(Name, Enabled)
         end, all_test_runners()).
 
-get_modules() ->
+get_modules(Filter) ->
     Ext = code:objfile_extension(),
-    Wildcard = case os:getenv("T_WILDCARD") of
-                   false -> "*";
-                   X -> X
-               end,
+
+    Wildcard =
+        case Filter of
+            undefined ->
+                %% Check env var
+                case os:getenv("T_WILDCARD") of
+                    false -> "*";
+                    X -> X
+                end;
+            _ ->
+                Filter
+    end,
+
     FullWildcard =
         case lists:member($/, Wildcard) of
             true ->
