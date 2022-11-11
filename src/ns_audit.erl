@@ -90,6 +90,9 @@
         [to_binary/1,
          prepare_list/1]).
 
+%% Maximum number of tries to log to memcached before dropping the event.
+-define(MAX_RETRIES, ?get_param(audit_max_retries, 5)).
+
 -record(state, {queue, retries}).
 
 backup_path() ->
@@ -179,14 +182,21 @@ handle_cast(_Msg, State) ->
 
 handle_info(send, #state{queue = Queue, retries = Retries} = State) ->
     misc:flush(send),
-    {Res, NewQueue} = send_to_memcached(Queue),
-    NewRetries =
+    MaxRetries = ?MAX_RETRIES,
+    {Res, NewQueue0} = send_to_memcached(Queue),
+    {NewRetries, NewQueue} =
         case Res of
             ok ->
-                0;
-            error ->
+                {0, NewQueue0};
+            error when Retries < MaxRetries ->
                 erlang:send_after(1000, self(), send),
-                Retries + 1
+                {Retries + 1, NewQueue0};
+            error ->
+                {{value, {_, _, IsSync} = V}, NewQueue1} = queue:out(NewQueue0),
+                ?log_error("Dropping audit entry ~p after ~p retries.",
+                           [V, ?MAX_RETRIES]),
+                maybe_reply(IsSync, {error, dropped}),
+                {0, NewQueue1}
         end,
     {noreply, State#state{queue = NewQueue, retries = NewRetries}};
 handle_info({'EXIT', From, Reason}, State) ->
@@ -505,10 +515,16 @@ send_to_memcached(Queue) ->
                 ok ->
                     maybe_reply(IsSync, ok),
                     send_to_memcached(NewQueue);
+                {memcached_error, einval, Error} ->
+                    ?log_error("Audit put call ~p with body ~p failed with "
+                               "error ~p. Dropping audit event.",
+                               [Code, EncodedBody, Error]),
+                    maybe_reply(IsSync, {error, dropped}),
+                    {ok, NewQueue};
                 Error ->
-                    ?log_debug(
-                       "Audit put call ~p with body ~p failed with error ~p. Retrying in 1s.",
-                       [Code, EncodedBody, Error]),
+                    ?log_debug("Audit put call ~p with body ~p failed with "
+                               "error ~p.",
+                               [Code, EncodedBody, Error]),
                     {error, Queue}
             end
     end.
@@ -927,9 +943,17 @@ auth_failure(Req0) ->
                 %% check permissions for the request.
                 %% memcached doesn't allow the 'anonymous' domain and since
                 %% the identity was arbitrarily added it is now removed.
-                menelaus_auth:delete_headers(Req0,
-                                             ["menelaus-auth-user",
-                                              "menelaus-auth-domain"]);
+                case testconditions:get(keep_invalid_domain) of
+                    false ->
+                        menelaus_auth:delete_headers(Req0,
+                                                     ["menelaus-auth-user",
+                                                      "menelaus-auth-domain"]);
+                    true ->
+                        %% For test purposes leave content in the audit event
+                        %% that memcached will reject. This allows testing of
+                        %% ns_server's handing of errors from memcached.
+                        Req0
+                end;
             _ ->
                 Req0
         end,
