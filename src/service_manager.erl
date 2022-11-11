@@ -13,36 +13,68 @@
 -include("ns_common.hrl").
 
 -export([with_trap_exit_spawn_monitor_rebalance/6,
-         with_trap_exit_spawn_monitor_failover/3]).
+         with_trap_exit_spawn_monitor_failover/3,
+         with_trap_exit_spawn_monitor_pause_bucket/6,
+         with_trap_exit_spawn_monitor_resume_bucket/7]).
+
+-record(rebalance_args, {keep_nodes = [] :: [node()],
+                         eject_nodes = [] :: [node()],
+                         delta_nodes = [] :: [node()]}).
+
+-record(pause_bucket_args, {bucket :: bucket_name(),
+                            remote_path :: string()}).
+
+-record(resume_bucket_args, {bucket :: bucket_name(),
+                             remote_path :: string(),
+                             dry_run :: boolean()}).
 
 -record(state, { parent :: pid(),
                  service_manager :: pid(),
                  service :: service(),
-                 op_type :: failover | rebalance,
-                 keep_nodes :: [node()],
-                 eject_nodes :: [node()],
-                 delta_nodes :: [node()],
                  all_nodes :: [node()],
-                 progress_callback :: fun ((dict:dict()) -> any()),
-                 op_body :: fun ((#state{}, any()) -> any())}).
+                 op_type :: failover | rebalance | pause_bucket | resume_bucket,
+                 op_body :: function(),
+                 op_args :: #rebalance_args{} | #pause_bucket_args{} |
+                            #resume_bucket_args{},
+                 progress_callback :: fun ((dict:dict()) -> any())}).
 
-with_trap_exit_spawn_monitor_rebalance(Service, KeepNodes,
-                        EjectNodes, DeltaNodes, ProgressCallback, Opts) ->
-    with_trap_exit_spawn_monitor(
-      Service, rebalance, KeepNodes,
-      EjectNodes, DeltaNodes, ProgressCallback,
-      fun rebalance_op/2, Opts).
+with_trap_exit_spawn_monitor_rebalance(
+  Service, KeepNodes, EjectNodes, DeltaNodes, ProgressCallback, Opts) ->
+    with_trap_exit_spawn_monitor(Service, rebalance, KeepNodes ++ EjectNodes,
+                                 fun rebalance_op/5,
+                                 #rebalance_args{
+                                    keep_nodes = KeepNodes,
+                                    eject_nodes = EjectNodes,
+                                    delta_nodes = DeltaNodes},
+                                 ProgressCallback, Opts).
 
 with_trap_exit_spawn_monitor_failover(Service, KeepNodes, Opts) ->
-    ProgressCallback = fun (_) -> ok end,
+    with_trap_exit_spawn_monitor(Service, failover, KeepNodes,
+                                 fun rebalance_op/5,
+                                 #rebalance_args{keep_nodes = KeepNodes},
+                                 fun (_) -> ok end, Opts).
 
-    with_trap_exit_spawn_monitor(
-      Service, failover, KeepNodes, [], [], ProgressCallback,
-      fun rebalance_op/2, Opts).
+with_trap_exit_spawn_monitor_pause_bucket(
+  Service, Bucket, RemotePath, Nodes, ProgressCallback, Opts) ->
+    with_trap_exit_spawn_monitor(Service, pause_bucket, Nodes,
+                                 fun pause_bucket_op/5,
+                                 #pause_bucket_args{
+                                    bucket = Bucket,
+                                    remote_path = RemotePath},
+                                 ProgressCallback, Opts).
+
+with_trap_exit_spawn_monitor_resume_bucket(
+  Service, Bucket, RemotePath, DryRun, Nodes, ProgressCallback, Opts) ->
+    with_trap_exit_spawn_monitor(Service, resume_bucket, Nodes,
+                                 fun resume_bucket_op/5,
+                                 #resume_bucket_args{
+                                    bucket = Bucket,
+                                    remote_path = RemotePath,
+                                    dry_run = DryRun},
+                                 ProgressCallback, Opts).
 
 with_trap_exit_spawn_monitor(
-  Service, Type, KeepNodes, EjectNodes, DeltaNodes,
-  ProgressCallback, OpBody, Opts) ->
+  Service, Op, AllNodes, OpBody, OpArgs, ProgressCallback, Opts) ->
     Parent = self(),
 
     Timeout = maps:get(timeout, Opts, infinity),
@@ -52,24 +84,22 @@ with_trap_exit_spawn_monitor(
               {Pid, MRef} =
                   misc:spawn_monitor(
                     fun () ->
-                            State = #state{parent = Parent,
-                                           service_manager = self(),
-                                           service = Service,
-                                           op_type = Type,
-                                           keep_nodes = KeepNodes,
-                                           eject_nodes = EjectNodes,
-                                           delta_nodes = DeltaNodes,
-                                           all_nodes = KeepNodes ++ EjectNodes,
-                                           progress_callback = ProgressCallback,
-                                           op_body = OpBody},
-                            run_op(State)
+                            run_op(
+                              #state{parent = Parent,
+                                     service_manager = self(),
+                                     service = Service,
+                                     op_type = Op,
+                                     all_nodes = AllNodes,
+                                     op_body = OpBody,
+                                     op_args = OpArgs,
+                                     progress_callback = ProgressCallback})
                     end),
 
               receive
                   {'EXIT', _Pid, Reason} = Exit ->
                       ?log_debug("Got an exit signal while running op: ~p "
                                  "for service: ~p. Exit message: ~p",
-                                 [Type, Service, Exit]),
+                                 [Op, Service, Exit]),
                       misc:terminate_and_wait(Pid, Reason),
                       exit(Reason);
                   {'DOWN', MRef, _, _, Reason} ->
@@ -79,14 +109,14 @@ with_trap_exit_spawn_monitor(
                           _ ->
                               FailedAtom =
                                   list_to_atom("service_" ++
-                                               atom_to_list(Type) ++ "_failed"),
+                                               atom_to_list(Op) ++ "_failed"),
                               exit({FailedAtom, Service, Reason})
                       end
               after
                   Timeout ->
                       misc:terminate_and_wait(Pid, shutdown),
                       TimeoutAtom = list_to_atom("service_" ++
-                                                 atom_to_list(Type) ++
+                                                 atom_to_list(Op) ++
                                                  "_timeout"),
                       {error, {TimeoutAtom, Service}}
               end
@@ -127,6 +157,10 @@ wait_for_agents_timeout(Type) ->
 wait_for_agents_default_timeout(rebalance) ->
     60000;
 wait_for_agents_default_timeout(failover) ->
+    10000;
+wait_for_agents_default_timeout(pause_bucket) ->
+    10000;
+wait_for_agents_default_timeout(resume_bucket) ->
     10000.
 
 set_service_manager(#state{service = Service,
@@ -174,11 +208,25 @@ run_op_worker(#state{parent = Parent, op_type = Type} = State) ->
               end
       end).
 
-do_run_op(#state{op_body = OpBody} = State) ->
+do_run_op(#state{op_body = OpBody,
+                 op_args = OpArgs,
+                 service = Service,
+                 all_nodes = AllNodes,
+                 service_manager = Manager} = State) ->
     erlang:register(worker_name(State), self()),
 
     Id = couch_uuids:random(),
-    OpBody(State, Id),
+
+    {ok, NodeInfos} = service_agent:get_node_infos(Service,
+                                                   AllNodes, Manager),
+    ?log_debug("Got node infos:~n~p", [NodeInfos]),
+
+    LeaderCandidates = leader_candidates(State),
+    Leader = pick_leader(NodeInfos, LeaderCandidates),
+
+    ?log_debug("Using node ~p as a leader", [Leader]),
+
+    OpBody(State, OpArgs, Id, Leader, NodeInfos),
     wait_for_task_completion(State).
 
 wait_for_task_completion(#state{service = Service, op_type = Type} = State) ->
@@ -204,21 +252,29 @@ report_progress(Progress, #state{all_nodes = AllNodes,
     D = dict:from_list([{N, Progress} || N <- AllNodes]),
     Callback(D).
 
-rebalance_op(#state{op_type = Type,
-                    service = Service,
-                    all_nodes = AllNodes,
-                    keep_nodes = KeepNodes,
-                    eject_nodes = EjectNodes,
-                    delta_nodes = DeltaNodes,
-                    service_manager = Manager}, Id) ->
+leader_candidates(#state{op_type = Op,
+                         op_args = OpArgs}) when Op =:= rebalance;
+                                                 Op =:= failover ->
+    #rebalance_args{keep_nodes = Nodes} = OpArgs,
+    Nodes;
+leader_candidates(#state{op_type = Op,
+                         all_nodes = Nodes}) when Op =:= pause_bucket;
+                                                  Op =:= resume_bucket ->
+    Nodes.
+
+rebalance_op(#state{
+                op_type = Type,
+                service = Service,
+                all_nodes = AllNodes,
+                service_manager = Manager},
+             #rebalance_args{
+                keep_nodes = KeepNodes,
+                eject_nodes = EjectNodes,
+                delta_nodes = DeltaNodes}, Id, Leader, NodeInfos) ->
 
     ?rebalance_info("Rebalancing service ~p with id ~p."
                     "~nKeepNodes: ~p~nEjectNodes: ~p~nDeltaNodes: ~p",
                     [Service, Id, KeepNodes, EjectNodes, DeltaNodes]),
-
-    {ok, NodeInfos} = service_agent:get_node_infos(Service,
-                                                   AllNodes, Manager),
-    ?log_debug("Got node infos:~n~p", [NodeInfos]),
 
     {KeepNodesArg, EjectNodesArg} = build_rebalance_args(KeepNodes, EjectNodes,
                                                          DeltaNodes, NodeInfos),
@@ -226,11 +282,31 @@ rebalance_op(#state{op_type = Type,
     ok = service_agent:prepare_rebalance(Service, AllNodes, Manager,
                                          Id, Type, KeepNodesArg, EjectNodesArg),
 
-    Leader = pick_leader(NodeInfos, KeepNodes),
-    ?log_debug("Using node ~p as a leader", [Leader]),
-
     ok = service_agent:start_rebalance(Service, Leader, Manager,
                                        Id, Type, KeepNodesArg, EjectNodesArg).
+
+pause_bucket_op(#state{service = Service,
+                       all_nodes = Nodes,
+                       service_manager = Manager},
+                #pause_bucket_args{bucket = Bucket,
+                                   remote_path = RemotePath},
+                Id, Leader, _NodesInfo) ->
+    ok = service_agent:prepare_pause_bucket(Service, Nodes, Bucket, RemotePath,
+                                            Id, Manager),
+    ok = service_agent:pause_bucket(Service, Leader, Bucket, RemotePath, Id,
+                                    Manager).
+
+resume_bucket_op(#state{service = Service,
+                        all_nodes = Nodes,
+                        service_manager = Manager},
+                 #resume_bucket_args{bucket = Bucket,
+                                     remote_path = RemotePath,
+                                     dry_run = DryRun},
+                 Id, Leader, _NodesInfo) ->
+    ok = service_agent:prepare_resume_bucket(Service, Nodes, Bucket, RemotePath,
+                                             DryRun, Id, Manager),
+    ok = service_agent:resume_bucket(Service, Leader, Bucket, RemotePath,
+                                     DryRun, Id, Manager).
 
 build_rebalance_args(KeepNodes, EjectNodes, DeltaNodes0, NodeInfos0) ->
     NodeInfos = dict:from_list(NodeInfos0),

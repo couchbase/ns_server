@@ -26,7 +26,7 @@
          wait/1, wait/2,
          wait_many/1, wait_many/2,
          wait_any/1, wait_any/2,
-         race/2, map/2, foreach/2,
+         race/2, map/2, foreach/2, foreach/3,
          run_with_timeout/2,
          get_identity/0]).
 
@@ -144,10 +144,13 @@ map(Fun, List) ->
       end).
 
 foreach(Fun, List) ->
+    foreach(Fun, List, []).
+
+foreach(Fun, List, Flags) ->
     with_many(
       Fun, List,
       fun (Asyncs) ->
-              _ = wait_many(Asyncs),
+              _ = wait_many(Asyncs, Flags),
               ok
       end).
 

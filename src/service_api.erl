@@ -16,6 +16,8 @@
          get_task_list/2, cancel_task/3,
          get_current_topology/2,
          prepare_topology_change/6, start_topology_change/6,
+         prepare_pause_bucket/4, pause_bucket/4,
+         prepare_resume_bucket/5, resume_bucket/5,
          health_check/1, is_safe/2, get_label/1,
          get_defragmented_utilization/2]).
 
@@ -48,6 +50,23 @@ start_topology_change(Pid, Id, Rev, Type, KeepNodes, EjectNodes) ->
     perform_service_manager_call(
       Pid, "StartTopologyChange",
       topology_change_req(Id, Rev, Type, KeepNodes, EjectNodes)).
+
+prepare_pause_bucket(Pid, Id, Bucket, RemotePath) ->
+    perform_service_manager_call(
+      Pid, "PreparePause", pause_req(Id, Bucket, RemotePath)).
+
+pause_bucket(Pid, Id, Bucket, RemotePath) ->
+    perform_service_manager_call(
+      Pid, "Pause", pause_req(Id, Bucket, RemotePath)).
+
+prepare_resume_bucket(Pid, Id, Bucket, RemotePath, DryRun) ->
+    perform_service_manager_call(
+      Pid, "PrepareResume", resume_req(Id, Bucket, RemotePath,
+                                                  DryRun)).
+
+resume_bucket(Pid, Id, Bucket, RemotePath, DryRun) ->
+    perform_service_manager_call(
+      Pid, "Resume", resume_req(Id, Bucket, RemotePath, DryRun)).
 
 health_check(Service) ->
     try perform_call(
@@ -125,6 +144,22 @@ topology_change_req(Id, Rev, Type, KeepNodes, EjectNodes) ->
       {keepNodes, encode_keep_nodes(KeepNodes)},
       {ejectNodes, encode_eject_nodes(EjectNodes)}] ++
      maybe_add_additional_info()}.
+
+pause_req(Id, Bucket, RemotePath) ->
+    true = is_binary(Id),
+
+    {[{id, Id},
+      {bucket, list_to_binary(Bucket)},
+      {remotePath, list_to_binary(RemotePath)}]}.
+
+resume_req(Id, Bucket, RemotePath, DryRun) ->
+    true = is_binary(Id),
+    true = is_boolean(DryRun),
+
+    {[{id, Id},
+      {bucket, list_to_binary(Bucket)},
+      {remotePath, list_to_binary(RemotePath)},
+      {dryRun, DryRun}]}.
 
 maybe_add_additional_info() ->
     case cluster_compat_mode:is_cluster_elixir() of

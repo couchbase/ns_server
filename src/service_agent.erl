@@ -21,6 +21,8 @@
 -export([wait_for_agents/3]).
 -export([set_service_manager/3, unset_service_manager/3]).
 -export([get_node_infos/3, prepare_rebalance/7, start_rebalance/7]).
+-export([prepare_pause_bucket/6, pause_bucket/6]).
+-export([prepare_resume_bucket/7, resume_bucket/7]).
 -export([spawn_connection_waiter/2]).
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
@@ -56,7 +58,10 @@
           topology :: undefined | {revision(), #topology{}},
 
           get_tasks_worker :: undefined | pid(),
-          topology_worker :: undefined | pid()
+          topology_worker :: undefined | pid(),
+
+          type :: undefined | rebalance | failover | pause_bucket |
+                  resume_bucket | dry_run_resume_bucket
          }).
 
 start_link(Service) ->
@@ -171,6 +176,38 @@ start_rebalance(Service, Node, Manager, RebalanceId, Type, KeepNodes,
         end,
 
     gen_server:call({server_name(Service), Node}, Call, ?OUTER_TIMEOUT).
+
+prepare_pause_bucket(Service, Nodes, Bucket, RemotePath, Id, Manager) ->
+    Result = multi_call(Nodes, Service,
+                        {if_service_manager, Manager,
+                         {prepare_pause_bucket, Id, Bucket, RemotePath}},
+                        ?OUTER_TIMEOUT),
+    handle_multicall_result(Service, prepare_pause_bucket, Result,
+                            fun just_ok/1).
+
+pause_bucket(Service, Node, Bucket, RemotePath, Id, Manager) ->
+    Observer = self(),
+    gen_server:call({server_name(Service), Node},
+                    {if_service_manager, Manager,
+                     {pause_bucket, Id, Bucket, RemotePath, Observer}},
+                    ?OUTER_TIMEOUT).
+
+prepare_resume_bucket(Service, Nodes, Bucket,
+                      RemotePath, DryRun, Id, Manager) ->
+    Result = multi_call(Nodes, Service,
+                        {if_service_manager, Manager,
+                         {prepare_resume_bucket,
+                          Id, Bucket, RemotePath, DryRun}},
+                        ?OUTER_TIMEOUT),
+    handle_multicall_result(Service, prepare_resume_bucket, Result,
+                            fun just_ok/1).
+
+resume_bucket(Service, Node, Bucket, RemotePath, DryRun, Id, Manager) ->
+    Observer = self(),
+    gen_server:call({server_name(Service), Node},
+                    {if_service_manager, Manager,
+                     {resume_bucket, Id, Bucket, RemotePath, DryRun, Observer}},
+                    ?OUTER_TIMEOUT).
 
 %% gen_server callbacks
 init(Service)       ->
@@ -494,11 +531,53 @@ do_handle_call({prepare_rebalance, Id, Type, KeepNodes, EjectNodes}, From,
 do_handle_call({start_rebalance, Id, Type, KeepNodes, EjectNodes, Observer},
                From, State) ->
     Self = self(),
+    State1 = State#state{type = Type},
+
     run_on_task_runner(
-      From, State,
+      From, State1,
       fun (Conn) ->
               handle_start_rebalance(Conn, Id, Type, KeepNodes,
                                      EjectNodes, Self, Observer)
+      end);
+do_handle_call({prepare_pause_bucket, Id, Bucket, RemotePath},
+               From, State) ->
+    run_on_task_runner(
+      From, State,
+      fun (Conn) ->
+              handle_prepare_pause_bucket(Conn, Id, Bucket, RemotePath)
+      end);
+do_handle_call({pause_bucket, Id, Bucket, RemotePath, Observer},
+               From, State) ->
+    Self = self(),
+    State1 = State#state{type = pause_bucket},
+
+    run_on_task_runner(
+      From, State1,
+      fun (Conn) ->
+              handle_pause_bucket(Conn, Id, Bucket, RemotePath, Self, Observer)
+      end);
+do_handle_call({prepare_resume_bucket, Id, Bucket, RemotePath, DryRun},
+               From, State) ->
+    run_on_task_runner(
+      From, State,
+      fun (Conn) ->
+              handle_prepare_resume_bucket(Conn, Id, Bucket, RemotePath, DryRun)
+      end);
+do_handle_call({resume_bucket, Id, Bucket, RemotePath, DryRun, Observer},
+               From, State) ->
+    Self = self(),
+    State1 = case DryRun of
+                 true ->
+                     State#state{type = dry_run_resume_bucket};
+                 false ->
+                     State#state{type = resume_bucket}
+             end,
+
+    run_on_task_runner(
+      From, State1,
+      fun (Conn) ->
+              handle_resume_bucket(Conn, Id, Bucket, RemotePath, DryRun,
+                                   Self, Observer)
       end);
 do_handle_call(Call, From, State) ->
     ?log_error("Unexpected call ~p from ~p when in state~n~p",
@@ -518,9 +597,12 @@ get_default(Key, Props, Default) when is_atom(Key) ->
     end.
 
 find_tasks_by_type(Type, Tasks) ->
+    find_tasks_by_types([Type], Tasks).
+
+find_tasks_by_types(Types, Tasks) ->
     lists:filter(
       fun (Task) ->
-              must_get(type, Task) =:= Type
+              lists:member(must_get(type, Task), Types)
       end, Tasks).
 
 cancel_task(Conn, Task) ->
@@ -539,12 +621,10 @@ cancel_tasks(Conn, Tasks) ->
       end, Tasks).
 
 find_stale_tasks(#state{tasks = {_Rev, Tasks}} = _State) ->
-    MaybeRebalanceTask =
-        find_tasks_by_type(?TASK_TYPE_REBALANCE, Tasks),
-    MaybePreparedTask =
-        find_tasks_by_type(?TASK_TYPE_PREPARED, Tasks),
-
-    MaybeRebalanceTask ++ MaybePreparedTask.
+    find_tasks_by_types([?TASK_TYPE_REBALANCE,
+                         ?TASK_TYPE_PAUSE_BUCKET,
+                         ?TASK_TYPE_RESUME_BUCKET,
+                         ?TASK_TYPE_PREPARED], Tasks).
 
 cleanup_service(#state{conn = Conn} = State) ->
     Stale = find_stale_tasks(State),
@@ -739,7 +819,29 @@ handle_prepare_rebalance(Conn, Id, Type, KeepNodes, EjectNodes) ->
     service_api:prepare_topology_change(Conn, Id, undefined, Type, KeepNodes, EjectNodes).
 
 handle_start_rebalance(Conn, Id, Type, KeepNodes, EjectNodes, Agent, Observer) ->
-    RV = service_api:start_topology_change(Conn, Id, undefined, Type, KeepNodes, EjectNodes),
+    run_task_and_set_observer(
+      ?cut(service_api:start_topology_change(Conn, Id, undefined, Type,
+                                             KeepNodes, EjectNodes)),
+      Agent, Observer).
+
+handle_prepare_pause_bucket(Conn, Id, Bucket, RemotePath) ->
+    service_api:prepare_pause_bucket(Conn, Id, Bucket, RemotePath).
+
+handle_pause_bucket(Conn, Id, Bucket, RemotePath, Agent, Observer) ->
+    run_task_and_set_observer(
+      ?cut(service_api:pause_bucket(Conn, Id, Bucket, RemotePath)),
+      Agent, Observer).
+
+handle_prepare_resume_bucket(Conn, Id, Bucket, RemotePath, DryRun) ->
+    service_api:prepare_resume_bucket(Conn, Id, Bucket, RemotePath, DryRun).
+
+handle_resume_bucket(Conn, Id, Bucket, RemotePath, DryRun, Agent, Observer) ->
+    run_task_and_set_observer(
+      ?cut(service_api:resume_bucket(Conn, Id, Bucket, RemotePath, DryRun)),
+      Agent, Observer).
+
+run_task_and_set_observer(Body, Agent, Observer) ->
+    RV = Body(),
 
     case RV of
         ok ->
@@ -757,19 +859,28 @@ handle_set_task_observer(Observer, State) ->
 handle_new_tasks(Tasks, State) ->
     State1 = State#state{tasks = Tasks},
     validate_new_tasks(State1),
-    handle_new_tasks_if_rebalance(State1).
+    do_handle_new_tasks(State1).
 
 validate_new_tasks(#state{service_manager = undefined} = State) ->
     [] = find_stale_tasks(State);
 validate_new_tasks(_) ->
     ok.
 
-handle_new_tasks_if_rebalance(#state{task_observer = undefined} = State) ->
+get_task_type(Type) when Type =:= rebalance orelse Type =:= failover ->
+    ?TASK_TYPE_REBALANCE;
+get_task_type(pause_bucket) ->
+    ?TASK_TYPE_PAUSE_BUCKET;
+get_task_type(Type) when Type =:= dry_run_resume_bucket
+                         orelse Type =:= resume_bucket ->
+    ?TASK_TYPE_RESUME_BUCKET.
+
+do_handle_new_tasks(#state{task_observer = undefined} = State) ->
     State;
-handle_new_tasks_if_rebalance(#state{task_observer = Observer,
-                                     tasks = {_Rev, Tasks}} = State)
+do_handle_new_tasks(#state{task_observer = Observer,
+                           type = Type,
+                           tasks = {_Rev, Tasks}} = State)
   when is_pid(Observer) ->
-    case find_tasks_by_type(?TASK_TYPE_REBALANCE, Tasks) of
+    case find_tasks_by_type(get_task_type(Type), Tasks) of
         [] ->
             handle_task_done(Observer, State);
         [Task] ->
@@ -777,7 +888,12 @@ handle_new_tasks_if_rebalance(#state{task_observer = Observer,
                 ?TASK_STATUS_RUNNING ->
                     handle_task_running(Observer, Task, State);
                 ?TASK_STATUS_FAILED ->
-                    handle_task_failed(Observer, Task, State)
+                    handle_task_failed(Observer, Task, State);
+                ?TASK_STATUS_CANNOT_RESUME ->
+                    % TASK_STATUS_CANNOT_RESUME can only be received when the
+                    % current running task is dry_run_resume_bucket.
+                    dry_run_resume_bucket = Type,
+                    handle_task_cannot_resume(Observer, State)
             end
     end.
 
@@ -799,6 +915,10 @@ report_task_progress(Observer, Progress) ->
 handle_task_failed(Observer, Task, State) ->
     Error = get_default(errorMessage, Task, <<"unknown">>),
     report_task_failed(Observer, Error),
+    handle_unset_service_manager(State).
+
+handle_task_cannot_resume(Observer, State) ->
+    report_task_failed(Observer, cannot_resume_bucket),
     handle_unset_service_manager(State).
 
 report_task_failed(Observer, Error) ->
