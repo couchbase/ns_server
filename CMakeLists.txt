@@ -247,6 +247,7 @@ MACRO (NS_SERVER_TEST)
   SET (_cmd "${CMAKE_COMMAND}" -D "ERL_EXECUTABLE=${ERL_EXECUTABLE}"
     -D "COUCHDB_BIN_DIR=${COUCHDB_BIN_DIR}"
     -D "TEST_TARGET=${_test_target}"
+    -D "TEST_FILTER=${TEST_FILTER}"
     # We pass the CCACHE DIR to be able to load anything we need from the
     # script. It otherwise wouldn't have access to those variables.
     -D "CCACHE_DIR=${CMAKE_BINARY_DIR}"
@@ -262,6 +263,38 @@ MACRO (NS_SERVER_TEST)
   ADD_CUSTOM_TARGET (${_name} COMMAND ${_cmd} WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
   ADD_DEPENDENCIES (${_name} ns_server_tests)
 ENDMACRO(NS_SERVER_TEST)
+
+function(discover_eunit_tests)
+    MESSAGE("Discovering erlang files for eunit tests")
+
+    ## Pull out all the .erl files from ns_server (we recurse the app folders).
+    ## CMake doesn't recommend using GLOB to do this, not all build systems
+    ## support GLOB/CONFIGURE_DEPENDS to re-run the cmake step when we add a
+    ## new file that matches the GLOB expression, but both make and ninja do
+    ## and I believe those are the only ones that we use at the moment. This
+    ## isn't the only place that we do this either...
+    FILE(GLOB_RECURSE ERL_FILES
+            CONFIGURE_DEPENDS
+            apps/*.erl)
+
+    foreach(FILE ${ERL_FILES})
+        FILE(READ ${FILE} TMPTXT)
+
+        ## We only want to run ns_test for modules that have tests as
+        ## starting up erlang isn't particularly cheap (can take a couple of
+        ## seconds on my M2 Macbook Pro).
+        string(FIND "${TMPTXT}"
+                    "-include_lib(\"eunit/include/eunit.hrl\")." MATCH)
+        if (NOT ${MATCH} EQUAL -1)
+            GET_FILENAME_COMPONENT(NAME_NO_EXT ${FILE} NAME_WLE)
+            SET(TEST_FILTER ${NAME_NO_EXT})
+            NS_SERVER_TEST (NAME ns_test_${NAME_NO_EXT} TEST_TARGET start)
+        endif()
+    endforeach(FILE ${ERL_FILES})
+
+endfunction(discover_eunit_tests)
+
+discover_eunit_tests()
 
 NS_SERVER_TEST (NAME ns_test TEST_TARGET start)
 NS_SERVER_TEST (NAME ns_test_eunit TEST_TARGET start_eunit EXPLICIT)

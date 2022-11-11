@@ -196,8 +196,11 @@ get_modules(Filter) ->
                     X -> X
                 end;
             _ ->
-                Filter
-    end,
+                %% Filter when passed from the command line is a file name, and
+                %% we aren't quoting/escaping it, so it comes as an atom.
+                %% Making all of our filenames valid atoms is reasonable.
+                atom_to_list(Filter)
+        end,
 
     FullWildcard =
         case lists:member($/, Wildcard) of
