@@ -222,14 +222,9 @@ report_couch_stats(Bucket, ReportFun) ->
             end,
     ViewsStats = proplists:get_value(views_per_ddoc_stats, Stats, []),
     SpatialStats = proplists:get_value(spatial_per_ddoc_stats, Stats, []),
-    DocsDiskSize = proplists:get_value(couch_docs_actual_disk_size, Stats),
     ViewsDiskSize = proplists:get_value(couch_views_actual_disk_size, Stats),
 
     Labels = [{<<"bucket">>, Bucket}],
-    case DocsDiskSize of
-        undefined -> ok;
-        _ -> ReportFun({couch_docs_actual_disk_size, Labels, DocsDiskSize})
-    end,
     case ViewsDiskSize of
         undefined -> ok;
         _ -> ReportFun({couch_views_actual_disk_size, Labels, ViewsDiskSize})

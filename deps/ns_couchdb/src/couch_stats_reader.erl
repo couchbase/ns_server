@@ -34,7 +34,6 @@
 
 %% Amount of time to wait between fetching stats
 -define(SAMPLE_INTERVAL, 5000).
--define(MAGMA_SAMPLE_INTERVAL, 60000).
 
 
 start_link_remote(Node, Bucket) ->
@@ -51,11 +50,7 @@ init([Bucket]) ->
         memcached ->
             ok
     end,
-    RefreshInterval =
-        case ns_bucket:storage_mode(BucketConfig) of
-            magma -> ?MAGMA_SAMPLE_INTERVAL;
-            _ -> ?SAMPLE_INTERVAL
-        end,
+    RefreshInterval = ?SAMPLE_INTERVAL,
     ets:new(server(Bucket), [protected, named_table, set]),
     {ok, #state{bucket = Bucket, refresh_interval = RefreshInterval}}.
 
@@ -70,16 +65,13 @@ handle_info(refresh_stats, #state{bucket = Bucket,
     BinBucket = ?l2b(Bucket),
 
     TS = erlang:monotonic_time(millisecond),
-    {ok, CouchDir} = ns_storage_conf:this_node_dbdir(),
     {ok, ViewRoot} = ns_storage_conf:this_node_ixdir(),
 
-    DocsActualDiskSize = dir_size:get(filename:join([CouchDir, Bucket])),
     ViewsActualDiskSize = dir_size:get(couch_set_view:set_index_dir(ViewRoot,
                                                                     BinBucket,
                                                                     prod)),
 
-    Stats = [{couch_docs_actual_disk_size, DocsActualDiskSize},
-             {couch_views_actual_disk_size, ViewsActualDiskSize}],
+    Stats = [{couch_views_actual_disk_size, ViewsActualDiskSize}],
 
     TableName = server(Bucket),
     IsFirstCalculation = not ets:member(TableName, stats),

@@ -1201,7 +1201,10 @@ scrapes_info(Settings) ->
 %% metrics, as other pieces of code may assume those metrics exist. For example,
 %% removing of job label may lead to a stat not being decimated.
 derived_metrics(ns_server, Settings) ->
-    [{"cm_failover_safeness_level", failover_safeness_level_promql(Settings)}];
+    [{"cm_failover_safeness_level", failover_safeness_level_promql(Settings)},
+     {"couch_docs_actual_disk_size",
+      "label_replace(kv_ep_db_file_size_bytes, `instance`, `ns_server`, ``, ``)"
+     }];
 derived_metrics(_, _) ->
     [].
 
@@ -1826,7 +1829,9 @@ prometheus_derived_metrics_config_test() ->
       RulesConfig([{derived_metrics_filter, all}], [kv])),
 
     ?assertMatch(
-      #{groups := [#{rules := [#{record := <<"cm_failover_safeness_level">>}]}]},
+      #{groups := [#{rules := [#{record := <<"cm_failover_safeness_level">>},
+                               #{record := <<"couch_docs_actual_disk_size">>}]}]
+       },
       RulesConfig([{derived_metrics_filter, all}], [])),
 
     FailoverSafenessName = <<"cm_failover_safeness_level">>,
