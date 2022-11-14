@@ -715,8 +715,6 @@ do_bucket_create(Req, Name, ParsedProps) ->
             {errors, [{name, <<"Bucket with given name already exists">>}]};
         {error, {still_exists, _}} ->
             {errors_500, [{'_', <<"Bucket with given name still exists">>}]};
-        {error, {invalid_name, _}} ->
-            {errors, [{name, <<"Name is invalid.">>}]};
         {error, {need_more_space, Zones}} ->
             {errors, [{'_', need_more_space_error(Zones)}]};
         rebalance_running ->

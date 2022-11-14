@@ -108,7 +108,6 @@ call(Msg, Timeout) ->
                            ok | {error, {already_exists, nonempty_string()}} |
                            {error, {still_exists, nonempty_string()}} |
                            {error, {port_conflict, integer()}} |
-                           {error, {invalid_name, nonempty_string()}} |
                            {error, {need_more_space, list()}} |
                            rebalance_running | in_recovery.
 create_bucket(BucketType, BucketName, NewConfig) ->

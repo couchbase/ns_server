@@ -875,20 +875,15 @@ add_auth_type(Props) ->
     end.
 
 create_bucket(BucketType, BucketName, NewConfig) ->
-    case is_valid_bucket_name(BucketName) of
-        true ->
-            MergedConfig0 =
-                misc:update_proplist(new_bucket_default_params(BucketType),
-                                     NewConfig),
-            MergedConfig1 = generate_sasl_password(MergedConfig0),
-            MergedConfig = add_auth_type(MergedConfig1),
-            do_create_bucket(chronicle_compat:backend(), BucketName,
-                             MergedConfig),
-            %% The janitor will handle creating the map.
-            ok;
-        {error, _} ->
-            {error, {invalid_bucket_name, BucketName}}
-    end.
+    MergedConfig0 =
+        misc:update_proplist(new_bucket_default_params(BucketType),
+                             NewConfig),
+    MergedConfig1 = generate_sasl_password(MergedConfig0),
+    MergedConfig = add_auth_type(MergedConfig1),
+    do_create_bucket(chronicle_compat:backend(), BucketName,
+                     MergedConfig),
+    %% The janitor will handle creating the map.
+    ok.
 
 do_create_bucket(ns_config, BucketName, Config) ->
     ns_config:update_sub_key(
