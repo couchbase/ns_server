@@ -17,4 +17,4 @@
             {i, "@COUCHDB_SRC_DIR@/src"},
             {i, "@NS_SERVER_SRC_DIR@/deps/triq/include"},
             debug_info, bin_info_opt, nowarn_deprecated_type,
-            {parse_transform, ale_transform}]}.
+            {parse_transform, ale_transform}, warnings_as_errors]}.
