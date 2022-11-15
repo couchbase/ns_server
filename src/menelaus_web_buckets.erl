@@ -155,7 +155,8 @@ add_couch_api_base(BucketName, BucketUUID, KV, Node, LocalAddr) ->
                                 {ok, BCfg} = ns_bucket:get_bucket(BucketName),
                                 case ns_bucket:bucket_type(BCfg) of
                                     membase ->
-                                        [{Key, Url} | KVAcc];
+                                        [{Key,
+                                          ?COUCHDB_ENABLED(Url, <<"">>)} | KVAcc];
                                     _ ->
                                         KVAcc
                                 end

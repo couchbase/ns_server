@@ -351,4 +351,12 @@
 -define(HIDE(__V), fun () -> __V end).
 -define(UNHIDE(__V), __V()).
 
+-define(COUCHDB_ENABLED(__TRUE, __FALSE),
+        case config_profile:get_bool({couchdb, disabled}) of
+            true ->
+                __FALSE;
+            false ->
+                __TRUE
+        end).
+
 -endif.

@@ -533,10 +533,11 @@ build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr) ->
         misc:extract_node_address(WantENode),
         service_ports:get_port(rest_port, Config, WantENode)),
 
-    PortKeys = [{memcached_port, direct},
-                %% this is used by xdcr over ssl since 2.5.0
-                {ssl_capi_port, httpsCAPI},
-                {ssl_rest_port, httpsMgmt}],
+    PortKeys =
+        [{memcached_port, direct},
+         %% this is used by xdcr over ssl since 2.5.0
+         {ssl_rest_port, httpsMgmt}] ++
+        ?COUCHDB_ENABLED([{ssl_capi_port, httpsCAPI}] , []),
 
     PortsKV = lists:filtermap(
                 fun ({Key, JKey}) ->
@@ -552,11 +553,9 @@ build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr) ->
     DistPorts = [{distTCP, cb_epmd:port_for_node(inet_tcp_dist, ShortNode)},
                  {distTLS, cb_epmd:port_for_node(inet_tls_dist, ShortNode)}],
 
-    WantedPorts = [memcached_port,
-                   ssl_capi_port,
-                   capi_port,
-                   ssl_rest_port,
-                   rest_port],
+    WantedPorts =
+        [memcached_port, ssl_rest_port, rest_port] ++
+        ?COUCHDB_ENABLED([ssl_capi_port, capi_port], []),
 
     AFamily = ns_config:search_node_with_default(WantENode, Config,
                                                  address_family, undefined),
@@ -808,10 +807,10 @@ handle_node_self_xdcr_ssl_ports(Req) ->
             reply_json(Req, [], 403);
         true ->
             Snapshot = ns_cluster_membership:get_snapshot(),
-            Ports = [{httpsMgmt, service_ports:get_port(ssl_rest_port)},
-                     {httpsCAPI, service_ports:get_port(ssl_capi_port)}] ++
+            Ports = [{httpsMgmt, service_ports:get_port(ssl_rest_port)}] ++
                 alternate_addresses_json(node(), ns_config:latest(), Snapshot,
-                                         [ssl_capi_port, ssl_rest_port]),
+                                         [ssl_rest_port] ++
+                                             ?COUCHDB_ENABLED([ssl_capi_port], [])),
             reply_json(Req, {Ports})
     end.
 

@@ -1388,7 +1388,7 @@ num_replicas_changed(NumReplicas, Map) ->
     lists:any(?cut(ExpectedChainLength =/= length(_)), Map).
 
 can_have_views(BucketConfig) ->
-    storage_mode(BucketConfig) =:= couchstore.
+    ?COUCHDB_ENABLED(storage_mode(BucketConfig) =:= couchstore, false).
 
 get_view_nodes(BucketConfig) ->
     case can_have_views(BucketConfig) of
