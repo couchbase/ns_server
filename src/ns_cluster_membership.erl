@@ -29,6 +29,7 @@
          active_nodes/2,
          inactive_added_nodes/0,
          inactive_added_nodes/1,
+         inactive_failed_nodes/1,
          actual_active_nodes/0,
          actual_active_nodes/1,
          get_cluster_membership/1,
@@ -154,6 +155,9 @@ inactive_added_nodes() ->
 
 inactive_added_nodes(Snapshot) ->
     get_nodes_with_status(Snapshot, inactiveAdded).
+
+inactive_failed_nodes(Snapshot) ->
+    get_nodes_with_status(Snapshot, inactiveFailed).
 
 actual_active_nodes() ->
     actual_active_nodes(get_snapshot()).

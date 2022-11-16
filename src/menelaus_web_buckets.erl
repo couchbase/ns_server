@@ -34,8 +34,10 @@
          handle_bucket_update/3,
          handle_bucket_create/2,
          create_bucket/3,
-         handle_pause/1,
-         handle_resume/1,
+         handle_start_pause/1,
+         handle_start_resume/1,
+         handle_stop_pause/1,
+         handle_stop_resume/1,
          handle_bucket_flush/3,
          handle_compact_bucket/3,
          handle_purge_compact_bucket/3,
@@ -815,24 +817,64 @@ validate_remote_path(Name, State) ->
               end
       end, Name, State).
 
-validators_pause_resume() ->
+validators_start_hibernation() ->
     [validator:required(bucket, _), validator:string(bucket, _),
      validator:required(remote_path, _), validator:string(remote_path, _),
      validate_remote_path(remote_path, _)].
 
-process_req(Req, HandlerFunc) ->
+validators_stop_hibernation() ->
+    [validator:required(bucket, _), validator:string(bucket, _)].
+
+handle_hibernation_response(Req, ok = _Response) ->
+    menelaus_util:reply_json(Req, [], 200);
+handle_hibernation_response(Req, {need_more_space, Zones} = _Response) ->
+    reply_json(Req, {[{error, need_more_space_error(Zones)}]}, 503);
+handle_hibernation_response(Req, Response) ->
+    reply_json(Req, {[{error, Response}]}, 400).
+
+process_req(Req, HandlerFunc, Validators) ->
     validator:handle(fun (Params) ->
-                             HandlerFunc(Params),
-                             menelaus_util:reply_json(Req, [], 200)
-                     end, Req, json, validators_pause_resume()).
+                             handle_hibernation_response(Req,
+                                                         HandlerFunc(Params))
+                     end, Req, json, Validators()).
 
-handle_pause(Req) ->
+handle_hibernation_request(Req, Func, Validators) ->
     assert_pause_resume_api_enabled(),
-    process_req(Req, fun(_)-> ok end).
+    process_req(Req, Func, Validators).
 
-handle_resume(Req) ->
-    assert_pause_resume_api_enabled(),
-    process_req(Req, fun(_)-> ok end).
+handle_start_hibernation(Req, StartFunc) ->
+    handle_hibernation_request(
+      Req, fun(Params) ->
+                   Bucket = proplists:get_value(bucket, Params),
+                   RemotePath = proplists:get_value(remote_path, Params),
+                   StartFunc(Bucket, RemotePath)
+           end, fun validators_start_hibernation/0).
+
+handle_start_pause(Req) ->
+    handle_start_hibernation(Req,
+                             fun ns_orchestrator:start_pause_bucket/2).
+
+handle_start_resume(Req) ->
+    handle_start_hibernation(
+      Req, fun(Bucket, RemotePath) ->
+                   Metadata = hibernation_utils:get_metadata_from_s3(
+                                RemotePath),
+                   ns_orchestrator:start_resume_bucket(Bucket, RemotePath,
+                                                       Metadata)
+           end).
+
+handle_stop_hibernation(Req, StopFunc) ->
+    handle_hibernation_request(
+      Req, fun(Params) ->
+                   Bucket = proplists:get_value(bucket, Params),
+                   StopFunc(Bucket)
+           end, fun validators_stop_hibernation/0).
+
+handle_stop_pause(Req) ->
+    handle_stop_hibernation(Req, fun ns_orchestrator:stop_pause_bucket/1).
+
+handle_stop_resume(Req) ->
+    handle_stop_hibernation(Req, fun ns_orchestrator:stop_resume_bucket/1).
 
 perform_warnings_validation(Ctx, ParsedProps, Errors) ->
     Errors ++

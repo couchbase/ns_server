@@ -785,10 +785,16 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      [true]};
                 ["controller", "pause"] ->
                     {{[admin, internal], all},
-                        fun menelaus_web_buckets:handle_pause/1};
+                        fun menelaus_web_buckets:handle_start_pause/1};
                 ["controller", "resume"] ->
                     {{[admin, internal], all},
-                        fun menelaus_web_buckets:handle_resume/1};
+                        fun menelaus_web_buckets:handle_start_resume/1};
+                ["controller", "stopPause"] ->
+                    {{[admin, internal], all},
+                        fun menelaus_web_buckets:handle_stop_pause/1};
+                ["controller", "stopResume"] ->
+                    {{[admin, internal], all},
+                        fun menelaus_web_buckets:handle_stop_resume/1};
                 ["controller", "startGracefulFailover"] ->
                     {{[pools], write}, fun menelaus_web_cluster:handle_start_graceful_failover/1};
                 ["controller", "rebalance"] ->

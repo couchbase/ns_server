@@ -12,8 +12,11 @@
 -include("ns_common.hrl").
 -include("cut.hrl").
 
--export([run_hibernation_op/3,
+-export([supported_services/0,
+         run_hibernation_op/3,
          get_snapshot/1,
+         check_allow_pause_op/2,
+         check_allow_resume_op/2,
          set_hibernation_status/2,
          update_hibernation_status/1,
          build_hibernation_task/0,
@@ -21,16 +24,19 @@
          unpause_bucket/2,
          sync_s3/3,
          upload_metadata_to_s3/3,
-         get_bucket_version/1,
+         get_metadata_from_s3/1,
          get_bucket_config/1,
          get_bucket_uuid/1,
          get_bucket_manifest/1,
-         get_bucket_metadata_from_s3/1,
+         get_data_remote_path/1,
          get_data_component_path/0,
          get_bucket_data_component_path/1,
          get_node_data_remote_path/2,
          get_bucket_data_remote_path/3,
          check_test_condition/1]).
+
+supported_services() ->
+    [index, fts].
 
 run_hibernation_op(_Body, _Args = [], _Timeout) ->
     ok;
@@ -50,6 +56,121 @@ get_snapshot(Bucket) ->
     chronicle_compat:get_snapshot(
       [ns_bucket:fetch_snapshot(Bucket, _),
        ns_cluster_membership:fetch_snapshot(_)]).
+
+check_map_and_servers(BucketConfig) ->
+    Servers = ns_bucket:get_servers(BucketConfig),
+    Map = proplists:get_value(map, BucketConfig),
+    Rv = lists:all(
+           fun (Chain) ->
+                   ordsets:is_subset(ordsets:from_list(Chain), Servers)
+           end, Map),
+    case Rv of
+        true ->
+            ok;
+        _ ->
+            map_servers_mismatch
+    end.
+
+check_failed_over_service_nodes(Snapshot) ->
+    InactiveFailedNodes = ns_cluster_membership:inactive_failed_nodes(Snapshot),
+    SupportedServices = sets:from_list(supported_services()),
+    Rv = lists:any(
+           fun (Node) ->
+                   not(sets:is_disjoint(
+                         sets:from_list(
+                           ns_cluster_membership:node_services(Node)),
+                         SupportedServices))
+           end, InactiveFailedNodes),
+
+    case Rv of
+        true ->
+            failed_service_nodes;
+        _ ->
+            ok
+    end.
+
+check_servers(BucketConfig) ->
+    LiveServers = ns_bucket:live_bucket_nodes_from_config(BucketConfig),
+    Servers = ns_bucket:get_servers(BucketConfig),
+    case length(LiveServers) =:= length(Servers) of
+        true ->
+            ok;
+        false ->
+            full_servers_unavailable
+    end.
+
+check_placement_balance(BucketConfig) ->
+    Servers = ns_bucket:get_servers(BucketConfig),
+    DesiredServers = ns_bucket:get_desired_servers(BucketConfig),
+    case bucket_placer:is_balanced(BucketConfig, Servers, DesiredServers) of
+        true ->
+            ok;
+        _ ->
+            requires_rebalance
+    end.
+
+check_width_present(BucketConfig) ->
+    case ns_bucket:get_width(BucketConfig) of
+        undefined ->
+            no_width_parameter;
+        _ ->
+            ok
+    end.
+
+check_bucket_type(BucketConfig) ->
+    case ns_bucket:kv_bucket_type(BucketConfig) of
+        persistent ->
+            ok;
+        ephemeral ->
+            bucket_type_not_supported
+    end.
+
+check_allow_pause_op(Bucket, Snapshot) ->
+    case ns_bucket:get_bucket(Bucket, Snapshot) of
+        {ok, BucketCfg} ->
+            functools:sequence_(
+              [?cut(check_bucket_type(BucketCfg)),
+               ?cut(check_width_present(BucketCfg)),
+               ?cut(check_placement_balance(BucketCfg)),
+               ?cut(check_servers(BucketCfg)),
+               ?cut(check_failed_over_service_nodes(Snapshot)),
+               ?cut(check_map_and_servers(BucketCfg))]);
+        _ ->
+            bucket_not_found
+    end.
+
+get_new_bucket_config(Bucket, PausedBucketCfg,
+                      BucketVersion) when BucketVersion =:= ?VERSION_ELIXIR ->
+    Filter = [servers, desired_servers, map],
+    NewConfig = lists:filter(fun ({K, _V}) ->
+                                     not lists:member(K, Filter)
+                             end, PausedBucketCfg) ++
+        [{servers, []}, {hibernation_state, resuming}],
+    bucket_placer:place_bucket(Bucket, NewConfig).
+
+get_metadata_from_s3(RemotePath) ->
+    KvRemotePath = get_data_remote_path(RemotePath),
+    get_bucket_metadata_from_s3(KvRemotePath).
+
+get_paused_bucket_cfg(Metadata) ->
+    BucketVersion = get_bucket_version(Metadata),
+    PausedBucketCfg = get_bucket_config(Metadata),
+    {BucketVersion, PausedBucketCfg}.
+
+check_allow_resume_op(Bucket, Metadata) ->
+    case ns_bucket:get_bucket(Bucket) of
+        not_present ->
+            {Version, PausedBucketCfg} = get_paused_bucket_cfg(Metadata),
+            case get_new_bucket_config(Bucket, PausedBucketCfg, Version) of
+                {ok, NewBucketConfig} ->
+                    {ok, NewBucketConfig};
+                {error, BadZones} ->
+                    {error, {need_more_space, BadZones}}
+
+            end;
+        _ ->
+            {error, bucket_exists}
+    end.
 
 get_hibernation_status(Snapshot) ->
     chronicle_compat:get(Snapshot, hibernation_status, #{default => undefined}).
@@ -202,6 +323,11 @@ sync_s3(Source, Dest, SyncCode) ->
                        [Cmd, Status, Output]),
             {error, Status, Output}
     end.
+
+get_data_remote_path(RemotePath) ->
+    KvRemotePath = filename:join(RemotePath, "data"),
+    "s3:" ++ Rest = KvRemotePath,
+    Rest ++ "/".
 
 get_data_component_path() ->
     path_config:component_path(data, "data").
