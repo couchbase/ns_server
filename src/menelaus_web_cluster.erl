@@ -1073,6 +1073,9 @@ do_handle_rebalance(Req, [KnownNodes, EjectedNodes, DeltaRecoveryBuckets,
             reply_text(Req, "No active nodes left", 400);
         in_recovery ->
             reply_text(Req, "Cluster is in recovery mode.", 503);
+        in_bucket_hibernation ->
+            reply_text(Req, "Cannot rebalance when another bucket is "
+                            "pausing/resuming.", 503);
         no_kv_nodes_left ->
             reply_json(Req, {[{noKVNodesLeft, 1}]}, 400);
         %% pre-elixir responses

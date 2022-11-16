@@ -130,6 +130,8 @@ reply_status_code(vbucket_not_found) ->
     404;
 reply_status_code(rebalance_running) ->
     503;
+reply_status_code(in_bucket_hibernation) ->
+    503;
 reply_status_code(Error) when is_atom(Error) ->
     400;
 reply_status_code({error, _}) ->

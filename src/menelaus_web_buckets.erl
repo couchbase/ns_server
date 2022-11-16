@@ -533,6 +533,13 @@ handle_bucket_delete(_PoolId, BucketId, Req) ->
             reply_json(Req, {[{'_',
                                <<"Cannot delete buckets when cluster is in "
                                  "recovery mode.\r\n">>}]}, 503);
+        in_bucket_hibernation ->
+            reply_json(
+              Req,
+              {[{'_',
+                 <<"Cannot delete bucket when pausing/resuming another
+                   bucket">>}]},
+              503);
         {shutdown_failed, _} ->
             reply_json(Req, {[{'_',
                                <<"Bucket deletion not yet complete, but will "
@@ -666,6 +673,9 @@ handle_bucket_update_inner(BucketId, Req, Params, Limit) ->
                     reply_text(Req,
                                "Cannot update bucket "
                                "while recovery is in progress.", 503);
+                in_bucket_hibernation ->
+                    reply_text(Req, "Cannot update bucket while another bucket "
+                                    "is pausing/resuming.", 503);
                 {error, {need_more_space, Zones}} ->
                     reply_text(Req, need_more_space_error(Zones), 400);
                 {exit, {not_found, _}, _} ->
@@ -721,7 +731,13 @@ do_bucket_create(Req, Name, ParsedProps) ->
         rebalance_running ->
             {errors_500, [{'_', <<"Cannot create buckets during rebalance">>}]};
         in_recovery ->
-            {errors_500, [{'_', <<"Cannot create buckets when cluster is in recovery mode">>}]}
+            {errors_500,
+             [{'_',
+               <<"Cannot create buckets when cluster is in recovery mode">>}]};
+        in_bucket_hibernation ->
+            {errors_500,
+             [{'_', <<"Cannot create bucket when pausing/resuming another
+                      bucket">>}]}
     end.
 
 do_bucket_create(Req, Name, Params, Ctx) ->
@@ -878,6 +894,10 @@ do_handle_bucket_flush(BucketName, Req) ->
             reply_json(Req, {[{'_',
                                <<"Cannot flush buckets when cluster is in "
                                  "recovery mode">>}]}, 503);
+        in_bucket_hibernation ->
+            reply_json(Req, {[{'_',
+                               <<"Cannot flush buckets while another bucket "
+                                 "is pausing/resuming.">>}]});
         bucket_not_found ->
             reply(Req, 404);
         flush_disabled ->

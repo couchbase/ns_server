@@ -37,6 +37,13 @@
                             abort_reason,
                             reply_to}).
 
+-record(bucket_hibernation_state,
+        {hibernation_manager :: pid(),
+         bucket :: bucket_name(),
+         op  :: pause_bucket | resume_bucket,
+         stop_tref = undefined :: undefined | reference(),
+         stop_reason = undefined :: term()}).
+
 -record(recovery_state, {pid :: pid()}).
 
 
@@ -45,6 +52,10 @@
          update_bucket/4,
          delete_bucket/1,
          flush_bucket/1,
+         start_pause_bucket/2,
+         stop_pause_bucket/1,
+         start_resume_bucket/2,
+         stop_resume_bucket/1,
          failover/2,
          start_failover/2,
          try_autofailover/2,
@@ -72,6 +83,10 @@
 -define(JANITOR_RUN_TIMEOUT,    ?get_timeout(ensure_janitor_run, 30000)).
 -define(JANITOR_INTERVAL,       ?get_param(janitor_interval, 5000)).
 -define(STOP_REBALANCE_TIMEOUT, ?get_timeout(stop_rebalance, 10000)).
+-define(STOP_PAUSE_BUCKET_TIMEOUT,
+        ?get_timeout(stop_pause_bucket, 10 * 1000)). %% 10 secs.
+-define(STOP_RESUME_BUCKET_TIMEOUT,
+        ?get_timeout(stop_pause_bucket, 10 * 1000)). %% 10 secs.
 
 %% gen_statem callbacks
 -export([code_change/4,
@@ -84,7 +99,8 @@
 -export([idle/2, idle/3,
          janitor_running/2, janitor_running/3,
          rebalancing/2, rebalancing/3,
-         recovery/2, recovery/3]).
+         recovery/2, recovery/3,
+         bucket_hibernation/3]).
 
 %%
 %% API
@@ -109,7 +125,8 @@ call(Msg, Timeout) ->
                            {error, {still_exists, nonempty_string()}} |
                            {error, {port_conflict, integer()}} |
                            {error, {need_more_space, list()}} |
-                           rebalance_running | in_recovery.
+                           rebalance_running | in_recovery |
+                           in_bucket_hibernation.
 create_bucket(BucketType, BucketName, NewConfig) ->
     call({create_bucket, BucketType, BucketName, NewConfig}, infinity).
 
@@ -117,7 +134,8 @@ create_bucket(BucketType, BucketName, NewConfig) ->
                     nonempty_string(), list()) ->
                            ok | {exit, {not_found, nonempty_string()}, []} |
                            {error, {need_more_space, list()}} |
-                           rebalance_running | in_recovery.
+                           rebalance_running | in_recovery |
+                           in_bucket_hibernation.
 update_bucket(BucketType, StorageMode, BucketName, UpdatedProps) ->
     call({update_bucket, BucketType, StorageMode, BucketName, UpdatedProps},
          infinity).
@@ -133,6 +151,7 @@ update_bucket(BucketType, StorageMode, BucketName, UpdatedProps) ->
 %% and {exit, ...} if bucket does not really exists
 -spec delete_bucket(bucket_name()) ->
                            ok | rebalance_running | in_recovery |
+                           in_bucket_hibernation |
                            {shutdown_failed, [node()]} |
                            {exit, {not_found, bucket_name()}, _}.
 delete_bucket(BucketName) ->
@@ -142,6 +161,7 @@ delete_bucket(BucketName) ->
                           ok |
                           rebalance_running |
                           in_recovery |
+                          in_bucket_hibernation |
                           bucket_not_found |
                           flush_disabled |
                           {prepare_flush_failed, _, _} |
@@ -151,6 +171,59 @@ delete_bucket(BucketName) ->
                           {old_style_flush_failed, _, _}.
 flush_bucket(BucketName) ->
     call({flush_bucket, BucketName}, infinity).
+
+-spec start_pause_bucket(bucket_name(), string()) ->
+    ok |
+    bucket_not_found |
+    not_supported |
+    rebalance_running |
+    in_recovery |
+    in_bucket_hibernation.
+start_pause_bucket(Bucket, RemotePath) ->
+    case ns_bucket:get_bucket(Bucket) of
+        not_present ->
+            bucket_not_found;
+        {ok, BucketConfig} ->
+            case ns_bucket:kv_bucket_type(BucketConfig) of
+                persistent ->
+                    do_start_pause_bucket(Bucket, RemotePath);
+                ephemeral ->
+                    not_supported
+            end
+    end.
+
+do_start_pause_bucket(Bucket, RemotePath) ->
+    call({{bucket_hibernation_op,
+           {start, pause_bucket}}, [Bucket, RemotePath]}).
+
+-spec stop_pause_bucket(bucket_name()) ->
+    ok |
+    in_recovery |
+    rebalance_running |
+    {error, bucket_not_found} |
+    {error, not_running_pause_bucket} |
+    {errors, {bucket_not_found, not_running_pause_bucket}}.
+stop_pause_bucket(Bucket) ->
+    call({{bucket_hibernation_op, {stop, pause_bucket}}, [Bucket]}).
+
+-spec start_resume_bucket(bucket_name(), string()) ->
+    ok |
+    rebalance_running |
+    in_recovery |
+    in_bucket_hibernation.
+start_resume_bucket(Bucket, RemotePath) ->
+    call({{bucket_hibernation_op,
+           {start, resume_bucket}}, [Bucket, RemotePath]}).
+
+-spec stop_resume_bucket(bucket_name()) ->
+    ok |
+    rebalance_running |
+    in_recovery |
+    {error, bucket_not_found} |
+    {error, not_running_resume_bucket} |
+    {errors, {bucket_not_found, not_running_resume_bucket}}.
+stop_resume_bucket(Bucket) ->
+    call({{bucket_hibernation_op, {stop, resume_bucket}}, [Bucket]}).
 
 -spec failover([node()], boolean()) ->
                       ok |
@@ -256,6 +329,7 @@ request_janitor_run(Item) ->
 -spec ensure_janitor_run(janitor_item()) ->
                                 ok |
                                 in_recovery |
+                                in_bucket_hibernation |
                                 rebalance_running |
                                 janitor_failed |
                                 bucket_deleted.
@@ -279,6 +353,7 @@ ensure_janitor_run(Item) ->
                              {ok, binary()} | ok | in_progress |
                              already_balanced | nodes_mismatch |
                              no_active_nodes_left | in_recovery |
+                             in_bucket_hibernation |
                              delta_recovery_not_possible | no_kv_nodes_left |
                              {need_more_space, list()} |
                              {must_rebalance_services, list()} |
@@ -323,6 +398,7 @@ stop_rebalance() ->
                             {ok, UUID, RecoveryMap} |
                             unsupported |
                             rebalance_running |
+                            in_bucket_hibernation |
                             not_present |
                             not_needed |
                             {error, {failed_nodes, [node()]}} |
@@ -359,8 +435,9 @@ recovery_map(Bucket, UUID) ->
 commit_vbucket(Bucket, UUID, VBucket) ->
     call({commit_vbucket, Bucket, UUID, VBucket}).
 
--spec stop_recovery(bucket_name(), UUID) -> ok | bad_recovery
-                                                when UUID :: binary().
+-spec stop_recovery(bucket_name(), UUID) -> ok | bad_recovery |
+                                            in_bucket_hibernation
+                                              when UUID :: binary().
 stop_recovery(Bucket, UUID) ->
     call({stop_recovery, Bucket, UUID}).
 
@@ -549,6 +626,9 @@ handle_info({cleanup_done, UnsafeNodes, ID}, janitor_running,
 handle_info({timeout, _TRef, stop_timeout} = Msg, rebalancing, StateData) ->
     ?MODULE:rebalancing(Msg, StateData);
 
+handle_info(Msg, bucket_hibernation, StateData) ->
+    handle_info_in_bucket_hibernation(Msg, StateData);
+
 handle_info(Msg, StateName, StateData) ->
     ?log_warning("Got unexpected message ~p in state ~p with data ~p",
                  [Msg, StateName, StateData]),
@@ -635,48 +715,7 @@ idle({flush_bucket, BucketName}, From, _State) ->
     end,
     {keep_state_and_data, [{reply, From, RV}]};
 idle({delete_bucket, BucketName}, From, _State) ->
-    menelaus_users:cleanup_bucket_roles(BucketName),
-    throttle_service_settings:remove_bucket_settings(BucketName),
-    Reply =
-        case ns_bucket:delete_bucket(BucketName) of
-            {ok, BucketConfig} ->
-                master_activity_events:note_bucket_deletion(BucketName),
-                BucketUUID = proplists:get_value(uuid, BucketConfig),
-                event_log:add_log(bucket_deleted, [{bucket,
-                                                    list_to_binary(BucketName)},
-                                                   {bucket_uuid, BucketUUID}]),
-                ns_janitor_server:delete_bucket_request(BucketName),
-
-                Nodes = ns_bucket:get_servers(BucketConfig),
-                Pred = fun (Active) ->
-                               not lists:member(BucketName, Active)
-                       end,
-                Timeout = case ns_bucket:kv_backend_type(BucketConfig) of
-                              magma ->
-                                  ?DELETE_MAGMA_BUCKET_TIMEOUT;
-                              _ ->
-                                  ?DELETE_BUCKET_TIMEOUT
-                          end,
-                LeftoverNodes =
-                    case wait_for_nodes(Nodes, Pred, Timeout) of
-                        ok ->
-                            [];
-                        {timeout, LeftoverNodes0} ->
-                            ?log_warning("Nodes ~p failed to delete bucket ~p "
-                                         "within expected time (~p msecs).",
-                                         [LeftoverNodes0, BucketName, Timeout]),
-                            LeftoverNodes0
-                    end,
-
-                case LeftoverNodes of
-                    [] ->
-                        ok;
-                    _ ->
-                        {shutdown_failed, LeftoverNodes}
-                end;
-            Other ->
-                Other
-        end,
+    Reply = handle_delete_bucket(BucketName),
 
     {keep_state_and_data, [{reply, From, Reply}]};
 
@@ -912,7 +951,29 @@ idle({ensure_janitor_run, Item}, From, State) ->
       Item,
       fun (Reason) ->
               gen_statem:reply(From, Reason)
-      end, idle, State).
+      end, idle, State);
+
+%% Start Pause/Resume bucket operation.
+idle({{bucket_hibernation_op, {start, Op}}, [Bucket, RemotePath]},
+     From, _State) ->
+    Manager =
+        case Op of
+            pause_bucket ->
+                hibernation_manager:pause_bucket(Bucket, RemotePath);
+            resume_bucket ->
+                hibernation_manager:resume_bucket(Bucket, RemotePath)
+        end,
+
+    ale:info(?USER_LOGGER, "Starting hibernation operation (~p) for bucket: "
+                           "~p. RemotePath - ~p.", [Op, Bucket, RemotePath]),
+
+    {next_state, bucket_hibernation,
+     #bucket_hibernation_state{hibernation_manager = Manager,
+                               bucket = Bucket,
+                               op = Op},
+     [{reply, From, ok}]};
+idle({{bucket_hibernation_op, {stop, Op}}, [_Bucket]}, From, _State) ->
+    {keep_state_and_data, {reply, From, not_running(Op)}}.
 
 %% Synchronous janitor_running events
 janitor_running({ensure_janitor_run, Item}, From, State) ->
@@ -1030,6 +1091,47 @@ recovery(stop_rebalance, From, _State) ->
     {keep_state_and_data, [{reply, From, not_rebalancing}]};
 recovery(_Event, From, _State) ->
     {keep_state_and_data, [{reply, From, in_recovery}]}.
+
+bucket_hibernation({try_autofailover, Nodes, Options}, From, State) ->
+    {keep_state, stop_bucket_hibernation_op(
+                   State, {try_autofailover, From, Nodes, Options})};
+
+bucket_hibernation({{bucket_hibernation_op, {stop, Op}} = Msg, [Bucket]}, From,
+                   #bucket_hibernation_state{
+                      op = Op,
+                      bucket = Bucket} = State) ->
+    {keep_state, stop_bucket_hibernation_op(State, Msg),
+     [{reply, From, ok}]};
+
+%% Handle the cases when {stop, Op} doesn't match the current running Op, i.e:
+%% 1. {stop, pause_bucket} while resume_bucket is running.
+%% 2. {stop, resume_bucket} while pause_bucket is running.
+%% 3. {stop, pause_bucket}/{stop, resume_bucket} for a bucket that isn't
+%%    currently being paused/resumed.
+
+bucket_hibernation({{bucket_hibernation_op, {stop, Op}}, [Bucket]}, From,
+                   #bucket_hibernation_state{bucket = HibernatingBucket,
+                                             op = RunningOp}) ->
+    Reply =
+        if
+            Op =:= RunningOp ->
+                bucket_not_found;
+            Bucket =:= HibernatingBucket ->
+                not_running(Op);
+            true ->
+                {errors, {bucket_not_found,
+                          not_running(Op)}}
+        end,
+
+    {keep_state, [{reply, From, Reply}]};
+
+%% Handle other msgs that come while ns_orchestrator is in the
+%% bucket_hibernation_state.
+
+bucket_hibernation(stop_rebalance, From, _State) ->
+    {keep_state_and_data, [{reply, From, not_rebalancing}]};
+bucket_hibernation(_Msg, From, _State) ->
+    {keep_state_and_data, [{reply, From, in_bucket_hibernation}]}.
 
 %%
 %% Internal functions
@@ -1227,8 +1329,8 @@ set_rebalance_status(service_upgrade, Status, Pid) ->
 set_rebalance_status(Type, Status, Pid) ->
     rebalance:set_status(Type, Status, Pid).
 
-cancel_stop_timer(State) ->
-    do_cancel_stop_timer(State#rebalancing_state.stop_timer).
+cancel_stop_timer(TRef) ->
+    do_cancel_stop_timer(TRef).
 
 do_cancel_stop_timer(undefined) ->
     ok;
@@ -1238,10 +1340,11 @@ do_cancel_stop_timer(TRef) when is_reference(TRef) ->
     after 0 -> ok
     end.
 
-rebalance_completed_next_state({try_autofailover, From, Nodes, Options}) ->
+maybe_try_autofailover_in_idle_state(
+  {try_autofailover, From, Nodes, Options}) ->
     {next_state, idle, #idle_state{},
      [{next_event, {call, From}, {try_autofailover, Nodes, Options}}]};
-rebalance_completed_next_state(_) ->
+maybe_try_autofailover_in_idle_state(_) ->
     {next_state, idle, #idle_state{}}.
 
 terminate_observer(#rebalancing_state{rebalance_observer = undefined}) ->
@@ -1255,7 +1358,7 @@ handle_rebalance_completion(ExitReason, State) ->
     handle_rebalance_completion(ExitReason, ExitReason, State).
 
 handle_rebalance_completion(ExitReason, ToReply, State) ->
-    cancel_stop_timer(State),
+    cancel_stop_timer(State#rebalancing_state.stop_timer),
     maybe_reset_autofailover_count(ExitReason, State),
     maybe_reset_reprovision_count(ExitReason, State),
     {ResultType, Msg} = log_rebalance_completion(ExitReason, State),
@@ -1278,7 +1381,8 @@ handle_rebalance_completion(ExitReason, ToReply, State) ->
             %% Use the reason for aborting rebalance here, and not the reason
             %% for exit, we should base our next state and following activities
             %% based on the reason for aborting rebalance.
-            rebalance_completed_next_state(State#rebalancing_state.abort_reason)
+            maybe_try_autofailover_in_idle_state(
+              State#rebalancing_state.abort_reason)
     end.
 
 maybe_request_janitor_run({failover_failed, Bucket, _},
@@ -1735,6 +1839,149 @@ maybe_reply_to({shutdown, stop}, State) ->
     maybe_reply_to(stopped_by_user, State);
 maybe_reply_to(Reason, #rebalancing_state{reply_to = ReplyTo}) ->
     gen_statem:reply(ReplyTo, Reason).
+
+%% Handler for messages that come to the gen_statem in bucket_hibernation
+%% state.
+handle_info_in_bucket_hibernation(
+  {timeout, TRef, {Op, stop}},
+  #bucket_hibernation_state{
+     hibernation_manager = Manager,
+     stop_tref = TRef,
+     stop_reason = StopReason,
+     bucket = Bucket,
+     op = Op}) ->
+    %% The hibernation_manager couldn't be gracefully killed - brutally kill it
+    %% at the end of the graceful kill timeout.
+    misc:unlink_terminate_and_wait(Manager, kill),
+    handle_hibernation_manager_shutdown(StopReason, Bucket, Op),
+    maybe_try_autofailover_in_idle_state(StopReason);
+
+handle_info_in_bucket_hibernation(
+  {'EXIT', Manager, Reason},
+  #bucket_hibernation_state{
+     hibernation_manager = Manager,
+     bucket = Bucket,
+     op = Op,
+     stop_tref = TRef,
+     stop_reason = StopReason}) ->
+    cancel_stop_timer(TRef),
+    handle_hibernation_manager_exit(Reason, Bucket, Op),
+    maybe_try_autofailover_in_idle_state(StopReason);
+
+handle_info_in_bucket_hibernation(Msg, State) ->
+    ?log_debug("Message ~p ignored in State: ", [Msg, State]),
+    keep_state_and_data.
+
+-spec handle_hibernation_manager_exit(Reason, Bucket, Op) -> ok
+    when Reason :: normal | shutdown | {shutdown, stop} |
+                   bucket_delete_failed | any(),
+         Bucket :: bucket_name(),
+         Op :: pause_bucket | resume_bucket.
+
+handle_hibernation_manager_exit(normal, Bucket, pause_bucket) ->
+
+    %% At the end of successfully pausing a bucket, mark the bucket
+    %% for deletion. TODO - do we have to do this as a
+    %% transaction in chronicle??
+    case handle_delete_bucket(Bucket) of
+        ok ->
+            ale:debug(?USER_LOGGER, "pause_bucket done for Bucket ~p.",
+                      [Bucket]);
+        Reason ->
+            handle_hibernation_manager_exit({bucket_delete_failed, Reason},
+                                            Bucket, pause_bucket)
+    end;
+
+handle_hibernation_manager_exit(normal, Bucket, resume_bucket) ->
+    ale:debug(?USER_LOGGER, "resume_bucket done for Bucket ~p.", [Bucket]);
+
+handle_hibernation_manager_exit(shutdown , Bucket, Op) ->
+    handle_hibernation_manager_shutdown(shutdown, Bucket, Op);
+handle_hibernation_manager_exit({shutdown, _} = Reason, Bucket, Op) ->
+    handle_hibernation_manager_shutdown(Reason, Bucket, Op);
+handle_hibernation_manager_exit(Reason, Bucket, Op) ->
+    ale:error(?USER_LOGGER, "~p for Bucket ~p failed. Reason: ~p",
+              [Op, Bucket, Reason]).
+
+handle_hibernation_manager_shutdown(Reason, Bucket, Op) ->
+    ale:debug(?USER_LOGGER, "~p for Bucket ~p stopped. Reason: ~p.",
+              [Op, Bucket, Reason]).
+
+-spec not_running(Op :: pause_bucket | resume_bucket) -> atom().
+not_running(Op) ->
+    list_to_atom("not_running_" ++ atom_to_list(Op)).
+
+get_hibernation_op_stop_timeout(pause_bucket) ->
+    ?STOP_PAUSE_BUCKET_TIMEOUT;
+get_hibernation_op_stop_timeout(resume_bucket) ->
+    ?STOP_RESUME_BUCKET_TIMEOUT.
+
+stop_bucket_hibernation_op(#bucket_hibernation_state{
+                             hibernation_manager = Manager,
+                             op = Op,
+                             stop_tref = undefined} = State, Reason) ->
+    exit(Manager, {shutdown, stop}),
+    TRef = erlang:start_timer(
+             get_hibernation_op_stop_timeout(Op), self(), {stop, Op}),
+    State#bucket_hibernation_state{stop_tref = TRef,
+                                   stop_reason = Reason};
+%% stop_tref is not 'undefined' and therefore a previously initated stop is
+%% current running; do a simple pass-through and update the stop_reason
+%% if necessary.
+stop_bucket_hibernation_op(State, Reason) ->
+    %% If we receive a try_autofailover while we are stopping a bucket
+    %% hibernation op - we simply update the stop_reason with the
+    %% try_autofailover one, to process the autofailover message after the
+    %% bucket_hibernation op has been stopped.
+    case Reason of
+        {try_autofailover, _, _, _} ->
+            State#bucket_hibernation_state{stop_reason = Reason};
+        _ ->
+            State
+    end.
+
+handle_delete_bucket(BucketName) ->
+    menelaus_users:cleanup_bucket_roles(BucketName),
+    throttle_service_settings:remove_bucket_settings(BucketName),
+    case ns_bucket:delete_bucket(BucketName) of
+        {ok, BucketConfig} ->
+            master_activity_events:note_bucket_deletion(BucketName),
+            BucketUUID = proplists:get_value(uuid, BucketConfig),
+            event_log:add_log(bucket_deleted, [{bucket,
+                                                list_to_binary(BucketName)},
+                                               {bucket_uuid, BucketUUID}]),
+            ns_janitor_server:delete_bucket_request(BucketName),
+
+            Nodes = ns_bucket:get_servers(BucketConfig),
+            Pred = fun (Active) ->
+                           not lists:member(BucketName, Active)
+                   end,
+            Timeout = case ns_bucket:kv_backend_type(BucketConfig) of
+                          magma ->
+                              ?DELETE_MAGMA_BUCKET_TIMEOUT;
+                          _ ->
+                              ?DELETE_BUCKET_TIMEOUT
+                      end,
+            LeftoverNodes =
+            case wait_for_nodes(Nodes, Pred, Timeout) of
+                ok ->
+                    [];
+                {timeout, LeftoverNodes0} ->
+                    ?log_warning("Nodes ~p failed to delete bucket ~p "
+                                 "within expected time (~p msecs).",
+                                 [LeftoverNodes0, BucketName, Timeout]),
+                    LeftoverNodes0
+            end,
+
+            case LeftoverNodes of
+                [] ->
+                    ok;
+                _ ->
+                    {shutdown_failed, LeftoverNodes}
+            end;
+        Other ->
+            Other
+    end.
 
 -ifdef(TEST).
 
