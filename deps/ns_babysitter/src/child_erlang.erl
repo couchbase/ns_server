@@ -213,6 +213,7 @@ handle_arguments(Arguments) ->
                          Flag =:= detach;
                          Flag =:= noinput;
                          Flag =:= noshell;
+                         Flag =:= bindir;
                          Flag =:= nouser ->
                       Acc;
                   _ ->
