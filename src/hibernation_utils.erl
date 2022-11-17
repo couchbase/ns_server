@@ -9,12 +9,15 @@
 
 -module(hibernation_utils).
 
+-include("ns_common.hrl").
 -include("cut.hrl").
 
 -export([run_hibernation_op/3,
          set_hibernation_status/2,
          update_hibernation_status/1,
-         build_hibernation_task/0]).
+         build_hibernation_task/0,
+         unpause_bucket/1,
+         unpause_bucket/2]).
 
 run_hibernation_op(Body, Args, Timeout) ->
     case async:run_with_timeout(
@@ -83,3 +86,77 @@ build_hibernation_task() ->
                leader_registry:whereis_name(ns_orchestrator) =:= undefined}]]
 
     end.
+
+unpause_bucket(Bucket) ->
+    {ok, BucketConfig} = ns_bucket:get_bucket(Bucket),
+    BucketNodes = ns_bucket:get_servers(BucketConfig),
+    unpause_bucket(Bucket, BucketNodes).
+
+unpause_bucket(Bucket, BucketNodes) ->
+    misc:with_trap_exit(
+      fun () ->
+              {Worker, Ref} =
+                  misc:spawn_monitor(
+                    ?cut(unpause_bucket_body(Bucket, BucketNodes))),
+              receive
+                  {'DOWN', Ref, process, Worker, Reason} ->
+                      case Reason of
+                          normal ->
+                              ?log_debug("unpause_bucket for bucket ~p "
+                                         "completed successfully on nodes: ~p.",
+                                         [Bucket, BucketNodes]),
+                              ok;
+                          _ ->
+                              ?log_error("unpause_bucket for bucket ~p failed. "
+                                         "BucketNodes: ~p, Reason: ~p.",
+                                         [Bucket, BucketNodes, Reason]),
+                              ok
+                      end;
+                  {'EXIT', _Pid, Reason} ->
+                      ?log_debug("Received 'EXIT' while unpausing bucket: ~p. "
+                                 "Terminating worker: ~p. Reason: ~p.",
+                                 [Bucket, Worker, Reason]),
+                      misc:terminate_and_wait(Worker, Reason)
+              end
+      end).
+
+unpause_bucket_body(Bucket, BucketNodes) ->
+    Timeout = ?get_timeout(unpause_bucket, 5000),
+
+    leader_activities:run_activity(
+      {unpause_bucket, Bucket}, majority,
+      fun () ->
+              %% Make a best-case effort to unpause bucket on the BucketNodes.
+              Results =
+                  misc:parallel_map_partial(
+                    fun (BucketNode) ->
+                            try
+                                kv_hibernation_agent:unpause_bucket(
+                                  Bucket, BucketNode)
+                            catch
+                                E:T:S ->
+                                    ?log_error("unpause_bucket for bucket: ~p ",
+                                               "failed on node: ~p. "
+                                                "Error: {~p, ~p, ~p} " ,
+                                               [Bucket, BucketNode,
+                                                E, T, S]),
+                                    {error, unpause_bucket_failed}
+                            end
+                    end,
+                    BucketNodes, Timeout),
+
+              OkNodes =
+                  lists:filtermap(
+                    fun ({Node, {ok, ok}}) ->
+                            {true, Node};
+                        (_) ->
+                            false
+                    end, lists:zip(BucketNodes, Results)),
+
+              case BucketNodes -- OkNodes of
+                  [] ->
+                      ok;
+                  FailedNodes ->
+                      exit({unpause_bucket_failed, {failed_nodes, FailedNodes}})
+              end
+      end).
