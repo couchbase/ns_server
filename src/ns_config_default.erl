@@ -205,7 +205,8 @@ default() ->
        {num_storage_threads, <<"default">>},
        {tcp_keepalive_idle, 360},
        {tcp_keepalive_interval, 10},
-       {tcp_keepalive_probes, 3}]},
+       {tcp_keepalive_probes, 3},
+       {always_collect_trace_info, true}]},
 
      %% Memcached config
      {{node, node(), memcached},
@@ -292,7 +293,8 @@ default() ->
         {ssl_sasl_mechanisms, {memcached_config_mgr, sasl_mechanisms, []}},
         {tcp_keepalive_idle, tcp_keepalive_idle},
         {tcp_keepalive_interval, tcp_keepalive_interval},
-        {tcp_keepalive_probes, tcp_keepalive_probes}
+        {tcp_keepalive_probes, tcp_keepalive_probes},
+        {always_collect_trace_info, always_collect_trace_info}
        ]}},
 
      {memory_quota, KvQuota},

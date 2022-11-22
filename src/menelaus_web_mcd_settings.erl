@@ -46,7 +46,8 @@ supported_setting_names() ->
      {datatype_snappy, bool},
      {tcp_keepalive_idle, {int, 0, ?MC_MAXINT}},
      {tcp_keepalive_interval, {int, 0, ?MC_MAXINT}},
-     {tcp_keepalive_probes, {int, 0, ?MC_MAXINT}}].
+     {tcp_keepalive_probes, {int, 0, ?MC_MAXINT}},
+     {always_collect_trace_info, bool}].
 
 %% Updates to these settings go to the '{node, node(), memcached_config_extra}'
 %% or 'memcached_config_extra' keys depending on whether the write is per-node
