@@ -41,7 +41,7 @@ handle_get(Req) ->
 -spec none_use_couchdb(Samples :: [{binary(), binary()}]) -> boolean().
 none_use_couchdb(Samples) ->
     lists:all(
-      fun ({Sample, _Bucket, _BucketState}) ->
+      fun ({Sample, _Bucket}) ->
               samples_without_couchdb(binary_to_list(Sample))
       end, Samples).
 
@@ -52,9 +52,9 @@ samples_without_couchdb(Name) when is_list(Name) ->
 build_samples_input_list(Samples) ->
     lists:foldl(
       fun ({[{<<"sample">>, Sample},{<<"bucket">>, Bucket}]}, AccIn) ->
-              [{Sample, Bucket, bucket_must_exist} | AccIn];
+              [{Sample, Bucket} | AccIn];
           (Sample, AccIn) ->
-              [{Sample, Sample, bucket_must_not_exist} | AccIn]
+              [{Sample, Sample} | AccIn]
       end, [], Samples).
 
 %% There are two types of input to this request. The classic/original input
@@ -143,16 +143,14 @@ try_decode(Body) ->
     end.
 
 start_loading_samples(Req, Samples) ->
-    lists:foreach(fun ({Sample, Bucket, BucketState}) ->
+    lists:foreach(fun ({Sample, Bucket}) ->
                           start_loading_sample(Req, binary_to_list(Sample),
-                                               binary_to_list(Bucket),
-                                               BucketState)
+                                              binary_to_list(Bucket))
                   end, Samples).
 
-start_loading_sample(Req, Sample, Bucket, BucketState) ->
+start_loading_sample(Req, Sample, Bucket) ->
     case samples_loader_tasks:start_loading_sample(Sample, Bucket,
-                                                   ?SAMPLE_BUCKET_QUOTA_MB,
-                                                   BucketState) of
+                                                   ?SAMPLE_BUCKET_QUOTA_MB) of
         ok ->
             ns_audit:start_loading_sample(Req, Bucket);
         already_started ->
@@ -219,7 +217,7 @@ check_sample_exists(Sample) ->
 check_valid_samples(Samples) ->
     Errors =
         lists:foldl(
-          fun ({Sample, Sample, bucket_must_not_exist}, AccIn) ->
+          fun ({Sample, Sample}, AccIn) ->
                   %% Classic case where data is loaded into non-existent
                   %% bucket with the same name as the sample data.
                   RV =
@@ -232,7 +230,7 @@ check_valid_samples(Samples) ->
                             check_sample_exists(Sample)
                     end,
                     [RV | AccIn];
-              ({Sample, Bucket, bucket_must_exist}, AccIn) ->
+              ({Sample, Bucket}, AccIn) ->
                   %% Newer case where the bucket must already exist.
                   RV =
                     case ns_bucket:name_conflict(binary_to_list(Bucket)) of
