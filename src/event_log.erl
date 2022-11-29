@@ -63,6 +63,12 @@ event_details(service_crashed) ->
     {19, ns_server, error, <<"Service crashed">>};
 event_details(node_down) ->
     {20, ns_server, warning, <<"Node Down">>};
+event_details(cb_collect_started) ->
+    {21, ns_server, info, <<"CB collect started">>};
+event_details(cb_collect_finished) ->
+    {22, ns_server, info, <<"CB collect completed">>};
+event_details(cb_collect_failed) ->
+    {23, ns_server, error, <<"CB collect failed">>};
 
 %% event_ids block for Security related events: [9216, ..., 10239]
 event_details(audit_enabled) ->

@@ -274,6 +274,9 @@ start_collection_per_node(TimestampS, Parent, Options) ->
             _ ->
                 {Filename, []}
         end,
+    TStart = erlang:monotonic_time(second),
+    event_log:add_log(
+        cb_collect_started, [{file_name, list_to_binary(UploadFilename)}]),
     proc_lib:init_ack(Parent, {ok, self(), UploadFilename}),
 
     MaybeTmpDir = case proplists:get_value(tmp_dir, Options) of
@@ -284,7 +287,8 @@ start_collection_per_node(TimestampS, Parent, Options) ->
     Args0 = ["--watch-stdin"] ++ MaybeLogRedaction ++
         MaybeTmpDir ++ ["--initargs=" ++ InitargsFilename, Filename],
 
-    ExtraArgs = ns_config:search_node_with_default(cbcollect_info_extra_args, []),
+    ExtraArgs =
+        ns_config:search_node_with_default(cbcollect_info_extra_args, []),
     Env = ns_config:search_node_with_default(cbcollect_info_extra_env, []),
 
     Args = Args0 ++ ExtraArgs,
@@ -296,13 +300,21 @@ start_collection_per_node(TimestampS, Parent, Options) ->
         misc:run_external_tool(
           path_config:component_path(bin, "cbcollect_info"),
           Args, Env, [graceful_shutdown]),
+    Duration = erlang:monotonic_time(second) - TStart,
     case Status of
         0 ->
             ?log_debug("Done"),
+            event_log:add_log(cb_collect_finished,
+                              [{file_name, list_to_binary(UploadFilename)},
+                               {time_taken_seconds, Duration}]),
             Parent ! {self(), {ok, UploadFilename, Output}};
         _ ->
             ?log_error("Log collection failed with status: ~p.~nOutput:~n~s",
                        [Status, Output]),
+            event_log:add_log(cb_collect_failed,
+                              [{file_name, list_to_binary(UploadFilename)},
+                               {time_taken_seconds, Duration},
+                               {status, Status}, {output, Output}]),
             Parent ! {self(), {error, Status, Output}}
     end.
 
