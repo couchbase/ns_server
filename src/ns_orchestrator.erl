@@ -443,8 +443,7 @@ handle_event({call, From}, {maybe_start_rebalance,
         EjectedLiveNodes = EjectedNodes -- FailedNodes,
 
         Services = maps:get(services, Params, all),
-        validate_services(Services, KeepNodes, EjectedLiveNodes, DeltaNodes,
-                          Snapshot),
+        validate_services(Services, EjectedLiveNodes, DeltaNodes, Snapshot),
 
         NewParams1 = NewParams#{keep_nodes => KeepNodes,
                                 eject_nodes => EjectedLiveNodes,
@@ -1623,18 +1622,18 @@ rebalance_allowed(Snapshot) ->
             ok
     end.
 
-validate_services(all, _, _, _, _) ->
+validate_services(all, _, _, _) ->
     ok;
-validate_services(_, _, _, DeltaNodes, _) when DeltaNodes =/= [] ->
+validate_services(_, _, DeltaNodes, _) when DeltaNodes =/= [] ->
     throw({must_rebalance_services, all});
-validate_services(Services, KeepNodes, NodesToEject, [], Snapshot) ->
+validate_services(Services, NodesToEject, [], Snapshot) ->
     case Services -- ns_cluster_membership:hosted_services(Snapshot) of
         [] ->
             ok;
         ExtraServices ->
             throw({unhosted_services, ExtraServices})
     end,
-    case get_uninitialized_services(Services, KeepNodes, Snapshot) ++
+    case get_uninitialized_services(Services, Snapshot) ++
         get_unejected_services(Services, NodesToEject, Snapshot) of
         [] ->
             ok;
@@ -1642,25 +1641,13 @@ validate_services(Services, KeepNodes, NodesToEject, [], Snapshot) ->
             throw({must_rebalance_services, lists:usort(NeededServices)})
     end.
 
-get_uninitialized_services(Services, KeepNodes, Snapshot) ->
-    UninitializedServices =
-        lists:flatmap(
-          fun(Node) ->
-                  NodeServices =
-                      ns_cluster_membership:node_services(Snapshot, Node)
-                      -- [kv],
-                  lists:filter(
-                    ?cut(not lists:member(
-                               Node, ns_cluster_membership:get_service_map(
-                                       Snapshot, _))),
-                    NodeServices)
-          end, KeepNodes),
-    lists:usort(UninitializedServices) -- Services.
+get_uninitialized_services(Services, Snapshot) ->
+    ns_cluster_membership:nodes_services(
+      Snapshot, ns_cluster_membership:inactive_added_nodes(Snapshot)) --
+        Services.
 
 get_unejected_services(Services, NodesToEject, Snapshot) ->
-    lists:usort(
-      lists:flatmap(ns_cluster_membership:node_services(Snapshot, _),
-                    NodesToEject)) -- Services.
+    ns_cluster_membership:nodes_services(Snapshot, NodesToEject) -- Services.
 
 check_for_unfinished_failover(Snapshot) ->
     case chronicle_master:get_prev_failover_nodes(Snapshot) of
@@ -1753,19 +1740,12 @@ maybe_reply_to(Reason, #rebalancing_state{reply_to = ReplyTo}) ->
 
 get_uninitialized_services_test() ->
     Snapshot =
-        #{{node, n1 ,services} => {[index, kv], rev},
+        #{nodes_wanted => {[n1, n2], rev},
+          {node, n1 ,services} => {[index, kv], rev},
           {node, n2 ,services} => {[index, kv, n1ql], rev},
-          {service_map, index} => {[n1, n2], rev},
-          {service_map, n1ql} => {[n2], rev}},
-    ?assertEqual([], get_uninitialized_services([kv], [n1, n2], Snapshot)),
-
-    Snapshot1 = maps:merge(Snapshot,
-                           #{{service_map, index} => {[n1], rev},
-                             {service_map, n1ql} => {[], rev}}),
-
-    ?assertEqual(
-       [index, n1ql],
-       lists:sort(get_uninitialized_services([kv], [n1, n2], Snapshot1))).
+          {node, n1, membership} => {active, rev},
+          {node, n2, membership} => {inactiveAdded, rev}},
+    ?assertEqual([index, n1ql], get_uninitialized_services([kv], Snapshot)).
 
 get_unejected_services_test() ->
     Snapshot =

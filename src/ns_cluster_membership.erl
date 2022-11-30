@@ -28,6 +28,7 @@
          active_nodes/1,
          active_nodes/2,
          inactive_added_nodes/0,
+         inactive_added_nodes/1,
          actual_active_nodes/0,
          actual_active_nodes/1,
          get_cluster_membership/1,
@@ -73,6 +74,7 @@
          node_active_services/2,
          node_services/1,
          node_services/2,
+         nodes_services/2,
          service_active_nodes/1,
          service_active_nodes/2,
          service_actual_nodes/2,
@@ -148,7 +150,10 @@ active_nodes(Snapshot, Nodes) ->
     get_nodes_with_status(Snapshot, Nodes, active).
 
 inactive_added_nodes() ->
-    get_nodes_with_status(inactiveAdded).
+    inactive_added_nodes(get_snapshot()).
+
+inactive_added_nodes(Snapshot) ->
+    get_nodes_with_status(Snapshot, inactiveAdded).
 
 actual_active_nodes() ->
     actual_active_nodes(get_snapshot()).
@@ -555,8 +560,7 @@ cluster_supported_services() ->
                                    cluster_compat_mode:is_enterprise()).
 
 hosted_services(Snapshot) ->
-    lists:usort(
-      lists:flatmap(node_services(Snapshot, _), nodes_wanted(Snapshot))).
+    nodes_services(Snapshot, nodes_wanted(Snapshot)).
 
 default_services() ->
     [kv].
@@ -611,6 +615,9 @@ node_services(Node) ->
 node_services(Snapshot, Node) ->
     chronicle_compat:get(Snapshot, {node, Node, services},
                          #{default => default_services()}).
+
+nodes_services(Snapshot, Nodes) ->
+    lists:usort(lists:flatmap(node_services(Snapshot, _), Nodes)).
 
 should_run_service(Service, Node) ->
     should_run_service(direct, Service, Node).
