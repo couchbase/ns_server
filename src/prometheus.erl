@@ -203,7 +203,8 @@ post_async(Path, Body, Timeout, Settings, Handler) ->
             BodyEncoded = mochiweb_util:urlencode(Body),
             {Username, Password} = proplists:get_value(prometheus_creds,
                                                        Settings),
-            Headers = [menelaus_rest:basic_auth_header(Username, Password)],
+            Headers = [menelaus_rest:basic_auth_header(
+                         ?HIDE({basic_auth, Username, Password}))],
             AFamily = proplists:get_value(afamily, Settings),
             StartTime = erlang:monotonic_time(millisecond),
             Receiver =

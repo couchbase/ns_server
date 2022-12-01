@@ -102,7 +102,10 @@ upgrade(?VERSION_70, Config) ->
      index_settings_manager:config_upgrade_to_71(Config) ++
          menelaus_web_alerts_srv:config_upgrade_to_71(Config)};
 
-upgrade(?VERSION_71, Config) ->
+upgrade(?VERSION_71, _Config) ->
+    {?VERSION_72, []};
+
+upgrade(?VERSION_72, Config) ->
     {?VERSION_ELIXIR,
      menelaus_web_auto_failover:config_upgrade_to_elixir(Config) ++
         menelaus_web_alerts_srv:config_upgrade_to_elixir(Config) ++

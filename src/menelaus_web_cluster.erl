@@ -432,7 +432,7 @@ handle_join_clean_node(Req) ->
                             false ->
                                 User = proplists:get_value(user, Fields),
                                 Pswd = proplists:get_value(password, Fields),
-                                {basic_auth, User, Pswd}
+                                ?HIDE({basic_auth, User, Pswd})
                         end,
             Services = proplists:get_value(services, Fields),
             Hostname = proplists:get_value(new_node_hostname, Fields),
@@ -440,7 +440,7 @@ handle_join_clean_node(Req) ->
                              Services, Hostname)
     end.
 
-handle_join_tail(Req, OtherScheme, OtherHost, OtherPort, OtherCreds,
+handle_join_tail(Req, OtherScheme, OtherHost, OtherPort, HiddenAuth,
                  Services, Hostname) ->
     process_flag(trap_exit, true),
     RV = case ns_cluster:check_host_port_connectivity(OtherHost, OtherPort) of
@@ -461,7 +461,8 @@ handle_join_tail(Req, OtherScheme, OtherHost, OtherPort, OtherCreds,
 
                  NodeURL = build_node_url(OtherScheme, Host),
                  call_add_node(OtherScheme, OtherHost, OtherPort,
-                               OtherCreds, AFamily, NodeURL, Services);
+                               HiddenAuth, AFamily, NodeURL,
+                               Services);
              {error, Reason} ->
                     M = case ns_error_messages:connection_error_message(
                                Reason, OtherHost, OtherPort) of
@@ -494,7 +495,7 @@ build_node_url(Scheme, Host) ->
     URL = io_lib:format("~p://~s:~b", [Scheme, HostWBrackets, Port]),
     lists:flatten(URL).
 
-call_add_node(OtherScheme, OtherHost, OtherPort, Creds, AFamily,
+call_add_node(OtherScheme, OtherHost, OtherPort, HiddenAuth, AFamily,
               ThisNodeURL, Services) ->
 
     IsClientCertAuthMandatory =
@@ -533,7 +534,7 @@ call_add_node(OtherScheme, OtherHost, OtherPort, Creds, AFamily,
             {OtherScheme, OtherHost, OtherPort, Endpoint,
              "application/x-www-form-urlencoded",
              mochiweb_util:urlencode(Payload)},
-            Creds, Options),
+            HiddenAuth, Options),
     case Res of
         {error, rest_error, _M, {bad_status, 404, _Msg}} ->
             NewMsg = <<"Node attempting to join an older cluster. Some of the "

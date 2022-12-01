@@ -44,6 +44,7 @@ supported_setting_names() ->
      {dedupe_nmvb_maps, bool},
      {tracing_enabled, bool},
      {datatype_snappy, bool},
+     {connection_limit_mode, {one_of, ["disconnect", "recycle"]}},
      {tcp_keepalive_idle, {int, 0, ?MC_MAXINT}},
      {tcp_keepalive_interval, {int, 0, ?MC_MAXINT}},
      {tcp_keepalive_probes, {int, 0, ?MC_MAXINT}},
@@ -174,6 +175,12 @@ validate_param(Value, bool) ->
     end;
 validate_param(Value, string) ->
     {ok, Value};
+validate_param(Value, {one_of, Values}) ->
+    case lists:member(Value, Values) of
+        true -> {ok, list_to_binary(Value)};
+        false -> list_to_binary(io_lib:format("must be one of: [~s]",
+                                              [string:join(Values, ", ")]))
+    end;
 validate_param(Value, Fun) when is_function(Fun, 1) ->
     Fun(Value).
 
