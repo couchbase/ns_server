@@ -188,13 +188,20 @@ build_short_bucket_info(Id, BucketConfig, Snapshot) ->
     BucketUUID = ns_bucket:uuid(Id, Snapshot),
     [build_name_and_locator(Id, BucketConfig),
      {bucketType, ns_bucket:external_bucket_type(BucketConfig)},
-     {storageBackend, ns_bucket:storage_backend(BucketConfig)},
+     build_storage_backend(BucketConfig),
      {uuid, BucketUUID},
      {uri, build_pools_uri(["buckets", Id], BucketUUID)},
      {streamingUri, build_pools_uri(["bucketsStreaming", Id], BucketUUID)},
      build_num_vbuckets(BucketConfig),
      build_bucket_capabilities(BucketConfig),
      build_collections_manifest_id(Id, Snapshot)].
+
+build_storage_backend(BucketConfig) ->
+    IsElixir = cluster_compat_mode:is_cluster_elixir(),
+    case ns_bucket:storage_backend(BucketConfig) of
+        undefined when IsElixir -> [];
+        SB -> {storageBackend, SB}
+    end.
 
 build_num_vbuckets(BucketConfig) ->
     case ns_bucket:bucket_type(BucketConfig) of
