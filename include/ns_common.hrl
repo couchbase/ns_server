@@ -236,6 +236,7 @@
 -define(VERSION_66, [6, 6]).
 -define(VERSION_70, [7, 0]).
 -define(VERSION_71, [7, 1]).
+-define(VERSION_72, [7, 2]).
 -define(VERSION_ELIXIR, [7, 5]).
 
 %% This require coordination with the UI to update the version.

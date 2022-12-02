@@ -94,6 +94,9 @@ upgrade_to(?VERSION_70, UpgradeTxn, Config) ->
         compaction_daemon:chronicle_upgrade_to_71(_, Config)])};
 
 upgrade_to(?VERSION_71, UpgradeTxn, _Config) ->
+    {?VERSION_72, UpgradeTxn};
+
+upgrade_to(?VERSION_72, UpgradeTxn, _Config) ->
     {?VERSION_ELIXIR,
      functools:chain(
        UpgradeTxn,

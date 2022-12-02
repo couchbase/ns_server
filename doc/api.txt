@@ -419,6 +419,7 @@ GET /pools/default/serverGroups =>
   (ssl_cipher_list: <string>)?
   (privilege_debug: <bool>)?
   (always_collect_trace_info: <bool>)?
+  (connection_limit_mode: "disconnect" | "recycle")?
 }
 
 

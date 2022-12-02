@@ -206,7 +206,8 @@ default() ->
        {tcp_keepalive_idle, 360},
        {tcp_keepalive_interval, 10},
        {tcp_keepalive_probes, 3},
-       {always_collect_trace_info, true}]},
+       {always_collect_trace_info, true},
+       {connection_limit_mode, <<"disconnect">>}]},
 
      %% Memcached config
      {{node, node(), memcached},
@@ -294,7 +295,8 @@ default() ->
         {tcp_keepalive_idle, tcp_keepalive_idle},
         {tcp_keepalive_interval, tcp_keepalive_interval},
         {tcp_keepalive_probes, tcp_keepalive_probes},
-        {always_collect_trace_info, always_collect_trace_info}
+        {always_collect_trace_info, always_collect_trace_info},
+        {connection_limit_mode, connection_limit_mode}
        ]}},
 
      {memory_quota, KvQuota},
@@ -379,11 +381,14 @@ upgrade_config(Config) ->
             [{set, {node, node(), config_version}, {7,1}} |
              upgrade_config_from_7_0_to_7_1(Config)];
         {7,1} ->
+            [{set, {node, node(), config_version}, {7,2}} |
+             upgrade_config_from_7_1_to_7_2(Config)];
+        {7,2} ->
             %% When upgrading to the latest config_version always upgrade
             %% service_ports.
             service_ports:offline_upgrade(Config) ++
                 [{set, {node, node(), config_version}, CurrentVersion} |
-                 upgrade_config_from_7_1_to_elixir(Config)];
+                 upgrade_config_from_7_2_to_elixir(Config)];
         OldVersion ->
             ?log_error("Detected an attempt to offline upgrade from "
                        "unsupported version ~p. Terminating.", [OldVersion]),
@@ -451,11 +456,19 @@ do_upgrade_config_from_7_0_to_7_1(Config, DefaultConfig) ->
      upgrade_sub_keys(memcached, [{delete, log_sleeptime}],
                       Config, DefaultConfig)].
 
-upgrade_config_from_7_1_to_elixir(Config) ->
+upgrade_config_from_7_1_to_7_2(Config) ->
     DefaultConfig = default(),
-    do_upgrade_config_from_7_1_to_elixir(Config, DefaultConfig).
+    do_upgrade_config_from_7_1_to_7_2(Config, DefaultConfig).
 
-do_upgrade_config_from_7_1_to_elixir(_Config, DefaultConfig) ->
+do_upgrade_config_from_7_1_to_7_2(_Config, DefaultConfig) ->
+    [upgrade_key(memcached_config, DefaultConfig),
+     upgrade_key(memcached_defaults, DefaultConfig)].
+
+upgrade_config_from_7_2_to_elixir(Config) ->
+    DefaultConfig = default(),
+    do_upgrade_config_from_7_2_to_elixir(Config, DefaultConfig).
+
+do_upgrade_config_from_7_2_to_elixir(_Config, DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig),
      upgrade_key(memcached_defaults, DefaultConfig)].
 
