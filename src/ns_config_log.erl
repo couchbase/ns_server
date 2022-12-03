@@ -200,6 +200,8 @@ sanitize(Config, TagUserTuples) ->
     rewrite_tuples_with_vclock(
       fun ({password, _}) ->
               {stop, {password, "*****"}};
+          ({specialPasswords, _}) ->
+              {stop, {specialPasswords, "*****"}};
           ({sasl_password, _}) ->
               %% Maybe present on mixed version clusters. The key is eventually
               %% deleted at some time after compat mode is elevated to 7.0.
