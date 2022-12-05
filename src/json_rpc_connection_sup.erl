@@ -27,16 +27,17 @@ init([]) ->
 handle_rpc_connect(Req) ->
     "/" ++ Path = mochiweb_request:get(path, Req),
     Sock = mochiweb_request:get(socket, Req),
+    IsInternal = menelaus_auth:is_internal(Req),
     menelaus_util:reply(Req, 200),
     case string:split(Path, "/", trailing) of
         [_, "test"] ->
             ok;
         _ ->
-            ok = start_handler(Path, Sock),
+            ok = start_handler(Path, Sock, IsInternal),
             erlang:exit(normal)
     end.
 
-start_handler(Label, Sock) ->
+start_handler(Label, Sock, IsInternal) ->
     Ref = make_ref(),
     Starter = self(),
 
@@ -59,7 +60,7 @@ start_handler(Label, Sock) ->
                 end
         end,
 
-    {ok, Pid} = supervisor:start_child(?MODULE, [Label, GetSocket]),
+    {ok, Pid} = supervisor:start_child(?MODULE, [Label, GetSocket, IsInternal]),
     ok = gen_tcp:controlling_process(Sock, Pid),
     Pid ! {Ref, Sock},
     ok.

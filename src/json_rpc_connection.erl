@@ -13,7 +13,7 @@
 
 -include("ns_common.hrl").
 
--export([start_link/2,
+-export([start_link/3,
          perform_call/3, perform_call/4,
          reannounce/1]).
 
@@ -37,8 +37,8 @@ label_to_name(Pid) when is_pid(Pid) ->
 label_to_name(Label) when is_list(Label)  ->
     list_to_atom(?PREFIX ++ Label).
 
-start_link(Label, GetSocket) ->
-    proc_lib:start_link(?MODULE, init, [{Label, GetSocket}]).
+start_link(Label, GetSocket, IsInternal) ->
+    proc_lib:start_link(?MODULE, init, [{Label, GetSocket, IsInternal}]).
 
 perform_call(Label, Name, EJsonArg, Opts = #{timeout := Timeout}) ->
     EJsonArgThunk = fun () -> EJsonArg end,
@@ -51,7 +51,7 @@ perform_call(Label, Name, EJsonArg) ->
 reannounce(Pid) when is_pid(Pid) ->
     gen_server:cast(Pid, reannounce).
 
-init({Label, GetSocket}) ->
+init({Label, GetSocket, IsInternal}) ->
     proc_lib:init_ack({ok, self()}),
     InetSock = GetSocket(),
 
@@ -71,13 +71,18 @@ init({Label, GetSocket}) ->
                [Label, self()]),
     gen_event:notify(json_rpc_events, {started, Label, self()}),
 
-    chronicle_compat_events:notify_if_key_changes(
-      fun ({node, Node, memcached}) -> Node == dist_manager:this_node();
-          (_) -> false
-      end,
-      update_url),
+    case IsInternal of
+        true ->
+            chronicle_compat_events:notify_if_key_changes(
+              fun ({node, Node, memcached}) -> Node == dist_manager:this_node();
+                  (_) -> false
+              end,
+              update_url),
 
-    self() ! update_url,
+            self() ! update_url;
+        false ->
+            ok
+    end,
 
     gen_server:enter_loop(?MODULE, [],
                           #state{label = Label,
