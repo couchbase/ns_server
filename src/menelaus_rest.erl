@@ -75,9 +75,12 @@ is_auth_header_lc(_) ->
     false.
 
 rest_add_auth(Headers, HiddenAuth) when is_function(HiddenAuth) ->
-    [basic_auth_header(HiddenAuth) | Headers];
-rest_add_auth(Headers, client_cert_auth) ->
-    Headers.
+    case ?UNHIDE(HiddenAuth) of
+        {basic_auth, User, Password} ->
+            [basic_auth_header(User, Password) | Headers];
+        client_cert_auth ->
+            Headers
+    end.
 
 rest_add_mime_type(Headers, undefined) ->
     Headers;
@@ -105,11 +108,9 @@ add_tls_options("https://" ++ _, Options, HiddenAuth, VerifyServer) ->
             false ->
                 ns_ssl_services_setup:tls_no_peer_verification_client_opts()
         end ++
-        case HiddenAuth of
+        case ?UNHIDE(HiddenAuth) of
             client_cert_auth -> ns_ssl_services_setup:tls_client_certs_opts();
-            HiddenAuth when is_function(HiddenAuth) ->
-                {basic_auth, _, _} = ?UNHIDE(HiddenAuth),
-                []
+            {basic_auth, _, _} -> []
         end,
     NewConnectOptions = misc:update_proplist(TLSOptions, ConnectOptions),
 
@@ -148,7 +149,7 @@ decode_json_response_ext(Response, Method, Request) ->
 -spec json_request_hilevel(atom(),
                            {atom(), string(), string() | integer(), string(), string(), iolist()}
                            | {atom(), string(), string() | integer(), string()},
-                           client_cert_auth | fun(() -> {basic_auth, string(), string()}),
+                           fun(() -> client_cert_auth | {basic_auth, string(), string()}),
                            [any()]) ->
                                   %% json response payload
                                   {ok, any()} |

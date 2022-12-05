@@ -429,11 +429,12 @@ handle_join_clean_node(Req) ->
                             false ->
                                 User = proplists:get_value(user, Fields),
                                 Pswd = proplists:get_value(password, Fields),
-                                ?HIDE({basic_auth, User, Pswd})
+                                {basic_auth, User, Pswd}
                         end,
+            HiddenAuth = ?HIDE(OtherAuth),
             Services = proplists:get_value(services, Fields),
             Hostname = proplists:get_value(new_node_hostname, Fields),
-            handle_join_tail(Req, OtherScheme, OtherHost, OtherPort, OtherAuth,
+            handle_join_tail(Req, OtherScheme, OtherHost, OtherPort, HiddenAuth,
                              Services, Hostname)
     end.
 
