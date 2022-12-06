@@ -20,7 +20,7 @@ start(Cookie) ->
         application:set_env(ns_server, babysitter_cookie, Cookie),
 
         Apps = [ale, asn1, crypto, public_key, ssl,
-                lhttpc, inets, sasl, os_mon, ns_server],
+                lhttpc, inets, sasl, os_mon, xmerl, esaml, ns_server],
         lists:foreach(
           fun (os_mon = App) ->
                   ok = application:start(App);
