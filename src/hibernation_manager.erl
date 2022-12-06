@@ -106,6 +106,7 @@ do_pause_bucket(Bucket, RemotePath) ->
            end, WorkersParams, ?PAUSE_BUCKET_TIMEOUT),
 
     ok = ns_bucket:update_bucket_props(Bucket, [{hibernation_state, paused}]),
+    ok = hibernation_utils:check_test_condition(pause_after_node_ops_run),
     kv_hibernation_agent:unprepare_pause_bucket(Bucket, KvNodes).
 
 -spec pause_bucket_body(For, Bucket, Snapshot, RemotePath, Nodes) -> ok
@@ -205,6 +206,8 @@ do_resume_bucket(Bucket, RemotePath) ->
     %% status
     ok = restore_bucket_in_resuming(Bucket, NewBucketConfig, Metadata),
 
+    ok = hibernation_utils:check_test_condition(resume_before_node_ops_run),
+
     WorkersParams = build_workers_params(RemotePath, DesiredServers, Snapshot),
     ok = hibernation_utils:run_hibernation_op(
            fun ({For, Nodes, RP}) ->
@@ -213,6 +216,7 @@ do_resume_bucket(Bucket, RemotePath) ->
                      For, Bucket, ServerMapping, RP, false, Nodes)
            end, WorkersParams, ?RESUME_BUCKET_TIMEOUT),
 
+    ok = hibernation_utils:check_test_condition(resume_after_node_ops_run),
 
     %% At this point the bucket will go live with the appropriate map and server
     %% list
@@ -267,6 +271,10 @@ meck_expect_base() ->
                         [{bucket_cfg, [{map, []}, {servers, []}]},
                          {version, ?VERSION_ELIXIR}, {bucket_manifest, []},
                          {bucket_uuid, 1}]
+                end),
+    meck:expect(hibernation_utils, check_test_condition,
+                fun (_) ->
+                        ok
                 end),
     meck:expect(ns_config, get_timeout,
                 fun (_, Default) ->
@@ -424,6 +432,10 @@ force_unpause_via_calling_process_failure_body() ->
             Self ! unpause_issued,
             ok
         end),
+    meck:expect(hibernation_utils, check_test_condition,
+         fun (_) ->
+            ok
+         end),
     meck:expect(hibernation_utils, sync_s3,
         fun(_,_,_) ->
             Self ! pause_started,

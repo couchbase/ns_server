@@ -288,6 +288,8 @@ do_pause_bucket(Bucket, RemotePath) ->
     DestPath = hibernation_utils:get_bucket_data_remote_path(RemotePath, node(),
                                                              Bucket),
 
+    ok = hibernation_utils:check_test_condition(node_pause_before_data_sync),
+
     ?log_info("Pause Bucket: ~p, Source: ~p, Dest: ~p",
               [Bucket, SourcePath, DestPath]),
     ok = hibernation_utils:sync_s3(SourcePath, DestPath, to).
@@ -300,6 +302,8 @@ do_resume_bucket(Bucket, RemotePath) ->
 
     %% On a new resume, we cleanup any old data for previously failed resumes
     ok = ns_storage_conf:delete_unused_buckets_db_files(),
+
+    ok = hibernation_utils:check_test_condition(node_resume_before_data_sync),
 
     ok = hibernation_utils:sync_s3(SourcePath, DestPath, from).
 
