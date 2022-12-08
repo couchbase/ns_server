@@ -12,33 +12,37 @@ from collections import namedtuple
 import requests
 
 
-Cluster = namedtuple("Cluster", ['urls', 'processes', 'auth'])
-ClusterRequirements = namedtuple("ClusterRequirements", ['num_nodes'])
+Cluster = namedtuple("Cluster", ['urls', 'processes', 'auth', 'memsize',
+                                 'is_enterprise', 'is_71', 'is_elixir',
+                                 'is_serverless', 'is_dev_preview'])
+ClusterRequirements = namedtuple("ClusterRequirements",
+                                 ['num_nodes', 'min_memsize', 'serverless'],
+                                 defaults=[1, 256, None])
 
-
-def run_testset(testset_class, test_names, available_clusters):
-    errors = []
-    executed = 0
-    print(f"\nStarting testset: {testset_class.__name__}...")
-
+def get_appropriate_cluster(available_clusters, testset_class):
     (requirements, err) = \
         safe_test_function_call(testset_class, 'requirements', [])
 
     if err is not None:
-        return (0, [err])
+        return err
 
     clusters = [c for c in available_clusters
                 if cluster_matches_requirements(c, requirements)]
 
     if len(clusters) == 0:
-        msg = "Failed to find a cluster that fits test "\
-              f"requirements ({requirements})"
-        print(msg)
-        return (0, [('preparation', msg)])
+        msg = "Failed to find a cluster that fits test requirements,\n" \
+              f"    {requirements}"
+        return msg
+    return clusters[0]
+
+def run_testset(testset_class, test_names, cluster):
+    errors = []
+    executed = 0
+    print(f"\nStarting testset: {testset_class.__name__}...")
 
     testset_instance = testset_class()
 
-    _, err = safe_test_function_call(testset_instance, 'setup', [clusters[0]])
+    _, err = safe_test_function_call(testset_instance, 'setup', [cluster])
 
     if err is not None:
         return (0, [err])
@@ -47,12 +51,12 @@ def run_testset(testset_class, test_names, available_clusters):
         for test in test_names:
             executed += 1
             _, err = safe_test_function_call(testset_instance, test,
-                                             [clusters[0]], verbose=True)
+                                             [cluster], verbose=True)
             if err is not None:
                 errors.append(err)
     finally:
         _, err = safe_test_function_call(testset_instance, 'teardown',
-                                         [clusters[0]])
+                                         [cluster])
         if err is not None:
             errors.append(err)
 
@@ -67,22 +71,25 @@ def safe_test_function_call(testset, testfunction, args, verbose=False):
         testname = f"{testset.__name__}.{testfunction}"
     else:
         testname = f"{type(testset).__name__}.{testfunction}"
-    if verbose: print(f"  {testname}... ", end = '')
+    if verbose: print(f"  {testname}... ")
     try:
         res = getattr(testset, testfunction)(*args)
-        if verbose: print("succ")
+        if verbose: print("\033[32m passed \033[0m")
     except Exception as e:
         if verbose:
-            print(f"failed ({e})")
+            print(f"\033[31m failed ({e}) \033[0m")
         else:
-            print(f"  {testname} failed ({e})")
+            print(f"\033[31m  {testname} failed ({e}) \033[0m")
         traceback.print_exc()
         error = (testname, e)
     return (res, error)
 
 
 def cluster_matches_requirements(cluster, requirements):
-    return requirements.num_nodes == len(cluster.urls)
+    return (requirements.num_nodes == len(cluster.urls) and
+            requirements.min_memsize <= cluster.memsize and
+            (requirements.serverless is None or
+             requirements.serverless == cluster.is_serverless))
 
 
 class BaseTestSet(ABC):

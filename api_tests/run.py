@@ -16,6 +16,9 @@ import time
 import shutil
 import inspect
 import atexit
+import requests
+import glob
+from urllib.error import HTTPError
 
 scriptdir = os.path.dirname(os.path.realpath(__file__))
 pylib = os.path.join(scriptdir, "..", "pylib")
@@ -23,25 +26,20 @@ sys.path.append(pylib)
 
 import cluster_run_lib
 import testlib
-import dummy_test
 import auto_failover_test
 
 tmp_cluster_dir = os.path.join(scriptdir, "test_cluster_data")
 
 USAGE_STRING = """
 Usage: {program_name}
-    [--start-server | -s]
-        Start its own couchbase-server for tests or will try connect to
-        127.0.0.1:9000 by default. Note that default port can be changed by
-        --start-index option.
-    [--start-index <N>]
-        Index of existing cluster_run node to connect to. Default: 0
+    [--cluster | -c <address>:<port>]
+        Specify already started cluster to connect to.
     [--user | -u <admin>]
         Username to be used when connecting to an existing cluster.
-        Mutually exclusive to --start-server. Default: Administrator
+        Default: Administrator. Only used with --cluster | -c
     [--password | -p <admin_password>]
         Password to be used when connecting to an existing cluster.
-        Mutually exclusive to --start-server. Default: asdasd
+        Default: asdasd. Only used with --cluster | -c
     [--tests | -t <test_spec>[, <test_spec> ...]]
         <test_spec> := <test_class>[.test_name]
         Start only specified tests
@@ -52,40 +50,49 @@ Usage: {program_name}
 def usage():
     print(USAGE_STRING.format(program_name=sys.argv[0]))
 
-def error_exit(msg):
-    print(msg)
+def bad_args_exit(msg):
+    print(f"\033[31m{msg}\033[0m")
     usage()
+    sys.exit(2)
+
+def error_exit(msg):
+    print(f"\033[31m{msg}\033[0m")
     sys.exit(2)
 
 def main():
     try:
-        optlist, args = getopt.gnu_getopt(sys.argv[1:], "hsu:p:t:",
-                                          ["help", "start-server",
-                                           "user=", "password=",
-                                           "start-index=","tests="])
+        optlist, args = getopt.gnu_getopt(sys.argv[1:], "hc:u:p:t:",
+                                          ["help", "cluster=", "user=",
+                                           "password=", "tests="])
     except getopt.GetoptError as err:
-        error_exit(str(err))
+        bad_args_exit(str(err))
 
-    start_server = False
+    use_existing_server = False
     username = 'Administrator'
     password = 'asdasd'
+    address = '127.0.0.1'
+    start_port = cluster_run_lib.base_api_port
     start_index = 0
     tests = None
 
     for o, a in optlist:
-        if o in ('--start-server', '-s'):
-            start_server = True
+        if o in ('--cluster', '-c'):
+            tokens = a.split(':')
+            if len(tokens) != 2:
+                bad_args_exit(f"Invalid format. Should be {o} <address>:<port>")
+            address = tokens[0]
+            start_port = int(tokens[1])
+            start_index = start_port - cluster_run_lib.base_api_port
+            use_existing_server = True
         elif o in ('--user', '-u'):
-            if start_server == True:
-                error_exit(f"{o} is not supported when test cluster is started")
+            if not use_existing_server:
+                bad_args_exit(f"{o} is only supported with --cluster | -c")
             username = a
         elif o in ('--password', '-p'):
-            if start_server == True:
-                error_exit(f"{o} is not supported when test cluster is started")
+            if not use_existing_server:
+                bad_args_exit(f"{o} is only supported with --cluster | -c")
             password = a
-        elif o == '--start-index':
-            start_index = int(a)
-        elif o in ('--tests','-t'):
+        elif o in ('--tests', '-t'):
             tests = []
             for tokens in [t.strip().split(".") for t in a.split(",")]:
                 if len(tokens) == 1:
@@ -101,27 +108,6 @@ def main():
     clusters = []
     processes = []
 
-    if start_server:
-        if os.path.isdir(tmp_cluster_dir):
-            print(f"Removing cluster dir {tmp_cluster_dir}...")
-            shutil.rmtree(tmp_cluster_dir)
-        print("Starting couchbase server...")
-        processes = cluster_run_lib.start_cluster(num_nodes=1,
-                                                  start_index=start_index,
-                                                  root_dir=tmp_cluster_dir,
-                                                  wait_for_start=True,
-                                                  nooutput=True)
-        cluster_run_lib.connect(num_nodes=1,
-                                start_index=start_index,
-                                do_rebalance=False)
-
-    url = f"http://127.0.0.1:{cluster_run_lib.base_api_port + start_index}"
-    clusters.append(testlib.Cluster(urls=[url],
-                                    processes=processes,
-                                    auth=(username, password)))
-
-    print(f"Available cluster configurations: {clusters}")
-
     discovered_tests = discover_testsets()
 
     print(f"Discovered testsets: {[c for c, _, _ in discovered_tests]}")
@@ -132,26 +118,59 @@ def main():
     else:
         testsets_to_run = find_tests(tests, discovered_tests)
 
+    if use_existing_server:
+        # Get provided cluster
+        clusters = [get_existing_cluster(address, start_port,
+                                         (username, password))]
+        print(f"Discovered cluster: {clusters[0]}")
+    else:
+        for dir in glob.glob(tmp_cluster_dir + "*"):
+            print(f"Removing cluster dir {dir}...")
+            shutil.rmtree(dir)
+        print("Starting required clusters...")
+        clusters = get_required_clusters(testsets_to_run,
+                                         (username, password),
+                                         start_index)
+        print(f"Started clusters:")
+        for cluster in clusters:
+            print(f"  - {cluster}")
+        print("\n======================================="
+              "=========================================\n" )
+
     errors = {}
+    not_ran = []
     executed = 0
     for _, testset, test_names in testsets_to_run:
-        res = testlib.run_testset(testset, test_names, clusters)
-        executed += res[0]
-        testset_errors = res[1]
-        if len(testset_errors) > 0:
-            errors[testset.__name__] = testset_errors
+        cluster = testlib.get_appropriate_cluster(clusters, testset)
+        if isinstance(cluster, testlib.Cluster):
+            res = testlib.run_testset(testset, test_names, cluster)
+            executed += res[0]
+            testset_errors = res[1]
+            testset_not_ran = res[1]
+            if len(testset_errors) > 0:
+                errors[testset.__name__] = testset_errors
+        else:
+            not_ran.append((testset.__name__, cluster))
 
     error_num = sum([len(errors[name]) for name in errors])
-    errors_str = "1 error" if error_num == 1 else f"{error_num} errors"
-
-    print("\n======================================="\
-          "=========================================\n"\
-          f"Tests finished ({executed} executed, {errors_str})")
+    errors_str = f"{error_num} error{'s' if error_num != 1 else ''}"
+    if error_num == 0:
+        colour = "\033[32m"
+    else:
+        colour = "\033[31m"
+    print("\n======================================="
+          "=========================================\n"
+          f"{colour}Tests finished ({executed} executed, {errors_str})\033[0m")
 
     for name in errors:
         print(f"In {name}:")
         for testres in errors[name]:
             print(f"  {testres[0]} failed: {testres[1]}")
+    print()
+
+    for name, reason in not_ran:
+        print(f"Couldn't run {name}:\n"
+              f"  {reason}")
     print()
 
     terminal_attrs = None
@@ -169,7 +188,7 @@ def main():
     atexit.register(kill_nodes)
 
     if len(errors) > 0:
-        sys.exit("Tests finished with errors")
+        error_exit("Tests finished with errors")
 
 
 def find_tests(test_names, discovered_list):
@@ -212,9 +231,120 @@ def discover_testsets():
                 continue
             if issubclass(testset, testlib.BaseTestSet):
                 tests = [m for m in dir(testset) if m.endswith('_test')]
-                testsets.append((name, testset, tests))
+                if len(tests) > 0:
+                    testsets.append((name, testset, tests))
 
     return testsets
+
+def get_existing_cluster(address, start_port, auth):
+    url = f"http://{address}:{start_port}"
+
+    # Check that node is online
+    pools_default = f"{url}/pools/default"
+    try:
+        response = requests.get(pools_default, auth=auth)
+    except requests.exceptions.ConnectionError as e:
+        error_exit(f"Failed to connect to {pools_default}\n"
+                   f"{e}")
+    if response.status_code != 200:
+        error_exit(f"Failed to connect to {pools_default} "
+                   f"({response.status_code})\n"
+                   f"{response.text}")
+    # Retrieve the number of nodes
+    num_nodes = len(response.json().get("nodes", []))
+    if num_nodes == 0:
+        error_exit(f"Failed to retrieve nodes from {pools_default}")
+
+    return get_cluster(address, start_port, auth, [], num_nodes)
+
+
+def get_required_clusters(testsets, auth, start_index):
+    clusters = []
+    testsets.sort(key=lambda x: x[1].requirements().min_memsize, reverse=True)
+    for (name, testset, tests) in testsets:
+        satisfied = False
+        for cluster in clusters:
+            if testlib.cluster_matches_requirements(cluster,
+                                                    testset.requirements()):
+                satisfied = True
+        if not satisfied:
+            clusters.append(create_cluster_satisfying(testset.requirements(),
+                                                      auth, start_index))
+            start_index += len(clusters[-1].processes)
+    return clusters
+
+
+def create_cluster_satisfying(requirements, auth, start_index):
+    serverless = requirements.serverless is True
+    processes = cluster_run_lib.start_cluster(num_nodes=requirements.num_nodes,
+                                              start_index=start_index,
+                                              root_dir=f"{tmp_cluster_dir}"
+                                                       f"-{start_index}",
+                                              wait_for_start=True,
+                                              nooutput=True,
+                                              run_serverless=serverless)
+    address = "localhost"
+    port = cluster_run_lib.base_api_port + start_index
+    # We might need a rebalance for multiple nodes
+    rebalance = requirements.num_nodes > 1
+    try:
+        cluster_run_lib.connect(num_nodes=requirements.num_nodes,
+                                start_index=start_index,
+                                memsize=requirements.min_memsize,
+                                do_rebalance=rebalance)
+    except HTTPError as e:
+        bad_args_exit(f"Failed to connect node(s). {e}\n"
+                   f"Perhaps a node has already been started at "
+                   f"{address}:{port}?\n")
+    return get_cluster(address, port, auth, processes, requirements.num_nodes)
+
+
+def get_cluster(address, start_port, auth, processes, num_nodes):
+    urls = []
+    for i in range(num_nodes):
+        url = f"http://{address}:" \
+              f"{start_port + i}"
+        # Check that node is online
+        pools_default = f"{url}/pools/default"
+        try:
+            response = requests.get(pools_default, auth=auth)
+        except requests.exceptions.ConnectionError as e:
+            error_exit(f"Failed to connect to {pools_default}\n"
+                       f"{e}")
+        if response.status_code != 200:
+            error_exit(f"Failed to connect to {pools_default} "
+                       f"({response.status_code})\n"
+                       f"{response.text}")
+        urls.append(url)
+    url = urls[0]
+
+    memsize = response.json()["memoryQuota"]
+    is_enterprise = requests.post(f"{url}/diag/eval",
+                                  data="cluster_compat_mode:is_enterprise().",
+                                  auth=auth).text == "true"
+    is_71 = requests.post(f"{url}/diag/eval",
+                          data="cluster_compat_mode:is_cluster_71().",
+                          auth=auth).text == "true"
+    is_elixir = requests.post(f"{url}/diag/eval",
+                              data="cluster_compat_mode:is_cluster_elixir().",
+                              auth=auth).text == "true"
+    is_serverless = requests.post(f"{url}/diag/eval",
+                                  data="config_profile:is_serverless().",
+                                  auth=auth).text == "true"
+    is_dev_preview = requests.post(f"{url}/diag/eval",
+                                   data="cluster_compat_mode:is_developer_preview().",
+                                   auth=auth).text == "true"
+
+    return testlib.Cluster(urls=urls,
+                           processes=processes,
+                           auth=auth,
+                           memsize=memsize,
+                           is_enterprise=is_enterprise,
+                           is_71=is_71,
+                           is_elixir=is_elixir,
+                           is_serverless=is_serverless,
+                           is_dev_preview=is_dev_preview)
+
 
 if __name__ == '__main__':
     main()

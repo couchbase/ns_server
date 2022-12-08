@@ -22,7 +22,7 @@ class DummyTestSet(testlib.BaseTestSet):
         pass
 
     def dummy1_test(self, cluster):
-        pass
+        assert False, "Dummy error reason"
 
     def dummy2_test(self, cluster):
         pass

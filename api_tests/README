@@ -10,25 +10,27 @@ reset the state of ns_server between tests, so tests should not depend on each
 other or depend on server's state/config.
 
 
-Run tests against existing cluster
-----------------------------------
+Run tests against automatically generated temporary clusters
+-------------------------------------
 
     $ cd api_tests
     $ ./run.py
 
-Run all tests against 127.0.0.1:9000.
-By default, username 'Administrator' and password 'asdasd' are used to
-access the cluster, but this could be changed by '-u' and '-p' params.
+Start a single node cluster (with data and logs in ./test_cluster_data),
+and run all tests against that cluster. The data and logs will be retained,
+for investigating failed tests, but will be cleared upon subsequent calls to
+api_tests/run.py
 
 
-Run tests against temporary cluster
--------------------------------------
+Run tests against existing cluster
+----------------------------------
 
     $ cd api_tests
-    $ ./run.py --start-server
+    $ ./run.py --cluster localhost:9000
 
-Start a single node cluster (with data and logs in ./test_cluster_data),
-and run all tests against that cluster.
+Run all tests against localhost:9000.
+By default, username 'Administrator' and password 'asdasd' are used to
+access the cluster, but this could be changed by '-u' and '-p' params.
 
 
 Run specific tests or testsets
