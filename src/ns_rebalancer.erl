@@ -430,30 +430,8 @@ rebalance_topology_aware_service(Service, KeepNodes, EjectNodes, DeltaNodes) ->
                 ns_rebalance_observer:update_progress(Service, Progress)
         end,
 
-    misc:with_trap_exit(
-      fun () ->
-              {Pid, MRef} = service_manager:spawn_monitor_rebalance(
-                              Service, KeepNodes,
-                              EjectNodes, DeltaNodes, ProgressCallback),
-
-              receive
-                  {'EXIT', _Pid, Reason} = Exit ->
-                      ?log_debug("Got an exit signal while waiting "
-                                 "for the service rebalance to complete. "
-                                 "Service: ~p. Exit message: ~p",
-                                 [Service, Exit]),
-
-                      misc:terminate_and_wait(Pid, Reason),
-                      exit(Reason);
-                  {'DOWN', MRef, _, _, Reason} ->
-                      case Reason of
-                          normal ->
-                              ok;
-                          _ ->
-                              exit({service_rebalance_failed, Service, Reason})
-                      end
-              end
-      end).
+    service_manager:with_trap_exit_spawn_monitor_rebalance(
+      Service, KeepNodes, EjectNodes, DeltaNodes, ProgressCallback, #{}).
 
 get_service_eject_delay(Service) ->
     Default =

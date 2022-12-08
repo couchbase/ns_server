@@ -107,31 +107,17 @@ do_orchestrate_initial_rebalance(Service) ->
     EjectNodes = [],
     DeltaNodes = [],
 
-    {Pid, MRef} = service_manager:spawn_monitor_rebalance(Service, KeepNodes,
-                                                          EjectNodes,
-                                                          DeltaNodes,
-                                                          ProgressCallback),
-    receive
-        {'DOWN', MRef, _, Pid, Reason} ->
-            case Reason of
-                normal ->
-                    ok = ns_cluster_membership:set_service_map(
-                           Service, KeepNodes),
-                    ok;
-                _ ->
-                    {error, {initial_rebalance_failed, Service, Reason}}
-            end;
-        {'EXIT', _, Reason} = Exit ->
-            ?log_debug("Received exit message ~p. Terminating initial rebalance",
-                       [Exit]),
-            misc:terminate_and_wait(Pid, Reason),
-            exit(Reason)
-    after
-        ?INITIAL_REBALANCE_TIMEOUT ->
-            ?log_error("Initial rebalance of service `~p` takes too long (timeout ~p)",
-                       [Service, ?INITIAL_REBALANCE_TIMEOUT]),
-            misc:terminate_and_wait(Pid, shutdown),
-            {error, {initial_rebalance_timeout, Service}}
+    Result =
+        service_manager:with_trap_exit_spawn_monitor_rebalance(
+          Service, KeepNodes, EjectNodes, DeltaNodes, ProgressCallback,
+          #{timeout => ?INITIAL_REBALANCE_TIMEOUT}),
+
+    case Result of
+        {error, {service_rebalance_timeout, Service}} ->
+            ?log_error("Initial rebalance of service `~p` takes too long "
+                       "(timeout ~p)", [Service, ?INITIAL_REBALANCE_TIMEOUT]);
+        _ ->
+            ok
     end.
 
 maybe_complete_pending_failover(Snapshot, Service) ->
@@ -216,26 +202,8 @@ complete_topology_aware_service_failover(Snapshot, Service) ->
     end.
 
 orchestrate_service_failover(Service, Nodes) ->
-    misc:with_trap_exit(
-      ?cut(do_orchestrate_service_failover(Service, Nodes))).
-
-do_orchestrate_service_failover(Service, Nodes) ->
-    {Pid, MRef} = service_manager:spawn_monitor_failover(Service, Nodes),
-
-    receive
-        {'DOWN', MRef, _, Pid, Reason} ->
-            case Reason of
-                normal ->
-                    ok;
-                _ ->
-                    {error, {failover_failed, Service, Reason}}
-            end;
-        {'EXIT', _, Reason} = Exit ->
-            ?log_debug("Received exit message ~p. Terminating failover",
-                       [Exit]),
-            misc:terminate_and_wait(Pid, Reason),
-            exit(Reason)
-    end.
+    service_manager:with_trap_exit_spawn_monitor_failover(
+      Service, Nodes, #{}).
 
 handle_results(RVs) ->
     NotOKs = [R || R <- RVs, R =/= ok],

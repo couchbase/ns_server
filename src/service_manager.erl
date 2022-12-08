@@ -12,7 +12,8 @@
 -include("cut.hrl").
 -include("ns_common.hrl").
 
--export([spawn_monitor_rebalance/5, spawn_monitor_failover/2]).
+-export([with_trap_exit_spawn_monitor_rebalance/6,
+         with_trap_exit_spawn_monitor_failover/3]).
 
 -record(state, { parent :: pid(),
                  service_manager :: pid(),
@@ -25,35 +26,70 @@
                  progress_callback :: fun ((dict:dict()) -> any()),
                  op_body :: fun ((#state{}, any()) -> any())}).
 
-spawn_monitor_rebalance(Service, KeepNodes,
-                        EjectNodes, DeltaNodes, ProgressCallback) ->
-    spawn_monitor(Service, rebalance, KeepNodes,
-                  EjectNodes, DeltaNodes, ProgressCallback,
-                  fun rebalance_op/2).
+with_trap_exit_spawn_monitor_rebalance(Service, KeepNodes,
+                        EjectNodes, DeltaNodes, ProgressCallback, Opts) ->
+    with_trap_exit_spawn_monitor(
+      Service, rebalance, KeepNodes,
+      EjectNodes, DeltaNodes, ProgressCallback,
+      fun rebalance_op/2, Opts).
 
-spawn_monitor_failover(Service, KeepNodes) ->
+with_trap_exit_spawn_monitor_failover(Service, KeepNodes, Opts) ->
     ProgressCallback = fun (_) -> ok end,
 
-    spawn_monitor(Service, failover, KeepNodes, [], [], ProgressCallback,
-                  fun rebalance_op/2).
+    with_trap_exit_spawn_monitor(
+      Service, failover, KeepNodes, [], [], ProgressCallback,
+      fun rebalance_op/2, Opts).
 
-spawn_monitor(Service, Type, KeepNodes,
-              EjectNodes, DeltaNodes, ProgressCallback, OpBody) ->
+with_trap_exit_spawn_monitor(
+  Service, Type, KeepNodes, EjectNodes, DeltaNodes,
+  ProgressCallback, OpBody, Opts) ->
     Parent = self(),
 
-    misc:spawn_monitor(
+    Timeout = maps:get(timeout, Opts, infinity),
+
+    misc:with_trap_exit(
       fun () ->
-              State = #state{parent = Parent,
-                             service_manager = self(),
-                             service = Service,
-                             op_type = Type,
-                             keep_nodes = KeepNodes,
-                             eject_nodes = EjectNodes,
-                             delta_nodes = DeltaNodes,
-                             all_nodes = KeepNodes ++ EjectNodes,
-                             progress_callback = ProgressCallback,
-                             op_body = OpBody},
-              run_op(State)
+              {Pid, MRef} =
+                  misc:spawn_monitor(
+                    fun () ->
+                            State = #state{parent = Parent,
+                                           service_manager = self(),
+                                           service = Service,
+                                           op_type = Type,
+                                           keep_nodes = KeepNodes,
+                                           eject_nodes = EjectNodes,
+                                           delta_nodes = DeltaNodes,
+                                           all_nodes = KeepNodes ++ EjectNodes,
+                                           progress_callback = ProgressCallback,
+                                           op_body = OpBody},
+                            run_op(State)
+                    end),
+
+              receive
+                  {'EXIT', _Pid, Reason} = Exit ->
+                      ?log_debug("Got an exit signal while running op: ~p "
+                                 "for service: ~p. Exit message: ~p",
+                                 [Type, Service, Exit]),
+                      misc:terminate_and_wait(Pid, Reason),
+                      exit(Reason);
+                  {'DOWN', MRef, _, _, Reason} ->
+                      case Reason of
+                          normal ->
+                              ok;
+                          _ ->
+                              FailedAtom =
+                                  list_to_atom("service_" ++
+                                               atom_to_list(Type) ++ "_failed"),
+                              exit({FailedAtom, Service, Reason})
+                      end
+              after
+                  Timeout ->
+                      misc:terminate_and_wait(Pid, shutdown),
+                      TimeoutAtom = list_to_atom("service_" ++
+                                                 atom_to_list(Type) ++
+                                                 "_timeout"),
+                      {error, {TimeoutAtom, Service}}
+              end
       end).
 
 run_op(#state{parent = Parent} = State) ->
