@@ -21,6 +21,9 @@ import glob
 from urllib.error import HTTPError
 
 scriptdir = os.path.dirname(os.path.realpath(__file__))
+os.environ['LD_LIBRARY_PATH'] = os.path.join(scriptdir, "../../install/lib/") \
+                                + ":" +os.environ.get('LD_LIBRARY_PATH', "")
+
 pylib = os.path.join(scriptdir, "..", "pylib")
 sys.path.append(pylib)
 
@@ -189,6 +192,10 @@ def main():
 
     if len(errors) > 0:
         error_exit("Tests finished with errors")
+    else:
+        for dir in glob.glob(tmp_cluster_dir + "*"):
+            print(f"Removing cluster dir {dir}...")
+            shutil.rmtree(dir)
 
 
 def find_tests(test_names, discovered_list):
