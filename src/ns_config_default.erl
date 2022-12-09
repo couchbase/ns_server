@@ -207,7 +207,9 @@ default() ->
        {tcp_keepalive_interval, 10},
        {tcp_keepalive_probes, 3},
        {always_collect_trace_info, true},
-       {connection_limit_mode, <<"disconnect">>}]},
+       {connection_limit_mode, <<"disconnect">>},
+       {free_connection_pool_size, 0},
+       {max_client_connection_details, 0}]},
 
      %% Memcached config
      {{node, node(), memcached},
@@ -296,7 +298,9 @@ default() ->
         {tcp_keepalive_interval, tcp_keepalive_interval},
         {tcp_keepalive_probes, tcp_keepalive_probes},
         {always_collect_trace_info, always_collect_trace_info},
-        {connection_limit_mode, connection_limit_mode}
+        {connection_limit_mode, connection_limit_mode},
+        {free_connection_pool_size, free_connection_pool_size},
+        {max_client_connection_details, max_client_connection_details}
        ]}},
 
      {memory_quota, KvQuota},

@@ -44,11 +44,13 @@ supported_setting_names() ->
      {dedupe_nmvb_maps, bool},
      {tracing_enabled, bool},
      {datatype_snappy, bool},
-     {connection_limit_mode, {one_of, ["disconnect", "recycle"]}},
      {tcp_keepalive_idle, {int, 0, ?MC_MAXINT}},
      {tcp_keepalive_interval, {int, 0, ?MC_MAXINT}},
      {tcp_keepalive_probes, {int, 0, ?MC_MAXINT}},
-     {always_collect_trace_info, bool}].
+     {always_collect_trace_info, bool},
+     {connection_limit_mode, {one_of, ["disconnect", "recycle"]}},
+     {free_connection_pool_size, {int, 0, ?MC_MAXINT}},
+     {max_client_connection_details, {int, 0, ?MC_MAXINT}}].
 
 %% Updates to these settings go to the '{node, node(), memcached_config_extra}'
 %% or 'memcached_config_extra' keys depending on whether the write is per-node
