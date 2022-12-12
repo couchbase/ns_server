@@ -35,6 +35,7 @@ init([]) ->
 -spec get_db_and_ix_paths() -> [{db_path | index_path, string()}].
 get_db_and_ix_paths() ->
     DbPath = couch_config:get("couchdb", "database_dir"),
+    true = DbPath =/= undefined,
     IxPath = couch_config:get("couchdb", "view_index_dir", DbPath),
     [{db_path, filename:join([DbPath])},
      {index_path, filename:join([IxPath])}].
