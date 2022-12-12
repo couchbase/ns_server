@@ -262,8 +262,6 @@ default() ->
          {[{enabled, breakpad_enabled},
            {minidump_dir, {memcached_config_mgr, get_minidump_dir, []}}]}},
 
-        {admin, {"~s", [admin_user]}},
-
         {deployment_model, {memcached_config_mgr, get_config_profile, []}},
         {verbosity, verbosity},
         {audit_file, {"~s", [audit_file]}},
