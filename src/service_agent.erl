@@ -103,35 +103,74 @@ wait_for_agents_loop(Service, Nodes, Acc, Timeout) ->
     end.
 
 set_service_manager(Service, Nodes, Manager) ->
-    Result = multi_call(Nodes, Service,
-                        {set_service_manager, Manager}, ?OUTER_TIMEOUT),
-    handle_multicall_result(Service, set_service_manager, Result, fun just_ok/1).
+    Call = {Tag, _CallArgs} =
+        case cluster_compat_mode:is_cluster_elixir() of
+            true ->
+                {set_service_manager, Manager};
+            false ->
+                {set_rebalancer, Manager}
+        end,
+
+    Result = multi_call(Nodes, Service, Call, ?OUTER_TIMEOUT),
+    handle_multicall_result(Service, Tag, Result, fun just_ok/1).
 
 unset_service_manager(Service, Nodes, Manager) ->
-    Result = multi_call(Nodes, Service,
-                        {if_service_manager, Manager, unset_service_manager},
-                        ?OUTER_TIMEOUT),
-    handle_multicall_result(Service, unset_service_manager, Result, fun just_ok/1).
+    Call = {_, _CallArgs, Tag} =
+        case cluster_compat_mode:is_cluster_elixir() of
+            true ->
+                {if_service_manager, Manager, unset_service_manager};
+            false ->
+                {if_rebalance, Manager, unset_rebalancer}
+        end,
+
+    Result = multi_call(Nodes, Service, Call, ?OUTER_TIMEOUT),
+    handle_multicall_result(Service, Tag, Result, fun just_ok/1).
 
 get_node_infos(Service, Nodes, Manager) ->
-    Result = multi_call(Nodes, Service,
-                        {if_service_manager, Manager, get_node_info},
-                        ?OUTER_TIMEOUT),
-    handle_multicall_result(Service, get_node_infos, Result).
+    Tag = get_node_info,
+    Call =
+        case cluster_compat_mode:is_cluster_elixir() of
+            true ->
+                {if_service_manager, Manager, Tag};
+            false ->
+                {if_rebalance, Manager, Tag}
+        end,
 
-prepare_rebalance(Service, Nodes, Manager, RebalanceId, Type, KeepNodes, EjectNodes) ->
-    Result = multi_call(Nodes, Service,
-                        {if_service_manager, Manager,
-                         {prepare_rebalance, RebalanceId, Type, KeepNodes, EjectNodes}},
-                        ?OUTER_TIMEOUT),
-    handle_multicall_result(Service, prepare_rebalance, Result, fun just_ok/1).
+    Result = multi_call(Nodes, Service, Call, ?OUTER_TIMEOUT),
+    handle_multicall_result(Service, Tag, Result).
 
-start_rebalance(Service, Node, Manager, RebalanceId, Type, KeepNodes, EjectNodes) ->
+prepare_rebalance(Service, Nodes, Manager, RebalanceId, Type, KeepNodes,
+                  EjectNodes) ->
+    Tag = prepare_rebalance,
+    Call =
+        case cluster_compat_mode:is_cluster_elixir() of
+            true ->
+                {if_service_manager, Manager,
+                 {Tag, RebalanceId, Type, KeepNodes, EjectNodes}};
+            false ->
+                {if_rebalance, Manager,
+                 {Tag, RebalanceId, Type, KeepNodes, EjectNodes}}
+        end,
+
+    Result = multi_call(Nodes, Service, Call, ?OUTER_TIMEOUT),
+    handle_multicall_result(Service, Tag, Result, fun just_ok/1).
+
+start_rebalance(Service, Node, Manager, RebalanceId, Type, KeepNodes,
+                EjectNodes) ->
     Observer = self(),
-    gen_server:call({server_name(Service), Node},
-                    {if_service_manager, Manager,
-                     {start_rebalance, RebalanceId, Type, KeepNodes, EjectNodes, Observer}},
-                    ?OUTER_TIMEOUT).
+    Call =
+        case cluster_compat_mode:is_cluster_elixir() of
+            true ->
+                {if_service_manager, Manager,
+                 {start_rebalance, RebalanceId, Type, KeepNodes, EjectNodes,
+                  Observer}};
+            false ->
+                {if_rebalance, Manager,
+                 {start_rebalance, RebalanceId, Type, KeepNodes, EjectNodes,
+                  Observer}}
+        end,
+
+    gen_server:call({server_name(Service), Node}, Call, ?OUTER_TIMEOUT).
 
 %% gen_server callbacks
 init(Service)       ->
@@ -160,6 +199,10 @@ handle_call(get_status, _From, #state{service = Service,
     {reply, Status, State};
 handle_call(get_agent, _From, State) ->
     {reply, {ok, self()}, State};
+
+%% set_rebalancer is called when the cluster_compat_mode is less than elixir.
+handle_call({set_rebalancer, Pid}, From, State) ->
+    handle_call({set_service_manager, Pid}, From, State);
 handle_call({set_service_manager, Pid} = Call, _From,
             #state{service_manager = Manager} = State0) ->
     State =
@@ -175,6 +218,10 @@ handle_call({set_service_manager, Pid} = Call, _From,
                 handle_unset_service_manager(State0)
         end,
     {reply, ok, handle_set_service_manager(Pid, State)};
+
+%% if_rebalance is called when the cluster_compat_mode is less than elixir.
+handle_call({if_rebalance, Pid, Call}, From, State) ->
+    handle_call({if_service_manager, Pid, Call}, From, State);
 handle_call({if_service_manager, Pid, Call} = FullCall, From,
             #state{service_manager = Manager} = State) ->
     case Pid =:= Manager of
@@ -430,6 +477,9 @@ drop_messages() ->
         0 -> ok
     end.
 
+%% unset_rebalancer is called when the cluster_compat_mode is less than elixir.
+do_handle_call(unset_rebalancer, From, State) ->
+    do_handle_call(unset_service_manager, From, State);
 do_handle_call(unset_service_manager, _From, State) ->
     {reply, ok, handle_unset_service_manager(State)};
 do_handle_call(get_node_info, From, State) ->
