@@ -36,8 +36,10 @@
 	signed_requests = true :: boolean(),
 	certificate :: binary() | undefined,
 	entity_id = "" :: string(),
-	login_location = "" :: string(),
-	logout_location :: string() | undefined,
+	login_redirect_location = "" :: string(),
+	login_post_location = "" :: string(),
+	logout_redirect_location = "" :: string(),
+	logout_post_location = "" :: string(),
 	name_format = unknown :: esaml:name_format()}).
 
 -record(esaml_authnreq, {

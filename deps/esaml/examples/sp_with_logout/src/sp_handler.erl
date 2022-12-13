@@ -59,7 +59,7 @@ handle(<<"GET">>, <<"metadata">>, Req, State = #{sp := SP}) ->
 % we are already logged in, otherwise we will make an AuthnRequest and send it to 
 % our IDP
 handle(<<"GET">>, <<"auth">>, Req, State = #{sp := SP,
-        idp := #esaml_idp_metadata{login_location = IDP}}) ->
+        idp := #esaml_idp_metadata{login_post_location = IDP}}) ->
     #{sp_cookie := CookieID} = cowboy_req:match_cookies(
         [{sp_cookie, [], undefined}], Req),
     case CookieID of
@@ -124,7 +124,7 @@ handle(<<"POST">>, <<"consume">>, Req, State = #{sp := SP}) ->
             {ok, Req3, State}
     end;
 
-handle(<<"GET">>, <<"deauth">>, Req, State = #{sp := SP, idp := #esaml_idp_metadata{logout_location = IDP}}) ->
+handle(<<"GET">>, <<"deauth">>, Req, State = #{sp := SP, idp := #esaml_idp_metadata{logout_post_location = IDP}}) ->
     #{sp_cookie := CookieID} = cowboy_req:match_cookies([{sp_cookie, [], undefined}], Req),
     case CookieID of
         undefined ->
@@ -140,7 +140,7 @@ handle(<<"GET">>, <<"deauth">>, Req, State = #{sp := SP, idp := #esaml_idp_metad
             {ok, Req2, State}
     end;
 
-handle(_Method, <<"logout">>, Req, State = #{sp := SP, idp := #esaml_idp_metadata{logout_location = IDP}}) ->
+handle(_Method, <<"logout">>, Req, State = #{sp := SP, idp := #esaml_idp_metadata{logout_post_location = IDP}}) ->
     case esaml_cowboy:validate_logout(SP, Req) of
         {request, #esaml_logoutreq{name = NameID}, RS, Req2} ->
             Cookies = [Cookie || {_, Cookie} <- ets:lookup(sp_nameids, NameID)],

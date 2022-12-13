@@ -33,6 +33,8 @@ reply_with_authnreq(SP, IDP, RelayState, Req) ->
 %% @doc Reply to a Cowboy request with an AuthnRequest payload and calls the callback with the (signed?) XML
 %%
 %% Similar to reply_with_authnreq/4, but before replying - calls the callback with the (signed?) XML, allowing persistence and later validation.
+%%
+%% This function assumes redirect and POST bindings are the same
 -type xml_callback_state()  :: any().
 -type xml_callback_fun()    :: fun((#xmlElement{}, xml_callback_state()) -> any()).
 -spec reply_with_authnreq(
@@ -52,6 +54,8 @@ reply_with_authnreq(SP, IDP, RelayState, Req, User_Name_Id, Xml_Callback, Xml_Ca
 %%
 %% NameID should be the exact subject name from the assertion you
 %% wish to log out.
+%%
+%% This function assumes redirect and POST bindings are the same
 -spec reply_with_logoutreq(esaml:sp(), IdPSLOEndpoint :: uri(), NameID :: string(), Req) -> Req.
 reply_with_logoutreq(SP, IDP, NameID, Req) ->
     SignedXml = esaml_sp:generate_logout_request(IDP, NameID, SP),
@@ -61,6 +65,8 @@ reply_with_logoutreq(SP, IDP, NameID, Req) ->
 %%
 %% Be sure to keep the RelayState from the original LogoutRequest that you
 %% received to allow the IdP to keep state.
+%%
+%% This function assumes redirect and POST bindings are the same
 -spec reply_with_logoutresp(esaml:sp(), IdPSLOEndpoint :: uri(), esaml:status_code(), RelayState :: binary(), Req) -> Req.
 reply_with_logoutresp(SP, IDP, Status, RelayState, Req) ->
     SignedXml = esaml_sp:generate_logout_response(IDP, Status, SP),
