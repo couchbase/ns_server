@@ -296,7 +296,11 @@ validate_assertion(Xml, DuplicateFun, SP = #esaml_sp{}) ->
             end
         end,
         fun(A) ->
-            case esaml:validate_assertion(A, SP#esaml_sp.consume_uri, get_entity_id(SP)) of
+            Recipient = case SP#esaml_sp.assertion_recipient of
+                            undefined -> SP#esaml_sp.consume_uri;
+                            R -> R
+                        end,
+            case esaml:validate_assertion(A, Recipient, get_entity_id(SP)) of
                 {ok, AR} -> AR;
                 {error, Reason} -> {error, Reason}
             end

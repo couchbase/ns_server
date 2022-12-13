@@ -62,7 +62,7 @@
 -record(esaml_assertion, {
 	version = "2.0" :: esaml:version(),
 	issue_instant = "" :: esaml:datetime(),
-	recipient = "" :: string(),
+	recipient :: string(),
 	issuer = "" :: string(),
 	subject = #esaml_subject{} :: esaml:subject(),
 	conditions = [] :: esaml:conditions(),
@@ -114,4 +114,5 @@
 	consume_uri = "" :: string(),
 	logout_uri :: string() | undefined,
 	encrypt_mandatory = false :: boolean(),
-	entity_id :: string() | undefined}).
+	entity_id :: string() | undefined,
+	assertion_recipient :: any | undefined | string()}).
