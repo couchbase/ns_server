@@ -191,6 +191,14 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
             case PathTokens of
                 [] ->
                     {done, redirect_permanently("/ui/index.html", Req)};
+                ["sso", SSO, "auth"] ->
+                    {ui, IsSSL, fun menelaus_web_sso:handle_auth/2, [SSO]};
+                ["sso", SSO, ?SAML_CONSUME_ENDPOINT_PATH] ->
+                    {ui, IsSSL,
+                     fun menelaus_web_sso:handle_get_saml_consume/2, [SSO]};
+                ["sso", SSO, ?SAML_METADATA_ENDPOINT_PATH] ->
+                    {ui, IsSSL,
+                     fun menelaus_web_sso:handle_saml_metadata/2, [SSO]};
                 ["ui"] ->
                     {done, redirect_permanently("/ui/index.html", Req)};
                 ["_ui", "canUseCertForAuth"] ->
@@ -589,6 +597,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
             end;
         'POST' ->
             case PathTokens of
+                ["sso", SSO, ?SAML_CONSUME_ENDPOINT_PATH] ->
+                    {ui, IsSSL,
+                     fun menelaus_web_sso:handle_post_saml_consume/2, [SSO]};
                 ["uilogin"] ->
                     {ui, IsSSL, fun menelaus_web_misc:handle_uilogin/1};
                 ["uilogout"] ->

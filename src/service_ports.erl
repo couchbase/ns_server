@@ -24,7 +24,8 @@
          all_port_keys/0,
          get_external_host_and_ports/4,
          get_ports_for_services/3,
-         portname_to_secure_portname/1]).
+         portname_to_secure_portname/1,
+         get_raw_external_host_and_ports/2]).
 
 -include("ns_common.hrl").
 
@@ -231,13 +232,18 @@ get_internal_ports(Node, Config, Snapshot) ->
     Services = ns_cluster_membership:node_active_services(Snapshot, Node),
     get_ports_for_services_int(Node, Config, [rest | Services]).
 
-get_external_host_and_ports(Node, Config, Snapshot, WantedPorts) ->
+get_raw_external_host_and_ports(Node, Config) ->
     External = ns_config:search_node_prop(Node, Config,
                                           alternate_addresses, external,
                                           []),
     Hostname = proplists:get_value(hostname, External),
+    Ports = proplists:get_value(ports, External, []),
+    {Hostname, Ports}.
+
+get_external_host_and_ports(Node, Config, Snapshot, WantedPorts) ->
+    {Hostname, RawPorts} = get_raw_external_host_and_ports(Node, Config),
     Ports =
-        case proplists:get_value(ports, External, []) of
+        case RawPorts of
             [] when Hostname =/= undefined ->
                 [{Rest, Value} ||
                     {#port{key = Key, rest = Rest}, Value} <-

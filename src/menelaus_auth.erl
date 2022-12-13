@@ -23,6 +23,7 @@
          extract_identity_from_cert/1,
          extract_ui_auth_token/1,
          uilogin/2,
+         uilogin_phase2/2,
          can_use_cert_for_auth/1,
          complete_uilogout/1,
          maybe_refresh_token/1,
@@ -347,61 +348,56 @@ is_external_auth_allowed("@" ++ _) -> false;
 is_external_auth_allowed(Username) ->
     ns_config_auth:get_user(admin) /= Username.
 
-verify_login_creds(Auth) ->
-    case authenticate(Auth) of
-        {ok, Identity} ->
-            UIPermission = {[ui], read},
-            case check_permission(Identity, UIPermission) of
-                allowed ->
-                    {ok, Identity};
-                _ ->
-                    {forbidden, Identity, UIPermission}
-            end;
-        {error, Type} ->
-            Type
-    end.
-
 -spec uilogin(mochiweb_request(), list()) -> mochiweb_response().
 uilogin(Req, Params) ->
     CertAuth = proplists:get_value("use_cert_for_auth",
                                    mochiweb_request:parse_qs(Req)) =:= "1",
-    {User, AuthStatus} =
+    {User, AuthnStatus} =
         case CertAuth of
             true ->
                 S = mochiweb_request:get(socket, Req),
                 case ns_ssl_services_setup:get_user_name_from_client_cert(S) of
                     X when X =:= undefined; X =:= failed ->
-                        {invalid_client_cert, auth_failure};
+                        {invalid_client_cert, {error, auth_failure}};
                     UName ->
-                        {UName, verify_login_creds({client_cert_auth, UName})}
+                        {UName, authenticate({client_cert_auth, UName})}
                 end;
             false ->
                 Usr = proplists:get_value("user", Params),
                 Password = proplists:get_value("password", Params),
-                {Usr, verify_login_creds({Usr, Password})}
+                {Usr, authenticate({Usr, Password})}
         end,
 
-    case AuthStatus of
+    case AuthnStatus of
         {ok, Identity} ->
+            uilogin_phase2(Req, Identity);
+        {error, auth_failure} ->
+            ns_audit:login_failure(
+              apply_headers(Req, meta_headers(User))),
+            menelaus_util:reply(Req, 400);
+        {error, temporary_failure} ->
+            ns_audit:login_failure(
+              apply_headers(Req, meta_headers(User))),
+            Msg = <<"Temporary error occurred. Please try again later.">>,
+            menelaus_util:reply_json(Req, Msg, 503)
+    end.
+
+uilogin_phase2(Req, Identity) ->
+    UIPermission = {[ui], read},
+    case check_permission(Identity, UIPermission) of
+        allowed ->
             Token = menelaus_ui_auth:generate_token(Identity),
             CookieHeader = generate_auth_cookie(Req, Token),
             ns_audit:login_success(
               apply_headers(Req, meta_headers(Identity, Token))),
             menelaus_util:reply(Req, 200, [CookieHeader]);
-        auth_failure ->
-            ns_audit:login_failure(
-              apply_headers(Req, meta_headers(User))),
-            menelaus_util:reply(Req, 400);
-        temporary_failure ->
-            ns_audit:login_failure(
-              apply_headers(Req, meta_headers(User))),
-            Msg = <<"Temporary error occurred. Please try again later.">>,
-            menelaus_util:reply_json(Req, Msg, 503);
-        {forbidden, Identity, Permission} ->
+        AuthzRes when AuthzRes == forbidden; AuthzRes == auth_failure ->
             ns_audit:login_failure(
               apply_headers(Req, meta_headers(Identity))),
             menelaus_util:reply_json(
-              Req, menelaus_web_rbac:forbidden_response([Permission]), 403)
+              Req,
+              menelaus_web_rbac:forbidden_response([UIPermission]),
+              403)
     end.
 
 -spec can_use_cert_for_auth(mochiweb_request()) ->
