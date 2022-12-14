@@ -59,5 +59,6 @@ tmp
 /venv
 *.swp
 /src/kv_stats_mappings.erl
-/api_tests/test_cluster_data
+/api_tests/test_cluster_data*
+/api_tests/__pycache__
 /pylib/__pycache__
