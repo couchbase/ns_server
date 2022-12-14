@@ -22,6 +22,7 @@
          terminate/2, code_change/3]).
 
 -define(SERVER, ?MODULE).
+-define(SET_CLUSTER_CONFIG_RETRY_TIME, 1000).
 
 -record(state, {}).
 
@@ -92,6 +93,14 @@ refresh_cluster_config(BucketName) ->
                    end) of
                 ok ->
                     ok;
+                {memcached_error, etmpfail, undefined} ->
+                    %% Bucket isn't in a state where the cluster config can
+                    %% be set...try again in a bit
+                    ?log_debug("Bucket ~s is not ready for setting cluster "
+                               "config", [BucketName]),
+                    erlang:send_after(?SET_CLUSTER_CONFIG_RETRY_TIME,
+                                      self(), {refresh, BucketName}),
+                    ok;
                 {memcached_error,key_enoent,undefined} ->
                     %% XXX: memcached currently doesn't create config-only
                     %% buckets for non-serverless.
@@ -101,7 +110,7 @@ refresh_cluster_config(BucketName) ->
             ?log_debug("Bucket ~s is dead", [BucketName]),
             ok;
         {T, E, Stack} = Exception ->
-            ?log_error("Got exception trying to set terse bucket info: ~p",
+            ?log_error("Got exception trying to get terse bucket info: ~p",
                        [Exception]),
             timer:sleep(10000),
             erlang:raise(T, E, Stack)
