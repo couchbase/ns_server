@@ -226,12 +226,11 @@ start_link_rebalance(#{keep_nodes := KeepNodes,
                        eject_nodes := EjectNodes,
                        failed_nodes := FailedNodes,
                        delta_nodes := DeltaNodes,
-                       delta_recovery_buckets :=
-                           DeltaRecoveryBucketNames} = Params) ->
+                       delta_recovery_buckets := DeltaRecoveryBucketNames,
+                       services := Services} = Params) ->
     proc_lib:start_link(
       erlang, apply,
       [fun () ->
-               Services = maps:get(services, Params, all),
                KVKeep = ns_cluster_membership:service_nodes(KeepNodes, kv),
                check_rebalance_condition(fun () -> KVKeep =/= [] end,
                                          no_kv_nodes_left),

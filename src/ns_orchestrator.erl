@@ -469,11 +469,13 @@ handle_event({call, From},
        {maybe_start_rebalance,
         #{known_nodes => KnownNodes,
           eject_nodes => EjectedNodes,
-          delta_recovery_buckets => DeltaRecoveryBuckets}}}]};
+          delta_recovery_buckets => DeltaRecoveryBuckets,
+          services => all}}}]};
 
 handle_event({call, From}, {maybe_start_rebalance,
                             Params = #{known_nodes := KnownNodes,
-                                       eject_nodes := EjectedNodes}},
+                                       eject_nodes := EjectedNodes,
+                                       services := Services}},
              _StateName, _State) ->
     NewParams =
         case maps:is_key(id, Params) of
@@ -519,7 +521,6 @@ handle_event({call, From}, {maybe_start_rebalance,
                  end,
         EjectedLiveNodes = EjectedNodes -- FailedNodes,
 
-        Services = maps:get(services, Params, all),
         validate_services(Services, EjectedLiveNodes, DeltaNodes, Snapshot),
 
         NewParams1 = NewParams#{keep_nodes => KeepNodes,
@@ -821,6 +822,7 @@ idle({start_rebalance, Params = #{keep_nodes := KeepNodes,
                                   delta_nodes := DeltaNodes,
                                   delta_recovery_buckets :=
                                       DeltaRecoveryBuckets,
+                                  services := Services,
                                   id := RebalanceId}}, From, _State) ->
 
     NodesInfo = [{active_nodes, KeepNodes ++ EjectNodes},
@@ -830,17 +832,16 @@ idle({start_rebalance, Params = #{keep_nodes := KeepNodes,
                  {failed_nodes, FailedNodes}],
     Type = rebalance,
 
-    {Services, ServicesMsg} =
-        case maps:get(services, Params, all) of
+    {ServicesToObserve, ServicesMsg} =
+        case Services of
             all ->
                 {ns_cluster_membership:cluster_supported_services(), []};
-            CustomServices ->
-                {CustomServices,
-                 lists:flatten(io_lib:format(
-                                 " Services = ~p;", [CustomServices]))}
+            Services ->
+                {Services,
+                 lists:flatten(io_lib:format(" Services = ~p;", [Services]))}
         end,
     {ok, ObserverPid} = ns_rebalance_observer:start_link(
-                          Services, NodesInfo, Type, RebalanceId),
+                          ServicesToObserve, NodesInfo, Type, RebalanceId),
     DeltaRecoveryMsg =
         case DeltaNodes of
             [] ->
