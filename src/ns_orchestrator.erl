@@ -1673,8 +1673,8 @@ handle_start_failover(Nodes, AllowUnsafe, From, Wait, FailoverType, Options) ->
                                      auto => FailoverType =:= auto_failover},
                                    Options)) of
         {ok, Pid} ->
-            ale:info(?USER_LOGGER, "Starting failover of nodes ~p. "
-                     "Operation Id = ~s", [Nodes, Id]),
+            ale:info(?USER_LOGGER, "Starting failover of nodes ~p AllowUnsafe = ~p "
+                     "Operation Id = ~s", [Nodes, AllowUnsafe, Id]),
 
             Event = list_to_atom(atom_to_list(FailoverType) ++ "_initiated"),
 
