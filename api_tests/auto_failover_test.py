@@ -13,7 +13,7 @@ import random
 import requests
 import testlib
 
-class AutoFailoverSettingsTestSet(testlib.BaseTestSet):
+class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
     def __init__(self):
         self.addr = None
         self.auth = None
@@ -46,11 +46,15 @@ class AutoFailoverSettingsTestSet(testlib.BaseTestSet):
         # count cannot be modified using this request
         self.result_keys = list(self.prev_settings.keys())
         self.result_keys.remove('count')
+        self.is_enterprise = cluster.is_enterprise
+        self.is_71 = cluster.is_71
+        self.is_elixir = cluster.is_elixir
+        self.is_serverless = cluster.is_serverless
 
         failKey = 'failoverOnDataDiskIssues'
-        self.is_enterprise = failKey in self.result_keys
         self.post_data_keys = [ k for k in self.result_keys if k != failKey ]
         if failKey in self.result_keys:
+            assert self.is_enterprise
             self.post_data_keys.append(failKey + '[enabled]')
             self.post_data_keys.append(failKey + '[timePeriod]')
 
@@ -60,11 +64,18 @@ class AutoFailoverSettingsTestSet(testlib.BaseTestSet):
                                  'failoverOnDataDiskIssues[enabled]',
                                  'failoverOnDataDiskIssues[timePeriod]',
                                  'failoverServerGroup',
-                                 'canAbortRebalance' ]
+                                 'canAbortRebalance',
+                                 'disableMaxCount' ]
         if self.is_enterprise:
+            assert 'failoverServerGroup' in self.post_data_keys or self.is_71
             assert 'maxCount' in self.result_keys
-            self.is_71 = not 'failoverServerGroup' in self.post_data_keys
-            self.is_elixir = not 'canAbortRebalance' in self.post_data_keys
+            assert 'canAbortRebalance' in self.post_data_keys or self.is_elixir
+            if self.is_elixir:
+                assert 'disableMaxCount' in self.post_data_keys
+                if self.is_serverless:
+                    assert self.prev_settings['disableMaxCount']
+                else:
+                    assert not self.prev_settings['disableMaxCount']
         else:
             for x in self.enterprise_only:
                 assert x not in self.post_data_keys
@@ -103,6 +114,9 @@ class AutoFailoverSettingsTestSet(testlib.BaseTestSet):
         if 'canAbortRebalance' in self.post_data_keys:
             self.test_params['canAbortRebalance'] = [ None, 'true', 'false' ]
 
+        if 'disableMaxCount' in self.post_data_keys:
+            self.test_params['disableMaxCount'] = [ None, 'true', 'false' ]
+
     # Populate bad_params with invalid values for all supported parameters.
     def init_bad_params(self):
         self.bad_params = {}
@@ -111,9 +125,10 @@ class AutoFailoverSettingsTestSet(testlib.BaseTestSet):
                                        self.limits['timeout']['min'] - 1,
                                        self.limits['timeout']['max'] + 1 ]
         if self.is_enterprise:
-            self.bad_params['maxCount'] = [ self.limits['maxCount']['min'] - 1,
-                                     self.limits['maxCount']['max'] + 1,
-                                     'invalid' ]
+            self.bad_params['maxCount'] = [
+                self.limits['maxCount']['min'] - 1,
+                self.limits['maxCount']['max'] + 1,
+                'invalid' ]
             self.bad_params['failoverOnDataDiskIssues[enabled]'] = [ 'truue' ]
             self.bad_params['failoverOnDataDiskIssues[timePeriod]'] = [
                 self.limits['failoverOnDataDiskIssues[timePeriod]']['min'] - 1,
@@ -123,6 +138,8 @@ class AutoFailoverSettingsTestSet(testlib.BaseTestSet):
             self.bad_params['failoverServerGroup'] = [ 0 ]
         if 'canAbortRebalance' in self.post_data_keys:
             self.bad_params['canAbortRebalance'] = [ 1 ]
+        if 'disableMaxCount' in self.post_data_keys:
+            self.bad_params['disableMaxCount'] = ['disabled']
 
     def get_integer_error(self, testData, field):
         if field in testData:
@@ -161,6 +178,20 @@ class AutoFailoverSettingsTestSet(testlib.BaseTestSet):
             return self.get_integer_error(testData, field)
         return False
 
+    def check_max_count(self, testData):
+        disableCountUndefined = self.is_undefined(testData, 'disableMaxCount',
+                                                  'boolean')
+        maxCountUndefined = self.is_undefined(testData, 'maxCount', 'integer')
+        err = {'_': 'disableMaxCount is true. Set it to false for maxCount'
+               ' to take effect.' }
+        if 'disableMaxCount' in testData and \
+           testData['disableMaxCount'] == 'true' and not maxCountUndefined:
+            return err
+        elif disableCountUndefined and not maxCountUndefined and \
+             self.prev_settings['disableMaxCount']:
+            return err
+        return {}
+
     def check_enabled_time(self, testData, field1, field2):
         field1_undefined = self.is_undefined(testData, field1, 'boolean')
         field2_undefined = self.is_undefined(testData, field2, 'integer')
@@ -176,7 +207,6 @@ class AutoFailoverSettingsTestSet(testlib.BaseTestSet):
     def get_errors(self, testData):
         errors = {}
 
-        field = 'enabled'
         if 'enabled' not in testData:
             errors['enabled'] = 'The value must be supplied'
         errors.update(self.get_boolean_error(testData, 'enabled'))
@@ -186,6 +216,14 @@ class AutoFailoverSettingsTestSet(testlib.BaseTestSet):
         if not self.is_enterprise:
             errors.update(self.get_unsupported_errors(testData))
             return errors
+
+        errors.update(self.get_integer_error(testData, 'maxCount'))
+        if 'disableMaxCount' in self.post_data_keys:
+            errors.update(self.get_boolean_error(testData, 'disableMaxCount'))
+
+        # Only one validate_multiple error is tracked
+        if 'disableMaxCount' in self.post_data_keys and '_' not in errors:
+            errors.update(self.check_max_count(testData))
 
         errors.update(self.get_boolean_error(testData,
                                     'failoverOnDataDiskIssues[enabled]'))
@@ -198,7 +236,6 @@ class AutoFailoverSettingsTestSet(testlib.BaseTestSet):
                                             'failoverOnDataDiskIssues[enabled]',
                                         'failoverOnDataDiskIssues[timePeriod]'))
 
-        errors.update(self.get_integer_error(testData, 'maxCount'))
         if 'canAbortRebalance' in self.post_data_keys:
             errors.update(self.get_boolean_error(testData, 'canAbortRebalance'))
         if 'failoverServerGroup' in self.post_data_keys:
@@ -313,9 +350,9 @@ class AutoFailoverSettingsTestSet(testlib.BaseTestSet):
             return random.choice(['failoverServerGroup', 'canAbortRebalance'])
 
         if self.is_71:
-            return 'failoverServerGroup'
+            return random.choice(['failoverServerGroup', 'disableMaxCount'])
 
-        return 'unsupportedKey'
+        return 'disableMaxCount'
 
     """
     Given an input dictionary with possible parameter value(s):
@@ -367,28 +404,47 @@ class AutoFailoverSettingsTestSet(testlib.BaseTestSet):
             # 'enabled' (or 'failoverOnDataDiskIssues[enabled]') must be
             # specified if 'timeout' (or 'failoverOnDataDiskIssues[timePeriod]')
             # is a valid value.
-            bad_timeout_param = \
+            # disableMaxCount must be false if maxCount is specified.
+            bad_param = \
                 self.check_enabled_time(testData, 'enabled', 'timeout') or \
                 self.check_enabled_time(testData,
                                         'failoverOnDataDiskIssues[enabled]',
-                                        'failoverOnDataDiskIssues[timePeriod]')
+                                    'failoverOnDataDiskIssues[timePeriod]') or \
+                self.is_elixir and self.check_max_count(testData)
+
             if good:
-                if bad_timeout_param:
+                if bad_param:
                     continue
-            elif not bad_timeout_param:
+            elif not bad_param:
                 self.mangle_param(testData)
             # {'failover...[enabled]': 'true', absent 'failover...[timePeriod]'}
             # {absent 'failover...[enabled], valid 'failover...[timePeriod]'}
             # are invalid combinations. Test them as is without mangling i.e.
-            # exercise test cases with bad_timeout_param=True. They must fail.
+            # exercise test cases with bad_param=True. They must fail.
 
             self.test_request(testData)
 
         print("Ran " + str(self.good_count) + " good cases, " +
               str(self.bad_count) + " bad cases.")
 
-    def simple_test(self, cluster):
+    def run_combinations(self):
         self.test_body(good=True)
         assert(self.bad_count == 0)
         self.test_body(good=False)
         assert(self.good_count == 0)
+
+class OnPremAutoFailoverSettingsTest(AutoFailoverSettingsTestBase):
+    @staticmethod
+    def requirements():
+        return testlib.ClusterRequirements(serverless=False)
+
+    def server_test(self, cluster):
+        self.run_combinations()
+
+class ServerlessAutoFailoverSettingsTest(AutoFailoverSettingsTestBase):
+    @staticmethod
+    def requirements():
+        return testlib.ClusterRequirements(serverless=True)
+
+    def server_test(self, cluster):
+        self.run_combinations()

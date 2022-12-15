@@ -35,6 +35,7 @@
 
 -define(FAILOVER_SERVER_GROUP_CONFIG_KEY, failover_server_group).
 
+-define(DISABLE_MAX_COUNT_CONFIG_KEY, disable_max_count).
 -define(MAX_EVENTS_CONFIG_KEY, max_count).
 -define(MIN_EVENTS_ALLOWED, 1).
 -define(DEFAULT_EVENTS_ALLOWED, 1).
@@ -50,6 +51,7 @@ default_config(IsEnterprise) ->
        {failover_on_data_disk_issues, [{enabled, false},
                                        {timePeriod, 120}]},
        {failover_server_group, false},
+       {disable_max_count, config_profile:get_bool(failover_disable_max_count)},
        {max_count, 1},
        {failed_over_server_groups, []},
        {?CAN_ABORT_REBALANCE_CONFIG_KEY, IsEnterprise}]}].
@@ -64,7 +66,9 @@ max_events_allowed() ->
 
 config_upgrade_to_elixir(Config) ->
     [{set, auto_failover_cfg,
-      proplists:delete(can_abort_rebalance, auto_failover:get_cfg(Config))}].
+      proplists:delete(can_abort_rebalance, auto_failover:get_cfg(Config)) ++
+      [{disable_max_count,
+        config_profile:get_bool(failover_disable_max_count)}]}].
 
 handle_settings_get(Req) ->
     Config = auto_failover:get_cfg(),
@@ -148,6 +152,25 @@ validate_enabled_param(KeyEnabled, KeyTime, State) ->
               end
       end, [KeyEnabled, KeyTime], State).
 
+validate_maxcount_param(State) ->
+    ErrMsg = "disableMaxCount is true. Set it to false for maxCount to take "
+             "effect.",
+    validator:validate_multiple(
+        fun ([Disabled, Count]) ->
+            case {Disabled, Count =/= undefined} of
+                {true, true} -> {error, ErrMsg};
+                {undefined, true} ->
+                    Config = auto_failover:get_cfg(),
+                    DisabledMax = proplists:get_value(
+                                    ?DISABLE_MAX_COUNT_CONFIG_KEY, Config),
+                    case DisabledMax of
+                        true -> {error, ErrMsg};
+                        false -> ok
+                    end;
+                {_, _} -> ok
+            end
+        end, [disableMaxCount, maxCount], State).
+
 settings_validators() ->
     [validator:required(enabled, _),
      validator:boolean(enabled, _),
@@ -168,7 +191,14 @@ settings_extras_validators() ->
     end.
 
 maxcount_validators() ->
-    [validator:integer(maxCount, ?MIN_EVENTS_ALLOWED, max_events_allowed(), _)].
+    [validator:integer(maxCount, ?MIN_EVENTS_ALLOWED,
+        max_events_allowed(), _)] ++
+    case cluster_compat_mode:is_cluster_elixir() of
+        true ->
+            [validator:boolean(disableMaxCount, _),
+             validate_maxcount_param(_)];
+        false -> []
+    end.
 
 disk_issues_validators() ->
     KeyEnabled = 'failoverOnDataDiskIssues[enabled]',
@@ -211,31 +241,25 @@ process_failover_on_disk_issues(Props, Config, Extras) ->
             Extras
     end.
 
-process_failover_server_group(Props, Extras) ->
-    FailoverServerGroup = proplists:get_value(failoverServerGroup, Props),
-    case FailoverServerGroup of
+process_boolean_extra(Props, Name, ConfigKey, Extras) ->
+    CVal = proplists:get_value(Name, Props),
+    case CVal of
         Val when is_boolean(Val) ->
-            Extra = [{?FAILOVER_SERVER_GROUP_CONFIG_KEY, Val}],
+            Extra = [{ConfigKey, Val}],
             add_extras(Extra, Extras);
         _ ->
             Extras
     end.
 
-process_can_abort_rebalance(Props, Extras) ->
-    CanAbortRebalance = proplists:get_value(canAbortRebalance, Props),
-    case CanAbortRebalance of
-        Val when is_boolean(Val) ->
-            Extra = [{?CAN_ABORT_REBALANCE_CONFIG_KEY, Val}],
-            add_extras(Extra, Extras);
-        _  ->
-            Extras
-    end.
-
 process_extras(Props, Config) ->
-    Extras = functools:chain([{extras, []}],
-                             [process_failover_on_disk_issues(Props, Config, _),
-                              process_failover_server_group(Props, _),
-                              process_can_abort_rebalance(Props, _)]),
+    BoolParams = [{failoverServerGroup, ?FAILOVER_SERVER_GROUP_CONFIG_KEY},
+                  {canAbortRebalance, ?CAN_ABORT_REBALANCE_CONFIG_KEY},
+                  {disableMaxCount, ?DISABLE_MAX_COUNT_CONFIG_KEY}],
+    Extras = functools:chain(
+               [{extras, []}],
+               [process_failover_on_disk_issues(Props, Config, _) |
+                [process_boolean_extra(Props, Name, ConfigKey, _) ||
+                    {Name, ConfigKey} <- BoolParams]]),
     proplists:get_value(extras, Extras).
 
 disable_failover_on_disk_issues(TP) ->
@@ -260,6 +284,10 @@ get_extra_settings(Config) ->
             lists:flatten(
               [{failoverOnDataDiskIssues,
                 {[{enabled, Enabled}, {timePeriod, TimePeriod}]}},
+               [{disableMaxCount, proplists:get_value(
+                                    ?DISABLE_MAX_COUNT_CONFIG_KEY,
+                                    Config, false)} ||
+                   cluster_compat_mode:is_cluster_elixir()],
                {maxCount, proplists:get_value(?MAX_EVENTS_CONFIG_KEY, Config)},
                [{canAbortRebalance,
                  proplists:get_value(

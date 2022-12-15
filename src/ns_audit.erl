@@ -663,6 +663,8 @@ build_auto_failover_extras(Extras) ->
               [T | Acc];
           ({can_abort_rebalance, _} = T, Acc) ->
               [T | Acc];
+          ({disable_max_count, _} = T, Acc) ->
+              [T | Acc];
           (_, Acc) ->
               Acc
       end, [], Extras).

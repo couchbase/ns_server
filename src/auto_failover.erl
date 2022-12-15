@@ -93,6 +93,8 @@
           tick_ref = nil :: nil | reference(),
           %% Time a node needs to be down until it is automatically failovered
           timeout = nil :: nil | integer(),
+          %% Optionally disable failover based on number of failover events
+          disable_max_count = false :: boolean(),
           %% Maximum number of auto-failover events
           max_count = 0  :: non_neg_integer(),
           %% Counts the number of auto-failover events
@@ -193,8 +195,10 @@ init([]) ->
     Timeout = proplists:get_value(timeout, Config),
     Count = proplists:get_value(count, Config),
     MaxCount = proplists:get_value(max_count, Config, 1),
+    DisableMaxCount = proplists:get_value(disable_max_count, Config, false),
     FailedOverSGs = proplists:get_value(failed_over_server_groups, Config, []),
     State0 = #state{timeout = Timeout,
+                    disable_max_count = DisableMaxCount,
                     max_count = MaxCount,
                     count = Count,
                     failed_over_server_groups = FailedOverSGs,
@@ -220,18 +224,39 @@ handle_call({enable_auto_failover, Timeout, Max}, From, State) ->
 %% @doc Auto-failover isn't enabled yet (tick_ref isn't set).
 handle_call({enable_auto_failover, Timeout, Max, Extras}, _From,
             #state{tick_ref = nil} = State) ->
-    ale:info(?USER_LOGGER,
-             "Enabled auto-failover with timeout ~p and max count ~p",
-             [Timeout, Max]),
+    DisableMaxCount = proplists:get_value(disable_max_count, Extras,
+        State#state.disable_max_count),
+    case DisableMaxCount of
+        false ->
+            ale:info(?USER_LOGGER,
+                     "Enabled auto-failover with timeout ~p and max count ~p",
+                     [Timeout, Max]);
+        true ->
+            ale:info(?USER_LOGGER,
+                     "Enabled auto-failover with timeout ~p", [Timeout])
+    end,
     Ref = send_tick_msg(),
-    State1 = State#state{tick_ref = Ref, timeout = Timeout, max_count = Max,
+    State1 = State#state{tick_ref = Ref, timeout = Timeout,
+                         disable_max_count = DisableMaxCount, max_count = Max,
                          auto_failover_logic_state = init_logic_state(Timeout)},
     make_state_persistent(State1, Extras),
     {reply, ok, State1};
 %% @doc Auto-failover is already enabled, just update the settings.
 handle_call({enable_auto_failover, Timeout, Max, Extras}, _From, State) ->
     ?log_debug("updating auto-failover settings: ~p", [State]),
-    State1 = update_state_timeout(Timeout, State),
+    DisableMaxCount = proplists:get_value(disable_max_count, Extras,
+        State#state.disable_max_count),
+    case DisableMaxCount of
+        false ->
+            ale:info(?USER_LOGGER,
+                     "Enabled auto-failover with timeout ~p and max count ~p",
+                     [Timeout, Max]);
+        true ->
+            ale:info(?USER_LOGGER,
+                     "Enabled auto-failover with timeout ~p", [Timeout])
+    end,
+    State0 = State#state{disable_max_count = DisableMaxCount},
+    State1 = update_state_timeout(Timeout, State0),
     State2 = update_state_max_count(Max, State1),
     make_state_persistent(State2, Extras),
     {reply, ok, State2};
@@ -440,16 +465,21 @@ process_action({failover, NodesWithUUIDs}, S, DownNodes, NodeStatuses,
                _Snapshot)
   when is_list(NodesWithUUIDs) ->
     Nodes = [N || {N, _} <- NodesWithUUIDs],
-    TrimmedNodes = trim_nodes(Nodes, S),
-    S1 =
-        case Nodes -- TrimmedNodes of
-            [] ->
-                S;
-            NotFailedOver ->
-                maybe_report_max_node_reached(
-                  NotFailedOver, max_nodes_error_msg(S), S)
+    {Nodes1, S1} =
+        case S#state.disable_max_count of
+            true -> {Nodes, S};
+            false ->
+                TrimmedNodes = trim_nodes(Nodes, S),
+                case Nodes -- TrimmedNodes of
+                    [] ->
+                        {TrimmedNodes, S};
+                    NotFailedOver ->
+                        {TrimmedNodes,
+                         maybe_report_max_node_reached(
+                           NotFailedOver, max_nodes_error_msg(S), S)}
+                end
         end,
-    failover_nodes(TrimmedNodes, S1, DownNodes, NodeStatuses, true);
+    failover_nodes(Nodes1, S1, DownNodes, NodeStatuses, true);
 %% pre-7.1 only
 process_action({failover, {Node, _UUID}}, S, DownNodes, NodeStatuses,
                Snapshot) ->
@@ -516,7 +546,8 @@ max_nodes_error_msg(#state{max_count = Max}) ->
     lists:flatten(M).
 
 maybe_report_max_node_reached(Nodes, ErrMsg, S) ->
-    case should_report(max_node_reached, S) of
+    case S#state.disable_max_count =:= false andalso
+        should_report(max_node_reached, S) of
         true ->
             ?log_info_and_email(
                auto_failover_maximum_reached,
@@ -547,7 +578,7 @@ allow_failover(SG, S = #state{count = Count, max_count = Max,
         false ->
             %% Count can be greater than Max if user reduces the Max
             %% before resetting the count.
-            case Count >= Max of
+            case S#state.disable_max_count =:= false andalso Count >= Max of
                 true ->
                     {false, max_nodes_error_msg(S)};
                 false ->
