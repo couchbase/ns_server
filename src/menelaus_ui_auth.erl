@@ -19,16 +19,23 @@
 -export([start_link/0]).
 -export([init/0]).
 
--export([generate_token/1, maybe_refresh/1,
+-export([generate_token/3, maybe_refresh/1,
          check/1, reset/0, logout/1, set_token_node/2]).
 
 start_link() ->
     token_server:start_link(?MODULE, 1024, ?UI_AUTH_EXPIRATION_SECONDS,
-                            fun ns_audit:session_expired/2).
+                            fun (#uisession{user_id = Id}, Token) ->
+                                ns_audit:session_expired(Id, Token)
+                            end).
 
--spec generate_token(term()) -> auth_token().
-generate_token(Memo) ->
-    token_server:generate(?MODULE, Memo).
+-spec generate_token(simple | saml,
+                     binary(),
+                     {string(), atom()}) -> auth_token().
+generate_token(SessionType, SessionName, Identity) ->
+    SessionInfo = #uisession{type = SessionType,
+                             session_name = SessionName,
+                             user_id = Identity},
+    token_server:generate(?MODULE, SessionInfo).
 
 -spec maybe_refresh(auth_token()) -> nothing | {new_token, auth_token()}.
 maybe_refresh(Token) ->
@@ -52,7 +59,11 @@ get_token_node(Token) ->
 -spec check(auth_token() | undefined) -> false | {ok, term()}.
 check(Token) ->
     {Node, CleanToken} = get_token_node(Token),
-    token_server:check(?MODULE, CleanToken, Node).
+    case token_server:check(?MODULE, CleanToken, Node) of
+        false -> false;
+        {ok, #uisession{user_id = Id}} -> {ok, Id};
+        {ok, Id} -> {ok, Id} %% Pre-elixir nodes will return Id
+    end.
 
 -spec reset() -> ok.
 reset() ->
@@ -68,7 +79,7 @@ init() ->
 
 %% TODO: implement it correctly for all users or get rid of it
 ns_config_event_handler({rest_creds, _}) ->
-    token_server:purge(?MODULE, {'_', admin});
+    token_server:purge(?MODULE, #uisession{user_id = {'_', admin}, _ = '_'});
 ns_config_event_handler(_Evt) ->
     ok.
 

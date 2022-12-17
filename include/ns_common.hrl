@@ -374,4 +374,9 @@
 -define(SAML_METADATA_ENDPOINT_PATH, "samlMetadata").
 -define(SAML_CONSUME_ENDPOINT_PATH, "samlConsume").
 
+-record(uisession,
+        {type :: simple | saml | '_',
+         session_name :: binary() | '_',
+         user_id :: {string() | '_', atom()}}).
+
 -endif.

@@ -256,7 +256,16 @@ handle_call({check, Token}, _From, State) ->
         false ->
             {reply, false, State};
         {_RefreshTS, _Now, Memo} ->
-            {reply, {ok, Memo}, State}
+            Res =
+                case cluster_compat_mode:is_cluster_elixir() of
+                    true -> Memo;
+                    false ->
+                        case Memo of
+                            #uisession{user_id = Id} -> Id;
+                            _ -> Memo
+                        end
+                end,
+            {reply, {ok, Res}, State}
     end;
 handle_call(Msg, From, _State) ->
     erlang:error({unknown_call, Msg, From}).

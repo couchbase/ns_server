@@ -23,7 +23,7 @@
          extract_identity_from_cert/1,
          extract_ui_auth_token/1,
          uilogin/2,
-         uilogin_phase2/2,
+         uilogin_phase2/4,
          can_use_cert_for_auth/1,
          complete_uilogout/1,
          maybe_refresh_token/1,
@@ -370,7 +370,8 @@ uilogin(Req, Params) ->
 
     case AuthnStatus of
         {ok, Identity} ->
-            uilogin_phase2(Req, Identity);
+            uilogin_phase2(Req, simple, base64:encode(rand:bytes(16)),
+                           Identity);
         {error, auth_failure} ->
             ns_audit:login_failure(
               apply_headers(Req, meta_headers(User))),
@@ -382,11 +383,12 @@ uilogin(Req, Params) ->
             menelaus_util:reply_json(Req, Msg, 503)
     end.
 
-uilogin_phase2(Req, Identity) ->
+uilogin_phase2(Req, SessionType, SessionName, Identity) ->
     UIPermission = {[ui], read},
     case check_permission(Identity, UIPermission) of
         allowed ->
-            Token = menelaus_ui_auth:generate_token(Identity),
+            Token = menelaus_ui_auth:generate_token(SessionType, SessionName,
+                                                    Identity),
             CookieHeader = generate_auth_cookie(Req, Token),
             ns_audit:login_success(
               apply_headers(Req, meta_headers(Identity, Token))),
