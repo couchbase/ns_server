@@ -39,8 +39,8 @@ handle_uilogin(Req) ->
 handle_uilogout(Req) ->
     Token = menelaus_auth:get_token(Req),
     false = (Token =:= undefined),
-    menelaus_ui_auth:logout(Token),
-    menelaus_auth:complete_uilogout(Req).
+    {_Session, Headers} = menelaus_auth:complete_uilogout(Token, Req),
+    menelaus_util:reply(Req, 200, Headers).
 
 handle_can_use_cert_for_auth(Req) ->
     RV = menelaus_auth:can_use_cert_for_auth(Req),

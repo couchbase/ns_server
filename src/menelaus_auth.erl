@@ -25,7 +25,7 @@
          uilogin/2,
          uilogin_phase2/4,
          can_use_cert_for_auth/1,
-         complete_uilogout/1,
+         complete_uilogout/2,
          maybe_refresh_token/1,
          get_identity/1,
          get_user_id/1,
@@ -98,11 +98,12 @@ kill_auth_cookie(Req) ->
     {Name, Content} = generate_auth_cookie(Req, ""),
     {Name, Content ++ "; expires=Thu, 01 Jan 1970 00:00:00 GMT"}.
 
--spec complete_uilogout(mochiweb_request()) -> mochiweb_response().
-complete_uilogout(Req) ->
+-spec complete_uilogout(binary(), mochiweb_request()) ->
+                                {SessionInfo :: term(), [{string(), string()}]}.
+complete_uilogout(Token, Req) ->
+    Session = menelaus_ui_auth:logout(Token),
     ns_audit:logout(Req),
-    CookieHeader = kill_auth_cookie(Req),
-    menelaus_util:reply(Req, 200, [CookieHeader]).
+    {Session, [kill_auth_cookie(Req)]}.
 
 -spec maybe_refresh_token(mochiweb_request()) -> [{string(), string()}].
 maybe_refresh_token(Req) ->

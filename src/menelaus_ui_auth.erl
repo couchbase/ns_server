@@ -20,7 +20,8 @@
 -export([init/0]).
 
 -export([generate_token/3, maybe_refresh/1,
-         check/1, reset/0, logout/1, set_token_node/2]).
+         check/1, reset/0, logout/1, set_token_node/2,
+         logout_by_session_name/1]).
 
 start_link() ->
     token_server:start_link(?MODULE, 1024, ?UI_AUTH_EXPIRATION_SECONDS,
@@ -28,7 +29,7 @@ start_link() ->
                                 ns_audit:session_expired(Id, Token)
                             end).
 
--spec generate_token(simple | saml,
+-spec generate_token(simple | {sso, SSOName :: string()},
                      binary(),
                      {string(), atom()}) -> auth_token().
 generate_token(SessionType, SessionName, Identity) ->
@@ -69,9 +70,12 @@ check(Token) ->
 reset() ->
     token_server:reset_all(?MODULE).
 
--spec logout(auth_token()) -> ok.
+-spec logout(auth_token()) -> #uisession{} | undefined.
 logout(Token) ->
-    token_server:remove(?MODULE, Token).
+    case token_server:take(?MODULE, Token) of
+        {ok, SessionInfo} -> SessionInfo;
+        false -> undefined
+    end.
 
 init() ->
     ns_pubsub:subscribe_link(ns_config_events,
@@ -83,6 +87,9 @@ ns_config_event_handler({rest_creds, _}) ->
 ns_config_event_handler(_Evt) ->
     ok.
 
+logout_by_session_name(SessionName) ->
+    Pattern = #uisession{session_name = SessionName, _ = '_'},
+    token_server:purge(?MODULE, Pattern).
 
 -ifdef(TEST).
 set_and_get_token_node_test() ->

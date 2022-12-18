@@ -12,13 +12,19 @@
 -module(menelaus_web_sso).
 
 -export([handle_auth/2,
+         handle_deauth/2,
          handle_saml_metadata/2,
          handle_get_saml_consume/2,
-         handle_post_saml_consume/2]).
+         handle_post_saml_consume/2,
+         handle_get_saml_logout/2,
+         handle_post_saml_logout/2]).
 
 -include("ns_common.hrl").
 -include("cut.hrl").
 -include_lib("esaml/include/esaml.hrl").
+
+-define(DEFAULT_NAMEID_FORMAT,
+        "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent").
 
 %%%===================================================================
 %%% API
@@ -31,27 +37,66 @@ handle_auth(SSOName, Req) ->
     IDPMetadata = get_idp_metadata(SSOOpts),
     Binding = proplists:get_value(authn_binding, SSOOpts, post),
     RelayState = <<"">>,
-    SignedXml = esaml_sp:generate_authn_request(_, SPMetadata),
+    %% Using "persistent" by default because this seems to be the only option
+    %% that single logout works with
+    NameIDFormat = proplists:get_value(authn_nameID_Format, SSOOpts,
+                                       ?DEFAULT_NAMEID_FORMAT),
+    SignedXml = esaml_sp:generate_authn_request(_, SPMetadata, NameIDFormat),
     case Binding of
         redirect ->
             IDPURL = IDPMetadata#esaml_idp_metadata.login_redirect_location,
-            Location = esaml_binding:encode_http_redirect(
-                         IDPURL,
-                         SignedXml(IDPURL),
-                         _Username = undefined,
-                         RelayState),
-            LocationStr = binary_to_list(Location),
-            menelaus_util:reply_text(Req, <<"Redirecting...">>, 302,
-                                     [{allow_cache, false},
-                                      {"Location", LocationStr}]);
+            reply_via_redirect(IDPURL, SignedXml(IDPURL), RelayState, [], Req);
         post ->
             IDPURL = IDPMetadata#esaml_idp_metadata.login_post_location,
-            HTMLBin = esaml_binding:encode_http_post(IDPURL,
-                                                     SignedXml(IDPURL),
-                                                     RelayState),
-            menelaus_util:reply(Req, HTMLBin, 200,
-                                [{allow_cache, false},
-                                 {"Content-Type", "text/html"}])
+            reply_via_post(IDPURL, SignedXml(IDPURL), RelayState, [], Req)
+    end.
+
+handle_deauth(SSOName, Req) ->
+    SSOOpts = extract_saml_settings(SSOName),
+    ?log_debug("Starting saml(~s) single logout", [SSOName]),
+    case proplists:get_value(single_logout, SSOOpts, true) of
+        true -> ok;
+        false ->
+            ?log_debug("Single logout is turned off"),
+            menelaus_util:web_exception(404, "not found")
+    end,
+
+    Token = menelaus_auth:get_token(Req),
+    false = (Token =:= undefined),
+    {Session, Headers} = menelaus_auth:complete_uilogout(Token, Req),
+
+    case Session of
+        #uisession{type = {sso, SSOName}, session_name = NameID} ->
+            handle_single_logout(SSOName, SSOOpts, NameID, Headers, Req);
+        #uisession{type = {sso, RealSSOName}} ->
+            ?log_error("Called deauth for wrong SSO: ~p, while real SSO is ~p",
+                       [SSOName, RealSSOName]),
+            menelaus_util:reply(Req, "Wrong sso", 400, Headers);
+        #uisession{type = simple} ->
+            ?log_debug("User is not a saml user, ignoring single logout"),
+            menelaus_util:reply_text(Req, <<"Redirecting...">>, 302,
+                                     [{"Location", "/"} | Headers]);
+        undefined ->
+            ?log_debug("User not authenticated"),
+            menelaus_util:reply_text(Req, <<"Redirecting...">>, 302,
+                                     [{"Location", "/"} | Headers])
+    end.
+
+handle_single_logout(SSOName, SSOOpts, NameID, ExtraHeaders, Req) ->
+    SPMetadata = build_sp_metadata(SSOName, SSOOpts, Req),
+    IDPMetadata = get_idp_metadata(SSOOpts),
+    NameIDFormat = proplists:get_value(authn_nameID_format, SSOOpts,
+                                       ?DEFAULT_NAMEID_FORMAT),
+    Subject = #esaml_subject{name = binary_to_list(NameID),
+                             name_format = NameIDFormat},
+    SignedXml = esaml_sp:generate_logout_request(_, "", Subject, SPMetadata),
+    case proplists:get_value(logout_resp_binding, SSOOpts, post) of
+        redirect ->
+            URL = IDPMetadata#esaml_idp_metadata.logout_redirect_location,
+            reply_via_redirect(URL, SignedXml(URL), <<>>, ExtraHeaders, Req);
+        post ->
+            URL = IDPMetadata#esaml_idp_metadata.logout_post_location,
+            reply_via_post(URL, SignedXml(URL), <<>>, ExtraHeaders, Req)
     end.
 
 handle_saml_metadata(SSOName, Req) ->
@@ -104,7 +149,7 @@ handle_saml_consume(SSOName, Req, UnvalidatedParams) ->
                   ?log_debug("Successful saml(~s) login: ~s",
                              [SSOName, ns_config_log:tag_user_name(Username)]),
                   menelaus_auth:uilogin_phase2(Req,
-                                               saml,
+                                               {sso, SSOName},
                                                iolist_to_binary(NameID),
                                                {Username, external});
               true ->
@@ -122,6 +167,52 @@ handle_saml_consume(SSOName, Req, UnvalidatedParams) ->
        validate_authn_response('SAMLResponse', 'SAMLEncoding', SPMetadata, _),
        validator:required('SAMLResponse', _),
        validator:string('RelayState', _)]).
+
+handle_get_saml_logout(SSOName, Req) ->
+    handle_saml_logout(SSOName, Req, mochiweb_request:parse_qs(Req)).
+
+handle_post_saml_logout(SSOName, Req) ->
+    handle_saml_logout(SSOName, Req, mochiweb_request:parse_post(Req)).
+
+handle_saml_logout(SSOName, Req, UnvalidatedParams) ->
+    SSOOpts = extract_saml_settings(SSOName),
+    ?log_debug("Starting saml(~s) logout", [SSOName]),
+    SPMetadata = build_sp_metadata(SSOName, SSOOpts, Req),
+    validator:handle(
+      fun (Params) ->
+          IDPMetadata = get_idp_metadata(SSOOpts),
+          LogoutReq = proplists:get_value('SAMLRequest', Params),
+          LogoutResp = proplists:get_value('SAMLResponse', Params),
+          case {LogoutReq, LogoutResp} of
+              {undefined, undefined} ->
+                  ?log_debug("Empty saml message"),
+                  menelaus_util:reply_text(Req, "Missing SAML message", 400);
+              {#esaml_logoutreq{name = NameID}, _} ->
+                  SessionName = iolist_to_binary(NameID),
+                  menelaus_ui_auth:logout_by_session_name(SessionName),
+                  SignedXml = esaml_sp:generate_logout_response(_, success,
+                                                                SPMetadata),
+                  BindingToUse = proplists:get_value(logout_resp_binding,
+                                                     SSOOpts, post),
+                  case BindingToUse of
+                      redirect ->
+                          URL = IDPMetadata#esaml_idp_metadata.logout_redirect_location,
+                          reply_via_redirect(URL, SignedXml(URL), <<>>, [],
+                                             Req);
+                      post ->
+                          URL = IDPMetadata#esaml_idp_metadata.logout_post_location,
+                          reply_via_post(URL, SignedXml(URL), <<>>, [],
+                                         Req)
+                  end;
+              {_, #esaml_logoutresp{}} ->
+                  ?log_debug("Successful logout response"),
+                  menelaus_util:reply(Req, 200)
+          end
+      end, Req, UnvalidatedParams,
+      [validator:string('SAMLEncoding', _),
+       validator:default('SAMLEncoding', "", _),
+       validate_logout_response('SAMLResponse', 'SAMLEncoding', SPMetadata, _),
+       validate_logout_request('SAMLRequest', 'SAMLEncoding', SPMetadata, _)]).
 
 %%%===================================================================
 %%% Internal functions
@@ -142,6 +233,26 @@ assert_saml_sso(Opts) ->
         saml -> ok;
         _ -> menelaus_util:web_exception(404, "not found")
     end.
+
+reply_via_redirect(IDPURL, SignedXml, RelayState, ExtraHeaders, Req) ->
+    Location = esaml_binding:encode_http_redirect(
+                 IDPURL,
+                 SignedXml,
+                 _Username = undefined,
+                 RelayState),
+    LocationStr = binary_to_list(Location),
+    ?log_debug("Redirecting user to ~s using HTTP code 302, full url: ~s",
+               [IDPURL, LocationStr]),
+    menelaus_util:reply_text(Req, <<"Redirecting...">>, 302,
+                             [{allow_cache, false},
+                              {"Location", LocationStr} | ExtraHeaders]).
+
+reply_via_post(IDPURL, SignedXml, RelayState, ExtraHeaders, Req) ->
+    HTMLBin = esaml_binding:encode_http_post(IDPURL, SignedXml, RelayState),
+    ?log_debug("Redirecting user to ~s using POST:~n~s", [IDPURL, HTMLBin]),
+    menelaus_util:reply(Req, HTMLBin, 200,
+                        [{allow_cache, false},
+                         {"Content-Type", "text/html"} | ExtraHeaders]).
 
 build_sp_metadata(Name, Opts, Req) ->
     DefaultScheme = case cluster_compat_mode:is_enterprise() of
@@ -174,6 +285,7 @@ build_sp_metadata(Name, Opts, Req) ->
            idp_signs_envelopes = IdpSignsEnvelopes,
            consume_uri = BaseURL ++ "/"?SAML_CONSUME_ENDPOINT_PATH,
            metadata_uri = BaseURL ++ "/"?SAML_METADATA_ENDPOINT_PATH,
+           logout_uri = BaseURL ++ "/"?SAML_LOGOUT_ENDPOINT_PATH,
            assertion_recipient = Recipient,
            org = #esaml_org{
                    name = [{en, OrgName}],
@@ -246,6 +358,68 @@ validate_authn_response(NameResp, NameEnc, SPMetadata, State) ->
               _:Reason ->
                   ?log_debug("Failed to decode authn response:~n~p", [Reason]),
                   Msg = io_lib:format("Assertion decode failed: ~p", [Reason]),
+                  {error, Msg}
+          end
+      end, NameResp, NameEnc, State).
+
+validate_logout_request(NameReq, NameEnc, SPMetadata, State) ->
+    validator:validate_relative(
+      fun (LOReq, Enc) ->
+          SAMLEncoding = list_to_binary(Enc),
+          SAMLRequest = list_to_binary(LOReq),
+          ?log_debug("Received saml logout request: ~s~nEncoding: ~s",
+                     [SAMLRequest, SAMLEncoding]),
+          %% Seems like decode_response can actually decode requests as well
+          try esaml_binding:decode_response(SAMLEncoding, SAMLRequest) of
+              Xml ->
+                  case esaml_sp:validate_logout_request(Xml, SPMetadata) of
+                      {ok, LogoutReq} ->
+                          {value, LogoutReq};
+                      {error, E} ->
+                          ?log_debug("Logout req validation failed: ~p", [E]),
+                          Msg = io_lib:format("Logout req validation failed:"
+                                              " ~p", [E]),
+                          {error, Msg}
+                  end
+          catch
+              _:Reason ->
+                  ?log_debug("Failed to decode logout request:~n~p", [Reason]),
+                  Msg = io_lib:format("Logout request decode failed: ~p",
+                                      [Reason]),
+                  {error, Msg}
+          end
+      end, NameReq, NameEnc, State).
+
+validate_logout_response(NameResp, NameEnc, SPMetadata, State) ->
+    validator:validate_relative(
+      fun (LOResp, Enc) ->
+          SAMLEncoding = list_to_binary(Enc),
+          SAMLResponse = list_to_binary(LOResp),
+          ?log_debug("Received saml logout response: ~s~nEncoding: ~s",
+                     [SAMLResponse, SAMLEncoding]),
+          %% Seems like decode_response can actually decode requests as well
+          try esaml_binding:decode_response(SAMLEncoding, SAMLResponse) of
+              Xml ->
+                  case esaml_sp:validate_logout_response(Xml, SPMetadata) of
+                      {ok, LogoutResp} ->
+                          {value, LogoutResp};
+                      {error, {status, Status, SecondLevelStatus}} ->
+                          Msg = io_lib:format("SAML IDP returned status: ~p "
+                                              "(second level status: ~p) in "
+                                              "logout response",
+                                              [Status, SecondLevelStatus]),
+                          {error, Msg};
+                      {error, E} ->
+                          ?log_debug("Logout resp validation failed: ~p", [E]),
+                          Msg = io_lib:format("Logout resp validation failed:"
+                                              " ~p", [E]),
+                          {error, Msg}
+                  end
+          catch
+              _:Reason ->
+                  ?log_debug("Failed to decode logout response:~n~p", [Reason]),
+                  Msg = io_lib:format("Logout response decode failed: ~p",
+                                      [Reason]),
                   {error, Msg}
           end
       end, NameResp, NameEnc, State).
