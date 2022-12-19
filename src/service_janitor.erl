@@ -94,9 +94,6 @@ init_topology_aware_service(Service) ->
     end.
 
 orchestrate_initial_rebalance(Service) ->
-    misc:with_trap_exit(?cut(do_orchestrate_initial_rebalance(Service))).
-
-do_orchestrate_initial_rebalance(Service) ->
     ProgressCallback =
         fun (Progress) ->
                 ?log_debug("Initial rebalance progress for `~p': ~p",
@@ -108,16 +105,24 @@ do_orchestrate_initial_rebalance(Service) ->
     DeltaNodes = [],
 
     Result =
-        service_manager:with_trap_exit_spawn_monitor_rebalance(
-          Service, KeepNodes, EjectNodes, DeltaNodes, ProgressCallback,
-          #{timeout => ?INITIAL_REBALANCE_TIMEOUT}),
+        try
+            service_manager:with_trap_exit_spawn_monitor_rebalance(
+              Service, KeepNodes, EjectNodes, DeltaNodes, ProgressCallback,
+              #{timeout => ?INITIAL_REBALANCE_TIMEOUT})
+        catch
+            exit:{service_rebalance_failed, _, _} = E ->
+                {error, E}
+        end,
 
     case Result of
+        ok ->
+            ok = ns_cluster_membership:set_service_map(Service, KeepNodes);
+        {error, {service_rebalance_failed, Service, Reason}} ->
+            {error, {initial_rebalance_failed, Service, Reason}};
         {error, {service_rebalance_timeout, Service}} ->
             ?log_error("Initial rebalance of service `~p` takes too long "
-                       "(timeout ~p)", [Service, ?INITIAL_REBALANCE_TIMEOUT]);
-        _ ->
-            ok
+                       "(timeout ~p)", [Service, ?INITIAL_REBALANCE_TIMEOUT]),
+            {error, {initial_rebalance_timeout, Service}}
     end.
 
 maybe_complete_pending_failover(Snapshot, Service) ->
@@ -202,8 +207,13 @@ complete_topology_aware_service_failover(Snapshot, Service) ->
     end.
 
 orchestrate_service_failover(Service, Nodes) ->
-    service_manager:with_trap_exit_spawn_monitor_failover(
-      Service, Nodes, #{}).
+    try
+        service_manager:with_trap_exit_spawn_monitor_failover(
+          Service, Nodes, #{})
+    catch
+        exit:{service_failover_failed, Service, Reason} ->
+            {error, {failover_failed, Service, Reason}}
+    end.
 
 handle_results(RVs) ->
     NotOKs = [R || R <- RVs, R =/= ok],
