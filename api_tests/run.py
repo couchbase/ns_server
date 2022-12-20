@@ -12,7 +12,6 @@
 import os
 import sys
 import getopt
-import time
 import shutil
 import inspect
 import atexit
@@ -187,8 +186,7 @@ def main():
 
     def kill_nodes():
         for c in clusters:
-            cluster_run_lib.kill_nodes(c.processes, terminal_attrs)
-
+            cluster_run_lib.kill_nodes(c.processes, c.urls, terminal_attrs)
     atexit.register(kill_nodes)
 
     if len(errors) > 0:

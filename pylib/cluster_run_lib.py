@@ -22,6 +22,7 @@ import urllib.error
 import json
 from functools import reduce
 import time
+from urllib.error import HTTPError
 
 base_direct_port = 12000
 base_api_port = 9000
@@ -529,7 +530,8 @@ def wait_nodes_up(num_nodes, start_index, timeout_s):
     [wait_node(start_index + i) for i in range(num_nodes)]
 
 
-def kill_nodes(nodes, terminal_attrs=None):
+def kill_nodes(nodes, urls, terminal_attrs=None):
+    sync_loggers(urls)
     for n in nodes:
         if n.write_side is not None:
             print("Closing %d\n" % n.write_side)
@@ -548,6 +550,18 @@ def kill_nodes(nodes, terminal_attrs=None):
     if terminal_attrs is not None:
         import termios
         termios.tcsetattr(sys.stdin, termios.TCSANOW, terminal_attrs)
+
+
+# Wait for final errors to be logged
+def sync_loggers(urls):
+    try:
+        for url in urls:
+            http_post(url + "/diag/eval", "ale:sync_all_sinks().")
+    except HTTPError as e:
+        print(f"Error encountered syncing loggers: {e.reason}\n"
+              f"Sleeping for 1 second to give the cluster the opportunity "
+              f"to flush logs.")
+        time.sleep(1)
 
 
 def bool_request_value(value):
@@ -575,6 +589,14 @@ def http_get(url):
     handler = urllib.request.HTTPBasicAuthHandler(password_mgr)
     o = urllib.request.build_opener(handler)
     return o.open(url).read()
+
+
+def http_post(url, data):
+    password_mgr = PasswordManager(default_username, default_pass)
+    handler = urllib.request.HTTPBasicAuthHandler(password_mgr)
+    o = urllib.request.build_opener(handler)
+    encoded_data = do_encode(data)
+    return o.open(url, encoded_data).read()
 
 
 def connect(num_nodes=0,
