@@ -2034,12 +2034,6 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                    addenv=[("CB_PASSWORD", memcached_pass)])
          for kind in ["collections-details"]],
 
-        [AllOsTask("fts mossScope (%s)" % path,
-                   ["mossScope", "stats", "diag", path],
-                   log_file="fts_store_stats.log")
-         for path in glob.glob(os.path.join(viewdir, "@fts", "*.pindex", "store"))
-            if any(".moss" in entry for entry in os.listdir(path))],
-
         [AllOsTask("fts scorch zap (%s)" % path,
                    ["cbft-bleve", "zap", "v11", "footer", path],
                    log_file="fts_store_stats.log")
