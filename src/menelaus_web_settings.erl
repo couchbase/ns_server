@@ -432,8 +432,6 @@ is_allowed_on_cluster([secure_headers]) ->
     cluster_compat_mode:is_cluster_70();
 is_allowed_on_cluster([event_logs_limit]) ->
     cluster_compat_mode:is_cluster_71();
-is_allowed_on_cluster([enforce_limits]) ->
-    cluster_compat_mode:is_cluster_71();
 is_allowed_on_cluster([magma_min_memory_quota]) ->
     cluster_compat_mode:is_cluster_71();
 is_allowed_on_cluster([password_hash_alg]) ->

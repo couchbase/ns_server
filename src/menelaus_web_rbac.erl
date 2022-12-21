@@ -1005,8 +1005,7 @@ validate_password(State) ->
               end
       end, password, State).
 
-put_user_validators(Req, GetUserIdFun, GroupCheckFun, ValidatePassword,
-                    ValidateLimits) ->
+put_user_validators(Req, GetUserIdFun, GroupCheckFun, ValidatePassword) ->
     ExtraRolesFun =
         fun (State) ->
             Id = {_, Domain} = GetUserIdFun(State),
@@ -1030,10 +1029,7 @@ put_user_validators(Req, GetUserIdFun, GroupCheckFun, ValidatePassword,
      validator_verify_security_roles_access(roles, Req, ?SECURITY_WRITE,
                                             ExtraRolesFun, _)] ++
     [validate_password(_) || ValidatePassword] ++
-    case ValidateLimits andalso cluster_compat_mode:is_cluster_71() of
-        true -> [validate_limits(_)];
-        false -> []
-    end ++
+    [validate_limits(_)] ++
     [validator:unsupported(_)].
 
 service_user_limit_validators(clusterManager) ->
@@ -1127,7 +1123,7 @@ handle_put_user_with_identity({_UserId, Domain} = Identity, Req) ->
       end, Req, form, put_user_validators(Req,
                                           fun (_) -> Identity end,
                                           menelaus_users:group_exists(_),
-                                          Domain == local, Domain == local)).
+                                          Domain == local)).
 
 validator_verify_security_roles_access(RolesName, Req, Permission,
                                        ExtraRolesFun, State) ->
@@ -2348,7 +2344,7 @@ validate_backup_users(Name, GroupsName, Req, State) ->
        validator:string_array(groups, _),
        validator_join(groups, ",", _),
        validate_auth(auth, _) |
-       put_user_validators(Req, GetUserIdFun, GroupExistsFun, false, false)],
+       put_user_validators(Req, GetUserIdFun, GroupExistsFun, false)],
       State).
 
 validator_join(Name, Sep, State) ->
