@@ -235,6 +235,8 @@ sanitize(Config, TagUserTuples) ->
                                   Key =:= disabled_userids ->
               TaggedUsers = [{tag_user_name(N), Src} || {N, Src} <- ListUsers],
               {stop, {Key, TaggedUsers}};
+          ({newURL, _URLBin}) ->
+              {stop, {newURL, "<sanitized>"}};
           (Other) ->
               Continue(Other)
       end, Config).
