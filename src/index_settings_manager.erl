@@ -158,7 +158,9 @@ general_settings_lens_props(ClusterVersion) ->
              {blobStorageBucket,
               id_lens(<<"indexer.settings.rebalance.blob_storage_bucket">>)},
              {blobStoragePrefix,
-              id_lens(<<"indexer.settings.rebalance.blob_storage_prefix">>)}];
+              id_lens(<<"indexer.settings.rebalance.blob_storage_prefix">>)},
+             {blobStorageRegion,
+              id_lens(<<"indexer.settings.rebalance.blob_storage_region">>)}];
         false ->
             []
     end ++
@@ -208,7 +210,9 @@ general_settings_defaults(ClusterVersion) ->
               config_profile:get_value({indexer, units_low_threshold}, 40)},
              {blobStorageScheme, <<"">>},
              {blobStorageBucket, <<"">>},
-             {blobStoragePrefix, <<"">>}];
+             {blobStoragePrefix, <<"">>},
+             {blobStorageRegion, <<"">>}];
+
         false ->
             []
     end ++
@@ -323,7 +327,8 @@ config_upgrade_test() ->
     CmdList3 = config_upgrade_to_elixir([]),
     [{set, {metakv, Meta3}, Data3}] = CmdList3,
     ?assertEqual(<<"/indexing/settings/config">>, Meta3),
-    ?assertEqual(<<"{\"indexer.settings.thresholds.mem_high\":70,"
+    ?assertEqual(<<"{\"indexer.settings.rebalance.blob_storage_region\":\"\","
+                   "\"indexer.settings.thresholds.mem_high\":70,"
                    "\"indexer.settings.thresholds.units_low\":40,"
                    "\"indexer.settings.rebalance.blob_storage_scheme\":\"\","
                    "\"indexer.settings.rebalance.blob_storage_prefix\":\"\","

@@ -50,7 +50,7 @@ get_settings() ->
     maybe_filter_settings(Settings).
 
 rebalance_blob_storage_params() ->
-    [blobStorageScheme, blobStorageBucket, blobStoragePrefix].
+    [blobStorageScheme, blobStorageBucket, blobStoragePrefix, blobStorageRegion].
 
 valid_rebalance_blob_storage_param(blobStorageScheme, State) ->
     validator:one_of(blobStorageScheme, ["s3"], State);
