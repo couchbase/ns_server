@@ -324,10 +324,13 @@ def create_cluster_satisfying(requirements, auth, start_index):
     # We might need a rebalance for multiple nodes
     rebalance = requirements.num_nodes > 1
     try:
-        cluster_run_lib.connect(num_nodes=requirements.num_nodes,
+        error = cluster_run_lib.connect(num_nodes=requirements.num_nodes,
                                 start_index=start_index,
                                 memsize=requirements.min_memsize,
-                                do_rebalance=rebalance)
+                                do_rebalance=rebalance,
+                                do_wait_for_rebalance=rebalance)
+        if error:
+            bad_args_exit(f"Failed to connect node(s). Status: {error}")
     except HTTPError as e:
         bad_args_exit(f"Failed to connect node(s). {e}\n"
                    f"Perhaps a node has already been started at "

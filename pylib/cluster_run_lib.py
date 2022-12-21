@@ -612,6 +612,7 @@ def connect(num_nodes=0,
             protocol="ipv4",
             encryption=False,
             do_rebalance=True,
+            do_wait_for_rebalance=False,
             storage_backend="couchstore"):
     if isinstance(deploy, list):
         services = deploy
@@ -715,5 +716,31 @@ def connect(num_nodes=0,
 
         o.open("http://{0}:{1}/controller/rebalance".format(addr, base_port),
                data).read()
+
+        if do_wait_for_rebalance:
+
+            def is_rebalance_running():
+                rebalance_running = False
+                tasks = http_get_json("http://{0}:{1}/pools/default/tasks"
+                                      .format(addr, base_port))
+                for task in tasks:
+                    if task.get("type") == "rebalance" and \
+                            task.get("status") == "running":
+                        rebalance_running = True
+                return rebalance_running
+
+            if is_rebalance_running():
+                print("Waiting for rebalance to finish", end='')
+                # Only wait for 10mins
+                timeout_time = time.time() + 600
+                while is_rebalance_running():
+                    if time.time() > timeout_time:
+                        print("Timed out waiting for rebalance")
+                        return 1
+                    print('.', end='')
+                    sys.stdout.flush()
+                    time.sleep(0.5)
+
+                print(" Finished.")
 
     return 0
