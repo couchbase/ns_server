@@ -490,7 +490,8 @@ handle_event({call, From}, {maybe_start_rebalance,
     Snapshot = chronicle_compat:get_snapshot(
                  [ns_bucket:fetch_snapshot(all, _, [uuid, props]),
                   ns_cluster_membership:fetch_snapshot(_),
-                  chronicle_master:fetch_snapshot(_)]),
+                  chronicle_master:fetch_snapshot(_)],
+                 #{read_consistency => quorum}),
 
     try
         case {EjectedNodes -- KnownNodes,
