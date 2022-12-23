@@ -106,9 +106,11 @@ on_groups(Fun, KeepNodes, Snapshot)  ->
 
 get_eligible_nodes(AllGroupNodes, KeepNodes, Snapshot) ->
     Actives = ns_cluster_membership:active_nodes(Snapshot, AllGroupNodes),
-    ActivePlusKeep = [N || N <- AllGroupNodes,
-                           lists:member(N, Actives) orelse
-                           (KeepNodes =/= undefined andalso lists:member(N, KeepNodes))],
+    ActivePlusKeep =
+        [N || N <- AllGroupNodes,
+              lists:member(N, Actives) orelse
+                                         (KeepNodes =/= undefined andalso
+                                          lists:member(N, KeepNodes))],
     ns_cluster_membership:service_nodes(Snapshot, ActivePlusKeep, kv).
 
 construct_zone(Nodes, Buckets) ->
