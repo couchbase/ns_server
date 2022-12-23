@@ -229,15 +229,14 @@ check_rebalance_condition(Check, Error) ->
 validate_rebalance(#{keep_nodes := KeepNodes,
                      delta_nodes := DeltaNodes,
                      delta_recovery_buckets := DeltaRecoveryBucketNames,
-                     services := Services} = Params) ->
+                     services := Services}) ->
     KVKeep = ns_cluster_membership:service_nodes(KeepNodes, kv),
     check_rebalance_condition(fun () -> KVKeep =/= [] end, no_kv_nodes_left),
 
     KVDeltaNodes = ns_cluster_membership:service_nodes(DeltaNodes, kv),
-    SkipKVRebalance = not should_rebalance_service(kv, Services),
 
     %% Pre-emptive check to see if delta recovery is possible.
-    SkipKVRebalance orelse
+    (not should_rebalance_service(kv, Services)) orelse
         check_rebalance_condition(
           fun () ->
                   BucketConfigs = ns_bucket:get_buckets(),
@@ -249,24 +248,17 @@ validate_rebalance(#{keep_nodes := KeepNodes,
                       {error, not_possible} ->
                           false
                   end
-          end, delta_recovery_not_possible),
+          end, delta_recovery_not_possible).
 
-    SkipKVRebalance orelse
-        check_rebalance_condition(
-          fun () ->
-                  %% defragment_zones can be missing in map if called
-                  %% from pre-Elixir nodes
-                  case bucket_placer:rebalance(
-                         KVKeep, maps:get(defragment_zones, Params,
-                                          undefined)) of
-                      {ok, Res} ->
-                          ok = ns_bucket:multi_prop_update(
-                                 desired_servers, Res),
-                          true;
-                      {error, Zones} ->
-                          throw({error, {need_more_space, Zones}})
-                  end
-          end, undefined).
+calculate_desired_servers(#{keep_nodes := KeepNodes} = Params) ->
+    %% defragment_zones can be missing in map if called from pre-Elixir nodes
+    case bucket_placer:rebalance(KeepNodes, maps:get(defragment_zones, Params,
+                                                     undefined)) of
+        {ok, Res} ->
+            Res;
+        {error, Zones} ->
+            throw({error, {need_more_space, Zones}})
+    end.
 
 start_link_rebalance(#{keep_nodes := KeepNodes,
                        eject_nodes := EjectNodes,
@@ -277,13 +269,20 @@ start_link_rebalance(#{keep_nodes := KeepNodes,
     proc_lib:start_link(
       erlang, apply,
       [fun () ->
-               try
-                   validate_rebalance(Params)
-               catch
-                   throw:{error, Error} ->
-                       proc_lib:init_ack({error, Error}),
-                       exit(normal)
-               end,
+               DesiredServers =
+                   try
+                       validate_rebalance(Params),
+                       case should_rebalance_service(kv, Services) of
+                           false ->
+                               undefined;
+                           true ->
+                               calculate_desired_servers(Params)
+                       end
+                   catch
+                       throw:{error, Error} ->
+                           proc_lib:init_ack({error, Error}),
+                           exit(normal)
+                   end,
 
                proc_lib:init_ack({ok, self()}),
 
@@ -291,7 +290,8 @@ start_link_rebalance(#{keep_nodes := KeepNodes,
                  self(), KeepNodes, EjectNodes, FailedNodes, DeltaNodes),
 
                rebalance(KeepNodes, EjectNodes, FailedNodes,
-                         DeltaNodes, DeltaRecoveryBucketNames, Services)
+                         DeltaNodes, DeltaRecoveryBucketNames, Services,
+                         DesiredServers)
        end, []]).
 
 should_rebalance_service(_, all) ->
@@ -472,19 +472,17 @@ do_maybe_delay_eject_nodes(Timestamps, EjectNodes) ->
     end.
 
 rebalance(KeepNodes, EjectNodesAll, FailedNodesAll,
-          DeltaNodes, DeltaRecoveryBucketNames, Services) ->
+          DeltaNodes, DeltaRecoveryBucketNames, Services, DesiredServers) ->
     ok = check_test_condition(rebalance_start),
     ok = leader_activities:run_activity(
            rebalance, majority,
            ?cut(rebalance_body(KeepNodes, EjectNodesAll,
                                FailedNodesAll,
                                DeltaNodes, DeltaRecoveryBucketNames,
-                               Services))).
+                               Services, DesiredServers))).
 
-rebalance_body(KeepNodes,
-               EjectNodesAll,
-               FailedNodesAll,
-               DeltaNodes, DeltaRecoveryBucketNames, Services) ->
+rebalance_body(KeepNodes, EjectNodesAll, FailedNodesAll, DeltaNodes,
+               DeltaRecoveryBucketNames, Services, DesiredServers) ->
     LiveNodes = KeepNodes ++ EjectNodesAll,
     LiveKVNodes = ns_cluster_membership:service_nodes(LiveNodes, kv),
 
@@ -535,8 +533,8 @@ rebalance_body(KeepNodes,
     ok = check_test_condition(rebalance_cluster_nodes_active),
 
     not should_rebalance_service(kv, Services) orelse
-        rebalance_kv(KeepNodes, EjectNodesAll, BucketConfigs,
-                     DeltaRecoveryBuckets),
+        rebalance_kv(KeepNodes, EjectNodesAll, DeltaRecoveryBuckets,
+                     DesiredServers),
     master_activity_events:note_rebalance_stage_completed(kv),
     rebalance_services(Services, KeepNodes, EjectNodesAll),
 
@@ -593,7 +591,10 @@ update_kv_progress(Progress) ->
 update_kv_progress(Nodes, Progress) ->
     update_kv_progress(dict:from_list([{N, Progress} || N <- Nodes])).
 
-rebalance_kv(KeepNodes, EjectNodes, BucketConfigs, DeltaRecoveryBuckets) ->
+rebalance_kv(KeepNodes, EjectNodes, DeltaRecoveryBuckets, DesiredServers) ->
+    ok = ns_bucket:multi_prop_update(desired_servers, DesiredServers),
+    BucketConfigs = ns_bucket:get_buckets(),
+
     NumBuckets = length(BucketConfigs),
     ?rebalance_debug("BucketConfigs = ~p", [sanitize(BucketConfigs)]),
 
@@ -1351,8 +1352,6 @@ drop_old_2i_indexes(KeepNodes) ->
 %%
 %% 'Kind' can be a bucket or a service.
 %%
-check_test_condition(undefined) ->
-    ok;
 check_test_condition(Step) ->
     check_test_condition(Step, []).
 
