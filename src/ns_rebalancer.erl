@@ -222,6 +222,52 @@ push_ns_config(Nodes) ->
             end
     end.
 
+check_rebalance_condition(Check, Error) ->
+    check_test_condition(Error) =:= ok orelse throw({error, Error}),
+    Check() orelse throw({error, Error}).
+
+validate_rebalance(#{keep_nodes := KeepNodes,
+                     delta_nodes := DeltaNodes,
+                     delta_recovery_buckets := DeltaRecoveryBucketNames,
+                     services := Services} = Params) ->
+    KVKeep = ns_cluster_membership:service_nodes(KeepNodes, kv),
+    check_rebalance_condition(fun () -> KVKeep =/= [] end, no_kv_nodes_left),
+
+    KVDeltaNodes = ns_cluster_membership:service_nodes(DeltaNodes, kv),
+    SkipKVRebalance = not should_rebalance_service(kv, Services),
+
+    %% Pre-emptive check to see if delta recovery is possible.
+    SkipKVRebalance orelse
+        check_rebalance_condition(
+          fun () ->
+                  BucketConfigs = ns_bucket:get_buckets(),
+                  case build_delta_recovery_buckets(
+                         KVKeep, KVDeltaNodes, BucketConfigs,
+                         DeltaRecoveryBucketNames) of
+                      {ok, _DeltaRecoveryBucketTuples} ->
+                          true;
+                      {error, not_possible} ->
+                          false
+                  end
+          end, delta_recovery_not_possible),
+
+    SkipKVRebalance orelse
+        check_rebalance_condition(
+          fun () ->
+                  %% defragment_zones can be missing in map if called
+                  %% from pre-Elixir nodes
+                  case bucket_placer:rebalance(
+                         KVKeep, maps:get(defragment_zones, Params,
+                                          undefined)) of
+                      {ok, Res} ->
+                          ok = ns_bucket:multi_prop_update(
+                                 desired_servers, Res),
+                          true;
+                      {error, Zones} ->
+                          throw({error, {need_more_space, Zones}})
+                  end
+          end, undefined).
+
 start_link_rebalance(#{keep_nodes := KeepNodes,
                        eject_nodes := EjectNodes,
                        failed_nodes := FailedNodes,
@@ -231,46 +277,13 @@ start_link_rebalance(#{keep_nodes := KeepNodes,
     proc_lib:start_link(
       erlang, apply,
       [fun () ->
-               KVKeep = ns_cluster_membership:service_nodes(KeepNodes, kv),
-               check_rebalance_condition(fun () -> KVKeep =/= [] end,
-                                         no_kv_nodes_left),
-
-               KVDeltaNodes = ns_cluster_membership:service_nodes(DeltaNodes,
-                                                                  kv),
-               SkipKVRebalance = not should_rebalance_service(kv, Services),
-
-               %% Pre-emptive check to see if delta recovery is possible.
-               SkipKVRebalance orelse
-                   check_rebalance_condition(
-                     fun () ->
-                             BucketConfigs = ns_bucket:get_buckets(),
-                             case build_delta_recovery_buckets(
-                                    KVKeep, KVDeltaNodes,
-                                    BucketConfigs,
-                                    DeltaRecoveryBucketNames) of
-                                 {ok, _DeltaRecoveryBucketTuples} ->
-                                     true;
-                                 {error, not_possible} ->
-                                     false
-                             end
-                     end, delta_recovery_not_possible),
-
-               SkipKVRebalance orelse
-                   check_rebalance_condition(
-                     fun () ->
-                             %% defragment_zones can be missing in map if called
-                             %% from pre-Elixir nodes
-                             case bucket_placer:rebalance(
-                                    KVKeep, maps:get(defragment_zones, Params,
-                                                     undefined)) of
-                                 {ok, Res} ->
-                                     ok = ns_bucket:multi_prop_update(
-                                            desired_servers, Res),
-                                     ok;
-                                 {error, Zones} ->
-                                     {error, {need_more_space, Zones}}
-                             end
-                     end),
+               try
+                   validate_rebalance(Params)
+               catch
+                   throw:{error, Error} ->
+                       proc_lib:init_ack({error, Error}),
+                       exit(normal)
+               end,
 
                proc_lib:init_ack({ok, self()}),
 
@@ -285,30 +298,6 @@ should_rebalance_service(_, all) ->
     true;
 should_rebalance_service(S, Services) ->
     lists:member(S, Services).
-
-check_rebalance_condition(Check) ->
-    check_rebalance_condition(Check, undefined).
-
-check_rebalance_condition(Check, Error) ->
-    case check_test_condition(Error) of
-        ok ->
-            case Check() of
-                true ->
-                    ok;
-                ok ->
-                    ok;
-                Other ->
-                    proc_lib:init_ack({error, case Other of
-                                                  false ->
-                                                      Error;
-                                                  {error, E} ->
-                                                      E
-                                              end}),
-                    exit(normal)
-            end;
-        _ ->
-            Error
-    end.
 
 move_vbuckets(Bucket, Moves) ->
     {ok, Config} = ns_bucket:get_bucket(Bucket),
