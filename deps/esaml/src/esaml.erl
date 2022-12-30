@@ -488,9 +488,14 @@ to_xml(#esaml_logoutreq{version = V, issue_instant = Time, destination = Dest, i
             #xmlElement{name = 'saml:Issuer', content = [#xmlText{value = Issuer}]},
             #xmlElement{name = 'saml:NameID',
                 attributes = NameIDAttrs,
-                content = [#xmlText{value = NameID}]},
-            #xmlElement{name = 'samlp:SessionIndex', content = [#xmlText{value = SessionIndex}]}
-        ]
+                content = [#xmlText{value = NameID}]}
+        ] ++ case is_list(SessionIndex) andalso length(SessionIndex) > 0 of
+                 true ->
+                    [#xmlElement{name = 'samlp:SessionIndex',
+                                 content = [#xmlText{value = SessionIndex}]}];
+                 false ->
+                    []
+             end
     });
 
 to_xml(#esaml_logoutresp{version = V, issue_instant  = Time,
