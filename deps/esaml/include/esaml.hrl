@@ -86,7 +86,8 @@
 	issue_instant = "" :: esaml:datetime(),
 	destination = "" :: string(),
 	issuer = "" :: string(),
-	status = unknown :: esaml:status_code()}).
+	status = unknown :: esaml:status_code(),
+	status_second_level = unknown :: esaml:status_code()}).
 
 -record(esaml_response, {
 	version = "2.0" :: esaml:version(),

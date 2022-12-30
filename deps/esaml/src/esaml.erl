@@ -220,6 +220,7 @@ decode_logout_response(Xml) ->
         ?xpath_attr_required("/samlp:LogoutResponse/@Version", esaml_logoutresp, version, bad_version),
         ?xpath_attr_required("/samlp:LogoutResponse/@IssueInstant", esaml_logoutresp, issue_instant, bad_response),
         ?xpath_attr_required("/samlp:LogoutResponse/samlp:Status/samlp:StatusCode/@Value", esaml_logoutresp, status, fun status_code_map/1, bad_response),
+        ?xpath_attr("/samlp:LogoutResponse/samlp:Status/samlp:StatusCode/samlp:StatusCode/@Value", esaml_logoutresp, status_second_level, fun status_code_map/1),
         ?xpath_attr("/samlp:LogoutResponse/@Destination", esaml_logoutresp, destination),
         ?xpath_text("/samlp:LogoutResponse/saml:Issuer/text()", esaml_logoutresp, issuer)
     ], #esaml_logoutresp{}).

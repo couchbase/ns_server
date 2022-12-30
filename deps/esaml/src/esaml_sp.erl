@@ -223,7 +223,10 @@ validate_logout_response(Xml, SP = #esaml_sp{}) ->
             end
         end,
         fun(LR = #esaml_logoutresp{status = success}) -> LR;
-           (#esaml_logoutresp{status = S}) -> {error, S} end
+           (#esaml_logoutresp{status = S,
+                              status_second_level = SecondStatus}) ->
+               {error, {status, S, SecondStatus}}
+        end
     ], Xml).
 
 %% @doc Validate and decode an assertion envelope in parsed XML
