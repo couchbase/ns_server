@@ -34,9 +34,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -export([init_stats/0, notify_counter/1, notify_counter/2, notify_gauge/2,
-         notify_histogram/2, notify_histogram/4, notify_max/2,
-         delete_gauge/1, delete_max/2, delete_counter/1, delete_stat/1,
-         prune/1]).
+         notify_histogram/2, notify_histogram/4, notify_max/2]).
 
 -export([increment_counter/2,
          get_ns_server_stats/0,
@@ -56,62 +54,15 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-get_name_label(Key) ->
-    case Key of
-        {T, {N, L}} when T =:= c orelse T =:= g ->
-            {N, L};
-        {mw, _, _, {N, L}} ->
-            {N, L};
-        {h, {N, L}, _, _} ->
-            {N, L}
-    end.
-
-prune(Condition) ->
-    prune(ets:whereis(?MODULE), Condition).
-
-prune(undefined, _Condition) ->
-    ok;
-prune(Tid, Condition) ->
-    ets:foldl(fun (Term, _Acc) ->
-                      Key = element(1, Term),
-                      {Name, Labels} = get_name_label(Key),
-                      Condition(Name, Labels) andalso delete_stat(Key)
-              end, undefined, Tid),
-    ok.
-
-delete_counter(Metric) ->
-    Key = get_counter_key(Metric),
-    delete_stat(Key).
-
-delete_gauge(Metric) ->
-    Key = get_gauge_key(Metric),
-    delete_stat(Key).
-
-delete_max(Metric, Window) ->
-    Key = get_mw_key(max, Window, Metric),
-    delete_stat(Key).
-
-delete_stat(Key) ->
-    ets:delete(?MODULE, Key).
-
-get_counter_key(Metric) ->
-    {c, normalized_metric(Metric)}.
-
-get_gauge_key(Metric) ->
-    {g, normalized_metric(Metric)}.
-
-get_mw_key(F, Window, Metric) ->
-    {mw, F, Window, normalized_metric(Metric)}.
-
 notify_counter(Metric) ->
     notify_counter(Metric, 1).
 notify_counter(Metric, Val) when Val > 0, is_integer(Val) ->
-    Key = get_counter_key(Metric),
+    Key = {c, normalized_metric(Metric)},
     catch ets:update_counter(?MODULE, Key, Val, {Key, 0}),
     ok.
 
 notify_gauge(Metric, Val) ->
-    Key = get_gauge_key(Metric),
+    Key = {g, normalized_metric(Metric)},
     catch ets:insert(?MODULE, {Key, Val}),
     ok.
 
@@ -611,7 +562,7 @@ normalized_metric({N, L}) when is_binary(N), is_list(L) ->
     {N, lists:usort(L)}.
 
 notify_moving_window(F, Metric, Window, BucketSize, Now, Table, Val) ->
-    Key = get_mw_key(F, Window, Metric),
+    Key = {mw, F, Window, normalized_metric(Metric)},
     Bucket = (Now div BucketSize) * BucketSize,
     try ets:lookup(Table, Key) of
         [] ->

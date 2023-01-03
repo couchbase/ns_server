@@ -49,9 +49,7 @@
 %% cleared every minute.
 -define(USER_TIMED_STATS, user_timed_stats).
 
--record(state, {cleanup_mref = undefined,
-                cleanup_pending = false,
-                cleanup_timer = undefined}).
+-record(state, {}).
 
 start_limits_cache() ->
     LimitsFilter =
@@ -130,16 +128,10 @@ note_egress(Req, EgressFun) when is_function(EgressFun, 0) ->
         false ->
             ok;
         {true, UUID, _Limits} ->
-            case menelaus_users:is_deleted_user(UUID) of
-                true ->
-                    ok;
-                false ->
-                    Egress = EgressFun(),
-                    Key = {UUID, egress},
-                    ets:update_counter(?USER_TIMED_STATS, Key, Egress,
-                                       {Key, 0}),
-                    ?MODULE ! {log_stat, Key}
-            end
+            Egress = EgressFun(),
+            Key = {UUID, egress},
+            ets:update_counter(?USER_TIMED_STATS, Key, Egress, {Key, 0}),
+            ?MODULE ! {log_stat, Key}
     end;
 note_egress(_Req, chunked) ->
     ok;
@@ -150,14 +142,6 @@ note_egress(_Req, <<"">>) ->
 note_egress(Req, Body) ->
     note_egress(Req, ?cut(iolist_size(Body))).
 
-user_storage_event(Pid, {local_user_deleted, _} = Msg) ->
-    Pid ! Msg;
-user_storage_event(Pid, {limits_version, {0, _Base}}) ->
-    %% user_storage restarted.
-    Pid ! cleanup_deleted_user_stats;
-user_storage_event(_, _) ->
-    ok.
-
 %% gen_server callbacks
 init([]) ->
     ?PID_USER_TABLE= ets:new(?PID_USER_TABLE, [named_table, set, protected]),
@@ -165,28 +149,18 @@ init([]) ->
     ?USER_TIMED_STATS = ets:new(?USER_TIMED_STATS,
                                 [named_table, set, public,
                                  {write_concurrency, true}]),
-    Self = self(),
-    ns_pubsub:subscribe_link(user_storage_events,
-                             user_storage_event(Self, _)),
-    Self ! cleanup_deleted_user_stats,
-    erlang:send_after(?ONE_MINUTE, Self, clear_timed_stats),
+    timer:send_after(?ONE_MINUTE, self(), clear_timed_stats),
     {ok, #state{}}.
 
 handle_call({note_identity_request, Pid, UUID, Ingress}, _From, State) ->
     MRef = erlang:monitor(process, Pid),
-    case menelaus_users:is_deleted_user(UUID) of
-        true ->
-            ok;
-        false ->
-            ets:insert_new(?PID_USER_TABLE, {Pid, MRef, UUID}),
-            NRC = ets:update_counter(?USER_STATS,
-                                     {UUID, num_concurrent_requests}, 1,
-                                     {{UUID, num_concurrent_requests}, 0}),
-            IC = ets:update_counter(?USER_TIMED_STATS, {UUID, ingress}, Ingress,
-                                    {{UUID, ingress}, 0}),
-            log_stats(num_concurrent_requests, UUID, NRC),
-            log_stats(ingress, UUID, IC)
-    end,
+    ets:insert_new(?PID_USER_TABLE, {Pid, MRef, UUID}),
+    NRC = ets:update_counter(?USER_STATS, {UUID, num_concurrent_requests}, 1,
+                             {{UUID, num_concurrent_requests}, 0}),
+    IC = ets:update_counter(?USER_TIMED_STATS, {UUID, ingress}, Ingress,
+                            {{UUID, ingress}, 0}),
+    log_stats(num_concurrent_requests, UUID, NRC),
+    log_stats(ingress, UUID, IC),
     {reply, ok, State};
 handle_call(Request, _From, State) ->
     ?log_error("Got unknown request ~p", [Request]),
@@ -214,63 +188,21 @@ handle_info({log_stat, {UUID, Stat} = Key} = Msg, State) ->
             %% May have cleared the USER_TIMED_STATS
             ok;
         [{Key, Val}] ->
-            case menelaus_users:is_deleted_user(UUID) of
-                true ->
-                    ok;
-                false ->
-                    log_stats(Stat, UUID, Val)
-            end
+            log_stats(Stat, UUID, Val)
     end,
     {noreply, State};
-handle_info({'DOWN', MRef, process, _Pid, Reason},
-            #state{cleanup_mref = MRef,
-                   cleanup_pending = Pending} = State) ->
-    TRef = case Reason of
-               normal ->
-                   case Pending of
-                       true ->
-                           ?log_debug("Re-doing cleanup_deleted_user_stats."),
-                           self() ! cleanup_deleted_user_stats,
-                           undefined;
-                       false ->
-                           undefined
-                   end;
-               _ ->
-                   ?log_debug("Failed cleanup_deleted_user_stats, retrying."),
-                   erlang:send_after(?ONE_MINUTE, self(),
-                                     cleanup_deleted_user_stats)
-           end,
-    {noreply, State#state{cleanup_mref = undefined,
-                          cleanup_pending = false,
-                          cleanup_timer = TRef}};
 handle_info({'DOWN', MRef, process, Pid, _Reason}, State) ->
     [{Pid, MRef, UUID}] = ets:take(?PID_USER_TABLE, Pid),
     decrement_num_concurrent_request(UUID),
     {noreply, State};
 handle_info(clear_timed_stats, State) ->
     true = ets:delete_all_objects(?USER_TIMED_STATS),
-    erlang:send_after(?ONE_MINUTE, self(), clear_timed_stats),
+    timer:send_after(?ONE_MINUTE, self(), clear_timed_stats),
     {noreply, State};
-handle_info({local_user_deleted, UUID}, State) ->
-    ?log_debug("Deleting stats for ~p", [UUID]),
-    delete_user_stats(binary_to_list(UUID)),
-    {noreply, State};
-handle_info(cleanup_deleted_user_stats,
-            #state{cleanup_mref = undefined,
-                   cleanup_timer = TRef} = State) ->
-    cancel_timer(TRef),
-    misc:flush(cleanup_deleted_user_stats),
-    {Pid, MRef} = misc:spawn_monitor(fun cleanup_deleted_user_stats/0),
-    ?log_debug("Clearing all user stats ~p", [{Pid, MRef}]),
-    {noreply, State#state{cleanup_mref = MRef,
-                          cleanup_pending = false,
-                          cleanup_timer = undefined}};
-handle_info(cleanup_deleted_user_stats, State) ->
-    misc:flush(cleanup_deleted_user_stats),
-    {noreply, State#state{cleanup_pending = true}};
 handle_info(Msg, State) ->
     ?log_error("Got unknown message ~p", [Msg]),
     {noreply, State}.
+
 
 terminate(_Reason, _State) ->
     ok.
@@ -279,27 +211,17 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %% Internal
-cancel_timer(undefined) ->
-    ok;
-cancel_timer(Tref) ->
-    erlang:cancel_timer(Tref).
-
 decrement_num_concurrent_request(UUID) ->
-    case menelaus_users:is_deleted_user(UUID) of
-        true ->
-            ok;
-        false ->
-            Count = ets:update_counter(?USER_STATS,
-                                       {UUID, num_concurrent_requests},
-                                       -1),
-            case Count of
-                0 ->
-                    ets:delete(?USER_STATS, {UUID, num_concurrent_requests});
-                _ ->
-                    ok
-            end,
-            log_stats(num_concurrent_requests, UUID, Count)
-    end.
+    Count = ets:update_counter(?USER_STATS,
+                               {UUID, num_concurrent_requests},
+                               -1),
+    case Count of
+        0 ->
+            ets:delete(?USER_STATS, {UUID, num_concurrent_requests});
+        _ ->
+            ok
+    end,
+    log_stats(num_concurrent_requests, UUID, Count).
 
 check_user_restricted(UUID, Limits) ->
     RV = lists:filter(
@@ -367,37 +289,3 @@ log_stats(Stat, UUID, Count) ->
     ns_server_stats:notify_max(
       {{<<StatBin/binary, "_1m_max">>, [{user_uuid, UUID}]}, 60000, 1000},
       Count).
-
-delete_user_stats(UUID) ->
-    ets:delete(?USER_STATS, {UUID, num_concurrent_requests}),
-    ets:delete(?USER_TIMED_STATS, {UUID, ingress}),
-    ets:delete(?USER_TIMED_STATS, {UUID, egress}),
-    ns_server_stats:delete_gauge({num_concurrent_requests,
-                                  [{user_uuid, UUID}]}),
-    lists:foreach(
-      fun (Stat) ->
-              StatBin = atom_to_binary(Stat, latin1),
-              ns_server_stats:delete_max(
-                {<<StatBin/binary, "_1m_max">>, [{user_uuid, UUID}]}, 60000)
-      end, [egress, ingress]),
-    lists:foreach(
-      fun (L) ->
-              ns_server_stats:delete_counter({<<"limits_exceeded">>,
-                                              [{user_uuid, UUID}, {limit, L}]})
-      end, [num_concurrent_requests, ingress, egress]).
-
-cleanup_deleted_user_stats() ->
-    ns_server_stats:prune(
-      fun (Name, Labels) when Name =:= <<"num_concurrent_requests">> orelse
-                              Name =:= <<"ingress_1m_max">> orelse
-                              Name =:= <<"egress_1m_max">> orelse
-                              Name =:= <<"limits_exceeded">> ->
-              case proplists:get_value(user_uuid, Labels) of
-                  undefined ->
-                      false;
-                  UUID ->
-                      menelaus_users:is_deleted_user(UUID)
-              end;
-          (_Name, _Labels) ->
-              false
-      end).
