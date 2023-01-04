@@ -173,14 +173,13 @@ node_bucket_info(Node, Config, Snapshot, Bucket, BucketUUID, BucketConfig) ->
         alternate_addresses_json(Node, Config, Snapshot, WantedPorts),
     Info = case ns_bucket:bucket_type(BucketConfig) of
                membase ->
-                   Url =
-                       ?COUCHDB_ENABLED(
-                          capi_utils:capi_bucket_url_bin(Node, Bucket,
-                                                         BucketUUID,
-                                                         ?LOCALHOST_MARKER_STRING),
-                          <<"">>),
-                   [{couchApiBase, Url} | Info0];
-               _ ->
+                  ?COUCHDB_ENABLED(
+                     [{couchApiBase,
+                       capi_utils:capi_bucket_url_bin(Node, Bucket, BucketUUID,
+                                                      ?LOCALHOST_MARKER_STRING)}],
+                      [])
+                   ++ Info0;
+                       _ ->
                    Info0
            end,
     {Info}.

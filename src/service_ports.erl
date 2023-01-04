@@ -59,9 +59,6 @@ all_ports() ->
      ?define_port(memcached_dedicated_ssl_port, undefined, kv, 11206,
                   secure, memcached_dedicated_port),
      ?define_port(memcached_prometheus,         undefined, kv, 11280),
-     ?define_port(capi_port,                    capi,      kv, 8092),
-     ?define_port(ssl_capi_port,                capiSSL,   kv, 18092,
-                  secure, capi_port),
      %% projector ports - depending on the cluster encryption setting,
      %%                   projector hosts either an SSL or non-SSL endpoint.
      %%                   Hence assigning the same port for both types.
@@ -121,8 +118,12 @@ all_ports() ->
      ?define_port(backup_http_port,  backupAPI,      backup, 8097),
      ?define_port(backup_https_port, backupAPIHTTPS, backup, 18097, secure,
                   backup_http_port),
-     ?define_port(backup_grpc_port,  backupGRPC,     backup, 9124)
-    ].
+     ?define_port(backup_grpc_port,  backupGRPC,     backup, 9124)]
+        ++ ?COUCHDB_ENABLED(
+              [?define_port(capi_port, capi, kv, 8092),
+               ?define_port(ssl_capi_port, capiSSL, kv, 18092,
+                            secure, capi_port)],
+              []).
 
 offline_upgrade(Config) ->
     IsEnterprise= cluster_compat_mode:is_enterprise(Config),

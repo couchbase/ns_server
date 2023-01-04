@@ -430,8 +430,9 @@ build_failover_status(Snapshot, Node) ->
     end.
 
 build_couch_api_base(WantENode, LocalAddr) ->
-    [{Key, URL} || {Key, Node} <- [{couchApiBase, WantENode},
-                                   {couchApiBaseHTTPS, {ssl, WantENode}}],
+    [{Key, URL} || {Key, Node} <- ?COUCHDB_ENABLED([{couchApiBase, WantENode},
+                                                    {couchApiBaseHTTPS,
+                                                     {ssl, WantENode}}], []),
                    URL <- [capi_utils:capi_url_bin(Node, <<"/">>, LocalAddr)],
                    URL =/= undefined].
 

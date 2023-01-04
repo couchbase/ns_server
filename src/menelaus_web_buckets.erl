@@ -144,8 +144,10 @@ add_couch_api_base_loop([Node | RestNodes],
     end.
 
 add_couch_api_base(BucketName, BucketUUID, KV, Node, LocalAddr) ->
-    NodesKeysList = [{Node, couchApiBase}, {{ssl, Node}, couchApiBaseHTTPS}],
-
+    %% Must completely remove these, as they are used as a signal to the SDK's
+    %% regarding whether or not we support views on this couchbase cluster.
+    NodesKeysList = ?COUCHDB_ENABLED([{Node, couchApiBase},
+                                      {{ssl, Node}, couchApiBaseHTTPS}], []),
     lists:foldl(fun({N, Key}, KVAcc) ->
                         case capi_utils:capi_bucket_url_bin(N, BucketName,
                                                             BucketUUID, LocalAddr) of
@@ -155,8 +157,7 @@ add_couch_api_base(BucketName, BucketUUID, KV, Node, LocalAddr) ->
                                 {ok, BCfg} = ns_bucket:get_bucket(BucketName),
                                 case ns_bucket:bucket_type(BCfg) of
                                     membase ->
-                                        [{Key,
-                                          ?COUCHDB_ENABLED(Url, <<"">>)} | KVAcc];
+                                        [{Key, Url} | KVAcc];
                                     _ ->
                                         KVAcc
                                 end
