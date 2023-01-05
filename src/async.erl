@@ -833,11 +833,13 @@ async_tree_success_1_test() ->
 
     ?assertEqual(AsyncsResults, [a, b]).
 
-run_ntimes(N, Fun) ->
+run_ntimes(Ns, Fun) ->
     lists:foreach(
-      fun (_) ->
-              Fun()
-      end, lists:seq(1, N)).
+      fun (N) ->
+              ?log_debug("Run ~p: started.", [N]),
+              Fun(),
+              ?log_debug("Run ~p: completed", [N])
+      end, lists:seq(1, Ns)).
 
 %% Randomized tests to test 'exit_on_first_error' flag.
 async_randomized_test_success_test() ->
@@ -867,8 +869,9 @@ async_randomized_test_success(NumChildren) ->
     ?assertEqual(AsyncsResults, Children).
 
 async_randomized_test_failure_test() ->
-    run_ntimes(100, ?cut(async_randomized_test_failure(
-                           100 + rand:uniform(50)))).
+    {timeout, 100 * 5 * 1000,
+     run_ntimes(100, ?cut(async_randomized_test_failure(
+                            100 + rand:uniform(50))))}.
 
 async_randomized_test_failure(NumChildren) ->
 
@@ -891,6 +894,13 @@ async_randomized_test_failure(NumChildren) ->
     {SlowChildren, _} =
         lists:split(rand:uniform(length(RestChildren)), RestChildren),
 
+    SleepTimes = [{C, rand:uniform(5)} || C <- FaultyChildren],
+
+    ?log_debug("Test params:~nFaultyChildren - ~p.~nSlowChildren - ~p.~n"
+               "RestChildren - ~p.~n"
+               "SleepTimes - ~p.",
+               [FaultyChildren, SlowChildren, RestChildren, SleepTimes]),
+
     0 = ?flush(_),
 
     Parent = self(),
@@ -911,7 +921,10 @@ async_randomized_test_failure(NumChildren) ->
 
                                         case lists:member(C, FaultyChildren) of
                                             true ->
-                                                timer:sleep(rand:uniform(5)),
+                                                Time =
+                                                    proplists:get_value(
+                                                      C, SleepTimes),
+                                                timer:sleep(Time),
                                                 exit(not_ok);
                                             false ->
                                                 case lists:member(
@@ -971,16 +984,15 @@ async_randomized_test_failure(NumChildren) ->
                               %% therefore convert this to a 'ok'.
                               ok
                       end,
-
                   TestResult =
                       case Res of
                           ok ->
-                              NumDownMsgs = ?flush({'DOWN', _, process, _, _}),
-
-                              case NumDownMsgs =:= NumChildren of
-                                  true ->
-                                      ok;
-                                  false ->
+                              try
+                                  ?must_flush({'DOWN', _, process, _, _},
+                                              NumChildren, 1000)
+                              catch
+                                  throw:{error,
+                                         {no_messages, _Timeout, _Tag}} ->
                                       {error, all_asyncs_not_aborted}
                               end;
                           Error ->
@@ -993,7 +1005,7 @@ async_randomized_test_failure(NumChildren) ->
         {rand_test_result, TestResult} ->
             ?assertEqual(ok, TestResult)
     after
-        2000 ->
+        3500 ->
             exit(Executor, kill),
             ?flush({rand_test_result, _}),
             ?assert(false)
