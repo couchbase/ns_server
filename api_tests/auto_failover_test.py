@@ -440,11 +440,3 @@ class OnPremAutoFailoverSettingsTest(AutoFailoverSettingsTestBase):
 
     def server_test(self, cluster):
         self.run_combinations()
-
-class ServerlessAutoFailoverSettingsTest(AutoFailoverSettingsTestBase):
-    @staticmethod
-    def requirements():
-        return testlib.ClusterRequirements(serverless=True)
-
-    def server_test(self, cluster):
-        self.run_combinations()

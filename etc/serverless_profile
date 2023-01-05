@@ -24,4 +24,3 @@
 {{prometheus, default_high_card_services},
     [index, fts, kv, cbas, eventing, ns_server, n1ql]}.
 {{couchdb, disabled}, true}.
-{failover_disable_max_count, true}.
