@@ -621,10 +621,16 @@ cancel_tasks(Conn, Tasks) ->
       end, Tasks).
 
 find_stale_tasks(#state{tasks = {_Rev, Tasks}} = _State) ->
-    find_tasks_by_types([?TASK_TYPE_REBALANCE,
-                         ?TASK_TYPE_PAUSE_BUCKET,
-                         ?TASK_TYPE_RESUME_BUCKET,
-                         ?TASK_TYPE_PREPARED], Tasks).
+    %% Services expect the rebalance/pause/resume tasks to be cancelled before
+    %% the prepare tasks. Reorder these tasks accordingly.
+    NonPrepareTasks =
+        find_tasks_by_types([?TASK_TYPE_REBALANCE,
+                             ?TASK_TYPE_PAUSE_BUCKET,
+                             ?TASK_TYPE_RESUME_BUCKET], Tasks),
+    PrepareTasks =
+        find_tasks_by_type(?TASK_TYPE_PREPARED, Tasks),
+
+    NonPrepareTasks ++ PrepareTasks.
 
 cleanup_service(#state{conn = Conn} = State) ->
     Stale = find_stale_tasks(State),
