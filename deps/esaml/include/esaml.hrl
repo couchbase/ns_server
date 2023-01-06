@@ -34,7 +34,7 @@
 	org = #esaml_org{} :: esaml:org(),
 	tech = #esaml_contact{} :: esaml:contact(),
 	signed_requests = true :: boolean(),
-	certificate :: binary() | undefined,
+	certificates = [] :: [binary()],
 	entity_id = "" :: string(),
 	login_redirect_location = "" :: string(),
 	login_post_location = "" :: string(),

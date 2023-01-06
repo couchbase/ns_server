@@ -22,6 +22,17 @@
         end
     end).
 
+-define(xpath_generic_many(XPath, Record, Field, TransFun, TargetType, NotFoundRet),
+    fun(Resp) ->
+        case xmerl_xpath:string(XPath, Xml, [{namespace, Ns}]) of
+            L when is_list(L) ->
+                Res = [TransFun(V) || #TargetType{value = V} <- L],
+                Resp#Record{Field = Res};
+            _ ->
+                NotFoundRet
+        end
+    end).
+
 -define(xpath_attr(XPath, Record, Field),
     ?xpath_generic(XPath, Record, Field, xmlAttribute, Resp)).
 -define(xpath_attr(XPath, Record, Field, TransFun),
@@ -36,6 +47,8 @@
     ?xpath_generic(XPath, Record, Field, xmlText, Resp)).
 -define(xpath_text(XPath, Record, Field, TransFun),
     ?xpath_generic(XPath, Record, Field, TransFun, xmlText, Resp)).
+-define(xpath_text_many(XPath, Record, Field, TransFun),
+    ?xpath_generic_many(XPath, Record, Field, TransFun, xmlText, Resp)).
 
 -define(xpath_text_required(XPath, Record, Field, Error),
     ?xpath_generic(XPath, Record, Field, xmlText, {error, Error})).
