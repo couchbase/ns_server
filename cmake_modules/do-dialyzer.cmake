@@ -22,7 +22,8 @@ IF (NOT EXISTS "${COUCHBASE_PLT}")
     deps/gen_smtp
     deps/chronicle
     deps/enacl
-    deps/esaml)
+    deps/esaml
+    deps/iso8601)
 ENDIF (NOT EXISTS "${COUCHBASE_PLT}")
 
 # Compute list of .beam files
