@@ -241,26 +241,22 @@ save_docs(Docs, #state{name = TableName,
                        child_module = ChildModule,
                        child_state = ChildState} = State) ->
     ?log_debug("Saving ~b docs", [length(Docs)]),
-    {OldDocs, Live} =
-        lists:mapfoldl(
+    Live =
+        lists:foldl(
           fun(Doc, Acc) ->
-                  {case ets:lookup(TableName, get_id(Doc)) of
-                       [Found] -> Found;
-                       [] -> false
-                   end,
-                   case is_deleted(Doc) of
-                       true ->
-                           %% The doc is deleted so we need to remove it
-                           %% from the ETS table.
-                           ets:delete(TableName, get_id(Doc)),
-                           Acc;
-                       false -> [Doc | Acc]
-                   end}
+              case is_deleted(Doc) of
+                  true ->
+                      %% The doc is deleted so we need to remove it
+                      %% from the ETS table.
+                      ets:delete(TableName, get_id(Doc)),
+                      Acc;
+                  false -> [Doc | Acc]
+              end
           end, [], Docs),
     ok = dets:insert(TableName, Docs),
     %% Only insert live, non-deleted documents
     true = ets:insert(TableName, Live),
-    NewChildState = ChildModule:on_save(Docs, OldDocs, ChildState),
+    NewChildState = ChildModule:on_save(Docs, ChildState),
     ?log_debug("save complete"),
     {ok, State#state{child_state = NewChildState}}.
 
