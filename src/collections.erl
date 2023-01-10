@@ -751,8 +751,7 @@ verify_oper({create_collection, ScopeName, Name, _}, Manifest, Snapshot) ->
                           false ->
                               ok;
                           true ->
-                              {scope_limit, ScopeName,
-                               max_number_exceeded, num_collections}
+                              {max_number_exceeded, num_collections}
                       end;
                   _ ->
                       {collection_already_exists, ScopeName, Name}
