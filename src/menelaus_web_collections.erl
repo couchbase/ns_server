@@ -420,26 +420,16 @@ nodes_validator(BucketNodes, Req, State) ->
               end
       end, nodes, State).
 
-log_stat_scope_limit_exceeded(UUID, BucketName, ScopeName) ->
+log_stat_scope_limit_exceeded(BucketName, ScopeName) ->
     ns_server_stats:notify_counter(
       {<<"limits_exceeded">>,
        [{bucket, BucketName},
         {scope, ScopeName},
-        {user_uuid, UUID},
         {limit, collection_limit}]}).
 
-maybe_log_scope_limit_stats(Req, Bucket, Errors) ->
-    Identity = menelaus_auth:get_identity(Req),
-    case Identity of
-        {_, local} ->
-            UUID = binary_to_list(
-                     menelaus_users:get_user_uuid(Identity)),
-            [log_stat_scope_limit_exceeded(UUID, Bucket, ScopeName) ||
-             {scope_limit, ScopeName, max_number_exceeded,
-              num_collections} <- Errors];
-        _ ->
-            ok
-    end.
+maybe_log_scope_limit_stats(Bucket, Errors) ->
+    [log_stat_scope_limit_exceeded(Bucket, ScopeName) ||
+     {scope_limit, ScopeName, max_number_exceeded, num_collections} <- Errors].
 
 get_err_code_msg(forbidden) ->
     {"Operation is not allowed due to insufficient permissions", 403};
@@ -516,14 +506,14 @@ handle_rv({ok, {Uid, _}}, Req, Bucket) ->
 handle_rv({ok, Uid}, Req, _Bucket) ->
     menelaus_util:reply_json(Req, {[{uid, Uid}]}, 200);
 handle_rv({errors, List}, Req, Bucket) when is_list(List) ->
-    maybe_log_scope_limit_stats(Req, Bucket, List),
+    maybe_log_scope_limit_stats(Bucket, List),
     Errors = lists:map(fun (Elem) ->
                                {_, Msg, _} = get_formatted_err_msg(Elem),
                                Msg
                        end, lists:usort(List)),
     menelaus_util:reply_json(Req, {[{errors, Errors}]}, 400);
 handle_rv(Error, Req, Bucket) ->
-    maybe_log_scope_limit_stats(Req, Bucket, [Error]),
+    maybe_log_scope_limit_stats(Bucket, [Error]),
     {GKey, Msg, Code} = get_formatted_err_msg(Error),
     reply_global_error(Req, GKey, Msg, Code).
 
