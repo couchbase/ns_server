@@ -243,7 +243,13 @@ local_node_status(Buckets0) ->
 
 get_buckets_status(Buckets) ->
     ReadyBuckets = ns_memcached:warmed_buckets(?NS_MEMCACHED_TIMEOUT),
-    NotReadyBuckets = Buckets -- ReadyBuckets,
+
+    %% Paused buckets need to be excluded for any consideration of failover as
+    %% they will either be deleted on successful pause, or go back to warmed
+    %% state upon a pause failure
+    PausedBuckets = ns_memcached:paused_buckets(),
+
+    NotReadyBuckets = Buckets -- (ReadyBuckets ++ PausedBuckets),
     case NotReadyBuckets =/= [] of
         true ->
             ?log_warning("The following buckets are not ready: ~p", [NotReadyBuckets]);

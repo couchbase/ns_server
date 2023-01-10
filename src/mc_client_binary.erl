@@ -36,6 +36,8 @@
          refresh_isasl/1,
          noop/1,
          select_bucket/2,
+         pause_bucket/2,
+         unpause_bucket/2,
          deselect_bucket/1,
          set_vbucket/3,
          set_vbucket/4,
@@ -79,7 +81,8 @@
                      ?CMD_SASL_LIST_MECHS | ?CMD_SASL_AUTH | ?CMD_SASL_STEP |
                      ?CMD_CREATE_BUCKET | ?CMD_DELETE_BUCKET |
                      ?CMD_EXPAND_BUCKET |
-                     ?CMD_SELECT_BUCKET | ?CMD_SET_PARAM | ?CMD_GET_REPLICA |
+                     ?CMD_SELECT_BUCKET | ?CMD_PAUSE_BUCKET |
+                     ?CMD_UNPAUSE_BUCKET | ?CMD_SET_PARAM | ?CMD_GET_REPLICA |
                      ?CMD_SET_VBUCKET | ?CMD_GET_VBUCKET | ?CMD_DELETE_VBUCKET |
                      ?CMD_ISASL_REFRESH | ?CMD_GET_META | ?CMD_GETQ_META |
                      ?CMD_SET_WITH_META | ?CMD_SETQ_WITH_META |
@@ -339,15 +342,26 @@ noop(Sock) ->
         Response -> process_error_response(Response)
     end.
 
-select_bucket(Sock, BucketName) ->
-    report_counter(?FUNCTION_NAME),
-    case cmd(?CMD_SELECT_BUCKET, Sock, undefined, undefined,
+issue_bucket_cmd(CmdOpCode, Sock, BucketName) ->
+    case cmd(CmdOpCode, Sock, undefined, undefined,
              {#mc_header{},
               #mc_entry{key = BucketName}}) of
         {ok, #mc_header{status=?SUCCESS}, _ME, _NCB} ->
             ok;
         Response -> process_error_response(Response)
     end.
+
+select_bucket(Sock, BucketName) ->
+    report_counter(?FUNCTION_NAME),
+    issue_bucket_cmd(?CMD_SELECT_BUCKET, Sock, BucketName).
+
+pause_bucket(Sock, BucketName) ->
+    report_counter(?FUNCTION_NAME),
+    issue_bucket_cmd(?CMD_PAUSE_BUCKET, Sock, BucketName).
+
+unpause_bucket(Sock, BucketName) ->
+    report_counter(?FUNCTION_NAME),
+    issue_bucket_cmd(?CMD_UNPAUSE_BUCKET, Sock, BucketName).
 
 deselect_bucket(Sock) ->
     select_bucket(Sock, ?NO_BUCKET).

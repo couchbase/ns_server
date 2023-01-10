@@ -61,10 +61,12 @@
 -define(CMD_AUDIT_PUT, 16#27).
 -define(CMD_AUDIT_CONFIG_RELOAD, 16#28).
 
--define(CMD_CREATE_BUCKET, 16#85).
--define(CMD_DELETE_BUCKET, 16#86).
--define(CMD_EXPAND_BUCKET, 16#88).
--define(CMD_SELECT_BUCKET, 16#89).
+-define(CMD_CREATE_BUCKET,  16#85).
+-define(CMD_DELETE_BUCKET,  16#86).
+-define(CMD_EXPAND_BUCKET,  16#88).
+-define(CMD_SELECT_BUCKET,  16#89).
+-define(CMD_PAUSE_BUCKET,   16#8a).
+-define(CMD_UNPAUSE_BUCKET, 16#8b).
 
 -define(CMD_SET_VBUCKET,     16#3d).
 -define(CMD_GET_VBUCKET,     16#3e).

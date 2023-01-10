@@ -32,6 +32,7 @@
 -define(CHECK_INTERVAL, 10000).
 -define(CHECK_WARMUP_INTERVAL, 500).
 -define(CONNECT_DONE_RETRY_INTERVAL, 500).
+-define(PAUSED_TIMEOUT, 5000).
 -define(TIMEOUT,             ?get_timeout(outer, 300000)).
 -define(TIMEOUT_HEAVY,       ?get_timeout(outer_heavy, 300000)).
 -define(TIMEOUT_VERY_HEAVY,  ?get_timeout(outer_very_heavy, 360000)).
@@ -62,10 +63,11 @@
           fast_calls_queue = impossible :: queue:queue(),
           heavy_calls_queue = impossible :: queue:queue(),
           very_heavy_calls_queue = impossible :: queue:queue(),
-          status :: connecting | init | connected | warmed,
+          status :: connecting | init | connected | warmed | paused,
           start_time :: undefined | tuple(),
           bucket :: bucket_name(),
           worker_features = [],
+          worker_pids :: [pid()],
           sock = still_connecting :: port() | still_connecting,
           work_requests = [],
           warmup_stats = [] :: [{binary(), binary()}],
@@ -78,7 +80,9 @@
 -export([active_buckets/0,
          warmed_buckets/0,
          warmed_buckets/1,
+         paused_buckets/0,
          get_all_buckets_details/0,
+         get_bucket_state/1,
          mark_warmed/2,
          mark_warmed/1,
          disable_traffic/2,
@@ -165,6 +169,7 @@ init(Bucket) ->
                bucket = Bucket,
                worker_features = get_worker_features(),
                work_requests = [],
+               worker_pids = [],
                fast_calls_queue = Q,
                heavy_calls_queue = Q,
                very_heavy_calls_queue = Q,
@@ -253,6 +258,8 @@ handle_call(connected_and_list_vbuckets, From, State) ->
     handle_connected_call(list_vbuckets, From, State);
 handle_call({connected_and_list_vbucket_details, Keys}, From, State) ->
     handle_connected_call({get_vbucket_details_stats, all, Keys}, From, State);
+handle_call(warmed, _From, #state{status = paused} = State) ->
+    {reply, false, State};
 handle_call(warmed, From, #state{status = warmed} = State) ->
     %% A bucket is set to "warmed" state in ns_memcached,
     %% after the bucket is loaded in memcached and ns_server
@@ -267,6 +274,10 @@ handle_call(warmed, From, #state{status = warmed} = State) ->
     %% responsive.
     handle_call(verify_warmup, From, State);
 handle_call(warmed, _From, State) ->
+    {reply, false, State};
+handle_call(paused, _From, #state{status = paused} = State) ->
+    {reply, true, State};
+handle_call(paused, _From, State) ->
     {reply, false, State};
 handle_call(disable_traffic, _From, State) ->
     case State#state.status of
@@ -288,6 +299,35 @@ handle_call(disable_traffic, _From, State) ->
             end;
         _ ->
             {reply, bad_status, State}
+    end;
+handle_call(prepare_pause_bucket, _From,
+            #state{sock = Sock, worker_pids = WorkerPids} = State) ->
+    %% Memcached will close all selected sockets when it processes the pause,
+    %% so prepare for a graceful pause so that it doesn't crash ns_memcached
+    [misc:unlink_terminate_and_wait(Pid, shutdown) || Pid <- WorkerPids],
+    ok = mc_client_binary:deselect_bucket(Sock),
+    ?log_debug("Prepare pause completed"),
+    {reply, ok, State#state{worker_pids = []}};
+handle_call(complete_pause_bucket, _From, #state{bucket=Bucket} = State) ->
+    ?log_debug("Pausing completed for bucket: ~p", [Bucket]),
+    {reply, ok, State#state{status=paused}};
+handle_call({unpause_bucket, Bucket}, _From, #state{bucket = Bucket,
+                                                    sock = Sock} = State) ->
+    ?log_info("Unpausing bucket: ~p", [Bucket]),
+    case mc_client_binary:unpause_bucket(Sock, Bucket) of
+        ok ->
+            ?log_debug("Unpaused bucket: ~p", [Bucket]),
+            %% Happens on pause failure, at that point we unpause and
+            %% re-initialize
+            {stop, unpaused, ok, State};
+        {memcached_error,key_eexists,_} ->
+            ?log_debug("Bucket ~p already unpaused", [Bucket]),
+            %% Re-initialize in this case as well because this also happens on
+            %% pause failure
+            {stop, unpaused, ok, State};
+        {memcached_error, _, _} = Error ->
+            ?log_error("Unpausing bucket ~p failed: ~p", [Bucket, Error]),
+            {reply, Error, State}
     end;
 handle_call(mark_warmed, _From, #state{status=Status,
                                        bucket=Bucket,
@@ -729,8 +769,9 @@ handle_info({connect_done, WorkersCount, RV}, #state{bucket = Bucket,
                                      sock = Sock,
                                      status = init
                                     },
-                    [proc_lib:spawn_link(erlang, apply, [fun worker_init/2,
-                                                         [Self, InitialState]])
+                    WorkerPids = [proc_lib:spawn_link(erlang,
+                                                      apply, [fun worker_init/2,
+                                                      [Self, InitialState]])
                      || _ <- lists:seq(1, WorkersCount)],
 
                     chronicle_compat_events:subscribe(
@@ -751,7 +792,7 @@ handle_info({connect_done, WorkersCount, RV}, #state{bucket = Bucket,
                               Self ! check_config_soon
                       end),
 
-                    {noreply, InitialState};
+                    {noreply, InitialState#state{worker_pids = WorkerPids}};
                 {error, {bucket_create_error,
                          {memcached_error, key_eexists, _}}} ->
                     ?log_debug("ensure_bucket failed as bucket ~p has not "
@@ -759,6 +800,11 @@ handle_info({connect_done, WorkersCount, RV}, #state{bucket = Bucket,
                     erlang:send_after(?CONNECT_DONE_RETRY_INTERVAL, Self,
                                       {connect_done, WorkersCount, RV}),
                     {noreply, State};
+                {error, bucket_paused} ->
+                    ?log_debug("Bucket is paused: ~p", [Bucket]),
+                    {noreply, State#state{start_time = os:timestamp(),
+                                          sock = Sock,
+                                          status = paused}};
                 Error ->
                     ?log_info("ensure_bucket failed: ~p", [Error]),
                     {stop, Error}
@@ -949,6 +995,17 @@ warmed(Node, Bucket, Timeout) ->
             false
     end.
 
+-spec paused(node(), bucket_name(), pos_integer() | infinity) -> boolean().
+paused(Node, Bucket, Timeout) ->
+    try
+        do_call({server(Bucket), Node}, Bucket, paused, Timeout)
+    catch
+        T:E:Stack ->
+            ?log_debug("Failure to check if bucket ~p is paused on ~p.~n~p",
+                       [Bucket, Node, {T, E, Stack}]),
+            false
+    end.
+
 -spec mark_warmed([node()], bucket_name())
                  -> Result
                         when Result :: {Replies, BadNodes},
@@ -970,6 +1027,14 @@ warmed_buckets(Timeout) ->
             fun (Bucket) ->
                     {Bucket, warmed(dist_manager:this_node(), Bucket,
                                     Timeout)}
+            end, active_buckets(), infinity),
+    [Bucket || {Bucket, true} <- RVs].
+
+paused_buckets() ->
+    RVs = misc:parallel_map(
+            fun (Bucket) ->
+                    {Bucket, paused(dist_manager:this_node(), Bucket,
+                                    ?PAUSED_TIMEOUT)}
             end, active_buckets(), infinity),
     [Bucket || {Bucket, true} <- RVs].
 
@@ -1196,11 +1261,27 @@ set_vbuckets(Bucket, ToSet) ->
 
 -spec pause_bucket(bucket_name()) -> ok | {error, any()}.
 pause_bucket(Bucket) ->
-    do_call(server(Bucket), Bucket, pause_bucket_stub, ?TIMEOUT_VERY_HEAVY).
+    ok = gen_server:call(server(Bucket), prepare_pause_bucket,
+                         ?TIMEOUT_VERY_HEAVY),
+    Rv = perform_very_long_call(
+           fun(Sock) ->
+                   Reply = mc_client_binary:pause_bucket(Sock, Bucket),
+                   {reply, Reply}
+           end
+          ),
+    case Rv of
+        ok ->
+            gen_server:call(server(Bucket), complete_pause_bucket,
+                            ?TIMEOUT_VERY_HEAVY);
+        Error ->
+            ?log_error("Pausing bucket ~p failed: ~p", [Bucket, Error]),
+            failure
+    end.
 
 -spec unpause_bucket(bucket_name()) -> ok | {error, any()}.
 unpause_bucket(Bucket) ->
-    do_call(server(Bucket), Bucket, unpause_bucket_stub, ?TIMEOUT_VERY_HEAVY).
+    gen_server:call(server(Bucket), {unpause_bucket, Bucket},
+                    ?TIMEOUT_VERY_HEAVY).
 
 -spec stats(bucket_name(), binary() | string()) ->
                    {ok, [{binary(), binary()}]} | mc_error().
@@ -1331,7 +1412,12 @@ ensure_bucket(Sock, Bucket, BucketSelected) ->
             {error, {bucket_create_error,
                      {memcached_error, key_eexists, not_used}}};
         false ->
-            ensure_bucket_inner(Sock, Bucket, BucketSelected)
+            case get_bucket_state(Bucket) of
+                <<"paused">> ->
+                    {error, bucket_paused};
+                _ ->
+                    ensure_bucket_inner(Sock, Bucket, BucketSelected)
+            end
     end.
 
 ensure_bucket_inner(Sock, Bucket, BucketSelected) ->
@@ -1653,24 +1739,29 @@ set_tls_config(Config) ->
           end
       end).
 
-get_all_buckets_details() ->
+get_bucket_stats(RootKey, StatKey, SubKey) ->
     perform_very_long_call(
-      fun (Sock) ->
-              case mc_client_binary:stats(Sock, <<"bucket_details">>,
-                                          fun (K, V, Acc) ->
+      fun(Sock) ->
+              case mc_client_binary:stats(Sock, RootKey,
+                                          fun(K, V, Acc) ->
                                                   [{K, V} | Acc]
                                           end, []) of
                   {ok, BucketsDetailsRaw} ->
                       {BucketDetails} =
-                        ejson:decode(proplists:get_value(<<"bucket details">>,
-                                                         BucketsDetailsRaw)),
-                      Buckets = proplists:get_value(<<"buckets">>,
-                                                    BucketDetails),
-                      {reply, Buckets};
+                          ejson:decode(proplists:get_value(StatKey,
+                                                           BucketsDetailsRaw)),
+                      {reply, proplists:get_value(SubKey, BucketDetails)};
                   Err ->
                       {reply, Err}
               end
       end).
+
+get_all_buckets_details() ->
+    get_bucket_stats(<<"bucket_details">>, <<"bucket details">>, <<"buckets">>).
+
+get_bucket_state(Bucket) ->
+    get_bucket_stats(list_to_binary("bucket_details " ++ Bucket),
+                     list_to_binary(Bucket), <<"state">>).
 
 -spec get_failover_log(bucket_name(), vbucket_id()) ->
                               [{integer(), integer()}] | mc_error().
