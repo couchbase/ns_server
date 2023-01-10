@@ -169,9 +169,6 @@ child_specs() ->
       {gen_event, start_link, [{local, audit_events}]},
       permanent, brutal_kill, worker, dynamic},
 
-     {user_request_throttler, {user_request_throttler, start_link, []},
-      permanent, 1000, worker, [user_request_throttler]},
-
      {menelaus, {menelaus_sup, start_link, []},
       permanent, infinity, supervisor,
       [menelaus_sup]},

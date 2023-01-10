@@ -332,7 +332,7 @@ handle_range_post_validated(List, PermFilters, Now, Req) ->
 reply_with_chunked_json_array(Fun, Req) ->
     HTTPResp = menelaus_util:reply_ok(
                  Req, "application/json; charset=utf-8", chunked),
-    Write = menelaus_util:write_chunk(Req, _, HTTPResp),
+    Write = mochiweb_response:write_chunk(_, HTTPResp),
     Write(<<"[">>),
     ReportFun = fun (JsonToWrite, IsFirst) ->
                     case IsFirst of

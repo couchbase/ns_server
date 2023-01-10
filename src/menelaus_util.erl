@@ -79,7 +79,6 @@
          global_error_exception/2,
          require_permission/2,
          server_error_report/4,
-         write_chunk/3,
          proxy_req/7,
          respond/2,
          survive_web_server_restart/1]).
@@ -281,7 +280,6 @@ reply_ok(Req, ContentType, Body, ExtraHeaders) ->
     Peer = mochiweb_request:get(peer, Req),
     Resp = mochiweb_request:ok(
              {ContentType, response_headers(Req, ExtraHeaders), Body}, Req),
-    user_request_throttler:note_egress(Req, Body),
     log_web_hit(Peer, Req, Resp),
     Resp.
 
@@ -294,21 +292,11 @@ reply(Req, Code, ExtraHeaders) ->
 reply(Req, Body, Code, ExtraHeaders) ->
     respond(Req, {Code, response_headers(Req, ExtraHeaders), Body}).
 
-respond(Req, {_, _, chunked} = RespTuple) ->
-    do_respond(Req, RespTuple);
-respond(Req, {_, _, Body} = RespTuple) ->
-    user_request_throttler:note_egress(Req, Body),
-    do_respond(Req, RespTuple).
-
-do_respond(Req, RespTuple) ->
+respond(Req, RespTuple) ->
     Peer = mochiweb_request:get(peer, Req),
     Resp = mochiweb_request:respond(RespTuple, Req),
     log_web_hit(Peer, Req, Resp),
     Resp.
-
-write_chunk(Req, Body, Resp) ->
-    user_request_throttler:note_egress(Req, Body),
-    mochiweb_response:write_chunk(Body, Resp).
 
 -include_lib("kernel/include/file.hrl").
 
@@ -349,8 +337,6 @@ serve_file(Req, File, Root, ExtraHeaders) ->
     Resp = mochiweb_request:serve_file(
              File, Root,
              response_headers(Req, ExtraHeaders ++ [{allow_cache, true}]), Req),
-    user_request_throttler:note_egress(
-      Req, ?cut(filelib:file_size(filename:join([Root, File])))),
     log_web_hit(Peer, Req, Resp),
     Resp.
 
@@ -584,9 +570,9 @@ send_chunked(Req, StatusCode, ExtraHeaders) ->
                           chunked}),
            pipes:foreach(?producer(),
                          fun (Part) ->
-                                 write_chunk(Req, Part, Resp)
+                             mochiweb_response:write_chunk(Part, Resp)
                          end),
-           write_chunk(Req, <<>>, Resp)
+           mochiweb_response:write_chunk(<<>>, Resp)
        end).
 
 handle_streaming(FetchDataFun, Req) ->
@@ -624,21 +610,21 @@ handle_streaming(Req, DataBody, NotifyTag) ->
 
 handle_streaming(Req, DataBody, HTTPRes, LastRes, {NotifyTag, _} = Update) ->
     Res =
-        try streaming_inner(Req, DataBody, HTTPRes, LastRes, Update)
+        try streaming_inner(DataBody, HTTPRes, LastRes, Update)
         catch exit:normal ->
-                write_chunk(Req, "", HTTPRes),
+                mochiweb_response:write_chunk("", HTTPRes),
                 exit(normal)
         end,
     request_tracker:hibernate(Req, ?MODULE, handle_streaming_wakeup,
                               [Req, DataBody, HTTPRes, Res, NotifyTag]).
 
-streaming_inner(Req, DataBody, HTTPRes, LastRes, Update) ->
+streaming_inner(DataBody, HTTPRes, LastRes, Update) ->
     case DataBody(LastRes, Update) of
         no_data ->
             LastRes;
         {Res, Data} ->
-            write_chunk(Req, Data, HTTPRes),
-            write_chunk(Req, "\n\n\n\n", HTTPRes),
+            mochiweb_response:write_chunk(Data, HTTPRes),
+            mochiweb_response:write_chunk("\n\n\n\n", HTTPRes),
             Res
     end.
 
@@ -748,7 +734,7 @@ handle_resp({ok, {{StatusCode, _ReasonPhrase}, RcvdHeaders, Pid}},
   when is_pid(Pid) ->
     SendHeaders = RespHeaderFilterFun(RcvdHeaders),
     Resp = menelaus_util:reply(Req, chunked, StatusCode, SendHeaders),
-    stream_body(Req, Pid, Resp);
+    stream_body(Pid, Resp);
 handle_resp({ok, {{StatusCode, _ReasonPhrase}, RcvdHeaders, undefined = _Body}},
             RespHeaderFilterFun, Req) ->
     SendHeaders = RespHeaderFilterFun(RcvdHeaders),
@@ -759,13 +745,13 @@ handle_resp({error, _Reason} = Error, _RespHeaderFilterFun, Req) ->
     ?log_error("http client error ~p~n", [Error]),
     menelaus_util:reply_text(Req, <<"Unexpected server error">>, 500).
 
-stream_body(Req, Pid, Resp) ->
+stream_body(Pid, Resp) ->
     case lhttpc:get_body_part(Pid) of
         {ok, Part} when is_binary(Part) ->
-            write_chunk(Req, Part, Resp),
-            stream_body(Req, Pid, Resp);
+            mochiweb_response:write_chunk(Part, Resp),
+            stream_body(Pid, Resp);
         {ok, {http_eob, _Trailers}} ->
-            write_chunk(Req, <<>>, Resp)
+            mochiweb_response:write_chunk(<<>>, Resp)
     end.
 
 survive_web_server_restart(Fun) ->

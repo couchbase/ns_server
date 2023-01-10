@@ -1237,17 +1237,13 @@ perform_action(Req, {Permission, Fun, Args}) ->
     NewReq = menelaus_auth:apply_headers(Req, Headers),
     case RV of
         allowed ->
-            ReqBody =
-                fun () ->
-                        case get_bucket_id(Permission) of
-                            false ->
-                                check_uuid(Fun, Args, NewReq);
-                            Bucket ->
-                                check_bucket_uuid(Bucket, fun check_uuid/3,
-                                                  [Fun, Args], NewReq)
-                        end
-                end,
-            user_request_throttler:request(NewReq, ReqBody);
+            case get_bucket_id(Permission) of
+                false ->
+                    check_uuid(Fun, Args, NewReq);
+                Bucket ->
+                    check_bucket_uuid(Bucket, fun check_uuid/3, [Fun, Args],
+                                      NewReq)
+            end;
         auth_failure ->
             ns_audit:auth_failure(NewReq),
             menelaus_util:require_auth(NewReq);
