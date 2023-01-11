@@ -36,6 +36,8 @@
 	signed_requests = true :: boolean(),
 	certificates = [] :: [binary()],
 	entity_id = "" :: string(),
+	valid_until :: calendar:datetime() | undefined,
+	cache_duration :: [{atom(), term()}] | undefined,
 	login_redirect_location = "" :: string(),
 	login_post_location = "" :: string(),
 	logout_redirect_location = "" :: string(),
