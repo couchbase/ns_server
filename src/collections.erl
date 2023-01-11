@@ -422,8 +422,7 @@ do_update(Bucket, Operation) ->
         LastSeenIdsWithUUID ->
             chronicle_kv:transaction(
               kv, [key(Bucket), ns_bucket:uuid_key(Bucket),
-                   chronicle_master:failover_opaque_key(),
-                   cluster_compat_version],
+                   chronicle_master:failover_opaque_key()],
               update_txn(Bucket, Operation, OtherBucketCounts,
                          ScopeCollectionLimits, LastSeenIdsWithUUID, _),
               #{read_consistency => quorum})
@@ -445,7 +444,7 @@ update_txn(Bucket, Operation, OtherBucketCounts, ScopeCollectionLimits,
                         Manifest ->
                             do_update_with_manifest(
                               Bucket, Manifest, Operation, OtherBucketCounts,
-                              ScopeCollectionLimits, LastSeenIds, Snapshot)
+                              ScopeCollectionLimits, LastSeenIds)
                     end;
                 false ->
                     {abort, {error, not_found}}
@@ -453,13 +452,13 @@ update_txn(Bucket, Operation, OtherBucketCounts, ScopeCollectionLimits,
     end.
 
 do_update_with_manifest(Bucket, Manifest, Operation, OtherBucketCounts,
-                        ScopeCollectionLimits, LastSeenIds, Snapshot) ->
+                        ScopeCollectionLimits, LastSeenIds) ->
     ?log_debug("Perform operation ~p on manifest ~p of bucket ~p",
                [Operation, get_uid(Manifest), Bucket]),
     CompiledOperation = compile_operation(Operation, Bucket, Manifest),
     case ns_bucket:get_bucket(Bucket) of
         {ok, BucketConf} ->
-            case perform_operations(Manifest, CompiledOperation, Snapshot,
+            case perform_operations(Manifest, CompiledOperation,
                                     BucketConf) of
                 {ok, Manifest} ->
                     {abort, {not_changed, uid(Manifest)}};
@@ -497,15 +496,15 @@ advance_manifest_id(_Operation, Manifest) ->
                              {uid, proplists:get_value(next_uid, Manifest)}),
             next_uid).
 
-perform_operations(_Manifest, {error, Error}, _Snapshot, _BucketConf) ->
+perform_operations(_Manifest, {error, Error}, _BucketConf) ->
     Error;
-perform_operations(Manifest, [], _Snapshot, _BucketConf) ->
+perform_operations(Manifest, [], _BucketConf) ->
     {ok, Manifest};
-perform_operations(Manifest, [Operation | Rest], Snapshot, BucketConf) ->
-    case verify_oper(Operation, Manifest, Snapshot) of
+perform_operations(Manifest, [Operation | Rest], BucketConf) ->
+    case verify_oper(Operation, Manifest) of
         ok ->
             perform_operations(handle_oper(Operation, Manifest, BucketConf),
-                               Rest, Snapshot, BucketConf);
+                               Rest, BucketConf);
         Error ->
             ?log_debug("Operation ~p failed with error ~p", [Operation, Error]),
             Error
@@ -701,7 +700,7 @@ compile_operation({set_manifest, Roles, RequiredScopes0, CheckUid},
 compile_operation(Oper, _Bucket, _Manifest) ->
     [Oper].
 
-verify_oper({update_limits, Name, _Limits}, Manifest, _Snapshot) ->
+verify_oper({update_limits, Name, _Limits}, Manifest) ->
     Scopes = get_scopes(Manifest),
     case find_scope(Name, Scopes) of
         undefined ->
@@ -709,7 +708,7 @@ verify_oper({update_limits, Name, _Limits}, Manifest, _Snapshot) ->
         _ ->
             ok
     end;
-verify_oper({check_uid, CheckUid}, Manifest, _Snapshot) ->
+verify_oper({check_uid, CheckUid}, Manifest) ->
     ManifestUid = proplists:get_value(uid, Manifest),
     case CheckUid =:= ManifestUid orelse CheckUid =:= undefined of
         true ->
@@ -717,7 +716,7 @@ verify_oper({check_uid, CheckUid}, Manifest, _Snapshot) ->
         false ->
             uid_mismatch
     end;
-verify_oper({create_scope, Name, _Limits}, Manifest, _Snapshot) ->
+verify_oper({create_scope, Name, _Limits}, Manifest) ->
     Scopes = get_scopes(Manifest),
     case find_scope(Name, Scopes) of
         undefined ->
@@ -725,27 +724,25 @@ verify_oper({create_scope, Name, _Limits}, Manifest, _Snapshot) ->
         _ ->
             {scope_already_exists, Name}
     end;
-verify_oper({drop_scope, "_default"}, _Manifest, _Snapshot) ->
+verify_oper({drop_scope, "_default"}, _Manifest) ->
     cannot_drop_default_scope;
-verify_oper({drop_scope, ?SYSTEM_SCOPE_NAME}, _Manifest, _Snapshot) ->
+verify_oper({drop_scope, ?SYSTEM_SCOPE_NAME}, _Manifest) ->
     cannot_drop_system_scope;
-verify_oper({drop_scope, Name}, Manifest, _Snapshot) ->
+verify_oper({drop_scope, Name}, Manifest) ->
     with_scope(fun (_) -> ok end, Name, Manifest);
-verify_oper({create_collection, ScopeName, "_default", _}, _Manifest,
-            _Snapshot) ->
+verify_oper({create_collection, ScopeName, "_default", _}, _Manifest) ->
     {cannot_create_default_collection, ScopeName};
 verify_oper({create_collection, ?SYSTEM_SCOPE_NAME, _Name, _},
-            _Manifest, _Snapshot) ->
+            _Manifest) ->
     {cannot_create_collection_in_system_scope};
-verify_oper({create_collection, ScopeName, Name, _}, Manifest, Snapshot) ->
+verify_oper({create_collection, ScopeName, Name, _}, Manifest) ->
     with_scope(
       fun (Scope) ->
               Collections = get_collections(Scope),
               Limit = get_limit(clusterManager, num_collections, Scope),
               case find_collection(Name, Collections) of
                   undefined ->
-                      case cluster_compat_mode:should_enforce_limits(
-                             Snapshot) andalso
+                      case cluster_compat_mode:should_enforce_limits() andalso
                            Limit =/= infinity andalso
                            length(Collections) >= Limit of
                           false ->
@@ -758,12 +755,12 @@ verify_oper({create_collection, ScopeName, Name, _}, Manifest, Snapshot) ->
               end
       end, ScopeName, Manifest);
 verify_oper({drop_collection, ?SYSTEM_SCOPE_NAME, "_" ++ _ = CollectionName},
-            _Manifest, _Snapshot) ->
+            _Manifest) ->
     {cannot_drop_system_collection, ?SYSTEM_SCOPE_NAME, CollectionName};
-verify_oper({drop_collection, ScopeName, Name}, Manifest, _Snapshot) ->
+verify_oper({drop_collection, ScopeName, Name}, Manifest) ->
     with_collection(fun (_) -> ok end, ScopeName, Name, Manifest);
 verify_oper({modify_collection, ScopeName, Name, SuppliedProps},
-            Manifest, _Snapshot) ->
+            Manifest) ->
     %% We are only allowed to change history for a collection at the moment.
     AllowedCollectionPropChanges = [{history}],
     with_collection(
@@ -798,7 +795,7 @@ verify_oper({modify_collection, ScopeName, Name, SuppliedProps},
                     {cannot_modify_properties, Name, InvalidProps}
             end
         end, ScopeName, Name, Manifest);
-verify_oper(bump_epoch, _Manifest, _Snapshot) ->
+verify_oper(bump_epoch, _Manifest) ->
     ok.
 
 handle_oper({update_limits, Name, Limits}, Manifest, _BucketConf) ->
@@ -1219,7 +1216,7 @@ update_manifest_test_setup() ->
     meck:new(ns_bucket, [passthrough]),
 
     meck:expect(cluster_compat_mode, should_enforce_limits,
-                fun(_) -> false end),
+                fun() -> false end),
     meck:expect(cluster_compat_mode, is_cluster_70, fun () -> true end),
 
     % Return some scope/collection values high enough for us to not worry about
@@ -1250,11 +1247,10 @@ update_with_manifest(Manifest, Operation) ->
     Bucket = "bucket",
     OtherBucketCounts = {0,0},
     LastSeenIds = [{check, [0,0,0]}],
-    Snapshot = [],
     ScopeCollectionLimits = {max_scopes_per_bucket(),
                              max_collections_per_bucket()},
     do_update_with_manifest(Bucket, Manifest, Operation, OtherBucketCounts,
-                            ScopeCollectionLimits, LastSeenIds, Snapshot).
+                            ScopeCollectionLimits, LastSeenIds).
 
 update_manifest_test_create_collection(Manifest, Scope, Name, Props) ->
     update_with_manifest(Manifest, {create_collection, Scope, Name, Props}).
