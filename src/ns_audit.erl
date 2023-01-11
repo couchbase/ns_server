@@ -31,8 +31,7 @@
          modify_bucket/4,
          delete_bucket/2,
          flush_bucket/2,
-         create_scope/5,
-         update_scope/5,
+         create_scope/4,
          drop_scope/4,
          create_collection/5,
          modify_collection/5,
@@ -412,8 +411,7 @@ code(admin_password_reset) ->
     8266;
 code(modify_analytics_settings) ->
     8267;
-code(update_scope) ->
-    8268;
+%% 8268 (update_scope) removed in 7.5
 code(delete_cluster_ca) ->
     8269;
 code(modify_collection) ->
@@ -904,18 +902,10 @@ set_user_profile(Req, Identity, Json) ->
 delete_user_profile(Req, Identity) ->
     put(delete_user_profile, Req, [{identity, get_identity(Identity)}]).
 
-get_scope_params(BucketName, ScopeName, Props, Uid) ->
-    [{bucket_name, BucketName},
-     {scope_name, ScopeName},
-     {new_manifest_uid, Uid}] ++ Props.
-
-update_scope(Req, BucketName, ScopeName, Props, Uid) ->
-    put(update_scope, Req,
-        get_scope_params(BucketName, ScopeName, Props, Uid)).
-
-create_scope(Req, BucketName, ScopeName, Props, Uid) ->
+create_scope(Req, BucketName, ScopeName, Uid) ->
     put(create_scope, Req,
-        get_scope_params(BucketName, ScopeName, Props, Uid)).
+        [{bucket_name, BucketName}, {scope_name, ScopeName},
+         {new_manifest_uid, Uid}]).
 
 drop_scope(Req, BucketName, ScopeName, Uid) ->
     put(drop_scope, Req,

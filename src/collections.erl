@@ -54,7 +54,6 @@
          get_scopes/1,
          get_collections/1,
          diff_manifests/2,
-         jsonify_limits/1,
          last_seen_ids_key/2,
          last_seen_ids_set/3,
          chronicle_upgrade_to_72/2]).
@@ -326,9 +325,6 @@ manifest_json(Identity, Bucket, Snapshot) ->
                          Manifest),
     jsonify_manifest(FilteredManifest, true).
 
-jsonify_limits(Limits) ->
-    {[{S, {L}} || {S, L} <- Limits]}.
-
 jsonify_manifest(Manifest, WithDefaults) ->
     ScopesJson =
         lists:map(
@@ -337,7 +333,8 @@ jsonify_manifest(Manifest, WithDefaults) ->
                                    [] ->
                                        [];
                                    Limits ->
-                                       [{limits, jsonify_limits(Limits)}]
+                                       [{limits,
+                                         {[{S, {L}} || {S, L} <- Limits]}}]
                                end,
                   {[{name, list_to_binary(ScopeName)},
                     {uid, uid(Scope)},

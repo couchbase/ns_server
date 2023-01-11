@@ -36,16 +36,6 @@ handle_get(Bucket, Req) ->
       Req, collections:manifest_json(menelaus_auth:get_identity(Req),
                                      Bucket, direct)).
 
-get_scope_props_json(Limits) ->
-    Limits1 = case Limits of
-                     no_limits ->
-                         [];
-                     _ ->
-                         Limits
-                 end,
-    LimitsJson = ejson:encode(collections:jsonify_limits(Limits1)),
-    [{limits, LimitsJson}].
-
 handle_post_scope(Bucket, Req) ->
     assert_api_available(Bucket),
 
@@ -54,21 +44,14 @@ handle_post_scope(Bucket, Req) ->
               Name = proplists:get_value(name, Values),
               Limits = proplists:get_value(limits, Values, no_limits),
               RV = collections:create_scope(Bucket, Name, Limits),
-              LimitsJSON = get_scope_props_json(Limits),
               case {RV, Limits} of
                   {{scope_already_exists, _}, L} when L =/= no_limits ->
-                      Ret = collections:update_limits(Bucket, Name, Limits),
-                      maybe_audit(Ret, Req,
-                                  ns_audit:update_scope(
-                                    _, Bucket, Name,
-                                    LimitsJSON, _)),
-                      handle_rv(Ret, Req);
+                      RV1 = collections:update_limits(Bucket, Name, Limits),
+                      handle_rv(RV1, Req);
                   _ ->
                       maybe_audit(RV, Req,
-                                  ns_audit:create_scope(
-                                    _, Bucket, Name,
-                                    LimitsJSON, _)),
-                      maybe_add_event_log(RV, Bucket, LimitsJSON),
+                          ns_audit:create_scope(_, Bucket, Name, _)),
+                      maybe_add_event_log(RV, Bucket, []),
                       handle_rv(RV, Req)
               end
       end, Req, form,
