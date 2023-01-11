@@ -272,8 +272,6 @@ default() ->
         {xattr_enabled, true},
         {scramsha_fallback_salt, {memcached_config_mgr, get_fallback_salt, []}},
         {collections_enabled, {memcached_config_mgr, collections_enabled, []}},
-        {enforce_tenant_limits_enabled,
-         {memcached_config_mgr, should_enforce_limits, []}},
         {max_connections, max_connections},
         {system_connections, system_connections},
         {num_reader_threads, num_reader_threads},
@@ -474,9 +472,12 @@ upgrade_config_from_7_2_to_elixir(Config) ->
     DefaultConfig = default(),
     do_upgrade_config_from_7_2_to_elixir(Config, DefaultConfig).
 
-do_upgrade_config_from_7_2_to_elixir(_Config, DefaultConfig) ->
+do_upgrade_config_from_7_2_to_elixir(Config, DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig),
-     upgrade_key(memcached_defaults, DefaultConfig)].
+     upgrade_key(memcached_defaults, DefaultConfig),
+     upgrade_sub_keys(memcached_config,
+                      [{delete, enforce_tenant_limits_enabled}],
+                      Config, DefaultConfig)].
 
 encrypt_config_val(Val) ->
     {ok, Encrypted} = encryption_service:encrypt(term_to_binary(Val)),
