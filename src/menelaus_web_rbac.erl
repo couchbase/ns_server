@@ -1032,34 +1032,37 @@ put_user_validators(Req, GetUserIdFun, GroupCheckFun, ValidatePassword) ->
     [validate_limits(_)] ++
     [validator:unsupported(_)].
 
-service_user_limit_validators(clusterManager) ->
+ns_server_user_limit_validators() ->
     [validator:integer(num_concurrent_requests, 1, infinity, _),
      validator:integer(ingress_mib_per_min, 1, infinity, _),
-     validator:integer(egress_mib_per_min, 1, infinity, _),
-     validator:unsupported(_)];
-service_user_limit_validators(fts) ->
+     validator:integer(egress_mib_per_min, 1, infinity, _)].
+
+fts_user_limit_validators() ->
     [validator:integer(num_concurrent_requests, 1, infinity, _),
      validator:integer(ingress_mib_per_min, 1, infinity, _),
-     validator:integer(egress_mib_per_min, 1, infinity, _),
-     validator:unsupported(_)];
-service_user_limit_validators(query) ->
+     validator:integer(egress_mib_per_min, 1, infinity, _)].
+
+query_user_limit_validators() ->
     [validator:integer(num_concurrent_requests, 1, infinity, _),
      validator:integer(num_queries_per_min, 1, infinity, _),
      validator:integer(ingress_mib_per_min, 1, infinity, _),
-     validator:integer(egress_mib_per_min, 1, infinity, _),
-     validator:unsupported(_)];
-service_user_limit_validators(kv) ->
+     validator:integer(egress_mib_per_min, 1, infinity, _)].
+
+kv_user_limit_validators() ->
     [validator:integer(num_connections, 1, infinity, _),
      validator:integer(num_ops_per_min, 1, infinity, _),
      validator:integer(ingress_mib_per_min, 1, infinity, _),
-     validator:integer(egress_mib_per_min, 1, infinity, _),
-     validator:unsupported(_)].
+     validator:integer(egress_mib_per_min, 1, infinity, _)].
 
 validate_limits(State) ->
-    Validators = [validator:decoded_json(
-                    Service, service_user_limit_validators(Service), _) ||
-                  Service <- [clusterManager, fts, query, kv]] ++
-                 [validator:unsupported(_)],
+    Validators =
+        [validator:decoded_json(clusterManager,
+                                ns_server_user_limit_validators(),
+                                _),
+         validator:decoded_json(query, query_user_limit_validators(), _),
+         validator:decoded_json(kv, kv_user_limit_validators(), _),
+         validator:decoded_json(fts, fts_user_limit_validators(), _),
+         validator:unsupported(_)],
     validator:json(limits, Validators, State).
 
 bad_roles_error(BadRoles) ->

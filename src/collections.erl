@@ -29,8 +29,7 @@
          uid/2,
          manifest_json/2,
          manifest_json/3,
-         create_scope/3,
-         update_limits/3,
+         create_scope/2,
          create_collection/4,
          modify_collection/4,
          drop_scope/2,
@@ -329,19 +328,11 @@ jsonify_manifest(Manifest, WithDefaults) ->
     ScopesJson =
         lists:map(
           fun ({ScopeName, Scope}) ->
-                  LimitsJson = case get_limits(Scope) of
-                                   [] ->
-                                       [];
-                                   Limits ->
-                                       [{limits,
-                                         {[{S, {L}} || {S, L} <- Limits]}}]
-                               end,
                   {[{name, list_to_binary(ScopeName)},
                     {uid, uid(Scope)},
                     {collections,
                      [collection_to_memcached(CollName, Coll, WithDefaults) ||
-                         {CollName, Coll} <- get_collections(Scope)]}] ++
-                   LimitsJson}
+                         {CollName, Coll} <- get_collections(Scope)]}]}
           end, get_scopes(Manifest)),
     {[{uid, uid(Manifest)}, {scopes, ScopesJson}]}.
 
@@ -365,11 +356,8 @@ get_max_supported_inner(Type, Max) ->
             end
     end.
 
-update_limits(Bucket, Name, Limits) ->
-    update(Bucket, {update_limits, Name, Limits}).
-
-create_scope(Bucket, Name, Limits) ->
-    update(Bucket, {create_scope, Name, Limits}).
+create_scope(Bucket, Name) ->
+    update(Bucket, {create_scope, Name}).
 
 create_collection(Bucket, Scope, Name, Props) ->
     update(Bucket, {create_collection, Scope, Name, Props}).
@@ -606,34 +594,31 @@ get_operations(CurrentScopes, RequiredScopes) ->
       fun ({delete, ScopeName, _}) ->
               {drop_scope, ScopeName};
           ({add, ScopeName, ScopeProps}) ->
-              Limits = get_limits(ScopeProps),
-              [{create_scope, ScopeName, Limits} |
+              [{create_scope, ScopeName} |
                [{create_collection, ScopeName, CollectionName,
                  CollectionProps} ||
                    {CollectionName, CollectionProps}
                        <- get_collections(ScopeProps)]];
           ({modify, ScopeName, ScopeProps, CurrentScopeProps}) ->
-              Limits = [{update_limits, ScopeName, get_limits(ScopeProps)}],
-              (Limits ++
-               get_operations(
-                 fun ({delete, CollectionName, _}) ->
-                         {drop_collection, ScopeName, CollectionName};
-                     ({add, CollectionName, CollectionProps}) ->
-                         {create_collection, ScopeName, CollectionName,
-                          CollectionProps};
-                     ({modify, CollectionName, CollectionProps,
-                       CurrentCollectionProps}) ->
-                         case lists:sort(CollectionProps) =:=
-                              lists:sort(lists:keydelete(
-                                           uid, 1, CurrentCollectionProps)) of
-                             false ->
-                                 {modify_collection, ScopeName, CollectionName,
-                                  CollectionProps};
-                             true ->
-                                 []
-                         end
-                 end, get_collections(CurrentScopeProps),
-                 get_collections(ScopeProps)))
+              get_operations(
+                fun ({delete, CollectionName, _}) ->
+                        {drop_collection, ScopeName, CollectionName};
+                    ({add, CollectionName, CollectionProps}) ->
+                        {create_collection, ScopeName, CollectionName,
+                         CollectionProps};
+                    ({modify, CollectionName, CollectionProps,
+                      CurrentCollectionProps}) ->
+                        case lists:sort(CollectionProps) =:=
+                             lists:sort(lists:keydelete(
+                                          uid, 1, CurrentCollectionProps)) of
+                            false ->
+                                {modify_collection, ScopeName, CollectionName,
+                                 CollectionProps};
+                            true ->
+                                []
+                        end
+                end, get_collections(CurrentScopeProps),
+                get_collections(ScopeProps))
       end, CurrentScopes, RequiredScopes).
 
 diff_scopes(CurrentScopes, RequiredScopes) ->
@@ -697,14 +682,6 @@ compile_operation({set_manifest, Roles, RequiredScopes0, CheckUid},
 compile_operation(Oper, _Bucket, _Manifest) ->
     [Oper].
 
-verify_oper({update_limits, Name, _Limits}, Manifest) ->
-    Scopes = get_scopes(Manifest),
-    case find_scope(Name, Scopes) of
-        undefined ->
-            {scope_not_found, Name};
-        _ ->
-            ok
-    end;
 verify_oper({check_uid, CheckUid}, Manifest) ->
     ManifestUid = proplists:get_value(uid, Manifest),
     case CheckUid =:= ManifestUid orelse CheckUid =:= undefined of
@@ -713,7 +690,7 @@ verify_oper({check_uid, CheckUid}, Manifest) ->
         false ->
             uid_mismatch
     end;
-verify_oper({create_scope, Name, _Limits}, Manifest) ->
+verify_oper({create_scope, Name}, Manifest) ->
     Scopes = get_scopes(Manifest),
     case find_scope(Name, Scopes) of
         undefined ->
@@ -736,17 +713,9 @@ verify_oper({create_collection, ScopeName, Name, _}, Manifest) ->
     with_scope(
       fun (Scope) ->
               Collections = get_collections(Scope),
-              Limit = get_limit(clusterManager, num_collections, Scope),
               case find_collection(Name, Collections) of
                   undefined ->
-                      case cluster_compat_mode:should_enforce_limits() andalso
-                           Limit =/= infinity andalso
-                           length(Collections) > Limit of
-                          false ->
-                              ok;
-                          true ->
-                              {max_number_exceeded, num_collections}
-                      end;
+                      ok;
                   _ ->
                       {collection_already_exists, ScopeName, Name}
               end
@@ -795,14 +764,12 @@ verify_oper({modify_collection, ScopeName, Name, SuppliedProps},
 verify_oper(bump_epoch, _Manifest) ->
     ok.
 
-handle_oper({update_limits, Name, Limits}, Manifest, _BucketConf) ->
-    do_update_limits(Manifest, Name, Limits);
 handle_oper({check_uid, _CheckUid}, Manifest, _BucketConf) ->
     Manifest;
-handle_oper({create_scope, Name, Limits}, Manifest, _BucketConf) ->
+handle_oper({create_scope, Name}, Manifest, _BucketConf) ->
     functools:chain(
       Manifest,
-      [add_scope(_, Name, Limits),
+      [add_scope(_, Name),
        bump_id(_, next_scope_uid),
        update_counter(_, num_scopes, 1)]);
 handle_oper({drop_scope, Name}, Manifest, _BucketConf) ->
@@ -870,41 +837,9 @@ get_scopes(Manifest) ->
 find_scope(Name, Scopes) ->
     proplists:get_value(Name, Scopes).
 
-sort_limits(Limits) ->
-    lists:usort([{S, lists:usort(L)} || {S, L} <- Limits]).
-
-do_update_limits(Manifest, ScopeName, Limits) ->
-    SortedLimits = sort_limits(Limits),
-    on_scopes(
-      fun (Scopes) ->
-              Scope = find_scope(ScopeName, Scopes),
-              CurLimits = get_limits(Scope),
-              case CurLimits =:= SortedLimits of
-                  true ->
-                      Scopes;
-                  false ->
-                      NScope = case SortedLimits of
-                                   [] ->
-                                       lists:keydelete(limits, 1, Scope);
-                                   _ ->
-                                       lists:keystore(limits, 1, Scope,
-                                                      {limits, SortedLimits})
-                               end,
-                      lists:keystore(ScopeName, 1, Scopes,
-                                     {ScopeName, NScope})
-              end
-      end, Manifest).
-
-add_scope(Manifest, Name, Limits) ->
+add_scope(Manifest, Name) ->
     Uid = proplists:get_value(next_scope_uid, Manifest),
-    Extra = case Limits of
-                no_limits ->
-                    [];
-                _ ->
-                    [{limits, sort_limits(Limits)}]
-            end,
-    on_scopes([{Name, [{uid, Uid}, {collections, []}] ++ Extra} | _],
-              Manifest).
+    on_scopes([{Name, [{uid, Uid}, {collections, []}]} | _], Manifest).
 
 delete_scope(Manifest, Name) ->
     on_scopes(lists:keydelete(Name, 1, _), Manifest).
@@ -916,16 +851,6 @@ on_scopes(Fun, Manifest) ->
     Scopes = get_scopes(Manifest),
     NewScopes = Fun(Scopes),
     update_scopes(NewScopes, Manifest).
-
-get_limits(Scope) ->
-    proplists:get_value(limits, Scope, []).
-
-get_limit(Service, Limit, Scope) ->
-    functools:chain(
-      Scope,
-      [proplists:get_value(limits, _, []),
-       proplists:get_value(Service, _, []),
-       proplists:get_value(Limit, _, infinity)]).
 
 get_collections(Scope) ->
     proplists:get_value(collections, Scope, []).
@@ -1074,8 +999,7 @@ set_manifest(Bucket, Identity, RequiredScopes, RequestedUid) ->
             Scopes =
                 [{proplists:get_value(name, Scope),
                   [{collections, [extract_name(Props) ||
-                                     {Props} <- get_collections(Scope)]},
-                   {limits, get_limits(Scope)}]} ||
+                                     {Props} <- get_collections(Scope)]}]} ||
                     {Scope} <- RequiredScopes],
             update(Bucket, {set_manifest, Roles, Scopes, Uid})
     end.
@@ -1258,8 +1182,8 @@ update_manifest_test_update_collection(Manifest, Scope, Name, Props) ->
 update_manifest_test_drop_collection(Manifest, Scope, Name) ->
     update_with_manifest(Manifest, {drop_collection, Scope, Name}).
 
-update_manifest_test_create_scope(Manifest, Name, Props) ->
-    update_with_manifest(Manifest, {create_scope, Name, Props}).
+update_manifest_test_create_scope(Manifest, Name) ->
+    update_with_manifest(Manifest, {create_scope, Name}).
 
 update_manifest_test_drop_scope(Manifest, Name) ->
     update_with_manifest(Manifest, {drop_scope, Name}).
@@ -1314,26 +1238,24 @@ drop_collection_t() ->
 create_scope_t() ->
     {ok, BucketConf} = ns_bucket:get_bucket("bucket"),
     {commit, [{_, _, Manifest1}], _} =
-        update_manifest_test_create_scope(default_manifest(BucketConf), "s1",
-                                          []),
-    ?assertEqual([{uid, 8}, {collections, []}, {limits, []}],
+        update_manifest_test_create_scope(default_manifest(BucketConf), "s1"),
+    ?assertEqual([{uid, 8}, {collections, []}],
                  proplists:get_value("s1", get_scopes(Manifest1))),
 
     % Can't create scope with same name
     ?assertEqual({abort, {error, {scope_already_exists, "s1"}}},
-                  update_manifest_test_create_scope(Manifest1, "s1", [])),
+                  update_manifest_test_create_scope(Manifest1, "s1")),
 
     {commit, [{_, _, Manifest2}], _} =
-        update_manifest_test_create_scope(Manifest1, "s2", []),
-    ?assertEqual([{uid, 9}, {collections, []}, {limits, []}],
+        update_manifest_test_create_scope(Manifest1, "s2"),
+    ?assertEqual([{uid, 9}, {collections, []}],
                  proplists:get_value("s2", get_scopes(Manifest2))).
 
 drop_scope_t() ->
     {ok, BucketConf} = ns_bucket:get_bucket("bucket"),
     {commit, [{_, _, Manifest1}], _} =
-        update_manifest_test_create_scope(default_manifest(BucketConf), "s1",
-                                          []),
-    ?assertEqual([{uid, 8}, {collections, []}, {limits, []}],
+        update_manifest_test_create_scope(default_manifest(BucketConf), "s1"),
+    ?assertEqual([{uid, 8}, {collections, []}],
                  proplists:get_value("s1", get_scopes(Manifest1))),
 
     {commit, [{_, _, Manifest2}], _} =
@@ -1348,8 +1270,7 @@ drop_scope_t() ->
 manifest_uid_t() ->
     {ok, BucketConf} = ns_bucket:get_bucket("bucket"),
     {commit, [{_, _, Manifest1}], _} =
-        update_manifest_test_create_scope(default_manifest(BucketConf), "s1",
-                                          []),
+        update_manifest_test_create_scope(default_manifest(BucketConf), "s1"),
     ?assertEqual(2, proplists:get_value(uid, Manifest1)),
 
     {commit, [{_, _, Manifest2}], _} =
@@ -1372,19 +1293,18 @@ manifest_uid_t() ->
 scope_uid_t() ->
     {ok, BucketConf} = ns_bucket:get_bucket("bucket"),
     {commit, [{_, _, Manifest1}], _} =
-        update_manifest_test_create_scope(default_manifest(BucketConf), "s1",
-                                          []),
+        update_manifest_test_create_scope(default_manifest(BucketConf), "s1"),
     ?assertEqual(8, get_uid(get_scope("s1", Manifest1))),
 
     {commit, [{_, _, Manifest2}], _} =
-        update_manifest_test_create_scope(Manifest1, "s2", []),
+        update_manifest_test_create_scope(Manifest1, "s2"),
     ?assertEqual(9, get_uid(get_scope("s2", Manifest2))),
 
     % Recreate of same scope should use new id
     {commit, [{_, _, Manifest3}], _} =
         update_manifest_test_drop_scope(Manifest2, "s1"),
     {commit, [{_, _, Manifest4}], _} =
-        update_manifest_test_create_scope(Manifest3, "s1", []),
+        update_manifest_test_create_scope(Manifest3, "s1"),
     ?assertEqual(10, get_uid(get_scope("s1", Manifest4))).
 
 collection_uid_t() ->
@@ -1413,7 +1333,7 @@ collection_uid_t() ->
 
     % Collections in other scopes should not share ids
     {commit, [{_, _, Manifest5}], _} =
-        update_manifest_test_create_scope(Manifest4, "s1", []),
+        update_manifest_test_create_scope(Manifest4, "s1"),
     {commit, [{_, _, Manifest6}], _} =
         update_manifest_test_create_collection(Manifest5, "s1", "s1c1", []),
     ?assertEqual(11,
@@ -1580,8 +1500,7 @@ set_manifest_t() ->
              {collections, [{"c4", [{uid, 103}, {history, true}]},
                             {"c3", [{uid, 102}]},
                             {"c2", [{uid, 101}, {maxTTL, 8}, {history, true}]},
-                            {"c1", [{uid, 100}, {history, true}]}]},
-             {limits,[]}]}],
+                            {"c1", [{uid, 100}, {history, true}]}]}]}],
         get_scopes(Manifest1)),
 
     %% Drop and create collections
@@ -1646,8 +1565,7 @@ set_manifest_t() ->
         update_manifest_test_set_manifest(
             ExistingManifest2,
             [{"s1",
-                [{limits, [{"l1", [1]}, {"l2", [2]}]},
-                 {collections, [{"c1", []},
+                [{collections, [{"c1", []},
                                 {"c2", []}]}]},
              {"s3", [{collections, [{"ic1", []},
                                     {"ic2", [{maxTTL, 0}]},
@@ -1659,8 +1577,7 @@ set_manifest_t() ->
         [{"s1",
             [{uid, 8},
              {collections, [{"c2", [{uid, 100}, {history, true}]},
-                            {"c1", [{uid, 8}]}]},
-             {limits, [{"l1", [1]}, {"l2", [2]}]}]},
+                            {"c1", [{uid, 8}]}]}]},
          {"s3",
             [{uid, 10},
              {collections, [{"ic1", [{uid, 11}]},
