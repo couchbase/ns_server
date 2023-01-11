@@ -33,8 +33,8 @@
 handle_auth(SSOName, Req) ->
     SSOOpts = extract_saml_settings(SSOName),
     ?log_debug("Starting saml(~s) authentication ", [SSOName]),
+    IDPMetadata = try_get_idp_metadata(SSOName, SSOOpts),
     SPMetadata = build_sp_metadata(SSOName, SSOOpts, Req),
-    IDPMetadata = get_idp_metadata(SSOOpts),
     Binding = proplists:get_value(authn_binding, SSOOpts, post),
     RelayState = <<"">>,
     %% Using "persistent" by default because this seems to be the only option
@@ -83,8 +83,8 @@ handle_deauth(SSOName, Req) ->
     end.
 
 handle_single_logout(SSOName, SSOOpts, NameID, ExtraHeaders, Req) ->
+    IDPMetadata = try_get_idp_metadata(SSOName, SSOOpts),
     SPMetadata = build_sp_metadata(SSOName, SSOOpts, Req),
-    IDPMetadata = get_idp_metadata(SSOOpts),
     NameIDFormat = proplists:get_value(authn_nameID_format, SSOOpts,
                                        ?DEFAULT_NAMEID_FORMAT),
     Subject = #esaml_subject{name = binary_to_list(NameID),
@@ -116,6 +116,9 @@ handle_post_saml_consume(SSOName, Req) ->
 handle_saml_consume(SSOName, Req, UnvalidatedParams) ->
     SSOOpts = extract_saml_settings(SSOName),
     ?log_debug("Starting saml(~s) consume", [SSOName]),
+    %% Making sure metadata is up to date. By doing that we also update
+    %% certificates that will be used for assertion verification
+    _IDPMetadata = try_get_idp_metadata(SSOName, SSOOpts),
     SPMetadata = build_sp_metadata(SSOName, SSOOpts, Req),
     validator:handle(
       fun (Params) ->
@@ -177,10 +180,10 @@ handle_post_saml_logout(SSOName, Req) ->
 handle_saml_logout(SSOName, Req, UnvalidatedParams) ->
     SSOOpts = extract_saml_settings(SSOName),
     ?log_debug("Starting saml(~s) logout", [SSOName]),
+    IDPMetadata = try_get_idp_metadata(SSOName, SSOOpts),
     SPMetadata = build_sp_metadata(SSOName, SSOOpts, Req),
     validator:handle(
       fun (Params) ->
-          IDPMetadata = get_idp_metadata(SSOOpts),
           LogoutReq = proplists:get_value('SAMLRequest', Params),
           LogoutResp = proplists:get_value('SAMLResponse', Params),
           case {LogoutReq, LogoutResp} of
@@ -316,19 +319,217 @@ build_sp_metadata(Name, Opts, Req) ->
                   SP
           end,
 
-    SP3 = case proplists:get_value(trusted_fingerprints, Opts) of
-              undefined -> SP2#esaml_sp{trusted_fingerprints = []};
-              [] -> SP2#esaml_sp{trusted_fingerprints = []};
-              FPs -> SP2#esaml_sp{trusted_fingerprints = FPs}
+    FPsUsage = proplists:get_value(fingerprints_usage, Opts, metadata_initial),
+
+    FPs = case FPsUsage of
+              everything -> proplists:get_value(trusted_fingerprints, Opts, []);
+              U when U =:= metadata_initial; U =:= metadata ->
+                  case trusted_fingerprints_from_metadata(Name) of
+                      {ok, L} -> L;
+                      %% It may happen that it is expired or not set
+                      %% when we are building reply for /sso/<nam>/samlMetadata
+                      %% In this case esaml doesn't need trusted fingerprints
+                      %% because it is not verifying anything
+                      {error, not_set} -> [];
+                      {error, expired} -> []
+                  end
           end,
 
-    SP3#esaml_sp{entity_id = proplists:get_value(entity_id, Opts)}.
+    SP2#esaml_sp{entity_id = proplists:get_value(entity_id, Opts),
+                 trusted_fingerprints = FPs}.
 
-get_idp_metadata(Opts) ->
+try_get_idp_metadata(SSOName, Opts) ->
     URL = proplists:get_value(idp_metadata_url, Opts),
-    case proplists:get_value(trusted_fingerprints, Opts) of
-        undefined -> esaml_util:load_metadata(URL);
-        FPs -> esaml_util:load_metadata(URL, FPs)
+    case get_idp_metadata(URL, SSOName, Opts) of
+        {ok, Meta} -> Meta;
+        {error, Reason} ->
+            Msg = io_lib:format("Failed to get IDP metadata from ~s. "
+                                "Reason: ~p", [URL, Reason]),
+            menelaus_util:web_exception(500, iolist_to_binary(Msg))
+    end.
+
+get_idp_metadata(URL, SSOName, Opts) ->
+    case ets:lookup(esaml_idp_meta_cache, URL) of
+        [{URL, Meta}] ->
+            case metadata_expired(Meta) of
+                false ->
+                    ?log_debug("Loading IDP metadata for ~s from cache", [URL]),
+                    {ok, Meta};
+                true ->
+                    ?log_debug("IDP metadata for ~s has expired", [URL]),
+                    load_idp_metadata(URL, SSOName, Opts)
+            end;
+        _ ->
+            ?log_debug("IDP metadata for ~s not found in cached", [URL]),
+            load_idp_metadata(URL, SSOName, Opts)
+    end.
+
+metadata_expired(#esaml_idp_metadata{valid_until = undefined}) ->
+    false;
+metadata_expired(#esaml_idp_metadata{valid_until = Datetime}) ->
+    calendar:universal_time() > Datetime.
+
+extract_connect_options(URL, SSOOpts) ->
+    AddrSettings = case proplists:get_value(address_family, SSOOpts) of
+                       undefined -> [];
+                       AF -> [AF]
+                   end,
+
+    Opts =
+        case URL of
+            "https://" ++ _ ->
+                case proplists:get_value(tls_verify_peer, SSOOpts, true) of
+                    true ->
+                        CACerts = proplists:get_value(tls_ca, SSOOpts, []) ++
+                                  ns_server_cert:trusted_CAs(der),
+                        [{verify, verify_peer}, {cacerts, CACerts},
+                         {depth, ?ALLOWED_CERT_CHAIN_LENGTH}] ++
+                        case proplists:get_value(tls_sni, SSOOpts, "") of
+                            "" -> [];
+                            SNI -> [{server_name_indication, SNI}]
+                        end;
+                    false ->
+                        [{verify, verify_none}]
+                end;
+            "http://" ++ _ ->
+                []
+        end ++ AddrSettings,
+
+    ExtraOpts = proplists:get_value(tls_extra_opts, SSOOpts, []),
+    misc:update_proplist_relaxed(Opts, ExtraOpts).
+
+load_idp_metadata(URL, SSOName, Opts) ->
+    try
+        Timeout = proplists:get_value(metadata_http_timeout, Opts, 5000),
+        ConnectOptions = extract_connect_options(URL, Opts),
+
+        Body = case rest_utils:request(<<"saml_metadata">>, URL, "GET", [],
+                                       <<>>, Timeout,
+                                       [{connect_options, ConnectOptions}]) of
+                   {ok, {{200, _}, _RespHeaders, Bin}} -> binary_to_list(Bin);
+                   {ok, {{Status, _Reason}, _RespHeaders, _RespBody}} ->
+                       error({error, {rest_failed, URL, {status, Status}}});
+                   {error, Reason} ->
+                       error({error, {rest_failed, URL, {error, Reason}}})
+               end,
+
+        ?log_debug("Received IDP metadata for ~p from ~s:~n~s",
+                   [SSOName, URL, Body]),
+
+        Xml = try xmerl_scan:string(Body, [{namespace_conformant, true}]) of
+                  {X, _} -> X
+              catch
+                  _:_ -> error({error, {invalid_xml, Body}})
+              end,
+
+        case proplists:get_value(idp_signs_metadata, Opts, true) of
+            true ->
+                FPs = trusted_fingerprints_for_metadata(SSOName, Opts),
+                try xmerl_dsig:verify(Xml, FPs) of
+                    ok -> ok;
+                    {error, Reason2} ->
+                        error({error, {signature_verification_failed, Reason2}})
+                catch
+                    _:Reason2:ST2 ->
+                        ?log_error("xmerl_dsig:verify crashed with reason:~n~p"
+                                   "~nfor metadata:~n~p with FPs:~n~p~n~p",
+                                   [Reason2, Xml, FPs, ST2]),
+                        error({error, {signature_verification_failed, unknown}})
+                end;
+            false ->
+                ok
+        end,
+
+        try esaml:decode_idp_metadata(Xml) of
+            {ok, Meta} -> {ok, cache_idp_metadata(Meta, URL, SSOName)};
+            {error, Reason3} -> error({error, {bad_metadata, Reason3}})
+        catch
+            _:Reason3:ST3 ->
+                ?log_error("metadata decode crashed with reason:~n~p~n"
+                           "for metadata:~n~p:~n~p",
+                           [Reason3, Xml, ST3]),
+                error({error, {bad_metadata, unknown}})
+        end
+    catch
+        error:{error, Error} ->
+            ?log_error("Failed to get metadata for ~p from ~p.~nReason: ~p",
+                       [SSOName, URL, Error]),
+            {error, Error}
+    end.
+
+cache_idp_metadata(#esaml_idp_metadata{valid_until = ValidUntilExpiration,
+                                       cache_duration = CacheDurationDur,
+                                       certificates = TrustedCerts} = Meta,
+                   URL, SSOName) ->
+    CacheDurationExpiration =
+        case CacheDurationDur of
+            undefined -> undefined;
+            DurProps when is_list(DurProps) ->
+                NowDT = calendar:universal_time(),
+                datetime_add_interval(NowDT, DurProps)
+        end,
+    MetaExpirationDateTime = min_if_defined([ValidUntilExpiration,
+                                             CacheDurationExpiration]),
+    FPsFromIdp = lists:map(fun (DerBin) ->
+                               {sha256, crypto:hash(sha256, DerBin)}
+                           end, TrustedCerts),
+    ns_config:set({saml_sign_fingerprints, SSOName},
+                  {FPsFromIdp, MetaExpirationDateTime}),
+    MetaWithExpirationSet = Meta#esaml_idp_metadata{
+                              valid_until = MetaExpirationDateTime,
+                              cache_duration = undefined
+                            },
+    ets:insert(esaml_idp_meta_cache, {URL, MetaWithExpirationSet}),
+    MetaWithExpirationSet.
+
+min_if_defined(List) ->
+    NoUndefined = lists:filter(fun (E) -> E =/= undefined end, List),
+    case NoUndefined of
+        [] -> undefined;
+        _ -> lists:min(NoUndefined)
+    end.
+
+datetime_add_interval(Datetime, IntProps) ->
+    #{years := Y, months := M, days := D,
+      hours := HH, minutes := MM, seconds := SS} = maps:from_list(IntProps),
+    functools:chain(Datetime, [iso8601:add_time(_, HH, MM, SS),
+                               iso8601:add_years(_, Y),
+                               iso8601:add_months(_, M),
+                               iso8601:add_days(_, D)]).
+
+trusted_fingerprints_from_metadata(SSOName) ->
+    case ns_config:read_key_fast({saml_sign_fingerprints, SSOName},
+                                 undefined) of
+        undefined ->
+            {error, not_set};
+        {FPList, undefined} when is_list(FPList) ->
+            {ok, FPList};
+        {FPList, ValidUntilDateTime = {_, _}} when is_list(FPList) ->
+            case calendar:universal_time() > ValidUntilDateTime of
+                true -> {error, expired};
+                false -> {ok, FPList}
+            end
+    end.
+
+trusted_fingerprints_for_metadata(SSOName, Opts) ->
+    ExtraFPs = proplists:get_value(trusted_fingerprints, Opts, []),
+    ExtraFPsUsage = proplists:get_value(fingerprints_usage, Opts,
+                                        metadata_initial),
+    case ExtraFPsUsage of
+        everything ->
+            ExtraFPs;
+        metadata ->
+            ExtraFPs;
+        metadata_initial ->
+            case trusted_fingerprints_from_metadata(SSOName) of
+                {ok, L} -> L;
+                {error, not_set} -> ExtraFPs;
+                %% Configuration endpoint is supposed to remove
+                %% expired FPs if it sets metadata fingerprints
+                %% so we will not get 'expired' if FPs just
+                %% have been set
+                {error, expired} -> []
+            end
     end.
 
 validate_authn_response(NameResp, NameEnc, SPMetadata, State) ->
