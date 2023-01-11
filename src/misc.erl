@@ -927,6 +927,7 @@ key_update(Key, PList, Fun) ->
     key_update_rec(Key, PList, Fun, []).
 
 %% replace values from OldPList with values from NewPList
+-spec update_proplist(PL, PL) -> PL when PL :: [{term(), term()}].
 update_proplist(OldPList, NewPList) ->
     NewPList ++
         lists:filter(fun ({K, _}) ->
@@ -936,10 +937,44 @@ update_proplist(OldPList, NewPList) ->
                              end
                      end, OldPList).
 
+%% Same as update_proplist but allows proplist elements to be atoms,
+%% which is the official definition of proplist in the proplists module.
+%% It is useful for some cases like merging of tcp options which can be atoms.
+-spec update_proplist_relaxed(PL, PL) -> PL when PL :: proplists:proplist().
+update_proplist_relaxed(OldPList, NewPList) ->
+    NewPList ++
+        lists:filter(fun (E) ->
+                         Key = case E of
+                                   {K, _} -> K;
+                                   K when is_atom(K) -> K
+                               end,
+                         Pred = fun (K2) when is_atom(K2), K2 =:= Key -> true;
+                                    ({K2, _}) when K2 =:= Key -> true;
+                                    (_) -> false
+                                end,
+                         %% Note that we can't use keyfind because keyfind
+                         %% assumes that second param is [tuple()]
+                         case lists:search(Pred, NewPList) of
+                             {value, _} -> false;
+                             false -> true
+                         end
+                     end, OldPList).
+
 -ifdef(TEST).
 update_proplist_test() ->
     [{a, 1}, {b, 2}, {c,3}] =:= update_proplist([{a,2}, {c,3}],
                                                 [{a,1}, {b,2}]).
+
+update_proplist_relaxed_test() ->
+    ?assertEqual([], update_proplist_relaxed([], [])),
+    ?assertEqual([a, {b, 1}], update_proplist_relaxed([a, {b, 1}], [])),
+    ?assertEqual([a, {b, 1}], update_proplist_relaxed([], [a, {b, 1}])),
+    ?assertEqual([{a, 1}, d, {b, 2}, f, {g, 5}, c, {e, 4}],
+                 update_proplist_relaxed([{a,2}, b, c, {d,3}, {e, 4}],
+                                         [{a,1}, d, {b,2}, f, {g, 5}])),
+    ?assertEqual([{b, 1}, {{a, 3}, 4}, {a, 3}, {{b, 1}, 2}],
+                 update_proplist_relaxed([{a, 3}, {{b, 1}, 2}],
+                                         [{b, 1}, {{a, 3}, 4}])).
 -endif.
 
 %% Returns proplist that contains all the elements from Left and from Right.
