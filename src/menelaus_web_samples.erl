@@ -65,7 +65,7 @@ build_samples_input_list(Samples) ->
 %% The second input is a list of json objects each of which consists of list
 %% of [{"sample", <sample-name>}, {"bucket", <bucket-name>}] where
 %% <sample-name>.zip contains the data and <bucket-name> is the destination
-%% bucket (which may or may not already exist).
+%% bucket (which must already exist).
 %%
 %% Thee two types of input are normalized into a list of tuples to facilitate
 %% common handling of the two.
