@@ -382,7 +382,8 @@ roles() ->
                 "collection to retrieve data. This user can access the web "
                 "console and can read data, but not write it.">>}],
       [{[{collection, ?RBAC_COLLECTION_PARAMS}, n1ql, select], [execute]},
-       {[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs], [read]},
+       {[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs],
+        [read, range_scan]},
        {[{bucket, bucket_name}, settings], [read]},
        {[ui], [read]},
        {[pools], [read]}]},
