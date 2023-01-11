@@ -43,10 +43,6 @@ init() ->
            rest_creds = ns_config_auth:get_admin_user_and_auth(),
            prometheus_auth = prometheus_cfg:get_auth_info()}.
 
-filter_event(limits_version) ->
-    true;
-filter_event(enforce_limits) ->
-    true;
 filter_event(auth_version) ->
     true;
 filter_event(rest_creds) ->
@@ -58,10 +54,6 @@ filter_event({node, Node, memcached}) ->
 filter_event(_Key) ->
     false.
 
-handle_event(limits_version, State) ->
-    {changed, State};
-handle_event(enforce_limits, State) ->
-    {changed, State};
 handle_event(auth_version, State) ->
     %% auth_version also takes care of UUID changes when deleting and adding
     %% same user.
@@ -112,40 +104,12 @@ get_admin_auth_json({User, {auth, Auth}}) ->
 get_admin_auth_json(_) ->
     undefined.
 
-jsonify_kv_user_limits(undefined) ->
-    [];
-jsonify_kv_user_limits(Limits) ->
-    [{limits, {Limits}}].
-
-get_user_limits_json(false, _Identity) ->
-    [];
-get_user_limits_json(true, Identity) ->
-    Limits = menelaus_users:get_user_limits(Identity),
-    case Limits of
-        undefined ->
-            [];
-        _ ->
-            KVLimits = proplists:get_value(kv, Limits),
-            jsonify_kv_user_limits(KVLimits)
-    end.
-
-get_user_uuid(false, _Identity) ->
-    [];
-get_user_uuid(true, Identity) ->
-    case menelaus_users:get_user_uuid(Identity) of
-        undefined ->
-            [];
-        UUID ->
-            [{uuid, UUID}]
-    end.
-
 memcached_user_info(User, Auth) ->
     {ok, NewAuth} =
         menelaus_users:upgrade_props(?VERSION_ELIXIR, auth, User, Auth),
     {list_to_binary(User), {NewAuth}}.
 
 jsonify_auth(Users, AdminPasswords, RestCreds, PromAuth) ->
-    EnforceLimits = cluster_compat_mode:should_enforce_limits(),
     ?make_transducer(
        begin
            ?yield(object_start),
@@ -172,7 +136,7 @@ jsonify_auth(Users, AdminPasswords, RestCreds, PromAuth) ->
 
            pipes:foreach(
              ?producer(),
-             fun ({{auth, {UserName, _Type} = Identity}, Auth}) ->
+             fun ({{auth, {UserName, _Type}}, Auth}) ->
                      case UserName of
                          ClusterAdmin ->
                              TagCA = ns_config_log:tag_user_name(ClusterAdmin),
@@ -181,12 +145,7 @@ jsonify_auth(Users, AdminPasswords, RestCreds, PromAuth) ->
                                           [TagCA]),
                              ok;
                          _ ->
-                             Limits = get_user_limits_json(EnforceLimits,
-                                                           Identity),
-                             UUID = get_user_uuid(EnforceLimits, Identity),
-                             ?yield({kv, memcached_user_info(
-                                           UserName,
-                                           UUID ++ Limits ++ Auth)})
+                             ?yield({kv, memcached_user_info(UserName, Auth)})
                      end
              end),
            ?yield(object_end)
