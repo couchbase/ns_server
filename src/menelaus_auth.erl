@@ -23,7 +23,7 @@
          extract_identity_from_cert/1,
          extract_ui_auth_token/1,
          uilogin/2,
-         uilogin_phase2/4,
+         uilogin_phase2/5,
          can_use_cert_for_auth/1,
          complete_uilogout/2,
          maybe_refresh_token/1,
@@ -372,7 +372,7 @@ uilogin(Req, Params) ->
     case AuthnStatus of
         {ok, Identity} ->
             uilogin_phase2(Req, simple, base64:encode(rand:bytes(16)),
-                           Identity);
+                           Identity, ?cut(menelaus_util:reply(_1, 200, _2)));
         {error, auth_failure} ->
             ns_audit:login_failure(
               apply_headers(Req, meta_headers(User))),
@@ -384,7 +384,7 @@ uilogin(Req, Params) ->
             menelaus_util:reply_json(Req, Msg, 503)
     end.
 
-uilogin_phase2(Req, SessionType, SessionName, Identity) ->
+uilogin_phase2(Req, SessionType, SessionName, Identity, Continuation) ->
     UIPermission = {[ui], read},
     case check_permission(Identity, UIPermission) of
         allowed ->
@@ -393,7 +393,7 @@ uilogin_phase2(Req, SessionType, SessionName, Identity) ->
             CookieHeader = generate_auth_cookie(Req, Token),
             ns_audit:login_success(
               apply_headers(Req, meta_headers(Identity, Token))),
-            menelaus_util:reply(Req, 200, [CookieHeader]);
+            Continuation(Req, [CookieHeader]);
         AuthzRes when AuthzRes == forbidden; AuthzRes == auth_failure ->
             ns_audit:login_failure(
               apply_headers(Req, meta_headers(Identity))),

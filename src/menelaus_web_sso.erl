@@ -151,10 +151,13 @@ handle_saml_consume(SSOName, Req, UnvalidatedParams) ->
               true when NameID =/= undefined, length(NameID) > 0 ->
                   ?log_debug("Successful saml(~s) login: ~s",
                              [SSOName, ns_config_log:tag_user_name(Username)]),
-                  menelaus_auth:uilogin_phase2(Req,
-                                               {sso, SSOName},
-                                               iolist_to_binary(NameID),
-                                               {Username, external});
+                  menelaus_auth:uilogin_phase2(
+                    Req,
+                    {sso, SSOName},
+                    iolist_to_binary(NameID),
+                    {Username, external},
+                    ?cut(menelaus_util:reply_text(_1, <<"Redirecting...">>, 302,
+                                                  [{"Location", "/"} | _2])));
               true ->
                   ?log_debug("NameID is not defined: ~p", [NameID]),
                   Msg = "Missing NameID",
