@@ -23,7 +23,7 @@
 
 -export([
 %% User management:
-         store_user/6,
+         store_user/5,
          store_users/1,
          delete_user/1,
          select_users/1,
@@ -32,13 +32,11 @@
          user_exists/1,
          get_roles/1,
          get_user_name/1,
-         get_limits_version/0,
          get_users_version/0,
          get_auth_version/0,
          get_auth_info/1,
          get_user_props/1,
          get_user_props/2,
-         get_user_limits/1,
          get_user_uuid/1,
          change_password/2,
 
@@ -140,10 +138,6 @@ get_auth_version() ->
             rpc:call(ns_node_disco:ns_server_node(), ?MODULE, get_auth_version, [])
     end.
 
-get_limits_version() ->
-    [{limits_version, V, Base}] = ets:lookup(versions_name(), limits_version),
-    {V, Base}.
-
 start_replicator() ->
     GetRemoteNodes =
         fun () ->
@@ -183,7 +177,7 @@ init_versions() ->
     Base = misc:rand_uniform(0, 16#100000000),
     Versions =
         [{V, 0, Base} ||
-            V <- [user_version, group_version, auth_version, limits_version]],
+            V <- [user_version, group_version, auth_version]],
     ets:insert_new(versions_name(), Versions),
     [gen_event:notify(user_storage_events, {V, {0, Base}}) ||
         {V, _, _} <- Versions],
@@ -382,17 +376,14 @@ build_auth({_, CurrentAuth}, Password) ->
 
 -spec store_user(rbac_identity(), rbac_user_name(),
                  {password, rbac_password()} | {auth, rbac_auth()},
-                 [rbac_role()], [rbac_group_id()],
-                 [{atom(), [{atom(), term()}]}]) ->
+                 [rbac_role()], [rbac_group_id()]) ->
     ok | {error, {roles_validation, _}} |
     {error, password_required} | {error, too_many}.
-store_user(Identity, Name, PasswordOrAuth, Roles,
-           Groups, Limits) ->
+store_user(Identity, Name, PasswordOrAuth, Roles, Groups) ->
     Props = [{name, Name} || Name =/= undefined] ++
             [{groups, Groups} || Groups =/= undefined] ++
             [{pass_or_auth, PasswordOrAuth},
-             {roles, Roles},
-             {limits, Limits}],
+             {roles, Roles}],
     store_users([{Identity, Props}]).
 
 store_users(Users) ->
@@ -417,7 +408,6 @@ prepare_store_user(Snapshot, {{_, Domain} = Identity, Props}) ->
     Groups = proplists:get_value(groups, Props),
     PasswordOrAuth = proplists:get_value(pass_or_auth, Props),
     Roles = proplists:get_value(roles, Props),
-    Limits = proplists:get_value(limits, Props),
 
     UserProps = [{name, Name} || Name =/= undefined] ++
                 [{uuid, UUID} || UUID =/= undefined] ++
@@ -447,7 +437,7 @@ prepare_store_user(Snapshot, {{_, Domain} = Identity, Props}) ->
             {local, {auth, A}} -> A
         end,
 
-    store_user_changes(Identity, UserProps2, Auth, Limits).
+    store_user_changes(Identity, UserProps2, Auth).
 
 count_users() ->
     pipes:run(select_users('_', []),
@@ -470,7 +460,7 @@ check_limit(Identity) ->
             end
     end.
 
-store_user_changes(Identity, Props, Auth, Limits) ->
+store_user_changes(Identity, Props, Auth) ->
     case replicated_dets:get(storage_name(), {user, Identity}) of
         false ->
             [{delete, {limits, Identity}},
@@ -479,22 +469,7 @@ store_user_changes(Identity, Props, Auth, Limits) ->
             []
     end ++
     [{set, {user, Identity}, Props}] ++
-    [{set, {auth, Identity}, Auth} || Auth /= same] ++
-    apply_limits_changes(Identity, Limits).
-
-apply_limits_changes(_Identity, undefined) ->
-    [];
-apply_limits_changes(Identity, []) ->
-    [{delete, {limits, Identity}}];
-apply_limits_changes(Identity, Limits) ->
-    Sorted = lists:usort([{S, lists:usort(L)} || {S, L} <- Limits]),
-    CurLimits = get_user_limits(Identity),
-    case CurLimits =:= Sorted of
-        true ->
-            [];
-        false ->
-            [{set, {limits, Identity}, Sorted}]
-    end.
+    [{set, {auth, Identity}, Auth} || Auth /= same].
 
 store_auth(_Identity, same) ->
     unchanged;
@@ -516,7 +491,6 @@ change_password({_UserName, local} = Identity, Password) when is_list(Password) 
 delete_user({_, Domain} = Identity) ->
     case Domain of
         local ->
-            _ = replicated_dets:delete(storage_name(), {limits, Identity}),
             _ = replicated_dets:delete(storage_name(), {auth, Identity}),
             _ = delete_profile(Identity);
         external ->
@@ -782,14 +756,6 @@ get_user_name({_, Domain} = Identity) when Domain =:= local orelse Domain =:= ex
     proplists:get_value(name, get_user_props(Identity, [name]));
 get_user_name(_) ->
     undefined.
-
-get_user_limits(Identity) ->
-    case replicated_dets:get(storage_name(), {limits, Identity}) of
-        false ->
-            undefined;
-        {_, Limits} ->
-            Limits
-    end.
 
 -spec get_user_uuid(rbac_identity()) -> binary() | undefined.
 get_user_uuid(Identity) ->

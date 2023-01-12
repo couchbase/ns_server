@@ -228,15 +228,7 @@ jsonify_props(Props) ->
     [{name, proplists:get_value(name, Props)},
      {desc, proplists:get_value(desc, Props)}].
 
-jsonify_limits(undefined) ->
-    [];
-jsonify_limits(Limits) ->
-    [{limits, {[{S, {L}} || {S, L} <- Limits]}}].
-
 user_to_json({Id, Domain}, Props) ->
-    user_to_json({Id, Domain}, Props, undefined).
-
-user_to_json({Id, Domain}, Props, Limits) ->
     RolesJson = user_roles_to_json(Props),
     Name = proplists:get_value(name, Props),
     %% UUID is only defined for local users in VERSION_71 clusters.
@@ -250,7 +242,6 @@ user_to_json({Id, Domain}, Props, Limits) ->
     {[{id, list_to_binary(Id)},
       {domain, Domain},
       {roles, RolesJson}] ++
-     jsonify_limits(Limits) ++
      [{groups, [list_to_binary(G) || G <- Groups]} || Groups =/= undefined] ++
      [{external_groups, [list_to_binary(G) || G <- ExtGroups]}
           || ExtGroups =/= undefined] ++
@@ -287,7 +278,7 @@ handle_get_users(Path, Req) ->
     handle_get_users_with_domain(Req, '_', Path).
 
 get_users_or_roles_validators() ->
-    [validate_permission(permission, _), validator:boolean(limits, _)].
+    [validate_permission(permission, _)].
 
 get_users_page_validators(DomainAtom, HasStartFrom) ->
     [validator:integer(pageSize, ?MIN_USERS_PAGE_SIZE, ?MAX_USERS_PAGE_SIZE, _),
@@ -431,14 +422,13 @@ substr_filter(Substr, PropsToCheck) ->
 handle_get_all_users(Req, Pattern, Params) ->
     Roles = get_roles_for_users_filtering(
               proplists:get_value(permission, Params)),
-    LimitsRequired = proplists:get_bool(limits, Params),
     ns_audit:rbac_info_retrieved(Req, users),
     pipes:run(menelaus_users:select_users(Pattern),
               [filter_by_roles(Roles),
                security_filter(Req),
                domain_filter(local, Req),
                domain_filter(external, Req),
-               jsonify_users(LimitsRequired),
+               jsonify_users(),
                sjson:encode_extended_json([{compact, true},
                                            {strict, false}]),
                pipes:simple_buffer(2048)],
@@ -512,20 +502,14 @@ has_role_in_groups([G|T], Roles, Cache) ->
             end
     end.
 
-jsonify_users(LimitsRequired) ->
+jsonify_users() ->
     ?make_transducer(
        begin
            ?yield(array_start),
            pipes:foreach(
              ?producer(),
              fun ({{user, Identity}, Props}) ->
-                     Limits = case LimitsRequired of
-                                  true ->
-                                      menelaus_users:get_user_limits(Identity);
-                                  false ->
-                                      undefined
-                              end,
-                     ?yield({json, user_to_json(Identity, Props, Limits)})
+                     ?yield({json, user_to_json(Identity, Props)})
              end),
            ?yield(array_end)
        end).
@@ -719,7 +703,6 @@ handle_get_users_page(Req, DomainAtom, Path, Values) ->
     Order = proplists:get_value(order, Values, asc),
     Sort = proplists:get_value(sortBy, Values, id),
     Substr = proplists:get_value(substr, Values, undefined),
-    LimitsRequired = proplists:get_bool(limits, Values),
 
     {PageSkews, Total} =
         pipes:run(menelaus_users:select_users({'_', DomainAtom},
@@ -738,14 +721,7 @@ handle_get_users_page(Req, DomainAtom, Path, Values) ->
 
     UserJson = fun ({Identity, _}) ->
                        Props = menelaus_users:get_user_props(Identity),
-                       Limits = case LimitsRequired of
-                                    true ->
-                                        menelaus_users:get_user_limits(
-                                          Identity);
-                                    false ->
-                                        undefined
-                                end,
-                       user_to_json(Identity, Props, Limits)
+                       user_to_json(Identity, Props)
                end,
 
     {Users, Skipped, Links} = page_data_from_skews(PageSkews, PageSize),
@@ -775,8 +751,7 @@ handle_whoami(Req) ->
     menelaus_util:reply_json(Req, {misc:update_proplist(JSON, RolesJSON)}).
 
 get_user_json(Identity) ->
-    Limits = menelaus_users:get_user_limits(Identity),
-    user_to_json(Identity, menelaus_users:get_user_props(Identity), Limits).
+    user_to_json(Identity, menelaus_users:get_user_props(Identity)).
 
 parse_until(Str, Delimeters) ->
     lists:splitwith(fun (Char) ->
@@ -1027,41 +1002,7 @@ put_user_validators(Req, GetUserIdFun, GroupCheckFun, ValidatePassword) ->
      validator_verify_security_roles_access(roles, Req, ?SECURITY_WRITE,
                                             ExtraRolesFun, _)] ++
     [validate_password(_) || ValidatePassword] ++
-    [validate_limits(_)] ++
     [validator:unsupported(_)].
-
-ns_server_user_limit_validators() ->
-    [validator:integer(num_concurrent_requests, 1, infinity, _),
-     validator:integer(ingress_mib_per_min, 1, infinity, _),
-     validator:integer(egress_mib_per_min, 1, infinity, _)].
-
-fts_user_limit_validators() ->
-    [validator:integer(num_concurrent_requests, 1, infinity, _),
-     validator:integer(ingress_mib_per_min, 1, infinity, _),
-     validator:integer(egress_mib_per_min, 1, infinity, _)].
-
-query_user_limit_validators() ->
-    [validator:integer(num_concurrent_requests, 1, infinity, _),
-     validator:integer(num_queries_per_min, 1, infinity, _),
-     validator:integer(ingress_mib_per_min, 1, infinity, _),
-     validator:integer(egress_mib_per_min, 1, infinity, _)].
-
-kv_user_limit_validators() ->
-    [validator:integer(num_connections, 1, infinity, _),
-     validator:integer(num_ops_per_min, 1, infinity, _),
-     validator:integer(ingress_mib_per_min, 1, infinity, _),
-     validator:integer(egress_mib_per_min, 1, infinity, _)].
-
-validate_limits(State) ->
-    Validators =
-        [validator:decoded_json(clusterManager,
-                                ns_server_user_limit_validators(),
-                                _),
-         validator:decoded_json(query, query_user_limit_validators(), _),
-         validator:decoded_json(kv, kv_user_limit_validators(), _),
-         validator:decoded_json(fts, fts_user_limit_validators(), _),
-         validator:unsupported(_)],
-    validator:json(limits, Validators, State).
 
 bad_roles_error(BadRoles) ->
     Str = string:join(BadRoles, ","),
@@ -1164,7 +1105,6 @@ do_store_user({User, Domain} = Identity, Props, Req) ->
                  end,
     Roles = proplists:get_value(roles, Props, []),
     Groups = proplists:get_value(groups, Props),
-    Limits = proplists:get_value(limits, Props),
     UniqueRoles = lists:usort(Roles),
 
     Reason = case menelaus_users:user_exists(Identity) of
@@ -1172,7 +1112,7 @@ do_store_user({User, Domain} = Identity, Props, Req) ->
                  false -> added
              end,
     case menelaus_users:store_user(Identity, Name, PassOrAuth,
-                                   UniqueRoles, Groups, Limits) of
+                                   UniqueRoles, Groups) of
         ok ->
             ns_audit:set_user(Req, Identity, UniqueRoles, Name, Groups,
                               Reason),
