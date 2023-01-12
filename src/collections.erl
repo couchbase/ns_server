@@ -1136,8 +1136,6 @@ update_manifest_test_setup() ->
     meck:new(cluster_compat_mode, [passthrough]),
     meck:new(ns_bucket, [passthrough]),
 
-    meck:expect(cluster_compat_mode, should_enforce_limits,
-                fun() -> false end),
     meck:expect(cluster_compat_mode, is_cluster_70, fun () -> true end),
 
     % Return some scope/collection values high enough for us to not worry about
