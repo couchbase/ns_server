@@ -138,7 +138,7 @@ try_decode(Body) ->
     catch
         throw:invalid_utf8 ->
             {error, "Invalid JSON: Illegal UTF-8 character"};
-        error:_ ->
+        _:_ ->
             {error, "Invalid JSON"}
     end.
 
