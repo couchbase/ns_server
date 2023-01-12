@@ -543,10 +543,6 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["sampleBuckets"] -> {{[samples], read}, fun menelaus_web_samples:handle_get/1};
                 ["_metakv" | _] ->
                     {{[admin, metakv], all}, fun menelaus_metakv:handle_get/2, [Path]};
-                ["_goxdcr", "controller", "bucketSettings", _Bucket] ->
-                    XdcrPath = drop_prefix(mochiweb_request:get(raw_path, Req)),
-                    {{[admin, internal], all},
-                     fun goxdcr_rest:proxy/2, [XdcrPath]};
                 ["xdcr" | _RestPath] ->
                     XdcrPath = mochiweb_request:get(raw_path, Req),
                     {{[admin, internal], all},
@@ -943,10 +939,6 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {no_check, fun goxdcr_rest:proxy/2,
                      [menelaus_util:concat_url_path(
                         ["controller", "regexpValidation"])]};
-                ["_goxdcr", "controller", "bucketSettings", _Bucket] ->
-                    XdcrPath = drop_prefix(mochiweb_request:get(raw_path, Req)),
-                    {{[admin, internal], all},
-                     fun goxdcr_rest:proxy/2, [XdcrPath]};
                 ["_goxdcr", "_pre_replicate", Bucket] ->
                     {{[{bucket, Bucket}, data, docs], read},
                      fun menelaus_web_xdcr_target:handle_pre_replicate/2,
