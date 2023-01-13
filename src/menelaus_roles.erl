@@ -394,7 +394,8 @@ roles() ->
                 "collection to update data. This user can access the web "
                 "console and write data, but cannot read it.">>}],
       [{[{collection, ?RBAC_COLLECTION_PARAMS}, n1ql, update], [execute]},
-       {[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs], [upsert]},
+       {[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs],
+        [upsert, range_scan]},
        {[{bucket, bucket_name}, settings], [read]},
        {[ui], [read]},
        {[pools], [read]}]},
@@ -416,7 +417,8 @@ roles() ->
                 "collection to delete data. This user can access the web "
                 "console, but cannot read data. This user can delete data.">>}],
       [{[{collection, ?RBAC_COLLECTION_PARAMS}, n1ql, delete], [execute]},
-       {[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs], [delete]},
+       {[{collection, ?RBAC_COLLECTION_PARAMS}, data, docs],
+        [delete, range_scan]},
        {[{bucket, bucket_name}, settings], [read]},
        {[ui], [read]},
        {[pools], [read]}]},
