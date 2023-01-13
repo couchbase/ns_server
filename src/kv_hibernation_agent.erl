@@ -91,7 +91,7 @@ unprepare_pause_bucket(Bucket, Nodes) ->
     Results = multi_call(
                 Nodes, {unprepare_pause_bucket, Bucket},
                 ?TIMEOUT),
-    handle_multicall_result(prepare_pause_bucket, Results).
+    handle_multicall_result(unprepare_pause_bucket, Results).
 
 pause_bucket(Bucket, RemotePath, Node, Manager) ->
     gen_server:call(server(Node), {if_service_manager, Manager,
