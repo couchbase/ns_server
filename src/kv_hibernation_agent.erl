@@ -61,7 +61,7 @@
                 %% gen_server:from() isn't exported by the gen_server module.
                 %% Will have to make do with the following type spec.
                 %%
-                from = undefined :: undefined | {pid(), reference()},
+                from = undefined :: undefined | {pid(), gen_server:reply_tag()},
                 op = undefined :: undefined | pause_bucket | resume_bucket}).
 
 server(Node) ->
