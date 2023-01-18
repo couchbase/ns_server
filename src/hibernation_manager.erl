@@ -307,7 +307,7 @@ hibernation_op_fail(Service) ->
         kv ->
             timer:sleep(100 + rand:uniform(100)),
             exit(not_ok);
-        indexer ->
+        index ->
             timer:sleep(500);
         fts ->
             timer:sleep(rand:uniform(200)),
