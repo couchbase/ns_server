@@ -118,7 +118,23 @@ event_details(bucket_cfg_changed) ->
 event_details(memcached_cfg_changed) ->
     {8202, data, info, <<"Memcached configuration changed">>};
 event_details(bucket_autoreprovision) ->
-    {8203, data, info, <<"Bucket auto reprovisioned">>}.
+    {8203, data, info, <<"Bucket auto reprovisioned">>};
+event_details(bucket_pause_initiated) ->
+    {8204, data, info, <<"Bucket pause initiated">>};
+event_details(bucket_pause_completed) ->
+    {8205, data, info, <<"Bucket pause completed">>};
+event_details(bucket_pause_failed) ->
+    {8206, data, info, <<"Bucket pause failed">>};
+event_details(bucket_pause_stopped) ->
+    {8207, data, info, <<"Bucket pause stopped">>};
+event_details(bucket_resume_initiated) ->
+    {8208, data, info, <<"Bucket resume initiated">>};
+event_details(bucket_resume_completed) ->
+    {8209, data, info, <<"Bucket resume completed">>};
+event_details(bucket_resume_failed) ->
+    {8210, data, info, <<"Bucket resume failed">>};
+event_details(bucket_resume_stopped) ->
+    {8211, data, info, <<"Bucket resume stopped">>}.
 
 %% Event logs shouldn't contain any PII - redact_keys/2 replaces all the keys
 %% in Keys (= [Key1, ..., KeyN]) with

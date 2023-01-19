@@ -1224,10 +1224,12 @@ hibernation_op_state_update(Bucket, RemotePath, Manager, From, Op) ->
      [{reply, From, ok}]}.
 
 run_hibernation_op(Bucket, RemotePath, Snapshot, pause_bucket = Op, From) ->
+    log_hibernation_event(Bucket, bucket_pause_initiated),
     Manager = hibernation_manager:pause_bucket(Bucket, Snapshot, RemotePath),
     hibernation_op_state_update(Bucket, RemotePath, Manager, From, Op);
 run_hibernation_op(Bucket, RemotePath, {NewBucketConfig, Metadata},
                    resume_bucket = Op, From) ->
+    log_hibernation_event(Bucket, bucket_resume_initiated),
     Manager = hibernation_manager:resume_bucket(Bucket, NewBucketConfig,
                                                 Metadata, RemotePath),
     hibernation_op_state_update(Bucket, RemotePath, Manager, From, Op).
@@ -1904,6 +1906,7 @@ handle_hibernation_manager_exit(normal, Bucket, pause_bucket) ->
         ok ->
             ale:debug(?USER_LOGGER, "pause_bucket done for Bucket ~p.",
                       [Bucket]),
+            log_hibernation_event(Bucket, bucket_pause_completed),
             hibernation_utils:update_hibernation_status(completed);
         Reason ->
             handle_hibernation_manager_exit({bucket_delete_failed, Reason},
@@ -1912,6 +1915,7 @@ handle_hibernation_manager_exit(normal, Bucket, pause_bucket) ->
 
 handle_hibernation_manager_exit(normal, Bucket, resume_bucket) ->
     ale:debug(?USER_LOGGER, "resume_bucket done for Bucket ~p.", [Bucket]),
+    log_hibernation_event(Bucket, bucket_resume_completed),
     hibernation_utils:update_hibernation_status(completed);
 
 handle_hibernation_manager_exit(shutdown , Bucket, Op) ->
@@ -1921,12 +1925,28 @@ handle_hibernation_manager_exit({shutdown, _} = Reason, Bucket, Op) ->
 handle_hibernation_manager_exit(Reason, Bucket, Op) ->
     ale:error(?USER_LOGGER, "~p for Bucket ~p failed. Reason: ~p",
               [Op, Bucket, Reason]),
+    log_failed_hibernation_event(Bucket, Op),
     hibernation_utils:update_hibernation_status(failed).
 
 handle_hibernation_manager_shutdown(Reason, Bucket, Op) ->
     ale:debug(?USER_LOGGER, "~p for Bucket ~p stopped. Reason: ~p.",
               [Op, Bucket, Reason]),
+    log_stopped_hibernation_event(Bucket, Op),
     hibernation_utils:update_hibernation_status(stopped).
+
+log_hibernation_event(Bucket, EventId) ->
+    event_log:add_log(EventId, [{bucket, list_to_binary(Bucket)}]).
+
+log_failed_hibernation_event(Bucket, pause_bucket) ->
+    log_hibernation_event(Bucket, bucket_pause_failed);
+log_failed_hibernation_event(Bucket, resume_bucket) ->
+    log_hibernation_event(Bucket, bucket_resume_failed).
+
+log_stopped_hibernation_event(Bucket, pause_bucket) ->
+    log_hibernation_event(Bucket, bucket_pause_stopped);
+log_stopped_hibernation_event(Bucket, resume_bucket) ->
+    log_hibernation_event(Bucket, bucket_resume_stopped).
+
 
 -spec not_running(Op :: pause_bucket | resume_bucket) -> atom().
 not_running(Op) ->
