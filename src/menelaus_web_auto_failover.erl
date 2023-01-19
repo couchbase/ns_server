@@ -280,15 +280,17 @@ config_check_can_abort_rebalance() ->
 get_extra_settings(Config) ->
     case cluster_compat_mode:is_enterprise() of
         true ->
+            DisableMaxCount = proplists:get_value(
+                                ?DISABLE_MAX_COUNT_CONFIG_KEY, Config, false),
             {Enabled, TimePeriod} = get_failover_on_disk_issues(Config),
             lists:flatten(
               [{failoverOnDataDiskIssues,
                 {[{enabled, Enabled}, {timePeriod, TimePeriod}]}},
-               [{disableMaxCount, proplists:get_value(
-                                    ?DISABLE_MAX_COUNT_CONFIG_KEY,
-                                    Config, false)} ||
+               [{disableMaxCount, DisableMaxCount} ||
                    cluster_compat_mode:is_cluster_elixir()],
-               {maxCount, proplists:get_value(?MAX_EVENTS_CONFIG_KEY, Config)},
+               [{maxCount, proplists:get_value(?MAX_EVENTS_CONFIG_KEY,
+                                               Config)} ||
+                   not DisableMaxCount],
                [{canAbortRebalance,
                  proplists:get_value(
                    ?CAN_ABORT_REBALANCE_CONFIG_KEY, Config)} ||

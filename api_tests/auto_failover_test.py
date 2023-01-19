@@ -68,7 +68,6 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
                                  'disableMaxCount' ]
         if self.is_enterprise:
             assert 'failoverServerGroup' in self.post_data_keys or self.is_71
-            assert 'maxCount' in self.result_keys
             assert 'canAbortRebalance' in self.post_data_keys or self.is_elixir
             if self.is_elixir:
                 assert 'disableMaxCount' in self.post_data_keys
@@ -76,6 +75,14 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
                     assert self.prev_settings['disableMaxCount']
                 else:
                     assert not self.prev_settings['disableMaxCount']
+                if 'maxCount' not in self.result_keys:
+                    assert self.is_serverless
+                    assert self.prev_settings['disableMaxCount']
+                    # 'maxCount' is supported but not returned if
+                    # disableMaxCount is True
+                    self.post_data_keys.append('maxCount')
+            else:
+                assert 'maxCount' in self.result_keys
         else:
             for x in self.enterprise_only:
                 assert x not in self.post_data_keys
@@ -311,6 +318,22 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
                delta['failoverOnDataDiskIssues[enabled]'] == 'false':
                 delta['failoverOnDataDiskIssues[timePeriod]'] = \
                     self.prev_settings['failoverOnDataDiskIssues']['timePeriod']
+
+            # Toggling disableMaxCount causes maxCount to be added/removed
+            if 'disableMaxCount' in delta and \
+               delta['disableMaxCount'] == 'true' and \
+               not self.prev_settings['disableMaxCount']:
+                # maxCount will be pruned from queried settings
+                assert 'maxCount' in self.prev_settings
+                del self.prev_settings['maxCount']
+                self.result_keys = list(self.prev_settings.keys())
+            elif 'disableMaxCount' in delta and \
+                 delta['disableMaxCount'] == 'false' and \
+                 self.prev_settings['disableMaxCount']:
+                # maxCount will appear in the queried settings
+                assert 'maxCount' not in self.prev_settings
+                self.prev_settings['maxCount'] = resp.json()['maxCount']
+                self.result_keys = list(self.prev_settings.keys())
 
         self.compare_settings(resp.json(), delta)
         self.prev_settings = resp.json()
