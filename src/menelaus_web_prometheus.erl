@@ -10,7 +10,7 @@
 
 %% API
 -export([handle_get_local_metrics/2, handle_create_snapshot/1,
-         handle_get_metrics/1, handle_sd_config/1,
+         handle_get_metrics/1, handle_sd_config/2,
          proxy_prometheus_api/2]).
 
 -include("ns_common.hrl").
@@ -69,15 +69,29 @@ handle_get_metrics(Req) ->
     [proxy_chunks_from_url(URL, Req, Resp) || URL <- URLs],
     menelaus_util:write_chunk(Req, <<>>, Resp).
 
-handle_sd_config(Req) ->
+handle_sd_config(yaml, Req) ->
     Nodes = menelaus_web_node:get_hostnames(Req, any),
     Yaml = [#{targets => [HostPort || {_, HostPort} <- Nodes]}],
     YamlBin = yaml:encode(Yaml),
+    handle_sd_config_reply(yaml, YamlBin, Req);
+handle_sd_config(json, Req) ->
+    Nodes = menelaus_web_node:get_hostnames(Req, any),
+    Hosts = [HostPort || {_, HostPort} <- Nodes],
+    Json = [{[{targets, Hosts}]}],
+    JsonBin = menelaus_util:encode_json(Json),
+    handle_sd_config_reply(json, JsonBin, Req).
+
+handle_sd_config_reply(Type, Body, Req) ->
     ClusterName = menelaus_web_pools:get_cluster_name(),
-    Filename = io_lib:format("couchbase_sd_config_~s.yaml", [ClusterName]),
+    Filename = io_lib:format("couchbase_sd_config_~s.~s",
+                             [ClusterName, Type]),
     ContentDisp = io_lib:format("attachment; filename=\"~s\"", [Filename]),
     ExtraHeaders = [{"Content-Disposition", lists:flatten(ContentDisp)}],
-    menelaus_util:reply_ok(Req, "text/yaml", YamlBin, ExtraHeaders).
+    ReplyType = case Type of
+                    yaml -> "text/yaml";
+                    json -> "application/json"
+                end,
+    menelaus_util:reply_ok(Req, ReplyType, Body, ExtraHeaders).
 
 proxy_chunks_from_url({URL, AuthHeader}, Req, Resp) ->
     Options = [{connect_timeout, ?METRICS_TIMEOUT},

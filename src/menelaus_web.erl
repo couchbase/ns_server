@@ -586,7 +586,12 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_prometheus:handle_get_metrics/1};
                 ["prometheus_sd_config.yaml"] ->
                     {{[admin, stats_export], read},
-                     fun menelaus_web_prometheus:handle_sd_config/1};
+                     fun menelaus_web_prometheus:handle_sd_config/2,
+                    [yaml]};
+                ["prometheus_sd_config.json"] ->
+                    {{[admin, stats_export], read},
+                     fun menelaus_web_prometheus:handle_sd_config/2,
+                     [json]};
                 [?PROMETHEUS_API | _] ->
                     "/"?PROMETHEUS_API ++ RawPath =
                         mochiweb_request:get(raw_path, Req),
