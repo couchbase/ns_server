@@ -1547,6 +1547,19 @@ is_cluster_encryption_fully_enabled() ->
     cluster_compat_mode:is_enterprise() andalso
         NonEncryptNodes =:= [].
 
+%% Returns true if there is at least one node with n2n client cert auth enabled
+is_n2n_client_cert_verification_enabled(Config) ->
+    IsEnabled =
+        fun (N) ->
+            ns_config:search_node_with_default(
+              N, Config, node_encryption, false)
+            andalso
+            ns_config:search_node_with_default(
+              N, Config, n2n_client_cert_auth, false)
+        end,
+
+    lists:any(IsEnabled, ns_node_disco:nodes_wanted()).
+
 %% This function is not the same as (not is_cluster_encryption_fully_enabled())
 %% because the cluster encryption might be in one of 3 states: enabled, disabled
 %% and mixed. 'Mixed' means it's enabled for some nodes, but not for all of them

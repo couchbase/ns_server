@@ -1186,8 +1186,7 @@ node_encryption_validators() ->
               ns_config:search(ns_config:latest(), cluster_encryption_level,
                                control),
               ns_ssl_services_setup:client_cert_auth_state(),
-              Encr2,
-              ClientVer2)
+              Encr2 andalso ClientVer2)
        end, [nodeEncryption, clientCertVerification], _)].
 
 handle_setup_net_config(Req) ->

@@ -206,6 +206,10 @@ apply_config_unprotected(Config) ->
                                        cb_dist:external_encryption()),
         ExternalListeners = proplists:get_value(externalListeners, Config,
                                                 cb_dist:external_listeners()),
+        ClientCertAuth = proplists:get_value(
+                           clientCertVerification,
+                           Config,
+                           cb_dist:client_cert_verification()),
         case cb_dist:update_config(proplists:delete(afamilyOnly, Config)) of
             {ok, _Listeners} ->
                 ok;
@@ -229,6 +233,8 @@ apply_config_unprotected(Config) ->
                       ExternalListeners),
         ns_config:set({node, node(), address_family_only},
                       AFamilyOnly),
+        ns_config:set({node, node(), n2n_client_cert_auth},
+                      ClientCertAuth),
         ?log_info("Node network settings (~p) successfully applied", [Config]),
         ok
     catch
@@ -453,6 +459,7 @@ ensure_ns_config_settings_in_order() ->
                AFamily = cb_dist:address_family(),
                NodeEncryption = cb_dist:external_encryption(),
                Listeners = cb_dist:external_listeners(),
+               ClientCertAuth = cb_dist:client_cert_verification(),
                Cfg1 =
                    case ns_config:search_node(Cfg, address_family) of
                        {value, AFamily} -> Cfg;
@@ -473,7 +480,14 @@ ensure_ns_config_settings_in_order() ->
                            Set({node, node(), erl_external_listeners},
                                Listeners, Cfg2)
                    end,
-               {commit, Cfg3}
+               Cfg4 =
+                   case ns_config:search_node(Cfg, n2n_client_cert_auth) of
+                       {value, ClientCertAuth} -> Cfg3;
+                       _ ->
+                           Set({node, node(), n2n_client_cert_auth},
+                               ClientCertAuth, Cfg3)
+                   end,
+               {commit, Cfg4}
            end),
     {commit, _} = RV,
     ok.

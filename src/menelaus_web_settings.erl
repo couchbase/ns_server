@@ -414,11 +414,12 @@ get_cluster_encryption(Level) ->
             {error, M};
         true ->
             LevelAtom = list_to_atom(Level),
+            N2NClientCert = misc:is_n2n_client_cert_verification_enabled(
+                              ns_config:latest()),
             case menelaus_web_cert:validate_client_cert_CAs(
                    LevelAtom,
                    ns_ssl_services_setup:client_cert_auth_state(),
-                   cb_dist:external_encryption(),
-                   cb_dist:client_cert_verification()) of
+                   N2NClientCert) of
                 ok -> {ok, LevelAtom};
                 {error, BinMsg} -> {error, binary_to_list(BinMsg)}
             end

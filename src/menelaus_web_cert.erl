@@ -26,7 +26,7 @@
          handle_client_cert_auth_settings/1,
          handle_client_cert_auth_settings_post/1,
          format_time/1,
-         validate_client_cert_CAs/4]).
+         validate_client_cert_CAs/3]).
 
 -define(MAX_CLIENT_CERT_PREFIXES, ?get_param(max_prefixes, 10)).
 
@@ -819,11 +819,10 @@ validate_client_cert_CAs(ClientCertAuth) ->
            ns_config:search(ns_config:latest(), cluster_encryption_level,
                             control),
            ClientCertAuth,
-           cb_dist:external_encryption(),
-           cb_dist:client_cert_verification()).
+           misc:is_n2n_client_cert_verification_enabled(ns_config:latest())).
 
 validate_client_cert_CAs(DataEncryption, ClientCertAuth,
-                         N2NEncryption, N2NClientCerts) ->
+                         N2NClientVerification) ->
     FormatNodes =
         fun (Ns) ->
             Hosts = [H || N <- Ns, {_, H} <- [misc:node_name_host(N)]],
@@ -831,7 +830,7 @@ validate_client_cert_CAs(DataEncryption, ClientCertAuth,
         end,
 
     case ns_server_cert:invalid_client_cert_nodes(
-           DataEncryption, ClientCertAuth, N2NEncryption, N2NClientCerts) of
+           DataEncryption, ClientCertAuth, N2NClientVerification) of
         #{untrusted_ca := [], ca_with_server_auth_EKU := []} -> ok;
         #{untrusted_ca := [], ca_with_server_auth_EKU := Nodes} ->
             HostsStr = FormatNodes(Nodes),

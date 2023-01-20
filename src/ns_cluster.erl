@@ -1741,7 +1741,8 @@ perform_leave() ->
                      {node, node(), address_family},
                      {node, node(), address_family_only},
                      {node, node(), node_encryption},
-                     {node, node(), erl_external_listeners}]),
+                     {node, node(), erl_external_listeners},
+                     {node, node(), n2n_client_cert_auth}]),
 
 
     %% set_initial here clears vclock on nodes_wanted. Thus making

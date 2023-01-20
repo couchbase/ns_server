@@ -47,7 +47,7 @@
          cert_props/1,
          cert_expiration_warning_days/0,
          extract_internal_client_cert_user/1,
-         invalid_client_cert_nodes/4,
+         invalid_client_cert_nodes/3,
          verify_cert_hostname_strict/2]).
 
 inbox_ca_path() ->
@@ -1106,25 +1106,24 @@ add_CAs_txn_fun(Type, Pem, Opts) when is_binary(Pem),
 cluster_uses_client_certs(Config) ->
     cluster_uses_client_certs(
       ns_config:search(Config, cluster_encryption_level, control),
-      ns_ssl_services_setup:client_cert_auth_state(),
-      cb_dist:external_encryption(),
-      cb_dist:client_cert_verification()).
+      ns_ssl_services_setup:client_cert_auth_state(Config),
+      misc:is_n2n_client_cert_verification_enabled(Config)).
 
 cluster_uses_client_certs(strict, "mandatory",
-                          _N2NEncryption, _N2NClientCerts) -> true;
+                          _N2NClientVerification) -> true;
 cluster_uses_client_certs(all, "mandatory",
-                          _N2NEncryption, _N2NClientCerts) -> true;
+                          _N2NClientVerification) -> true;
 cluster_uses_client_certs(_DataEncryption, _ClientCertAuth,
-                          true, true) -> true;
+                          true) -> true;
 cluster_uses_client_certs(_DataEncryption, _ClientCertAuth,
-                          _N2NEncryption, _N2NClientCerts) -> false.
+                          _N2NClientVerification) -> false.
 
 
 invalid_client_cert_nodes(DataEncryption, ClientCertAuth,
-                          N2NEncryption, N2NClientCerts) ->
+                          N2NClientVerification) ->
     ClientCertIsUsed =
         cluster_uses_client_certs(
-          DataEncryption, ClientCertAuth, N2NEncryption, N2NClientCerts),
+          DataEncryption, ClientCertAuth, N2NClientVerification),
 
     case ClientCertIsUsed of
         true ->
