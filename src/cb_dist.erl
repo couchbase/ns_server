@@ -966,7 +966,7 @@ defaults(Conf) ->
                                             inet_tcp_dist)]},
      {external_listeners, [proplists:get_value(preferred_external_proto, Conf,
                                                inet_tcp_dist)]},
-     {client_cert_verification, true},
+     {client_cert_verification, false},
      {keep_secrets, false}].
 
 upgrade_config(Config) ->
