@@ -251,7 +251,7 @@ unpause_bucket(Bucket, BucketNodes) when BucketNodes =/= [] ->
                               ?log_error("unpause_bucket for bucket ~p failed. "
                                          "BucketNodes: ~p, Reason: ~p.",
                                          [Bucket, BucketNodes, Reason]),
-                              ok
+                              failure
                       end;
                   {'EXIT', _Pid, Reason} ->
                       ?log_debug("Received 'EXIT' while unpausing bucket: ~p. "
