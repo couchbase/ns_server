@@ -70,7 +70,8 @@
             ensure_config_timer = undefined,
             connections = [] :: [#con{}],
             is_pkey_encrypted = #{client => false, server => false},
-            client_passphrase_updated = false}).
+            client_passphrase_updated = false,
+            client_cert_auth = false :: boolean()}).
 
 -define(family, ?MODULE).
 -define(proto, ?MODULE).
@@ -343,12 +344,16 @@ handle_call({listen, Name}, _From, State) ->
             {reply, {error, {not_started, NotStartedRequired}}, State}
     end;
 
-handle_call({accept, KernelPid}, _From, #s{listeners = Listeners} = State) ->
+handle_call({accept, KernelPid}, _From, #s{listeners = Listeners,
+                                           config = Config} = State) ->
     NewState = lists:foldl(
                  fun ({L, _}, AccState) ->
                      start_acceptor(L, AccState)
                  end, State, Listeners),
-    {reply, self(), ensure_config(NewState#s{kernel_pid = KernelPid})};
+    ClientCertAuth = conf(client_cert_verification, Config),
+    NewState2 = NewState#s{kernel_pid = KernelPid,
+                           client_cert_auth = ClientCertAuth},
+    {reply, self(), ensure_config(NewState2)};
 
 handle_call({get_module_by_acceptor, AcceptorPid}, _From,
             #s{acceptors = Acceptors} = State) ->
@@ -437,31 +442,12 @@ handle_call({register_outgoing_connection, Mod}, _From,
 handle_call({update_connection_pid, Ref, Pid}, _From, State) ->
     {reply, ok, update_connection_pid(Ref, Pid, State)};
 
-handle_call(restart_tls, _From, #s{connections = Connections,
-                                   kernel_pid = KernelPid,
-                                   listeners = Listeners} = State) ->
+handle_call(restart_tls, _From, #s{listeners = Listeners} = State) ->
     info_msg("Restarting tls distribution protocols (if any)", []),
     TLSListeners = [L || {{_, P} = L, _} <- Listeners, proto_to_encryption(P)],
-    NewState = lists:foldl(fun remove_proto/2, State, TLSListeners),
+    State2 = lists:foldl(fun remove_proto/2, State, TLSListeners),
 
-    NewConnections =
-        lists:filter(
-          fun (#con{mod = Mod, pid = Pid, mon = Mon}) ->
-                  case proto2netsettings(Mod) of
-                      {_, true = _Encryption} ->
-                          if
-                              is_pid(Pid) ->
-                                  info_msg("Closing connection ~p because of "
-                                           "tls restart", [Pid]),
-                                  close_dist_connection(Mon, Pid, KernelPid),
-                                  false;
-                              true ->
-                                  true
-                          end;
-                      {_, _} ->
-                          true
-                  end
-          end, Connections),
+    State3 = close_all_tls_dist_connections("tls restart", State2),
 
     gen_server:call(
       ssl_pem_cache:name(dist),
@@ -469,8 +455,7 @@ handle_call(restart_tls, _From, #s{connections = Connections,
       infinity),
     PKeysEncrypted = #{client => is_pkey_encrypted(client),
                        server => is_pkey_encrypted(server)},
-    {reply, ok, ensure_config(NewState#s{
-                                connections = NewConnections,
+    {reply, ok, ensure_config(State3#s{
                                 is_pkey_encrypted = PKeysEncrypted,
                                 client_passphrase_updated = false})};
 
@@ -1063,16 +1048,47 @@ not_started_required_listeners(State) ->
                      lists:member(R, get_protos(State))],
     Required -- Current.
 
-ensure_config(#s{listeners = Listeners} = State) ->
+ensure_config(#s{listeners = Listeners,
+                 client_cert_auth = CurClientCertAuth,
+                 config = Cfg} = State) ->
     CurrentProtos = [M || {M, _} <- Listeners],
+
     NewProtos = get_protos(State),
+
     ToAdd = NewProtos -- CurrentProtos,
     ToRemove = CurrentProtos -- NewProtos,
+
+    NewClientCertAuth = conf(client_cert_verification, Cfg),
+    {ToRestart, DropTLSConnections} =
+        case CurClientCertAuth =/= NewClientCertAuth of
+            true ->
+                {[RL || {_, P} = RL <- CurrentProtos -- ToRemove,
+                        proto_to_encryption(P)], true};
+            false ->
+                {[], false}
+        end,
+
+    info_msg("Ensure config is going to change listeners. Will be stopped: ~0p,"
+             " will be started: ~0p, will be restarted: ~0p",
+             [ToRemove, ToAdd, ToRestart]),
+
     State2 = lists:foldl(fun (P, S) -> remove_proto(P, S) end,
-                         State, ToRemove),
-    State3 = lists:foldl(fun (P, S) -> add_proto(P, S) end,
-                         State2, ToAdd),
-    maybe_update_client_pkey_passphrase(State3).
+                         State, ToRemove ++ ToRestart),
+
+    State3 =
+        case DropTLSConnections of
+            true ->
+                close_all_tls_dist_connections(
+                    "client cert auth", State2);
+            false ->
+                State2
+        end,
+
+    State4 = lists:foldl(fun (P, S) -> add_proto(P, S) end,
+                         State3, ToAdd ++ ToRestart),
+
+    maybe_update_client_pkey_passphrase(
+      State4#s{client_cert_auth = NewClientCertAuth}).
 
 
 get_protos(#s{name = Name, config = Config}) ->
@@ -1311,6 +1327,28 @@ close_dist_connection(MonRef, Pid, KernelPid) ->
             error_msg("Close connection ~p error: ~p", [Pid, Reason]),
             force_close_dist_connection(Pid)
     end.
+
+close_all_tls_dist_connections(Reason, #s{connections = Connections,
+                                          kernel_pid = KernelPid} = State) ->
+    NewConnections =
+        lists:filter(
+          fun (#con{mod = Mod, pid = Pid, mon = Mon}) ->
+                  case proto2netsettings(Mod) of
+                      {_, true = _Encryption} ->
+                          if
+                              is_pid(Pid) ->
+                                  info_msg("Closing connection ~p, reason: ~s",
+                                           [Pid, Reason]),
+                                  close_dist_connection(Mon, Pid, KernelPid),
+                                  false;
+                              true ->
+                                  true
+                          end;
+                      {_, _} ->
+                          true
+                  end
+          end, Connections),
+    State#s{connections = NewConnections}.
 
 force_close_dist_connection(ConPid) ->
     exit(ConPid, kill).

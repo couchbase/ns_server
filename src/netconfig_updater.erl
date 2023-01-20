@@ -217,12 +217,6 @@ apply_config_unprotected(Config) ->
             true -> change_local_dist_proto(AFamily, false);
             false -> ok
         end,
-        case need_listeners_restart(Config) of
-            true ->
-                ?log_info("Restarting cb_dist TLS listeners"),
-                cb_dist:restart_tls();
-            false -> ok
-        end,
         case need_external_update(Config) of
             true -> change_ext_dist_proto(AFamily, NEncrypt);
             false -> ok
@@ -243,9 +237,6 @@ apply_config_unprotected(Config) ->
             ?log_error("~s", [Msg]),
             {error, Msg}
     end.
-
-need_listeners_restart(Config) ->
-    proplists:get_value(clientCertVerification, Config) =/= undefined.
 
 need_local_update(Config) ->
     proplists:get_value(afamily, Config) =/= undefined.
