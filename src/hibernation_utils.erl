@@ -263,44 +263,39 @@ unpause_bucket(Bucket, BucketNodes) when BucketNodes =/= [] ->
 
 unpause_bucket_body(Bucket, BucketNodes) ->
     Timeout = ?get_timeout(unpause_bucket, 5000),
+    %% Make a best-case effort to unpause bucket on the BucketNodes.
+    Results =
+        misc:parallel_map_partial(
+          fun (BucketNode) ->
+                  try
+                      kv_hibernation_agent:unpause_bucket(
+                        Bucket, BucketNode)
+                  catch
+                      E:T:S ->
+                          ?log_error("unpause_bucket for bucket: ~p ",
+                                     "failed on node: ~p. "
+                                     "Error: {~p, ~p, ~p} ",
+                                     [Bucket, BucketNode,
+                                      E, T, S]),
+                          {error, unpause_bucket_failed}
+                  end
+          end,
+          BucketNodes, Timeout),
 
-    leader_activities:run_activity(
-      {unpause_bucket, Bucket}, majority,
-      fun () ->
-              %% Make a best-case effort to unpause bucket on the BucketNodes.
-              Results =
-                  misc:parallel_map_partial(
-                    fun (BucketNode) ->
-                            try
-                                kv_hibernation_agent:unpause_bucket(
-                                  Bucket, BucketNode)
-                            catch
-                                E:T:S ->
-                                    ?log_error("unpause_bucket for bucket: ~p ",
-                                               "failed on node: ~p. "
-                                               "Error: {~p, ~p, ~p} ",
-                                               [Bucket, BucketNode,
-                                                E, T, S]),
-                                    {error, unpause_bucket_failed}
-                            end
-                    end,
-                    BucketNodes, Timeout),
+    OkNodes =
+        lists:filtermap(
+          fun ({Node, {ok, ok}}) ->
+                  {true, Node};
+              (_) ->
+                  false
+          end, lists:zip(BucketNodes, Results)),
 
-              OkNodes =
-                  lists:filtermap(
-                    fun ({Node, {ok, ok}}) ->
-                            {true, Node};
-                        (_) ->
-                            false
-                    end, lists:zip(BucketNodes, Results)),
-
-              case BucketNodes -- OkNodes of
-                  [] ->
-                      ok;
-                  FailedNodes ->
-                      exit({unpause_bucket_failed, {failed_nodes, FailedNodes}})
-              end
-      end).
+    case BucketNodes -- OkNodes of
+        [] ->
+            ok;
+        FailedNodes ->
+            exit({unpause_bucket_failed, {failed_nodes, FailedNodes}})
+    end.
 
 -spec sync_s3(string(), string(), atom())->
           ok | {error, non_neg_integer(), binary()}.
