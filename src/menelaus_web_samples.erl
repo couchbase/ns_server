@@ -14,6 +14,10 @@
 
 -include("cut.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([handle_get/1,
          handle_post/1]).
 
@@ -246,6 +250,8 @@ validate_post_sample_buckets(Samples) ->
     end.
 
 check_quota(Samples) ->
+    {ExistingBuckets, BucketsToCreate} = lists:partition(
+        ?cut(_#sample.must_bucket_exist =:= bucket_must_exist), Samples),
     Config = ns_config:get(),
     Snapshot =
         chronicle_compat:get_snapshot(
@@ -258,7 +264,7 @@ check_quota(Samples) ->
     RamQuotas = proplists:get_value(ram, StorageInfo),
     QuotaUsed = proplists:get_value(quotaUsed, RamQuotas),
     QuotaTotal = proplists:get_value(quotaTotal, RamQuotas),
-    Required = ?SAMPLE_BUCKET_QUOTA * erlang:length(Samples),
+    Required = ?SAMPLE_BUCKET_QUOTA * length(BucketsToCreate),
 
     case (QuotaTotal - QuotaUsed) <  (Required * NodesCount) of
         true ->
@@ -266,7 +272,23 @@ check_quota(Samples) ->
                    " to install sample buckets"],
             [{error, list_to_binary(Err)}];
         false ->
-            ok
+            case lists:flatmap(check_bucket_quota(_), ExistingBuckets) of
+                [] -> ok;
+                Errs -> Errs
+            end
+    end.
+
+%% Check an existing bucket's ram quota is sufficient to import a sample into
+check_bucket_quota(#sample{bucket_name = Bucket}) ->
+    {ok, BucketCfg} = ns_bucket:get_bucket(Bucket),
+    case ns_bucket:ram_quota(BucketCfg) < ?SAMPLE_BUCKET_QUOTA of
+        true ->
+            Err = ["Not enough Quota, you need to allocate ",
+                   format_MB(?SAMPLE_BUCKET_QUOTA), " for bucket '", Bucket,
+                   "' to install sample buckets"],
+            [{error, list_to_binary(Err)}];
+        false ->
+            []
     end.
 
 check_sample_exists(Sample) ->
@@ -326,3 +348,68 @@ check_valid_samples(Samples) ->
 
 format_MB(X) ->
     integer_to_list(misc:ceiling(X / 1024 / 1024)) ++ "MB".
+
+-ifdef(TEST).
+    check_quota_test() ->
+        meck:new(ns_config),
+        meck:expect(ns_config, get,
+                    fun () -> [] end),
+        meck:new(chronicle_compat),
+        meck:expect(chronicle_compat, get_snapshot,
+                    fun (_, _) -> [] end),
+        meck:new(ns_cluster_membership),
+        meck:expect(ns_cluster_membership, service_active_nodes,
+                    fun (_, _) -> [node] end),
+        meck:new(ns_storage_conf),
+        meck:new(ns_bucket, [passthrough]),
+
+        %% Insufficient ram quota when creating sample bucket
+        meck:expect(ns_storage_conf, cluster_storage_info,
+                    fun (_, _) ->
+                        [{ram, [{quotaUsed, 0},
+                                {quotaTotal, ?SAMPLE_BUCKET_QUOTA-1}]}]
+                    end),
+        Samples1 = [#sample{bucket_name = "test",
+                            must_bucket_exist = bucket_must_not_exist}],
+        Errs1 = check_quota(Samples1),
+        ?assertMatch([{error, _}], Errs1),
+
+        %% Insufficient ram quota when installing to existing sample bucket
+        meck:expect(ns_bucket, get_bucket,
+                    fun (_) ->
+                        {ok, [{ram_quota, ?SAMPLE_BUCKET_QUOTA-1},
+                              {servers, [node]}]}
+                    end),
+        Samples2 = [#sample{bucket_name = "test",
+                            must_bucket_exist = bucket_must_exist}],
+        Errs2 = check_quota(Samples2),
+        ?assertMatch([{error, _}], Errs2),
+
+        %% Sufficient ram quota when creating sample bucket
+        meck:expect(ns_storage_conf, cluster_storage_info,
+                    fun (_, _) ->
+                        [{ram, [{quotaUsed, 0},
+                                {quotaTotal, ?SAMPLE_BUCKET_QUOTA}]}]
+                    end),
+        Samples3 = [#sample{bucket_name = "test",
+                            must_bucket_exist = bucket_must_not_exist}],
+        Errs3 = check_quota(Samples3),
+        ?assertMatch(ok, Errs3),
+
+        %% Sufficient ram quota when installing to existing sample bucket
+        meck:expect(ns_bucket, get_bucket,
+                    fun (_) ->
+                        {ok, [{ram_quota, ?SAMPLE_BUCKET_QUOTA},
+                              {servers, [node]}]}
+                    end),
+        Samples4 = [#sample{bucket_name = "test",
+                            must_bucket_exist = bucket_must_exist}],
+        Errs4 = check_quota(Samples4),
+        ?assertMatch(ok, Errs4),
+
+        meck:unload(ns_config),
+        meck:unload(chronicle_compat),
+        meck:unload(ns_cluster_membership),
+        meck:unload(ns_storage_conf),
+        meck:unload(ns_bucket).
+-endif.

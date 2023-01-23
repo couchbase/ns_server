@@ -148,3 +148,44 @@ class SampleBucketTestSet(testlib.BaseTestSet):
         # We can't check if the sample loading has started, because it will
         # immediately fail as we have only provided a dummy s3 address
         self.teardown(cluster)
+
+    # Can't create a sample bucket when insufficient total remaining ram quota
+    def post_with_insufficient_remaining_ram_quota_test(self, cluster):
+        # Create bucket taking up all space
+        bucket_name = "test3"
+        original_bucket = {"name": bucket_name,
+                           "ramQuota": cluster.memsize}
+        response = self.request('POST', self.addr_buckets,
+                                data=original_bucket)
+        assert_status_code(response, 202)
+
+        # Wait for bucket to be created
+        time.sleep(1)
+
+        sample_bucket = "travel-sample"
+        payload = [sample_bucket]
+        response = self.request('POST', self.addr_post,
+                                json=payload)
+        assert_status_code(response, 400)
+
+        self.teardown(cluster)
+
+    # Can't install to a sample bucket when it has insufficient ram quota
+    def post_to_existing_with_insufficient_ram_quota_test(self, cluster):
+        bucket_name = "test4"
+        original_bucket = {"name": bucket_name,
+                           "ramQuota": 100}
+        response = self.request('POST', self.addr_buckets,
+                                data=original_bucket)
+        assert_status_code(response, 202)
+
+        # Wait for bucket to be created
+        time.sleep(1)
+
+        sample_bucket = "travel-sample"
+        payload = [{"sample": sample_bucket,
+                    "bucket": bucket_name}]
+        response = self.request('POST', self.addr_post,
+                                json=payload)
+        assert_status_code(response, 400)
+        self.teardown(cluster)
