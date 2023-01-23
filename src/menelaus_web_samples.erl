@@ -27,6 +27,8 @@
 
 -record(sample, {sample_name :: string(),
                  bucket_name :: string() | undefined,
+                 staging :: string() | undefined,
+                 region :: string() | undefined,
                  must_bucket_exist :: bucket_must_exist |
                                       bucket_must_not_exist}).
 
@@ -65,10 +67,12 @@ build_samples_input_list(Samples) ->
                   end,
               [#sample{sample_name = SampleName,
                        bucket_name = BucketName,
+                       staging = proplists:get_value(staging, Sample),
+                       region = proplists:get_value(region, Sample),
                        must_bucket_exist = BucketMustExist} | AccIn]
       end, [], Samples).
 
-%% There are two types of input to this request. The classic/original input
+%% There are three types of input to this request. The classic/original input
 %% is a list of  names (e.g. ["travel-sample", "beer-sample"]) where the
 %% data is found is <name>.zip and the bucket of name <name> does not
 %% already exist and will be created and loaded.
@@ -82,21 +86,58 @@ build_samples_input_list(Samples) ->
 %% bucket (which must already exist). The "bucket" property is optional, to
 %% allow future deprecation of the first input type.
 %%
-%% The two types of input are normalized into a list of records to facilitate
-%% common handling of the two, with <must-bucket-exist> depending on whether the
+%% The third input is a list of json objects like the second, but with two extra
+%% properties:
+%% {
+%%      "sample": <sample-name>,
+%%      "bucket": <bucket-name>,
+%%      "staging": <staging-dir>,
+%%      "region": <region>
+%% }
+%% In this case, <sample-name> is an s3:// address for the sample and
+%% <bucket-name> is the same as in the second input, although in this case it is
+%% required. The "staging" and "region" properties are required arguments to
+%% provide to cbimport.
+%%
+%% The three types of input are normalized into a list of records to facilitate
+%% common handling, with <must-bucket-exist> depending on whether the
 %% <bucket-name> was specified.
-%% [#sample{<sample-name>, <bucket-name>, <must-bucket-exist>]}
+%% [#sample{<sample-name>, <bucket-name>, <staging>, <region>,
+%%          <must_bucket_exist>}]}
 %%
 %% To validate each json object separately, the json_array validation handler
 %% is used. In order to extract the sample name in the first input type,
 %% extract_internal is required, as the root of each json sub-document does not
 %% have a key, and so is stored in the {internal, root} key.
 
+is_s3("s3://" ++ _) -> true;
+is_s3(_) -> false.
+
+remote_sample_validators() ->
+    [validator:required(bucket, _),
+     validator:string(staging, _),
+     validator:required(staging, _),
+     validator:string(region, _),
+     validator:required(region, _)].
+
+%% As the validators to be used depends on one of the parameters, we cannot
+%% simply append the above validators when applicable, instead they must be
+%% applied within this wrapper validator, which only applies them when the
+%% sample is a remote address
+validate_remote_sample(State) ->
+    case is_s3(validator:get_value(sample, State)) of
+        true ->
+            functools:chain(State, remote_sample_validators());
+        false ->
+            State
+    end.
+
 post_validators() ->
     [validator:extract_internal(root, sample, _),
      validator:required(sample, _),
      validator:string(sample, _),
      validator:string(bucket, _),
+     validate_remote_sample(_),
      validator:unsupported(_)].
 
 handle_post(Req) ->
@@ -167,9 +208,11 @@ start_loading_samples(Req, Samples) ->
       end, Samples).
 
 start_loading_sample(Req, #sample{sample_name = Sample, bucket_name = Bucket,
+                                  staging = StagingDir, region = Region,
                                   must_bucket_exist = BucketState}) ->
     case samples_loader_tasks:start_loading_sample(Sample, Bucket,
                                                    ?SAMPLE_BUCKET_QUOTA_MB,
+                                                   StagingDir, Region,
                                                    BucketState) of
         ok ->
             ns_audit:start_loading_sample(Req, Bucket);
@@ -227,11 +270,17 @@ check_quota(Samples) ->
     end.
 
 check_sample_exists(Sample) ->
-    case sample_exists(Sample) of
+    case is_s3(Sample) of
+        true ->
+            %% We should let cbimport handle this
+            ok;
         false ->
-            Err2 = ["Sample ", Sample, " is not a valid sample."],
-            {error, list_to_binary(Err2)};
-        true -> ok
+            case sample_exists(Sample) of
+                false ->
+                    Err2 = ["Sample ", Sample, " is not a valid sample."],
+                    {error, list_to_binary(Err2)};
+                true -> ok
+            end
     end.
 
 check_valid_samples(Samples) ->

@@ -17,13 +17,13 @@
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
 
--export([start_loading_sample/4, get_tasks/1]).
+-export([start_loading_sample/6, get_tasks/1]).
 
--export([perform_loading_task/4]).
+-export([perform_loading_task/6]).
 
-start_loading_sample(Sample, Bucket, Quota, BucketState) ->
+start_loading_sample(Sample, Bucket, Quota, StagingDir, Region, BucketState) ->
     gen_server:call(?MODULE, {start_loading_sample, Sample, Bucket, Quota,
-                              BucketState}, infinity).
+                              StagingDir, Region, BucketState}, infinity).
 
 get_tasks(Timeout) ->
     gen_server:call(?MODULE, get_tasks, Timeout).
@@ -40,11 +40,13 @@ init([]) ->
     erlang:process_flag(trap_exit, true),
     {ok, #state{}}.
 
-handle_call({start_loading_sample, Sample, Bucket, Quota, BucketState}, _From,
+handle_call({start_loading_sample, Sample, Bucket, Quota, StagingDir, Region,
+             BucketState}, _From,
             #state{tasks = Tasks} = State) ->
     case lists:keyfind(Bucket, 1, Tasks) of
         false ->
-            Pid = start_new_loading_task(Sample, Bucket, Quota, BucketState),
+            Pid = start_new_loading_task(Sample, Bucket, Quota, StagingDir,
+                                         Region, BucketState),
             ns_heart:force_beat(),
             NewState = State#state{tasks = [{Bucket, Pid} | Tasks]},
             {reply, ok, maybe_pass_token(NewState)};
@@ -109,11 +111,13 @@ maybe_pass_token(#state{token_pid = undefined,
 maybe_pass_token(State) ->
     State.
 
-start_new_loading_task(Sample, Bucket, Quota, BucketState) ->
+start_new_loading_task(Sample, Bucket, Quota, StagingDir, Region,
+                       BucketState) ->
     proc_lib:spawn_link(?MODULE, perform_loading_task,
-                        [Sample, Bucket, Quota, BucketState]).
+                        [Sample, Bucket, Quota, StagingDir, Region,
+                         BucketState]).
 
-perform_loading_task(Sample, Bucket, Quota, BucketState) ->
+perform_loading_task(Sample, Bucket, Quota, StagingDir, Region, BucketState) ->
     receive
         allowed_to_go -> ok
     end,
@@ -137,13 +141,25 @@ perform_loading_task(Sample, Bucket, Quota, BucketState) ->
                   end,
 
     Cmd = BinDir ++ "/cbimport",
+    {DataSet, S3Args} =
+        case Sample of
+            "s3://" ++ _ ->
+                {Sample,
+                 ["--obj-staging-dir", StagingDir,
+                  "--obj-region", Region]};
+            _ ->
+                {"file://" ++
+                     filename:join([BinDir, "..", "samples",
+                                    Sample ++ ".zip"]),
+                 []}
+        end,
     Args = ["json",
             "--bucket", Bucket,
             "--format", "sample",
             "--threads", "2",
             "--verbose",
-            "--dataset", "file://" ++ filename:join([BinDir, "..",
-                                        "samples", Sample ++ ".zip"])] ++
+            "--dataset", DataSet] ++
+            S3Args ++
             ClusterOpts ++
             case BucketState of
                 bucket_must_exist ->

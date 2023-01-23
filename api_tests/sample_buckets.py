@@ -122,3 +122,29 @@ class SampleBucketTestSet(testlib.BaseTestSet):
         response = self.request('POST', self.addr_post,
                                 json=payload)
         assert_status_code(response, 400)
+
+    # Loading from an s3 sample into an existing bucket
+    def post_to_s3_with_existing_bucket_test(self, cluster):
+        bucket_name = "test2"
+        original_bucket = {"name": bucket_name,
+                           "ramQuota": 200}
+        response = self.request('POST', self.addr_buckets,
+                                data=original_bucket)
+        assert_status_code(response, 202)
+
+        # Wait for bucket to be created
+        time.sleep(1)
+
+        # Provide a dummy s3 address to attempt to download from
+        sample_bucket = "s3://dummy-sample-address"
+        payload = [{"sample": sample_bucket,
+                    "bucket": bucket_name,
+                    "staging": "/tmp/staging",
+                    "region": "eu-west-1"}]
+        response = self.request('POST', self.addr_post,
+                                json=payload)
+        assert_status_code(response, 202)
+
+        # We can't check if the sample loading has started, because it will
+        # immediately fail as we have only provided a dummy s3 address
+        self.teardown(cluster)
