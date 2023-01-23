@@ -58,7 +58,8 @@
          add_input_type/2,
          json/3,
          decoded_json/3,
-         is_json/1]).
+         is_json/1,
+         extract_internal/3]).
 
 %% Used for testing validators.
 -ifdef(TEST).
@@ -195,6 +196,11 @@ json_array(Name, Validators, State) ->
 with_decoded_object({KVList}, Validators) ->
     Params = [{binary_to_list(Name), Value} || {Name, Value} <- KVList],
     functools:chain(#state{kv = add_input_type(json, Params)}, Validators);
+with_decoded_object(Value, Validators) when is_binary(Value) ->
+    %% Instead of rejecting json which has a value as the root, store it in an
+    %% internal key to possibly be parsed with extract_internal/3
+    Params = [{{internal, root}, Value}],
+    functools:chain(#state{kv = add_input_type(json, Params)}, Validators);
 with_decoded_object(_, _) ->
     #state{errors = [{<<"_">>, <<"Unexpected Json">>}]}.
 
@@ -234,7 +240,7 @@ with_json_array(Body, Validators) ->
         Objects when is_list(Objects) ->
             [with_decoded_object(Object, Validators) || Object <- Objects];
         _ ->
-            [#state{errors = [{<<"_">>, <<"Unexpected Json">>}]}]
+            [#state{errors = [{<<"_">>, <<"A Json list must be specified.">>}]}]
     catch _:_ ->
             [#state{errors = [{<<"_">>, <<"Invalid Json">>}]}]
     end.
@@ -677,6 +683,20 @@ token_list(Name, Separator, State) ->
           {value, string:lexemes(String, Separator)}
       end, Name, State).
 
+%% Get the internal value at {internal, InternalKey} and store it in NewKey
+%% This can be used for instance to parse json which has a value as the root.
+%% For example, '["travel-sample", "gamesim-sample"]' handled with json_array
+%% would be handled with two states, each with {{internal, root}, "...-sample"}
+%% in #state.kv. extract_internal(root, sample, State) would then store the
+%% corresponding value at the "sample" key, allowing further validation to occur
+%% as usual.
+-spec extract_internal(atom(), atom() | list(), #state{}) -> #state{}.
+extract_internal(InternalKey, NewKey, #state{kv = KV} = State) ->
+    case proplists:get_value({internal, InternalKey}, KV) of
+        undefined -> State;
+        Value -> return_value(NewKey, Value, State)
+    end.
+
 -ifdef(TEST).
 %% Apply the validators to the arguments, returning the validated
 %% arguments if validation succeeds or a list of errors if validation fails.
@@ -855,4 +875,16 @@ has_params_test() ->
     State6 = #state{kv=Kv6},
     #state{errors=RErrors6} = has_params(State6),
     ?assertEqual([{"_", "Request should have parameters"}], RErrors6).
+
+json_root_test() ->
+    %% Root value is stored in {internal, root}
+    State1 = with_decoded_object(<<"value">>, []),
+    ?assertEqual(<<"value">>,
+                 proplists:get_value({internal, root},
+                                     State1#state.kv)),
+    %% Root value can be extracted and validated
+    State2 = with_decoded_object(<<"value">>,
+                                 [extract_internal(root, key, _),
+                                  string(key, _)]),
+    ?assertEqual("value", get_value(key, State2)).
 -endif.

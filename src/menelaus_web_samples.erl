@@ -25,6 +25,11 @@
 -define(SAMPLE_BUCKET_QUOTA_MB, 200).
 -define(SAMPLE_BUCKET_QUOTA, 1024 * 1024 * ?SAMPLE_BUCKET_QUOTA_MB).
 
+-record(sample, {sample_name :: string(),
+                 bucket_name :: string() | undefined,
+                 must_bucket_exist :: bucket_must_exist |
+                                      bucket_must_not_exist}).
+
 handle_get(Req) ->
     Buckets = [Bucket || {Bucket, _} <- ns_bucket:get_buckets()],
 
@@ -41,8 +46,8 @@ handle_get(Req) ->
 -spec none_use_couchdb(Samples :: [{binary(), binary()}]) -> boolean().
 none_use_couchdb(Samples) ->
     lists:all(
-      fun ({Sample, _Bucket, _BucketState}) ->
-              samples_without_couchdb(binary_to_list(Sample))
+      fun (#sample{sample_name = Sample}) ->
+              samples_without_couchdb(Sample)
       end, Samples).
 
 -spec samples_without_couchdb(Name :: string()) -> Return :: boolean().
@@ -51,10 +56,16 @@ samples_without_couchdb(Name) when is_list(Name) ->
 
 build_samples_input_list(Samples) ->
     lists:foldl(
-      fun ({[{<<"sample">>, Sample},{<<"bucket">>, Bucket}]}, AccIn) ->
-              [{Sample, Bucket, bucket_must_exist} | AccIn];
-          (Sample, AccIn) ->
-              [{Sample, Sample, bucket_must_not_exist} | AccIn]
+      fun (Sample, AccIn) ->
+              SampleName = proplists:get_value(sample, Sample),
+              {BucketMustExist, BucketName} =
+                  case proplists:get_value(bucket, Sample) of
+                      undefined -> {bucket_must_not_exist, SampleName};
+                      Name -> {bucket_must_exist, Name}
+                  end,
+              [#sample{sample_name = SampleName,
+                       bucket_name = BucketName,
+                       must_bucket_exist = BucketMustExist} | AccIn]
       end, [], Samples).
 
 %% There are two types of input to this request. The classic/original input
@@ -62,49 +73,66 @@ build_samples_input_list(Samples) ->
 %% data is found is <name>.zip and the bucket of name <name> does not
 %% already exist and will be created and loaded.
 %%
-%% The second input is a list of json objects each of which consists of list
-%% of [{"sample", <sample-name>}, {"bucket", <bucket-name>}] where
+%% The second input is a list of json objects where each object is of the form
+%% {
+%%      "sample": <sample-name>,
+%%      "bucket": <bucket-name>
+%% }
 %% <sample-name>.zip contains the data and <bucket-name> is the destination
-%% bucket (which must already exist).
+%% bucket (which must already exist). The "bucket" property is optional, to
+%% allow future deprecation of the first input type.
 %%
-%% Thee two types of input are normalized into a list of tuples to facilitate
-%% common handling of the two.
-%% [{<sample-name>, <bucket-name>]}
+%% The two types of input are normalized into a list of records to facilitate
+%% common handling of the two, with <must-bucket-exist> depending on whether the
+%% <bucket-name> was specified.
+%% [#sample{<sample-name>, <bucket-name>, <must-bucket-exist>]}
+%%
+%% To validate each json object separately, the json_array validation handler
+%% is used. In order to extract the sample name in the first input type,
+%% extract_internal is required, as the root of each json sub-document does not
+%% have a key, and so is stored in the {internal, root} key.
+
+post_validators() ->
+    [validator:extract_internal(root, sample, _),
+     validator:required(sample, _),
+     validator:string(sample, _),
+     validator:string(bucket, _),
+     validator:unsupported(_)].
 
 handle_post(Req) ->
     menelaus_util:assert_is_71(),
     menelaus_web_rbac:assert_no_users_upgrade(),
-    case try_decode(mochiweb_request:recv_body(Req)) of
-        {ok, Samples} when is_list(Samples), not is_binary(Samples) ->
-            Samples2 = build_samples_input_list(Samples),
-            case config_profile:get_bool({couchdb, disabled}) of
+    validator:handle(handle_post_inner(Req, _), Req, json_array,
+                     post_validators()).
+
+handle_post_inner(Req, ParsedJson) ->
+    Samples = build_samples_input_list(ParsedJson),
+    case config_profile:get_bool({couchdb, disabled}) of
+        true ->
+            case none_use_couchdb(Samples) of
                 true ->
-                    case none_use_couchdb(Samples2) of
-                        true ->
-                            process_post(Req, Samples2);
-                        false ->
-                            SampleNames =
-                                lists:map(
-                                  fun (FullPath) ->
-                                          list_to_binary(
-                                            filename:basename(FullPath, ".zip"))
-                                  end, list_sample_files()),
-                            Err =
-                                list_to_binary(
-                                  io_lib:format(
-                                    "Attempted to load invalid samples for current configuration profile. "
-                                    "Attempted: ~p, Valid: ~p", [Samples, SampleNames])),
-                            reply_json(Req, Err, 400)
-                    end;
+                    process_post(Req, Samples);
                 false ->
-                    process_post(Req, Samples2)
+                    SampleNames =
+                        lists:map(
+                          fun (FullPath) ->
+                                  list_to_binary(
+                                    filename:basename(FullPath, ".zip"))
+                          end, list_sample_files()),
+                    Err =
+                        iolist_to_binary(
+                          io_lib:format(
+                            "Attempted to load invalid samples for current "
+                            "configuration profile. Attempted: [~s], "
+                            "Valid: [~s]",
+                            [lists:join(",",
+                                        lists:map(?cut(_#sample.sample_name),
+                                                  Samples)),
+                             lists:join(",", SampleNames)])),
+                    reply_json(Req, Err, 400)
             end;
-        {ok, _Samples} ->
-            reply_json(
-              Req,
-              list_to_binary("A [list] of names must be specified."), 400);
-        {error, Error} ->
-            reply_json(Req, list_to_binary(Error), 400)
+        false ->
+            process_post(Req, Samples)
     end.
 
 process_post(Req, Samples) ->
@@ -132,24 +160,14 @@ process_post(Req, Samples) ->
             reply_json(Req, [Msg || {error, Msg} <- X2], 400)
     end.
 
-try_decode(Body) ->
-    try
-        {ok, ejson:decode(Body)}
-    catch
-        throw:invalid_utf8 ->
-            {error, "Invalid JSON: Illegal UTF-8 character"};
-        _:_ ->
-            {error, "Invalid JSON"}
-    end.
-
 start_loading_samples(Req, Samples) ->
-    lists:foreach(fun ({Sample, Bucket, BucketState}) ->
-                          start_loading_sample(Req, binary_to_list(Sample),
-                                               binary_to_list(Bucket),
-                                               BucketState)
-                  end, Samples).
+    lists:foreach(
+      fun (Sample) ->
+              start_loading_sample(Req, Sample)
+      end, Samples).
 
-start_loading_sample(Req, Sample, Bucket, BucketState) ->
+start_loading_sample(Req, #sample{sample_name = Sample, bucket_name = Bucket,
+                                  must_bucket_exist = BucketState}) ->
     case samples_loader_tasks:start_loading_sample(Sample, Bucket,
                                                    ?SAMPLE_BUCKET_QUOTA_MB,
                                                    BucketState) of
@@ -174,7 +192,7 @@ list_sample_files() ->
 
 sample_exists(Name) ->
     BinDir = path_config:component_path(bin),
-    filelib:is_file(filename:join([BinDir, "..", "samples", binary_to_list(Name) ++ ".zip"])).
+    filelib:is_file(filename:join([BinDir, "..", "samples", Name ++ ".zip"])).
 
 validate_post_sample_buckets(Samples) ->
     case check_valid_samples(Samples) of
@@ -219,11 +237,12 @@ check_sample_exists(Sample) ->
 check_valid_samples(Samples) ->
     Errors =
         lists:foldl(
-          fun ({Sample, Sample, bucket_must_not_exist}, AccIn) ->
+          fun (#sample{sample_name = Sample, bucket_name = Sample,
+                       must_bucket_exist = bucket_must_not_exist}, AccIn) ->
                   %% Classic case where data is loaded into non-existent
                   %% bucket with the same name as the sample data.
                   RV =
-                    case ns_bucket:name_conflict(binary_to_list(Sample)) of
+                    case ns_bucket:name_conflict(Sample) of
                         true ->
                             Err1 = ["Sample bucket ", Sample,
                                     " is already loaded."],
@@ -232,10 +251,11 @@ check_valid_samples(Samples) ->
                             check_sample_exists(Sample)
                     end,
                     [RV | AccIn];
-              ({Sample, Bucket, bucket_must_exist}, AccIn) ->
+              (#sample{sample_name = Sample, bucket_name = Bucket,
+                       must_bucket_exist = bucket_must_exist}, AccIn) ->
                   %% Newer case where the bucket must already exist.
                   RV =
-                    case ns_bucket:name_conflict(binary_to_list(Bucket)) of
+                    case ns_bucket:name_conflict(Bucket) of
                         false ->
                             Err1 =
                                 ["Sample bucket ", Bucket,
