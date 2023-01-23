@@ -2029,7 +2029,7 @@ parse_backup_filter("user:local:" ++ WC) ->
     end;
 parse_backup_filter("user:external:" ++ WC) ->
     case parse_backup_wc(WC) of
-        {value, Re} -> {value, {user, domain, Re}};
+        {value, Re} -> {value, {user, external, Re}};
         {error, _} = Err -> Err
     end;
 parse_backup_filter("user:*:" ++ WC) ->
