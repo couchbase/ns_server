@@ -2145,7 +2145,7 @@ jsonify_backup_users(IsAdmin) ->
                                    || R <- Roles]} || (not IsAdmin) andalso
                                                       Roles /= undefined] ++
                          [{name, list_to_binary(Name)} || Name /= undefined] ++
-                         [{auth, {Auth}}]},
+                         [{auth, {Auth}} || Auth =/= undefined]},
                  ?yield({json, Json})
              end)
        end).
@@ -2172,11 +2172,13 @@ jsonify_backup_groups() ->
 
 add_auth_transducer() ->
     pipes:filtermap(
-      fun ({{user, Identity}, Params}) ->
-          case menelaus_users:get_auth_info(Identity) of
-              false -> false;
-              Auth -> {true, {{user, Identity}, Params, Auth}}
-          end
+      fun ({{user, {_, local} = Identity}, Params}) ->
+              case menelaus_users:get_auth_info(Identity) of
+                  false -> false;
+                  Auth -> {true, {{user, Identity}, Params, Auth}}
+              end;
+          ({{user, Identity}, Params}) ->
+              {true, {{user, Identity}, Params, undefined}}
       end).
 
 backup_filter(Exclude, Include) ->
