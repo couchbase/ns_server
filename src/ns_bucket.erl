@@ -128,7 +128,8 @@
          get_weight/1,
          get_desired_servers/1,
          get_hibernation_state/1,
-         update_desired_servers/2]).
+         update_desired_servers/2,
+         update_servers/2]).
 
 -import(json_builder,
         [to_binary/1,
@@ -1172,13 +1173,15 @@ set_map_opts(Bucket, Opts) ->
 set_servers(Bucket, Servers) ->
     set_property(Bucket, servers, Servers).
 
+update_servers(Servers, BucketConfig) ->
+    lists:keystore(servers, 1, BucketConfig, {servers, Servers}).
+
 remove_servers(Bucket, Nodes) ->
     ok = update_bucket_config(
            Bucket,
            fun (OldConfig) ->
                    Servers = get_servers(OldConfig),
-                   C1 = lists:keystore(servers, 1, OldConfig,
-                                       {servers, Servers -- Nodes}),
+                   C1 = update_servers(Servers -- Nodes, OldConfig),
                    case get_desired_servers(OldConfig) of
                        undefined ->
                            C1;

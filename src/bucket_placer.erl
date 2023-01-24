@@ -55,7 +55,8 @@ place_bucket(BucketName, Props) ->
 
 do_place_bucket(BucketName, Props, Params, Snapshot) ->
     RV = on_zones(calculate_desired_servers(_, BucketName, Props, Params),
-                  get_eligible_buckets(Snapshot), Snapshot),
+                  get_eligible_buckets(Snapshot), Snapshot,
+                  fun ns_bucket:get_desired_servers/1),
     case RV of
         {ok, Servers} ->
             DesiredServers = lists:sort(lists:flatten(Servers)),
@@ -68,9 +69,9 @@ get_eligible_buckets(Snapshot) ->
     lists:filter(fun ({_, P}) -> ns_bucket:get_width(P) =/= undefined end,
                  ns_bucket:get_buckets(Snapshot)).
 
-on_zones(Fun, Buckets, Snapshot) ->
+on_zones(Fun, Buckets, Snapshot, GetServers) ->
     on_groups(fun (GroupNodes, _Group) ->
-                      Fun(construct_zone(GroupNodes, Buckets))
+                      Fun(construct_zone(GroupNodes, Buckets, GetServers))
               end, undefined, Snapshot).
 
 on_groups(Fun, KeepNodes, Snapshot)  ->
@@ -113,19 +114,19 @@ get_eligible_nodes(AllGroupNodes, KeepNodes, Snapshot) ->
                                           lists:member(N, KeepNodes))],
     ns_cluster_membership:service_nodes(Snapshot, ActivePlusKeep, kv).
 
-construct_zone(Nodes, Buckets) ->
-    [{N, construct_node(N, Buckets)} || N <- Nodes].
+construct_zone(Nodes, Buckets, GetServers) ->
+    [{N, construct_node(N, Buckets, GetServers)} || N <- Nodes].
 
 empty_node() ->
     #node{weight = 0, memory_used = 0, buckets = maps:new()}.
 
-construct_node(NodeName, Buckets) ->
-    apply_buckets_to_node(NodeName, empty_node(), Buckets).
+construct_node(NodeName, Buckets, GetServers) ->
+    apply_buckets_to_node(NodeName, empty_node(), Buckets, GetServers).
 
-apply_buckets_to_node(NodeName, InitialNode, Buckets) ->
+apply_buckets_to_node(NodeName, InitialNode, Buckets, GetServers) ->
     lists:foldl(
       fun ({BucketName, Props}, Node) ->
-              DesiredServers = ns_bucket:get_desired_servers(Props),
+              DesiredServers = GetServers(Props),
               case lists:member(NodeName, DesiredServers) of
                   true ->
                       apply_bucket_to_node(Node, BucketName, Props);
@@ -252,7 +253,8 @@ massage_rebalance_result(Res, Buckets) ->
       end, lists:zip(Buckets, zip_servers(Res, []))).
 
 rebalance_zone(GroupNodes, KeepNodes, Buckets, Params) ->
-    Nodes = construct_zone(GroupNodes, Buckets),
+    Nodes = construct_zone(GroupNodes, Buckets,
+                           fun ns_bucket:get_desired_servers/1),
     DesiredNodes =
         misc:update_proplist(
           [{N, empty_node()} || N <- KeepNodes, lists:member(N, GroupNodes)],
@@ -296,7 +298,8 @@ place_buckets_on_nodes(Nodes, [{BucketName, Props} | Rest], Params,
                 lists:map(
                   fun ({NName, NStruct}) ->
                           {NName, apply_buckets_to_node(
-                                    NName, NStruct, [{BucketName, NewProps}])}
+                                    NName, NStruct, [{BucketName, NewProps}],
+                                    fun ns_bucket:get_desired_servers/1)}
                   end, Nodes),
             place_buckets_on_nodes(NewNodes, Rest, Params,
                                    [Servers | AccServers])
@@ -337,7 +340,8 @@ get_node_status_fun(Snapshot, #params{weight_limit = WeightLimit,
                 end
         end,
 
-    {ok, NodesList} = on_zones(Fun, Buckets, Snapshot),
+    {ok, NodesList} =
+        on_zones(Fun, Buckets, Snapshot, fun ns_bucket:get_servers/1),
     NodesMap = maps:from_list(lists:flatten(NodesList)),
     fun (Node) ->
             case maps:find(Node, NodesMap) of
@@ -400,7 +404,13 @@ success_placement(Name, Props, Params, Zones, Snapshot) ->
     RV = do_place_bucket(Name, with_default_ram_quota(Props), Params, Snapshot),
     ?assertMatch({Name, {ok, _}}, {Name, RV}),
     {ok, NewProps} = RV,
-    NewSnapshot = apply_bucket_to_snapshot(Name, NewProps, Snapshot),
+    WithServers = case ns_bucket:get_servers(NewProps) of
+                      undefined ->
+                          ns_bucket:update_servers([], NewProps);
+                      _ ->
+                          NewProps
+                  end,
+    NewSnapshot = apply_bucket_to_snapshot(Name, WithServers, Snapshot),
     verify_bucket(Name, Zones, NewSnapshot),
     NewSnapshot.
 
@@ -413,6 +423,14 @@ apply_rebalance_rv_to_snapshot(RV, Snapshot) ->
               NewProps = ns_bucket:update_desired_servers(Servers, Props),
               apply_bucket_to_snapshot(BucketName, NewProps, Acc)
       end, Snapshot, NewServers).
+
+simulate_rebalance(Snapshot) ->
+    lists:foldl(
+      fun ({BucketName, Props}, Acc) ->
+              Servers = ns_bucket:get_desired_servers(Props),
+              NewProps = ns_bucket:update_servers(Servers, Props),
+              apply_bucket_to_snapshot(BucketName, NewProps, Acc)
+      end, Snapshot, ns_bucket:get_buckets(Snapshot)).
 
 failed_placement(Name, Props, Params, Zones, Snapshot) ->
     RV = do_place_bucket(Name, with_default_ram_quota(Props), Params, Snapshot),
@@ -515,7 +533,16 @@ bucket_placer_test_() ->
                                               {ram_quota, 5}], _),
                       SuccessPlacement("B2", [{width, 3}, {weight, 2},
                                               {ram_quota, 2}], _)]),
-              Fun = get_node_status_fun(S1, Params),
+              Unbalanced = get_node_status_fun(S1, Params),
+              Rebalanced = get_node_status_fun(simulate_rebalance(S1), Params),
+              ?assertEqual(
+                 [{limits,
+                   {[{kv, {[{buckets, 3}, {memory, 10}, {weight, 6}]}}]}},
+                  {utilization,
+                   {[{kv, {[{buckets, 0}, {memory, 0}, {weight, 0}]}}]}},
+                  {defragmented,
+                   {[{kv, {[{buckets, 2}, {memory, 7}, {weight, 5}]}}]}}],
+                 Unbalanced(a2)),
               ?assertEqual(
                  [{limits,
                    {[{kv, {[{buckets, 3}, {memory, 10}, {weight, 6}]}}]}},
@@ -523,7 +550,7 @@ bucket_placer_test_() ->
                    {[{kv, {[{buckets, 2}, {memory, 7}, {weight, 5}]}}]}},
                   {defragmented,
                    {[{kv, {[{buckets, 2}, {memory, 7}, {weight, 5}]}}]}}],
-                 Fun(a2))
+                 Rebalanced(a2))
       end},
      {"Rebalance of balanced zone is a no op",
       fun () ->
