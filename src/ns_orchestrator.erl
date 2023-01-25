@@ -651,57 +651,27 @@ janitor_running(_Event, _State) ->
     keep_state_and_data.
 
 %% Synchronous idle events
-idle({create_bucket, BucketType, BucketName, NewConfig}, From, _State) ->
-    Reply = case ns_bucket:name_conflict(BucketName) of
-                false ->
-                    {Results, FailedNodes} =
-                        rpc:multicall(ns_node_disco:nodes_wanted(),
-                                      ns_memcached, active_buckets, [],
-                                      ?CREATE_BUCKET_TIMEOUT),
-                    case FailedNodes of
-                        [] -> ok;
-                        _ ->
-                            ?log_warning("Best-effort check for presense of "
-                                         "bucket failed to be made on "
-                                         "following nodes: ~p", [FailedNodes])
-                    end,
-                    case lists:any(
-                           fun (StartedBucket) ->
-                                   ns_bucket:names_conflict(StartedBucket,
-                                                            BucketName)
-                           end, lists:append(Results)) of
-                        true ->
-                            {error, {still_exists, BucketName}};
-                        _ ->
-                            case bucket_placer:place_bucket(
-                                   BucketName, NewConfig) of
-                                {ok, NewConfig1} ->
-                                    ns_bucket:create_bucket(
-                                      BucketType, BucketName, NewConfig1);
-                                {error, BadZones} ->
-                                    {error, {need_more_space, BadZones}}
-                            end
-                    end;
-                true ->
-                    {error, {already_exists, BucketName}}
-            end,
-    case Reply of
-        ok ->
-            NewConfigJSON = ns_bucket:build_bucket_props_json(NewConfig),
+idle({create_bucket, BucketType, BucketName, BucketConfig}, From, _State) ->
+    case validate_create_bucket(BucketName, BucketConfig) of
+        {ok, NewBucketConfig} ->
+            ok = ns_bucket:create_bucket(BucketType, BucketName,
+                                         NewBucketConfig),
+            ConfigJSON = ns_bucket:build_bucket_props_json(NewBucketConfig),
             master_activity_events:note_bucket_creation(BucketName, BucketType,
-                                                        NewConfigJSON),
-            StorageMode = proplists:get_value(storage_mode, NewConfig,
-                                              undefined),
+                                                        ConfigJSON),
+            StorageMode = proplists:get_value(
+                            storage_mode, NewBucketConfig, undefined),
             event_log:add_log(
               bucket_created,
               [{bucket, list_to_binary(BucketName)},
                {bucket_uuid, ns_bucket:uuid(BucketName, direct)},
                {bucket_type, ns_bucket:display_type(BucketType, StorageMode)},
-               {bucket_props, {NewConfigJSON}}]),
-            request_janitor_run({bucket, BucketName});
-        _ -> ok
-    end,
-    {keep_state_and_data, [{reply, From, Reply}]};
+               {bucket_props, {ConfigJSON}}]),
+            request_janitor_run({bucket, BucketName}),
+            {keep_state_and_data, [{reply, From, ok}]};
+        {error, _} = Error ->
+            {keep_state_and_data, [{reply, From, Error}]}
+    end;
 idle({flush_bucket, BucketName}, From, _State) ->
     RV = perform_bucket_flushing(BucketName),
     case RV of
@@ -2022,6 +1992,37 @@ handle_delete_bucket(BucketName) ->
             end;
         Other ->
             Other
+    end.
+
+validate_create_bucket(BucketName, BucketConfig) ->
+    try
+        not ns_bucket:name_conflict(BucketName) orelse
+            throw({already_exists, BucketName}),
+
+        {Results, FailedNodes} =
+            rpc:multicall(ns_node_disco:nodes_wanted(), ns_memcached,
+                          active_buckets, [], ?CREATE_BUCKET_TIMEOUT),
+        case FailedNodes of
+            [] -> ok;
+            _ ->
+                ?log_warning(
+                   "Best-effort check for presense of bucket failed to be made "
+                   "on following nodes: ~p", [FailedNodes])
+        end,
+        not lists:any(ns_bucket:names_conflict(_, BucketName),
+                      lists:append(Results)) orelse
+            throw({still_exists, BucketName}),
+        PlacedBucketConfig =
+            case bucket_placer:place_bucket(BucketName, BucketConfig) of
+                {ok, NewConfig} ->
+                    NewConfig;
+                {error, BadZones} ->
+                    throw({need_more_space, BadZones})
+            end,
+        {ok, PlacedBucketConfig}
+    catch
+        throw:Error ->
+            {error, Error}
     end.
 
 -ifdef(TEST).
