@@ -105,6 +105,7 @@
          past_vbucket_maps/1,
          config_to_map_options/1,
          can_have_views/1,
+         is_magma/1,
          get_view_nodes/1,
          get_default_num_vbuckets/0,
          allow_variable_num_vbuckets/0,
@@ -1432,6 +1433,9 @@ num_replicas_changed(NumReplicas, Map) ->
 
 can_have_views(BucketConfig) ->
     ?COUCHDB_ENABLED(storage_mode(BucketConfig) =:= couchstore, false).
+
+is_magma(BucketConfig) ->
+    storage_mode(BucketConfig) =:= magma.
 
 get_view_nodes(BucketConfig) ->
     case can_have_views(BucketConfig) of
