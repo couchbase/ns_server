@@ -2009,9 +2009,11 @@ validate_create_bucket(BucketName, BucketConfig) ->
                    "Best-effort check for presense of bucket failed to be made "
                    "on following nodes: ~p", [FailedNodes])
         end,
-        not lists:any(ns_bucket:names_conflict(_, BucketName),
-                      lists:append(Results)) orelse
+
+        not ns_bucket:name_conflict(
+              BucketName, lists:usort(lists:append(Results))) orelse
             throw({still_exists, BucketName}),
+
         PlacedBucketConfig =
             case bucket_placer:place_bucket(BucketName, BucketConfig) of
                 {ok, NewConfig} ->

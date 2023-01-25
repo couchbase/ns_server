@@ -63,7 +63,6 @@
          replicated_vbuckets/3,
          name_conflict/1,
          name_conflict/2,
-         names_conflict/2,
          node_locator/1,
          num_replicas/1,
          pitr_enabled/1,
@@ -1331,9 +1330,6 @@ is_ephemeral_bucket(BucketConfig) ->
         couchstore -> false;
         magma -> false
     end.
-
-names_conflict(BucketNameA, BucketNameB) ->
-    string:to_lower(BucketNameA) =:= string:to_lower(BucketNameB).
 
 %% @doc Check if a bucket name exists in the list. Case insensitive.
 name_conflict(BucketName, ListOfNames) ->
