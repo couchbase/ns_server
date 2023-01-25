@@ -1336,14 +1336,14 @@ names_conflict(BucketNameA, BucketNameB) ->
     string:to_lower(BucketNameA) =:= string:to_lower(BucketNameB).
 
 %% @doc Check if a bucket name exists in the list. Case insensitive.
-name_conflict(BucketName, ListOfBuckets) ->
+name_conflict(BucketName, ListOfNames) ->
     BucketNameLower = string:to_lower(BucketName),
-    lists:any(fun ({Name, _}) -> BucketNameLower == string:to_lower(Name) end,
-              ListOfBuckets).
+    lists:any(fun (Name) -> BucketNameLower == string:to_lower(Name) end,
+              ListOfNames).
 
 %% @doc Check if a bucket exists. Case insensitive.
 name_conflict(BucketName) ->
-    name_conflict(BucketName, get_buckets()).
+    name_conflict(BucketName, get_bucket_names()).
 
 node_bucket_names(Node, BucketsConfigs) ->
     [B || {B, C} <- BucketsConfigs,

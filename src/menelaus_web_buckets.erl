@@ -1279,7 +1279,8 @@ validate_bucket_name(true = _IsNew, _BucketConfig, BucketName, AllBuckets) ->
             %% we have to check for conflict here because we were looking
             %% for BucketConfig using case sensetive search (in basic_bucket_params_screening/4)
             %% but we do not allow buckets with the same names in a different register
-            case ns_bucket:name_conflict(BucketName, AllBuckets) of
+            case ns_bucket:name_conflict(
+                   BucketName, [N || {N, _} <- AllBuckets]) of
                 false ->
                     ignore;
                 _ ->
