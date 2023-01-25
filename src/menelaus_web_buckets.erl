@@ -1237,11 +1237,11 @@ validate_membase_bucket_params(CommonParams, Params,
          parse_validate_max_ttl(Params, BucketConfig, IsNew, IsEnterprise),
          parse_validate_compression_mode(Params, BucketConfig, IsNew,
                                          IsEnterprise)] ++
-         parse_validate_limits(Params, BucketConfig, IsNew, AllowStorageLimit,
-                               ?cut(get_storage_attributes())) ++
-         parse_validate_limits(Params, BucketConfig, IsNew, AllowThrottleLimit,
-                               ?cut(get_throttle_attributes())) ++
-         validate_bucket_auto_compaction_settings(Params),
+        parse_validate_limits(Params, BucketConfig, IsNew, AllowStorageLimit,
+                              ?cut(get_storage_attributes())) ++
+        parse_validate_limits(Params, BucketConfig, IsNew, AllowThrottleLimit,
+                              ?cut(get_throttle_attributes())) ++
+        validate_bucket_auto_compaction_settings(Params),
 
     validate_bucket_purge_interval(Params, BucketConfig, IsNew) ++
         get_conflict_resolution_type_and_thresholds(
