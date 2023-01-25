@@ -599,7 +599,7 @@ handle_config_change(cert_and_pkey, Parent) ->
 handle_config_change(root_cert_and_pkey, Parent) ->
     Parent ! cert_and_pkey_changed;
 %% we're using this key to detect change of node() name
-handle_config_change({node, _Node, capi_port}, Parent) ->
+handle_config_change({node, _Node, is_enterprise}, Parent) ->
     Parent ! cert_and_pkey_changed;
 handle_config_change(ssl_minimum_protocol, Parent) ->
     Parent ! security_settings_changed;
