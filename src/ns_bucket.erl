@@ -920,7 +920,7 @@ do_create_bucket(chronicle, BucketName, Config, BucketUUID, Manifest) ->
           kv, [root(), nodes_wanted],
           fun (Snapshot) ->
                   BucketNames = get_bucket_names(Snapshot),
-                  case lists:member(BucketName, BucketNames) of
+                  case name_conflict(BucketName, BucketNames) of
                       true ->
                           {abort, already_exists};
                       false ->
