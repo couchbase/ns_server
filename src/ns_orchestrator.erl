@@ -52,9 +52,9 @@
          update_bucket/4,
          delete_bucket/1,
          flush_bucket/1,
-         start_pause_bucket/2,
+         start_pause_bucket/3,
          stop_pause_bucket/1,
-         start_resume_bucket/3,
+         start_resume_bucket/4,
          stop_resume_bucket/1,
          failover/2,
          start_failover/2,
@@ -173,7 +173,8 @@ delete_bucket(BucketName) ->
 flush_bucket(BucketName) ->
     call({flush_bucket, BucketName}, infinity).
 
--spec start_pause_bucket(bucket_name(), string()) ->
+-spec start_pause_bucket(bucket_name(), string(),
+                         BlobStorageRegion :: string()) ->
     ok |
     bucket_not_found |
     not_supported |
@@ -186,9 +187,9 @@ flush_bucket(BucketName) ->
     full_servers_unavailable |
     failed_service_nodes |
     map_servers_mismatch.
-start_pause_bucket(Bucket, RemotePath) ->
+start_pause_bucket(Bucket, RemotePath, BlobStorageRegion) ->
     call({{bucket_hibernation_op,
-           {start, pause_bucket}}, [Bucket, RemotePath]}).
+           {start, pause_bucket}}, [Bucket, RemotePath, BlobStorageRegion]}).
 
 -spec stop_pause_bucket(bucket_name()) ->
     ok |
@@ -200,16 +201,18 @@ start_pause_bucket(Bucket, RemotePath) ->
 stop_pause_bucket(Bucket) ->
     call({{bucket_hibernation_op, {stop, pause_bucket}}, [Bucket]}).
 
--spec start_resume_bucket(bucket_name(), string(), list()) ->
+-spec start_resume_bucket(bucket_name(), string(),
+                          BlobStorageRegion :: string(), list()) ->
     ok |
     {need_more_space, term()} |
     bucket_exists |
     rebalance_running |
     in_recovery |
     in_bucket_hibernation.
-start_resume_bucket(Bucket, RemotePath, Metadata) ->
+start_resume_bucket(Bucket, RemotePath, BlobStorageRegion, Metadata) ->
     call({{bucket_hibernation_op,
-           {start, resume_bucket}}, [Bucket, RemotePath, Metadata]}).
+           {start, resume_bucket}}, [Bucket, RemotePath,
+                                     BlobStorageRegion, Metadata]}).
 
 -spec stop_resume_bucket(bucket_name()) ->
     ok |
@@ -923,19 +926,20 @@ idle({ensure_janitor_run, Item}, From, State) ->
 
 %% Start Pause/Resume bucket operations.
 idle({{bucket_hibernation_op, {start, pause_bucket = Op}},
-      [Bucket, RemotePath]}, From, _State) ->
+      [Bucket, RemotePath, BlobStorageRegion]}, From, _State) ->
     Snapshot = hibernation_utils:get_snapshot(Bucket),
     case hibernation_utils:check_allow_pause_op(Bucket, Snapshot) of
         ok ->
-            run_hibernation_op(Bucket, RemotePath, Snapshot, Op, From);
+            run_hibernation_op(Bucket, RemotePath,
+                               BlobStorageRegion, Snapshot, Op, From);
         Error ->
             {keep_state_and_data, [{reply, From, Error}]}
     end;
 idle({{bucket_hibernation_op, {start, resume_bucket = Op}},
-     [Bucket, RemotePath, Metadata]}, From, _State) ->
+     [Bucket, RemotePath, BlobStorageRegion, Metadata]}, From, _State) ->
     case hibernation_utils:check_allow_resume_op(Bucket, Metadata) of
         {ok, NewBucketConfig} ->
-            run_hibernation_op(Bucket, RemotePath,
+            run_hibernation_op(Bucket, RemotePath, BlobStorageRegion,
                                {NewBucketConfig, Metadata}, Op, From);
         {error, Error} ->
             {keep_state_and_data, [{reply, From, Error}]}
@@ -1183,9 +1187,11 @@ wait_for_nodes(Nodes, Pred, Timeout) ->
               wait_for_nodes_loop(InitiallyFilteredNodes)
       end).
 
-hibernation_op_state_update(Bucket, RemotePath, Manager, From, Op) ->
+hibernation_op_state_update(Bucket, RemotePath, BlobStorageRegion,
+                            Manager, From, Op) ->
     ale:info(?USER_LOGGER, "Starting hibernation operation (~p) for bucket: "
-             "~p. RemotePath - ~p.", [Op, Bucket, RemotePath]),
+             "~p. RemotePath - ~p. BlobStorageRegion - ~p",
+             [Op, Bucket, RemotePath, BlobStorageRegion]),
 
     hibernation_utils:set_hibernation_status(Bucket, {Op, running}),
     {next_state, bucket_hibernation,
@@ -1194,16 +1200,22 @@ hibernation_op_state_update(Bucket, RemotePath, Manager, From, Op) ->
                                op = Op},
      [{reply, From, ok}]}.
 
-run_hibernation_op(Bucket, RemotePath, Snapshot, pause_bucket = Op, From) ->
+run_hibernation_op(Bucket, RemotePath, BlobStorageRegion,
+                   Snapshot, pause_bucket = Op, From) ->
     log_hibernation_event(Bucket, bucket_pause_initiated),
-    Manager = hibernation_manager:pause_bucket(Bucket, Snapshot, RemotePath),
-    hibernation_op_state_update(Bucket, RemotePath, Manager, From, Op);
-run_hibernation_op(Bucket, RemotePath, {NewBucketConfig, Metadata},
+    Manager = hibernation_manager:pause_bucket(Bucket, Snapshot, RemotePath,
+                                               BlobStorageRegion),
+    hibernation_op_state_update(Bucket, RemotePath, BlobStorageRegion,
+                                Manager, From, Op);
+run_hibernation_op(Bucket, RemotePath, BlobStorageRegion,
+                   {NewBucketConfig, Metadata},
                    resume_bucket = Op, From) ->
     log_hibernation_event(Bucket, bucket_resume_initiated),
     Manager = hibernation_manager:resume_bucket(Bucket, NewBucketConfig,
-                                                Metadata, RemotePath),
-    hibernation_op_state_update(Bucket, RemotePath, Manager, From, Op).
+                                                Metadata, RemotePath,
+                                                BlobStorageRegion),
+    hibernation_op_state_update(Bucket, RemotePath, BlobStorageRegion,
+                                Manager, From, Op).
 
 perform_bucket_flushing(BucketName) ->
     case ns_bucket:get_bucket(BucketName) of

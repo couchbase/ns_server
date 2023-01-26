@@ -21,9 +21,9 @@
          unset_service_manager/2,
          prepare_pause_bucket/3,
          unprepare_pause_bucket/2,
-         pause_bucket/4,
+         pause_bucket/5,
          unpause_bucket/2,
-         resume_bucket/4]).
+         resume_bucket/5]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -93,20 +93,22 @@ unprepare_pause_bucket(Bucket, Nodes) ->
                 ?TIMEOUT),
     handle_multicall_result(unprepare_pause_bucket, Results).
 
-pause_bucket(Bucket, RemotePath, Node, Manager) ->
+pause_bucket(Bucket, RemotePath, BlobStorageRegion, Node, Manager) ->
     gen_server:call(server(Node), {if_service_manager, Manager,
                                    {hibernation_op,
-                                    {pause_bucket, Bucket, RemotePath}}},
+                                    {pause_bucket, Bucket, RemotePath,
+                                     BlobStorageRegion}}},
                     ?PAUSE_BUCKET_TIMEOUT).
 
 unpause_bucket(Bucket, Node) ->
     gen_server:call(server(Node), {unpause_bucket, Bucket},
                     ?UNPAUSE_BUCKET_TIMEOUT).
 
-resume_bucket(Bucket, RemotePath, Node, Manager) ->
+resume_bucket(Bucket, RemotePath, BlobStorageRegion, Node, Manager) ->
     gen_server:call(server(Node), {if_service_manager, Manager,
                                    {hibernation_op,
-                                    {resume_bucket, Bucket, RemotePath}}},
+                                    {resume_bucket, Bucket, RemotePath,
+                                     BlobStorageRegion}}},
                     ?RESUME_BUCKET_TIMEOUT).
 
 start_link() ->
@@ -242,25 +244,27 @@ handle_unset_service_manager(#state{service_manager = {_Pid, MRef},
                      unset_worker(_),
                      unset_service_manager(_)]).
 
-handle_sub_call({hibernation_op, {pause_bucket, Bucket, RemotePath}},
+handle_sub_call({hibernation_op, {pause_bucket, Bucket, RemotePath,
+                                  BlobStorageRegion}},
                 From,
                 #state{from = undefined,
                        bucket = Bucket} = State) ->
     {WorkerPid, Ref} =
         run_on_worker(
           pause_bucket,
-          ?cut(do_pause_bucket(Bucket, RemotePath))),
+          ?cut(do_pause_bucket(Bucket, RemotePath, BlobStorageRegion))),
     {noreply, State#state{worker = {WorkerPid, Ref},
                           from = From,
                           op = pause_bucket}};
 
-handle_sub_call({hibernation_op, {resume_bucket, Bucket, RemotePath}},
+handle_sub_call({hibernation_op, {resume_bucket, Bucket, RemotePath,
+                                  BlobStorageRegion}},
                 From,
                 #state{from = undefined} = State) ->
     {WorkerPid, Ref} =
         run_on_worker(
           resume_bucket,
-          ?cut(do_resume_bucket(Bucket, RemotePath))),
+          ?cut(do_resume_bucket(Bucket, RemotePath, BlobStorageRegion))),
     {noreply, State#state{worker = {WorkerPid, Ref},
                           from = From,
                           op = resume_bucket}};
@@ -274,7 +278,7 @@ append_path_separator(Path) ->
     false = misc:is_windows(),
     Path ++ "/".
 
-do_pause_bucket(Bucket, RemotePath) ->
+do_pause_bucket(Bucket, RemotePath, BlobStorageRegion) ->
     ?log_info("Starting pause Bucket: ~p, RemotePath: ~p",
               [Bucket, RemotePath]),
 
@@ -290,22 +294,23 @@ do_pause_bucket(Bucket, RemotePath) ->
 
     ok = hibernation_utils:check_test_condition(node_pause_before_data_sync),
 
-    ?log_info("Pause Bucket: ~p, Source: ~p, Dest: ~p",
-              [Bucket, SourcePath, DestPath]),
-    ok = hibernation_utils:sync_s3(SourcePath, DestPath, to).
+    ?log_info("Pause Bucket: ~p, Source: ~p, Dest: ~p, BlobStorageRegion: ~p",
+              [Bucket, SourcePath, DestPath, BlobStorageRegion]),
+    ok = hibernation_utils:sync_s3(SourcePath, DestPath, BlobStorageRegion, to).
 
-do_resume_bucket(Bucket, RemotePath) ->
+do_resume_bucket(Bucket, RemotePath, BlobStorageRegion) ->
     SourcePath = append_path_separator(RemotePath),
     DestPath = hibernation_utils:get_data_component_path(),
-    ?log_info("Resume Bucket: ~p, Source: ~p, Dest: ~p",
-              [Bucket, SourcePath, DestPath]),
+    ?log_info("Resume Bucket: ~p, Source: ~p, Dest: ~p, BlobStorageRegion - ~p",
+              [Bucket, SourcePath, BlobStorageRegion, DestPath]),
 
     %% On a new resume, we cleanup any old data for previously failed resumes
     ok = ns_storage_conf:delete_unused_buckets_db_files(),
 
     ok = hibernation_utils:check_test_condition(node_resume_before_data_sync),
 
-    ok = hibernation_utils:sync_s3(SourcePath, DestPath, from).
+    ok = hibernation_utils:sync_s3(SourcePath, DestPath, BlobStorageRegion,
+                                   from).
 
 do_unpause_bucket(Bucket) ->
     ok = ns_memcached:unpause_bucket(Bucket).

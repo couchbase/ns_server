@@ -21,8 +21,8 @@
 -export([wait_for_agents/3]).
 -export([set_service_manager/3, unset_service_manager/3]).
 -export([get_node_infos/3, prepare_rebalance/7, start_rebalance/7]).
--export([prepare_pause_bucket/6, pause_bucket/6]).
--export([prepare_resume_bucket/7, resume_bucket/7]).
+-export([prepare_pause_bucket/7, pause_bucket/7]).
+-export([prepare_resume_bucket/8, resume_bucket/8]).
 -export([spawn_connection_waiter/2]).
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
@@ -177,36 +177,42 @@ start_rebalance(Service, Node, Manager, RebalanceId, Type, KeepNodes,
 
     gen_server:call({server_name(Service), Node}, Call, ?OUTER_TIMEOUT).
 
-prepare_pause_bucket(Service, Nodes, Bucket, RemotePath, Id, Manager) ->
+prepare_pause_bucket(Service, Nodes, Bucket, RemotePath, BlobStorageRegion, Id,
+                     Manager) ->
     Result = multi_call(Nodes, Service,
                         {if_service_manager, Manager,
-                         {prepare_pause_bucket, Id, Bucket, RemotePath}},
+                         {prepare_pause_bucket, Id, Bucket, RemotePath,
+                          BlobStorageRegion}},
                         ?OUTER_TIMEOUT),
     handle_multicall_result(Service, prepare_pause_bucket, Result,
                             fun just_ok/1).
 
-pause_bucket(Service, Node, Bucket, RemotePath, Id, Manager) ->
+pause_bucket(Service, Node, Bucket, RemotePath, BlobStorageRegion,
+             Id, Manager) ->
     Observer = self(),
     gen_server:call({server_name(Service), Node},
                     {if_service_manager, Manager,
-                     {pause_bucket, Id, Bucket, RemotePath, Observer}},
+                     {pause_bucket, Id, Bucket, RemotePath, BlobStorageRegion,
+                      Observer}},
                     ?OUTER_TIMEOUT).
 
-prepare_resume_bucket(Service, Nodes, Bucket,
-                      RemotePath, DryRun, Id, Manager) ->
+prepare_resume_bucket(Service, Nodes, Bucket, RemotePath, BlobStorageRegion,
+                      DryRun, Id, Manager) ->
     Result = multi_call(Nodes, Service,
                         {if_service_manager, Manager,
                          {prepare_resume_bucket,
-                          Id, Bucket, RemotePath, DryRun}},
+                          Id, Bucket, RemotePath, BlobStorageRegion, DryRun}},
                         ?OUTER_TIMEOUT),
     handle_multicall_result(Service, prepare_resume_bucket, Result,
                             fun just_ok/1).
 
-resume_bucket(Service, Node, Bucket, RemotePath, DryRun, Id, Manager) ->
+resume_bucket(Service, Node, Bucket, RemotePath, BlobStorageRegion, DryRun, Id,
+              Manager) ->
     Observer = self(),
     gen_server:call({server_name(Service), Node},
                     {if_service_manager, Manager,
-                     {resume_bucket, Id, Bucket, RemotePath, DryRun, Observer}},
+                     {resume_bucket, Id, Bucket, RemotePath, BlobStorageRegion,
+                      DryRun, Observer}},
                     ?OUTER_TIMEOUT).
 
 %% gen_server callbacks
@@ -539,14 +545,17 @@ do_handle_call({start_rebalance, Id, Type, KeepNodes, EjectNodes, Observer},
               handle_start_rebalance(Conn, Id, Type, KeepNodes,
                                      EjectNodes, Self, Observer)
       end);
-do_handle_call({prepare_pause_bucket, Id, Bucket, RemotePath},
+do_handle_call({prepare_pause_bucket, Id, Bucket, RemotePath,
+                BlobStorageRegion},
                From, State) ->
     run_on_task_runner(
       From, State,
       fun (Conn) ->
-              handle_prepare_pause_bucket(Conn, Id, Bucket, RemotePath)
+              handle_prepare_pause_bucket(Conn, Id, Bucket, RemotePath,
+                                          BlobStorageRegion)
       end);
-do_handle_call({pause_bucket, Id, Bucket, RemotePath, Observer},
+do_handle_call({pause_bucket, Id, Bucket, RemotePath, BlobStorageRegion,
+                Observer},
                From, State) ->
     Self = self(),
     State1 = State#state{type = pause_bucket},
@@ -554,16 +563,20 @@ do_handle_call({pause_bucket, Id, Bucket, RemotePath, Observer},
     run_on_task_runner(
       From, State1,
       fun (Conn) ->
-              handle_pause_bucket(Conn, Id, Bucket, RemotePath, Self, Observer)
+              handle_pause_bucket(Conn, Id, Bucket, RemotePath,
+                                  BlobStorageRegion, Self, Observer)
       end);
-do_handle_call({prepare_resume_bucket, Id, Bucket, RemotePath, DryRun},
+do_handle_call({prepare_resume_bucket, Id, Bucket, RemotePath,
+                BlobStorageRegion, DryRun},
                From, State) ->
     run_on_task_runner(
       From, State,
       fun (Conn) ->
-              handle_prepare_resume_bucket(Conn, Id, Bucket, RemotePath, DryRun)
+              handle_prepare_resume_bucket(Conn, Id, Bucket, RemotePath,
+                                           BlobStorageRegion, DryRun)
       end);
-do_handle_call({resume_bucket, Id, Bucket, RemotePath, DryRun, Observer},
+do_handle_call({resume_bucket, Id, Bucket, RemotePath, BlobStorageRegion,
+                DryRun, Observer},
                From, State) ->
     Self = self(),
     State1 = case DryRun of
@@ -576,8 +589,8 @@ do_handle_call({resume_bucket, Id, Bucket, RemotePath, DryRun, Observer},
     run_on_task_runner(
       From, State1,
       fun (Conn) ->
-              handle_resume_bucket(Conn, Id, Bucket, RemotePath, DryRun,
-                                   Self, Observer)
+              handle_resume_bucket(Conn, Id, Bucket, RemotePath,
+                                   BlobStorageRegion, DryRun, Self, Observer)
       end);
 do_handle_call(Call, From, State) ->
     ?log_error("Unexpected call ~p from ~p when in state~n~p",
@@ -830,20 +843,27 @@ handle_start_rebalance(Conn, Id, Type, KeepNodes, EjectNodes, Agent, Observer) -
                                              KeepNodes, EjectNodes)),
       Agent, Observer).
 
-handle_prepare_pause_bucket(Conn, Id, Bucket, RemotePath) ->
-    service_api:prepare_pause_bucket(Conn, Id, Bucket, RemotePath).
+handle_prepare_pause_bucket(Conn, Id, Bucket, RemotePath, BlobStorageRegion) ->
+    service_api:prepare_pause_bucket(Conn, Id, Bucket, RemotePath,
+                                     BlobStorageRegion).
 
-handle_pause_bucket(Conn, Id, Bucket, RemotePath, Agent, Observer) ->
+handle_pause_bucket(Conn, Id, Bucket, RemotePath, BlobStorageRegion,
+                    Agent, Observer) ->
     run_task_and_set_observer(
-      ?cut(service_api:pause_bucket(Conn, Id, Bucket, RemotePath)),
+      ?cut(service_api:pause_bucket(Conn, Id, Bucket, RemotePath,
+                                    BlobStorageRegion)),
       Agent, Observer).
 
-handle_prepare_resume_bucket(Conn, Id, Bucket, RemotePath, DryRun) ->
-    service_api:prepare_resume_bucket(Conn, Id, Bucket, RemotePath, DryRun).
+handle_prepare_resume_bucket(Conn, Id, Bucket, RemotePath, BlobStorageRegion,
+                             DryRun) ->
+    service_api:prepare_resume_bucket(Conn, Id, Bucket, RemotePath,
+                                      BlobStorageRegion, DryRun).
 
-handle_resume_bucket(Conn, Id, Bucket, RemotePath, DryRun, Agent, Observer) ->
+handle_resume_bucket(Conn, Id, Bucket, RemotePath, BlobStorageRegion, DryRun,
+                     Agent, Observer) ->
     run_task_and_set_observer(
-      ?cut(service_api:resume_bucket(Conn, Id, Bucket, RemotePath, DryRun)),
+      ?cut(service_api:resume_bucket(Conn, Id, Bucket, RemotePath,
+                                     BlobStorageRegion, DryRun)),
       Agent, Observer).
 
 run_task_and_set_observer(Body, Agent, Observer) ->

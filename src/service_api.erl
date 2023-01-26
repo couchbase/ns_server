@@ -16,8 +16,8 @@
          get_task_list/2, cancel_task/3,
          get_current_topology/2,
          prepare_topology_change/6, start_topology_change/6,
-         prepare_pause_bucket/4, pause_bucket/4,
-         prepare_resume_bucket/5, resume_bucket/5,
+         prepare_pause_bucket/5, pause_bucket/5,
+         prepare_resume_bucket/6, resume_bucket/6,
          health_check/1, is_safe/2, get_label/1,
          get_defragmented_utilization/2]).
 
@@ -51,22 +51,24 @@ start_topology_change(Pid, Id, Rev, Type, KeepNodes, EjectNodes) ->
       Pid, "StartTopologyChange",
       topology_change_req(Id, Rev, Type, KeepNodes, EjectNodes)).
 
-prepare_pause_bucket(Pid, Id, Bucket, RemotePath) ->
+prepare_pause_bucket(Pid, Id, Bucket, RemotePath, BlobStorageRegion) ->
     perform_service_manager_call(
-      Pid, "PreparePause", pause_req(Id, Bucket, RemotePath)).
+      Pid, "PreparePause", pause_req(Id, Bucket, RemotePath,
+                                     BlobStorageRegion)).
 
-pause_bucket(Pid, Id, Bucket, RemotePath) ->
+pause_bucket(Pid, Id, Bucket, RemotePath, BlobStorageRegion) ->
     perform_service_manager_call(
-      Pid, "Pause", pause_req(Id, Bucket, RemotePath)).
+      Pid, "Pause", pause_req(Id, Bucket, RemotePath, BlobStorageRegion)).
 
-prepare_resume_bucket(Pid, Id, Bucket, RemotePath, DryRun) ->
+prepare_resume_bucket(Pid, Id, Bucket, RemotePath, BlobStorageRegion, DryRun) ->
     perform_service_manager_call(
       Pid, "PrepareResume", resume_req(Id, Bucket, RemotePath,
-                                                  DryRun)).
+                                       BlobStorageRegion, DryRun)).
 
-resume_bucket(Pid, Id, Bucket, RemotePath, DryRun) ->
+resume_bucket(Pid, Id, Bucket, RemotePath, BlobStorageRegion, DryRun) ->
     perform_service_manager_call(
-      Pid, "Resume", resume_req(Id, Bucket, RemotePath, DryRun)).
+      Pid, "Resume", resume_req(Id, Bucket, RemotePath, BlobStorageRegion,
+                                DryRun)).
 
 health_check(Service) ->
     try perform_call(
@@ -145,20 +147,22 @@ topology_change_req(Id, Rev, Type, KeepNodes, EjectNodes) ->
       {ejectNodes, encode_eject_nodes(EjectNodes)}] ++
      maybe_add_additional_info()}.
 
-pause_req(Id, Bucket, RemotePath) ->
+pause_req(Id, Bucket, RemotePath, BlobStorageRegion) ->
     true = is_binary(Id),
 
     {[{id, Id},
       {bucket, list_to_binary(Bucket)},
-      {remotePath, list_to_binary(RemotePath)}]}.
+      {remotePath, list_to_binary(RemotePath)},
+      {blobStorageRegion, list_to_binary(BlobStorageRegion)}]}.
 
-resume_req(Id, Bucket, RemotePath, DryRun) ->
+resume_req(Id, Bucket, RemotePath, BlobStorageRegion, DryRun) ->
     true = is_binary(Id),
     true = is_boolean(DryRun),
 
     {[{id, Id},
       {bucket, list_to_binary(Bucket)},
       {remotePath, list_to_binary(RemotePath)},
+      {blobStorageRegion, list_to_binary(BlobStorageRegion)},
       {dryRun, DryRun}]}.
 
 maybe_add_additional_info() ->

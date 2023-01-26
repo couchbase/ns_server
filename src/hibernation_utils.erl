@@ -22,9 +22,9 @@
          build_hibernation_task/0,
          unpause_bucket/1,
          unpause_bucket/2,
-         sync_s3/3,
-         upload_metadata_to_s3/3,
-         get_metadata_from_s3/1,
+         sync_s3/4,
+         upload_metadata_to_s3/4,
+         get_metadata_from_s3/2,
          get_bucket_config/1,
          get_bucket_uuid/1,
          get_bucket_manifest/1,
@@ -148,9 +148,9 @@ get_new_bucket_config(Bucket, PausedBucketCfg,
         [{servers, []}, {hibernation_state, resuming}],
     bucket_placer:place_bucket(Bucket, NewConfig).
 
-get_metadata_from_s3(RemotePath) ->
+get_metadata_from_s3(RemotePath, BlobStorageRegion) ->
     KvRemotePath = get_data_remote_path(RemotePath),
-    get_bucket_metadata_from_s3(KvRemotePath).
+    get_bucket_metadata_from_s3(KvRemotePath, BlobStorageRegion).
 
 get_paused_bucket_cfg(Metadata) ->
     BucketVersion = get_bucket_version(Metadata),
@@ -297,9 +297,9 @@ unpause_bucket_body(Bucket, BucketNodes) ->
             exit({unpause_bucket_failed, {failed_nodes, FailedNodes}})
     end.
 
--spec sync_s3(string(), string(), atom())->
+-spec sync_s3(string(), string(), BlobStorageRegion :: string(), atom())->
           ok | {error, non_neg_integer(), binary()}.
-sync_s3(Source, Dest, SyncCode) ->
+sync_s3(Source, Dest, BlobStorageRegion, SyncCode) ->
     Cmd = path_config:component_path(bin, "cbobjutil"),
     {SPath, DPath} = case SyncCode of
                          to ->
@@ -307,7 +307,9 @@ sync_s3(Source, Dest, SyncCode) ->
                          from ->
                              {"s3:/" ++ Source, Dest}
                      end,
-    Args = ["sync", SPath, DPath],
+
+    Args = ["--region", BlobStorageRegion, "sync", SPath, DPath],
+
     {Status, Output} = misc:run_external_tool(Cmd, Args, [],
                                               [graceful_shutdown]),
     case Status of
@@ -347,9 +349,9 @@ write_to_temp_file(FileName, Data) ->
     ok = misc:write_file(TempFile, Data),
     TempFile.
 
-s3_upload_and_remove_file(TempFile, Dest) ->
+s3_upload_and_remove_file(TempFile, Dest, BlobStorageRegion) ->
     try
-        sync_s3(TempFile, Dest, to)
+        sync_s3(TempFile, Dest, BlobStorageRegion, to)
     catch
         _:_ -> {error, sync_to_s3}
     after
@@ -359,32 +361,33 @@ s3_upload_and_remove_file(TempFile, Dest) ->
 encode_term(Term) ->
     io_lib:format("~0p.~n", [Term]).
 
-upload_bucket_metadata(Metadata, Dest) ->
+upload_bucket_metadata(Metadata, Dest, BlobStorageRegion) ->
     FileName = get_bucket_metadata_filename(),
     TempFile = write_to_temp_file(FileName, encode_term(Metadata)),
-    s3_upload_and_remove_file(TempFile, Dest).
+    s3_upload_and_remove_file(TempFile, Dest, BlobStorageRegion).
 
 encode_version(Version) ->
     ejson:encode({[{version, Version}]}).
 
-upload_version_json(Version, Dest) ->
+upload_version_json(Version, Dest, BlobStorageRegion) ->
     FileName = get_version_filename(),
     TempFile = write_to_temp_file(FileName, encode_version(Version)),
-    s3_upload_and_remove_file(TempFile, Dest).
+    s3_upload_and_remove_file(TempFile, Dest, BlobStorageRegion).
 
-upload_metadata_to_s3(BucketName, Snapshot, Dest) ->
+upload_metadata_to_s3(BucketName, Snapshot, Dest, BlobStorageRegion) ->
     {ok, BucketCfg} = ns_bucket:get_bucket(BucketName, Snapshot),
     Manifest = collections:get_manifest(BucketName, Snapshot),
     BucketUUID = ns_bucket:uuid(BucketName, Snapshot),
     Metadata = [{bucket_cfg, BucketCfg}, {bucket_uuid, BucketUUID},
                 {bucket_manifest, Manifest}],
-    ok = upload_bucket_metadata(Metadata, Dest),
-    ok = upload_version_json(cluster_compat_mode:get_compat_version(), Dest).
+    ok = upload_bucket_metadata(Metadata, Dest, BlobStorageRegion),
+    ok = upload_version_json(cluster_compat_mode:get_compat_version(),
+                             Dest, BlobStorageRegion).
 
-s3_sync_from_file(FileName, Rpath, DataFromFileFunc) ->
+s3_sync_from_file(FileName, Rpath, BlobStorageRegion, DataFromFileFunc) ->
     Source = Rpath ++ FileName,
     TempFile = path_config:component_path(tmp, FileName),
-    ok = sync_s3(Source, TempFile, from),
+    ok = sync_s3(Source, TempFile, BlobStorageRegion, from),
     try
         DataFromFileFunc(TempFile)
     catch
@@ -393,15 +396,15 @@ s3_sync_from_file(FileName, Rpath, DataFromFileFunc) ->
         file:delete(TempFile)
     end.
 
-get_bucket_metadata_from_s3(Rpath) ->
+get_bucket_metadata_from_s3(Rpath, BlobStorageRegion) ->
     FileName = get_bucket_metadata_filename(),
     {ok, Metadata} =
-        s3_sync_from_file(FileName, Rpath,
+        s3_sync_from_file(FileName, Rpath, BlobStorageRegion,
                           fun(TempFile) ->
                                   {ok, [Data]} = file:consult(TempFile),
                                   {ok, Data}
                           end),
-    Version = get_version_from_s3(Rpath),
+    Version = get_version_from_s3(Rpath, BlobStorageRegion),
     Metadata ++ [{version, Version}].
 
 get_bucket_version(Metadata) ->
@@ -420,10 +423,10 @@ decode_version(Data) ->
     {Json} = ejson:decode(Data),
     proplists:get_value(<<"version">>, Json).
 
-get_version_from_s3(Rpath) ->
+get_version_from_s3(Rpath, BlobStorageRegion) ->
     FileName = get_version_filename(),
     {ok, Version} =
-        s3_sync_from_file(FileName, Rpath,
+        s3_sync_from_file(FileName, Rpath, BlobStorageRegion,
                           fun(TempFile) ->
                                   {ok, Data} = file:read_file(TempFile),
                                   {ok, decode_version(Data)}

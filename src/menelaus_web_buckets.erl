@@ -835,7 +835,9 @@ validate_remote_path(Name, State) ->
 validators_start_hibernation() ->
     [validator:required(bucket, _), validator:string(bucket, _),
      validator:required(remote_path, _), validator:string(remote_path, _),
-     validate_remote_path(remote_path, _)].
+     validate_remote_path(remote_path, _),
+     validator:required(blob_storage_region, _),
+     validator:string(blob_storage_region, _)].
 
 validators_stop_hibernation() ->
     [validator:required(bucket, _), validator:string(bucket, _)].
@@ -862,19 +864,22 @@ handle_start_hibernation(Req, StartFunc) ->
       Req, fun(Params) ->
                    Bucket = proplists:get_value(bucket, Params),
                    RemotePath = proplists:get_value(remote_path, Params),
-                   StartFunc(Bucket, RemotePath)
+                   BlobStorageRegion =
+                       proplists:get_value(blob_storage_region, Params),
+                   StartFunc(Bucket, RemotePath, BlobStorageRegion)
            end, fun validators_start_hibernation/0).
 
 handle_start_pause(Req) ->
     handle_start_hibernation(Req,
-                             fun ns_orchestrator:start_pause_bucket/2).
+                             fun ns_orchestrator:start_pause_bucket/3).
 
 handle_start_resume(Req) ->
     handle_start_hibernation(
-      Req, fun(Bucket, RemotePath) ->
+      Req, fun(Bucket, RemotePath, BlobStorageRegion) ->
                    Metadata = hibernation_utils:get_metadata_from_s3(
-                                RemotePath),
+                                RemotePath, BlobStorageRegion),
                    ns_orchestrator:start_resume_bucket(Bucket, RemotePath,
+                                                       BlobStorageRegion,
                                                        Metadata)
            end).
 
