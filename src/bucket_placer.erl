@@ -16,6 +16,8 @@
 -endif.
 
 -export([is_enabled/0,
+         can_place_bucket/0,
+         allow_regular_buckets/0,
          place_bucket/2,
          rebalance/2,
          get_node_status_fun/1,
@@ -27,6 +29,20 @@
 
 is_enabled() ->
     config_profile:get_bool(enable_bucket_placer).
+
+can_place_bucket() ->
+    is_enabled() andalso
+        lists:all(
+          fun ({_, BucketConfig}) ->
+                  ns_bucket:get_width(BucketConfig) =/= undefined
+          end, ns_bucket:get_buckets()).
+
+allow_regular_buckets() ->
+    (not is_enabled()) orelse
+        lists:all(
+          fun ({_, BucketConfig}) ->
+                  ns_bucket:get_width(BucketConfig) =:= undefined
+          end, ns_bucket:get_buckets()).
 
 get_weight_limit() ->
     ns_config:read_key_fast({serverless, bucket_weight_limit}, 10000).

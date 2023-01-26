@@ -125,6 +125,7 @@ call(Msg, Timeout) ->
                            {error, {still_exists, nonempty_string()}} |
                            {error, {port_conflict, integer()}} |
                            {error, {need_more_space, list()}} |
+                           {error, {incorrect_parameters, nonempty_string()}} |
                            rebalance_running | in_recovery |
                            in_bucket_hibernation.
 create_bucket(BucketType, BucketName, NewConfig) ->
@@ -2013,6 +2014,19 @@ validate_create_bucket(BucketName, BucketConfig) ->
         not ns_bucket:name_conflict(
               BucketName, lists:usort(lists:append(Results))) orelse
             throw({still_exists, BucketName}),
+
+        case ns_bucket:get_width(BucketConfig) of
+            undefined ->
+                bucket_placer:allow_regular_buckets() orelse
+                    throw({incorrect_parameters,
+                           "Cannot create regular bucket because placed buckets"
+                           " are present in the cluster"});
+            _ ->
+                bucket_placer:can_place_bucket() orelse
+                    throw({incorrect_parameters,
+                           "Cannot place bucket because regular buckets"
+                           " are present in the cluster"})
+        end,
 
         PlacedBucketConfig =
             case bucket_placer:place_bucket(BucketName, BucketConfig) of

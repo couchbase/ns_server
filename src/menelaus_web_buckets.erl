@@ -740,6 +740,8 @@ do_bucket_create(Req, Name, ParsedProps) ->
             {errors_500, [{'_', <<"Bucket with given name still exists">>}]};
         {error, {need_more_space, Zones}} ->
             {errors, [{'_', need_more_space_error(Zones)}]};
+        {error, {incorrect_parameters, Error}} ->
+            {errors, [{'_', list_to_binary(Error)}]};
         rebalance_running ->
             {errors_500, [{'_', <<"Cannot create buckets during rebalance">>}]};
         in_recovery ->
