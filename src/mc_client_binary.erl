@@ -52,6 +52,7 @@
          get_dcp_docs_estimate/3,
          map_status/1,
          get_mass_dcp_docs_estimate/2,
+         get_all_vb_seqnos/1,
          ext/2,
          set_cluster_config/5,
          get_random_key/2,
@@ -832,6 +833,20 @@ get_mass_dcp_docs_estimate(Sock, VBuckets) ->
     {ok, [case get_dcp_docs_estimate(Sock, VB, <<>>) of
               {ok, V} -> V
           end || VB <- VBuckets]}.
+
+-spec get_all_vb_seqnos(port()) ->
+    {ok, [{vbucket_id(), non_neg_integer()}]} | mc_error().
+get_all_vb_seqnos(Sock) ->
+    RV = cmd(?CMD_GET_ALL_VB_SEQNOS, Sock, undefined, undefined,
+             {#mc_header{}, #mc_entry{}}, infinity),
+    case RV of
+        {ok, #mc_header{status=?SUCCESS}, #mc_entry{data = undefined}, _} ->
+            {ok, []};
+        {ok, #mc_header{status=?SUCCESS}, #mc_entry{data = Data}, _} ->
+            {ok, [{VB, Seqno} || <<VB:16, Seqno:64>> <= Data]};
+        Other ->
+            process_error_response(Other)
+    end.
 
 set_cluster_config(Sock, Bucket, Rev, RevEpoch0, Blob) ->
     report_counter(?FUNCTION_NAME),

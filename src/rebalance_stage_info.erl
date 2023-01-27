@@ -9,9 +9,15 @@
 %%
 -module(rebalance_stage_info).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([init/1,
          get_stage_info/2,
          get_progress/1,
+         get_current_stage/1,
+         get_stage_info_for_stage/2,
          update_progress/3,
          update_stage_info/4,
          diff_timestamp/2,
@@ -86,6 +92,24 @@ aggregate(PerStage) ->
 
 get_stage_info(StageInfo, AllStageDetails) ->
     {get_per_stage_info(StageInfo, AllStageDetails)}.
+
+-spec get_current_stage(stage_info()) -> atom().
+get_current_stage(#stage_info{per_stage_info = PerStageInfo}) ->
+    Stages = lists:filtermap(
+               fun ({Stage, #stage_details{start_time = S,
+                                           complete_time = C}}) ->
+                       case S =/= false andalso C =:= false of
+                           true -> {true, Stage};
+                           false -> false
+                       end
+               end, PerStageInfo),
+    case Stages of
+        [] -> undefined;
+        [Stage | _] -> Stage
+    end.
+
+get_stage_info_for_stage(#stage_info{per_stage_info = PerStageInfo}, Stage) ->
+    dict:find(Stage, dict:from_list(PerStageInfo)).
 
 diff_timestamp(false, false) ->
     false;
@@ -251,3 +275,26 @@ maybe_create_new_stage_progress(
     end;
 maybe_create_new_stage_progress(_Stage, _Info, StageInfo) ->
     StageInfo.
+
+-ifdef(TEST).
+test_get_current_stage(PerStageInfo, ExpectedStage) ->
+    ?assertEqual(ExpectedStage,
+                 get_current_stage(#stage_info{per_stage_info = PerStageInfo})).
+
+get_current_stage_test() ->
+    [test_get_current_stage([], undefined),
+     test_get_current_stage([{kv, #stage_details{start_time = false}}],
+                             undefined),
+     test_get_current_stage([{kv, #stage_details{start_time = true,
+                                                 complete_time = true}}],
+                             undefined),
+     test_get_current_stage([{kv, #stage_details{start_time = false}},
+                             {index, #stage_details{start_time = true,
+                                                    complete_time = false}}],
+                             index),
+     test_get_current_stage([{kv, #stage_details{start_time = true,
+                                                 complete_time = false}},
+                             {index, #stage_details{start_time = true,
+                                                    complete_time = true}}],
+                             kv)].
+-endif.

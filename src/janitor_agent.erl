@@ -58,6 +58,7 @@
          complete_flush/3,
          get_dcp_docs_estimate/4,
          get_mass_dcp_docs_estimate/3,
+         get_all_vb_seqnos/2,
          wait_dcp_data_move/5,
          wait_seqno_persisted/5,
          get_vbucket_high_seqno/4,
@@ -499,6 +500,11 @@ get_mass_dcp_docs_estimate(Bucket, Node, VBuckets) ->
     {ok, _} = RV,
     RV.
 
+-spec get_all_vb_seqnos(bucket_name(), node()) ->
+          {ok, [{vbucket_id(), seq_no()}]} | mc_error().
+get_all_vb_seqnos(Bucket, Node) ->
+    servant_call(Bucket, Node, get_all_vb_seqnos).
+
 mass_prepare_flush(Bucket, Nodes) ->
     {Replies, BadNodes} =
         multi_call(Bucket, Nodes, prepare_flush, ?PREPARE_FLUSH_TIMEOUT),
@@ -595,6 +601,12 @@ handle_call({get_mass_dcp_docs_estimate, VBucketsR}, From, State) ->
       From, State, VBucketsR,
       fun (VBuckets, #state{bucket_name = Bucket}) ->
               ns_memcached:get_mass_dcp_docs_estimate(Bucket, VBuckets)
+      end);
+handle_call(get_all_vb_seqnos, From, State) ->
+    handle_call_via_servant(
+      From, State, undefined,
+      fun (undefined, #state{bucket_name = Bucket}) ->
+              ns_memcached:get_all_vb_seqnos(Bucket)
       end);
 handle_call(Call, From, State) ->
     do_handle_call(Call, From, cleanup_rebalance_artifacts(Call, State)).

@@ -72,6 +72,8 @@
 -define(CMD_GET_VBUCKET,     16#3e).
 -define(CMD_DELETE_VBUCKET,  16#3f).
 
+-define(CMD_GET_ALL_VB_SEQNOS, 16#48).
+
 -define(SYNC, 16#96).
 -define(CMD_SET_PARAM,       16#82).            % NOTE: Id is same as old CMD_SET_FLUSH_PARAM
 -define(CMD_GET_REPLICA,     16#83).

@@ -23,6 +23,8 @@
          get_detailed_progress/0,
          get_aggregated_progress/1,
          get_rebalance_info/0,
+         get_current_stage/0,
+         get_progress_for_alerting/1,
          record_rebalance_report/1,
          update_progress/2,
          submit_master_event/1,
@@ -120,6 +122,18 @@ get_aggregated_progress(Timeout) ->
 
 get_rebalance_info() ->
     generic_get_call({get_rebalance_info, []}).
+
+-spec get_current_stage() -> atom() | {error, timeout} | not_running.
+get_current_stage() ->
+    generic_get_call(get_current_stage).
+
+%% Get a progress indicator which only changes when the service is making
+%% forwards progress. Doesn't have to be a percentage, as long as
+%% "progress value increases" => "rebalance progress is being made"
+-spec get_progress_for_alerting(atom()) ->
+    {binary(), term()} | {error, timeout} | not_running.
+get_progress_for_alerting(Service) ->
+    generic_get_call({get_progress_for_alerting, Service}).
 
 record_rebalance_report(Args) ->
     generic_get_call({record_rebalance_report, Args}).
@@ -236,6 +250,36 @@ handle_call({get_rebalance_info, Options}, _From,
                      {nodesInfo, {NodesInfo}},
                      {masterNode, atom_to_binary(node(), latin1)}],
     {reply, {ok, RebalanceInfo}, State};
+handle_call(get_current_stage, _From,
+            #state{stage_info = StageInfo} = State) ->
+    Stage = rebalance_stage_info:get_current_stage(StageInfo),
+    {reply, Stage, State};
+handle_call({get_progress_for_alerting, kv}, From,
+            #state{bucket = Bucket,
+                   rebalance_id = Id} = State) ->
+    %% Get the vbucket moves in progress
+    spawn_link(
+      fun () ->
+              MinSeqnos =
+                  case Bucket of
+                      undefined ->
+                          [];
+                      _ ->
+                          Moves = dict:to_list(get_all_vb_info(State, Bucket)),
+                          SeqnosPerVB = get_seqnos_per_vb(Moves, Bucket),
+                          [{VB, lists:min(Seqnos)} ||
+                              {VB, [_ | _] = Seqnos} <- SeqnosPerVB]
+
+                  end,
+              gen_server:reply(From, {Id, MinSeqnos})
+      end),
+    {noreply, State};
+handle_call({get_progress_for_alerting, Stage}, _From,
+            #state{stage_info = StageInfo,
+                   rebalance_id = Id} = State) ->
+    {reply, {Id,
+             rebalance_stage_info:get_stage_info_for_stage(StageInfo, Stage)},
+     State};
 handle_call({record_rebalance_report, {ResultType, ExitInfo}}, From,
             #state{nodes_info = NodesInfo,
                    rebalance_time = TotalTime0} = State0) ->
@@ -1082,9 +1126,54 @@ get_all_stage_rebalance_details(#state{bucket_info = BucketLevelInfo},
         _ -> [{kv, {RV}}]
     end.
 
+%% For each vbucket move in progress for a bucket, get the seqno for each
+%% node that we will wait for to be caught up
+get_seqnos_per_vb(Moves, Bucket) ->
+    %% We only care about the vbs that require waiting for seqno persistence,
+    %% which is those that are in the after chain and are not the previous
+    %% active vbucket
+    NodeVBs = [{Node, VB} ||
+                  {VB, #vbucket_info{before_chain = [OldNode|_],
+                                     after_chain = AfterChain,
+                                     move = Move}} <- Moves,
+                  Move#stat_info.start_time =/= false,
+                  Move#stat_info.end_time =:= false,
+                  Node <- AfterChain, Node =/= undefined, Node =/= OldNode],
+    %% Sort the moves, grouped by node
+    VBsPerNode = keygroup_sorted(lists:sort(NodeVBs)),
+    %% Looks up the seqno of a vbucket, with a default value of 0 so that we
+    %% can track the vbucket before the replication stream has been set up
+    GetVBSeqno =
+        fun (Seqnos, VB) ->
+                case lists:keyfind(VB, 1, Seqnos) of
+                    {VB, _Seqno} = Pair -> Pair;
+                    false -> {VB, 0}
+                end
+        end,
+    %% Fetches the seqno of each vbucket in VBs from Node
+    GetNodeSeqnos =
+        fun ({Node, VBs}) ->
+                case janitor_agent:get_all_vb_seqnos(Bucket, Node) of
+                    {ok, Seqnos} ->
+                        lists:map(GetVBSeqno(Seqnos, _), VBs);
+                    _Error ->
+                        []
+                end
+        end,
+    %% Get all seqnos for each vbucket in VBsPerNode, by fetching from each
+    %% node in parallel
+    SeqnosPerVB = lists:append(misc:parallel_map(GetNodeSeqnos, VBsPerNode,
+                                                 infinity)),
+    keygroup_sorted(lists:sort(SeqnosPerVB)).
+
 -ifdef(TEST).
 test_get_rebalance_info() ->
     gen_server:call(?MODULE, {get_rebalance_info, [{add_vbucket_info, true}]}).
+
+test_get_progress_for_alerting(Service) ->
+    gen_server:call(?MODULE, {get_progress_for_alerting, Service}).
+
+-define(REBALANCE_ID, <<"rebalanceID">>).
 
 setup_test_ns_rebalance_observer() ->
     meck:new(janitor_agent, [passthrough]),
@@ -1109,7 +1198,7 @@ setup_test_ns_rebalance_observer() ->
                 end),
     {ok, Pid} = gen_server:start_link(?MODULE,
                                       {[], [{active_nodes, [n1, n0]}],
-                                       rebalance, <<"rebalanceID">>},
+                                       rebalance, ?REBALANCE_ID},
                                       []),
     Pid.
 
@@ -1123,7 +1212,9 @@ ns_rebalance_observer_test_() ->
      fun setup_test_ns_rebalance_observer/0,
      fun teardown_test_ns_rebalance_observer/1,
      [{"rebalance", fun rebalance/0},
-      {"failover", fun failover/0}]}.
+      {"failover", fun failover/0},
+      {"get_all_vb_seqnos", fun get_all_vb_seqnos/0},
+      {"get_seqnos_per_vb", fun get_seqnos_per_vb_t/0}]}.
 
 rebalance() ->
     submit_master_event({rebalance_stage_started, [kv], [n1, n0]}),
@@ -1241,7 +1332,7 @@ rebalance() ->
                          {startTime, _},
                          {completedTime, _},
                          {timeTaken, _}]}}]}}]}}]}},
-             {rebalanceId, <<"rebalanceID">>},
+             {rebalanceId, ?REBALANCE_ID},
              {nodesInfo, {[{active_nodes, [n1, n0]}]}},
              {masterNode, _}]},
        test_get_rebalance_info()),
@@ -1268,9 +1359,129 @@ failover() ->
                          {startTime, _},
                          {completedTime, _},
                          {timeTaken, _}]}}]}}]}}]}},
-             {rebalanceId, <<"rebalanceID">>},
+             {rebalanceId, ?REBALANCE_ID},
              {nodesInfo, {[{active_nodes, [n1, n0]}]}},
              {masterNode, _}]},
        test_get_rebalance_info()),
     ?assert(meck:validate(janitor_agent)).
+
+get_all_vb_seqnos() ->
+    submit_master_event({rebalance_stage_started, [kv], [n_0, n_1, n_2]}),
+    submit_master_event({bucket_rebalance_started, "Bucket1", unused}),
+    %% Plan an example of each kind of move we might see.
+    %% VB 0: Replica only move
+    %% VB 1: Active only move
+    %% VB 2: Replica -> active + new replica
+    submit_master_event({planned_moves, "Bucket1",
+                         {[{0, [n_0, n_1], [n_0, n_2], []},
+                           {1, [n_0, n_1], [n_2, n_1], []},
+                           {2, [n_0, n_1], [n_1, n_2], []}], []}}),
+    submit_master_event({vbucket_move_start, unused, "Bucket1",
+                         unused, 0, unused, unused}),
+
+    %% Test that a replica only move will only consider new the replica's seqno
+    meck:expect(janitor_agent, get_all_vb_seqnos,
+                fun (_, n_0) ->
+                        {ok, [{0, 0}]};
+                    (_, n_1) ->
+                        {ok, [{0, 1}]};
+                    (_, n_2) ->
+                        {ok, [{0, 2}]}
+                end),
+    %% The minimum seqno should be calculated over the nodes that need to catch
+    %% up for this vbucket, which in this case is just node 2
+    ?assertEqual({?REBALANCE_ID, [{0, 2}]}, test_get_progress_for_alerting(kv)),
+
+    submit_master_event({vbucket_move_done, "Bucket1", 0}),
+    submit_master_event({vbucket_move_start, unused, "Bucket1",
+                         unused, 1, unused, unused}),
+
+    %% Test that an active only move will consider the new active's seqno
+    meck:expect(janitor_agent, get_all_vb_seqnos,
+                fun (_, n_0) ->
+                        {ok, [{1, 0}]};
+                    (_, n_1) ->
+                        {ok, [{1, 2}]};
+                    (_, n_2) ->
+                        {ok, [{1, 1}]}
+                end),
+    %% The minimum seqno should be calculated over the nodes that need to catch
+    %% up for this vbucket, which in this case is nodes 1 and 2
+    ?assertEqual({?REBALANCE_ID, [{1, 1}]}, test_get_progress_for_alerting(kv)),
+
+
+    submit_master_event({vbucket_move_done, "Bucket1", 1}),
+    submit_master_event({vbucket_move_start, unused, "Bucket1",
+                         unused, 2, unused, unused}),
+
+    %% Test that a replica promotion considers both the new active and replica
+    meck:expect(janitor_agent, get_all_vb_seqnos,
+                fun (_, n_0) ->
+                        {ok, [{2, 0}]};
+                    (_, n_1) ->
+                        {ok, [{2, 1}]};
+                    (_, n_2) ->
+                        {ok, [{2, 2}]}
+                end),
+    %% The minimum seqno should be calculated over the nodes that need to catch
+    %% up for this vbucket, which in this case is nodes 1 and 2
+    ?assertEqual({?REBALANCE_ID, [{2, 1}]}, test_get_progress_for_alerting(kv)),
+
+    %% Test that empty seqno lists are safely handled
+    meck:expect(janitor_agent, get_all_vb_seqnos,
+                fun (_, n_0) ->
+                        {ok, []};
+                    (_, n_1) ->
+                        {ok, []};
+                    (_, n_2) ->
+                        {ok, [{2, 2}]}
+                end),
+    %% Missing vbuckets that are expected to be part of the running move are
+    %% given a default value of 0
+    ?assertEqual({?REBALANCE_ID, [{2, 0}]}, test_get_progress_for_alerting(kv)),
+
+    %% Test that janitor_agent giving an error doesn't cause rebalance_observer
+    %% to crash
+    meck:expect(janitor_agent, get_all_vb_seqnos,
+                fun (_, n_0) ->
+                        error;
+                    (_, n_1) ->
+                        error;
+                    (_, n_2) ->
+                        {ok, [{2, 2}]}
+                end),
+    %% When we get error from get_all_vb_seqnos, these entries are ignored
+    ?assertEqual({?REBALANCE_ID, [{2, 2}]}, test_get_progress_for_alerting(kv)).
+
+get_seqnos_per_vb_t() ->
+    Bucket = "Bucket1",
+    GetMove = fun (VB, BeforeChain, AfterChain) ->
+                      {VB, #vbucket_info{before_chain = BeforeChain,
+                                         after_chain = AfterChain,
+                                         move = #stat_info{end_time=false,
+                                                           start_time = true}}}
+              end,
+    %% Give each vb a unique seqno for identification
+    Seqno = fun (0, n_0) -> 0;
+                (0, n_1) -> 1;
+                (0, n_2) -> 2;
+                (1, n_0) -> 3;
+                (1, n_1) -> 4;
+                (1, n_2) -> 5
+            end,
+
+    meck:expect(janitor_agent, get_all_vb_seqnos,
+                fun (_, Node) ->
+                        {ok, [{VB, Seqno(VB, Node)} || VB <- [0, 1]]}
+                end),
+    %% Replica only move should only get the new replica vbucket's seqno
+    Move0 = GetMove(0, [n_0, n_1], [n_0, n_2]),
+    Exp0 = {0, [Seqno(0, n_2)]},
+
+    %% Active only move should get the new active vbucket and replica seqnos
+    Move1 = GetMove(1, [n_0, n_1], [n_2, n_1]),
+    Exp1 = {1, [Seqno(1, n_1), Seqno(1, n_2)]},
+
+    Actual = get_seqnos_per_vb([Move0, Move1], Bucket),
+    ?assertEqual([Exp0, Exp1], Actual).
 -endif.

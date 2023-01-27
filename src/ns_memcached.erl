@@ -121,6 +121,7 @@
          get_random_key/1, get_random_key/2,
          compact_vbucket/3,
          get_vbucket_high_seqno/2,
+         get_all_vb_seqnos/1,
          wait_for_seqno_persistence/3,
          get_keys/4,
          config_validate/2,
@@ -436,6 +437,7 @@ assign_queue({get_keys, _VBuckets, _Params}) -> #state.heavy_calls_queue;
 assign_queue({get_keys, _VBuckets, _Params, _Identity}) -> #state.heavy_calls_queue;
 assign_queue({get_mass_dcp_docs_estimate, _VBuckets}) -> #state.very_heavy_calls_queue;
 assign_queue({get_vbucket_details_stats, all, _}) -> #state.very_heavy_calls_queue;
+assign_queue(get_all_vb_seqnos) -> #state.very_heavy_calls_queue;
 assign_queue(_) -> #state.fast_calls_queue.
 
 queue_to_counter_slot(#state.very_heavy_calls_queue) -> #state.running_very_heavy;
@@ -701,6 +703,8 @@ do_handle_call({get_vbucket_high_seqno, VBucketId}, _From, State) ->
             end,
             undefined),
     {reply, Res, State};
+do_handle_call(get_all_vb_seqnos, _From, State = #state{sock = Sock}) ->
+    {reply, mc_client_binary:get_all_vb_seqnos(Sock), State};
 
 %% This is left in place to support backwards compat from nodes with version
 %% lower than 7.1. Lower than 7.1 version Nodes won't provide identity.
@@ -1325,6 +1329,12 @@ raw_stats(Node, Bucket, SubStats, Fn, FnState) ->
 get_vbucket_high_seqno(Bucket, VBucketId) ->
     do_call(server(Bucket), Bucket,
             {get_vbucket_high_seqno, VBucketId}, ?TIMEOUT).
+
+-spec get_all_vb_seqnos(bucket_name()) ->
+          {ok, [{vbucket_id(), seq_no()}]} | mc_error().
+get_all_vb_seqnos(Bucket) ->
+    do_call(server(Bucket), Bucket,
+            get_all_vb_seqnos, ?TIMEOUT).
 
 -spec get_seqno_stats(ext_bucket_name(), vbucket_id() | undefined) ->
                              [{binary(), binary()}].

@@ -81,6 +81,20 @@
 %% Default history size threshold
 -define(HIST_WARN_PERC, 90).
 
+%% Number of checks seeing no progress before we trigger an alert. The time
+%% between checks is defined as threshold / check frequency
+-define(REBALANCE_CHECK_FREQ, ?get_param(stuck_rebalance_check_freq, 3)).
+
+%% The threshold (s) must be at least the number of checks before alerting *
+%% the alert sample rate (ms)
+-define(MIN_REBALANCE_THRESHOLD, ?REBALANCE_CHECK_FREQ * ?SAMPLE_RATE / 1000).
+
+-record(rebalance_progress, {
+    progress :: {binary(), any()},
+    last_timestamp :: integer(),
+    stuck_timestamp :: integer()
+}).
+
 -export([start_link/0, stop/0, local_alert/2, global_alert/2,
          fetch_alerts/0, consume_alerts/1, reset/0]).
 
@@ -186,7 +200,10 @@ errors(history_size_warning) ->
     "Warning: On bucket \"~s\" mutation history is greater than ~b% of history "
     "retention size for at least ~b/~b vbuckets. Please ensure that the "
     "history retention size is sufficiently large, in order for the mutation "
-    "history to be retained for the history retention time.".
+    "history to be retained for the history retention time.";
+errors(stuck_rebalance) ->
+    "Warning: Rebalance of '~s' (rebalance_id: ~s) appears stuck, no progress "
+    "has been made for ~b seconds.".
 
 %% ------------------------------------------------------------------
 %% API Function Definitions
@@ -366,7 +383,8 @@ alert_keys() ->
      indexer_low_resident_percentage,
      ep_clock_cas_drift_threshold_exceeded,
      communication_issue, time_out_of_sync, disk_usage_analyzer_stuck,
-     cert_expires_soon, cert_expired, memory_threshold, history_size_warning].
+     cert_expires_soon, cert_expired, memory_threshold, history_size_warning,
+     stuck_rebalance].
 
 config_upgrade_to_72(Config) ->
     config_email_alerts_upgrade(
@@ -508,7 +526,8 @@ global_checks() ->
     [oom, ip, write_fail, overhead, disk, audit_write_fail,
      indexer_ram_max_usage, cas_drift_threshold, communication_issue,
      time_out_of_sync, disk_usage_analyzer_stuck, certs, xdcr_certs,
-     memory_threshold, history_size_warning, indexer_low_resident_percentage].
+     memory_threshold, history_size_warning, indexer_low_resident_percentage,
+     stuck_rebalance].
 
 %% @doc fires off various checks
 check_alerts(Opaque, Hist, Stats) ->
@@ -914,7 +933,43 @@ check(memory_threshold, Opaque, _History, Stats) ->
                     ok
             end
     end,
-    Opaque.
+    Opaque;
+check(stuck_rebalance, Opaque, _History, _Stats) ->
+    case cluster_compat_mode:is_cluster_trinity() and
+        %% Only check the alert from the orchestrator node, to avoid duplicate
+        %% alerts and unnecessarily making ns_rebalance_observer calls from
+        %% other nodes
+        (mb_master:master_node() =:= node()) and rebalance:running() of
+        false ->
+            Opaque;
+        true ->
+            case ns_rebalance_observer:get_current_stage() of
+                {error, E} ->
+                    ?log_error("Error getting rebalance stage: ~p", [E]),
+                    Opaque;
+                not_running ->
+                    %% If no rebalance is running then we don't need to do
+                    %% anything
+                    Opaque;
+                Service ->
+                    %% Fetch the alert threshold for this service
+                    {value, Limits} = ns_config:search(alert_limits),
+                    Threshold = proplists:get_value(
+                                  {stuck_rebalance_threshold_secs, Service},
+                                  Limits, undefined),
+                    case Threshold of
+                        undefined ->
+                            %% If the threshold is undefined then the alert is
+                            %% disabled
+                            Opaque;
+                        _ ->
+                            NowTime = erlang:monotonic_time(),
+                            %% Check rebalance progress and possibly alert
+                            maybe_alert_stuck_rebalance(
+                              Service, NowTime, Threshold, Opaque)
+                    end
+            end
+    end.
 
 check_memory_threshold(MemUsed, MemTotal, Type) ->
     Percentage = (MemUsed * 100) / MemTotal,
@@ -1089,6 +1144,107 @@ get_history_size_alert(Bucket, Threshold) ->
         not_present ->
             ok
     end.
+
+maybe_alert_stuck_rebalance(Service, NowTime, Threshold, Opaque) ->
+    %% Fetch previous progress value
+    LastProgress = get_last_rebalance_progress(Service, Opaque),
+    %% Calculate how long it has been since progress was last checked
+    TimeSinceLastCheck =
+        case LastProgress of
+            #rebalance_progress{last_timestamp = LastCheck} ->
+                erlang:convert_time_unit(NowTime - LastCheck,
+                                         native, second);
+            not_found ->
+                infinity
+        end,
+    QueryPeriod = Threshold / ?REBALANCE_CHECK_FREQ,
+    %% Only check progress if it has been long enough since the last check
+    case progress_check_needed(TimeSinceLastCheck, QueryPeriod) of
+        false ->
+            Opaque;
+        true ->
+            %% Fetch the current rebalance progress
+            case ns_rebalance_observer:get_progress_for_alerting(Service) of
+                {error, E} ->
+                    ?log_error("Error getting rebalance progress: ~p", [E]),
+                    Opaque;
+                not_running ->
+                    %% Rebalance is no longer running so no need to alert
+                    Opaque;
+                {Id, _} = FetchedProgress ->
+                    NewProgress = update_rebalance_progress(
+                                    Service, NowTime, LastProgress,
+                                    FetchedProgress),
+                    StuckStart = NewProgress#rebalance_progress.stuck_timestamp,
+
+                    %% Check if we have been stuck long enough to alert and
+                    %% avoid alerting from more than one node at a time for the
+                    %% same stage of the same rebalance
+                    StuckTime = erlang:convert_time_unit(NowTime - StuckStart,
+                                                         native, second),
+                    case StuckTime >= Threshold of
+                        true ->
+                            global_alert({stuck_rebalance, Service, Id},
+                                         fmt_to_bin(errors(stuck_rebalance),
+                                                    [Service, Id, StuckTime]));
+                        false ->
+                            ok
+                    end,
+                    dict:store({rebalance_progress, Service}, NewProgress,
+                               Opaque)
+            end
+    end.
+
+-spec progress_check_needed(infinity | integer(), float()) -> boolean().
+progress_check_needed(infinity, _QueryPeriod) ->
+    true;
+progress_check_needed(TimeSinceLastCheck, QueryPeriod) ->
+    TimeSinceLastCheck >= QueryPeriod.
+
+-spec get_last_rebalance_progress(atom(), dict:dict()) ->
+          #rebalance_progress{} | not_found.
+get_last_rebalance_progress(Service, Opaque) ->
+    %% Fetch last progress entry
+    case dict:find({rebalance_progress, Service}, Opaque) of
+        {ok, #rebalance_progress{} = LastProgress} ->
+            LastProgress;
+        error ->
+            not_found
+    end.
+
+update_rebalance_progress(Service, NowTime, not_found, Progress) ->
+    ?log_debug("Rebalance progress initialised for ~p: ~p",
+               [Service, Progress]),
+    %% No progress was found in Opaque so we should
+    %% initialise the rebalance_progress for this Service
+    #rebalance_progress{
+       progress = Progress,
+       last_timestamp = NowTime,
+       stuck_timestamp = NowTime};
+update_rebalance_progress(Service, NowTime,
+                          #rebalance_progress{progress = LastProgress,
+                                              stuck_timestamp = StuckStart},
+                          FetchedProgress) ->
+    ProgressStuck = progress_stuck(Service, LastProgress, FetchedProgress),
+    %% Update stuck_timestamp
+    NewTime = case ProgressStuck of
+                  true -> StuckStart;
+                  false -> NowTime
+              end,
+    %% Update the stored progress with current progress.
+    %% We store NowTime as the timestamp of this check. This may be up
+    %% to 10s prior to the log message as we have a 10s timeout in
+    %% get_progress_for_alerting/1
+    #rebalance_progress{progress = FetchedProgress,
+                        last_timestamp = NowTime,
+                        stuck_timestamp = NewTime}.
+
+progress_stuck(kv, _LastProgress, {_, []}) ->
+    %% We only care about stuck vbucket moves, so if no vbuckets are moving,
+    %% then none are stuck
+    false;
+progress_stuck(_Service, LastProgress, CurrentProgress) ->
+    LastProgress =:= CurrentProgress.
 
 %% @doc only check for disk usage if there has been no previous
 %% errors or last error was over the timeout ago
@@ -1354,7 +1510,11 @@ params() ->
      {"historyWarningThreshold", #{type => {int, 0, 100},
                                    cfg_key => [alert_limits,
                                                history_warning_threshold],
-                                   default => ?HIST_WARN_PERC}}].
+                                   default => ?HIST_WARN_PERC}},
+     {"stuckRebalanceThresholdKV",
+      #{type => {int, ?MIN_REBALANCE_THRESHOLD, infinity},
+        cfg_key => [alert_limits, {stuck_rebalance_threshold_secs, kv}],
+        default => undefined}}].
 
 build_alert_limits() ->
     case ns_config:search(alert_limits) of
@@ -1583,4 +1743,93 @@ config_upgrade_to_trinity_test() ->
          {delete,memory_alert_popup}] ++ Expected1,
     ?assertEqual(Expected2, config_upgrade_to_trinity(Config2)).
 
+%% Test that the stuck time is correctly updated based on rebalance progress
+test_rebalance_progress(Service, Time, Progress, StuckTime, Opaque0) ->
+    meck:expect(ns_rebalance_observer, get_progress_for_alerting,
+                fun (kv) ->
+                    Progress
+                end),
+    %% Ensure that the query period is 1s
+    Threshold = ?REBALANCE_CHECK_FREQ,
+    TimeNative = erlang:convert_time_unit(Time, second, native),
+    Opaque1 = maybe_alert_stuck_rebalance(Service, TimeNative, Threshold,
+                                          Opaque0),
+    StuckTimeNative = erlang:convert_time_unit(StuckTime, second, native),
+    ?assertMatch([{{rebalance_progress, Service},
+                   #rebalance_progress{stuck_timestamp = StuckTimeNative}}],
+                 dict:to_list(Opaque1)),
+    Opaque1.
+
+test_kv_rebalance_progress(Time, Progress, StuckTime, Opaque0) ->
+    test_rebalance_progress(kv, Time, Progress, StuckTime, Opaque0).
+
+check_rebalance_progress_test() ->
+    meck:new(ns_rebalance_observer),
+    Opaque0 = dict:new(),
+    %% Initialisation of rebalance progress:
+    %% time = 0, progress = 0,
+    %% expected stuck time = 0
+    Opaque1 = test_kv_rebalance_progress(
+                0, {<<>>, 0},
+                0, Opaque0),
+    %% progress 0 -> 0 (unchanged), time 0 -> 1 =>
+    %% stuck time 0 -> 0 (stuck)
+    Opaque2 = test_kv_rebalance_progress(
+                1, {<<>>, 0},
+                0, Opaque1),
+    %% progress 0 -> 1 (changed) =>
+    %% stuck time 0 -> 2 (not stuck)
+    Opaque3 = test_kv_rebalance_progress(
+                2, {<<>>, 1},
+                2, Opaque2),
+    %% progress 1 -> 1 (unchanged) =>
+    %% stuck time 2 -> 2 (stuck)
+    Opaque4 = test_kv_rebalance_progress(
+                3, {<<>>, 1},
+                2, Opaque3),
+    %% progress 1 -> 2 (changed) & timeout not reached =>
+    %% stuck time 2 -> 2 (unchanged)
+    Opaque5 = test_kv_rebalance_progress(
+                3, {<<>>, 2},
+                2, Opaque4),
+    %% Stuck counter reset as progress changed (despite decreasing)
+    %% progress 1 -> 0 (changed) =>
+    %% stuck time 2 -> 4 (not stuck)
+    Opaque6 = test_kv_rebalance_progress(
+                4, {<<>>, 0},
+                4, Opaque5),
+    %% progress 0 -> 0 (unchanged) =>
+    %% stuck time 4 -> 4 (stuck)
+    Opaque7 = test_kv_rebalance_progress(
+                5, {<<>>, 0},
+                4, Opaque6),
+    %% Progress doesn't need to be a number
+    %% progress 0 -> {<<>>, [{0, 0}]} (changed) =>
+    %% stuck time 4 -> 6 (not stuck)
+    Opaque8 = test_kv_rebalance_progress(
+                6, {<<>>, [{0, 0}]},
+                6, Opaque7),
+    %% progress unchanged => stuck time 6 -> 6 (stuck)
+    Opaque9 = test_kv_rebalance_progress(
+                7, {<<>>, [{0, 0}]},
+                6, Opaque8),
+    %% progress {<<>>, [{0, 0}]} -> {<<>>, []} (changed) =>
+    %% stuck time 6 -> 8 (not stuck)
+    Opaque10 = test_kv_rebalance_progress(
+                 8, {<<>>, []},
+                 8, Opaque9),
+    %% For a kv rebalance if no moves are in progress, none are stuck
+    %% progress {<<>>, []} -> {<<>>, []} (unchanged) =>
+    %% stuck time 8 -> 9 (not stuck)
+    Opaque11 = test_kv_rebalance_progress(
+                  9,
+                  {<<>>, []},
+                  9, Opaque10),
+    %% progress {<<>>, []} -> {<<0>>, []} (new rebalance) =>
+    %% stuck time 9 -> 10 (not stuck)
+    _Opaque12 = test_kv_rebalance_progress(
+                  10,
+                  {<<0>>, []},
+                  10, Opaque11),
+    meck:unload(ns_rebalance_observer).
 -endif.
