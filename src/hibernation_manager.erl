@@ -38,11 +38,22 @@ register_worker(For) ->
                               atom_to_list(For)),
     erlang:register(WorkerName, self()).
 
-%% Stubbed to test just kv service for now
-build_service_workers_params(_RemotePath, _Snapshot) ->
-    SupportedServices = hibernation_utils:supported_services(),
-    ?log_debug("Supported services stubbed out: ~p", [SupportedServices]),
-    [].
+build_service_workers_params(RemotePath, Snapshot) ->
+
+    Services =
+        case os:getenv("HIBERNATION_SERVICES") of
+            false ->
+                %% Stubbed to test just kv service for now
+                SupportedServices = hibernation_utils:supported_services(),
+                ?log_debug("Supported services stubbed out: ~p",
+                           [SupportedServices]),
+                [];
+            ServicesString ->
+                [list_to_atom(S) || S <- string:tokens(ServicesString, ",")]
+        end,
+
+    [{Service, ns_cluster_membership:service_active_nodes(Snapshot, Service),
+      RemotePath ++ "/" ++ atom_to_list(Service)} || Service <- Services].
 
 build_kv_worker_params(RemotePath, KvNodes) ->
     {kv, KvNodes, hibernation_utils:get_data_remote_path(RemotePath)}.
