@@ -1137,7 +1137,15 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "rbac", "users", "local", UserId] ->
                     {{[admin, security], write},
                     fun menelaus_web_rbac:handle_user_change_password_patch/2,
-                        [UserId]}
+                        [UserId]};
+                ["pools", "default", "buckets", Id, "scopes", Scope,
+                 "collections", CollectionId] ->
+                    {{[{collection, [Id, Scope, CollectionId]}, collections],
+                       write},
+                     fun menelaus_web_collections:handle_patch_collection/4,
+                     [Id, Scope, CollectionId]};
+                _ ->
+                    {done, reply_text(Req, "Method Not Allowed", 405)}
             end;
         "RPCCONNECT" ->
             {{[admin, internal], all}, fun json_rpc_connection_sup:handle_rpc_connect/1};

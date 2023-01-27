@@ -74,6 +74,7 @@
          ram_quota/1,
          conflict_resolution_type/1,
          drift_thresholds/1,
+         history_retention_seconds/1,
          eviction_policy/1,
          storage_mode/1,
          storage_backend/1,
@@ -354,15 +355,24 @@ conflict_resolution_type(BucketConfig) ->
     proplists:get_value(conflict_resolution_type, BucketConfig, seqno).
 
 drift_thresholds(BucketConfig) ->
-    case conflict_resolution_type(BucketConfig) of
-        lww ->
+    ReturnThresholds =
+        case {conflict_resolution_type(BucketConfig),
+              history_retention_seconds(BucketConfig)} of
+            {lww, _} -> true;
+            {_, Num} when is_number(Num), Num > 0 -> true;
+            {seqno, _} -> false;
+            {custom, _} -> false
+        end,
+    case ReturnThresholds of
+        true ->
             {proplists:get_value(drift_ahead_threshold_ms, BucketConfig),
              proplists:get_value(drift_behind_threshold_ms, BucketConfig)};
-        seqno ->
-            undefined;
-        custom ->
-            undefined
+        false -> undefined
     end.
+
+-spec history_retention_seconds([{_,_}]) -> number().
+history_retention_seconds(BucketConfig) ->
+    proplists:get_value(history_retention_seconds, BucketConfig, 0).
 
 eviction_policy(BucketConfig) ->
     Default = case storage_mode(BucketConfig) of
@@ -1620,7 +1630,8 @@ extract_bucket_props(Props) ->
                         fts_storage_limit,
                         kv_throttle_limit, index_throttle_limit,
                         fts_throttle_limit, n1ql_throttle_limit,
-                        sgw_read_throttle_limit, sgw_write_throttle_limit]],
+                        sgw_read_throttle_limit, sgw_write_throttle_limit,
+                        history_retention_seconds, history_retention_bytes]],
           X =/= false].
 
 build_threshold({Percentage, Size}) ->
@@ -1726,4 +1737,34 @@ get_expected_servers_test() ->
     ?assertEqual([node1], get_expected_servers([{servers, [node1]},
                                                 {desired_servers, [node2]}])),
     meck:unload(ns_cluster_membership).
+
+drift_thresholds_test() ->
+    %% When conflict_resolution_type != lww and history_retention_seconds == 0,
+    %% there should be no drift thresholds
+    BucketConfig1 = [{conflict_resolution_type, seqno},
+                     {history_retention_seconds, 0},
+                     {drift_ahead_threshold_ms, 1},
+                     {drift_behind_threshold_ms, 2}],
+    ?assertEqual(undefined, drift_thresholds(BucketConfig1)),
+
+    %% When conflict_resolution_type != lww and history_retention_seconds is
+    %% undefined, there should be no drift thresholds
+    BucketConfig2 = [{conflict_resolution_type, custom},
+                     {drift_ahead_threshold_ms, 1},
+                     {drift_behind_threshold_ms, 2}],
+    ?assertEqual(undefined, drift_thresholds(BucketConfig2)),
+
+    %% When conflict_resolution_type == lww, there should be drift thresholds
+    BucketConfig3 = [{conflict_resolution_type, lww},
+                     {history_retention_seconds, 0},
+                     {drift_ahead_threshold_ms, 1},
+                     {drift_behind_threshold_ms, 2}],
+    ?assertEqual({1, 2}, drift_thresholds(BucketConfig3)),
+
+    %% When history_retention_seconds > 0, there should be drift thresholds
+    BucketConfig4 = [{conflict_resolution_type, seqno},
+                     {history_retention_seconds, 1},
+                     {drift_ahead_threshold_ms, 1},
+                     {drift_behind_threshold_ms, 2}],
+    ?assertEqual({1, 2}, drift_thresholds(BucketConfig4)).
 -endif.

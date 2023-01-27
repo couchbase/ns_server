@@ -35,6 +35,7 @@
          update_scope/5,
          drop_scope/4,
          create_collection/5,
+         modify_collection/5,
          drop_collection/5,
          set_manifest/5,
          start_loading_sample/2,
@@ -415,8 +416,11 @@ code(update_scope) ->
     8268;
 code(delete_cluster_ca) ->
     8269;
+code(modify_collection) ->
+    8270;
 code(serverless_settings) ->
-    8270.
+    8271.
+
 
 now_to_iso8601(Now = {_, _, Microsecs}) ->
     LocalNow = calendar:now_to_local_time(Now),
@@ -920,6 +924,12 @@ drop_scope(Req, BucketName, ScopeName, Uid) ->
 
 create_collection(Req, BucketName, ScopeName, CollectionName,  Uid) ->
     put(create_collection, Req,
+        [{bucket_name, BucketName}, {scope_name, ScopeName},
+         {collection_name, CollectionName},
+         {new_manifest_uid, Uid}]).
+
+modify_collection(Req, BucketName, ScopeName, CollectionName,  Uid) ->
+    put(modify_collection, Req,
         [{bucket_name, BucketName}, {scope_name, ScopeName},
          {collection_name, CollectionName},
          {new_manifest_uid, Uid}]).
