@@ -121,7 +121,7 @@ compute_sec_headers(Headers) ->
 
 response_headers(Req, Headers) ->
     response_headers(
-      scram_sha:get_resp_headers_from_req(Req) ++ Headers).
+      menelaus_auth:get_resp_headers(Req) ++ Headers).
 
 %% response_header takes a proplist of headers or pseudo-header
 %% descripts and augments it with response specific headers.
@@ -540,26 +540,24 @@ reply_error(Req, Field, Error) ->
                          iolist_to_binary([Error])}]}}]}, 400).
 
 require_auth(Req) ->
-    case {mochiweb_request:get_header_value("invalid-auth-response", Req),
-          mochiweb_request:get_header_value(scram_sha:meta_header(), Req)} of
-        {"on", _} ->
-            %% We need this for browsers that display auth
-            %% dialog when faced with 401 with
-            %% WWW-Authenticate header response, even via XHR
+    %% We need this for browsers that display auth
+    %% dialog when faced with 401 with
+    %% WWW-Authenticate header response, even via XHR
+    case mochiweb_request:get_header_value("invalid-auth-response", Req) == "on"
+         orelse ns_config:read_key_fast(disable_www_authenticate, false) of
+        true ->
             reply(Req, 401);
-        {_, undefined} ->
-            case ns_config:read_key_fast(disable_www_authenticate, false) of
-                false ->
+        _ ->
+            case proplists:get_value("WWW-Authenticate",
+                                     menelaus_auth:get_resp_headers(Req)) of
+                undefined ->
                     reply(Req, 401,
                           [{"WWW-Authenticate",
                             "Basic realm=\"Couchbase Server Admin / REST\""}]);
-                true ->
+                _ ->
+                    %% Header is already set (by scram-sha auth for example)
                     reply(Req, 401)
-            end;
-        _ ->
-            %% scram sha meta header will be converted later on to scram sha
-            %% related auth headers
-            reply(Req, 401)
+            end
     end.
 
 send_chunked(Req, StatusCode, ExtraHeaders) ->

@@ -26,8 +26,6 @@
 
 -export([start_link/0,
          authenticate/1,
-         meta_header/0,
-         get_resp_headers_from_req/1,
          get_fallback_salt/0,
          pbkdf2/4,
          build_auth/1,
@@ -97,19 +95,6 @@ fix_pre_elixir_auth_info(Props) ->
           (KV) -> KV
       end, Props).
 
-meta_header() ->
-    "menelaus-auth-scram-sha_reply".
-
-get_resp_headers_from_req(Req) ->
-    get_resp_headers(mochiweb_request:get_header_value(meta_header(), Req)).
-
-get_resp_headers(undefined) ->
-    [];
-get_resp_headers("A" ++ Value) ->
-    [{"WWW-Authenticate", Value}];
-get_resp_headers("I" ++ Value) ->
-    [{"Authentication-Info", Value}].
-
 server_first_message(Nonce, Salt, IterationCount) ->
     "r=" ++ Nonce ++ ",s=" ++ Salt ++ ",i=" ++ integer_to_list(IterationCount).
 
@@ -118,16 +103,15 @@ encode_with_sid(Sid, Message) ->
         ",data=" ++ base64:encode_to_string(Message).
 
 reply_success(Sid, Identity, ServerProof) ->
-    {ok, Identity,
-     [{meta_header(),
-       "I" ++ encode_with_sid(
-                Sid,
-                "v=" ++ base64:encode_to_string(ServerProof))}]}.
+    ServerProofBase64 = base64:encode_to_string(ServerProof),
+    Reply = encode_with_sid(Sid, "v=" ++ ServerProofBase64),
+    Headers = [{"Authentication-Info", Reply}],
+    {ok, Identity, Headers}.
 
 reply_first_step(Sha, Sid, Msg) ->
-    Hdr = "A" ++ www_authenticate_prefix(Sha) ++ " " ++
-        encode_with_sid(Sid, Msg),
-    {first_step, [{meta_header(), Hdr}]}.
+    Reply = www_authenticate_prefix(Sha) ++ " " ++
+            encode_with_sid(Sid, Msg),
+    {first_step, [{"WWW-Authenticate", Reply}]}.
 
 www_authenticate_prefix(sha512) ->
     "SCRAM-SHA-512";
@@ -436,7 +420,7 @@ build_client_first_message(Sha, Nonce, User) ->
     {Prefix ++ " data=" ++ base64:encode_to_string("n,," ++ Bare), Bare}.
 
 parse_server_first_response(Sha, Nonce, Header) ->
-    Prefix = "A" ++ www_authenticate_prefix(Sha) ++ " ",
+    Prefix = www_authenticate_prefix(Sha) ++ " ",
     Message = string:prefix(Header, Prefix),
     ["sid=" ++ Sid, "data=" ++ Data] = string:tokens(Message, ","),
 
@@ -468,7 +452,7 @@ calculate_client_proof(Sha, SaltedPassword, AuthMessage) ->
     misc:bin_bxor(ClientKey, ClientSignature).
 
 check_server_proof(Sha, Sid, SaltedPassword, Message, Header) ->
-    Prefix = "Isid=" ++ Sid ++ ",data=",
+    Prefix = "sid=" ++ Sid ++ ",data=",
     "v=" ++ ProofFromServer =
         base64:decode_to_string(string:prefix(Header, Prefix)),
 
@@ -482,9 +466,8 @@ client_auth(Sha, User, Password, Nonce) ->
     {ToSend, ClientFirstMessage} =
         build_client_first_message(Sha, Nonce, User),
 
-    MetaHeader = meta_header(),
     case authenticate(ToSend) of
-        {first_step, [{MetaHeader, Header}]} ->
+        {first_step, [{"WWW-Authenticate", Header}]} ->
             {Sid, Salt, Iterations, ServerNonce, ServerFirstMessage} =
                 parse_server_first_response(Sha, Nonce, Header),
 
@@ -494,7 +477,7 @@ client_auth(Sha, User, Password, Nonce) ->
                   Sha, Sid, ServerNonce, SaltedPassword,
                   ClientFirstMessage ++ "," ++ ServerFirstMessage),
             case authenticate(ToSend1) of
-                {ok, {User, admin}, [{MetaHeader, Header1}]} ->
+                {ok, {User, admin}, [{"Authentication-Info", Header1}]} ->
                     check_server_proof(Sha, Sid, SaltedPassword,
                                        ForProof, Header1),
                     ok;

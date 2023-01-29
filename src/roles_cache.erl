@@ -19,6 +19,7 @@
 -include("cut.hrl").
 -include("ns_common.hrl").
 -include("ns_config.hrl").
+-include("rbac.hrl").
 
 -define(DEFAULT_MAX_PARALLEL_PROCESSES, 100).
 -define(DEFAULT_MAX_CACHE_SIZE, 10000).
@@ -38,9 +39,9 @@ start_link() ->
     Opts = [opt(P) || P <- Settings],
     active_cache:start_link(?MODULE, ?MODULE, [], Opts).
 
-build_compiled_roles(Identity) ->
-    Key = {?FUNCTION_NAME, Identity},
-    Fun = fun () -> menelaus_roles:build_compiled_roles(Identity) end,
+build_compiled_roles(AuthnRes) ->
+    Key = {?FUNCTION_NAME, AuthnRes#authn_res.identity},
+    Fun = fun () -> menelaus_roles:build_compiled_roles(AuthnRes) end,
     active_cache:get_value_and_touch(?MODULE, Key, Fun).
 
 renew() ->

@@ -314,8 +314,8 @@ manifest_json(Bucket, Snapshot) ->
     Manifest = get_manifest(Bucket, Snapshot),
     jsonify_manifest(Manifest, false).
 
-manifest_json(Identity, Bucket, Snapshot) ->
-    Roles = menelaus_roles:get_compiled_roles(Identity),
+manifest_json(AuthnRes, Bucket, Snapshot) ->
+    Roles = menelaus_roles:get_compiled_roles(AuthnRes),
     {ok, BucketConfig} = ns_bucket:get_bucket(Bucket, Snapshot),
     DefaultManifest = default_manifest(BucketConfig),
     Manifest = get_manifest(Bucket, Snapshot, DefaultManifest),
@@ -990,12 +990,12 @@ convert_manifest_uid(Uid) ->
             invalid_uid
     end.
 
-set_manifest(Bucket, Identity, RequiredScopes, RequestedUid) ->
+set_manifest(Bucket, AuthnRes, RequiredScopes, RequestedUid) ->
     case convert_manifest_uid(RequestedUid) of
         invalid_uid ->
             invalid_uid;
         Uid ->
-            Roles = menelaus_roles:get_compiled_roles(Identity),
+            Roles = menelaus_roles:get_compiled_roles(AuthnRes),
             Scopes =
                 [{proplists:get_value(name, Scope),
                   [{collections, [extract_name(Props) ||

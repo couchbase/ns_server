@@ -13,6 +13,7 @@
 -author('Northscale <info@northscale.com>').
 
 -include("ns_common.hrl").
+-include("rbac.hrl").
 
 %% API
 
@@ -54,7 +55,7 @@ special_auth_header(Node) when is_atom(Node) ->
     basic_auth_header(?HIDE({basic_auth, ns_config_auth:get_user(special),
                              ns_config_auth:get_password(Node, special)})).
 
-on_behalf_header({User, Domain}) ->
+on_behalf_header(#authn_res{identity = {User, Domain}}) ->
     {"cb-on-behalf-of",
      base64:encode_to_string(User ++ ":" ++ atom_to_list(Domain))}.
 

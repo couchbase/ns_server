@@ -375,9 +375,4 @@
 -define(SAML_CONSUME_ENDPOINT_PATH, "samlConsume").
 -define(SAML_LOGOUT_ENDPOINT_PATH, "samlLogout").
 
--record(uisession,
-        {type :: simple | {sso, string()} | '_',
-         session_name :: binary() | '_',
-         user_id :: {string() | '_', atom()} | '_'}).
-
 -endif.

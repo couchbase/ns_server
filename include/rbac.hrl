@@ -73,4 +73,14 @@
 -define(RBAC_SCOPE_PARAMS, [bucket_name, scope_name]).
 -define(RBAC_COLLECTION_PARAMS, [bucket_name, scope_name, collection_name]).
 
+-record(authn_res,
+        {type = tmp :: tmp | ui,
+         session_id :: binary() | undefined | '_',
+         identity :: rbac_identity() | '_' | {'_', admin}}).
+
+-record(uisession,
+        {type :: simple | {sso, string()} | '_',
+         session_name :: binary() | '_',
+         authn_res :: #authn_res{} | '_'}).
+
 -endif.

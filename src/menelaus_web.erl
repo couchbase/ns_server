@@ -157,8 +157,7 @@ webconfig(Prop) ->
 loop(Req0, Config) ->
     ok = menelaus_sup:barrier_wait(),
     StartTime = erlang:monotonic_time(millisecond),
-    Req = menelaus_auth:apply_headers(Req0,
-                                      [{"menelaus-start-time", StartTime}]),
+    Req = mochiweb_request:set_meta(menelaus_start_time, StartTime, Req0),
 
     menelaus_util:handle_request(
       Req,
@@ -1204,7 +1203,6 @@ handle_serve_file(AppRoot, Path, MaxAge, Req) ->
         [{"Cache-Control", lists:concat(["max-age=", MaxAge])}]).
 
 loop_inner(Req, Info, Path, PathTokens) ->
-    menelaus_auth:assert_no_meta_headers(Req),
     perform_action(Req, get_action(Req, Info, Path, PathTokens)).
 
 -spec get_bucket_id(rbac_permission() | no_check) -> bucket_name() | false.
@@ -1221,8 +1219,7 @@ get_bucket_id(_) ->
 perform_action(_Req, {done, RV}) ->
     RV;
 perform_action(Req, {local, Fun}) ->
-    {RV, Headers} = menelaus_auth:verify_local_token(Req),
-    NewReq = menelaus_auth:apply_headers(Req, Headers),
+    {RV, NewReq} = menelaus_auth:verify_local_token(Req),
     case RV of
         allowed ->
             Fun(NewReq);
@@ -1237,8 +1234,7 @@ perform_action(Req, {ui, IsSSL, Fun, Args}) ->
 perform_action(Req, {Permission, Fun}) ->
     perform_action(Req, {Permission, Fun, []});
 perform_action(Req, {Permission, Fun, Args}) ->
-    {RV, Headers} = menelaus_auth:verify_rest_auth(Req, Permission),
-    NewReq = menelaus_auth:apply_headers(Req, Headers),
+    {RV, NewReq} = menelaus_auth:verify_rest_auth(Req, Permission),
     case RV of
         allowed ->
             case get_bucket_id(Permission) of
@@ -1372,6 +1368,5 @@ drop_prefix("/" ++ Path) ->
 
 response_time_ms(Req) ->
     Now = erlang:monotonic_time(millisecond),
-    Time0 = mochiweb_request:get_header_value("menelaus-start-time", Req),
-    Time = list_to_integer(Time0),
+    Time = mochiweb_request:get_meta(menelaus_start_time, undefined, Req),
     Now - Time.

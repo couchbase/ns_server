@@ -25,17 +25,17 @@
          uilogin/2,
          uilogin_phase2/5,
          can_use_cert_for_auth/1,
-         complete_uilogout/2,
+         complete_uilogout/1,
          maybe_refresh_token/1,
+         get_authn_res/1,
          get_identity/1,
          get_user_id/1,
-         get_token/1,
-         assert_no_meta_headers/1,
-         is_meta_header/1,
+         get_session_id/1,
+         is_UI_req/1,
          verify_rest_auth/2,
          verify_local_token/1,
-         delete_headers/2,
-         apply_headers/2]).
+         new_session_id/0,
+         get_resp_headers/1]).
 
 %% rpc from ns_couchdb node
 -export([authenticate/1,
@@ -43,9 +43,12 @@
 
 %% External API
 
+new_session_id() ->
+    base64:encode(crypto:strong_rand_bytes(16)).
+
 filter_accessible_buckets(Fun, Buckets, Req) ->
-    Identity = get_identity(Req),
-    Roles = menelaus_roles:get_compiled_roles(Identity),
+    AuthnRes = get_authn_res(Req),
+    Roles = menelaus_roles:get_compiled_roles(AuthnRes),
     lists:filter(?cut(menelaus_roles:is_allowed(Fun(_), Roles)), Buckets).
 
 -spec get_cookies(mochiweb_request()) -> [{string(), string()}].
@@ -98,12 +101,17 @@ kill_auth_cookie(Req) ->
     {Name, Content} = generate_auth_cookie(Req, ""),
     {Name, Content ++ "; expires=Thu, 01 Jan 1970 00:00:00 GMT"}.
 
--spec complete_uilogout(binary(), mochiweb_request()) ->
-                                {SessionInfo :: term(), [{string(), string()}]}.
-complete_uilogout(Token, Req) ->
-    Session = menelaus_ui_auth:logout(Token),
-    ns_audit:logout(Req),
-    {Session, [kill_auth_cookie(Req)]}.
+-spec complete_uilogout(mochiweb_request()) ->
+                {Session :: #uisession{} | undefined, [{string(), string()}]}.
+complete_uilogout(Req) ->
+    case get_authn_res(Req) of
+        #authn_res{type = ui, session_id = SessionId} ->
+            UISession = menelaus_ui_auth:logout(SessionId),
+            ns_audit:logout(Req),
+            {UISession, [kill_auth_cookie(Req)]};
+        _ ->
+            {undefined, []}
+    end.
 
 -spec maybe_refresh_token(mochiweb_request()) -> [{string(), string()}].
 maybe_refresh_token(Req) ->
@@ -119,80 +127,63 @@ maybe_refresh_token(Req) ->
             end
     end.
 
-meta_header_names() ->
-    ["menelaus-auth-user", "menelaus-auth-domain", "menelaus-auth-token",
-     scram_sha:meta_header()].
-
--spec is_meta_header(atom() | list()) -> boolean().
-is_meta_header(Header) when is_atom(Header) ->
-    is_meta_header(atom_to_list(Header));
-is_meta_header(Header) when is_list(Header) ->
-    lists:member(string:lowercase(Header), meta_header_names()).
-
--spec assert_no_meta_headers(mochiweb_request()) -> ok.
-assert_no_meta_headers(Req) ->
-    [undefined = mochiweb_request:get_header_value(N, Req) ||
-        N <- meta_header_names()],
-    ok.
-
-apply_headers(Req, []) ->
+maybe_store_rejected_user(undefined, Req) ->
     Req;
-apply_headers(Req, Headers) ->
-    do_update_headers(Req, Headers, apply).
+maybe_store_rejected_user(User, Req) ->
+    store_authn_res(#authn_res{identity = {User, rejected}}, Req).
 
-delete_headers(Req, []) ->
-    Req;
-delete_headers(Req, Headers) ->
-    do_update_headers(Req, Headers, delete).
+store_authn_res(#authn_res{} = AuthnRes, Req) ->
+    mochiweb_request:set_meta(authn_res, AuthnRes, Req).
 
-do_update_headers(Req, Headers, Op) ->
-    AllHeaders =
-        lists:foldl(
-          fun ({Header, Val}, H) ->
-                  true = Op =:= apply,
-                  mochiweb_headers:enter(Header, Val, H);
-              (Header, H) ->
-                  true = Op =:= delete,
-                  mochiweb_headers:delete_any(Header, H)
-          end, mochiweb_request:get(headers, Req), Headers),
+store_token({token, Token}, Req) ->
+    mochiweb_request:set_meta(uitoken, Token, Req);
+store_token(_, Req) ->
+    Req.
 
-    mochiweb_request:new(mochiweb_request:get(socket, Req),
-                         mochiweb_request:get(method, Req),
-                         mochiweb_request:get(raw_path, Req),
-                         mochiweb_request:get(version, Req),
-                         AllHeaders).
+append_resp_headers(Headers, Req) ->
+    CurHeaders = mochiweb_request:get_meta(resp_headers, [], Req),
+    mochiweb_request:set_meta(resp_headers, CurHeaders ++ Headers, Req).
 
-meta_headers(undefined) ->
-    [];
-meta_headers({User, Domain}) ->
-    [{"menelaus-auth-user", User},
-     {"menelaus-auth-domain", Domain}];
-meta_headers(User) when is_list(User) ->
-    meta_headers({User, rejected}).
+get_resp_headers(Req) ->
+    mochiweb_request:get_meta(resp_headers, [], Req).
 
-meta_headers(Identity, undefined) ->
-    meta_headers(Identity);
-meta_headers(Identity, Token) ->
-    [{"menelaus-auth-token", Token} | meta_headers(Identity)].
-
+-spec get_authn_res(mochiweb_request()) -> #authn_res{} | undefined.
+get_authn_res(Req) ->
+    mochiweb_request:get_meta(authn_res, undefined, Req).
 
 -spec get_identity(mochiweb_request()) -> rbac_identity() | undefined.
 get_identity(Req) ->
-    case {mochiweb_request:get_header_value("menelaus-auth-user", Req),
-          mochiweb_request:get_header_value("menelaus-auth-domain", Req)} of
-        {undefined, undefined} ->
-            undefined;
-        {User, Domain} ->
-            {User, list_to_existing_atom(Domain)}
+    case get_authn_res(Req) of
+        undefined -> undefined;
+        #authn_res{identity = Id} -> Id
+    end.
+
+-spec get_session_id(mochiweb_request()) -> binary() | undefined.
+get_session_id(Req) ->
+    case get_authn_res(Req) of
+        undefined -> undefined;
+        #authn_res{session_id = SessionId} -> SessionId
     end.
 
 -spec get_user_id(mochiweb_request()) -> rbac_user_id() | undefined.
 get_user_id(Req) ->
-    mochiweb_request:get_header_value("menelaus-auth-user", Req).
+    case mochiweb_request:get_meta(authn_res, undefined, Req) of
+        #authn_res{identity = {Name, _}} -> Name;
+        undefined -> undefined
+    end.
 
+%% This function is deprecated, do not use it in new code
+%% Use session id instead
 -spec get_token(mochiweb_request()) -> auth_token() | undefined.
 get_token(Req) ->
-    mochiweb_request:get_header_value("menelaus-auth-token", Req).
+    mochiweb_request:get_meta(uitoken, undefined, Req).
+
+is_UI_req(Req) ->
+    case get_authn_res(Req) of
+        undefined -> false;
+        #authn_res{type = ui} -> true;
+        #authn_res{} -> false
+    end.
 
 -spec extract_auth(mochiweb_request()) -> {User :: string(), Passwd :: string()}
                                               | {scram_sha, string()}
@@ -255,7 +246,7 @@ parse_basic_auth_header(Value) ->
 
 -spec has_permission(rbac_permission(), mochiweb_request()) -> boolean().
 has_permission(Permission, Req) ->
-    menelaus_roles:is_allowed(Permission, get_identity(Req)).
+    menelaus_roles:is_allowed(Permission, get_authn_res(Req)).
 
 -spec is_internal(mochiweb_request()) -> boolean().
 is_internal(Req) ->
@@ -268,13 +259,17 @@ is_internal(Req) ->
 
 -spec authenticate(error | undefined |
                    {token, auth_token()} |
+                   {scram_sha, string()} |
                    {client_cert_auth, string()} |
                    {rbac_user_id(), rbac_password()}) ->
-          {ok, rbac_identity()} | {error, auth_failure | temporary_failure}.
+          {ok, #authn_res{}, [RespHeader]} |
+          {error, auth_failure | temporary_failure} |
+          {unfinished, RespHeaders :: [RespHeader]}
+                                        when RespHeader :: {string(), string()}.
 authenticate(error) ->
     {error, auth_failure};
 authenticate(undefined) ->
-    {ok, {"", anonymous}};
+    {ok, #authn_res{identity = {"", anonymous}}, []};
 authenticate({token, Token} = Param) ->
     case ns_node_disco:couchdb_node() == node() of
         false ->
@@ -284,18 +279,18 @@ authenticate({token, Token} = Param) ->
                     %% system with leftover cookie
                     case ns_config_auth:is_system_provisioned() of
                         false ->
-                            {ok, {"", wrong_token}};
+                            {ok, #authn_res{identity = {"", wrong_token}}, []};
                         true ->
                             {error, auth_failure}
                     end;
-                {ok, Id} ->
-                    {ok, Id}
+                {ok, #authn_res{} = AuthnRes} ->
+                    {ok, AuthnRes, []}
             end;
         true ->
             rpc:call(ns_node_disco:ns_server_node(), ?MODULE, authenticate, [Param])
     end;
 authenticate({client_cert_auth, "@" ++ _ = Username}) ->
-    {ok, {Username, admin}};
+    {ok, #authn_res{identity = {Username, admin}}, []};
 authenticate({client_cert_auth, Username} = Param) ->
     %% Just returning the username as the request is already authenticated based
     %% on the client certificate.
@@ -303,12 +298,12 @@ authenticate({client_cert_auth, Username} = Param) ->
         false ->
             case ns_config_auth:get_user(admin) of
                 Username ->
-                    {ok, {Username, admin}};
+                    {ok, #authn_res{identity = {Username, admin}}, []};
                 _ ->
                     Identity = {Username, local},
                     case menelaus_users:user_exists(Identity) of
                         true ->
-                            {ok, Identity};
+                            {ok, #authn_res{identity = Identity}, []};
                         false ->
                             {error, auth_failure}
                     end
@@ -317,10 +312,19 @@ authenticate({client_cert_auth, Username} = Param) ->
             rpc:call(ns_node_disco:ns_server_node(), ?MODULE, authenticate,
                      [Param])
     end;
+authenticate({scram_sha, AuthHeader}) ->
+    case scram_sha:authenticate(AuthHeader) of
+        {ok, Identity, RespHeaders} ->
+            {ok, #authn_res{identity = Identity}, RespHeaders};
+        {first_step, RespHeaders} ->
+            {unfinished, RespHeaders};
+        auth_failure ->
+            {error, auth_failure}
+    end;
 authenticate({Username, Password}) ->
     case ns_config_auth:authenticate(Username, Password) of
         {ok, Id} ->
-            {ok, Id};
+            {ok, #authn_res{identity = Id}, []};
         {error, auth_failure}->
             authenticate_external(Username, Password);
         {error, Reason} ->
@@ -328,7 +332,7 @@ authenticate({Username, Password}) ->
     end.
 
 -spec authenticate_external(rbac_user_id(), rbac_password()) ->
-          {error, auth_failure} | {ok, rbac_identity()}.
+          {error, auth_failure} | {ok, #authn_res{}}.
 authenticate_external(Username, Password) ->
     case ns_node_disco:couchdb_node() == node() of
         false ->
@@ -336,7 +340,7 @@ authenticate_external(Username, Password) ->
                  (saslauthd_auth:authenticate(Username, Password) orelse
                   ldap_auth_cache:authenticate(Username, Password)) of
                 true ->
-                    {ok, {Username, external}};
+                    {ok, #authn_res{identity = {Username, external}}, []};
                 false ->
                     {error, auth_failure}
             end;
@@ -370,33 +374,40 @@ uilogin(Req, Params) ->
         end,
 
     case AuthnStatus of
-        {ok, Identity} ->
-            uilogin_phase2(Req, simple, base64:encode(rand:bytes(16)),
-                           Identity, ?cut(menelaus_util:reply(_1, 200, _2)));
+        {ok, #authn_res{type = tmp, identity = Identity} = AuthnRes,
+         RespHeaders} ->
+            AuthnRes2 = AuthnRes#authn_res{type = ui,
+                                           session_id = new_session_id(),
+                                           identity = Identity},
+            RandomName = base64:encode(rand:bytes(6)),
+            SessionName = <<"UI - ", RandomName/binary>>,
+            Req2 = append_resp_headers(RespHeaders, Req),
+            uilogin_phase2(Req2, simple, SessionName, AuthnRes2,
+                           ?cut(menelaus_util:reply(_1, 200, _2)));
         {error, auth_failure} ->
             ns_audit:login_failure(
-              apply_headers(Req, meta_headers(User))),
+              maybe_store_rejected_user(User, Req)),
             menelaus_util:reply(Req, 400);
         {error, temporary_failure} ->
             ns_audit:login_failure(
-              apply_headers(Req, meta_headers(User))),
+              maybe_store_rejected_user(User, Req)),
             Msg = <<"Temporary error occurred. Please try again later.">>,
             menelaus_util:reply_json(Req, Msg, 503)
     end.
 
-uilogin_phase2(Req, SessionType, SessionName, Identity, Continuation) ->
+uilogin_phase2(Req, UISessionType, UISessionName, #authn_res{} = AuthnRes,
+               Continuation) ->
     UIPermission = {[ui], read},
-    case check_permission(Identity, UIPermission) of
+    case check_permission(AuthnRes, UIPermission) of
         allowed ->
-            Token = menelaus_ui_auth:generate_token(SessionType, SessionName,
-                                                    Identity),
+            Token = menelaus_ui_auth:generate_token(UISessionType,
+                                                    UISessionName,
+                                                    AuthnRes),
             CookieHeader = generate_auth_cookie(Req, Token),
-            ns_audit:login_success(
-              apply_headers(Req, meta_headers(Identity, Token))),
+            ns_audit:login_success(store_authn_res(AuthnRes, Req)),
             Continuation(Req, [CookieHeader]);
         AuthzRes when AuthzRes == forbidden; AuthzRes == auth_failure ->
-            ns_audit:login_failure(
-              apply_headers(Req, meta_headers(Identity))),
+            ns_audit:login_failure(store_authn_res(AuthnRes, Req)),
             menelaus_util:reply_json(
               Req,
               menelaus_web_rbac:forbidden_response([UIPermission]),
@@ -423,42 +434,39 @@ can_use_cert_for_auth(Req) ->
 
 -spec verify_rest_auth(mochiweb_request(), rbac_permission() | no_check) ->
                               {auth_failure | forbidden | allowed
-                              | temporary_failure, [{_, _}]}.
+                              | temporary_failure, mochiweb_request()}.
 verify_rest_auth(Req, Permission) ->
     Auth = extract_auth(Req),
-    case Auth of
-        {scram_sha, AuthHeader} ->
-            case scram_sha:authenticate(AuthHeader) of
-                {ok, Identity, MetaHeaders} ->
-                    {check_permission(Identity, Permission),
-                     MetaHeaders ++ meta_headers(Identity, undefined)};
-                {first_step, Headers} ->
-                    mochiweb_request:recv_body(Req),
-                    {auth_failure, Headers};
-                auth_failure ->
-                    {auth_failure, []}
+    case authenticate(Auth) of
+        {ok, #authn_res{identity = Identity} = AuthnRes,
+         RespHeaders} ->
+            Req2 = append_resp_headers(RespHeaders, Req),
+            case extract_effective_identity(Identity, Req2) of
+                error ->
+                    Req3 = maybe_store_rejected_user(
+                             get_rejected_user(Auth), Req2),
+                    {auth_failure, Req3};
+                EffectiveIdentity ->
+                    AuthnRes2 = AuthnRes#authn_res{
+                                    identity = EffectiveIdentity
+                                },
+                    {check_permission(AuthnRes2, Permission),
+                     store_token(Auth, store_authn_res(AuthnRes2, Req2))}
             end;
-        _ ->
-            case authenticate(Auth) of
-                {error, auth_failure} ->
-                    {auth_failure, meta_headers(get_rejected_user(Auth))};
-                {ok, {User, _} = Identity} ->
-                    case extract_effective_identity(Identity, Req) of
-                        error ->
-                            {auth_failure, meta_headers({User, cb_on_behalf_of_rejected})};
-                        EffectiveIdentity ->
-                            Token = case Auth of
-                                        {token, T} ->
-                                            T;
-                                        _ ->
-                                            undefined
-                                    end,
-                            {check_permission(EffectiveIdentity, Permission),
-                             meta_headers(EffectiveIdentity, Token)}
-                    end;
-                {error, temporary_failure} ->
-                    {temporary_failure, []}
-            end
+        {error, auth_failure} ->
+            Req2 = maybe_store_rejected_user(get_rejected_user(Auth), Req),
+            {auth_failure, Req2};
+        {error, temporary_failure} ->
+            {temporary_failure, Req};
+        {unfinished, RespHeaders} ->
+            %% When mochiweb decides if it needs to close the connection
+            %% it checks if body is "received" (and many other things)
+            %% If body is not received it will close the connection
+            %% but we don't want it to happen in this case
+            %% because it is kind of "graceful" 401
+            mochiweb_request:recv_body(Req),
+            Req2 = append_resp_headers(RespHeaders, Req),
+            {auth_failure, Req2}
     end.
 
 %% When we say identity, we could be referring to one of the following
@@ -495,6 +503,8 @@ extract_on_behalf_of_identity(Req) ->
                 {User, Domain} ->
                     {ok, {User, list_to_existing_atom(Domain)}};
                 _ ->
+                    ?log_debug("Invalid format of cb-on-behalf-of: ~s",
+                               [ns_config_log:tag_user_name(Header)]),
                     error
             end;
         undefined ->
@@ -525,26 +535,27 @@ extract_identity_from_cert(CertDer) ->
             auth_failure;
         UName ->
             case authenticate({client_cert_auth, UName}) of
-                {ok, Identity} ->
+                {ok, #authn_res{identity = Identity}, _} ->
                     Identity;
                 {error, Type} ->
                     Type
             end
     end.
 
--spec check_permission(rbac_identity(), rbac_permission() | no_check) ->
+-spec check_permission(#authn_res{}, rbac_permission() | no_check) ->
                               auth_failure | forbidden | allowed.
-check_permission(_Identity, no_check) ->
+check_permission(_AuthnRes, no_check) ->
     allowed;
-check_permission(Identity, no_check_disallow_anonymous) ->
+check_permission(#authn_res{identity = Identity},
+                 no_check_disallow_anonymous) ->
     case Identity of
         {"", anonymous} ->
             auth_failure;
         _ ->
             allowed
     end;
-check_permission(Identity, Permission) ->
-    Roles = menelaus_roles:get_compiled_roles(Identity),
+check_permission(#authn_res{identity = Identity} = AuthnRes, Permission) ->
+    Roles = menelaus_roles:get_compiled_roles(AuthnRes),
     case Roles of
         [] ->
             %% this can happen in case of expired token, or if LDAP
@@ -572,16 +583,18 @@ check_permission(Identity, Permission) ->
     end.
 
 -spec verify_local_token(mochiweb_request()) ->
-                                {auth_failure | allowed, [{_, _}]}.
+                                {auth_failure | allowed, mochiweb_request()}.
 verify_local_token(Req) ->
     case extract_auth(Req) of
         {"@localtoken" = Username, Password} ->
             case menelaus_local_auth:check_token(Password) of
                 true ->
-                    {allowed, meta_headers({Username, local_token})};
+                    AuthnRes = #authn_res{identity = {Username, local_token}},
+                    {allowed, store_authn_res(AuthnRes, Req)};
                 false ->
-                    {auth_failure, meta_headers(Username)}
+                    {auth_failure, maybe_store_rejected_user(Username, Req)}
             end;
         Auth ->
-            {auth_failure, meta_headers(get_rejected_user(Auth))}
+            {auth_failure,
+             maybe_store_rejected_user(get_rejected_user(Auth), Req)}
     end.

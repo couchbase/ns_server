@@ -69,8 +69,8 @@
 -define(MAX_BUCKET_NAME_LEN, 100).
 
 may_expose_bucket_auth(Name, Req) ->
-    case menelaus_auth:get_token(Req) of
-        undefined ->
+    case menelaus_auth:is_UI_req(Req) of
+        false ->
             case cluster_compat_mode:is_cluster_71() of
                 false ->
                     %% The bucket password permission was removed in 7.1
@@ -81,7 +81,7 @@ may_expose_bucket_auth(Name, Req) ->
                 true ->
                     false
             end;
-        _ ->
+        true ->
             false
     end.
 

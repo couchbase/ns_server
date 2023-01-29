@@ -199,15 +199,14 @@ verify_bucket_auth(#httpd{method = Method,
     Permission = get_required_permission(BucketName, Method, Type),
 
     case menelaus_auth:verify_rest_auth(MochiReq, Permission) of
-        {allowed, Headers} ->
+        {allowed, NewMochiReq} ->
             case ns_bucket:get_bucket(BucketName, Snapshot) of
                 not_present ->
                     {not_found, missing};
                 {ok, BucketConfig} ->
-                    menelaus_auth:assert_no_meta_headers(MochiReq),
                     case verify_bucket_type_support(Type, BucketConfig) of
                         true ->
-                            Req1 = Req#httpd{mochi_req=menelaus_auth:apply_headers(MochiReq, Headers)},
+                            Req1 = Req#httpd{mochi_req=NewMochiReq},
                             {allowed, Req1, BucketConfig};
                         _ ->
                             case Type =:= views of

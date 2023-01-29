@@ -273,8 +273,8 @@ filter_indexes(Roles, Indexes) ->
       end, Indexes).
 
 handle_index_status(Req) ->
-    Identity = menelaus_auth:get_identity(Req),
-    Roles = menelaus_roles:get_compiled_roles(Identity),
+    AuthnRes = menelaus_auth:get_authn_res(Req),
+    Roles = menelaus_roles:get_compiled_roles(AuthnRes),
     {ok, Indexes, Stale, Version} = service_index:get_indexes(),
     Filtered = filter_indexes(Roles, Indexes),
 

@@ -279,7 +279,7 @@ apply_value([Key | Tail], Value, PropList) ->
 
 handle_range_post(Req) ->
     PermFilters =
-        case promql_filters_for_identity(menelaus_auth:get_identity(Req)) of
+        case promql_filters_for_identity(menelaus_auth:get_authn_res(Req)) of
             [] ->
                 ns_audit:auth_failure(Req),
                 menelaus_util:web_exception(403, "Forbidden");
@@ -350,7 +350,7 @@ handle_range_get([], _Req) ->
     menelaus_util:web_exception(404, "not found");
 handle_range_get([MetricName | NotvalidatedFunctions], Req) ->
     PermFilters =
-        case promql_filters_for_identity(menelaus_auth:get_identity(Req)) of
+        case promql_filters_for_identity(menelaus_auth:get_authn_res(Req)) of
             [] ->
                 ns_audit:auth_failure(Req),
                 menelaus_util:web_exception(403, "Forbidden");
@@ -1099,9 +1099,9 @@ validate_time_duration(Name, State) ->
               end
       end, Name, State).
 
-promql_filters_for_identity(Identity) ->
-    Roles = menelaus_roles:get_roles(Identity),
-    CompiledRoles = menelaus_roles:get_compiled_roles(Identity),
+promql_filters_for_identity(AuthnRes) ->
+    Roles = menelaus_roles:get_roles(AuthnRes),
+    CompiledRoles = menelaus_roles:get_compiled_roles(AuthnRes),
     promql_filters_for_roles(Roles, CompiledRoles).
 
 promql_filters_for_roles(Roles, CompiledRoles) ->

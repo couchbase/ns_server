@@ -741,12 +741,13 @@ handle_get_users_page(Req, DomainAtom, Path, Values) ->
     menelaus_util:reply_json(Req, Json).
 
 handle_whoami(Req) ->
-    Identity = menelaus_auth:get_identity(Req),
+    AuthnRes = #authn_res{identity = Identity} =
+        menelaus_auth:get_authn_res(Req),
     Props = menelaus_users:get_user_props(Identity,
                                           [name, passwordless,
                                            password_change_timestamp]),
     {JSON} = user_to_json(Identity, Props),
-    Roles = menelaus_roles:get_roles(Identity),
+    Roles = menelaus_roles:get_roles(AuthnRes),
     RolesJSON = [{roles, [{role_to_json(R)} || R <- Roles]}],
     menelaus_util:reply_json(Req, {misc:update_proplist(JSON, RolesJSON)}).
 
@@ -1168,8 +1169,8 @@ change_password_validators() ->
 handle_change_password(Req) ->
     menelaus_util:assert_is_enterprise(),
 
-    case menelaus_auth:get_token(Req) of
-        undefined ->
+    case menelaus_auth:is_UI_req(Req) of
+        false ->
             case menelaus_auth:get_identity(Req) of
                 {_, local} = Identity ->
                     handle_change_password_with_identity(Req, Identity);
@@ -1181,7 +1182,7 @@ handle_change_password(Req) ->
                       <<"Changing of password is not allowed for this user.">>,
                       404)
             end;
-        _ ->
+        true ->
             menelaus_util:require_auth(Req)
     end.
 
@@ -1437,7 +1438,8 @@ handle_check_permission_for_cbauth(Req) ->
     RawPermission = proplists:get_value("permission", Params),
     Permission = parse_permission(string:trim(RawPermission)),
 
-    case menelaus_roles:is_allowed(Permission, Identity) of
+    case menelaus_roles:is_allowed(Permission,
+                                   #authn_res{identity = Identity}) of
         true ->
             menelaus_util:reply_text(Req, "", 200);
         false ->

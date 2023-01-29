@@ -13,6 +13,7 @@
 -include("ns_common.hrl").
 -include("mc_constants.hrl").
 -include("mc_entry.hrl").
+-include("rbac.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -189,11 +190,11 @@ authenticate(<<"PLAIN">>, AuthReq) ->
         {ok, {Authzid, Username, Password}} when Authzid == "";
                                                  Authzid == Username ->
             case menelaus_auth:authenticate({Username, Password}) of
-                {ok, Id} ->
+                {ok, #authn_res{identity = Id}, _} ->
                     ?log_debug("Successful ext authentication for ~p",
                                [ns_config_log:tag_user_name(Username)]),
                     {ok, Id};
-                _ ->
+                {error, _} ->
                     {error, "Invalid username or password"}
             end;
         {ok, {_Authzid, _, _}} ->
@@ -379,8 +380,8 @@ with_mocked_users(Users, Fun) ->
                     fun ({Name, Pass}) ->
                             case [{N, D} || {{N, P}, D, _} <- Users,
                                             N == Name, P == Pass] of
-                                [Id] -> {ok, Id};
-                                [] -> false
+                                [Id] -> {ok, #authn_res{identity = Id}, []};
+                                [] -> {error, auth_failure}
                             end
                     end),
 

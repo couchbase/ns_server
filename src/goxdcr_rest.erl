@@ -26,22 +26,21 @@ convert_header_name(Header) when is_atom(Header) ->
 convert_header_name(Header) when is_list(Header) ->
     Header.
 
-headers_for_proxy(MochiReq, Identity) ->
+headers_for_proxy(MochiReq, AuthnRes) ->
     HeadersList = mochiweb_headers:to_list(
                     mochiweb_request:get(headers, MochiReq)),
     Headers = lists:filtermap(
                 fun ({'Content-Length', _Value}) ->
                         false;
                     ({Name, Value}) ->
-                        case menelaus_rest:is_auth_header(Name) orelse
-                            menelaus_auth:is_meta_header(Name) of
+                        case menelaus_rest:is_auth_header(Name) of
                             true ->
                                 false;
                             false ->
                                 {true, {convert_header_name(Name), Value}}
                         end
                 end, HeadersList),
-    [menelaus_rest:on_behalf_header(Identity),
+    [menelaus_rest:on_behalf_header(AuthnRes),
      menelaus_rest:special_auth_header() | Headers].
 
 send(MochiReq, Method, Path, Headers, Body) ->
@@ -69,8 +68,8 @@ proxy(MochiReq) ->
     proxy(mochiweb_request:get(raw_path, MochiReq), MochiReq).
 
 proxy(Path, MochiReq) ->
-    Identity = menelaus_auth:get_identity(MochiReq),
-    Headers = headers_for_proxy(MochiReq, Identity),
+    AuthnRes = menelaus_auth:get_authn_res(MochiReq),
+    Headers = headers_for_proxy(MochiReq, AuthnRes),
     Body = case mochiweb_request:recv_body(MochiReq) of
                undefined ->
                    <<>>;

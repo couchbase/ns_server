@@ -33,7 +33,7 @@
 handle_get(Bucket, Req) ->
     assert_collections_enabled(),
     menelaus_util:reply_json(
-      Req, collections:manifest_json(menelaus_auth:get_identity(Req),
+      Req, collections:manifest_json(menelaus_auth:get_authn_res(Req),
                                      Bucket, direct)).
 
 handle_post_scope(Bucket, Req) ->
@@ -204,8 +204,8 @@ handle_set_manifest(Bucket, Req) ->
             validator:handle(
                 fun (KVList) ->
                     Scopes = proplists:get_value(scopes, KVList),
-                    Identity = menelaus_auth:get_identity(Req),
-                    RV = collections:set_manifest(Bucket, Identity, Scopes,
+                    AuthnRes = menelaus_auth:get_authn_res(Req),
+                    RV = collections:set_manifest(Bucket, AuthnRes, Scopes,
                                                   ValidOnUid),
                     InputManifest = mochiweb_request:recv_body(Req),
                     maybe_audit(RV, Req,

@@ -478,9 +478,10 @@ prepare(Req, Params) ->
                              {remote, undefined},
                              {local, undefined}];
                         _ ->
+                            SessionId = menelaus_auth:get_session_id(Req),
                             [{real_userid,
                               get_identity(menelaus_auth:get_identity(Req))},
-                             {sessionid, menelaus_auth:get_token(Req)},
+                             {sessionid, SessionId},
                              {remote, get_remote(Req)},
                              {local, get_local(Req)}]
                     end,
@@ -535,8 +536,8 @@ stats() ->
     {ok, gen_server:call(?MODULE, stats)}.
 
 login_success(Req) ->
-    Identity = menelaus_auth:get_identity(Req),
-    Roles = menelaus_roles:get_roles(Identity),
+    AuthnRes = menelaus_auth:get_authn_res(Req),
+    Roles = menelaus_roles:get_roles(AuthnRes),
     put(login_success, Req,
         [{roles, {list, [menelaus_web_rbac:role_to_string(Role) || Role <- Roles]}}]).
 
@@ -545,9 +546,9 @@ login_failure(Req) ->
 
 %% This audit event doesn't have a "Req" because it's not caused by an HTTP
 %% request.
-session_expired(Identity, Token) ->
+session_expired(Identity, SessionId) ->
     put(session_expired, undefined,
-        [{real_userid, get_identity(Identity)}, {sessionid, Token}]).
+        [{real_userid, get_identity(Identity)}, {sessionid, SessionId}]).
 
 logout(Req) ->
     put(logout, Req, []).
@@ -947,9 +948,7 @@ auth_failure(Req0) ->
                 %% the identity was arbitrarily added it is now removed.
                 case testconditions:get(keep_invalid_domain) of
                     false ->
-                        menelaus_auth:delete_headers(Req0,
-                                                     ["menelaus-auth-user",
-                                                      "menelaus-auth-domain"]);
+                        mochiweb_request:remove_meta(authn_res, Req0);
                     true ->
                         %% For test purposes leave content in the audit event
                         %% that memcached will reject. This allows testing of

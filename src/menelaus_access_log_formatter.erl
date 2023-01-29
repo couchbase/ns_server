@@ -117,9 +117,9 @@ get_auth_user(Req) ->
             U ->
                 U
         end,
-    case menelaus_auth:get_token(Req) of
-        undefined ->
+    case menelaus_auth:is_UI_req(Req) of
+        false ->
             User;
-        _ ->
+        true ->
             User ++ "/UI"
     end.

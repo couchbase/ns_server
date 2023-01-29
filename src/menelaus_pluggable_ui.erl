@@ -275,9 +275,6 @@ decode_request_headers_filter({[{Op, BinNames}]}) ->
 
 add_filter_headers({drop, Hdrs}) ->
     {drop, Hdrs ++ ["ns-server-ui",
-                    "menelaus-auth-user",
-                    "menelaus-auth-domain",
-                    "menelaus-auth-token",
                     "authorization"]};
 add_filter_headers(_HdrFilter) ->
     _HdrFilter.
@@ -305,8 +302,8 @@ proxy_req(RestPrefix, Path, PluginsConfig, Req) ->
                             false ->
                                 {auth_token(Req, Remote), HdrFilter};
                             true ->
-                                Identity = menelaus_auth:get_identity(Req),
-                                {[menelaus_rest:on_behalf_header(Identity),
+                                AuthnRes = menelaus_auth:get_authn_res(Req),
+                                {[menelaus_rest:on_behalf_header(AuthnRes),
                                   menelaus_rest:special_auth_header(Node)],
                                  add_filter_headers(HdrFilter)}
                         end,

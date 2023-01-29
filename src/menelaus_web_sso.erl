@@ -20,6 +20,7 @@
          handle_post_saml_logout/2]).
 
 -include("ns_common.hrl").
+-include("rbac.hrl").
 -include("cut.hrl").
 -include_lib("esaml/include/esaml.hrl").
 
@@ -61,9 +62,7 @@ handle_deauth(SSOName, Req) ->
             menelaus_util:web_exception(404, "not found")
     end,
 
-    Token = menelaus_auth:get_token(Req),
-    false = (Token =:= undefined),
-    {Session, Headers} = menelaus_auth:complete_uilogout(Token, Req),
+    {Session, Headers} = menelaus_auth:complete_uilogout(Req),
 
     case Session of
         #uisession{type = {sso, SSOName}, session_name = NameID} ->
@@ -151,11 +150,16 @@ handle_saml_consume(SSOName, Req, UnvalidatedParams) ->
               true when NameID =/= undefined, length(NameID) > 0 ->
                   ?log_debug("Successful saml(~s) login: ~s",
                              [SSOName, ns_config_log:tag_user_name(Username)]),
+                  AuthnRes =
+                      #authn_res{type = ui,
+                                 session_id = menelaus_auth:new_session_id(),
+                                 identity = {Username, external}},
+                  SessionName = iolist_to_binary(NameID),
                   menelaus_auth:uilogin_phase2(
                     Req,
                     {sso, SSOName},
-                    iolist_to_binary(NameID),
-                    {Username, external},
+                    SessionName,
+                    AuthnRes,
                     ?cut(menelaus_util:reply_text(_1, <<"Redirecting...">>, 302,
                                                   [{"Location", "/"} | _2])));
               true ->
@@ -195,7 +199,8 @@ handle_saml_logout(SSOName, Req, UnvalidatedParams) ->
                   menelaus_util:reply_text(Req, "Missing SAML message", 400);
               {#esaml_logoutreq{name = NameID}, _} ->
                   SessionName = iolist_to_binary(NameID),
-                  menelaus_ui_auth:logout_by_session_name(SessionName),
+                  menelaus_ui_auth:logout_by_session_name({sso, SSOName},
+                                                          SessionName),
                   SignedXml = esaml_sp:generate_logout_response(_, success,
                                                                 SPMetadata),
                   BindingToUse = proplists:get_value(logout_resp_binding,

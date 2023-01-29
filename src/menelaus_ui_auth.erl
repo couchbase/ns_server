@@ -21,21 +21,23 @@
 
 -export([generate_token/3, maybe_refresh/1,
          check/1, reset/0, logout/1, set_token_node/2,
-         logout_by_session_name/1]).
+         logout_by_session_name/2]).
 
 start_link() ->
     token_server:start_link(?MODULE, 1024, ?UI_AUTH_EXPIRATION_SECONDS,
-                            fun (#uisession{user_id = Id}, Token) ->
-                                ns_audit:session_expired(Id, Token)
+                            fun (#uisession{authn_res = AuthnRes}, _Token) ->
+                                #authn_res{identity = Id,
+                                           session_id = SessionId} = AuthnRes,
+                                ns_audit:session_expired(Id, SessionId)
                             end).
 
 -spec generate_token(simple | {sso, SSOName :: string()},
                      binary(),
-                     {string(), atom()}) -> auth_token().
-generate_token(SessionType, SessionName, Identity) ->
-    SessionInfo = #uisession{type = SessionType,
+                     #authn_res{}) -> auth_token().
+generate_token(UISessionType, SessionName, #authn_res{type = ui} = AuthnRes) ->
+    SessionInfo = #uisession{type = UISessionType,
                              session_name = SessionName,
-                             user_id = Identity},
+                             authn_res = AuthnRes},
     token_server:generate(?MODULE, SessionInfo).
 
 -spec maybe_refresh(auth_token()) -> nothing | {new_token, auth_token()}.
@@ -62,19 +64,26 @@ check(Token) ->
     {Node, CleanToken} = get_token_node(Token),
     case token_server:check(?MODULE, CleanToken, Node) of
         false -> false;
-        {ok, #uisession{user_id = Id}} -> {ok, Id};
-        {ok, Id} -> {ok, Id} %% Pre-elixir nodes will return Id
+        {ok, #uisession{authn_res = #authn_res{} = AuthnRes}} ->
+            {ok, AuthnRes};
+        {ok, Id} -> %% Pre-elixir nodes will return Id
+            {ok, #authn_res{identity = Id}}
     end.
 
 -spec reset() -> ok.
 reset() ->
     token_server:reset_all(?MODULE).
 
--spec logout(auth_token()) -> #uisession{} | undefined.
-logout(Token) ->
-    case token_server:take(?MODULE, Token) of
-        {ok, SessionInfo} -> SessionInfo;
-        false -> undefined
+-spec logout(SessionId :: binary()) -> #uisession{} | undefined.
+logout(SessionId) ->
+    AuthPattern = #authn_res{type = ui, session_id = SessionId, _ = '_'},
+    MemoParrern = #uisession{authn_res = AuthPattern, _ = '_'},
+    case token_server:take_memos(?MODULE, MemoParrern) of
+        [] -> undefined;
+        %% In general take_memos can return multiple memos, but in this case
+        %% (since we filter by session id) there should be only one _unique_
+        %% session.
+        [#uisession{} = SessionInfo] -> SessionInfo
     end.
 
 init() ->
@@ -83,12 +92,15 @@ init() ->
 
 %% TODO: implement it correctly for all users or get rid of it
 ns_config_event_handler({rest_creds, _}) ->
-    token_server:purge(?MODULE, #uisession{user_id = {'_', admin}, _ = '_'});
+    AuthnPattern = #authn_res{type = ui,
+                              identity = {'_', admin},
+                              _ = '_'},
+    token_server:purge(?MODULE, #uisession{authn_res = AuthnPattern, _ = '_'});
 ns_config_event_handler(_Evt) ->
     ok.
 
-logout_by_session_name(SessionName) ->
-    Pattern = #uisession{session_name = SessionName, _ = '_'},
+logout_by_session_name(Type, SessionName) ->
+    Pattern = #uisession{type = Type, session_name = SessionName, _ = '_'},
     token_server:purge(?MODULE, Pattern).
 
 -ifdef(TEST).

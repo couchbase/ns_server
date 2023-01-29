@@ -10,6 +10,7 @@
 -module(token_server).
 
 -include("ns_common.hrl").
+-include("rbac.hrl").
 
 -behaviour(gen_server).
 
@@ -19,14 +20,14 @@
 
 -export([generate/2, generate/3, maybe_refresh/2,
          check/3, reset_all/1, remove/2,
-         purge/2, take/2]).
+         purge/2, take/2, take_memos/2]).
 
 -define(EXPIRATION_CHECKING_INTERVAL, 15000).
 
 -type token() :: binary().
 
 -record(token_record,
-        {token :: token() | '$1',
+        {token :: token() | '$1' | '_',
          %% expiration_timestamp shows when token expires
          expiration_timestamp :: pos_integer() | '_',
          %% refresh_timestamp shows when token can be refreshed/rotated,
@@ -77,6 +78,9 @@ remove(Module, Token) ->
 
 take(Module, Token) ->
     gen_server:call(Module, {take, tok2bin(Token)}, infinity).
+
+take_memos(Module, MemoPattern) ->
+    gen_server:call(Module, {take_memos, MemoPattern}, infinity).
 
 purge(Module, MemoPattern) ->
     gen_server:cast(Module, {purge, MemoPattern}).
@@ -251,6 +255,13 @@ handle_call({take, Token}, _From, State) ->
             remove_token_with_predecessor(Token, State),
             {reply, {ok, Memo}, State}
     end;
+handle_call({take_memos, MemoPattern}, _From,
+            #state{table_by_token = Table} = State) ->
+    Records = ets:select(Table, [{#token_record{memo = MemoPattern, _ = '_'},
+                                  [], ['$_']}]),
+    [remove_token(Token, State) || #token_record{token = Token} <- Records],
+    Memos = lists:usort([Memo || #token_record{memo = Memo} <- Records]),
+    {reply, Memos, State};
 handle_call({check, Token}, _From, State) ->
     case validate_token_maybe_expire(Token, State) of
         false ->
@@ -260,9 +271,14 @@ handle_call({check, Token}, _From, State) ->
                 case cluster_compat_mode:is_cluster_elixir() of
                     true -> Memo;
                     false ->
+                        %% token server should not know anything about
+                        %% memo guts, but we make exception here to
+                        %% stay backward compatible
                         case Memo of
-                            #uisession{user_id = Id} -> Id;
-                            _ -> Memo
+                            #uisession{authn_res = #authn_res{identity = Id}} ->
+                                Id;
+                            _ ->
+                                Memo
                         end
                 end,
             {reply, {ok, Res}, State}

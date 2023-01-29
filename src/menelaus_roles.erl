@@ -838,9 +838,9 @@ operation_allowed(Operation, AllowedOperations) ->
     lists:member(Operation, AllowedOperations).
 
 -spec is_allowed(rbac_permission(),
-                 rbac_identity() | [rbac_compiled_role()]) -> boolean().
-is_allowed(Permission, {_, _} = Identity) ->
-    Roles = get_compiled_roles(Identity),
+                 #authn_res{} | [rbac_compiled_role()]) -> boolean().
+is_allowed(Permission, #authn_res{} = AuthnRes) ->
+    Roles = get_compiled_roles(AuthnRes),
     is_allowed(Permission, Roles);
 is_allowed({Object, Operation}, Roles) ->
     lists:any(fun (Role) ->
@@ -1035,30 +1035,35 @@ compile_roles(Roles, Definitions, Snapshot) ->
                                 ParamDefs, Permissions)
       end, Roles, Definitions, Snapshot).
 
--spec get_roles(rbac_identity()) -> [rbac_role()].
-get_roles({"", wrong_token}) ->
+get_roles(#authn_res{identity = Id}) ->
+    get_roles_for_identity(Id);
+get_roles({_, _} = Id) ->
+    get_roles_for_identity(Id).
+
+-spec get_roles_for_identity(rbac_identity()) -> [rbac_role()].
+get_roles_for_identity({"", wrong_token}) ->
     case ns_config_auth:is_system_provisioned() of
         false ->
             [admin];
         true ->
             []
     end;
-get_roles({"", anonymous}) ->
+get_roles_for_identity({"", anonymous}) ->
     case ns_config_auth:is_system_provisioned() of
         false ->
             [admin];
         true ->
             []
     end;
-get_roles({_, admin}) ->
+get_roles_for_identity({_, admin}) ->
     [admin];
-get_roles({_, stats_reader}) ->
+get_roles_for_identity({_, stats_reader}) ->
     [stats_reader];
-get_roles({BucketName, bucket}) ->
+get_roles_for_identity({BucketName, bucket}) ->
     [{bucket_full_access, [BucketName]}];
-get_roles({_User, external} = Identity) ->
+get_roles_for_identity({_User, external} = Identity) ->
     menelaus_users:get_roles(Identity);
-get_roles({_User, local} = Identity) ->
+get_roles_for_identity({_User, local} = Identity) ->
     menelaus_users:get_roles(Identity).
 
 compiled_roles_cache_name() ->
@@ -1111,25 +1116,31 @@ start_compiled_roles_cache() ->
       compiled_roles_cache_name(), 200, fun build_compiled_roles/1,
       GetEvents, GetVersion).
 
--spec get_compiled_roles(rbac_identity()) -> [rbac_compiled_role()].
-get_compiled_roles({_, external} = Identity) ->
-    roles_cache:build_compiled_roles(Identity);
-get_compiled_roles(Identity) ->
-    versioned_cache:get(compiled_roles_cache_name(), Identity).
+get_compiled_roles(#authn_res{identity = {_, external}} = AuthnRes) ->
+    roles_cache:build_compiled_roles(AuthnRes);
+get_compiled_roles(#authn_res{identity = Identity}) ->
+    %% Dropping everything but what we need for roles calculation here.
+    %% Reason: We don't want things like session_id to be part of the cache
+    %% key. In other words, if some user relogins, cache key should not
+    %% change
+    AuthnRes = #authn_res{identity = Identity},
+    versioned_cache:get(compiled_roles_cache_name(), AuthnRes);
+get_compiled_roles({_, _} = Identity) ->
+    get_compiled_roles(#authn_res{identity = Identity}).
 
-build_compiled_roles(Identity) ->
+build_compiled_roles(#authn_res{identity = Identity} = AuthnRes) ->
     case ns_node_disco:couchdb_node() == node() of
         false ->
             ?log_debug("Compile roles for user ~p",
                        [ns_config_log:tag_user_data(Identity)]),
             Definitions = get_definitions(all),
-            compile_roles(get_roles(Identity), Definitions,
+            compile_roles(get_roles(AuthnRes), Definitions,
                           ns_bucket:get_snapshot(all, [collections, uuid]));
         true ->
             ?log_debug("Retrieve compiled roles for user ~p from ns_server "
                        "node", [ns_config_log:tag_user_data(Identity)]),
             rpc:call(ns_node_disco:ns_server_node(),
-                     ?MODULE, build_compiled_roles, [Identity])
+                     ?MODULE, build_compiled_roles, [AuthnRes])
     end.
 
 filter_out_invalid_roles(Roles, Definitions, Snapshot) ->
