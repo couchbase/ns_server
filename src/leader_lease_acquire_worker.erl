@@ -306,4 +306,4 @@ inc_counter(Name, State) ->
     ns_server_stats:notify_counter(build_stat_name(Name, State)).
 
 build_stat_name(Name, State) ->
-    {<<"lease_aquirer_", Name/binary>>, [{node, target_node(State)}]}.
+    {<<"lease_acquirer_", Name/binary>>, [{node, target_node(State)}]}.
