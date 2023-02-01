@@ -308,7 +308,15 @@ sync_s3(Source, Dest, BlobStorageRegion, SyncCode) ->
                              {"s3:/" ++ Source, Dest}
                      end,
 
-    Args = ["--region", BlobStorageRegion, "sync", SPath, DPath],
+    ExtraArgs =
+        case os:getenv("LOCALSTACK_ENDPOINT") of
+            false ->
+                [];
+            Endpoint ->
+                ["--endpoint", Endpoint, "--s3-force-path-style"]
+        end,
+
+    Args = ["--region", BlobStorageRegion, "sync", SPath, DPath] ++ ExtraArgs,
 
     {Status, Output} = misc:run_external_tool(Cmd, Args, [],
                                               [graceful_shutdown]),
