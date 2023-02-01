@@ -232,8 +232,7 @@ toy_buckets(List) ->
       [{root(), {[N || {N, _} <- List], no_rev}} |
        lists:flatmap(
          fun ({Bucket, Props}) ->
-                 [{ns_bucket:sub_key(Bucket, K), {V, no_rev}} ||
-                     {K, V} <- Props]
+                 [{sub_key(Bucket, K), {V, no_rev}} || {K, V} <- Props]
          end, List)]).
 
 bucket_exists(Bucket, Snapshot) ->
@@ -271,7 +270,7 @@ get_bucket(Bucket, Config) ->
     get_bucket_from_configs(Bucket, BucketConfigs).
 
 ensure_bucket(Bucket) ->
-    case ns_bucket:get_bucket(Bucket) of
+    case get_bucket(Bucket) of
         not_present ->
             exit({bucket_not_present, Bucket});
         {ok, BucketConfig} ->
@@ -1030,16 +1029,16 @@ update_bucket_props(Type, StorageMode, BucketName, Props) ->
     case lists:member(BucketName,
                       get_bucket_names_of_type({Type, StorageMode})) of
         true ->
-            {ok, BucketConfig} = ns_bucket:get_bucket(BucketName),
+            {ok, BucketConfig} = get_bucket(BucketName),
             PrevProps = extract_bucket_props(BucketConfig),
-            DisplayBucketType = ns_bucket:display_type(Type, StorageMode),
+            DisplayBucketType = display_type(Type, StorageMode),
 
             %% Update the bucket properties.
             RV = update_bucket_props(BucketName, Props),
 
             case RV of
                 ok ->
-                    {ok, NewBucketConfig} = ns_bucket:get_bucket(BucketName),
+                    {ok, NewBucketConfig} = get_bucket(BucketName),
                     NewProps = extract_bucket_props(NewBucketConfig),
                     if
                         PrevProps =/= NewProps ->
@@ -1570,7 +1569,7 @@ upgrade_buckets(Config, Fun) ->
 config_upgrade_to_66(Config) ->
     upgrade_buckets(Config,
           fun (_Name, BCfg) ->
-                  case ns_bucket:bucket_type(BCfg) of
+                  case bucket_type(BCfg) of
                       membase ->
                           lists:keystore(durability_min_level, 1, BCfg,
                                          {durability_min_level, none});
@@ -1599,10 +1598,9 @@ chronicle_upgrade_to_71(ChronicleTxn) ->
 chronicle_upgrade_bucket_to_elixir(BucketName, ChronicleTxn) ->
     PropsKey = sub_key(BucketName, props),
     AddProps = [{pitr_enabled, false},
-                {pitr_granularity,
-                 ns_bucket:attribute_default(pitr_granularity)},
+                {pitr_granularity, attribute_default(pitr_granularity)},
                 {pitr_max_history_age,
-                 ns_bucket:attribute_default(pitr_max_history_age)}],
+                 attribute_default(pitr_max_history_age)}],
     {ok, BucketConfig} = chronicle_upgrade:get_key(PropsKey, ChronicleTxn),
     NewBucketConfig = misc:merge_proplists(fun (_, L, _) -> L end, AddProps,
                                            BucketConfig),
