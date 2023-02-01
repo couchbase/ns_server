@@ -14,7 +14,7 @@ import requests
 
 Cluster = namedtuple("Cluster", ['urls', 'processes', 'auth', 'memsize',
                                  'is_enterprise', 'is_71', 'is_elixir',
-                                 'is_serverless', 'is_dev_preview'])
+                                 'is_serverless', 'is_dev_preview', 'data_path'])
 ClusterRequirements = namedtuple("ClusterRequirements",
                                  ['num_nodes', 'min_memsize', 'serverless'],
                                  defaults=[1, 256, None])
@@ -71,7 +71,7 @@ def safe_test_function_call(testset, testfunction, args, verbose=False):
         testname = f"{testset.__name__}.{testfunction}"
     else:
         testname = f"{type(testset).__name__}.{testfunction}"
-    if verbose: print(f"  {testname}... ")
+    if verbose: print(f"  {testname}... ", end='')
     try:
         res = getattr(testset, testfunction)(*args)
         if verbose: print("\033[32m passed \033[0m")
@@ -133,10 +133,21 @@ def put_succ(cluster, path, **kwargs):
 
 
 def post_succ(cluster, path, **kwargs):
+    res = post(cluster, path, **kwargs)
+    assert_http_code(200, res)
+    return res
+
+
+def post_fail(cluster, path, expected_code, **kwargs):
+    res = post(cluster, path, **kwargs)
+    assert_http_code(expected_code, res),
+    return res
+
+
+def post(cluster, path, **kwargs):
     kwargs_with_auth = set_default_auth(cluster, **kwargs)
     url = cluster.urls[0] + path
-    res = requests.post(url, **kwargs_with_auth)
-    assert_http_code(200, res),
+    return requests.post(url, **kwargs_with_auth)
 
 
 def get_succ(cluster, path, **kwargs):

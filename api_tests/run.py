@@ -29,6 +29,7 @@ sys.path.append(pylib)
 
 import cluster_run_lib
 import testlib
+import authn_tests
 import auto_failover_test
 import sample_buckets
 import ldap_tests
@@ -344,6 +345,10 @@ def get_cluster(address, start_port, auth, processes, num_nodes):
                                    data="cluster_compat_mode:is_developer_preview().",
                                    auth=auth).text == "true"
 
+    data_path = requests.post(f"{url}/diag/eval",
+                              data="path_config:component_path(data).",
+                              auth=auth).text.strip('\"')
+
     return testlib.Cluster(urls=urls,
                            processes=processes,
                            auth=auth,
@@ -352,7 +357,8 @@ def get_cluster(address, start_port, auth, processes, num_nodes):
                            is_71=is_71,
                            is_elixir=is_elixir,
                            is_serverless=is_serverless,
-                           is_dev_preview=is_dev_preview)
+                           is_dev_preview=is_dev_preview,
+                           data_path=data_path)
 
 
 if __name__ == '__main__':
