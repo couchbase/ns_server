@@ -623,6 +623,15 @@ rebalance_kv(KeepNodes, EjectNodes, DeltaRecoveryBuckets, DesiredServers) ->
                                KeepKVNodes, EjectNodes, ForcedMap)
       end, misc:enumerate(BucketConfigs, 0)),
 
+    not bucket_placer:is_enabled() orelse
+        case maybe_cleanup_old_buckets(KeepKVNodes) of
+            ok ->
+                ok;
+            E ->
+                ?log_error("Failed to delete old bucket files. Error = ~p.",
+                           [E])
+        end,
+
     update_kv_progress(LiveKVNodes, 1.0).
 
 rebalance_bucket(BucketName, BucketConfig, ProgressFun,
@@ -959,6 +968,8 @@ terminate_mover(Pid, StopReason) ->
             exit(OtherReason)
     end.
 
+maybe_cleanup_old_buckets([]) ->
+    ok;
 maybe_cleanup_old_buckets(KeepNodes) ->
     Requests = [{Node, ?cut(rpc:call(Node, ns_storage_conf,
                                      delete_unused_buckets_db_files, []))} ||
