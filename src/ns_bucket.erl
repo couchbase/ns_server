@@ -900,7 +900,7 @@ create_bucket(BucketType, BucketName, NewConfig) ->
     do_create_bucket(chronicle_compat:backend(), BucketName,
                      MergedConfig, BucketUUID, Manifest),
     %% The janitor will handle creating the map.
-    ok.
+    {ok, BucketUUID, MergedConfig}.
 
 restore_bucket(BucketName, NewConfig, BucketUUID, Manifest) ->
     case is_valid_bucket_name(BucketName) of

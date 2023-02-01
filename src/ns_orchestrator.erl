@@ -655,18 +655,18 @@ janitor_running(_Event, _State) ->
 idle({create_bucket, BucketType, BucketName, BucketConfig}, From, _State) ->
     case validate_create_bucket(BucketName, BucketConfig) of
         {ok, NewBucketConfig} ->
-            ok = ns_bucket:create_bucket(BucketType, BucketName,
-                                         NewBucketConfig),
-            ConfigJSON = ns_bucket:build_bucket_props_json(NewBucketConfig),
+            {ok, UUID, ActualBucketConfig} =
+                ns_bucket:create_bucket(BucketType, BucketName,
+                                        NewBucketConfig),
+            ConfigJSON = ns_bucket:build_bucket_props_json(
+                           ns_bucket:extract_bucket_props(ActualBucketConfig)),
             master_activity_events:note_bucket_creation(BucketName, BucketType,
                                                         ConfigJSON),
-            StorageMode = proplists:get_value(
-                            storage_mode, NewBucketConfig, undefined),
             event_log:add_log(
               bucket_created,
               [{bucket, list_to_binary(BucketName)},
-               {bucket_uuid, ns_bucket:uuid(BucketName, direct)},
-               {bucket_type, ns_bucket:display_type(BucketType, StorageMode)},
+               {bucket_uuid, UUID},
+               {bucket_type, ns_bucket:display_type(ActualBucketConfig)},
                {bucket_props, {ConfigJSON}}]),
             request_janitor_run({bucket, BucketName}),
             {keep_state_and_data, [{reply, From, ok}]};
