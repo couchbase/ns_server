@@ -36,7 +36,7 @@ SET(TEST_COMMAND "${ERL_EXECUTABLE}"
         # Need to escape ';' when we pass it to erl or it is treated
         # as two strings and that doesn't compile.
         -eval "
-            case t:${TEST_TARGET}(\"${TEST_FILTER}\") of
+            case t:${TEST_TARGET}() of
                 ok -> init:stop()\;
                 _ -> init:stop(1)
             end.")
