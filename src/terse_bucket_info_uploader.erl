@@ -24,7 +24,9 @@
 -define(SERVER, ?MODULE).
 -define(SET_CLUSTER_CONFIG_RETRY_TIME, 1000).
 
--record(state, {}).
+-record(state, {
+          port_pid :: pid()
+         }).
 
 %%%===================================================================
 %%% API
@@ -33,8 +35,7 @@ start_link(BucketName) ->
     ns_bucket_sup:ignore_if_not_couchbase_bucket(
       BucketName,
       fun (_) ->
-              Name = server_name(BucketName),
-              gen_server:start_link({local, Name}, ?MODULE, BucketName, [])
+              proc_lib:start_link(?MODULE, init, [[BucketName]])
       end).
 
 server_name(BucketName) ->
@@ -43,11 +44,21 @@ server_name(BucketName) ->
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
-init(BucketName) ->
+init([BucketName]) ->
     Self = self(),
+    Name = server_name(BucketName),
+    register(Name, Self),
+
     ns_pubsub:subscribe_link(bucket_info_cache_invalidations, fun invalidation_loop/2, {BucketName, Self}),
+    %% Free up our parent to continue on. This is needed as the rest of
+    %% this function might take some time to complete.
+    proc_lib:init_ack({ok, Self}),
+
+    Pid = memcached_config_mgr:memcached_port_pid(),
+    remote_monitors:monitor(Pid),
+
     submit_refresh(BucketName, Self),
-    {ok, #state{}}.
+    gen_server:enter_loop(?MODULE, [], #state{port_pid = Pid}).
 
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -60,6 +71,11 @@ handle_info({refresh, BucketName}, State) ->
     flush_refresh_msgs(BucketName),
     refresh_cluster_config(BucketName),
     {noreply, State};
+handle_info({remote_monitor_down, Pid, Reason},
+            #state{port_pid = Pid} = State) ->
+    ?log_debug("Got DOWN with reason: ~p from memcached port server: ~p. "
+               "Shutting down", [Reason, Pid]),
+    {stop, {shutdown, {memcached_port_server_down, Pid, Reason}}, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 
