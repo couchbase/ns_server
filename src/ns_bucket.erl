@@ -75,6 +75,8 @@
          conflict_resolution_type/1,
          drift_thresholds/1,
          history_retention_seconds/1,
+         history_retention_bytes/1,
+         history_retention_collection_default/1,
          eviction_policy/1,
          storage_mode/1,
          storage_backend/1,
@@ -121,6 +123,7 @@
          config_upgrade_to_66/1,
          upgrade_to_chronicle/2,
          chronicle_upgrade_to_71/1,
+         chronicle_upgrade_to_72/1,
          chronicle_upgrade_to_elixir/1,
          extract_bucket_props/1,
          build_bucket_props_json/1,
@@ -369,9 +372,20 @@ drift_thresholds(BucketConfig) ->
         false -> undefined
     end.
 
--spec history_retention_seconds([{_,_}]) -> number().
+-spec history_retention_seconds([{_,_}]) -> integer().
 history_retention_seconds(BucketConfig) ->
-    proplists:get_value(history_retention_seconds, BucketConfig, 0).
+    proplists:get_value(history_retention_seconds, BucketConfig,
+                        ?HISTORY_RETENTION_SECONDS_DEFAULT).
+
+-spec history_retention_bytes([{_,_}]) -> integer().
+history_retention_bytes(BucketConfig) ->
+    proplists:get_value(history_retention_bytes, BucketConfig,
+                        ?HISTORY_RETENTION_BYTES_DEFAULT).
+
+-spec history_retention_collection_default([{_,_}]) -> boolean().
+history_retention_collection_default(BucketConfig) ->
+    proplists:get_value(history_retention_collection_default, BucketConfig,
+                        ?HISTORY_RETENTION_COLLECTION_DEFAULT_DEFAULT).
 
 eviction_policy(BucketConfig) ->
     Default = case storage_mode(BucketConfig) of
@@ -1611,6 +1625,32 @@ chronicle_upgrade_to_elixir(ChronicleTxn) ->
     chronicle_upgrade_bucket(chronicle_upgrade_bucket_to_elixir(_, _),
                              BucketNames, ChronicleTxn).
 
+chronicle_upgrade_to_72(ChronicleTxn) ->
+    {ok, BucketNames} = chronicle_upgrade:get_key(root(), ChronicleTxn),
+    lists:foldl(
+        fun (Name, Txn) ->
+            PropsKey = sub_key(Name, props),
+            {ok, BCfg} = chronicle_upgrade:get_key(PropsKey, Txn),
+            case is_magma(BCfg) of
+                true ->
+                    % Only add the keys if this is a magma Bucket as they are
+                    % not relevant to couchstore buckets.
+                    BCfg1 = lists:keystore(history_retention_seconds, 1, BCfg,
+                                           {history_retention_seconds, 0}),
+                    BCfg2 = lists:keystore(history_retention_bytes, 1, BCfg1,
+                                           {history_retention_bytes, 0}),
+                    BCfg3 =
+                        lists:keystore(history_retention_collection_default,
+                                       1, BCfg2,
+                                       {history_retention_collection_default,
+                                        true}),
+
+                    chronicle_upgrade:set_key(PropsKey, BCfg3, Txn);
+                _ ->
+                    Txn
+            end
+        end, ChronicleTxn, BucketNames).
+
 %% returns proplist with only props useful for ns_bucket
 extract_bucket_props(Props) ->
     [X || X <-
@@ -1629,7 +1669,8 @@ extract_bucket_props(Props) ->
                         kv_throttle_limit, index_throttle_limit,
                         fts_throttle_limit, n1ql_throttle_limit,
                         sgw_read_throttle_limit, sgw_write_throttle_limit,
-                        history_retention_seconds, history_retention_bytes]],
+                        history_retention_seconds, history_retention_bytes,
+                        history_retention_collection_default]],
           X =/= false].
 
 build_threshold({Percentage, Size}) ->
