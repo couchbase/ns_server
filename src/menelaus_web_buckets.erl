@@ -458,15 +458,28 @@ build_magma_bucket_info(BucketConfig) ->
               proplists:get_value(storage_quota_percentage,
                                   BucketConfig,
                                   ?MAGMA_STORAGE_QUOTA_PERCENTAGE)}]
-                ++
-                case config_profile:search({magma, can_set_max_shards}, false) of
-                    true ->
-                        [{magmaMaxShards,
-                          proplists:get_value(magma_max_shards, BucketConfig,
-                                              ?DEFAULT_MAGMA_SHARDS)}];
-                    false -> []
-                end;
-        _ -> []
+            ++
+            case cluster_compat_mode:is_cluster_72() of
+                false -> [];
+                true ->
+                    [{historyRetentionSeconds,
+                      ns_bucket:history_retention_seconds(BucketConfig)},
+                     {historyRetentionBytes,
+                      ns_bucket:history_retention_bytes(BucketConfig)},
+                     {historyRetentionCollectionDefault,
+                      ns_bucket:history_retention_collection_default(
+                          BucketConfig)}]
+            end
+            ++
+            case config_profile:search({magma, can_set_max_shards}, false) of
+                true ->
+                    [{magmaMaxShards,
+                      proplists:get_value(magma_max_shards, BucketConfig,
+                                          ?DEFAULT_MAGMA_SHARDS)}];
+                false -> []
+            end;
+        _ ->
+            []
     end.
 
 handle_sasl_buckets_streaming(_PoolId, Req) ->
@@ -1243,7 +1256,11 @@ validate_membase_bucket_params(CommonParams, Params,
                                          IsEnterprise),
          HistRetSecs,
          parse_validate_history_retention_bytes(Params, BucketConfig,
-                                                IsNew, Version, IsEnterprise)
+                                                IsNew, Version, IsEnterprise),
+         parse_validate_history_retention_collection_default(Params,
+                                                             BucketConfig,
+                                                             IsNew, Version,
+                                                             IsEnterprise)
         | validate_bucket_auto_compaction_settings(Params)] ++
         parse_validate_limits(Params, BucketConfig, IsNew, AllowStorageLimit,
                               ?cut(get_storage_attributes())) ++
@@ -2201,61 +2218,133 @@ validate_num_vbuckets(Val) ->
             {error, numVbuckets, list_to_binary(Msg)}
     end.
 
+%% Helper function that remaps the user key to the internal key if the config
+%% parameter is valid.
+%%
+%% The REST API has bucket parameters in camelCase, but parameters are stored
+%% internally and passed to memcached in snake_case. This difference
+%% frustratingly means that we must map the user (camelCase) key to the internal
+%% (snake_case) key if the parameter is valid, otherwise we should return the
+%% user (camelCase) key in any error messages. This function allows us to deal
+%% with the user (camelCase) key throughout the parsing of the validation, then
+%% map to the internal key when we've validated the parameter passed by the
+%% user (if appropriate). This should allow for the consolidation of all of the
+%% keys into the same parsing function which allows us to avoid passing user
+%% (camelCase) and internal (snake_case) keys down all of the validation call
+%% stacks.
+remap_user_key_to_internal_key_if_valid(Result, InternalKey) ->
+    case Result of
+        {ok, _UserKey, Val} ->
+            {ok, InternalKey, Val};
+        Error ->
+            Error
+    end.
+
 parse_validate_history_retention_seconds(Params, BucketConfig, IsNew, Version,
                                          IsEnterprise) ->
-    HistoryRetentionValue =
-        proplists:get_value("historyRetentionSeconds", Params),
-    parse_validate_history_param(history_retention_seconds,
-                                 HistoryRetentionValue, Params, BucketConfig,
-                                 IsNew, Version, IsEnterprise).
+    UserKey = historyRetentionSeconds,
+    HistoryRetentionValue = proplists:get_value(atom_to_list(UserKey), Params),
+    Ret = parse_validate_history_param_numeric(
+        UserKey, HistoryRetentionValue, Params, BucketConfig, IsNew, Version,
+        IsEnterprise, integer_to_list(?HISTORY_RETENTION_SECONDS_DEFAULT)),
+    remap_user_key_to_internal_key_if_valid(Ret, history_retention_seconds).
 
 parse_validate_history_retention_bytes(Params, BucketConfig, IsNew,
                                        Version, IsEnterprise) ->
-    HistoryRetentionValue =
-        proplists:get_value("historyRetentionBytes", Params),
-    parse_validate_history_param(history_retention_bytes,
-                                 HistoryRetentionValue, Params, BucketConfig,
-                                 IsNew, Version, IsEnterprise).
+    UserKey = historyRetentionBytes,
+    HistoryRetentionValue = proplists:get_value(atom_to_list(UserKey), Params),
+    Ret = parse_validate_history_param_numeric(
+        UserKey, HistoryRetentionValue, Params, BucketConfig, IsNew, Version,
+        IsEnterprise, integer_to_list(?HISTORY_RETENTION_BYTES_DEFAULT)),
+    remap_user_key_to_internal_key_if_valid(Ret, history_retention_bytes).
 
-parse_validate_history_param(Key, Value, Params, BucketConfig, IsNew, Version,
-                                     IsEnterprise) ->
+parse_validate_history_retention_collection_default(Params, BucketConfig, IsNew,
+                                                    Version, IsEnterprise) ->
+    UserKey = historyRetentionCollectionDefault,
+    HistoryRetentionValue = proplists:get_value(atom_to_list(UserKey), Params),
+    Ret = parse_validate_history_param_bool(
+        UserKey, HistoryRetentionValue, Params, BucketConfig, IsNew, Version,
+        IsEnterprise,
+        atom_to_list(?HISTORY_RETENTION_COLLECTION_DEFAULT_DEFAULT)),
+    remap_user_key_to_internal_key_if_valid(
+        Ret, history_retention_collection_default).
+
+parse_validate_history_param_numeric(Key, Value, Params, BucketConfig, IsNew,
+                                     Version, IsEnterprise, DefaultVal) ->
     IsCompat = cluster_compat_mode:is_version_72(Version),
     IsMagma = is_magma(Params, BucketConfig, IsNew),
-    parse_validate_history_param_inner(Key, Value, IsEnterprise, IsCompat,
-                                       IsNew, IsMagma).
+    parse_validate_history_param_inner(
+        Key, Value, IsEnterprise, IsCompat, IsNew, IsMagma,
+        fun (Val, New) ->
+            validate_with_missing(
+                Val, DefaultVal, New,
+                fun (V) ->
+                    do_parse_validate_history_retention_numeric(Key, V)
+                end)
+        end).
 
+parse_validate_history_param_bool(Key, Value, Params, BucketConfig, IsNew,
+                                  Version, IsEnterprise, DefaultVal) ->
+    IsCompat = cluster_compat_mode:is_version_72(Version),
+    IsMagma = is_magma(Params, BucketConfig, IsNew),
+    parse_validate_history_param_inner(
+        Key, Value, IsEnterprise, IsCompat, IsNew, IsMagma,
+        fun (Val, New) ->
+            validate_with_missing(
+                Val, DefaultVal, New,
+                fun (V) ->
+                    do_parse_validate_history_retention_bool(Key, V)
+                end)
+        end).
+
+parse_validate_history_param_inner(_Key, undefined = _Value,
+                                   false = _IsEnterprise, _IsCompat, _IsNew,
+                                   _IsMagma, _ValidatorFn) ->
+    %% Value wasn't specified and not enterprise
+    ignore;
 parse_validate_history_param_inner(_Key, undefined = _Value, _IsEnterprise,
-                                   _IsCompat, _IsNew, _IsMagma) ->
-    %% Value wasn't specified
+                                   false = _IsCompat, _IsNew, _IsMagma,
+                                   _ValidatorFn) ->
+    %% Value wasn't specified and not 7.2
+    ignore;
+parse_validate_history_param_inner(_Key, undefined = _Value, _IsEnterprise,
+                                   _IsCompat, _IsNew, false = _IsMagma,
+                                   _ValidatorFn) ->
+    %% Value wasn't specified and not magma
     ignore;
 parse_validate_history_param_inner(Key, _Value, false = _IsEnterprise,
-                                   _IsCompat, _IsNew, _IsMagma) ->
+                                   _IsCompat, _IsNew, _IsMagma, _ValidatorFn) ->
     {error, Key,
         <<"History Retention is supported in enterprise edition only">>};
 parse_validate_history_param_inner(Key, _Value, _IsEnterprise,
-                                   false = _IsCompat, _IsNew, _IsMagma) ->
+                                   false = _IsCompat, _IsNew, _IsMagma,
+                                   _ValidatorFn) ->
     {error, Key,
         <<"History Retention cannot be set until the cluster is fully 7.2">>};
 parse_validate_history_param_inner(Key, _Value, true = _IsEnterprise,
-                                   true = _IsCompat, _IsNew, false = _IsMagma) ->
+                                   true = _IsCompat, _IsNew, false = _IsMagma,
+                                   _ValidatorFn) ->
     {error, Key,
         <<"History Retention can only used with Magma">>};
-parse_validate_history_param_inner(Key, Value, true = _IsEnterprise,
-                                   true = _IsCompat, IsNew, true = _IsMagma) ->
-    %% Default to undefined (to avoid setting the parameter and defer to
-    %% default memcached has set.
-    DefaultVal = undefined,
-    validate_with_missing(Value, DefaultVal, IsNew,
-        fun (V) ->
-            do_parse_validate_history_retention_seconds(Key, V)
-        end).
+parse_validate_history_param_inner(_Key, Value, true = _IsEnterprise,
+                                   true = _IsCompat, IsNew, true = _IsMagma,
+                                   ValidatorFn) ->
+    ValidatorFn(Value, IsNew).
 
-do_parse_validate_history_retention_seconds(Key, Val) ->
+do_parse_validate_history_retention_numeric(Key, Val) ->
     case menelaus_util:parse_validate_number(Val, 0, undefined) of
         {ok, X} ->
             {ok, Key, X};
         _Error ->
             {error, Key, <<"Value must be greater than or equal to 0">>}
+    end.
+
+do_parse_validate_history_retention_bool(Key, Val) ->
+    case menelaus_util:parse_validate_boolean(Val) of
+        {ok, X} ->
+            {ok, Key, X};
+        _Error ->
+            {error, Key, <<"Value must be true or false">>}
     end.
 
 parse_validate_threads_number(Params, IsNew) ->
@@ -2748,6 +2837,11 @@ basic_bucket_params_screening_test() ->
     true = proplists:is_defined(eviction_policy, OK1),
     true = proplists:is_defined(replica_index, OK1),
 
+    % Not enterprise/magma/7.2.0+ so history not set
+    ?assertNot(proplists:is_defined(history_retention_seconds, OK1)),
+    ?assertNot(proplists:is_defined(history_retention_bytes, OK1)),
+    ?assertNot(proplists:is_defined(history_retention_collection_default, OK1)),
+
     %% it is not possible to create bucket with duplicate name
     {_OK2, E2} = basic_bucket_params_screening(true, "mcd",
                                                [{"bucketType", "membase"},
@@ -2954,18 +3048,22 @@ basic_bucket_params_screening_test() ->
                       {"ramQuota", "1024"},
                       {"storageBackend", "magma"},
                       {"historyRetentionSeconds", "10"},
-                      {"historyRetentionBytes", "10"}],
+                      {"historyRetentionBytes", "10"},
+                      {"historyRetentionCollectionDefault", "true"}],
                      AllBuckets,
                      [node1],
                      false),
     ?assertEqual([{storageBackend,
                    <<"Magma is supported in enterprise edition only">>},
-                  {history_retention_seconds,
+                  {historyRetentionSeconds,
                    <<"History Retention is supported in enterprise edition "
                      "only">>},
-                  {history_retention_bytes,
+                  {historyRetentionBytes,
                    <<"History Retention is supported in enterprise edition "
-                      "only">>}],
+                      "only">>},
+                  {historyRetentionCollectionDefault,
+                   <<"History Retention is supported in enterprise edition "
+                     "only">>}],
                  E20),
 
     {_OK21, E21} = basic_bucket_params_screening(
@@ -2974,12 +3072,15 @@ basic_bucket_params_screening_test() ->
                      [{"bucketType", "membase"},
                       {"ramQuota", "400"},
                       {"historyRetentionSeconds", "10"},
-                      {"historyRetentionBytes", "10"}],
+                      {"historyRetentionBytes", "10"},
+                      {"historyRetentionCollectionDefault", "true"}],
                      AllBuckets,
                      [node1]),
-    ?assertEqual([{history_retention_seconds,
+    ?assertEqual([{historyRetentionSeconds,
                    <<"History Retention can only used with Magma">>},
-                  {history_retention_bytes,
+                  {historyRetentionBytes,
+                   <<"History Retention can only used with Magma">>},
+                  {historyRetentionCollectionDefault,
                    <<"History Retention can only used with Magma">>}],
                  E21),
 
@@ -2995,13 +3096,17 @@ basic_bucket_params_screening_test() ->
                       {"ramQuota", "1024"},
                       {"storageBackend", "magma"},
                       {"historyRetentionSeconds", "10"},
-                      {"historyRetentionBytes", "10"}],
+                      {"historyRetentionBytes", "10"},
+                      {"historyRetentionCollectionDefault", "true"}],
                      AllBuckets,
                      [node1]),
-    ?assertEqual([{history_retention_seconds,
+    ?assertEqual([{historyRetentionSeconds,
                     <<"History Retention cannot be set until the cluster is "
                        "fully 7.2">>},
-                  {history_retention_bytes,
+                  {historyRetentionBytes,
+                    <<"History Retention cannot be set until the cluster is "
+                      "fully 7.2">>},
+                  {historyRetentionCollectionDefault,
                     <<"History Retention cannot be set until the cluster is "
                       "fully 7.2">>}],
                  E22),
@@ -3019,13 +3124,16 @@ basic_bucket_params_screening_test() ->
             {"ramQuota", "1024"},
             {"storageBackend", "magma"},
             {"historyRetentionSeconds", "-1"},
-            {"historyRetentionBytes", "-1"}],
+            {"historyRetentionBytes", "-1"},
+            {"historyRetentionCollectionDefault", "-1"}],
         AllBuckets,
         [node1]),
-    ?assertEqual([{history_retention_seconds,
+    ?assertEqual([{historyRetentionSeconds,
                    <<"Value must be greater than or equal to 0">>},
-                  {history_retention_bytes,
-                   <<"Value must be greater than or equal to 0">>}],
+                  {historyRetentionBytes,
+                   <<"Value must be greater than or equal to 0">>},
+                  {historyRetentionCollectionDefault,
+                   <<"Value must be true or false">>}],
         E23),
 
     {OK24, E24} = basic_bucket_params_screening(
@@ -3035,7 +3143,8 @@ basic_bucket_params_screening_test() ->
                       {"ramQuota", "1024"},
                       {"storageBackend", "magma"},
                       {"historyRetentionSeconds", "10"},
-                      {"historyRetentionBytes", "10"}],
+                      {"historyRetentionBytes", "10"},
+                      {"historyRetentionCollectionDefault", "true"}],
                      AllBuckets,
                      [node1]),
     ?assertEqual([], E24),
@@ -3045,6 +3154,27 @@ basic_bucket_params_screening_test() ->
     ?assert(lists:any(fun (Elem) ->
                           Elem =:= {history_retention_bytes, 10}
                       end, OK24)),
+    ?assert(lists:any(fun (Elem) ->
+        Elem =:= {history_retention_collection_default, true}
+                      end, OK24)),
+
+    %% Test defaults for history when we are enterprise/magma/7.2.0+
+    {OK25, E25} = basic_bucket_params_screening(
+        true,
+        "mcd",
+        [{"bucketType", "membase"},
+         {"ramQuota", "1024"},
+         {"replicaNumber", "2"},
+         {"storageBackend", "magma"}],
+        tl(AllBuckets)),
+    ?assertEqual([], E25),
+
+    ?assertEqual({history_retention_seconds, 0},
+                  proplists:lookup(history_retention_seconds, OK25)),
+    ?assertEqual({history_retention_bytes, 0},
+                  proplists:lookup(history_retention_bytes, OK25)),
+    ?assertEqual({history_retention_collection_default, true},
+                  proplists:lookup(history_retention_collection_default, OK25)),
 
     meck:unload(ns_config),
     meck:unload(config_profile),
@@ -3576,4 +3706,130 @@ get_conflict_resolution_type_and_thresholds_test() ->
     ?assertEqual([], ParsedDontEnableDrift3),
 
     meck:unload(cluster_compat_mode).
+
+build_dynamic_bucket_info_test_setup(Version, IsEnterprise) ->
+    meck:new(ns_config, [passthrough]),
+    meck:expect(ns_config, search,
+        fun(_, cluster_compat_version, _) ->
+            Version
+        end),
+
+    meck:new(cluster_compat_mode, [passthrough]),
+    meck:expect(cluster_compat_mode, get_compat_version, fun(_) -> Version end),
+    meck:expect(cluster_compat_mode, is_enterprise, fun() -> IsEnterprise end),
+
+    meck:new(chronicle_compat, [passthrough]),
+    meck:expect(chronicle_compat, get,
+        fun(_, cluster_compat_version, _) ->
+            Version
+        end),
+
+    meck:new(ns_bucket, [passthrough]),
+    meck:new(menelaus_web_node, [passthrough]),
+    meck:expect(menelaus_web_node, get_snapshot,
+        fun(_) ->
+            []
+        end),
+    meck:new(menelaus_stats, [passthrough]),
+    meck:expect(menelaus_stats, basic_stats,
+        fun(_, _) ->
+            []
+        end).
+
+build_dynamic_bucket_info_test_teardown() ->
+    meck:unload(ns_config),
+    meck:unload(cluster_compat_mode),
+    meck:unload(chronicle_compat),
+    meck:unload(ns_bucket),
+    meck:unload(menelaus_web_node),
+    meck:unload(menelaus_stats).
+
+%% Test the output of build_dynamic_bucket_info. Aspirationally this would test
+%% the entire output of the function, but for now it just tests a subset of it.
+build_dynamic_bucket_info_test(Version, IsEnterprise, IsMagma) ->
+    ?log_debug("\n Version ~p, Enterprise ~p, Magma ~p",
+               [Version, IsEnterprise, IsMagma]),
+    BucketConfigBase = [{type, membase},
+                        {num_replicas, 1},
+                        {ram_quota, 1024},
+                        {servers, ["a"]},
+                        {num_thread, 3}],
+    BucketConfig = BucketConfigBase ++
+                   case IsMagma of
+                       true -> [{storage_mode, magma}];
+                       false -> [{storage_mode, couchstore}]
+                   end,
+
+    meck:expect(ns_bucket, get_bucket, fun("Bucket") -> {ok, BucketConfig} end),
+
+    BucketInfo = build_dynamic_bucket_info([], "Bucket", BucketConfig, []),
+    ?assertNotEqual([], BucketInfo),
+
+    case IsMagma of
+        false ->
+            % No couchstore specific bucket conf, nothing to check here
+            ok;
+        true ->
+            % The output from build_dynamic_bucket_info isn't particularly nice,
+            % various elements are lists that are unnamed, such as the magma
+            % bucket configuration that is output. We have to get a little
+            % creative in parsing the output to find the magma bucket config as
+            % a result.
+            MainBucketConf =
+                lists:last(
+                    lists:filter(
+                        fun (List) when is_list(List) ->
+                                proplists:is_defined(replicaNumber, List);
+                            (_) -> false
+                        end,
+                        BucketInfo)),
+
+            MagmaBucketConf =
+                lists:last(
+                    lists:filter(
+                        fun (List) when is_list(List) ->
+                                proplists:is_defined(storageQuotaPercentage,
+                                                     List);
+                            (_) -> false
+                        end,
+                        MainBucketConf)),
+
+            ExpectedConfBase = [{storageQuotaPercentage, 50}],
+            ExpectedConf = ExpectedConfBase ++
+                           case Version of
+                               ?VERSION_71 ->
+                                   [];
+                               ?VERSION_72 ->
+                                   [{historyRetentionSeconds, 0},
+                                    {historyRetentionBytes, 0},
+                                    {historyRetentionCollectionDefault, true}]
+                           end,
+
+            ?assertEqual(ExpectedConf, MagmaBucketConf)
+    end.
+
+build_dynamic_bucket_info_test_() ->
+    Tests = [{?VERSION_71, false, false},
+             {?VERSION_71, true, false},
+             {?VERSION_71, true, true},
+             {?VERSION_72, false, false},
+             {?VERSION_72, true, false},
+             {?VERSION_72, true, true}],
+
+    TestFun = fun({Version, IsEnterprise, IsMagma}, _R) ->
+                  fun() ->
+                      build_dynamic_bucket_info_test(Version, IsEnterprise,
+                                                     IsMagma)
+                  end
+              end,
+
+    {foreachx,
+        fun ({Version, IsEnterprise, _IsMagma}) ->
+            build_dynamic_bucket_info_test_setup(Version, IsEnterprise)
+        end,
+        fun (_X, _R) ->
+            build_dynamic_bucket_info_test_teardown()
+        end,
+        [{Test, TestFun} || Test <- Tests]}.
+
 -endif.
