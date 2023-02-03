@@ -1660,26 +1660,26 @@ compile_and_assert(Role, Permissions, Params, Results) ->
             end
         end, Permissions)).
 
-data_reader_collection_test_() ->
+do_collection_test_inner(Role, Op) ->
     Permissions =
         [{[{collection, ["default", "s", "c"]}, data, docs],
-             [read, range_scan]},
+             [Op, range_scan]},
          {[{collection, ["default", "s", "c1"]}, data, docs],
-             [read, range_scan]},
+             [Op, range_scan]},
          {[{collection, ["default", "s", "c2"]}, data, docs],
-             [read, range_scan]},
+             [Op, range_scan]},
          {[{scope, ["default", "s"]}, data, docs],
-             [read, range_scan]},
+             [Op, range_scan]},
          {[{scope, ["default", "s1"]}, data, docs],
-             [read, range_scan]},
+             [Op, range_scan]},
          {[{scope, ["default", "s2"]}, data, docs],
-             [read, range_scan]},
+             [Op, range_scan]},
          {[{bucket, "default"}, data, docs],
-             [read, range_scan]},
+             [Op, range_scan]},
          {[{bucket, "default"}, settings], read}],
 
     Test = ?cut(fun () ->
-                        compile_and_assert(data_reader, Permissions, _, _)
+                        compile_and_assert(Role, Permissions, _, _)
                 end),
 
     {foreach, fun () -> ok end,
@@ -1702,6 +1702,18 @@ data_reader_collection_test_() ->
        Test(["test", any, any],
             [false, false, false, false, false, false, false, false])}
      ]}.
+
+data_reader_collection_test_() ->
+    do_collection_test_inner(data_reader, read).
+
+query_select_collection_test_() ->
+    do_collection_test_inner(query_select, read).
+
+query_delete_collection_test_() ->
+    do_collection_test_inner(query_delete, delete).
+
+query_update_collection_test_() ->
+    do_collection_test_inner(query_update, upsert).
 
 query_functions_test_() ->
     Roles = [{query_manage_functions, [n1ql, udf], manage},
