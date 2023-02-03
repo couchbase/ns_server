@@ -63,3 +63,4 @@ tmp
 /cluster_tests/__pycache__
 /cluster_tests/testlib/__pycache__/
 /pylib/__pycache__
+/scripts/formatter/__pycache__
