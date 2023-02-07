@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import testlib
-import string
-import random
 import base64
 import os
 from scramp import ScramClient
@@ -30,10 +28,10 @@ class AuthnTests(testlib.BaseTestSet):
 
     def setup(self, cluster):
         self.testEndpoint = "/pools/default"
-        username = randomStr(8)
-        wrong_user = randomStr(8)
-        password = randomStr(8)
-        wrong_password = randomStr(8)
+        username = testlib.random_str(8)
+        wrong_user = testlib.random_str(8)
+        password = testlib.random_str(8)
+        wrong_password = testlib.random_str(8)
         self.creds = (username, password)
         self.wrong_pass_creds = (username, wrong_password)
         self.wrong_user_creds = (wrong_user, password)
@@ -100,7 +98,7 @@ class AuthnTests(testlib.BaseTestSet):
                           data={'user': wrong_user, 'password': wrong_password})
         session = requests.Session()
         url = cluster.nodes[0].url + '/uilogin'
-        headers={'Host': randomStr(8), 'ns-server-ui': 'yes'}
+        headers={'Host': testlib.random_str(8), 'ns-server-ui': 'yes'}
         r = session.post(cluster.nodes[0].url + '/uilogin',
                          data={'user': user, 'password': password},
                          headers=headers)
@@ -111,11 +109,6 @@ class AuthnTests(testlib.BaseTestSet):
         testlib.assert_http_code(200, r)
         r = session.get(cluster.nodes[0].url + self.testEndpoint, headers=headers)
         testlib.assert_http_code(401, r)
-
-
-def randomStr(n):
-    return ''.join(random.choices(string.ascii_lowercase +
-                                  string.digits, k=n))
 
 
 def headerToScramMsg(header):

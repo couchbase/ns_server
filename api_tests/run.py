@@ -30,6 +30,7 @@ import auto_failover_test
 import sample_buckets
 import ldap_tests
 import tasks_test
+import saml_tests
 
 tmp_cluster_dir = os.path.join(scriptdir, "test_cluster_data")
 
