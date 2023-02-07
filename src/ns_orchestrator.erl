@@ -270,7 +270,9 @@ start_failover(Nodes, AllowUnsafe) ->
                               quorum_lost |
                               stopped_by_user |
                               {autofailover_unsafe, [bucket_name()]} |
-                              {nodes_down, [node()], [bucket_name()]}.
+                              {nodes_down, [node()], [bucket_name()]} |
+                              {cannot_preserve_durability_majority,
+                               [bucket_name()]}.
 try_autofailover(Nodes, Options) ->
     case call({try_autofailover, Nodes, Options}, infinity) of
         ok ->
@@ -736,6 +738,9 @@ idle({try_autofailover, Nodes, #{down_nodes := DownNodes} = Options}, From,
         {nodes_down, NodesNeeded, Buckets} ->
             {keep_state_and_data,
              [{reply, From, {nodes_down, NodesNeeded, Buckets}}]};
+        {cannot_preserve_durability_majority, Buckets} ->
+            {keep_state_and_data,
+             [{reply, From, {cannot_preserve_durability_majority, Buckets}}]};
         ok ->
             handle_start_failover(Nodes, false, From, true, auto_failover,
                                   Options)
