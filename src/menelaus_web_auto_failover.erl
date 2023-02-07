@@ -18,6 +18,7 @@
          get_failover_on_disk_issues/1,
          config_check_can_abort_rebalance/0,
          default_config/1,
+         config_upgrade_to_72/1,
          config_upgrade_to_elixir/1]).
 
 -import(menelaus_util,
@@ -34,6 +35,11 @@
 -define(MAX_DATA_DISK_ISSUES_TIMEPERIOD, 3600). %% seconds
 
 -define(FAILOVER_SERVER_GROUP_CONFIG_KEY, failover_server_group).
+-define(FAILOVER_PRESERVE_DURABILITY_MAJORITY_CONFIG_KEY,
+        failover_preserve_durability_majority).
+-define(FAILOVER_PRESERVE_DURABILITY_MAJORITY_DEFAULT, false).
+
+-define(ROOT_CONFIG_KEY, auto_failover_cfg).
 
 -define(DISABLE_MAX_COUNT_CONFIG_KEY, disable_max_count).
 -define(MAX_EVENTS_CONFIG_KEY, max_count).
@@ -41,7 +47,7 @@
 -define(DEFAULT_EVENTS_ALLOWED, 1).
 
 default_config(IsEnterprise) ->
-    [{auto_failover_cfg,
+    [{?ROOT_CONFIG_KEY,
       [{enabled, true},
        % timeout is the time (in seconds) a node needs to be
        % down before it is automatically faileovered
@@ -185,7 +191,8 @@ settings_extras_validators() ->
             maxcount_validators() ++
             disk_issues_validators() ++
             server_group_validators() ++
-            can_abort_rebalance_validators();
+            can_abort_rebalance_validators() ++
+            preserve_durability_majority_validators();
         false ->
             []
     end.
@@ -214,6 +221,13 @@ server_group_validators() ->
             [validator:boolean(failoverServerGroup, _)];
         true ->
             []
+    end.
+
+preserve_durability_majority_validators() ->
+    case cluster_compat_mode:is_cluster_72() of
+        false -> [];
+        true ->
+            [validator:boolean(failoverPreserveDurabilityMajority, _)]
     end.
 
 can_abort_rebalance_validators() ->
@@ -254,7 +268,9 @@ process_boolean_extra(Props, Name, ConfigKey, Extras) ->
 process_extras(Props, Config) ->
     BoolParams = [{failoverServerGroup, ?FAILOVER_SERVER_GROUP_CONFIG_KEY},
                   {canAbortRebalance, ?CAN_ABORT_REBALANCE_CONFIG_KEY},
-                  {disableMaxCount, ?DISABLE_MAX_COUNT_CONFIG_KEY}],
+                  {disableMaxCount, ?DISABLE_MAX_COUNT_CONFIG_KEY},
+                  {failoverPreserveDurabilityMajority,
+                   ?FAILOVER_PRESERVE_DURABILITY_MAJORITY_CONFIG_KEY}],
     Extras = functools:chain(
                [{extras, []}],
                [process_failover_on_disk_issues(Props, Config, _) |
@@ -298,7 +314,12 @@ get_extra_settings(Config) ->
                [{failoverServerGroup,
                  proplists:get_value(?FAILOVER_SERVER_GROUP_CONFIG_KEY,
                                      Config)} ||
-                   not cluster_compat_mode:is_cluster_71()]]);
+                   not cluster_compat_mode:is_cluster_71()],
+               [{failoverPreserveDurabilityMajority,
+                 proplists:get_value(
+                     ?FAILOVER_PRESERVE_DURABILITY_MAJORITY_CONFIG_KEY,
+                     Config)}
+                   || cluster_compat_mode:is_cluster_72()]]);
         false ->
             []
     end.
@@ -316,3 +337,9 @@ disable_extras(Config) ->
         false ->
             []
     end.
+
+config_upgrade_to_72(Config) ->
+    [{set, ?ROOT_CONFIG_KEY,
+      auto_failover:get_cfg(Config) ++
+            [{?FAILOVER_PRESERVE_DURABILITY_MAJORITY_CONFIG_KEY,
+              ?FAILOVER_PRESERVE_DURABILITY_MAJORITY_DEFAULT}]}].
