@@ -367,7 +367,7 @@ grab_samples_loading_tasks() ->
             [[{type, loadingSampleBucket},
               {bucket, list_to_binary(Name)},
               {pid, list_to_binary(pid_to_list(Pid))}]
-             || {Name, Pid} <- RawTasks]
+             || {Name, Pid, _} <- RawTasks]
     catch T:E:S ->
             ?log_error("Failed to grab samples loader tasks: ~p",
                        [{T, E, S}]),

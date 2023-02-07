@@ -34,7 +34,7 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 -record(state, {
-          tasks = [] :: [{string(), pid()}],
+          tasks = [] :: [{string(), pid(), binary()}],
           token_pid :: undefined | pid()
          }).
 
@@ -49,11 +49,12 @@ handle_call({start_loading_sample, Sample, Bucket, Quota, CacheDir,
         false ->
             Pid = start_new_loading_task(Sample, Bucket, Quota, CacheDir,
                                          BucketState),
+            TaskId = misc:uuid_v4(),
             ns_heart:force_beat(),
-            NewState = State#state{tasks = [{Bucket, Pid} | Tasks]},
-            {reply, ok, maybe_pass_token(NewState)};
-        _ ->
-            {reply, already_started, State}
+            NewState = State#state{tasks = [{Bucket, Pid, TaskId} | Tasks]},
+            {reply, {newly_started, TaskId}, maybe_pass_token(NewState)};
+        {_, _, TaskId} ->
+            {reply, {already_started, TaskId}, State}
     end;
 handle_call(get_tasks, _From, State) ->
     {reply, State#state.tasks, State}.
@@ -68,7 +69,7 @@ handle_info({'EXIT', Pid, Reason} = Msg, #state{tasks = Tasks,
         false ->
             ?log_error("Got exit not from child: ~p", [Msg]),
             exit(Reason);
-        {Name, _} ->
+        {Name, _, _TaskId} ->
             ?log_debug("Consumed exit signal from samples loading task ~s: ~p", [Name, Msg]),
             ns_heart:force_beat(),
             case Reason of
@@ -106,9 +107,9 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 maybe_pass_token(#state{token_pid = undefined,
-                        tasks = [{Name, FirstPid}|_]} = State) ->
+                        tasks = [{Name, FirstPid, TaskId}|_]} = State) ->
     FirstPid ! allowed_to_go,
-    ?log_info("Passed samples loading token to task: ~s", [Name]),
+    ?log_info("Passed samples loading token to task: ~s (~p)", [Name, TaskId]),
     State#state{token_pid = FirstPid};
 maybe_pass_token(State) ->
     State.

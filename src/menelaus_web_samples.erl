@@ -190,23 +190,29 @@ process_post(Req, Samples) ->
               "Please try again shortly.")
     end,
 
-    Errors = case validate_post_sample_buckets(Samples) of
-                 ok ->
-                     start_loading_samples(Req, Samples);
-                 X1 ->
-                     X1
-             end,
+    {ResponsesBody, Code} = case validate_post_sample_buckets(Samples) of
+                                ok ->
+                                    {start_loading_samples(Req, Samples), 202};
+                                X1 ->
+                                    {[Msg || {error, Msg} <- X1], 400}
+                            end,
+    Responses =
+        case cluster_compat_mode:is_cluster_elixir() of
+            true ->
+                case Code of
+                    202 ->
+                        {[{tasks, ResponsesBody}]};
+                    400 ->
+                        {[{errors, ResponsesBody}]}
+                end;
+            false ->
+                ResponsesBody
+        end,
 
-
-    case Errors of
-        ok ->
-            reply_json(Req, [], 202);
-        X2 ->
-            reply_json(Req, [Msg || {error, Msg} <- X2], 400)
-    end.
+    reply_json(Req, Responses, Code).
 
 start_loading_samples(Req, Samples) ->
-    lists:foreach(
+    lists:map(
       fun (Sample) ->
               start_loading_sample(Req, Sample)
       end, Samples).
@@ -214,14 +220,18 @@ start_loading_samples(Req, Samples) ->
 start_loading_sample(Req, #sample{sample_name = Sample, bucket_name = Bucket,
                                   http_cache_directory = CacheDir,
                                   must_bucket_exist = BucketState}) ->
-    case samples_loader_tasks:start_loading_sample(Sample, Bucket,
-                                                   ?SAMPLE_BUCKET_QUOTA_MB,
-                                                   CacheDir, BucketState) of
-        ok ->
+    {TaskState, TaskId} = samples_loader_tasks:start_loading_sample(
+                            Sample, Bucket, ?SAMPLE_BUCKET_QUOTA_MB, CacheDir,
+                            BucketState),
+    case TaskState of
+        newly_started ->
             ns_audit:start_loading_sample(Req, Bucket);
         already_started ->
             ok
-    end.
+    end,
+    {[{taskId, TaskId},
+      {sample, list_to_binary(Sample)},
+      {bucket, list_to_binary(Bucket)}]}.
 
 list_sample_files() ->
     BinDir = path_config:component_path(bin),
