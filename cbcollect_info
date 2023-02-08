@@ -1725,7 +1725,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                  '"<ud>"||encode_json(requests.positionalArgs)||"</ud>" AS positionalArgs, '
                  '"<ud>"||requests.users||"</ud>" AS users '
                  'FROM system:completed_requests AS requests;',
-                 logfile="completed_requests.json", no_header=True),
+                 logfile="completed_requests.json", no_header=True, timeout=60*5),
             make('SELECT prepareds.*, '
                  '"<ud>"||prepareds.statement||"</ud>" AS statement '
                  'FROM system:prepareds AS prepareds;',
