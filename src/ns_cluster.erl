@@ -266,6 +266,12 @@ apply_net_config(NodeKVList) ->
                     cluster_compat_mode:is_enterprise() andalso
                         ns_ssl_services_setup:sync(),
                     ok;
+                {error, {node_resolution_failed,
+                         {AddrFamily, Hostname, _Reason}} = ErrorTerm} ->
+                    M1 = netconfig_updater:format_error(ErrorTerm),
+                    M2 = ns_error_messages:engage_cluster_error(
+                           {engage_cluster_failed, {AddrFamily, Hostname, M1}}),
+                    {error, M2};
                 {error, ErrorTerm} ->
                     Msg = iolist_to_binary(
                             netconfig_updater:format_error(ErrorTerm)),
@@ -845,8 +851,8 @@ should_change_address() ->
         not dist_manager:using_user_supplied_address().
 
 do_add_node_allowed(Scheme, RemoteAddr, RestPort, HiddenAuth, GroupUUID, Services) ->
-    case check_host_port_connectivity(RemoteAddr, RestPort,
-                                      misc:get_net_family()) of
+    AFamily = misc:get_net_family(),
+    case check_host_port_connectivity(RemoteAddr, RestPort, AFamily) of
         {ok, MyIP} ->
             R = case should_change_address() of
                     true ->
@@ -891,13 +897,17 @@ do_add_node_allowed(Scheme, RemoteAddr, RestPort, HiddenAuth, GroupUUID, Service
                     {error, rename_failed, iolist_to_binary(Msg)}
             end;
         {error, Reason} ->
-            M = case ns_error_messages:connection_error_message(
-                       Reason, RemoteAddr, RestPort) of
+            M1 = case ns_error_messages:connection_error_message(
+                        Reason, RemoteAddr, RestPort) of
                     undefined -> io:format("~p", [Reason]);
                     Msg -> Msg
                 end,
+            M2 = ns_error_messages:engage_cluster_error({engage_cluster_failed,
+                                                         {AFamily, RemoteAddr,
+                                                          M1}}),
             URL = menelaus_rest:rest_url(RemoteAddr, RestPort, "", Scheme),
-            ReasonStr = io_lib:format("Failed to connect to ~s. ~s", [URL, M]),
+            ReasonStr = io_lib:format("Failed to connect to ~s. ~s",
+                                      [URL, M2]),
             {error, host_connectivity, iolist_to_binary(ReasonStr)}
     end.
 
@@ -969,7 +979,7 @@ post_json(Target, HiddenAuth, Options, Stuff) ->
 
 engage_cluster_bad_json_error(Exc) ->
     {error, engage_cluster_bad_json,
-     ns_error_messages:engage_cluster_json_error(Exc)}.
+     ns_error_messages:engage_cluster_error({json, Exc})}.
 
 do_add_node_with_connectivity(Scheme, RemoteAddr, RestPort, HiddenAuth,
                               GroupUUID, Services) ->
@@ -1396,7 +1406,7 @@ do_engage_cluster(NodeKVList) ->
     catch
         exit:{unexpected_json, _, _} = Exc ->
             {error, unexpected_json,
-             ns_error_messages:engage_cluster_json_error(Exc)}
+             ns_error_messages:engage_cluster_error({json, Exc})}
     end.
 
 do_engage_cluster_check_compatibility(NodeKVList) ->
@@ -1647,7 +1657,7 @@ do_complete_join(NodeKVList) ->
         end
     catch exit:{unexpected_json, _Where, _Field} ->
             {error, engage_cluster_bad_json,
-             ns_error_messages:engage_cluster_json_error(undefined)}
+             ns_error_messages:engage_cluster_error({json, undefined})}
     end.
 
 

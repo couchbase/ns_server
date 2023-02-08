@@ -14,7 +14,7 @@
 
 -export([decode_json_response_error/3,
          connection_error_message/3,
-         engage_cluster_json_error/1,
+         engage_cluster_error/1,
          bad_memory_size_error/3,
          incompatible_cluster_version_error/3,
          too_old_version_error/2,
@@ -127,11 +127,27 @@ decode_json_response_error({error, Reason} = E,
         end,
     {error, rest_error, M, E}.
 
-engage_cluster_json_error(undefined) ->
+engage_cluster_error({json, undefined}) ->
     <<"Cluster join prepare call returned invalid json.">>;
-engage_cluster_json_error({unexpected_json, _Where, Field} = _Exc) ->
+engage_cluster_error({json, {unexpected_json, _Where, Field}} = _Exc) ->
     list_to_binary(io_lib:format("Cluster join prepare call returned invalid json. "
-                                 "Invalid field is ~s.", [Field])).
+                                 "Invalid field is ~s.", [Field]));
+engage_cluster_error({engage_cluster_failed,
+                      {AFamily, Hostname, DefaultMsg}}) ->
+    case {misc:is_raw_ipv4(Hostname),
+          misc:is_raw_ipv6(Hostname),
+          AFamily} of
+        {true, _, inet6} ->
+            list_to_binary(io_lib:format(
+              "Node is using IP version 4, and cluster is using IP "
+              "version 6: ~s", [DefaultMsg]));
+        {_, true, inet} ->
+            list_to_binary(io_lib:format(
+              "Node is using IP version 6, and cluster is using IP "
+              "version 4: ~s", [DefaultMsg]));
+        _ ->
+            list_to_binary(DefaultMsg)
+    end.
 
 bad_memory_size_error(Services0, TotalQuota, MaxQuota) ->
     Services1 = lists:sort(Services0),

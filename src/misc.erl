@@ -3123,6 +3123,12 @@ is_raw_ip(Host) ->
         {error, einval} -> false
     end.
 
+is_raw_ipv4(Host) ->
+    case inet:parse_ipv4strict_address(Host) of
+        {ok, _} -> true;
+        {error, einval} -> false
+    end.
+
 is_raw_ipv6(Host) ->
     case inet:parse_ipv6strict_address(Host) of
         {ok, _} -> true;
