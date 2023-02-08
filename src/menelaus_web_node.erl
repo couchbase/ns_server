@@ -176,7 +176,9 @@ node_init(Req, Props) ->
                     menelaus_event:sync(chronicle_compat_events:event_manager()),
                     cluster_compat_mode:is_enterprise() andalso
                         ns_ssl_services_setup:sync();
-                {error, Msg} ->
+                {error, ErrorTerm} ->
+                    Msg = iolist_to_binary(
+                            netconfig_updater:format_error(ErrorTerm)),
                     throw({error, 400, Msg})
             end
     end,
@@ -1206,7 +1208,9 @@ handle_setup_net_config(Req) ->
                         cluster_compat_mode:is_enterprise() andalso
                             ns_ssl_services_setup:sync(),
                         menelaus_util:reply(Req, 200);
-                    {error, Msg} ->
+                    {error, ErrorTerm} ->
+                        Msg = iolist_to_binary(
+                                netconfig_updater:format_error(ErrorTerm)),
                         menelaus_util:reply_global_error(Req, Msg)
                 end
             end)
@@ -1215,7 +1219,9 @@ handle_setup_net_config(Req) ->
 handle_change_external_listeners(disable_unused, Req) ->
     case netconfig_updater:change_external_listeners(disable_unused, []) of
         ok -> menelaus_util:reply(Req, 200);
-        {error, Msg} -> menelaus_util:reply_global_error(Req, Msg)
+        {error, ErrorTerm} ->
+            Msg = iolist_to_binary(netconfig_updater:format_error(ErrorTerm)),
+            menelaus_util:reply_global_error(Req, Msg)
     end;
 handle_change_external_listeners(Action, Req) ->
     validator:handle(
@@ -1241,7 +1247,10 @@ handle_change_external_listeners(Action, Req) ->
                           disable ->
                               menelaus_util:reply(Req, 200)
                       end;
-                  {error, Msg} -> menelaus_util:reply_global_error(Req, Msg)
+                  {error, ErrorTerm} ->
+                      Msg = iolist_to_binary(
+                              netconfig_updater:format_error(ErrorTerm)),
+                      menelaus_util:reply_global_error(Req, Msg)
               end
       end, Req, form, net_config_validators(Action == disable)).
 

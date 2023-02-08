@@ -104,7 +104,9 @@ cluster_init(Req, Config, Params) ->
                       chronicle_compat_events:event_manager()),
                     cluster_compat_mode:is_enterprise() andalso
                         ns_ssl_services_setup:sync();
-                {error, Msg} ->
+                {error, ErrorTerm} ->
+                    Msg = iolist_to_binary(
+                            netconfig_updater:format_error(ErrorTerm)),
                     throw({error, 400, Msg})
             end
     end,

@@ -266,7 +266,10 @@ apply_net_config(NodeKVList) ->
                     cluster_compat_mode:is_enterprise() andalso
                         ns_ssl_services_setup:sync(),
                     ok;
-                {error, Msg} -> {error, Msg}
+                {error, ErrorTerm} ->
+                    Msg = iolist_to_binary(
+                            netconfig_updater:format_error(ErrorTerm)),
+                    {error, Msg}
             end;
         {error, Msg} -> {error, Msg}
     end.

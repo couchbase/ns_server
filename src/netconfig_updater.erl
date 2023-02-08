@@ -15,7 +15,8 @@
          maybe_kill_epmd/0,
          apply_config/1,
          change_external_listeners/2,
-         ensure_tls_dist_started/1]).
+         ensure_tls_dist_started/1,
+         format_error/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -241,7 +242,7 @@ apply_config_unprotected(Config) ->
         throw:Error ->
             Msg = iolist_to_binary(format_error(Error)),
             ?log_error("~s", [Msg]),
-            {error, Msg}
+            {error, Error}
     end.
 
 need_local_update(Config) ->
@@ -378,6 +379,9 @@ format_error({not_started_listeners, Listeners}) ->
     ListenersStr = string:join([cb_dist:netsettings2str(L) || L <- Listeners],
                                ", "),
     io_lib:format("Could not start distribution servers: ~s", [ListenersStr]);
+format_error({node_resolution_failed, {AFamily, Hostname, Reason}}) ->
+    io_lib:format("Unable to resolve ~s address for ~s: ~p",
+                  [misc:afamily2str(AFamily), Hostname, Reason]);
 format_error(R) ->
     io_lib:format("~p", [R]).
 
@@ -391,9 +395,7 @@ check_nodename_resolvable(Node, AFamily) ->
     case inet:getaddr(Hostname, AFamily) of
         {ok, _} -> ok;
         {error, Reason} ->
-            M = io_lib:format("Unable to resolve ~s address for ~s: ~p",
-                              [misc:afamily2str(AFamily), Hostname, Reason]),
-            {error, iolist_to_binary(M)}
+            {error, {node_resolution_failed, {AFamily, Hostname, Reason}}}
     end.
 
 epmd_executable() ->
