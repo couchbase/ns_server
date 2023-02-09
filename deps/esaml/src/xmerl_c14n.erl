@@ -32,6 +32,8 @@ canon_name(Ns, Name, Nsp) ->
             end;
         _ ->
             case proplists:get_value(Ns, Nsp#xmlNamespace.nodes) of
+                undefined when Ns == "xml" ->
+                    "http://www.w3.org/XML/1998/namespace";
                 undefined ->
                     error({ns_not_found, Ns, Nsp});
                 Uri -> atom_to_list(Uri)
@@ -227,7 +229,14 @@ c14n(Elem = #xmlElement{}, KnownNSIn, ActiveNSIn, Comments, InclNs, Acc) ->
             {Acc1, NewActiveNS}
     end,
     Acc3 = lists:foldl(fun(Ns, AccIn) ->
-        ["\"",xml_safe_string(proplists:get_value(Ns, KnownNS, ""), true),"=\"",Ns,":"," xmlns" | AccIn]
+        case {Ns, proplists:get_value(Ns, KnownNS, "")} of
+            %% Do not set the xml namespace to "", it is not correct because
+            %% it doesn't have to be declared and it is always bound to
+            %% http://www.w3.org/XML/1998/namespace
+            {"xml", ""} -> AccIn;
+            {_, Val} ->
+                ["\"",xml_safe_string(Val, true),"=\"",Ns,":"," xmlns" | AccIn]
+        end
     end, Acc2, lists:sort(NewNS)),
     % any other attributes
     Acc4 = lists:foldl(fun(Attr, AccIn) ->
