@@ -409,10 +409,10 @@ authenticate(User, Pass) ->
         {User, AuthInfo} ->
             case menelaus_users:authenticate_with_info(AuthInfo, Pass) of
                 true -> {ok, {User, stats_reader}};
-                false -> false
+                false -> {error, auth_failure}
             end;
         _ ->
-            false
+            {error, auth_failure}
     end.
 
 %% This function should work even when prometheus_cfg is down
