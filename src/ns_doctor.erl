@@ -705,10 +705,15 @@ do_build_tasks_list(NodesDict, PoolId, AllRepDocs, Buckets, RebStatusTimeout) ->
     OrphanBucketsTasks = build_orphan_buckets_tasks(Buckets, NodesDict),
     GSITask = build_gsi_task(),
 
+    GlobalTasks = case cluster_compat_mode:is_cluster_elixir() of
+                   true -> global_tasks:get_default_tasks();
+                   false -> []
+               end,
+
     Tasks0 = lists:append([CompactionAndIndexingTasks, XDCRTasks,
                            SampleBucketTasks, WarmupTasks, CollectTask,
                            RebalanceTask, RecoveryTask, OrphanBucketsTasks,
-                           GSITask, HibernationTask]),
+                           GSITask, HibernationTask, GlobalTasks]),
 
     Tasks1 =
         lists:sort(

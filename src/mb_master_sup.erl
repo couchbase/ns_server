@@ -47,6 +47,8 @@ child_specs() ->
      {ns_orchestrator_sup, {ns_orchestrator_sup, start_link, []},
       permanent, infinity, supervisor, [ns_orchestrator_sup]},
      {tombstone_purger, {tombstone_purger, start_link, []},
+      permanent, 1000, worker, []},
+     {global_tasks, {global_tasks, start_link, []},
       permanent, 1000, worker, []}] ++
         [{license_reporting, {license_reporting, start_link, []},
           permanent, 1000, worker, []} || cluster_compat_mode:is_enterprise()].

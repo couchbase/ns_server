@@ -10,6 +10,8 @@ from abc import ABC, abstractmethod
 import traceback
 from collections import namedtuple
 import requests
+import string
+import random
 
 
 Cluster = namedtuple("Cluster", ['urls', 'processes', 'auth', 'memsize',
@@ -200,3 +202,15 @@ def format_http_error(res, expected_codes):
            f"returned {res.status_code} {res.reason} " \
            f"(expected {expected_codes_str})" \
            f", response body: {res.text}"
+
+
+def random_str(n):
+    return ''.join(random.choices(string.ascii_lowercase +
+                                  string.digits, k=n))
+
+
+def json_response(response, error):
+    try:
+        return response.json()
+    except requests.exceptions.JSONDecodeError:
+        assert False, error

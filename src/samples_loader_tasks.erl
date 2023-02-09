@@ -11,6 +11,7 @@
 -behaviour(gen_server).
 
 -include("ns_common.hrl").
+-include("cut.hrl").
 
 %% gen_server API
 -export([start_link/0]).
@@ -50,6 +51,7 @@ handle_call({start_loading_sample, Sample, Bucket, Quota, CacheDir,
             Pid = start_new_loading_task(Sample, Bucket, Quota, CacheDir,
                                          BucketState),
             TaskId = misc:uuid_v4(),
+            update_task_status(TaskId, queued, Bucket),
             ns_heart:force_beat(),
             NewState = State#state{tasks = [{Bucket, Pid, TaskId} | Tasks]},
             {reply, {newly_started, TaskId}, maybe_pass_token(NewState)};
@@ -63,28 +65,33 @@ handle_call(get_tasks, _From, State) ->
 handle_cast(_, State) ->
     {noreply, State}.
 
-handle_info({'EXIT', Pid, Reason} = Msg, #state{tasks = Tasks,
-                                                token_pid = TokenPid} = State) ->
+handle_info({'EXIT', Pid, Reason} = Msg,
+            #state{tasks = Tasks, token_pid = TokenPid} = State) ->
     case lists:keyfind(Pid, 2, Tasks) of
         false ->
             ?log_error("Got exit not from child: ~p", [Msg]),
             exit(Reason);
-        {Name, _, _TaskId} ->
-            ?log_debug("Consumed exit signal from samples loading task ~s: ~p", [Name, Msg]),
+        {Name, _, TaskId} ->
+            ?log_debug("Consumed exit signal from samples loading task ~s: ~p",
+                       [Name, Msg]),
             ns_heart:force_beat(),
             case Reason of
                 normal ->
-                    ale:info(?USER_LOGGER, "Completed loading sample bucket ~s", [Name]);
+                    update_task_status(TaskId, completed, Name),
+                    ale:info(?USER_LOGGER, "Completed loading sample bucket ~s",
+                             [Name]);
                 {failed_to_load_samples, Status, Output} ->
+                    update_task_status(TaskId, failed, Name),
                     ale:error(?USER_LOGGER,
-                              "Loading sample bucket ~s failed. "
+                              "Task ~p - loading sample bucket ~s failed. "
                               "Samples loader exited with status ~b.~n"
                               "Loader's output was:~n~n~s",
-                              [Name, Status, Output]);
+                              [TaskId, Name, Status, Output]);
                 _ ->
+                    update_task_status(TaskId, failed, Name),
                     ale:error(?USER_LOGGER,
-                              "Loading sample bucket ~s failed: ~p",
-                              [Name, Reason])
+                              "Task ~p - loading sample bucket ~s failed: ~p",
+                              [TaskId, Name, Reason])
             end,
             NewTokenPid = case Pid =:= TokenPid of
                               true ->
@@ -100,8 +107,11 @@ handle_info({'EXIT', Pid, Reason} = Msg, #state{tasks = Tasks,
 handle_info(_Info, State) ->
     {noreply, State}.
 
-terminate(_Reason, _State) ->
-    ok.
+terminate(_Reason, #state{tasks = Tasks}) ->
+    lists:foreach(
+      fun ({Name, _Pid, TaskId}) ->
+              update_task_status(TaskId, failed, Name)
+      end, Tasks).
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
@@ -109,10 +119,16 @@ code_change(_OldVsn, State, _Extra) ->
 maybe_pass_token(#state{token_pid = undefined,
                         tasks = [{Name, FirstPid, TaskId}|_]} = State) ->
     FirstPid ! allowed_to_go,
+    update_task_status(TaskId, running, Name),
     ?log_info("Passed samples loading token to task: ~s (~p)", [Name, TaskId]),
     State#state{token_pid = FirstPid};
 maybe_pass_token(State) ->
     State.
+
+-spec update_task_status(binary(), global_tasks:status(), string()) -> ok.
+update_task_status(TaskId, Status, BucketName) ->
+    global_tasks:update_task(TaskId, loadingSampleBucket, Status,
+                             BucketName, []).
 
 start_new_loading_task(Sample, Bucket, Quota, CacheDir, BucketState) ->
     proc_lib:spawn_link(?MODULE, perform_loading_task,

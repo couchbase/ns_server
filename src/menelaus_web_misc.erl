@@ -30,6 +30,7 @@
          parse_validate_number/3]).
 
 -include("ns_common.hrl").
+-include("cut.hrl").
 
 handle_uilogin(Req) ->
     Params = mochiweb_request:parse_post(Req),
@@ -48,21 +49,32 @@ handle_can_use_cert_for_auth(Req) ->
 handle_versions(Req) ->
     reply_json(Req, {menelaus_web_cache:get_static_value(versions)}).
 
-handle_tasks(PoolId, Req) ->
-    DefaultTimeout = integer_to_list(?REBALANCE_OBSERVER_TASK_DEFAULT_TIMEOUT),
-    RebTimeoutS = proplists:get_value("rebalanceStatusTimeout",
-                                      mochiweb_request:parse_qs(Req),
-                                      DefaultTimeout),
-    case parse_validate_number(RebTimeoutS, 1000, 120000) of
-        {ok, RebTimeout} ->
-            do_handle_tasks(PoolId, Req, RebTimeout);
-        _ ->
-            reply_json(Req, {[{rebalanceStatusTimeout, <<"invalid">>}]}, 400)
-    end.
+tasks_validators() ->
+    [validator:integer(rebalanceStatusTimeout, 1000, 120000, _),
+     validator:default(rebalanceStatusTimeout,
+                       ?REBALANCE_OBSERVER_TASK_DEFAULT_TIMEOUT, _),
+     validator:trimmed_string_multi_value(taskId, _)].
 
-do_handle_tasks(PoolId, Req, RebTimeout) ->
-    JSON = ns_doctor:build_tasks_list(PoolId, RebTimeout),
-    reply_json(Req, JSON, 200).
+handle_tasks(PoolId, Req) ->
+    validator:handle(do_handle_tasks(PoolId, Req, _), Req, qs,
+                     tasks_validators()).
+
+do_handle_tasks(PoolId, Req, Params) ->
+    RebTimeout = proplists:get_value(rebalanceStatusTimeout, Params),
+    case proplists:get_all_values(taskId, Params) of
+        [] ->
+            JSON = ns_doctor:build_tasks_list(PoolId, RebTimeout),
+            reply_json(Req, JSON, 200);
+        TaskIds ->
+            BinaryTaskIds = lists:map(list_to_binary(_), TaskIds),
+            case global_tasks:get_tasks(BinaryTaskIds) of
+                [] ->
+                    menelaus_util:reply_not_found(Req);
+                Tasks ->
+                    JSON = [{Task} || Task <- Tasks],
+                    reply_json(Req, JSON, 200)
+            end
+    end.
 
 handle_log_post(Req) ->
     Params = mochiweb_request:parse_post(Req),
