@@ -30,6 +30,8 @@
          parse_dn/1,
          client_cert_auth_enabled/1]).
 
+-define(ELDAP_ERR_MSG, "Connect: ~p failed ~p~n").
+
 ssl_options(Host, Settings) ->
     ClientAuthOpts =
         case client_cert_auth_enabled(Settings) of
@@ -111,7 +113,7 @@ open_ldap_connection([Host|Hosts], Port, SSL, Timeout, Settings) ->
               end,
     %% Note: timeout option sets not only connect timeout but a timeout for any
     %%       request to ldap server
-    Opts = [{port, Port}, {timeout, Timeout} | SSLOpts],
+    Opts = [{port, Port}, {timeout, Timeout}, {log, fun eldap_log/3} | SSLOpts],
     case do_open_ldap_connection(Host, Opts) of
         {ok, Handle} -> {ok, Handle, Host};
         {error, _} -> open_ldap_connection(Hosts, Port, SSL, Timeout, Settings)
@@ -291,6 +293,17 @@ eldap_search(Handle, SearchProps) ->
 
 parse_url(Template) ->
     parse_url(Template, []).
+
+eldap_log(_Level, FormatString, Args) ->
+    %% The only log entry we care about is the error log. Others are only
+    %% informational and may reveal PII information. To avoid changing the
+    %% Erlang library, eldap, we simply avoid logging them here.
+    case FormatString of
+        ?ELDAP_ERR_MSG ->
+            ?log_error(FormatString, Args);
+        _ ->
+            ok
+    end.
 
 %% RFC4516 ldap url parsing
 parse_url(Bin, ReplacePairs) when is_binary(Bin) ->
@@ -542,4 +555,26 @@ parse_url_test_() ->
                       Parse("ldap://ldap.example.com"
                             "/o=An%20Example%5C2C%20Inc.,c=US"))
     ].
+
+%% This function makes sure that the error message we're interested in,
+%% remains the same in later Erlang upgrades. This is because we rely on this
+%% particular error message and we need to know if it is modified at any point.
+ldap_sends_right_message_for_error_test() ->
+    Self = self(),
+    LogFunction = fun(_Level, FormatString, _Args) ->
+                      Self ! {Self, FormatString}
+                  end,
+    Opts = [{port, 389}, {timeout, 5000}, {log, LogFunction}],
+    eldap:open(["172.1.1.256"], [{tcpopts, [inet]} | Opts]),
+    Res =
+        receive
+            {Self, ?ELDAP_ERR_MSG} ->
+                ok;
+            {Self, _FormatString} ->
+                error
+        after 5000 ->
+            error
+        end,
+    ?_assertEqual(Res, ok).
+
 -endif.
