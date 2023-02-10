@@ -538,6 +538,12 @@ call_add_node(OtherScheme, OtherHost, OtherPort, HiddenAuth, AFamily,
             NewMsg = <<"Node attempting to join an older cluster. Some of the "
                        "selected services are not available.">>,
             {error, rest_error, NewMsg};
+        {error, rest_error, M,
+         {error, {{tls_alert, {certificate_required, _}}, _}}} ->
+            Msg = io_lib:format("Node being added requires per-node client "
+                                "certificate when client certificate "
+                                "authentication is set to mandatory. ~s", [M]),
+            {error, rest_error, iolist_to_binary(Msg)};
         {error, rest_error, M, _} ->
             {error, rest_error, M};
         Other -> Other
