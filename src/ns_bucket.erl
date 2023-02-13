@@ -83,8 +83,6 @@
          raw_ram_quota/1,
          magma_fragmentation_percentage/1,
          magma_max_shards/2,
-         magma_key_tree_data_blocksize/1,
-         magma_seq_tree_data_blocksize/1,
          update_maps/3,
          update_buckets/3,
          multi_prop_update/2,
@@ -530,16 +528,6 @@ magma_fragmentation_percentage(BucketConfig) ->
 
 magma_max_shards(BucketConfig, Default) ->
     proplists:get_value(magma_max_shards, BucketConfig, Default).
-
--spec magma_key_tree_data_blocksize([{_,_}]) -> integer().
-magma_key_tree_data_blocksize(BucketConfig) ->
-    proplists:get_value(magma_key_tree_data_blocksize, BucketConfig,
-                        ?MAGMA_KEY_TREE_DATA_BLOCKSIZE).
-
--spec magma_seq_tree_data_blocksize([{_,_}]) -> integer().
-magma_seq_tree_data_blocksize(BucketConfig) ->
-    proplists:get_value(magma_seq_tree_data_blocksize, BucketConfig,
-                        ?MAGMA_SEQ_TREE_DATA_BLOCKSIZE).
 
 -define(FS_HARD_NODES_NEEDED, 4).
 -define(FS_FAILOVER_NEEDED, 3).
@@ -1656,16 +1644,8 @@ chronicle_upgrade_to_72(ChronicleTxn) ->
                                        1, BCfg2,
                                        {history_retention_collection_default,
                                         true}),
-                    BCfg4 =
-                        lists:keystore(magma_key_tree_data_blocksize, 1, BCfg3,
-                                       {magma_key_tree_data_blocksize,
-                                        ?MAGMA_KEY_TREE_DATA_BLOCKSIZE}),
-                    BCfg5 =
-                        lists:keystore(magma_seq_tree_data_blocksize, 1, BCfg4,
-                                       {magma_seq_tree_data_blocksize,
-                                        ?MAGMA_SEQ_TREE_DATA_BLOCKSIZE}),
 
-                    chronicle_upgrade:set_key(PropsKey, BCfg5, Txn);
+                    chronicle_upgrade:set_key(PropsKey, BCfg3, Txn);
                 _ ->
                     Txn
             end
@@ -1690,8 +1670,6 @@ extract_bucket_props(Props) ->
                         fts_throttle_limit, n1ql_throttle_limit,
                         sgw_read_throttle_limit, sgw_write_throttle_limit,
                         history_retention_seconds, history_retention_bytes,
-                        magma_key_tree_data_blocksize,
-                        magma_seq_tree_data_blocksize,
                         history_retention_collection_default]],
           X =/= false].
 
