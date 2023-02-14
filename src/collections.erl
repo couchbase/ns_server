@@ -1199,11 +1199,12 @@ update_manifest_test_setup() ->
 
     % Return some scope/collection values high enough for us to not worry about
     % it while testing.
-    F = fun (max_scopes_count) -> 1000;
-            (max_collections_count) -> 1000
-        end,
-    meck:expect(ns_config, search, F),
-    meck:expect(ns_config, read_key_fast, F),
+    meck:expect(
+        ns_config, search,
+        fun (max_scopes_count) -> {ok, 1000};
+            (max_collections_count) -> {ok, 1000}
+        end),
+
     manifest_test_set_history_default(true).
 
 update_manifest_test_teardown() ->
@@ -1218,8 +1219,8 @@ update_with_manifest(Manifest, Operation) ->
     Snapshot = [],
     ScopeCollectionLimits = {max_scopes_per_bucket(),
                              max_collections_per_bucket()},
-    do_update_with_manifest(Bucket, Manifest, Operation, ScopeCollectionLimits,
-                            OtherBucketCounts, LastSeenIds, Snapshot).
+    do_update_with_manifest(Bucket, Manifest, Operation, OtherBucketCounts,
+                            ScopeCollectionLimits, LastSeenIds, Snapshot).
 
 update_manifest_test_create_collection(Manifest, Scope, Name, Props) ->
     update_with_manifest(Manifest, {create_collection, Scope, Name, Props}).
