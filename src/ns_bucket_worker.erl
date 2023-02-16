@@ -162,11 +162,8 @@ stop_one_uploader(Bucket) ->
     delete_config_only_bucket(Bucket).
 
 delete_config_only_bucket(Bucket) ->
-    case (catch ns_memcached_sockets_pool:executing_on_socket(
-                  fun (Sock) ->
-                          mc_client_binary:delete_bucket(
-                            Sock, Bucket, [{type, 'ClusterConfigOnly'}])
-                  end)) of
+    case (catch ns_memcached:delete_bucket(Bucket,
+                                           [{type, 'ClusterConfigOnly'}])) of
         ok ->
             ok;
         {memcached_error, key_enoent, undefined} ->
