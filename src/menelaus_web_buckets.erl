@@ -33,7 +33,6 @@
          handle_bucket_delete/3,
          handle_bucket_update/3,
          handle_bucket_create/2,
-         create_bucket/3,
          handle_start_pause/1,
          handle_start_resume/1,
          handle_stop_pause/1,
@@ -591,12 +590,13 @@ respond_bucket_created(Req, PoolId, BucketId) ->
           is_developer_preview}).
 
 init_bucket_validation_context(IsNew, BucketName, Req) ->
-    ValidateOnly = (proplists:get_value("just_validate", mochiweb_request:parse_qs(Req)) =:= "1"),
-    IgnoreWarnings = (proplists:get_value("ignore_warnings", mochiweb_request:parse_qs(Req)) =:= "1"),
-    init_bucket_validation_context(IsNew, BucketName, ValidateOnly, IgnoreWarnings).
+    ValidateOnly =
+        proplists:get_value("just_validate",
+                            mochiweb_request:parse_qs(Req)) =:= "1",
+    IgnoreWarnings =
+        proplists:get_value("ignore_warnings",
+                            mochiweb_request:parse_qs(Req)) =:= "1",
 
-init_bucket_validation_context(IsNew, BucketName, ValidateOnly,
-                               IgnoreWarnings) ->
     Config = ns_config:get(),
     Snapshot =
         chronicle_compat:get_snapshot(
@@ -726,10 +726,6 @@ maybe_cleanup_old_buckets() ->
             true = ns_node_disco:nodes_wanted() =:= [node()],
             ns_storage_conf:delete_unused_buckets_db_files()
     end.
-
-create_bucket(Req, Name, Params) ->
-    Ctx = init_bucket_validation_context(true, Name, false, false),
-    do_bucket_create(Req, Name, Params, Ctx).
 
 need_more_space_error(Zones) ->
     iolist_to_binary(
