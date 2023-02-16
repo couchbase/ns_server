@@ -28,6 +28,7 @@
          ca_file_path/0,
          sync/0,
          ssl_minimum_protocol/1,
+         internal_ssl_minimum_protocol/0,
          ssl_minimum_protocol/2,
          client_cert_auth/0,
          client_cert_auth_state/0,
@@ -235,6 +236,11 @@ ssl_minimum_protocol(Service) ->
 ssl_minimum_protocol(Service, Config) ->
     get_sec_setting(Service, ssl_minimum_protocol, Config, 'tlsv1.2').
 
+internal_ssl_minimum_protocol() ->
+    internal_ssl_minimum_protocol(ns_config:latest()).
+
+internal_ssl_minimum_protocol(Config) ->
+    ns_config:search(Config, internal_ssl_minimum_protocol, 'tlsv1.3').
 
 get_sec_setting(Service, Setting, Config, Default) ->
     case ns_config:search_prop(Config, {security_settings, Service}, Setting) of
@@ -482,8 +488,17 @@ tls_client_opts(Config, PresetOpts) ->
             "mandatory" -> tls_client_certs_opts();
             _ -> []
         end,
-    RawTLSOptions2 = misc:update_proplist(RawTLSOptions, PresetOpts),
-    merge_ns_config_tls_options(client, ?MODULE, RawTLSOptions2).
+    RawTLSOptions2 =
+        case cluster_compat_mode:is_cluster_72() of
+            true ->
+                IntVsn = internal_ssl_minimum_protocol(),
+                IntVsns = lists:reverse(supported_versions(IntVsn)),
+                [{versions, IntVsns} | RawTLSOptions];
+            false ->
+                RawTLSOptions
+        end,
+    RawTLSOptions3 = misc:update_proplist(RawTLSOptions2, PresetOpts),
+    merge_ns_config_tls_options(client, ?MODULE, RawTLSOptions3).
 
 tls_client_certs_opts() ->
     [{certfile, chain_file_path(client_cert)},
