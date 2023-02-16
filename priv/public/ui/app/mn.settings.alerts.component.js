@@ -199,6 +199,8 @@ class MnSettingsAlertsComponent extends MnLifeCycleHooksToStream {
       case knownAlerts[16]: return 'Certificate has expired';
       case knownAlerts[17]: return 'Certificate will expire soon';
       case knownAlerts[18]: return 'Memory usage threshold exceeded';
+      case knownAlerts[19]: return 'History size threshold exceeded';
+      case knownAlerts[20]: return 'Approaching Indexer low resident percentage';
     }
   }
 }

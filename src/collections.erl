@@ -579,7 +579,7 @@ get_operations(CurrentScopes, RequiredScopes) ->
               Limits = get_limits(ScopeProps),
               [{create_scope, ScopeName, Limits} |
                [{create_collection, ScopeName, CollectionName,
-                 remove_defaults(CollectionProps)} ||
+                 CollectionProps} ||
                    {CollectionName, CollectionProps}
                        <- get_collections(ScopeProps)]];
           ({modify, ScopeName, ScopeProps, CurrentScopeProps}) ->
@@ -590,14 +590,15 @@ get_operations(CurrentScopes, RequiredScopes) ->
                          {drop_collection, ScopeName, CollectionName};
                      ({add, CollectionName, CollectionProps}) ->
                          {create_collection, ScopeName, CollectionName,
-                          remove_defaults(CollectionProps)};
+                          CollectionProps};
                      ({modify, CollectionName, CollectionProps,
                        CurrentCollectionProps}) ->
-                         case lists:sort(remove_defaults(CollectionProps)) =:=
+                         case lists:sort(CollectionProps) =:=
                               lists:sort(lists:keydelete(
                                            uid, 1, CurrentCollectionProps)) of
                              false ->
-                                 {modify_collection, ScopeName, CollectionName};
+                                 {modify_collection, ScopeName, CollectionName,
+                                  CollectionProps};
                              true ->
                                  []
                          end
@@ -728,8 +729,42 @@ verify_oper({drop_collection, ?SYSTEM_SCOPE_NAME, "_" ++ _ = CollectionName},
     {cannot_drop_system_collection, ?SYSTEM_SCOPE_NAME, CollectionName};
 verify_oper({drop_collection, ScopeName, Name}, Manifest, _Snapshot) ->
     with_collection(fun (_) -> ok end, ScopeName, Name, Manifest);
-verify_oper({modify_collection, ScopeName, Name, _Props}, Manifest, _Snapshot) ->
-    with_collection(fun (_) -> ok end, ScopeName, Name, Manifest);
+verify_oper({modify_collection, ScopeName, Name, SuppliedProps},
+            Manifest, _Snapshot) ->
+    %% We are only allowed to change history for a collection at the moment.
+    AllowedCollectionPropChanges = [{history}],
+    with_collection(
+        fun (ExistingProps) ->
+            %% When we store collections we strip them of their properties of
+            %% default values for... reasons. To check whether or not we can
+            %% ignore the modification of a collection property we must put the
+            %% defaults back into the existing props
+            AllExistingProps =
+                lists:keymerge(1,
+                    lists:keysort(1, ExistingProps),
+                    lists:keysort(1, default_collection_props())),
+            InvalidProps =
+                lists:filter(
+                    fun({Prop, Value}) ->
+                        %% We allow the "modification" of properties with the
+                        %% same value so that the set manifest path can specify
+                        %% properties even if they do not change
+                        ExistingPropValueEqual =
+                            case proplists:get_value(Prop, AllExistingProps) of
+                                Value -> true;
+                                _ -> false
+                            end,
+
+                        not proplists:is_defined(Prop,
+                                                 AllowedCollectionPropChanges)
+                            andalso not ExistingPropValueEqual
+                    end, SuppliedProps),
+            case InvalidProps of
+                [] -> ok;
+                _ ->
+                    {cannot_modify_properties, Name, InvalidProps}
+            end
+        end, ScopeName, Name, Manifest);
 verify_oper(bump_epoch, _Manifest, _Snapshot) ->
     ok.
 
@@ -1101,91 +1136,14 @@ last_seen_ids_set(Node, Bucket, Manifest) ->
     {set, last_seen_ids_key(Node, Bucket), get_next_uids(Manifest)}.
 
 -ifdef(TEST).
-get_operations_test_() ->
-    {foreach, fun () -> ok end,
-     [{"Create scopes and collections commands in the correct order",
-       fun () ->
-               ?assertEqual(
-                  [{create_scope, "s1", []},
-                   {create_collection, "s1", "c1", []},
-                   {create_collection, "s1", "c2", [{maxTTL, 8}]},
-                   {create_collection, "s1", "c3", []},
-                   {create_collection, "s1", "c4", [{history, true}]}],
-                  get_operations(
-                    [],
-                    [{"s1", [{collections, [{"c1", []},
-                                            {"c2", [{maxTTL, 8}]},
-                                            {"c3", [{history, false}]},
-                                            {"c4", [{history, true}]}]}]}]))
-       end},
-      {"Drop/create collections",
-       fun () ->
-               ?assertListsEqual(
-                  [{update_limits, "s1", []},
-                   {update_limits, "s2", []},
-                   {update_limits, "_default", []},
-                   {create_collection, "s2", "c3", []},
-                   {create_collection, "s1", "c2", []},
-                   {drop_collection, "s1", "c1"},
-                   {drop_collection, "_default", "_default"}],
-                  get_operations(
-                    [{"_default", [{collections, [{"_default", []}]}]},
-                     {"s1", [{collections, [{"c1", []}]}]},
-                     {"s2", [{collections, [{"c1", []}, {"c2", []}]}]}],
-                    [{"_default", [{collections, []}]},
-                     {"s1", [{collections, [{"c2", []}]}]},
-                     {"s2", [{collections, [{"c1", []}, {"c2", []},
-                                            {"c3", []}]}]}]))
-       end},
-      {"Drop scope with collection present.",
-       fun () ->
-               ?assertListsEqual(
-                  [{update_limits, "s1", []},
-                   {create_collection, "s1", "c2", []},
-                   {drop_scope, "s2"}],
-                  get_operations(
-                    [{"s1", [{collections, [{"c1", []}]}]},
-                     {"s2", [{collections, [{"c1", []},
-                                            {"c2", []}]}]}],
-                    [{"s1", [{collections, [{"c1", []},
-                                            {"c2", []}]}]}]))
-       end},
-      {"Modify collection.",
-       fun () ->
-               ?assertListsEqual(
-                  [{update_limits, "s3", []},
-                   {update_limits, "s1", [{"l1", 1}, {"l2", 2}]},
-                   {modify_collection, "s3", "ic2"},
-                   {modify_collection, "s3", "ic4"},
-                   {modify_collection, "s3", "ic5"},
-                   {modify_collection, "s3", "ic6"},
-                   {create_collection, "s1", "c2", []},
-                   {drop_scope, "s2"}],
-                  get_operations(
-                    [{"s1", [{collections, [{"c1", []}]}]},
-                     {"s2", [{collections, [{"c1", []}, {"c2", []}]}]},
-                     {"s3", [{collections, [{"ic1", []},
-                                            {"ic2", [{maxTTL, 10}]},
-                                            {"ic3", []},
-                                            {"ic4", []},
-                                            {"ic5", [{history, false}]},
-                                            {"ic6", [{history, true}]}]}]}],
-                    [{"s1", [{limits, [{"l1", 1}, {"l2", 2}]},
-                             {collections, [{"c1", []}, {"c2", []}]}]},
-                     {"s3", [{collections, [{"ic1", [{maxTTL, 0}]},
-                                            {"ic2", [{maxTTL, 0}]},
-                                            {"ic3", [{history, false}]},
-                                            {"ic4", [{history, true}]},
-                                            {"ic5", [{history, true}]},
-                                            {"ic6", [{history, false}]}]}]}]))
-       end}]}.
-
 manifest_test_set_history_default(Val) ->
     meck:expect(ns_bucket,
                 get_bucket,
                 fun(_) ->
                     {ok, [{history_retention_collection_default, Val},
-                          {history_retention_seconds, 1}]}
+                          {history_retention_seconds, 1},
+                          {storage_mode, magma},
+                          {type, membase}]}
                 end).
 
 update_manifest_test_setup() ->
@@ -1204,6 +1162,15 @@ update_manifest_test_setup() ->
         fun (max_scopes_count) -> {ok, 1000};
             (max_collections_count) -> {ok, 1000}
         end),
+
+    %% We're not testing auth here (although perhaps we should test that we do
+    %% auth at some point in the future) so just allow everything
+    meck:new(menelaus_roles, [passthrough]),
+    meck:expect(menelaus_roles,
+                is_allowed,
+                fun (_,_) ->
+                    true
+                end),
 
     manifest_test_set_history_default(true).
 
@@ -1236,6 +1203,17 @@ update_manifest_test_create_scope(Manifest, Name, Props) ->
 
 update_manifest_test_drop_scope(Manifest, Name) ->
     update_with_manifest(Manifest, {drop_scope, Name}).
+
+update_manifest_test_set_manifest(Manifest, NewScopes) ->
+    %% We're not trying to test auth here so can supply anything for Roles
+    Roles = [],
+
+    %% Don't care much about ValidOnUid either, pick a value that will always
+    %% be valid.
+    ValidOnUid = get_uid(Manifest),
+
+    update_with_manifest(Manifest,
+                         {set_manifest, Roles, NewScopes, ValidOnUid}).
 
 create_collection_t() ->
     {commit, [{_, _, Manifest1}], _} =
@@ -1401,7 +1379,45 @@ modify_collection_t() ->
     ?assert(proplists:get_value(history,
                                 get_collection("c1",
                                                get_scope("_default",
-                                                         Manifest3)))).
+                                                         Manifest3)))),
+
+    %% Cannot set maxTTL from undefined
+    ?assertEqual(
+        {abort, {error, {cannot_modify_properties, "c1", [{maxTTL, 9}]}}},
+        update_manifest_test_update_collection(Manifest3, "_default", "c1",
+                                               [{maxTTL, 9}])),
+
+    {commit, [{_, _, Manifest4}], _} =
+        update_manifest_test_create_collection(Manifest3, "_default", "c2",
+                                               [{maxTTL, 10}]),
+    ?assertEqual(10,
+                 proplists:get_value(maxTTL,
+                                     get_collection("c2",
+                                                    get_scope("_default",
+                                                              Manifest4)))),
+
+    %% Cannot change maxTTL value
+    ?assertEqual(
+        {abort, {error, {cannot_modify_properties, "c2", [{maxTTL, 11}]}}},
+        update_manifest_test_update_collection(Manifest4, "_default", "c2",
+                                               [{maxTTL, 11}])),
+
+    %% Allowed to specify collection props to the same value.
+    {commit, [{_,_, Manifest5}], _} =
+        update_manifest_test_update_collection(Manifest4, "_default", "c2",
+                                               [{maxTTL, 10}]),
+
+    %% No change as maxTTL was initially 10, can't check the whole manifest as
+    %% uid moves on.
+    ?assertEqual(
+        lists:sort(get_collection("c2", get_scope("_default", Manifest4))),
+        lists:sort(get_collection("c2", get_scope("_default", Manifest5)))),
+
+    %% Cannot modify uid
+    ?assertEqual(
+        {abort, {error, {cannot_modify_properties, "c1", [{uid, 999}]}}},
+        update_manifest_test_update_collection(Manifest2, "_default", "c1",
+                                               [{uid, 999}])).
 
 history_default_t() ->
     % history_default is true, it should set history for the collection
@@ -1437,6 +1453,192 @@ history_default_t() ->
                                                get_scope("_default",
                                                          Manifest3)))).
 
+set_manifest_t() ->
+    %% Cannot drop default scope
+    {abort, {error, cannot_drop_default_scope}} =
+        update_manifest_test_set_manifest(default_manifest(), [{"s1", []}]),
+
+    %% Cannot modify default collection with invalid args
+    ?assertEqual(
+        {abort, {error, {cannot_modify_properties, "_default", [{maxTTL, 9}]}}},
+        update_manifest_test_set_manifest(default_manifest(),
+            [{"_default", [{collections, [{"_default", [{maxTTL, 9}]}]}]}])),
+
+    %% We'll build some manifests to test that the bulk API can correctly modify
+    %% collections. All of the manifests will use these counters
+    ManifestCounters = [{uid, 0},
+                        {next_uid, 1},
+                        {next_scope_uid, 100},
+                        {next_coll_uid, 100},
+                        {num_scopes, 0},
+                        {num_collections, 0}],
+
+    %% We should never really see an empty manifest as we can't drop the default
+    %% scope normally, but it does make testing simpler as we don't need to
+    %% consider dropping any collections.
+    EmptyManifest = ManifestCounters ++ [{scopes, []}],
+
+    %% Create scopes and collections from empty manifest
+    {commit, [{_, _, Manifest1}], _} =
+        update_manifest_test_set_manifest(
+            EmptyManifest,
+            [{"s1", [{collections, [{"c1", []},
+                                    {"c2", [{maxTTL, 8}]},
+                                    {"c3", [{history, false}]},
+                                    {"c4", [{history, true}]}]}]}]),
+    ?assertEqual(
+        [{"s1",
+            [{uid,100},
+             {collections, [{"c4", [{uid, 103}, {history, true}]},
+                            {"c3", [{uid, 102}]},
+                            {"c2", [{uid, 101}, {maxTTL, 8}, {history, true}]},
+                            {"c1", [{uid, 100}, {history, true}]}]},
+             {limits,[]}]}],
+        get_scopes(Manifest1)),
+
+    %% Drop and create collections
+    ExistingManifest1 =
+        ManifestCounters ++
+        [{scopes,
+            [{"_default",
+                [{uid, 8},
+                 {collections, [{"_default", []}]}]},
+             {"s1",
+                 [{uid, 9},
+                  {collections, [{"c1", [{uid, 8}]}]}]},
+             {"s2",
+                 [{uid, 10},
+                  {collections, [{"c1", [{uid, 9}]},
+                                 {"c2", [{uid, 10}]}]}]}]}],
+
+    {commit, [{_, _, Manifest2}], _} =
+        update_manifest_test_set_manifest(
+            ExistingManifest1,
+            [{"_default", [{collections, []}]},
+             {"s1", [{collections, [{"c2", []}]}]},
+             {"s2", [{collections, [{"c1", []},
+                                    {"c2", []},
+                                    {"c3", []}]}]}]),
+
+    ?assertEqual(
+        [{"_default",
+            [{uid, 8}, {collections, []}]},
+         {"s1",
+             [{uid, 9},
+              {collections,
+                  [{"c2", [{uid, 101}, {history, true}]}]}]},
+         {"s2",
+             [{uid, 10},
+              {collections, [{"c3",[{uid, 100}, {history, true}]},
+                             {"c1",[{uid, 9}]},
+                             {"c2",[{uid, 10}]}]}]}],
+        get_scopes(Manifest2)),
+
+
+    %% Modify collection
+    ExistingManifest2 =
+        ManifestCounters ++
+        [{scopes,
+            [{"s1",
+                [{uid, 8},
+                 {collections, [{"c1", [{uid, 8}]}]}]},
+             {"s2",
+                 [{uid, 9},
+                  {collections, [{"c1", [{uid, 9}]},
+                                 {"c2", [{uid, 10}]}]}]},
+             {"s3",
+                 [{uid, 10},
+                  {collections, [{"ic1", [{uid, 11}]},
+                                 {"ic2", [{uid, 12}, {maxTTL, 0}]},
+                                 {"ic3", [{uid, 13}]},
+                                 {"ic4", [{uid, 14}]},
+                                 {"ic5", [{uid, 15}, {history, false}]},
+                                 {"ic6", [{uid, 16}, {history, true}]}]}]}]}],
+    {commit, [{_, _, Manifest3}], _} =
+        update_manifest_test_set_manifest(
+            ExistingManifest2,
+            [{"s1",
+                [{limits, [{"l1", [1]}, {"l2", [2]}]},
+                 {collections, [{"c1", []},
+                                {"c2", []}]}]},
+             {"s3", [{collections, [{"ic1", []},
+                                    {"ic2", [{maxTTL, 0}]},
+                                    {"ic3", [{history, false}]},
+                                    {"ic4", [{history, true}]},
+                                    {"ic5", [{history, true}]},
+                                    {"ic6", [{history, false}]}]}]}]),
+    ?assertEqual(
+        [{"s1",
+            [{uid, 8},
+             {collections, [{"c2", [{uid, 100}, {history, true}]},
+                            {"c1", [{uid, 8}]}]},
+             {limits, [{"l1", [1]}, {"l2", [2]}]}]},
+         {"s3",
+            [{uid, 10},
+             {collections, [{"ic1", [{uid, 11}]},
+                            {"ic2", [{uid, 12}, {maxTTL, 0}]},
+                            {"ic3", [{uid, 13}]},
+                            {"ic4", [{history, true}, {uid, 14}]},
+                            {"ic5", [{history, true}, {uid, 15}]},
+                            {"ic6", [{uid, 16}]}]}]}],
+        get_scopes(Manifest3)),
+
+    %% Cannot add maxTTL
+    ExistingManifest3 =
+        ManifestCounters ++
+        [{scopes,
+            [{"s1",
+                [{uid, 8},
+                 {collections, [{"c1", [{uid, 8}]}]}]}]}],
+    ?assertEqual(
+        {abort,{error,{cannot_modify_properties,"c1",[{maxTTL,10}]}}},
+        update_manifest_test_set_manifest(
+            ExistingManifest3,
+            [{"s1",
+                [{collections, [{"c1", [{maxTTL, 10}]}]}]}])),
+
+    %% maxTTL=undefined and maxTTL=0 are equivalent due to the default values,
+    %% we should not attempt to change anything here.
+    ?assertEqual(
+        {abort,{not_changed,<<"0">>}},
+        update_manifest_test_set_manifest(
+            ExistingManifest3,
+            [{"s1",
+                [{collections, [{"c1", [{maxTTL, 0}]}]}]}])),
+
+    %% Cannot modify TTL
+    ExistingManifest4 =
+        ManifestCounters ++
+        [{scopes,
+            [{"s1",
+                [{uid, 8},
+                    {collections, [{"c1", [{uid, 8}, {maxTTL, 8}]}]}]}]}],
+    ?assertEqual(
+        {abort,{error,{cannot_modify_properties,"c1",[{maxTTL,10}]}}},
+        update_manifest_test_set_manifest(
+            ExistingManifest4,
+            [{"s1",
+                [{collections, [{"c1", [{maxTTL, 10}]}]}]}])),
+
+    %% Setting to the same value is ignored if there are no other changes
+    ?assertEqual(
+        {abort,{not_changed,<<"0">>}},
+        update_manifest_test_set_manifest(
+            ExistingManifest4,
+            [{"s1",
+                [{collections, [{"c1", [{maxTTL, 8}]}]}]}])),
+
+    %% Allowed to set to same value when there are other changes
+
+    {commit, [{_, _, Manifest4}], _} =
+        update_manifest_test_set_manifest(
+        ExistingManifest4,
+        [{"s1",
+            [{collections, [{"c1", [{maxTTL, 8}]},
+                {"c2", []}]}]}]),
+    ?assertEqual([{uid, 8}, {maxTTL, 8}],
+        get_collection("c1", get_scope("s1", Manifest4))).
+
 % Bunch of fairly simple collections tests that update the manifest and expect
 % various results.
 basic_collections_manifest_test_() ->
@@ -1457,6 +1659,7 @@ basic_collections_manifest_test_() ->
          {"scope uid test", fun() -> scope_uid_t() end},
          {"collection uid test", fun() -> collection_uid_t() end},
          {"modify collection test", fun() -> modify_collection_t() end},
-         {"history default test", fun() -> history_default_t() end}]}.
+         {"history default test", fun() -> history_default_t() end},
+         {"set manifest test", fun() -> set_manifest_t() end}]}.
 
 -endif.

@@ -37,7 +37,9 @@ let knownAlerts = [
   'disk_usage_analyzer_stuck',
   'cert_expired',
   'cert_expires_soon',
-  'memory_threshold'
+  'memory_threshold',
+  'history_size_warning',
+  'indexer_low_resident_percentage'
 ];
 
 let timeUnitToSeconds = {

@@ -87,6 +87,7 @@
          update_buckets/3,
          multi_prop_update/2,
          set_bucket_config/2,
+         set_bucket_config_failover/3,
          set_fast_forward_map/2,
          set_map/2,
          set_initial_map/4,
@@ -384,8 +385,10 @@ history_retention_bytes(BucketConfig) ->
 
 -spec history_retention_collection_default([{_,_}]) -> boolean().
 history_retention_collection_default(BucketConfig) ->
+    %% History can only be true for a magma bucket.
     proplists:get_value(history_retention_collection_default, BucketConfig,
-                        ?HISTORY_RETENTION_COLLECTION_DEFAULT_DEFAULT).
+                        ?HISTORY_RETENTION_COLLECTION_DEFAULT_DEFAULT)
+    andalso is_magma(BucketConfig).
 
 eviction_policy(BucketConfig) ->
     Default = case storage_mode(BucketConfig) of
@@ -1219,6 +1222,33 @@ clear_hibernation_state(Bucket) ->
            Bucket,
            fun (OldConfig) ->
                    proplists:delete(hibernation_state, OldConfig)
+           end).
+
+set_bucket_config_failover(Bucket, NewMap, FailedNodes) ->
+    validate_map(NewMap),
+    ok = update_bucket_config(
+           Bucket,
+           fun (OldConfig) ->
+                   Servers = ns_bucket:get_servers(OldConfig),
+                   C1 = lists:foldl(
+                          fun({Key, Value}, Cfg) ->
+                                  lists:keystore(Key, 1, Cfg, {Key, Value})
+                          end, OldConfig, [{servers, Servers -- FailedNodes},
+                                           {fastForwardMap, undefined},
+                                           {map, NewMap}]),
+                   NewConfig = case ns_bucket:get_desired_servers(C1) of
+                                   undefined ->
+                                       C1;
+                                   DesiredServers ->
+                                       ns_bucket:update_desired_servers(
+                                         DesiredServers -- FailedNodes, C1)
+                               end,
+                   master_activity_events:note_set_ff_map(
+                     Bucket, undefined,
+                     proplists:get_value(fastForwardMap, OldConfig, [])),
+                   master_activity_events:note_set_map(
+                     Bucket, NewMap, proplists:get_value(map, OldConfig, [])),
+                   NewConfig
            end).
 
 % Update the bucket config atomically.

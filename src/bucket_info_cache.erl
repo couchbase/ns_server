@@ -319,6 +319,8 @@ build_bucket_capabilities(BucketConfig) ->
                       cluster_compat_mode:is_cluster_72() and
                       cluster_compat_mode:is_enterprise() and
                       ns_bucket:is_magma(BucketConfig)},
+                     {'dcp.IgnorePurgedTombstones',
+                      cluster_compat_mode:is_cluster_72()},
                      {preserveExpiry,
                       cluster_compat_mode:is_cluster_elixir()}] ++
                      maybe_range_scan_capability(BucketConfig),
@@ -528,18 +530,29 @@ get_bucket_capabilities_for_version(?LATEST_VERSION_NUM,
         {bucketCapabilities,
             [collections, durableWrite, tombstonedUserXAttrs,
              'subdoc.ReplaceBodyWithXattr', 'subdoc.DocumentMacroSupport',
-             'subdoc.ReviveDocument', nonDedupedHistory, preserveExpiry,
-             rangeScan, dcp, cbhello, touch, cccp, xdcrCheckpointing,
-             nodesExt, xattr]}];
+             'subdoc.ReviveDocument', nonDedupedHistory,
+             'dcp.IgnorePurgedTombstones', preserveExpiry, rangeScan, dcp,
+             cbhello, touch, cccp, xdcrCheckpointing, nodesExt, xattr]}];
 get_bucket_capabilities_for_version(?LATEST_VERSION_NUM,
-                                    _IsEnterprise,
+                                    false = _IsEnterprise,
                                     true = _IsMagma) ->
     [{bucketCapabilitiesVer,''},
         {bucketCapabilities,
             [collections, durableWrite, tombstonedUserXAttrs,
              'subdoc.ReplaceBodyWithXattr', 'subdoc.DocumentMacroSupport',
-             'subdoc.ReviveDocument', preserveExpiry, rangeScan, dcp,
-             cbhello, touch, cccp, xdcrCheckpointing, nodesExt, xattr]}];
+             'subdoc.ReviveDocument', 'dcp.IgnorePurgedTombstones',
+             preserveExpiry, rangeScan, dcp, cbhello, touch, cccp,
+             xdcrCheckpointing, nodesExt, xattr]}];
+get_bucket_capabilities_for_version(?LATEST_VERSION_NUM,
+                                    _IsEnterprise,
+                                    false = _IsMagma) ->
+    [{bucketCapabilitiesVer,''},
+        {bucketCapabilities,
+            [collections, durableWrite, tombstonedUserXAttrs, couchapi,
+             'subdoc.ReplaceBodyWithXattr', 'subdoc.DocumentMacroSupport',
+             'subdoc.ReviveDocument', 'dcp.IgnorePurgedTombstones',
+             preserveExpiry, rangeScan, dcp, cbhello, touch, cccp,
+             xdcrCheckpointing, nodesExt, xattr]}];
 get_bucket_capabilities_for_version(?LATEST_VERSION_NUM,
                                     _IsEnterprise,
                                     _IsMagma) ->

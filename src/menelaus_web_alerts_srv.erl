@@ -17,6 +17,16 @@
 
 -define(MAX_DISK_USAGE_MISSED_CHECKS, 2).
 
+%% Indexer resident memory percentage threshold below which an alert will
+%% be generated. This is changeable via /settings/alerts/limits
+-define(INDEXER_LOW_RESIDENT_PERCENTAGE, 10).
+
+%% Percentage of indexer memory to use in calculation for the above alert.
+%% This is needed during indexer restart where the resident percentage is low
+%% but in reality there is sufficient memory.
+-define(INDEXER_RESIDENT_MEMORY_PCT,
+        ?get_param(indexer_resident_memory_pct, 90)).
+
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
@@ -28,7 +38,7 @@
          handle_settings_alerts_limits_get/1]).
 
 -export([alert_keys/0, config_upgrade_to_70/1, config_upgrade_to_71/1,
-         config_upgrade_to_elixir/1]).
+         config_upgrade_to_72/1, config_upgrade_to_elixir/1]).
 
 %% @doc Hold client state for any alerts that need to be shown in
 %% the browser, is used by menelaus_web to piggy back for a transport
@@ -55,10 +65,21 @@
 %% Amount of time to wait before reporting communication issues (s)
 -define(COMMUNICATION_ISSUE_TIMEOUT, 60 * 5).
 
+%% These numbers are heuristic, and are based on two facts:
+%%  - It is hard to make mem_actual_usage actually reach 100%, which is
+%%    connected to the fact that there is always some part of the cache that
+%%    is not reclaimable;
+%%  - In practice we see that when actual_usage reaches 95%, it might already
+%%    be the “car is driving off the cliff” situation, so we should react
+%%    earlier.
+%%
 %% Default memory thresholds (in percents)
 -define(MEM_NOTICE_PERC, -1).
--define(MEM_WARN_PERC, 90).
--define(MEM_CRIT_PERC, 95).
+-define(MEM_WARN_PERC, 85).
+-define(MEM_CRIT_PERC, 90).
+
+%% Default history size threshold
+-define(HIST_WARN_PERC, 90).
 
 -export([start_link/0, stop/0, local_alert/2, global_alert/2,
          fetch_alerts/0, consume_alerts/1]).
@@ -79,6 +100,8 @@ short_description(audit_dropped_events) ->
     "audit write failure";
 short_description(indexer_ram_max_usage) ->
     "indexer ram approaching threshold warning";
+short_description(indexer_low_resident_percentage) ->
+    "indexer resident percentage is too low";
 short_description(ep_clock_cas_drift_threshold_exceeded) ->
     "cas drift threshold exceeded error";
 short_description(communication_issue) ->
@@ -93,6 +116,8 @@ short_description(cert_expired) ->
     "certificate has expired";
 short_description(memory_threshold) ->
     "system memory usage threshold exceeded";
+short_description(history_size_warning) ->
+    "history size approaching limit";
 short_description(Other) ->
     %% this case is needed for tests to work
     couch_util:to_list(Other).
@@ -112,6 +137,9 @@ errors(audit_dropped_events) ->
     "Audit Write Failure. Attempt to write to audit log on node \"~s\" was unsuccessful";
 errors(indexer_ram_max_usage) ->
     "Warning: approaching max index RAM. Indexer RAM on node \"~s\" is ~p%, which is at or above the threshold of ~p%.";
+errors(indexer_low_resident_percentage) ->
+    "Warning: approaching low index resident percentage. Indexer RAM "
+    "percentage on node \"~s\" is ~p%, which is under the threshold of ~p%.";
 errors(ep_clock_cas_drift_threshold_exceeded) ->
     "Remote or replica mutation received for bucket ~p on node ~p with timestamp more "
     "than ~p milliseconds ahead of local clock. Please ensure that NTP is set up correctly "
@@ -153,7 +181,12 @@ errors(memory_warning) ->
     "memory, above the warning threshold of ~b%.";
 errors(memory_notice) ->
     "Notice: On node ~s ~p memory use is ~.2f% of total available "
-    "memory, above the notice threshold of ~b%.".
+    "memory, above the notice threshold of ~b%.";
+errors(history_size_warning) ->
+    "Warning: On bucket \"~s\" mutation history is greater than ~b% of history "
+    "retention size for at least ~b/~b vbuckets. Please ensure that the "
+    "history retention size is sufficiently large, in order for the mutation "
+    "history to be retained for the history retention time.".
 
 %% ------------------------------------------------------------------
 %% API Function Definitions
@@ -324,35 +357,29 @@ code_change(_OldVsn, State, _Extra) ->
 alert_keys() ->
     [ip, disk, overhead, ep_oom_errors, ep_item_commit_failed,
      audit_dropped_events, indexer_ram_max_usage,
+     indexer_low_resident_percentage,
      ep_clock_cas_drift_threshold_exceeded,
      communication_issue, time_out_of_sync, disk_usage_analyzer_stuck,
-     cert_expires_soon, cert_expired, memory_threshold].
+     cert_expires_soon, cert_expired, memory_threshold, history_size_warning].
 
 config_upgrade_to_70(Config) ->
-    %% memory_threshold is excluded from alerts and pop_up_alerts here for
-    %% backward compatibility reasons (because it was added in a minor
-    %% release). It can be removed when memory_alert_email is added as
-    %% a proper alert (first major release after 7.1).
-    case ns_config:search(Config, email_alerts) of
-        false ->
-            [];
-        {value, EmailAlerts} ->
-            upgrade_alerts(
-              EmailAlerts,
-              [add_proplist_list_elem(alerts, time_out_of_sync, _),
-               add_proplist_kv(pop_up_alerts, auto_failover:alert_keys() ++
-                               (alert_keys() -- [memory_threshold]), _)])
-    end.
+    config_email_alerts_upgrade(
+      Config, fun config_email_alerts_upgrade_to_70/1).
 
 config_upgrade_to_71(Config) ->
+    config_email_alerts_upgrade(
+      Config, fun config_email_alerts_upgrade_to_71/1).
+
+config_upgrade_to_72(Config) ->
+    config_email_alerts_upgrade(
+      Config, fun config_email_alerts_upgrade_to_72/1).
+
+config_email_alerts_upgrade(Config, Upgrade) ->
     case ns_config:search(Config, email_alerts) of
         false ->
             [];
         {value, EmailAlerts} ->
-            upgrade_alerts(
-              EmailAlerts,
-              [add_proplist_list_elem(pop_up_alerts, A, _)
-               || A <- auto_failover:alert_keys()])
+            Upgrade(EmailAlerts)
     end.
 
 config_upgrade_to_elixir(Config) ->
@@ -475,7 +502,7 @@ global_checks() ->
     [oom, ip, write_fail, overhead, disk, audit_write_fail,
      indexer_ram_max_usage, cas_drift_threshold, communication_issue,
      time_out_of_sync, disk_usage_analyzer_stuck, certs, xdcr_certs,
-     memory_threshold].
+     memory_threshold, history_size_warning, indexer_low_resident_percentage].
 
 %% @doc fires off various checks
 check_alerts(Opaque, Hist, Stats) ->
@@ -601,6 +628,52 @@ check(indexer_ram_max_usage, Opaque, _History, Stats) ->
             end;
         _ ->
             ok
+    end,
+    Opaque;
+
+%% @doc check for indexer low resident percentage
+check(indexer_low_resident_percentage, Opaque, _History, Stats) ->
+    case proplists:get_value("@index", Stats) of
+        undefined ->
+            ok;
+        Val ->
+            AvgPct = proplists:get_value(index_avg_resident_percent, Val),
+            MemoryRss = proplists:get_value(index_memory_rss, Val),
+            MemoryQuota = proplists:get_value(index_memory_quota, Val),
+            NumIndexes = proplists:get_value(index_num_indexes, Val),
+            case AvgPct =/= undefined andalso MemoryRss =/= undefined andalso
+                 MemoryQuota =/= undefined andalso NumIndexes =/= undefined of
+                false ->
+                    ok;
+                true ->
+                    {value, Config} = ns_config:search(alert_limits),
+                    Threshold =
+                        proplists:get_value(low_indexer_resident_percentage,
+                                            Config,
+                                            ?INDEXER_LOW_RESIDENT_PERCENTAGE),
+                    %% If there's a threshold specified for the low resident
+                    %% percentage we check to see if has been reached. We do
+                    %% so only if there are indexes (otherwise the Avg
+                    %% Resident Percent will be zero). The memory check is
+                    %% done to handle the case where Avg Resident Percent is
+                    %% low due to indexer restart but there is sufficient
+                    %% memory.
+                    case Threshold =/= undefined andalso
+                         (NumIndexes > 0) andalso
+                         (AvgPct < Threshold) andalso
+                         (MemoryQuota > 0) andalso
+                         (MemoryRss / MemoryQuota >
+                          (?INDEXER_RESIDENT_MEMORY_PCT / 100)) of
+                        true ->
+                            Host = misc:extract_node_address(node()),
+                            Err = fmt_to_bin(
+                                    errors(indexer_low_resident_percentage),
+                                    [Host, erlang:trunc(AvgPct), Threshold]),
+                            global_alert(indexer_low_resident_percentage, Err);
+                        false ->
+                            ok
+                    end
+            end
     end,
     Opaque;
 
@@ -778,6 +851,32 @@ check(xdcr_certs, Opaque, _History, _Stats) ->
         false -> Opaque
     end;
 
+%% @doc check if the mutation history size is over the alert threshold for at
+%% least one vbucket of a bucket
+check(history_size_warning, Opaque, History, _Stats) ->
+    case cluster_compat_mode:is_cluster_72() of
+        true ->
+            {value, Config} = ns_config:search(alert_limits),
+            Threshold = proplists:get_value(history_warning_threshold, Config,
+                                            ?HIST_WARN_PERC),
+            lists:foreach(
+              fun (Bucket) ->
+                      Key = {history_size_warning, Bucket},
+                      case other_node_already_alerted(Key, History) of
+                          false ->
+                              case get_history_size_alert(Bucket, Threshold) of
+                                  ok -> ok;
+                                  Err -> global_alert(Key, Err)
+                              end;
+                          true ->
+                              ok
+                      end
+              end, ns_bucket:get_bucket_names());
+        false ->
+            ok
+    end,
+    Opaque;
+
 check(memory_threshold, Opaque, _History, Stats) ->
     case proplists:get_value("@system", Stats) of
         undefined ->
@@ -930,6 +1029,60 @@ alert_if_time_out_of_sync({time_offset_status, true}) ->
 alert_if_time_out_of_sync({time_offset_status, false}) ->
     ok.
 
+get_history_size_alert(Bucket, Threshold) ->
+    CheckVBucket = fun (MaxSize, {VB, Size}) ->
+                           case (Size * 100) / MaxSize > Threshold of
+                               true -> {true, VB};
+                               false -> false
+                           end
+                   end,
+    StatsParser = fun (Key, V, DiskUsages) ->
+                          case string:split(binary_to_list(Key), ":") of
+                              [VB, "history_disk_size"] ->
+                                  [{VB, binary_to_integer(V)} | DiskUsages];
+                              _ ->
+                                  %% We are not interested in other disk stats
+                                  DiskUsages
+                          end
+                  end,
+    GetStats = fun () ->
+                       case ns_memcached:raw_stats(
+                              node(), Bucket, <<"diskinfo detail">>,
+                              StatsParser(_, _, _), []) of
+                           {ok, V} -> V;
+                           Error -> Error
+                       end
+               end,
+    GetVBsOverThreshold =
+        fun (MaxPerVBucket) ->
+                lists:filtermap(CheckVBucket(MaxPerVBucket, _),
+                                GetStats())
+        end,
+    case ns_bucket:get_bucket(Bucket) of
+        {ok, BCfg} ->
+            MaxSize = ns_bucket:history_retention_bytes(BCfg),
+            MaxTime = ns_bucket:history_retention_seconds(BCfg),
+            TotalVBs = ns_bucket:get_num_vbuckets(BCfg),
+            case MaxSize > 0 andalso MaxTime > 0 andalso TotalVBs > 0 of
+                true ->
+                    case GetVBsOverThreshold(MaxSize / TotalVBs) of
+                        [] -> ok;
+                        BadVBs ->
+                            ale:warn(?USER_LOGGER,
+                                     "The following vbuckets have mutation "
+                                     "history size above the warning threshold:"
+                                     " ~p", [BadVBs]),
+                            fmt_to_bin(errors(history_size_warning),
+                                       [Bucket, Threshold, length(BadVBs),
+                                        TotalVBs])
+                    end;
+                false ->
+                    ok
+            end;
+        not_present ->
+            ok
+    end.
+
 %% @doc only check for disk usage if there has been no previous
 %% errors or last error was over the timeout ago
 -spec hit_rate_limit(atom(), dict:dict()) -> true | false.
@@ -944,6 +1097,20 @@ hit_rate_limit(Key, Dict) ->
 
             TimePassed < ?DISK_USAGE_TIMEOUT
     end.
+
+%% @doc check if any other nodes have recently fired an alert for this alert key
+-spec other_node_already_alerted(any(), any()) -> true | false.
+other_node_already_alerted(Key, Hist) ->
+    AlertMatches =
+        fun ({OldKey, _, _, _}) ->
+                case OldKey of
+                    {Key, _} ->
+                        true;
+                    _ ->
+                        false
+                end
+        end,
+    lists:any(AlertMatches, Hist).
 
 %% @doc calculate percentage of overhead and if it is over threshold
 -spec over_threshold(integer(), integer()) -> false | {true, float()}.
@@ -1137,13 +1304,49 @@ upgrade_alerts(EmailAlerts, Mutations) ->
               end
           end,
           {EmailAlerts, []}, Mutations),
-    case misc:sort_kv_list(Result) =:= misc:sort_kv_list(EmailAlerts) of
+    maybe_upgrade_email_alerts(EmailAlerts, Result) ++ ExtraNsCfgChanges.
+
+config_email_alerts_upgrade_to_70(EmailAlerts) ->
+    %% memory_threshold is excluded from alerts and pop_up_alerts here for
+    %% backward compatibility reasons (because it was added in a minor
+    %% release). It can be removed when memory_alert_email is added as
+    %% a proper alert (first major release after 7.1).
+    Result =
+        functools:chain(
+          EmailAlerts,
+          [add_proplist_list_elem(alerts, time_out_of_sync, _),
+              add_proplist_kv(pop_up_alerts, auto_failover:alert_keys() ++
+                                             (alert_keys() --
+                                             [memory_threshold]), _)]),
+    maybe_upgrade_email_alerts(EmailAlerts, Result).
+
+config_email_alerts_upgrade_to_71(EmailAlerts) ->
+    Result =
+        functools:chain(
+          EmailAlerts,
+          [add_proplist_list_elem(pop_up_alerts, A, _)
+           || A <- auto_failover:alert_keys()]),
+    maybe_upgrade_email_alerts(EmailAlerts, Result).
+
+config_email_alerts_upgrade_to_72(EmailAlerts) ->
+    Result =
+        functools:chain(
+          EmailAlerts,
+          [add_proplist_list_elem(alerts,history_size_warning, _),
+           add_proplist_list_elem(alerts,indexer_low_resident_percentage, _),
+           add_proplist_list_elem(pop_up_alerts, history_size_warning, _),
+           add_proplist_list_elem(pop_up_alerts,
+                                  indexer_low_resident_percentage, _)]),
+    maybe_upgrade_email_alerts(EmailAlerts, Result).
+
+maybe_upgrade_email_alerts(Old, New) ->
+    case misc:sort_kv_list(New) =:= misc:sort_kv_list(Old) of
         true ->
             %% No change due to upgrade
             [];
         false ->
-            [{set, email_alerts, Result}]
-    end ++ ExtraNsCfgChanges.
+            [{set, email_alerts, New}]
+    end.
 
 type_spec(undefined) ->
     undefined.
@@ -1157,6 +1360,10 @@ params() ->
                              cfg_key => [alert_limits, max_indexer_ram]}},
      {"certExpirationDays", #{type => pos_int,
                               cfg_key => cert_exp_alert_days}},
+     {"lowIndexerResidentPerc", #{type => {int, 0, 100},
+                                  cfg_key => [alert_limits,
+                                              low_indexer_resident_percentage],
+                                  default => ?INDEXER_LOW_RESIDENT_PERCENTAGE}},
      {"memoryNoticeThreshold", #{type => {int, -1, 100},
                                  cfg_key => [alert_limits,
                                              memory_notice_threshold],
@@ -1168,7 +1375,11 @@ params() ->
      {"memoryCriticalThreshold", #{type => {int, -1, 100},
                                    cfg_key => [alert_limits,
                                                memory_critical_threshold],
-                                   default => ?MEM_CRIT_PERC}}].
+                                   default => ?MEM_CRIT_PERC}},
+     {"historyWarningThreshold", #{type => {int, 0, 100},
+                                   cfg_key => [alert_limits,
+                                               history_warning_threshold],
+                                   default => ?HIST_WARN_PERC}}].
 
 build_alert_limits() ->
     case ns_config:search(alert_limits) of
@@ -1422,4 +1633,22 @@ upgrade_70_to_705_test() ->
           fun (K, V, Acc) -> [{K, V} | Acc] end),
     meck:unload(ns_config).
 
+config_upgrade_to_72_test() ->
+    Config = [[{email_alerts,
+                [{pop_up_alerts, [ip, disk]},
+                 {enabled, false},
+                 {alerts, [ip, communication_issue]}]
+               },
+               {alert_limits,
+                [{max_disk_used, 90},
+                 {max_indexer_ram, 75}]}]],
+    ExpectedAlerts = [{pop_up_alerts,
+                       [disk, ip, history_size_warning,
+                        indexer_low_resident_percentage]},
+                      {alerts,
+                       [communication_issue, ip, history_size_warning,
+                        indexer_low_resident_percentage]},
+                      {enabled, false}],
+    [{set, email_alerts, Alerts}] = config_upgrade_to_72(Config),
+    ?assertEqual(misc:sort_kv_list(ExpectedAlerts), misc:sort_kv_list(Alerts)).
 -endif.

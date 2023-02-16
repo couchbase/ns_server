@@ -466,9 +466,7 @@ failover_membase_bucket_with_map(Nodes, Bucket, Map, Options) ->
                       [length(MissingVBuckets) * 100 div length(Map), Bucket])
     end,
 
-    ns_bucket:set_fast_forward_map(Bucket, undefined),
-    ns_bucket:set_map(Bucket, NewMap),
-    ns_bucket:remove_servers(Bucket, Nodes),
+    ns_bucket:set_bucket_config_failover(Bucket, NewMap, Nodes),
 
     CleanupOptions = janitor_cleanup_options(Nodes, Options),
     case (catch ns_janitor:cleanup(Bucket, CleanupOptions)) of
