@@ -8,6 +8,7 @@
 %% licenses/APL2.txt.
 -module(menelaus_web_alerts_srv).
 
+-include("ns_bucket.hrl").
 -include("ns_common.hrl").
 -include("ns_stats.hrl").
 -include("cut.hrl").
@@ -696,7 +697,8 @@ check(cas_drift_threshold, Opaque, _History, Stats) ->
                 case ns_bucket:get_bucket(Bucket) of
                     {ok, BCfg} ->
                         ns_bucket:conflict_resolution_type(BCfg) =:= lww orelse
-                            ns_bucket:history_retention_seconds(BCfg) =/= 0;
+                            ns_bucket:history_retention_seconds(BCfg) =/=
+                            ?HISTORY_RETENTION_SECONDS_DEFAULT;
                     not_present ->
                         false
                 end

@@ -1658,28 +1658,33 @@ chronicle_upgrade_to_elixir(ChronicleTxn) ->
 chronicle_upgrade_to_72(ChronicleTxn) ->
     {ok, BucketNames} = chronicle_upgrade:get_key(root(), ChronicleTxn),
     lists:foldl(
-        fun (Name, Txn) ->
-            PropsKey = sub_key(Name, props),
-            {ok, BCfg} = chronicle_upgrade:get_key(PropsKey, Txn),
-            case is_magma(BCfg) of
-                true ->
-                    % Only add the keys if this is a magma Bucket as they are
-                    % not relevant to couchstore buckets.
-                    BCfg1 = lists:keystore(history_retention_seconds, 1, BCfg,
-                                           {history_retention_seconds, 0}),
-                    BCfg2 = lists:keystore(history_retention_bytes, 1, BCfg1,
-                                           {history_retention_bytes, 0}),
-                    BCfg3 =
-                        lists:keystore(history_retention_collection_default,
-                                       1, BCfg2,
-                                       {history_retention_collection_default,
-                                        true}),
+      fun (Name, Txn) ->
+              PropsKey = sub_key(Name, props),
+              {ok, BCfg} = chronicle_upgrade:get_key(PropsKey, Txn),
+              case is_magma(BCfg) of
+                  true ->
+                      %% Only add the keys if this is a magma Bucket as they are
+                      %% not relevant to couchstore buckets.
+                      BCfg1 =
+                          lists:keystore(history_retention_seconds, 1, BCfg,
+                                         {history_retention_seconds,
+                                          ?HISTORY_RETENTION_SECONDS_DEFAULT}),
+                      BCfg2 =
+                          lists:keystore(history_retention_bytes, 1, BCfg1,
+                                         {history_retention_bytes,
+                                          ?HISTORY_RETENTION_BYTES_DEFAULT}),
+                      BCfg3 =
+                          lists:keystore(
+                            history_retention_collection_default,
+                            1, BCfg2,
+                            {history_retention_collection_default,
+                             ?HISTORY_RETENTION_COLLECTION_DEFAULT_DEFAULT}),
 
-                    chronicle_upgrade:set_key(PropsKey, BCfg3, Txn);
-                _ ->
-                    Txn
-            end
-        end, ChronicleTxn, BucketNames).
+                      chronicle_upgrade:set_key(PropsKey, BCfg3, Txn);
+                  _ ->
+                      Txn
+              end
+      end, ChronicleTxn, BucketNames).
 
 %% returns proplist with only props useful for ns_bucket
 extract_bucket_props(Props) ->
