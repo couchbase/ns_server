@@ -20,7 +20,7 @@
                          not_stored | delta_badval | not_my_vbucket |
                          unknown_command | enomem | not_supported | internal |
                          ebusy | etmpfail | auth_error | auth_continue.
--type mc_error() :: {memcached_error, mc_error_atom(), binary()}.
+-type mc_error() :: {memcached_error, mc_error_atom(), binary() | undefined}.
 -type vbucket_id() :: non_neg_integer().
 -type vbucket_state() :: active | dead | replica | pending.
 -type rev_id() :: <<_:128>>.
