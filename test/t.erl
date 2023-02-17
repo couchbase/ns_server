@@ -100,11 +100,25 @@ run_eunit_tests(Modules0) ->
     %% will filter _tests modules out to avoid running tests twice.
     Modules  = filter_out_unneeded_tests_modules(Modules0),
     Listener = spawn_listener(),
-    eunit:test([{spawn, M} || M <- Modules], [verbose, {report, Listener}]),
+    TestResult = eunit:test([{spawn, M} || M <- Modules], [verbose, {report,
+        Listener}]),
 
     receive
         {failed_tests, FailedTests} ->
-            FailedTests
+            case TestResult of
+                ok -> FailedTests;
+                _ ->
+                    %% This is a catch all backstop based on the result of the
+                    %% eunit test process. If we skip some failed test messages
+                    %% then this will prevent us from passing test jobs/CV.
+                    %% The log message isn't great at the moment, but eunit
+                    %% will have printed whatever failed further up in the logs.
+                    Msg = "Eunit reported that tests failed. Consult logged "
+                          "test failures below for failing tests, or the "
+                          "eunit logs above for other failures that many not "
+                          "have been caught by this harness.",
+                    [Msg | FailedTests]
+            end
     end.
 
 filter_out_unneeded_tests_modules(Modules) ->
@@ -278,7 +292,9 @@ handle_failed_tests(FailedTests) ->
     failed.
 
 format_mfa({M, F, A}) ->
-    io_lib:format("~s:~s/~b", [M, F, A]).
+    io_lib:format("~p:~p/~p", [M, F, A]);
+format_mfa(Msg) ->
+    io_lib:format("~p", [Msg]).
 
 bold_red(Text) ->
     [<<"\e[31;1m">>, Text, <<"\e[0m">>].
