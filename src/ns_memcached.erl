@@ -944,7 +944,15 @@ delete_bucket(Sock, Bucket, Force, DeleteData) ->
               [Bucket, Force]),
 
     try
-        ok = mc_client_binary:delete_bucket(Sock, Bucket, [{force, Force}])
+        case mc_client_binary:delete_bucket(Sock, Bucket, [{force, Force}]) of
+            ok ->
+                ok;
+            {memcached_error, key_enoent, undefined} ->
+                ?log_warning("Bucket ~p appears to be already deleted",
+                             [Bucket]);
+            Error ->
+                ?log_error("Failed to delete bucket ~p: ~p", [Bucket, Error])
+        end
     catch
         T:E ->
             ?log_error("Failed to delete bucket ~p: ~p", [Bucket, {T, E}])
