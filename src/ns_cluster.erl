@@ -956,7 +956,7 @@ validate_local_node_certificate_san() ->
             ok
     end.
 
-post_json(Target, HiddenAuth, Options, Stuff) ->
+post_json_to_joinee(Target, HiddenAuth, Options, Stuff) ->
     ?cluster_debug("Posting the following to ~p:~n~p",
                    [Target, {sanitize_node_info(Stuff)}]),
     Post = list_to_tuple(Target ++
@@ -971,6 +971,12 @@ post_json(Target, HiddenAuth, Options, Stuff) ->
             {error, Message};
         {client_error, _} ->
             {error, invalid_json};
+        {error, rest_error, M,
+         {error, {{tls_alert, {certificate_required, _}}, _}}} ->
+            Msg = io_lib:format("Cluster node requires per-node client "
+                                "certificate when client certificate "
+                                "authentication is set to mandatory. ~s", [M]),
+            {error, iolist_to_binary(Msg)};
         {error, _, X, _} ->
             {error, X};
         Other ->
@@ -1015,8 +1021,9 @@ do_add_node_with_connectivity(Scheme, RemoteAddr, RestPort, HiddenAuth,
 
     case AllowedScheme of
         true ->
-            case post_json([Scheme, RemoteAddr, RestPort, "/engageCluster2"],
-                           HiddenAuth, Options, {Props}) of
+            case post_json_to_joinee(
+                   [Scheme, RemoteAddr, RestPort, "/engageCluster2"],
+                   HiddenAuth, Options, {Props}) of
                 {ok, {NodeKVList}} ->
                     try
                         do_add_node_engaged(NodeKVList, HiddenAuth, GroupUUID,
@@ -1343,8 +1350,8 @@ do_add_node_engaged_inner(ChronicleInfo, {Scheme, Hostname, Port},
                {server_verification, cluster_compat_mode:is_cluster_71() orelse
                                      (not GeneratedCerts)}],
 
-    case post_json([Scheme, Hostname, Port, "/completeJoin"],
-                   HiddenAuth, Options, Struct) of
+    case post_json_to_joinee([Scheme, Hostname, Port, "/completeJoin"],
+                              HiddenAuth, Options, Struct) of
         {ok, _} ->
             {ok, OtpNode};
         {error, Msg} ->
