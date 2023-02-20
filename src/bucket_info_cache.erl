@@ -522,64 +522,33 @@ membase_bucket_capabilities_test_teardown() ->
     teardown_compat_mode(),
     teardown_membase_bucket_with_views().
 
-get_bucket_capabilities_for_version(?LATEST_VERSION_NUM,
-                                    true = _IsEnterprise,
-                                    true = _IsMagma) ->
-    %% 7.2+
-    [{bucketCapabilitiesVer,''},
-        {bucketCapabilities,
-            [collections, durableWrite, tombstonedUserXAttrs,
-             'subdoc.ReplaceBodyWithXattr', 'subdoc.DocumentMacroSupport',
-             'subdoc.ReviveDocument', nonDedupedHistory,
-             'dcp.IgnorePurgedTombstones', preserveExpiry, rangeScan, dcp,
-             cbhello, touch, cccp, xdcrCheckpointing, nodesExt, xattr]}];
-get_bucket_capabilities_for_version(?LATEST_VERSION_NUM,
-                                    false = _IsEnterprise,
-                                    true = _IsMagma) ->
-    [{bucketCapabilitiesVer,''},
-        {bucketCapabilities,
-            [collections, durableWrite, tombstonedUserXAttrs,
-             'subdoc.ReplaceBodyWithXattr', 'subdoc.DocumentMacroSupport',
-             'subdoc.ReviveDocument', 'dcp.IgnorePurgedTombstones',
-             preserveExpiry, rangeScan, dcp, cbhello, touch, cccp,
-             xdcrCheckpointing, nodesExt, xattr]}];
-get_bucket_capabilities_for_version(?LATEST_VERSION_NUM,
-                                    _IsEnterprise,
-                                    false = _IsMagma) ->
-    [{bucketCapabilitiesVer,''},
-        {bucketCapabilities,
-            [collections, durableWrite, tombstonedUserXAttrs, couchapi,
-             'subdoc.ReplaceBodyWithXattr', 'subdoc.DocumentMacroSupport',
-             'subdoc.ReviveDocument', 'dcp.IgnorePurgedTombstones',
-             preserveExpiry, rangeScan, dcp, cbhello, touch, cccp,
-             xdcrCheckpointing, nodesExt, xattr]}];
-get_bucket_capabilities_for_version(?LATEST_VERSION_NUM,
-                                    _IsEnterprise,
-                                    _IsMagma) ->
-    [{bucketCapabilitiesVer,''},
-        {bucketCapabilities,
-            [collections, durableWrite, tombstonedUserXAttrs, couchapi,
-             'subdoc.ReplaceBodyWithXattr', 'subdoc.DocumentMacroSupport',
-             'subdoc.ReviveDocument', preserveExpiry, rangeScan, dcp,
-             cbhello, touch, cccp, xdcrCheckpointing, nodesExt, xattr]}];
-get_bucket_capabilities_for_version(?VERSION_71,
-                                    _IsEnterprise,
-                                    false = _IsMagma) ->
-    [{bucketCapabilitiesVer,''},
-        {bucketCapabilities,
-            [collections, durableWrite, tombstonedUserXAttrs, couchapi,
-             'subdoc.ReplaceBodyWithXattr', 'subdoc.DocumentMacroSupport',
-             'subdoc.ReviveDocument', dcp, cbhello, touch, cccp,
-             xdcrCheckpointing, nodesExt, xattr]}];
-get_bucket_capabilities_for_version(?VERSION_71,
-                                    _IsEnterprise,
-                                    true = _IsMagma) ->
-    [{bucketCapabilitiesVer,''},
-        {bucketCapabilities,
-            [collections, durableWrite, tombstonedUserXAttrs,
-             'subdoc.ReplaceBodyWithXattr', 'subdoc.DocumentMacroSupport',
-             'subdoc.ReviveDocument', dcp, cbhello, touch, cccp,
-             xdcrCheckpointing, nodesExt, xattr]}].
+get_bucket_capabilities_for_version(Version, IsEnterprise, IsMagma) ->
+    BucketCapabilitiesBase = [collections, durableWrite, tombstonedUserXAttrs,
+                              'subdoc.ReplaceBodyWithXattr',
+                              'subdoc.DocumentMacroSupport',
+                              'subdoc.ReviveDocument',
+                              dcp, cbhello, touch, cccp,
+                              xdcrCheckpointing, nodesExt, xattr],
+    Specific = get_bucket_capabilities(Version, IsEnterprise, IsMagma),
+    BucketCapabilitiesBase ++ Specific.
+
+get_bucket_capabilities(Version,
+                        true = _IsEnterprise,
+                        true = _IsMagma) when Version > ?VERSION_72 ->
+    ['dcp.IgnorePurgedTombstones', nonDedupedHistory, rangeScan,
+     preserveExpiry];
+get_bucket_capabilities(Version,
+                        false = _IsEnterprise,
+                        true = _IsMagma) when Version > ?VERSION_72 ->
+    ['dcp.IgnorePurgedTombstones', rangeScan, preserveExpiry];
+get_bucket_capabilities(Version,
+                        _IsEnterprise,
+                        _IsMagma) when Version > ?VERSION_72 ->
+    [couchapi, 'dcp.IgnorePurgedTombstones', rangeScan, preserveExpiry];
+get_bucket_capabilities(_Version, _IsEnterprise, false = _IsMagma) ->
+    [couchapi];
+get_bucket_capabilities(_Version, _IsEnterprise, _IsMagma) ->
+    [].
 
 membase_bucket_capabilities_test_() ->
     Tests = [{?VERSION_71, false, false},
@@ -591,15 +560,20 @@ membase_bucket_capabilities_test_() ->
              {?LATEST_VERSION_NUM, false, true},
              {?LATEST_VERSION_NUM, true, true}],
 
-    TestFun = fun ({Version, IsEnterprise, IsMagma}, _R) ->
-                  fun() ->
-                      ?assertEqual(
-                          get_bucket_capabilities_for_version(Version,
-                                                              IsEnterprise,
-                                                              IsMagma),
-                          build_bucket_capabilities([]))
-                    end
-              end,
+    TestFun =
+        fun ({Version, IsEnterprise, IsMagma}, _R) ->
+                fun() ->
+                        [{bucketCapabilitiesVer,''},
+                         {bucketCapabilities, Capabilities}] =
+                            build_bucket_capabilities([]),
+                        ?assertEqual(
+                           lists:sort(Capabilities),
+                           lists:sort(
+                             get_bucket_capabilities_for_version(Version,
+                                                                 IsEnterprise,
+                                                                 IsMagma)))
+                end
+        end,
 
     {foreachx,
         fun ({Version, IsEnterprise, IsMagma}) ->
