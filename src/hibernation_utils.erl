@@ -29,8 +29,6 @@
          get_bucket_uuid/1,
          get_bucket_manifest/1,
          get_data_remote_path/1,
-         get_data_component_path/0,
-         get_bucket_data_component_path/1,
          get_node_data_remote_path/2,
          get_bucket_data_remote_path/3,
          check_test_condition/1]).
@@ -333,12 +331,6 @@ get_data_remote_path(RemotePath) ->
     KvRemotePath = filename:join(RemotePath, "data"),
     "s3:" ++ Rest = KvRemotePath,
     Rest ++ "/".
-
-get_data_component_path() ->
-    path_config:component_path(data, "data").
-
-get_bucket_data_component_path(Bucket) ->
-    filename:join(get_data_component_path(), Bucket).
 
 get_node_data_remote_path(RemotePath, Node) ->
     filename:join(RemotePath, atom_to_list(Node)).

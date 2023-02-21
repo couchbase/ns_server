@@ -414,6 +414,16 @@ hibernation_manager_test() ->
                  exit_not_normal, exit_normal)
        end}]}.
 
+meck_expect_ns_storage_conf() ->
+    meck:expect(ns_storage_conf, this_node_dbdir,
+                fun () ->
+                        {ok, "/data"}
+                end),
+    meck:expect(ns_storage_conf, this_node_bucket_dbdir,
+                fun (Bucket) ->
+                        {ok, filename:join("/data", Bucket)}
+                end).
+
 force_unpause_via_calling_process_failure_body() ->
     Self = self(),
     meck:expect(ns_memcached, pause_bucket,
@@ -442,6 +452,9 @@ force_unpause_via_calling_process_failure_body() ->
         fun (_,_) ->
             5 * 60 * 100
         end),
+
+    meck_expect_ns_storage_conf(),
+
     kv_hibernation_agent:start_link(),
     {HibManagerStubPid, Mref} =
         spawn_monitor(
@@ -474,7 +487,8 @@ force_unpause_via_calling_process_failure_body() ->
     end.
 
 force_unpause_via_calling_process_failure_test() ->
-    Modules = [ns_memcached, hibernation_utils, replication_manager, ns_config],
+    Modules = [ns_memcached, hibernation_utils, replication_manager, ns_config,
+               ns_storage_conf],
     meck:new(Modules, [passthrough]),
     run_test_and_assert(
       ?cut(force_unpause_via_calling_process_failure_body()),
@@ -506,6 +520,8 @@ resume_helpers_test_body() ->
                                           ]}
                 end),
 
+    meck_expect_ns_storage_conf(),
+
     Bucket = "BucketName",
     Metadata = hibernation_utils:get_metadata_from_s3("s3://foo-remote-path",
                                                       "us-east-1"),
@@ -528,7 +544,7 @@ resume_helpers_test_body() ->
                           ['n_2@127.0.0.1','n_1@127.0.0.1']]).
 
 resume_helpers_test() ->
-    Modules = [hibernation_utils, bucket_placer],
+    Modules = [hibernation_utils, bucket_placer, ns_storage_conf],
     meck:new(Modules, [passthrough]),
     run_test_and_assert(?cut(resume_helpers_test_body()), exit_normal,
                         exit_not_normal),

@@ -287,8 +287,9 @@ do_pause_bucket(Bucket, RemotePath, BlobStorageRegion) ->
 
     ok = ns_memcached:pause_bucket(Bucket),
 
-    SourcePath =  append_path_separator(
-                    hibernation_utils:get_bucket_data_component_path(Bucket)),
+    {ok, SourcePath0} = ns_storage_conf:this_node_bucket_dbdir(Bucket),
+    SourcePath = append_path_separator(SourcePath0),
+
     DestPath = hibernation_utils:get_bucket_data_remote_path(RemotePath, node(),
                                                              Bucket),
 
@@ -300,7 +301,7 @@ do_pause_bucket(Bucket, RemotePath, BlobStorageRegion) ->
 
 do_resume_bucket(Bucket, RemotePath, BlobStorageRegion) ->
     SourcePath = append_path_separator(RemotePath),
-    DestPath = hibernation_utils:get_data_component_path(),
+    {ok, DestPath} = ns_storage_conf:this_node_dbdir(),
     ?log_info("Resume Bucket: ~p, Source: ~p, Dest: ~p, BlobStorageRegion - ~p",
               [Bucket, SourcePath, BlobStorageRegion, DestPath]),
 
