@@ -9,6 +9,8 @@
 
 import testlib
 
+import time
+
 
 class TasksBase:
     class Task:
@@ -40,6 +42,32 @@ class TasksBase:
 
         return tasks[0]
 
+    # Wait for the task identified by task_id to satisfy is_task_done or reach
+    # the timeout limit
+    def wait_for_task(self, cluster, task_id, is_task_done, timeout):
+        def get_status():
+            return self.get_task_status(cluster, task_id)
+        # Wait until timeout reached
+        time_start = time.time()
+        timeout_time = time_start + timeout
+        while not is_task_done(last_task_status := get_status()) and \
+                time.time() < timeout_time:
+            # Sleep for a 20th of the total timeout, so that we only make at
+            # most 20 checks, rather than spamming the cluster
+            time.sleep(timeout / 20)
+
+        timeout_msg = f"Task status check timed out after {timeout}s. \n"
+
+        assert last_task_status is not None, \
+            f"{timeout_msg}" \
+            f"No task found with task_id '{task_id}'"
+
+        assert is_task_done(last_task_status), \
+            f"{timeout_msg}" \
+            f"Last task status:\n{last_task_status}"
+
+        return last_task_status
+
     @staticmethod
     def assert_tasks_equal(found_task, expected_task):
         # Check the task type, status, bucket, and extras are correct
@@ -64,6 +92,19 @@ class TasksBase:
     def assert_task(self, cluster, expected_task):
         found_task = self.get_task_status(cluster, expected_task.task_id)
         self.assert_tasks_equal(found_task, expected_task)
+
+        # Assert whether or not the task shows up in the
+        # /pools/default/tasks endpoint
+        if self.is_default_task(expected_task):
+            self.assert_task_in_default_list(cluster, expected_task)
+        else:
+            self.assert_task_not_in_default_list(cluster, expected_task)
+
+    @staticmethod
+    # Determines whether a task should be expected in the default response of
+    # /pools/default/tasks
+    def is_default_task(task):
+        return task.status == "running"
 
     # Assert that can the expected task can be found in the tasks list given by
     # /pools/default/tasks
@@ -96,7 +137,7 @@ class TasksBase:
         tasks = testlib.json_response(r, "Tasks list was not json")
 
         for found_task in tasks:
-            assert found_task.get("task_id") != unexpected_id,\
+            assert found_task.get("task_id") != unexpected_id, \
                 f"Unexpected task found with task_id '{unexpected_id}"
 
 
@@ -153,7 +194,3 @@ class TasksTestSet(testlib.BaseTestSet, TasksBase):
                                                   extras)
                         self.update_task(cluster, task)
                         self.assert_task(cluster, task)
-                        if status == "running":
-                            self.assert_task_in_default_list(cluster, task)
-                        else:
-                            self.assert_task_not_in_default_list(cluster, task)

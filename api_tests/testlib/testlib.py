@@ -146,9 +146,9 @@ def put_succ(cluster, path, **kwargs):
     return res
 
 
-def post_succ(cluster, path, **kwargs):
+def post_succ(cluster, path, expected_code=200, **kwargs):
     res = post(cluster, path, **kwargs)
-    assert_http_code(200, res)
+    assert_http_code(expected_code, res)
     return res
 
 
@@ -214,6 +214,12 @@ def format_http_error(res, expected_codes):
            f"returned {res.status_code} {res.reason} " \
            f"(expected {expected_codes_str})" \
            f", response body: {res.text}"
+
+
+def assert_json_key(expected_key, json, context):
+    assert expected_key in json.keys(), \
+        f"({context}) '{expected_key}' missing in json: {json}"
+    return json[expected_key]
 
 
 def random_str(n):
