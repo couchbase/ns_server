@@ -268,7 +268,12 @@ current_status_slow_inner() ->
                 is_view_task(Task) orelse is_bucket_compaction_task(Task)
         end, ns_couchdb_api:get_tasks(2000, []) ++ local_tasks:all())
         ++ grab_local_xdcr_replications()
-        ++ grab_samples_loading_tasks()
+        ++ case cluster_compat_mode:is_cluster_elixir() of
+               true ->
+                   [];
+               false ->
+                   grab_samples_loading_tasks()
+           end
         ++ grab_warmup_tasks()
         ++ cluster_logs_collection_task:maybe_build_cluster_logs_task(),
 
