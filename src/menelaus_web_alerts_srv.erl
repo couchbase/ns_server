@@ -1104,7 +1104,7 @@ hit_rate_limit(Key, Dict) ->
 -spec other_node_already_alerted(any(), any()) -> true | false.
 other_node_already_alerted(Key, Hist) ->
     AlertMatches =
-        fun ({OldKey, _, _, _}) ->
+        fun ({OldKey, _, _, _, _}) ->
                 case OldKey of
                     {Key, _} ->
                         true;
