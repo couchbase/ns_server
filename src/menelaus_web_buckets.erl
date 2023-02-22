@@ -2201,11 +2201,12 @@ do_parse_validate_num_vbuckets(NumVBs, _BucketConfig, true = _IsNew,
                                false = _IsEnabled) when NumVBs =/= undefined ->
     {error, numVbuckets,
      <<"Support for variable number of vbuckets is not enabled">>};
-do_parse_validate_num_vbuckets(NumVBs, _BucketConfig, true = IsNew,
+do_parse_validate_num_vbuckets(NumVBs, _BucketConfig, true = _IsNew,
                                _IsEnabled) ->
-    DefaultVal = integer_to_list(ns_bucket:get_default_num_vbuckets()),
-    validate_with_missing(NumVBs, DefaultVal, IsNew,
-                          fun validate_num_vbuckets/1).
+    case NumVBs of
+        undefined -> {ok, num_vbuckets, ns_bucket:get_default_num_vbuckets()};
+        _ -> validate_num_vbuckets(NumVBs)
+    end.
 
 validate_num_vbuckets(Val) ->
     case menelaus_util:parse_validate_number(Val, ?MIN_NUM_VBUCKETS,
