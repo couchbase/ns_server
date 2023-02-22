@@ -56,6 +56,11 @@ def run_testset(testset_class, test_names, cluster):
                                              [cluster], verbose=True)
             if err is not None:
                 errors.append(err)
+
+            _, err = safe_test_function_call(testset_instance, 'test_teardown',
+                                             [cluster])
+            if err is not None:
+                errors.append(err)
     finally:
         _, err = safe_test_function_call(testset_instance, 'teardown',
                                          [cluster])
@@ -120,6 +125,13 @@ class BaseTestSet(ABC):
 
         """
         raise NotImplementedError()
+
+    def test_teardown(self, cluster):
+        """
+        Executed when after each test finishes.
+
+        """
+        pass
 
 
 def delete_config_key(cluster, key):

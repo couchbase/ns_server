@@ -356,10 +356,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
         self.good_symbols = string.ascii_letters + string.digits + "._-%"
 
         # Deleting existing buckets to make space
-        buckets = self.request('GET', BUCKETS_ENDPOINT)
-        for bucket in buckets.json():
-            name = bucket['name']
-            self.request('DELETE', f"{BUCKETS_ENDPOINT}/{name}")
+        self.test_teardown(cluster)
 
     # TODO: Handle limits differently for greater ease of adding tests
     def init_limits(self, bucket_type, storage_backend, is_creation,
@@ -1051,10 +1048,15 @@ class BucketTestSetBase(testlib.BaseTestSet):
                 ]
 
     def teardown(self, cluster):
-        buckets = self.request('GET', BUCKETS_ENDPOINT)
+        pass
+
+    def test_teardown(self, cluster):
+        # Remove all buckets between tests, to ensure there is space for new
+        # buckets to be created
+        buckets = self.test_get(BUCKETS_ENDPOINT)
         for bucket in buckets.json():
             name = bucket['name']
-            self.request('DELETE', f"{BUCKETS_ENDPOINT}/{name}")
+            self.test_delete(f"{BUCKETS_ENDPOINT}/{name}")
 
     def get_next_name(self):
         name = f"test_{self.next_bucket_id}"
@@ -1877,21 +1879,15 @@ class BucketTestSetBase(testlib.BaseTestSet):
             else:
                 params = {}
 
-
-            try:
-                self.test_request('POST', endpoint, test_data, params=params,
-                                  expected_good=good, just_validate=just_validate,
-                                  original_data=original_data)
-            except AssertionError as e:
-                # To avoid other tests failing from ram quota limit,
-                # we remove the bucket being updated/created
-                self.request('DELETE', endpoint)
-                raise e
+            self.test_request('POST', endpoint, test_data, params=params,
+                              expected_good=good, just_validate=just_validate,
+                              original_data=original_data)
 
             if good and not just_validate:
                 if endpoint == BUCKETS_ENDPOINT:
-                    # Delete the bucket after creation to make space
-                    self.test_request('DELETE', f"{endpoint}/{test_data['name']}")
+                    # If we are testing bucket creation then we will not reuse
+                    # this bucket, so we must delete it to make space
+                    self.test_delete(f"{endpoint}/{test_data['name']}")
                 elif self.is_enterprise and self.is_elixir \
                         and test_data['bucketType'] != "memcached":
                     pitr_reset = {'pitrGranularity': 600,
@@ -1975,8 +1971,12 @@ class BucketTestSetBase(testlib.BaseTestSet):
 
             self.test_body(good, endpoint, param, initial_data)
 
+            # We don't delete the bucket after immediately after testing each
+            # bucket update, as we reuse it for testing updates with the same
+            # initial configuration. We must therefore delete it here, to allow
+            # space for testing the next bucket configuration.
             if not is_creation:
-                self.test_request('DELETE', endpoint)
+                self.test_delete(endpoint)
 
         # TODO: make this message clearer and more concise
         print(f"Tested {['bad', 'good'][good]} values for {param}. "
@@ -2205,8 +2205,6 @@ class BasicBucketTestSet(BucketTestSetBase):
         self.test_post(BUCKETS_ENDPOINT, data=bucket_data,
                        errors={"name": "Bucket with given name already exists"})
 
-        self.request('DELETE', f"{BUCKETS_ENDPOINT}/{bucket_data['name']}")
-
     # MB-54441 Bucket ram quota can sometimes be set too high when updating...
     def ram_quota_rapid_update_test(self, cluster):
         self.cur_main_dict = {
@@ -2214,7 +2212,7 @@ class BasicBucketTestSet(BucketTestSetBase):
             "storage_backend": "couchstore"
         }
         self.init_limits("couchbase", "couchstore", True)
-        self.request('DELETE', BUCKET_ENDPOINT_DEFAULT)
+
         self.test_request('POST', BUCKETS_ENDPOINT,
                      data={
                          "name": "default",

@@ -21,6 +21,9 @@ class DummyTestSet(testlib.BaseTestSet):
     def teardown(self, cluster):
         pass
 
+    def test_teardown(self, cluster):
+        pass
+
     def dummy1_test(self, cluster):
         assert False, "Dummy error reason"
 
