@@ -245,7 +245,11 @@ assert_saml_sso(Opts) ->
         _ -> menelaus_util:web_exception(404, "not found")
     end.
 
-reply_via_redirect(IDPURL, SignedXml, RelayState, ExtraHeaders, Req) ->
+reply_via_redirect("", _, _, _, _) ->
+    menelaus_util:web_exception(500,
+                                <<"IDP doesn't support Redirect binding">>);
+reply_via_redirect(IDPURL, SignedXml, RelayState, ExtraHeaders, Req)
+                                     when is_list(IDPURL), length(IDPURL) > 0 ->
     Location = esaml_binding:encode_http_redirect(
                  IDPURL,
                  SignedXml,
@@ -258,7 +262,10 @@ reply_via_redirect(IDPURL, SignedXml, RelayState, ExtraHeaders, Req) ->
                              [{allow_cache, false},
                               {"Location", LocationStr} | ExtraHeaders]).
 
-reply_via_post(IDPURL, SignedXml, RelayState, ExtraHeaders, Req) ->
+reply_via_post("", _, _, _, _) ->
+    menelaus_util:web_exception(500, <<"IDP doesn't support POST binding">>);
+reply_via_post(IDPURL, SignedXml, RelayState, ExtraHeaders, Req)
+                                     when is_list(IDPURL), length(IDPURL) > 0 ->
     HTMLBin = esaml_binding:encode_http_post(IDPURL, SignedXml, RelayState),
     ?log_debug("Redirecting user to ~s using POST:~n~s", [IDPURL, HTMLBin]),
     menelaus_util:reply(Req, HTMLBin, 200,
