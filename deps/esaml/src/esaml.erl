@@ -527,8 +527,11 @@ to_xml(#esaml_logoutresp{version = V, issue_instant  = Time,
         content = [
             #xmlElement{name = 'saml:Issuer', content = [#xmlText{value = Issuer}]},
             #xmlElement{name = 'samlp:Status', content = [
-                    #xmlElement{name = 'samlp:StatusCode', content = [
-                        #xmlText{value = rev_status_code_map(Status)}]}]}
+                    #xmlElement{name = 'samlp:StatusCode',
+                                attributes =
+                                    [#xmlAttribute{
+                                        name = 'Value',
+                                        value = rev_status_code_map(Status)}]}]}
         ]
     });
 
