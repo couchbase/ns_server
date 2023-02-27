@@ -13,6 +13,7 @@
 
 -include("cut.hrl").
 -include("ns_common.hrl").
+-include("bucket_hibernation.hrl").
 
 %% API
 -export([start_link/0]).
@@ -21,9 +22,9 @@
          unset_service_manager/2,
          prepare_pause_bucket/3,
          unprepare_pause_bucket/2,
-         pause_bucket/5,
+         pause_bucket/3,
          unpause_bucket/2,
-         resume_bucket/5]).
+         resume_bucket/3]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -93,22 +94,20 @@ unprepare_pause_bucket(Bucket, Nodes) ->
                 ?TIMEOUT),
     handle_multicall_result(unprepare_pause_bucket, Results).
 
-pause_bucket(Bucket, RemotePath, BlobStorageRegion, Node, Manager) ->
+pause_bucket(Args, Node, Manager) ->
     gen_server:call(server(Node), {if_service_manager, Manager,
                                    {hibernation_op,
-                                    {pause_bucket, Bucket, RemotePath,
-                                     BlobStorageRegion}}},
+                                    {pause_bucket, Args}}},
                     ?PAUSE_BUCKET_TIMEOUT).
 
 unpause_bucket(Bucket, Node) ->
     gen_server:call(server(Node), {unpause_bucket, Bucket},
                     ?UNPAUSE_BUCKET_TIMEOUT).
 
-resume_bucket(Bucket, RemotePath, BlobStorageRegion, Node, Manager) ->
+resume_bucket(Args, Node, Manager) ->
     gen_server:call(server(Node), {if_service_manager, Manager,
                                    {hibernation_op,
-                                    {resume_bucket, Bucket, RemotePath,
-                                     BlobStorageRegion}}},
+                                    {resume_bucket, Args}}},
                     ?RESUME_BUCKET_TIMEOUT).
 
 start_link() ->
@@ -244,27 +243,24 @@ handle_unset_service_manager(#state{service_manager = {_Pid, MRef},
                      unset_worker(_),
                      unset_service_manager(_)]).
 
-handle_sub_call({hibernation_op, {pause_bucket, Bucket, RemotePath,
-                                  BlobStorageRegion}},
+handle_sub_call({hibernation_op,
+                 {pause_bucket,
+                  #bucket_hibernation_op_args{bucket = Bucket} = Args}},
                 From,
                 #state{from = undefined,
                        bucket = Bucket} = State) ->
     {WorkerPid, Ref} =
-        run_on_worker(
-          pause_bucket,
-          ?cut(do_pause_bucket(Bucket, RemotePath, BlobStorageRegion))),
+        run_on_worker(pause_bucket, ?cut(do_pause_bucket(Args))),
     {noreply, State#state{worker = {WorkerPid, Ref},
                           from = From,
                           op = pause_bucket}};
 
-handle_sub_call({hibernation_op, {resume_bucket, Bucket, RemotePath,
-                                  BlobStorageRegion}},
+handle_sub_call({hibernation_op,
+                 {resume_bucket, Args}},
                 From,
                 #state{from = undefined} = State) ->
     {WorkerPid, Ref} =
-        run_on_worker(
-          resume_bucket,
-          ?cut(do_resume_bucket(Bucket, RemotePath, BlobStorageRegion))),
+        run_on_worker(resume_bucket, ?cut(do_resume_bucket(Args))),
     {noreply, State#state{worker = {WorkerPid, Ref},
                           from = From,
                           op = resume_bucket}};
@@ -278,39 +274,48 @@ append_path_separator(Path) ->
     false = misc:is_windows(),
     Path ++ "/".
 
-do_pause_bucket(Bucket, RemotePath, BlobStorageRegion) ->
-    ?log_info("Starting pause Bucket: ~p, RemotePath: ~p",
-              [Bucket, RemotePath]),
+do_pause_bucket(#bucket_hibernation_op_args{
+                   bucket = Bucket,
+                   remote_path = RemotePath0,
+                   blob_storage_region = BlobStorageRegion} = Args) ->
+    ?log_info("Starting pause Bucket: ~p, RemotePath0: ~p",
+              [Bucket, RemotePath0]),
 
     %% Kill all the DCP replications for this bucket.
     ok = replication_manager:set_incoming_replication_map(Bucket, []),
 
     ok = ns_memcached:pause_bucket(Bucket),
 
-    {ok, SourcePath0} = ns_storage_conf:this_node_bucket_dbdir(Bucket),
-    SourcePath = append_path_separator(SourcePath0),
+    {ok, LocalPath0} = ns_storage_conf:this_node_bucket_dbdir(Bucket),
+    LocalPath = append_path_separator(LocalPath0),
 
-    DestPath = hibernation_utils:get_bucket_data_remote_path(RemotePath, node(),
-                                                             Bucket),
+    RemotePath = hibernation_utils:get_bucket_data_remote_path(
+                   RemotePath0, node(), Bucket),
 
     ok = hibernation_utils:check_test_condition(node_pause_before_data_sync),
 
     ?log_info("Pause Bucket: ~p, Source: ~p, Dest: ~p, BlobStorageRegion: ~p",
-              [Bucket, SourcePath, DestPath, BlobStorageRegion]),
-    ok = hibernation_utils:sync_s3(SourcePath, DestPath, BlobStorageRegion, to).
+              [Bucket, LocalPath, RemotePath, BlobStorageRegion]),
+    ok = hibernation_utils:sync_s3(
+           Args#bucket_hibernation_op_args{remote_path = RemotePath}, LocalPath,
+           to).
 
-do_resume_bucket(Bucket, RemotePath, BlobStorageRegion) ->
-    SourcePath = append_path_separator(RemotePath),
-    {ok, DestPath} = ns_storage_conf:this_node_dbdir(),
+do_resume_bucket(#bucket_hibernation_op_args{
+                    bucket = Bucket,
+                    remote_path = RemotePath0,
+                    blob_storage_region = BlobStorageRegion} = Args) ->
+    RemotePath = RemotePath0 ++ "/",
+    {ok, LocalPath} = ns_storage_conf:this_node_dbdir(),
     ?log_info("Resume Bucket: ~p, Source: ~p, Dest: ~p, BlobStorageRegion - ~p",
-              [Bucket, SourcePath, BlobStorageRegion, DestPath]),
+              [Bucket, RemotePath, BlobStorageRegion, LocalPath]),
 
     %% On a new resume, we cleanup any old data for previously failed resumes
     ok = ns_storage_conf:delete_unused_buckets_db_files(),
 
     ok = hibernation_utils:check_test_condition(node_resume_before_data_sync),
 
-    ok = hibernation_utils:sync_s3(SourcePath, DestPath, BlobStorageRegion,
+    ok = hibernation_utils:sync_s3(Args#bucket_hibernation_op_args{
+                                     remote_path = RemotePath}, LocalPath,
                                    from).
 
 do_unpause_bucket(Bucket) ->

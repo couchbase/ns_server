@@ -11,6 +11,7 @@
 
 -include("ns_common.hrl").
 -include("cut.hrl").
+-include("bucket_hibernation.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -29,8 +30,7 @@
 -define(RESUME_BUCKET_DRY_RUN_TIMEOUT,
         ?get_timeout({dry_run, resume_bucket}, 5 * 60 * 1000)).
 
--export([pause_bucket/4,
-         resume_bucket/5]).
+-export([run_op/3]).
 
 -spec register_worker(For :: service()) -> true.
 register_worker(For) ->
@@ -62,18 +62,15 @@ build_workers_params(RemotePath, KvNodes, Snapshot) ->
     [build_kv_worker_params(RemotePath, KvNodes) |
      build_service_workers_params(RemotePath, Snapshot)].
 
-pause_bucket(Bucket, Snapshot, RemotePath, BlobStorageRegion) ->
-    spawn_link_hibernation_manager(
-      pause_bucket, ?cut(do_pause_bucket(Bucket, Snapshot, RemotePath,
-                                         BlobStorageRegion))).
+run_op(Op, Args, ExtraArgs) ->
+    Body =
+        case Op of
+            pause_bucket ->
+                ?cut(pause_bucket(Args, ExtraArgs));
+            resume_bucket ->
+                ?cut(resume_bucket(Args, ExtraArgs))
+        end,
 
-resume_bucket(Bucket, NewBucketConfig, Metadata, RemotePath,
-              BlobStorageRegion) ->
-    spawn_link_hibernation_manager(
-      resume_bucket, ?cut(do_resume_bucket(Bucket, NewBucketConfig, Metadata,
-                                           RemotePath, BlobStorageRegion))).
-
-spawn_link_hibernation_manager(Op, Body) ->
     proc_lib:spawn_link(
       fun () ->
               leader_activities:run_activity(
@@ -88,7 +85,10 @@ get_pause_kv_nodes(Bucket, Snapshot) ->
     {ok, BucketCfg} = ns_bucket:get_bucket(Bucket, Snapshot),
     ns_bucket:get_servers(BucketCfg).
 
-do_pause_bucket(Bucket, Snapshot, RemotePath, BlobStorageRegion) ->
+pause_bucket(#bucket_hibernation_op_args{
+                bucket = Bucket,
+                remote_path = RemotePath} = Args,
+             [Snapshot]) ->
     KvNodes = get_pause_kv_nodes(Bucket, Snapshot),
     WorkersParams = build_workers_params(RemotePath, KvNodes, Snapshot),
 
@@ -99,28 +99,25 @@ do_pause_bucket(Bucket, Snapshot, RemotePath, BlobStorageRegion) ->
            fun ({For, Nodes, RP}) ->
                    register_worker(For),
                    pause_bucket_body(
-                     For, Bucket, Snapshot, RP, BlobStorageRegion, Nodes)
+                     For, Args#bucket_hibernation_op_args{remote_path = RP},
+                     Snapshot, Nodes)
            end, WorkersParams, ?PAUSE_BUCKET_TIMEOUT),
 
     ok = ns_bucket:update_bucket_props(Bucket, [{hibernation_state, paused}]),
     ok = hibernation_utils:check_test_condition(pause_after_node_ops_run),
     kv_hibernation_agent:unprepare_pause_bucket(Bucket, KvNodes).
 
--spec pause_bucket_body(For, Bucket, Snapshot, RemotePath, BlobStorageRegion,
-                        Nodes) -> ok
+-spec pause_bucket_body(For, Args, Snapshot, Nodes) -> ok
     when For :: service(),
-         Bucket :: bucket_name(),
+         Args :: #bucket_hibernation_op_args{},
          Snapshot :: map(),
-         RemotePath :: string(),
-         BlobStorageRegion :: string(),
          Nodes :: [node()].
-pause_bucket_body(For, Bucket, Snapshot, RemotePath, BlobStorageRegion,
-                  Nodes) ->
+
+pause_bucket_body(For, Args, Snapshot, Nodes) ->
     ProgressCallback = fun (_) -> ok end,
 
     service_manager:with_trap_exit_spawn_monitor_pause_bucket(
-      For, Bucket, Snapshot, RemotePath, BlobStorageRegion, Nodes,
-      ProgressCallback, #{}).
+      For, Args, Snapshot, Nodes, ProgressCallback, #{}).
 
 get_new_map(OldMap, ServerMapping) ->
     [[maps:get(Item, ServerMapping) || Item <- VbChain] || VbChain <- OldMap].
@@ -150,8 +147,10 @@ activate_restored_bucket(Bucket, PausedBucketCfg, DesiredServers,
     NewMap = get_new_map(OldMap, ServerMapping),
     ns_bucket:set_restored_attributes(Bucket, NewMap, DesiredServers).
 
-do_resume_bucket(Bucket, NewBucketConfig, Metadata, RemotePath,
-                 BlobStorageRegion) ->
+resume_bucket(#bucket_hibernation_op_args{
+                 bucket = Bucket,
+                 remote_path = RemotePath} = Args,
+              [Metadata, NewBucketConfig]) ->
     Snapshot = ns_cluster_membership:get_snapshot(),
     PausedBucketCfg = hibernation_utils:get_bucket_config(Metadata),
     DesiredServers = proplists:get_value(desired_servers, NewBucketConfig),
@@ -174,8 +173,9 @@ do_resume_bucket(Bucket, NewBucketConfig, Metadata, RemotePath,
            fun ({For, Nodes, RP}) ->
                    register_worker(For),
                    resume_bucket_body(
-                     For, Bucket, ServerMapping, RP, BlobStorageRegion,
-                     true, Nodes)
+                     For,
+                     Args#bucket_hibernation_op_args{remote_path = RP},
+                     ServerMapping, true, Nodes)
            end, DryRunWorkerParams, ?RESUME_BUCKET_DRY_RUN_TIMEOUT),
 
     %% Restore the bucket in resuming state, at this point no server list or
@@ -191,8 +191,9 @@ do_resume_bucket(Bucket, NewBucketConfig, Metadata, RemotePath,
            fun ({For, Nodes, RP}) ->
                    register_worker(For),
                    resume_bucket_body(
-                     For, Bucket, ServerMapping, RP, BlobStorageRegion,
-                     false, Nodes)
+                     For,
+                     Args#bucket_hibernation_op_args{remote_path = RP},
+                     ServerMapping, false, Nodes)
            end, WorkersParams, ?RESUME_BUCKET_TIMEOUT),
 
     ok = hibernation_utils:check_test_condition(resume_after_node_ops_run),
@@ -205,23 +206,18 @@ do_resume_bucket(Bucket, NewBucketConfig, Metadata, RemotePath,
     ok = activate_restored_bucket(Bucket, PausedBucketCfg, DesiredServers,
                                   OldToNewServerMap).
 
--spec resume_bucket_body(For, Bucket, ServerMapping, RemotePath,
-                         BlobStorageRegion, DryRun,
-                         Nodes) -> ok
+-spec resume_bucket_body(For, Args, ServerMapping, DryRun, Nodes) -> ok
     when For :: service(),
-         Bucket :: bucket_name(),
+         Args :: #bucket_hibernation_op_args{},
          ServerMapping :: #{node() => node()},
-         RemotePath :: string(),
-         BlobStorageRegion :: string(),
          DryRun :: true | false,
          Nodes :: [node()].
-resume_bucket_body(For, Bucket, ServerMapping, RemotePath, BlobStorageRegion,
-                   DryRun, Nodes) ->
+
+resume_bucket_body(For, Args, ServerMapping, DryRun, Nodes) ->
     ProgressCallback = fun (_) -> ok end,
 
     service_manager:with_trap_exit_spawn_monitor_resume_bucket(
-      For, Bucket, ServerMapping, RemotePath, BlobStorageRegion,
-      DryRun, Nodes, ProgressCallback, #{}).
+      For, Args, DryRun, ServerMapping, Nodes, ProgressCallback, #{}).
 
 -ifdef(TEST).
 
@@ -249,7 +245,7 @@ meck_expect_base() ->
                         #{}
                 end),
     meck:expect(hibernation_utils, get_metadata_from_s3,
-                fun (_, _) ->
+                fun (_) ->
                         [{bucket_cfg, [{map, []}, {servers, []}]},
                          {version, ?VERSION_ELIXIR}, {bucket_manifest, []},
                          {bucket_uuid, 1}]
@@ -356,75 +352,94 @@ hibernation_manager_test_() ->
        fun () ->
                meck:expect(service_manager,
                            with_trap_exit_spawn_monitor_pause_bucket,
-                           fun (_Service, _Bucket, _Snapshot, _RemotePath,
-                                _BlobStorageRegion, _Nodes, _ProgressCallback,
-                                _Opts) ->
+                           fun (_Service, _Args, _Snapshot, _Nodes,
+                                _ProgressCallback, _Opts) ->
                                    hibernation_op_success()
                            end),
 
                run_test_and_assert(
-                 ?cut(do_pause_bucket(Bucket, #{}, S3Path, Region)),
+                 ?cut(pause_bucket(
+                        #bucket_hibernation_op_args{
+                           bucket = Bucket,
+                           remote_path = S3Path,
+                           blob_storage_region = Region}, [#{}])),
                  exit_normal, exit_not_normal)
-       end
-       },
+       end},
       {"Pause Bucket Failure",
        fun () ->
                meck:expect(service_manager,
                            with_trap_exit_spawn_monitor_pause_bucket,
-                           fun (Service, _Bucket, _Snapshot, _RemotePath,
-                                _BlobStorageRegion, _Nodes, _ProgressCallback,
-                                _Opts) ->
+                           fun (Service, _Args, _Snapshot, _Nodes,
+                                _ProgressCallback, _Opts) ->
                                    hibernation_op_fail(Service)
                            end),
 
                run_test_and_assert(
-                 ?cut(do_pause_bucket(Bucket, #{}, S3Path, Region)),
+                 ?cut(pause_bucket(
+                        #bucket_hibernation_op_args{
+                           bucket = Bucket,
+                           remote_path = S3Path,
+                           blob_storage_region = Region}, [#{}])),
                  exit_not_normal, exit_normal)
        end},
       {"Resume Bucket Success",
        fun () ->
                meck:expect(service_manager,
                            with_trap_exit_spawn_monitor_resume_bucket,
-                           fun (_Service, _Bucket, _ServerMapping, _RemotePath,
-                                _BlobStorageRegion, _DryRun, _Nodes,
-                                _ProgressCallback, _Opts) ->
+                           fun (_Service, _Args, _DryRun, _ServerMapping,
+                                _Nodes, _ProgressCallback, _Opts) ->
                                    hibernation_op_success()
                            end),
                meck:expect(ns_bucket, get_bucket,
                            fun (_) ->
                                    not_present
                            end),
-               Metadata = hibernation_utils:get_metadata_from_s3(Bucket,
-                                                                 Region),
-               {ok, NewBucketConfig} =
+               Metadata = hibernation_utils:get_metadata_from_s3(
+                            #bucket_hibernation_op_args{
+                               bucket = Bucket,
+                               remote_path = S3Path,
+                               blob_storage_region = Region}),
+               {ok, [NewBucketConfig]} =
                    hibernation_utils:check_allow_resume_op(
                      Bucket, Metadata),
+
                run_test_and_assert(
-                 ?cut(do_resume_bucket(Bucket, NewBucketConfig, Metadata,
-                                       S3Path, Region)),
+                 ?cut(resume_bucket(
+                        #bucket_hibernation_op_args{
+                           bucket = Bucket,
+                           remote_path = S3Path,
+                           blob_storage_region = Region},
+                        [Metadata, NewBucketConfig])),
                  exit_normal, exit_not_normal)
         end},
       {"Resume Bucket Failure",
        fun () ->
                meck:expect(service_manager,
                            with_trap_exit_spawn_monitor_resume_bucket,
-                           fun (Service, _Bucket, _ServerMapping,
-                                _RemotePath, _BlobStorage, _DryRun, _Nodes,
-                                _ProgressCallback, _Opts) ->
+                           fun (Service, _Args, _DryRun, _ServerMapping,
+                                _Nodes, _ProgressCallback, _Opts) ->
                                    hibernation_op_fail(Service)
                            end),
                meck:expect(ns_bucket, get_bucket,
                            fun (_) ->
                                    not_present
                            end),
-               Metadata = hibernation_utils:get_metadata_from_s3(Bucket,
-                                                                 Region),
-               {ok, NewBucketConfig} =
+               Metadata = hibernation_utils:get_metadata_from_s3(
+                           #bucket_hibernation_op_args{
+                               bucket = Bucket,
+                               remote_path = S3Path,
+                               blob_storage_region = Region}),
+               {ok, [NewBucketConfig]} =
                    hibernation_utils:check_allow_resume_op(
                      Bucket, Metadata),
+
                run_test_and_assert(
-                 ?cut(do_resume_bucket(Bucket, NewBucketConfig, Metadata,
-                                       S3Path, Region)),
+                 ?cut(resume_bucket(
+                        #bucket_hibernation_op_args{
+                           bucket = Bucket,
+                           remote_path = S3Path,
+                           blob_storage_region = Region},
+                        [Metadata, NewBucketConfig])),
                  exit_not_normal, exit_normal)
        end}]}.
 
@@ -454,7 +469,7 @@ force_unpause_via_calling_process_failure_body() ->
             ok
          end),
     meck:expect(hibernation_utils, sync_s3,
-        fun(_, _, _, _) ->
+        fun(_, _, _) ->
             Self ! pause_started,
             receive nothing -> ok end
         end),
@@ -481,7 +496,10 @@ force_unpause_via_calling_process_failure_body() ->
                             ok = kv_hibernation_agent:prepare_pause_bucket(
                                    "Bucket", [node()], ParentPid),
                             ok = kv_hibernation_agent:pause_bucket(
-                                   "Bucket", "Path", "us-east-1",
+                                   #bucket_hibernation_op_args{
+                                     bucket = "Bucket",
+                                     remote_path = "Path",
+                                     blob_storage_region = "us-east-1"},
                                    node(), self())
                     end
                    ),
@@ -511,7 +529,7 @@ force_unpause_via_calling_process_failure_test() ->
 
 resume_helpers_test_body() ->
     meck:expect(hibernation_utils, get_metadata_from_s3,
-                fun (_, _) ->
+                fun (_) ->
                         [{bucket_cfg, [{map, [['n_0@127.0.0.1','n_1@127.0.0.1'],
                                               ['n_0@127.0.0.1','n_1@127.0.0.1'],
                                               ['n_0@127.0.0.1','n_1@127.0.0.1'],
@@ -537,8 +555,11 @@ resume_helpers_test_body() ->
     meck_expect_ns_storage_conf(),
 
     Bucket = "BucketName",
-    Metadata = hibernation_utils:get_metadata_from_s3("s3://foo-remote-path",
-                                                      "us-east-1"),
+    Metadata = hibernation_utils:get_metadata_from_s3(
+                 #bucket_hibernation_op_args{
+                    bucket = Bucket,
+                    remote_path = "s3://foo-remote-path",
+                    blob_storage_region = "us-east-1"}),
     PausedStubCfg = hibernation_utils:get_bucket_config(Metadata),
     NewConfig = [{map, proplists:get_value(map, PausedStubCfg)}] ++
                 [{servers, []}, {hibernation_state, resuming}],

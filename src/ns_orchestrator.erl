@@ -13,6 +13,7 @@
 
 -include("ns_common.hrl").
 -include("cut.hrl").
+-include("bucket_hibernation.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -52,9 +53,9 @@
          update_bucket/4,
          delete_bucket/1,
          flush_bucket/1,
-         start_pause_bucket/3,
+         start_pause_bucket/1,
          stop_pause_bucket/1,
-         start_resume_bucket/4,
+         start_resume_bucket/2,
          stop_resume_bucket/1,
          failover/2,
          start_failover/2,
@@ -173,8 +174,7 @@ delete_bucket(BucketName) ->
 flush_bucket(BucketName) ->
     call({flush_bucket, BucketName}, infinity).
 
--spec start_pause_bucket(bucket_name(), string(),
-                         BlobStorageRegion :: string()) ->
+-spec start_pause_bucket(Args :: #bucket_hibernation_op_args{}) ->
     ok |
     bucket_not_found |
     not_supported |
@@ -187,9 +187,9 @@ flush_bucket(BucketName) ->
     full_servers_unavailable |
     failed_service_nodes |
     map_servers_mismatch.
-start_pause_bucket(Bucket, RemotePath, BlobStorageRegion) ->
-    call({{bucket_hibernation_op,
-           {start, pause_bucket}}, [Bucket, RemotePath, BlobStorageRegion]}).
+start_pause_bucket(Args) ->
+    call({{bucket_hibernation_op, {start, pause_bucket}},
+          {Args, []}}).
 
 -spec stop_pause_bucket(bucket_name()) ->
     ok |
@@ -201,18 +201,16 @@ start_pause_bucket(Bucket, RemotePath, BlobStorageRegion) ->
 stop_pause_bucket(Bucket) ->
     call({{bucket_hibernation_op, {stop, pause_bucket}}, [Bucket]}).
 
--spec start_resume_bucket(bucket_name(), string(),
-                          BlobStorageRegion :: string(), list()) ->
+-spec start_resume_bucket(#bucket_hibernation_op_args{}, list()) ->
     ok |
     {need_more_space, term()} |
     bucket_exists |
     rebalance_running |
     in_recovery |
     in_bucket_hibernation.
-start_resume_bucket(Bucket, RemotePath, BlobStorageRegion, Metadata) ->
-    call({{bucket_hibernation_op,
-           {start, resume_bucket}}, [Bucket, RemotePath,
-                                     BlobStorageRegion, Metadata]}).
+start_resume_bucket(Args, Metadata) ->
+    call({{bucket_hibernation_op, {start, resume_bucket}},
+          {Args, [Metadata]}}).
 
 -spec stop_resume_bucket(bucket_name()) ->
     ok |
@@ -931,22 +929,22 @@ idle({ensure_janitor_run, Item}, From, State) ->
       end, idle, State);
 
 %% Start Pause/Resume bucket operations.
-idle({{bucket_hibernation_op, {start, pause_bucket = Op}},
-      [Bucket, RemotePath, BlobStorageRegion]}, From, _State) ->
-    Snapshot = hibernation_utils:get_snapshot(Bucket),
-    case hibernation_utils:check_allow_pause_op(Bucket, Snapshot) of
-        ok ->
-            run_hibernation_op(Bucket, RemotePath,
-                               BlobStorageRegion, Snapshot, Op, From);
-        Error ->
-            {keep_state_and_data, [{reply, From, Error}]}
-    end;
-idle({{bucket_hibernation_op, {start, resume_bucket = Op}},
-     [Bucket, RemotePath, BlobStorageRegion, Metadata]}, From, _State) ->
-    case hibernation_utils:check_allow_resume_op(Bucket, Metadata) of
-        {ok, NewBucketConfig} ->
-            run_hibernation_op(Bucket, RemotePath, BlobStorageRegion,
-                               {NewBucketConfig, Metadata}, Op, From);
+idle({{bucket_hibernation_op, {start, Op}},
+      {#bucket_hibernation_op_args{bucket = Bucket} = Args,
+       ExtraArgs}}, From, _State) ->
+    Result =
+        case Op of
+            pause_bucket ->
+                hibernation_utils:check_allow_pause_op(Bucket);
+            resume_bucket ->
+                [Metadata] = ExtraArgs,
+                hibernation_utils:check_allow_resume_op(Bucket, Metadata)
+        end,
+
+    case Result of
+        {ok, RunOpExtraArgs} ->
+            run_hibernation_op(
+              Op, Args, ExtraArgs ++ RunOpExtraArgs, From);
         {error, Error} ->
             {keep_state_and_data, [{reply, From, Error}]}
     end;
@@ -1193,8 +1191,16 @@ wait_for_nodes(Nodes, Pred, Timeout) ->
               wait_for_nodes_loop(InitiallyFilteredNodes)
       end).
 
-hibernation_op_state_update(Bucket, RemotePath, BlobStorageRegion,
-                            Manager, From, Op) ->
+run_hibernation_op(Op,
+                   #bucket_hibernation_op_args{
+                      bucket = Bucket,
+                      remote_path = RemotePath,
+                      blob_storage_region = BlobStorageRegion} = Args,
+                   ExtraArgs, From) ->
+    log_initiated_hibernation_event(Bucket, Op),
+
+    Manager = hibernation_manager:run_op(Op, Args, ExtraArgs),
+
     ale:info(?USER_LOGGER, "Starting hibernation operation (~p) for bucket: "
              "~p. RemotePath - ~p. BlobStorageRegion - ~p",
              [Op, Bucket, RemotePath, BlobStorageRegion]),
@@ -1205,23 +1211,6 @@ hibernation_op_state_update(Bucket, RemotePath, BlobStorageRegion,
                                bucket = Bucket,
                                op = Op},
      [{reply, From, ok}]}.
-
-run_hibernation_op(Bucket, RemotePath, BlobStorageRegion,
-                   Snapshot, pause_bucket = Op, From) ->
-    log_hibernation_event(Bucket, bucket_pause_initiated),
-    Manager = hibernation_manager:pause_bucket(Bucket, Snapshot, RemotePath,
-                                               BlobStorageRegion),
-    hibernation_op_state_update(Bucket, RemotePath, BlobStorageRegion,
-                                Manager, From, Op);
-run_hibernation_op(Bucket, RemotePath, BlobStorageRegion,
-                   {NewBucketConfig, Metadata},
-                   resume_bucket = Op, From) ->
-    log_hibernation_event(Bucket, bucket_resume_initiated),
-    Manager = hibernation_manager:resume_bucket(Bucket, NewBucketConfig,
-                                                Metadata, RemotePath,
-                                                BlobStorageRegion),
-    hibernation_op_state_update(Bucket, RemotePath, BlobStorageRegion,
-                                Manager, From, Op).
 
 perform_bucket_flushing(BucketName) ->
     case ns_bucket:get_bucket(BucketName) of
@@ -1895,7 +1884,7 @@ handle_hibernation_manager_exit(normal, Bucket, pause_bucket) ->
         ok ->
             ale:debug(?USER_LOGGER, "pause_bucket done for Bucket ~p.",
                       [Bucket]),
-            log_hibernation_event(Bucket, bucket_pause_completed),
+            log_hibernation_event(Bucket, pause_bucket_completed),
             hibernation_utils:update_hibernation_status(completed);
         Reason ->
             handle_hibernation_manager_exit({bucket_delete_failed, Reason},
@@ -1904,7 +1893,7 @@ handle_hibernation_manager_exit(normal, Bucket, pause_bucket) ->
 
 handle_hibernation_manager_exit(normal, Bucket, resume_bucket) ->
     ale:debug(?USER_LOGGER, "resume_bucket done for Bucket ~p.", [Bucket]),
-    log_hibernation_event(Bucket, bucket_resume_completed),
+    log_hibernation_event(Bucket, resume_bucket_completed),
     hibernation_utils:update_hibernation_status(completed);
 
 handle_hibernation_manager_exit(shutdown , Bucket, Op) ->
@@ -1926,16 +1915,20 @@ handle_hibernation_manager_shutdown(Reason, Bucket, Op) ->
 log_hibernation_event(Bucket, EventId) ->
     event_log:add_log(EventId, [{bucket, list_to_binary(Bucket)}]).
 
+log_initiated_hibernation_event(Bucket, pause_bucket) ->
+    log_hibernation_event(Bucket, pause_bucket_initiated);
+log_initiated_hibernation_event(Bucket, resume_bucket) ->
+    log_hibernation_event(Bucket, resume_bucket_initiated).
+
 log_failed_hibernation_event(Bucket, pause_bucket) ->
-    log_hibernation_event(Bucket, bucket_pause_failed);
+    log_hibernation_event(Bucket, pause_bucket_failed);
 log_failed_hibernation_event(Bucket, resume_bucket) ->
-    log_hibernation_event(Bucket, bucket_resume_failed).
+    log_hibernation_event(Bucket, resume_bucket_failed).
 
 log_stopped_hibernation_event(Bucket, pause_bucket) ->
-    log_hibernation_event(Bucket, bucket_pause_stopped);
+    log_hibernation_event(Bucket, pause_bucket_stopped);
 log_stopped_hibernation_event(Bucket, resume_bucket) ->
-    log_hibernation_event(Bucket, bucket_resume_stopped).
-
+    log_hibernation_event(Bucket, resume_bucket_stopped).
 
 -spec not_running(Op :: pause_bucket | resume_bucket) -> atom().
 not_running(Op) ->

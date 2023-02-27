@@ -19,6 +19,7 @@
 -include("ns_stats.hrl").
 -include("ns_bucket.hrl").
 -include("cut.hrl").
+-include("bucket_hibernation.hrl").
 
 -define(DEFAULT_MAGMA_MIN_MEMORY_QUOTA, 1024).
 
@@ -870,21 +871,21 @@ handle_start_hibernation(Req, StartFunc) ->
                    RemotePath = proplists:get_value(remote_path, Params),
                    BlobStorageRegion =
                        proplists:get_value(blob_storage_region, Params),
-                   StartFunc(Bucket, RemotePath, BlobStorageRegion)
+                   StartFunc(#bucket_hibernation_op_args{
+                               bucket = Bucket,
+                               remote_path = RemotePath,
+                               blob_storage_region = BlobStorageRegion})
            end, fun validators_start_hibernation/0).
 
 handle_start_pause(Req) ->
     handle_start_hibernation(Req,
-                             fun ns_orchestrator:start_pause_bucket/3).
+                             fun ns_orchestrator:start_pause_bucket/1).
 
 handle_start_resume(Req) ->
     handle_start_hibernation(
-      Req, fun(Bucket, RemotePath, BlobStorageRegion) ->
-                   Metadata = hibernation_utils:get_metadata_from_s3(
-                                RemotePath, BlobStorageRegion),
-                   ns_orchestrator:start_resume_bucket(Bucket, RemotePath,
-                                                       BlobStorageRegion,
-                                                       Metadata)
+      Req, fun(Args) ->
+                   Metadata = hibernation_utils:get_metadata_from_s3(Args),
+                   ns_orchestrator:start_resume_bucket(Args, Metadata)
            end).
 
 handle_stop_hibernation(Req, StopFunc) ->

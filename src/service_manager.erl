@@ -11,26 +11,16 @@
 
 -include("cut.hrl").
 -include("ns_common.hrl").
+-include("bucket_hibernation.hrl").
 
 -export([with_trap_exit_spawn_monitor_rebalance/6,
          with_trap_exit_spawn_monitor_failover/3,
-         with_trap_exit_spawn_monitor_pause_bucket/8,
-         with_trap_exit_spawn_monitor_resume_bucket/9]).
+         with_trap_exit_spawn_monitor_pause_bucket/6,
+         with_trap_exit_spawn_monitor_resume_bucket/7]).
 
 -record(rebalance_args, {keep_nodes = [] :: [node()],
                          eject_nodes = [] :: [node()],
                          delta_nodes = [] :: [node()]}).
-
--record(pause_bucket_args, {bucket :: bucket_name(),
-                            snapshot :: map(),
-                            remote_path :: string(),
-                            blob_storage_region :: string()}).
-
--record(resume_bucket_args, {bucket :: bucket_name(),
-                             serverMapping :: #{node() => node()},
-                             remote_path :: string(),
-                             blob_storage_region :: string(),
-                             dry_run :: boolean()}).
 
 %% TODO: These default timeouts are a function of the blobStorage
 %% upload/download speeds and the size of the data - therefore needs
@@ -45,8 +35,8 @@
                  all_nodes :: [node()],
                  op_type :: failover | rebalance | pause_bucket | resume_bucket,
                  op_body :: function(),
-                 op_args :: #rebalance_args{} | #pause_bucket_args{} |
-                            #resume_bucket_args{},
+                 op_args :: #rebalance_args{} |
+                 {#bucket_hibernation_op_args{}, tuple()},
                  progress_callback :: fun ((dict:dict()) -> any())}).
 
 with_trap_exit_spawn_monitor_rebalance(
@@ -66,8 +56,7 @@ with_trap_exit_spawn_monitor_failover(Service, KeepNodes, Opts) ->
                                  fun (_) -> ok end, Opts).
 
 with_trap_exit_spawn_monitor_pause_bucket(
-  Service, Bucket, Snapshot, RemotePath, BlobStorageRegion, Nodes,
-  ProgressCallback, Opts) ->
+  Service, Args, Snapshot, Nodes, ProgressCallback, Opts) ->
     OpBody =
         case Service of
             kv ->
@@ -78,16 +67,11 @@ with_trap_exit_spawn_monitor_pause_bucket(
 
     with_trap_exit_spawn_monitor(Service, pause_bucket, Nodes,
                                  OpBody,
-                                 #pause_bucket_args{
-                                    bucket = Bucket,
-                                    snapshot = Snapshot,
-                                    remote_path = RemotePath,
-                                    blob_storage_region = BlobStorageRegion},
+                                 {Args, {Snapshot}},
                                  ProgressCallback, Opts).
 
 with_trap_exit_spawn_monitor_resume_bucket(
-  Service, Bucket, ServerMapping, RemotePath, BlobStorageRegion, DryRun, Nodes,
-  ProgressCallback, Opts) ->
+  Service, Args, DryRun, ServerMapping, Nodes, ProgressCallback, Opts) ->
 
     OpBody =
         case Service of
@@ -99,12 +83,7 @@ with_trap_exit_spawn_monitor_resume_bucket(
 
     with_trap_exit_spawn_monitor(Service, resume_bucket, Nodes,
                                  OpBody,
-                                 #resume_bucket_args{
-                                    bucket = Bucket,
-                                    serverMapping = ServerMapping,
-                                    remote_path = RemotePath,
-                                    blob_storage_region = BlobStorageRegion,
-                                    dry_run = DryRun},
+                                 {Args, {DryRun, ServerMapping}},
                                  ProgressCallback, Opts).
 
 with_trap_exit_spawn_monitor(
@@ -339,28 +318,21 @@ rebalance_op(#state{
 pause_bucket_op(#state{service = Service,
                        all_nodes = Nodes,
                        service_manager = Manager},
-                #pause_bucket_args{bucket = Bucket,
-                                   remote_path = RemotePath,
-                                   blob_storage_region = BlobStorageRegion},
+                {#bucket_hibernation_op_args{} = Args, _ExtraArgs},
                 Id, Leader, _NodesInfo) ->
-    ok = service_agent:prepare_pause_bucket(Service, Nodes, Bucket, RemotePath,
-                                            BlobStorageRegion, Id, Manager),
-    ok = service_agent:pause_bucket(Service, Leader, Bucket, RemotePath,
-                                    BlobStorageRegion, Id, Manager).
+    ok = service_agent:prepare_pause_bucket(Service, Nodes, Id, Args, Manager),
+    ok = service_agent:pause_bucket(Service, Leader, Id, Args, Manager).
 
 resume_bucket_op(#state{service = Service,
                         all_nodes = Nodes,
                         service_manager = Manager},
-                 #resume_bucket_args{bucket = Bucket,
-                                     remote_path = RemotePath,
-                                     blob_storage_region = BlobStorageRegion,
-                                     dry_run = DryRun},
+                 {#bucket_hibernation_op_args{} = Args,
+                  {DryRun, _ServerMapping}},
                  Id, Leader, _NodesInfo) ->
-    ok = service_agent:prepare_resume_bucket(Service, Nodes, Bucket,
-                                             RemotePath, BlobStorageRegion,
-                                             DryRun, Id, Manager),
-    ok = service_agent:resume_bucket(Service, Leader, Bucket, RemotePath,
-                                     BlobStorageRegion, DryRun, Id, Manager).
+    ok = service_agent:prepare_resume_bucket(
+           Service, Nodes, Id, Args, DryRun, Manager),
+    ok = service_agent:resume_bucket(
+           Service, Leader, Id, Args, DryRun, Manager).
 
 build_rebalance_args(KeepNodes, EjectNodes, DeltaNodes0, NodeInfos0) ->
     NodeInfos = dict:from_list(NodeInfos0),
@@ -419,32 +391,25 @@ do_run_kv_op(#state{
 kv_pause_bucket_op(#state{
                       all_nodes = Nodes,
                       service_manager = Manager},
-                   #pause_bucket_args{
-                      bucket = Bucket,
-                      snapshot = Snapshot,
-                      remote_path = RemotePath,
-                      blob_storage_region = BlobStorageRegion}) ->
-    ok = hibernation_utils:upload_metadata_to_s3(
-           Bucket, Snapshot, RemotePath, BlobStorageRegion),
+                   {Args, {Snapshot}}) ->
+    ok = hibernation_utils:upload_metadata_to_s3(Args, Snapshot),
     hibernation_utils:run_hibernation_op(
       fun (Node) ->
-              ok = kv_hibernation_agent:pause_bucket(
-                     Bucket, RemotePath, BlobStorageRegion, Node, Manager)
+              ok = kv_hibernation_agent:pause_bucket(Args, Node, Manager)
       end, Nodes, ?PAUSE_BUCKET_TIMEOUT).
 
 kv_resume_bucket_op(#state{
                        all_nodes = Nodes,
                        service_manager = Manager},
-                    #resume_bucket_args{
-                       bucket = Bucket,
-                       serverMapping = ServerMapping,
-                       remote_path = RemotePath,
-                       blob_storage_region = BlobStorageRegion}) ->
+                    {#bucket_hibernation_op_args{
+                       remote_path = RemotePath} = Args,
+                     {_DryRun, ServerMapping}}) ->
     hibernation_utils:run_hibernation_op(
       fun (Node) ->
               {ok, OldNodeName} = maps:find(Node, ServerMapping),
               SourceRemotePath = hibernation_utils:get_node_data_remote_path(
                                    RemotePath, OldNodeName),
               ok = kv_hibernation_agent:resume_bucket(
-                     Bucket, SourceRemotePath, BlobStorageRegion, Node, Manager)
+                     Args#bucket_hibernation_op_args{
+                       remote_path = SourceRemotePath}, Node, Manager)
       end, Nodes, ?RESUME_BUCKET_TIMEOUT).
