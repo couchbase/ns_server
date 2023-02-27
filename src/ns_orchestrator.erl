@@ -370,7 +370,8 @@ start_rebalance(KnownNodes, EjectNodes, DeltaRecoveryBuckets,
 
 retry_rebalance(rebalance, Params, Id, Chk) ->
     call({maybe_start_rebalance,
-          maps:merge(maps:from_list(Params), #{id => Id, chk => Chk})});
+          maps:merge(maps:from_list(Params),
+                     #{id => Id, chk => Chk, services => all})});
 
 retry_rebalance(graceful_failover, Params, Id, Chk) ->
     call({maybe_retry_graceful_failover,
