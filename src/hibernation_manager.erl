@@ -343,10 +343,10 @@ run_test_and_assert(TestBody, SuccessTag, FailureTag) ->
     ?assertEqual(TestSuccess, true),
     0 = ?flush(_).
 
-hibernation_manager_test() ->
+hibernation_manager_test_() ->
     {foreach,
      fun meck_expect_base/0,
-     fun () ->
+     fun (_) ->
              meck:unload(meck_base_modules())
      end,
      [{"Pause Bucket Success",
