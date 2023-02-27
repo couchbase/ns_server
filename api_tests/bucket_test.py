@@ -178,7 +178,6 @@ class BucketTestSetBase(testlib.BaseTestSet):
         self.addr = None
         self.auth = None
         self.memsize = None
-        self.original_data = None
         self.next_bucket_id = 0
         self.good_count = 0
         self.bad_count = 0
@@ -355,19 +354,6 @@ class BucketTestSetBase(testlib.BaseTestSet):
         self.is_serverless = cluster.is_serverless
         self.is_dev_preview = cluster.is_dev_preview
         self.good_symbols = string.ascii_letters + string.digits + "._-%"
-
-        r = self.request('GET', BUCKET_ENDPOINT_DEFAULT)
-        if r.status_code == 200:
-            info = r.json()
-            self.original_data = {
-                "name": info['name'],
-                "ramQuota": get_ram_quota(info)
-            }
-        else:
-            self.original_data = {
-                "name": "default",
-                "ramQuota": self.requirements().min_memsize
-            }
 
         # Deleting existing buckets to make space
         buckets = self.request('GET', BUCKETS_ENDPOINT)
@@ -1069,7 +1055,6 @@ class BucketTestSetBase(testlib.BaseTestSet):
         for bucket in buckets.json():
             name = bucket['name']
             self.request('DELETE', f"{BUCKETS_ENDPOINT}/{name}")
-        self.request('POST', BUCKETS_ENDPOINT, data=self.original_data)
 
     def get_next_name(self):
         name = f"test_{self.next_bucket_id}"
