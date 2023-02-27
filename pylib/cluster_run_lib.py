@@ -65,7 +65,7 @@ PREFIX = config['prefix']
 
 valid_bucket_types = ["ephemeral", "membase", "memcached"]
 valid_service_types = {"kv", "n1ql", "index", "fts", "cbas", "eventing",
-        "backup"}
+        "backup", "none"}
 
 def setup_extra_ns_server_app_file(force_community, start_index):
     # The extra/ebin directory contains modified versions of files also
@@ -739,6 +739,8 @@ def connect(num_nodes=0,
         services = deploy.get("n" + str(i), [])
         if not services:
             services = ["kv"]
+        if services == ['none']:
+            services = ""
         print("Connecting node {0} with services {1}".format(i, str(services)))
         cluster_member_port = base_port if community_edition else \
             base_port + 10000

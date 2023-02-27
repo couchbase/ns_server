@@ -432,6 +432,11 @@ do_maybe_delay_eject_nodes(Timestamps, EjectNodes) ->
     EjectedServices =
         ordsets:union([ordsets:from_list(ns_cluster_membership:node_services(N))
                        || N <- EjectNodes]),
+    do_maybe_delay_eject_nodes_inner(Timestamps, EjectNodes, EjectedServices).
+
+do_maybe_delay_eject_nodes_inner(_Timestamps, _EjectNodes, []) ->
+    ok;
+do_maybe_delay_eject_nodes_inner(Timestamps, EjectNodes, EjectedServices) ->
     Now = os:timestamp(),
 
     Delays = [begin

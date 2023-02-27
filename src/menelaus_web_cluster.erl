@@ -350,9 +350,15 @@ parse_join_cluster_params(Params, ThisIsJoin) ->
             true -> []
         end,
 
+    ServicelessAllowed =
+        cluster_compat_mode:is_enterprise() andalso
+        cluster_compat_mode:is_cluster_elixir(),
+
     Services = case proplists:get_value("services", Params) of
                    undefined ->
                        {ok, ns_cluster_membership:default_services()};
+                   [] when ServicelessAllowed ->
+                       {ok, []};
                    SvcParams ->
                        case parse_validate_services_list(SvcParams) of
                            {ok, Svcs} ->
