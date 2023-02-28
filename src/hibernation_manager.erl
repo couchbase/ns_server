@@ -344,6 +344,9 @@ run_test_and_assert(TestBody, SuccessTag, FailureTag) ->
     0 = ?flush(_).
 
 hibernation_manager_test_() ->
+    Bucket = "foo",
+    Region = "us-east-1",
+    S3Path = "s3://foo-remote-path",
     {foreach,
      fun meck_expect_base/0,
      fun (_) ->
@@ -360,8 +363,7 @@ hibernation_manager_test_() ->
                            end),
 
                run_test_and_assert(
-                 ?cut(do_pause_bucket("foo", #{}, "s3://foo-remote-path",
-                                      "us-east-1")),
+                 ?cut(do_pause_bucket(Bucket, #{}, S3Path, Region)),
                  exit_normal, exit_not_normal)
        end
        },
@@ -376,8 +378,7 @@ hibernation_manager_test_() ->
                            end),
 
                run_test_and_assert(
-                 ?cut(do_pause_bucket("foo", #{}, "s3://foo-remote-path",
-                                      "us-east-1")),
+                 ?cut(do_pause_bucket(Bucket, #{}, S3Path, Region)),
                  exit_not_normal, exit_normal)
        end},
       {"Resume Bucket Success",
@@ -389,28 +390,41 @@ hibernation_manager_test_() ->
                                 _ProgressCallback, _Opts) ->
                                    hibernation_op_success()
                            end),
-               {ok, {NewBucketConfig, Metadata}} =
+               meck:expect(ns_bucket, get_bucket,
+                           fun (_) ->
+                                   not_present
+                           end),
+               Metadata = hibernation_utils:get_metadata_from_s3(Bucket,
+                                                                 Region),
+               {ok, NewBucketConfig} =
                    hibernation_utils:check_allow_resume_op(
-                     "foo", "s3://foo-remote-path"),
+                     Bucket, Metadata),
                run_test_and_assert(
-                 ?cut(do_resume_bucket("foo", NewBucketConfig, Metadata,
-                                       "s3://foo-remote-path", "us-east-1")),
+                 ?cut(do_resume_bucket(Bucket, NewBucketConfig, Metadata,
+                                       S3Path, Region)),
                  exit_normal, exit_not_normal)
         end},
       {"Resume Bucket Failure",
        fun () ->
                meck:expect(service_manager,
                            with_trap_exit_spawn_monitor_resume_bucket,
-                           fun (Service, _Bucket, _ServerMapping, _RemotePath,
-                                _DryRun, _Nodes, _ProgressCallback, _Opts) ->
+                           fun (Service, _Bucket, _ServerMapping,
+                                _RemotePath, _BlobStorage, _DryRun, _Nodes,
+                                _ProgressCallback, _Opts) ->
                                    hibernation_op_fail(Service)
                            end),
-               {ok, {NewBucketConfig, Metadata}} =
+               meck:expect(ns_bucket, get_bucket,
+                           fun (_) ->
+                                   not_present
+                           end),
+               Metadata = hibernation_utils:get_metadata_from_s3(Bucket,
+                                                                 Region),
+               {ok, NewBucketConfig} =
                    hibernation_utils:check_allow_resume_op(
-                     "foo", "s3://foo-remote-path"),
+                     Bucket, Metadata),
                run_test_and_assert(
-                 ?cut(do_resume_bucket("foo", NewBucketConfig, Metadata,
-                                       "s3://foo-remote-path", "us-east-1")),
+                 ?cut(do_resume_bucket(Bucket, NewBucketConfig, Metadata,
+                                       S3Path, Region)),
                  exit_not_normal, exit_normal)
        end}]}.
 
