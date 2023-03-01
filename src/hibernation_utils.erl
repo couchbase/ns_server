@@ -306,7 +306,7 @@ unpause_bucket_body(Bucket, BucketNodes) ->
     end.
 
 
--spec sync_s3(#bucket_hibernation_op_args{}, string(), atom())->
+-spec sync_s3(#bucket_hibernation_op_args{}, string(), to | from)->
           ok | {error, non_neg_integer(), binary()}.
 sync_s3(#bucket_hibernation_op_args{
            remote_path = RemotePath,
