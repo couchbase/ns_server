@@ -58,8 +58,7 @@ settings_post_validators_70() ->
              validator:integer(queryNumAtrs, _)] ++
                 case cluster_compat_mode:is_cluster_elixir() of
                     true ->
-                        [validator:default(queryNodeQuota, 0, _),
-                         validator:integer(queryNodeQuota, _),
+                        [validator:integer(queryNodeQuota, _),
                          validator:range(queryNodeQuota, 0, infinity, _)];
                     false ->
                         []
