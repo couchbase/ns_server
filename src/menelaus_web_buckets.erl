@@ -842,7 +842,11 @@ validators_start_hibernation() ->
      validator:required(remote_path, _), validator:string(remote_path, _),
      validate_remote_path(remote_path, _),
      validator:required(blob_storage_region, _),
-     validator:string(blob_storage_region, _)].
+     validator:string(blob_storage_region, _),
+     %% HKHK: Check if the largest value is encode-able as a JSON in service
+     %% API.
+     validator:required(rate_limit, _),
+     validator:integer(rate_limit, 1024, 250 * ?MIB, _)].
 
 validators_stop_hibernation() ->
     [validator:required(bucket, _), validator:string(bucket, _)].
@@ -871,10 +875,13 @@ handle_start_hibernation(Req, StartFunc) ->
                    RemotePath = proplists:get_value(remote_path, Params),
                    BlobStorageRegion =
                        proplists:get_value(blob_storage_region, Params),
+                   RateLimit =
+                       proplists:get_value(rate_limit, Params),
                    StartFunc(#bucket_hibernation_op_args{
                                bucket = Bucket,
                                remote_path = RemotePath,
-                               blob_storage_region = BlobStorageRegion})
+                               blob_storage_region = BlobStorageRegion,
+                               rate_limit = RateLimit})
            end, fun validators_start_hibernation/0).
 
 handle_start_pause(Req) ->

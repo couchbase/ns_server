@@ -149,26 +149,32 @@ pause_req(Id,
           #bucket_hibernation_op_args{
              bucket = Bucket,
              remote_path = RemotePath,
-             blob_storage_region = BlobStorageRegion}) ->
+             blob_storage_region = BlobStorageRegion,
+             rate_limit = RateLimit}) ->
     true = is_binary(Id),
-
-    {[{id, Id},
-      {bucket, list_to_binary(Bucket)},
-      {remotePath, list_to_binary(RemotePath)},
-      {blobStorageRegion, list_to_binary(BlobStorageRegion)}]}.
-
-resume_req(Id,
-          #bucket_hibernation_op_args{
-             bucket = Bucket,
-             remote_path = RemotePath,
-             blob_storage_region = BlobStorageRegion}, DryRun) ->
-    true = is_binary(Id),
-    true = is_boolean(DryRun),
+    true = is_integer(RateLimit),
 
     {[{id, Id},
       {bucket, list_to_binary(Bucket)},
       {remotePath, list_to_binary(RemotePath)},
       {blobStorageRegion, list_to_binary(BlobStorageRegion)},
+      {rateLimit, RateLimit}]}.
+
+resume_req(Id,
+          #bucket_hibernation_op_args{
+             bucket = Bucket,
+             remote_path = RemotePath,
+             blob_storage_region = BlobStorageRegion,
+             rate_limit = RateLimit}, DryRun) ->
+    true = is_binary(Id),
+    true = is_boolean(DryRun),
+    true = is_integer(RateLimit),
+
+    {[{id, Id},
+      {bucket, list_to_binary(Bucket)},
+      {remotePath, list_to_binary(RemotePath)},
+      {blobStorageRegion, list_to_binary(BlobStorageRegion)},
+      {rateLimit, RateLimit},
       {dryRun, DryRun}]}.
 
 maybe_add_additional_info() ->

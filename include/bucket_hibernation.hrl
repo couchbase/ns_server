@@ -12,4 +12,5 @@
 -record(bucket_hibernation_op_args,
         {bucket :: bucket_name(),
          remote_path :: string(),
-         blob_storage_region :: string()}).
+         blob_storage_region :: string(),
+         rate_limit :: non_neg_integer()}).

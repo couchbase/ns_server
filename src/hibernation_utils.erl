@@ -310,7 +310,8 @@ unpause_bucket_body(Bucket, BucketNodes) ->
           ok | {error, non_neg_integer(), binary()}.
 sync_s3(#bucket_hibernation_op_args{
            remote_path = RemotePath,
-           blob_storage_region = BlobStorageRegion},
+           blob_storage_region = BlobStorageRegion,
+           rate_limit = RateLimit},
         LocalPath, SyncCode) ->
     Cmd = path_config:component_path(bin, "cbobjutil"),
 
@@ -329,8 +330,10 @@ sync_s3(#bucket_hibernation_op_args{
                 ["--endpoint", Endpoint, "--s3-force-path-style"]
         end,
 
-    Args = ["--region", BlobStorageRegion, "sync",
-            SrcPath, DstPath] ++ ExtraArgs,
+    Args = lists:append(
+             [["--region", BlobStorageRegion],
+              ["--rate-limit", integer_to_list(RateLimit)],
+              ["sync", SrcPath, DstPath], ExtraArgs]),
 
     {Status, Output} = misc:run_external_tool(Cmd, Args, [],
                                               [graceful_shutdown]),
@@ -367,7 +370,9 @@ s3_upload_and_remove_file(Args, TempFile) ->
     try
         sync_s3(Args, TempFile, to)
     catch
-        _:_ -> {error, sync_to_s3}
+        T:E:S ->
+            ?log_error("sync_s3 failed.~n~p.", [{T, E, S}]),
+            {error, sync_to_s3}
     after
         file:delete(TempFile)
     end.

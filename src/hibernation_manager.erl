@@ -499,7 +499,8 @@ force_unpause_via_calling_process_failure_body() ->
                                    #bucket_hibernation_op_args{
                                      bucket = "Bucket",
                                      remote_path = "Path",
-                                     blob_storage_region = "us-east-1"},
+                                     blob_storage_region = "us-east-1",
+                                     rate_limit = ?MIB},
                                    node(), self())
                     end
                    ),

@@ -277,7 +277,8 @@ append_path_separator(Path) ->
 do_pause_bucket(#bucket_hibernation_op_args{
                    bucket = Bucket,
                    remote_path = RemotePath0,
-                   blob_storage_region = BlobStorageRegion} = Args) ->
+                   blob_storage_region = BlobStorageRegion,
+                   rate_limit = RateLimit} = Args) ->
     %% Kill all the DCP replications for this bucket.
     ok = replication_manager:set_incoming_replication_map(Bucket, []),
 
@@ -290,8 +291,9 @@ do_pause_bucket(#bucket_hibernation_op_args{
                    RemotePath0, node(), Bucket),
 
     ?log_info("pause_bucket op started. Bucket: ~p, Source: ~p, Dest: ~p, "
-              "BlobStorageRegion: ~p",
-              [Bucket, LocalPath, RemotePath, BlobStorageRegion]),
+              "BlobStorageRegion: ~p, RateLimit - ~.2f MiB/s.",
+              [Bucket, LocalPath, RemotePath, BlobStorageRegion,
+               RateLimit / ?MIB]),
 
     ok = hibernation_utils:check_test_condition(node_pause_before_data_sync),
     ok = hibernation_utils:sync_s3(
@@ -303,7 +305,8 @@ do_pause_bucket(#bucket_hibernation_op_args{
 do_resume_bucket(#bucket_hibernation_op_args{
                     bucket = Bucket,
                     remote_path = RemotePath0,
-                    blob_storage_region = BlobStorageRegion} = Args) ->
+                    blob_storage_region = BlobStorageRegion,
+                    rate_limit = RateLimit} = Args) ->
     ?log_info("Delete old bucket files: started."),
     %% On a new resume, we cleanup any old data for previously failed resumes
     ok = ns_storage_conf:delete_unused_buckets_db_files(),
@@ -313,8 +316,9 @@ do_resume_bucket(#bucket_hibernation_op_args{
     {ok, LocalPath} = ns_storage_conf:this_node_dbdir(),
 
     ?log_info("resume_bucket op started. Bucket: ~p, Source: ~p, Dest: ~p, "
-              "BlobStorageRegion - ~p",
-              [Bucket, RemotePath, LocalPath, BlobStorageRegion]),
+              "BlobStorageRegion - ~p, RateLimit - ~.2f MiB/s",
+              [Bucket, RemotePath, LocalPath, BlobStorageRegion,
+               RateLimit / ?MIB]),
 
     ok = hibernation_utils:check_test_condition(node_resume_before_data_sync),
 

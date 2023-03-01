@@ -1195,15 +1195,17 @@ run_hibernation_op(Op,
                    #bucket_hibernation_op_args{
                       bucket = Bucket,
                       remote_path = RemotePath,
-                      blob_storage_region = BlobStorageRegion} = Args,
+                      blob_storage_region = BlobStorageRegion,
+                      rate_limit = RateLimit} = Args,
                    ExtraArgs, From) ->
     log_initiated_hibernation_event(Bucket, Op),
 
     Manager = hibernation_manager:run_op(Op, Args, ExtraArgs),
 
     ale:info(?USER_LOGGER, "Starting hibernation operation (~p) for bucket: "
-             "~p. RemotePath - ~p. BlobStorageRegion - ~p",
-             [Op, Bucket, RemotePath, BlobStorageRegion]),
+             "~p, RemotePath - ~p, BlobStorageRegion - ~p, "
+             "RateLimit - ~.2f MiB/s.",
+             [Op, Bucket, RemotePath, BlobStorageRegion, RateLimit / ?MIB]),
 
     hibernation_utils:set_hibernation_status(Bucket, {Op, running}),
     {next_state, bucket_hibernation,
