@@ -118,7 +118,10 @@ general_settings(Ver) ->
                  {queryNumAtrs,            "numatrs",             1024}] ++
                     case cluster_compat_mode:is_version_elixir(Ver) of
                         true ->
-                            [{queryNodeQuota, "node-quota", 0}];
+                            [{queryNodeQuota, "node-quota", 0},
+                             {queryUseReplica, "use-replica", <<"unset">>},
+                             {queryNodeQuotaValPercent,
+                              "node-quota-val-percent", 67}];
                         false ->
                             []
                     end;

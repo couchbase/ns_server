@@ -59,7 +59,14 @@ settings_post_validators_70() ->
                 case cluster_compat_mode:is_cluster_elixir() of
                     true ->
                         [validator:integer(queryNodeQuota, _),
-                         validator:range(queryNodeQuota, 0, infinity, _)];
+                         validator:range(queryNodeQuota, 0, infinity, _),
+                         validator:integer(queryNodeQuotaValPercent, _),
+                         validator:range(queryNodeQuotaValPercent, 0, 100, _),
+                         validator:string(queryUseReplica, _),
+                         validator:convert(queryUseReplica,
+                                           fun list_to_binary/1, _),
+                         validator:one_of(queryUseReplica,
+                                          [<<"unset">>, <<"off">>, <<"on">>], _)];
                     false ->
                         []
                 end;
