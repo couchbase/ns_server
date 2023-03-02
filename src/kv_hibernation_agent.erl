@@ -307,7 +307,7 @@ do_resume_bucket(#bucket_hibernation_op_args{
     RemotePath = RemotePath0 ++ "/",
     {ok, LocalPath} = ns_storage_conf:this_node_dbdir(),
     ?log_info("Resume Bucket: ~p, Source: ~p, Dest: ~p, BlobStorageRegion - ~p",
-              [Bucket, RemotePath, BlobStorageRegion, LocalPath]),
+              [Bucket, RemotePath, LocalPath, BlobStorageRegion]),
 
     %% On a new resume, we cleanup any old data for previously failed resumes
     ok = ns_storage_conf:delete_unused_buckets_db_files(),
