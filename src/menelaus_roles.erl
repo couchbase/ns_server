@@ -930,11 +930,17 @@ params_version() ->
 
 -spec params_version(map()) -> term().
 params_version(Snapshot) ->
-    [{Name, ns_bucket:uuid(Name, Snapshot),
-      collections:get_uid(
-        collections:get_manifest(Name, Snapshot,
-                                 collections:default_manifest()))} ||
-        Name <- ns_bucket:get_bucket_names(Snapshot)].
+    lists:map(
+      fun (Name) ->
+              UUID = ns_bucket:uuid(Name, Snapshot),
+              {ok, BucketConfig} = ns_bucket:get_bucket(Name),
+              DefaultManifest = collections:default_manifest(BucketConfig),
+              Manifest = collections:get_manifest(Name, Snapshot,
+                                                  DefaultManifest),
+              ManifestUid = collections:get_uid(Manifest),
+              {Name, UUID, ManifestUid}
+      end,
+      ns_bucket:get_bucket_names(Snapshot)).
 
 compile_params([], [], Acc, _) ->
     lists:reverse(Acc);
@@ -1304,11 +1310,19 @@ setup_meck() ->
                 fun () -> true end),
     meck:new(ns_config, [passthrough]),
     meck:expect(ns_config, search_node_with_default,
-                fun (_, Default) -> Default end).
+                fun (_, Default) -> Default end),
+
+    meck:new(ns_bucket, [passthrough]),
+    meck:expect(ns_bucket,
+        get_bucket,
+        fun(_) ->
+            {ok, [{type, membase}, {storage_mode, magma}]}
+        end).
 
 teardown_meck() ->
     meck:unload(cluster_compat_mode),
-    meck:unload(ns_config).
+    meck:unload(ns_config),
+    meck:unload(ns_bucket).
 
 filter_out_invalid_roles_test() ->
     Roles = [{role1, [{"bucket1", <<"id1">>}]},

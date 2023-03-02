@@ -913,7 +913,7 @@ create_bucket(BucketType, BucketName, NewConfig) ->
     MergedConfig1 = generate_sasl_password(MergedConfig0),
     MergedConfig = add_auth_type(MergedConfig1),
     BucketUUID = couch_uuids:random(),
-    Manifest = collections:default_manifest(),
+    Manifest = collections:default_manifest(MergedConfig),
     do_create_bucket(chronicle_compat:backend(), BucketName,
                      MergedConfig, BucketUUID, Manifest),
     %% The janitor will handle creating the map.
@@ -1655,35 +1655,34 @@ chronicle_upgrade_to_elixir(ChronicleTxn) ->
     chronicle_upgrade_bucket(chronicle_upgrade_bucket_to_elixir(_, _),
                              BucketNames, ChronicleTxn).
 
+upgrade_bucket_config_to_72(Bucket, ChronicleTxn) ->
+    PropsKey = sub_key(Bucket, props),
+    {ok, BCfg} = chronicle_upgrade:get_key(PropsKey, ChronicleTxn),
+    case is_magma(BCfg) of
+        true ->
+            %% Only add the keys if this is a magma Bucket as they are
+            %% not relevant to couchstore buckets.
+            BCfg1 = lists:keystore(history_retention_seconds, 1, BCfg,
+                                   {history_retention_seconds, 0}),
+            BCfg2 = lists:keystore(history_retention_bytes, 1, BCfg1,
+                                   {history_retention_bytes, 0}),
+            BCfg3 =
+                lists:keystore(history_retention_collection_default,
+                               1, BCfg2,
+                               {history_retention_collection_default,
+                                true}),
+
+            chronicle_upgrade:set_key(PropsKey, BCfg3, ChronicleTxn);
+        _ ->
+            ChronicleTxn
+    end.
+
 chronicle_upgrade_to_72(ChronicleTxn) ->
     {ok, BucketNames} = chronicle_upgrade:get_key(root(), ChronicleTxn),
     lists:foldl(
       fun (Name, Txn) ->
-              PropsKey = sub_key(Name, props),
-              {ok, BCfg} = chronicle_upgrade:get_key(PropsKey, Txn),
-              case is_magma(BCfg) of
-                  true ->
-                      %% Only add the keys if this is a magma Bucket as they are
-                      %% not relevant to couchstore buckets.
-                      BCfg1 =
-                          lists:keystore(history_retention_seconds, 1, BCfg,
-                                         {history_retention_seconds,
-                                          ?HISTORY_RETENTION_SECONDS_DEFAULT}),
-                      BCfg2 =
-                          lists:keystore(history_retention_bytes, 1, BCfg1,
-                                         {history_retention_bytes,
-                                          ?HISTORY_RETENTION_BYTES_DEFAULT}),
-                      BCfg3 =
-                          lists:keystore(
-                            history_retention_collection_default,
-                            1, BCfg2,
-                            {history_retention_collection_default,
-                             ?HISTORY_RETENTION_COLLECTION_DEFAULT_DEFAULT}),
-
-                      chronicle_upgrade:set_key(PropsKey, BCfg3, Txn);
-                  _ ->
-                      Txn
-              end
+              Txn1 = upgrade_bucket_config_to_72(Name, Txn),
+              collections:chronicle_upgrade_to_72(Name, Txn1)
       end, ChronicleTxn, BucketNames).
 
 %% returns proplist with only props useful for ns_bucket
