@@ -278,9 +278,6 @@ do_pause_bucket(#bucket_hibernation_op_args{
                    bucket = Bucket,
                    remote_path = RemotePath0,
                    blob_storage_region = BlobStorageRegion} = Args) ->
-    ?log_info("Starting pause Bucket: ~p, RemotePath0: ~p",
-              [Bucket, RemotePath0]),
-
     %% Kill all the DCP replications for this bucket.
     ok = replication_manager:set_incoming_replication_map(Bucket, []),
 
@@ -292,31 +289,40 @@ do_pause_bucket(#bucket_hibernation_op_args{
     RemotePath = hibernation_utils:get_bucket_data_remote_path(
                    RemotePath0, node(), Bucket),
 
-    ok = hibernation_utils:check_test_condition(node_pause_before_data_sync),
-
-    ?log_info("Pause Bucket: ~p, Source: ~p, Dest: ~p, BlobStorageRegion: ~p",
+    ?log_info("pause_bucket op started. Bucket: ~p, Source: ~p, Dest: ~p, "
+              "BlobStorageRegion: ~p",
               [Bucket, LocalPath, RemotePath, BlobStorageRegion]),
+
+    ok = hibernation_utils:check_test_condition(node_pause_before_data_sync),
     ok = hibernation_utils:sync_s3(
            Args#bucket_hibernation_op_args{remote_path = RemotePath}, LocalPath,
-           to).
+           to),
+    ?log_info("pause_bucket op completed."),
+    ok.
 
 do_resume_bucket(#bucket_hibernation_op_args{
                     bucket = Bucket,
                     remote_path = RemotePath0,
                     blob_storage_region = BlobStorageRegion} = Args) ->
-    RemotePath = RemotePath0 ++ "/",
-    {ok, LocalPath} = ns_storage_conf:this_node_dbdir(),
-    ?log_info("Resume Bucket: ~p, Source: ~p, Dest: ~p, BlobStorageRegion - ~p",
-              [Bucket, RemotePath, LocalPath, BlobStorageRegion]),
-
+    ?log_info("Delete old bucket files: started."),
     %% On a new resume, we cleanup any old data for previously failed resumes
     ok = ns_storage_conf:delete_unused_buckets_db_files(),
+    ?log_info("Delete old bucket files: completed."),
+
+    RemotePath = RemotePath0 ++ "/",
+    {ok, LocalPath} = ns_storage_conf:this_node_dbdir(),
+
+    ?log_info("resume_bucket op started. Bucket: ~p, Source: ~p, Dest: ~p, "
+              "BlobStorageRegion - ~p",
+              [Bucket, RemotePath, LocalPath, BlobStorageRegion]),
 
     ok = hibernation_utils:check_test_condition(node_resume_before_data_sync),
 
     ok = hibernation_utils:sync_s3(Args#bucket_hibernation_op_args{
                                      remote_path = RemotePath}, LocalPath,
-                                   from).
+                                   from),
+    ?log_info("resume_bucket op completed"),
+    ok.
 
 do_unpause_bucket(Bucket) ->
     ok = ns_memcached:unpause_bucket(Bucket).
