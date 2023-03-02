@@ -628,14 +628,16 @@ def connect(num_nodes=0,
             valid_service_types:
         return 1
 
-    password_mgr = PasswordManager("Administrator", "asdasd")
+    password_mgr = PasswordManager(default_username, default_pass)
     handler = urllib.request.HTTPBasicAuthHandler(password_mgr)
     o = urllib.request.build_opener(handler)
 
-    print("Connecting {0} nodes, bucket type {1}, mem size {2} "
-          "with {3} replica copies, password asdasd, "
-          "deployment plan {4}\n".format(
-              num_nodes, buckettype, memsize, replicas, str(deploy)))
+    print(
+        f"Connecting {num_nodes} nodes, bucket type {buckettype}, "
+        f"mem size {memsize} "
+        f"with {replicas} replica copies, password {default_pass}, "
+        f"with a storage backend of {storage_backend}. "
+        f"Deployment plan: {deploy}\n")
 
     base_port = 9000 + start_index
 
