@@ -128,6 +128,14 @@ def main():
     args.afamily = (
         "ipv6" if (os.getenv("IPV6", "false") == "true") else "ipv4")
 
+    # The minimum bucket quota is higher for magma, if the user doesn't specify
+    # a bucket quota, then default values should be used.
+    if args.bucket_quota is None:
+        if args.storage_backend == "couchstore":
+            args.bucket_quota = 256
+        elif args.storage_backend == "magma":
+            args.bucket_quota = 1024
+
     params = {
         "num_nodes": args.num_nodes,
         "buckettype": args.bucket_type,
