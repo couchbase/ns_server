@@ -508,28 +508,36 @@ build_sasl_bucket_info({Id, BucketConfig}, LocalAddr) ->
 
 build_streaming_info(Id, Req, LocalAddr, UpdateID) ->
     ns_server_stats:notify_counter(<<"build_streaming_info">>),
-    case ns_bucket:bucket_exists(Id, direct) of
-        true ->
-            menelaus_web_cache:lookup_or_compute_with_expiration(
-              {build_bucket_info, Id, LocalAddr},
-              fun () ->
-                      Ctx = menelaus_web_node:get_context(
-                              {ip, LocalAddr}, [Id], false, stable),
-                      [Info] = build_buckets_info(Req, [Id], Ctx, streaming),
-                      {Info, 1000, UpdateID}
-              end,
-              fun (_Key, _Value, OldUpdateID) ->
-                      case {OldUpdateID, UpdateID} of
-                          {_, undefined} ->
-                              false;
-                          {undefined, _} ->
-                              true;
-                          {OldID, ID} ->
-                              ID > OldID
-                      end
-              end);
-        false ->
-            exit(normal)
+    BucketInfo = menelaus_web_cache:lookup_or_compute_with_expiration(
+                   {build_bucket_info, Id, LocalAddr},
+                   fun () ->
+                           Ctx = menelaus_web_node:get_context(
+                                   {ip, LocalAddr}, [Id], false, stable),
+                           Snapshot = menelaus_web_node:get_snapshot(Ctx),
+                           case ns_bucket:bucket_exists(Id, Snapshot) of
+                               true ->
+                                   [Info] = build_buckets_info(Req, [Id], Ctx,
+                                                               streaming),
+                                   {Info, 1000, UpdateID};
+                               false ->
+                                   {error, bucket_not_present}
+                           end
+                   end,
+                   fun (_Key, _Value, OldUpdateID) ->
+                           case {OldUpdateID, UpdateID} of
+                               {_, undefined} ->
+                                   false;
+                               {undefined, _} ->
+                                   true;
+                               {OldID, ID} ->
+                                   ID > OldID
+                           end
+                   end),
+    case BucketInfo of
+        {error, bucket_not_present} ->
+            exit(normal);
+        _ ->
+            BucketInfo
     end.
 
 handle_bucket_info_streaming(_PoolId, Id, Req) ->

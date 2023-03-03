@@ -92,11 +92,16 @@ compute_with_expiration(Key, ComputeBody, InvalidPred) ->
 do_compute_with_expiration(Key, ComputeBody, InvalidPred) ->
     case lookup_value_with_expiration(Key, InvalidPred) of
         {not_found, Now} ->
-            {Value, Age, InvalidationState} = ComputeBody(),
-            Expiration = Now + Age,
-            ns_server_stats:notify_counter(<<"web_cache_updates">>),
-            ets:insert(?MODULE, {Key, Value, Expiration, InvalidationState}),
-            Value;
+            case ComputeBody() of
+                {error, _} = Error ->
+                    Error;
+                {Value, Age, InvalidationState} ->
+                    Expiration = Now + Age,
+                    ns_server_stats:notify_counter(<<"web_cache_updates">>),
+                    ets:insert(?MODULE, {Key,
+                                         Value, Expiration, InvalidationState}),
+                    Value
+            end;
         {ok, Value} ->
             ns_server_stats:notify_counter(<<"web_cache_inner_hits">>),
             Value
