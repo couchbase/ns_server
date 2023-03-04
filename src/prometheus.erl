@@ -226,8 +226,24 @@ post_async(Path, Body, Timeout, Settings, Handler) ->
                     end
                 end,
             HttpOptions = [{timeout, Timeout}, {connect_timeout, Timeout}],
-            Options = [{sync, false}, {receiver, Receiver},
-                       {socket_opts, [{ipfamily, AFamily}]}],
+
+            %% There is an issue with httpc:request where specifying
+            %% socket_ops leads to not using persistent connections. To avoid
+            %% having to specify socket_opts we check the current address
+            %% family and if it doesn't match what we expect then we set it
+            %% before calling httpc:request.
+            CurAFamily =
+                case httpc:get_options([ipfamily]) of
+                    {ok, [{ipfamily, AF}]} -> AF;
+                    _ -> undefined
+                end,
+            case CurAFamily =:= AFamily of
+                true ->
+                    ok;
+                false ->
+                    ok = httpc:set_options([{ipfamily, AFamily}])
+            end,
+            Options = [{sync, false}, {receiver, Receiver}],
             Req = {URL, Headers, "application/x-www-form-urlencoded",
                    BodyEncoded},
             {ok, _} = httpc:request('post', Req, HttpOptions, Options);
@@ -296,6 +312,8 @@ post_timeout_test() ->
                 {ok, undefined}
         end,
     meck:expect(httpc, request, ReqHandler),
+    meck:expect(httpc, set_options,
+                fun ([{_,_}]) -> ok end),
     try
         Settings = [{enabled, true},
                     {addr, "127.0.0.1:9900"},
