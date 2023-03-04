@@ -111,6 +111,13 @@ admin_credentials_changed(User, Password) ->
 
 authenticate_special("@prometheus" = User, Password) ->
     prometheus_cfg:authenticate(User, Password);
+authenticate_special("@localtoken" = User, Password) ->
+    case menelaus_local_auth:check_token(Password) of
+        true ->
+            {ok, {User, local_token}};
+        false ->
+            {error, auth_failure}
+    end;
 authenticate_special([$@ | _] = User, Password) ->
     case get_special_passwords(node(), ns_config:latest()) of
         [] ->

@@ -380,8 +380,14 @@ client_cert_auth_version() ->
 handle_cbauth_post(Req) ->
     {User, Domain} = menelaus_auth:get_identity(Req),
     UUID = menelaus_users:get_user_uuid({User, Domain}),
+    %% Services don't know anything about localtoken
+    %% Make it look like a regular admin for them
+    DomainForServices = case Domain == local_token of
+                            true -> admin;
+                            false -> Domain
+                        end,
     menelaus_util:reply_json(Req, {[{user, erlang:list_to_binary(User)},
-                                    {domain, Domain}] ++
+                                    {domain, DomainForServices}] ++
                                     [{uuid, UUID} || UUID =/= undefined]}).
 
 handle_extract_user_from_cert_post(Req) ->

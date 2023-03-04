@@ -1057,6 +1057,8 @@ get_roles_for_identity({"", anonymous}) ->
     end;
 get_roles_for_identity({_, admin}) ->
     [admin];
+get_roles_for_identity({_, local_token}) ->
+    [admin];
 get_roles_for_identity({_, stats_reader}) ->
     [stats_reader];
 get_roles_for_identity({BucketName, bucket}) ->

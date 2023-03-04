@@ -33,7 +33,6 @@
          get_session_id/1,
          is_UI_req/1,
          verify_rest_auth/2,
-         verify_local_token/1,
          new_session_id/0,
          get_resp_headers/1]).
 
@@ -430,7 +429,8 @@ can_use_cert_for_auth(Req) ->
             cannot_use
     end.
 
--spec verify_rest_auth(mochiweb_request(), rbac_permission() | no_check) ->
+-spec verify_rest_auth(mochiweb_request(),
+                       rbac_permission() | no_check | local) ->
                               {auth_failure | forbidden | allowed
                               | temporary_failure, mochiweb_request()}.
 verify_rest_auth(Req, Permission) ->
@@ -540,10 +540,14 @@ extract_identity_from_cert(CertDer) ->
             end
     end.
 
--spec check_permission(#authn_res{}, rbac_permission() | no_check) ->
+-spec check_permission(#authn_res{}, rbac_permission() | no_check | local) ->
                               auth_failure | forbidden | allowed.
 check_permission(_AuthnRes, no_check) ->
     allowed;
+check_permission(#authn_res{identity = {"@" ++ _, local_token}}, local) ->
+    allowed;
+check_permission(_, local) ->
+    forbidden;
 check_permission(#authn_res{identity = Identity},
                  no_check_disallow_anonymous) ->
     case Identity of
@@ -578,21 +582,4 @@ check_permission(#authn_res{identity = Identity} = AuthnRes, Permission) ->
                             forbidden
                     end
             end
-    end.
-
--spec verify_local_token(mochiweb_request()) ->
-                                {auth_failure | allowed, mochiweb_request()}.
-verify_local_token(Req) ->
-    case extract_auth(Req) of
-        {"@localtoken" = Username, Password} ->
-            case menelaus_local_auth:check_token(Password) of
-                true ->
-                    AuthnRes = #authn_res{identity = {Username, local_token}},
-                    {allowed, store_authn_res(AuthnRes, Req)};
-                false ->
-                    {auth_failure, maybe_store_rejected_user(Username, Req)}
-            end;
-        Auth ->
-            {auth_failure,
-             maybe_store_rejected_user(get_rejected_user(Auth), Req)}
     end.

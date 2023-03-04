@@ -177,11 +177,10 @@ loop(Req0, Config) ->
       end).
 
 -type action() :: {done, term()} |
-                  {local, fun()} |
                   {ui, boolean(), fun()} |
                   {ui, boolean(), fun(), [term()]} |
-                  {rbac_permission() | no_check, fun()} |
-                  {rbac_permission() | no_check, fun(), [term()]}.
+                  {rbac_permission() | no_check | local, fun()} |
+                  {rbac_permission() | no_check | local, fun(), [term()]}.
 
 -spec get_action(mochiweb_request(), {term(), boolean(), term()}, string(), [string()]) -> action().
 get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
@@ -1225,15 +1224,6 @@ get_bucket_id(_) ->
 -spec perform_action(mochiweb_request(), action()) -> term().
 perform_action(_Req, {done, RV}) ->
     RV;
-perform_action(Req, {local, Fun}) ->
-    {RV, NewReq} = menelaus_auth:verify_local_token(Req),
-    case RV of
-        allowed ->
-            Fun(NewReq);
-        auth_failure ->
-            ns_audit:auth_failure(NewReq),
-            menelaus_util:require_auth(NewReq)
-    end;
 perform_action(Req, {ui, IsSSL, Fun}) ->
     perform_action(Req, {ui, IsSSL, Fun, []});
 perform_action(Req, {ui, IsSSL, Fun, Args}) ->
@@ -1254,6 +1244,9 @@ perform_action(Req, {Permission, Fun, Args}) ->
         auth_failure ->
             ns_audit:auth_failure(NewReq),
             menelaus_util:require_auth(NewReq);
+        forbidden when Permission == local ->
+            ns_audit:auth_failure(NewReq),
+            menelaus_util:reply_json(NewReq, <<"Forbidden">>, 403);
         forbidden ->
             ns_audit:auth_failure(NewReq),
             menelaus_util:reply_json(
