@@ -16,15 +16,20 @@ import sys
 from collections import defaultdict
 
 
-def get_git_diff():
+def get_git_diff(staged_only: bool):
     """
     Get the git diff from the current directory
 
-    :return: "git diff -U0 HEAD" output
+    :type staged_only: bool
+    :param staged_only: if we only want staged changes
+    :return: "git diff -U0 --staged" output
     """
     # -U0 removes context lines to make parsing easier
-    # Diff against HEAD to get staged changes.
-    return subprocess.check_output(['git', 'diff', '-U0', 'HEAD'])
+    # We only attempt to format staged changes.
+    args = ['git', 'diff', '-U0']
+    if staged_only:
+        args += ['--staged']
+    return subprocess.check_output(args)
 
 
 def parse_git_diffs_for_formatting(diff_output: bytes):
@@ -92,6 +97,6 @@ def parse_git_diffs_for_formatting(diff_output: bytes):
 
 
 if __name__ == "__main__":
-    ret = parse_git_diffs_for_formatting(get_git_diff())
+    ret = parse_git_diffs_for_formatting(get_git_diff(False))
     for diff in ret:
         print(diff)

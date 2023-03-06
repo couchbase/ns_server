@@ -97,13 +97,27 @@ def check_mode(args, diffs):
     return errors
 
 
+def has_unstaged_changes(file):
+    return subprocess.run(['git', 'diff', '--quiet', file]).returncode != 0
+
+
 def overwrite_mode(args, diffs):
     """
     Re-format the given diffs.
 
-    :param args: Args for
+    :param args: Args for formatting
     :param diffs: list of tuples of diffs ('file', start, end)
     """
+    if args.hook:
+        for bfile in diffs:
+            if erlang_file_pattern.search(bfile):
+                file = bfile.decode('utf-8')
+                if has_unstaged_changes(file):
+                    print(f'File {file} has un-staged changes. '
+                          f'Cannot format it. Please stage changes and try '
+                          f'again.')
+                    return 1
+
     for bfile in diffs:
         if erlang_file_pattern.search(bfile):
             file = bfile.decode('utf-8')
@@ -116,9 +130,12 @@ def overwrite_mode(args, diffs):
 
             format_one_file(args, diffs[bfile], file)
 
+    return 0
+
 
 def erlang_format(args):
-    diffs = git_diff.parse_git_diffs_for_formatting(git_diff.get_git_diff())
+    diffs = git_diff.parse_git_diffs_for_formatting(
+                git_diff.get_git_diff(args.hook))
 
     if args.format_output_mode == 'check':
         if check_mode(args, diffs):
@@ -127,8 +144,7 @@ def erlang_format(args):
         return 0
 
     if args.format_output_mode == 'overwrite':
-        overwrite_mode(args, diffs)
-        return 0
+        return overwrite_mode(args, diffs)
 
     return 1
 
