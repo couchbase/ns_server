@@ -14,13 +14,13 @@ import os.path
 import sys
 import atexit
 import getopt
+import argparse
 
 currentdir = os.path.dirname(os.path.realpath(__file__))
 pylib = os.path.join(currentdir, "pylib")
 sys.path.append(pylib)
 
 import cluster_run_lib
-
 
 LOGLEVELS = ["debug", "info", "warn", "error", "critical"]
 
@@ -33,122 +33,160 @@ def quote_string_for_erl(s):
     return cluster_run_lib.quote_string_for_erl(s)
 
 
-USAGE_STRING = """
-usage: {program_name}
-    [--nodes=<number of nodes>] (default: 1)
-    [--dir=<directory>] (directory where node's data, logs will be kept;
-                         default: this script's directory)
-    [--dont-rename] (don't change network address)
-    [--dont-start] (don't start ns_server)
-    [--static-cookie] (don't reset cookie)
-    [--start-index=<index>] (starting node number; default: 0)
-    [--loglevel=<level>] (logging level; default: 'debug')
-    [--prepend-extras] (extra arguments)
-    [--pluggable-config=<file name>] (plug-ins)
-    [--disable-autocomplete] (disable auto-completion in UI)
-    [--pretend-version=<version>
-        When setting up a new cluster, spoof different version. Default
-        is to use current version. Can simplify basic mixed-version
-        cluster testing. E.g. (each command in its own terminal):
+def ipv_convertor(ipv_version):
+    """The 'ipv' parameter in cluster_run_lib.start expects a true or false
+    But the --afamily flag expects ipv4 or ipv6"""
+    if ipv_version.lower() not in ("ipv4", "ipv6"):
+        raise argparse.ArgumentTypeError(f"Invalid address family. Only expects"
+                                         f" ('ipv4', 'ipv6')")
+    if ipv_version.lower() == "ipv6":
+        return True
+    return False
 
-       ./cluster_run -n2 --pretend-version 6.5
-       ./cluster_run -n2 --start-index 2
-       ./cluster_connect -n4 -Tkv
 
-       (Note the down-version cluster needs to be specified first as
-       you can't add down-version nodes to an up-version cluster.)
-       This will create a four node kv-only cluster with first two nodes
-       running at 6.5, and the other two running the "trunk" version.
+def argument_parser():
+    # Default padding for the flags is 24 chars, using this lambda function,
+    # means that the help text doesn't start on the next line.
+    arg_parser = argparse.ArgumentParser(
+        formatter_class=lambda prog: argparse.RawTextHelpFormatter(
+            prog,
+            max_help_position=32))
+    arg_parser.add_argument(
+        '--nodes',
+        '-n',
+        type=int,
+        help=f"<number of nodes> (default: 1)",
+        metavar="")
+    # Uses the default=None, because when action='store_true', the default is
+    # set as False, there may be a niche condition where the default value set
+    # for a function is True and a flag is used to set True.
+    arg_parser.add_argument(
+        '--dont-start',
+        action='store_true',
+        default=None,
+        help=f"(don't start ns_server)")
+    arg_parser.add_argument(
+        '--start-index',
+        type=int,
+        help=f"<starting node number> (default: 0)",
+        metavar="")
+    arg_parser.add_argument(
+        '--dont-rename',
+        action='store_true',
+        default=None,
+        help=f"(don't change network address)")
+    arg_parser.add_argument(
+        '--static-cookie',
+        action='store_true',
+        default=None,
+        help=f"(don't reset cookie)")
+    arg_parser.add_argument(
+        '--loglevel',
+        type=str.lower,
+        choices=LOGLEVELS,
+        help=f"<logging level> default: debug",
+        metavar="")
+    arg_parser.add_argument(
+        '--dir',
+        type=str,
+        help=f"<directory> directory of where node's data, logs will be kept;\n"
+             f"default: this script's directory",
+        metavar="")
+    arg_parser.add_argument(
+        '--prepend-extras',
+        action='store_true',
+        default=None,
+        help=f"(extra argmunents)")
+    arg_parser.add_argument(
+        '--pluggable-config',
+        type=(lambda x: [x]),
+        help="<file name> (plug-ins)",
+        metavar="")
+    arg_parser.add_argument(
+        '--disable-autocomplete',
+        action='store_const',
+        const='{disable_autocomplete,true}',
+        help=f"(disable auto-completion in UI)")
+    arg_parser.add_argument(
+        '--pretend-version',
+        type=str,
+        help=
+        f"<version> When setting up a new cluster, spoof different "
+        f"version. Default is to use current version. Can simplify basic "
+        f"mixed-version cluster testing. E.g. (each command in its own "
+        f"terminal): \n\n./cluster_run -n2 --pretend-version 6.5\n"
+        f"./cluster_run -n2 --start-index 2 \n./cluster_connect-n4 -Tkv"
+        f"\n\n(Note the down-version cluster needs to be specified first "
+        f"as you can't add down-version nodes to an up-version cluster.)"
+        f"\nThis will create a four node kv-only cluster with first two "
+        f"nodes running at 6.5, and the other two running the \"trunk\""
+        f"version",
+        metavar="")
+    arg_parser.add_argument(
+        '--community',
+        action='store_true',
+        default=None,
+        help=f"(boot as Community Edition)")
+    arg_parser.add_argument(
+        '--serverless',
+        action='store_true',
+        default=None,
+        help=f"(boot with serverless profile)")
+    arg_parser.add_argument(
+        '--dev-preview-default',
+        type=(lambda x: x.lower() == "true"),
+        default=None,
+        help=
+        f"Sets the default value of developer preview enabled mode. "
+        f"This flag only has an effect if the cluster is being set up for the"
+        f"first time and in that case, this option sets the value of the "
+        f"dev preview mode. Otherwise, it doesn't override the dev preview"
+        f" mode setting. Userful when combined with --pretend-version as "
+        f"that option doesn't work with clusters that are defaulted to be "
+        f"in developer preview mode.",
+        metavar="")
+    arg_parser.add_argument(
+        '--afamily', '-p',
+        type=ipv_convertor,
+        default=is_ipv6_setup(),
+        help="<address family> Using ipv4 or ipv6",
+        metavar="")
+    arg_parser.add_argument(
+        dest="additional_args",
+        nargs="*",
+        help=argparse.SUPPRESS,
+    )
 
-    [--community] (boot as Community Edition)
-    [--serverless] (boot with serverless profile)
-    [--dev-preview-default=<true|false>]
-        Sets the default value of developer preview enabled mode.
-        This flag only has an effect if the cluster is being set up
-        for the first time and in that case, this option sets the
-        value of the dev preview mode. Otherwise, it doesn't
-        override the dev preview mode setting. Useful when combined
-        with --pretend-version as that option doesn't work with
-        clusters that are defaulted to be in developer preview mode.
-"""
+    args = arg_parser.parse_args()
 
-def usage():
-    print(USAGE_STRING.format(program_name=sys.argv[0]))
+    params = {"num_nodes": args.nodes,
+              "dont_start": args.dont_start,
+              "start_index": args.start_index,
+              "dont_rename": args.dont_rename,
+              "static_cookie": args.static_cookie,
+              "loglevel": args.loglevel,
+              "root_dir": args.dir,
+              "prepend_extras": args.prepend_extras,
+              "pluggable_config": args.pluggable_config,
+              "disable_autocomplete": args.disable_autocomplete,
+              "pretend_version": args.pretend_version,
+              "dev_preview_default": args.dev_preview_default,
+              "ipv6": args.afamily,
+              "force_community": args.community,
+              "run_serverless": args.serverless,
+              "args": args.additional_args
+              }
 
+    # Removes the keys when value is None, therefore start_cluster uses
+    # the default values.
+    return {k: v for k, v in params.items() if v is not None}
 
 
 def main():
     libpath = os.path.join(currentdir, '..', 'install', 'lib')
-    os.environ["LD_LIBRARY_PATH"] = f'{libpath}:{os.environ.get("LD_LIBRARY_PATH", "")}'
-    try:
-        optlist, args = getopt.gnu_getopt(sys.argv[1:], "hn:p:",
-                                          ["help", "start-index=", "nodes=",
-                                           "dir=",
-                                           "dont-rename",
-                                           "static-cookie", "dont-start",
-                                           "loglevel=",
-                                           "prepend-extras",
-                                           "pluggable-config=",
-                                           "disable-autocomplete",
-                                           "community", "serverless",
-                                           "pretend-version=", "afamily=",
-                                           "dev-preview-default="])
-    except getopt.GetoptError as err:
-        # print help information and exit:
-        print(str(err))  # will print something like "option -a not recognized"
-        usage()
-        sys.exit(2)
-
-    params = {}
-
-    params['ipv6'] = is_ipv6_setup()
-    params['args'] = args[0:]
-
-    for o, a in optlist:
-        if o in ("--nodes", "-n"):
-            params['num_nodes'] = int(a)
-        elif o == '--dont-start':
-            params['dont_start'] = True
-        elif o == '--start-index':
-            params['start_index'] = int(a)
-        elif o == '--dont-rename':
-            params['dont_rename'] = True
-        elif o in ("--help", "-h"):
-            usage()
-            exit(0)
-        elif o == "--static-cookie":
-            params['static_cookie'] = True
-        elif o == '--loglevel':
-            if a not in LOGLEVELS:
-                print("Valid log levels are the following: %s" % ', '.join(LOGLEVELS))
-                sys.exit(1)
-            params['loglevel'] = a
-        elif o == '--dir':
-            params['root_dir'] = a
-        elif o == "--prepend-extras":
-            params['prepend_extras'] = True
-        elif o == "--pluggable-config":
-            params['pluggable_config'] = [a]
-        elif o == "--disable-autocomplete":
-            params['disable_autocomplete'] = "{disable_autocomplete,true}"
-        elif o == "--pretend-version":
-            params['pretend_version'] = a
-        elif o == "--dev-preview-default":
-            params['dev_preview_default'] = a == 'true'
-        elif o in ("--afamily", "-p"):
-            if a == "ipv6":
-                params['ipv6'] = True
-            elif a == "ipv4":
-                params['ipv6'] = False
-            else:
-                assert False, "invalid address family"
-        elif o == "--community":
-            params['force_community'] = True
-        elif o == "--serverless":
-            params['run_serverless'] = True
-        else:
-            assert False, "unhandled options"
-
+    os.environ[
+        "LD_LIBRARY_PATH"] = f'{libpath}:{os.environ.get("LD_LIBRARY_PATH", "")}'
+    params = argument_parser()
     nodes = []
     terminal_attrs = None
 
