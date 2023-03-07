@@ -660,12 +660,16 @@ def connect(num_nodes=0,
     data = do_encode("memoryQuota=" + str(memsize) +
                      "&indexMemoryQuota=" + str(indexmemsize))
     o.open("http://{0}:{1}/pools/default".format(addr, base_port), data).read()
-    data = do_encode("name=default" +
-                     "&bucketType=" + buckettype +
-                     "&storageBackend=" + storage_backend +
-                     "&ramQuotaMB=" + str(memsize) +
-                     "&replicaNumber=" + str(replicas) +
-                     "&replicaIndex=" + bool_request_value(replica_index))
+    data_string = ("name=default" +
+                   "&bucketType=" + buckettype +
+                   "&storageBackend=" + storage_backend +
+                   "&ramQuotaMB=" + str(memsize)
+                   )
+    if buckettype != "memcached":
+        data_string += "&replicaNumber=" + str(replicas)
+    if buckettype != "ephemeral":
+        data_string += "&replicaIndex=" + bool_request_value(replica_index)
+    data = do_encode(data_string)
     o.open("http://{0}:{1}/pools/default/buckets".format(addr, base_port),
            data).read()
     data = do_encode("port=SAME&username=Administrator&password=asdasd")
