@@ -21,9 +21,6 @@ import glob
 from urllib.error import HTTPError
 
 scriptdir = os.path.dirname(os.path.realpath(__file__))
-os.environ['LD_LIBRARY_PATH'] = os.path.join(scriptdir, "../../install/lib/") \
-                                + ":" +os.environ.get('LD_LIBRARY_PATH', "")
-
 pylib = os.path.join(scriptdir, "..", "pylib")
 sys.path.append(pylib)
 
