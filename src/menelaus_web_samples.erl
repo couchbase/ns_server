@@ -18,7 +18,8 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--export([handle_get/1,
+-export([is_http/1,
+         handle_get/1,
          handle_post/1]).
 
 -import(menelaus_util,
@@ -31,8 +32,7 @@
 
 -record(sample, {sample_name :: string(),
                  bucket_name :: string() | undefined,
-                 staging :: string() | undefined,
-                 region :: string() | undefined,
+                 http_cache_directory :: string() | undefined,
                  must_bucket_exist :: bucket_must_exist |
                                       bucket_must_not_exist}).
 
@@ -69,10 +69,10 @@ build_samples_input_list(Samples) ->
                       undefined -> {bucket_must_not_exist, SampleName};
                       Name -> {bucket_must_exist, Name}
                   end,
+              CacheDir = proplists:get_value(http_cache_directory, Sample),
               [#sample{sample_name = SampleName,
                        bucket_name = BucketName,
-                       staging = proplists:get_value(staging, Sample),
-                       region = proplists:get_value(region, Sample),
+                       http_cache_directory = CacheDir,
                        must_bucket_exist = BucketMustExist} | AccIn]
       end, [], Samples).
 
@@ -90,23 +90,22 @@ build_samples_input_list(Samples) ->
 %% bucket (which must already exist). The "bucket" property is optional, to
 %% allow future deprecation of the first input type.
 %%
-%% The third input is a list of json objects like the second, but with two extra
-%% properties:
+%% The third input is a list of json objects like the second, but with one
+%% extra property:
 %% {
 %%      "sample": <sample-name>,
 %%      "bucket": <bucket-name>,
-%%      "staging": <staging-dir>,
-%%      "region": <region>
+%%      "http_cache_directory": <cache-dir>
 %% }
-%% In this case, <sample-name> is an s3:// address for the sample and
+%% In this case, <sample-name> is a http(s):// address for the sample and
 %% <bucket-name> is the same as in the second input, although in this case it is
-%% required. The "staging" and "region" properties are required arguments to
-%% provide to cbimport.
+%% required. The "http_cache_directory" property is a required argument for
+%% cbimport.
 %%
 %% The three types of input are normalized into a list of records to facilitate
 %% common handling, with <must-bucket-exist> depending on whether the
 %% <bucket-name> was specified.
-%% [#sample{<sample-name>, <bucket-name>, <staging>, <region>,
+%% [#sample{<sample-name>, <bucket-name>, <http-cache-directory>,
 %%          <must_bucket_exist>}]}
 %%
 %% To validate each json object separately, the json_array validation handler
@@ -114,22 +113,23 @@ build_samples_input_list(Samples) ->
 %% extract_internal is required, as the root of each json sub-document does not
 %% have a key, and so is stored in the {internal, root} key.
 
-is_s3("s3://" ++ _) -> true;
-is_s3(_) -> false.
+%% is_http returns a boolean indicating whether the given string represents a
+%% URL (i.e. has the prefix 'http(s)://').
+is_http("http://" ++ _) -> true;
+is_http("https://" ++ _) -> true;
+is_http(_) -> false.
 
 remote_sample_validators() ->
     [validator:required(bucket, _),
-     validator:string(staging, _),
-     validator:required(staging, _),
-     validator:string(region, _),
-     validator:required(region, _)].
+     validator:string(http_cache_directory, _),
+     validator:required(http_cache_directory, _)].
 
 %% As the validators to be used depends on one of the parameters, we cannot
 %% simply append the above validators when applicable, instead they must be
 %% applied within this wrapper validator, which only applies them when the
 %% sample is a remote address
 validate_remote_sample(State) ->
-    case is_s3(validator:get_value(sample, State)) of
+    case is_http(validator:get_value(sample, State)) of
         true ->
             functools:chain(State, remote_sample_validators());
         false ->
@@ -212,12 +212,11 @@ start_loading_samples(Req, Samples) ->
       end, Samples).
 
 start_loading_sample(Req, #sample{sample_name = Sample, bucket_name = Bucket,
-                                  staging = StagingDir, region = Region,
+                                  http_cache_directory = CacheDir,
                                   must_bucket_exist = BucketState}) ->
     case samples_loader_tasks:start_loading_sample(Sample, Bucket,
                                                    ?SAMPLE_BUCKET_QUOTA_MB,
-                                                   StagingDir, Region,
-                                                   BucketState) of
+                                                   CacheDir, BucketState) of
         ok ->
             ns_audit:start_loading_sample(Req, Bucket);
         already_started ->
@@ -292,7 +291,7 @@ check_bucket_quota(#sample{bucket_name = Bucket}) ->
     end.
 
 check_sample_exists(Sample) ->
-    case is_s3(Sample) of
+    case is_http(Sample) of
         true ->
             %% We should let cbimport handle this
             ok;

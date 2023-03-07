@@ -17,13 +17,15 @@
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
 
--export([start_loading_sample/6, get_tasks/1]).
+-export([start_loading_sample/5, get_tasks/1]).
 
--export([perform_loading_task/6]).
+-export([perform_loading_task/5]).
 
-start_loading_sample(Sample, Bucket, Quota, StagingDir, Region, BucketState) ->
+-import(menelaus_web_samples, [is_http/1]).
+
+start_loading_sample(Sample, Bucket, Quota, CacheDir, BucketState) ->
     gen_server:call(?MODULE, {start_loading_sample, Sample, Bucket, Quota,
-                              StagingDir, Region, BucketState}, infinity).
+                              CacheDir, BucketState}, infinity).
 
 get_tasks(Timeout) ->
     gen_server:call(?MODULE, get_tasks, Timeout).
@@ -40,13 +42,13 @@ init([]) ->
     erlang:process_flag(trap_exit, true),
     {ok, #state{}}.
 
-handle_call({start_loading_sample, Sample, Bucket, Quota, StagingDir, Region,
+handle_call({start_loading_sample, Sample, Bucket, Quota, CacheDir,
              BucketState}, _From,
             #state{tasks = Tasks} = State) ->
     case lists:keyfind(Bucket, 1, Tasks) of
         false ->
-            Pid = start_new_loading_task(Sample, Bucket, Quota, StagingDir,
-                                         Region, BucketState),
+            Pid = start_new_loading_task(Sample, Bucket, Quota, CacheDir,
+                                         BucketState),
             ns_heart:force_beat(),
             NewState = State#state{tasks = [{Bucket, Pid} | Tasks]},
             {reply, ok, maybe_pass_token(NewState)};
@@ -111,13 +113,11 @@ maybe_pass_token(#state{token_pid = undefined,
 maybe_pass_token(State) ->
     State.
 
-start_new_loading_task(Sample, Bucket, Quota, StagingDir, Region,
-                       BucketState) ->
+start_new_loading_task(Sample, Bucket, Quota, CacheDir, BucketState) ->
     proc_lib:spawn_link(?MODULE, perform_loading_task,
-                        [Sample, Bucket, Quota, StagingDir, Region,
-                         BucketState]).
+                        [Sample, Bucket, Quota, CacheDir, BucketState]).
 
-perform_loading_task(Sample, Bucket, Quota, StagingDir, Region, BucketState) ->
+perform_loading_task(Sample, Bucket, Quota, CacheDir, BucketState) ->
     receive
         allowed_to_go -> ok
     end,
@@ -141,13 +141,12 @@ perform_loading_task(Sample, Bucket, Quota, StagingDir, Region, BucketState) ->
                   end,
 
     Cmd = BinDir ++ "/cbimport",
-    {DataSet, S3Args} =
-        case Sample of
-            "s3://" ++ _ ->
+    {DataSet, AdditionalArgs} =
+        case is_http(Sample) of
+            true ->
                 {Sample,
-                 ["--obj-staging-dir", StagingDir,
-                  "--obj-region", Region]};
-            _ ->
+                 ["--http-cache-directory", CacheDir]};
+            false ->
                 {"file://" ++
                      filename:join([BinDir, "..", "samples",
                                     Sample ++ ".zip"]),
@@ -159,7 +158,7 @@ perform_loading_task(Sample, Bucket, Quota, StagingDir, Region, BucketState) ->
             "--threads", "2",
             "--verbose",
             "--dataset", DataSet] ++
-            S3Args ++
+            AdditionalArgs ++
             ClusterOpts ++
             case BucketState of
                 bucket_must_exist ->
