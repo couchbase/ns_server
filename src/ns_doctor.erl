@@ -29,7 +29,8 @@
           tasks_hash_nodes :: undefined | dict:dict(),
           tasks_hash :: undefined | integer(),
           tasks_version :: undefined | string(),
-          config_state = #{}
+          config_state = #{},
+          global_tasks_hash :: undefined | integer()
          }).
 
 %% doctor_debug is parsed by the supportal tools - avoid any log trimming
@@ -337,25 +338,40 @@ send_log_msg() ->
     erlang:send_after(?LOG_INTERVAL, self(), log).
 
 maybe_refresh_tasks_version(#state{nodes = Nodes,
-                                   tasks_hash_nodes = VersionNodes} = State)
+                                   tasks_hash_nodes = VersionNodes,
+                                   global_tasks_hash = GlobalTasksHash} = State)
   when Nodes =:= VersionNodes ->
-    State;
+    %% global tasks are not included in node statuses, so the tasks version may
+    %% still have changed when Nodes =:= VersionNodes, so we pre-compute the
+    %% global tasks hash in case we still need to refresh
+    NewGlobalTasksHash = compute_global_tasks_hash(),
+    case NewGlobalTasksHash =:= GlobalTasksHash of
+        true ->
+            State;
+        false ->
+            do_refresh_tasks_version(State, NewGlobalTasksHash)
+    end;
 maybe_refresh_tasks_version(State) ->
+    GlobalTasksHash = compute_global_tasks_hash(),
+    do_refresh_tasks_version(State, GlobalTasksHash).
+
+do_refresh_tasks_version(State, GlobalTasksHash) ->
     Nodes = State#state.nodes,
-    TasksHash =
+    LocalTasksHash =
         dict:fold(
           fun (TaskNode, NodeInfo, Hash) ->
                   Hash1 = compute_local_tasks_hash(TaskNode, NodeInfo, Hash),
                   ActiveBuckets = proplists:get_value(active_buckets, NodeInfo, []),
                   add_hash({active_buckets, TaskNode, ActiveBuckets}, Hash1)
           end, new_hash(), Nodes),
+    AllTasksHash = add_hash(GlobalTasksHash, LocalTasksHash),
 
     Buckets = ns_bucket:get_bucket_names(),
     RebalanceStatus = rebalance:status_uuid(),
     RecoveryStatus = ns_orchestrator:is_recovery_running(),
 
-    FinalHash = final_hash(add_hash({Buckets,
-                                     RebalanceStatus, RecoveryStatus}, TasksHash)),
+    FinalHash = final_hash(add_hash({Buckets, RebalanceStatus, RecoveryStatus},
+                                    AllTasksHash)),
     case FinalHash =:= State#state.tasks_hash of
         true ->
             %% hash did not change, only nodes. Cool
@@ -364,7 +380,8 @@ maybe_refresh_tasks_version(State) ->
             %% hash changed. Generate new version
             State#state{tasks_hash_nodes = Nodes,
                         tasks_hash = FinalHash,
-                        tasks_version = integer_to_list(FinalHash)}
+                        tasks_version = integer_to_list(FinalHash),
+                        global_tasks_hash = GlobalTasksHash}
     end.
 
 new_hash() ->
@@ -411,6 +428,15 @@ compute_local_tasks_hash(TaskNode, NodeInfo, Hash) ->
                       Acc
               end
       end, Hash, proplists:get_value(local_tasks, NodeInfo, [])).
+
+%% Global tasks hash should only change when the list of tasks changes, but not
+%% when an individual task is updated. To ensure this, we compute the hash of
+%% the sorted list of task ids that are returned by default from the
+%% /pools/default/tasks endpoint
+compute_global_tasks_hash() ->
+    TaskIds = lists:map(fun global_tasks:task_id/1,
+                        global_tasks:get_default_tasks()),
+    erlang:phash2(lists:sort(TaskIds)).
 
 task_operation(extract, Indexer, RawTask)
   when Indexer =:= indexer ->

@@ -11,6 +11,7 @@ import testlib
 
 import time
 import itertools
+from copy import copy
 
 
 class TasksBase:
@@ -141,6 +142,31 @@ class TasksBase:
             assert found_task.get("task_id") != unexpected_id, \
                 f"Unexpected task found with task_id '{unexpected_id}"
 
+    # Get the current tasks list version
+    def get_tasks_version(self, cluster):
+        r = testlib.get_succ(cluster, self.addr_pools_default)
+        json_resp = testlib.json_response(r, f"{self.addr_pools_default} "
+                                             f"response was not json")
+        tasks = testlib.assert_json_key("tasks", json_resp,
+                                        self.addr_pools_default)
+        uri = testlib.assert_json_key("uri", tasks, self.addr_pools_default)
+
+        # Tasks version is provided by the 'v' key in the uri's query string
+        assert "?v=" in uri, "Missing tasks hash in uri"
+        return uri.split("?v=")[1]
+
+    def assert_tasks_version_changed(self, cluster, old_version):
+        new_version = self.get_tasks_version(cluster)
+        assert new_version != old_version, \
+            f"Tasks version was not changed when expected"
+        # Return the new version, for subsequent comparisons without re-fetching
+        return new_version
+
+    def assert_tasks_version_same(self, cluster, old_version):
+        new_version = self.get_tasks_version(cluster)
+        assert new_version == old_version, \
+            f"Unexpected change of tasks version"
+
 
 def task_to_erlang(task):
     if task.bucket is None:
@@ -188,6 +214,46 @@ class TasksTestSet(testlib.BaseTestSet, TasksBase):
                           data=f"global_tasks:update_task("
                                f"{task_to_erlang(task)}).")
 
+    # Generate valid task updates by modifying the status in all possible ways,
+    # then modifying the extras field in all possible ways
+    def generate_task_updates(self, task):
+        # Copy the task so that we can modify it without impacting the original
+        new_task = copy(task)
+        # Yield a new task with each status other than the existing one
+        for status in self.statuses:
+            if status != task.status:
+                new_task.status = status
+                yield new_task
+        # Yield a new task with each value of extras other than the existing one
+        for extras in self.extras_values:
+            if extras != task.status:
+                new_task.extras = extras
+                yield new_task
+
+    # Attempt to update a task with a sequence of valid changes
+    def test_updating_task(self, cluster, initial_task, version):
+        last_task = initial_task
+        for task_update in self.generate_task_updates(initial_task):
+            self.update_task(cluster, task_update)
+            self.assert_task(cluster, task_update)
+
+            # If the task_update and last_task are either both default tasks
+            # or both not default tasks, then version should be the same
+            if self.is_default_task(task_update) == \
+                    self.is_default_task(last_task):
+                # Assert that the tasks version is unaffected by an update to an
+                # existing task
+                self.assert_tasks_version_same(cluster, version)
+            else:
+                # If exactly one of task_update and last_task are default tasks
+                # then the task will either be added or removed from the
+                # default tasks list, so the version should change
+                version = self.assert_tasks_version_changed(cluster, version)
+            last_task = task_update
+
+        # Return the final version for use in subsequent comparisons
+        return version
+
     # Generate a variety of tasks.
     # These are not necessarily valid tasks, but should still be accepted
     def generate_tasks(self):
@@ -197,7 +263,16 @@ class TasksTestSet(testlib.BaseTestSet, TasksBase):
             yield self.generate_task(task_type, status, bucket, extras)
 
     def simple_test(self, cluster):
+        version = self.get_tasks_version(cluster)
         for task in self.generate_tasks():
             # Add a new task and assert that it was added
             self.update_task(cluster, task)
             self.assert_task(cluster, task)
+
+            if self.is_default_task(task):
+                # If we add a new task to the default tasks list, then the
+                # version should change
+                version = self.assert_tasks_version_changed(cluster, version)
+                # Test that subsequent task updates correctly impact the version
+                version = self.test_updating_task(cluster, task, version)
+
