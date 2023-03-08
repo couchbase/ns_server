@@ -32,7 +32,7 @@ from datetime import datetime, timedelta, tzinfo
 import array
 import mmap
 from io import BytesIO, StringIO
-from typing import BinaryIO, Dict, List, Optional, Iterable, Pattern, Tuple, TypeVar, Union, IO, Any
+from typing import BinaryIO, Dict, List, Optional, Iterable, Pattern, Tuple, TypeVar, Union, IO, Any, Callable
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 from enum import Enum, unique
 from io import BytesIO, StringIO
@@ -652,10 +652,10 @@ class Task:
     num_samples: int = 1
     interval: int = 0
     suppress_append_newline: bool = False
-    to_stdin: Optional[str] = None
+    to_stdin: Optional[Union[str, Callable[[], str]]] = None
     no_header: bool = False
     change_dir: Union[bool, str] = False
-    addenv: Optional[Iterable[Tuple[str, str]]] = None
+    addenv: Optional[Iterable[Tuple[str, Union[str, Callable[[], str]]]]] = None
     privileged: bool = False
     is_posix: bool = (os.name == "posix")
     extra_flags: Dict[str, str] = {}
@@ -712,7 +712,8 @@ class Task:
                                  shell=self.use_shell,
                                  **extra_flags)
             if self.to_stdin and p.stdin:
-                p.stdin.write(self.to_stdin.encode())
+                s = self.to_stdin() if callable(self.to_stdin) else self.to_stdin
+                p.stdin.write(s.encode())
             if p.stdin:
                 p.stdin.close()
         except OSError as e:
@@ -867,8 +868,11 @@ class Task:
     def _env_flags(self) -> Dict[str, Any]:
         flags = {}
         if self.addenv:
+            addenv = []
+            for (k, v) in self.addenv:
+                addenv.append((k, v() if callable(v) else v))
             env = os.environ.copy()
-            env.update(self.addenv)
+            env.update(addenv)
             flags["env"] = env
         return flags
 
@@ -1184,17 +1188,17 @@ class TaskRunner:
             metatask.execute_all(logfile)
 
 
-def make_curl_task(name, user, password, url,
+def make_curl_task(name, get_creds_fun, url,
                    timeout=60, log_file=DEFAULT_LOG, base_task=AllOsTask,
                    **kwargs):
     return base_task(name, ["curl", "-sS", "-k", "--proxy", "", "-K-", url],
                      timeout=timeout,
                      log_file=log_file,
-                     to_stdin="--user %s:%s" % (user, password),
+                     to_stdin=lambda: f"--user {get_creds_fun()}",
                      **kwargs)
 
 
-def make_cbstats_task(kind, memcached_pass, guts, extra_args=""):
+def make_cbstats_task(kind, memcached_pass_fun, guts, extra_args=""):
     port = read_guts(guts, "memcached_dedicated_port")
     user = read_guts(guts, "memcached_admin")
     return AllOsTask(f"memcached stats {kind}",
@@ -1202,16 +1206,15 @@ def make_cbstats_task(kind, memcached_pass, guts, extra_args=""):
                               kind, "-u", user, extra_args]),
                      log_file="stats.log",
                      timeout=60,
-                     addenv=[("CB_PASSWORD", memcached_pass)])
+                     addenv=[("CB_PASSWORD", memcached_pass_fun)])
 
 
-def make_cbstats_all_buckets_task(kind, memcached_pass, guts):
+def make_cbstats_all_buckets_task(kind, memcached_pass_fun, guts):
     # The extra arg "-a" tells cbstats to iterate over all Buckets
-    return make_cbstats_task(kind, memcached_pass, guts, "-a")
+    return make_cbstats_task(kind, memcached_pass_fun, guts, "-a")
 
 
-def get_local_token(guts):
-    path = read_guts(guts, "localtoken_path")
+def read_local_token(path):
     token = ""
     try:
         with open(path, 'r') as f:
@@ -1221,67 +1224,77 @@ def get_local_token(guts):
     return token
 
 
-def get_diag_password(guts):
+def get_localtoken_creds_fun(guts):
+    path = read_guts(guts, "localtoken_path")
+    return lambda: f"@localtoken:{read_local_token(path)}"
+
+
+def get_memcached_password_fun(guts):
     port = read_guts(guts, "rest_port")
-    pwd = get_local_token(guts)
     url = "http://%s:%s/diag/password" % (local_url_addr, port)
-    command = ["curl", "-sS", "--proxy", "", "-u", "@localtoken:%s" % pwd, url]
+    creds_fun = get_localtoken_creds_fun(guts)
 
-    # Don't append a newline to the result, since that would corrupt
-    # the password.
-    task = AllOsTask("get diag password", command, timeout=60, no_header=True,
-                     suppress_append_newline=True)
-    output_bytes = BytesIO()
-    status = task.execute(output_bytes)
-    output = output_bytes.getvalue().decode(LATIN1)
-    if status == 0:
-        return output
-    log(output)
-    return ""
+    def get_memcached_password():
+        command = ["curl", "-sS", "--proxy", "", "-K-", url]
+
+        # Don't append a newline to the result, since that would corrupt
+        # the password.
+        task = AllOsTask("get diag password", command, timeout=60,
+                         no_header=True, suppress_append_newline=True,
+                         to_stdin=f"--user {creds_fun()}")
+        output_bytes = BytesIO()
+        status = task.execute(output_bytes)
+        output = output_bytes.getvalue().decode(LATIN1)
+        if status == 0:
+            return output
+
+        log(output)
+        return ""
+
+    return get_memcached_password
 
 
-def make_query_statement_task(statement, user, password, port,
+def make_query_statement_task(statement, get_creds_fun, port,
                               logfile=DEFAULT_LOG, **kwargs):
     url = "http://%s:%s/query/service?statement=%s" % (
         local_url_addr, port, urllib.parse.quote(statement))
 
     return make_curl_task(name="Result of query statement \'%s\'" % statement,
-                          user=user, password=password, url=url,
+                          get_creds_fun=get_creds_fun, url=url,
                           log_file=logfile, **kwargs)
 
 
-def make_cbas_statement_task(statement, user, password, port):
+def make_cbas_statement_task(statement, get_creds_fun, port):
     url = "http://%s:%s/analytics/service/diagnostics?statement=%s" % (
         local_url_addr, port, urllib.parse.quote(statement))
 
     return make_curl_task(name="Result of query statement \'%s\'" % statement,
-                          user=user, password=password, url=url)
+                          get_creds_fun=get_creds_fun, url=url)
 
 
 def make_index_task(
         name,
         api,
-        passwd,
+        get_creds_fun,
         index_port,
         logfile=DEFAULT_LOG,
         **kwargs):
     index_url = f'http://{local_url_addr}:{index_port}/{api}'
     return make_curl_task(
         name,
-        "@",
-        passwd,
+        get_creds_fun,
         index_url,
         log_file=logfile,
         **kwargs)
 
 
-def make_golang_profile_tasks(service_name, passwd, port, log_prefix,
+def make_golang_profile_tasks(service_name, get_creds_fun, port, log_prefix,
                               no_header=True, tls=False, **kwargs):
     """
     Helper function to create the various tasks needed to collect profiling
     information from Golang components
     :param service_name:    The service name, for example 'Query'
-    :param passwd:          The password used to auth against the API
+    :param get_creds_fun:   Function that returns credentials for the API
     :param port:            The port used to connect to the API on
     :param log_prefix:      String to append to the start of each log file
     :param no_header:       Whether to append the usual command header to the
@@ -1312,8 +1325,7 @@ def make_golang_profile_tasks(service_name, passwd, port, log_prefix,
         tasks.append(
             make_curl_task(
                 name,
-                '@',
-                passwd,
+                get_creds_fun,
                 api_url,
                 log_file=logfile,
                 no_header=no_header,
@@ -1689,7 +1701,8 @@ def correct_split(string, splitchar):
     return rv
 
 
-def make_product_task(guts, initargs_path, memcached_pass, options):
+def make_product_task(guts, initargs_path, local_token_creds_fun,
+                      memcached_pass_fun, options):
     if read_guts(guts, "tls") == "true":
         tls = True
     else:
@@ -1739,8 +1752,8 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
         pr_url=f'http://{local_url_addr}:{query_port}/admin/prepareds{redact_opt}'
 
         def make(statement, logfile=DEFAULT_LOG, **kwargs):
-            return make_query_statement_task(statement, user="@",
-                                             password=memcached_pass,
+            return make_query_statement_task(statement,
+                                             get_creds_fun=local_token_creds_fun,
                                              port=query_port,
                                              logfile=logfile,
                                              **kwargs)
@@ -1751,25 +1764,23 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
             make("SELECT * FROM system:keyspaces"),
             make("SELECT * FROM system:indexes"),
             make('SELECT * FROM system:functions'),
+
             make_curl_task(name="Query Completed Requests: ",
-                user="@",
-                password=memcached_pass,
+                get_creds_fun=local_token_creds_fun,
                 url=cr_url,
                 log_file="completed_requests.json",
                 no_header=True, timeout=60*5),
             make_curl_task(name="Query Active Requests: ",
-                user="@",
-                password=memcached_pass,
+                get_creds_fun=local_token_creds_fun,
                 url=ar_url,
                 log_file="active_requests.json",
                 no_header=True, timeout=60*2),
             make_curl_task(name="Query Prepared Cache: ",
-                user="@",
-                password=memcached_pass,
+                get_creds_fun=local_token_creds_fun,
                 url=pr_url,
                 log_file="prepareds.json",
                 no_header=True, timeout=60*2),
-            *make_golang_profile_tasks('Query', memcached_pass, query_port,
+            *make_golang_profile_tasks('Query', local_token_creds_fun, query_port,
                                        'query')
         ]
 
@@ -1780,48 +1791,48 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
             make_index_task(
                 "Index definitions are: ",
                 "getIndexStatus",
-                memcached_pass,
+                local_token_creds_fun,
                 index_port),
             make_index_task(
                 "Indexer settings are: ",
                 "settings",
-                memcached_pass,
+                local_token_creds_fun,
                 index_port),
             make_index_task(
                 "Indexer stats are: ",
                 "stats?partition=true",
-                memcached_pass,
+                local_token_creds_fun,
                 index_port),
             make_index_task(
                 "Index storage stats are: ",
                 "stats/storage",
-                memcached_pass,
+                local_token_creds_fun,
                 index_port),
             make_index_task(
                 "MOI allocator stats are: ",
                 "stats/storage/mm",
-                memcached_pass,
+                local_token_creds_fun,
                 index_port),
             make_index_task(
                 "Indexer Rebalance Tokens: ",
                 "listRebalanceTokens",
-                memcached_pass,
+                local_token_creds_fun,
                 index_port),
             make_index_task(
                 "Indexer Metadata Tokens: ",
                 "listMetadataTokens",
-                memcached_pass,
+                local_token_creds_fun,
                 index_port),
-            *make_golang_profile_tasks('Indexer', memcached_pass, index_port,
-                                       'indexer')
+            *make_golang_profile_tasks('Indexer', local_token_creds_fun,
+                                       index_port, 'indexer')
         ]
 
     projector_tasks = []
     proj_port = read_guts(guts, "projector_port")
     if proj_port:
         projector_tasks = [
-            *make_golang_profile_tasks('Projector', memcached_pass, proj_port,
-                                       'projector', tls=tls)
+            *make_golang_profile_tasks('Projector', local_token_creds_fun,
+                                       proj_port, 'projector', tls=tls)
         ]
 
     goxdcr_tasks = []
@@ -1834,15 +1845,15 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
         rc_url = f'{goxdcr_url}/remoteClusters{redact_opt}'
         rp_url = f'{goxdcr_url}/replications{redact_opt}'
         goxdcr_tasks = [
-            *make_golang_profile_tasks('GoXDCR', memcached_pass, goxdcr_port,
-                                       'goxdcr'),
+            *make_golang_profile_tasks('GoXDCR', local_token_creds_fun,
+                                       goxdcr_port, 'goxdcr'),
             make_curl_task(name='GoXDCR RemoteClusters: ',
-                           user="@", password=memcached_pass,
+                           get_creds_fun=local_token_creds_fun,
                            url=rc_url, timeout=300,
                            log_file="goxdcr_remote_clusters.json",
                            no_header=True),
             make_curl_task(name='GoXDCR Replications: ',
-                           user="@", password=memcached_pass,
+                           get_creds_fun=local_token_creds_fun,
                            url=rp_url, timeout=300,
                            log_file="goxdcr_replications.json",
                            no_header=True)
@@ -1854,10 +1865,10 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
         url = 'http://%s:%s/api/diag' % (local_url_addr, fts_port)
         fts_tasks = [
             make_curl_task(name="FTS /api/diag: ",
-                           user="@", password=memcached_pass,
+                           get_creds_fun=local_token_creds_fun,
                            url=url,
                            log_file="fts_diag.json", no_header=True),
-            *make_golang_profile_tasks('FTS', memcached_pass, fts_port,
+            *make_golang_profile_tasks('FTS', local_token_creds_fun, fts_port,
                                        'fts')
         ]
 
@@ -1869,15 +1880,14 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
         cbas_parent_port = read_guts(guts, "cbas_parent_port")
 
         def make_cbas(statement):
-            return make_cbas_statement_task(statement, user="@",
-                                            password=memcached_pass,
+            return make_cbas_statement_task(statement,
+                                            get_creds_fun=local_token_creds_fun,
                                             port=cbas_port)
 
         cbas_tasks = [
             make_curl_task(
                 name="Analytics /analytics/node/diagnostics: ",
-                user="@",
-                password=memcached_pass,
+                get_creds_fun=local_token_creds_fun,
                 url=cbas_diag_url,
                 log_file="analytics_diag.json",
                 no_header=True),
@@ -1886,7 +1896,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
             make_cbas("select * from `Metadata`.`Index`"),
             make_cbas("select * from `Metadata`.`Bucket`"),
             make_cbas("select * from `Metadata`.`Link`"),
-            *make_golang_profile_tasks('Analytics', memcached_pass,
+            *make_golang_profile_tasks('Analytics', local_token_creds_fun,
                                        cbas_parent_port, 'analytics')
         ]
 
@@ -1900,19 +1910,17 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
         eventing_tasks = [
             make_curl_task(
                 name="Eventing /api/v1/stats: ",
-                user="@",
-                password=memcached_pass,
+                get_creds_fun=local_token_creds_fun,
                 url=stats_url,
                 log_file="eventing_stats.json",
                 no_header=True),
             make_curl_task(
                 name="Eventing code insights: ",
-                user="@",
-                password=memcached_pass,
+                get_creds_fun=local_token_creds_fun,
                 url=eventing_insight_url,
                 log_file="eventing_insights.log",
                 no_header=True),
-            *make_golang_profile_tasks('Eventing', memcached_pass,
+            *make_golang_profile_tasks('Eventing', local_token_creds_fun,
                                        eventing_port, 'eventing')
         ]
 
@@ -1922,14 +1930,13 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
         backup_tasks = [
             make_curl_task(
                 name="Backup service information: ",
-                user="@",
-                password=memcached_pass,
+                get_creds_fun=local_token_creds_fun,
                 url=f"http://{local_url_addr}:{backup_port}/internal/v1/serviceInfo",
             ),
             *
             make_golang_profile_tasks(
                 'Backup',
-                memcached_pass,
+                local_token_creds_fun,
                 backup_port,
                 'backup')]
 
@@ -1944,7 +1951,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                   log_file="stats.log",
                   change_dir=True,
                   artifacts=["kv_trace.json"],
-                  addenv=[("CB_PASSWORD", memcached_pass)]),
+                  addenv=[("CB_PASSWORD", memcached_pass_fun)]),
         UnixTask("Directory structure",
                  ["ls", "-lRai", root]),
         UnixTask("Database directory structure",
@@ -1998,15 +2005,13 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                      "--"] + read_guts(guts, "couch_inis").split(";"),
                  log_file="ini.log"),
         make_curl_task(name="couchbase diags",
-                       user="@",
-                       password=memcached_pass,
+                       get_creds_fun=local_token_creds_fun,
                        timeout=600,
                        url=diag_url,
                        log_file="diag.log"),
 
         make_curl_task(name="master events",
-                       user="@",
-                       password=memcached_pass,
+                       get_creds_fun=local_token_creds_fun,
                        timeout=300,
                        url='http://%s:%s/diag/masterEvents?o=1' % (
                            local_url_addr, read_guts(guts, "rest_port")),
@@ -2014,8 +2019,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                        no_header=True),
 
         make_curl_task(name="ale configuration",
-                       user="@",
-                       password=memcached_pass,
+                       get_creds_fun=local_token_creds_fun,
                        url='http://%s:%s/diag/ale' % (
                            local_url_addr, read_guts(guts, "rest_port")),
                        log_file=DEFAULT_LOG),
@@ -2036,7 +2040,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                       "analytics_trace.json", "analytics_access.log", "analytics_cbas_debug.log",
                       "indexer_stats.log", "backup_service.log", "key.log"]],
 
-        [make_cbstats_all_buckets_task(kind, memcached_pass, guts)
+        [make_cbstats_all_buckets_task(kind, memcached_pass_fun, guts)
          for kind in ["all", "checkpoint", "collections", "config",
                       "dcp", "dcpagg",
                       ["diskinfo", "detail"], ["dispatcher", "logs"],
@@ -2048,7 +2052,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                       "vbucket-details", "vbucket-seqno",
                       "warmup", "workload"]],
 
-        [make_cbstats_task(kind, memcached_pass, guts)
+        [make_cbstats_task(kind, memcached_pass_fun, guts)
          for kind in ["tasks-all"]],
 
         [AllOsTask("memcached mcstat %s" % kind,
@@ -2059,7 +2063,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                             "-u", read_guts(guts, "memcached_admin"), kind]),
                    log_file="stats.log",
                    timeout=60,
-                   addenv=[("CB_PASSWORD", memcached_pass)])
+                   addenv=[("CB_PASSWORD", memcached_pass_fun)])
          for kind in ["allocator", "clocks", "connections", "threads",
                       "tracing"]],
 
@@ -2072,7 +2076,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                             "-u", read_guts(guts, "memcached_admin"), kind]),
                    log_file="stats.log",
                    timeout=60,
-                   addenv=[("CB_PASSWORD", memcached_pass)])
+                   addenv=[("CB_PASSWORD", memcached_pass_fun)])
          for kind in ["collections-details"]],
 
         [AllOsTask("fts scorch zap (%s)" % path,
@@ -2136,7 +2140,7 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
                     "-a", "-v"] + stat,
                    log_file="stats.log",
                    timeout=60,
-                   addenv=[("CB_PASSWORD", memcached_pass)])
+                   addenv=[("CB_PASSWORD", memcached_pass_fun)])
          for stat in ([], ["subdoc_execute", "snappy_decompress", "json_validate"])],
 
         CollectFileTask(
@@ -2253,7 +2257,7 @@ def dump_utilities(*args, **kwargs):
         def __getattr__(self, name):
             return None
 
-    tasks = make_os_tasks() + make_product_task({}, "", "", FakeOptions())
+    tasks = make_os_tasks() + make_product_task({}, "", lambda: "@:", lambda: "", FakeOptions())
 
     for task in tasks:
         utility = guess_utility(task.command)
@@ -2407,9 +2411,8 @@ def cleanup_old_prometheus_stats(guts):
 
 
 def post_rest_api(description, api, guts):
-    token = get_local_token(guts)
     port = read_guts(guts, "rest_port")
-    user_and_password = f"@localtoken:{token}"
+    user_and_password = get_localtoken_creds_fun(guts)()
     url = f"http://{local_url_addr}:{port}/{api}"
 
     command = ["curl", "-X", "POST", "-sS", "--proxy", "", "--fail",
@@ -2683,7 +2686,8 @@ def main():
 
     populate_guts_with_additional_info(guts)
 
-    memcached_password = get_diag_password(guts)
+    local_token_creds_fun = get_localtoken_creds_fun(guts)
+    memcached_password_fun = get_memcached_password_fun(guts)
     zip_node = read_guts(guts, "node")
     zip_filename = args[0]
     if zip_filename[-4:] != ".zip":
@@ -2710,7 +2714,8 @@ def main():
         (guts_initargs_path, len(guts)))
     all_tasks.append(diag_header_task)
     all_tasks.extend(make_product_task(guts, guts_initargs_path,
-                                       memcached_password, options))
+                                       local_token_creds_fun,
+                                       memcached_password_fun, options))
 
     for f in glob.glob(os.path.join(guts.get("path_config_datadir"),
                                     "config", "certs", "*")):
