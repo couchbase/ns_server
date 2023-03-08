@@ -151,7 +151,7 @@ extract_pkey_pass_with_script(PassSettings) ->
                        "~nArgs: ~p~nException: ~p~n"
                        "Stacktrace: ~p", [Path, Args, E, ST]),
             {error, {script_execution_failed, {reason, "Not "
-                        "enough permission to run the file."}}};
+                       "enough permission to run the file"}}};
         _:E:ST ->
             ?log_error("External pkey passphrase script execution "
                        "exception: ~s~nArgs: ~p~nException: ~p~n"
