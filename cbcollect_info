@@ -1156,17 +1156,6 @@ def make_curl_task(name, user, password, url,
                      **kwargs)
 
 
-def make_curl_post_task(name, user, password, url, timeout=60,
-                        log_file=DEFAULT_LOG, post_data="",
-                        base_task=AllOsTask, **kwargs):
-    return base_task(name, ["curl", "-sS", "-X", "POST", "--proxy", "", "-K-",
-                     url],
-                     timeout=timeout,
-                     log_file=log_file,
-                     to_stdin=f"--user {user}:{password}\n --data {post_data}",
-                     **kwargs)
-
-
 def make_cbstats_task(kind, memcached_pass, guts, extra_args=""):
     port = read_guts(guts, "memcached_dedicated_port")
     user = read_guts(guts, "memcached_admin")
