@@ -121,7 +121,8 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
         sample_bucket = testlib.assert_json_key("bucket", task_desc,
                                                 self.addr_post)
         expected_task = self.Task(task_id, "loadingSampleBucket",
-                                  expected_last_status, sample_bucket, {})
+                                  expected_last_status,
+                                  {"bucket": sample_bucket})
 
         def loading_done(task):
             if task is None:

@@ -10,6 +10,7 @@
 
 -behaviour(gen_server2).
 
+-include("global_tasks.hrl").
 -include("ns_common.hrl").
 -include("cut.hrl").
 
@@ -19,10 +20,9 @@
 
 -export([start_link/0]).
 -export([init/0, handle_info/2]).
--export([get_status_uri/1, get_tasks/1, get_default_tasks/0, update_task/4,
-         update_task/5]).
--export([task_id/1, type/1, status/1, source_node/1, timestamp/1, bucket/1,
-         bucket_uuid/1, extras/1]).
+-export([get_status_uri/1, get_tasks/1, get_default_tasks/0, update_task/1,
+         update_task/2,  update_tasks/1, update_tasks/2]).
+-export([task_id/1, type/1, status/1, source_node/1, timestamp/1, extras/1]).
 
 -define(SERVER, ?MODULE).
 
@@ -31,29 +31,13 @@
 %% 10 minutes before cleaning up a task without a defined expiry period
 -define(DEFAULT_EXPIRY_PERIOD_S, ?get_timeout(default_expiry_period_s, 600)).
 
-%% When adding a new task type, include it in both task_type() and ?TYPES, to
-%% ensure that appropriate tests are ran
--type(task_type() :: loadingSampleBucket).
--define(TYPES, [loadingSampleBucket]).
+%% Task fields which cannot be updated
+-define(IMMUTABLE_KEYS, [task_id, type, source_node, timestamp]).
 
-%% When adding a new task status, include it in both status() and ?STATUSES, to
-%% ensure that appropriate tests are ran
--type(status() :: queued | running | completed | failed).
--define(STATUSES, [queued, running, completed, failed]).
+%% The json formatted tasks should be safe to encode with ejson, without risk
+%% of errors or mis-encoding a string as a list
+-type(task_json() :: [{atom(), binary() | atom()}]).
 
--type(task() :: [{atom(), atom() | binary() | integer() | extras()}]).
--type(extras() :: [{atom(), any()}]).
-
--type(task_json() :: [{task_id, binary()} |
-                      {type, task_type()} |
-                      {status, status()} |
-                      {timestamp, integer()} |
-                      {bucket, binary()} |
-                      {bucket_uuid, binary()} |
-                      {extras, extras()}
-                     ]).
-
--export_type([task_type/0, status/0, task/0, extras/0]).
 
 -record(state, {}).
 
@@ -66,10 +50,7 @@ get_status_uri(TaskId) ->
 %% the /pools/default/tasks backwards compatible
 -spec get_default_tasks() -> [task_json()].
 get_default_tasks() ->
-    get_tasks(
-      fun (Task) ->
-              status(Task) =:= running
-      end).
+    get_tasks(is_default_task(_)).
 
 %% Get the list of tasks, either filtering by task id or by an arbitrary filter
 %% If chronicle can't find the tasks list, returns []
@@ -98,54 +79,89 @@ get_tasks(Filter) when is_function(Filter, 1) ->
     end.
 
 
-%% update_task replaces an existing task status for TaskId or creates a new one
+%% update_task/1 creates (or replaces) a task status for a unique task id,
+%% taking a #global_task{} tuple which has the following fields:
 %%
-%% - TaskId should be a unique binary string to identify the task
-%% - Type is the category that a task falls in. The Type should not change for
-%%   statuses of a specific TaskId
-%% - Status denotes the current state of the task
-%% - Bucket is an optional property for associating a task with a bucket UUID
-%% - Extras should be a list of {atom(), binary()}, in order to be consistently
-%%   converted to json when returned by /pools/default/tasks?taskId={task_id}
-%%   Extras should only be used when absolutely necessary, and when we know it
-%%   will have a bounded size, as we do not want to have large tasks
--spec update_task(binary(), task_type(), status(), string() | undefined,
-                  extras()) -> ok.
-update_task(TaskId, Type, Status, Bucket, Extras) ->
+%% - task_id is a unique binary string to identify the task
+%% - type is the category that the task falls in. The type should not change for
+%%   statuses of a specific task_id
+%% - status denotes the current state of the task
+%% - extras should be a list of {atom(), binary()} (in order to be consistently
+%%   converted to json when returned by /pools/default/tasks?taskId={task_id})
+%%   extras should only be used when absolutely necessary, and when we know it
+%%   will have a bounded size, as we wish to avoid large chronicle values
+-spec update_task(#global_task{}) -> ok.
+update_task(Task) ->
+    update_tasks([Task]).
+
+%% update_task/2 takes a task id and a function to update the task with that id.
+%% If no task exists with that id, an error will be logged and no change will be
+%% made to any tasks
+-spec update_task(binary(), fun ((task()) -> task())) -> ok.
+update_task(TaskId, UpdateTask) ->
+    update_tasks([TaskId], UpdateTask).
+
+%% update_tasks/1 takes a list of #global_task{} tuples and creates (or updates)
+%% the task for each tuple, as for update_task/1
+-spec update_tasks([#global_task{}]) -> ok.
+update_tasks(Tasks) ->
+    UpdateTasks = functools:chain(_, [replace_task(_, build_task(Task))
+                                      || Task <- Tasks]),
+    do_update_tasks(UpdateTasks).
+
+%% update_tasks/2 takes a list of task ids and an update function, which is
+%% called on each task corresponding to one of the task ids provided. If no task
+%% exists with any of the ids, an error will be logged but other tasks may still
+%% be updated. If the function updates any immutable fields (?IMMUTABLE_KEYS)
+%% of the task, these changes will be overriden by the original values
+-spec update_tasks([binary()], fun ((extras()) -> extras())) -> ok.
+update_tasks(TaskIds, UpdateTask) ->
+    UpdateTasks = functools:chain(_, [do_update_task(TaskId, UpdateTask, _)
+                                      || TaskId <- TaskIds]),
+    do_update_tasks(UpdateTasks).
+
+%% Call a function on the tasks list, in a chronicle transaction
+-spec do_update_tasks(fun (([task()]) -> [task()])) -> ok.
+do_update_tasks(UpdateTasks) ->
     case cluster_compat_mode:is_cluster_elixir() of
         true ->
-            Keys = [tasks] ++
-                case Bucket of
-                    undefined -> [];
-                    _ -> [{bucket, Bucket, uuid}]
-                end,
             Result =
                 chronicle_compat:transaction(
-                  Keys,
+                  [tasks],
                   fun (Snapshot) ->
-                          Tasks = chronicle_compat:get(Snapshot, tasks,
-                                                       #{required => true}),
-                          NewTasks = replace_task(
-                                       Tasks,
-                                       build_task(Snapshot, TaskId, Type,
-                                                  Status, Bucket, Extras)),
-                          {commit, [{set, tasks, NewTasks}]}
+                          OldTasks = chronicle_compat:get(Snapshot, tasks,
+                                                          #{required => true}),
+                          FinalTasks = UpdateTasks(OldTasks),
+                          {commit, [{set, tasks, FinalTasks}]}
                   end),
             case Result of
                 {ok, _} ->
                     ok;
                 Error ->
-                    ?log_error("Failed to update task ~p. Error: ~p",
-                               [TaskId, Error]),
+                    ?log_error("Failed to update tasks. Error: ~p",
+                               [Error]),
                     erlang:throw(Error)
             end;
         false ->
             ok
     end.
 
--spec update_task(binary(), task_type(), status(), extras()) -> any().
-update_task(TaskId, Type, Status, Extras) ->
-    update_task(TaskId, Type, Status, undefined, Extras).
+%% Call an update function on a task specified by its task id, from the list of
+%% tasks. Gives an error if the task id cannot be found
+-spec do_update_task(binary(), fun ((task()) -> task()), [task()]) -> [task()].
+do_update_task(TaskId, UpdateTask, Tasks) ->
+    ExistingTasks = lists:filter(
+                      fun (Task) ->
+                              task_id(Task) =:= TaskId
+                      end, Tasks),
+    case ExistingTasks of
+        [OldTask] ->
+            replace_task(Tasks, modify_task(UpdateTask, OldTask));
+        [] ->
+            ?log_error("Failed to update tasks. No existing task with task id: "
+                       "~p", [TaskId]),
+            Tasks
+    end.
 
 
 %%%===================================================================
@@ -213,54 +229,63 @@ source_node(Task) ->
 timestamp(Task) ->
     proplists:get_value(timestamp, Task).
 
-bucket(Task) ->
-    proplists:get_value(bucket, Task, undefined).
-
-bucket_uuid(Task) ->
-    proplists:get_value(bucket_uuid, Task).
-
 extras(Task) ->
     proplists:get_value(extras, Task).
 
 -spec format_task(task()) -> task_json().
 format_task(Task) ->
-    BaseProps = [task_id, type, status, extras],
-    BucketProps =
-        case bucket(Task) of
-            undefined -> [];
-            _Bucket -> [bucket, bucket_uuid]
-        end,
+    Type = type(Task),
+    [{task_id, task_id(Task)},
+     {status, status(Task)},
+     {type, Type}] ++
+        format_task_extras(Type, extras(Task)).
 
-    lists:map(
-      fun (Property) ->
-              Value = proplists:get_value(Property, Task),
-              FormattedValue =
-                  case Property of
-                      bucket -> list_to_binary(Value);
-                      extras -> {Value};
-                      _ -> Value
-                  end,
-              {Property, FormattedValue}
-      end, BaseProps ++ BucketProps).
+%% Format an task type specific fields appropriately. The result of this gets
+%% appended to the default task fields
+-spec format_task_extras(task_type(), extras()) -> task_json().
+format_task_extras(loadingSampleBucket, Extras) ->
+    case proplists:get_value(bucket, Extras) of
+        undefined ->
+            [];
+        Bucket ->
+            [{bucket, list_to_atom(Bucket)},
+             {bucket_uuid, proplists:get_value(bucket_uuid, Extras)}]
+    end.
 
--spec build_task(map(), binary(), task_type(), status(), string(), extras()) ->
-          task().
-build_task(Snapshot, TaskId, Type, Status, Bucket, Extras) ->
+-spec is_default_task(task()) -> boolean().
+is_default_task(Task) ->
+    case {type(Task), status(Task)} of
+        {loadingSampleBucket, running} -> true;
+        _ -> false
+    end.
+
+%% Construct the internal representation of a new task
+-spec build_task(#global_task{}) -> task().
+build_task(#global_task{task_id = TaskId,
+                        type = Type,
+                        status = Status,
+                        extras = Extras}) ->
     [{task_id, TaskId},
      {type, Type},
      {status, Status},
      {source_node, node()},
-     {timestamp, now_secs()}] ++
-        case Bucket of
-            undefined ->
-                [];
-            Bucket when is_list(Bucket) ->
-                [{bucket, Bucket},
-                 {bucket_uuid, ns_bucket:uuid(Bucket, Snapshot)}]
-        end
-        ++ [{extras, Extras}].
+     {timestamp, now_secs()},
+     {extras, Extras}].
 
--spec replace_task([task()], task()) -> [task()].
+%% Update the internal representation of an existing task, without allowing
+%% modification of the immutable keys
+-spec modify_task(fun ((extras()) -> extras()), task()) -> task().
+modify_task(UpdateTask, OldTask) ->
+    %% Get the properties that cannot be updated
+    Immutables = lists:map(fun (Key) ->
+                                   {Key, proplists:get_value(Key, OldTask)}
+                           end, ?IMMUTABLE_KEYS),
+    NewTask = UpdateTask(OldTask),
+    lists:foldl(fun ({Key, _Value} = Tuple, Task) ->
+                        lists:keyreplace(Key, 1, Task, Tuple)
+                end, NewTask, Immutables).
+
+-spec replace_task([task()], extras()) -> [task()].
 replace_task(Tasks, NewTask) ->
     [NewTask | lists:filter(
                  fun (Task) ->
@@ -295,9 +320,9 @@ get_expiry_period(Task) ->
 cleanup_tasks() ->
     BucketUUIDKeys = lists:map(ns_bucket:sub_key(_, uuid),
                                ns_bucket:get_bucket_names()),
-    %% We check and update in a transaction to avoid a status being updated
-    %% after being added to a list of statuses to delete, but before the
-    %% deletion has occurred, causing the deletion of the updated status
+    %% We check and update in a transaction to avoid a task being updated
+    %% after being added to a list of tasks to delete, but before the
+    %% deletion has occurred, causing the deletion of the updated task
     Result = chronicle_compat:transaction([tasks | BucketUUIDKeys],
                                           do_cleanup(_)),
     case Result of
@@ -312,7 +337,7 @@ cleanup_tasks() ->
 do_cleanup(Snapshot) ->
     case chronicle_compat:get(Snapshot, tasks, #{}) of
         {ok, Tasks} ->
-            NewTasks = lists:filter(should_keep_task(Snapshot, _), Tasks),
+            NewTasks = lists:filter(should_keep_task(_), Tasks),
             case NewTasks =:= Tasks of
                 true ->
                     {commit, []};
@@ -323,16 +348,9 @@ do_cleanup(Snapshot) ->
             {abort, Error}
     end.
 
--spec should_keep_task(map(), task()) -> boolean().
-should_keep_task(Snapshot, Task) ->
-    Checks = cleanup_checks() ++
-        case bucket(Task) of
-            undefined ->
-                [];
-            BucketName ->
-                [bucket_missing(Snapshot, BucketName, _)]
-        end,
-    case functools:alternative(Task, Checks) of
+-spec should_keep_task(task()) -> boolean().
+should_keep_task(Task) ->
+    case functools:alternative(Task, cleanup_checks()) of
         {ok, Reason} ->
             ?log_debug("Cleaning up task (~s):~n~p", [Reason, Task]),
             false;
@@ -365,22 +383,6 @@ node_missing(Task) ->
             {ok, <<"node missing">>}
     end.
 
-%% If the bucket existed when the status was generated, a bucket_uuid would have
-%% been stored. If the bucket no longer exists or no longer has this UUID, then
-%% the bucket that the status is associated with is missing, so we can clean it
-%% up.
-%% The only concern is that a status may be missed if the bucket is deleted
-%% immediately after the status was created.
--spec bucket_missing(map(), string(), task()) -> false | {ok, binary()}.
-bucket_missing(Snapshot, BucketName, Task) ->
-    OldUUID = bucket_uuid(Task),
-    NewUUID = ns_bucket:uuid(BucketName, Snapshot),
-    case {OldUUID, NewUUID} of
-        {_, OldUUID} -> false;
-        {not_present, _} -> false;
-        _ -> {ok, <<"bucket missing">>}
-    end.
-
 -spec now_secs() -> integer().
 now_secs() ->
     erlang:system_time(second).
@@ -396,26 +398,30 @@ setup() ->
 teardown(_) ->
     meck:unload(modules()).
 
--define(BUCKETS, [undefined, "default"]).
 -define(EXTRAS, [[], [{test, <<"test">>}]]).
--define(SNAPSHOT, #{{bucket, "default", uuid} => {<<"test">>, 0}}).
+-define(UUID, <<"test">>).
+-define(SNAPSHOT, #{{bucket, "default", uuid} => {?UUID, 0}}).
 
 %% Generate tasks of all possible type and status, and for each of those
 %% configurations, also generate one with/without a bucket, and with/without a
 %% key in the extras field.
 %% Doesn't generate specific values for task_id, timestamp, or source_node,
 %% which are determined as normal
--spec generate_tasks() -> [task()].
-generate_tasks() ->
+-spec generate_task_creates() -> [#global_task{}].
+generate_task_creates() ->
     lists:append(
       [lists:append(
-         [lists:append(
-            [[build_task(?SNAPSHOT, misc:uuid_v4(), Type, Status, Bucket,
-                         Extras)
-              || Type <- ?TYPES]
-             || Status <- ?STATUSES])
-          || Bucket <- ?BUCKETS])
+         [[#global_task{task_id = misc:uuid_v4(),
+                        type = Type,
+                        status = Status,
+                        extras = Extras}
+           || Type <- ?TYPES]
+          || Status <- ?STATUSES])
        || Extras <- ?EXTRAS]).
+
+-spec generate_tasks() -> [task()].
+generate_tasks() ->
+    lists:map(build_task(_), generate_task_creates()).
 
 %% Generate a cleanup candidate for each task, for each possible cleanup reason
 -spec generate_all_expired_tasks([task()]) -> [task()].
@@ -432,13 +438,7 @@ generate_expired_tasks(Task) ->
 
      %% node missing
      lists:keyreplace(source_node, 1, Task, {source_node, other_node})
-    ] ++
-        %% bucket missing
-        case bucket(Task) of
-            undefined -> [];
-            _ -> [lists:keyreplace(bucket_uuid, 1, Task,
-                                   {bucket_uuid, <<"other uuid">>})]
-        end.
+    ].
 
 %% Since lists would get truncated in the eunit output if we called ?assertEqual
 %% opn the lists themselves, we instead have to assert that each pair of terms
@@ -542,63 +542,119 @@ generate_task_update(Task) ->
 %% Instead of somehow starting up chronicle in the unit test, we replace the
 %% transaction call with one which checks that each new Task gets added to the
 %% tasks list.
--spec assert_update_tasks(map(), [task()]) -> ok.
-assert_update_tasks(Tasks, Transaction) ->
+-spec assert_create_tasks_individually([#global_task{}], _) -> ok.
+assert_create_tasks_individually(Tasks, Transaction) ->
     meck:expect(chronicle_compat, transaction, Transaction),
     Return =
         lists:foreach(
           fun (Task) ->
-                  update_task(task_id(Task), type(Task), status(Task),
-                              bucket(Task), extras(Task))
+                  update_task(Task)
           end, Tasks),
     ?assertEqual(ok, Return).
 
+-spec assert_create_tasks_together([#global_task{}], _) -> ok.
+assert_create_tasks_together(Tasks, Transaction) ->
+    meck:expect(chronicle_compat, transaction, Transaction),
+    Return = update_tasks(Tasks),
+    ?assertEqual(ok, Return).
+
+-spec assert_update_tasks_individually([binary()], _, _) -> ok.
+assert_update_tasks_individually(TaskIds, Update, Transaction) ->
+    meck:expect(chronicle_compat, transaction, Transaction),
+    Return =
+        lists:foreach(
+          fun (TaskId) ->
+                  update_task(TaskId, Update)
+          end, TaskIds),
+    ?assertEqual(ok, Return).
+
+-spec assert_update_tasks_together([binary()], _, _) -> ok.
+assert_update_tasks_together(TaskIds, Update, Transaction) ->
+    meck:expect(chronicle_compat, transaction, Transaction),
+    Return = update_tasks(TaskIds, Update),
+    ?assertEqual(ok, Return).
+
+-spec assert_task(#global_task{} | task(), task()) -> ok.
+assert_task(#global_task{task_id = TaskId,
+                         type = Type,
+                         extras = Extras},
+            Task) ->
+    ?assertEqual(TaskId, task_id(Task)),
+    ?assertEqual(Type, type(Task)),
+    ?assertEqual(Extras, extras(Task));
+assert_task(TaskExp, TaskActual) ->
+    ?assertEqual(task_id(TaskExp), task_id(TaskActual)),
+    ?assertEqual(type(TaskExp), type(TaskActual)),
+    ?assertEqual(extras(TaskExp), extras(TaskActual)).
+
+
 %% Pretend to be a chronicle transaction, and check that the modified task is
 %% modified as expected
--spec fake_transaction(map(), [task()], _, fun((map()) -> {commit, list()})) ->
+-spec fake_transaction(map(), [#global_task{}],
+                       _, fun((map()) -> {commit, list()})) ->
           {ok, any()}.
-fake_transaction(Snapshot, ExpectedTasks, _, Fun) ->
-    case Fun(Snapshot) of
+fake_transaction(Snapshot0, ExpectedTasks, Keys, Fun) ->
+    Snapshot1 = maps:filter(fun (Key, _) ->
+                                    lists:member(Key, Keys)
+                            end, Snapshot0),
+    case Fun(Snapshot1) of
         {commit, [{set, tasks, [NewTask | _]}]} ->
             TaskId = task_id(NewTask),
             [ExpectedTask] =
                 lists:filter(
-                  fun (Task1) ->
-                          task_id(Task1) =:= TaskId
+                  fun (#global_task{task_id = ExpTaskId}) ->
+                          TaskId =:= ExpTaskId;
+                      (Task) ->
+                          TaskId =:= task_id(Task)
                   end, ExpectedTasks),
-
-            %% Since we cannot predict what time the task was added, we have to
-            %% ignore the timestamp when checking it was correctly updated
-            ExpectedTaskWithoutTime = proplists:delete(timestamp, ExpectedTask),
-            NewTaskWithoutTime = proplists:delete(timestamp, NewTask),
-
-            ?assertEqual(ExpectedTaskWithoutTime, NewTaskWithoutTime),
+            assert_task(ExpectedTask, NewTask),
             {ok, 0};
         Action ->
-            ?assert(true, {unexpected_action, Action})
+            ?assert(false, {unexpected_action, Action})
     end.
 
 update_task_test__() ->
     Snapshot0 = ?SNAPSHOT#{tasks => {[], 0}},
-    Tasks = generate_tasks(),
+    Tasks = generate_task_creates(),
+    TaskIds = [Task#global_task.task_id || Task <- Tasks],
 
-    %% Test that new tasks can be added
+    %% Test that new tasks can be added individually
     Transaction0 = fake_transaction(Snapshot0, Tasks, _, _),
-    assert_update_tasks(Tasks, Transaction0),
+    assert_create_tasks_individually(Tasks, Transaction0),
+    assert_create_tasks_together(Tasks, Transaction0),
+
+    BuiltTasks = lists:map(build_task(_), Tasks),
 
     %% Generate an updated task with a new status, for each existing task
-    Snapshot1 = Snapshot0#{tasks => {Tasks, 0}},
-    TaskUpdates = [generate_task_update(Task) || Task <- Tasks],
+    Snapshot1 = Snapshot0#{tasks => {BuiltTasks, 0}},
 
-    %% Test that current tasks can be updated
+    %% Generate an updated task with a new status, for each existing task
+    TaskUpdates = [generate_task_update(Task) || Task <- BuiltTasks],
+
+    %% Test that current tasks can be updated individually
     Transaction1 = fake_transaction(Snapshot1, TaskUpdates, _, _),
-    assert_update_tasks(TaskUpdates, Transaction1),
+    assert_update_tasks_individually(TaskIds, generate_task_update(_),
+                                     Transaction1),
+
+    %% Test that current tasks can be updated all at once
+    assert_update_tasks_together(TaskIds, generate_task_update(_),
+                                 Transaction1),
 
     meck:expect(cluster_compat_mode, is_cluster_elixir, fun () -> false end),
 
-    %% Confirm that update_task/5 returns ok for mixed version clusters
-    Transaction2 = fun (_, _) -> error end,  %% The transaction shouldn't run
-    assert_update_tasks(Tasks, Transaction2).
+    %% Confirm that update_task/1 returns ok for mixed version clusters.
+    %% The transaction shouldn't run
+    TransactionError = fun (_, _) -> error end,
+    assert_create_tasks_individually(Tasks, TransactionError),
+
+    %% Confirm that update_task/2 returns ok for mixed version clusters
+    assert_update_tasks_individually(TaskIds, TaskUpdates, TransactionError),
+
+    %% Confirm that update_tasks/1 returns ok for mixed version clusters
+    assert_create_tasks_together(Tasks, TransactionError),
+
+    %% Confirm that update_tasks/2 returns ok for mixed version clusters
+    assert_update_tasks_together(TaskIds, TaskUpdates, TransactionError).
 
 all_test_() ->
     {foreach, fun setup/0, fun teardown/1,

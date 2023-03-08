@@ -16,40 +16,40 @@ from copy import copy
 
 class TasksBase:
     class Task:
-        def __init__(self, task_id, task_type, status, bucket, extras):
+        def __init__(self, task_id, task_type, status, extras):
             self.task_id = task_id
             self.task_type = task_type
             self.status = status
-            self.bucket = bucket
             self.extras = extras
 
     def __init__(self):
         self.addr_pools_default = "/pools/default"
         self.addr_tasks = self.addr_pools_default + "/tasks"
 
-    def get_status_address(self, task_id):
-        return f"{self.addr_tasks}?taskId={task_id}"
+    def get_status_address(self, *task_ids):
+        return f"{self.addr_tasks}?" + \
+               "&".join([f"taskId={task_id}" for task_id in task_ids])
 
-    def get_task_status(self, cluster, task_id):
-        status_address = self.get_status_address(task_id)
+    def get_task_statuses(self, cluster, *task_ids):
+        status_address = self.get_status_address(*task_ids)
         # Fetch the task status
         r = testlib.get_succ(cluster, status_address)
 
         # Attempt to decode the response
         tasks = testlib.json_response(r, "Task status was not json")
 
-        assert len(tasks) == 1, \
+        assert len(tasks) == len(task_ids), \
             f"Unexpected number of tasks in response to '{status_address}': " \
             f"{len(tasks)}"
 
-        return tasks[0]
+        return tasks
 
     # Wait for the task identified by task_id to satisfy is_task_done or reach
     # the timeout limit
     def wait_for_task(self, cluster, task_id, is_task_done, timeout,
                       timeout_msg=None):
         def get_status():
-            return self.get_task_status(cluster, task_id)
+            return self.get_task_statuses(cluster, task_id)[0]
         # Wait until timeout reached
         time_start = time.time()
         timeout_time = time_start + timeout
@@ -83,17 +83,14 @@ class TasksBase:
         assert found_task.get("status") == expected_task.status, \
             f"Task status '{found_task.get('status')}' found, expected " \
             f"'{expected_task.status}'"
-        assert found_task.get("bucket") == expected_task.bucket, \
-            f"Bucket '{found_task.get('bucket')}' found, expected " \
-            f"'{expected_task.bucket}'"
-        assert found_task.get("extras") == expected_task.extras, \
-            f"Task extras '{found_task.get('extras')}' found, expected " \
-            f"'{expected_task.extras}'"
+        for key, value in expected_task.extras.items():
+            assert found_task.get(key) == value, \
+                f"Task {key} {found_task.get(key)} found, expected {value}"
 
     # Assert that the task can be fetched with ?taskId= and that the status is
     # as expected
     def assert_task(self, cluster, expected_task):
-        found_task = self.get_task_status(cluster, expected_task.task_id)
+        found_task = self.get_task_statuses(cluster, expected_task.task_id)[0]
         self.assert_tasks_equal(found_task, expected_task)
 
         # Assert whether or not the task shows up in the
@@ -102,6 +99,29 @@ class TasksBase:
             self.assert_task_in_default_list(cluster, expected_task)
         else:
             self.assert_task_not_in_default_list(cluster, expected_task)
+
+    # Assert that a list of tasks can be fetched from /pools/default/tasks
+    # with ?taskId=id1&taskId=id2...
+    def assert_tasks(self, cluster, expected_tasks):
+        expected_task_ids = [task.task_id for task in expected_tasks]
+
+        # Fetch the task statuses all at once
+        found_tasks = self.get_task_statuses(cluster, *expected_task_ids)
+
+        # The lists must be sorted as the tasks are not guaranteed to be in the
+        # same order as requested
+        found_tasks.sort(key=lambda task: task.get("task_id", None))
+        expected_tasks.sort(key=lambda task: task.task_id)
+
+        for found_task, expected_task in zip(found_tasks, expected_tasks):
+            self.assert_tasks_equal(found_task, expected_task)
+
+            # Assert whether or not the task shows up in the
+            # /pools/default/tasks endpoint
+            if self.is_default_task(expected_task):
+                self.assert_task_in_default_list(cluster, expected_task)
+            else:
+                self.assert_task_not_in_default_list(cluster, expected_task)
 
     @staticmethod
     # Determines whether a task should be expected in the default response of
@@ -169,18 +189,53 @@ class TasksBase:
             f"Unexpected change of tasks version"
 
 
-def task_to_erlang(task):
-    if task.bucket is None:
-        bucket = "undefined"
-    else:
-        bucket = f"\"{task.bucket}\""
+# Convert a python list of strings to an erlang list
+def list_to_erlang(elements):
+    return "[" + ",".join(elements) + "]"
 
-    extras_body = ",".join([f"{{{key}, {value}}}"
-                            for key, value in task.extras.items()])
-    extras = f"[{extras_body}]"
 
-    return f"<<\"{task.task_id}\">>,{task.task_type},{task.status}," \
-           f"{bucket},{extras}"
+def extras_to_erlang(extras):
+    return list_to_erlang([f"{{{key}, \"{value}\"}}" if key == "bucket" else
+                           f"{{{key}, <<\"{value}\">>}}"
+                           for key, value in extras.items()])
+
+
+# Convert a new task to an erlang record, for creating the task with /diag/eval
+def task_create_to_erlang(task):
+    return f"{{global_task, <<\"{task.task_id}\">>,{task.task_type}," \
+           f"{task.status},{extras_to_erlang(task.extras)}}}"
+
+
+# Convert a list of tasks to a list of erlang records, for creating the task
+# with /diag/eval
+def task_creates_to_erlang(tasks):
+    return list_to_erlang(task_create_to_erlang(task) for task in tasks)
+
+
+# Convert a task update to an erlang record, for updating the task with
+# /diag/eval
+def task_update_to_erlang(task):
+    return (f"fun(T0) ->"
+            f" T1 = lists:keyreplace(status, 1, T0,"
+            f"  {{status, {task.status}}}),"
+            f" lists:keyreplace(extras, 1, T1,"
+            f"  {{extras, {extras_to_erlang(task.extras)}}})"
+            f"end")
+
+
+# Convert a list of task updates to an erlang function, for updating the task
+# with /diag/eval
+def task_updates_to_erlang(tasks):
+    return (f"fun(T0) -> "
+            f" case global_tasks:task_id(T0) of "
+            + ";".join(
+             [f" <<\"{task.task_id}\">> -> "
+              f"  T1 = lists:keyreplace(status, 1, T0,"
+              f"   {{status, {task.status}}}), "
+              f"  lists:keyreplace(extras, 1, T1,"
+              f"   {{extras, {extras_to_erlang(task.extras)}}}) "
+              for task in tasks] + [f" _ -> T0 "]) +
+            f" end end")
 
 
 class TasksTestSet(testlib.BaseTestSet, TasksBase):
@@ -188,10 +243,11 @@ class TasksTestSet(testlib.BaseTestSet, TasksBase):
         testlib.BaseTestSet.__init__(self, cluster)
         TasksBase.__init__(self)
         self.addr_diag_eval = "/diag/eval"
-        self.task_types = ["loadingSampleBucket", "rebalance"]
+        self.task_types = ["loadingSampleBucket"]
         self.statuses = ["queued", "running", "completed", "failed"]
-        self.bucket_names = ["default", "test", None]
-        self.extras_values = [{}, {"test": "value"}]
+        self.extras_values = [{},
+                              {"bucket": "test",
+                               "bucket_uuid": "test_uuid"}]
 
     def setup(self, cluster):
         # Delete all buckets to avoid the tasks version changing unexpectedly
@@ -203,19 +259,46 @@ class TasksTestSet(testlib.BaseTestSet, TasksBase):
         return testlib.ClusterRequirements(num_nodes=1, memsize=1024)
 
     def teardown(self, cluster):
-        pass
+        testlib.post_succ(cluster, self.addr_diag_eval,
+                          data="""
+                          chronicle_compat:transaction([tasks],
+                          fun (Snapshot) -> {commit, [{set, tasks, []}]}
+                          end)
+                          """)
 
     # Generate a task with random task id
-    def generate_task(self, task_type, status, bucket, extras):
-        return self.Task(testlib.random_str(8), task_type, status, bucket,
-                         extras)
+    def generate_task(self, task_type, status, extras):
+        return self.Task(testlib.random_str(8), task_type, status, extras)
 
     # Manually create a task by diag eval, to test global_tasks generically
+    def create_task(self, cluster, task):
+        testlib.post_succ(cluster,
+                          self.addr_diag_eval,
+                          data=f"global_tasks:update_task("
+                               f"{task_create_to_erlang(task)}).")
+
+    # Manually create a list of tasks by diag eval
+    def create_tasks(self, cluster, tasks):
+        testlib.post_succ(cluster,
+                          self.addr_diag_eval,
+                          data=f"global_tasks:update_tasks("
+                               f"{task_creates_to_erlang(tasks)}).")
+
+    # Manually update a task by diag eval
     def update_task(self, cluster, task):
         testlib.post_succ(cluster,
                           self.addr_diag_eval,
                           data=f"global_tasks:update_task("
-                               f"{task_to_erlang(task)}).")
+                               f"<<\"{task.task_id}\">>,"
+                               f"{task_update_to_erlang(task)}).")
+
+    # Manually update a list of tasks by diag eval
+    def update_tasks(self, cluster, tasks):
+        task_ids = list_to_erlang(f"<<\"{task.task_id}\">>" for task in tasks)
+        testlib.post_succ(cluster,
+                          self.addr_diag_eval,
+                          data=f"global_tasks:update_tasks({task_ids},"
+                               f"{task_updates_to_erlang(tasks)}).")
 
     # Generate valid task updates by modifying the status in all possible ways,
     # then modifying the extras field in all possible ways
@@ -257,19 +340,18 @@ class TasksTestSet(testlib.BaseTestSet, TasksBase):
         # Return the final version for use in subsequent comparisons
         return version
 
-    # Generate a variety of tasks.
-    # These are not necessarily valid tasks, but should still be accepted
+    # Generate a variety of tasks
     def generate_tasks(self):
         test_tasks = itertools.product(self.task_types, self.statuses,
-                                       self.bucket_names, self.extras_values)
-        for task_type, status, bucket, extras in test_tasks:
-            yield self.generate_task(task_type, status, bucket, extras)
+                                       self.extras_values)
+        for task_type, status, extras in test_tasks:
+            yield self.generate_task(task_type, status, extras)
 
     def simple_test(self, cluster):
         version = self.get_tasks_version(cluster)
         for task in self.generate_tasks():
             # Add a new task and assert that it was added
-            self.update_task(cluster, task)
+            self.create_task(cluster, task)
             self.assert_task(cluster, task)
 
             if self.is_default_task(task):
@@ -279,3 +361,14 @@ class TasksTestSet(testlib.BaseTestSet, TasksBase):
                 # Test that subsequent task updates correctly impact the version
                 version = self.test_updating_task(cluster, task, version)
 
+    # Test creating and updating multiple tasks at once
+    def multiple_tasks_test(self, cluster):
+        # Generate and create a list of tasks
+        tasks = list(self.generate_tasks())
+        self.create_tasks(cluster, tasks)
+        self.assert_tasks(cluster, tasks)
+        # Generate one task update for each task
+        task_updates = [next(self.generate_task_updates(task))
+                        for task in tasks]
+        self.update_tasks(cluster, task_updates)
+        self.assert_tasks(cluster, task_updates)

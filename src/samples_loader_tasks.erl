@@ -12,6 +12,7 @@
 
 -include("ns_common.hrl").
 -include("cut.hrl").
+-include("global_tasks.hrl").
 
 %% gen_server API
 -export([start_link/0]).
@@ -51,7 +52,7 @@ handle_call({start_loading_sample, Sample, Bucket, Quota, CacheDir,
             Pid = start_new_loading_task(Sample, Bucket, Quota, CacheDir,
                                          BucketState),
             TaskId = misc:uuid_v4(),
-            update_task_status(TaskId, queued, Bucket),
+            create_queued_task(TaskId, Bucket),
             ns_heart:force_beat(),
             NewState = State#state{tasks = Tasks ++ [{Bucket, Pid, TaskId}]},
             {reply, {newly_started, TaskId}, maybe_pass_token(NewState)};
@@ -77,18 +78,18 @@ handle_info({'EXIT', Pid, Reason} = Msg,
             ns_heart:force_beat(),
             case Reason of
                 normal ->
-                    update_task_status(TaskId, completed, Name),
+                    update_task_status(TaskId, completed),
                     ale:info(?USER_LOGGER, "Completed loading sample bucket ~s",
                              [Name]);
                 {failed_to_load_samples, Status, Output} ->
-                    update_task_status(TaskId, failed, Name),
+                    update_task_status(TaskId, failed),
                     ale:error(?USER_LOGGER,
                               "Task ~p - loading sample bucket ~s failed. "
                               "Samples loader exited with status ~b.~n"
                               "Loader's output was:~n~n~s",
                               [TaskId, Name, Status, Output]);
                 _ ->
-                    update_task_status(TaskId, failed, Name),
+                    update_task_status(TaskId, failed),
                     ale:error(?USER_LOGGER,
                               "Task ~p - loading sample bucket ~s failed: ~p",
                               [TaskId, Name, Reason])
@@ -107,11 +108,11 @@ handle_info({'EXIT', Pid, Reason} = Msg,
 handle_info(_Info, State) ->
     {noreply, State}.
 
-terminate(_Reason, #state{tasks = Tasks}) ->
-    lists:foreach(
-      fun ({Name, _Pid, TaskId}) ->
-              update_task_status(TaskId, failed, Name)
-      end, Tasks).
+terminate(_Reason, #state{} = State) ->
+    %% Set the status of each queued or running task to 'failed'
+    TaskIds = [TaskId || {_, _, TaskId} <- State#state.tasks],
+    global_tasks:update_tasks(TaskIds,
+                              lists:keyreplace(status, 1, _, {status, failed})).
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
@@ -119,16 +120,29 @@ code_change(_OldVsn, State, _Extra) ->
 maybe_pass_token(#state{token_pid = undefined,
                         tasks = [{Name, FirstPid, TaskId}|_]} = State) ->
     FirstPid ! allowed_to_go,
-    update_task_status(TaskId, running, Name),
+    update_task_status(TaskId, running),
     ?log_info("Passed samples loading token to task: ~s (~p)", [Name, TaskId]),
     State#state{token_pid = FirstPid};
 maybe_pass_token(State) ->
     State.
 
--spec update_task_status(binary(), global_tasks:status(), string()) -> ok.
-update_task_status(TaskId, Status, BucketName) ->
-    global_tasks:update_task(TaskId, loadingSampleBucket, Status,
-                             BucketName, []).
+-spec create_queued_task(binary(), string()) -> ok.
+create_queued_task(TaskId, BucketName) ->
+    global_tasks:update_task(
+      #global_task{
+         task_id = TaskId,
+         type = loadingSampleBucket,
+         status = queued,
+         extras = [{bucket, BucketName},
+                   {bucket_uuid, ns_bucket:uuid(BucketName, direct)}]}).
+
+-spec update_task_status(binary(), status()) -> ok.
+update_task_status(TaskId, Status) ->
+    global_tasks:update_tasks(
+      [TaskId],
+      fun (Task) ->
+              lists:keyreplace(status, 1, Task, {status, Status})
+      end).
 
 start_new_loading_task(Sample, Bucket, Quota, CacheDir, BucketState) ->
     proc_lib:spawn_link(?MODULE, perform_loading_task,
