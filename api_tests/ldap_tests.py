@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import sys
+
 import testlib
 from ldap_test import LdapServer
 
@@ -32,6 +34,7 @@ class LdapTests(testlib.BaseTestSet):
 
     def setup(self, cluster):
         user_dn = f'cn={LdapTests.user},ou=users,dc=example,dc=com'
+        delay_for_macos = 10 if sys.platform == "darwin" else 0
         self.server = LdapServer({
           'port': LdapTests.port,
           'bind_dn': LdapTests.admin_dn,
@@ -54,7 +57,7 @@ class LdapTests(testlib.BaseTestSet):
              'dn': f'cn={LdapTests.group},ou=groups,dc=example,dc=com',
              'attributes': {'cn': LdapTests.group,
                             'member': [user_dn]}}
-          ]})
+          ]}, java_delay=delay_for_macos)
         self.server.start()
 
 
