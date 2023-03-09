@@ -85,12 +85,11 @@
 -export([get_auth_info_on_ns_server/1]).
 
 -define(MAX_USERS_ON_CE, 20).
--define(LDAP_GROUPS_CACHE_SIZE, 1000).
 -define(DEFAULT_PROPS, [name, uuid, user_roles, group_roles, passwordless,
                         password_change_timestamp, groups, external_groups]).
 -define(DEFAULT_GROUP_PROPS, [description, roles, ldap_group_ref]).
 
--record(state, {base, passwordless}).
+-record(state, {base, passwordless, cache_size = ?LDAP_GROUPS_CACHE_SIZE}).
 
 replicator_name() ->
     users_replicator.
@@ -170,8 +169,26 @@ get_passwordless() ->
 
 init([]) ->
     _ = ets:new(versions_name(), [protected, named_table]),
-    mru_cache:new(ldap_groups_cache, ?LDAP_GROUPS_CACHE_SIZE),
-    #state{base = init_versions()}.
+
+    %% This will handle restarting cache if we change the size.
+    Self = self(),
+    ns_pubsub:subscribe_link(
+      ns_config_events,
+      fun ({ldap_settings, _}) ->
+              case cluster_compat_mode:is_cluster_elixir() of
+                  true -> Self ! maybe_reinit_cache;
+                  false -> ok
+              end;
+          (_) -> ok
+      end),
+
+    CacheSize =
+        case cluster_compat_mode:is_cluster_elixir() of
+            true -> ldap_util:get_setting(max_group_cache_size);
+            false -> ?LDAP_GROUPS_CACHE_SIZE
+        end,
+    mru_cache:new(ldap_groups_cache, CacheSize),
+    #state{base = init_versions(), cache_size = CacheSize}.
 
 init_versions() ->
     Base = misc:rand_uniform(0, 16#100000000),
@@ -216,6 +233,23 @@ on_save(Docs, State) ->
     [self() ! Msg || Msg <- sets:to_list(MessagesToSend), Msg =/= undefined],
     NewState.
 
+handle_info(maybe_reinit_cache, #state{cache_size = CurrentSize} = State) ->
+    %% TODO: this check for undefined can be removed when elixir is no longer
+    %% supported.
+    NewSize = case ldap_util:get_setting(max_group_cache_size) of
+                  undefined -> ?LDAP_GROUPS_CACHE_SIZE;
+                  Value -> Value
+              end,
+    case NewSize =/= CurrentSize of
+        true ->
+            ?log_warning("LDAP groups cache size updated from ~p to ~p. "
+                         "Reinitializing...", [CurrentSize, NewSize]),
+            mru_cache:dispose(ldap_groups_cache),
+            mru_cache:new(ldap_groups_cache, NewSize),
+            {noreply, State#state{cache_size = NewSize}};
+        false ->
+            {noreply, State}
+    end;
 handle_info({change_version, Key} = Msg, #state{base = Base} = State) ->
     misc:flush(Msg),
     Ver = ets:update_counter(versions_name(), Key, 1),

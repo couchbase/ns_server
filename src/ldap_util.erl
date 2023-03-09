@@ -241,7 +241,13 @@ default_settings() ->
      {cacert, undefined},
      {server_cert_validation, true},
      {bind_method, undefined},
-     {extra_tls_opts, undefined}].
+     {extra_tls_opts, undefined}] ++
+        case cluster_compat_mode:is_cluster_elixir() of
+            true ->
+                [{max_group_cache_size, ?LDAP_GROUPS_CACHE_SIZE}];
+            false ->
+                []
+        end.
 
 build_settings() ->
     case ns_config:search(ldap_settings) of
