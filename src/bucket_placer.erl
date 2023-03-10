@@ -19,7 +19,7 @@
          can_place_bucket/0,
          allow_regular_buckets/0,
          place_bucket/2,
-         rebalance/2,
+         rebalance/3,
          get_node_status_fun/1,
          is_balanced/3]).
 
@@ -70,7 +70,8 @@ place_bucket(BucketName, Props) ->
     end.
 
 do_place_bucket(BucketName, Props, Params, Snapshot) ->
-    RV = on_zones(calculate_desired_servers(_, BucketName, Props, Params),
+    RV = on_zones(calculate_desired_servers(_, BucketName, Props, Params,
+                                            dict:new()),
                   get_eligible_buckets(Snapshot), Snapshot,
                   fun ns_bucket:get_desired_servers/1),
     case RV of
@@ -167,7 +168,7 @@ remove_bucket_from_node(#node{weight = W, buckets = BM} = Node, BucketName) ->
             Node
     end.
 
-calculate_desired_servers(Nodes, BucketName, Props, Params) ->
+calculate_desired_servers(Nodes, BucketName, Props, Params, FailoverVBs) ->
     Width = ns_bucket:get_width(Props),
     Possible =
         lists:filter(
@@ -179,7 +180,8 @@ calculate_desired_servers(Nodes, BucketName, Props, Params) ->
         true ->
             error;
         false ->
-            Prioritized = lists:sort(priority(_, _, BucketName), Possible),
+            Prioritized = lists:sort(priority(_, _, FailoverVBs, BucketName),
+                                     Possible),
             Trimmed = lists:sublist(Prioritized, Width),
 
             {ok, [N || {N, _} <- Trimmed]}
@@ -207,21 +209,36 @@ bucket_placement_possible(#node{buckets = BucketsMap, weight = TotalWeight,
         maps:size(BucketsMap) + TenantDiff =< TenantLimit andalso
         MemoryUsed + MemoryDiff =< MemoryQuota.
 
-priority({_, #node{weight = W1, buckets = BM1}},
-         {_, #node{weight = W2, buckets = BM2}}, BucketName) ->
-    case {maps:is_key(BucketName, BM1), maps:is_key(BucketName, BM2)} of
+priority_index({Node, #node{buckets = Buckets}}, FailoverVBs, BucketName) ->
+    case maps:is_key(BucketName, Buckets) of
+        true ->
+            2;
+        false ->
+            case dict:find(Node, FailoverVBs) of
+                {ok, VBs} when VBs =/= [] ->
+                    1;
+                _ ->
+                    0
+            end
+    end.
+
+priority({_, #node{weight = W1}} = N1,
+         {_, #node{weight = W2}} = N2, FailoverVBs, BucketName) ->
+    case {priority_index(N1, FailoverVBs, BucketName),
+          priority_index(N2, FailoverVBs, BucketName)} of
         {X1, X2} when X1 =/= X2 ->
             X1 > X2;
         _ ->
             W1 =< W2
     end.
 
-rebalance(KeepNodes, undefined) ->
-    rebalance(KeepNodes, []);
-rebalance(KeepNodes, DefragmentZones) ->
-    rebalance(KeepNodes, DefragmentZones, get_params(), get_snapshot()).
+rebalance(KeepNodes, GetFailoverVBs, undefined) ->
+    rebalance(KeepNodes, GetFailoverVBs, []);
+rebalance(KeepNodes, GetFailoverVBs, DefragmentZones) ->
+    rebalance(KeepNodes, GetFailoverVBs, DefragmentZones,
+              get_params(), get_snapshot()).
 
-rebalance(KeepNodes, DefragmentZones, Params, Snapshot) ->
+rebalance(KeepNodes, GetFailoverVBs, DefragmentZones, Params, Snapshot) ->
     Buckets = get_eligible_buckets(Snapshot),
 
     SortedByWeight =
@@ -229,6 +246,8 @@ rebalance(KeepNodes, DefragmentZones, Params, Snapshot) ->
                            ns_bucket:get_weight(Props1) >=
                                ns_bucket:get_weight(Props2)
                    end, Buckets),
+
+    WithFailoverVBs = [{N, P, GetFailoverVBs(N)} || {N, P} <- SortedByWeight],
 
     Fun =
         fun (GroupNodes, Group) ->
@@ -239,7 +258,7 @@ rebalance(KeepNodes, DefragmentZones, Params, Snapshot) ->
                                         SortedByWeight, Params);
                     false ->
                         rebalance_zone(GroupNodes, KeepNodes, SortedByWeight,
-                                       Params)
+                                       WithFailoverVBs, Params)
                 end
         end,
 
@@ -268,7 +287,8 @@ massage_rebalance_result(Res, Buckets) ->
               end
       end, lists:zip(Buckets, zip_servers(Res, []))).
 
-rebalance_zone(GroupNodes, KeepNodes, Buckets, Params) ->
+rebalance_zone(GroupNodes, KeepNodes, Buckets, BucketsWithFailoverVBs,
+               Params) ->
     Nodes = construct_zone(GroupNodes, Buckets,
                            fun ns_bucket:get_desired_servers/1),
     DesiredNodes =
@@ -278,7 +298,8 @@ rebalance_zone(GroupNodes, KeepNodes, Buckets, Params) ->
                                lists:member(Name, KeepNodes)
                        end, Nodes)),
 
-    case place_buckets_on_nodes(DesiredNodes, Buckets, Params, []) of
+    case place_buckets_on_nodes(DesiredNodes, BucketsWithFailoverVBs, Params,
+                                []) of
         {ok, Servers, _} ->
             {ok, Servers};
         error ->
@@ -299,13 +320,15 @@ defragment_zone(Nodes, Buckets, Params) ->
 
 do_defragment_zone(Nodes, Buckets, Params) ->
     EmptyZone = [{N, empty_node()} || N <- Nodes],
-    place_buckets_on_nodes(EmptyZone, Buckets, Params, []).
+    place_buckets_on_nodes(EmptyZone, [{B, P, dict:new()} || {B, P} <- Buckets],
+                           Params, []).
 
 place_buckets_on_nodes(Nodes, [], _Params, AccServers) ->
     {ok, lists:reverse(AccServers), Nodes};
-place_buckets_on_nodes(Nodes, [{BucketName, Props} | Rest], Params,
+place_buckets_on_nodes(Nodes, [{BucketName, Props, FailoverVBs} | Rest], Params,
                        AccServers) ->
-    case calculate_desired_servers(Nodes, BucketName, Props, Params) of
+    case calculate_desired_servers(Nodes, BucketName, Props, Params,
+                                   FailoverVBs) of
         error ->
             error;
         {ok, Servers} ->
@@ -481,6 +504,8 @@ bucket_placer_test_() ->
                 [verify_bucket(Name, NewZones, S1) || Name <- BucketNames]
         end,
 
+    Rebalance = rebalance(_, fun (_) -> dict:new() end, _, _, _),
+
     Failover =
         fun (S1) ->
                 S2 = lists:foldl(
@@ -491,7 +516,7 @@ bucket_placer_test_() ->
                                             DesiredServers -- [c1], Props),
                                apply_bucket_to_snapshot(Name, NewProps, Acc)
                        end, S1, ns_bucket:get_buckets(S1)),
-                {rebalance(AllNodes -- [c1], [], Params, S2), S2}
+                {Rebalance(AllNodes -- [c1], [], Params, S2), S2}
         end,
 
     [{"Bucket placement test",
@@ -571,18 +596,18 @@ bucket_placer_test_() ->
      {"Rebalance of balanced zone is a no op",
       fun () ->
               Snapshot1 = PreRebalanceSnapshot(3),
-              RV = rebalance(AllNodes, [], Params, Snapshot1),
+              RV = Rebalance(AllNodes, [], Params, Snapshot1),
               ?assertEqual({ok, []}, RV)
       end},
      {"Rebalancing the node out",
       fun () ->
               Snapshot1 = PreRebalanceSnapshot(3),
-              RV = rebalance(AllNodes -- [c1], [], Params, Snapshot1),
+              RV = Rebalance(AllNodes -- [c1], [], Params, Snapshot1),
               ?assertEqual({error, [z1]}, RV),
 
               Snapshot2 = SuccessPlacement("B2", [{width, 2}, {weight, 3}],
                                            Snapshot1),
-              RV1 = rebalance(AllNodes -- [c1], [], Params, Snapshot2),
+              RV1 = Rebalance(AllNodes -- [c1], [], Params, Snapshot2),
               VerifyRebalance(RV1, [c1], Snapshot2)
       end},
      {"Recovery after failover",

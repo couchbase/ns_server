@@ -250,10 +250,13 @@ validate_rebalance(#{keep_nodes := KeepNodes,
                   end
           end, delta_recovery_not_possible).
 
-calculate_desired_servers(#{keep_nodes := KeepNodes} = Params) ->
+calculate_desired_servers(#{keep_nodes := KeepNodes,
+                            delta_nodes := DeltaNodes} = Params) ->
     %% defragment_zones can be missing in map if called from pre-Elixir nodes
-    case bucket_placer:rebalance(KeepNodes, maps:get(defragment_zones, Params,
-                                                     undefined)) of
+    case bucket_placer:rebalance(
+           KeepNodes,
+           bucket_failover_vbuckets(ns_config:latest(), _, DeltaNodes),
+           maps:get(defragment_zones, Params, undefined)) of
         {ok, Res} ->
             Res;
         {error, Zones} ->
