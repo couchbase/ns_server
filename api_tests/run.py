@@ -46,6 +46,8 @@ Usage: {program_name}
     [--tests | -t <test_spec>[, <test_spec> ...]]
         <test_spec> := <test_class>[.test_name]
         Start only specified tests
+    [--keep-tmp-dirs | -k]
+        Keep any test_cluster_data dirs after tests finish, even if they pass
     [--help]
         Show this help
 """
@@ -62,11 +64,48 @@ def error_exit(msg):
     print(f"\033[31m{msg}\033[0m")
     sys.exit(2)
 
+
+def remove_temp_cluster_directories():
+    for dir in glob.glob(tmp_cluster_dir + "*"):
+        print(f"Removing cluster dir {dir}...")
+        shutil.rmtree(dir)
+
+
+def kill_nodes(clusters, terminal_attrs):
+    for c in clusters:
+        cluster_run_lib.kill_nodes(c.processes, terminal_attrs, c.urls)
+
+
+def kill_nodes_and_remove_dirs(clusters, terminal_attrs):
+    kill_nodes(clusters, terminal_attrs)
+    remove_temp_cluster_directories()
+
+
+# If anything goes wrong after starting the clusters, we want to kill the
+# nodes, otherwise we end up with processes hanging around
+def setup_safe_exit(clusters, remove_dirs=False):
+    terminal_attrs = None
+    try:
+        import termios
+        terminal_attrs = termios.tcgetattr(sys.stdin)
+    except Exception:
+        pass
+
+    if remove_dirs:
+        # When we want to remove the directories, we should register with a
+        # different function name, so that we can safely unregister the original
+        # atexit function after we've registered the new function
+        atexit.register(kill_nodes_and_remove_dirs, clusters, terminal_attrs)
+        atexit.unregister(kill_nodes)
+    else:
+        atexit.register(kill_nodes, clusters, terminal_attrs)
+
+
 def main():
     try:
-        optlist, args = getopt.gnu_getopt(sys.argv[1:], "hc:u:p:t:",
-                                          ["help", "cluster=", "user=",
-                                           "password=", "tests="])
+        optlist, args = getopt.gnu_getopt(sys.argv[1:], "hkc:u:p:t:",
+                                          ["help", "keep-tmp-dirs", "cluster=",
+                                           "user=", "password=", "tests="])
     except getopt.GetoptError as err:
         bad_args_exit(str(err))
 
@@ -77,6 +116,7 @@ def main():
     start_port = cluster_run_lib.base_api_port
     start_index = 0
     tests = None
+    keep_tmp_dirs = False
 
     for o, a in optlist:
         if o in ('--cluster', '-c'):
@@ -102,6 +142,8 @@ def main():
                     tests.append((tokens[0], '*'))
                 elif len(tokens) == 2:
                     tests.append((tokens[0], tokens[1]))
+        elif o in ('--keep-tmp-dirs', '-k'):
+            keep_tmp_dirs = True
         elif o in ('--help', '-h'):
             usage()
             exit(0)
@@ -127,13 +169,13 @@ def main():
                                          (username, password))]
         print(f"Discovered cluster: {clusters[0]}")
     else:
-        for dir in glob.glob(tmp_cluster_dir + "*"):
-            print(f"Removing cluster dir {dir}...")
-            shutil.rmtree(dir)
+        remove_temp_cluster_directories()
+
         print("Starting required clusters...")
         clusters = get_required_clusters(testsets_to_run,
                                          (username, password),
                                          start_index)
+        setup_safe_exit(clusters)
         print(f"Started clusters:")
         for cluster in clusters:
             print(f"  - {cluster}")
@@ -176,25 +218,13 @@ def main():
               f"  {reason}")
     print()
 
-    terminal_attrs = None
-
-    try:
-        import termios
-        terminal_attrs = termios.tcgetattr(sys.stdin)
-    except Exception:
-        pass
-
-    def kill_nodes():
-        for c in clusters:
-            cluster_run_lib.kill_nodes(c.processes, terminal_attrs, c.urls)
-    atexit.register(kill_nodes)
-
     if len(errors) > 0:
         error_exit("Tests finished with errors")
     else:
-        for dir in glob.glob(tmp_cluster_dir + "*"):
-            print(f"Removing cluster dir {dir}...")
-            shutil.rmtree(dir)
+        # Kill any created nodes and possibly delete directories as we don't
+        # need to keep around data from successful tests
+        if not keep_tmp_dirs:
+            setup_safe_exit(clusters, True)
 
 
 def find_tests(test_names, discovered_list):
