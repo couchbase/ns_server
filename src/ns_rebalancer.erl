@@ -226,23 +226,20 @@ check_rebalance_condition(Check, Error) ->
     check_test_condition(Error) =:= ok orelse throw({error, Error}),
     Check() orelse throw({error, Error}).
 
-validate_rebalance(#{keep_nodes := KeepNodes,
-                     delta_nodes := DeltaNodes,
-                     delta_recovery_buckets := DeltaRecoveryBucketNames,
-                     services := Services}) ->
-    KVKeep = ns_cluster_membership:service_nodes(KeepNodes, kv),
-    check_rebalance_condition(fun () -> KVKeep =/= [] end, no_kv_nodes_left),
-
+validate_delta_recovery(KVKeep, DesiredServers,
+                        #{delta_nodes := DeltaNodes,
+                          delta_recovery_buckets := DeltaRecoveryBucketNames,
+                          services := Services}) ->
+    %% Pre-emptive check to see if delta recovery is possible.
     KVDeltaNodes = ns_cluster_membership:service_nodes(DeltaNodes, kv),
 
-    %% Pre-emptive check to see if delta recovery is possible.
     (not should_rebalance_service(kv, Services)) orelse
         check_rebalance_condition(
           fun () ->
                   BucketConfigs = ns_bucket:get_buckets(),
                   case build_delta_recovery_buckets(
                          KVKeep, KVDeltaNodes, BucketConfigs,
-                         DeltaRecoveryBucketNames) of
+                         DeltaRecoveryBucketNames, DesiredServers) of
                       {ok, _DeltaRecoveryBucketTuples} ->
                           true;
                       {error, not_possible} ->
@@ -263,39 +260,41 @@ calculate_desired_servers(#{keep_nodes := KeepNodes,
             throw({error, {need_more_space, Zones}})
     end.
 
-start_link_rebalance(#{keep_nodes := KeepNodes,
-                       eject_nodes := EjectNodes,
-                       failed_nodes := FailedNodes,
-                       delta_nodes := DeltaNodes,
-                       delta_recovery_buckets := DeltaRecoveryBucketNames,
-                       services := Services} = Params) ->
-    proc_lib:start_link(
-      erlang, apply,
-      [fun () ->
-               DesiredServers =
-                   try
-                       validate_rebalance(Params),
-                       case should_rebalance_service(kv, Services) of
-                           false ->
-                               undefined;
-                           true ->
-                               calculate_desired_servers(Params)
-                       end
-                   catch
-                       throw:{error, Error} ->
-                           proc_lib:init_ack({error, Error}),
-                           exit(normal)
-                   end,
+start_link_rebalance(Params) ->
+    proc_lib:start_link(erlang, apply, [fun init_rebalance/1, [Params]]).
 
-               proc_lib:init_ack({ok, self()}),
+init_rebalance(#{keep_nodes := KeepNodes,
+                 eject_nodes := EjectNodes,
+                 failed_nodes := FailedNodes,
+                 delta_nodes := DeltaNodes,
+                 delta_recovery_buckets := DeltaRecoveryBucketNames,
+                 services := Services} = Params) ->
+    DesiredServers =
+        try
+            KVKeep = ns_cluster_membership:service_nodes(KeepNodes, kv),
+            check_rebalance_condition(fun () -> KVKeep =/= [] end,
+                                      no_kv_nodes_left),
+            DS = case should_rebalance_service(kv, Services) of
+                     false ->
+                         undefined;
+                     true ->
+                         calculate_desired_servers(Params)
+                 end,
+            validate_delta_recovery(KVKeep, DS, Params),
+            DS
+        catch
+            throw:{error, Error} ->
+                proc_lib:init_ack({error, Error}),
+                exit(normal)
+        end,
 
-               master_activity_events:note_rebalance_start(
-                 self(), KeepNodes, EjectNodes, FailedNodes, DeltaNodes),
+    proc_lib:init_ack({ok, self()}),
 
-               rebalance(KeepNodes, EjectNodes, FailedNodes,
-                         DeltaNodes, DeltaRecoveryBucketNames, Services,
-                         DesiredServers)
-       end, []]).
+    master_activity_events:note_rebalance_start(
+      self(), KeepNodes, EjectNodes, FailedNodes, DeltaNodes),
+
+    rebalance(KeepNodes, EjectNodes, FailedNodes, DeltaNodes,
+              DeltaRecoveryBucketNames, Services, DesiredServers).
 
 should_rebalance_service(_, all) ->
     true;
@@ -516,7 +515,7 @@ rebalance_body(KeepNodes, EjectNodesAll, FailedNodesAll, DeltaNodes,
 
     DeltaRecoveryBuckets =
         delta_recovery(KVKeep, DeltaNodes, BucketConfigs,
-                       DeltaRecoveryBucketNames),
+                       DeltaRecoveryBucketNames, DesiredServers),
 
     ok = chronicle_compat:set_multiple(
            ns_cluster_membership:clear_recovery_type_sets(KeepNodes) ++
@@ -557,19 +556,21 @@ rebalance_body(KeepNodes, EjectNodesAll, FailedNodesAll, DeltaNodes,
 
     ok.
 
-delta_recovery(_, _, _, []) ->
+delta_recovery(_, _, _, [], _) ->
     [];
-delta_recovery(KVKeep, DeltaNodes, BucketConfigs, DeltaRecoveryBucketNames) ->
+delta_recovery(KVKeep, DeltaNodes, BucketConfigs, DeltaRecoveryBucketNames,
+               DesiredServers) ->
     KVDeltaNodes = ns_cluster_membership:service_nodes(DeltaNodes, kv),
 
-    DeltaRecoveryBuckets = case build_delta_recovery_buckets(
-                                  KVKeep, KVDeltaNodes,
-                                  BucketConfigs, DeltaRecoveryBucketNames) of
-                               {ok, DRB} ->
-                                   DRB;
-                               {error, not_possible} ->
-                                   throw({error, delta_recovery_not_possible})
-                           end,
+    DeltaRecoveryBuckets =
+        case build_delta_recovery_buckets(
+               KVKeep, KVDeltaNodes, BucketConfigs, DeltaRecoveryBucketNames,
+               DesiredServers) of
+            {ok, DRB} ->
+                DRB;
+            {error, not_possible} ->
+                throw({error, delta_recovery_not_possible})
+        end,
     master_activity_events:note_rebalance_stage_started(
       [kv, kv_delta_recovery], KVDeltaNodes),
     ok = apply_delta_recovery_buckets(DeltaRecoveryBuckets,
@@ -1058,37 +1059,67 @@ get_buckets_to_delta_recover(BucketConfigs, RequestedBuckets) ->
           RequestedBuckets =:= all orelse
               lists:member(Bucket, RequestedBuckets)].
 
-build_delta_recovery_buckets(_AllNodes, [] = _DeltaNodes,
-                             _AllBucketConfigs, _DeltaRecoveryBuckets) ->
+build_delta_recovery_buckets(_AllNodes, [] = _DeltaNodes, _AllBucketConfigs,
+                             _DeltaRecoveryBuckets, _DesiredServers) ->
     {ok, []};
-build_delta_recovery_buckets(AllNodes, DeltaNodes,
-                             AllBucketConfigs, DeltaRecoveryBuckets) ->
+build_delta_recovery_buckets(AllNodes, DeltaNodes, AllBucketConfigs,
+                             DeltaRecoveryBuckets, DesiredServers) ->
     Config = ns_config:get(),
     HandleBucketFun =
-        handle_one_delta_recovery_bucket(Config, AllNodes, DeltaNodes, _),
+        handle_one_delta_recovery_bucket(Config, AllNodes, DeltaNodes,
+                                         DesiredServers, _),
     RequiredBuckets =
         get_buckets_to_delta_recover(AllBucketConfigs, DeltaRecoveryBuckets),
 
     case misc:partitionmap(HandleBucketFun, RequiredBuckets) of
         {FoundBuckets, []} ->
-            {ok, FoundBuckets};
+            {ok, [B || B <- FoundBuckets, B =/= noop]};
         _ ->
             {error, not_possible}
     end.
 
 handle_one_delta_recovery_bucket(Config, AllNodes, DeltaNodes,
-                                 {Bucket, BucketConfig}) ->
-    case find_delta_recovery_map(Config, AllNodes,
-                                 DeltaNodes, Bucket, BucketConfig) of
-        false ->
-            ?rebalance_debug("Couldn't delta recover bucket ~s because "
-                             "suitable vbucket map is not found in the history",
-                             [Bucket]),
-            {right, Bucket};
-        {ok, BucketInfo} ->
-            ?rebalance_debug("Found delta recovery map for bucket ~s:~n~p",
-                             [Bucket, BucketInfo]),
-            {left, {Bucket, BucketInfo}}
+                                 DesiredServersList, {Bucket, BucketConfig}) ->
+    DesiredServers =
+        case DesiredServersList of
+            undefined ->
+                undefined;
+            _ ->
+                proplists:get_value(
+                  Bucket, DesiredServersList,
+                  ns_bucket:get_desired_servers(BucketConfig))
+        end,
+
+    {Servers, DeltaServers} =
+        case DesiredServers of
+            undefined ->
+                {AllNodes, DeltaNodes};
+            _ ->
+                {DesiredServers,
+                 [N || N <- DeltaNodes, lists:member(N, DesiredServers)]}
+        end,
+
+    case DeltaServers of
+        [] ->
+            ?rebalance_debug(
+               "Will not delta recover bucket ~s because "
+               "it didn't reside on any of delta nodes", [Bucket]),
+            {left, noop};
+        _ ->
+            case find_delta_recovery_map(Config, Servers, DeltaServers, Bucket,
+                                         BucketConfig) of
+                false ->
+                    ?rebalance_debug(
+                       "Couldn't delta recover bucket ~s because "
+                       "suitable vbucket map is not found in the history",
+                       [Bucket]),
+                    {right, Bucket};
+                {ok, BucketInfo} ->
+                    ?rebalance_debug(
+                       "Found delta recovery map for bucket ~s:~n~p",
+                       [Bucket, BucketInfo]),
+                    {left, {Bucket, BucketInfo}}
+            end
     end.
 
 apply_delta_recovery_buckets([], _DeltaNodes, _CurrentBuckets) ->
