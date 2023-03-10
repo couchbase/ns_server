@@ -110,6 +110,37 @@ type_spec(password) ->
 type_spec(not_supported) ->
     #{validators => [fun not_supported/2],
       formatter => fun (_) -> ignore end};
+type_spec({url, SupportedSchemes}) ->
+    #{validators => [string, validator:url(_, SupportedSchemes, _)],
+      formatter => string};
+type_spec(certificate) ->
+    #{validators => [string, fun validate_cert/2],
+      formatter => fun (undefined) -> ignore;
+                       (<<"redacted">>) -> {value, <<"redacted">>};
+                       ({Cert, _Decoded}) -> {value, Cert}
+                   end};
+type_spec(certificate_chain) ->
+    #{validators => [string, fun validate_cert_chain/2],
+      formatter => fun (<<"redacted">>) -> {value, <<"redacted">>};
+                       ({Cert, _DecodedCerts}) -> {value, Cert}
+                   end};
+type_spec(pkey) ->
+    #{validators => [string, fun validate_key/2],
+      formatter => fun (undefined) -> ignore;
+                       ({password, {_, _, not_encrypted}}) ->
+                           {value, <<"**********">>}
+                   end};
+type_spec(tls_opts) ->
+    #{validators => [not_supported],
+      formatter => fun (undefined) -> ignore;
+                       (List) ->
+                           Sanitize = fun ({password, _}) -> <<"********">>;
+                                          (V) -> V
+                                      end,
+                           Sanitized = [{K, Sanitize(V)} || {K, V} <- List],
+                           Str = io_lib:format("~p", [Sanitized]),
+                           {value, iolist_to_binary(Str)}
+                   end};
 type_spec({string_list, Separator}) ->
     #{validators => [validate_string_list(Separator, _, _)],
       formatter => fun (L) -> {value, [list_to_binary(M) || M <- L]} end}.
@@ -401,6 +432,38 @@ cfg_key(Name, Spec) ->
 
 cfg_key_as_is(Name, Spec) ->
     maps:get(cfg_key, Spec, list_to_atom(Name)).
+
+validate_key(Name, State) ->
+    validator:validate(
+      fun ("") -> {value, undefined};
+          (Key) ->
+              case ns_server_cert:validate_pkey(iolist_to_binary(Key),
+                                                fun () -> undefined end) of
+                  {ok, DecodedKey} -> {value, {password, DecodedKey}};
+                  {error, _} -> {error, "invalid key"}
+              end
+      end, Name, State).
+
+validate_cert(Name, State) ->
+    validator:validate(
+      fun ("") -> {value, undefined};
+          (Cert) ->
+              BinCert = iolist_to_binary(Cert),
+              case ns_server_cert:decode_single_certificate(BinCert) of
+                  {ok, Decoded} -> {value, {BinCert, Decoded}};
+                  {error, _} -> {error, "invalid certificate"}
+              end
+      end, Name, State).
+
+validate_cert_chain(Name, State) ->
+    validator:validate(
+      fun (Cert) ->
+              BinCert = iolist_to_binary(Cert),
+              case ns_server_cert:decode_cert_chain(BinCert) of
+                  {ok, Decoded} -> {value, {BinCert, Decoded}};
+                  {error, _} -> {error, "invalid certificate"}
+              end
+      end, Name, State).
 
 -ifdef(TEST).
 

@@ -267,17 +267,12 @@ def saml_configured(binding, verify_authn_signature, cluster):
         wait_mock_server(f'http://{mock_server_host}:{mock_server_port}/ping', 150)
         yield IDP
     finally:
-        testlib.post_succ(cluster, '/diag/eval',
-                          data='ns_config:delete(sso_options).')
-        testlib.post_succ(cluster, '/diag/eval',
-                          data='ns_config:delete(saml_sign_fingerprints).')
-        testlib.post_succ(cluster, '/diag/eval',
-                          data='ets:delete_all_objects(esaml_idp_meta_cache).')
         mock_server_process.terminate()
         if os.path.exists(idp_subject_file_path):
             os.remove(idp_subject_file_path)
         if os.path.exists(metadataFile):
             os.remove(metadataFile)
+        testlib.delete_succ(cluster, '/saml/settings')
 
 
 def start_mock_server():
@@ -319,52 +314,45 @@ class MockIDPMetadataHandler(BaseHTTPRequestHandler):
 
 
 def set_sso_options(binding, sign_requests, cluster):
-    cert_path = os.path.join(scriptdir, "resources", "saml",
-                            "mocksp_cert.pem")
-    key_path = os.path.join(scriptdir, "resources", "saml",
-                           "mocksp_key.pem")
-    idpcert_path = os.path.join(scriptdir, "resources", "saml",
-                                "mockidp_cert.pem")
-    sign_requests_str = "true" if sign_requests else "false"
+    cert_path = os.path.join(scriptdir, "resources", "saml", "mocksp_cert.pem")
+    with open(cert_path, 'r') as f:
+        cert_pem = f.read()
+
+    key_path = os.path.join(scriptdir, "resources", "saml", "mocksp_key.pem")
+    with open(key_path, 'r') as f:
+        key_pem = f.read()
+
+    idpcert_fp_path = os.path.join(scriptdir, "resources", "saml",
+                                   "mockidp_cert_fingerprints.pem")
+    with open(idpcert_fp_path, 'r') as f:
+        trusted_fps = f.read()
     metadataURL = f'http://{mock_server_host}:{mock_server_port}{mock_metadata_endpoint}'
-    settings = """[{enabled, true},
-                   {scheme, http},
-                   {entity_id, """ + f'"{sp_entity_id}"' + """},
-                   {org_name, "Test Org"},
-                   {org_display_name, "Test Display Name"},
-                   {org_url, "example.com"},
-                   {contact_name, "test contact"},
-                   {contact_email, "test@example.com"},
-                   {authn_binding, """ + binding + """},
-                   {idp_metadata_url, """ + f'"{metadataURL}"' + """},
-                   {key, Key},
-                   {cert, Cert},
-                   {check_recipient, consumeURL},
-                   {logout_resp_binding, post},
-                   {idp_signs_assertions, true},
-                   {idp_signs_envelopes, true},
-                   {sign_requests, """ + sign_requests_str + """},
-                   {sign_metadata, true},
-                   {username, \'Attribute\'},
-                   {username_attr_name, "uid"},
-                   {idp_signs_metadata, true},
-                   {idp_meta_expiration, 1},
-                   {tls_verify_peer, false},
-                   {address_family, inet},
-                   {trusted_fingerprints, [IdpFP]}]"""
-    testlib.post_succ(
-      cluster, '/diag/eval',
-      data=f"""{{ok, KeyPem}} = file:read_file("{key_path}"),
-               [PemEntry] = public_key:pem_decode(KeyPem),
-               Key = public_key:pem_entry_decode(PemEntry),
-               {{ok, CertPem}} = file:read_file("{cert_path}"),
-               [{{'Certificate', Cert, not_encrypted}}] =
-                   public_key:pem_decode(CertPem),
-               {{ok, IdpCertPem}} = file:read_file("{idpcert_path}"),
-               [{{'Certificate', IdpCert, not_encrypted}}] =
-                   public_key:pem_decode(IdpCertPem),
-               IdpFP = {{sha256, crypto:hash(sha256, IdpCert)}},
-               ns_config:set(sso_options, {settings}).""")
+
+    settings = {'enabled': 'true',
+                'idpMetadataURL': metadataURL,
+                'idpSignsMetadata': True,
+                'idpMetadataRefreshIntervalS': 1,
+                'idpMetadataConnectAddressFamily': 'inet',
+                'idpAuthnBinding': binding,
+                'idpLogoutBinding': 'post',
+                'usernameAttribute': 'uid',
+                'spEntityId': sp_entity_id,
+                'spBaseURLScheme': 'http',
+                'spOrgName': 'Test Org',
+                'spOrgDisplayName': 'Test Display Name',
+                'spOrgURL': 'example.com',
+                'spContactName': 'test contact',
+                'spContactEmail': 'test@example.com',
+                'spVerifyAssertionSig': True,
+                'spVerifyAssertionEnvelopSig': True,
+                'spCertificate': cert_pem,
+                'spKey': key_pem,
+                'spSignRequests': sign_requests,
+                'spSignMetadata': True,
+                'spTrustedFingerprints': trusted_fps,
+                'spTrustedFingerprintsUsage': 'metadataInitialOnly'}
+
+    testlib.put_succ(cluster, '/saml/settings', json=settings)
 
 
 def idp_config(verify_authn_signature, cluster):

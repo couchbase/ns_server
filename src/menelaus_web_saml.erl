@@ -17,31 +17,73 @@
          handle_get_saml_consume/1,
          handle_post_saml_consume/1,
          handle_get_saml_logout/1,
-         handle_post_saml_logout/1]).
+         handle_post_saml_logout/1,
+         handle_get_settings/2,
+         handle_put_settings/1,
+         handle_delete_settings/1]).
 
 -include("ns_common.hrl").
 -include("rbac.hrl").
 -include("cut.hrl").
 -include_lib("esaml/include/esaml.hrl").
 
--define(DEFAULT_NAMEID_FORMAT,
+-define(PERSISTENT_NAMEID_FORMAT,
         "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent").
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
+handle_get_settings(Path, Req) ->
+    SSOSettings = extract_saml_settings(),
+    menelaus_web_settings2:handle_get(Path, params(), fun type_spec/1,
+                                      SSOSettings, Req).
+
+handle_put_settings(Req) ->
+    menelaus_web_settings2:handle_post(
+      fun (Proplist, NewReq) ->
+          SSOProps = lists:map(fun ({[K], V}) -> {K, V} end, Proplist),
+          set_sso_options(SSOProps),
+          handle_get_settings([], NewReq)
+      end, [], params(), fun type_spec/1, [], defaults(), Req).
+
+set_sso_options(Props) ->
+    NewUUID = misc:uuid_v4(),
+    Res =
+        ns_config:run_txn(
+          fun (OldCfg, SetFun) ->
+              OldProps = ns_config:search(OldCfg, saml_settings, []),
+              OldProps2 = proplists:delete(uuid, OldProps),
+              case lists:sort(Props) == lists:sort(OldProps2) of
+                  true -> {abort, no_changes};
+                  false ->
+                      PropsWithUuid = misc:update_proplist(
+                                           Props, [{uuid, NewUUID}]),
+                      {commit, SetFun(saml_settings, PropsWithUuid, OldCfg)}
+              end
+          end),
+    case Res of
+        {commit, _} ->
+            invalidate_cache();
+        {abort, no_changes} ->
+            ok
+    end.
+
+handle_delete_settings(Req) ->
+    ns_config:delete(saml_settings),
+    invalidate_cache(),
+    menelaus_util:reply(Req, 200).
+
 handle_auth(Req) ->
     SSOOpts = extract_saml_settings_if_enabled(),
     ?log_debug("Starting saml authentication "),
     IDPMetadata = try_get_idp_metadata(SSOOpts),
     SPMetadata = build_sp_metadata(SSOOpts, Req),
-    Binding = proplists:get_value(authn_binding, SSOOpts, post),
+    Binding = proplists:get_value(authn_binding, SSOOpts),
     RelayState = <<"">>,
     %% Using "persistent" by default because this seems to be the only option
     %% that single logout works with
-    NameIDFormat = proplists:get_value(authn_nameID_Format, SSOOpts,
-                                       ?DEFAULT_NAMEID_FORMAT),
+    NameIDFormat = proplists:get_value(authn_nameID_format, SSOOpts),
     SignedXml = esaml_sp:generate_authn_request(_, SPMetadata, NameIDFormat),
     case Binding of
         redirect ->
@@ -55,7 +97,7 @@ handle_auth(Req) ->
 handle_deauth(Req) ->
     SSOOpts = extract_saml_settings_if_enabled(),
     ?log_debug("Starting saml single logout"),
-    case proplists:get_value(single_logout, SSOOpts, true) of
+    case proplists:get_value(single_logout, SSOOpts) of
         true -> ok;
         false ->
             ?log_debug("Single logout is turned off"),
@@ -80,12 +122,11 @@ handle_deauth(Req) ->
 handle_single_logout(SSOOpts, NameID, ExtraHeaders, Req) ->
     IDPMetadata = try_get_idp_metadata(SSOOpts),
     SPMetadata = build_sp_metadata(SSOOpts, Req),
-    NameIDFormat = proplists:get_value(authn_nameID_format, SSOOpts,
-                                       ?DEFAULT_NAMEID_FORMAT),
+    NameIDFormat = proplists:get_value(authn_nameID_format, SSOOpts),
     Subject = #esaml_subject{name = binary_to_list(NameID),
                              name_format = NameIDFormat},
     SignedXml = esaml_sp:generate_logout_request(_, "", Subject, SPMetadata),
-    case proplists:get_value(logout_resp_binding, SSOOpts, post) of
+    case proplists:get_value(logout_binding, SSOOpts) of
         redirect ->
             URL = IDPMetadata#esaml_idp_metadata.logout_redirect_location,
             reply_via_redirect(URL, SignedXml(URL), <<>>, ExtraHeaders, Req);
@@ -122,8 +163,8 @@ handle_saml_consume(Req, UnvalidatedParams) ->
           Subject = Assertion#esaml_assertion.subject,
           NameID = Subject#esaml_subject.name,
           Username =
-              case proplists:get_value(username, SSOOpts, 'NameID') of
-                  'NameID' ->
+              case proplists:get_value(username_attribute, SSOOpts) of
+                  "" ->
                       case Subject#esaml_subject.name_format of
                           "urn:oasis:names:tc:SAML:2.0:"
                           "nameid-format:transient" ->
@@ -134,10 +175,7 @@ handle_saml_consume(Req, UnvalidatedParams) ->
                               ok
                       end,
                       NameID;
-                  'Attribute' ->
-                      AttrName = proplists:get_value(username_attr_name,
-                                                     SSOOpts,
-                                                     "mail"),
+                  AttrName ->
                       AttrNameMapped = esaml:common_attrib_map(AttrName),
                       Attrs = Assertion#esaml_assertion.attributes,
                       proplists:get_value(AttrNameMapped, Attrs)
@@ -199,8 +237,7 @@ handle_saml_logout(Req, UnvalidatedParams) ->
                                                           SessionName),
                   SignedXml = esaml_sp:generate_logout_response(_, success,
                                                                 SPMetadata),
-                  BindingToUse = proplists:get_value(logout_resp_binding,
-                                                     SSOOpts, post),
+                  BindingToUse = proplists:get_value(logout_binding, SSOOpts),
                   case BindingToUse of
                       redirect ->
                           URL = IDPMetadata#esaml_idp_metadata.logout_redirect_location,
@@ -226,7 +263,8 @@ handle_saml_logout(Req, UnvalidatedParams) ->
 %%%===================================================================
 
 extract_saml_settings() ->
-    ns_config:read_key_fast(sso_options, []).
+    SSOSettings = ns_config:read_key_fast(saml_settings, []),
+    misc:update_proplist(defaults(), SSOSettings).
 
 extract_saml_settings_if_enabled() ->
     Opts = extract_saml_settings(),
@@ -268,29 +306,25 @@ reply_via_post(IDPURL, SignedXml, RelayState, ExtraHeaders, Req)
                          {"Content-Type", "text/html"} | ExtraHeaders]).
 
 build_sp_metadata(Opts, Req) ->
-    DefaultScheme = case cluster_compat_mode:is_enterprise() of
-                        true -> https;
-                        false -> http
-                    end,
     BaseURL = build_base_url(
-                proplists:get_value(base_url, Opts, alternate),
+                proplists:get_value(base_url, Opts),
                 proplists:get_value(custom_base_url, Opts),
-                proplists:get_value(scheme, Opts, DefaultScheme),
-                Req) ++ "/saml/",
+                proplists:get_value(base_url_scheme, Opts),
+                Req) ++ "/saml",
 
-    OrgName = proplists:get_value(org_name, Opts, ""),
-    OrgDispName = proplists:get_value(org_display_name, Opts, ""),
-    OrgUrl = proplists:get_value(org_url, Opts, ""),
+    OrgName = proplists:get_value(org_name, Opts),
+    OrgDispName = proplists:get_value(org_display_name, Opts),
+    OrgUrl = proplists:get_value(org_url, Opts),
 
-    ContactName = proplists:get_value(contact_name, Opts, ""),
-    ContactEmail = proplists:get_value(contact_email, Opts, ""),
+    ContactName = proplists:get_value(contact_name, Opts),
+    ContactEmail = proplists:get_value(contact_email, Opts),
 
-    IdpSignsAssertions = proplists:get_value(idp_signs_assertions, Opts, true),
-    IdpSignsEnvelopes = proplists:get_value(idp_signs_envelopes, Opts, true),
-    Recipient = case proplists:get_value(check_recipient, Opts, consumeURL) of
-                    any -> any;
+    IdpSignsAssertions = proplists:get_value(verify_assertion_sig, Opts),
+    IdpSignsEnvelopes = proplists:get_value(verify_assertion_envelop_sig, Opts),
+    Recipient = case proplists:get_value(verify_recipient, Opts) of
+                    false -> any;
                     consumeURL -> undefined;
-                    custom -> proplists:get_value(recipient_value, Opts, "")
+                    custom -> proplists:get_value(verify_recipient_value, Opts)
                 end,
 
     SP = #esaml_sp{
@@ -311,17 +345,20 @@ build_sp_metadata(Opts, Req) ->
                   }
          },
 
-    ClientCert = proplists:get_value(cert, Opts),
-    ClientKey = proplists:get_value(key, Opts),
-    CertChain = proplists:get_value(chain, Opts, []),
+    Cert = proplists:get_value(cert, Opts),
+    Key = proplists:get_value(key, Opts),
 
-    SignRequests = proplists:get_value(sign_requests, Opts, true),
-    SignMetadata = proplists:get_value(sign_metadata, Opts, true),
+    SignRequests = proplists:get_value(sign_requests, Opts),
+    SignMetadata = proplists:get_value(sign_metadata, Opts),
 
-    SP2 = case (ClientKey =/= undefined) andalso (ClientCert =/= undefined) of
+    SP2 = case (Key =/= undefined) andalso (Cert =/= undefined) of
               true ->
-                  SP#esaml_sp{key = ClientKey,
-                              certificate = ClientCert,
+                  {_, KeyEntry} = Key,
+                  KeyEntryDecoded = public_key:pem_entry_decode(KeyEntry),
+                  {_, Der} = Cert,
+                  {_, CertChain} = proplists:get_value(chain, Opts),
+                  SP#esaml_sp{key = KeyEntryDecoded,
+                              certificate = Der,
                               cert_chain = CertChain,
                               sp_sign_requests = SignRequests,
                               sp_sign_metadata = SignMetadata};
@@ -329,11 +366,13 @@ build_sp_metadata(Opts, Req) ->
                   SP
           end,
 
-    FPsUsage = proplists:get_value(fingerprints_usage, Opts, metadata_initial),
+    FPsUsage = proplists:get_value(fingerprints_usage, Opts),
 
     FPs = case FPsUsage of
-              everything -> proplists:get_value(trusted_fingerprints, Opts, []);
-              U when U =:= metadata_initial; U =:= metadata ->
+              everything ->
+                  {_, Parsed} = proplists:get_value(trusted_fingerprints, Opts),
+                  Parsed;
+              U when U =:= metadataInitialOnly; U =:= metadataOnly ->
                   case trusted_fingerprints_from_metadata() of
                       {ok, L} -> L;
                       %% It may happen that it is expired or not set
@@ -345,7 +384,10 @@ build_sp_metadata(Opts, Req) ->
                   end
           end,
 
-    SP2#esaml_sp{entity_id = proplists:get_value(entity_id, Opts),
+    SP2#esaml_sp{entity_id = case proplists:get_value(entity_id, Opts) of
+                                 "" -> undefined;
+                                 S -> S
+                             end,
                  trusted_fingerprints = FPs}.
 
 try_get_idp_metadata(Opts) ->
@@ -359,9 +401,12 @@ try_get_idp_metadata(Opts) ->
     end.
 
 get_idp_metadata(URL, Opts) ->
-    case ets:lookup(esaml_idp_meta_cache, URL) of
-        [{URL, Meta}] ->
-            case metadata_expired(Meta) of
+    SettingsUuid = proplists:get_value(uuid, Opts),
+    case ets:lookup(esaml_idp_meta_cache, metadata) of
+        [{metadata, {MetaUuid, Meta}}] ->
+            %% If Uuid in cache doesn't match the Uuid of current settings,
+            %% it means settings have changed and we need to refresh the cache
+            case (MetaUuid =/= SettingsUuid) orelse metadata_expired(Meta) of
                 false ->
                     ?log_debug("Loading IDP metadata for ~s from cache", [URL]),
                     {ok, Meta};
@@ -380,7 +425,7 @@ metadata_expired(#esaml_idp_metadata{valid_until = Datetime}) ->
     calendar:universal_time() > Datetime.
 
 extract_connect_options(URL, SSOOpts) ->
-    AddrSettings = case proplists:get_value(address_family, SSOOpts) of
+    AddrSettings = case proplists:get_value(md_address_family, SSOOpts) of
                        undefined -> [];
                        AF -> [AF]
                    end,
@@ -388,13 +433,13 @@ extract_connect_options(URL, SSOOpts) ->
     Opts =
         case URL of
             "https://" ++ _ ->
-                case proplists:get_value(tls_verify_peer, SSOOpts, true) of
+                case proplists:get_value(md_tls_verify_peer, SSOOpts) of
                     true ->
-                        CACerts = proplists:get_value(tls_ca, SSOOpts, []) ++
-                                  ns_server_cert:trusted_CAs(der),
+                        {_, Certs} = proplists:get_value(md_tls_ca, SSOOpts),
+                        CACerts = Certs ++ ns_server_cert:trusted_CAs(der),
                         [{verify, verify_peer}, {cacerts, CACerts},
                          {depth, ?ALLOWED_CERT_CHAIN_LENGTH}] ++
-                        case proplists:get_value(tls_sni, SSOOpts, "") of
+                        case proplists:get_value(md_tls_sni, SSOOpts) of
                             "" -> [];
                             SNI -> [{server_name_indication, SNI}]
                         end;
@@ -405,12 +450,12 @@ extract_connect_options(URL, SSOOpts) ->
                 []
         end ++ AddrSettings,
 
-    ExtraOpts = proplists:get_value(tls_extra_opts, SSOOpts, []),
+    ExtraOpts = proplists:get_value(md_tls_extra_opts, SSOOpts),
     misc:update_proplist_relaxed(Opts, ExtraOpts).
 
 load_idp_metadata(URL, Opts) ->
     try
-        Timeout = proplists:get_value(metadata_http_timeout, Opts, 5000),
+        Timeout = proplists:get_value(md_http_timeout, Opts),
         ConnectOptions = extract_connect_options(URL, Opts),
 
         Body = case rest_utils:request(<<"saml_metadata">>, URL, "GET", [],
@@ -432,7 +477,7 @@ load_idp_metadata(URL, Opts) ->
                   _:_ -> error({error, {invalid_xml, Body}})
               end,
 
-        case proplists:get_value(idp_signs_metadata, Opts, true) of
+        case proplists:get_value(idp_signs_metadata, Opts) of
             true ->
                 FPs = trusted_fingerprints_for_metadata(Opts),
                 try xmerl_dsig:verify(Xml, FPs) of
@@ -451,7 +496,7 @@ load_idp_metadata(URL, Opts) ->
         end,
 
         try esaml:decode_idp_metadata(Xml) of
-            {ok, Meta} -> {ok, cache_idp_metadata(Meta, URL)};
+            {ok, Meta} -> {ok, cache_idp_metadata(Meta, Opts)};
             {error, Reason3} -> error({error, {bad_metadata, Reason3}})
         catch
             _:Reason3:ST3 ->
@@ -470,7 +515,7 @@ load_idp_metadata(URL, Opts) ->
 cache_idp_metadata(#esaml_idp_metadata{valid_until = ValidUntilExpiration,
                                        cache_duration = CacheDurationDur,
                                        certificates = TrustedCerts} = Meta,
-                   URL) ->
+                   Opts) ->
     CacheDurationExpiration =
         case CacheDurationDur of
             undefined -> undefined;
@@ -489,7 +534,8 @@ cache_idp_metadata(#esaml_idp_metadata{valid_until = ValidUntilExpiration,
                               valid_until = MetaExpirationDateTime,
                               cache_duration = undefined
                             },
-    ets:insert(esaml_idp_meta_cache, {URL, MetaWithExpirationSet}),
+    Uuid = proplists:get_value(uuid, Opts),
+    ets:insert(esaml_idp_meta_cache, {metadata, {Uuid, MetaWithExpirationSet}}),
     MetaWithExpirationSet.
 
 min_if_defined(List) ->
@@ -521,15 +567,14 @@ trusted_fingerprints_from_metadata() ->
     end.
 
 trusted_fingerprints_for_metadata(Opts) ->
-    ExtraFPs = proplists:get_value(trusted_fingerprints, Opts, []),
-    ExtraFPsUsage = proplists:get_value(fingerprints_usage, Opts,
-                                        metadata_initial),
+    {_, ExtraFPs} = proplists:get_value(trusted_fingerprints, Opts),
+    ExtraFPsUsage = proplists:get_value(fingerprints_usage, Opts),
     case ExtraFPsUsage of
         everything ->
             ExtraFPs;
-        metadata ->
+        metadataOnly ->
             ExtraFPs;
-        metadata_initial ->
+        metadataInitialOnly ->
             case trusted_fingerprints_from_metadata() of
                 {ok, L} -> L;
                 {error, not_set} -> ExtraFPs;
@@ -647,8 +692,8 @@ build_base_url(alternate, _, Scheme, Req) ->
                end,
     AltPort = proplists:get_value(PortName, AltPorts),
     build_node_url(Scheme, AltHostName, AltPort, Req);
-build_base_url(custom, URLBin, _Scheme, _Req) when is_binary(URLBin) ->
-    binary_to_list(URLBin).
+build_base_url(custom, URLBin, _Scheme, _Req) when is_list(URLBin) ->
+    URLBin.
 
 build_node_url(Scheme, Host, undefined, Req) ->
     PortName = case Scheme of
@@ -669,3 +714,219 @@ build_node_url(Scheme, Host, Port, _Req) ->
     URL = io_lib:format("~p://~s:~b",
                         [Scheme, misc:maybe_add_brackets(Host), Port]),
     lists:flatten(URL).
+
+params() ->
+    [{"enabled",
+      #{cfg_key => enabled,
+        type => bool,
+        mandatory => true}},
+     {"idpMetadataURL",
+      #{cfg_key => idp_metadata_url,
+        type => {url, [<<"http">>, <<"https">>]},
+        mandatory => fun (#{enabled := Enabled}) -> Enabled end}},
+     {"idpMetadataHttpTimeoutMs",
+      #{cfg_key => md_http_timeout,
+        type => pos_int}},
+     {"idpSignsMetadata",
+      #{cfg_key => idp_signs_metadata,
+        type => bool}},
+     {"idpMetadataRefreshIntervalS",
+      #{cfg_key => idp_metadata_refresh_interval,
+        type => pos_int}},
+     {"idpMetadataConnectAddressFamily",
+      #{cfg_key => md_address_family,
+        type => {one_of, existing_atom, [undefined, inet, inet6]}}},
+     {"idpMetadataTLSVerifyPeer",
+      #{cfg_key => md_tls_verify_peer,
+        type => bool}},
+     {"idpMetadataTLSCAs",
+      #{cfg_key => md_tls_ca,
+        type => certificate_chain}},
+     {"idpMetadataTLSSNI",
+      #{cfg_key => md_tls_sni,
+        type => string}},
+     {"idpMetadataTLSExtraOpts",
+      #{cfg_key => md_tls_extra_opts,
+        type => tls_opts}},
+     {"idpAuthnBinding",
+      #{cfg_key => authn_binding,
+        type => {one_of, existing_atom, [post, redirect]}}},
+     {"idpLogoutBinding",
+      #{cfg_key => logout_binding,
+        type => {one_of, existing_atom, [post, redirect]}}},
+
+     %% See http://docs.oasis-open.org/security/saml/v2.0/saml-core-2.0-os.pdf
+     %% section 8.3 for more info
+     {"authnNameIDFormat",
+      #{cfg_key => authn_nameID_format,
+        type => string}},
+     {"singleLogoutEnabled",
+      #{cfg_key => single_logout, type => bool}},
+    %% See http://docs.oasis-open.org/security/saml/v2.0/saml-core-2.0-os.pdf
+    %% section 2.7.3.1
+     {"usernameAttribute",
+      #{cfg_key => username_attribute,
+        type => string}},
+     %% if empty, use Metadata URL as entity id
+     {"spEntityId",
+      #{cfg_key => entity_id,
+        type => string}},
+     {"spBaseURLType",
+      #{cfg_key => base_url,
+        type => {one_of, existing_atom, [node, alternate, custom]}}},
+     {"spBaseURLScheme",
+      #{cfg_key => base_url_scheme,
+        type => {one_of, existing_atom, [https, http]}}},
+     {"spCustomBaseURL",
+      #{cfg_key => custom_base_url,
+        type => {url, [<<"http">>, <<"https">>]},
+        mandatory => fun (#{enabled := true, base_url := custom}) -> true;
+                         (_) -> false
+                     end}},
+     {"spOrgName",
+      #{cfg_key => org_name, type => string}},
+     {"spOrgDisplayName",
+      #{cfg_key => org_display_name, type => string}},
+     {"spOrgURL",
+      #{cfg_key => org_url, type => string}},
+     {"spContactName",
+      #{cfg_key => contact_name, type => string}},
+     {"spContactEmail",
+      #{cfg_key => contact_email, type => string}},
+     {"spVerifyAssertionSig",
+      #{cfg_key => verify_assertion_sig, type => bool}},
+     {"spVerifyAssertionEnvelopSig",
+      #{cfg_key => verify_assertion_envelop_sig, type => bool}},
+     {"spVerifyRecipient",
+      #{cfg_key => verify_recipient,
+        type => {one_of, existing_atom, [consumeURL, custom, false]}}},
+     {"spVerifyRecipientValue",
+      #{cfg_key => verify_recipient_value,
+        type => string,
+        mandatory => fun (#{enabled := true,
+                            verify_recipient := custom}) -> true;
+                         (_) -> false
+                     end}},
+     {"spCertificate",
+      #{cfg_key => cert,
+        type => certificate,
+        mandatory => fun (#{enabled := true,
+                            sign_requests := S1,
+                            sign_metadata := S2}) -> S1 or S2;
+                         (_) -> false
+                     end}},
+     {"spKey",
+      #{cfg_key => key,
+        type => pkey,
+        mandatory => fun (#{enabled := true,
+                            sign_requests := S1,
+                            sign_metadata := S2}) -> S1 or S2;
+                         (_) -> false
+                     end}},
+     {"spChain",
+      #{cfg_key => chain,
+        type => certificate_chain}},
+     {"spSignRequests",
+      #{cfg_key => sign_requests,
+        type => bool}},
+     {"spSignMetadata",
+      #{cfg_key => sign_metadata,
+        type => bool}},
+     {"spTrustedFingerprints",
+      #{cfg_key => trusted_fingerprints,
+        type => fingerprint_list}},
+     {"spTrustedFingerprintsUsage",
+      #{cfg_key => fingerprints_usage,
+        type => {one_of, existing_atom,
+                 [everything, metadataOnly, metadataInitialOnly]}}}].
+
+defaults() ->
+    [{enabled, false},
+     {org_name, ""},
+     {org_display_name, ""},
+     {org_url, ""},
+     {contact_name, ""},
+     {contact_email, ""},
+     {authn_binding, post},
+     {logout_binding, post},
+     {authn_nameID_format, ?PERSISTENT_NAMEID_FORMAT},
+     {single_logout, true},
+     {username_attribute, ""},
+     {base_url, node},
+     {base_url_scheme, https},
+     {custom_base_url, ""},
+     {verify_assertion_sig, true},
+     {verify_assertion_envelop_sig, true},
+     {verify_recipient, consumeURL},
+     {verify_recipient_value, ""},
+     {cert, undefined},
+     {key, undefined},
+     {chain, {<<>>, []}},
+     {sign_requests, true},
+     {sign_metadata, true},
+     {fingerprints_usage, metadataInitialOnly},
+     {trusted_fingerprints, {"", []}},
+     {entity_id, ""},
+     {idp_metadata_url, ""},
+     {md_address_family, undefined},
+     {md_tls_verify_peer, true},
+     {md_tls_ca, {<<>>, []}},
+     {md_tls_sni, ""},
+     {md_tls_extra_opts, []},
+     {md_http_timeout, 5000},
+     {idp_signs_metadata, true},
+     {idp_metadata_refresh_interval, 3600}].
+
+type_spec(fingerprint_list) ->
+    #{validators => [fun validate_fingerprint_list/2],
+      formatter => fun ({Str, _}) -> {value, Str} end}.
+
+validate_fingerprint_list(Name, State) ->
+    validator:validate(
+      fun (Raw) ->
+          RawBin = iolist_to_binary(Raw),
+          Tokens = string:lexemes(string:trim(RawBin), "\r\n,"),
+          ParseRes = lists:map(fun parse_fingerprint/1, Tokens),
+          {FPs, Errors} = misc:partitionmap(fun ({ok, R}) -> {left, R};
+                                                ({error, R}) -> {right, R}
+                                            end, ParseRes),
+          case Errors of
+              [] -> {value, {RawBin, FPs}};
+              [Error | _] -> {error, Error}
+          end
+      end, Name, State).
+
+%% There are multiple formats for fingerprints. It is not really clear
+%% which format we should support so we try to support more or less everything.
+parse_fingerprint(BinStr) when is_binary(BinStr) ->
+    TrimmedStr = string:trim(BinStr),
+    try esaml_util:convert_fingerprints([binary_to_list(TrimmedStr)]) of
+        [{md5, _Bin}] ->
+            Msg = io_lib:format("MD5 fingerprints are not supported: ~s",
+                                [TrimmedStr]),
+            {error, lists:flatten(Msg)};
+        [{Type, Bin}] when is_atom(Type), is_binary(Bin) ->
+            {ok, {Type, Bin}};
+        [Bin] when is_binary(Bin) ->
+            case erlang:size(Bin) * 8 of
+                160 -> {ok, {sha, Bin}};
+                256 -> {ok, {sha256, Bin}};
+                384 -> {ok, {sha384, Bin}};
+                512 -> {ok, {sha512, Bin}};
+                128 ->
+                    Msg = io_lib:format("MD5 fingerprints are not supported: ~s",
+                                        [TrimmedStr]),
+                    {error, lists:flatten(Msg)};
+                _ ->
+                    Msg = io_lib:format("invalid fingerprint length: ~s",
+                                        [TrimmedStr]),
+                    {error, lists:flatten(Msg)}
+            end
+    catch
+        error:_ ->
+            Msg = io_lib:format("invalid fingerprint: ~s", [TrimmedStr]),
+            {error, lists:flatten(Msg)}
+    end.
+
+invalidate_cache() ->
+    ns_config:delete(saml_sign_fingerprints).

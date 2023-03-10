@@ -61,7 +61,8 @@
          json/3,
          decoded_json/3,
          is_json/1,
-         extract_internal/3]).
+         extract_internal/3,
+         url/3]).
 
 %% Used for testing validators.
 -ifdef(TEST).
@@ -724,6 +725,21 @@ extract_internal(InternalKey, NewKey, #state{kv = KV} = State) ->
         undefined -> State;
         Value -> return_value(NewKey, Value, State)
     end.
+
+url(Name, Schemes, State) ->
+    validate(
+      fun (Str) ->
+          Validation = fun (S) ->
+                           case lists:member(S, Schemes) of
+                               true -> valid;
+                               false -> {error, invalid_scheme}
+                           end
+                       end,
+          case misc:parse_url(Str, [{scheme_validation_fun, Validation}]) of
+              {ok, _} -> ok;
+              {error, _} -> {error, "Invalid URL"}
+          end
+      end, Name, State).
 
 -ifdef(TEST).
 %% Apply the validators to the arguments, returning the validated

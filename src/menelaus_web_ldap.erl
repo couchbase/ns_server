@@ -188,29 +188,6 @@ type_spec(ldap_groups_query) ->
       formatter => fun (undefined) -> ignore;
                        (Str) -> {value, list_to_binary(Str)}
                    end};
-type_spec(certificate) ->
-    #{validators => [string, fun validate_cert/2],
-      formatter => fun (undefined) -> ignore;
-                       (<<"redacted">>) -> {value, <<"redacted">>};
-                       ({Cert, _Decoded}) -> {value, Cert}
-                   end};
-type_spec(pkey) ->
-    #{validators => [string, fun validate_key/2],
-      formatter => fun (undefined) -> ignore;
-                       ({password, {_, _, not_encrypted}}) ->
-                           {value, <<"**********">>}
-                   end};
-type_spec(tls_opts) ->
-    #{validators => [not_supported],
-      formatter => fun (undefined) -> ignore;
-                       (List) ->
-                           Sanitize = fun ({password, _}) -> <<"********">>;
-                                          (V) -> V
-                                      end,
-                           Sanitized = [{K, Sanitize(V)} || {K, V} <- List],
-                           Str = io_lib:format("~p", [Sanitized]),
-                           {value, iolist_to_binary(Str)}
-                   end};
 type_spec(max_tls_version) ->
     #{validators => [string, fun validate_ldap_tls_version/2],
       formatter => fun (undefined) -> ignore;
@@ -223,28 +200,6 @@ type_spec(bind_method) ->
       formatter => fun (undefined) -> ignore;
                        (Atom) -> {value, atom_to_binary(Atom, latin1)}
                    end}.
-
-validate_key(Name, State) ->
-    validator:validate(
-      fun ("") -> {value, undefined};
-          (Key) ->
-              case ns_server_cert:validate_pkey(iolist_to_binary(Key),
-                                                fun () -> undefined end) of
-                  {ok, DecodedKey} -> {value, {password, DecodedKey}};
-                  {error, _} -> {error, "invalid key"}
-              end
-      end, Name, State).
-
-validate_cert(Name, State) ->
-    validator:validate(
-      fun ("") -> {value, undefined};
-          (Cert) ->
-              BinCert = iolist_to_binary(Cert),
-              case ns_server_cert:decode_single_certificate(BinCert) of
-                  {ok, Decoded} -> {value, {BinCert, Decoded}};
-                  {error, _} -> {error, "invalid certificate"}
-              end
-      end, Name, State).
 
 validate_ldap_hosts(Name, State) ->
     IsJson = validator:is_json(State),

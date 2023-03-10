@@ -193,6 +193,10 @@ def delete(cluster_or_node, path, **kwargs):
     return request('DELETE', cluster_or_node, path, None, **kwargs)
 
 
+def delete_succ(cluster_or_node, path, **kwargs):
+    return request('DELETE', cluster_or_node, path, 200, **kwargs)
+
+
 def set_default_auth(cluster_or_node, **kwargs):
     if 'auth' not in kwargs:
         new_kwargs = kwargs.copy()
