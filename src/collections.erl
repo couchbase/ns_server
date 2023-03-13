@@ -118,7 +118,11 @@ get_default_collection_props(BucketConf) ->
         false ->
             historic_default_collection_props();
         true ->
-            historic_default_collection_props() ++ [{history, true}]
+            historic_default_collection_props()
+            %% TODO MB-55912: While KV merges forwards the CDC work they have
+            %% a poor behaviour for the default collection. In a future patch
+            %% we need to re-add the following " ++ [{history, true}]" to
+            %% re-enable history on the default collection.
     end.
 
 manifest_without_system_scope(BucketConf) ->
@@ -1495,10 +1499,11 @@ history_default_t() ->
 
     %% Default collection history field should inherit the default
     DefaultMan = default_manifest(BucketConf),
-    ?assert(proplists:get_value(history,
-                                get_collection("_default",
-                                               get_scope("_default",
-                                                         DefaultMan)))),
+    ?assertEqual(undefined,
+                 proplists:get_value(history,
+                                     get_collection("_default",
+                                                    get_scope("_default",
+                                                              DefaultMan)))),
 
     % history_default is true, it should set history for the collection
     {commit, [{_, _, Manifest1}], _} =
