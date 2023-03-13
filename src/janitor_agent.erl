@@ -1042,7 +1042,12 @@ decode_topology(Topology) ->
     [lists:map(fun (null) ->
                        undefined;
                    (Node) ->
-                       binary_to_existing_atom(Node, latin1)
+                       %% In general, we expect the topology node to be
+                       %% an existing atom - but in the new serverless world,
+                       %% a bucket could be paused and resumed on an entirely
+                       %% different cluster and therefore accept a reference to
+                       %% a node from the old cluster.
+                       binary_to_atom(Node, latin1)
                end, Chain) || Chain <- ejson:decode(Topology)].
 
 is_topology_same(active, Chain, MemcachedTopology) ->
