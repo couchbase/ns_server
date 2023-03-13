@@ -11,6 +11,12 @@
         "added": "7.0.0",
         "stability": "committed"
     },
+    "cm_gc_duration_seconds": {
+        "type": "histogram",
+        "help": "Time to perform erlang garbage collection",
+        "added": "7.5.0",
+        "stability": "committed"
+    },
     "cm_rest_request_enters_total": {
         "type": "counter",
         "help": "Number of REST requests to enter ns_server",
@@ -170,6 +176,30 @@
         "added": "7.0.0",
         "units": "bytes",
         "stability": "committed"
+    },
+    "sysproc_cpu_user": {
+        "type": "gauge",
+        "help": "Amount of user cpu cycles used by process",
+        "added": "7.5.0",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "proc",
+                "help": "Name of the process (e.g. babysitter, bash, etc.)"
+            }
+        ]
+    },
+    "sysproc_cpu_sys": {
+        "type": "gauge",
+        "help": "Amount of system cpu cycles used by process",
+        "added": "7.5.0",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "proc",
+                "help": "Name of the process (e.g. babysitter, bash, etc.)"
+            }
+        ]
     },
     "sysproc_cpu_utilization": {
         "type": "gauge",
@@ -353,6 +383,20 @@
         "type": "counter",
         "help": "Number of times lease period start time estimate is in the future",
         "added": "7.0.0",
+        "deprecated": "7.5.0",
+        "notes": "Replaced with cm_lease_acquirer_prev_acquire_estimate_in_future_total",
+        "stability": "internal",
+        "labels": [
+            {
+                "name": "node",
+                "help": "Node on which the stat occurred"
+            }
+        ]
+    },
+    "cm_lease_acquirer_prev_acquire_estimate_in_future_total": {
+        "type": "counter",
+        "help": "Number of times lease period start time estimate is in the future",
+        "added": "7.5.0",
         "stability": "internal",
         "labels": [
             {
@@ -365,6 +409,20 @@
         "type": "histogram",
         "help": "Histogram of lease acquirer estimates",
         "added": "7.0.0",
+        "deprecated": "7.5.0",
+        "notes": "Replaced with cm_lease_acquirer_prev_acquire_estimate_minus_start_time_seconds",
+        "stability": "internal",
+        "labels": [
+            {
+                "name": "node",
+                "help": "Node on which the histogram was measured"
+            }
+        ]
+    },
+    "cm_lease_acquirer_prev_acquire_estimate_minus_start_time_seconds": {
+        "type": "histogram",
+        "help": "Histogram of lease acquirer estimates",
+        "added": "7.5.0",
         "stability": "internal",
         "labels": [
             {
@@ -377,6 +435,20 @@
         "type": "histogram",
         "help": "Histogram of lease acquirer estimates",
         "added": "7.0.0",
+        "deprecated": "7.5.0",
+        "notes": "Replaced with cm_lease_acquirer_start_time_minus_prev_acquire_estimate_seconds",
+        "stability": "internal",
+        "labels": [
+            {
+                "name": "node",
+                "help": "Node on which the histogram was measured"
+            }
+        ]
+    },
+    "cm_lease_acquirer_start_time_minus_prev_acquire_estimate_seconds": {
+        "type": "histogram",
+        "help": "Histogram of lease acquirer estimates",
+        "added": "7.5.0",
         "stability": "internal",
         "labels": [
             {
@@ -389,6 +461,20 @@
         "type": "histogram",
         "help": "Histogram of lease inflight seconds",
         "added": "7.0.0",
+        "deprecated": "7.5.0",
+        "notes": "Replaced with cm_lease_acquirer_time_inflight_seconds",
+        "stability": "internal",
+        "labels": [
+            {
+                "name": "node",
+                "help": "Node on which the histogram was measured"
+            }
+        ]
+    },
+    "cm_lease_acquirer_time_inflight_seconds": {
+        "type": "histogram",
+        "help": "Histogram of lease inflight seconds",
+        "added": "7.5.0",
         "stability": "internal",
         "labels": [
             {
@@ -401,6 +487,20 @@
         "type": "counter",
         "help": "Number of times previous estimate was used",
         "added": "7.0.0",
+        "deprecated": "7.5.0",
+        "notes": "replaced with cm_lease_acquirer_used_prev_acquire_estimate_total",
+        "stability": "internal",
+        "labels": [
+            {
+                "name": "node",
+                "help": "Node on which the estimate was used"
+            }
+        ]
+    },
+    "cm_lease_acquirer_used_prev_acquire_estimate_total": {
+        "type": "counter",
+        "help": "Number of times previous estimate was used",
+        "added": "7.5.0",
         "stability": "internal",
         "labels": [
             {
@@ -413,6 +513,20 @@
         "type": "counter",
         "help": "Number of times start estimate was used",
         "added": "7.0.0",
+        "deprecated": "7.5.0",
+        "notes": "Replaced with cm_lease_acquirer_used_start_estimate_total",
+        "stability": "internal",
+        "labels": [
+            {
+                "name": "node",
+                "help": "Node on which the estimate was used"
+            }
+        ]
+    },
+    "cm_lease_acquirer_used_start_estimate_total": {
+        "type": "counter",
+        "help": "Number of times start estimate was used",
+        "added": "7.5.0",
         "stability": "internal",
         "labels": [
             {
@@ -441,6 +555,17 @@
             {
                 "name": "bucket",
                 "help": "Name of bucket associated with memcached calls"
+            }
+        ]
+    },
+    "cm_memcached_cmd_total": {
+        "type": "gauge",
+        "help": "Total number of memcached commands",
+        "added": "7.5.0",
+        "labels": [
+            {
+                "name": "cmd",
+                "help": "Memcached command (e.g. set_tls_config, refresh_isasl, etc)"
             }
         ]
     },
