@@ -201,6 +201,8 @@ verify(Element, Fingerprints) ->
                 CertBin = base64:decode(Cert64),
                 CertHash = crypto:hash(sha, CertBin),
                 CertHash2 = crypto:hash(sha256, CertBin),
+                CertHash384 = crypto:hash(sha384, CertBin),
+                CertHash512 = crypto:hash(sha512, CertBin),
 
                 Cert = public_key:pkix_decode_cert(CertBin, plain),
                 KeyBin = case Cert#'Certificate'.tbsCertificate#'TBSCertificate'.subjectPublicKeyInfo#'SubjectPublicKeyInfo'.subjectPublicKey of
@@ -215,7 +217,14 @@ verify(Element, Fingerprints) ->
                             any ->
                                 ok;
                             _ ->
-                                case lists:any(fun(X) -> lists:member(X, Fingerprints) end, [CertHash, {sha,CertHash}, {sha256,CertHash2}]) of
+                                CertHashes = [CertHash,
+                                              {sha, CertHash},
+                                              {sha256, CertHash2},
+                                              {sha384, CertHash384},
+                                              {sha512, CertHash512}],
+                                case lists:any(fun (X) ->
+                                                   lists:member(X, Fingerprints)
+                                               end, CertHashes) of
                                     true ->
                                         ok;
                                     false ->
