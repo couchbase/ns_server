@@ -94,7 +94,7 @@ get_tasks(Filter) when is_function(Filter, 1) ->
                     Error
             end;
         false ->
-            ok
+            []
     end.
 
 
@@ -490,7 +490,12 @@ get_tasks_test__() ->
     JSONTasks = [{Task} || Task <- FetchedTasks],
 
     %% Confirm that the final tasks list can be converted to json
-    ejson:encode(JSONTasks).
+    ejson:encode(JSONTasks),
+
+    meck:expect(cluster_compat_mode, is_cluster_elixir, fun () -> false end),
+
+    %% Confirm that get_tasks/1 returns [] for mixed version clusters
+    ?assertEqual([], get_tasks(TaskIds)).
 
 get_default_tasks_test__() ->
     Tasks = generate_tasks(),
@@ -519,7 +524,12 @@ get_default_tasks_test__() ->
     JSONTasks = [{Task} || Task <- FetchedTasks],
 
     %% Confirm that the final tasks list can be converted to json
-    ejson:encode(JSONTasks).
+    ejson:encode(JSONTasks),
+
+    meck:expect(cluster_compat_mode, is_cluster_elixir, fun () -> false end),
+
+    %% Confirm that get_default_tasks/0 returns [] for mixed version clusters
+    ?assertEqual([], get_default_tasks()).
 
 %% Generate a new task which is the same as Task, except for the status
 -spec generate_task_update(task()) -> task().
@@ -533,9 +543,8 @@ generate_task_update(Task) ->
 %% transaction call with one which checks that each new Task gets added to the
 %% tasks list.
 -spec assert_update_tasks(map(), [task()]) -> ok.
-assert_update_tasks(Snapshot, Tasks) ->
-    meck:expect(chronicle_compat, transaction,
-                fake_transaction(Snapshot, Tasks, _, _)),
+assert_update_tasks(Tasks, Transaction) ->
+    meck:expect(chronicle_compat, transaction, Transaction),
     Return =
         lists:foreach(
           fun (Task) ->
@@ -574,14 +583,22 @@ update_task_test__() ->
     Tasks = generate_tasks(),
 
     %% Test that new tasks can be added
-    assert_update_tasks(Snapshot0, Tasks),
+    Transaction0 = fake_transaction(Snapshot0, Tasks, _, _),
+    assert_update_tasks(Tasks, Transaction0),
 
     %% Generate an updated task with a new status, for each existing task
     Snapshot1 = Snapshot0#{tasks => {Tasks, 0}},
     TaskUpdates = [generate_task_update(Task) || Task <- Tasks],
 
     %% Test that current tasks can be updated
-    assert_update_tasks(Snapshot1, TaskUpdates).
+    Transaction1 = fake_transaction(Snapshot1, TaskUpdates, _, _),
+    assert_update_tasks(TaskUpdates, Transaction1),
+
+    meck:expect(cluster_compat_mode, is_cluster_elixir, fun () -> false end),
+
+    %% Confirm that update_task/5 returns ok for mixed version clusters
+    Transaction2 = fun (_, _) -> error end,  %% The transaction shouldn't run
+    assert_update_tasks(Tasks, Transaction2).
 
 all_test_() ->
     {foreach, fun setup/0, fun teardown/1,
