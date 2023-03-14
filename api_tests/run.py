@@ -186,7 +186,7 @@ def main():
 
     def kill_nodes():
         for c in clusters:
-            cluster_run_lib.kill_nodes(c.processes, c.urls, terminal_attrs)
+            cluster_run_lib.kill_nodes(c.processes, terminal_attrs, c.urls)
     atexit.register(kill_nodes)
 
     if len(errors) > 0:

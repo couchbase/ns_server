@@ -530,8 +530,9 @@ def wait_nodes_up(num_nodes, start_index, timeout_s):
     [wait_node(start_index + i) for i in range(num_nodes)]
 
 
-def kill_nodes(nodes, urls, terminal_attrs=None):
-    sync_loggers(urls)
+def kill_nodes(nodes, terminal_attrs=None, urls=None):
+    if urls is not None:
+        sync_loggers(urls)
     for n in nodes:
         if n.write_side is not None:
             print("Closing %d\n" % n.write_side)
