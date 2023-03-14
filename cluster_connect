@@ -123,10 +123,32 @@ def main():
         '--dont-rebalance',
         action='store_false',
         default=None)
+    arg_parser.add_argument(
+        '--serverless-groups',
+        action='store_true',
+        default=None,
+        help=f"Creates 3 groups and adds the nodes to the serverless groups"
+    )
+    arg_parser.add_argument(
+        '--width',
+        type=int,
+        help=f"The bucket width for serverless buckets",
+    )
+    arg_parser.add_argument(
+        '--weight',
+        type=int,
+        help=f"The bucket weight for serverless buckets",
+    )
     args = arg_parser.parse_args()
 
     args.afamily = (
         "ipv6" if (os.getenv("IPV6", "false") == "true") else "ipv4")
+    if args.serverless_groups is not None:
+        if args.storage_backend is None:
+            args.storage_backend = "magma"
+        if args.bucket_quota is None:
+            args.bucket_quota = 256
+
 
     # The minimum bucket quota is higher for magma, if the user doesn't specify
     # a bucket quota, then default values should be used.
@@ -135,6 +157,16 @@ def main():
             args.bucket_quota = 256
         elif args.storage_backend == "magma":
             args.bucket_quota = 1024
+
+    if args.num_nodes is not None and args.width is not None:
+        if args.serverless_groups:
+            min_nodes = args.width * 3
+        # If serverless groups aren't used then we can create nodes <= width
+        else:
+            min_nodes = args.width
+        if args.num_nodes < min_nodes and args.width > 1:
+            sys.exit(f"Need a minimum of {min_nodes} nodes for a width of "
+                     f"{args.width}, while using this configuration")
 
     params = {
         "num_nodes": args.num_nodes,
@@ -148,7 +180,10 @@ def main():
         "protocol": args.afamily,
         "encryption": args.enable_encryption,
         "do_rebalance": args.dont_rebalance,
-        "storage_backend": args.storage_backend
+        "storage_backend": args.storage_backend,
+        "serverless_groups": args.serverless_groups,
+        "bucket_width": args.width,
+        "bucket_weight": args.weight
     }
 
     # Removing flags that the user hasn't specified; this means that the
@@ -158,6 +193,7 @@ def main():
 
     if ret:
         print(arg_parser.print_help())
+
 
 if __name__ == '__main__':
     try:

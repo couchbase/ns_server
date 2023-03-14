@@ -48,6 +48,9 @@ script_dir = os.path.dirname(os.path.realpath(__file__))
 ns_server_dir = os.path.dirname(script_dir)
 configpath = os.path.join(ns_server_dir, "build", "cluster_run.configuration")
 
+NUM_SERVERLESS_GROUPS = 3
+
+
 def read_configuration():
     with open(configpath) as f:
         def fn(line):
@@ -624,7 +627,10 @@ def connect(num_nodes=0,
             encryption=False,
             do_rebalance=True,
             do_wait_for_rebalance=False,
-            storage_backend="couchstore"):
+            storage_backend="couchstore",
+            serverless_groups=False,
+            bucket_weight=50,
+            bucket_width=1):
     if isinstance(deploy, list):
         services = deploy
         deploy = dict(("n%d" % i, services[:]) for i in range(num_nodes))
@@ -660,6 +666,12 @@ def connect(num_nodes=0,
     info = json.loads(o.open("http://{0}:{1}/pools".format(
         addr, base_port)).read())
     community_edition = info['isEnterprise'] is not True
+    serverless = info['configProfile'] == 'serverless'
+    if not serverless and serverless_groups:
+        print(f"Must use a serverless configuration to create groups.")
+        return 1
+    if serverless:
+        do_wait_for_rebalance = True
 
     net_opts = do_encode(
         "afamily={0}".format(protocol) +
@@ -675,6 +687,22 @@ def connect(num_nodes=0,
     data = do_encode("memoryQuota=" + str(memsize) +
                      "&indexMemoryQuota=" + str(indexmemsize))
     o.open("http://{0}:{1}/pools/default".format(addr, base_port), data).read()
+
+    # Creating the groups (availability zones) for serverless.
+    if serverless_groups:
+        # Only need to create "Group 2" and "Group 3", since Group 1 is the
+        # default
+        for j in range(2, NUM_SERVERLESS_GROUPS + 1):
+            data = do_encode(f"name=Group {j}")
+            o.open(f"http://{addr}:{base_port}/pools/default/serverGroups",
+                   data).read()
+        # Dictionary which matches the group name to the URI
+        group_name_uri = {}
+        server_group_response = json.loads(o.open(
+            f"http://{addr}:{base_port}/pools/default/serverGroups").read())
+        for group in server_group_response["groups"]:
+            group_name_uri[group['name']] = group['uri']
+
     data_string = ("name=default" +
                    "&bucketType=" + buckettype +
                    "&storageBackend=" + storage_backend +
@@ -684,9 +712,15 @@ def connect(num_nodes=0,
         data_string += "&replicaNumber=" + str(replicas)
     if buckettype != "ephemeral":
         data_string += "&replicaIndex=" + bool_request_value(replica_index)
-    data = do_encode(data_string)
-    o.open("http://{0}:{1}/pools/default/buckets".format(addr, base_port),
-           data).read()
+    if serverless:
+        data_string += f"&width={bucket_width}&weight={bucket_weight}"
+    bucket_data_string = do_encode(data_string)
+    # When using serverless with a width > 1, we need to wait for the rebalance
+    # to complete before creating a bucket, otherwise it is safe to create the
+    # bucket beforehand.
+    if not do_wait_for_rebalance:
+        o.open("http://{0}:{1}/pools/default/buckets".format(addr, base_port),
+               bucket_data_string).read()
     data = do_encode("port=SAME&username=Administrator&password=asdasd")
     o.open("http://{0}:{1}/settings/web".format(addr, base_port),
            data).read()
@@ -708,12 +742,24 @@ def connect(num_nodes=0,
         print("Connecting node {0} with services {1}".format(i, str(services)))
         cluster_member_port = base_port if community_edition else \
             base_port + 10000
-        data = do_encode("user=Administrator&password=asdasd&" +
-                         "clusterMemberHostIp={0}".format(addr) +
-                         "&clusterMemberPort={0}".format(cluster_member_port) +
-                         "&services={0}".format(",".join(services)))
-        o.open("http://{0}:{1}/node/controller/doJoinCluster".format(
-               addr, port), data).read()
+        if serverless_groups:
+            # If using serverless, add the node to a group,
+            # otherwise joinCluster
+            data = do_encode(
+                f"user={default_username}&password={default_pass}&" +
+                f"hostname={addr}:{port + 10000}" +
+                f"&services={','.join(services)}")
+            group_uri = \
+                f"{group_name_uri[f'Group {i % NUM_SERVERLESS_GROUPS + 1}']}"
+            o.open(f"http://{addr}:{base_port}{group_uri}/addNode", data).read()
+        else:
+            data = do_encode(
+                f"user={default_username}&password={default_pass}&" +
+                "clusterMemberHostIp={0}".format(addr) +
+                "&clusterMemberPort={0}".format(cluster_member_port) +
+                "&services={0}".format(",".join(services)))
+            o.open("http://{0}:{1}/node/controller/doJoinCluster".format(
+                addr, port), data).read()
 
     if do_rebalance:
         print("Getting node list")
@@ -731,6 +777,8 @@ def connect(num_nodes=0,
         if do_wait_for_rebalance:
             if not wait_for_rebalance("http://{0}:{1}".format(addr, base_port)):
                 return 1
+            o.open("http://{0}:{1}/pools/default/buckets".format(addr, base_port),
+                   bucket_data_string).read()
     return 0
 
 
