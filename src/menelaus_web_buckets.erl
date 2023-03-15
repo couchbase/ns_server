@@ -2256,7 +2256,8 @@ parse_validate_history_retention_seconds(Params, BucketConfig, IsNew, Version,
     HistoryRetentionValue = proplists:get_value(atom_to_list(UserKey), Params),
     Ret = parse_validate_history_param_numeric(
         UserKey, HistoryRetentionValue, Params, BucketConfig, IsNew, Version,
-        IsEnterprise, integer_to_list(?HISTORY_RETENTION_SECONDS_DEFAULT)),
+        IsEnterprise, integer_to_list(?HISTORY_RETENTION_SECONDS_DEFAULT),
+        0),
     remap_user_key_to_internal_key_if_valid(Ret, history_retention_seconds).
 
 parse_validate_history_retention_bytes(Params, BucketConfig, IsNew,
@@ -2265,7 +2266,8 @@ parse_validate_history_retention_bytes(Params, BucketConfig, IsNew,
     HistoryRetentionValue = proplists:get_value(atom_to_list(UserKey), Params),
     Ret = parse_validate_history_param_numeric(
         UserKey, HistoryRetentionValue, Params, BucketConfig, IsNew, Version,
-        IsEnterprise, integer_to_list(?HISTORY_RETENTION_BYTES_DEFAULT)),
+        IsEnterprise, integer_to_list(?HISTORY_RETENTION_BYTES_DEFAULT),
+        ?HISTORY_RETENTION_BYTES_MIN),
     remap_user_key_to_internal_key_if_valid(Ret, history_retention_bytes).
 
 parse_validate_history_retention_collection_default(Params, BucketConfig, IsNew,
@@ -2280,7 +2282,8 @@ parse_validate_history_retention_collection_default(Params, BucketConfig, IsNew,
         Ret, history_retention_collection_default).
 
 parse_validate_history_param_numeric(Key, Value, Params, BucketConfig, IsNew,
-                                     Version, IsEnterprise, DefaultVal) ->
+                                     Version, IsEnterprise, DefaultVal,
+                                     MinVal) ->
     IsCompat = cluster_compat_mode:is_version_72(Version),
     IsMagma = is_magma(Params, BucketConfig, IsNew),
     parse_validate_history_param_inner(
@@ -2289,8 +2292,14 @@ parse_validate_history_param_numeric(Key, Value, Params, BucketConfig, IsNew,
             validate_with_missing(
                 Val, DefaultVal, New,
                 fun (V) ->
+                    %% 0 (Off), which is the default, is a special case for all
+                    %% of the history parameters, don't enforce min value.
+                    MinToUse = case V =:= DefaultVal of
+                                   true -> 0;
+                                   false -> MinVal
+                               end,
                     do_parse_validate_history_retention_numeric(
-                        Key, V, 0,?MAX_64BIT_UNSIGNED_INT)
+                        Key, V, MinToUse, ?MAX_64BIT_UNSIGNED_INT)
                 end)
         end).
 
@@ -3146,7 +3155,7 @@ basic_bucket_params_screening_test() ->
                    <<"Value must be an integer between 0 and "
                     "18446744073709551615, inclusive">>},
                   {historyRetentionBytes,
-                   <<"Value must be an integer between 0 and "
+                   <<"Value must be an integer between 2147483648 and "
                     "18446744073709551615, inclusive">>},
                   {historyRetentionCollectionDefault,
                    <<"Value must be true or false">>}],
@@ -3168,7 +3177,7 @@ basic_bucket_params_screening_test() ->
             <<"Value must be an integer between 0 and "
             "18446744073709551615, inclusive">>},
         {historyRetentionBytes,
-            <<"Value must be an integer between 0 and "
+            <<"Value must be an integer between 2147483648 and "
             "18446744073709551615, inclusive">>},
         {historyRetentionCollectionDefault,
             <<"Value must be true or false">>}],
@@ -3181,7 +3190,7 @@ basic_bucket_params_screening_test() ->
                       {"ramQuota", "1024"},
                       {"storageBackend", "magma"},
                       {"historyRetentionSeconds", "10"},
-                      {"historyRetentionBytes", "10"},
+                      {"historyRetentionBytes", "2147483648"},
                       {"historyRetentionCollectionDefault", "true"}],
                      AllBuckets,
                      [node1]),
@@ -3190,7 +3199,7 @@ basic_bucket_params_screening_test() ->
                           Elem =:= {history_retention_seconds, 10}
                       end, OK25)),
     ?assert(lists:any(fun (Elem) ->
-                          Elem =:= {history_retention_bytes, 10}
+                          Elem =:= {history_retention_bytes, 2147483648}
                       end, OK25)),
     ?assert(lists:any(fun (Elem) ->
         Elem =:= {history_retention_collection_default, true}
