@@ -23,11 +23,11 @@
 -endif.
 
 -export([check_graceful_failover_possible/2,
-         generate_initial_map/1,
+         generate_initial_map/2,
          start_link_rebalance/1,
          move_vbuckets/2,
          unbalanced/2,
-         bucket_needs_rebalance/2,
+         bucket_needs_rebalance/3,
          eject_nodes/1,
          maybe_cleanup_old_buckets/1,
          start_link_graceful_failover/1,
@@ -95,7 +95,7 @@ generate_vbucket_map_options(KeepNodes, BucketConfig) ->
                                  {tags, Tags},
                                  {use_vbmap_greedy_optimization, UseGreedy}]).
 
-generate_vbucket_map(CurrentMap, KeepNodes, BucketConfig) ->
+generate_vbucket_map(CurrentMap, KeepNodes, Bucket, BucketConfig) ->
     Opts = generate_vbucket_map_options(KeepNodes, BucketConfig),
 
     Map0 =
@@ -116,22 +116,25 @@ generate_vbucket_map(CurrentMap, KeepNodes, BucketConfig) ->
 
     Map = case Map0 of
               undefined ->
-                  EffectiveOpts = [{maps_history, ns_bucket:past_vbucket_maps()} | Opts],
+                  EffectiveOpts =
+                      [{maps_history, ns_bucket:past_vbucket_maps(Bucket)}
+                       | Opts],
                   NumReplicas = ns_bucket:num_replicas(BucketConfig),
-                  mb_map:generate_map(CurrentMap, NumReplicas, KeepNodes, EffectiveOpts);
+                  mb_map:generate_map(CurrentMap, NumReplicas, KeepNodes,
+                                      EffectiveOpts);
               _ ->
                   Map0
           end,
 
     {Map, Opts}.
 
-generate_initial_map(BucketConfig) ->
+generate_initial_map(Bucket, BucketConfig) ->
     Chain = lists:duplicate(proplists:get_value(num_replicas, BucketConfig) + 1,
                             undefined),
     Map1 = lists:duplicate(proplists:get_value(num_vbuckets, BucketConfig),
                            Chain),
     Servers = ns_bucket:get_servers(BucketConfig),
-    generate_vbucket_map(Map1, Servers, BucketConfig).
+    generate_vbucket_map(Map1, Servers, Bucket, BucketConfig).
 
 local_buckets_shutdown_loop(Ref, CanWait) ->
     ExcessiveBuckets = ns_memcached:active_buckets() -- ns_bucket:node_bucket_names(node()),
@@ -721,7 +724,7 @@ do_rebalance_membase_bucket(Bucket, Config,
             undefined ->
                 NumReplicas = ns_bucket:num_replicas(Config),
                 AdjustedMap = mb_map:align_replicas(Map, NumReplicas),
-                generate_vbucket_map(AdjustedMap, Servers, Config);
+                generate_vbucket_map(AdjustedMap, Servers, Bucket, Config);
             _ ->
                 ForcedMap
         end,
@@ -824,7 +827,7 @@ do_unbalanced(Map, Servers) ->
 is_bucket_initialized(BucketConfig) ->
     proplists:get_value(map, BucketConfig) =/= undefined.
 
-bucket_needs_rebalance(BucketConfig, Nodes) ->
+bucket_needs_rebalance(Bucket, BucketConfig, Nodes) ->
     Servers = ns_bucket:get_servers(BucketConfig),
     case proplists:get_value(type, BucketConfig) of
         membase ->
@@ -839,7 +842,7 @@ bucket_needs_rebalance(BucketConfig, Nodes) ->
                     ns_bucket:num_replicas_changed(BucketConfig) orelse
                         not are_servers_balanced(BucketConfig, Servers, Nodes)
                         orelse
-                        map_needs_rebalance(Servers, BucketConfig)
+                        map_needs_rebalance(Bucket, Servers, BucketConfig)
             end;
         memcached ->
             lists:sort(Nodes) =/= lists:sort(Servers)
@@ -853,7 +856,7 @@ are_servers_balanced(BucketConfig, Servers, Nodes) ->
             bucket_placer:is_balanced(BucketConfig, Servers, DesiredServers)
     end.
 
-map_needs_rebalance(Servers, BucketConfig) ->
+map_needs_rebalance(Bucket, Servers, BucketConfig) ->
     Map = proplists:get_value(map, BucketConfig),
     true = Map =/= undefined,
     case map_options_changed(Servers, BucketConfig) of
@@ -861,7 +864,7 @@ map_needs_rebalance(Servers, BucketConfig) ->
             true;
         {false, MapOpts} ->
             unbalanced(Map, BucketConfig) andalso
-                incompatible_with_past_map(Servers, MapOpts, Map)
+                incompatible_with_past_map(Bucket, Servers, MapOpts, Map)
     end.
 
 map_options_changed(Servers, BucketConfig) ->
@@ -879,8 +882,8 @@ map_options_changed(Servers, BucketConfig) ->
             end
     end.
 
-incompatible_with_past_map(Nodes, MapOpts, Map) ->
-    History = ns_bucket:past_vbucket_maps(),
+incompatible_with_past_map(Bucket, Nodes, MapOpts, Map) ->
+    History = ns_bucket:past_vbucket_maps(Bucket),
     Matching =
         mb_map:find_matching_past_maps(Nodes, Map, MapOpts, History, [trivial]),
     not lists:member(Map, Matching).
@@ -1004,7 +1007,7 @@ find_delta_recovery_map(Config, AllNodes, DeltaNodes, Bucket, BucketConfig) ->
             {map, CurrentMap} = lists:keyfind(map, 1, BucketConfig),
             CurrentOptions = generate_vbucket_map_options(AllNodes,
                                                           BucketConfig),
-            History = ns_bucket:past_vbucket_maps(Config),
+            History = ns_bucket:past_vbucket_maps(Bucket, Config),
             MatchingMaps = mb_map:find_matching_past_maps(AllNodes, CurrentMap,
                                                           CurrentOptions,
                                                           History),

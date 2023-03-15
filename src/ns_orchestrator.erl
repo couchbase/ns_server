@@ -315,9 +315,9 @@ topology_aware_service_needs_rebalance(Service, ServiceNodes) ->
 -spec buckets_need_rebalance([node(), ...]) -> boolean().
 buckets_need_rebalance(NodesWanted) ->
     KvNodes = ns_cluster_membership:service_nodes(NodesWanted, kv),
-    lists:any(fun ({_, BucketConfig}) ->
-                      ns_rebalancer:bucket_needs_rebalance(BucketConfig,
-                                                           KvNodes)
+    lists:any(fun ({Bucket, BucketConfig}) ->
+                      ns_rebalancer:bucket_needs_rebalance(
+                        Bucket, BucketConfig, KvNodes)
               end,
               ns_bucket:get_buckets()).
 

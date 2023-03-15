@@ -104,8 +104,8 @@
          node_bucket_names_of_type/3,
          all_node_vbuckets/1,
          store_last_balanced_vbmap/3,
-         past_vbucket_maps/0,
          past_vbucket_maps/1,
+         past_vbucket_maps/2,
          config_to_map_options/1,
          can_have_views/1,
          is_magma/1,
@@ -538,7 +538,8 @@ magma_max_shards(BucketConfig, Default) ->
 -define(FS_SOFT_REBALANCE_NEEDED, 1).
 -define(FS_OK, 0).
 
-bucket_failover_safety(BucketConfig, ActiveNodes, LiveNodes, MaxReplicas) ->
+bucket_failover_safety(Bucket, BucketConfig, ActiveNodes, LiveNodes,
+                       MaxReplicas) ->
     ReplicaNum = num_replicas(BucketConfig),
     case ReplicaNum of
         %% if replica count for bucket is 0 we cannot failover at all
@@ -572,7 +573,7 @@ bucket_failover_safety(BucketConfig, ActiveNodes, LiveNodes, MaxReplicas) ->
                         end;
                     true ->
                         case ns_rebalancer:bucket_needs_rebalance(
-                               BucketConfig, ActiveNodes) of
+                               Bucket, BucketConfig, ActiveNodes) of
                             true ->
                                 ?FS_SOFT_REBALANCE_NEEDED;
                             false ->
@@ -601,10 +602,11 @@ failover_safety_rec(?FS_HARD_NODES_NEEDED, _ExtraSafety, _,
 failover_safety_rec(BaseSafety, ExtraSafety, [],
                     _ActiveNodes, _LiveNodes, _MaxReplicas) ->
     {BaseSafety, ExtraSafety};
-failover_safety_rec(BaseSafety, ExtraSafety, [BucketConfig | RestConfigs],
+failover_safety_rec(BaseSafety, ExtraSafety,
+                    [{Bucket, BucketConfig} | RestConfigs],
                     ActiveNodes, LiveNodes, MaxReplicas) ->
     {ThisBaseSafety, ThisExtraSafety} =
-        bucket_failover_safety(BucketConfig, ActiveNodes, LiveNodes,
+        bucket_failover_safety(Bucket, BucketConfig, ActiveNodes, LiveNodes,
                                MaxReplicas),
     NewBaseSafety = case BaseSafety < ThisBaseSafety of
                         true -> ThisBaseSafety;
@@ -641,8 +643,8 @@ failover_warnings(Snapshot) ->
 
     {BaseSafety0, ExtraSafety}
         = failover_safety_rec(?FS_OK, ok,
-                              [C || {_, C} <- get_buckets(Snapshot),
-                                    membase =:= bucket_type(C)],
+                              [{B, C} || {B, C} <- get_buckets(Snapshot),
+                                         membase =:= bucket_type(C)],
                               ActiveNodes,
                               LiveNodes,
                               MaxReplicas),
@@ -1443,7 +1445,7 @@ get_vbmap_history_size() ->
     ns_config:read_key_fast(vbmap_history_size, get_max_buckets()).
 
 update_vbucket_map_history(Map, SanifiedOptions) ->
-    History = past_vbucket_maps(),
+    History = get_vbucket_map_history(ns_config:latest()),
     NewEntry = {Map, SanifiedOptions},
     HistorySize = get_vbmap_history_size(),
     History1 = [NewEntry | lists:delete(NewEntry, History)],
@@ -1461,16 +1463,29 @@ store_last_balanced_vbmap(BucketName, Map, Options) ->
         true ->
             {ok, _} =
                 chronicle_kv:set(
-                  kv, last_balanced_vbmap_key(BucketName), {Options, Map});
+                  kv, last_balanced_vbmap_key(BucketName), {Map, Options});
         false ->
             ok
     end,
     update_vbucket_map_history(Map, Options).
 
-past_vbucket_maps() ->
-    past_vbucket_maps(ns_config:latest()).
+past_vbucket_maps(BucketName) ->
+    past_vbucket_maps(BucketName, ns_config:latest()).
 
-past_vbucket_maps(Config) ->
+past_vbucket_maps(BucketName, Config) ->
+    case cluster_compat_mode:is_cluster_elixir() of
+        true ->
+            case chronicle_kv:get(kv, last_balanced_vbmap_key(BucketName)) of
+                {error, not_found} ->
+                    get_vbucket_map_history(Config);
+                {ok, {MapAndOptions, _Rev}} ->
+                    [MapAndOptions]
+            end;
+        false ->
+            get_vbucket_map_history(Config)
+    end.
+
+get_vbucket_map_history(Config) ->
     case ns_config:search(Config, vbucket_map_history) of
         {value, V} ->
             lists:filter(

@@ -141,7 +141,8 @@ cleanup_with_membase_bucket_check_map(Bucket, Options, BucketConfig) ->
             true = (Servers =/= []),
 
             ?log_info("janitor decided to generate initial vbucket map"),
-            {Map, MapOpts} = ns_rebalancer:generate_initial_map(BucketConfig),
+            {Map, MapOpts} =
+                ns_rebalancer:generate_initial_map(Bucket, BucketConfig),
             set_initial_map(Map, Servers, MapOpts, Bucket, BucketConfig,
                             Options),
 
