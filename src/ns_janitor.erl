@@ -154,7 +154,7 @@ cleanup_with_membase_bucket_check_map(Bucket, Options, BucketConfig) ->
 set_initial_map(Map, Servers, MapOpts, Bucket, BucketConfig, Options) ->
     case ns_rebalancer:unbalanced(Map, BucketConfig) of
         false ->
-            ns_bucket:update_vbucket_map_history(Map, MapOpts);
+            ns_bucket:store_last_balanced_vbmap(Bucket, Map, MapOpts);
         true ->
             ok
     end,

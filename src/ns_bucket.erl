@@ -103,7 +103,7 @@
          node_bucket_names_of_type/2,
          node_bucket_names_of_type/3,
          all_node_vbuckets/1,
-         update_vbucket_map_history/2,
+         store_last_balanced_vbmap/3,
          past_vbucket_maps/0,
          past_vbucket_maps/1,
          config_to_map_options/1,
@@ -1021,6 +1021,7 @@ do_delete_bucket(chronicle, BucketName) ->
                                ns_cluster_membership:nodes_wanted(Snapshot),
                            KeysToDelete =
                                [collections:key(BucketName),
+                                last_balanced_vbmap_key(BucketName),
                                 uuid_key(BucketName), PropsKey |
                                 [collections:last_seen_ids_key(N, BucketName) ||
                                     N <- NodesWanted]],
@@ -1451,6 +1452,20 @@ update_vbucket_map_history(Map, SanifiedOptions) ->
                    false -> History1
                end,
     ns_config:set(vbucket_map_history, History2).
+
+last_balanced_vbmap_key(BucketName) ->
+    sub_key(BucketName, last_balanced_vbmap).
+
+store_last_balanced_vbmap(BucketName, Map, Options) ->
+    case cluster_compat_mode:is_cluster_elixir() of
+        true ->
+            {ok, _} =
+                chronicle_kv:set(
+                  kv, last_balanced_vbmap_key(BucketName), {Options, Map});
+        false ->
+            ok
+    end,
+    update_vbucket_map_history(Map, Options).
 
 past_vbucket_maps() ->
     past_vbucket_maps(ns_config:latest()).

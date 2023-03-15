@@ -726,7 +726,7 @@ do_rebalance_membase_bucket(Bucket, Config,
                 ForcedMap
         end,
 
-    ns_bucket:update_vbucket_map_history(FastForwardMap, MapOptions),
+    ns_bucket:store_last_balanced_vbmap(Bucket, FastForwardMap, MapOptions),
     ?rebalance_debug("Target map options: ~p (hash: ~p)",
                      [MapOptions, erlang:phash2(MapOptions)]),
     {run_mover(Bucket, Config, Servers, ProgressFun, Map, FastForwardMap),
