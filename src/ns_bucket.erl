@@ -1465,9 +1465,8 @@ store_last_balanced_vbmap(BucketName, Map, Options) ->
                 chronicle_kv:set(
                   kv, last_balanced_vbmap_key(BucketName), {Map, Options});
         false ->
-            ok
-    end,
-    update_vbucket_map_history(Map, Options).
+            update_vbucket_map_history(Map, Options)
+    end.
 
 past_vbucket_maps(BucketName) ->
     past_vbucket_maps(BucketName, ns_config:latest()).
