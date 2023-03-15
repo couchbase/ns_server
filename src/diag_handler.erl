@@ -38,6 +38,8 @@
          %% rpc-ed to grab couchdb ets_tables
          grab_all_ets_tables/0]).
 
+-define(ETS_MAX_TABLE_CHUNK, ?get_param(cbcollect_max_ets_chunk, 10_000)).
+
 %% Read the manifest.xml file
 manifest() ->
     case file:read_file(filename:join(path_config:component_path(bin, ".."), "manifest.xml")) of
@@ -377,16 +379,28 @@ do_stream_ets_table(Table, Info, Fun, State) ->
         skip ->
             {error, skipped};
         {ok, Sanitizer} ->
-            %% Skip private tables as they are not accessible and will lead
-            %% to a badarg error.
-            FinalState = case proplists:get_value(protection, Info) of
-                             private ->
-                                 ["Inaccessible private table"];
-                             _ ->
-                                 ets:foldl(fun (Element, Acc) ->
-                                                   Fun(Sanitizer(Element), Acc)
-                                           end, State, Table)
-                         end,
+            SanitizerFun =
+                fun (Element, Acc) ->
+                        Fun(Sanitizer(Element), Acc)
+                end,
+            FinalState =
+                case proplists:get_value(protection, Info) of
+                    private ->
+                        %% Skip private tables as they are not
+                        %% accessible and will lead to a badarg error.
+                        ["Inaccessible private table"];
+                    _ ->
+                        case proplists:get_value(size, Info) >
+                            ?ETS_MAX_TABLE_CHUNK of
+                            true ->
+                                {Chunk, _} =
+                                    ets:select(Table, [{'$1', [], ['$1']}],
+                                               ?ETS_MAX_TABLE_CHUNK),
+                                lists:foldl(SanitizerFun, State, Chunk);
+                            false ->
+                                ets:foldl(SanitizerFun, State, Table)
+                        end
+                end,
             {ok, FinalState}
     end.
 
