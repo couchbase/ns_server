@@ -3220,7 +3220,7 @@ basic_bucket_params_screening_test() ->
                   proplists:lookup(history_retention_seconds, OK26)),
     ?assertEqual({history_retention_bytes, 0},
                   proplists:lookup(history_retention_bytes, OK26)),
-    ?assertEqual({history_retention_collection_default, true},
+    ?assertEqual({history_retention_collection_default, false},
                   proplists:lookup(history_retention_collection_default, OK26)),
 
     meck:unload(ns_config),
@@ -3849,7 +3849,7 @@ build_dynamic_bucket_info_test(Version, IsEnterprise, IsMagma) ->
                                ?VERSION_72 ->
                                    [{historyRetentionSeconds, 0},
                                     {historyRetentionBytes, 0},
-                                    {historyRetentionCollectionDefault, true}]
+                                    {historyRetentionCollectionDefault, false}]
                            end,
 
             ?assertEqual(ExpectedConf, MagmaBucketConf)
