@@ -1130,9 +1130,16 @@ additional_bucket_params_validation(Params, Ctx) ->
 
     StorageMode = get_value_from_parms_or_bucket(storage_mode, Params, Ctx),
     RamQuota = get_value_from_parms_or_bucket(ram_quota, Params, Ctx),
+
+    %% We fetch the magma min memory quota from the config profile, then
+    %% possibly override it with the value in ns_config, as this is the way
+    %% QE currently sets the value for testing purposes
+    DefaultMagmaMinMemoryQuota =
+        config_profile:get_value({magma, min_memory_quota},
+                                 ?DEFAULT_MAGMA_MIN_MEMORY_QUOTA),
     MagmaMinMemoryQuota =
         ns_config:read_key_fast(magma_min_memory_quota,
-                                ?DEFAULT_MAGMA_MIN_MEMORY_QUOTA),
+                                DefaultMagmaMinMemoryQuota),
 
     Err2 = case {StorageMode, RamQuota} of
                {magma, RamQuota}

@@ -9,6 +9,7 @@
 {max_collections_per_bucket, 100}.
 {cluster_scope_collection_limit, unlimited}.
 {{magma, can_set_max_shards}, true}.
+{{magma, min_memory_quota}, 256}.
 {enable_throttle_limits, true}.
 {enable_storage_limits, true}.
 {num_reader_threads, 64}.
