@@ -58,7 +58,8 @@
          gen_password/1,
          handle_get_uiroles/1,
          handle_backup/1,
-         handle_backup_restore/1
+         handle_backup_restore/1,
+         parse_roles/1
 ]).
 
 -define(MIN_USERS_PAGE_SIZE, 2).

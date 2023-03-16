@@ -40,7 +40,13 @@ start_link() ->
     active_cache:start_link(?MODULE, ?MODULE, [], Opts).
 
 build_compiled_roles(AuthnRes) ->
-    Key = {?FUNCTION_NAME, AuthnRes#authn_res.identity},
+    %% Dropping everything but what we need for roles calculation here.
+    %% Reason: We don't want things like session_id to be part of the cache
+    %% key. In other words, if some user relogins, cache key should not
+    %% change
+    Key = {?FUNCTION_NAME, {AuthnRes#authn_res.identity,
+                            AuthnRes#authn_res.extra_roles,
+                            AuthnRes#authn_res.extra_groups}},
     Fun = fun () -> menelaus_roles:build_compiled_roles(AuthnRes) end,
     active_cache:get_value_and_touch(?MODULE, Key, Fun).
 

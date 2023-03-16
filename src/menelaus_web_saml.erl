@@ -162,6 +162,7 @@ handle_saml_consume(Req, UnvalidatedParams) ->
           ?log_debug("Decoded assertion: ~p", [Assertion]),
           Subject = Assertion#esaml_assertion.subject,
           NameID = Subject#esaml_subject.name,
+          Attrs = Assertion#esaml_assertion.attributes,
           Username =
               case proplists:get_value(username_attribute, SSOOpts) of
                   "" ->
@@ -177,9 +178,44 @@ handle_saml_consume(Req, UnvalidatedParams) ->
                       NameID;
                   AttrName ->
                       AttrNameMapped = esaml:common_attrib_map(AttrName),
-                      Attrs = Assertion#esaml_assertion.attributes,
                       proplists:get_value(AttrNameMapped, Attrs)
               end,
+
+          ExtraGroups =
+              case proplists:get_value(groups_attribute, SSOOpts) of
+                  "" -> [];
+                  GroupsAttr when is_list(GroupsAttr) ->
+                      GroupsAttrMapped = esaml:common_attrib_map(GroupsAttr),
+                      GroupAttrs = get_all_attrs(GroupsAttrMapped, Attrs),
+                      GSep = proplists:get_value(groups_attribute_sep, SSOOpts),
+                      lists:flatmap(string:lexemes(_, GSep), GroupAttrs)
+              end,
+
+          ExtraRoles =
+              case proplists:get_value(roles_attribute, SSOOpts) of
+                  "" -> [];
+                  RolesAttr when is_list(RolesAttr) ->
+                      RolesAttrMapped = esaml:common_attrib_map(RolesAttr),
+                      RolesAttrs = get_all_attrs(RolesAttrMapped, Attrs),
+                      RSep = proplists:get_value(roles_attribute_sep, SSOOpts),
+                      Rls = lists:flatmap(string:lexemes(_, RSep), RolesAttrs),
+                      lists:filtermap(
+                        fun (R) ->
+                            case menelaus_web_rbac:parse_roles(R) of
+                                [{error, _}] ->
+                                    ?log_warning("Ignoring invalid role: ~s",
+                                                 [R]),
+                                    false;
+                                [ParsedRole] ->
+                                    {true, ParsedRole};
+                                [_ | _] ->
+                                    ?log_warning("Ignoring invalid role: ~s",
+                                                 [R]),
+                                    false
+                            end
+                        end, Rls)
+              end,
+
           case is_list(Username) andalso length(Username) > 0 of
               true when NameID =/= undefined, length(NameID) > 0 ->
                   ?log_debug("Successful saml login: ~s",
@@ -187,7 +223,9 @@ handle_saml_consume(Req, UnvalidatedParams) ->
                   AuthnRes =
                       #authn_res{type = ui,
                                  session_id = menelaus_auth:new_session_id(),
-                                 identity = {Username, external}},
+                                 identity = {Username, external},
+                                 extra_groups = ExtraGroups,
+                                 extra_roles = ExtraRoles},
                   SessionName = iolist_to_binary(NameID),
                   menelaus_auth:uilogin_phase2(
                     Req,
@@ -767,6 +805,18 @@ params() ->
      {"usernameAttribute",
       #{cfg_key => username_attribute,
         type => string}},
+     {"groupsAttribute",
+      #{cfg_key => groups_attribute,
+        type => string}},
+     {"groupsAttributeSep",
+      #{cfg_key => groups_attribute_sep,
+        type => string}},
+     {"rolesAttribute",
+      #{cfg_key => roles_attribute,
+        type => string}},
+     {"rolesAttributeSep",
+      #{cfg_key => roles_attribute_sep,
+        type => string}},
      %% if empty, use Metadata URL as entity id
      {"spEntityId",
       #{cfg_key => entity_id,
@@ -875,7 +925,11 @@ defaults() ->
      {md_tls_extra_opts, []},
      {md_http_timeout, 5000},
      {idp_signs_metadata, true},
-     {idp_metadata_refresh_interval, 3600}].
+     {idp_metadata_refresh_interval, 3600},
+     {groups_attribute, ""},
+     {groups_attribute_sep, " ,"},
+     {roles_attribute, ""},
+     {roles_attribute_sep, " ,"}].
 
 type_spec(fingerprint_list) ->
     #{validators => [fun validate_fingerprint_list/2],
@@ -930,3 +984,13 @@ parse_fingerprint(BinStr) when is_binary(BinStr) ->
 
 invalidate_cache() ->
     ns_config:delete(saml_sign_fingerprints).
+
+get_all_attrs(AttrName, Attrs) ->
+    case proplists:get_value(AttrName, Attrs) of
+        undefined -> [];
+        [] -> [];
+        %% Trying to distinguish between list of strings
+        %% and a string
+        [[_|_] | _] = L -> L;
+        [_|_] = Str -> [Str]
+    end.

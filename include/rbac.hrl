@@ -76,7 +76,9 @@
 -record(authn_res,
         {type = tmp :: tmp | ui,
          session_id :: binary() | undefined | '_',
-         identity :: rbac_identity() | '_' | {'_', admin}}).
+         identity :: rbac_identity() | '_' | {'_', admin},
+         extra_groups = [],
+         extra_roles = []}).
 
 -record(uisession,
         {type :: simple | saml | '_',

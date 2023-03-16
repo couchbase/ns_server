@@ -1035,8 +1035,20 @@ compile_roles(Roles, Definitions, Snapshot) ->
                                 ParamDefs, Permissions)
       end, Roles, Definitions, Snapshot).
 
-get_roles(#authn_res{identity = Id}) ->
-    get_roles_for_identity(Id);
+get_roles(#authn_res{identity = Id,
+                     extra_groups = Groups,
+                     extra_roles = Roles}) ->
+    ExtraRoles =
+        lists:append([menelaus_users:get_group_roles(G) || G <- Groups]) ++
+        Roles,
+    IdentityRoles = get_roles_for_identity(Id),
+    %% This check is done for optimization purposes.
+    %% Most of the times ExtraRoles is empty, so there is no need in
+    %% uniq(IdentityRoles) call which is not free.
+    case ExtraRoles of
+        [] -> IdentityRoles;
+        _ -> lists:uniq(ExtraRoles ++ IdentityRoles)
+    end;
 get_roles({_, _} = Id) ->
     get_roles_for_identity(Id).
 
@@ -1120,12 +1132,16 @@ start_compiled_roles_cache() ->
 
 get_compiled_roles(#authn_res{identity = {_, external}} = AuthnRes) ->
     roles_cache:build_compiled_roles(AuthnRes);
-get_compiled_roles(#authn_res{identity = Identity}) ->
+get_compiled_roles(#authn_res{identity = Identity,
+                              extra_roles = ExtraRoles,
+                              extra_groups = ExtraGroups}) ->
     %% Dropping everything but what we need for roles calculation here.
     %% Reason: We don't want things like session_id to be part of the cache
     %% key. In other words, if some user relogins, cache key should not
     %% change
-    AuthnRes = #authn_res{identity = Identity},
+    AuthnRes = #authn_res{identity = Identity,
+                          extra_roles = ExtraRoles,
+                          extra_groups = ExtraGroups},
     versioned_cache:get(compiled_roles_cache_name(), AuthnRes);
 get_compiled_roles({_, _} = Identity) ->
     get_compiled_roles(#authn_res{identity = Identity}).
