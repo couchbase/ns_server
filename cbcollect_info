@@ -37,6 +37,7 @@ from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 from enum import Enum, unique
 from io import BytesIO, StringIO
 from abc import ABC, abstractmethod
+import gzip
 
 """ Represents opaque 'data' from the C context """
 _CData = TypeVar("_CData")
@@ -961,6 +962,43 @@ class CollectFileTask(AllOsTask):
     def satisfies_preconditions(self) -> bool:
         return os.path.exists(self.output_file)
 
+class CollectFFDCFileTask(CollectFileTask):
+    def __init__(self, description, file_path, redact, salt_value, zip_relative: str = ""):
+        if zip_relative == "":
+            zip_relative = os.path.basename(file_path.removesuffix(".gz"))
+        super().__init__(description, file_path, zip_relative)
+        self.salt_value = salt_value
+        self.redact = redact
+
+    def _copy_content(self, src, outstream: Writer):
+        file_content = src.read(READ_SIZE)
+        if file_content:
+            # only redact non-binary content (binary content should only be nested gzip)
+            if self.redact and not file_content.startswith(b'\x1f\x8b'):
+                rs = RedactStream(outstream, self.salt_value, self.output_file)
+                while file_content:
+                    rs.write(file_content)
+                    file_content = src.read(READ_SIZE)
+                rs.flush()
+            else:
+                while file_content:
+                    outstream.write(file_content)
+                    file_content = src.read(READ_SIZE)
+            outstream.flush()
+
+    def on_execute(self, outstream: Writer):
+        try:
+            with gzip.open(self.output_file, "rb") as src:
+                self._copy_content(src, outstream)
+            return 0
+        except gzip.BadGzipFile:
+            # if not a gzip file, open and copy as a regular file
+            with open(self.output_file, "rb") as src:
+                self._copy_content(src, outstream)
+            return 0
+        except FileNotFoundError:
+            log(f"File doesn't exist: {self.output_file} -- ", new_line=False)
+            return 1
 
 class MetaTask:
     subtasks: List["Task"] = []
@@ -2725,6 +2763,15 @@ def main():
         for dump in glob.glob(os.path.join(
                 idx_dir, "@fts", "dumps", "*.dump.txt")):
             all_tasks.append(CollectFileTask(f"Collecting file {dump}", dump))
+
+    # Collect Query FFDC files...
+    ffdc_pat = os.path.join(guts.get("log_path"), "query_ffdc*")
+    if options.redact_level != "none":
+        for f in glob.glob(ffdc_pat):
+            all_tasks.append(CollectFFDCFileTask(f"Redacting & collecting {f}", f, True, salt_value))
+    else:
+        for f in glob.glob(ffdc_pat):
+            all_tasks.append(CollectFFDCFileTask(f"Collecting {f}", f, False, ""))
 
     addr = zip_node.split("@")[-1]
     if addr == "127.0.0.1" or addr == "::1":
