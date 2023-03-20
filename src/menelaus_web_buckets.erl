@@ -846,10 +846,12 @@ validators_start_hibernation() ->
      %% HKHK: Check if the largest value is encode-able as a JSON in service
      %% API.
      validator:required(rate_limit, _),
-     validator:integer(rate_limit, 1024, 250 * ?MIB, _)].
+     validator:integer(rate_limit, 1024, 250 * ?MIB, _),
+     validator:unsupported(_)].
 
 validators_stop_hibernation() ->
-    [validator:required(bucket, _), validator:string(bucket, _)].
+    [validator:required(bucket, _), validator:string(bucket, _),
+     validator:unsupported(_)].
 
 handle_hibernation_response(Req, ok = _Response) ->
     menelaus_util:reply_json(Req, [], 200);
