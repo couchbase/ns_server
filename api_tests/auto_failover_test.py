@@ -68,7 +68,7 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
                                  'disableMaxCount' ]
         if self.is_enterprise:
             assert 'failoverServerGroup' in self.post_data_keys or self.is_71
-            assert 'canAbortRebalance' in self.post_data_keys or self.is_elixir
+            assert 'canAbortRebalance' in self.post_data_keys
             if self.is_elixir:
                 assert 'disableMaxCount' in self.post_data_keys
                 if self.is_serverless:
@@ -370,7 +370,7 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
             return random.choice(self.enterprise_only)
 
         if self.is_elixir:
-            return random.choice(['failoverServerGroup', 'canAbortRebalance'])
+            return 'failoverServerGroup'
 
         if self.is_71:
             return random.choice(['failoverServerGroup', 'disableMaxCount'])

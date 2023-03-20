@@ -72,9 +72,10 @@ max_events_allowed() ->
 
 config_upgrade_to_elixir(Config) ->
     [{set, auto_failover_cfg,
-      proplists:delete(can_abort_rebalance, auto_failover:get_cfg(Config)) ++
-      [{disable_max_count,
-        config_profile:get_bool(failover_disable_max_count)}]}].
+      misc:update_proplist(auto_failover:get_cfg(Config),
+                           [{disable_max_count,
+                             config_profile:get_bool(
+                               failover_disable_max_count)}])}].
 
 handle_settings_get(Req) ->
     Config = auto_failover:get_cfg(),
@@ -231,12 +232,7 @@ preserve_durability_majority_validators() ->
     end.
 
 can_abort_rebalance_validators() ->
-    case cluster_compat_mode:is_cluster_elixir() of
-        false ->
-            [validator:boolean(canAbortRebalance, _)];
-        true ->
-            []
-    end.
+    [validator:boolean(canAbortRebalance, _)].
 
 process_failover_on_disk_issues(Props, Config, Extras) ->
     KeyEnabled = 'failoverOnDataDiskIssues[enabled]',
@@ -290,8 +286,7 @@ add_extras(Add, CurrRV) ->
 
 config_check_can_abort_rebalance() ->
     proplists:get_value(?CAN_ABORT_REBALANCE_CONFIG_KEY,
-                        auto_failover:get_cfg(),
-                        cluster_compat_mode:is_cluster_elixir()).
+                        auto_failover:get_cfg(), false).
 
 get_extra_settings(Config) ->
     case cluster_compat_mode:is_enterprise() of
@@ -309,8 +304,7 @@ get_extra_settings(Config) ->
                    not DisableMaxCount],
                [{canAbortRebalance,
                  proplists:get_value(
-                   ?CAN_ABORT_REBALANCE_CONFIG_KEY, Config)} ||
-                   not cluster_compat_mode:is_cluster_elixir()],
+                   ?CAN_ABORT_REBALANCE_CONFIG_KEY, Config)}],
                [{failoverServerGroup,
                  proplists:get_value(?FAILOVER_SERVER_GROUP_CONFIG_KEY,
                                      Config)} ||
@@ -330,8 +324,7 @@ disable_extras(Config) ->
             {_, CurrTP} = get_failover_on_disk_issues(Config),
             lists:flatten(
               [disable_failover_on_disk_issues(CurrTP),
-               [{?CAN_ABORT_REBALANCE_CONFIG_KEY, false} ||
-                   not cluster_compat_mode:is_cluster_elixir()],
+               [{?CAN_ABORT_REBALANCE_CONFIG_KEY, false}],
                [{?FAILOVER_SERVER_GROUP_CONFIG_KEY, false} ||
                    not cluster_compat_mode:is_cluster_71()]]);
         false ->
