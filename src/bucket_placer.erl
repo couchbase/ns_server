@@ -507,16 +507,15 @@ bucket_placer_test_() ->
     Rebalance = rebalance(_, fun (_) -> dict:new() end, _, _, _),
 
     Failover =
-        fun (S1) ->
-                S2 = lists:foldl(
-                       fun ({Name, Props}, Acc) ->
-                               DesiredServers =
-                                   ns_bucket:get_desired_servers(Props),
-                               NewProps = ns_bucket:update_desired_servers(
-                                            DesiredServers -- [c1], Props),
-                               apply_bucket_to_snapshot(Name, NewProps, Acc)
-                       end, S1, ns_bucket:get_buckets(S1)),
-                {Rebalance(AllNodes -- [c1], [], Params, S2), S2}
+        fun (Nodes, S) ->
+                lists:foldl(
+                  fun ({Name, Props}, Acc) ->
+                          DesiredServers =
+                              ns_bucket:get_desired_servers(Props),
+                          NewProps = ns_bucket:update_desired_servers(
+                                       DesiredServers -- Nodes, Props),
+                          apply_bucket_to_snapshot(Name, NewProps, Acc)
+                  end, S, ns_bucket:get_buckets(S))
         end,
 
     [{"Bucket placement test",
@@ -612,10 +611,12 @@ bucket_placer_test_() ->
       end},
      {"Recovery after failover",
       fun () ->
-              RV = Failover(PreRebalanceSnapshot(3)),
-              ?assertMatch({{error, [z1]}, _}, RV),
-              {RV1, Snapshot1} = Failover(PreRebalanceSnapshot(2)),
-              VerifyRebalance(RV1, [c1], Snapshot1)
+              S1 = Failover([c1], PreRebalanceSnapshot(3)),
+              ?assertMatch({error, [z1]},
+                           Rebalance(AllNodes -- [c1], [], Params, S1)),
+              S2 = Failover([c1], PreRebalanceSnapshot(2)),
+              VerifyRebalance(
+                Rebalance(AllNodes -- [c1], [], Params, S2), [c1], S2)
       end}].
 
 -endif.
