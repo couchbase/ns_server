@@ -1967,7 +1967,6 @@ stop_bucket_hibernation_op(State, Reason) ->
 
 handle_delete_bucket(BucketName) ->
     menelaus_users:cleanup_bucket_roles(BucketName),
-    throttle_service_settings:remove_bucket_settings(BucketName),
     case ns_bucket:delete_bucket(BucketName) of
         {ok, BucketConfig} ->
             master_activity_events:note_bucket_deletion(BucketName),

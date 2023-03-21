@@ -359,7 +359,6 @@ default() ->
         rebalance_quirks:default_config() ++
         auto_rebalance_settings:default_config() ++
         menelaus_web_auto_failover:default_config(IsEnterprise) ++
-        throttle_service_settings:default_config(config_profile:get()) ++
         ns_storage_conf:default_config().
 
 %% returns list of changes to config to upgrade it to current version.
