@@ -518,6 +518,19 @@ bucket_placer_test_() ->
                   end, S, ns_bucket:get_buckets(S))
         end,
 
+    DeltaRebalance =
+        fun (FailoverVBs, S) ->
+                RV = rebalance(AllNodes,
+                               fun ("B1") ->
+                                       dict:from_list(FailoverVBs);
+                                   ("B2") ->
+                                       dict:new()
+                               end, [], Params, S),
+                ?assertMatch({ok, [{"B1", _}]}, RV),
+                {ok, [{"B1", DS}]} = RV,
+                DS
+        end,
+
     [{"Bucket placement test",
       fun () ->
               Snapshot1 =
@@ -617,6 +630,18 @@ bucket_placer_test_() ->
               S2 = Failover([c1], PreRebalanceSnapshot(2)),
               VerifyRebalance(
                 Rebalance(AllNodes -- [c1], [], Params, S2), [c1], S2)
+      end},
+     {"Delta recovery",
+      fun () ->
+              S = functools:chain(
+                    Snapshot,
+                    [SuccessPlacement("B1", [{width, 2}, {weight, 1}], _),
+                     SuccessPlacement("B2", [{width, 1}, {weight, 1}], _)]),
+              S1 = Failover([b1], S),
+              ?assertEqual([a1, a2, a3, b1, b2, b3],
+                           DeltaRebalance([{b1, [1]}], S1)),
+              ?assertEqual([a1, a2, a3, b2, b3, c1],
+                           DeltaRebalance([{c1, [1]}], S1))
       end}].
 
 -endif.
