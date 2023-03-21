@@ -226,3 +226,10 @@ def json_response(response, error):
         return response.json()
     except requests.exceptions.JSONDecodeError:
         assert False, error
+
+
+def delete_all_buckets(cluster, **kwargs):
+    buckets = get_succ(cluster, "/pools/default/buckets", **kwargs)
+    for bucket in buckets.json():
+        name = bucket['name']
+        ensure_deleted(cluster, f"/pools/default/buckets/{name}")

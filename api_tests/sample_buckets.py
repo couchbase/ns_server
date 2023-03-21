@@ -33,12 +33,6 @@ class SampleBucketTestSet(testlib.BaseTestSet):
         return requests.request(method, endpoint, auth=self.auth,
                                 **kwargs)
 
-    def delete_all_buckets(self):
-        buckets = self.request('GET', self.addr_buckets)
-        for bucket in buckets.json():
-            name = bucket['name']
-            self.request('DELETE', f"{self.addr_buckets}/{name}")
-
     def setup(self, cluster):
         self.addr = cluster.urls[0]
         self.addr_get = self.addr + "/sampleBuckets"
@@ -47,11 +41,11 @@ class SampleBucketTestSet(testlib.BaseTestSet):
         self.addr_tasks = self.addr + "/pools/default/tasks"
         self.auth = cluster.auth
         # Deleting existing buckets to make space
-        self.delete_all_buckets()
+        testlib.delete_all_buckets(cluster)
 
     def teardown(self, cluster):
         # Deleting any remaining buckets
-        self.delete_all_buckets()
+        testlib.delete_all_buckets(cluster)
 
     # Test the /sampleBuckets endpoint for fetching the list of sample buckets
     def get_test(self, cluster):
