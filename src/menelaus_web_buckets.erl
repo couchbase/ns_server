@@ -847,8 +847,7 @@ validators_start_hibernation() ->
      validate_remote_path(remote_path, _),
      validator:required(blob_storage_region, _),
      validator:string(blob_storage_region, _),
-     %% HKHK: Check if the largest value is encode-able as a JSON in service
-     %% API.
+     %% rate_limit is expressed in bytes/sec.
      validator:required(rate_limit, _),
      validator:integer(rate_limit, 1024, 250 * ?MIB, _),
      validator:unsupported(_)].
