@@ -3999,9 +3999,12 @@ build_dynamic_bucket_info_test(Version, IsEnterprise, IsMagma) ->
                                ?VERSION_71 ->
                                    [];
                                ?VERSION_72 ->
-                                   [{historyRetentionSeconds, 0},
-                                    {historyRetentionBytes, 0},
-                                    {historyRetentionCollectionDefault, false},
+                                   [{historyRetentionSeconds,
+                                     ?HISTORY_RETENTION_SECONDS_DEFAULT},
+                                    {historyRetentionBytes,
+                                     ?HISTORY_RETENTION_BYTES_DEFAULT},
+                                    {historyRetentionCollectionDefault,
+                                     ?HISTORY_RETENTION_COLLECTION_DEFAULT_DEFAULT},
                                     {magmaKeyTreeDataBlockSize,
                                      ?MAGMA_KEY_TREE_DATA_BLOCKSIZE},
                                     {magmaSeqTreeDataBlockSize,
