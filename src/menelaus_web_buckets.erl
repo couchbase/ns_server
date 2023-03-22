@@ -1284,18 +1284,18 @@ validate_membase_bucket_params(CommonParams, Params,
          parse_validate_compression_mode(Params, BucketConfig, IsNew,
                                          IsEnterprise),
          HistRetSecs,
-         parse_validate_magma_key_tree_data_blocksize(Params, BucketConfig,
-                                                      Version, IsNew,
-                                                      IsEnterprise),
-         parse_validate_magma_seq_tree_data_blocksize(Params, BucketConfig,
-                                                      Version, IsNew,
-                                                      IsEnterprise),
          parse_validate_history_retention_bytes(Params, BucketConfig,
                                                 IsNew, Version, IsEnterprise),
          parse_validate_history_retention_collection_default(Params,
                                                              BucketConfig,
                                                              IsNew, Version,
-                                                             IsEnterprise)
+                                                             IsEnterprise),
+         parse_validate_magma_key_tree_data_blocksize(Params, BucketConfig,
+                                                      Version, IsNew,
+                                                      IsEnterprise),
+         parse_validate_magma_seq_tree_data_blocksize(Params, BucketConfig,
+                                                      Version, IsNew,
+                                                      IsEnterprise)
         | validate_bucket_auto_compaction_settings(Params)] ++
         parse_validate_limits(Params, BucketConfig, IsNew, AllowStorageLimit,
                               ?cut(get_storage_attributes())) ++
@@ -3193,17 +3193,17 @@ basic_bucket_params_screening_test() ->
                   {historyRetentionSeconds,
                    <<"History Retention is supported in enterprise edition "
                      "only">>},
-                  {magmaKeyTreeDataBlockSize,
-                   <<"Magma data blocksize is supported in enterprise edition "
-                     "only">>},
-                  {magmaSeqTreeDataBlockSize,
-                   <<"Magma data blocksize is supported in enterprise edition "
-                     "only">>},
                   {historyRetentionBytes,
                    <<"History Retention is supported in enterprise edition "
                       "only">>},
                   {historyRetentionCollectionDefault,
                    <<"History Retention is supported in enterprise edition "
+                     "only">>},
+                  {magmaKeyTreeDataBlockSize,
+                   <<"Magma data blocksize is supported in enterprise edition "
+                     "only">>},
+                  {magmaSeqTreeDataBlockSize,
+                   <<"Magma data blocksize is supported in enterprise edition "
                      "only">>}],
                  E20),
 
@@ -3221,14 +3221,14 @@ basic_bucket_params_screening_test() ->
                      [node1]),
     ?assertEqual([{historyRetentionSeconds,
                    <<"History Retention can only used with Magma">>},
-                  {magmaKeyTreeDataBlockSize,
-                   <<"Magma data blocksize can only be used with Magma">>},
-                  {magmaSeqTreeDataBlockSize,
-                   <<"Magma data blocksize can only be used with Magma">>},
                   {historyRetentionBytes,
                    <<"History Retention can only used with Magma">>},
                   {historyRetentionCollectionDefault,
-                   <<"History Retention can only used with Magma">>}],
+                   <<"History Retention can only used with Magma">>},
+                  {magmaKeyTreeDataBlockSize,
+                   <<"Magma data blocksize can only be used with Magma">>},
+                  {magmaSeqTreeDataBlockSize,
+                   <<"Magma data blocksize can only be used with Magma">>}],
                  E21),
 
     meck:expect(cluster_compat_mode, supported_compat_version,
@@ -3252,18 +3252,18 @@ basic_bucket_params_screening_test() ->
     ?assertEqual([{historyRetentionSeconds,
                     <<"History Retention cannot be set until the cluster is "
                        "fully 7.2">>},
-                  {magmaKeyTreeDataBlockSize,
-                   <<"Magma data blocksize cannot be set until the cluster is "
-                     "fully running 7.2">>},
-                  {magmaSeqTreeDataBlockSize,
-                   <<"Magma data blocksize cannot be set until the cluster is "
-                     "fully running 7.2">>},
                   {historyRetentionBytes,
                     <<"History Retention cannot be set until the cluster is "
                       "fully 7.2">>},
                   {historyRetentionCollectionDefault,
                     <<"History Retention cannot be set until the cluster is "
-                      "fully 7.2">>}],
+                      "fully 7.2">>},
+                  {magmaKeyTreeDataBlockSize,
+                   <<"Magma data blocksize cannot be set until the cluster is "
+                     "fully running 7.2">>},
+                  {magmaSeqTreeDataBlockSize,
+                   <<"Magma data blocksize cannot be set until the cluster is "
+                     "fully running 7.2">>}],
                  E22),
 
     %% put back the compat_mode to elixir
@@ -3288,17 +3288,17 @@ basic_bucket_params_screening_test() ->
     ?assertEqual([{historyRetentionSeconds,
                   <<"Value must be an integer between 0 and "
                     "18446744073709551615, inclusive">>},
+                  {historyRetentionBytes,
+                   <<"Value must be an integer between 2147483648 and "
+                    "18446744073709551615, inclusive">>},
+                  {historyRetentionCollectionDefault,
+                   <<"Value must be true or false">>},
                   {magmaKeyTreeDataBlockSize,
                    <<"Value must be an integer between 4096 and 131072, "
                     "inclusive">>},
                   {magmaSeqTreeDataBlockSize,
                    <<"Value must be an integer between 4096 and 131072, "
-                    "inclusive">>},
-                  {historyRetentionBytes,
-                   <<"Value must be an integer between 2147483648 and "
-                    "18446744073709551615, inclusive">>},
-                  {historyRetentionCollectionDefault,
-                   <<"Value must be true or false">>}],
+                    "inclusive">>}],
         E23),
 
     {_OK24, E24} = basic_bucket_params_screening(
