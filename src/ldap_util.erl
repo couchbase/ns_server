@@ -313,26 +313,11 @@ parse_url(Str, ReplacePairs) ->
                           (S) -> {error, {invalid_scheme, S}}
                       end,
     try
-        %% We use {N} as placeholders in urls and since '{', and '}' are
-        %% not really valid characters in urls, we need to escape them
-        %% before we parse the url, but we can't escape them using "url encode"
-        %% because the user provided part of the url can also contain it, so
-        %% we won't be able to replace them back.
-        %% In order to avoid that we can use randomly generated strings as
-        %% replacement for '{' and '}' characters. It is very unlikely if this
-        %% particular byte sequence is used in real url (probability of this
-        %% happening is approximately 5e-20), so it is safe to
-        %% replace '{' and '}' with them.
-        %% Note that we can't call replace_expressions before parsing of the url
-        %% because replacement values depend on the part of the url.
-        %% For example, {0} in DN can be replaced with one value, while {0}
-        %% in filter can be replaced with another value.
         #{scheme := Scheme, host := Host, port := Port,
           path := "/" ++ EncodedDN, 'query' := Query} =
-            case parse_url_with_chars_escaped(
-                   Str, [{scheme_defaults, [{<<"ldap">>, 389}]},
-                         {scheme_validation_fun, SchemeValidator},
-                         {return, string}], ["\\{", "\\}"]) of
+            case misc:parse_url(Str, [{scheme_defaults, [{<<"ldap">>, 389}]},
+                                      {scheme_validation_fun, SchemeValidator},
+                                      {return, string}]) of
                 {ok, ParseRes} -> maps:merge(#{'query' => ""}, ParseRes);
                 {error, _} -> throw({error, malformed_url})
             end,
@@ -379,27 +364,6 @@ parse_url(Str, ReplacePairs) ->
         }
     catch
         throw:{error, _} = Error -> Error
-    end.
-
-parse_url_with_chars_escaped(URL, Opts, Strings) ->
-    Pairs = [{S, misc:hexify(rand:bytes(8))} || S <- Strings],
-    URL2 = lists:foldl(
-             fun ({S, R}, Acc) ->
-                 re:replace(Acc, S, R, [{return, list}, global])
-             end, URL, Pairs),
-
-    case misc:parse_url(URL2, Opts) of
-        {ok, Map} ->
-            {ok, maps:map(
-                   fun (port, V) -> V;
-                       (_K, V) ->
-                           lists:foldl(
-                             fun ({S, R}, Acc) ->
-                                re:replace(Acc, R, S, [{return, list}, global])
-                             end, V, Pairs)
-                   end, Map)};
-        {error, _} = Error ->
-            Error
     end.
 
 %% for some reason eldap doesn't handle this case correctly
@@ -475,22 +439,6 @@ escape_test() ->
     ?assertEqual("C\\3a\\5cMyFile", escape("C:\\MyFile")),
     ?assertEqual("\\00\\00\\00\\04", escape([16#00, 16#00, 16#00, 16#04])),
     ?assertEqual("Lu\\c4\\8di\\c4\\87", escape(<<"Lučić"/utf8>>)).
-
-parse_url_replace_test() ->
-    ?assertEqual({ok, [{scheme, ldap}, {host, "127.0.0.1"}, {port, 636},
-                       {dn,"uid=al,ou=users,dc=example_dn1"},
-                       {attributes, ["attr1", "attr2", "attr0", "attr1"]},
-                       {scope, "one"},
-                       {filter, "(member=test_user&uid=test_uid)"}]},
-                 parse_url("ldap://127.0.0.1:636"
-                           "/uid%3Dal%2Cou%3Dusers%2Cdc%3Dexample_{1}"
-                           "?attr1,attr2,{0},{1}?one?(member=%D&uid={2})",
-                           [{"\\{0\\}", [{attrs, "attr0"},
-                                         {default, "default_attr0"}]},
-                            {"\\{1\\}", [{base, "dn1"},
-                                         {default, "attr1"}]},
-                            {"\\{2\\}", [{default, "test_uid"}]},
-                            {"%D", [{default, "test_user"}]}])).
 
 parse_url_test_() ->
     Parse = fun (S) -> {ok, R} = parse_url(S), R end,
