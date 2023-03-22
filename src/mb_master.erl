@@ -100,7 +100,8 @@ maybe_invalidate_current_master() ->
     do_maybe_invalidate_current_master(3, true).
 
 do_maybe_invalidate_current_master(0, _FirstTime) ->
-    ale:error(?USER_LOGGER, "We're out of luck taking mastership over older node", []),
+    ale:error(?USER_LOGGER,
+              "We're out of luck taking mastership over older node", []),
     ok;
 do_maybe_invalidate_current_master(TriesLeft, FirstTime) ->
     NodesWantedActual = ns_node_disco:nodes_actual(),
@@ -109,7 +110,9 @@ do_maybe_invalidate_current_master(TriesLeft, FirstTime) ->
             case FirstTime of
                 true -> ok;
                 false ->
-                    ale:warn(?USER_LOGGER, "Decided not to forcefully take over mastership", [])
+                    ale:warn(?USER_LOGGER,
+                             "Decided not to forcefully take over mastership",
+                             [])
             end,
             ok;
         MasterToShutdown ->
@@ -160,23 +163,29 @@ sync_surrender(MasterToShutdown, Timeout) ->
 
 check_master_takeover_needed(Peers) ->
     TenNodesToAsk = lists:sublist(misc:shuffle(Peers), 10),
-    ?log_debug("Sending master node question to the following nodes: ~p", [TenNodesToAsk]),
-    {MasterReplies, _} = rpc:multicall(TenNodesToAsk, mb_master, master_node, [], 5000),
+    ?log_debug("Sending master node question to the following nodes: ~p",
+               [TenNodesToAsk]),
+    {MasterReplies, _} = rpc:multicall(TenNodesToAsk, mb_master, master_node,
+                                       [], 5000),
     ?log_debug("Got replies: ~p", [MasterReplies]),
     GoodMasterReplies = [M || M <- MasterReplies,
                               M =/= undefined,
                               is_atom(M)],
     case GoodMasterReplies of
         [] ->
-            ?log_debug("Was unable to discover master, not going to force mastership takeover"),
+            ?log_debug("Was unable to discover master, not going to force "
+                       "mastership takeover"),
             false;
         [Master|_] when Master =:= node() ->
             %% assuming it happens only second round
-            ale:warn(?USER_LOGGER, "Somebody thinks we're master. Not forcing mastership takover over ourselves"),
+            ale:warn(?USER_LOGGER,
+                     "Somebody thinks we're master. Not forcing mastership "
+                     "takover over ourselves"),
             false;
         [Master|_] ->
             ?log_debug("Checking version of current master: ~p", [Master]),
-            case rpc:call(Master, cluster_compat_mode, mb_master_advertised_version, [], 5000) of
+            case rpc:call(Master, cluster_compat_mode,
+                          mb_master_advertised_version, [], 5000) of
                 {badrpc, _} = Error ->
                     ale:warn(?USER_LOGGER,
                              "Failed to grab master's version. "
@@ -184,11 +193,14 @@ check_master_takeover_needed(Peers) ->
                              "takeover is not needed. Reason: ~p", [Error]),
                     false;
                 CompatVersion ->
-                    ?log_debug("Current master's supported compat version: ~p", [CompatVersion]),
+                    ?log_debug("Current master's supported compat version: ~p",
+                               [CompatVersion]),
                     MasterNodeInfo = build_node_info(CompatVersion, Master),
                     case strongly_lower_priority_node(MasterNodeInfo) of
                         true ->
-                            ale:warn(?USER_LOGGER, "Current master is older and I'll try to takeover", []),
+                            ale:warn(?USER_LOGGER,
+                                     "Current master is older and I'll try to "
+                                     "takeover", []),
                             Master;
                         false ->
                             ?log_debug("Current master is not older"),
@@ -220,7 +232,9 @@ candidate(info, peers_changed, StateData) ->
     S = refresh_high_priority_nodes(update_peers(StateData, Peers)),
     case Peers of
         [N] when N == node() ->
-            ale:info(?USER_LOGGER, "I'm now the only node, so I'm the master.", []),
+            ale:info(?USER_LOGGER,
+                     "I'm now the only node, so I'm the master.",
+                     []),
             {next_state, master, start_master(S)};
         _ ->
             case can_be_master(S) of
@@ -253,8 +267,9 @@ candidate(info, {send_heartbeat, LastHBInterval},
     case SinceHeard >= ?TIMEOUT andalso SpentOnSending < MostOfTimeout of
         true ->
             %% Take over
-            ale:info(?USER_LOGGER, "Haven't heard from a higher priority node or "
-                     "a master, so I'm taking over.", []),
+            ale:info(?USER_LOGGER,
+                     "Haven't heard from a higher priority node or a master, "
+                     "so I'm taking over.", []),
             {next_state, master, start_master(StateData)};
         false ->
             keep_state_and_data
@@ -269,11 +284,11 @@ candidate(info, {heartbeat, NodeInfo, master, _H},
                          "which is not in peers ~p", [Node, Peers]),
             keep_state_and_data;
         true ->
-            %% If master is of strongly lower priority than we are, then we send fake
-            %% mastership heartbeat to force previous master to surrender. Thus
-            %% there will be some time when cluster won't have any master
-            %% node. But after timeout mastership will be taken over by the
-            %% node with highest priority.
+            %% If master is of strongly lower priority than we are, then we send
+            %% fake mastership heartbeat to force previous master to
+            %% surrender. Thus there will be some time when cluster won't
+            %% have any master node. But after timeout mastership will be
+            %% taken over by the node with highest priority.
             NewState =
                 case strongly_lower_priority_node(NodeInfo) of
                     false ->
@@ -290,14 +305,16 @@ candidate(info, {heartbeat, NodeInfo, master, _H},
                                          "But I won't try to take over since "
                                          "rebalance seems to be running",
                                          [Node]),
-                                State#state{last_heard=erlang:monotonic_time(), master=Node};
+                                State#state{last_heard=erlang:monotonic_time(),
+                                            master=Node};
                             _ ->
                                 ale:info(?USER_LOGGER,
                                          "Candidate got master heartbeat from "
                                          "node ~p which has lower priority. "
                                          "Will try to take over.", [Node]),
 
-                                send_heartbeat_with_peers([Node], master, State#state.peers),
+                                send_heartbeat_with_peers([Node], master,
+                                                          State#state.peers),
                                 State#state{master=undefined}
                         end
                 end,
@@ -355,7 +372,8 @@ master(info, peers_changed, StateData) ->
     end;
 master(info, {send_heartbeat, LastHBInterval}, StateData) ->
     send_heartbeat_msg(LastHBInterval),
-    send_heartbeat_with_peers(ns_node_disco:nodes_wanted(), master, StateData#state.peers),
+    send_heartbeat_with_peers(ns_node_disco:nodes_wanted(), master,
+                              StateData#state.peers),
     keep_state_and_data;
 master(info, {heartbeat, NodeInfo, master, _H}, #state{peers=Peers} = State) ->
     Node = node_info_to_node(NodeInfo),
@@ -385,7 +403,9 @@ master(info, {heartbeat, NodeInfo, master, _H}, #state{peers=Peers} = State) ->
             keep_state_and_data
     end;
 
-master(info, {heartbeat, NodeInfo, candidate, _H}, #state{peers=Peers} = State) ->
+master(info,
+       {heartbeat, NodeInfo, candidate, _H},
+       #state{peers=Peers} = State) ->
     Node = node_info_to_node(NodeInfo),
 
     case lists:member(Node, Peers) of
@@ -434,7 +454,7 @@ send_heartbeat_with_peers(Nodes, StateName, Peers) ->
           end, AliveNodes, 2000),
         ok
     catch exit:timeout ->
-              ?log_warning("send heartbeat timed out")
+            ?log_warning("send heartbeat timed out")
     end.
 
 
@@ -521,7 +541,7 @@ strongly_lower_priority_node(NodeInfo) ->
     strongly_lower_priority_node(Self, NodeInfo).
 
 strongly_lower_priority_node({SelfVersion, _SelfNode},
-                              {Version, _Node}) ->
+                             {Version, _Node}) ->
     (Version < SelfVersion).
 
 announce_leader(Node) ->
@@ -554,20 +574,21 @@ update_high_priority_nodes({Node, Now},
 refresh_high_priority_nodes(#state{higher_priority_nodes = Nodes,
                                    peers = Peers} = State) ->
     Now = erlang:monotonic_time(),
-    NewNodes = lists:filter(
-                 fun ({N, LastSeen}) ->
-                         SinceHeard  = erlang:convert_time_unit(
-                                         Now - LastSeen,
-                                         native, millisecond),
-                         SinceHeard < ?TIMEOUT andalso
-                             (lists:member(N, Peers) orelse
+    NewNodes =
+        lists:filter(
+          fun ({N, LastSeen}) ->
+                  SinceHeard  = erlang:convert_time_unit(Now - LastSeen,
+                                                         native, millisecond),
+                  SinceHeard < ?TIMEOUT andalso (lists:member(N, Peers) orelse
+                                                 %% This forces a newly
+                                                 %% initialized node to wait for
+                                                 %% ?TIMEOUT before it can
+                                                 %% become the master. Don't
+                                                 %% clear it we are not part of
+                                                 %% the cluster yet.
+                                                 N =:= node())
 
-                              %% This forces the a newly initialized node to
-                              %% wait for TIMEOUT before it can become the
-                              %% master. Don't clear it we are not part of the
-                              %% cluster yet.
-                              N =:= node())
-                 end, Nodes),
+          end, Nodes),
     State#state{higher_priority_nodes = NewNodes}.
 
 config_upgrade_to_elixir(_Config) ->
