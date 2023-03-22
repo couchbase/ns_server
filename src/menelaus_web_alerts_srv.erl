@@ -1447,8 +1447,16 @@ run_basic_test_do() ->
 
     ?assertEqual(ok, ?MODULE:global_alert(fu, <<"bar">>)),
     ?assertEqual(ok, ?MODULE:global_alert(fu, <<"bar">>)),
-    ?assertMatch({[{{fu, MyNode}, <<"bar">>, _, _}], _},
-                 ?MODULE:fetch_alerts()).
+    %% give the global_alert some time to make the call and receive the alert
+    GlobalAlert = misc:poll_for_condition(
+                    fun() ->
+                        case ?MODULE:fetch_alerts() of
+                            {[], _} -> false;
+                            Alert -> Alert
+                        end
+                    end,
+                    30000, 500),
+    ?assertMatch({[{{fu, MyNode}, <<"bar">>, _, _}], _}, GlobalAlert).
 
 basic_test() ->
     %% init/1 runs an ns_config txn to upgrade some config if we are at 7.0
