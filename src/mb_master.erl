@@ -262,7 +262,7 @@ check_master_takeover_needed(Peers) ->
             ?log_debug("Was unable to discover master, not going to force mastership takeover"),
             false;
         [Master|_] when Master =:= node() ->
-            %% assuming it happens only secound round
+            %% assuming it happens only second round
             ale:warn(?USER_LOGGER, "Somebody thinks we're master. Not forcing mastership takover over ourselves"),
             false;
         [Master|_] ->
@@ -361,7 +361,7 @@ candidate(info, {heartbeat, NodeInfo, master, _H},
             keep_state_and_data;
         true ->
             %% If master is of strongly lower priority than we are, then we send fake
-            %% mastership hertbeat to force previous master to surrender. Thus
+            %% mastership heartbeat to force previous master to surrender. Thus
             %% there will be some time when cluster won't have any master
             %% node. But after timeout mastership will be taken over by the
             %% node with highest priority.
