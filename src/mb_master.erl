@@ -34,7 +34,8 @@
 
 %% API
 -export([start_link/0,
-         master_node/0]).
+         master_node/0,
+         config_upgrade_to_elixir/1]).
 
 
 %% gen_statem callbacks
@@ -111,8 +112,8 @@ do_maybe_invalidate_current_master(TriesLeft, FirstTime) ->
                     ale:warn(?USER_LOGGER, "Decided not to forcefully take over mastership", [])
             end,
             ok;
-        {MasterToShutdown, Version} ->
-            case do_invalidate_master(MasterToShutdown, Version) of
+        MasterToShutdown ->
+            case do_invalidate_master(MasterToShutdown) of
                 ok ->
                     ok;
                 retry ->
@@ -125,22 +126,7 @@ do_maybe_invalidate_current_master(TriesLeft, FirstTime) ->
             end
     end.
 
-do_invalidate_master(MasterToShutdown, Version) ->
-    WorkAroundMB33750 = should_workaround_mb33750(Version),
-    SyncTimeout = case WorkAroundMB33750 of
-                      true ->
-                          %% If the old master is indeed affected by MB-33750,
-                          %% the sync_surrender/2 call below will take a long
-                          %% time because mb_master will be busy waiting for
-                          %% mb_master_sup to terminate once we tell it to
-                          %% surrender. The shutdown timeout is set to 10
-                          %% seconds. So we need to use a timeout that will
-                          %% give mb_master enough time to get unblocked.
-                          20000;
-                      false ->
-                          5000
-                  end,
-
+do_invalidate_master(MasterToShutdown) ->
     %% send our config to this master it doesn't make sure
     %% mb_master will see us in peers because of a couple of
     %% races, but at least we'll delay a bit on some work and
@@ -150,15 +136,9 @@ do_invalidate_master(MasterToShutdown, Version) ->
     send_heartbeat_with_peers([MasterToShutdown],
                               master, [node(), MasterToShutdown]),
     %% sync that "surrender" event
-    case sync_surrender(MasterToShutdown, SyncTimeout) of
+    case sync_surrender(MasterToShutdown, 5000) of
         {ok, NewMaster} ->
             if NewMaster =:= node() ->
-                    case WorkAroundMB33750 of
-                        true ->
-                            workaround_mb33750(MasterToShutdown, Version);
-                        false ->
-                            ok
-                    end,
                     ok;
                NewMaster =:= MasterToShutdown ->
                     retry;
@@ -176,77 +156,6 @@ sync_surrender(MasterToShutdown, Timeout) ->
     catch
         T:E ->
             {error, {T, E}}
-    end.
-
-%% Checks if a workaround for MB-33750 should be attempted. Will return true
-%% if:
-%%
-%% - The old master is of the affected version.
-%%
-%% - The workaround is not explicitly disabled through an ns_config knob.
-should_workaround_mb33750(Version) ->
-    Enabled = ?get_param(mb33750_workaround_enabled, true),
-    Affected = (Version >= [6, 0, 0]) andalso (Version < [6, 0, 2]),
-    Enabled andalso Affected.
-
--define(stringify(Body), ??Body).
-
-%% Applies a workaround for MB-33750 to the Node.
-%%
-%% The gist of the issue.
-%%
-%% The old master might fail to terminate leader_lease_acquirer after
-%% surrendering mastership. If that happens, the old master will continue
-%% actively acquiring leases disrupting the operation of the true master. The
-%% workaround is to explicitly attempt to kill the leader_lease_acquirer
-%% process on the old master. The details of the bug are such that killing the
-%% leader_lease_acquirer might not kill its children. And it's those children
-%% that are actually responsible for lease acquisitions. But it should at
-%% least eventually kill those of them that can be killed. The rest of them
-%% will get stuck in the shutdown sequence. So they are going to continue to
-%% waste memory, but at least they won't be able to disrupt the operation of
-%% the new master anymore.
-workaround_mb33750(Node, Version) ->
-    ?log_info("Going to attempt to kill leader_lease_acquirer "
-              "on ~p (node version is ~p) as a workaround for MB-33750.",
-              [Node, Version]),
-
-    %% Can't simply "send" an anonymous function to another node, since it
-    %% won't exist there. So we need to send the workaround as a string
-    %% payload to misc:eval/2 instead.
-    EvalPayload =
-        ?stringify(begin
-                       Pid = whereis(leader_lease_acquirer),
-                       case is_pid(Pid) andalso is_process_alive(Pid) of
-                           true ->
-                               exit(Pid, kill),
-                               killed;
-                           false ->
-                               not_found
-                       end
-                   end),
-    EvalBindings = erl_eval:new_bindings(),
-
-    case call_eval(Node, EvalPayload, EvalBindings) of
-        {ok, killed} ->
-            ?log_info("Applied the workaround for MB-33750 on ~p. "
-                      "Actually found lingering leader_lease_acquirer.",
-                      [Node]);
-        {ok, not_found} ->
-            ?log_info("Applied the workaround for MB-33750 on ~p. "
-                      "No lingering leader_lease_acquirer found.",
-                      [Node]);
-        Other ->
-            ?log_info("Failed to apply the workaround for "
-                      "MB-33750 on ~p. Return value: ~p", [Node, Other])
-    end.
-
-call_eval(Node, Payload, Bindings) ->
-    case rpc:call(Node, misc, eval, [Payload, Bindings], 10000) of
-        {value, Result, _} ->
-            {ok, Result};
-        Error ->
-            Error
     end.
 
 check_master_takeover_needed(Peers) ->
@@ -280,7 +189,7 @@ check_master_takeover_needed(Peers) ->
                     case strongly_lower_priority_node(MasterNodeInfo) of
                         true ->
                             ale:warn(?USER_LOGGER, "Current master is older and I'll try to takeover", []),
-                            {Master, CompatVersion};
+                            Master;
                         false ->
                             ?log_debug("Current master is not older"),
                             false
@@ -660,6 +569,9 @@ refresh_high_priority_nodes(#state{higher_priority_nodes = Nodes,
                               N =:= node())
                  end, Nodes),
     State#state{higher_priority_nodes = NewNodes}.
+
+config_upgrade_to_elixir(_Config) ->
+    [{delete, mb33750_workaround_enabled}].
 
 -ifdef(TEST).
 priority_test() ->
