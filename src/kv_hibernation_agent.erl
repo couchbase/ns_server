@@ -172,13 +172,24 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info({'DOWN', MRef, process, Pid, _Reason} = DownMsg,
-            #state{service_manager = {Pid, MRef}} = State) ->
+            #state{service_manager = {Pid, MRef},
+                   hibernation_manager = HibManager,
+                   op = Op} = State) ->
     %% kv service_manager has crashed - abort any running kv hibernation
     %% operations.
 
     ?log_debug("Service Manager for kv went down. DownMsg: ~p", [DownMsg]),
 
-    {noreply, handle_unset_service_manager(State)};
+    %% In cases where hibernation_manager is still being monitored, preserve the
+    %% Op field so it can be used in the DOWN of the hibernation_manager
+    State1 = handle_unset_service_manager(State),
+    StateFinal = case HibManager of
+                     undefined ->
+                         State1;
+                     {_, _} ->
+                         State1#state{op = Op}
+                 end,
+    {noreply, StateFinal};
 
 handle_info({'DOWN', MRef, process, Pid, _Reason} = DownMsg,
             #state{bucket = Bucket,
@@ -201,6 +212,7 @@ handle_info({'DOWN', MRef, process, Pid, _Reason} = DownMsg,
     {noreply, functools:chain(
                 State,
                 [unset_bucket(_),
+                 unset_op(_),
                  unset_worker(_),
                  demonitor_unset_hibernation_manager(_)])};
 

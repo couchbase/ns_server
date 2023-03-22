@@ -453,34 +453,34 @@ meck_expect_ns_storage_conf() ->
                         {ok, filename:join("/data", Bucket)}
                 end).
 
-force_unpause_via_calling_process_failure_body() ->
+force_unpause_via_process_failure_body(ProcessType) ->
     Self = self(),
     meck:expect(ns_memcached, pause_bucket,
-        fun(_) ->
-            ok
-        end),
+                fun(_) ->
+                        ok
+                end),
     meck:expect(ns_memcached, unpause_bucket,
-        fun(_) ->
-            Self ! unpause_issued,
-            ok
-        end),
+                fun(_) ->
+                        Self ! unpause_issued,
+                        ok
+                end),
     meck:expect(hibernation_utils, check_test_condition,
-         fun (_) ->
-            ok
-         end),
+                fun (_) ->
+                        ok
+                end),
     meck:expect(hibernation_utils, sync_s3,
-        fun(_, _, _) ->
-            Self ! pause_started,
-            receive nothing -> ok end
-        end),
+                fun(_, _, _) ->
+                        Self ! pause_started,
+                        receive nothing -> ok end
+                end),
     meck:expect(replication_manager, set_incoming_replication_map,
-        fun(_,_) ->
-            ok
-        end),
+                fun(_,_) ->
+                        ok
+                end),
     meck:expect(ns_config, get_timeout,
-        fun (_,_) ->
-            5 * 60 * 100
-        end),
+                fun (_,_) ->
+                        5 * 60 * 100
+                end),
 
     meck_expect_ns_storage_conf(),
 
@@ -488,27 +488,40 @@ force_unpause_via_calling_process_failure_body() ->
     {HibManagerStubPid, Mref} =
         spawn_monitor(
           fun() ->
-                  ParentPid = self(),
-                  spawn_link(
-                    fun() ->
-                            kv_hibernation_agent:set_service_manager(
-                              [node()], self()),
-                            ok = kv_hibernation_agent:prepare_pause_bucket(
-                                   "Bucket", [node()], ParentPid),
-                            ok = kv_hibernation_agent:pause_bucket(
-                                   #bucket_hibernation_op_args{
-                                     bucket = "Bucket",
-                                     remote_path = "Path",
-                                     blob_storage_region = "us-east-1",
-                                     rate_limit = ?MIB},
-                                   node(), self())
-                    end
-                   ),
+                  HibMgrStubPid = self(),
+                  ServicePid =
+                      spawn_link(
+                        fun() ->
+                                kv_hibernation_agent:set_service_manager(
+                                  [node()], self()),
+                                ok = kv_hibernation_agent:prepare_pause_bucket(
+                                       "Bucket", [node()], HibMgrStubPid),
+                                ok = kv_hibernation_agent:pause_bucket(
+                                       #bucket_hibernation_op_args{
+                                          bucket = "Bucket",
+                                          remote_path = "Path",
+                                          blob_storage_region = "us-east-1",
+                                          rate_limit = ?MIB},
+                                       node(), self())
+                        end
+                       ),
+                  Self ! {service_manager_started, ServicePid},
                   receive nothing -> ok end
           end),
 
+    ServicePid = receive {service_manager_started, Pid} ->
+                         Pid
+                 end,
+
+    KillPid = case ProcessType of
+                  service_manager ->
+                      ServicePid;
+                  hibernation_manager ->
+                      HibManagerStubPid
+              end,
+
     receive pause_started ->
-            exit(HibManagerStubPid, shutdown)
+            exit(KillPid, shutdown)
     end,
 
     receive unpause_issued ->
@@ -519,14 +532,20 @@ force_unpause_via_calling_process_failure_body() ->
             ok
     end.
 
-force_unpause_via_calling_process_failure_test() ->
+test_process_failure_logic(ProcessType) ->
     Modules = [ns_memcached, hibernation_utils, replication_manager, ns_config,
                ns_storage_conf],
     meck:new(Modules, [passthrough]),
     run_test_and_assert(
-      ?cut(force_unpause_via_calling_process_failure_body()),
+      ?cut(force_unpause_via_process_failure_body(ProcessType)),
       exit_normal, exit_not_normal),
     meck:unload(Modules).
+
+force_unpause_via_hib_process_failure_test() ->
+    test_process_failure_logic(hibernation_manager).
+
+force_unpause_via_service_process_failure_test() ->
+    test_process_failure_logic(service_manager).
 
 resume_helpers_test_body() ->
     meck:expect(hibernation_utils, get_metadata_from_s3,
