@@ -127,6 +127,7 @@
          store_last_balanced_vbmap/3,
          past_vbucket_maps/1,
          past_vbucket_maps/2,
+         maybe_remove_vbucket_map_history/0,
          config_to_map_options/1,
          can_have_views/1,
          is_magma/1,
@@ -1787,20 +1788,43 @@ store_last_balanced_vbmap(BucketName, Map, Options) ->
             update_vbucket_map_history(Map, Options)
     end.
 
+%% this can be replaced with deleting vbucket_map_history key on
+%% ns_config upgrade after Trinity becomes min supported version
+maybe_remove_vbucket_map_history() ->
+    case cluster_compat_mode:is_cluster_trinity() andalso
+        ns_config:search(vbucket_map_history) =/= false andalso
+        lists:all(?cut(get_last_balanced_map(_) =/= not_found),
+                  get_bucket_names_of_type(membase)) of
+        true ->
+            ns_config:delete(vbucket_map_history);
+        false ->
+            ok
+    end.
+
 past_vbucket_maps(BucketName) ->
     past_vbucket_maps(BucketName, ns_config:latest()).
 
 past_vbucket_maps(BucketName, Config) ->
     case cluster_compat_mode:is_cluster_trinity() of
         true ->
-            case chronicle_kv:get(kv, last_balanced_vbmap_key(BucketName)) of
-                {error, not_found} ->
+            case get_last_balanced_map(BucketName) of
+                not_found ->
+                    %% can be removed after Trinity becomes min supported
+                    %% version
                     get_vbucket_map_history(Config);
-                {ok, {MapAndOptions, _Rev}} ->
+                MapAndOptions ->
                     [MapAndOptions]
             end;
         false ->
             get_vbucket_map_history(Config)
+    end.
+
+get_last_balanced_map(BucketName) ->
+    case chronicle_kv:get(kv, last_balanced_vbmap_key(BucketName)) of
+        {error, not_found} ->
+            not_found;
+        {ok, {MapAndOptions, _Rev}} ->
+            MapAndOptions
     end.
 
 get_vbucket_map_history(Config) ->

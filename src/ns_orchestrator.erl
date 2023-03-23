@@ -1389,6 +1389,7 @@ handle_rebalance_completion(ExitReason, ToReply, State) ->
     maybe_request_janitor_run(ExitReason, State),
 
     R = compat_mode_manager:consider_switching_compat_mode(),
+    ns_bucket:maybe_remove_vbucket_map_history(),
     case maybe_start_service_upgrader(ExitReason, R, State) of
         {started, NewState} ->
             {next_state, rebalancing, NewState};
