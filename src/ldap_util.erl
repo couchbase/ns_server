@@ -99,27 +99,38 @@ get_cacerts(Settings) ->
         end,
     ExtraCerts ++ ns_server_cert:trusted_CAs(der).
 
+open_ldap_connection(Hosts, Port, SSL, Timeout, Settings) ->
+    open_ldap_connection(Hosts, Port, SSL, Timeout, Settings,
+                         {error, []}, self(), make_ref()).
+
 %% Can't just pass the list of hosts to eldap:open/2 because it is impossible
 %% to get the peer's hostname later, so we have to iterate over the list
 %% of hosts and memorize the one we were able to connect.
 %% We need the peer's hostname information for server name validation
 %% later in StartTLS
-open_ldap_connection([], _Port, _SSL, _Timeout, _Settings) ->
-    {error,"connect failed"};
-open_ldap_connection([Host|Hosts], Port, SSL, Timeout, Settings) ->
+open_ldap_connection([], _Port, _SSL, _Timeout, _Settings, {error, ErrAcc},
+                     _Self, _Ref) ->
+    {error, lists:reverse(ErrAcc)};
+open_ldap_connection([Host|Hosts], Port, SSL, Timeout, Settings,
+                     {error, ErrAcc}, Self, Ref) ->
     SSLOpts = case SSL of
                   true -> [{ssl, true}, {sslopts, ssl_options(Host, Settings)}];
                   false -> []
               end,
     %% Note: timeout option sets not only connect timeout but a timeout for any
     %%       request to ldap server
-    Opts = [{port, Port}, {timeout, Timeout}, {log, fun eldap_log/3} | SSLOpts],
-    case do_open_ldap_connection(Host, Opts) of
+    LogFunction = fun(Level, FormatString, Args) ->
+                      eldap_log(Self, Ref, Level, FormatString, Args)
+                  end,
+    Opts = [{port, Port}, {timeout, Timeout}, {log, LogFunction} | SSLOpts],
+    case do_open_ldap_connection(Ref, Host, Opts) of
         {ok, Handle} -> {ok, Handle, Host};
-        {error, _} -> open_ldap_connection(Hosts, Port, SSL, Timeout, Settings)
+        {error, Errors} ->
+            open_ldap_connection(Hosts, Port, SSL, Timeout, Settings,
+                {error, Errors ++ ErrAcc}, Self, Ref)
     end.
 
-do_open_ldap_connection(Host, Opts) ->
+do_open_ldap_connection(Ref, Host, Opts) ->
     ToTry = case {misc:is_raw_ip(Host), misc:is_raw_ipv6(Host)} of
                 {_, true} ->
                     [inet6];
@@ -135,9 +146,20 @@ do_open_ldap_connection(Host, Opts) ->
             end,
     lists:foldl(fun (_Afamily, {ok, Handle}) ->
                         {ok, Handle};
-                    (Afamily, _) ->
-                        eldap:open([Host], [{tcpopts, [Afamily]} | Opts])
-                end, undefined, ToTry).
+                    (Afamily, {error, ErrAcc}) ->
+                        Res = eldap:open([Host], [{tcpopts, [Afamily]} | Opts]),
+                        case Res of
+                            {ok, Handle} ->
+                                {ok, Handle};
+                            {error, _} ->
+                                receive
+                                    {Ref, {ldap_connect_failed, Err}} ->
+                                        {error, [{Host, Err} | ErrAcc]}
+                                after 0 ->
+                                    {error, [{Host, internal} | ErrAcc]}
+                                end
+                        end
+                end, {error, []}, ToTry).
 
 with_connection(Settings, Fun) ->
     Hosts = proplists:get_value(hosts, Settings),
@@ -170,10 +192,30 @@ with_connection(Settings, Fun) ->
             after
                 eldap:close(Handle)
             end;
-        {error, Reason} ->
-            ?log_error("Connect to ldap ~p (port: ~p, SSL: ~p} failed: ~p",
-                       [Hosts, Port, SSL, Reason]),
-            {error, {connect_failed, Reason}}
+        {error, Reasons} when Hosts == [] ->
+            {error, {connect_failed, Hosts, Reasons}};
+        {error, Reasons} ->
+            FormattedReasons =
+                lists:map(
+                    fun({HostAddr, ErrCode}) ->
+                        case ns_error_messages:connection_error_message(
+                               ErrCode, HostAddr, Port) of
+                            undefined ->
+                                io_lib:format(
+                                  "Failed to establish connection to ldap "
+                                  "server ~s:~w (~p)",
+                                  [HostAddr, Port, ErrCode]);
+                            FormattedMsg ->
+                                binary_to_list(FormattedMsg)
+                        end
+                    end,
+                    Reasons),
+            [FirstErr | _Rest] = FormattedReasons,
+            FormattedReasonsNew = lists:join(io_lib:nl() ++ "    ",
+                                             FormattedReasons),
+            ?log_error("Connect to ldap ~p (port: ~p, SSL: ~p} failed:~n    ~s",
+                       [Hosts, Port, SSL, FormattedReasonsNew]),
+            {error, {connect_failed, Hosts, FirstErr}}
     end.
 
 with_external_bind(Settings, Fun) ->
@@ -300,13 +342,14 @@ eldap_search(Handle, SearchProps) ->
 parse_url(Template) ->
     parse_url(Template, []).
 
-eldap_log(_Level, FormatString, Args) ->
+eldap_log(CallerPID, Ref, _Level, FormatString, Args) ->
     %% The only log entry we care about is the error log. Others are only
     %% informational and may reveal PII information. To avoid changing the
     %% Erlang library, eldap, we simply avoid logging them here.
-    case FormatString of
-        ?ELDAP_ERR_MSG ->
-            ?log_error(FormatString, Args);
+    case {FormatString, Args} of
+        {?ELDAP_ERR_MSG, [_Host, {error, Err}]} ->
+            ?log_error(FormatString, Args),
+            CallerPID ! {Ref, {ldap_connect_failed, Err}};
         _ ->
             ok
     end.
@@ -512,25 +555,22 @@ parse_url_test_() ->
                             "/o=An%20Example%5C2C%20Inc.,c=US"))
     ].
 
-%% This function makes sure that the error message we're interested in,
-%% remains the same in later Erlang upgrades. This is because we rely on this
-%% particular error message and we need to know if it is modified at any point.
+%% This function checks if the open_ldap_connection function works correctly.
+%% It includes making sure the message we're interested in remains the same
+%% in later Erlang upgrades. This is because we rely on this particular
+%% error message and we need to know if it is modified at any point.
 ldap_sends_right_message_for_error_test() ->
-    Self = self(),
-    LogFunction = fun(_Level, FormatString, _Args) ->
-                      Self ! {Self, FormatString}
-                  end,
-    Opts = [{port, 389}, {timeout, 5000}, {log, LogFunction}],
-    eldap:open(["172.1.1.256"], [{tcpopts, [inet]} | Opts]),
-    Res =
-        receive
-            {Self, ?ELDAP_ERR_MSG} ->
-                ok;
-            {Self, _FormatString} ->
-                error
-        after 5000 ->
-            error
+    lists:foreach(
+        fun({IP, ExpErr}) ->
+            {error, ErrList} = open_ldap_connection(IP, 389, false, 5000, []),
+            RecErr =
+                case ErrList of
+                    [] -> undefined;
+                    [{_, Err} | _Rest] -> Err
+                end,
+            ?_assertEqual(RecErr, ExpErr)
         end,
-    ?_assertEqual(Res, ok).
+        [{[], undefined},
+         {["172.1.1.256"], nxdomain}]).
 
 -endif.
