@@ -195,9 +195,9 @@ start_pause_bucket(Args) ->
     ok |
     in_recovery |
     rebalance_running |
-    {error, bucket_not_found} |
-    {error, not_running_pause_bucket} |
-    {errors, {bucket_not_found, not_running_pause_bucket}}.
+    bucket_not_found |
+    not_running_pause_bucket |
+    [Errors :: bucket_not_found | not_running_pause_bucket].
 stop_pause_bucket(Bucket) ->
     call({{bucket_hibernation_op, {stop, pause_bucket}}, [Bucket]}).
 
@@ -216,9 +216,9 @@ start_resume_bucket(Args, Metadata) ->
     ok |
     rebalance_running |
     in_recovery |
-    {error, bucket_not_found} |
-    {error, not_running_resume_bucket} |
-    {errors, {bucket_not_found, not_running_resume_bucket}}.
+    bucket_not_found |
+    not_running_resume_bucket |
+    [Errors :: bucket_not_found | not_running_resume_bucket].
 stop_resume_bucket(Bucket) ->
     call({{bucket_hibernation_op, {stop, resume_bucket}}, [Bucket]}).
 
@@ -1095,8 +1095,7 @@ bucket_hibernation({{bucket_hibernation_op, {stop, Op}}, [Bucket]}, From,
             Bucket =:= HibernatingBucket ->
                 not_running(Op);
             true ->
-                {errors, {bucket_not_found,
-                          not_running(Op)}}
+                [bucket_not_found, not_running(Op)]
         end,
 
     {keep_state_and_data, [{reply, From, Reply}]};
