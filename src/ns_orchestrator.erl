@@ -1099,7 +1099,7 @@ bucket_hibernation({{bucket_hibernation_op, {stop, Op}}, [Bucket]}, From,
                           not_running(Op)}}
         end,
 
-    {keep_state, [{reply, From, Reply}]};
+    {keep_state_and_data, [{reply, From, Reply}]};
 
 bucket_hibernation(
   {{bucket_hibernation_op, {start, _Op}}, _Args},
