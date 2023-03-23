@@ -888,12 +888,15 @@ handle_start_hibernation(Req, StartFunc) ->
 handle_start_pause(Req) ->
     handle_start_hibernation(Req,
                              fun ns_orchestrator:start_pause_bucket/1).
-
 handle_start_resume(Req) ->
     handle_start_hibernation(
       Req, fun(Args) ->
-                   Metadata = hibernation_utils:get_metadata_from_s3(Args),
-                   ns_orchestrator:start_resume_bucket(Args, Metadata)
+                   case hibernation_utils:get_metadata_from_s3(Args) of
+                       {ok, Metadata} ->
+                           ns_orchestrator:start_resume_bucket(Args, Metadata);
+                       {error, Error} ->
+                           Error
+                   end
            end).
 
 handle_stop_hibernation(Req, StopFunc) ->

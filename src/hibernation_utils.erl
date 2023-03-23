@@ -156,9 +156,18 @@ get_new_bucket_config(Bucket, PausedBucketCfg,
 
 get_metadata_from_s3(#bucket_hibernation_op_args{
                         remote_path = RemotePath} = Args) ->
-    KvRemotePath = get_data_remote_path(RemotePath),
-    get_bucket_metadata_from_s3(Args#bucket_hibernation_op_args{
-                                  remote_path = KvRemotePath}).
+    try
+        KvRemotePath = get_data_remote_path(RemotePath),
+        {ok, get_bucket_metadata_from_s3(
+               Args#bucket_hibernation_op_args{remote_path = KvRemotePath})}
+    catch
+        _:{_, {error, {cbobjutils_status, _}, Error}} ->
+            {error, iolist_to_binary(io_lib:format("s3_get_failure: ~p",
+                                                   [Error]))};
+        T:E:S ->
+            ?log_error("get_metadata_from_s3 failed.~n~p.", [{T, E, S}]),
+            {error, s3_get_failure}
+    end.
 
 get_paused_bucket_cfg(Metadata) ->
     BucketVersion = get_bucket_version(Metadata),
@@ -343,7 +352,7 @@ sync_s3(#bucket_hibernation_op_args{
         _ ->
             ?log_error("cbobjutil call `~s` returned ~b:~n~s",
                        [Cmd, Status, Output]),
-            {error, Status, Output}
+            {error, {cbobjutils_status, Status}, Output}
     end.
 
 get_data_remote_path(RemotePath) ->
