@@ -10,6 +10,7 @@
 import testlib
 
 import time
+import itertools
 
 
 class TasksBase:
@@ -160,6 +161,10 @@ class TasksTestSet(testlib.BaseTestSet, TasksBase):
         testlib.BaseTestSet.__init__(self, cluster)
         TasksBase.__init__(self)
         self.addr_diag_eval = "/diag/eval"
+        self.task_types = ["loadingSampleBucket", "rebalance"]
+        self.statuses = ["queued", "running", "completed", "failed"]
+        self.bucket_names = ["default", "test", None]
+        self.extras_values = [{}, {"test": "value"}]
 
     def setup(self, cluster):
         pass
@@ -183,14 +188,16 @@ class TasksTestSet(testlib.BaseTestSet, TasksBase):
                           data=f"global_tasks:update_task("
                                f"{task_to_erlang(task)}).")
 
+    # Generate a variety of tasks.
+    # These are not necessarily valid tasks, but should still be accepted
+    def generate_tasks(self):
+        test_tasks = itertools.product(self.task_types, self.statuses,
+                                       self.bucket_names, self.extras_values)
+        for task_type, status, bucket, extras in test_tasks:
+            yield self.generate_task(task_type, status, bucket, extras)
+
     def simple_test(self, cluster):
-        # Test a variety of task updates
-        # These are not necessarily valid tasks, but should still be accepted
-        for task_type in ["loadingSampleBucket", "rebalance"]:
-            for status in ["queued", "running", "completed", "failed"]:
-                for bucket in ["default", "test", None]:
-                    for extras in [{}, {"test": "value"}]:
-                        task = self.generate_task(task_type, status, bucket,
-                                                  extras)
-                        self.update_task(cluster, task)
-                        self.assert_task(cluster, task)
+        for task in self.generate_tasks():
+            # Add a new task and assert that it was added
+            self.update_task(cluster, task)
+            self.assert_task(cluster, task)
