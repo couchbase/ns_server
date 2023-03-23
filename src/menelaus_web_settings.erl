@@ -464,10 +464,6 @@ is_allowed_on_cluster([fts_throttle_limit]) ->
     config_profile:get_bool(enable_throttle_limits);
 is_allowed_on_cluster([n1ql_throttle_limit]) ->
     config_profile:get_bool(enable_throttle_limits);
-is_allowed_on_cluster([sgw_read_throttle_limit]) ->
-    config_profile:get_bool(enable_throttle_limits);
-is_allowed_on_cluster([sgw_write_throttle_limit]) ->
-    config_profile:get_bool(enable_throttle_limits);
 is_allowed_on_cluster(_) ->
     true.
 
@@ -593,12 +589,6 @@ conf(internal) ->
      {fts_throttle_limit, searchThrottleLimit, ?DEFAULT_FTS_THROTTLE_LIMIT,
       get_number(?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT)},
      {n1ql_throttle_limit, queryThrottleLimit, ?DEFAULT_N1QL_THROTTLE_LIMIT,
-      get_number(?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT)},
-     {sgw_read_throttle_limit, sgwReadThrottleLimit,
-      ?DEFAULT_SGW_READ_THROTTLE_LIMIT,
-      get_number(?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT)},
-     {sgw_write_throttle_limit, sgwWriteThrottleLimit,
-      ?DEFAULT_SGW_WRITE_THROTTLE_LIMIT,
       get_number(?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT)},
      {magma_min_memory_quota, magmaMinMemoryQuota, 1024,
       get_number(100, 1024, 1024)},

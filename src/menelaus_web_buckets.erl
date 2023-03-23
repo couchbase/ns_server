@@ -304,11 +304,7 @@ get_throttle_attributes() ->
      {searchThrottleLimit,
       fts_throttle_limit, ?DEFAULT_FTS_THROTTLE_LIMIT},
      {queryThrottleLimit,
-      n1ql_throttle_limit, ?DEFAULT_N1QL_THROTTLE_LIMIT},
-     {sgwReadThrottleLimit,
-      sgw_read_throttle_limit, ?DEFAULT_SGW_READ_THROTTLE_LIMIT},
-     {sgwWriteThrottleLimit,
-      sgw_write_throttle_limit, ?DEFAULT_SGW_WRITE_THROTTLE_LIMIT}].
+      n1ql_throttle_limit, ?DEFAULT_N1QL_THROTTLE_LIMIT}].
 
 build_limits(BucketConfig, ProfileKey, AttributesFunc) ->
     case config_profile:get_bool(ProfileKey) of
@@ -2176,12 +2172,6 @@ validate_limit_fun(fts_throttle_limit) ->
          _, ?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT));
 validate_limit_fun(n1ql_throttle_limit) ->
     ?cut(do_validate_limit("queryThrottleLimit", n1ql_throttle_limit,
-         _, ?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT));
-validate_limit_fun(sgw_read_throttle_limit) ->
-    ?cut(do_validate_limit("sgwReadThrottleLimit", sgw_read_throttle_limit,
-         _, ?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT));
-validate_limit_fun(sgw_write_throttle_limit) ->
-    ?cut(do_validate_limit("sgwWriteThrottleLimit", sgw_write_throttle_limit,
          _, ?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT)).
 
 default_limit(kv_storage_limit) ->
@@ -2197,11 +2187,7 @@ default_limit(index_throttle_limit) ->
 default_limit(fts_throttle_limit) ->
     ?DEFAULT_FTS_THROTTLE_LIMIT;
 default_limit(n1ql_throttle_limit) ->
-    ?DEFAULT_N1QL_THROTTLE_LIMIT;
-default_limit(sgw_read_throttle_limit) ->
-    ?DEFAULT_SGW_READ_THROTTLE_LIMIT;
-default_limit(sgw_write_throttle_limit) ->
-    ?DEFAULT_SGW_WRITE_THROTTLE_LIMIT.
+    ?DEFAULT_N1QL_THROTTLE_LIMIT.
 
 do_validate_limit(Param, InternalName, Val, Min, Max) ->
     case menelaus_util:parse_validate_number(Val, Min, Max) of

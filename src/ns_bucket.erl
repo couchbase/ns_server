@@ -1753,7 +1753,6 @@ extract_bucket_props(Props) ->
                         fts_storage_limit,
                         kv_throttle_limit, index_throttle_limit,
                         fts_throttle_limit, n1ql_throttle_limit,
-                        sgw_read_throttle_limit, sgw_write_throttle_limit,
                         history_retention_seconds, history_retention_bytes,
                         magma_key_tree_data_blocksize,
                         magma_seq_tree_data_blocksize,

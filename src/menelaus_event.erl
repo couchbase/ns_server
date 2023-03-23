@@ -148,8 +148,6 @@ is_interesting_to_watchers({kv_throttle_limit, _}) -> true;
 is_interesting_to_watchers({index_throttle_limit, _}) -> true;
 is_interesting_to_watchers({fts_throttle_limit, _}) -> true;
 is_interesting_to_watchers({n1ql_throttle_limit, _}) -> true;
-is_interesting_to_watchers({sgw_read_throttle_limit, _}) -> true;
-is_interesting_to_watchers({sgw_write_throttle_limit, _}) -> true;
 is_interesting_to_watchers({rebalance_status, _}) -> true;
 is_interesting_to_watchers({recovery_status, _}) -> true;
 is_interesting_to_watchers({nodes_wanted, _}) -> true;
