@@ -38,7 +38,8 @@ def get_node_urls(nodes):
 def build_cluster(auth, start_args, connect_args, kill_nodes):
     # We use the raw ip address instead of 'localhost', as it isn't accepted by
     # the addNode or doJoinCluster endpoints
-    address = "127.0.0.1"
+    # IPV6 uses [::1] instead of 127.0.0.1
+    address = "[::1]" if connect_args['protocol'] == "ipv6" else "127.0.0.1"
     port = cluster_run_lib.base_api_port + start_args['start_index']
     num_nodes = start_args['num_nodes']
     nodes = [testlib.Node(host=address,
@@ -190,6 +191,26 @@ class Cluster:
         if verbose:
             print(f"Adding node {data}")
         r = testlib.post_succ(self, f"/controller/addNode", data=data)
+
+        if do_rebalance:
+            self.rebalance(verbose=verbose)
+            self.wait_for_rebalance(verbose=verbose)
+        return r
+
+    def do_join_cluster(self, new_node, services="kv", do_rebalance=False,
+                        verbose=False):
+        data = {"user": self.auth[0],
+                "password": self.auth[1],
+                "clusterMemberHostIp": self.nodes[0].host,
+                "clusterMemberPort": str(self.nodes[0].port+10000),
+                "services": services}
+
+        if verbose:
+            print(f"doJoinCluster with {data}")
+        r = testlib.post_succ(
+            path="/node/controller/doJoinCluster",
+            cluster_or_node=new_node,
+            data=data)
 
         if do_rebalance:
             self.rebalance(verbose=verbose)

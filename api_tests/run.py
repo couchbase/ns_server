@@ -31,6 +31,7 @@ import ldap_tests
 import tasks_test
 import saml_tests
 import bucket_deletion_test
+import node_addition_tests
 
 tmp_cluster_dir = os.path.join(scriptdir, "test_cluster_data")
 

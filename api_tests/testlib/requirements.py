@@ -10,14 +10,16 @@ from abc import ABC, abstractmethod
 
 import testlib
 from testlib.cluster import Cluster, build_cluster
+from testlib import get_succ
 
 
 class ClusterRequirements:
     def __init__(self, edition="Enterprise", num_nodes=1, memsize=256,
-                 num_connected=None):
+                 num_connected=None, afamily="ipv4"):
         self.requirements = [Edition(edition),
                              NumNodes(num_nodes, num_connected),
-                             MemSize(memsize)]
+                             MemSize(memsize),
+                             AFamily(afamily)]
 
     def __str__(self):
         immutable_requirements = list(filter(lambda x: not x.can_be_met(),
@@ -205,3 +207,21 @@ class MemSize(Requirement):
         testlib.post_succ(cluster, "/pools/default",
                           data={"memoryQuota": self.memsize})
         cluster.memsize = self.memsize
+
+
+class AFamily(Requirement):
+    def __init__(self, afamily):
+        super().__init__(afamily=afamily)
+        self.afamily = afamily
+        self.connect_args = {"protocol": afamily}
+
+    def is_met(self, cluster):
+        # The address family is labeled using "inet" in /pools/nodes
+        afamily_translate = {
+            "ipv4": "inet",
+            "ipv6": "inet6"
+        }
+        res = get_succ(cluster, "/pools/nodes")
+        return all([node["addressFamily"] == afamily_translate[self.afamily]
+                    for node in res.json()["nodes"]])
+
