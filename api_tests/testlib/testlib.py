@@ -13,6 +13,7 @@ import requests
 import string
 import random
 
+from testlib.node import Node
 
 ClusterRequirements = namedtuple("ClusterRequirements",
                                  ['num_nodes', 'min_memsize', 'serverless'],
@@ -138,48 +139,44 @@ def delete_config_key(cluster, key):
     return post_succ(cluster, '/diag/eval', data=f'ns_config:delete({key})')
 
 
-def put_succ(cluster, path, **kwargs):
-    kwargs_with_auth = set_default_auth(cluster, **kwargs)
-    url = cluster.urls[0] + path
-    res = requests.put(url, **kwargs_with_auth)
-    assert_http_code(200, res),
+def request(method, cluster_or_node, path, expected_code=None, **kwargs):
+    kwargs_with_auth = set_default_auth(cluster_or_node, **kwargs)
+    if isinstance(cluster_or_node, Node):
+        url = cluster_or_node.url + path
+    else:
+        url = cluster_or_node.nodes[0].url + path
+    res = requests.request(method, url, **kwargs_with_auth)
+    if expected_code is not None:
+        assert_http_code(expected_code, res),
     return res
 
 
-def post_succ(cluster, path, expected_code=200, **kwargs):
-    res = post(cluster, path, **kwargs)
-    assert_http_code(expected_code, res)
-    return res
+def put_succ(cluster_or_node, path, expected_code=200, **kwargs):
+    return request('PUT', cluster_or_node, path, expected_code, **kwargs)
 
 
-def post_fail(cluster, path, expected_code, **kwargs):
-    res = post(cluster, path, **kwargs)
-    assert_http_code(expected_code, res),
-    return res
+def post_succ(cluster_or_node, path, expected_code=200, **kwargs):
+    return request('POST', cluster_or_node, path, expected_code, **kwargs)
 
 
-def post(cluster, path, **kwargs):
-    kwargs_with_auth = set_default_auth(cluster, **kwargs)
-    url = cluster.urls[0] + path
-    return requests.post(url, **kwargs_with_auth)
+def post_fail(cluster_or_node, path, expected_code, **kwargs):
+    return request('POST', cluster_or_node, path, expected_code, **kwargs)
 
 
-def get_succ(cluster, path, **kwargs):
-    res = get(cluster, path, **kwargs)
-    assert_http_code(200, res),
-    return res
+def post(cluster_or_node, path, **kwargs):
+    return request('POST', cluster_or_node, path, None, **kwargs)
 
 
-def get_fail(cluster, path, expected_code, **kwargs):
-    res = get(cluster, path, **kwargs)
-    assert_http_code(expected_code, res),
-    return res
+def get_succ(cluster_or_node, path, expected_code=200, **kwargs):
+    return request('GET', cluster_or_node, path, expected_code, **kwargs)
 
 
-def get(cluster, path, **kwargs):
-    kwargs_with_auth = set_default_auth(cluster, **kwargs)
-    url = cluster.urls[0] + path
-    return requests.get(url, **kwargs_with_auth)
+def get_fail(cluster_or_node, path, expected_code, **kwargs):
+    return request('GET', cluster_or_node, path, expected_code, **kwargs)
+
+
+def get(cluster_or_node, path, **kwargs):
+    return request('GET', cluster_or_node, path, None, **kwargs)
 
 
 def ensure_deleted(cluster, path, **kwargs):
@@ -189,16 +186,14 @@ def ensure_deleted(cluster, path, **kwargs):
     return res
 
 
-def delete(cluster, path, **kwargs):
-    kwargs_with_auth = set_default_auth(cluster, **kwargs)
-    url = cluster.urls[0] + path
-    return requests.delete(url, **kwargs_with_auth)
+def delete(cluster_or_node, path, **kwargs):
+    return request('DELETE', cluster_or_node, path, None, **kwargs)
 
 
-def set_default_auth(cluster, **kwargs):
+def set_default_auth(cluster_or_node, **kwargs):
     if 'auth' not in kwargs:
         new_kwargs = kwargs.copy()
-        new_kwargs.update({'auth': cluster.auth})
+        new_kwargs.update({'auth': cluster_or_node.auth})
         return new_kwargs
     return kwargs
 

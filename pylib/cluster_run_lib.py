@@ -509,25 +509,36 @@ def start_cluster(num_nodes=1,
     return processes
 
 
-def wait_nodes_up(num_nodes, start_index, timeout_s):
+def wait_nodes_up(num_nodes=1, start_index=0, timeout_s=node_start_timeout_s,
+                  node_urls=None, verbose=False):
+    def print_if_verbose(*args, **kwargs):
+        if verbose:
+            print(*args, **kwargs)
     deadline = time.time() + timeout_s
-    def wait_node(i):
+
+    # Wait for node to be responsive. Returns the last response or error
+    def wait_node_up(url):
         last_error = None
-        print(f"Waiting for node {i}", end="")
+        print_if_verbose(f"Waiting for node {url}", end="")
         sys.stdout.flush()
         while time.time() < deadline:
             try:
-                http_get_json(f"http://localhost:{base_api_port+i}/pools")
-                print(f" UP")
+                http_get_json(url + "/pools")
+                print_if_verbose(f" UP")
                 return
-            except urllib.error.URLError as e:
+            except URLError as e:
                 last_error = e.reason
-                print('.', end='')
+                print_if_verbose('.', end='')
                 sys.stdout.flush()
                 time.sleep(0.5)
-        print(" TIMEOUT")
-        raise RuntimeError(f"Node {i} wait timed out (last error: {last_error})")
-    [wait_node(start_index + i) for i in range(num_nodes)]
+        print_if_verbose(" TIMEOUT")
+        raise RuntimeError(f"Node {url} wait timed out "
+                           f"(last error: {last_error})")
+    if node_urls is None:
+        [wait_node_up(f"http://localhost:{base_api_port + start_index + i}")
+         for i in range(num_nodes)]
+    else:
+        [wait_node_up(node_url) for node_url in node_urls]
 
 
 def kill_nodes(nodes, terminal_attrs=None, urls=None):
@@ -718,29 +729,42 @@ def connect(num_nodes=0,
                data).read()
 
         if do_wait_for_rebalance:
-
-            def is_rebalance_running():
-                rebalance_running = False
-                tasks = http_get_json("http://{0}:{1}/pools/default/tasks"
-                                      .format(addr, base_port))
-                for task in tasks:
-                    if task.get("type") == "rebalance" and \
-                            task.get("status") == "running":
-                        rebalance_running = True
-                return rebalance_running
-
-            if is_rebalance_running():
-                print("Waiting for rebalance to finish", end='')
-                # Only wait for 10mins
-                timeout_time = time.time() + 600
-                while is_rebalance_running():
-                    if time.time() > timeout_time:
-                        print("Timed out waiting for rebalance")
-                        return 1
-                    print('.', end='')
-                    sys.stdout.flush()
-                    time.sleep(0.5)
-
-                print(" Finished.")
-
+            if not wait_for_rebalance("http://{0}:{1}".format(addr, base_port)):
+                return 1
     return 0
+
+
+# Query the tasks endpoint for the rebalance task, and check if it is
+# running
+def is_rebalance_running(url):
+    rebalance_running = False
+    (tasks, ) = http_get_json(url + "/pools/default/tasks"),
+
+    for task in tasks:
+        if task.get("type") == "rebalance" and \
+                task.get("status") == "running":
+            rebalance_running = True
+    return rebalance_running
+
+
+# Wait for a rebalance to complete, by checking every half second for up to
+# 10mins, and returning whether or not the rebalance completed in that time
+def wait_for_rebalance(url, timeout_s=600, interval_s=0.5, verbose=False):
+    def print_if_verbose(*args, **kwargs):
+        if verbose:
+            print(*args, **kwargs)
+
+    if is_rebalance_running(url):
+        print_if_verbose(f"Waiting up to {timeout_s}s for rebalance to "
+                         f"finish", end='')
+        timeout_time = time.time() + timeout_s
+        while is_rebalance_running(url):
+            if time.time() > timeout_time:
+                print_if_verbose("Timed out waiting for rebalance")
+                return False
+            print_if_verbose('.', end='')
+            sys.stdout.flush()
+            time.sleep(interval_s)
+
+        print_if_verbose(" Finished.")
+    return True

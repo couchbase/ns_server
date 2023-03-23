@@ -6,6 +6,12 @@
 # file, in accordance with the Business Source License, use of this software
 # will be governed by the Apache License, Version 2.0, included in the file
 # licenses/APL2.txt.
-from testlib.testlib import *
-from testlib.cluster import Cluster
-from testlib.node import Node
+
+
+class Node:
+    def __init__(self, host, port, auth):
+        self.hostname = f"{host}:{port}"
+        self.url = "http://" + self.hostname
+        self.host = host
+        self.port = port
+        self.auth = auth

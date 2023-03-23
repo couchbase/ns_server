@@ -313,13 +313,16 @@ def get_required_clusters(testsets, auth, start_index):
 def create_cluster_satisfying(requirements, auth, start_index):
     serverless = requirements.serverless is True
     processes = cluster_run_lib.start_cluster(num_nodes=requirements.num_nodes,
+                                              dont_rename=True,
                                               start_index=start_index,
                                               root_dir=f"{tmp_cluster_dir}"
                                                        f"-{start_index}",
                                               wait_for_start=True,
                                               nooutput=True,
                                               run_serverless=serverless)
-    address = "localhost"
+    # We use the raw ip address instead of 'localhost', as it isn't accepted by
+    # the addNode or doJoinCluster endpoints
+    address = "127.0.0.1"
     port = cluster_run_lib.base_api_port + start_index
     # We might need a rebalance for multiple nodes
     rebalance = requirements.num_nodes > 1
@@ -340,11 +343,13 @@ def create_cluster_satisfying(requirements, auth, start_index):
 
 def get_cluster(address, start_port, auth, processes, num_nodes):
     urls = []
+    nodes = []
     for i in range(num_nodes):
-        url = f"http://{address}:" \
-              f"{start_port + i}"
+        node = testlib.Node(host=address,
+                            port=start_port + i,
+                            auth=auth)
         # Check that node is online
-        pools_default = f"{url}/pools/default"
+        pools_default = f"{node.url}/pools/default"
         try:
             response = requests.get(pools_default, auth=auth)
         except requests.exceptions.ConnectionError as e:
@@ -354,7 +359,8 @@ def get_cluster(address, start_port, auth, processes, num_nodes):
             error_exit(f"Failed to connect to {pools_default} "
                        f"({response.status_code})\n"
                        f"{response.text}")
-        urls.append(url)
+        urls.append(node.url)
+        nodes.append(node)
     url = urls[0]
 
     memsize = response.json()["memoryQuota"]
@@ -379,6 +385,7 @@ def get_cluster(address, start_port, auth, processes, num_nodes):
                               auth=auth).text.strip('\"')
 
     return testlib.Cluster(urls=urls,
+                           nodes=nodes,
                            processes=processes,
                            auth=auth,
                            memsize=memsize,
