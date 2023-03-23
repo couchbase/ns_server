@@ -158,6 +158,8 @@
         "type": "gauge",
         "help": "System memory limit",
         "added": "7.0.0",
+        "deprecated": "7.5.0",
+        "notes": "Will be removed in the 8.0 release. Use sys_mem_total or sys_mem_cgroup_limit",
         "units": "bytes",
         "stability": "committed"
     },
