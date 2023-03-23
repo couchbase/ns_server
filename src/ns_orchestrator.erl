@@ -1101,6 +1101,11 @@ bucket_hibernation({{bucket_hibernation_op, {stop, Op}}, [Bucket]}, From,
 
     {keep_state, [{reply, From, Reply}]};
 
+bucket_hibernation(
+  {{bucket_hibernation_op, {start, _Op}}, _Args},
+  From, State) ->
+    {keep_state_and_data, [{reply, From, build_error(State)}]};
+
 %% Handle other msgs that come while ns_orchestrator is in the
 %% bucket_hibernation_state.
 
@@ -1108,6 +1113,15 @@ bucket_hibernation(stop_rebalance, From, _State) ->
     {keep_state_and_data, [{reply, From, not_rebalancing}]};
 bucket_hibernation(_Msg, From, _State) ->
     {keep_state_and_data, [{reply, From, in_bucket_hibernation}]}.
+
+build_error(#bucket_hibernation_state{
+              bucket = Bucket,
+              op = Op}) ->
+    {[{<<"message">>,
+       <<"Cannot pause/resume bucket, while another bucket is "
+         "being paused/resumed.">>},
+      {<<"bucket">>, list_to_binary(Bucket)},
+      {<<"op">>, Op}]}.
 
 %%
 %% Internal functions
