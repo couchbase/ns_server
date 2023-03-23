@@ -561,6 +561,13 @@ main_with_everything(StaticTerms, NSConfig, Node) ->
                   false
           end,
 
+    ETC = erlang:system_info(time_correction),
+    EMTS = erlang:system_info(os_monotonic_time_source),
+    ErlangTimeInfo =
+        iolist_to_binary(io_lib:format("[{time_correction, ~p},"
+                                       " {monotonic_time_source ~p}]",
+                                       [ETC, EMTS])),
+
     Pairs = Ports ++
         [{ns_config, iolist_to_binary(io_lib:format("~p", [sanitize_config(NSConfig)]))},
          {static_config, iolist_to_binary(io_lib:format("~p", [StaticTerms]))},
@@ -575,6 +582,7 @@ main_with_everything(StaticTerms, NSConfig, Node) ->
          {memcached_breakpad_minidump_dir, PerNodeMDD},
          {nodes, string:join(Nodes, ",")},
          {relative_prom_stats_dir, PromStoragePath},
+         {erlang_time_info, ErlangTimeInfo},
          {tls, Tls},
          {ipv6, Ipv6}],
 
