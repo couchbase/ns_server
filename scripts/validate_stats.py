@@ -58,7 +58,8 @@ class StatsValidator:
                     print("\nStats in description file but not returned "
                           "by the REST endpoints. This isn't necessarily "
                           "a bug as the workload may not lead to the stat "
-                          "being emitted.\n")
+                          "being emitted or the stat may not be emitted on "
+                          "all architectures.\n")
                     first = False
                 if "deprecated" in self.json_data[item]:
                     deprecated = f"(deprecated in {self.json_data[item]['deprecated']})"
