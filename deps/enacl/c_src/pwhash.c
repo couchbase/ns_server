@@ -7,7 +7,7 @@
 
 static size_t enacl_pwhash_opslimit(ErlNifEnv *env, ERL_NIF_TERM arg) {
   ERL_NIF_TERM a;
-  size_t r;
+  ErlNifUInt64 r;
 
   if (enif_is_atom(env, arg)) {
     a = enif_make_atom(env, "interactive");
@@ -24,8 +24,8 @@ static size_t enacl_pwhash_opslimit(ErlNifEnv *env, ERL_NIF_TERM arg) {
     if (enif_is_identical(a, arg)) {
       return crypto_pwhash_OPSLIMIT_SENSITIVE;
     }
-  } else if (enif_get_ulong(env, arg, &r)) {
-    return r;
+  } else if (enif_get_uint64(env, arg, &r)) {
+      return (size_t)r;
   }
 
   return 0;
@@ -33,7 +33,7 @@ static size_t enacl_pwhash_opslimit(ErlNifEnv *env, ERL_NIF_TERM arg) {
 
 static size_t enacl_pwhash_memlimit(ErlNifEnv *env, ERL_NIF_TERM arg) {
   ERL_NIF_TERM a;
-  size_t r;
+  ErlNifUInt64 r;
 
   if (enif_is_atom(env, arg)) {
     a = enif_make_atom(env, "interactive");
@@ -50,8 +50,8 @@ static size_t enacl_pwhash_memlimit(ErlNifEnv *env, ERL_NIF_TERM arg) {
     if (enif_is_identical(a, arg)) {
       return crypto_pwhash_MEMLIMIT_SENSITIVE;
     }
-  } else if (enif_get_ulong(env, arg, &r)) {
-    return r;
+  } else if (enif_get_uint64(env, arg, &r)) {
+      return (size_t)r;
   }
 
   return 0;
