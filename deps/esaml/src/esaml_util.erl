@@ -25,7 +25,8 @@
 -export([unique_id/0]).
 
 %% @doc Converts various ascii hex/base64 fingerprint formats to binary
--spec convert_fingerprints([string() | binary()]) -> [binary()].
+-spec convert_fingerprints([string() | binary()]) ->
+                                                [{atom(), binary()} | binary()].
 convert_fingerprints(FPs) ->
     FPSources = FPs ++ esaml:config(trusted_fingerprints, []),
     lists:map(fun(Print) ->
