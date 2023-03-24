@@ -439,9 +439,11 @@ get_timeout(_Service, Req) ->
 
 auth_token(Req, Remote) ->
     case menelaus_auth:extract_ui_auth_token(Req) of
-        undefined ->
+        not_ui ->
             [];
-        Token ->
+        {token, undefined} ->
+            [];
+        {token, Token} ->
             %% if we go agains local node, there's no reason to pack node name
             %% into the token. In fact it causes the race with node rename that
             %% results in 401

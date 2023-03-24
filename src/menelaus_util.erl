@@ -695,7 +695,10 @@ assert(Fun, Error, Headers) ->
     end.
 
 choose_node_consistently(Req, Nodes) ->
-    Token = menelaus_auth:extract_ui_auth_token(Req),
+    Token = case menelaus_auth:extract_ui_auth_token(Req) of
+                not_ui -> undefined;
+                {token, T} -> T
+            end,
     Memo = menelaus_ui_auth:check(Token),
     Peer = mochiweb_request:get(peer, Req),
     N = erlang:phash2({Memo, Peer}, length(Nodes)) + 1,

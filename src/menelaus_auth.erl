@@ -78,13 +78,22 @@ ui_auth_cookie_name(Req) ->
             "ui-auth-" ++ mochiweb_util:quote_plus(Host)
     end.
 
--spec extract_ui_auth_token(mochiweb_request()) -> auth_token() | undefined.
+-spec extract_ui_auth_token(mochiweb_request()) ->
+                                    {token, auth_token() | undefined} | not_ui.
 extract_ui_auth_token(Req) ->
-    case mochiweb_request:get_header_value("ns-server-auth-token", Req) of
-        undefined ->
-            lookup_cookie(Req, ui_auth_cookie_name(Req));
-        T ->
-            T
+    case mochiweb_request:get_header_value("ns-server-ui", Req) of
+        "yes" ->
+            Token =
+                case mochiweb_request:get_header_value("ns-server-auth-token",
+                                                       Req) of
+                    undefined ->
+                        lookup_cookie(Req, ui_auth_cookie_name(Req));
+                    T ->
+                        T
+                end,
+            {token, Token};
+        _ ->
+            not_ui
     end.
 
 -spec generate_auth_cookie(mochiweb_request(), auth_token()) -> {string(), string()}.
@@ -115,10 +124,10 @@ complete_uilogout(Req) ->
 
 -spec maybe_refresh_token(mochiweb_request()) -> [{string(), string()}].
 maybe_refresh_token(Req) ->
-    case get_token(Req) of
-        undefined ->
-            [];
-        Token ->
+    case extract_ui_auth_token(Req) of
+        not_ui -> [];
+        {token, undefined} -> [];
+        {token, Token} ->
             case menelaus_ui_auth:maybe_refresh(Token) of
                 nothing ->
                     [];
@@ -134,11 +143,6 @@ maybe_store_rejected_user(User, Req) ->
 
 store_authn_res(#authn_res{} = AuthnRes, Req) ->
     mochiweb_request:set_meta(authn_res, AuthnRes, Req).
-
-store_token({token, Token}, Req) ->
-    mochiweb_request:set_meta(uitoken, Token, Req);
-store_token(_, Req) ->
-    Req.
 
 append_resp_headers(Headers, Req) ->
     CurHeaders = mochiweb_request:get_meta(resp_headers, [], Req),
@@ -172,12 +176,6 @@ get_user_id(Req) ->
         undefined -> undefined
     end.
 
-%% This function is deprecated, do not use it in new code
-%% Use session id instead
--spec get_token(mochiweb_request()) -> auth_token() | undefined.
-get_token(Req) ->
-    mochiweb_request:get_meta(uitoken, undefined, Req).
-
 is_UI_req(Req) ->
     case get_authn_res(Req) of
         undefined -> false;
@@ -187,14 +185,14 @@ is_UI_req(Req) ->
 
 -spec extract_auth(mochiweb_request()) -> {User :: string(), Passwd :: string()}
                                               | {scram_sha, string()}
-                                              | {token, string()}
+                                              | {token, string() | undefined}
                                               | {client_cert_auth, string()}
                                               | undefined.
 extract_auth(Req) ->
-    case mochiweb_request:get_header_value("ns-server-ui", Req) of
-        "yes" ->
-            {token, extract_ui_auth_token(Req)};
-        _ ->
+    case extract_ui_auth_token(Req) of
+        {token, Token} ->
+            {token, Token};
+        not_ui ->
             Sock = mochiweb_request:get(socket, Req),
             case ns_ssl_services_setup:get_user_name_from_client_cert(Sock) of
                 undefined ->
@@ -451,7 +449,7 @@ verify_rest_auth(Req, Permission) ->
                                     identity = EffectiveIdentity
                                 },
                     {check_permission(AuthnRes2, Permission),
-                     store_token(Auth, store_authn_res(AuthnRes2, Req2))}
+                     store_authn_res(AuthnRes2, Req2)}
             end;
         {error, auth_failure} ->
             Req2 = maybe_store_rejected_user(get_rejected_user(Auth), Req),
