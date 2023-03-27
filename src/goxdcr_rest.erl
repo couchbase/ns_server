@@ -169,7 +169,7 @@ process_repl_error(Error) ->
                                   [Year, Month, Day, Hour, Minute, Second]),
     TimeBin = iolist_to_binary(TimeFormatted),
     Message = misc:expect_prop_value(<<"ErrorMsg">>, Error),
-    {Time, <<TimeBin/binary, Message/binary>>}.
+    <<TimeBin/binary, Message/binary>>.
 
 process_repl_info({Info}, Acc) ->
     case misc:expect_prop_value(<<"StatsMap">>, Info) of

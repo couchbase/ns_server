@@ -335,26 +335,15 @@ is_bucket_compaction_task(Task) ->
     {type, Type} = lists:keyfind(type, 1, Task),
     Type =:= bucket_compaction.
 
--define(STALE_XDCR_ERROR_SECONDS, ?get_param(xdcr_stale_error_seconds, 7200)).
-
-%% NOTE: also removes datetime component
--spec filter_out_stale_xdcr_errors([{erlang:timestamp(), binary()}], integer()) -> [binary()].
-filter_out_stale_xdcr_errors(Errors, NowGregorian) ->
-    [Msg
-     || {DateTime, Msg} <- Errors,
-        NowGregorian - calendar:datetime_to_gregorian_seconds(DateTime) < ?STALE_XDCR_ERROR_SECONDS].
-
 grab_local_xdcr_replications() ->
-    NowGregorian = calendar:datetime_to_gregorian_seconds(erlang:localtime()),
     try goxdcr_rest:all_local_replication_infos() of
         Infos ->
             [begin
-                 Errors = filter_out_stale_xdcr_errors(LastErrors, NowGregorian),
                  [{type, xdcr},
                   {id, Id},
                   {errors, Errors}
                   | Props]
-             end || {Id, Props, LastErrors} <- Infos]
+             end || {Id, Props, Errors} <- Infos]
     catch T:E:S ->
             ?log_debug("Ignoring exception getting xdcr replication infos~n~p",
                        [{T, E, S}]),
