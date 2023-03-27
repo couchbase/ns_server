@@ -14,9 +14,6 @@ import string
 import random
 
 
-Cluster = namedtuple("Cluster", ['urls', 'processes', 'auth', 'memsize',
-                                 'is_enterprise', 'is_71', 'is_elixir',
-                                 'is_serverless', 'is_dev_preview', 'data_path'])
 ClusterRequirements = namedtuple("ClusterRequirements",
                                  ['num_nodes', 'min_memsize', 'serverless'],
                                  defaults=[1, 256, None])
@@ -42,7 +39,7 @@ def run_testset(testset_class, test_names, cluster):
     executed = 0
     print(f"\nStarting testset: {testset_class.__name__}...")
 
-    testset_instance = testset_class()
+    testset_instance = testset_class(cluster)
 
     _, err = safe_test_function_call(testset_instance, 'setup', [cluster])
 
@@ -100,6 +97,9 @@ def cluster_matches_requirements(cluster, requirements):
 
 
 class BaseTestSet(ABC):
+    def __init__(self, cluster):
+        self.cluster = cluster
+
     @staticmethod
     @abstractmethod
     def requirements():

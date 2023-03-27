@@ -19,7 +19,8 @@ def assert_status_code(response, code):
 
 class SampleBucketTestSet(testlib.BaseTestSet):
 
-    def __init__(self):
+    def __init__(self, cluster):
+        super().__init__(cluster)
         self.addr = None
         self.auth = None
 

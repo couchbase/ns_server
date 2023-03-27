@@ -115,8 +115,9 @@ def task_to_erlang(task):
 
 
 class TasksTestSet(testlib.BaseTestSet, TasksBase):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, cluster):
+        testlib.BaseTestSet.__init__(self, cluster)
+        TasksBase.__init__(self)
         self.addr_diag_eval = "/diag/eval"
 
     def setup(self, cluster):

@@ -14,7 +14,8 @@ import requests
 import testlib
 
 class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
-    def __init__(self):
+    def __init__(self, cluster):
+        super().__init__(cluster)
         self.addr = None
         self.auth = None
 

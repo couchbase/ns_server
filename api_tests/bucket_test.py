@@ -174,7 +174,8 @@ def was_change_made(new_info, changes):
 #  de-tangling auto compaction from buckets
 class BucketTestSetBase(testlib.BaseTestSet):
 
-    def __init__(self):
+    def __init__(self, cluster):
+        super().__init__(cluster)
         self.addr = None
         self.auth = None
         self.memsize = None
