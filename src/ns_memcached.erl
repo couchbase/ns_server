@@ -80,6 +80,7 @@
 -export([active_buckets/0,
          warmed_buckets/0,
          warmed_buckets/1,
+         get_mark_warmed_timeout/0,
          paused_buckets/0,
          get_all_buckets_details/0,
          get_bucket_state/1,
@@ -1042,6 +1043,10 @@ warmed_buckets(Timeout) ->
                                     Timeout)}
             end, active_buckets(), infinity),
     [Bucket || {Bucket, true} <- RVs].
+
+-spec get_mark_warmed_timeout() -> pos_integer().
+get_mark_warmed_timeout() ->
+    ?MARK_WARMED_TIMEOUT.
 
 paused_buckets() ->
     RVs = misc:parallel_map(

@@ -20,7 +20,6 @@
 -define(PREPARE_REBALANCE_TIMEOUT,  ?get_timeout(prepare_rebalance, 30000)).
 -define(PREPARE_FLUSH_TIMEOUT,      ?get_timeout(prepare_flush, 30000)).
 -define(SET_VBUCKET_STATE_TIMEOUT,  ?get_timeout(set_vbucket_state, infinity)).
--define(WARMED_TIMEOUT,             ?get_timeout(warmed, 6000)).
 -define(GET_SRC_DST_REPLICATIONS_TIMEOUT,
         ?get_timeout(get_src_dst_replications, 30000)).
 
@@ -264,7 +263,17 @@ do_query_vbuckets(Bucket, Nodes, ExtraKeys, Options) ->
 
 mark_bucket_warmed(Bucket, Nodes) ->
     process_multicall_rv(
-      multi_call(Bucket, Nodes, mark_warmed, ?WARMED_TIMEOUT)).
+      multi_call(Bucket, Nodes, mark_warmed, warmed_timeout())).
+
+%% This timeout accounts for the timeouts of underlying operations plus
+%% an additional second to ensure we catch any occurrences of the worst
+%% case.
+warmed_timeout() ->
+    Default =
+        ns_memcached:get_mark_warmed_timeout() +
+        chronicle_kv:get_txn_default_timeout() + 1000,
+    %% Allow overriding
+    ?get_timeout(warmed, Default).
 
 apply_new_bucket_config(Bucket, Servers, NewBucketConfig, undefined_timeout) ->
     apply_new_bucket_config(Bucket, Servers, NewBucketConfig,
