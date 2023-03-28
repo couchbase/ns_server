@@ -1693,6 +1693,13 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
     query_tasks = []
     query_port = read_guts(guts, "query_port")
     if query_port:
+        redact_opt = ""
+        if options.redact_level != "none":
+            redact_opt = '?redact=true'
+        cr_url=f'http://{local_url_addr}:{query_port}/admin/completed_requests{redact_opt}'
+        ar_url=f'http://{local_url_addr}:{query_port}/admin/active_requests{redact_opt}'
+        pr_url=f'http://{local_url_addr}:{query_port}/admin/prepareds{redact_opt}'
+
         def make(statement, logfile=DEFAULT_LOG, **kwargs):
             return make_query_statement_task(statement, user="@",
                                              password=memcached_pass,
@@ -1706,19 +1713,24 @@ def make_product_task(guts, initargs_path, memcached_pass, options):
             make("SELECT * FROM system:keyspaces"),
             make("SELECT * FROM system:indexes"),
             make('SELECT * FROM system:functions'),
-            make('SELECT requests.*, '
-                 '"<ud>"||requests.statement||"</ud>" AS statement, '
-                 '"<ud>"||requests.preparedText||"</ud>" AS preparedText, '
-                 '"<ud>"||encode_json(meta().plan)||"</ud>" AS plan, '
-                 '"<ud>"||encode_json(requests.namedArgs)||"</ud>" AS namedArgs, '
-                 '"<ud>"||encode_json(requests.positionalArgs)||"</ud>" AS positionalArgs, '
-                 '"<ud>"||requests.users||"</ud>" AS users '
-                 'FROM system:completed_requests AS requests;',
-                 logfile="completed_requests.json", no_header=True, timeout=60*5),
-            make('SELECT prepareds.*, '
-                 '"<ud>"||prepareds.statement||"</ud>" AS statement '
-                 'FROM system:prepareds AS prepareds;',
-                 logfile="prepareds.json", no_header=True),
+            make_curl_task(name="Query Completed Requests: ",
+                user="@",
+                password=memcached_pass,
+                url=cr_url,
+                log_file="completed_requests.json",
+                no_header=True, timeout=60*5),
+            make_curl_task(name="Query Active Requests: ",
+                user="@",
+                password=memcached_pass,
+                url=ar_url,
+                log_file="active_requests.json",
+                no_header=True, timeout=60*2),
+            make_curl_task(name="Query Prepared Cache: ",
+                user="@",
+                password=memcached_pass,
+                url=pr_url,
+                log_file="prepareds.json",
+                no_header=True, timeout=60*2),
             *make_golang_profile_tasks('Query', memcached_pass, query_port,
                                        'query')
         ]
