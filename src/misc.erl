@@ -1452,8 +1452,16 @@ is_timeout_exit(_) -> false.
 sync_shutdown_many_i_am_trapping_exits(Pids) ->
     {trap_exit, true} = erlang:process_info(self(), trap_exit),
     [(catch erlang:exit(Pid, shutdown)) || Pid <- Pids],
-    BadShutdowns = [{P, RV} || P <- Pids,
-                               (RV = inner_wait_shutdown(P)) =/= shutdown],
+    BadShutdowns =
+        lists:foldl(
+          fun (Pid, Acc) ->
+                  case inner_wait_shutdown(Pid) of
+                      shutdown -> Acc;
+                      normal -> Acc;
+                      RV -> [{Pid, RV} | Acc]
+                  end
+          end, [], Pids),
+
     case BadShutdowns of
         [] -> ok;
         _ ->
