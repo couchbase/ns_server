@@ -169,10 +169,16 @@ def main():
     not_ran = []
     # Remove any testsets that didn't correctly specify requirements
     for discovered_test in discovered_tests:
-        (name, _, _, configuration) = discovered_test
-        if not isinstance(configuration, testlib.ClusterRequirements):
-            reason = configuration
+        (name, _, _, configurations) = discovered_test
+        reason = None
+        if not isinstance(configurations, list):
+            reason = configurations
             not_ran.append((name, reason))
+        for configuration in configurations:
+            if not isinstance(configuration, testlib.ClusterRequirements):
+                reason = configuration
+                not_ran.append((name, reason))
+        if reason is not None:
             discovered_tests.remove(discovered_test)
 
     if len(not_ran) > 0:
@@ -207,18 +213,20 @@ def main():
               "=========================================\n" )
 
     executed = 0
-    for class_name, testset, test_names, configuration in testsets_to_run:
-        cluster = testlib.get_appropriate_cluster(clusters, configuration)
-        testset_name = f"{class_name}/{configuration}"
-        if isinstance(cluster, testlib.Cluster):
-            res = testlib.run_testset(testset, test_names, cluster, testset_name)
-            executed += res[0]
-            testset_errors = res[1]
-            if len(testset_errors) > 0:
-                errors[testset_name] = testset_errors
-        else:
-            reason = cluster
-            not_ran.append((testset_name, reason))
+    for class_name, testset, test_names, configurations in testsets_to_run:
+        for configuration in configurations:
+            testset_name = f"{class_name}/{configuration}"
+            cluster = testlib.get_appropriate_cluster(clusters, configuration)
+            if isinstance(cluster, testlib.Cluster):
+                res = testlib.run_testset(testset, test_names, cluster,
+                                          testset_name)
+                executed += res[0]
+                testset_errors = res[1]
+                if len(testset_errors) > 0:
+                    errors[testset_name] = testset_errors
+            else:
+                reason = cluster
+                not_ran.append((testset_name, reason))
 
     error_num = sum([len(errors[name]) for name in errors])
     errors_str = f"{error_num} error{'s' if error_num != 1 else ''}"
@@ -257,9 +265,9 @@ def find_tests(test_names, discovered_list):
         assert class_name in discovered_dict, \
             f"Testset {class_name} is not found. "\
             f"Available testsets: {list(discovered_dict.keys())}"
-        testset, tests, configuration = discovered_dict[class_name]
+        testset, tests, configurations = discovered_dict[class_name]
         if test_name == '*':
-            results[class_name] = (testset, tests, configuration)
+            results[class_name] = (testset, tests, configurations)
         else:
             assert test_name in tests, \
                 f"Test {test_name} is not found in {class_name}. "\
@@ -269,15 +277,20 @@ def find_tests(test_names, discovered_list):
                 testlist = results[class_name][1]
                 testlist.append(test_name)
                 results[class_name] = (results[class_name][0], testlist,
-                                       configuration)
+                                       configurations)
             else:
-                results[class_name] = (testset, [test_name], configuration)
+                results[class_name] = (testset, [test_name], configurations)
 
     return [(k, results[k][0], results[k][1], results[k][2]) for k in results]
 
 
 def discover_testsets():
     testsets = []
+
+    def add_testset(testset_name, testset_class, configuration):
+        tests = [test for test in dir(testset) if test.endswith('_test')]
+        if len(tests) > 0:
+            testsets.append((testset_name, testset_class, tests, configuration))
 
     for m in sys.modules.keys():
         if not hasattr(sys.modules[m], '__file__'):
@@ -290,14 +303,14 @@ def discover_testsets():
             if testset == testlib.BaseTestSet:
                 continue
             if issubclass(testset, testlib.BaseTestSet):
-                tests = [m for m in dir(testset) if m.endswith('_test')]
-                if len(tests) > 0:
-                    requirements, err = testlib.safe_test_function_call(
-                        testset, 'requirements', [])
-                    if err is None:
-                        testsets.append((name, testset, tests, requirements))
-                    else:
-                        testsets.append((name, testset, tests, err))
+                requirements, err = testlib.safe_test_function_call(
+                    testset, 'requirements', [])
+                if err is not None:
+                    return err
+                if isinstance(requirements, list):
+                    add_testset(name, testset, requirements)
+                else:
+                    add_testset(name, testset, [requirements])
 
     return testsets
 
@@ -331,15 +344,16 @@ def get_existing_cluster(address, start_port, auth, num_nodes):
 
 def get_required_clusters(testsets, auth, start_index):
     clusters = []
-    for (name, testset, tests, requirements) in testsets:
-        satisfied = False
-        for cluster in clusters:
-            if requirements.is_met(cluster):
-                satisfied = True
-        if not satisfied:
-            clusters.append(requirements.create_cluster(auth, start_index,
-                                                        tmp_cluster_dir))
-            start_index += len(clusters[-1].processes)
+    for (name, testset, tests, configurations) in testsets:
+        for configuration in configurations:
+            satisfied = False
+            for cluster in clusters:
+                if configuration.is_met(cluster):
+                    satisfied = True
+            if not satisfied:
+                clusters.append(configuration.create_cluster(auth, start_index,
+                                                             tmp_cluster_dir))
+                start_index += len(clusters[-1].processes)
     return clusters
 
 
