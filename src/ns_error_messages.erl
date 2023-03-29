@@ -145,8 +145,8 @@ engage_cluster_error({engage_cluster_failed,
             list_to_binary(io_lib:format(
               "Node is using IP version 6, and cluster is using IP "
               "version 4: ~s", [DefaultMsg]));
-        _ ->
-            list_to_binary(DefaultMsg)
+        {_, _, _} ->
+            iolist_to_binary(DefaultMsg)
     end.
 
 bad_memory_size_error(Services0, TotalQuota, MaxQuota) ->
