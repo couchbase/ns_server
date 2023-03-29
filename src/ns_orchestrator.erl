@@ -1909,7 +1909,9 @@ handle_hibernation_manager_exit(normal, Bucket, pause_bucket) ->
 handle_hibernation_manager_exit(normal, Bucket, resume_bucket) ->
     ale:debug(?USER_LOGGER, "resume_bucket done for Bucket ~p.", [Bucket]),
     log_hibernation_event(Bucket, resume_bucket_completed),
-    hibernation_utils:update_hibernation_status(completed);
+    hibernation_utils:update_hibernation_status(completed),
+    %% Run janitor right after, so topology information can be refreshed quickly
+    request_janitor_run({bucket, Bucket});
 
 handle_hibernation_manager_exit(shutdown , Bucket, Op) ->
     handle_hibernation_manager_shutdown(shutdown, Bucket, Op);
