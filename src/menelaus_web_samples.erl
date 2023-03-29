@@ -196,20 +196,23 @@ process_post(Req, Samples) ->
                                 X1 ->
                                     {[Msg || {error, Msg} <- X1], 400}
                             end,
-    Responses =
-        case cluster_compat_mode:is_cluster_elixir() of
-            true ->
-                case Code of
-                    202 ->
-                        {[{tasks, ResponsesBody}]};
-                    400 ->
-                        {[{errors, ResponsesBody}]}
-                end;
-            false ->
-                ResponsesBody
-        end,
+    Responses = get_response_json(ResponsesBody, Code),
 
     reply_json(Req, Responses, Code).
+
+-spec get_response_json([binary()] | [{[{atom(), binary()}]}], integer()) ->
+          {[{tasks, [{atom(), binary()}]}] | [{errors, [binary()]}]} | [binary()].
+get_response_json(ResponseBody, StatusCode) ->
+    case {cluster_compat_mode:is_cluster_elixir(), StatusCode} of
+        {true, 202} ->
+            {[{tasks, ResponseBody}]};
+        {true, 400} ->
+            {[{errors, ResponseBody}]};
+        {false, 202} ->
+            [];
+        {false, 400} ->
+            ResponseBody
+    end.
 
 start_loading_samples(Req, Samples) ->
     lists:map(
@@ -425,4 +428,52 @@ check_quota_test__() ->
                         must_bucket_exist = bucket_must_exist}],
     Errs4 = check_quota(Samples4),
     ?assertMatch(ok, Errs4).
+
+get_response_json_modules() ->
+    [cluster_compat_mode].
+
+get_response_json_setup() ->
+    meck:new(get_response_json_modules(), [passthrough]).
+
+get_response_json_teardown() ->
+    meck:unload(get_response_json_modules()).
+
+get_response_json_test_() ->
+    {setup,
+     ?cut(get_response_json_setup()),
+     fun (_) -> get_response_json_teardown() end,
+     {"get_response_json", ?cut(get_response_json_test__())}}.
+
+assert_response_json(Code, ResponseBody, ExpectedJSON) ->
+    ResponseJSON = get_response_json(ResponseBody, Code),
+    ?assertEqual(ExpectedJSON, ResponseJSON),
+    %% Confirm that the response can be converted to json
+    ejson:encode(ResponseJSON).
+
+get_response_json_test__() ->
+    %% Mixed cluster status 202
+    meck:expect(cluster_compat_mode, is_cluster_elixir,
+                fun () -> false end),
+    assert_response_json(202,
+                         {[{taskId, <<"test">>},
+                           {sample, <<"travel-sample">>},
+                           {bucket, <<"bucket">>}]},
+                         []),
+
+    %% Mixed cluster status 400
+    assert_response_json(400, [<<"error">>], [<<"error">>]),
+
+    %% Elixir cluster status 202
+    meck:expect(cluster_compat_mode, is_cluster_elixir,
+                fun () -> true end),
+    assert_response_json(202,
+                         {[{taskId, <<"test">>},
+                           {sample, <<"travel-sample">>},
+                           {bucket, <<"bucket">>}]},
+                         {[{tasks, {[{taskId, <<"test">>},
+                                     {sample, <<"travel-sample">>},
+                                     {bucket, <<"bucket">>}]}}]}),
+
+    %% Elixir cluster status 400
+    assert_response_json(400, [<<"error">>], {[{errors, [<<"error">>]}]}).
 -endif.
