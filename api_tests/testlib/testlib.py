@@ -16,8 +16,9 @@ import random
 from testlib.node import Node
 
 ClusterRequirements = namedtuple("ClusterRequirements",
-                                 ['num_nodes', 'min_memsize', 'serverless'],
-                                 defaults=[1, 256, None])
+                                 ['num_nodes', 'min_memsize', 'serverless',
+                                  'num_connected'],
+                                 defaults=[1, 256, None, None])
 
 def get_appropriate_cluster(available_clusters, testset_class):
     (requirements, err) = \
@@ -94,7 +95,9 @@ def cluster_matches_requirements(cluster, requirements):
     return (requirements.num_nodes == len(cluster.urls) and
             requirements.min_memsize <= cluster.memsize and
             (requirements.serverless is None or
-             requirements.serverless == cluster.is_serverless))
+             requirements.serverless == cluster.is_serverless) and
+            (requirements.num_connected is None or
+             requirements.num_connected == len(cluster.connected_nodes)))
 
 
 class BaseTestSet(ABC):

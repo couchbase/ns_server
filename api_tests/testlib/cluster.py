@@ -19,11 +19,12 @@ import cluster_run_lib
 
 
 class Cluster:
-    def __init__(self, urls, nodes, processes, auth, memsize,
+    def __init__(self, urls, nodes, connected_nodes, processes, auth, memsize,
                  is_enterprise, is_71, is_elixir, is_serverless, is_dev_preview,
                  data_path):
         self.urls = urls
         self.nodes = nodes
+        self.connected_nodes = connected_nodes
         self.processes = processes
         self.auth = auth
         self.memsize = memsize

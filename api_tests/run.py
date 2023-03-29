@@ -43,6 +43,11 @@ Usage: {program_name}
     [--password | -p <admin_password>]
         Password to be used when connecting to an existing cluster.
         Default: asdasd. Only used with --cluster | -c
+    [--num-nodes | -n <num_nodes>]
+        Number of nodes available for an existing cluster. Use when not all
+        nodes are already connected, for tests that need this configuration.
+        When unspecified, num_nodes is assumed to be equal to the number of
+        connected nodes. Only used with --cluster | -c
     [--tests | -t <test_spec>[, <test_spec> ...]]
         <test_spec> := <test_class>[.test_name]
         Start only specified tests
@@ -103,15 +108,17 @@ def setup_safe_exit(clusters, remove_dirs=False):
 
 def main():
     try:
-        optlist, args = getopt.gnu_getopt(sys.argv[1:], "hkc:u:p:t:",
+        optlist, args = getopt.gnu_getopt(sys.argv[1:], "hkc:u:p:n:t:",
                                           ["help", "keep-tmp-dirs", "cluster=",
-                                           "user=", "password=", "tests="])
+                                           "user=", "password=", "num-nodes=",
+                                           "tests="])
     except getopt.GetoptError as err:
         bad_args_exit(str(err))
 
     use_existing_server = False
     username = 'Administrator'
     password = 'asdasd'
+    num_nodes = None
     address = '127.0.0.1'
     start_port = cluster_run_lib.base_api_port
     start_index = 0
@@ -135,6 +142,10 @@ def main():
             if not use_existing_server:
                 bad_args_exit(f"{o} is only supported with --cluster | -c")
             password = a
+        elif o in ('--num-nodes', '-n'):
+            if not use_existing_server:
+                bad_args_exit(f"{o} is only supported with --cluster | -c")
+            num_nodes = int(a)
         elif o in ('--tests', '-t'):
             tests = []
             for tokens in [t.strip().split(".") for t in a.split(",")]:
@@ -166,7 +177,7 @@ def main():
     if use_existing_server:
         # Get provided cluster
         clusters = [get_existing_cluster(address, start_port,
-                                         (username, password))]
+                                         (username, password), num_nodes)]
         print(f"Discovered cluster: {clusters[0]}")
     else:
         remove_temp_cluster_directories()
@@ -272,7 +283,8 @@ def discover_testsets():
 
     return testsets
 
-def get_existing_cluster(address, start_port, auth):
+
+def get_existing_cluster(address, start_port, auth, num_nodes):
     url = f"http://{address}:{start_port}"
 
     # Check that node is online
@@ -287,11 +299,15 @@ def get_existing_cluster(address, start_port, auth):
                    f"({response.status_code})\n"
                    f"{response.text}")
     # Retrieve the number of nodes
-    num_nodes = len(response.json().get("nodes", []))
-    if num_nodes == 0:
+    nodes_found = len(response.json().get("nodes", []))
+    if nodes_found == 0:
         error_exit(f"Failed to retrieve nodes from {pools_default}")
 
-    return get_cluster(address, start_port, auth, [], num_nodes)
+    if num_nodes is None:
+        # Assume that there are no nodes that are not already connected
+        num_nodes = nodes_found
+
+    return get_cluster(address, start_port, auth, [], num_nodes, nodes_found)
 
 
 def get_required_clusters(testsets, auth, start_index):
@@ -326,8 +342,15 @@ def create_cluster_satisfying(requirements, auth, start_index):
     port = cluster_run_lib.base_api_port + start_index
     # We might need a rebalance for multiple nodes
     rebalance = requirements.num_nodes > 1
+
+    # Check whether the num_connected has been specified, if not, then connect
+    # all nodes.
+    num_connected = requirements.num_connected
+    if requirements.num_connected is None:
+        num_connected = requirements.num_nodes
     try:
-        error = cluster_run_lib.connect(num_nodes=requirements.num_nodes,
+        error = cluster_run_lib.connect(
+                                num_nodes=num_connected,
                                 start_index=start_index,
                                 memsize=requirements.min_memsize,
                                 do_rebalance=rebalance,
@@ -338,32 +361,40 @@ def create_cluster_satisfying(requirements, auth, start_index):
         bad_args_exit(f"Failed to connect node(s). {e}\n"
                    f"Perhaps a node has already been started at "
                    f"{address}:{port}?\n")
-    return get_cluster(address, port, auth, processes, requirements.num_nodes)
+    return get_cluster(address, port, auth, processes, requirements.num_nodes,
+                       num_connected)
 
 
-def get_cluster(address, start_port, auth, processes, num_nodes):
+def get_cluster(address, start_port, auth, processes, num_nodes, num_connected):
     urls = []
     nodes = []
+    connected_nodes = []
     for i in range(num_nodes):
         node = testlib.Node(host=address,
                             port=start_port + i,
                             auth=auth)
-        # Check that node is online
-        pools_default = f"{node.url}/pools/default"
-        try:
-            response = requests.get(pools_default, auth=auth)
-        except requests.exceptions.ConnectionError as e:
-            error_exit(f"Failed to connect to {pools_default}\n"
-                       f"{e}")
-        if response.status_code != 200:
-            error_exit(f"Failed to connect to {pools_default} "
-                       f"({response.status_code})\n"
-                       f"{response.text}")
+        # Check that node is connected to the cluster.
+        if i < num_connected:
+            pools_default = f"{node.url}/pools/default"
+            try:
+                response = requests.get(pools_default, auth=auth)
+            except requests.exceptions.ConnectionError as e:
+                error_exit(f"Failed to connect to {pools_default}\n"
+                           f"{e}")
+            if response.status_code != 200:
+                error_exit(f"Failed to connect to {pools_default} "
+                           f"({response.status_code})\n"
+                           f"{response.text}")
+            connected_nodes.append(node)
         urls.append(node.url)
         nodes.append(node)
     url = urls[0]
 
-    memsize = response.json()["memoryQuota"]
+    try:
+        memsize = response.json()["memoryQuota"]
+    except NameError as e:
+        error_exit(f"Response has not been defined, perhaps no nodes haves "
+                   f"connected. {e}")
     is_enterprise = requests.post(f"{url}/diag/eval",
                                   data="cluster_compat_mode:is_enterprise().",
                                   auth=auth).text == "true"
@@ -386,6 +417,7 @@ def get_cluster(address, start_port, auth, processes, num_nodes):
 
     return testlib.Cluster(urls=urls,
                            nodes=nodes,
+                           connected_nodes=connected_nodes,
                            processes=processes,
                            auth=auth,
                            memsize=memsize,
