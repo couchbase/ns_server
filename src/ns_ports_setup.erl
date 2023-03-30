@@ -660,7 +660,8 @@ goport_args(cbas, Config, Cmd, NodeUUID) ->
          "-tmpDir=" ++ path_config:component_path(tmp),
          "-logRotationSize=" ++ integer_to_list(RotSize),
          "-logRotationNumFiles=" ++ integer_to_list(RotNumFiles),
-         "-logLevel=" ++ atom_to_list(LogLevel)
+         "-logLevel=" ++ atom_to_list(LogLevel),
+         "-deploymentModel=" ++ config_profile:name()
         ] ++
         ["-dataDir=" ++ Dir || Dir <- CBASDirs] ++
         build_afamily_requirement("-") ++
