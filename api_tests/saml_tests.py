@@ -254,17 +254,15 @@ class SamlTests(testlib.BaseTestSet):
 
 @contextmanager
 def saml_configured(binding, verify_authn_signature, cluster):
-    set_sso_options(binding, verify_authn_signature, cluster)
-    IDP = server.Server(idp_config(verify_authn_signature, cluster))
-    valid_for = 1 # hours
-    metadata = create_metadata_string(None, config=IDP.config, valid=valid_for,
-                                      sign=True)
+    metadata = generate_mock_metadata(verify_authn_signature, cluster)
     with open(metadataFile, 'wb') as f:
         f.write(metadata.encode("utf-8"))
     mock_server_process = Process(target=start_mock_server)
     mock_server_process.start()
     try:
         wait_mock_server(f'http://{mock_server_host}:{mock_server_port}/ping', 150)
+        set_sso_options(binding, verify_authn_signature, cluster)
+        IDP = server.Server(idp_config(verify_authn_signature, cluster))
         yield IDP
     finally:
         mock_server_process.terminate()
@@ -273,6 +271,17 @@ def saml_configured(binding, verify_authn_signature, cluster):
         if os.path.exists(metadataFile):
             os.remove(metadataFile)
         testlib.delete_succ(cluster, '/saml/settings')
+
+
+def generate_mock_metadata(*args):
+    cfg = idp_config(*args)
+    cfg['metadata'] = {} ## making sure it will not try connecting to ns_server
+                         ## when server below is being created, because saml
+                         ## configuration in ns_server is not created yet
+    IDP = server.Server(cfg)
+    valid_for = 1 # hours
+    return create_metadata_string(None, config=IDP.config, valid=valid_for,
+                                  sign=True)
 
 
 def start_mock_server():
@@ -329,6 +338,7 @@ def set_sso_options(binding, sign_requests, cluster):
     metadataURL = f'http://{mock_server_host}:{mock_server_port}{mock_metadata_endpoint}'
 
     settings = {'enabled': 'true',
+                'idpMetadataOrigin': "http",
                 'idpMetadataURL': metadataURL,
                 'idpSignsMetadata': True,
                 'idpMetadataRefreshIntervalS': 1,

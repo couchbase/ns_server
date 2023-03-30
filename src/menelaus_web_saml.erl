@@ -20,7 +20,8 @@
          handle_post_saml_logout/1,
          handle_get_settings/2,
          handle_put_settings/1,
-         handle_delete_settings/1]).
+         handle_delete_settings/1,
+         defaults/0]).
 
 -include("ns_common.hrl").
 -include("rbac.hrl").
@@ -48,30 +49,75 @@ handle_put_settings(Req) ->
       end, [], params(), fun type_spec/1, [], defaults(), Req).
 
 set_sso_options(Props) ->
+    PropsWithDefaults = misc:update_proplist(defaults(), Props),
+    {PropsWithoutUuid, ParsedMetadata} =
+        case verify_metadata_settings(Props, PropsWithDefaults) of
+            {ok, {UpdatedProps, Metadata}} -> {UpdatedProps, Metadata};
+            {error, Msg} -> menelaus_util:global_error_exception(
+                              400, iolist_to_binary(Msg))
+        end,
+    Fingerprints = cb_saml:extract_fingerprints(ParsedMetadata,
+                                                PropsWithDefaults),
     NewUUID = misc:uuid_v4(),
+    PropsWithUuid = misc:update_proplist(PropsWithoutUuid, [{uuid, NewUUID}]),
     Res =
         ns_config:run_txn(
           fun (OldCfg, SetFun) ->
               OldProps = ns_config:search(OldCfg, saml_settings, []),
               OldProps2 = proplists:delete(uuid, OldProps),
-              case lists:sort(Props) == lists:sort(OldProps2) of
+              case lists:sort(PropsWithoutUuid) == lists:sort(OldProps2) of
                   true -> {abort, no_changes};
                   false ->
-                      PropsWithUuid = misc:update_proplist(
-                                           Props, [{uuid, NewUUID}]),
-                      {commit, SetFun(saml_settings, PropsWithUuid, OldCfg)}
+                      {commit, functools:chain(
+                                 OldCfg,
+                                 [SetFun(saml_sign_fingerprints,
+                                         Fingerprints, _),
+                                  SetFun(saml_settings, PropsWithUuid, _)])}
               end
           end),
     case Res of
         {commit, _} ->
-            invalidate_cache();
+            PropsWithUuidWithDefaults = misc:update_proplist(defaults(),
+                                                             PropsWithUuid),
+            cb_saml:cache_idp_metadata(ParsedMetadata,
+                                       PropsWithUuidWithDefaults),
+            ok;
         {abort, no_changes} ->
             ok
     end.
 
+verify_metadata_settings(PropsToSet, PropsWithDefaults) ->
+    case proplists:get_value(idp_metadata_origin, PropsWithDefaults) of
+        upload ->
+            {zip, MetaZipped} = proplists:get_value(idp_metadata,
+                                                    PropsWithDefaults),
+            MetaBin = zlib:unzip(MetaZipped),
+            Parsed = cb_saml:try_parse_idp_metadata(MetaBin, false),
+            {ok, {PropsToSet, Parsed}};
+        Origin when Origin == http_one_time; Origin == http ->
+            URL = proplists:get_value(idp_metadata_url, PropsWithDefaults),
+            {_, FPs} = proplists:get_value(trusted_fingerprints,
+                                           PropsWithDefaults),
+            case cb_saml:load_idp_metadata(URL, PropsWithDefaults,
+                                           FPs) of
+                {ok, {MetaStr, Parsed}} when Origin == http_one_time ->
+                    %% We will never update it automatically, so
+                    %% save it in esaml settings in ns_config
+                    MetaZipped = {zip, zlib:zip(MetaStr)},
+                    UpdatedProps = misc:update_proplist(
+                                     PropsToSet,
+                                     [{idp_metadata, MetaZipped}]),
+                    {ok, {UpdatedProps, Parsed}};
+                {ok, {_MetaStr, Parsed}} when Origin == http ->
+                    {ok, {PropsToSet, Parsed}};
+                {error, Reason} ->
+                    {error, lists:flatten(cb_saml:format_error(Reason))}
+            end
+    end.
+
 handle_delete_settings(Req) ->
     ns_config:delete(saml_settings),
-    invalidate_cache(),
+    cb_saml:cleanup_metadata(),
     menelaus_util:reply(Req, 200).
 
 handle_auth(Req) ->
@@ -429,12 +475,11 @@ build_sp_metadata(Opts, Req) ->
                  trusted_fingerprints = FPs}.
 
 try_get_idp_metadata(Opts) ->
-    URL = proplists:get_value(idp_metadata_url, Opts),
-    case cb_saml:get_idp_metadata(URL, Opts) of
+    case cb_saml:get_idp_metadata(Opts) of
         {ok, Meta} -> Meta;
         {error, Reason} ->
-            Msg = io_lib:format("Failed to get IDP metadata from ~s. "
-                                "Reason: ~p", [URL, Reason]),
+            Msg = io_lib:format("Failed to get IDP metadata. "
+                                "Reason: ~p", [Reason]),
             menelaus_util:web_exception(500, iolist_to_binary(Msg))
     end.
 
@@ -572,10 +617,23 @@ params() ->
       #{cfg_key => enabled,
         type => bool,
         mandatory => true}},
+     {"idpMetadataOrigin",
+      #{cfg_key => idp_metadata_origin,
+        type => {one_of, existing_atom, [upload, http_one_time, http]}}},
+     {"idpMetadata",
+      #{cfg_key => idp_metadata,
+        type => saml_metadata,
+        mandatory => fun (#{enabled := true,
+                            idp_metadata_origin := upload}) -> true;
+                         (_) -> false
+                     end}},
      {"idpMetadataURL",
       #{cfg_key => idp_metadata_url,
         type => {url, [<<"http">>, <<"https">>]},
-        mandatory => fun (#{enabled := Enabled}) -> Enabled end}},
+        mandatory => fun (#{enabled := true,
+                            idp_metadata_origin := O}) -> O =/= upload;
+                         (_) -> false
+                     end}},
      {"idpMetadataHttpTimeoutMs",
       #{cfg_key => md_http_timeout,
         type => pos_int}},
@@ -743,11 +801,30 @@ defaults() ->
      {groups_attribute, ""},
      {groups_attribute_sep, " ,"},
      {roles_attribute, ""},
-     {roles_attribute_sep, " ,"}].
+     {roles_attribute_sep, " ,"},
+     {idp_metadata, undefined},
+     {idp_metadata_origin, http}].
 
+type_spec(saml_metadata) ->
+    #{validators => [string, fun validate_saml_metadata/2],
+      formatter => fun (undefined) -> {value, <<"">>};
+                       ({zip, Zip}) -> {value, zlib:unzip(Zip)}
+                   end};
 type_spec(fingerprint_list) ->
     #{validators => [fun validate_fingerprint_list/2],
       formatter => fun ({Str, _}) -> {value, Str} end}.
+
+validate_saml_metadata(Name, State) ->
+    validator:validate(
+      fun ("") -> {value, undefined};
+          (Str) ->
+              try cb_saml:try_parse_idp_metadata(list_to_binary(Str), false) of
+                  _ -> {value, {zip, zlib:zip(Str)}}
+              catch
+                  error:Reason ->
+                      {error, lists:flatten(cb_saml:format_error(Reason))}
+              end
+      end, Name, State).
 
 validate_fingerprint_list(Name, State) ->
     validator:validate(
@@ -795,9 +872,6 @@ parse_fingerprint(BinStr) when is_binary(BinStr) ->
             Msg = io_lib:format("invalid fingerprint: ~s", [TrimmedStr]),
             {error, lists:flatten(Msg)}
     end.
-
-invalidate_cache() ->
-    ns_config:delete(saml_sign_fingerprints).
 
 get_all_attrs(AttrName, Attrs) ->
     case proplists:get_value(AttrName, Attrs) of
