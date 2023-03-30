@@ -461,8 +461,8 @@
         "type": "counter",
         "help": "Number of times lease period start time estimate is in the future",
         "added": "7.0.0",
-        "deprecated": "7.5.0",
-        "notes": "Replaced with cm_lease_acquirer_prev_acquire_estimate_in_future_total",
+        "deprecated": "7.2.0",
+        "notes": "Renamed in 7.5.0 to cm_lease_acquirer_prev_acquire_estimate_in_future_total",
         "stability": "internal",
         "labels": [
             {
@@ -487,8 +487,8 @@
         "type": "histogram",
         "help": "Histogram of lease acquirer estimates",
         "added": "7.0.0",
-        "deprecated": "7.5.0",
-        "notes": "Replaced with cm_lease_acquirer_prev_acquire_estimate_minus_start_time_seconds",
+        "deprecated": "7.2.0",
+        "notes": "Renamed in 7.5.0 to cm_lease_acquirer_prev_acquire_estimate_minus_start_time_seconds",
         "stability": "internal",
         "labels": [
             {
@@ -513,8 +513,8 @@
         "type": "histogram",
         "help": "Histogram of lease acquirer estimates",
         "added": "7.0.0",
-        "deprecated": "7.5.0",
-        "notes": "Replaced with cm_lease_acquirer_start_time_minus_prev_acquire_estimate_seconds",
+        "deprecated": "7.2.0",
+        "notes": "Renamed in 7.5.0 to cm_lease_acquirer_start_time_minus_prev_acquire_estimate_seconds",
         "stability": "internal",
         "labels": [
             {
@@ -539,8 +539,8 @@
         "type": "histogram",
         "help": "Histogram of lease inflight seconds",
         "added": "7.0.0",
-        "deprecated": "7.5.0",
-        "notes": "Replaced with cm_lease_acquirer_time_inflight_seconds",
+        "deprecated": "7.2.0",
+        "notes": "Renamed in 7.5.0 to cm_lease_acquirer_time_inflight_seconds",
         "stability": "internal",
         "labels": [
             {
@@ -565,8 +565,8 @@
         "type": "counter",
         "help": "Number of times previous estimate was used",
         "added": "7.0.0",
-        "deprecated": "7.5.0",
-        "notes": "replaced with cm_lease_acquirer_used_prev_acquire_estimate_total",
+        "deprecated": "7.2.0",
+        "notes": "Renamed in 7.5.0 to cm_lease_acquirer_used_prev_acquire_estimate_total",
         "stability": "internal",
         "labels": [
             {
@@ -591,8 +591,8 @@
         "type": "counter",
         "help": "Number of times start estimate was used",
         "added": "7.0.0",
-        "deprecated": "7.5.0",
-        "notes": "Replaced with cm_lease_acquirer_used_start_estimate_total",
+        "deprecated": "7.2.0",
+        "notes": "Renamed in 7.5.0 to cm_lease_acquirer_used_start_estimate_total",
         "stability": "internal",
         "labels": [
             {
@@ -616,7 +616,7 @@
     "cm_logs_total": {
         "type": "counter",
         "help": "Total number of logs logged",
-        "added": "7.5.0",
+        "added": "7.1.0",
         "stability": "committed",
         "labels": [
             {
