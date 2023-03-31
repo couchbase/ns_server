@@ -57,7 +57,10 @@
          settings_web_post_validators/0,
          validate_allowed_hosts_list/1,
          get_tls_version/1,
-         parse_allowed_host/1]).
+         parse_allowed_host/1,
+
+         get_throttle_attributes/0,
+         get_storage_attributes/0]).
 
 -import(menelaus_util,
         [parse_validate_number/3,
@@ -448,21 +451,13 @@ is_allowed_on_cluster([argon2id_mem]) ->
     cluster_compat_mode:is_cluster_elixir();
 is_allowed_on_cluster([pbkdf2_sha512_iterations]) ->
     cluster_compat_mode:is_cluster_elixir();
-is_allowed_on_cluster([{serverless, _}]) ->
+is_allowed_on_cluster([{serverless, bucket_weight_limit}]) ->
     bucket_placer:is_enabled();
-is_allowed_on_cluster([kv_storage_limit]) ->
+is_allowed_on_cluster([{serverless, tenant_limit}]) ->
+    bucket_placer:is_enabled();
+is_allowed_on_cluster([{serverless, storage_limit, _}]) ->
     config_profile:get_bool(enable_storage_limits);
-is_allowed_on_cluster([index_storage_limit]) ->
-    config_profile:get_bool(enable_storage_limits);
-is_allowed_on_cluster([fts_storage_limit]) ->
-    config_profile:get_bool(enable_storage_limits);
-is_allowed_on_cluster([kv_throttle_limit]) ->
-    config_profile:get_bool(enable_throttle_limits);
-is_allowed_on_cluster([index_throttle_limit]) ->
-    config_profile:get_bool(enable_throttle_limits);
-is_allowed_on_cluster([fts_throttle_limit]) ->
-    config_profile:get_bool(enable_throttle_limits);
-is_allowed_on_cluster([n1ql_throttle_limit]) ->
+is_allowed_on_cluster([{serverless, throttle_limit, _}]) ->
     config_profile:get_bool(enable_throttle_limits);
 is_allowed_on_cluster(_) ->
     true.
@@ -513,6 +508,31 @@ ee_only_settings([{security_settings, _} | _]) -> true;
 ee_only_settings([allow_non_local_ca_upload]) -> true;
 ee_only_settings([secure_headers]) -> true;
 ee_only_settings(_) -> false.
+
+get_storage_attributes() ->
+    [{dataStorageLimit, {serverless, storage_limit, kv},
+      ?DEFAULT_KV_STORAGE_LIMIT, ?MIN_KV_STORAGE_LIMIT,
+      ?MAX_KV_STORAGE_LIMIT},
+     {indexStorageLimit, {serverless, storage_limit, index},
+      ?DEFAULT_INDEX_STORAGE_LIMIT, ?MIN_INDEX_STORAGE_LIMIT,
+      ?MAX_INDEX_STORAGE_LIMIT},
+     {searchStorageLimit, {serverless, storage_limit, fts},
+      ?DEFAULT_FTS_STORAGE_LIMIT, ?MIN_FTS_STORAGE_LIMIT,
+      ?MAX_FTS_STORAGE_LIMIT}].
+
+get_throttle_attributes() ->
+    [{dataThrottleLimit,
+      {serverless, throttle_limit, kv},
+      ?DEFAULT_KV_THROTTLE_LIMIT, ?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT},
+     {indexThrottleLimit,
+      {serverless, throttle_limit, index},
+      ?DEFAULT_INDEX_THROTTLE_LIMIT, ?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT},
+     {searchThrottleLimit,
+      {serverless, throttle_limit, fts},
+      ?DEFAULT_FTS_THROTTLE_LIMIT, ?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT},
+     {queryThrottleLimit,
+      {serverless, throttle_limit, n1ql},
+      ?DEFAULT_N1QL_THROTTLE_LIMIT, ?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT}].
 
 conf(security) ->
     [{disable_ui_over_http, disableUIOverHttp, false, fun get_bool/1},
@@ -576,20 +596,6 @@ conf(internal) ->
       <<>>, get_number(1, 1024)},
      {max_bucket_count, maxBucketCount, ns_bucket:get_max_buckets(),
       get_number(1, 8192)},
-     {kv_storage_limit, dataStorageLimit, ?DEFAULT_KV_STORAGE_LIMIT,
-      get_number(?MIN_KV_STORAGE_LIMIT, ?MAX_KV_STORAGE_LIMIT)},
-     {index_storage_limit, indexStorageLimit, ?DEFAULT_INDEX_STORAGE_LIMIT,
-      get_number(?MIN_INDEX_STORAGE_LIMIT, ?MAX_INDEX_STORAGE_LIMIT)},
-     {fts_storage_limit, searchStorageLimit, ?DEFAULT_FTS_STORAGE_LIMIT,
-      get_number(?MIN_FTS_STORAGE_LIMIT, ?MAX_FTS_STORAGE_LIMIT)},
-     {kv_throttle_limit, dataThrottleLimit, ?DEFAULT_KV_THROTTLE_LIMIT,
-      get_number(?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT)},
-     {index_throttle_limit, indexThrottleLimit, ?DEFAULT_INDEX_THROTTLE_LIMIT,
-      get_number(?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT)},
-     {fts_throttle_limit, searchThrottleLimit, ?DEFAULT_FTS_THROTTLE_LIMIT,
-      get_number(?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT)},
-     {n1ql_throttle_limit, queryThrottleLimit, ?DEFAULT_N1QL_THROTTLE_LIMIT,
-      get_number(?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT)},
      {magma_min_memory_quota, magmaMinMemoryQuota, 1024,
       get_number(100, 1024, 1024)},
      {event_logs_limit, eventLogsLimit, 10000,
@@ -598,7 +604,12 @@ conf(internal) ->
      {{auto_failover_disabled, index}, indexAutoFailoverDisabled, true,
       fun get_bool/1},
      {{cert, use_sha1}, certUseSha1, false, fun get_bool/1},
-     {allow_http_node_addition, httpNodeAddition, false, fun get_bool/1}];
+     {allow_http_node_addition, httpNodeAddition, false, fun get_bool/1}] ++
+        [{Key, Param, Default, get_number(Min, Max)} ||
+            {Param, Key, Default, Min, Max} <- get_storage_attributes()] ++
+        [{Key, Param, Default, get_number(Min, Max)} ||
+            {Param, Key, Default, Min, Max} <- get_throttle_attributes()];
+
 conf(developer_preview) ->
     [{developer_preview_enabled, enabled, false, fun only_true/1}];
 conf(failover) ->
@@ -607,7 +618,11 @@ conf(failover) ->
 conf(serverless) ->
     [{{serverless, bucket_weight_limit}, bucketWeightLimit, 10000,
       get_number(1, 100000)},
-     {{serverless, tenant_limit}, tenantLimit, 25, get_number(1, 10000)}].
+     {{serverless, tenant_limit}, tenantLimit, 25, get_number(1, 10000)}] ++
+        [{Key, Param, Default, get_number(Min, Max)} ||
+            {Param, Key, Default, Min, Max} <- get_storage_attributes()] ++
+        [{Key, Param, Default, get_number(Min, Max)} ||
+            {Param, Key, Default, Min, Max} <- get_throttle_attributes()].
 
 build_kvs(Type) ->
     build_kvs(conf(Type), ns_config:get(), fun (_, _) -> true end).
