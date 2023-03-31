@@ -1299,7 +1299,7 @@ handle_change_external_listeners(Action, Req) ->
                                      node(), Opts) of
                                   {ok, _} ->
                                       menelaus_util:reply(Req, 200);
-                                  {error, _, Msg} ->
+                                  {error, _, {_, Msg}} ->
                                       menelaus_util:reply_global_error(Req, Msg)
                               end;
                           disable ->

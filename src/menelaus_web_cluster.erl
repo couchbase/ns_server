@@ -554,6 +554,11 @@ call_add_node(OtherScheme, OtherHost, OtherPort, HiddenAuth, AFamily,
                                 "certificate when client certificate "
                                 "authentication is set to mandatory. ~s", [M]),
             {error, rest_error, iolist_to_binary(Msg)};
+        {error, rest_error, M,
+            {error, {{tls_alert, {unknown_ca, _}} = E, _}}} ->
+            {error, rest_error, ns_error_messages:engage_cluster_error(
+                                  {engage_cluster_failed,
+                                   {"new node", E, M, node(), {}}})};
         {error, rest_error, M, _} ->
             {error, rest_error, M};
         Other -> Other

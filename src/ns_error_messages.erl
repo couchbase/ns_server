@@ -130,10 +130,18 @@ decode_json_response_error({error, Reason} = E,
 engage_cluster_error({json, undefined}) ->
     <<"Cluster join prepare call returned invalid json.">>;
 engage_cluster_error({json, {unexpected_json, _Where, Field}} = _Exc) ->
-    list_to_binary(io_lib:format("Cluster join prepare call returned invalid json. "
-                                 "Invalid field is ~s.", [Field]));
+    list_to_binary(io_lib:format("Cluster join prepare call returned invalid "
+                                 "json. Invalid field is ~s.", [Field]));
 engage_cluster_error({engage_cluster_failed,
-                      {AFamily, Hostname, DefaultMsg}}) ->
+                      {Source, {tls_alert, {unknown_ca, _Str}}, DefaultMsg,
+                       Hostname, _}}) ->
+    list_to_binary(io_lib:format("~s. Please review the CAs "
+                                 "available on the ~s (~s) and "
+                                 "add a new one if required",
+                                 [DefaultMsg, Source, Hostname]));
+engage_cluster_error({engage_cluster_failed,
+                      {_Source, Reason, DefaultMsg, Hostname, {AFamily}}})
+    when Reason =:= {AFamily, nxdomain}; Reason =:= nxdomain ->
     case {misc:is_raw_ipv4(Hostname),
           misc:is_raw_ipv6(Hostname),
           AFamily} of
@@ -147,7 +155,10 @@ engage_cluster_error({engage_cluster_failed,
               "version 4: ~s", [DefaultMsg]));
         {_, _, _} ->
             iolist_to_binary(DefaultMsg)
-    end.
+    end;
+engage_cluster_error({engage_cluster_failed,
+                      {_Source, _Reason, DefaultMsg, _OtherParams}}) ->
+    iolist_to_binary(DefaultMsg).
 
 bad_memory_size_error(Services0, TotalQuota, MaxQuota) ->
     Services1 = lists:sort(Services0),

@@ -264,10 +264,11 @@ apply_net_config(NodeKVList) ->
                         ns_ssl_services_setup:sync(),
                     ok;
                 {error, {node_resolution_failed,
-                         {AddrFamily, Hostname, _Reason}} = ErrorTerm} ->
+                         {AddrFamily, Hostname, Reason}} = ErrorTerm} ->
                     M1 = netconfig_updater:format_error(ErrorTerm),
                     M2 = ns_error_messages:engage_cluster_error(
-                           {engage_cluster_failed, {AddrFamily, Hostname, M1}}),
+                           {engage_cluster_failed, {"cluster", Reason, M1,
+                                                    Hostname, {AddrFamily}}}),
                     {error, M2};
                 {error, ErrorTerm} ->
                     Msg = iolist_to_binary(
@@ -853,8 +854,10 @@ do_add_node_allowed(Scheme, RemoteAddr, RestPort, HiddenAuth, GroupUUID, Service
                     Msg -> Msg
                 end,
             M2 = ns_error_messages:engage_cluster_error({engage_cluster_failed,
-                                                         {AFamily, RemoteAddr,
-                                                          M1}}),
+                                                         {"cluster", Reason,
+                                                          M1, RemoteAddr,
+                                                          {AFamily}
+                                                         }}),
             URL = menelaus_rest:rest_url(RemoteAddr, RestPort, "", Scheme),
             ReasonStr = io_lib:format("Failed to connect to ~s. ~s",
                                       [URL, M2]),
@@ -927,6 +930,11 @@ post_json_to_joinee(Target, HiddenAuth, Options, Stuff) ->
                                 "certificate when client certificate "
                                 "authentication is set to mandatory. ~s", [M]),
             {error, iolist_to_binary(Msg)};
+        {error, rest_error, M,
+         {error, {{tls_alert, {unknown_ca, _}} = E, _}}} ->
+            {error, ns_error_messages:engage_cluster_error(
+                      {engage_cluster_failed,
+                       {"cluster", E, M, node(), {}}})};
         {error, _, X, _} ->
             {error, X};
         Other ->
@@ -1105,13 +1113,16 @@ verify_otp_connectivity(OtpNode, Options) ->
                 {ok, IP} -> {ok, IP};
                 {error, Reason} ->
                     {error, connect_node,
-                     ns_error_messages:verify_otp_connectivity_connection_error(
-                       Reason, OtpNode, Host, Port)}
+                     {Reason,
+                      ns_error_messages:verify_otp_connectivity_connection_error(
+                        Reason, OtpNode, Host, Port)}}
             end;
         Error ->
             {error, connect_node,
-             ns_error_messages:verify_otp_connectivity_port_error(OtpNode, Host,
-                                                                  Error)}
+             {Error,
+              ns_error_messages:verify_otp_connectivity_port_error(OtpNode,
+                                                                   Host,
+                                                                   Error)}}
     end.
 
 check_otp_tls_connectivity(Host, Port, AFamily, Options) ->
@@ -1212,7 +1223,11 @@ do_add_node_engaged(NodeKVList, HiddenAuth, GroupUUID, Services, Scheme) ->
                         _, RequestTarget, OtpNode, HiddenAuth, Services));
                 Error -> Error
             end;
-        X -> X
+        {error, connect_node, {Err, Msg}} ->
+            {error, connect_node,
+             ns_error_messages:engage_cluster_error({engage_cluster_failed,
+                                                     {"cluster", Err, Msg,
+                                                      node(), {}}})}
     end.
 
 check_can_add_node(NodeKVList) ->
@@ -1452,7 +1467,11 @@ do_engage_cluster_inner(NodeKVList, Services) ->
                 Error ->
                     Error
             end;
-        X -> X
+        {error, connect_node, {Err, Msg}} ->
+            {error, connect_node,
+             ns_error_messages:engage_cluster_error({engage_cluster_failed,
+                                                     {"new node", Err, Msg,
+                                                      node(), {}}})}
     end.
 
 do_engage_cluster_inner_check_address(_Address, false) ->

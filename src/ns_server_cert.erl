@@ -854,7 +854,7 @@ validate_otp_certs(client_cert, ChainPem, PKeyPem, PassphraseFun) ->
             Opts = [{cert, ChainDer}, {key, {KeyType, KeyDer}}],
             case ns_cluster:verify_otp_connectivity(Node, Opts) of
                 {ok, _} -> ok;
-                {error, _, Msg} ->
+                {error, _, {_, Msg}} ->
                     ?log_error(
                       "Could not establish test connection to "
                       "otp server with reason: ~p", [Msg]),
@@ -873,7 +873,7 @@ validate_otp_certs(node_cert, ChainPem, PKeyPem, PassphraseFun) ->
                   Node = node(),
                   case ns_cluster:verify_otp_connectivity(Node, Opts) of
                       {ok, _} -> ok;
-                      {error, _, Msg} ->
+                      {error, _, {_Error, Msg}} ->
                           ?log_error(
                             "Could not establish test connection to "
                             "test otp server at port ~p with reason: ~p",
