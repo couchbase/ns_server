@@ -459,20 +459,6 @@
         "added": "7.0.0",
         "stability": "internal"
     },
-    "cm_lease_aquirer_prev_acquire_estimate_in_future_total": {
-        "type": "counter",
-        "help": "Number of times lease period start time estimate is in the future",
-        "added": "7.0.0",
-        "deprecated": "7.2.0",
-        "notes": "Renamed in 7.5.0 to cm_lease_acquirer_prev_acquire_estimate_in_future_total",
-        "stability": "internal",
-        "labels": [
-            {
-                "name": "node",
-                "help": "Node on which the stat occurred"
-            }
-        ]
-    },
     "cm_lease_acquirer_prev_acquire_estimate_in_future_total": {
         "type": "counter",
         "help": "Number of times lease period start time estimate is in the future",
@@ -485,38 +471,10 @@
             }
         ]
     },
-    "cm_lease_aquirer_prev_acquire_estimate_minus_start_time_seconds": {
-        "type": "histogram",
-        "help": "Histogram of lease acquirer estimates",
-        "added": "7.0.0",
-        "deprecated": "7.2.0",
-        "notes": "Renamed in 7.5.0 to cm_lease_acquirer_prev_acquire_estimate_minus_start_time_seconds",
-        "stability": "internal",
-        "labels": [
-            {
-                "name": "node",
-                "help": "Node on which the histogram was measured"
-            }
-        ]
-    },
     "cm_lease_acquirer_prev_acquire_estimate_minus_start_time_seconds": {
         "type": "histogram",
         "help": "Histogram of lease acquirer estimates",
         "added": "7.5.0",
-        "stability": "internal",
-        "labels": [
-            {
-                "name": "node",
-                "help": "Node on which the histogram was measured"
-            }
-        ]
-    },
-    "cm_lease_aquirer_start_time_minus_prev_acquire_estimate_seconds": {
-        "type": "histogram",
-        "help": "Histogram of lease acquirer estimates",
-        "added": "7.0.0",
-        "deprecated": "7.2.0",
-        "notes": "Renamed in 7.5.0 to cm_lease_acquirer_start_time_minus_prev_acquire_estimate_seconds",
         "stability": "internal",
         "labels": [
             {
@@ -537,20 +495,6 @@
             }
         ]
     },
-    "cm_lease_aquirer_time_inflight_seconds": {
-        "type": "histogram",
-        "help": "Histogram of lease inflight seconds",
-        "added": "7.0.0",
-        "deprecated": "7.2.0",
-        "notes": "Renamed in 7.5.0 to cm_lease_acquirer_time_inflight_seconds",
-        "stability": "internal",
-        "labels": [
-            {
-                "name": "node",
-                "help": "Node on which the histogram was measured"
-            }
-        ]
-    },
     "cm_lease_acquirer_time_inflight_seconds": {
         "type": "histogram",
         "help": "Histogram of lease inflight seconds",
@@ -563,38 +507,10 @@
             }
         ]
     },
-    "cm_lease_aquirer_used_prev_acquire_estimate_total": {
-        "type": "counter",
-        "help": "Number of times previous estimate was used",
-        "added": "7.0.0",
-        "deprecated": "7.2.0",
-        "notes": "Renamed in 7.5.0 to cm_lease_acquirer_used_prev_acquire_estimate_total",
-        "stability": "internal",
-        "labels": [
-            {
-                "name": "node",
-                "help": "Node on which the estimate was used"
-            }
-        ]
-    },
     "cm_lease_acquirer_used_prev_acquire_estimate_total": {
         "type": "counter",
         "help": "Number of times previous estimate was used",
         "added": "7.5.0",
-        "stability": "internal",
-        "labels": [
-            {
-                "name": "node",
-                "help": "Node on which the estimate was used"
-            }
-        ]
-    },
-    "cm_lease_aquirer_used_start_estimate_total": {
-        "type": "counter",
-        "help": "Number of times start estimate was used",
-        "added": "7.0.0",
-        "deprecated": "7.2.0",
-        "notes": "Renamed in 7.5.0 to cm_lease_acquirer_used_start_estimate_total",
         "stability": "internal",
         "labels": [
             {
