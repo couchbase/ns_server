@@ -405,6 +405,7 @@ build_sp_metadata(Opts, Req) ->
 
     IdpSignsAssertions = proplists:get_value(verify_assertion_sig, Opts),
     IdpSignsEnvelopes = proplists:get_value(verify_assertion_envelop_sig, Opts),
+    IdpSignsLogoutReq = proplists:get_value(verify_logout_req_sig, Opts),
     Recipient = case proplists:get_value(verify_recipient, Opts) of
                     false -> any;
                     consumeURL -> undefined;
@@ -414,6 +415,7 @@ build_sp_metadata(Opts, Req) ->
     SP = #esaml_sp{
            idp_signs_assertions = IdpSignsAssertions,
            idp_signs_envelopes = IdpSignsEnvelopes,
+           idp_signs_logout_requests = IdpSignsLogoutReq,
            consume_uri = BaseURL ++ "/"?SAML_CONSUME_ENDPOINT_PATH,
            metadata_uri = BaseURL ++ "/"?SAML_METADATA_ENDPOINT_PATH,
            logout_uri = BaseURL ++ "/"?SAML_LOGOUT_ENDPOINT_PATH,
@@ -719,6 +721,8 @@ params() ->
       #{cfg_key => verify_assertion_sig, type => bool}},
      {"spVerifyAssertionEnvelopSig",
       #{cfg_key => verify_assertion_envelop_sig, type => bool}},
+     {"spVerifyLogoutReqSig",
+      #{cfg_key => verify_logout_req_sig, type => bool}},
      {"spVerifyRecipient",
       #{cfg_key => verify_recipient,
         type => {one_of, existing_atom, [consumeURL, custom, false]}}},
@@ -779,6 +783,7 @@ defaults() ->
      {custom_base_url, ""},
      {verify_assertion_sig, true},
      {verify_assertion_envelop_sig, true},
+     {verify_logout_req_sig, true},
      {verify_recipient, consumeURL},
      {verify_recipient_value, ""},
      {cert, undefined},
