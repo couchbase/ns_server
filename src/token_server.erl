@@ -19,7 +19,7 @@
          handle_info/2, terminate/2, code_change/3]).
 
 -export([generate/2, generate/3, maybe_refresh/2,
-         check/3, reset_all/1, remove/2,
+         check/3, reset_all/1,
          purge/2, take/2, take_memos/2]).
 
 -define(EXPIRATION_CHECKING_INTERVAL, 15000).
@@ -34,6 +34,7 @@
          %% undefined means it can't be refreshed/rotated
          refresh_timestamp = no_refresh :: pos_integer() | no_refresh | '_',
          prev_token :: token() | undefined | '_',
+         next_token :: token() | undefined | '_',
          memo :: term()}).
 
 start_link(Module, MaxTokens, ExpirationSeconds, ExpirationCallback) ->
@@ -72,9 +73,6 @@ check(Module, Token, Node) ->
 
 reset_all(Module) ->
     gen_server:call(Module, reset_all, infinity).
-
-remove(Module, Token) ->
-    gen_server:call(Module, {remove, tok2bin(Token)}, infinity).
 
 take(Module, Token) ->
     gen_server:call(Module, {take, tok2bin(Token)}, infinity).
@@ -122,18 +120,19 @@ maybe_expire(#state{table_by_token = Table,
 
 expire_oldest(#state{table_by_token = Table,
                      table_by_exp = ExpTable,
-                     exp_callback = ExpCallback}) ->
-    {ExpirationTS, Token} = ets:first(ExpTable),
-    Memo = case ExpCallback of
-               undefined ->
-                   unused;
-               _ ->
-                   [#token_record{memo = Memo0}] = ets:lookup(Table, Token),
-                   Memo0
+                     exp_callback = ExpCallback} = State) ->
+    {_ExpirationTS, Token} = ets:first(ExpTable),
+    {Memo, NextToken} =
+        case ExpCallback of
+            undefined ->
+                {unused, unused};
+            _ ->
+                [#token_record{memo = Memo0, next_token = Next}] =
+                    ets:lookup(Table, Token),
+                {Memo0, Next}
            end,
-    ets:delete(ExpTable, {ExpirationTS, Token}),
-    ets:delete(Table, Token),
-    maybe_do_callback(ExpCallback, Memo, Token),
+    remove_token_chain_left(Token, true, State),
+    maybe_do_callback(ExpCallback, Memo, Token, NextToken),
     ok.
 
 remove_token(Token, #state{table_by_token = Table,
@@ -141,29 +140,45 @@ remove_token(Token, #state{table_by_token = Table,
     case ets:lookup(Table, Token) of
         [#token_record{token = Token,
                        expiration_timestamp = ExpirationTS,
-                       prev_token = ReplacedToken}] ->
+                       prev_token = PrevToken,
+                       next_token = NextToken}] ->
             ets:delete(ExpTable, {ExpirationTS, Token}),
             ets:delete(Table, Token),
-            ReplacedToken;
+            {PrevToken, NextToken};
         [] ->
-            false
+            {undefined, undefined}
     end.
 
-remove_token_with_predecessor(Token, State) ->
-    %% NOTE: {maybe_refresh... above is inserting new token when old is
-    %% still valid (to give current requests time to finish). But
-    %% gladly we also store older and potentially valid token, so we
-    %% can delete it as well here
-    OlderButMaybeValidToken = remove_token(Token, State),
-    case OlderButMaybeValidToken of
-        undefined ->
-            ok;
-        false ->
-            ok;
-        _ ->
-            remove_token(OlderButMaybeValidToken, State)
-    end,
+remove_token_chain(undefined, _State) -> ok;
+remove_token_chain(Token, State) ->
+    {PrevToken, NextToken} = remove_token(Token, State),
+    remove_token_chain_left(PrevToken, false, State),
+    remove_token_chain_right(NextToken, State),
     ok.
+
+%% Remove all the tokens that are older than Token in its session.
+%% It sets next element's prev_token to undefined
+%% only if ShouldUpdateNext is true.
+remove_token_chain_left(undefined, _, _State) -> ok;
+remove_token_chain_left(Token, ShouldUpdateNext,
+                        #state{table_by_token = Table} = State) ->
+    {PrevToken, NextToken} = remove_token(Token, State),
+    case ShouldUpdateNext of
+        true ->
+            ets:update_element(Table,
+                               NextToken,
+                               {#token_record.prev_token, undefined});
+        false ->
+            ok
+    end,
+    remove_token_chain_left(PrevToken, false, State).
+
+%% Remove all the tokens that are newer than Token in its session.
+%% Note: it never updates prev element's next_token.
+remove_token_chain_right(undefined, _State) -> ok;
+remove_token_chain_right(Token, State) ->
+    {_PrevToken, NextToken} = remove_token(Token, State),
+    remove_token_chain_right(NextToken, State).
 
 get_now() ->
     erlang:monotonic_time(second).
@@ -187,8 +202,17 @@ do_generate_token(ReplacedToken, Memo, ExpirationTimestampS,
                                     expiration_timestamp = ExpirationTS,
                                     refresh_timestamp = RefreshTS,
                                     prev_token = ReplacedToken,
+                                    next_token = undefined,
                                     memo = Memo}),
     ets:insert(ExpTable, {{ExpirationTS, Token}}),
+    case ReplacedToken =/= undefined of
+        true ->
+            true = ets:update_element(Table,
+                                      ReplacedToken,
+                                      {#token_record.next_token, Token});
+        false ->
+            ok
+    end,
     Token.
 
 validate_token_maybe_expire(Token,
@@ -198,24 +222,31 @@ validate_token_maybe_expire(Token,
         [#token_record{token = Token,
                        expiration_timestamp = ExpirationTS,
                        refresh_timestamp = RefreshTS,
+                       next_token = NextToken,
                        memo = Memo}] ->
             Now = get_now(),
             case ExpirationTS < Now of
                 true ->
-                    remove_token(Token, State),
-                    maybe_do_callback(ExpCallback, Memo, Token),
+                    %% This token has expired, remove it and all the tokens
+                    %% in this sessions that are older
+                    remove_token_chain_left(Token, true, State),
+                    maybe_do_callback(ExpCallback, Memo, Token, NextToken),
                     false;
                 _ ->
-                    {RefreshTS, Now, Memo}
+                    {RefreshTS, Now, Memo, NextToken}
             end;
         [] ->
             false
     end.
 
-maybe_do_callback(undefined, _Memo, _Token) ->
+maybe_do_callback(undefined, _Memo, _Token, _NextToken) ->
     ok;
-maybe_do_callback(Callback, Memo, Token) ->
-    Callback(Memo, Token).
+%% Calling the callback only if that is the last token for this session
+%% (when there is no next token)
+maybe_do_callback(Callback, Memo, Token, undefined) ->
+    Callback(Memo, Token);
+maybe_do_callback(_Callback, _Memo, _Token, _NextToken) ->
+    ok.
 
 handle_call(reset_all, _From, #state{table_by_token = Table,
                                      table_by_exp = ExpTable} = State) ->
@@ -230,31 +261,34 @@ handle_call({maybe_refresh, Token}, _From, #state{} = State) ->
     case validate_token_maybe_expire(Token, State) of
         false ->
             {reply, nothing, State};
-        {RefreshTS, Now, Memo} ->
+        {RefreshTS, Now, Memo, NextToken} ->
             case is_number(RefreshTS) andalso (RefreshTS =< Now) of
-                true ->
+                true when NextToken == undefined ->
                     %% NOTE: we take note of current and still valid
                     %% token for correctness of logout
-                    %%
-                    %% NOTE: condition above ensures that there are at
-                    %% most 2 valid tokens per session
+                    %% NOTE: It is important that we are not modifying Memo here
+                    %% because we rely on the fact that all tokens in a session
+                    %% have the same memo when removing tokens (purge and take)
                     NewToken = do_generate_token(Token, Memo, undefined, State),
                     {reply, {new_token, NewToken}, State};
+                true ->
+                    %% Newer token already exists for this token
+                    {reply, {new_token, NextToken}, State};
                 false ->
                     {reply, nothing, State}
             end
     end;
-handle_call({remove, Token}, _From, State) ->
-    remove_token_with_predecessor(Token, State),
-    {reply, ok, State};
+%% Find session by token, remove it (all tokens), return Memo for this session
 handle_call({take, Token}, _From, State) ->
     case validate_token_maybe_expire(Token, State) of
         false ->
             {reply, false, State};
-        {_RefreshTS, _Now, Memo} ->
-            remove_token_with_predecessor(Token, State),
+        {_RefreshTS, _Now, Memo, _NextToken} ->
+            remove_token_chain(Token, State),
             {reply, {ok, Memo}, State}
     end;
+%% Remove all the sessions (all tokens) that have Memo that matches the pattern
+%% Return Memos of all removed sessions
 handle_call({take_memos, MemoPattern}, _From,
             #state{table_by_token = Table} = State) ->
     Records = ets:select(Table, [{#token_record{memo = MemoPattern, _ = '_'},
@@ -266,7 +300,7 @@ handle_call({check, Token}, _From, State) ->
     case validate_token_maybe_expire(Token, State) of
         false ->
             {reply, false, State};
-        {_RefreshTS, _Now, Memo} ->
+        {_RefreshTS, _Now, Memo, _NextToken} ->
             Res =
                 case cluster_compat_mode:is_cluster_elixir() of
                     true -> Memo;
@@ -286,6 +320,7 @@ handle_call({check, Token}, _From, State) ->
 handle_call(Msg, From, _State) ->
     erlang:error({unknown_call, Msg, From}).
 
+%% Remove all the sessions that have Memo that matches the pattern
 handle_cast({purge, MemoPattern}, #state{table_by_token = Table} = State) ->
     Tokens = ets:match(Table, #token_record{token = '$1',
                                             memo = MemoPattern,
