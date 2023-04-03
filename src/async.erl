@@ -653,6 +653,30 @@ async_tree_does_not_collapse_test() ->
 
     {error, timeout} = async:run_with_timeout(AsyncChildsFun, 100).
 
+start_shutdown_reporting_async(GrandParent) ->
+    Parent = self(),
+    MRef = make_ref(),
+
+    Child = async:start(
+              fun() ->
+                      process_flag(trap_exit, true),
+                      Parent ! {MRef, child_init_done},
+                      receive
+                          {'EXIT', _, shutdown} ->
+                              GrandParent ! grandchild_shutdown,
+                              ok
+                      end
+              end),
+
+    receive
+        {MRef, child_init_done} ->
+            ok
+    after
+        1000 ->
+            exit(setup_error)
+    end,
+    Child.
+
 async_tree_collapses_test() ->
     %% 1. Spawn 2 child asyncs (Child1 and Child2) via a parent Async.
     %% 2. Child1 exit with a non-normal exit and Child2 gets terminated.
@@ -662,17 +686,9 @@ async_tree_collapses_test() ->
 
     AsyncChildsFun =
         fun () ->
-                Child1 = async:start(fun() -> exit(not_ok) end),
-                Child2 = async:start(
-                           fun() ->
-                                   process_flag(trap_exit, true),
-                                   receive
-                                       {'EXIT', _, shutdown} ->
-                                           GrandParent ! grandchild_shutdown,
-                                           ok
-                                   end
-                           end),
-                Children = [Child1, Child2],
+                Child1 = start_shutdown_reporting_async(GrandParent),
+                Child2 = async:start(fun() -> exit(not_ok) end),
+                Children = [Child2, Child1],
 
                 try
                     async:wait_many(Children)
@@ -756,15 +772,7 @@ async_tree_collapses_2_test() ->
 
     AsyncChildsFun =
         fun () ->
-                Child1 = async:start(
-                           fun() ->
-                                   process_flag(trap_exit, true),
-                                   receive
-                                       {'EXIT', _, shutdown} ->
-                                           GrandParent ! grandchild_shutdown,
-                                           ok
-                                   end
-                           end),
+                Child1 = start_shutdown_reporting_async(GrandParent),
                 Child2 = async:start(fun() -> exit(not_ok) end),
                 Children = [Child1, Child2],
 
