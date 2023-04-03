@@ -345,7 +345,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
             return type(self).__name__
 
     def setup(self, cluster):
-        self.addr = cluster.urls[0]
+        self.addr = cluster.nodes[0].url
         self.num_nodes = len(cluster.processes)
         self.auth = cluster.auth
         self.memsize = cluster.memsize

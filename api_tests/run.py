@@ -78,7 +78,8 @@ def remove_temp_cluster_directories():
 
 def kill_nodes(clusters, terminal_attrs):
     for c in clusters:
-        cluster_run_lib.kill_nodes(c.processes, terminal_attrs, c.urls)
+        cluster_run_lib.kill_nodes(c.processes, terminal_attrs,
+                                   [node.url for node in c.nodes])
 
 
 def kill_nodes_and_remove_dirs(clusters, terminal_attrs):
@@ -415,8 +416,7 @@ def get_cluster(address, start_port, auth, processes, num_nodes, num_connected):
                               data="path_config:component_path(data).",
                               auth=auth).text.strip('\"')
 
-    return testlib.Cluster(urls=urls,
-                           nodes=nodes,
+    return testlib.Cluster(nodes=nodes,
                            connected_nodes=connected_nodes,
                            processes=processes,
                            auth=auth,

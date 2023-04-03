@@ -99,17 +99,17 @@ class AuthnTests(testlib.BaseTestSet):
         testlib.post_fail(cluster, '/uilogin', 400, auth=None,
                           data={'user': wrong_user, 'password': wrong_password})
         session = requests.Session()
-        url = cluster.urls[0] + '/uilogin'
+        url = cluster.nodes[0].url + '/uilogin'
         headers={'Host': randomStr(8), 'ns-server-ui': 'yes'}
-        r = session.post(cluster.urls[0] + '/uilogin',
+        r = session.post(cluster.nodes[0].url + '/uilogin',
                          data={'user': user, 'password': password},
                          headers=headers)
         testlib.assert_http_code(200, r)
-        r = session.get(cluster.urls[0] + self.testEndpoint, headers=headers)
+        r = session.get(cluster.nodes[0].url + self.testEndpoint, headers=headers)
         testlib.assert_http_code(200, r)
-        r = session.post(cluster.urls[0] + '/uilogout', headers=headers)
+        r = session.post(cluster.nodes[0].url + '/uilogout', headers=headers)
         testlib.assert_http_code(200, r)
-        r = session.get(cluster.urls[0] + self.testEndpoint, headers=headers)
+        r = session.get(cluster.nodes[0].url + self.testEndpoint, headers=headers)
         testlib.assert_http_code(401, r)
 
 

@@ -92,7 +92,7 @@ def safe_test_function_call(testset, testfunction, args, verbose=False):
 
 
 def cluster_matches_requirements(cluster, requirements):
-    return (requirements.num_nodes == len(cluster.urls) and
+    return (requirements.num_nodes == len(cluster.nodes) and
             requirements.min_memsize <= cluster.memsize and
             (requirements.serverless is None or
              requirements.serverless == cluster.is_serverless) and

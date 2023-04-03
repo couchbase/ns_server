@@ -42,7 +42,7 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
 
     def setup(self, cluster):
         self.auth = cluster.auth
-        self.endpoint = cluster.urls[0] + '/settings/autoFailover'
+        self.endpoint = cluster.nodes[0].url + '/settings/autoFailover'
         self.prev_settings = requests.get(self.endpoint, auth=self.auth).json()
         # count cannot be modified using this request
         self.result_keys = list(self.prev_settings.keys())
