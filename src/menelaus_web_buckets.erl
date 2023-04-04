@@ -303,11 +303,11 @@ build_limits(BucketConfig, ProfileKey, AttributesFunc) ->
 
 build_storage_limits(BucketConfig) ->
     build_limits(BucketConfig, enable_storage_limits,
-                 fun menelaus_web_settings:get_storage_attributes/0).
+                 fun menelaus_web_settings:get_storage_limit_attributes/0).
 
 build_throttle_limits(BucketConfig) ->
     build_limits(BucketConfig, enable_throttle_limits,
-                 fun menelaus_web_settings:get_throttle_attributes/0).
+                 fun menelaus_web_settings:get_throttle_limit_attributes/0).
 
 build_authType(BucketConfig) ->
     case cluster_compat_mode:is_cluster_71() of
@@ -1285,12 +1285,12 @@ validate_membase_bucket_params(CommonParams, Params,
                                                       Version, IsNew,
                                                       IsEnterprise)
         | validate_bucket_auto_compaction_settings(Params)] ++
-        parse_validate_limits(Params, BucketConfig, IsNew, AllowStorageLimit,
-                              fun
-                              menelaus_web_settings:get_storage_attributes/0) ++
-        parse_validate_limits(Params, BucketConfig, IsNew, AllowThrottleLimit,
-                              fun
-                              menelaus_web_settings:get_throttle_attributes/0),
+        parse_validate_limits(
+          Params, BucketConfig, IsNew, AllowStorageLimit,
+          fun menelaus_web_settings:get_storage_limit_attributes/0) ++
+        parse_validate_limits(
+          Params, BucketConfig, IsNew, AllowThrottleLimit,
+          fun menelaus_web_settings:get_throttle_limit_attributes/0),
 
     validate_bucket_purge_interval(Params, BucketConfig, IsNew) ++
         get_conflict_resolution_type_and_thresholds(

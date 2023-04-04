@@ -27,6 +27,7 @@
          build_nodes_info_fun/2,
          build_nodes_info/1,
          build_node_hostname/3,
+         handle_throttle_capacity_get/1,
          handle_bucket_node_list/2,
          handle_bucket_node_info/3,
          find_node_hostname/2,
@@ -389,6 +390,24 @@ do_build_nodes_info_fun(#ctx{ns_config = Config,
                 bucket_placer:get_node_status_fun(Snapshot)
         end,
 
+    LimitsAndBucketPlacerInfoBuilder =
+        fun (WantENode) ->
+                BucketPlacerJson = BucketPlacerInfoBuilder(WantENode),
+                CapacityLimits =
+                    [build_throttle_capacity_json(Config, WantENode) ||
+                        config_profile:get_bool(enable_throttle_limits)],
+                {PlacerLimits} =
+                    proplists:get_value(limits, BucketPlacerJson, {[]}),
+                case proplists:get_value(throttleCapacity, CapacityLimits) of
+                    undefined ->
+                        BucketPlacerJson;
+                    _ ->
+                        lists:keystore(limits, 1, BucketPlacerJson,
+                                       {limits, {PlacerLimits ++
+                                                     CapacityLimits}})
+                end
+        end,
+
     fun(WantENode, Bucket) ->
             InfoNode = ns_doctor:get_node(WantENode, NodeStatuses),
             StableInfo =
@@ -411,7 +430,7 @@ do_build_nodes_info_fun(#ctx{ns_config = Config,
                                                 Snapshot)
                  end,
                  build_failover_status(Snapshot, WantENode),
-                 BucketPlacerInfoBuilder(WantENode)],
+                 LimitsAndBucketPlacerInfoBuilder(WantENode)],
             NodeHash = erlang:phash2(StableInfo),
 
             {lists:flatten([StableInfo,
@@ -508,6 +527,18 @@ build_node_hostname(Config, Node, LocalAddr, Options) ->
                P -> P
            end,
     list_to_binary(misc:join_host_port(Host, Port)).
+
+build_throttle_capacity_json(Config, Node) ->
+    {throttleCapacity,
+     {lists:map(
+        fun({Param, Key, Default, _, _}) ->
+                {Param, ns_config:search_node(Node, Config, Key, Default)}
+        end, menelaus_web_settings:get_throttle_capacity_attributes())}}.
+
+handle_throttle_capacity_get(Req) ->
+    menelaus_util:assert_config_profile_flag(enable_throttle_limits),
+    reply_json(Req, {[build_throttle_capacity_json(ns_config:get(), node())
+                      || config_profile:get_bool(enable_throttle_limits)]}).
 
 alternate_addresses_json(Node, Config, Snapshot, WantedPorts) ->
     {ExtHostname, ExtPorts} =

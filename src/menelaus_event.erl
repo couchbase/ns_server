@@ -141,8 +141,11 @@ is_interesting_to_watchers({significant_buckets_change, _}) -> true;
 is_interesting_to_watchers({memcached, _}) -> true;
 is_interesting_to_watchers({{node, _, memcached}, _}) -> true;
 is_interesting_to_watchers({{node, _, membership}, _}) -> true;
+is_interesting_to_watchers({{node, _, {serverless,
+                                       throttle_capacity, _}}, _}) -> true;
 is_interesting_to_watchers({{serverless, storage_limit, _}, _}) -> true;
 is_interesting_to_watchers({{serverless, throttle_limit, _}, _}) -> true;
+is_interesting_to_watchers({{serverless, throttle_capacity, _}, _}) -> true;
 is_interesting_to_watchers({rebalance_status, _}) -> true;
 is_interesting_to_watchers({recovery_status, _}) -> true;
 is_interesting_to_watchers({nodes_wanted, _}) -> true;

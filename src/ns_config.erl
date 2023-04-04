@@ -34,7 +34,7 @@
          update/1, update_with_vclocks/1, update_with_vclocks/2,
          update_key/2, update_key/3,
          update_sub_key/3, set_sub/2,
-         search_node/3, search_node/2, search_node/1,
+         search_node/4, search_node/3, search_node/2, search_node/1,
          search_node_prop/3, search_node_prop/4,
          search_node_prop/5,
          search/3, search/2, search/1,
@@ -545,6 +545,12 @@ search_node_with_default(Node, Config, Key, Default) ->
             V;
         false ->
             Default
+    end.
+
+search_node(Node, Config, Key, Default) ->
+    case search(Config, {node, Node, Key}) of
+        {value, Value} -> Value;
+        false          -> search(Config, Key, Default)
     end.
 
 search_node(Node, Config, Key) ->

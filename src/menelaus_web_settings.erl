@@ -59,8 +59,9 @@
          get_tls_version/1,
          parse_allowed_host/1,
 
-         get_throttle_attributes/0,
-         get_storage_attributes/0]).
+         get_throttle_limit_attributes/0,
+         get_throttle_capacity_attributes/0,
+         get_storage_limit_attributes/0]).
 
 -import(menelaus_util,
         [parse_validate_number/3,
@@ -70,6 +71,11 @@
          reply_json/3,
          reply_text/3,
          reply/2]).
+
+-define(DEFAULT_KV_THROTTLE_CAPACITY, 25000).
+-define(DEFAULT_INDEX_THROTTLE_CAPACITY, 1000000).
+-define(DEFAULT_FTS_THROTTLE_CAPACITY, 50000).
+-define(DEFAULT_N1QL_THROTTLE_CAPACITY, 6000000).
 
 get_bool("true") ->
     {ok, true};
@@ -459,6 +465,10 @@ is_allowed_on_cluster([{serverless, storage_limit, _}]) ->
     config_profile:get_bool(enable_storage_limits);
 is_allowed_on_cluster([{serverless, throttle_limit, _}]) ->
     config_profile:get_bool(enable_throttle_limits);
+is_allowed_on_cluster([{serverless, throttle_capacity, _}]) ->
+    config_profile:get_bool(enable_throttle_limits);
+is_allowed_on_cluster([{node, _, {serverless, throttle_capacity, _}}]) ->
+    config_profile:get_bool(enable_throttle_limits);
 is_allowed_on_cluster(_) ->
     true.
 
@@ -509,7 +519,7 @@ ee_only_settings([allow_non_local_ca_upload]) -> true;
 ee_only_settings([secure_headers]) -> true;
 ee_only_settings(_) -> false.
 
-get_storage_attributes() ->
+get_storage_limit_attributes() ->
     [{dataStorageLimit, {serverless, storage_limit, kv},
       ?DEFAULT_KV_STORAGE_LIMIT, ?MIN_KV_STORAGE_LIMIT,
       ?MAX_KV_STORAGE_LIMIT},
@@ -520,7 +530,7 @@ get_storage_attributes() ->
       ?DEFAULT_FTS_STORAGE_LIMIT, ?MIN_FTS_STORAGE_LIMIT,
       ?MAX_FTS_STORAGE_LIMIT}].
 
-get_throttle_attributes() ->
+get_throttle_limit_attributes() ->
     [{dataThrottleLimit,
       {serverless, throttle_limit, kv},
       ?DEFAULT_KV_THROTTLE_LIMIT, ?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT},
@@ -533,6 +543,24 @@ get_throttle_attributes() ->
      {queryThrottleLimit,
       {serverless, throttle_limit, n1ql},
       ?DEFAULT_N1QL_THROTTLE_LIMIT, ?MIN_THROTTLE_LIMIT, ?MAX_THROTTLE_LIMIT}].
+
+get_throttle_capacity_attributes() ->
+     [{dataNodeCapacity,
+      {serverless, throttle_capacity, kv},
+      ?DEFAULT_KV_THROTTLE_CAPACITY, ?MIN_THROTTLE_LIMIT,
+      ?MAX_THROTTLE_LIMIT},
+     {indexNodeCapacity,
+      {serverless, throttle_capacity, index},
+      ?DEFAULT_INDEX_THROTTLE_CAPACITY, ?MIN_THROTTLE_LIMIT,
+      ?MAX_THROTTLE_LIMIT},
+     {searchNodeCapacity,
+      {serverless, throttle_capacity, fts},
+      ?DEFAULT_FTS_THROTTLE_CAPACITY, ?MIN_THROTTLE_LIMIT,
+      ?MAX_THROTTLE_LIMIT},
+     {queryNodeCapacity,
+      {serverless, throttle_capacity, n1ql},
+      ?DEFAULT_N1QL_THROTTLE_CAPACITY, ?MIN_THROTTLE_LIMIT,
+      ?MAX_THROTTLE_LIMIT}].
 
 conf(security) ->
     [{disable_ui_over_http, disableUIOverHttp, false, fun get_bool/1},
@@ -606,9 +634,9 @@ conf(internal) ->
      {{cert, use_sha1}, certUseSha1, false, fun get_bool/1},
      {allow_http_node_addition, httpNodeAddition, false, fun get_bool/1}] ++
         [{Key, Param, Default, get_number(Min, Max)} ||
-            {Param, Key, Default, Min, Max} <- get_storage_attributes()] ++
+            {Param, Key, Default, Min, Max} <- get_storage_limit_attributes()] ++
         [{Key, Param, Default, get_number(Min, Max)} ||
-            {Param, Key, Default, Min, Max} <- get_throttle_attributes()];
+            {Param, Key, Default, Min, Max} <- get_throttle_limit_attributes()];
 
 conf(developer_preview) ->
     [{developer_preview_enabled, enabled, false, fun only_true/1}];
@@ -620,9 +648,17 @@ conf(serverless) ->
       get_number(1, 100000)},
      {{serverless, tenant_limit}, tenantLimit, 25, get_number(1, 10000)}] ++
         [{Key, Param, Default, get_number(Min, Max)} ||
-            {Param, Key, Default, Min, Max} <- get_storage_attributes()] ++
+            {Param, Key, Default, Min, Max} <- get_storage_limit_attributes()]
+        ++
         [{Key, Param, Default, get_number(Min, Max)} ||
-            {Param, Key, Default, Min, Max} <- get_throttle_attributes()].
+            {Param, Key, Default, Min, Max} <- get_throttle_limit_attributes()]
+        ++
+        [{Key, Param, Default, get_number(Min, Max)} ||
+            {Param,
+             Key, Default, Min, Max} <- get_throttle_capacity_attributes()];
+conf(serverless_node) ->
+    [{{node, node(), Key}, Param, Default, get_number(Min, Max)} ||
+        {Param, Key, Default, Min, Max} <- get_throttle_capacity_attributes()].
 
 build_kvs(Type) ->
     build_kvs(conf(Type), ns_config:get(), fun (_, _) -> true end).
