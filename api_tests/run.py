@@ -17,7 +17,6 @@ import inspect
 import atexit
 import requests
 import glob
-from urllib.error import HTTPError
 
 scriptdir = os.path.dirname(os.path.realpath(__file__))
 pylib = os.path.join(scriptdir, "..", "pylib")
@@ -164,14 +163,25 @@ def main():
         else:
             assert False, f"unhandled options: {o}"
 
-    clusters = []
-    processes = []
-
     discovered_tests = discover_testsets()
 
-    print(f"Discovered testsets: {[c for c, _, _ in discovered_tests]}")
+    errors = {}
+    not_ran = []
+    # Remove any testsets that didn't correctly specify requirements
+    for discovered_test in discovered_tests:
+        (name, _, _, configuration) = discovered_test
+        if not isinstance(configuration, testlib.ClusterRequirements):
+            reason = configuration
+            not_ran.append((name, reason))
+            discovered_tests.remove(discovered_test)
 
-    testsets_to_run = []
+    if len(not_ran) > 0:
+        msg = "Some testsets did not correctly specify requirements:\n"
+        for (name, reason) in not_ran:
+            msg += f"{name} - {reason}\n"
+        error_exit(msg)
+    print(f"Discovered testsets: {[c for c, _, _, _ in discovered_tests]}")
+
     if tests is None:
         testsets_to_run = discovered_tests
     else:
@@ -196,20 +206,19 @@ def main():
         print("\n======================================="
               "=========================================\n" )
 
-    errors = {}
-    not_ran = []
     executed = 0
-    for _, testset, test_names in testsets_to_run:
-        cluster = testlib.get_appropriate_cluster(clusters, testset)
+    for class_name, testset, test_names, configuration in testsets_to_run:
+        cluster = testlib.get_appropriate_cluster(clusters, configuration)
+        testset_name = f"{class_name}/{configuration}"
         if isinstance(cluster, testlib.Cluster):
-            res = testlib.run_testset(testset, test_names, cluster)
+            res = testlib.run_testset(testset, test_names, cluster, testset_name)
             executed += res[0]
             testset_errors = res[1]
-            testset_not_ran = res[1]
             if len(testset_errors) > 0:
-                errors[testset.__name__] = testset_errors
+                errors[testset_name] = testset_errors
         else:
-            not_ran.append((testset.__name__, cluster))
+            reason = cluster
+            not_ran.append((testset_name, reason))
 
     error_num = sum([len(errors[name]) for name in errors])
     errors_str = f"{error_num} error{'s' if error_num != 1 else ''}"
@@ -243,14 +252,14 @@ def main():
 
 def find_tests(test_names, discovered_list):
     results = {}
-    discovered_dict = {n: (c, t) for n, c, t in discovered_list}
+    discovered_dict = {n: (cl, t, cf) for n, cl, t, cf in discovered_list}
     for class_name, test_name in test_names:
         assert class_name in discovered_dict, \
             f"Testset {class_name} is not found. "\
             f"Available testsets: {list(discovered_dict.keys())}"
-        testset, tests = discovered_dict[class_name]
+        testset, tests, configuration = discovered_dict[class_name]
         if test_name == '*':
-            results[class_name] = (testset, tests)
+            results[class_name] = (testset, tests, configuration)
         else:
             assert test_name in tests, \
                 f"Test {test_name} is not found in {class_name}. "\
@@ -259,11 +268,12 @@ def find_tests(test_names, discovered_list):
             if class_name in results:
                 testlist = results[class_name][1]
                 testlist.append(test_name)
-                results[class_name] = (results[class_name][0], testlist)
+                results[class_name] = (results[class_name][0], testlist,
+                                       configuration)
             else:
-                results[class_name] = (testset, [test_name])
+                results[class_name] = (testset, [test_name], configuration)
 
-    return [(k, results[k][0], results[k][1]) for k in results]
+    return [(k, results[k][0], results[k][1], results[k][2]) for k in results]
 
 
 def discover_testsets():
@@ -282,7 +292,12 @@ def discover_testsets():
             if issubclass(testset, testlib.BaseTestSet):
                 tests = [m for m in dir(testset) if m.endswith('_test')]
                 if len(tests) > 0:
-                    testsets.append((name, testset, tests))
+                    requirements, err = testlib.safe_test_function_call(
+                        testset, 'requirements', [])
+                    if err is None:
+                        testsets.append((name, testset, tests, requirements))
+                    else:
+                        testsets.append((name, testset, tests, err))
 
     return testsets
 
@@ -310,125 +325,22 @@ def get_existing_cluster(address, start_port, auth, num_nodes):
         # Assume that there are no nodes that are not already connected
         num_nodes = nodes_found
 
-    return get_cluster(address, start_port, auth, [], num_nodes, nodes_found)
+    return testlib.cluster.get_cluster(address, start_port, auth, [], num_nodes,
+                                       nodes_found)
 
 
 def get_required_clusters(testsets, auth, start_index):
     clusters = []
-    testsets.sort(key=lambda x: x[1].requirements().min_memsize, reverse=True)
-    for (name, testset, tests) in testsets:
+    for (name, testset, tests, requirements) in testsets:
         satisfied = False
         for cluster in clusters:
-            if testlib.cluster_matches_requirements(cluster,
-                                                    testset.requirements()):
+            if requirements.is_met(cluster):
                 satisfied = True
         if not satisfied:
-            clusters.append(create_cluster_satisfying(testset.requirements(),
-                                                      auth, start_index))
+            clusters.append(requirements.create_cluster(auth, start_index,
+                                                        tmp_cluster_dir))
             start_index += len(clusters[-1].processes)
     return clusters
-
-
-def create_cluster_satisfying(requirements, auth, start_index):
-    serverless = requirements.serverless is True
-    processes = cluster_run_lib.start_cluster(num_nodes=requirements.num_nodes,
-                                              dont_rename=True,
-                                              start_index=start_index,
-                                              root_dir=f"{tmp_cluster_dir}"
-                                                       f"-{start_index}",
-                                              wait_for_start=True,
-                                              nooutput=True,
-                                              run_serverless=serverless)
-    # We use the raw ip address instead of 'localhost', as it isn't accepted by
-    # the addNode or doJoinCluster endpoints
-    address = "127.0.0.1"
-    port = cluster_run_lib.base_api_port + start_index
-    # We might need a rebalance for multiple nodes
-    rebalance = requirements.num_nodes > 1
-
-    # Check whether the num_connected has been specified, if not, then connect
-    # all nodes.
-    num_connected = requirements.num_connected
-    if requirements.num_connected is None:
-        num_connected = requirements.num_nodes
-    try:
-        error = cluster_run_lib.connect(
-                                num_nodes=num_connected,
-                                start_index=start_index,
-                                memsize=requirements.min_memsize,
-                                do_rebalance=rebalance,
-                                do_wait_for_rebalance=rebalance)
-        if error:
-            bad_args_exit(f"Failed to connect node(s). Status: {error}")
-    except HTTPError as e:
-        bad_args_exit(f"Failed to connect node(s). {e}\n"
-                   f"Perhaps a node has already been started at "
-                   f"{address}:{port}?\n")
-    return get_cluster(address, port, auth, processes, requirements.num_nodes,
-                       num_connected)
-
-
-def get_cluster(address, start_port, auth, processes, num_nodes, num_connected):
-    urls = []
-    nodes = []
-    connected_nodes = []
-    for i in range(num_nodes):
-        node = testlib.Node(host=address,
-                            port=start_port + i,
-                            auth=auth)
-        # Check that node is connected to the cluster.
-        if i < num_connected:
-            pools_default = f"{node.url}/pools/default"
-            try:
-                response = requests.get(pools_default, auth=auth)
-            except requests.exceptions.ConnectionError as e:
-                error_exit(f"Failed to connect to {pools_default}\n"
-                           f"{e}")
-            if response.status_code != 200:
-                error_exit(f"Failed to connect to {pools_default} "
-                           f"({response.status_code})\n"
-                           f"{response.text}")
-            connected_nodes.append(node)
-        urls.append(node.url)
-        nodes.append(node)
-    url = urls[0]
-
-    try:
-        memsize = response.json()["memoryQuota"]
-    except NameError as e:
-        error_exit(f"Response has not been defined, perhaps no nodes haves "
-                   f"connected. {e}")
-    is_enterprise = requests.post(f"{url}/diag/eval",
-                                  data="cluster_compat_mode:is_enterprise().",
-                                  auth=auth).text == "true"
-    is_71 = requests.post(f"{url}/diag/eval",
-                          data="cluster_compat_mode:is_cluster_71().",
-                          auth=auth).text == "true"
-    is_elixir = requests.post(f"{url}/diag/eval",
-                              data="cluster_compat_mode:is_cluster_elixir().",
-                              auth=auth).text == "true"
-    is_serverless = requests.post(f"{url}/diag/eval",
-                                  data="config_profile:is_serverless().",
-                                  auth=auth).text == "true"
-    is_dev_preview = requests.post(f"{url}/diag/eval",
-                                   data="cluster_compat_mode:is_developer_preview().",
-                                   auth=auth).text == "true"
-
-    data_path = requests.post(f"{url}/diag/eval",
-                              data="path_config:component_path(data).",
-                              auth=auth).text.strip('\"')
-
-    return testlib.Cluster(nodes=nodes,
-                           connected_nodes=connected_nodes,
-                           processes=processes,
-                           auth=auth,
-                           memsize=memsize,
-                           is_enterprise=is_enterprise,
-                           is_71=is_71,
-                           is_elixir=is_elixir,
-                           is_serverless=is_serverless,
-                           is_dev_preview=is_dev_preview,
-                           data_path=data_path)
 
 
 if __name__ == '__main__':

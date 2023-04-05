@@ -8,38 +8,28 @@
 # licenses/APL2.txt.
 from abc import ABC, abstractmethod
 import traceback
-from collections import namedtuple
 import requests
 import string
 import random
 
 from testlib.node import Node
 
-ClusterRequirements = namedtuple("ClusterRequirements",
-                                 ['num_nodes', 'min_memsize', 'serverless',
-                                  'num_connected'],
-                                 defaults=[1, 256, None, None])
 
-def get_appropriate_cluster(available_clusters, testset_class):
-    (requirements, err) = \
-        safe_test_function_call(testset_class, 'requirements', [])
-
-    if err is not None:
-        return err
+def get_appropriate_cluster(available_clusters, configuration):
 
     clusters = [c for c in available_clusters
-                if cluster_matches_requirements(c, requirements)]
+                if configuration.is_met(c)]
 
     if len(clusters) == 0:
-        msg = "Failed to find a cluster that fits test requirements,\n" \
-              f"    {requirements}"
-        return msg
+        return "Failed to find a cluster that fits test requirements:\n" \
+               f"    {configuration}"
     return clusters[0]
 
-def run_testset(testset_class, test_names, cluster):
+
+def run_testset(testset_class, test_names, cluster, testset_name):
     errors = []
     executed = 0
-    print(f"\nStarting testset: {testset_class.__name__}...")
+    print(f"\nStarting testset: {testset_name}...")
 
     testset_instance = testset_class(cluster)
 
@@ -89,15 +79,6 @@ def safe_test_function_call(testset, testfunction, args, verbose=False):
         traceback.print_exc()
         error = (testname, e)
     return (res, error)
-
-
-def cluster_matches_requirements(cluster, requirements):
-    return (requirements.num_nodes == len(cluster.nodes) and
-            requirements.min_memsize <= cluster.memsize and
-            (requirements.serverless is None or
-             requirements.serverless == cluster.is_serverless) and
-            (requirements.num_connected is None or
-             requirements.num_connected == len(cluster.connected_nodes)))
 
 
 class BaseTestSet(ABC):

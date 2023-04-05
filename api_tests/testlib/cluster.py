@@ -8,6 +8,8 @@
 # licenses/APL2.txt.
 import os
 import sys
+import requests
+from urllib.error import URLError
 
 import testlib
 
@@ -18,21 +20,85 @@ sys.path.append(pylib)
 import cluster_run_lib
 
 
+def build_cluster(auth, start_args, connect_args):
+    processes = cluster_run_lib.start_cluster(**start_args)
+    # We use the raw ip address instead of 'localhost', as it isn't accepted by
+    # the addNode or doJoinCluster endpoints
+    address = "127.0.0.1"
+    port = cluster_run_lib.base_api_port + start_args['start_index']
+    try:
+        error = cluster_run_lib.connect(**connect_args)
+        if error:
+            print(f"Failed to connect node(s). Status: {error}")
+    except URLError as e:
+        print(f"Failed to connect node(s). {e}\n"
+              f"Perhaps a node has already been started at "
+              f"{address}:{port}?\n")
+    return get_cluster(address, port, auth, processes, start_args['num_nodes'],
+                       connect_args['num_nodes'])
+
+
+def get_cluster(address, start_port, auth, processes, num_nodes, num_connected):
+    urls = []
+    nodes = []
+    connected_nodes = []
+    for i in range(num_nodes):
+        node = testlib.Node(host=address,
+                            port=start_port + i,
+                            auth=auth)
+        # Check that node is connected to the cluster.
+        if i < num_connected:
+            pools_default = f"{node.url}/pools/default"
+            try:
+                response = requests.get(pools_default, auth=auth)
+                connected_nodes.append(node)
+            except requests.exceptions.ConnectionError as e:
+                sys.exit(f"Failed to connect to {pools_default}\n"
+                         f"{e}")
+            if response.status_code != 200:
+                sys.exit(f"Failed to connect to {pools_default} "
+                         f"({response.status_code})\n"
+                         f"{response.text}")
+        urls.append(node.url)
+        nodes.append(node)
+
+    try:
+        memsize = response.json()["memoryQuota"]
+    except NameError as e:
+        sys.exit(f"Response has not been defined, perhaps no nodes haves "
+                 f"connected. {e}")
+
+    return Cluster(nodes=nodes,
+                   connected_nodes=connected_nodes,
+                   processes=processes,
+                   auth=auth,
+                   memsize=memsize)
+
+
 class Cluster:
-    def __init__(self, nodes, connected_nodes, processes, auth, memsize,
-                 is_enterprise, is_71, is_elixir, is_serverless, is_dev_preview,
-                 data_path):
+    def __init__(self, nodes, connected_nodes, processes, auth, memsize):
         self.nodes = nodes
         self.connected_nodes = connected_nodes
         self.processes = processes
         self.auth = auth
         self.memsize = memsize
-        self.is_enterprise = is_enterprise
-        self.is_71 = is_71
-        self.is_elixir = is_elixir
-        self.is_serverless = is_serverless
-        self.is_dev_preview = is_dev_preview
-        self.data_path = data_path
+
+        def get_bool(code):
+            return testlib.post_succ(self, "/diag/eval",
+                                     data=code).text == "true"
+
+        self.is_enterprise = get_bool("cluster_compat_mode:is_enterprise().")
+        self.is_71 = get_bool("cluster_compat_mode:is_cluster_71().")
+        self.is_elixir = get_bool("cluster_compat_mode:is_cluster_elixir().")
+        self.is_serverless = get_bool("config_profile:is_serverless().")
+        self.is_dev_preview = get_bool("cluster_compat_mode:"
+                                       "is_developer_preview().")
+
+        def diag_eval(code):
+            return testlib.post_succ(self, "/diag/eval",
+                                     data=code).text.strip('\"')
+
+        self.data_path = diag_eval("path_config:component_path(data).")
 
     def __str__(self):
         return self.__dict__.__str__()

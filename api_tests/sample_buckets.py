@@ -26,8 +26,8 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements(num_nodes=1, min_memsize=1024,
-                                           serverless=False)
+        return testlib.ClusterRequirements(edition="Enterprise",
+                                           min_memsize=1024)
 
     def setup(self, cluster):
         self.addr_get = "/sampleBuckets"
@@ -193,8 +193,8 @@ class ServerlessSampleBucketTestSet(SampleBucketTestSet):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements(num_nodes=1, min_memsize=1024,
-                                           serverless=True)
+        return testlib.ClusterRequirements(edition="Serverless",
+                                           min_memsize=1024)
 
     # Confirm that loading gamesim-sample fails in serverless, as
     # couchdb is disabled. This test overrides the corresponding

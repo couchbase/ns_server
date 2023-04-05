@@ -9,3 +9,4 @@
 from testlib.testlib import *
 from testlib.cluster import Cluster
 from testlib.node import Node
+from testlib.requirements import ClusterRequirements
