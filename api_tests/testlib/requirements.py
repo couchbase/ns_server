@@ -38,7 +38,8 @@ class ClusterRequirements:
     def get_default_connect_args():
         return {}
 
-    def create_cluster(self, auth, start_index, tmp_cluster_dir):
+    def create_cluster(self, auth, start_index, tmp_cluster_dir,
+                       kill_nodes):
         start_args = {'start_index': start_index,
                       'root_dir': f"{tmp_cluster_dir}-{start_index}"}
         start_args.update(self.get_default_start_args())
@@ -50,8 +51,10 @@ class ClusterRequirements:
         for requirement in self.requirements:
             connect_args.update(requirement.connect_args)
 
-        return build_cluster(auth=auth, start_args=start_args,
-                             connect_args=connect_args)
+        return build_cluster(auth=auth,
+                             start_args=start_args,
+                             connect_args=connect_args,
+                             kill_nodes=kill_nodes)
 
     def is_met(self, cluster):
         for requirement in self.requirements:

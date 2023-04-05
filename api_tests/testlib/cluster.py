@@ -6,6 +6,7 @@
 # file, in accordance with the Business Source License, use of this software
 # will be governed by the Apache License, Version 2.0, included in the file
 # licenses/APL2.txt.
+import atexit
 import os
 import sys
 import requests
@@ -20,32 +21,56 @@ sys.path.append(pylib)
 import cluster_run_lib
 
 
-def build_cluster(auth, start_args, connect_args):
-    processes = cluster_run_lib.start_cluster(**start_args)
+# We attempt to fetch terminal_attrs when killing nodes, to override any changes
+# made by the nodes
+def get_terminal_attrs():
+    try:
+        import termios
+        return termios.tcgetattr(sys.stdin)
+    except Exception:
+        return None
+
+
+def get_node_urls(nodes):
+    return [node.url for node in nodes]
+
+
+def build_cluster(auth, start_args, connect_args, kill_nodes):
     # We use the raw ip address instead of 'localhost', as it isn't accepted by
     # the addNode or doJoinCluster endpoints
     address = "127.0.0.1"
     port = cluster_run_lib.base_api_port + start_args['start_index']
+    num_nodes = start_args['num_nodes']
+    nodes = [testlib.Node(host=address,
+                          port=port + i,
+                          auth=auth)
+             for i in range(num_nodes)]
+    urls = get_node_urls(nodes)
+
+    # Start the cluster
+    print(f"Starting cluster with start args:\n{start_args}")
+    processes = cluster_run_lib.start_cluster(**start_args)
+
     try:
+        # Connect the nodes
+        print(f"Connecting cluster with connect args:\n{connect_args}")
         error = cluster_run_lib.connect(**connect_args)
         if error:
-            print(f"Failed to connect node(s). Status: {error}")
+            sys.exit(f"Failed to connect node(s). Status: {error}")
     except URLError as e:
-        print(f"Failed to connect node(s). {e}\n"
-              f"Perhaps a node has already been started at "
-              f"{address}:{port}?\n")
-    return get_cluster(address, port, auth, processes, start_args['num_nodes'],
-                       connect_args['num_nodes'])
+        sys.exit(f"Failed to connect node(s). {e}\n"
+                 f"Perhaps a node has already been started at "
+                 f"{address}:{port}?\n")
+    finally:
+        # If anything goes wrong after starting the clusters, we want to kill
+        # the nodes, otherwise we end up with processes hanging around
+        atexit.register(kill_nodes, processes, urls, get_terminal_attrs())
+    return get_cluster(port, auth, processes, nodes, connect_args['num_nodes'])
 
 
-def get_cluster(address, start_port, auth, processes, num_nodes, num_connected):
-    urls = []
-    nodes = []
+def get_cluster(start_port, auth, processes, nodes, num_connected):
     connected_nodes = []
-    for i in range(num_nodes):
-        node = testlib.Node(host=address,
-                            port=start_port + i,
-                            auth=auth)
+    for i, node in enumerate(nodes):
         # Check that node is connected to the cluster.
         if i < num_connected:
             pools_default = f"{node.url}/pools/default"
@@ -59,8 +84,6 @@ def get_cluster(address, start_port, auth, processes, num_nodes, num_connected):
                 sys.exit(f"Failed to connect to {pools_default} "
                          f"({response.status_code})\n"
                          f"{response.text}")
-        urls.append(node.url)
-        nodes.append(node)
 
     try:
         memsize = response.json()["memoryQuota"]
@@ -68,17 +91,22 @@ def get_cluster(address, start_port, auth, processes, num_nodes, num_connected):
         sys.exit(f"Response has not been defined, perhaps no nodes haves "
                  f"connected. {e}")
 
-    return Cluster(nodes=nodes,
-                   connected_nodes=connected_nodes,
-                   processes=processes,
-                   auth=auth,
-                   memsize=memsize)
+    cluster = Cluster(nodes=nodes,
+                      connected_nodes=connected_nodes,
+                      start_index=start_port - cluster_run_lib.base_api_port,
+                      processes=processes,
+                      auth=auth,
+                      memsize=memsize)
+    print(f"Successfully connected to cluster: {cluster}")
+    return cluster
 
 
 class Cluster:
-    def __init__(self, nodes, connected_nodes, processes, auth, memsize):
+    def __init__(self, nodes, connected_nodes, start_index, processes, auth,
+                 memsize):
         self.nodes = nodes
         self.connected_nodes = connected_nodes
+        self.start_index = start_index
         self.processes = processes
         self.auth = auth
         self.memsize = memsize
@@ -102,6 +130,11 @@ class Cluster:
 
     def __str__(self):
         return self.__dict__.__str__()
+
+    # Kill the cluster's nodes to avoid competing for resources
+    def teardown(self):
+        cluster_run_lib.kill_nodes(self.processes, get_terminal_attrs(),
+                                   urls=get_node_urls(self.nodes))
 
     # Check every 0.5s until there is no rebalance running or 600s have passed
     def wait_for_rebalance(self, timeout_s=600, interval_s=0.5, verbose=False):
@@ -169,5 +202,5 @@ class Cluster:
     def wait_nodes_up(self, timeout_s=60, verbose=False):
         cluster_run_lib.wait_nodes_up(
             timeout_s=timeout_s,
-            node_urls=[node.url for node in self.nodes],
+            node_urls=get_node_urls(self.nodes),
             verbose=verbose)

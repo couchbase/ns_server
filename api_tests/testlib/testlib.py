@@ -6,6 +6,7 @@
 # file, in accordance with the Business Source License, use of this software
 # will be governed by the Apache License, Version 2.0, included in the file
 # licenses/APL2.txt.
+import atexit
 from abc import ABC, abstractmethod
 import traceback
 import requests
@@ -15,15 +16,28 @@ import random
 from testlib.node import Node
 
 
-def get_appropriate_cluster(available_clusters, configuration):
+def get_appropriate_cluster(cluster, auth, start_index, requirements,
+                            tmp_cluster_dir, kill_nodes):
+    if cluster is not None:
+        # If we can use the existing cluster then we should
+        if requirements.is_met(cluster):
+            return cluster
 
-    clusters = [c for c in available_clusters
-                if configuration.is_met(c)]
+        # Teardown the old cluster
+        cluster.teardown()
+        # We no longer need to kill these nodes. A new atexit function will
+        # be registered in requirements.create_cluster
+        atexit.unregister(kill_nodes)
 
-    if len(clusters) == 0:
-        return "Failed to find a cluster that fits test requirements:\n" \
-               f"    {configuration}"
-    return clusters[0]
+        start_index = cluster.start_index + len(cluster.processes)
+
+    # Create a new cluster satisfying the requirements
+    print(f"Starting cluster to satisfy requirements: {requirements}")
+    cluster = requirements.create_cluster(auth, start_index, tmp_cluster_dir,
+                                          kill_nodes)
+    print("\n======================================="
+          "=========================================\n")
+    return cluster
 
 
 def run_testset(testset_class, test_names, cluster, testset_name):

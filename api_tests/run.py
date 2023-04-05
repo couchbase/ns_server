@@ -77,35 +77,8 @@ def remove_temp_cluster_directories():
         shutil.rmtree(dir)
 
 
-def kill_nodes(clusters, terminal_attrs):
-    for c in clusters:
-        cluster_run_lib.kill_nodes(c.processes, terminal_attrs,
-                                   [node.url for node in c.nodes])
-
-
-def kill_nodes_and_remove_dirs(clusters, terminal_attrs):
-    kill_nodes(clusters, terminal_attrs)
-    remove_temp_cluster_directories()
-
-
-# If anything goes wrong after starting the clusters, we want to kill the
-# nodes, otherwise we end up with processes hanging around
-def setup_safe_exit(clusters, remove_dirs=False):
-    terminal_attrs = None
-    try:
-        import termios
-        terminal_attrs = termios.tcgetattr(sys.stdin)
-    except Exception:
-        pass
-
-    if remove_dirs:
-        # When we want to remove the directories, we should register with a
-        # different function name, so that we can safely unregister the original
-        # atexit function after we've registered the new function
-        atexit.register(kill_nodes_and_remove_dirs, clusters, terminal_attrs)
-        atexit.unregister(kill_nodes)
-    else:
-        atexit.register(kill_nodes, clusters, terminal_attrs)
+def kill_nodes(processes, urls, terminal_attrs):
+    cluster_run_lib.kill_nodes(processes, terminal_attrs, urls)
 
 
 def main():
@@ -195,40 +168,34 @@ def main():
 
     testsets_grouped = group_testsets(testsets_to_run)
 
+    cluster = None
     if use_existing_server:
         # Get provided cluster
-        clusters = [get_existing_cluster(address, start_port,
-                                         (username, password), num_nodes)]
-        print(f"Discovered cluster: {clusters[0]}")
+        cluster = get_existing_cluster(address, start_port,
+                                       (username, password), num_nodes)
+        print(f"Discovered cluster: {cluster}")
     else:
         remove_temp_cluster_directories()
 
-        print("Starting required clusters...")
-        clusters = get_required_clusters(testsets_grouped,
-                                         (username, password),
-                                         start_index)
-        setup_safe_exit(clusters)
-        print(f"Started clusters:")
-        for cluster in clusters:
-            print(f"  - {cluster}")
-        print("\n======================================="
-              "=========================================\n" )
-
     executed = 0
     for (configuration, testsets) in testsets_grouped:
-        for class_name, testset, test_names in testsets:
-            testset_name = f"{class_name}/{configuration}"
-            cluster = testlib.get_appropriate_cluster(clusters, configuration)
-            if isinstance(cluster, testlib.Cluster):
-                res = testlib.run_testset(testset, test_names, cluster,
-                                          testset_name)
-                executed += res[0]
-                testset_errors = res[1]
-                if len(testset_errors) > 0:
-                    errors[testset_name] = testset_errors
-            else:
-                reason = cluster
+        # Get an appropriate cluster to satisfy the configuration
+        if use_existing_server and not configuration.is_met(cluster):
+            for testset_name, _testset, _test_names in testsets:
+                reason = "Cluster provided does not satisfy test requirements"
                 not_ran.append((testset_name, reason))
+            continue
+        else:
+            cluster = testlib.get_appropriate_cluster(cluster,
+                                                      (username, password),
+                                                      start_index,
+                                                      configuration,
+                                                      tmp_cluster_dir,
+                                                      kill_nodes)
+        # Run the testsets on the cluster
+        tests_executed, testset_errors = run_testsets(cluster, testsets)
+        executed += tests_executed
+        errors.update(testset_errors)
 
     error_num = sum([len(errors[name]) for name in errors])
     errors_str = f"{error_num} error{'s' if error_num != 1 else ''}"
@@ -253,20 +220,23 @@ def main():
 
     if len(errors) > 0:
         error_exit("Tests finished with errors")
-    else:
+    elif not keep_tmp_dirs:
         # Kill any created nodes and possibly delete directories as we don't
         # need to keep around data from successful tests
-        if not keep_tmp_dirs:
-            setup_safe_exit(clusters, True)
+        cluster.teardown()
+        remove_temp_cluster_directories()
+        # Unregister the kill nodes atexit handler as the nodes are now down
+        atexit.unregister(kill_nodes)
 
 
 def group_testsets(testsets):
     # Group by requirements
     testsets_grouped = []
-    for class_name, testset_name, test_names, configurations in testsets:
+    for class_name, testset_class, test_names, configurations in testsets:
         for requirements in configurations:
             different = True
-            testset = (class_name, testset_name, test_names)
+            testset_name = f"{class_name}/{requirements}"
+            testset = (testset_name, testset_class, test_names)
             for (other_reqs, testsets) in testsets_grouped:
                 if requirements.satisfied_by(other_reqs):
                     testsets.append(testset)
@@ -356,22 +326,26 @@ def get_existing_cluster(address, start_port, auth, num_nodes):
         # Assume that there are no nodes that are not already connected
         num_nodes = nodes_found
 
-    return testlib.cluster.get_cluster(address, start_port, auth, [], num_nodes,
-                                       nodes_found)
+    nodes = [testlib.Node(host=address,
+                          port=start_port + i,
+                          auth=auth)
+             for i in range(num_nodes)]
+
+    return testlib.cluster.get_cluster(start_port, auth, [], nodes, nodes_found)
 
 
-def get_required_clusters(testsets_grouped, auth, start_index):
-    clusters = []
-    for (configuration, _) in testsets_grouped:
-        satisfied = False
-        for cluster in clusters:
-            if configuration.is_met(cluster):
-                satisfied = True
-        if not satisfied:
-            clusters.append(configuration.create_cluster(auth, start_index,
-                                                         tmp_cluster_dir))
-            start_index += len(clusters[-1].processes)
-    return clusters
+# Run each testset on the same cluster, counting how many individual tests were
+# ran, and keeping track of all errors
+def run_testsets(cluster, testsets):
+    executed = 0
+    errors = {}
+    for testset_name, testset, test_names in testsets:
+        res = testlib.run_testset(testset, test_names, cluster, testset_name)
+        executed += res[0]
+        testset_errors = res[1]
+        if len(testset_errors) > 0:
+            errors[testset_name] = testset_errors
+    return executed, errors
 
 
 if __name__ == '__main__':
