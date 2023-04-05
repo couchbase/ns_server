@@ -23,6 +23,14 @@ def get_appropriate_cluster(cluster, auth, start_index, requirements,
         if requirements.is_met(cluster):
             return cluster
 
+        # Attempt to satisfy the requirements with the existing cluster if
+        # possible
+        satisfiable, unsatisfied = requirements.is_satisfiable(cluster)
+        if satisfiable:
+            for requirement in unsatisfied:
+                requirement.make_met(cluster)
+            return cluster
+
         # Teardown the old cluster
         cluster.teardown()
         # We no longer need to kill these nodes. A new atexit function will

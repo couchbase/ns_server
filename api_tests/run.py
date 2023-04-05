@@ -243,7 +243,13 @@ def group_testsets(testsets):
                     different = False
             if different:
                 testsets_grouped.append((requirements, [testset]))
-    return testsets_grouped
+    """
+    Sort testset groups by requirements string. The string lists immutable
+    # requirements first, then mutable requirements. This ensures that any sets
+    # of compatible configurations will be adjacent in the list. For example:
+    (edition=Enterprise,num_nodes
+    """
+    return sorted(testsets_grouped, key=lambda x: str(x[0]))
 
 
 def find_tests(test_names, discovered_list):

@@ -8,6 +8,7 @@
 # licenses/APL2.txt.
 from abc import ABC, abstractmethod
 
+import testlib
 from testlib.cluster import Cluster, build_cluster
 
 
@@ -19,7 +20,14 @@ class ClusterRequirements:
                              MemSize(min_memsize)]
 
     def __str__(self):
-        return ','.join([str(requirement) for requirement in self.requirements])
+        immutable_requirements = list(filter(lambda x: not x.can_be_met(),
+                                             self.requirements))
+        mutable_requirements = list(filter(lambda x: x.can_be_met(),
+                                           self.requirements))
+        # List the requirements with mutables last, so that compatible
+        # configurations would be adjacent when ordered by string
+        requirements = immutable_requirements + mutable_requirements
+        return ','.join([str(req) for req in requirements])
 
     @staticmethod
     def get_default_start_args():
@@ -38,8 +46,7 @@ class ClusterRequirements:
     def get_default_connect_args():
         return {}
 
-    def create_cluster(self, auth, start_index, tmp_cluster_dir,
-                       kill_nodes):
+    def create_cluster(self, auth, start_index, tmp_cluster_dir, kill_nodes):
         start_args = {'start_index': start_index,
                       'root_dir': f"{tmp_cluster_dir}-{start_index}"}
         start_args.update(self.get_default_start_args())
@@ -55,6 +62,18 @@ class ClusterRequirements:
                              start_args=start_args,
                              connect_args=connect_args,
                              kill_nodes=kill_nodes)
+
+    # Given a cluster, checks if any requirements are not satisfied, and
+    # returns the unsatisfied requirements
+    def is_satisfiable(self, cluster):
+        unsatisfied = []
+        satisfiable = True
+        for requirement in self.requirements:
+            if not requirement.is_met(cluster):
+                unsatisfied.append(requirement)
+                if not requirement.can_be_met():
+                    satisfiable = False
+        return satisfiable, unsatisfied
 
     def is_met(self, cluster):
         for requirement in self.requirements:
@@ -95,6 +114,16 @@ class Requirement(ABC):
     @abstractmethod
     def is_met(self, cluster):
         raise NotImplementedError()
+
+    # Override if make_met can be called on an existing cluster
+    def can_be_met(self):
+        return False
+
+    # Override to provide a way of satisfying a requirement after the cluster
+    # has already been created
+    def make_met(self, cluster):
+        raise RuntimeError(f"Cannot change Requirement {self} after cluster "
+                           f"created")
 
 
 class Edition(Requirement):
@@ -168,3 +197,11 @@ class MemSize(Requirement):
 
     def is_met(self, cluster):
         return cluster.memsize >= self.memsize
+
+    def can_be_met(self):
+        return True
+
+    def make_met(self, cluster):
+        testlib.post_succ(cluster, "/pools/default",
+                          data={"memoryQuota": self.memsize})
+        cluster.memsize = self.memsize
