@@ -22,7 +22,7 @@ import urllib.error
 import json
 from functools import reduce
 import time
-from urllib.error import HTTPError
+from urllib.error import URLError
 
 base_direct_port = 12000
 base_api_port = 9000
@@ -558,7 +558,7 @@ def sync_loggers(urls):
     try:
         for url in urls:
             http_post(url + "/diag/eval", "ale:sync_all_sinks().")
-    except HTTPError as e:
+    except URLError as e:
         print(f"Error encountered syncing loggers: {e.reason}\n"
               f"Sleeping for 1 second to give the cluster the opportunity "
               f"to flush logs.")
