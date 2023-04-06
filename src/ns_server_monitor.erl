@@ -12,6 +12,8 @@
 
 -include("ns_common.hrl").
 
+-behaviour(health_monitor).
+
 -export([start_link/0]).
 -export([get_nodes/0,
          annotate_status/1,

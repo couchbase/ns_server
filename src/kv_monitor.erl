@@ -10,6 +10,8 @@
 
 -module(kv_monitor).
 
+-behaviour(health_monitor).
+
 -include("ns_common.hrl").
 -include("cut.hrl").
 

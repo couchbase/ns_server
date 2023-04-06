@@ -14,6 +14,8 @@
 
 -module(node_monitor).
 
+-behaviour(health_monitor).
+
 -include("ns_common.hrl").
 
 -export([start_link/0]).

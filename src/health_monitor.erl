@@ -6,14 +6,35 @@
 %% file, in accordance with the Business Source License, use of this software
 %% will be governed by the Apache License, Version 2.0, included in the file
 %% licenses/APL2.txt.
-%%
-%% Common gen_server used by various monitors.
-%%
+%% @doc
+%% health_monitor is a common gen_server used by the various health monitors
+%% to gather status information about the cluster to feed into auto_failover.
+%% Health monitors should implement the "health_monitor" behaviour to provide
+%% the required APIs. index_monitor is a notable exception to this as it is
+%% implemented almost entirely independently of the code here.
+%% @end
 -module(health_monitor).
 
 -behaviour(gen_server).
 
 -include("ns_common.hrl").
+
+
+%% @doc
+%% Behaviour that the actual monitors should implement. Much of this is
+%% implemented via a gen_server style API, note the differing number of
+%% parameters.
+%% @end
+-callback start_link() -> term().
+-callback init() -> term().
+-callback handle_call(term(), term(), term(), term()) ->
+    noreply | {reply, term()}.
+-callback handle_cast(term(), term(), term()) -> noreply.
+-callback handle_info(term(), term(), term()) -> noreply.
+
+%% Other API required for the behaviour.
+-callback get_nodes() -> term().
+
 
 -define(INACTIVE_TIME, 2000000). % 2 seconds in microseconds
 -define(REFRESH_INTERVAL, 1000). % 1 second heartbeat and refresh
