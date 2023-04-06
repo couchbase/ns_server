@@ -193,6 +193,8 @@ def main():
     else:
         testsets_to_run = find_tests(tests, discovered_tests)
 
+    testsets_grouped = group_testsets(testsets_to_run)
+
     if use_existing_server:
         # Get provided cluster
         clusters = [get_existing_cluster(address, start_port,
@@ -202,7 +204,7 @@ def main():
         remove_temp_cluster_directories()
 
         print("Starting required clusters...")
-        clusters = get_required_clusters(testsets_to_run,
+        clusters = get_required_clusters(testsets_grouped,
                                          (username, password),
                                          start_index)
         setup_safe_exit(clusters)
@@ -213,8 +215,8 @@ def main():
               "=========================================\n" )
 
     executed = 0
-    for class_name, testset, test_names, configurations in testsets_to_run:
-        for configuration in configurations:
+    for (configuration, testsets) in testsets_grouped:
+        for class_name, testset, test_names in testsets:
             testset_name = f"{class_name}/{configuration}"
             cluster = testlib.get_appropriate_cluster(clusters, configuration)
             if isinstance(cluster, testlib.Cluster):
@@ -256,6 +258,22 @@ def main():
         # need to keep around data from successful tests
         if not keep_tmp_dirs:
             setup_safe_exit(clusters, True)
+
+
+def group_testsets(testsets):
+    # Group by requirements
+    testsets_grouped = []
+    for class_name, testset_name, test_names, configurations in testsets:
+        for requirements in configurations:
+            different = True
+            testset = (class_name, testset_name, test_names)
+            for (other_reqs, testsets) in testsets_grouped:
+                if requirements.satisfied_by(other_reqs):
+                    testsets.append(testset)
+                    different = False
+            if different:
+                testsets_grouped.append((requirements, [testset]))
+    return testsets_grouped
 
 
 def find_tests(test_names, discovered_list):
@@ -342,18 +360,17 @@ def get_existing_cluster(address, start_port, auth, num_nodes):
                                        nodes_found)
 
 
-def get_required_clusters(testsets, auth, start_index):
+def get_required_clusters(testsets_grouped, auth, start_index):
     clusters = []
-    for (name, testset, tests, configurations) in testsets:
-        for configuration in configurations:
-            satisfied = False
-            for cluster in clusters:
-                if configuration.is_met(cluster):
-                    satisfied = True
-            if not satisfied:
-                clusters.append(configuration.create_cluster(auth, start_index,
-                                                             tmp_cluster_dir))
-                start_index += len(clusters[-1].processes)
+    for (configuration, _) in testsets_grouped:
+        satisfied = False
+        for cluster in clusters:
+            if configuration.is_met(cluster):
+                satisfied = True
+        if not satisfied:
+            clusters.append(configuration.create_cluster(auth, start_index,
+                                                         tmp_cluster_dir))
+            start_index += len(clusters[-1].processes)
     return clusters
 
 

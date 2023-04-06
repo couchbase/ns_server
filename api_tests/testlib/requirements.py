@@ -59,6 +59,15 @@ class ClusterRequirements:
                 return False
         return True
 
+    # Determines whether this set of requirements will be satisfiable with a
+    # cluster satisfying some 'other' ClusterRequirements
+    def satisfied_by(self, other):
+        for requirement in self.requirements:
+            if not (any(requirement == other_requirement
+                        for other_requirement in other.requirements)):
+                return False
+        return True
+
 
 class Requirement(ABC):
     def __init__(self, name, value):
@@ -76,6 +85,9 @@ class Requirement(ABC):
 
     def __str__(self):
         return f"{self._name}={self._value}"
+
+    def __eq__(self, other):
+        return str(self) == str(other)
 
     @abstractmethod
     def is_met(self, cluster):
