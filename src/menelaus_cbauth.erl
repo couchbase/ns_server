@@ -129,6 +129,7 @@ is_interesting(honor_cipher_order) -> true;
 is_interesting(ssl_minimum_protocol) -> true;
 is_interesting(cluster_encryption_level) -> true;
 is_interesting({security_settings, _}) -> true;
+is_interesting({cbauth_cache_size, _, _}) -> true;
 is_interesting({node, N, prometheus_auth_info}) when N =:= node() -> true;
 is_interesting({node, N, uuid}) when N =:= node() -> true;
 is_interesting(Key) -> collections:key_match(Key) =/= false.
@@ -302,6 +303,8 @@ personalize_info(Label, Info) ->
                                     proplists:get_value(tlsConfig, Info),
                                     {[{present, false}]}),
 
+    CacheConfig = proplists:get_value(label_to_service(Label),
+                                      proplists:get_value(cacheConfig, Info)),
     Nodes = proplists:get_value(nodes, Info),
     NewNodes =
         lists:map(fun ({Node}) ->
@@ -319,7 +322,8 @@ personalize_info(Label, Info) ->
     misc:update_proplist(Info,
                          [{specialUser, erlang:list_to_binary(MemcachedUser)},
                           {nodes, NewNodes},
-                          {tlsConfig, TLSConfig}]).
+                          {tlsConfig, TLSConfig},
+                          {cacheConfig, CacheConfig}]).
 
 notify_cbauth(Label, internal, Pid, Info) ->
     invoke_method(Label, "AuthCacheSvc.UpdateDB", Pid,
@@ -337,7 +341,14 @@ send_heartbeat(Label, Pid) ->
     end.
 
 invoke_method(Label, Method, Pid, Info) ->
-    try json_rpc_connection:perform_call(Label, Method, {Info}) of
+    case perform_call(Label, Method, Pid, {Info}, false) of
+        {ok, Res} when Res =:= true orelse Res =:= null -> ok;
+        Err -> Err
+    end.
+
+perform_call(Label, Method, Pid, Params, Silent) ->
+    Opts = #{silent => Silent, timeout => infinity},
+    try json_rpc_connection:perform_call(Label, Method, Params, Opts) of
         {error, method_not_found} ->
             error;
         {error, {rpc_error, _}} ->
@@ -348,10 +359,8 @@ invoke_method(Label, Method, Pid, Info) ->
                        [{Label, Pid}, Error]),
             exit(Pid, Error),
             error;
-        {ok, true} ->
-            ok;
-        {ok, null} ->
-            ok
+        {ok, Res} ->
+            {ok, Res}
     catch exit:{noproc, _} ->
             ?log_debug("Process ~p is already dead", [{Label, Pid}]),
             error;
@@ -470,6 +479,8 @@ build_auth_info(internal, {AuthVersion, PermissionsVersion, CcaState, Config,
     SpecialPasswords = ns_config_auth:get_special_passwords(
                          dist_manager:this_node(), Config),
     SpecialPasswordsBin = [list_to_binary(P) || P <- SpecialPasswords],
+    CbAuthCacheSizesPerService =
+        build_cbauth_cache_sizes(Config, services_with_cache_configuration()),
     [{nodes, Nodes},
      {authCheckURL, list_to_binary(AuthCheckURL)},
      {permissionCheckURL, list_to_binary(PermissionCheckURL)},
@@ -486,7 +497,8 @@ build_auth_info(internal, {AuthVersion, PermissionsVersion, CcaState, Config,
      {clusterEncryptionConfig, {[{encryptData, ClusterDataEncrypt},
                                  {disableNonSSLPorts, DisableNonSSLPorts}]}},
      {specialPasswords, SpecialPasswordsBin},
-     {tlsConfig, [tls_config(S, Config) || S <- TLSServices]}].
+     {tlsConfig, [tls_config(S, Config) || S <- TLSServices]},
+     {cacheConfig, CbAuthCacheSizesPerService}].
 
 tls_config(Service, Config) ->
     Label = case Service of
@@ -598,3 +610,47 @@ handle_extract_user_from_cert_post(Req) ->
 
 is_cbauth_connection(Label) ->
     lists:suffix("-cbauth", Label).
+
+build_cbauth_cache_sizes(Config, Services) ->
+    lists:map(
+        fun (Service) ->
+            CbauthCacheSizes = build_cbauth_cache_size(Config, Service),
+            {Service, {CbauthCacheSizes}}
+        end, Services).
+
+build_cbauth_cache_size(Config, Service) ->
+    lists:map(
+        fun ({ConfigName, JsonName, Default}) ->
+            CacheSize = ns_config:search(Config,
+                                         {cbauth_cache_size,
+                                          Service,
+                                          ConfigName},
+                                         Default),
+            ValidCacheSize = validate_cache_size(CacheSize, 1, 65536, Default),
+            {JsonName, ValidCacheSize}
+        end, get_cbauth_cache_size_raw_list()).
+
+get_cbauth_cache_size_raw_list() ->
+    [{uuid_cache_size, uuidCacheSize, 256},
+     {user_bkts_cache_size, userBktsCacheSize, 1024},
+     {up_cache_size, upCacheSize, 1024},
+     {auth_cache_size, authCacheSize, 256},
+     {client_cert_cache_size, clientCertCacheSize, 256}].
+
+label_to_service("cbq-engine-cbauth") ->
+    n1ql;
+label_to_service("goxdcr-cbauth") ->
+    xdcr;
+label_to_service(Label) ->
+    list_to_atom(string:lowercase(string:trim(Label, trailing, "-cbauth"))).
+
+services_with_cache_configuration() ->
+    [n1ql, projector, xdcr, fts, index, eventing, cbas, backup].
+
+validate_cache_size(Value, Min, Max, Default) ->
+    if
+        not is_integer(Value) -> Default;
+        Value < Min -> Default;
+        Value > Max -> Default;
+        true -> Value
+    end.
