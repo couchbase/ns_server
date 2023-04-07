@@ -187,7 +187,7 @@ build_pool_info(Id, Req, normal, Stability, LocalAddr, UpdateID) ->
       fun () ->
               %% NOTE: token needs to be taken before building pool info
               Vsn = {config_version_token(), nodes(), UpdateID},
-              {do_build_pool_info(Id, InfoLevel, Stability, LocalAddr),
+              {do_build_pool_info(Id, Req, InfoLevel, Stability, LocalAddr),
                1000, Vsn}
       end,
       fun (_Key, _Value, {ConfigVersionToken, Nodes, OldUpdateID}) ->
@@ -196,16 +196,17 @@ build_pool_info(Id, Req, normal, Stability, LocalAddr, UpdateID) ->
                   orelse ((UpdateID =/= OldUpdateID) andalso
                           (UpdateID =/= undefined))
       end);
-build_pool_info(Id, _Req, for_ui, Stability, LocalAddr, _UpdateID) ->
-    do_build_pool_info(Id, for_ui, Stability, LocalAddr).
+build_pool_info(Id, Req, for_ui, Stability, LocalAddr, _UpdateID) ->
+    do_build_pool_info(Id, Req, for_ui, Stability, LocalAddr).
 
 server_groups_uri_json(GroupsV) ->
     [{serverGroupsUri, <<"/pools/default/serverGroups?v=",
                          (list_to_binary(integer_to_list(GroupsV)))/binary>>} ||
         cluster_compat_mode:is_enterprise()].
 
-do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
-    Ctx = menelaus_web_node:get_context({ip, LocalAddr}, false, Stability),
+do_build_pool_info(Id, Req, InfoLevel, Stability, LocalAddr) ->
+    Ctx0 = menelaus_web_node:get_context({ip, LocalAddr}, false, Stability),
+    Ctx = menelaus_web_node:check_if_filtering(Req, Ctx0),
     Config = menelaus_web_node:get_config(Ctx),
     Snapshot = menelaus_web_node:get_snapshot(Ctx),
 
