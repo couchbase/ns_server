@@ -18,6 +18,23 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+%% These timeouts were initally present in ns_orchestrator
+%% - therefore the slight bit of ugliness here.
+%%
+%% Check if the timeout is currently configured via {timeout, {ns_bucket,
+%% delete_bucket} key in ns_config; if not check if it was previously
+%% configured via {timeout, {ns_orchestrator, delete_bucket}}; else use the
+%% default value.
+
+-define(DELETE_BUCKET_TIMEOUT,
+        ?get_timeout(delete_bucket,
+                     ns_config:get_timeout({ns_orchestrator, delete_bucket},
+                                           30000))).
+-define(DELETE_MAGMA_BUCKET_TIMEOUT,
+        ?get_timeout(delete_magma_bucket,
+                     ns_config:get_timeout({ns_orchestrator, delete_bucket},
+                                           300000))).
+
 %% API
 -export([get_servers/1,
          bucket_type/1,
@@ -137,7 +154,12 @@
          get_hibernation_state/1,
          update_desired_servers/2,
          update_servers/2,
-         get_expected_servers/1]).
+         get_expected_servers/1,
+         get_buckets_marked_for_shutdown/0,
+         get_bucket_names_marked_for_shutdown/0,
+         del_marked_for_shutdown/1,
+         get_shutdown_timeout/1,
+         wait_for_bucket_shutdown/3]).
 
 -import(json_builder,
         [to_binary/1,
@@ -957,13 +979,32 @@ do_create_bucket(ns_config, BucketName, Config, BucketUUID, _Manifest) ->
 do_create_bucket(chronicle, BucketName, Config, BucketUUID, Manifest) ->
     {ok, _} =
         chronicle_kv:transaction(
-          kv, [root(), nodes_wanted],
+          kv, [root(), nodes_wanted, buckets_marked_for_shutdown_key()],
           fun (Snapshot) ->
                   BucketNames = get_bucket_names(Snapshot),
-                  case name_conflict(BucketName, BucketNames) of
-                      true ->
+                  %% We make similar checks via validate_create_bucket/2 in
+                  %% ns_orchestrator and since the leader leases guarantees that
+                  %% leader wouldn't change between these calls, the below
+                  %% checks are redundant.
+                  %%
+                  %% Despite that, name_conflict/2 check below has existed,
+                  %% therefore adding the is_marked_for_shutdown check too in
+                  %% similar vein.
+                  %%
+                  %% More discussion here at:
+                  %% https://review.couchbase.org/c/ns_server/+/188906/
+                  %% comments/9fdd0336_0ec5a962
+
+                  ShutdownBucketNames =
+                      get_bucket_names_marked_for_shutdown(Snapshot),
+
+                  case {name_conflict(BucketName, BucketNames),
+                        name_conflict(BucketName, ShutdownBucketNames)} of
+                      {true, _} ->
                           {abort, already_exists};
-                      false ->
+                      {_, true} ->
+                          {abort, still_exists};
+                      {false, false} ->
                           {commit, create_bucket_sets(BucketName, BucketNames,
                                                       BucketUUID, Config) ++
                                    collections_sets(BucketName, Config,
@@ -986,6 +1027,38 @@ collections_sets(Bucket, Config, Snapshot, Manifest) ->
         false ->
             []
     end.
+
+buckets_marked_for_shutdown_key() ->
+    buckets_marked_for_shutdown.
+
+get_buckets_marked_for_shutdown() ->
+    get_buckets_marked_for_shutdown(direct).
+
+get_buckets_marked_for_shutdown(Snapshot) ->
+    chronicle_compat:get(Snapshot, buckets_marked_for_shutdown_key(),
+                         #{default => []}).
+
+del_marked_for_shutdown(BucketName) ->
+    Key = buckets_marked_for_shutdown_key(),
+    chronicle_kv:transaction(
+      kv, [Key],
+      fun (Snapshot) ->
+              Buckets = get_buckets_marked_for_shutdown(Snapshot),
+              {commit,
+               [{set, Key, proplists:delete(BucketName, Buckets)}]}
+      end).
+
+add_marked_for_shutdown(Snapshot, {BucketName, BucketConfig}) ->
+    {set, buckets_marked_for_shutdown_key(),
+     get_buckets_marked_for_shutdown(Snapshot) ++
+     [{BucketName, get_servers(BucketConfig),
+       get_shutdown_timeout(BucketConfig)}]}.
+
+get_bucket_names_marked_for_shutdown() ->
+    get_bucket_names_marked_for_shutdown(direct).
+
+get_bucket_names_marked_for_shutdown(Snapshot) ->
+    [BN || {BN, _Nodes, _Timeout} <- get_buckets_marked_for_shutdown(Snapshot)].
 
 -spec delete_bucket(bucket_name()) ->
                            {ok, BucketConfig :: list()} |
@@ -1020,8 +1093,11 @@ do_delete_bucket(ns_config, BucketName) ->
 do_delete_bucket(chronicle, BucketName) ->
     RootKey = root(),
     PropsKey = sub_key(BucketName, props),
+    IsClusterElixir = cluster_compat_mode:is_cluster_elixir(),
+
     RV = chronicle_kv:transaction(
-           kv, [RootKey, PropsKey, nodes_wanted, uuid_key(BucketName)],
+           kv, [RootKey, PropsKey, nodes_wanted, uuid_key(BucketName),
+                buckets_marked_for_shutdown_key()],
            fun (Snapshot) ->
                    BucketNames = get_bucket_names(Snapshot),
                    case lists:member(BucketName, BucketNames) of
@@ -1040,8 +1116,17 @@ do_delete_bucket(chronicle, BucketName) ->
                                 [collections:last_seen_ids_key(N, BucketName) ||
                                     N <- NodesWanted]],
                            {commit,
-                            [{set, RootKey, BucketNames -- [BucketName]} |
-                             [{delete, K} || K <- KeysToDelete]],
+                            [{set, RootKey, BucketNames -- [BucketName]}] ++
+                            %% We need to ensure the cluster is elixir to avoid
+                            %% running into issues similar to the one described
+                            %% here:
+                            %%
+                            %% https://review.couchbase.org/c/ns_server/+/
+                            %% 188906/comments/209b4dbb_78588f3e
+                            [add_marked_for_shutdown(
+                               Snapshot, {BucketName, BucketConfig}) ||
+                             IsClusterElixir] ++
+                            [{delete, K} || K <- KeysToDelete],
                             [{uuid, UUID}] ++ BucketConfig}
                    end
            end),
@@ -1050,6 +1135,100 @@ do_delete_bucket(chronicle, BucketName) ->
             {ok, BucketConfig};
         not_found ->
             {exit, {not_found, BucketName}, nothing}
+    end.
+
+wait_for_nodes_loop([]) ->
+    ok;
+wait_for_nodes_loop(Nodes) ->
+    receive
+        {done, Node} ->
+            wait_for_nodes_loop(Nodes -- [Node]);
+        timeout ->
+            {timeout, Nodes}
+    end.
+
+wait_for_nodes_check_pred(Status, Pred) ->
+    Active = proplists:get_value(active_buckets, Status),
+    case Active of
+        undefined ->
+            false;
+        _ ->
+            Pred(Active)
+    end.
+
+%% Wait till active buckets satisfy certain predicate on all nodes. After
+%% `Timeout' milliseconds, we give up and return the list of leftover nodes.
+-spec wait_for_nodes([node()],
+                     fun(([string()]) -> boolean()),
+                     timeout()) -> ok | {timeout, [node()]}.
+wait_for_nodes(Nodes, Pred, Timeout) ->
+    misc:executing_on_new_process(
+      fun () ->
+              Self = self(),
+
+              ns_pubsub:subscribe_link(
+                buckets_events,
+                fun ({significant_buckets_change, Node}) ->
+                        Status = ns_doctor:get_node(Node),
+
+                        case wait_for_nodes_check_pred(Status, Pred) of
+                            false ->
+                                ok;
+                            true ->
+                                Self ! {done, Node}
+                        end;
+                    (_) ->
+                        ok
+                end),
+
+              Statuses = ns_doctor:get_nodes(),
+              InitiallyFilteredNodes =
+                  lists:filter(
+                    fun (N) ->
+                            Status = ns_doctor:get_node(N, Statuses),
+                            not wait_for_nodes_check_pred(Status, Pred)
+                    end, Nodes),
+
+              erlang:send_after(Timeout, Self, timeout),
+              wait_for_nodes_loop(InitiallyFilteredNodes)
+      end).
+
+get_shutdown_timeout(BucketConfig) ->
+    case ns_bucket:kv_backend_type(BucketConfig) of
+        magma ->
+            ?DELETE_MAGMA_BUCKET_TIMEOUT;
+        _ ->
+            ?DELETE_BUCKET_TIMEOUT
+    end.
+
+wait_for_bucket_shutdown(BucketName, Nodes0, Timeout) ->
+    %% A bucket deletion can be only prempted by a auto-failover and it can
+    %% happen the node on which the bucket was hosted could have been
+    %% failed-over before the shutdown was performed via ns_orchestrator.
+    %%
+    %% Filter out the servers that aren't currently active.
+
+    Nodes = ns_cluster_membership:active_nodes(direct, Nodes0),
+
+    Pred = fun (Active) ->
+                   not lists:member(BucketName, Active)
+           end,
+    LeftoverNodes =
+        case wait_for_nodes(Nodes, Pred, Timeout) of
+            ok ->
+                [];
+            {timeout, LeftoverNodes0} ->
+                ?log_warning("Nodes ~p failed to delete bucket ~p "
+                             "within expected time (~p msecs).",
+                             [LeftoverNodes0, BucketName, Timeout]),
+                LeftoverNodes0
+        end,
+
+    case LeftoverNodes of
+        [] ->
+            ok;
+        _ ->
+            {shutdown_failed, LeftoverNodes}
     end.
 
 %% Updates properties of bucket of given name and type.  Check of type

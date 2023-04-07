@@ -45,6 +45,11 @@
          stop_tref = undefined :: undefined | reference(),
          stop_reason = undefined :: term()}).
 
+-record(delete_bucket_state,
+        {from :: {pid(), gen_statem:reply_tag()},
+         pid :: pid(),
+         bucket_name :: bucket_name()}).
+
 -record(recovery_state, {pid :: pid()}).
 
 
@@ -77,8 +82,6 @@
 
 -define(SERVER, {via, leader_registry, ?MODULE}).
 
--define(DELETE_BUCKET_TIMEOUT,  ?get_timeout(delete_bucket, 30000)).
--define(DELETE_MAGMA_BUCKET_TIMEOUT,  ?get_timeout(delete_bucket, 300000)).
 -define(FLUSH_BUCKET_TIMEOUT,   ?get_timeout(flush_bucket, 60000)).
 -define(CREATE_BUCKET_TIMEOUT,  ?get_timeout(create_bucket, 5000)).
 -define(JANITOR_RUN_TIMEOUT,    ?get_timeout(ensure_janitor_run, 30000)).
@@ -101,7 +104,8 @@
          janitor_running/2, janitor_running/3,
          rebalancing/2, rebalancing/3,
          recovery/2, recovery/3,
-         bucket_hibernation/3]).
+         bucket_hibernation/3,
+         delete_bucket/3]).
 
 %%
 %% API
@@ -155,6 +159,7 @@ update_bucket(BucketType, StorageMode, BucketName, UpdatedProps) ->
                            ok | rebalance_running | in_recovery |
                            in_bucket_hibernation |
                            {shutdown_failed, [node()]} |
+                           shutdown_incomplete |
                            {exit, {not_found, bucket_name()}, _}.
 delete_bucket(BucketName) ->
     call({delete_bucket, BucketName}, infinity).
@@ -631,6 +636,9 @@ handle_info({timeout, _TRef, stop_timeout} = Msg, rebalancing, StateData) ->
 handle_info(Msg, bucket_hibernation, StateData) ->
     handle_info_in_bucket_hibernation(Msg, StateData);
 
+handle_info(Msg, delete_bucket, StateData) ->
+    handle_info_in_delete_bucket(Msg, StateData);
+
 handle_info(Msg, StateName, StateData) ->
     ?log_warning("Got unexpected message ~p in state ~p with data ~p",
                  [Msg, StateName, StateData]),
@@ -687,9 +695,39 @@ idle({flush_bucket, BucketName}, From, _State) ->
     end,
     {keep_state_and_data, [{reply, From, RV}]};
 idle({delete_bucket, BucketName}, From, _State) ->
-    Reply = handle_delete_bucket(BucketName),
+    Result = handle_delete_bucket(BucketName),
 
-    {keep_state_and_data, [{reply, From, Reply}]};
+    case Result of
+        {ok, BucketConfig} ->
+            master_activity_events:note_bucket_deletion(BucketName),
+            BucketUUID = proplists:get_value(uuid, BucketConfig),
+            event_log:add_log(bucket_deleted,
+                              [{bucket,
+                                list_to_binary(BucketName)},
+                               {bucket_uuid, BucketUUID}]),
+
+            Servers = ns_bucket:get_servers(BucketConfig),
+            Timeout = ns_bucket:get_shutdown_timeout(BucketConfig),
+
+            case cluster_compat_mode:is_cluster_elixir() of
+                true ->
+                    Pid = erlang:spawn_link(
+                            fun () ->
+                                    ok = ns_bucket:wait_for_bucket_shutdown(
+                                           BucketName, Servers, Timeout)
+                            end),
+                    {next_state, delete_bucket,
+                     #delete_bucket_state{
+                        from = From, pid = Pid,
+                        bucket_name = BucketName}};
+                false ->
+                    Res = ns_bucket:wait_for_bucket_shutdown(
+                            BucketName, Servers, Timeout),
+                    {keep_state_and_data, [{reply, From, Res}]}
+            end;
+        Error ->
+            {keep_state_and_data, [{reply, From, Error}]}
+    end;
 
 %% In the mixed mode, depending upon the node from which the update bucket
 %% request is being sent, the length of the message could vary. In order to
@@ -1122,6 +1160,19 @@ build_error(#bucket_hibernation_state{
       {<<"bucket">>, list_to_binary(Bucket)},
       {<<"op">>, Op}]}.
 
+delete_bucket({try_autofailover, Nodes, Options}, From,
+              #delete_bucket_state{from = DeleteBucketFrom,
+                                   pid = Pid,
+                                   bucket_name = BucketName}) ->
+    ?log_warning("Bucket shutdown interrupted by auto-failover. Bucket - ~p",
+                 [BucketName]),
+    misc:unlink_terminate_and_wait(Pid, kill),
+    gen_statem:reply(DeleteBucketFrom, shutdown_incomplete),
+    maybe_try_autofailover_in_idle_state(
+      {try_autofailover, From, Nodes, Options});
+delete_bucket(Msg, From, State) ->
+    ?log_debug("Ignore Msg: ~p in State: ~p", [Msg, State]),
+    {keep_state_and_data, [{reply, From, in_delete_bucket}]}.
 %%
 %% Internal functions
 %%
@@ -1147,62 +1198,6 @@ do_request_janitor_run(Item, Fun, FsmState, State) ->
                               []
                       end,
     {next_state, FsmState, State, MaybeNewTimeout}.
-
-wait_for_nodes_loop([]) ->
-    ok;
-wait_for_nodes_loop(Nodes) ->
-    receive
-        {done, Node} ->
-            wait_for_nodes_loop(Nodes -- [Node]);
-        timeout ->
-            {timeout, Nodes}
-    end.
-
-wait_for_nodes_check_pred(Status, Pred) ->
-    Active = proplists:get_value(active_buckets, Status),
-    case Active of
-        undefined ->
-            false;
-        _ ->
-            Pred(Active)
-    end.
-
-%% Wait till active buckets satisfy certain predicate on all nodes. After
-%% `Timeout' milliseconds, we give up and return the list of leftover nodes.
--spec wait_for_nodes([node()],
-                     fun(([string()]) -> boolean()),
-                     timeout()) -> ok | {timeout, [node()]}.
-wait_for_nodes(Nodes, Pred, Timeout) ->
-    misc:executing_on_new_process(
-      fun () ->
-              Self = self(),
-
-              ns_pubsub:subscribe_link(
-                buckets_events,
-                fun ({significant_buckets_change, Node}) ->
-                        Status = ns_doctor:get_node(Node),
-
-                        case wait_for_nodes_check_pred(Status, Pred) of
-                            false ->
-                                ok;
-                            true ->
-                                Self ! {done, Node}
-                        end;
-                    (_) ->
-                        ok
-                end),
-
-              Statuses = ns_doctor:get_nodes(),
-              InitiallyFilteredNodes =
-                  lists:filter(
-                    fun (N) ->
-                            Status = ns_doctor:get_node(N, Statuses),
-                            not wait_for_nodes_check_pred(Status, Pred)
-                    end, Nodes),
-
-              erlang:send_after(Timeout, Self, timeout),
-              wait_for_nodes_loop(InitiallyFilteredNodes)
-      end).
 
 run_hibernation_op(Op,
                    #bucket_hibernation_op_args{
@@ -1896,7 +1891,7 @@ handle_hibernation_manager_exit(normal, Bucket, pause_bucket) ->
     %% for deletion. TODO - do we have to do this as a
     %% transaction in chronicle??
     case handle_delete_bucket(Bucket) of
-        ok ->
+        {ok, _BucketConfig} ->
             ale:debug(?USER_LOGGER, "pause_bucket done for Bucket ~p.",
                       [Bucket]),
             log_hibernation_event(Bucket, pause_bucket_completed),
@@ -1980,44 +1975,27 @@ stop_bucket_hibernation_op(State, Reason) ->
             State
     end.
 
+handle_info_in_delete_bucket({'EXIT', Pid, Reason},
+                             #delete_bucket_state{
+                                pid = Pid,
+                                from = From,
+                                bucket_name = BucketName}) ->
+    Reply =
+        case Reason of
+            normal ->
+                ns_bucket:del_marked_for_shutdown(BucketName),
+                ok;
+            Error ->
+                Error
+        end,
+    {next_state, idle, #idle_state{}, [{reply, From, Reply}]}.
+
 handle_delete_bucket(BucketName) ->
     menelaus_users:cleanup_bucket_roles(BucketName),
     case ns_bucket:delete_bucket(BucketName) of
         {ok, BucketConfig} ->
-            master_activity_events:note_bucket_deletion(BucketName),
-            BucketUUID = proplists:get_value(uuid, BucketConfig),
-            event_log:add_log(bucket_deleted, [{bucket,
-                                                list_to_binary(BucketName)},
-                                               {bucket_uuid, BucketUUID}]),
             ns_janitor_server:delete_bucket_request(BucketName),
-
-            Nodes = ns_bucket:get_servers(BucketConfig),
-            Pred = fun (Active) ->
-                           not lists:member(BucketName, Active)
-                   end,
-            Timeout = case ns_bucket:kv_backend_type(BucketConfig) of
-                          magma ->
-                              ?DELETE_MAGMA_BUCKET_TIMEOUT;
-                          _ ->
-                              ?DELETE_BUCKET_TIMEOUT
-                      end,
-            LeftoverNodes =
-            case wait_for_nodes(Nodes, Pred, Timeout) of
-                ok ->
-                    [];
-                {timeout, LeftoverNodes0} ->
-                    ?log_warning("Nodes ~p failed to delete bucket ~p "
-                                 "within expected time (~p msecs).",
-                                 [LeftoverNodes0, BucketName, Timeout]),
-                    LeftoverNodes0
-            end,
-
-            case LeftoverNodes of
-                [] ->
-                    ok;
-                _ ->
-                    {shutdown_failed, LeftoverNodes}
-            end;
+            {ok, BucketConfig};
         Other ->
             Other
     end.
@@ -2027,19 +2005,27 @@ validate_create_bucket(BucketName, BucketConfig) ->
         not ns_bucket:name_conflict(BucketName) orelse
             throw({already_exists, BucketName}),
 
-        {Results, FailedNodes} =
-            rpc:multicall(ns_node_disco:nodes_wanted(), ns_memcached,
-                          active_buckets, [], ?CREATE_BUCKET_TIMEOUT),
-        case FailedNodes of
-            [] -> ok;
-            _ ->
-                ?log_warning(
-                   "Best-effort check for presense of bucket failed to be made "
-                   "on following nodes: ~p", [FailedNodes])
-        end,
+        ShutdownBuckets =
+            case cluster_compat_mode:is_cluster_elixir() of
+                true ->
+                    ns_bucket:get_bucket_names_marked_for_shutdown();
+                false ->
+                    {Results, FailedNodes} =
+                        rpc:multicall(ns_node_disco:nodes_wanted(),
+                                      ns_memcached, active_buckets, [],
+                                      ?CREATE_BUCKET_TIMEOUT),
+                    case FailedNodes of
+                        [] -> ok;
+                        _ ->
+                            ?log_warning(
+                                "Best-effort check for presense of bucket "
+                                "failed to be made on following nodes: ~p",
+                                [FailedNodes])
+                    end,
+                    lists:usort(lists:append(Results))
+            end,
 
-        not ns_bucket:name_conflict(
-              BucketName, lists:usort(lists:append(Results))) orelse
+        not ns_bucket:name_conflict(BucketName, ShutdownBuckets) orelse
             throw({still_exists, BucketName}),
 
         case ns_bucket:get_width(BucketConfig) of

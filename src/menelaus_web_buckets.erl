@@ -577,6 +577,10 @@ handle_bucket_delete(_PoolId, BucketId, Req) ->
             reply_json(Req, {[{'_',
                                <<"Bucket deletion not yet complete, but will "
                                  "continue.\r\n">>}]}, 500);
+        shutdown_incomplete ->
+            reply_json(Req, {[{'_',
+                               <<"Bucket shutdown interrupted by "
+                                 "auto-failover">>}]}, 500);
         {exit, {not_found, _}, _} ->
             reply_text(Req, "The bucket to be deleted was not found.\r\n", 404)
     end.
