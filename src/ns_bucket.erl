@@ -10,7 +10,6 @@
 -module(ns_bucket).
 
 -include("ns_common.hrl").
--include("ns_config.hrl").
 -include("ns_bucket.hrl").
 -include("cut.hrl").
 
