@@ -78,7 +78,8 @@
          session_id :: binary() | undefined | '_',
          identity :: rbac_identity() | '_' | {'_', admin},
          extra_groups = [],
-         extra_roles = []}).
+         extra_roles = [],
+         expiration_datetime_utc :: calendar:datetime() | undefined | '_'}).
 
 -record(uisession,
         {type :: simple | saml | '_',

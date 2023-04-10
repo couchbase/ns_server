@@ -338,7 +338,12 @@ decode_assertion_authn(Xml) ->
         end,
         fun(C) ->
             case xmerl_xpath:string("/saml:AuthnStatement/@SessionNotOnOrAfter", Xml, [{namespace, Ns}]) of
-                [#xmlAttribute{value = V}] -> [{session_not_on_or_after, V} | C]; _ -> C
+                [#xmlAttribute{value = V}] ->
+                    try [{session_not_on_or_after, iso8601:parse(V)} | C]
+                    catch
+                        _:_ -> {error, {invalid_session_not_on_or_after, V}}
+                    end;
+                _ -> C
             end
         end,
         fun(C) ->

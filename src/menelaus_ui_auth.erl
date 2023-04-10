@@ -36,10 +36,11 @@ start_link() ->
                        #authn_res{}) -> auth_token().
 start_ui_session(UISessionType, SessionName,
                  #authn_res{type = ui} = AuthnRes) ->
+    ExpirationDatetimeUTC = AuthnRes#authn_res.expiration_datetime_utc,
     SessionInfo = #uisession{type = UISessionType,
                              session_name = SessionName,
                              authn_res = AuthnRes},
-    token_server:generate(?MODULE, SessionInfo).
+    token_server:generate(?MODULE, SessionInfo, ExpirationDatetimeUTC).
 
 -spec maybe_refresh(auth_token()) -> nothing | {new_token, auth_token()}.
 maybe_refresh(Token) ->

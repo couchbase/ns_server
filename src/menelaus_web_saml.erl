@@ -266,12 +266,22 @@ handle_saml_consume(Req, UnvalidatedParams) ->
               true when NameID =/= undefined, length(NameID) > 0 ->
                   ?log_debug("Successful saml login: ~s",
                              [ns_config_log:tag_user_name(Username)]),
+                  ExpDatetimeUTC =
+                      case proplists:get_value(session_expire, SSOOpts) of
+                          false ->
+                              undefined;
+                          'SessionNotOnOrAfter' ->
+                              Authn = Assertion#esaml_assertion.authn,
+                              proplists:get_value(session_not_on_or_after,
+                                                  Authn)
+                      end,
                   AuthnRes =
                       #authn_res{type = ui,
                                  session_id = menelaus_auth:new_session_id(),
                                  identity = {Username, external},
                                  extra_groups = ExtraGroups,
-                                 extra_roles = ExtraRoles},
+                                 extra_roles = ExtraRoles,
+                                 expiration_datetime_utc = ExpDatetimeUTC},
                   SessionName = iolist_to_binary(NameID),
                   menelaus_auth:uilogin_phase2(
                     Req,
@@ -764,7 +774,10 @@ params() ->
      {"spTrustedFingerprintsUsage",
       #{cfg_key => fingerprints_usage,
         type => {one_of, existing_atom,
-                 [everything, metadataOnly, metadataInitialOnly]}}}].
+                 [everything, metadataOnly, metadataInitialOnly]}}},
+     {"spSessionExpire",
+      #{cfg_key => session_expire,
+        type => {one_of, existing_atom, [false, 'SessionNotOnOrAfter']}}}].
 
 defaults() ->
     [{enabled, false},
@@ -808,7 +821,8 @@ defaults() ->
      {roles_attribute, ""},
      {roles_attribute_sep, " ,"},
      {idp_metadata, undefined},
-     {idp_metadata_origin, http}].
+     {idp_metadata_origin, http},
+     {session_expire, 'SessionNotOnOrAfter'}].
 
 type_spec(saml_metadata) ->
     #{validators => [string, fun validate_saml_metadata/2],

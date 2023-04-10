@@ -50,7 +50,17 @@ tok2bin(Token) ->
 generate(Module, Memo) ->
     generate(Module, Memo, undefined).
 
-generate(Module, Memo, ExpirationTimestampS) ->
+generate(Module, Memo, ExpirationDatetimeUTC) ->
+    ExpirationTimestampS =
+        case ExpirationDatetimeUTC of
+            undefined ->
+                undefined;
+            _ ->
+                CurrentDT = calendar:universal_time(),
+                get_now() +
+                calendar:datetime_to_gregorian_seconds(ExpirationDatetimeUTC) -
+                calendar:datetime_to_gregorian_seconds(CurrentDT)
+        end,
     gen_server:call(Module, {generate, Memo, ExpirationTimestampS}, infinity).
 
 maybe_refresh(Module, Token) ->

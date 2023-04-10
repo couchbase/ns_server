@@ -23,6 +23,7 @@ from urllib.parse import urlparse, parse_qs
 from saml2 import server
 from saml2 import BINDING_HTTP_REDIRECT
 from saml2 import BINDING_HTTP_POST
+from saml2.saml import AUTHN_PASSWORD
 from saml2.saml import NAME_FORMAT_URI
 from saml2.saml import NAMEID_FORMAT_PERSISTENT
 from saml2.saml import NAMEID_FORMAT_TRANSIENT
@@ -31,6 +32,7 @@ from saml2.saml import NameID
 from contextlib import contextmanager
 import html
 import re
+import datetime
 
 debug=False
 scriptdir = os.path.dirname(os.path.realpath(__file__))
@@ -71,6 +73,7 @@ class SamlTests(testlib.BaseTestSet):
           cluster,
           f'/settings/rbac/users/external/{idp_test_username}')
 
+
     def unsolicited_authn_and_logout_test(self, cluster):
         with saml_configured("post", True, cluster) as IDP:
             identity = idp_test_user_attrs.copy()
@@ -79,6 +82,11 @@ class SamlTests(testlib.BaseTestSet):
                                  bindings=[BINDING_HTTP_POST],
                                  entity_id=sp_entity_id)
             name_id = NameID(text=testlib.random_str(16))
+
+            expiration = datetime.datetime.utcnow() + \
+                         datetime.timedelta(minutes=1)
+            expiration_iso = expiration.replace(microsecond=0).isoformat()
+
             response = IDP.create_authn_response(
                          identity,
                          None, # InResponseTo is missing cause it is
@@ -88,7 +96,9 @@ class SamlTests(testlib.BaseTestSet):
                          userid=idp_test_username,
                          name_id=name_id,
                          sign_assertion=True,
-                         sign_response=True)
+                         sign_response=True,
+                         authn={'class_ref': AUTHN_PASSWORD},
+                         session_not_on_or_after=expiration_iso)
 
             response_encoded = base64.b64encode(f"{response}".encode("utf-8"))
 
@@ -247,6 +257,47 @@ class SamlTests(testlib.BaseTestSet):
             assert(r.status_code == 200)
             r = session.post(cluster.nodes[0].url + '/uilogout', headers=headers)
             assert(r.status_code == 200)
+            r = session.get(cluster.nodes[0].url + '/pools/default',
+                            headers=headers)
+            assert(r.status_code == 401)
+
+
+    def session_expiration_test(self, cluster):
+        with saml_configured("post", True, cluster) as IDP:
+            identity = idp_test_user_attrs.copy()
+            binding_out, destination = \
+                IDP.pick_binding("assertion_consumer_service",
+                                 bindings=[BINDING_HTTP_POST],
+                                 entity_id=sp_entity_id)
+            name_id = NameID(text=testlib.random_str(16))
+
+            expiration = datetime.datetime.utcnow() - \
+                         datetime.timedelta(minutes=1)
+            expiration_iso = expiration.replace(microsecond=0).isoformat()
+
+            response = IDP.create_authn_response(
+                         identity,
+                         None, # InResponseTo is missing cause it is
+                               # an unsolicited response
+                         destination,
+                         sp_entity_id=sp_entity_id,
+                         userid=idp_test_username,
+                         name_id=name_id,
+                         sign_assertion=True,
+                         sign_response=True,
+                         authn={'class_ref': AUTHN_PASSWORD},
+                         session_not_on_or_after=expiration_iso)
+
+            response_encoded = base64.b64encode(f"{response}".encode("utf-8"))
+
+            session = requests.Session()
+            headers={'Host': 'some_addr', 'ns-server-ui': 'yes'}
+            r = session.post(destination,
+                             data={'SAMLResponse': response_encoded},
+                             headers=headers,
+                             allow_redirects=False)
+            assert(r.status_code == 302)
+
             r = session.get(cluster.nodes[0].url + '/pools/default',
                             headers=headers)
             assert(r.status_code == 401)
