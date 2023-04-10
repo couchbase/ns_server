@@ -397,9 +397,9 @@ uilogin_phase2(Req, UISessionType, UISessionName, #authn_res{} = AuthnRes,
     UIPermission = {[ui], read},
     case check_permission(AuthnRes, UIPermission) of
         allowed ->
-            Token = menelaus_ui_auth:generate_token(UISessionType,
-                                                    UISessionName,
-                                                    AuthnRes),
+            Token = menelaus_ui_auth:start_ui_session(UISessionType,
+                                                      UISessionName,
+                                                      AuthnRes),
             CookieHeader = generate_auth_cookie(Req, Token),
             ns_audit:login_success(store_authn_res(AuthnRes, Req)),
             Continuation(Req, [CookieHeader]);

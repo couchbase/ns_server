@@ -19,7 +19,7 @@
 -export([start_link/0]).
 -export([init/0]).
 
--export([generate_token/3, maybe_refresh/1,
+-export([start_ui_session/3, maybe_refresh/1,
          check/1, reset/0, logout/1, set_token_node/2,
          logout_by_session_name/2]).
 
@@ -31,10 +31,11 @@ start_link() ->
                                 ns_audit:session_expired(Id, SessionId)
                             end).
 
--spec generate_token(simple | {sso, SSOName :: string()},
-                     binary(),
-                     #authn_res{}) -> auth_token().
-generate_token(UISessionType, SessionName, #authn_res{type = ui} = AuthnRes) ->
+-spec start_ui_session(simple | {sso, SSOName :: string()},
+                       binary(),
+                       #authn_res{}) -> auth_token().
+start_ui_session(UISessionType, SessionName,
+                 #authn_res{type = ui} = AuthnRes) ->
     SessionInfo = #uisession{type = UISessionType,
                              session_name = SessionName,
                              authn_res = AuthnRes},
