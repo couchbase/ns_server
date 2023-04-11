@@ -186,8 +186,8 @@ handle_saml_metadata(Req) ->
     SPMetadata = build_sp_metadata(SSOOpts, Req),
     SignedXml = esaml_sp:generate_metadata(SPMetadata),
     Metadata = xmerl:export([SignedXml], xmerl_xml),
-    menelaus_util:reply_text(Req, Metadata, 200,
-                             [{"Content-Type", "text/xml"}]).
+    menelaus_util:reply(
+      Req, Metadata, 200, [{"Content-Type", "application/samlmetadata+xml"}]).
 
 handle_get_saml_consume(Req) ->
     handle_saml_consume(Req, mochiweb_request:parse_qs(Req)).
