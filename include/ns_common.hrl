@@ -375,4 +375,6 @@
 -define(SAML_CONSUME_ENDPOINT_PATH, "consume").
 -define(SAML_LOGOUT_ENDPOINT_PATH, "logout").
 
+-define(SECS_IN_DAY, 24*60*60).
+
 -endif.

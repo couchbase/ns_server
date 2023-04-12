@@ -55,7 +55,6 @@
                                     %% approximate max interval so that 2K
                                     %% indexes fit in 1GB
 -define(PROMETHEUS_SHUTDOWN_TIMEOUT, 20000). %% 20s, in milliseconds
--define(SECS_IN_DAY, 24*60*60).
 -define(AUTO_CALCULATED, -1).
 -define(USE_SCRAPE_INTERVAL, -1).
 -define(MISSING_INT, -1).

@@ -19,7 +19,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from multiprocessing import Process
 import time
 import requests
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, urlunparse
 from saml2 import server
 from saml2 import BINDING_HTTP_REDIRECT
 from saml2 import BINDING_HTTP_POST
@@ -59,7 +59,7 @@ class SamlTests(testlib.BaseTestSet):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements(num_nodes=1)
+        return testlib.ClusterRequirements(num_nodes=2)
 
 
     def setup(self, cluster):
@@ -75,7 +75,7 @@ class SamlTests(testlib.BaseTestSet):
 
 
     def unsolicited_authn_and_logout_test(self, cluster):
-        with saml_configured("post", True, cluster) as IDP:
+        with saml_configured(cluster) as IDP:
             identity = idp_test_user_attrs.copy()
             binding_out, destination = \
                 IDP.pick_binding("assertion_consumer_service",
@@ -137,7 +137,7 @@ class SamlTests(testlib.BaseTestSet):
 
 
     def authn_via_post_and_sigle_logout_test(self, cluster):
-        with saml_configured("post", True, cluster) as IDP:
+        with saml_configured(cluster) as IDP:
             r = testlib.get_succ(cluster, '/saml/auth',
                                  allow_redirects=False)
             (redirect_url, saml_request) = \
@@ -208,7 +208,8 @@ class SamlTests(testlib.BaseTestSet):
 
 
     def authn_via_redirect_and_regular_logout_test(self, cluster):
-        with saml_configured("redirect", False, cluster) as IDP:
+        with saml_configured(cluster, binding="redirect",
+                             verify_authn_signature=False) as IDP:
             r = testlib.get_fail(cluster, '/saml/auth', 302,
                                  allow_redirects=False)
             assert 'Location' in r.headers
@@ -263,7 +264,7 @@ class SamlTests(testlib.BaseTestSet):
 
 
     def session_expiration_test(self, cluster):
-        with saml_configured("post", True, cluster) as IDP:
+        with saml_configured(cluster) as IDP:
             identity = idp_test_user_attrs.copy()
             binding_out, destination = \
                 IDP.pick_binding("assertion_consumer_service",
@@ -303,8 +304,76 @@ class SamlTests(testlib.BaseTestSet):
             assert(r.status_code == 401)
 
 
+    def reuse_assertion_test(self, cluster):
+        with saml_configured(cluster, recipient='false') as IDP:
+            identity = idp_test_user_attrs.copy()
+            binding_out, destination = \
+                IDP.pick_binding("assertion_consumer_service",
+                                 bindings=[BINDING_HTTP_POST],
+                                 entity_id=sp_entity_id)
+            name_id = NameID(text=testlib.random_str(16))
+
+            expiration = datetime.datetime.utcnow() + \
+                         datetime.timedelta(minutes=1)
+            expiration_iso = expiration.replace(microsecond=0).isoformat()
+
+            response = IDP.create_authn_response(
+                         identity,
+                         None, # InResponseTo is missing cause it is
+                               # an unsolicited response
+                         destination,
+                         sp_entity_id=sp_entity_id,
+                         userid=idp_test_username,
+                         name_id=name_id,
+                         sign_assertion=True,
+                         sign_response=True,
+                         authn={'class_ref': AUTHN_PASSWORD},
+                         session_not_on_or_after=expiration_iso)
+
+            response_encoded = base64.b64encode(f"{response}".encode("utf-8"))
+
+            headers={'Host': 'some_addr', 'ns-server-ui': 'yes'}
+            session1 = requests.Session()
+            session2 = requests.Session()
+            session3 = requests.Session()
+            r = session1.post(destination,
+                             data={'SAMLResponse': response_encoded},
+                             headers=headers,
+                             allow_redirects=False)
+            assert(r.status_code == 302)
+
+            r = session2.post(destination,
+                             data={'SAMLResponse': response_encoded},
+                             headers=headers,
+                             allow_redirects=False)
+            assert(r.status_code == 400)
+
+            dest_parsed = urlparse(destination)
+            node2_parsed = urlparse(cluster.nodes[1].url)
+            dest2_parsed = dest_parsed._replace(netloc=node2_parsed.netloc)
+            destination2 = urlunparse(dest2_parsed)
+            r = session3.post(destination2,
+                             data={'SAMLResponse': response_encoded},
+                             headers=headers,
+                             allow_redirects=False)
+            assert(r.status_code == 400)
+
+            r = session1.get(cluster.nodes[0].url + '/pools/default',
+                            headers=headers)
+            assert(r.status_code == 200)
+
+            r = session2.get(cluster.nodes[0].url + '/pools/default',
+                            headers=headers)
+            assert(r.status_code == 401)
+
+            r = session3.get(cluster.nodes[1].url + '/pools/default',
+                            headers=headers)
+            assert(r.status_code == 401)
+
+
 @contextmanager
-def saml_configured(binding, verify_authn_signature, cluster):
+def saml_configured(cluster, binding='post', verify_authn_signature=True,
+                    recipient='consumeURL'):
     metadata = generate_mock_metadata(verify_authn_signature, cluster)
     with open(metadataFile, 'wb') as f:
         f.write(metadata.encode("utf-8"))
@@ -312,7 +381,7 @@ def saml_configured(binding, verify_authn_signature, cluster):
     mock_server_process.start()
     try:
         wait_mock_server(f'http://{mock_server_host}:{mock_server_port}/ping', 150)
-        set_sso_options(binding, verify_authn_signature, cluster)
+        set_sso_options(binding, verify_authn_signature, recipient, cluster)
         IDP = server.Server(idp_config(verify_authn_signature, cluster))
         yield IDP
     finally:
@@ -373,7 +442,7 @@ class MockIDPMetadataHandler(BaseHTTPRequestHandler):
         return
 
 
-def set_sso_options(binding, sign_requests, cluster):
+def set_sso_options(binding, sign_requests, recipient, cluster):
     cert_path = os.path.join(scriptdir, "resources", "saml", "mocksp_cert.pem")
     with open(cert_path, 'r') as f:
         cert_pem = f.read()
@@ -397,6 +466,8 @@ def set_sso_options(binding, sign_requests, cluster):
                 'idpAuthnBinding': binding,
                 'idpLogoutBinding': 'post',
                 'usernameAttribute': 'uid',
+                'spVerifyRecipient': recipient,
+                'spAssertionDupeCheck': 'global',
                 'spEntityId': sp_entity_id,
                 'spBaseURLScheme': 'http',
                 'spOrgName': 'Test Org',

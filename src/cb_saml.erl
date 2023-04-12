@@ -11,7 +11,9 @@
          get_idp_metadata/1,
          format_error/1,
          cleanup_metadata/0,
-         cache_idp_metadata/2]).
+         cache_idp_metadata/2,
+         check_dupe/2,
+         check_dupe_global/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -22,9 +24,11 @@
 
 -include_lib("esaml/include/esaml.hrl").
 
--record(s, {refresh_timer_ref}).
+-record(s, {refresh_timer_ref, dupe_cleanup_timer_ref}).
 
 -define(MIN_REFRESH_INTERVAL, ?get_timeout(min_refresh_interval, 60000)).
+-define(DUPE_CLEANUP_INTERVAL, ?get_timeout(dupe_cleanup_interval, 60000)).
+-define(DUPE_ETS, saml_dupe_assertion).
 
 %%%===================================================================
 %%% API
@@ -170,12 +174,50 @@ try_parse_idp_metadata(XmlBin, Verify) ->
         throw:Error -> error(Error)
     end.
 
+check_dupe_global(Assertion, Digest) ->
+    {Res, BadNodes} =
+        rpc:multicall(?MODULE, check_dupe, [Assertion, Digest], 5000),
+    case BadNodes of
+        [] ->
+            case lists:usort(Res) of
+                [ok] -> ok;
+                [_ | _] -> {error, duplicate_assertion}
+            end;
+        _ ->
+            ?log_warning("Dupe assertion check failed on nodes: ~p",
+                         [BadNodes]),
+            {error, {bad_nodes, BadNodes}}
+    end.
+
+check_dupe(Assertion, Digest) ->
+    ExpirationTimestamp = esaml:stale_time(Assertion), %% in gregorian seconds
+    %% We assume that security is more important than RAM, so we are
+    %% not setting any limit for the size of this table here.
+    %% Note that in order to get to this table the assertion has to be valid,
+    %% so it should be impossible to infate the size of the table by an
+    %% unauthentication user. The only problematic scenario that I see is
+    %% the one when IDP sets NotOnOrAfter to some date that is too far in
+    %% the future. In this case we will basically never clean that table,
+    %% we consider it a security problem then and don't let user log in
+    %% (because we can't hold cache for used assertions that long).
+    Now = calendar:datetime_to_gregorian_seconds(calendar:universal_time()),
+    case ExpirationTimestamp < Now + ?SECS_IN_DAY of
+        true ->
+            case ets:insert_new(?DUPE_ETS, {Digest, ExpirationTimestamp}) of
+                true -> ok;
+                false -> {error, duplicate_assertion}
+            end;
+        false ->
+            {error, bad_not_on_or_after}
+    end.
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
 
 init([]) ->
     ets:new(?MODULE, [public, named_table, set]),
+    ets:new(?DUPE_ETS, [public, named_table, set]),
     Self = self(),
     ns_pubsub:subscribe_link(
       ns_config_events,
@@ -183,7 +225,7 @@ init([]) ->
           (_) -> ok
       end),
     self() ! settings_update,
-    {ok, #s{}}.
+    {ok, restart_dupe_cleanup_timer(#s{})}.
 
 handle_call(Request, _From, State) ->
     ?log_warning("Unhandled call: ~p", [Request]),
@@ -218,6 +260,11 @@ handle_info(refresh, State) ->
                 max(TimeS * 1000, ?MIN_REFRESH_INTERVAL)
         end,
     {noreply, restart_refresh_timer(Time, State)};
+
+handle_info(dupe_cleanup, State) ->
+    misc:flush(dupe_cleanup),
+    remove_expired_assertions(),
+    {noreply, restart_dupe_cleanup_timer(State)};
 
 handle_info(Info, State) ->
     ?log_warning("Unhandled info: ~p", [Info]),
@@ -463,3 +510,21 @@ restart_refresh_timer(Time, #s{refresh_timer_ref = TimerRef} = State) ->
                     erlang:send_after(Time, self(), refresh)
              end,
     State#s{refresh_timer_ref = NewRef}.
+
+restart_dupe_cleanup_timer(#s{dupe_cleanup_timer_ref = TimerRef} = State) ->
+    catch erlang:cancel_timer(TimerRef),
+    NewRef = erlang:send_after(?DUPE_CLEANUP_INTERVAL, self(), dupe_cleanup),
+    State#s{dupe_cleanup_timer_ref = NewRef}.
+
+%% We don't expect the number of successfull authentications via saml to be
+%% huge (as it is meant to be used for UI only and by humans only), so we
+%% simply check every record here.
+remove_expired_assertions() ->
+    Now = calendar:datetime_to_gregorian_seconds(calendar:universal_time()),
+    N = ets:select_delete(?DUPE_ETS, [{{'_', '$1'},
+                                      [{'<', '$1', Now}],
+                                      [true]}]),
+    case N > 0 of
+        true -> ?log_debug("Removed ~p records from saml dupe table", [N]);
+        false -> ok
+    end.

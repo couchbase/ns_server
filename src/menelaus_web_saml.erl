@@ -202,6 +202,7 @@ handle_saml_consume(Req, UnvalidatedParams) ->
     %% certificates that will be used for assertion verification
     _IDPMetadata = try_get_idp_metadata(SSOOpts),
     SPMetadata = build_sp_metadata(SSOOpts, Req),
+    DupeCheck = proplists:get_value(dupe_check, SSOOpts),
     validator:handle(
       fun (Params) ->
           Assertion = proplists:get_value('SAMLResponse', Params),
@@ -302,7 +303,8 @@ handle_saml_consume(Req, UnvalidatedParams) ->
       end, Req, UnvalidatedParams,
       [validator:string('SAMLEncoding', _),
        validator:default('SAMLEncoding', "", _),
-       validate_authn_response('SAMLResponse', 'SAMLEncoding', SPMetadata, _),
+       validate_authn_response('SAMLResponse', 'SAMLEncoding',
+                               SPMetadata, DupeCheck, _),
        validator:required('SAMLResponse', _),
        validator:string('RelayState', _)]).
 
@@ -495,7 +497,7 @@ try_get_idp_metadata(Opts) ->
             menelaus_util:web_exception(500, iolist_to_binary(Msg))
     end.
 
-validate_authn_response(NameResp, NameEnc, SPMetadata, State) ->
+validate_authn_response(NameResp, NameEnc, SPMetadata, DupeCheck, State) ->
     validator:validate_relative(
       fun (Resp, Enc) ->
           SAMLEncoding = list_to_binary(Enc),
@@ -506,7 +508,12 @@ validate_authn_response(NameResp, NameEnc, SPMetadata, State) ->
               Xml ->
                   %% We can't use fun esaml_util:check_dupe_ets/2 because
                   %% it makes rpc:call to all nodes with a fun which is dangerous
-                  DupeCheckFun = fun (_Assertion, _Digest) -> ok end,
+                  DupeCheckFun =
+                      case DupeCheck of
+                          local -> fun cb_saml:check_dupe/2;
+                          global -> fun cb_saml:check_dupe_global/2;
+                          disabled -> fun (_, _) -> ok end
+                      end,
                   case esaml_sp:validate_assertion(Xml, DupeCheckFun,
                                                    SPMetadata) of
                       {ok, Assertion} ->
@@ -777,7 +784,10 @@ params() ->
                  [everything, metadataOnly, metadataInitialOnly]}}},
      {"spSessionExpire",
       #{cfg_key => session_expire,
-        type => {one_of, existing_atom, [false, 'SessionNotOnOrAfter']}}}].
+        type => {one_of, existing_atom, [false, 'SessionNotOnOrAfter']}}},
+     {"spAssertionDupeCheck",
+      #{cfg_key => dupe_check,
+        type => {one_of, existing_atom, [local, global, disabled]}}}].
 
 defaults() ->
     [{enabled, false},
@@ -822,7 +832,8 @@ defaults() ->
      {roles_attribute_sep, " ,"},
      {idp_metadata, undefined},
      {idp_metadata_origin, http},
-     {session_expire, 'SessionNotOnOrAfter'}].
+     {session_expire, 'SessionNotOnOrAfter'},
+     {dupe_check, global}].
 
 type_spec(saml_metadata) ->
     #{validators => [string, fun validate_saml_metadata/2],
