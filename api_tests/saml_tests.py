@@ -371,10 +371,52 @@ class SamlTests(testlib.BaseTestSet):
             assert(r.status_code == 401)
 
 
+    def expired_assertion_test(self, cluster):
+        with saml_configured(cluster, assertion_lifetime=-1) as IDP:
+            identity = idp_test_user_attrs.copy()
+            binding_out, destination = \
+                IDP.pick_binding("assertion_consumer_service",
+                                 bindings=[BINDING_HTTP_POST],
+                                 entity_id=sp_entity_id)
+            name_id = NameID(text=testlib.random_str(16))
+
+            expiration = datetime.datetime.utcnow() + \
+                         datetime.timedelta(minutes=1)
+            expiration_iso = expiration.replace(microsecond=0).isoformat()
+
+            response = IDP.create_authn_response(
+                         identity,
+                         None, # InResponseTo is missing cause it is
+                               # an unsolicited response
+                         destination,
+                         sp_entity_id=sp_entity_id,
+                         userid=idp_test_username,
+                         name_id=name_id,
+                         sign_assertion=True,
+                         sign_response=True,
+                         authn={'class_ref': AUTHN_PASSWORD},
+                         session_not_on_or_after=expiration_iso)
+
+            response_encoded = base64.b64encode(f"{response}".encode("utf-8"))
+
+            session = requests.Session()
+            headers={'Host': 'some_addr', 'ns-server-ui': 'yes'}
+            r = session.post(destination,
+                             data={'SAMLResponse': response_encoded},
+                             headers=headers,
+                             allow_redirects=False)
+            assert(r.status_code == 400)
+
+            r = session.get(cluster.nodes[0].url + '/pools/default',
+                            headers=headers)
+            assert(r.status_code == 401)
+
+
 @contextmanager
 def saml_configured(cluster, binding='post', verify_authn_signature=True,
-                    recipient='consumeURL'):
-    metadata = generate_mock_metadata(verify_authn_signature, cluster)
+                    recipient='consumeURL', assertion_lifetime=15):
+    metadata = generate_mock_metadata(verify_authn_signature,
+                                      assertion_lifetime, cluster)
     with open(metadataFile, 'wb') as f:
         f.write(metadata.encode("utf-8"))
     mock_server_process = Process(target=start_mock_server)
@@ -382,7 +424,8 @@ def saml_configured(cluster, binding='post', verify_authn_signature=True,
     try:
         wait_mock_server(f'http://{mock_server_host}:{mock_server_port}/ping', 150)
         set_sso_options(binding, verify_authn_signature, recipient, cluster)
-        IDP = server.Server(idp_config(verify_authn_signature, cluster))
+        IDP = server.Server(idp_config(verify_authn_signature,
+                                       assertion_lifetime, cluster))
         yield IDP
     finally:
         mock_server_process.terminate()
@@ -487,7 +530,7 @@ def set_sso_options(binding, sign_requests, recipient, cluster):
     testlib.put_succ(cluster, '/saml/settings', json=settings)
 
 
-def idp_config(verify_authn_signature, cluster):
+def idp_config(verify_authn_signature, lifetime, cluster):
     sp_base_url = cluster.nodes[0].url
     idp_base_url = f"http://{mock_server_host}:{mock_server_port}"
     key_path = os.path.join(scriptdir, "resources", "saml",
@@ -513,7 +556,7 @@ def idp_config(verify_authn_signature, cluster):
                     },
                     "policy": {
                         "default": {
-                            "lifetime": {"minutes": 15},
+                            "lifetime": {"minutes": lifetime},
                             "attribute_restrictions": None,
                             "name_form": NAME_FORMAT_URI
                         },
