@@ -48,6 +48,7 @@
 -define(SNDBUF, ?get_param(sndbuf, 64 * 1024)).
 
 -define(CONNECTION_ATTEMPTS, 5).
+-define(DEFAULT_TIMEOUT, infinity).
 
 %% gen_server API
 -export([start_link/1]).
@@ -1393,6 +1394,7 @@ do_connect(AgentName, Options) ->
     AFamilies = proplists:get_value(try_afamily, Options,
                                     [misc:get_net_family()]),
     HelloFeatures = proplists:delete(try_afamily, Options),
+    Timeout = proplists:get_value(timeout, Options, ?DEFAULT_TIMEOUT),
     {ok, Sock} = lists:foldl(
                    fun (_AFamily, {ok, Socket}) ->
                            {ok, Socket};
@@ -1404,7 +1406,8 @@ do_connect(AgentName, Options) ->
                                                  {packet, 0},
                                                  {active, false},
                                                  {recbuf, ?RECBUF},
-                                                 {sndbuf, ?SNDBUF}]),
+                                                 {sndbuf, ?SNDBUF}],
+                                                Timeout),
                            case RV of
                                {ok, S} -> {ok, S};
                                _ -> [{AFamily, RV} | Acc]

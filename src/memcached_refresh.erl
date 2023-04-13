@@ -22,7 +22,9 @@
          handle_info/2, terminate/2, code_change/3]).
 
 -record(state, {refresh_list = [],
-                sync_froms = []}).
+                sync_froms = [],
+                status = idle,
+                sync_froms_before_refresh = []}).
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -73,61 +75,94 @@ handle_cast({refresh, Item}, #state{refresh_list = ToRefresh} = State) ->
 
 handle_info(refresh, #state{refresh_list = []} = State) ->
     {noreply, State};
-handle_info(refresh, #state{refresh_list = ToRefresh,
+handle_info(refresh, #state{status = refreshing} = State) ->
+    {noreply, State};
+handle_info(refresh, #state{status = paused_refresh} = State) ->
+    {noreply, State};
+handle_info(refresh, #state{status = idle,
+                            refresh_list = ToRefresh,
                             sync_froms = SyncFroms} = State) ->
-    {ToRetry, Err} =
-        case whereis(ns_ports_setup) of
-            undefined ->
-                {ToRefresh, skipped};
-            _ ->
-                case do_refresh(ToRefresh) of
-                    [] ->
-                        {[], ok};
-                    Failed ->
-                        {Failed, failed}
-                end
-        end,
-
-    case ToRetry of
-        [] ->
-            ?log_debug("Refresh of ~p succeeded", [ToRefresh]),
-            [gen_server:reply(F, ok) || F <- lists:reverse(SyncFroms)],
-            {noreply, State#state{refresh_list = [], sync_froms = []}};
+    case whereis(ns_ports_setup) of
+        undefined ->
+            {noreply, update_refresh_state([], ToRefresh, skipped, State)};
         _ ->
-            RetryAfter = ns_config:read_key_fast(
-                           memcached_file_refresh_retry_after, 1000),
-            ?log_debug("Refresh of ~p ~p. Retry in ~p ms.",
-                       [ToRetry, Err, RetryAfter]),
-            erlang:send_after(RetryAfter, self(), refresh),
-            {noreply, State#state{refresh_list = ToRetry}}
+            Parent = self(),
+            proc_lib:spawn_link(
+                fun () ->
+                    Parent ! {refresh_finished, do_refresh(ToRefresh)}
+                end),
+            {noreply, State#state{status = refreshing,
+                                  refresh_list = [],
+                                  sync_froms = [],
+                                  sync_froms_before_refresh = SyncFroms}}
     end;
-
-%% Handle a late arriving response from a gen_server:call which may have
-%% timed out.
+handle_info({refresh_finished, {Refreshed, NotRefreshed}}, State) ->
+    RefreshResult =
+        case NotRefreshed of
+            [] -> ok;
+            _ -> failed
+        end,
+    {noreply, update_refresh_state(Refreshed, NotRefreshed,
+                                   RefreshResult, State)};
+handle_info(resume_refresh, #state{status = paused_refresh} = State) ->
+    handle_info(refresh, State#state{status = idle});
 handle_info(_Msg, State) ->
     {noreply, State}.
 
-do_refresh(ToRefresh) ->
-    case ns_memcached:connect(?MODULE_STRING, [{retries, 1}]) of
-        {ok, Sock} ->
-            NewToRefresh =
-                lists:filter(
-                  fun (Item) ->
-                          RefreshFun = refresh_fun(Item),
-                          case (catch mc_client_binary:RefreshFun(Sock)) of
-                              ok ->
-                                  false;
-                              Error ->
-                                  ?log_debug("Error executing ~p: ~p",
-                                             [RefreshFun, Error]),
-                                  true
-                          end
-                  end, ToRefresh),
-            gen_tcp:close(Sock),
-            NewToRefresh;
-        _ ->
-            ToRefresh
-    end.
+update_refresh_state(Refreshed, [], ok,
+                     #state{sync_froms_before_refresh = SyncFroms,
+                            refresh_list = ToRefresh} = State) ->
+    ?log_debug("Refresh of ~p succeeded", [Refreshed]),
+    [gen_server:reply(F, ok) || F <- lists:reverse(SyncFroms)],
+    case ToRefresh of
+        [] -> ok;
+        _ -> self() ! refresh
+    end,
+    State#state{status = idle,
+                sync_froms_before_refresh = []};
+
+update_refresh_state(_Refreshed, NotRefreshed, FailureReason,
+                     #state{refresh_list = ToRefresh,
+                            sync_froms_before_refresh = SyncFromsOld,
+                            sync_froms = SyncFroms} = State) ->
+    ToRefreshNew = lists:uniq(ToRefresh ++ NotRefreshed),
+    SyncFromsNew = SyncFromsOld ++ SyncFroms,
+    RetryAfter = ns_config:read_key_fast(
+                   memcached_file_refresh_retry_after, 1000),
+    ?log_debug("Refresh of ~p ~p. Retry in ~p ms.",
+               [NotRefreshed, FailureReason, RetryAfter]),
+    erlang:send_after(RetryAfter, self(), resume_refresh),
+    State#state{refresh_list = ToRefreshNew,
+                sync_froms_before_refresh = [],
+                sync_froms = SyncFromsNew,
+                status = paused_refresh}.
 
 refresh_fun(Item) ->
     list_to_atom("refresh_" ++ atom_to_list(Item)).
+
+do_refresh(ToRefresh) ->
+    Result = ns_memcached:connect(?MODULE_STRING,
+                                  [{retries, 1}, {timeout, 5000}]),
+    case Result of
+        {ok, Sock} ->
+            ?log_debug("Successfully connected to memcached, "
+                       "Trying to refresh ~p", [ToRefresh]),
+            {Refreshed, NotRefreshed} =
+                lists:partition(
+                    fun (Item) ->
+                        RefreshFun = refresh_fun(Item),
+                        case (catch mc_client_binary:RefreshFun(Sock)) of
+                            ok ->
+                                true;
+                            Error ->
+                                ?log_debug("Error executing ~p: ~p",
+                                           [RefreshFun, Error]),
+                                false
+                        end
+                    end, ToRefresh),
+            gen_tcp:close(Sock),
+            {Refreshed, NotRefreshed};
+        {error, Reason} ->
+            ?log_debug("Failed to connect to memcached: ~p", [Reason]),
+            {[], ToRefresh}
+    end.
