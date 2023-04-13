@@ -43,7 +43,7 @@
 
 
 -define(INACTIVE_TIME, 2000000). % 2 seconds in microseconds
--define(REFRESH_INTERVAL, 1000). % 1 second heartbeat and refresh
+-define(DEFAULT_REFRESH_INTERVAL, 1000). % 1 second heartbeat and refresh
 
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2,
@@ -55,7 +55,7 @@
          node_monitors/1,
          supported_services/1,
          get_module/1,
-         send_heartbeat/2, send_heartbeat/3,
+         send_heartbeat/3, send_heartbeat/4,
          analyze_local_status/5]).
 
 -record(state, {
@@ -79,7 +79,8 @@ common_init(MonModule) ->
     chronicle_compat_events:notify_if_key_changes([nodes_wanted],
                                                   peers_changed),
     MonitorState = #{nodes => dict:new(),
-                     nodes_wanted => ns_node_disco:nodes_wanted()},
+                     nodes_wanted => ns_node_disco:nodes_wanted(),
+                     refresh_interval => ?DEFAULT_REFRESH_INTERVAL},
     {ok, #state{monitor_module = MonModule,
                 monitor_state = MonitorState}}.
 
@@ -117,11 +118,13 @@ handle_cast({heartbeat, Node, Status},
 handle_cast(Cast, State) ->
     handle_message(handle_cast, Cast, State).
 
-handle_info(refresh, #state{monitor_module = MonModule} = State) ->
+handle_info(refresh, #state{monitor_module = MonModule,
+                            monitor_state = MonState} = State) ->
     true = MonModule:can_refresh(),
+    #{refresh_interval := RefreshInterval} = MonState,
 
     RV = handle_message(handle_info, refresh, State),
-    erlang:send_after(?REFRESH_INTERVAL, self(), refresh),
+    erlang:send_after(RefreshInterval, self(), refresh),
     RV;
 
 handle_info(peers_changed, #state{monitor_state = MonState} = State) ->
@@ -167,10 +170,15 @@ erase_unknown_nodes(Statuses, Nodes) ->
                         ordsets:is_element(Node, SortedNodes)
                 end, Statuses).
 
-send_heartbeat(MonModule, SendNodes) ->
-    send_heartbeat_inner(MonModule, SendNodes, {heartbeat, node()}).
-send_heartbeat(MonModule, SendNodes, Payload) ->
-    send_heartbeat_inner(MonModule, SendNodes, {heartbeat, node(), Payload}).
+-spec send_heartbeat(atom(), [node()], pos_integer()) -> ok.
+send_heartbeat(MonModule, SendNodes, RefreshInterval) ->
+    send_heartbeat_inner(MonModule, SendNodes, {heartbeat, node()},
+                         RefreshInterval).
+
+-spec send_heartbeat(atom(), [node()], term(), pos_integer()) -> ok.
+send_heartbeat(MonModule, SendNodes, Payload, RefreshInterval) ->
+    send_heartbeat_inner(MonModule, SendNodes, {heartbeat, node(), Payload},
+                         RefreshInterval).
 
 local_monitors() ->
     node_monitors(node()).
@@ -206,13 +214,13 @@ get_module(Monitor) ->
     list_to_atom(atom_to_list(Monitor) ++ "_monitor").
 
 %% Internal functions
-send_heartbeat_inner(MonModule, SendNodes, Payload) ->
+send_heartbeat_inner(MonModule, SendNodes, Payload, RefreshInterval) ->
     SendTo = SendNodes -- skip_heartbeats_to(MonModule),
     try
         misc:parallel_map(
           fun (N) ->
                   gen_server:cast({MonModule, N}, Payload)
-          end, SendTo, ?REFRESH_INTERVAL - 10)
+          end, SendTo, RefreshInterval - 10)
     catch exit:timeout ->
             ?log_warning("~p send heartbeat timed out~n", [MonModule])
     end.

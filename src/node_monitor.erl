@@ -55,7 +55,8 @@ handle_cast(Cast, MonitorState) ->
     noreply.
 
 handle_info(refresh, MonitorState) ->
-    #{nodes_wanted := NodesWanted} = MonitorState,
+    #{nodes_wanted := NodesWanted,
+      refresh_interval := RefreshInterval} = MonitorState,
     Payload = latest_status(NodesWanted),
     %% We need to send our status to the node where the auto-failover logic
     %% is running. This is the mb_master node. Normally, this is also
@@ -90,7 +91,7 @@ handle_info(refresh, MonitorState) ->
                      [M]
              end,
     SendTo = lists:umerge3(Orchestrator, Master, [node()]),
-    health_monitor:send_heartbeat(?MODULE, SendTo, Payload),
+    health_monitor:send_heartbeat(?MODULE, SendTo, Payload, RefreshInterval),
     noreply;
 
 handle_info(Info, MonitorState) ->
