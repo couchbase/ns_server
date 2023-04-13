@@ -22,6 +22,11 @@
 
 -export([init/0, handle_call/4, handle_cast/3, handle_info/3]).
 
+-ifdef(TEST).
+-export([health_monitor_test_setup/0,
+         health_monitor_test_teardown/0]).
+-endif.
+
 -define(NS_MEMCACHED_TIMEOUT, 500).
 
 start_link() ->
@@ -280,3 +285,27 @@ check_for_io_failure(Statuses) ->
                            end, Buckets),
             dict:store(node(), NewBuckets, Statuses)
     end.
+
+-ifdef(TEST).
+%% See health_monitor.erl for tests common to all monitors that use these
+%% functions
+health_monitor_test_setup() ->
+    meck:new(dcp_traffic_monitor, [passthrough]),
+    meck:expect(dcp_traffic_monitor, get_nodes,
+                fun() ->
+                    dict:append(node(), dict:new(), dict:new())
+                end),
+
+    meck:new(ns_bucket, [passthrough]),
+    meck:expect(ns_bucket, get_buckets, fun() -> [] end),
+    meck:expect(ns_bucket, node_bucket_names, fun(_) -> [] end),
+    meck:expect(ns_bucket, buckets_with_data_on_this_node, fun() -> [] end),
+
+    meck:new(kv_stats_monitor),
+    meck:expect(kv_stats_monitor, get_buckets, fun() -> [] end).
+
+health_monitor_test_teardown() ->
+    meck:unload(dcp_traffic_monitor),
+    meck:unload(ns_bucket),
+    meck:unload(kv_stats_monitor).
+-endif.

@@ -18,6 +18,11 @@
 -behaviour(gen_server).
 
 -include("ns_common.hrl").
+-include("cut.hrl").
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 
 %% @doc
@@ -229,3 +234,98 @@ analyze_local_status(Node, AllNodes, Service, Fun, Default) ->
         _ ->
             Default
     end.
+
+-ifdef(TEST).
+basic_test_setup(Monitor) ->
+    Monitor:health_monitor_test_setup(),
+
+    meck:new(chronicle_compat_events),
+    meck:expect(chronicle_compat_events,
+                notify_if_key_changes,
+                fun (_,_) ->
+                        ok
+                end),
+
+    meck:new(ns_node_disco),
+    meck:expect(ns_node_disco,
+                nodes_wanted,
+                fun() ->
+                        [node()]
+                end),
+
+    meck:new(ns_cluster_membership, [passthrough]),
+    meck:expect(ns_cluster_membership,
+                get_snapshot,
+                fun() ->
+                        #{}
+                end),
+
+    meck:expect(ns_cluster_membership,
+                should_run_service,
+                fun(_,_,_) ->
+                        false
+                end),
+
+    meck:new(cluster_compat_mode, [passthrough]),
+    meck:expect(cluster_compat_mode,
+                get_compat_version,
+                fun() ->
+                        ?VERSION_ELIXIR
+                end),
+    meck:expect(cluster_compat_mode,
+                is_cluster_70,
+                fun() ->
+                        true
+                end),
+
+    meck:new(testconditions),
+    meck:expect(testconditions,
+                get,
+                fun(_) ->
+                        false
+                end).
+
+basic_test_teardown(Monitor, _X) ->
+    Monitor:health_monitor_test_teardown(),
+
+    meck:unload(chronicle_compat_events),
+    meck:unload(ns_node_disco),
+    meck:unload(ns_cluster_membership),
+    meck:unload(cluster_compat_mode),
+    meck:unload(testconditions).
+
+basic_test_t(Monitor) ->
+    {ok, Pid} = Monitor:start_link(),
+
+    %% Some unknown cast shouldn't crash us, but it also should not do
+    %% anything interesting that we can test. It does log something, but
+    %% mecking ale doesn't appear to be possible. Whilst we can test the
+    %% message was passed on as expected, the handlers for these messages
+    %% are very permissive so it's difficult to test that we are doing
+    %% the right things...
+    gen_server:cast(Pid, undefined),
+
+    %% Some unknown info shouldn't crash us, but it also should not do
+    %% anything interesting that we can test...
+    Pid ! undefined,
+
+    %% And the same for a call...
+    ?assertEqual(nack, gen_server:call(Pid, undefined)),
+
+    gen_server:stop(Pid).
+
+basic_test_() ->
+    Monitors = [ns_server_monitor,
+                dcp_traffic_monitor,
+                node_status_analyzer,
+                node_monitor,
+                kv_monitor],
+
+    {foreachx,
+     fun basic_test_setup/1,
+     fun basic_test_teardown/2,
+     [{Monitor, fun (M, _) ->
+                        {"Testing " ++ atom_to_list(M), ?cut(basic_test_t(M))}
+                end} || Monitor <- Monitors]}.
+
+-endif.

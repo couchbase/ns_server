@@ -36,6 +36,11 @@
          node_alive/2]).
 -export([init/0, handle_call/4, handle_cast/3, handle_info/3]).
 
+-ifdef(TEST).
+-export([health_monitor_test_setup/0,
+         health_monitor_test_teardown/0]).
+-endif.
+
 start_link() ->
     health_monitor:start_link(?MODULE).
 
@@ -140,3 +145,14 @@ update_bucket(Node, Buckets, {Bucket, LastHeard, Pid}) ->
                 end
         end,
     lists:keystore(Bucket, 1, Buckets, {Bucket, LastHeard, NewPids}).
+
+-ifdef(TEST).
+%% See health_monitor.erl for tests common to all monitors that use these
+%% functions
+health_monitor_test_setup() ->
+    ok.
+
+health_monitor_test_teardown() ->
+    ok.
+
+-endif.

@@ -23,6 +23,11 @@
          annotate_status/1]).
 -export([init/0, handle_call/4, handle_cast/3, handle_info/3]).
 
+-ifdef(TEST).
+-export([health_monitor_test_setup/0,
+         health_monitor_test_teardown/0]).
+-endif.
+
 start_link() ->
     health_monitor:start_link(?MODULE).
 
@@ -122,3 +127,25 @@ node_status(Node, Dict) ->
         _ ->
             []
     end.
+
+-ifdef(TEST).
+%% See health_monitor.erl for tests common to all monitors that use these
+%% functions
+health_monitor_test_setup() ->
+    meck:new(ns_server_monitor, [passthrough]),
+    meck:expect(ns_server_monitor,
+        get_nodes,
+        fun() ->
+            dict:append(node(), dict:new(), dict:new())
+        end),
+
+    meck:new(mb_master),
+    meck:expect(mb_master, master_node, fun() -> node() end),
+
+    ok.
+
+health_monitor_test_teardown() ->
+    meck:unload(ns_server_monitor),
+    meck:unload(mb_master).
+
+-endif.

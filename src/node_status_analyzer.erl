@@ -62,6 +62,11 @@
 -export([get_nodes/0]).
 -export([init/0, handle_call/4, handle_cast/3, handle_info/3]).
 
+-ifdef(TEST).
+-export([health_monitor_test_setup/0,
+         health_monitor_test_teardown/0]).
+-endif.
+
 start_link() ->
     health_monitor:start_link(?MODULE).
 
@@ -142,3 +147,19 @@ analyze_monitor_status(Monitor, Node, AllNodes,
         State ->
             {Healthy, Unhealthy, [{Monitor, State} | Other]}
     end.
+
+-ifdef(TEST).
+%% See health_monitor.erl for tests common to all monitors that use these
+%% functions
+health_monitor_test_setup() ->
+    meck:new(node_monitor, [passthrough]),
+    meck:expect(node_monitor,
+        get_nodes,
+        fun() ->
+            []
+        end).
+
+health_monitor_test_teardown() ->
+    meck:unload(node_monitor).
+
+-endif.
