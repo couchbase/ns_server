@@ -1962,23 +1962,40 @@ produce_roles_by_permission_test_() ->
             {[{bucket, "wrong"}, data, docs], insert})}]}.
 
 
+params_version_get_snapshot(TestProps, _, SubKeys) ->
+    PrunedProps = lists:flatmap(
+                    fun({Bucket, Props}) ->
+                            [{Bucket,
+                              lists:filtermap(
+                                fun({SubKey, _}) ->
+                                        lists:member(SubKey, SubKeys)
+                                end, Props)}]
+                    end, TestProps),
+    ns_bucket:toy_buckets(PrunedProps).
+
+params_version_case(TestProps) ->
+    meck:expect(ns_bucket, get_snapshot,
+                params_version_get_snapshot(TestProps, _, _)),
+    Snapshot = ns_bucket:toy_buckets(TestProps),
+    Version = params_version(Snapshot),
+    ?assertEqual(params_version(), Version),
+    Version.
+
 params_version_test() ->
     setup_meck(),
+    meck:new(ns_bucket, [passthrough]),
 
-    Test = ?cut(params_version(ns_bucket:toy_buckets(_))),
     Update = ?cut(lists:keyreplace("test", 1, toy_buckets_props(),
                                    {"test", _})),
+    BaseVersion = params_version_case(toy_buckets_props()),
+    lists:foreach(
+      fun(X) -> ?assertNotEqual(params_version_case(X), BaseVersion) end,
+      [lists:keydelete("test", 1, toy_buckets_props()),
+       Update([{uuid, <<"test_id1">>}, {props, toy_props()}]),
+       Update([{uuid, <<"test_id">>}, {collections, toy_manifest()},
+               {props, toy_props()}])]),
 
-    Version1 = Test(toy_buckets_props()),
-    Version2 = Test(lists:keydelete("test", 1, toy_buckets_props())),
-    Version3 = Test(Update([{uuid, <<"test_id1">>}, {props, toy_props()}])),
-    Version4 = Test(Update([{uuid, <<"test_id">>},
-                            {collections, toy_manifest()},
-                            {props, toy_props()}])),
-    ?assertNotEqual(Version1, Version2),
-    ?assertNotEqual(Version1, Version3),
-    ?assertNotEqual(Version1, Version4),
-
+    meck:unload(ns_bucket),
     teardown_meck().
 
 validate_roles(Roles) ->
