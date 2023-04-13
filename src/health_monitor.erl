@@ -32,8 +32,8 @@
 %% @end
 -callback start_link() -> term().
 -callback init() -> term().
--callback handle_call(term(), term(), term(), term()) ->
-    noreply | {reply, term()}.
+-callback handle_call(term(), term(), map()) ->
+    noreply | {reply, map() | nack}.
 -callback handle_cast(term(), map()) -> noreply.
 -callback handle_info(term(), map()) -> noreply.
 
@@ -87,9 +87,7 @@ handle_call(Call, From,
             #state{monitor_module = MonModule,
                    monitor_state = MonState} =
                 State) ->
-    #{nodes := Statuses,
-      nodes_wanted := NodesWanted} = MonState,
-    case MonModule:handle_call(Call, From, Statuses, NodesWanted) of
+    case MonModule:handle_call(Call, From, MonState) of
         {ReplyType, Reply} ->
             {ReplyType, Reply, State};
         {ReplyType, Reply, NewStatuses} ->

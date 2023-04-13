@@ -20,7 +20,7 @@
          annotate_status/1,
          analyze_status/2,
          is_node_down/1]).
--export([init/0, handle_call/4, handle_cast/2, handle_info/2]).
+-export([init/0, handle_call/3, handle_cast/2, handle_info/2]).
 
 -ifdef(TEST).
 -export([health_monitor_test_setup/0,
@@ -33,7 +33,8 @@ start_link() ->
 init() ->
     health_monitor:common_init(?MODULE, with_refresh).
 
-handle_call(get_nodes, _From, Statuses, _Nodes) ->
+handle_call(get_nodes, _From, MonitorState) ->
+    #{nodes := Statuses} = MonitorState,
     Now = erlang:monotonic_time(),
     RV = dict:map(
            fun (_Node, {recv_ts, RecvTS}) ->
@@ -43,9 +44,9 @@ handle_call(get_nodes, _From, Statuses, _Nodes) ->
            end, Statuses),
     {reply, RV};
 
-handle_call(Call, From, Statuses, _Nodes) ->
+handle_call(Call, From, MonitorState) ->
     ?log_warning("Unexpected call ~p from ~p when in state:~n~p",
-                 [Call, From, Statuses]),
+                 [Call, From, MonitorState]),
     {reply, nack}.
 
 handle_cast(Cast, MonitorState) ->
