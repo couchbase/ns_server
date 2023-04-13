@@ -926,14 +926,14 @@ find_object(Name, Find) when is_list(Name) ->
     end.
 
 params_version() ->
-    params_version(ns_bucket:get_snapshot(all, [collections, uuid])).
+    params_version(ns_bucket:get_snapshot(all, [collections, props, uuid])).
 
 -spec params_version(map()) -> term().
 params_version(Snapshot) ->
     lists:map(
       fun (Name) ->
               UUID = ns_bucket:uuid(Name, Snapshot),
-              {ok, BucketConfig} = ns_bucket:get_bucket(Name),
+              {ok, BucketConfig} = ns_bucket:get_bucket(Name, Snapshot),
               DefaultManifest = collections:default_manifest(BucketConfig),
               Manifest = collections:get_manifest(Name, Snapshot,
                                                   DefaultManifest),
@@ -1321,19 +1321,11 @@ setup_meck() ->
                 fun () -> true end),
     meck:new(ns_config, [passthrough]),
     meck:expect(ns_config, search_node_with_default,
-                fun (_, Default) -> Default end),
-
-    meck:new(ns_bucket, [passthrough]),
-    meck:expect(ns_bucket,
-        get_bucket,
-        fun(_) ->
-            {ok, [{type, membase}, {storage_mode, magma}]}
-        end).
+                fun (_, Default) -> Default end).
 
 teardown_meck() ->
     meck:unload(cluster_compat_mode),
-    meck:unload(ns_config),
-    meck:unload(ns_bucket).
+    meck:unload(ns_config).
 
 filter_out_invalid_roles_test() ->
     Roles = [{role1, [{"bucket1", <<"id1">>}]},
@@ -1396,8 +1388,9 @@ object_match_with_collections_test() ->
                                      [{collection, ["b1", any, any]}])).
 
 toy_buckets_props() ->
-    [{"test", [{uuid, <<"test_id">>}]},
-     {"default", [{uuid, <<"default_id">>}, {collections, toy_manifest()}]}].
+    [{"test", [{uuid, <<"test_id">>}, {props, toy_props()}]},
+     {"default", [{uuid, <<"default_id">>}, {collections, toy_manifest()},
+                  {props, toy_props()}]}].
 
 toy_buckets() ->
     ns_bucket:toy_buckets(toy_buckets_props()).
@@ -1407,6 +1400,9 @@ toy_manifest() ->
      {scopes, [{"s",  [{uid, 1}, {collections, [{"c",  [{uid, 1}]},
                                                 {"c1", [{uid, 2}]}]}]},
                {"s1", [{uid, 2}, {collections, [{"c",  [{uid, 3}]}]}]}]}].
+
+toy_props() ->
+    [{storage_mode, magma}, {type, membase}].
 
 compile_roles(Roles, Definitions) ->
     compile_roles(Roles, Definitions, toy_buckets()).
@@ -1975,9 +1971,10 @@ params_version_test() ->
 
     Version1 = Test(toy_buckets_props()),
     Version2 = Test(lists:keydelete("test", 1, toy_buckets_props())),
-    Version3 = Test(Update([{uuid, <<"test_id1">>}])),
+    Version3 = Test(Update([{uuid, <<"test_id1">>}, {props, toy_props()}])),
     Version4 = Test(Update([{uuid, <<"test_id">>},
-                            {collections, toy_manifest()}])),
+                            {collections, toy_manifest()},
+                            {props, toy_props()}])),
     ?assertNotEqual(Version1, Version2),
     ?assertNotEqual(Version1, Version3),
     ?assertNotEqual(Version1, Version4),
