@@ -46,7 +46,6 @@
          handle_node_init/1,
          get_context/3,
          get_context/4,
-         check_if_filtering/2,
          get_config/1,
          get_stability/1,
          get_local_addr/1,
@@ -63,8 +62,7 @@
          reply_not_found/1,
          reply/2]).
 
--record(ctx, {ns_config, snapshot, local_addr, include_cookie, filter_results,
-              stability}).
+-record(ctx, {ns_config, snapshot, local_addr, include_cookie, stability}).
 
 handle_node_init(Req) ->
     validator:handle(
@@ -334,49 +332,20 @@ get_context(Req, Buckets, IncludeOtpCookie, Stability) ->
            ns_cluster_membership:fetch_snapshot(_),
            chronicle_master:fetch_snapshot(_)], #{ns_config => Config}),
 
-        {LocalAddr, IsRealRequest} =
-            case Req of
-                undefined ->
-                    {misc:localhost(), false};
-                {ip, IP} ->
-                    {IP, false};
-                _ ->
-                    {menelaus_util:local_addr(Req), true}
-            end,
-
-    FilterResults = case IsRealRequest of
-                        false ->
-                            false;
-                        true ->
-                            should_results_be_filtered(Req)
-                    end,
+    LocalAddr = case Req of
+                    undefined ->
+                        misc:localhost();
+                    {ip, IP} ->
+                        IP;
+                    _ ->
+                        menelaus_util:local_addr(Req)
+                end,
 
     #ctx{ns_config = Config,
          snapshot = Snapshot,
          local_addr = LocalAddr,
          include_cookie = IncludeOtpCookie,
-         filter_results = FilterResults,
          stability = Stability}.
-
-should_results_be_filtered(Req) ->
-        case config_profile:get_bool(filter_rest_results) of
-            false ->
-                false;
-            true ->
-                %% Results are filtered except for full admins having
-                %%  "cluster.admin.internal!all"
-                AuthnRes = menelaus_auth:get_authn_res(Req),
-                not menelaus_roles:is_allowed({[admin, internal], all},
-                                              AuthnRes)
-        end.
-
-check_if_filtering(Req, Ctx) ->
-    case should_results_be_filtered(Req) of
-        false ->
-            Ctx;
-        true ->
-            Ctx#ctx{filter_results = true}
-    end.
 
 get_stability(#ctx{stability = Stability}) ->
     Stability.
@@ -399,7 +368,6 @@ build_nodes_info_fun(Ctx, true) ->
 do_build_nodes_info_fun(#ctx{ns_config = Config,
                              snapshot = Snapshot,
                              include_cookie = IncludeOtpCookie,
-                             filter_results = FilterResults,
                              stability = Stability,
                              local_addr = LocalAddr}, WithBucket) ->
     OtpCookie =
@@ -431,8 +399,9 @@ do_build_nodes_info_fun(#ctx{ns_config = Config,
                   ns_cluster_membership:get_recovery_type(Snapshot, WantENode)},
                  {status, build_node_status(WantENode, Bucket, InfoNode,
                                             BucketsAll)},
+                 {otpNode, WantENode},
                  build_node_info(Config, Snapshot, WantENode, InfoNode,
-                                 LocalAddr, FilterResults),
+                                 LocalAddr),
                  OtpCookie,
                  case Bucket of
                      undefined ->
@@ -442,7 +411,6 @@ do_build_nodes_info_fun(#ctx{ns_config = Config,
                                                 Snapshot)
                  end,
                  build_failover_status(Snapshot, WantENode),
-                 build_otp_node(WantENode, FilterResults),
                  BucketPlacerInfoBuilder(WantENode)],
             NodeHash = erlang:phash2(StableInfo),
 
@@ -456,11 +424,6 @@ do_build_nodes_info_fun(#ctx{ns_config = Config,
                                                          InfoNode)
                            end])}
     end.
-
-build_otp_node(Node, false) ->
-    {otpNode, Node};
-build_otp_node(_Node, true) ->
-    [].
 
 build_failover_status(Snapshot, Node) ->
     PrevFailoverNodes = chronicle_master:get_prev_failover_nodes(Snapshot),
@@ -564,8 +527,7 @@ construct_ext_json(Hostname, Ports) ->
     [{external, {[{hostname, list_to_binary(Hostname)},
                   {ports, {Ports}}]}}].
 
-build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr,
-                FilterResults) ->
+build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr) ->
     Versions = proplists:get_value(version, InfoNode, []),
     Version = proplists:get_value(ns_server, Versions, "unknown"),
     OS = proplists:get_value(system_arch, InfoNode, "unknown"),
@@ -630,7 +592,7 @@ build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr,
           {nodeEncryption, NEncryption},
           {nodeEncryptionClientCertVerification, N2NClientCert},
           {addressFamilyOnly, AFamilyOnly},
-          build_configured_hostname(ConfiguredHostname, FilterResults)
+          {configuredHostname, list_to_binary(ConfiguredHostname)}
          ] ++ [{addressFamily, AFamily} || AFamily =/= undefined]
            ++ [{externalListeners, Listeners} || Listeners =/= undefined]
            ++ alternate_addresses_json(WantENode, Config, Snapshot,
@@ -642,11 +604,6 @@ build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr,
             [{thisNode, true} | RV];
         _ -> RV
     end.
-
-build_configured_hostname(Hostname, false) ->
-    {configuredHostname, list_to_binary(Hostname)};
-build_configured_hostname(_Hostname, true) ->
-    [].
 
 get_hostnames(Req, Arg) ->
     get_hostnames(Req, Arg, []).
