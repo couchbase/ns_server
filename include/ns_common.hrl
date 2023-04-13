@@ -371,8 +371,8 @@
 -define(INT_CREDS_PROTECTION_SLEEP_DEFAULT, 30000).
 -define(LDAP_GROUPS_CACHE_SIZE, 1000).
 
--define(SAML_METADATA_ENDPOINT_PATH, "samlMetadata").
--define(SAML_CONSUME_ENDPOINT_PATH, "samlConsume").
--define(SAML_LOGOUT_ENDPOINT_PATH, "samlLogout").
+-define(SAML_METADATA_ENDPOINT_PATH, "metadata").
+-define(SAML_CONSUME_ENDPOINT_PATH, "consume").
+-define(SAML_LOGOUT_ENDPOINT_PATH, "logout").
 
 -endif.

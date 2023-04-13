@@ -189,19 +189,19 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
             case PathTokens of
                 [] ->
                     {done, redirect_permanently("/ui/index.html", Req)};
-                ["sso", SSO, "auth"] ->
-                    {ui, IsSSL, fun menelaus_web_sso:handle_auth/2, [SSO]};
-                ["sso", SSO, "deauth"] ->
-                    {no_check, fun menelaus_web_sso:handle_deauth/2, [SSO]};
-                ["sso", SSO, ?SAML_CONSUME_ENDPOINT_PATH] ->
+                ["saml", "auth"] ->
+                    {ui, IsSSL, fun menelaus_web_saml:handle_auth/1};
+                ["saml", "deauth"] ->
+                    {no_check, fun menelaus_web_saml:handle_deauth/1};
+                ["saml", ?SAML_CONSUME_ENDPOINT_PATH] ->
                     {ui, IsSSL,
-                     fun menelaus_web_sso:handle_get_saml_consume/2, [SSO]};
-                ["sso", SSO, ?SAML_METADATA_ENDPOINT_PATH] ->
+                     fun menelaus_web_saml:handle_get_saml_consume/1};
+                ["saml", ?SAML_METADATA_ENDPOINT_PATH] ->
                     {ui, IsSSL,
-                     fun menelaus_web_sso:handle_saml_metadata/2, [SSO]};
-                ["sso", SSO, ?SAML_LOGOUT_ENDPOINT_PATH] ->
+                     fun menelaus_web_saml:handle_saml_metadata/1};
+                ["saml", ?SAML_LOGOUT_ENDPOINT_PATH] ->
                     {ui, IsSSL,
-                     fun menelaus_web_sso:handle_get_saml_logout/2, [SSO]};
+                     fun menelaus_web_saml:handle_get_saml_logout/1};
                 ["ui"] ->
                     {done, redirect_permanently("/ui/index.html", Req)};
                 ["_ui", "canUseCertForAuth"] ->
@@ -603,12 +603,12 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
             end;
         'POST' ->
             case PathTokens of
-                ["sso", SSO, ?SAML_CONSUME_ENDPOINT_PATH] ->
+                ["saml", ?SAML_CONSUME_ENDPOINT_PATH] ->
                     {ui, IsSSL,
-                     fun menelaus_web_sso:handle_post_saml_consume/2, [SSO]};
-                ["sso", SSO, ?SAML_LOGOUT_ENDPOINT_PATH] ->
+                     fun menelaus_web_saml:handle_post_saml_consume/1};
+                ["saml", ?SAML_LOGOUT_ENDPOINT_PATH] ->
                     {ui, IsSSL,
-                     fun menelaus_web_sso:handle_post_saml_logout/2, [SSO]};
+                     fun menelaus_web_saml:handle_post_saml_logout/1};
                 ["uilogin"] ->
                     {ui, IsSSL, fun menelaus_web_misc:handle_uilogin/1};
                 ["uilogout"] ->

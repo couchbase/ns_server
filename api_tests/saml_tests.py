@@ -128,7 +128,7 @@ class SamlTests(testlib.BaseTestSet):
 
     def authn_via_post_and_sigle_logout_test(self, cluster):
         with saml_configured("post", True, cluster) as IDP:
-            r = testlib.get_succ(cluster, '/sso/ssotest/auth',
+            r = testlib.get_succ(cluster, '/saml/auth',
                                  allow_redirects=False)
             (redirect_url, saml_request) = \
                 extract_saml_message_from_form('SAMLRequest', r.text)
@@ -167,7 +167,7 @@ class SamlTests(testlib.BaseTestSet):
                             headers=headers)
             assert(r.status_code == 200)
 
-            r = session.get(cluster.nodes[0].url + '/sso/ssotest/deauth',
+            r = session.get(cluster.nodes[0].url + '/saml/deauth',
                             headers=headers,
                             allow_redirects=False)
             assert(r.status_code == 200)
@@ -199,7 +199,7 @@ class SamlTests(testlib.BaseTestSet):
 
     def authn_via_redirect_and_regular_logout_test(self, cluster):
         with saml_configured("redirect", False, cluster) as IDP:
-            r = testlib.get_fail(cluster, '/sso/ssotest/auth', 302,
+            r = testlib.get_fail(cluster, '/saml/auth', 302,
                                  allow_redirects=False)
             assert 'Location' in r.headers
             location = r.headers['Location']
@@ -270,7 +270,7 @@ def saml_configured(binding, verify_authn_signature, cluster):
         testlib.post_succ(cluster, '/diag/eval',
                           data='ns_config:delete(sso_options).')
         testlib.post_succ(cluster, '/diag/eval',
-                          data='ns_config:delete({saml_sign_fingerprints, "ssotest"}).')
+                          data='ns_config:delete(saml_sign_fingerprints).')
         testlib.post_succ(cluster, '/diag/eval',
                           data='ets:delete_all_objects(esaml_idp_meta_cache).')
         mock_server_process.terminate()
@@ -327,32 +327,31 @@ def set_sso_options(binding, sign_requests, cluster):
                                 "mockidp_cert.pem")
     sign_requests_str = "true" if sign_requests else "false"
     metadataURL = f'http://{mock_server_host}:{mock_server_port}{mock_metadata_endpoint}'
-    settings = """[{"ssotest",
-                    [{type, saml},
-                     {scheme, http},
-                     {entity_id, """ + f'"{sp_entity_id}"' + """},
-                     {org_name, "Test Org"},
-                     {org_display_name, "Test Display Name"},
-                     {org_url, "example.com"},
-                     {contact_name, "test contact"},
-                     {contact_email, "test@example.com"},
-                     {authn_binding, """ + binding + """},
-                     {idp_metadata_url, """ + f'"{metadataURL}"' + """},
-                     {key, Key},
-                     {cert, Cert},
-                     {check_recipient, consumeURL},
-                     {logout_resp_binding, post},
-                     {idp_signs_assertions, true},
-                     {idp_signs_envelopes, true},
-                     {sign_requests, """ + sign_requests_str + """},
-                     {sign_metadata, true},
-                     {username, \'Attribute\'},
-                     {username_attr_name, "uid"},
-                     {idp_signs_metadata, true},
-                     {idp_meta_expiration, 1},
-                     {tls_verify_peer, false},
-                     {address_family, inet},
-                     {trusted_fingerprints, [IdpFP]}]}]"""
+    settings = """[{enabled, true},
+                   {scheme, http},
+                   {entity_id, """ + f'"{sp_entity_id}"' + """},
+                   {org_name, "Test Org"},
+                   {org_display_name, "Test Display Name"},
+                   {org_url, "example.com"},
+                   {contact_name, "test contact"},
+                   {contact_email, "test@example.com"},
+                   {authn_binding, """ + binding + """},
+                   {idp_metadata_url, """ + f'"{metadataURL}"' + """},
+                   {key, Key},
+                   {cert, Cert},
+                   {check_recipient, consumeURL},
+                   {logout_resp_binding, post},
+                   {idp_signs_assertions, true},
+                   {idp_signs_envelopes, true},
+                   {sign_requests, """ + sign_requests_str + """},
+                   {sign_metadata, true},
+                   {username, \'Attribute\'},
+                   {username_attr_name, "uid"},
+                   {idp_signs_metadata, true},
+                   {idp_meta_expiration, 1},
+                   {tls_verify_peer, false},
+                   {address_family, inet},
+                   {trusted_fingerprints, [IdpFP]}]"""
     testlib.post_succ(
       cluster, '/diag/eval',
       data=f"""{{ok, KeyPem}} = file:read_file("{key_path}"),
@@ -409,7 +408,7 @@ def idp_config(verify_authn_signature, cluster):
             "key_file": key_path,
             "cert_file": cert_path,
             "metadata": {
-                "remote": [{"url": f"{sp_base_url}/sso/ssotest/samlMetadata"}]
+                "remote": [{"url": f"{sp_base_url}/saml/metadata"}]
             },
             "organization": {
                 "display_name": "Test Org",

@@ -79,7 +79,7 @@
          identity :: rbac_identity() | '_' | {'_', admin}}).
 
 -record(uisession,
-        {type :: simple | {sso, string()} | '_',
+        {type :: simple | saml | '_',
          session_name :: binary() | '_',
          authn_res :: #authn_res{} | '_'}).
 

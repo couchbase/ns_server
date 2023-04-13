@@ -9,15 +9,15 @@
 %%
 %% @doc Support for SSO
 
--module(menelaus_web_sso).
+-module(menelaus_web_saml).
 
--export([handle_auth/2,
-         handle_deauth/2,
-         handle_saml_metadata/2,
-         handle_get_saml_consume/2,
-         handle_post_saml_consume/2,
-         handle_get_saml_logout/2,
-         handle_post_saml_logout/2]).
+-export([handle_auth/1,
+         handle_deauth/1,
+         handle_saml_metadata/1,
+         handle_get_saml_consume/1,
+         handle_post_saml_consume/1,
+         handle_get_saml_logout/1,
+         handle_post_saml_logout/1]).
 
 -include("ns_common.hrl").
 -include("rbac.hrl").
@@ -31,11 +31,11 @@
 %%% API
 %%%===================================================================
 
-handle_auth(SSOName, Req) ->
-    SSOOpts = extract_saml_settings(SSOName),
-    ?log_debug("Starting saml(~s) authentication ", [SSOName]),
-    IDPMetadata = try_get_idp_metadata(SSOName, SSOOpts),
-    SPMetadata = build_sp_metadata(SSOName, SSOOpts, Req),
+handle_auth(Req) ->
+    SSOOpts = extract_saml_settings_if_enabled(),
+    ?log_debug("Starting saml authentication "),
+    IDPMetadata = try_get_idp_metadata(SSOOpts),
+    SPMetadata = build_sp_metadata(SSOOpts, Req),
     Binding = proplists:get_value(authn_binding, SSOOpts, post),
     RelayState = <<"">>,
     %% Using "persistent" by default because this seems to be the only option
@@ -52,9 +52,9 @@ handle_auth(SSOName, Req) ->
             reply_via_post(IDPURL, SignedXml(IDPURL), RelayState, [], Req)
     end.
 
-handle_deauth(SSOName, Req) ->
-    SSOOpts = extract_saml_settings(SSOName),
-    ?log_debug("Starting saml(~s) single logout", [SSOName]),
+handle_deauth(Req) ->
+    SSOOpts = extract_saml_settings_if_enabled(),
+    ?log_debug("Starting saml single logout"),
     case proplists:get_value(single_logout, SSOOpts, true) of
         true -> ok;
         false ->
@@ -65,12 +65,8 @@ handle_deauth(SSOName, Req) ->
     {Session, Headers} = menelaus_auth:complete_uilogout(Req),
 
     case Session of
-        #uisession{type = {sso, SSOName}, session_name = NameID} ->
-            handle_single_logout(SSOName, SSOOpts, NameID, Headers, Req);
-        #uisession{type = {sso, RealSSOName}} ->
-            ?log_error("Called deauth for wrong SSO: ~p, while real SSO is ~p",
-                       [SSOName, RealSSOName]),
-            menelaus_util:reply(Req, "Wrong sso", 400, Headers);
+        #uisession{type = saml, session_name = NameID} ->
+            handle_single_logout(SSOOpts, NameID, Headers, Req);
         #uisession{type = simple} ->
             ?log_debug("User is not a saml user, ignoring single logout"),
             menelaus_util:reply_text(Req, <<"Redirecting...">>, 302,
@@ -81,9 +77,9 @@ handle_deauth(SSOName, Req) ->
                                      [{"Location", "/"} | Headers])
     end.
 
-handle_single_logout(SSOName, SSOOpts, NameID, ExtraHeaders, Req) ->
-    IDPMetadata = try_get_idp_metadata(SSOName, SSOOpts),
-    SPMetadata = build_sp_metadata(SSOName, SSOOpts, Req),
+handle_single_logout(SSOOpts, NameID, ExtraHeaders, Req) ->
+    IDPMetadata = try_get_idp_metadata(SSOOpts),
+    SPMetadata = build_sp_metadata(SSOOpts, Req),
     NameIDFormat = proplists:get_value(authn_nameID_format, SSOOpts,
                                        ?DEFAULT_NAMEID_FORMAT),
     Subject = #esaml_subject{name = binary_to_list(NameID),
@@ -98,27 +94,27 @@ handle_single_logout(SSOName, SSOOpts, NameID, ExtraHeaders, Req) ->
             reply_via_post(URL, SignedXml(URL), <<>>, ExtraHeaders, Req)
     end.
 
-handle_saml_metadata(SSOName, Req) ->
-    SSOOpts = extract_saml_settings(SSOName),
-    SPMetadata = build_sp_metadata(SSOName, SSOOpts, Req),
+handle_saml_metadata(Req) ->
+    SSOOpts = extract_saml_settings_if_enabled(),
+    SPMetadata = build_sp_metadata(SSOOpts, Req),
     SignedXml = esaml_sp:generate_metadata(SPMetadata),
     Metadata = xmerl:export([SignedXml], xmerl_xml),
     menelaus_util:reply_text(Req, Metadata, 200,
                              [{"Content-Type", "text/xml"}]).
 
-handle_get_saml_consume(SSOName, Req) ->
-    handle_saml_consume(SSOName, Req, mochiweb_request:parse_qs(Req)).
+handle_get_saml_consume(Req) ->
+    handle_saml_consume(Req, mochiweb_request:parse_qs(Req)).
 
-handle_post_saml_consume(SSOName, Req) ->
-    handle_saml_consume(SSOName, Req, mochiweb_request:parse_post(Req)).
+handle_post_saml_consume(Req) ->
+    handle_saml_consume(Req, mochiweb_request:parse_post(Req)).
 
-handle_saml_consume(SSOName, Req, UnvalidatedParams) ->
-    SSOOpts = extract_saml_settings(SSOName),
-    ?log_debug("Starting saml(~s) consume", [SSOName]),
+handle_saml_consume(Req, UnvalidatedParams) ->
+    SSOOpts = extract_saml_settings_if_enabled(),
+    ?log_debug("Starting saml consume"),
     %% Making sure metadata is up to date. By doing that we also update
     %% certificates that will be used for assertion verification
-    _IDPMetadata = try_get_idp_metadata(SSOName, SSOOpts),
-    SPMetadata = build_sp_metadata(SSOName, SSOOpts, Req),
+    _IDPMetadata = try_get_idp_metadata(SSOOpts),
+    SPMetadata = build_sp_metadata(SSOOpts, Req),
     validator:handle(
       fun (Params) ->
           Assertion = proplists:get_value('SAMLResponse', Params),
@@ -148,8 +144,8 @@ handle_saml_consume(SSOName, Req, UnvalidatedParams) ->
               end,
           case is_list(Username) andalso length(Username) > 0 of
               true when NameID =/= undefined, length(NameID) > 0 ->
-                  ?log_debug("Successful saml(~s) login: ~s",
-                             [SSOName, ns_config_log:tag_user_name(Username)]),
+                  ?log_debug("Successful saml login: ~s",
+                             [ns_config_log:tag_user_name(Username)]),
                   AuthnRes =
                       #authn_res{type = ui,
                                  session_id = menelaus_auth:new_session_id(),
@@ -157,7 +153,7 @@ handle_saml_consume(SSOName, Req, UnvalidatedParams) ->
                   SessionName = iolist_to_binary(NameID),
                   menelaus_auth:uilogin_phase2(
                     Req,
-                    {sso, SSOName},
+                    saml,
                     SessionName,
                     AuthnRes,
                     ?cut(menelaus_util:reply_text(_1, <<"Redirecting...">>, 302,
@@ -178,17 +174,17 @@ handle_saml_consume(SSOName, Req, UnvalidatedParams) ->
        validator:required('SAMLResponse', _),
        validator:string('RelayState', _)]).
 
-handle_get_saml_logout(SSOName, Req) ->
-    handle_saml_logout(SSOName, Req, mochiweb_request:parse_qs(Req)).
+handle_get_saml_logout(Req) ->
+    handle_saml_logout(Req, mochiweb_request:parse_qs(Req)).
 
-handle_post_saml_logout(SSOName, Req) ->
-    handle_saml_logout(SSOName, Req, mochiweb_request:parse_post(Req)).
+handle_post_saml_logout(Req) ->
+    handle_saml_logout(Req, mochiweb_request:parse_post(Req)).
 
-handle_saml_logout(SSOName, Req, UnvalidatedParams) ->
-    SSOOpts = extract_saml_settings(SSOName),
-    ?log_debug("Starting saml(~s) logout", [SSOName]),
-    IDPMetadata = try_get_idp_metadata(SSOName, SSOOpts),
-    SPMetadata = build_sp_metadata(SSOName, SSOOpts, Req),
+handle_saml_logout(Req, UnvalidatedParams) ->
+    SSOOpts = extract_saml_settings_if_enabled(),
+    ?log_debug("Starting saml logout"),
+    IDPMetadata = try_get_idp_metadata(SSOOpts),
+    SPMetadata = build_sp_metadata(SSOOpts, Req),
     validator:handle(
       fun (Params) ->
           LogoutReq = proplists:get_value('SAMLRequest', Params),
@@ -199,7 +195,7 @@ handle_saml_logout(SSOName, Req, UnvalidatedParams) ->
                   menelaus_util:reply_text(Req, "Missing SAML message", 400);
               {#esaml_logoutreq{name = NameID}, _} ->
                   SessionName = iolist_to_binary(NameID),
-                  menelaus_ui_auth:logout_by_session_name({sso, SSOName},
+                  menelaus_ui_auth:logout_by_session_name(saml,
                                                           SessionName),
                   SignedXml = esaml_sp:generate_logout_response(_, success,
                                                                 SPMetadata),
@@ -229,20 +225,19 @@ handle_saml_logout(SSOName, Req, UnvalidatedParams) ->
 %%% Internal functions
 %%%===================================================================
 
-extract_sso_settings(SSOName) ->
-    Opts = ns_config:read_key_fast(sso_options, []),
-    proplists:get_value(SSOName, Opts, []).
+extract_saml_settings() ->
+    ns_config:read_key_fast(sso_options, []).
 
-extract_saml_settings(SSOName) ->
-    Opts = extract_sso_settings(SSOName),
-    assert_saml_sso(Opts),
+extract_saml_settings_if_enabled() ->
+    Opts = extract_saml_settings(),
+    assert_saml_enabled(Opts),
     Opts.
 
-assert_saml_sso(Opts) ->
-    %% Pretend that we don't have this endpoint for non saml SSO
-    case proplists:get_value(type, Opts) of
-        saml -> ok;
-        _ -> menelaus_util:web_exception(404, "not found")
+assert_saml_enabled(Opts) ->
+    %% Pretend that we don't have this endpoint when saml is disabled
+    case proplists:get_value(enabled, Opts) of
+        true -> ok;
+        false -> menelaus_util:web_exception(404, "not found")
     end.
 
 reply_via_redirect("", _, _, _, _) ->
@@ -272,7 +267,7 @@ reply_via_post(IDPURL, SignedXml, RelayState, ExtraHeaders, Req)
                         [{allow_cache, false},
                          {"Content-Type", "text/html"} | ExtraHeaders]).
 
-build_sp_metadata(Name, Opts, Req) ->
+build_sp_metadata(Opts, Req) ->
     DefaultScheme = case cluster_compat_mode:is_enterprise() of
                         true -> https;
                         false -> http
@@ -281,7 +276,7 @@ build_sp_metadata(Name, Opts, Req) ->
                 proplists:get_value(base_url, Opts, alternate),
                 proplists:get_value(custom_base_url, Opts),
                 proplists:get_value(scheme, Opts, DefaultScheme),
-                Req) ++ "/sso/" ++ Name,
+                Req) ++ "/saml/",
 
     OrgName = proplists:get_value(org_name, Opts, ""),
     OrgDispName = proplists:get_value(org_display_name, Opts, ""),
@@ -339,7 +334,7 @@ build_sp_metadata(Name, Opts, Req) ->
     FPs = case FPsUsage of
               everything -> proplists:get_value(trusted_fingerprints, Opts, []);
               U when U =:= metadata_initial; U =:= metadata ->
-                  case trusted_fingerprints_from_metadata(Name) of
+                  case trusted_fingerprints_from_metadata() of
                       {ok, L} -> L;
                       %% It may happen that it is expired or not set
                       %% when we are building reply for /sso/<nam>/samlMetadata
@@ -353,9 +348,9 @@ build_sp_metadata(Name, Opts, Req) ->
     SP2#esaml_sp{entity_id = proplists:get_value(entity_id, Opts),
                  trusted_fingerprints = FPs}.
 
-try_get_idp_metadata(SSOName, Opts) ->
+try_get_idp_metadata(Opts) ->
     URL = proplists:get_value(idp_metadata_url, Opts),
-    case get_idp_metadata(URL, SSOName, Opts) of
+    case get_idp_metadata(URL, Opts) of
         {ok, Meta} -> Meta;
         {error, Reason} ->
             Msg = io_lib:format("Failed to get IDP metadata from ~s. "
@@ -363,7 +358,7 @@ try_get_idp_metadata(SSOName, Opts) ->
             menelaus_util:web_exception(500, iolist_to_binary(Msg))
     end.
 
-get_idp_metadata(URL, SSOName, Opts) ->
+get_idp_metadata(URL, Opts) ->
     case ets:lookup(esaml_idp_meta_cache, URL) of
         [{URL, Meta}] ->
             case metadata_expired(Meta) of
@@ -372,11 +367,11 @@ get_idp_metadata(URL, SSOName, Opts) ->
                     {ok, Meta};
                 true ->
                     ?log_debug("IDP metadata for ~s has expired", [URL]),
-                    load_idp_metadata(URL, SSOName, Opts)
+                    load_idp_metadata(URL, Opts)
             end;
         _ ->
             ?log_debug("IDP metadata for ~s not found in cached", [URL]),
-            load_idp_metadata(URL, SSOName, Opts)
+            load_idp_metadata(URL, Opts)
     end.
 
 metadata_expired(#esaml_idp_metadata{valid_until = undefined}) ->
@@ -413,7 +408,7 @@ extract_connect_options(URL, SSOOpts) ->
     ExtraOpts = proplists:get_value(tls_extra_opts, SSOOpts, []),
     misc:update_proplist_relaxed(Opts, ExtraOpts).
 
-load_idp_metadata(URL, SSOName, Opts) ->
+load_idp_metadata(URL, Opts) ->
     try
         Timeout = proplists:get_value(metadata_http_timeout, Opts, 5000),
         ConnectOptions = extract_connect_options(URL, Opts),
@@ -428,8 +423,8 @@ load_idp_metadata(URL, SSOName, Opts) ->
                        error({error, {rest_failed, URL, {error, Reason}}})
                end,
 
-        ?log_debug("Received IDP metadata for ~p from ~s:~n~s",
-                   [SSOName, URL, Body]),
+        ?log_debug("Received IDP metadata from ~s:~n~s",
+                   [URL, Body]),
 
         Xml = try xmerl_scan:string(Body, [{namespace_conformant, true}]) of
                   {X, _} -> X
@@ -439,7 +434,7 @@ load_idp_metadata(URL, SSOName, Opts) ->
 
         case proplists:get_value(idp_signs_metadata, Opts, true) of
             true ->
-                FPs = trusted_fingerprints_for_metadata(SSOName, Opts),
+                FPs = trusted_fingerprints_for_metadata(Opts),
                 try xmerl_dsig:verify(Xml, FPs) of
                     ok -> ok;
                     {error, Reason2} ->
@@ -456,7 +451,7 @@ load_idp_metadata(URL, SSOName, Opts) ->
         end,
 
         try esaml:decode_idp_metadata(Xml) of
-            {ok, Meta} -> {ok, cache_idp_metadata(Meta, URL, SSOName)};
+            {ok, Meta} -> {ok, cache_idp_metadata(Meta, URL)};
             {error, Reason3} -> error({error, {bad_metadata, Reason3}})
         catch
             _:Reason3:ST3 ->
@@ -467,15 +462,15 @@ load_idp_metadata(URL, SSOName, Opts) ->
         end
     catch
         error:{error, Error} ->
-            ?log_error("Failed to get metadata for ~p from ~p.~nReason: ~p",
-                       [SSOName, URL, Error]),
+            ?log_error("Failed to get metadata from ~p.~nReason: ~p",
+                       [URL, Error]),
             {error, Error}
     end.
 
 cache_idp_metadata(#esaml_idp_metadata{valid_until = ValidUntilExpiration,
                                        cache_duration = CacheDurationDur,
                                        certificates = TrustedCerts} = Meta,
-                   URL, SSOName) ->
+                   URL) ->
     CacheDurationExpiration =
         case CacheDurationDur of
             undefined -> undefined;
@@ -488,7 +483,7 @@ cache_idp_metadata(#esaml_idp_metadata{valid_until = ValidUntilExpiration,
     FPsFromIdp = lists:map(fun (DerBin) ->
                                {sha256, crypto:hash(sha256, DerBin)}
                            end, TrustedCerts),
-    ns_config:set({saml_sign_fingerprints, SSOName},
+    ns_config:set(saml_sign_fingerprints,
                   {FPsFromIdp, MetaExpirationDateTime}),
     MetaWithExpirationSet = Meta#esaml_idp_metadata{
                               valid_until = MetaExpirationDateTime,
@@ -512,9 +507,8 @@ datetime_add_interval(Datetime, IntProps) ->
                                iso8601:add_months(_, M),
                                iso8601:add_days(_, D)]).
 
-trusted_fingerprints_from_metadata(SSOName) ->
-    case ns_config:read_key_fast({saml_sign_fingerprints, SSOName},
-                                 undefined) of
+trusted_fingerprints_from_metadata() ->
+    case ns_config:read_key_fast(saml_sign_fingerprints, undefined) of
         undefined ->
             {error, not_set};
         {FPList, undefined} when is_list(FPList) ->
@@ -526,7 +520,7 @@ trusted_fingerprints_from_metadata(SSOName) ->
             end
     end.
 
-trusted_fingerprints_for_metadata(SSOName, Opts) ->
+trusted_fingerprints_for_metadata(Opts) ->
     ExtraFPs = proplists:get_value(trusted_fingerprints, Opts, []),
     ExtraFPsUsage = proplists:get_value(fingerprints_usage, Opts,
                                         metadata_initial),
@@ -536,7 +530,7 @@ trusted_fingerprints_for_metadata(SSOName, Opts) ->
         metadata ->
             ExtraFPs;
         metadata_initial ->
-            case trusted_fingerprints_from_metadata(SSOName) of
+            case trusted_fingerprints_from_metadata() of
                 {ok, L} -> L;
                 {error, not_set} -> ExtraFPs;
                 %% Configuration endpoint is supposed to remove
