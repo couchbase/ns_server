@@ -135,7 +135,8 @@ generate_metadata(SP = #esaml_sp{org = Org, tech = Tech}) ->
         cert_chain = SP#esaml_sp.cert_chain,
         consumer_location = SP#esaml_sp.consume_uri,
         logout_location = SP#esaml_sp.logout_uri,
-        entity_id = EntityID}),
+        entity_id = EntityID,
+        cache_duration = SP#esaml_sp.cache_duration}),
     if SP#esaml_sp.sp_sign_metadata ->
         xmerl_dsig:sign(Xml, SP#esaml_sp.key, SP#esaml_sp.certificate);
     true ->

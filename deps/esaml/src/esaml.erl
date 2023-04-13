@@ -546,8 +546,8 @@ to_xml(#esaml_logoutresp{version = V, issue_instant  = Time,
                          signed_requests = SignReq, signed_assertions = SignAss,
                          certificate = CertBin, cert_chain = CertChain, entity_id = EntityID,
                          consumer_location = ConsumerLoc,
-                         logout_location = SLOLoc
-                         }) ->
+                         logout_location = SLOLoc,
+                         cache_duration = CacheDuration}) ->
 
       Ns = #xmlNamespace{nodes = [{"md", 'urn:oasis:names:tc:SAML:2.0:metadata'},
                                   {"saml", 'urn:oasis:names:tc:SAML:2.0:assertion'},
@@ -631,7 +631,8 @@ to_xml(#esaml_logoutresp{version = V, issue_instant  = Time,
               #xmlAttribute{name = 'xmlns:md', value = atom_to_list(proplists:get_value("md", Ns#xmlNamespace.nodes))},
               #xmlAttribute{name = 'xmlns:saml', value = atom_to_list(proplists:get_value("saml", Ns#xmlNamespace.nodes))},
               #xmlAttribute{name = 'xmlns:dsig', value = atom_to_list(proplists:get_value("dsig", Ns#xmlNamespace.nodes))},
-              #xmlAttribute{name = 'entityID', value = EntityID}
+              #xmlAttribute{name = 'entityID', value = EntityID},
+              #xmlAttribute{name = 'cacheDuration', value = CacheDuration}
           ], content = [
               SPSSODescriptorElem,
               OrganizationElem,

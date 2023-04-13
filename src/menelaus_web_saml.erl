@@ -418,6 +418,7 @@ build_sp_metadata(Opts, Req) ->
     IdpSignsAssertions = proplists:get_value(verify_assertion_sig, Opts),
     IdpSignsEnvelopes = proplists:get_value(verify_assertion_envelop_sig, Opts),
     IdpSignsLogoutReq = proplists:get_value(verify_logout_req_sig, Opts),
+    CacheDuration = proplists:get_value(sp_md_cache_duration, Opts),
     Recipient = case proplists:get_value(verify_recipient, Opts) of
                     false -> any;
                     consumeURL -> undefined;
@@ -440,7 +441,8 @@ build_sp_metadata(Opts, Req) ->
            tech = #esaml_contact{
                     name = ContactName,
                     email = ContactEmail
-                  }
+                  },
+           cache_duration = CacheDuration
          },
 
     Cert = proplists:get_value(cert, Opts),
@@ -787,7 +789,10 @@ params() ->
         type => {one_of, existing_atom, [false, 'SessionNotOnOrAfter']}}},
      {"spAssertionDupeCheck",
       #{cfg_key => dupe_check,
-        type => {one_of, existing_atom, [local, global, disabled]}}}].
+        type => {one_of, existing_atom, [local, global, disabled]}}},
+     {"spMetadataCacheDuration",
+      #{cfg_key => sp_md_cache_duration,
+        type => iso8601_duration}}].
 
 defaults() ->
     [{enabled, false},
@@ -833,7 +838,8 @@ defaults() ->
      {idp_metadata, undefined},
      {idp_metadata_origin, http},
      {session_expire, 'SessionNotOnOrAfter'},
-     {dupe_check, global}].
+     {dupe_check, global},
+     {sp_md_cache_duration, "P1M"}].
 
 type_spec(saml_metadata) ->
     #{validators => [string, fun validate_saml_metadata/2],
@@ -842,7 +848,20 @@ type_spec(saml_metadata) ->
                    end};
 type_spec(fingerprint_list) ->
     #{validators => [fun validate_fingerprint_list/2],
-      formatter => fun ({Str, _}) -> {value, Str} end}.
+      formatter => fun ({Str, _}) -> {value, Str} end};
+type_spec(iso8601_duration) ->
+    #{validators => [string, fun validate_iso8601_duration/2],
+      formatter => string}.
+
+validate_iso8601_duration(Name, State) ->
+    validator:validate(
+      fun (Str) ->
+          try iso8601:parse_duration(Str) of
+              _ -> ok
+          catch
+              _:_ -> {error, "invalid iso8601 duration"}
+          end
+      end, Name, State).
 
 validate_saml_metadata(Name, State) ->
     validator:validate(

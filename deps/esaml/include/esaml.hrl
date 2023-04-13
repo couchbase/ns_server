@@ -28,7 +28,8 @@
 	cert_chain = [] :: [binary()],
 	entity_id = "" :: string(),
 	consumer_location = "" :: string(),
-	logout_location :: string() | undefined}).
+	logout_location :: string() | undefined,
+	cache_duration :: string()}).
 
 -record(esaml_idp_metadata, {
 	org = #esaml_org{} :: esaml:org(),
@@ -118,4 +119,5 @@
 	logout_uri :: string() | undefined,
 	encrypt_mandatory = false :: boolean(),
 	entity_id :: string() | undefined,
-	assertion_recipient :: any | undefined | string()}).
+	assertion_recipient :: any | undefined | string(),
+	cache_duration :: string()}).
