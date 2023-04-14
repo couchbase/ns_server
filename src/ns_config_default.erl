@@ -352,7 +352,7 @@ default() ->
                              % count is the number of nodes that were auto-reprovisioned
                              {count, 0}]},
      {service_orchestrator_weight, ?DEFAULT_SERVICE_WEIGHTS},
-
+     {health_monitor_refresh_interval, []},
      {password_policy, [{min_length, 6}, {must_present, []}]}] ++
         service_ports:default_config(IsEnterprise) ++
         rebalance_quirks:default_config() ++

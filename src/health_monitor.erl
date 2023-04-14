@@ -55,8 +55,7 @@
          supported_services/1,
          get_module/1,
          send_heartbeat/3, send_heartbeat/4,
-         analyze_local_status/5,
-         get_refresh_interval/0]).
+         analyze_local_status/5]).
 
 -record(state, {
                 monitor_module,
@@ -85,12 +84,13 @@ init([MonModule]) ->
             false -> MonitorState;
             true ->
                 self() ! refresh,
-                MonitorState#{refresh_interval => get_refresh_interval()}
+                MonitorState#{refresh_interval =>
+                                  get_refresh_interval(MonModule)}
 
         end,
 
-    chronicle_compat_events:notify_if_key_changes([nodes_wanted],
-                                                  config_updated),
+    chronicle_compat_events:notify_if_key_changes(
+        [health_monitor_refresh_interval, nodes_wanted], config_updated),
 
     {ok, #state{monitor_module = MonModule,
                 monitor_state = MonStateWithRefresh}}.
@@ -138,13 +138,17 @@ handle_info(refresh, #state{monitor_module = MonModule,
     erlang:send_after(RefreshInterval, self(), refresh),
     RV;
 
-handle_info(config_updated, #state{monitor_state = MonState} = State) ->
+handle_info(config_updated, #state{monitor_module = MonModule,
+                                   monitor_state = MonState} = State) ->
     #{nodes := Statuses} = MonState,
     NewNodesSorted = lists:usort(ns_node_disco:nodes_wanted()),
     FilteredStatuses = erase_unknown_nodes(Statuses, NewNodesSorted),
-    {noreply, State#state{monitor_state =
-                              MonState#{nodes => FilteredStatuses,
-                                        nodes_wanted => NewNodesSorted}}};
+    RefreshInterval = get_refresh_interval(MonModule),
+    {noreply,
+        State#state{monitor_state =
+                        MonState#{nodes => FilteredStatuses,
+                                  nodes_wanted => NewNodesSorted,
+                                  refresh_interval => RefreshInterval}}};
 
 handle_info(Info, State) ->
     handle_message(handle_info, Info, State).
@@ -226,9 +230,17 @@ supported_services_by_version(ClusterVersion) ->
 get_module(Monitor) ->
     list_to_atom(atom_to_list(Monitor) ++ "_monitor").
 
--spec get_refresh_interval() -> integer().
-get_refresh_interval() ->
-    ?DEFAULT_REFRESH_INTERVAL.
+-spec get_refresh_interval(atom()) -> integer().
+get_refresh_interval(MonModule) ->
+    case ns_config:read_key_fast(health_monitor_refresh_interval, []) of
+        Intervals when is_list(Intervals) ->
+            case proplists:get_value(MonModule, Intervals) of
+                undefined ->
+                    ?DEFAULT_REFRESH_INTERVAL;
+                Value ->
+                    Value
+            end
+    end.
 
 %% Internal functions
 send_heartbeat_inner(MonModule, SendNodes, Payload, RefreshInterval) ->
@@ -292,6 +304,12 @@ basic_test_setup(Monitor) ->
                         [node()]
                 end),
 
+    meck:new(ns_config),
+    meck:expect(ns_config, read_key_fast,
+                fun(health_monitor_refresh_interval, _) ->
+                        [{Monitor, ?DEFAULT_REFRESH_INTERVAL}]
+                end),
+
     meck:new(ns_cluster_membership, [passthrough]),
     meck:expect(ns_cluster_membership,
                 get_snapshot,
@@ -329,6 +347,7 @@ basic_test_teardown(Monitor, _X) ->
 
     meck:unload(chronicle_compat_events),
     meck:unload(ns_node_disco),
+    meck:unload(ns_config),
     meck:unload(ns_cluster_membership),
     meck:unload(cluster_compat_mode),
     meck:unload(testconditions).
@@ -363,11 +382,12 @@ basic_test_t(Monitor) ->
     gen_server:stop(Pid).
 
 basic_test_() ->
-    Monitors = [ns_server_monitor,
-                dcp_traffic_monitor,
-                node_status_analyzer,
-                node_monitor,
-                kv_monitor],
+    Monitors =
+        [ns_server_monitor,
+         dcp_traffic_monitor,
+         node_status_analyzer,
+         node_monitor,
+         kv_monitor],
 
     {foreachx,
      fun basic_test_setup/1,
