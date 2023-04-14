@@ -106,6 +106,7 @@ handle_hibernation_cleanup(Bucket, _Options, _BucketConfig, State = resuming) ->
     %% A bucket in "resuming" hibernation state during janitor cleanup is an
     %% inactive bucket with no server list or map. It does not exist in
     %% memcached so cleanup of it mostly involves a delete from the config.
+
     case ns_bucket:delete_bucket(Bucket) of
         {ok, _} ->
             ns_janitor_server:delete_bucket_request(Bucket);
@@ -113,25 +114,14 @@ handle_hibernation_cleanup(Bucket, _Options, _BucketConfig, State = resuming) ->
             {error, hibernation_cleanup_failed, State}
     end.
 
-requires_cleanup(BucketConfig) ->
-    case ns_bucket:get_hibernation_state(BucketConfig) of
-        pausing ->
-            true;
-        resuming ->
-            true;
-        _ ->
-            false
-    end.
-
 cleanup_with_membase_bucket_check_hibernation(Bucket, Options, BucketConfig,
                                               Snapshot) ->
-    case requires_cleanup(BucketConfig) of
-        true ->
-            State = ns_bucket:get_hibernation_state(BucketConfig),
-            handle_hibernation_cleanup(Bucket, Options, BucketConfig, State);
-        false ->
+    case ns_bucket:get_hibernation_state(BucketConfig) of
+        undefined ->
             cleanup_with_membase_bucket_check_servers(Bucket, Options,
-                                                      BucketConfig, Snapshot)
+                                                      BucketConfig, Snapshot);
+        State ->
+            handle_hibernation_cleanup(Bucket, Options, BucketConfig, State)
     end.
 
 cleanup_with_membase_bucket_check_map(Bucket, Options, BucketConfig) ->

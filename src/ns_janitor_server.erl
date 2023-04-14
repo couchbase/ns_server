@@ -15,6 +15,7 @@
 -behaviour(gen_server).
 
 -include("ns_common.hrl").
+-include("cut.hrl").
 
 -export([start_link/0]).
 
@@ -223,10 +224,53 @@ do_run_cleanup(services) ->
     service_janitor:cleanup();
 do_run_cleanup({bucket, Bucket}) ->
     ns_janitor:cleanup(Bucket, [consider_resetting_rebalance_status]);
-do_run_cleanup(update_hibernation_status_failed) ->
-    %% Reset hibernation_status if ns_orchestrator crashed before it could be
-    %% marked 'completed'.
-    hibernation_utils:update_hibernation_status(failed);
+do_run_cleanup(maybe_update_hibernation_status) ->
+    %% ns_orchestrator could have crashed right after the bucket was deleted,
+    %% but before we could mark the hibernation_status as "completed" - fix that
+    %% here.
+    Snapshot = chronicle_compat:get_snapshot(
+                 [chronicle_compat:txn_get_many([hibernation_bucket,
+                                                 hibernation_status,
+                                                 ns_bucket:root()], _)]),
+
+    BucketName = chronicle_compat:get(Snapshot, hibernation_bucket,
+                                      #{default => undefined}),
+
+    case BucketName of
+        undefined ->
+            ok;
+        _ ->
+            BucketNames = ns_bucket:get_bucket_names(Snapshot),
+            IsDeleted = not lists:member(BucketName, BucketNames),
+            {Op, OldStatus} =
+                chronicle_compat:get(
+                  Snapshot, hibernation_status, #{default =>
+                                                  {undefined, undefined}}),
+            case OldStatus of
+                running ->
+                    NewStatus =
+                        case {IsDeleted, Op} of
+                            {true, pause_bucket} ->
+                                completed;
+                            {false, pause_bucket} ->
+                                failed;
+                            {true, resume_bucket} ->
+                                failed;
+                            {false, resume_bucket} ->
+                                %% Ensure the bucket is janitored right away to
+                                %% reduce any window for durable writes failure.
+                                ns_orchestrator:request_janitor_run(
+                                  {bucket, BucketName}),
+                                completed
+                        end,
+                    hibernation_utils:update_hibernation_status(NewStatus),
+                    hibernation_utils:log_hibernation_event(
+                      NewStatus, Op, BucketName);
+
+                _ ->
+                    ok
+            end
+    end;
 do_run_cleanup(update_buckets_marked_for_shutdown) ->
     Buckets = ns_bucket:get_buckets_marked_for_shutdown(),
     misc:parallel_map(
@@ -256,8 +300,8 @@ get_unsafe_nodes_from_reprovision_list(ReprovisionList) ->
 
 get_janitor_items() ->
     Buckets = [{bucket, B} || B <- ns_bucket:get_bucket_names_of_type(membase)],
-    [compat_mode, services, update_hibernation_status_failed | Buckets] ++
-    [update_buckets_marked_for_shutdown].
+    [compat_mode, services | Buckets] ++
+    [maybe_update_hibernation_status, update_buckets_marked_for_shutdown].
 
 do_request_janitor_run(Request, #state{janitor_requests=Requests} = State) ->
     {Oper, NewRequests} = add_janitor_request(Request, Requests),

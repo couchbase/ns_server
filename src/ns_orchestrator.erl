@@ -78,7 +78,8 @@
          is_recovery_running/0,
          ensure_janitor_run/1,
          rebalance_type2text/1,
-         start_graceful_failover/1]).
+         start_graceful_failover/1,
+         request_janitor_run/1]).
 
 -define(SERVER, {via, leader_registry, ?MODULE}).
 
@@ -695,7 +696,7 @@ idle({flush_bucket, BucketName}, From, _State) ->
     end,
     {keep_state_and_data, [{reply, From, RV}]};
 idle({delete_bucket, BucketName}, From, _State) ->
-    Result = handle_delete_bucket(BucketName),
+    Result = ns_bucket:remove_bucket(BucketName),
 
     case Result of
         {ok, BucketConfig} ->
@@ -1206,7 +1207,7 @@ run_hibernation_op(Op,
                       blob_storage_region = BlobStorageRegion,
                       rate_limit = RateLimit} = Args,
                    ExtraArgs, From) ->
-    log_initiated_hibernation_event(Bucket, Op),
+    hibernation_utils:log_hibernation_event(initiated, Op, Bucket),
 
     Manager = hibernation_manager:run_op(Op, Args, ExtraArgs),
 
@@ -1880,67 +1881,43 @@ handle_info_in_bucket_hibernation(Msg, State) ->
     keep_state_and_data.
 
 -spec handle_hibernation_manager_exit(Reason, Bucket, Op) -> ok
-    when Reason :: normal | shutdown | {shutdown, stop} |
-                   bucket_delete_failed | any(),
+    when Reason :: normal | shutdown | {shutdown, stop} | any(),
          Bucket :: bucket_name(),
          Op :: pause_bucket | resume_bucket.
 
-handle_hibernation_manager_exit(normal, Bucket, pause_bucket) ->
+handle_hibernation_manager_exit(normal, Bucket, Op) ->
+    ale:debug(?USER_LOGGER, "~p done for Bucket ~p.",
+              [Op, Bucket]),
 
-    %% At the end of successfully pausing a bucket, mark the bucket
-    %% for deletion. TODO - do we have to do this as a
-    %% transaction in chronicle??
-    case handle_delete_bucket(Bucket) of
-        {ok, _BucketConfig} ->
-            ale:debug(?USER_LOGGER, "pause_bucket done for Bucket ~p.",
-                      [Bucket]),
-            log_hibernation_event(Bucket, pause_bucket_completed),
-            hibernation_utils:update_hibernation_status(completed);
-        Reason ->
-            handle_hibernation_manager_exit({bucket_delete_failed, Reason},
-                                            Bucket, pause_bucket)
-    end;
+    ok = hibernation_utils:check_test_condition(
+           exit_ns_orchestrator_after_hibernation_op_done),
 
-handle_hibernation_manager_exit(normal, Bucket, resume_bucket) ->
-    ale:debug(?USER_LOGGER, "resume_bucket done for Bucket ~p.", [Bucket]),
-    log_hibernation_event(Bucket, resume_bucket_completed),
     hibernation_utils:update_hibernation_status(completed),
-    %% Run janitor right after, so topology information can be refreshed quickly
-    request_janitor_run({bucket, Bucket});
+    hibernation_utils:log_hibernation_event(completed, Op, Bucket),
 
-handle_hibernation_manager_exit(shutdown , Bucket, Op) ->
+    case Op of
+        resume_bucket ->
+            %% Run janitor right after, so topology information can be
+            %% refreshed quickly
+            request_janitor_run({bucket, Bucket});
+        _ ->
+            ok
+    end;
+handle_hibernation_manager_exit(shutdown, Bucket, Op) ->
     handle_hibernation_manager_shutdown(shutdown, Bucket, Op);
 handle_hibernation_manager_exit({shutdown, _} = Reason, Bucket, Op) ->
     handle_hibernation_manager_shutdown(Reason, Bucket, Op);
 handle_hibernation_manager_exit(Reason, Bucket, Op) ->
     ale:error(?USER_LOGGER, "~p for Bucket ~p failed. Reason: ~p",
               [Op, Bucket, Reason]),
-    log_failed_hibernation_event(Bucket, Op),
+    hibernation_utils:log_hibernation_event(failed, Op, Bucket),
     hibernation_utils:update_hibernation_status(failed).
 
 handle_hibernation_manager_shutdown(Reason, Bucket, Op) ->
     ale:debug(?USER_LOGGER, "~p for Bucket ~p stopped. Reason: ~p.",
               [Op, Bucket, Reason]),
-    log_stopped_hibernation_event(Bucket, Op),
+    hibernation_utils:log_hibernation_event(stopped, Op, Bucket),
     hibernation_utils:update_hibernation_status(stopped).
-
-log_hibernation_event(Bucket, EventId) ->
-    event_log:add_log(EventId, [{bucket, list_to_binary(Bucket)}]).
-
-log_initiated_hibernation_event(Bucket, pause_bucket) ->
-    log_hibernation_event(Bucket, pause_bucket_initiated);
-log_initiated_hibernation_event(Bucket, resume_bucket) ->
-    log_hibernation_event(Bucket, resume_bucket_initiated).
-
-log_failed_hibernation_event(Bucket, pause_bucket) ->
-    log_hibernation_event(Bucket, pause_bucket_failed);
-log_failed_hibernation_event(Bucket, resume_bucket) ->
-    log_hibernation_event(Bucket, resume_bucket_failed).
-
-log_stopped_hibernation_event(Bucket, pause_bucket) ->
-    log_hibernation_event(Bucket, pause_bucket_stopped);
-log_stopped_hibernation_event(Bucket, resume_bucket) ->
-    log_hibernation_event(Bucket, resume_bucket_stopped).
 
 -spec not_running(Op :: pause_bucket | resume_bucket) -> atom().
 not_running(Op) ->
@@ -1989,16 +1966,6 @@ handle_info_in_delete_bucket({'EXIT', Pid, Reason},
                 Error
         end,
     {next_state, idle, #idle_state{}, [{reply, From, Reply}]}.
-
-handle_delete_bucket(BucketName) ->
-    menelaus_users:cleanup_bucket_roles(BucketName),
-    case ns_bucket:delete_bucket(BucketName) of
-        {ok, BucketConfig} ->
-            ns_janitor_server:delete_bucket_request(BucketName),
-            {ok, BucketConfig};
-        Other ->
-            Other
-    end.
 
 validate_create_bucket(BucketName, BucketConfig) ->
     try

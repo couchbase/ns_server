@@ -32,7 +32,8 @@
          get_data_remote_path/1,
          get_node_data_remote_path/2,
          get_bucket_data_remote_path/3,
-         check_test_condition/1]).
+         check_test_condition/1,
+         log_hibernation_event/3]).
 
 supported_services() ->
     [index, fts].
@@ -175,7 +176,9 @@ get_paused_bucket_cfg(Metadata) ->
     {BucketVersion, PausedBucketCfg}.
 
 check_allow_resume_op(Bucket, Metadata) ->
-    case ns_bucket:name_conflict(Bucket) of
+    ActiveBuckets = ns_bucket:get_bucket_names(),
+    ShutdownBuckets = ns_bucket:get_bucket_names_marked_for_shutdown(),
+    case ns_bucket:name_conflict(ActiveBuckets ++ ShutdownBuckets) of
         false ->
             {Version, PausedBucketCfg} = get_paused_bucket_cfg(Metadata),
             case get_new_bucket_config(Bucket, PausedBucketCfg, Version) of
@@ -479,3 +482,24 @@ check_test_condition(Step) ->
         _ ->
             ok
     end.
+
+get_event_id(initiated, pause_bucket) ->
+    pause_bucket_initiated;
+get_event_id(initiated, resume_bucket) ->
+    resume_bucket_initiated;
+get_event_id(stopped, pause_bucket) ->
+    pause_bucket_stopped;
+get_event_id(stopped, resume_bucket) ->
+    resume_bucket_stopped;
+get_event_id(failed, pause_bucket) ->
+    pause_bucket_failed;
+get_event_id(failed, resume_bucket) ->
+    resume_bucket_failed;
+get_event_id(completed, pause_bucket) ->
+    pause_bucket_completed;
+get_event_id(completed, resume_bucket) ->
+    resume_bucket_completed.
+
+log_hibernation_event(Status, Op, Bucket) ->
+    EventId = get_event_id(Status, Op),
+    event_log:add_log(EventId, [{bucket, list_to_binary(Bucket)}]).

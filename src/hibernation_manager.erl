@@ -104,7 +104,8 @@ pause_bucket(#bucket_hibernation_op_args{
                      Snapshot, Nodes)
            end, WorkersParams, ?PAUSE_BUCKET_TIMEOUT),
 
-    ok = ns_bucket:update_bucket_props(Bucket, [{hibernation_state, paused}]),
+    {ok, _BucketConfig} = ns_bucket:remove_bucket(Bucket),
+
     ok = hibernation_utils:check_test_condition(pause_after_node_ops_run),
     kv_hibernation_agent:unprepare_pause_bucket(Bucket, KvNodes).
 
@@ -286,6 +287,18 @@ meck_expect_base() ->
     meck:expect(kv_hibernation_agent, unprepare_pause_bucket,
                 fun (_, _) ->
                         ok
+                end),
+    meck:expect(ns_bucket, remove_bucket,
+                fun (_) ->
+                        {ok, []}
+                end),
+    meck:expect(ns_bucket, get_bucket_names,
+                fun () ->
+                        []
+                end),
+    meck:expect(ns_bucket, get_bucket_names_marked_for_shutdown,
+                fun () ->
+                        []
                 end).
 
 hibernation_op_success() ->

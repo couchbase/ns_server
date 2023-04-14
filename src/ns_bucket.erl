@@ -158,7 +158,8 @@
          get_bucket_names_marked_for_shutdown/0,
          del_marked_for_shutdown/1,
          get_shutdown_timeout/1,
-         wait_for_bucket_shutdown/3]).
+         wait_for_bucket_shutdown/3,
+         remove_bucket/1]).
 
 -import(json_builder,
         [to_binary/1,
@@ -2014,6 +2015,16 @@ get_expected_servers(BucketConfig) ->
                 Nodes -> Nodes
             end;
         Nodes -> Nodes
+    end.
+
+remove_bucket(BucketName) ->
+    menelaus_users:cleanup_bucket_roles(BucketName),
+    case delete_bucket(BucketName) of
+        {ok, BucketConfig} ->
+            ns_janitor_server:delete_bucket_request(BucketName),
+            {ok, BucketConfig};
+        Other ->
+            Other
     end.
 
 -ifdef(TEST).
