@@ -175,8 +175,8 @@ get_paused_bucket_cfg(Metadata) ->
     {BucketVersion, PausedBucketCfg}.
 
 check_allow_resume_op(Bucket, Metadata) ->
-    case ns_bucket:get_bucket(Bucket) of
-        not_present ->
+    case ns_bucket:name_conflict(Bucket) of
+        false ->
             {Version, PausedBucketCfg} = get_paused_bucket_cfg(Metadata),
             case get_new_bucket_config(Bucket, PausedBucketCfg, Version) of
                 {ok, NewBucketConfig} ->
@@ -185,7 +185,7 @@ check_allow_resume_op(Bucket, Metadata) ->
                     {error, {need_more_space, BadZones}}
 
             end;
-        _ ->
+        true ->
             {error, bucket_exists}
     end.
 

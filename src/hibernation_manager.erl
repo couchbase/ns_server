@@ -395,6 +395,10 @@ hibernation_manager_test_() ->
                            fun (_) ->
                                    not_present
                            end),
+               meck:expect(ns_bucket, name_conflict,
+                           fun (_) ->
+                                   false
+                           end ),
                Metadata = hibernation_utils:get_metadata_from_s3(
                             #bucket_hibernation_op_args{
                                bucket = Bucket,
@@ -424,6 +428,10 @@ hibernation_manager_test_() ->
                meck:expect(ns_bucket, get_bucket,
                            fun (_) ->
                                    not_present
+                           end),
+               meck:expect(ns_bucket, name_conflict,
+                           fun (_) ->
+                                   false
                            end),
                Metadata = hibernation_utils:get_metadata_from_s3(
                            #bucket_hibernation_op_args{
