@@ -35,10 +35,8 @@ get_tasks(Timeout) ->
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
--record(state, {
-          tasks = [] :: [{string(), pid(), binary()}],
-          token_pid :: undefined | pid()
-         }).
+-record(state, {queued_tasks = [] :: [{bucket_name(), pid(), binary()}],
+                running_tasks = [] :: [{bucket_name(), pid(), binary()}]}).
 
 init([]) ->
     erlang:process_flag(trap_exit, true),
@@ -46,7 +44,7 @@ init([]) ->
 
 handle_call({start_loading_sample, Sample, Bucket, Quota, CacheDir,
              BucketState}, _From,
-            #state{tasks = Tasks} = State) ->
+            #state{queued_tasks = Tasks} = State) ->
     case lists:keyfind(Bucket, 1, Tasks) of
         false ->
             Pid = start_new_loading_task(Sample, Bucket, Quota, CacheDir,
@@ -54,25 +52,28 @@ handle_call({start_loading_sample, Sample, Bucket, Quota, CacheDir,
             TaskId = misc:uuid_v4(),
             create_queued_task(TaskId, Bucket),
             ns_heart:force_beat(),
-            NewState = State#state{tasks = Tasks ++ [{Bucket, Pid, TaskId}]},
-            {reply, {newly_started, TaskId}, maybe_pass_token(NewState)};
+            Task = {Bucket, Pid, TaskId},
+            NewState = State#state{queued_tasks = Tasks ++ [Task]},
+            {reply, {newly_started, TaskId}, maybe_start_task(NewState)};
         {_, _, TaskId} ->
             {reply, {already_started, TaskId}, State}
     end;
+%% Get all queued and running tasks
 handle_call(get_tasks, _From, State) ->
-    {reply, State#state.tasks, State}.
+    {reply, get_all_tasks(State), State}.
 
 
 handle_cast(_, State) ->
     {noreply, State}.
 
 handle_info({'EXIT', Pid, Reason} = Msg,
-            #state{tasks = Tasks, token_pid = TokenPid} = State) ->
-    case lists:keyfind(Pid, 2, Tasks) of
+            #state{queued_tasks = QueuedTasks,
+                   running_tasks = RunningTasks} = State) ->
+    case lists:keyfind(Pid, 2, RunningTasks) of
         false ->
             ?log_error("Got exit not from child: ~p", [Msg]),
             exit(Reason);
-        {Name, _, TaskId} ->
+        {Name, _, TaskId} = Task ->
             ?log_debug("Consumed exit signal from samples loading task ~s: ~p",
                        [Name, Msg]),
             ns_heart:force_beat(),
@@ -94,36 +95,53 @@ handle_info({'EXIT', Pid, Reason} = Msg,
                               "Task ~p - loading sample bucket ~s failed: ~p",
                               [TaskId, Name, Reason])
             end,
-            NewTokenPid = case Pid =:= TokenPid of
-                              true ->
-                                  ?log_debug("Token holder died"),
-                                  undefined;
-                              _ ->
-                                  TokenPid
-                          end,
-            NewState = State#state{tasks = lists:keydelete(Pid, 2, Tasks),
-                                   token_pid = NewTokenPid},
-            {noreply, maybe_pass_token(NewState)}
+            %% Check whether to remove task from running or queued
+            NewState =
+                case lists:member(Task, RunningTasks) of
+                    true ->
+                        ?log_debug("Token holder died"),
+                        State#state{running_tasks = lists:delete(Task,
+                                                                 RunningTasks)};
+                    _ ->
+                        State#state{queued_tasks = lists:delete(Task,
+                                                                QueuedTasks)}
+                end,
+            {noreply, maybe_start_task(NewState)}
     end;
 handle_info(_Info, State) ->
     {noreply, State}.
 
 terminate(_Reason, #state{} = State) ->
     %% Set the status of each queued or running task to 'failed'
-    TaskIds = [TaskId || {_, _, TaskId} <- State#state.tasks],
+    TaskIds = [TaskId || {_, _, TaskId} <- get_all_tasks(State)],
     global_tasks:update_tasks(TaskIds,
                               lists:keyreplace(status, 1, _, {status, failed})).
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-maybe_pass_token(#state{token_pid = undefined,
-                        tasks = [{Name, FirstPid, TaskId}|_]} = State) ->
-    FirstPid ! allowed_to_go,
-    update_task_status(TaskId, running),
-    ?log_info("Passed samples loading token to task: ~s (~p)", [Name, TaskId]),
-    State#state{token_pid = FirstPid};
-maybe_pass_token(State) ->
+%% Internal tasks list
+get_all_tasks(State) ->
+    State#state.running_tasks ++ State#state.queued_tasks.
+
+get_max_concurrent_sample_loads() ->
+    ns_config:read_key_fast({serverless, max_concurrent_sample_loads}, 1).
+
+maybe_start_task(#state{running_tasks = RunningTasks,
+                        queued_tasks = [{Bucket, FirstPid, TaskId} = Task
+                                       | OtherQueuedTasks]} = State) ->
+    case length(RunningTasks) < get_max_concurrent_sample_loads() of
+        true ->
+            FirstPid ! allowed_to_go,
+            update_task_status(TaskId, running),
+            ?log_info("Started sample loading task for bucket ~s (~p)",
+                      [Bucket, TaskId]),
+            State#state{running_tasks = [Task | RunningTasks],
+                        queued_tasks = OtherQueuedTasks};
+        false ->
+            State
+    end;
+maybe_start_task(State) ->
     State.
 
 -spec create_queued_task(binary(), string()) -> ok.

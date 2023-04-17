@@ -646,7 +646,9 @@ conf(failover) ->
 conf(serverless) ->
     [{{serverless, bucket_weight_limit}, bucketWeightLimit, 10000,
       get_number(1, 100000)},
-     {{serverless, tenant_limit}, tenantLimit, 25, get_number(1, 10000)}] ++
+     {{serverless, tenant_limit}, tenantLimit, 25, get_number(1, 10000)},
+     {{serverless, max_concurrent_sample_loads}, maxConcurrentSampleLoads, 1,
+      get_number(1, 10000)}] ++
         [{Key, Param, Default, get_number(Min, Max)} ||
             {Param, Key, Default, Min, Max} <- get_storage_limit_attributes()]
         ++
