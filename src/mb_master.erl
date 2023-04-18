@@ -635,4 +635,47 @@ higher_priority_node_test() ->
                                              'ns_2@192.168.1.1'},
                                             {misc:parse_version("2.0"),
                                              'ns_1@192.168.1.1'})).
+
+strongly_lower_priority_node_test() ->
+    %% VersionA < VersionB => NodeB higher priority (NameA < NameB)
+    ?assertEqual(false,
+                 strongly_lower_priority_node({misc:parse_version("7.2.0"),
+                                               'ns_0@192.168.1.1'},
+                                              {misc:parse_version("7.5.0"),
+                                               'ns_1@192.168.1.1'})),
+
+    %% VersionA < VersionB => NodeB higher priority (NameA > NameB)
+    ?assertEqual(false,
+                 strongly_lower_priority_node({misc:parse_version("7.2.0"),
+                                               'ns_1@192.168.1.1'},
+                                              {misc:parse_version("7.5.0"),
+                                               'ns_0@192.168.1.1'})),
+
+    %% VersionA > VersionB => NodeA higher priority (NameA < NameB)
+    ?assertEqual(true,
+                 strongly_lower_priority_node({misc:parse_version("7.5.0"),
+                                               'ns_0@192.168.1.1'},
+                                              {misc:parse_version("7.2.0"),
+                                               'ns_1@192.168.1.1'})),
+    %% VersionA > VersionB => NodeA higher priority (NameA > NameB)
+    ?assertEqual(true,
+                 strongly_lower_priority_node({misc:parse_version("7.5.0"),
+                                               'ns_1@192.168.1.1'},
+                                              {misc:parse_version("7.2.0"),
+                                               'ns_0@192.168.1.1'})),
+
+    %% VersionA = VersionB => NodeB higher priority (NameA < NameB)
+    ?assertEqual(false,
+                 strongly_lower_priority_node({misc:parse_version("7.5.0"),
+                                               'ns_0@192.168.1.1'},
+                                              {misc:parse_version("7.5.0"),
+                                               'ns_1@192.168.1.1'})),
+
+    %% VersionA = VersionB => NodeB higher priority (NameA > NameB)
+    ?assertEqual(false,
+                 strongly_lower_priority_node({misc:parse_version("7.5.0"),
+                                               'ns_1@192.168.1.1'},
+                                              {misc:parse_version("7.5.0"),
+                                               'ns_0@192.168.1.1'})).
+
 -endif.
