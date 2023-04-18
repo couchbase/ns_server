@@ -46,6 +46,9 @@ mock_slo_post_url = f"http://{mock_server_host}:{mock_server_port}/mock/logout/p
 metadataFile = os.path.join(scriptdir, "idp_metadata.xml")
 idp_subject_file_path = os.path.join(scriptdir, "idp.subject")
 idp_test_username = "testuser"
+idp_test_groups = [("testgroup1", "replication_admin"),
+                   ("testgroup2", "external_stats_reader"),
+                   ("admingroup", "admin")]
 idp_test_user_attrs = {"sn": "TestUser",
                        "givenName": "Test",
                        "uid": "testuser",
@@ -63,15 +66,23 @@ class SamlTests(testlib.BaseTestSet):
 
 
     def setup(self, cluster):
-         testlib.put_succ(cluster,
-                          f'/settings/rbac/users/external/{idp_test_username}',
-                          data={'roles': 'admin'})
+        testlib.put_succ(cluster,
+                         f'/settings/rbac/users/external/{idp_test_username}',
+                         data={'roles': 'admin'})
+        for group, roles in idp_test_groups:
+            testlib.put_succ(cluster,
+                             f'/settings/rbac/groups/{group}',
+                             data={'roles': roles})
 
 
     def teardown(self, cluster):
         testlib.ensure_deleted(
           cluster,
           f'/settings/rbac/users/external/{idp_test_username}')
+        for group in idp_test_groups:
+            testlib.ensure_deleted(
+              cluster,
+              f'/settings/rbac/groups/{group}')
 
 
     def unsolicited_authn_and_logout_test(self, cluster):
@@ -208,8 +219,8 @@ class SamlTests(testlib.BaseTestSet):
 
 
     def authn_via_redirect_and_regular_logout_test(self, cluster):
-        with saml_configured(cluster, binding="redirect",
-                             verify_authn_signature=False) as IDP:
+        with saml_configured(cluster, idpAuthnBinding="redirect",
+                             spSignRequests=False) as IDP:
             r = testlib.get_fail(cluster, '/saml/auth', 302,
                                  allow_redirects=False)
             assert 'Location' in r.headers
@@ -305,7 +316,7 @@ class SamlTests(testlib.BaseTestSet):
 
 
     def reuse_assertion_test(self, cluster):
-        with saml_configured(cluster, recipient='false') as IDP:
+        with saml_configured(cluster, spSignRequests=False) as IDP:
             identity = idp_test_user_attrs.copy()
             binding_out, destination = \
                 IDP.pick_binding("assertion_consumer_service",
@@ -412,10 +423,64 @@ class SamlTests(testlib.BaseTestSet):
             assert(r.status_code == 401)
 
 
+    def groups_and_roles_attributes_test(self, cluster):
+        with saml_configured(cluster,
+                             groupsAttribute='groups',
+                             groupsAttributeSep=', ',
+                             groupsFilterRE='testgroup\\d+',
+                             rolesAttribute='roles',
+                             rolesAttributeSep=';',
+                             rolesFilterRE='analytics_.*') as IDP:
+            identity = idp_test_user_attrs.copy()
+            identity["groups"] = "test1, admingroup, test2, testgroup1, "\
+                                 "test3, testgroup2"
+            # We don't expect analytics_admin to be used because separator is $;
+            # We don't expect admin to be used because it should be filtered out
+            # roles filter
+            identity["roles"] = "unknown;analytics_reader;admin"\
+                                "test,analytics_admin;analytics_unknown"
+            identity["uid"] = "testuser2" # so we don't have such user in cb
+            binding_out, destination = \
+                IDP.pick_binding("assertion_consumer_service",
+                                 bindings=[BINDING_HTTP_POST],
+                                 entity_id=sp_entity_id)
+            name_id = NameID(text=testlib.random_str(16))
+
+            response = IDP.create_authn_response(
+                         identity,
+                         None, # InResponseTo is missing cause it is
+                               # an unsolicited response
+                         destination,
+                         sp_entity_id=sp_entity_id,
+                         userid=idp_test_username,
+                         name_id=name_id,
+                         sign_assertion=True,
+                         sign_response=True)
+
+            response_encoded = base64.b64encode(f"{response}".encode("utf-8"))
+
+            session = requests.Session()
+            headers={'Host': 'some_addr', 'ns-server-ui': 'yes'}
+            r = session.post(destination,
+                             data={'SAMLResponse': response_encoded},
+                             headers=headers,
+                             allow_redirects=False)
+            assert(r.status_code == 302)
+
+            r = session.get(cluster.nodes[0].url + '/whoami',
+                            headers=headers)
+            assert(r.status_code == 200)
+            roles = [a["role"] for a in r.json()["roles"]]
+            roles.sort()
+            expected_roles = ['analytics_reader', 'external_stats_reader',
+                              'replication_admin']
+            assert(roles == expected_roles)
+
+
 @contextmanager
-def saml_configured(cluster, binding='post', verify_authn_signature=True,
-                    recipient='consumeURL', assertion_lifetime=15):
-    metadata = generate_mock_metadata(verify_authn_signature,
+def saml_configured(cluster, spSignRequests=True,
+                    assertion_lifetime=15, **kwargs):
+    metadata = generate_mock_metadata(spSignRequests,
                                       assertion_lifetime, cluster)
     with open(metadataFile, 'wb') as f:
         f.write(metadata.encode("utf-8"))
@@ -423,9 +488,10 @@ def saml_configured(cluster, binding='post', verify_authn_signature=True,
     mock_server_process.start()
     try:
         wait_mock_server(f'http://{mock_server_host}:{mock_server_port}/ping', 150)
-        set_sso_options(binding, verify_authn_signature, recipient, cluster)
-        IDP = server.Server(idp_config(verify_authn_signature,
-                                       assertion_lifetime, cluster))
+        set_sso_options(cluster, spSignRequests=spSignRequests,
+                        **kwargs)
+        IDP = server.Server(idp_config(spSignRequests, assertion_lifetime,
+                                       cluster))
         yield IDP
     finally:
         mock_server_process.terminate()
@@ -485,7 +551,7 @@ class MockIDPMetadataHandler(BaseHTTPRequestHandler):
         return
 
 
-def set_sso_options(binding, sign_requests, recipient, cluster):
+def set_sso_options(cluster, **kwargs):
     cert_path = os.path.join(scriptdir, "resources", "saml", "mocksp_cert.pem")
     with open(cert_path, 'r') as f:
         cert_pem = f.read()
@@ -506,10 +572,10 @@ def set_sso_options(binding, sign_requests, recipient, cluster):
                 'idpSignsMetadata': True,
                 'idpMetadataRefreshIntervalS': 1,
                 'idpMetadataConnectAddressFamily': 'inet',
-                'idpAuthnBinding': binding,
+                'idpAuthnBinding': 'post',
                 'idpLogoutBinding': 'post',
                 'usernameAttribute': 'uid',
-                'spVerifyRecipient': recipient,
+                'spVerifyRecipient': 'consumeURL',
                 'spAssertionDupeCheck': 'global',
                 'spEntityId': sp_entity_id,
                 'spBaseURLScheme': 'http',
@@ -522,10 +588,12 @@ def set_sso_options(binding, sign_requests, recipient, cluster):
                 'spVerifyAssertionEnvelopSig': True,
                 'spCertificate': cert_pem,
                 'spKey': key_pem,
-                'spSignRequests': sign_requests,
+                'spSignRequests': True,
                 'spSignMetadata': True,
                 'spTrustedFingerprints': trusted_fps,
                 'spTrustedFingerprintsUsage': 'metadataInitialOnly'}
+
+    settings.update(kwargs)
 
     testlib.put_succ(cluster, '/saml/settings', json=settings)
 

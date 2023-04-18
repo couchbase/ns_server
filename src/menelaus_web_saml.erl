@@ -235,7 +235,13 @@ handle_saml_consume(Req, UnvalidatedParams) ->
                       GroupsAttrMapped = esaml:common_attrib_map(GroupsAttr),
                       GroupAttrs = get_all_attrs(GroupsAttrMapped, Attrs),
                       GSep = proplists:get_value(groups_attribute_sep, SSOOpts),
-                      lists:flatmap(string:lexemes(_, GSep), GroupAttrs)
+                      Grps = lists:flatmap(string:lexemes(_, GSep), GroupAttrs),
+                      GroupRe = proplists:get_value(groups_filter_re, SSOOpts),
+                      lists:filter(
+                        fun (G) ->
+                            match == re:run(G, GroupRe,
+                                            [{capture, none}, notempty])
+                        end, Grps)
               end,
 
           ExtraRoles =
@@ -246,6 +252,13 @@ handle_saml_consume(Req, UnvalidatedParams) ->
                       RolesAttrs = get_all_attrs(RolesAttrMapped, Attrs),
                       RSep = proplists:get_value(roles_attribute_sep, SSOOpts),
                       Rls = lists:flatmap(string:lexemes(_, RSep), RolesAttrs),
+                      RoleRe = proplists:get_value(roles_filter_re, SSOOpts),
+                      Filtered = lists:filter(
+                                   fun (R) ->
+                                       match == re:run(R, RoleRe,
+                                                       [{capture, none},
+                                                        notempty])
+                                   end, Rls),
                       lists:filtermap(
                         fun (R) ->
                             case menelaus_web_rbac:parse_roles(R) of
@@ -260,7 +273,7 @@ handle_saml_consume(Req, UnvalidatedParams) ->
                                                  [R]),
                                     false
                             end
-                        end, Rls)
+                        end, Filtered)
               end,
 
           case is_list(Username) andalso length(Username) > 0 of
@@ -704,12 +717,18 @@ params() ->
      {"groupsAttributeSep",
       #{cfg_key => groups_attribute_sep,
         type => string}},
+     {"groupsFilterRE",
+      #{cfg_key => groups_filter_re,
+        type => regex}},
      {"rolesAttribute",
       #{cfg_key => roles_attribute,
         type => string}},
      {"rolesAttributeSep",
       #{cfg_key => roles_attribute_sep,
         type => string}},
+     {"rolesFilterRE",
+      #{cfg_key => roles_filter_re,
+        type => regex}},
      %% if empty, use Metadata URL as entity id
      {"spEntityId",
       #{cfg_key => entity_id,
@@ -833,8 +852,10 @@ defaults() ->
      {idp_metadata_refresh_interval, 3600},
      {groups_attribute, ""},
      {groups_attribute_sep, " ,"},
+     {groups_filter_re, ".*"},
      {roles_attribute, ""},
      {roles_attribute_sep, " ,"},
+     {roles_filter_re, ".*"},
      {idp_metadata, undefined},
      {idp_metadata_origin, http},
      {session_expire, 'SessionNotOnOrAfter'},
@@ -851,6 +872,9 @@ type_spec(fingerprint_list) ->
       formatter => fun ({Str, _}) -> {value, Str} end};
 type_spec(iso8601_duration) ->
     #{validators => [string, fun validate_iso8601_duration/2],
+      formatter => string};
+type_spec(regex) ->
+    #{validators => [string, fun validator:regex/2],
       formatter => string}.
 
 validate_iso8601_duration(Name, State) ->

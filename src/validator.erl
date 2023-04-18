@@ -62,7 +62,8 @@
          decoded_json/3,
          is_json/1,
          extract_internal/3,
-         url/3]).
+         url/3,
+         regex/2]).
 
 %% Used for testing validators.
 -ifdef(TEST).
@@ -738,6 +739,17 @@ url(Name, Schemes, State) ->
           case misc:parse_url(Str, [{scheme_validation_fun, Validation}]) of
               {ok, _} -> ok;
               {error, _} -> {error, "Invalid URL"}
+          end
+      end, Name, State).
+
+regex(Name, State) ->
+    validate(
+      fun (Str) ->
+          case re:compile(Str) of
+              {ok, _} -> ok;
+              {error, {Error, At}} ->
+                  Err = io_lib:format("~s (at character #~b)", [Error, At]),
+                  {error, lists:flatten(Err)}
           end
       end, Name, State).
 
