@@ -80,7 +80,7 @@
 -define(STATS_TIMEOUT, 2000).
 
 %% @doc Frequency (in milliseconds) at which to check for down nodes.
--define(TICK_PERIOD, 1000).
+-define(DEFAULT_TICK_PERIOD, 1000).
 
 %% @doc Minimum number of active server groups needed for server group failover
 -define(MIN_ACTIVE_SERVER_GROUPS, 3).
@@ -109,7 +109,7 @@
           %% Keeps all errors that have been reported.
           reported_errors = sets:new() :: sets:set(),
           %% Frequency (in ms) at which to check for down nodes.
-          tick_period = ?TICK_PERIOD :: integer()
+          tick_period = ?DEFAULT_TICK_PERIOD :: integer()
         }).
 
 %%
@@ -198,6 +198,9 @@ alert_keys() ->
 init([]) ->
     restart_on_compat_mode_change(),
 
+    chronicle_compat_events:notify_if_key_changes(
+        [auto_failover_tick_period], change_interval),
+
     Config = get_cfg(),
     ?log_debug("init auto_failover.", []),
     Timeout = proplists:get_value(timeout, Config),
@@ -210,7 +213,10 @@ init([]) ->
                     max_count = MaxCount,
                     count = Count,
                     failed_over_server_groups = FailedOverSGs,
-                    auto_failover_logic_state = undefined},
+                    auto_failover_logic_state = undefined,
+                    tick_period =
+                        ns_config:read_key_fast(auto_failover_tick_period,
+                                                ?DEFAULT_TICK_PERIOD)},
     State1 = init_reported(State0),
     case proplists:get_value(enabled, Config) of
         true ->
@@ -304,6 +310,13 @@ handle_cast(reset_auto_failover_count, State) ->
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
+
+handle_info(change_interval, State) ->
+    NewTickPeriod = ns_config:read_key_fast(auto_failover_tick_period,
+                                            ?DEFAULT_TICK_PERIOD),
+    State1 = State#state{tick_period = NewTickPeriod},
+    {noreply,
+     State1#state{auto_failover_logic_state = init_logic_state(State1)}};
 
 %% @doc Check if nodes should/could be auto-failovered on every tick
 handle_info(tick, State0) ->
