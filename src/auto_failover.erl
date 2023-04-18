@@ -107,7 +107,9 @@
           %% Whether we reported why the node is considered down
           reported_down_nodes_reason = [] :: list(),
           %% Keeps all errors that have been reported.
-          reported_errors = sets:new() :: sets:set()
+          reported_errors = sets:new() :: sets:set(),
+          %% Frequency (in ms) at which to check for down nodes.
+          tick_period = ?TICK_PERIOD :: integer()
         }).
 
 %%
@@ -220,8 +222,8 @@ init([]) ->
             {ok, State1}
     end.
 
-init_logic_state(Timeout) ->
-    TickPeriod = get_tick_period(),
+init_logic_state(#state{timeout = Timeout,
+                        tick_period = TickPeriod}) ->
     DownThreshold = (Timeout * 1000 + TickPeriod - 1) div TickPeriod,
     auto_failover_logic:init_state(DownThreshold).
 
@@ -241,10 +243,10 @@ handle_call({enable_auto_failover, Timeout, Max, Extras}, _From,
             ale:info(?USER_LOGGER,
                      "Enabled auto-failover with timeout ~p", [Timeout])
     end,
-    Ref = send_tick_msg(),
+    Ref = send_tick_msg(State),
     State1 = State#state{tick_ref = Ref, timeout = Timeout,
                          disable_max_count = DisableMaxCount, max_count = Max,
-                         auto_failover_logic_state = init_logic_state(Timeout)},
+                         auto_failover_logic_state = init_logic_state(State)},
     make_state_persistent(State1, Extras),
     {reply, ok, State1};
 %% @doc Auto-failover is already enabled, just update the settings.
@@ -293,7 +295,7 @@ handle_cast(reset_auto_failover_count, #state{count = 0} = State) ->
 handle_cast(reset_auto_failover_count, State) ->
     ?log_debug("reset auto_failover count: ~p", [State]),
     State1 = State#state{failed_over_server_groups = []},
-    LogicState = init_logic_state(State1#state.timeout),
+    LogicState = init_logic_state(State1),
     State2 = State1#state{count = 0, auto_failover_logic_state = LogicState},
     State3 = init_reported(State2),
     make_state_persistent(State3),
@@ -305,7 +307,7 @@ handle_cast(_Msg, State) ->
 
 %% @doc Check if nodes should/could be auto-failovered on every tick
 handle_info(tick, State0) ->
-    Ref = send_tick_msg(),
+    Ref = send_tick_msg(State0),
     Config = ns_config:get(),
     Snapshot = ns_cluster_membership:get_snapshot(#{ns_config => Config}),
 
@@ -410,7 +412,7 @@ update_state_timeout(Timeout, #state{timeout = CurrTimeout} = State) ->
             ale:info(?USER_LOGGER, "Updating auto-failover timeout to ~p",
                      [Timeout]),
             State#state{timeout = Timeout,
-                        auto_failover_logic_state = init_logic_state(Timeout)};
+                        auto_failover_logic_state = init_logic_state(State)};
         false ->
             ?log_debug("No change in timeout ~p", [Timeout]),
             State
@@ -767,9 +769,6 @@ report_failover_error(Flag, ErrMsg, Nodes, State) ->
             State
     end.
 
-get_tick_period() ->
-    ?TICK_PERIOD.
-
 %% Returns list of nodes that are down/unhealthy along with the reason
 %% why the node is considered unhealthy.
 fastfo_down_nodes(NonPendingNodes) ->
@@ -1012,8 +1011,8 @@ restart_on_compat_mode_change() ->
                                      ok
                              end).
 
-send_tick_msg() ->
-    erlang:send_after(get_tick_period(), self(), tick).
+send_tick_msg(#state{tick_period = TickPeriod}) ->
+    erlang:send_after(TickPeriod, self(), tick).
 
 validate_kv(FailoverNodes, DownNodes) ->
     case ns_cluster_membership:service_nodes(FailoverNodes, kv) of
