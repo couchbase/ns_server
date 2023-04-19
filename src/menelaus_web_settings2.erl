@@ -143,7 +143,31 @@ type_spec(tls_opts) ->
                    end};
 type_spec({string_list, Separator}) ->
     #{validators => [validate_string_list(Separator, _, _)],
-      formatter => fun (L) -> {value, [list_to_binary(M) || M <- L]} end}.
+      formatter => fun (L) -> {value, [list_to_binary(M) || M <- L]} end};
+type_spec(empty_str) ->
+    #{validators => [string, validate_empty_string(_, _)],
+      formatter => string};
+type_spec({optional, Type}) ->
+    OrType = {'or', [{not_set, empty_str}, {set, Type}]},
+    #{validators => [OrType], formatter => OrType}.
+
+validate_empty_string(Name, State) ->
+    validator:validate(
+      fun ("") -> ok;
+          (_) -> {error, "must be empty"}
+      end, Name, State).
+
+validate_or([{TypeName, Validators} | Tail], Name, State) ->
+    NewState = lists:foldl(fun (V, S) -> V(Name, S) end, State, Validators),
+    case validator:get_value(Name, NewState) of
+        undefined when Tail == [] ->
+            NewState;
+        undefined ->
+            validate_or(Tail, Name, State);
+        _ ->
+            validator:validate(fun (V) -> {value, {TypeName, V}} end,
+                               Name, NewState)
+    end.
 
 validate_string_list(Separator, Name, State) ->
     case validator:is_json(State) of
@@ -351,6 +375,12 @@ group_elements(Proplist, GroupFormatter) ->
 
 extract_formatter(Type, TypesFuns) ->
     extract_formatter(Type, TypesFuns, []).
+extract_formatter({'or', List}, TypesFuns, TypesSeen) ->
+    fun ({ValueType, Value}) ->
+        Type = proplists:get_value(ValueType, List),
+        Fun = extract_formatter(Type, TypesFuns, TypesSeen),
+        Fun(Value)
+    end;
 extract_formatter(Type, [], _) -> error({unknown_type, Type});
 extract_formatter(Type, [F | Tail], TypesSeen) ->
     case lists:member(Type, TypesSeen) of
@@ -368,6 +398,13 @@ extract_formatter(Type, [F | Tail], TypesSeen) ->
 
 extract_validators(Type, TypesFuns) ->
     extract_validators(Type, TypesFuns, []).
+extract_validators({'or', List}, TypesFuns, TypesSeen) ->
+    ListOfValidators =
+      lists:map(
+        fun ({Name, SubType}) ->
+            {Name, extract_validators(SubType, TypesFuns, TypesSeen)}
+        end, List),
+    [validate_or(ListOfValidators, _, _)];
 extract_validators(Type, [], _) -> error({unknown_type, Type});
 extract_validators(Type, [F | Tail], TypesSeen) ->
     case lists:member(Type, TypesSeen) of
@@ -467,6 +504,33 @@ validate_cert_chain(Name, State) ->
 
 -ifdef(TEST).
 
+or_type_test() ->
+    Type = {'or', [{type1, bool},
+                   {type2, int},
+                   {type3, {one_of, existing_atom, [a1, a2]}}]},
+    Params = [{"t1", #{cfg_key => k1, type => Type}},
+              {"t2", #{cfg_key => k2, type => Type}},
+              {"t3", #{cfg_key => k3, type => Type}}],
+    TypeSpec = fun (undefined) -> ok end,
+    Format = fun (V) -> ejson:encode(prepare_json([], Params, TypeSpec, V)) end,
+    ?assertEqual(<<"{\"t1\":true,\"t2\":5,\"t3\":\"a2\"}">>,
+                 Format([{k1, {type1, true}},
+                         {k2, {type2, 5}},
+                         {k3, {type3, a2}}])),
+
+    ExpectedResult = [{[k1], {type2, 10}},
+                      {[k2], {type3, a1}},
+                      {[k3], {type1, false}}],
+
+    with_request(
+      fun (SetContType, SetBody, Req) ->
+          SetContType("application/x-www-form-urlencoded"),
+          SetBody(<<"t1=10&t2=a1&t3=false">>),
+          handle_post(fun (Parsed, Req2) when Req == Req2 ->
+                          ?assertEqual(ExpectedResult, Parsed)
+                      end, [], Params, TypeSpec, Req)
+      end).
+
 test_params() ->
     [{"key1.key2-1.key3-1", #{cfg_key => ckey1, type => int}},
      {"key1.key2-2.key3-1", #{cfg_key => [ckey2_1, ckey2_2], type => int}},
@@ -530,9 +594,13 @@ with_request(Fun) ->
                     end),
         meck:expect(mochiweb_request, parse_qs,
                     fun (R) when R == Req -> [] end),
+        meck:expect(mochiweb_request, get_meta,
+                    fun (resp_headers, _, R) when R == Req -> [] end),
         meck:expect(menelaus_util, reply_json,
                     fun (R, {[{errors, Errors}]}, 400) when R == Req ->
-                        error({validation_failed, Errors})
+                            error({validation_failed, Errors});
+                        (R1, R2, R3) ->
+                            erlang:error({received_reply_json, {R1, R2, R3}})
                     end),
         Fun(fun (ContType) -> ets:insert(Ets, {content_type, ContType}) end,
             fun (Body) -> ets:insert(Ets, {body, Body}) end, Req)
