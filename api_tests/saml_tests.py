@@ -147,7 +147,7 @@ class SamlTests(testlib.BaseTestSet):
             IDP.parse_logout_request_response(saml_response, binding=BINDING_HTTP_POST)
 
 
-    def authn_via_post_and_sigle_logout_test(self, cluster):
+    def authn_via_post_and_single_logout_test(self, cluster):
         with saml_configured(cluster) as IDP:
             r = testlib.get_succ(cluster, '/saml/auth',
                                  allow_redirects=False)
@@ -215,7 +215,7 @@ class SamlTests(testlib.BaseTestSet):
                              data={'SAMLResponse': response_encoded},
                              headers=headers,
                              allow_redirects=False)
-            assert(r.status_code == 200)
+            assert(r.status_code == 302)
 
 
     def authn_via_redirect_and_regular_logout_test(self, cluster):

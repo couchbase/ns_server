@@ -358,8 +358,10 @@ handle_saml_logout(Req, UnvalidatedParams) ->
                                          Req)
                   end;
               {_, #esaml_logoutresp{}} ->
+                  undefined = menelaus_auth:get_identity(Req),
                   ?log_debug("Successful logout response"),
-                  menelaus_util:reply(Req, 200)
+                  menelaus_util:reply_text(Req, <<"Redirecting...">>, 302,
+                                           [{"Location", "/"}])
           end
       end, Req, UnvalidatedParams,
       [validator:string('SAMLEncoding', _),
