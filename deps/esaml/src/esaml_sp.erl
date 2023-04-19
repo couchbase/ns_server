@@ -320,24 +320,40 @@ validate_assertion(Xml, DuplicateFun, SP = #esaml_sp{}) ->
 
 
 %% @doc Decrypts an encrypted assertion element.
-decrypt_assertion(Xml, #esaml_sp{key = PrivateKey}) ->
+decrypt_assertion(EncryptedAssertion, #esaml_sp{key = PrivateKey}) ->
     XencNs = [{"xenc", 'http://www.w3.org/2001/04/xmlenc#'}],
-    [EncryptedData] = xmerl_xpath:string("./xenc:EncryptedData", Xml, [{namespace, XencNs}]),
+    [EncryptedData] = xmerl_xpath:string("./xenc:EncryptedData", EncryptedAssertion, [{namespace, XencNs}]),
     [#xmlText{value = CipherValue64}] = xmerl_xpath:string("xenc:CipherData/xenc:CipherValue/text()", EncryptedData, [{namespace, XencNs}]),
     CipherValue = base64:decode(CipherValue64),
-    SymmetricKey = decrypt_key_info(EncryptedData, PrivateKey),
+    SymmetricKey = decrypt_key_info(EncryptedAssertion, EncryptedData, PrivateKey),
     [#xmlAttribute{value = Algorithm}] = xmerl_xpath:string("./xenc:EncryptionMethod/@Algorithm", EncryptedData, [{namespace, XencNs}]),
     AssertionXml = block_decrypt(Algorithm, SymmetricKey, CipherValue),
     {Assertion, _} = xmerl_scan:string(AssertionXml, [{namespace_conformant, true}]),
     Assertion.
 
 
-decrypt_key_info(EncryptedData, Key) ->
+decrypt_key_info(EncryptedAssertion, EncryptedData, Key) ->
     DsNs = [{"ds", 'http://www.w3.org/2000/09/xmldsig#'}],
     XencNs = [{"xenc", 'http://www.w3.org/2001/04/xmlenc#'}],
     [KeyInfo] = xmerl_xpath:string("./ds:KeyInfo", EncryptedData, [{namespace, DsNs}]),
-    [#xmlAttribute{value = Algorithm}] = xmerl_xpath:string("./xenc:EncryptedKey/xenc:EncryptionMethod/@Algorithm", KeyInfo, [{namespace, XencNs}]),
-    [#xmlText{value = CipherValue64}] = xmerl_xpath:string("./xenc:EncryptedKey/xenc:CipherData/xenc:CipherValue/text()", KeyInfo, [{namespace, XencNs}]),
+    EKType = "http://www.w3.org/2001/04/xmlenc#EncryptedKey",
+    [EncryptedKey] =
+        case xmerl_xpath:string(
+               "./ds:RetrievalMethod[@Type='" ++ EKType ++ "']/@URI",
+               KeyInfo, [{namespace, DsNs}]) of
+            [#xmlAttribute{value = "#" ++ URI}] ->
+                xmerl_xpath:string("//xenc:EncryptedKey[@Id='" ++ URI ++ "']",
+                                   EncryptedAssertion, [{namespace, XencNs}]);
+            [] ->
+                xmerl_xpath:string("./xenc:EncryptedKey",
+                                   KeyInfo, [{namespace, XencNs}])
+        end,
+    [#xmlAttribute{value = Algorithm}] =
+        xmerl_xpath:string("./xenc:EncryptionMethod/@Algorithm",
+                           EncryptedKey, [{namespace, XencNs}]),
+    [#xmlText{value = CipherValue64}] =
+        xmerl_xpath:string("./xenc:CipherData/xenc:CipherValue/text()",
+                           EncryptedKey, [{namespace, XencNs}]),
     CipherValue = base64:decode(CipherValue64),
     decrypt(CipherValue, Algorithm, Key).
 
