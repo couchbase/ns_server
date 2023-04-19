@@ -53,7 +53,7 @@ handle_call({start_loading_sample, Sample, Bucket, Quota, CacheDir,
             TaskId = misc:uuid_v4(),
             update_task_status(TaskId, queued, Bucket),
             ns_heart:force_beat(),
-            NewState = State#state{tasks = [{Bucket, Pid, TaskId} | Tasks]},
+            NewState = State#state{tasks = Tasks ++ [{Bucket, Pid, TaskId}]},
             {reply, {newly_started, TaskId}, maybe_pass_token(NewState)};
         {_, _, TaskId} ->
             {reply, {already_started, TaskId}, State}

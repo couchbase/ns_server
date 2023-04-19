@@ -6,6 +6,7 @@
 # file, in accordance with the Business Source License, use of this software
 # will be governed by the Apache License, Version 2.0, included in the file
 # licenses/APL2.txt.
+import time
 
 import testlib
 from tasks_test import TasksBase
@@ -14,6 +15,10 @@ from tasks_test import TasksBase
 # 20 second timeout for sample bucket loading. cbimport shouldn't take any
 # longer than this
 CBIMPORT_TIMEOUT = 20
+# 1 second timeout for task to go from queued to running/completed, once the
+# task is at the front of the queue, and there is no other task running.
+# Typically, this takes <50ms, so this timeout should be sufficient
+START_TASK_TIMEOUT = 1
 
 
 class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
@@ -26,8 +31,8 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
 
     @staticmethod
     def requirements():
-        return [testlib.ClusterRequirements(edition="Enterprise", memsize=1024),
-                testlib.ClusterRequirements(edition="Serverless", memsize=1024)]
+        return [testlib.ClusterRequirements(edition="Enterprise", memsize=2000),
+                testlib.ClusterRequirements(edition="Serverless", memsize=2000)]
 
     def setup(self, cluster):
         self.addr_get = "/sampleBuckets"
@@ -42,6 +47,9 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
         pass
 
     def test_teardown(self, cluster):
+        # Kill any remaining sample loads
+        testlib.post_succ(cluster, "/diag/eval",
+                          data="gen_server:stop(samples_loader_tasks).")
         # Deleting any remaining buckets
         testlib.delete_all_buckets(cluster)
 
@@ -76,6 +84,9 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
     # to become "completed"
     def assert_loaded_sample(self, response, timeout):
         task_desc = self.get_task_desc_from_response(response)
+        # First check that the sample immediately starts loading
+        self.assert_sample_load_started(task_desc)
+        # Then check that the sample load completes within timeout
         self.assert_task_status(task_desc, "completed", timeout)
 
     # To determine that the sample failed to load, we wait for the task status
@@ -83,6 +94,23 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
     def assert_sample_load_failed(self, response, timeout):
         task_desc = self.get_task_desc_from_response(response)
         self.assert_task_status(task_desc, "failed", timeout)
+
+    # Assert that the task is currently running or completed
+    def assert_sample_load_started(self, task_desc):
+        task_id = testlib.assert_json_key("taskId", task_desc, self.addr_post)
+
+        def loading_done(task):
+            if task is None:
+                return False
+            else:
+                return task.get("status") in ["running", "completed"]
+
+        # Wait for the task to satisfy loading_done
+        self.wait_for_task(
+            self.cluster, task_id, loading_done, START_TASK_TIMEOUT,
+            timeout_msg=f"Waiting for sample loading task to become 'running' "
+                        f"or 'completed' timed out after {START_TASK_TIMEOUT}s."
+                        f"\n")
 
     # Wait for the task's status to become expected_last_status, failing the
     # test if timeout is reached
@@ -186,3 +214,26 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
                                          json=payload)
             # Double the timeout to allow for bucket creation
             self.assert_loaded_sample(response, CBIMPORT_TIMEOUT * 2)
+
+    # Test loading multiple sample buckets sequentially
+    def post_multiple_buckets_sequential_test(self, cluster):
+        # Create 10 buckets (with total ram quota 10*200MiB = 2000MiB)
+        bucket_count = 10
+        bucket_names = [f"test{i}" for i in range(bucket_count)]
+        for bucket_name in bucket_names:
+            self.create_bucket(bucket_name, 200)
+
+        # Load the buckets, 1 at a time
+        responses = []
+        for bucket_name in bucket_names:
+            sample_bucket = "travel-sample"
+            payload = [{"sample": sample_bucket,
+                        "bucket": bucket_name}]
+            responses.append(testlib.post_succ(cluster, self.addr_post, 202,
+                                               json=payload))
+
+        # Assert that each bucket gets loaded, in the correct order. We test
+        # this to make sure that later buckets don't jump ahead in
+        # the queue, delaying earlier sample bucket loads
+        for response in responses:
+            self.assert_loaded_sample(response, timeout=CBIMPORT_TIMEOUT)

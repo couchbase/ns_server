@@ -46,7 +46,8 @@ class TasksBase:
 
     # Wait for the task identified by task_id to satisfy is_task_done or reach
     # the timeout limit
-    def wait_for_task(self, cluster, task_id, is_task_done, timeout):
+    def wait_for_task(self, cluster, task_id, is_task_done, timeout,
+                      timeout_msg=None):
         def get_status():
             return self.get_task_status(cluster, task_id)
         # Wait until timeout reached
@@ -58,7 +59,8 @@ class TasksBase:
             # most 20 checks, rather than spamming the cluster
             time.sleep(timeout / 20)
 
-        timeout_msg = f"Task status check timed out after {timeout}s. \n"
+        if timeout_msg is None:
+            timeout_msg = f"Task status check timed out after {timeout}s.\n"
 
         assert last_task_status is not None, \
             f"{timeout_msg}" \
