@@ -271,7 +271,8 @@ validate_assertion(Xml, DuplicateFun, SP = #esaml_sp{}) ->
                         xmerl_xpath:string("/saml:Assertion", DecryptedAssertion, [{namespace, Ns}]) of
                         [A2] -> A2
                     catch
-                        _Error:_Reason -> {error, bad_assertion}
+                        _:Error:ST ->
+                            {error, {decryption_problem, {Error, ST}}}
                     end;
                 _ ->
                     case xmerl_xpath:string("/samlp:Response/saml:Assertion", X, [{namespace, Ns}]) of

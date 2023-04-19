@@ -536,6 +536,10 @@ validate_authn_response(NameResp, NameEnc, SPMetadata, DupeCheck, State) ->
                       {ok, Assertion} ->
                           ?log_debug("Assertion validated successfully"),
                           {value, Assertion};
+                      {error, {decryption_problem, {E, ST}}} ->
+                          ?log_debug("Assertion decryption failed: ~p~n~p",
+                                     [E, ST]),
+                          {error, "Assertion decryption failed"};
                       {error, E} ->
                           ?log_debug("Assertion validation failed: ~p", [E]),
                           Msg = io_lib:format("Assertion validation failed:"
