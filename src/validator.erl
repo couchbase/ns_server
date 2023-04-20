@@ -89,6 +89,9 @@ handle(Fun, Req, qs, Validators) ->
 handle(Fun, Req, {JSONProps} = JSONObj, Validators) when is_list(JSONProps) ->
     handle_one(Fun, Req, with_decoded_object(JSONObj, Validators));
 
+handle(Fun, Req, {json_array, JSONArray}, Validators) when is_list(JSONArray) ->
+    handle_multiple(Fun, Req, with_decoded_array(JSONArray, Validators));
+
 handle(Fun, Req, Args, Validators) ->
     handle_one(Fun, Req, functools:chain(#state{kv = Args}, Validators)).
 
@@ -246,6 +249,9 @@ with_json_array(Body, Validators) ->
     catch _:_ ->
             [#state{errors = [{<<"_">>, <<"Invalid Json">>}]}]
     end.
+
+with_decoded_array(JSONArray, Validators) ->
+    [with_decoded_object(Object, Validators) || Object <- JSONArray].
 
 name_to_list(Name) when is_atom(Name) ->
     atom_to_list(Name);

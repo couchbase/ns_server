@@ -286,29 +286,47 @@ handle_range_post(Req) ->
             F -> F
         end,
     Now = os:system_time(millisecond),
+    Body = mochiweb_request:recv_body(Req),
+    JSONArray =
+        try ejson:decode(Body) of
+            Objects when is_list(Objects) -> Objects;
+            _ ->
+                M = <<"A Json array must be specified.">>,
+                menelaus_util:web_json_exception(
+                  400, {[{errors, [{[{<<"_">>, M}]}]}]})
+        catch
+            _:_ ->
+                menelaus_util:web_json_exception(
+                  400, {[{errors, [{[{<<"_">>, <<"Invalid Json">>}]}]}]})
+        end,
     validator:handle(
-      fun (List) ->
+      fun (ParsedList) ->
           %% New process is needed to avoid leaving response messages in
           %% mochiweb handler process's mailbox in case of timeout or other
           %% problems
+          List = lists:zip(JSONArray, ParsedList),
           misc:executing_on_new_process(
             fun () ->
                 handle_range_post_validated(List, PermFilters, Now, Req)
             end)
-      end, Req, json_array, post_validators(Now, Req)).
+      end, Req, {json_array, JSONArray}, post_validators(Now, Req)).
 
 handle_range_post_validated(List, PermFilters, Now, Req) ->
-    Monitors = start_node_extractors_monitoring(List),
+    Monitors = start_node_extractors_monitoring([Props || {_, Props} <- List]),
     Groups = misc:split(?MAX_PARALLEL_QUERIES_IN_POST, List),
     reply_with_chunked_json_array(
       fun (Reply, InitState) ->
           lists:foldl(
             fun (Sublist, Acc1) ->
-                Requests = lists:map(send_metrics_request(_, PermFilters),
-                                     Sublist),
+                Requests = lists:map(
+                             fun ({_OrigProps, ParsedProps}) ->
+                                 send_metrics_request(ParsedProps, PermFilters)
+                             end,
+                             Sublist),
                 lists:foldl(
-                  fun ({Ref, Props}, {Acc2, DownHosts}) ->
-                      try read_metrics_response(Ref, Props, Now, DownHosts) of
+                  fun ({Ref, {OrigProps, Props}}, {Acc2, DownHosts}) ->
+                      try read_metrics_response(Ref, OrigProps, Props, Now,
+                                                DownHosts) of
                           {Res, NewDownHosts} ->
                               NewAcc2 = Reply(Res, Acc2),
                               {NewAcc2, NewDownHosts}
@@ -384,7 +402,8 @@ handle_range_get([MetricName | NotvalidatedFunctions], Req) ->
             fun () ->
                 Monitors = start_node_extractors_monitoring([Props]),
                 Ref = send_metrics_request(NewProps, PermFilters),
-                {Res, _} = read_metrics_response(Ref, NewProps, Now, []),
+                {Res, _} = read_metrics_response(Ref, undefined, NewProps,
+                                                 Now, []),
                 stop_node_extractors_monitoring(Monitors),
                 menelaus_util:reply_json(Req, Res)
             end)
@@ -395,7 +414,8 @@ post_validators(Now, Req) ->
      validator:required(metric, _),
      validator:string_array(applyFunctions, _),
      validate_functions(applyFunctions, _),
-     validator:string_array(nodes, _) | validators(Now, Req)] ++
+     validator:string_array(nodes, _),
+     validator:boolean(returnRequestParams, _) | validators(Now, Req)] ++
     [validator:validate_relative(
        fun (special, Metric) ->
                case derived_metrics:is_metric(extract_metric_name(Metric)) of
@@ -533,7 +553,7 @@ send_metrics_request(Props, PermFilters) ->
       end, NodesToPoll),
     Ref.
 
-read_metrics_response(Ref, Props, StartTimestampMs, DownHosts) ->
+read_metrics_response(Ref, OrigReqProps, Props, StartTimestampMs, DownHosts) ->
     Nodes = proplists:get_value(nodes, Props),
     Timeout = proplists:get_value(timeout, Props),
     {BadRes, GoodRes} =
@@ -566,7 +586,9 @@ read_metrics_response(Ref, Props, StartTimestampMs, DownHosts) ->
     NewDownHosts = lists:usort(DownHosts ++ [H || {H, down} <- BadRes]),
     Start = proplists:get_value(start, Props),
     End = proplists:get_value('end', Props),
-    {{[{data, Data}, {errors, Errors}, {startTimestamp, Start},
+    IncludeRequestParams = proplists:get_bool(returnRequestParams, Props),
+    {{[{requestParams, OrigReqProps} || IncludeRequestParams] ++
+      [{data, Data}, {errors, Errors}, {startTimestamp, Start},
        {endTimestamp, End}]}, NewDownHosts}.
 
 validate_metric_json(Name, State) ->
