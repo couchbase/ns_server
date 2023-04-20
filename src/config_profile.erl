@@ -30,7 +30,7 @@
 
 -spec(set_data(term()) -> 'ok').
 set_data(Value) ->
-    application:set_env(ns_server, ?CONFIG_PROFILE, Value).
+    persistent_term:put(?CONFIG_PROFILE, Value).
 
 -spec(name() -> string()).
 name() ->
@@ -42,7 +42,7 @@ get() ->
 
 -spec(get(list()) -> list()).
 get(Default) ->
-    application:get_env(ns_server, ?CONFIG_PROFILE, Default).
+    persistent_term:get(?CONFIG_PROFILE, Default).
 
 -spec(get_value(term(), term()) -> term()).
 get_value(Key, Default) ->
