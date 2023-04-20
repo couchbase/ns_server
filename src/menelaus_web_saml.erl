@@ -37,8 +37,22 @@
 
 handle_get_settings(Path, Req) ->
     SSOSettings = extract_saml_settings(),
+    SSOSettingsUpdated =
+        case proplists:get_value(enabled, SSOSettings) of
+            true ->
+                #esaml_sp{metadata_uri = MetadataURL,
+                          consume_uri = ConsumeURL,
+                          logout_uri = LogoutURL} =
+                    build_sp_metadata(SSOSettings, Req),
+                misc:update_proplist(SSOSettings,
+                                     [{sp_md_url, MetadataURL},
+                                      {sp_md_consume_url, ConsumeURL},
+                                      {sp_md_logout_url, LogoutURL}]);
+            false ->
+                SSOSettings
+        end,
     menelaus_web_settings2:handle_get(Path, params(), fun type_spec/1,
-                                      SSOSettings, Req).
+                                      SSOSettingsUpdated, Req).
 
 handle_put_settings(Req) ->
     menelaus_web_settings2:handle_post(
@@ -817,7 +831,16 @@ params() ->
         type => {one_of, existing_atom, [local, global, disabled]}}},
      {"spMetadataCacheDuration",
       #{cfg_key => sp_md_cache_duration,
-        type => iso8601_duration}}].
+        type => iso8601_duration}},
+     {"spMetadataURL",
+      #{cfg_key => sp_md_url,
+        type => {read_only, string}}},
+     {"spConsumeURL",
+      #{cfg_key => sp_md_consume_url,
+        type => {read_only, string}}},
+     {"spLogoutURL",
+      #{cfg_key => sp_md_logout_url,
+        type => {read_only, string}}}].
 
 defaults() ->
     [{enabled, false},
@@ -866,7 +889,10 @@ defaults() ->
      {idp_metadata_origin, http},
      {session_expire, 'SessionNotOnOrAfter'},
      {dupe_check, global},
-     {sp_md_cache_duration, "P1M"}].
+     {sp_md_cache_duration, "P1M"},
+     {sp_md_url, ""},
+     {sp_md_consume_url, ""},
+     {sp_md_logout_url, ""}].
 
 type_spec(saml_metadata) ->
     #{validators => [string, fun validate_saml_metadata/2],

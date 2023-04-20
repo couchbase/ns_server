@@ -149,7 +149,10 @@ type_spec(empty_str) ->
       formatter => string};
 type_spec({optional, Type}) ->
     OrType = {'or', [{not_set, empty_str}, {set, Type}]},
-    #{validators => [OrType], formatter => OrType}.
+    #{validators => [OrType], formatter => OrType};
+type_spec({read_only, Type}) ->
+    #{validators => [not_supported],
+      formatter => Type}.
 
 validate_empty_string(Name, State) ->
     validator:validate(
