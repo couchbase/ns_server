@@ -26,8 +26,10 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements(edition="Enterprise",
-                                           min_memsize=1024)
+        return [testlib.ClusterRequirements(edition="Enterprise",
+                                            min_memsize=1024),
+                testlib.ClusterRequirements(edition="Serverless",
+                                            min_memsize=1024)]
 
     def setup(self, cluster):
         self.addr_get = "/sampleBuckets"
@@ -175,31 +177,14 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
     def post_with_couchdb_sample_test(self, cluster):
         sample_bucket = "gamesim-sample"
         payload = [sample_bucket]
-        # Confirm that loading gamesim-sample succeeds when not in
-        # serverless, as couchdb is enabled
-        response = testlib.post_succ(cluster, self.addr_post, 202,
-                                     json=payload)
-        # Double the timeout to allow for bucket creation
-        self.assert_loaded_sample(response, CBIMPORT_TIMEOUT * 2)
-
-
-class ServerlessSampleBucketTestSet(SampleBucketTestSet):
-
-    def __init__(self, cluster):
-        super().__init__(cluster)
-        self.addr_buckets = None
-        self.addr_post = None
-        self.addr_get = None
-
-    @staticmethod
-    def requirements():
-        return testlib.ClusterRequirements(edition="Serverless",
-                                           min_memsize=1024)
-
-    # Confirm that loading gamesim-sample fails in serverless, as
-    # couchdb is disabled. This test overrides the corresponding
-    # non-serverless test
-    def post_with_couchdb_sample_test(self, cluster):
-        sample_bucket = "gamesim-sample"
-        payload = [sample_bucket]
-        testlib.post_fail(cluster, self.addr_post, 400, json=payload)
+        if cluster.is_serverless:
+            # Confirm that loading gamesim-sample fails in serverless, as
+            # couchdb is disabled
+            testlib.post_fail(cluster, self.addr_post, 400, json=payload)
+        else:
+            # Confirm that loading gamesim-sample succeeds when not in
+            # serverless, as couchdb is enabled
+            response = testlib.post_succ(cluster, self.addr_post, 202,
+                                         json=payload)
+            # Double the timeout to allow for bucket creation
+            self.assert_loaded_sample(response, CBIMPORT_TIMEOUT * 2)
