@@ -377,4 +377,8 @@
 
 -define(SECS_IN_DAY, 24*60*60).
 
+%% Existing profile gets written to disk in the 'data' dir when ns_config first
+%% starts.
+-define(EXISTING_PROFILE_FILE, "existing_profile").
+
 -endif.

@@ -106,7 +106,30 @@ setup_server_profile() ->
                         {config_profile:default(), ?DEFAULT_PROFILE_STR}
                 end,
     ?log_debug("Using profile '~s': ~p", [N, Data]),
-    config_profile:set_data(Data).
+    config_profile:set_data(Data),
+    config_profile_continuity_checker(
+      path_config:component_path(data, ?EXISTING_PROFILE_FILE)).
+
+config_profile_continuity_checker(File) ->
+    CurrentProfile = config_profile:name(),
+    case misc:read_marker(File) of
+        {ok, CurrentProfile} ->
+            ok;
+        {ok, OtherProfile} ->
+            erlang:error(
+              lists:flatten(
+                io_lib:format(
+                  "Configuration profile does not match what the server "
+                  "was started with. Changed from ~p to ~p. Exiting..",
+                  [OtherProfile, config_profile:name()])));
+        false ->
+            %% file does not exist at all -- we maybe haven't created it yet.
+            %% mark the config_profile on disk, so that we can detect if it
+            %% changes.
+            ?log_warning("Writing config_profile '~p' to disk.",
+                         [CurrentProfile]),
+            misc:create_marker(File, [CurrentProfile])
+    end.
 
 load_config(Path) ->
     case file:consult(Path) of
