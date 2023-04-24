@@ -480,13 +480,14 @@ class SamlTests(testlib.BaseTestSet):
 @contextmanager
 def saml_configured(cluster, spSignRequests=True,
                     assertion_lifetime=15, **kwargs):
-    metadata = generate_mock_metadata(spSignRequests,
-                                      assertion_lifetime, cluster)
-    with open(metadataFile, 'wb') as f:
-        f.write(metadata.encode("utf-8"))
-    mock_server_process = Process(target=start_mock_server)
-    mock_server_process.start()
+    mock_server_process = None
     try:
+        metadata = generate_mock_metadata(spSignRequests,
+                                          assertion_lifetime, cluster)
+        with open(metadataFile, 'wb') as f:
+            f.write(metadata.encode("utf-8"))
+        mock_server_process = Process(target=start_mock_server)
+        mock_server_process.start()
         wait_mock_server(f'http://{mock_server_host}:{mock_server_port}/ping', 150)
         set_sso_options(cluster, spSignRequests=spSignRequests,
                         **kwargs)
@@ -494,7 +495,8 @@ def saml_configured(cluster, spSignRequests=True,
                                        cluster))
         yield IDP
     finally:
-        mock_server_process.terminate()
+        if mock_server_process is not None:
+            mock_server_process.terminate()
         if os.path.exists(idp_subject_file_path):
             os.remove(idp_subject_file_path)
         if os.path.exists(metadataFile):
