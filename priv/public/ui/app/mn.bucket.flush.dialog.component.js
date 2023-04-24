@@ -41,11 +41,12 @@ class MnBucketFlushDialogComponent extends MnLifeCycleHooksToStream {
     super();
 
     this.activeModal = activeModal;
+    this.flushBucket = mnBucketsService.stream.flushBucket;
 
     this.form = mnFormService.create(this)
       .setFormGroup({})
       .setPackPipe(map(() => this.bucket))
-      .setPostRequest(mnBucketsService.stream.flushBucket)
+      .setPostRequest(this.flushBucket)
       .showGlobalSpinner()
       .successMessage('Bucket flushed successfully!')
       .success(() => activeModal.dismiss());

@@ -24,6 +24,11 @@
           <br>Flush this bucket?
         </p>
       </div>
+      <div
+         class="error error-field"
+         *ngIf="(flushBucket.error | async)?._">
+         {{(flushBucket.error | async)?._}}
+      </div>
     </div>
     <div class="panel-footer">
       <a (click)="activeModal.dismiss()">Cancel</a>
