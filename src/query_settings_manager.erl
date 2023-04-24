@@ -121,7 +121,8 @@ general_settings(Ver) ->
                             [{queryNodeQuota, "node-quota", 0},
                              {queryUseReplica, "use-replica", <<"unset">>},
                              {queryNodeQuotaValPercent,
-                              "node-quota-val-percent", 67}];
+                              "node-quota-val-percent", 67},
+                             {queryNumCpus, "num-cpus", 0}];
                         false ->
                             []
                     end;

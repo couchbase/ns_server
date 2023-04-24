@@ -66,7 +66,9 @@ settings_post_validators_70() ->
                          validator:convert(queryUseReplica,
                                            fun list_to_binary/1, _),
                          validator:one_of(queryUseReplica,
-                                          [<<"unset">>, <<"off">>, <<"on">>], _)];
+                                          [<<"unset">>, <<"off">>, <<"on">>], _),
+                         validator:integer(queryNumCpus, _),
+                         validator:range(queryNumCpus, 0, infinity, _)];
                     false ->
                         []
                 end;
