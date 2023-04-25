@@ -71,7 +71,7 @@
           sock = still_connecting :: port() | still_connecting,
           work_requests = [],
           warmup_stats = [] :: [{binary(), binary()}],
-          control_queue :: pid(),
+          control_queue :: pid() | undefined,
           check_in_progress = false :: boolean(),
           next_check_after = ?CHECK_INTERVAL :: integer()
          }).
@@ -303,13 +303,15 @@ handle_call(disable_traffic, _From, State) ->
             {reply, bad_status, State}
     end;
 handle_call(prepare_pause_bucket, _From,
-            #state{sock = Sock, worker_pids = WorkerPids} = State) ->
+            #state{sock = Sock, worker_pids = WorkerPids,
+                   control_queue = ControlQPid} = State) ->
     %% Memcached will close all selected sockets when it processes the pause,
     %% so prepare for a graceful pause so that it doesn't crash ns_memcached
-    [misc:unlink_terminate_and_wait(Pid, shutdown) || Pid <- WorkerPids],
+    [misc:unlink_terminate_and_wait(Pid, shutdown) ||
+        Pid <- [ControlQPid | WorkerPids]],
     ok = mc_client_binary:deselect_bucket(Sock),
     ?log_debug("Prepare pause completed"),
-    {reply, ok, State#state{worker_pids = []}};
+    {reply, ok, State#state{worker_pids = [], control_queue = undefined}};
 handle_call(complete_pause_bucket, _From, #state{bucket=Bucket} = State) ->
     ?log_debug("Pausing completed for bucket: ~p", [Bucket]),
     {reply, ok, State#state{status=paused}};
@@ -852,6 +854,14 @@ handle_info(check_started,
 handle_info(check_config_soon, #state{check_in_progress = true} = State) ->
     {noreply, State#state{next_check_after = 0}};
 handle_info(check_config, #state{check_in_progress = true} = State) ->
+    {noreply, State};
+handle_info(Message, #state{control_queue = undefined, status = Status,
+                            bucket = Bucket, check_in_progress = false} = State)
+  when Message =:= check_config_soon orelse Message =:= check_config ->
+    misc:flush(check_config_soon),
+    misc:flush(check_config),
+    ?log_debug("Ignoring any config checks: Bucket ~p, Status: ~p",
+               [Bucket, Status]),
     {noreply, State};
 handle_info(Message, #state{worker_features = WF, control_queue = Q,
                             bucket = Bucket, check_in_progress = false} = State)
