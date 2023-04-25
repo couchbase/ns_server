@@ -41,14 +41,16 @@
 -callback get_nodes() -> term().
 -callback can_refresh() -> boolean().
 
-
--define(INACTIVE_TIME, 2000000). % 2 seconds in microseconds
+%% We wait for ?INACTIVE_TICKS ticks before considering a node inactive and
+%% eligible for failover.
+-define(INACTIVE_TICKS, ?get_param(inactive_ticks, 2)).
 -define(DEFAULT_REFRESH_INTERVAL, 1000). % 1 second heartbeat and refresh
 
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
--export([time_diff_to_status/1,
+-export([calculate_inactive_time/1,
+         time_diff_to_status/2,
          erase_unknown_nodes/2,
          local_monitors/0,
          node_monitors/1,
@@ -170,9 +172,15 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %% APIs
-time_diff_to_status(Diff) ->
+-spec calculate_inactive_time(map()) -> integer().
+calculate_inactive_time(MonitorState) ->
+    #{refresh_interval := RefreshInterval} = MonitorState,
+    erlang:convert_time_unit(RefreshInterval, millisecond, microsecond) *
+        ?INACTIVE_TICKS.
+
+time_diff_to_status(Diff, InactiveTime) ->
     case erlang:convert_time_unit(Diff, native, microsecond)
-        =< ?INACTIVE_TIME of
+        =< InactiveTime of
         true ->
             active;
         false ->
@@ -308,6 +316,11 @@ basic_test_setup(Monitor) ->
     meck:expect(ns_config, read_key_fast,
                 fun(health_monitor_refresh_interval, _) ->
                         [{Monitor, ?DEFAULT_REFRESH_INTERVAL}]
+                end),
+
+    meck:expect(ns_config, search_node_with_default,
+                fun({health_monitor, inactive_ticks}, DefaultValue) ->
+                        DefaultValue
                 end),
 
     meck:new(ns_cluster_membership, [passthrough]),

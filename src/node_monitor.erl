@@ -38,10 +38,12 @@ init() ->
 handle_call(get_nodes, _From, MonitorState) ->
     #{nodes := Statuses} = MonitorState,
     Now = erlang:monotonic_time(),
+    InactiveTime =
+        health_monitor:calculate_inactive_time(MonitorState),
     RV = dict:fold(
            fun (Node, {Status, {recv_ts, RecvTS}}, Acc) ->
                    [{Node, health_monitor:time_diff_to_status(
-                             Now - RecvTS), Status} | Acc]
+                             Now - RecvTS, InactiveTime), Status} | Acc]
            end, [], Statuses),
     {reply, RV};
 
