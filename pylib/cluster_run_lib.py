@@ -38,7 +38,7 @@ base_backup_http_port= 7100
 base_backup_https_port= 17100
 base_backup_grpc_port = 7200
 
-node_start_timeout_s = 30
+node_start_timeout_s = 60
 default_username = "Administrator"
 default_pass = "asdasd"
 default_idx_storage_mode_ep = "plasma"
