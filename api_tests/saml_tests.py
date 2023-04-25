@@ -477,22 +477,108 @@ class SamlTests(testlib.BaseTestSet):
             assert(roles == expected_roles)
 
 
+    def metadata_with_invalid_signature_test(self, cluster):
+        try:
+            # trusted fingerprints will not match mockidp2* certs
+            with saml_configured(cluster,
+                                 metadata_certs_prefix="mockidp2_"):
+                assert False, "ns_server should reject metadata as it's "\
+                              "signed by untrusted cert"
+        except AssertionError as e:
+            assert("metadata signature verification failed: cert_not_accepted"
+                   in str(e))
+
+
+    def assertion_with_invalid_signature_test(self, cluster):
+        with saml_configured(cluster,
+                             spVerifyAssertionSig=True,
+                             spVerifyAssertionEnvelopSig=False,
+                             metadata_certs_prefix="mockidp_",
+                             certs_prefix="mockidp2_") as IDP:
+            identity = idp_test_user_attrs.copy()
+            binding_out, destination = \
+                IDP.pick_binding("assertion_consumer_service",
+                                 bindings=[BINDING_HTTP_POST],
+                                 entity_id=sp_entity_id)
+            name_id = NameID(text=testlib.random_str(16))
+
+            response = IDP.create_authn_response(
+                         identity,
+                         None,
+                         destination,
+                         sp_entity_id=sp_entity_id,
+                         userid=idp_test_username,
+                         name_id=name_id,
+                         sign_assertion=True,
+                         sign_response=False)
+
+            response_encoded = base64.b64encode(f"{response}".encode("utf-8"))
+
+            session = requests.Session()
+            headers={'Host': 'some_addr', 'ns-server-ui': 'yes'}
+            r = session.post(destination,
+                             data={'SAMLResponse': response_encoded},
+                             headers=headers,
+                             allow_redirects=False)
+            assert(r.status_code == 400)
+            assert("cert_not_accepted" in r.text)
+
+            r = session.get(cluster.nodes[0].url + '/pools/default',
+                            headers=headers)
+            assert(r.status_code == 401)
+
+
+    def authn_response_with_invalid_signature_test(self, cluster):
+        with saml_configured(cluster,
+                             spVerifyAssertionSig=False,
+                             spVerifyAssertionEnvelopSig=True,
+                             metadata_certs_prefix="mockidp_",
+                             certs_prefix="mockidp2_") as IDP:
+            identity = idp_test_user_attrs.copy()
+            binding_out, destination = \
+                IDP.pick_binding("assertion_consumer_service",
+                                 bindings=[BINDING_HTTP_POST],
+                                 entity_id=sp_entity_id)
+            name_id = NameID(text=testlib.random_str(16))
+
+            response = IDP.create_authn_response(
+                         identity,
+                         None,
+                         destination,
+                         sp_entity_id=sp_entity_id,
+                         userid=idp_test_username,
+                         name_id=name_id,
+                         sign_assertion=False,
+                         sign_response=True)
+
+            response_encoded = base64.b64encode(f"{response}".encode("utf-8"))
+
+            session = requests.Session()
+            headers={'Host': 'some_addr', 'ns-server-ui': 'yes'}
+            r = session.post(destination,
+                             data={'SAMLResponse': response_encoded},
+                             headers=headers,
+                             allow_redirects=False)
+            assert(r.status_code == 400)
+            assert("cert_not_accepted" in r.text)
+
+            r = session.get(cluster.nodes[0].url + '/pools/default',
+                            headers=headers)
+            assert(r.status_code == 401)
+
+
 @contextmanager
-def saml_configured(cluster, spSignRequests=True,
-                    assertion_lifetime=15, **kwargs):
+def saml_configured(cluster, **kwargs):
     mock_server_process = None
     try:
-        metadata = generate_mock_metadata(spSignRequests,
-                                          assertion_lifetime, cluster)
+        metadata = generate_mock_metadata(cluster, **kwargs)
         with open(metadataFile, 'wb') as f:
             f.write(metadata.encode("utf-8"))
         mock_server_process = Process(target=start_mock_server)
         mock_server_process.start()
         wait_mock_server(f'http://{mock_server_host}:{mock_server_port}/ping', 150)
-        set_sso_options(cluster, spSignRequests=spSignRequests,
-                        **kwargs)
-        IDP = server.Server(idp_config(spSignRequests, assertion_lifetime,
-                                       cluster))
+        set_sso_options(cluster, **kwargs)
+        IDP = server.Server(idp_config(cluster, **kwargs))
         yield IDP
     finally:
         if mock_server_process is not None:
@@ -504,8 +590,10 @@ def saml_configured(cluster, spSignRequests=True,
         testlib.delete_succ(cluster, '/saml/settings')
 
 
-def generate_mock_metadata(*args):
-    cfg = idp_config(*args)
+def generate_mock_metadata(cluster, metadata_certs_prefix=None, **kwargs):
+    if metadata_certs_prefix is not None:
+        kwargs['certs_prefix'] = metadata_certs_prefix
+    cfg = idp_config(cluster, **kwargs)
     cfg['metadata'] = {} ## making sure it will not try connecting to ns_server
                          ## when server below is being created, because saml
                          ## configuration in ns_server is not created yet
@@ -593,20 +681,30 @@ def set_sso_options(cluster, **kwargs):
                 'spSignRequests': True,
                 'spSignMetadata': True,
                 'spTrustedFingerprints': trusted_fps,
-                'spTrustedFingerprintsUsage': 'metadataInitialOnly'}
+                'spTrustedFingerprintsUsage': 'metadataInitialOnly',
+                'groupsAttribute': '',
+                'groupsAttributeSep': '',
+                'groupsFilterRE': '',
+                'rolesAttribute': '',
+                'rolesAttributeSep': '',
+                'rolesFilterRE': ''}
 
-    settings.update(kwargs)
+
+    for k in kwargs:
+        if k in settings:
+            settings[k] = kwargs[k]
 
     testlib.put_succ(cluster, '/saml/settings', json=settings)
 
 
-def idp_config(verify_authn_signature, lifetime, cluster):
+def idp_config(cluster, spSignRequests=True, assertion_lifetime=15,
+               certs_prefix="mockidp_", **kwargs):
     sp_base_url = cluster.nodes[0].url
     idp_base_url = f"http://{mock_server_host}:{mock_server_port}"
     key_path = os.path.join(scriptdir, "resources", "saml",
-                            "mockidp_key.pem")
+                            f"{certs_prefix}key.pem")
     cert_path = os.path.join(scriptdir, "resources", "saml",
-                             "mockidp_cert.pem")
+                            f"{certs_prefix}cert.pem")
     log_level = "DEBUG" if debug else "ERROR"
     return {"entityid": f"{idp_base_url}{mock_metadata_endpoint}",
             "description": "My IDP",
@@ -626,7 +724,7 @@ def idp_config(verify_authn_signature, lifetime, cluster):
                     },
                     "policy": {
                         "default": {
-                            "lifetime": {"minutes": lifetime},
+                            "lifetime": {"minutes": assertion_lifetime},
                             "attribute_restrictions": None,
                             "name_form": NAME_FORMAT_URI
                         },
@@ -634,7 +732,7 @@ def idp_config(verify_authn_signature, lifetime, cluster):
                     "subject_data": idp_subject_file_path,
                     "name_id_format": [NAMEID_FORMAT_TRANSIENT,
                                        NAMEID_FORMAT_PERSISTENT],
-                    "want_authn_requests_signed": verify_authn_signature
+                    "want_authn_requests_signed": spSignRequests
                 },
             },
             "debug": 0,
