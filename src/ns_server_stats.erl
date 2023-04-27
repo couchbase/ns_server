@@ -129,7 +129,8 @@ report_prom_stats(ReportFun, IsHighCard) ->
             Try(ns_server, fun () -> report_ns_server_lc_stats(ReportFun) end),
             Try(audit, fun () -> report_audit_stats(ReportFun) end),
             Try(system, fun () -> report_system_stats(ReportFun) end),
-            Try(couchdb, fun () -> report_couchdb_stats(ReportFun) end)
+            Try(couchdb, fun () -> report_couchdb_stats(ReportFun) end),
+            Try(cbauth, fun () -> report_cbauth_stats(ReportFun) end)
     end,
     ok.
 
@@ -265,6 +266,44 @@ report_couch_stats(Bucket, ReportFun) ->
             ReportFun({couch_spatial_data_size, L, Data}),
             ReportFun({couch_spatial_ops, L, Ops})
       end, SpatialStats).
+
+report_cbauth_stats(ReportFun) ->
+    Stats = menelaus_cbauth:stats(),
+    lists:foreach(
+        fun ({ServiceName, {<<"cacheStats">>, CacheStatsList}}) ->
+            lists:foreach(
+                fun ({CacheStats}) ->
+                    CacheName = proplists:get_value(<<"name">>,
+                                                    CacheStats, undefined),
+                    report_cbauth_cache_stats(ReportFun, ServiceName,
+                                              CacheStats, CacheName)
+                end, CacheStatsList)
+        end, Stats).
+
+report_cbauth_cache_stats(_ReportFun, ServiceName, _CacheStats, undefined) ->
+    ?log_error("Found empty cache name for service ~p. Ignoring the stats.",
+               [ServiceName]);
+report_cbauth_cache_stats(ReportFun, ServiceName, CacheStats, CacheName) ->
+    lists:foreach(
+        fun ({Name, ReportingName}) ->
+            case proplists:get_value(Name, CacheStats, undefined) of
+                undefined ->
+                    ?log_error("Expected to find ~p value in the cbauth stats "
+                               "report of service ~p, but couldn't find it. "
+                               "Ignoring the stats.",
+                               [Name, ServiceName]);
+                Val ->
+                    ReportFun({[?METRIC_PREFIX, CacheName],
+                               ReportingName,
+                               [{<<"category">>, <<"cbauth">>},
+                                {<<"service">>, ServiceName}],
+                               Val})
+            end
+        end,
+        [{<<"maxSize">>, <<"max_items">>},
+         {<<"size">>, <<"current_items">>},
+         {<<"hit">>, <<"hit_total">>},
+         {<<"miss">>, <<"miss_total">>}]).
 
 report_ns_server_lc_stats(ReportFun) ->
     lists:foreach(

@@ -16,7 +16,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/0, sync/0, sync/1]).
+-export([start_link/0, sync/0, sync/1, stats/0]).
 
 
 -export([init/1, handle_call/3, handle_cast/2,
@@ -61,6 +61,9 @@ sync() ->
 
 sync(Node) ->
     gen_server:call({?MODULE, Node}, sync, infinity).
+
+stats() ->
+    gen_server:call(?MODULE, collect_stats).
 
 init([]) ->
     ns_pubsub:subscribe_link(json_rpc_events, fun json_rpc_event/1),
@@ -150,6 +153,9 @@ new_process(Label, Version, Pid, Params) ->
 
 handle_call(sync, _From, State) ->
     {reply, ok, State};
+
+handle_call(collect_stats, _From, State) ->
+    handle_collect_stats(State);
 
 handle_call(_Msg, _From, State) ->
     {reply, not_implemented, State}.
@@ -369,6 +375,24 @@ perform_call(Label, Method, Pid, Params, Silent) ->
                        [{Label, Pid}, Reason]),
             error
     end.
+
+handle_collect_stats(#state{rpc_processes = Processes} = State) ->
+    Result = misc:parallel_map(
+              fun ({Pid, #rpc_process{label = Label, version = Version}}) ->
+                  collect_stats(Label, Pid, Version)
+              end,
+              maps:to_list(Processes), infinity),
+    Stats = lists:filtermap(fun(Res) -> Res end, Result),
+    {reply, Stats, State}.
+
+collect_stats(Label, Pid, internal) ->
+    Method = "AuthCacheSvc.GetStats",
+    case perform_call(Label, Method, Pid, {[]}, true) of
+        {ok, {[Res]}} -> {true, {atom_to_binary(label_to_service(Label)), Res}};
+        _Err -> false
+    end;
+collect_stats(_Label, _Pid, _Version) ->
+    false.
 
 build_node_info(N, Config, Snapshot) ->
     build_node_info(N, ns_config:search_node_prop(

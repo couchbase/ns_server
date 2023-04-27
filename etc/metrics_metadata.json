@@ -897,5 +897,105 @@
         "type": "counter",
         "help": "Total number of web cache updates",
         "added": "7.0.0"
+    },
+    "cm_uuid_cache_max_items": {
+        "type": "gauge",
+        "help": "Maximum capacity of cbauth uuid cache",
+        "added": "7.6.0"
+    },
+    "cm_uuid_cache_current_items": {
+        "type": "gauge",
+        "help": "Current number of items available in cbauth uuid cache",
+        "added": "7.6.0"
+    },
+    "cm_uuid_cache_hit_total": {
+        "type": "counter",
+        "help": "Total number of cbauth uuid cache hits",
+        "added": "7.6.0"
+    },
+    "cm_uuid_cache_miss_total": {
+        "type": "counter",
+        "help": "Total number of cbauth uuid cache misses",
+        "added": "7.6.0"
+    },
+    "cm_user_bkts_cache_max_items": {
+        "type": "gauge",
+        "help": "Maximum capacity of cbauth bkts cache",
+        "added": "7.6.0"
+    },
+    "cm_user_bkts_cache_current_items": {
+        "type": "gauge",
+        "help": "Current number of items available in cbauth bkts cache",
+        "added": "7.6.0"
+    },
+    "cm_user_bkts_cache_hit_total": {
+        "type": "counter",
+        "help": "Total number of cbauth bkts cache hits",
+        "added": "7.6.0"
+    },
+    "cm_user_bkts_cache_miss_total": {
+        "type": "counter",
+        "help": "Total number of cbauth bkts cache misses",
+        "added": "7.6.0"
+    },
+    "cm_up_cache_max_items": {
+        "type": "gauge",
+        "help": "Maximum capacity of cbauth up cache",
+        "added": "7.6.0"
+    },
+    "cm_up_cache_current_items": {
+        "type": "gauge",
+        "help": "Current number of items available in cbauth up cache",
+        "added": "7.6.0"
+    },
+    "cm_up_cache_hit_total": {
+        "type": "counter",
+        "help": "Total number of cbauth up cache hits",
+        "added": "7.6.0"
+    },
+    "cm_up_cache_miss_total": {
+        "type": "counter",
+        "help": "Total number of cbauth up cache misses",
+        "added": "7.6.0"
+    },
+    "cm_auth_cache_max_items": {
+        "type": "gauge",
+        "help": "Maximum capacity of cbauth auth cache",
+        "added": "7.6.0"
+    },
+    "cm_auth_cache_current_items": {
+        "type": "gauge",
+        "help": "Current number of items available in cbauth auth cache",
+        "added": "7.6.0"
+    },
+    "cm_auth_cache_hit_total": {
+        "type": "counter",
+        "help": "Total number of cbauth auth cache hits",
+        "added": "7.6.0"
+    },
+    "cm_auth_cache_miss_total": {
+        "type": "counter",
+        "help": "Total number of cbauth auth cache misses",
+        "added": "7.6.0"
+    },
+    "cm_client_cert_cache_max_items": {
+        "type": "gauge",
+        "help": "Maximum capacity of cbauth client_cert cache",
+        "added": "7.6.0"
+    },
+    "cm_client_cert_cache_current_items": {
+        "type": "gauge",
+        "help": "Current number of items available in cbauth client_cert cache",
+        "added": "7.6.0"
+    },
+    "cm_client_cert_cache_hit_total": {
+        "type": "counter",
+        "help": "Total number of cbauth client_cert cache hits",
+        "added": "7.6.0"
+    },
+    "cm_client_cert_cache_miss_total": {
+        "type": "counter",
+        "help": "Total number of cbauth client_cert cache misses",
+        "added": "7.6.0"
     }
 }
