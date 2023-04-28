@@ -193,7 +193,9 @@ class TasksTestSet(testlib.BaseTestSet, TasksBase):
         self.extras_values = [{}, {"test": "value"}]
 
     def setup(self, cluster):
-        pass
+        # Delete all buckets to avoid the tasks version changing unexpectedly
+        # when a bucket goes from warming up to active
+        testlib.delete_all_buckets(cluster)
 
     @staticmethod
     def requirements():
@@ -221,14 +223,14 @@ class TasksTestSet(testlib.BaseTestSet, TasksBase):
         new_task = copy(task)
         # Yield a new task with each status other than the existing one
         for status in self.statuses:
-            if status != task.status:
+            if status != new_task.status:
                 new_task.status = status
-                yield new_task
+                yield copy(new_task)
         # Yield a new task with each value of extras other than the existing one
         for extras in self.extras_values:
-            if extras != task.status:
+            if extras != new_task.extras:
                 new_task.extras = extras
-                yield new_task
+                yield copy(new_task)
 
     # Attempt to update a task with a sequence of valid changes
     def test_updating_task(self, cluster, initial_task, version):
