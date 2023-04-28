@@ -62,7 +62,7 @@
 
 -module(menelaus_web_settings2).
 
--export([prepare_json/4, handle_get/5, handle_post/5]).
+-export([prepare_json/4, handle_get/5, handle_post/5, handle_post/7]).
 
 -include("ns_common.hrl").
 -include("cut.hrl").
@@ -161,6 +161,15 @@ handle_get(Path, ParamSpecs, UserTypesFun, Values, Req) ->
       Req, prepare_json(Path, ParamSpecs, UserTypesFun, Values)).
 
 handle_post(ApplyFun, Path, ParamSpecs, UserTypesFun, Req) ->
+    handle_post(ApplyFun, Path, ParamSpecs, UserTypesFun, [], [], Req).
+
+%% Note about Predefined and Defaults:
+%% If some setting is mandatory, it must be present in Req or in Predefined,
+%% Usually "Predefined" are the setting that were set by this endpoint
+%% before.
+%% Defaults are only used when values are passed to the "is mandatory" fun.
+handle_post(ApplyFun, Path, ParamSpecs, UserTypesFun, Predefined, Defaults,
+            Req) ->
     TypesFuns = [UserTypesFun, fun type_spec/1],
     ValidatorsProplist =
         lists:filtermap(
@@ -188,8 +197,60 @@ handle_post(ApplyFun, Path, ParamSpecs, UserTypesFun, Req) ->
                     InternalKey = cfg_key(FullKey, Spec),
                     {InternalKey, Value}
                 end, Props),
-          ApplyFun(Props2, Req)
+          ExtraValidators = mandatory_validators(Path, Props2, ParamSpecs,
+                                                 Predefined, Defaults),
+          validator:handle(
+            fun (_) ->
+                ApplyFun(Props2, Req)
+            end, Req,
+            [{atom_to_list(K), V} || {K, V} <- Props],
+            ExtraValidators)
       end, Req, Params, Validators ++ [validator:unsupported(_)]).
+
+%% Returns list of validators that check that all mandatory values are present
+mandatory_validators(Path, Props2, ParamSpecs, Predefined, Defaults) ->
+    AllPropsIncludingPredefined =
+        lists:foldl(
+          fun ({Name, #{} = Spec}, Acc) ->
+              InternalKey = cfg_key(Name, Spec),
+              case proplists:get_all_values(InternalKey, Props2) of
+                  [] ->
+                      case extract_value(InternalKey, Predefined) of
+                          not_found ->
+                              case extract_value(InternalKey, Defaults) of
+                                  not_found ->
+                                      Acc;
+                                  {value, V} ->
+                                      Acc#{cfg_key_as_is(Name, Spec) => V}
+                              end;
+                          {value, V} ->
+                              Acc#{cfg_key_as_is(Name, Spec) => V}
+                      end;
+                  [V] ->
+                      Acc#{cfg_key_as_is(Name, Spec) => V}
+              end
+          end, maps:from_list(Props2), ParamSpecs),
+    lists:filtermap(
+      fun ({Name, #{mandatory := F} = Spec}) ->
+              case (F == true) orelse
+                   (is_function(F) andalso F(AllPropsIncludingPredefined)) of
+                  true ->
+                      InternalKey = cfg_key(Name, Spec),
+                      case extract_value(InternalKey, Predefined) of
+                          not_found ->
+                              NameTokens = split_key(Name),
+                              Keys = extract_relative_key(Path, NameTokens),
+                              ParamName = join_key(Keys),
+                              {true, validator:required(ParamName, _)};
+                          {value, _} ->
+                              false
+                      end;
+                  false ->
+                      false
+              end;
+          ({_Name, _Spec}) ->
+              false
+      end, ParamSpecs).
 
 parse_params(AllPossibleKeys, Req) ->
     Type =
@@ -306,6 +367,12 @@ extract_key(_Path, []) -> error;
 extract_key([El | Path], [El | Tokens]) -> extract_key(Path, Tokens);
 extract_key(_, _) -> error.
 
+extract_relative_key([], Tokens) -> Tokens;
+extract_relative_key([El | Path], [El | Tokens]) ->
+    extract_relative_key(Path, Tokens);
+extract_relative_key(Path, Tokens) ->
+    ["[upper-level]" || _ <- Path] ++ Tokens.
+
 existing_atom(Name, State) ->
     validator:convert(
       Name,
@@ -327,10 +394,13 @@ split_key(K) -> string:split(K, ".", all).
 join_key(K) -> lists:flatten(lists:join(".", K)).
 
 cfg_key(Name, Spec) ->
-    case maps:get(cfg_key, Spec, [list_to_atom(Name)]) of
+    case cfg_key_as_is(Name, Spec) of
         List when is_list(List) -> List;
         Key -> [Key]
     end.
+
+cfg_key_as_is(Name, Spec) ->
+    maps:get(cfg_key, Spec, list_to_atom(Name)).
 
 -ifdef(TEST).
 
@@ -369,78 +439,179 @@ prepare_json_test() ->
                  Prepare(["key1", "key2-2", "key3-2"],
                          [{ckey1, 1},{ckey2_1, [{ckey2_2, 2}]}, {ckey3, 42}])).
 
-with_request(ContType, Body, Fun) ->
+with_request(Fun) ->
     meck:new(mochiweb_request, [passthrough]),
+    meck:new(menelaus_util, [passthrough]),
+    Ets = ets:new(test_ets, [set, public]),
     try
         Req = make_ref(),
         meck:expect(mochiweb_request, recv_body,
                     fun (R) when R == Req ->
+                        [{_, Body}] = ets:lookup(Ets, body),
                         Body
                     end),
         meck:expect(mochiweb_request, parse_post,
                     fun (R) when R == Req ->
+                        [{_, ContType}] = ets:lookup(Ets, content_type),
                         case ContType == "application/x-www-form-urlencoded" of
-                            true -> mochiweb_util:parse_qs(Body);
+                            true ->
+                                [{_, Body}] = ets:lookup(Ets, body),
+                                mochiweb_util:parse_qs(Body);
                             false -> []
                         end
                     end),
         meck:expect(mochiweb_request, get_primary_header_value,
-                    fun ("content-type", R) when R == Req -> ContType end),
+                    fun ("content-type", R) when R == Req ->
+                        [{_, ContType}] = ets:lookup(Ets, content_type),
+                        ContType
+                    end),
         meck:expect(mochiweb_request, parse_qs,
                     fun (R) when R == Req -> [] end),
-        Fun(Req)
+        meck:expect(menelaus_util, reply_json,
+                    fun (R, {[{errors, Errors}]}, 400) when R == Req ->
+                        error({validation_failed, Errors})
+                    end),
+        Fun(fun (ContType) -> ets:insert(Ets, {content_type, ContType}) end,
+            fun (Body) -> ets:insert(Ets, {body, Body}) end, Req)
     after
+        ets:delete(Ets),
+        meck:unload(menelaus_util),
         meck:unload(mochiweb_request)
     end.
 
 handle_post_test() ->
-    HandlePost =
-        fun (Path, Header, Body, ExpectedResult) ->
-            with_request(
-              Header, Body,
-              fun (Req) ->
+    with_request(
+      fun (SetContType, SetBody, Req) ->
+          HandlePost =
+              fun (Path, ContType, Body, ExpectedResult) ->
+                  SetContType(ContType),
+                  SetBody(Body),
                   handle_post(fun (Parsed, Req2) when Req == Req2 ->
                                   ?assertEqual(ExpectedResult, Parsed)
                               end, Path, test_params(),
                               fun test_type_spec/1, Req)
-              end)
-        end,
+              end,
+          HandlePost([],
+                     "application/x-www-form-urlencoded",
+                     <<"key1.key2-1.key3-1=1&key1.key2-2.key3-1=2&"
+                       "key1.key2-2.key3-2=42">>,
+                     [{[ckey1], 1}, {[ckey2_1, ckey2_2], 2}, {[ckey3], 42}]),
+          HandlePost(["key1"],
+                     "application/x-www-form-urlencoded",
+                     <<"key2-1.key3-1=1&key2-2.key3-1=2&key2-2.key3-2=42">>,
+                     [{[ckey1], 1}, {[ckey2_1, ckey2_2], 2}, {[ckey3], 42}]),
+          HandlePost(["key1", "key2-2"],
+                     "application/x-www-form-urlencoded",
+                     <<"key3-1=2&key3-2=42">>,
+                     [{[ckey2_1, ckey2_2], 2}, {[ckey3], 42}]),
+          HandlePost(["key1", "key2-2", "key3-2"],
+                     "application/x-www-form-urlencoded",
+                     <<"42">>,
+                     [{[ckey3], 42}]),
 
-    HandlePost([],
-               "application/x-www-form-urlencoded",
-               <<"key1.key2-1.key3-1=1&key1.key2-2.key3-1=2&"
-                 "key1.key2-2.key3-2=42">>,
-               [{[ckey1], 1}, {[ckey2_1, ckey2_2], 2}, {[ckey3], 42}]),
-    HandlePost(["key1"],
-               "application/x-www-form-urlencoded",
-               <<"key2-1.key3-1=1&key2-2.key3-1=2&key2-2.key3-2=42">>,
-               [{[ckey1], 1}, {[ckey2_1, ckey2_2], 2}, {[ckey3], 42}]),
-    HandlePost(["key1", "key2-2"],
-               "application/x-www-form-urlencoded",
-               <<"key3-1=2&key3-2=42">>,
-               [{[ckey2_1, ckey2_2], 2}, {[ckey3], 42}]),
-    HandlePost(["key1", "key2-2", "key3-2"],
-               "application/x-www-form-urlencoded",
-               <<"42">>,
-               [{[ckey3], 42}]),
+          HandlePost([],
+                     "application/json",
+                     <<"{\"key1\": {\"key2-1\": {\"key3-1\": 1}, "
+                                   "\"key2-2\": {\"key3-1\": 2, "
+                                                "\"key3-2\": 42}}}">>,
+                     [{[ckey1], 1}, {[ckey2_1, ckey2_2], 2}, {[ckey3], 42}]),
+          HandlePost(["key1"],
+                     "application/json",
+                     <<"{\"key2-1\": {\"key3-1\": 1}, "
+                        "\"key2-2\": {\"key3-1\": 2, \"key3-2\": 42}}">>,
+                     [{[ckey1], 1}, {[ckey2_1, ckey2_2], 2}, {[ckey3], 42}]),
+          HandlePost(["key1", "key2-2"],
+                     "application/json",
+                     <<"{\"key3-1\": 2, \"key3-2\": 42}">>,
+                     [{[ckey2_1, ckey2_2], 2}, {[ckey3], 42}]),
+          HandlePost(["key1", "key2-2", "key3-2"],
+                     "application/json",
+                     <<"42">>,
+                     [{[ckey3], 42}])
+      end).
 
-    HandlePost([],
-               "application/json",
-               <<"{\"key1\": {\"key2-1\": {\"key3-1\": 1}, "
-                             "\"key2-2\": {\"key3-1\": 2, \"key3-2\": 42}}}">>,
-               [{[ckey1], 1}, {[ckey2_1, ckey2_2], 2}, {[ckey3], 42}]),
-    HandlePost(["key1"],
-               "application/json",
-               <<"{\"key2-1\": {\"key3-1\": 1}, "
-                  "\"key2-2\": {\"key3-1\": 2, \"key3-2\": 42}}">>,
-               [{[ckey1], 1}, {[ckey2_1, ckey2_2], 2}, {[ckey3], 42}]),
-    HandlePost(["key1", "key2-2"],
-               "application/json",
-               <<"{\"key3-1\": 2, \"key3-2\": 42}">>,
-               [{[ckey2_1, ckey2_2], 2}, {[ckey3], 42}]),
-    HandlePost(["key1", "key2-2", "key3-2"],
-               "application/json",
-               <<"42">>,
-               [{[ckey3], 42}]).
+mandatory_test() ->
+    Params = [{"K1.K2.K3", #{cfg_key => [k1, k2], type => int}},
+              {"K1.K4", #{cfg_key => [t1, t2, t3], type => int,
+                          %% This key is mandatory if K1.K2.K3 == 4
+                          mandatory => fun (#{[k1, k2] := 4}) -> true;
+                                           (#{}) -> false
+                                       end}},
+              {"K2.K4", #{cfg_key => t4, type => int,
+                          %% This key is mandatory if K2.K2 is undefined
+                          mandatory => fun (#{t3 := _}) -> false;
+                                           (#{}) -> true
+                                       end}},
+              {"K2.K5", #{cfg_key => t3, type => int}}],
 
+    with_request(
+      fun (SetContType, SetBody, Req) ->
+          SetContType("application/x-www-form-urlencoded"),
+          Succ =
+              fun (Path, Body, Predefined, Defaults, ExpectedResult) ->
+                  SetBody(Body),
+                  handle_post(fun (Parsed, Req2) when Req == Req2 ->
+                                  ?assertEqual(ExpectedResult, Parsed)
+                              end, Path, Params,
+                              fun test_type_spec/1, Predefined, Defaults, Req)
+              end,
+          Fail =
+              fun (Path, Body, Predefined, Defaults, ExpectedError) ->
+                  SetBody(Body),
+                  ?assertError(
+                    {validation_failed, ExpectedError},
+                    handle_post(fun (_Parsed, Req2) when Req == Req2 ->
+                                    ?assert(false)
+                                end, Path, Params,
+                                fun test_type_spec/1,
+                                Predefined, Defaults, Req))
+              end,
+
+
+          Fail([], <<"">>, [], [],
+               {[{"K2.K4",<<"The value must be supplied">>}]}),
+          Succ([], <<"K2.K5=1">>, [], [],
+               [{[t3], 1}]),
+          Succ([], <<"K1.K2.K3=3&K2.K5=1">>, [], [],
+               [{[k1, k2], 3}, {[t3], 1}]),
+          Fail([], <<"K1.K2.K3=3">>, [], [],
+               {[{"K2.K4",<<"The value must be supplied">>}]}),
+          Succ([], <<"K1.K2.K3=3&K2.K4=2">>, [], [],
+               [{[k1, k2], 3}, {[t4], 2}]),
+          Fail([], <<"K1.K2.K3=4&K2.K5=1">>, [], [],
+               {[{"K1.K4",<<"The value must be supplied">>}]}),
+          Succ([], <<"K1.K2.K3=4&K2.K5=1&K1.K4=2">>, [], [],
+               [{[k1, k2], 4}, {[t3], 1}, {[t1, t2, t3], 2}]),
+          Fail([], <<"K1.K2.K3=4">>, [], [],
+               {[{"K2.K4",<<"The value must be supplied">>},
+                 {"K1.K4",<<"The value must be supplied">>}]}),
+          Succ([], <<"K1.K2.K3=4&K2.K4=1&K1.K4=2">>, [], [],
+               [{[k1, k2], 4}, {[t4], 1}, {[t1, t2, t3], 2}]), 
+
+          Fail(["K1"], <<"">>, [], [],
+               {[{"[upper-level].K2.K4",<<"The value must be supplied">>}]}),
+          Fail(["K1"], <<"K2.K3=3">>, [], [],
+               {[{"[upper-level].K2.K4",<<"The value must be supplied">>}]}),
+          Fail(["K1"], <<"K2.K3=4">>, [], [],
+               {[{"[upper-level].K2.K4",<<"The value must be supplied">>},
+                 {"K4",<<"The value must be supplied">>}]}),
+
+          Succ(["K1"], <<"">>, [{t4, 2}], [], []),
+          Fail(["K1"], <<"">>, [], [{t4, 2}],
+               {[{"[upper-level].K2.K4",<<"The value must be supplied">>}]}),
+          Succ(["K1"], <<"K2.K3=3">>, [{t4, 2}], [],
+               [{[k1, k2], 3}]),
+          Succ(["K1"], <<"K2.K3=4">>, [{t1, [{t2, [{t3, 4}]}]}, {t4, 1}], [],
+               [{[k1, k2], 4}]),
+
+          Fail([], <<"K2.K4=1">>, [{k1, [{k2, 4}]}], [],
+               {[{"K1.K4",<<"The value must be supplied">>}]}),
+          Fail([], <<"K2.K4=1">>, [], [{k1, [{k2, 4}]}],
+               {[{"K1.K4",<<"The value must be supplied">>}]}),
+          Succ([], <<"K2.K4=1">>, [{t1, [{t2, [{t3, 2}]}]}], [{k1, [{k2, 4}]}],
+               [{[t4], 1}]),
+          Fail([], <<"K2.K4=1">>, [], [{k1, [{k2, 4}]},
+                                       {t1, [{t2, [{t3, 2}]}]}],
+               {[{"K1.K4",<<"The value must be supplied">>}]})
+      end).
 -endif.
