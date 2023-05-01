@@ -82,18 +82,18 @@ get_idp_metadata(Opts) ->
     end.
 
 format_error({rest_failed, URL, {status, Status}}) ->
-    io_lib:format("HTTP request ~s returned ~p", [URL, Status]);
+    io_lib:format("HTTP request to ~s returned ~p", [URL, Status]);
 format_error({rest_failed, URL, {error, Reason}}) ->
     case misc:parse_url(URL) of
         {ok, #{host := Host, port := Port}} ->
             case ns_error_messages:connection_error_message(Reason, Host, Port) of
                 undefined ->
-                    io_lib:format("HTTP request ~s failed: ~p", [URL, Reason]);
+                    io_lib:format("HTTP request to ~s failed: ~p", [URL, Reason]);
                 Msg ->
-                    io_lib:format("HTTP request ~s failed: ~s", [URL, Msg])
+                    io_lib:format("HTTP request to ~s failed: ~s", [URL, Msg])
             end;
         {error, _} ->
-            io_lib:format("HTTP request ~s failed: ~p", [URL, Reason])
+            io_lib:format("HTTP request to ~s failed: ~p", [URL, Reason])
     end;
 format_error({invalid_xml, _}) ->
     "invalid xml";
