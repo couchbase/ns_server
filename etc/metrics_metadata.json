@@ -137,21 +137,21 @@
         "type": "gauge",
         "help": "Amount of free system memory",
         "added": "7.0.0",
-        "units": "bytes",
+        "unit": "bytes",
         "stability": "committed"
     },
     "sys_mem_actual_used": {
         "type": "gauge",
         "help": "Amount of used system memory",
         "added": "7.0.0",
-        "units": "bytes",
+        "unit": "bytes",
         "stability": "committed"
     },
     "sys_mem_free": {
         "type": "gauge",
         "help": "Amount of free memory",
         "added": "7.0.0",
-        "units": "bytes",
+        "unit": "bytes",
         "stability": "committed"
     },
     "sys_mem_limit": {
@@ -160,42 +160,42 @@
         "added": "7.0.0",
         "deprecated": "7.5.0",
         "notes": "Will be removed in the 8.0 release. Use sys_mem_total or sys_mem_cgroup_limit",
-        "units": "bytes",
+        "unit": "bytes",
         "stability": "committed"
     },
     "sys_mem_total": {
         "type": "gauge",
         "help": "System memory total",
         "added": "7.0.0",
-        "units": "bytes",
+        "unit": "bytes",
         "stability": "committed"
     },
     "sys_mem_used_sys": {
         "type": "gauge",
         "help": "System memory used",
         "added": "7.0.0",
-        "units": "bytes",
+        "unit": "bytes",
         "stability": "committed"
     },
     "sys_mem_cgroup_limit": {
         "type": "gauge",
         "help": "cgroup memory limit",
         "added": "7.2.0",
-        "units": "bytes",
+        "unit": "bytes",
         "stability": "committed"
     },
     "sys_mem_cgroup_actual_used": {
         "type": "gauge",
         "help": "Actual memory used by cgroup",
         "added": "7.2.0",
-        "units": "bytes",
+        "unit": "bytes",
         "stability": "committed"
     },
     "sys_mem_cgroup_used": {
         "type": "gauge",
         "help": "Memory used by cgroup",
         "added": "7.2.0",
-        "units": "bytes",
+        "unit": "bytes",
         "stability": "committed"
     },
     "sys_pressure_share_time_stalled": {
@@ -247,14 +247,14 @@
         "type": "gauge",
         "help": "Total amount of swap",
         "added": "7.0.0",
-        "units": "bytes",
+        "unit": "bytes",
         "stability": "committed"
     },
     "sys_swap_used": {
         "type": "gauge",
         "help": "Amount of swap being used",
         "added": "7.0.0",
-        "units": "bytes",
+        "unit": "bytes",
         "stability": "committed"
     },
     "sysproc_cpu_user": {
@@ -309,7 +309,7 @@
         "type": "gauge",
         "help": "Amount of resident memory used by the process",
         "added": "7.0.0",
-        "units": "bytes",
+        "unit": "bytes",
         "stability": "committed",
         "labels": [
             {
@@ -322,7 +322,7 @@
         "type": "gauge",
         "help": "Amount of shared memory used by the process",
         "added": "7.0.0",
-        "units": "bytes",
+        "unit": "bytes",
         "stability": "committed",
         "labels": [
             {
@@ -335,7 +335,7 @@
         "type": "gauge",
         "help": "Amount of memory used by the process",
         "added": "7.0.0",
-        "units": "bytes",
+        "unit": "bytes",
         "stability": "committed",
         "labels": [
             {
@@ -675,7 +675,7 @@
         "type": "histogram",
         "help": "Memcached queue call times",
         "added": "7.0.0",
-        "units": "seconds",
+        "unit": "seconds",
         "labels": [
             {
                 "name": "bucket",
@@ -687,7 +687,7 @@
         "type": "histogram",
         "help": "Time to add to MRU cache",
         "added": "7.0.0",
-        "units": "seconds",
+        "unit": "seconds",
         "labels": [
             {
                 "name": "name",
@@ -699,7 +699,7 @@
         "type": "histogram",
         "help": "Time to flush MRU cache",
         "added": "7.0.0",
-        "units": "seconds",
+        "unit": "seconds",
         "labels": [
             {
                 "name": "name",
@@ -711,7 +711,7 @@
         "type": "histogram",
         "help": "Time to lock MRU cache",
         "added": "7.0.0",
-        "units": "seconds",
+        "unit": "seconds",
         "labels": [
             {
                 "name": "name",
@@ -727,7 +727,7 @@
         "type": "histogram",
         "help": "Time to perform a lookup in the MRU cache",
         "added": "7.0.0",
-        "units": "seconds",
+        "unit": "seconds",
         "labels": [
             {
                 "name": "name",
@@ -776,14 +776,14 @@
         "help": "Amount of time to run the ns_config merger",
         "added": "7.0.0",
         "stability": "internal",
-        "units": "seconds"
+        "unit": "seconds"
     },
     "cm_ns_config_merger_sleep_time_seconds": {
         "type": "histogram",
         "help": "Time ns_config merger was asleep",
         "added": "7.0.0",
         "stability": "internal",
-        "units": "seconds"
+        "unit": "seconds"
     },
     "cm_ns_config_rep_push_keys_retries_total": {
         "type": "counter",
@@ -800,7 +800,7 @@
         "type": "histogram",
         "help": "Time taken for outgoing http requests",
         "added": "7.0.0",
-        "units": "seconds",
+        "unit": "seconds",
         "labels": [
             {
                 "name": "type",
@@ -837,14 +837,14 @@
         "type": "histogram",
         "help": "Latency time for status",
         "added": "7.0.0",
-        "units": "seconds"
+        "unit": "seconds"
     },
     "cm_timer_lag_seconds": {
         "type": "histogram",
         "help": "Number of lag seconds for the canary-in-the-mine",
         "added": "7.0.0",
         "stability": "internal",
-        "units": "seconds"
+        "unit": "seconds"
     },
     "cm_web_cache_hits_total": {
         "type": "counter",
