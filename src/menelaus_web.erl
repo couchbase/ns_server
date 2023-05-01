@@ -207,6 +207,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["_ui", "canUseCertForAuth"] ->
                     {ui, IsSSL,
                      fun menelaus_web_misc:handle_can_use_cert_for_auth/1};
+                ["_ui", "authMethods"] ->
+                    {ui, IsSSL,
+                     fun menelaus_web_misc:handle_get_ui_auth_methods/1};
                 ["versions"] ->
                     {no_check_disallow_anonymous,
                      fun menelaus_web_misc:handle_versions/1};

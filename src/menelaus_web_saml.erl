@@ -21,7 +21,8 @@
          handle_get_settings/2,
          handle_post_settings/1,
          handle_delete_settings/1,
-         defaults/0]).
+         defaults/0,
+         is_enabled/0]).
 
 -include("ns_common.hrl").
 -include("rbac.hrl").
@@ -391,6 +392,9 @@ handle_saml_logout(Req, UnvalidatedParams) ->
        validator:default('SAMLEncoding', "", _),
        validate_logout_response('SAMLResponse', 'SAMLEncoding', SPMetadata, _),
        validate_logout_request('SAMLRequest', 'SAMLEncoding', SPMetadata, _)]).
+
+is_enabled() ->
+    proplists:get_bool(enabled, extract_saml_settings()).
 
 %%%===================================================================
 %%% Internal functions

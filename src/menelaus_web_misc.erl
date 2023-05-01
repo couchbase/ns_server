@@ -16,6 +16,7 @@
 -export([handle_uilogin/1,
          handle_uilogout/1,
          handle_can_use_cert_for_auth/1,
+         handle_get_ui_auth_methods/1,
          handle_versions/1,
          handle_tasks/2,
          handle_event_log_post/1,
@@ -43,6 +44,12 @@ handle_uilogout(Req) ->
 handle_can_use_cert_for_auth(Req) ->
     RV = menelaus_auth:can_use_cert_for_auth(Req),
     menelaus_util:reply_json(Req, {[{cert_for_auth, RV}]}).
+
+handle_get_ui_auth_methods(Req) ->
+    CertAuth = menelaus_auth:can_use_cert_for_auth(Req),
+    SamlAuth = menelaus_web_saml:is_enabled(),
+    menelaus_util:reply_json(Req, {[{clientCertificates, CertAuth},
+                                    {saml, SamlAuth}]}).
 
 handle_versions(Req) ->
     reply_json(Req, {menelaus_web_cache:get_static_value(versions)}).
