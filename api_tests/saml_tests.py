@@ -587,7 +587,7 @@ def saml_configured(cluster, **kwargs):
             os.remove(idp_subject_file_path)
         if os.path.exists(metadataFile):
             os.remove(metadataFile)
-        testlib.delete_succ(cluster, '/saml/settings')
+        testlib.delete_succ(cluster, '/settings/saml')
 
 
 def generate_mock_metadata(cluster, metadata_certs_prefix=None, **kwargs):
@@ -694,7 +694,7 @@ def set_sso_options(cluster, **kwargs):
         if k in settings:
             settings[k] = kwargs[k]
 
-    testlib.put_succ(cluster, '/saml/settings', json=settings)
+    testlib.post_succ(cluster, '/settings/saml', json=settings)
 
 
 def idp_config(cluster, spSignRequests=True, assertion_lifetime=15,

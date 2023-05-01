@@ -202,9 +202,6 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["saml", ?SAML_LOGOUT_ENDPOINT_PATH] ->
                     {ui, IsSSL,
                      fun menelaus_web_saml:handle_get_saml_logout/1};
-                ["saml", "settings" | PathRest] ->
-                    {{[admin, security, external], read},
-                     fun menelaus_web_saml:handle_get_settings/2, [PathRest]};
                 ["ui"] ->
                     {done, redirect_permanently("/ui/index.html", Req)};
                 ["_ui", "canUseCertForAuth"] ->
@@ -503,6 +500,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "license"] ->
                     {{[admin, license], read},
                      fun menelaus_web_license:handle_settings_get/1};
+                ["settings", "saml" | PathRest] ->
+                    {{[admin, security, external], read},
+                     fun menelaus_web_saml:handle_get_settings/2, [PathRest]};
                 ["internalSettings"] ->
                     {{[admin, settings], read},
                      fun menelaus_web_settings:handle_get/2, [internal]};
@@ -767,6 +767,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "license", "validate"] ->
                     {{[admin, license], write},
                      fun menelaus_web_license:handle_settings_validate_post/1};
+                ["settings", "saml"] ->
+                    {{[admin, security, external], write},
+                     fun menelaus_web_saml:handle_post_settings/1};
                 ["internalSettings"] ->
                     {{[admin, settings], write},
                      fun menelaus_web_settings:handle_post/2, [internal]};
@@ -1060,6 +1063,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, security], write},
                      fun menelaus_web_settings:handle_delete/3,
                      [security, Keys]};
+                ["settings", "saml"] ->
+                    {{[admin, security, external], write},
+                     fun menelaus_web_saml:handle_delete_settings/1};
                 ["couchBase" | _] -> {no_check,
                                       fun menelaus_pluggable_ui:proxy_req/4,
                                       ["couchBase",
@@ -1082,9 +1088,6 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["node", "controller", "setupAlternateAddresses", "external"] ->
                     {{[admin, setup], write},
                      fun menelaus_web_node:handle_node_altaddr_external_delete/1};
-                ["saml", "settings"] ->
-                    {{[admin, security, external], write},
-                     fun menelaus_web_saml:handle_delete_settings/1};
                 _ ->
                     {done, reply_text(Req, "Method Not Allowed", 405)}
             end;
@@ -1139,9 +1142,6 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["node", "controller", "setupAlternateAddresses", "external"] ->
                     {{[admin, setup], write},
                      fun menelaus_web_node:handle_node_altaddr_external/1};
-                ["saml", "settings"] ->
-                    {{[admin, security, external], write},
-                     fun menelaus_web_saml:handle_put_settings/1};
                 _ ->
                     {done, reply_text(Req, "Method Not Allowed", 405)}
             end;

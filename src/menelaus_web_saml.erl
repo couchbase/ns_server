@@ -19,7 +19,7 @@
          handle_get_saml_logout/1,
          handle_post_saml_logout/1,
          handle_get_settings/2,
-         handle_put_settings/1,
+         handle_post_settings/1,
          handle_delete_settings/1,
          defaults/0]).
 
@@ -54,55 +54,64 @@ handle_get_settings(Path, Req) ->
     menelaus_web_settings2:handle_get(Path, params(), fun type_spec/1,
                                       SSOSettingsUpdated, Req).
 
-handle_put_settings(Req) ->
+handle_post_settings(Req) ->
+    CurrentProps = ns_config:read_key_fast(saml_settings, []),
     menelaus_web_settings2:handle_post(
       fun (Proplist, NewReq) ->
           SSOProps = lists:map(fun ({[K], V}) -> {K, V} end, Proplist),
-          set_sso_options(SSOProps),
+          set_sso_options(SSOProps, CurrentProps),
           handle_get_settings([], NewReq)
-      end, [], params(), fun type_spec/1, [], defaults(), Req).
+      end, [], params(), fun type_spec/1, CurrentProps, defaults(), Req).
 
-set_sso_options(Props) ->
-    PropsWithDefaults = misc:update_proplist(defaults(), Props),
-    {PropsWithoutUuid, ParsedMetadata} =
-        case verify_metadata_settings(Props, PropsWithDefaults) of
-            {ok, {UpdatedProps, Metadata}} -> {UpdatedProps, Metadata};
-            {error, Msg} -> menelaus_util:global_error_exception(
-                              400, iolist_to_binary(Msg))
-        end,
-    Fingerprints = cb_saml:extract_fingerprints(ParsedMetadata,
-                                                PropsWithDefaults),
-    NewUUID = misc:uuid_v4(),
-    PropsWithUuid = misc:update_proplist(PropsWithoutUuid, [{uuid, NewUUID}]),
-    Res =
-        ns_config:run_txn(
-          fun (OldCfg, SetFun) ->
-              OldProps = ns_config:search(OldCfg, saml_settings, []),
-              OldProps2 = proplists:delete(uuid, OldProps),
-              case lists:sort(PropsWithoutUuid) == lists:sort(OldProps2) of
-                  true -> {abort, no_changes};
-                  false ->
+set_sso_options(NewProps, CurrentProps) ->
+    CurPropsWithDefaults = misc:update_proplist(defaults(), CurrentProps),
+    PropsToSet = misc:update_proplist(CurPropsWithDefaults, NewProps),
+    Enabled = proplists:get_value(enabled, PropsToSet),
+    case Enabled of
+        false ->
+            ns_config:set(saml_settings, PropsToSet),
+            ok;
+        true ->
+            {PropsToSet2, ParsedMetadata} =
+                case verify_metadata_settings(PropsToSet,
+                                              CurPropsWithDefaults) of
+                    {ok, {UpdatedProps, Metadata}} -> {UpdatedProps, Metadata};
+                    {error, Msg} -> menelaus_util:global_error_exception(
+                                      400, iolist_to_binary(Msg))
+                end,
+            Fingerprints = cb_saml:extract_fingerprints(ParsedMetadata,
+                                                        PropsToSet2),
+            NewUUID = misc:uuid_v4(),
+            PropsToSetWithUuid = misc:update_proplist(PropsToSet2,
+                                                      [{uuid, NewUUID}]),
+            {commit, _} =
+                ns_config:run_txn(
+                  fun (OldCfg, SetFun) ->
                       {commit, functools:chain(
                                  OldCfg,
                                  [SetFun(saml_sign_fingerprints,
                                          Fingerprints, _),
-                                  SetFun(saml_settings, PropsWithUuid, _)])}
-              end
-          end),
-    case Res of
-        {commit, _} ->
-            PropsWithUuidWithDefaults = misc:update_proplist(defaults(),
-                                                             PropsWithUuid),
-            cb_saml:cache_idp_metadata(ParsedMetadata,
-                                       PropsWithUuidWithDefaults),
-            ok;
-        {abort, no_changes} ->
+                                  SetFun(saml_settings, PropsToSetWithUuid, _)])}
+                  end),
+            cb_saml:cache_idp_metadata(ParsedMetadata, PropsToSetWithUuid),
             ok
     end.
 
-verify_metadata_settings(PropsToSet, PropsWithDefaults) ->
+verify_metadata_settings(PropsToSet, CurPropsWithDefaults) ->
+    PropsWithDefaults = misc:update_proplist(CurPropsWithDefaults, PropsToSet),
+    true = proplists:get_value(enabled, PropsWithDefaults),
+    Modified = PropsToSet -- CurPropsWithDefaults,
+    IsUrlChanged = proplists:is_defined(enabled, Modified) orelse
+                   proplists:is_defined(idp_metadata_origin, Modified) orelse
+                   proplists:is_defined(idp_metadata_url, PropsToSet),
     case proplists:get_value(idp_metadata_origin, PropsWithDefaults) of
         upload ->
+            {zip, MetaZipped} = proplists:get_value(idp_metadata,
+                                                    PropsWithDefaults),
+            MetaBin = zlib:unzip(MetaZipped),
+            Parsed = cb_saml:try_parse_idp_metadata(MetaBin, false),
+            {ok, {PropsToSet, Parsed}};
+        http_one_time when not IsUrlChanged ->
             {zip, MetaZipped} = proplists:get_value(idp_metadata,
                                                     PropsWithDefaults),
             MetaBin = zlib:unzip(MetaZipped),
@@ -669,8 +678,7 @@ build_node_url(Scheme, Host, Port, _Req) ->
 params() ->
     [{"enabled",
       #{cfg_key => enabled,
-        type => bool,
-        mandatory => true}},
+        type => bool}},
      {"idpMetadataOrigin",
       #{cfg_key => idp_metadata_origin,
         type => {one_of, existing_atom, [upload, http_one_time, http]}}},
@@ -856,21 +864,16 @@ defaults() ->
      {username_attribute, ""},
      {base_url, node},
      {base_url_scheme, https},
-     {custom_base_url, ""},
      {verify_assertion_sig, true},
      {verify_assertion_envelop_sig, true},
      {verify_logout_req_sig, true},
      {verify_recipient, consumeURL},
-     {verify_recipient_value, ""},
-     {cert, undefined},
-     {key, undefined},
      {chain, {<<>>, []}},
      {sign_requests, true},
      {sign_metadata, true},
      {fingerprints_usage, metadataInitialOnly},
      {trusted_fingerprints, {"", []}},
      {entity_id, ""},
-     {idp_metadata_url, ""},
      {md_address_family, undefined},
      {md_tls_verify_peer, true},
      {md_tls_ca, {<<>>, []}},
@@ -885,7 +888,6 @@ defaults() ->
      {roles_attribute, ""},
      {roles_attribute_sep, " ,"},
      {roles_filter_re, ".*"},
-     {idp_metadata, undefined},
      {idp_metadata_origin, http},
      {session_expire, 'SessionNotOnOrAfter'},
      {dupe_check, global},
