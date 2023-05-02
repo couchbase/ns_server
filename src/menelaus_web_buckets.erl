@@ -699,6 +699,9 @@ handle_bucket_update_inner(BucketId, Req, Params, Limit) ->
                 in_bucket_hibernation ->
                     reply_text(Req, "Cannot update bucket while another bucket "
                                     "is pausing/resuming.", 503);
+                in_buckets_shutdown ->
+                    reply_text(Req, "Cannot update bucket while another bucket "
+                               "is being deleted", 503);
                 {error, {need_more_space, Zones}} ->
                     reply_text(Req, need_more_space_error(Zones), 400);
                 {exit, {not_found, _}, _} ->
@@ -758,7 +761,11 @@ do_bucket_create(Req, Name, ParsedProps) ->
         in_bucket_hibernation ->
             {errors_500,
              [{'_', <<"Cannot create bucket when pausing/resuming another
-                      bucket">>}]}
+                      bucket">>}]};
+        in_buckets_shutdown ->
+            {errors_500,
+             [{'_', <<"Cannot create bucket when another bucket is "
+                      "being deleted">>}]}
     end.
 
 do_bucket_create(Req, Name, Params, Ctx) ->
@@ -975,6 +982,10 @@ do_handle_bucket_flush(BucketName, Req) ->
             reply_json(Req, {[{'_',
                                <<"Cannot flush buckets while another bucket "
                                  "is pausing/resuming.">>}]}, 503);
+        in_buckets_shutdown ->
+            reply_json(Req, {[{'_',
+                               <<"Cannot flush buckets while another bucket "
+                                 "is being deleted">>}]}, 503);
         bucket_not_found ->
             reply(Req, 404);
         flush_disabled ->

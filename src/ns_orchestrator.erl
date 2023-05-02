@@ -45,7 +45,7 @@
          stop_tref = undefined :: undefined | reference(),
          stop_reason = undefined :: term()}).
 
--record(delete_bucket_state,
+-record(bucket_shutdown_ctx,
         {from :: {pid(), gen_statem:reply_tag()},
          pid :: pid(),
          bucket_name :: bucket_name()}).
@@ -106,7 +106,7 @@
          rebalancing/2, rebalancing/3,
          recovery/2, recovery/3,
          bucket_hibernation/3,
-         delete_bucket/3]).
+         buckets_shutdown/3]).
 
 %%
 %% API
@@ -133,7 +133,8 @@ call(Msg, Timeout) ->
                            {error, {need_more_space, list()}} |
                            {error, {incorrect_parameters, nonempty_string()}} |
                            rebalance_running | in_recovery |
-                           in_bucket_hibernation.
+                           in_bucket_hibernation |
+                           in_buckets_shutdown.
 create_bucket(BucketType, BucketName, NewConfig) ->
     call({create_bucket, BucketType, BucketName, NewConfig}, infinity).
 
@@ -142,7 +143,8 @@ create_bucket(BucketType, BucketName, NewConfig) ->
                            ok | {exit, {not_found, nonempty_string()}, []} |
                            {error, {need_more_space, list()}} |
                            rebalance_running | in_recovery |
-                           in_bucket_hibernation.
+                           in_bucket_hibernation |
+                           in_buckets_shutdown.
 update_bucket(BucketType, StorageMode, BucketName, UpdatedProps) ->
     call({update_bucket, BucketType, StorageMode, BucketName, UpdatedProps},
          infinity).
@@ -170,6 +172,7 @@ delete_bucket(BucketName) ->
                           rebalance_running |
                           in_recovery |
                           in_bucket_hibernation |
+                          in_buckets_shutdown |
                           bucket_not_found |
                           flush_disabled |
                           {prepare_flush_failed, _, _} |
@@ -187,6 +190,7 @@ flush_bucket(BucketName) ->
     rebalance_running |
     in_recovery |
     in_bucket_hibernation |
+    in_buckets_shutdown |
     bucket_type_not_supported |
     no_width_parameter |
     requires_rebalance |
@@ -203,6 +207,7 @@ start_pause_bucket(Args) ->
     rebalance_running |
     bucket_not_found |
     not_running_pause_bucket |
+    in_bucket_hibernation |
     [Errors :: bucket_not_found | not_running_pause_bucket].
 stop_pause_bucket(Bucket) ->
     call({{bucket_hibernation_op, {stop, pause_bucket}}, [Bucket]}).
@@ -213,7 +218,8 @@ stop_pause_bucket(Bucket) ->
     bucket_exists |
     rebalance_running |
     in_recovery |
-    in_bucket_hibernation.
+    in_bucket_hibernation |
+    in_buckets_shutdown.
 start_resume_bucket(Args, Metadata) ->
     call({{bucket_hibernation_op, {start, resume_bucket}},
           {Args, [Metadata]}}).
@@ -224,6 +230,7 @@ start_resume_bucket(Args, Metadata) ->
     in_recovery |
     bucket_not_found |
     not_running_resume_bucket |
+    in_buckets_shutdown |
     [Errors :: bucket_not_found | not_running_resume_bucket].
 stop_resume_bucket(Bucket) ->
     call({{bucket_hibernation_op, {stop, resume_bucket}}, [Bucket]}).
@@ -239,6 +246,7 @@ stop_resume_bucket(Bucket) ->
                       config_sync_failed |
                       quorum_lost |
                       stopped_by_user |
+                      in_buckets_shutdown |
                       {incompatible_with_previous, [atom()]} |
                       %% the following is needed just to trick the dialyzer;
                       %% otherwise it wouldn't let the callers cover what it
@@ -255,6 +263,7 @@ failover(Nodes, AllowUnsafe) ->
                             last_node |
                             {last_node_for_bucket, list()} |
                             unknown_node |
+                            in_buckets_shutdown |
                             {incompatible_with_previous, [atom()]} |
                             %% the following is needed just to trick the dialyzer;
                             %% otherwise it wouldn't let the callers cover what it
@@ -359,6 +368,7 @@ ensure_janitor_run(Item) ->
                              already_balanced | nodes_mismatch |
                              no_active_nodes_left | in_recovery |
                              in_bucket_hibernation |
+                             in_buckets_shutdown |
                              delta_recovery_not_possible | no_kv_nodes_left |
                              {need_more_space, list()} |
                              {must_rebalance_services, list()} |
@@ -637,8 +647,8 @@ handle_info({timeout, _TRef, stop_timeout} = Msg, rebalancing, StateData) ->
 handle_info(Msg, bucket_hibernation, StateData) ->
     handle_info_in_bucket_hibernation(Msg, StateData);
 
-handle_info(Msg, delete_bucket, StateData) ->
-    handle_info_in_delete_bucket(Msg, StateData);
+handle_info(Msg, buckets_shutdown, StateData) ->
+    handle_info_in_buckets_shutdown(Msg, StateData);
 
 handle_info(Msg, StateName, StateData) ->
     ?log_warning("Got unexpected message ~p in state ~p with data ~p",
@@ -696,40 +706,7 @@ idle({flush_bucket, BucketName}, From, _State) ->
     end,
     {keep_state_and_data, [{reply, From, RV}]};
 idle({delete_bucket, BucketName}, From, _State) ->
-    Result = ns_bucket:remove_bucket(BucketName),
-
-    case Result of
-        {ok, BucketConfig} ->
-            master_activity_events:note_bucket_deletion(BucketName),
-            BucketUUID = proplists:get_value(uuid, BucketConfig),
-            event_log:add_log(bucket_deleted,
-                              [{bucket,
-                                list_to_binary(BucketName)},
-                               {bucket_uuid, BucketUUID}]),
-
-            Servers = ns_bucket:get_servers(BucketConfig),
-            Timeout = ns_bucket:get_shutdown_timeout(BucketConfig),
-
-            case cluster_compat_mode:is_cluster_elixir() of
-                true ->
-                    Pid = erlang:spawn_link(
-                            fun () ->
-                                    ok = ns_bucket:wait_for_bucket_shutdown(
-                                           BucketName, Servers, Timeout)
-                            end),
-                    {next_state, delete_bucket,
-                     #delete_bucket_state{
-                        from = From, pid = Pid,
-                        bucket_name = BucketName}};
-                false ->
-                    Res = ns_bucket:wait_for_bucket_shutdown(
-                            BucketName, Servers, Timeout),
-                    {keep_state_and_data, [{reply, From, Res}]}
-            end;
-        Error ->
-            {keep_state_and_data, [{reply, From, Error}]}
-    end;
-
+    handle_delete_bucket(BucketName, From, idle, []);
 %% In the mixed mode, depending upon the node from which the update bucket
 %% request is being sent, the length of the message could vary. In order to
 %% be backward compatible we need to field both types of messages.
@@ -1161,19 +1138,24 @@ build_error(#bucket_hibernation_state{
       {<<"bucket">>, list_to_binary(Bucket)},
       {<<"op">>, Op}]}.
 
-delete_bucket({try_autofailover, Nodes, Options}, From,
-              #delete_bucket_state{from = DeleteBucketFrom,
-                                   pid = Pid,
-                                   bucket_name = BucketName}) ->
-    ?log_warning("Bucket shutdown interrupted by auto-failover. Bucket - ~p",
-                 [BucketName]),
-    misc:unlink_terminate_and_wait(Pid, kill),
-    gen_statem:reply(DeleteBucketFrom, shutdown_incomplete),
+buckets_shutdown({try_autofailover, Nodes, Options}, From, State) ->
+    lists:foreach(
+      fun (#bucket_shutdown_ctx{
+              from = DeleteBucketFrom,
+              pid = Pid,
+              bucket_name = BucketName}) ->
+              ?log_warning("Bucket shutdown interrupted by auto-failover. "
+                           "Bucket - ~p", [BucketName]),
+              misc:unlink_terminate_and_wait(Pid, kill),
+              gen_statem:reply(DeleteBucketFrom, shutdown_incomplete)
+      end, State),
     maybe_try_autofailover_in_idle_state(
       {try_autofailover, From, Nodes, Options});
-delete_bucket(Msg, From, State) ->
+buckets_shutdown({delete_bucket, BucketName}, From, State) ->
+    handle_delete_bucket(BucketName, From, buckets_shutdown, State);
+buckets_shutdown(Msg, From, State) ->
     ?log_debug("Ignore Msg: ~p in State: ~p", [Msg, State]),
-    {keep_state_and_data, [{reply, From, in_delete_bucket}]}.
+    {keep_state_and_data, [{reply, From, in_buckets_shutdown}]}.
 %%
 %% Internal functions
 %%
@@ -1952,11 +1934,15 @@ stop_bucket_hibernation_op(State, Reason) ->
             State
     end.
 
-handle_info_in_delete_bucket({'EXIT', Pid, Reason},
-                             #delete_bucket_state{
-                                pid = Pid,
-                                from = From,
-                                bucket_name = BucketName}) ->
+handle_info_in_buckets_shutdown({'EXIT', Pid, Reason}, State) ->
+    {[Ctx], NewState} =
+        lists:partition(
+          fun (#bucket_shutdown_ctx{pid = P}) ->
+                  P =:= Pid
+          end, State),
+
+   #bucket_shutdown_ctx{from = From, bucket_name = BucketName} = Ctx,
+
     Reply =
         case Reason of
             normal ->
@@ -1965,7 +1951,13 @@ handle_info_in_delete_bucket({'EXIT', Pid, Reason},
             Error ->
                 Error
         end,
-    {next_state, idle, #idle_state{}, [{reply, From, Reply}]}.
+
+    case NewState of
+        [] ->
+            {next_state, idle, #idle_state{}, [{reply, From, Reply}]};
+        _ ->
+            {keep_state, NewState, [{reply, From, Reply}]}
+    end.
 
 validate_create_bucket(BucketName, BucketConfig) ->
     try
@@ -2019,6 +2011,47 @@ validate_create_bucket(BucketName, BucketConfig) ->
     catch
         throw:Error ->
             {error, Error}
+    end.
+
+handle_delete_bucket(BucketName, From, CurrentState, StateData) ->
+    Result = ns_bucket:remove_bucket(BucketName),
+    case Result of
+        {ok, BucketConfig} ->
+            master_activity_events:note_bucket_deletion(BucketName),
+            BucketUUID = proplists:get_value(uuid, BucketConfig),
+            event_log:add_log(bucket_deleted,
+                              [{bucket,
+                                list_to_binary(BucketName)},
+                               {bucket_uuid, BucketUUID}]),
+
+            Servers = ns_bucket:get_servers(BucketConfig),
+            Timeout = ns_bucket:get_shutdown_timeout(BucketConfig),
+
+            case cluster_compat_mode:is_cluster_elixir() of
+                true ->
+                    Pid = erlang:spawn_link(
+                            fun () ->
+                                    ok = ns_bucket:wait_for_bucket_shutdown(
+                                           BucketName, Servers, Timeout)
+                            end),
+                    NewStateData =
+                        [#bucket_shutdown_ctx{
+                            from = From, pid = Pid, bucket_name = BucketName}
+                         | StateData],
+
+                    case CurrentState of
+                        idle ->
+                            {next_state, buckets_shutdown, NewStateData};
+                        buckets_shutdown ->
+                            {keep_state, NewStateData}
+                    end;
+                false ->
+                    Res = ns_bucket:wait_for_bucket_shutdown(
+                            BucketName, Servers, Timeout),
+                    {keep_state_and_data, [{reply, From, Res}]}
+            end;
+        Error ->
+            {keep_state_and_data, [{reply, From, Error}]}
     end.
 
 -ifdef(TEST).
