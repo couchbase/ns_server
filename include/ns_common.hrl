@@ -381,4 +381,12 @@
 %% starts.
 -define(EXISTING_PROFILE_FILE, "existing_profile").
 
+%% Weight values used in mb_master to determine orchestrator placement.
+-define(DEFAULT_SERVICE_WEIGHTS, [{kv, 10000},
+                                  {index, 1000},
+                                  {fts, 1000},
+                                  {cbas, 1000},
+                                  {n1ql, 100},
+                                  {eventing, 100},
+                                  {backup, 10}]).
 -endif.

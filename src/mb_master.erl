@@ -23,14 +23,17 @@
 -define(TIMEOUT_INTERVAL_COUNT, ?get_param(timeout_interval_count, 5)).
 -define(TIMEOUT, ?HEARTBEAT_INTERVAL * ?TIMEOUT_INTERVAL_COUNT).
 
--type node_info() :: {version(), node()}.
+-type services() :: [service()].
+-type node_info() :: {version(), node(), services()}.
 -type priority() :: lower | equal | higher.
+-type service_weights() :: [{service(), integer()}].
 
 -record(state, {child :: undefined | pid(),
                 master :: node(),
                 peers :: [node()],
                 last_heard :: integer(),
-                higher_priority_nodes = [] :: [{node(), integer()}]}).
+                higher_priority_nodes = [] :: [{node(), integer()}],
+                service_weights = [] :: service_weights()}).
 
 
 %% API
@@ -75,8 +78,9 @@ callback_mode() ->
     state_functions.
 
 init([]) ->
-    chronicle_compat_events:notify_if_key_changes([nodes_wanted],
-                                                  peers_changed),
+    chronicle_compat_events:notify_if_key_changes([nodes_wanted,
+                                                   service_orchestrator_weight],
+                                                  config_changed),
     erlang:process_flag(trap_exit, true),
     CurHBInterval = ?HEARTBEAT_INTERVAL,
     ?log_debug("Heartbeat interval is ~p", [CurHBInterval]),
@@ -89,7 +93,10 @@ init([]) ->
             %% @from init
             %% @to master
             %% @reason Only node in cluster
-            {ok, master, start_master(#state{last_heard=Now, peers=P})};
+            {ok, master,
+                 start_master(#state{last_heard=Now,
+                                     peers=P,
+                                     service_weights = get_service_weights()})};
         Peers when is_list(Peers) ->
             %% We're a candidate
             ?log_debug("Starting as candidate. Peers: ~p", [Peers]),
@@ -102,7 +109,8 @@ init([]) ->
                                    %% accident, and wait for TIMEOUT amount of
                                    %% time before making a decision.
                                    higher_priority_nodes = [{node(), Now}],
-                                   peers = Peers}}
+                                   peers = Peers,
+                                   service_weights = get_service_weights()}}
     end.
 
 maybe_invalidate_current_master() ->
@@ -202,17 +210,28 @@ check_master_takeover_needed(Peers) ->
                              "takeover is not needed. Reason: ~p", [Error]),
                     false;
                 CompatVersion ->
-                    ?log_debug("Current master's supported compat version: ~p",
-                               [CompatVersion]),
-                    MasterNodeInfo = build_node_info(CompatVersion, Master),
-                    case strongly_lower_priority_node(MasterNodeInfo) of
+                    MasterNodeInfo =
+                        build_node_info(build_node_version(CompatVersion),
+                                        Master),
+                    {_MasterVersion, _MasterName, MasterServices} =
+                        MasterNodeInfo,
+                    {Version, _Name, Services} = node_info(),
+                    ?log_debug("Current master's compat version: ~p "
+                               "services ~p. This node's compat version: ~p "
+                               "services ~p",
+                               [CompatVersion, MasterServices, Version,
+                                Services]),
+                    ServiceWeights = get_service_weights(),
+                    case strongly_lower_priority_node(MasterNodeInfo,
+                                                      ServiceWeights) of
                         true ->
                             ale:warn(?USER_LOGGER,
-                                     "Current master is older and I'll try to "
-                                     "takeover", []),
+                                     "Current master is strongly lower "
+                                     "priority and I'll try to takeover", []),
                             Master;
                         false ->
-                            ?log_debug("Current master is not older"),
+                            ?log_debug("Current master is strongly higher "
+                                       "priority, not taking over"),
                             false
                     end
             end
@@ -236,9 +255,10 @@ terminate(_Reason, _StateName, StateData) ->
 %% States
 %%
 
-candidate(info, peers_changed, StateData) ->
+candidate(info, config_changed, StateData) ->
     Peers = ns_node_disco:nodes_wanted(),
-    S = refresh_high_priority_nodes(update_peers(StateData, Peers)),
+    S0 = update_service_weights(StateData),
+    S1 = refresh_high_priority_nodes(update_peers(S0, Peers)),
     case Peers of
         [N] when N == node() ->
             ale:info(?USER_LOGGER,
@@ -248,9 +268,9 @@ candidate(info, peers_changed, StateData) ->
             %% @from candidate
             %% @to master
             %% @reason Only node remaining
-            {next_state, master, start_master(S)};
+            {next_state, master, start_master(S1)};
         _ ->
-            case can_be_master(S) of
+            case can_be_master(S1) of
                 true ->
                     ale:info(?USER_LOGGER,
                              "Master has been removed from cluster. "
@@ -259,9 +279,9 @@ candidate(info, peers_changed, StateData) ->
                     %% @from candidate
                     %% @to master
                     %% @reason Master removed from the cluster
-                    {next_state, master, start_master(S)};
+                    {next_state, master, start_master(S1)};
                 false ->
-                    {keep_state, S}
+                    {keep_state, S1}
             end
     end;
 candidate(info, {send_heartbeat, LastHBInterval},
@@ -295,9 +315,9 @@ candidate(info, {send_heartbeat, LastHBInterval},
         false ->
             keep_state_and_data
     end;
-candidate(info, {heartbeat, NodeInfo, master, _H},
-          #state{peers=Peers} = State) ->
-    Node = node_info_to_node(NodeInfo),
+candidate(info, {heartbeat, {Version, Node}, master, _H},
+          #state{peers=Peers, service_weights = ServiceWeights} = State) ->
+    NodeInfo = build_node_info(Version, Node),
 
     case lists:member(Node, Peers) of
         false ->
@@ -311,7 +331,7 @@ candidate(info, {heartbeat, NodeInfo, master, _H},
             %% have any master node. But after timeout mastership will be
             %% taken over by the node with highest priority.
             NewState =
-                case strongly_lower_priority_node(NodeInfo) of
+                case strongly_lower_priority_node(NodeInfo, ServiceWeights) of
                     false ->
                         Now = erlang:monotonic_time(),
                         update_high_priority_nodes(
@@ -332,7 +352,8 @@ candidate(info, {heartbeat, NodeInfo, master, _H},
                                 ale:info(?USER_LOGGER,
                                          "Candidate got master heartbeat from "
                                          "node ~p which has lower priority. "
-                                         "Will try to take over.", [Node]),
+                                         "Will try to take over. This node ~p",
+                                         [NodeInfo, node_info()]),
 
                                 send_heartbeat_with_peers([Node], master,
                                                           State#state.peers),
@@ -353,13 +374,13 @@ candidate(info, {heartbeat, NodeInfo, master, _H},
             {keep_state, NewState}
     end;
 
-candidate(info, {heartbeat, NodeInfo, candidate, _H},
-          #state{peers=Peers} = State) ->
-    Node = node_info_to_node(NodeInfo),
+candidate(info, {heartbeat, {Version, Node}, candidate, _H},
+          #state{peers=Peers, service_weights = ServiceWeights} = State) ->
+    NodeInfo = build_node_info(Version, Node),
 
     case lists:member(Node, Peers) of
         true ->
-            case higher_priority_node(NodeInfo) of
+            case higher_priority_node(NodeInfo, ServiceWeights) of
                 true ->
                     Now = erlang:monotonic_time(),
                     %% Higher priority node
@@ -380,15 +401,16 @@ candidate(info, {heartbeat, NodeInfo, candidate, _H},
 candidate(Type, Msg, State) ->
     handle_event(Type, Msg, candidate, State).
 
-master(info, peers_changed, StateData) ->
+master(info, config_changed, StateData) ->
     Peers = ns_node_disco:nodes_wanted(),
-    S = refresh_high_priority_nodes(update_peers(StateData, Peers)),
+    S0 = update_service_weights(StateData),
+    S1 = refresh_high_priority_nodes(update_peers(S0, Peers)),
     case lists:member(node(), Peers) of
         true ->
-            {keep_state, S};
+            {keep_state, S1};
         false ->
             ?log_info("Master has been demoted. Peers = ~p", [Peers]),
-            NewState = shutdown_master_sup(S),
+            NewState = shutdown_master_sup(S1),
             %% @state_change
             %% @from master
             %% @to candidate
@@ -400,14 +422,16 @@ master(info, {send_heartbeat, LastHBInterval}, StateData) ->
     send_heartbeat_with_peers(ns_node_disco:nodes_wanted(), master,
                               StateData#state.peers),
     keep_state_and_data;
-master(info, {heartbeat, NodeInfo, master, _H}, #state{peers=Peers} = State) ->
-    Node = node_info_to_node(NodeInfo),
+master(info,
+       {heartbeat, {Version, Node}, master, _H},
+       #state{peers = Peers, service_weights = ServiceWeights} = State) ->
+    NodeInfo = build_node_info(Version, Node),
 
     case lists:member(Node, Peers) of
         true ->
             Now = erlang:monotonic_time(),
 
-            case higher_priority_node(NodeInfo) of
+            case higher_priority_node(NodeInfo, ServiceWeights) of
                 true ->
                     ?log_info("Surrendering mastership to ~p", [Node]),
                     NewState = shutdown_master_sup(State),
@@ -433,10 +457,8 @@ master(info, {heartbeat, NodeInfo, master, _H}, #state{peers=Peers} = State) ->
     end;
 
 master(info,
-       {heartbeat, NodeInfo, candidate, _H},
+       {heartbeat, {_Version, Node}, candidate, _H},
        #state{peers=Peers} = State) ->
-    Node = node_info_to_node(NodeInfo),
-
     case lists:member(Node, Peers) of
         true ->
             ok;
@@ -466,7 +488,8 @@ handle_event(Type, Msg, State, StateData) ->
 %% @private
 %% @doc Send an heartbeat to a list of nodes, except this one.
 send_heartbeat_with_peers(Nodes, StateName, Peers) ->
-    NodeInfo = node_info(),
+    %% We send...
+    NodeInfo = communicated_node_info(),
 
     Args = {heartbeat, NodeInfo, StateName,
             [{peers, Peers},
@@ -531,20 +554,27 @@ shutdown_master_sup(State) ->
 
 %% Auxiliary functions
 
-build_node_info(CompatVersion, Node) ->
-    VersionStruct = {CompatVersion, release, 0},
-    {VersionStruct, Node}.
+build_node_version(CompatVersion) ->
+    {CompatVersion, release, 0}.
+
+build_node_info(Version, Node) ->
+    Services = ns_cluster_membership:node_services(Node),
+    {Version, Node, Services}.
 
 %% Return node information for ourselves.
 -spec node_info() -> node_info().
 node_info() ->
-    Version = cluster_compat_mode:mb_master_advertised_version(),
+    Version =
+        build_node_version(cluster_compat_mode:mb_master_advertised_version()),
     build_node_info(Version, node()).
 
-%% Convert node info to node.
--spec node_info_to_node(node_info()) -> node().
-node_info_to_node({_Version, Node}) ->
-    Node.
+%% Return the node information for ourselves that we communicate to other
+%% nodes. For compat reasons we don't communicate services (older versions
+%% wouldn't be able to handle that) so it's simpler to avoid communicating
+%% services to any node and to just check the chronicle config locally.
+-spec communicated_node_info() -> {version(), node()}.
+communicated_node_info() ->
+    {{cluster_compat_mode:mb_master_advertised_version(), release, 0}, node()}.
 
 -spec compare_version(version(), version()) -> priority().
 compare_version(VersionA, VersionB) ->
@@ -566,58 +596,97 @@ compare_name(NameA, NameB) ->
            lower
     end.
 
-%% Determine whether some node is of higher priority than ourselves.
--spec higher_priority_node(node_info()) -> boolean().
-higher_priority_node(NodeInfo) ->
-    Self = node_info(),
-    higher_priority_node(Self, NodeInfo).
+-spec compare_services(services(), services(), service_weights()) -> priority().
+compare_services(ServicesA, ServicesB, ServiceWeights) ->
+    ServicesAPrio = get_services_total_priority(ServicesA, ServiceWeights),
+    ServicesBPrio = get_services_total_priority(ServicesB, ServiceWeights),
+    if ServicesAPrio =:= ServicesBPrio ->
+           equal;
+       ServicesAPrio < ServicesBPrio ->
+           higher;
+       ServicesAPrio > ServicesBPrio ->
+           lower
+    end.
 
--spec higher_priority_node(node_info(), node_info()) -> boolean().
-higher_priority_node({SelfVersion, SelfNode}, {OtherVersion, OtherNode}) ->
-    higher_priority_node([SelfVersion, SelfNode], [OtherVersion, OtherNode],
-                         [fun compare_version/2,
-                          fun compare_name/2]).
+get_service_priority(Service, ServiceWeights) ->
+    {Service, Priority} = lists:keyfind(Service, 1, ServiceWeights),
+    Priority.
+
+get_services_total_priority(Services, ServiceWeights) ->
+    lists:foldl(
+        fun(Service, Acc) ->
+            Acc + get_service_priority(Service, ServiceWeights)
+        end,
+        0, Services).
+
+%% Determine whether some node is of higher priority than ourselves.
+-spec higher_priority_node(node_info(), service_weights()) -> boolean().
+higher_priority_node(NodeInfo, ServiceWeights) ->
+    Self = node_info(),
+    higher_priority_node(Self, NodeInfo, ServiceWeights).
+
+-spec higher_priority_node(
+          node_info(), node_info(), service_weights()) -> boolean().
+higher_priority_node({SelfVersion, SelfNode, SelfServices},
+                     {OtherVersion, OtherNode, OtherServices},
+                     ServiceWeights) ->
+    higher_priority_compare_node([SelfVersion, SelfServices, SelfNode],
+                                 [OtherVersion, OtherServices, OtherNode],
+                                 [fun compare_version/2,
+                                  compare_services(_, _, ServiceWeights),
+                                  fun compare_name/2]).
 
 %% Compare node info terms against one another with the given comparators.
-%% The list of terms should be of the form [version(), node()]
--spec higher_priority_node([term()], [term()], [function()]) -> boolean().
-higher_priority_node([], [], []) ->
-    false;
-higher_priority_node([SelfValue | Self], [OtherValue | Other],
-                     [Comparator | Comparators]) ->
-    case Comparator(OtherValue, SelfValue) of
+%% The list of terms should be of the form [version(), services(), node()]
+-spec higher_priority_compare_node(
+          [term()], [term()], [function()]) -> boolean().
+higher_priority_compare_node(Self, Other, Comparators) ->
+    case compare_node(Self, Other, Comparators) of
         lower -> false;
         higher -> true;
-        equal -> higher_priority_node(Self, Other, Comparators)
+        equal -> false
     end.
 
 %% true iff we need to take over mastership of given node
--spec strongly_lower_priority_node(node_info()) -> boolean().
-strongly_lower_priority_node(NodeInfo) ->
+-spec strongly_lower_priority_node(node_info(), service_weights()) -> boolean().
+strongly_lower_priority_node(NodeInfo, ServiceWeights) ->
     Self = node_info(),
-    strongly_lower_priority_node(Self, NodeInfo).
+    strongly_lower_priority_node(Self, NodeInfo, ServiceWeights).
 
--spec strongly_lower_priority_node(node_info(), node_info()) -> boolean().
-strongly_lower_priority_node({SelfVersion, _SelfNode},
-                             {OtherVersion, _OtherNode}) ->
-    strongly_lower_priority_node([SelfVersion],
-                                 [OtherVersion],
-                                 [fun compare_version/2]).
+-spec strongly_lower_priority_node(
+          node_info(), node_info(), service_weights()) -> boolean().
+strongly_lower_priority_node({SelfVersion, _SelfNode, SelfServices},
+                             {OtherVersion, _OtherNode, OtherServices},
+                             ServiceWeights) ->
+    strongly_lower_priority_compare_node([SelfVersion, SelfServices],
+                                         [OtherVersion, OtherServices],
+                                         [fun compare_version/2,
+                                          compare_services(_, _,
+                                                           ServiceWeights)]).
 
 %% Compare node info terms against one another with the given comparators.
-%% The list of terms should be of the form [version()]. We don't compare node
-%% name here like we do in higher_priority_node as a node with lower name
-%% does not need to take over from one with the same priority otherwise.
--spec strongly_lower_priority_node(
+%% The list of terms should be of the form [version(), services()]. We don't
+%% compare node name here like we do in higher_priority_node as a node with
+%% lower name does not need to take over from one with the same priority
+%% otherwise.
+-spec strongly_lower_priority_compare_node(
           [term()], [term()], [function()]) -> boolean().
-strongly_lower_priority_node([], [], []) ->
-    false;
-strongly_lower_priority_node([SelfValue | Self], [OtherValue | Other],
-                             [Comparator | Comparators]) ->
-    case Comparator(OtherValue, SelfValue) of
+strongly_lower_priority_compare_node(Self, Other, Comparators) ->
+    case compare_node(Self, Other, Comparators) of
         lower -> true;
         higher -> false;
-        equal -> strongly_lower_priority_node(Self, Other, Comparators)
+        equal -> false
+    end.
+
+-spec compare_node([term()], [term()], [function()]) -> priority().
+compare_node([],[],[]) ->
+    %% Exhausted all comparators, and criterion
+    equal;
+compare_node([SelfValue | Self], [OtherValue | Other], [Comparator |
+    Comparators]) ->
+    case Comparator(OtherValue, SelfValue) of
+        equal -> compare_node(Self, Other, Comparators);
+        Priority -> Priority
     end.
 
 announce_leader(Node) ->
@@ -670,102 +739,288 @@ refresh_high_priority_nodes(#state{higher_priority_nodes = Nodes,
 config_upgrade_to_elixir(_Config) ->
     [{delete, mb33750_workaround_enabled}].
 
+update_service_weights(State) ->
+    State#state{service_weights = get_service_weights()}.
+
+get_service_weights() ->
+    ns_config:read_key_fast(service_orchestrator_weight,
+                            ?DEFAULT_SERVICE_WEIGHTS).
+
 -ifdef(TEST).
+-define(TEST_NO_SERVICES, []).
+
+%% Test for the pre-7.5.0 priority algorithm.
+%% Note, the priority algorithm does not have a cluster compat mode check as
+%% it is designed to be backwards compatible.
 higher_priority_node_t() ->
     %% VersionA < VersionB => NodeB higher priority (NameA < NameB)
     ?assertEqual(true,
                  higher_priority_node({misc:parse_version("1.7.1"),
-                                       'ns_1@192.168.1.1'},
+                                       'ns_1@192.168.1.1',
+                                       ?TEST_NO_SERVICES},
                                       {misc:parse_version("2.0"),
-                                       'ns_2@192.168.1.1'})),
+                                       'ns_2@192.168.1.1',
+                                       ?TEST_NO_SERVICES},
+                                      ?DEFAULT_SERVICE_WEIGHTS)),
 
     %% VersionA < VersionB => NodeB higher priority (NameA > NameB)
     ?assertEqual(true,
                  higher_priority_node({misc:parse_version("1.7.1"),
-                                       'ns_2@192.168.1.1'},
+                                       'ns_2@192.168.1.1',
+                                       ?TEST_NO_SERVICES},
                                       {misc:parse_version("2.0"),
-                                       'ns_1@192.168.1.1'})),
+                                       'ns_1@192.168.1.1',
+                                       ?TEST_NO_SERVICES},
+                                      ?DEFAULT_SERVICE_WEIGHTS)),
 
     %% VersionA > VersionB => NodeA higher priority (NameA < NameB)
     ?assertEqual(false,
                  higher_priority_node({misc:parse_version("2.0"),
-                                       'ns_0@192.168.1.1'},
+                                       'ns_0@192.168.1.1',
+                                       ?TEST_NO_SERVICES},
                                       {misc:parse_version("1.7.2"),
-                                       'ns_1@192.168.1.1'})),
+                                       'ns_1@192.168.1.1',
+                                       ?TEST_NO_SERVICES},
+                                      ?DEFAULT_SERVICE_WEIGHTS)),
 
     %% VersionA > VersionB => NodeA higher priority (NameA > NameB)
     ?assertEqual(false,
                  higher_priority_node({misc:parse_version("2.0"),
-                                       'ns_1@192.168.1.1'},
+                                       'ns_1@192.168.1.1',
+                                       ?TEST_NO_SERVICES},
                                       {misc:parse_version("1.7.2"),
-                                       'ns_0@192.168.1.1'})),
+                                       'ns_0@192.168.1.1',
+                                       ?TEST_NO_SERVICES},
+                                      ?DEFAULT_SERVICE_WEIGHTS)),
 
     %% VersionA = VersionB and NameA < NameB => NodeA higher priority
     ?assertEqual(false, higher_priority_node({misc:parse_version("2.0"),
-                                              'ns_1@192.168.1.1'},
+                                              'ns_1@192.168.1.1',
+                                              ?TEST_NO_SERVICES},
                                              {misc:parse_version("2.0"),
-                                              'ns_2@192.168.1.1'})),
+                                              'ns_2@192.168.1.1',
+                                              ?TEST_NO_SERVICES},
+                                             ?DEFAULT_SERVICE_WEIGHTS)),
 
     %% VersionA = VersionB and NameA > NameB => NodeB higher priority
     ?assertEqual(true, higher_priority_node({misc:parse_version("2.0"),
-                                             'ns_2@192.168.1.1'},
+                                             'ns_2@192.168.1.1',
+                                             ?TEST_NO_SERVICES},
                                             {misc:parse_version("2.0"),
-                                             'ns_1@192.168.1.1'})).
+                                             'ns_1@192.168.1.1',
+                                             ?TEST_NO_SERVICES},
+                                            ?DEFAULT_SERVICE_WEIGHTS)).
 
+%% Test for the post-7.5.0 priority algorithm.
+%% Note, the priority algorithm does not have a cluster compat mode check as
+%% it is designed to be backwards compatible.
+higher_priority_services_t() ->
+    %% We won't re-test all of the variants above, given that the algorithm
+    %% is the same, we will just test the new part (services) and the edge
+    %% cases.
+    Version72 = misc:parse_version("7.2.0"),
+    Version75 = misc:parse_version("7.5.0"),
+    NameA = 'ns_1',
+    NameB = 'ns_2',
+
+    HPNVersionALower =
+        fun(SA, SB) ->
+            higher_priority_node({Version72, NameA, SA},
+                                 {Version75, NameB, SB},
+                                 ?DEFAULT_SERVICE_WEIGHTS)
+        end,
+
+    %% Version always takes precedence, regardless of services.
+    %% VersionA < VersionB => NodeA higher priority (ServicesA < ServicesB)
+    ?assertEqual(true, HPNVersionALower(?TEST_NO_SERVICES, [kv])),
+
+    %% VersionA < VersionB => NodeA higher priority (ServicesA > ServicesB)
+    ?assertEqual(true, HPNVersionALower([kv], ?TEST_NO_SERVICES)),
+
+    HPNNameALower =
+        fun(SA, SB) ->
+            higher_priority_node({Version75, NameA, SA},
+                                 {Version75, NameB, SB},
+                                 ?DEFAULT_SERVICE_WEIGHTS)
+        end,
+
+    %% The next priority criteria is the service list so we will use the same
+    %% version for these tests.
+    %% VersionA = VersionB and ServicesA < ServicesB => NodeA higher priority
+    %% (service-less)
+    ?assertEqual(false, HPNNameALower(?TEST_NO_SERVICES, [backup])),
+
+    %% VersionA = VersionB and ServicesA < ServicesB => NodeB higher priority
+    %% (service-less)
+    ?assertEqual(true, HPNNameALower([backup], ?TEST_NO_SERVICES)),
+
+    %% VersionA = VersionB and ServicesA < ServicesB => NodeA higher priority
+    ?assertEqual(false, HPNNameALower([index], [kv])),
+
+    %% VersionA = VersionB and ServicesA < ServicesB => NodeB higher priority
+    ?assertEqual(true, HPNNameALower([kv], [index])),
+
+    %% VersionA = VersionB and ServicesA = ServicesB and NodeA < NodeB =>
+    %% NodeA higher priority
+    ?assertEqual(false, HPNNameALower([kv], [kv])),
+
+    %% VersionA = VersionB and ServicesA = ServicesB and NodeA > NodeB =>
+    %% NodeA higher priority
+    ?assertEqual(true, higher_priority_node({Version75, NameB, [kv]},
+                                            {Version75, NameA, [kv]},
+                                            ?DEFAULT_SERVICE_WEIGHTS)).
+
+%% Test for the pre-7.5.0 priority algorithm.
+%% Note, the priority algorithm does not have a cluster compat mode check as
+%% it is designed to be backwards compatible.
 strongly_lower_priority_node_t() ->
     %% VersionA < VersionB => NodeB higher priority (NameA < NameB)
     ?assertEqual(false,
                  strongly_lower_priority_node({misc:parse_version("7.2.0"),
-                                               'ns_0@192.168.1.1'},
+                                               'ns_0@192.168.1.1',
+                                               ?TEST_NO_SERVICES},
                                               {misc:parse_version("7.5.0"),
-                                               'ns_1@192.168.1.1'})),
+                                               'ns_1@192.168.1.1',
+                                               ?TEST_NO_SERVICES},
+                                              ?DEFAULT_SERVICE_WEIGHTS)),
 
     %% VersionA < VersionB => NodeB higher priority (NameA > NameB)
     ?assertEqual(false,
                  strongly_lower_priority_node({misc:parse_version("7.2.0"),
-                                               'ns_1@192.168.1.1'},
+                                               'ns_1@192.168.1.1',
+                                               ?TEST_NO_SERVICES},
                                               {misc:parse_version("7.5.0"),
-                                               'ns_0@192.168.1.1'})),
+                                               'ns_0@192.168.1.1',
+                                               ?TEST_NO_SERVICES},
+                                              ?DEFAULT_SERVICE_WEIGHTS)),
 
     %% VersionA > VersionB => NodeA higher priority (NameA < NameB)
     ?assertEqual(true,
                  strongly_lower_priority_node({misc:parse_version("7.5.0"),
-                                               'ns_0@192.168.1.1'},
+                                               'ns_0@192.168.1.1',
+                                               ?TEST_NO_SERVICES},
                                               {misc:parse_version("7.2.0"),
-                                               'ns_1@192.168.1.1'})),
+                                               'ns_1@192.168.1.1',
+                                               ?TEST_NO_SERVICES},
+                                              ?DEFAULT_SERVICE_WEIGHTS)),
+
     %% VersionA > VersionB => NodeA higher priority (NameA > NameB)
     ?assertEqual(true,
                  strongly_lower_priority_node({misc:parse_version("7.5.0"),
-                                               'ns_1@192.168.1.1'},
+                                               'ns_1@192.168.1.1',
+                                               ?TEST_NO_SERVICES},
                                               {misc:parse_version("7.2.0"),
-                                               'ns_0@192.168.1.1'})),
+                                               'ns_0@192.168.1.1',
+                                               ?TEST_NO_SERVICES},
+                                              ?DEFAULT_SERVICE_WEIGHTS)),
 
     %% VersionA = VersionB => NodeB higher priority (NameA < NameB)
     ?assertEqual(false,
                  strongly_lower_priority_node({misc:parse_version("7.5.0"),
-                                               'ns_0@192.168.1.1'},
+                                               'ns_0@192.168.1.1',
+                                               ?TEST_NO_SERVICES},
                                               {misc:parse_version("7.5.0"),
-                                               'ns_1@192.168.1.1'})),
+                                               'ns_1@192.168.1.1',
+                                               ?TEST_NO_SERVICES},
+                                              ?DEFAULT_SERVICE_WEIGHTS)),
 
     %% VersionA = VersionB => NodeB higher priority (NameA > NameB)
     ?assertEqual(false,
                  strongly_lower_priority_node({misc:parse_version("7.5.0"),
-                                               'ns_1@192.168.1.1'},
+                                               'ns_1@192.168.1.1',
+                                               ?TEST_NO_SERVICES},
                                               {misc:parse_version("7.5.0"),
-                                               'ns_0@192.168.1.1'})).
+                                               'ns_0@192.168.1.1',
+                                               ?TEST_NO_SERVICES},
+                                              ?DEFAULT_SERVICE_WEIGHTS)).
+
+%% Test for the post-7.5.0 priority algorithm.
+%% Note, the priority algorithm does not have a cluster compat mode check as
+%% it is designed to be backwards compatible.
+strongly_lower_priority_services_t() ->
+    %% We won't re-test all of the variants above, given that the algorithm
+    %% is the same, we will just test the new part (services) and the edge
+    %% cases.
+    Version72 = misc:parse_version("7.2.0"),
+    Version75 = misc:parse_version("7.5.0"),
+    NameA = 'ns_1',
+    NameB = 'ns_2',
+
+    SLPNVersionALower =
+        fun(SA, SB) ->
+            strongly_lower_priority_node({Version72, NameA, SA},
+                                         {Version75, NameB, SB},
+                                         ?DEFAULT_SERVICE_WEIGHTS)
+        end,
+
+    %% Version always takes precedence, regardless of services.
+    %% VersionA < VersionB => NodeA higher priority (ServicesA < ServicesB)
+    ?assertEqual(false, SLPNVersionALower(?TEST_NO_SERVICES, [kv])),
+
+    %% VersionA < VersionB => NodeA higher priority (ServicesA > ServicesB)
+    ?assertEqual(false, SLPNVersionALower([kv], ?TEST_NO_SERVICES)),
+
+    SLPNNameALower =
+        fun(SA, SB) ->
+            strongly_lower_priority_node({Version75, NameA, SA},
+                                         {Version75, NameB, SB},
+                                         ?DEFAULT_SERVICE_WEIGHTS)
+        end,
+
+    %% The next priority criteria is the service list so we will use the same
+    %% version for these tests.
+    %% VersionA = VersionB and ServicesA < ServicesB => NodeA higher priority
+    %% (service-less)
+    ?assertEqual(true, SLPNNameALower(?TEST_NO_SERVICES, [backup])),
+
+    %% VersionA = VersionB and ServicesA < ServicesB => NodeB higher priority
+    %% (service-less)
+    ?assertEqual(false, SLPNNameALower([backup], ?TEST_NO_SERVICES)),
+
+    %% VersionA = VersionB and ServicesA < ServicesB => NodeA higher priority
+    ?assertEqual(true, SLPNNameALower([index], [kv])),
+
+    %% VersionA = VersionB and ServicesA < ServicesB => NodeB higher priority
+    ?assertEqual(false, SLPNNameALower([kv], [index])),
+
+    %% VersionA = VersionB and ServicesA = ServicesB and NodeA < NodeB =>
+    %% NodeA higher priority
+    ?assertEqual(false, SLPNNameALower([kv], [kv])),
+
+    %% VersionA = VersionB and ServicesA = ServicesB and NodeA > NodeB =>
+    %% NodeA higher priority
+    ?assertEqual(false, strongly_lower_priority_node({Version75, NameB, [kv]},
+                                                     {Version75, NameA, [kv]},
+                                                     ?DEFAULT_SERVICE_WEIGHTS)).
+
+node_info_t() ->
+    {Version, Node, Services} =
+        build_node_info(build_node_version([7,6,0]), 'ns_1@192.168.1.1'),
+    ?assertEqual(misc:parse_version("7.6.0"), Version),
+    ?assertEqual('ns_1@192.168.1.1', Node),
+    ?assertEqual([kv], Services).
 
 priority_test_setup() ->
-    ok.
+    meck:new(ns_cluster_membership),
+    meck:expect(ns_cluster_membership, node_services,
+        fun(_) ->
+            [kv]
+        end).
 
 priority_test_teardown(_R) ->
-    ok.
+    meck:unload(ns_cluster_membership).
 
 priority_test_() ->
     {setup,
         fun priority_test_setup/0,
         fun priority_test_teardown/1,
         [{"higher priority test", fun higher_priority_node_t/0},
-         {"strongly lower priority test", fun strongly_lower_priority_node_t/0}]
+         {"strongly lower priority test", fun strongly_lower_priority_node_t/0},
+         {"higher priority service test", fun higher_priority_services_t/0},
+         {"strongly lower priority test", fun strongly_lower_priority_node_t/0},
+         {"strongly lower priority services test",
+          fun strongly_lower_priority_services_t/0},
+         {"node info test", fun node_info_t/0}]
     }.
 
 -endif.

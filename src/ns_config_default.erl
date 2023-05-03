@@ -351,6 +351,7 @@ default() ->
                              {max_nodes, 1},
                              % count is the number of nodes that were auto-reprovisioned
                              {count, 0}]},
+     {service_orchestrator_weight, ?DEFAULT_SERVICE_WEIGHTS},
 
      {password_policy, [{min_length, 6}, {must_present, []}]}] ++
         service_ports:default_config(IsEnterprise) ++
