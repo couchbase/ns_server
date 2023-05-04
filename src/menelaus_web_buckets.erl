@@ -974,7 +974,7 @@ do_handle_bucket_flush(BucketName, Req) ->
         in_bucket_hibernation ->
             reply_json(Req, {[{'_',
                                <<"Cannot flush buckets while another bucket "
-                                 "is pausing/resuming.">>}]});
+                                 "is pausing/resuming.">>}]}, 503);
         bucket_not_found ->
             reply(Req, 404);
         flush_disabled ->
