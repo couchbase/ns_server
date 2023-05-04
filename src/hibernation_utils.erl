@@ -292,7 +292,7 @@ unpause_bucket_body(Bucket, BucketNodes) ->
                         Bucket, BucketNode)
                   catch
                       E:T:S ->
-                          ?log_error("unpause_bucket for bucket: ~p ",
+                          ?log_error("unpause_bucket for bucket: ~p "
                                      "failed on node: ~p. "
                                      "Error: {~p, ~p, ~p} ",
                                      [Bucket, BucketNode,
