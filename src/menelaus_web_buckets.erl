@@ -333,7 +333,7 @@ build_hibernation_state(BucketConfig) ->
         undefined ->
             [];
         State ->
-            {hibernation_state, State}
+            {hibernationState, State}
     end.
 
 build_sasl_password(BucketConfig) ->
