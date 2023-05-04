@@ -623,7 +623,7 @@ config_upgrade_to_elixir(_Config) ->
     [{delete, mb33750_workaround_enabled}].
 
 -ifdef(TEST).
-higher_priority_node_test() ->
+higher_priority_node_t() ->
     %% VersionA < VersionB => NodeB higher priority (NameA < NameB)
     ?assertEqual(true,
                  higher_priority_node({misc:parse_version("1.7.1"),
@@ -664,7 +664,7 @@ higher_priority_node_test() ->
                                             {misc:parse_version("2.0"),
                                              'ns_1@192.168.1.1'})).
 
-strongly_lower_priority_node_test() ->
+strongly_lower_priority_node_t() ->
     %% VersionA < VersionB => NodeB higher priority (NameA < NameB)
     ?assertEqual(false,
                  strongly_lower_priority_node({misc:parse_version("7.2.0"),
@@ -705,5 +705,19 @@ strongly_lower_priority_node_test() ->
                                                'ns_1@192.168.1.1'},
                                               {misc:parse_version("7.5.0"),
                                                'ns_0@192.168.1.1'})).
+
+priority_test_setup() ->
+    ok.
+
+priority_test_teardown(_R) ->
+    ok.
+
+priority_test_() ->
+    {setup,
+        fun priority_test_setup/0,
+        fun priority_test_teardown/1,
+        [{"higher priority test", fun higher_priority_node_t/0},
+         {"strongly lower priority test", fun strongly_lower_priority_node_t/0}]
+    }.
 
 -endif.
