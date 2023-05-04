@@ -115,10 +115,7 @@
 
         %% Number of data disk read and write failures
         ep_data_read_failed,
-        ep_data_write_failed,
-
-        %% History disk size
-        ep_db_history_file_size
+        ep_data_write_failed
 ).
 
 -define(STAT_COUNTERS,
