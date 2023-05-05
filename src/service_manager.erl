@@ -13,10 +13,10 @@
 -include("ns_common.hrl").
 -include("bucket_hibernation.hrl").
 
--export([with_trap_exit_spawn_monitor_rebalance/6,
-         with_trap_exit_spawn_monitor_failover/3,
-         with_trap_exit_spawn_monitor_pause_bucket/6,
-         with_trap_exit_spawn_monitor_resume_bucket/7]).
+-export([rebalance/6,
+         failover/3,
+         pause_bucket/6,
+         resume_bucket/7]).
 
 -record(rebalance_args, {keep_nodes = [] :: [node()],
                          eject_nodes = [] :: [node()],
@@ -39,8 +39,7 @@
                  {#bucket_hibernation_op_args{}, tuple()},
                  progress_callback :: fun ((dict:dict()) -> any())}).
 
-with_trap_exit_spawn_monitor_rebalance(
-  Service, KeepNodes, EjectNodes, DeltaNodes, ProgressCallback, Opts) ->
+rebalance(Service, KeepNodes, EjectNodes, DeltaNodes, ProgressCallback, Opts) ->
     with_trap_exit_spawn_monitor(Service, rebalance, KeepNodes ++ EjectNodes,
                                  fun rebalance_op/5,
                                  #rebalance_args{
@@ -49,14 +48,13 @@ with_trap_exit_spawn_monitor_rebalance(
                                     delta_nodes = DeltaNodes},
                                  ProgressCallback, Opts).
 
-with_trap_exit_spawn_monitor_failover(Service, KeepNodes, Opts) ->
+failover(Service, KeepNodes, Opts) ->
     with_trap_exit_spawn_monitor(Service, failover, KeepNodes,
                                  fun rebalance_op/5,
                                  #rebalance_args{keep_nodes = KeepNodes},
                                  fun (_) -> ok end, Opts).
 
-with_trap_exit_spawn_monitor_pause_bucket(
-  Service, Args, Snapshot, Nodes, ProgressCallback, Opts) ->
+pause_bucket(Service, Args, Snapshot, Nodes, ProgressCallback, Opts) ->
     OpBody =
         case Service of
             kv ->
@@ -70,9 +68,8 @@ with_trap_exit_spawn_monitor_pause_bucket(
                                  {Args, {Snapshot}},
                                  ProgressCallback, Opts).
 
-with_trap_exit_spawn_monitor_resume_bucket(
-  Service, Args, DryRun, ServerMapping, Nodes, ProgressCallback, Opts) ->
-
+resume_bucket(Service, Args, DryRun, ServerMapping, Nodes, ProgressCallback,
+              Opts) ->
     OpBody =
         case Service of
             kv ->

@@ -106,7 +106,7 @@ orchestrate_initial_rebalance(Service) ->
 
     Result =
         try
-            service_manager:with_trap_exit_spawn_monitor_rebalance(
+            service_manager:rebalance(
               Service, KeepNodes, EjectNodes, DeltaNodes, ProgressCallback,
               #{timeout => ?INITIAL_REBALANCE_TIMEOUT})
         catch
@@ -208,7 +208,7 @@ complete_topology_aware_service_failover(Snapshot, Service) ->
 
 orchestrate_service_failover(Service, Nodes) ->
     try
-        service_manager:with_trap_exit_spawn_monitor_failover(
+        service_manager:failover(
           Service, Nodes, #{})
     catch
         exit:{service_failover_failed, Service, Reason} ->

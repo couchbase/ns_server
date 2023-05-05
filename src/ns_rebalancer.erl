@@ -423,7 +423,7 @@ rebalance_topology_aware_service(Service, KeepNodes, EjectNodes, DeltaNodes) ->
                 ns_rebalance_observer:update_progress(Service, Progress)
         end,
 
-    service_manager:with_trap_exit_spawn_monitor_rebalance(
+    service_manager:rebalance(
       Service, KeepNodes, EjectNodes, DeltaNodes, ProgressCallback, #{}).
 
 get_service_eject_delay(Service) ->

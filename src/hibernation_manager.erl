@@ -118,7 +118,7 @@ pause_bucket(#bucket_hibernation_op_args{
 pause_bucket_body(For, Args, Snapshot, Nodes) ->
     ProgressCallback = fun (_) -> ok end,
 
-    service_manager:with_trap_exit_spawn_monitor_pause_bucket(
+    service_manager:pause_bucket(
       For, Args, Snapshot, Nodes, ProgressCallback, #{}).
 
 get_new_map(OldMap, ServerMapping) ->
@@ -218,7 +218,7 @@ resume_bucket(#bucket_hibernation_op_args{
 resume_bucket_body(For, Args, ServerMapping, DryRun, Nodes) ->
     ProgressCallback = fun (_) -> ok end,
 
-    service_manager:with_trap_exit_spawn_monitor_resume_bucket(
+    service_manager:resume_bucket(
       For, Args, DryRun, ServerMapping, Nodes, ProgressCallback, #{}).
 
 -ifdef(TEST).
@@ -365,7 +365,7 @@ hibernation_manager_test_() ->
      [{"Pause Bucket Success",
        fun () ->
                meck:expect(service_manager,
-                           with_trap_exit_spawn_monitor_pause_bucket,
+                           pause_bucket,
                            fun (_Service, _Args, _Snapshot, _Nodes,
                                 _ProgressCallback, _Opts) ->
                                    hibernation_op_success()
@@ -382,7 +382,7 @@ hibernation_manager_test_() ->
       {"Pause Bucket Failure",
        fun () ->
                meck:expect(service_manager,
-                           with_trap_exit_spawn_monitor_pause_bucket,
+                           pause_bucket,
                            fun (Service, _Args, _Snapshot, _Nodes,
                                 _ProgressCallback, _Opts) ->
                                    hibernation_op_fail(Service)
@@ -399,7 +399,7 @@ hibernation_manager_test_() ->
       {"Resume Bucket Success",
        fun () ->
                meck:expect(service_manager,
-                           with_trap_exit_spawn_monitor_resume_bucket,
+                           resume_bucket,
                            fun (_Service, _Args, _DryRun, _ServerMapping,
                                 _Nodes, _ProgressCallback, _Opts) ->
                                    hibernation_op_success()
@@ -433,7 +433,7 @@ hibernation_manager_test_() ->
       {"Resume Bucket Failure",
        fun () ->
                meck:expect(service_manager,
-                           with_trap_exit_spawn_monitor_resume_bucket,
+                           resume_bucket,
                            fun (Service, _Args, _DryRun, _ServerMapping,
                                 _Nodes, _ProgressCallback, _Opts) ->
                                    hibernation_op_fail(Service)
