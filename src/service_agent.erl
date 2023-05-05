@@ -239,7 +239,7 @@ handle_call(get_agent, _From, State) ->
 %% set_rebalancer is called when the cluster_compat_mode is less than elixir.
 handle_call({set_rebalancer, Pid}, From, State) ->
     handle_call({set_service_manager, Pid}, From, State);
-handle_call({set_service_manager, Pid} = Call, _From,
+handle_call({set_service_manager, Pid} = Call, From,
             #state{service_manager = Manager} = State0) ->
     State =
         case Manager of
@@ -253,7 +253,9 @@ handle_call({set_service_manager, Pid} = Call, _From,
                           [Call, Manager]),
                 handle_unset_service_manager(State0)
         end,
-    {reply, ok, handle_set_service_manager(Pid, State)};
+    NewState = handle_set_service_manager(Pid, State),
+    %% reply only when the revrpc connection is fully established
+    run_on_task_runner(From, NewState, fun (_) -> ok end);
 
 %% if_rebalance is called when the cluster_compat_mode is less than elixir.
 handle_call({if_rebalance, Pid, Call}, From, State) ->
