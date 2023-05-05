@@ -16,7 +16,8 @@
 -export([rebalance/6,
          failover/3,
          pause_bucket/6,
-         resume_bucket/7]).
+         resume_bucket/7,
+         update_service_map/3]).
 
 -record(rebalance_args, {keep_nodes = [] :: [node()],
                          eject_nodes = [] :: [node()],
@@ -289,6 +290,20 @@ leader_candidates(#state{op_type = Op,
                                                   Op =:= resume_bucket ->
     Nodes.
 
+update_service_map(Service, CurrentNodes0, ServiceNodes0) ->
+    CurrentNodes = lists:sort(CurrentNodes0),
+    ServiceNodes = lists:sort(ServiceNodes0),
+
+    case CurrentNodes =:= ServiceNodes of
+        true ->
+            false;
+        false ->
+            ?rebalance_info("Updating service map for ~p:~n~p",
+                            [Service, ServiceNodes]),
+            ok = ns_cluster_membership:set_service_map(Service, ServiceNodes),
+            true
+    end.
+
 rebalance_op(#state{
                 op_type = Type,
                 service = Service,
@@ -302,6 +317,10 @@ rebalance_op(#state{
     ?rebalance_info("Rebalancing service ~p with id ~p."
                     "~nKeepNodes: ~p~nEjectNodes: ~p~nDeltaNodes: ~p",
                     [Service, Id, KeepNodes, EjectNodes, DeltaNodes]),
+
+    update_service_map(
+      Service, ns_cluster_membership:get_service_map(direct, Service),
+      AllNodes),
 
     {KeepNodesArg, EjectNodesArg} = build_rebalance_args(KeepNodes, EjectNodes,
                                                          DeltaNodes, NodeInfos),

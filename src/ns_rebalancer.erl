@@ -340,8 +340,7 @@ rebalance_simple_services(Snapshot, Services, KeepNodes) ->
                   ns_cluster_membership:service_nodes(KeepNodes, Service),
               master_activity_events:note_rebalance_stage_started(
                 Service, ServiceNodes),
-              Updated = update_service_map_with_snapshot(
-                          Snapshot, Service, ServiceNodes),
+              Updated = update_service_map(Snapshot, Service, ServiceNodes),
 
               master_activity_events:note_rebalance_stage_completed(
                 Service),
@@ -353,23 +352,9 @@ rebalance_simple_services(Snapshot, Services, KeepNodes) ->
               end
       end, Services).
 
-update_service_map_with_snapshot(Snapshot, Service, ServiceNodes0) ->
+update_service_map(Snapshot, Service, ServiceNodes0) ->
     CurrentNodes0 = ns_cluster_membership:get_service_map(Snapshot, Service),
-    update_service_map(Service, CurrentNodes0, ServiceNodes0).
-
-update_service_map(Service, CurrentNodes0, ServiceNodes0) ->
-    CurrentNodes = lists:sort(CurrentNodes0),
-    ServiceNodes = lists:sort(ServiceNodes0),
-
-    case CurrentNodes =:= ServiceNodes of
-        true ->
-            false;
-        false ->
-            ?rebalance_info("Updating service map for ~p:~n~p",
-                            [Service, ServiceNodes]),
-            ok = ns_cluster_membership:set_service_map(Service, ServiceNodes),
-            true
-    end.
+    service_manager:update_service_map(Service, CurrentNodes0, ServiceNodes0).
 
 rebalance_topology_aware_services(Services, KeepNodesAll, EjectNodesAll) ->
     Snapshot = ns_cluster_membership:get_snapshot(),
@@ -406,11 +391,10 @@ rebalance_topology_aware_services(Snapshot, Services, KeepNodesAll,
                   _ ->
                       master_activity_events:note_rebalance_stage_started(
                         Service, AllNodes),
-                      update_service_map_with_snapshot(
-                        Snapshot, Service, AllNodes),
                       ok = rebalance_topology_aware_service(
                              Service, KeepNodes, EjectNodes, DeltaNodes),
-                      update_service_map(Service, AllNodes, KeepNodes),
+                      service_manager:update_service_map(Service, AllNodes,
+                                                         KeepNodes),
                       master_activity_events:note_rebalance_stage_completed(
                         Service),
                       {true, {Service, os:timestamp()}}
