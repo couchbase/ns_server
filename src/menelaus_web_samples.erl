@@ -293,7 +293,7 @@ check_quota(Samples) ->
 %% Check an existing bucket's ram quota is sufficient to import a sample into
 check_bucket_quota(#sample{bucket_name = Bucket}) ->
     {ok, BucketCfg} = ns_bucket:get_bucket(Bucket),
-    case ns_bucket:ram_quota(BucketCfg) < ?SAMPLE_BUCKET_QUOTA of
+    case ns_bucket:raw_ram_quota(BucketCfg) < ?SAMPLE_BUCKET_QUOTA of
         true ->
             Err = ["Not enough Quota, you need to allocate ",
                    format_MB(?SAMPLE_BUCKET_QUOTA), " for bucket '", Bucket,
@@ -407,16 +407,28 @@ check_quota_test__() ->
     Errs2 = check_quota(Samples2),
     ?assertMatch([{error, _}], Errs2),
 
+    %% Insufficient ram quota when installing to existing sample bucket with
+    %% 2 nodes
+    meck:expect(ns_bucket, get_bucket,
+                fun (_) ->
+                        {ok, [{ram_quota, ?SAMPLE_BUCKET_QUOTA-1},
+                              {servers, [node1, node2]}]}
+                end),
+    Samples3 = [#sample{bucket_name = "test",
+                        must_bucket_exist = bucket_must_exist}],
+    Errs3 = check_quota(Samples3),
+    ?assertMatch([{error, _}], Errs3),
+
     %% Sufficient ram quota when creating sample bucket
     meck:expect(ns_storage_conf, cluster_storage_info,
                 fun (_, _) ->
                         [{ram, [{quotaUsed, 0},
                                 {quotaTotal, ?SAMPLE_BUCKET_QUOTA}]}]
                 end),
-    Samples3 = [#sample{bucket_name = "test",
+    Samples4 = [#sample{bucket_name = "test",
                         must_bucket_exist = bucket_must_not_exist}],
-    Errs3 = check_quota(Samples3),
-    ?assertMatch(ok, Errs3),
+    Errs4 = check_quota(Samples4),
+    ?assertMatch(ok, Errs4),
 
     %% Sufficient ram quota when installing to existing sample bucket
     meck:expect(ns_bucket, get_bucket,
@@ -424,10 +436,22 @@ check_quota_test__() ->
                         {ok, [{ram_quota, ?SAMPLE_BUCKET_QUOTA},
                               {servers, [node]}]}
                 end),
-    Samples4 = [#sample{bucket_name = "test",
+    Samples5 = [#sample{bucket_name = "test",
                         must_bucket_exist = bucket_must_exist}],
-    Errs4 = check_quota(Samples4),
-    ?assertMatch(ok, Errs4).
+    Errs5 = check_quota(Samples5),
+    ?assertMatch(ok, Errs5),
+
+    %% Sufficient ram quota when installing to existing sample bucket with 2
+    %% nodes
+    meck:expect(ns_bucket, get_bucket,
+                fun (_) ->
+                        {ok, [{ram_quota, ?SAMPLE_BUCKET_QUOTA},
+                              {servers, [node1, node2]}]}
+                end),
+    Samples6 = [#sample{bucket_name = "test",
+                        must_bucket_exist = bucket_must_exist}],
+    Errs6 = check_quota(Samples6),
+    ?assertMatch(ok, Errs6).
 
 get_response_json_modules() ->
     [cluster_compat_mode].
