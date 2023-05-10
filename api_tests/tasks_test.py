@@ -199,7 +199,7 @@ class TasksTestSet(testlib.BaseTestSet, TasksBase):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements(num_nodes=1, min_memsize=1024)
+        return testlib.ClusterRequirements(num_nodes=1, memsize=1024)
 
     def teardown(self, cluster):
         pass

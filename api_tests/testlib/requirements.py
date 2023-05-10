@@ -13,11 +13,11 @@ from testlib.cluster import Cluster, build_cluster
 
 
 class ClusterRequirements:
-    def __init__(self, edition="Enterprise", num_nodes=1, min_memsize=256,
+    def __init__(self, edition="Enterprise", num_nodes=1, memsize=256,
                  num_connected=None):
         self.requirements = [Edition(edition),
                              NumNodes(num_nodes, num_connected),
-                             MemSize(min_memsize)]
+                             MemSize(memsize)]
 
     def __str__(self):
         immutable_requirements = list(filter(lambda x: not x.can_be_met(),
@@ -196,7 +196,7 @@ class MemSize(Requirement):
         self.connect_args = {'memsize': self.memsize}
 
     def is_met(self, cluster):
-        return cluster.memsize >= self.memsize
+        return cluster.memsize == self.memsize
 
     def can_be_met(self):
         return True

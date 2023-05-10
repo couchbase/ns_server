@@ -26,10 +26,8 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
 
     @staticmethod
     def requirements():
-        return [testlib.ClusterRequirements(edition="Enterprise",
-                                            min_memsize=1024),
-                testlib.ClusterRequirements(edition="Serverless",
-                                            min_memsize=1024)]
+        return [testlib.ClusterRequirements(edition="Enterprise", memsize=1024),
+                testlib.ClusterRequirements(edition="Serverless", memsize=1024)]
 
     def setup(self, cluster):
         self.addr_get = "/sampleBuckets"
