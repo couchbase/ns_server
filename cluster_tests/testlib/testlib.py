@@ -150,7 +150,7 @@ def request(method, cluster_or_node, path, expected_code=None, **kwargs):
     if isinstance(cluster_or_node, Node):
         url = cluster_or_node.url + path
     else:
-        url = cluster_or_node.nodes[0].url + path
+        url = cluster_or_node.connected_nodes[0].url + path
     res = requests.request(method, url, **kwargs_with_auth)
     if expected_code is not None:
         assert_http_code(expected_code, res),

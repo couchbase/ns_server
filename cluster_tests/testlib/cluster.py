@@ -132,15 +132,16 @@ class Cluster:
     def __str__(self):
         return self.__dict__.__str__()
 
-    # Kill the cluster's nodes to avoid competing for resources
+    # Kill all associated nodes to avoid competing for resources with the active
+    # cluster being tested against
     def teardown(self):
         cluster_run_lib.kill_nodes(self.processes, get_terminal_attrs(),
                                    urls=get_node_urls(self.nodes))
 
     # Check every 0.5s until there is no rebalance running or 600s have passed
     def wait_for_rebalance(self, timeout_s=600, interval_s=0.5, verbose=False):
-        cluster_run_lib.wait_for_rebalance(self.nodes[0].url, timeout_s,
-                                           interval_s, verbose)
+        cluster_run_lib.wait_for_rebalance(self.connected_nodes[0].url,
+                                           timeout_s, interval_s, verbose)
 
     # Rebalance the cluster, and possibly eject nodes at the same time.
     # Can optionally wait for the rebalance to finish
@@ -174,6 +175,12 @@ class Cluster:
 
         testlib.post_succ(self, "/controller/rebalance", data=data)
 
+        # Update connected_nodes with any changes so that wait_for_rebalance
+        # doesn't query a node that is being removed
+        if ejected_nodes is not None:
+            for node in ejected_nodes:
+                self.connected_nodes.remove(node)
+
         # Optionally wait for the rebalance to complete
         if wait:
             self.wait_for_rebalance(timeout_s=timeout_s, verbose=verbose)
@@ -191,6 +198,9 @@ class Cluster:
         if verbose:
             print(f"Adding node {data}")
         r = testlib.post_succ(self, f"/controller/addNode", data=data)
+
+        # Update connected_nodes with the newly added node
+        self.connected_nodes.append(new_node)
 
         if do_rebalance:
             self.rebalance(verbose=verbose)
@@ -212,14 +222,19 @@ class Cluster:
             cluster_or_node=new_node,
             data=data)
 
+        # Update connected_nodes with the newly added node
+        self.connected_nodes.append(new_node)
+
         if do_rebalance:
             self.rebalance(verbose=verbose)
             self.wait_for_rebalance(verbose=verbose)
         return r
 
     # Wait for all associated nodes be responsive, each with a 60s timeout.
-    # May be needed after removing a node, if it needs to be immediately added
-    # back in to the cluster.
+    # This is specifically important for nodes that are not connected to the
+    # cluster, in the case that they need to be immediately added back in to the
+    # cluster, because these nodes will not be responsive immediately after
+    # they are removed from the cluster.
     def wait_nodes_up(self, timeout_s=60, verbose=False):
         cluster_run_lib.wait_nodes_up(
             timeout_s=timeout_s,
