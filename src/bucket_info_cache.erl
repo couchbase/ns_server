@@ -382,6 +382,7 @@ compute_bucket_info_with_config(Id, Config, Snapshot, BucketConfig,
                                Id, BucketUUID, BucketConfig)
               || Node <- Servers]},
             {nodesExt, build_nodes_ext(AllServers, Config, Snapshot, [])},
+            menelaus_web_buckets:build_hibernation_state(BucketConfig),
             build_cluster_capabilities(Config)])},
     {ok, Rev, RevEpoch, ejson:encode(Json), BucketConfig}.
 

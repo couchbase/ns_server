@@ -53,6 +53,7 @@
          maybe_cleanup_old_buckets/0,
          serve_short_bucket_info/2,
          serve_streaming_short_bucket_info/2,
+         build_hibernation_state/1,
          get_ddocs_list/2]).
 
 -import(menelaus_util,
