@@ -140,13 +140,14 @@ class Cluster:
 
     # Check every 0.5s until there is no rebalance running or 600s have passed
     def wait_for_rebalance(self, timeout_s=600, interval_s=0.5, verbose=False):
-        cluster_run_lib.wait_for_rebalance(self.connected_nodes[0].url,
-                                           timeout_s, interval_s, verbose)
+        return cluster_run_lib.wait_for_rebalance(self.connected_nodes[0].url,
+                                                  timeout_s, interval_s,
+                                                  verbose)
 
     # Rebalance the cluster, and possibly eject nodes at the same time.
     # Can optionally wait for the rebalance to finish
     def rebalance(self, ejected_nodes=None, wait=True, timeout_s=600,
-                  verbose=False):
+                  verbose=False, expected_error=None):
         # We have to use the otpNode names instead of the node ips, so we fetch
         # these from /nodeStatuses
         info = testlib.json_response(testlib.get(self, "/nodeStatuses"),
@@ -183,11 +184,15 @@ class Cluster:
 
         # Optionally wait for the rebalance to complete
         if wait:
-            self.wait_for_rebalance(timeout_s=timeout_s, verbose=verbose)
+            error = self.wait_for_rebalance(timeout_s=timeout_s,
+                                            verbose=verbose)
+            assert error is expected_error, \
+                f"Expected final rebalance status: {expected_error}\n" \
+                f"Found: {error}"
 
     # Add new_node to the cluster, and optionally perform a rebalance
     def add_node(self, new_node, services="kv", do_rebalance=False,
-                 verbose=False):
+                 verbose=False, expected_error=None):
         # Can only add nodes with the https address, which requires the 1900X
         # port
         cluster_member_port = 10000 + new_node.port
@@ -203,8 +208,7 @@ class Cluster:
         self.connected_nodes.append(new_node)
 
         if do_rebalance:
-            self.rebalance(verbose=verbose)
-            self.wait_for_rebalance(verbose=verbose)
+            self.rebalance(verbose=verbose, expected_error=expected_error)
         return r
 
     def do_join_cluster(self, new_node, services="kv", do_rebalance=False,

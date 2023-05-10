@@ -777,7 +777,9 @@ def connect(num_nodes=0,
                data).read()
 
         if do_wait_for_rebalance:
-            if not wait_for_rebalance("http://{0}:{1}".format(addr, base_port)):
+            err = wait_for_rebalance("http://{0}:{1}".format(addr, base_port))
+            if err is not None:
+                print(err)
                 return 1
             o.open("http://{0}:{1}/pools/default/buckets".format(addr, base_port),
                    bucket_data_string).read()
@@ -797,6 +799,14 @@ def is_rebalance_running(url):
     return rebalance_running
 
 
+def rebalance_error(url):
+    (tasks, ) = http_get_json(url + "/pools/default/tasks"),
+    for task in tasks:
+        if task.get("type") == "rebalance":
+            return task.get("errorMessage")
+    return None
+
+
 # Wait for a rebalance to complete, by checking every half second for up to
 # 10mins, and returning whether or not the rebalance completed in that time
 def wait_for_rebalance(url, timeout_s=600, interval_s=0.5, verbose=False):
@@ -811,10 +821,10 @@ def wait_for_rebalance(url, timeout_s=600, interval_s=0.5, verbose=False):
         while is_rebalance_running(url):
             if time.time() > timeout_time:
                 print_if_verbose("Timed out waiting for rebalance")
-                return False
+                return "timeout"
             print_if_verbose('.', end='')
             sys.stdout.flush()
             time.sleep(interval_s)
 
         print_if_verbose(" Finished.")
-    return True
+    return rebalance_error(url)
