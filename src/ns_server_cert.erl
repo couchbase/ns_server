@@ -886,7 +886,8 @@ extract_pem_from_p12(P12Path, OutCertPath, OutKeyPath, PassFun) ->
                 {["-passin", "env:PASS", "-passout", "env:PASS"],
                  [{"PASS", Pass}]}
         end,
-    Args = ["-in", P12Path | EncArgs],
+    LegacyOpt = ns_config:read_key_fast(pkcs12_allow_legacy_alg, false),
+    Args = ["-in", P12Path | EncArgs] ++ ["-legacy" || LegacyOpt],
     case pkcs12(["-nokeys", "-out", OutCertPath | Args], Env) of
         {ok, _} ->
             case pkcs12(["-nocerts", "-out", OutKeyPath | Args], Env) of
