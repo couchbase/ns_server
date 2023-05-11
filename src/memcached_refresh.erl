@@ -75,34 +75,29 @@ handle_info(refresh, #state{refresh_list = []} = State) ->
     {noreply, State};
 handle_info(refresh, #state{refresh_list = ToRefresh,
                             sync_froms = SyncFroms} = State) ->
-    ToRetry =
-        case ns_memcached:connect([{retries, 1}]) of
-            {ok, Sock} ->
-                NewToRefresh =
-                    lists:filter(
-                      fun (Item) ->
-                              RefreshFun = refresh_fun(Item),
-                              case (catch mc_client_binary:RefreshFun(Sock)) of
-                                  ok ->
-                                      false;
-                                  Error ->
-                                      ?log_debug("Error executing ~p: ~p", [RefreshFun, Error]),
-                                      true
-                              end
-                      end, ToRefresh),
-                gen_tcp:close(Sock),
-                NewToRefresh;
+    {ToRetry, Err} =
+        case whereis(ns_ports_setup) of
+            undefined ->
+                {ToRefresh, skipped};
             _ ->
-                ToRefresh
+                case do_refresh(ToRefresh) of
+                    [] ->
+                        {[], ok};
+                    Failed ->
+                        {Failed, failed}
+                end
         end,
+
     case ToRetry of
         [] ->
             ?log_debug("Refresh of ~p succeeded", [ToRefresh]),
             [gen_server:reply(F, ok) || F <- lists:reverse(SyncFroms)],
             {noreply, State#state{refresh_list = [], sync_froms = []}};
         _ ->
-            RetryAfter = ns_config:read_key_fast(memcached_file_refresh_retry_after, 1000),
-            ?log_debug("Refresh of ~p failed. Retry in ~p ms.", [ToRetry, RetryAfter]),
+            RetryAfter = ns_config:read_key_fast(
+                           memcached_file_refresh_retry_after, 1000),
+            ?log_debug("Refresh of ~p ~p. Retry in ~p ms.",
+                       [ToRetry, Err, RetryAfter]),
             erlang:send_after(RetryAfter, self(), refresh),
             {noreply, State#state{refresh_list = ToRetry}}
     end;
@@ -111,6 +106,28 @@ handle_info(refresh, #state{refresh_list = ToRefresh,
 %% timed out.
 handle_info(_Msg, State) ->
     {noreply, State}.
+
+do_refresh(ToRefresh) ->
+    case ns_memcached:connect([{retries, 1}]) of
+        {ok, Sock} ->
+            NewToRefresh =
+                lists:filter(
+                  fun (Item) ->
+                          RefreshFun = refresh_fun(Item),
+                          case (catch mc_client_binary:RefreshFun(Sock)) of
+                              ok ->
+                                  false;
+                              Error ->
+                                  ?log_debug("Error executing ~p: ~p",
+                                             [RefreshFun, Error]),
+                                  true
+                          end
+                  end, ToRefresh),
+            gen_tcp:close(Sock),
+            NewToRefresh;
+        _ ->
+            ToRefresh
+    end.
 
 refresh_fun(Item) ->
     list_to_atom("refresh_" ++ atom_to_list(Item)).
