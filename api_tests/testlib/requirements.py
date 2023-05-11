@@ -70,11 +70,10 @@ class ClusterRequirements:
 
 
 class Requirement(ABC):
-    def __init__(self, name, value):
+    def __init__(self, **kwargs):
         # In order to provide a string representation of the requirement, we
-        # need to be provided with a name and value
-        self._name = name
-        self._value = value
+        # need to be provided with a names and values in the form of kwargs
+        self._kwargs = kwargs
 
         # Override to make a requirement that depends on arguments for
         # cluster_run_lib.start()
@@ -84,7 +83,8 @@ class Requirement(ABC):
         self.connect_args = {}
 
     def __str__(self):
-        return f"{self._name}={self._value}"
+        return ",".join([f"{key}={value}"
+                        for key, value in self._kwargs.items()])
 
     def __eq__(self, other):
         return str(self) == str(other)
@@ -98,7 +98,7 @@ class Edition(Requirement):
     editions = ["Community", "Enterprise", "Serverless"]
 
     def __init__(self, edition):
-        super().__init__("edition", edition)
+        super().__init__(edition=edition)
         if edition not in Edition.editions:
             raise ValueError(f"Edition must be in {Edition.editions}")
 
@@ -125,32 +125,27 @@ class Edition(Requirement):
 
 class NumNodes(Requirement):
     def __init__(self, num_nodes, num_connected):
-        super().__init__("num_nodes", num_nodes)
+        # We use None as a placeholder for when we want all nodes connected
+        if num_connected is None:
+            num_connected = num_nodes
+        super().__init__(num_nodes=num_nodes, num_connected=num_connected)
+
+        # Check requirement values are valid
         if num_nodes < 1:
             raise ValueError(f"num_nodes must be a positive integer")
-        self.num_nodes = num_nodes
-        self.start_args = {'num_nodes': self.num_nodes}
-        self.connect_args = {'num_nodes': self.num_nodes}
-        # If num_connected is None then we require all nodes to be connected,
-        # so we will rebalance if there is more than 1 node (unless the testset
-        # requires otherwise)
-        if num_connected is None:
-            if num_nodes > 1:
-                self.connect_args.update({'do_rebalance': True,
-                                          'do_wait_for_rebalance': True})
-            else:
-                self.connect_args.update({'do_rebalance': False})
-        else:
-            if num_connected < 1:
-                raise ValueError("num_connected must be at least 1")
-            self.connect_args.update({'num_nodes': num_connected})
-            if num_connected > 1:
-                self.connect_args.update({'do_rebalance': True,
-                                          'do_wait_for_rebalance': True})
-            else:
-                self.connect_args.update({'do_rebalance': False})
+        if num_connected < 1:
+            raise ValueError("num_connected must be at least 1")
 
+        self.num_nodes = num_nodes
         self.num_connected = num_connected
+        self.start_args = {'num_nodes': num_nodes}
+        self.connect_args = {'num_nodes': num_connected}
+
+        if num_connected > 1:
+            self.connect_args.update({'do_rebalance': True,
+                                      'do_wait_for_rebalance': True})
+        else:
+            self.connect_args.update({'do_rebalance': False})
 
     def is_met(self, cluster):
         return (len(cluster.nodes) >= self.num_nodes and
@@ -162,7 +157,7 @@ class NumNodes(Requirement):
 
 class MemSize(Requirement):
     def __init__(self, memsize):
-        super().__init__("memsize", memsize)
+        super().__init__(memsize=memsize)
         if memsize < 256:
             raise ValueError(f"memsize must be a positive integer >= 256")
         self.memsize = memsize
