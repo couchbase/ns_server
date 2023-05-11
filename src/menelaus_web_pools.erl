@@ -246,7 +246,7 @@ do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
          {clusterName, list_to_binary(get_cluster_name())},
          {clusterEncryptionLevel,
           misc:get_effective_cluster_encryption_level(Config)},
-         {balanced, ns_cluster_membership:is_balanced()},
+         build_rebalance_status(),
          build_check_permissions_uri(Id, Snapshot),
          menelaus_web_node:build_memory_quota_info(Config),
          build_ui_params(InfoLevel, Snapshot),
@@ -254,6 +254,18 @@ do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
          build_unstable_params(Ctx),
          server_groups_uri_json(GroupsV)],
     {lists:flatten(PropList)}.
+
+build_rebalance_status() ->
+    case ns_orchestrator:needs_rebalance_with_detail() of
+        false ->
+            {balanced, true};
+        {true, {services, Reasons}} ->
+            [{balanced, false},
+             {servicesNeedRebalance, Reasons}];
+        {true, {buckets, Reasons}} ->
+            [{balanced, false},
+             {bucketsNeedRebalance, Reasons}]
+    end.
 
 build_rebalance_params(Id, UUID) ->
     RebalanceStatus = case rebalance:running() of

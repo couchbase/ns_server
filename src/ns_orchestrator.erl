@@ -66,6 +66,7 @@
          start_failover/2,
          try_autofailover/2,
          needs_rebalance/0,
+         needs_rebalance_with_detail/0,
          start_link/0,
          start_rebalance/5,
          retry_rebalance/4,
@@ -296,18 +297,36 @@ try_autofailover(Nodes, Options) ->
 
 -spec needs_rebalance() -> boolean().
 needs_rebalance() ->
+    false =/= needs_rebalance_with_detail().
+
+needs_rebalance_with_detail() ->
     NodesWanted = ns_node_disco:nodes_wanted(),
-    ServicesNeedRebalance =
-        lists:any(fun (S) ->
-                          service_needs_rebalance(S, NodesWanted)
-                  end, ns_cluster_membership:cluster_supported_services()),
-    ServicesNeedRebalance orelse buckets_need_rebalance(NodesWanted).
+    ServiceNeedsRebalanceReasons =
+        lists:filtermap(
+            fun (S) ->
+                service_needs_rebalance(S, NodesWanted)
+            end,
+            ns_cluster_membership:cluster_supported_services()),
+    case ServiceNeedsRebalanceReasons of
+        [] ->
+            case buckets_need_rebalance(NodesWanted) of
+                [] ->
+                    false;
+                BucketNeedsRebalanceReasons ->
+                    {true, {buckets, BucketNeedsRebalanceReasons}}
+            end;
+        _ ->
+            {true, {services, ServiceNeedsRebalanceReasons}}
+    end.
 
 service_needs_rebalance(Service, NodesWanted) ->
     ServiceNodes = ns_cluster_membership:service_nodes(NodesWanted, Service),
     ActiveServiceNodes = ns_cluster_membership:service_active_nodes(Service),
-    lists:sort(ServiceNodes) =/= lists:sort(ActiveServiceNodes) orelse
-        topology_aware_service_needs_rebalance(Service, ActiveServiceNodes).
+    NeedsRebalance =
+        lists:sort(ServiceNodes) =/= lists:sort(ActiveServiceNodes) orelse
+        topology_aware_service_needs_rebalance(Service, ActiveServiceNodes),
+    ns_rebalancer:needs_rebalance_with_reason(NeedsRebalance,
+                                              service_not_balanced, Service).
 
 topology_aware_service_needs_rebalance(Service, ServiceNodes) ->
     case lists:member(Service,
@@ -327,14 +346,14 @@ topology_aware_service_needs_rebalance(Service, ServiceNodes) ->
             false
     end.
 
--spec buckets_need_rebalance([node(), ...]) -> boolean().
+-spec buckets_need_rebalance([node(), ...]) -> list().
 buckets_need_rebalance(NodesWanted) ->
     KvNodes = ns_cluster_membership:service_nodes(NodesWanted, kv),
-    lists:any(fun ({Bucket, BucketConfig}) ->
-                      ns_rebalancer:bucket_needs_rebalance(
+    lists:filtermap(fun ({Bucket, BucketConfig}) ->
+                      ns_rebalancer:bucket_needs_rebalance_with_details(
                         Bucket, BucketConfig, KvNodes)
-              end,
-              ns_bucket:get_buckets()).
+                    end,
+                    ns_bucket:get_buckets()).
 
 -spec request_janitor_run(janitor_item()) -> ok.
 request_janitor_run(Item) ->

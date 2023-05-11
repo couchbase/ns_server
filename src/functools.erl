@@ -18,6 +18,7 @@
          alternative/2,
          sequence/1,
          sequence_/1,
+         sequence_/2,
          add/1, add/2,
          sub/1, sub/2,
          mul/1, mul/2,
@@ -92,12 +93,16 @@ sequence([F | Rest], Acc) ->
 
 %% Same as sequence/1, but doesn't expect functions to return anything useful
 %% in ok case.
-sequence_([]) ->
-    ok;
-sequence_([F | Rest]) ->
+sequence_(FuncList) ->
+    sequence_(ok, FuncList).
+
+%% Same as sequence/1, but accepts the atom to continue.
+sequence_(ToContinue, []) ->
+    ToContinue;
+sequence_(ToContinue, [F | Rest]) ->
     case F() of
-        ok ->
-            sequence_(Rest);
+        ToContinue ->
+            sequence_(ToContinue, Rest);
         Other ->
             Other
     end.

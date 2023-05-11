@@ -28,11 +28,13 @@
          move_vbuckets/2,
          unbalanced/2,
          bucket_needs_rebalance/3,
+         bucket_needs_rebalance_with_details/3,
          eject_nodes/1,
          maybe_cleanup_old_buckets/1,
          start_link_graceful_failover/1,
          check_test_condition/2,
-         rebalance_topology_aware_services/3]).
+         rebalance_topology_aware_services/3,
+         needs_rebalance_with_reason/3]).
 
 -export([wait_local_buckets_shutdown_complete/0]). % used via rpc:multicall
 
@@ -817,6 +819,9 @@ is_bucket_initialized(BucketConfig) ->
     proplists:get_value(map, BucketConfig) =/= undefined.
 
 bucket_needs_rebalance(Bucket, BucketConfig, Nodes) ->
+    false =/= bucket_needs_rebalance_with_details(Bucket, BucketConfig, Nodes).
+
+bucket_needs_rebalance_with_details(Bucket, BucketConfig, Nodes) ->
     Servers = ns_bucket:get_servers(BucketConfig),
     case proplists:get_value(type, BucketConfig) of
         membase ->
@@ -828,14 +833,27 @@ bucket_needs_rebalance(Bucket, BucketConfig, Nodes) ->
                     %% don't require a rebalance.
                     false;
                 _ ->
-                    ns_bucket:num_replicas_changed(BucketConfig) orelse
-                        not are_servers_balanced(BucketConfig, Servers, Nodes)
-                        orelse
-                        map_needs_rebalance(Bucket, Servers, BucketConfig)
+                    initialized_bucket_needs_rebalance(Bucket, BucketConfig,
+                                                       Nodes, Servers)
             end;
         memcached ->
-            lists:sort(Nodes) =/= lists:sort(Servers)
+            needs_rebalance_with_reason(
+              lists:sort(Nodes) =/= lists:sort(Servers),
+              servers_changed, Bucket)
     end.
+
+initialized_bucket_needs_rebalance(Bucket, BucketConfig, Nodes, Servers) ->
+    functools:sequence_(
+      false,
+      [?cut(needs_rebalance_with_reason(
+              ns_bucket:num_replicas_changed(BucketConfig),
+              num_replicas_changed, Bucket)),
+       ?cut(needs_rebalance_with_reason(
+              not are_servers_balanced(BucketConfig, Servers, Nodes),
+              servers_not_balanced, Bucket)),
+       ?cut(needs_rebalance_with_reason(
+              map_needs_rebalance(Bucket, Servers, BucketConfig),
+              map_needs_rebalance, Bucket))]).
 
 are_servers_balanced(BucketConfig, Servers, Nodes) ->
     case ns_bucket:get_desired_servers(BucketConfig) of
@@ -1709,6 +1727,24 @@ find_active_nodes_of_vbuckets(Map, VBucketsSet) ->
                       Acc
               end
       end, #{}, misc:enumerate(Map, 0)).
+
+-spec needs_rebalance_with_reason(NeedsRebalance::boolean(), atom(), term()) ->
+    false | {true, Desc::string()}.
+needs_rebalance_with_reason(false, _Reason, _Data) ->
+    false;
+needs_rebalance_with_reason(true, Reason, Data) ->
+    {true, list_to_binary(get_not_balanced_reason_desc(Reason, Data))}.
+
+get_not_balanced_reason_desc(service_not_balanced, Service) ->
+    io_lib:format("Service ~p needs rebalance.", [Service]);
+get_not_balanced_reason_desc(num_replicas_changed, Bucket) ->
+    io_lib:format("Number of replicas for bucket ~p has changed.", [Bucket]);
+get_not_balanced_reason_desc(servers_not_balanced, Bucket) ->
+    io_lib:format("Servers of bucket ~p are not balanced.", [Bucket]);
+get_not_balanced_reason_desc(map_needs_rebalance, Bucket) ->
+    io_lib:format("Bucket map of bucket ~p needs rebalance.", [Bucket]);
+get_not_balanced_reason_desc(servers_changed, Bucket) ->
+    io_lib:format("Servers of bucket ~p have changed.", [Bucket]).
 
 -ifdef(TEST).
 find_active_nodes_of_vbuckets_test() ->
