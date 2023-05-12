@@ -1,5 +1,5 @@
 import testlib
-from testlib import testlib, ClusterRequirements
+from testlib import ClusterRequirements
 
 
 class NodeAdditionTests(testlib.BaseTestSet):

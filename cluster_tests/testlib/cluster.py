@@ -234,8 +234,7 @@ class Cluster:
         self.connected_nodes.append(new_node)
 
         if do_rebalance:
-            self.rebalance(verbose=verbose)
-            self.wait_for_rebalance(verbose=verbose)
+            self.rebalance(wait=True, verbose=verbose)
         return r
 
     def failover_node(self, victim_node, graceful=True, do_rebalance=False,

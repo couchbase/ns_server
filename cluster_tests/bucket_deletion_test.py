@@ -10,8 +10,10 @@
 import testlib
 from multiprocessing import Process
 
+
 def delete_bucket(node, bucket):
-        testlib.ensure_deleted(node, f"/pools/default/buckets/{bucket}")
+    testlib.ensure_deleted(node, f"/pools/default/buckets/{bucket}")
+
 
 class BucketDeletionTest(testlib.BaseTestSet):
 
@@ -30,12 +32,14 @@ class BucketDeletionTest(testlib.BaseTestSet):
                                     'ramQuotaMB': 100})
         # Delay shutdown of bucket-1 by 5 secs.
         testlib.post_succ(cluster, "/diag/eval",
-                          data="testconditions:set({wait_for_bucket_shutdown, \"bucket-1\"}, {delay, 5000})")
+                          data="testconditions:set({wait_for_bucket_shutdown, "
+                               "\"bucket-1\"}, {delay, 5000})")
 
     def teardown(self, cluster):
         testlib.post_succ(cluster, "/diag/eval",
                           data=
-                          "testconditions:delete({wait_for_bucket_shutdown, \"bucket-1\"})")
+                          "testconditions:delete({wait_for_bucket_shutdown, "
+                          "\"bucket-1\"})")
 
     def concurrent_bucket_deletion_test(self, cluster):
         p = Process(target=delete_bucket, args=(cluster.nodes[0], "bucket-1"))

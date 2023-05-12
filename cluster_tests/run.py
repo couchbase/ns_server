@@ -65,13 +65,16 @@ Usage: {program_name}
         Show this help
 """
 
+
 def usage():
     print(USAGE_STRING.format(program_name=sys.argv[0]))
+
 
 def bad_args_exit(msg):
     print(f"\033[31m{msg}\033[0m")
     usage()
     sys.exit(2)
+
 
 def error_exit(msg):
     print(f"\033[31m{msg}\033[0m")

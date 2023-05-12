@@ -60,7 +60,7 @@ def run_testset(testset_class, test_names, cluster, testset_name):
     _, err = safe_test_function_call(testset_instance, 'setup', [cluster])
 
     if err is not None:
-        return (0, [err])
+        return 0, [err]
 
     try:
         for test in test_names:
@@ -80,13 +80,12 @@ def run_testset(testset_class, test_names, cluster, testset_name):
         if err is not None:
             errors.append(err)
 
-    return (executed, errors)
+    return executed, errors
 
 
 def safe_test_function_call(testset, testfunction, args, verbose=False):
     res = None
     error = None
-    testname = ""
     if hasattr(testset, '__name__'):
         testname = f"{testset.__name__}.{testfunction}"
     else:
@@ -103,7 +102,7 @@ def safe_test_function_call(testset, testfunction, args, verbose=False):
         else:
             print(f"\033[31m  {testname} failed ({e}) \033[0m")
         error = (testname, e)
-    return (res, error)
+    return res, error
 
 
 def timedelta_str(start):
