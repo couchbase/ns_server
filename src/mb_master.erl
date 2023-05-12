@@ -24,6 +24,7 @@
 -define(TIMEOUT, ?HEARTBEAT_INTERVAL * ?TIMEOUT_INTERVAL_COUNT).
 
 -type node_info() :: {version(), node()}.
+-type priority() :: lower | equal | higher.
 
 -record(state, {child :: undefined | pid(),
                 master :: node(),
@@ -545,21 +546,49 @@ node_info() ->
 node_info_to_node({_Version, Node}) ->
     Node.
 
+-spec compare_version(version(), version()) -> priority().
+compare_version(VersionA, VersionB) ->
+    if VersionA =:= VersionB ->
+           equal;
+       VersionA < VersionB ->
+           lower;
+       VersionA > VersionB ->
+           higher
+    end.
+
+-spec compare_name(node(), node()) -> priority().
+compare_name(NameA, NameB) ->
+    if NameA =:= NameB ->
+          equal;
+       NameA < NameB ->
+           higher;
+       NameB < NameA ->
+           lower
+    end.
+
 %% Determine whether some node is of higher priority than ourselves.
 -spec higher_priority_node(node_info()) -> boolean().
 higher_priority_node(NodeInfo) ->
     Self = node_info(),
     higher_priority_node(Self, NodeInfo).
 
-higher_priority_node({SelfVersion, SelfNode},
-                     {Version, Node}) ->
-    if
-        Version > SelfVersion ->
-            true;
-        Version =:= SelfVersion ->
-            Node < SelfNode;
-        true ->
-            false
+-spec higher_priority_node(node_info(), node_info()) -> boolean().
+higher_priority_node({SelfVersion, SelfNode}, {OtherVersion, OtherNode}) ->
+    higher_priority_node([SelfVersion, SelfNode], [OtherVersion, OtherNode],
+                         [fun compare_version/2,
+                          fun compare_name/2]).
+
+%% Compare node info terms against one another with the given comparators.
+%% The list of terms should be of the form [version(), node()]
+-spec higher_priority_node([term()], [term()], [function()]) -> boolean().
+higher_priority_node([], [], []) ->
+    false;
+higher_priority_node([SelfValue | Self], [OtherValue | Other],
+                     [Comparator | Comparators]) ->
+    case Comparator(OtherValue, SelfValue) of
+        lower -> false;
+        higher -> true;
+        equal -> higher_priority_node(Self, Other, Comparators)
     end.
 
 %% true iff we need to take over mastership of given node
@@ -568,9 +597,28 @@ strongly_lower_priority_node(NodeInfo) ->
     Self = node_info(),
     strongly_lower_priority_node(Self, NodeInfo).
 
+-spec strongly_lower_priority_node(node_info(), node_info()) -> boolean().
 strongly_lower_priority_node({SelfVersion, _SelfNode},
-                             {Version, _Node}) ->
-    (Version < SelfVersion).
+                             {OtherVersion, _OtherNode}) ->
+    strongly_lower_priority_node([SelfVersion],
+                                 [OtherVersion],
+                                 [fun compare_version/2]).
+
+%% Compare node info terms against one another with the given comparators.
+%% The list of terms should be of the form [version()]. We don't compare node
+%% name here like we do in higher_priority_node as a node with lower name
+%% does not need to take over from one with the same priority otherwise.
+-spec strongly_lower_priority_node(
+          [term()], [term()], [function()]) -> boolean().
+strongly_lower_priority_node([], [], []) ->
+    false;
+strongly_lower_priority_node([SelfValue | Self], [OtherValue | Other],
+                             [Comparator | Comparators]) ->
+    case Comparator(OtherValue, SelfValue) of
+        lower -> true;
+        higher -> false;
+        equal -> strongly_lower_priority_node(Self, Other, Comparators)
+    end.
 
 announce_leader(Node) ->
     gen_event:sync_notify(leader_events, {new_leader, Node}).
