@@ -299,10 +299,13 @@ hello(Sock, AgentName, ClientFeatures) ->
     FeaturesMap = hello_features_map(),
     Features = [<<V:16>> || {F, V} <- FeaturesMap,
                             proplists:get_bool(F, ClientFeatures)],
-    %% AgentName is the name of the client issuing the hello command.
+    %% Key is the name of the client issuing the hello command.
+    Key = list_to_binary("ns_server:" ++ AgentName),
+    %% We truncate to 250 bytes as this is the longest key allowed by memcached
+    KeyTrunc = binary:part(Key, 0, min(size(Key), 250)),
     case cmd(?CMD_HELLO, Sock, undefined, undefined,
              {#mc_header{},
-              #mc_entry{key = AgentName, data = list_to_binary(Features)}}) of
+              #mc_entry{key = KeyTrunc, data = list_to_binary(Features)}}) of
         {ok, #mc_header{status=?SUCCESS}, #mc_entry{data = undefined}, _NCB} ->
             {ok, []};
         {ok, #mc_header{status=?SUCCESS}, #mc_entry{data = RetData}, _NCB} ->

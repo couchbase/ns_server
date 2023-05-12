@@ -338,7 +338,10 @@ negotiate_features(Sock, Type, ConnName, Features) ->
 do_negotiate_features(_Sock, _Type, _ConnName, []) ->
     ok;
 do_negotiate_features(Sock, Type, ConnName, Features) ->
-    case mc_client_binary:hello(Sock, "proxy", Features) of
+    %% Detailed identity string for easier debugging, e.g.
+    %% ns_server:proxy-producer/replication:n_0@127.0.0.1->n_1@127.0.0.1:default
+    Identity = "proxy-" ++ atom_to_list(Type) ++ "/" ++ ConnName,
+    case mc_client_binary:hello(Sock, Identity, Features) of
         {ok, Negotiated} ->
             case Features -- Negotiated of
                 [] -> ok;
