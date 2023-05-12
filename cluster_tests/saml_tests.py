@@ -33,6 +33,7 @@ from contextlib import contextmanager
 import html
 import re
 import datetime
+import glob
 
 debug=False
 scriptdir = os.path.dirname(os.path.realpath(__file__))
@@ -583,8 +584,8 @@ def saml_configured(cluster, **kwargs):
     finally:
         if mock_server_process is not None:
             mock_server_process.terminate()
-        if os.path.exists(idp_subject_file_path):
-            os.remove(idp_subject_file_path)
+        for idp_subject_file in glob.glob(idp_subject_file_path + "*"):
+            os.remove(idp_subject_file)
         if os.path.exists(metadataFile):
             os.remove(metadataFile)
         testlib.delete_succ(cluster, '/settings/saml')
