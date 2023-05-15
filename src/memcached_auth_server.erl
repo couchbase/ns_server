@@ -238,7 +238,7 @@ reconnect(State = #s{mcd_socket = OldSock, enabled = Enabled}) ->
     end.
 
 connect() ->
-    case ns_memcached:connect([{retries, 1}, duplex]) of
+    case ns_memcached:connect(?MODULE_STRING, [{retries, 1}, duplex]) of
         {ok, Sock} ->
             case cmd_auth_provider(Sock) of
                 ok ->

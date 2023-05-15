@@ -108,7 +108,7 @@ handle_info(_Msg, State) ->
     {noreply, State}.
 
 do_refresh(ToRefresh) ->
-    case ns_memcached:connect([{retries, 1}]) of
+    case ns_memcached:connect(?MODULE_STRING, [{retries, 1}]) of
         {ok, Sock} ->
             NewToRefresh =
                 lists:filter(

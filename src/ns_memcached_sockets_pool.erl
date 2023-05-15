@@ -31,7 +31,7 @@ take_socket(Options) ->
         {ok, Sock} ->
             {ok, Sock};
         no_socket ->
-            ns_memcached:connect(Options)
+            ns_memcached:connect(?MODULE_STRING, Options)
     end.
 
 take_socket(undefined, Options) ->

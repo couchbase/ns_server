@@ -133,7 +133,7 @@
         ]).
 
 %% for ns_memcached_sockets_pool, memcached_file_refresh only
--export([connect/0, connect/1]).
+-export([connect/2, connect/3]).
 
 %% for diagnostics/debugging
 -export([perform_very_long_call/2]).
@@ -183,7 +183,7 @@ init(Bucket) ->
 run_connect_phase(Parent, Bucket, WorkersCount) ->
     ?log_debug("Started 'connecting' phase of ns_memcached-~s. Parent is ~p",
                [Bucket, Parent]),
-    RV = case connect() of
+    RV = case connect(?MODULE_STRING ++ "-" ++ Bucket) of
              {ok, Sock} ->
                  gen_tcp:controlling_process(Sock, Parent),
                  {ok, Sock};
@@ -203,13 +203,14 @@ worker_init(Parent, ParentState) ->
     ParentState1 = do_worker_init(ParentState),
     worker_loop(Parent, ParentState1, #state.running_fast).
 
-do_worker_init(State) ->
-    {ok, Sock} = connect(State#state.worker_features),
+do_worker_init(#state{bucket = Bucket} = State) ->
+    AgentName = ?MODULE_STRING ++ "-" ++ Bucket ++ "/worker",
+    {ok, Sock} = connect(AgentName, State#state.worker_features),
 
     {ok, SockName} = inet:sockname(Sock),
     erlang:put(sockname, SockName),
 
-    ok = mc_client_binary:select_bucket(Sock, State#state.bucket),
+    ok = mc_client_binary:select_bucket(Sock, Bucket),
     State#state{sock = Sock}.
 
 worker_loop(Parent, #state{sock = Sock,
@@ -1361,16 +1362,16 @@ get_seqno_stats(Bucket, VBucket) ->
 %%
 %% Internal functions
 %%
-connect() ->
-    connect([]).
+connect(AgentName) ->
+    connect(AgentName, []).
 
-connect(Options) ->
+connect(AgentName, Options) ->
     Retries = proplists:get_value(retries, Options, ?CONNECTION_ATTEMPTS),
-    connect(Options, Retries).
+    connect(AgentName, Options, Retries).
 
-connect(Options, Tries) ->
+connect(AgentName, Options, Tries) ->
     try
-        do_connect(Options)
+        do_connect(AgentName, Options)
     catch
         E:R ->
             case Tries of
@@ -1380,11 +1381,11 @@ connect(Options, Tries) ->
                 _ ->
                     ?log_warning("Unable to connect: ~p, retrying.", [{E, R}]),
                     timer:sleep(1000), % Avoid reconnecting too fast.
-                    connect(Options, Tries - 1)
+                    connect(AgentName, Options, Tries - 1)
             end
     end.
 
-do_connect(Options) ->
+do_connect(AgentName, Options) ->
     Config = ns_config:get(),
     Port = service_ports:get_port(memcached_dedicated_port, Config),
     User = ns_config:search_node_prop(Config, memcached, admin_user),
@@ -1421,7 +1422,7 @@ do_connect(Options) ->
                 error({auth_failure, Err})
         end,
         Features = mc_client_binary:hello_features(HelloFeatures),
-        {ok, Negotiated} = mc_client_binary:hello(Sock, "regular", Features),
+        {ok, Negotiated} = mc_client_binary:hello(Sock, AgentName, Features),
         Failed = Features -- Negotiated,
         Failed == [] orelse error({feature_negotiation_failed, Failed}),
         {ok, Sock}
@@ -1745,16 +1746,16 @@ do_get_keys(Bucket, NodeVBuckets, Params, Identity) ->
 config_validate(NewConfig, AFamilies) ->
     misc:executing_on_new_process(
       fun () ->
-              {ok, Sock} = connect([{retries, 1},
-                                    {try_afamily, AFamilies}]),
+              {ok, Sock} = connect(?MODULE_STRING ++ "/validate",
+                                   [{retries, 1}, {try_afamily, AFamilies}]),
               mc_client_binary:config_validate(Sock, NewConfig)
       end).
 
 config_reload(AFamilies) ->
     misc:executing_on_new_process(
       fun () ->
-              {ok, Sock} = connect([{retries, 1},
-                                    {try_afamily, AFamilies}]),
+              {ok, Sock} = connect(?MODULE_STRING ++ "/reload",
+                                   [{retries, 1}, {try_afamily, AFamilies}]),
               mc_client_binary:config_reload(Sock)
       end).
 
