@@ -595,22 +595,42 @@ config_upgrade_to_elixir(_Config) ->
     [{delete, mb33750_workaround_enabled}].
 
 -ifdef(TEST).
-priority_test() ->
+higher_priority_node_test() ->
+    %% VersionA < VersionB => NodeB higher priority (NameA < NameB)
     ?assertEqual(true,
                  higher_priority_node({misc:parse_version("1.7.1"),
                                        'ns_1@192.168.1.1'},
                                       {misc:parse_version("2.0"),
                                        'ns_2@192.168.1.1'})),
+
+    %% VersionA < VersionB => NodeB higher priority (NameA > NameB)
     ?assertEqual(true,
                  higher_priority_node({misc:parse_version("1.7.1"),
                                        'ns_2@192.168.1.1'},
                                       {misc:parse_version("2.0"),
                                        'ns_1@192.168.1.1'})),
+
+    %% VersionA > VersionB => NodeA higher priority (NameA < NameB)
+    ?assertEqual(false,
+                 higher_priority_node({misc:parse_version("2.0"),
+                                       'ns_0@192.168.1.1'},
+                                      {misc:parse_version("1.7.2"),
+                                       'ns_1@192.168.1.1'})),
+
+    %% VersionA > VersionB => NodeA higher priority (NameA > NameB)
     ?assertEqual(false,
                  higher_priority_node({misc:parse_version("2.0"),
                                        'ns_1@192.168.1.1'},
                                       {misc:parse_version("1.7.2"),
                                        'ns_0@192.168.1.1'})),
+
+    %% VersionA = VersionB and NameA < NameB => NodeA higher priority
+    ?assertEqual(false, higher_priority_node({misc:parse_version("2.0"),
+                                              'ns_1@192.168.1.1'},
+                                             {misc:parse_version("2.0"),
+                                              'ns_2@192.168.1.1'})),
+
+    %% VersionA = VersionB and NameA > NameB => NodeB higher priority
     ?assertEqual(true, higher_priority_node({misc:parse_version("2.0"),
                                              'ns_2@192.168.1.1'},
                                             {misc:parse_version("2.0"),
