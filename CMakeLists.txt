@@ -335,4 +335,4 @@ INSTALL (DIRECTORY "${_instdir}/var/" DESTINATION var/lib/couchbase/logs
 
 INSTALL (FILES etc/metrics_metadata.json DESTINATION "etc/couchbase/cm")
 
-ADD_SUBDIRECTORY(api_tests)
+ADD_SUBDIRECTORY(cluster_tests)

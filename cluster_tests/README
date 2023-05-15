@@ -1,9 +1,9 @@
-API Tests
+Cluster Tests
 =========
 
 The main purpose of these tests is to avoid manual testing and retesting
 of ns_server's API during development. Basically everything that an engineer
-tests with curl may be put to api_tests.
+tests with curl may be put to cluster_tests.
 
 Note: currently tests execution order is undefined and the framework doesn't
 reset the state of ns_server between tests, so tests should not depend on each
@@ -19,19 +19,19 @@ Install requirements first:
 
 and then run:
 
-    $ cd api_tests
+    $ cd cluster_tests
     $ ./run.py
 
 Start a single node cluster (with data and logs in ./test_cluster_data),
 and run all tests against that cluster. The data and logs will be retained,
 for investigating failed tests, but will be cleared upon subsequent calls to
-api_tests/run.py
+cluster_tests/run.py
 
 
 Run tests against existing cluster
 ----------------------------------
 
-    $ cd api_tests
+    $ cd cluster_tests
     $ ./run.py --cluster localhost:9000
 
 Run all tests against localhost:9000.
