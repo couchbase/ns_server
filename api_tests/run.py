@@ -220,13 +220,21 @@ def main():
 
     if len(errors) > 0:
         error_exit("Tests finished with errors")
-    elif not keep_tmp_dirs:
+    elif not (keep_tmp_dirs or check_for_core_files()):
         # Kill any created nodes and possibly delete directories as we don't
         # need to keep around data from successful tests
         cluster.teardown()
         remove_temp_cluster_directories()
         # Unregister the kill nodes atexit handler as the nodes are now down
         atexit.unregister(kill_nodes)
+
+
+# If there are core files, the tests may have passed but something went wrong in
+# erlang, so it is valuable to keep the logs in this case
+def check_for_core_files():
+    if keep := len(glob.glob("/tmp/core.*")) > 0:
+        print("Core file(s) found. Keeping cluster logs")
+    return keep
 
 
 def group_testsets(testsets):
