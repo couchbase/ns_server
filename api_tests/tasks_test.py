@@ -55,9 +55,8 @@ class TasksBase:
         timeout_time = time_start + timeout
         while not is_task_done(last_task_status := get_status()) and \
                 time.time() < timeout_time:
-            # Sleep for a 20th of the total timeout, so that we only make at
-            # most 20 checks, rather than spamming the cluster
-            time.sleep(timeout / 20)
+            # Check twice a second
+            time.sleep(0.5)
 
         if timeout_msg is None:
             timeout_msg = f"Task status check timed out after {timeout}s.\n"
