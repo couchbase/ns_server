@@ -130,7 +130,7 @@ handle_info(refresh, #state{buckets = Buckets,
     {noreply, resend_refresh_msg(NewState)};
 
 handle_info({event, buckets}, #state{buckets = Dict} = State) ->
-    NewBuckets0 = ns_bucket:get_bucket_names_of_type(persistent),
+    NewBuckets0 = ns_bucket:node_bucket_names_of_type(node(), persistent),
     NewBuckets = lists:sort(NewBuckets0),
     KnownBuckets = lists:sort(dict:fetch_keys(Dict)),
     ToRemove = KnownBuckets -- NewBuckets,
