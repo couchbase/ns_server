@@ -1188,10 +1188,10 @@ class TaskRunner:
             metatask.execute_all(logfile)
 
 
-def make_curl_task(name, get_creds_fun, url,
+def make_curl_task(name, get_creds_fun, url, method="GET",
                    timeout=60, log_file=DEFAULT_LOG, base_task=AllOsTask,
                    **kwargs):
-    return base_task(name, ["curl", "-sS", "-k", "--proxy", "", "-K-", url],
+    return base_task(name, ["curl", "-X", method, "-sS", "-k", "--proxy", "", "-K-", url],
                      timeout=timeout,
                      log_file=log_file,
                      to_stdin=lambda: f"--user {get_creds_fun()}",
@@ -1773,12 +1773,12 @@ def make_product_task(guts, initargs_path, local_token_creds_fun,
                 get_creds_fun=local_token_creds_fun,
                 url=cr_url,
                 log_file="completed_requests.json",
-                no_header=True, timeout=60*5),
+                no_header=True, timeout=60*5, method="POST"),
             make_curl_task(name="Query Active Requests: ",
                 get_creds_fun=local_token_creds_fun,
                 url=ar_url,
                 log_file="active_requests.json",
-                no_header=True, timeout=60*2),
+                no_header=True, timeout=60*2, method="POST"),
             make_curl_task(name="Query Prepared Cache: ",
                 get_creds_fun=local_token_creds_fun,
                 url=pr_url,
