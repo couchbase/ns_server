@@ -637,11 +637,7 @@ conf(internal) ->
      {failover_bulk_buckets_config_factor, failoverBulkConfigFactor,
       ?MAX_BUCKETS_SUPPORTED, get_number(1, ?MAX_BUCKETS_SUPPORTED)},
      {{cert, use_sha1}, certUseSha1, false, fun get_bool/1},
-     {allow_http_node_addition, httpNodeAddition, false, fun get_bool/1}] ++
-        [{Key, Param, Default, get_number(Min, Max)} ||
-            {Param, Key, Default, Min, Max} <- get_storage_limit_attributes()] ++
-        [{Key, Param, Default, get_number(Min, Max)} ||
-            {Param, Key, Default, Min, Max} <- get_throttle_limit_attributes()];
+     {allow_http_node_addition, httpNodeAddition, false, fun get_bool/1}];
 
 conf(developer_preview) ->
     [{developer_preview_enabled, enabled, false, fun only_true/1}];
