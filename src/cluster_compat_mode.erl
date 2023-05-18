@@ -104,9 +104,14 @@ min_supported_compat_version() ->
 %% I.e. we want later version to be able to take over mastership even
 %% without requiring compat mode upgrade
 mb_master_advertised_version() ->
-    case get_pretend_version() of
+    case get_mb_master_pretend_version() of
         undefined ->
-            ?MASTER_ADVERTISED_VERSION;
+            case get_pretend_version() of
+                undefined ->
+                    ?MASTER_ADVERTISED_VERSION;
+                Version ->
+                    Version ++ [0]
+            end;
         Version ->
             Version ++ [0]
     end.
@@ -368,14 +373,20 @@ effective_cluster_compat_version_for([VersionMaj, VersionMin] =
 effective_cluster_compat_version() ->
     effective_cluster_compat_version_for(get_compat_version()).
 
-get_pretend_version() ->
-    case application:get_env(ns_server, pretend_version) of
+get_pretend_version(Key) ->
+    case application:get_env(ns_server, Key) of
         undefined ->
             undefined;
         {ok, VersionString} ->
             {[A, B | _], _, _} = misc:parse_version(VersionString),
             [A, B]
     end.
+
+get_pretend_version() ->
+    get_pretend_version(pretend_version).
+
+get_mb_master_pretend_version() ->
+    get_pretend_version(mb_master_pretend_version).
 
 is_developer_preview() -> is_developer_preview(ns_config:latest()).
 is_developer_preview(Config) ->
