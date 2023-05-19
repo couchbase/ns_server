@@ -1559,7 +1559,7 @@ handle_put_group(GroupId, Req) ->
         true ->
             validator:handle(
               fun (Values) ->
-                      reply(do_store_group(GroupId, Values, Req), Req)
+                      reply(do_store_group(GroupId, Values, true, Req), Req)
               end, Req, form, put_group_validators(Req, fun (_) -> GroupId end));
         Error ->
             menelaus_util:reply_global_error(Req, Error)
@@ -1592,7 +1592,7 @@ validate_ldap_ref(Name, State) ->
               end
       end, Name, State).
 
-do_store_group(GroupId, Props, Req) ->
+do_store_group(GroupId, Props, CanOverwrite, Req) ->
     Description = proplists:get_value(description, Props),
     Roles = proplists:get_value(roles, Props),
     UniqueRoles = lists:usort(Roles),
@@ -1601,21 +1601,29 @@ do_store_group(GroupId, Props, Req) ->
                  true -> updated;
                  false -> added
              end,
-    case menelaus_users:store_group(GroupId, Description, UniqueRoles,
-                                    LDAPGroup) of
-        ok ->
-            ns_audit:set_user_group(Req, GroupId, UniqueRoles, Description,
-                                    LDAPGroup, Reason),
-            {_, SanitizedGroupId} = ns_config_log:sanitize_value(GroupId,
-                                                                 [add_salt]),
-            ?log_debug("Group added: ~p, ~p", [GroupId, SanitizedGroupId]),
-            event_log:add_log(group_added, [{group, SanitizedGroupId}]),
-            ok;
-        {error, {roles_validation, _UnknownRoles}} = Error ->
-            Error
-    end.
+    case (Reason == updated) andalso (not CanOverwrite) of
+        true ->
+            {error, already_exists};
+        false ->
+            case menelaus_users:store_group(GroupId, Description, UniqueRoles,
+                                            LDAPGroup) of
+                ok ->
+                    ns_audit:set_user_group(
+                      Req, GroupId, UniqueRoles, Description, LDAPGroup,
+                      Reason),
+                    {_, SanitizedGroupId} =
+                        ns_config_log:sanitize_value(GroupId, [add_salt]),
+                    ?log_debug("Group added: ~p, ~p",
+                               [GroupId, SanitizedGroupId]),
+                    event_log:add_log(group_added,
+                                      [{group, SanitizedGroupId}]),
+                    Reason;
+                {error, {roles_validation, _UnknownRoles}} = Error ->
+                    Error
+            end
+        end.
 
-reply(ok, Req) ->
+reply(Res, Req) when Res == ok; Res == updated; Res == added ->
     menelaus_util:reply_json(Req, <<>>, 200);
 reply({error, {roles_validation, UnknownRoles}}, Req) ->
     menelaus_util:reply_error(
@@ -2158,7 +2166,8 @@ handle_backup_restore(Req) ->
     menelaus_util:assert_is_elixir(),
     validator:handle(
       handle_backup_restore_validated(Req, _), Req, form,
-      [validator:required(backup, _),
+      [validator:boolean(canOverwrite, _),
+       validator:required(backup, _),
        validator:json(
          backup,
          [validator:required(version, _),
@@ -2176,22 +2185,41 @@ handle_backup_restore(Req) ->
 
 handle_backup_restore_validated(Req, Params) ->
     Backup = proplists:get_value(backup, Params),
+    CanOverwrite = proplists:get_bool(canOverwrite, Params),
+    UserCounters = #{created => 0, overwritten => 0, skipped => 0},
+    GroupCounters = #{created => 0, overwritten => 0, skipped => 0},
+    Count = fun (Type, Map, Inc) -> Map#{Type => maps:get(Type, Map) + Inc} end,
+
     Admin = proplists:get_value(admin, Backup),
-    case Admin of
-        undefined -> ok;
-        _ ->
-            AdminId = proplists:get_value(id, Admin),
-            AdminAuth = proplists:get_value(auth, Admin),
-            ok = ns_config_auth:set_admin_with_auth(AdminId, AdminAuth),
-            ns_audit:password_change(Req, {AdminId, admin}),
-            menelaus_ui_auth:reset()
-    end,
+    IsProvisioned = ns_config_auth:is_system_provisioned(),
+    UserCounters2 =
+        case Admin of
+            undefined -> UserCounters;
+            _ when IsProvisioned, not CanOverwrite ->
+                Count(skipped, UserCounters, 1);
+            _ ->
+                AdminId = proplists:get_value(id, Admin),
+                AdminAuth = proplists:get_value(auth, Admin),
+                ok = ns_config_auth:set_admin_with_auth(AdminId, AdminAuth),
+                ns_audit:password_change(Req, {AdminId, admin}),
+                menelaus_ui_auth:reset(),
+                case IsProvisioned of
+                    true -> Count(overwritten, UserCounters, 1);
+                    false -> Count(created, UserCounters, 1)
+                end
+        end,
     Groups = proplists:get_value(groups, Backup),
-    lists:foreach(
-      fun ({GroupProps}) ->
-          GroupId = proplists:get_value(name, GroupProps),
-          ok = do_store_group(GroupId, proplists:delete(name, GroupProps), Req)
-      end, Groups),
+    GroupCounters2 =
+        lists:foldl(
+          fun ({GroupProps}, Acc) ->
+              GroupId = proplists:get_value(name, GroupProps),
+              case do_store_group(GroupId, proplists:delete(name, GroupProps),
+                                  CanOverwrite, Req) of
+                  added -> Count(created, Acc, 1);
+                  updated -> Count(overwritten, Acc, 1);
+                  {error, already_exists} -> Count(skipped, Acc, 1)
+              end
+          end, GroupCounters, Groups),
 
     Users = lists:map(
               fun ({UserProps}) ->
@@ -2202,14 +2230,25 @@ handle_backup_restore_validated(Req, Params) ->
                   {Identity, [{pass_or_auth, {auth, Auth}} | UserProps]}
               end, proplists:get_value(users, Backup)),
 
-    case menelaus_users:store_users(Users) of
-        ok -> ok;
-        {error, too_many} ->
-            Msg = <<"You cannot create any more users">>,
-            menelaus_util:global_error_exception(400, Msg)
-    end,
+    UserCounters3 =
+        case menelaus_users:store_users(Users, CanOverwrite) of
+            {ok, {Created, Overwritten, Skipped}} ->
+                functools:chain(UserCounters2,
+                                [Count(created, _, Created),
+                                 Count(overwritten, _, Overwritten),
+                                 Count(skipped, _, Skipped)]);
+            {error, too_many} ->
+                Msg = <<"You cannot create any more users">>,
+                menelaus_util:global_error_exception(400, Msg)
+        end,
 
-    reply(ok, Req).
+    menelaus_util:reply_json(
+      Req, {[{usersCreated, maps:get(created, UserCounters3)},
+             {usersOverwritten, maps:get(overwritten, UserCounters3)},
+             {usersSkipped, maps:get(skipped, UserCounters3)},
+             {groupsCreated, maps:get(created, GroupCounters2)},
+             {groupsOverwritten, maps:get(overwritten, GroupCounters2)},
+             {groupsSkipped, maps:get(skipped, GroupCounters2)}]}).
 
 validate_backup_admin(Name, State) ->
     validator:decoded_json(

@@ -24,7 +24,7 @@
 -export([
 %% User management:
          store_user/5,
-         store_users/1,
+         store_users/2,
          delete_user/1,
          select_users/1,
          select_users/2,
@@ -418,60 +418,91 @@ store_user(Identity, Name, PasswordOrAuth, Roles, Groups) ->
             [{groups, Groups} || Groups =/= undefined] ++
             [{pass_or_auth, PasswordOrAuth},
              {roles, Roles}],
-    store_users([{Identity, Props}]).
+    case store_users([{Identity, Props}], true) of
+        {ok, _Counters} -> ok;
+        {error, _} = Error -> Error
+    end.
 
-store_users(Users) ->
+store_users(Users, CanOverwrite) ->
     Snapshot = ns_bucket:get_snapshot(all, [collections, uuid]),
-    case prepare_store_users_docs(Snapshot, Users) of
-        {ok, PreparedDocs} ->
-            ok = replicated_dets:change_multiple(storage_name(), PreparedDocs);
+    case prepare_store_users_docs(Snapshot, Users, CanOverwrite) of
+        {ok, {Counters, PreparedDocs}} ->
+            ok = replicated_dets:change_multiple(storage_name(), PreparedDocs),
+            {ok, Counters};
         {error, _} = Error ->
             Error
     end.
 
-prepare_store_users_docs(Snapshot, Users) ->
+prepare_store_users_docs(Snapshot, Users, CanOverwrite) ->
     try
-        {ok, lists:flatmap(prepare_store_user(Snapshot, _), Users)}
+        Res =
+            lists:foldr(
+              fun (U, {{Created, Overwritten, Skipped}, Updates}) ->
+                  case prepare_store_user(Snapshot, CanOverwrite, U) of
+                      skipped ->
+                          {{Created, Overwritten, Skipped + 1}, Updates};
+                      {added, NewUpdates} ->
+                          {{Created + 1, Overwritten, Skipped},
+                           NewUpdates ++ Updates};
+                      {updated, NewUpdates} ->
+                          {{Created, Overwritten + 1, Skipped},
+                           NewUpdates ++ Updates}
+                  end
+              end, {{0, 0, 0}, []}, Users),
+        {ok, Res}
     catch
         throw:{error, _} = Error -> Error
     end.
 
-prepare_store_user(Snapshot, {{_, Domain} = Identity, Props}) ->
-    UUID = get_user_uuid(Identity, misc:uuid_v4()),
-    Name = proplists:get_value(name, Props),
-    Groups = proplists:get_value(groups, Props),
-    PasswordOrAuth = proplists:get_value(pass_or_auth, Props),
-    Roles = proplists:get_value(roles, Props),
+prepare_store_user(Snapshot, CanOverwrite, {{_, Domain} = Identity, Props}) ->
+    Exists = case replicated_dets:get(storage_name(), {user, Identity}) of
+                 false -> false;
+                 _ -> true
+             end,
+    case Exists andalso (not CanOverwrite) of
+        true -> skipped;
+        false ->
+            UUID = get_user_uuid(Identity, misc:uuid_v4()),
+            Name = proplists:get_value(name, Props),
+            Groups = proplists:get_value(groups, Props),
+            PasswordOrAuth = proplists:get_value(pass_or_auth, Props),
+            Roles = proplists:get_value(roles, Props),
 
-    UserProps = [{name, Name} || Name =/= undefined] ++
-                [{uuid, UUID} || UUID =/= undefined] ++
-                [{groups, Groups} || Groups =/= undefined],
+            UserProps = [{name, Name} || Name =/= undefined] ++
+                        [{uuid, UUID} || UUID =/= undefined] ++
+                        [{groups, Groups} || Groups =/= undefined],
 
-    UserProps2 =
-        case menelaus_roles:validate_roles(Roles, Snapshot) of
-            {NewRoles, []} -> [{roles, NewRoles} | UserProps];
-            {_, BadRoles} -> throw({error, {roles_validation, BadRoles}})
-        end,
+            UserProps2 =
+                case menelaus_roles:validate_roles(Roles, Snapshot) of
+                    {NewRoles, []} -> [{roles, NewRoles} | UserProps];
+                    {_, BadRoles} ->
+                        throw({error, {roles_validation, BadRoles}})
+                end,
 
-    case check_limit(Identity) of
-        true -> ok;
-        false -> throw({error, too_many})
-    end,
+            case check_limit(Identity) of
+                true -> ok;
+                false -> throw({error, too_many})
+            end,
 
-    Auth =
-        case {Domain, PasswordOrAuth} of
-            {external, _} -> same;
-            {local, {password, Password}} ->
-                CurrentAuth = replicated_dets:get(storage_name(),
-                                                  {auth, Identity}),
-                case build_auth(CurrentAuth, Password) of
-                    password_required -> throw({error, password_required});
-                    A -> A
-                end;
-            {local, {auth, A}} -> A
-        end,
-
-    store_user_changes(Identity, UserProps2, Auth).
+            Auth =
+                case {Domain, PasswordOrAuth} of
+                    {external, _} -> same;
+                    {local, {password, Password}} ->
+                        CurrentAuth = replicated_dets:get(storage_name(),
+                                                          {auth, Identity}),
+                        case build_auth(CurrentAuth, Password) of
+                            password_required ->
+                                throw({error, password_required});
+                            A -> A
+                        end;
+                    {local, {auth, A}} -> A
+                end,
+            Res = case Exists of
+                      true -> updated;
+                      false -> added
+                  end,
+            {Res, store_user_changes(Identity, UserProps2, Auth, Exists)}
+    end.
 
 count_users() ->
     pipes:run(select_users('_', []),
@@ -494,12 +525,12 @@ check_limit(Identity) ->
             end
     end.
 
-store_user_changes(Identity, Props, Auth) ->
-    case replicated_dets:get(storage_name(), {user, Identity}) of
+store_user_changes(Identity, Props, Auth, Exists) ->
+    case Exists of
         false ->
             [{delete, {limits, Identity}},
              {delete, profile_key(Identity)}];
-        _ ->
+        true ->
             []
     end ++
     [{set, {user, Identity}, Props}] ++
