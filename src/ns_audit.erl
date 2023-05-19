@@ -14,6 +14,7 @@
 -behaviour(gen_server).
 
 -include("ns_common.hrl").
+-include("cut.hrl").
 
 -export([login_success/1,
          login_failure/1,
@@ -91,9 +92,15 @@
          prepare_list/1]).
 
 %% Maximum number of tries to log to memcached before dropping the event.
--define(MAX_RETRIES, ?get_param(audit_max_retries, 5)).
+-ifdef(TEST).
+    -define(MAX_RETRIES, 3).
+-else.
+    -define(MAX_RETRIES, ?get_param(audit_max_retries, 5)).
+-endif.
 
--record(state, {queue, retries}).
+-record(state, {queue, retries,
+                status :: idle | sending | send_paused,
+                sender_name}).
 
 backup_path() ->
     filename:join(path_config:component_path(data, "config"), "audit.bak").
@@ -103,7 +110,11 @@ start_link() ->
 
 init([]) ->
     erlang:process_flag(trap_exit, true),
-    {ok, #state{queue = maybe_restore_backup(), retries = 0}}.
+    ChildName = list_to_atom(?MODULE_STRING ++ "-memcached-sender"),
+    work_queue:start_link(ChildName),
+
+    {ok, #state{queue = maybe_restore_backup(), retries = 0,
+                sender_name = ChildName, status = idle}}.
 
 terminate(_Reason, #state{queue = Queue}) ->
     maybe_backup(Queue).
@@ -125,13 +136,23 @@ do_obscure_session_id({sessionid, SessionId}) ->
 do_obscure_session_id(_Other) ->
     continue.
 
-handle_call({log, Code, Body, IsSync}, From, #state{queue = Queue} = State) ->
+handle_call({log, Code, Body, IsSync}, From,
+            #state{queue = Queue, status = Status} = State) ->
     CleanedQueue =
         case queue:len(Queue) > ns_config:read_key_fast(max_audit_queue_length, 1000) of
             true ->
                 ?log_error("Audit queue is too large. Dropping audit records to info log"),
-                print_audit_records(Queue),
-                queue:new();
+                case Status of
+                    sending ->
+                        %% When sending, we still need the item being sent, as
+                        %% the main process assumes the item is in queue and
+                        %% will take it out of the queue.
+                        {OneItemQueue, RemainedQueue} = queue:split(1, Queue),
+                        print_audit_records(RemainedQueue),
+                        OneItemQueue;
+                    _ ->
+                        queue:new()
+                end;
             false ->
                 Queue
         end,
@@ -180,25 +201,44 @@ handle_call(stats, _From, #state{queue = Queue, retries = Retries} = State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info(send, #state{queue = Queue, retries = Retries} = State) ->
+handle_info(send, #state{status = sending} = State) ->
+    {noreply, State};
+handle_info(send, #state{status = send_paused} = State) ->
+    {noreply, State};
+handle_info(send, #state{queue = Queue,
+                         sender_name = Sender,
+                         status = idle} = State) ->
     misc:flush(send),
+    Status = maybe_send(Sender, Queue),
+    {noreply, State#state{status = Status}};
+handle_info({done, ToDo}, #state{queue = Queue,
+                                 retries = Retries,
+                                 sender_name = Sender,
+                                 status = sending} = State) ->
     MaxRetries = ?MAX_RETRIES,
-    {Res, NewQueue0} = send_to_memcached(Queue),
-    {NewRetries, NewQueue} =
-        case Res of
-            ok ->
-                {0, NewQueue0};
-            error when Retries < MaxRetries ->
-                erlang:send_after(1000, self(), send),
-                {Retries + 1, NewQueue0};
-            error ->
-                {{value, {_, _, IsSync} = V}, NewQueue1} = queue:out(NewQueue0),
+    {NewRetries, NewStatus, NewQueue} =
+        case ToDo of
+            %% If there is new data in queue and the previous send was
+            %% successful we continue to send the data, otherwise we wait.
+            send_more ->
+                {_, NewQueue1} = queue:out(Queue),
+                {0, maybe_send(Sender, NewQueue1), NewQueue1};
+            retry_later when Retries < MaxRetries ->
+                erlang:send_after(1000, self(), resume_send),
+                {Retries + 1, send_paused, Queue};
+            retry_later ->
+                {{value, {_, _, IsSync} = V}, NewQueue1} = queue:out(Queue),
                 ?log_error("Dropping audit entry ~p after ~p retries.",
                            [V, ?MAX_RETRIES]),
                 maybe_reply(IsSync, {error, dropped}),
-                {0, NewQueue1}
+                erlang:send_after(1000, self(), resume_send),
+                {0, send_paused, NewQueue1}
         end,
-    {noreply, State#state{queue = NewQueue, retries = NewRetries}};
+    {noreply, State#state{queue = NewQueue,
+                          retries = NewRetries,
+                          status = NewStatus}};
+handle_info(resume_send, #state{status = send_paused} = State) ->
+    handle_info(send, State#state{status = idle});
 handle_info({'EXIT', From, Reason}, State) ->
     ?log_debug("Received exit from ~p with reason ~p. Exiting.", [From, Reason]),
     {stop, Reason, State}.
@@ -217,6 +257,18 @@ maybe_backup(Queue) ->
             end;
         true ->
             ok
+    end.
+
+maybe_send(Sender, Queue) ->
+    case queue:is_empty(Queue) of
+        true ->
+            idle;
+        false ->
+            Self = self(),
+            work_queue:submit_work(Sender,
+                                   ?cut(send_to_memcached(Self,
+                                                          queue:get(Queue)))),
+            sending
     end.
 
 convert_to_async_response(Queue) ->
@@ -273,6 +325,7 @@ maybe_restore_backup() ->
             queue:new()
     end.
 
+-ifndef(TEST).
 code(login_success) ->
     8192;
 code(login_failure) ->
@@ -419,6 +472,26 @@ code(modify_collection) ->
 code(serverless_settings) ->
     8271.
 
+send_to_memcached(ParentPID, {Code, EncodedBody, IsSync}) ->
+    case (catch ns_memcached_sockets_pool:executing_on_socket(
+                  fun (Sock) ->
+                      mc_client_binary:audit_put(Sock, code(Code), EncodedBody)
+                  end)) of
+        ok ->
+            maybe_reply(IsSync, ok),
+            ParentPID ! {done, send_more};
+        {memcached_error, einval, Error} ->
+            ?log_error("Audit put call ~p with body ~p failed with "
+                       "error ~p. Dropping audit event.",
+                       [Code, EncodedBody, Error]),
+            maybe_reply(IsSync, {error, dropped}),
+            ParentPID ! {done, send_more};
+        Error ->
+            ?log_debug("Audit put call ~p with body ~p failed with "
+                       "error ~p.", [Code, EncodedBody, Error]),
+                       ParentPID ! {done, retry_later}
+    end.
+-endif.
 
 now_to_iso8601(Now = {_, _, Microsecs}) ->
     LocalNow = calendar:now_to_local_time(Now),
@@ -505,32 +578,6 @@ maybe_reply({true, From}, Response) ->
     gen_server:reply(From, Response);
 maybe_reply(false, _Response) ->
     ok.
-
-send_to_memcached(Queue) ->
-    case queue:out(Queue) of
-        {empty, Queue} ->
-            {ok, Queue};
-        {{value, {Code, EncodedBody, IsSync}}, NewQueue} ->
-            case (catch ns_memcached_sockets_pool:executing_on_socket(
-                          fun (Sock) ->
-                                  mc_client_binary:audit_put(Sock, code(Code), EncodedBody)
-                          end)) of
-                ok ->
-                    maybe_reply(IsSync, ok),
-                    send_to_memcached(NewQueue);
-                {memcached_error, einval, Error} ->
-                    ?log_error("Audit put call ~p with body ~p failed with "
-                               "error ~p. Dropping audit event.",
-                               [Code, EncodedBody, Error]),
-                    maybe_reply(IsSync, {error, dropped}),
-                    send_to_memcached(NewQueue);
-                Error ->
-                    ?log_debug("Audit put call ~p with body ~p failed with "
-                               "error ~p.",
-                               [Code, EncodedBody, Error]),
-                    {error, Queue}
-            end
-    end.
 
 stats() ->
     {ok, gen_server:call(?MODULE, stats)}.
@@ -1017,5 +1064,103 @@ maybe_backup_test() ->
                 exit(DeleteErr)
         end
     end.
+
+receive_assert_handle_message(State, ExpMsg, Todo) ->
+    Message =
+        receive Msg -> Msg
+        after 10000 -> timeout
+        end,
+    case Todo of
+        handle ->
+            ?assertEqual(ExpMsg, Message),
+            {noreply, NewState} = handle_info(Message, State),
+            NewState;
+        none ->
+            State
+    end.
+
+send_to_memcached(ParentPID, Msg) ->
+    case Msg of
+        {successful_send, _EncodedBody, _IsSync} ->
+            ParentPID ! {done, send_more};
+        {fail_to_send, _EncodedBody, _IsSync} ->
+            ParentPID ! {done, retry_later};
+        {shutdown, _EncodedBody, _IsSync} ->
+            exit(normal)
+    end.
+
+simulate_send(#state{queue = Queue} = State, Msg) ->
+    NewState1 = State#state{queue = queue:in(Msg, Queue)},
+    {noreply, NewState2} = handle_info(send, NewState1),
+    NewState2.
+
+assert_state(#state{queue = Queue,
+                    retries = Retries,
+                    status = Status},
+             ExpQueueLen, ExpStatus, ExpectedRetries) ->
+    ?assertEqual(ExpQueueLen, queue:len(Queue)),
+    ?assertEqual(ExpectedRetries, Retries),
+    ?assertEqual(ExpStatus, Status).
+
+audit_send_test() ->
+    %% Initiate
+    {ok, State0} = init([]),
+    Fun = fun() -> ok end,
+
+    %% Send successfully
+    State1 = simulate_send(State0, {successful_send, Fun, false}),
+    assert_state(State1, 1, sending, 0),
+
+    %% Receive message
+    State2 = receive_assert_handle_message(State1, {done, send_more}, handle),
+    assert_state(State2, 0, idle, 0),
+
+    %% Delayed send
+    State3 = simulate_send(State2, {successful_send, Fun, false}),
+    assert_state(State3, 1, sending, 0),
+    State4 = simulate_send(State3, {successful_send, Fun, false}),
+    assert_state(State4, 2, sending, 0),
+
+    %% Receive message
+    State5 = receive_assert_handle_message(State4, {done, send_more}, handle),
+    assert_state(State5, 1, sending, 0),
+    State6 = receive_assert_handle_message(State5, {done, send_more}, handle),
+    assert_state(State6, 0, idle, 0),
+
+    %% Retry sending
+    State7 = simulate_send(State6, {fail_to_send, Fun, false}),
+    assert_state(State7, 1, sending, 0),
+    State8 = simulate_send(State7, {successful_send, Fun, false}),
+    assert_state(State4, 2, sending, 0),
+
+    %% Receive message
+    State9 = receive_assert_handle_message(State8, {done, retry_later}, handle),
+    assert_state(State9, 2, send_paused, 1),
+    State10 = receive_assert_handle_message(State9, resume_send, handle),
+    assert_state(State10, 2, sending, 1),
+    State11 = receive_assert_handle_message(State10, {done, retry_later},
+                                            handle),
+    assert_state(State11, 2, send_paused, 2),
+    State12 = receive_assert_handle_message(State11, resume_send, handle),
+    assert_state(State12, 2, sending, 2),
+    State13 = receive_assert_handle_message(State12, {done, retry_later},
+                                            handle),
+    assert_state(State13, 2, send_paused, 3),
+    State14 = receive_assert_handle_message(State13, resume_send, handle),
+    assert_state(State14, 2, sending, 3),
+    State15 = receive_assert_handle_message(State14, {done, retry_later},
+                                            handle),
+    assert_state(State15, 1, send_paused, 0),
+    State16 = receive_assert_handle_message(State15, resume_send, handle),
+    assert_state(State16, 1, sending, 0),
+    State17 = receive_assert_handle_message(State16, {done, send_more}, handle),
+    assert_state(State17, 0, idle, 0),
+
+    %% Shutdown Child
+    State18 = simulate_send(State17, {shutdown, Fun, false}),
+    assert_state(State18, 1, sending, 0),
+
+    %% Receive message
+    _ = receive_assert_handle_message(State18, none, none).
 
 -endif.
