@@ -89,11 +89,12 @@ class ClusterRequirements:
                     satisfiable = False
         return satisfiable, unsatisfied
 
-    def is_met(self, cluster):
+    def get_unmet_requirements(self, cluster):
+        unmet_requirements = []
         for requirement in self.requirements:
             if not requirement.is_met(cluster):
-                return False
-        return True
+                unmet_requirements.append(requirement)
+        return unmet_requirements
 
     # Determines whether this set of requirements will be satisfiable with a
     # cluster satisfying some 'other' ClusterRequirements

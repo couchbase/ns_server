@@ -20,7 +20,7 @@ def get_appropriate_cluster(cluster, auth, start_index, requirements,
                             tmp_cluster_dir, kill_nodes):
     if cluster is not None:
         # If we can use the existing cluster then we should
-        if requirements.is_met(cluster):
+        if len(requirements.get_unmet_requirements(cluster)) == 0:
             return cluster
 
         # Attempt to satisfy the requirements with the existing cluster if

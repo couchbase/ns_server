@@ -182,11 +182,15 @@ def main():
     executed = 0
     for (configuration, testsets) in testsets_grouped:
         # Get an appropriate cluster to satisfy the configuration
-        if use_existing_server and not configuration.is_met(cluster):
-            for testset_name, _testset, _test_names in testsets:
-                reason = "Cluster provided does not satisfy test requirements"
-                not_ran.append((testset_name, reason))
-            continue
+        if use_existing_server:
+            unmet_requirements = configuration.get_unmet_requirements(cluster)
+            if len(unmet_requirements) > 0:
+                for testset_name, _testset, _test_names in testsets:
+                    reason = "Cluster provided does not satisfy test " \
+                             f"requirements:\n" \
+                             f"{[str(r) for r in unmet_requirements]}"
+                    not_ran.append((testset_name, reason))
+                continue
         else:
             cluster = testlib.get_appropriate_cluster(cluster,
                                                       (username, password),
