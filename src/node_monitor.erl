@@ -18,6 +18,10 @@
 
 -include("ns_common.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([start_link/0]).
 -export([get_nodes/0,
          can_refresh/0,
@@ -34,7 +38,18 @@ start_link() ->
     health_monitor:start_link(?MODULE).
 
 init() ->
-    #{}.
+    Monitors = health_monitor:local_monitors(),
+
+    %% We only run non-ns_server monitors for active (non-failed over) nodes,
+    %% subscribe to updates for the local node state. In theory services
+    %% shouldn't change once we setup a node, but subscribe to that too just
+    %% in case.
+    chronicle_compat_events:notify_if_key_changes(
+        [{node, node(), membership},
+         {node, node(), services}], node_changed),
+
+
+    #{local_monitors => Monitors}.
 
 handle_call(get_nodes, _From, MonitorState) ->
     #{nodes := Statuses} = MonitorState,
@@ -58,8 +73,8 @@ handle_cast(Cast, MonitorState) ->
     noreply.
 
 handle_info(refresh, MonitorState) ->
-    #{nodes_wanted := NodesWanted} = MonitorState,
-    Payload = latest_status(NodesWanted),
+    #{nodes_wanted := NodesWanted,
+      local_monitors := LocalMonitors} = MonitorState,
     %% We need to send our status to the node where the auto-failover logic
     %% is running. This is the mb_master node. Normally, this is also
     %% the node where the orchestrator is running.
@@ -93,8 +108,14 @@ handle_info(refresh, MonitorState) ->
                      [M]
              end,
     SendTo = lists:umerge3(Orchestrator, Master, [node()]),
+
+    Payload = latest_status(NodesWanted, LocalMonitors),
     health_monitor:send_heartbeat(?MODULE, SendTo, Payload, MonitorState),
     noreply;
+
+handle_info(node_changed, MonitorState) ->
+    Monitors = health_monitor:local_monitors(),
+    {noreply, MonitorState#{local_monitors => Monitors}};
 
 handle_info(Info, MonitorState) ->
     ?log_warning("Unexpected message ~p when in state:~n~p",
@@ -115,11 +136,11 @@ annotate_status(Status) ->
 %%   [{Node1, [{monitor1, <node1_status>}, {monitor2, <node1_status>}, ...]},
 %%    {Node2, [{monitor1, <node2_status>}, {monitor2, <node2_status>}, ...]},
 %%    ...]
-latest_status(NodesWanted) ->
+latest_status(NodesWanted, LocalMonitors) ->
     AllMonitors = lists:map(fun (Monitor) ->
                                     Module = health_monitor:get_module(Monitor),
                                     {Monitor, Module:get_nodes()}
-                            end, health_monitor:local_monitors()),
+                            end, LocalMonitors),
     lists:map(
       fun (Node) ->
               Status = [{Monitor, node_status(Node, NodesDict)} ||
@@ -152,10 +173,51 @@ health_monitor_test_setup() ->
     meck:new(mb_master),
     meck:expect(mb_master, master_node, fun() -> node() end),
 
+    meck:new(kv_monitor, [passthrough]),
+    meck:expect(kv_monitor,
+        get_nodes,
+        fun() ->
+            dict:append(node(), dict:new(), dict:new())
+        end),
     ok.
 
 health_monitor_t() ->
-    ok.
+    %% Bit of a hack, but this is a test, we can grab the internal state of
+    %% the monitor via sys:get_state to check that we are tracking the
+    %% correct monitors.
+    {state, node_monitor, #{local_monitors := LocalMonitors1}} =
+        sys:get_state(?MODULE),
+
+    ?assertEqual([ns_server], LocalMonitors1),
+
+    %% Should not have called kv_monitor get_nodes yet because we aren't
+    %% tracking a kv_monitor.
+    ?assertNot(meck:called(kv_monitor, get_nodes, [])),
+
+    %% Meck so that when we process the node_changed message we add the
+    %% kv_monitor to the list
+    meck:expect(ns_cluster_membership, should_run_service,
+                fun(_Snapshot, _Service, _Node) ->
+                    true
+                end),
+
+    %% Now lets check that we update the local monitors when we see a
+    %% node_changed message
+    ?MODULE ! node_changed,
+
+    {state, node_monitor, #{local_monitors := LocalMonitors2}} =
+        sys:get_state(?MODULE),
+    ?assertEqual([ns_server, kv], LocalMonitors2),
+
+    %% Send a refresh to check that we now pull the state from the kv_monitor
+    ?MODULE ! refresh,
+
+    %% Do a get_nodes (handle_call) to ensure that we have processed the
+    %% refresh for the next test
+    get_nodes(),
+
+    %% Finally, check that we have now called kv_monitor:get_nodes()
+    ?assert(meck:called(kv_monitor, get_nodes, [])).
 
 health_monitor_test_teardown() ->
     meck:unload(ns_server_monitor),
