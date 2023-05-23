@@ -14,12 +14,20 @@ from testlib import get_succ
 
 
 class ClusterRequirements:
-    def __init__(self, edition="Enterprise", num_nodes=1, memsize=256,
-                 num_connected=None, afamily="ipv4"):
-        self.requirements = [Edition(edition),
-                             NumNodes(num_nodes, num_connected),
-                             MemSize(memsize),
-                             AFamily(afamily)]
+    def __init__(self, edition=None, num_nodes=None, memsize=None,
+                 num_connected=None, afamily=None):
+        self.requirements = []
+        if edition is not None:
+            self.requirements.append(Edition(edition))
+        if num_nodes is not None:
+            self.requirements.append(NumNodes(num_nodes, num_connected))
+        elif num_connected is not None:
+            raise ValueError("num_connected cannot be specified without "
+                             "num_nodes also being specified")
+        if memsize is not None:
+            self.requirements.append(MemSize(memsize))
+        if afamily is not None:
+            self.requirements.append(AFamily(afamily))
 
     def __str__(self):
         immutable_requirements = list(filter(lambda x: not x.can_be_met(),
@@ -41,12 +49,16 @@ class ClusterRequirements:
                 'wait_for_start': True,
                 # Without this we would have cluster outputs overlapping test
                 # output
-                'nooutput': True
+                'nooutput': True,
+                'num_nodes': 1
         }
 
     @staticmethod
-    def get_default_connect_args():
-        return {}
+    def get_default_connect_args(start_args):
+        return {
+                'protocol': "ipv4",
+                'num_nodes': start_args['num_nodes']
+               }
 
     def create_cluster(self, auth, start_index, tmp_cluster_dir, kill_nodes):
         start_args = {'start_index': start_index,
@@ -56,7 +68,7 @@ class ClusterRequirements:
             start_args.update(requirement.start_args)
 
         connect_args = {'start_index': start_index}
-        connect_args.update(self.get_default_connect_args())
+        connect_args.update(self.get_default_connect_args(start_args))
         for requirement in self.requirements:
             connect_args.update(requirement.connect_args)
 
