@@ -59,6 +59,11 @@ class LdapTests(testlib.BaseTestSet):
                             'member': [user_dn]}}
           ]}, java_delay=delay_for_macos)
         self.server.start()
+        testlib.delete_config_key(cluster, 'ldap_settings')
+
+
+    def test_teardown(self, cluster):
+        testlib.delete_config_key(cluster, 'ldap_settings')
 
 
     def teardown(self, cluster):
@@ -66,7 +71,6 @@ class LdapTests(testlib.BaseTestSet):
 
 
     def basic_set_and_get_test(self, cluster):
-        testlib.delete_config_key(cluster, 'ldap_settings')
         actual_defaults = testlib.get_succ(cluster, '/settings/ldap').json()
         expected_defaults = {'authenticationEnabled': False,
                              'authorizationEnabled': False,
