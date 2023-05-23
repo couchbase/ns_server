@@ -195,10 +195,7 @@ class NumNodes(Requirement):
 
     def is_met(self, cluster):
         return (len(cluster.nodes) >= self.num_nodes and
-                ((self.num_connected is None and
-                  len(cluster.connected_nodes) >= self.num_nodes) or
-                 (self.num_connected is not None and
-                  len(cluster.connected_nodes) >= self.num_connected)))
+                len(cluster.connected_nodes) == self.num_connected)
 
 
 class MemSize(Requirement):
