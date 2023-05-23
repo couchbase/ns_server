@@ -37,6 +37,7 @@
 %%%===================================================================
 
 handle_get_settings(Path, Req) ->
+    menelaus_util:assert_is_enterprise(),
     SSOSettings = extract_saml_settings(),
     SSOSettingsUpdated =
         case proplists:get_value(enabled, SSOSettings) of
@@ -56,6 +57,7 @@ handle_get_settings(Path, Req) ->
                                       SSOSettingsUpdated, Req).
 
 handle_post_settings(Req) ->
+    menelaus_util:assert_is_enterprise(),
     CurrentProps = ns_config:read_key_fast(saml_settings, []),
     menelaus_web_settings2:handle_post(
       fun (Proplist, NewReq) ->
@@ -140,11 +142,13 @@ verify_metadata_settings(PropsToSet, CurPropsWithDefaults) ->
     end.
 
 handle_delete_settings(Req) ->
+    menelaus_util:assert_is_enterprise(),
     ns_config:delete(saml_settings),
     cb_saml:cleanup_metadata(),
     menelaus_util:reply(Req, 200).
 
 handle_auth(Req) ->
+    menelaus_util:assert_is_enterprise(),
     SSOOpts = extract_saml_settings_if_enabled(),
     ?log_debug("Starting saml authentication "),
     IDPMetadata = try_get_idp_metadata(SSOOpts),
@@ -165,6 +169,7 @@ handle_auth(Req) ->
     end.
 
 handle_deauth(Req) ->
+    menelaus_util:assert_is_enterprise(),
     SSOOpts = extract_saml_settings_if_enabled(),
     ?log_debug("Starting saml single logout"),
     case proplists:get_value(single_logout, SSOOpts) of
@@ -206,6 +211,7 @@ handle_single_logout(SSOOpts, NameID, ExtraHeaders, Req) ->
     end.
 
 handle_saml_metadata(Req) ->
+    menelaus_util:assert_is_enterprise(),
     SSOOpts = extract_saml_settings_if_enabled(),
     SPMetadata = build_sp_metadata(SSOOpts, Req),
     SignedXml = esaml_sp:generate_metadata(SPMetadata),
@@ -220,6 +226,7 @@ handle_post_saml_consume(Req) ->
     handle_saml_consume(Req, mochiweb_request:parse_post(Req)).
 
 handle_saml_consume(Req, UnvalidatedParams) ->
+    menelaus_util:assert_is_enterprise(),
     SSOOpts = extract_saml_settings_if_enabled(),
     ?log_debug("Starting saml consume"),
     %% Making sure metadata is up to date. By doing that we also update
@@ -352,6 +359,7 @@ handle_post_saml_logout(Req) ->
     handle_saml_logout(Req, mochiweb_request:parse_post(Req)).
 
 handle_saml_logout(Req, UnvalidatedParams) ->
+    menelaus_util:assert_is_enterprise(),
     SSOOpts = extract_saml_settings_if_enabled(),
     ?log_debug("Starting saml logout"),
     IDPMetadata = try_get_idp_metadata(SSOOpts),
