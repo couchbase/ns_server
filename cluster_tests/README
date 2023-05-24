@@ -13,9 +13,16 @@ other or depend on server's state/config.
 Run tests against automatically generated temporary clusters
 -------------------------------------
 
-Install requirements first:
+Install python requirements first:
 
     $ pip3 install -r .//requirements.txt
+
+Install dependencies:
+
+* xmlsec1
+
+    needed for saml tests. Can be installed using standard package managers.
+    E.g. `apt install xmlsec1`, `brew install xmlsec1`, etc...
 
 and then run:
 
