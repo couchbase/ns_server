@@ -419,16 +419,17 @@ store_user(Identity, Name, PasswordOrAuth, Roles, Groups) ->
             [{pass_or_auth, PasswordOrAuth},
              {roles, Roles}],
     case store_users([{Identity, Props}], true) of
-        {ok, _Counters} -> ok;
+        {ok, {_Counters, _UpdatedUsers}} -> ok;
         {error, _} = Error -> Error
     end.
 
 store_users(Users, CanOverwrite) ->
     Snapshot = ns_bucket:get_snapshot(all, [collections, uuid]),
     case prepare_store_users_docs(Snapshot, Users, CanOverwrite) of
-        {ok, {Counters, PreparedDocs}} ->
+        {ok, {Counters, PreparedDocs, UpdatedUsers}} ->
             ok = replicated_dets:change_multiple(storage_name(), PreparedDocs),
-            {ok, Counters};
+
+            {ok, {Counters, UpdatedUsers}};
         {error, _} = Error ->
             Error
     end.
@@ -437,18 +438,19 @@ prepare_store_users_docs(Snapshot, Users, CanOverwrite) ->
     try
         Res =
             lists:foldr(
-              fun (U, {{Created, Overwritten, Skipped}, Updates}) ->
+              fun (U, {{Created, Overwritten, Skipped}, Updates, UsersAcc}) ->
                   case prepare_store_user(Snapshot, CanOverwrite, U) of
                       skipped ->
-                          {{Created, Overwritten, Skipped + 1}, Updates};
+                          {{Created, Overwritten, Skipped + 1}, Updates,
+                           UsersAcc};
                       {added, NewUpdates} ->
                           {{Created + 1, Overwritten, Skipped},
-                           NewUpdates ++ Updates};
+                           NewUpdates ++ Updates, [{added, U} | UsersAcc]};
                       {updated, NewUpdates} ->
                           {{Created, Overwritten + 1, Skipped},
-                           NewUpdates ++ Updates}
+                           NewUpdates ++ Updates, [{updated, U} | UsersAcc]}
                   end
-              end, {{0, 0, 0}, []}, Users),
+              end, {{0, 0, 0}, [], []}, Users),
         {ok, Res}
     catch
         throw:{error, _} = Error -> Error

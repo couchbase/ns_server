@@ -2232,7 +2232,17 @@ handle_backup_restore_validated(Req, Params) ->
 
     UserCounters3 =
         case menelaus_users:store_users(Users, CanOverwrite) of
-            {ok, {Created, Overwritten, Skipped}} ->
+            {ok, {{Created, Overwritten, Skipped}, Res}} ->
+                lists:foreach(
+                  fun ({AddedOrUpdated, {Identity, UserProps}}) ->
+                      ns_audit:set_user(
+                        Req,
+                        Identity,
+                        proplists:get_value(roles, UserProps, []),
+                        proplists:get_value(name, UserProps),
+                        proplists:get_value(groups, UserProps),
+                        AddedOrUpdated)
+                  end, Res),
                 functools:chain(UserCounters2,
                                 [Count(created, _, Created),
                                  Count(overwritten, _, Overwritten),
