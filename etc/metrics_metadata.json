@@ -226,7 +226,7 @@
         "type": "counter",
         "help": "Absolute stall time when tasks were stalled on a given resource",
         "added": "7.5.0",
-        "units": "microseconds",
+        "unit": "microseconds",
         "stability": "committed",
         "labels": [
             {
