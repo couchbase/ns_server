@@ -2003,18 +2003,20 @@ params_version_test() ->
     setup_meck(),
     meck:new(ns_bucket, [passthrough]),
 
-    Update = ?cut(lists:keyreplace("test", 1, toy_buckets_props(),
-                                   {"test", _})),
-    BaseVersion = params_version_case(toy_buckets_props()),
-    lists:foreach(
-      fun(X) -> ?assertNotEqual(params_version_case(X), BaseVersion) end,
-      [lists:keydelete("test", 1, toy_buckets_props()),
-       Update([{uuid, <<"test_id1">>}, {props, toy_props()}]),
-       Update([{uuid, <<"test_id">>}, {collections, toy_manifest()},
-               {props, toy_props()}])]),
-
-    meck:unload(ns_bucket),
-    teardown_meck().
+    try
+        Update = ?cut(lists:keyreplace("test", 1, toy_buckets_props(),
+                                       {"test", _})),
+        BaseVersion = params_version_case(toy_buckets_props()),
+        lists:foreach(
+          fun(X) -> ?assertNotEqual(params_version_case(X), BaseVersion) end,
+          [lists:keydelete("test", 1, toy_buckets_props()),
+           Update([{uuid, <<"test_id1">>}, {props, toy_props()}]),
+           Update([{uuid, <<"test_id">>}, {collections, toy_manifest()},
+                   {props, toy_props()}])])
+    after
+        meck:unload(ns_bucket),
+        teardown_meck()
+    end.
 
 validate_roles(Roles) ->
     lists:all(

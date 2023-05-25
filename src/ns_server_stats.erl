@@ -174,12 +174,20 @@ report_system_stats(ReportFun) ->
     SystemStats = proplists:get_value("@system", Stats, []),
     lists:foreach(
       fun ({Key, Val}) when not is_binary(Key) ->
-              ReportFun({<<"sys">>, Key, [{<<"category">>, <<"system">>}],
-                         Val});
-          ({<<"pressure/", PsiKey/binary>>, Val}) ->
-              {Name, PLabels} = get_pressure_name_labels(PsiKey),
-              ReportFun({<<"sys">>, Name,
-                         [{<<"category">>, <<"system">>} | PLabels], Val})
+              KeyBin = atom_to_binary(Key),
+              {StatName, Labels0} =
+                case KeyBin of
+                    <<"cpu_host_seconds_total_", Mode/binary>> ->
+                        {<<"cpu_host_seconds_total">>,
+                         [{<<"mode">>, Mode}]};
+                    <<"pressure/", PsiKey/binary>> ->
+                        {Name, PLabels} = get_pressure_name_labels(PsiKey),
+                        [{Name, PLabels}];
+                    _ ->
+                        {KeyBin, []}
+                end,
+              Labels = Labels0 ++ [{<<"category">>, <<"system">>}],
+              ReportFun({<<"sys">>, StatName, Labels, Val})
       end, SystemStats),
 
     SysProcStats = proplists:get_value("@system-processes", Stats, []),

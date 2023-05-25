@@ -135,13 +135,17 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 
 spawn_sigar(Name, BabysitterPid) ->
+    {ok, LogDir} = application:get_env(ns_server, error_logger_mf_dir),
+    LogFile = filename:join(LogDir, "sigar_port.log"),
     Path = path_config:component_path(bin, "sigar_port"),
-    ?log_info("Spawning sigar process '~s'(~p) with babysitter pid: ~p",
-              [Name, Path, BabysitterPid]),
+    ?log_info("Spawning sigar process '~s'(~p) with babysitter pid:"
+              " ~p and log file ~p", [Name, Path, BabysitterPid, LogFile]),
     open_port({spawn_executable, Path},
               [stream, use_stdio, exit_status, binary, eof,
                {arg0, Name},
-               {args, ["--json", integer_to_list(BabysitterPid)]}]).
+               {args, ["--babysitter_pid", integer_to_list(BabysitterPid),
+                       "--logfile", LogFile,
+                       "--config", path_config:default_sigar_port_config_path()]}]).
 
 grab_stats(Port) ->
     port_command(Port, <<"\n":8/native>>),
@@ -421,12 +425,40 @@ compute_cpu_stats(#{<<"supported">> := true} = OldCounters,
     Stolen = maps:get(<<"cpu_stolen_ms">>, Diffs, 0),
     Total = maps:get(<<"cpu_total_ms">>, Diffs),
 
+    RawCpuTotal = get_raw_counter(<<"cpu_total_ms">>, Counters),
+    RawCpuIdle = get_raw_counter(<<"cpu_idle_ms">>, Counters),
+    RawCpuUser = get_raw_counter(<<"cpu_user_ms">>, Counters),
+    RawCpuSys = get_raw_counter(<<"cpu_sys_ms">>, Counters),
+
     [{cpu_host_utilization_rate, compute_utilization(Total - Idle, Total)},
      {cpu_host_user_rate, compute_utilization(User, Total)},
      {cpu_host_sys_rate, compute_utilization(Sys, Total)},
-     {cpu_irq_rate, compute_utilization(Irq, Total)},
-     {cpu_stolen_rate, compute_utilization(Stolen, Total)}];
+     %% Raw counters so users can do their own computations using promql.
+     {cpu_host_seconds_total_idle, RawCpuIdle},
+     {cpu_host_seconds_total_user, RawCpuUser},
+     {cpu_host_seconds_total_sys, RawCpuSys}] ++
+    case misc:is_linux() of
+        false ->
+            Other = RawCpuTotal - (RawCpuUser + RawCpuSys + RawCpuIdle),
+            [{cpu_host_seconds_total_other, Other}];
+        true -> 
+            RawCpuIrq = get_raw_counter(cpu_irq_ms, Counters),
+            RawCpuStolen = get_raw_counter(cpu_stolen_ms, Counters),
+            Other = RawCpuTotal - (RawCpuUser + RawCpuSys + RawCpuIdle +
+                                   RawCpuIrq + RawCpuStolen),
+            [{cpu_irq_rate, compute_utilization(Irq, Total)},
+             {cpu_stolen_rate, compute_utilization(Stolen, Total)},
+             {cpu_host_seconds_total_irq, RawCpuIrq},
+             {cpu_host_seconds_total_stolen, RawCpuStolen},
+             {cpu_host_seconds_total_other, Other}]
+    end;
 compute_cpu_stats(_, _) -> [].
+
+%% The current measurement is returned as a raw counter in seconds.
+%% The user can then use prometheus functions to do computations.
+get_raw_counter(Stat, Counters) ->
+    Value = maps:get(Stat, Counters, 0),
+    Value / 1000.
 
 compute_cgroups_counters(Cores, PrevTS, TS,
                          #{<<"supported">> := true} = Old,
