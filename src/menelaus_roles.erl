@@ -217,6 +217,7 @@ roles() ->
        {[analytics], none},
        {[backup], none},
        {[settings, metrics], none},
+       {[n1ql, meta], [none]},
        {[], [read]}]},
      {scope_admin, ?RBAC_SCOPE_PARAMS,
       [{name, <<"Manage Scopes">>},
