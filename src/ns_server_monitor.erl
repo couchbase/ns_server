@@ -91,9 +91,20 @@ analyze_status(Node, AllNodes) ->
     end.
 
 %% Internal functions
-analyze_node_view({_OtherNode, inactive, _}, _, Accs) ->
-    %% Consider OtherNode's view  only if it itself is active.
-    Accs;
+analyze_node_view({OtherNode, inactive, _}, Node, {Active, Inactive}) ->
+    case Node =:= OtherNode of
+        %% Flag this node as inactive if we're missing an update from it.
+        %% Note: If all other nodes continue to receive updates from this node,
+        %% they'll consider this node healthy even if the node itself stops
+        %% sending its monitor statuses to the orchestrator (but continues to
+        %% send heartbeats to all nodes in the cluster). This may happen because
+        %% of an asymmetric network connectivity issue where it stops receiving
+        %% traffic from other nodes.
+        true -> {Active, [Node | Inactive]};
+        %% Ignore the node's stale view of _other_ nodes since it hasn't been
+        %% updated in the last refresh interval.
+        _ -> {Active, Inactive}
+    end;
 analyze_node_view({OtherNode, _, NodeView}, Node, {Active, Inactive}) ->
     Status = proplists:get_value(Node, NodeView, []),
     case proplists:get_value(ns_server, Status, unknown) of
