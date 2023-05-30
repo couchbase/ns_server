@@ -11,9 +11,12 @@
 %%
 %% dcp_proxy periodically calls the dcp_traffic_monitor:node_alive() API
 %% as long as the dcp_proxy traffic is alive.
-%% There can be mulitiple dcp_proxy processes running on a node -
+%% There can be multiple dcp_proxy processes running on a node -
 %% dcp_producer_conn or dcp_consumer_conn for various buckets.
 %% The traffic monitor tracks status on {Node, Bucket} basis.
+%% This monitor's statuses are used to populate kv_monitor - which
+%% tracks not only the node's own buckets but other nodes' bucket
+%% activity as well (if tracked by a DCP traffic monitor).
 %%
 %% mref2node ETS table is used to keep track of all the dcp_proxy processes
 %% that are actively updating the traffic monitor.
