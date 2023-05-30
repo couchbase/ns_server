@@ -91,7 +91,7 @@ analyze_status(Node, AllNodes) ->
             end
     end.
 
-is_node_down(needs_attention) ->
+is_node_down(unhealthy) ->
     {true, {"The data service did not respond. Either none of the buckets " ++
                 "have warmed up or there is an issue with the data service.",
             no_buckets_ready}};

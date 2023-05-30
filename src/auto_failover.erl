@@ -817,13 +817,7 @@ is_node_down(_, _) ->
 
 is_node_down(MonitorStatuses) ->
     Down = lists:foldl(
-             fun (MonitorStatus, {RAcc, MAcc}) ->
-                     {Monitor, Status} = case MonitorStatus of
-                                             {M, S} ->
-                                                 {M, S};
-                                             M ->
-                                                 {M, needs_attention}
-                                         end,
+             fun ({Monitor, Status}, {RAcc, MAcc}) ->
                      Module = health_monitor:get_module(Monitor),
                      case Module:is_node_down(Status) of
                          false ->

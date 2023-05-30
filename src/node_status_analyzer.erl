@@ -124,7 +124,8 @@ analyze_status(Node, AllNodes) ->
                 [] ->
                     unhealthy;
                 _ ->
-                    {needs_attention, lists:sort(Unhealthy ++ Other)}
+                    {needs_attention, [{U, unhealthy} || U <- Unhealthy] ++
+                         Other}
             end
     end.
 

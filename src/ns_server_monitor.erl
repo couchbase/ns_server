@@ -59,7 +59,7 @@ get_nodes() ->
 annotate_status(empty) ->
     {recv_ts, erlang:monotonic_time()}.
 
-is_node_down(needs_attention) ->
+is_node_down(unhealthy) ->
     {true, {"The cluster manager did not respond.", cluster_manager_down}};
 is_node_down(_) ->
     false.
