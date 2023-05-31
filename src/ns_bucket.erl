@@ -132,6 +132,7 @@
          allow_variable_num_vbuckets/0,
          get_num_vbuckets/1,
          get_max_buckets/0,
+         get_min_replicas/0,
          uuid_key/1,
          uuid/2,
          uuids/0,
@@ -884,6 +885,9 @@ get_max_buckets() ->
     Default = config_profile:get_value(max_buckets_supported,
                                        ?MAX_BUCKETS_SUPPORTED),
     ns_config:read_key_fast(max_bucket_count, Default).
+
+get_min_replicas() ->
+    ns_config:read_key_fast(min_replicas_count, ?MIN_REPLICAS_SUPPORTED).
 
 get_default_num_vbuckets() ->
     case ns_config:search(couchbase_num_vbuckets_default) of

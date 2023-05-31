@@ -624,6 +624,8 @@ conf(internal) ->
       <<>>, get_number(1, 1024)},
      {max_bucket_count, maxBucketCount, ns_bucket:get_max_buckets(),
       get_number(1, 8192)},
+     {min_replicas_count, minReplicasCount, ns_bucket:get_min_replicas(),
+      get_number(0, 3)},
      {magma_min_memory_quota, magmaMinMemoryQuota, 1024,
       get_number(100, 1024, 1024)},
      {event_logs_limit, eventLogsLimit, 10000,

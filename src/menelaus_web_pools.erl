@@ -236,6 +236,7 @@ do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
          {maxBucketCount, ns_bucket:get_max_buckets()},
          {maxCollectionCount, collections:get_max_supported(num_collections)},
          {maxScopeCount, collections:get_max_supported(num_scopes)},
+         {minReplicasCount, ns_bucket:get_min_replicas()},
          {autoCompactionSettings,
           menelaus_web_autocompaction:build_global_settings(Config)},
          {tasks, {[{uri, TasksURI}]}},

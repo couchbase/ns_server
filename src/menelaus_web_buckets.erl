@@ -1966,12 +1966,15 @@ validate_with_missing(GivenValue, DefaultValue, IsNew, Fn) ->
     end.
 
 parse_validate_replicas_number(NumReplicas) ->
-    case menelaus_util:parse_validate_number(NumReplicas, 0,
+    MinReplicas = ns_bucket:get_min_replicas(),
+    case menelaus_util:parse_validate_number(NumReplicas, MinReplicas,
                                              ?MAX_NUM_REPLICAS) of
         invalid ->
             {error, replicaNumber, <<"The replica number must be specified and must be a non-negative integer.">>};
         too_small ->
-            {error, replicaNumber, <<"The replica number cannot be negative.">>};
+            Msg = io_lib:format("Replica number must be equal to or greater "
+                                "than ~p", [MinReplicas]),
+            {error, replicaNumber, iolist_to_binary(Msg)};
         too_large ->
             Msg = io_lib:format("Replica number larger than ~p is not "
                                 "supported.", [?MAX_NUM_REPLICAS]),
