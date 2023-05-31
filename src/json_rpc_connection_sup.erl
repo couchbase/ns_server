@@ -13,7 +13,11 @@
 
 -include("ns_common.hrl").
 
--export([start_link/0, handle_rpc_connect/1, reannounce/0]).
+-export([start_link/0,
+         handle_rpc_connect/1,
+         handle_rpc_connect/3,
+         reannounce/0]).
+
 -export([init/1]).
 
 start_link() ->
@@ -26,18 +30,21 @@ init([]) ->
 
 handle_rpc_connect(Req) ->
     "/" ++ Path = mochiweb_request:get(path, Req),
-    Sock = mochiweb_request:get(socket, Req),
-    IsInternal = menelaus_auth:is_internal(Req),
-    menelaus_util:reply(Req, 200),
     case string:split(Path, "/", trailing) of
         [_, "test"] ->
-            ok;
+            menelaus_util:reply(Req, 200);
         _ ->
-            ok = start_handler(Path, Sock, IsInternal),
-            erlang:exit(normal)
+            IsInternal = menelaus_auth:is_internal(Req),
+            handle_rpc_connect(Path, [{internal, IsInternal}], Req)
     end.
 
-start_handler(Label, Sock, IsInternal) ->
+handle_rpc_connect(Label, Params, Req) ->
+    Sock = mochiweb_request:get(socket, Req),
+    menelaus_util:reply(Req, 200),
+    ok = start_handler(Label, Params, Sock),
+    erlang:exit(normal).
+
+start_handler(Label, Params, Sock) ->
     Ref = make_ref(),
     Starter = self(),
 
@@ -60,7 +67,7 @@ start_handler(Label, Sock, IsInternal) ->
                 end
         end,
 
-    {ok, Pid} = supervisor:start_child(?MODULE, [Label, GetSocket, IsInternal]),
+    {ok, Pid} = supervisor:start_child(?MODULE, [Label, Params, GetSocket]),
     ok = gen_tcp:controlling_process(Sock, Pid),
     Pid ! {Ref, Sock},
     ok.
