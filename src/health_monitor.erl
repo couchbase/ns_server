@@ -31,7 +31,7 @@
 %% parameters.
 %% @end
 -callback start_link() -> term().
--callback init() -> term().
+-callback init() -> map().
 -callback handle_call(term(), term(), map()) ->
     noreply | {reply, map() | nack}.
 -callback handle_cast(term(), map()) -> noreply.
@@ -48,15 +48,15 @@
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
--export([common_init/1, common_init/2,
-         time_diff_to_status/1,
+-export([time_diff_to_status/1,
          erase_unknown_nodes/2,
          local_monitors/0,
          node_monitors/1,
          supported_services/1,
          get_module/1,
          send_heartbeat/3, send_heartbeat/4,
-         analyze_local_status/5]).
+         analyze_local_status/5,
+         get_refresh_interval/0]).
 
 -record(state, {
                 monitor_module,
@@ -69,18 +69,25 @@ start_link(MonModule) ->
 
 %% gen_server callbacks
 init([MonModule]) ->
-    MonModule:init().
+    %% All monitors using this module should have at least this state, rather
+    %% than define it in every file we can merge it into the MonitorState
+    %% (which it exists in because it's needed in both this file and the
+    %% specialised monitor).
+    BaseMonitorState = #{nodes => dict:new(),
+                         nodes_wanted => ns_node_disco:nodes_wanted()},
 
-common_init(MonModule, with_refresh) ->
-    self() ! refresh,
-    common_init(MonModule).
+    SpecialisedMonitorState = MonModule:init(),
 
-common_init(MonModule) ->
+    MonitorState = maps:merge(BaseMonitorState, SpecialisedMonitorState),
+
+    case MonModule:can_refresh() of
+        true -> self() ! refresh;
+        false -> ok
+    end,
+
     chronicle_compat_events:notify_if_key_changes([nodes_wanted],
                                                   peers_changed),
-    MonitorState = #{nodes => dict:new(),
-                     nodes_wanted => ns_node_disco:nodes_wanted(),
-                     refresh_interval => ?DEFAULT_REFRESH_INTERVAL},
+
     {ok, #state{monitor_module = MonModule,
                 monitor_state = MonitorState}}.
 
@@ -212,6 +219,10 @@ supported_services_by_version(ClusterVersion) ->
 
 get_module(Monitor) ->
     list_to_atom(atom_to_list(Monitor) ++ "_monitor").
+
+-spec get_refresh_interval() -> integer().
+get_refresh_interval() ->
+    ?DEFAULT_REFRESH_INTERVAL.
 
 %% Internal functions
 send_heartbeat_inner(MonModule, SendNodes, Payload, RefreshInterval) ->

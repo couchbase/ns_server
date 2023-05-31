@@ -31,7 +31,7 @@ start_link() ->
     health_monitor:start_link(?MODULE).
 
 init() ->
-    health_monitor:common_init(?MODULE, with_refresh).
+    #{refresh_interval => health_monitor:get_refresh_interval()}.
 
 handle_call(get_nodes, _From, MonitorState) ->
     #{nodes := Statuses} = MonitorState,

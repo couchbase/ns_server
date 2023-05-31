@@ -47,7 +47,7 @@ start_link() ->
 
 init() ->
     ets:new(mref2node, [private, named_table]),
-    health_monitor:common_init(?MODULE).
+    #{}.
 
 handle_call(get_nodes, _From, MonitorState) ->
     #{nodes := Statuses} = MonitorState,
