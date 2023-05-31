@@ -17,6 +17,7 @@
 
 -export([start_link/0]).
 -export([get_nodes/0,
+         can_refresh/0,
          analyze_status/2,
          is_node_down/1]).
 
@@ -285,6 +286,9 @@ check_for_io_failure(Statuses) ->
                            end, Buckets),
             dict:store(node(), NewBuckets, Statuses)
     end.
+
+can_refresh() ->
+    true.
 
 -ifdef(TEST).
 %% See health_monitor.erl for tests common to all monitors that use these

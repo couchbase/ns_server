@@ -39,6 +39,7 @@
 
 %% Other API required for the behaviour.
 -callback get_nodes() -> term().
+-callback can_refresh() -> boolean().
 
 
 -define(INACTIVE_TIME, 2000000). % 2 seconds in microseconds
@@ -108,7 +109,9 @@ handle_cast({heartbeat, Node, Status},
 handle_cast(Cast, State) ->
     handle_message(handle_cast, Cast, State).
 
-handle_info(refresh, State) ->
+handle_info(refresh, #state{monitor_module = MonModule} = State) ->
+    true = MonModule:can_refresh(),
+
     RV = handle_message(handle_info, refresh, State),
     erlang:send_after(?REFRESH_INTERVAL, self(), refresh),
     RV;
@@ -308,6 +311,15 @@ basic_test_t(Monitor) ->
     %% Some unknown info shouldn't crash us, but it also should not do
     %% anything interesting that we can test...
     Pid ! undefined,
+
+    %% Refresh tested automatically by any refreshing monitor, but doing
+    %% it explicitly doesn't hurt.
+    case Monitor:can_refresh() of
+        true ->
+            Pid ! refresh;
+        false ->
+            ok
+    end,
 
     %% And the same for a call...
     ?assertEqual(nack, gen_server:call(Pid, undefined)),

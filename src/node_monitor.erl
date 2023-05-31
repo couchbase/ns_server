@@ -20,6 +20,7 @@
 
 -export([start_link/0]).
 -export([get_nodes/0,
+         can_refresh/0,
          annotate_status/1]).
 -export([init/0, handle_call/4, handle_cast/3, handle_info/3]).
 
@@ -127,6 +128,9 @@ node_status(Node, Dict) ->
         _ ->
             []
     end.
+
+can_refresh() ->
+    true.
 
 -ifdef(TEST).
 %% See health_monitor.erl for tests common to all monitors that use these

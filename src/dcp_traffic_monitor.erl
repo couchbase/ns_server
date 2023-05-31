@@ -33,6 +33,7 @@
 
 -export([start_link/0]).
 -export([get_nodes/0,
+         can_refresh/0,
          node_alive/2]).
 -export([init/0, handle_call/4, handle_cast/3, handle_info/3]).
 
@@ -145,6 +146,9 @@ update_bucket(Node, Buckets, {Bucket, LastHeard, Pid}) ->
                 end
         end,
     lists:keystore(Bucket, 1, Buckets, {Bucket, LastHeard, NewPids}).
+
+can_refresh() ->
+    false.
 
 -ifdef(TEST).
 %% See health_monitor.erl for tests common to all monitors that use these
