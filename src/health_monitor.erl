@@ -86,7 +86,7 @@ init([MonModule]) ->
     end,
 
     chronicle_compat_events:notify_if_key_changes([nodes_wanted],
-                                                  peers_changed),
+                                                  config_updated),
 
     {ok, #state{monitor_module = MonModule,
                 monitor_state = MonitorState}}.
@@ -134,7 +134,7 @@ handle_info(refresh, #state{monitor_module = MonModule,
     erlang:send_after(RefreshInterval, self(), refresh),
     RV;
 
-handle_info(peers_changed, #state{monitor_state = MonState} = State) ->
+handle_info(config_updated, #state{monitor_state = MonState} = State) ->
     #{nodes := Statuses} = MonState,
     NewNodesSorted = lists:usort(ns_node_disco:nodes_wanted()),
     FilteredStatuses = erase_unknown_nodes(Statuses, NewNodesSorted),
