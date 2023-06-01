@@ -3332,6 +3332,53 @@ basic_bucket_params_screening_test() ->
     ?assertEqual({magma_seq_tree_data_blocksize, 4096},
                  proplists:lookup(magma_seq_tree_data_blocksize, OK26)),
 
+    %% Cannot create a bucket with replicaNumber less than the minimum.
+    meck:expect(ns_config, read_key_fast,
+                fun (min_replicas_count, _) ->
+                        2;
+                    (_, Default) ->
+                        Default
+                end),
+
+    {_OK27, E27} = basic_bucket_params_screening(
+        true,
+        "bucket27",
+        [{"bucketType", "membase"},
+         {"ramQuota", "1024"},
+         {"replicaNumber", "1"},
+         {"storageBackend", "magma"}],
+        AllBuckets),
+    ?assertEqual([{replicaNumber,
+                   <<"Replica number must be equal to or greater than 2">>}],
+                 E27),
+
+    %% Cannot update a bucket's replicaNumber to be less than the minimum.
+    {_OK28, E28} = basic_bucket_params_screening(
+                     false, "third",
+                     [{"replicaNumber", "1"}],
+                     AllBuckets),
+    ?assertEqual([{replicaNumber,
+                   <<"Replica number must be equal to or greater than 2">>}],
+                 E28),
+
+    %% Can create a bucket with replicaNumber equal to the minimum.
+    {OK29, E29} = basic_bucket_params_screening(
+        true,
+        "bucket29",
+        [{"bucketType", "membase"},
+         {"ramQuota", "1024"},
+         {"replicaNumber", "2"},
+         {"storageBackend", "magma"}],
+        AllBuckets),
+    ?assertEqual([], E29),
+    ?assertEqual({num_replicas, 2}, proplists:lookup(num_replicas, OK29)),
+
+    %% Back to default action
+    meck:expect(ns_config, read_key_fast,
+                fun (_, Default) ->
+                        Default
+                end),
+
     meck:unload(ns_config),
     meck:unload(config_profile),
     meck:unload(cluster_compat_mode),
