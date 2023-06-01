@@ -61,7 +61,7 @@
 -export([start_link/0]).
 -export([get_nodes/0,
          can_refresh/0]).
--export([init/0, handle_call/4, handle_cast/3, handle_info/3]).
+-export([init/0, handle_call/4, handle_cast/2, handle_info/2]).
 
 -ifdef(TEST).
 -export([health_monitor_test_setup/0,
@@ -83,11 +83,13 @@ handle_call(Call, From, Statuses, _Nodes) ->
                  [Call, From, Statuses]),
     {reply, nack}.
 
-handle_cast(Cast, Statuses, _Nodes) ->
-    ?log_warning("Unexpected cast ~p when in state:~n~p", [Cast, Statuses]),
+handle_cast(Cast, MonitorState) ->
+    ?log_warning("Unexpected cast ~p when in state:~n~p", [Cast, MonitorState]),
     noreply.
 
-handle_info(refresh, Statuses, NodesWanted) ->
+handle_info(refresh, MonitorState) ->
+    #{nodes := Statuses, nodes_wanted := NodesWanted} = MonitorState,
+
     %% Fetch each node's view of every other node and analyze it.
     AllNodes = node_monitor:get_nodes(),
     NewStatuses = lists:foldl(
@@ -105,8 +107,9 @@ handle_info(refresh, Statuses, NodesWanted) ->
                     end, dict:new(), NodesWanted),
     {noreply, NewStatuses};
 
-handle_info(Info, Statuses, _Nodes) ->
-    ?log_warning("Unexpected message ~p when in state:~n~p", [Info, Statuses]),
+handle_info(Info, MonitorState) ->
+    ?log_warning("Unexpected message ~p when in state:~n~p",
+                 [Info, MonitorState]),
     noreply.
 
 %% APIs

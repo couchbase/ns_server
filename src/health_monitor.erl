@@ -34,8 +34,8 @@
 -callback init() -> term().
 -callback handle_call(term(), term(), term(), term()) ->
     noreply | {reply, term()}.
--callback handle_cast(term(), term(), term()) -> noreply.
--callback handle_info(term(), term(), term()) -> noreply.
+-callback handle_cast(term(), map()) -> noreply.
+-callback handle_info(term(), map()) -> noreply.
 
 %% Other API required for the behaviour.
 -callback get_nodes() -> term().
@@ -59,10 +59,10 @@
          analyze_local_status/5]).
 
 -record(state, {
-          nodes :: dict:dict(),
-          nodes_wanted :: [node()],
-          monitor_module
-         }).
+                monitor_module,
+                %% Map such that monitors can add any state they wish
+                monitor_state :: map()
+               }).
 
 start_link(MonModule) ->
     gen_server:start_link({local, MonModule}, ?MODULE, [MonModule], []).
@@ -78,29 +78,39 @@ common_init(MonModule, with_refresh) ->
 common_init(MonModule) ->
     chronicle_compat_events:notify_if_key_changes([nodes_wanted],
                                                   peers_changed),
-    {ok, #state{nodes = dict:new(),
-                nodes_wanted = ns_node_disco:nodes_wanted(),
-                monitor_module = MonModule}}.
+    MonitorState = #{nodes => dict:new(),
+                     nodes_wanted => ns_node_disco:nodes_wanted()},
+    {ok, #state{monitor_module = MonModule,
+                monitor_state = MonitorState}}.
 
-handle_call(Call, From, #state{nodes = Statuses, nodes_wanted = NodesWanted,
-                               monitor_module = MonModule} = State) ->
+handle_call(Call, From,
+            #state{monitor_module = MonModule,
+                   monitor_state = MonState} =
+                State) ->
+    #{nodes := Statuses,
+      nodes_wanted := NodesWanted} = MonState,
     case MonModule:handle_call(Call, From, Statuses, NodesWanted) of
         {ReplyType, Reply} ->
             {ReplyType, Reply, State};
         {ReplyType, Reply, NewStatuses} ->
-            {ReplyType, Reply, State#state{nodes = NewStatuses}}
+            {ReplyType, Reply,
+             State#state{monitor_state = MonState#{nodes => NewStatuses}}}
     end.
 
 handle_cast({heartbeat, Node}, State) ->
     handle_cast({heartbeat, Node, empty}, State);
 handle_cast({heartbeat, Node, Status},
-            #state{nodes = Statuses, nodes_wanted = NodesWanted,
-                   monitor_module = MonModule} = State) ->
+            #state{monitor_module = MonModule,
+                   monitor_state = MonState}
+            = State) ->
+    #{nodes := Statuses,
+      nodes_wanted := NodesWanted} = MonState,
     case lists:member(Node, NodesWanted) of
         true ->
             NewStatus = MonModule:annotate_status(Status),
             NewStatuses = dict:store(Node, NewStatus, Statuses),
-            {noreply, State#state{nodes = NewStatuses}};
+            {noreply, State#state{monitor_state =
+                                      MonState#{nodes => NewStatuses}}};
         false ->
             ?log_debug("Ignoring heartbeat from an unknown node ~p", [Node]),
             {noreply, State}
@@ -116,22 +126,25 @@ handle_info(refresh, #state{monitor_module = MonModule} = State) ->
     erlang:send_after(?REFRESH_INTERVAL, self(), refresh),
     RV;
 
-handle_info(peers_changed, #state{nodes = Statuses} = State) ->
+handle_info(peers_changed, #state{monitor_state = MonState} = State) ->
+    #{nodes := Statuses} = MonState,
     NewNodesSorted = lists:usort(ns_node_disco:nodes_wanted()),
     FilteredStatuses = erase_unknown_nodes(Statuses, NewNodesSorted),
-    {noreply, State#state{nodes = FilteredStatuses,
-                          nodes_wanted = NewNodesSorted}};
+    {noreply, State#state{monitor_state =
+                              MonState#{nodes => FilteredStatuses,
+                                        nodes_wanted => NewNodesSorted}}};
 
 handle_info(Info, State) ->
     handle_message(handle_info, Info, State).
 
-handle_message(Fun, Msg, #state{nodes = Statuses, nodes_wanted = NodesWanted,
-                                monitor_module = MonModule} = State) ->
-    case erlang:apply(MonModule, Fun, [Msg, Statuses, NodesWanted]) of
+handle_message(Fun, Msg, #state{monitor_module = MonModule,
+                                monitor_state = MonState} = State) ->
+    case erlang:apply(MonModule, Fun, [Msg, MonState]) of
         noreply ->
             {noreply, State};
         {noreply, NewStatuses} ->
-            {noreply, State#state{nodes = NewStatuses}}
+            {noreply, State#state{monitor_state =
+                                      MonState#{nodes => NewStatuses}}}
     end.
 
 terminate(_Reason, _State) ->

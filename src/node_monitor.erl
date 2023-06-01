@@ -22,7 +22,7 @@
 -export([get_nodes/0,
          can_refresh/0,
          annotate_status/1]).
--export([init/0, handle_call/4, handle_cast/3, handle_info/3]).
+-export([init/0, handle_call/4, handle_cast/2, handle_info/2]).
 
 -ifdef(TEST).
 -export([health_monitor_test_setup/0,
@@ -49,11 +49,12 @@ handle_call(Call, From, Statuses, _Nodes) ->
                  [Call, From, Statuses]),
     {reply, nack}.
 
-handle_cast(Cast, Statuses, _NodesWanted) ->
-    ?log_warning("Unexpected cast ~p when in state:~n~p", [Cast, Statuses]),
+handle_cast(Cast, MonitorState) ->
+    ?log_warning("Unexpected cast ~p when in state:~n~p", [Cast, MonitorState]),
     noreply.
 
-handle_info(refresh, _Statuses, NodesWanted) ->
+handle_info(refresh, MonitorState) ->
+    #{nodes_wanted := NodesWanted} = MonitorState,
     Payload = latest_status(NodesWanted),
     %% We need to send our status to the node where the auto-failover logic
     %% is running. This is the mb_master node. Normally, this is also
@@ -91,8 +92,9 @@ handle_info(refresh, _Statuses, NodesWanted) ->
     health_monitor:send_heartbeat(?MODULE, SendTo, Payload),
     noreply;
 
-handle_info(Info, Statuses, _NodesWanted) ->
-    ?log_warning("Unexpected message ~p when in state:~n~p", [Info, Statuses]),
+handle_info(Info, MonitorState) ->
+    ?log_warning("Unexpected message ~p when in state:~n~p",
+                 [Info, MonitorState]),
     noreply.
 
 %% APIs

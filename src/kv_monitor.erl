@@ -21,7 +21,7 @@
          analyze_status/2,
          is_node_down/1]).
 
--export([init/0, handle_call/4, handle_cast/3, handle_info/3]).
+-export([init/0, handle_call/4, handle_cast/2, handle_info/2]).
 
 -ifdef(TEST).
 -export([health_monitor_test_setup/0,
@@ -45,15 +45,17 @@ handle_call(Call, From, Statuses, _Nodes) ->
                  [Call, From, Statuses]),
     {reply, nack}.
 
-handle_cast(Cast, Statuses, _Nodes) ->
-    ?log_warning("Unexpected cast ~p when in state:~n~p", [Cast, Statuses]),
+handle_cast(Cast, MonitorState) ->
+    ?log_warning("Unexpected cast ~p when in state:~n~p", [Cast, MonitorState]),
     noreply.
 
-handle_info(refresh, _Statuses, NodesWanted) ->
+handle_info(refresh, MonitorState) ->
+    #{nodes_wanted := NodesWanted} = MonitorState,
     {noreply, handle_refresh_status(NodesWanted)};
 
-handle_info(Info, Statuses, _Nodes) ->
-    ?log_warning("Unexpected message ~p when in state:~n~p", [Info, Statuses]),
+handle_info(Info, MonitorState) ->
+    ?log_warning("Unexpected message ~p when in state:~n~p",
+                 [Info, MonitorState]),
     noreply.
 
 %% APIs

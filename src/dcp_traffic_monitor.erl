@@ -35,7 +35,7 @@
 -export([get_nodes/0,
          can_refresh/0,
          node_alive/2]).
--export([init/0, handle_call/4, handle_cast/3, handle_info/3]).
+-export([init/0, handle_call/4, handle_cast/2, handle_info/2]).
 
 -ifdef(TEST).
 -export([health_monitor_test_setup/0,
@@ -64,7 +64,8 @@ handle_call(Call, From, Statuses, _Nodes) ->
                  [Call, From, Statuses]),
     {reply, nack}.
 
-handle_cast({node_alive, Node, BucketInfo}, Statuses, Nodes) ->
+handle_cast({node_alive, Node, BucketInfo}, MonitorState) ->
+    #{nodes := Statuses, nodes_wanted := Nodes} = MonitorState,
     case lists:member(Node, Nodes) of
         true ->
             NewStatuses = misc:dict_update(
@@ -78,11 +79,12 @@ handle_cast({node_alive, Node, BucketInfo}, Statuses, Nodes) ->
             noreply
     end;
 
-handle_cast(Cast, Statuses, _Nodes) ->
-    ?log_warning("Unexpected cast ~p when in state:~n~p", [Cast, Statuses]),
+handle_cast(Cast, MonitorState) ->
+    ?log_warning("Unexpected cast ~p when in state:~n~p", [Cast, MonitorState]),
     noreply.
 
-handle_info({'DOWN', MRef, process, Pid, _Reason}, Statuses, _Nodes) ->
+handle_info({'DOWN', MRef, process, Pid, _Reason}, MonitorState) ->
+    #{nodes := Statuses} = MonitorState,
     [{MRef, {Node, Bucket}}] = ets:lookup(mref2node, MRef),
     ?log_debug("Deleting Node:~p Bucket:~p Pid:~p", [Node, Bucket, Pid]),
     NewStatuses = case dict:find(Node, Statuses) of
@@ -98,8 +100,9 @@ handle_info({'DOWN', MRef, process, Pid, _Reason}, Statuses, _Nodes) ->
                   end,
     ets:delete(mref2node, MRef),
     {noreply, NewStatuses};
-handle_info(Info, Statuses, _Nodes) ->
-    ?log_warning("Unexpected message ~p when in state:~n~p", [Info, Statuses]),
+handle_info(Info, MonitorState) ->
+    ?log_warning("Unexpected message ~p when in state:~n~p",
+                 [Info, MonitorState]),
     noreply.
 
 %% APIs
