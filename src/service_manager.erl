@@ -269,6 +269,16 @@ wait_for_task_completion_loop(Timeout, #state{op_type = Type} = State) ->
         {task_failed, Error} ->
             exit({task_failed, Type, {service_error, Error}});
         task_done ->
+            ok;
+        %% We would receive the following messages from the service-agent
+        %% running on the leader, if a node with version less than
+        %% ?VERSION_ELIXIR is picked as the leader for the service rebalance.
+        {rebalance_progress, Progress} ->
+            report_progress(Progress, State),
+            wait_for_task_completion_loop(Timeout, State);
+        {rebalance_failed, Error} ->
+            exit({task_failed, Type, {service_error, Error}});
+        rebalance_done ->
             ok
     after
         Timeout ->
