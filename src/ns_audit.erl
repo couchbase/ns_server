@@ -523,7 +523,7 @@ send_to_memcached(Queue) ->
                                "error ~p. Dropping audit event.",
                                [Code, EncodedBody, Error]),
                     maybe_reply(IsSync, {error, dropped}),
-                    {ok, NewQueue};
+                    send_to_memcached(NewQueue);
                 Error ->
                     ?log_debug("Audit put call ~p with body ~p failed with "
                                "error ~p.",
