@@ -723,8 +723,17 @@ verify_oper({drop_collection, ScopeName, Name}, Manifest) ->
     with_collection(fun (_) -> ok end, ScopeName, Name, Manifest);
 verify_oper({modify_collection, ScopeName, Name, SuppliedProps},
             Manifest) ->
-    %% We are only allowed to change history for a collection at the moment.
-    AllowedCollectionPropChanges = [{history}],
+    %% We were originally only allowed to change history for a collection.
+    %% In Trinity, we are also able to modify maxTTL, but this does not mean
+    %% that we can skip verification, as we still need to prevent modification
+    %% of the uid property and any invalid properties
+    AllowedCollectionPropChanges = [{history}] ++
+        case {cluster_compat_mode:is_cluster_trinity(), ScopeName} of
+            {false, _} -> [];
+            %% Do not allow modification maxTTL for the _system scope
+            {_, ?SYSTEM_SCOPE_NAME} -> [];
+            {true, _} -> [{maxTTL}]
+        end,
     with_collection(
       fun (ExistingProps) ->
               %% When we store collections we strip them of their properties of
@@ -1142,9 +1151,11 @@ update_manifest_test_setup() ->
     meck:new(ns_config, [passthrough]),
     meck:new(cluster_compat_mode, [passthrough]),
     meck:new(ns_bucket, [passthrough]),
+    meck:new(config_profile, [passthrough]),
 
     meck:expect(cluster_compat_mode, is_cluster_70, fun () -> true end),
     meck:expect(cluster_compat_mode, is_cluster_72, fun () -> true end),
+    meck:expect(cluster_compat_mode, is_cluster_trinity, fun () -> true end),
 
     %% Return some scope/collection values high enough for us to not worry about
     %% it while testing.
@@ -1168,7 +1179,8 @@ update_manifest_test_setup() ->
 update_manifest_test_teardown() ->
     meck:unload(ns_config),
     meck:unload(cluster_compat_mode),
-    meck:unload(ns_bucket).
+    meck:unload(ns_bucket),
+    meck:unload(config_profile).
 
 update_with_manifest(Manifest, Operation) ->
     Bucket = "bucket",
@@ -1348,6 +1360,10 @@ collection_uid_t() ->
 
 modify_collection_t() ->
     {ok, BucketConf} = ns_bucket:get_bucket("bucket"),
+
+    %% Enable system scope for testing that its maxTTL cannot be modified
+    meck:expect(config_profile, get_bool,
+                fun(enable_system_scope) -> true end),
     Manifest = default_manifest(BucketConf),
 
     {commit, [{_, _, Manifest1}], _} =
@@ -1374,12 +1390,15 @@ modify_collection_t() ->
                                                get_scope("_default",
                                                          Manifest3)))),
 
-    %% Cannot set maxTTL from undefined
+    meck:expect(cluster_compat_mode, is_cluster_trinity, fun () -> false end),
+    %% Cannot set maxTTL from undefined pre-trinity
     ?assertEqual(
        {abort, {error, {cannot_modify_properties, "c1", [{maxTTL, 9}]}}},
        update_manifest_test_update_collection(Manifest3, "_default", "c1",
                                               [{maxTTL, 9}])),
 
+    meck:expect(cluster_compat_mode, is_cluster_trinity, fun () -> true end),
+    %% Can set maxTTL from undefined in trinity
     {commit, [{_, _, Manifest4}], _} =
         update_manifest_test_create_collection(Manifest3, "_default", "c2",
                                                [{maxTTL, 10}]),
@@ -1389,7 +1408,8 @@ modify_collection_t() ->
                                                     get_scope("_default",
                                                               Manifest4)))),
 
-    %% Cannot change maxTTL value
+    meck:expect(cluster_compat_mode, is_cluster_trinity, fun () -> false end),
+    %% Cannot change maxTTL value pre-trinity
     ?assertEqual(
        {abort, {error, {cannot_modify_properties, "c2", [{maxTTL, 11}]}}},
        update_manifest_test_update_collection(Manifest4, "_default", "c2",
@@ -1399,6 +1419,26 @@ modify_collection_t() ->
     {abort, {not_changed, <<"5">>}} =
         update_manifest_test_update_collection(Manifest4, "_default", "c2",
                                                [{maxTTL, 10}]),
+
+    meck:expect(cluster_compat_mode, is_cluster_trinity, fun () -> true end),
+    %% Cannot change maxTTL in trinity for the _system scope
+    SystemCollection = hd(system_collections()),
+    ?assertEqual(
+       {abort, {error, {cannot_modify_properties, SystemCollection,
+           [{maxTTL, 11}]}}},
+        update_manifest_test_update_collection(Manifest4, "_system",
+                                               SystemCollection,
+                                               [{maxTTL, 11}])),
+
+    %% Can change maxTTL value in trinity
+    {commit, [{_, _, Manifest5}], _} =
+        update_manifest_test_update_collection(Manifest4, "_default", "c2",
+                                               [{maxTTL, 11}]),
+    ?assertEqual(11,
+                 proplists:get_value(maxTTL,
+                                     get_collection("c2",
+                                                    get_scope("_default",
+                                                              Manifest5)))),
 
     %% Cannot modify uid
     ?assertEqual(
@@ -1467,10 +1507,10 @@ set_manifest_t() ->
 
     %% Cannot modify default collection with invalid args
     ?assertEqual(
-       {abort, {error, {cannot_modify_properties, "_default", [{maxTTL, 9}]}}},
+       {abort, {error, {cannot_modify_properties, "_default", [{invalid, 9}]}}},
        update_manifest_test_set_manifest(
          default_manifest(BucketConf),
-         [{"_default", [{collections, [{"_default", [{maxTTL, 9}]}]}]}])),
+         [{"_default", [{collections, [{"_default", [{invalid, 9}]}]}]}])),
 
     %% We'll build some manifests to test that the bulk API can correctly modify
     %% collections. All of the manifests will use these counters
@@ -1588,13 +1628,15 @@ set_manifest_t() ->
                          {"ic6", [{uid, 16}]}]}]}],
        get_scopes(Manifest3)),
 
-    %% Cannot add maxTTL
     ExistingManifest3 =
         ManifestCounters ++
         [{scopes,
           [{"s1",
             [{uid, 8},
              {collections, [{"c1", [{uid, 8}]}]}]}]}],
+
+    %% Cannot add maxTTL pre-trinity
+    meck:expect(cluster_compat_mode, is_cluster_trinity, fun () -> false end),
     ?assertEqual(
        {abort,{error,{cannot_modify_properties,"c1",[{maxTTL,10}]}}},
        update_manifest_test_set_manifest(
@@ -1656,6 +1698,8 @@ upgrade_to_72_t() ->
     %% must check to ensure that we don't create collections with history=true
     %% in mixed mode clusters when using the default history value.
     meck:expect(cluster_compat_mode, is_cluster_72, fun() -> false end),
+    meck:expect(config_profile, get_bool,
+                fun(enable_system_scope) -> false end),
 
     {ok, BucketConf71} = ns_bucket:get_bucket("bucket"),
     Manifest71 = default_manifest(BucketConf71),

@@ -52,6 +52,7 @@
          changeable_in_enterprise_only/3,
          valid_in_enterprise_only/2,
          changeable_in_72_only/3,
+         changeable_in_trinity_only/3,
          string_array/2,
          return_value/3,
          return_error/3,
@@ -677,12 +678,23 @@ changeable_in_enterprise_only(Name, Default, AllowDefault, State) ->
 %% Validate a parameter that may only be set to a non-default value when the
 %% cluster is version 7.2.0+.
 changeable_in_72_only(Name, Default, State) ->
-    Is72 = cluster_compat_mode:is_cluster_72(),
-    Pred = fun () when Is72 -> true;
-               () -> "Supported only when entire cluster is running Couchbase "
-                     "Server Version 7.2.0+"
-           end,
-    is_changeable(Name, Default, true, Pred, State).
+    changeable_in_compat_mode(Name, Default, ?VERSION_72, State).
+
+%% Validate a parameter that may only be set to a non-default value when the
+%% cluster is version trinity+.
+changeable_in_trinity_only(Name, Default, State) ->
+    changeable_in_compat_mode(Name, Default, ?VERSION_TRINITY, State).
+
+changeable_in_compat_mode(Name, Default, CompatMode, State) ->
+    IsCompat = cluster_compat_mode:is_enabled(CompatMode),
+    is_changeable(
+        Name, Default, true,
+        fun () when IsCompat ->
+            true;
+            () -> io_lib:format("Supported only when entire cluster is running "
+                                "Couchbase Server Version ~s+",
+                                [?version_string(CompatMode)])
+        end, State).
 
 string_array(Name, State) ->
     validate(
@@ -944,20 +956,30 @@ json_root_test() ->
                                   string(key, _)]),
     ?assertEqual("value", get_value(key, State2)).
 
-changeable_in_72_test() ->
-    meck:new(cluster_compat_mode),
-    meck:expect(cluster_compat_mode, is_cluster_72, fun() -> false end),
+test_changeable_in_compat({Validator, Version}) ->
+    meck:expect(cluster_compat_mode, is_enabled,
+                fun(V) -> ?assertEqual(Version, V), false end),
 
     Args = [{"test", ok}],
-    Validators = [validator:changeable_in_72_only(test, false, _)],
+    Validators = [Validator],
+    ExpectedError = io_lib:format("Supported only when entire cluster is "
+                                  "running Couchbase Server Version ~s+",
+                                  [?version_string(Version)]),
+    {error, [{"test", ExpectedError}]} = handle_proplist(Args, Validators),
 
-    {error, [{"test", "Supported only when entire cluster is running Couchbase "
-                      "Server Version 7.2.0+"}]} =
-        handle_proplist(Args, Validators),
+    meck:expect(cluster_compat_mode, is_enabled,
+                fun(V) -> ?assertEqual(Version, V), true end),
 
-    meck:expect(cluster_compat_mode, is_cluster_72, fun() -> true end),
-    {ok, _} = handle_proplist(Args, Validators),
+    {ok, _} = handle_proplist(Args, Validators).
 
+changeable_in_compat_test() ->
+    meck:new(cluster_compat_mode),
+    Validators =
+        [{changeable_in_72_only(test, false, _), [7, 2]},
+         {changeable_in_trinity_only(test, false, _), [7, 6]},
+         %% Arbitrary example
+         {changeable_in_compat_mode(test, false, [8, 0], _), [8, 0]}],
+    lists:foreach(test_changeable_in_compat(_), Validators),
     meck:unload(cluster_compat_mode),
     ok.
 -endif.

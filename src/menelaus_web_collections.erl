@@ -129,13 +129,14 @@ collection_modifiable_validators(BucketConfig) ->
     [validator:boolean(history, _),
      validator:valid_in_enterprise_only(history, _),
      validator:changeable_in_72_only(history, false, _),
-     bucket_has_config_validator(history, BucketConfig, storage_mode, magma,
-                                 _)].
+     bucket_has_config_validator(history, BucketConfig, storage_mode, magma, _),
+     validator:integer(maxTTL, 0, ?MC_MAXINT, _),
+     validator:changeable_in_enterprise_only(maxTTL, 0, _),
+     validator:changeable_in_trinity_only(maxTTL, false, _)
+    ].
 
 collection_validators(DefaultAllowed, BucketConfig) ->
-    [validator:integer(maxTTL, 0, ?MC_MAXINT, _),
-     validator:changeable_in_enterprise_only(maxTTL, 0, _)] ++
-     collection_modifiable_validators(BucketConfig) ++
+    collection_modifiable_validators(BucketConfig) ++
      scope_validators(DefaultAllowed).
 
 handle_post_collection(Bucket, Scope, Req) ->

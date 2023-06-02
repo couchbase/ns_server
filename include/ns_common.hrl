@@ -246,6 +246,10 @@
 -define(VERSION_72, [7, 2]).
 -define(VERSION_TRINITY, [7, 6]).
 
+-define(version_string(Version),
+        lists:flatten(lists:join(".", lists:map(fun erlang:integer_to_list/1,
+                                                Version)))).
+
 %% This require coordination with the UI to update the version.
 -define(LATEST_UI_COMPAT_VERSION, ?VERSION_70).
 
