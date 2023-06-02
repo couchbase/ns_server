@@ -32,24 +32,8 @@
                      {error, {bad_vbuckets, [vbucket_id()]}} |
                      {error, {corrupted_server_list, [node()], [node()]}}.
 cleanup(Bucket, Options) ->
-    %% We always want to check for unsafe nodes, as we want to honor the
-    %% auto-reprovisioning settings for ephemeral buckets. That is, we do not
-    %% want to simply activate any bucket on a restarted node and lose the data
-    %% instead of promoting the replicas.
-    JanitorOptions = Options ++ auto_reprovision:get_cleanup_options(),
-    SnapShot =
-        chronicle_compat:get_snapshot(
-          [ns_bucket:fetch_snapshot(Bucket, _, [props]),
-           ns_cluster_membership:fetch_snapshot(_)]),
-
-    CfgRes = ns_bucket:get_bucket(Bucket, SnapShot),
-    case maybe_get_membase_config(CfgRes) of
-        ok ->
-            ok;
-        {ok, BucketConfig} ->
-            run_bucket_cleanup_activity(Bucket, BucketConfig,
-                                        SnapShot, JanitorOptions)
-    end.
+    [{Bucket, Res}] = cleanup_buckets([Bucket], Options),
+    Res.
 
 maybe_get_membase_config(not_present) ->
     ok;
@@ -61,22 +45,57 @@ maybe_get_membase_config({ok, BucketConfig}) ->
             ok
     end.
 
-run_bucket_cleanup_activity(Bucket, BucketConfig, Snapshot, Options) ->
+cleanup_buckets(Buckets, Options) ->
+    %% We always want to check for unsafe nodes, as we want to honor the
+    %% auto-reprovisioning settings for ephemeral buckets. That is, we do not
+    %% want to simply activate any bucket on a restarted node and lose the data
+    %% instead of promoting the replicas.
+    JanitorOptions = Options ++ auto_reprovision:get_cleanup_options(),
+    BucketsFetchers =
+        [ns_bucket:fetch_snapshot(Bucket, _, [props]) || Bucket <- Buckets],
+    SnapShot =
+        chronicle_compat:get_snapshot(
+          [ns_cluster_membership:fetch_snapshot(_) | BucketsFetchers]),
+    {Completed, BucketsAndCfg} =
+        misc:partitionmap(
+          fun (Bucket) ->
+                  CfgRes = ns_bucket:get_bucket(Bucket, SnapShot),
+                  case maybe_get_membase_config(CfgRes) of
+                      ok ->
+                          {left, {Bucket, ok}};
+                      {ok, BucketConfig} ->
+                          {right, {Bucket, BucketConfig}}
+                  end
+          end, Buckets),
+
+    run_buckets_cleanup_activity(
+      BucketsAndCfg, SnapShot, JanitorOptions) ++ Completed.
+
+run_buckets_cleanup_activity([], _Snapshot, _Options) ->
+    [];
+run_buckets_cleanup_activity(BucketsAndCfg, SnapShot, Options) ->
+    Buckets = [Bucket || {Bucket, _} <- BucketsAndCfg],
     {ok, Rv} =
         leader_activities:run_activity(
-          {ns_janitor, Bucket, cleanup}, majority,
+          {ns_janitor, Buckets, cleanup}, majority,
           fun () ->
-                  CfgCleanupRes =
-                      cleanup_with_membase_bucket_check_hibernation(
-                        Bucket, Options, BucketConfig, Snapshot),
-                  case CfgCleanupRes of
-                      {ok, BucketConfig} ->
-                          {ok,
-                           cleanup_with_membase_bucket_vbucket_map(
-                             Bucket, Options, BucketConfig)};
-                      Response ->
-                          {ok, Response}
-                  end
+                  ConfigPhaseRes =
+                      [{Bucket,
+                        cleanup_with_membase_bucket_check_hibernation(
+                          Bucket, Options, BucketConfig, SnapShot)} ||
+                          {Bucket, BucketConfig} <- BucketsAndCfg],
+
+                  Results =
+                      lists:map(
+                        fun({Bucket, {ok, BucketConfig}}) ->
+                                {Bucket,
+                                 cleanup_with_membase_bucket_vbucket_map(
+                                   Bucket, Options, BucketConfig)};
+                           ({Bucket, Response}) ->
+                                {Bucket, Response}
+                        end, ConfigPhaseRes),
+
+                  {ok, Results}
           end,
           [quiet]),
 
@@ -100,7 +119,8 @@ cleanup_with_membase_bucket_check_servers(Bucket, Options, BucketConfig,
                                           Snapshot) ->
     case check_server_list(Bucket, BucketConfig, Snapshot, Options) of
         ok ->
-            cleanup_with_membase_bucket_check_map(Bucket, Options, BucketConfig);
+            cleanup_with_membase_bucket_check_map(Bucket,
+                                                  Options, BucketConfig);
         {update_servers, NewServers} ->
             update_servers(Bucket, NewServers, Options),
             repeat_bucket_config_cleanup(Bucket, Options);
