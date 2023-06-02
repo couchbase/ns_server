@@ -79,7 +79,7 @@
 %% @doc The time a stats request to a bucket may take (in milliseconds)
 -define(STATS_TIMEOUT, 2000).
 
-%% @doc Frequency (in milliseconds) at which to check for down nodes.
+%% @doc Default frequency (in milliseconds) at which to check for down nodes.
 -define(DEFAULT_TICK_PERIOD, 1000).
 
 %% @doc Minimum number of active server groups needed for server group failover
@@ -199,7 +199,8 @@ init([]) ->
     restart_on_compat_mode_change(),
 
     chronicle_compat_events:notify_if_key_changes(
-        [auto_failover_tick_period], change_interval),
+        [auto_failover_tick_period,
+         auto_failover_cfg], config_updated),
 
     Config = get_cfg(),
     ?log_debug("init auto_failover.", []),
@@ -313,10 +314,16 @@ handle_cast(reset_auto_failover_count, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info(change_interval, State) ->
-    NewTickPeriod = ns_config:read_key_fast(auto_failover_tick_period,
-                                            ?DEFAULT_TICK_PERIOD),
-    State1 = State#state{tick_period = NewTickPeriod},
+handle_info(config_updated, State) ->
+    TickPeriod =
+        case ns_config:read_key_fast(auto_failover_tick_period,
+                                     undefined) of
+            undefined ->
+                health_monitor:maybe_calculate_refresh_interval(
+                  ?DEFAULT_TICK_PERIOD);
+            Value -> Value
+        end,
+    State1 = State#state{tick_period = TickPeriod},
     {noreply,
      State1#state{auto_failover_logic_state = init_logic_state(State1)}};
 

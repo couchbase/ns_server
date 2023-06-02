@@ -46,6 +46,30 @@
 -define(INACTIVE_TICKS, ?get_param(inactive_ticks, 2)).
 -define(DEFAULT_REFRESH_INTERVAL, 1000). % 1 second heartbeat and refresh
 
+%% Not all monitors support sub-second refreshing. In particular, some of the
+%% service monitors. We don't want to scale the refresh intervals of these
+%% monitors below one second as it could cause instability and spurious
+%% auto-failovers.
+-define(MONITORS_SUPPORTING_SUB_SECOND_REFRESH,
+        ?get_param(monitor_supporting_sub_second_refresh,
+                   [ns_server_monitor,
+                    node_monitor,
+                    node_status_analyzer])).
+
+%% Auto failover configs with less than a 5 second timeout will scale down
+%% refresh intervals automatically.
+-define(AUTO_FAILOVER_MIN_SCALING_TIMEOUT, 5).
+
+%% The number of ticks expected within an auto failover timeout. It should be
+%% noted that with an auto failover timeout value of 5 seconds no refresh
+%% interval scaling is applied and monitors will refresh at a 1 second
+%% interval. This implies a scaling factor of 5 rather than 10. This
+%% behaviour is maintained for existing use cases to avoid increasing CPU
+%% usage, and the refresh inveral scaling factor of 10  will be applied to any
+%% auto failover timeout value lower than 5 second.
+-define(REFRESH_INTERVAL_SCALING_FACTOR,
+        ?get_param(refresh_interval_scaling_factor, 10)).
+
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
@@ -57,7 +81,8 @@
          supported_services/1,
          get_module/1,
          send_heartbeat/3, send_heartbeat/4,
-         analyze_local_status/5]).
+         analyze_local_status/5,
+         maybe_calculate_refresh_interval/1]).
 
 -record(state, {
                 monitor_module,
@@ -92,7 +117,9 @@ init([MonModule]) ->
         end,
 
     chronicle_compat_events:notify_if_key_changes(
-        [health_monitor_refresh_interval, nodes_wanted], config_updated),
+      [auto_failover_cfg,
+       health_monitor_refresh_interval,
+       nodes_wanted], config_updated),
 
     {ok, #state{monitor_module = MonModule,
                 monitor_state = MonStateWithRefresh}}.
@@ -247,7 +274,8 @@ get_refresh_interval(MonModule) ->
         Intervals when is_list(Intervals) ->
             case proplists:get_value(MonModule, Intervals) of
                 undefined ->
-                    ?DEFAULT_REFRESH_INTERVAL;
+                    maybe_calculate_refresh_interval(MonModule,
+                                                     ?DEFAULT_REFRESH_INTERVAL);
                 Value ->
                     Value
             end
@@ -297,6 +325,36 @@ analyze_local_status(Node, AllNodes, Service, Fun, Default) ->
             Default
     end.
 
+scale_refresh_interval_for_timeout(Timeout) ->
+    TimeoutMs = erlang:convert_time_unit(Timeout, second, millisecond),
+    round(TimeoutMs / ?REFRESH_INTERVAL_SCALING_FACTOR).
+
+maybe_calculate_refresh_interval(MonModule, DefaultValue) ->
+    case lists:member(MonModule,
+                      ?MONITORS_SUPPORTING_SUB_SECOND_REFRESH) of
+        true ->
+            maybe_calculate_refresh_interval(DefaultValue);
+        false ->
+            DefaultValue
+    end.
+
+-spec maybe_calculate_refresh_interval(pos_integer()) -> pos_integer().
+maybe_calculate_refresh_interval(DefaultValue) ->
+    AutoFailoverCfg = ns_config:read_key_fast(auto_failover_cfg, undefined),
+    case AutoFailoverCfg of
+        undefined ->
+            DefaultValue;
+        Cfg ->
+            case proplists:get_value(timeout, Cfg) of
+                undefined ->
+                    DefaultValue;
+                Timeout when Timeout < ?AUTO_FAILOVER_MIN_SCALING_TIMEOUT ->
+                    scale_refresh_interval_for_timeout(Timeout);
+                _ ->
+                    DefaultValue
+            end
+    end.
+
 -ifdef(TEST).
 basic_test_setup(Monitor) ->
     meck:new(chronicle_compat_events),
@@ -315,12 +373,14 @@ basic_test_setup(Monitor) ->
 
     meck:new(ns_config),
     meck:expect(ns_config, read_key_fast,
-                fun(health_monitor_refresh_interval, _) ->
-                        [{Monitor, ?DEFAULT_REFRESH_INTERVAL}]
+                fun(health_monitor_refresh_interval, DefaultVal) ->
+                        DefaultVal;
+                   (auto_failover_cfg, _) ->
+                        [{timeout, 1}]
                 end),
 
     meck:expect(ns_config, search_node_with_default,
-                fun({health_monitor, inactive_ticks}, DefaultValue) ->
+                fun(_, DefaultValue) ->
                         DefaultValue
                 end),
 
@@ -368,6 +428,17 @@ basic_test_teardown(Monitor, _X) ->
     meck:unload(cluster_compat_mode),
     meck:unload(testconditions).
 
+test_refresh_interval_scaling(Monitor) ->
+    ExpectedTimeout =
+        case lists:member(Monitor,
+                          ?MONITORS_SUPPORTING_SUB_SECOND_REFRESH) of
+            false -> ?DEFAULT_REFRESH_INTERVAL;
+            true -> scale_refresh_interval_for_timeout(1)
+        end,
+
+    ?assertEqual(ExpectedTimeout,
+                 get_refresh_interval(Monitor)).
+
 basic_test_t(Monitor) ->
     {ok, Pid} = Monitor:start_link(),
 
@@ -397,6 +468,8 @@ basic_test_t(Monitor) ->
 
     %% Jump into some monitor specific tests
     Monitor:health_monitor_t(),
+
+    test_refresh_interval_scaling(Monitor),
 
     gen_server:stop(Pid).
 
