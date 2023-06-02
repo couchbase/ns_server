@@ -742,18 +742,20 @@ idle({update_bucket,
     Reply =
         case bucket_placer:place_bucket(BucketName, UpdatedProps) of
             {ok, NewUpdatedProps} ->
-                case ns_bucket:update_bucket_props(
-                       BucketType, StorageMode, BucketName, NewUpdatedProps) of
-                    ok ->
-                        %% request janitor run to fix map if the replica # has
-                        %% changed
-                        request_janitor_run({bucket, BucketName});
-                    _ ->
-                        ok
-                end;
+                ns_bucket:update_bucket_props(
+                       BucketType, StorageMode, BucketName, NewUpdatedProps);
             {error, BadZones} ->
                 {error, {need_more_space, BadZones}}
         end,
+    case Reply of
+        ok ->
+            %% request janitor run to fix map if the replica # has
+            %% changed
+            request_janitor_run({bucket, BucketName});
+        _ ->
+            ok
+    end,
+
     {keep_state_and_data, [{reply, From, Reply}]};
 idle({failover, Node}, From, _State) ->
     %% calls from pre-5.5 nodes
