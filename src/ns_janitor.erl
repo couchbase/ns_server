@@ -32,38 +32,69 @@
                      {error, {bad_vbuckets, [vbucket_id()]}} |
                      {error, {corrupted_server_list, [node()], [node()]}}.
 cleanup(Bucket, Options) ->
-    Snapshot =
-        chronicle_compat:get_snapshot(
-          [ns_bucket:fetch_snapshot(Bucket, _, [props]),
-           ns_cluster_membership:fetch_snapshot(_)]),
-    case ns_bucket:get_bucket(Bucket, Snapshot) of
-        not_present ->
-            ok;
-        {ok, BucketConfig} ->
-            case ns_bucket:bucket_type(BucketConfig) of
-                membase ->
-                    cleanup_membase_bucket(Bucket,
-                                           Options, BucketConfig, Snapshot);
-                _ -> ok
-            end
-    end.
-
-cleanup_membase_bucket(Bucket, Options, BucketConfig, Snapshot) ->
     %% We always want to check for unsafe nodes, as we want to honor the
     %% auto-reprovisioning settings for ephemeral buckets. That is, we do not
     %% want to simply activate any bucket on a restarted node and lose the data
     %% instead of promoting the replicas.
-    AllOptions = Options ++ auto_reprovision:get_cleanup_options(),
-    {ok, RV} =
+    JanitorOptions = Options ++ auto_reprovision:get_cleanup_options(),
+    SnapShot =
+        chronicle_compat:get_snapshot(
+          [ns_bucket:fetch_snapshot(Bucket, _, [props]),
+           ns_cluster_membership:fetch_snapshot(_)]),
+
+    CfgRes = ns_bucket:get_bucket(Bucket, SnapShot),
+    case maybe_get_membase_config(CfgRes) of
+        ok ->
+            ok;
+        {ok, BucketConfig} ->
+            run_bucket_cleanup_activity(Bucket, BucketConfig,
+                                        SnapShot, JanitorOptions)
+    end.
+
+maybe_get_membase_config(not_present) ->
+    ok;
+maybe_get_membase_config({ok, BucketConfig}) ->
+    case ns_bucket:bucket_type(BucketConfig) of
+        membase ->
+            {ok, BucketConfig};
+        _ ->
+            ok
+    end.
+
+run_bucket_cleanup_activity(Bucket, BucketConfig, Snapshot, Options) ->
+    {ok, Rv} =
         leader_activities:run_activity(
           {ns_janitor, Bucket, cleanup}, majority,
           fun () ->
-                  {ok, cleanup_with_membase_bucket_check_hibernation(
-                         Bucket, AllOptions, BucketConfig, Snapshot)}
+                  CfgCleanupRes =
+                      cleanup_with_membase_bucket_check_hibernation(
+                        Bucket, Options, BucketConfig, Snapshot),
+                  case CfgCleanupRes of
+                      {ok, BucketConfig} ->
+                          {ok,
+                           cleanup_with_membase_bucket_vbucket_map(
+                             Bucket, Options, BucketConfig)};
+                      Response ->
+                          {ok, Response}
+                  end
           end,
           [quiet]),
 
-    RV.
+    Rv.
+
+repeat_bucket_config_cleanup(Bucket, Options) ->
+    SnapShot =
+        chronicle_compat:get_snapshot(
+          [ns_bucket:fetch_snapshot(Bucket, _, [props]),
+           ns_cluster_membership:fetch_snapshot(_)]),
+    CfgRes = ns_bucket:get_bucket(Bucket, SnapShot),
+    case maybe_get_membase_config(CfgRes) of
+        ok ->
+            ok;
+        {ok, BucketConfig} ->
+            cleanup_with_membase_bucket_check_hibernation(
+              Bucket, Options, BucketConfig, SnapShot)
+    end.
 
 cleanup_with_membase_bucket_check_servers(Bucket, Options, BucketConfig,
                                           Snapshot) ->
@@ -72,7 +103,7 @@ cleanup_with_membase_bucket_check_servers(Bucket, Options, BucketConfig,
             cleanup_with_membase_bucket_check_map(Bucket, Options, BucketConfig);
         {update_servers, NewServers} ->
             update_servers(Bucket, NewServers, Options),
-            cleanup(Bucket, Options);
+            repeat_bucket_config_cleanup(Bucket, Options);
         {error, _} = Error ->
             Error
     end.
@@ -98,7 +129,7 @@ handle_hibernation_cleanup(Bucket, Options, BucketConfig, State = pausing) ->
         ok ->
             ns_bucket:clear_hibernation_state(Bucket),
             ?log_debug("Cleared hibernation state"),
-            cleanup(Bucket, Options);
+            repeat_bucket_config_cleanup(Bucket, Options);
         _ ->
             {error, hibernation_cleanup_failed, State}
     end;
@@ -136,10 +167,9 @@ cleanup_with_membase_bucket_check_map(Bucket, Options, BucketConfig) ->
             set_initial_map(Map, Servers, MapOpts, Bucket, BucketConfig,
                             Options),
 
-            cleanup(Bucket, Options);
+            repeat_bucket_config_cleanup(Bucket, Options);
         _ ->
-            cleanup_with_membase_bucket_vbucket_map(Bucket, Options,
-                                                    BucketConfig)
+            {ok, BucketConfig}
     end.
 
 set_initial_map(Map, Servers, MapOpts, Bucket, BucketConfig, Options) ->
