@@ -55,11 +55,12 @@ bucket_permissions_to_check(Bucket) ->
      {{[{bucket, Bucket}, data, dcp], write},   'DcpConsumer'}].
 
 global_permissions_to_check() ->
-    [{{[stats, memcached], read},           'Stats'},
-     {{[admin, internal, stats], read},     'Stats'},
-     {{[admin, memcached, idle], write},    'IdleConnection'},
-     {{[admin, memcached], all},            'Administrator'},
-     {{[pools], read},                      'SystemSettings'}].
+    [{{[stats, memcached], read},              'Stats'},
+     {{[admin, internal, stats], read},        'Stats'},
+     {{[admin, memcached, idle], write},       'IdleConnection'},
+     {{[admin, memcached], all},               'Administrator'},
+     {{[pools], read},                         'SystemSettings'},
+     {{[admin, security, admin], impersonate}, 'Impersonate'}].
 
 metered_users() ->
     ["@cbq-engine", "@goxdcr", "@backup"].
