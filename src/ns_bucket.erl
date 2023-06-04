@@ -14,6 +14,7 @@
 -include("cut.hrl").
 
 -ifdef(TEST).
+-include("ns_test.hrl").
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
@@ -38,7 +39,7 @@
 -export([get_servers/1,
          bucket_type/1,
          kv_bucket_type/1,
-         kv_backend_type/1,
+         node_kv_backend_type/1,
          num_replicas_changed/1,
          create_bucket/3,
          restore_bucket/4,
@@ -97,7 +98,6 @@
          storage_mode/1,
          storage_backend/1,
          raw_ram_quota/1,
-         magma_fragmentation_percentage/1,
          magma_max_shards/2,
          magma_key_tree_data_blocksize/1,
          magma_seq_tree_data_blocksize/1,
@@ -160,7 +160,13 @@
          del_marked_for_shutdown/1,
          get_shutdown_timeout/1,
          wait_for_bucket_shutdown/3,
-         remove_bucket/1]).
+         remove_bucket/1,
+         node_storage_mode/1,
+         node_storage_mode_override/2,
+         node_autocompaction_settings/1,
+         node_magma_fragmentation_percentage/1,
+         remove_override_props/2,
+         update_bucket_config/2]).
 
 -import(json_builder,
         [to_binary/1,
@@ -425,6 +431,23 @@ eviction_policy(BucketConfig) ->
               end,
     proplists:get_value(eviction_policy, BucketConfig, Default).
 
+node_storage_mode_override(BucketConfig) ->
+    node_storage_mode_override(node(), BucketConfig).
+
+-spec node_storage_mode_override(node(), [{_, _}]) -> atom().
+node_storage_mode_override(Node, BucketConfig) ->
+    proplists:get_value({node, Node, storage_mode}, BucketConfig).
+
+-spec node_storage_mode([{_, _}]) -> atom().
+node_storage_mode(BucketConfig) ->
+    NodeStorageMode = node_storage_mode_override(BucketConfig),
+    case NodeStorageMode of
+        undefined ->
+            storage_mode(BucketConfig);
+        _ ->
+            NodeStorageMode
+    end.
+
 -spec storage_mode([{_,_}]) -> atom().
 storage_mode(BucketConfig) ->
     case bucket_type(BucketConfig) of
@@ -433,6 +456,9 @@ storage_mode(BucketConfig) ->
         membase ->
             proplists:get_value(storage_mode, BucketConfig, couchstore)
     end.
+
+autocompaction_settings(BucketConfig) ->
+    proplists:get_value(autocompaction, BucketConfig).
 
 -spec storage_backend([{_,_}]) -> atom().
 storage_backend(BucketConfig) ->
@@ -538,22 +564,28 @@ raw_ram_quota(Bucket) ->
             X
     end.
 
-magma_fragmentation_percentage(BucketConfig) ->
-    BucketSetting =
-        case proplists:get_value(autocompaction, BucketConfig, false) of
-            false ->
-                false;
-            Settings ->
-                proplists:get_value(magma_fragmentation_percentage, Settings,
-                                    false)
-        end,
-
-    case BucketSetting of
+node_autocompaction_settings(BucketConfig) ->
+    %% If the per node override setting exists on this node use that,
+    %% else use the setting on the bucket.
+    case proplists:get_value({node, node(), autocompaction},
+                             BucketConfig) of
         false ->
-            compaction_daemon:global_magma_frag_percent();
-        Pct ->
-            Pct
+            [];
+        undefined ->
+            case proplists:get_value(autocompaction, BucketConfig, []) of
+                false -> [];
+                SomeValue -> SomeValue
+            end;
+        Settings ->
+            Settings
     end.
+
+node_magma_fragmentation_percentage(BucketConfig) ->
+    AutoCompactionSettings = node_autocompaction_settings(BucketConfig),
+    GlobalMagmaFragPercent = compaction_daemon:global_magma_frag_percent(),
+    proplists:get_value(
+      magma_fragmentation_percentage, AutoCompactionSettings,
+      GlobalMagmaFragPercent).
 
 magma_max_shards(BucketConfig, Default) ->
     proplists:get_value(magma_max_shards, BucketConfig, Default).
@@ -778,8 +810,8 @@ kv_bucket_type(BucketConfig) ->
         false -> ephemeral
     end.
 
-kv_backend_type(BucketConfig) ->
-    StorageMode = storage_mode(BucketConfig),
+node_kv_backend_type(BucketConfig) ->
+    StorageMode = node_storage_mode(BucketConfig),
     case StorageMode of
         couchstore -> couchdb;
         magma -> magma;
@@ -1199,7 +1231,7 @@ wait_for_nodes(Nodes, Pred, Timeout) ->
       end).
 
 get_shutdown_timeout(BucketConfig) ->
-    case ns_bucket:kv_backend_type(BucketConfig) of
+    case ns_bucket:node_kv_backend_type(BucketConfig) of
         magma ->
             ?DELETE_MAGMA_BUCKET_TIMEOUT;
         _ ->
@@ -1238,28 +1270,114 @@ wait_for_bucket_shutdown(BucketName, Nodes0, Timeout) ->
             {shutdown_failed, LeftoverNodes}
     end.
 
+override_keys() ->
+    [storage_mode, autocompaction].
+
+remove_override_props(Props, Nodes) ->
+    lists:filter(fun ({{node, Node, SubKey}, _Value}) ->
+                         not lists:member(Node, Nodes)
+                           andalso lists:member(SubKey, override_keys());
+                     (_) ->
+                         true
+                 end, Props).
+
+get_override_keys(BucketConfig, SubKey) ->
+    [K || {{node, _Node, SK} = K, _V} <- BucketConfig, SK =:= SubKey].
+
+do_add_override_props(Props, BucketConfig, Key, FetchFun) ->
+    Nodes = get_servers(BucketConfig),
+
+    OldValue = FetchFun(BucketConfig),
+    OldOverrideKeys = get_override_keys(BucketConfig, Key),
+    OldOverrideKeyNodes = [N || {node, N, _SK} <- OldOverrideKeys],
+    OldOverrideValue =
+        case OldOverrideKeys of
+            [] ->
+                undefined;
+            _ ->
+                proplists:get_value(hd(OldOverrideKeys), BucketConfig)
+        end,
+
+    OverrideProps = [{{node, N, Key}, OldValue}
+                     || N <- Nodes -- OldOverrideKeyNodes],
+
+    NewProps =
+        case OldOverrideValue of
+                undefined ->
+                    Props;
+                _ ->
+                    lists:keystore(Key, 1, Props, {Key, OldOverrideValue})
+        end,
+
+    {NewProps ++ OverrideProps, OldOverrideKeys}.
+
+add_override_props(Props, BucketConfig) ->
+    lists:foldl(
+      fun ({Key, FetchFun}, {NewProps, DeleteKeys}) ->
+              {P, D} =
+                  do_add_override_props(NewProps, BucketConfig, Key, FetchFun),
+              {P, DeleteKeys ++ D}
+
+      end, {Props, []},
+      [{storage_mode, fun storage_mode/1},
+       {autocompaction, fun autocompaction_settings/1}]).
+
+
+update_bucket_props(Type, OldStorageMode, BucketName, Props) ->
+    try
+        update_bucket_props_inner(Type, OldStorageMode, BucketName, Props)
+    catch
+        throw:Error ->
+            Error
+    end.
+
 %% Updates properties of bucket of given name and type.  Check of type
 %% protects us from type change races in certain cases.
-%%
 %% If bucket with given name exists, but with different type, we
 %% should return {exit, {not_found, _}, _}
-update_bucket_props(Type, StorageMode, BucketName, Props) ->
+update_bucket_props_inner(Type, OldStorageMode, BucketName, Props) ->
     case lists:member(BucketName,
-                      get_bucket_names_of_type({Type, StorageMode})) of
+                      get_bucket_names_of_type({Type, OldStorageMode})) of
         true ->
             {ok, BucketConfig} = get_bucket(BucketName),
             PrevProps = extract_bucket_props(BucketConfig),
-            DisplayBucketType = display_type(Type, StorageMode),
+            DisplayBucketType = display_type(Type, OldStorageMode),
+
+            case update_bucket_props_allowed(Props, BucketConfig) of
+                true ->
+                    ok;
+                {false, Error} ->
+                    throw({error, Error})
+            end,
+
+            NewStorageMode = proplists:get_value(storage_mode, Props),
+
+            {NewProps, DeleteKeys} =
+                case NewStorageMode of
+                    OldStorageMode ->
+                        {Props, []};
+                    _ ->
+                        %% Reject storage migration if servers haven't been
+                        %% populated yet (This is extremely unlikely to happen,
+                        %% since we invoke a janitor run right after a bucket
+                        %% is created in chronicle - but there is still a
+                        %% non-zero probability that it could happen, therefore
+                        %% the below check).
+                        get_servers(BucketConfig) =/= [] orelse
+                            throw({error,
+                                   {storage_mode_migration, janitor_not_run}}),
+                        add_override_props(Props, BucketConfig)
+                end,
 
             %% Update the bucket properties.
-            RV = update_bucket_props(BucketName, Props),
+            RV = update_bucket_props(BucketName, NewProps, DeleteKeys),
 
             case RV of
                 ok ->
                     {ok, NewBucketConfig} = get_bucket(BucketName),
-                    NewProps = extract_bucket_props(NewBucketConfig),
+                    NewExtractedProps = extract_bucket_props(NewBucketConfig),
                     if
-                        PrevProps =/= NewProps ->
+                        PrevProps =/= NewExtractedProps ->
                             event_log:add_log(
                               bucket_cfg_changed,
                               [{bucket, list_to_binary(BucketName)},
@@ -1268,7 +1386,7 @@ update_bucket_props(Type, StorageMode, BucketName, Props) ->
                                {old_settings,
                                 {build_bucket_props_json(PrevProps)}},
                                {new_settings,
-                                {build_bucket_props_json(NewProps)}}]);
+                                {build_bucket_props_json(NewExtractedProps)}}]);
                         true ->
                             ok
                     end,
@@ -1280,7 +1398,59 @@ update_bucket_props(Type, StorageMode, BucketName, Props) ->
             {exit, {not_found, BucketName}, []}
     end.
 
+-spec update_bucket_props_allowed([{_, _}], [{_, _}]) ->
+    true | {false, Error::term()}.
+update_bucket_props_allowed(NewProps, BucketConfig) ->
+    case storage_mode_migration_in_progress(BucketConfig) of
+        true ->
+            %% We allow only ram_quota and storage_mode settings to be changed
+            %% during the bucket storage_mode migration - disallow updating any
+            %% other keys.
+            FilteredProps =
+                lists:filter(
+                  fun ({K, _V}) ->
+                          not lists:member(K, [ram_quota, storage_mode])
+                  end, NewProps),
+            case FilteredProps of
+                [] ->
+                    true;
+                _ ->
+                    %% Check if any of the other props have changed or a new
+                    %% Prop is being added.
+                    PropsChanged =
+                        lists:any(
+                          fun ({K, V}) ->
+                                  case proplists:get_value(K, BucketConfig) of
+                                      undefined ->
+                                          true;
+                                      CurrentValue ->
+                                          V =/= CurrentValue
+                                  end
+                          end, FilteredProps),
+                    case PropsChanged of
+                        false ->
+                            true;
+                        true ->
+                            {false, {storage_mode_migration, in_progress}}
+                    end
+            end;
+        false ->
+            true
+    end.
+
+%% If there are per-node storage mode override keys, we are essentially midway
+%% between a storage mode migration.
+storage_mode_migration_in_progress(BucketConfig) ->
+    lists:any(fun ({{node, _N, storage_mode}, _V}) ->
+                      true;
+                  (_KV) ->
+                      false
+              end, BucketConfig).
+
 update_bucket_props(BucketName, Props) ->
+    update_bucket_props(BucketName, Props, []).
+
+update_bucket_props(BucketName, Props, DeleteKeys) ->
     update_bucket_config(
       BucketName,
       fun (OldProps) ->
@@ -1288,7 +1458,11 @@ update_bucket_props(BucketName, Props) ->
                            fun ({K, _V} = Tuple, Acc) ->
                                    [Tuple | lists:keydelete(K, 1, Acc)]
                            end, OldProps, Props),
-              cleanup_bucket_props(NewProps)
+              NewProps1 = lists:foldl(
+                            fun (K, Acc) ->
+                                    lists:keydelete(K, 1, Acc)
+                            end, NewProps, DeleteKeys),
+              cleanup_bucket_props(NewProps1)
       end).
 
 set_property(Bucket, Key, Value, Default, Fun) ->
@@ -1594,7 +1768,7 @@ is_persistent(BucketConfig) ->
 
 is_auto_compactable(BucketConfig) ->
     is_persistent(BucketConfig) andalso
-    storage_mode(BucketConfig) =/= magma.
+    node_storage_mode(BucketConfig) =/= magma.
 
 is_ephemeral_bucket(BucketConfig) ->
     case storage_mode(BucketConfig) of
@@ -2130,4 +2304,123 @@ drift_thresholds_test() ->
                      {drift_ahead_threshold_ms, 1},
                      {drift_behind_threshold_ms, 2}],
     ?assertEqual({1, 2}, drift_thresholds(BucketConfig4)).
+
+update_bucket_props_allowed_test() ->
+    %% No per-node override keys set in the BucketConfig.
+    %% Expectation: Bucket updates allowed.
+    NewProps = [{storage_mode, magma},
+                {foo, blah}],
+    BucketConfig = [{storage_mode, couchstore},
+                    {ram_quota, 1024},
+                    {foo, blah}],
+    ?assert(update_bucket_props_allowed(NewProps, BucketConfig)),
+
+    %% per-node override keys set in the BucketConfig.
+    %% Expectation: storage_mode update allowed.
+    BucketConfig1 = BucketConfig ++ [{{node, n1, storage_mode}, magma}],
+    ?assert(update_bucket_props_allowed(NewProps, BucketConfig1)),
+
+    %% per-node override keys set in the BucketConfig.
+    %% Expectation: ram_quota update allowed.
+    NewProps1 = [{ram_quota, 2048}],
+    ?assert(update_bucket_props_allowed(NewProps1, BucketConfig1)),
+
+    NewProps2 = [{foo, not_blah}],
+
+    %% per-node override keys set in the BucketConfig.
+    %% Expectation: can not change any bucket props.
+    ?assertEqual({false, {storage_mode_migration, in_progress}},
+                 update_bucket_props_allowed(NewProps2, BucketConfig1)),
+
+    %% per-node override keys set in the BucketConfig.
+    %% Expectation: can not add any new bucket props.
+    NewProps3 = [{bar, blah}],
+    ?assertEqual({false, {storage_mode_migration, in_progress}},
+                 update_bucket_props_allowed(NewProps3, BucketConfig1)).
+
+add_override_props_test() ->
+    Servers = [n0, n1],
+
+    MagmaACSettings = [{magma_fragement_percentage, 60}],
+    CouchstoreACSettings =
+        [{parallel_db_and_view_compaction,false},
+                          {database_fragmentation_threshold,{30,undefined}},
+                          {view_fragmentation_threshold,{30,undefined}}],
+    BucketConfig = [{type, membase},
+                    {storage_mode, couchstore},
+                    {servers, Servers},
+                    {autocompaction, CouchstoreACSettings}],
+
+    Props = [{storage_mode, magma},
+             {autocompaction, false}],
+    ExpectedProps =
+        Props ++
+        lists:foldl(
+          fun (N, Acc) ->
+                  [{{node, N, storage_mode}, couchstore},
+                   {{node, N, autocompaction}, CouchstoreACSettings} | Acc]
+          end, [], Servers),
+
+    {NewProps, DK} = add_override_props(Props, BucketConfig),
+
+    ?assertEqual(lists:sort(ExpectedProps), lists:sort(NewProps)),
+    ?assertEqual(DK, []),
+
+    %% node n1 has been migrated to magma, now revert the storage_mode back to
+    %% couchstore.
+    BucketConfig1 = [{type, membase},
+                     {storage_mode, magma},
+                     {autocompaction, MagmaACSettings},
+                     {servers, Servers},
+                     {{node, n0, storage_mode}, couchstore},
+                     {{node, n0, autocompaction}, CouchstoreACSettings}],
+
+    Props1 = [{storage_mode, couchstore}],
+    ExpectedProps1 = [{storage_mode, couchstore},
+                      {autocompaction, CouchstoreACSettings},
+                      {{node, n1, storage_mode}, magma},
+                      {{node, n1, autocompaction}, MagmaACSettings}],
+    DeleteKeys = [{node, n0, storage_mode},
+                  {node, n0, autocompaction}],
+    {NewProps1, DK1} =
+        add_override_props(Props1, BucketConfig1),
+
+    ?assertListsEqual(NewProps1, ExpectedProps1),
+    ?assertListsEqual(DK1, DeleteKeys).
+
+remove_override_props_test() ->
+    Props = [{type, membase},
+             {storage_mode, magma},
+             {autocompaction, magma_compaction_settings},
+             {servers, [n0, n1, n2]},
+             {{node, n1, storage_mode}, couchstore},
+             {{node, n2, storage_mode}, couchstore},
+             {{node, n1, autocompaction}, couchstore_compaction_settings},
+             {{node, n2, autocompaction}, couchstore_compaction_settings}],
+    RemoveNodes = [n1],
+    ExpectedProps =
+        Props -- [{{node, n1, storage_mode}, couchstore},
+                  {{node, n1, autocompaction}, couchstore_compaction_settings}],
+    ?assertEqual(ExpectedProps,
+                 remove_override_props(Props, RemoveNodes)).
+
+node_autocompaction_settings_test() ->
+    ?assertEqual([],
+                 node_autocompaction_settings(
+                   [{autocompaction, false}])),
+    ?assertEqual(per_node_setting,
+                 node_autocompaction_settings(
+                   [{autocompaction, false},
+                    {{node, node(), autocompaction}, per_node_setting}])),
+    ?assertEqual(per_node_setting,
+                 node_autocompaction_settings(
+                   [{autocompaction, bucket_setting},
+                    {{node, node(), autocompaction}, per_node_setting}])),
+    ?assertEqual(bucket_setting,
+                 node_autocompaction_settings(
+                   [{autocompaction, bucket_setting}])),
+    ?assertEqual([],
+                 node_autocompaction_settings(
+                   [{autocompaction, bucket_setting},
+                    {{node, node(), autocompaction}, false}])).
 -endif.

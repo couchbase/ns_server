@@ -409,6 +409,15 @@ remove_nodes(chronicle, RemoteNodes, Transaction) ->
                        chronicle_compat:txn_get_many(
                          [nodes_wanted, server_groups, ns_bucket:root()], Txn),
 
+                   %% Remove the per-node override keys for RemoteNodes from
+                   %% all the buckets.
+                   BucketsSnapshot =
+                       ns_bucket:fetch_snapshot(all, Txn, [props]),
+                   BucketConfigs = ns_bucket:get_buckets(BucketsSnapshot),
+                   UpdatedBucketConfigs =
+                       ns_bucket:remove_override_props(
+                         RemoteNodes, BucketConfigs),
+
                    Buckets = ns_bucket:get_bucket_names(Snapshot),
                    NodeKeys = lists:flatten(
                                 [chronicle_compat:node_keys(RN, Buckets) ||
@@ -420,7 +429,9 @@ remove_nodes(chronicle, RemoteNodes, Transaction) ->
                      {set, server_groups,
                       remove_nodes_from_server_groups(
                         RemoteNodes, server_groups(Snapshot))} |
-                     [{delete, K} || K <- NodeKeys]]}
+                    [{set, ns_bucket:sub_key(BN, props), UBC} ||
+                     {BN, UBC} <- UpdatedBucketConfigs]] ++
+                     [{delete, K} || K <- NodeKeys]}
            end),
     case RV of
         {ok, _} ->

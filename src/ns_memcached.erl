@@ -130,7 +130,8 @@
          get_failover_logs/2,
          get_collections_uid/1,
          maybe_add_impersonate_user_frame_info/2,
-         delete_bucket/2
+         delete_bucket/2,
+         get_config_stats/2
         ]).
 
 %% for ns_memcached_sockets_pool, memcached_file_refresh only
@@ -1501,7 +1502,7 @@ do_ensure_bucket(Sock, Bucket, BConf, false) ->
                 memcached_bucket_config:start_params(BConf),
 
             BucketConfig = memcached_bucket_config:get_bucket_config(BConf),
-            Timeout = case ns_bucket:kv_backend_type(BucketConfig) of
+            Timeout = case ns_bucket:node_kv_backend_type(BucketConfig) of
                           magma ->
                               ?MAGMA_CREATION_TIMEOUT;
                           _ ->
@@ -1909,3 +1910,20 @@ send_check_started_msg() ->
 
 send_check_config_msg(#state{next_check_after = After}) ->
     erlang:send_after(After, self(), check_config).
+
+get_config_stats(Bucket, SubKey) ->
+    perform_very_long_call(
+      fun (Sock) ->
+              Res = mc_client_binary:stats(
+                      Sock, <<"config">>,
+                      fun (K, V, Acc) ->
+                              [{K, V} | Acc]
+                      end, []),
+              case Res of
+                  {ok, Props} ->
+                      {reply, proplists:get_value(SubKey, Props)};
+                  Err ->
+                      {reply, Err}
+              end
+      end, Bucket).
+

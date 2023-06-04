@@ -40,6 +40,7 @@ import node_addition_tests
 import users_backup_tests
 import prom_sd_config_test
 import serviceless_node_tests
+import bucket_migration_test
 import bucket_test
 
 tmp_cluster_dir = os.path.join(scriptdir, "test_cluster_data")

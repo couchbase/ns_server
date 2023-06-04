@@ -1164,10 +1164,7 @@ compaction_daemon_config(Config) ->
 compaction_config_props(Config, BucketName) ->
     Global = get_autocompaction_settings(Config),
     BucketConfig = get_bucket(BucketName),
-    PerBucket = case proplists:get_value(autocompaction, BucketConfig, []) of
-                    false -> [];
-                    SomeValue -> SomeValue
-                end,
+    PerBucket = ns_bucket:node_autocompaction_settings(BucketConfig),
 
     lists:foldl(
       fun ({Key, _Value} = KV, Acc) ->

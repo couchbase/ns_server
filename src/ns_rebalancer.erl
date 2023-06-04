@@ -668,7 +668,20 @@ rebalance_membase_bucket(BucketName, BucketConfig, ProgressFun,
 
     ThisLiveNodes = Servers ++ ServersToRemove,
 
-    ns_bucket:set_servers(BucketName, ThisLiveNodes),
+    %% Delta-recovered nodes are already popluated in the bucket servers list,
+    %% remove override props for any node present in 'Servers', but not present
+    %% in current servers list.
+
+    ok = ns_bucket:update_bucket_config(
+           BucketName,
+           fun (BC0) ->
+                   RemoveOverridePropsNodes =
+                       Servers -- ns_bucket:get_servers(BC0),
+                   BC1 = ns_bucket:remove_override_props(
+                           BC0, RemoveOverridePropsNodes),
+                   ns_bucket:update_servers(ThisLiveNodes, BC1)
+           end),
+
     ?rebalance_info("Waiting for bucket ~p to be ready on ~p", [BucketName,
                                                                 ThisLiveNodes]),
     case janitor_agent:check_bucket_ready(BucketName, ThisLiveNodes,

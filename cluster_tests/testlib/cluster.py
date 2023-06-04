@@ -9,6 +9,7 @@
 import atexit
 import os
 import sys
+import time
 import requests
 from urllib.error import URLError
 
@@ -294,6 +295,12 @@ class Cluster:
         self.wait_for_rebalance(verbose=verbose)
         return testlib.post_succ(self, "/pools/default/buckets",
                                  expected_code=202, data=data)
+
+    def update_bucket(self, data, verbose=False):
+        self.wait_for_rebalance(verbose=verbose)
+        bucket_name = data['name']
+        return testlib.post_succ(self, f"/pools/default/buckets/{bucket_name}",
+                                 data=data)
 
     def delete_bucket(self, name, verbose=False):
         self.wait_for_rebalance(verbose=verbose)

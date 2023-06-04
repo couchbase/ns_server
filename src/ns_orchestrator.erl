@@ -143,6 +143,8 @@ create_bucket(BucketType, BucketName, NewConfig) ->
                     nonempty_string(), list()) ->
                            ok | {exit, {not_found, nonempty_string()}, []} |
                            {error, {need_more_space, list()}} |
+                           {error, {storage_mode_migration, in_progress}} |
+                           {error, {storage_mode_migration, janitor_not_run}} |
                            rebalance_running | in_recovery |
                            in_bucket_hibernation |
                            in_buckets_shutdown.

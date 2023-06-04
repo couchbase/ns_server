@@ -409,6 +409,20 @@ do_build_nodes_info_fun(#ctx{ns_config = Config,
                 end
         end,
 
+    PerNodeStorageBackendBuilder =
+        case WithBucket of
+            true ->
+                fun (_Node, undefined) ->
+                        [];
+                    (Node, BucketName) ->
+                        {ok, BucketConfig} =
+                            ns_bucket:get_bucket(BucketName, Snapshot),
+                        build_storage_backend(Node, BucketConfig)
+                end;
+            false ->
+                fun (_, _) -> [] end
+        end,
+
     fun(WantENode, Bucket) ->
             InfoNode = ns_doctor:get_node(WantENode, NodeStatuses),
             StableInfo =
@@ -431,7 +445,9 @@ do_build_nodes_info_fun(#ctx{ns_config = Config,
                                                 Snapshot)
                  end,
                  build_failover_status(Snapshot, WantENode),
-                 LimitsAndBucketPlacerInfoBuilder(WantENode)],
+                 LimitsAndBucketPlacerInfoBuilder(WantENode)] ++
+                   PerNodeStorageBackendBuilder(WantENode, Bucket),
+
             NodeHash = erlang:phash2(StableInfo),
 
             {lists:flatten([StableInfo,
@@ -444,6 +460,16 @@ do_build_nodes_info_fun(#ctx{ns_config = Config,
                                                          InfoNode)
                            end])}
     end.
+
+build_storage_backend(Node, BucketConfig) ->
+    NodeStorageBackend = ns_bucket:node_storage_mode_override(
+                           Node, BucketConfig),
+        case NodeStorageBackend of
+            undefined ->
+                [];
+            _ ->
+                [{storageBackend, NodeStorageBackend}]
+        end.
 
 build_failover_status(Snapshot, Node) ->
     PrevFailoverNodes = chronicle_master:get_prev_failover_nodes(Snapshot),

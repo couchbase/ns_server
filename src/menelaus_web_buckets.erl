@@ -658,6 +658,40 @@ init_bucket_validation_context(IsNew, BucketName, AllBuckets,
        is_developer_preview = IsDeveloperPreview
       }.
 
+is_storage_mode_migration(BucketConfig, Params) ->
+    NewStorageMode =
+        case proplists:get_value("storageBackend", Params) of
+            "couchstore" ->
+                couchstore;
+            "magma" ->
+                magma;
+            _ ->
+                %% If an incorrect storageBackend is passed, we'll report
+                %% an error via parse_validate_storage_mode/6. Set the
+                %% NewStorageMode to undefined so that we can return false,
+                %% below.
+                undefined
+        end,
+    OldStorageMode =
+        case BucketConfig of
+            false ->
+                undefined;
+            _ ->
+                ns_bucket:storage_mode(BucketConfig)
+        end,
+
+    %% Unfortunately the way the current code is written it is possible to
+    %% update an ephemeral bucket with 'storageBackend' param set to
+    %% "couchstore" or "magma" (See commments in parse_validate_storage_mode/6)
+    %% - we would want to ignore such an update and therefore, make stronger
+    %% checks to allow only couchstore -> magma and magma -> couchstore
+    %% migration.
+    case {OldStorageMode, NewStorageMode} of
+        {magma, couchstore} -> true;
+        {couchstore, magma} -> true;
+        _ -> false
+    end.
+
 format_error_response(Errors, JSONSummaries) ->
     {[{errors, {Errors}} |
       [{summaries, {JSONSummaries}} || JSONSummaries =/= undefined]]}.
@@ -677,38 +711,15 @@ handle_bucket_update_inner(BucketId, Req, Params, Limit) ->
             reply_json(Req, format_error_response(Errors, JSONSummaries), 400);
         {false, _, {ok, ParsedProps, _}} ->
             BucketType = proplists:get_value(bucketType, ParsedProps),
-            StorageMode = proplists:get_value(storage_mode, ParsedProps,
-                                              undefined),
             UpdatedProps = ns_bucket:extract_bucket_props(ParsedProps),
-            case ns_orchestrator:update_bucket(BucketType, StorageMode,
-                                               BucketId, UpdatedProps) of
-                ok ->
-                    ns_audit:modify_bucket(Req, BucketId, BucketType, UpdatedProps),
-                    DisplayBucketType = ns_bucket:display_type(BucketType,
-                                                               StorageMode),
-                    ale:info(?USER_LOGGER, "Updated bucket \"~s\" (of type ~s) properties:~n~p",
-                             [BucketId, DisplayBucketType, UpdatedProps]),
-                    reply(Req, 200);
-                rebalance_running ->
-                    reply_text(Req,
-                               "Cannot update bucket "
-                               "while rebalance is running.", 503);
-                in_recovery ->
-                    reply_text(Req,
-                               "Cannot update bucket "
-                               "while recovery is in progress.", 503);
-                in_bucket_hibernation ->
-                    reply_text(Req, "Cannot update bucket while another bucket "
-                                    "is pausing/resuming.", 503);
-                in_buckets_shutdown ->
-                    reply_text(Req, "Cannot update bucket while another bucket "
-                               "is being deleted", 503);
-                {error, {need_more_space, Zones}} ->
-                    reply_text(Req, need_more_space_error(Zones), 400);
-                {exit, {not_found, _}, _} ->
-                    %% if this happens then our validation raced, so repeat everything
-                    handle_bucket_update_inner(BucketId, Req, Params, Limit-1)
-            end;
+            case update_bucket(Ctx, BucketId, BucketType, UpdatedProps, Req) of
+                retry ->
+                    handle_bucket_update_inner(BucketId, Req, Params,
+                                               Limit - 1);
+                Response ->
+                    Response
+             end;
+
         {true, true, {ok, _, JSONSummaries}} ->
             reply_json(Req, format_error_response([], JSONSummaries), 200);
         {true, false, {ok, ParsedProps, JSONSummaries}} ->
@@ -718,6 +729,47 @@ handle_bucket_update_inner(BucketId, Req, Params, Limit) ->
                            [] -> 202;
                            _ -> 400
                        end)
+    end.
+
+update_bucket(Ctx, BucketId, BucketType, UpdatedProps, Req) ->
+    #bv_ctx{bucket_config = BucketConfig} = Ctx,
+    StorageMode = ns_bucket:storage_mode(BucketConfig),
+
+    case ns_orchestrator:update_bucket(BucketType, StorageMode,
+                                       BucketId, UpdatedProps) of
+        ok ->
+            ns_audit:modify_bucket(Req, BucketId, BucketType, UpdatedProps),
+            DisplayBucketType = ns_bucket:display_type(BucketType,
+                                                       StorageMode),
+            ale:info(?USER_LOGGER,
+                     "Updated bucket \"~s\" (of type ~s) properties:~n~p",
+                     [BucketId, DisplayBucketType, UpdatedProps]),
+            reply(Req, 200);
+        rebalance_running ->
+            reply_text(Req,
+                       "Cannot update bucket "
+                       "while rebalance is running.", 503);
+        in_recovery ->
+            reply_text(Req,
+                       "Cannot update bucket "
+                       "while recovery is in progress.", 503);
+        in_bucket_hibernation ->
+            reply_text(Req, "Cannot update bucket while another bucket "
+                       "is pausing/resuming.", 503);
+        in_buckets_shutdown ->
+            reply_text(Req, "Cannot update bucket while another bucket "
+                       "is being deleted", 503);
+        {error, {need_more_space, Zones}} ->
+            reply_text(Req, need_more_space_error(Zones), 400);
+        {error, {storage_mode_migration, in_progress}} ->
+            reply_text(Req, "Cannot update bucket while storage mode is being "
+                       "migrated.", 503);
+        {error, {storage_mode_migration, janitor_not_run}} ->
+            reply_text(Req, "Cannot migrate storage mode before janitor has "
+                       "run for the bucket", 503);
+        {exit, {not_found, _}, _} ->
+            %% if this happens then our validation raced, so repeat everything
+            retry
     end.
 
 maybe_cleanup_old_buckets() ->
@@ -1257,8 +1309,11 @@ validate_membase_bucket_params(CommonParams, Params,
     AllowStorageLimit = config_profile:get_bool(enable_storage_limits),
     AllowThrottleLimit = config_profile:get_bool(enable_throttle_limits),
     ReplicasNumResult = validate_replicas_number(Params, IsNew),
+    IsStorageModeMigration = is_storage_mode_migration(BucketConfig, Params),
+
     HistRetSecs = parse_validate_history_retention_seconds(
-        Params, BucketConfig, IsNew, Version, IsEnterprise),
+                    Params, BucketConfig, IsNew, Version, IsEnterprise,
+                    IsStorageModeMigration),
     BucketParams =
         [{ok, bucketType, membase},
          ReplicasNumResult,
@@ -1266,10 +1321,11 @@ validate_membase_bucket_params(CommonParams, Params,
          parse_validate_replica_index(Params, ReplicasNumResult, IsNew),
          parse_validate_num_vbuckets(Params, BucketConfig, IsNew),
          parse_validate_threads_number(Params, IsNew),
-         parse_validate_eviction_policy(Params, BucketConfig, IsNew),
+         parse_validate_eviction_policy(
+           Params, BucketConfig, IsNew, IsStorageModeMigration),
          quota_size_error(CommonParams, membase, IsNew, BucketConfig),
          parse_validate_storage_mode(Params, BucketConfig, IsNew, Version,
-                                     IsEnterprise),
+                                     IsEnterprise, IsStorageModeMigration),
          parse_validate_durability_min_level(Params, BucketConfig, IsNew,
                                              Version),
          parse_validate_pitr_enabled(Params, IsNew, AllowPitr,
@@ -1278,24 +1334,27 @@ validate_membase_bucket_params(CommonParams, Params,
                                          IsEnterprise),
          parse_validate_pitr_max_history_age(Params, IsNew, AllowPitr,
                                              IsEnterprise),
-         parse_validate_storage_quota_percentage(Params, BucketConfig, IsNew, Version,
-                                                 IsEnterprise),
+         parse_validate_storage_quota_percentage(
+           Params, BucketConfig, IsNew, Version, IsEnterprise,
+           IsStorageModeMigration),
          parse_validate_max_ttl(Params, BucketConfig, IsNew, IsEnterprise),
          parse_validate_compression_mode(Params, BucketConfig, IsNew,
                                          IsEnterprise),
          HistRetSecs,
-         parse_validate_history_retention_bytes(Params, BucketConfig,
-                                                IsNew, Version, IsEnterprise),
-         parse_validate_history_retention_collection_default(Params,
-                                                             BucketConfig,
-                                                             IsNew, Version,
-                                                             IsEnterprise),
+         parse_validate_history_retention_bytes(
+           Params, BucketConfig, IsNew, Version, IsEnterprise,
+           IsStorageModeMigration),
+         parse_validate_history_retention_collection_default(
+           Params, BucketConfig, IsNew, Version, IsEnterprise,
+           IsStorageModeMigration),
          parse_validate_magma_key_tree_data_blocksize(Params, BucketConfig,
                                                       Version, IsNew,
-                                                      IsEnterprise),
+                                                      IsEnterprise,
+                                                      IsStorageModeMigration),
          parse_validate_magma_seq_tree_data_blocksize(Params, BucketConfig,
                                                       Version, IsNew,
-                                                      IsEnterprise)
+                                                      IsEnterprise,
+                                                      IsStorageModeMigration)
         | validate_bucket_auto_compaction_settings(Params)] ++
         parse_validate_limits(
           Params, BucketConfig, IsNew, AllowStorageLimit,
@@ -1554,7 +1613,7 @@ is_ephemeral(_Params, BucketConfig, false = _IsNew) ->
 %% used/checked at multiple places and would need changes in all those places.
 %% Hence the above described approach.
 parse_validate_storage_mode(Params, _BucketConfig, true = _IsNew, Version,
-                            IsEnterprise) ->
+                            IsEnterprise, false = _IsStorageModeMigration) ->
     case proplists:get_value("bucketType", Params, "membase") of
         "membase" ->
             get_storage_mode_based_on_storage_backend(Params, Version,
@@ -1566,8 +1625,25 @@ parse_validate_storage_mode(Params, _BucketConfig, true = _IsNew, Version,
             {ok, storage_mode, ephemeral}
     end;
 parse_validate_storage_mode(_Params, BucketConfig, false = _IsNew, _Version,
-                            _IsEnterprise)->
-    {ok, storage_mode, ns_bucket:storage_mode(BucketConfig)}.
+                            _IsEnterprise, false = _IsStorageModeMigration) ->
+    {ok, storage_mode, ns_bucket:storage_mode(BucketConfig)};
+parse_validate_storage_mode(_Params, _BucketConfig, false = _IsNew, _Version,
+                            false = _IsEnterprise,
+                            true = _IsStorageModeMigration) ->
+    {error, storageBackend, <<"Storage mode migration is allowed only on "
+                              "enterprise edition">>};
+parse_validate_storage_mode(Params, _BucketConfig, false = _IsNew, Version,
+                            true = _IsEnterprise,
+                            true = _IsStorageModeMigration) ->
+    case cluster_compat_mode:is_version_trinity(Version) of
+        false ->
+            {error, storageBackend,
+             <<"Storage mode migration is not allowed until the entire cluster "
+               "is upgraded to Trinity">>};
+        true ->
+            StorageBackend = proplists:get_value("storageBackend", Params),
+            do_get_storage_mode_based_on_storage_backend(StorageBackend)
+    end.
 
 parse_validate_durability_min_level(Params, BucketConfig, IsNew, Version) ->
     IsEphemeral = is_ephemeral(Params, BucketConfig, IsNew),
@@ -1760,6 +1836,9 @@ do_get_storage_mode_based_on_storage_backend("magma", true, false) ->
      <<"Not allowed until entire cluster is upgraded to 7.1">>};
 do_get_storage_mode_based_on_storage_backend(StorageBackend, _IsEnterprise,
                                              _Is71) ->
+    do_get_storage_mode_based_on_storage_backend(StorageBackend).
+
+do_get_storage_mode_based_on_storage_backend(StorageBackend) ->
     case StorageBackend of
         "couchstore" ->
             {ok, storage_mode, couchstore};
@@ -1940,20 +2019,20 @@ get_hdd_used_by_this_bucket([_|_] = _CurrentBucket, Props) ->
 get_hdd_used_by_this_bucket(_ = _CurrentBucket, _Props) ->
     0.
 
-validate_with_missing(GivenValue, DefaultValue, IsNew, Fn) ->
+validate_with_missing(GivenValue, DefaultValue, UseDefault, Fn) ->
     case Fn(GivenValue) of
         {error, _, _} = Error ->
-            %% Parameter validation functions return error when GivenValue
-            %% is undefined or was set to an invalid value.
-            %% If the user did not pass any value for the parameter
-            %% (given value is undefined) during bucket create and DefaultValue is
-            %% available then use it. If this is not bucket create or if
-            %% DefaultValue is not available then ignore the error.
-            %% If the user passed some invalid value during either bucket create or
-            %% edit then return error to the user.
+            %% Parameter validation functions return error when GivenValue is
+            %% undefined or was set to an invalid value. If the user did not
+            %% pass any value for the parameter (given value is undefined)
+            %% during bucket create and DefaultValue is available then use it.
+            %% If this is not bucket create or if it's storage mode migration
+            %% and if DefaultValue is not available then ignore the error. If
+            %% the user passed some invalid value during either bucket create
+            %% or edit then return error to the user.
             case GivenValue of
                 undefined ->
-                    case IsNew andalso DefaultValue =/= undefined of
+                    case UseDefault andalso DefaultValue =/= undefined of
                         true ->
                             {ok, _, _} = Fn(DefaultValue);
                         false ->
@@ -2056,63 +2135,76 @@ do_parse_validate_max_ttl(Val) ->
             {error, maxTTL, list_to_binary(Msg)}
     end.
 
-is_magma(Params, _BucketCfg, true = _IsNew) ->
+is_magma(Params, _BucketCfg, true = _IsNew, false = _IsStorageModeMigration) ->
     proplists:get_value("storageBackend", Params, "couchstore") =:= "magma";
-is_magma(_Params, BucketCfg, false = _IsNew) ->
+is_magma(Params, _BucketCfg, false = _IsNew, true = _IsStorageModeMigration) ->
+    proplists:get_value("storageBackend", Params, "couchstore") =:= "magma";
+is_magma(_Params, BucketCfg, false = _IsNew, false = _IsStorageModeMigration) ->
     ns_bucket:storage_mode(BucketCfg) =:= magma.
 
 parse_validate_storage_quota_percentage(Params, BucketConfig, IsNew, Version,
-                                        IsEnterprise) ->
+                                        IsEnterprise, IsStorageModeMigration) ->
     Percent = proplists:get_value("storageQuotaPercentage", Params),
     IsCompat = cluster_compat_mode:is_version_71(Version),
-    IsMagma = is_magma(Params, BucketConfig, IsNew),
+    IsMagma = is_magma(Params, BucketConfig, IsNew, IsStorageModeMigration),
     parse_validate_storage_quota_percentage_inner(IsEnterprise, IsCompat,
                                                   Percent, BucketConfig, IsNew,
-                                                  IsMagma).
+                                                  IsMagma,
+                                                  IsStorageModeMigration).
 
 parse_validate_storage_quota_percentage_inner(false = _IsEnterprise, _IsCompat,
                                               undefined = _Percent, _BucketCfg,
-                                              _IsNew, _IsMagma) ->
+                                              _IsNew, _IsMagma,
+                                              _IsStorageModeMigration) ->
     %% Community edition but percent/ratio wasn't specified
     ignore;
 parse_validate_storage_quota_percentage_inner(_IsEnterprise, false = _IsCompat,
                                               undefined = _Percent, _BucketCfg,
-                                              _IsNew, _IsMagma) ->
+                                              _IsNew, _IsMagma,
+                                              _IsStorageModeMigration) ->
     %% Not cluster compatible but percent/ratio wasn't specified
     ignore;
 parse_validate_storage_quota_percentage_inner(false = _IsEnterprise, _IsCompat,
                                            _Percent, _BucketCfg, _IsNew,
-                                           _IsMagma) ->
+                                           _IsMagma, _IsStorageModeMigration) ->
     {error, storageQuotaPercentage,
      <<"Storage Quota Percentage is supported in enterprise edition only">>};
 parse_validate_storage_quota_percentage_inner(_IsEnterprise, false = _IsCompat,
                                               _Percent, _BucketCfg, _IsNew,
-                                              _IsMagma) ->
+                                              _IsMagma,
+                                              _IsStorageModeMigration) ->
     {error, storageQuotaPercentage,
      <<"Storage Quota Percentage cannot be set until the cluster is fully "
        "7.1">>};
 parse_validate_storage_quota_percentage_inner(true = _IsEnterprise,
                                               true = _IsCompat, undefined,
                                               _BucketCfg, _IsNew,
-                                              false = _IsMagma) ->
+                                              false = _IsMagma,
+                                              _IsStorageModeMigration) ->
     %% Not a magma bucket and percent wasn't specified
     ignore;
 parse_validate_storage_quota_percentage_inner(true = _IsEnterprise,
                                               true = _IsCompat, _Percent,
                                               _BucketCfg, _IsNew,
-                                              false = _IsMagma) ->
+                                              false = _IsMagma,
+                                              _IsStorageModeMigration) ->
     {error, storageQuotaPercentage,
      <<"Storage Quota Percentage is only used with Magma">>};
 parse_validate_storage_quota_percentage_inner(true = _IsEnterprise,
                                               true = _IsCompat, Percent,
                                               BucketCfg, IsNew,
-                                              true = _IsMagma) ->
-    DefaultVal = case IsNew of
+                                              true = _IsMagma,
+                                              IsStorageModeMigration) ->
+    %% If the storage mode for a bucket is being migrated
+    %% storage_quota_percentage wouldn't have been set in BucketConfig and
+    %% therefore pick ?MAGMA_STORAGE_QUOTA_PERCENTAGE if it's being migrated.
+    UseDefault = IsNew orelse IsStorageModeMigration,
+    DefaultVal = case UseDefault of
                      true -> integer_to_list(?MAGMA_STORAGE_QUOTA_PERCENTAGE);
                      false -> proplists:get_value(storage_quota_percentage,
                                                   BucketCfg)
                  end,
-    validate_with_missing(Percent, DefaultVal, IsNew,
+    validate_with_missing(Percent, DefaultVal, UseDefault,
                           fun do_parse_validate_storage_quota_percentage/1).
 
 do_parse_validate_storage_quota_percentage(Val) ->
@@ -2234,41 +2326,46 @@ remap_user_key_to_internal_key_if_valid(Result, InternalKey) ->
     end.
 
 parse_validate_history_retention_seconds(Params, BucketConfig, IsNew, Version,
-                                         IsEnterprise) ->
+                                         IsEnterprise,
+                                         IsStorageModeMigration) ->
     UserKey = historyRetentionSeconds,
     HistoryRetentionValue = proplists:get_value(atom_to_list(UserKey), Params),
     Ret = parse_validate_history_param_numeric(
         UserKey, HistoryRetentionValue, Params, BucketConfig, IsNew, Version,
-        IsEnterprise, integer_to_list(?HISTORY_RETENTION_SECONDS_DEFAULT),
+        IsEnterprise, IsStorageModeMigration,
+        integer_to_list(?HISTORY_RETENTION_SECONDS_DEFAULT),
         0),
     remap_user_key_to_internal_key_if_valid(Ret, history_retention_seconds).
 
 parse_validate_history_retention_bytes(Params, BucketConfig, IsNew,
-                                       Version, IsEnterprise) ->
+                                       Version, IsEnterprise,
+                                       IsStorageModeMigration) ->
     UserKey = historyRetentionBytes,
     HistoryRetentionValue = proplists:get_value(atom_to_list(UserKey), Params),
     Ret = parse_validate_history_param_numeric(
         UserKey, HistoryRetentionValue, Params, BucketConfig, IsNew, Version,
-        IsEnterprise, integer_to_list(?HISTORY_RETENTION_BYTES_DEFAULT),
+        IsEnterprise, IsStorageModeMigration,
+        integer_to_list(?HISTORY_RETENTION_BYTES_DEFAULT),
         ?HISTORY_RETENTION_BYTES_MIN),
     remap_user_key_to_internal_key_if_valid(Ret, history_retention_bytes).
 
-parse_validate_history_retention_collection_default(Params, BucketConfig, IsNew,
-                                                    Version, IsEnterprise) ->
+parse_validate_history_retention_collection_default(
+  Params, BucketConfig, IsNew, Version, IsEnterprise, IsStorageModeMigration) ->
     UserKey = historyRetentionCollectionDefault,
     HistoryRetentionValue = proplists:get_value(atom_to_list(UserKey), Params),
     Ret = parse_validate_history_param_bool(
         UserKey, HistoryRetentionValue, Params, BucketConfig, IsNew, Version,
-        IsEnterprise,
+        IsEnterprise, IsStorageModeMigration,
         atom_to_list(?HISTORY_RETENTION_COLLECTION_DEFAULT_DEFAULT)),
     remap_user_key_to_internal_key_if_valid(
         Ret, history_retention_collection_default).
 
 parse_validate_history_param_numeric(Key, Value, Params, BucketConfig, IsNew,
-                                     Version, IsEnterprise, DefaultVal,
+                                     Version, IsEnterprise,
+                                     IsStorageModeMigration, DefaultVal,
                                      MinVal) ->
     IsCompat = cluster_compat_mode:is_version_72(Version),
-    IsMagma = is_magma(Params, BucketConfig, IsNew),
+    IsMagma = is_magma(Params, BucketConfig, IsNew, IsStorageModeMigration),
     parse_validate_history_param_inner(
         Key, Value, IsEnterprise, IsCompat, IsNew, IsMagma,
         fun (Val, New) ->
@@ -2287,9 +2384,10 @@ parse_validate_history_param_numeric(Key, Value, Params, BucketConfig, IsNew,
         end).
 
 parse_validate_history_param_bool(Key, Value, Params, BucketConfig, IsNew,
-                                  Version, IsEnterprise, DefaultVal) ->
+                                  Version, IsEnterprise, IsStorageModeMigration,
+                                  DefaultVal) ->
     IsCompat = cluster_compat_mode:is_version_72(Version),
-    IsMagma = is_magma(Params, BucketConfig, IsNew),
+    IsMagma = is_magma(Params, BucketConfig, IsNew, IsStorageModeMigration),
     parse_validate_history_param_inner(
         Key, Value, IsEnterprise, IsCompat, IsNew, IsMagma,
         fun (Val, New) ->
@@ -2354,32 +2452,37 @@ do_parse_validate_history_retention_bool(Key, Val) ->
     end.
 
 parse_validate_magma_key_tree_data_blocksize(Params, BucketConfig, Version,
-                                             IsNew, IsEnterprise) ->
+                                             IsNew, IsEnterprise,
+                                             IsStorageModeMigration) ->
     UserKey = magmaKeyTreeDataBlockSize,
     MagmaDataBlockSize = proplists:get_value(atom_to_list(UserKey), Params),
     Ret = parse_validate_magma_data_blocksize(
             UserKey, MagmaDataBlockSize, Params, BucketConfig, IsNew, Version,
-            IsEnterprise, integer_to_list(?MAGMA_KEY_TREE_DATA_BLOCKSIZE),
+            IsEnterprise, IsStorageModeMigration,
+            integer_to_list(?MAGMA_KEY_TREE_DATA_BLOCKSIZE),
             ?MIN_MAGMA_KEY_TREE_DATA_BLOCKSIZE,
             ?MAX_MAGMA_KEY_TREE_DATA_BLOCKSIZE),
     remap_user_key_to_internal_key_if_valid(Ret, magma_key_tree_data_blocksize).
 
 parse_validate_magma_seq_tree_data_blocksize(Params, BucketConfig, Version,
-                                             IsNew, IsEnterprise) ->
+                                             IsNew, IsEnterprise,
+                                             IsStorageModeMigration) ->
     UserKey = magmaSeqTreeDataBlockSize,
     MagmaDataBlockSize = proplists:get_value(atom_to_list(UserKey), Params),
     Ret = parse_validate_magma_data_blocksize(
             UserKey, MagmaDataBlockSize, Params, BucketConfig, IsNew, Version,
-            IsEnterprise, integer_to_list(?MAGMA_SEQ_TREE_DATA_BLOCKSIZE),
+            IsEnterprise, IsStorageModeMigration,
+            integer_to_list(?MAGMA_SEQ_TREE_DATA_BLOCKSIZE),
             ?MIN_MAGMA_SEQ_TREE_DATA_BLOCKSIZE,
             ?MAX_MAGMA_SEQ_TREE_DATA_BLOCKSIZE),
     remap_user_key_to_internal_key_if_valid(Ret, magma_seq_tree_data_blocksize).
 
 parse_validate_magma_data_blocksize(Key, Value, Params, BucketConfig, IsNew,
-                                    Version, IsEnterprise, DefaultVal, MinVal,
+                                    Version, IsEnterprise,
+                                    IsStorageModeMigration, DefaultVal, MinVal,
                                     MaxVal) ->
     IsCompat = cluster_compat_mode:is_version_72(Version),
-    IsMagma = is_magma(Params, BucketConfig, IsNew),
+    IsMagma = is_magma(Params, BucketConfig, IsNew, IsStorageModeMigration),
     parse_validate_magma_data_blocksize_inner(
       Key, Value, IsEnterprise, IsCompat, IsNew, IsMagma,
       fun (Val, New) ->
@@ -2467,9 +2570,9 @@ parse_validate_threads_number(NumThreads) ->
             {ok, num_threads, X}
     end.
 
-parse_validate_eviction_policy(Params, BCfg, IsNew) ->
+parse_validate_eviction_policy(Params, BCfg, IsNew, IsStorageModeMigration) ->
     IsEphemeral = is_ephemeral(Params, BCfg, IsNew),
-    IsMagma = is_magma(Params, BCfg, IsNew),
+    IsMagma = is_magma(Params, BCfg, IsNew, IsStorageModeMigration),
     do_parse_validate_eviction_policy(Params, BCfg, IsEphemeral, IsNew,
                                       IsMagma).
 
@@ -4039,5 +4142,274 @@ build_dynamic_bucket_info_test_() ->
             build_dynamic_bucket_info_test_teardown()
         end,
         [{Test, TestFun} || Test <- Tests]}.
+
+storage_mode_migration_meck_modules() ->
+    [ns_config, config_profile, cluster_compat_mode].
+
+storage_mode_migration_meck_setup(Version) ->
+    meck:new(storage_mode_migration_meck_modules(), [passthrough]),
+    meck:expect(ns_config, read_key_fast,
+                fun (_, Default) ->
+                        Default
+                end),
+    meck:expect(config_profile, get_value,
+                fun (_, Default) ->
+                        Default
+                end),
+    meck:expect(cluster_compat_mode, supported_compat_version,
+                fun () ->
+                        Version
+                end).
+
+storage_mode_migration_cluster_compat_test(Version, CurrentStorageMode,
+                                           NewStorageMode) ->
+    Params = [{"storageBackend", NewStorageMode}],
+    Bucket = [{"foo",
+               [{type, membase},
+                {num_vbucket, 1024},
+                {servers, [node1, node2]},
+                {ram_quota, 1024 * ?MIB},
+                {storage_mode, CurrentStorageMode}]}],
+    {Oks, Errors} = basic_bucket_params_screening(
+                      false, "foo", Params, Bucket),
+    case Version of
+        ?VERSION_72 ->
+            ?assertEqual([{storageBackend,
+                           <<"Storage mode migration is not allowed "
+                             "until the entire cluster is "
+                             "upgraded to Trinity">>}], Errors);
+        ?VERSION_TRINITY ->
+            ?assert(proplists:get_value(storage_mode, Oks) =:=
+                    list_to_atom(NewStorageMode))
+    end.
+
+storage_mode_migration_cluster_compat_test_() ->
+    %% TestArg: {ClusterVersion, CurrentStorageMode, NewStorageMode}.
+    TestArgs = [{?VERSION_72, couchstore, "magma"},
+                {?VERSION_72, magma, "couchstore"},
+                {?VERSION_TRINITY, couchstore, "magma"},
+                {?VERSION_TRINITY, magma, "couchstore"}],
+
+    TestFun =
+        fun ({Version, CurrentStorageMode, NewStorageMode}, _R) ->
+                fun () ->
+                        {lists:flatten(
+                           io_lib:format("Bucket migration from ~p to ~p."
+                                         " Cluster Version: ~p",
+                                         [CurrentStorageMode,
+                                          NewStorageMode, Version])),
+                         ?cut(storage_mode_migration_cluster_compat_test(
+                               Version, CurrentStorageMode, NewStorageMode))}
+                end
+        end,
+
+    {foreachx,
+     fun ({Version, _CurrentStorageMode, _NewStorageMode}) ->
+             storage_mode_migration_meck_setup(Version)
+     end,
+     fun (_X, _R) ->
+             meck:unload(storage_mode_migration_meck_modules())
+     end,
+     [{TestArg, TestFun} || TestArg <- TestArgs]}.
+
+storage_mode_migration_ram_quota_test() ->
+    storage_mode_migration_meck_setup(?VERSION_TRINITY),
+    Params = [{"storageBackend", "magma"}],
+    BaseBucketConfig =
+        [{type, membase},
+         {num_vbucket, 1024},
+         {servers, [node1, node2]},
+         {storage_mode, couchstore}],
+    Buckets = [{"foo", BaseBucketConfig ++ [{ram_quota, 100 * ?MIB}]}],
+
+    CheckRamQuotaFun =
+        fun (Oks, Expected) ->
+                lists:any(fun (KV) ->
+                                  KV =:= Expected
+                          end, Oks)
+        end,
+
+    {_Oks, Errors} = basic_bucket_params_screening(false, "foo", Params,
+                                                   Buckets),
+    ?assertEqual(Errors,
+                 [{ramQuota,
+                   <<"Ram quota for magma must be at least 1024 MiB">>}]),
+
+    BucketConfig = BaseBucketConfig ++ [{ram_quota, 1024 * ?MIB}],
+    Buckets1 = [{"foo", BucketConfig}],
+    {_Oks1, Errors1} = basic_bucket_params_screening(false, "foo", Params,
+                                                     Buckets1),
+    ?assertEqual(Errors1, []),
+
+    Params1 = [{"storageBackend", "magma"},
+               {"ramQuota", "1024"}],
+    {Oks2, Error2} = basic_bucket_params_screening(false, "foo", Params1,
+                                                   Buckets),
+    ?assertEqual(Error2, []),
+    ?assert(CheckRamQuotaFun(Oks2, {ram_quota, 1024 * ?MIB})),
+
+    BucketConfig1 = BaseBucketConfig -- [{storage_mode, couchstore}] ++
+                        [{storage_mode, magma}, {ram_quota, 1024 * ?MIB}],
+    Params2 = [{"storageBackend", "couchstore"},
+               {"ramQuota", "100"}],
+    Buckets2 = [{"foo", BucketConfig1}],
+    {Oks3, Errors3} = basic_bucket_params_screening(false, "foo", Params2,
+                                                    Buckets2),
+    ?assertEqual(Errors3, []),
+    ?assert(CheckRamQuotaFun(Oks3, {ram_quota, 100 * ?MIB})),
+    meck:unload(storage_mode_migration_meck_modules()).
+
+storage_mode_migration_validate_attributes(
+  {AttributeParseFun, Params, Prop, {Updated, NewValue}}) ->
+    Config = [{"foo",
+               [{type, membase},
+                {num_vbucket, 1024},
+                {servers, [node1, node2]},
+                {ram_quota, 1024 * ?MIB},
+                {storage_mode, couchstore}] ++ [Prop || Prop =/= none]}],
+    Res = AttributeParseFun(Params, Config),
+    case Updated of
+        true ->
+            {ok, _K, V} = Res,
+            ?assertEqual(V, NewValue);
+        false ->
+            ?assertEqual(ignore, Res)
+    end.
+
+storage_mode_migration_validate_attributes_test() ->
+    meck:new(ns_bucket, [passthrough]),
+    meck:expect(ns_bucket, is_ephemeral_bucket,
+                fun (_) ->
+                        false
+                end),
+    BaseParams = [{"storageBackend", "magma"}],
+    %% TestArg: {AttributeParseFun, UpdateParams, CurrentProp,
+    %%           {Updated, NewValue}}
+    TestArgs = [{?cut(parse_validate_eviction_policy(_, _, false, true)),
+                 BaseParams ++ [{"evictionPolicy", "valueOnly"}],
+                 {eviction_policy, full_eviction},
+                 {true, value_only}},
+                {?cut(parse_validate_storage_quota_percentage(
+                        _, _, false, ?VERSION_TRINITY, true, true)),
+                 BaseParams ++ [{"storageQuotaPercentage", "25"}],
+                 none,
+                 {true, 25}},
+                {?cut(parse_validate_storage_quota_percentage(
+                        _, _, false, ?VERSION_TRINITY, true, true)),
+                 BaseParams,
+                 none,
+                 {true, ?MAGMA_STORAGE_QUOTA_PERCENTAGE}}],
+
+    lists:foreach(
+      fun (TestArg) ->
+              storage_mode_migration_validate_attributes(TestArg)
+      end, TestArgs),
+
+    meck:unload(ns_bucket).
+
+parse_validate_storage_mode_test_(
+  {{OldStorageMode, NewStorageMode, IsNewBucket, Version,
+    IsEnterprise, IsStorageModeMigration}, ExpectedResult}) ->
+    Params =
+        [{"bucketType", "couchbase"}] ++
+        case NewStorageMode of
+            undefined -> [];
+            _ -> [{"storageBackend", NewStorageMode}]
+        end,
+
+    BucketConfig = case OldStorageMode of
+                       undefined -> undefined;
+                       _ -> [{type, membase},
+                             {storage_mode, list_to_atom(OldStorageMode)}]
+                   end,
+
+    Res = parse_validate_storage_mode(
+            Params, BucketConfig, IsNewBucket, Version,
+            IsEnterprise, IsStorageModeMigration),
+
+    ExpectedStorageMode =
+        case NewStorageMode of
+            undefined ->
+                OldStorageMode;
+            _ ->
+                NewStorageMode
+        end,
+
+    case ExpectedResult of
+        error ->
+            ?assertEqual(element(1, Res), error);
+        ok ->
+            ?assertEqual(Res, {ok, storage_mode,
+                               list_to_atom(ExpectedStorageMode)})
+    end.
+
+parse_validate_storage_mode_test() ->
+    %% TestArgs: {{OldStorageMode, NewStorageMode,
+    %%             IsNewBucket, Version, IsEnterprise, IsStorageModeMigration},
+    %%            ExpectedResult}.
+    TestArgs =
+        [%% New bucket creates.
+         {{undefined, "magma", true, ?VERSION_65, true, false},
+          error},
+         {{undefined, "magma", true, ?VERSION_65, false, false},
+          error},
+         {{undefined, "magma", true, ?VERSION_TRINITY, true,
+           false}, ok},
+         {{undefined, "magma", true, ?VERSION_TRINITY, false,
+           false}, error},
+         {{undefined, "couchstore", true, ?VERSION_65, true,
+           false}, ok},
+         {{undefined, "couchstore", true, ?VERSION_65, false,
+           false}, ok},
+         {{undefined, "couchstore", true, ?VERSION_TRINITY, true,
+           false}, ok},
+         {{undefined, "couchstore", true, ?VERSION_TRINITY, false,
+           false}, ok},
+         %% Storage mode migration.
+         {{"magma", "couchstore", false, ?VERSION_65, true, true},
+          error},
+         {{"magma", "couchstore", false, ?VERSION_65, false, true},
+          error},
+         {{"magma", "couchstore", false, ?VERSION_TRINITY, true,
+           true}, ok},
+         {{"magma", "couchstore", false, ?VERSION_TRINITY, false,
+           true}, error},
+         {{"couchstore", "magma", false, ?VERSION_65, true, true},
+          error},
+         {{"couchstore", "magma", false, ?VERSION_65, false,
+           true}, error},
+         {{"couchstore", "magma", false, ?VERSION_TRINITY, true,
+           true}, ok},
+         {{"couchstore", "magma", false, ?VERSION_TRINITY, false,
+           true}, error},
+         %% Couchstore bucket updates.
+         {{"couchstore", undefined, false, ?VERSION_65, true,
+           false}, ok},
+         {{"couchstore", undefined, false, ?VERSION_65, false,
+           false}, ok},
+         {{"couchstore", undefined, false, ?VERSION_TRINITY, true,
+           false}, ok},
+         {{"couchstore", undefined, false, ?VERSION_TRINITY, false,
+           false}, ok},
+         %% Magma bucket updates.
+         {{"magma", undefined, false, ?VERSION_TRINITY, true,
+           false}, ok}],
+
+    TestFun =
+        fun ({{OldStorageMode, NewStorageMode, IsNewBucket, Version,
+               IsEnterprise, IsStorageModeMigration}, ExpectedResult}) ->
+                {lists:flatten(io_lib:format(
+                   "OldStorageMode - ~p, NewStorageMode - ~p, IsNewBucket - ~p"
+                   " Version - ~p, IsEnterprise - ~p, "
+                   "IsStorageModeMigration - ~p, ExpectedResult - ~p",
+                   [OldStorageMode, NewStorageMode, IsNewBucket, Version,
+                    IsEnterprise, IsStorageModeMigration, ExpectedResult])),
+                 fun parse_validate_storage_mode_test_/1}
+        end,
+
+    {foreachx,
+     fun (_X) -> ok end,
+     fun (_X, _R) -> ok end,
+     [{TestArg, TestFun} || TestArg <- TestArgs]}.
 
 -endif.

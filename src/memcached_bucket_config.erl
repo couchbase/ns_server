@@ -38,7 +38,7 @@ params(membase, BucketName, BucketConfig, MemQuota, UUID) ->
 
     [{"max_size", [{reload, flush}], MemQuota},
      {"dbname", [restart], DBSubDir},
-     {"backend", [], ns_bucket:kv_backend_type(BucketConfig)},
+     {"backend", [], ns_bucket:node_kv_backend_type(BucketConfig)},
      {"couch_bucket", [], BucketName},
      {"max_vbuckets", [], proplists:get_value(num_vbuckets, BucketConfig)},
      {"alog_path", [], filename:join(DBSubDir, "access.log")},
@@ -332,11 +332,13 @@ get_bucket_config(#cfg{config = BucketConfig}) ->
     BucketConfig.
 
 get_magma_bucket_config(BucketConfig) ->
-    case ns_bucket:is_magma(BucketConfig) of
-        false -> [];
-        true ->
+    StorageMode =
+        ns_bucket:node_storage_mode(BucketConfig),
+
+    case StorageMode of
+        magma ->
             [{"magma_fragmentation_percentage", [{reload, flush}],
-              ns_bucket:magma_fragmentation_percentage(BucketConfig)},
+              ns_bucket:node_magma_fragmentation_percentage(BucketConfig)},
              %% The internal name, known by memcached, is a ratio so do the
              %% conversion.
              {"magma_mem_quota_ratio", [{reload, flush}],
@@ -349,5 +351,7 @@ get_magma_bucket_config(BucketConfig) ->
              {"magma_key_tree_data_block_size", [{reload, flush}],
               ns_bucket:magma_key_tree_data_blocksize(BucketConfig)},
              {"magma_seq_tree_data_block_size", [{reload, flush}],
-              ns_bucket:magma_seq_tree_data_blocksize(BucketConfig)}]
+              ns_bucket:magma_seq_tree_data_blocksize(BucketConfig)}];
+        _ ->
+            []
     end.

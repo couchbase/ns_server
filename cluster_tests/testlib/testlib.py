@@ -13,6 +13,7 @@ import string
 import random
 import time
 import io
+import math
 from contextlib import redirect_stdout
 
 from traceback_with_variables import print_exc
@@ -318,3 +319,25 @@ def get_otp_nodes(cluster):
     info = json_response(get(cluster, "/nodeStatuses"),
                          "/nodeStatuses response was not json")
     return {k: info[k]['otpNode'] for k in info}
+
+def poll_for_condition(fun, sleep_time, attempts, timeout, verbose=False,
+                       msg="poll for condition"):
+    def print_if_verbose(s):
+        if verbose:
+            print(s)
+
+    assert sleep_time > 0, "non-positive sleep_time specified"
+    start_time = time.time()
+    deadline = start_time + timeout
+    sleep_time_str = f"{sleep_time: .2f}s"
+
+    while attempts > 0:
+        assert time.time() < deadline, f"{msg}: timed-out"
+        if fun():
+            print_if_verbose(f"Time taken for condition to complete: "
+                             f"{time.time() - start_time: .2f}s\n")
+            return
+        print_if_verbose(f"Sleeping for {sleep_time_str}\n")
+        time.sleep(sleep_time)
+        attempts -= 1
+    assert False, f"{msg} didn't complete in: {attempts} attempts, sleep_time: {sleep_time_str}"
