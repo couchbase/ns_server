@@ -11,6 +11,10 @@
 
 -include("ns_common.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -behavior(json_settings_manager).
 
 -export([start_link/0,
@@ -22,7 +26,8 @@
 -export([cfg_key/0,
          is_enabled/0,
          known_settings/0,
-         on_update/2]).
+         on_update/2,
+         config_upgrade_to_elixir/1]).
 
 -import(json_settings_manager,
         [id_lens/1]).
@@ -50,22 +55,79 @@ on_update(_Key, _Value) ->
 update(Key, Value) ->
     json_settings_manager:update(?MODULE, [{Key, Value}]).
 
+default_settings() ->
+    [{generalSettings, general_settings_defaults(?LATEST_VERSION_NUM)}].
+
 config_default() ->
     {?ANALYTICS_CONFIG_KEY, json_settings_manager:build_settings_json(
-                 default_settings(), dict:new(), known_settings())}.
+                              default_settings(), dict:new(),
+                              known_settings(?LATEST_VERSION_NUM))}.
 
 known_settings() ->
-    [{generalSettings, general_settings_lens()}].
+    ClusterVersion = cluster_compat_mode:get_ns_config_compat_version(),
+    known_settings(ClusterVersion).
 
-default_settings() ->
-    [{generalSettings, general_settings_defaults()}].
+known_settings(ClusterVersion) ->
+    [{generalSettings, general_settings_lens(ClusterVersion)}].
 
-general_settings() ->
-    [{numReplicas, "analytics.settings.num_replicas", 0}].
+general_settings_defaults(ClusterVersion) ->
+    [{numReplicas, 0}] ++
+        case cluster_compat_mode:is_version_elixir(ClusterVersion) of
+            true ->
+                [
+                 {blobStorageScheme, <<"">>},
+                 {blobStorageBucket, <<"">>},
+                 {blobStoragePrefix, <<"">>},
+                 {blobStorageRegion, <<"">>}];
+            false ->
+                []
+        end.
 
-general_settings_defaults() ->
-    [{K, D} || {K, _, D} <- general_settings()].
-
-general_settings_lens() ->
+general_settings_lens(ClusterVersion) ->
     json_settings_manager:props_lens(
-      [{K, id_lens(list_to_binary(L))} || {K, L, _} <- general_settings()]).
+      general_settings_lens_props(ClusterVersion)).
+
+general_settings_lens_props(ClusterVersion) ->
+    [{numReplicas, id_lens(<<"analytics.settings.num_replicas">>)}] ++
+        case cluster_compat_mode:is_version_elixir(ClusterVersion) of
+            true ->
+                [{blobStorageScheme,
+                  id_lens(<<"analytics.settings.blob_storage_scheme">>)},
+                 {blobStorageBucket,
+                  id_lens(<<"analytics.settings.blob_storage_bucket">>)},
+                 {blobStoragePrefix,
+                  id_lens(<<"analytics.settings.blob_storage_prefix">>)},
+                 {blobStorageRegion,
+                  id_lens(<<"analytics.settings.blob_storage_region">>)}];
+            false ->
+                []
+        end.
+
+config_upgrade_settings(Config, OldVersion, NewVersion) ->
+    NewSettings = general_settings_defaults(NewVersion) --
+        general_settings_defaults(OldVersion),
+    json_settings_manager:upgrade_existing_key(
+      ?MODULE, Config, [{generalSettings, NewSettings}],
+      known_settings(NewVersion)).
+
+config_upgrade_to_elixir(Config) ->
+    config_upgrade_settings(Config, ?VERSION_72, ?VERSION_ELIXIR).
+
+-ifdef(TEST).
+defaults_test() ->
+    Keys = fun (L) -> lists:sort([K || {K, _} <- L]) end,
+
+    ?assertEqual(Keys(known_settings(?LATEST_VERSION_NUM)), Keys(default_settings())),
+    ?assertEqual(Keys(general_settings_lens_props(?LATEST_VERSION_NUM)),
+                 Keys(general_settings_defaults(?LATEST_VERSION_NUM))).
+
+config_upgrade_test() ->
+    CmdList = config_upgrade_to_elixir([]),
+    [{set, {metakv, Meta}, Data}] = CmdList,
+    ?assertEqual(<<"/analytics/settings/config">>, Meta),
+    ?assertEqual(<<"{\"analytics.settings.blob_storage_region\":\"\","
+                   "\"analytics.settings.blob_storage_scheme\":\"\","
+                   "\"analytics.settings.blob_storage_prefix\":\"\","
+                   "\"analytics.settings.blob_storage_bucket\":\"\"}">>,
+                 Data).
+-endif.

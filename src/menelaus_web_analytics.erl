@@ -19,13 +19,68 @@ handle_settings_get(Req) ->
     Settings = get_settings(),
     menelaus_util:reply_json(Req, {Settings}).
 
+serverless_only_settings() ->
+    blob_storage_params().
+
+maybe_filter_settings(Settings) ->
+    FilterOutSettings = lists:flatten([serverless_only_settings() ||
+                                          not config_profile:is_serverless()]),
+    maybe_filter_settings(Settings, FilterOutSettings).
+
+maybe_filter_settings(Settings, []) ->
+    Settings;
+maybe_filter_settings(Settings, FilterOutSettings) ->
+    lists:filter(
+      fun( {Key, _Value}) ->
+              not lists:member(Key, FilterOutSettings)
+      end, Settings).
+
 get_settings() ->
-    analytics_settings_manager:get(generalSettings).
+    Settings = analytics_settings_manager:get(generalSettings),
+    maybe_filter_settings(Settings).
+
+blob_storage_params() ->
+    [blobStorageScheme, blobStorageBucket, blobStoragePrefix, blobStorageRegion].
+
+valid_blob_storage_param(blobStorageScheme, State) ->
+    validator:one_of(blobStorageScheme, ["s3"], State);
+valid_blob_storage_param(_Param, State) ->
+    State.
+
+blob_storage_params_validator() ->
+    Params = blob_storage_params(),
+
+    % Validation should pass if:
+    % 1. None of the blobStorage params are present.
+    % 2. Or if all of the blobStorage Params are present and are all valid.
+    [validator:validate_multiple(
+        fun (_Values, State) ->
+            NewState =
+            functools:chain(
+                State,
+                lists:foldr(
+                    fun (Param, Acc) ->
+                        [validator:required(Param, _),
+                            validator:string(Param, _),
+                            valid_blob_storage_param(Param, _),
+                            validator:convert(
+                                Param, fun list_to_binary/1, _)
+                            | Acc]
+                    end, [], Params)),
+            {ok, NewState}
+        end, Params, _)].
 
 settings_post_validators() ->
     [validator:has_params(_),
-     validator:integer(numReplicas, 0, 3, _),
-     validator:unsupported(_)].
+     validator:integer(numReplicas, 0, 3, _)] ++
+        case cluster_compat_mode:is_cluster_elixir() andalso
+            config_profile:is_serverless() of
+            true ->
+                blob_storage_params_validator();
+            false ->
+                []
+        end ++
+        [validator:unsupported(_)].
 
 update_settings(Key, Value) ->
     case analytics_settings_manager:update(Key, Value) of

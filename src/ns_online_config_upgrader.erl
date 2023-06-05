@@ -113,4 +113,5 @@ upgrade(?VERSION_72, Config) ->
         menelaus_web_alerts_srv:config_upgrade_to_elixir(Config) ++
         index_settings_manager:config_upgrade_to_elixir(Config) ++
         query_settings_manager:config_upgrade_to_elixir(Config) ++
+        analytics_settings_manager:config_upgrade_to_elixir(Config) ++
         mb_master:config_upgrade_to_elixir(Config)}.
