@@ -38,7 +38,6 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
     def setup(self, cluster):
         self.addr_get = "/sampleBuckets"
         self.addr_post = self.addr_get + "/install"
-        self.addr_buckets = "/pools/default/buckets"
         self.addr_tasks = "/pools/default/tasks"
 
         # Deleting existing buckets to make space
@@ -57,7 +56,7 @@ class SampleBucketTestSet(testlib.BaseTestSet, TasksBase):
     # Create a bucket with name and ram_quota specified
     def create_bucket(self, name, ram_quota=200):
         bucket = {"name": name, "ramQuota": ram_quota}
-        testlib.post_succ(self.cluster, self.addr_buckets, 202, data=bucket)
+        self.cluster.create_bucket(bucket)
 
     # Test the /sampleBuckets endpoint for fetching the list of sample buckets
     def get_test(self, cluster):

@@ -225,3 +225,12 @@ class Cluster:
             timeout_s=timeout_s,
             node_urls=get_node_urls(self.nodes),
             verbose=verbose)
+
+    def create_bucket(self, data, verbose=False):
+        self.wait_for_rebalance(verbose=verbose)
+        return testlib.post_succ(self, "/pools/default/buckets",
+                                 expected_code=202, data=data)
+
+    def delete_bucket(self, name, verbose=False):
+        self.wait_for_rebalance(verbose=verbose)
+        return testlib.ensure_deleted(self, f"/pools/default/buckets/{name}")
