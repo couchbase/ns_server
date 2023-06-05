@@ -36,7 +36,7 @@ class AuthnTests(testlib.BaseTestSet):
         self.wrong_pass_creds = (username, wrong_password)
         self.wrong_user_creds = (wrong_user, password)
         testlib.put_succ(cluster, f'/settings/rbac/users/local/{username}',
-                         data={'roles': 'admin', 'password': password})
+                         data={'roles': 'ro_admin', 'password': password})
 
 
     def teardown(self, cluster):
@@ -109,6 +109,17 @@ class AuthnTests(testlib.BaseTestSet):
         testlib.assert_http_code(200, r)
         r = session.get(cluster.nodes[0].url + self.testEndpoint, headers=headers)
         testlib.assert_http_code(401, r)
+
+
+    def on_behalf_of_test(self, cluster):
+        (user, _) = self.creds
+        OBO = base64.b64encode(f"{user}:local".encode('ascii')).decode()
+        r = testlib.get_succ(cluster, '/whoami',
+                             headers={'cb-on-behalf-of': OBO})
+        res = r.json()
+        assert [{'role': 'ro_admin'}] == res['roles']
+        assert user == res['id']
+        assert 'local' == res['domain']
 
 
 def headerToScramMsg(header):
