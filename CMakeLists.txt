@@ -269,17 +269,6 @@ ADD_CUSTOM_TARGET (ns_dialyzer
   WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}" VERBATIM)
 ADD_DEPENDENCIES (ns_dialyzer ns_server_all)
 
-SET (obsessive_args -Wunmatched_returns -Werror_handling -Wrace_conditions
-  -Wbehaviours -Wunderspecs)
-ADD_CUSTOM_TARGET (ns_dialyzer_obsessive
-  COMMAND "${CMAKE_COMMAND}" -D "COUCHDB_BIN_DIR=${COUCHDB_BIN_DIR}"
-  -D "DIALYZER_EXECUTABLE=${DIALYZER_EXECUTABLE}"
-  -D "DIALYZER_FLAGS=${obsessive_args}"
-  -D "COUCHBASE_PLT=${COUCHBASE_PLT}"
-  -P "${PROJECT_SOURCE_DIR}/cmake_modules/do-dialyzer.cmake"
-  WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}" VERBATIM)
-ADD_DEPENDENCIES (ns_dialyzer_obsessive ns_server_all)
-
 #
 # Install
 #

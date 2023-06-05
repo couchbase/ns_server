@@ -30,7 +30,7 @@ install:
 
 $(TEST_TARGETS): edts_hack_clean
 
-dataclean distclean $(TEST_TARGETS) ui_test dialyzer dialyzer_obsessive:
+dataclean distclean $(TEST_TARGETS) ui_test dialyzer:
 	cd build && $(MAKE) --no-print-directory ns_$@
 
 minify:
