@@ -61,4 +61,5 @@ tmp
 /src/kv_stats_mappings.erl
 /cluster_tests/test_cluster_data*
 /cluster_tests/__pycache__
+/cluster_tests/testlib/__pycache__/
 /pylib/__pycache__
