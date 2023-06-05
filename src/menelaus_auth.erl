@@ -436,18 +436,15 @@ can_use_cert_for_auth(Req) ->
 verify_rest_auth(Req, Permission) ->
     Auth = extract_auth(Req),
     case authenticate(Auth) of
-        {ok, #authn_res{identity = Identity} = AuthnRes,
+        {ok, #authn_res{} = AuthnRes,
          RespHeaders} ->
             Req2 = append_resp_headers(RespHeaders, Req),
-            case extract_effective_identity(Identity, Req2) of
+            case apply_on_belalf_of_identity(AuthnRes, Req2) of
                 error ->
                     Req3 = maybe_store_rejected_user(
                              get_rejected_user(Auth), Req2),
                     {auth_failure, Req3};
-                EffectiveIdentity ->
-                    AuthnRes2 = AuthnRes#authn_res{
-                                    identity = EffectiveIdentity
-                                },
+                AuthnRes2 ->
                     {check_permission(AuthnRes2, Permission),
                      store_authn_res(AuthnRes2, Req2)}
             end;
@@ -477,14 +474,14 @@ verify_rest_auth(Req, Permission) ->
 %% 3) effective identity: on-behalf-of identity if present, else the real
 %%    identity.
 
--spec extract_effective_identity(rbac_identity(), mochiweb_request()) ->
-                                        error | rbac_identity().
-extract_effective_identity(Identity, Req) ->
+-spec apply_on_belalf_of_identity(#authn_res{}, mochiweb_request()) ->
+                                        error | #authn_res{}.
+apply_on_belalf_of_identity(AuthnRes, Req) ->
     case extract_on_behalf_of_identity(Req) of
         error ->
             error;
         undefined ->
-            Identity;
+            AuthnRes;
         {ok, RealIdentity} ->
             %% The permission is formed the way that it is currently granted
             %% to full admins only. We might consider to reformulate it
@@ -496,9 +493,11 @@ extract_effective_identity(Identity, Req) ->
             %% each permission twice, against the authenticated user and against
             %% the impersonated one
             case menelaus_roles:is_allowed(
-                   {[admin, security, admin], impersonate}, Identity) of
+                   {[admin, security, admin], impersonate}, AuthnRes) of
                 true ->
-                    RealIdentity;
+                    AuthnRes#authn_res{identity = RealIdentity,
+                                       extra_groups = [],
+                                       extra_roles = []};
                 false ->
                     error
             end
