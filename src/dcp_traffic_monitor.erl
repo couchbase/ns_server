@@ -30,6 +30,11 @@
 -behaviour(health_monitor).
 
 -include("ns_common.hrl").
+-include("cut.hrl").
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([start_link/0]).
 -export([get_nodes/0,
@@ -39,6 +44,7 @@
 
 -ifdef(TEST).
 -export([health_monitor_test_setup/0,
+         health_monitor_t/0,
          health_monitor_test_teardown/0]).
 -endif.
 
@@ -159,6 +165,39 @@ can_refresh() ->
 %% functions
 health_monitor_test_setup() ->
     ok.
+
+health_monitor_t() ->
+    ?assert(dict:is_empty(get_nodes())),
+
+    %% Test a 'DOWN' message, we must first setup some state in an ets table
+    %% via node_alive cast (can't mock ets/BIFs).
+    PidToMonitor =
+        erlang:spawn(
+          fun() ->
+                  %% Block in receive to ensure that this process remains
+                  %% alive til we've called get_nodes() at least once
+                  receive _ ->
+                          ok
+                  end
+          end),
+
+    BucketInfo = {"bucket", erlang:monotonic_time(), PidToMonitor},
+    node_alive(node(), BucketInfo),
+
+    %% We should now be tracking something
+    ?assertNot(dict:is_empty(get_nodes())),
+
+    %% Kill PidToMonitor to trigger a 'DOWN' message
+    misc:terminate_and_wait(PidToMonitor, "reason"),
+
+    %% And we should no longer be tracking anything. We poll rather than
+    %% assert this once to avoid relying on the ordering of the DOWN messages
+    %% sent when we terminate PidToMonitor.
+    ?assert(misc:poll_for_condition(
+              fun() ->
+                      dict:is_empty(get_nodes())
+              end,
+              30000, 100)).
 
 health_monitor_test_teardown() ->
     ok.

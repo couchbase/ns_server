@@ -24,6 +24,7 @@
 
 -ifdef(TEST).
 -export([health_monitor_test_setup/0,
+         health_monitor_t/0,
          health_monitor_test_teardown/0]).
 -endif.
 
@@ -134,6 +135,9 @@ can_refresh() ->
 %% See health_monitor.erl for tests common to all monitors that use these
 %% functions
 health_monitor_test_setup() ->
+    ok.
+
+health_monitor_t() ->
     ok.
 
 health_monitor_test_teardown() ->

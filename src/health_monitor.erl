@@ -392,6 +392,9 @@ basic_test_t(Monitor) ->
     %% And the same for a call...
     ?assertEqual(nack, gen_server:call(Pid, undefined)),
 
+    %% Jump into some monitor specific tests
+    Monitor:health_monitor_t(),
+
     gen_server:stop(Pid).
 
 basic_test_() ->

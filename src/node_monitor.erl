@@ -26,6 +26,7 @@
 
 -ifdef(TEST).
 -export([health_monitor_test_setup/0,
+         health_monitor_t/0,
          health_monitor_test_teardown/0]).
 -endif.
 
@@ -151,6 +152,9 @@ health_monitor_test_setup() ->
     meck:new(mb_master),
     meck:expect(mb_master, master_node, fun() -> node() end),
 
+    ok.
+
+health_monitor_t() ->
     ok.
 
 health_monitor_test_teardown() ->
