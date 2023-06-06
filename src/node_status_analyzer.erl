@@ -58,6 +58,10 @@
 
 -include("ns_common.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([start_link/0]).
 -export([get_nodes/0,
          can_refresh/0]).
@@ -74,7 +78,22 @@ start_link() ->
 
 %% gen_server callbacks
 init() ->
-    #{}.
+    NodesWanted = ns_node_disco:nodes_wanted(),
+
+    chronicle_compat_events:subscribe(
+      fun ({node, _, membership}) ->
+              true;
+          ({node, _, services}) ->
+              true;
+          (nodes_wanted) ->
+              true;
+          (_) -> false
+      end,
+      fun (_) ->
+              self() ! node_changed
+      end),
+
+    #{monitors => get_monitors(NodesWanted)}.
 
 handle_call(get_nodes, _From, MonitorState) ->
     #{nodes := Statuses} = MonitorState,
@@ -90,12 +109,15 @@ handle_cast(Cast, MonitorState) ->
     noreply.
 
 handle_info(refresh, MonitorState) ->
-    #{nodes := Statuses, nodes_wanted := NodesWanted} = MonitorState,
+    #{nodes := Statuses,
+      nodes_wanted := NodesWanted,
+      monitors := AllMonitors} = MonitorState,
     %% Fetch each node's view of every other node and analyze it.
     AllNodes = node_monitor:get_nodes(),
     NewStatuses = lists:foldl(
                     fun (Node, Acc) ->
-                            NewState = analyze_status(Node, AllNodes),
+                            NewState = analyze_status(Node, AllNodes,
+                                                      AllMonitors),
                             Status = case dict:find(Node, Statuses) of
                                          {ok, {NewState, _} = OldStatus} ->
                                              %% Node state has not changed.
@@ -109,6 +131,11 @@ handle_info(refresh, MonitorState) ->
 
     {noreply, MonitorState#{nodes => NewStatuses}};
 
+handle_info(node_changed, MonitorState) ->
+    NodesWanted = ns_node_disco:nodes_wanted(),
+    {noreply,
+        MonitorState#{monitors => get_monitors(NodesWanted)}};
+
 handle_info(Info, MonitorState) ->
     ?log_warning("Unexpected message ~p when in state:~n~p",
                  [Info, MonitorState]),
@@ -119,21 +146,36 @@ get_nodes() ->
     gen_server:call(?MODULE, get_nodes).
 
 %% Internal functions
-analyze_status(Node, AllNodes) ->
-    Monitors = health_monitor:node_monitors(Node),
+
+get_monitors(NodesWanted) ->
+    lists:map(
+        fun(Node) ->
+            NodeMonitors = health_monitor:node_monitors(Node),
+            {Node, NodeMonitors}
+        end, NodesWanted).
+
+analyze_status(Node, AllNodes, AllMonitors) ->
+    NodeMonitors =
+        case proplists:get_value(Node, AllMonitors) of
+            undefined ->
+                %% Health monitors not found in the cached monitors for the
+                %% given node, just fetch them straight from the config.
+                health_monitor:node_monitors(Node);
+            Monitors -> Monitors
+        end,
     {Healthy, Unhealthy, Other} = lists:foldl(
                                     fun (Monitor, Accs) ->
                                             analyze_monitor_status(Monitor,
                                                                    Node,
                                                                    AllNodes,
                                                                    Accs)
-                                    end, {[], [], []}, Monitors),
+                                    end, {[], [], []}, NodeMonitors),
 
-    case lists:subtract(Monitors, Healthy) of
+    case lists:subtract(NodeMonitors, Healthy) of
         [] ->
             healthy;
         _ ->
-            case lists:subtract(Monitors, Unhealthy) of
+            case lists:subtract(NodeMonitors, Unhealthy) of
                 [] ->
                     unhealthy;
                 _ ->
@@ -166,10 +208,48 @@ health_monitor_test_setup() ->
         get_nodes,
         fun() ->
             []
-        end).
+        end),
+
+    meck:expect(chronicle_compat_events,
+        subscribe, fun (_,_) -> true end).
+
+get_monitors_from_state() ->
+    %% Do a get_nodes (handle_call) to ensure that we have processed anything
+    %% that would cause a state update
+    get_nodes(),
+
+    %% Bit of a hack, but this is a test, we can grab the internal state of
+    %% the monitor via sys:get_state to check that we are tracking the
+    %% correct monitors.
+    {state, node_status_analyzer, #{monitors := Monitors}}
+        = sys:get_state(?MODULE),
+    Monitors.
 
 health_monitor_t() ->
-    ok.
+    %% Test that we find new monitors
+    ?assertEqual([{node(), [ns_server]}], get_monitors_from_state()),
+
+    meck:expect(ns_cluster_membership, should_run_service,
+        fun(_Snapshot, _Service, _Node) ->
+            true
+        end),
+
+    ?MODULE ! node_changed,
+
+    ?assertEqual([{node(), [ns_server, kv]}], get_monitors_from_state()),
+
+    %% Test new node is added and tracked
+    meck:expect(ns_node_disco,
+        nodes_wanted,
+        fun() ->
+            [node(), "otherNode"]
+        end),
+
+    ?MODULE ! node_changed,
+
+    %% We are now tracking monitors for "otherNode"
+    ?assertEqual([{node(), [ns_server, kv]},
+                  {"otherNode", [ns_server, kv]}], get_monitors_from_state()).
 
 health_monitor_test_teardown() ->
     meck:unload(node_monitor).
