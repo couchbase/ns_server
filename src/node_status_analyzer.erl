@@ -91,7 +91,6 @@ handle_cast(Cast, MonitorState) ->
 
 handle_info(refresh, MonitorState) ->
     #{nodes := Statuses, nodes_wanted := NodesWanted} = MonitorState,
-
     %% Fetch each node's view of every other node and analyze it.
     AllNodes = node_monitor:get_nodes(),
     NewStatuses = lists:foldl(
@@ -107,7 +106,8 @@ handle_info(refresh, MonitorState) ->
                                      end,
                             dict:store(Node, Status, Acc)
                     end, dict:new(), NodesWanted),
-    {noreply, NewStatuses};
+
+    {noreply, MonitorState#{nodes => NewStatuses}};
 
 handle_info(Info, MonitorState) ->
     ?log_warning("Unexpected message ~p when in state:~n~p",

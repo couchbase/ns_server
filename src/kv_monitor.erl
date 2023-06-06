@@ -53,7 +53,8 @@ handle_cast(Cast, MonitorState) ->
 
 handle_info(refresh, MonitorState) ->
     #{nodes_wanted := NodesWanted} = MonitorState,
-    {noreply, handle_refresh_status(NodesWanted, MonitorState)};
+    NewStatuses = handle_refresh_status(NodesWanted, MonitorState),
+    {noreply, MonitorState#{nodes => NewStatuses}};
 
 handle_info(Info, MonitorState) ->
     ?log_warning("Unexpected message ~p when in state:~n~p",

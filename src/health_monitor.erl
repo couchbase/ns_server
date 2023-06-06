@@ -160,9 +160,12 @@ handle_message(Fun, Msg, #state{monitor_module = MonModule,
     case erlang:apply(MonModule, Fun, [Msg, MonState]) of
         noreply ->
             {noreply, State};
-        {noreply, NewStatuses} ->
-            {noreply, State#state{monitor_state =
-                                      MonState#{nodes => NewStatuses}}}
+        {noreply, NewMonitorState} ->
+            %% Note, we're just replacing the monitor_state here rather than
+            %% merging it under the expectation that the monitor
+            %% implementation will return the full state rather than some
+            %% partial one.
+            {noreply, State#state{monitor_state = NewMonitorState}}
     end.
 
 terminate(_Reason, _State) ->

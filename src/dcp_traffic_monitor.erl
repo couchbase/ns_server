@@ -80,7 +80,7 @@ handle_cast({node_alive, Node, BucketInfo}, MonitorState) ->
                             fun (Buckets) ->
                                     update_bucket(Node, Buckets, BucketInfo)
                             end, [], Statuses),
-            {noreply, NewStatuses};
+            {noreply, MonitorState#{nodes => NewStatuses}};
         false ->
             ?log_debug("Ignoring unknown node ~p", [Node]),
             noreply
@@ -106,7 +106,8 @@ handle_info({'DOWN', MRef, process, Pid, _Reason}, MonitorState) ->
                           Statuses
                   end,
     ets:delete(mref2node, MRef),
-    {noreply, NewStatuses};
+    {noreply, MonitorState#{nodes => NewStatuses}};
+
 handle_info(Info, MonitorState) ->
     ?log_warning("Unexpected message ~p when in state:~n~p",
                  [Info, MonitorState]),
