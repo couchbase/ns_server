@@ -84,6 +84,11 @@ class MnSecurityService {
         switchMap(this.getAudit.bind(this)),
         shareReplay({refCount: true, bufferSize: 1}));
 
+    this.stream.getSaml =
+      (new BehaviorSubject()).pipe(
+        switchMap(this.getSaml.bind(this)),
+        shareReplay({refCount: true, bufferSize: 1}));
+
     this.stream.getAuditDescriptors =
       (new BehaviorSubject()).pipe(
         switchMap(this.getAuditDescriptors.bind(this)),
@@ -119,6 +124,16 @@ class MnSecurityService {
       .addSuccess()
       .addError();
 
+    this.stream.postSaml =
+      new MnHttpRequest(this.postSaml(false).bind(this))
+      .addSuccess()
+      .addError();
+
+    this.stream.postSamlValidation =
+      new MnHttpRequest(this.postSaml(true).bind(this))
+      .addSuccess()
+      .addError();
+
     this.stream.prepareOtherSettingsFormValues =
       combineLatest([
         isEnterprise,
@@ -133,6 +148,14 @@ class MnSecurityService {
   postAudit(validate) {
     return (data) => {
       return this.http.post("/settings/audit", data, {
+        params: new HttpParams().set("just_validate", validate ? 1 : 0)
+      });
+    }
+  }
+
+  postSaml(validate) {
+    return (data) => {
+      return this.http.post("/settings/saml", data, {
         params: new HttpParams().set("just_validate", validate ? 1 : 0)
       });
     }
@@ -161,6 +184,10 @@ class MnSecurityService {
 
   getAudit() {
     return this.http.get("/settings/audit");
+  }
+
+  getSaml() {
+    return this.http.get("/settings/saml");
   }
 
   getSaslauthdAuth() {

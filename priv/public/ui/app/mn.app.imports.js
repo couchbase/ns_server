@@ -51,6 +51,12 @@ let auditState = {
   lazyLoad: mnLoadNgModule(() => import('./mn.security.audit.module.js'), 'MnSecurityAuditModule')
 };
 
+let samlState = {
+  name: 'app.admin.security.saml.**',
+  url: '/saml',
+  lazyLoad: mnLoadNgModule(() => import('./mn.security.saml.module.js'), 'MnSecuritySamlModule')
+};
+
 let overviewState = {
   name: 'app.admin.overview.**',
   url: '/overview',
@@ -224,7 +230,8 @@ let mnAppImports = [
       collectionsState,
       XDCRState,
       otherSecuritySettingsState,
-      auditState
+      auditState,
+      samlState,
     ]
   }),
 

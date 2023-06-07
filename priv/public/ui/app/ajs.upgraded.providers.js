@@ -26,6 +26,15 @@ const $stateProvider = {
   deps: ['$injector']
 };
 
+class $location {}
+const $locationProvider = {
+  provide: $location,
+  useFactory: function $locationFactory(i) {
+    return i.get('$location');
+  },
+  deps: ['$injector']
+};
+
 class MnPendingQueryKeeper {}
 const MnPendingQueryKeeperProvider = {
   provide: MnPendingQueryKeeper,
@@ -110,6 +119,7 @@ const MnStatisticsNewProvider = {
 let ajsUpgradedProviders = [
   $rootScopeProvider,
   $stateProvider,
+  $locationProvider,
   MnPoolsProvider,
   MnHelperProvider,
   MnPendingQueryKeeperProvider,
@@ -125,6 +135,7 @@ export {
   ajsUpgradedProviders,
   $state,
   $rootScope,
+  $location,
   MnPools,
   MnHelper,
   MnPendingQueryKeeper,

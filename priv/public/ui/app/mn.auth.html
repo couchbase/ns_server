@@ -84,7 +84,12 @@ licenses/APL2.txt.
           </div>
 
         </div>
-        <div class="panel-footer">
+        <div class="panel-footer"
+             [ngStyle]="{'justify-content': (getAuthMethods | async )?.saml ? 'space-between' : 'flex-end'}">
+          <a
+            href="/saml/auth"
+            [ngClass]="{'hidden': !(getAuthMethods | async)?.saml}">
+            Sign In Using SSO</a>
           <button
             [disabled]="form.group.invalid"
             type="submit">

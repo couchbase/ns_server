@@ -40,10 +40,10 @@
       <div class="users-auth-check" ng-show="poolDefault.isEnterprise && poolDefault.compat.atLeast65">
         <span
            class="icon margin-right"
-           ng-class="rolesCtl.isLdapEnabled ? 'fa-check success' : 'fa-ban grayblack-3'">
+           ng-class="(rolesCtl.isLdapEnabled || rolesCtl.isSamlEnabled) ? 'fa-check success' : 'fa-ban grayblack-3'">
         </span>
         <p>
-          LDAP is {{!rolesCtl.isLdapEnabled ? 'not': ''}} enabled
+          LDAP/SAML is {{(rolesCtl.isLdapEnabled || rolesCtl.isSamlEnabled) ? '' : 'not'}} enabled
         </p>
       </div>
     </span>

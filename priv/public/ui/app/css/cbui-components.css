@@ -4105,3 +4105,21 @@ textarea.certificate-props {
   max-width: 500px;
   word-wrap: break-word;
 }
+.radio-chips {
+  margin-top: 1rem;
+}
+.radio-chips > input {
+  visibility: hidden !important;
+}
+.radio-chips > label {
+  cursor: pointer;
+  background: #d9e8f6;
+  border: 1px solid #d9e8f6;
+  border-radius: 15px;
+  padding-left: 8px !important;
+  padding-right: 8px !important;
+  margin-right: 0.25rem !important;
+}
+.radio-chips > input:checked + label {
+  border: 1px solid #4287d6;
+}

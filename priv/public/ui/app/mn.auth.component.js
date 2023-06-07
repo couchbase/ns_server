@@ -34,7 +34,7 @@ class MnAuthComponent extends MnLifeCycleHooksToStream {
     MnAuthService,
     UIRouter,
     MnPools,
-    $rootScope
+    $rootScope,
   ]}
 
   constructor(mnFormService, mnAuthService, uiRouter, mnPools, $rootScope) {
@@ -42,6 +42,8 @@ class MnAuthComponent extends MnLifeCycleHooksToStream {
     this.focusFieldSubject = new BehaviorSubject(true);
 
     this.postUILogin = mnAuthService.stream.postUILogin;
+    this.postUISAMLLogin = mnAuthService.stream.postUISAMLLogin;
+    this.getAuthMethods = mnAuthService.stream.getAuthMethods;
 
     this.form = mnFormService.create(this)
       .setFormGroup({

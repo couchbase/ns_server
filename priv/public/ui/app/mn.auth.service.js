@@ -11,6 +11,8 @@ licenses/APL2.txt.
 import {Injectable} from '@angular/core';
 import {HttpClient} from '@angular/common/http';
 import {map} from 'rxjs/operators';
+import {BehaviorSubject} from 'rxjs';
+import {shareReplay, switchMap} from 'rxjs/operators';
 import {singletonGuard} from './mn.core.js';
 import {MnHttpRequest} from './mn.http.request.js';
 
@@ -34,6 +36,11 @@ class MnAuthService {
       new MnHttpRequest(this.postUILogin.bind(this))
       .addSuccess()
       .addError(map(rv => rv.status));
+
+    this.stream.getAuthMethods =
+      (new BehaviorSubject()).pipe(
+        switchMap(this.getAuthMethods.bind(this)),
+        shareReplay({refCount: true, bufferSize: 1}));
 
     // this.stream.postUILogout =
     //   new mn.core.MnPostHttp(this.postUILogout.bind(this));
@@ -66,5 +73,9 @@ class MnAuthService {
     //   }, function () {
     //     $window.location.reload();
     //   });
+  }
+
+  getAuthMethods() {
+    return this.http.get("/_ui/authMethods");
   }
 }

@@ -162,6 +162,9 @@ footer {
 .line-height-1-5 {
   line-height:1.5!important;
 }
+.line-height-2 {
+  line-height:2 !important;
+}
 .fix-position-br {
   position: fixed;
   bottom: .5rem;
@@ -408,6 +411,9 @@ footer {
 .fix-width-8 {
   width: 48rem !important; /* 768px */
 }
+.fix-width-8-1 {
+  width: 49rem !important; /* 784px */
+}
 .fix-width-9 {
   width: 56rem !important; /* 896px */
 }
@@ -468,6 +474,9 @@ footer {
 }
 .min-height-4 {
   height: 4rem !important;
+}
+.min-height-10 {
+  height: 10rem !important;
 }
 .min-height-1 {
   min-height: 1rem !important;
@@ -594,6 +603,9 @@ footer {
 }
 .margin-bottom-4 {
   margin-bottom: 4rem !important;
+}
+.margin-bottom-5 {
+  margin-bottom: 5rem !important;
 }
 .margin-bottom-neg-1 {
   margin-bottom: -1rem !important;
