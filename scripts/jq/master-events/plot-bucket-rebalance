@@ -27,8 +27,14 @@ def handle_move($minTS):
    then "active"
    else "replica" end) as $moveType |
   {start: (.moveStartTS - $minTS),
-   duration: (.moveEndTS - .moveStartTS),
-   backfillDuration: ($backfillEnd.ts - .moveStartTS),
+   duration:
+    (if (.moveEndTS != null)
+     then (.moveEndTS - .moveStartTS)
+     else null end),
+   backfillDuration:
+    (if ($backfillEnd.ts != null)
+     then ($backfillEnd.ts - .moveStartTS)
+     else null end),
    vbucket: .vbucket,
    type: $moveType};
 

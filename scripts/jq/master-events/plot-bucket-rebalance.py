@@ -21,12 +21,17 @@ vbuckets = []
 active_moves = []
 replica_moves = []
 backfills = []
+end = 0
 
 for i, move in enumerate(payload['moves']):
     vbucket = move['vbucket']
     x = move['start']
     width = move['duration']
+    if width is not None:
+        end = max(end, x + width)
     backfill_width = move['backfillDuration']
+    if backfill_width is not None:
+        end = max(end, x + backfill_width)
 
     vbuckets.append(vbucket)
     move_tuple = (i, x, width)
@@ -37,12 +42,23 @@ for i, move in enumerate(payload['moves']):
 
     backfills.append((i, x, backfill_width))
 
+in_progress_moves = []
+
+for moves in [active_moves, replica_moves, backfills]:
+    for i, move in enumerate(moves):
+        if move[2] is None:
+            moves[i] = (move[0], move[1], end - move[1])
+            in_progress_moves.append(moves[i])
+
+
 plot.rcdefaults()
 fig, ax = plot.subplots()
 
 charts = [(active_moves, 'active moves', {'color': 'green'}),
           (replica_moves, 'replica moves', {'color': 'orange'}),
-          (backfills, 'backfill phase', {'color': 'white', 'alpha': 0.5})]
+          (backfills, 'backfill phase', {'color': 'white', 'alpha': 0.5}),
+          (in_progress_moves, "in-progress moves",
+           {'fill': False, "edgecolor": 'red'})]
 for data, label, style in charts:
     if len(data) > 0:
         pos, lefts, widths = zip(*data)
