@@ -57,12 +57,6 @@ params(membase, BucketName, BucketConfig, MemQuota, UUID) ->
       ns_bucket:pitr_granularity(BucketConfig)},
      {"pitr_max_history_age",  [{reload, flush}],
       ns_bucket:pitr_max_history_age(BucketConfig)},
-     {"magma_fragmentation_percentage", [{reload, flush}],
-      ns_bucket:magma_fragmentation_percentage(BucketConfig)},
-     %% The internal name, known by memcached, is a ratio so do the conversion.
-     {"magma_mem_quota_ratio", [{reload, flush}],
-      proplists:get_value(storage_quota_percentage, BucketConfig,
-                          ?MAGMA_STORAGE_QUOTA_PERCENTAGE) / 100},
      {"hlc_drift_ahead_threshold_us", [no_param, {reload, vbucket}],
       DriftAheadThreshold},
      {"hlc_drift_behind_threshold_us", [no_param, {reload, vbucket}],
@@ -341,10 +335,17 @@ get_magma_bucket_config(BucketConfig) ->
     case ns_bucket:is_magma(BucketConfig) of
         false -> [];
         true ->
-            [{"history_retention_seconds", [{reload, flush}],
-                ns_bucket:history_retention_seconds(BucketConfig)},
+            [{"magma_fragmentation_percentage", [{reload, flush}],
+              ns_bucket:magma_fragmentation_percentage(BucketConfig)},
+             %% The internal name, known by memcached, is a ratio so do the
+             %% conversion.
+             {"magma_mem_quota_ratio", [{reload, flush}],
+              proplists:get_value(storage_quota_percentage, BucketConfig,
+                                  ?MAGMA_STORAGE_QUOTA_PERCENTAGE) / 100},
+             {"history_retention_seconds", [{reload, flush}],
+              ns_bucket:history_retention_seconds(BucketConfig)},
              {"history_retention_bytes", [{reload, flush}],
-                ns_bucket:history_retention_bytes(BucketConfig)},
+              ns_bucket:history_retention_bytes(BucketConfig)},
              {"magma_key_tree_data_block_size", [{reload, flush}],
               ns_bucket:magma_key_tree_data_blocksize(BucketConfig)},
              {"magma_seq_tree_data_block_size", [{reload, flush}],
