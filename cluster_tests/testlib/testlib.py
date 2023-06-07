@@ -243,3 +243,9 @@ def delete_all_buckets(cluster, **kwargs):
     buckets = get_succ(cluster, "/pools/default/buckets", **kwargs)
     for bucket in buckets.json():
         cluster.delete_bucket(bucket['name'])
+
+
+def get_otp_nodes(cluster):
+    info = json_response(get(cluster, "/nodeStatuses"),
+                         "/nodeStatuses response was not json")
+    return {k: info[k]['otpNode'] for k in info}

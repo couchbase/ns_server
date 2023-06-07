@@ -148,11 +148,15 @@ class Cluster:
     # Can optionally wait for the rebalance to finish
     def rebalance(self, ejected_nodes=None, wait=True, timeout_s=600,
                   verbose=False, expected_error=None):
-        # We have to use the otpNode names instead of the node ips, so we fetch
-        # these from /nodeStatuses
-        info = testlib.json_response(testlib.get(self, "/nodeStatuses"),
-                                     "/nodeStatuses response was not json")
-        otp_nodes = {k: info[k]['otpNode'] for k in info}
+        # We have to use the otpNode names instead of the node ips.
+        otp_nodes = testlib.get_otp_nodes(self)
+
+        # Filter out ejected_nodes which don't have an otp_node (meaning they
+        # are not currently part of the cluster).
+        if ejected_nodes is not None:
+            for node in ejected_nodes:
+                if not node.hostname in otp_nodes.keys():
+                    ejected_nodes.remove(node)
 
         # It is unlikely that known_nodes should ever need to be manually
         # generated, as the list of nodes retrieved here is the only accepted
@@ -232,6 +236,45 @@ class Cluster:
         if do_rebalance:
             self.rebalance(verbose=verbose)
             self.wait_for_rebalance(verbose=verbose)
+        return r
+
+    def failover_node(self, victim_node, graceful=True, do_rebalance=False,
+                      allow_unsafe=False, verbose=False):
+        # We have to use the otpNode names instead of the node ips.
+        otp_nodes = testlib.get_otp_nodes(self)
+        otp_node = otp_nodes[victim_node.hostname]
+
+        data = {"user": self.auth[0],
+                "password": self.auth[1],
+                "otpNode": f"{otp_node}",
+                "allowUnsafe": allow_unsafe}
+        if verbose:
+            print(f"Failing over node {data}")
+        failover_type = "startGracefulFailover" if graceful else "startFailover"
+        r = testlib.post_succ(self, f"/controller/{failover_type}",
+                              data=data)
+        self.connected_nodes.remove(victim_node)
+        if do_rebalance:
+            self.rebalance(wait=True, verbose=verbose)
+        return r
+
+    def recover_node(self, node, recovery_type="full", do_rebalance=False,
+                     verbose=False):
+        assert recovery_type in ["full", "delta"]
+        otp_nodes = testlib.get_otp_nodes(self)
+        otp_node = otp_nodes[node.hostname]
+
+        data = {"user": self.auth[0],
+                "password": self.auth[1],
+                "otpNode": f"{otp_node}",
+                "recoveryType": recovery_type}
+        if verbose:
+            print(f"Recoverying {node.hostname} with type {recovery_type}")
+        r = testlib.post_succ(self, f"/controller/setRecoveryType",
+                              data=data)
+        self.connected_nodes.append(node)
+        if do_rebalance:
+            self.rebalance(wait=True, verbose=verbose)
         return r
 
     # Wait for all associated nodes be responsive, each with a 60s timeout.
