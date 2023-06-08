@@ -23,7 +23,8 @@
          get_keys_ref/0,
          rotate_data_key/0,
          maybe_clear_backup_key/1,
-         get_state/0]).
+         get_state/0,
+         os_pid/0]).
 
 data_key_store_path() ->
     filename:join(path_config:component_path(data, "config"), "encrypted_data_keys").
@@ -58,6 +59,9 @@ rotate_data_key() ->
 
 maybe_clear_backup_key(DataKey) ->
     gen_server:call({?MODULE, ns_server:get_babysitter_node()}, {maybe_clear_backup_key, DataKey}, infinity).
+
+os_pid() ->
+    gen_server:call({?MODULE, ns_server:get_babysitter_node()}, gosecrets_os_pid).
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -229,6 +233,12 @@ handle_call(rotate_data_key, _From, State) ->
     {reply, call_gosecrets(rotate_data_key, State), State};
 handle_call({maybe_clear_backup_key, DataKey}, _From, State) ->
     {reply, call_gosecrets({maybe_clear_backup_key, DataKey}, State), State};
+handle_call(gosecrets_os_pid, _From, State) ->
+    Res = case call_gosecrets({port_info, os_pid}, State) of
+              {os_pid, P} -> P;
+              undefined -> undefined
+          end,
+    {reply, Res, State};
 handle_call(Call, _From, State) ->
     ?log_warning("Unhandled call: ~p", [Call]),
     {reply, {error, not_allowed}, State}.
@@ -270,16 +280,15 @@ start_gosecrets(CfgPath) ->
 call_gosecrets(Msg, Pid) ->
     Pid ! {call, Msg},
     receive
-        {reply, <<"S">>} ->
-            ok;
-        {reply, <<"S", Data/binary>>} ->
-            {ok, Data};
-        {reply, <<"E", Data/binary>>} ->
-            {error, binary_to_list(Data)}
+        {reply, Resp} ->
+            Resp
     end.
 
 gosecrets_loop(Port, Parent) ->
     receive
+        {call, {port_info, I}} ->
+            Parent ! {reply, erlang:port_info(Port, I)},
+            gosecrets_loop(Port, Parent);
         {call, Msg} ->
             Port ! {self(), {command, encode(Msg)}},
             wait_call_resp(Port, Parent),
@@ -298,8 +307,12 @@ wait_call_resp(Port, Parent) ->
         {Port, {data, <<"L", Data/binary>>}} ->
             handle_gosecrets_log(Data),
             wait_call_resp(Port, Parent);
-        {Port, {data, Data}} ->
-            Parent ! {reply, Data}
+        {Port, {data, <<"S">>}} ->
+            Parent ! {reply, ok};
+        {Port, {data, <<"S", Data/binary>>}} ->
+            Parent ! {reply, {ok, Data}};
+        {Port, {data, <<"E", Data/binary>>}} ->
+            Parent ! {reply, {error, binary_to_list(Data)}}
     end.
 
 handle_gosecrets_log(Data) ->
