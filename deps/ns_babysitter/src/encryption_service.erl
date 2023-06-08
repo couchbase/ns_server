@@ -229,13 +229,16 @@ handle_call(rotate_data_key, _From, State) ->
     {reply, call_gosecrets(rotate_data_key, State), State};
 handle_call({maybe_clear_backup_key, DataKey}, _From, State) ->
     {reply, call_gosecrets({maybe_clear_backup_key, DataKey}, State), State};
-handle_call(_, _From, State) ->
+handle_call(Call, _From, State) ->
+    ?log_warning("Unhandled call: ~p", [Call]),
     {reply, {error, not_allowed}, State}.
 
-handle_cast(_, State) ->
+handle_cast(Msg, State) ->
+    ?log_warning("Unhandled cast: ~p", [Msg]),
     {noreply, State}.
 
-handle_info(_, State) ->
+handle_info(Info, State) ->
+    ?log_warning("Unhandled info: ~p", [Info]),
     {noreply, State}.
 
 terminate(_Reason, _State) ->
