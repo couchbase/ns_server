@@ -26,6 +26,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 
 	"golang.org/x/crypto/pbkdf2"
 
@@ -86,6 +87,13 @@ type Config struct {
 }
 
 func main() {
+	defer func() {
+		if err := recover(); err != nil {
+			log_dbg("panic occurred: %v\n%s", err, string(debug.Stack()))
+			panic(err)
+		}
+	}()
+
 	gocbutils.LimitCPUThreads()
 
 	var configPath string
