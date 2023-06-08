@@ -294,6 +294,7 @@ func saveDatakey(datakeyFile string, dataKey, backupDataKey []byte) error {
 func readDatakey(datakeyFile string) ([]byte, []byte, error) {
 	data, err := os.ReadFile(datakeyFile)
 	if os.IsNotExist(err) {
+		log_dbg("file %s does not exist", datakeyFile)
 		return nil, nil, ErrKeysDoNotExist
 	} else if err != nil {
 		msg := fmt.Sprintf("failed to read datakey file \"%s\": %s",
@@ -472,6 +473,10 @@ func aesgcmDecrypt(key []byte, data []byte) ([]byte, error) {
 	return aesgcm.Open(nil, nonce, data, nil)
 }
 
+func log_dbg(str string, args ...interface{}) {
+	doReply([]byte("L" + fmt.Sprintf(str, args...)))
+}
+
 // Implementation of secretIface for keysInFile
 
 func (keys *keysInFile) setSecret(s *secret) error {
@@ -494,6 +499,8 @@ func (keys *keysInFile) read() error {
 		keys.secret.backupKey = nil
 	}
 	keys.secret.key = key
+	log_dbg("read encryption keys from '%s' (%d byte main key, "+
+		"and %d byte backup key)", keys.filePath, len(key), len(backupKey))
 	return nil
 }
 
@@ -558,6 +565,9 @@ func (keys *keysInEncryptedFile) read() error {
 		keys.secret.backupKey = nil
 	}
 
+	log_dbg("read encryption keys from '%s' (%d byte main key, "+
+		"and %d byte backup key)",
+		keys.filePath, len(encryptedKey), len(encryptedBackup))
 	return nil
 }
 
@@ -593,6 +603,7 @@ func saveKeys(keys secretIface, key, backup []byte) error {
 func readOrCreateKeys(keys secretIface) error {
 	err := keys.read()
 	if errors.Is(err, ErrKeysDoNotExist) {
+		log_dbg("Generating secret")
 		key := createRandomKey()
 		return saveKeys(keys, key, nil)
 	}
@@ -602,6 +613,7 @@ func readOrCreateKeys(keys secretIface) error {
 func atomicWriteFile(path string, binary []byte, perm fs.FileMode) (err error) {
 	tmpfile, err := ioutil.TempFile(
 		filepath.Dir(path), filepath.Base(path)+"-*.tmp")
+	log_dbg("using tmp file %s when writing to %s", tmpfile.Name(), path)
 	if err != nil {
 		return err
 	}
@@ -643,6 +655,7 @@ func readCfg(configPath string) (*Config, error) {
 }
 
 func readCfgBytes(configBytes []byte) (*Config, error) {
+	log_dbg("parsing config: \n%s", string(configBytes))
 	var config Config
 	err := json.Unmarshal(configBytes, &config)
 	if err != nil {

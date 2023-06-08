@@ -279,16 +279,28 @@ gosecrets_loop(Port, Parent) ->
     receive
         {call, Msg} ->
             Port ! {self(), {command, encode(Msg)}},
-            receive
-                Exit = {'EXIT', _, _} ->
-                    gosecret_process_exit(Port, Exit);
-                {Port, {data, Data}} ->
-                    Parent ! {reply, Data}
-            end,
+            wait_call_resp(Port, Parent),
+            gosecrets_loop(Port, Parent);
+        {Port, {data, <<"L", Data/binary>>}} ->
+            handle_gosecrets_log(Data),
             gosecrets_loop(Port, Parent);
         Exit = {'EXIT', _, _} ->
             gosecret_process_exit(Port, Exit)
     end.
+
+wait_call_resp(Port, Parent) ->
+    receive
+        Exit = {'EXIT', _, _} ->
+            gosecret_process_exit(Port, Exit);
+        {Port, {data, <<"L", Data/binary>>}} ->
+            handle_gosecrets_log(Data),
+            wait_call_resp(Port, Parent);
+        {Port, {data, Data}} ->
+            Parent ! {reply, Data}
+    end.
+
+handle_gosecrets_log(Data) ->
+    ?log_debug("gosecrets: ~s", [Data]).
 
 gosecret_process_exit(Port, Exit) ->
     ?log_debug("Received exit ~p for port ~p", [Exit, Port]),
