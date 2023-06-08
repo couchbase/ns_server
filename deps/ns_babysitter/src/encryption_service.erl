@@ -20,13 +20,16 @@
 -export([decrypt/1,
          encrypt/1,
          change_password/1,
-         get_data_key/0,
+         get_keys_ref/0,
          rotate_data_key/0,
          maybe_clear_backup_key/1,
          get_state/0]).
 
 data_key_store_path() ->
     filename:join(path_config:component_path(data, "config"), "encrypted_data_keys").
+
+gosecrets_cfg_path() ->
+    filename:join(path_config:component_path(data, "config"), "gosecrets.cfg").
 
 port_file_path() ->
     filename:join(path_config:component_path(data),
@@ -40,10 +43,11 @@ decrypt(Data) ->
 
 change_password(NewPassword) ->
     gen_server:call({?MODULE, ns_server:get_babysitter_node()},
-                    {change_password, NewPassword}, infinity).
+                    {change_password, ?HIDE(NewPassword)}, infinity).
 
-get_data_key() ->
-    gen_server:call({?MODULE, ns_server:get_babysitter_node()}, get_data_key, infinity).
+get_keys_ref() ->
+    gen_server:call({?MODULE, ns_server:get_babysitter_node()}, get_keys_ref,
+                    infinity).
 
 get_state() ->
     gen_server:call({?MODULE, ns_server:get_babysitter_node()}, get_state,
@@ -58,7 +62,7 @@ maybe_clear_backup_key(DataKey) ->
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-prompt_the_password(EncryptedDataKey, State) ->
+prompt_the_password(State, Retries) ->
     StdIn =
         case application:get_env(handle_ctrl_c) of
             {ok, true} ->
@@ -67,7 +71,7 @@ prompt_the_password(EncryptedDataKey, State) ->
                 undefined
         end,
     try
-        prompt_the_password(EncryptedDataKey, State, StdIn, 3)
+        prompt_the_password(State, Retries, StdIn)
     after
         case StdIn of
             undefined ->
@@ -77,124 +81,125 @@ prompt_the_password(EncryptedDataKey, State) ->
         end
     end.
 
-prompt_the_password(EncryptedDataKey, State, StdIn, Tries) ->
+prompt_the_password(State, MaxRetries, StdIn) ->
     case open_udp_socket() of
         {ok, Socket} ->
             try
                 save_port_file(Socket),
-                prompt_the_password(EncryptedDataKey, State, StdIn,
-                                    Tries, Tries, Socket)
+                prompt_the_password(State, MaxRetries, StdIn,
+                                    Socket, _RetriesLeft = MaxRetries)
             after
                 file:delete(port_file_path()),
                 catch gen_udp:close(Socket)
             end;
-        {error, _} ->
-            ns_babysitter_bootstrap:stop(),
-            shutdown
+        {error, Error} ->
+            {error, {udp_socket_open_failed, Error}}
     end.
 
-prompt_the_password(EncryptedDataKey, State, StdIn, Try, Tries, Socket) ->
+prompt_the_password(State, MaxRetries, StdIn, Socket, RetriesLeft) ->
     {ok, {Addr, Port}} = inet:sockname(Socket),
     ?log_debug("Waiting for the master password to be supplied (UDP: ~p:~b). "
-               "Attempt ~p", [Addr, Port, Tries - Try + 1]),
+               "Attempt ~p", [Addr, Port, MaxRetries - RetriesLeft + 1]),
     receive
         {StdIn, M} ->
             ?log_error("Password prompt interrupted: ~p", [M]),
-            ns_babysitter_bootstrap:stop(),
-            shutdown;
+            {error, interrupted};
         {udp, Socket, FromAddr, FromPort, Password} ->
-            ok = set_password(Password, State),
-            case EncryptedDataKey of
-                undefined ->
-                    confirm_set_password(Socket, FromAddr, FromPort, Password);
-                _ ->
-                    Ret = call_gosecrets({set_data_key, EncryptedDataKey}, State),
-                    case Ret of
-                        ok ->
-                            confirm_set_password(Socket, FromAddr, FromPort,
-                                                 Password);
-                        Error ->
-                            ?log_error("Incorrect master password. Error: ~p", [Error]),
-                            maybe_retry_prompt_the_password(
-                              EncryptedDataKey, State, StdIn, FromAddr,
-                              FromPort, Try, Tries, Socket)
-                    end
+            case call_init(?HIDE(Password), State) of
+                ok ->
+                    gen_udp:send(Socket, FromAddr, FromPort, <<"ok">>),
+                    ok;
+                {wrong_password, _} when RetriesLeft > 1 ->
+                    gen_udp:send(Socket, FromAddr, FromPort, <<"retry">>),
+                    timer:sleep(1000),
+                    prompt_the_password(State, MaxRetries, StdIn,
+                                        Socket, RetriesLeft - 1);
+                {Reply, _Reason} when Reply == error;
+                                      Reply == wrong_password  ->
+                    gen_udp:send(Socket, FromAddr, FromPort, <<"auth_failure">>),
+                    {error, auth_failure}
             end
     end.
 
-confirm_set_password(Socket, FromAddr, FromPort, Password) ->
-    ?log_info("Password accepted"),
-    application:set_env(ns_babysitter, master_password, Password),
-    gen_udp:send(Socket, FromAddr, FromPort, <<"ok">>),
-    ok.
-
-maybe_retry_prompt_the_password(_EncryptedDataKey, _State, _StdIn, FromAddr,
-                                FromPort, 1, _Tries, Socket) ->
-    gen_udp:send(Socket, FromAddr, FromPort, <<"auth_failure">>),
-    ?log_error("Incorrect master password!"),
-    ns_babysitter_bootstrap:stop(),
-    auth_failure;
-maybe_retry_prompt_the_password(EncryptedDataKey, State, StdIn, FromAddr,
-                                FromPort, Try, Tries, Socket) ->
-    gen_udp:send(Socket, FromAddr, FromPort, <<"retry">>),
-    timer:sleep(1000),
-    prompt_the_password(EncryptedDataKey, State, StdIn, Try - 1, Tries, Socket).
-
-set_password(Password, State) ->
-    ?log_debug("Sending password to gosecrets"),
-    call_gosecrets({set_password, Password}, State).
-
 init([]) ->
-    Path = data_key_store_path(),
-    EncryptedDataKey =
-        case file:read_file(Path) of
-            {ok, DataKey} ->
-                ?log_debug("Encrypted data key retrieved from ~p", [Path]),
-                DataKey;
-            {error, enoent} ->
-                ?log_debug("Encrypted data key is not found in ~p", [Path]),
-                undefined
-        end,
-    State = start_gosecrets(),
-
-    case application:get_env(master_password) of
-        {ok, Password} ->
-            ?log_info("Password was recovered from application environment"),
-            ok = set_password(Password, State);
-        undefined ->
-            case os:getenv("CB_MASTER_PASSWORD") of
-                false ->
-                    false;
-                Password ->
-                    ok = set_password(Password, State)
+    GosecretsCfgPath = gosecrets_cfg_path(),
+    DatakeyPath = data_key_store_path(),
+    case filelib:is_file(GosecretsCfgPath) of
+        true -> ok;
+        false ->
+            Cfg = {[{encryptionService,
+                     {[{keyStorageType, file},
+                       {keyStorageSettings,
+                        {[{path, list_to_binary(DatakeyPath)},
+                          {encryptWithPassword, true},
+                          {passwordSource, env},
+                          {passwordSettings,
+                           {[{envName, <<"CB_MASTER_PASSWORD">>}]}}]}}]}}]},
+            CfgJson = ejson:encode(Cfg),
+            ?log_debug("Writing ~s: ~s", [GosecretsCfgPath, CfgJson]),
+            case misc:atomic_write_file(GosecretsCfgPath, CfgJson) of
+                ok -> ok;
+                {error, Error} ->
+                    ?log_error("Could not write file '~s': ~s (~p)",
+                               [GosecretsCfgPath, file:format_error(Error),
+                                Error]),
+                    erlang:error({write_failed, GosecretsCfgPath, Error})
             end
     end,
 
-    EncryptedDataKey1 =
-        case EncryptedDataKey of
-            undefined ->
-                ?log_debug("Create new data key."),
-                {ok, NewDataKey} = call_gosecrets(create_data_key, State),
-                ok = misc:mkdir_p(path_config:component_path(data, "config")),
-                ok = misc:atomic_write_file(Path, NewDataKey),
-                NewDataKey;
+    State = start_gosecrets(GosecretsCfgPath),
+
+    HiddenPass =
+        case application:get_env(master_password) of
+            {ok, P} ->
+                ?log_info("Trying to recover the password from application "
+                          "environment"),
+                P;
             _ ->
-                EncryptedDataKey
+                ?HIDE("")
         end,
-    case call_gosecrets({set_data_key, EncryptedDataKey1}, State) of
-        ok ->
-            ok;
-        Error ->
-            ?log_error("Incorrect master password. Error: ~p", [Error]),
+
+    init_gosecrets(HiddenPass, _MaxRetries = 3, State),
+
+    {ok, State}.
+
+init_gosecrets(HiddenPass, MaxRetries, State) ->
+    case call_init(HiddenPass, State) of
+        ok -> ok;
+        {wrong_password, _} ->
             try
-                prompt_the_password(EncryptedDataKey, State)
+                case prompt_the_password(State, MaxRetries) of
+                    ok ->
+                        ok;
+                    {error, Error} ->
+                        ?log_error("Stopping babysitter because gosecrets "
+                                   "password prompting has failed: ~p",
+                                   [Error]),
+                        ns_babysitter_bootstrap:stop(),
+                        shutdown
+                end
             catch
                 C:E:ST ->
                     ?log_error("Unhandled exception: ~p~n~p", [E, ST]),
                     erlang:raise(C, E, ST)
-            end
-    end,
-    {ok, State}.
+            end;
+        {error, Error} ->
+            erlang:error({gosecrets_init_failed, Error})
+    end.
+
+call_init(HiddenPass, State) ->
+    case call_gosecrets({init, HiddenPass}, State) of
+        ok ->
+            application:set_env(ns_babysitter, master_password, HiddenPass),
+            ?log_info("Init complete. Password (if used) accepted."),
+            ok;
+        {error, "key decrypt failed:" ++ _ = Error} ->
+            ?log_error("Incorrect master password. Error: ~p", [Error]),
+            {wrong_password, Error};
+        {error, Error} ->
+            ?log_error("Gosecrets initialization failed: ~s", [Error]),
+            {error, Error}
+    end.
 
 handle_call({encrypt, Data}, _From, State) ->
     {reply, call_gosecrets({encrypt, Data}, State), State};
@@ -206,26 +211,24 @@ handle_call({decrypt, Data}, _From, State) ->
          Ret ->
              Ret
      end, State};
-handle_call({change_password, NewPassword}, _From, State) ->
-    Reply = call_gosecrets_and_store_data_key(
-              {change_password, NewPassword}, "Master password change", State),
+handle_call({change_password, HiddenPass}, _From, State) ->
+    Reply = call_gosecrets({change_password, HiddenPass}, State),
     case Reply of
         ok ->
-            application:set_env(ns_babysitter, master_password, NewPassword),
+            application:set_env(ns_babysitter, master_password, HiddenPass),
             ok;
         {error, _} ->
             ok
     end,
     {reply, Reply, State};
-handle_call(get_data_key, _From, State) ->
-    {reply, call_gosecrets(get_data_key, State), State};
+handle_call(get_keys_ref, _From, State) ->
+    {reply, call_gosecrets(get_keys_ref, State), State};
 handle_call(get_state, _From, State) ->
     {reply, call_gosecrets(get_state, State), State};
 handle_call(rotate_data_key, _From, State) ->
-    {reply, call_gosecrets_and_store_data_key(rotate_data_key, "Data key rotation", State), State};
+    {reply, call_gosecrets(rotate_data_key, State), State};
 handle_call({maybe_clear_backup_key, DataKey}, _From, State) ->
-    {reply, call_gosecrets_and_store_data_key({maybe_clear_backup_key, DataKey},
-                                              "Clearing backup key", State), State};
+    {reply, call_gosecrets({maybe_clear_backup_key, DataKey}, State), State};
 handle_call(_, _From, State) ->
     {reply, {error, not_allowed}, State}.
 
@@ -241,19 +244,7 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-call_gosecrets_and_store_data_key(Call, Msg, State) ->
-    case call_gosecrets(Call, State) of
-        ok ->
-            ok;
-        {ok, NewEncryptedDataKey} ->
-            ?log_info("~s succeded", [Msg]),
-            ok = misc:atomic_write_file(data_key_store_path(), NewEncryptedDataKey);
-        Error ->
-            ?log_error("~s failed with ~p", [Msg, Error]),
-            Error
-    end.
-
-start_gosecrets() ->
+start_gosecrets(CfgPath) ->
     Parent = self(),
     {ok, Pid} =
         proc_lib:start_link(
@@ -261,11 +252,12 @@ start_gosecrets() ->
           [fun () ->
                    process_flag(trap_exit, true),
                    Path = path_config:component_path(bin, "gosecrets"),
-                   ?log_debug("Starting ~p", [Path]),
+                   Args = ["--config", CfgPath],
+                   ?log_debug("Starting ~p with args: ~0p", [Path, Args]),
                    Port =
                        open_port(
                          {spawn_executable, Path},
-                         [{packet, 4}, binary, hide]),
+                         [{packet, 4}, binary, hide, {args, Args}]),
                    proc_lib:init_ack({ok, self()}),
                    gosecrets_loop(Port, Parent)
            end, []]),
@@ -307,28 +299,24 @@ gosecret_do_process_exit(Port, {'EXIT', Port, Reason}) ->
 gosecret_do_process_exit(_Port, {'EXIT', _, Reason}) ->
     exit(Reason).
 
-encode({set_password, Password}) ->
-    BinaryPassoword = list_to_binary(Password),
-    <<1, BinaryPassoword/binary>>;
-encode(create_data_key) ->
+encode({init, HiddenPass}) ->
+    BinaryPassword = list_to_binary(?UNHIDE(HiddenPass)),
+    <<1, BinaryPassword/binary>>;
+encode(get_keys_ref) ->
     <<2>>;
-encode({set_data_key, DataKey}) ->
-    <<3, DataKey/binary>>;
-encode(get_data_key) ->
-    <<4>>;
 encode({encrypt, Data}) ->
-    <<5, Data/binary>>;
+    <<3, Data/binary>>;
 encode({decrypt, Data}) ->
-    <<6, Data/binary>>;
-encode({change_password, Password}) ->
-    BinaryPassoword = list_to_binary(Password),
-    <<7, BinaryPassoword/binary>>;
+    <<4, Data/binary>>;
+encode({change_password, HiddenPass}) ->
+    BinaryPassword = list_to_binary(?UNHIDE(HiddenPass)),
+    <<5, BinaryPassword/binary>>;
 encode(rotate_data_key) ->
-    <<8>>;
+    <<6>>;
 encode({maybe_clear_backup_key, DataKey}) ->
-    <<9, DataKey/binary>>;
+    <<7, DataKey/binary>>;
 encode(get_state) ->
-    <<10>>.
+    <<8>>.
 
 save_port_file(Socket) ->
     {ok, {Addr, Port}} = inet:sockname(Socket),

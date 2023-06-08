@@ -509,10 +509,10 @@ encrypt_and_save(Config) ->
     Dynamic = ns_config:get_kv_list_with_config(Config),
     case cluster_compat_mode:is_enterprise() of
         true ->
-            {ok, DataKey} = encryption_service:get_data_key(),
+            {ok, KeysRef} = encryption_service:get_keys_ref(),
             EncryptedConfig = encrypt(Dynamic),
             ns_config:save_config_sync([EncryptedConfig], DirPath),
-            encryption_service:maybe_clear_backup_key(DataKey);
+            encryption_service:maybe_clear_backup_key(KeysRef);
         false ->
             ns_config:save_config_sync([Dynamic], DirPath)
     end.
