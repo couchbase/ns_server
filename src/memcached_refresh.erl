@@ -56,7 +56,7 @@ terminate(_Reason, _State) -> ok.
 handle_call({apply_to_file, TmpPath, Path}, _From, State) ->
     ?log_debug("File rename from ~p to ~p is requested", [TmpPath, Path]),
     {reply, file:rename(TmpPath, Path), State};
-handle_call(sync, _From, #state{refresh_list = []} = State) ->
+handle_call(sync, _From, #state{refresh_list = [], status = idle} = State) ->
     {reply, ok, State};
 handle_call(sync, From, #state{sync_froms = Froms} = State) ->
     {noreply, State#state{sync_froms = [From | Froms]}};
@@ -110,16 +110,21 @@ handle_info(_Msg, State) ->
     {noreply, State}.
 
 update_refresh_state(Refreshed, [], ok,
-                     #state{sync_froms_before_refresh = SyncFroms,
-                            refresh_list = ToRefresh} = State) ->
+                     #state{refresh_list = ToRefresh,
+                            sync_froms_before_refresh = SyncFromsOld,
+                            sync_froms = SyncFroms} = State) ->
     ?log_debug("Refresh of ~p succeeded", [Refreshed]),
-    [gen_server:reply(F, ok) || F <- lists:reverse(SyncFroms)],
-    case ToRefresh of
-        [] -> ok;
-        _ -> self() ! refresh
-    end,
+    {ToSyncNow, ToSyncLater} = case ToRefresh of
+                                   [] ->
+                                       {SyncFromsOld ++ SyncFroms, []};
+                                   _ ->
+                                       self() ! refresh,
+                                       {SyncFromsOld, SyncFroms}
+                               end,
+    [gen_server:reply(F, ok) || F <- lists:reverse(ToSyncNow)],
     State#state{status = idle,
-                sync_froms_before_refresh = []};
+                sync_froms_before_refresh = [],
+                sync_froms = ToSyncLater};
 
 update_refresh_state(_Refreshed, NotRefreshed, FailureReason,
                      #state{refresh_list = ToRefresh,
