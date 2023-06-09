@@ -211,10 +211,11 @@ def main():
                                                       tmp_cluster_dir,
                                                       kill_nodes)
         # Run the testsets on the cluster
-        tests_executed, testset_errors = \
+        tests_executed, testset_errors, testset_not_ran = \
             run_testsets(cluster, testsets, intercept_output=intercept_output)
         executed += tests_executed
         errors.update(testset_errors)
+        not_ran += testset_not_ran
 
     error_num = sum([len(errors[name]) for name in errors])
     errors_str = f"{error_num} error{'s' if error_num != 1 else ''}"
@@ -232,9 +233,10 @@ def main():
             print(f"  {testres[0]} failed: {testres[1]}")
     print()
 
-    for name, reason in not_ran:
-        print(f"Couldn't run {name}:\n"
-              f"  {reason}")
+    if len(not_ran) > 0:
+        print(f"Couldn't run the following tests:")
+        for name, reason in not_ran:
+            print(f"  {name}: {reason}")
     print()
 
     if len(errors) > 0:
@@ -372,6 +374,7 @@ def get_existing_cluster(address, start_port, auth, num_nodes):
 def run_testsets(cluster, testsets, intercept_output=True):
     executed = 0
     errors = {}
+    not_ran = []
     for testset_name, testset, test_names in testsets:
         res = testlib.run_testset(testset, test_names, cluster, testset_name,
                                   intercept_output=intercept_output)
@@ -379,7 +382,8 @@ def run_testsets(cluster, testsets, intercept_output=True):
         testset_errors = res[1]
         if len(testset_errors) > 0:
             errors[testset_name] = testset_errors
-    return executed, errors
+        not_ran += res[2]
+    return executed, errors, not_ran
 
 
 if __name__ == '__main__':
