@@ -442,6 +442,8 @@ failover_bucket_prep(membase, Nodes, Bucket, BucketConfig, Map, Options) ->
     {membase, BucketConfig, NewMap, Options1}.
 
 finalize_bucket_failover(Bucket, BucketConfig, NewMap, Nodes, Options) ->
+    ok = check_test_condition({fail_finalize_failover_at_bucket, Bucket}),
+
     R = janitor_bucket(Nodes, Bucket, NewMap, Options),
     OldMap = proplists:get_value(map, BucketConfig, []),
 
@@ -789,6 +791,16 @@ get_failover_vbuckets(Config, Node) ->
     chronicle_compat:get(Config, {node, Node, failover_vbuckets},
                          #{default => []}).
 
+check_test_condition({Step, Bucket}) ->
+    case testconditions:get({Step, Bucket}) of
+        fail ->
+            ?log_debug("Failing at step: ~p, Bucket: ~p due to test condition",
+                       [Step, Bucket]),
+            testconditions:delete({Step, Bucket}),
+            fail_by_test_condition;
+        _ ->
+            ok
+    end.
 
 -ifdef(TEST).
 
@@ -824,7 +836,8 @@ meck_query_vbuckets(Input, Output) ->
 
 load_group_failover_test_common_modules() ->
     meck:new([ns_config, ns_janitor, master_activity_events,
-              cluster_compat_mode, chronicle_compat, ns_bucket], [passthrough]),
+              cluster_compat_mode, chronicle_compat, ns_bucket, testconditions],
+             [passthrough]),
 
     meck:expect(ns_janitor, check_server_list,
                 fun (_,_) ->
@@ -852,6 +865,11 @@ load_group_failover_test_common_modules() ->
     meck:expect(chronicle_compat, get,
                 fun (_,_,_) ->
                         []
+                end),
+
+    meck:expect(testconditions, get,
+                fun (_) ->
+                        ok
                 end),
 
     meck:expect(ns_config, get_timeout, fun (_, _) -> 1234 end).
