@@ -66,6 +66,13 @@ for data, label, style in charts:
 
 ax.set_yticks(range(len(vbuckets)))
 ax.set_yticklabels(vbuckets)
+
+
+def format_y_coord(y):
+    return vbuckets[min(len(vbuckets) - 1, max(0, round(y)))]
+
+
+ax.fmt_ydata = format_y_coord
 ax.invert_yaxis()
 ax.set_ylabel('VBucket')
 ax.set_xlabel('Time')
