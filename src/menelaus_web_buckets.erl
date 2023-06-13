@@ -3325,7 +3325,7 @@ basic_bucket_params_screening_test() ->
                   proplists:lookup(history_retention_seconds, OK26)),
     ?assertEqual({history_retention_bytes, 0},
                   proplists:lookup(history_retention_bytes, OK26)),
-    ?assertEqual({history_retention_collection_default, false},
+    ?assertEqual({history_retention_collection_default, true},
                   proplists:lookup(history_retention_collection_default, OK26)),
     ?assertEqual({magma_key_tree_data_blocksize, 4096},
                  proplists:lookup(magma_key_tree_data_blocksize, OK26)),
