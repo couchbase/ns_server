@@ -802,8 +802,8 @@ is_node_down(Node, {unhealthy, _}) ->
     %% unhealthy. This is one of the requirements for server group
     %% auto-failover.
     case health_monitor:node_monitors(Node) of
-        [ns_server] = Monitor ->
-            {true, Res} = is_node_down(Monitor),
+        [ns_server] ->
+            {true, Res} = is_node_down([{ns_server, unhealthy}]),
             {true, Res, true};
         _ ->
             {true, {"All monitors report node is unhealthy.",
