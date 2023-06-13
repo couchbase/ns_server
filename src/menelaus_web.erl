@@ -506,6 +506,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "saml" | PathRest] ->
                     {{[admin, security, external], read},
                      fun menelaus_web_saml:handle_get_settings/2, [PathRest]};
+                ["settings", "dataService"] ->
+                    {{[admin, settings], read},
+                     fun menelaus_web_settings:handle_settings_data_service/1};
                 ["internalSettings"] ->
                     {{[admin, settings], read},
                      fun menelaus_web_settings:handle_get/2, [internal]};
@@ -778,6 +781,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "saml"] ->
                     {{[admin, security, external], write},
                      fun menelaus_web_saml:handle_post_settings/1};
+                ["settings", "dataService"] ->
+                    {{[admin, settings], write},
+                     fun menelaus_web_settings:handle_settings_data_service_post/1};
                 ["internalSettings"] ->
                     {{[admin, settings], write},
                      fun menelaus_web_settings:handle_post/2, [internal]};

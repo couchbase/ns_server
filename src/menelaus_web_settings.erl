@@ -49,6 +49,9 @@
          handle_settings_view_update_daemon/1,
          handle_settings_view_update_daemon_post/1,
 
+         handle_settings_data_service/1,
+         handle_settings_data_service_post/1,
+
          handle_reset_ciphers_suites/1,
 
          services_with_security_settings/0,
@@ -624,8 +627,6 @@ conf(internal) ->
       <<>>, get_number(1, 1024)},
      {max_bucket_count, maxBucketCount, ns_bucket:get_max_buckets(),
       get_number(1, 8192)},
-     {min_replicas_count, minReplicasCount, ns_bucket:get_min_replicas(),
-      get_number(0, 3)},
      {magma_min_memory_quota, magmaMinMemoryQuota, 1024,
       get_number(100, 1024, 1024)},
      {event_logs_limit, eventLogsLimit, 10000,
@@ -1295,6 +1296,24 @@ handle_settings_rebalance_post(Req) ->
       [validator:required(rebalanceMovesPerNode, _),
        validator:integer(rebalanceMovesPerNode, ?MIN_OF_MAX_MOVES_PER_NODE,
                          ?MAX_OF_MAX_MOVES_PER_NODE, _),
+       validator:unsupported(_)]).
+
+handle_settings_data_service(Req) ->
+    reply_json(Req,
+               {[{minReplicasCount, ns_bucket:get_min_replicas()}]},
+               200).
+
+handle_settings_data_service_post(Req) ->
+    menelaus_util:assert_is_elixir(),  % XXX: MB-57410 change to trinity
+    validator:handle(
+      fun (Values) ->
+              Num = proplists:get_value(minReplicasCount, Values),
+              ns_config:set(min_replicas_count, Num),
+              reply_json(Req, {[{minReplicasCount, Num}]}, 200)
+      end, Req, form,
+      [validator:required(minReplicasCount, _),
+       validator:integer(minReplicasCount, ?MIN_REPLICAS_SUPPORTED,
+                         ?MAX_NUM_REPLICAS, _),
        validator:unsupported(_)]).
 
 parse_int_creds_rotation_int("0") ->
