@@ -90,7 +90,7 @@ def safe_test_function_call(testset, testfunction, args, verbose=False):
         testname = f"{testset.__name__}.{testfunction}"
     else:
         testname = f"{type(testset).__name__}.{testfunction}"
-    if verbose: print(f"  {testname}... ", end='')
+    if verbose: print(f"  {testname}... ", end='', flush=True)
     start = time.time()
     try:
         res = getattr(testset, testfunction)(*args)
