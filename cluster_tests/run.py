@@ -93,10 +93,10 @@ def kill_nodes(processes, urls, terminal_attrs):
 
 def main():
     try:
-        optlist, args = getopt.gnu_getopt(sys.argv[1:], "hkc:u:p:n:t:",
+        optlist, args = getopt.gnu_getopt(sys.argv[1:], "hkoc:u:p:n:t:",
                                           ["help", "keep-tmp-dirs", "cluster=",
                                            "user=", "password=", "num-nodes=",
-                                           "tests="])
+                                           "tests=", "dont-intercept-output"])
     except getopt.GetoptError as err:
         bad_args_exit(str(err))
 
@@ -109,6 +109,7 @@ def main():
     start_index = 0
     tests = None
     keep_tmp_dirs = False
+    intercept_output = True
 
     for o, a in optlist:
         if o in ('--cluster', '-c'):
@@ -140,6 +141,8 @@ def main():
                     tests.append((tokens[0], tokens[1]))
         elif o in ('--keep-tmp-dirs', '-k'):
             keep_tmp_dirs = True
+        elif o in ('--dont-intercept-output', '-o'):
+            intercept_output = False
         elif o in ('--help', '-h'):
             usage()
             exit(0)
@@ -208,7 +211,8 @@ def main():
                                                       tmp_cluster_dir,
                                                       kill_nodes)
         # Run the testsets on the cluster
-        tests_executed, testset_errors = run_testsets(cluster, testsets)
+        tests_executed, testset_errors = \
+            run_testsets(cluster, testsets, intercept_output=intercept_output)
         executed += tests_executed
         errors.update(testset_errors)
 
@@ -365,11 +369,12 @@ def get_existing_cluster(address, start_port, auth, num_nodes):
 
 # Run each testset on the same cluster, counting how many individual tests were
 # ran, and keeping track of all errors
-def run_testsets(cluster, testsets):
+def run_testsets(cluster, testsets, intercept_output=True):
     executed = 0
     errors = {}
     for testset_name, testset, test_names in testsets:
-        res = testlib.run_testset(testset, test_names, cluster, testset_name)
+        res = testlib.run_testset(testset, test_names, cluster, testset_name,
+                                  intercept_output=intercept_output)
         executed += res[0]
         testset_errors = res[1]
         if len(testset_errors) > 0:

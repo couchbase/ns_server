@@ -12,6 +12,8 @@ import requests
 import string
 import random
 import time
+import io
+from contextlib import redirect_stdout
 
 from traceback_with_variables import print_exc
 
@@ -50,14 +52,16 @@ def get_appropriate_cluster(cluster, auth, start_index, requirements,
     return cluster
 
 
-def run_testset(testset_class, test_names, cluster, testset_name):
+def run_testset(testset_class, test_names, cluster, testset_name,
+                intercept_output=True):
     errors = []
     executed = 0
     print(f"\nStarting testset: {testset_name}...")
 
     testset_instance = testset_class(cluster)
 
-    _, err = safe_test_function_call(testset_instance, 'setup', [cluster])
+    _, err = safe_test_function_call(testset_instance, 'setup', [cluster],
+                                     intercept_output=intercept_output)
 
     if err is not None:
         return 0, [err]
@@ -66,24 +70,28 @@ def run_testset(testset_class, test_names, cluster, testset_name):
         for test in test_names:
             executed += 1
             _, err = safe_test_function_call(testset_instance, test,
-                                             [cluster], verbose=True)
+                                             [cluster], verbose=True,
+                                             intercept_output=intercept_output)
             if err is not None:
                 errors.append(err)
 
             _, err = safe_test_function_call(testset_instance, 'test_teardown',
-                                             [cluster])
+                                             [cluster],
+                                             intercept_output=intercept_output)
             if err is not None:
                 errors.append(err)
     finally:
         _, err = safe_test_function_call(testset_instance, 'teardown',
-                                         [cluster])
+                                         [cluster],
+                                         intercept_output=intercept_output)
         if err is not None:
             errors.append(err)
 
     return executed, errors
 
 
-def safe_test_function_call(testset, testfunction, args, verbose=False):
+def safe_test_function_call(testset, testfunction, args, verbose=False,
+                            intercept_output=True):
     res = None
     error = None
     if hasattr(testset, '__name__'):
@@ -91,9 +99,14 @@ def safe_test_function_call(testset, testfunction, args, verbose=False):
     else:
         testname = f"{type(testset).__name__}.{testfunction}"
     if verbose: print(f"  {testname}... ", end='', flush=True)
+    f = io.StringIO()
     start = time.time()
     try:
-        res = getattr(testset, testfunction)(*args)
+        if intercept_output:
+            with redirect_stdout(f):
+                res = getattr(testset, testfunction)(*args)
+        else:
+            res = getattr(testset, testfunction)(*args)
         if verbose: print(f"\033[32m passed \033[0m{timedelta_str(start)}")
     except Exception as e:
         if verbose:
@@ -102,6 +115,13 @@ def safe_test_function_call(testset, testfunction, args, verbose=False):
             print(f"\033[31m  {testname} failed ({e}) \033[0m")
         print_exc()
         print()
+        output = f.getvalue()
+        if len(output) > 0:
+            extra_cr = '\n' if output[-1] != '\n' else ''
+            print(
+              f"================== {testfunction}() output begin =================\n"
+              f"{output}{extra_cr}"
+              f"=================== {testfunction}() output end ==================\n")
         error = (testname, e)
     return res, error
 
