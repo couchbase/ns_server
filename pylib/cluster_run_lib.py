@@ -513,11 +513,12 @@ def start_cluster(num_nodes=1,
 
 
 def wait_nodes_up(num_nodes=1, start_index=0, timeout_s=node_start_timeout_s,
-                  node_urls=None, verbose=False):
+                  node_urls=None, verbose=True):
     def print_if_verbose(*args, **kwargs):
         if verbose:
             print(*args, **kwargs)
-    deadline = time.time() + timeout_s
+    start = time.time()
+    deadline = start + timeout_s
 
     # Wait for node to be responsive. Returns the last response or error
     def wait_node_up(url):
@@ -527,14 +528,15 @@ def wait_nodes_up(num_nodes=1, start_index=0, timeout_s=node_start_timeout_s,
         while time.time() < deadline:
             try:
                 http_get_json(url + "/pools")
-                print_if_verbose(f" UP")
+                time_delta = time.time() - start
+                print_if_verbose(f" UP [took: {time_delta:.2f}s timeout:{timeout_s}s]")
                 return
             except Exception as e:
                 last_error = e.reason
                 print_if_verbose('.', end='')
                 sys.stdout.flush()
                 time.sleep(0.5)
-        print_if_verbose(" TIMEOUT")
+        print_if_verbose(f" TIMEOUT {timeout_s}s")
         raise RuntimeError(f"Node {url} wait timed out "
                            f"(last error: {last_error})")
     if node_urls is None:
