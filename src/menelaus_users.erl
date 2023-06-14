@@ -419,17 +419,17 @@ store_user(Identity, Name, PasswordOrAuth, Roles, Groups) ->
             [{pass_or_auth, PasswordOrAuth},
              {roles, Roles}],
     case store_users([{Identity, Props}], true) of
-        {ok, {_Counters, _UpdatedUsers}} -> ok;
+        {ok, _UpdatedUsers} -> ok;
         {error, _} = Error -> Error
     end.
 
 store_users(Users, CanOverwrite) ->
     Snapshot = ns_bucket:get_snapshot(all, [collections, uuid]),
     case prepare_store_users_docs(Snapshot, Users, CanOverwrite) of
-        {ok, {Counters, PreparedDocs, UpdatedUsers}} ->
+        {ok, {UpdatedUsers, PreparedDocs}} ->
             ok = replicated_dets:change_multiple(storage_name(), PreparedDocs),
 
-            {ok, {Counters, UpdatedUsers}};
+            {ok, UpdatedUsers};
         {error, _} = Error ->
             Error
     end.
@@ -437,20 +437,17 @@ store_users(Users, CanOverwrite) ->
 prepare_store_users_docs(Snapshot, Users, CanOverwrite) ->
     try
         Res =
-            lists:foldr(
-              fun (U, {{Created, Overwritten, Skipped}, Updates, UsersAcc}) ->
+            lists:mapfoldr(
+              fun (U, Updates) ->
                   case prepare_store_user(Snapshot, CanOverwrite, U) of
                       skipped ->
-                          {{Created, Overwritten, Skipped + 1}, Updates,
-                           UsersAcc};
+                          {{skipped, U}, Updates};
                       {added, NewUpdates} ->
-                          {{Created + 1, Overwritten, Skipped},
-                           NewUpdates ++ Updates, [{added, U} | UsersAcc]};
+                          {{added, U}, NewUpdates ++ Updates};
                       {updated, NewUpdates} ->
-                          {{Created, Overwritten + 1, Skipped},
-                           NewUpdates ++ Updates, [{updated, U} | UsersAcc]}
+                          {{updated, U}, NewUpdates ++ Updates}
                   end
-              end, {{0, 0, 0}, [], []}, Users),
+              end, [], Users),
         {ok, Res}
     catch
         throw:{error, _} = Error -> Error

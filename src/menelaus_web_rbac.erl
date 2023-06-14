@@ -2186,17 +2186,13 @@ handle_backup_restore(Req) ->
 handle_backup_restore_validated(Req, Params) ->
     Backup = proplists:get_value(backup, Params),
     CanOverwrite = proplists:get_bool(canOverwrite, Params),
-    UserCounters = #{created => 0, overwritten => 0, skipped => 0},
-    GroupCounters = #{created => 0, overwritten => 0, skipped => 0},
-    Count = fun (Type, Map, Inc) -> Map#{Type => maps:get(Type, Map) + Inc} end,
-
     Admin = proplists:get_value(admin, Backup),
     IsProvisioned = ns_config_auth:is_system_provisioned(),
-    UserCounters2 =
+    AdminRes =
         case Admin of
-            undefined -> UserCounters;
+            undefined -> undefined;
             _ when IsProvisioned, not CanOverwrite ->
-                Count(skipped, UserCounters, 1);
+                skipped;
             _ ->
                 AdminId = proplists:get_value(id, Admin),
                 AdminAuth = proplists:get_value(auth, Admin),
@@ -2204,22 +2200,22 @@ handle_backup_restore_validated(Req, Params) ->
                 ns_audit:password_change(Req, {AdminId, admin}),
                 menelaus_ui_auth:reset(),
                 case IsProvisioned of
-                    true -> Count(overwritten, UserCounters, 1);
-                    false -> Count(created, UserCounters, 1)
+                    true -> overwritten;
+                    false -> created
                 end
         end,
     Groups = proplists:get_value(groups, Backup),
-    GroupCounters2 =
+    {GroupsSkipped, GroupsUpdated} =
         lists:foldl(
-          fun ({GroupProps}, Acc) ->
+          fun ({GroupProps}, {SAcc, OAcc}) ->
               GroupId = proplists:get_value(name, GroupProps),
               case do_store_group(GroupId, proplists:delete(name, GroupProps),
                                   CanOverwrite, Req) of
-                  added -> Count(created, Acc, 1);
-                  updated -> Count(overwritten, Acc, 1);
-                  {error, already_exists} -> Count(skipped, Acc, 1)
+                  added -> {SAcc, OAcc};
+                  updated -> {SAcc, [GroupId | OAcc]};
+                  {error, already_exists} -> {[GroupId | SAcc], OAcc}
               end
-          end, GroupCounters, Groups),
+          end, {[], []}, Groups),
 
     Users = lists:map(
               fun ({UserProps}) ->
@@ -2230,35 +2226,56 @@ handle_backup_restore_validated(Req, Params) ->
                   {Identity, [{pass_or_auth, {auth, Auth}} | UserProps]}
               end, proplists:get_value(users, Backup)),
 
-    UserCounters3 =
+    UpdatedUsers =
         case menelaus_users:store_users(Users, CanOverwrite) of
-            {ok, {{Created, Overwritten, Skipped}, Res}} ->
-                lists:foreach(
-                  fun ({AddedOrUpdated, {Identity, UserProps}}) ->
-                      ns_audit:set_user(
-                        Req,
-                        Identity,
-                        proplists:get_value(roles, UserProps, []),
-                        proplists:get_value(name, UserProps),
-                        proplists:get_value(groups, UserProps),
-                        AddedOrUpdated)
-                  end, Res),
-                functools:chain(UserCounters2,
-                                [Count(created, _, Created),
-                                 Count(overwritten, _, Overwritten),
-                                 Count(skipped, _, Skipped)]);
+            {ok, Res} -> Res;
             {error, too_many} ->
                 Msg = <<"You cannot create any more users">>,
                 menelaus_util:global_error_exception(400, Msg)
         end,
 
+    lists:foreach(
+      fun ({AddedOrUpdated, {Identity, UserProps}}) ->
+          ns_audit:set_user(
+            Req,
+            Identity,
+            proplists:get_value(roles, UserProps, []),
+            proplists:get_value(name, UserProps),
+            proplists:get_value(groups, UserProps),
+            AddedOrUpdated)
+      end, UpdatedUsers),
+
+    UsersCreatedCount =
+        lists:sum([1 || {added, _} <- UpdatedUsers] ++
+                  [1 || AdminRes == created]),
+
+    FormatUser = fun ({N, D}) -> {[{name, list_to_binary(N)}, {domain, D}]} end,
+    UsersSkipped =
+        [FormatUser({proplists:get_value(id, Admin), admin})
+         || AdminRes == skipped] ++
+        [FormatUser(U) || {skipped, {U, _}} <- UpdatedUsers],
+    UsersOverwritten =
+        [FormatUser({proplists:get_value(id, Admin), admin})
+         || AdminRes == overwritten] ++
+        [FormatUser(U) || {updated, {U, _}} <- UpdatedUsers],
+
+    GroupsUpdatedCount = length(GroupsUpdated),
+    GroupsSkippedCount = length(GroupsSkipped),
+    GroupsCreatedCount = length(Groups) - GroupsUpdatedCount -
+                         GroupsSkippedCount,
+
     menelaus_util:reply_json(
-      Req, {[{usersCreated, maps:get(created, UserCounters3)},
-             {usersOverwritten, maps:get(overwritten, UserCounters3)},
-             {usersSkipped, maps:get(skipped, UserCounters3)},
-             {groupsCreated, maps:get(created, GroupCounters2)},
-             {groupsOverwritten, maps:get(overwritten, GroupCounters2)},
-             {groupsSkipped, maps:get(skipped, GroupCounters2)}]}).
+      Req, {[{stats,
+              {[{usersCreated, UsersCreatedCount},
+                {usersOverwritten, length(UsersOverwritten)},
+                {usersSkipped, length(UsersSkipped)},
+                {groupsCreated, GroupsCreatedCount},
+                {groupsOverwritten, GroupsUpdatedCount},
+                {groupsSkipped, GroupsSkippedCount}]}},
+             {usersSkipped, UsersSkipped},
+             {usersOverwritten, UsersOverwritten},
+             {groupsSkipped, [list_to_binary(G) || G <- GroupsSkipped]},
+             {groupsOverwritten, [list_to_binary(G) || G <- GroupsUpdated]}]}).
 
 validate_backup_admin(Name, State) ->
     validator:decoded_json(

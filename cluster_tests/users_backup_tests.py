@@ -194,11 +194,28 @@ def restore(cluster, backup, expected_counters=None, can_overwrite=False):
                            data={'backup': json.dumps(backup),
                                  'canOverwrite': can_overwrite_str}).json()
 
-    for k in res:
+    assert 'stats' in res
+    assert 'usersSkipped' in res
+    assert 'usersOverwritten' in res
+    assert 'groupsSkipped' in res
+    assert 'groupsOverwritten' in res
+    assert 'usersCreated' in res['stats']
+    assert 'usersSkipped' in res['stats']
+    assert 'usersOverwritten' in res['stats']
+    assert 'groupsCreated' in res['stats']
+    assert 'groupsSkipped' in res['stats']
+    assert 'groupsOverwritten' in res['stats']
+
+    for k in res['stats']:
         expected = expected_counters[k] if k in expected_counters else 0
-        assert res[k] == expected,\
+        assert res['stats'][k] == expected,\
                f'invalid \'{k}\' counter returned by PUT /backup ('\
                f'got: {res[k]}, expected: {expected})'
+
+    assert res['stats']['usersSkipped'] == len(res['usersSkipped'])
+    assert res['stats']['usersOverwritten'] == len(res['usersOverwritten'])
+    assert res['stats']['groupsSkipped'] == len(res['groupsSkipped'])
+    assert res['stats']['groupsOverwritten'] == len(res['groupsOverwritten'])
 
 
 def put_user(cluster, username, password, groups, domain='local'):
