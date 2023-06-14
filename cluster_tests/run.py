@@ -162,7 +162,8 @@ def main():
         for (name, reason) in not_ran:
             msg += f"{name} - {reason}\n"
         error_exit(msg)
-    print(f"Discovered testsets: {[c for c, _, _, _ in discovered_tests]}")
+    testsets_str = ", ".join([c for c, _, _, _ in discovered_tests])
+    print(f"Discovered testsets: {testsets_str}")
 
     if tests is None:
         testsets_to_run = discovered_tests
