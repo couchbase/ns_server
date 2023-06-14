@@ -12,6 +12,7 @@ import traceback
 import requests
 import string
 import random
+import time
 
 from testlib.node import Node
 
@@ -90,17 +91,36 @@ def safe_test_function_call(testset, testfunction, args, verbose=False):
     else:
         testname = f"{type(testset).__name__}.{testfunction}"
     if verbose: print(f"  {testname}... ", end='')
+    start = time.time()
     try:
         res = getattr(testset, testfunction)(*args)
-        if verbose: print("\033[32m passed \033[0m")
+        if verbose: print(f"\033[32m passed \033[0m{timedelta_str(start)}")
     except Exception as e:
         if verbose:
-            print(f"\033[31m failed ({e}) \033[0m")
+            print(f"\033[31m failed ({e}) \033[0m{timedelta_str(start)}")
         else:
             print(f"\033[31m  {testname} failed ({e}) \033[0m")
         traceback.print_exc()
         error = (testname, e)
     return (res, error)
+
+
+def timedelta_str(start):
+    delta_s = time.time() - start
+    if delta_s > 10:
+        return red(f"[{round(delta_s)}s]")
+    if delta_s > 5:
+        return red(f"[{delta_s:.1f}s]")
+    elif delta_s > 1:
+        return f"[{delta_s:.1f}s]"
+    elif delta_s > 0.1:
+        return f"[{delta_s:.2f}s]"
+    else:
+        return f""
+
+
+def red(str):
+    return f"\033[31m{str}\033[0m"
 
 
 class BaseTestSet(ABC):
