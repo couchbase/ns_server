@@ -551,8 +551,7 @@ def kill_nodes(nodes, terminal_attrs=None, urls=None):
         if n.write_side is not None:
             print("Closing %d\n" % n.write_side)
             # this line does graceful shutdown versus quick
-            # os.write(n.write_side, "shutdown\n")
-            os.close(n.write_side)
+            os.write(n.write_side, b'shutdown\n')
         else:
             try:
                 n.kill()
