@@ -8,11 +8,12 @@
 # licenses/APL2.txt.
 import atexit
 from abc import ABC, abstractmethod
-import traceback
 import requests
 import string
 import random
 import time
+
+from traceback_with_variables import printing_exc
 
 from testlib.node import Node
 
@@ -93,14 +94,14 @@ def safe_test_function_call(testset, testfunction, args, verbose=False):
     if verbose: print(f"  {testname}... ", end='', flush=True)
     start = time.time()
     try:
-        res = getattr(testset, testfunction)(*args)
-        if verbose: print(f"\033[32m passed \033[0m{timedelta_str(start)}")
+        with printing_exc():
+            res = getattr(testset, testfunction)(*args)
+            if verbose: print(f"\033[32m passed \033[0m{timedelta_str(start)}")
     except Exception as e:
         if verbose:
             print(f"\033[31m failed ({e}) \033[0m{timedelta_str(start)}")
         else:
             print(f"\033[31m  {testname} failed ({e}) \033[0m")
-        traceback.print_exc()
         error = (testname, e)
     return (res, error)
 

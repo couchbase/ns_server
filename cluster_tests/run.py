@@ -18,6 +18,9 @@ import atexit
 import requests
 import glob
 
+# Pretty prints any tracebacks that may be generated if the process dies
+from traceback_with_variables import activate_by_import
+
 scriptdir = os.path.dirname(os.path.realpath(__file__))
 pylib = os.path.join(scriptdir, "..", "pylib")
 sys.path.append(pylib)

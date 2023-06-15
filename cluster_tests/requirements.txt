@@ -4,3 +4,4 @@ scramp~=1.4.4
 poetry~=1.4.2
 pysaml2 @ git+https://github.com/couchbasedeps/pysaml2@couchbase-v7.4.1
 PyYAML~=6.0
+traceback-with-variables~=2.0.4
