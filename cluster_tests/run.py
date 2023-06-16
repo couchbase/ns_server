@@ -17,6 +17,7 @@ import inspect
 import atexit
 import requests
 import glob
+import time
 
 # Pretty prints any tracebacks that may be generated if the process dies
 from traceback_with_variables import activate_by_import
@@ -192,6 +193,8 @@ def main():
         remove_temp_cluster_directories()
 
     executed = 0
+    test_time = 0
+    start_ts = time.time_ns()
     for (configuration, testsets) in testsets_grouped:
         # Get an appropriate cluster to satisfy the configuration
         if use_existing_server:
@@ -210,12 +213,20 @@ def main():
                                                       configuration,
                                                       tmp_cluster_dir,
                                                       kill_nodes)
+        testset_start_ts = time.time_ns()
         # Run the testsets on the cluster
         tests_executed, testset_errors, testset_not_ran = \
             run_testsets(cluster, testsets, intercept_output=intercept_output)
+        test_time += (time.time_ns() - testset_start_ts)
         executed += tests_executed
         errors.update(testset_errors)
         not_ran += testset_not_ran
+
+    ns_in_sec = 1000000000
+    total_time = time.time_ns() - start_ts
+    total_time_s = total_time / ns_in_sec
+    prep_time_s = (total_time - test_time) / ns_in_sec
+    test_time_s = test_time / ns_in_sec
 
     error_num = sum([len(errors[name]) for name in errors])
     errors_str = f"{error_num} error{'s' if error_num != 1 else ''}"
@@ -223,9 +234,20 @@ def main():
         colour = "\033[32m"
     else:
         colour = "\033[31m"
+
+    def format_time(t):
+        return f"{int(t//60)}m{t%60:.1f}s"
+
     print("\n======================================="
           "=========================================\n"
-          f"{colour}Tests finished ({executed} executed, {errors_str})\033[0m")
+          f"{colour}Tests finished ({executed} executed, {errors_str})\033[0m\n"
+          f"Total time:               {format_time(total_time_s)}\n"
+          f"Total clusters prep time: {format_time(prep_time_s)}\n"
+          f"Test time (no prep):      {format_time(test_time_s)}")
+    if executed > 0:
+        print(
+          f"Avg. test time:           {format_time(total_time_s/executed)}\n"
+          f"Avg. test time (no prep): {format_time(test_time_s/executed)}")
 
     for name in errors:
         print(f"In {name}:")
