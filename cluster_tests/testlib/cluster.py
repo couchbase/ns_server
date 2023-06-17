@@ -237,8 +237,8 @@ class Cluster:
             self.rebalance(wait=True, verbose=verbose)
         return r
 
-    def failover_node(self, victim_node, graceful=True, do_rebalance=False,
-                      allow_unsafe=False, verbose=False):
+    def failover_node(self, victim_node, graceful=True, allow_unsafe=False,
+                      verbose=False):
         # We have to use the otpNode names instead of the node ips.
         otp_nodes = testlib.get_otp_nodes(self)
         otp_node = otp_nodes[victim_node.hostname]
@@ -253,15 +253,18 @@ class Cluster:
         r = testlib.post_succ(self, f"/controller/{failover_type}",
                               data=data)
         self.connected_nodes.remove(victim_node)
-        if do_rebalance:
-            self.rebalance(wait=True, verbose=verbose)
+        # Wait for the failover to complete
+        self.wait_for_rebalance(verbose)
         return r
 
     def recover_node(self, node, recovery_type="full", do_rebalance=False,
                      verbose=False):
         assert recovery_type in ["full", "delta"]
         otp_nodes = testlib.get_otp_nodes(self)
-        otp_node = otp_nodes[node.hostname]
+        if node.hostname in otp_nodes:
+            otp_node = otp_nodes[node.hostname]
+        else:
+            raise RuntimeError(f"Failed to find {node.hostname} in otp_nodes")
 
         data = {"user": self.auth[0],
                 "password": self.auth[1],

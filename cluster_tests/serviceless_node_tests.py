@@ -35,17 +35,22 @@ class ServicelessNodeTests(testlib.BaseTestSet):
         testlib.delete_all_buckets(cluster)
         # Rebalance the cluster and remove all but one node
         cluster.rebalance(cluster.nodes[1:], wait=True, verbose=True)
-        # Allow time for changes to take affect otherwise the below
-        # /pools/default sometimes returns the ejected node.
-        time.sleep(2)
-        resp = testlib.get_succ(cluster, "/pools/default")
-        print([node["hostname"] for node in resp.json()["nodes"]])
-        if len(resp.json()["nodes"]) != 1:
-            print(f'Length of nodes: {len(resp.json()["nodes"])}')
-            print([node["hostname"] for node in resp.json()["nodes"]])
-            raise ValueError("More than one node in cluster after test "
-                             "teardown")
-        cluster.wait_nodes_up()
+        # Wait for the number of remaining nodes in the cluster to reach one.
+        retries = 60
+        while retries > 0:
+            resp = testlib.get_succ(cluster, "/pools/default")
+            current_nodes = [node["hostname"] for node in resp.json()["nodes"]]
+            print(f"Nodes currently in cluster: {current_nodes}")
+            if len(resp.json()["nodes"]) == 1:
+                cluster.wait_nodes_up()
+                return
+
+            print(f'More than one node in cluster after removing all but one '
+                  f'node. Retrying up to {retries} more times')
+            time.sleep(0.5)
+            retries -= 1
+
+        raise RuntimeError("More than one node in cluster after test teardown")
 
     @staticmethod
     def requirements():
@@ -75,45 +80,66 @@ class ServicelessNodeTests(testlib.BaseTestSet):
     def failover_and_recover_node(self, cluster):
         node = cluster.nodes[-1]
         print(f'Failover {node.hostname} from cluster')
-        # Graceful failovers are not supported for serviceless nodes
-        resp = cluster.failover_node(node, graceful=False, do_rebalance=True,
-                                     verbose=True)
+        # Graceful failovers are not supported for serviceless nodes. We
+        # don't do a rebalance as that would remove the node.
+        resp = cluster.failover_node(node, graceful=False, verbose=True)
 
         print(f'Re-adding {node.hostname} back into cluster')
 
         resp = cluster.recover_node(node, recovery_type="full",
                                     do_rebalance=True, verbose=True)
 
-    def remove_orchestrator_node(self, cluster):
-        orchestrator_hostname = self.get_orchestrator_node(cluster)
-        for node in cluster.nodes:
-            if node.hostname == orchestrator_hostname:
-                cluster.rebalance(ejected_nodes=[node], wait=True, verbose=True)
-                return
+    # Wait until one of the nodes has been selected orchestrator. This
+    # handles windows (e.g. node removal) where this might not be the case.
+    def wait_for_orchestrator(self, cluster):
+        retries = 60
+        while retries > 0:
+            orchestrator_hostname, _ = self.get_orchestrator_node(cluster)
+            if orchestrator_hostname != "":
+                for node in cluster.nodes:
+                    if node.hostname == orchestrator_hostname:
+                        return node
+            time.sleep(0.5)
+            retries -= 1
+
         raise RuntimeError("orchestrator node not found")
 
-    def get_orchestrator_node(self, cluster, must_be_serviceless_node=None):
-        # Allow time for orchestrator determination to complete
-        time.sleep(5)
+    def remove_orchestrator_node(self, cluster):
+        orchestrator_node = self.wait_for_orchestrator(cluster)
+        cluster.rebalance(ejected_nodes=[orchestrator_node], wait=True,
+                          verbose=True)
+
+    def get_orchestrator_node(self, cluster):
         resp = testlib.get_succ(cluster, "/pools/default/terseClusterInfo")
         orchestrator = resp.json()['orchestrator']
         resp = testlib.get_succ(cluster, "/pools/nodes").json()
         nodes = resp['nodes']
         orchestrator_hostname = ""
+        is_serviceless = False
         for i in range(len(resp["nodes"])):
             if nodes[i]['otpNode'] == orchestrator:
                 assert orchestrator_hostname == ""
                 orchestrator_hostname = nodes[i]['hostname']
-                if must_be_serviceless_node is not None:
-                    if must_be_serviceless_node:
-                        assert nodes[i]['services'] == []
-                    else:
-                        assert nodes[i]['services'] != []
-        assert orchestrator_hostname != "", "No orchestrator node found"
-        return orchestrator_hostname
+                is_serviceless = (nodes[i]['services'] == [])
+        return orchestrator_hostname, is_serviceless
 
     def verify_orchestrator_node(self, cluster, must_be_serviceless_node=True):
-        self.get_orchestrator_node(cluster, must_be_serviceless_node)
+        retries = 60
+        while retries > 0:
+            orchestrator_hostname, is_serviceless = \
+                self.get_orchestrator_node(cluster)
+            if orchestrator_hostname != "" and \
+               is_serviceless == must_be_serviceless_node:
+                return
+            time.sleep(0.5)
+            retries -= 1
+
+        if orchestrator_hostname == "":
+            raise RuntimeError("Failed to determine orchestator")
+        else:
+            reason = "not" if must_be_serviceless_node else ""
+            raise RuntimeError(f"Orchestrator node {orchestrator_hostname} is "
+                               f"unexpectedly {reason} serviceless")
 
     # These tests are based on a cluster which has the initial node with
     # services and two additional serviceless nodes.
