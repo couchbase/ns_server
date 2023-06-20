@@ -22,6 +22,11 @@
          cleanup_apply_config/4,
          check_server_list/2]).
 
+-record(janitor_params,
+        {bucket_config :: list(),
+         bucket_servers :: [node()],
+         vbucket_states :: dict:dict() | undefined}).
+
 -spec cleanup(Bucket::bucket_name(), Options::list()) ->
                      ok |
                      {error, wait_for_memcached_failed, [node()]} |
@@ -85,17 +90,25 @@ run_buckets_cleanup_activity(BucketsAndCfg, SnapShot, Options) ->
                           Bucket, Options, BucketConfig, SnapShot)} ||
                           {Bucket, BucketConfig} <- BucketsAndCfg],
 
-                  Results =
-                      lists:map(
-                        fun({Bucket, {ok, BucketConfig}}) ->
-                                {Bucket,
-                                 cleanup_with_membase_bucket_vbucket_map(
-                                   Bucket, Options, BucketConfig)};
+                  {Completed, Remaining} =
+                      misc:partitionmap(
+                        fun({Bucket, {ok, BktConfig}}) ->
+                                case ns_bucket:get_servers(BktConfig) of
+                                    [] ->
+                                        {left, {Bucket, {error, no_servers}}};
+                                    Servers ->
+                                        {right, {Bucket,
+                                                 #janitor_params{
+                                                    bucket_servers = Servers,
+                                                    bucket_config = BktConfig
+                                                   }}}
+                                end;
                            ({Bucket, Response}) ->
-                                {Bucket, Response}
+                                {left, {Bucket, Response}}
                         end, ConfigPhaseRes),
 
-                  {ok, Results}
+                  {ok, cleanup_with_membase_buckets_vbucket_map(
+                         Remaining, Options) ++ Completed}
           end,
           [quiet]),
 
@@ -204,18 +217,39 @@ set_initial_map(Map, Servers, MapOpts, Bucket, BucketConfig, Options) ->
 
     push_config(Options).
 
-cleanup_with_membase_bucket_vbucket_map(Bucket, Options, BucketConfig) ->
-    Servers = ns_bucket:get_servers(BucketConfig),
-    true = (Servers =/= []),
+cleanup_with_membase_buckets_vbucket_map([], _Options) ->
+    [];
+cleanup_with_membase_buckets_vbucket_map(ConfigPhaseRes, Options) ->
     Timeout = proplists:get_value(query_states_timeout, Options),
     Opts = [{timeout, Timeout} || Timeout =/= undefined],
-    case janitor_agent:query_vbuckets(Bucket, Servers, [], Opts) of
-        {States, []} ->
-            cleanup_with_states(Bucket, Options, BucketConfig, Servers, States);
-        {_States, Zombies} ->
-            ?log_info("Bucket ~p not yet ready on ~p", [Bucket, Zombies]),
-            {error, wait_for_memcached_failed, Zombies}
-    end.
+    QueryPhaseFun =
+        fun({Bucket, #janitor_params{bucket_servers = Servers} = JParams}) ->
+                case janitor_agent:query_vbuckets(Bucket, Servers, [], Opts) of
+                    {States, []} ->
+                        {Bucket,
+                         JParams#janitor_params{vbucket_states = States}};
+                    {_States, Zombies} ->
+                        ?log_info("Bucket ~p not yet ready on ~p",
+                                  [Bucket, Zombies]),
+                        {Bucket, {error, wait_for_memcached_failed, Zombies}}
+                end
+        end,
+
+    QueryRes = misc:parallel_map(QueryPhaseFun, ConfigPhaseRes, infinity),
+
+    {StateCleanupRes, CurrErrors} =
+        misc:partitionmap(
+          fun({Bucket, #janitor_params{bucket_config = BucketConfig,
+                                       bucket_servers = Servers,
+                                       vbucket_states = States}}) ->
+                  {left, {Bucket,
+                          cleanup_with_states(
+                            Bucket, Options, BucketConfig, Servers, States)}};
+             (Error) ->
+                  {right, Error}
+          end, QueryRes),
+
+    StateCleanupRes ++ CurrErrors.
 
 cleanup_with_states(Bucket, Options, BucketConfig, Servers, States) ->
     case maybe_fixup_vbucket_map(Bucket, BucketConfig, States, Options) of
