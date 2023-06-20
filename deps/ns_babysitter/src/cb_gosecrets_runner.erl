@@ -27,10 +27,19 @@
          rotate_data_key/1,
          maybe_clear_backup_key/2,
          get_state/1,
-         os_pid/1]).
+         os_pid/1,
+         copy_secrets/2,
+         cleanup_secrets/2,
+         set_config/3]).
 
-data_key_store_path() ->
+-record(state, {config :: file:filename(),
+                loop :: pid()}).
+
+default_data_key_path() ->
     filename:join(path_config:component_path(data, "config"), "encrypted_data_keys").
+
+default_unencrypted_data_key_path() ->
+    filename:join(path_config:component_path(data, "config"), "data_keys").
 
 gosecrets_cfg_path() ->
     filename:join(path_config:component_path(data, "config"), "gosecrets.cfg").
@@ -62,6 +71,37 @@ maybe_clear_backup_key(Name, DataKey) ->
 
 os_pid(Name) ->
     gen_server:call(Name, gosecrets_os_pid).
+
+copy_secrets(Name, NewCfg) ->
+    case gen_server:call(Name, {copy_secrets, NewCfg}, infinity) of
+        {ok, Res} ->
+            ?log_debug("Copy secrets finished: ~p", [Res]),
+            {ok, Res};
+        {error, _} = Error ->
+            ?log_error("copy_secrets failed: ~p~nConfig: ~p", [Error, NewCfg]),
+            Error
+    end.
+
+cleanup_secrets(Name, OldCfg) ->
+    case gen_server:call(Name, {cleanup_secrets, OldCfg}, infinity) of
+        ok ->
+            ?log_debug("Secrets cleanup finished"),
+            ok;
+        {error, _} = Error ->
+            ?log_error("cleanup_secrets failed: ~p~nConfig: ~p",
+                       [Error, OldCfg]),
+            Error
+    end.
+
+set_config(Name, Cfg, ResetPassword) ->
+    case gen_server:call(Name, {set_config, Cfg, ResetPassword}, infinity) of
+        ok ->
+            ?log_debug("Set config finished"),
+            ok;
+        {error, _} = Error ->
+            ?log_error("set_config failed: ~p~nConfig: ~p", [Error, Cfg]),
+            Error
+    end.
 
 start_link() ->
     start_link(gosecrets_cfg_path()).
@@ -129,45 +169,32 @@ prompt_the_password(State, MaxRetries, StdIn, Socket, RetriesLeft) ->
     end.
 
 init([GosecretsCfgPath]) ->
-    DatakeyPath = data_key_store_path(),
     case filelib:is_file(GosecretsCfgPath) of
         true -> ok;
         false ->
-            Cfg = {[{encryptionService,
-                     {[{keyStorageType, file},
-                       {keyStorageSettings,
-                        {[{path, list_to_binary(DatakeyPath)},
-                          {encryptWithPassword, true},
-                          {passwordSource, env},
-                          {passwordSettings,
-                           {[{envName, <<"CB_MASTER_PASSWORD">>}]}}]}}]}}]},
-            CfgJson = ejson:encode(Cfg),
-            ?log_debug("Writing ~s: ~s", [GosecretsCfgPath, CfgJson]),
-            case misc:atomic_write_file(GosecretsCfgPath, CfgJson) of
-                ok -> ok;
-                {error, Error} ->
-                    ?log_error("Could not write file '~s': ~s (~p)",
-                               [GosecretsCfgPath, file:format_error(Error),
-                                Error]),
-                    erlang:error({write_failed, GosecretsCfgPath, Error})
-            end
+            save_config(GosecretsCfgPath, default_cfg())
     end,
 
-    State = start_gosecrets(GosecretsCfgPath),
+    State = #state{config = GosecretsCfgPath,
+                   loop = start_gosecrets(GosecretsCfgPath)},
 
-    HiddenPass =
-        case application:get_env(master_password) of
-            {ok, P} ->
-                ?log_info("Trying to recover the password from application "
-                          "environment"),
-                P;
-            _ ->
-                ?HIDE("")
-        end,
+    HiddenPass = extract_hidden_pass(),
 
     init_gosecrets(HiddenPass, _MaxRetries = 3, State),
 
     {ok, State}.
+
+save_config(CfgPath, Cfg) ->
+    ?log_debug("Writing ~s:~n~p", [CfgPath, Cfg]),
+    CfgJson = ejson:encode(Cfg),
+    case misc:atomic_write_file(CfgPath, CfgJson) of
+        ok -> ok;
+        {error, Error} ->
+            ?log_error("Could not write file '~s': ~s (~p)",
+                       [CfgPath, file:format_error(Error),
+                        Error]),
+            erlang:error({write_failed, CfgPath, Error})
+    end.
 
 init_gosecrets(HiddenPass, MaxRetries, State) ->
     case call_init(HiddenPass, State) of
@@ -196,7 +223,7 @@ init_gosecrets(HiddenPass, MaxRetries, State) ->
 call_init(HiddenPass, State) ->
     case call_gosecrets({init, HiddenPass}, State) of
         ok ->
-            application:set_env(ns_babysitter, master_password, HiddenPass),
+            memorize_hidden_pass(HiddenPass),
             ?log_info("Init complete. Password (if used) accepted."),
             ok;
         {error, "key decrypt failed:" ++ _ = Error} ->
@@ -221,7 +248,7 @@ handle_call({change_password, HiddenPass}, _From, State) ->
     Reply = call_gosecrets({change_password, HiddenPass}, State),
     case Reply of
         ok ->
-            application:set_env(ns_babysitter, master_password, HiddenPass),
+            memorize_hidden_pass(HiddenPass),
             ok;
         {error, _} ->
             ok
@@ -241,6 +268,30 @@ handle_call(gosecrets_os_pid, _From, State) ->
               undefined -> undefined
           end,
     {reply, Res, State};
+handle_call({set_config, Cfg, ResetPassword}, _From,
+            #state{config = CfgPath} = State) ->
+    try save_config(CfgPath, cfg_to_json(Cfg)) of
+        ok ->
+            Pass = case ResetPassword of
+                       true -> ?HIDE("");
+                       false -> extract_hidden_pass()
+                   end,
+            Res = call_gosecrets({reload_config, Pass}, State),
+            case Res of
+                ok -> memorize_hidden_pass(Pass);
+                {error, _} -> ok
+            end,
+            {reply, Res, State}
+    catch
+        error:Error ->
+            {reply, {error, format_error(Error)}, State}
+    end;
+handle_call({copy_secrets, Cfg}, _From, State) ->
+    CfgBin = ejson:encode(cfg_to_json(Cfg)),
+    {reply, call_gosecrets({copy_secrets, CfgBin}, State), State};
+handle_call({cleanup_secrets, Cfg}, _From, State) ->
+    CfgBin = ejson:encode(cfg_to_json(Cfg)),
+    {reply, call_gosecrets({cleanup_secrets, CfgBin}, State), State};
 handle_call(Call, _From, State) ->
     ?log_warning("Unhandled call: ~p", [Call]),
     {reply, {error, not_allowed}, State}.
@@ -279,7 +330,7 @@ start_gosecrets(CfgPath) ->
     ?log_debug("Gosecrets loop started with pid = ~p", [Pid]),
     Pid.
 
-call_gosecrets(Msg, Pid) ->
+call_gosecrets(Msg, #state{loop = Pid}) ->
     Pid ! {call, Msg},
     receive
         {reply, Resp} ->
@@ -346,7 +397,14 @@ encode(rotate_data_key) ->
 encode({maybe_clear_backup_key, DataKey}) ->
     <<7, DataKey/binary>>;
 encode(get_state) ->
-    <<8>>.
+    <<8>>;
+encode({reload_config, HiddenPass}) ->
+    BinaryPassword = list_to_binary(?UNHIDE(HiddenPass)),
+    <<9, BinaryPassword/binary>>;
+encode({copy_secrets, ConfigBin}) ->
+    <<10, ConfigBin/binary>>;
+encode({cleanup_secrets, ConfigBin}) ->
+    <<11, ConfigBin/binary>>.
 
 save_port_file(Socket) ->
     {ok, {Addr, Port}} = inet:sockname(Socket),
@@ -376,12 +434,85 @@ open_udp_socket() ->
 open_udp_socket(AFamily) ->
     gen_udp:open(0, [AFamily, {ip, loopback}, {active, true}]).
 
+default_cfg() -> cfg_to_json([]).
+
+memorize_hidden_pass(HiddenPass) ->
+    application:set_env(ns_babysitter, master_password, HiddenPass).
+
+
+extract_hidden_pass()->
+    case application:get_env(master_password) of
+        {ok, P} ->
+            ?log_info("Trying to recover the password from application "
+                      "environment"),
+            P;
+        _ ->
+            ?HIDE("")
+    end.
+
+%% [{es_key_storage_type, file},
+%%  {es_key_path_type, custom},
+%%  {es_encrypt_key, true},
+%%  {es_custom_key_path, <<"/path">>},
+%%  {es_password_source, env},
+%%  {es_password_env, <<"ENV_VAR">>}]
+
+cfg_to_json(Props) ->
+    Extract = fun (K) ->
+                  D = proplists:get_value(K, defaults(), <<>>),
+                  proplists:get_value(K, Props, D)
+              end,
+    ExtractBin = fun (K) -> iolist_to_binary(Extract(K)) end,
+    case Extract(es_key_storage_type) of
+        file ->
+            Encr = Extract(es_encrypt_key),
+            PSource = Extract(es_password_source),
+            Path =
+                case Extract(es_key_path_type) of
+                    auto when Encr ->
+                        iolist_to_binary(default_data_key_path());
+                    auto ->
+                        iolist_to_binary(default_unencrypted_data_key_path());
+                    custom ->
+                        ExtractBin(es_custom_key_path)
+                end,
+
+            PasswordCfg = case Encr of
+                              true ->
+                                  EN = ExtractBin(es_password_env),
+                                  PS = {[{envName, EN}]},
+                                  [{passwordSource, PSource},
+                                   {passwordSettings, PS}];
+                              false ->
+                                  []
+                          end,
+
+            {[{encryptionService,
+               {[{keyStorageType, file},
+                 {keyStorageSettings,
+                  {[{path, Path},
+                    {encryptWithPassword, Encr}] ++ PasswordCfg}}]}}]}
+    end.
+
+defaults() ->
+    [{es_password_env, "CB_MASTER_PASSWORD"},
+     {es_password_source, env},
+     {es_encrypt_key, true},
+     {es_key_path_type, auto},
+     {es_key_storage_type, 'file'}].
+
+format_error({write_failed, CfgPath, Error}) ->
+    io_lib:format("Could not write file '~s': ~s (~p)",
+                  [CfgPath, file:format_error(Error), Error]);
+format_error(Unknown) ->
+    io_lib:format("~p", [Unknown]).
+
 -ifdef(TEST).
 
 default_config_encryption_test() ->
     with_gosecrets(
       undefined,
-      fun (Pid) ->
+      fun (_CfgPath, Pid) ->
           Data = rand:bytes(512),
           {ok, Encrypted1} = encrypt(Pid, Data),
           {ok, Encrypted2} = encrypt(Pid, Data),
@@ -393,7 +524,7 @@ default_config_encryption_test() ->
 datakey_rotation_test() ->
     with_gosecrets(
       undefined,
-      fun (Pid) ->
+      fun (_CfgPath, Pid) ->
           Data = rand:bytes(512),
           Password = binary_to_list(rand:bytes(128)),
           {ok, Encrypted1} = encrypt(Pid, Data),
@@ -413,13 +544,150 @@ datakey_rotation_test() ->
           ok = rotate_data_key(Pid)
       end).
 
+config_reload_test() ->
+    Cfg1 = [],
+    Cfg2 = [{es_key_storage_type, file},
+            {es_encrypt_key, false},
+            {es_key_path_type, custom},
+            {es_custom_key_path, default_data_key_path()}],
+    Cfg3 = [{es_key_storage_type, file},
+            {es_encrypt_key, false}],
+    with_gosecrets(
+      Cfg1,
+      fun (CfgPath, Pid) ->
+          Data = rand:bytes(512),
+          Password = binary_to_list(rand:bytes(128)),
+          ok = change_password(Pid, Password),
+          ?assertEqual({ok, <<"user_configured">>}, get_state(Pid)),
+          {ok, Encrypted} = encrypt(Pid, Data),
+
+          %% Returns error because it tries to use the same file as prev config
+          {error, _} = copy_secrets(Pid, Cfg2),
+          {ok, <<"copied">>} = copy_secrets(Pid, Cfg3),
+          ok = set_config(Pid, Cfg3, true),
+          {error, _} = cleanup_secrets(Pid, Cfg3),
+          ok = cleanup_secrets(Pid, Cfg1),
+          ?assertEqual({ok, <<"password_not_used">>}, get_state(Pid)),
+          ?assertEqual({ok, Data}, decrypt(Pid, Encrypted)),
+          {ok, CurCfgBin} = file:read_file(CfgPath),
+          ?assertEqual(ejson:encode(cfg_to_json(Cfg3)),
+                       ejson:encode(ejson:decode(CurCfgBin))),
+          ?assert(not filelib:is_file(default_data_key_path())),
+          ?assert(filelib:is_file(default_unencrypted_data_key_path())),
+
+          {ok, <<"copied">>} = copy_secrets(Pid, Cfg1),
+          ok = set_config(Pid, Cfg1, true),
+          {ok, <<"same">>} = copy_secrets(Pid, Cfg1),
+          ok = cleanup_secrets(Pid, Cfg3),
+          ?assertEqual({ok, Data}, decrypt(Pid, Encrypted)),
+          ?assertEqual({ok, <<"default">>}, get_state(Pid))
+      end).
+
+env_password_test() ->
+    DKFile = path_config:tempfile("encrypted_datakey", ".tmp"),
+    Cfg = [{es_key_path_type, custom}, {es_custom_key_path, DKFile}],
+    try
+        Data = rand:bytes(512),
+        Password = base64:encode_to_string(rand:bytes(128)),
+        {ok, Encrypted} =
+            with_gosecrets(
+              Cfg,
+              fun (_CfgPath, Pid) ->
+                  ok = change_password(Pid, Password),
+                  encrypt(Pid, Data)
+              end),
+
+        memorize_hidden_pass(?HIDE("")),
+        os:putenv("CB_MASTER_PASSWORD", Password),
+        {ok, Data} =
+            with_gosecrets(
+              Cfg,
+              fun (_CfgPath, Pid) ->
+                  decrypt(Pid, Encrypted)
+              end)
+    after
+        file:delete(DKFile),
+        os:unsetenv("CB_MASTER_PASSWORD")
+    end.
+
+udp_password_test() ->
+    DKFile = path_config:tempfile("encrypted_datakey", ".tmp"),
+    Cfg = [{es_key_path_type, custom}, {es_custom_key_path, DKFile}],
+    try
+        Data = rand:bytes(512),
+        Password = base64:encode_to_string(rand:bytes(128)),
+        {ok, Encrypted} =
+            with_gosecrets(
+              Cfg,
+              fun (_CfgPath, Pid) ->
+                  ok = change_password(Pid, Password),
+                  encrypt(Pid, Data)
+              end),
+
+        memorize_hidden_pass(?HIDE("")),
+        Parent = self(),
+        Ref = make_ref(),
+        PortFile = path_config:component_path(
+                      data, "couchbase-server.babysitter.smport"),
+        case file:delete(PortFile) of
+            ok -> ok;
+            {error, enoent} -> ok
+        end,
+        spawn_link(
+          fun () ->
+              Parent ! {Ref, try_send_password("wrong", PortFile, 300),
+                             try_send_password(Password, PortFile, 300)}
+          end),
+        {ok, Data} =
+            with_gosecrets(
+              Cfg,
+              fun (_CfgPath, Pid) ->
+                  decrypt(Pid, Encrypted)
+              end),
+        receive
+            {Ref, Res1, Res2} ->
+                ?assertEqual({error,{recv_response_failed, "retry"}}, Res1),
+                ?assertEqual(ok, Res2)
+        end
+    after
+        file:delete(DKFile)
+    end.
+
+try_send_password(_Pass, _PortFile, Retries) when Retries =< 0 ->
+    {error, password_transfer_failed};
+try_send_password(Pass, PortFile, Retries) ->
+    case file:read_file(PortFile) of
+        {ok, PortFileContentBin} ->
+            [InetFamilyBin, PortBin] = string:lexemes(PortFileContentBin, " "),
+            Port = binary_to_integer(PortBin),
+            {ok, Socket} = gen_udp:open(0),
+            try
+                Addr = misc:localhost(binary_to_atom(InetFamilyBin), []),
+                ok = gen_udp:send(Socket, Addr, Port, [], list_to_binary(Pass)),
+                receive
+                    {udp, Socket, _, Port, "ok"} ->
+                        ok;
+                    {udp, Socket, _, Port, Reply} ->
+                        {error, {recv_response_failed, Reply}}
+                after
+                    60000 -> {error, {recv_response_failed, timeout}}
+                end
+            after
+                gen_udp:close(Socket)
+            end;
+        {error, enoent} ->
+            %% Waiting for gosecret to start and open the port
+            timer:sleep(200),
+            try_send_password(Pass, PortFile, Retries - 1)
+    end.
+
 with_gosecrets(Cfg, Fun) ->
     with_tmp_cfg(
       Cfg,
       fun (CfgPath) ->
           {ok, Pid} = start_link(CfgPath),
           try
-              Fun(Pid)
+              Fun(CfgPath, Pid)
           after
               unlink(Pid),
               exit(Pid, shutdown)
@@ -429,18 +697,22 @@ with_gosecrets(Cfg, Fun) ->
 with_tmp_cfg(Cfg, Fun) ->
     %% If previous tests finish ungracefully, they can leave default data key
     %% file on disk. Removing it here.
-    file:delete(data_key_store_path()),
+    delete_all_default_files(),
     CfgPath = path_config:tempfile("gosecrets", ".cfg"),
     try
         case Cfg of
             undefined -> ok;
-            _ -> ok = misc:atomic_write_file(CfgPath, ejson:encode(Cfg))
+            _ -> save_config(CfgPath, cfg_to_json(Cfg))
         end,
         Fun(CfgPath)
     after
-        file:delete(data_key_store_path()),
+        delete_all_default_files(),
         file:delete(CfgPath)
     end.
+
+delete_all_default_files() ->
+    file:delete(default_data_key_path()),
+    file:delete(default_unencrypted_data_key_path()).
 
 
 -endif.

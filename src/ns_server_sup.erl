@@ -169,6 +169,9 @@ child_specs() ->
       {gen_event, start_link, [{local, audit_events}]},
       permanent, brutal_kill, worker, dynamic},
 
+     {encryption_service, {encryption_service, start_link, []},
+      {permanent, 1}, 5000, worker, [encryption_service]},
+
      {menelaus, {menelaus_sup, start_link, []},
       permanent, infinity, supervisor,
       [menelaus_sup]},

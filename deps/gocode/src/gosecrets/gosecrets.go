@@ -26,6 +26,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime/debug"
 
 	"golang.org/x/crypto/pbkdf2"
@@ -54,10 +55,13 @@ var ErrWrongPassword = errors.New("wrong password")
 
 type secretIface interface {
 	read() error
+	remove() error
 	changePassword([]byte) error
 	getPasswordState() string
 	getSecret() *secret
 	setSecret(*secret) error
+	getStorageId() string
+	sameSettings(interface{}) bool
 }
 
 type secret struct {
@@ -71,7 +75,7 @@ type keysInFile struct {
 }
 
 type keysInEncryptedFile struct {
-	passwordSource    string
+	passwordSource    string // implicitly used by sameSettings (deepEqual)
 	lockkey           []byte // derived from password
 	isDefaultPassword bool   // true if the password is default (empty)
 	keysInFile
@@ -202,6 +206,12 @@ func (s *encryptionService) processCommand() {
 		s.cmdClearBackupKey(data)
 	case 8:
 		s.cmdGetState()
+	case 9:
+		s.cmdReloadConfig(data)
+	case 10:
+		s.cmdCopySecrets(data)
+	case 11:
+		s.cmdCleanupSecrets(data)
 	default:
 		panic(fmt.Sprintf("Unknown command %v", command))
 	}
@@ -426,6 +436,74 @@ func (s *encryptionService) cmdClearBackupKey(ref []byte) {
 	replySuccess()
 }
 
+func (s *encryptionService) cmdReloadConfig(password []byte) {
+	newConfig, err := readCfg(s.configPath)
+	if err != nil {
+		replyError(err.Error())
+		return
+	}
+	newEncryptionKeys, err := initEncryptionKeys(newConfig, password)
+	if err != nil {
+		replyError(err.Error())
+		return
+	}
+
+	err = readOrCreateKeys(newEncryptionKeys)
+	if err != nil {
+		replyError(err.Error())
+		return
+	}
+	s.encryptionKeys = newEncryptionKeys
+	s.config = newConfig
+	replySuccess()
+}
+
+func (s *encryptionService) cmdCopySecrets(newCfgBytes []byte) {
+	newConfig, err := readCfgBytes(newCfgBytes)
+	if err != nil {
+		replyError(err.Error())
+		return
+	}
+	newEncryptionKeys, err := initEncryptionKeys(newConfig, []byte(""))
+	if err != nil {
+		replyError(err.Error())
+		return
+	}
+	res, err := copySecret(s.encryptionKeys, newEncryptionKeys)
+	if err != nil {
+		replyError(err.Error())
+		return
+	}
+	replySuccessWithData([]byte(res))
+}
+
+func (s *encryptionService) cmdCleanupSecrets(oldCfgBytes []byte) {
+	oldConfig, err := readCfgBytes(oldCfgBytes)
+	if err != nil {
+		replyError(err.Error())
+		return
+	}
+	oldKeys, err := initEncryptionKeys(oldConfig, []byte(""))
+	if err != nil {
+		replyError(err.Error())
+		return
+	}
+	// We absolutelly must not remove secrets that are currently in use
+	if oldKeys.getStorageId() == s.encryptionKeys.getStorageId() {
+		replyError(fmt.Sprintf(
+			"Can't remove secret '%s' because it is being used",
+			oldKeys.getStorageId()))
+		return
+	}
+	log_dbg("trying to remove secret: %s", oldKeys.getStorageId())
+	err = oldKeys.remove()
+	if err != nil {
+		replyError(err.Error())
+		return
+	}
+	replySuccess()
+}
+
 func generateLockKey(password []byte) []byte {
 	return pbkdf2.Key(password, salt[:], nIterations, keySize, hmacFun)
 }
@@ -512,6 +590,10 @@ func (keys *keysInFile) read() error {
 	return nil
 }
 
+func (keys *keysInFile) remove() error {
+	return os.Remove(keys.filePath)
+}
+
 func (keys *keysInFile) changePassword(password []byte) error {
 	return errors.New("not supported")
 }
@@ -527,6 +609,23 @@ func (secret *secret) getRef() []byte {
 
 func (sec *secret) getSecret() *secret {
 	return sec
+}
+
+func (keys *keysInFile) getStorageId() string {
+	return "file:" + keys.filePath
+}
+
+func (keys *keysInFile) sameSettings(param interface{}) bool {
+	keys2, ok := param.(*keysInFile)
+	if !ok {
+		return false
+	}
+	oldsecret := keys2.secret
+	keys2.secret = keys.secret
+	defer func() {
+		keys2.secret = oldsecret
+	}()
+	return reflect.DeepEqual(keys, keys2)
 }
 
 // Implementation of secretIface for keysInEncryptedFile
@@ -600,7 +699,94 @@ func (keys *keysInEncryptedFile) getPasswordState() string {
 	return "user_configured"
 }
 
+func (keys *keysInEncryptedFile) sameSettings(param interface{}) bool {
+	keys2, ok := param.(*keysInEncryptedFile)
+	if !ok {
+		return false
+	}
+	oldsecret := keys2.secret
+	oldLockkey := keys2.lockkey
+	oldIsDefaultPass := keys2.isDefaultPassword
+	keys2.secret = keys.secret
+	keys2.lockkey = keys.lockkey
+	keys2.isDefaultPassword = keys.isDefaultPassword
+	defer func() {
+		keys2.secret = oldsecret
+		keys2.lockkey = oldLockkey
+		keys2.isDefaultPassword = oldIsDefaultPass
+	}()
+	return reflect.DeepEqual(keys, keys2)
+}
+
 // Other functions:
+
+func copySecret(from, to secretIface) (string, error) {
+	log_dbg("Trying to copy a secret\nOld cfg type: %v\nNew cfg type: %v",
+		reflect.TypeOf(from), reflect.TypeOf(to))
+
+	if from.sameSettings(to) {
+		log_dbg("load config: same configs, nothing to do")
+		return "same", nil
+	}
+
+	// Here we are trying to make sure we are not corrupting existing secrets
+	// by creating secrets copy for new config.
+	// For example, if new and old config use the same file on disk, we might
+	// corrupt old secret file by writing to the same file using new config.
+	err := to.read()
+
+	if err != nil {
+		if !errors.Is(err, ErrKeysDoNotExist) {
+			// We can't continue even if it is caused by a different password
+			// because the copy will basically change the password for
+			// the secret then, and rollback will not work in case of a problem
+			return "", errors.New(
+				fmt.Sprintf(
+					"Secret already exists but it can't be read (%s)",
+					err.Error()))
+		}
+		log_dbg("New secret doesn't exist")
+	} else {
+		// Even if new config uses the same storage for this secret,
+		// it should be safe to overwrite it using new config
+		// because it should not really change the file (but we still
+		// want to do the writing, because we want to test that it
+		// works)
+		secretsMatch := bytes.Equal(from.getSecret().key, to.getSecret().key) &&
+			bytes.Equal(from.getSecret().backupKey, to.getSecret().backupKey)
+		if !secretsMatch {
+			log_dbg(
+				"New secret already exists and it doesn't " +
+					"match the secret that is in use")
+			oldStorage := from.getStorageId()
+			newStorage := to.getStorageId()
+			if oldStorage == newStorage {
+				return "", errors.New(
+					fmt.Sprintf(
+						"Can't use exactly same storage for secret "+
+							"(old storage: %s, new storage: %s)",
+						oldStorage, newStorage))
+			}
+			// that's ok, new and old configs use different storages
+			// for secrets, so we will not overwrite existing secret
+			// if we save new secret here
+		} else {
+			log_dbg("New secret already exists and it matches" +
+				"the secret that is in use")
+		}
+	}
+	err = to.setSecret(from.getSecret())
+	if err != nil {
+		return "", err
+	}
+	// just making sure it is readable
+	err = to.read()
+	if err != nil {
+		log_dbg("Failed to read the secret after writing: %s", err.Error())
+		return "", err
+	}
+	return "copied", nil
+}
 
 func saveKeys(keys secretIface, key, backup []byte) error {
 	newSecret := secret{key: key, backupKey: backup}
