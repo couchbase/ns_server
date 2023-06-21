@@ -343,5 +343,7 @@ format_error(authMethodNotSupported) ->
     "Authentication method not supported";
 format_error(referral_not_supported) ->
     "Referrals are not supported";
+format_error({asn1_enum, N}) ->
+    io_lib:format("~p - Unknown error", [N]);
 format_error(Error) ->
     io_lib:format("~p", [Error]).
