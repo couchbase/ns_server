@@ -529,7 +529,7 @@ def wait_nodes_up(num_nodes=1, start_index=0, timeout_s=node_start_timeout_s,
                 http_get_json(url + "/pools")
                 print_if_verbose(f" UP")
                 return
-            except URLError as e:
+            except Exception as e:
                 last_error = e.reason
                 print_if_verbose('.', end='')
                 sys.stdout.flush()
