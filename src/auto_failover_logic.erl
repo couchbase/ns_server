@@ -18,7 +18,7 @@
 
 -export([process_frame/5,
          init_state/1,
-         service_failover_min_node_count/1]).
+         service_failover_min_node_count/0]).
 
 %% number of frames where node that we think is down needs to be down
 %% _alone_ in order to trigger autofailover
@@ -638,7 +638,7 @@ should_failover_service_policy(State, SvcConfig, Service, Node, DownNodes) ->
     {_, {nodes, SvcNodes0}} = proplists:get_value(Service, SvcConfig),
     SvcNodes = ordsets:subtract(ordsets:from_list(SvcNodes0), DownNodes),
     SvcNodeCount = length(SvcNodes),
-    case SvcNodeCount >= service_failover_min_node_count(Service) of
+    case SvcNodeCount >= service_failover_min_node_count() of
         true ->
             %% doing failover
             [{failover, Node}];
@@ -670,20 +670,10 @@ check_if_action_needed(ServicesState, Service, ActFun) ->
             ActFun(S)
     end.
 
-service_failover_min_node_count(kv) ->
-    2;
-service_failover_min_node_count(_) ->
+service_failover_min_node_count() ->
     1.
 
 -ifdef(TEST).
-service_failover_min_node_count_test() ->
-    Services = ns_cluster_membership:supported_services_for_version(
-                 ?LATEST_VERSION_NUM, true),
-    lists:foreach(
-      fun (Service) ->
-              true = is_integer(service_failover_min_node_count(Service))
-      end, Services).
-
 test_init(DownThreshold) ->
     init_state(DownThreshold + ?DOWN_GRACE_PERIOD, ?LATEST_VERSION_NUM, true).
 
@@ -861,20 +851,21 @@ multiple_services_test_() ->
            {mail_too_small, n1ql, [], b1},
            {mail_too_small, n1ql, [], b2}], 1, [a1, b1, b2, d1]}]},
        {"Do not fail over services if kv cannot be failed over", 3,
-        [{no_actions, 5, [a1, b1, c1, c2, d1]},
+        [{no_actions, 5, [a1, b1, c1, c2, c3, d1]},
          {[{mail_kv_not_fully_failed_over, a1},
            {mail_kv_not_fully_failed_over, b1},
            {mail_kv_not_fully_failed_over, d1},
-           {mail_too_small, kv, [c3], c1},
-           {mail_too_small, kv, [c3], c2}], 1, [a1, b1, c1, c2, d1]},
-         {no_actions, 1, [a1, b1, c1, c2, d1]},
+           {mail_too_small, kv, [], c1},
+           {mail_too_small, kv, [], c2},
+           {mail_too_small, kv, [], c3}], 1, [a1, b1, c1, c2, c3, d1]},
+         {no_actions, 1, [a1, b1, c1, c2, c3, d1]},
          {{mail_down_warnings, [a1, b1, c1, d1]}, 1, [a1, b1, c1, d1]},
          {{failover, [a1, b1, c1, d1]}, 2, [a1, b1, c1, d1]}]}]).
 
 min_size_test_() ->
     MinSizeTest =
         fun (Threshold, Ver) ->
-                SvcConfig = [{kv, [a, b]}],
+                SvcConfig = [{kv, [b]}],
                 {Actions, State} =
                     test_frame(Threshold + 3, SvcConfig, [b],
                                get_sg(Ver), test_init(Threshold)),

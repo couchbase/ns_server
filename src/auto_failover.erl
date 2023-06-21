@@ -437,7 +437,7 @@ process_action({mail_too_small, Service, SvcNodes, {Node, _UUID}},
        [Node,
         ns_cluster_membership:user_friendly_service_name(Service),
         length(SvcNodes),
-        auto_failover_logic:service_failover_min_node_count(Service)]),
+        auto_failover_logic:service_failover_min_node_count()]),
     S;
 process_action({mail_down_warning, {Node, _UUID}}, S, _, _, _) ->
     ?log_info_and_email(
