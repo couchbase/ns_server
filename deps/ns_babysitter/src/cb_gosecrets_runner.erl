@@ -7,7 +7,7 @@
 %% will be governed by the Apache License, Version 2.0, included in the file
 %% licenses/APL2.txt.
 %%
--module(encryption_service).
+-module(cb_gosecrets_runner).
 
 -behaviour(gen_server).
 
@@ -17,14 +17,14 @@
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
 
--export([decrypt/1,
-         encrypt/1,
-         change_password/1,
-         get_keys_ref/0,
-         rotate_data_key/0,
-         maybe_clear_backup_key/1,
-         get_state/0,
-         os_pid/0]).
+-export([decrypt/2,
+         encrypt/2,
+         change_password/2,
+         get_keys_ref/1,
+         rotate_data_key/1,
+         maybe_clear_backup_key/2,
+         get_state/1,
+         os_pid/1]).
 
 data_key_store_path() ->
     filename:join(path_config:component_path(data, "config"), "encrypted_data_keys").
@@ -36,32 +36,29 @@ port_file_path() ->
     filename:join(path_config:component_path(data),
                   "couchbase-server.babysitter.smport").
 
-encrypt(Data) ->
-    gen_server:call({?MODULE, ns_server:get_babysitter_node()}, {encrypt, Data}, infinity).
+encrypt(Name, Data) ->
+    gen_server:call(Name, {encrypt, Data}, infinity).
 
-decrypt(Data) ->
-    gen_server:call({?MODULE, ns_server:get_babysitter_node()}, {decrypt, Data}, infinity).
+decrypt(Name, Data) ->
+    gen_server:call(Name, {decrypt, Data}, infinity).
 
-change_password(NewPassword) ->
-    gen_server:call({?MODULE, ns_server:get_babysitter_node()},
-                    {change_password, ?HIDE(NewPassword)}, infinity).
+change_password(Name, NewPassword) ->
+    gen_server:call(Name, {change_password, ?HIDE(NewPassword)}, infinity).
 
-get_keys_ref() ->
-    gen_server:call({?MODULE, ns_server:get_babysitter_node()}, get_keys_ref,
-                    infinity).
+get_keys_ref(Name) ->
+    gen_server:call(Name, get_keys_ref, infinity).
 
-get_state() ->
-    gen_server:call({?MODULE, ns_server:get_babysitter_node()}, get_state,
-                    infinity).
+get_state(Name) ->
+    gen_server:call(Name, get_state, infinity).
 
-rotate_data_key() ->
-    gen_server:call({?MODULE, ns_server:get_babysitter_node()}, rotate_data_key, infinity).
+rotate_data_key(Name) ->
+    gen_server:call(Name, rotate_data_key, infinity).
 
-maybe_clear_backup_key(DataKey) ->
-    gen_server:call({?MODULE, ns_server:get_babysitter_node()}, {maybe_clear_backup_key, DataKey}, infinity).
+maybe_clear_backup_key(Name, DataKey) ->
+    gen_server:call(Name, {maybe_clear_backup_key, DataKey}, infinity).
 
-os_pid() ->
-    gen_server:call({?MODULE, ns_server:get_babysitter_node()}, gosecrets_os_pid).
+os_pid(Name) ->
+    gen_server:call(Name, gosecrets_os_pid).
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
