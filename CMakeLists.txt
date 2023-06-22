@@ -192,7 +192,7 @@ REBAR(TARGET ns_server
 ADD_CUSTOM_TARGET (erlang_deps DEPENDS gen_smtp ale ns_babysitter ns_couchdb chronicle enacl esaml iso8601)
 ADD_CUSTOM_TARGET (ns_server_all DEPENDS ns_server erlang_deps)
 ADD_CUSTOM_TARGET (ns_server_tests
-  DEPENDS ns_server-eunit ns_couchdb-eunit ale-eunit erlang_deps)
+  DEPENDS ns_server-eunit ns_couchdb-eunit ns_babysitter-eunit ale-eunit erlang_deps)
 
 # CMake won't let you add a build target as a dependency to a test. But you
 # can add another test as a dependency. So this is a fake test that actually

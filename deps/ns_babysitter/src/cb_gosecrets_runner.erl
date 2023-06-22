@@ -12,8 +12,11 @@
 -behaviour(gen_server).
 
 -include("ns_common.hrl").
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
--export([start_link/0]).
+-export([start_link/0, start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
 
@@ -61,7 +64,10 @@ os_pid(Name) ->
     gen_server:call(Name, gosecrets_os_pid).
 
 start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+    start_link(gosecrets_cfg_path()).
+
+start_link(ConfigPath) ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [ConfigPath], []).
 
 prompt_the_password(State, Retries) ->
     StdIn =
@@ -122,8 +128,7 @@ prompt_the_password(State, MaxRetries, StdIn, Socket, RetriesLeft) ->
             end
     end.
 
-init([]) ->
-    GosecretsCfgPath = gosecrets_cfg_path(),
+init([GosecretsCfgPath]) ->
     DatakeyPath = data_key_store_path(),
     case filelib:is_file(GosecretsCfgPath) of
         true -> ok;
@@ -370,3 +375,72 @@ open_udp_socket() ->
 
 open_udp_socket(AFamily) ->
     gen_udp:open(0, [AFamily, {ip, loopback}, {active, true}]).
+
+-ifdef(TEST).
+
+default_config_encryption_test() ->
+    with_gosecrets(
+      undefined,
+      fun (Pid) ->
+          Data = rand:bytes(512),
+          {ok, Encrypted1} = encrypt(Pid, Data),
+          {ok, Encrypted2} = encrypt(Pid, Data),
+          ?assert(Encrypted1 /= Encrypted2),
+          {ok, Data} = decrypt(Pid, Encrypted1),
+          {ok, Data} = decrypt(Pid, Encrypted2)
+      end).
+
+datakey_rotation_test() ->
+    with_gosecrets(
+      undefined,
+      fun (Pid) ->
+          Data = rand:bytes(512),
+          Password = binary_to_list(rand:bytes(128)),
+          {ok, Encrypted1} = encrypt(Pid, Data),
+          ok = change_password(Pid, Password),
+          {ok, Data} = decrypt(Pid, Encrypted1),
+          {ok, Encrypted2} = encrypt(Pid, Data),
+          ok = rotate_data_key(Pid),
+          {ok, KeysRef} = get_keys_ref(Pid),
+          {ok, Data} = decrypt(Pid, Encrypted1),
+          {ok, Data} = decrypt(Pid, Encrypted2),
+          {ok, Encrypted3} = encrypt(Pid, Data),
+          {error, _} = rotate_data_key(Pid),
+          maybe_clear_backup_key(Pid, KeysRef),
+          {error, _} = decrypt(Pid, Encrypted1),
+          {error, _} = decrypt(Pid, Encrypted2),
+          {ok, Data} = decrypt(Pid, Encrypted3),
+          ok = rotate_data_key(Pid)
+      end).
+
+with_gosecrets(Cfg, Fun) ->
+    with_tmp_cfg(
+      Cfg,
+      fun (CfgPath) ->
+          {ok, Pid} = start_link(CfgPath),
+          try
+              Fun(Pid)
+          after
+              unlink(Pid),
+              exit(Pid, shutdown)
+          end
+      end).
+
+with_tmp_cfg(Cfg, Fun) ->
+    %% If previous tests finish ungracefully, they can leave default data key
+    %% file on disk. Removing it here.
+    file:delete(data_key_store_path()),
+    CfgPath = path_config:tempfile("gosecrets", ".cfg"),
+    try
+        case Cfg of
+            undefined -> ok;
+            _ -> ok = misc:atomic_write_file(CfgPath, ejson:encode(Cfg))
+        end,
+        Fun(CfgPath)
+    after
+        file:delete(data_key_store_path()),
+        file:delete(CfgPath)
+    end.
+
+
+-endif.
