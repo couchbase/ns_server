@@ -322,6 +322,8 @@ build_bucket_capabilities(BucketConfig) ->
                      {'dcp.IgnorePurgedTombstones',
                       cluster_compat_mode:is_cluster_72()},
                      {preserveExpiry,
+                      cluster_compat_mode:is_cluster_elixir()},
+                     {'subdoc.ReplicaRead',
                       cluster_compat_mode:is_cluster_elixir()}] ++
                      maybe_range_scan_capability(BucketConfig),
 
@@ -537,15 +539,17 @@ get_bucket_capabilities(Version,
                         true = _IsEnterprise,
                         true = _IsMagma) when Version > ?VERSION_72 ->
     ['dcp.IgnorePurgedTombstones', nonDedupedHistory, rangeScan,
-     preserveExpiry];
+     preserveExpiry, 'subdoc.ReplicaRead'];
 get_bucket_capabilities(Version,
                         false = _IsEnterprise,
                         true = _IsMagma) when Version > ?VERSION_72 ->
-    ['dcp.IgnorePurgedTombstones', rangeScan, preserveExpiry];
+    ['dcp.IgnorePurgedTombstones', rangeScan, preserveExpiry,
+     'subdoc.ReplicaRead'];
 get_bucket_capabilities(Version,
                         _IsEnterprise,
                         _IsMagma) when Version > ?VERSION_72 ->
-    [couchapi, 'dcp.IgnorePurgedTombstones', rangeScan, preserveExpiry];
+    [couchapi, 'dcp.IgnorePurgedTombstones', rangeScan, preserveExpiry,
+     'subdoc.ReplicaRead'];
 get_bucket_capabilities(_Version, _IsEnterprise, false = _IsMagma) ->
     [couchapi];
 get_bucket_capabilities(_Version, _IsEnterprise, _IsMagma) ->
