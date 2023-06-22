@@ -61,10 +61,18 @@ n1ql_cluster_capabilities(?VERSION_65, true) ->
     [costBasedOptimizer, indexAdvisor, javaScriptFunctions, inlineFunctions |
      n1ql_cluster_capabilities(?VERSION_65, false)];
 n1ql_cluster_capabilities(?VERSION_65, false) ->
-    [enhancedPreparedStatements].
+    [enhancedPreparedStatements];
+n1ql_cluster_capabilities(Version, IsDP) ->
+    n1ql_cluster_capabilities(?VERSION_65, IsDP) ++
+        case is_enabled_at(Version, ?VERSION_ELIXIR) of
+            true ->
+                [readFromReplica];
+            false ->
+                []
+        end.
 
-cluster_capabilities(_Version, IsDP) ->
-    [{n1ql, n1ql_cluster_capabilities(?VERSION_65, IsDP)}].
+cluster_capabilities(Version, IsDP) ->
+    [{n1ql, n1ql_cluster_capabilities(Version, IsDP)}].
 
 get_cluster_capabilities(Config) ->
     cluster_capabilities(get_compat_version(Config),
