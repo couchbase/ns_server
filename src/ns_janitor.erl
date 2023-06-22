@@ -19,6 +19,7 @@
 -endif.
 
 -export([cleanup/2,
+         cleanup_buckets/2,
          cleanup_apply_config/4,
          check_server_list/2]).
 
@@ -37,7 +38,7 @@
                      {error, {bad_vbuckets, [vbucket_id()]}} |
                      {error, {corrupted_server_list, [node()], [node()]}}.
 cleanup(Bucket, Options) ->
-    [{Bucket, Res}] = cleanup_buckets([Bucket], Options),
+    [{Bucket, Res}] = cleanup_buckets([{Bucket, []}], Options),
     Res.
 
 maybe_get_membase_config(not_present) ->
@@ -50,12 +51,13 @@ maybe_get_membase_config({ok, BucketConfig}) ->
             ok
     end.
 
-cleanup_buckets(Buckets, Options) ->
+cleanup_buckets(BucketsAndParams, Options) ->
     %% We always want to check for unsafe nodes, as we want to honor the
     %% auto-reprovisioning settings for ephemeral buckets. That is, we do not
     %% want to simply activate any bucket on a restarted node and lose the data
     %% instead of promoting the replicas.
     JanitorOptions = Options ++ auto_reprovision:get_cleanup_options(),
+    Buckets = [Bucket || {Bucket, _} <- BucketsAndParams],
     BucketsFetchers =
         [ns_bucket:fetch_snapshot(Bucket, _, [props]) || Bucket <- Buckets],
     SnapShot =
@@ -63,15 +65,15 @@ cleanup_buckets(Buckets, Options) ->
           [ns_cluster_membership:fetch_snapshot(_) | BucketsFetchers]),
     {Completed, BucketsAndCfg} =
         misc:partitionmap(
-          fun (Bucket) ->
+          fun ({Bucket, BucketOpts}) ->
                   CfgRes = ns_bucket:get_bucket(Bucket, SnapShot),
                   case maybe_get_membase_config(CfgRes) of
                       ok ->
                           {left, {Bucket, ok}};
                       {ok, BucketConfig} ->
-                          {right, {Bucket, BucketConfig}}
+                          {right, {Bucket, {BucketConfig, BucketOpts}}}
                   end
-          end, Buckets),
+          end, BucketsAndParams),
 
     run_buckets_cleanup_activity(
       BucketsAndCfg, SnapShot, JanitorOptions) ++ Completed.
@@ -87,8 +89,8 @@ run_buckets_cleanup_activity(BucketsAndCfg, SnapShot, Options) ->
                   ConfigPhaseRes =
                       [{Bucket,
                         cleanup_with_membase_bucket_check_hibernation(
-                          Bucket, Options, BucketConfig, SnapShot)} ||
-                          {Bucket, BucketConfig} <- BucketsAndCfg],
+                          Bucket, Options ++ BktOpts, BktConfig, SnapShot)} ||
+                          {Bucket, {BktConfig, BktOpts}} <- BucketsAndCfg],
 
                   {Completed, Remaining} =
                       misc:partitionmap(

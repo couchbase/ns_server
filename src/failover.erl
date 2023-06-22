@@ -31,6 +31,13 @@
 
 -define(DATA_LOST, 1).
 -define(FAILOVER_OPS_TIMEOUT, ?get_timeout(failover_ops_timeout, 10000)).
+-define(DEFAULT_JANITOR_BULK_FACTOR, 8).
+
+-record(failover_params,
+        {bucket_type :: bucket_type(),
+         bucket_config :: list(),
+         bucket_map :: vbucket_map() | nil(),
+         bucket_options :: map()}).
 
 start(Nodes, Options) ->
     Parent = self(),
@@ -237,8 +244,8 @@ failover(Nodes, Options) ->
         failover_collections(),
 
     KVNodes = ns_cluster_membership:service_nodes(Nodes, kv),
-    BktPrepResults = failover_buckets_prep(ns_bucket:get_buckets(),
-                                           KVNodes, Options),
+    BktPrepResults = failover_buckets_prep(KVNodes, ns_bucket:get_buckets(),
+                                           Options),
 
     %% From this point onwards, no bucket failed exception is thrown.
     %% Partial failover is still possible if we update the service map (in
@@ -257,7 +264,7 @@ failover(Nodes, Options) ->
             Nodes -> ns_cluster_membership:failover_service_nodes(Nodes)
         end,
 
-    KVErrorNodes = failover_buckets(KVNodes, BktPrepResults),
+    KVErrorNodes = failover_buckets(KVNodes, BktPrepResults, Options),
     ServicesErrorNodes = complete_services_failover(SvcNodes, Services),
 
     {lists:umerge([KVErrorNodes, ServicesErrorNodes]), UnsafeNodes}.
@@ -267,14 +274,18 @@ failover_collections() ->
         {BucketName, BucketConfig} <- ns_bucket:get_buckets(),
         collections:enabled(BucketConfig)].
 
-set_failover_config(PrepResults, Nodes) ->
+set_failover_config(PrepRes, Nodes) ->
     BucketsMapUpdate =
         [{Bucket, NewMap} ||
-            {Bucket, {membase, _, NewMap, _}} <- PrepResults, NewMap =/= []],
+            {Bucket,
+             #failover_params{bucket_type = membase,
+                              bucket_map = NewMap}} <- PrepRes, NewMap =/= []],
 
     BucketsServersUpdate =
         [Bucket ||
-            {Bucket, {Type, _, NewMap, _}} <- PrepResults,
+            {Bucket,
+             #failover_params{bucket_type = Type,
+                              bucket_map = NewMap}} <- PrepRes,
             (Type =:= memcached) or (NewMap =:= [])],
 
     %% we still need to make sure to remove ourselves from the bucket server
@@ -284,31 +295,78 @@ set_failover_config(PrepResults, Nodes) ->
     ns_bucket:set_buckets_config_failover(BucketsMapUpdate, Nodes),
     ok.
 
-failover_buckets_group([], _Nodes) ->
+janitor_membase_buckets_group([], _Nodes, _JanitorOptions) ->
     [];
-failover_buckets_group(PrepResults, Nodes) ->
-    ok = set_failover_config(PrepResults, Nodes),
+janitor_membase_buckets_group(Params, Nodes, JanitorOptions) ->
+    {ToJanitorParams, CompletedRes} =
+        misc:partitionmap(
+          fun({Bucket, #failover_params{bucket_type = membase,
+                                        bucket_map = []}}) ->
+                  {right, {Bucket, ok}};
+             ({_Bucket, #failover_params{bucket_type = membase}} = Param) ->
+                  {left, Param}
+          end, Params),
+
+    Results = janitor_buckets(
+                ToJanitorParams, Nodes, JanitorOptions) ++ CompletedRes,
 
     lists:flatmap(
-      fun ({Bucket, {membase, BucketCfg, NewMap, Options1}}) ->
-              Res = finalize_bucket_failover(Bucket, BucketCfg,
-                                             NewMap, Nodes, Options1),
-              master_activity_events:note_bucket_failover_ended(
-                Bucket, Nodes),
-              Res;
-          ({Bucket, {memcached, _BucketCfg, _NewMap, _Options1}}) ->
-              master_activity_events:note_bucket_failover_ended(
-                Bucket, Nodes),
-              []
-      end, PrepResults).
+      fun({Bucket, Result}) ->
+              #failover_params{
+                 bucket_type = membase,
+                 bucket_config = BucketCfg} = proplists:get_value(Bucket,
+                                                                  Params),
+              OldMap = proplists:get_value(map, BucketCfg, []),
+              [[{bucket, Bucket},
+                {node, N},
+                {status, Result},
+                {vbuckets, node_vbuckets(OldMap, N)}] || N <- Nodes]
+      end, Results).
 
-failover_buckets(_Nodes, []) ->
+get_janitor_bulk_factor() ->
+    SchedulersOnline = erlang:system_info(schedulers_online),
+    BulkFactor = ns_config:read_key_fast(failover_bulk_buckets_janitor_factor,
+                                         ?DEFAULT_JANITOR_BULK_FACTOR),
+    case SchedulersOnline < BulkFactor of
+        true ->
+            ?log_debug("Throttling down parallelization BulkFactor from"
+                       "~p to ~p due to less schedulers online",
+                       [BulkFactor, SchedulersOnline]),
+            SchedulersOnline;
+        false ->
+            BulkFactor
+    end.
+
+handle_buckets_failover(Nodes, PrepResults, JanitorOptions) ->
+    ok = set_failover_config(PrepResults, Nodes),
+
+    MembaseParams =
+        lists:filter(
+          fun({_,  #failover_params{bucket_type = membase}}) ->
+                  true;
+             (_) ->
+                  false
+          end, PrepResults),
+
+    Results = lists:flatmap(
+                janitor_membase_buckets_group(_, Nodes, JanitorOptions),
+                misc:split(get_janitor_bulk_factor(), MembaseParams)),
+
+    lists:map(
+      fun ({Bucket, _}) ->
+              ok = check_test_condition(
+                     {fail_finalize_failover_at_bucket, Bucket}),
+              master_activity_events:note_bucket_failover_ended(Bucket, Nodes)
+      end, PrepResults),
+
+    Results.
+
+failover_buckets([], _PrepResults, _JanitorOptions) ->
     [];
-failover_buckets(Nodes, PrepResults) ->
-    BulkFactor = ns_config:read_key_fast(failover_bulk_buckets_config_factor,
-                                         ?MAX_BUCKETS_SUPPORTED),
-    Results = lists:flatmap(failover_buckets_group(_, Nodes),
-                            misc:split(BulkFactor, PrepResults)),
+failover_buckets(_Nodes, [], _JanitorOptions) ->
+    [];
+failover_buckets(Nodes, PrepResults, JanitorOptions) ->
+    Results = handle_buckets_failover(Nodes, PrepResults, JanitorOptions),
 
     update_failover_vbuckets(Results),
     failover_handle_results(Results).
@@ -397,9 +455,9 @@ failover_handle_results(Results) ->
                             end
                     end, NodeStatuses).
 
-failover_buckets_prep(_BucketsConfig, [], _Options) ->
+failover_buckets_prep([], _BucketsConfig, _Options) ->
     [];
-failover_buckets_prep(BucketsConfig, Nodes, Options) ->
+failover_buckets_prep(Nodes, BucketsConfig, Options) ->
     lists:map(
       fun({Bucket, BucketConfig}) ->
               try
@@ -421,13 +479,23 @@ failover_buckets_prep(BucketsConfig, Nodes, Options) ->
       end, BucketsConfig).
 
 failover_bucket_prep(memcached, _Nodes, _Bucket, BucketConfig, Map,
-                     Options) ->
-    {memcached, BucketConfig, Map, Options};
-failover_bucket_prep(membase, _Nodes, Bucket, BucketConfig, [], Options) ->
+                     _JanitorOptions) ->
+    #failover_params{
+       bucket_type = memcached,
+       bucket_config = BucketConfig,
+       bucket_map = Map,
+       bucket_options = #{}};
+failover_bucket_prep(membase, _Nodes, Bucket, BucketConfig, [],
+                     _JanitorOptions) ->
     ?log_debug("Skipping failover of bucket ~p because it has no vbuckets.",
                [Bucket]),
-    {membase, BucketConfig, [], Options};
-failover_bucket_prep(membase, Nodes, Bucket, BucketConfig, Map, Options) ->
+    #failover_params{
+       bucket_type = membase,
+       bucket_config = BucketConfig,
+       bucket_map = [],
+       bucket_options = #{}};
+failover_bucket_prep(membase, Nodes, Bucket, BucketConfig, Map,
+                     JanitorOptions) ->
     Servers = ns_bucket:get_servers(BucketConfig) -- Nodes,
     case ns_bucket:get_hibernation_state(BucketConfig) of
         pausing ->
@@ -439,9 +507,9 @@ failover_bucket_prep(membase, Nodes, Bucket, BucketConfig, Map, Options) ->
     %% Bread crumb to inform the janitor that bucket has already been checked
     %% for a failed hibernation pause status, and it doesn't require for
     %% unpause to be re-issued during the janitor run
-    Options1 = maps:put(unpause_checked_hint, true, Options),
+    BucketOptions = #{unpause_checked_hint => true},
 
-    NewMap = fix_vbucket_map(Nodes, Bucket, Map, Options),
+    NewMap = fix_vbucket_map(Nodes, Bucket, Map, JanitorOptions),
     true = (NewMap =/= undefined),
 
     ?log_debug("Original vbucket map: ~p~n"
@@ -458,19 +526,12 @@ failover_bucket_prep(membase, Nodes, Bucket, BucketConfig, Map, Options) ->
                       [length(MissingVBuckets) * 100 div length(Map), Bucket])
     end,
 
-    %% These values will be used to complete the failover in the finalize phase
-    {membase, BucketConfig, NewMap, Options1}.
-
-finalize_bucket_failover(Bucket, BucketConfig, NewMap, Nodes, Options) ->
-    ok = check_test_condition({fail_finalize_failover_at_bucket, Bucket}),
-
-    R = janitor_bucket(Nodes, Bucket, NewMap, Options),
-    OldMap = proplists:get_value(map, BucketConfig, []),
-
-    [[{bucket, Bucket},
-      {node, N},
-      {status, R},
-      {vbuckets, node_vbuckets(OldMap, N)}] || N <- Nodes].
+    %% These params will be used to complete the failover in the finalize phase
+    #failover_params{
+       bucket_type = membase,
+       bucket_config = BucketConfig,
+       bucket_map = NewMap,
+       bucket_options = BucketOptions}.
 
 validate_failover_services_safety(Nodes, _, #{skip_safety_check := true}) ->
     {Nodes, []};
@@ -503,25 +564,41 @@ complete_failover_service(Nodes, Service) ->
       {status, Result},
       {service, Service}] || Node <- Nodes].
 
-janitor_bucket(_, _, [], _) ->
-    ok;
-janitor_bucket(Nodes, Bucket, Map, Options) ->
-    true = (Map =/= []),
-    CleanupOptions = janitor_cleanup_options(Nodes, Options),
-    case (catch ns_janitor:cleanup(Bucket, CleanupOptions)) of
-        ok ->
-            ok;
-        {error, _, BadNodes} ->
-            ?rebalance_error("Skipped vbucket activations and "
-                             "replication topology changes because not "
-                             "all remaining nodes were found to have "
-                             "healthy bucket ~p: ~p", [Bucket, BadNodes]),
-            janitor_failed;
-        Error ->
+janitor_buckets([], _Nodes, _JanitorOptions) ->
+    [];
+janitor_buckets(BucketsParams, Nodes, JanitorOptions) ->
+    CleanupOptions = janitor_cleanup_options(Nodes, JanitorOptions),
+    JanitorParams =
+        lists:map(
+          fun({Bucket, #failover_params{bucket_options = BucketOptions,
+                                        bucket_map = NewMap}}) ->
+                  true = (NewMap =/= []),
+                  {Bucket, maybe_add_hibernation_hint(BucketOptions)}
+          end, BucketsParams),
+
+    try
+        Results = ns_janitor:cleanup_buckets(JanitorParams, CleanupOptions),
+        lists:map(
+          fun({Bucket, ok}) ->
+                  {Bucket, ok};
+             ({Bucket, {error, _, BadNodes}}) ->
+                  ?rebalance_error("Skipped vbucket activations and "
+                                   "replication topology changes because not "
+                                   "all remaining nodes were found to have "
+                                   "healthy bucket ~p: ~p", [Bucket, BadNodes]),
+                  {Bucket, janitor_failed};
+             ({Bucket, Error}) ->
+                  ?rebalance_error("Janitor cleanup of ~p "
+                                   "failed after failover of ~p: ~p",
+                                   [Bucket, Nodes, Error]),
+                  {Bucket, janitor_failed}
+          end, Results)
+    catch T:E:S ->
+            Buckets = [Bucket || {Bucket, _} <- BucketsParams],
             ?rebalance_error("Janitor cleanup of ~p "
                              "failed after failover of ~p: ~p",
-                             [Bucket, Nodes, Error]),
-            janitor_failed
+                             [Buckets, Nodes, {T,E,S}]),
+            [{Bucket, janitor_failed} || Bucket <- Buckets]
     end.
 
 maybe_add_hibernation_hint(FailoverOptions) ->
@@ -536,8 +613,7 @@ janitor_cleanup_options(FailedNodes, FailoverOptions) ->
     [{sync_nodes, config_sync_nodes(FailedNodes)},
      {failover_nodes, FailedNodes},
      {pull_config, false},
-     {push_config, durability_aware(FailoverOptions)}] ++
-        maybe_add_hibernation_hint(FailoverOptions).
+     {push_config, durability_aware(FailoverOptions)}].
 
 durability_aware(Options) ->
     cluster_compat_mode:preserve_durable_mutations() andalso
@@ -852,6 +928,11 @@ load_group_failover_test_common_modules() ->
                         ok
                 end),
 
+    meck:expect(ns_config, read_key_fast,
+                fun (_, Default) ->
+                        Default
+                end),
+
     meck:expect(master_activity_events, note_bucket_failover_started,
                 fun (_,_) ->
                         ok
@@ -908,36 +989,44 @@ failover_bucket_groups_test_() ->
 
 failover_buckets_prep_test_body() ->
     BConfig = get_test_bucket_config(),
-    PrepResults = failover_buckets_prep(BConfig, [a, d], #{stubOpt => testOpt}),
+    PrepResults = failover_buckets_prep([a, d], BConfig, #{}),
 
     ?assertEqual(length(PrepResults), 6),
 
-    {B1Type, _, B1NewMap, B1Opt} = proplists:get_value("B1", PrepResults),
+    #failover_params{bucket_type = B1Type,
+                     bucket_map = B1NewMap,
+                     bucket_options = B1Opt} = proplists:get_value(
+                                                 "B1", PrepResults),
     ?assertEqual(B1Type, membase),
     ?assertEqual(B1NewMap,
                  [[b, undefined],[c, undefined]]),
-    ?assertEqual(maps:get(stubOpt, B1Opt), testOpt),
+    ?assertEqual(maps:get(unpause_checked_hint, B1Opt), true),
 
-    {B2Type, _, B2NewMap, B2Opt} = proplists:get_value("B2", PrepResults),
+    #failover_params{bucket_type = B2Type,
+                     bucket_map = B2NewMap} = proplists:get_value(
+                                                "B2", PrepResults),
     ?assertEqual(B2Type, membase),
     ?assertEqual(B2NewMap, []),
-    ?assertEqual(maps:get(stubOpt, B2Opt), testOpt),
 
-    {B3Type, _, _, _} = proplists:get_value("B3", PrepResults),
+    #failover_params{bucket_type = B3Type} = proplists:get_value(
+                                               "B3", PrepResults),
     ?assertEqual(B3Type, memcached),
 
-    {B4Type, _, _, _} = proplists:get_value("B4", PrepResults),
+    #failover_params{bucket_type = B4Type} = proplists:get_value(
+                                               "B4", PrepResults),
     ?assertEqual(B4Type, memcached),
 
-    {B5Type, _, B5NewMap, B5Opt} = proplists:get_value("B5", PrepResults),
+    #failover_params{bucket_type = B5Type,
+                     bucket_map = B5NewMap} = proplists:get_value(
+                                                "B5", PrepResults),
     ?assertEqual(B5Type, membase),
     ?assertEqual(B5NewMap, [[b, undefined], [b, undefined]]),
-    ?assertEqual(maps:get(stubOpt, B5Opt), testOpt),
 
-    {B6Type, _, B6NewMap, B6Opt} = proplists:get_value("B6", PrepResults),
+    #failover_params{bucket_type = B6Type,
+                     bucket_map = B6NewMap} = proplists:get_value(
+                                                "B6", PrepResults),
     ?assertEqual(B6Type, membase),
     ?assertEqual(B6NewMap, [[b, undefined], [c, undefined]]),
-    ?assertEqual(maps:get(stubOpt, B6Opt), testOpt),
     ok.
 
 failover_buckets_group_test_body() ->
@@ -960,33 +1049,42 @@ failover_buckets_group_test_body() ->
                         ok
                 end),
 
-    meck:expect(ns_janitor, cleanup,
-                fun (_,_) ->
-                        ok
+    meck:expect(ns_janitor, cleanup_buckets,
+                fun (JanitorParams, CleanupOpts) ->
+                        Expected = ["B1", "B5", "B6"],
+                        R = proplists:get_value(push_config, CleanupOpts),
+                        ?assertEqual(true, R),
+                        lists:map(
+                          fun({Bucket, Opts}) ->
+                                  ?assertEqual(true,
+                                               lists:member(Bucket, Expected)),
+                                  Exists =
+                                      proplists:get_value(unpause_checked_hint,
+                                                          Opts),
+                                  ?assertEqual(true, Exists),
+                                  {Bucket, ok}
+                          end, JanitorParams)
                 end),
 
     BConfig = get_test_bucket_config(),
-    PrepResults = failover_buckets_prep(BConfig, FailedNodes,
-                                        #{stubOpt => testOpt}),
+    JOpts = #{durability_aware => true},
+    PrepResults = failover_buckets_prep(FailedNodes, BConfig, JOpts),
 
-    Results1 = lists:flatmap(failover_buckets_group(_, FailedNodes),
+    Results1 = lists:flatmap(handle_buckets_failover(FailedNodes, _, JOpts),
                              misc:split(?MAX_BUCKETS_SUPPORTED,
                                         PrepResults)),
 
-    ?assertEqual(Results1,
-                 [[{bucket,"B1"},{node,a},{status,ok},{vbuckets,[0,1]}],
-                  [{bucket,"B1"},{node,d},{status,ok},{vbuckets,[]}],
-                  [{bucket,"B2"},{node,a},{status,ok},{vbuckets,[]}],
-                  [{bucket,"B2"},{node,d},{status,ok},{vbuckets,[]}],
-                  [{bucket,"B5"},{node,a},{status,ok},{vbuckets,[0,1]}],
-                  [{bucket,"B5"},{node,d},{status,ok},{vbuckets,[]}],
-                  [{bucket,"B6"},{node,a},{status,ok},{vbuckets,[0]}],
-                  [{bucket,"B6"},{node,d},{status,ok},{vbuckets,[1]}]]
+    ?assertEqual(lists:sort(Results1),
+                 lists:sort(
+                   [[{bucket,"B1"},{node,a},{status,ok},{vbuckets,[0, 1]}],
+                    [{bucket,"B1"},{node,d},{status,ok},{vbuckets,[]}],
+                    [{bucket,"B2"},{node,a},{status,ok},{vbuckets,[]}],
+                    [{bucket,"B2"},{node,d},{status,ok},{vbuckets,[]}],
+                    [{bucket,"B5"},{node,a},{status,ok},{vbuckets,[0,1]}],
+                    [{bucket,"B5"},{node,d},{status,ok},{vbuckets,[]}],
+                    [{bucket,"B6"},{node,a},{status,ok},{vbuckets,[0]}],
+                    [{bucket,"B6"},{node,d},{status,ok},{vbuckets,[1]}]])),
 
-                ),
-
-    %% Now failover buckets in groups of 2 at a time. The end results must be
-    %% the same as the first failover run with failing entire bucket group
     meck:expect(ns_bucket, remove_servers_from_buckets,
                 fun (_, _) ->
                         ok
@@ -995,13 +1093,26 @@ failover_buckets_group_test_body() ->
                 fun (_, _) ->
                         ok
                 end),
-    Results2 = lists:flatmap(failover_buckets_group(_, FailedNodes),
-                             misc:split(2, PrepResults)),
+
+    PrepResultsUpdt =
+        lists:filter(
+          fun({_, #failover_params{bucket_type = membase}}) ->
+                  true;
+             (_) ->
+                  false
+          end, PrepResults),
+
+    %% Now test janitor_membase_buckets groups of 2 buckets at a time, the
+    %% results must match the main results
+    Results2 = lists:flatmap(
+                 janitor_membase_buckets_group(_, FailedNodes, JOpts),
+                 misc:split(2, PrepResultsUpdt)),
     ?assertEqual(lists:sort(Results1), lists:sort(Results2)),
 
-    %% Lastly failing single bucket at a time, results must match
-    Results3 = lists:flatmap(failover_buckets_group(_, FailedNodes),
-                             misc:split(1, PrepResults)),
+    %% Lastly single bucket at a time, results must match
+    Results3 = lists:flatmap(
+                 janitor_membase_buckets_group(_, FailedNodes, JOpts),
+                 misc:split(1, PrepResultsUpdt)),
     ?assertEqual(lists:sort(Results1), lists:sort(Results3)),
     ok.
 
@@ -1015,48 +1126,60 @@ failover_buckets_group_failure_result_test_body() ->
                 fun (_, _) ->
                         ok
                 end),
-    meck:expect(ns_janitor, cleanup,
-                fun (Bucket,_) ->
-                        case lists:member(Bucket, ["B1", "B6"]) of
-                            false ->
-                                ok;
-                            _ ->
-                                throw(failure_in_test)
-                        end
+    meck:expect(ns_janitor, cleanup_buckets,
+                fun (JParams, CleanupOpts) ->
+                        R = proplists:get_value(push_config, CleanupOpts),
+                        ?assertEqual(false, R),
+                        OutRes = [{"B1", failure_in_test},
+                                  {"B6", failure_in_test},
+                                  {"B5", ok}],
+                        [{Bucket,
+                          proplists:get_value(
+                            Bucket, OutRes)} || {Bucket, _} <- JParams]
                 end),
 
     BConfig = get_test_bucket_config(),
-    PrepResults = failover_buckets_prep(BConfig, FailedNodes,
-                                        #{stubOpt => testOpt}),
-    Results1 = lists:flatmap(failover_buckets_group(_, FailedNodes),
+    JOpts = #{},
+    PrepResults = failover_buckets_prep(FailedNodes, BConfig, JOpts),
+    Results1 = lists:flatmap(handle_buckets_failover(FailedNodes, _, JOpts),
                              misc:split(?MAX_BUCKETS_SUPPORTED,
                                         PrepResults)),
 
-    ?assertEqual(Results1,
-                 [[{bucket,"B1"}, {node,a},
-                   {status,janitor_failed}, {vbuckets,[0,1]}],
-                  [{bucket,"B1"},{node,d},
-                   {status,janitor_failed},{vbuckets,[]}],
-                  [{bucket,"B2"},{node,a},
-                   {status,ok},{vbuckets,[]}],
-                  [{bucket,"B2"},{node,d},
-                   {status,ok},{vbuckets,[]}],
-                  [{bucket,"B5"},{node,a},
-                   {status,ok},{vbuckets,[0,1]}],
-                  [{bucket,"B5"},{node,d},
-                   {status,ok},{vbuckets,[]}],
-                  [{bucket,"B6"}, {node,a},
-                   {status,janitor_failed}, {vbuckets,[0]}],
-                  [{bucket,"B6"}, {node,d},
-                   {status,janitor_failed}, {vbuckets,[1]}]]
-                ),
+    ?assertEqual(lists:sort(Results1),
+                 lists:sort(
+                   [[{bucket,"B1"}, {node,a},
+                     {status,janitor_failed}, {vbuckets,[0,1]}],
+                    [{bucket,"B1"},{node,d},
+                     {status,janitor_failed},{vbuckets,[]}],
+                    [{bucket,"B2"},{node,a},
+                     {status,ok},{vbuckets,[]}],
+                    [{bucket,"B2"},{node,d},
+                     {status,ok},{vbuckets,[]}],
+                    [{bucket,"B5"},{node,a},
+                     {status,ok},{vbuckets,[0,1]}],
+                    [{bucket,"B5"},{node,d},
+                     {status,ok},{vbuckets,[]}],
+                    [{bucket,"B6"}, {node,a},
+                     {status,janitor_failed}, {vbuckets,[0]}],
+                    [{bucket,"B6"}, {node,d},
+                     {status,janitor_failed}, {vbuckets,[1]}]])),
 
-    Results2 = lists:flatmap(failover_buckets_group(_, FailedNodes),
-                             misc:split(3, PrepResults)),
+    PrepResultsUpdt =
+        lists:filter(
+          fun({_, #failover_params{bucket_type = membase}}) ->
+                  true;
+             (_) ->
+                  false
+          end, PrepResults),
+
+    Results2 = lists:flatmap(
+                 janitor_membase_buckets_group(_, FailedNodes, JOpts),
+                 misc:split(3, PrepResultsUpdt)),
     ?assertEqual(lists:sort(Results1), lists:sort(Results2)),
 
-    Results3 = lists:flatmap(failover_buckets_group(_, FailedNodes),
-                             misc:split(1, PrepResults)),
+    Results3 = lists:flatmap(
+                 janitor_membase_buckets_group(_, FailedNodes, JOpts),
+                 misc:split(1, PrepResultsUpdt)),
     ?assertEqual(lists:sort(Results1), lists:sort(Results3)),
     ok.
 
