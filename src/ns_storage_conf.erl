@@ -647,7 +647,8 @@ delete_unused_db_files(Bucket) ->
                     ok;
                 Other ->
                     ?log_error("Failed to delete old data files for bucket ~p. "
-                               "Error = ~p", [Bucket, Other])
+                               "Error = ~p", [Bucket, Other]),
+                    Other
             end;
         Error ->
             Error
