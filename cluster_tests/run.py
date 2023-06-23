@@ -62,6 +62,10 @@ Usage: {program_name}
         Start only specified tests
     [--keep-tmp-dirs | -k]
         Keep any test_cluster_data dirs after tests finish, even if they pass
+    [--dont-intercept-output | -o]
+        Display output from tests. By default, output is suppressed (unless the
+        test fails). Setting this option forces output to be displayed even for
+        successful test runs.
     [--help]
         Show this help
 """
