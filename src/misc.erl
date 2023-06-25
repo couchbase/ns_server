@@ -2261,8 +2261,8 @@ multi_call_test_setup_server() ->
                                         V;
                                     {sleep, Time} ->
                                         timer:sleep(Time);
-                                    {eval, Fun} ->
-                                        Fun()
+                                    {eval, {M, F, A}} ->
+                                        erlang:apply(M, F, A)
                                 end,
                         {reply, Reply, {}}
                 end),
@@ -2334,10 +2334,7 @@ do_test_multi_call() ->
     multi_call_test_assert_results(R3, RestNodes, ok),
     ?assertEqual(Bad3, [{FirstNode, timeout}]),
 
-    true = rpc:call(FirstNode, erlang, apply,
-                    [fun () ->
-                             erlang:exit(whereis(multi_call_server), kill)
-                     end, []]),
+    true = rpc:call(FirstNode, ?MODULE, kill_multi_call_test_server, []),
     {R4, Bad4} = misc:multi_call(Nodes, multi_call_server, {echo, ok}, 100),
     multi_call_test_assert_results(R4, RestNodes, ok),
     ?assertMatch([{FirstNode, {exit, {noproc, _}}}], Bad4).
@@ -2372,13 +2369,13 @@ do_test_multi_call_request() ->
     multi_call_request_test_assert_results(R3, RestNodeRequests),
     ?assertEqual(Bad3, [{FirstNode, timeout}]),
 
-    true = rpc:call(FirstNode, erlang, apply,
-                    [fun () ->
-                             erlang:exit(whereis(multi_call_server), kill)
-                     end, []]),
+    true = rpc:call(FirstNode, ?MODULE, kill_multi_call_test_server, []),
     {R4, Bad4} = MultiCallRequest(NodeRequests),
     multi_call_request_test_assert_results(R4, RestNodeRequests),
     ?assertMatch([{FirstNode, {exit, {noproc, _}}}], Bad4).
+
+kill_multi_call_test_server() ->
+    erlang:exit(whereis(multi_call_server), kill).
 
 multi_call_ok_pred_test_() ->
     {setup, fun multi_call_test_setup/0, fun multi_call_test_teardown/1,
@@ -2403,14 +2400,7 @@ do_test_multi_call_ok_pred() ->
 
     {OkNodes, ErrorNodes} = lists:split(length(Nodes) div 2, misc:shuffle(Nodes)),
     {R3, Bad3} = misc:multi_call(AllNodes, multi_call_server,
-                                 {eval, fun () ->
-                                                case lists:member(node(), OkNodes) of
-                                                    true ->
-                                                        ok;
-                                                    false ->
-                                                        error
-                                                end
-                                        end},
+                                 {eval, {?MODULE, test_membership, [OkNodes]}},
                                  100,
                                  fun (RV) ->
                                          RV =:= ok
@@ -2419,6 +2409,15 @@ do_test_multi_call_ok_pred() ->
     multi_call_test_assert_results(R3, OkNodes, ok),
     multi_call_test_assert_bad_nodes(Bad3, BadNodes ++ ErrorNodes),
     multi_call_test_assert_results(Bad3, ErrorNodes, error).
+
+test_membership(Nodes) ->
+    case lists:member(node(), Nodes) of
+        true ->
+            ok;
+        false ->
+            error
+    end.
+
 -endif.
 
 intersperse([], _) ->

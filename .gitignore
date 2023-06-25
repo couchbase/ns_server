@@ -6,6 +6,7 @@
 .eunit
 .project
 .settings
+.coverage
 /TAGS
 /build
 /common_tests/*.beam

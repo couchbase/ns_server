@@ -61,14 +61,114 @@ run_tests(Enabled, Filter) ->
     fake_loggers(),
     setup_paths(),
     Modules = get_modules(Filter),
+    CoverageEnabled = (length(os:getenv("T_COVERAGE", "")) > 0),
+    CodeCoverageDir = filename:join(config(root_dir), ".coverage"),
     FailedTests =
-        lists:flatmap(
-          fun ({Name, Runner}) ->
-                  io:format("Running ~p tests for modules: ~p~n", [Name, Modules]),
-                  Runner(Modules)
-          end, test_runners(Enabled)),
-
+        with_code_coverage(
+          fun () ->
+              lists:flatmap(
+                fun ({Name, Runner}) ->
+                    io:format("Running ~p tests for modules: ~p~n",
+                              [Name, Modules]),
+                    Runner(Modules)
+                end, test_runners(Enabled))
+          end, CoverageEnabled, Modules, CodeCoverageDir),
     handle_failed_tests(FailedTests).
+
+with_code_coverage(Fun, false, _Modules, _OutputDir) ->
+    io:format("Code coverage is disabled~n"),
+    Fun();
+with_code_coverage(Fun, true, Modules, OutputDir) ->
+    try
+        cover_init(Modules),
+        Res = Fun(),
+        cover_analyze(Modules, OutputDir),
+        Res
+    after
+        cover_stop()
+    end.
+
+cover_init(Modules) ->
+    io:format("Code coverage is enabled~n"),
+    {ok, _} = cover:start(),
+    %% From documentation:
+    %% When running in this mode, modules will be Cover compiled in a more
+    %% efficient way, but the resulting code will only work on the same node
+    %% they were compiled on.
+    ok = cover:local_only(),
+    io:format("Compiling modules for code coverage...~n"),
+    Errors =
+        lists:filtermap(fun (?MODULE) ->
+                                %% Do not recompile this module because
+                                %% this process will kill itself on unload
+                                false;
+                            (M) ->
+                                %% Using compile_beam because documentation
+                                %% claims it is faster than cover:compile()
+                                case cover:compile_beam(M) of
+                                    {ok, _} ->
+                                        false;
+                                    {error, Err} ->
+                                        {true, {M, Err}}
+                                end
+                        end, Modules),
+    case Errors of
+        [] ->
+            io:format("finished~n"),
+            ok;
+        _ ->
+            io:format("Compilation for code coverage of the following modules "
+                      "has failed:~p~n", [Errors]),
+            erlang:error({cover_compilation, Errors})
+    end.
+
+-define(COV_IGNORE_FUN(F, A), F == '__call_logger'; {F, A} == {'test', 0}).
+
+cover_analyze(Modules, Dir) ->
+    io:format("Analyzing code coverage...~n"),
+    %% Calling analyze with 'function' just because we want to skip counting
+    %% coverage for some functions below.
+    {result, ModRes, ModErr} = cover:analyse(Modules, coverage, function),
+
+    ModErr == [] orelse
+        io:format("Code coverage failed for the following modules: ~0p~n",
+                  [ModErr]),
+
+    {TotalCov, TotalNotCov} =
+        lists:foldl(
+          fun ({{_M, F, A}, {_Cov, _NCov}}, Acc) when ?COV_IGNORE_FUN(F, A) ->
+                  Acc;
+              ({{_M, _F, _A}, {Cov, NCov}}, {ACov, ANCov}) ->
+                  {ACov + Cov, ANCov + NCov}
+          end, {0, 0}, ModRes),
+
+    Coverage = case TotalCov + TotalNotCov of
+                   0 -> 0;
+                   Sum -> TotalCov * 100 / Sum
+               end,
+
+    io:format("Total code coverage: ~.2f% lines~n"
+              "Covered lines:       ~b~n"
+              "Total lines:         ~b~n"
+              "See detailed per module report here: "
+              "file://~s~n",
+              [Coverage, TotalCov, TotalCov + TotalNotCov, Dir]),
+    file:del_dir_r(Dir),
+    ok = filelib:ensure_path(Dir),
+    lists:foreach(
+        fun (?MODULE) -> ok;
+            (M) ->
+                F = filename:join(Dir, atom_to_list(M) ++ ".COVER.html"),
+                case cover:analyze_to_file(M, [html, {outfile, F}]) of
+                    {ok, _} -> ok;
+                    {error, R} ->
+                        io:format("Failed to analyze coverage for ~p: ~p~n",
+                                  [M, R])
+                end
+        end, Modules),
+    io:format("Analyzing code coverage finished~n").
+
+cover_stop() -> catch cover:stop().
 
 all_test_runners() ->
     [{eunit, fun run_eunit_tests/1},
