@@ -219,6 +219,14 @@ set_initial_map(Map, Servers, MapOpts, Bucket, BucketConfig, Options) ->
 
     push_config(Options).
 
+partition_param_results(Res) ->
+    lists:partition(
+      fun({_Bucket, #janitor_params{}}) ->
+              true;
+         (_) ->
+              false
+      end, Res).
+
 cleanup_with_membase_buckets_vbucket_map([], _Options) ->
     [];
 cleanup_with_membase_buckets_vbucket_map(ConfigPhaseRes, Options) ->
@@ -238,32 +246,33 @@ cleanup_with_membase_buckets_vbucket_map(ConfigPhaseRes, Options) ->
         end,
 
     QueryRes = misc:parallel_map(QueryPhaseFun, ConfigPhaseRes, infinity),
-
-    {Remaining, CurrErrors} =
-        lists:partition(
-          fun({_Bucket, #janitor_params{}}) ->
-                  true;
-             (_) ->
-                  false
-          end, QueryRes),
-
+    {Remaining, CurrErrors} = partition_param_results(QueryRes),
     CurrErrors ++ cleanup_buckets_with_states(Remaining, Options).
 
 cleanup_buckets_with_states([], _Options) ->
     [];
 cleanup_buckets_with_states(Params, Options) ->
-    {ApplyConfigResults, CurrErrors} =
-        misc:partitionmap(
-          fun({Bucket, #janitor_params{bucket_config = NewBucketConfig,
-                                       bucket_servers = Servers}}) ->
-                  {left, {Bucket, cleanup_apply_config(Bucket, Servers,
-                                                       NewBucketConfig,
-                                                       Options)}};
-             ({Bucket, Error}) ->
-                  {right, {Bucket, Error}}
-          end, apply_config_prep(Params, Options)),
+    {Remaining, Errors} =
+        partition_param_results(apply_config_prep(Params, Options)),
 
-    ApplyConfigResults ++ CurrErrors.
+    %% Note that the nominal case is that all remaining params get grouped
+    %% into a single group as the server list will be the same for them in
+    %% the nominal case. We still handle the corner cases when that is not
+    %% true, so that we don't fail janitoring for buckets for which we have a
+    %% quorum on all nodes in the server list. In these cases, we further
+    %% group bucket params based on server list, and buckets with same server
+    %% list are handled together for apply config phase
+    ParamGroups =
+        maps:groups_from_list(
+          fun({_Bucket, #janitor_params{bucket_servers = Servers}}) ->
+                  lists:sort(Servers)
+          end, Remaining),
+    maps:fold(
+      fun(QuorumServers, ParamsGroup, Acc) ->
+              Acc ++ cleanup_apply_config_on_buckets(
+                       ParamsGroup, QuorumServers, Options)
+      end, [], ParamGroups) ++ Errors.
+
 
 check_unsafe_nodes(BucketConfig, States, Options) ->
     %% Find all the unsafe nodes (nodes on which memcached restarted within
@@ -367,12 +376,34 @@ fixup_vbucket_map(Bucket, BucketConfig, NewBucketConfig, States) ->
     ok = ns_bucket:set_bucket_config(Bucket, NewBucketConfig).
 
 cleanup_apply_config(Bucket, Servers, BucketConfig, Options) ->
+    Results =
+        cleanup_apply_config_on_buckets(
+          [{Bucket, #janitor_params{bucket_config = BucketConfig,
+                                    bucket_servers = Servers}}],
+          Servers, Options),
+
+    [{Bucket, Result}] = Results,
+    Result.
+
+cleanup_apply_config_on_buckets(Params, QuorumServers, Options) ->
+    Buckets = [Bucket || {Bucket, _} <- Params],
     {ok, Result} =
         leader_activities:run_activity(
-          {ns_janitor, Bucket, apply_config}, {all, Servers},
+          {ns_janitor, Buckets, apply_config}, {all, QuorumServers},
           fun () ->
-                  {ok, cleanup_apply_config_body(Bucket, Servers,
-                                                 BucketConfig, Options)}
+                  SortedQServers = lists:sort(QuorumServers),
+                  Results =
+                      misc:parallel_map(
+                        fun({Bucket,
+                             #janitor_params{bucket_config = BucketConfig,
+                                             bucket_servers = Servers}}) ->
+                                SortedQServers = lists:sort(Servers),
+                                {Bucket,
+                                 cleanup_apply_config_body(Bucket, Servers,
+                                                           BucketConfig,
+                                                           Options)}
+                        end, Params, infinity),
+                  {ok, Results}
           end,
           [quiet]),
 
@@ -938,7 +969,7 @@ map_matches_states_exactly_test() ->
               ?assertMatch({false, _}, map_matches_states_exactly(Map, States))
       end, [BadStates1, BadStates2, BadStates3, BadStates4, BadStates5]).
 
-apply_config_prep_test_() ->
+janitor_buckets_group_test_() ->
     {foreach,
      fun load_apply_config_prep_common_modules/0,
      fun (_) ->
@@ -948,8 +979,10 @@ apply_config_prep_test_() ->
        fun apply_config_prep_test_body/0},
       {"Apply Config Prep Errors Test",
        fun  apply_config_prep_test_errors_body/0},
-      {"Cleanup Bucket With Map Test",
-       fun  cleanup_buckets_with_map_test_body/0}]
+      {"Cleanup Buckets With Map Test",
+       fun  cleanup_buckets_with_map_test_body/0},
+      {"Cleanup Buckets With States Test",
+       fun  cleanup_buckets_with_states_test_body/0}]
     }.
 
 load_apply_config_prep_common_modules() ->
@@ -1179,8 +1212,8 @@ cleanup_buckets_with_map_test_body() ->
                {push_config, true}],
 
     meck:expect(leader_activities, run_activity,
-                fun (_, _, _, _) ->
-                        {ok, ok}
+                fun ({ns_janitor, Buckets, apply_config}, _, _, _) ->
+                        {ok, [{Bucket, ok} || Bucket <- Buckets]}
                 end
                ),
     meck:expect(janitor_agent, query_vbuckets,
@@ -1243,6 +1276,69 @@ cleanup_buckets_with_map_test_body() ->
         {"B3", {error,wait_for_memcached_failed,{error,zombie_error_stub}}}],
        Res3),
 
+    ok.
+
+cleanup_buckets_with_states_test_body() ->
+    [Param1, Param2] = get_apply_config_prep_params(),
+    {_, #janitor_params{bucket_config = BucketConfig1} = JParam} = Param1,
+
+    Options = [{sync_nodes, [a,b,c]},
+               {pull_config, true},
+               {push_config, true}],
+
+    meck:expect(leader_activities, run_activity,
+                fun ({ns_janitor, Buckets, apply_config}, _, _, _) ->
+                        ?assertEqual(["B1", "B2"], Buckets),
+                        {ok, [{Bucket, ok} || Bucket <- Buckets]}
+                end
+               ),
+    meck:expect(ns_bucket, get_bucket,
+                fun (_) ->
+                        {ok, BucketConfig1}
+                end),
+
+    Res1 = cleanup_buckets_with_states([Param1, Param2], Options),
+    ?assertEqual([{"B1", ok}, {"B2", ok}], Res1),
+
+    Param3 = {"B3", JParam#janitor_params{bucket_servers = [c,b,a]}},
+    Param4 = {"B4", JParam#janitor_params{bucket_servers = [c,b]}},
+    Param5 = {"B5", JParam#janitor_params{bucket_servers = [b,c]}},
+    Param6 = {"B6", JParam#janitor_params{bucket_servers = [c]}},
+    Param7 = {"B7", JParam#janitor_params{bucket_servers = [c, d, e]}},
+    Param8 = {"B8", JParam#janitor_params{bucket_servers = [e, d, c]}},
+    Param9 = {"B9", JParam#janitor_params{bucket_servers = [d, e, c]}},
+
+    %% We are creating params with different type of server groups in the
+    %% set of buckets, and in this case we will verify the apply config activity
+    %% is called with the appropriate groups and buckets
+    meck:expect(
+      leader_activities, run_activity,
+      fun ({ns_janitor, Buckets, apply_config}, {all, Servers}, _, _)
+            when (length(Buckets) =:= 3) and (Servers =:= [a, b, c])  ->
+              ?assertEqual(["B1", "B2", "B3"], Buckets),
+              {ok, [{Bucket, ok} || Bucket <- Buckets]};
+          ({ns_janitor, Buckets, apply_config}, {all, Servers} ,_ ,_)
+            when (length(Buckets) =:= 3) and (Servers =:= [c, d, e]) ->
+              ?assertEqual(["B7", "B8", "B9"], Buckets),
+              {ok, [{Bucket, ok} || Bucket <- Buckets]};
+          ({ns_janitor, Buckets, apply_config}, {all, Servers} ,_ ,_)
+            when (length(Buckets) =:= 2) ->
+              ?assertEqual(["B4", "B5"], Buckets),
+              ?assertEqual([b, c], Servers),
+              {ok, [{Bucket, ok} || Bucket <- Buckets]};
+          ({ns_janitor, Buckets, apply_config}, {all, Servers} ,_ ,_)
+            when (length(Buckets) =:= 1) ->
+              ?assertEqual(["B6"], Buckets),
+              ?assertEqual([c], Servers),
+              {ok, [{Bucket, ok} || Bucket <- Buckets]}
+      end
+     ),
+    Res2 = cleanup_buckets_with_states(
+             [Param1, Param2, Param3, Param4, Param5, Param6, Param7, Param8,
+              Param9], Options),
+
+    ?assertEqual([{"B1", ok}, {"B2", ok}, {"B3", ok}, {"B4", ok}, {"B5", ok},
+                  {"B6", ok}, {"B7", ok}, {"B8", ok}, {"B9", ok}], Res2),
     ok.
 
 data_loss_possible_t(Chain, States) ->
