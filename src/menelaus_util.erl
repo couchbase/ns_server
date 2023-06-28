@@ -90,7 +90,7 @@
 -export([list_to_integer/1, list_to_float/1]).
 
 %% for hibernate
--export([handle_streaming_wakeup/5]).
+-export([handle_streaming_wakeup/7]).
 
 %% External API
 
@@ -600,30 +600,61 @@ handle_streaming(FetchDataFun, Req) ->
     handle_streaming(Req, DataBody, notify_watcher).
 
 handle_streaming(Req, DataBody, NotifyTag) ->
-    HTTPRes = reply_ok(Req, "application/json; charset=utf-8", chunked),
-    Sock = mochiweb_request:get(socket, Req),
-    mochiweb_socket:setopts(Sock, [{active, true}]),
-    handle_streaming(Req, DataBody, HTTPRes, undefined,
-                     {NotifyTag, undefined}).
+    validator:handle(
+      fun (Params) ->
+              Timer = misc:create_timer(heartbeat),
+              Heartbeat =
+                  case proplists:get_value(heartbeat, Params) of
+                      undefined -> undefined;
+                      H -> H * 1000
+                  end,
+              HTTPRes = reply_ok(Req, "application/json; charset=utf-8",
+                                 chunked),
+              Sock = mochiweb_request:get(socket, Req),
+              mochiweb_socket:setopts(Sock, [{active, true}]),
+              handle_streaming(Req, DataBody, HTTPRes, undefined,
+                               {NotifyTag, undefined}, Heartbeat, Timer)
+      end, Req, qs,
+      [validator:integer(heartbeat, 1, infinity, _)]).
 
-handle_streaming(Req, DataBody, HTTPRes, LastRes, {NotifyTag, _} = Update) ->
-    Res =
-        try streaming_inner(DataBody, HTTPRes, LastRes, Update)
+register_heartbeat(undefined, Timer) ->
+    Timer;
+register_heartbeat(Heartbeat, Timer) ->
+    misc:arm_timer(Heartbeat, Timer).
+
+handle_streaming(Req, DataBody, HTTPRes, LastRes, {NotifyTag, _} = Update,
+                 Heartbeat, Timer) ->
+    {Res, NewTimer} =
+        try streaming_inner(DataBody, HTTPRes, LastRes, Update, Heartbeat,
+                            Timer)
         catch exit:normal ->
                 mochiweb_response:write_chunk("", HTTPRes),
                 exit(normal)
         end,
     request_tracker:hibernate(Req, ?MODULE, handle_streaming_wakeup,
-                              [Req, DataBody, HTTPRes, Res, NotifyTag]).
+                              [Req, DataBody, HTTPRes, Res, NotifyTag,
+                               Heartbeat, NewTimer]).
 
-streaming_inner(DataBody, HTTPRes, LastRes, Update) ->
-    case DataBody(LastRes, Update) of
-        no_data ->
-            LastRes;
-        {Res, Data} ->
-            mochiweb_response:write_chunk(Data, HTTPRes),
-            mochiweb_response:write_chunk("\n\n\n\n", HTTPRes),
-            Res
+send_data(Data, HTTPRes) ->
+    mochiweb_response:write_chunk(Data, HTTPRes),
+    send_separator(HTTPRes).
+
+send_separator(HTTPRes) ->
+    mochiweb_response:write_chunk("\n\n\n\n", HTTPRes).
+
+streaming_inner(DataBody, HTTPRes, LastRes, Update, Heartbeat, Timer) ->
+    case Update of
+        {_, heartbeat} ->
+            send_separator(HTTPRes),
+            {LastRes, register_heartbeat(Heartbeat, Timer)};
+        _ ->
+            case DataBody(LastRes, Update) of
+                no_data ->
+                    {LastRes, Timer};
+                {Res, Data} ->
+                    send_data(Data, HTTPRes),
+                    {Res, register_heartbeat(Heartbeat, Timer)}
+            end
     end.
 
 flush_notifications(NotifyTag, Value) ->
@@ -634,19 +665,22 @@ flush_notifications(NotifyTag, Value) ->
         Value
     end.
 
-handle_streaming_wakeup(Req, DataBody, HTTPRes, Res, NotifyTag) ->
+handle_streaming_wakeup(Req, DataBody, HTTPRes, Res, NotifyTag, Heartbeat,
+                        Timer) ->
     NewValue =
         receive
             {NotifyTag, Value} ->
                 timer:sleep(50),
                 flush_notifications(NotifyTag, Value);
+            heartbeat ->
+                heartbeat;
             _ ->
                 exit(normal)
         after 25000 ->
                 timeout
         end,
     handle_streaming(Req, DataBody, HTTPRes, Res,
-                     {NotifyTag, NewValue}).
+                     {NotifyTag, NewValue}, Heartbeat, Timer).
 
 param_error_prefix(ParamName) ->
     io_lib:format("Parameter ~p requires ", [ParamName]).
