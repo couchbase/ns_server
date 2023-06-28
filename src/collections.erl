@@ -882,7 +882,13 @@ modify_collection_props(Manifest, Name, ScopeName, DesiredProps) ->
             {Name, CurrentProps} = lists:keyfind(Name, 1, Collections),
             NewProps = remove_defaults(misc:update_proplist(CurrentProps,
                                                             DesiredProps)),
-            lists:keyreplace(Name, 1, Collections, {Name, NewProps})
+            case lists:sort(NewProps) =:= lists:sort(CurrentProps) of
+                false ->
+                    lists:keyreplace(Name, 1, Collections, {Name, NewProps});
+                true ->
+                    %% Don't update the collection if there is no change
+                    Collections
+            end
         end, ScopeName, Manifest).
 
 delete_collection(Manifest, Name, ScopeName) ->
@@ -1278,7 +1284,7 @@ manifest_uid_t() ->
 
     {commit, [{_, _, Manifest3}], _} =
         update_manifest_test_update_collection(Manifest2, "s1", "c1",
-                                               [{history, true}]),
+                                               [{history, false}]),
     ?assertEqual(4, proplists:get_value(uid, Manifest3)),
 
     {commit, [{_, _, Manifest4}], _} =
@@ -1388,16 +1394,10 @@ modify_collection_t() ->
         update_manifest_test_update_collection(Manifest4, "_default", "c2",
                                                [{maxTTL, 11}])),
 
-    %% Allowed to specify collection props to the same value.
-    {commit, [{_,_, Manifest5}], _} =
+    %% Not allowed to specify collection props to the same value
+    {abort, {not_changed, <<"5">>}} =
         update_manifest_test_update_collection(Manifest4, "_default", "c2",
                                                [{maxTTL, 10}]),
-
-    %% No change as maxTTL was initially 10, can't check the whole manifest as
-    %% uid moves on.
-    ?assertEqual(
-        lists:sort(get_collection("c2", get_scope("_default", Manifest4))),
-        lists:sort(get_collection("c2", get_scope("_default", Manifest5)))),
 
     %% Cannot modify uid
     ?assertEqual(
