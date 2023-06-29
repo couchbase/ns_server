@@ -65,7 +65,11 @@ def run_testset(testset_class, test_names, cluster, testset_name,
                                      intercept_output=intercept_output)
 
     if err is not None:
-        return 0, [err]
+        # If testset setup fails, all tests were not ran
+        for not_ran_test in test_names:
+            not_ran.append((not_ran_test,
+                            "testset setup failed"))
+        return 0, [err], not_ran
 
     try:
         for test in test_names:
