@@ -73,7 +73,7 @@ blob_storage_params_validator() ->
 settings_post_validators() ->
     [validator:has_params(_),
      validator:integer(numReplicas, 0, 3, _)] ++
-        case cluster_compat_mode:is_cluster_elixir() andalso
+        case cluster_compat_mode:is_cluster_trinity() andalso
             config_profile:is_serverless() of
             true ->
                 blob_storage_params_validator();

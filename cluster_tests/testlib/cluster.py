@@ -118,7 +118,7 @@ class Cluster:
 
         self.is_enterprise = get_bool("cluster_compat_mode:is_enterprise().")
         self.is_71 = get_bool("cluster_compat_mode:is_cluster_71().")
-        self.is_elixir = get_bool("cluster_compat_mode:is_cluster_elixir().")
+        self.is_trinity = get_bool("cluster_compat_mode:is_cluster_trinity().")
         self.is_serverless = get_bool("config_profile:is_serverless().")
         self.is_dev_preview = get_bool("cluster_compat_mode:"
                                        "is_developer_preview().")

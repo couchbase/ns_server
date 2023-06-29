@@ -175,7 +175,7 @@ init([]) ->
     ns_pubsub:subscribe_link(
       ns_config_events,
       fun ({ldap_settings, _}) ->
-              case cluster_compat_mode:is_cluster_elixir() of
+              case cluster_compat_mode:is_cluster_trinity() of
                   true -> Self ! maybe_reinit_cache;
                   false -> ok
               end;
@@ -183,7 +183,7 @@ init([]) ->
       end),
 
     CacheSize =
-        case cluster_compat_mode:is_cluster_elixir() of
+        case cluster_compat_mode:is_cluster_trinity() of
             true -> ldap_util:get_setting(max_group_cache_size);
             false -> ?LDAP_GROUPS_CACHE_SIZE
         end,
@@ -234,7 +234,7 @@ on_save(Docs, State) ->
     NewState.
 
 handle_info(maybe_reinit_cache, #state{cache_size = CurrentSize} = State) ->
-    %% TODO: this check for undefined can be removed when elixir is no longer
+    %% TODO: this check for undefined can be removed when trinity is no longer
     %% supported.
     NewSize = case ldap_util:get_setting(max_group_cache_size) of
                   undefined -> ?LDAP_GROUPS_CACHE_SIZE;
@@ -836,21 +836,21 @@ build_auth(Passwords) ->
     build_plain_auth(Passwords) ++ scram_sha:build_auth(Passwords).
 
 build_plain_auth(Passwords) ->
-    case cluster_compat_mode:is_cluster_elixir() of
+    case cluster_compat_mode:is_cluster_trinity() of
         true ->
             HashType = ns_config:read_key_fast(password_hash_alg,
                                                ?DEFAULT_PWHASH),
             format_plain_auth(ns_config_auth:new_password_hash(HashType,
                                                                Passwords));
         false ->
-            format_pre_elixir_plain_auth(
+            format_pre_trinity_plain_auth(
               ns_config_auth:new_password_hash(?SHA1_HASH, Passwords))
     end.
 
 format_plain_auth(HashInfo) ->
     [{<<"hash">>, {HashInfo}}].
 
-format_pre_elixir_plain_auth(HashInfo) ->
+format_pre_trinity_plain_auth(HashInfo) ->
     Salt = base64:decode(proplists:get_value(?SALT_KEY, HashInfo)),
     [Hash | _] = proplists:get_value(?HASHES_KEY, HashInfo),
     Mac = base64:decode(Hash),
@@ -957,9 +957,9 @@ upgrade_props(?VERSION_70, RecType, _Key, Props) when RecType == user;
     {ok, upgrade_roles(fun maybe_upgrade_role_to_70/1, Props)};
 upgrade_props(?VERSION_71, user, Key, Props) ->
     {ok, add_uuid(Key, Props)};
-upgrade_props(?VERSION_ELIXIR, auth, _Key, AuthProps) ->
+upgrade_props(?VERSION_TRINITY, auth, _Key, AuthProps) ->
     {ok, functools:chain(AuthProps,
-                         [scram_sha:fix_pre_elixir_auth_info(_),
+                         [scram_sha:fix_pre_trinity_auth_info(_),
                           get_rid_of_plain_key(_)])};
 upgrade_props(_Vsn, _RecType, _Key, _Props) ->
     skip.
@@ -1101,13 +1101,13 @@ upgrade_test_() ->
            SetUsers([{"user1", [admin]},
                      {"user2", [{bucket_admin, ["test"]}]}]),
            [?cut([CheckUUID(U) || U <- ["user1", "user2"]])]),
-      Test(?VERSION_ELIXIR,
+      Test(?VERSION_TRINITY,
            [{{auth, {"migrated-user", local}},
              [{<<"hash">>, {[anything]}},
               {<<"scram-sha-1">>, {[anything]}}]}],
            [CheckAuth("migrated-user", <<"hash">>, [anything]),
             CheckAuth("migrated-user", <<"scram-sha-1">>, [anything])]),
-      Test(?VERSION_ELIXIR,
+      Test(?VERSION_TRINITY,
            [{{auth, {"not-migrated-user", local}},
              [{<<"hash">>, {[anything]}},
               {<<"sha1">>,

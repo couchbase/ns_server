@@ -16,7 +16,7 @@
 -export([roles_pre_66/0,
          roles_pre_70/0,
          roles_pre_71/0,
-         roles_pre_elixir/0]).
+         roles_pre_trinity/0]).
 
 -spec roles_pre_66() -> [rbac_role_def(), ...].
 roles_pre_66() ->
@@ -1179,8 +1179,8 @@ roles_pre_71() ->
                 "access the web console">>}],
       [{[admin, stats_export], [read]}]}].
 
--spec roles_pre_elixir() -> [rbac_role_def(), ...].
-roles_pre_elixir() ->
+-spec roles_pre_trinity() -> [rbac_role_def(), ...].
+roles_pre_trinity() ->
     [{admin, [],
       [{name, <<"Full Admin">>},
        {folder, admin},

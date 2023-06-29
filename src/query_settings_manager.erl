@@ -23,7 +23,7 @@
          update/2,
          config_default/0,
          config_upgrade_to_70/1,
-         config_upgrade_to_elixir/1]).
+         config_upgrade_to_trinity/1]).
 
 -export([cfg_key/0,
          is_enabled/0,
@@ -74,12 +74,12 @@ config_upgrade_to_70(Config) ->
       ?MODULE, Config, [{generalSettings, NewSettings}],
       known_settings(?VERSION_70), UpdatePropsFun).
 
-config_upgrade_to_elixir(Config) ->
-    NewSettings = general_settings_defaults(?VERSION_ELIXIR) --
+config_upgrade_to_trinity(Config) ->
+    NewSettings = general_settings_defaults(?VERSION_TRINITY) --
         general_settings_defaults(?VERSION_70),
     json_settings_manager:upgrade_existing_key(
       ?MODULE, Config, [{generalSettings, NewSettings}],
-      known_settings(?VERSION_ELIXIR), fun functools:id/1).
+      known_settings(?VERSION_TRINITY), fun functools:id/1).
 
 known_settings() ->
     known_settings(cluster_compat_mode:get_compat_version()).
@@ -116,7 +116,7 @@ general_settings(Ver) ->
                  {queryCleanupLostAttempts, "cleanuplostattempts", true},
                  {queryCleanupWindow,      "cleanupwindow",       <<"60s">>},
                  {queryNumAtrs,            "numatrs",             1024}] ++
-                    case cluster_compat_mode:is_version_elixir(Ver) of
+                    case cluster_compat_mode:is_version_trinity(Ver) of
                         true ->
                             [{queryNodeQuota, "node-quota", 0},
                              {queryUseReplica, "use-replica", <<"unset">>},

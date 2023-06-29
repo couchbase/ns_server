@@ -152,7 +152,7 @@ handle_settings_alerts_post(Req) ->
                   end,
 
               Config2 =
-                  case cluster_compat_mode:is_cluster_elixir() of
+                  case cluster_compat_mode:is_cluster_trinity() of
                       true ->
                           Config;
                       false ->
@@ -438,7 +438,7 @@ get_config() ->
                     Cfg
             end
         end,
-    case cluster_compat_mode:is_cluster_elixir() of
+    case cluster_compat_mode:is_cluster_trinity() of
         true -> Config;
         false ->
             functools:chain(Config,

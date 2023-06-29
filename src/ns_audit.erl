@@ -464,7 +464,7 @@ code(admin_password_reset) ->
     8266;
 code(modify_analytics_settings) ->
     8267;
-%% 8268 (update_scope) removed in 7.5
+%% 8268 (update_scope) removed in 7.6
 code(delete_cluster_ca) ->
     8269;
 code(modify_collection) ->

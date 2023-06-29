@@ -39,7 +39,7 @@
          handle_settings_alerts_limits_get/1]).
 
 -export([alert_keys/0, config_upgrade_to_70/1, config_upgrade_to_71/1,
-         config_upgrade_to_72/1, config_upgrade_to_elixir/1]).
+         config_upgrade_to_72/1, config_upgrade_to_trinity/1]).
 
 %% @doc Hold client state for any alerts that need to be shown in
 %% the browser, is used by menelaus_web to piggy back for a transport
@@ -383,7 +383,7 @@ config_email_alerts_upgrade(Config, Upgrade) ->
             Upgrade(EmailAlerts)
     end.
 
-config_upgrade_to_elixir(Config) ->
+config_upgrade_to_trinity(Config) ->
     Ret = case ns_config:search(Config, email_alerts) of
               false ->
                   [];
@@ -1670,10 +1670,10 @@ config_upgrade_to_72_test() ->
     [{set, email_alerts, Alerts}] = config_upgrade_to_72(Config),
     ?assertEqual(misc:sort_kv_list(ExpectedAlerts), misc:sort_kv_list(Alerts)).
 
-config_upgrade_to_elixir_test() ->
+config_upgrade_to_trinity_test() ->
     Config1 = [],
     Expected1 = [{delete, popup_alerts_auto_failover_upgrade_70_fixed}],
-    ?assertEqual(Expected1, config_upgrade_to_elixir(Config1)),
+    ?assertEqual(Expected1, config_upgrade_to_trinity(Config1)),
 
     Config2 =
         [[{email_alerts,
@@ -1692,6 +1692,6 @@ config_upgrade_to_elixir_test() ->
              {enabled,false}]},
          {delete,memory_alert_email},
          {delete,memory_alert_popup}] ++ Expected1,
-    ?assertEqual(Expected2, config_upgrade_to_elixir(Config2)).
+    ?assertEqual(Expected2, config_upgrade_to_trinity(Config2)).
 
 -endif.

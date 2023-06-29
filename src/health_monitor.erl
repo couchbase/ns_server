@@ -303,7 +303,7 @@ basic_test_setup(Monitor) ->
     meck:expect(cluster_compat_mode,
                 get_compat_version,
                 fun() ->
-                        ?VERSION_ELIXIR
+                        ?VERSION_TRINITY
                 end),
     meck:expect(cluster_compat_mode,
                 is_cluster_70,

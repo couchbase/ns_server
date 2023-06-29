@@ -109,7 +109,7 @@ wait_for_agents_loop(Service, Nodes, Acc, Timeout) ->
 
 set_service_manager(Service, Nodes, Manager) ->
     Call = {Tag, _CallArgs} =
-        case cluster_compat_mode:is_cluster_elixir() of
+        case cluster_compat_mode:is_cluster_trinity() of
             true ->
                 {set_service_manager, Manager};
             false ->
@@ -121,7 +121,7 @@ set_service_manager(Service, Nodes, Manager) ->
 
 unset_service_manager(Service, Nodes, Manager) ->
     Call = {_, _CallArgs, Tag} =
-        case cluster_compat_mode:is_cluster_elixir() of
+        case cluster_compat_mode:is_cluster_trinity() of
             true ->
                 {if_service_manager, Manager, unset_service_manager};
             false ->
@@ -134,7 +134,7 @@ unset_service_manager(Service, Nodes, Manager) ->
 get_node_infos(Service, Nodes, Manager) ->
     Tag = get_node_info,
     Call =
-        case cluster_compat_mode:is_cluster_elixir() of
+        case cluster_compat_mode:is_cluster_trinity() of
             true ->
                 {if_service_manager, Manager, Tag};
             false ->
@@ -148,7 +148,7 @@ prepare_rebalance(Service, Nodes, Manager, RebalanceId, Type, KeepNodes,
                   EjectNodes) ->
     Tag = prepare_rebalance,
     Call =
-        case cluster_compat_mode:is_cluster_elixir() of
+        case cluster_compat_mode:is_cluster_trinity() of
             true ->
                 {if_service_manager, Manager,
                  {Tag, RebalanceId, Type, KeepNodes, EjectNodes}};
@@ -164,7 +164,7 @@ start_rebalance(Service, Node, Manager, RebalanceId, Type, KeepNodes,
                 EjectNodes) ->
     Observer = self(),
     Call =
-        case cluster_compat_mode:is_cluster_elixir() of
+        case cluster_compat_mode:is_cluster_trinity() of
             true ->
                 {if_service_manager, Manager,
                  {start_rebalance, RebalanceId, Type, KeepNodes, EjectNodes,
@@ -236,7 +236,7 @@ handle_call(get_status, _From, #state{service = Service,
 handle_call(get_agent, _From, State) ->
     {reply, {ok, self()}, State};
 
-%% set_rebalancer is called when the cluster_compat_mode is less than elixir.
+%% set_rebalancer is called when the cluster_compat_mode is less than trinity.
 handle_call({set_rebalancer, Pid}, From, State) ->
     handle_call({set_service_manager, Pid}, From, State);
 handle_call({set_service_manager, Pid} = Call, From,
@@ -257,7 +257,7 @@ handle_call({set_service_manager, Pid} = Call, From,
     %% reply only when the revrpc connection is fully established
     run_on_task_runner(From, NewState, fun (_) -> ok end);
 
-%% if_rebalance is called when the cluster_compat_mode is less than elixir.
+%% if_rebalance is called when the cluster_compat_mode is less than trinity.
 handle_call({if_rebalance, Pid, Call}, From, State) ->
     handle_call({if_service_manager, Pid, Call}, From, State);
 handle_call({if_service_manager, Pid, Call} = FullCall, From,
@@ -515,7 +515,7 @@ drop_messages() ->
         0 -> ok
     end.
 
-%% unset_rebalancer is called when the cluster_compat_mode is less than elixir.
+%% unset_rebalancer is called when the cluster_compat_mode is less than trinity.
 do_handle_call(unset_rebalancer, From, State) ->
     do_handle_call(unset_service_manager, From, State);
 do_handle_call(unset_service_manager, _From, State) ->

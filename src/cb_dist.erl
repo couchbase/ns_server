@@ -982,7 +982,7 @@ config_vsn(Cfg) when is_list(Cfg) -> proplists:get_value(config_vsn, Cfg, 1).
 
 %% 6.5-7.0
 upgrade(1, Config) ->
-    %% client cert auth is disabled for clusters that upgrade to Elixir
+    %% client cert auth is disabled for clusters that upgrade to Trinity
     misc:update_proplist(Config, [{config_vsn, 2},
                                   {client_cert_verification, false}]);
 %% pre-6.5

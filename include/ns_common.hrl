@@ -244,14 +244,14 @@
 -define(VERSION_70, [7, 0]).
 -define(VERSION_71, [7, 1]).
 -define(VERSION_72, [7, 2]).
--define(VERSION_ELIXIR, [7, 5]).
+-define(VERSION_TRINITY, [7, 6]).
 
 %% This require coordination with the UI to update the version.
 -define(LATEST_UI_COMPAT_VERSION, ?VERSION_70).
 
 %% Points to latest release
--define(LATEST_VERSION_NUM, ?VERSION_ELIXIR).
--define(MASTER_ADVERTISED_VERSION, [7, 5, 0]).
+-define(LATEST_VERSION_NUM, ?VERSION_TRINITY).
+-define(MASTER_ADVERTISED_VERSION, [7, 6, 0]).
 
 -define(MIN_OF_MAX_MOVES_PER_NODE, 1).
 -define(MAX_OF_MAX_MOVES_PER_NODE, 64).
@@ -303,7 +303,7 @@
 -define(TLS_VERSIONS, #{'tlsv1.3'=> 3, 'tlsv1.2' => 2,
                         'tlsv1.1' => 1, tlsv1 => 0}).
 
-%% Known Elixir profiles
+%% Known Trinity profiles
 -define(SERVERLESS_PROFILE, serverless).
 -define(SERVERLESS_PROFILE_STR, "serverless").
 
@@ -344,7 +344,7 @@
 -define(PBKDF2_ITER_MIN, 1).
 -define(PBKDF2_ITER_MAX, 10_000_000).
 
-%% Pre-elixir keys (do not change these values):
+%% Pre-trinity keys (do not change these values):
 -define(OLD_HASH_KEY,             <<"h">>).
 -define(OLD_SCRAM_SALT_KEY,       <<"s">>).
 -define(OLD_SCRAM_HASH_KEY,       <<"h">>).

@@ -745,7 +745,7 @@ public_definitions() ->
     [{?VERSION_66, fun menelaus_old_roles:roles_pre_66/0},
      {?VERSION_70, fun menelaus_old_roles:roles_pre_70/0},
      {?VERSION_71, fun menelaus_old_roles:roles_pre_71/0},
-     {?VERSION_ELIXIR, fun menelaus_old_roles:roles_pre_elixir/0},
+     {?VERSION_TRINITY, fun menelaus_old_roles:roles_pre_trinity/0},
      {undefined, ?cut(roles() ++ maybe_add_developer_preview_roles()
                       ++ maybe_add_serverless_roles())}].
 
@@ -1336,7 +1336,7 @@ external_auth_polling_interval() ->
 -ifdef(TEST).
 setup_meck() ->
     meck:new(cluster_compat_mode, [passthrough]),
-    meck:expect(cluster_compat_mode, is_cluster_elixir,
+    meck:expect(cluster_compat_mode, is_cluster_trinity,
                 fun () -> true end),
     meck:expect(cluster_compat_mode, is_cluster_72,
         fun () -> true end),

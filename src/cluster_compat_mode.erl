@@ -36,9 +36,9 @@
          is_cluster_72/0,
          is_cluster_72/1,
          is_version_72/1,
-         is_cluster_elixir/0,
-         is_cluster_elixir/1,
-         is_version_elixir/1,
+         is_cluster_trinity/0,
+         is_cluster_trinity/1,
+         is_version_trinity/1,
          is_enterprise/0,
          is_enterprise/1,
          is_saslauthd_enabled/0,
@@ -64,7 +64,7 @@ n1ql_cluster_capabilities(?VERSION_65, false) ->
     [enhancedPreparedStatements];
 n1ql_cluster_capabilities(Version, IsDP) ->
     n1ql_cluster_capabilities(?VERSION_65, IsDP) ++
-        case is_enabled_at(Version, ?VERSION_ELIXIR) of
+        case is_enabled_at(Version, ?VERSION_TRINITY) of
             true ->
                 [readFromReplica];
             false ->
@@ -178,14 +178,14 @@ is_cluster_72() ->
 is_cluster_72(Config) ->
     is_enabled(Config, ?VERSION_72).
 
-is_version_elixir(ClusterVersion) ->
-    is_enabled_at(ClusterVersion, ?VERSION_ELIXIR).
+is_version_trinity(ClusterVersion) ->
+    is_enabled_at(ClusterVersion, ?VERSION_TRINITY).
 
-is_cluster_elixir() ->
-    is_cluster_elixir(ns_config:latest()).
+is_cluster_trinity() ->
+    is_cluster_trinity(ns_config:latest()).
 
-is_cluster_elixir(Config) ->
-    is_enabled(Config, ?VERSION_ELIXIR).
+is_cluster_trinity(Config) ->
+    is_enabled(Config, ?VERSION_TRINITY).
 
 is_index_aware_rebalance_on() ->
     not ns_config:read_key_fast(index_aware_rebalance_disabled, false).
@@ -249,7 +249,7 @@ upgrades() ->
     [{?VERSION_66, rbac, menelaus_users, upgrade},
      {?VERSION_70, rbac, menelaus_users, upgrade},
      {?VERSION_71, rbac, menelaus_users, upgrade},
-     {?VERSION_ELIXIR, rbac, menelaus_users, upgrade}].
+     {?VERSION_TRINITY, rbac, menelaus_users, upgrade}].
 
 do_upgrades(undefined, _, _, _) ->
     %% this happens during the cluster initialization. no upgrade needed

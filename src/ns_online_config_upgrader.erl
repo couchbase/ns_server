@@ -108,10 +108,10 @@ upgrade(?VERSION_71, Config) ->
         menelaus_web_alerts_srv:config_upgrade_to_72(Config)};
 
 upgrade(?VERSION_72, Config) ->
-    {?VERSION_ELIXIR,
-     menelaus_web_auto_failover:config_upgrade_to_elixir(Config) ++
-        menelaus_web_alerts_srv:config_upgrade_to_elixir(Config) ++
-        index_settings_manager:config_upgrade_to_elixir(Config) ++
-        query_settings_manager:config_upgrade_to_elixir(Config) ++
-        analytics_settings_manager:config_upgrade_to_elixir(Config) ++
-        mb_master:config_upgrade_to_elixir(Config)}.
+    {?VERSION_TRINITY,
+     menelaus_web_auto_failover:config_upgrade_to_trinity(Config) ++
+        menelaus_web_alerts_srv:config_upgrade_to_trinity(Config) ++
+        index_settings_manager:config_upgrade_to_trinity(Config) ++
+        query_settings_manager:config_upgrade_to_trinity(Config) ++
+        analytics_settings_manager:config_upgrade_to_trinity(Config) ++
+        mb_master:config_upgrade_to_trinity(Config)}.

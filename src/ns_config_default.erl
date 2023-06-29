@@ -32,7 +32,7 @@ get_current_version() ->
     %% changed in 6.0.4 after 6.5.0 had shipped.  As 6.5.0 had no knowledge
     %% of the 6.0.4 version (as it didn't exist when 6.5.0 shipped) it
     %% was unable to perform an upgrade.
-    list_to_tuple(?VERSION_ELIXIR).
+    list_to_tuple(?VERSION_TRINITY).
 
 get_data_dir() ->
     RawDir = path_config:component_path(data),
@@ -391,7 +391,7 @@ upgrade_config(Config) ->
             %% service_ports.
             service_ports:offline_upgrade(Config) ++
                 [{set, {node, node(), config_version}, CurrentVersion} |
-                 upgrade_config_from_7_2_to_elixir(Config)];
+                 upgrade_config_from_7_2_to_trinity(Config)];
         OldVersion ->
             ?log_error("Detected an attempt to offline upgrade from "
                        "unsupported version ~p. Terminating.", [OldVersion]),
@@ -469,11 +469,11 @@ do_upgrade_config_from_7_1_to_7_2(_Config, DefaultConfig) ->
      upgrade_key(database_dir, DefaultConfig),
      upgrade_key(index_dir, DefaultConfig)].
 
-upgrade_config_from_7_2_to_elixir(Config) ->
+upgrade_config_from_7_2_to_trinity(Config) ->
     DefaultConfig = default(),
-    do_upgrade_config_from_7_2_to_elixir(Config, DefaultConfig).
+    do_upgrade_config_from_7_2_to_trinity(Config, DefaultConfig).
 
-do_upgrade_config_from_7_2_to_elixir(Config, DefaultConfig) ->
+do_upgrade_config_from_7_2_to_trinity(Config, DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig),
      upgrade_key(memcached_defaults, DefaultConfig),
      upgrade_sub_keys(memcached_config,

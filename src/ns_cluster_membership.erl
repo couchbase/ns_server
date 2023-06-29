@@ -476,7 +476,7 @@ prepare_to_join(RemoteNode, Cookie) ->
               %% the cluster we are joining. We create a fresh vector clock as
               %% opposed to incrementing the existing one, so we don't carry
               %% redundant history.
-              NewValue = pre_elixir_node_key_clean_up(Key, Value),
+              NewValue = pre_trinity_node_key_clean_up(Key, Value),
               {set_fresh, {{node, Node, Key}, NewValue}};
           %% We are getting rid of cert_and_pkey but we need it here to
           %% correcly upgrade from pre-7.1:
@@ -501,8 +501,8 @@ prepare_to_join(RemoteNode, Cookie) ->
               ns_config:set_initial(Key, Value)
       end, InitialKVs).
 
-%% This is needed for the case when elixir node is added to pre-elixir cluster
-pre_elixir_node_key_clean_up(memcached, List) ->
+%% This is needed for the case when trinity node is added to pre-trinity cluster
+pre_trinity_node_key_clean_up(memcached, List) ->
     Res = misc:key_update(
             admin_pass,
             List,
@@ -513,7 +513,7 @@ pre_elixir_node_key_clean_up(memcached, List) ->
         false -> List;
         NewList when is_list(NewList) -> NewList
     end;
-pre_elixir_node_key_clean_up(_Key, Value) ->
+pre_trinity_node_key_clean_up(_Key, Value) ->
     Value.
 
 supported_services() ->

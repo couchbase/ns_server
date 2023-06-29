@@ -31,7 +31,7 @@
          on_update/2,
          config_upgrade_to_70/1,
          config_upgrade_to_71/1,
-         config_upgrade_to_elixir/1]).
+         config_upgrade_to_trinity/1]).
 
 -import(json_settings_manager,
         [id_lens/1]).
@@ -143,7 +143,7 @@ general_settings_lens_props(ClusterVersion) ->
         false ->
             []
     end ++
-    case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_ELIXIR) of
+    case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_TRINITY) of
         true ->
             [{memHighThreshold,
               id_lens(<<"indexer.settings.thresholds.mem_high">>)},
@@ -198,7 +198,7 @@ general_settings_defaults(ClusterVersion) ->
         false ->
             []
     end ++
-    case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_ELIXIR) of
+    case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_TRINITY) of
         true ->
             [{memHighThreshold,
               config_profile:get_value({indexer, mem_high_threshold}, 70)},
@@ -292,8 +292,8 @@ config_upgrade_to_70(Config) ->
 config_upgrade_to_71(Config) ->
     config_upgrade_settings(Config, ?VERSION_70, ?VERSION_71).
 
-config_upgrade_to_elixir(Config) ->
-    config_upgrade_settings(Config, ?VERSION_71, ?VERSION_ELIXIR).
+config_upgrade_to_trinity(Config) ->
+    config_upgrade_settings(Config, ?VERSION_71, ?VERSION_TRINITY).
 
 config_upgrade_settings(Config, OldVersion, NewVersion) ->
     NewSettings = general_settings_defaults(NewVersion) --
@@ -324,7 +324,7 @@ config_upgrade_test() ->
     ?assertEqual(<<"{\"indexer.settings.enable_page_bloom_filter\":false}">>,
                  Data2),
 
-    CmdList3 = config_upgrade_to_elixir([]),
+    CmdList3 = config_upgrade_to_trinity([]),
     [{set, {metakv, Meta3}, Data3}] = CmdList3,
     ?assertEqual(<<"/indexing/settings/config">>, Meta3),
     ?assertEqual(<<"{\"indexer.settings.rebalance.blob_storage_region\":\"\","

@@ -351,7 +351,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
         self.memsize = cluster.memsize
         self.is_enterprise = cluster.is_enterprise
         self.is_71 = cluster.is_71
-        self.is_elixir = cluster.is_elixir
+        self.is_trinity = cluster.is_trinity
         self.is_serverless = cluster.is_serverless
         self.is_dev_preview = cluster.is_dev_preview
         self.good_symbols = string.ascii_letters + string.digits + "._-%"
@@ -465,7 +465,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
         # ----------------------------------------------------------------------
         if bucket_type == "ephemeral":
             self.limits['purgeInterval']['min'] = 0.0007
-        elif self.is_elixir:
+        elif self.is_trinity:
             self.limits['purgeInterval']['min'] = 0.01
         else:
             self.limits['purgeInterval']['min'] = 0.04
@@ -655,7 +655,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
             # ------------------------------------------------------------------
 
             self.test_params['magmaMaxShards'] = [None]
-            if self.is_serverless and is_creation and self.is_elixir \
+            if self.is_serverless and is_creation and self.is_trinity \
                     and storage_backend == "magma":
                 self.add_limits('magmaMaxShards')
 
@@ -663,11 +663,11 @@ class BucketTestSetBase(testlib.BaseTestSet):
             # ------------------------------------------------------------------
 
             self.test_params['pitrEnabled'] = [None]
-            if self.is_enterprise and self.is_elixir \
+            if self.is_enterprise and self.is_trinity \
                     and bucket_type != "memcached":
                 self.test_params['pitrEnabled'] += ["true", "false"]
 
-            if self.is_elixir and self.is_enterprise:
+            if self.is_trinity and self.is_enterprise:
                 # Pitr Granularity and Pitr Max History Age
                 # --------------------------------------------------------------
 
@@ -934,7 +934,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
         # Magma Max Shards
         # ----------------------------------------------------------------------
         self.add_limits_bad('magmaMaxShards')
-        if not (self.is_enterprise and self.is_elixir and
+        if not (self.is_enterprise and self.is_trinity and
                 storage_backend == 'magma'):
             self.bad_params['magmaMaxShards'] = [1]
         else:
@@ -1142,7 +1142,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
                                 "provisioned into this cluster."}
         elif storage_backend == "magma" and quota < 1024:
             return {field1: "Ram quota for magma must be at least 1024 MiB"}
-        elif not self.is_elixir and original_data is not None \
+        elif not self.is_trinity and original_data is not None \
                 and original_data['ramQuota'] > quota:
             return {field1: "RAM quota cannot be set below current usage."}
         else:
@@ -1319,9 +1319,9 @@ class BucketTestSetBase(testlib.BaseTestSet):
             elif test_data.get('storageBackend') != "magma":
                 return {field: "Cannot set maximum magma shards on non-magma "
                                "storage backend"}
-            elif not self.is_elixir:
+            elif not self.is_trinity:
                 return {field: "Not allowed until entire cluster is upgraded "
-                               "to elixir"}
+                               "to trinity"}
             value = test_data[field]
             if self.outside_limits(field, value):
                 return {field: "Must be an integer between 1 and 128"}
@@ -1337,7 +1337,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
         mha_default = 86400
 
         if field_enabled in test_data:
-            if not self.is_elixir:
+            if not self.is_trinity:
                 return {field_enabled:
                             "Point in time recovery is not supported until "
                             "cluster is fully Elixir"}
@@ -1350,7 +1350,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
                     {field_enabled: "pitrEnabled must be true or false"})
 
         if field_granu in test_data:
-            if not self.is_elixir:
+            if not self.is_trinity:
                 return {field_granu:
                             "Point in time recovery is not supported until "
                             "cluster is fully Elixir"}
@@ -1382,7 +1382,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
             granu = granu_default
 
         if field_max_history_age in test_data:
-            if not self.is_elixir:
+            if not self.is_trinity:
                 return {field_max_history_age:
                             "Point in time recovery is not supported until "
                             "cluster is fully Elixir"}
@@ -1889,7 +1889,7 @@ class BucketTestSetBase(testlib.BaseTestSet):
                     # If we are testing bucket creation then we will not reuse
                     # this bucket, so we must delete it to make space
                     self.test_delete(f"{endpoint}/{test_data['name']}")
-                elif self.is_enterprise and self.is_elixir \
+                elif self.is_enterprise and self.is_trinity \
                         and test_data['bucketType'] != "memcached":
                     pitr_reset = {'pitrGranularity': 600,
                                   'pitrMaxHistoryAge': 86400}

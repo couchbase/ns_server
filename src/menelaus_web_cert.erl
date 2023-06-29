@@ -47,7 +47,7 @@ handle_get_trustedCAs(Req) ->
                  CAId = proplists:get_value(id, Props),
                  Pem = proplists:get_value(pem, Props, <<>>),
                  Is71 = cluster_compat_mode:is_cluster_71(),
-                 IsElixir = cluster_compat_mode:is_cluster_elixir(),
+                 IsTrinity = cluster_compat_mode:is_cluster_trinity(),
                  CANodes =
                      case Extended of
                          true -> ns_server_cert:filter_nodes_by_ca(node_cert,
@@ -66,7 +66,7 @@ handle_get_trustedCAs(Req) ->
                      Props ++
                      [{warnings, CAWarnings}] ++
                      [{nodes, CANodes} || Is71] ++
-                     [{client_cert_nodes, ClientCertCANodes} || IsElixir],
+                     [{client_cert_nodes, ClientCertCANodes} || IsTrinity],
                      not Extended))
              end, ns_server_cert:trusted_CAs(props)),
     menelaus_util:reply_json(Req, Json).
@@ -659,7 +659,7 @@ validate_client_cert_auth_state(StateVal, Prefixes, Cfg, Errors) ->
                 false ->
                     case StateVal =:= "mandatory" andalso
                         misc:should_cluster_data_be_encrypted() andalso
-                        not cluster_compat_mode:is_cluster_elixir() of
+                        not cluster_compat_mode:is_cluster_trinity() of
                         false -> {[CfgPair | Cfg], Errors};
                         true ->
                             M = "Cannot set 'state' to 'mandatory' when "

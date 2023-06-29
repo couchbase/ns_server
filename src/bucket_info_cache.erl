@@ -201,9 +201,9 @@ build_short_bucket_info(Id, BucketConfig, Snapshot) ->
      build_collections_manifest_id(Id, Snapshot)].
 
 build_storage_backend(BucketConfig) ->
-    IsElixir = cluster_compat_mode:is_cluster_elixir(),
+    IsTrinity = cluster_compat_mode:is_cluster_trinity(),
     case ns_bucket:storage_backend(BucketConfig) of
-        undefined when IsElixir -> [];
+        undefined when IsTrinity -> [];
         SB -> {storageBackend, SB}
     end.
 
@@ -294,7 +294,7 @@ build_pools_uri(Tail, UUID) ->
 maybe_range_scan_capability(BucketConfig) ->
     case ns_bucket:is_persistent(BucketConfig) of
         true ->
-            [{rangeScan, cluster_compat_mode:is_cluster_elixir()}];
+            [{rangeScan, cluster_compat_mode:is_cluster_trinity()}];
         false ->
             []
     end.
@@ -322,9 +322,9 @@ build_bucket_capabilities(BucketConfig) ->
                      {'dcp.IgnorePurgedTombstones',
                       cluster_compat_mode:is_cluster_72()},
                      {preserveExpiry,
-                      cluster_compat_mode:is_cluster_elixir()},
+                      cluster_compat_mode:is_cluster_trinity()},
                      {'subdoc.ReplicaRead',
-                      cluster_compat_mode:is_cluster_elixir()}] ++
+                      cluster_compat_mode:is_cluster_trinity()}] ++
                      maybe_range_scan_capability(BucketConfig),
 
                 [C || {C, true} <- Conditional] ++

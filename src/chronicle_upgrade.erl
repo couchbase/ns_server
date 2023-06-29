@@ -97,7 +97,7 @@ upgrade_to(?VERSION_71, UpgradeTxn, _Config) ->
     {?VERSION_72, ns_bucket:chronicle_upgrade_to_72(UpgradeTxn)};
 
 upgrade_to(?VERSION_72, UpgradeTxn, _Config) ->
-    {?VERSION_ELIXIR,
+    {?VERSION_TRINITY,
      functools:chain(
        UpgradeTxn,
-       [ns_bucket:chronicle_upgrade_to_elixir(_)])}.
+       [ns_bucket:chronicle_upgrade_to_trinity(_)])}.

@@ -68,7 +68,7 @@ check(Token) ->
         false -> false;
         {ok, #uisession{authn_res = #authn_res{} = AuthnRes}} ->
             {ok, AuthnRes};
-        {ok, Id} -> %% Pre-elixir nodes will return Id
+        {ok, Id} -> %% Pre-trinity nodes will return Id
             {ok, #authn_res{identity = Id}}
     end.
 

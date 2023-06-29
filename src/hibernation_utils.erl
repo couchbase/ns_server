@@ -147,7 +147,7 @@ check_allow_pause_op(Bucket) ->
     end.
 
 get_new_bucket_config(Bucket, PausedBucketCfg,
-                      BucketVersion) when BucketVersion =:= ?VERSION_ELIXIR ->
+                      BucketVersion) when BucketVersion =:= ?VERSION_TRINITY ->
     Filter = [servers, desired_servers, map],
     NewConfig = lists:filter(fun ({K, _V}) ->
                                      not lists:member(K, Filter)

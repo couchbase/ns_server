@@ -495,7 +495,7 @@ init([]) ->
 
     {ok, idle, #idle_state{}, {{timeout, janitor}, 0, run_janitor}}.
 
-%% called remotely from pre-Elixir nodes
+%% called remotely from pre-Trinity nodes
 handle_event({call, From},
              {maybe_start_rebalance, KnownNodes, EjectedNodes,
               DeltaRecoveryBuckets}, _StateName, _State) ->
@@ -882,7 +882,7 @@ idle({start_rebalance, Params = #{keep_nodes := KeepNodes,
             ns_cluster:counter_inc(Type, start),
             set_rebalance_status(Type, running, Pid),
             ReturnValue =
-                case cluster_compat_mode:is_cluster_elixir() of
+                case cluster_compat_mode:is_cluster_trinity() of
                     true ->
                         {ok, RebalanceId};
                     false ->
@@ -1986,7 +1986,7 @@ validate_create_bucket(BucketName, BucketConfig) ->
             throw({already_exists, BucketName}),
 
         ShutdownBuckets =
-            case cluster_compat_mode:is_cluster_elixir() of
+            case cluster_compat_mode:is_cluster_trinity() of
                 true ->
                     ns_bucket:get_bucket_names_marked_for_shutdown();
                 false ->
@@ -2048,7 +2048,7 @@ handle_delete_bucket(BucketName, From, CurrentState, StateData) ->
             Servers = ns_bucket:get_servers(BucketConfig),
             Timeout = ns_bucket:get_shutdown_timeout(BucketConfig),
 
-            case cluster_compat_mode:is_cluster_elixir() of
+            case cluster_compat_mode:is_cluster_trinity() of
                 true ->
                     Pid = erlang:spawn_link(
                             fun () ->

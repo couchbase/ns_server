@@ -1333,7 +1333,7 @@ get_warnings() ->
     Nodes = ns_node_disco:nodes_wanted(Config),
     TrustedCAs = trusted_CAs(pem),
     Is71 = cluster_compat_mode:is_cluster_71(),
-    IsElixir = cluster_compat_mode:is_cluster_elixir(),
+    IsTrinity = cluster_compat_mode:is_cluster_trinity(),
     ClientWarnings =
         lists:flatmap(
             fun (Node) ->
@@ -1392,7 +1392,7 @@ get_warnings() ->
                                       _ -> false
                                   end,
                               UnusedClient =
-                                  case ClusterUsesClientCert and IsElixir of
+                                  case ClusterUsesClientCert and IsTrinity of
                                       true ->
                                           case filter_nodes_by_ca(
                                                  client_cert, Nodes, CAPem) of

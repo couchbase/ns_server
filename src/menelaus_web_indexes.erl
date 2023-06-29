@@ -105,7 +105,7 @@ settings_post_validators() ->
             false ->
                 []
         end ++
-        case cluster_compat_mode:is_cluster_elixir() andalso
+        case cluster_compat_mode:is_cluster_trinity() andalso
              config_profile:is_serverless() of
             true ->
                 [validator:integer(memHighThreshold, 0, 100, _),

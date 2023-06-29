@@ -19,7 +19,7 @@
          config_check_can_abort_rebalance/0,
          default_config/1,
          config_upgrade_to_72/1,
-         config_upgrade_to_elixir/1]).
+         config_upgrade_to_trinity/1]).
 
 -import(menelaus_util,
         [reply/2,
@@ -70,7 +70,7 @@ max_events_allowed() ->
             3
     end.
 
-config_upgrade_to_elixir(Config) ->
+config_upgrade_to_trinity(Config) ->
     [{set, auto_failover_cfg,
       misc:update_proplist(auto_failover:get_cfg(Config),
                            [{disable_max_count,
@@ -201,7 +201,7 @@ settings_extras_validators() ->
 maxcount_validators() ->
     [validator:integer(maxCount, ?MIN_EVENTS_ALLOWED,
         max_events_allowed(), _)] ++
-    case cluster_compat_mode:is_cluster_elixir() of
+    case cluster_compat_mode:is_cluster_trinity() of
         true ->
             [validator:boolean(disableMaxCount, _),
              validate_maxcount_param(_)];
@@ -298,7 +298,7 @@ get_extra_settings(Config) ->
               [{failoverOnDataDiskIssues,
                 {[{enabled, Enabled}, {timePeriod, TimePeriod}]}},
                [{disableMaxCount, DisableMaxCount} ||
-                   cluster_compat_mode:is_cluster_elixir()],
+                   cluster_compat_mode:is_cluster_trinity()],
                [{maxCount, proplists:get_value(?MAX_EVENTS_CONFIG_KEY,
                                                Config)} ||
                    not DisableMaxCount],

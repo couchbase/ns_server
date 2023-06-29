@@ -420,7 +420,7 @@ build_pitr_dynamic_bucket_info(BucketConfig) ->
             %% memcached buckets don't support pitr.
             [];
         _ ->
-            case cluster_compat_mode:is_cluster_elixir() of
+            case cluster_compat_mode:is_cluster_trinity() of
                 true ->
                     [{pitrEnabled,
                       ns_bucket:pitr_enabled(BucketConfig)},
@@ -1096,13 +1096,13 @@ validate_ram(#ram_summary{free = Free}) when Free < 0 ->
     [{ramQuota, <<"RAM quota specified is too large to be provisioned into "
                   "this cluster.">>}];
 validate_ram(#ram_summary{this_alloc = Alloc, this_used = Used}) ->
-    %% All buckets should have the same quota, but only since Elixir has
+    %% All buckets should have the same quota, but only since Trinity has
     %% memcached supported a graceful quota reduction to values below the
     %% current RAM usage. As such, we should keep the existing check against
     %% RAM usage for mixed mode clusters as setting a quota below RAM usage
-    %% on any pre-Elixir memcached will result in a period of temporary
+    %% on any pre-Trinity memcached will result in a period of temporary
     %% failures while memory is reduced.
-    case cluster_compat_mode:is_cluster_elixir() of
+    case cluster_compat_mode:is_cluster_trinity() of
         false when Alloc < Used ->
             [{ramQuota, <<"RAM quota cannot be set below current usage.">>}];
         _ ->
@@ -1253,7 +1253,7 @@ validate_memcached_bucket_params(CommonParams, Params, IsNew, BucketConfig) ->
 
 validate_membase_bucket_params(CommonParams, Params,
                                IsNew, BucketConfig, Version, IsEnterprise) ->
-    AllowPitr = cluster_compat_mode:is_version_elixir(Version),
+    AllowPitr = cluster_compat_mode:is_version_trinity(Version),
     AllowStorageLimit = config_profile:get_bool(enable_storage_limits),
     AllowThrottleLimit = config_profile:get_bool(enable_throttle_limits),
     ReplicasNumResult = validate_replicas_number(Params, IsNew),
@@ -1434,10 +1434,10 @@ parse_validate_max_magma_shards(Params, _BucketConfig, Version, true) ->
                             {error, magmaMaxShards,
                              <<"Cannot set maximum magma shards on non-magma storage backend">>};
                         true ->
-                            case cluster_compat_mode:is_version_elixir(Version) of
+                            case cluster_compat_mode:is_version_trinity(Version) of
                                 false ->
                                     {error, magmaMaxShards,
-                                     <<"Not allowed until entire cluster is upgraded to elixir">>};
+                                     <<"Not allowed until entire cluster is upgraded to trinity">>};
                                 true ->
                                     parse_validate_max_magma_shards_inner(Params)
                             end
@@ -1646,7 +1646,7 @@ param_not_supported_in_ce_error(Param) ->
 pitr_not_supported_error(Param) ->
     {error, Param,
      <<"Point in time recovery is not supported until cluster is fully "
-        "Elixir">>}.
+        "Trinity">>}.
 
 parse_validate_pitr_param_not_supported(Key, Params) ->
     case proplists:is_defined(Key, Params) of
@@ -2879,7 +2879,7 @@ basic_bucket_params_screening_test() ->
     meck:expect(ns_config, search_node_with_default,
                 fun (_, Default) -> Default end),
     meck:new(cluster_compat_mode, [passthrough]),
-    meck:expect(cluster_compat_mode, is_cluster_elixir,
+    meck:expect(cluster_compat_mode, is_cluster_trinity,
                 fun () -> true end),
     meck:expect(ns_config, search_node_with_default,
                 fun (_, Default) ->
@@ -3223,10 +3223,10 @@ basic_bucket_params_screening_test() ->
                      "fully running 7.2">>}],
                  E22),
 
-    %% put back the compat_mode to elixir
+    %% put back the compat_mode to trinity
     meck:expect(cluster_compat_mode, supported_compat_version,
                 fun() ->
-                        ?VERSION_ELIXIR
+                        ?VERSION_TRINITY
                 end),
 
     {_OK23, E23} = basic_bucket_params_screening(
@@ -3389,7 +3389,7 @@ basic_parse_validate_bucket_auto_compaction_settings_test() ->
     meck:new(cluster_compat_mode, [passthrough]),
     meck:expect(cluster_compat_mode, is_cluster_71,
                 fun () -> true end),
-    meck:expect(cluster_compat_mode, is_cluster_elixir,
+    meck:expect(cluster_compat_mode, is_cluster_trinity,
                 fun () -> true end),
     meck:new(ns_config, [passthrough]),
     meck:expect(ns_config, get,
@@ -3591,7 +3591,7 @@ parse_validate_max_magma_shards_test() ->
               {"durabilityMinLevel", "majority"},
               {"magmaMaxShards", "101"}],
     BucketConfig = [],
-    Version = ?VERSION_ELIXIR,
+    Version = ?VERSION_TRINITY,
 
     Resp = parse_validate_max_magma_shards(Params, BucketConfig, Version, true),
     ?assertEqual(Resp,
@@ -3641,9 +3641,9 @@ parse_validate_max_magma_shards_test() ->
     meck:unload(config_profile),
     ok.
 
-validate_ram_used_elixir_test() ->
+validate_ram_used_trinity_test() ->
     meck:new(cluster_compat_mode),
-    meck:expect(cluster_compat_mode, is_cluster_elixir, fun () -> true end),
+    meck:expect(cluster_compat_mode, is_cluster_trinity, fun () -> true end),
 
     ?assertEqual([],
         validate_ram(#ram_summary{this_alloc = 1, this_used = 2})),
@@ -3656,9 +3656,9 @@ validate_ram_used_elixir_test() ->
 
     meck:unload(cluster_compat_mode).
 
-validate_ram_used_pre_elixir_test() ->
+validate_ram_used_pre_trinity_test() ->
     meck:new(cluster_compat_mode),
-    meck:expect(cluster_compat_mode, is_cluster_elixir, fun () -> false end),
+    meck:expect(cluster_compat_mode, is_cluster_trinity, fun () -> false end),
 
     ?assertEqual(
         [{ramQuota, <<"RAM quota cannot be set below current usage.">>}],

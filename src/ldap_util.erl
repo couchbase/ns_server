@@ -284,7 +284,7 @@ default_settings() ->
      {server_cert_validation, true},
      {bind_method, undefined},
      {extra_tls_opts, undefined}] ++
-        case cluster_compat_mode:is_cluster_elixir() of
+        case cluster_compat_mode:is_cluster_trinity() of
             true ->
                 [{max_group_cache_size, ?LDAP_GROUPS_CACHE_SIZE}];
             false ->

@@ -154,7 +154,7 @@ params() ->
      {"clientTLSKey", #{cfg_key => client_tls_key, type => pkey}},
      {"extraTLSOpts", #{cfg_key => extra_tls_opts, type => tls_opts}},
      {"maxTLSVersion", #{cfg_key => max_tls_version, type => max_tls_version}}]
-        ++ case cluster_compat_mode:is_cluster_elixir() of
+        ++ case cluster_compat_mode:is_cluster_trinity() of
                true ->
                    [{"maxGroupCacheSize",
                      #{cfg_key => max_group_cache_size, type =>

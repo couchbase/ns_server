@@ -203,7 +203,7 @@ process_post(Req, Samples) ->
 -spec get_response_json([binary()] | [{[{atom(), binary()}]}], integer()) ->
           {[{tasks, [{atom(), binary()}]}] | [{errors, [binary()]}]} | [binary()].
 get_response_json(ResponseBody, StatusCode) ->
-    case {cluster_compat_mode:is_cluster_elixir(), StatusCode} of
+    case {cluster_compat_mode:is_cluster_trinity(), StatusCode} of
         {true, 202} ->
             {[{tasks, ResponseBody}]};
         {true, 400} ->
@@ -476,7 +476,7 @@ assert_response_json(Code, ResponseBody, ExpectedJSON) ->
 
 get_response_json_test__() ->
     %% Mixed cluster status 202
-    meck:expect(cluster_compat_mode, is_cluster_elixir,
+    meck:expect(cluster_compat_mode, is_cluster_trinity,
                 fun () -> false end),
     assert_response_json(202,
                          {[{taskId, <<"test">>},
@@ -487,8 +487,8 @@ get_response_json_test__() ->
     %% Mixed cluster status 400
     assert_response_json(400, [<<"error">>], [<<"error">>]),
 
-    %% Elixir cluster status 202
-    meck:expect(cluster_compat_mode, is_cluster_elixir,
+    %% Trinity cluster status 202
+    meck:expect(cluster_compat_mode, is_cluster_trinity,
                 fun () -> true end),
     assert_response_json(202,
                          {[{taskId, <<"test">>},
@@ -498,6 +498,6 @@ get_response_json_test__() ->
                                      {sample, <<"travel-sample">>},
                                      {bucket, <<"bucket">>}]}}]}),
 
-    %% Elixir cluster status 400
+    %% Trinity cluster status 400
     assert_response_json(400, [<<"error">>], {[{errors, [<<"error">>]}]}).
 -endif.

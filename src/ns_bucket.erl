@@ -144,7 +144,7 @@
          upgrade_to_chronicle/2,
          chronicle_upgrade_to_71/1,
          chronicle_upgrade_to_72/1,
-         chronicle_upgrade_to_elixir/1,
+         chronicle_upgrade_to_trinity/1,
          extract_bucket_props/1,
          build_bucket_props_json/1,
          build_compaction_settings_json/1,
@@ -1098,7 +1098,7 @@ do_delete_bucket(ns_config, BucketName) ->
 do_delete_bucket(chronicle, BucketName) ->
     RootKey = root(),
     PropsKey = sub_key(BucketName, props),
-    IsClusterElixir = cluster_compat_mode:is_cluster_elixir(),
+    IsClusterTrinity = cluster_compat_mode:is_cluster_trinity(),
 
     RV = chronicle_kv:transaction(
            kv, [RootKey, PropsKey, nodes_wanted, uuid_key(BucketName),
@@ -1122,7 +1122,7 @@ do_delete_bucket(chronicle, BucketName) ->
                                     N <- NodesWanted]],
                            {commit,
                             [{set, RootKey, BucketNames -- [BucketName]}] ++
-                            %% We need to ensure the cluster is elixir to avoid
+                            %% We need to ensure the cluster is trinity to avoid
                             %% running into issues similar to the one described
                             %% here:
                             %%
@@ -1130,7 +1130,7 @@ do_delete_bucket(chronicle, BucketName) ->
                             %% 188906/comments/209b4dbb_78588f3e
                             [add_marked_for_shutdown(
                                Snapshot, {BucketName, BucketConfig}) ||
-                             IsClusterElixir] ++
+                             IsClusterTrinity] ++
                             [{delete, K} || K <- KeysToDelete],
                             [{uuid, UUID}] ++ BucketConfig}
                    end
@@ -1675,7 +1675,7 @@ last_balanced_vbmap_key(BucketName) ->
     sub_key(BucketName, last_balanced_vbmap).
 
 store_last_balanced_vbmap(BucketName, Map, Options) ->
-    case cluster_compat_mode:is_cluster_elixir() of
+    case cluster_compat_mode:is_cluster_trinity() of
         true ->
             {ok, _} =
                 chronicle_kv:set(
@@ -1688,7 +1688,7 @@ past_vbucket_maps(BucketName) ->
     past_vbucket_maps(BucketName, ns_config:latest()).
 
 past_vbucket_maps(BucketName, Config) ->
-    case cluster_compat_mode:is_cluster_elixir() of
+    case cluster_compat_mode:is_cluster_trinity() of
         true ->
             case chronicle_kv:get(kv, last_balanced_vbmap_key(BucketName)) of
                 {error, not_found} ->
@@ -1884,7 +1884,7 @@ chronicle_upgrade_to_71(ChronicleTxn) ->
     chronicle_upgrade_bucket(chronicle_upgrade_bucket_to_71(_, _),
                              BucketNames, ChronicleTxn).
 
-chronicle_upgrade_bucket_to_elixir(BucketName, ChronicleTxn) ->
+chronicle_upgrade_bucket_to_trinity(BucketName, ChronicleTxn) ->
     PropsKey = sub_key(BucketName, props),
     AddProps = [{pitr_enabled, false},
                 {pitr_granularity, attribute_default(pitr_granularity)},
@@ -1895,9 +1895,9 @@ chronicle_upgrade_bucket_to_elixir(BucketName, ChronicleTxn) ->
                                            BucketConfig),
     chronicle_upgrade:set_key(PropsKey, NewBucketConfig, ChronicleTxn).
 
-chronicle_upgrade_to_elixir(ChronicleTxn) ->
+chronicle_upgrade_to_trinity(ChronicleTxn) ->
     {ok, BucketNames} = chronicle_upgrade:get_key(root(), ChronicleTxn),
-    chronicle_upgrade_bucket(chronicle_upgrade_bucket_to_elixir(_, _),
+    chronicle_upgrade_bucket(chronicle_upgrade_bucket_to_trinity(_, _),
                              BucketNames, ChronicleTxn).
 
 upgrade_bucket_config_to_72(Bucket, ChronicleTxn) ->

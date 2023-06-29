@@ -56,7 +56,7 @@ settings_post_validators_70() ->
              validator:time_duration(queryCleanupWindow, _),
              validator:convert(queryCleanupWindow, fun list_to_binary/1, _),
              validator:integer(queryNumAtrs, _)] ++
-                case cluster_compat_mode:is_cluster_elixir() of
+                case cluster_compat_mode:is_cluster_trinity() of
                     true ->
                         [validator:integer(queryNodeQuota, _),
                          validator:range(queryNodeQuota, 0, infinity, _),

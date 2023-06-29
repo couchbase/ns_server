@@ -396,7 +396,7 @@ get_cluster_encryption(Level) ->
     ValidLevel = lists:member(Level, SupportedLevels),
     IsMandatory = (ns_ssl_services_setup:client_cert_auth_state() =:=
                        "mandatory"),
-    IsElixir = cluster_compat_mode:is_cluster_elixir(),
+    IsTrinity = cluster_compat_mode:is_cluster_trinity(),
     IsStrictPossibleCompat = cluster_compat_mode:is_cluster_70(),
     IsStrictPossibleUnencDist = misc:cluster_has_external_unencrpted_dist(),
     if
@@ -409,7 +409,7 @@ get_cluster_encryption(Level) ->
                               [SupportedLevels]),
             {error, lists:flatten(M)};
         IsMandatory andalso (Level =:= "all" orelse Level =:= "strict") andalso
-        not IsElixir ->
+        not IsTrinity ->
             M = "Can't set cluster encryption level to '" ++ Level ++
                 "' when client certificate authentication state is set "
                 "to 'mandatory'.",
@@ -447,19 +447,19 @@ is_allowed_on_cluster([event_logs_limit]) ->
 is_allowed_on_cluster([magma_min_memory_quota]) ->
     cluster_compat_mode:is_cluster_71();
 is_allowed_on_cluster([password_hash_alg]) ->
-    cluster_compat_mode:is_cluster_elixir();
+    cluster_compat_mode:is_cluster_trinity();
 is_allowed_on_cluster([scram_sha1_enabled]) ->
-    cluster_compat_mode:is_cluster_elixir();
+    cluster_compat_mode:is_cluster_trinity();
 is_allowed_on_cluster([scram_sha256_enabled]) ->
-    cluster_compat_mode:is_cluster_elixir();
+    cluster_compat_mode:is_cluster_trinity();
 is_allowed_on_cluster([scram_sha512_enabled]) ->
-    cluster_compat_mode:is_cluster_elixir();
+    cluster_compat_mode:is_cluster_trinity();
 is_allowed_on_cluster([argon2id_time]) ->
-    cluster_compat_mode:is_cluster_elixir();
+    cluster_compat_mode:is_cluster_trinity();
 is_allowed_on_cluster([argon2id_mem]) ->
-    cluster_compat_mode:is_cluster_elixir();
+    cluster_compat_mode:is_cluster_trinity();
 is_allowed_on_cluster([pbkdf2_sha512_iterations]) ->
-    cluster_compat_mode:is_cluster_elixir();
+    cluster_compat_mode:is_cluster_trinity();
 is_allowed_on_cluster([{serverless, bucket_weight_limit}]) ->
     bucket_placer:is_enabled();
 is_allowed_on_cluster([{serverless, tenant_limit}]) ->
@@ -1306,7 +1306,7 @@ handle_settings_data_service(Req) ->
                200).
 
 handle_settings_data_service_post(Req) ->
-    menelaus_util:assert_is_elixir(),  % XXX: MB-57410 change to trinity
+    menelaus_util:assert_is_trinity(),
     validator:handle(
       fun (Values) ->
               Num = proplists:get_value(minReplicasCount, Values),

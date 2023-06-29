@@ -39,7 +39,7 @@
 %% API
 -export([start_link/0,
          master_node/0,
-         config_upgrade_to_elixir/1]).
+         config_upgrade_to_trinity/1]).
 
 
 %% gen_statem callbacks
@@ -736,7 +736,7 @@ refresh_high_priority_nodes(#state{higher_priority_nodes = Nodes,
           end, Nodes),
     State#state{higher_priority_nodes = NewNodes}.
 
-config_upgrade_to_elixir(_Config) ->
+config_upgrade_to_trinity(_Config) ->
     [{delete, mb33750_workaround_enabled}].
 
 update_service_weights(State) ->
@@ -749,7 +749,7 @@ get_service_weights() ->
 -ifdef(TEST).
 -define(TEST_NO_SERVICES, []).
 
-%% Test for the pre-7.5.0 priority algorithm.
+%% Test for the pre-7.6.0 priority algorithm.
 %% Note, the priority algorithm does not have a cluster compat mode check as
 %% it is designed to be backwards compatible.
 higher_priority_node_t() ->
@@ -811,7 +811,7 @@ higher_priority_node_t() ->
                                              ?TEST_NO_SERVICES},
                                             ?DEFAULT_SERVICE_WEIGHTS)).
 
-%% Test for the post-7.5.0 priority algorithm.
+%% Test for the post-7.6.0 priority algorithm.
 %% Note, the priority algorithm does not have a cluster compat mode check as
 %% it is designed to be backwards compatible.
 higher_priority_services_t() ->
@@ -819,14 +819,14 @@ higher_priority_services_t() ->
     %% is the same, we will just test the new part (services) and the edge
     %% cases.
     Version72 = misc:parse_version("7.2.0"),
-    Version75 = misc:parse_version("7.5.0"),
+    Version76 = misc:parse_version("7.6.0"),
     NameA = 'ns_1',
     NameB = 'ns_2',
 
     HPNVersionALower =
         fun(SA, SB) ->
             higher_priority_node({Version72, NameA, SA},
-                                 {Version75, NameB, SB},
+                                 {Version76, NameB, SB},
                                  ?DEFAULT_SERVICE_WEIGHTS)
         end,
 
@@ -839,8 +839,8 @@ higher_priority_services_t() ->
 
     HPNNameALower =
         fun(SA, SB) ->
-            higher_priority_node({Version75, NameA, SA},
-                                 {Version75, NameB, SB},
+            higher_priority_node({Version76, NameA, SA},
+                                 {Version76, NameB, SB},
                                  ?DEFAULT_SERVICE_WEIGHTS)
         end,
 
@@ -866,11 +866,11 @@ higher_priority_services_t() ->
 
     %% VersionA = VersionB and ServicesA = ServicesB and NodeA > NodeB =>
     %% NodeA higher priority
-    ?assertEqual(true, higher_priority_node({Version75, NameB, [kv]},
-                                            {Version75, NameA, [kv]},
+    ?assertEqual(true, higher_priority_node({Version76, NameB, [kv]},
+                                            {Version76, NameA, [kv]},
                                             ?DEFAULT_SERVICE_WEIGHTS)).
 
-%% Test for the pre-7.5.0 priority algorithm.
+%% Test for the pre-7.6.0 priority algorithm.
 %% Note, the priority algorithm does not have a cluster compat mode check as
 %% it is designed to be backwards compatible.
 strongly_lower_priority_node_t() ->
@@ -879,7 +879,7 @@ strongly_lower_priority_node_t() ->
                  strongly_lower_priority_node({misc:parse_version("7.2.0"),
                                                'ns_0@192.168.1.1',
                                                ?TEST_NO_SERVICES},
-                                              {misc:parse_version("7.5.0"),
+                                              {misc:parse_version("7.6.0"),
                                                'ns_1@192.168.1.1',
                                                ?TEST_NO_SERVICES},
                                               ?DEFAULT_SERVICE_WEIGHTS)),
@@ -889,14 +889,14 @@ strongly_lower_priority_node_t() ->
                  strongly_lower_priority_node({misc:parse_version("7.2.0"),
                                                'ns_1@192.168.1.1',
                                                ?TEST_NO_SERVICES},
-                                              {misc:parse_version("7.5.0"),
+                                              {misc:parse_version("7.6.0"),
                                                'ns_0@192.168.1.1',
                                                ?TEST_NO_SERVICES},
                                               ?DEFAULT_SERVICE_WEIGHTS)),
 
     %% VersionA > VersionB => NodeA higher priority (NameA < NameB)
     ?assertEqual(true,
-                 strongly_lower_priority_node({misc:parse_version("7.5.0"),
+                 strongly_lower_priority_node({misc:parse_version("7.6.0"),
                                                'ns_0@192.168.1.1',
                                                ?TEST_NO_SERVICES},
                                               {misc:parse_version("7.2.0"),
@@ -906,7 +906,7 @@ strongly_lower_priority_node_t() ->
 
     %% VersionA > VersionB => NodeA higher priority (NameA > NameB)
     ?assertEqual(true,
-                 strongly_lower_priority_node({misc:parse_version("7.5.0"),
+                 strongly_lower_priority_node({misc:parse_version("7.6.0"),
                                                'ns_1@192.168.1.1',
                                                ?TEST_NO_SERVICES},
                                               {misc:parse_version("7.2.0"),
@@ -916,25 +916,25 @@ strongly_lower_priority_node_t() ->
 
     %% VersionA = VersionB => NodeB higher priority (NameA < NameB)
     ?assertEqual(false,
-                 strongly_lower_priority_node({misc:parse_version("7.5.0"),
+                 strongly_lower_priority_node({misc:parse_version("7.6.0"),
                                                'ns_0@192.168.1.1',
                                                ?TEST_NO_SERVICES},
-                                              {misc:parse_version("7.5.0"),
+                                              {misc:parse_version("7.6.0"),
                                                'ns_1@192.168.1.1',
                                                ?TEST_NO_SERVICES},
                                               ?DEFAULT_SERVICE_WEIGHTS)),
 
     %% VersionA = VersionB => NodeB higher priority (NameA > NameB)
     ?assertEqual(false,
-                 strongly_lower_priority_node({misc:parse_version("7.5.0"),
+                 strongly_lower_priority_node({misc:parse_version("7.6.0"),
                                                'ns_1@192.168.1.1',
                                                ?TEST_NO_SERVICES},
-                                              {misc:parse_version("7.5.0"),
+                                              {misc:parse_version("7.6.0"),
                                                'ns_0@192.168.1.1',
                                                ?TEST_NO_SERVICES},
                                               ?DEFAULT_SERVICE_WEIGHTS)).
 
-%% Test for the post-7.5.0 priority algorithm.
+%% Test for the post-7.6.0 priority algorithm.
 %% Note, the priority algorithm does not have a cluster compat mode check as
 %% it is designed to be backwards compatible.
 strongly_lower_priority_services_t() ->
@@ -942,14 +942,14 @@ strongly_lower_priority_services_t() ->
     %% is the same, we will just test the new part (services) and the edge
     %% cases.
     Version72 = misc:parse_version("7.2.0"),
-    Version75 = misc:parse_version("7.5.0"),
+    Version76 = misc:parse_version("7.6.0"),
     NameA = 'ns_1',
     NameB = 'ns_2',
 
     SLPNVersionALower =
         fun(SA, SB) ->
             strongly_lower_priority_node({Version72, NameA, SA},
-                                         {Version75, NameB, SB},
+                                         {Version76, NameB, SB},
                                          ?DEFAULT_SERVICE_WEIGHTS)
         end,
 
@@ -962,8 +962,8 @@ strongly_lower_priority_services_t() ->
 
     SLPNNameALower =
         fun(SA, SB) ->
-            strongly_lower_priority_node({Version75, NameA, SA},
-                                         {Version75, NameB, SB},
+            strongly_lower_priority_node({Version76, NameA, SA},
+                                         {Version76, NameB, SB},
                                          ?DEFAULT_SERVICE_WEIGHTS)
         end,
 
@@ -989,8 +989,8 @@ strongly_lower_priority_services_t() ->
 
     %% VersionA = VersionB and ServicesA = ServicesB and NodeA > NodeB =>
     %% NodeA higher priority
-    ?assertEqual(false, strongly_lower_priority_node({Version75, NameB, [kv]},
-                                                     {Version75, NameA, [kv]},
+    ?assertEqual(false, strongly_lower_priority_node({Version76, NameB, [kv]},
+                                                     {Version76, NameA, [kv]},
                                                      ?DEFAULT_SERVICE_WEIGHTS)).
 
 node_info_t() ->

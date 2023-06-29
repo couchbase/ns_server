@@ -178,7 +178,7 @@ resume_req(Id,
       {dryRun, DryRun}]}.
 
 maybe_add_additional_info() ->
-    case cluster_compat_mode:is_cluster_elixir() of
+    case cluster_compat_mode:is_cluster_trinity() of
         false ->
             [];
         true ->
@@ -215,7 +215,7 @@ encode_node_info(Props) ->
       {opaque, Opaque}] ++ conditional_node_info(Id)}.
 
 conditional_node_info(NodeId) ->
-    case cluster_compat_mode:is_cluster_elixir() of
+    case cluster_compat_mode:is_cluster_trinity() of
         false ->
             [];
         true ->

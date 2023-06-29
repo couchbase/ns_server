@@ -149,6 +149,6 @@ do_handle_event_log_post(Req) ->
                      end, Req, json, event_log:validators()).
 
 handle_rotate_internal_creds(Req) ->
-    menelaus_util:assert_is_elixir(),
+    menelaus_util:assert_is_trinity(),
     cb_creds_rotation:rotate_password(),
     reply_json(Req, [], 200).
