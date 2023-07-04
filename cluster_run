@@ -133,6 +133,11 @@ def argument_parser():
         default=None,
         help=f"(boot with serverless profile)")
     arg_parser.add_argument(
+        '--provisioned',
+        action='store_true',
+        default=None,
+        help=f"(boot with provisioned profile)")
+    arg_parser.add_argument(
         '--dev-preview-default',
         type=(lambda x: x.lower() == "true"),
         default=None,
@@ -159,6 +164,9 @@ def argument_parser():
 
     args = arg_parser.parse_args()
 
+    if args.serverless and args.provisioned:
+        sys.exit("Cannot use more than one profile at the same time")
+
     params = {"num_nodes": args.nodes,
               "dont_start": args.dont_start,
               "start_index": args.start_index,
@@ -174,6 +182,7 @@ def argument_parser():
               "ipv6": args.afamily,
               "force_community": args.community,
               "run_serverless": args.serverless,
+              "run_provisioned": args.provisioned,
               "args": args.additional_args
               }
 
