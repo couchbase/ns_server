@@ -254,7 +254,7 @@ class Cluster:
                               data=data)
         self.connected_nodes.remove(victim_node)
         # Wait for the failover to complete
-        self.wait_for_rebalance(verbose)
+        self.wait_for_rebalance(verbose=verbose)
         return r
 
     def recover_node(self, node, recovery_type="full", do_rebalance=False,
