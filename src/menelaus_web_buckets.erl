@@ -2185,12 +2185,12 @@ do_parse_validate_num_vbuckets(NumVBs, BucketConfig, false = _IsNew,
         true ->
             ignore;
         false ->
-            {error, numVbuckets,
+            {error, numVBuckets,
              <<"Number of vbuckets cannot be modified">>}
     end;
 do_parse_validate_num_vbuckets(NumVBs, _BucketConfig, true = _IsNew,
                                false = _IsEnabled) when NumVBs =/= undefined ->
-    {error, numVbuckets,
+    {error, numVBuckets,
      <<"Support for variable number of vbuckets is not enabled">>};
 do_parse_validate_num_vbuckets(NumVBs, _BucketConfig, true = _IsNew,
                                _IsEnabled) ->
@@ -2208,7 +2208,7 @@ validate_num_vbuckets(Val) ->
             Msg = io_lib:format("Number of vbuckets must be an integer "
                                 "between ~p and ~p",
                                 [?MIN_NUM_VBUCKETS, ?MAX_NUM_VBUCKETS]),
-            {error, numVbuckets, list_to_binary(Msg)}
+            {error, numVBuckets, list_to_binary(Msg)}
     end.
 
 %% Helper function that remaps the user key to the internal key if the config
