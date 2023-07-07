@@ -32,6 +32,7 @@ import (
 	"golang.org/x/crypto/pbkdf2"
 
 	"context"
+	"encoding/base64"
 	"gocbutils"
 	"os/exec"
 	"strings"
@@ -83,6 +84,14 @@ type keysInEncryptedFile struct {
 	lockkey           []byte // derived from password
 	isDefaultPassword bool   // true if the password is default (empty)
 	keysInFile
+}
+
+type keysViaScript struct {
+	writeCmd     string
+	readCmd      string
+	deleteCmd    string
+	cmdTimeoutMs int
+	secret
 }
 
 type EncryptionServiceSettings struct {
@@ -246,11 +255,46 @@ func initEncryptionKeys(config *Config, password []byte) (secretIface, error) {
 	if config.EncryptionSettings.KeyStorageType == "file" {
 		settings := config.EncryptionSettings.KeyStorageSettings
 		return initKeysFromFile(settings, password)
+	} else if config.EncryptionSettings.KeyStorageType == "script" {
+		settings := config.EncryptionSettings.KeyStorageSettings
+		return initKeysViaScript(settings, password)
 	}
 
 	return nil, errors.New(fmt.Sprintf(
 		"unknown encryption service key storage type: %s",
 		config.EncryptionSettings.KeyStorageType))
+}
+
+func initKeysViaScript(settings map[string]interface{},
+	password []byte) (*keysViaScript, error) {
+	readCmd, found := settings["readCmd"].(string)
+	if !found {
+		return nil, errors.New(
+			"readCmd is mandatory for this type of secret")
+	}
+
+	writeCmd, found := settings["writeCmd"].(string)
+	if !found {
+		writeCmd = ""
+	}
+
+	deleteCmd, found := settings["deleteCmd"].(string)
+	if !found {
+		deleteCmd = ""
+	}
+
+	timeoutMs, found := settings["cmdTimeoutMs"].(int)
+	if !found {
+		timeoutMs = 60000
+	}
+
+	return &keysViaScript{
+		readCmd:      readCmd,
+		writeCmd:     writeCmd,
+		deleteCmd:    deleteCmd,
+		cmdTimeoutMs: timeoutMs,
+		secret:       secret{},
+	}, nil
 }
 
 func initKeysFromFile(settings map[string]interface{},
@@ -736,6 +780,92 @@ func (keys *keysInEncryptedFile) sameSettings(param interface{}) bool {
 		keys2.secret = oldsecret
 		keys2.lockkey = oldLockkey
 		keys2.isDefaultPassword = oldIsDefaultPass
+	}()
+	return reflect.DeepEqual(keys, keys2)
+}
+
+// Implementation of secretIface for keysViaScript
+
+func (keys *keysViaScript) setSecret(s *secret) error {
+	keyBase64 := base64.StdEncoding.EncodeToString(s.getSecret().key)
+	backupBase64 := base64.StdEncoding.EncodeToString(s.getSecret().backupKey)
+	cmd := strings.Join([]string{keys.writeCmd, keyBase64, backupBase64}, " ")
+	_, err := callExternalScript(cmd, keys.cmdTimeoutMs)
+	if err != nil {
+		return err
+	}
+	copySecretStruct(s, &keys.secret)
+	return nil
+}
+
+func (keys *keysViaScript) read() error {
+	res, err := callExternalScript(keys.readCmd, keys.cmdTimeoutMs)
+	if err != nil {
+		return err
+	}
+	keysTokens := strings.Fields(res)
+	var backup []byte
+	if len(keysTokens) == 2 {
+		backup, err = base64.StdEncoding.DecodeString(keysTokens[1])
+		if err != nil {
+			return errors.New(
+				fmt.Sprintf(
+					"Failed to decode backup key "+
+						"(expected to be base64 encoded): %s",
+					err.Error()))
+		}
+	} else if len(keysTokens) == 1 {
+		backup = nil
+	} else if len(keysTokens) == 0 {
+		return ErrKeysDoNotExist
+	} else {
+		return errors.New(
+			fmt.Sprintf(
+				"Unexpected number of keys (%v) returned by %s",
+				len(keysTokens), keys.readCmd))
+	}
+	key, err := base64.StdEncoding.DecodeString(keysTokens[0])
+	if err != nil {
+		return errors.New(
+			fmt.Sprintf(
+				"Failed to decode key (expected to be base64 encoded): %s",
+				err.Error()))
+	}
+	keys.secret.key = key
+	keys.secret.backupKey = backup
+	log_dbg("read keys via script '%s'", keys.readCmd)
+	return nil
+}
+
+func (keys *keysViaScript) remove() error {
+	_, err := callExternalScript(keys.deleteCmd, keys.cmdTimeoutMs)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (keys *keysViaScript) changePassword(password []byte) error {
+	return errors.New("not supported")
+}
+
+func (keys *keysViaScript) getPasswordState() string {
+	return "password_not_used"
+}
+
+func (keys *keysViaScript) getStorageId() string {
+	return "script:" + keys.writeCmd
+}
+
+func (keys *keysViaScript) sameSettings(param interface{}) bool {
+	keys2, ok := param.(*keysViaScript)
+	if !ok {
+		return false
+	}
+	oldsecret := keys2.secret
+	keys2.secret = keys.secret
+	defer func() {
+		keys2.secret = oldsecret
 	}()
 	return reflect.DeepEqual(keys, keys2)
 }

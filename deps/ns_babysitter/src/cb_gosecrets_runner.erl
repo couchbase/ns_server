@@ -460,6 +460,11 @@ extract_hidden_pass()->
 %%  {es_custom_key_path, <<"/path">>},
 %%  {es_password_source, env},
 %%  {es_password_env, <<"ENV_VAR">>}]
+%%
+%% [{es_key_storage_type, script},
+%%  {es_read_cmd, <<"/path">>},
+%%  {es_write_cmd, <<"/path">>},
+%%  {es_delete_cmd, <<"/path">>}]
 
 cfg_to_json(Props) ->
     Extract = fun (K) ->
@@ -501,7 +506,17 @@ cfg_to_json(Props) ->
                {[{keyStorageType, file},
                  {keyStorageSettings,
                   {[{path, Path},
-                    {encryptWithPassword, Encr}] ++ PasswordCfg}}]}}]}
+                    {encryptWithPassword, Encr}] ++ PasswordCfg}}]}}]};
+        script ->
+            R = ExtractBin(es_read_cmd),
+            W = ExtractBin(es_write_cmd),
+            D = ExtractBin(es_delete_cmd),
+            {[{encryptionService,
+               {[{keyStorageType, script},
+                 {keyStorageSettings,
+                  {[{readCmd, R} || R /= <<>>] ++
+                   [{writeCmd, W} || W /= <<>>] ++
+                   [{deleteCmd, D} || D /= <<>>]}}]}}]}
     end.
 
 defaults() ->
