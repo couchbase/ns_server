@@ -35,8 +35,12 @@
 -record(state, {config :: file:filename(),
                 loop :: pid()}).
 
-default_data_key_path() ->
-    filename:join(path_config:component_path(data, "config"), "encrypted_data_keys").
+default_data_key_path(PType) ->
+    Filename = case PType of
+                   env -> "encrypted_data_keys";
+                   script -> "encrypted_data_keys2"
+               end,
+    filename:join(path_config:component_path(data, "config"), Filename).
 
 default_unencrypted_data_key_path() ->
     filename:join(path_config:component_path(data, "config"), "data_keys").
@@ -470,7 +474,7 @@ cfg_to_json(Props) ->
             Path =
                 case Extract(es_key_path_type) of
                     auto when Encr ->
-                        iolist_to_binary(default_data_key_path());
+                        iolist_to_binary(default_data_key_path(PSource));
                     auto ->
                         iolist_to_binary(default_unencrypted_data_key_path());
                     custom ->
@@ -479,8 +483,14 @@ cfg_to_json(Props) ->
 
             PasswordCfg = case Encr of
                               true ->
-                                  EN = ExtractBin(es_password_env),
-                                  PS = {[{envName, EN}]},
+                                  PS = case PSource of
+                                           env ->
+                                               EN = ExtractBin(es_password_env),
+                                               {[{envName, EN}]};
+                                           script ->
+                                               C = ExtractBin(es_password_cmd),
+                                               {[{passwordCmd, C} || C /= <<>>]}
+                                       end,
                                   [{passwordSource, PSource},
                                    {passwordSettings, PS}];
                               false ->
@@ -549,7 +559,7 @@ config_reload_test() ->
     Cfg2 = [{es_key_storage_type, file},
             {es_encrypt_key, false},
             {es_key_path_type, custom},
-            {es_custom_key_path, default_data_key_path()}],
+            {es_custom_key_path, default_data_key_path(env)}],
     Cfg3 = [{es_key_storage_type, file},
             {es_encrypt_key, false}],
     with_gosecrets(
@@ -572,7 +582,7 @@ config_reload_test() ->
           {ok, CurCfgBin} = file:read_file(CfgPath),
           ?assertEqual(ejson:encode(cfg_to_json(Cfg3)),
                        ejson:encode(ejson:decode(CurCfgBin))),
-          ?assert(not filelib:is_file(default_data_key_path())),
+          ?assert(not filelib:is_file(default_data_key_path(env))),
           ?assert(filelib:is_file(default_unencrypted_data_key_path())),
 
           {ok, <<"copied">>} = copy_secrets(Pid, Cfg1),
@@ -711,7 +721,8 @@ with_tmp_cfg(Cfg, Fun) ->
     end.
 
 delete_all_default_files() ->
-    file:delete(default_data_key_path()),
+    file:delete(default_data_key_path(env)),
+    file:delete(default_data_key_path(script)),
     file:delete(default_unencrypted_data_key_path()).
 
 

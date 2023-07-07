@@ -31,7 +31,11 @@ import (
 
 	"golang.org/x/crypto/pbkdf2"
 
+	"context"
 	"gocbutils"
+	"os/exec"
+	"strings"
+	"time"
 )
 
 const keySize = 32
@@ -275,6 +279,24 @@ func initKeysFromFile(settings map[string]interface{},
 		if len(passwordToUse) == 0 && len(password) > 0 {
 			passwordToUse = password
 		}
+	} else if passwordSource == "script" {
+		pwdSettings, ok := settings["passwordSettings"].(map[string]interface{})
+		if !ok {
+			return nil, errors.New("passwordSettings are missing in config")
+		}
+		passwordCmd, found := pwdSettings["passwordCmd"].(string)
+		if !found {
+			return nil, errors.New("passwordCmd is missing in config")
+		}
+		cmdTimeoutMs, found := pwdSettings["cmdTimeoutMs"].(int)
+		if !found {
+			cmdTimeoutMs = 60000
+		}
+		output, err := callExternalScript(passwordCmd, cmdTimeoutMs)
+		if err != nil {
+			return nil, err
+		}
+		passwordToUse = []byte(output)
 	} else {
 		return nil, errors.New(fmt.Sprintf("unknown password source: %s",
 			passwordSource))
@@ -871,4 +893,24 @@ func copySecretStruct(from *secret, to *secret) {
 		to.backupKey = make([]byte, len(from.backupKey))
 		copy(to.backupKey, from.backupKey)
 	}
+}
+
+func callExternalScript(cmdStr string, timeoutMs int) (string, error) {
+	log_dbg("Calling cmd '%s'... ", cmdStr)
+	cmdSlice := strings.Fields(cmdStr)
+	timeoutDuration := time.Duration(timeoutMs * 1000000)
+	ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, cmdSlice[0], cmdSlice[1:]...)
+	var stdoutbuf, stderrbuf bytes.Buffer
+	cmd.Stdout = &stdoutbuf
+	cmd.Stderr = &stderrbuf
+	err := cmd.Run()
+	res := stdoutbuf.String()
+	if err != nil {
+		return res, errors.New(fmt.Sprintf(
+			"Command '%s' finished with error(error: '%v', stderr: '%s')",
+			cmdStr, err.Error(), stderrbuf.String()))
+	}
+	return res, nil
 }
