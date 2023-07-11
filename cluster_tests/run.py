@@ -18,6 +18,7 @@ import atexit
 import requests
 import glob
 import time
+import random
 
 # Pretty prints any tracebacks that may be generated if the process dies
 from traceback_with_variables import activate_by_import
@@ -65,7 +66,9 @@ Usage: {program_name}
     [--dont-intercept-output | -o]
         Display output from tests. By default, output is suppressed (unless the
         test fails). Setting this option forces output to be displayed even for
-        successful test runs.
+        successful test runs
+    [--seed | -s <string>]
+        Specify a seed to be set for python pseudo-random number generator
     [--help]
         Show this help
 """
@@ -98,10 +101,11 @@ def kill_nodes(processes, urls, terminal_attrs):
 
 def main():
     try:
-        optlist, args = getopt.gnu_getopt(sys.argv[1:], "hkoc:u:p:n:t:",
+        optlist, args = getopt.gnu_getopt(sys.argv[1:], "hkoc:u:p:n:t:s:",
                                           ["help", "keep-tmp-dirs", "cluster=",
                                            "user=", "password=", "num-nodes=",
-                                           "tests=", "dont-intercept-output"])
+                                           "tests=", "dont-intercept-output",
+                                           "seed="])
     except getopt.GetoptError as err:
         bad_args_exit(str(err))
 
@@ -115,6 +119,7 @@ def main():
     tests = None
     keep_tmp_dirs = False
     intercept_output = True
+    seed = testlib.random_str(16)
 
     for o, a in optlist:
         if o in ('--cluster', '-c'):
@@ -148,12 +153,15 @@ def main():
             keep_tmp_dirs = True
         elif o in ('--dont-intercept-output', '-o'):
             intercept_output = False
+        elif o in ('--seed', '-s'):
+            seed = a
         elif o in ('--help', '-h'):
             usage()
             exit(0)
         else:
             assert False, f"unhandled options: {o}"
 
+    random.seed(seed)
     discovered_tests = discover_testsets()
 
     errors = {}
@@ -220,7 +228,8 @@ def main():
         testset_start_ts = time.time_ns()
         # Run the testsets on the cluster
         tests_executed, testset_errors, testset_not_ran = \
-            run_testsets(cluster, testsets, intercept_output=intercept_output)
+            run_testsets(cluster, testsets, intercept_output=intercept_output,
+                         seed=seed)
         test_time += (time.time_ns() - testset_start_ts)
         executed += tests_executed
         errors.update(testset_errors)
@@ -252,6 +261,8 @@ def main():
         print(
           f"Avg. test time:           {format_time(total_time_s/executed)}\n"
           f"Avg. test time (no prep): {format_time(test_time_s/executed)}")
+
+    print(f"\nSeed: {seed}\n")
 
     for name in errors:
         print(f"In {name}:")
@@ -397,13 +408,13 @@ def get_existing_cluster(address, start_port, auth, num_nodes):
 
 # Run each testset on the same cluster, counting how many individual tests were
 # ran, and keeping track of all errors
-def run_testsets(cluster, testsets, intercept_output=True):
+def run_testsets(cluster, testsets, intercept_output=True, seed=None):
     executed = 0
     errors = {}
     not_ran = []
     for testset_name, testset, test_names in testsets:
         res = testlib.run_testset(testset, test_names, cluster, testset_name,
-                                  intercept_output=intercept_output)
+                                  intercept_output=intercept_output, seed=seed)
         executed += res[0]
         testset_errors = res[1]
         if len(testset_errors) > 0:

@@ -53,7 +53,7 @@ def get_appropriate_cluster(cluster, auth, start_index, requirements,
 
 
 def run_testset(testset_class, test_names, cluster, testset_name,
-                intercept_output=True):
+                intercept_output=True, seed=None):
     errors = []
     not_ran = []
     executed = 0
@@ -62,7 +62,12 @@ def run_testset(testset_class, test_names, cluster, testset_name,
     testset_instance = testset_class(cluster)
 
     _, err = safe_test_function_call(testset_instance, 'setup', [cluster],
-                                     intercept_output=intercept_output)
+                                     intercept_output=intercept_output,
+                                     seed=seed)
+
+    test_seed = apply_with_seed(random, 'randbytes', [16], seed)
+    test_teardown_seed = apply_with_seed(random, 'randbytes', [16], test_seed)
+    teardown_seed = apply_with_seed(random, 'randbytes', [16], test_teardown_seed)
 
     if err is not None:
         # If testset setup fails, all tests were not ran
@@ -76,13 +81,15 @@ def run_testset(testset_class, test_names, cluster, testset_name,
             executed += 1
             _, err = safe_test_function_call(testset_instance, test,
                                              [cluster], verbose=True,
-                                             intercept_output=intercept_output)
+                                             intercept_output=intercept_output,
+                                             seed=test_seed)
             if err is not None:
                 errors.append(err)
 
             _, err = safe_test_function_call(testset_instance, 'test_teardown',
                                              [cluster],
-                                             intercept_output=intercept_output)
+                                             intercept_output=intercept_output,
+                                             seed=test_teardown_seed)
             if err is not None:
                 errors.append(err)
                 # Don't try to run further tests as test_teardown failure will
@@ -94,7 +101,8 @@ def run_testset(testset_class, test_names, cluster, testset_name,
     finally:
         _, err = safe_test_function_call(testset_instance, 'teardown',
                                          [cluster],
-                                         intercept_output=intercept_output)
+                                         intercept_output=intercept_output,
+                                         seed=teardown_seed)
         if err is not None:
             errors.append(err)
 
@@ -102,7 +110,7 @@ def run_testset(testset_class, test_names, cluster, testset_name,
 
 
 def safe_test_function_call(testset, testfunction, args, verbose=False,
-                            intercept_output=True):
+                            intercept_output=True, seed=None):
     res = None
     error = None
     if hasattr(testset, '__name__'):
@@ -115,9 +123,9 @@ def safe_test_function_call(testset, testfunction, args, verbose=False,
     try:
         if intercept_output:
             with redirect_stdout(f):
-                res = getattr(testset, testfunction)(*args)
+                res = apply_with_seed(testset, testfunction, args, seed)
         else:
-            res = getattr(testset, testfunction)(*args)
+            res = apply_with_seed(testset, testfunction, args, seed)
         if verbose: print(f"\033[32m passed \033[0m{timedelta_str(start)}")
     except Exception as e:
         if verbose:
@@ -135,6 +143,15 @@ def safe_test_function_call(testset, testfunction, args, verbose=False,
               f"=================== {testfunction}() output end ==================\n")
         error = (testname, e)
     return res, error
+
+
+def apply_with_seed(obj, func, args, seed):
+    try:
+        rand_state = random.getstate()
+        random.seed(seed)
+        return getattr(obj, func)(*args)
+    finally:
+        random.setstate(rand_state)
 
 
 def timedelta_str(start):
