@@ -30,7 +30,8 @@
          os_pid/1,
          copy_secrets/2,
          cleanup_secrets/2,
-         set_config/3]).
+         set_config/3,
+         defaults/0]).
 
 -record(state, {config :: file:filename(),
                 loop :: pid()}).

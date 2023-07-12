@@ -184,7 +184,8 @@ not_supported(Name, State) ->
       Name, State).
 
 prepare_json(Path, ParamSpecs, UserTypesFun, Values) ->
-    TypesFuns = [UserTypesFun, fun type_spec/1],
+    TypesFuns = [UserTypesFun || UserTypesFun /= undefined] ++
+                [fun type_spec/1],
     Res = lists:filtermap(
             fun ({Name, #{type := Type} = Spec}) ->
                 NameTokens = split_key(Name),
@@ -228,7 +229,8 @@ handle_post(ApplyFun, Path, ParamSpecs, UserTypesFun, Req) ->
 %% Defaults are only used when values are passed to the "is mandatory" fun.
 handle_post(ApplyFun, Path, ParamSpecs, UserTypesFun, Predefined, Defaults,
             Req) ->
-    TypesFuns = [UserTypesFun, fun type_spec/1],
+    TypesFuns = [UserTypesFun || UserTypesFun /= undefined] ++
+                [fun type_spec/1],
     ValidatorsProplist =
         lists:filtermap(
               fun ({Name, #{type := Type}}) ->

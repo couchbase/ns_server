@@ -17,7 +17,8 @@
 
 -export([handle_change_master_password/1,
          handle_rotate_data_key/1,
-         handle_get_state/1]).
+         handle_get_settings/2,
+         handle_post_settings/2]).
 
 handle_change_master_password(Req) ->
     menelaus_util:assert_is_enterprise(),
@@ -56,6 +57,105 @@ handle_rotate_data_key(Req) ->
             menelaus_util:reply_global_error(Req, Error ++ ". You might try one more time.")
     end.
 
-handle_get_state(Req) ->
+handle_get_settings(Path, Req) ->
     {ok, Rv} = encryption_service:get_state(),
-    menelaus_util:reply_json(Req, {[{state, Rv}]}).
+
+    Node = dist_manager:this_node(),
+    Settings = ns_config:read_key_fast({node, Node, secret_mngmt_cfg}, []),
+    Settings2 = misc:update_proplist(cb_gosecrets_runner:defaults(), Settings),
+    LegacySettings = [{state, binary_to_list(Rv)}],
+    menelaus_web_settings2:handle_get(
+      Path, params(), undefined, cleanup_settings(Settings2) ++ LegacySettings,
+      Req).
+
+handle_post_settings(Path, Req) ->
+    Node = dist_manager:this_node(),
+    Current = ns_config:read_key_fast({node, Node, secret_mngmt_cfg}, []),
+    menelaus_web_settings2:handle_post(
+      fun (Proplist, NewReq) ->
+          Proplist2 = lists:map(fun ({[K], V}) -> {K, V} end, Proplist),
+          NewSettings = misc:update_proplist(Current, Proplist2),
+          case encryption_service:reconfigure(cleanup_settings(NewSettings)) of
+              ok ->
+                    handle_get_settings(Path, NewReq);
+              {error, ErrorIOList} ->
+                    menelaus_util:reply_global_error(Req, ErrorIOList)
+          end
+      end, Path, params(), undefined,
+      Current, cb_gosecrets_runner:defaults(), Req).
+
+params() ->
+    [{"encryptionService.keyStorageType",
+      #{cfg_key => es_key_storage_type,
+        type => {one_of, existing_atom, [file, script]}}},
+     {"encryptionService.keyPath",
+      #{cfg_key => es_key_path_type,
+        type => {one_of, existing_atom, [auto, custom]}}},
+     {"encryptionService.customKeyPath",
+      #{cfg_key => es_custom_key_path,
+        type => string,
+        mandatory => fun (#{es_key_path_type := custom}) -> true;
+                         (_) -> false
+                      end}},
+     {"encryptionService.keyEncrypted",
+      #{cfg_key => es_encrypt_key,
+        type => bool}},
+     {"encryptionService.passwordSource",
+      #{cfg_key => es_password_source,
+        type => {one_of, existing_atom, [env, script]}}},
+     {"encryptionService.passwordEnv",
+      #{cfg_key => es_password_env,
+        type => string}},
+     {"encryptionService.passwordCmd",
+      #{cfg_key => es_password_cmd,
+        type => string,
+        mandatory => fun (#{es_password_source := script}) -> true;
+                         (_) -> false
+                     end}},
+     {"encryptionService.readCmd",
+      #{cfg_key => es_read_cmd,
+        type => string,
+        mandatory => fun (#{es_key_storage_type := script}) -> true;
+                         (_) -> false
+                     end}},
+     {"encryptionService.writeCmd",
+      #{cfg_key => es_write_cmd,
+        type => string,
+        mandatory => fun (#{es_key_storage_type := script}) -> true;
+                         (_) -> false
+                     end}},
+     {"encryptionService.deleteCmd",
+      #{cfg_key => es_delete_cmd,
+        type => string,
+        mandatory => fun (#{es_key_storage_type := script}) -> true;
+                         (_) -> false
+                     end}},
+     {"state", %% This is legacy, keep it for backward compat
+      #{cfg_key => state,
+        type => {read_only, string}}}].
+
+cleanup_settings(Settings) ->
+    Defaults = cb_gosecrets_runner:defaults(),
+    DefaultType = proplists:get_value(es_key_storage_type, Defaults),
+    DefaultPass = proplists:get_value(es_password_source, Defaults),
+    DefaultEncr = proplists:get_value(es_encrypt_key, Defaults),
+    Fields =
+        case proplists:get_value(es_key_storage_type, Settings, DefaultType) of
+            file ->
+                [es_key_path_type, es_custom_key_path, es_encrypt_key] ++
+                case proplists:get_value(es_encrypt_key, Settings,
+                                         DefaultEncr) of
+                    true ->
+                        [es_password_source] ++
+                        case proplists:get_value(es_password_source, Settings,
+                                                 DefaultPass) of
+                            env -> [es_password_env];
+                            script -> [es_password_cmd]
+                        end;
+                    false ->
+                        []
+                end;
+            script ->
+                [es_read_cmd, es_write_cmd, es_delete_cmd]
+        end ++ [es_key_storage_type],
+    lists:filter(fun ({K, _}) -> lists:member(K, Fields) end, Settings).
