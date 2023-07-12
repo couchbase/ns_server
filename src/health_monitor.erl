@@ -155,7 +155,7 @@ handle_cast(Cast, State) ->
 
 handle_info(refresh, #state{monitor_module = MonModule,
                             monitor_state = MonState} = State) ->
-    true = MonModule:can_refresh(State),
+    true = MonModule:can_refresh(MonState),
     #{refresh_interval := RefreshInterval} = MonState,
 
     RV = handle_message(handle_info, refresh, State),
@@ -169,10 +169,10 @@ handle_info(config_updated, #state{monitor_module = MonModule,
     FilteredStatuses = erase_unknown_nodes(Statuses, NewNodesSorted),
     RefreshInterval = get_refresh_interval(MonModule),
     {noreply,
-        State#state{monitor_state =
-                        MonState#{nodes => FilteredStatuses,
-                                  nodes_wanted => NewNodesSorted,
-                                  refresh_interval => RefreshInterval}}};
+     State#state{monitor_state =
+                     MonState#{nodes => FilteredStatuses,
+                               nodes_wanted => NewNodesSorted,
+                               refresh_interval => RefreshInterval}}};
 
 handle_info(Info, State) ->
     handle_message(handle_info, Info, State).
@@ -471,7 +471,8 @@ basic_test_() ->
          node_status_analyzer,
          node_monitor,
          kv_monitor,
-         kv_stats_monitor],
+         kv_stats_monitor,
+         index_monitor],
 
     {foreachx,
      fun basic_test_setup/1,
