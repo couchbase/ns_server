@@ -357,7 +357,13 @@ disconnect(Sock) ->
     network:socket_close(Sock).
 
 nuke_connection(Type, ConnName, Node, Bucket) ->
-    ?log_debug("Nuke DCP connection ~p type ~p on node ~p", [ConnName, Type, Node]),
+    ?log_debug("Nuke DCP connection ~p type ~p on node ~p",
+               [ConnName, Type, Node]),
+    %% Creating a DCP connection with the same name as an existing connection
+    %% in kv_engine will disconnect the previously existing connection. This
+    %% code effectively disconnects an existing connection by creating a new
+    %% connection with the same name then immediately disconnects the new
+    %% connection.
     disconnect(connect(Type, ConnName, Node, Bucket)).
 
 connect_proxies(Pid1, Sock1, Pid2) ->
