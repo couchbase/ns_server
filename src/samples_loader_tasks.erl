@@ -184,10 +184,13 @@ perform_loading_task(Sample, Bucket, Quota, CacheDir, BucketState) ->
                           ["--cluster", misc:join_host_port(Host, Port)]
                   end,
     BinDir = path_config:component_path(bin),
-    NumReplicas = case length(ns_cluster_membership:nodes_wanted()) of
-                      1 -> 0;
-                      _ -> 1
-                  end,
+    NumReplicas0 = case length(ns_cluster_membership:nodes_wanted()) of
+                       1 -> 0;
+                       _ -> 1
+                   end,
+    %% Honor any min replica setting otherwise the bucket creation could
+    %% fail if the min replica value isn't met.
+    NumReplicas = max(NumReplicas0, ns_bucket:get_min_replicas()),
 
     Cmd = BinDir ++ "/cbimport",
     {DataSet, AdditionalArgs} =
