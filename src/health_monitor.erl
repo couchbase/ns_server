@@ -54,7 +54,8 @@
         ?get_param(monitor_supporting_sub_second_refresh,
                    [ns_server_monitor,
                     node_monitor,
-                    node_status_analyzer])).
+                    node_status_analyzer,
+                    kv_stats_monitor])).
 
 %% Auto failover configs with less than a 5 second timeout will scale down
 %% refresh intervals automatically.
@@ -82,7 +83,8 @@
          get_module/1,
          send_heartbeat/3, send_heartbeat/4,
          analyze_local_status/5,
-         maybe_calculate_refresh_interval/1]).
+         maybe_calculate_refresh_interval/1,
+         get_refresh_interval/1]).
 
 -record(state, {
                 monitor_module,
@@ -473,7 +475,8 @@ basic_test_() ->
          dcp_traffic_monitor,
          node_status_analyzer,
          node_monitor,
-         kv_monitor],
+         kv_monitor,
+         kv_stats_monitor],
 
     {foreachx,
      fun basic_test_setup/1,

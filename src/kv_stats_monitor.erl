@@ -37,12 +37,14 @@
 %%
 -module(kv_stats_monitor).
 
--behaviour(gen_server).
+-behaviour(health_monitor).
 
 -include("ns_common.hrl").
 
-%% Frequency at which stats are checked
--define(REFRESH_INTERVAL, ?get_param(refresh_interval, 2000)). % 2 seconds
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 %% Percentage threshold
 -define(DISK_ISSUE_THRESHOLD, ?get_param(disk_issue_threshold, 60)).
 
@@ -52,6 +54,7 @@
          analyze_status/1,
          is_failure/1]).
 
+%% gen_server-like health_monitor API
 -export([init/1,
          handle_call/3,
          handle_cast/2,
@@ -59,16 +62,25 @@
          terminate/2,
          code_change/3]).
 
+%% Rest of the health_monitor API)
+-export([can_refresh/1,
+         get_nodes/0]).
+
 -export([register_tick/3,
          is_unhealthy/2]).
 
+-ifdef(TEST).
+-export([health_monitor_test_setup/0,
+         health_monitor_t/0,
+         health_monitor_test_teardown/0]).
+-endif.
+
 start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+    health_monitor:start_link(?MODULE).
 
 %% gen_server callbacks
-init([]) ->
+init(BaseMonitorState) ->
     Self = self(),
-    Self ! refresh,
 
     chronicle_compat_events:subscribe(
       fun (auto_failover_cfg) ->
@@ -83,15 +95,14 @@ init([]) ->
                       Self ! {event, buckets}
               end
       end),
-    {Enabled, NumSamples} = get_failover_on_disk_issues(
-                              auto_failover:get_cfg()),
-    {ok,
-     maybe_spawn_stats_collector(
-       #{buckets => reset_bucket_info(),
-         enabled => Enabled,
-         numSamples => NumSamples,
-         stats_collector => undefined,
-         latest_stats => {undefined, dict:new()}})}.
+    {Enabled, NumSamples} = get_failover_on_disk_issues(auto_failover:get_cfg(),
+                                                        BaseMonitorState),
+    maybe_spawn_stats_collector(
+      BaseMonitorState#{buckets => reset_bucket_info(),
+                        enabled => Enabled,
+                        numSamples => NumSamples,
+                        stats_collector => undefined,
+                        latest_stats => {undefined, dict:new()}}).
 
 handle_call(get_buckets, _From, MonitorState) ->
     #{buckets := Buckets} = MonitorState,
@@ -121,7 +132,6 @@ handle_info(refresh, MonitorState) ->
         maybe_spawn_stats_collector(
           MonitorState#{buckets => NewBuckets,
                         latest_stats => {undefined, dict:new()}}),
-    erlang:send_after(?REFRESH_INTERVAL, self(), refresh),
     {noreply, NewState};
 
 handle_info({event, buckets}, MonitorState) ->
@@ -143,7 +153,7 @@ handle_info({event, buckets}, MonitorState) ->
 
 handle_info({event, auto_failover_cfg}, MonitorState) ->
     {Enabled, NumSamples} =
-        get_failover_on_disk_issues(auto_failover:get_cfg()),
+        get_failover_on_disk_issues(auto_failover:get_cfg(), MonitorState),
     NewState = case Enabled of
                    false -> MonitorState#{buckets => reset_bucket_info()};
                    %% Monitor will pick up the new state next refresh
@@ -202,6 +212,12 @@ analyze_status(Buckets) ->
                       Acc
               end
       end, [], Buckets).
+
+can_refresh(_State) ->
+    true.
+
+get_nodes() ->
+    get_buckets().
 
 %% Internal functions
 get_errors() ->
@@ -344,12 +360,13 @@ over_threshold(<<1:1, Rest/bits>>, Threshold) ->
 over_threshold(<<0:1, Rest/bits>>, Threshold) ->
     over_threshold(Rest, Threshold).
 
-get_failover_on_disk_issues(Config) ->
+get_failover_on_disk_issues(Config, MonitorState) ->
+    #{refresh_interval := RefreshInterval} = MonitorState,
     case menelaus_web_auto_failover:get_failover_on_disk_issues(Config) of
         undefined ->
             {false, nil};
         {Enabled, TimePeriod} ->
-            NumSamples = round((TimePeriod * 1000)/?REFRESH_INTERVAL),
+            NumSamples = round((TimePeriod * 1000)/RefreshInterval),
             {Enabled, NumSamples}
     end.
 
@@ -364,9 +381,74 @@ maybe_spawn_stats_collector(#{stats_collector := undefined} = MonitorState) ->
                                    end, Buckets),
                     Self ! {self(), Res}
             end),
-
     MonitorState#{stats_collector => Pid};
 maybe_spawn_stats_collector(#{stats_collector := Pid} = MonitorState) ->
     ?log_warning("Ignoring start of stats collector as the previous one "
                  "haven't finished yet: ~p", [Pid]),
     MonitorState.
+
+-ifdef(TEST).
+%% See health_monitor.erl for tests common to all monitors that use these
+%% functions
+health_monitor_test_setup() ->
+    %% health_monitor setup creates the meck for chronicle_compat_events, we
+    %% just need to add an extra expects here
+    meck:expect(chronicle_compat_events,
+                subscribe,
+                fun (_) ->
+                        ok
+                end),
+
+    meck:new(auto_failover),
+    meck:expect(auto_failover, get_cfg, fun() -> [{enabled,true}] end),
+
+    meck:new(ns_bucket, [passthrough]),
+    meck:expect(ns_bucket, node_bucket_names, fun(_) -> [] end),
+    meck:expect(ns_bucket, node_bucket_names_of_type, fun(_, persistent) -> []
+                                                      end).
+
+health_monitor_t() ->
+    {state, kv_stats_monitor, #{enabled := Enabled1}} = sys:get_state(?MODULE),
+    ?assertNot(Enabled1),
+
+    meck:expect(
+      auto_failover, get_cfg,
+      fun() ->
+              [{enabled, true},
+               %% timeout is the time (in seconds) a node needs to be down
+               %% before it is automatically fail-overed
+               {timeout, 120},
+               {failover_on_data_disk_issues, [{enabled, true},
+                                               {timePeriod, 120}]}]
+      end),
+
+
+    ?MODULE ! {event, auto_failover_cfg},
+
+    %% Do a call to make sure that we process the previous info message
+    get_nodes(),
+
+    {state, kv_stats_monitor, #{enabled := Enabled2}} = sys:get_state(?MODULE),
+    ?assert(Enabled2),
+
+    {state, kv_stats_monitor, #{buckets := Buckets1}} = sys:get_state(?MODULE),
+    ?assertEqual(dict:new(), Buckets1),
+
+    meck:expect(ns_bucket, node_bucket_names_of_type,
+                fun(_, persistent) ->
+                        ["default"]
+                end),
+
+    ?MODULE ! {event, buckets},
+
+    %% Do a call to make sure that we process the previous info message
+    get_nodes(),
+
+    {state, kv_stats_monitor, #{buckets := Buckets2}} = sys:get_state(?MODULE),
+    ?assertNotEqual(dict:new(), Buckets2).
+
+health_monitor_test_teardown() ->
+    meck:unload(auto_failover),
+    meck:unload(ns_bucket).
+
+-endif.
