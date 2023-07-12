@@ -726,37 +726,38 @@ verify_oper({modify_collection, ScopeName, Name, SuppliedProps},
     %% We are only allowed to change history for a collection at the moment.
     AllowedCollectionPropChanges = [{history}],
     with_collection(
-        fun (ExistingProps) ->
-            %% When we store collections we strip them of their properties of
-            %% default values for... reasons. To check whether or not we can
-            %% ignore the modification of a collection property we must put the
-            %% defaults back into the existing props
-            AllExistingProps =
-                lists:keymerge(1,
-                    lists:keysort(1, ExistingProps),
-                    lists:keysort(1, default_collection_props())),
-            InvalidProps =
-                lists:filter(
+      fun (ExistingProps) ->
+              %% When we store collections we strip them of their properties of
+              %% default values for... reasons. To check whether or not we can
+              %% ignore the modification of a collection property we must put
+              %% the defaults back into the existing props
+              AllExistingProps =
+                  lists:keymerge(1,
+                                 lists:keysort(1, ExistingProps),
+                                 lists:keysort(1, default_collection_props())),
+              InvalidProps =
+                  lists:filter(
                     fun({Prop, Value}) ->
-                        %% We allow the "modification" of properties with the
-                        %% same value so that the set manifest path can specify
-                        %% properties even if they do not change
-                        ExistingPropValueEqual =
-                            case proplists:get_value(Prop, AllExistingProps) of
-                                Value -> true;
-                                _ -> false
-                            end,
+                            %% We allow the "modification" of properties with
+                            %% the same value so that the set manifest path can
+                            %% specify properties even if they do not change
+                            ExistingPropValueEqual =
+                                case proplists:get_value(Prop,
+                                                         AllExistingProps) of
+                                    Value -> true;
+                                    _ -> false
+                                end,
 
-                        not proplists:is_defined(Prop,
-                                                 AllowedCollectionPropChanges)
-                            andalso not ExistingPropValueEqual
+                            not proplists:is_defined(
+                                  Prop, AllowedCollectionPropChanges)
+                                andalso not ExistingPropValueEqual
                     end, SuppliedProps),
-            case InvalidProps of
-                [] -> ok;
-                _ ->
-                    {cannot_modify_properties, Name, InvalidProps}
-            end
-        end, ScopeName, Name, Manifest);
+              case InvalidProps of
+                  [] -> ok;
+                  _ ->
+                      {cannot_modify_properties, Name, InvalidProps}
+              end
+      end, ScopeName, Name, Manifest);
 verify_oper(bump_epoch, _Manifest) ->
     ok.
 
