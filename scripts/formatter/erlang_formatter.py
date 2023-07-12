@@ -83,8 +83,12 @@ def check_mode(args, diffs):
             formatted_file = file + "_formatted"
             format_one_file(args, diffs[bfile], file, formatted_file)
 
-            ret = subprocess.run(['git', 'diff', '--no-index',
-                                  file, formatted_file])
+            diff_cmd = ['git', 'diff', '--no-index']
+            if args.hook:
+                diff_cmd += ['--quiet']
+
+            diff_cmd += [file, formatted_file]
+            ret = subprocess.run(diff_cmd)
 
             # Tidy up the "_formatted" file now, we don't need it
             os.remove(formatted_file)
