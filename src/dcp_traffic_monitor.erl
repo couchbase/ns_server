@@ -38,7 +38,7 @@
 
 -export([start_link/0]).
 -export([get_nodes/0,
-         can_refresh/0,
+         can_refresh/1,
          node_alive/2]).
 -export([init/0, handle_call/3, handle_cast/2, handle_info/2]).
 
@@ -158,7 +158,7 @@ update_bucket(Node, Buckets, {Bucket, LastHeard, Pid}) ->
         end,
     lists:keystore(Bucket, 1, Buckets, {Bucket, LastHeard, NewPids}).
 
-can_refresh() ->
+can_refresh(_State) ->
     false.
 
 -ifdef(TEST).

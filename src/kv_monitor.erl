@@ -17,7 +17,7 @@
 
 -export([start_link/0]).
 -export([get_nodes/0,
-         can_refresh/0,
+         can_refresh/1,
          analyze_status/2,
          is_node_down/1]).
 
@@ -294,7 +294,7 @@ check_for_io_failure(Statuses) ->
             dict:store(node(), NewBuckets, Statuses)
     end.
 
-can_refresh() ->
+can_refresh(_State) ->
     true.
 
 -ifdef(TEST).

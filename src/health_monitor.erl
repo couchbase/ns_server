@@ -39,7 +39,7 @@
 
 %% Other API required for the behaviour.
 -callback get_nodes() -> term().
--callback can_refresh() -> boolean().
+-callback can_refresh(map()) -> boolean().
 
 %% We wait for ?INACTIVE_TICKS ticks before considering a node inactive and
 %% eligible for failover.
@@ -107,7 +107,7 @@ init([MonModule]) ->
     MonitorState = maps:merge(BaseMonitorState, SpecialisedMonitorState),
 
     MonStateWithRefresh =
-        case MonModule:can_refresh() of
+        case MonModule:can_refresh(MonitorState) of
             false -> MonitorState;
             true ->
                 self() ! refresh,
@@ -160,7 +160,7 @@ handle_cast(Cast, State) ->
 
 handle_info(refresh, #state{monitor_module = MonModule,
                             monitor_state = MonState} = State) ->
-    true = MonModule:can_refresh(),
+    true = MonModule:can_refresh(State),
     #{refresh_interval := RefreshInterval} = MonState,
 
     RV = handle_message(handle_info, refresh, State),
@@ -460,7 +460,7 @@ basic_test_t(Monitor) ->
 
     %% Refresh tested automatically by any refreshing monitor, but doing
     %% it explicitly doesn't hurt.
-    case Monitor:can_refresh() of
+    case Monitor:can_refresh(sys:get_state(Pid)) of
         true ->
             Pid ! refresh;
         false ->
