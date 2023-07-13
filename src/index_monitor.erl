@@ -18,19 +18,6 @@
 -define(DISK_ISSUE_THRESHOLD, ?get_param(disk_issue_threshold, 60)).
 -define(MAX_HEALTH_CHECK_DURATION, ?get_param(max_health_check_duration, 2000)).
 
--record(state, {
-          refresh_timer_ref :: undefined | reference(),
-          health_checker :: pid(),
-          tick = tock :: {tick, erlang:timestamp()} | tock,
-          disk_failures = 0 :: integer(),
-          prev_disk_failures :: integer() | undefined,
-          last_tick_time = 0 :: integer(),
-          last_tick_error = ok :: ok | {error, string()},
-          enabled = false :: boolean(),
-          num_samples :: integer() | undefined,
-          health_info = <<>> :: binary()
-         }).
-
 -export([start_link/0]).
 -export([get_nodes/0,
          analyze_status/2,
@@ -70,19 +57,28 @@ init([]) ->
       end),
 
     {ok, HealthChecker} = work_queue:start_link(),
-    {ok, #state{health_checker = HealthChecker}}.
+    {ok, #{refresh_timer_ref => undefined,
+           health_checker => HealthChecker,
+           tick => tock,
+           disk_failures => 0,
+           prev_disk_failures => undefined,
+           last_tick_time => 0,
+           last_tick_error => ok,
+           enabled => false,
+           num_samples => undefined,
+           health_info => <<>>}}.
 
 handle_cast({got_connection, Pid}, State) ->
     ?log_debug("Observed json_rpc_connection ~p", [Pid]),
     self() ! refresh,
     {noreply, State}.
 
-handle_call(get_nodes, _From,
-            #state{tick = Tick,
-                   num_samples = NumSamples,
-                   health_info = HealthInfo,
-                   last_tick_time = LastTickTime,
-                   last_tick_error = LastTickError} = State) ->
+handle_call(get_nodes, _From, MonitorState) ->
+    #{tick := Tick,
+      num_samples := NumSamples,
+      health_info := HealthInfo,
+      last_tick_time := LastTickTime,
+      last_tick_error := LastTickError} = MonitorState,
     Time =
         case Tick of
             tock ->
@@ -112,23 +108,23 @@ handle_call(get_nodes, _From,
                         end
                 end
         end,
-    {reply, dict:from_list([{node(), Status}]), State}.
+    {reply, dict:from_list([{node(), Status}]), MonitorState}.
 
-handle_info({tick, HealthCheckResult},
-            #state{tick = {tick, StartTS}} = State) ->
+handle_info({tick, HealthCheckResult}, MonitorState) ->
+    #{tick := {tick, StartTS}} = MonitorState,
     TS = os:timestamp(),
     NewState = case HealthCheckResult of
                    {ok, DiskFailures} ->
-                       State#state{disk_failures = DiskFailures,
-                                   last_tick_error = ok};
+                       MonitorState#{disk_failures => DiskFailures,
+                                     last_tick_error => ok};
                    {error, _} = Error ->
-                       State#state{last_tick_error = Error}
+                       MonitorState#{last_tick_error => Error}
                end,
 
-    {noreply, NewState#state{tick = tock,
-                             last_tick_time = timer:now_diff(TS, StartTS)}};
+    {noreply, NewState#{tick => tock,
+                        last_tick_time => timer:now_diff(TS, StartTS)}};
 
-handle_info(reload_config, State) ->
+handle_info(reload_config, MonitorState) ->
     Cfg = auto_failover:get_cfg(),
     {Enabled, NumSamples} =
         case auto_failover:is_enabled(Cfg) of
@@ -144,32 +140,34 @@ handle_info(reload_config, State) ->
                          round((TimePeriod * 1000)/?REFRESH_INTERVAL)
                  end}
         end,
-    {noreply, State#state{num_samples = NumSamples, enabled = Enabled}};
+    {noreply, MonitorState#{num_samples => NumSamples,
+                            enabled => Enabled}};
 
-handle_info(refresh, #state{tick = {tick, StartTS},
-                            health_info = HealthInfo,
-                            num_samples = NumSamples} = State) ->
+handle_info(refresh, #{tick := {tick, StartTS},
+                       health_info := HealthInfo,
+                       num_samples := NumSamples} = MonitorState) ->
     ?log_debug("Health check initiated at ~p didn't respond in time. "
                "Tick is missing", [StartTS]),
     NewHealthInfo = register_tick(true, HealthInfo, NumSamples),
-    {noreply, resend_refresh_msg(State#state{health_info = NewHealthInfo})};
+    {noreply,
+     resend_refresh_msg(MonitorState#{health_info => NewHealthInfo})};
 
-handle_info(refresh, #state{tick = tock,
-                            disk_failures = DiskFailures,
-                            prev_disk_failures = PrevDiskFailures,
-                            health_info = HealthInfo,
-                            num_samples = NumSamples} = State) ->
+handle_info(refresh, #{tick := tock,
+                       disk_failures := DiskFailures,
+                       prev_disk_failures := PrevDiskFailures,
+                       health_info := HealthInfo,
+                       num_samples := NumSamples} = MonitorState) ->
     Healthy = PrevDiskFailures == undefined orelse
         DiskFailures =< PrevDiskFailures,
     NewHealthInfo = register_tick(Healthy, HealthInfo, NumSamples),
-    NewState = State#state{prev_disk_failures = DiskFailures,
-                           health_info = NewHealthInfo},
+    NewState = MonitorState#{prev_disk_failures => DiskFailures,
+                             health_info => NewHealthInfo},
     {noreply, resend_refresh_msg(initiate_health_check(NewState))}.
 
-health_check(#state{enabled = false,
-                    disk_failures = DiskFailures}) ->
+health_check(#{enabled := false,
+               disk_failures := DiskFailures}) ->
     {ok, DiskFailures};
-health_check(#state{enabled = true}) ->
+health_check(#{enabled := true}) ->
     case service_api:health_check(index) of
         {ok, {[{<<"diskFailures">>, DiskFailures}]}} ->
             {ok, DiskFailures};
@@ -177,20 +175,20 @@ health_check(#state{enabled = true}) ->
             {error, Error}
     end.
 
-resend_refresh_msg(#state{refresh_timer_ref = undefined} = State) ->
+resend_refresh_msg(#{refresh_timer_ref := undefined} = MonitorState) ->
     Ref = erlang:send_after(?REFRESH_INTERVAL, self(), refresh),
-    State#state{refresh_timer_ref = Ref};
-resend_refresh_msg(#state{refresh_timer_ref = Ref} = State) ->
+    MonitorState#{refresh_timer_ref => Ref};
+resend_refresh_msg(#{refresh_timer_ref := Ref} = MonitorState) ->
     _ = erlang:cancel_timer(Ref),
-    resend_refresh_msg(State#state{refresh_timer_ref = undefined}).
+    resend_refresh_msg(MonitorState#{refresh_timer_ref => undefined}).
 
-initiate_health_check(#state{health_checker = HealthChecker,
-                             tick = tock} = State) ->
+initiate_health_check(#{health_checker := HealthChecker,
+                        tick := tock} = MonitorState) ->
     Self = self(),
     TS = os:timestamp(),
     work_queue:submit_work(HealthChecker,
-                           ?cut(Self ! {tick, health_check(State)})),
-    State#state{tick = {tick, TS}}.
+                           ?cut(Self ! {tick, health_check(MonitorState)})),
+    MonitorState#{tick => {tick, TS}}.
 
 register_tick(_Healthy, _HealthInfo, undefined) ->
     <<>>;
