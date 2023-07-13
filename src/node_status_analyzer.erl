@@ -205,13 +205,24 @@ can_refresh() ->
 health_monitor_test_setup() ->
     meck:new(node_monitor, [passthrough]),
     meck:expect(node_monitor,
-        get_nodes,
-        fun() ->
-            []
-        end),
+                get_nodes,
+                fun() ->
+                        []
+                end),
 
     meck:expect(chronicle_compat_events,
-        subscribe, fun (_,_) -> true end).
+                subscribe, fun (_,_) -> true end),
+
+    %% If we refresh with the kv_monitor as one of our active monitors then
+    %% we will attempt to analyze statuses from it which calls functions that
+    %% we don't care to mock here. Just mock the kv_monitor function result
+    %% instead.
+    meck:new(kv_monitor, [passthrough]),
+    meck:expect(kv_monitor,
+                analyze_status,
+                fun(_,_) ->
+                        []
+                end).
 
 get_monitors_from_state() ->
     %% Do a get_nodes (handle_call) to ensure that we have processed anything
@@ -230,9 +241,9 @@ health_monitor_t() ->
     ?assertEqual([{node(), [ns_server]}], get_monitors_from_state()),
 
     meck:expect(ns_cluster_membership, should_run_service,
-        fun(_Snapshot, _Service, _Node) ->
-            true
-        end),
+                fun(_Snapshot, _Service, _Node) ->
+                        true
+                end),
 
     ?MODULE ! node_changed,
 
@@ -240,10 +251,10 @@ health_monitor_t() ->
 
     %% Test new node is added and tracked
     meck:expect(ns_node_disco,
-        nodes_wanted,
-        fun() ->
-            [node(), "otherNode"]
-        end),
+                nodes_wanted,
+                fun() ->
+                        [node(), "otherNode"]
+                end),
 
     ?MODULE ! node_changed,
 
@@ -252,6 +263,7 @@ health_monitor_t() ->
                   {"otherNode", [ns_server, kv]}], get_monitors_from_state()).
 
 health_monitor_test_teardown() ->
-    meck:unload(node_monitor).
+    meck:unload(node_monitor),
+    meck:unload(kv_monitor).
 
 -endif.

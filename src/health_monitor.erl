@@ -442,6 +442,10 @@ test_refresh_interval_scaling(Monitor) ->
 basic_test_t(Monitor) ->
     {ok, Pid} = Monitor:start_link(),
 
+    %% Jump into some monitor specific tests first, they may care about
+    %% initial states
+    Monitor:health_monitor_t(),
+
     %% Some unknown cast shouldn't crash us, but it also should not do
     %% anything interesting that we can test. It does log something, but
     %% mecking ale doesn't appear to be possible. Whilst we can test the
@@ -465,9 +469,6 @@ basic_test_t(Monitor) ->
 
     %% And the same for a call...
     ?assertEqual(nack, gen_server:call(Pid, undefined)),
-
-    %% Jump into some monitor specific tests
-    Monitor:health_monitor_t(),
 
     test_refresh_interval_scaling(Monitor),
 
