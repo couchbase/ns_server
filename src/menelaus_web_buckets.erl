@@ -286,11 +286,20 @@ build_bucket_info(Id, Ctx, InfoLevel, MayExposeAuth, SkipMap) ->
         build_hibernation_state(BucketConfig),
         build_storage_limits(BucketConfig),
         build_throttle_limits(BucketConfig),
+        build_bucket_priority(BucketConfig),
         build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx),
         [build_sasl_password(BucketConfig) || MayExposeAuth]])}.
 
 get_internal_default(Key, Default) ->
     ns_config:read_key_fast(Key, Default).
+
+build_bucket_priority(BucketConfig) ->
+    case cluster_compat_mode:is_cluster_trinity() of
+        true ->
+            [{priority, ns_bucket:priority(BucketConfig)}];
+        false ->
+            []
+    end.
 
 build_limits(BucketConfig, ProfileKey, AttributesFunc) ->
     case config_profile:get_bool(ProfileKey) of
@@ -1339,6 +1348,7 @@ validate_membase_bucket_params(CommonParams, Params,
            Params, BucketConfig, IsNew, Version, IsEnterprise,
            IsStorageModeMigration),
          parse_validate_max_ttl(Params, BucketConfig, IsNew, IsEnterprise),
+         parse_validate_bucket_priority(Params),
          parse_validate_compression_mode(Params, BucketConfig, IsNew,
                                          IsEnterprise),
          HistRetSecs,
@@ -2121,6 +2131,33 @@ parse_compression_mode(V) when V =:= "off"; V =:= "passive"; V =:= "active" ->
 parse_compression_mode(_) ->
     {error, compressionMode,
      <<"compressionMode can be set to 'off', 'passive' or 'active'">>}.
+
+parse_validate_bucket_priority(Params) ->
+    case cluster_compat_mode:is_cluster_trinity() of
+        true ->
+            parse_validate_priority_inner(
+              proplists:get_value("priority", Params));
+        false ->
+            {error, priority,
+             <<"Bucket priority cannot be set until the cluster is fully "
+               " upgraded to Trinity.">>}
+
+    end.
+
+parse_validate_priority_inner(undefined) ->
+    {ok, priority, ?DEFAULT_BUCKET_PRIO};
+parse_validate_priority_inner(Prio) ->
+    case menelaus_util:parse_validate_number(Prio, ?MIN_BUCKET_PRIO,
+                                             ?MAX_BUCKET_PRIO) of
+        {ok, V} ->
+            {ok, priority, V};
+        _Error ->
+            PrioErr =
+                io_lib:format("Priority must be in the range ~p-~p. Got '~p'"
+                              " instead.",
+                              [?MIN_BUCKET_PRIO, ?MAX_BUCKET_PRIO, Prio]),
+            {error, priority, list_to_binary(PrioErr)}
+    end.
 
 parse_validate_max_ttl(Params, BucketConfig, IsNew, IsEnterprise) ->
     MaxTTL = proplists:get_value("maxTTL", Params),
@@ -4225,6 +4262,11 @@ storage_mode_migration_cluster_compat_test_() ->
 
 storage_mode_migration_ram_quota_test() ->
     storage_mode_migration_meck_setup(?VERSION_TRINITY),
+    %% bucket priority functions use cluster_compat_mode:is_cluster_trinity/0
+    meck:expect(cluster_compat_mode, is_cluster_trinity,
+                fun () ->
+                        true
+                end),
     Params = [{"storageBackend", "magma"}],
     BaseBucketConfig =
         [{type, membase},

@@ -244,7 +244,8 @@ failover(Nodes, Options) ->
         failover_collections(),
 
     KVNodes = ns_cluster_membership:service_nodes(Nodes, kv),
-    BktPrepResults = failover_buckets_prep(KVNodes, ns_bucket:get_buckets(),
+    BktPrepResults = failover_buckets_prep(KVNodes,
+                                           ns_bucket:get_buckets(),
                                            Options),
 
     %% From this point onwards, no bucket failed exception is thrown.

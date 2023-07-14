@@ -398,4 +398,14 @@
                                   {n1ql, 100},
                                   {eventing, 100},
                                   {backup, 10}]).
+
+-define(MIN_BUCKET_PRIO, 0).
+
+%% Make sure to make the max priority tied to maximum buckets s/t we won't have
+%% to keep re-adjusting it. Also make sure to call this function instead of just
+%% using the macro since we may also have overrides in ns_config or
+%% config_profile.
+-define(MAX_BUCKET_PRIO, ns_bucket:get_max_buckets()).
+-define(DEFAULT_BUCKET_PRIO, ?MIN_BUCKET_PRIO).
+
 -endif.

@@ -70,6 +70,8 @@
          get_bucket_names_of_type/2,
          get_buckets/0,
          get_buckets/1,
+         get_buckets_by_priority/0,
+         get_buckets_by_priority/1,
          is_named_bucket_persistent/1,
          is_persistent/1,
          is_ephemeral_bucket/1,
@@ -94,6 +96,7 @@
          history_retention_seconds/1,
          history_retention_bytes/1,
          history_retention_collection_default/1,
+         priority/1,
          eviction_policy/1,
          storage_mode/1,
          storage_backend/1,
@@ -357,6 +360,35 @@ get_bucket_names_of_type(auto_compactable, BucketConfigs) ->
 get_bucket_names_of_type(Type, BucketConfigs) ->
     [Name || {Name, Config} <- BucketConfigs, bucket_type(Config) == Type].
 
+%% extracted s/t it can be unit tested
+priority_sorting_fn() ->
+    fun ({KeyA, PlistA}, {KeyB, PlistB}) ->
+            case {priority(PlistA), priority(PlistB)} of
+                {PrioA, PrioB} when PrioA =:= PrioB -> KeyA < KeyB;
+                {PrioA, PrioB} -> PrioA > PrioB
+            end
+    end.
+
+-spec get_buckets_by_priority() -> [{_,_}].
+get_buckets_by_priority() ->
+    get_buckets_by_priority(get_buckets()).
+
+-spec get_buckets_by_priority([{_,_}] | map()) -> [{_,_}].
+get_buckets_by_priority(BucketConfig) ->
+    JustBuckets = maybe_isolate_bucket_props(BucketConfig),
+    case cluster_compat_mode:is_cluster_trinity() of
+        true ->
+            lists:sort(priority_sorting_fn(), JustBuckets);
+        false ->
+            JustBuckets
+    end.
+
+%% we need an extra level of extraction in some code paths but not others
+maybe_isolate_bucket_props(Snapshot) when is_map(Snapshot) ->
+    get_buckets(Snapshot);
+maybe_isolate_bucket_props(List) when is_list(List) ->
+    List.
+
 get_buckets() ->
     get_buckets(direct).
 
@@ -403,6 +435,10 @@ drift_thresholds(BucketConfig) ->
              proplists:get_value(drift_behind_threshold_ms, BucketConfig)};
         false -> undefined
     end.
+
+-spec priority([{_,_}]) -> integer().
+priority(BucketConfig) ->
+    proplists:get_value(priority, BucketConfig, ?DEFAULT_BUCKET_PRIO).
 
 -spec history_retention_seconds([{_,_}]) -> integer().
 history_retention_seconds(BucketConfig) ->
@@ -2050,7 +2086,8 @@ chronicle_upgrade_to_71(ChronicleTxn) ->
 
 chronicle_upgrade_bucket_to_trinity(BucketName, ChronicleTxn) ->
     PropsKey = sub_key(BucketName, props),
-    AddProps = [{pitr_enabled, false},
+    AddProps = [{priority, ?DEFAULT_BUCKET_PRIO},
+                {pitr_enabled, false},
                 {pitr_granularity, attribute_default(pitr_granularity)},
                 {pitr_max_history_age,
                  attribute_default(pitr_max_history_age)}],
@@ -2117,28 +2154,27 @@ chronicle_upgrade_to_72(ChronicleTxn) ->
 
 %% returns proplist with only props useful for ns_bucket
 extract_bucket_props(Props) ->
-    [X || X <-
-              [lists:keyfind(Y, 1, Props) ||
-                  Y <- [num_replicas, replica_index, ram_quota,
-                        durability_min_level, frag_percent,
-                        storage_quota_percentage, num_vbuckets,
-                        pitr_enabled, pitr_granularity, pitr_max_history_age,
-                        autocompaction, purge_interval, flush_enabled,
-                        num_threads, eviction_policy, conflict_resolution_type,
-                        drift_ahead_threshold_ms, drift_behind_threshold_ms,
-                        storage_mode, max_ttl, compression_mode,
-                        magma_max_shards, weight, width, desired_servers,
-                        {serverless, storage_limit, kv},
-                        {serverless, storage_limit, index},
-                        {serverless, storage_limit, fts},
-                        {serverless, throttle_limit, kv},
-                        {serverless, throttle_limit, index},
-                        {serverless, throttle_limit, fts},
-                        {serverless, throttle_limit, n1ql},
-                        history_retention_seconds, history_retention_bytes,
-                        magma_key_tree_data_blocksize,
-                        magma_seq_tree_data_blocksize,
-                        history_retention_collection_default]],
+    [X || X <- [lists:keyfind(Y, 1, Props) ||
+                   Y <- [num_replicas, replica_index, ram_quota,
+                         durability_min_level, frag_percent,
+                         storage_quota_percentage, num_vbuckets,
+                         pitr_enabled, pitr_granularity, pitr_max_history_age,
+                         autocompaction, purge_interval, flush_enabled,
+                         num_threads, eviction_policy, conflict_resolution_type,
+                         drift_ahead_threshold_ms, drift_behind_threshold_ms,
+                         storage_mode, max_ttl, compression_mode,
+                         magma_max_shards, weight, width, desired_servers,
+                         {serverless, storage_limit, kv},
+                         {serverless, storage_limit, index},
+                         {serverless, storage_limit, fts},
+                         {serverless, throttle_limit, kv},
+                         {serverless, throttle_limit, index},
+                         {serverless, throttle_limit, fts},
+                         {serverless, throttle_limit, n1ql},
+                         history_retention_seconds, history_retention_bytes,
+                         magma_key_tree_data_blocksize,
+                         magma_seq_tree_data_blocksize,
+                         history_retention_collection_default, priority]],
           X =/= false].
 
 build_threshold({Percentage, Size}) ->
@@ -2413,4 +2449,43 @@ node_autocompaction_settings_test() ->
                  node_autocompaction_settings(
                    [{autocompaction, bucket_setting},
                     {{node, node(), autocompaction}, false}])).
+
+assert_sorted(Expected, Given) ->
+    ?assertEqual(Expected, lists:map(fun ({K, _V}) -> K end,
+                                     lists:sort(priority_sorting_fn(), Given))).
+
+%% Asserts that the sorting function sorts by the 'priority' key from high-low,
+%% while sorting based on name, if the priorities are equal. The secondary
+%% sorting is done in alphabetical order from A-Z..
+sorting_fn_test_() ->
+    LL = [{["B", "C", "D", "A"],
+           [{"A", [{priority, 0}, {name, "A"}]},
+            {"B", [{priority, 11}, {name, "B"}]},
+            {"C", [{priority, 10}, {name, "C"}]},
+            {"D", [{priority, 9}, {name, "D"}]}]},
+          {["X", "Y", "A", "Z"],
+           [{"X", [{priority, 100}, {name, "X"}]},
+            {"Y", [{priority, 12}, {name, "Y"}]},
+            {"Z", [{priority, 0}, {name, "Z"}]},
+            {"A", [{priority, 0}, {name, "A"}]}]},
+          {["4", "2", "1", "3", "5"],
+           [{"5", [{priority, 0}, {name, "5"}]},
+            {"4", [{priority, 66}, {name, "4"}]},
+            {"3", [{priority, 0}, {name, "3"}]},
+            {"2", [{priority, 5}, {name, "2"}]},
+            {"1", [{priority, 0}, {name, "1"}]}]},
+          {["A", "AA", "AAA", "B", "Z"],
+           [{"B", [{priority, 2}, {name, "B"}]},
+            {"Z", [{priority, 1}, {name, "Z"}]},
+            {"A", [{priority, 100}, {name, "A"}]},
+            {"AAA", [{priority, 87}, {name, "AAA"}]},
+            {"AA", [{priority, 88}, {name, "AA"}]}]}],
+
+    {setup, fun () -> ok end, fun (_) -> ok end,
+     [{lists:flatten(io_lib:format("Sorting function test for: ~p",
+                                   [Expected])),
+       fun () ->
+               assert_sorted(Expected, Given)
+       end} || {Expected, Given} <- LL]}.
+
 -endif.
