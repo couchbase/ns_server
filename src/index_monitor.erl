@@ -57,8 +57,7 @@ init([]) ->
       end),
 
     {ok, HealthChecker} = work_queue:start_link(),
-    {ok, #{refresh_timer_ref => undefined,
-           health_checker => HealthChecker,
+    {ok, #{health_checker => HealthChecker,
            tick => tock,
            disk_failures => 0,
            prev_disk_failures => undefined,
@@ -149,8 +148,8 @@ handle_info(refresh, #{tick := {tick, StartTS},
     ?log_debug("Health check initiated at ~p didn't respond in time. "
                "Tick is missing", [StartTS]),
     NewHealthInfo = register_tick(true, HealthInfo, NumSamples),
-    {noreply,
-     resend_refresh_msg(MonitorState#{health_info => NewHealthInfo})};
+    erlang:send_after(?REFRESH_INTERVAL, self(), refresh),
+    {noreply, MonitorState#{health_info => NewHealthInfo}};
 
 handle_info(refresh, #{tick := tock,
                        disk_failures := DiskFailures,
@@ -162,7 +161,8 @@ handle_info(refresh, #{tick := tock,
     NewHealthInfo = register_tick(Healthy, HealthInfo, NumSamples),
     NewState = MonitorState#{prev_disk_failures => DiskFailures,
                              health_info => NewHealthInfo},
-    {noreply, resend_refresh_msg(initiate_health_check(NewState))}.
+    erlang:send_after(?REFRESH_INTERVAL, self(), refresh),
+    {noreply, initiate_health_check(NewState)}.
 
 health_check(#{enabled := false,
                disk_failures := DiskFailures}) ->
@@ -174,13 +174,6 @@ health_check(#{enabled := true}) ->
         {error, Error} ->
             {error, Error}
     end.
-
-resend_refresh_msg(#{refresh_timer_ref := undefined} = MonitorState) ->
-    Ref = erlang:send_after(?REFRESH_INTERVAL, self(), refresh),
-    MonitorState#{refresh_timer_ref => Ref};
-resend_refresh_msg(#{refresh_timer_ref := Ref} = MonitorState) ->
-    _ = erlang:cancel_timer(Ref),
-    resend_refresh_msg(MonitorState#{refresh_timer_ref => undefined}).
 
 initiate_health_check(#{health_checker := HealthChecker,
                         tick := tock} = MonitorState) ->
