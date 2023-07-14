@@ -38,7 +38,7 @@ def parse_git_diffs_for_formatting(diff_output: bytes):
 
     # b (bytes) is needed as we perform this on bytes objects
     # r (raw) string stops pep8 from warning about escape sequences
-    file_pattern = re.compile(br'--- a/(.*)')
+    file_pattern = re.compile(br'\+\+\+ b/(.*)')
     start_diff_pattern = re.compile(br'@@ -(\d*)[ ,]')
     newly_changed_line_pattern = re.compile(br'\+.*')
 
