@@ -651,33 +651,103 @@ udp_password_test() ->
               end),
 
         memorize_hidden_pass(?HIDE("")),
-        Parent = self(),
-        Ref = make_ref(),
-        PortFile = path_config:component_path(
-                      data, "couchbase-server.babysitter.smport"),
-        case file:delete(PortFile) of
-            ok -> ok;
-            {error, enoent} -> ok
-        end,
-        spawn_link(
+        with_password_sent(
+          "wrong", Password,
           fun () ->
-              Parent ! {Ref, try_send_password("wrong", PortFile, 300),
-                             try_send_password(Password, PortFile, 300)}
-          end),
-        {ok, Data} =
-            with_gosecrets(
-              Cfg,
-              fun (_CfgPath, Pid) ->
-                  decrypt(Pid, Encrypted)
-              end),
-        receive
-            {Ref, Res1, Res2} ->
-                ?assertEqual({error,{recv_response_failed, "retry"}}, Res1),
-                ?assertEqual(ok, Res2)
-        end
+              {ok, Data} =
+                  with_gosecrets(
+                    Cfg,
+                    fun (_CfgPath, Pid) ->
+                        decrypt(Pid, Encrypted)
+                    end)
+          end)
     after
         file:delete(DKFile)
     end.
+
+upgrade_from_7_2_no_password_test() ->
+    %% This file name and file content are copied from test 7.2 node.
+    %% They should not be changed to whatever this version is using
+    %% particularly, we can't use default_data_key_path() here.
+    DKeyPath = filename:join(path_config:component_path(data, "config"),
+                             "encrypted_data_keys"),
+    DKeyNoPass = <<"PQCOjPj3Z5C8gF22/lU6RWUOj3oaArY2SG47ZrknOU"
+                   "CYeAumjlE0FWbz9ll3/Qh1XARJUIrIhfjBKDIKf6MA">>,
+
+    %% We can't use with_gosecrets/2 here, because it would remove the data
+    %% key file
+    with_tmp_cfg(
+      undefined,
+      fun (CfgPath) ->
+          ok = file:write_file(DKeyPath, base64:decode(DKeyNoPass)),
+          {ok, Pid} = start_link(CfgPath),
+          try
+              Data = rand:bytes(512),
+              {ok, Encrypted} = encrypt(Pid, Data),
+              {ok, Data} = decrypt(Pid, Encrypted)
+          after
+              unlink(Pid),
+              exit(Pid, shutdown)
+          end
+      end).
+
+upgrade_from_7_2_with_password_test() ->
+    %% This file name and file content are copied from test 7.2 node.
+    %% They should not be changed to whatever this version is using
+    %% particularly, we can't use default_data_key_path() here.
+    DKeyPath = filename:join(path_config:component_path(data, "config"),
+                             "encrypted_data_keys"),
+    DKeyNoPass = <<"PQClXd7LPk4UgKcXuAKjg3+q9/dzCoZ3CZLNpmKtnn"
+                   "oJblYKVGRkQzY6w/r7yDjJNV7BF+Ng9RXPT8nKKrMA">>,
+
+    with_password_sent(
+      "wrong", "test",
+      fun () ->
+          %% We can't use with_gosecrets/2 here, because it would remove
+          %% the data key file
+          with_tmp_cfg(
+            undefined,
+            fun (CfgPath) ->
+                ok = file:write_file(DKeyPath, base64:decode(DKeyNoPass)),
+                {ok, Pid} = start_link(CfgPath),
+                try
+                    Data = rand:bytes(512),
+                    {ok, Encrypted} = encrypt(Pid, Data),
+                    {ok, Data} = decrypt(Pid, Encrypted)
+                after
+                    unlink(Pid),
+                    exit(Pid, shutdown)
+                end
+            end)
+      end).
+
+with_password_sent(WrongPassword, CorrectPassword, Fun) ->
+    Parent = self(),
+    Ref = make_ref(),
+    PortFile = path_config:component_path(
+                  data, "couchbase-server.babysitter.smport"),
+    case file:delete(PortFile) of
+        ok -> ok;
+        {error, enoent} -> ok
+    end,
+    spawn_link(
+      fun () ->
+          Parent ! {Ref, try_send_password(WrongPassword, PortFile, 300),
+                         try_send_password(CorrectPassword, PortFile, 300)}
+      end),
+
+    Res = Fun(),
+
+    receive
+        {Ref, Res1, Res2} ->
+            ?assertEqual({error,{recv_response_failed, "retry"}}, Res1),
+            ?assertEqual(ok, Res2)
+    after
+        120000 ->
+            erlang:error(password_confirmation_wait_timed_out)
+    end,
+
+    Res.
 
 try_send_password(_Pass, _PortFile, Retries) when Retries =< 0 ->
     {error, password_transfer_failed};
