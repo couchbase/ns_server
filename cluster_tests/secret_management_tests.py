@@ -16,6 +16,11 @@ import testlib
 import re
 import os
 import signal
+import subprocess
+import random
+
+scriptdir = os.path.dirname(os.path.realpath(__file__))
+resourcedir = os.path.join(scriptdir, "resources", "secrets_management")
 
 
 class SecretManagementTests(testlib.BaseTestSet):
@@ -34,7 +39,64 @@ class SecretManagementTests(testlib.BaseTestSet):
         pass
 
     def test_teardown(self, cluster):
+        reset_es_config(cluster)
         change_password(cluster, password='')
+
+    def password_cmd_test(self, cluster):
+        script_path = os.path.join(resourcedir, "getpass.sh")
+        password = change_password(cluster)
+        post_es_config(cluster, {'keyStorageType': 'file',
+                                 'keyEncrypted': 'true',
+                                 'passwordSource': 'script',
+                                 'passwordCmd': script_path})
+
+    # Try to reuse the same file for key. Password cmd returns the password
+    # that is currently set
+    def password_cmd_existing_keyfile_test(self, cluster):
+        script_path = os.path.join(resourcedir, "getpass.sh")
+        change_password(cluster,
+                        password=subprocess.check_output([script_path]))
+        data_dir = cluster.connected_nodes[0].data_path()
+        datakey_path = os.path.join(data_dir, "config", "encrypted_data_keys")
+        post_es_config(cluster, {'keyStorageType': 'file',
+                                 'keyEncrypted': 'true',
+                                 'keyPath': 'custom',
+                                 'customKeyPath': datakey_path,
+                                 'passwordSource': 'script',
+                                 'passwordCmd': script_path})
+        post_es_config(cluster, {'keyStorageType': 'file',
+                                 'keyEncrypted': 'true',
+                                 'keyPath': 'auto',
+                                 'passwordSource': 'script',
+                                 'passwordCmd': script_path})
+
+    # Try to reuse the same file for key. Password cmd returns the password
+    # that is wrong
+    def password_cmd_existing_keyfile_wrong_password_test(self, cluster):
+        script_path = os.path.join(resourcedir, "getpass_wrong.sh")
+        password = change_password(cluster)
+        data_dir = cluster.connected_nodes[0].data_path()
+        datakey_path = os.path.join(data_dir, "config", "encrypted_data_keys")
+        r = testlib.post_fail(
+              cluster,
+              "/node/controller/secretsManagement/encryptionService",
+              400,
+              data={'keyStorageType': 'file',
+                    'keyEncrypted': 'true',
+                    'keyPath': 'custom',
+                    'customKeyPath': datakey_path,
+                    'passwordSource': 'script',
+                    'passwordCmd': script_path}).json()
+        assert r['errors']['_'].startswith('Secret already exists')
+
+    def not_existing_password_cmd_test(self, cluster):
+        try_wrong_password_cmd(cluster, "getpass_does_not_exist.sh")
+
+    def not_executable_password_cmd_test(self, cluster):
+        try_wrong_password_cmd(cluster, "getpass_notexec.sh")
+
+    def password_cmd_fail_test(self, cluster):
+        try_wrong_password_cmd(cluster, "getpass_fail.sh")
 
     def change_password_test(self, cluster):
         data = testlib.random_str(32)
@@ -59,6 +121,138 @@ class SecretManagementTests(testlib.BaseTestSet):
                                    timeout=60,
                                    verbose=True)
         check_decrypt(cluster, encrypted_data, data)
+
+    def gosecret_crash_after_config_change_test(self, cluster):
+        password = change_password(cluster)
+
+        data = testlib.random_str(32)
+        encrypted_data = encrypt(cluster, data)
+
+        post_es_config(cluster, {'keyStorageType': 'file',
+                                 'keyEncrypted': 'false'})
+
+        post_es_config(cluster, {'keyStorageType': 'file',
+                                 'keyEncrypted': 'true'})
+
+        kill_gosecrets(cluster)
+        testlib.poll_for_condition(gosecrets_started_fun(cluster),
+                                   sleep_time=0.2,
+                                   timeout=60,
+                                   verbose=True)
+        check_decrypt(cluster, encrypted_data, data)
+
+    def config_change_test(self, cluster):
+        passwordcmd = os.path.join(resourcedir, "getpass.sh")
+        smcmd = os.path.join(resourcedir, "secretmngmt.py")
+        tmpFile = os.path.join(resourcedir, "secret.tmp")
+        seedFile = os.path.join(resourcedir, "seed.tmp")
+        with open(seedFile, "w") as f:
+            f.write(testlib.random_str(16))
+
+        ensure_removed(tmpFile)
+        rand = testlib.random_str(8)
+
+        configs = [{'keyStorageType': 'file',
+                    'keyEncrypted': 'true',
+                    'passwordSource': 'env'},
+                   {'keyStorageType': 'file',
+                    'keyEncrypted': 'true',
+                    'passwordSource': 'script',
+                    'passwordCmd': passwordcmd},
+                   {'keyStorageType': 'file',
+                    'keyEncrypted': 'false'},
+                   {'keyStorageType': 'script',
+                    'readCmd': f'{smcmd} read {seedFile} {tmpFile} {rand}',
+                    'writeCmd': f'{smcmd} write {seedFile} {tmpFile} {rand}',
+                    'deleteCmd':
+                        f'{smcmd} delete {seedFile} {tmpFile} {rand}'}]
+
+        try:
+            # Testing config change From -> To
+            # Config change depends on both configs: From and To, so we want to
+            # test different combinations of (From, To) instead of just trying
+            # each config separately
+            for i in range(50):
+                if random.uniform(0, 1) < 0.5:
+                    try:
+                        change_password(cluster)
+                    except AssertionError:
+                        # For some configurations change_password returns error
+                        # which is expected (here we are testing that
+                        # changed password doesn't affect configuration
+                        # changes)
+                        pass
+                post_es_config(cluster, random.choice(configs))
+        finally:
+            # Before removing seedFile and tmpFile we need to make sure
+            # encryption service is not recovering right now. A config
+            # change will make sure it has recovered and is not using those
+            # files anymore
+            reset_es_config(cluster)
+            ensure_removed(tmpFile)
+            ensure_removed(seedFile)
+
+    def recover_during_set_config_test(self, cluster):
+        smcmd = os.path.join(resourcedir, "secretmngmt.py")
+        tmpFile = os.path.join(resourcedir, "secret.tmp")
+        seedFile = os.path.join(resourcedir, "seed.tmp")
+        with open(seedFile, "w") as f:
+            f.write(testlib.random_str(16))
+
+        # bad_read, bad_write, bad_delete - they work but not all the time,
+        # they can fail with some probability
+        def generate_cfg():
+            rand = testlib.random_str(8)
+            return {'keyStorageType': 'script',
+                    'readCmd': f'{smcmd} bad_read {seedFile} {tmpFile} {rand}',
+                    'writeCmd':
+                        f'{smcmd} bad_write {seedFile} {tmpFile} {rand}',
+                    'deleteCmd':
+                        f'{smcmd} bad_delete {seedFile} {tmpFile} {rand}'}
+
+        default_config = {'keyStorageType': 'file',
+                          'keyEncrypted': 'true',
+                          'passwordSource': 'env'}
+
+        ensure_removed(tmpFile)
+        print()
+        print(f"posting config: {generate_cfg()}")
+        try:
+            for i in range(50):
+                print("******************************************************")
+                r = testlib.post(
+                      cluster,
+                      "/node/controller/secretsManagement/encryptionService",
+                      data=generate_cfg())
+
+                print(f"POST result: {r.status_code}")
+                if r.status_code != 200:
+                    print(r.text)
+
+                assert r.status_code != 500
+        finally:
+            # Before removing seedFile and tmpFile we need to make sure
+            # encryption service is not recovering right now. A config
+            # change will make sure it has recovered and is not using those
+            # files anymore
+            reset_es_config(cluster)
+            ensure_removed(tmpFile)
+            ensure_removed(seedFile)
+
+
+def post_es_config(cluster, cfg):
+    print(f"posting the following config: {cfg}")
+    testlib.post_succ(
+      cluster,
+      "/node/controller/secretsManagement/encryptionService",
+      data=cfg)
+
+
+def reset_es_config(cluster):
+    post_es_config(cluster, {'keyStorageType': 'file',
+                             'keyEncrypted': 'true',
+                             'keyPath': 'auto',
+                             'passwordSource': 'env'})
 
 
 def encrypt(cluster, s):
@@ -97,6 +291,20 @@ def kill_gosecrets(cluster):
     os.kill(gosecrets_pid, signal.SIGKILL)
 
 
+def try_wrong_password_cmd(cluster, script):
+    cmd = os.path.join(resourcedir, script)
+    r = testlib.post_fail(
+          cluster,
+          "/node/controller/secretsManagement/encryptionService",
+          400,
+          data={'keyStorageType': 'file',
+                'keyEncrypted': 'true',
+                'passwordSource': 'script',
+                'passwordCmd': cmd}).json()
+    assert r['errors']['_'].startswith(
+                                f'Command \'{cmd}\' finished with error')
+
+
 def change_password(cluster, password=None):
     if password is None:
         password = testlib.random_str(8)
@@ -116,3 +324,8 @@ def gosecrets_started_fun(cluster):
         except ValueError:
             return False
     return fun
+
+
+def ensure_removed(path):
+    if os.path.exists(path):
+        os.remove(path)
