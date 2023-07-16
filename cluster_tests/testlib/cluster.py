@@ -124,11 +124,6 @@ class Cluster:
         self.is_dev_preview = get_bool("cluster_compat_mode:"
                                        "is_developer_preview().")
 
-        def diag_eval(code):
-            return testlib.post_succ(self, "/diag/eval",
-                                     data=code).text.strip('\"')
-
-        self.data_path = diag_eval("path_config:component_path(data).")
 
     def __str__(self):
         return self.__dict__.__str__()

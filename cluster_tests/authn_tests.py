@@ -82,7 +82,8 @@ class AuthnTests(testlib.BaseTestSet):
 
 
     def local_token_test(self, cluster):
-        tokenPath = os.path.join(cluster.data_path, "localtoken")
+        tokenPath = os.path.join(cluster.connected_nodes[0].data_path(),
+                                 "localtoken")
         with open(tokenPath, 'r') as f:
             token = f.read().rstrip()
             testlib.get_succ(cluster, '/diag/password',

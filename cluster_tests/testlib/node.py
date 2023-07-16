@@ -7,6 +7,8 @@
 # will be governed by the Apache License, Version 2.0, included in the file
 # licenses/APL2.txt.
 
+import testlib
+
 
 class Node:
     def __init__(self, host, port, auth):
@@ -15,3 +17,12 @@ class Node:
         self.host = host
         self.port = port
         self.auth = auth
+        self.data_path_cache = None
+
+
+    def data_path(self):
+        if self.data_path_cache is None:
+            r = testlib.diag_eval(self, "path_config:component_path(data).")
+            self.data_path_cache = r.text.strip('\"')
+
+        return self.data_path_cache
