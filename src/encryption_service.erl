@@ -20,6 +20,7 @@
          terminate/2]).
 
 -define(RUNNER, {cb_gosecrets_runner, ns_server:get_babysitter_node()}).
+-define(RESTART_WAIT_TIMEOUT, 120000).
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -49,21 +50,26 @@ os_pid() ->
     cb_gosecrets_runner:os_pid(?RUNNER).
 
 reconfigure(NewCfg) ->
-    gen_server:call(?MODULE, {change_config, NewCfg}, infinity).
+    safe_call({change_config, NewCfg}, infinity).
 
 %%%===================================================================
 %%% callbacks
 %%%===================================================================
 
 init([]) ->
-    ok = recover(),
-    {ok, #{}}.
+    case recover() of
+        ok -> {ok, #{}};
+        {error, _} = Error -> {stop, {recover_failed, Error}}
+    end.
 
 handle_call({change_config, Cfg}, _From, State) ->
     case change_config(Cfg) of
         ok -> {reply, ok, State};
-        {error, _} = Error -> {stop, Error, Error, State}
+        {error, _} = Error ->
+            {stop, {change_cfg_failed, Error}, Error, State}
     end;
+handle_call(sync, _From, State) ->
+    {reply, ok, State};
 handle_call(Msg, _From, State) ->
     ?log_error("unhandled call: ~p", [Msg]),
     {reply, unhandled, State}.
@@ -199,3 +205,40 @@ change_cfg_marker() ->
                   "sm_load_config_marker").
 
 ns_config_sm_key() -> {node, node(), secret_mngmt_cfg}.
+
+safe_call(Req, Timeout) ->
+    safe_call(Req, Timeout, 100).
+
+safe_call(Req, _Timeout, AttemptsLeft) when AttemptsLeft =< 0 ->
+    ?log_error("Call ~p retries exceeded", [Req]),
+    {error, call_retries_exceeded};
+safe_call(Req, Timeout, AttemptsLeft) ->
+    wait_for_server_start(),
+    try
+        gen_server:call(?MODULE, Req, Timeout)
+    catch
+        exit:{{change_cfg_failed, _}, _} ->
+            %% The process is being restarted because it failed to change
+            %% config (previous call has failed, not this one), so we should
+            %% wait until it restarts, and retry
+            true = wait_for_server_start(),
+            safe_call(Req, Timeout, AttemptsLeft - 1);
+        exit:{{recover_failed, _}, _} ->
+            %% The process is being restarted because it failed to recover
+            %% after unsuccessful config change.
+            %% config (previous call has failed, not this one), so we should
+            %% wait until it restarts, and retry
+            true = wait_for_server_start(),
+            safe_call(Req, Timeout, AttemptsLeft - 1)
+    end.
+
+wait_for_server_start() ->
+    misc:poll_for_condition(
+      fun () ->
+          try
+              is_process_alive(whereis(?MODULE)) andalso
+              (ok == gen_server:call(?MODULE, sync))
+          catch
+              _:_ -> false
+          end
+      end, ?RESTART_WAIT_TIMEOUT, 100).
