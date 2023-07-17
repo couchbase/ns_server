@@ -155,7 +155,12 @@ manifest_with_system_scope(BucketConf) ->
                   %% Note, not adding history to system collections. They
                   %% probably don't want to assume that history is available,
                   %% but we can change this in the future if necessary
-                  {Id + 1, [{Name, [{uid, Id}, {"metered", false}]}] ++ Cols}
+                  {Id + 1,
+                   [{Name,
+                     [{uid, Id},
+                      {"metered", false},
+                      {maxTTL, 0}
+                     ]}] ++ Cols}
           end, {8, []}, system_collections()),
 
     [{uid, 1},
