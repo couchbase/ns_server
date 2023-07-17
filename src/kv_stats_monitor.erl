@@ -62,19 +62,6 @@
 -export([register_tick/3,
          is_unhealthy/2]).
 
--record(state, {
-          buckets :: dict:dict(),
-          %% Monitor disk failure stats only if auto-failover on
-          %% disk issues is enabled.
-          enabled = false :: boolean(),
-          %% Number of stats samples to monitor - depends on timePeriod
-          %% set by the user and the REFRESH_INTERVAL.
-          numSamples = nil :: nil | integer(),
-          refresh_timer_ref = undefined,
-          stats_collector = undefined,
-          latest_stats = {undefined, dict:new()}
-         }).
-
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
@@ -98,16 +85,22 @@ init([]) ->
       end),
     {Enabled, NumSamples} = get_failover_on_disk_issues(
                               auto_failover:get_cfg()),
-    {ok, maybe_spawn_stats_collector(#state{buckets = reset_bucket_info(),
-                                            enabled = Enabled,
-                                            numSamples = NumSamples})}.
+    {ok,
+     maybe_spawn_stats_collector(
+       #{buckets => reset_bucket_info(),
+         enabled => Enabled,
+         numSamples => NumSamples,
+         refresh_timer_ref => undefined,
+         stats_collector => undefined,
+         latest_state => {undefined, dict:new()}})}.
 
-handle_call(get_buckets, _From, #state{buckets = Buckets} = State) ->
+handle_call(get_buckets, _From, MonitorState) ->
+    #{buckets := Buckets} = MonitorState,
     RV = dict:fold(
            fun(Bucket, {Status, _}, Acc) ->
                    [{Bucket, Status} | Acc]
            end, [], Buckets),
-    {reply, RV, State};
+    {reply, RV, MonitorState};
 
 handle_call(Call, From, State) ->
     ?log_warning("Unexpected call ~p from ~p when in state:~n~p",
@@ -118,18 +111,21 @@ handle_cast(Cast, State) ->
     ?log_warning("Unexpected cast ~p when in state:~n~p", [Cast, State]),
     {noreply, State}.
 
-handle_info(refresh, #state{enabled = false} = State) ->
-    {noreply, State};
-handle_info(refresh, #state{buckets = Buckets,
-                            numSamples = NumSamples,
-                            latest_stats = {TS, Stats}} = State) ->
+handle_info(refresh, #{enabled := false} = MonitorSate) ->
+    {noreply, MonitorSate};
+handle_info(refresh, MonitorState) ->
+    #{buckets := Buckets,
+      numSamples := NumSamples,
+      latest_states := {TS, Stats}} = MonitorState,
     NewBuckets = check_for_disk_issues(Buckets, TS, Stats, NumSamples),
-    NewState = maybe_spawn_stats_collector(
-                 State#state{buckets = NewBuckets,
-                             latest_stats = {undefined, dict:new()}}),
+    NewState =
+        maybe_spawn_stats_collector(
+          MonitorState#{buckets => NewBuckets,
+                        latest_stats => {undefined, dict:new()}}),
     {noreply, resend_refresh_msg(NewState)};
 
-handle_info({event, buckets}, #state{buckets = Dict} = State) ->
+handle_info({event, buckets}, MonitorState) ->
+    #{buckets := Dict} = MonitorState,
     NewBuckets0 = ns_bucket:node_bucket_names_of_type(node(), persistent),
     NewBuckets = lists:sort(NewBuckets0),
     KnownBuckets = lists:sort(dict:fetch_keys(Dict)),
@@ -143,25 +139,26 @@ handle_info({event, buckets}, #state{buckets = Dict} = State) ->
                 fun (Bucket, Acc) ->
                         dict:store(Bucket, {active, []}, Acc)
                 end, NewDict0, ToAdd),
-    {noreply, State#state{buckets = NewDict}};
+    {noreply, MonitorState#{buckets => NewDict}};
 
-handle_info({event, auto_failover_cfg},
-            #state{enabled = OldEnabled} = State) ->
+handle_info({event, auto_failover_cfg}, MonitorState) ->
+    #{enabled := OldEnabled} = MonitorState,
     {Enabled, NumSamples} =
         get_failover_on_disk_issues(auto_failover:get_cfg()),
     NewState = case Enabled of
-                     OldEnabled -> State;
-                     false -> State#state{buckets = reset_bucket_info()};
-                     true -> resend_refresh_msg(State)
-                 end,
+                   OldEnabled -> MonitorState;
+                   false -> MonitorState#{buckets => reset_bucket_info()};
+                   true -> resend_refresh_msg(MonitorState)
+               end,
     ?log_debug("auto_failover_cfg change enabled:~p numSamples:~p ",
                [Enabled, NumSamples]),
-    {noreply, NewState#state{enabled = Enabled, numSamples = NumSamples}};
+    {noreply, NewState#{enabled => Enabled, numSamples => NumSamples}};
 
-handle_info({Pid, BucketStats}, #state{stats_collector = Pid} = State) ->
+handle_info({Pid, BucketStats}, MonitorState) ->
+    #{stats_collector := Pid} = MonitorState,
     TS = os:system_time(millisecond),
-    {noreply, State#state{stats_collector = undefined,
-                          latest_stats = {TS, BucketStats}}};
+    {noreply, MonitorState#{stats_collector => undefined,
+                            latest_stats => {TS, BucketStats}}};
 
 handle_info(Info, State) ->
     ?log_warning("Unexpected message ~p when in state:~n~p", [Info, State]),
@@ -357,26 +354,27 @@ get_failover_on_disk_issues(Config) ->
             {Enabled, NumSamples}
     end.
 
-resend_refresh_msg(#state{refresh_timer_ref = undefined} = State) ->
+resend_refresh_msg(#{refresh_timer_ref := undefined} = MonitorState) ->
     Ref = erlang:send_after(?REFRESH_INTERVAL, self(), refresh),
-    State#state{refresh_timer_ref = Ref};
-resend_refresh_msg(#state{refresh_timer_ref = Ref} = State) ->
+    MonitorState#{refresh_timer_ref => Ref};
+resend_refresh_msg(#{refresh_timer_ref := Ref} = MonitorState) ->
     _ = erlang:cancel_timer(Ref),
-    resend_refresh_msg(State#state{refresh_timer_ref = undefined}).
+    resend_refresh_msg(MonitorState#{refresh_timer_ref => undefined}).
 
-maybe_spawn_stats_collector(#state{stats_collector = undefined,
-                                   buckets = Buckets} = State) ->
+-spec maybe_spawn_stats_collector(map()) -> map().
+maybe_spawn_stats_collector(#{stats_collector := undefined} = MonitorState) ->
+    #{buckets := Buckets} = MonitorState,
     Self = self(),
     Pid = proc_lib:spawn_link(
             fun () ->
-                Res = dict:map(fun (Bucket, _Info) ->
-                                   get_latest_stats(Bucket)
-                               end, Buckets),
-                Self ! {self(), Res}
+                    Res = dict:map(fun (Bucket, _Info) ->
+                                           get_latest_stats(Bucket)
+                                   end, Buckets),
+                    Self ! {self(), Res}
             end),
-    State#state{stats_collector = Pid};
-maybe_spawn_stats_collector(#state{stats_collector = Pid} = State) ->
+
+    MonitorState#{stats_collector => Pid};
+maybe_spawn_stats_collector(#{stats_collector := Pid} = MonitorState) ->
     ?log_warning("Ignoring start of stats collector as the previous one "
                  "haven't finished yet: ~p", [Pid]),
-    State.
-
+    MonitorState.
