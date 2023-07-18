@@ -146,7 +146,13 @@ manifest_without_system_scope(BucketConf) ->
               get_default_collection_props(BucketConf)}]}]}]}].
 
 system_collections() ->
-    ["_eventing", "_mobile", "_query", "_transactions"].
+    ["_mobile", "_query"] ++
+        case config_profile:is_serverless() of
+            true ->
+                ["_eventing", "_transactions"];
+            false ->
+                []
+        end.
 
 manifest_with_system_scope(BucketConf) ->
     {NextId, Collections} =
@@ -180,7 +186,7 @@ manifest_with_system_scope(BucketConf) ->
          {collections, Collections}]}]}].
 
 is_system_scope_enabled() ->
-    config_profile:get_bool(enable_system_scope).
+    cluster_compat_mode:is_cluster_trinity().
 
 max_collections_per_bucket() ->
     Default = get_max_supported(num_collections),
@@ -1227,7 +1233,7 @@ create_collection_t() ->
     {commit, [{_, _, Manifest1}], _} =
         update_manifest_test_create_collection(default_manifest(BucketConf),
                                                "_default", "c1", []),
-    ?assertEqual([{uid, 8}, {history, true}],
+    ?assertEqual([{uid, 10}, {history, true}],
                  get_collection("c1", get_scope("_default", Manifest1))),
 
     %% Can't create collection with same name
@@ -1237,7 +1243,7 @@ create_collection_t() ->
 
     {commit, [{_, _, Manifest2}], _} =
         update_manifest_test_create_collection(Manifest1, "_default", "c2", []),
-    ?assertEqual([{uid, 9}, {history, true}],
+    ?assertEqual([{uid, 11}, {history, true}],
                  get_collection("c2", get_scope("_default", Manifest2))).
 
 drop_collection_t() ->
@@ -1245,7 +1251,7 @@ drop_collection_t() ->
     {commit, [{_, _, Manifest1}], _} =
         update_manifest_test_create_collection(default_manifest(BucketConf),
                                                "_default", "c1", []),
-    ?assertEqual([{uid, 8}, {history, true}],
+    ?assertEqual([{uid, 10}, {history, true}],
                  get_collection("c1", get_scope("_default", Manifest1))),
 
     {commit, [{_, _, Manifest2}], _} =
@@ -1262,7 +1268,7 @@ create_scope_t() ->
     {ok, BucketConf} = ns_bucket:get_bucket("bucket"),
     {commit, [{_, _, Manifest1}], _} =
         update_manifest_test_create_scope(default_manifest(BucketConf), "s1"),
-    ?assertEqual([{uid, 8}, {collections, []}],
+    ?assertEqual([{uid, 9}, {collections, []}],
                  proplists:get_value("s1", get_scopes(Manifest1))),
 
     %% Can't create scope with same name
@@ -1271,14 +1277,14 @@ create_scope_t() ->
 
     {commit, [{_, _, Manifest2}], _} =
         update_manifest_test_create_scope(Manifest1, "s2"),
-    ?assertEqual([{uid, 9}, {collections, []}],
+    ?assertEqual([{uid, 10}, {collections, []}],
                  proplists:get_value("s2", get_scopes(Manifest2))).
 
 drop_scope_t() ->
     {ok, BucketConf} = ns_bucket:get_bucket("bucket"),
     {commit, [{_, _, Manifest1}], _} =
         update_manifest_test_create_scope(default_manifest(BucketConf), "s1"),
-    ?assertEqual([{uid, 8}, {collections, []}],
+    ?assertEqual([{uid, 9}, {collections, []}],
                  proplists:get_value("s1", get_scopes(Manifest1))),
 
     {commit, [{_, _, Manifest2}], _} =
@@ -1317,31 +1323,31 @@ scope_uid_t() ->
     {ok, BucketConf} = ns_bucket:get_bucket("bucket"),
     {commit, [{_, _, Manifest1}], _} =
         update_manifest_test_create_scope(default_manifest(BucketConf), "s1"),
-    ?assertEqual(8, get_uid(get_scope("s1", Manifest1))),
+    ?assertEqual(9, get_uid(get_scope("s1", Manifest1))),
 
     {commit, [{_, _, Manifest2}], _} =
         update_manifest_test_create_scope(Manifest1, "s2"),
-    ?assertEqual(9, get_uid(get_scope("s2", Manifest2))),
+    ?assertEqual(10, get_uid(get_scope("s2", Manifest2))),
 
     %% Recreate of same scope should use new id
     {commit, [{_, _, Manifest3}], _} =
         update_manifest_test_drop_scope(Manifest2, "s1"),
     {commit, [{_, _, Manifest4}], _} =
         update_manifest_test_create_scope(Manifest3, "s1"),
-    ?assertEqual(10, get_uid(get_scope("s1", Manifest4))).
+    ?assertEqual(11, get_uid(get_scope("s1", Manifest4))).
 
 collection_uid_t() ->
     {ok, BucketConf} = ns_bucket:get_bucket("bucket"),
     {commit, [{_, _, Manifest1}], _} =
         update_manifest_test_create_collection(default_manifest(BucketConf),
                                                "_default", "c1", []),
-    ?assertEqual(8,
+    ?assertEqual(10,
                  get_uid(get_collection("c1",
                                         get_scope("_default", Manifest1)))),
 
     {commit, [{_, _, Manifest2}], _} =
         update_manifest_test_create_collection(Manifest1, "_default", "c2", []),
-    ?assertEqual(9,
+    ?assertEqual(11,
                  get_uid(get_collection("c2",
                                         get_scope("_default", Manifest2)))),
 
@@ -1350,7 +1356,7 @@ collection_uid_t() ->
         update_manifest_test_drop_collection(Manifest2, "_default", "c1"),
     {commit, [{_, _, Manifest4}], _} =
         update_manifest_test_create_collection(Manifest3, "_default", "c1", []),
-    ?assertEqual(10,
+    ?assertEqual(12,
                  get_uid(get_collection("c1",
                                         get_scope("_default", Manifest4)))),
 
@@ -1359,7 +1365,7 @@ collection_uid_t() ->
         update_manifest_test_create_scope(Manifest4, "s1"),
     {commit, [{_, _, Manifest6}], _} =
         update_manifest_test_create_collection(Manifest5, "s1", "s1c1", []),
-    ?assertEqual(11,
+    ?assertEqual(13,
                  get_uid(get_collection("s1c1",
                                         get_scope("s1", Manifest6)))).
 

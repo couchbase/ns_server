@@ -1,5 +1,4 @@
 {name, "serverless"}.
-{enable_system_scope, true}.
 {enable_bucket_placer, true}.
 {enable_pause_resume, true}.
 {max_buckets_supported, 100}.
