@@ -71,11 +71,22 @@ class PromSdConfigTest(testlib.BaseTestSet):
 
     # Verify the alternate addresses and kv ports
     def verify_alt_addresses(self, cluster):
+        retries = 60
+        while retries > 0:
+            if self.verify_alt_addresses_inner(cluster):
+                return
+            time.sleep(0.5)
+            retries -= 1
+        raise RuntimeError("alternate addresses did not come up")
+
+    def verify_alt_addresses_inner(self, cluster):
         r = testlib.get_succ(cluster, "/pools/default/nodeServices")
         rj = r.json()
         nodesExt = rj['nodesExt']
         node_num = 1
         for node in nodesExt:
+            if 'alternateAddresses' not in node:
+                return False
             altaddr = node['alternateAddresses']
             external = altaddr['external']
             hostname = external['hostname']
@@ -86,6 +97,7 @@ class PromSdConfigTest(testlib.BaseTestSet):
             assert (port == int(self.build_portnum(node_num)))
             assert (portSSL == int(self.build_portnum(node_num, True)))
             node_num += 1
+        return True
 
     def build_url(self, ret_type, disposition, port, network):
         assert (ret_type in ["json", "yaml"])
