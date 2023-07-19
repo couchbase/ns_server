@@ -1893,7 +1893,18 @@ chronicle_upgrade_bucket_to_trinity(BucketName, ChronicleTxn) ->
     {ok, BucketConfig} = chronicle_upgrade:get_key(PropsKey, ChronicleTxn),
     NewBucketConfig = misc:merge_proplists(fun (_, L, _) -> L end, AddProps,
                                            BucketConfig),
-    chronicle_upgrade:set_key(PropsKey, NewBucketConfig, ChronicleTxn).
+    ChronicleTxn2 = chronicle_upgrade:set_key(PropsKey, NewBucketConfig,
+                                              ChronicleTxn),
+    CollectionsKey = sub_key(BucketName, collections),
+    case chronicle_upgrade:get_key(CollectionsKey, ChronicleTxn2) of
+        {error, not_found} ->
+            ChronicleTxn2;
+        {ok, Manifest} ->
+            NewManifest = collections:upgrade_to_trinity(Manifest,
+                                                         BucketConfig),
+            chronicle_upgrade:set_key(CollectionsKey, NewManifest,
+                                      ChronicleTxn2)
+    end.
 
 chronicle_upgrade_to_trinity(ChronicleTxn) ->
     {ok, BucketNames} = chronicle_upgrade:get_key(root(), ChronicleTxn),

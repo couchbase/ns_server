@@ -55,12 +55,15 @@
          diff_manifests/2,
          last_seen_ids_key/2,
          last_seen_ids_set/3,
-         chronicle_upgrade_to_72/2]).
+         chronicle_upgrade_to_72/2,
+         upgrade_to_trinity/2]).
 
 %% rpc from other nodes
 -export([wait_for_manifest_uid/4]).
 
 -define(EPOCH, 16#1000).
+-define(INCREMENT_COUNTER, 1).
+-define(NO_INCREMENT_COUNTER, 0).
 
 start_link() ->
     work_queue:start_link(
@@ -784,11 +787,7 @@ verify_oper(bump_epoch, _Manifest) ->
 handle_oper({check_uid, _CheckUid}, Manifest, _BucketConf) ->
     Manifest;
 handle_oper({create_scope, Name}, Manifest, _BucketConf) ->
-    functools:chain(
-      Manifest,
-      [add_scope(_, Name),
-       bump_id(_, next_scope_uid),
-       update_counter(_, num_scopes, 1)]);
+    do_create_scope(Name, Manifest, ?INCREMENT_COUNTER);
 handle_oper({drop_scope, Name}, Manifest, _BucketConf) ->
     NumCollections = length(get_collections(get_scope(Name, Manifest))),
     functools:chain(
@@ -797,11 +796,8 @@ handle_oper({drop_scope, Name}, Manifest, _BucketConf) ->
        update_counter(_, num_scopes, -1),
        update_counter(_, num_collections, -NumCollections)]);
 handle_oper({create_collection, Scope, Name, Props}, Manifest, BucketConf) ->
-    functools:chain(
-      Manifest,
-      [add_collection(_, Name, Scope, Props, BucketConf),
-       bump_id(_, next_coll_uid),
-       update_counter(_, num_collections, 1)]);
+    do_create_collection(Scope, Name, Props, Manifest, BucketConf,
+                         ?INCREMENT_COUNTER);
 handle_oper({modify_collection, Scope, Name, Props}, Manifest, _BucketConf) ->
     modify_collection_props(Manifest, Name, Scope, Props);
 handle_oper({drop_collection, Scope, Name}, Manifest, _BucketConf) ->
@@ -819,6 +815,20 @@ handle_oper(bump_epoch, Manifest, _BucketConf) ->
       [bump_id(_, next_scope_uid, ?EPOCH),
        bump_id(_, next_coll_uid, ?EPOCH),
        bump_id(_, next_uid, ?EPOCH)]).
+
+do_create_scope(Name, Manifest, Increment) ->
+    functools:chain(
+      Manifest,
+      [add_scope(_, Name),
+       bump_id(_, next_scope_uid),
+       update_counter(_, num_scopes, Increment)]).
+
+do_create_collection(Scope, Name, Props, Manifest, BucketConf, Increment) ->
+    functools:chain(
+      Manifest,
+      [add_collection(_, Name, Scope, Props, BucketConf),
+       bump_id(_, next_coll_uid),
+       update_counter(_, num_collections, Increment)]).
 
 get_counter(Manifest, Counter) ->
     proplists:get_value(Counter, Manifest).
@@ -1146,6 +1156,16 @@ chronicle_upgrade_to_72(Bucket, ChronicleTxn) ->
 
             chronicle_upgrade:set_key(key(Bucket), NewManifest2, ChronicleTxn)
     end.
+
+upgrade_to_trinity(Manifest0, BucketConfig) ->
+    Manifest1 = do_create_scope(?SYSTEM_SCOPE_NAME, Manifest0,
+                                ?NO_INCREMENT_COUNTER),
+    lists:foldl(
+      fun (Name, Manifest) ->
+              do_create_collection(?SYSTEM_SCOPE_NAME, Name,
+                                   [{"metered", false}, {maxTTL, 0}], Manifest,
+                                   BucketConfig, ?NO_INCREMENT_COUNTER)
+      end, Manifest1, system_collections()).
 
 -ifdef(TEST).
 manifest_test_set_history_default(Val) ->
