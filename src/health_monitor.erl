@@ -33,9 +33,9 @@
 -callback start_link() -> term().
 -callback init() -> map().
 -callback handle_call(term(), term(), map()) ->
-    noreply | {reply, map() | nack}.
--callback handle_cast(term(), map()) -> noreply.
--callback handle_info(term(), map()) -> noreply.
+    noreply | {reply, nack} | {reply, term(), map()}.
+-callback handle_cast(term(), map()) -> noreply | {noreply, map()}.
+-callback handle_info(term(), map()) -> noreply | {noreply, map()}.
 
 %% Other API required for the behaviour.
 -callback get_nodes() -> term().
