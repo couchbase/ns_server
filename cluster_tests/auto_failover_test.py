@@ -26,7 +26,7 @@ class AutoFailoverSettingsTestBase(testlib.BaseTestSet):
     def init_limits(self):
         self.limits = collections.defaultdict(collections.defaultdict)
         if self.is_enterprise:
-            self.limits['timeout']['min'] = 5
+            self.limits['timeout']['min'] = 1
         else:
             self.limits['timeout']['min'] = 30
         self.limits['timeout']['max'] = 3600

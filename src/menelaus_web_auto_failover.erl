@@ -25,7 +25,9 @@
         [reply/2,
          reply_json/2]).
 
--define(AUTO_FAILOVER_MIN_TIMEOUT, ?get_param(auto_failover_min_timeout, 5)).
+-define(AUTO_FAILOVER_MIN_TIMEOUT_TRINITY, 1).
+-define(AUTO_FAILOVER_MIN_TIMEOUT_PRE_TRINITY,
+            ?get_param(auto_failover_min_timeout, 5)).
 -define(AUTO_FAILOVER_MIN_CE_TIMEOUT, 30).
 -define(AUTO_FAILOVER_MAX_TIMEOUT, 3600).
 
@@ -136,9 +138,12 @@ get_failover_on_disk_issues(Config) ->
 
 %% Internal Functions
 get_min_timeout() ->
+    IsTrinity = cluster_compat_mode:is_cluster_trinity(),
     case cluster_compat_mode:is_enterprise() of
+        true when IsTrinity->
+            ?AUTO_FAILOVER_MIN_TIMEOUT_TRINITY;
         true ->
-            ?AUTO_FAILOVER_MIN_TIMEOUT;
+            ?AUTO_FAILOVER_MIN_TIMEOUT_PRE_TRINITY;
         false ->
             ?AUTO_FAILOVER_MIN_CE_TIMEOUT
     end.
