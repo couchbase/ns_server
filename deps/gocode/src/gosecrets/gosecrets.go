@@ -61,7 +61,7 @@ var ErrWrongPassword = errors.New("wrong password")
 type secretIface interface {
 	read() error
 	remove() error
-	changePassword([]byte) error
+	changePassword([]byte, map[string]interface{}) error
 	getPasswordState() string
 	getSecret() *secret
 	setSecret(*secret) error
@@ -307,44 +307,11 @@ func initKeysFromFile(settings map[string]interface{},
 		return &keysInFile{filePath: datakeyFile, secret: secret{}}, nil
 	}
 
-	passwordSource := settings["passwordSource"].(string)
-	var passwordToUse []byte
-	if passwordSource == "env" {
-		pwdSettings, ok := settings["passwordSettings"].(map[string]interface{})
-		if !ok {
-			return nil, errors.New("passwordSettings are missing in config")
-		}
-
-		envName, found := pwdSettings["envName"].(string)
-		if !found {
-			return nil, errors.New("envName is missing in config")
-		}
-		passwordToUse = []byte(os.Getenv(envName))
-		if len(passwordToUse) == 0 && len(password) > 0 {
-			passwordToUse = password
-		}
-	} else if passwordSource == "script" {
-		pwdSettings, ok := settings["passwordSettings"].(map[string]interface{})
-		if !ok {
-			return nil, errors.New("passwordSettings are missing in config")
-		}
-		passwordCmd, found := pwdSettings["passwordCmd"].(string)
-		if !found {
-			return nil, errors.New("passwordCmd is missing in config")
-		}
-		cmdTimeoutMs, found := pwdSettings["cmdTimeoutMs"].(int)
-		if !found {
-			cmdTimeoutMs = 60000
-		}
-		output, err := callExternalScript(passwordCmd, cmdTimeoutMs)
-		if err != nil {
-			return nil, err
-		}
-		passwordToUse = []byte(output)
-	} else {
-		return nil, errors.New(fmt.Sprintf("unknown password source: %s",
-			passwordSource))
+	passwordSource, passwordToUse, err := initFilePassword(settings, password)
+	if err != nil {
+		return nil, err
 	}
+
 	lockkey := generateLockKey(passwordToUse)
 	emptyPass := (len(passwordToUse) == 0)
 	return &keysInEncryptedFile{
@@ -355,6 +322,57 @@ func initKeysFromFile(settings map[string]interface{},
 			filePath: datakeyFile,
 			secret:   secret{}},
 	}, nil
+}
+
+func initFilePassword(
+	settings map[string]interface{},
+	password []byte) (string, []byte, error) {
+	passwordSource := settings["passwordSource"].(string)
+	var passwordToUse []byte
+	if passwordSource == "env" {
+		pwdSettings, ok := settings["passwordSettings"].(map[string]interface{})
+		if !ok {
+			return passwordSource, nil, errors.New(
+				"passwordSettings are missing in config")
+		}
+
+		envName, found := pwdSettings["envName"].(string)
+		if !found {
+			return passwordSource, nil, errors.New(
+				"envName is missing in config")
+		}
+		if len(password) > 0 {
+			passwordToUse = password
+		} else {
+			passwordToUse = []byte(os.Getenv(envName))
+		}
+	} else if passwordSource == "script" {
+		pwdSettings, ok := settings["passwordSettings"].(map[string]interface{})
+		if !ok {
+			return passwordSource, nil, errors.New(
+				"passwordSettings are missing in config")
+		}
+		passwordCmd, found := pwdSettings["passwordCmd"].(string)
+		if !found {
+			return passwordSource, nil, errors.New(
+				"passwordCmd is missing in config")
+		}
+		cmdTimeoutMs, found := pwdSettings["cmdTimeoutMs"].(int)
+		if !found {
+			cmdTimeoutMs = 60000
+		}
+		output, err := callExternalScript(passwordCmd, cmdTimeoutMs)
+		if err != nil {
+			return passwordSource, nil, err
+		}
+		passwordToUse = []byte(output)
+	} else {
+		return passwordSource, nil, errors.New(
+			fmt.Sprintf(
+				"unknown password source: %s",
+				passwordSource))
+	}
+	return passwordSource, passwordToUse, nil
 }
 
 func saveDatakey(datakeyFile string, dataKey, backupDataKey []byte) error {
@@ -451,11 +469,13 @@ func (s *encryptionService) cmdDecrypt(data []byte) {
 	replySuccessWithData(res)
 }
 
-func (s *encryptionService) cmdChangePassword(data []byte) {
+func (s *encryptionService) cmdChangePassword(password []byte) {
 	if !s.initialized {
 		panic("Password was not set")
 	}
-	err := s.encryptionKeys.changePassword(data)
+	err := s.encryptionKeys.changePassword(
+		password,
+		s.config.EncryptionSettings.KeyStorageSettings)
 	if err != nil {
 		replyError(err.Error())
 		return
@@ -660,7 +680,9 @@ func (keys *keysInFile) remove() error {
 	return os.Remove(keys.filePath)
 }
 
-func (keys *keysInFile) changePassword(password []byte) error {
+func (keys *keysInFile) changePassword(
+	password []byte,
+	settings map[string]interface{}) error {
 	return errors.New("not supported")
 }
 
@@ -744,17 +766,21 @@ func (keys *keysInEncryptedFile) read() error {
 	return nil
 }
 
-func (keys *keysInEncryptedFile) changePassword(password []byte) error {
-	key := keys.keysInFile.secret.key
-	backupKey := keys.keysInFile.secret.backupKey
+func (keys *keysInEncryptedFile) changePassword(
+	password []byte,
+	settings map[string]interface{}) error {
+	_, passwordToUse, err := initFilePassword(settings, password)
+	if err != nil {
+		return err
+	}
 	oldLockkey := keys.lockkey
-	keys.lockkey = generateLockKey(password)
-	err := saveKeys(keys, key, backupKey)
+	keys.lockkey = generateLockKey(passwordToUse)
+	err = keys.setSecret(keys.getSecret())
 	if err != nil {
 		keys.lockkey = oldLockkey
 		return err
 	}
-	keys.isDefaultPassword = (len(password) == 0)
+	keys.isDefaultPassword = (len(passwordToUse) == 0)
 	return nil
 }
 
@@ -845,7 +871,9 @@ func (keys *keysViaScript) remove() error {
 	return nil
 }
 
-func (keys *keysViaScript) changePassword(password []byte) error {
+func (keys *keysViaScript) changePassword(
+	password []byte,
+	settings map[string]interface{}) error {
 	return errors.New("not supported")
 }
 

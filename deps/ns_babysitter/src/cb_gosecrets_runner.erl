@@ -14,6 +14,7 @@
 -include("ns_common.hrl").
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("kernel/include/file.hrl").
 -endif.
 
 -export([start_link/0, start_link/1]).
@@ -547,6 +548,60 @@ default_config_encryption_test() ->
           {ok, Data} = decrypt(Pid, Encrypted1),
           {ok, Data} = decrypt(Pid, Encrypted2)
       end).
+
+-define(GET_PASS_SCRIPT, "#!/bin/bash\n\necho -n \"~s\"\n").
+
+change_password_with_password_cmd_test() ->
+    Data = rand:bytes(512),
+    Password1 = base64:encode_to_string(rand:bytes(8)),
+    Password2 = base64:encode_to_string(rand:bytes(8)),
+    PassCmd = path_config:tempfile("pass_cmd", ".tmp"),
+    ok = file:write_file(PassCmd, io_lib:format(?GET_PASS_SCRIPT, [Password1])),
+    {ok, #file_info{mode = Mode}} = file:read_file_info(PassCmd, [raw]),
+    ok = file:change_mode(PassCmd, Mode bor 8#00110),
+    DKFile = path_config:tempfile("encrypted_datakey", ".tmp"),
+    Cfg = [{es_key_storage_type, file},
+           {es_encrypt_key, true},
+           {es_password_source, script},
+           {es_password_cmd, PassCmd},
+           {es_key_path_type, custom},
+           {es_custom_key_path, DKFile}],
+
+    try
+        {EncryptedData1, EncryptedData2} =
+            with_gosecrets(
+              Cfg,
+              fun (_CfgPath, Pid) ->
+                  {ok, Encrypted1} = encrypt(Pid, Data),
+
+                  %% Changing password to Password2:
+                  %%    1) make sure the command returns new pass
+                  %%    2) trigger update in gosecret
+                  ok = file:write_file(PassCmd,
+                                       io_lib:format(?GET_PASS_SCRIPT,
+                                                     [Password2])),
+                  ok = change_password(Pid, ""),
+
+                  %% making sure encryption decryption works
+                  {ok, Data} = decrypt(Pid, Encrypted1),
+                  {ok, Encrypted2} = encrypt(Pid, Data),
+                  {Encrypted1, Encrypted2}
+              end),
+
+        memorize_hidden_pass(?HIDE("")),
+
+        %% After gosecrets restart, it should read Password2 via cmd, there
+        %% is no need to send password to it
+        with_gosecrets(
+          Cfg,
+          fun (_CfgPath, Pid) ->
+              {ok, Data} = decrypt(Pid, EncryptedData1),
+              {ok, Data} = decrypt(Pid, EncryptedData2)
+          end)
+    after
+        file:delete(PassCmd),
+        file:delete(DKFile)
+    end.
 
 datakey_rotation_test() ->
     with_gosecrets(
