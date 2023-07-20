@@ -181,13 +181,15 @@ erase_unknown_nodes(Statuses, Nodes) ->
                         ordsets:is_element(Node, SortedNodes)
                 end, Statuses).
 
--spec send_heartbeat(atom(), [node()], pos_integer()) -> ok.
-send_heartbeat(MonModule, SendNodes, RefreshInterval) ->
+-spec send_heartbeat(atom(), [node()], map()) -> ok.
+send_heartbeat(MonModule, SendNodes, MonitorState) ->
+    #{refresh_interval := RefreshInterval} = MonitorState,
     send_heartbeat_inner(MonModule, SendNodes, {heartbeat, node()},
                          RefreshInterval).
 
--spec send_heartbeat(atom(), [node()], term(), pos_integer()) -> ok.
-send_heartbeat(MonModule, SendNodes, Payload, RefreshInterval) ->
+-spec send_heartbeat(atom(), [node()], term(), map()) -> ok.
+send_heartbeat(MonModule, SendNodes, Payload, MonitorState) ->
+    #{refresh_interval := RefreshInterval} = MonitorState,
     send_heartbeat_inner(MonModule, SendNodes, {heartbeat, node(), Payload},
                          RefreshInterval).
 

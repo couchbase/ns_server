@@ -54,9 +54,8 @@ handle_cast(Cast, MonitorState) ->
     noreply.
 
 handle_info(refresh, MonitorState) ->
-    #{nodes_wanted := NodesWanted,
-      refresh_interval := RefreshInterval} = MonitorState,
-    health_monitor:send_heartbeat(?MODULE, NodesWanted, RefreshInterval),
+    #{nodes_wanted := NodesWanted} = MonitorState,
+    health_monitor:send_heartbeat(?MODULE, NodesWanted, MonitorState),
     noreply;
 
 handle_info(Info, State) ->
