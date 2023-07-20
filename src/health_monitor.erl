@@ -80,16 +80,20 @@ init([MonModule]) ->
 
     MonitorState = maps:merge(BaseMonitorState, SpecialisedMonitorState),
 
-    case MonModule:can_refresh() of
-        true -> self() ! refresh;
-        false -> ok
-    end,
+    MonStateWithRefresh =
+        case MonModule:can_refresh() of
+            false -> MonitorState;
+            true ->
+                self() ! refresh,
+                MonitorState#{refresh_interval => get_refresh_interval()}
+
+        end,
 
     chronicle_compat_events:notify_if_key_changes([nodes_wanted],
                                                   config_updated),
 
     {ok, #state{monitor_module = MonModule,
-                monitor_state = MonitorState}}.
+                monitor_state = MonStateWithRefresh}}.
 
 handle_call(Call, From,
             #state{monitor_module = MonModule,
