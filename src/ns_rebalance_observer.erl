@@ -25,7 +25,8 @@
          get_rebalance_info/0,
          record_rebalance_report/1,
          update_progress/2,
-         submit_master_event/1]).
+         submit_master_event/1,
+         get_current_rebalance_report/0]).
 
 %% gen_server callbacks
 -export([code_change/3, init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -122,6 +123,9 @@ get_rebalance_info() ->
 
 record_rebalance_report(Args) ->
     generic_get_call({record_rebalance_report, Args}).
+
+get_current_rebalance_report() ->
+    generic_get_call(get_current_rebalance_report).
 
 update_progress(Stage, StageProgress) ->
     gen_server:cast(?SERVER, {update_progress, Stage, StageProgress}).
@@ -269,6 +273,24 @@ handle_call({record_rebalance_report, {ResultType, ExitInfo}}, From,
                  Err
          end,
     {reply, RV, NewState};
+handle_call(get_current_rebalance_report, From,
+            #state{rebalance_time = TotalTime0} = State) ->
+    Now = os:timestamp(),
+    StartTime = TotalTime0#stat_info.start_time,
+    TimeTaken = rebalance_stage_info:diff_timestamp(Now, StartTime),
+
+    {_, {ok, RebalanceInfo}, _NewState} = handle_call(
+                                            {get_rebalance_info,
+                                             [{add_vbucket_info, true}]},
+                                            From,
+                                            State),
+    Report = {RebalanceInfo ++
+              [{startTime,
+                rebalance_stage_info:binarify_timestamp(StartTime)},
+               {reportingTime,
+                rebalance_stage_info:binarify_timestamp(Now)},
+               {timeTaken, TimeTaken}]},
+    {reply, {ok, Report}, State};
 handle_call(Req, From, State) ->
     ?log_error("Got unknown request: ~p from ~p", [Req, From]),
     {reply, unknown_request, State}.

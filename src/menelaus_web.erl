@@ -542,6 +542,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["pools", "default", "pendingRetryRebalance"] ->
                     {{[tasks], read},
                      fun menelaus_web_auto_rebalance:handle_get_pending_retry/2, ["default"]};
+                ["pools", "default", "currentRebalanceReport"] ->
+                    {{[tasks], read},
+                     fun menelaus_web_cluster:handle_current_rebalance_report/1};
                 ["pools", "default", "tasks"] ->
                     {{[tasks], read}, fun menelaus_web_misc:handle_tasks/2, ["default"]};
                 ["index.html"] ->

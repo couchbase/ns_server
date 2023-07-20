@@ -38,7 +38,8 @@
          handle_re_failover/1,
          handle_stop_rebalance/1,
          handle_set_recovery_type/1,
-         get_rebalance_error/0]).
+         get_rebalance_error/0,
+         handle_current_rebalance_report/1]).
 
 -import(menelaus_util,
         [reply_json/2,
@@ -1117,6 +1118,22 @@ handle_rebalance_progress(_PoolId, Req) ->
         not_running ->
             Status = [{status, <<"none">>} | get_rebalance_error()],
             reply_json(Req, {Status}, 200);
+        {error, timeout} = Err ->
+            reply_json(Req, {[Err]}, 503)
+    end.
+
+handle_current_rebalance_report(Req) ->
+    RV = case rebalance:running() of
+             true ->
+                 ns_rebalance_observer:get_current_rebalance_report();
+             false ->
+                 not_running
+         end,
+    case RV of
+        {ok, Report} ->
+            reply_json(Req, Report, 200);
+        not_running ->
+            reply_json(Req, {[{is_rebalancing, false}]}, 200);
         {error, timeout} = Err ->
             reply_json(Req, {[Err]}, 503)
     end.
