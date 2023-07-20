@@ -2022,6 +2022,13 @@ def make_product_task(guts, initargs_path, local_token_creds_fun,
                        log_file="master_events.log",
                        no_header=True),
 
+        make_curl_task(name="secrets management status",
+                       get_creds_fun=local_token_creds_fun,
+                       timeout=300,
+                       url='http://%s:%s/nodes/self/secretsManagement' % (
+                           local_url_addr, read_guts(guts, "rest_port")),
+                       log_file=DEFAULT_LOG),
+
         make_curl_task(name="ale configuration",
                        get_creds_fun=local_token_creds_fun,
                        url='http://%s:%s/diag/ale' % (
