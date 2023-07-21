@@ -28,6 +28,7 @@ import mnLaunchpad from "../components/directives/mn_launchpad.js";
 import mnPluggableUiRegistry from "../components/mn_pluggable_ui_registry.js";
 import mnSettingsAutoFailoverService from "./mn_settings_auto_failover_service.js";
 import mnSettingsClusterService from "./mn_settings_cluster_service.js";
+import mnUserRolesService from "./mn_user_roles_service.js";
 
 import mnAuthService from "../mn_auth/mn_auth_service.js";
 import mnPermissions from "../components/mn_permissions.js";
@@ -73,6 +74,7 @@ angular.module('mnAdmin', [
   mnElementCrane,
   mnDragAndDrop,
   mnSettingsAutoFailoverService,
+  mnUserRolesService,
   mnSettingsClusterService,
   mnDetailStatsModule,
   mnSelect

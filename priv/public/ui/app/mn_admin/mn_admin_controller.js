@@ -18,8 +18,8 @@ import mnInternalSettingsTemplate from "./mn_internal_settings.html";
 
 export default mnAdminController;
 
-mnAdminController.$inject = ["$scope", "$rootScope", "$state", "$window", "$uibModal", "mnAlertsService", "poolDefault", "mnPromiseHelper", "pools", "mnPoller", "mnEtagPoller", "mnAuthService", "mnTasksDetails", "mnPoolDefault", "mnSettingsAutoFailoverService", "formatProgressMessageFilter", "mnPrettyVersionFilter", "mnLostConnectionService", "mnPermissions", "mnPools", "whoami", "mnBucketsService", "$q", "mnSettingsClusterService", "$ocLazyLoad", "$injector", "mnAdminService", "mnHelper", "mnSessionService", "mnUserRolesService"];
-function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAlertsService, poolDefault, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, formatProgressMessageFilter, mnPrettyVersionFilter, mnLostConnectionService, mnPermissions, mnPools, whoami, mnBucketsService, $q, mnSettingsClusterService, $ocLazyLoad, $injector, mnAdminService, mnHelper, mnSessionService, mnUserRolesService) {
+mnAdminController.$inject = ["$scope", "$rootScope", "$state", "$window", "$uibModal", "mnAlertsService", "poolDefault", "mnPromiseHelper", "pools", "mnPoller", "mnEtagPoller", "mnAuthService", "mnTasksDetails", "mnPoolDefault", "mnSettingsAutoFailoverService","mnUserRolesService", "formatProgressMessageFilter", "mnPrettyVersionFilter", "mnLostConnectionService", "mnPermissions", "mnPools", "whoami", "mnBucketsService", "$q", "mnSettingsClusterService", "$ocLazyLoad", "$injector", "mnAdminService", "mnHelper", "mnSessionService"];
+function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAlertsService, poolDefault, mnPromiseHelper, pools, mnPoller, mnEtagPoller, mnAuthService, mnTasksDetails, mnPoolDefault, mnSettingsAutoFailoverService, mnUserRolesService, formatProgressMessageFilter, mnPrettyVersionFilter, mnLostConnectionService, mnPermissions, mnPools, whoami, mnBucketsService, $q, mnSettingsClusterService, $ocLazyLoad, $injector, mnAdminService, mnHelper, mnSessionService) {
   var vm = this;
 
   vm.poolDefault = poolDefault;
@@ -70,9 +70,6 @@ function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAle
     mnOnDestroy.next();
     mnOnDestroy.complete();
   });
-
-  mnPromiseHelper(vm, mnUserRolesService.getSamlSettings())
-    .applyToScope("samlSettings")
 
   function disableHoverEventDuringScroll() {
     let bodyElement = angular.element(document.querySelector("body"));
@@ -177,6 +174,9 @@ function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAle
 
   function activate() {
     mnSessionService.activate(mnOnDestroy);
+
+    mnPromiseHelper(vm, mnUserRolesService.getSamlSettings())
+      .applyToScope("samlSettings")
 
     new mnPoller($scope, function () {
       return mnBucketsService.findMoxiBucket();
