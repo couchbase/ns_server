@@ -44,6 +44,8 @@ class MnXDCRAddRefComponent extends MnLifeCycleHooksToStream {
 
     this.isEnterprise = mnPoolsService.stream.isEnterprise;
     this.postRemoteClusters = mnXDCRService.stream.postRemoteClusters;
+    this.postXdcr= mnXDCRService.stream.postRemoteClusters;
+    this.postXdcrConnectionPreCheck = mnXDCRService.stream.postXdcrConnectionPreCheck;
     this.activeModal = activeModal;
 
     this.formHelper =
@@ -72,6 +74,14 @@ class MnXDCRAddRefComponent extends MnLifeCycleHooksToStream {
         mnXDCRService.stream.updateRemoteClusters.next();
       });
 
+    this.checkForm = mnFormService.create(this);
+
+    this.checkForm
+      .setFormGroup({})
+      .setPackPipe(map(this.packCheck.bind(this)))
+      .setPostRequest(this.postXdcrConnectionPreCheck)
+      .clearErrors()
+      .showGlobalSpinner()
   }
 
   ngOnInit() {
@@ -105,5 +115,16 @@ class MnXDCRAddRefComponent extends MnLifeCycleHooksToStream {
       value.clientKey = "";
     }
     return [value, this.item && this.item.name];
+  }
+
+  packCheck() {
+    let value = clone(this.form.group.value);
+
+    return {
+      hostname: value.hostname,
+      name: value.name,
+      password: value.password,
+      username: value.username,
+    };
   }
 }

@@ -75,6 +75,11 @@ class MnXDCRService {
       .addSuccess(map(parsePostCreateReplicationSuccess))
       .addError();
 
+    this.stream.postXdcrConnectionPreCheck =
+      new MnHttpRequest(this.postXdcrConnectionPreCheck.bind(this))
+      .addSuccess()
+      .addError();
+
     function parsePostCreateReplicationSuccess(data) {
       //we should parse success response since XDCR
       //warnings returns here
@@ -239,6 +244,10 @@ class MnXDCRService {
                      (source[0] ? ("/" + encodeURIComponent(source[0])) : ""),
                      source[0] ? source[1] : source,
                      {params: {"just_validate": validate ? 1 : 0}});
+  }
+
+  postXdcrConnectionPreCheck(data) {
+    return this.http.post("/xdcr/connectionPreCheck", data);
   }
 
   postCreateReplication(validate, data) {

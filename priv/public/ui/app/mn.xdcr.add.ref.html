@@ -208,9 +208,44 @@ licenses/APL2.txt.
           </div>
         </div>
       </div>
+
+      <div
+        class="error"
+        [hidden]="!(postXdcrConnectionPreCheck.error | async)?.hostname">
+        {{(postXdcrConnectionPreCheck.error | async)?.hostname}}
+      </div>
+      <div
+        class="error"
+        [hidden]="!(postXdcrConnectionPreCheck.error | async)?.name">
+        {{(postXdcrConnectionPreCheck.error | async)?.name}}
+      </div>
+      <div
+        class="error"
+        [hidden]="!(postXdcrConnectionPreCheck.error | async)?.password">
+        {{(postXdcrConnectionPreCheck.error | async)?.password}}
+      </div>
+      <div
+        class="error"
+        [hidden]="!(postXdcrConnectionPreCheck.error | async)?.username">
+        {{(postXdcrConnectionPreCheck.error | async)?.username}}
+      </div>
+      <div
+        class="success"
+        [hidden]="!(postXdcrConnectionPreCheck.success | async)">
+          Connection check successful.
+      </div>
     </div>
 
     <div class="panel-footer">
+      <form
+        [formGroup]="checkForm.group"
+        (submit)="checkForm.submit.next()">
+        <button 
+          type="submit"
+          class="margin-right-1">
+          Check Connection
+        </button>
+      </form>
       <a (click)="activeModal.dismiss()">Cancel</a>
       <button type="submit">Save</button>
     </div>
