@@ -84,6 +84,7 @@ class MnXDCREditRepComponent extends MnLifeCycleHooksToStream {
                      priority: null,
                      collectionsExplicitMapping: false,
                      collectionsMigrationMode: false,
+                     filterBinary: false,
                      filterExpiration: false,
                      filterSkipRestream: "false",
                      filterDeletion: false,

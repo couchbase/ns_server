@@ -8,6 +8,20 @@ be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 -->
 
+<ng-template #filterBinaryOffTemplate>
+  <span>
+    Binary documents are not replicated.
+  </span>
+</ng-template>
+
+<ng-template #filterBinaryOnTemplate>
+  <ul>
+    <li>If a filter expression does <span class="bold">not</span> exist, binary documents are replicated.</li>
+    <li>If a filter expression exists and contains key or xattr only expression, binary documents are checked against the filter expression.</li>
+    <li>If a filter expression exists and contains references to the document body, binary documents are replicated.</li>
+  </ul>
+</ng-template>
+
 <div class="row flex-left margin-bottom-half"
    [formGroup]="formHelper.group">
   <label
@@ -167,7 +181,24 @@ licenses/APL2.txt.
           <span class="icon fa-info fa-stack-1x"></span>
         </span>
       </div>
-    </div>
 
+    <label class="margin-top-1">Binary Documents</label>
+    <input
+        type="checkbox"
+        id="for-filter-binary"
+        formControlName="filterBinary">
+    <label for="for-filter-binary" class="margin-right-quarter">
+        Filter Binary Documents
+    </label>
+    <span
+        class="fa-stack icon-info"
+        [ngbTooltip]="xdcrGroup.get('filterBinary').value ? filterBinaryOnTemplate : filterBinaryOffTemplate"
+        placement="right"
+        container="body">
+    <span class="icon fa-circle-thin fa-stack-2x"></span>
+    <span class="icon fa-info fa-stack-1x"></span>
+    </span>
+
+    </div>
   </div>
 </div>

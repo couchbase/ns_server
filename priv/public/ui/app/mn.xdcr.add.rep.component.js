@@ -69,6 +69,7 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
                      priority: null,
                      collectionsExplicitMapping: false,
                      collectionsMigrationMode: false,
+                     filterBinary: false,
                      filterExpiration: false,
                      filterSkipRestream: "false",
                      filterDeletion: false,
@@ -114,7 +115,7 @@ class MnXDCRAddRepComponent extends MnLifeCycleHooksToStream {
 
     this.filterRegexpGroup = formBuilder.group({
       docId: "",
-      filterExpression: ""
+      filterExpression: "",
     });
 
     this.explicitMappingGroup = {};
