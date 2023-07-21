@@ -1949,7 +1949,8 @@ handle_backup(Req) ->
     validator:handle(
       handle_backup(Req, _), Req, qs,
       [validator:validate_multi_params(fun parse_backup_filter/1, include, _),
-       validator:validate_multi_params(fun parse_backup_filter/1, exclude, _)]).
+       validator:validate_multi_params(fun parse_backup_filter/1, exclude, _),
+       validator:mutually_exclusive(include, exclude, _)]).
 
 parse_backup_filter("user:local:" ++ WC) ->
     case parse_backup_wc(WC) of
@@ -1997,8 +1998,15 @@ parse_backup_wc(WC) ->
     end.
 
 handle_backup(Req, Params) ->
-    ExcludeFilters = proplists:get_all_values(exclude, Params),
     IncludeFilters = proplists:get_all_values(include, Params),
+    ExcludeFilters0 = proplists:get_all_values(exclude, Params),
+    ExcludeFilters =
+        case {IncludeFilters, ExcludeFilters0} of
+            {[], L} when is_list(L) -> L;
+            {L, []} when is_list(L) ->
+                [any] %% if include is specified, we should exclude everthing
+                      %% and then include what's needed
+        end,
     UsersProducer =
         pipes:compose([menelaus_users:select_users('_',
                                                    [name, user_roles, groups]),

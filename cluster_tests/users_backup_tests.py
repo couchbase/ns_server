@@ -80,8 +80,16 @@ class UsersBackupTests(testlib.BaseTestSet):
         assert len(backup['groups']) == 0
 
 
+    def include_exclude_mutually_exclusive_test(self, cluster):
+        params = {'exclude': 'user:*:*', 'include': 'admin'}
+        res = testlib.get_fail(cluster, '/settings/rbac/backup', 400,
+                               params=params).json()
+        assert res['errors']['include'] == \
+               'include and exclude are mutually exclusive'
+
+
     def only_admin_backup_test(self, cluster):
-        params = {'exclude': '*', 'include': 'admin'}
+        params = {'include': 'admin'}
         backup = testlib.get_succ(cluster, '/settings/rbac/backup',
                                   params=params).json()
         assert 'admin' in backup
@@ -110,7 +118,7 @@ class UsersBackupTests(testlib.BaseTestSet):
 
 
     def only_local_users_backup2_test(self, cluster):
-        params = {'exclude': '*', 'include': 'user:local:*'}
+        params = {'include': 'user:local:*'}
         backup = testlib.get_succ(cluster, '/settings/rbac/backup',
                                   params=params).json()
         assert 'admin' not in backup
@@ -121,8 +129,7 @@ class UsersBackupTests(testlib.BaseTestSet):
 
 
     def only_specific_user_and_group_backup_test(self, cluster):
-        params = {'exclude': '*',
-                  'include': [f'user:local:{self.username}',
+        params = {'include': [f'user:local:{self.username}',
                               f'group:{self.groupname}']}
         backup = testlib.get_succ(cluster, '/settings/rbac/backup',
                                   params=params).json()

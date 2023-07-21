@@ -64,7 +64,8 @@
          is_json/1,
          extract_internal/3,
          url/3,
-         regex/2]).
+         regex/2,
+         mutually_exclusive/3]).
 
 %% Used for testing validators.
 -ifdef(TEST).
@@ -764,6 +765,14 @@ regex(Name, State) ->
                   {error, lists:flatten(Err)}
           end
       end, Name, State).
+
+mutually_exclusive(Name1, Name2, State) ->
+    validate_relative(
+       fun (_, _) ->
+           Err = io_lib:format("~p and ~p are mutually exclusive",
+                               [Name1, Name2]),
+           {error, lists:flatten(Err)}
+       end, Name1, Name2, State).
 
 -ifdef(TEST).
 %% Apply the validators to the arguments, returning the validated
