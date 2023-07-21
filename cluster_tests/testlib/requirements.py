@@ -15,7 +15,8 @@ from testlib import get_succ
 
 class ClusterRequirements:
     def __init__(self, edition=None, num_nodes=None, memsize=None,
-                 num_connected=None, afamily=None, services=None):
+                 num_connected=None, afamily=None, services=None,
+                 master_password_state=None):
         self.requirements = []
         if edition is not None:
             self.requirements.append(Edition(edition))
@@ -30,6 +31,8 @@ class ClusterRequirements:
             self.requirements.append(AFamily(afamily))
         if services is not None:
             self.requirements.append(Services(services))
+        if master_password_state is not None:
+            self.requirements.append(MasterPasswordState(master_password_state))
 
     def __str__(self):
         immutable_requirements = list(filter(lambda x: not x.can_be_met(),
@@ -265,5 +268,28 @@ class Services(Requirement):
             for s in services_to_check:
                 if s not in this_node_services:
                     return False
+
+        return True
+
+
+# We are not enforcing it when creating a cluster (like by setting something
+# in connect_args), because
+# (1) in practice we only need to check that master password is not set, which
+#     is the default behavior
+# (2) it would be an extra work with no real benefit
+#
+# We also are not implementing make_met() because in order to do that we would
+# need to use the API that we want to test (which would be strange)
+class MasterPasswordState(Requirement):
+    def __init__(self, state):
+        super().__init__(master_password_state=state)
+        self.master_password_state=state
+
+    def is_met(self, cluster):
+        for n in cluster.connected_nodes:
+            r = get_succ(n, "/nodes/self/secretsManagement")
+            r = r.json()
+            if r['state'] != self.master_password_state:
+                return False
 
         return True

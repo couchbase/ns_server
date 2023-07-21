@@ -27,13 +27,11 @@ class SecretManagementTests(testlib.BaseTestSet):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements(edition="Enterprise")
+        return testlib.ClusterRequirements(edition="Enterprise",
+                                           master_password_state="default")
 
     def setup(self, cluster):
-        r = testlib.get_succ(cluster, "/nodes/self/secretsManagement")
-        r = r.json()
-        assert r['state'] == 'default', \
-               f"secret management is supposed to be turned off"
+        pass
 
     def teardown(self, cluster):
         pass
