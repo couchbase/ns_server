@@ -3949,9 +3949,7 @@ build_dynamic_bucket_info_test_teardown() ->
 
 %% Test the output of build_dynamic_bucket_info. Aspirationally this would test
 %% the entire output of the function, but for now it just tests a subset of it.
-build_dynamic_bucket_info_test(Version, IsEnterprise, IsMagma) ->
-    ?log_debug("\n Version ~p, Enterprise ~p, Magma ~p",
-               [Version, IsEnterprise, IsMagma]),
+build_dynamic_bucket_info_test(Version, IsMagma) ->
     BucketConfigBase = [{type, membase},
                         {num_replicas, 1},
                         {ram_quota, 1024},
@@ -4027,10 +4025,10 @@ build_dynamic_bucket_info_test_() ->
              {?VERSION_72, true, true}],
 
     TestFun = fun({Version, IsEnterprise, IsMagma}, _R) ->
-                  fun() ->
-                      build_dynamic_bucket_info_test(Version, IsEnterprise,
-                                                     IsMagma)
-                  end
+                      {lists:flatten(io_lib:format(
+                                       "Version ~p, Enterprise ~p, Magma ~p",
+                                       [Version, IsEnterprise, IsMagma])),
+                       ?cut(build_dynamic_bucket_info_test(Version, IsMagma))}
               end,
 
     {foreachx,
