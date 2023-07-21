@@ -77,10 +77,17 @@ class ClusterRequirements:
         for requirement in self.requirements:
             connect_args.update(requirement.connect_args)
 
-        return build_cluster(auth=auth,
-                             start_args=start_args,
-                             connect_args=connect_args,
-                             kill_nodes=kill_nodes)
+        cluster = build_cluster(auth=auth,
+                                 start_args=start_args,
+                                 connect_args=connect_args,
+                                 kill_nodes=kill_nodes)
+
+        still_unmet = self.get_unmet_requirements(cluster)
+        if len(still_unmet) > 0:
+            unmet_str = ', '.join(str(r) for r in still_unmet)
+            raise RuntimeError("Newly created cluster still has the following "
+                               f"requirements unmet: {unmet_str}")
+        return cluster
 
     # Given a cluster, checks if any requirements are not satisfied, and
     # returns the unsatisfied requirements
