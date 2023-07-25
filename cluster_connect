@@ -55,6 +55,11 @@ def main():
         help=f'<number of nodes>',
         metavar='')
     arg_parser.add_argument(
+        '--start-index',
+        type=int,
+        help=f"<starting node number> (default: 0)",
+        metavar="")
+    arg_parser.add_argument(
         '--services', '-T',
         type=service_string_convertor,
         help=f"<services to run, KV if unspecified> \n"
@@ -170,6 +175,7 @@ def main():
 
     params = {
         "num_nodes": args.num_nodes,
+        "start_index": args.start_index,
         "buckettype": args.bucket_type,
         "memsize": args.bucket_quota,
         "indexmemsize": args.index_mem,
