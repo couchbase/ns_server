@@ -15,7 +15,7 @@ from testlib import get_succ
 
 class ClusterRequirements:
     def __init__(self, edition=None, num_nodes=None, memsize=None,
-                 num_connected=None, afamily=None):
+                 num_connected=None, afamily=None, services=None):
         self.requirements = []
         if edition is not None:
             self.requirements.append(Edition(edition))
@@ -28,6 +28,8 @@ class ClusterRequirements:
             self.requirements.append(MemSize(memsize))
         if afamily is not None:
             self.requirements.append(AFamily(afamily))
+        if services is not None:
+            self.requirements.append(Services(services))
 
     def __str__(self):
         immutable_requirements = list(filter(lambda x: not x.can_be_met(),
@@ -235,3 +237,33 @@ class AFamily(Requirement):
         return all([node["addressFamily"] == afamily_translate[self.afamily]
                     for node in res.json()["nodes"]])
 
+
+class Services(Requirement):
+    def __init__(self, deploy):
+        super().__init__(deploy=deploy)
+        self.deploy = deploy
+        self.connect_args = {"deploy": deploy}
+
+    def is_met(self, cluster):
+        for i, node in enumerate(cluster.connected_nodes):
+            # We can't take information for all nodes from a single /pools/nodes
+            # because we don't know which node is which
+            res = get_succ(node, "/pools/nodes").json()
+            this_node_services = []
+            for node_info in res['nodes']:
+                if 'thisNode' in node_info and node_info['thisNode']:
+                    this_node_services = node_info['services']
+
+            services_to_check = []
+            if isinstance(self.deploy, list):
+                services_to_check = self.deploy
+            else:
+                nname = f'n{i}'
+                if nname in self.deploy:
+                    services_to_check = self.deploy[nname]
+
+            for s in services_to_check:
+                if s not in this_node_services:
+                    return False
+
+        return True
