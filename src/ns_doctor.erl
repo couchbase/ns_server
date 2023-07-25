@@ -15,6 +15,10 @@
 
 -include("ns_common.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -behaviour(gen_server).
 -export([start_link/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
@@ -172,8 +176,10 @@ handle_info({config_change, Key},
         end,
     {noreply, NewState};
 
-handle_info(acquire_initial_status, #state{nodes=NodeDict} = State) ->
-    Replies = ns_heart:status_all(),
+handle_info(acquire_initial_status,
+            #state{nodes=NodeDict,
+                   nodes_wanted = NodesWanted} = State) ->
+    Replies = ns_heart:status_all(NodesWanted),
     %% Get an initial status so we don't start up thinking everything's down
     Nodes = lists:foldl(fun ({Node, Status}, Dict) ->
                                 update_status(Node, Status, Dict)
@@ -1014,3 +1020,91 @@ process_heartbeat(Node, Status, State) ->
             ok
     end,
     NewState.
+
+-ifdef(TEST).
+
+initial_status_test_setup() ->
+    meck:new(ns_pubsub),
+    meck:expect(ns_pubsub,
+                subscribe_link,
+                fun(_,_,_) ->
+                        ok
+                end),
+
+    meck:new(chronicle_compat_events),
+    meck:expect(chronicle_compat_events,
+                subscribe,
+                fun (_,_) ->
+                        ok
+                end),
+
+    meck:new(ns_node_disco),
+    meck:expect(ns_node_disco,
+                nodes_wanted,
+                fun() ->
+                        [node()]
+                end),
+
+    %% We try to send an event to ns_doctor_events. We need to register it to
+    %% send it somewhere, so just send it to ourselves and we'll eat it
+    erlang:register(ns_doctor_events, self()),
+
+    %% We are testing our interaction with ns_heart here. We need to start up
+    %% the gen_server to test that we properly call the right functions as we
+    %% are using gen-server:multi_call in ns_heart:status_all. We don't want
+    %% to mock the amount of things that ns_heart requires though so we mock
+    %% it in passthrough mode, and we mock the handle_call and handle_info
+    %% functions that we expect to be called. In the test we will just assert
+    %% that we called it.
+    meck:new(ns_heart, [passthrough]),
+    meck:expect(ns_heart,
+                handle_call,
+                fun(status, _, State) ->
+                        {reply, [], State}
+                end),
+    meck:expect(ns_heart,
+                handle_info,
+                fun(beat, State) ->
+                        {noreply, State}
+                end),
+
+    %% Return HeartPid so that we can stop it in the teardown
+    {ok, HeartPid} = ns_heart:start_link(),
+    HeartPid.
+
+initial_status_t_teardown(HeartPid) ->
+    gen_server:stop(HeartPid),
+
+    erlang:unregister(ns_doctor_events),
+
+    meck:unload(ns_heart),
+    meck:unload(ns_node_disco),
+    meck:unload(chronicle_compat_events),
+    meck:unload(ns_pubsub).
+
+initial_status_t() ->
+    {ok, Pid} = start_link(),
+
+    %% init() will send an acquire_initial_status message that we will
+    %% process via handle_info. Call get_nodes() (process a handle_call) to
+    %% await a response such that we can assert that the
+    %% acquire_initial_status message was processed by this point.
+    get_nodes(),
+
+    %% We should have called ns_heart:handle_call(status,...) via ns_heart
+    %% status_all.
+    ?assert(meck:called(ns_heart, status_all, [[node()]])),
+    ?assert(meck:called(ns_heart, handle_call, [status, '_', '_'])),
+
+    gen_server:stop(Pid).
+
+initial_status_test_() ->
+    {setup,
+        fun() ->
+            initial_status_test_setup()
+        end,
+        fun(HeartPid) ->
+            initial_status_t_teardown(HeartPid)
+        end,
+        [{"initial status test", fun () -> initial_status_t() end}]}.
+-endif.

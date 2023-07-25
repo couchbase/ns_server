@@ -15,7 +15,7 @@
 -include("ns_common.hrl").
 -include("ns_heart.hrl").
 
--export([start_link/0, start_link_slow_updater/0, status_all/0,
+-export([start_link/0, start_link_slow_updater/0, status_all/1,
          force_beat/0, grab_fresh_failover_safeness_infos/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
@@ -135,8 +135,9 @@ heartbeat(Status) ->
                     gen_server:cast({ns_doctor, N}, {heartbeat, node(), Status})
             end, [node() | nodes()], ?HEART_BEAT_PERIOD - 1000).
 
-status_all() ->
-    {Replies, _} = gen_server:multi_call([node() | nodes()], ?MODULE, status, 5000),
+-spec status_all([node()]) -> [{node(), term()}].
+status_all(NodesWanted) ->
+    {Replies, _} = gen_server:multi_call(NodesWanted, ?MODULE, status, 5000),
     Replies.
 
 erlang_stats() ->
