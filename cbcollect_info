@@ -2029,6 +2029,13 @@ def make_product_task(guts, initargs_path, local_token_creds_fun,
                            local_url_addr, read_guts(guts, "rest_port")),
                        log_file=DEFAULT_LOG),
 
+        make_curl_task(name="current rebalance status",
+                       get_creds_fun=local_token_creds_fun,
+                       timeout=10000,
+                       url='http://%s:%s/pools/default/currentRebalanceReport' % (
+                           local_url_addr, read_guts(guts, "rest_port")),
+                       log_file="rebalance_report_current.json",
+                       no_header=True),
         make_curl_task(name="ale configuration",
                        get_creds_fun=local_token_creds_fun,
                        url='http://%s:%s/diag/ale' % (
