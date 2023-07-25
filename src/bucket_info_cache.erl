@@ -323,6 +323,10 @@ build_bucket_capabilities(BucketConfig) ->
                       cluster_compat_mode:is_cluster_72()},
                      {preserveExpiry,
                       cluster_compat_mode:is_cluster_trinity()},
+                     {querySystemCollection,
+                      cluster_compat_mode:is_cluster_trinity()},
+                     {mobileSystemCollection,
+                      cluster_compat_mode:is_cluster_trinity()},
                      {'subdoc.ReplicaRead',
                       cluster_compat_mode:is_cluster_trinity()}] ++
                      maybe_range_scan_capability(BucketConfig),
@@ -535,21 +539,34 @@ get_bucket_capabilities_for_version(Version, IsEnterprise, IsMagma) ->
     Specific = get_bucket_capabilities(Version, IsEnterprise, IsMagma),
     BucketCapabilitiesBase ++ Specific.
 
+get_bucket_capabilities(?VERSION_72,
+                        true = _IsEnterprise,
+                        true = _IsMagma) ->
+    ['dcp.IgnorePurgedTombstones', nonDedupedHistory];
+get_bucket_capabilities(?VERSION_72,
+                        false = _IsEnterprise,
+                        true = _IsMagma) ->
+    ['dcp.IgnorePurgedTombstones'];
+get_bucket_capabilities(?VERSION_72,
+                        _IsEnterprise,
+                        _IsMagma) ->
+    [couchapi, 'dcp.IgnorePurgedTombstones' ];
 get_bucket_capabilities(Version,
                         true = _IsEnterprise,
-                        true = _IsMagma) when Version > ?VERSION_72 ->
+                        true = _IsMagma) when Version >= ?VERSION_TRINITY ->
     ['dcp.IgnorePurgedTombstones', nonDedupedHistory, rangeScan,
-     preserveExpiry, 'subdoc.ReplicaRead'];
+     preserveExpiry, 'subdoc.ReplicaRead', querySystemCollection,
+     mobileSystemCollection];
 get_bucket_capabilities(Version,
                         false = _IsEnterprise,
-                        true = _IsMagma) when Version > ?VERSION_72 ->
+                        true = _IsMagma) when Version >= ?VERSION_TRINITY ->
     ['dcp.IgnorePurgedTombstones', rangeScan, preserveExpiry,
-     'subdoc.ReplicaRead'];
+     'subdoc.ReplicaRead', querySystemCollection, mobileSystemCollection];
 get_bucket_capabilities(Version,
                         _IsEnterprise,
-                        _IsMagma) when Version > ?VERSION_72 ->
+                        _IsMagma) when Version >= ?VERSION_TRINITY ->
     [couchapi, 'dcp.IgnorePurgedTombstones', rangeScan, preserveExpiry,
-     'subdoc.ReplicaRead'];
+     'subdoc.ReplicaRead', querySystemCollection, mobileSystemCollection];
 get_bucket_capabilities(_Version, _IsEnterprise, false = _IsMagma) ->
     [couchapi];
 get_bucket_capabilities(_Version, _IsEnterprise, _IsMagma) ->
@@ -560,6 +577,10 @@ membase_bucket_capabilities_test_() ->
              {?VERSION_71, true, false},
              {?VERSION_71, false, true},
              {?VERSION_71, true, true},
+             {?VERSION_72, false, false},
+             {?VERSION_72, true, false},
+             {?VERSION_72, false, true},
+             {?VERSION_72, true, true},
              {?LATEST_VERSION_NUM, false, false},
              {?LATEST_VERSION_NUM, true, false},
              {?LATEST_VERSION_NUM, false, true},
