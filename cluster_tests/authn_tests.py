@@ -137,7 +137,9 @@ def scram_sha_auth(mech, testEndpoint, creds, cluster):
                          headers={'Authorization': mech + ' ' + msg})
     assert 'WWW-Authenticate' in r.headers
     reply = r.headers['WWW-Authenticate']
-    assert reply.startswith(mech + ' ')
+    if not reply.startswith(mech + ' '):
+        raise ValueError(f"wrong 'WWW-Authenticate' value: {reply}")
+
     reply = reply[len(mech)+1:]
     replyDict = headerToScramMsg(reply)
     sid = replyDict['sid']
