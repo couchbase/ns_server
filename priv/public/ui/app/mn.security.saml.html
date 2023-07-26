@@ -395,14 +395,11 @@
         </div>
         <div [hidden]="!((form.group.get('idpMetadataOrigin').valueChanges | async) === 'upload')" class="formrow fix-width-8-1">
             <label for="idp-origin-file-field">File</label>
-            <textarea
-                id="idp-origin-file-field"
-                class="min-height-10"
-                autocorrect="off"
-                autocapitalize="off"
-                spellcheck="false"
-                formControlName="idpMetadata">
-            </textarea>
+            <mn-file-reader
+               [disable]="!(form.group.get('enabled').valueChanges | async)"
+               [result]="form.group.get('idpMetadata').valueChanges | async"
+               (onWatchResult)="setIdpMetadata($event)">
+            </mn-file-reader>
             <p class="desc margin-top-half margin-bottom-0">Supported file types: .xml</p>
             <div
                 class="error"

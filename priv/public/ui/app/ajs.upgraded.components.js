@@ -10,11 +10,11 @@ licenses/APL2.txt.
 //setAngularJSGlobal should be called after each
 //@angular/upgrade/static to protect esbuild from crash
 import angular from 'angular';
-import {Directive, ElementRef, Injector} from '@angular/core';
+import {Directive, ElementRef, Injector, EventEmitter} from '@angular/core';
 import {UpgradeComponent, setAngularJSGlobal} from '@angular/upgrade/static';
 setAngularJSGlobal(angular);
 
-export {MnDetailStatsDirective, MnMainSpinnerDirective};
+export {MnDetailStatsDirective, MnMainSpinnerDirective, MnFileReaderDirective};
 
 class MnDetailStatsDirective extends UpgradeComponent {
   static get annotations() { return [
@@ -59,4 +59,31 @@ class MnMainSpinnerDirective extends UpgradeComponent {
   constructor(elementRef, injector) {
     super('mnMainSpinner', elementRef, injector);
   }
+}
+
+class MnFileReaderDirective extends UpgradeComponent {
+  static get annotations() { return [
+    new Directive({
+      selector: "mn-file-reader",
+      inputs: [
+        "classes",
+        "result",
+        "disable",
+      ],
+      outputs: [
+        "onWatchResult"
+      ]
+    })
+  ]}
+
+  static get parameters() { return [
+    ElementRef,
+    Injector
+  ]}
+
+  constructor(elementRef, injector) {
+    super('mnFileReader', elementRef, injector);
+    this.onWatchResult = new EventEmitter();
+  }
+
 }

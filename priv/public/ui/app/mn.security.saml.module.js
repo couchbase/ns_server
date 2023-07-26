@@ -18,6 +18,8 @@ import {MnPipesModule} from './mn.pipes.module.js';
 import {MnSelectModule} from './mn.select.module.js';
 import {MnSecuritySamlComponent} from './mn.security.saml.component.js';
 
+import { MnFileReaderDirective } from "./ajs.upgraded.components.js";
+
 let samlState = {
   url: '/saml',
   name: "app.admin.security.saml",
@@ -36,6 +38,8 @@ class MnSecuritySamlModule {
       entryComponents: [
       ],
       declarations: [
+        MnFileReaderDirective,
+
         MnSecuritySamlComponent,
       ],
       imports: [

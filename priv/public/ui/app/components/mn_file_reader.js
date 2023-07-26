@@ -39,8 +39,9 @@ angular
           type="file">`,
       scope: {
         classes: "=",
-        result: "=",
-        disable: "="
+        result: "=?",
+        disable: "=",
+        onWatchResult: '&?'
       },
       link: function (scope, element) {
         var defaultName = "Select File";
@@ -50,6 +51,11 @@ angular
         scope.index = index++;
         scope.name = defaultName;
         scope.onTextareaChange = onTextareaChange;
+
+        //bridge to support Angular
+        if (scope.onWatchResult) {
+          scope.$watch('result', scope.onWatchResult);
+        }
 
         function onTextareaChange() {
           scope.name = defaultName;

@@ -466,4 +466,8 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
   cancel() {
     this.uiRouter.stateService.reload('app.admin.security.saml');
   }
+
+  setIdpMetadata(value) {
+    this.form.group.get('idpMetadata').setValue(value);
+  }
 }
