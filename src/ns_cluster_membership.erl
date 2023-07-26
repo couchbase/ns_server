@@ -68,7 +68,7 @@
          default_services/0,
          set_service_map/2,
          get_service_map/2,
-         failover_service_nodes/3,
+         failover_service_nodes/1,
          service_has_pending_failover/2,
          service_clear_pending_failover/1,
          node_active_services/1,
@@ -601,12 +601,27 @@ get_service_map(Snapshot, kv) ->
 get_service_map(Snapshot, Service) ->
     chronicle_compat:get(Snapshot, {service_map, Service}, #{default => []}).
 
-failover_service_nodes(Snapshot, Service, Nodes) ->
-    ?log_debug("Failover nodes ~p from service ~p", [Nodes, Service]),
-    Map = get_service_map(Snapshot, Service),
-    chronicle_compat:set_multiple(
-      [{{service_map, Service}, Map -- Nodes},
-       {{service_failover_pending, Service}, true}]).
+failover_service_nodes(Nodes) ->
+    Snapshot = ns_cluster_membership:get_snapshot(),
+    Services0 = lists:flatmap(
+                  ns_cluster_membership:node_services(Snapshot, _), Nodes),
+    Services  = lists:usort(Services0) -- [kv],
+
+    SvcMap = lists:flatmap(
+               fun(Service) ->
+                       Map = ns_cluster_membership:get_service_map(Snapshot,
+                                                                   Service),
+                       [{{service_map, Service}, Map -- Nodes},
+                        {{service_failover_pending, Service}, true}]
+               end, Services),
+
+    case Services of
+        [] -> [];
+        _ ->
+            ?log_debug("Failover nodes ~p from services ~p", [Nodes, Services]),
+            chronicle_compat:set_multiple(SvcMap),
+            Services
+    end.
 
 service_has_pending_failover(Snapshot, Service) ->
     chronicle_compat:get(Snapshot, {service_failover_pending, Service},

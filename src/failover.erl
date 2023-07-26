@@ -235,10 +235,31 @@ deactivate_nodes(Nodes, Options) ->
 failover(Nodes, Options) ->
     not maps:is_key(quorum_failover, Options) orelse
         failover_collections(),
+
     KVNodes = ns_cluster_membership:service_nodes(Nodes, kv),
-    KVErrorNodes = failover_buckets(KVNodes, Options),
-    {ServicesErrorNodes, UnsafeNodes} =
-        failover_services(Nodes, KVNodes, Options),
+    BktPrepResults = failover_buckets_prep(ns_bucket:get_buckets(),
+                                           KVNodes, Options),
+
+    %% From this point onwards, no bucket failed exception is thrown.
+    %% Partial failover is still possible if we update the service map (in
+    %% services prep) and crash thereafter before failover runs to completion.
+    %% Service failover is completed asychronously in service_janitor even if
+    %% the state of the node hasn't transitioned to inactiveFailed. A rebalance
+    %% in such a state will reinstate any failed over services.
+    {SvcNodes, UnsafeNodes} =
+        validate_failover_services_safety(Nodes, KVNodes, Options),
+
+    %% Update service maps. Sets service_failover_pending for each service,
+    %% which is cleared after a rebalance in complete_services_failover.
+    Services =
+        case SvcNodes of
+            [] -> [];
+            Nodes -> ns_cluster_membership:failover_service_nodes(Nodes)
+        end,
+
+    KVErrorNodes = failover_buckets(KVNodes, BktPrepResults),
+    ServicesErrorNodes = complete_services_failover(SvcNodes, Services),
+
     {lists:umerge([KVErrorNodes, ServicesErrorNodes]), UnsafeNodes}.
 
 failover_collections() ->
@@ -281,12 +302,9 @@ failover_buckets_group(PrepResults, Nodes) ->
               []
       end, PrepResults).
 
-failover_buckets([], _Options) ->
+failover_buckets(_Nodes, []) ->
     [];
-failover_buckets(Nodes, Options) ->
-    PrepResults = failover_buckets_prep(ns_bucket:get_buckets(),
-                                        Nodes, Options),
-
+failover_buckets(Nodes, PrepResults) ->
     BulkFactor = ns_config:read_key_fast(failover_bulk_buckets_config_factor,
                                          ?MAX_BUCKETS_SUPPORTED),
     Results = lists:flatmap(failover_buckets_group(_, Nodes),
@@ -379,6 +397,8 @@ failover_handle_results(Results) ->
                             end
                     end, NodeStatuses).
 
+failover_buckets_prep(_BucketsConfig, [], _Options) ->
+    [];
 failover_buckets_prep(BucketsConfig, Nodes, Options) ->
     lists:map(
       fun({Bucket, BucketConfig}) ->
@@ -452,33 +472,21 @@ finalize_bucket_failover(Bucket, BucketConfig, NewMap, Nodes, Options) ->
       {status, R},
       {vbuckets, node_vbuckets(OldMap, N)}] || N <- Nodes].
 
-failover_services(Nodes, _, #{skip_safety_check := true}) ->
-    {failover_services(Nodes), []};
-failover_services(Nodes, KVNodes, #{auto := true,
-                                    down_nodes := DownNodes}) ->
-    {ValidNodes, UnsafeNodes} =
-        auto_failover:validate_services_safety(Nodes, DownNodes, KVNodes),
-    {case ValidNodes of
-         [] ->
-             [];
-         ValidNodes ->
-             failover_services(ValidNodes)
-     end, UnsafeNodes};
-failover_services(Nodes, _, _) ->
-    {failover_services(Nodes), []}.
+validate_failover_services_safety(Nodes, _, #{skip_safety_check := true}) ->
+    {Nodes, []};
+validate_failover_services_safety(Nodes, KVNodes,
+                                   #{auto := true, down_nodes := DownNodes}) ->
+    auto_failover:validate_services_safety(Nodes, DownNodes, KVNodes);
+validate_failover_services_safety(Nodes, _, _) ->
+    {Nodes, []}.
 
-failover_services(Nodes) ->
-    Snapshot = ns_cluster_membership:get_snapshot(),
-    Services0 = lists:flatmap(
-                  ns_cluster_membership:node_services(Snapshot, _), Nodes),
-    Services  = lists:usort(Services0) -- [kv],
-
-    Results = lists:flatmap(failover_service(Snapshot, _, Nodes), Services),
+complete_services_failover(_Nodes, []) ->
+    [];
+complete_services_failover(Nodes, Services) ->
+    Results = lists:flatmap(complete_failover_service(Nodes, _), Services),
     failover_handle_results(Results).
 
-failover_service(Snapshot, Service, Nodes) ->
-    ok = ns_cluster_membership:failover_service_nodes(Snapshot, Service, Nodes),
-
+complete_failover_service(Nodes, Service) ->
     %% We're refetching the config since failover_service_nodes updated the
     %% one that we had.
     Result = service_janitor:complete_service_failover(Service, Nodes),
