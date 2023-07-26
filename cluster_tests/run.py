@@ -82,13 +82,13 @@ def usage():
 
 
 def bad_args_exit(msg):
-    print(f"\033[31m{msg}\033[0m")
+    print(testlib.red(msg))
     usage()
     sys.exit(2)
 
 
 def error_exit(msg):
-    print(f"\033[31m{msg}\033[0m")
+    print(testlib.red(msg))
     sys.exit(2)
 
 
@@ -108,7 +108,7 @@ def main():
                                           ["help", "keep-tmp-dirs", "cluster=",
                                            "user=", "password=", "num-nodes=",
                                            "tests=", "dont-intercept-output",
-                                           "seed="])
+                                           "seed=", "colors="])
     except getopt.GetoptError as err:
         bad_args_exit(str(err))
 
@@ -158,6 +158,8 @@ def main():
             intercept_output = False
         elif o in ('--seed', '-s'):
             seed = a
+        elif o == '--colors':
+            testlib.config['colors'] = (int(a) == 1)
         elif o in ('--help', '-h'):
             usage()
             exit(0)
@@ -247,16 +249,16 @@ def main():
     error_num = sum([len(errors[name]) for name in errors])
     errors_str = f"{error_num} error{'s' if error_num != 1 else ''}"
     if error_num == 0:
-        colour = "\033[32m"
+        colored = testlib.green
     else:
-        colour = "\033[31m"
+        colored = testlib.red
 
     def format_time(t):
         return f"{int(t//60)}m{t%60:.1f}s"
 
     print("\n======================================="
-          "=========================================\n"
-          f"{colour}Tests finished ({executed} executed, {errors_str})\033[0m\n"
+          "=========================================\n" +
+          colored(f"Tests finished ({executed} executed, {errors_str})\n") +
           f"Total time:               {format_time(total_time_s)}\n"
           f"Total clusters prep time: {format_time(prep_time_s)}\n"
           f"Test time (no prep):      {format_time(test_time_s)}")

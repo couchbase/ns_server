@@ -13,13 +13,17 @@ import string
 import random
 import time
 import io
-import math
+import sys
 from contextlib import redirect_stdout
 
-from traceback_with_variables import print_exc
+import traceback_with_variables as traceback
 
 from testlib.node import Node
 
+def support_colors():
+    return hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()
+
+config={'colors': support_colors()}
 
 def get_appropriate_cluster(cluster, auth, start_index, requirements,
                             tmp_cluster_dir, kill_nodes):
@@ -127,13 +131,14 @@ def safe_test_function_call(testset, testfunction, args, verbose=False,
                 res = apply_with_seed(testset, testfunction, args, seed)
         else:
             res = apply_with_seed(testset, testfunction, args, seed)
-        if verbose: print(f"\033[32m passed \033[0m{timedelta_str(start)}")
+        if verbose: print(green("passed") + timedelta_str(start))
     except Exception as e:
         if verbose:
-            print(f"\033[31m failed ({e}) \033[0m{timedelta_str(start)}")
+            print(red(f"failed ({e})") + timedelta_str(start))
         else:
-            print(f"\033[31m  {testname} failed ({e}) \033[0m")
-        print_exc()
+            print(red(f"{testname} failed ({e})"))
+        cscheme = None if config['colors'] else traceback.ColorSchemes.none
+        traceback.print_exc(fmt=traceback.Format(color_scheme=cscheme))
         print()
         output = f.getvalue()
         if len(output) > 0:
@@ -158,19 +163,30 @@ def apply_with_seed(obj, func, args, seed):
 def timedelta_str(start):
     delta_s = time.time() - start
     if delta_s > 10:
-        return red(f"[{round(delta_s)}s]")
+        return red(f" [{round(delta_s)}s]")
     if delta_s > 5:
-        return red(f"[{delta_s:.1f}s]")
+        return red(f" [{delta_s:.1f}s]")
     elif delta_s > 1:
-        return f"[{delta_s:.1f}s]"
+        return f" [{delta_s:.1f}s]"
     elif delta_s > 0.1:
-        return f"[{delta_s:.2f}s]"
+        return f" [{delta_s:.2f}s]"
     else:
         return f""
 
 
 def red(str):
-    return f"\033[31m{str}\033[0m"
+    return maybe_color(str, 31)
+
+
+def green(str):
+    return maybe_color(str, 32)
+
+
+def maybe_color(str, code):
+    if config['colors']:
+        return f"\033[{code}m{str}\033[0m"
+    else:
+        return str
 
 
 class BaseTestSet(ABC):
