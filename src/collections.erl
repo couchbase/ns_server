@@ -1765,6 +1765,22 @@ upgrade_to_72_t() ->
 
     ?assertEqual(1, proplists:get_value(uid, Manifest72)).
 
+%% The _system scope gets added on upgrade containing service-specific
+%% collections for query and mobile.
+upgrade_to_trinity_t() ->
+    meck:expect(cluster_compat_mode, is_cluster_trinity, fun() -> false end),
+    {ok, BucketConf72} = ns_bucket:get_bucket("bucket"),
+    Manifest72 = default_manifest(BucketConf72),
+    ?assertEqual(undefined, get_scope("_system", Manifest72)),
+
+    meck:expect(cluster_compat_mode, is_cluster_trinity, fun() -> true end),
+    {ok, BucketConfTrinity} = ns_bucket:get_bucket("bucket"),
+    UpdatedManifest = upgrade_to_trinity(Manifest72, BucketConfTrinity),
+    SystemScope = get_scope("_system", UpdatedManifest),
+    ?assertNotEqual(undefined, SystemScope),
+    ?assertNotEqual(undefined, get_collection("_query", SystemScope)),
+    ?assertNotEqual(undefined, get_collection("_mobile", SystemScope)).
+
 %% Bunch of fairly simple collections tests that update the manifest and expect
 %% various results.
 basic_collections_manifest_test_() ->
@@ -1787,6 +1803,7 @@ basic_collections_manifest_test_() ->
       {"modify collection test", fun() -> modify_collection_t() end},
       {"history default test", fun() -> history_default_t() end},
       {"set manifest test", fun() -> set_manifest_t() end},
-      {"upgrade to 72 test", fun() -> upgrade_to_72_t() end}]}.
+      {"upgrade to 72 test", fun() -> upgrade_to_72_t() end},
+      {"upgrade to Trinity test", fun() -> upgrade_to_trinity_t() end}]}.
 
 -endif.
