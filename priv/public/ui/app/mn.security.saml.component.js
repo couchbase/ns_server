@@ -288,7 +288,7 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
       delete packedData.idpMetadataURL;
     }
 
-    if (!packedData.spKey) {
+    if (!packedData.spKey || packedData.spKey === '**********') {
       delete packedData.spKey;
     }
 
