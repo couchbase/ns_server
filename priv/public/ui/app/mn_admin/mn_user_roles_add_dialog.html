@@ -37,7 +37,8 @@ licenses/APL2.txt.
         <div ng-if="rbac.cluster.admin.security.local.write &&
                     rbac.cluster.admin.security.external.write &&
                     (userRolesAddDialogCtl.isLdapEnabled ||
-                    userRolesAddDialogCtl.isSaslauthdAuthEnabled)" class="formrow checkbox-list">
+                    userRolesAddDialogCtl.isSaslauthdAuthEnabled ||
+                    userRolesAddDialogCtl.isSamlEnabled)" class="formrow checkbox-list">
           <div>
             <h4>Authentication Domain</h4>
             <input

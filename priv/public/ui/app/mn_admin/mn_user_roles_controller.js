@@ -151,6 +151,7 @@ function mnUserRolesController($scope, $uibModal, mnPromiseHelper, mnUserRolesSe
         user: mnHelper.wrapInFunction(user),
         isSaslauthdAuthEnabled: mnHelper.wrapInFunction($scope.rolesCtl.isSaslauthdAuthEnabled),
         isLdapEnabled: mnHelper.wrapInFunction($scope.rolesCtl.isLdapEnabled),
+        isSamlEnabled: mnHelper.wrapInFunction($scope.rolesCtl.isSamlEnabled),
         permissions: mnHelper.wrapInFunction(permissions)
       }
     });

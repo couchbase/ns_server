@@ -12,8 +12,8 @@ import _ from "lodash";
 
 export default mnUserRolesAddDialogController;
 
-mnUserRolesAddDialogController.$inject = ["mnUserRolesService", "$uibModalInstance", "mnPromiseHelper", "user", "isLdapEnabled", "mnPoolDefault", "mnHelper", "$q", "isSaslauthdAuthEnabled", "$state", "permissions"];
-function mnUserRolesAddDialogController(mnUserRolesService, $uibModalInstance, mnPromiseHelper, user, isLdapEnabled, mnPoolDefault, mnHelper, $q, isSaslauthdAuthEnabled, $state, permissions) {
+mnUserRolesAddDialogController.$inject = ["mnUserRolesService", "$uibModalInstance", "mnPromiseHelper", "user", "isLdapEnabled", "mnPoolDefault", "mnHelper", "$q", "isSaslauthdAuthEnabled", "isSamlEnabled", "$state", "permissions"];
+function mnUserRolesAddDialogController(mnUserRolesService, $uibModalInstance, mnPromiseHelper, user, isLdapEnabled, mnPoolDefault, mnHelper, $q, isSaslauthdAuthEnabled, isSamlEnabled, $state, permissions) {
   var vm = this;
   vm.user = _.clone(user) || {
     domain: permissions.cluster.admin.security.local.write ? "local" : "external"
@@ -23,6 +23,7 @@ function mnUserRolesAddDialogController(mnUserRolesService, $uibModalInstance, m
   vm.isEditingMode = !!user;
   vm.isLdapEnabled = isLdapEnabled;
   vm.isSaslauthdAuthEnabled = isSaslauthdAuthEnabled;
+  vm.isSamlEnabled = isSamlEnabled;
   vm.selectedRoles = {};
   vm.selectedGroupsRoles = {};
   vm.selectedGroups = {};

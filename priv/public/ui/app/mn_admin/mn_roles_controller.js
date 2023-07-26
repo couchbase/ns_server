@@ -51,6 +51,7 @@ function mnRolesController($scope, poolDefault, mnHelper, $uibModal, permissions
         user: mnHelper.wrapInFunction(undefined),
         isSaslauthdAuthEnabled: mnHelper.wrapInFunction(vm.isSaslauthdAuthEnabled),
         isLdapEnabled: mnHelper.wrapInFunction(vm.isLdapEnabled),
+        isSamlEnabled: mnHelper.wrapInFunction(vm.isSamlEnabled),
         permissions: mnHelper.wrapInFunction(permissions)
       }
     });
