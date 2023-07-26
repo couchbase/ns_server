@@ -122,7 +122,10 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
       .setPostRequest(this.postSaml)
       .setValidation(this.postSamlValidation, this.permissionsAdminSecurityWrite)
       .showGlobalSpinner()
-      .successMessage("SAML settings saved successfully!");
+      .successMessage("SAML settings saved successfully!")
+      .success(() => {
+        this.form.setSource(this.getSaml);
+      });
 
     this.httpError = merge(this.postSaml.error, this.postSamlValidation.error);
 

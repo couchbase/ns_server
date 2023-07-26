@@ -60,7 +60,7 @@
           Metadata
       </span>
       <span
-         *ngIf="showServiceProviderMetaDataHasErrors | async"
+         *ngIf="(showServiceProviderMetaDataHasErrors | async)"
          class="error inline">
         <span class="icon-info-warning">
           <span class="icon fa-warning"></span>
@@ -70,23 +70,23 @@
 
       <div [hidden]="!(showServiceProviderMetaData.state | async)" class="margin-top-half margin-bottom-half indent-1-5 margin-bottom-1">
 
-        <div *ngIf="form.group.get('spMetadataURL').value" class="fix-width-8-1">
+        <div [hidden]="!(form.group.get('spMetadataURL').valueChanges | async)" class="fix-width-8-1">
             <span>Current SP metadata URL:</span>
-            <a href="{{form.group.get('spMetadataURL').value}}">
-                {{form.group.get('spMetadataURL').value}}
+            <a [attr.href]="form.group.get('spMetadataURL').valueChanges | async">
+                {{form.group.get('spMetadataURL').valueChanges | async}}
             </a>
         </div>
-        <div *ngIf="form.group.get('spConsumeURL').value" class="fix-width-8-1">
+        <div [hidden]="!(form.group.get('spConsumeURL').valueChanges | async)" class="fix-width-8-1">
             <span>Current SP consume URL:</span>
-            <a href="{{form.group.get('spConsumeURL').value}}">
-                {{form.group.get('spConsumeURL').value}}
+            <a [attr.href]="form.group.get('spConsumeURL').valueChanges | async">
+                {{form.group.get('spConsumeURL').valueChanges | async}}
             </a>
         </div>
 
-        <div *ngIf="form.group.get('spLogoutURL').value" class="fix-width-8-1 margin-bottom-1">
+        <div [hidden]="!(form.group.get('spLogoutURL').valueChanges | async)" class="fix-width-8-1 margin-bottom-1">
             <span>Current SP logout URL:</span>
-            <a href="{{form.group.get('spLogoutURL').value}}">
-                {{form.group.get('spLogoutURL').value}}
+            <a [attr.href]="form.group.get('spLogoutURL').valueChanges | async">
+                {{form.group.get('spLogoutURL').valueChanges | async}}
             </a>
         </div>
 
@@ -219,7 +219,7 @@
         </div>
 
 
-        <div *ngIf="(form.group.get('spBaseURLType').value === 'custom')" class="formrow fix-width-8-1">
+        <div [hidden]="!((form.group.get('spBaseURLType').valueChanges | async) === 'custom')" class="formrow fix-width-8-1">
           <label for="customURL">Custom URL</label>
           <input
              type="text"
@@ -272,7 +272,7 @@
           Key and Certificates
       </span>
       <span
-         *ngIf="showKeyAndCertificatesHasErrors | async"
+         *ngIf="(showKeyAndCertificatesHasErrors | async)"
          class="error inline">
         <span class="icon-info-warning">
           <span class="icon fa-warning"></span>
@@ -352,7 +352,7 @@
       </span>
 
       <span
-         *ngIf="showIdentityProviderMetaDataHasErrors | async"
+         *ngIf="(showIdentityProviderMetaDataHasErrors | async)"
          class="error inline">
         <span class="icon-info-warning">
           <span class="icon fa-warning"></span>
@@ -378,7 +378,7 @@
           <label for="for-idp-metadata-origin-file">File</label>
         </div>
 
-        <div *ngIf="form.group.get('idpMetadataOrigin').value === 'http'" class="formrow fix-width-5">
+        <div [hidden]="!((form.group.get('idpMetadataOrigin').valueChanges | async) === 'http')" class="formrow fix-width-5">
             <label for="idp-origin-url-field">URL</label>
             <input
                 type="text"
@@ -393,7 +393,7 @@
                 {{(httpError | async)?.errors?.idpMetadataURL}}
           </div>
         </div>
-        <div *ngIf="form.group.get('idpMetadataOrigin').value === 'upload'" class="formrow fix-width-8-1">
+        <div [hidden]="!((form.group.get('idpMetadataOrigin').valueChanges | async) === 'upload')" class="formrow fix-width-8-1">
             <label for="idp-origin-file-field">File</label>
             <textarea
                 id="idp-origin-file-field"
@@ -440,7 +440,7 @@
         </div>
 
         <div
-            [hidden]="!form.group.get('idpMetadataTLSVerifyPeer').value"
+            [hidden]="!(form.group.get('idpMetadataTLSVerifyPeer').valueChanges | async)"
             class="formrow fix-width-8-1">
           <label for="caCertificates_field">CA Certificates</label>
           <textarea
@@ -464,7 +464,7 @@
         </div>
 
         <div 
-          *ngIf="form.group.get('idpSignsMetadata').value"
+          [hidden]="!(form.group.get('idpSignsMetadata').valueChanges | async)"
           class="formrow">
           <input
              formControlName="spTrustedFingerprintsUsageMetadata"
@@ -482,7 +482,7 @@
         </div>
 
         <span
-           *ngIf="hasRemotePeerWarning | async"
+           *ngIf="(hasRemotePeerWarning | async)"
            class="error inline">
           <span class="icon-info-warning">
             <span class="icon fa-warning"></span>
@@ -502,7 +502,7 @@
       </span>
 
       <span
-         *ngIf="showTrustedFingerprintsHasErrors | async"
+         *ngIf="(showTrustedFingerprintsHasErrors | async)"
          class="error inline">
         <span class="icon-info-warning">
           <span class="icon fa-warning"></span>
@@ -546,7 +546,7 @@
       </span>
 
       <span
-         *ngIf="showSingleSignOnHasErrors | async"
+         *ngIf="(showSingleSignOnHasErrors | async)"
          class="error inline">
         <span class="icon-info-warning">
           <span class="icon fa-warning"></span>
@@ -606,7 +606,7 @@
         </div>
 
         <span
-           *ngIf="hasSignatureWarning | async"
+           *ngIf="(hasSignatureWarning | async)"
            class="error inline margin-bottom-1">
           <span class="icon-info-warning">
             <span class="icon fa-warning"></span>
@@ -786,7 +786,7 @@
       </span>
 
       <span
-         *ngIf="showAdvancedHasErrors | async"
+         *ngIf="(showAdvancedHasErrors | async)"
          class="error inline">
         <span class="icon-info-warning">
           <span class="icon fa-warning"></span>
@@ -881,7 +881,7 @@
           <label for="for-sp-verify-recipient">Validate recipient in SAML response</label>
         </div>
 
-        <div *ngIf="form.group.get('spVerifyRecipientFlag').value" class="formrow fix-width-8-1">
+        <div [hidden]="!(form.group.get('spVerifyRecipientFlag').valueChanges | async)" class="formrow fix-width-8-1">
           <div class="formrow radio-chips">
             <input
                 type="radio"
@@ -897,7 +897,7 @@
             <label for="sp-verify-recipient-custom">Must be equal to custom recipient</label>
           </div>
 
-          <div *ngIf="(form.group.get('spVerifyRecipient').value === 'custom')" class="formrow fix-width-8-1">
+          <div [hidden]="!((form.group.get('spVerifyRecipient').valueChanges | async) === 'custom')" class="formrow fix-width-8-1">
             <label for="customRecipient">Custom Recipient</label>
             <input
                type="text"
