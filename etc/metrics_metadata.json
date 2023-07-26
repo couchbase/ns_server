@@ -31,7 +31,7 @@
     },
     "couch_docs_actual_disk_size": {
         "type": "gauge",
-        "help": "Amount of disk space used by couchdb docs",
+        "help": "Amount of disk space used by the Data Service",
         "added": "7.0.0",
         "unit": "bytes",
         "stability": "committed",
@@ -44,7 +44,7 @@
     },
     "couch_views_actual_disk_size": {
         "type": "gauge",
-        "help": "Amount of disk space used by couchdb views",
+        "help": "Amount of disk space used by Views data",
         "added": "7.0.0",
         "unit": "bytes",
         "stability": "committed",
@@ -75,19 +75,19 @@
     },
     "sys_cpu_cores_available": {
         "type": "gauge",
-        "help": "Number of available cores",
+        "help": "Number of available CPU cores in the control group",
         "added": "7.0.0",
         "stability": "committed"
     },
     "sys_cpu_host_cores_available": {
         "type": "gauge",
-        "help": "Number of available cores in the host",
+        "help": "Number of available CPU cores in the host",
         "added": "7.1.1",
         "stability": "committed"
     },
     "sys_cpu_host_seconds_total": {
         "type": "counter",
-        "help": "Number of cpu seconds utilized",
+        "help": "Number of CPU seconds utilized in the host, by mode",
         "added": "7.2.1",
         "unit": "seconds",
         "stability": "committed",
@@ -100,19 +100,19 @@
     },
     "sys_cpu_host_sys_rate": {
         "type": "gauge",
-        "help": "System cpu utilization rate",
+        "help": "System CPU utilization rate in the host",
         "added": "7.1.1",
         "stability": "committed"
     },
     "sys_cpu_host_user_rate": {
         "type": "gauge",
-        "help": "User cpu utilization rate",
+        "help": "User space CPU utilization rate in the host",
         "added": "7.1.1",
         "stability": "committed"
     },
     "sys_cpu_host_utilization_rate": {
         "type": "gauge",
-        "help": "cpu utilization rate",
+        "help": "CPU utilization rate in the host",
         "added": "7.1.1",
         "stability": "committed"
     },
@@ -124,45 +124,45 @@
     },
     "sys_cpu_stolen_rate": {
         "type": "gauge",
-        "help": "cpu stolen rate",
+        "help": "CPU stolen rate",
         "added": "7.0.0",
         "stability": "committed"
     },
     "sys_cpu_sys_rate": {
         "type": "gauge",
-        "help": "User system utilization rate",
+        "help": "System CPU utilization rate in the control group",
         "added": "7.0.0",
         "stability": "committed"
     },
     "sys_cpu_user_rate": {
         "type": "gauge",
-        "help": "User utilization rate",
+        "help": "User space CPU utilization rate in the control group",
         "added": "7.0.0",
         "stability": "committed"
     },
     "sys_cpu_utilization_rate": {
         "type": "gauge",
-        "help": "System utilization rate",
+        "help": "CPU utilization rate in the control group",
         "added": "7.0.0",
         "stability": "committed"
     },
     "sys_mem_actual_free": {
         "type": "gauge",
-        "help": "Amount of free system memory",
+        "help": "Amount of system memory available, including buffers/cache",
         "added": "7.0.0",
         "unit": "bytes",
         "stability": "committed"
     },
     "sys_mem_actual_used": {
         "type": "gauge",
-        "help": "Amount of used system memory",
+        "help": "Amount of system memory used, excluding buffers/cache",
         "added": "7.0.0",
         "unit": "bytes",
         "stability": "committed"
     },
     "sys_mem_free": {
         "type": "gauge",
-        "help": "Amount of free memory",
+        "help": "Amount of system memory free, excluding buffers/cache",
         "added": "7.0.0",
         "unit": "bytes",
         "stability": "committed"
@@ -178,35 +178,35 @@
     },
     "sys_mem_total": {
         "type": "gauge",
-        "help": "System memory total",
+        "help": "Total amount of system memory",
         "added": "7.0.0",
         "unit": "bytes",
         "stability": "committed"
     },
     "sys_mem_used_sys": {
         "type": "gauge",
-        "help": "System memory used",
+        "help": "Amount of system memory used, including buffers/cache",
         "added": "7.0.0",
         "unit": "bytes",
         "stability": "committed"
     },
     "sys_mem_cgroup_limit": {
         "type": "gauge",
-        "help": "cgroup memory limit",
+        "help": "System memory limit, in the control group",
         "added": "7.2.0",
         "unit": "bytes",
         "stability": "committed"
     },
     "sys_mem_cgroup_actual_used": {
         "type": "gauge",
-        "help": "Actual memory used by cgroup",
+        "help": "Amount of system memory used, excluding buffers/cache, in the control group",
         "added": "7.2.0",
         "unit": "bytes",
         "stability": "committed"
     },
     "sys_mem_cgroup_used": {
         "type": "gauge",
-        "help": "Memory used by cgroup",
+        "help": "Amount of system memory used, including buffers/cache, in the control group",
         "added": "7.2.0",
         "unit": "bytes",
         "stability": "committed"
@@ -258,21 +258,21 @@
     },
     "sys_swap_total": {
         "type": "gauge",
-        "help": "Total amount of swap",
+        "help": "Total amount of swap space",
         "added": "7.0.0",
         "unit": "bytes",
         "stability": "committed"
     },
     "sys_swap_used": {
         "type": "gauge",
-        "help": "Amount of swap being used",
+        "help": "Amount of swap space used",
         "added": "7.0.0",
         "unit": "bytes",
         "stability": "committed"
     },
     "sysproc_cpu_user": {
         "type": "gauge",
-        "help": "Amount of user cpu cycles used by process",
+        "help": "Amount of user CPU cycles used, by process",
         "added": "7.5.0",
         "stability": "committed",
         "labels": [
@@ -284,7 +284,7 @@
     },
     "sysproc_cpu_sys": {
         "type": "gauge",
-        "help": "Amount of system cpu cycles used by process",
+        "help": "Amount of system CPU cycles used, by process",
         "added": "7.5.0",
         "stability": "committed",
         "labels": [
@@ -296,7 +296,7 @@
     },
     "sysproc_cpu_utilization": {
         "type": "gauge",
-        "help": "User cpu utilization rate",
+        "help": "CPU utilization rate, by process",
         "added": "7.0.0",
         "stability": "committed",
         "labels": [
@@ -308,7 +308,7 @@
     },
     "sysproc_major_faults_raw": {
         "type": "counter",
-        "help": "Number of major page faults for the process",
+        "help": "Number of major page faults, by process",
         "added": "7.0.0",
         "stability": "committed",
         "labels": [
@@ -320,7 +320,7 @@
     },
     "sysproc_mem_resident": {
         "type": "gauge",
-        "help": "Amount of resident memory used by the process",
+        "help": "Amount of resident memory used, by process",
         "added": "7.0.0",
         "unit": "bytes",
         "stability": "committed",
@@ -333,7 +333,7 @@
     },
     "sysproc_mem_share": {
         "type": "gauge",
-        "help": "Amount of shared memory used by the process",
+        "help": "Amount of shared memory used, by process",
         "added": "7.0.0",
         "unit": "bytes",
         "stability": "committed",
@@ -346,7 +346,7 @@
     },
     "sysproc_mem_size": {
         "type": "gauge",
-        "help": "Amount of memory used by the process",
+        "help": "Amount of memory used, by process",
         "added": "7.0.0",
         "unit": "bytes",
         "stability": "committed",
@@ -359,7 +359,7 @@
     },
     "sysproc_minor_faults_raw": {
         "type": "gauge",
-        "help": "Number of minor page faults for the process",
+        "help": "Number of minor page faults, by process",
         "added": "7.0.0",
         "stability": "committed",
         "labels": [
@@ -371,7 +371,7 @@
     },
     "sysproc_page_faults_raw": {
         "type": "gauge",
-        "help": "Number of raw page faults for the process",
+        "help": "Number of page faults, by process",
         "added": "7.0.0",
         "stability": "committed",
         "labels": [
@@ -549,7 +549,7 @@
     },
     "cm_http_requests_seconds": {
         "type": "histogram",
-        "help": "Number of bucket http requests",
+        "help": "Number of bucket HTTP requests",
         "added": "7.0.0",
         "labels": [
             {
@@ -560,16 +560,16 @@
     },
     "cm_http_requests_total": {
         "type": "counter",
-        "help": "Total number of http requests categorized",
+        "help": "Total number of HTTP requests categorized",
         "added": "7.0.0",
         "labels": [
             {
                 "name": "code",
-                "help": "http status code"
+                "help": "HTTP status code"
             },
             {
                 "name": "method",
-                "help": "http method (GET/DELETE/POST/PUT/RPCCONNECT)"
+                "help": "HTTP method (GET/DELETE/POST/PUT/RPCCONNECT)"
             },
             {
                 "name": "path",
@@ -835,28 +835,28 @@
     },
     "cm_outgoing_http_requests_seconds": {
         "type": "histogram",
-        "help": "Time taken for outgoing http requests",
+        "help": "Time taken for outgoing HTTP requests",
         "added": "7.0.0",
         "unit": "seconds",
         "labels": [
             {
                 "name": "type",
-                "help": "Type of outgoing http request"
+                "help": "Type of outgoing HTTP request"
             }
         ]
     },
     "cm_outgoing_http_requests_total": {
         "type": "counter",
-        "help": "Total number of outgoing http requests",
+        "help": "Total number of outgoing HTTP requests",
         "added": "7.0.0",
         "labels": [
             {
                 "name": "code",
-                "help": "http status code (or 'error')"
+                "help": "HTTP status code (or 'error')"
             },
             {
                 "name": "type",
-                "help": "Type of outgoing http requests"
+                "help": "Type of outgoing HTTP requests"
             }
         ]
     },
