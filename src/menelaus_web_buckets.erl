@@ -1325,7 +1325,8 @@ validate_membase_bucket_params(CommonParams, Params,
            Params, BucketConfig, IsNew, IsStorageModeMigration),
          quota_size_error(CommonParams, membase, IsNew, BucketConfig),
          parse_validate_storage_mode(Params, BucketConfig, IsNew, Version,
-                                     IsEnterprise, IsStorageModeMigration),
+                                     IsEnterprise, IsStorageModeMigration,
+                                     config_profile:is_serverless()),
          parse_validate_durability_min_level(Params, BucketConfig, IsNew,
                                              Version),
          parse_validate_pitr_enabled(Params, IsNew, AllowPitr,
@@ -1613,7 +1614,8 @@ is_ephemeral(_Params, BucketConfig, false = _IsNew) ->
 %% used/checked at multiple places and would need changes in all those places.
 %% Hence the above described approach.
 parse_validate_storage_mode(Params, _BucketConfig, true = _IsNew, Version,
-                            IsEnterprise, false = _IsStorageModeMigration) ->
+                            IsEnterprise, false = _IsStorageModeMigration,
+                            _ = _IsServerless) ->
     case proplists:get_value("bucketType", Params, "membase") of
         "membase" ->
             get_storage_mode_based_on_storage_backend(Params, Version,
@@ -1625,16 +1627,25 @@ parse_validate_storage_mode(Params, _BucketConfig, true = _IsNew, Version,
             {ok, storage_mode, ephemeral}
     end;
 parse_validate_storage_mode(_Params, BucketConfig, false = _IsNew, _Version,
-                            _IsEnterprise, false = _IsStorageModeMigration) ->
+                            _IsEnterprise, false = _IsStorageModeMigration,
+                            _ = _IsServerless) ->
     {ok, storage_mode, ns_bucket:storage_mode(BucketConfig)};
 parse_validate_storage_mode(_Params, _BucketConfig, false = _IsNew, _Version,
                             false = _IsEnterprise,
-                            true = _IsStorageModeMigration) ->
+                            true = _IsStorageModeMigration,
+                            _ = _IsServerless) ->
     {error, storageBackend, <<"Storage mode migration is allowed only on "
                               "enterprise edition">>};
+parse_validate_storage_mode(_Params, _BucketConfig, false = _IsNew, _Version,
+                            true = _IsEnterprise,
+                            true = _IsStorageModeMigration,
+                            true = _IsServerless) ->
+    {error, storageBackend, <<"Storage mode migration is not allowed in "
+                              "serverless config profile">>};
 parse_validate_storage_mode(Params, _BucketConfig, false = _IsNew, Version,
                             true = _IsEnterprise,
-                            true = _IsStorageModeMigration) ->
+                            true = _IsStorageModeMigration,
+                            false = _IsServerless) ->
     case cluster_compat_mode:is_version_trinity(Version) of
         false ->
             {error, storageBackend,
@@ -4309,7 +4320,7 @@ storage_mode_migration_validate_attributes_test() ->
 
 parse_validate_storage_mode_test_(
   {{OldStorageMode, NewStorageMode, IsNewBucket, Version,
-    IsEnterprise, IsStorageModeMigration}, ExpectedResult}) ->
+    IsEnterprise, IsStorageModeMigration, IsServerless}, ExpectedResult}) ->
     Params =
         [{"bucketType", "couchbase"}] ++
         case NewStorageMode of
@@ -4325,7 +4336,7 @@ parse_validate_storage_mode_test_(
 
     Res = parse_validate_storage_mode(
             Params, BucketConfig, IsNewBucket, Version,
-            IsEnterprise, IsStorageModeMigration),
+            IsEnterprise, IsStorageModeMigration, IsServerless),
 
     ExpectedStorageMode =
         case NewStorageMode of
@@ -4345,65 +4356,71 @@ parse_validate_storage_mode_test_(
 
 parse_validate_storage_mode_test() ->
     %% TestArgs: {{OldStorageMode, NewStorageMode,
-    %%             IsNewBucket, Version, IsEnterprise, IsStorageModeMigration},
+    %%             IsNewBucket, Version, IsEnterprise, IsStorageModeMigration,
+    %%             IsServerless},
     %%            ExpectedResult}.
     TestArgs =
         [%% New bucket creates.
-         {{undefined, "magma", true, ?VERSION_65, true, false},
+         {{undefined, "magma", true, ?VERSION_65, true, false, false},
           error},
-         {{undefined, "magma", true, ?VERSION_65, false, false},
+         {{undefined, "magma", true, ?VERSION_65, false, false, false},
           error},
          {{undefined, "magma", true, ?VERSION_TRINITY, true,
-           false}, ok},
+           false, false}, ok},
          {{undefined, "magma", true, ?VERSION_TRINITY, false,
-           false}, error},
+           false, false}, error},
          {{undefined, "couchstore", true, ?VERSION_65, true,
-           false}, ok},
+           false, false}, ok},
          {{undefined, "couchstore", true, ?VERSION_65, false,
-           false}, ok},
+           false, false}, ok},
          {{undefined, "couchstore", true, ?VERSION_TRINITY, true,
-           false}, ok},
+           false, false}, ok},
          {{undefined, "couchstore", true, ?VERSION_TRINITY, false,
-           false}, ok},
+           false, false}, ok},
          %% Storage mode migration.
-         {{"magma", "couchstore", false, ?VERSION_65, true, true},
+         {{"magma", "couchstore", false, ?VERSION_65, true, true, false},
           error},
-         {{"magma", "couchstore", false, ?VERSION_65, false, true},
+         {{"magma", "couchstore", false, ?VERSION_65, false, true, false},
           error},
          {{"magma", "couchstore", false, ?VERSION_TRINITY, true,
-           true}, ok},
+           true, false}, ok},
          {{"magma", "couchstore", false, ?VERSION_TRINITY, false,
-           true}, error},
-         {{"couchstore", "magma", false, ?VERSION_65, true, true},
+           true, false}, error},
+         {{"couchstore", "magma", false, ?VERSION_65, true, true, false},
           error},
          {{"couchstore", "magma", false, ?VERSION_65, false,
-           true}, error},
+           true, false}, error},
          {{"couchstore", "magma", false, ?VERSION_TRINITY, true,
-           true}, ok},
+           true, false}, ok},
+         {{"couchstore", "magma", false, ?VERSION_TRINITY, true,
+           true, false}, ok},
          {{"couchstore", "magma", false, ?VERSION_TRINITY, false,
-           true}, error},
+           true, true}, error},
          %% Couchstore bucket updates.
          {{"couchstore", undefined, false, ?VERSION_65, true,
-           false}, ok},
+           false, false}, ok},
          {{"couchstore", undefined, false, ?VERSION_65, false,
-           false}, ok},
+           false, false}, ok},
          {{"couchstore", undefined, false, ?VERSION_TRINITY, true,
-           false}, ok},
+           false, false}, ok},
          {{"couchstore", undefined, false, ?VERSION_TRINITY, false,
-           false}, ok},
+           false, false}, ok},
          %% Magma bucket updates.
          {{"magma", undefined, false, ?VERSION_TRINITY, true,
-           false}, ok}],
+           false, false}, ok}],
 
     TestFun =
         fun ({{OldStorageMode, NewStorageMode, IsNewBucket, Version,
-               IsEnterprise, IsStorageModeMigration}, ExpectedResult}) ->
+               IsEnterprise, IsStorageModeMigration, IsServerless},
+              ExpectedResult}) ->
                 {lists:flatten(io_lib:format(
                    "OldStorageMode - ~p, NewStorageMode - ~p, IsNewBucket - ~p"
                    " Version - ~p, IsEnterprise - ~p, "
-                   "IsStorageModeMigration - ~p, ExpectedResult - ~p",
+                   "IsStorageModeMigration - ~p, IsServerless - ~p, "
+                   "ExpectedResult - ~p",
                    [OldStorageMode, NewStorageMode, IsNewBucket, Version,
-                    IsEnterprise, IsStorageModeMigration, ExpectedResult])),
+                    IsEnterprise, IsStorageModeMigration, IsServerless,
+                    ExpectedResult])),
                  fun parse_validate_storage_mode_test_/1}
         end,
 
