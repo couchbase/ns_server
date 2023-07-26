@@ -55,27 +55,29 @@
 -export([init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
 
+-type status() :: connecting | init | connected | warmed | paused.
+
 -record(state, {
-          running_fast = 0,
-          running_heavy = 0,
-          running_very_heavy = 0,
-          %% NOTE: otherwise dialyzer seemingly thinks it's possible
-          %% for queue fields to be undefined
-          fast_calls_queue = impossible :: queue:queue(),
-          heavy_calls_queue = impossible :: queue:queue(),
-          very_heavy_calls_queue = impossible :: queue:queue(),
-          status :: connecting | init | connected | warmed | paused,
-          start_time :: undefined | tuple(),
-          bucket :: bucket_name(),
-          worker_features = [],
-          worker_pids :: [pid()],
-          sock = still_connecting :: port() | still_connecting,
-          work_requests = [],
-          warmup_stats = [] :: [{binary(), binary()}],
-          control_queue :: pid() | undefined,
-          check_in_progress = false :: boolean(),
-          next_check_after = ?CHECK_INTERVAL :: integer()
-         }).
+                running_fast = 0,
+                running_heavy = 0,
+                running_very_heavy = 0,
+                %% NOTE: otherwise dialyzer seemingly thinks it's possible
+                %% for queue fields to be undefined
+                fast_calls_queue = impossible :: queue:queue(),
+                heavy_calls_queue = impossible :: queue:queue(),
+                very_heavy_calls_queue = impossible :: queue:queue(),
+                status :: status(),
+                start_time :: undefined | tuple(),
+                bucket :: bucket_name(),
+                worker_features = [],
+                worker_pids :: [pid()],
+                sock = still_connecting :: port() | still_connecting,
+                work_requests = [],
+                warmup_stats = [] :: [{binary(), binary()}],
+                control_queue :: pid() | undefined,
+                check_in_progress = false :: boolean(),
+                next_check_after = ?CHECK_INTERVAL :: integer()
+               }).
 
 %% external API
 -export([active_buckets/0,
@@ -83,6 +85,7 @@
          warmed_buckets/1,
          get_mark_warmed_timeout/0,
          paused_buckets/0,
+         bucket_statuses/1,
          get_all_buckets_details/0,
          get_bucket_state/1,
          mark_warmed/2,
@@ -284,6 +287,8 @@ handle_call(paused, _From, #state{status = paused} = State) ->
     {reply, true, State};
 handle_call(paused, _From, State) ->
     {reply, false, State};
+handle_call(status, _From, #state{status = Status} = State) ->
+    {reply, Status, State};
 handle_call(disable_traffic, _From, State) ->
     case State#state.status of
         Status when Status =:= warmed; Status =:= connected ->
@@ -1011,6 +1016,18 @@ active_buckets() ->
     [Bucket || ?MODULE_STRING "-" ++ Bucket <-
                    [atom_to_list(Name) || Name <- registered()]].
 
+-spec status(node(), bucket_name(), pos_integer() | infinity) ->
+    status() | no_status.
+status(Node, Bucket, Timeout) ->
+    try
+        do_call({server(Bucket), Node}, Bucket, status, Timeout)
+    catch
+        T:E:Stack ->
+            ?log_debug("Failure to get status for bucket ~p on ~p.~n~p",
+                       [Bucket, Node, {T, E, Stack}]),
+            no_status
+    end.
+
 -spec warmed(node(), bucket_name(), pos_integer() | infinity) -> boolean().
 warmed(Node, Bucket, Timeout) ->
     try
@@ -1068,6 +1085,15 @@ paused_buckets() ->
                                     ?PAUSED_TIMEOUT)}
             end, active_buckets(), infinity),
     [Bucket || {Bucket, true} <- RVs].
+
+-spec bucket_statuses(pos_integer() | integer) -> [atom()].
+bucket_statuses(Timeout) ->
+    RVs = misc:parallel_map(
+        fun (Bucket) ->
+            {Bucket, status(dist_manager:this_node(), Bucket,
+                Timeout)}
+        end, active_buckets(), infinity),
+    RVs.
 
 %% @doc Send flush command to specified bucket
 -spec flush(bucket_name()) -> ok.
@@ -1926,4 +1952,3 @@ get_config_stats(Bucket, SubKey) ->
                       {reply, Err}
               end
       end, Bucket).
-

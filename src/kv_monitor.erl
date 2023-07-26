@@ -219,7 +219,7 @@ check_for_ready_buckets(Statuses) ->
     case dict:find(node(), Statuses) of
         {ok, Buckets} ->
             %% Some buckets may not have DCP streams.
-            %% Find their status from ns_memcached:warmed_buckets().
+            %% Find their status from ns_memcached.
             %% This list of buckets is from dcp_traffic_monitor and may not
             %% be in sorted order.
             Buckets1 = lists:keysort(1, Buckets),
@@ -231,7 +231,7 @@ check_for_ready_buckets(Statuses) ->
             end;
         error ->
             %% No DCP streams for any bucket on the node.
-            %% Find bucket status from ns_memcached:warmed_buckets().
+            %% Find bucket status from ns_memcached.
             dict:store(node(), local_node_status([]), Statuses)
     end.
 
@@ -257,13 +257,23 @@ local_node_status(Buckets0) ->
     end.
 
 get_buckets_status(Buckets) ->
-    ReadyBuckets = ns_memcached:warmed_buckets(?NS_MEMCACHED_TIMEOUT),
+    BucketStatuses = ns_memcached:bucket_statuses(?NS_MEMCACHED_TIMEOUT),
+    {ReadyBuckets, PausedBuckets} =
+        lists:foldl(
+          fun({Bucket, Status}, {Warmed, Paused}) ->
+                  case Status of
+                      warmed ->
+                          {[Bucket | Warmed], Paused};
+                      paused ->
+                          {Warmed, [Bucket | Paused]};
+                      _ ->
+                          {Warmed, Paused}
+                  end
+          end, {[], []}, BucketStatuses),
 
     %% Paused buckets need to be excluded for any consideration of failover as
     %% they will either be deleted on successful pause, or go back to warmed
     %% state upon a pause failure
-    PausedBuckets = ns_memcached:paused_buckets(),
-
     NotReadyBuckets = Buckets -- (ReadyBuckets ++ PausedBuckets),
     case NotReadyBuckets =/= [] of
         true ->
