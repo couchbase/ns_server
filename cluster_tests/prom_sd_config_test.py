@@ -30,6 +30,7 @@
 import testlib
 import json
 import yaml
+import time
 
 
 class PromSdConfigTest(testlib.BaseTestSet):
