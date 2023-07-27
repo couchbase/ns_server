@@ -47,6 +47,7 @@
          v4uuid/2,
          has_params/1,
          unsupported/1,
+         no_duplicates/1,
          required/2,
          prohibited/2,
          changeable_in_enterprise_only/3,
@@ -629,6 +630,30 @@ unsupported(#state{kv = Props, touched = Touched, errors = Errors} = State) ->
           end, Props),
     State#state{errors = NewErrors ++ Errors}.
 
+has_duplicate([{Key, _Value} | T]) ->
+    case proplists:is_defined(Key, T) of
+        true ->
+            Key;
+        false ->
+            has_duplicate(T)
+    end;
+has_duplicate([H | T]) ->
+    case proplists:is_defined(H, T) of
+        true ->
+            H;
+        false ->
+            has_duplicate(T)
+    end;
+has_duplicate([]) -> false.
+
+no_duplicates(#state{kv = Props} = State) ->
+    case has_duplicate(Props) of
+        false ->
+            State;
+        DuplicateKey ->
+            return_error(DuplicateKey, "Key specified more than once", State)
+    end.
+
 required(Name, #state{kv = Props} = State) ->
     functools:chain(
       State,
@@ -990,5 +1015,65 @@ changeable_in_compat_test() ->
          {changeable_in_compat_mode(test, false, [8, 0], _), [8, 0]}],
     lists:foreach(test_changeable_in_compat(_), Validators),
     meck:unload(cluster_compat_mode),
+    ok.
+
+check_for_duplicates_test() ->
+    %% Duplicate key in tuple
+    Kv1 = [{key1, value1}, {key2, value2}, {key1, value3}],
+    State1 = #state{kv = Kv1},
+    State1a = no_duplicates(State1),
+    #state{errors = Errors1} = State1a,
+    ?assertEqual([{"key1","Key specified more than once"}], Errors1),
+
+    %% No duplicates in tuples
+    Kv2 = [{key1, value1}, {key2, value2}, {key3, value3}],
+    State2 = #state{kv = Kv2},
+    ?assertEqual(State2, no_duplicates(State2)),
+
+    %% Duplicate in list
+    Kv3 = [apple, pie, ice_cream, apple, cake],
+    State3 = #state{kv = Kv3},
+    State3a = no_duplicates(State3),
+    #state{errors = Errors3} = State3a,
+    ?assertEqual([{"apple","Key specified more than once"}], Errors3),
+
+    %% No duplicate in list
+    Kv4 = [apple, pie, ice_cream, cake],
+    State4 = #state{kv = Kv4},
+    ?assertEqual(State4, no_duplicates(State4)),
+
+    %% Duplicate tuple key in list
+    Kv5 = [apple, {cherry, pie}, {party, time}, ice_cream, {party, time}, cake],
+    State5 = #state{kv = Kv5},
+    State5a = no_duplicates(State5),
+    #state{errors = Errors5} = State5a,
+    ?assertEqual([{"party","Key specified more than once"}], Errors5),
+
+    %% Duplicate key in list
+    Kv6 = [apple, {cherry, pie}, {party, time}, ice_cream, apple, cake],
+    State6 = #state{kv = Kv6},
+    State6a = no_duplicates(State6),
+    #state{errors = Errors6} = State6a,
+    ?assertEqual([{"apple","Key specified more than once"}], Errors6),
+
+    %% No duplicate key in list
+    Kv7 = [apple, {cherry, pie}, {party, time}, ice_cream, chocolate, cake],
+    State7 = #state{kv = Kv7},
+    ?assertEqual(State7, no_duplicates(State7)),
+
+    %% Duplicate single key matches key in tuple
+    Kv8 = [apple, {cherry, pie}, {party, time}, ice_cream, {apple, cake}],
+    State8 = #state{kv = Kv8},
+    State8a = no_duplicates(State8),
+    #state{errors = Errors8} = State8a,
+    ?assertEqual([{"apple","Key specified more than once"}], Errors8),
+
+    %% Duplicate key in tuple matches single key
+    Kv9 = [{apple, pie}, {cherry, pie}, {party, time}, ice_cream, apple],
+    State9 = #state{kv = Kv9},
+    State9a = no_duplicates(State9),
+    #state{errors = Errors9} = State9a,
+    ?assertEqual([{"apple","Key specified more than once"}], Errors9),
+
     ok.
 -endif.

@@ -141,7 +141,8 @@ collection_modifiable_validators(BucketConfig) ->
      bucket_has_config_validator(history, BucketConfig, storage_mode, magma, _),
      maxttl_validator(_),
      validator:changeable_in_enterprise_only(maxTTL, 0, _),
-     validator:changeable_in_trinity_only(maxTTL, false, _)
+     validator:changeable_in_trinity_only(maxTTL, false, _),
+     validator:no_duplicates(_)
     ].
 
 collection_validators(DefaultAllowed, BucketConfig) ->
