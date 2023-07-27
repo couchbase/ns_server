@@ -502,13 +502,11 @@
 
         <div class="formrow fix-width-5">
             <label for="trustedFingerPrints_field">Trusted Fingerprints</label>
-            <input
-                type="text"
-                id="trustedFingerPrints_field"
-                formControlName="spTrustedFingerprints"
-                autocorrect="off"
-                spellcheck="false"
-                autocapitalize="off">
+            <mn-file-reader
+              [disable]="!(form.group.get('enabled').valueChanges | async)"
+              [result]="form.group.get('spTrustedFingerprints').valueChanges | async"
+              (onWatchResult)="setSpTrustedFingerprints($event)">
+            </mn-file-reader>
             <p class="desc margin-bottom-0">Supported formats:</p>
             <p class="desc margin-bottom-0 margin-top-0">&#60;type&#62;:&#60;base64&#62;, eg. "sha512:BQwFgN8..."</p>
             <p class="desc margin-top-0">&#60;hex&#62;, e.g. "01:0a:03:28:0a..."</p>

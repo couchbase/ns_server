@@ -506,4 +506,8 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
   setIdpMetadataTLSCAs(value) {
     this.form.group.get('idpMetadataTLSCAs').setValue(value);
   }
+
+  setSpTrustedFingerprints(value) {
+    this.form.group.get('spTrustedFingerprints').setValue(value);
+  }
 }
