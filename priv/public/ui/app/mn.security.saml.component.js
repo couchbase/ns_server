@@ -21,6 +21,7 @@ import {MnSecurityService} from './mn.security.service.js';
 import {MnPermissions} from './ajs.upgraded.providers.js';
 import {MnPoolsService} from './mn.pools.service.js';
 import template from "./mn.security.saml.html";
+import {clone} from 'ramda';
 
 export {MnSecuritySamlComponent};
 
@@ -109,6 +110,7 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
          usernameAttribute: null,
 
          // FE only form controls.
+         idpMetadataRefreshIntervalSFlag: null,
          spVerifyRecipientFlag: null,
          usernameAttributeFlag: null,
          groupsAttributeFlag: null,
@@ -194,53 +196,59 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
       .subscribe(this.maybeDisableField.bind(this, 'idpMetadataTLSCAs'));
 
     this.form.group.valueChanges.pipe(pluck("usernameAttributeFlag"),
-                                      distinctUntilChanged())
-      .pipe(takeUntil(this.mnOnDestroy))
+                                      distinctUntilChanged(),
+                                      takeUntil(this.mnOnDestroy))
       .subscribe(this.maybeDisableField.bind(this, 'usernameAttribute'));
 
+    this.form.group.valueChanges.pipe(pluck("idpMetadataRefreshIntervalSFlag"),
+                                      distinctUntilChanged(),
+                                      takeUntil(this.mnOnDestroy))
+      .subscribe(this.maybeDisableField.bind(this, 'idpMetadataRefreshIntervalS'));
+
     this.form.group.valueChanges.pipe(pluck("groupsAttributeFlag"),
-                                      distinctUntilChanged())
-      .pipe(takeUntil(this.mnOnDestroy))
+                                      distinctUntilChanged(),
+                                      takeUntil(this.mnOnDestroy))
       .subscribe(this.maybeDisableField.bind(this, 'groupsAttribute'));
 
     this.form.group.valueChanges.pipe(pluck("groupsAttributeFlag"),
-                                      distinctUntilChanged())
-      .pipe(takeUntil(this.mnOnDestroy))
+                                      distinctUntilChanged(),
+                                      takeUntil(this.mnOnDestroy))
       .subscribe(this.maybeDisableField.bind(this, 'groupsAttributeSep'));
 
     this.form.group.valueChanges.pipe(pluck("groupsAttributeFlag"),
-                                      distinctUntilChanged())
-      .pipe(takeUntil(this.mnOnDestroy))
+                                      distinctUntilChanged(),
+                                      takeUntil(this.mnOnDestroy))
       .subscribe(this.maybeDisableField.bind(this, 'groupsFilterRE'));
 
     this.form.group.valueChanges.pipe(pluck("rolesAttributeFlag"),
-                                      distinctUntilChanged())
-      .pipe(takeUntil(this.mnOnDestroy))
+                                      distinctUntilChanged(),
+                                      takeUntil(this.mnOnDestroy))
       .subscribe(this.maybeDisableField.bind(this, 'rolesAttribute'));
 
     this.form.group.valueChanges.pipe(pluck("rolesAttributeFlag"),
-                                      distinctUntilChanged())
-      .pipe(takeUntil(this.mnOnDestroy))
+                                      distinctUntilChanged(),
+                                      takeUntil(this.mnOnDestroy))
       .subscribe(this.maybeDisableField.bind(this, 'rolesAttributeSep'));
 
     this.form.group.valueChanges.pipe(pluck("rolesAttributeFlag"),
-                                      distinctUntilChanged())
-      .pipe(takeUntil(this.mnOnDestroy))
+                                      distinctUntilChanged(),
+                                      takeUntil(this.mnOnDestroy))
       .subscribe(this.maybeDisableField.bind(this, 'rolesFilterRE'));
 
     this.form.group.valueChanges.pipe(pluck("spBaseURLType"),
-                                      distinctUntilChanged())
-      .pipe(takeUntil(this.mnOnDestroy))
+                                      distinctUntilChanged(),
+                                      takeUntil(this.mnOnDestroy))
       .subscribe(this.maybeDisableCustomURL.bind(this));
 
     this.form.group.valueChanges.pipe(pluck("spVerifyRecipient"),
-                                      distinctUntilChanged())
-      .pipe(takeUntil(this.mnOnDestroy))
+                                      distinctUntilChanged(),
+                                      takeUntil(this.mnOnDestroy))
       .subscribe(this.maybeDisableRecipient.bind(this));
 
     this.form.group.valueChanges.pipe(pluck("spTrustedFingerprintsUsageEverything"),
-                                      distinctUntilChanged())
-      .pipe(map((v) => !v), takeUntil(this.mnOnDestroy))
+                                      distinctUntilChanged(),
+                                      map((v) => !v),
+                                      takeUntil(this.mnOnDestroy))
       .subscribe(this.maybeDisableField.bind(this, "spTrustedFingerprintsUsageMetadata"));
 
     // Warning streams.
@@ -259,7 +267,7 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
   }
 
   packPostSaml() {
-    const packedData = this.form.group.value;
+    const packedData = clone(this.form.group.value);
 
     // Read only values.
     delete packedData.spConsumeURL;
@@ -287,6 +295,14 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
     } else {
       delete packedData.idpMetadataURL;
     }
+
+    if (!packedData.idpMetadataRefreshIntervalSFlag) {
+      delete packedData.idpMetadataRefreshIntervalS;
+    }
+    if (packedData.idpMetadataOrigin === 'http' && !packedData.idpMetadataRefreshIntervalSFlag) {
+      packedData.idpMetadataOrigin = 'http_one_time';
+    }
+    delete packedData.idpMetadataRefreshIntervalSFlag
 
     if (!packedData.spKey || packedData.spKey === '**********') {
       delete packedData.spKey;
@@ -329,7 +345,7 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
   }
 
   unpackGetSaml(data) {
-    let unpackedData = data;
+    let unpackedData = clone(data);
 
     if (unpackedData.usernameAttribute) {
       unpackedData.usernameAttributeFlag = true;
@@ -343,8 +359,12 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
       unpackedData.rolesAttributeFlag = true;
     }
 
-    if (unpackedData.idpMetadataRefreshIntervalS) {
+    if (unpackedData.idpMetadataOrigin === 'http') {
       unpackedData.idpMetadataRefreshIntervalSFlag = true;
+    }
+    if (unpackedData.idpMetadataOrigin === 'http_one_time') {
+      unpackedData.idpMetadataOrigin = 'http';
+      unpackedData.idpMetadataRefreshIntervalSFlag = false;
     }
 
     if (unpackedData.spVerifyRecipient) {

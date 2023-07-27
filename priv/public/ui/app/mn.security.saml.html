@@ -400,18 +400,21 @@
         </div>
 
         <div class="formrow form-inline">
-          <div class="row flex-left">
-          <span>
-           Reload IDP metadata every 
           <input
-              type="text"
-              formControlName="idpMetadataRefreshIntervalS"
-              class="fix-width-1 margin-right-half margin-left-half"
-              autocorrect="off"
-              spellcheck="false"
-              autocapitalize="off">
-              seconds</span>
-          </div>
+            formControlName="idpMetadataRefreshIntervalSFlag"
+            type="checkbox"
+            id="idpMetadataRefreshIntervalS-flag">
+          <label for="idpMetadataRefreshIntervalS-flag">
+            Reload IDP metadata every
+          </label>
+          <input
+            type="text"
+            formControlName="idpMetadataRefreshIntervalS"
+            class="fix-width-1 margin-right-half"
+            autocorrect="off"
+            spellcheck="false"
+            autocapitalize="off">
+            seconds
         </div>
         <div
             class="error"
