@@ -122,7 +122,9 @@ general_settings(Ver) ->
                              {queryUseReplica, "use-replica", <<"unset">>},
                              {queryNodeQuotaValPercent,
                               "node-quota-val-percent", 67},
-                             {queryNumCpus, "num-cpus", 0}];
+                             {queryNumCpus, "num-cpus", 0},
+                             {queryCompletedMaxPlanSize,
+                              "completed-max-plan-size", 262144}];
                         false ->
                             []
                     end;

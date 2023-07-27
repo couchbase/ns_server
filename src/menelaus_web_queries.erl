@@ -68,7 +68,10 @@ settings_post_validators_70() ->
                          validator:one_of(queryUseReplica,
                                           [<<"unset">>, <<"off">>, <<"on">>], _),
                          validator:integer(queryNumCpus, _),
-                         validator:range(queryNumCpus, 0, infinity, _)];
+                         validator:range(queryNumCpus, 0, infinity, _),
+                         validator:integer(queryCompletedMaxPlanSize, _),
+                         validator:range(queryCompletedMaxPlanSize, 0,
+                                         infinity, _)];
                     false ->
                         []
                 end;
