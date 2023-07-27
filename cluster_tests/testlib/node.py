@@ -26,3 +26,9 @@ class Node:
             self.data_path_cache = r.text.strip('\"')
 
         return self.data_path_cache
+
+
+    def addr(node):
+        r = testlib.post_succ(node, '/diag/eval',
+                              data='misc:extract_node_address(node()).')
+        return r.text.strip('"')

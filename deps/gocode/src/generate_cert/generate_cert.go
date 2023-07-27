@@ -9,6 +9,8 @@
 package main
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -75,12 +77,14 @@ func main() {
 	var sanDNSNamesArg string
 	var sanEmailsArg string
 	var useSha1 bool
+	var pkeyType string
 
 	flag.StringVar(&commonName, "common-name", "*", "common name field of certificate (hostname)")
 	flag.StringVar(&sanIPAddrsArg, "san-ip-addrs", "", "Subject Alternative Name IP addresses (comma separated)")
 	flag.StringVar(&sanDNSNamesArg, "san-dns-names", "", "Subject Alternative Name DNS names (comma separated)")
 	flag.StringVar(&sanEmailsArg, "san-emails", "", "Subject Alternative Name Emails (comma separated)")
 	flag.BoolVar(&genereateLeaf, "generate-leaf", false, "whether to generate leaf certificate (passing ca cert and pkey via environment variables)")
+	flag.StringVar(&pkeyType, "pkey-type", "rsa", "what kind of private key to generate (rsa or ec)")
 	flag.BoolVar(&isClient, "client", false, "whether to add client auth extension")
 
 	flag.BoolVar(&useSha1, "use-sha1", false, "whether to use sha1 instead of default sha256 signature algorithm")
@@ -105,9 +109,6 @@ func main() {
 		mustNoErr(err)
 
 		pkey := derToPKey(pkeyBlock.Bytes)
-
-		leafPKey, err := rsa.GenerateKey(rand.Reader, keyLength)
-		mustNoErr(err)
 
 		authExt := x509.ExtKeyUsageServerAuth
 		if isClient {
@@ -149,11 +150,24 @@ func main() {
 			leafTemplate.EmailAddresses = strings.Split(sanEmailsArg, ",")
 		}
 
-		certDer, err := x509.CreateCertificate(rand.Reader, &leafTemplate, caCert, &leafPKey.PublicKey, pkey)
-		mustNoErr(err)
+		if pkeyType == "rsa" {
+			leafPKey, err := rsa.GenerateKey(rand.Reader, keyLength)
+			mustNoErr(err)
+			certDer, err := x509.CreateCertificate(rand.Reader, &leafTemplate, caCert, &leafPKey.PublicKey, pkey)
+			mustNoErr(err)
 
-		pemIfy(certDer, "CERTIFICATE", os.Stdout)
-		pemIfy(x509.MarshalPKCS1PrivateKey(leafPKey), "RSA PRIVATE KEY", os.Stdout)
+			pemIfy(certDer, "CERTIFICATE", os.Stdout)
+			pemIfy(x509.MarshalPKCS1PrivateKey(leafPKey), "RSA PRIVATE KEY", os.Stdout)
+		} else if pkeyType == "ec" {
+			leafPKey, err := ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
+			certDer, err := x509.CreateCertificate(rand.Reader, &leafTemplate, caCert, &leafPKey.PublicKey, pkey)
+			mustNoErr(err)
+
+			pemIfy(certDer, "CERTIFICATE", os.Stdout)
+			bytes, err := x509.MarshalECPrivateKey(leafPKey)
+			mustNoErr(err)
+			pemIfy(bytes, "EC PRIVATE KEY", os.Stdout)
+		}
 	} else {
 		pkey, err := rsa.GenerateKey(rand.Reader, keyLength)
 		mustNoErr(err)
