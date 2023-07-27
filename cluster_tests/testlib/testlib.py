@@ -320,24 +320,30 @@ def get_otp_nodes(cluster):
                          "/nodeStatuses response was not json")
     return {k: info[k]['otpNode'] for k in info}
 
-def poll_for_condition(fun, sleep_time, attempts, timeout, verbose=False,
-                       msg="poll for condition"):
+def poll_for_condition(fun, sleep_time, attempts=None, timeout=None,
+                       verbose=False, msg="poll for condition"):
+
+    assert (attempts is not None) or (timeout is not None)
+
     def print_if_verbose(s):
         if verbose:
             print(s)
 
     assert sleep_time > 0, "non-positive sleep_time specified"
     start_time = time.time()
-    deadline = start_time + timeout
-    sleep_time_str = f"{sleep_time: .2f}s"
+    sleep_time_str = f"{sleep_time:.2f}s"
 
-    while attempts > 0:
-        assert time.time() < deadline, f"{msg}: timed-out"
+    attempt_count = 0
+    while (attempts is None) or (attempt_count < attempts):
+        if timeout is not None:
+            assert (time.time() - start_time) < timeout, \
+                   f"{msg}: timed-out (timeout: {timeout}s)"
         if fun():
             print_if_verbose(f"Time taken for condition to complete: "
-                             f"{time.time() - start_time: .2f}s\n")
+                             f"{time.time() - start_time: .2f}s")
             return
-        print_if_verbose(f"Sleeping for {sleep_time_str}\n")
+        print_if_verbose(f"Sleeping for {sleep_time_str}")
         time.sleep(sleep_time)
-        attempts -= 1
-    assert False, f"{msg} didn't complete in: {attempts} attempts, sleep_time: {sleep_time_str}"
+        attempt_count += 1
+    assert False, f"{msg} didn't complete in: {attempts} attempts, " \
+                   "sleep_time: {sleep_time_str}"
