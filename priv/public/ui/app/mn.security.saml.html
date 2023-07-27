@@ -284,14 +284,11 @@
         <div class="formrow fix-width-8-1">
           <label for="key">Key</label>
           <p class="desc">This key is used for signing and decryption.</p>
-          <textarea
-            id="key"
-            class="min-height-10"
-            autocorrect="off"
-            autocapitalize="off"
-            spellcheck="false"
-            formControlName="spKey">
-          </textarea>
+          <mn-file-reader
+             [disable]="!(form.group.get('enabled').valueChanges | async)"
+             [result]="form.group.get('spKey').valueChanges | async"
+             (onWatchResult)="setSpKey($event)">
+          </mn-file-reader>
           <p class="desc margin-top-half margin-bottom-0">Supported file types: .pem format</p>
           <div
              class="error"
@@ -302,14 +299,11 @@
 
         <div class="formrow fix-width-8-1">
           <label for="certificate">Certificate</label>
-          <textarea
-            id="certificate"
-            class="min-height-10"
-            autocorrect="off"
-            autocapitalize="off"
-            spellcheck="false"
-            formControlName="spCertificate">
-          </textarea>
+          <mn-file-reader
+             [disable]="!(form.group.get('enabled').valueChanges | async)"
+             [result]="form.group.get('spCertificate').valueChanges | async"
+             (onWatchResult)="setSpCertificate($event)">
+          </mn-file-reader>
           <p class="desc margin-top-half margin-bottom-0">Supported file types: .pem format</p>
           <div
              class="error"
@@ -321,14 +315,11 @@
         <div class="formrow fix-width-8-1">
           <label for="certificate-chain">Certificate chain (optional)</label>
           <p class="desc">These certificates will be passed to IDP as metadata. IDP will use them for signature validation and encryption.</p>
-          <textarea
-            id="certificate-chain"
-            class="min-height-10"
-            autocorrect="off"
-            autocapitalize="off"
-            spellcheck="false"
-            formControlName="spChain">
-          </textarea>
+          <mn-file-reader
+            [disable]="!(form.group.get('enabled').valueChanges | async)"
+            [result]="form.group.get('spChain').valueChanges | async"
+            (onWatchResult)="setSpChain($event)">
+          </mn-file-reader>
           <p class="desc margin-top-half margin-bottom-0">Supported file types: .pem format</p>
           <div
              class="error"
@@ -440,14 +431,11 @@
             [hidden]="!(form.group.get('idpMetadataTLSVerifyPeer').valueChanges | async)"
             class="formrow fix-width-8-1">
           <label for="caCertificates_field">CA Certificates</label>
-          <textarea
-            id="caCertificates_field"
-            class="min-height-10"
-            autocorrect="off"
-            autocapitalize="off"
-            spellcheck="false"
-            formControlName="idpMetadataTLSCAs">
-          </textarea>
+          <mn-file-reader
+             [disable]="!(form.group.get('enabled').valueChanges | async)"
+             [result]="form.group.get('idpMetadataTLSCAs').valueChanges | async"
+             (onWatchResult)="setIdpMetadataTLSCAs($event)">
+          </mn-file-reader>
           <p class="desc margin-top-half margin-bottom-0">Supported file types: .pem format</p>
           </div>
 

@@ -470,4 +470,20 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
   setIdpMetadata(value) {
     this.form.group.get('idpMetadata').setValue(value);
   }
+
+  setSpKey(value) {
+    this.form.group.get('spKey').setValue(value);
+  }
+
+  setSpCertificate(value) {
+    this.form.group.get('spCertificate').setValue(value);
+  }
+
+  setSpChain(value) {
+    this.form.group.get('spChain').setValue(value);
+  }
+
+  setIdpMetadataTLSCAs(value) {
+    this.form.group.get('idpMetadataTLSCAs').setValue(value);
+  }
 }
