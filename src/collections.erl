@@ -900,19 +900,29 @@ find_collection(Name, Collections) ->
 
 add_collection(Manifest, Name, ScopeName, SuppliedProps, BucketConf) ->
     Uid = proplists:get_value(next_coll_uid, Manifest),
-    Props = case proplists:get_value(history, SuppliedProps) of
-        undefined ->
-            % History defined by our default value
-            SuppliedProps ++
+    Props0 =
+        case proplists:get_value(history, SuppliedProps) of
+            undefined ->
+                % History defined by our default value
+                SuppliedProps ++
                 [{history,
                   ns_bucket:history_retention_collection_default(BucketConf)}];
-        _ ->
-            % History defined by the user
-            SuppliedProps
-    end,
+            _ ->
+                % History defined by the user
+                SuppliedProps
+        end,
+    Props = maybe_reset_maxttl(Props0),
     SanitizedProps = remove_defaults(Props),
     on_collections([{Name, [{uid, Uid} | SanitizedProps]} | _], ScopeName,
                    Manifest).
+
+maybe_reset_maxttl(Props) ->
+    case proplists:get_value(maxTTL, Props) of
+        "bucket" ->
+            proplists:delete(maxTTL, Props);
+        _ ->
+            Props
+    end.
 
 modify_collection_props(Manifest, Name, ScopeName, DesiredProps) ->
     on_collections(
@@ -921,8 +931,9 @@ modify_collection_props(Manifest, Name, ScopeName, DesiredProps) ->
             % sanitize the manifest as we can't remove them earlier in case we
             % are setting a value to the default.
             {Name, CurrentProps} = lists:keyfind(Name, 1, Collections),
-            NewProps = remove_defaults(misc:update_proplist(CurrentProps,
-                                                            DesiredProps)),
+            NewProps0 = remove_defaults(misc:update_proplist(CurrentProps,
+                                                             DesiredProps)),
+            NewProps = maybe_reset_maxttl(NewProps0),
             case lists:sort(NewProps) =:= lists:sort(CurrentProps) of
                 false ->
                     lists:keyreplace(Name, 1, Collections, {Name, NewProps});
