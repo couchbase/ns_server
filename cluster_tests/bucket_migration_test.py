@@ -58,7 +58,10 @@ def assert_per_node_storage_mode_in_memcached(node, bucket_name,
                                               expected_storage_mode):
     diag_eval = f'ns_memcached:get_config_stats("{bucket_name}", <<"ep_backend">>).'
     res = testlib.post_succ(node, "/diag/eval", data=diag_eval)
-    assert res.content.decode('ascii').strip("<<\"").strip("\">>") == expected_storage_mode
+    storage_mode = res.content.decode('ascii').strip("<<\"").strip("\">>")
+    if expected_storage_mode == "couchstore":
+        expected_storage_mode = "couchdb"
+    assert storage_mode == expected_storage_mode
 
 class BucketMigrationTest(testlib.BaseTestSet):
 
@@ -140,3 +143,33 @@ class BucketMigrationTest(testlib.BaseTestSet):
                 node, "bucket-2", "magma")
             assert_per_node_storage_mode_keys_deleted(
                 cluster, node, "bucket-2")
+
+    def perform_delta_recovery_mid_migration_test(self, cluster):
+        testlib.delete_all_buckets(cluster)
+        bucket_name = "bucket-3"
+        create_and_update_bucket(cluster, bucket_name=bucket_name,
+                                 old_storage_mode="couchstore",
+                                 new_storage_mode="magma",
+                                 ram_quota_mb=1024)
+
+        def is_bucket_online_on_all_nodes():
+            r = get_bucket(cluster, bucket_name)
+            return all([node['status'] == "healthy" for node in r['nodes']])
+
+        testlib.poll_for_condition(
+            is_bucket_online_on_all_nodes, sleep_time=0.5, attempts=20,
+            timeout=60, msg="poll bucket is online on all nodes")
+
+        # Failover a node and delta-recover it - the bucket should still have
+        # per-node override props and storage_mode in memcached on the
+        # recovered node should be the old_storage_mode.
+
+        failover_node = cluster.connected_nodes[0]
+        cluster.failover_node(failover_node, graceful=False)
+        cluster.recover_node(
+            failover_node, recovery_type="delta", do_rebalance=True)
+
+        assert_per_node_storage_mode_keys_added(
+            cluster, bucket_name, "couchstore")
+        assert_per_node_storage_mode_in_memcached(
+            failover_node, bucket_name, "couchstore")
