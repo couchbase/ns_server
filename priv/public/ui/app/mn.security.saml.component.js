@@ -235,11 +235,6 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
                                       takeUntil(this.mnOnDestroy))
       .subscribe(this.maybeDisableField.bind(this, 'rolesFilterRE'));
 
-    this.form.group.valueChanges.pipe(pluck("spBaseURLType"),
-                                      distinctUntilChanged(),
-                                      takeUntil(this.mnOnDestroy))
-      .subscribe(this.maybeDisableCustomURL.bind(this));
-
     this.form.group.valueChanges.pipe(pluck("spVerifyRecipient"),
                                       distinctUntilChanged(),
                                       takeUntil(this.mnOnDestroy))
@@ -336,7 +331,11 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
     if (packedData.spTrustedFingerprintsUsageMetadataOnly === false &&
         packedData.spTrustedFingerprintsUsageEverything === false) {
       packedData.spTrustedFingerprintsUsage = 'metadataOnly';
-    } 
+    }
+
+    if (packedData.spBaseURLType !== "custom") {
+      delete packedData.spCustomBaseURL;
+    }
 
     delete packedData.spTrustedFingerprintsUsageEverything;
     delete packedData.spTrustedFingerprintsUsageMetadata;
@@ -460,14 +459,6 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
   maybeDisableField(field, enable) {
     this.form.group.get(field)[enable ? "enable": "disable"]();
   }
-
-  maybeDisableCustomURL(baseURLType) {
-    const method = baseURLType === 'custom' ? "enable" : "disable";
-    const settings = {emitEvent: false};
-
-    this.form.group.get('spCustomBaseURL')[method](settings);
-  }
-
   maybeDisableRecipient(recipient) {
     const method = recipient === 'custom' ? "enable" : "disable";
     const settings = {emitEvent: false};
