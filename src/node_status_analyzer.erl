@@ -68,7 +68,9 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -ifdef(TEST).
--export([health_monitor_test_setup/0,
+-export([common_test_setup/0,
+         common_test_teardown/0,
+         health_monitor_test_setup/0,
          health_monitor_t/0,
          health_monitor_test_teardown/0]).
 -endif.
@@ -200,18 +202,20 @@ can_refresh(_State) ->
     true.
 
 -ifdef(TEST).
+common_test_setup() ->
+    meck:expect(chronicle_compat_events, subscribe, fun (_,_) -> true end).
+
 %% See health_monitor.erl for tests common to all monitors that use these
 %% functions
 health_monitor_test_setup() ->
+    common_test_setup(),
+
     meck:new(node_monitor, [passthrough]),
     meck:expect(node_monitor,
                 get_nodes,
                 fun() ->
                         []
                 end),
-
-    meck:expect(chronicle_compat_events,
-                subscribe, fun (_,_) -> true end),
 
     %% If we refresh with the kv_monitor as one of our active monitors then
     %% we will attempt to analyze statuses from it which calls functions that
@@ -262,7 +266,12 @@ health_monitor_t() ->
     ?assertEqual([{node(), [ns_server, kv]},
                   {"otherNode", [ns_server, kv]}], get_monitors_from_state()).
 
+common_test_teardown() ->
+    ok.
+
 health_monitor_test_teardown() ->
+    common_test_teardown(),
+
     meck:unload(node_monitor),
     meck:unload(kv_monitor).
 

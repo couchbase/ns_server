@@ -29,7 +29,9 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -ifdef(TEST).
--export([health_monitor_test_setup/0,
+-export([common_test_setup/0,
+         common_test_teardown/0,
+         health_monitor_test_setup/0,
          health_monitor_t/0,
          health_monitor_test_teardown/0]).
 -endif.
@@ -160,18 +162,21 @@ can_refresh(_State) ->
     true.
 
 -ifdef(TEST).
+common_test_setup() ->
+    meck:new(mb_master),
+    meck:expect(mb_master, master_node, fun() -> node() end).
+
 %% See health_monitor.erl for tests common to all monitors that use these
 %% functions
 health_monitor_test_setup() ->
+    common_test_setup(),
+
     meck:new(ns_server_monitor, [passthrough]),
     meck:expect(ns_server_monitor,
         get_nodes,
         fun() ->
             dict:append(node(), dict:new(), dict:new())
         end),
-
-    meck:new(mb_master),
-    meck:expect(mb_master, master_node, fun() -> node() end),
 
     meck:new(kv_monitor, [passthrough]),
     meck:expect(kv_monitor,
@@ -219,8 +224,11 @@ health_monitor_t() ->
     %% Finally, check that we have now called kv_monitor:get_nodes()
     ?assert(meck:called(kv_monitor, get_nodes, [])).
 
-health_monitor_test_teardown() ->
-    meck:unload(ns_server_monitor),
+common_test_teardown() ->
     meck:unload(mb_master).
+
+health_monitor_test_teardown() ->
+    common_test_teardown(),
+    meck:unload(ns_server_monitor).
 
 -endif.

@@ -97,6 +97,11 @@
          maybe_calculate_refresh_interval/1,
          get_refresh_interval/1]).
 
+-ifdef(TEST).
+-export([common_test_setup/0,
+         common_test_teardown/0]).
+-endif.
+
 -record(state, {
                 monitor_module,
                 %% Map such that monitors can add any state they wish
@@ -365,7 +370,7 @@ maybe_calculate_refresh_interval(DefaultValue) ->
     end.
 
 -ifdef(TEST).
-basic_test_setup(Monitor) ->
+common_test_setup() ->
     meck:new(chronicle_compat_events),
     meck:expect(chronicle_compat_events,
                 notify_if_key_changes,
@@ -418,19 +423,26 @@ basic_test_setup(Monitor) ->
                 get,
                 fun(_) ->
                         false
-                end),
+                end).
 
+basic_test_setup(Monitor) ->
+    common_test_setup(),
+
+    %% Do all of our common setup before the monitor specific setup in case the
+    %% specific monitor needs the meck:new() calls (it's not safe to call twice)
     Monitor:health_monitor_test_setup().
 
-basic_test_teardown(Monitor, _X) ->
-    Monitor:health_monitor_test_teardown(),
-
+common_test_teardown() ->
     meck:unload(chronicle_compat_events),
     meck:unload(ns_node_disco),
     meck:unload(ns_config),
     meck:unload(ns_cluster_membership),
     meck:unload(cluster_compat_mode),
     meck:unload(testconditions).
+
+basic_test_teardown(Monitor, _X) ->
+    Monitor:health_monitor_test_teardown(),
+    common_test_teardown().
 
 test_refresh_interval_scaling(Monitor) ->
     ExpectedTimeout =

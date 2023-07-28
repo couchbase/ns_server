@@ -23,7 +23,9 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -ifdef(TEST).
--export([health_monitor_test_setup/0,
+-export([common_test_setup/0,
+         common_test_teardown/0,
+         health_monitor_test_setup/0,
          health_monitor_t/0,
          health_monitor_test_teardown/0]).
 -endif.
@@ -132,15 +134,21 @@ can_refresh(_State) ->
     true.
 
 -ifdef(TEST).
+common_test_setup() ->
+    ok.
+
 %% See health_monitor.erl for tests common to all monitors that use these
 %% functions
 health_monitor_test_setup() ->
-    ok.
+    common_test_setup().
 
 health_monitor_t() ->
     ok.
 
-health_monitor_test_teardown() ->
+common_test_teardown() ->
     ok.
+
+health_monitor_test_teardown() ->
+    common_test_teardown().
 
 -endif.
