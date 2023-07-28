@@ -125,6 +125,7 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
       .setValidation(this.postSamlValidation, this.permissionsAdminSecurityWrite)
       .showGlobalSpinner()
       .successMessage("SAML settings saved successfully!")
+      .clearErrors()
       .success(() => {
         this.form.setSource(this.getSaml);
       });
