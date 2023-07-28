@@ -280,8 +280,11 @@ do_generate_cert_and_pkey(Args, Env) ->
     end.
 
 decode_cert_chain(CertPemBin) ->
-    Certs = split_certs(CertPemBin),
-    decode_cert_chain(Certs, []).
+    try split_certs(CertPemBin) of
+        Certs -> decode_cert_chain(Certs, [])
+    catch
+        _:_ -> {error, malformed_cert}
+    end.
 
 decode_cert_chain([], Res) -> {ok, lists:reverse(Res)};
 decode_cert_chain([Cert | Tail], Res) ->
