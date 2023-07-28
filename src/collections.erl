@@ -273,7 +273,17 @@ collection_prop_to_memcached(_, V) ->
 %% 1) Reduces the size of the manifest
 %% 2) Improves readability of the manifest
 default_collection_props() ->
-    [{maxTTL, 0}, {history, false}].
+    case cluster_compat_mode:is_cluster_trinity() of
+        true ->
+            [{history, false}];
+        false ->
+            %% Prior to trinity we didn't pass {maxTTL, 0} in the manifest
+            %% sent to kv. As a result it's absence meant to "use the bucket
+            %% maxTTL if specified". If the user had wanted to disable
+            %% TTL for the collection they would have specified maxTTL=0, as
+            %% documented, but it wouldn't have worked.
+            [{maxTTL, 0}, {history, false}]
+    end.
 
 collection_to_memcached(Name, Props, WithDefaults) ->
     AdjustedProps =
