@@ -63,6 +63,7 @@ handle_post_settings(Req) ->
       fun (Proplist, NewReq) ->
           SSOProps = lists:map(fun ({[K], V}) -> {K, V} end, Proplist),
           set_sso_options(SSOProps, CurrentProps),
+          is_enabled() orelse menelaus_ui_auth:logout_by_session_type(saml),
           handle_get_settings([], NewReq)
       end, [], params(), fun type_spec/1, CurrentProps, defaults(), Req).
 
@@ -145,6 +146,7 @@ handle_delete_settings(Req) ->
     menelaus_util:assert_is_enterprise(),
     ns_config:delete(saml_settings),
     cb_saml:cleanup_metadata(),
+    is_enabled() orelse menelaus_ui_auth:logout_by_session_type(saml),
     menelaus_util:reply(Req, 200).
 
 handle_auth(Req) ->

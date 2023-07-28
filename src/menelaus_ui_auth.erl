@@ -21,7 +21,7 @@
 
 -export([start_ui_session/3, maybe_refresh/1,
          check/1, reset/0, logout/1, set_token_node/2,
-         logout_by_session_name/2]).
+         logout_by_session_name/2, logout_by_session_type/1]).
 
 start_link() ->
     token_server:start_link(?MODULE, 1024, ?UI_AUTH_EXPIRATION_SECONDS,
@@ -103,6 +103,10 @@ ns_config_event_handler(_Evt) ->
 
 logout_by_session_name(Type, SessionName) ->
     Pattern = #uisession{type = Type, session_name = SessionName, _ = '_'},
+    token_server:purge(?MODULE, Pattern).
+
+logout_by_session_type(Type) ->
+    Pattern = #uisession{type = Type, _ = '_'},
     token_server:purge(?MODULE, Pattern).
 
 -ifdef(TEST).
