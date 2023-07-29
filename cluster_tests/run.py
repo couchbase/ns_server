@@ -46,6 +46,7 @@ import internal_creds_rotation_tests
 import pass_hashing_settings_tests
 import secret_management_tests
 import cert_load_tests
+import alerting_tests
 
 tmp_cluster_dir = os.path.join(scriptdir, "test_cluster_data")
 

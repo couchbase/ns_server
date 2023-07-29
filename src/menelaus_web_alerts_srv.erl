@@ -83,7 +83,7 @@
 -define(HIST_WARN_PERC, 90).
 
 -export([start_link/0, stop/0, local_alert/2, global_alert/2,
-         fetch_alerts/0, consume_alerts/1]).
+         fetch_alerts/0, consume_alerts/1, reset/0]).
 
 
 %% short description for a specific error; used in email subject
@@ -230,6 +230,10 @@ fetch_alerts() ->
 consume_alerts(VersionCookie) ->
     gen_server:call(?MODULE, {consume_alerts, VersionCookie}).
 
+%% Resets history of alerts on that node (used in tests)
+-spec reset() -> ok.
+reset() ->
+    gen_server:call(?MODULE, reset).
 
 stop() ->
     gen_server:cast(?MODULE, stop).
@@ -290,8 +294,10 @@ handle_call({add_alert, Key, Val}, _, #state{queue = Msgs, history = Hist,
               }};
         _ ->
             {reply, ignored, State}
-    end.
+    end;
 
+handle_call(reset, _From, #state{} = State) ->
+    {reply, ok, State#state{queue = [], history = []}}.
 
 handle_cast(stop, State) ->
     {stop, normal, State};
