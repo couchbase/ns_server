@@ -825,13 +825,13 @@ check(certs, Opaque, _History, _Stats) ->
           ({{node, Subj}, expired}) ->
               Host = misc:extract_node_address(node()),
               Error = fmt_to_bin(errors(node_cert_expired), [Host, Subj]),
-              global_alert({cert_expired,
-                  {node, Host}, {type, server}}, Error);
+              global_alert({cert_expired, [{node, Host}, {type, server}]},
+                           Error);
           ({{client, Subj}, expired}) ->
               Host = misc:extract_node_address(node()),
               Error = fmt_to_bin(errors(client_cert_expired), [Host, Subj]),
-              global_alert({cert_expired,
-                  {node, Host}, {type, client}}, Error);
+              global_alert({cert_expired, [{node, Host}, {type, client}]},
+                           Error);
           ({{ca, Id, Subj}, {expires_soon, UTCSeconds}}) ->
               Date = menelaus_web_cert:format_time(UTCSeconds),
               Error = fmt_to_bin(errors(ca_expires_soon), [Id, Subj, Date]),
@@ -841,15 +841,15 @@ check(certs, Opaque, _History, _Stats) ->
               Date = menelaus_web_cert:format_time(UTCSeconds),
               Error = fmt_to_bin(errors(node_cert_expires_soon),
                                  [Host, Subj, Date]),
-              global_alert({cert_expires_soon,
-                  {node, Host}, {type, server}}, Error);
+              global_alert({cert_expires_soon, [{node, Host}, {type, server}]},
+                           Error);
           ({{client, Subj}, {expires_soon, UTCSeconds}}) ->
               Host = misc:extract_node_address(node()),
               Date = menelaus_web_cert:format_time(UTCSeconds),
               Error = fmt_to_bin(errors(client_cert_expires_soon),
                   [Host, Subj, Date]),
-              global_alert({cert_expires_soon,
-                  {node, Host}, {type, client}}, Error)
+              global_alert({cert_expires_soon, [{node, Host}, {type, client}]},
+                           Error)
 
       end, CAAlerts ++ LocalAlerts ++ ClientAlerts),
 
