@@ -619,7 +619,7 @@ failover_service_nodes(Nodes) ->
         [] -> [];
         _ ->
             ?log_debug("Failover nodes ~p from services ~p", [Nodes, Services]),
-            chronicle_compat:set_multiple(SvcMap),
+            ok = chronicle_compat:set_multiple(SvcMap),
             Services
     end.
 
