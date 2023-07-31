@@ -88,7 +88,7 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
          spConsumeURL: null,
          spContactEmail: null,
          spContactName: null,
-         spCustomBaseURL: null, //fails when BE doesn't have response, when Alternate Node
+         spCustomBaseURL: null,
          spEntityId: null,
          spKey: null,
          spLogoutURL: null,
@@ -203,11 +203,6 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
     this.subscribeMaybeDisableField("rolesAttributeFlag", "rolesAttributeSep");
     this.subscribeMaybeDisableField("rolesAttributeFlag", "rolesFilterRE");
 
-    this.form.group.get("spVerifyRecipient").valueChanges
-      .pipe(distinctUntilChanged(),
-            takeUntil(this.mnOnDestroy))
-      .subscribe(this.maybeDisableRecipient.bind(this));
-
     this.form.group.get("spTrustedFingerprintsUsageEverything").valueChanges
       .pipe(distinctUntilChanged(),
             map((v) => !v),
@@ -312,6 +307,10 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
 
     if (packedData.spBaseURLType !== "custom") {
       delete packedData.spCustomBaseURL;
+    }
+
+    if (packedData.spVerifyRecipient !== "custom") {
+      delete packedData.spVerifyRecipientValue;
     }
 
     delete packedData.spTrustedFingerprintsUsageEverything;
@@ -435,12 +434,6 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
 
   maybeDisableField(field, [fieldEnable, formEnabled]) {
     this.form.group.get(field)[fieldEnable && formEnabled ? "enable": "disable"]({emitEvent: false});
-  }
-  maybeDisableRecipient(recipient) {
-    const method = recipient === 'custom' ? "enable" : "disable";
-    const settings = {emitEvent: false};
-
-    this.form.group.get('spVerifyRecipientValue')[method](settings);
   }
 
   hasRemotePeerWarning([verifyPeer, fingerprintUsage]) {
