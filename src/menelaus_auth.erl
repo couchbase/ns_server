@@ -439,7 +439,7 @@ verify_rest_auth(Req, Permission) ->
         {ok, #authn_res{} = AuthnRes,
          RespHeaders} ->
             Req2 = append_resp_headers(RespHeaders, Req),
-            case apply_on_belalf_of_identity(AuthnRes, Req2) of
+            case apply_on_behalf_of_identity(AuthnRes, Req2) of
                 error ->
                     Req3 = maybe_store_rejected_user(
                              get_rejected_user(Auth), Req2),
@@ -474,9 +474,9 @@ verify_rest_auth(Req, Permission) ->
 %% 3) effective identity: on-behalf-of identity if present, else the real
 %%    identity.
 
--spec apply_on_belalf_of_identity(#authn_res{}, mochiweb_request()) ->
+-spec apply_on_behalf_of_identity(#authn_res{}, mochiweb_request()) ->
                                         error | #authn_res{}.
-apply_on_belalf_of_identity(AuthnRes, Req) ->
+apply_on_behalf_of_identity(AuthnRes, Req) ->
     case extract_on_behalf_of_identity(Req) of
         error ->
             error;
