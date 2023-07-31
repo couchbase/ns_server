@@ -10,7 +10,7 @@ licenses/APL2.txt.
 
 import {Component, ChangeDetectionStrategy} from '@angular/core';
 import {UIRouter} from '@uirouter/angular';
-import {filter, map, pluck, distinctUntilChanged, takeUntil} from 'rxjs/operators';
+import {filter, map, distinctUntilChanged, takeUntil} from 'rxjs/operators';
 import {combineLatest, merge, pipe} from 'rxjs';
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
@@ -88,7 +88,7 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
          spConsumeURL: null,
          spContactEmail: null,
          spContactName: null,
-         spCustomBaseURL: null,
+         spCustomBaseURL: null, //fails when BE doesn't have response, when Alternate Node
          spEntityId: null,
          spKey: null,
          spLogoutURL: null,
@@ -130,6 +130,8 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
         this.form.setSource(this.getSaml);
       });
 
+    this.form.group.disable();
+
     this.httpError = merge(this.postSaml.error, this.postSamlValidation.error);
 
     // Possible to receive a 500 error in the form of a single value array.
@@ -142,8 +144,7 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
 
     this.cancel = this.cancel.bind(this);
 
-    this.enabled = this.form.group.valueChanges.pipe(pluck("enabled"),
-                                        distinctUntilChanged());
+    this.enabled = this.form.group.get("enabled").valueChanges.pipe(distinctUntilChanged());
 
     // Toggle Streams.
     this.showServiceProviderMetaData = this.mnHelperService.createToggle();
@@ -186,65 +187,31 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
 
     // Disabled Streams.
     combineLatest(
-      this.form.group.valueChanges.pipe(pluck("enabled"),
-                                        distinctUntilChanged()),
-      this.permissionsAdminSecurityWrite)
+      this.enabled,
+      this.permissionsAdminSecurityWrite
+    )
       .pipe(takeUntil(this.mnOnDestroy))
       .subscribe(this.maybeDisableForm.bind(this));
 
-    this.form.group.get('idpMetadataTLSVerifyPeer').valueChanges
-      .pipe(takeUntil(this.mnOnDestroy))
-      .subscribe(this.maybeDisableField.bind(this, 'idpMetadataTLSCAs'));
+    this.subscribeMaybeDisableField("idpMetadataTLSVerifyPeer", "idpMetadataTLSCAs");
+    this.subscribeMaybeDisableField("idpMetadataRefreshIntervalSFlag", "idpMetadataRefreshIntervalS");
+    this.subscribeMaybeDisableField("usernameAttributeFlag", "usernameAttribute");
+    this.subscribeMaybeDisableField("groupsAttributeFlag", "groupsAttribute");
+    this.subscribeMaybeDisableField("groupsAttributeFlag", "groupsAttributeSep");
+    this.subscribeMaybeDisableField("groupsAttributeFlag", "groupsFilterRE");
+    this.subscribeMaybeDisableField("rolesAttributeFlag", "rolesAttribute");
+    this.subscribeMaybeDisableField("rolesAttributeFlag", "rolesAttributeSep");
+    this.subscribeMaybeDisableField("rolesAttributeFlag", "rolesFilterRE");
 
-    this.form.group.valueChanges.pipe(pluck("usernameAttributeFlag"),
-                                      distinctUntilChanged(),
-                                      takeUntil(this.mnOnDestroy))
-      .subscribe(this.maybeDisableField.bind(this, 'usernameAttribute'));
-
-    this.form.group.valueChanges.pipe(pluck("idpMetadataRefreshIntervalSFlag"),
-                                      distinctUntilChanged(),
-                                      takeUntil(this.mnOnDestroy))
-      .subscribe(this.maybeDisableField.bind(this, 'idpMetadataRefreshIntervalS'));
-
-    this.form.group.valueChanges.pipe(pluck("groupsAttributeFlag"),
-                                      distinctUntilChanged(),
-                                      takeUntil(this.mnOnDestroy))
-      .subscribe(this.maybeDisableField.bind(this, 'groupsAttribute'));
-
-    this.form.group.valueChanges.pipe(pluck("groupsAttributeFlag"),
-                                      distinctUntilChanged(),
-                                      takeUntil(this.mnOnDestroy))
-      .subscribe(this.maybeDisableField.bind(this, 'groupsAttributeSep'));
-
-    this.form.group.valueChanges.pipe(pluck("groupsAttributeFlag"),
-                                      distinctUntilChanged(),
-                                      takeUntil(this.mnOnDestroy))
-      .subscribe(this.maybeDisableField.bind(this, 'groupsFilterRE'));
-
-    this.form.group.valueChanges.pipe(pluck("rolesAttributeFlag"),
-                                      distinctUntilChanged(),
-                                      takeUntil(this.mnOnDestroy))
-      .subscribe(this.maybeDisableField.bind(this, 'rolesAttribute'));
-
-    this.form.group.valueChanges.pipe(pluck("rolesAttributeFlag"),
-                                      distinctUntilChanged(),
-                                      takeUntil(this.mnOnDestroy))
-      .subscribe(this.maybeDisableField.bind(this, 'rolesAttributeSep'));
-
-    this.form.group.valueChanges.pipe(pluck("rolesAttributeFlag"),
-                                      distinctUntilChanged(),
-                                      takeUntil(this.mnOnDestroy))
-      .subscribe(this.maybeDisableField.bind(this, 'rolesFilterRE'));
-
-    this.form.group.valueChanges.pipe(pluck("spVerifyRecipient"),
-                                      distinctUntilChanged(),
-                                      takeUntil(this.mnOnDestroy))
+    this.form.group.get("spVerifyRecipient").valueChanges
+      .pipe(distinctUntilChanged(),
+            takeUntil(this.mnOnDestroy))
       .subscribe(this.maybeDisableRecipient.bind(this));
 
-    this.form.group.valueChanges.pipe(pluck("spTrustedFingerprintsUsageEverything"),
-                                      distinctUntilChanged(),
-                                      map((v) => !v),
-                                      takeUntil(this.mnOnDestroy))
+    this.form.group.get("spTrustedFingerprintsUsageEverything").valueChanges
+      .pipe(distinctUntilChanged(),
+            map((v) => !v),
+            takeUntil(this.mnOnDestroy))
       .subscribe(this.maybeDisableField.bind(this, "spTrustedFingerprintsUsageMetadata"));
 
     // Warning streams.
@@ -259,7 +226,16 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
           this.form.group.get('spVerifyAssertionSig').valueChanges,
           this.form.group.get('spVerifyAssertionEnvelopSig').valueChanges)
       .pipe(map(this.hasSignatureWarning.bind(this)));
+  }
 
+  subscribeMaybeDisableField(flag, field) {
+    combineLatest(
+      this.form.group.get(flag).valueChanges,
+      this.enabled
+    )
+      .pipe(
+            takeUntil(this.mnOnDestroy))
+      .subscribe(this.maybeDisableField.bind(this, field));
   }
 
   packPostSaml() {
@@ -457,8 +433,8 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
     }
   }
 
-  maybeDisableField(field, enable) {
-    this.form.group.get(field)[enable ? "enable": "disable"]();
+  maybeDisableField(field, [fieldEnable, formEnabled]) {
+    this.form.group.get(field)[fieldEnable && formEnabled ? "enable": "disable"]({emitEvent: false});
   }
   maybeDisableRecipient(recipient) {
     const method = recipient === 'custom' ? "enable" : "disable";
