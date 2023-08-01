@@ -20,7 +20,7 @@
 
 -export([generate/2, generate/3, maybe_refresh/2,
          check/3, reset_all/1,
-         purge/2, take/2, take_memos/2]).
+         purge/2, take/2, take_memos/2, find_memos/2]).
 
 -define(EXPIRATION_CHECKING_INTERVAL, 15000).
 
@@ -93,6 +93,9 @@ take(Module, Token) ->
 
 take_memos(Module, MemoPattern) ->
     gen_server:call(Module, {take_memos, MemoPattern}, infinity).
+
+find_memos(Module, MemoPattern) ->
+    gen_server:call(Module, {find_memos, MemoPattern}, infinity).
 
 purge(Module, MemoPattern) ->
     gen_server:cast(Module, {purge, MemoPattern}).
@@ -310,6 +313,12 @@ handle_call({take, Token}, _From, State) ->
             remove_token_chain(Token, State),
             {reply, {ok, Memo}, State}
     end;
+handle_call({find_memos, MemoPattern}, _From,
+            #state{table_by_token = Table} = State) ->
+    Records = ets:select(Table, [{#token_record{memo = MemoPattern, _ = '_'},
+                                  [], ['$_']}]),
+    Memos = lists:usort([Memo || #token_record{memo = Memo} <- Records]),
+    {reply, Memos, State};
 %% Remove all the sessions (all tokens) that have Memo that matches the pattern
 %% Return Memos of all removed sessions
 handle_call({take_memos, MemoPattern}, _From,

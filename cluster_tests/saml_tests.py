@@ -183,6 +183,12 @@ class SamlTests(testlib.BaseTestSet):
                             headers=headers)
             assert(r.status_code == 200)
 
+            r = session.post(cluster.nodes[0].url + '/uilogout',
+                             headers=headers)
+            assert(r.status_code == 400)
+            r = r.json()
+            assert r['redirect'] == '/saml/deauth'
+
             r = session.get(cluster.nodes[0].url + '/saml/deauth',
                             headers=headers,
                             allow_redirects=False)
@@ -215,7 +221,8 @@ class SamlTests(testlib.BaseTestSet):
 
     def authn_via_redirect_and_regular_logout_test(self, cluster):
         with saml_configured(cluster, idpAuthnBinding="redirect",
-                             spSignRequests=False) as IDP:
+                             spSignRequests=False,
+                             singleLogoutEnabled=False) as IDP:
             r = testlib.get_fail(cluster, '/saml/auth', 302,
                                  allow_redirects=False)
             assert 'Location' in r.headers
@@ -682,7 +689,8 @@ def set_sso_options(cluster, **kwargs):
                 'groupsFilterRE': '',
                 'rolesAttribute': '',
                 'rolesAttributeSep': '',
-                'rolesFilterRE': ''}
+                'rolesFilterRE': '',
+                'singleLogoutEnabled': True}
 
 
     for k in kwargs:

@@ -80,8 +80,12 @@ ui_auth_cookie_name(Req) ->
 -spec extract_ui_auth_token(mochiweb_request()) ->
                                     {token, auth_token() | undefined} | not_ui.
 extract_ui_auth_token(Req) ->
-    case mochiweb_request:get_header_value("ns-server-ui", Req) of
-        "yes" ->
+    %% /saml/deauth is called technically outside of UI so it doesn't have
+    %% the ns-server-ui header, while it still needs to be authenticated
+    %% to perform the logout
+    case mochiweb_request:get_header_value("ns-server-ui", Req) == "yes" orelse
+         mochiweb_request:get(raw_path, Req) == "/saml/deauth" of
+        true ->
             Token =
                 case mochiweb_request:get_header_value("ns-server-auth-token",
                                                        Req) of
@@ -91,7 +95,7 @@ extract_ui_auth_token(Req) ->
                         T
                 end,
             {token, Token};
-        _ ->
+        false ->
             not_ui
     end.
 

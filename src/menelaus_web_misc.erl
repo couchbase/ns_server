@@ -32,14 +32,34 @@
 
 -include("ns_common.hrl").
 -include("cut.hrl").
+-include("rbac.hrl").
 
 handle_uilogin(Req) ->
     Params = mochiweb_request:parse_post(Req),
     menelaus_auth:uilogin(Req, Params).
 
 handle_uilogout(Req) ->
-    {_Session, Headers} = menelaus_auth:complete_uilogout(Req),
-    menelaus_util:reply(Req, 200, Headers).
+    case menelaus_auth:get_authn_res(Req) of
+        #authn_res{type = ui, session_id = SessionId} ->
+            SessionType = menelaus_ui_auth:session_type_by_id(SessionId),
+            DefaultLogout =
+                fun () ->
+                    {_Session, Headers} = menelaus_auth:complete_uilogout(Req),
+                    menelaus_util:reply(Req, 200, Headers)
+                end,
+            case SessionType of
+                saml ->
+                    try
+                        menelaus_web_saml:handle_uilogout_post(Req)
+                    catch
+                        error:disabled -> DefaultLogout()
+                    end;
+                _ ->
+                    DefaultLogout()
+            end;
+        _ ->
+            menelaus_util:reply(Req, 200)
+    end.
 
 handle_can_use_cert_for_auth(Req) ->
     RV = menelaus_auth:can_use_cert_for_auth(Req),

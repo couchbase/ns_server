@@ -20,7 +20,7 @@
 -export([init/0]).
 
 -export([start_ui_session/3, maybe_refresh/1,
-         check/1, reset/0, logout/1, set_token_node/2,
+         check/1, reset/0, logout/1, set_token_node/2, session_type_by_id/1,
          logout_by_session_name/2, logout_by_session_type/1]).
 
 start_link() ->
@@ -86,6 +86,14 @@ logout(SessionId) ->
         %% (since we filter by session id) there should be only one _unique_
         %% session.
         [#uisession{} = SessionInfo] -> SessionInfo
+    end.
+
+session_type_by_id(SessionId) ->
+    AuthPattern = #authn_res{type = ui, session_id = SessionId, _ = '_'},
+    MemoParrern = #uisession{authn_res = AuthPattern, _ = '_'},
+    case token_server:find_memos(?MODULE, MemoParrern) of
+        [] -> undefined;
+        [#uisession{type = Type}] -> Type
     end.
 
 init() ->

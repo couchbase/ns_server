@@ -21,6 +21,7 @@
          handle_get_settings/2,
          handle_post_settings/1,
          handle_delete_settings/1,
+         handle_uilogout_post/1,
          defaults/0,
          is_enabled/0]).
 
@@ -169,6 +170,23 @@ handle_auth(Req) ->
             IDPURL = IDPMetadata#esaml_idp_metadata.login_post_location,
             reply_via_post(IDPURL, SignedXml(IDPURL), RelayState, [], Req)
     end.
+
+%% Simply check if SLO is enabled and tell UI to redirect to /saml/deauth.
+%% Note: We can't perform SLO from here because it's an ajax request.
+%% Note: We can't use 302 or similar, because XMLHttpRequest will follow it
+%% automatically, which we don't need.
+handle_uilogout_post(Req) ->
+    menelaus_util:assert_is_enterprise(),
+    SSOOpts = extract_saml_settings(),
+    case proplists:get_value(enabled, SSOOpts) andalso
+         proplists:get_value(single_logout, SSOOpts) of
+        true ->
+            menelaus_util:reply_json(
+              Req, {[{redirect, <<"/saml/deauth">>}]}, 400);
+        false ->
+            erlang:error(disabled)
+    end.
+
 
 handle_deauth(Req) ->
     menelaus_util:assert_is_enterprise(),
