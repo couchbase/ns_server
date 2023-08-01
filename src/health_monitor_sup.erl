@@ -16,6 +16,11 @@
 -export([start_link/0]).
 -export([init/1]).
 
+-ifdef(TEST).
+%% Required to spawn non-default service monitors
+-export([refresh_children/0]).
+-endif.
+
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, parent).
 

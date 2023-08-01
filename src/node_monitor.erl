@@ -230,6 +230,7 @@ common_test_teardown() ->
 
 health_monitor_test_teardown() ->
     common_test_teardown(),
-    ?meckUnload(ns_server_monitor).
+    ?meckUnload(ns_server_monitor),
+    ?meckUnload(kv_monitor).
 
 -endif.

@@ -19,7 +19,10 @@
          [
           ns_server_monitor,
           node_status_analyzer,
-          node_monitor
+          node_monitor,
+          dcp_traffic_monitor,
+          kv_monitor,
+          kv_stats_monitor
          ]).
 
 test_setup() ->
@@ -189,12 +192,41 @@ behaviour_cover_test_teardown(SupPid) ->
 %% test that the monitors interact with one another as expected (and without
 %% crashing).
 behaviour_cover_t() ->
+    meck:expect(ns_cluster_membership,
+                should_run_service,
+                fun(_,_,_) ->
+                        true
+                end),
+
+    %% Need to refresh children to spawn the kv and index monitors
+    health_monitor_sup:refresh_children(),
+
+    %% Need to tell the node_monitor that there are other monitors to look at
+    node_monitor ! node_changed,
+
     %% Called by auto_failover which we're not testing here.
     node_status_analyzer:get_nodes(),
 
     %% Never actually called, but we still want to test the rest of
-    %% node_status_analyzer so call it manually.
+    %% the modules.
     gen_server:cast(node_status_analyzer, foo),
+    gen_server:cast(kv_monitor, foo),
+    gen_server:cast(kv_stats_monitor, foo),
+
+    %% For dcp_traffic_monitor we need to pretend that there is a bucket.
+    PidToMonitor =
+        erlang:spawn(
+          fun() ->
+                  %% Block in receive to ensure that this process remains
+                  %% alive til we've called get_nodes() at least once
+                  receive _ ->
+                          ok
+                  end
+          end),
+
+    Now = erlang:monotonic_time(),
+    dcp_traffic_monitor:node_alive(node(), {"default", Now, PidToMonitor}),
+    misc:terminate_and_wait(PidToMonitor, "reason"),
 
     ?assert(misc:poll_for_condition(
               fun() ->

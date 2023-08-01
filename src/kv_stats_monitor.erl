@@ -70,7 +70,9 @@
          is_unhealthy/2]).
 
 -ifdef(TEST).
--export([health_monitor_test_setup/0,
+-export([common_test_setup/0,
+         common_test_teardown/0,
+         health_monitor_test_setup/0,
          health_monitor_t/0,
          health_monitor_test_teardown/0]).
 -endif.
@@ -388,13 +390,13 @@ maybe_spawn_stats_collector(#{stats_collector := Pid} = MonitorState) ->
 -ifdef(TEST).
 %% See health_monitor.erl for tests common to all monitors that use these
 %% functions
-health_monitor_test_setup() ->
+common_test_setup() ->
     ?meckNew(chronicle_compat_events),
     meck:expect(chronicle_compat_events,
-                subscribe,
-                fun (_) ->
-                        ok
-                end),
+        subscribe,
+        fun (_) ->
+            ok
+        end),
 
     ?meckNew(auto_failover),
     meck:expect(auto_failover, get_cfg, fun() -> [{enabled,true}] end),
@@ -403,6 +405,9 @@ health_monitor_test_setup() ->
     meck:expect(ns_bucket, node_bucket_names, fun(_) -> [] end),
     meck:expect(ns_bucket, node_bucket_names_of_type, fun(_, persistent) -> []
                                                       end).
+
+health_monitor_test_setup() ->
+   common_test_setup().
 
 health_monitor_t() ->
     {state, kv_stats_monitor, #{enabled := Enabled1}} = sys:get_state(?MODULE),
@@ -444,8 +449,11 @@ health_monitor_t() ->
     {state, kv_stats_monitor, #{buckets := Buckets2}} = sys:get_state(?MODULE),
     ?assertNotEqual(dict:new(), Buckets2).
 
-health_monitor_test_teardown() ->
+common_test_teardown() ->
     ?meckUnload(auto_failover),
     ?meckUnload(ns_bucket).
+
+health_monitor_test_teardown() ->
+    common_test_teardown().
 
 -endif.

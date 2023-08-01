@@ -28,7 +28,9 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -ifdef(TEST).
--export([health_monitor_test_setup/0,
+-export([common_test_setup/0,
+         common_test_teardown/0,
+         health_monitor_test_setup/0,
          health_monitor_t/0,
          health_monitor_test_teardown/0]).
 -endif.
@@ -314,7 +316,15 @@ can_refresh(_State) ->
 -ifdef(TEST).
 %% See health_monitor.erl for tests common to all monitors that use these
 %% functions
+common_test_setup() ->
+    meck:new(ns_bucket, [passthrough]),
+    meck:expect(ns_bucket, get_buckets, fun() -> [] end),
+    meck:expect(ns_bucket, node_bucket_names, fun(_) -> [] end),
+    meck:expect(ns_bucket, buckets_with_data_on_this_node, fun() -> [] end).
+
 health_monitor_test_setup() ->
+    common_test_setup(),
+
     ?meckNew(dcp_traffic_monitor, [passthrough]),
     meck:expect(dcp_traffic_monitor, get_nodes,
                 fun() ->
@@ -332,8 +342,13 @@ health_monitor_test_setup() ->
 health_monitor_t() ->
     ok.
 
+common_test_teardown() ->
+    meck:unload(ns_bucket).
+
 health_monitor_test_teardown() ->
+    common_test_teardown(),
+
     ?meckUnload(dcp_traffic_monitor),
-    ?meckUnload(ns_bucket),
     ?meckUnload(kv_stats_monitor).
+
 -endif.
