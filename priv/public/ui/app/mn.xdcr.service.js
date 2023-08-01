@@ -246,10 +246,6 @@ class MnXDCRService {
                      {params: {"just_validate": validate ? 1 : 0}});
   }
 
-  postXdcrConnectionPreCheck(data) {
-    return this.http.post("/xdcr/connectionPreCheck", data);
-  }
-
   postCreateReplication(validate, data) {
     return this.http.post("/controller/createReplication", data, {
       params: {"just_validate": validate ? 1 : 0}
@@ -260,14 +256,12 @@ class MnXDCRService {
     return this.http.get("/pools/default/remoteClusters");
   }
 
-  postRemoteClusters(source) {
-    var cluster = Object.assign({}, source[0]);
-    var name = source[1];
+  prepareRequestBody(source) {
+    var cluster = Object.assign({}, source);
     var requestBody = {};
     var requestBodyFields = ["name", "hostname", "username", "password"];
 
-    if (cluster.hostname &&
-        !(/^\[?([^\]]+)\]?:(\d+)$/).exec(cluster.hostname)) {
+    if (cluster.hostname && !(/^\[?([^\]]+)\]?:(\d+)$/).exec(cluster.hostname)) {
       // ipv4/ipv6/hostname + port
       cluster.hostname += ":8091";
     }
@@ -283,6 +277,19 @@ class MnXDCRService {
     }
     requestBodyFields.forEach(field =>
                               requestBody[field] = cluster[field]);
+    return requestBody;
+  }
+
+  postXdcrConnectionPreCheck(source) {
+    let requestBody = this.prepareRequestBody(source[0]);
+
+    return this.http.post("/xdcr/connectionPreCheck", requestBody);
+  }
+
+  postRemoteClusters(source) {
+    let name = source[1];
+    let requestBody = this.prepareRequestBody(source[0]);
+
     return this.http.post('/pools/default/remoteClusters' +
                           (name ? ("/" + encodeURIComponent(name)) : ""), requestBody);
   }

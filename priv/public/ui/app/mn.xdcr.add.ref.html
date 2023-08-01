@@ -39,6 +39,11 @@ licenses/APL2.txt.
            [hidden]="!(postRemoteClusters.error | async)?.name">
           {{(postRemoteClusters.error | async)?.name}}
         </div>
+        <div
+          class="error"
+          [hidden]="!(postXdcrConnectionPreCheck.error | async)?.name">
+          {{(postXdcrConnectionPreCheck.error | async)?.name}}
+        </div>
       </div>
       <div class="formrow">
         <label for="cluster_reference_hostname" class="inline">IP/Hostname</label>
@@ -61,6 +66,11 @@ licenses/APL2.txt.
            [hidden]="!(postRemoteClusters.error | async)?.hostname">
           {{(postRemoteClusters.error | async)?.hostname}}
         </div>
+        <div
+          class="error"
+          [hidden]="!(postXdcrConnectionPreCheck.error | async)?.hostname">
+          {{(postXdcrConnectionPreCheck.error | async)?.hostname}}
+        </div>
       </div>
       <div class="formrow">
         <label>Username for Remote Cluster</label>
@@ -75,6 +85,11 @@ licenses/APL2.txt.
            [hidden]="!(postRemoteClusters.error | async)?.username">
           {{(postRemoteClusters.error | async)?.username}}
         </div>
+        <div
+          class="error"
+          [hidden]="!(postXdcrConnectionPreCheck.error | async)?.username">
+          {{(postXdcrConnectionPreCheck.error | async)?.username}}
+        </div>
       </div>
       <div class="formrow">
         <label>Password</label>
@@ -87,6 +102,11 @@ licenses/APL2.txt.
            class="error"
            [hidden]="!(postRemoteClusters.error | async)?.password">
           {{(postRemoteClusters.error | async)?.password}}
+        </div>
+        <div
+          class="error"
+          [hidden]="!(postXdcrConnectionPreCheck.error | async)?.password">
+          {{(postXdcrConnectionPreCheck.error | async)?.password}}
         </div>
         <!-- mn-autocomplete-off -->
       </div>
@@ -132,6 +152,11 @@ licenses/APL2.txt.
                [hidden]="!(postRemoteClusters.error | async)?.encryptionType">
               {{(postRemoteClusters.error | async)?.encryptionType}}
             </div>
+            <div
+              class="error"
+              [hidden]="!(postXdcrConnectionPreCheck.error | async)?.encryptionType">
+              {{(postXdcrConnectionPreCheck.error | async)?.encryptionType}}
+            </div>
           </div>
           <div>
             <input
@@ -159,6 +184,11 @@ licenses/APL2.txt.
              class="error"
              [hidden]="!(postRemoteClusters.error | async)?.certificate">
             {{(postRemoteClusters.error | async)?.certificate}}
+          </div>
+          <div
+            class="error"
+            [hidden]="!(postXdcrConnectionPreCheck.error | async)?.certificate">
+            {{(postXdcrConnectionPreCheck.error | async)?.certificate}}
           </div>
         </div>
 
@@ -192,6 +222,11 @@ licenses/APL2.txt.
              [hidden]="!(postRemoteClusters.error | async)?.clientCertificate">
             {{(postRemoteClusters.error | async)?.clientCertificate}}
           </div>
+          <div
+            class="error"
+            [hidden]="!(postXdcrConnectionPreCheck.error | async)?.clientCertificate">
+            {{(postXdcrConnectionPreCheck.error | async)?.clientCertificate}}
+          </div>
           <br>
           <textarea
              rows="4"
@@ -206,28 +241,12 @@ licenses/APL2.txt.
              [hidden]="!(postRemoteClusters.error | async)?.clientKey">
             {{(postRemoteClusters.error | async)?.clientKey}}
           </div>
+          <div
+            class="error"
+            [hidden]="!(postXdcrConnectionPreCheck.error | async)?.clientKey">
+            {{(postXdcrConnectionPreCheck.error | async)?.clientKey}}
+          </div>
         </div>
-      </div>
-
-      <div
-        class="error"
-        [hidden]="!(postXdcrConnectionPreCheck.error | async)?.hostname">
-        {{(postXdcrConnectionPreCheck.error | async)?.hostname}}
-      </div>
-      <div
-        class="error"
-        [hidden]="!(postXdcrConnectionPreCheck.error | async)?.name">
-        {{(postXdcrConnectionPreCheck.error | async)?.name}}
-      </div>
-      <div
-        class="error"
-        [hidden]="!(postXdcrConnectionPreCheck.error | async)?.password">
-        {{(postXdcrConnectionPreCheck.error | async)?.password}}
-      </div>
-      <div
-        class="error"
-        [hidden]="!(postXdcrConnectionPreCheck.error | async)?.username">
-        {{(postXdcrConnectionPreCheck.error | async)?.username}}
       </div>
       <div
         class="success"

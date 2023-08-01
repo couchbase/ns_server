@@ -10,7 +10,7 @@ licenses/APL2.txt.
 
 import {Component, ChangeDetectionStrategy} from '@angular/core';
 import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
-import {first, map} from 'rxjs/operators';
+import {first, map, takeUntil} from 'rxjs/operators';
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnFormService} from "./mn.form.service.js";
@@ -44,7 +44,7 @@ class MnXDCRAddRefComponent extends MnLifeCycleHooksToStream {
 
     this.isEnterprise = mnPoolsService.stream.isEnterprise;
     this.postRemoteClusters = mnXDCRService.stream.postRemoteClusters;
-    this.postXdcr= mnXDCRService.stream.postRemoteClusters;
+    this.postXdcr = mnXDCRService.stream.postRemoteClusters;
     this.postXdcrConnectionPreCheck = mnXDCRService.stream.postXdcrConnectionPreCheck;
     this.activeModal = activeModal;
 
@@ -53,7 +53,6 @@ class MnXDCRAddRefComponent extends MnLifeCycleHooksToStream {
       .setFormGroup({useClientCertificate: false});
 
     this.form = mnFormService.create(this);
-
     this.form
       .setFormGroup({name: "",
                      hostname: "",
@@ -75,13 +74,20 @@ class MnXDCRAddRefComponent extends MnLifeCycleHooksToStream {
       });
 
     this.checkForm = mnFormService.create(this);
-
     this.checkForm
       .setFormGroup({})
-      .setPackPipe(map(this.packCheck.bind(this)))
+      .setPackPipe(map(this.pack.bind(this)))
       .setPostRequest(this.postXdcrConnectionPreCheck)
       .clearErrors()
-      .showGlobalSpinner()
+      .showGlobalSpinner();
+
+    this.form.submit
+      .pipe(takeUntil(this.mnOnDestroy))
+      .subscribe(this.checkForm.doClearErrors.bind(this.checkForm));
+
+    this.checkForm.submit
+      .pipe(takeUntil(this.mnOnDestroy))
+      .subscribe(this.form.doClearErrors.bind(this.form));
   }
 
   ngOnInit() {
@@ -115,16 +121,5 @@ class MnXDCRAddRefComponent extends MnLifeCycleHooksToStream {
       value.clientKey = "";
     }
     return [value, this.item && this.item.name];
-  }
-
-  packCheck() {
-    let value = clone(this.form.group.value);
-
-    return {
-      hostname: value.hostname,
-      name: value.name,
-      password: value.password,
-      username: value.username,
-    };
   }
 }

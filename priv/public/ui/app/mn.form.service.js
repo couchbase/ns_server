@@ -200,10 +200,14 @@ class MnForm {
     return this;
   }
 
+  doClearErrors() {
+    this.requestsChain.forEach((req) => req.clearError());
+  }
+
   clearErrors() {
     this.submit
       .pipe(takeUntil(this.component.mnOnDestroy))
-      .subscribe(() => this.requestsChain.forEach((req) => req.clearError()));
+      .subscribe(this.doClearErrors.bind(this));
     return this;
   }
 
