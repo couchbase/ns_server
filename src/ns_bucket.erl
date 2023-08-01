@@ -369,11 +369,12 @@ priority_sorting_fn() ->
             end
     end.
 
--spec get_buckets_by_priority() -> [{_,_}].
+-spec get_buckets_by_priority() -> proplists:proplist().
 get_buckets_by_priority() ->
     get_buckets_by_priority(get_buckets()).
 
--spec get_buckets_by_priority([{_,_}] | map()) -> [{_,_}].
+-spec get_buckets_by_priority(proplists:proplist() | map()) ->
+          proplists:proplist().
 get_buckets_by_priority(BucketConfig) ->
     JustBuckets = maybe_isolate_bucket_props(BucketConfig),
     case cluster_compat_mode:is_cluster_trinity() of
@@ -416,7 +417,7 @@ live_bucket_nodes_from_config(BucketConfig) ->
     LiveNodes = [node()|nodes()],
     [Node || Node <- Servers, lists:member(Node, LiveNodes) ].
 
--spec conflict_resolution_type([{_,_}]) -> atom().
+-spec conflict_resolution_type(proplists:proplist()) -> atom().
 conflict_resolution_type(BucketConfig) ->
     proplists:get_value(conflict_resolution_type, BucketConfig, seqno).
 
@@ -436,21 +437,21 @@ drift_thresholds(BucketConfig) ->
         false -> undefined
     end.
 
--spec priority([{_,_}]) -> integer().
+-spec priority(proplists:proplist()) -> integer().
 priority(BucketConfig) ->
     proplists:get_value(priority, BucketConfig, ?DEFAULT_BUCKET_PRIO).
 
--spec history_retention_seconds([{_,_}]) -> integer().
+-spec history_retention_seconds(proplists:proplist()) -> integer().
 history_retention_seconds(BucketConfig) ->
     proplists:get_value(history_retention_seconds, BucketConfig,
                         ?HISTORY_RETENTION_SECONDS_DEFAULT).
 
--spec history_retention_bytes([{_,_}]) -> integer().
+-spec history_retention_bytes(proplists:proplist()) -> integer().
 history_retention_bytes(BucketConfig) ->
     proplists:get_value(history_retention_bytes, BucketConfig,
                         ?HISTORY_RETENTION_BYTES_DEFAULT).
 
--spec history_retention_collection_default([{_,_}]) -> boolean().
+-spec history_retention_collection_default(proplists:proplist()) -> boolean().
 history_retention_collection_default(BucketConfig) ->
     %% History can only be true for a magma bucket.
     proplists:get_value(history_retention_collection_default, BucketConfig,
@@ -470,11 +471,11 @@ eviction_policy(BucketConfig) ->
 node_storage_mode_override(BucketConfig) ->
     node_storage_mode_override(node(), BucketConfig).
 
--spec node_storage_mode_override(node(), [{_, _}]) -> atom().
+-spec node_storage_mode_override(node(), proplists:proplist()) -> atom().
 node_storage_mode_override(Node, BucketConfig) ->
     proplists:get_value({node, Node, storage_mode}, BucketConfig).
 
--spec node_storage_mode([{_, _}]) -> atom().
+-spec node_storage_mode(proplists:proplist()) -> atom().
 node_storage_mode(BucketConfig) ->
     NodeStorageMode = node_storage_mode_override(BucketConfig),
     case NodeStorageMode of
@@ -484,7 +485,7 @@ node_storage_mode(BucketConfig) ->
             NodeStorageMode
     end.
 
--spec storage_mode([{_,_}]) -> atom().
+-spec storage_mode(proplists:proplist()) -> atom().
 storage_mode(BucketConfig) ->
     case bucket_type(BucketConfig) of
         memcached ->
@@ -496,7 +497,7 @@ storage_mode(BucketConfig) ->
 autocompaction_settings(BucketConfig) ->
     proplists:get_value(autocompaction, BucketConfig).
 
--spec storage_backend([{_,_}]) -> atom().
+-spec storage_backend(proplists:proplist()) -> atom().
 storage_backend(BucketConfig) ->
     BucketType = bucket_type(BucketConfig),
     StorageMode = storage_mode(BucketConfig),
@@ -584,7 +585,7 @@ pitr_max_history_age(BucketConfig) ->
 %% returns bucket ram quota multiplied by number of nodes this bucket
 %% will reside after initial cleanup. I.e. gives amount of ram quota that will
 %% be used by across the cluster for this bucket.
--spec ram_quota([{_,_}]) -> integer().
+-spec ram_quota(proplists:proplist()) -> integer().
 ram_quota(Bucket) ->
     case proplists:get_value(ram_quota, Bucket) of
         X when is_integer(X) ->
@@ -593,7 +594,7 @@ ram_quota(Bucket) ->
 
 %% returns bucket ram quota for _single_ node. Each node will subtract
 %% this much from it's node quota.
--spec raw_ram_quota([{_,_}]) -> integer().
+-spec raw_ram_quota(proplists:proplist()) -> integer().
 raw_ram_quota(Bucket) ->
     case proplists:get_value(ram_quota, Bucket) of
         X when is_integer(X) ->
@@ -626,12 +627,12 @@ node_magma_fragmentation_percentage(BucketConfig) ->
 magma_max_shards(BucketConfig, Default) ->
     proplists:get_value(magma_max_shards, BucketConfig, Default).
 
--spec magma_key_tree_data_blocksize([{_,_}]) -> integer().
+-spec magma_key_tree_data_blocksize(proplists:proplist()) -> integer().
 magma_key_tree_data_blocksize(BucketConfig) ->
     proplists:get_value(magma_key_tree_data_blocksize, BucketConfig,
                         ?MAGMA_KEY_TREE_DATA_BLOCKSIZE).
 
--spec magma_seq_tree_data_blocksize([{_,_}]) -> integer().
+-spec magma_seq_tree_data_blocksize(proplists:proplist()) -> integer().
 magma_seq_tree_data_blocksize(BucketConfig) ->
     proplists:get_value(magma_seq_tree_data_blocksize, BucketConfig,
                         ?MAGMA_SEQ_TREE_DATA_BLOCKSIZE).
@@ -828,7 +829,7 @@ node_locator(BucketConfig) ->
             ketama
     end.
 
--spec num_replicas([{_,_}]) -> integer().
+-spec num_replicas(proplists:proplist()) -> integer().
 num_replicas(Bucket) ->
     case proplists:get_value(num_replicas, Bucket) of
         X when is_integer(X) ->
@@ -1442,8 +1443,8 @@ update_bucket_props_inner(Type, OldStorageMode, BucketName, Props) ->
             {exit, {not_found, BucketName}, []}
     end.
 
--spec update_bucket_props_allowed([{_, _}], [{_, _}]) ->
-    true | {false, Error::term()}.
+-spec update_bucket_props_allowed(proplists:proplist(), proplists:proplist()) ->
+          true | {false, Error::term()}.
 update_bucket_props_allowed(NewProps, BucketConfig) ->
     case storage_mode_migration_in_progress(BucketConfig) of
         true ->
@@ -2247,7 +2248,7 @@ check_test_condition(Step) ->
             ok
     end.
 
--spec get_expected_servers([{_,_}]) -> [node()].
+-spec get_expected_servers(proplists:proplist()) -> [node()].
 %% Use this to get the list of servers that the bucket will be on after creation
 get_expected_servers(BucketConfig) ->
     case get_servers(BucketConfig) of
