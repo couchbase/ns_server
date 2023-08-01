@@ -31,6 +31,7 @@
          handle_eject_post/1,
          handle_add_node/1,
          handle_add_node_to_group/2,
+         handle_hard_reset_node/1,
          handle_start_hard_failover/2,
          handle_start_graceful_failover/1,
          handle_rebalance/1,
@@ -792,6 +793,29 @@ handle_add_node(Req) ->
 
 handle_add_node_to_group(GroupUUIDString, Req) ->
     do_handle_add_node(Req, list_to_binary(GroupUUIDString)).
+
+%% Force reset of node A after it has gone through unsafe failover. The other
+%% nodes aren't aware of node A, and node A's state must be wiped out before it
+%% can be added back to the cluster. A's state, data are lost after hard reset.
+%% If hard reset is run inadvertently on an active node, the node will have to
+%% be failed over (unsafe failover).
+handle_hard_reset_node(Req) ->
+    ok = ns_cluster:hard_reset_init(),
+    %% After the leave marker has been written, the hard reset will proceed to
+    %% completion in the event of a timeout or ns_cluster process crash. If
+    %% ns_cluster crashes, it processes the leave/start path (if the markers are
+    %% found). So, audit the removal of the node without waiting for completion.
+    ns_audit:remove_node(Req, node()),
+    menelaus_util:survive_web_server_restart(
+      fun() ->
+              try
+                  ns_cluster:hard_reset()
+              catch exit:{timeout, E}:Stack ->
+                      ?log_error("Hard reset exit timeout ~p", [{E,Stack}]),
+                      reply_text(Req, "Request timed out\n", 500)
+              end,
+              reply(Req, 200)
+      end).
 
 add_node_error_code(cannot_acquire_lock) ->
     503;

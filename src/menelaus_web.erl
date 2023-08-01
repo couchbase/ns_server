@@ -810,6 +810,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[pools], write}, fun menelaus_web_cluster:handle_add_node/1};
                 ["controller", "addNodeV2"] ->
                     {{[pools], write}, fun menelaus_web_cluster:handle_add_node/1};
+                ["controller", "hardResetNode"] ->
+                    {{[admin, reset], write},
+                     fun menelaus_web_cluster:handle_hard_reset_node/1};
                 ["pools", "default", "serverGroups", UUID, "addNode"] ->
                     {{[pools], write}, fun menelaus_web_cluster:handle_add_node_to_group/2, [UUID]};
                 ["pools", "default", "serverGroups", UUID, "addNodeV2"] ->

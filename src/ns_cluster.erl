@@ -27,6 +27,7 @@
 -define(ENGAGE_TIMEOUT,         ?get_timeout(engage, 30000)).
 -define(COMPLETE_TIMEOUT,       ?get_timeout(complete, 240000)).
 -define(CHANGE_ADDRESS_TIMEOUT, ?get_timeout(change_address, 30000)).
+-define(HARD_RESET_TIMEOUT,     ?get_timeout(hard_reset, 240000)).
 
 -define(cluster_log(Code, Fmt, Args),
         ale:xlog(?USER_LOGGER, ns_log_sink:get_loglevel(?MODULE, Code),
@@ -44,7 +45,8 @@
 %% API
 -export([leave/0,
          leave/1,
-         leave_async/0,
+         hard_reset_init/0,
+         hard_reset/0,
          shun/1,
          start_link/0]).
 
@@ -461,12 +463,19 @@ handle_call({change_address, Address}, _From, State) ->
              false ->
                  already_part_of_cluster
          end,
-    {reply, RV, State}.
+    {reply, RV, State};
+handle_call(hard_reset_init, _From, State) ->
+    leave_init(),
+    {reply, ok, State};
+handle_call(hard_reset, _From, State) ->
+    leave_body(),
+    {reply, ok, State}.
 
-handle_cast(leave, State) ->
+leave_init() ->
+    misc:create_marker(leave_marker_path()).
+
+leave_body() ->
     ?cluster_log(0001, "Node ~p is leaving cluster.", [node()]),
-
-    misc:create_marker(leave_marker_path()),
 
     %% empty users storage
     users_storage_sup:stop_replicator(),
@@ -485,8 +494,10 @@ handle_cast(leave, State) ->
     {ok, _} = ns_server_cluster_sup:start_ns_server(),
     ns_ports_setup:restart_memcached(),
 
-    misc:remove_marker(start_marker_path()),
+    misc:remove_marker(start_marker_path()).
 
+handle_cast(leave, State) ->
+    leave_body(),
     {noreply, State};
 handle_cast(repair_join, State) ->
     ?log_debug("Repair after unsuccessful join."),
@@ -518,7 +529,8 @@ handle_info(check_chronicle_state, State) ->
     case ChronicleState of
         removed ->
             false = misc:marker_exists(leave_marker_path()),
-            handle_cast(leave, State);
+            leave_init(),
+            leave_body();
         _ ->
             ok
     end,
@@ -615,9 +627,18 @@ leave(Node) ->
             shun(Node)
     end.
 
-%% @doc Just trigger the leave code; don't get another node to shun us.
-leave_async() ->
-    gen_server:cast(?MODULE, leave).
+%% Just leave the cluster without waiting for a removal notification from a
+%% chronicle peer. In effect, this is a hard reset of the node. This is intended
+%% for use after an unsafe failover situation. We don't get a notification of
+%% chronicle state change to removed after an unsafe failover - which would have
+%% called leave_body().
+hard_reset() ->
+    ?cluster_log(0001, "Hard reset of node ~p in progress.", [node()]),
+    gen_server:call(?MODULE, hard_reset, ?HARD_RESET_TIMEOUT).
+
+hard_reset_init() ->
+    ?cluster_log(0001, "Hard reset of node ~p initiated.", [node()]),
+    gen_server:call(?MODULE, hard_reset_init).
 
 %% Note that shun does *not* cause the other node to reset its config!
 shun(RemoteNode) ->

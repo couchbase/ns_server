@@ -253,8 +253,8 @@ class Cluster:
                         verbose=False, expected_code=200):
         data = {"user": self.auth[0],
                 "password": self.auth[1],
-                "clusterMemberHostIp": self.nodes[0].host,
-                "clusterMemberPort": str(self.nodes[0].port+10000),
+                "clusterMemberHostIp": self.connected_nodes[0].host,
+                "clusterMemberPort": self.connected_nodes[0].port+10000,
                 "services": services}
 
         if verbose:
@@ -273,23 +273,33 @@ class Cluster:
         return r
 
     def failover_node(self, victim_node, graceful=True, allow_unsafe=False,
-                      verbose=False):
-        # We have to use the otpNode names instead of the node ips.
-        otp_nodes = testlib.get_otp_nodes(self)
-        otp_node = otp_nodes[victim_node.hostname()]
+                      verbose=False, victim_otp_node=None, expected_code=200):
+        if victim_otp_node is None:
+            # We have to use the otpNode names instead of the node ips.
+            otp_nodes = testlib.get_otp_nodes(self)
+            victim_otp_node = otp_nodes[victim_node.hostname()]
 
         data = {"user": self.auth[0],
                 "password": self.auth[1],
-                "otpNode": f"{otp_node}",
-                "allowUnsafe": allow_unsafe}
+                "otpNode": f"{victim_otp_node}",
+                "allowUnsafe": "true" if allow_unsafe else "false"}
         if verbose:
             print(f"Failing over node {data}")
         failover_type = "startGracefulFailover" if graceful else "startFailover"
-        r = testlib.post_succ(self, f"/controller/{failover_type}",
-                              data=data)
-        self.connected_nodes.remove(victim_node)
-        # Wait for the failover to complete
-        self.wait_for_rebalance(verbose=verbose)
+        non_victim_nodes = [x for x in self.connected_nodes if x != victim_node]
+        if expected_code == 200:
+            r = testlib.post_succ(non_victim_nodes[0],
+                                  f"/controller/{failover_type}",
+                                  data=data)
+            self.connected_nodes.remove(victim_node)
+
+            # Wait for the failover to complete
+            self.wait_for_rebalance(verbose=verbose)
+        else:
+            r = testlib.post_fail(non_victim_nodes[0],
+                                  f"/controller/{failover_type}",
+                                  data=data,
+                                  expected_code=expected_code)
         return r
 
     def recover_node(self, node, recovery_type="full", do_rebalance=False,
@@ -340,10 +350,12 @@ class Cluster:
         self.wait_for_rebalance(verbose=verbose)
         return testlib.ensure_deleted(self, f"/pools/default/buckets/{name}")
 
-    def get_orchestrator_node(self):
-        resp = testlib.get_succ(self, "/pools/default/terseClusterInfo")
+    def get_orchestrator_node(self, node=None):
+        cluster_or_node = self if node is None else node
+        resp = testlib.get_succ(cluster_or_node,
+                                "/pools/default/terseClusterInfo")
         orchestrator = resp.json()['orchestrator']
-        resp = testlib.get_succ(self, "/pools/nodes").json()
+        resp = testlib.get_succ(cluster_or_node, "/pools/nodes").json()
         nodes = resp['nodes']
         orchestrator_hostname = ""
         is_serviceless = False
@@ -356,12 +368,17 @@ class Cluster:
 
     # Wait until one of the nodes has been selected orchestrator. This
     # handles windows (e.g. node removal) where this might not be the case.
-    def wait_for_orchestrator(self):
+    # It is also used in unsafe failover to wait until the orchestrator has
+    # transitioned to the desired node (orch_node). Nodes other than orch_node
+    # may not be reachable when orch_node is specified.
+    def wait_for_orchestrator(self, orch_node=None):
         retries = 60
         while retries > 0:
-            orchestrator_hostname, _ = self.get_orchestrator_node()
+            orchestrator_hostname, _ = self.get_orchestrator_node(orch_node)
             if orchestrator_hostname != "":
                 for node in self.nodes:
+                    if orch_node is not None and node != orch_node:
+                        continue
                     if node.hostname() == orchestrator_hostname:
                         return node
             time.sleep(0.5)

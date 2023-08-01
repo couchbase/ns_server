@@ -52,7 +52,8 @@ from testsets import \
     resource_management_test, \
     stats_tests, \
     collection_tests, \
-    cbauth_cache_config_tests
+    cbauth_cache_config_tests, \
+    hard_reset_test
 
 tmp_cluster_dir = os.path.join(scriptdir, "test_cluster_data")
 
