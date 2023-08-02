@@ -1,1 +1,2 @@
 {name, "provisioned"}.
+{{resource_management, enabled}, true}.

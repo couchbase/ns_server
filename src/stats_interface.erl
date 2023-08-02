@@ -15,6 +15,7 @@
          buckets_interesting/0,
          buckets_interesting/1,
          for_alerts/0,
+         for_resource_management/0,
          current_items_total/1,
          current_items_total/2,
          failover_safeness_level/1,
@@ -175,6 +176,32 @@ for_alerts() ->
                     end),
     misc:groupby_map(fun ({{Bucket, Name}, Value}) ->
                          {Bucket, {Name, Value}}
+                     end, Res).
+
+for_resource_management() ->
+    Q = list_to_binary(
+          lists:join(
+            " or ",
+            lists:map(
+              fun({NewName, Query}) ->
+                      io_lib:format("label_replace((~s), `name`, `~s`,``,``)",
+                                    [Query, NewName])
+              end,
+              []))),
+
+    Res = latest(
+            Q, fun (Props) ->
+                       case proplists:get_value(<<"name">>, Props) of
+                           <<"kv_", N/binary>> ->
+                               B = proplists:get_value(<<"bucket">>, Props),
+                               {true, {binary_to_list(B),
+                                       binary_to_atom(N, latin1)}};
+                           _ ->
+                               false
+                       end
+               end),
+    misc:groupby_map(fun ({{Bucket, Name}, Value}) ->
+                             {Bucket, {Name, Value}}
                      end, Res).
 
 failover_safeness_level(Bucket) ->

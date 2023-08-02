@@ -50,3 +50,5 @@
 
 -define(_assertBinStringsEqual(Expect, Expr),
         ?_test(?assertBinStringsEqual(Expect, Expr))).
+
+-define(MECK_WAIT_TIMEOUT, 100).

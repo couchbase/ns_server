@@ -96,6 +96,10 @@ init([]) ->
               {menelaus_web_alerts_srv, start_link, []},
               permanent, 5000, worker, dynamic},
 
+    GuardrailMonitor = {guardrail_monitor,
+                        {guardrail_monitor, start_link, []},
+                        permanent, 5000, worker, dynamic},
+
     HotKeysKeeper = {hot_keys_keeper,
                      {hot_keys_keeper, start_link, []},
                      permanent, 5000, worker, dynamic},
@@ -105,5 +109,5 @@ init([]) ->
               permanent, 1000, worker, dynamic},
 
     Processes = [UIAuth, ScramSha, LocalAuth, Cache, StatsGatherer, RpcEvents,
-                 WebSup, HotKeysKeeper, Alerts, CBAuth],
+                 WebSup, HotKeysKeeper, Alerts, GuardrailMonitor, CBAuth],
     {ok, {{one_for_one, 10, 10}, Processes}}.
