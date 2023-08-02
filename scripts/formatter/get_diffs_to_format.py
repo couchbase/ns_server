@@ -24,10 +24,12 @@ def get_git_diff(staged_only: bool):
     :param staged_only: if we only want staged changes
     :return: "git diff -U0 --staged" output
     """
-    # -U0 removes context lines to make parsing easier
-    # We only attempt to format staged changes.
-    args = ['git', 'diff', '-U0']
+    # -U0 removes context lines to make parsing easier.
+    # --diff-filter=d removes all deleted changes from the diff. This tool is
+    # for formatting and we shouldn't attempt to format deleted files.
+    args = ['git', 'diff', '-U0', '--diff-filter=d']
     if staged_only:
+        # We only attempt to format staged changes.
         args += ['--staged']
     return subprocess.check_output(args)
 
