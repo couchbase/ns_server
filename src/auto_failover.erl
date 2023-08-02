@@ -424,8 +424,8 @@ update_state_timeout(Timeout, #state{timeout = CurrTimeout} = State) ->
         true ->
             ale:info(?USER_LOGGER, "Updating auto-failover timeout to ~p",
                      [Timeout]),
-            State#state{timeout = Timeout,
-                        auto_failover_logic_state = init_logic_state(State)};
+            State1 = State#state{timeout = Timeout},
+            State1#state{auto_failover_logic_state = init_logic_state(State1)};
         false ->
             ?log_debug("No change in timeout ~p", [Timeout]),
             State
