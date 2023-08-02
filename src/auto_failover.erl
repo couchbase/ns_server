@@ -231,7 +231,9 @@ init([]) ->
 init_logic_state(#state{timeout = Timeout,
                         tick_period = TickPeriod}) ->
     DownThreshold = (Timeout * 1000 + TickPeriod - 1) div TickPeriod,
-    auto_failover_logic:init_state(DownThreshold).
+    State = auto_failover_logic:init_state(DownThreshold),
+    ?log_debug("Using auto-failover logic state ~p", [State]),
+    State.
 
 handle_call({enable_auto_failover, Timeout, Max}, From, State) ->
     handle_call({enable_auto_failover, Timeout, Max, []}, From, State);
