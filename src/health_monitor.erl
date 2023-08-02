@@ -299,8 +299,6 @@ analyze_local_status(Node, AllNodes, Service, Fun, Default) ->
 
 -ifdef(TEST).
 basic_test_setup(Monitor) ->
-    Monitor:health_monitor_test_setup(),
-
     meck:new(chronicle_compat_events),
     meck:expect(chronicle_compat_events,
                 notify_if_key_changes,
@@ -356,7 +354,9 @@ basic_test_setup(Monitor) ->
                 get,
                 fun(_) ->
                         false
-                end).
+                end),
+
+    Monitor:health_monitor_test_setup().
 
 basic_test_teardown(Monitor, _X) ->
     Monitor:health_monitor_test_teardown(),
