@@ -1160,12 +1160,18 @@ chronicle_upgrade_to_72(Bucket, ChronicleTxn) ->
 upgrade_to_trinity(Manifest0, BucketConfig) ->
     Manifest1 = do_create_scope(?SYSTEM_SCOPE_NAME, Manifest0,
                                 ?NO_INCREMENT_COUNTER),
-    lists:foldl(
-      fun (Name, Manifest) ->
-              do_create_collection(?SYSTEM_SCOPE_NAME, Name,
-                                   [{"metered", false}, {maxTTL, 0}], Manifest,
-                                   BucketConfig, ?NO_INCREMENT_COUNTER)
-      end, Manifest1, system_collections()).
+    Manifest2 =
+        lists:foldl(
+          fun (Name, Manifest) ->
+                  do_create_collection(?SYSTEM_SCOPE_NAME, Name,
+                                       [{"metered", false}, {maxTTL, 0}],
+                                       Manifest, BucketConfig,
+                                       ?NO_INCREMENT_COUNTER)
+          end, Manifest1, system_collections()),
+
+    %% We must bump the manifest uid too or KV won't treat this as a new
+    %% manifest.
+    advance_manifest_id(upgrade, Manifest2).
 
 -ifdef(TEST).
 manifest_test_set_history_default(Val) ->
@@ -1779,7 +1785,9 @@ upgrade_to_trinity_t() ->
     SystemScope = get_scope("_system", UpdatedManifest),
     ?assertNotEqual(undefined, SystemScope),
     ?assertNotEqual(undefined, get_collection("_query", SystemScope)),
-    ?assertNotEqual(undefined, get_collection("_mobile", SystemScope)).
+    ?assertNotEqual(undefined, get_collection("_mobile", SystemScope)),
+    ?assertNotEqual(proplists:get_value(uid, Manifest72),
+                    proplists:get_value(uid, UpdatedManifest)).
 
 %% Bunch of fairly simple collections tests that update the manifest and expect
 %% various results.
