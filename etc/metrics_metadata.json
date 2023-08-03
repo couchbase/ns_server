@@ -298,6 +298,8 @@
         "type": "gauge",
         "help": "CPU utilization rate, by process",
         "added": "7.0.0",
+        "deprecated": "7.2.0",
+        "notes": "Instead use sysproc_cpu_user + sysproc_cpu_sys",
         "stability": "committed",
         "labels": [
             {
