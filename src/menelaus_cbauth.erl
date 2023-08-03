@@ -309,8 +309,9 @@ personalize_info(Label, Info) ->
                                     proplists:get_value(tlsConfig, Info),
                                     {[{present, false}]}),
 
-    CacheConfig = proplists:get_value(label_to_service(Label),
-                                      proplists:get_value(cacheConfig, Info)),
+    CacheConfig =
+        build_cache_config(Label, proplists:get_value(cacheConfig, Info)),
+
     Nodes = proplists:get_value(nodes, Info),
     NewNodes =
         lists:map(fun ({Node}) ->
@@ -503,8 +504,6 @@ build_auth_info(internal, {AuthVersion, PermissionsVersion, CcaState, Config,
     SpecialPasswords = ns_config_auth:get_special_passwords(
                          dist_manager:this_node(), Config),
     SpecialPasswordsBin = [list_to_binary(P) || P <- SpecialPasswords],
-    CbAuthCacheSizesPerService =
-        build_cbauth_cache_sizes(Config, services_with_cache_configuration()),
     [{nodes, Nodes},
      {authCheckURL, list_to_binary(AuthCheckURL)},
      {permissionCheckURL, list_to_binary(PermissionCheckURL)},
@@ -522,13 +521,10 @@ build_auth_info(internal, {AuthVersion, PermissionsVersion, CcaState, Config,
                                  {disableNonSSLPorts, DisableNonSSLPorts}]}},
      {specialPasswords, SpecialPasswordsBin},
      {tlsConfig, [tls_config(S, Config) || S <- TLSServices]},
-     {cacheConfig, CbAuthCacheSizesPerService}].
+     {cacheConfig, build_cache_size_overrides(Config)}].
 
 tls_config(Service, Config) ->
-    Label = case Service of
-                n1ql -> "cbq-engine-cbauth";
-                _ -> atom_to_list(Service) ++ "-cbauth"
-            end,
+    Label = service_to_label(Service),
     %% Golang TLS used by services index, ftx, n1ql, and eventing, doesn't allow
     %% configuring TLS 1.3 cipherSuites, see,
     %% https://golang.org/pkg/crypto/tls/#Config.
@@ -635,26 +631,22 @@ handle_extract_user_from_cert_post(Req) ->
 is_cbauth_connection(Label) ->
     lists:suffix("-cbauth", Label).
 
-build_cbauth_cache_sizes(Config, Services) ->
-    lists:map(
-        fun (Service) ->
-            CbauthCacheSizes = build_cbauth_cache_size(Config, Service),
-            {Service, {CbauthCacheSizes}}
-        end, Services).
+build_cache_size_overrides(Config) ->
+    ns_config:fold(
+      fun ({cbauth_cache_size, Service, ConfigKey}, V, Map)
+          when is_integer(V) andalso V >= 1 andalso V =< 65536 ->
+              maps:put({service_to_label(Service), ConfigKey}, V, Map);
+          (_, _ ,Map) ->
+              Map
+      end, maps:new(), Config).
 
-build_cbauth_cache_size(Config, Service) ->
-    lists:map(
-        fun ({ConfigName, JsonName, Default}) ->
-            CacheSize = ns_config:search(Config,
-                                         {cbauth_cache_size,
-                                          Service,
-                                          ConfigName},
-                                         Default),
-            ValidCacheSize = validate_cache_size(CacheSize, 1, 65536, Default),
-            {JsonName, ValidCacheSize}
-        end, get_cbauth_cache_size_raw_list()).
+build_cache_config(Label, Overrides) ->
+    {lists:map(
+       fun ({Key, JsonKey, Default}) ->
+               {JsonKey, maps:get({Label, Key}, Overrides, Default)}
+       end, cache_size_defaults())}.
 
-get_cbauth_cache_size_raw_list() ->
+cache_size_defaults() ->
     [{uuid_cache_size, uuidCacheSize, 256},
      {user_bkts_cache_size, userBktsCacheSize, 1024},
      {up_cache_size, upCacheSize, 1024},
@@ -668,13 +660,9 @@ label_to_service("goxdcr-cbauth") ->
 label_to_service(Label) ->
     list_to_atom(string:lowercase(string:trim(Label, trailing, "-cbauth"))).
 
-services_with_cache_configuration() ->
-    [n1ql, projector, xdcr, fts, index, eventing, cbas, backup].
-
-validate_cache_size(Value, Min, Max, Default) ->
-    if
-        not is_integer(Value) -> Default;
-        Value < Min -> Default;
-        Value > Max -> Default;
-        true -> Value
-    end.
+service_to_label(n1ql) ->
+    "cbq-engine-cbauth";
+service_to_label(xdcr) ->
+    "goxdcr-cbauth";
+service_to_label(Service) ->
+    atom_to_list(Service) ++ "-cbauth".
