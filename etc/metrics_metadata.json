@@ -14,7 +14,7 @@
     "cm_gc_duration_seconds": {
         "type": "histogram",
         "help": "Time to perform erlang garbage collection",
-        "added": "7.5.0",
+        "added": "7.6.0",
         "stability": "committed"
     },
     "cm_rest_request_enters_total": {
@@ -171,7 +171,7 @@
         "type": "gauge",
         "help": "System memory limit",
         "added": "7.0.0",
-        "deprecated": "7.5.0",
+        "deprecated": "7.6.0",
         "notes": "Will be removed in the 8.0 release. Use sys_mem_total or sys_mem_cgroup_limit",
         "unit": "bytes",
         "stability": "committed"
@@ -214,7 +214,7 @@
     "sys_pressure_share_time_stalled": {
         "type": "gauge",
         "help": "Percentage of time that tasks were stalled on a given resource",
-        "added": "7.5.0",
+        "added": "7.6.0",
         "stability": "committed",
         "labels": [
             {
@@ -238,7 +238,7 @@
     "sys_pressure_total_stall_time_usec": {
         "type": "counter",
         "help": "Absolute stall time when tasks were stalled on a given resource",
-        "added": "7.5.0",
+        "added": "7.6.0",
         "unit": "microseconds",
         "stability": "committed",
         "labels": [
@@ -273,7 +273,7 @@
     "sysproc_cpu_user": {
         "type": "gauge",
         "help": "Amount of user CPU cycles used, by process",
-        "added": "7.5.0",
+        "added": "7.6.0",
         "stability": "committed",
         "labels": [
             {
@@ -285,7 +285,7 @@
     "sysproc_cpu_sys": {
         "type": "gauge",
         "help": "Amount of system CPU cycles used, by process",
-        "added": "7.5.0",
+        "added": "7.6.0",
         "stability": "committed",
         "labels": [
             {
@@ -386,7 +386,7 @@
     "sysproc_start_time": {
         "type": "counter",
         "help": "OS specific time when process was started",
-        "added": "7.5.0",
+        "added": "7.6.0",
         "stability": "committed",
         "labels": [
             {
@@ -398,7 +398,7 @@
     "sys_disk_queue": {
         "type": "gauge",
         "help": "Current disk queue length of the disk",
-        "added": "7.5.0",
+        "added": "7.6.0",
         "stability": "committed",
         "labels": [
             {
@@ -410,7 +410,7 @@
     "sys_disk_queue_depth": {
         "type": "gauge",
         "help": "Maximum disk queue length of the disk",
-        "added": "7.5.0",
+        "added": "7.6.0",
         "stability": "committed",
         "labels": [
             {
@@ -422,7 +422,7 @@
     "sys_disk_time_seconds": {
         "type": "counter",
         "help": "Amount of time that the disk spent performing IO",
-        "added": "7.5.0",
+        "added": "7.6.0",
         "stability": "committed",
         "labels": [
             {
@@ -434,7 +434,7 @@
     "sys_disk_read_bytes": {
         "type": "counter",
         "help": "Number of bytes read by the disk",
-        "added": "7.5.0",
+        "added": "7.6.0",
         "stability": "committed",
         "labels": [
             {
@@ -446,7 +446,7 @@
     "sys_disk_read_time_seconds": {
         "type": "counter",
         "help": "Amount of time that the disk spent reading",
-        "added": "7.5.0",
+        "added": "7.6.0",
         "stability": "committed",
         "labels": [
             {
@@ -458,7 +458,7 @@
     "sys_disk_reads": {
         "type": "counter",
         "help": "Number of reads that the disk performed",
-        "added": "7.5.0",
+        "added": "7.6.0",
         "stability": "committed",
         "labels": [
             {
@@ -470,7 +470,7 @@
     "sys_disk_write_bytes": {
         "type": "counter",
         "help": "Number of bytes written by the disk",
-        "added": "7.5.0",
+        "added": "7.6.0",
         "stability": "committed",
         "labels": [
             {
@@ -482,7 +482,7 @@
     "sys_disk_write_time_seconds": {
         "type": "counter",
         "help": "Amount of time that the disk spent writing",
-        "added": "7.5.0",
+        "added": "7.6.0",
         "stability": "committed",
         "labels": [
             {
@@ -494,7 +494,7 @@
     "sys_disk_writes": {
         "type": "counter",
         "help": "Number of writes that the disk performed",
-        "added": "7.5.0",
+        "added": "7.6.0",
         "stability": "committed",
         "labels": [
             {
@@ -596,7 +596,7 @@
     "cm_lease_acquirer_prev_acquire_estimate_in_future_total": {
         "type": "counter",
         "help": "Number of times lease period start time estimate is in the future",
-        "added": "7.5.0",
+        "added": "7.6.0",
         "stability": "internal",
         "labels": [
             {
@@ -608,7 +608,7 @@
     "cm_lease_acquirer_prev_acquire_estimate_minus_start_time_seconds": {
         "type": "histogram",
         "help": "Histogram of lease acquirer estimates",
-        "added": "7.5.0",
+        "added": "7.6.0",
         "stability": "internal",
         "labels": [
             {
@@ -620,7 +620,7 @@
     "cm_lease_acquirer_start_time_minus_prev_acquire_estimate_seconds": {
         "type": "histogram",
         "help": "Histogram of lease acquirer estimates",
-        "added": "7.5.0",
+        "added": "7.6.0",
         "stability": "internal",
         "labels": [
             {
@@ -632,7 +632,7 @@
     "cm_lease_acquirer_time_inflight_seconds": {
         "type": "histogram",
         "help": "Histogram of lease inflight seconds",
-        "added": "7.5.0",
+        "added": "7.6.0",
         "stability": "internal",
         "labels": [
             {
@@ -644,7 +644,7 @@
     "cm_lease_acquirer_used_prev_acquire_estimate_total": {
         "type": "counter",
         "help": "Number of times previous estimate was used",
-        "added": "7.5.0",
+        "added": "7.6.0",
         "stability": "internal",
         "labels": [
             {
@@ -656,7 +656,7 @@
     "cm_lease_acquirer_used_start_estimate_total": {
         "type": "counter",
         "help": "Number of times start estimate was used",
-        "added": "7.5.0",
+        "added": "7.6.0",
         "stability": "internal",
         "labels": [
             {
@@ -691,7 +691,7 @@
     "cm_memcached_cmd_total": {
         "type": "gauge",
         "help": "Total number of memcached commands",
-        "added": "7.5.0",
+        "added": "7.6.0",
         "labels": [
             {
                 "name": "cmd",
