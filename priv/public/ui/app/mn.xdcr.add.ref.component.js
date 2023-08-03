@@ -10,7 +10,8 @@ licenses/APL2.txt.
 
 import {Component, ChangeDetectionStrategy} from '@angular/core';
 import {NgbActiveModal} from '@ng-bootstrap/ng-bootstrap';
-import {first, map, takeUntil} from 'rxjs/operators';
+import {first, map, takeUntil, startWith} from 'rxjs/operators';
+import {merge} from 'rxjs';
 
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnFormService} from "./mn.form.service.js";
@@ -80,6 +81,19 @@ class MnXDCRAddRefComponent extends MnLifeCycleHooksToStream {
       .setPostRequest(this.postXdcrConnectionPreCheck)
       .clearErrors()
       .showGlobalSpinner();
+
+    this.result = merge(
+      this.postXdcrConnectionPreCheck.error,
+      this.postXdcrConnectionPreCheck.success
+    ).pipe(
+      startWith({}),
+      map((resp) => {
+        if (resp && resp.result) {
+          return JSON.stringify(resp.result, null, 2);
+        } else {
+          return JSON.stringify({});
+        }
+      }));
 
     this.form.submit
       .pipe(takeUntil(this.mnOnDestroy))

@@ -248,23 +248,32 @@ licenses/APL2.txt.
           </div>
         </div>
       </div>
-      <div
-        class="success"
-        [hidden]="!(postXdcrConnectionPreCheck.success | async)">
-          Connection check successful.
+      <div class="formrow">
+        <label>Check Connection</label>
+        <p>The connection check can take up to 1 minute.</p>
+        <textarea
+          [attr.rows]="(result | async) === '{}' ? 3 : 7"
+          autocorrect="off"
+          autocapitalize="off"
+          spellcheck="false"
+          readonly>{{result | async}}</textarea>
+        <div
+          class="error"
+          [hidden]="!(postXdcrConnectionPreCheck.error | async)?._">
+          {{(postXdcrConnectionPreCheck.error | async)?._}}
+        </div>
+      </div>
+      <div class="margin-bottom-1-5">
+        <button
+          class="outline"
+          type="button"
+          (click)="checkForm.submit.next()">
+            Check Connection
+        </button>
       </div>
     </div>
 
     <div class="panel-footer">
-      <form
-        [formGroup]="checkForm.group"
-        (submit)="checkForm.submit.next()">
-        <button 
-          type="submit"
-          class="margin-right-1">
-          Check Connection
-        </button>
-      </form>
       <a (click)="activeModal.dismiss()">Cancel</a>
       <button type="submit">Save</button>
     </div>

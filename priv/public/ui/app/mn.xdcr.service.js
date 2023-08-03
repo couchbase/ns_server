@@ -9,10 +9,10 @@ licenses/APL2.txt.
 */
 
 import {Injectable} from '@angular/core';
-import {HttpClient} from '@angular/common/http';
+import {HttpClient, HttpErrorResponse} from '@angular/common/http';
 import {BehaviorSubject, combineLatest, timer, of, NEVER} from 'rxjs';
 import {map, shareReplay, switchMap, throttleTime,
-        pluck, distinctUntilChanged} from 'rxjs/operators';
+        pluck, distinctUntilChanged, delay, retryWhen, catchError} from 'rxjs/operators';
 import {pipe, filter, propEq, sortBy, prop, groupBy} from 'ramda';
 
 import {MnStatsService} from "./mn.stats.service.js"
@@ -280,10 +280,51 @@ class MnXDCRService {
     return requestBody;
   }
 
+  getXdcrConnectionPreCheck(id) {
+    return this.http.get("/xdcr/connectionPreCheck" + (id ? ("?taskId=" + encodeURIComponent(id)) : ""))
+      .pipe(switchMap((resp) => {
+              if (resp.done) {
+                return of(resp);
+              } else {
+                throw {name: 'retry', result: resp.result};
+              }
+            }),
+            retryWhen((errors) => {
+              let count = 1;
+              return errors.pipe(
+                delay(2000),
+                map((error) => {
+                  count++;
+                  if ((count === 30 && error.name === 'retry') ||
+                      (error instanceof HttpErrorResponse)) {
+                    throw error;
+                  }
+                }));
+            }),
+            catchError((error) => {
+              let errorMessage = "";
+              if (error.name === 'retry') {
+                errorMessage = "The connection check has failed after 30 attempts. Please try again later.";
+              } else {
+                errorMessage = error.message || error.error || error.statusText;
+              }
+
+              let failed = new HttpErrorResponse({});
+              failed._ = errorMessage;
+              failed.result = error.result || {};
+              delete failed.name;
+              throw failed;
+            }));
+  }
+
   postXdcrConnectionPreCheck(source) {
     let requestBody = this.prepareRequestBody(source[0]);
 
-    return this.http.post("/xdcr/connectionPreCheck", requestBody);
+    return this.http.post("/xdcr/connectionPreCheck", requestBody)
+      .pipe(map((resp) => JSON.parse(resp)),
+            switchMap((resp) => {
+              return this.getXdcrConnectionPreCheck(resp.taskId);
+            }))
   }
 
   postRemoteClusters(source) {
