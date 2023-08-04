@@ -1742,7 +1742,59 @@ set_manifest_t() ->
             [{collections, [{"c1", [{maxTTL, 8}]},
                             {"c2", []}]}]}]),
     ?assertEqual([{uid, 8}, {maxTTL, 8}],
-                 get_collection("c1", get_scope("s1", Manifest4))).
+                 get_collection("c1", get_scope("s1", Manifest4))),
+
+    %% Support for changing maxTTL beginning with trinity
+    meck:expect(cluster_compat_mode, is_cluster_trinity, fun () -> true end),
+
+    %% The collection's maxTTL can be changed.
+    ExistingManifest5 =
+        ManifestCounters ++
+        [{scopes,
+          [{"s1",
+            [{uid, 8},
+             {collections,
+              [{"c1", [{uid, 8}, {maxTTL, 8}, {history, true}]}]}]}]}],
+
+    {commit, [{_, _, Manifest5}], _} =
+        update_manifest_test_set_manifest(
+          ExistingManifest5,
+          [{"s1",
+            [{collections, [{"c1", [{maxTTL, 10}]}]}]}]),
+    ?assertEqual([{maxTTL, 10}, {uid, 8}, {history, true}],
+                 get_collection("c1", get_scope("s1", Manifest5))),
+
+    %% The collection's maxTTL can be reset using "bucket" (which means
+    %% use the bucket's maxTTL if it has one).
+    {commit, [{_, _, Manifest5_1}], _} =
+        update_manifest_test_set_manifest(
+          ExistingManifest5,
+          [{"s1",
+            [{collections, [{"c1", [{maxTTL, "bucket"}]}]}]}]),
+    ?assertEqual([{uid, 8}, {history, true}],
+                 get_collection("c1", get_scope("s1", Manifest5_1))),
+
+    %% The collection's maxTTL can be specified when the collection doesn't
+    %% currently have one (note: the result from the prior test is used).
+    {commit, [{_, _, Manifest5_2}], _} =
+        update_manifest_test_set_manifest(
+          Manifest5_1,
+          [{"s1",
+            [{collections, [{"c1", [{maxTTL, 777}]}]}]}]),
+    ?assertEqual([{maxTTL, 777}, {uid, 8}, {history, true}],
+                 get_collection("c1", get_scope("s1", Manifest5_2))),
+
+    %% Changing a different attribute, history, in the collection doesn't
+    %% affect the maxTTL (note: the result from the prior test is used).
+    %% We've already tested that changing/resetting maxTTL doesn't affect
+    %% history.
+    {commit, [{_, _, Manifest5_3}], _} =
+        update_manifest_test_set_manifest(
+          Manifest5_2,
+          [{"s1",
+            [{collections, [{"c1", [{history, false}]}]}]}]),
+    ?assertEqual([{maxTTL, 777}, {uid, 8}],
+                 get_collection("c1", get_scope("s1", Manifest5_3))).
 
 upgrade_to_72_t() ->
     CollectionsKey = key("bucket"),
@@ -1756,6 +1808,7 @@ upgrade_to_72_t() ->
     %% must check to ensure that we don't create collections with history=true
     %% in mixed mode clusters when using the default history value.
     meck:expect(cluster_compat_mode, is_cluster_72, fun() -> false end),
+    meck:expect(cluster_compat_mode, is_cluster_trinity, fun() -> false end),
     meck:expect(config_profile, get_bool,
                 fun(enable_system_scope) -> false end),
 
