@@ -90,6 +90,7 @@ init([]) ->
        #{buckets => reset_bucket_info(),
          enabled => Enabled,
          numSamples => NumSamples,
+         refresh_timer_ref => undefined,
          stats_collector => undefined,
          latest_state => {undefined, dict:new()}})}.
 
@@ -121,8 +122,7 @@ handle_info(refresh, MonitorState) ->
         maybe_spawn_stats_collector(
           MonitorState#{buckets => NewBuckets,
                         latest_stats => {undefined, dict:new()}}),
-    erlang:send_after(?REFRESH_INTERVAL, self(), refresh),
-    {noreply, NewState};
+    {noreply, resend_refresh_msg(NewState)};
 
 handle_info({event, buckets}, MonitorState) ->
     #{buckets := Dict} = MonitorState,
@@ -148,8 +148,7 @@ handle_info({event, auto_failover_cfg}, MonitorState) ->
     NewState = case Enabled of
                    OldEnabled -> MonitorState;
                    false -> MonitorState#{buckets => reset_bucket_info()};
-                   %% Monitor will pick up the new state next refresh
-                   true -> ok
+                   true -> resend_refresh_msg(MonitorState)
                end,
     ?log_debug("auto_failover_cfg change enabled:~p numSamples:~p ",
                [Enabled, NumSamples]),
@@ -354,6 +353,13 @@ get_failover_on_disk_issues(Config) ->
             NumSamples = round((TimePeriod * 1000)/?REFRESH_INTERVAL),
             {Enabled, NumSamples}
     end.
+
+resend_refresh_msg(#{refresh_timer_ref := undefined} = MonitorState) ->
+    Ref = erlang:send_after(?REFRESH_INTERVAL, self(), refresh),
+    MonitorState#{refresh_timer_ref => Ref};
+resend_refresh_msg(#{refresh_timer_ref := Ref} = MonitorState) ->
+    _ = erlang:cancel_timer(Ref),
+    resend_refresh_msg(MonitorState#{refresh_timer_ref => undefined}).
 
 -spec maybe_spawn_stats_collector(map()) -> map().
 maybe_spawn_stats_collector(#{stats_collector := undefined} = MonitorState) ->
