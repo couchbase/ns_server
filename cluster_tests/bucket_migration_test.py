@@ -49,7 +49,7 @@ def assert_per_node_storage_mode_keys_added(cluster, bucket_name,
         all([storage_mode == expected_storage_mode
              for storage_mode in storage_modes])
 
-def assert_per_node_storage_mode_keys_deleted(cluster, node, bucket_name):
+def assert_per_node_storage_mode_not_present(cluster, node, bucket_name):
     per_node_storage_mode = get_per_node_storage_mode(
         cluster, bucket_name)
     assert None == per_node_storage_mode.get(node.hostname)
@@ -141,7 +141,7 @@ class BucketMigrationTest(testlib.BaseTestSet):
 
             assert_per_node_storage_mode_in_memcached(
                 new_node, "bucket-1", "magma")
-            assert_per_node_storage_mode_keys_deleted(
+            assert_per_node_storage_mode_not_present(
                 cluster, new_node, "bucket-1")
             assert_ejected_node_override_props_deleted(
                 cluster, old_otp_nodes[old_node.hostname], "bucket-1")
@@ -158,7 +158,7 @@ class BucketMigrationTest(testlib.BaseTestSet):
 
             assert_per_node_storage_mode_in_memcached(
                 node, "bucket-2", "magma")
-            assert_per_node_storage_mode_keys_deleted(
+            assert_per_node_storage_mode_not_present(
                 cluster, node, "bucket-2")
 
     def perform_delta_recovery_mid_migration_test(self, cluster):
