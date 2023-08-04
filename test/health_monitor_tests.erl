@@ -124,10 +124,89 @@ ns_server_monitor_failure_detection_t() ->
 
 gen_test_() ->
     Tests = [
-             fun ns_server_monitor_failure_detection_t/0
-            ],
+        fun ns_server_monitor_failure_detection_t/0
+    ],
 
     {foreach,
      fun test_setup/0,
      fun test_teardown/1,
      Tests}.
+
+%% Get a list of callbacks in the behaviour spec that have not been called
+%% yet. Returns a list of the form [{Module, [{Function, Arity}]}].
+callbacks_not_made() ->
+    lists:filtermap(
+        fun(Module) ->
+            Callbacks = health_monitor:behaviour_info(callbacks),
+            MissingCallbacks = lists:filter(
+                fun({Fun, _Arity}) ->
+                    %% Most functions should be called in the child (monitor
+                    %% itself)
+                    CalledInChild = meck:called(Module, Fun, '_'),
+
+                    %% Some functions will be intercepted by the parent
+                    %% (health_monitor) code and won't make it to the
+                    %% child, we check that they were actually called
+                    ChildPid = whereis(Module),
+                    CalledInParent = meck:called(health_monitor,
+                        Fun, '_', ChildPid),
+
+                    not (CalledInChild orelse CalledInParent)
+                end,
+                Callbacks),
+            case MissingCallbacks of
+                [] -> false;
+                _ -> {true, {Module, MissingCallbacks}}
+            end
+        end, ?TESTABLE_MONITORS).
+
+behaviour_cover_test_setup() ->
+    %% We will mock the health_monitor module itself and passthrough
+    %% everything as we aren't really interested in functionality in this
+    %% test. We need to meck the module to check the history later.
+    meck:new(health_monitor, [passthrough]),
+
+    %% Mock each individual monitor that we are testing here. Passthrough as
+    %% above as we don't want to test the functionality, but we do need meck
+    %% running to check the history later.
+    lists:foreach(
+        fun(Module) ->
+            meck:new(Module, [passthrough])
+        end, ?TESTABLE_MONITORS),
+
+    test_setup().
+
+behaviour_cover_test_teardown(SupPid) ->
+    lists:foreach(
+        fun(Module) ->
+            meck:unload(Module)
+        end, ?TESTABLE_MONITORS),
+
+    meck:unload(health_monitor),
+    test_teardown(SupPid).
+
+%% Test that we are hitting every function in the behaviour API. This lets us
+%% test that the monitors interact with one another as expected (and without
+%% crashing).
+behaviour_cover_t() ->
+    %% Called by auto_failover which we're not testing here.
+    node_status_analyzer:get_nodes(),
+
+    %% Never actually called, but we still want to test the rest of
+    %% node_status_analyzer so call it manually.
+    gen_server:cast(node_status_analyzer, foo),
+
+    ?assert(misc:poll_for_condition(
+              fun() ->
+                      %% Whilst it would be simpler to just check if we had
+                      %% called every function we want to know which
+                      %% functions were not called and we can re-use that
+                      %% code here.
+                      callbacks_not_made() =:= []
+              end, 10000, 100), callbacks_not_made()).
+
+behaviour_cover_test_() ->
+    {setup,
+     fun behaviour_cover_test_setup/0,
+     fun behaviour_cover_test_teardown/1,
+     [fun behaviour_cover_t/0]}.
