@@ -166,6 +166,7 @@
          node_autocompaction_settings/1,
          node_magma_fragmentation_percentage/1,
          remove_override_props/2,
+         remove_override_props_many/2,
          update_bucket_config/2]).
 
 -import(json_builder,
@@ -1273,6 +1274,7 @@ wait_for_bucket_shutdown(BucketName, Nodes0, Timeout) ->
 override_keys() ->
     [storage_mode, autocompaction].
 
+-spec remove_override_props([{_, _}], [node()]) -> [{_, _}].
 remove_override_props(Props, Nodes) ->
     lists:filter(fun ({{node, Node, SubKey}, _Value}) ->
                          not lists:member(Node, Nodes)
@@ -1280,6 +1282,13 @@ remove_override_props(Props, Nodes) ->
                      (_) ->
                          true
                  end, Props).
+
+-spec remove_override_props_many([node()], [{bucket_name(), [{_, _}]}]) ->
+    [{bucket_name(), [{_, _}]}].
+remove_override_props_many(Nodes, BucketConfigs) ->
+    lists:map(fun ({BN, BC}) ->
+                      {BN, remove_override_props(BC, Nodes)}
+              end, BucketConfigs).
 
 get_override_keys(BucketConfig, SubKey) ->
     [K || {{node, _Node, SK} = K, _V} <- BucketConfig, SK =:= SubKey].

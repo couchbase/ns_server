@@ -54,6 +54,20 @@ def assert_per_node_storage_mode_keys_deleted(cluster, node, bucket_name):
         cluster, bucket_name)
     assert None == per_node_storage_mode.get(node.hostname)
 
+def assert_ejected_node_override_props_deleted(
+    cluster, ejected_otp_node, bucket_name):
+    code = f"""
+        {{ok, BucketConfig}} = ns_bucket:get_bucket("{bucket_name}"),
+        OverrideSubKeys = [storage_mode, autocompaction],
+        lists:member(true,
+            [true || {{{{node, '{ejected_otp_node}', SK}}, _V}}
+                    <- BucketConfig, lists:member(SK, OverrideSubKeys)])
+        """
+    r = testlib.diag_eval(cluster, code).content.decode('ascii')
+    assert r == "false", \
+        f"per-node override props clean-up failed for " \
+        f"ejected node: {ejected_otp_node}"
+
 def assert_per_node_storage_mode_in_memcached(node, bucket_name,
                                               expected_storage_mode):
     diag_eval = f'ns_memcached:get_config_stats("{bucket_name}", <<"ep_backend">>).'
@@ -115,6 +129,7 @@ class BucketMigrationTest(testlib.BaseTestSet):
                                                 "couchstore")
 
         old_nodes = cluster.nodes[0:2]
+        old_otp_nodes = testlib.get_otp_nodes(cluster)
 
         for i, old_node in enumerate(old_nodes):
             new_node = cluster.nodes[2 + i]
@@ -128,6 +143,8 @@ class BucketMigrationTest(testlib.BaseTestSet):
                 new_node, "bucket-1", "magma")
             assert_per_node_storage_mode_keys_deleted(
                 cluster, new_node, "bucket-1")
+            assert_ejected_node_override_props_deleted(
+                cluster, old_otp_nodes[old_node.hostname], "bucket-1")
 
     def migrate_storage_mode_via_failover_test(self, cluster):
         create_and_update_bucket(cluster, "bucket-2", "couchstore", "magma",

@@ -415,7 +415,7 @@ remove_nodes(chronicle, RemoteNodes, Transaction) ->
                        ns_bucket:fetch_snapshot(all, Txn, [props]),
                    BucketConfigs = ns_bucket:get_buckets(BucketsSnapshot),
                    UpdatedBucketConfigs =
-                       ns_bucket:remove_override_props(
+                       ns_bucket:remove_override_props_many(
                          RemoteNodes, BucketConfigs),
 
                    Buckets = ns_bucket:get_bucket_names(Snapshot),
