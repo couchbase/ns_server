@@ -362,7 +362,7 @@ def poll_for_condition(fun, sleep_time, attempts=None, timeout=None,
         time.sleep(sleep_time)
         attempt_count += 1
     assert False, f"{msg} didn't complete in: {attempts} attempts, " \
-                   "sleep_time: {sleep_time_str}"
+                  f"sleep_time: {sleep_time_str}"
 
 
 def diag_eval(cluster, code):
