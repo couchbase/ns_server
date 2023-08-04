@@ -100,21 +100,17 @@ init([MonModule]) ->
     %% (which it exists in because it's needed in both this file and the
     %% specialised monitor).
     BaseMonitorState = #{nodes => dict:new(),
-                         nodes_wanted => ns_node_disco:nodes_wanted()},
+                         nodes_wanted => ns_node_disco:nodes_wanted(),
+                         refresh_interval => get_refresh_interval(MonModule)},
 
     SpecialisedMonitorState = MonModule:init(),
 
     MonitorState = maps:merge(BaseMonitorState, SpecialisedMonitorState),
 
-    MonStateWithRefresh =
-        case MonModule:can_refresh(MonitorState) of
-            false -> MonitorState;
-            true ->
-                self() ! refresh,
-                MonitorState#{refresh_interval =>
-                                  get_refresh_interval(MonModule)}
-
-        end,
+    case MonModule:can_refresh(MonitorState) of
+        false -> ok;
+        true -> self() ! refresh
+    end,
 
     chronicle_compat_events:notify_if_key_changes(
       [auto_failover_cfg,
@@ -122,7 +118,7 @@ init([MonModule]) ->
        nodes_wanted], config_updated),
 
     {ok, #state{monitor_module = MonModule,
-                monitor_state = MonStateWithRefresh}}.
+                monitor_state = MonitorState}}.
 
 handle_call(Call, From,
             #state{monitor_module = MonModule,
