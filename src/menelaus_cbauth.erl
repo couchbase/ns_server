@@ -296,8 +296,7 @@ notify_version(Ver, Processes, Info) ->
       end, Processes).
 
 personalize_info(Label, Info) ->
-    "htuabc-" ++ ReversedTrimmedLabel = lists:reverse(Label),
-    MemcachedUser = [$@ | lists:reverse(ReversedTrimmedLabel)],
+    MemcachedUser = [$@ | strip_cbauth_suffix(Label)],
 
     TlsConfigLabel =
         case Label of
@@ -653,12 +652,16 @@ cache_size_defaults() ->
      {auth_cache_size, authCacheSize, 256},
      {client_cert_cache_size, clientCertCacheSize, 256}].
 
+strip_cbauth_suffix(Label) ->
+    "htuabc-" ++ ReversedTrimmedLabel = lists:reverse(Label),
+    lists:reverse(ReversedTrimmedLabel).
+
 label_to_service("cbq-engine-cbauth") ->
     n1ql;
 label_to_service("goxdcr-cbauth") ->
     xdcr;
 label_to_service(Label) ->
-    list_to_atom(string:lowercase(string:trim(Label, trailing, "-cbauth"))).
+    list_to_atom(strip_cbauth_suffix(Label)).
 
 service_to_label(n1ql) ->
     "cbq-engine-cbauth";
