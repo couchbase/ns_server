@@ -69,10 +69,15 @@ class MnAuthService {
   postUILogout() {
     return this.http.post("/uilogout");
     // .then(function () {
+    //   $window.location.reload();
+    // }, function (response) {
+    //   let maybeRedirect = response?.data?.redirect;
+    //   if (response.status === 400 && maybeRedirect) {
+    //     $window.location.href = maybeRedirect;
+    //   } else {
     //     $window.location.reload();
-    //   }, function () {
-    //     $window.location.reload();
-    //   });
+    //   }
+    // });
   }
 
   getAuthMethods() {
