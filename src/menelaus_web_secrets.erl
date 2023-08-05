@@ -36,7 +36,7 @@ handle_change_master_password(Req) ->
       end, Req, form, change_master_password_validators()).
 
 change_master_password_validators() ->
-    [validator:required(newPassword, _),
+    [validator:touch(newPassword, _),
      validator:unsupported(_)].
 
 handle_rotate_data_key(Req) ->

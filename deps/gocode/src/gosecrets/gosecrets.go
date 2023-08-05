@@ -234,7 +234,8 @@ func (s *encryptionService) cmdGetState() {
 	replySuccessWithData([]byte(s.encryptionKeys.getPasswordState()))
 }
 
-func (s *encryptionService) cmdInit(password []byte) {
+func (s *encryptionService) cmdInit(data []byte) {
+	password := decodePass(data)
 	var err error
 	s.encryptionKeys, err = initEncryptionKeys(s.config, password)
 	if err != nil {
@@ -251,13 +252,21 @@ func (s *encryptionService) cmdInit(password []byte) {
 	replySuccess()
 }
 
+func decodePass(data []byte) []byte {
+	var password []byte
+	if data[0] == 1 {
+		password = data[1:]
+	}
+	return password
+}
+
 func initEncryptionKeys(config *Config, password []byte) (secretIface, error) {
 	if config.EncryptionSettings.KeyStorageType == "file" {
 		settings := config.EncryptionSettings.KeyStorageSettings
 		return initKeysFromFile(settings, password)
 	} else if config.EncryptionSettings.KeyStorageType == "script" {
 		settings := config.EncryptionSettings.KeyStorageSettings
-		return initKeysViaScript(settings, password)
+		return initKeysViaScript(settings)
 	}
 
 	return nil, errors.New(fmt.Sprintf(
@@ -265,8 +274,7 @@ func initEncryptionKeys(config *Config, password []byte) (secretIface, error) {
 		config.EncryptionSettings.KeyStorageType))
 }
 
-func initKeysViaScript(settings map[string]interface{},
-	password []byte) (*keysViaScript, error) {
+func initKeysViaScript(settings map[string]interface{}) (*keysViaScript, error) {
 	readCmd, found := settings["readCmd"].(string)
 	if !found {
 		return nil, errors.New(
@@ -341,12 +349,16 @@ func initFilePassword(
 			return passwordSource, nil, errors.New(
 				"envName is missing in config")
 		}
-		if len(password) > 0 {
+		if password != nil {
 			passwordToUse = password
 		} else {
 			passwordToUse = []byte(os.Getenv(envName))
 		}
 	} else if passwordSource == "script" {
+		if password != nil {
+			return passwordSource, nil, errors.New(
+				"password is not nil")
+		}
 		pwdSettings, ok := settings["passwordSettings"].(map[string]interface{})
 		if !ok {
 			return passwordSource, nil, errors.New(
@@ -469,7 +481,8 @@ func (s *encryptionService) cmdDecrypt(data []byte) {
 	replySuccessWithData(res)
 }
 
-func (s *encryptionService) cmdChangePassword(password []byte) {
+func (s *encryptionService) cmdChangePassword(data []byte) {
+	password := decodePass(data)
 	if !s.initialized {
 		panic("Password was not set")
 	}
@@ -522,7 +535,8 @@ func (s *encryptionService) cmdClearBackupKey(ref []byte) {
 	replySuccess()
 }
 
-func (s *encryptionService) cmdReloadConfig(password []byte) {
+func (s *encryptionService) cmdReloadConfig(data []byte) {
+	password := decodePass(data)
 	newConfig, err := readCfg(s.configPath)
 	if err != nil {
 		replyError(err.Error())
@@ -550,7 +564,7 @@ func (s *encryptionService) cmdCopySecrets(newCfgBytes []byte) {
 		replyError(err.Error())
 		return
 	}
-	newEncryptionKeys, err := initEncryptionKeys(newConfig, []byte(""))
+	newEncryptionKeys, err := initEncryptionKeys(newConfig, nil)
 	if err != nil {
 		replyError(err.Error())
 		return
@@ -569,7 +583,7 @@ func (s *encryptionService) cmdCleanupSecrets(oldCfgBytes []byte) {
 		replyError(err.Error())
 		return
 	}
-	oldKeys, err := initEncryptionKeys(oldConfig, []byte(""))
+	oldKeys, err := initEncryptionKeys(oldConfig, nil)
 	if err != nil {
 		replyError(err.Error())
 		return

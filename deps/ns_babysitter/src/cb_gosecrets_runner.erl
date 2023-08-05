@@ -280,7 +280,7 @@ handle_call({set_config, Cfg, ResetPassword}, _From,
     try save_config(CfgPath, cfg_to_json(Cfg)) of
         ok ->
             Pass = case ResetPassword of
-                       true -> ?HIDE("");
+                       true -> ?HIDE(undefined);
                        false -> extract_hidden_pass()
                    end,
             Res = call_gosecrets({reload_config, Pass}, State),
@@ -388,7 +388,7 @@ gosecret_do_process_exit(_Port, {'EXIT', _, Reason}) ->
     exit(Reason).
 
 encode({init, HiddenPass}) ->
-    BinaryPassword = list_to_binary(?UNHIDE(HiddenPass)),
+    BinaryPassword = encode_password(HiddenPass),
     <<1, BinaryPassword/binary>>;
 encode(get_keys_ref) ->
     <<2>>;
@@ -397,7 +397,7 @@ encode({encrypt, Data}) ->
 encode({decrypt, Data}) ->
     <<4, Data/binary>>;
 encode({change_password, HiddenPass}) ->
-    BinaryPassword = list_to_binary(?UNHIDE(HiddenPass)),
+    BinaryPassword = encode_password(HiddenPass),
     <<5, BinaryPassword/binary>>;
 encode(rotate_data_key) ->
     <<6>>;
@@ -406,12 +406,18 @@ encode({maybe_clear_backup_key, DataKey}) ->
 encode(get_state) ->
     <<8>>;
 encode({reload_config, HiddenPass}) ->
-    BinaryPassword = list_to_binary(?UNHIDE(HiddenPass)),
+    BinaryPassword = encode_password(HiddenPass),
     <<9, BinaryPassword/binary>>;
 encode({copy_secrets, ConfigBin}) ->
     <<10, ConfigBin/binary>>;
 encode({cleanup_secrets, ConfigBin}) ->
     <<11, ConfigBin/binary>>.
+
+encode_password(HiddenPass) ->
+    case ?UNHIDE(HiddenPass) of
+        undefined -> <<0>>;
+        P when is_list(P) -> <<1, (list_to_binary(P))/binary>>
+    end.
 
 save_port_file(Socket) ->
     {ok, {Addr, Port}} = inet:sockname(Socket),
@@ -454,7 +460,7 @@ extract_hidden_pass()->
                       "environment"),
             P;
         _ ->
-            ?HIDE("")
+            ?HIDE(undefined)
     end.
 
 %% [{es_key_storage_type, file},
@@ -580,7 +586,7 @@ change_password_with_password_cmd_test() ->
                   ok = file:write_file(PassCmd,
                                        io_lib:format(?GET_PASS_SCRIPT,
                                                      [Password2])),
-                  ok = change_password(Pid, ""),
+                  ok = change_password(Pid, undefined),
 
                   %% making sure encryption decryption works
                   {ok, Data} = decrypt(Pid, Encrypted1),
@@ -671,6 +677,7 @@ env_password_test() ->
     try
         Data = rand:bytes(512),
         Password = base64:encode_to_string(rand:bytes(128)),
+        WrongPassword = base64:encode_to_string(rand:bytes(128)),
         {ok, Encrypted} =
             with_gosecrets(
               Cfg,
@@ -679,8 +686,18 @@ env_password_test() ->
                   encrypt(Pid, Data)
               end),
 
-        memorize_hidden_pass(?HIDE("")),
+        memorize_hidden_pass(?HIDE(WrongPassword)),
         os:putenv("CB_MASTER_PASSWORD", Password),
+        {ok, Data} =
+            with_gosecrets(
+              Cfg,
+              fun (_CfgPath, Pid) ->
+                  ok = change_password(Pid, ""),
+                  decrypt(Pid, Encrypted)
+              end),
+
+        memorize_hidden_pass(?HIDE(WrongPassword)),
+        os:unsetenv("CB_MASTER_PASSWORD"),
         {ok, Data} =
             with_gosecrets(
               Cfg,
