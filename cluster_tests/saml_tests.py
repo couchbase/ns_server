@@ -14,6 +14,12 @@ from multiprocessing import Process
 import time
 import requests
 from urllib.parse import urlparse, parse_qs, urlunparse
+
+# To remove annoying message from xmlschema:
+#  INFO:xmlschema:Resource 'XMLSchema.xsd' is already loaded
+import logging
+logging.getLogger('xmlschema').setLevel(logging.WARNING)
+
 from saml2 import server
 from saml2 import BINDING_HTTP_REDIRECT
 from saml2 import BINDING_HTTP_POST
