@@ -312,10 +312,11 @@ def group_testsets(testsets):
             different = True
             testset_name = f"{class_name}/{requirements}"
             testset = (testset_name, testset_class, test_names)
-            for (other_reqs, testsets) in testsets_grouped:
+            for (other_reqs, testsets_in_group) in testsets_grouped:
                 if requirements.satisfied_by(other_reqs):
-                    testsets.append(testset)
+                    testsets_in_group.append(testset)
                     different = False
+                    break
             if different:
                 testsets_grouped.append((requirements, [testset]))
     """
