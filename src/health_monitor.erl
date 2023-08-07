@@ -24,6 +24,11 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+%% State created by and required by this base monitor behaviour.
+-type base_state() :: #{refresh_interval := pos_integer(),
+                        nodes := dict:dict(),
+                        nodes_wanted := [node()],
+                        any() => any()}.
 
 %% @doc
 %% Behaviour that the actual monitors should implement. Much of this is
@@ -31,11 +36,14 @@
 %% parameters.
 %% @end
 -callback start_link() -> term().
--callback init(map()) -> map().
--callback handle_call(term(), term(), map()) ->
-    noreply | {reply, nack} | {reply, term(), map()}.
--callback handle_cast(term(), map()) -> noreply | {noreply, map()}.
--callback handle_info(term(), map()) -> noreply | {noreply, map()}.
+%% Returns a list of monitor specific state unknown to us here so just use map()
+-callback init(base_state()) -> base_state().
+-callback handle_call(term(), term(), base_state()) ->
+    noreply | {reply, nack} | {reply, term(), base_state()}.
+-callback handle_cast(term(), base_state()) ->
+    noreply | {noreply, base_state()}.
+-callback handle_info(term(), base_state()) ->
+    noreply | {noreply, base_state()}.
 
 %% Other API required for the behaviour.
 -callback get_nodes() -> term().
