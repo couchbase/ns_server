@@ -50,9 +50,10 @@ def get_appropriate_cluster(cluster, auth, start_index, requirements,
         atexit.unregister(kill_nodes)
 
         start_index = cluster.start_index + len(cluster.processes)
+        print()
 
     # Create a new cluster satisfying the requirements
-    print(f"Starting cluster to satisfy requirements: {requirements}")
+    print(f"=== Starting cluster to satisfy requirements: {requirements}")
     cluster = requirements.create_cluster(auth, start_index,
                                           tmp_cluster_dir,
                                           kill_nodes)
@@ -226,7 +227,9 @@ def request(method, cluster_or_node, path, expected_code=None, **kwargs):
         url = cluster_or_node.url + path
     else:
         url = cluster_or_node.connected_nodes[0].url + path
+    print(f'sending {method} {url} {kwargs} (expected code {expected_code})')
     res = requests.request(method, url, **kwargs_with_auth)
+    print(f'result: {res.status_code}')
     if expected_code is not None:
         assert_http_code(expected_code, res),
     return res
@@ -443,8 +446,8 @@ def no_output_decorator(f):
     return wrapped_f
 
 
-def maybe_print(s, verbose=None):
+def maybe_print(s, verbose=None, print_fun=print):
     if verbose is None:
         verbose = config['verbose']
     if verbose:
-        print(s)
+        print_fun(s)

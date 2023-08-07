@@ -19,6 +19,7 @@ import requests
 import glob
 import time
 import random
+import pprint
 
 # Pretty prints any tracebacks that may be generated if the process dies
 from traceback_with_variables import activate_by_import
@@ -208,6 +209,8 @@ def main():
         testsets_to_run = find_tests(tests, discovered_tests)
 
     testsets_grouped = group_testsets(testsets_to_run)
+    testlib.maybe_print(f"Groupped testsets:")
+    testlib.maybe_print(testsets_grouped, print_fun=pprint.pprint)
 
     cluster = None
     if use_existing_server:
@@ -282,13 +285,13 @@ def main():
         print(f"In {name}:")
         for testres in errors[name]:
             print(f"  {testres[0]} failed: {testres[1]}")
-    print()
+        print()
 
     if len(not_ran) > 0:
         print(f"Couldn't run the following tests:")
         for name, reason in not_ran:
             print(f"  {name}: {reason}")
-    print()
+        print()
 
     if len(errors) > 0:
         error_exit("Tests finished with errors")
