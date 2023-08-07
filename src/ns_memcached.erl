@@ -32,12 +32,11 @@
 -define(CHECK_INTERVAL, 10000).
 -define(CHECK_WARMUP_INTERVAL, 500).
 -define(CONNECT_DONE_RETRY_INTERVAL, 500).
--define(PAUSED_TIMEOUT, 5000).
 -define(TIMEOUT,             ?get_timeout(outer, 300000)).
 -define(TIMEOUT_HEAVY,       ?get_timeout(outer_heavy, 300000)).
 -define(TIMEOUT_VERY_HEAVY,  ?get_timeout(outer_very_heavy, 360000)).
--define(WARMED_TIMEOUT,      ?get_timeout(warmed, 5000)).
 -define(MARK_WARMED_TIMEOUT, ?get_timeout(mark_warmed, 5000)).
+-define(STATUSES_TIMEOUT,    ?get_timeout(statuses, 5000)).
 %% half-second is definitely 'slow' for any definition of slow
 -define(SLOW_CALL_THRESHOLD_MICROS, 500000).
 -define(GET_KEYS_TIMEOUT,       ?get_timeout(get_keys, 60000)).
@@ -81,10 +80,8 @@
 
 %% external API
 -export([active_buckets/0,
-         warmed_buckets/0,
-         warmed_buckets/1,
          get_mark_warmed_timeout/0,
-         paused_buckets/0,
+         bucket_statuses/0,
          bucket_statuses/1,
          get_all_buckets_details/0,
          get_bucket_state/1,
@@ -1028,28 +1025,6 @@ status(Node, Bucket, Timeout) ->
             no_status
     end.
 
--spec warmed(node(), bucket_name(), pos_integer() | infinity) -> boolean().
-warmed(Node, Bucket, Timeout) ->
-    try
-        do_call({server(Bucket), Node}, Bucket, warmed, Timeout)
-    catch
-        T:E:Stack ->
-            ?log_debug("Failure to check if bucket ~p is warmed on ~p.~n~p",
-                       [Bucket, Node, {T, E, Stack}]),
-            false
-    end.
-
--spec paused(node(), bucket_name(), pos_integer() | infinity) -> boolean().
-paused(Node, Bucket, Timeout) ->
-    try
-        do_call({server(Bucket), Node}, Bucket, paused, Timeout)
-    catch
-        T:E:Stack ->
-            ?log_debug("Failure to check if bucket ~p is paused on ~p.~n~p",
-                       [Bucket, Node, {T, E, Stack}]),
-            false
-    end.
-
 -spec mark_warmed([node()], bucket_name())
                  -> Result
                         when Result :: {Replies, BadNodes},
@@ -1063,28 +1038,13 @@ mark_warmed(Nodes, Bucket) ->
 mark_warmed(Bucket) ->
     gen_server:call(server(Bucket), mark_warmed, ?MARK_WARMED_TIMEOUT).
 
-warmed_buckets() ->
-    warmed_buckets(?WARMED_TIMEOUT).
-
-warmed_buckets(Timeout) ->
-    RVs = misc:parallel_map(
-            fun (Bucket) ->
-                    {Bucket, warmed(dist_manager:this_node(), Bucket,
-                                    Timeout)}
-            end, active_buckets(), infinity),
-    [Bucket || {Bucket, true} <- RVs].
-
 -spec get_mark_warmed_timeout() -> pos_integer().
 get_mark_warmed_timeout() ->
     ?MARK_WARMED_TIMEOUT.
 
-paused_buckets() ->
-    RVs = misc:parallel_map(
-            fun (Bucket) ->
-                    {Bucket, paused(dist_manager:this_node(), Bucket,
-                                    ?PAUSED_TIMEOUT)}
-            end, active_buckets(), infinity),
-    [Bucket || {Bucket, true} <- RVs].
+-spec bucket_statuses() -> [atom()].
+bucket_statuses() ->
+    bucket_statuses(?STATUSES_TIMEOUT).
 
 -spec bucket_statuses(pos_integer() | integer) -> [atom()].
 bucket_statuses(Timeout) ->
@@ -1121,7 +1081,7 @@ get(Bucket, Key, CollectionsUid, VBucket, Identity) ->
 
 %% @doc send get_from_replica command to memcached instance. for testing only
 -spec get_from_replica(bucket_name(), binary(), integer(), integer()) ->
-                              {ok, #mc_header{}, #mc_entry{}, any()}.
+          {ok, #mc_header{}, #mc_entry{}, any()}.
 get_from_replica(Bucket, Key, CollectionsUid, VBucket) ->
     do_call(server(Bucket), Bucket,
             {get_from_replica, fun () -> Key end, CollectionsUid, VBucket},

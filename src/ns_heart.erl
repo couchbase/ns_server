@@ -206,10 +206,23 @@ update_current_status_tail(State, QuickStatus) ->
     {Status, State}.
 
 current_status_quick(TS) ->
+    BucketStatuses = ns_memcached:bucket_statuses(),
+    {ActiveBuckets, ReadyBuckets} =
+        lists:foldl(
+          fun({Bucket, Status}, {Active, Ready}) ->
+                  NewReady = case Status of
+                                 warmed ->
+                                     [Bucket | Ready];
+                                 paused ->
+                                     [Bucket | Ready];
+                                 _ -> Ready
+                             end,
+                  {[Bucket | Active], NewReady}
+          end, {[],[]}, BucketStatuses),
+
     [{now, TS},
-     {active_buckets, ns_memcached:active_buckets()},
-     {ready_buckets, ns_memcached:warmed_buckets() ++
-         ns_memcached:paused_buckets()}].
+     {active_buckets, ActiveBuckets},
+     {ready_buckets, ReadyBuckets}].
 
 eat_all_reqs(TS, Count) ->
     receive
