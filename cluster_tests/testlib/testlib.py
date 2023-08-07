@@ -24,6 +24,7 @@ def support_colors():
     return hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()
 
 config={'colors': support_colors(),
+        'verbose': False,
         'screen_width': 80}
 
 def get_appropriate_cluster(cluster, auth, start_index, requirements,
@@ -38,7 +39,8 @@ def get_appropriate_cluster(cluster, auth, start_index, requirements,
         satisfiable, unsatisfied = requirements.is_satisfiable(cluster)
         if satisfiable:
             for requirement in unsatisfied:
-                requirement.make_met(cluster)
+                with no_output("make_met"):
+                    requirement.make_met(cluster)
             return cluster
 
         # Teardown the old cluster
@@ -51,10 +53,11 @@ def get_appropriate_cluster(cluster, auth, start_index, requirements,
 
     # Create a new cluster satisfying the requirements
     print(f"Starting cluster to satisfy requirements: {requirements}")
-    cluster = requirements.create_cluster(auth, start_index, tmp_cluster_dir,
+    cluster = requirements.create_cluster(auth, start_index,
+                                          tmp_cluster_dir,
                                           kill_nodes)
-    print("\n======================================="
-          "=========================================\n")
+    maybe_print("\n======================================="
+                "=========================================\n")
     return cluster
 
 
@@ -326,11 +329,6 @@ def poll_for_condition(fun, sleep_time, attempts=None, timeout=None,
                        verbose=False, msg="poll for condition"):
 
     assert (attempts is not None) or (timeout is not None)
-
-    def print_if_verbose(s):
-        if verbose:
-            print(s)
-
     assert sleep_time > 0, "non-positive sleep_time specified"
     start_time = time.time()
     sleep_time_str = f"{sleep_time:.2f}s"
@@ -341,10 +339,10 @@ def poll_for_condition(fun, sleep_time, attempts=None, timeout=None,
             assert (time.time() - start_time) < timeout, \
                    f"{msg}: timed-out (timeout: {timeout}s)"
         if fun():
-            print_if_verbose(f"Time taken for condition to complete: "
-                             f"{time.time() - start_time: .2f}s")
+            maybe_print(f"Time taken for condition to complete: "
+                        f"{time.time() - start_time: .2f}s", verbose=verbose)
             return
-        print_if_verbose(f"Sleeping for {sleep_time_str}")
+        maybe_print(f"Sleeping for {sleep_time_str}", verbose=verbose)
         time.sleep(sleep_time)
         attempt_count += 1
     assert False, f"{msg} didn't complete in: {attempts} attempts, " \
@@ -356,7 +354,7 @@ def diag_eval(cluster, code):
 
 
 @contextlib.contextmanager
-def no_output(name, verbose=False, extra_context=contextlib.nullcontext()):
+def no_output(name, verbose=None, extra_context=contextlib.nullcontext()):
     """
     Executes context body with all the output redirected to a string.
     If something crashes, it prints that output, otherwise it ignores it.
@@ -367,6 +365,8 @@ def no_output(name, verbose=False, extra_context=contextlib.nullcontext()):
     result of execution) before this function starts dumping the redirected
     output (in case of a crash)
     """
+    if verbose is None:
+        verbose = config['verbose']
 
     if verbose:
         with extra_context:
@@ -434,3 +434,17 @@ def call_reported(name, succ_str="ok", fail_str="failed", verbose=False,
 def right_aligned(s, taken=0, width=config['screen_width']):
     corrected_width = width - taken
     return f'{s: >{corrected_width}}'
+
+
+def no_output_decorator(f):
+    def wrapped_f(*args, **kwargs):
+        with no_output(f.__name__):
+            return f(*args, **kwargs)
+    return wrapped_f
+
+
+def maybe_print(s, verbose=None):
+    if verbose is None:
+        verbose = config['verbose']
+    if verbose:
+        print(s)

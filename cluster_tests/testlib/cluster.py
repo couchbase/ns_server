@@ -131,8 +131,9 @@ class Cluster:
     # Kill all associated nodes to avoid competing for resources with the active
     # cluster being tested against
     def teardown(self):
-        cluster_run_lib.kill_nodes(self.processes, get_terminal_attrs(),
-                                   urls=get_node_urls(self.nodes))
+        with testlib.no_output("kill nodes"):
+            cluster_run_lib.kill_nodes(self.processes, get_terminal_attrs(),
+                                       urls=get_node_urls(self.nodes))
 
     # Check every 0.5s until there is no rebalance running or 600s have passed
     def wait_for_rebalance(self, timeout_s=600, interval_s=0.5, verbose=False):

@@ -14,6 +14,7 @@ from testlib import get_succ
 
 
 class ClusterRequirements:
+    @testlib.no_output_decorator
     def __init__(self, edition=None, num_nodes=None, memsize=None,
                  num_connected=None, afamily=None, services=None,
                  master_password_state=None, num_vbuckets=None):
@@ -71,6 +72,7 @@ class ClusterRequirements:
                 'num_nodes': start_args['num_nodes']
                }
 
+    @testlib.no_output_decorator
     def create_cluster(self, auth, start_index, tmp_cluster_dir, kill_nodes):
         start_args = {'start_index': start_index,
                       'root_dir': f"{tmp_cluster_dir}-{start_index}"}
@@ -97,6 +99,7 @@ class ClusterRequirements:
 
     # Given a cluster, checks if any requirements are not satisfied, and
     # returns the unsatisfied requirements
+    @testlib.no_output_decorator
     def is_satisfiable(self, cluster):
         unsatisfied = []
         satisfiable = True
@@ -107,6 +110,7 @@ class ClusterRequirements:
                     satisfiable = False
         return satisfiable, unsatisfied
 
+    @testlib.no_output_decorator
     def get_unmet_requirements(self, cluster):
         unmet_requirements = []
         for requirement in self.requirements:
@@ -116,6 +120,7 @@ class ClusterRequirements:
 
     # Determines whether this set of requirements will be satisfiable with a
     # cluster satisfying some 'other' ClusterRequirements
+    @testlib.no_output_decorator
     def satisfied_by(self, other):
         for requirement in self.requirements:
             if not (any(requirement == other_requirement

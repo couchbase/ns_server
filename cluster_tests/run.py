@@ -76,6 +76,8 @@ Usage: {program_name}
         successful test runs
     [--seed | -s <string>]
         Specify a seed to be set for python pseudo-random number generator
+    [--verbose | -v]
+        Print more debug information
     [--help]
         Show this help
 """
@@ -98,21 +100,22 @@ def error_exit(msg):
 
 def remove_temp_cluster_directories():
     for dir in glob.glob(tmp_cluster_dir + "*"):
-        print(f"Removing cluster dir {dir}...")
+        testlib.maybe_print(f"Removing cluster dir {dir}...")
         shutil.rmtree(dir)
 
 
 def kill_nodes(processes, urls, terminal_attrs):
-    cluster_run_lib.kill_nodes(processes, terminal_attrs, urls)
+    with testlib.no_output("kill nodes"):
+        cluster_run_lib.kill_nodes(processes, terminal_attrs, urls)
 
 
 def main():
     try:
-        optlist, args = getopt.gnu_getopt(sys.argv[1:], "hkoc:u:p:n:t:s:",
+        optlist, args = getopt.gnu_getopt(sys.argv[1:], "hkovc:u:p:n:t:s:",
                                           ["help", "keep-tmp-dirs", "cluster=",
                                            "user=", "password=", "num-nodes=",
                                            "tests=", "dont-intercept-output",
-                                           "seed=", "colors="])
+                                           "seed=", "colors=", "verbose"])
     except getopt.GetoptError as err:
         bad_args_exit(str(err))
 
@@ -164,6 +167,8 @@ def main():
             seed = a
         elif o == '--colors':
             testlib.config['colors'] = (int(a) == 1)
+        elif o in ('--verbose', '-v'):
+            testlib.config['verbose'] = True
         elif o in ('--help', '-h'):
             usage()
             exit(0)
@@ -195,7 +200,7 @@ def main():
             msg += f"{name} - {reason}\n"
         error_exit(msg)
     testsets_str = ", ".join([c for c, _, _, _ in discovered_tests])
-    print(f"Discovered testsets: {testsets_str}")
+    testlib.maybe_print(f"Discovered testsets: {testsets_str}")
 
     if tests is None:
         testsets_to_run = discovered_tests
@@ -209,7 +214,7 @@ def main():
         # Get provided cluster
         cluster = get_existing_cluster(address, start_port,
                                        (username, password), num_nodes)
-        print(f"Discovered cluster: {cluster}")
+        testlib.maybe_print(f"Discovered cluster: {cluster}")
     else:
         remove_temp_cluster_directories()
 
@@ -413,7 +418,9 @@ def get_existing_cluster(address, start_port, auth, num_nodes):
                           auth=auth)
              for i in range(num_nodes)]
 
-    return testlib.cluster.get_cluster(start_port, auth, [], nodes, nodes_found)
+    with testlib.no_output("connecting to existing cluster"):
+        return testlib.cluster.get_cluster(start_port, auth, [], nodes,
+                                           nodes_found)
 
 
 # Run each testset on the same cluster, counting how many individual tests were
