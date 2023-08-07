@@ -14,8 +14,8 @@ import random
 import time
 import io
 import sys
-from contextlib import redirect_stdout
-
+import contextlib
+from traceback import format_exception_only
 import traceback_with_variables as traceback
 
 from testlib.node import Node
@@ -23,7 +23,8 @@ from testlib.node import Node
 def support_colors():
     return hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()
 
-config={'colors': support_colors()}
+config={'colors': support_colors(),
+        'screen_width': 80}
 
 def get_appropriate_cluster(cluster, auth, start_index, requirements,
                             tmp_cluster_dir, kill_nodes):
@@ -122,31 +123,16 @@ def safe_test_function_call(testset, testfunction, args, verbose=False,
         testname = f"{testset.__name__}.{testfunction}"
     else:
         testname = f"{type(testset).__name__}.{testfunction}"
-    if verbose: print(f"  {testname}... ", end='', flush=True)
-    f = io.StringIO()
-    start = time.time()
+
+    report_call = call_reported(testname, verbose=verbose,
+                                res_on_same_line=intercept_output)
     try:
-        if intercept_output:
-            with redirect_stdout(f):
-                res = apply_with_seed(testset, testfunction, args, seed)
-        else:
+        with no_output(testname, extra_context=report_call,
+                       verbose=not intercept_output):
             res = apply_with_seed(testset, testfunction, args, seed)
-        if verbose: print(green("passed") + timedelta_str(start))
     except Exception as e:
-        if verbose:
-            print(red(f"failed ({e})") + timedelta_str(start))
-        else:
-            print(red(f"{testname} failed ({e})"))
         cscheme = None if config['colors'] else traceback.ColorSchemes.none
         traceback.print_exc(fmt=traceback.Format(color_scheme=cscheme))
-        print()
-        output = f.getvalue()
-        if len(output) > 0:
-            extra_cr = '\n' if output[-1] != '\n' else ''
-            print(
-              f"================== {testfunction}() output begin =================\n"
-              f"{output}{extra_cr}"
-              f"=================== {testfunction}() output end ==================\n")
         error = (testname, e)
     return res, error
 
@@ -367,3 +353,84 @@ def poll_for_condition(fun, sleep_time, attempts=None, timeout=None,
 
 def diag_eval(cluster, code):
     return post_succ(cluster, '/diag/eval', data=code)
+
+
+@contextlib.contextmanager
+def no_output(name, verbose=False, extra_context=contextlib.nullcontext()):
+    """
+    Executes context body with all the output redirected to a string.
+    If something crashes, it prints that output, otherwise it ignores it.
+    If verbose is true, it doesn't redirect anything.
+    If extra_context is provided, the body is executed in that context, but the
+    extra_context output is not redirected. The main purpose of
+    the extra_context param, is to have an ability to print something (the
+    result of execution) before this function starts dumping the redirected
+    output (in case of a crash)
+    """
+
+    if verbose:
+        with extra_context:
+            yield
+        return
+
+    f = io.StringIO()
+    try:
+        with extra_context:
+            with contextlib.redirect_stdout(f):
+                yield
+    except Exception as e:
+        output = f.getvalue()
+        if len(output) > 0:
+            extra_cr = '\n' if output[-1] != '\n' else ''
+            print(
+                f"================== {name} output begin =================\n"
+                f"{output}{extra_cr}"
+                f"=================== {name} output end ==================\n")
+
+        raise e
+
+
+@contextlib.contextmanager
+def call_reported(name, succ_str="ok", fail_str="failed", verbose=False,
+                  res_on_same_line=True):
+    """
+    Executes context body and reports result in the following format:
+      <name>...           <succ_str> [<time_taken>]
+    or
+      <name>...           <fail_str> [<time_taken>]
+    if context body throws exception.
+    If verbose is false, prints only unsuccessful result in slightly different
+    format.
+    If res_on_same_line is false, puts result on the next line.
+    """
+
+    start = time.time()
+    try:
+        str_to_print = f"  {name}... " + ('\n' if not res_on_same_line else '')
+        width_taken = len(str_to_print)
+        if verbose:
+            print(str_to_print, end='', flush=True)
+        yield
+        if verbose:
+            if res_on_same_line:
+                res = right_aligned(succ_str, taken=width_taken)
+            else:
+                res = succ_str
+            print(green(res) + timedelta_str(start))
+    except Exception as e:
+        short_exception = red('\n'.join(format_exception_only(e)).strip('\n'))
+        if verbose:
+            if res_on_same_line:
+                res = right_aligned(fail_str, taken=width_taken)
+            else:
+                res = fail_str
+            print(red(res) + timedelta_str(start))
+            print(f'    {short_exception}')
+        else:
+            print(red(f"{name} {fail_str} ({short_exception})"))
+        raise e
+
+
+def right_aligned(s, taken=0, width=config['screen_width']):
+    corrected_width = width - taken
+    return f'{s: >{corrected_width}}'
