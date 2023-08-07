@@ -202,20 +202,20 @@
               id="for-base-url-node"
               formControlName="spBaseURLType"
               value="node">
-          <label for="for-base-url-node">Node</label>
+          <label for="for-base-url-node">Node address</label>
           <input
               type="radio"
               id="for-base-url-alternate"
               formControlName="spBaseURLType"
               value="alternate">
-          <label for="for-base-url-alternate">Alternate Node</label>
+          <label for="for-base-url-alternate">Alternate node address</label>
           <input
               type="radio"
               id="for-base-url-custom"
               formControlName="spBaseURLType"
               value="custom">
-          <label for="for-base-url-custom">Custom Node</label>
-          <span>address URLs for all SAML services.</span>
+          <label for="for-base-url-custom">Custom URL</label>
+          <span>for all SAML services</span>
         </div>
 
 
@@ -261,7 +261,7 @@
              formControlName="spSignMetadata"
              type="checkbox"
              id="for-sp-sign-metadata">
-          <label for="for-sp-sign-metadata">Sign metadata using certificates specified below.</label>
+          <label for="for-sp-sign-metadata">Sign metadata using certificates specified below</label>
         </div>
       </div>
     </div>
@@ -316,7 +316,7 @@
 
         <div class="formrow fix-width-8-1">
           <label for="certificate-chain">Certificate chain (optional)</label>
-          <p class="desc">These certificates will be passed to IDP as metadata. IDP will use them for signature validation and encryption.</p>
+          <p class="desc">These certificates will be passed to IDP as metadata. IDP will use them for signature validation and encryption</p>
           <mn-file-reader
             [disable]="!(form.group.get('enabled').valueChanges | async)"
             [result]="form.group.get('spChain').valueChanges | async"
@@ -584,7 +584,7 @@
              formControlName="spVerifyAssertionSig"
              type="checkbox"
              id="for-sp-verify-assertion-sig">
-          <label for="for-sp-verify-assertion-sig">Validation assertion signature</label>
+          <label for="for-sp-verify-assertion-sig">Validate assertion signature</label>
         </div>
 
         <div class="formrow checkbox-list">
@@ -592,7 +592,7 @@
              formControlName="spVerifyAssertionEnvelopSig"
              type="checkbox"
              id="for-sp-verify-assertion-envelop-sig">
-          <label for="for-sp-verify-assertion-envelop-sig">Validation assertion envelop signature</label>
+          <label for="for-sp-verify-assertion-envelop-sig">Validate assertion envelope signature</label>
         </div>
 
         <span
@@ -819,18 +819,18 @@
               id="for-idp-metadata-connect-address-family-inet"
               formControlName="idpMetadataConnectAddressFamily"
               value="inet">
-          <label for="for-idp-metadata-connect-address-family-inet">inet</label>
+          <label for="for-idp-metadata-connect-address-family-inet">Inet</label>
           <input
               type="radio"
               id="for-idp-metadata-connect-address-family-inet6"
               formControlName="idpMetadataConnectAddressFamily"
               value="inet6">
-          <label for="for-idp-metadata-connect-address-family-inet6">inet6</label>
+          <label for="for-idp-metadata-connect-address-family-inet6">Inet6</label>
         </div>
 
         <div class="formrow form-inline">
           <div class="row flex-left">
-            SP metadata Cache Duration
+            Value of SP metadata cacheDuration attribute
             <input
                 type="text"
                 formControlName="spMetadataCacheDuration"
@@ -838,7 +838,7 @@
                 autocorrect="off"
                 spellcheck="false"
                 autocapitalize="off">
-                / ISO8601 duration
+                (ISO8601 duration)
             </div>
           <div
              class="error"
@@ -860,7 +860,7 @@
              formControlName="spSessionExpire"
              type="checkbox"
              id="for-sp-session-expire">
-          <label for="for-sp-session-expire">Respect "SessionNotOnOrAfter" / expire UI session with respect to "SessionNotOnOrAfter" attribute set by IDP</label>
+          <label for="for-sp-session-expire">Respect "SessionNotOnOrAfter" (expire UI session with respect to "SessionNotOnOrAfter" attribute set by IDP)</label>
         </div>
 
         <div class="formrow checkbox-list">
@@ -922,14 +922,14 @@
               id="for-sp-assertion-dupe-check-global"
               formControlName="spAssertionDupeCheck"
               value="global">
-          <label for="for-sp-assertion-dupe-check-global">global</label>
+          <label for="for-sp-assertion-dupe-check-global">Global</label>
           <input
               type="radio"
               id="for-sp-assertion-dupe-check-local"
               formControlName="spAssertionDupeCheck"
               value="alternate">
-          <label for="for-sp-assertion-dupe-check-local">local</label>
-          <span>cache of used assertions in order to prevent using the same assertion twice.</span>
+          <label for="for-sp-assertion-dupe-check-local">Local</label>
+          <span>cache of used assertions in order to prevent using the same assertion twice</span>
         </div>
 
 
