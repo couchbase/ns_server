@@ -129,6 +129,10 @@ maxttl_validator(State) ->
     State1 = validator:touch(maxTTL, State),
     case validator:get_value(maxTTL, State1) of
         "bucket" ->
+            %% Via REST api
+            State1;
+        <<"bucket">> ->
+            %% Via set_manifest
             State1;
         _ ->
             validator:integer(maxTTL, 0, ?MC_MAXINT, State1)

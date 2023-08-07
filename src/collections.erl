@@ -919,6 +919,10 @@ add_collection(Manifest, Name, ScopeName, SuppliedProps, BucketConf) ->
 maybe_reset_maxttl(Props) ->
     case proplists:get_value(maxTTL, Props) of
         "bucket" ->
+            %% Via REST api
+            proplists:delete(maxTTL, Props);
+        <<"bucket">> ->
+            %% Via set_manifest
             proplists:delete(maxTTL, Props);
         _ ->
             Props
@@ -1794,7 +1798,17 @@ set_manifest_t() ->
           [{"s1",
             [{collections, [{"c1", [{history, false}]}]}]}]),
     ?assertEqual([{maxTTL, 777}, {uid, 8}],
-                 get_collection("c1", get_scope("s1", Manifest5_3))).
+                 get_collection("c1", get_scope("s1", Manifest5_3))),
+
+    %% The collection's maxTTL can be reset using <<"bucket">> (as specified
+    %% in set_manifest handling; means use the bucket's maxTTL if it has one).
+    {commit, [{_, _, Manifest5_4}], _} =
+        update_manifest_test_set_manifest(
+          ExistingManifest5,
+          [{"s1",
+            [{collections, [{"c1", [{maxTTL, <<"bucket">>}]}]}]}]),
+    ?assertEqual([{uid, 8}, {history, true}],
+                 get_collection("c1", get_scope("s1", Manifest5_4))).
 
 upgrade_to_72_t() ->
     CollectionsKey = key("bucket"),
