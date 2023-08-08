@@ -300,12 +300,6 @@
 -define(INTERNAL_CERT_EMAIL_DOMAIN, "internal.couchbase.com").
 
 -define(CPU_COUNT_VAR, "COUCHBASE_CPU_COUNT").
-%% List of available tls versions:
-%% You should be able to simply update these macros to include or remove tls
-%% versions that we support or no longer support and a number of different
-%% validation functions should "just work".
--define(TLS_VERSIONS, #{'tlsv1.3'=> 3, 'tlsv1.2' => 2,
-                        'tlsv1.1' => 1, tlsv1 => 0}).
 
 %% Known Trinity profiles
 -define(SERVERLESS_PROFILE, serverless).

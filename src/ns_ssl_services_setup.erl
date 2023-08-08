@@ -44,10 +44,12 @@
          honor_cipher_order/1,
          honor_cipher_order/2,
          set_certs/6,
+         get_tls_version_map/0,
          get_supported_tls_versions/2,
          chronicle_upgrade_to_71/2,
          remove_node_certs/0,
-         update_certs_epoch/0]).
+         update_certs_epoch/0,
+         config_upgrade_to_trinity/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -195,10 +197,10 @@ dh_params_der() ->
       229,171,2,1,2>>.
 
 max_tls_version() ->
-    sorted_map_head(?TLS_VERSIONS, fun(V1, V2) -> V1 >= V2 end).
+    sorted_map_head(get_tls_version_map(), fun(V1, V2) -> V1 >= V2 end).
 
 min_tls_version() ->
-    sorted_map_head(?TLS_VERSIONS, fun(V1, V2) -> V1 =< V2 end).
+    sorted_map_head(get_tls_version_map(), fun(V1, V2) -> V1 =< V2 end).
 
 sorted_map_head(Map, PredicateFun) ->
     hd(lists:usort(
@@ -206,25 +208,38 @@ sorted_map_head(Map, PredicateFun) ->
                  PredicateFun(V1, V2)
          end, maps:to_list(Map))).
 
-%% Valid TLS version: [tlsv1, 'tlsv1.1', 'tlsv1.2', 'tlsv1.3']
+%% Map of available TLS versions:
+%% You should be able to simply update this to include or remove tls versions
+%% that we support or no longer support and a number of different validation
+%% functions should "just work".
+get_tls_version_map() ->
+    case cluster_compat_mode:is_cluster_trinity() of
+        true ->
+            #{'tlsv1.3' => 3, 'tlsv1.2' => 2};
+        false  ->
+            #{'tlsv1.3'=> 3, 'tlsv1.2' => 2, 'tlsv1.1' => 1, tlsv1 => 0}
+    end.
+
+%% Valid TLS versions: ['tlsv1.2', 'tlsv1.3']
 %% 'none' can be used as an unbounded end for a range
 -spec(get_supported_tls_versions(atom(), atom()) -> [atom()]).
 get_supported_tls_versions(none, MaxVsn) when is_atom(MaxVsn) ->
     get_supported_tls_versions(element(1, min_tls_version()), MaxVsn);
 get_supported_tls_versions(MinVsn, none) when is_atom(MinVsn) ->
     get_supported_tls_versions(MinVsn, element(1, max_tls_version()));
-get_supported_tls_versions(MinVsn, MaxVsn) when is_atom(MinVsn), is_atom(MaxVsn) ->
-    Min = case maps:get(MinVsn, ?TLS_VERSIONS, not_found) of
+get_supported_tls_versions(MinVsn, MaxVsn) when is_atom(MinVsn),
+                                                is_atom(MaxVsn) ->
+    Min = case maps:get(MinVsn, get_tls_version_map(), not_found) of
               not_found -> erlang:error(badarg);
               VMin -> VMin
           end,
-    Max = case maps:get(MaxVsn, ?TLS_VERSIONS, not_found) of
+    Max = case maps:get(MaxVsn, get_tls_version_map(), not_found) of
               not_found -> erlang:error(badarg);
               VMax -> VMax
           end,
     Allowed = maps:filter(fun (_, V) ->
                                   V =< Max andalso V >= Min
-                          end, ?TLS_VERSIONS),
+                          end, get_tls_version_map()),
     lists:sort(maps:keys(Allowed)).
 
 supported_versions(MinVer) ->
@@ -400,12 +415,12 @@ merge_ns_config_tls_options(OptionKey, Mod, TLSOptions) ->
     cleanup_options(TLSOptions2).
 
 cleanup_options(Opts) ->
-    %% ssl.erl fails if some option dependencies are not satisfied, but since
-    %% we build options dynamically and since they come from different sources
-    %% it may happen that some opts contradict each other. In most cases
-    %% it is safe to just drop one of the option as it doesn't make any sense
-    %% when another option is present. For example, there is no need in
-    %% in the reuse_sessions opt when tls version is strictly 1.3, so it's ok to
+    %% ssl.erl fails if some option dependencies are not satisfied. Since
+    %% we build options dynamically and they come from different sources,
+    %% it may happen that some options contradict each other. In most cases,
+    %% it is safe to just drop one of the options as it doesn't make any sense
+    %% when another option is present. For example, there is no need to honor
+    %% the reuse_sessions option when tls version is strictly 1.3, so it's ok to
     %% just drop it.
     %% This is not a comprehensive cleaning, for a full list of dependencies see
     %% assert_option_dependency in ssl.erl.
@@ -1336,6 +1351,73 @@ chronicle_upgrade_to_71(ChronicleTxn, NsConfig) ->
         end,
     chronicle_upgrade:set_key(ca_certificates, Props, ChronicleTxn2).
 
+security_config_update_warning(Version, MinVersion) ->
+    ale:info(?USER_LOGGER,
+             "Deleting global security setting: tlsMinVersion. ~p is no longer "
+             "supported; the minimum supported version is ~p.",
+             [Version, MinVersion]).
+
+security_config_update_warning(Version, MinVersion, Service) ->
+    ale:info(?USER_LOGGER,
+             "Deleting security setting: tlsMinVersion for ~p. ~p is no longer "
+             "supported; the minimum supported version is ~p.",
+             [ns_cluster_membership:user_friendly_service_name(Service),
+              Version, MinVersion]).
+
+tls_version_not_supported(Ver) ->
+    case maps:find(Ver, get_tls_version_map()) of
+        error -> true;
+        _ -> false
+    end.
+
+service_security_config_needs_update(Service, Config, MinVersion) ->
+    case ns_config:search_prop(Config, {security_settings, Service},
+                               ssl_minimum_protocol) of
+        undefined -> false;
+        Ver ->
+            case tls_version_not_supported(Ver) of
+                true ->
+                    security_config_update_warning(Ver, MinVersion, Service),
+                    true;
+                _ -> false
+            end
+    end.
+
+global_security_config_needs_update(Config, Key, MinVersion, Warn) ->
+    case ns_config:search(Config, Key) of
+        {value, Version} ->
+            case tls_version_not_supported(Version) of
+                true ->
+                    case Warn of
+                        true ->
+                            security_config_update_warning(Version, MinVersion);
+                        _ -> ok
+                    end,
+                    true;
+                _ -> false
+            end;
+        _ -> false
+    end.
+
+update_service_security_config(Service, Config) ->
+    {value, OldProps} = ns_config:search(Config, {security_settings, Service}),
+    NewProps = proplists:delete(ssl_minimum_protocol, OldProps),
+    case NewProps of
+        [] -> {delete, {security_settings, Service}};
+        _ -> {set, {security_settings, Service}, NewProps}
+    end.
+
+config_upgrade_to_trinity(Config) ->
+    {MinVersion, _} = min_tls_version(),
+    GlobalKeys = [{ssl_minimum_protocol, true},
+                  {internal_ssl_minimum_protocol, false}],
+    [{delete, Key} ||
+        {Key, Warn} <- GlobalKeys,
+        global_security_config_needs_update(Config, Key, MinVersion, Warn)] ++
+    [update_service_security_config(Service, Config) ||
+        Service <- menelaus_web_settings:services_with_security_settings(),
+        service_security_config_needs_update(Service, Config, MinVersion)].
+
 remove_node_certs() ->
     ?log_warning("Removing node certificate and private key"),
     file:delete(cert_info_file(node_cert)),
@@ -1519,29 +1601,203 @@ services_to_reload(client_cert) -> [cb_dist_tls, client_cert_event].
 -ifdef(TEST).
 
 check_tls_min_max_test() ->
-    Versions = get_supported_tls_versions('tlsv1.1', 'tlsv1.2'),
-    ?assertEqual(Versions, ['tlsv1.1', 'tlsv1.2']),
-    Versions2 = get_supported_tls_versions('tlsv1.1', 'tlsv1.3'),
-    ?assertEqual(Versions2, ['tlsv1.1', 'tlsv1.2', 'tlsv1.3']),
-    Versions3 = get_supported_tls_versions(none, 'tlsv1.3'),
-    ?assertEqual(Versions3, [tlsv1, 'tlsv1.1', 'tlsv1.2', 'tlsv1.3']),
-    Versions4 = get_supported_tls_versions('tlsv1.2', none),
-    ?assertEqual(Versions4, ['tlsv1.2', 'tlsv1.3']),
-    Versions5 = get_supported_tls_versions(none, none),
-    ?assertEqual(Versions5, [tlsv1, 'tlsv1.1', 'tlsv1.2', 'tlsv1.3']),
-    Versions6 = get_supported_tls_versions(none, tlsv1),
-    ?assertEqual(Versions6, [tlsv1]),
-    ?assertError(badarg, get_supported_tls_versions('tlsv1.4', 'another-atom')),
-    ?assertError(badarg, get_supported_tls_versions(tlsv1, 'tlsv1.4')),
-    Versions7 = get_supported_tls_versions(tlsv1, none),
-    ?assertEqual(Versions7, [tlsv1, 'tlsv1.1', 'tlsv1.2', 'tlsv1.3']),
-    Versions8 = get_supported_tls_versions(none, tlsv1),
-    ?assertEqual(Versions8, [tlsv1]),
-    Versions9 = get_supported_tls_versions(tlsv1, 'tlsv1.2'),
-    ?assertEqual(Versions9, [tlsv1, 'tlsv1.1', 'tlsv1.2']),
-    Vsn = max_tls_version(),
-    ?assertEqual(Vsn, {'tlsv1.3', 3}),
-    Vsn2 = min_tls_version(),
-    ?assertEqual(Vsn2, {tlsv1, 0}).
+    meck:new(cluster_compat_mode, [passthrough]),
+    meck:expect(cluster_compat_mode,
+                is_cluster_trinity,
+                fun() ->
+                        true
+                end),
 
+    try
+        Versions1 = get_supported_tls_versions('tlsv1.2', 'tlsv1.3'),
+        ?assertEqual(Versions1, ['tlsv1.2', 'tlsv1.3']),
+        Versions2 = get_supported_tls_versions(none, 'tlsv1.2'),
+        ?assertEqual(Versions2, ['tlsv1.2']),
+        Versions3 = get_supported_tls_versions('tlsv1.2', none),
+        ?assertEqual(Versions3, ['tlsv1.2', 'tlsv1.3']),
+        Versions4 = get_supported_tls_versions('tlsv1.3', none),
+        ?assertEqual(Versions4, ['tlsv1.3']),
+        Versions5 = get_supported_tls_versions(none, 'tlsv1.3'),
+        ?assertEqual(Versions5, ['tlsv1.2', 'tlsv1.3']),
+        Versions6 = get_supported_tls_versions(none, none),
+        ?assertEqual(Versions6, ['tlsv1.2', 'tlsv1.3']),
+        ?assertError(badarg, get_supported_tls_versions(tlsv1, 'tlsv1.2')),
+        ?assertError(badarg, get_supported_tls_versions('tlsv1.1', 'tlsv1.2')),
+        ?assertError(badarg, get_supported_tls_versions('tlsv1.2', 'tlsv1.4')),
+        Vsn = max_tls_version(),
+        ?assertEqual(Vsn, {'tlsv1.3', 3}),
+        Vsn2 = min_tls_version(),
+        ?assertEqual(Vsn2, {'tlsv1.2', 2}),
+        ok
+    after
+        meck:unload(cluster_compat_mode)
+    end,
+
+    meck:new(cluster_compat_mode, [passthrough]),
+    meck:expect(cluster_compat_mode,
+                is_cluster_trinity,
+                fun() ->
+                        false
+                end),
+
+    try
+        Versions7 = get_supported_tls_versions('tlsv1.1', 'tlsv1.2'),
+        ?assertEqual(Versions7, ['tlsv1.1', 'tlsv1.2']),
+        Versions8 = get_supported_tls_versions('tlsv1.1', 'tlsv1.3'),
+        ?assertEqual(Versions8, ['tlsv1.1', 'tlsv1.2', 'tlsv1.3']),
+        Versions9 = get_supported_tls_versions(none, 'tlsv1.3'),
+        ?assertEqual(Versions9, [tlsv1, 'tlsv1.1', 'tlsv1.2', 'tlsv1.3']),
+        Versions10 = get_supported_tls_versions('tlsv1.2', none),
+        ?assertEqual(Versions10, ['tlsv1.2', 'tlsv1.3']),
+        Versions11 = get_supported_tls_versions(none, none),
+        ?assertEqual(Versions11, [tlsv1, 'tlsv1.1', 'tlsv1.2', 'tlsv1.3']),
+        Versions12 = get_supported_tls_versions(none, tlsv1),
+        ?assertEqual(Versions12, [tlsv1]),
+        ?assertError(badarg, get_supported_tls_versions('tlsv1.4',
+                                                        'another-atom')),
+        ?assertError(badarg, get_supported_tls_versions(tlsv1, 'tlsv1.4')),
+        Versions13 = get_supported_tls_versions(tlsv1, none),
+        ?assertEqual(Versions13, [tlsv1, 'tlsv1.1', 'tlsv1.2', 'tlsv1.3']),
+        Versions14 = get_supported_tls_versions(none, tlsv1),
+        ?assertEqual(Versions14, [tlsv1]),
+        Versions15 = get_supported_tls_versions(tlsv1, 'tlsv1.2'),
+        ?assertEqual(Versions15, [tlsv1, 'tlsv1.1', 'tlsv1.2']),
+        Vsn3 = max_tls_version(),
+        ?assertEqual(Vsn3, {'tlsv1.3', 3}),
+        Vsn4 = min_tls_version(),
+        ?assertEqual(Vsn4, {tlsv1, 0}),
+        ok
+    after
+        meck:unload(cluster_compat_mode)
+    end.
+
+test_upgrade_config(Config, Expected) ->
+    Map = maps:from_list(Config),
+    ?assertEqual(lists:sort(config_upgrade_to_trinity(Map)),
+                 lists:sort(Expected)).
+
+config_upgrade_test() ->
+    meck:new(cluster_compat_mode, [passthrough]),
+    meck:expect(cluster_compat_mode,
+                is_cluster_trinity,
+                fun() ->
+                        true
+                end),
+
+    meck:new(ns_config, [passthrough]),
+    meck:expect(ns_config,
+                search,
+                fun(Config, Key) ->
+                        case maps:get(Key, Config, false) of
+                            false -> false;
+                            Version -> {value, Version}
+                        end
+                end),
+    meck:expect(ns_config,
+                search_prop,
+                fun(Config, Key, SubKey) ->
+                        case maps:get(Key, Config, false) of
+                            false -> undefined;
+                            Value ->
+                                case proplists:get_value(SubKey, Value) of
+                                    undefined -> undefined;
+                                    V -> V
+                                end
+                        end
+                end),
+    try
+        Config1 =
+            [{ssl_minimum_protocol, tlsv1},
+             {{security_settings, kv}, [{ssl_minimum_protocol, 'tlsv1.3'}]},
+             {{security_settings, fts}, [{ssl_minimum_protocol, 'tlsv1.1'}]},
+             {{security_settings, ns_server},
+              [{ssl_minimum_protocol, 'tlsv1'}]}],
+        Expected1 = [{delete, ssl_minimum_protocol},
+                     {delete, {security_settings, fts}},
+                     {delete, {security_settings, ns_server}}],
+
+        test_upgrade_config(Config1, Expected1),
+
+        Config2 =
+            [{{security_settings, kv},
+              [{ssl_minimum_protocol, 'tlsv1.3'}, {honorCipherOrder, false}]},
+             {{security_settings, fts},
+              [{ssl_minimum_protocol, 'tlsv1.1'}, {honorCipherOrder, true}]},
+             {{security_settings, ns_server},
+              [{ssl_minimum_protocol, tlsv1}, {honorCipherOrder, false}]}],
+        Expected2 = [{set, {security_settings, fts},
+                      [{honorCipherOrder, true}]},
+                     {set, {security_settings, ns_server},
+                      [{honorCipherOrder, false}]}],
+
+        test_upgrade_config(Config2, Expected2),
+
+        Config3 =
+            [{ssl_minimum_protocol, 'tlsv1.1'},
+             {{security_settings, kv},
+              [{ssl_minimum_protocol, 'tlsv1.2'}, {honorCipherOrder, false}]},
+             {{security_settings, fts},
+              [{ssl_minimum_protocol, 'tlsv1.2'}, {honorCipherOrder, true}]},
+             {{security_settings, ns_server},
+              [{ssl_minimum_protocol, 'tlsv1.2'}, {honorCipherOrder, false}]}],
+        Expected3 = [{delete, ssl_minimum_protocol}],
+
+        test_upgrade_config(Config3, Expected3),
+
+        Config4 =
+            [{ssl_minimum_protocol, 'tlsv1.2'},
+             {{security_settings, kv},
+              [{ssl_minimum_protocol, 'tlsv1.1'}, {honorCipherOrder, false}]},
+             {{security_settings, fts},
+              [{ssl_minimum_protocol, 'tlsv1.1'}, {honorCipherOrder, true}]},
+             {{security_settings, ns_server},
+              [{ssl_minimum_protocol, 'tlsv1.1'}, {honorCipherOrder, false}]}],
+        Expected4 = [{set, {security_settings, kv},
+                      [{honorCipherOrder, false}]},
+                     {set, {security_settings, fts},
+                      [{honorCipherOrder, true}]},
+                     {set, {security_settings, ns_server},
+                      [{honorCipherOrder, false}]}],
+
+        test_upgrade_config(Config4, Expected4),
+
+        Config5 =
+            [{ssl_minimum_protocol, 'tlsv1.2'},
+             {internal_ssl_minimum_protocol, 'tlsv1.1'},
+             {{security_settings, kv},
+              [{ssl_minimum_protocol, 'tlsv1.1'}, {honorCipherOrder, false}]},
+             {{security_settings, fts},
+              [{ssl_minimum_protocol, 'tlsv1.1'}, {honorCipherOrder, true}]},
+             {{security_settings, ns_server},
+              [{ssl_minimum_protocol, 'tlsv1.1'}, {honorCipherOrder, false}]}],
+        Expected5 = [{delete, internal_ssl_minimum_protocol},
+                     {set, {security_settings, kv},
+                      [{honorCipherOrder, false}]},
+                     {set, {security_settings, fts},
+                      [{honorCipherOrder, true}]},
+                     {set, {security_settings, ns_server},
+                      [{honorCipherOrder, false}]}],
+
+        test_upgrade_config(Config5, Expected5),
+
+        Config6 =
+            [{ssl_minimum_protocol, tlsv1},
+             {internal_ssl_minimum_protocol, 'tlsv1.1'},
+             {{security_settings, kv},
+              [{ssl_minimum_protocol, 'tlsv1.2'}, {honorCipherOrder, false}]},
+             {{security_settings, fts},
+              [{ssl_minimum_protocol, 'tlsv1.1'}, {honorCipherOrder, true}]},
+             {{security_settings, ns_server},
+              [{ssl_minimum_protocol, 'tlsv1.1'}]}],
+        Expected6 = [{delete, ssl_minimum_protocol},
+                     {delete, internal_ssl_minimum_protocol},
+                     {set, {security_settings, fts},
+                      [{honorCipherOrder, true}]},
+                     {delete, {security_settings, ns_server}}],
+
+        test_upgrade_config(Config6, Expected6),
+        ok
+    after
+        meck:unload(cluster_compat_mode)
+    end.
 -endif.

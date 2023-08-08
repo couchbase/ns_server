@@ -46,7 +46,7 @@
                               {depth, 0},
                               {packet, line},
                               {ip, {0,0,0,0}},
-                              {versions, ['tlsv1', 'tlsv1.1', 'tlsv1.2', 'tlsv1.3']},
+                              {versions, ['tlsv1.2', 'tlsv1.3']},
                               {port, 0}]).
 
 -ifdef(TEST).
@@ -609,7 +609,7 @@ option_test_() ->
 			                   {ip, {0,0,0,0}},
 			                   {port, 0},
 			                   {packet, 2},
-			                   {versions,[tlsv1,'tlsv1.1','tlsv1.2']}]),
+			                   {versions,['tlsv1.2']}]),
 			             lists:sort(ssl_connect_options([{active, true},{packet,2}])))
 		end
 		}

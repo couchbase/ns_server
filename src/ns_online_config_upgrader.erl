@@ -114,4 +114,5 @@ upgrade(?VERSION_72, Config) ->
         index_settings_manager:config_upgrade_to_trinity(Config) ++
         query_settings_manager:config_upgrade_to_trinity(Config) ++
         analytics_settings_manager:config_upgrade_to_trinity(Config) ++
-        mb_master:config_upgrade_to_trinity(Config)}.
+        mb_master:config_upgrade_to_trinity(Config) ++
+        ns_ssl_services_setup:config_upgrade_to_trinity(Config)}.

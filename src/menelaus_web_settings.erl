@@ -120,8 +120,8 @@ get_string(SV) ->
     {ok, list_to_binary(string:strip(SV))}.
 
 get_tls_version(SV) ->
-    SupportedStr = [atom_to_list(S) || S <- lists:sort(
-                                              maps:keys(?TLS_VERSIONS))],
+    TlsVersions = ns_ssl_services_setup:get_tls_version_map(),
+    SupportedStr = [atom_to_list(S) || S <- lists:sort(maps:keys(TlsVersions))],
     case lists:member(SV, SupportedStr) of
         true -> {ok, list_to_atom(SV)};
         false ->
@@ -1371,6 +1371,13 @@ test_conf() ->
       fun (_) -> error(should_not_be_called) end}].
 
 parse_post_data_test() ->
+    meck:new(cluster_compat_mode, [passthrough]),
+    meck:expect(cluster_compat_mode,
+                is_cluster_trinity,
+                fun() ->
+                        true
+                end),
+
     Conf = test_conf(),
     RH = ejson:encode({[{"Strict-Transport-Security",
                          <<"max-age=10%3Bpreload%3BincludeSubDomains">>}]}),
@@ -1381,8 +1388,8 @@ parse_post_data_test() ->
     GetNumberErr = <<"storageLimit - The value must be between 0 and 15.">>,
     ?assertEqual({ok, []}, parse_post_data(Conf, [], <<>>, KeyValidator)),
     ?assertEqual({ok, [{[secure_headers],
-                        [{"Strict-Transport-Security",
-                          "max-age=10;preload;includeSubDomains"}]},
+                      [{"Strict-Transport-Security",
+                        "max-age=10;preload;includeSubDomains"}]},
                        {[ssl_minimum_protocol], 'tlsv1.2'},
                        {[cipher_suites], []},
                        {[honor_cipher_order], true},
@@ -1456,6 +1463,42 @@ parse_post_data_test() ->
                  parse_post_data(Conf, [],
                                  <<"tlsMinVersion=tlsv1.2&notAllowed=1">>,
                                  KeyValidator)),
+    ?assertEqual({error, [<<"tlsMinVersion - Supported TLS versions are "
+                            "tlsv1.2, tlsv1.3">>]},
+                 parse_post_data(Conf, [],
+                                 <<"tlsMinVersion=tlsv1.1">>,
+                                 KeyValidator)),
+    ?assertEqual({error, [<<"data.tlsMinVersion - Supported TLS versions are "
+                            "tlsv1.2, tlsv1.3">>]},
+                 parse_post_data(Conf, ["data"],
+                                 <<"cipherSuites=[]&"
+                                   "honorCipherOrder=true&"
+                                   "tlsMinVersion=tlsv1.1">>,
+                                 KeyValidator)),
+    meck:expect(cluster_compat_mode,
+                is_cluster_trinity,
+                fun() ->
+                        false
+                end),
+    ?assertEqual({ok, [{[secure_headers],
+                      [{"Strict-Transport-Security",
+                        "max-age=10;preload;includeSubDomains"}]},
+                       {[ssl_minimum_protocol], 'tlsv1'}]},
+                 parse_post_data(Conf, [],
+                                 <<ResponseHeaders/binary,
+                                   "tlsMinVersion=tlsv1">>,
+                                 KeyValidator)),
+    ?assertEqual({ok, [{[{security_settings, kv}, cipher_suites], []},
+                       {[{security_settings, kv}, honor_cipher_order], true},
+                       {[{security_settings, kv}, ssl_minimum_protocol],
+                        'tlsv1.1'}]},
+                 parse_post_data(Conf, ["data"],
+                                 <<"cipherSuites=[]&"
+                                   "honorCipherOrder=true&"
+                                   "tlsMinVersion=tlsv1.1">>,
+                                 KeyValidator)),
+
+    meck:unload(cluster_compat_mode),
     ok.
 
 find_key_to_delete_test() ->
