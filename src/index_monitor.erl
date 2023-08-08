@@ -15,6 +15,7 @@
 -include("cut.hrl").
 
 -ifdef(TEST).
+-include("ns_test.hrl").
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
@@ -236,22 +237,22 @@ can_refresh(_State) ->
 %% functions
 health_monitor_test_setup() ->
     %% Mock ourselves so that we can check some history later
-    meck:new(index_monitor, [passthrough]),
+    ?meckNew(index_monitor, [passthrough]),
 
-    meck:new(service_agent),
+    ?meckNew(service_agent),
     meck:expect(service_agent,
                 spawn_connection_waiter,
                 fun(_,index) ->
                         ok
                 end),
 
-    meck:new(ns_pubsub),
+    ?meckNew(ns_pubsub),
     meck:expect(ns_pubsub, subscribe_link,
                 fun(_,_) ->
                         ok
                 end),
 
-    meck:new(auto_failover, [passthrough]),
+    ?meckNew(auto_failover, [passthrough]),
     meck:expect(auto_failover, get_cfg, fun() -> [] end).
 
 health_monitor_t() ->
@@ -266,9 +267,9 @@ health_monitor_t() ->
     meck:wait(index_monitor, handle_info, [refresh, '_'], 1000).
 
 health_monitor_test_teardown() ->
-    meck:unload(index_monitor),
-    meck:unload(service_agent),
-    meck:unload(ns_pubsub),
-    meck:unload(auto_failover).
+    ?meckUnload(index_monitor),
+    ?meckUnload(service_agent),
+    ?meckUnload(ns_pubsub),
+    ?meckUnload(auto_failover).
 
 -endif.

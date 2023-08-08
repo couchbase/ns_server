@@ -21,6 +21,7 @@
 -include("cut.hrl").
 
 -ifdef(TEST).
+-include("ns_test.hrl").
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
@@ -371,21 +372,21 @@ maybe_calculate_refresh_interval(DefaultValue) ->
 
 -ifdef(TEST).
 common_test_setup() ->
-    meck:new(chronicle_compat_events),
+    ?meckNew(chronicle_compat_events),
     meck:expect(chronicle_compat_events,
                 notify_if_key_changes,
                 fun (_,_) ->
                         ok
                 end),
 
-    meck:new(ns_node_disco),
+    ?meckNew(ns_node_disco),
     meck:expect(ns_node_disco,
                 nodes_wanted,
                 fun() ->
                         [node()]
                 end),
 
-    meck:new(ns_config),
+    ?meckNew(ns_config),
     meck:expect(ns_config, read_key_fast,
                 fun(health_monitor_refresh_interval, DefaultVal) ->
                         DefaultVal;
@@ -398,7 +399,7 @@ common_test_setup() ->
                         DefaultValue
                 end),
 
-    meck:new(ns_cluster_membership, [passthrough]),
+    ?meckNew(ns_cluster_membership, [passthrough]),
     meck:expect(ns_cluster_membership,
                 get_snapshot,
                 fun() ->
@@ -411,14 +412,14 @@ common_test_setup() ->
                         false
                 end),
 
-    meck:new(cluster_compat_mode, [passthrough]),
+    ?meckNew(cluster_compat_mode, [passthrough]),
     meck:expect(cluster_compat_mode,
                 get_compat_version,
                 fun() ->
                         ?VERSION_TRINITY
                 end),
 
-    meck:new(testconditions),
+    ?meckNew(testconditions),
     meck:expect(testconditions,
                 get,
                 fun(_) ->
@@ -429,16 +430,16 @@ basic_test_setup(Monitor) ->
     common_test_setup(),
 
     %% Do all of our common setup before the monitor specific setup in case the
-    %% specific monitor needs the meck:new() calls (it's not safe to call twice)
+    %% specific monitor needs the ?meckNew() calls (it's not safe to call twice)
     Monitor:health_monitor_test_setup().
 
 common_test_teardown() ->
-    meck:unload(chronicle_compat_events),
-    meck:unload(ns_node_disco),
-    meck:unload(ns_config),
-    meck:unload(ns_cluster_membership),
-    meck:unload(cluster_compat_mode),
-    meck:unload(testconditions).
+    ?meckUnload(chronicle_compat_events),
+    ?meckUnload(ns_node_disco),
+    ?meckUnload(ns_config),
+    ?meckUnload(ns_cluster_membership),
+    ?meckUnload(cluster_compat_mode),
+    ?meckUnload(testconditions).
 
 basic_test_teardown(Monitor, _X) ->
     Monitor:health_monitor_test_teardown(),

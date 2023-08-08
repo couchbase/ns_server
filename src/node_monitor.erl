@@ -19,6 +19,7 @@
 -include("ns_common.hrl").
 
 -ifdef(TEST).
+-include("ns_test.hrl").
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
@@ -163,7 +164,7 @@ can_refresh(_State) ->
 
 -ifdef(TEST).
 common_test_setup() ->
-    meck:new(mb_master),
+    ?meckNew(mb_master),
     meck:expect(mb_master, master_node, fun() -> node() end).
 
 %% See health_monitor.erl for tests common to all monitors that use these
@@ -171,19 +172,19 @@ common_test_setup() ->
 health_monitor_test_setup() ->
     common_test_setup(),
 
-    meck:new(ns_server_monitor, [passthrough]),
+    ?meckNew(ns_server_monitor, [passthrough]),
     meck:expect(ns_server_monitor,
-        get_nodes,
-        fun() ->
-            dict:append(node(), dict:new(), dict:new())
-        end),
+                get_nodes,
+                fun() ->
+                        dict:append(node(), dict:new(), dict:new())
+                end),
 
-    meck:new(kv_monitor, [passthrough]),
+    ?meckNew(kv_monitor, [passthrough]),
     meck:expect(kv_monitor,
-        get_nodes,
-        fun() ->
-            dict:append(node(), dict:new(), dict:new())
-        end),
+                get_nodes,
+                fun() ->
+                        dict:append(node(), dict:new(), dict:new())
+                end),
     ok.
 
 health_monitor_t() ->
@@ -225,10 +226,10 @@ health_monitor_t() ->
     ?assert(meck:called(kv_monitor, get_nodes, [])).
 
 common_test_teardown() ->
-    meck:unload(mb_master).
+    ?meckUnload(mb_master).
 
 health_monitor_test_teardown() ->
     common_test_teardown(),
-    meck:unload(ns_server_monitor).
+    ?meckUnload(ns_server_monitor).
 
 -endif.

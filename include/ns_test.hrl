@@ -7,6 +7,19 @@
 %% will be governed by the Apache License, Version 2.0, included in the file
 %% licenses/APL2.txt.
 
+-define(meckNew(Module, Options),
+        case whereis(meck_util:proc_name(Module)) of
+            undefined -> meck:new(Module, Options);
+            _ -> ok
+        end).
+-define(meckNew(Module), ?meckNew(Module, [])).
+
+-define(meckUnload(Module),
+        case whereis(meck_util:proc_name(Module)) of
+            undefined -> ok;
+            _ -> meck:unload(Module)
+        end).
+
 -define(assertListsEqual(Expect, Expr),
         (fun () ->
                  __X = lists:sort(Expect),

@@ -42,6 +42,7 @@
 -include("ns_common.hrl").
 
 -ifdef(TEST).
+-include("ns_test.hrl").
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
@@ -391,18 +392,17 @@ maybe_spawn_stats_collector(#{stats_collector := Pid} = MonitorState) ->
 %% See health_monitor.erl for tests common to all monitors that use these
 %% functions
 health_monitor_test_setup() ->
-    %% health_monitor setup creates the meck for chronicle_compat_events, we
-    %% just need to add an extra expects here
+    ?meckNew(chronicle_compat_events),
     meck:expect(chronicle_compat_events,
                 subscribe,
                 fun (_) ->
                         ok
                 end),
 
-    meck:new(auto_failover),
+    ?meckNew(auto_failover),
     meck:expect(auto_failover, get_cfg, fun() -> [{enabled,true}] end),
 
-    meck:new(ns_bucket, [passthrough]),
+    ?meckNew(ns_bucket, [passthrough]),
     meck:expect(ns_bucket, node_bucket_names, fun(_) -> [] end),
     meck:expect(ns_bucket, node_bucket_names_of_type, fun(_, persistent) -> []
                                                       end).
@@ -448,7 +448,7 @@ health_monitor_t() ->
     ?assertNotEqual(dict:new(), Buckets2).
 
 health_monitor_test_teardown() ->
-    meck:unload(auto_failover),
-    meck:unload(ns_bucket).
+    ?meckUnload(auto_failover),
+    ?meckUnload(ns_bucket).
 
 -endif.

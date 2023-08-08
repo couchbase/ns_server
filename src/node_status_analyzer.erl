@@ -59,6 +59,7 @@
 -include("ns_common.hrl").
 
 -ifdef(TEST).
+-include("ns_test.hrl").
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
@@ -203,6 +204,7 @@ can_refresh(_State) ->
 
 -ifdef(TEST).
 common_test_setup() ->
+    ?meckNew(chronicle_compat_events),
     meck:expect(chronicle_compat_events, subscribe, fun (_,_) -> true end).
 
 %% See health_monitor.erl for tests common to all monitors that use these
@@ -210,7 +212,7 @@ common_test_setup() ->
 health_monitor_test_setup() ->
     common_test_setup(),
 
-    meck:new(node_monitor, [passthrough]),
+    ?meckNew(node_monitor, [passthrough]),
     meck:expect(node_monitor,
                 get_nodes,
                 fun() ->
@@ -221,7 +223,7 @@ health_monitor_test_setup() ->
     %% we will attempt to analyze statuses from it which calls functions that
     %% we don't care to mock here. Just mock the kv_monitor function result
     %% instead.
-    meck:new(kv_monitor, [passthrough]),
+    ?meckNew(kv_monitor, [passthrough]),
     meck:expect(kv_monitor,
                 analyze_status,
                 fun(_,_) ->
@@ -272,7 +274,7 @@ common_test_teardown() ->
 health_monitor_test_teardown() ->
     common_test_teardown(),
 
-    meck:unload(node_monitor),
-    meck:unload(kv_monitor).
+    ?meckUnload(node_monitor),
+    ?meckUnload(kv_monitor).
 
 -endif.

@@ -15,6 +15,10 @@
 -include("ns_common.hrl").
 -include("cut.hrl").
 
+-ifdef(TEST).
+-include("ns_test.hrl").
+-endif.
+
 -export([start_link/0]).
 -export([get_nodes/0,
          can_refresh/1,
@@ -311,25 +315,25 @@ can_refresh(_State) ->
 %% See health_monitor.erl for tests common to all monitors that use these
 %% functions
 health_monitor_test_setup() ->
-    meck:new(dcp_traffic_monitor, [passthrough]),
+    ?meckNew(dcp_traffic_monitor, [passthrough]),
     meck:expect(dcp_traffic_monitor, get_nodes,
                 fun() ->
-                    dict:append(node(), dict:new(), dict:new())
+                        dict:append(node(), dict:new(), dict:new())
                 end),
 
-    meck:new(ns_bucket, [passthrough]),
+    ?meckNew(ns_bucket, [passthrough]),
     meck:expect(ns_bucket, get_buckets, fun() -> [] end),
     meck:expect(ns_bucket, node_bucket_names, fun(_) -> [] end),
     meck:expect(ns_bucket, buckets_with_data_on_this_node, fun() -> [] end),
 
-    meck:new(kv_stats_monitor),
+    ?meckNew(kv_stats_monitor),
     meck:expect(kv_stats_monitor, get_buckets, fun() -> [] end).
 
 health_monitor_t() ->
     ok.
 
 health_monitor_test_teardown() ->
-    meck:unload(dcp_traffic_monitor),
-    meck:unload(ns_bucket),
-    meck:unload(kv_stats_monitor).
+    ?meckUnload(dcp_traffic_monitor),
+    ?meckUnload(ns_bucket),
+    ?meckUnload(kv_stats_monitor).
 -endif.
