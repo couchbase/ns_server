@@ -30,6 +30,8 @@
                         nodes_wanted := [node()],
                         any() => any()}.
 
+-type service_monitor() :: service() | ns_server.
+
 %% @doc
 %% Behaviour that the actual monitors should implement. Much of this is
 %% implemented via a gen_server style API, note the differing number of
@@ -239,12 +241,15 @@ send_heartbeat(MonModule, SendNodes, Payload, MonitorState) ->
     send_heartbeat_inner(MonModule, SendNodes, {heartbeat, node(), Payload},
                          RefreshInterval).
 
+-spec local_monitors() -> [service_monitor()].
 local_monitors() ->
     node_monitors(node()).
 
+-spec node_monitors(node()) -> [service_monitor()].
 node_monitors(Node) ->
     [ns_server] ++ supported_services(Node).
 
+-spec supported_services(node()) -> [service_monitor()].
 supported_services(Node) ->
     Snapshot = ns_cluster_membership:get_snapshot(),
     Services =
