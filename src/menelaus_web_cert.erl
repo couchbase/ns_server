@@ -282,6 +282,7 @@ handle_regenerate_certificate(Req) ->
             end)
       end, Req, qs, [validator:boolean(dropUploadedCertificates, _),
                      validator:boolean(forceResetCACertificate, _ ),
+                     validator:no_duplicates(_),
                      validator:unsupported(_)]).
 
 %% deprecated, use menelaus_util:reply_global_error/2 instead
@@ -436,6 +437,7 @@ handle_reload_certificate(Type, Req) when Type == node_cert;
           validator:one_of(type, ["script", "rest", "plain"], _),
           validator:convert(type, binary_to_atom(_, latin1), _),
           validate_required_keys(type, _)], _),
+       validator:no_duplicates(_),
        validator:unsupported(_)]).
 
 validate_required_keys(Name, State) ->
@@ -453,6 +455,7 @@ validators(script) ->
      validator:default(args, [], _),
      validator:integer(timeout, _),
      validator:default(timeout, 5000, _),
+     validator:no_duplicates(_),
      validator:unsupported(_)];
 validators(rest) ->
     [validator:required(url, _),
@@ -483,10 +486,12 @@ validators(rest) ->
            (_) -> {error, "Headers must be a JSON object"}
        end, headers, _),
      validator:default(headers, [], _),
+     validator:no_duplicates(_),
      validator:unsupported(_)];
 validators(plain) ->
     [validator:required(password, _),
      validate_password(password, _),
+     validator:no_duplicates(_),
      validator:unsupported(_)].
 
 validate_script_path(Name, State) ->
@@ -541,6 +546,7 @@ validate_rest_url(Name, State) ->
 https_opts_validators() ->
     [validator:boolean(verifyPeer, _),
      validator:default(verifyPeer, true, _),
+     validator:no_duplicates(_),
      validator:unsupported(_)].
 
 validate_password(Name, State) ->

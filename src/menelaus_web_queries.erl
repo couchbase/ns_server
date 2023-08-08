@@ -42,7 +42,8 @@ settings_post_validators() ->
                                       "error", "severe", "none"], _),
      validator:convert(queryLogLevel, fun list_to_binary/1, _)] ++
         settings_post_validators_70() ++
-        [validator:unsupported(_)].
+        [validator:no_duplicates(_),
+         validator:unsupported(_)].
 
 settings_post_validators_70() ->
     case cluster_compat_mode:is_cluster_70() of
@@ -107,6 +108,7 @@ settings_curl_whitelist_validators() ->
      validator:convert(allowed_urls, ConvertArray, _),
      validator:string_array(disallowed_urls, _),
      validator:convert(disallowed_urls, ConvertArray, _),
+     validator:no_duplicates(_),
      validator:unsupported(_)].
 
 get_curl_whitelist_settings() ->

@@ -3178,6 +3178,7 @@ ui_stats_post_validators(Req) ->
      validator:integer(step, 1, 60 * 60 * 24 * 366, _),
      validator:string_array(nodes, _),
      validate_nodes(nodes, _, Req),
+     validator:no_duplicates(_),
      validator:unsupported(_)].
 
 validate_negative_ts(Name, Now, State) ->

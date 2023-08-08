@@ -426,6 +426,7 @@ post_validators(Now, Req) ->
                end;
            (_, _) -> ok
        end, nodesAggregation, metric, _),
+     validator:no_duplicates(_),
      validator:unsupported(_)].
 
 get_validators(Now, MetricName, Req) ->

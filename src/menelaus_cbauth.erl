@@ -49,6 +49,7 @@ handle_rpc_connect(?VERSION_1, Label, Req) ->
                   Params, [{type, auth}, {version, ?VERSION_1}]), Req)
       end, Req, qs,
       [validator:integer(heartbeat, 1, infinity, _),
+       validator:no_duplicates(_),
        validator:unsupported(_)]);
 handle_rpc_connect(_, _Label, Req) ->
     menelaus_util:reply_text(Req, "Version is not supported", 400).

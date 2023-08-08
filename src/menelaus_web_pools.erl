@@ -514,6 +514,7 @@ do_handle_pool_settings_post(Req) ->
       end, Req, form,
       pool_settings_post_validators(Config, Snapshot) ++
       [validator:has_params(_),
+       validator:no_duplicates(_),
        validator:unsupported(_)]).
 
 handle_pool_settings_post_body(Req, Config, Values) ->

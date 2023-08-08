@@ -83,6 +83,7 @@ get_handle_events_params(Values) ->
 handle_events_validators() ->
     [validator:iso_8601_utc(sinceTime, [], _),
      validator:integer(limit, -1, infinity, _),
+     validator:no_duplicates(_),
      validator:unsupported(_)].
 
 handle_events(Req) ->
@@ -278,6 +279,8 @@ alerts_query_validators() ->
 
      validator:string(subject, _),
      validator:default(subject, default(subject), _),
+
+     validator:no_duplicates(_),
 
      %% Any other parameters are unsupported.
      validator:unsupported(_)

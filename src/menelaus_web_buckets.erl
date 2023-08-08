@@ -895,10 +895,12 @@ validators_start_hibernation() ->
      %% rate_limit is expressed in bytes/sec.
      validator:required(rate_limit, _),
      validator:integer(rate_limit, 1024, 250 * ?MIB, _),
+     validator:no_duplicates(_),
      validator:unsupported(_)].
 
 validators_stop_hibernation() ->
     [validator:required(bucket, _), validator:string(bucket, _),
+     validator:no_duplicates(_),
      validator:unsupported(_)].
 
 handle_hibernation_response(Req, ok = _Response) ->

@@ -94,7 +94,9 @@ handle_node_init(Req) ->
                      {error, lists:flatten(Msg)}
              end
          end, hostname, _),
-       validator:has_params(_), validator:unsupported(_)]).
+       validator:has_params(_),
+       validator:no_duplicates(_),
+       validator:unsupported(_)]).
 
 node_init_validators() ->
     [validator:trimmed_string(dataPath, _),
@@ -1212,6 +1214,7 @@ net_config_validators(SafeAction) ->
     afamily_validators() ++
     node_encryption_validators() ++
     [validator:has_params(_),
+     validator:no_duplicates(_),
      validator:unsupported(_)] ++
      case SafeAction of
          true -> [];

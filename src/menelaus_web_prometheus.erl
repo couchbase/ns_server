@@ -101,6 +101,7 @@ sd_config_validators() ->
      validator:convert(port, fun list_to_atom/1, _),
      validator:one_of(network, ["default", "external"], _),
      validator:convert(network, fun list_to_atom/1, _),
+     validator:no_duplicates(_),
      validator:unsupported(_)
     ].
 

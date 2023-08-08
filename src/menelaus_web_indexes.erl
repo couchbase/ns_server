@@ -242,7 +242,9 @@ handle_settings_post(Req) ->
               menelaus_util:reply_json(Req, {get_settings()})
       end, Req, form,
       settings_post_validators() ++
-      [validator:has_params(_), validator:unsupported(_)]).
+      [validator:has_params(_),
+       validator:no_duplicates(_),
+       validator:unsupported(_)]).
 
 apply_indexes_settings(Req, Values) ->
     Values1 = update_storage_mode(Req, Values),

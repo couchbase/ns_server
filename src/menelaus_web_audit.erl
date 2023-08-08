@@ -245,4 +245,5 @@ validators(Config) ->
      validator:integer(rotateSize, 0, 500*1024*1024, _),
      validate_events(disabled, Descriptors, _),
      validate_users(disabledUsers, _),
+     validator:no_duplicates(_),
      validator:unsupported(_)].

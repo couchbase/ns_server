@@ -45,6 +45,7 @@ handle_post_retry(Req) ->
                          ?RETRY_AFTER_MIN, ?RETRY_AFTER_MAX, _),
        validator:integer(maxAttempts,
                          ?RETRY_ATTEMPTS_MIN, ?RETRY_ATTEMPTS_MAX, _),
+       validator:no_duplicates(_),
        validator:unsupported(_)]).
 
 handle_get_pending_retry(_PoolId, Req) ->

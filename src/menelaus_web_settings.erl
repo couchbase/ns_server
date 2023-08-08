@@ -1304,6 +1304,7 @@ handle_settings_rebalance_post(Req) ->
       [validator:required(rebalanceMovesPerNode, _),
        validator:integer(rebalanceMovesPerNode, ?MIN_OF_MAX_MOVES_PER_NODE,
                          ?MAX_OF_MAX_MOVES_PER_NODE, _),
+       validator:no_duplicates(_),
        validator:unsupported(_)]).
 
 handle_settings_data_service(Req) ->
@@ -1322,6 +1323,7 @@ handle_settings_data_service_post(Req) ->
       [validator:required(minReplicasCount, _),
        validator:integer(minReplicasCount, ?MIN_REPLICAS_SUPPORTED,
                          ?MAX_NUM_REPLICAS, _),
+       validator:no_duplicates(_),
        validator:unsupported(_)]).
 
 parse_int_creds_rotation_int("0") ->
