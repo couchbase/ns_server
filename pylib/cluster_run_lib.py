@@ -376,6 +376,7 @@ def start_cluster(num_nodes=1,
                   force_community=False,
                   run_serverless=False,
                   run_provisioned=False,
+                  num_vbuckets=None,
                   dev_preview_default=None,
                   args=[],
                   root_dir=ns_server_dir,
@@ -458,6 +459,9 @@ def start_cluster(num_nodes=1,
 
         if run_provisioned:
             params['env']['CB_FORCE_PROFILE'] = "provisioned"
+
+        if num_vbuckets:
+            params['env']['COUCHBASE_NUM_VBUCKETS'] = f"{num_vbuckets}"
 
         path = params['env']['PATH']
         path = (PREFIX + "/bin") + os.pathsep + path

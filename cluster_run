@@ -157,6 +157,11 @@ def argument_parser():
         help="<address family> Using ipv4 or ipv6",
         metavar="")
     arg_parser.add_argument(
+        '--num_vbuckets',
+        type=int,
+        default=None,
+        help=f"The number of vbuckets created for any bucket (default: 1024)")
+    arg_parser.add_argument(
         dest="additional_args",
         nargs="*",
         help=argparse.SUPPRESS,
@@ -183,6 +188,7 @@ def argument_parser():
               "force_community": args.community,
               "run_serverless": args.serverless,
               "run_provisioned": args.provisioned,
+              "num_vbuckets": args.num_vbuckets,
               "args": args.additional_args
               }
 

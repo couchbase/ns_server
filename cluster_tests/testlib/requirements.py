@@ -16,7 +16,7 @@ from testlib import get_succ
 class ClusterRequirements:
     def __init__(self, edition=None, num_nodes=None, memsize=None,
                  num_connected=None, afamily=None, services=None,
-                 master_password_state=None):
+                 master_password_state=None, num_vbuckets=None):
         self.requirements = []
         if edition is not None:
             self.requirements.append(Edition(edition))
@@ -33,6 +33,8 @@ class ClusterRequirements:
             self.requirements.append(Services(services))
         if master_password_state is not None:
             self.requirements.append(MasterPasswordState(master_password_state))
+        if num_vbuckets is not None:
+            self.requirements.append(NumVbuckets(num_vbuckets))
 
     def __str__(self):
         immutable_requirements = list(filter(lambda x: not x.can_be_met(),
@@ -55,7 +57,11 @@ class ClusterRequirements:
                 # Without this we would have cluster outputs overlapping test
                 # output
                 'nooutput': True,
-                'num_nodes': 1
+                'num_nodes': 1,
+                # Reduce the default num vbuckets to 16 to aid with faster
+                # rebalance time. If a specific test needs 1024 vbuckets,
+                # it can be passed down as a requirement.
+                'num_vbuckets': 16
         }
 
     @staticmethod
@@ -300,3 +306,23 @@ class MasterPasswordState(Requirement):
                 return False
 
         return True
+
+
+class NumVbuckets(Requirement):
+    def __init__(self, num_vbuckets):
+        super().__init__(num_vbuckets=num_vbuckets)
+
+        if num_vbuckets <= 0:
+            raise ValueError("num_vbuckets needs to be > 0")
+
+        if num_vbuckets > 1024:
+            raise ValueError("num_vbuckets needs to be <= 1024")
+
+        self.num_vbuckets = num_vbuckets
+        self.start_args = {"num_vbuckets": num_vbuckets}
+
+    def is_met(self, cluster):
+        r = testlib.diag_eval(cluster,
+                              code="ns_bucket:get_default_num_vbuckets()")
+        default_num_vbuckets = r.content.decode('ascii')
+        return int(default_num_vbuckets) == self.num_vbuckets
