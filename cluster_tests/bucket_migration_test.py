@@ -86,23 +86,9 @@ class BucketMigrationTest(testlib.BaseTestSet):
 
     def setup(self, cluster):
         testlib.delete_all_buckets(cluster)
-        # We modify the couchbase_num_vbuckets_default key below - assert it
-        # isn't currently already set to prevent unexpected behavior once it is
-        # deleted in the teardown function below.
-        curr_num_vbuckets = testlib.post_succ(
-            cluster, "/diag/eval",
-            data='ns_bucket:get_default_num_vbuckets()').content.decode('ascii')
-        assert curr_num_vbuckets == "1024", "non-default num vbuckets set"
-
-        # Set default num vbuckets for any bucket to 64 to reduce rebalance
-        # times.
-        diag_eval = f'ns_config:set(couchbase_num_vbuckets_default, 64)'
-        testlib.post_succ(cluster, "/diag/eval", data=diag_eval)
 
     def teardown(self, cluster):
         testlib.delete_all_buckets(cluster)
-        diag_eval = f'ns_config:delete(couchbase_num_vbuckets_default)'
-        testlib.post_succ(cluster, "/diag/eval", data=diag_eval)
 
     def migrate_storage_mode_test(self, cluster):
         # couchstore -> magma migration.
