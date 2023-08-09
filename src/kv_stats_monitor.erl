@@ -393,12 +393,12 @@ maybe_spawn_stats_collector(#{stats_collector := Pid} = MonitorState) ->
 common_test_setup() ->
     ?meckNew(chronicle_compat_events),
     meck:expect(chronicle_compat_events,
-        subscribe,
-        fun (_) ->
-            ok
-        end),
+                subscribe,
+                fun (_) ->
+                        ok
+                end),
 
-    ?meckNew(auto_failover),
+    ?meckNew(auto_failover, [passthrough]),
     meck:expect(auto_failover, get_cfg, fun() -> [{enabled,true}] end),
 
     ?meckNew(ns_bucket, [passthrough]),

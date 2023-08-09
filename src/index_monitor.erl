@@ -31,7 +31,9 @@
 -export([handle_call/3, handle_cast/2, handle_info/2]).
 
 -ifdef(TEST).
--export([health_monitor_test_setup/0,
+-export([common_test_setup/0,
+         common_test_teardown/0,
+         health_monitor_test_setup/0,
          health_monitor_t/0,
          health_monitor_test_teardown/0]).
 -endif.
@@ -235,10 +237,7 @@ can_refresh(_State) ->
 -ifdef(TEST).
 %% See health_monitor.erl for tests common to all monitors that use these
 %% functions
-health_monitor_test_setup() ->
-    %% Mock ourselves so that we can check some history later
-    ?meckNew(index_monitor, [passthrough]),
-
+common_test_setup() ->
     ?meckNew(service_agent),
     meck:expect(service_agent,
                 spawn_connection_waiter,
@@ -255,6 +254,12 @@ health_monitor_test_setup() ->
     ?meckNew(auto_failover, [passthrough]),
     meck:expect(auto_failover, get_cfg, fun() -> [] end).
 
+health_monitor_test_setup() ->
+    %% Mock ourselves so that we can check some history later
+    ?meckNew(index_monitor, [passthrough]),
+
+    common_test_setup().
+
 health_monitor_t() ->
     {state, index_monitor, #{tick := InitialTick}} = sys:get_state(?MODULE),
     ?assertEqual(tock, InitialTick),
@@ -266,10 +271,14 @@ health_monitor_t() ->
 
     meck:wait(index_monitor, handle_info, [refresh, '_'], 1000).
 
-health_monitor_test_teardown() ->
-    ?meckUnload(index_monitor),
+common_test_teardown() ->
     ?meckUnload(service_agent),
     ?meckUnload(ns_pubsub),
     ?meckUnload(auto_failover).
+
+health_monitor_test_teardown() ->
+    ?meckUnload(index_monitor),
+
+    common_test_teardown().
 
 -endif.

@@ -22,7 +22,8 @@
           node_monitor,
           dcp_traffic_monitor,
           kv_monitor,
-          kv_stats_monitor
+          kv_stats_monitor,
+          index_monitor
          ]).
 
 test_setup() ->
@@ -173,9 +174,9 @@ behaviour_cover_test_setup() ->
     %% above as we don't want to test the functionality, but we do need meck
     %% running to check the history later.
     lists:foreach(
-        fun(Module) ->
-            meck:new(Module, [passthrough])
-        end, ?TESTABLE_MONITORS),
+      fun(Module) ->
+              meck:new(Module, [passthrough])
+      end, ?TESTABLE_MONITORS),
 
     test_setup().
 
@@ -192,14 +193,20 @@ behaviour_cover_test_teardown(SupPid) ->
 %% test that the monitors interact with one another as expected (and without
 %% crashing).
 behaviour_cover_t() ->
-    meck:expect(ns_cluster_membership,
-                should_run_service,
-                fun(_,_,_) ->
-                        true
-                end),
+    %% We will only spawn monitors for supported services, but this function
+    %% by default will only create one or the other, as we should not fail
+    %% over a KV node if indexing has issues. We will just pretend here that
+    %% we have both.
+    meck:expect(health_monitor, supported_services,
+                fun(_) -> [kv, index] end),
 
     %% Need to refresh children to spawn the kv and index monitors
     health_monitor_sup:refresh_children(),
+
+    %% When we refresh node_monitors local_monitors we need to override that
+    %% function too or we will end up with the default behaviour of KV OR index.
+    meck:expect(health_monitor, local_monitors,
+                fun() -> [ns_server, kv, index] end),
 
     %% Need to tell the node_monitor that there are other monitors to look at
     node_monitor ! node_changed,
@@ -227,6 +234,8 @@ behaviour_cover_t() ->
     Now = erlang:monotonic_time(),
     dcp_traffic_monitor:node_alive(node(), {"default", Now, PidToMonitor}),
     misc:terminate_and_wait(PidToMonitor, "reason"),
+
+    gen_server:cast(index_monitor, {got_connection, self()}),
 
     ?assert(misc:poll_for_condition(
               fun() ->
