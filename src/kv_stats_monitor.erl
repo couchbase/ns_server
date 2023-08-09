@@ -50,8 +50,7 @@
 -define(DISK_ISSUE_THRESHOLD, ?get_param(disk_issue_threshold, 60)).
 
 -export([start_link/0]).
--export([get_buckets/0,
-         get_reason/1,
+-export([get_reason/1,
          analyze_status/1,
          is_failure/1]).
 
@@ -105,7 +104,7 @@ init(BaseMonitorState) ->
                         stats_collector => undefined,
                         latest_stats => {undefined, dict:new()}}).
 
-handle_call(get_buckets, _From, MonitorState) ->
+handle_call(get_nodes, _From, MonitorState) ->
     #{buckets := Buckets} = MonitorState,
     RV = dict:fold(
            fun(Bucket, {Status, _}, Acc) ->
@@ -181,8 +180,6 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %% APIs
-get_buckets() ->
-    gen_server:call(?MODULE, get_buckets).
 
 get_reason({io_failed, Buckets}) ->
     {"Disk reads and writes failed on following buckets: " ++
@@ -218,7 +215,7 @@ can_refresh(_State) ->
     true.
 
 get_nodes() ->
-    get_buckets().
+    gen_server:call(?MODULE, get_nodes).
 
 %% Internal functions
 get_errors() ->

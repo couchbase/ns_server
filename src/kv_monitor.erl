@@ -289,7 +289,7 @@ get_buckets_status(Buckets) ->
         [{B, ready} || B <- ReadyBuckets, lists:member(B, Buckets)].
 
 check_for_io_failure(Statuses) ->
-    IOFailed = [{B, State} || {B, State} <- kv_stats_monitor:get_buckets(),
+    IOFailed = [{B, State} || {B, State} <- kv_stats_monitor:get_nodes(),
                               State =/= active],
     case IOFailed of
         [] ->
@@ -327,7 +327,7 @@ health_monitor_test_setup() ->
     meck:expect(ns_bucket, buckets_with_data_on_this_node, fun() -> [] end),
 
     ?meckNew(kv_stats_monitor),
-    meck:expect(kv_stats_monitor, get_buckets, fun() -> [] end).
+    meck:expect(kv_stats_monitor, get_nodes, fun() -> [] end).
 
 health_monitor_t() ->
     ok.
