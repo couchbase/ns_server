@@ -127,9 +127,8 @@ handle_call(Call, From,
     case MonModule:handle_call(Call, From, MonState) of
         {ReplyType, Reply} ->
             {ReplyType, Reply, State};
-        {ReplyType, Reply, NewStatuses} ->
-            {ReplyType, Reply,
-             State#state{monitor_state = MonState#{nodes => NewStatuses}}}
+        {ReplyType, Reply, NewMonitorState} ->
+            {ReplyType, Reply, State#state{monitor_state = NewMonitorState}}
     end.
 
 handle_cast({heartbeat, Node}, State) ->
