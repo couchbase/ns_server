@@ -18,30 +18,35 @@ class ClusterRequirements:
     def __init__(self, edition=None, num_nodes=None, memsize=None,
                  num_connected=None, afamily=None, services=None,
                  master_password_state=None, num_vbuckets=None):
-        self.requirements = []
-        if edition is not None:
-            self.requirements.append(Edition(edition))
-        if num_nodes is not None:
-            self.requirements.append(NumNodes(num_nodes, num_connected))
-        elif num_connected is not None:
+
+        def maybe(f, x):
+            if x is None:
+                return None
+            return f(x)
+
+        if num_nodes is None and num_connected is not None:
             raise ValueError("num_connected cannot be specified without "
                              "num_nodes also being specified")
-        if memsize is not None:
-            self.requirements.append(MemSize(memsize))
-        if afamily is not None:
-            self.requirements.append(AFamily(afamily))
-        if services is not None:
-            self.requirements.append(Services(services))
-        if master_password_state is not None:
-            self.requirements.append(MasterPasswordState(master_password_state))
-        if num_vbuckets is not None:
-            self.requirements.append(NumVbuckets(num_vbuckets))
+        self.requirements = \
+            {
+                'edition': maybe(lambda x: Edition(x), edition),
+                'num_nodes':
+                    maybe(lambda x: NumNodes(x, num_connected), num_nodes),
+                'memsize': maybe(lambda x: MemSize(x), memsize),
+                'afamily': maybe(lambda x: AFamily(x), afamily),
+                'services': maybe(lambda x: Services(x), services),
+                'master_password_state':
+                    maybe(lambda x: MasterPasswordState(x),
+                          master_password_state),
+                'num_vbuckets': maybe(lambda x: NumVbuckets(x), num_vbuckets)
+            }
 
     def __str__(self):
+        all_reqs = sorted(self.as_list(), key= lambda x: x.__class__.__name__)
         immutable_requirements = list(filter(lambda x: not x.can_be_met(),
-                                             self.requirements))
+                                             all_reqs))
         mutable_requirements = list(filter(lambda x: x.can_be_met(),
-                                           self.requirements))
+                                           all_reqs))
         # List the requirements with mutables last, so that compatible
         # configurations would be adjacent when ordered by string
         requirements = immutable_requirements + mutable_requirements
@@ -72,17 +77,20 @@ class ClusterRequirements:
                 'num_nodes': start_args['num_nodes']
                }
 
+    def as_list(self):
+        return list(filter(lambda x: x is not None, self.requirements.values()))
+
     @testlib.no_output_decorator
     def create_cluster(self, auth, start_index, tmp_cluster_dir, kill_nodes):
         start_args = {'start_index': start_index,
                       'root_dir': f"{tmp_cluster_dir}-{start_index}"}
         start_args.update(self.get_default_start_args())
-        for requirement in self.requirements:
+        for requirement in self.as_list():
             start_args.update(requirement.start_args)
 
         connect_args = {'start_index': start_index}
         connect_args.update(self.get_default_connect_args(start_args))
-        for requirement in self.requirements:
+        for requirement in self.as_list():
             connect_args.update(requirement.connect_args)
 
         cluster = build_cluster(auth=auth,
@@ -103,7 +111,7 @@ class ClusterRequirements:
     def is_satisfiable(self, cluster):
         unsatisfied = []
         satisfiable = True
-        for requirement in self.requirements:
+        for requirement in self.as_list():
             if not requirement.is_met(cluster):
                 unsatisfied.append(requirement)
                 if not requirement.can_be_met():
@@ -113,7 +121,7 @@ class ClusterRequirements:
     @testlib.no_output_decorator
     def get_unmet_requirements(self, cluster):
         unmet_requirements = []
-        for requirement in self.requirements:
+        for requirement in self.as_list():
             if not requirement.is_met(cluster):
                 unmet_requirements.append(requirement)
         return unmet_requirements
@@ -122,11 +130,28 @@ class ClusterRequirements:
     # cluster satisfying some 'other' ClusterRequirements
     @testlib.no_output_decorator
     def satisfied_by(self, other):
-        for requirement in self.requirements:
+        for requirement in self.as_list():
             if not (any(requirement == other_requirement
                         for other_requirement in other.requirements)):
                 return False
         return True
+
+    @testlib.no_output_decorator
+    def intersect(self, other):
+        new_reqs = ClusterRequirements()
+        for k in self.requirements:
+            r1 = self.requirements[k]
+            r2 = other.requirements[k]
+            if r1 == r2:
+                new_reqs.requirements[k] = r1
+            elif r1 is None:
+                new_reqs.requirements[k] = r2
+            elif r2 is None:
+                new_reqs.requirements[k] = r1
+            else:
+                return False, new_reqs
+
+        return True, new_reqs
 
 
 class Requirement(ABC):
