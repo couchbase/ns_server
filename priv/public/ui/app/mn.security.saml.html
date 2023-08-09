@@ -195,29 +195,29 @@
           </div>
         </div>
 
-        <div class="formrow radio-chips">
-          <span>Use</span>
-          <input
-              type="radio"
-              id="for-base-url-node"
-              formControlName="spBaseURLType"
-              value="node">
-          <label for="for-base-url-node">Node address</label>
-          <input
-              type="radio"
-              id="for-base-url-alternate"
-              formControlName="spBaseURLType"
-              value="alternate">
-          <label for="for-base-url-alternate">Alternate node address</label>
-          <input
-              type="radio"
-              id="for-base-url-custom"
-              formControlName="spBaseURLType"
-              value="custom">
-          <label for="for-base-url-custom">Custom URL</label>
-          <span>for all SAML services</span>
+        <div class="formrow">
+          <label>SP Base URL Type</label>
+          <div class="formrow checkbox-list">
+            <input
+                type="radio"
+                id="for-base-url-node"
+                formControlName="spBaseURLType"
+                value="node">
+            <label for="for-base-url-node">Node address</label>
+            <input
+                type="radio"
+                id="for-base-url-alternate"
+                formControlName="spBaseURLType"
+                value="alternate">
+            <label for="for-base-url-alternate">Alternate node address</label>
+            <input
+                type="radio"
+                id="for-base-url-custom"
+                formControlName="spBaseURLType"
+                value="custom">
+            <label for="for-base-url-custom">Custom URL</label>
+          </div>
         </div>
-
 
         <div [hidden]="!((form.group.get('spBaseURLType').valueChanges | async) === 'custom')" class="formrow fix-width-8-1">
           <label for="customURL">Custom URL</label>
@@ -240,20 +240,22 @@
 
         <div
             [hidden]="(form.group.get('spBaseURLType').valueChanges | async) === 'custom'"
-            class="formrow radio-chips">
-          <span>Scheme</span>
-          <input
-              type="radio"
-              id="for-sp-base-scheme-https"
-              formControlName="spBaseURLScheme"
-              value="https">
-          <label for="for-sp-base-scheme-https">https</label>
-          <input
-              type="radio"
-              id="for-sp-base-scheme-http"
-              formControlName="spBaseURLScheme"
-              value="http">
-          <label for="for-sp-base-scheme-http">http</label>
+            class="formrow">
+          <label>SP Base URL Scheme</label>
+          <div class="formrow checkbox-list">
+            <input
+                type="radio"
+                id="for-sp-base-scheme-https"
+                formControlName="spBaseURLScheme"
+                value="https">
+            <label for="for-sp-base-scheme-https">https</label>
+            <input
+                type="radio"
+                id="for-sp-base-scheme-http"
+                formControlName="spBaseURLScheme"
+                value="http">
+            <label for="for-sp-base-scheme-http">http</label>
+          </div>
         </div>
 
         <div class="formrow checkbox-list">
@@ -354,21 +356,22 @@
       </span>
 
       <div [hidden]="!(showIdentityProviderMetaData.state | async)" class="margin-top-half margin-bottom-half indent-1-5 margin-bottom-1">
-
-        <div class="formrow radio-chips">
-          <span>Load IDP metadata from</span>
-          <input
-              type="radio"
-              id="for-idp-metadata-origin-url"
-              formControlName="idpMetadataOrigin"
-              value="http">
-          <label for="for-idp-metadata-origin-url">URL</label>
-          <input
-              type="radio"
-              id="for-idp-metadata-origin-file"
-              formControlName="idpMetadataOrigin"
-              value="upload">
-          <label for="for-idp-metadata-origin-file">File</label>
+        <div class="formrow">
+          <label>Load IDP metadata from</label>
+          <div class="formrow checkbox-list">
+            <input
+                type="radio"
+                id="for-idp-metadata-origin-url"
+                formControlName="idpMetadataOrigin"
+                value="http">
+            <label for="for-idp-metadata-origin-url">URL</label>
+            <input
+                type="radio"
+                id="for-idp-metadata-origin-file"
+                formControlName="idpMetadataOrigin"
+                value="upload">
+            <label for="for-idp-metadata-origin-file">File</label>
+          </div>
         </div>
 
         <div [hidden]="!((form.group.get('idpMetadataOrigin').valueChanges | async) === 'http')" class="formrow fix-width-5">
@@ -546,36 +549,40 @@
 
       <div [hidden]="!(showSingleSignOn.state | async)" class="margin-top-half margin-bottom-half indent-1-5 margin-bottom-1">
 
-        <div class="formrow radio-chips">
-          <span>Authentication IDP Binding: </span>
-          <input
-              type="radio"
-              id="for-auth-idp-binding-post"
-              formControlName="idpAuthnBinding"
-              value="post">
-          <label for="for-auth-idp-binding-post">Post</label>
-          <input
-              type="radio"
-              id="for-auth-idp-binding-redirect"
-              formControlName="idpAuthnBinding"
-              value="redirect">
-          <label for="for-auth-idp-binding-redirect">Redirect</label>
+        <div class="formrow">
+          <label>Authentication IDP Binding</label>
+          <div class="formrow checkbox-list">
+            <input
+                type="radio"
+                id="for-auth-idp-binding-post"
+                formControlName="idpAuthnBinding"
+                value="post">
+            <label for="for-auth-idp-binding-post">Post</label>
+            <input
+                type="radio"
+                id="for-auth-idp-binding-redirect"
+                formControlName="idpAuthnBinding"
+                value="redirect">
+            <label for="for-auth-idp-binding-redirect">Redirect</label>
+          </div>
         </div>
 
-        <div class="formrow radio-chips">
-          <span>Logout IDP binding: </span>
-          <input
-              type="radio"
-              id="for-logout-idp-binding-post"
-              formControlName="idpLogoutBinding"
-              value="post">
-          <label for="for-logout-idp-binding-post">Post</label>
-          <input
-              type="radio"
-              id="for-logout-idp-binding-redirect"
-              formControlName="idpLogoutBinding"
-              value="redirect">
-          <label for="for-logout-idp-binding-redirect">Redirect</label>
+        <div class="formrow">
+          <label>Logout IDP binding</label>
+          <div class="formrow checkbox-list">
+            <input
+                type="radio"
+                id="for-logout-idp-binding-post"
+                formControlName="idpLogoutBinding"
+                value="post">
+            <label for="for-logout-idp-binding-post">Post</label>
+            <input
+                type="radio"
+                id="for-logout-idp-binding-redirect"
+                formControlName="idpLogoutBinding"
+                value="redirect">
+            <label for="for-logout-idp-binding-redirect">Redirect</label>
+          </div>
         </div>
 
 
@@ -806,26 +813,28 @@
             {{(httpError | async)?.errors?.idpMetadataHttpTimeoutMs}}
         </div>
 
-        <div class="formrow radio-chips">
-          <span>Metadata connect address family</span>
-          <input
-              type="radio"
-              id="for-idp-metadata-connect-address-family-auto"
-              formControlName="idpMetadataConnectAddressFamily"
-              value="undefined">
-          <label for="for-idp-metadata-connect-address-family-auto">Auto</label>
-          <input
-              type="radio"
-              id="for-idp-metadata-connect-address-family-inet"
-              formControlName="idpMetadataConnectAddressFamily"
-              value="inet">
-          <label for="for-idp-metadata-connect-address-family-inet">Inet</label>
-          <input
-              type="radio"
-              id="for-idp-metadata-connect-address-family-inet6"
-              formControlName="idpMetadataConnectAddressFamily"
-              value="inet6">
-          <label for="for-idp-metadata-connect-address-family-inet6">Inet6</label>
+        <div class="formrow">
+          <label>Metadata connect address family</label>
+          <div class="formrow checkbox-list">
+            <input
+                type="radio"
+                id="for-idp-metadata-connect-address-family-auto"
+                formControlName="idpMetadataConnectAddressFamily"
+                value="undefined">
+            <label for="for-idp-metadata-connect-address-family-auto">Auto</label>
+            <input
+                type="radio"
+                id="for-idp-metadata-connect-address-family-inet"
+                formControlName="idpMetadataConnectAddressFamily"
+                value="inet">
+            <label for="for-idp-metadata-connect-address-family-inet">Inet</label>
+            <input
+                type="radio"
+                id="for-idp-metadata-connect-address-family-inet6"
+                formControlName="idpMetadataConnectAddressFamily"
+                value="inet6">
+            <label for="for-idp-metadata-connect-address-family-inet6">Inet6</label>
+          </div>
         </div>
 
         <div class="formrow form-inline">
@@ -872,7 +881,7 @@
         </div>
 
         <div [hidden]="!(form.group.get('spVerifyRecipientFlag').valueChanges | async)" class="formrow fix-width-8-1">
-          <div class="formrow radio-chips">
+          <div class="formrow checkbox-list margin-left-2">
             <input
                 type="radio"
                 id="sp-verify-recipient-acs"
@@ -915,23 +924,24 @@
           <label for="for-sp-verify-logout-request">Validate logout request signature</label>
         </div>
 
-        <div class="formrow radio-chips">
-          <span>Maintain</span>
-          <input
-              type="radio"
-              id="for-sp-assertion-dupe-check-global"
-              formControlName="spAssertionDupeCheck"
-              value="global">
-          <label for="for-sp-assertion-dupe-check-global">Global</label>
-          <input
-              type="radio"
-              id="for-sp-assertion-dupe-check-local"
-              formControlName="spAssertionDupeCheck"
-              value="alternate">
-          <label for="for-sp-assertion-dupe-check-local">Local</label>
-          <span>cache of used assertions in order to prevent using the same assertion twice</span>
+        <div class="formrow">
+          <label>SP Assertion Dupe Check</label>
+          <p>Maintain Global or Local cache of used assertions in order to prevent using the same assertion twice</p>
+          <div class="formrow checkbox-list">
+            <input
+                type="radio"
+                id="for-sp-assertion-dupe-check-global"
+                formControlName="spAssertionDupeCheck"
+                value="global">
+            <label for="for-sp-assertion-dupe-check-global">Global</label>
+            <input
+                type="radio"
+                id="for-sp-assertion-dupe-check-local"
+                formControlName="spAssertionDupeCheck"
+                value="alternate">
+            <label for="for-sp-assertion-dupe-check-local">Local</label>
+          </div>
         </div>
-
 
       </div>
     </div>
