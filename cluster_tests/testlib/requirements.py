@@ -193,7 +193,7 @@ class Requirement(ABC):
 
 
 class Edition(Requirement):
-    editions = ["Community", "Enterprise", "Serverless"]
+    editions = ["Community", "Enterprise", "Serverless", "Provisioned"]
 
     def __init__(self, edition):
         super().__init__(edition=edition)
@@ -211,6 +211,9 @@ class Edition(Requirement):
         elif self.edition == "Serverless":
             self.start_args = {'force_community': False,
                                'run_serverless': True}
+        elif self.edition == "Provisioned":
+            self.start_args = {'force_community': False,
+                               'run_provisioned': True}
 
     def is_met(self, cluster: Cluster):
         if self.edition == "Community":
@@ -219,6 +222,8 @@ class Edition(Requirement):
             return cluster.is_enterprise and not cluster.is_serverless
         elif self.edition == "Serverless":
             return cluster.is_enterprise and cluster.is_serverless
+        elif self.edition == "Provisioned":
+            return cluster.is_enterprise and cluster.is_provisioned
 
 
 class NumNodes(Requirement):

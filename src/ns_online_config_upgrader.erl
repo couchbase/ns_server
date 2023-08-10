@@ -94,9 +94,10 @@ upgrade(?VERSION_71, Config) ->
 upgrade(?VERSION_72, Config) ->
     {?VERSION_TRINITY,
      menelaus_web_auto_failover:config_upgrade_to_trinity(Config) ++
-        menelaus_web_alerts_srv:config_upgrade_to_trinity(Config) ++
-        index_settings_manager:config_upgrade_to_trinity(Config) ++
-        query_settings_manager:config_upgrade_to_trinity(Config) ++
-        analytics_settings_manager:config_upgrade_to_trinity(Config) ++
-        mb_master:config_upgrade_to_trinity(Config) ++
-        ns_ssl_services_setup:config_upgrade_to_trinity(Config)}.
+         menelaus_web_alerts_srv:config_upgrade_to_trinity(Config) ++
+         index_settings_manager:config_upgrade_to_trinity(Config) ++
+         query_settings_manager:config_upgrade_to_trinity(Config) ++
+         analytics_settings_manager:config_upgrade_to_trinity(Config) ++
+         mb_master:config_upgrade_to_trinity(Config) ++
+         ns_ssl_services_setup:config_upgrade_to_trinity(Config) ++
+         menelaus_web_guardrails:config_upgrade_to_trinity(Config)}.

@@ -52,6 +52,7 @@
          modify_retry_rebalance/2,
          alerts/2,
          alert_email_sent/4,
+         resource_management/2,
          modify_compaction_settings/2,
          regenerate_certificate/2,
          setup_saslauthd/2,
@@ -470,7 +471,9 @@ code(delete_cluster_ca) ->
 code(modify_collection) ->
     8270;
 code(serverless_settings) ->
-    8271.
+    8271;
+code(modify_resource_settings) ->
+    8272.
 
 send_to_memcached(ParentPID, {Code, EncodedBody, IsSync}) ->
     case (catch ns_memcached_sockets_pool:executing_on_socket(
@@ -757,6 +760,10 @@ alert_email_sent(Sender, Recipients, Subject, Body) ->
     put(alert_email_sent, undefined,
         [{sender, Sender}, {recipients, {list, Recipients}},
          {subject, Subject}, {message, Body}]).
+
+resource_management(Req, Settings) ->
+    put(modify_resource_settings, Req,
+        menelaus_web_guardrails:build_json_for_audit(Settings)).
 
 modify_compaction_settings(Req, Settings) ->
     Data = ns_bucket:build_compaction_settings_json(Settings),

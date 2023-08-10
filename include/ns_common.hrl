@@ -322,6 +322,7 @@
 %% Known Trinity profiles
 -define(SERVERLESS_PROFILE, serverless).
 -define(SERVERLESS_PROFILE_STR, "serverless").
+-define(PROVISIONED_PROFILE_STR, "provisioned").
 
 %% Default profile macros/constants
 -define(DEFAULT_PROFILE_STR, "default").

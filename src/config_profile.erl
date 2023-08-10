@@ -19,6 +19,7 @@
          get_value/2,
          get_bool/1,
          is_serverless/0,
+         is_provisioned/0,
          load/0,
          load/1,
          default/0]).
@@ -67,6 +68,18 @@ search(Key, Default) ->
 is_serverless() ->
     case name() of
         ?SERVERLESS_PROFILE_STR ->
+            true;
+        _ ->
+            false
+    end.
+
+%% @doc WARNING: Please only use this in certain situations. Instead you should
+%% be enabling features by individual flags inside the profile and not a blanket
+%% check for if we are using the "provisioned" profile. You have been warned.
+-spec(is_provisioned() -> boolean()).
+is_provisioned() ->
+    case name() of
+        ?PROVISIONED_PROFILE_STR ->
             true;
         _ ->
             false

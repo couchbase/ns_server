@@ -15,13 +15,39 @@
 -include_lib("ns_test.hrl").
 -endif.
 
+-export([handle_get/2, handle_post/2]).
 
--export([default_config/0]).
+-export([default_config/0, config_upgrade_to_trinity/1,
+         build_json_for_audit/1]).
 
 %% ------------------------------------------------------------------
 %% API Function Definitions
 %% ------------------------------------------------------------------
 
+handle_get(Path, Req) ->
+    menelaus_util:assert_is_trinity(),
+    menelaus_util:assert_config_profile_flag({resource_management, enabled}),
+
+    menelaus_web_settings2:handle_get(Path, params(), undefined,
+                                      guardrail_monitor:get_config(), Req).
+
+handle_post(Path, Req) ->
+    menelaus_util:assert_is_trinity(),
+    menelaus_util:assert_config_profile_flag({resource_management, enabled}),
+
+    menelaus_web_settings2:handle_post(
+      fun (Params, Req2) ->
+              case Params of
+                  [] -> ok;
+                  _ ->
+                      Values = update_config(Params),
+                      ns_audit:resource_management(Req, Values)
+              end,
+              handle_get(Path, Req2)
+      end, Path, params(), undefined, guardrail_monitor:get_config(), [], Req).
+
+params() ->
+    [].
 
 %% Gets resource management configuration from the config profile, using default
 %% values specified below
@@ -47,6 +73,30 @@ update_sub_config({[Key | Keys], Value}, SubConfig) ->
                       update_sub_config({Keys, Value},
                                         proplists:get_value(Key, SubConfig,
                                                             []))}).
+
+update_config(Changes) ->
+    OldConfig = guardrail_monitor:get_config(),
+
+    NewConfig = lists:foldl(fun update_sub_config/2, OldConfig, Changes),
+
+    ns_config:set(resource_management, NewConfig),
+    NewConfig.
+
+config_upgrade_to_trinity(_Config) ->
+    [{set, resource_management,
+      proplists:get_value(resource_management, default_config())}].
+
+-spec build_json_for_audit(proplists:proplist()) -> proplists:proplist().
+build_json_for_audit(Settings) ->
+    [{settings, {json, build_json(Settings)}}].
+
+build_json(Settings) ->
+    {lists:map(
+       fun({Key, Value}) when is_list(Value) ->
+               {Key, build_json(Value)};
+          ({Key, Value}) ->
+               {Key, Value}
+       end, Settings)}.
 
 -ifdef(TEST).
 
@@ -85,5 +135,25 @@ update_configs_test() ->
                         update_sub_config({[key1, key2], value2},
                                           [{key1, []},
                                            {key3, [{key4, value4}]}])).
+
+test_build_json(ExpectedEJson, Proplist) ->
+    [{settings, {json, EJson}}] = Result = build_json_for_audit(Proplist),
+    ?assertEqual(ExpectedEJson, EJson),
+    %% Test that the output can be converted to json by ns_audit
+    ejson:encode({json_builder:prepare_list(Result)}).
+
+build_json_test() ->
+    test_build_json({[]}, []),
+
+    test_build_json({[{key, value}]}, [{key, value}]),
+
+    test_build_json({[{key, {[]}}]}, [{key, []}]),
+
+    test_build_json({[{key0, {[{key1, value1}]}}]}, [{key0, [{key1, value1}]}]),
+
+    test_build_json({[{key0, {[{key1, {[{key2, value2}]}}, {key3, value3}]}}]},
+                    [{key0, [{key1, [{key2, value2}]}, {key3, value3}]}]),
+
+    ok.
 
 -endif.
