@@ -63,6 +63,11 @@
 -define(INCREMENT_COUNTER, 1).
 -define(NO_INCREMENT_COUNTER, 0).
 
+%% Specifies the collection's maxTTL value should be reset to "use the
+%% bucket's maxTTL". This is used by backup/restore when doing a bulk
+%% set_manifest.
+-define(RESET_COLLECTION_MAXTTL, -1).
+
 start_link() ->
     work_queue:start_link(
       ?MODULE,
@@ -302,6 +307,7 @@ collection_to_memcached(Name, Props, WithDefaults) ->
     AdjustedProps =
         case WithDefaults of
             true ->
+                %% Strip any properties that can be inferred.
                 misc:update_proplist(default_collection_props(), Props);
             false ->
                 Props
@@ -945,11 +951,7 @@ maybe_add_metered(Props, ScopeName) ->
 
 maybe_reset_maxttl(Props) ->
     case proplists:get_value(maxTTL, Props) of
-        "bucket" ->
-            %% Via REST api
-            proplists:delete(maxTTL, Props);
-        <<"bucket">> ->
-            %% Via set_manifest
+        ?RESET_COLLECTION_MAXTTL ->
             proplists:delete(maxTTL, Props);
         _ ->
             Props
@@ -1326,6 +1328,16 @@ create_collection_t() ->
         update_manifest_test_create_collection(Manifest1, "_default", "c2", []),
     ?assertEqual([{uid, 11}, {history, true}],
                  get_collection("c2", get_scope("_default", Manifest2))),
+
+    %% Create collection with maxTTL=-1 which is the same as not specifying
+    %% maxTTL at all. Note: only backup/restore will provide a manifest
+    %% via bulk set_manifest containing maxTTL values of -1.
+    {commit, [{_, _, Manifest3}], _} =
+        update_manifest_test_create_collection(Manifest1, "_default", "c3",
+                                               [{maxTTL,
+                                                 ?RESET_COLLECTION_MAXTTL}]),
+    ?assertEqual([{uid, 11}, {history, true}],
+                 get_collection("c3", get_scope("_default", Manifest3))),
 
     %% Collection hard limit
     meck:expect(ns_config, search,
@@ -1825,13 +1837,13 @@ set_manifest_t() ->
     ?assertEqual([{maxTTL, 10}, {uid, 8}, {history, true}],
                  get_collection("c1", get_scope("s1", Manifest5))),
 
-    %% The collection's maxTTL can be reset using "bucket" (which means
+    %% The collection's maxTTL can be reset using "-1" (which means
     %% use the bucket's maxTTL if it has one).
     {commit, [{_, _, Manifest5_1}], _} =
         update_manifest_test_set_manifest(
           ExistingManifest5,
           [{"s1",
-            [{collections, [{"c1", [{maxTTL, "bucket"}]}]}]}]),
+            [{collections, [{"c1", [{maxTTL, ?RESET_COLLECTION_MAXTTL}]}]}]}]),
     ?assertEqual([{uid, 8}, {history, true}],
                  get_collection("c1", get_scope("s1", Manifest5_1))),
 
@@ -1857,14 +1869,13 @@ set_manifest_t() ->
     ?assertEqual([{maxTTL, 777}, {uid, 8}],
                  get_collection("c1", get_scope("s1", Manifest5_3))),
 
-    %% The collection's maxTTL can be reset using <<"bucket">> (as specified
-    %% in set_manifest handling; means use the bucket's maxTTL if it has one).
+    %% Change maxTTL to zero which means disable TTL
     {commit, [{_, _, Manifest5_4}], _} =
         update_manifest_test_set_manifest(
           ExistingManifest5,
           [{"s1",
-            [{collections, [{"c1", [{maxTTL, <<"bucket">>}]}]}]}]),
-    ?assertEqual([{uid, 8}, {history, true}],
+            [{collections, [{"c1", [{maxTTL, 0}]}]}]}]),
+    ?assertEqual([{maxTTL, 0}, {uid, 8}, {history, true}],
                  get_collection("c1", get_scope("s1", Manifest5_4))).
 
 upgrade_to_72_t() ->

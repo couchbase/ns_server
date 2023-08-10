@@ -124,25 +124,12 @@ bucket_has_config_validator(Name, BucketConfig, BucketKey, BucketValue, State) -
             end
         end, Name, State).
 
-maxttl_validator(State) ->
-    State1 = validator:touch(maxTTL, State),
-    case validator:get_value(maxTTL, State1) of
-        "bucket" ->
-            %% Via REST api
-            State1;
-        <<"bucket">> ->
-            %% Via set_manifest
-            State1;
-        _ ->
-            validator:integer(maxTTL, 0, ?MC_MAXINT, State1)
-    end.
-
 collection_modifiable_validators(BucketConfig) ->
     [validator:boolean(history, _),
      validator:valid_in_enterprise_only(history, _),
      validator:changeable_in_72_only(history, false, _),
      bucket_has_config_validator(history, BucketConfig, storage_mode, magma, _),
-     maxttl_validator(_),
+     validator:integer(maxTTL, -1, ?MC_MAXINT, _),
      validator:changeable_in_enterprise_only(maxTTL, 0, _),
      validator:changeable_in_trinity_only(maxTTL, false, _),
      validator:no_duplicates(_)
