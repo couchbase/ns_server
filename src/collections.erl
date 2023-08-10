@@ -167,9 +167,9 @@ manifest_with_system_scope(BucketConf) ->
                   {Id + 1,
                    [{Name,
                      [{uid, Id},
-                      {"metered", false},
                       {maxTTL, 0}
-                     ]}] ++ Cols}
+                     ] ++ maybe_add_metered_property()}
+                   ] ++ Cols}
           end, {8, []}, system_collections()),
 
     [{uid, 1},
@@ -190,6 +190,16 @@ manifest_with_system_scope(BucketConf) ->
 
 is_system_scope_enabled() ->
     cluster_compat_mode:is_cluster_trinity().
+
+%% If metering of collections is being used set the initial value of the
+%% property.
+maybe_add_metered_property() ->
+    case config_profile:get_bool(enable_metered_collections) of
+        true ->
+            [{"metered", false}];
+        false ->
+            []
+    end.
 
 max_collections_per_bucket() ->
     Default = get_max_supported(num_collections),
@@ -911,10 +921,20 @@ add_collection(Manifest, Name, ScopeName, SuppliedProps, BucketConf) ->
                 % History defined by the user
                 SuppliedProps
         end,
-    Props = maybe_reset_maxttl(Props0),
+    Props1 = maybe_reset_maxttl(Props0),
+    Props = maybe_add_metered(Props1, ScopeName),
     SanitizedProps = remove_defaults(Props),
     on_collections([{Name, [{uid, Uid} | SanitizedProps]} | _], ScopeName,
                    Manifest).
+
+maybe_add_metered(Props, ScopeName) ->
+    case config_profile:get_bool(enable_metered_collections) andalso
+         ScopeName =/= ?SYSTEM_SCOPE_NAME of
+        false ->
+            Props;
+        true ->
+            Props ++ [{"metered", true}]
+    end.
 
 maybe_reset_maxttl(Props) ->
     case proplists:get_value(maxTTL, Props) of
@@ -1189,7 +1209,7 @@ upgrade_to_trinity(Manifest0, BucketConfig) ->
         lists:foldl(
           fun (Name, Manifest) ->
                   do_create_collection(?SYSTEM_SCOPE_NAME, Name,
-                                       [{"metered", false}, {maxTTL, 0}],
+                                       [{maxTTL, 0}],
                                        Manifest, BucketConfig,
                                        ?NO_INCREMENT_COUNTER)
           end, Manifest1, system_collections()),
@@ -1218,6 +1238,8 @@ update_manifest_test_setup() ->
     meck:expect(cluster_compat_mode, is_cluster_70, fun () -> true end),
     meck:expect(cluster_compat_mode, is_cluster_72, fun () -> true end),
     meck:expect(cluster_compat_mode, is_cluster_trinity, fun () -> true end),
+    meck:expect(config_profile, get_bool,
+                fun (enable_metered_collections) -> false end),
 
     %% Return some scope/collection values high enough for us to not worry about
     %% it while testing.
@@ -1425,7 +1447,9 @@ modify_collection_t() ->
 
     %% Enable system scope for testing that its maxTTL cannot be modified
     meck:expect(config_profile, get_bool,
-                fun(enable_system_scope) -> true end),
+                fun (enable_system_scope) -> true;
+                    (enable_metered_collections) -> false
+                end),
     Manifest = default_manifest(BucketConf),
 
     {commit, [{_, _, Manifest1}], _} =
@@ -1824,7 +1848,9 @@ upgrade_to_72_t() ->
     meck:expect(cluster_compat_mode, is_cluster_72, fun() -> false end),
     meck:expect(cluster_compat_mode, is_cluster_trinity, fun() -> false end),
     meck:expect(config_profile, get_bool,
-                fun(enable_system_scope) -> false end),
+                fun (enable_system_scope) -> false;
+                    (enable_metered_collections) -> false
+                end),
 
     {ok, BucketConf71} = ns_bucket:get_bucket("bucket"),
     Manifest71 = default_manifest(BucketConf71),
