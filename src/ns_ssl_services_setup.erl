@@ -924,7 +924,7 @@ save_certs(Type, CA, Chain, PKey, PassphraseSettings, Extra)
     UTCTime = calendar:universal_time(),
     LoadTime = calendar:datetime_to_gregorian_seconds(UTCTime),
     CertsEpoch = certs_epoch(),
-    Props = [{subject, iolist_to_binary(Subject)},
+    Props = [{subject, unicode:characters_to_binary(Subject)},
              {not_after, Expiration},
              {verified_with, erlang:md5(CA)},
              {load_timestamp, LoadTime},
