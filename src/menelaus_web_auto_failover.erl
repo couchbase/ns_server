@@ -33,7 +33,8 @@
 
 -define(CAN_ABORT_REBALANCE_CONFIG_KEY, can_abort_rebalance).
 -define(DATA_DISK_ISSUES_CONFIG_KEY, failover_on_data_disk_issues).
--define(MIN_DATA_DISK_ISSUES_TIMEPERIOD, 5). %% seconds
+-define(MIN_DATA_DISK_ISSUES_TIMEPERIOD,
+        ?get_param(min_data_disk_issues_timeperiod, 5)). %% seconds
 -define(MAX_DATA_DISK_ISSUES_TIMEPERIOD, 3600). %% seconds
 
 -define(FAILOVER_SERVER_GROUP_CONFIG_KEY, failover_server_group).
