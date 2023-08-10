@@ -92,7 +92,7 @@ init([]) ->
          numSamples => NumSamples,
          refresh_timer_ref => undefined,
          stats_collector => undefined,
-         latest_state => {undefined, dict:new()}})}.
+         latest_stats => {undefined, dict:new()}})}.
 
 handle_call(get_buckets, _From, MonitorState) ->
     #{buckets := Buckets} = MonitorState,
@@ -116,7 +116,7 @@ handle_info(refresh, #{enabled := false} = MonitorSate) ->
 handle_info(refresh, MonitorState) ->
     #{buckets := Buckets,
       numSamples := NumSamples,
-      latest_states := {TS, Stats}} = MonitorState,
+      latest_stats := {TS, Stats}} = MonitorState,
     NewBuckets = check_for_disk_issues(Buckets, TS, Stats, NumSamples),
     NewState =
         maybe_spawn_stats_collector(
