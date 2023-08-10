@@ -80,8 +80,7 @@ settings_post_validators() ->
             false ->
                 []
         end ++
-        [validator:no_duplicates(_),
-         validator:unsupported(_)].
+        [validator:unsupported(_)].
 
 update_settings(Key, Value) ->
     case analytics_settings_manager:update(Key, Value) of

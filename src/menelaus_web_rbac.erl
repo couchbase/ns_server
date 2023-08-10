@@ -1004,8 +1004,7 @@ put_user_validators(Req, GetUserIdFun, GroupCheckFun, ValidatePassword) ->
      validator_verify_security_roles_access(roles, Req, ?SECURITY_WRITE,
                                             ExtraRolesFun, _)] ++
     [validate_password(_) || ValidatePassword] ++
-    [validator:no_duplicates(_),
-     validator:unsupported(_)].
+    [validator:unsupported(_)].
 
 bad_roles_error(BadRoles) ->
     Str = string:join(BadRoles, ","),
@@ -1166,7 +1165,6 @@ reply_put_delete_users(Req) ->
 change_password_validators() ->
     [validator:required(password, _),
      validate_password(_),
-     validator:no_duplicates(_),
      validator:unsupported(_)].
 
 handle_change_password(Req) ->
@@ -1497,7 +1495,6 @@ post_password_policy_validators() ->
      validator:boolean(enforceLowercase, _),
      validator:boolean(enforceDigits, _),
      validator:boolean(enforceSpecialChars, _),
-     validator:no_duplicates(_),
      validator:unsupported(_)].
 
 must_present_value(JsonField, MustPresentAtom, Args) ->
@@ -1580,7 +1577,6 @@ put_group_validators(Req, GetGroupNameFun) ->
      validate_ldap_ref(ldap_group_ref, _),
      validator_verify_group_ldap_access(ldap_group_ref,
                                         GetGroupNameFun, Req, _),
-     validator:no_duplicates(_),
      validator:unsupported(_)].
 
 validate_ldap_ref(Name, State) ->
@@ -1680,7 +1676,6 @@ get_groups_page_validators() ->
      validator:one_of(order, ["asc", "desc"], _),
      validator:touch(substr, _),
      validator:convert(order, fun list_to_atom/1, _),
-     validator:no_duplicates(_),
      validator:unsupported(_)].
 
 handle_get_groups_page(Req, Path, Values) ->
@@ -2194,7 +2189,6 @@ handle_backup_restore(Req) ->
           validator:default(groups, [], _),
           validate_backup_users(users, groups, Req, _),
           validator:default(users, [], _),
-          validator:no_duplicates(_),
           validator:unsupported(_)], _)]).
 
 handle_backup_restore_validated(Req, Params) ->
@@ -2307,7 +2301,6 @@ validate_backup_admin(Name, State) ->
                      {error, "Can't import admin, system is not provisioned"}
              end
          end, id, _),
-       validator:no_duplicates(_),
        validator:unsupported(_)],
       State).
 
@@ -2371,7 +2364,6 @@ validate_auth(Name, State) ->
                   validate_scram_auth('scram-sha-512', _),
                   validate_scram_auth('scram-sha-256', _),
                   validate_scram_auth('scram-sha-1', _),
-                  validator:no_duplicates(_),
                   validator:unsupported(_)],
                  State1)),
     validator:validate(
@@ -2401,7 +2393,6 @@ validate_hash_auth(Name, State) ->
              Alg = validator:get_value(algorithm, S),
              functools:chain(S, alg_hash_validators(Alg))
          end,
-         validator:no_duplicates(_),
          validator:unsupported(_)],
         State)).
 
@@ -2440,7 +2431,6 @@ validate_scram_auth(Name, State) ->
                                validator:required(stored_key, _),
                                base64_binary(stored_key, _)],
                               _),
-         validator:no_duplicates(_),
          validator:unsupported(_)],
         State)).
 

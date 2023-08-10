@@ -163,7 +163,6 @@ cluster_init_validators(Config, Snapshot) ->
            end
        end, hostname, allowedHosts, _),
      validator:has_params(_),
-     validator:no_duplicates(_),
      validator:unsupported(_)].
 
 handle_engage_cluster2(Req) ->

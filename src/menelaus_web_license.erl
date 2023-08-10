@@ -54,7 +54,6 @@ settings_validators() ->
         validator:touch(customer_token, _),
         validator:convert(customer_token, ?cut({password, _}), _),
         validator:has_params(_),
-        validator:no_duplicates(_),
         validator:unsupported(_)
     ].
 

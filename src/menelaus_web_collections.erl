@@ -106,8 +106,6 @@ scope_validators(Exceptions) ->
      validator:length(name, 1, 251, _),
      name_validator(_),
      name_first_char_validator(_, Exceptions),
-     % Don't allow duplicate or extra params
-     validator:no_duplicates(_),
      validator:unsupported(_)].
 
 bucket_has_config_validator(Name, BucketConfig, BucketKey, BucketValue, State) ->
@@ -191,9 +189,8 @@ handle_patch_collection(Bucket, Scope, Name, Req) ->
                     handle_rv(RV, Req)
                 end, Req, form,
                 collection_modifiable_validators(BucketConf) ++
-                % Don't allow duplicate or extra params
-                [validator:no_duplicates(_),
-                 validator:unsupported(_)]);
+                % Don't allow any other params
+                [validator:unsupported(_)]);
         not_present ->
             handle_rv({bucket_not_found, Bucket}, Req)
     end.
@@ -236,8 +233,6 @@ handle_set_manifest(Bucket, Req) ->
                 [validator:required(scopes, _),
                  validate_scopes(scopes, BucketConf, _),
                  check_duplicates(scopes, _),
-                 %% Disallow duplicate or extra parameters
-                 validator:no_duplicates(_),
                  validator:unsupported(_)]);
         _ ->
             handle_rv({error,
@@ -297,8 +292,6 @@ handle_ensure_manifest(Bucket, Uid, Req) ->
       end, Req, form,
       [validator:integer(timeout, 0, 300000, _),
        nodes_validator(BucketNodes, Req, _),
-       % Don't allow duplicate or extra params
-       validator:no_duplicates(_),
        validator:unsupported(_)]).
 
 assert_collections_enabled() ->

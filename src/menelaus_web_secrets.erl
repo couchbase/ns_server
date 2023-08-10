@@ -37,7 +37,6 @@ handle_change_master_password(Req) ->
 
 change_master_password_validators() ->
     [validator:required(newPassword, _),
-     validator:no_duplicates(_),
      validator:unsupported(_)].
 
 handle_rotate_data_key(Req) ->

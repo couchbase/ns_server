@@ -142,7 +142,6 @@ post_validators() ->
      validator:string(sample, _),
      validator:string(bucket, _),
      validate_remote_sample(_),
-     validator:no_duplicates(_),
      validator:unsupported(_)].
 
 handle_post(Req) ->
