@@ -26,7 +26,35 @@
           index_monitor
          ]).
 
+setup_service_monitors(Monitors) when is_list(Monitors) ->
+    %% We will only spawn monitors for supported services, but this function
+    %% by default will only create one or the other, as we should not fail
+    %% over a KV node if indexing has issues. We will just pretend here that
+    %% we have both.
+    meck:expect(health_monitor, supported_services,
+                fun(_) -> Monitors end),
+
+    %% Need to refresh children to spawn the kv and index monitors
+    health_monitor_sup:refresh_children(),
+
+    %% When we refresh node_monitors local_monitors we need to override that
+    %% function too or we will end up with the default behaviour of KV OR index.
+    meck:expect(health_monitor, local_monitors,
+                fun() -> [ns_server | Monitors] end),
+
+    %% Need to tell the node_monitor that there are other monitors to look at
+    node_monitor ! node_changed,
+
+    %% And similar for the node_status_analyzer
+    meck:expect(health_monitor, node_monitors,
+                fun(_Node) -> [ns_server | Monitors] end),
+    node_status_analyzer ! node_changed.
+
 test_setup() ->
+    %% Health monitor meck is used to "trick" the system into running some
+    %% services and for some history checks
+    meck:new(health_monitor, [passthrough]),
+
     health_monitor:common_test_setup(),
 
     %% Each monitor may have it's own required setup
@@ -67,7 +95,8 @@ test_teardown(SupervisorPid) ->
               Module:common_test_teardown()
       end, ?TESTABLE_MONITORS),
 
-    health_monitor:common_test_teardown().
+    health_monitor:common_test_teardown(),
+    meck:unload(health_monitor).
 
 -spec is_node_status(node(), healthy | unhealthy) -> boolean().
 is_node_status(Node, Status) ->
@@ -87,7 +116,7 @@ is_node_healthy(Node) ->
 
 -spec is_node_unhealthy(node()) -> boolean().
 is_node_unhealthy(Node) ->
-    is_node_status(Node, unhealthy).
+    not is_node_status(Node, healthy).
 
 %% Test that the ns_server_monitor detects failures that cause the node to
 %% become unhealthy, and that the system can recover once the node becomes
@@ -126,10 +155,54 @@ ns_server_monitor_failure_detection_t() ->
                       is_node_healthy(node())
               end, 30000, 100)).
 
+index_monitor_failure_detection_t() ->
+    setup_service_monitors([index]),
+
+    gen_server:cast(index_monitor, {got_connection, self()}),
+
+
+    %% First, make sure that we are healthy so that we can test a transition
+    %% to unhealthy
+    ?assert(misc:poll_for_condition(
+              fun() ->
+                      is_node_healthy(node())
+              end, 30000, 100)),
+
+    meck:new(index_monitor, [passthrough]),
+    meck:expect(index_monitor, handle_info,
+                fun
+                    ({tick, _Result}, _State) ->
+                       noreply;
+                    (Msg, State) ->
+                       meck:passthrough([Msg, State])
+               end),
+
+    %% Should turn the node unhealthy
+    ?assert(misc:poll_for_condition(
+              fun() ->
+                      is_node_unhealthy(node())
+              end, 30000, 100)),
+
+    %% To send a tick message we must have tick = {tick, TS} in the state, so
+    %% wait for that.
+    meck:wait(index_monitor, handle_info, [refresh, #{tick => {tick, '_'}}],
+              1000),
+
+    %% Drop our message filter now so that we can transition back to healthy
+    meck:delete(index_monitor, handle_info, 2),
+    index_monitor ! {tick, {ok, 0}},
+
+    %% And we should transition back to healthy
+    ?assert(misc:poll_for_condition(
+              fun() ->
+                      is_node_healthy(node())
+              end, 30000, 100)).
+
 gen_test_() ->
     Tests = [
-        fun ns_server_monitor_failure_detection_t/0
-    ],
+             fun ns_server_monitor_failure_detection_t/0,
+             fun index_monitor_failure_detection_t/0
+            ],
 
     {foreach,
      fun test_setup/0,
@@ -165,11 +238,6 @@ callbacks_not_made() ->
         end, ?TESTABLE_MONITORS).
 
 behaviour_cover_test_setup() ->
-    %% We will mock the health_monitor module itself and passthrough
-    %% everything as we aren't really interested in functionality in this
-    %% test. We need to meck the module to check the history later.
-    meck:new(health_monitor, [passthrough]),
-
     %% Mock each individual monitor that we are testing here. Passthrough as
     %% above as we don't want to test the functionality, but we do need meck
     %% running to check the history later.
@@ -186,30 +254,13 @@ behaviour_cover_test_teardown(SupPid) ->
             meck:unload(Module)
         end, ?TESTABLE_MONITORS),
 
-    meck:unload(health_monitor),
     test_teardown(SupPid).
 
 %% Test that we are hitting every function in the behaviour API. This lets us
 %% test that the monitors interact with one another as expected (and without
 %% crashing).
 behaviour_cover_t() ->
-    %% We will only spawn monitors for supported services, but this function
-    %% by default will only create one or the other, as we should not fail
-    %% over a KV node if indexing has issues. We will just pretend here that
-    %% we have both.
-    meck:expect(health_monitor, supported_services,
-                fun(_) -> [kv, index] end),
-
-    %% Need to refresh children to spawn the kv and index monitors
-    health_monitor_sup:refresh_children(),
-
-    %% When we refresh node_monitors local_monitors we need to override that
-    %% function too or we will end up with the default behaviour of KV OR index.
-    meck:expect(health_monitor, local_monitors,
-                fun() -> [ns_server, kv, index] end),
-
-    %% Need to tell the node_monitor that there are other monitors to look at
-    node_monitor ! node_changed,
+    setup_service_monitors([kv, index]),
 
     %% Called by auto_failover which we're not testing here.
     node_status_analyzer:get_statuses(),
