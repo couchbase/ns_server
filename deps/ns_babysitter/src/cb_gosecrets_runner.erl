@@ -177,6 +177,7 @@ init([GosecretsCfgPath]) ->
     case filelib:is_file(GosecretsCfgPath) of
         true -> ok;
         false ->
+            ok = filelib:ensure_dir(GosecretsCfgPath),
             save_config(GosecretsCfgPath, default_cfg())
     end,
 
