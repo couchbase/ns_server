@@ -56,6 +56,22 @@ def assert_per_node_storage_mode_not_present(cluster, node, bucket_name):
 
 def assert_ejected_node_override_props_deleted(
     cluster, ejected_otp_node, bucket_name):
+
+    # Node ejection is asynchronous at the end of a rebalance - i.e the
+    # new chronicle_master might not have removed the node from nodes_wanted
+    # and cleaned-up the override props yet.
+    #
+    # Wait for the ejected node to disappear from /nodeStatus and then check
+    # if the override props have been deleted.
+
+    def is_node_ejected():
+        otp_nodes = testlib.get_otp_nodes(cluster).values()
+        return all(ejected_otp_node != n for n in otp_nodes)
+
+    testlib.poll_for_condition(
+        is_node_ejected, sleep_time=0.5, attempts=30, timeout=60,
+        msg=f"ejecting node {ejected_otp_node}")
+
     code = f"""
         {{ok, BucketConfig}} = ns_bucket:get_bucket("{bucket_name}"),
         OverrideSubKeys = [storage_mode, autocompaction],
