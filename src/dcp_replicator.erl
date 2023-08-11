@@ -195,9 +195,9 @@ wait_for_data_move_loop([Node | Rest], Bucket, Partition, DoneLimit) ->
         ok ->
             wait_for_data_move_loop(Rest, Bucket, Partition, DoneLimit);
         {error, _} = Error ->
-            ?log_error("Error getting dcp stats "
-                       "for bucket ~p, partition ~p, connection ~p: ~p",
-                       [Bucket, Partition, Connection, Error]),
+            ?log_error("Error getting dcp stats on node ~p for bucket ~p, "
+                       "partition ~p, connection ~p: ~p",
+                       [node(), Bucket, Partition, Connection, Error]),
             Error
     end.
 
