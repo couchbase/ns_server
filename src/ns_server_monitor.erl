@@ -20,7 +20,7 @@
          annotate_status/1,
          analyze_status/2,
          is_node_down/1]).
--export([init/0, handle_call/3, handle_cast/2, handle_info/2]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -ifdef(TEST).
 -export([health_monitor_test_setup/0,
@@ -31,8 +31,8 @@
 start_link() ->
     health_monitor:start_link(?MODULE).
 
-init() ->
-    #{}.
+init(BaseMonitorState) ->
+    BaseMonitorState.
 
 handle_call(get_nodes, _From, MonitorState) ->
     #{nodes := Statuses} = MonitorState,

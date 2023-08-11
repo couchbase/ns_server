@@ -31,7 +31,7 @@
 %% parameters.
 %% @end
 -callback start_link() -> term().
--callback init() -> map().
+-callback init(map()) -> map().
 -callback handle_call(term(), term(), map()) ->
     noreply | {reply, nack} | {reply, term(), map()}.
 -callback handle_cast(term(), map()) -> noreply | {noreply, map()}.
@@ -103,9 +103,7 @@ init([MonModule]) ->
                          nodes_wanted => ns_node_disco:nodes_wanted(),
                          refresh_interval => get_refresh_interval(MonModule)},
 
-    SpecialisedMonitorState = MonModule:init(),
-
-    MonitorState = maps:merge(BaseMonitorState, SpecialisedMonitorState),
+    MonitorState = MonModule:init(BaseMonitorState),
 
     case MonModule:can_refresh(MonitorState) of
         false -> ok;

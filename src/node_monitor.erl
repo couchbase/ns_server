@@ -26,7 +26,7 @@
 -export([get_nodes/0,
          can_refresh/1,
          annotate_status/1]).
--export([init/0, handle_call/3, handle_cast/2, handle_info/2]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -ifdef(TEST).
 -export([health_monitor_test_setup/0,
@@ -37,7 +37,7 @@
 start_link() ->
     health_monitor:start_link(?MODULE).
 
-init() ->
+init(BaseMonitorState) ->
     Monitors = health_monitor:local_monitors(),
 
     %% We only run non-ns_server monitors for active (non-failed over) nodes,
@@ -49,7 +49,7 @@ init() ->
          {node, node(), services}], node_changed),
 
 
-    #{local_monitors => Monitors}.
+    BaseMonitorState#{local_monitors => Monitors}.
 
 handle_call(get_nodes, _From, MonitorState) ->
     #{nodes := Statuses} = MonitorState,
