@@ -104,8 +104,13 @@ supported_compat_version() ->
             Version
     end.
 
+%% This prevents a node running LATEST_VERSION_NUM from joining (or being added
+%% to) a cluster running with a compat version < min_supported_compat_version().
+%% It also prevents an old (i.e. supports < min_supported_compat_version()) node
+%% from joining a cluster with LATEST_VERSION_NUM compat version.
+%% It has no effect whatsoever on the offline upgrade path.
 min_supported_compat_version() ->
-    ?VERSION_65.
+    ?VERSION_71.
 
 %% NOTE: this is rpc:call-ed by mb_master
 %%
