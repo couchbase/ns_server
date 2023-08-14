@@ -120,6 +120,12 @@ get_default_collection_props(BucketConf) ->
             historic_default_collection_props();
         true ->
             historic_default_collection_props() ++ [{history, true}]
+    end ++
+    case config_profile:get_bool(enable_metered_collections) of
+        false ->
+            [];
+        true ->
+            [{"metered", true}]
     end.
 
 manifest_without_system_scope(BucketConf) ->
