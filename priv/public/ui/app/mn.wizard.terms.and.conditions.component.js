@@ -118,7 +118,7 @@ class MnWizardTermsAndConditionsComponent extends MnLifeCycleHooksToStream {
     return Object.assign({
         hostname: this.initialValues.hostname,
         services: services.join(","),
-        sendStats: this.wizardForm.termsAndConditions.get("enableStats").value,
+        sendStats: this.wizardForm.termsAndConditions.get("enableStats").value || !isEnterprise, // CE always sends stats
         clusterName: this.wizardForm.newCluster.get("clusterName").value,
         setDefaultMemQuotas : true,
         indexerStorageMode: isEnterprise ? "plasma" : "forestdb"
