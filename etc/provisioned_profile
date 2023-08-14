@@ -1,5 +1,6 @@
 {name, "provisioned"}.
 {{resource_management, enabled}, true}.
+{{resource_management, configure_promql}, true}.
 {resource_management,
  [{[bucket, resident_ratio, enabled], true},
   {[cores_per_bucket, enabled], true},

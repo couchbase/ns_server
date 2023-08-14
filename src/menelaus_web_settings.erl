@@ -461,6 +461,8 @@ is_allowed_on_cluster([{serverless, throttle_capacity, _}]) ->
     config_profile:get_bool(enable_throttle_limits);
 is_allowed_on_cluster([{node, _, {serverless, throttle_capacity, _}}]) ->
     config_profile:get_bool(enable_throttle_limits);
+is_allowed_on_cluster([resource_promql_override | _]) ->
+    config_profile:get_bool({resource_management, configure_promql});
 is_allowed_on_cluster(_) ->
     true.
 
@@ -590,12 +592,12 @@ conf(security) ->
       ?INT_CREDS_ROTATION_INT_DEFAULT,
       fun parse_int_creds_rotation_int/1},
      {validate_node_cert_san, validateNodeCertSan, true, fun get_bool/1}] ++
-    [{{security_settings, S}, ns_cluster_membership:json_service_name(S),
-      [{cipher_suites, cipherSuites, undefined, fun get_cipher_suites/1},
-       {ssl_minimum_protocol, tlsMinVersion, undefined, get_tls_version(_)},
-       {honor_cipher_order, honorCipherOrder, undefined, fun get_bool/1},
-       {supported_ciphers, supportedCipherSuites, ciphers:supported(S),
-        fun read_only/1}]} || S <- services_with_security_settings()];
+        [{{security_settings, S}, ns_cluster_membership:json_service_name(S),
+          [{cipher_suites, cipherSuites, undefined, fun get_cipher_suites/1},
+           {ssl_minimum_protocol, tlsMinVersion, undefined, get_tls_version(_)},
+           {honor_cipher_order, honorCipherOrder, undefined, fun get_bool/1},
+           {supported_ciphers, supportedCipherSuites, ciphers:supported(S),
+            fun read_only/1}]} || S <- services_with_security_settings()];
 conf(internal) ->
     [{index_aware_rebalance_disabled, indexAwareRebalanceDisabled, false,
       fun get_bool/1},
@@ -626,7 +628,26 @@ conf(internal) ->
      {failover_bulk_buckets_janitor_factor, failoverBulkJanitorFactor,
       1, get_number(1, ?MAX_BUCKETS_SUPPORTED)},
      {{cert, use_sha1}, certUseSha1, false, fun get_bool/1},
-     {allow_http_node_addition, httpNodeAddition, false, fun get_bool/1}];
+     {allow_http_node_addition, httpNodeAddition, false, fun get_bool/1},
+     {resource_promql_override,
+      'resourcePromQLOverride',
+      %% The values here are directly sent in queries to prometheus, so they
+      %% must be valid PromQL. To maintain compatibility with the default query,
+      %% specific labels are required, as noted below:
+      [
+       %% Resident ratio query - requires label "bucket", scaled for 0-100%
+       {kv_resident_ratio, dataResidentRatio, undefined, fun get_string/1},
+       %% Data size in TB query - requires label "bucket"
+       %% This is for the data growth guard rail
+       {kv_data_size_tb, dataSizePerNodeTB, undefined, fun get_string/1},
+       %% Data size in bytes query - requires label "bucket"
+       %% This is for resident ratio calculation to check rebalance safeness
+       {kv_data_size_raw, dataSizePerNodeBytes, undefined, fun get_string/1},
+       %% Disk usage query - requires label "disk", scaled for 0-100%
+       {disk_usage, diskUsage, undefined, fun get_string/1}
+      ]
+     }
+    ];
 
 conf(developer_preview) ->
     [{developer_preview_enabled, enabled, false, fun only_true/1}];

@@ -25,6 +25,24 @@
 -define(DEFAULT_TIMEOUT, ?get_timeout(default, 5000)).
 -define(IRATE_INTERVAL, "1m").
 
+-define(KvResidentRatioQuery,
+        ns_config:search_node_prop(
+          ns_config:latest(), resource_promql_override, kv_resident_ratio,
+          "100 * kv_ep_max_size / on(bucket) (sum by(bucket, name) "
+          "(kv_logical_data_size_bytes{state=`active`}))")).
+-define(KvDataSizeRawQuery,
+        ns_config:search_node_prop(
+          ns_config:latest(), resource_promql_override, kv_data_size_raw,
+          "kv_logical_data_size_bytes{state=`active`}")).
+-define(KvDataSizeTBQuery,
+        ns_config:search_node_prop(
+          ns_config:latest(), resource_promql_override, kv_data_size_tb,
+          "kv_logical_data_size_bytes{state=`active`} / 10^12")).
+-define(DiskUsageQuery,
+        ns_config:search_node_prop(
+          ns_config:latest(), resource_promql_override, disk_usage,
+          "100 * sys_disk_usage_ratio")).
+
 current_items_total(Bucket) when is_list(Bucket) ->
     current_items_total(list_to_binary(Bucket));
 current_items_total(BucketBin) when is_binary(BucketBin) ->
@@ -180,23 +198,15 @@ for_alerts() ->
                      end, Res).
 
 for_resource_management() ->
-    Q = list_to_binary(
-          lists:join(
-            " or ",
-            lists:map(
-              fun({NewName, Query}) ->
-                      io_lib:format("label_replace((~s), `name`, `~s`,``,``)",
-                                    [Query, NewName])
-              end,
-              [
-               {kv_resident_ratio, "100 * kv_ep_max_size / on(bucket) "
-                "(sum by(bucket, name) (kv_logical_data_size_bytes"
-                "{state=`active`}))"},
-               {kv_data_size,
-                "kv_logical_data_size_bytes{state=`active`} / 10^12"},
-               {disk_usage,
-                "100 * sys_disk_usage_ratio"}
-              ]))),
+    List = [{<<"kv_resident_ratio">>,
+             promQL:preformatted(?KvResidentRatioQuery)},
+            {<<"kv_data_size">>, promQL:preformatted(?KvDataSizeTBQuery)},
+            {<<"disk_usage">>, promQL:preformatted(?DiskUsageQuery)}],
+    QueryAsts = lists:map(
+                  fun({NewName, Query}) ->
+                          promQL:named(NewName, Query)
+                  end, List),
+    Q = promQL:format_promql(promQL:op('or', QueryAsts)),
 
     Res = latest(
             Q, fun (Props) ->
@@ -224,9 +234,12 @@ total_active_logical_data_size(Nodes) ->
         fun ({{BucketName, logical_data_size_bytes}, Value}) ->
                 {BucketName, Value}
         end,
-        aggregated_by_bucket(<<"kv_logical_data_size_bytes{state=`active`}">>,
-                             Nodes,
-                             fun lists:sum/1))).
+        aggregated_by_bucket(
+          promQL:format_promql(
+            promQL:named(<<"kv_logical_data_size_bytes">>,
+                         promQL:preformatted(?KvDataSizeRawQuery))),
+          Nodes,
+          fun lists:sum/1))).
 
 -spec aggregated_by_bucket(binary(), [node()],
                            fun (([number()]) -> number())) ->

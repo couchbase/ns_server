@@ -19,7 +19,7 @@
 -export([metric/1, rate/2, sum/1, sum_by/2, sum_without/2, bucket_metric/2,
          named/2, with_label/3, multiply_by_scalar/2, convert_units/3,
          eq/2, eq/3, eq_any/2, re/3, op/2, clamp_min/2, idelta/2,
-         max/1]).
+         max/1, preformatted/1]).
 
 -define(DEFAULT_RANGE_INTERVAL, "1m").
 
@@ -75,6 +75,8 @@ convert_units(seconds, nanoseconds, Ast) -> multiply_by_scalar(Ast, 1000000000);
 convert_units(seconds, microseconds, Ast) -> multiply_by_scalar(Ast, 1000000);
 convert_units(seconds, milliseconds, Ast) -> multiply_by_scalar(Ast, 1000);
 convert_units(U, U, Ast) -> Ast.
+
+preformatted(Query) -> {preformatted, Query}.
 
 format_value(undefined) -> <<"NaN">>;
 format_value(infinity) -> <<"+Inf">>;
@@ -170,7 +172,8 @@ format_promql_ast(Bin) when is_binary(Bin) ->
 format_promql_ast(N) when is_integer(N) ->
     erlang:integer_to_list(N);
 format_promql_ast(X) when is_float(X) ->
-    erlang:float_to_list(X).
+    erlang:float_to_list(X);
+format_promql_ast({preformatted, Query}) -> Query.
 
 %% Transform "f({name=`m1`, ...}) or f({name=`m2`, ...} or ..." to
 %% "f({name=~`m1|m1|...`, ...})" as it works faster.
