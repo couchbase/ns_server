@@ -13,7 +13,7 @@
 %% This module implements the online upgrade of a cluster.  "Online" here
 %% means "when the cluster comes online"; in other words, when it is
 %% formed.  This happens after the individual nodes have gone through the
-%% node upgrade process.
+%% node upgrade process (which happens in ns_config_default).
 %%
 %% The online upgrade upgrades the configuration starting with the lowest
 %% possible cluster version, regardless of a node's version.  This is done
@@ -46,6 +46,8 @@ upgrade_config(NewVersion, FinalVersion) ->
             already_upgraded
     end.
 
+%% Note that ?MIN_SUPPORTED_VERSION should eventually be the same as
+%% cluster_compat_mode:get_min_supported_compat_version.
 do_upgrade_config(Config, VersionNeeded, FinalVersion) ->
     case ns_config:search(Config, cluster_compat_version) of
         {value, VersionNeeded} ->
@@ -57,9 +59,9 @@ do_upgrade_config(Config, VersionNeeded, FinalVersion) ->
         %% default config, but that uncovered issues that I'm too scared to
         %% touch at the moment.
         false ->
-            upgrade_compat_version(?VERSION_65);
+            upgrade_compat_version(?MIN_SUPPORTED_VERSION);
         {value, undefined} ->
-            upgrade_compat_version(?VERSION_65);
+            upgrade_compat_version(?MIN_SUPPORTED_VERSION);
         {value, Ver} ->
             {NewVersion, Upgrade} = upgrade(Ver, Config),
             ChronicleUpgrade = maybe_upgrade_to_chronicle(NewVersion, Config),
@@ -88,7 +90,7 @@ maybe_upgrade_to_chronicle(_, _) ->
 %% Note: upgrade functions must ensure that they do not add entries to the
 %% configuration which are already present.
 
-upgrade(?VERSION_65, _) ->
+upgrade(?MIN_SUPPORTED_VERSION, _) ->
     {?VERSION_66, []};
 
 upgrade(?VERSION_66, Config) ->

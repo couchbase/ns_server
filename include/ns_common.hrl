@@ -246,6 +246,15 @@
 -define(VERSION_72, [7, 2]).
 -define(VERSION_TRINITY, [7, 6]).
 
+%% MB-57435: TODO: Set this to VERSION_71 and then set
+%% cluster_compat_mode:min_supported_compat_version() to MIN_SUPPORTED_VERSION.
+%% There are many more paths to be inspected before this can be set to 7.1:
+%% (chronicle_upgrade, cluster_compat_mode, menelaus_roles, chronicle_compat of
+%% the ones I'm aware of) before versions 6.5, 6.6 and 7.0 can be purged.
+%% Unfortunately, trinity cluster initialization relies on 6.5 -> 6.6 -> 7.0 ->
+%% 7.1 -> 7.2 -> 7.6 side effects that happen in the respective upgrade paths.
+-define(MIN_SUPPORTED_VERSION, ?VERSION_65).
+
 -define(version_string(Version),
         lists:flatten(lists:join(".", lists:map(fun erlang:integer_to_list/1,
                                                 Version)))).

@@ -82,6 +82,9 @@ je_malloc_conf_default() ->
             undefined
     end.
 
+%% The offline upgrade path updates the version of the node when it starts.
+%% The cluster version (and related settings) are updated in cluster_compat_mode
+%% and ns_online_config_upgrader.
 default() ->
     DataDir = get_data_dir(),
 
@@ -368,13 +371,16 @@ default() ->
 -spec upgrade_config([[{term(), term()}]]) -> [{set, term(), term()}].
 upgrade_config(Config) ->
     CurrentVersion = get_current_version(),
+    UnsupportedVersion = {0, 0},
     ConfigVersion = ns_config:search_node_with_default(node(), Config,
-                                                       config_version, {1, 7}),
+                                                       config_version,
+                                                       UnsupportedVersion),
     assert_not_developer_preview(CurrentVersion, ConfigVersion, Config),
     case ConfigVersion of
         CurrentVersion ->
             [];
-        {6,5} ->
+        ?MIN_SUPPORTED_VERSION ->
+            true = ?MIN_SUPPORTED_VERSION =:= ?VERSION_65,
             [{set, {node, node(), config_version}, {6,5,1}} |
              upgrade_config_from_6_5_to_6_5_1(Config)];
         {6,5,1} ->
@@ -587,7 +593,8 @@ all_upgrades_test_() ->
 test_all_upgrades() ->
     Default = default(),
     KVs = misc:update_proplist(Default,
-                               [{{node, node(), config_version}, {6,5}}]),
+                               [{{node, node(), config_version},
+                                 ?MIN_SUPPORTED_VERSION}]),
     Cfg = #config{dynamic = [KVs], uuid = <<"uuid">>},
     UpgradedCfg = ns_config:upgrade_config(Cfg, fun upgrade_config/1),
 
