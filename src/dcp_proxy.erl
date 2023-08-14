@@ -41,7 +41,8 @@
                 connection_alive
                }).
 
--define(LIVELINESS_UPDATE_INTERVAL, 1000).
+-define(LIVELINESS_UPDATE_INTERVAL,
+        ?get_param(liveliness_update_interval, 100)).
 
 -define(CONNECT_TIMEOUT, ?get_timeout(connect, 180000)).
 
@@ -135,8 +136,6 @@ handle_info(check_liveliness,
     %% An approximate timestamp is good enough.
     %% erlang:now() can be bit expensive compared to os:timestamp().
     %% But, os:timestamp() may not be monotonic.
-    %% Since this function gets called only every 1 second, should
-    %% be ok to use erlang:now().
     %% Alternatively, we can also attach the timestamp in
     %% dcp_traffic_monitor:node_alive(). But, node_alive is an async operation
     %% so I prefer to attach the timestamp here.
