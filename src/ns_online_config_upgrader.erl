@@ -85,9 +85,8 @@ maybe_upgrade_to_chronicle(_, _) ->
 upgrade(?CURRENT_MIN_SUPPORTED_VERSION, _) ->
     {?VERSION_66, []};
 
-upgrade(?VERSION_66, Config) ->
-    {?VERSION_70,
-         query_settings_manager:config_upgrade_to_70(Config)};
+upgrade(?VERSION_66, _) ->
+    {?VERSION_70, []};
 
 upgrade(?VERSION_70, _) ->
     {?VERSION_71, []};

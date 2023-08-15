@@ -22,7 +22,6 @@
          get_from_config/3,
          update/2,
          config_default/0,
-         config_upgrade_to_70/1,
          config_upgrade_to_trinity/1]).
 
 -export([cfg_key/0,
@@ -69,26 +68,13 @@ update(Key, Value) ->
 %% must specify settings for the min supported version.
 config_default() ->
     {?QUERY_CONFIG_KEY, json_settings_manager:build_settings_json(
-                          default_settings(?CURRENT_MIN_SUPPORTED_VERSION),
+                          default_settings(?TARGET_MIN_SUPPORTED_VERSION),
                           dict:new(),
-                          known_settings(?CURRENT_MIN_SUPPORTED_VERSION))}.
-
-config_upgrade_to_70(Config) ->
-    NewSettings = general_settings_defaults(?VERSION_70) --
-        general_settings_defaults(?CURRENT_MIN_SUPPORTED_VERSION),
-    UpdatePropsFun = fun (PropsDict) ->
-                             dict:update(<<"n1ql-feat-ctrl">>,
-                                         fun (OldValue) ->
-                                                 OldValue bor 16#40
-                                         end, 16#40, PropsDict)
-                     end,
-    json_settings_manager:upgrade_existing_key(
-      ?MODULE, Config, [{generalSettings, NewSettings}],
-      known_settings(?VERSION_70), UpdatePropsFun).
+                          known_settings(?TARGET_MIN_SUPPORTED_VERSION))}.
 
 config_upgrade_to_trinity(Config) ->
     NewSettings = general_settings_defaults(?VERSION_TRINITY) --
-        general_settings_defaults(?VERSION_70),
+        general_settings_defaults(?TARGET_MIN_SUPPORTED_VERSION),
     json_settings_manager:upgrade_existing_key(
       ?MODULE, Config, [{generalSettings, NewSettings}],
       known_settings(?VERSION_TRINITY), fun functools:id/1).
@@ -118,31 +104,26 @@ general_settings(Ver) ->
      {queryCompletedThreshold, "completed-threshold", 1000},
      {queryLogLevel,           "loglevel",            <<"info">>},
      {queryMaxParallelism,     "max-parallelism",     1},
-     {queryN1QLFeatCtrl,       "n1ql-feat-ctrl",      12}] ++
-        case cluster_compat_mode:is_version_70(Ver) of
-            true ->
-                [{queryTxTimeout,          "txtimeout",           <<"0ms">>},
-                 {queryMemoryQuota,        "memory-quota",        0},
-                 {queryUseCBO,             "use-cbo",             true},
-                 {queryCleanupClientAttempts, "cleanupclientattempts", true},
-                 {queryCleanupLostAttempts, "cleanuplostattempts", true},
-                 {queryCleanupWindow,      "cleanupwindow",       <<"60s">>},
-                 {queryNumAtrs,            "numatrs",             1024}] ++
-                    case cluster_compat_mode:is_version_trinity(Ver) of
-                        true ->
-                            [{queryNodeQuota, "node-quota", 0},
-                             {queryUseReplica, "use-replica", <<"unset">>},
-                             {queryNodeQuotaValPercent,
-                              "node-quota-val-percent", 67},
-                             {queryNumCpus, "num-cpus", 0},
-                             {queryCompletedMaxPlanSize,
-                              "completed-max-plan-size", 262144}];
-                        false ->
-                            []
-                    end;
-            false ->
-                []
-        end.
+     {queryN1QLFeatCtrl,       "n1ql-feat-ctrl",      76},
+     {queryTxTimeout,          "txtimeout",           <<"0ms">>},
+     {queryMemoryQuota,        "memory-quota",        0},
+     {queryUseCBO,             "use-cbo",             true},
+     {queryCleanupClientAttempts, "cleanupclientattempts", true},
+     {queryCleanupLostAttempts, "cleanuplostattempts", true},
+     {queryCleanupWindow,      "cleanupwindow",       <<"60s">>},
+     {queryNumAtrs,            "numatrs",             1024}] ++
+    case cluster_compat_mode:is_version_trinity(Ver) of
+        true ->
+            [{queryNodeQuota, "node-quota", 0},
+             {queryUseReplica, "use-replica", <<"unset">>},
+             {queryNodeQuotaValPercent,
+              "node-quota-val-percent", 67},
+             {queryNumCpus, "num-cpus", 0},
+             {queryCompletedMaxPlanSize,
+              "completed-max-plan-size", 262144}];
+        false ->
+            []
+    end.
 
 curl_whitelist_settings_len_props() ->
     [{queryCurlWhitelist, id_lens(<<"query.settings.curl_whitelist">>)}].
@@ -161,3 +142,16 @@ general_settings_lens(Ver) ->
 
 curl_whitelist_settings_lens() ->
     json_settings_manager:props_lens(curl_whitelist_settings_len_props()).
+
+-ifdef(TEST).
+config_upgrade_test() ->
+    CmdList = config_upgrade_to_trinity([]),
+    [{set, {metakv, Meta}, Data}] = CmdList,
+    ?assertEqual(<<"/query/settings/config">>, Meta),
+    ?assertEqual(<<"{\"completed-max-plan-size\":262144,"
+                   "\"node-quota-val-percent\":67,"
+                   "\"node-quota\":0,"
+                   "\"use-replica\":\"unset\","
+                   "\"num-cpus\":0}">>,
+                 Data).
+-endif.
