@@ -190,6 +190,9 @@ report_system_stats(ReportFun) ->
                          [{<<"mode">>, Mode}]};
                     <<"pressure/", PsiKey/binary>> ->
                         get_pressure_name_labels(PsiKey);
+                    <<"cpu_cgroup_seconds_total_", Mode/binary>> ->
+                        {<<"cpu_cgroup_seconds_total">>,
+                         [{<<"mode">>, Mode}]};
                     _ ->
                         {KeyBin, []}
                 end,
