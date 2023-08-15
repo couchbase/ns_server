@@ -29,8 +29,6 @@
          is_enabled/0,
          known_settings/0,
          on_update/2,
-         config_upgrade_to_70/1,
-         config_upgrade_to_71/1,
          config_upgrade_to_trinity/1]).
 
 -import(json_settings_manager,
@@ -76,7 +74,7 @@ default_settings() ->
 
     [{memoryQuota, 512},
      {generalSettings,
-      general_settings_defaults(?CURRENT_MIN_SUPPORTED_VERSION)},
+      general_settings_defaults(?TARGET_MIN_SUPPORTED_VERSION)},
      {compaction, compaction_defaults()},
      {storageMode, <<"">>},
      {compactionMode, <<"circular">>},
@@ -116,7 +114,7 @@ config_default() ->
     {?INDEX_CONFIG_KEY, json_settings_manager:build_settings_json(
                           default_settings(),
                           dict:new(),
-                          known_settings(?CURRENT_MIN_SUPPORTED_VERSION))}.
+                          known_settings(?TARGET_MIN_SUPPORTED_VERSION))}.
 
 memory_quota_lens() ->
     Key = <<"indexer.settings.memory_quota">>,
@@ -140,24 +138,14 @@ indexer_threads_lens() ->
     {Get, Set}.
 
 general_settings_lens_props(ClusterVersion) ->
-    case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_70) of
-        true ->
-            [{redistributeIndexes,
-              id_lens(<<"indexer.settings.rebalance.redistribute_indexes">>)},
-             {numReplica,
-              id_lens(<<"indexer.settings.num_replica">>)}];
-        _ ->
-            []
-    end ++
-    case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_71) of
-        true ->
-            [{enablePageBloomFilter,
-              id_lens(<<"indexer.settings.enable_page_bloom_filter">>)}];
-        false ->
-            []
-    end ++
+    [{redistributeIndexes,
+      id_lens(<<"indexer.settings.rebalance.redistribute_indexes">>)},
+     {numReplica,
+      id_lens(<<"indexer.settings.num_replica">>)},
+     {enablePageBloomFilter,
+      id_lens(<<"indexer.settings.enable_page_bloom_filter">>)}] ++
     case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_TRINITY) of
-        true ->
+         true ->
             [{memHighThreshold,
               id_lens(<<"indexer.settings.thresholds.mem_high">>)},
              {memLowThreshold,
@@ -197,20 +185,9 @@ default_rollback_points() ->
     end.
 
 general_settings_defaults(ClusterVersion) ->
-    case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_70) of
-        true ->
-            NumReplica = config_profile:get_value({indexer, num_replica}, 0),
-            [{redistributeIndexes, false},
-             {numReplica, NumReplica}];
-        _ ->
-            []
-    end ++
-    case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_71) of
-        true ->
-            [{enablePageBloomFilter, false}];
-        false ->
-            []
-    end ++
+    [{redistributeIndexes, false},
+     {numReplica, config_profile:get_value({indexer, num_replica}, 0)},
+     {enablePageBloomFilter, false}] ++
     case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_TRINITY) of
         true ->
             [{memHighThreshold,
@@ -299,14 +276,9 @@ compaction_defaults() ->
 compaction_lens() ->
     json_settings_manager:props_lens(compaction_lens_props()).
 
-config_upgrade_to_70(Config) ->
-    config_upgrade_settings(Config, ?VERSION_66, ?VERSION_70).
-
-config_upgrade_to_71(Config) ->
-    config_upgrade_settings(Config, ?VERSION_70, ?VERSION_71).
-
 config_upgrade_to_trinity(Config) ->
-    config_upgrade_settings(Config, ?VERSION_71, ?VERSION_TRINITY).
+    config_upgrade_settings(Config, ?TARGET_MIN_SUPPORTED_VERSION,
+                            ?VERSION_TRINITY).
 
 config_upgrade_settings(Config, OldVersion, NewVersion) ->
     NewSettings = general_settings_defaults(NewVersion) --
@@ -317,8 +289,7 @@ config_upgrade_settings(Config, OldVersion, NewVersion) ->
 
 -ifdef(TEST).
 default_test() ->
-    Versions = [?CURRENT_MIN_SUPPORTED_VERSION, ?VERSION_70, ?VERSION_71,
-                ?VERSION_TRINITY],
+    Versions = [?TARGET_MIN_SUPPORTED_VERSION, ?VERSION_TRINITY],
     lists:foreach(fun(V) -> default_versioned(V) end, Versions).
 
 default_versioned(Version) ->
@@ -331,21 +302,9 @@ default_versioned(Version) ->
                  Keys(general_settings_defaults(Version))).
 
 config_upgrade_test() ->
-    CmdList = config_upgrade_to_70([]),
+    CmdList = config_upgrade_to_trinity([]),
     [{set, {metakv, Meta}, Data}] = CmdList,
     ?assertEqual(<<"/indexing/settings/config">>, Meta),
-    ?assertEqual(<<"{\"indexer.settings.rebalance.redistribute_indexes\":false,"
-                   "\"indexer.settings.num_replica\":0}">>, Data),
-
-    CmdList2 = config_upgrade_to_71([]),
-    [{set, {metakv, Meta2}, Data2}] = CmdList2,
-    ?assertEqual(<<"/indexing/settings/config">>, Meta2),
-    ?assertEqual(<<"{\"indexer.settings.enable_page_bloom_filter\":false}">>,
-                 Data2),
-
-    CmdList3 = config_upgrade_to_trinity([]),
-    [{set, {metakv, Meta3}, Data3}] = CmdList3,
-    ?assertEqual(<<"/indexing/settings/config">>, Meta3),
     ?assertEqual(<<"{\"indexer.settings.rebalance.blob_storage_region\":\"\","
                    "\"indexer.settings.thresholds.mem_high\":70,"
                    "\"indexer.settings.thresholds.units_low\":40,"
@@ -354,5 +313,5 @@ config_upgrade_test() ->
                    "\"indexer.settings.rebalance.blob_storage_bucket\":\"\","
                    "\"indexer.settings.thresholds.units_high\":60,"
                    "\"indexer.settings.thresholds.mem_low\":50}">>,
-                 Data3).
+                 Data).
 -endif.

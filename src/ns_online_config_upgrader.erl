@@ -87,12 +87,10 @@ upgrade(?CURRENT_MIN_SUPPORTED_VERSION, _) ->
 
 upgrade(?VERSION_66, Config) ->
     {?VERSION_70,
-         index_settings_manager:config_upgrade_to_70(Config) ++
          query_settings_manager:config_upgrade_to_70(Config)};
 
-upgrade(?VERSION_70, Config) ->
-    {?VERSION_71,
-     index_settings_manager:config_upgrade_to_71(Config)};
+upgrade(?VERSION_70, _) ->
+    {?VERSION_71, []};
 
 upgrade(?VERSION_71, Config) ->
     {?VERSION_72,
