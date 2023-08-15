@@ -81,6 +81,9 @@
 %% Default history size threshold
 -define(HIST_WARN_PERC, 90).
 
+%% Default memcached connection threshold
+-define(MEMCACHED_CONNECTION_THRESHOLD, 90).
+
 %% Number of checks seeing no progress before we trigger an alert. The time
 %% between checks is defined as threshold / check frequency
 -define(REBALANCE_CHECK_FREQ, ?get_param(stuck_rebalance_check_freq, 3)).
@@ -132,6 +135,8 @@ short_description(memory_threshold) ->
     "system memory usage threshold exceeded";
 short_description(history_size_warning) ->
     "history size approaching limit";
+short_description(memcached_connections) ->
+    "memcached connections approaching limit";
 short_description(Other) ->
     %% this case is needed for tests to work
     couch_util:to_list(Other).
@@ -203,7 +208,10 @@ errors(history_size_warning) ->
     "history to be retained for the history retention time.";
 errors(stuck_rebalance) ->
     "Warning: Rebalance of '~s' (rebalance_id: ~s) appears stuck, no progress "
-    "has been made for ~b seconds.".
+    "has been made for ~b seconds.";
+errors(memcached_connections) ->
+    "Warning: On node ~s the number of connections being used by memcached "
+    "(~p) is above the notice threshold of ~b%. The limit is ~p.".
 
 %% ------------------------------------------------------------------
 %% API Function Definitions
@@ -383,7 +391,7 @@ alert_keys() ->
      ep_clock_cas_drift_threshold_exceeded,
      communication_issue, time_out_of_sync, disk_usage_analyzer_stuck,
      cert_expires_soon, cert_expired, memory_threshold, history_size_warning,
-     stuck_rebalance].
+     stuck_rebalance, memcached_connections].
 
 config_upgrade_to_72(Config) ->
     config_email_alerts_upgrade(
@@ -409,6 +417,9 @@ config_upgrade_to_trinity(Config) ->
                      add_proplist_list_elem(alerts, cert_expires_soon, _),
                      add_proplist_list_elem(pop_up_alerts,
                                             cert_expires_soon, _),
+                     add_proplist_list_elem(alerts, memcached_connections, _),
+                     add_proplist_list_elem(pop_up_alerts,
+                                            memcached_connections, _),
                      move_memory_alert_email_alerts(alerts,
                                                     memory_alert_email, _),
                      move_memory_alert_email_alerts(pop_up_alerts,
@@ -455,7 +466,7 @@ global_checks() ->
      indexer_ram_max_usage, cas_drift_threshold, communication_issue,
      time_out_of_sync, disk_usage_analyzer_stuck, certs, xdcr_certs,
      memory_threshold, history_size_warning, indexer_low_resident_percentage,
-     stuck_rebalance].
+     stuck_rebalance, memcached_connections].
 
 %% @doc fires off various checks
 check_alerts(Opaque, Hist, Stats) ->
@@ -897,7 +908,34 @@ check(stuck_rebalance, Opaque, _History, _Stats) ->
                               Service, NowTime, Threshold, Opaque)
                     end
             end
-    end.
+    end;
+check(memcached_connections, Opaque, _History, Stats) ->
+    case proplists:get_value("@global", Stats) of
+        undefined ->
+            ?log_debug("Skipping memcached connections check as there are no "
+                       "global stats: ~p", [Stats]);
+        GlobalStats ->
+            {value, Config} = ns_config:search(alert_limits),
+            AlertPerc =
+                proplists:get_value(memcached_connection_warning_threshold,
+                                    Config, ?MEMCACHED_CONNECTION_THRESHOLD),
+            Max = proplists:get_value(kv_max_user_connections, GlobalStats),
+            AlertLimit = Max * AlertPerc / 100,
+
+            Used = proplists:get_value(kv_curr_connections, GlobalStats),
+            case Used > AlertLimit of
+                true when is_number(Max) andalso is_number(Used) ->
+                    Err = fmt_to_bin(errors(memcached_connections),
+                                     [node(), Used, AlertPerc, Max]),
+                    global_alert(memcached_connections, Err);
+                false -> ok;
+                _ ->
+                    ?log_error("Failed to check memcached connections. Got "
+                               "global stats ~p and percentage threshold ~p",
+                               [GlobalStats, AlertPerc])
+            end
+    end,
+    Opaque.
 
 check_memory_threshold(MemUsed, MemTotal, Type) ->
     Percentage = (MemUsed * 100) / MemTotal,
@@ -1442,7 +1480,12 @@ params() ->
      {"stuckRebalanceThresholdKV",
       #{type => {int, ?MIN_REBALANCE_THRESHOLD, infinity},
         cfg_key => [alert_limits, {stuck_rebalance_threshold_secs, kv}],
-        default => undefined}}].
+        default => undefined}},
+     {"memcachedConnectionWarningThreshold",
+      #{type => {int, 0, 100},
+        cfg_key => [alert_limits,
+                    memcached_connection_warning_threshold],
+        default => ?MEMCACHED_CONNECTION_THRESHOLD}}].
 
 build_alert_limits() ->
     case ns_config:search(alert_limits) of
@@ -1566,19 +1609,20 @@ config_upgrade_to_trinity_test() ->
 
     Config2 =
         [[{email_alerts,
-            [{pop_up_alerts, [ip, disk]}, {enabled, false},
-             {alerts, [ip, time_out_of_sync, communication_issue]}]}]],
+           [{pop_up_alerts, [ip, disk]}, {enabled, false},
+            {alerts, [ip, time_out_of_sync, communication_issue]}]}]],
     Expected2 =
         [{set, email_alerts,
-            [{pop_up_alerts,
-                [auto_failover_cluster_too_small, auto_failover_disabled,
-                 auto_failover_maximum_reached, auto_failover_node,
-                 auto_failover_other_nodes_down, cert_expired,
-                 cert_expires_soon, disk, ip, memory_threshold]},
-             {alerts,
-                 [cert_expired, cert_expires_soon, communication_issue, ip,
-                  memory_threshold, time_out_of_sync]},
-             {enabled,false}]},
+          [{pop_up_alerts,
+            [auto_failover_cluster_too_small, auto_failover_disabled,
+             auto_failover_maximum_reached, auto_failover_node,
+             auto_failover_other_nodes_down, cert_expired,
+             cert_expires_soon, disk, ip, memcached_connections,
+             memory_threshold]},
+           {alerts,
+            [cert_expired, cert_expires_soon, communication_issue, ip,
+             memcached_connections, memory_threshold, time_out_of_sync]},
+           {enabled,false}]},
          {delete,memory_alert_email},
          {delete,memory_alert_popup}] ++ Expected1,
     ?assertEqual(Expected2, config_upgrade_to_trinity(Config2)).
