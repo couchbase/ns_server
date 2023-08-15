@@ -140,7 +140,6 @@
          buckets_with_data_on_this_node/0,
          activate_bucket_data_on_this_node/1,
          deactivate_bucket_data_on_this_node/1,
-         config_upgrade_to_66/1,
          upgrade_to_chronicle/2,
          chronicle_upgrade_to_71/1,
          chronicle_upgrade_to_72/1,
@@ -2031,24 +2030,6 @@ deactivate_bucket_data_on_this_node(chronicle, Name) ->
 deactivate_bucket_data_on_this_node(ns_config, Name) ->
     ns_config:update_key(buckets_with_data_key(node()),
                          lists:keydelete(Name, 1, _), []).
-
-upgrade_buckets(Config, Fun) ->
-    Buckets = get_buckets(Config),
-    NewBuckets = [{Name, Fun(Name, BucketConfig)} ||
-                  {Name, BucketConfig} <-Buckets],
-    [{set, buckets, [{configs, NewBuckets}]}].
-
-config_upgrade_to_66(Config) ->
-    upgrade_buckets(Config,
-          fun (_Name, BCfg) ->
-                  case bucket_type(BCfg) of
-                      membase ->
-                          lists:keystore(durability_min_level, 1, BCfg,
-                                         {durability_min_level, none});
-                      memcached ->
-                          BCfg
-                  end
-          end).
 
 chronicle_upgrade_bucket(Func, BucketNames, ChronicleTxn) ->
     lists:foldl(
