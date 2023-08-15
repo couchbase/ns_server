@@ -38,8 +38,7 @@
          terminate/2, code_change/3, handle_settings_alerts_limits_post/1,
          handle_settings_alerts_limits_get/1]).
 
--export([alert_keys/0, config_upgrade_to_70/1, config_upgrade_to_71/1,
-         config_upgrade_to_72/1, config_upgrade_to_trinity/1]).
+-export([alert_keys/0, config_upgrade_to_72/1, config_upgrade_to_trinity/1]).
 
 %% @doc Hold client state for any alerts that need to be shown in
 %% the browser, is used by menelaus_web to piggy back for a transport
@@ -368,14 +367,6 @@ alert_keys() ->
      ep_clock_cas_drift_threshold_exceeded,
      communication_issue, time_out_of_sync, disk_usage_analyzer_stuck,
      cert_expires_soon, cert_expired, memory_threshold, history_size_warning].
-
-config_upgrade_to_70(Config) ->
-    config_email_alerts_upgrade(
-      Config, fun config_email_alerts_upgrade_to_70/1).
-
-config_upgrade_to_71(Config) ->
-    config_email_alerts_upgrade(
-      Config, fun config_email_alerts_upgrade_to_71/1).
 
 config_upgrade_to_72(Config) ->
     config_email_alerts_upgrade(
@@ -1287,16 +1278,6 @@ maybe_send_out_email_alert({Key0, Node}, Message) ->
             false
     end.
 
-%% Add {Key, Value} to PList if there is no member whose first element
-%% compares equal to Key.
-add_proplist_kv(Key, Value, PList) ->
-    case lists:keysearch(Key, 1, PList) of
-        false ->
-            [{Key, Value} | PList];
-        _ ->
-            PList
-      end.
-
 move_memory_alert_email_alerts(Key, NsConfigKey, PList) ->
     {case ns_config:read_key_fast(NsConfigKey, true) of
          true -> add_proplist_list_elem(Key, memory_threshold, PList);
@@ -1321,28 +1302,6 @@ upgrade_alerts(EmailAlerts, Mutations) ->
           end,
           {EmailAlerts, []}, Mutations),
     maybe_upgrade_email_alerts(EmailAlerts, Result) ++ ExtraNsCfgChanges.
-
-config_email_alerts_upgrade_to_70(EmailAlerts) ->
-    %% memory_threshold is excluded from alerts and pop_up_alerts here for
-    %% backward compatibility reasons (because it was added in a minor
-    %% release). It can be removed when memory_alert_email is added as
-    %% a proper alert (first major release after 7.1).
-    Result =
-        functools:chain(
-          EmailAlerts,
-          [add_proplist_list_elem(alerts, time_out_of_sync, _),
-              add_proplist_kv(pop_up_alerts, auto_failover:alert_keys() ++
-                                             (alert_keys() --
-                                             [memory_threshold]), _)]),
-    maybe_upgrade_email_alerts(EmailAlerts, Result).
-
-config_email_alerts_upgrade_to_71(EmailAlerts) ->
-    Result =
-        functools:chain(
-          EmailAlerts,
-          [add_proplist_list_elem(pop_up_alerts, A, _)
-           || A <- auto_failover:alert_keys()]),
-    maybe_upgrade_email_alerts(EmailAlerts, Result).
 
 config_email_alerts_upgrade_to_72(EmailAlerts) ->
     Result =
@@ -1490,82 +1449,6 @@ basic_test() ->
         meck:unload(cluster_compat_mode),
         meck:unload(ns_config)
     end.
-
-config_update_to_70_test() ->
-    %% Note: in this test the config keys and values aren't supplied in
-    %% sorted order so we can ensure that we handle upgrade correctly
-    %% regardless of key and value order.
-
-    %% Sub-test: config doesn't need upgrade because the time_out_of_sync
-    %% key is present and pop_up_alerts is present.
-    Config1 = [[{email_alerts,
-                 [{pop_up_alerts, [ip, disk]},
-                  {enabled, false},
-                  {alerts, [ip, time_out_of_sync, communication_issue]}]
-                }]],
-    Expected1 = [],
-    Result1 = config_upgrade_to_70(Config1),
-    ?assertEqual(Expected1, Result1),
-
-    %% Sub-test: config needs upgrade of alerts because the
-    %% time_out_of_sync key isn't present.
-    Config2 = [[{email_alerts,
-                 [{pop_up_alerts, [ip, disk]},
-                  {enabled, false},
-                  {alerts, [ip, communication_issue]}]
-                }]],
-    Expected2 =
-        [{alerts, [communication_issue, ip, time_out_of_sync]},
-         {enabled, false},
-         {pop_up_alerts, [ip, disk]}],
-    [{set, email_alerts, Actual2}] = config_upgrade_to_70(Config2),
-    ?assertEqual(misc:sort_kv_list(Expected2), misc:sort_kv_list(Actual2)),
-
-    %% Sub-test: config needs pop_up_alerts because it isn't present.
-    Config3 = [[{email_alerts,
-                 [{enabled, false},
-                  {alerts, [ip, communication_issue, time_out_of_sync]}]
-                }]],
-    Expected3 =
-        [{alerts, [ip, communication_issue, time_out_of_sync]},
-         {enabled, false},
-         {pop_up_alerts, auto_failover:alert_keys() ++
-                         (alert_keys() --
-                         [memory_threshold])}],
-    [{set, email_alerts, Actual3}] = config_upgrade_to_70(Config3),
-    ?assertEqual(misc:sort_kv_list(Expected3), misc:sort_kv_list(Actual3)),
-
-    %% Sub-test: config needs upgrade of alerts and pop_up_alerts because
-    %% neither time_out_of_sync nor pop_up_alerts are present.
-    Config4 =
-        [[{email_alerts,
-           [{enabled, false},
-            {alerts, [ip, communication_issue]}]}]],
-    Expected4 =
-        [{alerts, [ip, communication_issue, time_out_of_sync]},
-         {enabled, false},
-         {pop_up_alerts, auto_failover:alert_keys() ++
-                         (alert_keys() --
-                         [memory_threshold])}],
-    [{set, email_alerts, Actual4}] = config_upgrade_to_70(Config4),
-    ?assertEqual(misc:sort_kv_list(Expected4), misc:sort_kv_list(Actual4)).
-
-add_proplist_kv_test() ->
-    %% Sub-test: key "pop_up_alerts" is already present
-    PL1 = [{alerts, [ip, time_out_of_sync, communication_issue]},
-          {pop_up_alerts, [ip, disk]},
-          {enabled, false}],
-    Result1 = add_proplist_kv(pop_up_alerts, [foo, bar], PL1),
-    ?assertEqual(misc:sort_kv_list(PL1), misc:sort_kv_list(Result1)),
-
-    %% Sub-test: key "pop_up_alerts" is already present
-    PL2 = [{alerts, [ip, time_out_of_sync, communication_issue]},
-          {enabled, false}],
-    Expected2 = [{alerts, [ip, time_out_of_sync, communication_issue]},
-                 {pop_up_alerts, [ip, disk]},
-                 {enabled, false}],
-    Result2 = add_proplist_kv(pop_up_alerts, [ip, disk], PL2),
-    ?assertEqual(misc:sort_kv_list(Expected2), misc:sort_kv_list(Result2)).
 
 add_proplist_list_elem_test() ->
     %% Sub-test: key "time_out_of_sync" is already present

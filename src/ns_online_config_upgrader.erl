@@ -93,14 +93,12 @@ upgrade(?VERSION_65, Config) ->
 
 upgrade(?VERSION_66, Config) ->
     {?VERSION_70,
-     menelaus_web_alerts_srv:config_upgrade_to_70(Config) ++
          index_settings_manager:config_upgrade_to_70(Config) ++
          query_settings_manager:config_upgrade_to_70(Config)};
 
 upgrade(?VERSION_70, Config) ->
     {?VERSION_71,
-     index_settings_manager:config_upgrade_to_71(Config) ++
-         menelaus_web_alerts_srv:config_upgrade_to_71(Config)};
+     index_settings_manager:config_upgrade_to_71(Config)};
 
 upgrade(?VERSION_71, Config) ->
     {?VERSION_72,
