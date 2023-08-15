@@ -82,9 +82,43 @@ je_malloc_conf_default() ->
             undefined
     end.
 
-%% The offline upgrade path updates the version of the node when it starts.
-%% The cluster version (and related settings) are updated in cluster_compat_mode
-%% and ns_online_config_upgrader.
+%% Some settings in default() reflect those of LATEST_VERSION_NUM:
+%% - database_dir, index_dir, memcached keys (node-specific settings)
+%% Some settings in default() reflect those of MIN_SUPPORTED_VERSION:
+%% - (analytics|query|index)_settings_manager (cluster-wide settings)
+%%
+%% upgrade_config_from_X_to_Y paths in this file are "offline" upgrades. They
+%% update settings when the node version changes (at start).
+%% config_upgrade_to_X paths in ns_online_config_upgrader are "online" upgrades.
+%% They occur when the cluster is online and cluster_compat_version changes.
+%%
+%% Cluster-wide settings:
+%% cluster_init starts off with compat_version undefined. It upgrades ns_config
+%% starting from minimum supported version, cycles through each supported
+%% version until it reaches latest version. This is to arrive at the maximum
+%% mutually agreed upon supported version among all nodes in the cluster. As
+%% cluster_compat_version goes up, ns_config is updated using
+%% ns_online_config_upgrader:config_upgrade_to_X functions.
+%% If setting A is introduced in latest_version (here in defaults()), a node
+%% running latest_version is already up to date in its config, with respect to
+%% A. The node may however belong to a cluster with compat_version < latest. A
+%% change in cluster_compat_version to latest will call config_upgrade_to_latest
+%% and can attempt to add the setting A already present in its config. This path
+%% is exercised during cluster init (undefined -> min supported > ... > latest).
+%% This needs to be accounted for by either: initializing settings to min
+%% supported here and adding strictly new settings during upgrades (see
+%% index_settings_manager), or handling settings already present during upgrades
+%% correctly.
+%%
+%% Node-specific settings:
+%% Similarly, it is possible that a customer is already running with certain
+%% settings specified in memcached keys. During an offline upgrade, it is
+%% necessary to account for settings that were previously configured and retain
+%% them as needed, account for duplicates.
+%%
+%% TLDR: In any upgrade path, it is safer to assume a setting already exists to
+%% - avoid losing a previously configured setting
+%% - prevent duplicates
 default() ->
     DataDir = get_data_dir(),
 

@@ -49,7 +49,13 @@
 -define(MIN_EVENTS_ALLOWED, 1).
 -define(DEFAULT_EVENTS_ALLOWED, 1).
 
+%% Default settings reflect settings of the minimum supported cluster version.
+%% Settings for newer versions will be added in ns_online_config_upgrader.
+%% Specify those in a config_upgrade_to_X function.
 default_config(IsEnterprise) ->
+    default_config(?TARGET_MIN_SUPPORTED_VERSION, IsEnterprise).
+
+default_config(?TARGET_MIN_SUPPORTED_VERSION, IsEnterprise) ->
     [{?ROOT_CONFIG_KEY,
       [{enabled, true},
        % timeout is the time (in seconds) a node needs to be
@@ -60,7 +66,6 @@ default_config(IsEnterprise) ->
        {failover_on_data_disk_issues, [{enabled, false},
                                        {timePeriod, 120}]},
        {failover_server_group, false},
-       {disable_max_count, config_profile:get_bool(failover_disable_max_count)},
        {max_count, 1},
        {failed_over_server_groups, []},
        {?CAN_ABORT_REBALANCE_CONFIG_KEY, IsEnterprise}]}].
@@ -76,7 +81,7 @@ max_events_allowed() ->
 config_upgrade_to_trinity(Config) ->
     [{set, auto_failover_cfg,
       misc:update_proplist(auto_failover:get_cfg(Config),
-                           [{disable_max_count,
+                           [{?DISABLE_MAX_COUNT_CONFIG_KEY,
                              config_profile:get_bool(
                                failover_disable_max_count)}])}].
 

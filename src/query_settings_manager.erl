@@ -56,14 +56,26 @@ on_update(_Key, _Value) ->
 update(Key, Value) ->
     json_settings_manager:update(?MODULE, [{Key, Value}]).
 
+%% settings manager populates settings per version. For each online upgrade,
+%% it computes the delta between adjacent supported versions to update only the
+%% settings that changed between the two.
+%% Note that a node (running any version) is seeded with settings specified in
+%% config_default(). If we specify settings(LATEST_VERSION) here, the node
+%% contains settings as per LATEST_VERSION at start. A node with LATEST_VERSION
+%% settings may be part of a cluster with compat_version v1 < latest_version. If
+%% the version moves up from v1 to latest, config_upgrade_to_latest is called.
+%% This will update settings that changed between v1 and latest (when the node
+%% was already initialized with latest_version settings). So config_default()
+%% must specify settings for the min supported version.
 config_default() ->
     {?QUERY_CONFIG_KEY, json_settings_manager:build_settings_json(
-                          default_settings(?VERSION_65),
-                          dict:new(), known_settings(?VERSION_65))}.
+                          default_settings(?CURRENT_MIN_SUPPORTED_VERSION),
+                          dict:new(),
+                          known_settings(?CURRENT_MIN_SUPPORTED_VERSION))}.
 
 config_upgrade_to_70(Config) ->
     NewSettings = general_settings_defaults(?VERSION_70) --
-        general_settings_defaults(?VERSION_65),
+        general_settings_defaults(?CURRENT_MIN_SUPPORTED_VERSION),
     UpdatePropsFun = fun (PropsDict) ->
                              dict:update(<<"n1ql-feat-ctrl">>,
                                          fun (OldValue) ->

@@ -56,12 +56,24 @@ update(Key, Value) ->
     json_settings_manager:update(?MODULE, [{Key, Value}]).
 
 default_settings() ->
-    [{generalSettings, general_settings_defaults(?LATEST_VERSION_NUM)}].
+    [{generalSettings,
+      general_settings_defaults(?TARGET_MIN_SUPPORTED_VERSION)}].
 
+%% settings manager populates settings per version. For each online upgrade,
+%% it computes the delta between adjacent supported versions to update only the
+%% settings that changed between the two.
+%% Note that a node (running any version) is seeded with settings specified in
+%% config_default(). If we specify settings(LATEST_VERSION) here, the node
+%% contains settings as per LATEST_VERSION at start. A node with LATEST_VERSION
+%% settings may be part of a cluster with compat_version v1 < latest_version. If
+%% the version moves up from v1 to latest, config_upgrade_to_latest is called.
+%% This will update settings that changed between v1 and latest (when the node
+%% was already initialized with latest_version settings). So config_default()
+%% must specify settings for the min supported version.
 config_default() ->
     {?ANALYTICS_CONFIG_KEY, json_settings_manager:build_settings_json(
                               default_settings(), dict:new(),
-                              known_settings(?LATEST_VERSION_NUM))}.
+                              known_settings(?TARGET_MIN_SUPPORTED_VERSION))}.
 
 known_settings() ->
     ClusterVersion = cluster_compat_mode:get_ns_config_compat_version(),
@@ -115,11 +127,18 @@ config_upgrade_to_trinity(Config) ->
 
 -ifdef(TEST).
 defaults_test() ->
+    Versions = [?TARGET_MIN_SUPPORTED_VERSION, ?VERSION_TRINITY],
+    lists:foreach(fun(V) -> default_versioned(V) end, Versions).
+
+default_versioned(Version) ->
     Keys = fun (L) -> lists:sort([K || {K, _} <- L]) end,
 
-    ?assertEqual(Keys(known_settings(?LATEST_VERSION_NUM)), Keys(default_settings())),
-    ?assertEqual(Keys(general_settings_lens_props(?LATEST_VERSION_NUM)),
-                 Keys(general_settings_defaults(?LATEST_VERSION_NUM))).
+    %% This only works across versions because the keys are the same
+    %% i.e. [generalSettings] in default_settings() and in trinity.
+    ?assertEqual(Keys(known_settings(Version)), Keys(default_settings())),
+
+    ?assertEqual(Keys(general_settings_lens_props(Version)),
+                 Keys(general_settings_defaults(Version))).
 
 config_upgrade_test() ->
     CmdList = config_upgrade_to_trinity([]),
