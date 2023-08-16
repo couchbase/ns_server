@@ -46,22 +46,14 @@ upgrade_config(NewVersion, FinalVersion) ->
             already_upgraded
     end.
 
-%% Note that ?MIN_SUPPORTED_VERSION should eventually be the same as
-%% cluster_compat_mode:get_min_supported_compat_version.
 do_upgrade_config(Config, VersionNeeded, FinalVersion) ->
     case ns_config:search(Config, cluster_compat_version) of
         {value, VersionNeeded} ->
             [];
-        %% The following two cases don't actually correspond to upgrade from
-        %% pre-2.0 clusters, we don't support those anymore. Instead, it's an
-        %% upgrade from pristine ns_config_default:default(). I tried setting
-        %% cluster_compat_version to the most up-to-date compat version in
-        %% default config, but that uncovered issues that I'm too scared to
-        %% touch at the moment.
         false ->
-            upgrade_compat_version(?MIN_SUPPORTED_VERSION);
+            upgrade_compat_version(?CURRENT_MIN_SUPPORTED_VERSION);
         {value, undefined} ->
-            upgrade_compat_version(?MIN_SUPPORTED_VERSION);
+            upgrade_compat_version(?CURRENT_MIN_SUPPORTED_VERSION);
         {value, Ver} ->
             {NewVersion, Upgrade} = upgrade(Ver, Config),
             ChronicleUpgrade = maybe_upgrade_to_chronicle(NewVersion, Config),
@@ -90,7 +82,7 @@ maybe_upgrade_to_chronicle(_, _) ->
 %% Note: upgrade functions must ensure that they do not add entries to the
 %% configuration which are already present.
 
-upgrade(?MIN_SUPPORTED_VERSION, _) ->
+upgrade(?CURRENT_MIN_SUPPORTED_VERSION, _) ->
     {?VERSION_66, []};
 
 upgrade(?VERSION_66, Config) ->

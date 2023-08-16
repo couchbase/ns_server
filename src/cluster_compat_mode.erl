@@ -110,7 +110,7 @@ supported_compat_version() ->
 %% from joining a cluster with LATEST_VERSION_NUM compat version.
 %% It has no effect whatsoever on the offline upgrade path.
 min_supported_compat_version() ->
-    ?VERSION_71.
+    ?TARGET_MIN_SUPPORTED_VERSION.
 
 %% NOTE: this is rpc:call-ed by mb_master
 %%

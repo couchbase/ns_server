@@ -246,14 +246,24 @@
 -define(VERSION_72, [7, 2]).
 -define(VERSION_TRINITY, [7, 6]).
 
-%% MB-57435: TODO: Set this to VERSION_71 and then set
-%% cluster_compat_mode:min_supported_compat_version() to MIN_SUPPORTED_VERSION.
-%% There are many more paths to be inspected before this can be set to 7.1:
-%% (chronicle_upgrade, cluster_compat_mode, menelaus_roles, chronicle_compat of
-%% the ones I'm aware of) before versions 6.5, 6.6 and 7.0 can be purged.
-%% Unfortunately, trinity cluster initialization relies on 6.5 -> 6.6 -> 7.0 ->
-%% 7.1 -> 7.2 -> 7.6 side effects that happen in the respective upgrade paths.
--define(MIN_SUPPORTED_VERSION, ?VERSION_65).
+%% Use this version to prevent:
+%% - offline upgrades from lower versions
+%% - joining an old cluster (compat_version < this version)
+%% - an old node from joining us (node version < this version)
+%% It can be set independent of current_min_supported_version, as ns_config
+%% and chronicle contain 7.1 settings, having gone through upgrades previously.
+-define(TARGET_MIN_SUPPORTED_VERSION, ?VERSION_71).
+
+%% cluster init relies on upgrade paths from current min supported version
+%% onwards (6.5 -> 6.6 -> 7.0 -> 7.1 -> 7.2 -> latest) to init ns_config and
+%% chronicle. Moving min_supported_version up removes upgrade paths. So,
+%% settings added previously via upgrade paths to versions (which are no longer
+%% supported) must be subsumed to a new "default" config for the target min
+%% version. This config must exactly match what was achieved through assorted
+%% upgrade paths (ns_config:config_update_to, chronicle_upgrade:upgrade_to,
+%% cluster_compat_mode:do_upgrades...). Only then can we remove obsolete upgrade
+%% paths and move to using target min supported version.
+-define(CURRENT_MIN_SUPPORTED_VERSION, ?VERSION_65).
 
 -define(version_string(Version),
         lists:flatten(lists:join(".", lists:map(fun erlang:integer_to_list/1,
