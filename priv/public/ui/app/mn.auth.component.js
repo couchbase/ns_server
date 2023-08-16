@@ -7,11 +7,12 @@ file, in accordance with the Business Source License, use of this software will
 be governed by the Apache License, Version 2.0, included in the file
 licenses/APL2.txt.
 */
-
 import {Component, ChangeDetectionStrategy} from '@angular/core';
 import {Validators} from '@angular/forms';
 import {BehaviorSubject} from 'rxjs';
+import {pluck} from 'rxjs/operators';
 import {UIRouter} from '@uirouter/angular';
+
 
 import {MnAuthService} from './mn.auth.service.js';
 import {MnFormService} from './mn.form.service.js';
@@ -44,6 +45,9 @@ class MnAuthComponent extends MnLifeCycleHooksToStream {
     this.postUILogin = mnAuthService.stream.postUILogin;
     this.postUISAMLLogin = mnAuthService.stream.postUISAMLLogin;
     this.getAuthMethods = mnAuthService.stream.getAuthMethods;
+
+    this.samlErrorStatus = uiRouter.globals.params$.pipe(pluck("samlErrorStatus"));
+    this.samlUserName = uiRouter.globals.params$.pipe(pluck("samlUserName"));
 
     this.form = mnFormService.create(this)
       .setFormGroup({

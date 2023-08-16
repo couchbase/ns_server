@@ -18,6 +18,18 @@ import {MnSharedModule} from './mn.shared.module.js';
 
 let authState = {
   name: "app.auth",
+  params: {
+    samlErrorStatus: {
+      value: null,
+      squash: true,
+      dynamic: true
+    },
+    samlUserName: {
+      value: null,
+      squash: true,
+      dynamic: true
+    }
+  },
   component: MnAuthComponent
 }
 

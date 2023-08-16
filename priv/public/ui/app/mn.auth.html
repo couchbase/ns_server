@@ -84,18 +84,32 @@ licenses/APL2.txt.
           </div>
 
         </div>
-        <div class="panel-footer"
-             [ngStyle]="{'justify-content': (getAuthMethods | async )?.saml ? 'space-between' : 'flex-end'}">
-          <a
-            href="/saml/auth"
-            [ngClass]="{'hidden': !(getAuthMethods | async)?.saml}">
-            Sign In Using SSO</a>
+        <div class="panel-footer flex-end">
           <button
             [disabled]="form.group.invalid"
             type="submit">
-            Sign In</button>
+              Sign In</button>
         </div>
       </form>
+
+      <div class="forms" [hidden]="!(getAuthMethods | async)?.saml">
+        <hr>
+        <div class="panel-content border-top">
+          <div
+              class="error error-form"
+              [hidden]="!(samlErrorStatus | async)"
+              [ngSwitch]="samlErrorStatus | async">
+            <span *ngSwitchCase="403">
+              User {{samlUserName | async}} does not have permission to log into the UI.
+            </span>
+          </div>
+          <div class="row flex-right">
+            <a href="/saml/auth" class="btn outline min-width-full">
+              Sign In Using SSO
+            </a>
+          </div>
+        </div>
+      </div>
     </div>
     <div
       class="supported-browsers"

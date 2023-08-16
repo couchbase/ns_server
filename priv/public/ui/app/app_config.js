@@ -101,19 +101,19 @@ function appConfig($httpProvider, $stateProvider, $urlRouterProvider, $transitio
     to: (state) => state.data && state.data.requiresAuth
   }, (transition) => {
     let mnPools = transition.injector().get('mnPools');
+    let $location = transition.injector().get('$location');
     let $state = transition.router.stateService;
+
     return mnPools.get().then(pools => {
       if (!pools.isInitialized) {
-        $state.go('app.wizard.welcome', null, {location: false});
-        return false;
+        return $state.target('app.wizard.welcome', null, {location: false});
       } else {
         return true;
       }
     }, function (resp) {
       switch (resp.status) {
       case 401:
-        $state.go('app.auth', null, {location: false});
-        return false;
+        return $state.target('app.auth', $location.search(), {location: false});
       }
     });
   });
