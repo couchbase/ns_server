@@ -52,6 +52,9 @@ class ClusterRequirements:
         requirements = immutable_requirements + mutable_requirements
         return ','.join([str(req) for req in requirements])
 
+    def __repr__(self):
+        return str(self)
+
     @staticmethod
     def get_default_start_args():
         return {
