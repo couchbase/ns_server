@@ -58,7 +58,14 @@ params() ->
         cfg_key => [bucket, resident_ratio, couchstore_minimum]}},
      {"bucket.residentRatio.magmaMinimum",
       #{type => {num, 0, 100},
-        cfg_key => [bucket, resident_ratio, magma_minimum]}}
+        cfg_key => [bucket, resident_ratio, magma_minimum]}},
+     %% Min number of cores per node per bucket
+     {"coresPerBucket.enabled",
+      #{type => bool,
+        cfg_key => [cores_per_bucket, enabled]}},
+     {"coresPerBucket.minimum",
+      #{type => {num, 0, 1},
+        cfg_key => [cores_per_bucket, minimum]}}
     ].
 
 %% Gets resource management configuration from the config profile, using default
@@ -81,7 +88,11 @@ raw_default_config() ->
         [{enabled, false},
          {couchstore_minimum, 10},
          {magma_minimum, 1}]}
-      ]}
+      ]},
+     %% Minimum cores required per bucket
+     {cores_per_bucket,
+      [{enabled, false},
+       {minimum, 0.4}]}
     ].
 
 update_sub_config({[], Value}, _) ->
@@ -139,7 +150,8 @@ default_config_t() ->
         end,
 
     SetConfigProfile([{resource_management,
-                       [{[bucket, resident_ratio, enabled], true}]
+                       [{[bucket, resident_ratio, enabled], true},
+                        {[cores_per_bucket, enabled], true}]
                       }]),
     assert_config_equal([{resource_management,
                           [{bucket,
@@ -148,7 +160,10 @@ default_config_t() ->
                                {couchstore_minimum, 10},
                                {magma_minimum, 1}]
                              }]
-                           }]
+                           },
+                           {cores_per_bucket,
+                            [{enabled, true},
+                             {minimum, 0.4}]}]
                          }], default_config()).
 
 assert_config_equal(Expected, Found) when is_list(Expected)->

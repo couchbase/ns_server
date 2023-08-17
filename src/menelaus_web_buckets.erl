@@ -882,10 +882,23 @@ do_bucket_create(Req, Name, Params, Ctx) ->
     MaxBuckets = ns_bucket:get_max_buckets(),
     case length(Ctx#bv_ctx.all_buckets) >= MaxBuckets of
         true ->
-            {{[{'_',
-                iolist_to_binary(io_lib:format(
-                                   "Cannot create more than ~w buckets",
-                                   [MaxBuckets]))}]}, 400};
+            case MaxBuckets == ns_bucket:get_max_buckets_supported() of
+                true ->
+                    {{[{'_',
+                        iolist_to_binary(
+                          io_lib:format(
+                            "Cannot create more than ~w buckets",
+                            [MaxBuckets]))}]}, 400};
+                false ->
+                    {{[{'_',
+                        iolist_to_binary(
+                          io_lib:format(
+                            "Cannot create more than ~w buckets due to "
+                            "insufficient cpu cores. Either increase the "
+                            "resource minimum or the number of cores on "
+                            "all kv nodes.",
+                            [MaxBuckets]))}]}, 400}
+            end;
         false ->
             case {Ctx#bv_ctx.validate_only, Ctx#bv_ctx.ignore_warnings,
                   parse_bucket_params(Ctx, Params)} of

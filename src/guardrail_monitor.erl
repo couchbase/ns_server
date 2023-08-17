@@ -18,7 +18,7 @@
 
 -behaviour(gen_server).
 
--export([is_enabled/0, get_config/0, start_link/0]).
+-export([is_enabled/0, get_config/0, get/1, start_link/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
 
@@ -47,6 +47,17 @@ is_enabled() ->
 -spec get_config() -> proplists:proplist().
 get_config() ->
     ns_config:read_key_fast(resource_management, []).
+
+-spec get(cores_per_bucket) -> undefined | number().
+get(cores_per_bucket) ->
+    case proplists:get_value(cores_per_bucket, get_config()) of
+        undefined -> undefined;
+        Config ->
+            case proplists:get_value(enabled, Config) of
+                true -> proplists:get_value(minimum, Config);
+                false -> undefined
+            end
+    end.
 
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).

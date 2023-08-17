@@ -137,6 +137,7 @@
          get_vbuckets_max_cas/1,
          get_vp_window_hrs/1,
          get_num_vbuckets/1,
+         get_max_buckets_supported/0,
          get_max_buckets/0,
          get_min_replicas/0,
          uuid_key/1,
@@ -907,10 +908,35 @@ is_valid_bucket_name_inner([Char | Rest]) ->
         _ -> {error, invalid}
     end.
 
-get_max_buckets() ->
+get_max_buckets_supported() ->
     Default = config_profile:get_value(max_buckets_supported,
                                        ?MAX_BUCKETS_SUPPORTED),
     ns_config:read_key_fast(max_bucket_count, Default).
+
+-spec get_max_buckets() -> integer().
+get_max_buckets() ->
+    GlobalMax = get_max_buckets_supported(),
+    KvNodes = ns_cluster_membership:service_active_nodes(kv),
+    AllCores =
+        lists:map(
+          fun (Node) ->
+                  Props = ns_doctor:get_node(Node),
+                  proplists:get_value(cpu_count, Props, GlobalMax)
+          end, KvNodes),
+
+    case AllCores of
+        [] ->
+            GlobalMax;
+        Cores ->
+            MinCores = lists:min(Cores),
+            CoresPerBucket = guardrail_monitor:get(cores_per_bucket),
+            case CoresPerBucket of
+                C when is_number(C) andalso C > 0 andalso MinCores > 0 ->
+                    min(floor(MinCores / CoresPerBucket), GlobalMax);
+                _ ->
+                    GlobalMax
+            end
+    end.
 
 get_min_replicas() ->
     ns_config:read_key_fast(min_replicas_count, ?MIN_REPLICAS_SUPPORTED).
@@ -1735,7 +1761,7 @@ config_to_map_options(Config) ->
 
 get_vbmap_history_size() ->
     %% Not set in config through any means, but gives us a tunable parameter.
-    ns_config:read_key_fast(vbmap_history_size, get_max_buckets()).
+    ns_config:read_key_fast(vbmap_history_size, get_max_buckets_supported()).
 
 update_vbucket_map_history(Map, SanifiedOptions) ->
     History = get_vbucket_map_history(ns_config:latest()),
@@ -2318,5 +2344,48 @@ sorting_fn_test_() ->
        fun () ->
                assert_sorted(Expected, Given)
        end} || {Expected, Given} <- LL]}.
+
+get_max_buckets_test_() ->
+    MeckModules = [ns_config, ns_cluster_membership, ns_doctor],
+    Nodes = [node1, node2],
+
+    Tests =
+        [{30, 30, #{}, false, 1},
+         {10, 10, #{}, false, 1},
+         {30, 30, #{node1 => 5}, false, 1},
+         {5, 30, #{node1 => 5}, true, 1},
+         {3, 30, #{node1 => 3}, true, 1},
+         {3, 30, #{node1 => 12, node2 => 6}, true, 2},
+         {12, 30, #{node1 => 12, node2 => 6}, true, 0.5},
+         {30, 30, #{}, true, 0.5}],
+
+    {setup, fun() ->
+                    meck:new(MeckModules, [passthrough]),
+                    meck:expect(ns_cluster_membership, service_active_nodes,
+                                fun (kv) -> Nodes end)
+            end,
+     fun (_) -> meck:unload(MeckModules) end,
+     [{lists:flatten(io_lib:format("get_max_buckets test for: ~p",
+                                   [T])),
+       fun () ->
+               meck:expect(ns_config, read_key_fast,
+                           fun (max_bucket_count, _) ->
+                                   MaxSupported;
+                               (resource_management, _) ->
+                                   [{cores_per_bucket,
+                                     [{enabled, CoresEnabled},
+                                      {minimum, CoresPerBucket}]}]
+                           end),
+               meck:expect(ns_doctor, get_node,
+                           fun (Node) ->
+                                   case maps:get(Node, NodeCores, undefined) of
+                                       undefined -> [];
+                                       Cores -> [{cpu_count, Cores}]
+                                   end
+                           end),
+               ?assertEqual(Expected, get_max_buckets())
+       end}
+      || {Expected, MaxSupported, NodeCores, CoresEnabled, CoresPerBucket} = T
+             <- Tests]}.
 
 -endif.
