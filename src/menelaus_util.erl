@@ -68,7 +68,6 @@
          assert_is_enterprise/0,
          assert_is_enterprise/1,
          assert_profile_flag/2,
-         assert_is_66/0,
          assert_is_71/0,
          assert_is_trinity/0,
          assert_config_profile_flag/1,
@@ -699,9 +698,6 @@ assert_profile_flag(Flag, ParamName) ->
     assert(?cut(config_profile:get_bool(Flag)),
            [param_error_prefix(ParamName),
             io_lib:format("config profile flag ~p to be set.", [Flag])]).
-
-assert_is_66() ->
-    assert_cluster_version(fun cluster_compat_mode:is_cluster_66/0).
 
 assert_is_71() ->
     assert_cluster_version(fun cluster_compat_mode:is_cluster_71/0).

@@ -306,8 +306,7 @@ build_bucket_capabilities(BucketConfig) ->
                 Conditional =
                     [{collections, collections:enabled(BucketConfig)},
                      {durableWrite, true},
-                     {tombstonedUserXAttrs,
-                      cluster_compat_mode:is_cluster_66()},
+                     {tombstonedUserXAttrs, true},
                      {couchapi, ns_bucket:can_have_views(BucketConfig)},
                      {'subdoc.ReplaceBodyWithXattr',
                       cluster_compat_mode:is_cluster_70()},

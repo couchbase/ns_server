@@ -240,7 +240,6 @@
 -define(MAX_64BIT_UNSIGNED_INT, 16#FFFFFFFFFFFFFFFF).
 
 -define(VERSION_65, [6, 5]).
--define(VERSION_66, [6, 6]).
 -define(VERSION_70, [7, 0]).
 -define(VERSION_71, [7, 1]).
 -define(VERSION_72, [7, 2]).
@@ -255,7 +254,7 @@
 -define(TARGET_MIN_SUPPORTED_VERSION, ?VERSION_71).
 
 %% cluster init relies on upgrade paths from current min supported version
-%% onwards (6.5 -> 6.6 -> 7.0 -> 7.1 -> 7.2 -> latest) to init ns_config and
+%% onwards (6.5 -> 7.0 -> 7.1 -> 7.2 -> latest) to init ns_config and
 %% chronicle. Moving min_supported_version up removes upgrade paths. So,
 %% settings added previously via upgrade paths to versions (which are no longer
 %% supported) must be subsumed to a new "default" config for the target min

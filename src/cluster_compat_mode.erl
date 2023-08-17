@@ -24,9 +24,6 @@
          is_index_aware_rebalance_on/0,
          is_index_pausing_on/0,
          rebalance_ignore_view_compactions/0,
-         is_cluster_66/0,
-         is_cluster_66/1,
-         is_version_66/1,
          is_cluster_70/0,
          is_cluster_70/1,
          is_version_70/1,
@@ -146,15 +143,6 @@ is_enabled(Config, FeatureVersion) ->
                 get_ns_config_compat_version(Config)
         end,
     is_enabled_at(CompatVersion, FeatureVersion).
-
-is_version_66(ClusterVersion) ->
-    is_enabled_at(ClusterVersion, ?VERSION_66).
-
-is_cluster_66() ->
-    is_cluster_66(ns_config:latest()).
-
-is_cluster_66(Config) ->
-    is_enabled(Config, ?VERSION_66).
 
 is_version_70(ClusterVersion) ->
     is_enabled_at(ClusterVersion, ?VERSION_70).

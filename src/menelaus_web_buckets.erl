@@ -1336,8 +1336,7 @@ validate_membase_bucket_params(CommonParams, Params,
          parse_validate_storage_mode(Params, BucketConfig, IsNew, Version,
                                      IsEnterprise, IsStorageModeMigration,
                                      config_profile:is_serverless()),
-         parse_validate_durability_min_level(Params, BucketConfig, IsNew,
-                                             Version),
+         parse_validate_durability_min_level(Params, BucketConfig, IsNew),
          parse_validate_pitr_enabled(Params, IsNew, AllowPitr,
                                      IsEnterprise),
          parse_validate_pitr_granularity(Params, IsNew, AllowPitr,
@@ -1666,23 +1665,15 @@ parse_validate_storage_mode(Params, _BucketConfig, false = _IsNew, Version,
             do_get_storage_mode_based_on_storage_backend(StorageBackend)
     end.
 
-parse_validate_durability_min_level(Params, BucketConfig, IsNew, Version) ->
+parse_validate_durability_min_level(Params, BucketConfig, IsNew) ->
     IsEphemeral = is_ephemeral(Params, BucketConfig, IsNew),
     Level = proplists:get_value("durabilityMinLevel", Params),
-    IsCompat = cluster_compat_mode:is_version_66(Version),
-    do_parse_validate_durability_min_level(IsEphemeral, Level, IsNew, IsCompat).
+    do_parse_validate_durability_min_level(IsEphemeral, Level, IsNew).
 
-do_parse_validate_durability_min_level(_IsEphemeral, Level, _IsNew,
-                                       false = _IsCompat)
-  when Level =/= undefined ->
-    {error, durability_min_level,
-     <<"Durability minimum level cannot be set until cluster is fully 6.6">>};
-do_parse_validate_durability_min_level(false = _IsEphemeral, Level, IsNew,
-                                       _IsCompat) ->
+do_parse_validate_durability_min_level(false = _IsEphemeral, Level, IsNew) ->
     validate_with_missing(Level, "none", IsNew,
       fun parse_validate_membase_durability_min_level/1);
-do_parse_validate_durability_min_level(true = _IsEphemeral, Level, IsNew,
-                                       _IsCompat) ->
+do_parse_validate_durability_min_level(true = _IsEphemeral, Level, IsNew) ->
     validate_with_missing(Level, "none", IsNew,
       fun parse_validate_ephemeral_durability_min_level/1).
 

@@ -1294,7 +1294,6 @@ handle_settings_rebalance(Req) ->
                200).
 
 handle_settings_rebalance_post(Req) ->
-    menelaus_util:assert_is_66(),
     validator:handle(
       fun (Values) ->
               Num = proplists:get_value(rebalanceMovesPerNode, Values),

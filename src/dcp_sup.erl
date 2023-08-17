@@ -73,28 +73,20 @@ kill_replicator(Bucket, {ProducerNode, RepFeatures} = ChildId) ->
 %% as it can be restarted.
 get_replication_features() ->
     CertAuth = ns_ssl_services_setup:client_cert_auth_state() =:= "mandatory",
-    FeatureSet = [%% Unconditionally setting 'xattr' to true as xattr feature
-                  %% must be negotiated by default in post-5.0 clusters.
-                  {xattr, true},
+    FeatureSet = [{xattr, true},
                   {snappy, memcached_config_mgr:is_snappy_enabled()},
                   %% this function is called for membase buckets only
                   %% so we can assume that if collections are enabled globally
                   %% they cannot be disabled for particular bucket
                   {collections, collections:enabled()},
-                  %% Unconditionally setting 'del_times' to true as feature
-                  %% must be negotiated in post-5.5 clusters, and earlier
-                  %% versions are no longer supported.
                   {del_times, true},
                   {ssl, misc:should_cluster_data_be_encrypted()},
                   %% Not used directly but we need it to make sure we restart
                   %% replications when client_cert_auth_state change
                   {cert_auth, CertAuth},
-                  %% Unconditionally setting 'set_consumer_name' and
-                  %% 'json' to true as features are negotiated starting
-                  %% with the 6.5 release
                   {set_consumer_name, true},
                   {json, true},
-                  {del_user_xattr, cluster_compat_mode:is_cluster_66()}],
+                  {del_user_xattr, true}],
     misc:canonical_proplist(FeatureSet).
 
 manage_replicators(Bucket, NeededNodes) ->
