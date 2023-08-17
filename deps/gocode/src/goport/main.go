@@ -21,21 +21,25 @@ import (
 	"os/exec"
 	"path"
 	"strconv"
+	"syscall"
+	"time"
 
 	"gocbutils"
 )
 
 var (
 	errProcessExited = errors.New("process exited")
+	gracefulShutdownTimeout = time.Minute * 10
 )
 
 type portSpec struct {
 	cmd  string
 	args []string
 
-	windowSize       int
-	interactive      bool
-	gracefulShutdown bool
+	windowSize              int
+	interactive             bool
+	gracefulShutdown        bool
+	testingGracefulShutdown bool
 }
 
 type processState int
@@ -292,7 +296,29 @@ func (p *port) handleGetChildOsPid() <-chan error {
 
 func (p *port) shutdown() error {
 	var err error
-	if p.childSpec.gracefulShutdown {
+	if p.childSpec.testingGracefulShutdown {
+		// Uses time.NewTimer instead of time.After b/c time.After
+		// won't get rid of the timer if it isn't the branch selected
+		// in the select statement. The timer is destroyed
+		// (delay.Stop()) even if it doesn't finish or that branch
+		// isn't taken.
+		err = p.child.Signal(syscall.SIGTERM)
+		if err != nil {
+			return err
+		}
+		delay := time.NewTimer(gracefulShutdownTimeout)
+		// Need to wait on the waitCh for process to close, or wait for
+		// 10 (gracefulShutdownTimeout) minutes and then send a KILL to
+		// clean it up.
+		select {
+		case <-p.child.waitCh:
+			if !delay.Stop() { // stop the timer, cleanup resources
+				<-delay.C
+			}
+		case <-delay.C:
+			err = p.child.Kill()
+		}
+	} else if p.childSpec.gracefulShutdown {
 		err = p.child.Close()
 
 		// The error can be ErrClosed when the user closed stdin
@@ -551,12 +577,16 @@ func main() {
 
 	var interactive bool
 	var gracefulShutdown bool
+	var testingGracefulShutdown bool
 
 	flag.IntVar(&windowSize, "window-size", 64*1024, "window size")
 	flag.BoolVar(&interactive, "interactive", false,
 		"run in interactive mode")
 	flag.BoolVar(&gracefulShutdown, "graceful-shutdown", false,
 		"terminate supervised gracefully by closing its stdin")
+	flag.BoolVar(&testingGracefulShutdown, "testing-graceful-shutdown",
+		false, "terminate supervised gracefully by sending TERM "+
+			"signal, waiting for 10 min to close then sending KILL")
 	flag.Var((*cmdFlag)(&cmd), "cmd", "command to execute")
 	flag.Var((*argsFlag)(&args), "args", "command arguments")
 	flag.Parse()
@@ -576,11 +606,12 @@ func main() {
 	gocbutils.LimitCPUThreads()
 
 	port := newPort(portSpec{
-		cmd:              cmd,
-		args:             args,
-		windowSize:       windowSize,
-		interactive:      interactive,
-		gracefulShutdown: gracefulShutdown,
+		cmd:                     cmd,
+		args:                    args,
+		windowSize:              windowSize,
+		interactive:             interactive,
+		gracefulShutdown:        gracefulShutdown,
+		testingGracefulShutdown: testingGracefulShutdown,
 	})
 
 	err := port.loop()

@@ -143,6 +143,15 @@ func (p *Process) wait() error {
 	return err
 }
 
+func (p *Process) Signal(sig os.Signal) error {
+	err := p.cmd.Process.Signal(sig)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // Write writes to the standard input of the process.
 func (p *Process) Write(data []byte) (int, error) {
 	p.stdinMu.Lock()

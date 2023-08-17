@@ -262,13 +262,26 @@ port_open({Name, Cmd, Args, OptsIn}, #state{logger = Logger}) ->
             Opts4Updated -> Opts4Updated
         end,
 
+    Opts6 =
+        case os:getenv("TESTING_GRACEFUL_SHUTDOWN") of
+            false ->
+                Opts5;
+            X ->
+                case (catch list_to_existing_atom(X)) of
+                    true ->
+                        [testing_graceful_shutdown | Opts5];
+                    _ ->
+                        Opts5
+                end
+        end,
+
     %% don't split port output into lines if all we need to do is to redirect
     %% it into a file
     Opts = case Logger of
                undefined ->
-                   [{line, 8192} | Opts5];
+                   [{line, 8192} | Opts6];
                _ ->
-                   Opts5
+                   Opts6
            end,
 
     {Port, OsPid} =
