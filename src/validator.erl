@@ -35,6 +35,8 @@
          boolean/2,
          integer/2,
          integer/4,
+         number/2,
+         number/4,
          range/4,
          range/5,
          greater_or_equal/3,
@@ -376,6 +378,16 @@ simple_term_to_integer(X) when is_list(X) ->
 simple_term_to_integer(X) when is_integer(X) ->
     X.
 
+simple_term_to_number(X) when is_list(X) ->
+    try erlang:list_to_integer(X)
+    catch _:_ ->
+            erlang:list_to_float(X)
+    end;
+simple_term_to_number(X) when is_integer(X) ->
+    X;
+simple_term_to_number(X) when is_float(X) ->
+    X.
+
 one_of(Name, List, State) ->
     StringList = [simple_term_to_list(X) || X <- List],
     validate(
@@ -485,6 +497,23 @@ integer(Name, State) ->
 integer(Name, Min, Max, State) ->
     functools:chain(State,
                     [integer(Name, _),
+                     range(Name, Min, Max, _)]).
+
+number(Name, State) ->
+    validate(
+      fun (Value) ->
+              Num = (catch simple_term_to_number(Value)),
+              case is_number(Num) of
+                  true ->
+                      {value, Num};
+                  false ->
+                      {error, "The value must be a number"}
+              end
+      end, Name, State).
+
+number(Name, Min, Max, State) ->
+    functools:chain(State,
+                    [number(Name, _),
                      range(Name, Min, Max, _)]).
 
 range(Name, Min, Max, State) ->

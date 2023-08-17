@@ -93,6 +93,8 @@ type_spec(int) ->
 type_spec({int, Min, Max}) ->
     #{validators => [?cut(validator:integer(_1, Min, Max, _2))],
       formatter => int};
+type_spec({num, Min, Max}) ->
+    #{validators => [?cut(validator:number(_1, Min, Max, _2))]};
 type_spec(existing_atom) ->
     #{validators => [fun existing_atom/2]};
 type_spec(string) ->
