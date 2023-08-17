@@ -83,9 +83,6 @@ maybe_upgrade_to_chronicle(_, _) ->
 %% configuration which are already present.
 
 upgrade(?CURRENT_MIN_SUPPORTED_VERSION, _) ->
-    {?VERSION_66, []};
-
-upgrade(?VERSION_66, _) ->
     {?VERSION_70, []};
 
 upgrade(?VERSION_70, _) ->

@@ -251,8 +251,7 @@ consider_switching_compat_mode() ->
     end.
 
 upgrades() ->
-    [{?VERSION_66, rbac, menelaus_users, upgrade},
-     {?VERSION_70, rbac, menelaus_users, upgrade},
+    [{?VERSION_70, rbac, menelaus_users, upgrade},
      {?VERSION_71, rbac, menelaus_users, upgrade},
      {?VERSION_TRINITY, rbac, menelaus_users, upgrade}].
 

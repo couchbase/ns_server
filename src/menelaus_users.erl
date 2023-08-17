@@ -949,9 +949,6 @@ maybe_upgrade_role_to_70(security_admin) ->
 maybe_upgrade_role_to_70(Role) ->
     [Role].
 
-upgrade_props(?VERSION_66, user, _Key, Props) ->
-    %% remove junk user_roles property that might appear due to MB-39706
-    {ok, lists:keydelete(user_roles, 1, Props)};
 upgrade_props(?VERSION_70, RecType, _Key, Props) when RecType == user;
                                                       RecType == group ->
     {ok, upgrade_roles(fun maybe_upgrade_role_to_70/1, Props)};
@@ -1076,11 +1073,7 @@ upgrade_test_() ->
              meck:unload(replicated_dets),
              ets:delete(storage_name())
      end,
-     [Test(?VERSION_66,
-           [{{user, {"user", local}},
-             [{roles, [admin]}, {name, "Test"}, {user_roles, [admin]}]}],
-           [?cut(CheckUser("user", "Test"))]),
-      Test(?VERSION_70,
+     [Test(?VERSION_70,
            SetUsers([{"user1", [admin, {bucket_admin, ["test"]}]},
                      {"user2", [{data_reader, [any]},
                                 {data_writer, ["test"]}]}]) ++
