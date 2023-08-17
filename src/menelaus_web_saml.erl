@@ -258,112 +258,7 @@ handle_saml_consume(Req, UnvalidatedParams) ->
       fun (Params) ->
           Assertion = proplists:get_value('SAMLResponse', Params),
           ?log_debug("Decoded assertion: ~p", [Assertion]),
-          Subject = Assertion#esaml_assertion.subject,
-          NameID = Subject#esaml_subject.name,
-          Attrs = Assertion#esaml_assertion.attributes,
-          Username =
-              case proplists:get_value(username_attribute, SSOOpts) of
-                  "" ->
-                      case Subject#esaml_subject.name_format of
-                          "urn:oasis:names:tc:SAML:2.0:"
-                          "nameid-format:transient" ->
-                              ?log_warning(
-                                "Using transient name as an identity: ~p",
-                                [ns_config_log:tag_user_name(NameID)]);
-                          _ ->
-                              ok
-                      end,
-                      NameID;
-                  AttrName ->
-                      AttrNameMapped = esaml:common_attrib_map(AttrName),
-                      proplists:get_value(AttrNameMapped, Attrs)
-              end,
-
-          ExtraGroups =
-              case proplists:get_value(groups_attribute, SSOOpts) of
-                  "" -> [];
-                  GroupsAttr when is_list(GroupsAttr) ->
-                      GroupsAttrMapped = esaml:common_attrib_map(GroupsAttr),
-                      GroupAttrs = get_all_attrs(GroupsAttrMapped, Attrs),
-                      GSep = proplists:get_value(groups_attribute_sep, SSOOpts),
-                      Grps = lists:flatmap(string:lexemes(_, GSep), GroupAttrs),
-                      GroupRe = proplists:get_value(groups_filter_re, SSOOpts),
-                      lists:filter(
-                        fun (G) ->
-                            match == re:run(G, GroupRe,
-                                            [{capture, none}, notempty])
-                        end, Grps)
-              end,
-
-          ExtraRoles =
-              case proplists:get_value(roles_attribute, SSOOpts) of
-                  "" -> [];
-                  RolesAttr when is_list(RolesAttr) ->
-                      RolesAttrMapped = esaml:common_attrib_map(RolesAttr),
-                      RolesAttrs = get_all_attrs(RolesAttrMapped, Attrs),
-                      RSep = proplists:get_value(roles_attribute_sep, SSOOpts),
-                      Rls = lists:flatmap(string:lexemes(_, RSep), RolesAttrs),
-                      RoleRe = proplists:get_value(roles_filter_re, SSOOpts),
-                      Filtered = lists:filter(
-                                   fun (R) ->
-                                       match == re:run(R, RoleRe,
-                                                       [{capture, none},
-                                                        notempty])
-                                   end, Rls),
-                      lists:filtermap(
-                        fun (R) ->
-                            case menelaus_web_rbac:parse_roles(R) of
-                                [{error, _}] ->
-                                    ?log_warning("Ignoring invalid role: ~s",
-                                                 [R]),
-                                    false;
-                                [ParsedRole] ->
-                                    {true, ParsedRole};
-                                [_ | _] ->
-                                    ?log_warning("Ignoring invalid role: ~s",
-                                                 [R]),
-                                    false
-                            end
-                        end, Filtered)
-              end,
-
-          case is_list(Username) andalso length(Username) > 0 of
-              true when NameID =/= undefined, length(NameID) > 0 ->
-                  ?log_debug("Successful saml login: ~s",
-                             [ns_config_log:tag_user_name(Username)]),
-                  ExpDatetimeUTC =
-                      case proplists:get_value(session_expire, SSOOpts) of
-                          false ->
-                              undefined;
-                          'SessionNotOnOrAfter' ->
-                              Authn = Assertion#esaml_assertion.authn,
-                              proplists:get_value(session_not_on_or_after,
-                                                  Authn)
-                      end,
-                  AuthnRes =
-                      #authn_res{type = ui,
-                                 session_id = menelaus_auth:new_session_id(),
-                                 identity = {Username, external},
-                                 extra_groups = ExtraGroups,
-                                 extra_roles = ExtraRoles,
-                                 expiration_datetime_utc = ExpDatetimeUTC},
-                  SessionName = iolist_to_binary(NameID),
-                  menelaus_auth:uilogin_phase2(
-                    Req,
-                    saml,
-                    SessionName,
-                    AuthnRes,
-                    ?cut(menelaus_util:reply_text(_1, <<"Redirecting...">>, 302,
-                                                  [{"Location", "/"} | _2])));
-              true ->
-                  ?log_debug("NameID is not defined: ~p", [NameID]),
-                  Msg = "Missing NameID",
-                  menelaus_util:reply_text(Req, iolist_to_binary(Msg), 403);
-              false ->
-                  ?log_debug("Could not extract identity from assertion"),
-                  Msg = "Unable to extract username from assertion",
-                  menelaus_util:reply_text(Req, iolist_to_binary(Msg), 403)
-          end
+          handle_saml_assertion(Req, Assertion, SSOOpts)
       end, Req, UnvalidatedParams,
       [validator:string('SAMLEncoding', _),
        validator:default('SAMLEncoding', "", _),
@@ -1020,4 +915,119 @@ get_all_attrs(AttrName, Attrs) ->
         %% and a string
         [[_|_] | _] = L -> L;
         [_|_] = Str -> [Str]
+    end.
+
+handle_saml_assertion(Req, Assertion, SSOOpts) ->
+    Subject = Assertion#esaml_assertion.subject,
+    NameID = Subject#esaml_subject.name,
+    Username = extract_username(Assertion, SSOOpts),
+    ExtraGroups = extract_groups(Assertion, SSOOpts),
+    ExtraRoles = extract_roles(Assertion, SSOOpts),
+    case is_list(Username) andalso length(Username) > 0 of
+        true when NameID =/= undefined, length(NameID) > 0 ->
+            ?log_debug("Successful saml login: ~s",
+                       [ns_config_log:tag_user_name(Username)]),
+            ExpDatetimeUTC =
+                case proplists:get_value(session_expire, SSOOpts) of
+                    false ->
+                        undefined;
+                    'SessionNotOnOrAfter' ->
+                        Authn = Assertion#esaml_assertion.authn,
+                        proplists:get_value(session_not_on_or_after,
+                                            Authn)
+                end,
+            AuthnRes =
+                #authn_res{type = ui,
+                           session_id = menelaus_auth:new_session_id(),
+                           identity = {Username, external},
+                           extra_groups = ExtraGroups,
+                           extra_roles = ExtraRoles,
+                           expiration_datetime_utc = ExpDatetimeUTC},
+            SessionName = iolist_to_binary(NameID),
+            menelaus_auth:uilogin_phase2(
+              Req,
+              saml,
+              SessionName,
+              AuthnRes,
+              ?cut(menelaus_util:reply_text(_1, <<"Redirecting...">>, 302,
+                                            [{"Location", "/"} | _2])));
+        true ->
+            ?log_debug("NameID is not defined: ~p", [NameID]),
+            Msg = "Missing NameID",
+            menelaus_util:reply_text(Req, iolist_to_binary(Msg), 403);
+        false ->
+            ?log_debug("Could not extract identity from assertion"),
+            Msg = "Unable to extract username from assertion",
+            menelaus_util:reply_text(Req, iolist_to_binary(Msg), 403)
+    end.
+
+extract_username(Assertion, SSOOpts) ->
+    Subject = Assertion#esaml_assertion.subject,
+    case proplists:get_value(username_attribute, SSOOpts) of
+        "" ->
+            NameID = Subject#esaml_subject.name,
+            case Subject#esaml_subject.name_format of
+                "urn:oasis:names:tc:SAML:2.0:"
+                "nameid-format:transient" ->
+                    ?log_warning(
+                      "Using transient name as an identity: ~p",
+                      [ns_config_log:tag_user_name(NameID)]);
+                _ ->
+                    ok
+            end,
+            NameID;
+        AttrName ->
+            Attrs = Assertion#esaml_assertion.attributes,
+            AttrNameMapped = esaml:common_attrib_map(AttrName),
+            proplists:get_value(AttrNameMapped, Attrs)
+    end.
+
+extract_groups(Assertion, SSOOpts) ->
+    case proplists:get_value(groups_attribute, SSOOpts) of
+        "" -> [];
+        GroupsAttr when is_list(GroupsAttr) ->
+            Attrs = Assertion#esaml_assertion.attributes,
+            GroupsAttrMapped = esaml:common_attrib_map(GroupsAttr),
+            GroupAttrs = get_all_attrs(GroupsAttrMapped, Attrs),
+            GSep = proplists:get_value(groups_attribute_sep, SSOOpts),
+            Grps = lists:flatmap(string:lexemes(_, GSep), GroupAttrs),
+            GroupRe = proplists:get_value(groups_filter_re, SSOOpts),
+            lists:filter(
+              fun (G) ->
+                  match == re:run(G, GroupRe,
+                                  [{capture, none}, notempty])
+              end, Grps)
+    end.
+
+extract_roles(Assertion, SSOOpts) ->
+    case proplists:get_value(roles_attribute, SSOOpts) of
+        "" -> [];
+        RolesAttr when is_list(RolesAttr) ->
+            Attrs = Assertion#esaml_assertion.attributes,
+            RolesAttrMapped = esaml:common_attrib_map(RolesAttr),
+            RolesAttrs = get_all_attrs(RolesAttrMapped, Attrs),
+            RSep = proplists:get_value(roles_attribute_sep, SSOOpts),
+            Rls = lists:flatmap(string:lexemes(_, RSep), RolesAttrs),
+            RoleRe = proplists:get_value(roles_filter_re, SSOOpts),
+            Filtered = lists:filter(
+                         fun (R) ->
+                             match == re:run(R, RoleRe,
+                                             [{capture, none},
+                                              notempty])
+                         end, Rls),
+            lists:filtermap(
+              fun (R) ->
+                  case menelaus_web_rbac:parse_roles(R) of
+                      [{error, _}] ->
+                          ?log_warning("Ignoring invalid role: ~s",
+                                       [R]),
+                          false;
+                      [ParsedRole] ->
+                          {true, ParsedRole};
+                      [_ | _] ->
+                          ?log_warning("Ignoring invalid role: ~s",
+                                       [R]),
+                          false
+                  end
+              end, Filtered)
     end.
