@@ -258,7 +258,8 @@ handle_saml_consume(Req, UnvalidatedParams) ->
     validator:handle(
       fun (Params) ->
           Assertion = proplists:get_value('SAMLResponse', Params),
-          ?log_debug("Decoded assertion: ~p", [Assertion]),
+          ?log_debug("Decoded assertion: " ++ ns_config_log:tag_misc_item("~p"),
+                     [Assertion]),
           handle_saml_assertion(Req, Assertion, SSOOpts)
       end, Req, UnvalidatedParams,
       [validator:string('SAMLEncoding', _),
@@ -366,7 +367,7 @@ reply_via_redirect(IDPURL, SignedXml, RelayState, ExtraHeaders, Req)
                  RelayState),
     LocationStr = binary_to_list(Location),
     ?log_debug("Redirecting user to ~s using HTTP code 302, full url: ~s",
-               [IDPURL, LocationStr]),
+               [IDPURL, ns_config_log:tag_misc_item(LocationStr)]),
     menelaus_util:reply_text(Req, <<"Redirecting...">>, 302,
                              [{allow_cache, false},
                               {"Location", LocationStr} | ExtraHeaders]).
@@ -376,7 +377,8 @@ reply_via_post("", _, _, _, _) ->
 reply_via_post(IDPURL, SignedXml, RelayState, ExtraHeaders, Req)
                                      when is_list(IDPURL), length(IDPURL) > 0 ->
     HTMLBin = esaml_binding:encode_http_post(IDPURL, SignedXml, RelayState),
-    ?log_debug("Redirecting user to ~s using POST:~n~s", [IDPURL, HTMLBin]),
+    ?log_debug("Redirecting user to ~s using POST:~n~s",
+               [IDPURL, ns_config_log:tag_misc_item(HTMLBin)]),
     menelaus_util:reply(Req, HTMLBin, 200,
                         [{allow_cache, false},
                          {"Content-Type", "text/html"} | ExtraHeaders]).
@@ -485,7 +487,7 @@ validate_authn_response(NameResp, NameEnc, SPMetadata, DupeCheck, Req, State) ->
           SAMLEncoding = list_to_binary(Enc),
           SAMLResponse = list_to_binary(Resp),
           ?log_debug("Received saml authn response: ~s~nEncoding: ~s",
-                     [SAMLResponse, SAMLEncoding]),
+                     [ns_config_log:tag_misc_item(SAMLResponse), SAMLEncoding]),
           try esaml_binding:decode_response(SAMLEncoding, SAMLResponse) of
               Xml ->
                   %% We can't use fun esaml_util:check_dupe_ets/2 because
@@ -527,7 +529,7 @@ validate_logout_request(NameReq, NameEnc, SPMetadata, State) ->
           SAMLEncoding = list_to_binary(Enc),
           SAMLRequest = list_to_binary(LOReq),
           ?log_debug("Received saml logout request: ~s~nEncoding: ~s",
-                     [SAMLRequest, SAMLEncoding]),
+                     [ns_config_log:tag_misc_item(SAMLRequest), SAMLEncoding]),
           %% Seems like decode_response can actually decode requests as well
           try esaml_binding:decode_response(SAMLEncoding, SAMLRequest) of
               Xml ->
@@ -555,7 +557,7 @@ validate_logout_response(NameResp, NameEnc, SPMetadata, State) ->
           SAMLEncoding = list_to_binary(Enc),
           SAMLResponse = list_to_binary(LOResp),
           ?log_debug("Received saml logout response: ~s~nEncoding: ~s",
-                     [SAMLResponse, SAMLEncoding]),
+                     [ns_config_log:tag_misc_item(SAMLResponse), SAMLEncoding]),
           %% Seems like decode_response can actually decode requests as well
           try esaml_binding:decode_response(SAMLEncoding, SAMLResponse) of
               Xml ->
