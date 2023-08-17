@@ -485,6 +485,63 @@ class SamlTests(testlib.BaseTestSet):
             assert(roles == expected_roles)
 
 
+    # Successfull authentication, but user doesn't have access to UI
+    def access_denied_test(self, cluster):
+        with saml_configured(cluster,
+                             usernameAttribute='uid') as IDP:
+            identity = idp_test_user_attrs.copy()
+            identity["uid"] = "testuser2" # so we don't have such user in cb
+            binding_out, destination = \
+                IDP.pick_binding("assertion_consumer_service",
+                                 bindings=[BINDING_HTTP_POST],
+                                 entity_id=sp_entity_id)
+
+            response = IDP.create_authn_response(
+                         identity,
+                         None, # InResponseTo is missing cause it is
+                               # an unsolicited response
+                         destination,
+                         sp_entity_id=sp_entity_id,
+                         userid=idp_test_username,
+                         name_id=NameID(text=testlib.random_str(16)),
+                         sign_assertion=True,
+                         sign_response=True)
+
+            response_encoded = base64.b64encode(f"{response}".encode("utf-8"))
+
+            session = requests.Session()
+            headers={'Host': 'some_addr', 'ns-server-ui': 'yes'}
+            r = session.post(destination,
+                             data={'SAMLResponse': response_encoded},
+                             headers=headers,
+                             allow_redirects=False)
+            assert(r.status_code == 302)
+
+            print(r.headers['Location'])
+            redirect_path = r.headers['Location']
+
+            # check that user doesn't have any roles
+            r = session.get(cluster.nodes[0].url + '/whoami',
+                            headers=headers)
+            assert(r.status_code == 401) ## it is ui but cookie is not set
+
+            # checking that we redirect to a valid page
+            r = session.get(cluster.nodes[0].url + redirect_path,
+                            headers=headers)
+            assert(r.status_code == 200)
+
+            parsedLocation = urlparse(redirect_path)
+            fragment = parsedLocation.fragment
+            params = parse_qs(urlparse(fragment).query)
+            assert 'samlErrorMsgId' in params
+            r = session.get(cluster.nodes[0].url + '/saml/error',
+                            headers=headers,
+                            params={'id': params['samlErrorMsgId']})
+            assert(r.status_code == 200)
+            m = 'Access denied for user "testuser2": Insufficient Permissions'
+            assert(r.json()['error'] == m)
+
+
     def metadata_with_invalid_signature_test(self, cluster):
         try:
             # trusted fingerprints will not match mockidp2* certs

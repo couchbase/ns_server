@@ -23,7 +23,7 @@
          extract_identity_from_cert/1,
          extract_ui_auth_token/1,
          uilogin/2,
-         uilogin_phase2/5,
+         uilogin_phase2/4,
          can_use_cert_for_auth/1,
          complete_uilogout/1,
          maybe_refresh_token/1,
@@ -383,8 +383,15 @@ uilogin(Req, Params) ->
             RandomName = base64:encode(rand:bytes(6)),
             SessionName = <<"UI - ", RandomName/binary>>,
             Req2 = append_resp_headers(RespHeaders, Req),
-            uilogin_phase2(Req2, simple, SessionName, AuthnRes2,
-                           ?cut(menelaus_util:reply(_1, 200, _2)));
+            case uilogin_phase2(Req2, simple, SessionName, AuthnRes2) of
+                {ok, Headers} ->
+                    menelaus_util:reply(Req, 200, Headers);
+                {error, {access_denied, UIPermission}} ->
+                    menelaus_util:reply_json(
+                      Req,
+                      menelaus_web_rbac:forbidden_response([UIPermission]),
+                      403)
+            end;
         {error, auth_failure} ->
             ns_audit:login_failure(
               maybe_store_rejected_user(User, Req)),
@@ -396,8 +403,7 @@ uilogin(Req, Params) ->
             menelaus_util:reply_json(Req, Msg, 503)
     end.
 
-uilogin_phase2(Req, UISessionType, UISessionName, #authn_res{} = AuthnRes,
-               Continuation) ->
+uilogin_phase2(Req, UISessionType, UISessionName, #authn_res{} = AuthnRes) ->
     UIPermission = {[ui], read},
     case check_permission(AuthnRes, UIPermission) of
         allowed ->
@@ -406,13 +412,10 @@ uilogin_phase2(Req, UISessionType, UISessionName, #authn_res{} = AuthnRes,
                                                       AuthnRes),
             CookieHeader = generate_auth_cookie(Req, Token),
             ns_audit:login_success(store_authn_res(AuthnRes, Req)),
-            Continuation(Req, [CookieHeader]);
+            {ok, [CookieHeader]};
         AuthzRes when AuthzRes == forbidden; AuthzRes == auth_failure ->
             ns_audit:login_failure(store_authn_res(AuthnRes, Req)),
-            menelaus_util:reply_json(
-              Req,
-              menelaus_web_rbac:forbidden_response([UIPermission]),
-              403)
+            {error, {access_denied, UIPermission}}
     end.
 
 -spec can_use_cert_for_auth(mochiweb_request()) ->

@@ -202,6 +202,8 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["saml", ?SAML_LOGOUT_ENDPOINT_PATH] ->
                     {ui, IsSSL,
                      fun menelaus_web_saml:handle_get_saml_logout/1};
+                ["saml", "error"] ->
+                    {ui, IsSSL, fun menelaus_web_saml:handle_get_error/1};
                 ["ui"] ->
                     {done, redirect_permanently("/ui/index.html", Req)};
                 ["_ui", "canUseCertForAuth"] ->

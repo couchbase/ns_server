@@ -22,6 +22,7 @@
          handle_post_settings/1,
          handle_delete_settings/1,
          handle_uilogout_post/1,
+         handle_get_error/1,
          defaults/0,
          is_enabled/0]).
 
@@ -266,6 +267,20 @@ handle_saml_consume(Req, UnvalidatedParams) ->
                                SPMetadata, DupeCheck, _),
        validator:required('SAMLResponse', _),
        validator:string('RelayState', _)]).
+
+handle_get_error(Req) ->
+    menelaus_util:assert_is_enterprise(),
+    _SSOOpts = extract_saml_settings_if_enabled(),
+    validator:handle(
+      fun (Params) ->
+          Id = iolist_to_binary(proplists:get_value(id, Params)),
+          case cb_saml:get_error_msg(Id) of
+              {ok, Msg} -> menelaus_util:reply_json(Req, {[{error, Msg}]}, 200);
+              {error, not_found} -> menelaus_util:reply_not_found(Req)
+          end
+      end, Req, qs,
+      [validator:string('id', _),
+       validator:required('id', _)]).
 
 handle_get_saml_logout(Req) ->
     handle_saml_logout(Req, mochiweb_request:parse_qs(Req)).
@@ -925,8 +940,6 @@ handle_saml_assertion(Req, Assertion, SSOOpts) ->
     ExtraRoles = extract_roles(Assertion, SSOOpts),
     case is_list(Username) andalso length(Username) > 0 of
         true when NameID =/= undefined, length(NameID) > 0 ->
-            ?log_debug("Successful saml login: ~s",
-                       [ns_config_log:tag_user_name(Username)]),
             ExpDatetimeUTC =
                 case proplists:get_value(session_expire, SSOOpts) of
                     false ->
@@ -944,21 +957,32 @@ handle_saml_assertion(Req, Assertion, SSOOpts) ->
                            extra_roles = ExtraRoles,
                            expiration_datetime_utc = ExpDatetimeUTC},
             SessionName = iolist_to_binary(NameID),
-            menelaus_auth:uilogin_phase2(
-              Req,
-              saml,
-              SessionName,
-              AuthnRes,
-              ?cut(menelaus_util:reply_text(_1, <<"Redirecting...">>, 302,
-                                            [{"Location", "/"} | _2])));
+            LoginRes = menelaus_auth:uilogin_phase2(
+                         Req,
+                         saml,
+                         SessionName,
+                         AuthnRes),
+            case LoginRes of
+                {ok, Headers} ->
+                    ?log_debug("Successful saml login: ~s",
+                               [ns_config_log:tag_user_name(Username)]),
+                    menelaus_util:reply_text(Req, <<"Redirecting...">>, 302,
+                                             [{"Location", "/"} | Headers]);
+                {error, {access_denied, _}} ->
+                    ?log_debug("Access denied for SAML user \"~s\"",
+                               [ns_config_log:tag_user_name(Username)]),
+                    Msg = format_access_denied_error(Username, ExtraGroups,
+                                                     ExtraRoles, SSOOpts),
+                    handle_consume_error(Req, Msg)
+            end;
         true ->
-            ?log_debug("NameID is not defined: ~p", [NameID]),
-            Msg = "Missing NameID",
-            menelaus_util:reply_text(Req, iolist_to_binary(Msg), 403);
+            ?log_debug("NameID is not set in SAML assertion"),
+            handle_consume_error(Req, "Missing NameID in SAML assertion");
         false ->
-            ?log_debug("Could not extract identity from assertion"),
-            Msg = "Unable to extract username from assertion",
-            menelaus_util:reply_text(Req, iolist_to_binary(Msg), 403)
+            ?log_debug("Could not extract identity from assertion for "
+                       "NameID: ~s", [ns_config_log:tag_user_name(NameID)]),
+            handle_consume_error(Req, "Unable to extract username from SAML "
+                                      "assertion")
     end.
 
 extract_username(Assertion, SSOOpts) ->
@@ -1031,3 +1055,36 @@ extract_roles(Assertion, SSOOpts) ->
                   end
               end, Filtered)
     end.
+
+handle_consume_error(Req, Msg) ->
+    IdStr = cb_saml:store_error_msg(iolist_to_binary(Msg)),
+    Location = "/ui/index.html#/?samlErrorMsgId=" ++ IdStr,
+    menelaus_util:reply_text(Req, <<"Redirecting...">>, 302,
+                             [{"Location", Location}]).
+
+format_access_denied_error(Username, ExtraGroups, ExtraRoles, SSOOpts) ->
+    MainError = io_lib:format("Access denied for user \"~s\": "
+                              "Insufficient Permissions",
+                              [Username]),
+    GroupsInfo =
+        case proplists:get_value(groups_attribute, SSOOpts) of
+            "" -> [];
+            _ when ExtraGroups == [] ->
+                ["Extracted groups: <empty>"];
+            _ ->
+                ["Extracted groups: " ++
+                     misc:intersperse(ExtraGroups, ", ")]
+        end,
+    RolesInfo =
+        case proplists:get_value(roles_attribute, SSOOpts) of
+            "" -> [];
+            _ when ExtraRoles == [] ->
+                ["Extracted roles: <empty>"];
+            _ ->
+                ExtraRolesStr =
+                    [menelaus_web_rbac:role_to_string(R)
+                     || R <- ExtraRoles],
+                ["Extracted roles: " ++
+                     misc:intersperse(ExtraRolesStr, ", ")]
+        end,
+    misc:intersperse([MainError] ++ GroupsInfo ++ RolesInfo, ". ").

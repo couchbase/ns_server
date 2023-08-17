@@ -13,7 +13,9 @@
          cleanup_metadata/0,
          cache_idp_metadata/2,
          check_dupe/2,
-         check_dupe_global/2]).
+         check_dupe_global/2,
+         store_error_msg/1,
+         get_error_msg/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -24,10 +26,11 @@
 
 -include_lib("esaml/include/esaml.hrl").
 
--record(s, {refresh_timer_ref, dupe_cleanup_timer_ref}).
+-record(s, {refresh_timer_ref, dupe_cleanup_timer_ref, error_msgs = #{}}).
 
 -define(MIN_REFRESH_INTERVAL, ?get_timeout(min_refresh_interval, 60000)).
 -define(DUPE_CLEANUP_INTERVAL, ?get_timeout(dupe_cleanup_interval, 60000)).
+-define(ERROR_MSG_EXPIRATION, ?get_timeout(error_msg_expiration, 10000)).
 -define(DUPE_ETS, saml_dupe_assertion).
 
 %%%===================================================================
@@ -211,6 +214,12 @@ check_dupe(Assertion, Digest) ->
             {error, bad_not_on_or_after}
     end.
 
+store_error_msg(MsgBin) ->
+    gen_server:call(?MODULE, {store_error_msg, MsgBin}, 60000).
+
+get_error_msg(IdBin) ->
+    gen_server:call(?MODULE, {get_error_msg, IdBin}, 60000).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -226,6 +235,20 @@ init([]) ->
       end),
     self() ! settings_update,
     {ok, restart_dupe_cleanup_timer(#s{})}.
+
+handle_call({store_error_msg, MsgBin}, _From, #s{error_msgs = Msgs} = State) ->
+    Id = misc:uuid_v4(),
+    NowTS = erlang:monotonic_time(millisecond),
+    Deadline = NowTS + ?ERROR_MSG_EXPIRATION,
+    FilteredMsgs = prune_error_msgs(Msgs),
+    {reply, Id, State#s{error_msgs = FilteredMsgs#{Id => {Deadline, MsgBin}}}};
+
+handle_call({get_error_msg, IdBin}, _From, #s{error_msgs = Msgs} = State) ->
+    FilteredMsgs = prune_error_msgs(Msgs),
+    case maps:take(IdBin, FilteredMsgs) of
+        {{_, M}, NewMsgs} -> {reply, {ok, M}, State#s{error_msgs = NewMsgs}};
+        error -> {reply, {error, not_found}, State#s{error_msgs = FilteredMsgs}}
+    end;
 
 handle_call(Request, _From, State) ->
     ?log_warning("Unhandled call: ~p", [Request]),
@@ -528,3 +551,7 @@ remove_expired_assertions() ->
         true -> ?log_debug("Removed ~p records from saml dupe table", [N]);
         false -> ok
     end.
+
+prune_error_msgs(Msgs) ->
+    NowTS = erlang:monotonic_time(millisecond),
+    maps:filter(fun (_, {Deadline, _}) -> NowTS < Deadline end, Msgs).
