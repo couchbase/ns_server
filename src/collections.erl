@@ -202,6 +202,18 @@ maybe_add_metered_property() ->
             []
     end.
 
+max_collections_for_bucket(BucketConfig, GlobalMax) ->
+    case guardrail_monitor:get(collections_per_quota) of
+        undefined ->
+            GlobalMax;
+        PerQuotaLimit ->
+            %% Each collection will add overhead to every node the bucket is on
+            %% so we require a minimum amount of quota for each collection on
+            %% the node. We convert to MiB to match units of limit
+            Quota = ns_bucket:raw_ram_quota(BucketConfig) / 1048576,
+            min(GlobalMax, floor(Quota * PerQuotaLimit))
+    end.
+
 max_collections_per_bucket() ->
     Default = get_max_supported(num_collections),
     config_profile:get_value(max_collections_per_bucket, Default).
@@ -472,7 +484,7 @@ do_update_with_manifest(Snapshot, Bucket, Manifest, Operation,
                     {abort, {not_changed, uid(Manifest)}};
                 {ok, NewManifest} ->
                     case check_limits(NewManifest, OtherBucketCounts,
-                                      ScopeCollectionLimits) of
+                                      ScopeCollectionLimits, BucketConf) of
                         ok ->
                             FinalManifest = advance_manifest_id(Operation,
                                                                 NewManifest),
@@ -549,16 +561,18 @@ other_bucket_counts(Bucket) ->
       end, {0, 0}, lists:delete(Bucket, Buckets)).
 
 check_limits(NewManifest, {OtherScopeTotal, OtherCollectionTotal},
-             {MaxScopesPerBucket, MaxCollectionsPerBucket}) ->
+             {MaxScopesPerBucket, MaxCollectionsPerBucket}, BucketConfig) ->
     NumScopes = get_counter(NewManifest, num_scopes),
     NumCollections = get_counter(NewManifest, num_collections),
     TotalScopes = NumScopes + OtherScopeTotal,
     TotalCollections = NumCollections + OtherCollectionTotal,
+    MaxCollectionsForThisBucket =
+        max_collections_for_bucket(BucketConfig, MaxCollectionsPerBucket),
 
     case check_bucket_limit(num_scopes, NumScopes, MaxScopesPerBucket) of
         ok ->
             case check_bucket_limit(num_collections, NumCollections,
-                                    MaxCollectionsPerBucket) of
+                                    MaxCollectionsForThisBucket) of
                 ok ->
                     case check_cluster_limit(num_scopes, TotalScopes) of
                         ok ->
@@ -1219,11 +1233,11 @@ manifest_test_set_history_default(Val) ->
                           [{"bucket", [{props, BucketProps}]}])
                 end).
 
+update_manifest_test_modules() ->
+    [ns_config, cluster_compat_mode, ns_bucket, config_profile, menelaus_roles].
+
 update_manifest_test_setup() ->
-    meck:new(ns_config, [passthrough]),
-    meck:new(cluster_compat_mode, [passthrough]),
-    meck:new(ns_bucket, [passthrough]),
-    meck:new(config_profile, [passthrough]),
+    meck:new(update_manifest_test_modules(), [passthrough]),
 
     meck:expect(cluster_compat_mode, is_cluster_72, fun () -> true end),
     meck:expect(cluster_compat_mode, is_cluster_trinity, fun () -> true end),
@@ -1240,20 +1254,19 @@ update_manifest_test_setup() ->
 
     %% We're not testing auth here (although perhaps we should test that we do
     %% auth at some point in the future) so just allow everything
-    meck:new(menelaus_roles, [passthrough]),
     meck:expect(menelaus_roles,
                 is_allowed,
                 fun (_,_) ->
                         true
                 end),
 
+    meck:expect(guardrail_monitor, get,
+                fun (collections_per_quota) -> undefined end),
+
     manifest_test_set_history_default(true).
 
 update_manifest_test_teardown() ->
-    meck:unload(ns_config),
-    meck:unload(cluster_compat_mode),
-    meck:unload(ns_bucket),
-    meck:unload(config_profile).
+    meck:unload(update_manifest_test_modules()).
 
 update_with_manifest(Manifest, Operation) ->
     Bucket = "bucket",
@@ -1312,7 +1325,32 @@ create_collection_t() ->
     {commit, [{_, _, Manifest2}], _} =
         update_manifest_test_create_collection(Manifest1, "_default", "c2", []),
     ?assertEqual([{uid, 11}, {history, true}],
-                 get_collection("c2", get_scope("_default", Manifest2))).
+                 get_collection("c2", get_scope("_default", Manifest2))),
+
+    %% Collection hard limit
+    meck:expect(ns_config, search,
+                fun (max_scopes_count) -> {ok, 1000};
+                    (max_collections_count) -> {ok, 0}
+                end),
+    ?assertEqual(
+       {abort, {error, {collection_already_exists, "_default", "c1"}}},
+       update_manifest_test_create_collection(Manifest1, "_default", "c1", [])),
+
+    meck:expect(ns_config, search,
+                fun (max_scopes_count) -> {ok, 1000};
+                    (max_collections_count) -> {ok, 1000}
+                end),
+
+    %% Collection per quota limit
+    meck:expect(guardrail_monitor, get,
+                fun (collections_per_quota) -> 0 end),
+    meck:expect(ns_bucket, raw_ram_quota,
+                fun (_) -> 102400 end),
+    ?assertEqual(
+       {abort, {error, {collection_already_exists, "_default", "c1"}}},
+       update_manifest_test_create_collection(Manifest1, "_default", "c1", [])),
+    meck:expect(guardrail_monitor, get,
+                fun (collections_per_quota) -> undefined end).
 
 drop_collection_t() ->
     {ok, BucketConf} = get_bucket_config("bucket"),

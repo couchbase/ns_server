@@ -49,13 +49,22 @@ is_enabled() ->
 get_config() ->
     ns_config:read_key_fast(resource_management, []).
 
--spec get(cores_per_bucket) -> undefined | number().
+-spec get(cores_per_bucket | collections_per_quota) -> undefined | number().
 get(cores_per_bucket) ->
     case proplists:get_value(cores_per_bucket, get_config()) of
         undefined -> undefined;
         Config ->
             case proplists:get_value(enabled, Config) of
                 true -> proplists:get_value(minimum, Config);
+                false -> undefined
+            end
+    end;
+get(collections_per_quota) ->
+    case proplists:get_value(collections_per_quota, get_config()) of
+        undefined -> undefined;
+        Config ->
+            case proplists:get_value(enabled, Config) of
+                true -> proplists:get_value(maximum, Config);
                 false -> undefined
             end
     end.

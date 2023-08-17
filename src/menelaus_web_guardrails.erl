@@ -69,6 +69,13 @@ params() ->
      {"bucket.dataSizePerNode.magmaMaximum",
       #{type => {num, 0, infinity},
         cfg_key => [bucket, data_size, magma_maximum]}},
+     %% Max data per bucket per node
+     {"bucket.collectionsPerQuota.enabled",
+      #{type => bool,
+        cfg_key => [collections_per_quota, enabled]}},
+     {"bucket.collectionsPerQuota.maximum",
+      #{type => {num, 0, infinity},
+        cfg_key => [collections_per_quota, maximum]}},
      %% Max disk usage % per node
      {"diskUsage.enabled",
       #{type => bool,
@@ -118,7 +125,11 @@ raw_default_config() ->
      %% Max disk usage % per node
      {disk_usage,
       [{enabled, false},
-       {maximum, 85}]}
+       {maximum, 85}]},
+     %% Max no. of collections per bucket quota in MB
+     {collections_per_quota,
+      [{enabled, false},
+       {maximum, 1}]}
     ].
 
 update_sub_config({[], Value}, _) ->
@@ -179,7 +190,8 @@ default_config_t() ->
                        [{[bucket, resident_ratio, enabled], true},
                         {[cores_per_bucket, enabled], true},
                         {[bucket, data_size, enabled], true},
-                        {[disk_usage, enabled], true}]
+                        {[disk_usage, enabled], true},
+                        {[collections_per_quota, enabled], true}]
                       }]),
     assert_config_equal([{resource_management,
                           [{bucket,
@@ -198,7 +210,10 @@ default_config_t() ->
                              {minimum, 0.4}]},
                            {disk_usage,
                             [{enabled, true},
-                             {maximum, 85}]}]
+                             {maximum, 85}]},
+                           {collections_per_quota,
+                            [{enabled, true},
+                             {maximum, 1}]}]
                          }], default_config()).
 
 assert_config_equal(Expected, Found) when is_list(Expected)->
