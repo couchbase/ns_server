@@ -264,7 +264,7 @@ handle_saml_consume(Req, UnvalidatedParams) ->
       [validator:string('SAMLEncoding', _),
        validator:default('SAMLEncoding', "", _),
        validate_authn_response('SAMLResponse', 'SAMLEncoding',
-                               SPMetadata, DupeCheck, _),
+                               SPMetadata, DupeCheck, Req, _),
        validator:required('SAMLResponse', _),
        validator:string('RelayState', _)]).
 
@@ -479,7 +479,7 @@ try_get_idp_metadata(Opts) ->
             menelaus_util:web_exception(500, iolist_to_binary(Msg))
     end.
 
-validate_authn_response(NameResp, NameEnc, SPMetadata, DupeCheck, State) ->
+validate_authn_response(NameResp, NameEnc, SPMetadata, DupeCheck, Req, State) ->
     validator:validate_relative(
       fun (Resp, Enc) ->
           SAMLEncoding = list_to_binary(Enc),
@@ -504,9 +504,11 @@ validate_authn_response(NameResp, NameEnc, SPMetadata, DupeCheck, State) ->
                       {error, {decryption_problem, {E, ST}}} ->
                           ?log_debug("Assertion decryption failed: ~p~n~p",
                                      [E, ST]),
+                          ns_audit:login_failure(Req),
                           {error, "Assertion decryption failed"};
                       {error, E} ->
                           ?log_debug("Assertion validation failed: ~p", [E]),
+                          ns_audit:login_failure(Req),
                           Msg = io_lib:format("Assertion validation failed:"
                                               " ~p", [E]),
                           {error, Msg}
@@ -976,11 +978,13 @@ handle_saml_assertion(Req, Assertion, SSOOpts) ->
                     handle_consume_error(Req, Msg)
             end;
         true ->
+            ns_audit:login_failure(Req),
             ?log_debug("NameID is not set in SAML assertion"),
             handle_consume_error(Req, "Missing NameID in SAML assertion");
         false ->
             ?log_debug("Could not extract identity from assertion for "
                        "NameID: ~s", [ns_config_log:tag_user_name(NameID)]),
+            ns_audit:login_failure(Req),
             handle_consume_error(Req, "Unable to extract username from SAML "
                                       "assertion")
     end.
