@@ -929,6 +929,13 @@
           <p>Maintain Global or Local cache of used assertions in order to prevent using the same assertion twice</p>
           <div class="formrow checkbox-list">
             <input
+               formControlName="spAssertionDupeCheckFlag"
+               type="checkbox"
+               id="for-sp-assertion-dupe-check-flag">
+            <label for="for-sp-assertion-dupe-check-flag">Enable Dupe Check</label>
+          </div>
+          <div [hidden]="!(form.group.get('spAssertionDupeCheckFlag').valueChanges | async)" class="formrow checkbox-list margin-left-2">
+            <input
                 type="radio"
                 id="for-sp-assertion-dupe-check-global"
                 formControlName="spAssertionDupeCheck"

@@ -115,6 +115,7 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
          usernameAttributeFlag: null,
          groupsAttributeFlag: null,
          rolesAttributeFlag: null,
+         spAssertionDupeCheckFlag: null,
          spTrustedFingerprintsUsageMetadata: null,
          spTrustedFingerprintsUsageEverything: null,
       })
@@ -284,6 +285,11 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
     }
     delete packedData.spVerifyRecipientFlag;
 
+    if (packedData.spAssertionDupeCheckFlag === false) {
+      packedData.spAssertionDupeCheck = 'disabled';
+    }
+    delete packedData.spAssertionDupeCheckFlag;
+
     if (packedData.spTrustedFingerprints == "") {
       delete packedData.spTrustedFingerprints;
     }
@@ -344,6 +350,12 @@ class MnSecuritySamlComponent extends MnLifeCycleHooksToStream {
 
     if (unpackedData.spVerifyRecipient) {
       unpackedData.spVerifyRecipientFlag = true;
+    }
+
+    if (unpackedData.spAssertionDupeCheck === 'disabled') {
+      unpackedData.spAssertionDupeCheckFlag = false;
+    } else {
+      unpackedData.spAssertionDupeCheckFlag = true;
     }
 
     if (unpackedData.spTrustedFingerprintsUsage === 'metadataInitialOnly') {
