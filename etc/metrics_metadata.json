@@ -885,6 +885,12 @@
         "help": "Number of times requests were unhibernated",
         "added": "7.0.0"
     },
+    "cm_rebalance_stuck": {
+        "type": "gauge",
+        "help": "Boolean indicator of whether the rebalance appears stuck (not making progress)",
+        "added": "7.6.0",
+        "stability": "internal"
+    },
     "cm_status_latency_seconds": {
         "type": "histogram",
         "help": "Latency time for status",

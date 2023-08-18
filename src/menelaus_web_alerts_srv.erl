@@ -874,41 +874,44 @@ check(memory_threshold, Opaque, _History, Stats) ->
     end,
     Opaque;
 check(stuck_rebalance, Opaque, _History, _Stats) ->
-    case cluster_compat_mode:is_cluster_trinity() and
-        %% Only check the alert from the orchestrator node, to avoid duplicate
-        %% alerts and unnecessarily making ns_rebalance_observer calls from
-        %% other nodes
-        (mb_master:master_node() =:= node()) and rebalance:running() of
-        false ->
-            Opaque;
-        true ->
-            case ns_rebalance_observer:get_current_stage() of
-                {error, E} ->
-                    ?log_error("Error getting rebalance stage: ~p", [E]),
-                    Opaque;
-                not_running ->
-                    %% If no rebalance is running then we don't need to do
-                    %% anything
-                    Opaque;
-                Service ->
-                    %% Fetch the alert threshold for this service
-                    {value, Limits} = ns_config:search(alert_limits),
-                    Threshold = proplists:get_value(
-                                  {stuck_rebalance_threshold_secs, Service},
-                                  Limits, undefined),
-                    case Threshold of
-                        undefined ->
-                            %% If the threshold is undefined then the alert is
-                            %% disabled
-                            Opaque;
-                        _ ->
-                            NowTime = erlang:monotonic_time(),
-                            %% Check rebalance progress and possibly alert
-                            maybe_alert_stuck_rebalance(
-                              Service, NowTime, Threshold, Opaque)
-                    end
-            end
-    end;
+    {Stuck, Opaque1} =
+        case cluster_compat_mode:is_cluster_trinity() and
+            %% Only check the alert from the orchestrator node, to avoid
+            %% duplicate alerts and unnecessarily making ns_rebalance_observer
+            %% calls from other nodes
+            (mb_master:master_node() =:= node()) and rebalance:running() of
+            false ->
+                {0, Opaque};
+            true ->
+                case ns_rebalance_observer:get_current_stage() of
+                    {error, E} ->
+                        ?log_error("Error getting rebalance stage: ~p", [E]),
+                        {0, Opaque};
+                    not_running ->
+                        %% If no rebalance is running then we don't need to do
+                        %% anything
+                        {0, Opaque};
+                    Service ->
+                        %% Fetch the alert threshold for this service
+                        {value, Limits} = ns_config:search(alert_limits),
+                        Threshold = proplists:get_value(
+                                      {stuck_rebalance_threshold_secs, Service},
+                                      Limits, undefined),
+                        case Threshold of
+                            undefined ->
+                                %% If the threshold is undefined then the alert
+                                %% is disabled
+                                {0, Opaque};
+                            _ ->
+                                NowTime = erlang:monotonic_time(),
+                                %% Check rebalance progress and possibly alert
+                                maybe_alert_stuck_rebalance(
+                                  Service, NowTime, Threshold, Opaque)
+                        end
+                end
+        end,
+    ns_server_stats:notify_gauge({<<"rebalance_stuck">>, []}, Stuck),
+    Opaque1;
 check(memcached_connections, Opaque, _History, Stats) ->
     case proplists:get_value("@global", Stats) of
         undefined ->
@@ -1142,16 +1145,16 @@ maybe_alert_stuck_rebalance(Service, NowTime, Threshold, Opaque) ->
     %% Only check progress if it has been long enough since the last check
     case progress_check_needed(TimeSinceLastCheck, QueryPeriod) of
         false ->
-            Opaque;
+            {0, Opaque};
         true ->
             %% Fetch the current rebalance progress
             case ns_rebalance_observer:get_progress_for_alerting(Service) of
                 {error, E} ->
                     ?log_error("Error getting rebalance progress: ~p", [E]),
-                    Opaque;
+                    {0, Opaque};
                 not_running ->
                     %% Rebalance is no longer running so no need to alert
-                    Opaque;
+                    {0, Opaque};
                 {Id, _} = FetchedProgress ->
                     NewProgress = update_rebalance_progress(
                                     Service, NowTime, LastProgress,
@@ -1163,16 +1166,20 @@ maybe_alert_stuck_rebalance(Service, NowTime, Threshold, Opaque) ->
                     %% same stage of the same rebalance
                     StuckTime = erlang:convert_time_unit(NowTime - StuckStart,
                                                          native, second),
-                    case StuckTime >= Threshold of
-                        true ->
-                            global_alert({stuck_rebalance, Service, Id},
-                                         fmt_to_bin(errors(stuck_rebalance),
-                                                    [Service, Id, StuckTime]));
-                        false ->
-                            ok
-                    end,
-                    dict:store({rebalance_progress, Service}, NewProgress,
-                               Opaque)
+                    Stuck =
+                        case StuckTime >= Threshold of
+                            true ->
+                                Msg = fmt_to_bin(errors(stuck_rebalance),
+                                                 [Service, Id, StuckTime]),
+                                global_alert({stuck_rebalance, Service, Id},
+                                             Msg),
+                                1;
+                            false ->
+                                0
+                        end,
+                    {Stuck, dict:store({rebalance_progress, Service},
+                                       NewProgress,
+                                       Opaque)}
             end
     end.
 
@@ -1648,19 +1655,22 @@ config_upgrade_to_trinity_test() ->
     ?assertEqual(Expected2, config_upgrade_to_trinity(Config2)).
 
 %% Test that the stuck time is correctly updated based on rebalance progress
-test_rebalance_progress(Service, Time, Progress, StuckTime, Opaque0) ->
+test_rebalance_progress(Service, Time, Progress, StuckStart, Opaque0) ->
     meck:expect(ns_rebalance_observer, get_progress_for_alerting,
                 fun (kv) ->
-                    Progress
+                        Progress
                 end),
     %% Ensure that the query period is 1s
     Threshold = ?REBALANCE_CHECK_FREQ,
     TimeNative = erlang:convert_time_unit(Time, second, native),
-    Opaque1 = maybe_alert_stuck_rebalance(Service, TimeNative, Threshold,
-                                          Opaque0),
-    StuckTimeNative = erlang:convert_time_unit(StuckTime, second, native),
+    StuckTime = Time - StuckStart,
+    ExpectedStuck = case StuckTime >= Threshold of true -> 1; false -> 0 end,
+    {Stuck, Opaque1} = maybe_alert_stuck_rebalance(Service, TimeNative,
+                                                   Threshold, Opaque0),
+    ?assertEqual(ExpectedStuck, Stuck),
+    StuckStartNative = erlang:convert_time_unit(StuckStart, second, native),
     ?assertMatch([{{rebalance_progress, Service},
-                   #rebalance_progress{stuck_timestamp = StuckTimeNative}}],
+                   #rebalance_progress{stuck_timestamp = StuckStartNative}}],
                  dict:to_list(Opaque1)),
     Opaque1.
 
