@@ -29,18 +29,16 @@
          deactivate_nodes/1,
          start_failover/2,
          complete_failover/2,
-         upgrade_cluster/1,
          get_prev_failover_nodes/1,
          fetch_snapshot/1,
          failover_opaque_key/0]).
 
 -define(CALL_TIMEOUT, ?get_timeout(call, 60000)).
 -define(JANITOR_TIMEOUT, ?get_timeout(janitor, 60000)).
--define(UPGRADE_TIMEOUT, ?get_timeout(upgrade, 240000)).
 -define(AFTER_UPGRADE_CLEANUP_TIMEOUT,
         ?get_timeout(after_upgrade_cleanup, 60000)).
 
--record(state, {self_ref, janitor_timer_ref, events}).
+-record(state, {self_ref, janitor_timer_ref}).
 
 start_link() ->
     misc:start_singleton(gen_server2, start_link, [?SERVER, ?MODULE, [], []]).
@@ -69,12 +67,6 @@ complete_failover(Nodes, Ref) when Nodes =/= [] ->
     chronicle = chronicle_compat:backend(),
     wait_for_server_start(),
     gen_server2:call(?SERVER, {complete_failover, Nodes, Ref}, ?CALL_TIMEOUT).
-
-upgrade_cluster([]) ->
-    ok;
-upgrade_cluster(OtherNodes) ->
-    wait_for_server_start(),
-    gen_server2:call(?SERVER, {upgrade_cluster, OtherNodes}, ?UPGRADE_TIMEOUT).
 
 fetch_snapshot({ns_config, _}) ->
     #{};
@@ -139,7 +131,7 @@ do_init() ->
     Self = self(),
     SelfRef = erlang:make_ref(),
     ?log_debug("Starting with SelfRef = ~p", [SelfRef]),
-    Events = subscribe_to_chronicle_events(SelfRef),
+    subscribe_to_chronicle_events(SelfRef),
     ns_pubsub:subscribe_link(
       ns_config_events,
       fun ({after_upgrade_cleanup, _}) ->
@@ -155,8 +147,7 @@ do_init() ->
             ok
     end,
 
-    State = #state{self_ref = SelfRef,
-                   events = Events},
+    State = #state{self_ref = SelfRef},
     case is_delegated_operation() of
         true ->
             %% If we have a delegated operation run janitor immediately.
@@ -165,42 +156,6 @@ do_init() ->
         false ->
             {ok, arm_janitor_timer(State)}
     end.
-
-do_handle_call({upgrade_cluster, NodesToAdd}, _From,
-            State = #state{self_ref = SelfRef, events = Events}) ->
-    ?log_debug("Reinitialize chronicle before the upgrade"),
-    chronicle_compat_events:hush_chronicle(),
-    ns_pubsub:unsubscribe(Events),
-    %% this will wipe chronicle on this node and reprovision it
-    chronicle_local:leave_cluster(),
-    NewEvents = subscribe_to_chronicle_events(SelfRef),
-    chronicle_compat_events:resume_chronicle(),
-
-    ?log_debug("Starting upgrade to chronicle cluster"),
-
-    {ok, Lock} = chronicle:acquire_lock(),
-    ?log_debug("Adding nodes ~p to chronicle cluster. Lock: ~p",
-               [NodesToAdd, Lock]),
-    ClusterInfo = chronicle:get_cluster_info(),
-
-    ?log_debug("Preparing nodes ~p to join chronicle cluster with info ~p",
-               [NodesToAdd, ClusterInfo]),
-    ok = ns_cluster:prep_chronicle(NodesToAdd, ClusterInfo),
-
-    ?log_debug("Adding nodes ~p as replicas to chronicle cluster",
-               [NodesToAdd]),
-    ok = chronicle:add_replicas(Lock, NodesToAdd),
-
-    ClusterInfo1 = chronicle:get_cluster_info(),
-
-    ?log_debug("Asking nodes ~p to join chronicle cluster with info ~p",
-               [NodesToAdd, ClusterInfo1]),
-    ok = ns_cluster:join_chronicle(NodesToAdd, ClusterInfo1),
-
-    ?log_debug("Promoting nodes ~p to voters, Lock: ~p", [NodesToAdd, Lock]),
-    set_peer_roles(Lock, NodesToAdd, voter),
-    ?log_info("Cluster successfully upgraded to chronicle"),
-    {reply, ok, State#state{events = NewEvents}};
 
 do_handle_call({start_failover, Nodes, Ref}, _From, State) ->
     PreviousFailoverNodes = get_prev_failover_nodes(direct),

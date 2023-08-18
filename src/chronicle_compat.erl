@@ -45,9 +45,6 @@
 %% RPC from another nodes
 -export([do_pull/1]).
 
--define(UPGRADE_PULL_TIMEOUT,
-        ?get_timeout(upgrade_pull, 60000)).
-
 backend() ->
     case enabled() of
         true ->
@@ -338,8 +335,7 @@ cleanup_value(_) ->
 
 upgrade(Config) ->
     NodesWanted = ns_node_disco:nodes_wanted(Config),
-    OtherNodes = NodesWanted -- [node()],
-    ok = chronicle_master:upgrade_cluster(OtherNodes),
+    NodesWanted = [node()],
 
     {ToSet, Cleanup} =
         ns_config:fold(
@@ -366,7 +362,6 @@ upgrade(Config) ->
     ?log_info("Keys are migrated to chronicle. Rev = ~p. Sets = ~p",
               [Rev, Sets]),
 
-    ok = remote_pull(OtherNodes, ?UPGRADE_PULL_TIMEOUT),
     [{set, after_upgrade_cleanup, [CountersCleanup|Cleanup]}].
 
 upgrade_counters(Config) ->
