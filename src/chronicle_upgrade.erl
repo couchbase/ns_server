@@ -58,10 +58,14 @@ initialize() ->
               {count, 0}]},
             {set, bucket_names, []},
             {set, nodes_wanted, [Node]},
-            {set, server_groups, [[{uuid,<<"0">>},
-                                   {name,<<"Group 1">>},
+            {set, server_groups, [[{uuid, <<"0">>},
+                                   {name, <<"Group 1">>},
                                    {nodes, [Node]}]]},
-            {set, {node, Node, membership}, active}],
+            {set, {node, Node, membership}, active},
+            {set, autocompaction,
+             [{database_fragmentation_threshold, {30, undefined}},
+              {view_fragmentation_threshold, {30, undefined}},
+              {magma_fragmentation_percentage, 50}]}],
 
     ?log_info("Setup initial chronicle content ~p", [Sets]),
     {ok, Rev} = chronicle_kv:multi(kv, Sets),
@@ -101,7 +105,7 @@ upgrade_loop(UpgradeTxn, FinalVersion, Config) ->
     CurrentVersion =
         case get_key(cluster_compat_version, UpgradeTxn) of
             {error, not_found} ->
-                ?VERSION_70;
+                ?VERSION_71;
             {ok, V} ->
                 V
         end,
@@ -116,12 +120,6 @@ upgrade_loop(UpgradeTxn, FinalVersion, Config) ->
             upgrade_loop(set_key(cluster_compat_version, NewVersion, NewTxn),
                          FinalVersion, Config)
     end.
-
-upgrade_to(?VERSION_70, UpgradeTxn, Config) ->
-    {?VERSION_71,
-     functools:chain(
-       UpgradeTxn,
-       [compaction_daemon:chronicle_upgrade_to_71(_, Config)])};
 
 upgrade_to(?VERSION_71, UpgradeTxn, _Config) ->
     {?VERSION_72, ns_bucket:chronicle_upgrade_to_72(UpgradeTxn)};

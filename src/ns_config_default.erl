@@ -155,8 +155,6 @@ default() ->
      {index_aware_rebalance_disabled, false},
      {max_bucket_count, config_profile:get_value(max_buckets_supported,
                                                  ?MAX_BUCKETS_SUPPORTED)},
-     {autocompaction, [{database_fragmentation_threshold, {30, undefined}},
-                       {view_fragmentation_threshold, {30, undefined}}]},
      {set_view_update_daemon,
       [{update_interval, 5000},
        {update_min_changes, 5000},

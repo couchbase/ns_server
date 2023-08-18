@@ -21,8 +21,7 @@
 %% Misc
 -export([get_autocompaction_settings/1,
          set_autocompaction_settings/1,
-         global_magma_frag_percent/0,
-         chronicle_upgrade_to_71/2]).
+         global_magma_frag_percent/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
@@ -193,12 +192,6 @@ set_autocompaction_settings(Settings) ->
         false ->
             ns_config:set(autocompaction, Settings)
     end.
-
-chronicle_upgrade_to_71(ChronicleTxn, Config) ->
-    Props0 = ns_config:search(Config, autocompaction, []),
-    Props = lists:append(Props0, [{magma_fragmentation_percentage, 50}]),
-    ?log_info("Upgrading autocompaction to 7.1: ~n~p", [Props]),
-    chronicle_upgrade:set_key(autocompaction, Props, ChronicleTxn).
 
 %% gen_server callbacks
 init([]) ->
