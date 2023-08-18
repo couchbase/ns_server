@@ -452,9 +452,8 @@ default_cfg() -> cfg_to_json([]).
 memorize_hidden_pass(HiddenPass) ->
     application:set_env(ns_babysitter, master_password, HiddenPass).
 
-
 extract_hidden_pass()->
-    case application:get_env(master_password) of
+    case application:get_env(ns_babysitter, master_password) of
         {ok, P} ->
             ?log_info("Trying to recover the password from application "
                       "environment"),
@@ -594,8 +593,6 @@ change_password_with_password_cmd_test() ->
                   {Encrypted1, Encrypted2}
               end),
 
-        memorize_hidden_pass(?HIDE("")),
-
         %% After gosecrets restart, it should read Password2 via cmd, there
         %% is no need to send password to it
         with_gosecrets(
@@ -672,71 +669,116 @@ config_reload_test() ->
       end).
 
 env_password_test() ->
-    DKFile = path_config:tempfile("encrypted_datakey", ".tmp"),
-    Cfg = [{es_key_path_type, custom}, {es_custom_key_path, DKFile}],
-    try
-        Data = rand:bytes(512),
-        Password = base64:encode_to_string(rand:bytes(128)),
-        WrongPassword = base64:encode_to_string(rand:bytes(128)),
-        {ok, Encrypted} =
-            with_gosecrets(
-              Cfg,
-              fun (_CfgPath, Pid) ->
-                  ok = change_password(Pid, Password),
-                  encrypt(Pid, Data)
-              end),
+    with_tmp_datakey_cfg(
+      fun (Cfg) ->
+          Data = rand:bytes(512),
+          Password = base64:encode_to_string(rand:bytes(128)),
+          {ok, Encrypted} =
+              with_gosecrets(
+                Cfg,
+                fun (_CfgPath, Pid) ->
+                    ok = change_password(Pid, Password),
+                    encrypt(Pid, Data)
+                end),
 
-        memorize_hidden_pass(?HIDE(WrongPassword)),
-        os:putenv("CB_MASTER_PASSWORD", Password),
-        {ok, Data} =
-            with_gosecrets(
-              Cfg,
-              fun (_CfgPath, Pid) ->
-                  ok = change_password(Pid, ""),
-                  decrypt(Pid, Encrypted)
-              end),
+          os:putenv("CB_MASTER_PASSWORD", Password),
+          {ok, Data} =
+              with_gosecrets(
+                Cfg,
+                fun (_CfgPath, Pid) ->
+                    ok = change_password(Pid, ""),
+                    decrypt(Pid, Encrypted)
+                end),
 
-        memorize_hidden_pass(?HIDE(WrongPassword)),
-        os:unsetenv("CB_MASTER_PASSWORD"),
-        {ok, Data} =
-            with_gosecrets(
-              Cfg,
-              fun (_CfgPath, Pid) ->
-                  decrypt(Pid, Encrypted)
-              end)
-    after
-        file:delete(DKFile),
-        os:unsetenv("CB_MASTER_PASSWORD")
-    end.
+          os:unsetenv("CB_MASTER_PASSWORD"),
+          {ok, Data} =
+              with_gosecrets(
+                Cfg,
+                fun (_CfgPath, Pid) ->
+                    decrypt(Pid, Encrypted)
+                end)
+      end).
+
+default_env_password_test() ->
+    with_tmp_datakey_cfg(
+      fun (Cfg) ->
+          Data = rand:bytes(512),
+          Password = base64:encode_to_string(rand:bytes(128)),
+          os:putenv("CB_MASTER_PASSWORD", Password),
+          {ok, Encrypted} =
+              with_gosecrets(
+                Cfg,
+                fun (_CfgPath, Pid) ->
+                    %% as it is the first start it should set the password
+                    %% that was specified by the env var
+                    encrypt(Pid, Data)
+                end),
+
+          %% Now we restart, change the env var, and check that empty password
+          %% doesn't work, while the original password from the env var works
+          Password2 = base64:encode_to_string(rand:bytes(128)),
+          os:putenv("CB_MASTER_PASSWORD", Password2),
+          with_password_sent(
+            _WrongPassword = "", Password,
+            fun () ->
+                {ok, Data} =
+                    with_gosecrets(
+                      Cfg,
+                      fun (_CfgPath, Pid) ->
+                          %% this should reset the password to whatever is
+                          %% specified in the env var
+                          change_password(Pid, undefined),
+                          decrypt(Pid, Encrypted)
+                      end)
+            end),
+
+          os:unsetenv("CB_MASTER_PASSWORD"),
+          with_password_sent(
+            Password, Password2,
+            fun () ->
+                {ok, Data} =
+                    with_gosecrets(
+                      Cfg,
+                      fun (_CfgPath, Pid) ->
+                          %% this should reset the password to "" because
+                          %% the env var is not set
+                          change_password(Pid, undefined),
+                          decrypt(Pid, Encrypted)
+                      end)
+            end),
+
+          {ok, Data} =
+              with_gosecrets(
+                Cfg,
+                fun (_CfgPath, Pid) ->
+                    decrypt(Pid, Encrypted)
+                end)
+      end).
 
 udp_password_test() ->
-    DKFile = path_config:tempfile("encrypted_datakey", ".tmp"),
-    Cfg = [{es_key_path_type, custom}, {es_custom_key_path, DKFile}],
-    try
-        Data = rand:bytes(512),
-        Password = base64:encode_to_string(rand:bytes(128)),
-        {ok, Encrypted} =
-            with_gosecrets(
-              Cfg,
-              fun (_CfgPath, Pid) ->
-                  ok = change_password(Pid, Password),
-                  encrypt(Pid, Data)
-              end),
+    with_tmp_datakey_cfg(
+      fun (Cfg) ->
+          Data = rand:bytes(512),
+          Password = base64:encode_to_string(rand:bytes(128)),
+          {ok, Encrypted} =
+              with_gosecrets(
+                Cfg,
+                fun (_CfgPath, Pid) ->
+                    ok = change_password(Pid, Password),
+                    encrypt(Pid, Data)
+                end),
 
-        memorize_hidden_pass(?HIDE("")),
-        with_password_sent(
-          "wrong", Password,
-          fun () ->
-              {ok, Data} =
-                  with_gosecrets(
-                    Cfg,
-                    fun (_CfgPath, Pid) ->
-                        decrypt(Pid, Encrypted)
-                    end)
-          end)
-    after
-        file:delete(DKFile)
-    end.
+          with_password_sent(
+            "wrong", Password,
+            fun () ->
+                {ok, Data} =
+                    with_gosecrets(
+                      Cfg,
+                      fun (_CfgPath, Pid) ->
+                          decrypt(Pid, Encrypted)
+                      end)
+            end)
+      end).
 
 upgrade_from_7_2_no_password_test() ->
     %% This file name and file content are copied from test 7.2 node.
@@ -749,6 +791,7 @@ upgrade_from_7_2_no_password_test() ->
 
     %% We can't use with_gosecrets/2 here, because it would remove the data
     %% key file
+    memorize_hidden_pass(?HIDE(undefined)),
     with_tmp_cfg(
       undefined,
       fun (CfgPath) ->
@@ -793,6 +836,128 @@ upgrade_from_7_2_with_password_test() ->
                 end
             end)
       end).
+
+change_password_memorization_test() ->
+    with_tmp_datakey_cfg(
+      fun (Cfg) ->
+          Data = rand:bytes(512),
+          Password = base64:encode_to_string(rand:bytes(128)),
+          {ok, Encrypted} =
+              with_gosecrets(
+                Cfg,
+                fun (_CfgPath, Pid) ->
+                    %% Here it is supposed to memorize the password
+                    ok = change_password(Pid, Password),
+                    encrypt(Pid, Data)
+                end),
+
+          %% Starting gosecrets without reset of memorized password in order
+          %% to check the memorized password works
+          {ok, Data} =
+              with_gosecrets(
+                Cfg,
+                fun (_CfgPath, Pid) ->
+                    decrypt(Pid, Encrypted)
+                end,
+                false)
+      end).
+
+send_password_memorization_test() ->
+    with_tmp_datakey_cfg(
+      fun (Cfg) ->
+          Data = rand:bytes(512),
+          Password = base64:encode_to_string(rand:bytes(128)),
+          {ok, Encrypted} =
+              with_gosecrets(
+                Cfg,
+                fun (_CfgPath, Pid) ->
+                    ok = change_password(Pid, Password),
+                    encrypt(Pid, Data)
+                end),
+
+          %% When we send the passord it is supposed to memorize it,
+          %% so after restart it should pick it up automatically
+          with_password_sent(
+            "wrong", Password,
+            fun () ->
+                {ok, Data} =
+                    with_gosecrets(
+                      Cfg,
+                      fun (_CfgPath, Pid) ->
+                          decrypt(Pid, Encrypted)
+                      end)
+            end),
+
+          %% Starting gosecrets without reset of memorized password in order
+          %% to check the memorized password works
+          {ok, Data} =
+              with_gosecrets(
+                Cfg,
+                fun (_CfgPath, Pid) ->
+                    decrypt(Pid, Encrypted)
+                end,
+                false)
+      end).
+
+default_password_memorization_test() ->
+    with_tmp_datakey_cfg(
+      fun (Cfg) ->
+          Data = rand:bytes(512),
+          {ok, Encrypted} =
+              with_gosecrets(
+                Cfg,
+                fun (_CfgPath, Pid) ->
+                    encrypt(Pid, Data)
+                end),
+
+          %% Starting gosecrets without reset of memorized password in order
+          %% to check the memorized password works (in this case the memorized
+          %% passowrd is undefined, but still we should check that it doesn't
+          %% break anything)
+          {ok, Data} =
+              with_gosecrets(
+                Cfg,
+                fun (_CfgPath, Pid) ->
+                    decrypt(Pid, Encrypted)
+                end,
+                false)
+      end).
+
+default_password_from_env_memorization_test() ->
+    with_tmp_datakey_cfg(
+      fun (Cfg) ->
+          Data = rand:bytes(512),
+          Password = base64:encode_to_string(rand:bytes(128)),
+          os:putenv("CB_MASTER_PASSWORD", Password),
+          {ok, Encrypted} =
+              with_gosecrets(
+                Cfg,
+                fun (_CfgPath, Pid) ->
+                    encrypt(Pid, Data)
+                end),
+
+          %% Starting gosecrets without reset of memorized password in order
+          %% to check the memorized password works (in this case the memorized
+          %% passowrd is undefined, but still we should check that it doesn't
+          %% break anything)
+          {ok, Data} =
+              with_gosecrets(
+                Cfg,
+                fun (_CfgPath, Pid) ->
+                    decrypt(Pid, Encrypted)
+                end,
+                false)
+      end).
+
+with_tmp_datakey_cfg(Fun) ->
+    DKFile = path_config:tempfile("encrypted_datakey", ".tmp"),
+    Cfg = [{es_key_path_type, custom}, {es_custom_key_path, DKFile}],
+    try
+        Fun(Cfg)
+    after
+        file:delete(DKFile),
+        os:unsetenv("CB_MASTER_PASSWORD")
+    end.
 
 with_password_sent(WrongPassword, CorrectPassword, Fun) ->
     Parent = self(),
@@ -851,6 +1016,10 @@ try_send_password(Pass, PortFile, Retries) ->
     end.
 
 with_gosecrets(Cfg, Fun) ->
+    with_gosecrets(Cfg, Fun, true).
+
+with_gosecrets(Cfg, Fun, ResetMemorizePassword) ->
+    ResetMemorizePassword andalso memorize_hidden_pass(?HIDE(undefined)),
     with_tmp_cfg(
       Cfg,
       fun (CfgPath) ->
