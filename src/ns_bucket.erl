@@ -143,7 +143,6 @@
          buckets_with_data_on_this_node/0,
          activate_bucket_data_on_this_node/1,
          deactivate_bucket_data_on_this_node/1,
-         chronicle_upgrade_to_71/1,
          chronicle_upgrade_to_72/1,
          chronicle_upgrade_to_trinity/1,
          extract_bucket_props/1,
@@ -2046,17 +2045,6 @@ chronicle_upgrade_bucket(Func, BucketNames, ChronicleTxn) ->
       fun (Name, Acc) ->
               Func(Name, Acc)
       end, ChronicleTxn, BucketNames).
-
-chronicle_upgrade_bucket_to_71(BucketName, ChronicleTxn) ->
-    PropsKey = sub_key(BucketName, props),
-    {ok, BucketConfig} = chronicle_upgrade:get_key(PropsKey, ChronicleTxn),
-    NewBucketConfig = lists:keydelete(auth_type, 1, BucketConfig),
-    chronicle_upgrade:set_key(PropsKey, NewBucketConfig, ChronicleTxn).
-
-chronicle_upgrade_to_71(ChronicleTxn) ->
-    {ok, BucketNames} = chronicle_upgrade:get_key(root(), ChronicleTxn),
-    chronicle_upgrade_bucket(chronicle_upgrade_bucket_to_71(_, _),
-                             BucketNames, ChronicleTxn).
 
 chronicle_upgrade_bucket_to_trinity(BucketName, ChronicleTxn) ->
     PropsKey = sub_key(BucketName, props),
