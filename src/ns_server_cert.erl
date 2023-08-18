@@ -38,7 +38,6 @@
          validate_pkey/2,
          get_chain_info/2,
          trusted_CAs/1,
-         trusted_CAs_pre_71/1,
          generate_certs/2,
          filter_nodes_by_ca/3,
          inbox_chain_path/1,
@@ -91,109 +90,60 @@ this_node_uses_self_generated_client_certs(Config) ->
     generated == proplists:get_value(type, CertProps).
 
 self_generated_ca() ->
-    case cluster_compat_mode:is_cluster_71() of
-        true ->
-            case chronicle_kv:get(kv, root_cert_and_pkey) of
-                {ok, {{CA, _}, _}} -> CA;
-                {error, not_found} ->
-                    {CA, _} = ensure_cluster_CA(),
-                    CA
-            end;
-        false ->
-            case ns_config:search(cert_and_pkey) of
-                {value, {CA, _}} -> CA;
-                {value, {_, CA, _}} -> CA;
-                false ->
-                    {CA, _} = ensure_cluster_CA(),
-                    CA
-            end
+    case chronicle_kv:get(kv, root_cert_and_pkey) of
+        {ok, {{CA, _}, _}} -> CA;
+        {error, not_found} ->
+            {CA, _} = ensure_cluster_CA(),
+            CA
     end.
 
 self_generated_ca_and_pkey() ->
-    case cluster_compat_mode:is_cluster_71() of
-        true ->
-            case chronicle_kv:get(kv, root_cert_and_pkey) of
-                {ok, {Pair, _}} -> Pair;
-                {error, not_found} -> ensure_cluster_CA()
-            end;
-        false ->
-            case ns_config:search(cert_and_pkey) of
-                {value, {CA, PKey}} -> {CA, PKey};
-                {value, {_, CA, PKey}} -> {CA, PKey};
-                false -> ensure_cluster_CA()
-            end
+    case chronicle_kv:get(kv, root_cert_and_pkey) of
+        {ok, {Pair, _}} -> Pair;
+        {error, not_found} -> ensure_cluster_CA()
     end.
 
 ensure_cluster_CA() ->
     generate_cluster_CA(false, false).
 
 generate_cluster_CA(ForceRegenerateCA, DropUploadedCerts) ->
-    case cluster_compat_mode:is_cluster_71() of
-        true ->
-            NewPair = generate_cert_and_pkey(),
-            {ok, AddCA} = add_CAs_txn_fun(generated, element(1, NewPair), []),
-            ReadEpoch =
-                fun (Txn) ->
-                    case chronicle_kv:txn_get(cluster_certs_epoch, Txn) of
-                        {ok, {N, _}} -> N;
-                        {error, not_found} -> 0
-                    end
-                end,
-            {ok, _, Pair} =
-                chronicle_kv:txn(
-                  kv,
-                  fun (Txn) ->
-                      case chronicle_kv:txn_get(root_cert_and_pkey, Txn) of
-                          {ok, {OldPair, _}} when not ForceRegenerateCA,
-                                                  not DropUploadedCerts ->
-                              {abort, {ok, undefined, OldPair}};
-                          {ok, {OldPair, _}} when not ForceRegenerateCA  ->
-                              Epoch = ReadEpoch(Txn) + 1,
-                              {commit, [{set, cluster_certs_epoch, Epoch}],
-                               OldPair};
-                          _ ->
-                              Changes0 =
-                                  case DropUploadedCerts of
-                                      true ->
-                                          Epoch = ReadEpoch(Txn) + 1,
-                                          [{set, cluster_certs_epoch, Epoch}];
-                                      false ->
-                                          []
-                                  end,
-                              Changes1 = [{set, root_cert_and_pkey, NewPair}],
-                              {commit, Changes2, _} = AddCA(Txn),
-                              Changes = Changes0 ++ Changes1 ++ Changes2,
-                              {commit, Changes, NewPair}
-                      end
-                  end),
-            Pair;
-        false ->
-            generate_and_set_cert_and_pkey_pre_71(ForceRegenerateCA)
-    end.
-
-generate_and_set_cert_and_pkey_pre_71(Force) ->
-    Pair = generate_cert_and_pkey(),
-    RV = ns_config:run_txn(
-           fun (Config, SetFn) ->
-                   Existing =
-                       case ns_config:search(Config, cert_and_pkey) of
-                           {value, {_, _, undefined}} -> undefined;
-                           {value, {_, undefined}} -> undefined;
-                           false -> undefined;
-                           {value, OtherPair} -> OtherPair
-                       end,
-                   case (Existing == undefined) or Force of
-                       true -> {commit, SetFn(cert_and_pkey, Pair, Config)};
-                       false -> {abort, Existing}
-                   end
-           end),
-
-    case RV of
-        {abort, OtherPair} ->
-            OtherPair;
-        _ ->
-            Pair
-    end.
+    NewPair = generate_cert_and_pkey(),
+    {ok, AddCA} = add_CAs_txn_fun(generated, element(1, NewPair), []),
+    ReadEpoch =
+        fun (Txn) ->
+                case chronicle_kv:txn_get(cluster_certs_epoch, Txn) of
+                    {ok, {N, _}} -> N;
+                    {error, not_found} -> 0
+                end
+        end,
+    {ok, _, Pair} =
+        chronicle_kv:txn(
+          kv,
+          fun (Txn) ->
+                  case chronicle_kv:txn_get(root_cert_and_pkey, Txn) of
+                      {ok, {OldPair, _}} when not ForceRegenerateCA,
+                                              not DropUploadedCerts ->
+                          {abort, {ok, undefined, OldPair}};
+                      {ok, {OldPair, _}} when not ForceRegenerateCA  ->
+                          Epoch = ReadEpoch(Txn) + 1,
+                          {commit, [{set, cluster_certs_epoch, Epoch}],
+                           OldPair};
+                      _ ->
+                          Changes0 =
+                              case DropUploadedCerts of
+                                  true ->
+                                      Epoch = ReadEpoch(Txn) + 1,
+                                      [{set, cluster_certs_epoch, Epoch}];
+                                  false ->
+                                      []
+                              end,
+                          Changes1 = [{set, root_cert_and_pkey, NewPair}],
+                          {commit, Changes2, _} = AddCA(Txn),
+                          Changes = Changes0 ++ Changes1 ++ Changes2,
+                          {commit, Changes, NewPair}
+                  end
+          end),
+    Pair.
 
 generate_cert_and_pkey() ->
     StartTS = os:timestamp(),
@@ -625,10 +575,7 @@ set_cluster_ca(CA) ->
     end.
 
 set_generated_ca(CA) ->
-    case cluster_compat_mode:is_cluster_71() of
-        true -> chronicle_kv:set(kv, root_cert_and_pkey, {CA, undefined});
-        false -> ns_config:set(cert_and_pkey, {CA, undefined})
-    end,
+    chronicle_kv:set(kv, root_cert_and_pkey, {CA, undefined}),
     {ok, _} = add_CAs(generated, CA),
     ok.
 
@@ -756,14 +703,9 @@ get_chain_info(Chain, CA) when is_binary(Chain), is_binary(CA) ->
 
 trusted_CAs(Format) ->
     Certs =
-        case cluster_compat_mode:is_cluster_71() of
-            true ->
-                case chronicle_kv:get(kv, ca_certificates) of
-                    {ok, {Cs, _}} -> Cs;
-                    {error, not_found} -> []
-                end;
-            false ->
-                trusted_CAs_pre_71(ns_config:latest())
+        case chronicle_kv:get(kv, ca_certificates) of
+            {ok, {Cs, _}} -> Cs;
+            {error, not_found} -> []
         end,
 
     SortedCerts = lists:sort(fun (PL1, PL2) ->
@@ -783,26 +725,6 @@ trusted_CAs(Format) ->
                   {ok, Der} = decode_single_certificate(Pem),
                   Der
               end, SortedCerts)
-    end.
-
-trusted_CAs_pre_71(Config) ->
-    CertAndPKey = ns_config:search(Config, cert_and_pkey),
-    Extra = [{origin, upgrade}],
-
-    PrepareCertProps =
-        fun (Id, Type, CAPem) ->
-            {ok, [CADer]} = decode_certificates(CAPem),
-            [{id, Id} | cert_props(Type, CADer, Extra)]
-        end,
-
-    case CertAndPKey of
-        {value, {CAProps, SGCA, _}} ->
-            [PrepareCertProps(0, generated, SGCA),
-             PrepareCertProps(1, uploaded, proplists:get_value(pem, CAProps))];
-        {value, {SGCA, _}} ->
-            [PrepareCertProps(0, generated, SGCA)];
-        false ->
-            []
     end.
 
 load_certs_from_inbox(Type, PassphraseSettings) when Type == node_cert;
@@ -1335,7 +1257,6 @@ get_warnings() ->
     Config = ns_config:get(),
     Nodes = ns_node_disco:nodes_wanted(Config),
     TrustedCAs = trusted_CAs(pem),
-    Is71 = cluster_compat_mode:is_cluster_71(),
     IsTrinity = cluster_compat_mode:is_cluster_trinity(),
     ClientWarnings =
         lists:flatmap(
@@ -1358,19 +1279,7 @@ get_warnings() ->
                           node_cert_warnings(node_cert, Node, TrustedCAs,
                                              Props);
                       false ->
-                          case proplists:get_value(supported_compat_version,
-                                                   ns_doctor:get_node(Node)) of
-                              %% no info for this node yet (probably the node
-                              %% is joining the cluster right now)
-                              undefined ->
-                                  [];
-                              NodeVsn when NodeVsn < ?VERSION_71 ->
-                                  node_cert_warnings_pre_71(TrustedCAs,
-                                                            Node,
-                                                            Config);
-                              _NodeVsn ->
-                                  []
-                          end
+                          []
                   end,
               [{{node_cert, Node}, W} || W <- Warnings]
           end, Nodes),
@@ -1390,8 +1299,9 @@ get_warnings() ->
                           generated ->
                               CAPem = proplists:get_value(pem, CAProps, <<>>),
                               UnusedNode =
-                                  case filter_nodes_by_ca(node_cert, Nodes, CAPem) of
-                                      [] when Is71 -> true;
+                                  case filter_nodes_by_ca(node_cert, Nodes,
+                                                          CAPem) of
+                                      [] -> true;
                                       _ -> false
                                   end,
                               UnusedClient =
@@ -1481,21 +1391,6 @@ node_cert_warnings(Type, Node, TrustedCAs, NodeCertProps) ->
 
     MissingCAWarnings ++ ExpirationWarnings ++
         SelfSignedWarnings ++ NodeNameNotMatchWarnings.
-
-node_cert_warnings_pre_71(TrustedCAs, Node, Config) ->
-    case ns_config:search(Config, cert_and_pkey) of
-        {value, {_, _}} ->
-            [self_signed];
-        {value, {_, _, _}} ->
-            case ns_config:search(Config, {node, Node, cert}) of
-                {value, Props} ->
-                    node_cert_warnings(node_cert, Node, TrustedCAs, Props);
-                false ->
-                    [mismatch]
-            end;
-        _ ->
-          []
-    end.
 
 get_cert_info(node_cert, Node) ->
     ns_config:read_key_fast({node, Node, node_cert}, []);

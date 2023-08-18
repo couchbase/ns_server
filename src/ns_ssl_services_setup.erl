@@ -46,7 +46,6 @@
          set_certs/6,
          get_tls_version_map/0,
          get_supported_tls_versions/2,
-         chronicle_upgrade_to_71/2,
          remove_node_certs/0,
          update_certs_epoch/0,
          config_upgrade_to_trinity/1]).
@@ -1372,23 +1371,6 @@ user_set_key_path() ->
 user_set_ca_chain_path() ->
     filename:join(path_config:component_path(data, "config"),
                   "user-set-ca.pem").
-
-chronicle_upgrade_to_71(ChronicleTxn, NsConfig) ->
-    Props = ns_server_cert:trusted_CAs_pre_71(NsConfig),
-    ?log_info("Upgrading CA certs to 7.1: setting ca_certificates to the "
-              "following props:~n ~p", [Props]),
-    ChronicleTxn2 =
-        case ns_config:search(NsConfig, cert_and_pkey) of
-            {value, {_, CA, Key}} ->
-                chronicle_upgrade:set_key(root_cert_and_pkey, {CA, Key},
-                                          ChronicleTxn);
-            {value, {CA, Key}} ->
-                chronicle_upgrade:set_key(root_cert_and_pkey, {CA, Key},
-                                          ChronicleTxn);
-            false ->
-                ChronicleTxn
-        end,
-    chronicle_upgrade:set_key(ca_certificates, Props, ChronicleTxn2).
 
 security_config_update_warning(Version, MinVersion) ->
     ale:info(?USER_LOGGER,
