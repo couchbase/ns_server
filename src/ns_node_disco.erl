@@ -41,7 +41,6 @@
 
 -record(state, {
           nodes :: [node()],
-          we_were_shunned = false :: boolean(),
           node_renaming_txn_mref :: undefined | reference()
          }).
 
@@ -125,19 +124,6 @@ init([]) ->
 terminate(_Reason, _State) ->
     ok.
 code_change(_OldVsn, State, _) -> {ok, State}.
-
-handle_cast({we_were_shunned, NodeList},
-            #state{we_were_shunned = true} = State) ->
-    ?log_debug("Duplicate request to leave the cluster. (nodes_wanted = ~p).",
-               [NodeList]),
-    {noreply, State};
-
-handle_cast({we_were_shunned, NodeList}, State) ->
-    %% Must have been shunned while we were down. Leave the cluster.
-    ?log_info("We've been shunned (nodes_wanted = ~p). "
-              "Leaving cluster.", [NodeList]),
-    ns_cluster:leave_async(),
-    {noreply, State#state{we_were_shunned = true}};
 
 handle_cast(_Msg, State)       -> {noreply, State}.
 
