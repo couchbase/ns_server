@@ -562,6 +562,8 @@ handle_event({call, From}, {maybe_start_rebalance,
 
         validate_services(Services, EjectedLiveNodes, DeltaNodes, Snapshot),
 
+        validate_topology_change(EjectedLiveNodes, KeepNodes),
+
         NewParams1 = NewParams#{keep_nodes => KeepNodes,
                                 eject_nodes => EjectedLiveNodes,
                                 failed_nodes => FailedNodes,
@@ -1749,6 +1751,19 @@ validate_services(Services, NodesToEject, [], Snapshot) ->
             ok;
         NeededServices ->
             throw({must_rebalance_services, lists:usort(NeededServices)})
+    end.
+
+validate_topology_change(EjectedLiveNodes, KeepNodes) ->
+    case EjectedLiveNodes of
+        [] -> ok;
+        _ ->
+            KeepKVNodes = ns_cluster_membership:service_nodes(KeepNodes, kv),
+            case guardrail_monitor:validate_topology_change(KeepKVNodes) of
+                ok ->
+                    ok;
+                {error, E} ->
+                    throw(E)
+            end
     end.
 
 get_uninitialized_services(Services, Snapshot) ->

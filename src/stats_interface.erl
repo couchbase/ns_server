@@ -16,6 +16,7 @@
          buckets_interesting/1,
          for_alerts/0,
          for_resource_management/0,
+         total_active_logical_data_size/1,
          current_items_total/1,
          current_items_total/2,
          failover_safeness_level/1,
@@ -208,6 +209,51 @@ for_resource_management() ->
                              {Bucket, {Name, Value}}
                      end, Res).
 
+-spec total_active_logical_data_size([node()]) -> #{bucket_name() => number()}.
+total_active_logical_data_size(Nodes) ->
+    maps:from_list(
+      lists:map(
+        fun ({{BucketName, logical_data_size_bytes}, Value}) ->
+                {BucketName, Value}
+        end,
+        aggregated_by_bucket(<<"kv_logical_data_size_bytes{state=`active`}">>,
+                             Nodes,
+                             fun lists:sum/1))).
+
+-spec aggregated_by_bucket(binary(), [node()],
+                           fun (([number()]) -> number())) ->
+          [{{bucket_name(), atom()}, number()}].
+aggregated_by_bucket(Q, Nodes, Aggregator) ->
+    Res = latest_aggregated(
+            Q,
+            fun (Props) ->
+                    case proplists:get_value(<<"name">>, Props) of
+                        <<"kv_", N/binary>> ->
+                            B = proplists:get_value(<<"bucket">>, Props),
+                            {true, {binary_to_list(B),
+                                    binary_to_atom(N, latin1)}};
+                        _ ->
+                            false
+                    end
+            end, Nodes),
+    %% Flatten out the nodes
+    Flattened = lists:flatmap(
+                  fun ({_Node, Buckets}) ->
+                          Buckets
+                  end, Res),
+    %% Group into {Bucket, Metric} keys
+    PerNodeValues = maps:groups_from_list(
+                      fun ({Key, _Value}) -> Key end,
+                      fun ({_Key, Value}) -> Value end,
+                      Flattened),
+    %% Aggregate over nodes
+    maps:to_list(
+      maps:map(
+        fun (_Key, Values) ->
+                Aggregator(lists:filter(
+                             fun (Value) -> is_number(Value) end, Values))
+        end, PerNodeValues)).
+
 failover_safeness_level(Bucket) ->
     Settings = prometheus_cfg:settings(),
     Interval = prometheus_cfg:derived_metrics_interval(Settings),
@@ -227,6 +273,9 @@ failover_safeness_level(Bucket) ->
         {ok, []} -> {error, not_available};
         {error, _} -> {error, stats_request_failed}
     end.
+
+latest_aggregated(Metric, NameParser, Nodes) ->
+    from_nodes(Nodes, latest, [Metric, NameParser], ?DEFAULT_TIMEOUT).
 
 latest(Query, NameParser) ->
     latest(Query, NameParser, undefined).

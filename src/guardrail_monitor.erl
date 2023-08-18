@@ -18,7 +18,8 @@
 
 -behaviour(gen_server).
 
--export([is_enabled/0, get_config/0, get/1, start_link/0]).
+-export([is_enabled/0, get_config/0, get/1, get/2, start_link/0,
+         validate_topology_change/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
 
@@ -59,9 +60,72 @@ get(cores_per_bucket) ->
             end
     end.
 
+get(bucket, resident_ratio) ->
+    case proplists:get_value(bucket, get_config()) of
+        undefined ->
+            undefined;
+        BucketConfig ->
+            case proplists:get_value(resident_ratio, BucketConfig) of
+                undefined ->
+                    undefined;
+                ResourceConfig ->
+                    case proplists:get_value(enabled, ResourceConfig) of
+                        false ->
+                            undefined;
+                        true ->
+                            ResourceConfig
+                    end
+            end
+    end.
+
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
+validate_topology_change(KeepKVNodes) ->
+    case get(bucket, resident_ratio) of
+        undefined ->
+            ok;
+        ResourceConfig ->
+            BucketDataSizes =
+                stats_interface:total_active_logical_data_size(KeepKVNodes),
+            BadBuckets =
+                maps:keys(
+                  maps:filter(
+                    fun (_Name, 0) ->
+                            false;
+                        (Name, TotalDataSize) ->
+                            validate_bucket_topology_change(
+                              Name, KeepKVNodes, TotalDataSize, ResourceConfig)
+                    end, BucketDataSizes)),
+            case BadBuckets of
+                [] ->
+                    %% No bucket is anticipated to breach it's RR% minimum
+                    ok;
+                _ ->
+                    %% RR% violation expected for each of BadBuckets
+                    {error,
+                     {rr_will_be_too_low,
+                      iolist_to_binary(
+                        io_lib:format("The following buckets are expected to "
+                                      "breach the RR% limit: ~p",
+                                      [BadBuckets]))}}
+            end
+    end.
+
+validate_bucket_topology_change(Name, KeepKVNodes, TotalDataSize,
+                                ResourceConfig) ->
+    case ns_bucket:get_bucket(Name) of
+        not_present ->
+            false;
+        {ok, BCfg} ->
+            NumNodes = case ns_bucket:get_width(BCfg) of
+                           undefined -> length(KeepKVNodes);
+                           W -> W * ns_cluster_membership:server_groups()
+                       end,
+            Quota = ns_bucket:raw_ram_quota(BCfg),
+            ExpResidentRatio = 100 * NumNodes * Quota / TotalDataSize,
+            validate_bucket_resource_min(BCfg, ResourceConfig, ExpResidentRatio)
+    end.
 
 %%%===================================================================
 %%% Spawning and gen_server implementation
@@ -208,7 +272,8 @@ validate_bucket_resource_min(BucketConfig, ResourceConfig, Metric) ->
 -ifdef(TEST).
 modules() ->
     [ns_config, leader_registry, chronicle_compat, stats_interface,
-     janitor_agent, ns_bucket, cluster_compat_mode, config_profile].
+     janitor_agent, ns_bucket, cluster_compat_mode, config_profile,
+     ns_cluster_membership].
 
 basic_test_setup() ->
     meck:new(modules(), [passthrough]).
@@ -390,6 +455,86 @@ check_resources_t() ->
                   {{bucket, "magma_bucket"}, resident_ratio}],
                  check_resources()).
 
+validate_topology_change_t() ->
+    Servers = [node1, node2],
+    DesiredServers = [{"couchstore_bucket", Servers},
+                      {"magma_bucket", Servers},
+                      {"deleted2", Servers}],
+    ResourceConfig0 = [{couchstore_minimum, 10},
+                       {magma_minimum, 1}],
+    meck:expect(ns_bucket, get_bucket,
+                fun ("couchstore_bucket") ->
+                        {ok, [{ram_quota, 10},
+                              {type, membase},
+                              {storage_mode, couchstore}]};
+                    ("magma_bucket") ->
+                        {ok, [{ram_quota, 10},
+                              {type, membase},
+                              {storage_mode, magma}]};
+                    (_) ->
+                        not_present
+                end),
+
+    ?assertEqual(true,
+                 validate_bucket_topology_change("couchstore_bucket",
+                                                 DesiredServers, 400,
+                                                 ResourceConfig0)),
+
+    ?assertEqual(true,
+                 validate_bucket_topology_change("magma_bucket",
+                                                 DesiredServers, 4000,
+                                                 ResourceConfig0)),
+
+    ?assertEqual(false,
+                 validate_bucket_topology_change("couchstore_bucket",
+                                                 DesiredServers, 200,
+                                                 ResourceConfig0)),
+
+    ?assertEqual(false,
+                 validate_bucket_topology_change("magma_bucket",
+                                                 DesiredServers, 2000,
+                                                 ResourceConfig0)),
+
+    meck:expect(ns_cluster_membership, service_active_nodes,
+                fun (kv) -> Servers end),
+    ResourceConfig1 = [{enabled, false} | ResourceConfig0],
+    meck:expect(ns_config, read_key_fast,
+                fun (resource_management, _) ->
+                        [{bucket,
+                          [{resident_ratio, ResourceConfig1}]}]
+                end),
+    meck:expect(stats_interface, total_active_logical_data_size,
+                fun (_) -> #{"couchstore_bucket" => 400,
+                             "magma_bucket" => 4000} end),
+
+    ?assertEqual(ok, validate_topology_change(DesiredServers)),
+
+    ResourceConfig2 = [{enabled, true} | ResourceConfig0],
+    meck:expect(ns_config, read_key_fast,
+                fun (resource_management, _) ->
+                        [{bucket,
+                          [{resident_ratio, ResourceConfig2}]}]
+                end),
+
+    ?assertMatch({error, _},
+                 validate_topology_change(DesiredServers)),
+
+    meck:expect(stats_interface, total_active_logical_data_size,
+                fun (_) -> #{"couchstore_bucket" => 200,
+                             "magma_bucket" => 2000,
+                             %% Ignored as size is 0
+                             "new" => 0,
+                             %% Ignored as the bucket name is not found in
+                             %% DesiredServers
+                             "deleted1" => 4000,
+                             %% Ignored as the bucket name is not found with
+                             %% ns_bucket:get_bucket/1
+                             "deleted2" => 4000} end),
+
+    ?assertMatch(ok,
+                 validate_topology_change(DesiredServers)),
+    ok.
+
 basic_test_() ->
     %% We can re-use (setup) the test environment that we setup/teardown here
     %% for each test rather than create a new one (foreach) to save time.
@@ -401,7 +546,9 @@ basic_test_() ->
              basic_test_teardown()
      end,
      [{"check bucket test", fun () -> check_bucket_t() end},
-      {"check all resources test", fun () -> check_resources_t() end}]}.
+      {"check all resources test", fun () -> check_resources_t() end},
+      {"validate topology change test",
+       fun () -> validate_topology_change_t() end}]}.
 
 check_test_modules() ->
     [ns_config, cluster_compat_mode, menelaus_web_guardrails,stats_interface,
