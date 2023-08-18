@@ -26,8 +26,6 @@
 -define(ADD_NODE_TIMEOUT,       ?get_timeout(add_node, 240000)).
 -define(ENGAGE_TIMEOUT,         ?get_timeout(engage, 30000)).
 -define(COMPLETE_TIMEOUT,       ?get_timeout(complete, 240000)).
--define(PREP_CHRONICLE_TIMEOUT, ?get_timeout(prep_chronicle, 240000)).
--define(JOIN_CHRONICLE_TIMEOUT, ?get_timeout(join_chronicle, 240000)).
 -define(CHANGE_ADDRESS_TIMEOUT, ?get_timeout(change_address, 30000)).
 
 -define(cluster_log(Code, Fmt, Args),
@@ -52,7 +50,6 @@
 
 -export([add_node_to_group/6,
          engage_cluster/1, complete_join/1,
-         prep_chronicle/2, join_chronicle/2,
          check_host_port_connectivity/2, change_address/1,
          enforce_topology_limitation/1,
          rename_marker_path/0,
@@ -334,22 +331,6 @@ complete_join(NodeKVList) ->
     gen_server:call(?MODULE, {complete_join, NodeKVListThunk},
                     ?COMPLETE_TIMEOUT).
 
-multi_call(Nodes, Call, Timeout) ->
-    {_Replies, BadNodes} =
-        misc:multi_call(Nodes, ?MODULE, Call, Timeout, _ =:= ok),
-    case BadNodes of
-        [] ->
-            ok;
-        _ ->
-            {bad_nodes, BadNodes}
-    end.
-
-prep_chronicle(Nodes, Info) ->
-    multi_call(Nodes, {prep_chronicle, Info}, ?PREP_CHRONICLE_TIMEOUT).
-
-join_chronicle(Nodes, Info) ->
-    multi_call(Nodes, {join_chronicle, Info}, ?JOIN_CHRONICLE_TIMEOUT).
-
 -spec change_address(string()) -> ok
                                   | {cannot_resolve, {inet:posix(), inet|inet6}}
                                   | {cannot_listen, inet:posix()}
@@ -479,23 +460,7 @@ handle_call({change_address, Address}, _From, State) ->
              false ->
                  already_part_of_cluster
          end,
-    {reply, RV, State};
-
-handle_call({prep_chronicle, Info}, _From, State) ->
-    chronicle_compat_events:hush_chronicle(),
-    ?log_debug("Preparing chronicle to join cluster"),
-    ok = chronicle_local:prepare_join(Info),
-    ?log_debug("Successfully prepared chronicle"),
-
-    {reply, ok, State};
-
-handle_call({join_chronicle, Info}, _From, State) ->
-    ?log_debug("Received request to join cluster"),
-    ok = chronicle_local:join_cluster(Info),
-    chronicle_compat_events:resume_chronicle(),
-    ?log_debug("Successfully joined cluster"),
-
-    {reply, ok, State}.
+    {reply, RV, State}.
 
 handle_cast(leave, State) ->
     ?cluster_log(0001, "Node ~p is leaving cluster.", [node()]),
