@@ -215,7 +215,7 @@ init_gosecrets(HiddenPass, MaxRetries, State) ->
                         ?log_error("Stopping babysitter because gosecrets "
                                    "password prompting has failed: ~p",
                                    [Error]),
-                        ns_babysitter_bootstrap:stop(),
+                        init:stop(),
                         shutdown
                 end
             catch
