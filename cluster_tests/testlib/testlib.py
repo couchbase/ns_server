@@ -222,6 +222,8 @@ def delete_config_key(cluster, key):
 
 
 def request(method, cluster_or_node, path, expected_code=None, **kwargs):
+    if 'timeout' not in kwargs:
+        kwargs['timeout'] = 60
     kwargs_with_auth = set_default_auth(cluster_or_node, **kwargs)
     if isinstance(cluster_or_node, Node):
         url = cluster_or_node.url + path
