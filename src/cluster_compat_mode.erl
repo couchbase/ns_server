@@ -54,14 +54,9 @@
 %% NOTE: this is rpc:call-ed by mb_master
 -export([mb_master_advertised_version/0]).
 
-n1ql_cluster_capabilities(true) ->
-    [costBasedOptimizer, indexAdvisor, javaScriptFunctions, inlineFunctions |
-     n1ql_cluster_capabilities(false)];
-n1ql_cluster_capabilities(false) ->
-    [enhancedPreparedStatements].
-
-n1ql_cluster_capabilities(Version, IsDP) ->
-    n1ql_cluster_capabilities(IsDP) ++
+n1ql_cluster_capabilities(Version) ->
+    [costBasedOptimizer, indexAdvisor, javaScriptFunctions, inlineFunctions,
+     enhancedPreparedStatements] ++
         case is_enabled_at(Version, ?VERSION_TRINITY) of
             true ->
                 [readFromReplica];
@@ -69,12 +64,11 @@ n1ql_cluster_capabilities(Version, IsDP) ->
                 []
         end.
 
-cluster_capabilities(Version, IsDP) ->
-    [{n1ql, n1ql_cluster_capabilities(Version, IsDP)}].
+cluster_capabilities(Version) ->
+    [{n1ql, n1ql_cluster_capabilities(Version)}].
 
 get_cluster_capabilities(Config) ->
-    cluster_capabilities(get_compat_version(Config),
-                         is_developer_preview(Config)).
+    cluster_capabilities(get_compat_version(Config)).
 
 get_compat_version() ->
     get_compat_version(ns_config:latest()).
