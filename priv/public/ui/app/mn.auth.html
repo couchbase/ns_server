@@ -97,10 +97,9 @@ licenses/APL2.txt.
         <div class="panel-content border-top">
           <div
               class="error error-form"
-              [hidden]="!(samlErrorStatus | async)"
-              [ngSwitch]="samlErrorStatus | async">
-            <span *ngSwitchCase="403">
-              User {{samlUserName | async}} does not have permission to log into the UI.
+              [hidden]="!(samlsError | async)">
+            <span >
+              {{(samlsError | async).error}}
             </span>
           </div>
           <div class="row flex-right">

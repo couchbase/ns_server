@@ -204,6 +204,10 @@ class MnAdminService {
     return this.http.get('/whoami');
   }
 
+  getSamlError(id) {
+    return this.http.get('/saml/error?id=' + encodeURIComponent(id));
+  }
+
   getPoolsDefault(etag) {
     return this.http.get('/pools/default', {
       params: new HttpParams().set('waitChange', 10000).set('etag', etag || "")

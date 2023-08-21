@@ -9,13 +9,14 @@ licenses/APL2.txt.
 */
 import {Component, ChangeDetectionStrategy} from '@angular/core';
 import {Validators} from '@angular/forms';
-import {BehaviorSubject} from 'rxjs';
-import {pluck} from 'rxjs/operators';
+import {BehaviorSubject, NEVER} from 'rxjs';
+import {pluck, switchMap, distinctUntilChanged, shareReplay} from 'rxjs/operators';
 import {UIRouter} from '@uirouter/angular';
 
 
 import {MnAuthService} from './mn.auth.service.js';
 import {MnFormService} from './mn.form.service.js';
+import {MnAdminService} from './mn.admin.service.js';
 import {MnLifeCycleHooksToStream} from './mn.core.js';
 import {MnPools, $rootScope} from './ajs.upgraded.providers.js';
 import template from "./mn.auth.html";
@@ -33,12 +34,13 @@ class MnAuthComponent extends MnLifeCycleHooksToStream {
   static get parameters() { return [
     MnFormService,
     MnAuthService,
+    MnAdminService,
     UIRouter,
     MnPools,
     $rootScope,
   ]}
 
-  constructor(mnFormService, mnAuthService, uiRouter, mnPools, $rootScope) {
+  constructor(mnFormService, mnAuthService, mnAdminService, uiRouter, mnPools, $rootScope) {
     super();
     this.focusFieldSubject = new BehaviorSubject(true);
 
@@ -46,8 +48,11 @@ class MnAuthComponent extends MnLifeCycleHooksToStream {
     this.postUISAMLLogin = mnAuthService.stream.postUISAMLLogin;
     this.getAuthMethods = mnAuthService.stream.getAuthMethods;
 
-    this.samlErrorStatus = uiRouter.globals.params$.pipe(pluck("samlErrorStatus"));
-    this.samlUserName = uiRouter.globals.params$.pipe(pluck("samlUserName"));
+    this.samlsError = uiRouter.globals.params$
+      .pipe(pluck("samlErrorMsgId"),
+            distinctUntilChanged(),
+            switchMap((id) => id ? mnAdminService.getSamlError(id) : NEVER),
+            shareReplay({refCount: true, bufferSize: 1}));
 
     this.form = mnFormService.create(this)
       .setFormGroup({
