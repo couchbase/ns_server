@@ -34,6 +34,9 @@ get_current_version() ->
     %% was unable to perform an upgrade.
     list_to_tuple(?VERSION_TRINITY).
 
+get_min_supported_version() ->
+    list_to_tuple(?TARGET_MIN_SUPPORTED_VERSION).
+
 get_data_dir() ->
     RawDir = path_config:component_path(data),
     case misc:realpath(RawDir, "/") of
@@ -410,10 +413,11 @@ upgrade_config(Config) ->
                                                        config_version,
                                                        UnsupportedVersion),
     assert_not_developer_preview(CurrentVersion, ConfigVersion, Config),
+    MinVersion = get_min_supported_version(),
     case ConfigVersion of
         CurrentVersion ->
             [];
-        ?TARGET_MIN_SUPPORTED_VERSION ->
+        MinVersion ->
             [{set, {node, node(), config_version}, {7,2}} |
              upgrade_config_from_7_1_to_7_2(Config)];
         {7,2} ->
@@ -561,9 +565,8 @@ all_upgrades_test_() ->
 
 test_all_upgrades() ->
     Default = default(),
-    KVs = misc:update_proplist(Default,
-                               [{{node, node(), config_version},
-                                 ?TARGET_MIN_SUPPORTED_VERSION}]),
+    KVs = misc:update_proplist(Default, [{{node, node(), config_version},
+                                          get_min_supported_version()}]),
     Cfg = #config{dynamic = [KVs], uuid = <<"uuid">>},
     UpgradedCfg = ns_config:upgrade_config(Cfg, fun upgrade_config/1),
 
