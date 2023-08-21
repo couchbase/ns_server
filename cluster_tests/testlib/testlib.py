@@ -421,7 +421,8 @@ def call_reported(name, succ_str="ok", fail_str="failed", verbose=False,
                 res = succ_str
             print(green(res) + timedelta_str(start))
     except Exception as e:
-        short_exception = red('\n'.join(format_exception_only(e)).strip('\n'))
+        short_exception = red('\n'.join(format_exception_only(type(e), e))
+                              .strip('\n'))
         if verbose:
             if res_on_same_line:
                 res = right_aligned(fail_str, taken=width_taken)
