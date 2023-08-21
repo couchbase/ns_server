@@ -486,7 +486,7 @@ process_action({failover, NodesWithUUIDs}, S, DownNodes, NodeStatuses,
                     NotFailedOver ->
                         {TrimmedNodes,
                          maybe_report_max_node_reached(
-                           NotFailedOver, max_nodes_error_msg(S), S)}
+                           Nodes, NotFailedOver, max_nodes_error_msg(S), S)}
                 end
         end,
     failover_nodes(Nodes1, S1, DownNodes, NodeStatuses).
@@ -499,17 +499,27 @@ max_nodes_error_msg(#state{max_count = Max}) ->
                       "(~p) has been reached.", [Max]),
     lists:flatten(M).
 
-maybe_report_max_node_reached(Nodes, ErrMsg, S) ->
+maybe_report_max_node_reached(AllNodes, NotFailedOver, ErrMsg, S) ->
     case S#state.disable_max_count =:= false andalso
         should_report(max_node_reached, S) of
         true ->
-            ?log_info_and_email(
-               auto_failover_maximum_reached,
-               "Could not auto-failover more nodes (~p). ~s",
-               [Nodes, ErrMsg]),
+            case AllNodes -- NotFailedOver of
+                [] ->
+                    ?log_info_and_email(
+                       auto_failover_maximum_reached,
+                       "Could not auto-failover more nodes (~p). ~s",
+                       [NotFailedOver, ErrMsg]);
+                RemainingNodes ->
+                    ?log_info_and_email(
+                       auto_failover_maximum_reached,
+                       "Could not auto-failover nodes (~p). ~s Continuing to "
+                       "auto-failover nodes ~p",
+                       [NotFailedOver, ErrMsg, RemainingNodes])
+            end,
+
             event_log:add_log(auto_failover_warning,
                               [{reason, list_to_binary(ErrMsg)},
-                               {nodes, Nodes}]),
+                               {nodes, NotFailedOver}]),
             note_reported(max_node_reached, S);
         false ->
             S
