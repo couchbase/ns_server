@@ -51,6 +51,7 @@
          bucket_name :: bucket_name()}).
 
 -record(recovery_state, {pid :: pid()}).
+-record(ejecting_state, {}).
 
 
 %% API
@@ -93,6 +94,10 @@
         ?get_timeout(stop_pause_bucket, 10 * 1000)). %% 10 secs.
 -define(STOP_RESUME_BUCKET_TIMEOUT,
         ?get_timeout(stop_pause_bucket, 10 * 1000)). %% 10 secs.
+-define(DEFAULT_RETRIES_IF_LEAVING_CLUSTER,
+        ?get_param(default_retries_if_ejecting, 2)).
+-define(EJECTING_ORCHESTRATOR_WAIT_TIMEOUT,
+        ?get_timeout(retry_if_ejecting, 5000)).
 
 %% gen_statem callbacks
 -export([code_change/4,
@@ -107,7 +112,8 @@
          rebalancing/2, rebalancing/3,
          recovery/2, recovery/3,
          bucket_hibernation/3,
-         buckets_shutdown/3]).
+         buckets_shutdown/3,
+         ejecting/2]).
 
 %%
 %% API
@@ -120,12 +126,33 @@ wait_for_orchestrator() ->
     misc:wait_for_global_name(?MODULE).
 
 call(Msg) ->
-    wait_for_orchestrator(),
-    gen_statem:call(?SERVER, Msg).
+    call(Msg, infinity).
 
 call(Msg, Timeout) ->
+    call(Msg, Timeout, ?DEFAULT_RETRIES_IF_LEAVING_CLUSTER).
+
+%% There are two timeouts used in this function. 'Timeout' is the one used for
+%% orchestrator calls. If the orchestrator is leaving the cluster and we make a
+%% call to it, it will not be able to handle it and returns
+%% 'orchestrator_ejecting'. In this case, we need to wait for some time until
+%% the process goes down. The wait time is defined as
+%% EJECTING_ORCHESTRATOR_WAIT_TIMEOUT and after that we will retry.
+call(Msg, Timeout, RetriesLeftIfLeavingCluster) ->
     wait_for_orchestrator(),
-    gen_statem:call(?SERVER, Msg, Timeout).
+    Res = gen_statem:call(?SERVER, Msg, Timeout),
+    case {RetriesLeftIfLeavingCluster, Res} of
+        {0, {orchestrator_ejecting, _EjectingOrchestratorPid}} ->
+            exit(Res);
+        {RetriesLeftIfLeavingCluster,
+         {orchestrator_ejecting, EjectingOrchestratorPid}} ->
+            misc:wait_for_process(EjectingOrchestratorPid,
+                                  ?EJECTING_ORCHESTRATOR_WAIT_TIMEOUT),
+            ?log_debug("Retrying ~p. Retries left: ~p",
+                       [Msg, RetriesLeftIfLeavingCluster]),
+            call(Msg, Timeout, RetriesLeftIfLeavingCluster - 1);
+        _ ->
+            Res
+    end.
 
 -spec create_bucket(memcached|membase, nonempty_string(), list()) ->
                            ok | {error, {already_exists, nonempty_string()}} |
@@ -498,6 +525,28 @@ init([]) ->
 
     {ok, idle, #idle_state{}, {{timeout, janitor}, 0, run_janitor}}.
 
+handle_event({call, From}, recovery_status, StateName, State) ->
+    case StateName of
+        recovery ->
+            ?MODULE:recovery(recovery_status, From, State);
+        _ ->
+            {keep_state_and_data, [{reply, From, not_in_recovery}]}
+    end;
+
+handle_event({call, From}, Msg, StateName, State)
+    when element(1, Msg) =:= recovery_map;
+         element(1, Msg) =:= commit_vbucket;
+         element(1, Msg) =:= stop_recovery ->
+    case StateName of
+        recovery ->
+            ?MODULE:recovery(Msg, From, State);
+        _ ->
+            {keep_state_and_data, [{reply, From, bad_recovery}]}
+    end;
+
+handle_event({call, From}, EventData, ejecting, State) ->
+    ejecting(From, EventData, State);
+
 %% called remotely from pre-Trinity nodes
 handle_event({call, From},
              {maybe_start_rebalance, KnownNodes, EjectedNodes,
@@ -583,25 +632,6 @@ handle_event({call, From}, {maybe_retry_graceful_failover, Nodes, Id, Chk},
         Chk ->
             StartEvent = {start_graceful_failover, Nodes, Id, Chk},
             {keep_state_and_data, [{next_event, {call, From}, StartEvent}]}
-    end;
-
-handle_event({call, From}, recovery_status, StateName, State) ->
-    case StateName of
-        recovery ->
-            ?MODULE:recovery(recovery_status, From, State);
-        _ ->
-            {keep_state_and_data, [{reply, From, not_in_recovery}]}
-    end;
-
-handle_event({call, From}, Msg, StateName, State)
-  when element(1, Msg) =:= recovery_map;
-       element(1, Msg) =:= commit_vbucket;
-       element(1, Msg) =:= stop_recovery ->
-    case StateName of
-        recovery ->
-            ?MODULE:recovery(Msg, From, State);
-        _ ->
-            {keep_state_and_data, [{reply, From, bad_recovery}]}
     end;
 
 handle_event(info, Event, StateName, StateData)->
@@ -1155,6 +1185,17 @@ bucket_hibernation(stop_rebalance, From, _State) ->
 bucket_hibernation(_Msg, From, _State) ->
     {keep_state_and_data, [{reply, From, in_bucket_hibernation}]}.
 
+ejecting(Event, _State) ->
+    ?log_info("Ignoring event ~p while leaving the cluster.", [Event]),
+    keep_state_and_data.
+
+ejecting({{bucket_hibernation_op, {stop, Op}}, [_Bucket]}, From, _State) ->
+    {keep_state_and_data, {reply, From, not_running(Op)}};
+ejecting(stop_rebalance, From, _State) ->
+    {keep_state_and_data, [{reply, From, not_rebalancing}]};
+ejecting(_, From, _State) ->
+    {keep_state_and_data, [{reply, From, {orchestrator_ejecting, self()}}]}.
+
 build_error(#bucket_hibernation_state{
               bucket = Bucket,
               op = Op}) ->
@@ -1356,12 +1397,30 @@ do_cancel_stop_timer(TRef) when is_reference(TRef) ->
     after 0 -> ok
     end.
 
-maybe_try_autofailover_in_idle_state(
-  {try_autofailover, From, Nodes, Options}) ->
-    {next_state, idle, #idle_state{},
+maybe_try_autofailover(StopReason, EjectionInProgress) ->
+    {NextState, NextStateData} =
+        case EjectionInProgress andalso
+            cluster_compat_mode:is_cluster_trinity() of
+            true ->
+                {ejecting, #ejecting_state{}};
+            false ->
+                {idle, #idle_state{}}
+        end,
+    maybe_try_autofailover_in_idle_state(StopReason, NextState, NextStateData).
+
+maybe_try_autofailover_in_idle_state(StopReason) ->
+    maybe_try_autofailover_in_idle_state(StopReason, idle, #idle_state{}).
+
+maybe_try_autofailover_in_idle_state({try_autofailover, From, Nodes, Options},
+                                     idle , NextStateData) ->
+    {next_state, idle, NextStateData,
      [{next_event, {call, From}, {try_autofailover, Nodes, Options}}]};
-maybe_try_autofailover_in_idle_state(_) ->
-    {next_state, idle, #idle_state{}}.
+maybe_try_autofailover_in_idle_state({try_autofailover, From, _Nodes, _Options},
+                                     ejecting, NextStateData) ->
+    {next_state, ejecting, NextStateData,
+     [{reply, From, {orchestrator_ejecting, self()}}]};
+maybe_try_autofailover_in_idle_state(_, NextState, NextStateData) ->
+    {next_state, NextState, NextStateData}.
 
 terminate_observer(#rebalancing_state{rebalance_observer = undefined}) ->
     ok;
@@ -1393,12 +1452,12 @@ handle_rebalance_completion(ExitReason, ToReply, State) ->
         {started, NewState} ->
             {next_state, rebalancing, NewState};
         not_needed ->
-            maybe_eject_myself(ExitReason, State),
+            EjectionInProgress = maybe_eject_myself(ExitReason, State),
             %% Use the reason for aborting rebalance here, and not the reason
             %% for exit, we should base our next state and following activities
             %% based on the reason for aborting rebalance.
-            maybe_try_autofailover_in_idle_state(
-              State#rebalancing_state.abort_reason)
+            maybe_try_autofailover(
+              State#rebalancing_state.abort_reason, EjectionInProgress)
     end.
 
 maybe_request_janitor_run({failover_failed, Bucket, _},
@@ -1563,9 +1622,10 @@ get_graceful_fo_chk() ->
 maybe_eject_myself(Reason, State) ->
     case need_eject_myself(Reason, State) of
         true ->
-            eject_myself(State);
+            eject_myself(State),
+            true;
         false ->
-            ok
+            false
     end.
 
 need_eject_myself(normal, #rebalancing_state{eject_nodes = EjectNodes,
