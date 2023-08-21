@@ -223,7 +223,15 @@ report_system_stats(ReportFun) ->
               ReportFun({<<"sys_disk">>, MappedName, [{<<"disk">>, Disk}],
                          MappedValue})
       end,
-      DiskStats).
+      DiskStats),
+    Mounts = ns_disksup:get_disk_data(),
+    lists:foreach(
+      fun ({Disk, _Size, Usage}) ->
+              %% Prometheus recommends using the unit "ratio" with a value range
+              %% of 0 - 1, so we divide by 100
+              ReportFun({<<"sys_disk_usage_ratio">>,
+                         [{<<"disk">>, Disk}], Usage / 100})
+      end, Mounts).
 
 report_audit_stats(ReportFun) ->
     {ok, Stats} = ns_audit:stats(),
