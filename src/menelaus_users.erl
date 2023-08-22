@@ -939,32 +939,12 @@ upgrade(Version, Config, Nodes) ->
             error
     end.
 
-maybe_upgrade_role_to_70({RoleName, Buckets}) ->
-    Length = length(menelaus_roles:get_param_defs(
-                      RoleName, menelaus_roles:get_public_definitions(
-                                  ?VERSION_70))),
-    [{RoleName, misc:align_list(Buckets, Length, any)}];
-maybe_upgrade_role_to_70(security_admin) ->
-    [security_admin_local, security_admin_external];
-maybe_upgrade_role_to_70(Role) ->
-    [Role].
-
-upgrade_props(?VERSION_70, RecType, _Key, Props) when RecType == user;
-                                                      RecType == group ->
-    {ok, upgrade_roles(fun maybe_upgrade_role_to_70/1, Props)};
-upgrade_props(?VERSION_71, user, Key, Props) ->
-    {ok, add_uuid(Key, Props)};
 upgrade_props(?VERSION_TRINITY, auth, _Key, AuthProps) ->
     {ok, functools:chain(AuthProps,
                          [scram_sha:fix_pre_trinity_auth_info(_),
                           get_rid_of_plain_key(_)])};
 upgrade_props(_Vsn, _RecType, _Key, _Props) ->
     skip.
-
-add_uuid({_, local}, Props) ->
-    lists:keystore(uuid, 1, Props, {uuid, misc:uuid_v4()});
-add_uuid(_, Props) ->
-    Props.
 
 get_rid_of_plain_key(Auth) ->
     lists:map(
@@ -973,16 +953,6 @@ get_rid_of_plain_key(Auth) ->
           (Other) ->
               Other
       end, Auth).
-
-upgrade_roles(Fun, Props) ->
-    OldRoles = lists:sort(proplists:get_value(roles, Props)),
-    %% Convert roles and remove duplicates.
-    case lists:usort(lists:flatmap(Fun, OldRoles)) of
-        OldRoles ->
-            Props;
-        NewRoles ->
-            lists:keyreplace(roles, 1, Props, {roles, NewRoles})
-    end.
 
 do_upgrade(Version) ->
     UpdateFun =
@@ -1007,40 +977,6 @@ do_upgrade(Version) ->
 -ifdef(TEST).
 
 upgrade_test_() ->
-    CheckUser =
-        fun (Id, Name) ->
-                Props = get_props_raw(user, {Id, local}),
-                ?assertEqual([name, roles],
-                             lists:sort(proplists:get_keys(Props))),
-                ?assertEqual(Name, proplists:get_value(name, Props))
-        end,
-
-    SetRoles =
-        ?cut([{Id, [{roles, Roles}, {name, "Test"}]} || {Id, Roles} <- _]),
-    SetGroups =
-        ?cut(SetRoles([{{group, Id}, Roles} || {Id, Roles} <- _])),
-    SetUsers =
-        ?cut(SetRoles([{{user, {Id, local}}, Roles} || {Id, Roles} <- _])),
-
-    CheckRoles =
-        fun (List) ->
-                fun () ->
-                        lists:foreach(
-                          fun ({Type, Id, Expected}) ->
-                                  Props = get_props_raw(Type, Id),
-                                  Actual = proplists:get_value(roles, Props),
-                                  ?assertEqual(lists:sort(Expected),
-                                               lists:sort(Actual))
-                          end, List)
-                end
-        end,
-
-    CheckUUID =
-        fun (User)  ->
-            Props = get_props_raw(user, {User, local}),
-            ?assert(is_binary(proplists:get_value(uuid, Props)))
-        end,
-
     CheckAuth =
         fun (User, AuthType, Expected) ->
             fun () ->
@@ -1073,28 +1009,7 @@ upgrade_test_() ->
              meck:unload(replicated_dets),
              ets:delete(storage_name())
      end,
-     [Test(?VERSION_70,
-           SetUsers([{"user1", [admin, {bucket_admin, ["test"]}]},
-                     {"user2", [{data_reader, [any]},
-                                {data_writer, ["test"]}]}]) ++
-           SetGroups([{"group1", [admin, {bucket_admin, ["test"]}]},
-                      {"group2", [{data_reader, [any]},
-                                  {data_writer, ["test"]}]}]),
-           [CheckRoles(
-             [{user, {"user1", local}, [admin, {bucket_admin, ["test"]}]},
-              {user, {"user2", local}, [{data_reader, [any, any, any]},
-                                        {data_writer, ["test", any, any]}]},
-              {group, "group1", [admin, {bucket_admin, ["test"]}]},
-              {group, "group2", [{data_reader, [any, any, any]},
-                                 {data_writer, ["test", any, any]}]}
-                                 ]),
-            ?cut(CheckUser("user1", "Test")),
-            ?cut(CheckUser("user2", "Test"))]),
-      Test(?VERSION_71,
-           SetUsers([{"user1", [admin]},
-                     {"user2", [{bucket_admin, ["test"]}]}]),
-           [?cut([CheckUUID(U) || U <- ["user1", "user2"]])]),
-      Test(?VERSION_TRINITY,
+     [Test(?VERSION_TRINITY,
            [{{auth, {"migrated-user", local}},
              [{<<"hash">>, {[anything]}},
               {<<"scram-sha-1">>, {[anything]}}]}],
