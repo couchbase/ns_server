@@ -82,9 +82,14 @@ maybe_upgrade_to_chronicle(_, _) ->
 %% Note: upgrade functions must ensure that they do not add entries to the
 %% configuration which are already present.
 
+%% MB-58303: TODO Remove this after we move maybe_upgrade_to_chronicle to
+%% chronicle init.
 upgrade(?CURRENT_MIN_SUPPORTED_VERSION, _) ->
     {?VERSION_70, []};
 
+%% MB-58303: Remove this when chronicle upgrade from 7.0 to 7.1 is taken care of
+%% at chronicle init for new min supported version. We must honor upgrades from
+%% 7.1 to 7.2 so we can't directly upgrade here to 7.2.
 upgrade(?VERSION_70, _) ->
     {?VERSION_71, []};
 
