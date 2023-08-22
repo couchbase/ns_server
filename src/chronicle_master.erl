@@ -57,35 +57,19 @@ remove_peer(Node) ->
     call({remove_peer, Node}).
 
 start_failover(Nodes, Ref) when Nodes =/= [] ->
-    chronicle = chronicle_compat:backend(),
     wait_for_server_start(),
     gen_server2:call(?SERVER, {start_failover, Nodes, Ref}, ?CALL_TIMEOUT).
 
 complete_failover(Nodes, Ref) when Nodes =/= [] ->
-    chronicle = chronicle_compat:backend(),
     wait_for_server_start(),
     gen_server2:call(?SERVER, {complete_failover, Nodes, Ref}, ?CALL_TIMEOUT).
 
-fetch_snapshot({ns_config, _}) ->
-    #{};
 fetch_snapshot(Txn) ->
     chronicle_compat:txn_get_many([failover_opaque_key()], Txn).
 
 call(Oper) ->
-    case chronicle_compat:backend() of
-        chronicle ->
-            ?log_debug("Calling chronicle_master with ~p", [Oper]),
-            call(Oper, 3);
-        ns_config ->
-            ?log_debug("Performing operation ~p on ns_config", [Oper]),
-            case handle_kv_oper(Oper,
-                                chronicle_compat:txn(ns_config, _, #{})) of
-                {ok, _} ->
-                    ok;
-                Error ->
-                    Error
-            end
-    end.
+    ?log_debug("Calling chronicle_master with ~p", [Oper]),
+    call(Oper, 3).
 
 call(_Oper, 0) ->
     exit(chronicle_master_call_failed);
