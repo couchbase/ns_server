@@ -234,9 +234,7 @@ consider_switching_compat_mode() ->
     end.
 
 upgrades() ->
-    [{?VERSION_70, rbac, menelaus_users, upgrade},
-     {?VERSION_71, rbac, menelaus_users, upgrade},
-     {?VERSION_TRINITY, rbac, menelaus_users, upgrade}].
+    [{?VERSION_TRINITY, rbac, menelaus_users, upgrade}].
 
 do_upgrades(undefined, _, _, _) ->
     %% this happens during the cluster initialization. no upgrade needed
@@ -302,6 +300,10 @@ do_consider_switching_compat_mode(Config, CompatVersion, NsConfigVersion) ->
             ok
     end.
 
+%% This upgrades ns_config and chronicle to the new compat_version (NewVersion)
+%% of 7.2 or 7.6.
+%% TODO: Remove the upgrade to 7.0 which is required to initialize chronicle
+%% Remove upgrade paths in chronicle up to and inclusive of 7.1.
 do_switch_compat_mode(NewVersion, NodesWanted) ->
     functools:sequence_(
       [?cut(upgrade_ns_config(min(NewVersion, ?VERSION_70), NewVersion,
