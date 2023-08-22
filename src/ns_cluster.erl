@@ -516,7 +516,6 @@ handle_info(check_chronicle_state, State) ->
     ?log_info("Chronicle state is: ~p", [ChronicleState]),
     case ChronicleState of
         removed ->
-            true = chronicle_compat:enabled(),
             false = misc:marker_exists(leave_marker_path()),
             handle_cast(leave, State);
         _ ->
@@ -602,14 +601,7 @@ leave() ->
     ?cluster_debug("ns_cluster: leaving the cluster from ~p.",
                    [RemoteNode]),
     %% Tell the remote server to tell everyone to shun me.
-    rpc:cast(RemoteNode, ?MODULE, shun, [node()]),
-    case chronicle_compat:enabled() of
-        false ->
-            %% Then drop ourselves into a leaving state.
-            leave_async();
-        true ->
-            ok
-    end.
+    rpc:cast(RemoteNode, ?MODULE, shun, [node()]).
 
 %% Cause another node to leave the cluster if it's up
 leave(Node) ->
@@ -619,13 +611,6 @@ leave(Node) ->
         true ->
             leave();
         false ->
-            %% Will never fail, but may not reach the destination
-            case chronicle_compat:enabled() of
-                false ->
-                    gen_server:cast({?MODULE, Node}, leave);
-                true ->
-                    ok
-            end,
             shun(Node)
     end.
 

@@ -17,7 +17,6 @@
 -include("cut.hrl").
 
 -export([backend/0,
-         enabled/0,
          get/2,
          get/3,
          set/2,
@@ -44,16 +43,8 @@
 -export([do_pull/1]).
 
 backend() ->
-    case enabled() of
-        true ->
-            chronicle;
-        false ->
-            ns_config
-    end.
-
-enabled() ->
     %% so dialyzer doesn't scream at me
-    ns_config:read_key_fast(chronicle_enabled, true).
+    ns_config:read_key_fast(chronicle_backend, chronicle).
 
 get(Key, Opts) ->
     get(ns_config:latest(), Key, Opts).

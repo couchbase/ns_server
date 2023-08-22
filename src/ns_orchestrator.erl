@@ -1731,14 +1731,6 @@ get_delta_recovery_nodes(Snapshot, Nodes) ->
               andalso ns_cluster_membership:get_recovery_type(Snapshot, N)
               =:= delta].
 
-rebalance_allowed(Snapshot) ->
-    case chronicle_compat:enabled() of
-        true ->
-            check_for_unfinished_failover(Snapshot);
-        false ->
-            ok
-    end.
-
 validate_services(all, _, _, _) ->
     ok;
 validate_services(_, _, DeltaNodes, _) when DeltaNodes =/= [] ->
@@ -1766,7 +1758,7 @@ get_uninitialized_services(Services, Snapshot) ->
 get_unejected_services(Services, NodesToEject, Snapshot) ->
     ns_cluster_membership:nodes_services(Snapshot, NodesToEject) -- Services.
 
-check_for_unfinished_failover(Snapshot) ->
+rebalance_allowed(Snapshot) ->
     case chronicle_master:get_prev_failover_nodes(Snapshot) of
         [] ->
             ok;

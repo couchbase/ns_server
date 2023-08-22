@@ -101,7 +101,7 @@ activity_body(Nodes, Options, Parent) ->
     end.
 
 maybe_restore_chronicle_quorum(FailedNodes, Options) ->
-    case allow_unsafe(Options) andalso chronicle_compat:enabled() of
+    case allow_unsafe(Options) of
         true ->
             restore_chronicle_quorum(FailedNodes, Options);
         false ->
@@ -129,13 +129,7 @@ restore_chronicle_quorum(FailedNodes, Options) ->
 check_safeness(true) ->
     true;
 check_safeness(false) ->
-    case chronicle_compat:enabled() of
-        true ->
-            check_chronicle_quorum() andalso
-                check_for_unfinished_failover();
-        false ->
-            true
-    end.
+    check_chronicle_quorum() andalso check_for_unfinished_failover().
 
 check_for_unfinished_failover() ->
     case chronicle_master:get_prev_failover_nodes(direct) of

@@ -218,26 +218,19 @@ maybe_monitor_rename_txn(Pid,
 
 %% The core of what happens when nodelists change
 %% only used by do_nodes_wanted_updated
-do_nodes_wanted_updated_fun(Node, NodeList) ->
+do_nodes_wanted_updated_fun(NodeList) ->
     {ok, _Cookie} = ns_cookie_manager:cookie_sync(),
     SanitizedCookie = ns_cookie_manager:sanitize_cookie(erlang:get_cookie()),
     ?log_debug("ns_node_disco: nodes_wanted updated: ~p, with cookie: ~p",
                [NodeList, SanitizedCookie]),
     PongList = ping_all(NodeList),
     ?log_debug("ns_node_disco: nodes_wanted pong: ~p, with cookie: ~p",
-               [PongList, SanitizedCookie]),
-    case chronicle_compat:enabled() orelse lists:member(Node, NodeList) of
-        true ->
-            ok;
-        false ->
-            gen_server:cast(ns_node_disco, {we_were_shunned, NodeList})
-    end.
+               [PongList, SanitizedCookie]).
 
 %% Run do_nodes_wanted_updated_fun in a process, return the Pid.
 do_nodes_wanted_updated() ->
-    Node = node(),
     NodeList = nodes_wanted(),
-    spawn(fun() -> do_nodes_wanted_updated_fun(Node, NodeList) end).
+    spawn(fun() -> do_nodes_wanted_updated_fun(NodeList) end).
 
 do_notify(#state{node_renaming_txn_mref = MRef} = State)
   when MRef =/= undefined ->
