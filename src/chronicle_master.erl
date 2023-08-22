@@ -35,8 +35,6 @@
 
 -define(CALL_TIMEOUT, ?get_timeout(call, 60000)).
 -define(JANITOR_TIMEOUT, ?get_timeout(janitor, 60000)).
--define(AFTER_UPGRADE_CLEANUP_TIMEOUT,
-        ?get_timeout(after_upgrade_cleanup, 60000)).
 
 -record(state, {self_ref, janitor_timer_ref}).
 
@@ -132,20 +130,6 @@ do_init() ->
     SelfRef = erlang:make_ref(),
     ?log_debug("Starting with SelfRef = ~p", [SelfRef]),
     subscribe_to_chronicle_events(SelfRef),
-    ns_pubsub:subscribe_link(
-      ns_config_events,
-      fun ({after_upgrade_cleanup, _}) ->
-              schedule_after_upgrade_cleanup(Self);
-          (_) ->
-              ok
-      end),
-
-    case ns_config:search(after_upgrade_cleanup) of
-        {value, _} ->
-            schedule_after_upgrade_cleanup(Self);
-        false ->
-            ok
-    end,
 
     State = #state{self_ref = SelfRef},
     case is_delegated_operation() of
@@ -230,30 +214,6 @@ do_handle_info(janitor, #state{self_ref = SelfRef} = State) ->
                 arm_janitor_timer(CleanState)
         end,
     {noreply, NewState};
-
-do_handle_info(after_upgrade_cleanup, State) ->
-    RV =
-        ns_config:run_txn(
-          fun (Config, SetFn) ->
-                  case ns_config:search(Config, after_upgrade_cleanup) of
-                      false ->
-                          {abort, nothing_to_do};
-                      {value, KVs} ->
-                          {commit,
-                           lists:foldl(
-                             fun ({K, V}, Acc) -> SetFn(K, V, Acc) end,
-                             Config, [{after_upgrade_cleanup,
-                                       ?DELETED_MARKER} | KVs])}
-                  end
-          end),
-    case RV of
-        {commit, _} ->
-            ?log_debug("Successful after upgrade cleanup"),
-            ok;
-        {abort, nothing_to_do} ->
-            ok
-    end,
-    {noreply, State};
 
 do_handle_info({'EXIT', From, Reason}, State) ->
     ?log_debug("Received exit from ~p with reason ~p. Exiting.",
@@ -435,10 +395,6 @@ arm_janitor_timer(State) ->
     NewState = cancel_janitor_timer(State),
     NewRef = erlang:send_after(?JANITOR_TIMEOUT, self(), janitor),
     NewState#state{janitor_timer_ref = NewRef}.
-
-schedule_after_upgrade_cleanup(Self) ->
-    erlang:send_after(?AFTER_UPGRADE_CLEANUP_TIMEOUT, Self,
-                      after_upgrade_cleanup).
 
 subscribe_to_chronicle_events(SelfRef) ->
     Self = self(),
