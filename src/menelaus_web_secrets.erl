@@ -63,9 +63,9 @@ handle_get_settings(Path, Req) ->
     Node = dist_manager:this_node(),
     Settings = ns_config:read_key_fast({node, Node, secret_mngmt_cfg}, []),
     Settings2 = misc:update_proplist(cb_gosecrets_runner:defaults(), Settings),
-    LegacySettings = [{state, binary_to_list(Rv)}],
+    ROSettings = [{es_password_state, binary_to_list(Rv)}],
     menelaus_web_settings2:handle_get(
-      Path, params(), undefined, cleanup_settings(Settings2) ++ LegacySettings,
+      Path, params(), undefined, cleanup_settings(Settings2 ++ ROSettings),
       Req).
 
 handle_post_settings(Path, Req) ->
@@ -130,8 +130,8 @@ params() ->
         mandatory => fun (#{es_key_storage_type := script}) -> true;
                          (_) -> false
                      end}},
-     {"state", %% This is legacy, keep it for backward compat
-      #{cfg_key => state,
+     {"encryptionService.passwordState",
+      #{cfg_key => es_password_state,
         type => {read_only, string}}}].
 
 cleanup_settings(Settings) ->
@@ -157,5 +157,5 @@ cleanup_settings(Settings) ->
                 end;
             script ->
                 [es_read_cmd, es_write_cmd, es_delete_cmd]
-        end ++ [es_key_storage_type],
+        end ++ [es_key_storage_type, es_password_state],
     lists:filter(fun ({K, _}) -> lists:member(K, Fields) end, Settings).

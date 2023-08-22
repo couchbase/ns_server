@@ -335,7 +335,8 @@ class MasterPasswordState(Requirement):
         for n in cluster.connected_nodes:
             r = get_succ(n, "/nodes/self/secretsManagement")
             r = r.json()
-            if r['state'] != self.master_password_state:
+            pass_state = r['encryptionService']['passwordState']
+            if pass_state != self.master_password_state:
                 return False
 
         return True
