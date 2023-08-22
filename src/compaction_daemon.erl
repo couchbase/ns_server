@@ -110,10 +110,21 @@ get_last_rebalance_or_failover_timestamp_compat() ->
         ns_config ->
             case ns_config:search_with_vclock(ns_config:get(), counters) of
                 {value, _, {_, VClock}} ->
-                    chronicle_compat:get_latest_vclock_unix_timestamp(VClock);
+                    get_latest_vclock_unix_timestamp(VClock);
                 false ->
                     0
             end
+    end.
+
+get_latest_vclock_unix_timestamp(VClock) ->
+    case vclock:get_latest_timestamp(VClock) of
+        0 ->
+            0;
+        GregorianSecondsTS ->
+            UnixEpochStart = {{1970, 1, 1}, {0, 0, 0}},
+            UnixEpochStartTS =
+                calendar:datetime_to_gregorian_seconds(UnixEpochStart),
+            GregorianSecondsTS - UnixEpochStartTS
     end.
 
 global_magma_frag_percent() ->

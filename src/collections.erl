@@ -23,7 +23,6 @@
 -export([start_link/0,
          enabled/1,
          default_manifest/1,
-         default_kvs/2,
          uid/1,
          uid/2,
          manifest_json/2,
@@ -210,16 +209,6 @@ max_collections_per_bucket() ->
 max_scopes_per_bucket() ->
     Default = get_max_supported(num_scopes),
     config_profile:get_value(max_scopes_per_bucket, Default).
-
-default_kvs(Buckets, Nodes) ->
-    lists:flatmap(
-      fun (Bucket) ->
-              {ok, BucketConfig} = ns_bucket:get_bucket(Bucket),
-              Manifest = default_manifest(BucketConfig),
-              [{key(Bucket), Manifest} |
-               [{last_seen_ids_key(Node, Bucket), get_next_uids(Manifest)} ||
-                   Node <- Nodes]]
-      end,  ns_bucket:get_bucket_names_of_type(membase, Buckets)).
 
 with_scope(Fun, ScopeName, Manifest) ->
     Scopes = get_scopes(Manifest),

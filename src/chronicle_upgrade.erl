@@ -17,7 +17,7 @@
 
 -define(UPGRADE_PULL_TIMEOUT, ?get_timeout(upgrade_pull, 60000)).
 
--export([get_key/2, set_key/3, upgrade/2]).
+-export([get_key/2, set_key/3, upgrade/2, maybe_initialize/0]).
 
 get_key(Key, {Snapshot, Txn}) ->
     case maps:find(Key, Snapshot) of
@@ -34,6 +34,38 @@ get_key(Key, {Snapshot, Txn}) ->
 
 set_key(Key, Value, {Snapshot, Txn}) ->
     {maps:put(Key, Value, Snapshot), Txn}.
+
+maybe_initialize() ->
+    case chronicle_kv:get(kv, nodes_wanted) of
+        {ok, {_, _}} ->
+            ok;
+        {error, not_found} ->
+            initialize()
+    end.
+
+initialize() ->
+    Node = node(),
+    Sets = [{set, counters, []},
+            %% auto-reprovision (mostly applicable to ephemeral buckets) is
+            %% the operation that is carried out when memcached process on
+            %% a node restarts within the auto-failover timeout.
+            {set, auto_reprovision_cfg,
+             [{enabled, true},
+              %% max_nodes is the maximum number of nodes
+              %% that may be automatically reprovisioned
+              {max_nodes, 1},
+              %% count is the number of nodes that were auto-reprovisioned
+              {count, 0}]},
+            {set, bucket_names, []},
+            {set, nodes_wanted, [Node]},
+            {set, server_groups, [[{uuid,<<"0">>},
+                                   {name,<<"Group 1">>},
+                                   {nodes, [Node]}]]},
+            {set, {node, Node, membership}, active}],
+
+    ?log_info("Setup initial chronicle content ~p", [Sets]),
+    {ok, Rev} = chronicle_kv:multi(kv, Sets),
+    ?log_info("Chronicle content was initialized. Rev = ~p.", [Rev]).
 
 upgrade(Version, Nodes) ->
     Config = ns_config:get(),

@@ -59,7 +59,7 @@ init([]) ->
 
     case ChronicleState of
         not_provisioned ->
-            ok = provision();
+            provision();
         _ ->
             ok
     end,
@@ -79,7 +79,7 @@ handle_call({prepare_join, Info}, _From, State) ->
     case Info of
         undefined ->
             ?log_debug("Joining not chronicle enabled cluster"),
-            ok = provision();
+            provision();
         _ ->
             ?log_debug("Prepare join. Info: ~p", [Info]),
             ok = chronicle:prepare_join(Info)
@@ -137,12 +137,13 @@ sync() ->
 
 provision() ->
     ?log_debug("Provision chronicle on this node"),
-    chronicle:provision([{kv, chronicle_kv, []}]).
+    ok = chronicle:provision([{kv, chronicle_kv, []}]),
+    chronicle_upgrade:maybe_initialize().
 
 handle_leave() ->
     ?log_debug("Leaving cluster"),
     ok = chronicle:wipe(),
-    ok = provision().
+    provision().
 
 handle_rename(OldNode) ->
     NewNode = node(),

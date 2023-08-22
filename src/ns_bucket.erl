@@ -143,7 +143,6 @@
          buckets_with_data_on_this_node/0,
          activate_bucket_data_on_this_node/1,
          deactivate_bucket_data_on_this_node/1,
-         upgrade_to_chronicle/2,
          chronicle_upgrade_to_71/1,
          chronicle_upgrade_to_72/1,
          chronicle_upgrade_to_trinity/1,
@@ -220,7 +219,7 @@ fetch_snapshot(Bucket, Txn) ->
     fetch_snapshot(Bucket, Txn, all_sub_keys()).
 
 fetch_snapshot(_Bucket, {ns_config, Config}, _SubKeys) ->
-    Converted = bucket_configs_to_chronicle(get_buckets(Config), false),
+    Converted = bucket_configs_to_chronicle(get_buckets(Config)),
     maps:from_list([{K, {V, no_rev}} || {K, V} <- Converted]);
 fetch_snapshot(all, Txn, SubKeys) ->
     {ok, {Names, _} = NamesRev} = chronicle_compat:txn_get(root(), Txn),
@@ -235,23 +234,12 @@ get_snapshot(Bucket) ->
 get_snapshot(Bucket, SubKeys) ->
     chronicle_compat:get_snapshot([fetch_snapshot(Bucket, _, SubKeys)], #{}).
 
-upgrade_to_chronicle(Buckets, NodesWanted) ->
-    BucketConfigs = proplists:get_value(configs, Buckets, []),
-    bucket_configs_to_chronicle(BucketConfigs, true) ++
-        collections:default_kvs(BucketConfigs, NodesWanted).
-
-bucket_configs_to_chronicle(BucketConfigs, ToChronicle) ->
+bucket_configs_to_chronicle(BucketConfigs) ->
     [{root(), [N || {N, _} <- BucketConfigs]} |
      lists:flatmap(
        fun ({B, BC}) ->
                {value, {uuid, UUID}, BC1} = lists:keytake(uuid, 1, BC),
-               BC2 = case ToChronicle of
-                         true ->
-                             lists:keydelete(sasl_password, 1, BC1);
-                         false ->
-                             BC1
-                     end,
-               [{sub_key(B, props), BC2},
+               [{sub_key(B, props), BC1},
                 {uuid_key(B), UUID}]
        end, BucketConfigs)].
 

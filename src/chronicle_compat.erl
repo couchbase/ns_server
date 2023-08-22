@@ -38,9 +38,7 @@
          config_sync/2,
          config_sync/3,
          node_keys/2,
-         service_keys/1,
-         upgrade/1,
-         get_latest_vclock_unix_timestamp/1]).
+         service_keys/1]).
 
 %% RPC from another nodes
 -export([do_pull/1]).
@@ -54,7 +52,8 @@ backend() ->
     end.
 
 enabled() ->
-    cluster_compat_mode:is_cluster_70().
+    %% so dialyzer doesn't scream at me
+    ns_config:read_key_fast(chronicle_enabled, true).
 
 get(Key, Opts) ->
     get(ns_config:latest(), Key, Opts).
@@ -302,86 +301,3 @@ node_keys(Node, Buckets) ->
 service_keys(Service) ->
     [{service_map, Service},
      {service_failover_pending, Service}].
-
-should_move(nodes_wanted) ->
-    true;
-should_move(server_groups) ->
-    true;
-should_move({node, _, membership}) ->
-    true;
-should_move({node, _, services}) ->
-    true;
-should_move({node, _, recovery_type}) ->
-    true;
-should_move({node, _, failover_vbuckets}) ->
-    true;
-should_move({service_map, _}) ->
-    true;
-should_move({service_failover_pending, _}) ->
-    true;
-should_move(auto_reprovision_cfg) ->
-    true;
-should_move({node, _, buckets_with_data}) ->
-    true;
-should_move(_) ->
-    false.
-
-cleanup_value(nodes_wanted) ->
-    [];
-cleanup_value(buckets) ->
-    [{configs, []}];
-cleanup_value(_) ->
-    ?DELETED_MARKER.
-
-upgrade(Config) ->
-    NodesWanted = ns_node_disco:nodes_wanted(Config),
-    NodesWanted = [node()],
-
-    {ToSet, Cleanup} =
-        ns_config:fold(
-          fun (buckets, Buckets, {ToSetAcc, CleanupAcc}) ->
-                  {maps:merge(
-                     ToSetAcc, maps:from_list(
-                                 ns_bucket:upgrade_to_chronicle(
-                                   Buckets, NodesWanted))),
-                   [{buckets, cleanup_value(buckets)} | CleanupAcc]};
-              (Key, Value, {ToSetAcc, CleanupAcc} = Acc) ->
-                  case should_move(Key) of
-                      true ->
-                          {maps:put(Key, Value, ToSetAcc),
-                           [{Key, cleanup_value(Key)} | CleanupAcc]};
-                      false ->
-                          Acc
-                  end
-          end, {#{}, []}, Config),
-
-    {CountersSet, CountersCleanup} = upgrade_counters(Config),
-    Sets = [{set, K, V} || {K, V} <- [CountersSet | maps:to_list(ToSet)]],
-
-    {ok, Rev} = chronicle_kv:multi(kv, Sets),
-    ?log_info("Keys are migrated to chronicle. Rev = ~p. Sets = ~p",
-              [Rev, Sets]),
-
-    [{set, after_upgrade_cleanup, [CountersCleanup|Cleanup]}].
-
-upgrade_counters(Config) ->
-    {Counters, Timestamp} =
-        case ns_config:search_with_vclock(Config, counters) of
-            {value, V, {_, VClock}} ->
-                {V, get_latest_vclock_unix_timestamp(VClock)};
-            false ->
-                {[], 0}
-        end,
-    {{counters, [{K, {Timestamp, V}} || {K, V} <- Counters]},
-     {counters, ?DELETED_MARKER}}.
-
-get_latest_vclock_unix_timestamp(VClock) ->
-    case vclock:get_latest_timestamp(VClock) of
-        0 ->
-            0;
-        GregorianSecondsTS ->
-            UnixEpochStart = {{1970, 1, 1}, {0, 0, 0}},
-            UnixEpochStartTS =
-                calendar:datetime_to_gregorian_seconds(UnixEpochStart),
-            GregorianSecondsTS - UnixEpochStartTS
-    end.

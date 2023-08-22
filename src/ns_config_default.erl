@@ -164,12 +164,8 @@ default() ->
      {{node, node(), compaction_daemon}, [{check_interval, 30},
                                           {min_db_file_size, 131072},
                                           {min_view_file_size, 20 * 1024 * 1024}]},
-     {nodes_wanted, [node()]},
+     {nodes_wanted, []},
      {quorum_nodes, [node()]},
-     {server_groups, [[{uuid, <<"0">>},
-                       {name, <<"Group 1">>},
-                       {nodes, [node()]}]]},
-     {{node, node(), membership}, active},
      %% In general, the value in these key-value pairs are property lists,
      %% like [{prop_atom1, value1}, {prop_atom2, value2}].
      %%
@@ -382,15 +378,6 @@ default() ->
      {replication, [{enabled, true}]},
      {log_redaction_default_cfg, [{redact_level, none}]},
 
-     % auto-reprovision (mostly applicable to ephemeral buckets) is the operation that
-     % is carried out when memcached process on a node restarts within the auto-failover
-     % timeout.
-     {auto_reprovision_cfg, [{enabled, true},
-                             % max_nodes is the maximum number of nodes that may be
-                             % automatically reprovisioned
-                             {max_nodes, 1},
-                             % count is the number of nodes that were auto-reprovisioned
-                             {count, 0}]},
      {service_orchestrator_weight, ?DEFAULT_SERVICE_WEIGHTS},
      {health_monitor_refresh_interval, []},
      {password_policy, [{min_length, 6}, {must_present, []}]}] ++

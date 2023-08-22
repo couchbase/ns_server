@@ -56,12 +56,10 @@ do_upgrade_config(Config, VersionNeeded, FinalVersion) ->
             upgrade_compat_version(?CURRENT_MIN_SUPPORTED_VERSION);
         {value, Ver} ->
             {NewVersion, Upgrade} = upgrade(Ver, Config),
-            ChronicleUpgrade = maybe_upgrade_to_chronicle(NewVersion, Config),
 
             ?log_info("Performing online config upgrade to ~p", [NewVersion]),
             upgrade_compat_version(NewVersion) ++
-                maybe_final_upgrade(NewVersion, FinalVersion) ++ Upgrade ++
-                ChronicleUpgrade
+                maybe_final_upgrade(NewVersion, FinalVersion) ++ Upgrade
     end.
 
 upgrade_compat_version(NewVersion) ->
@@ -72,11 +70,6 @@ maybe_final_upgrade(?LATEST_VERSION_NUM, ?LATEST_VERSION_NUM) ->
 maybe_final_upgrade(FinalVersion, FinalVersion) ->
     menelaus_users:config_upgrade();
 maybe_final_upgrade(_, _) ->
-    [].
-
-maybe_upgrade_to_chronicle(?VERSION_70, Config) ->
-    chronicle_compat:upgrade(Config);
-maybe_upgrade_to_chronicle(_, _) ->
     [].
 
 %% Note: upgrade functions must ensure that they do not add entries to the
