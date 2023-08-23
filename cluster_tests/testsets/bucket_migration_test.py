@@ -10,17 +10,83 @@
 import testlib
 import time
 
+
 def get_bucket(cluster, bucket_name):
     return testlib.json_response(
         testlib.get_succ(cluster, f"/pools/default/buckets/{bucket_name}"),
         "non-json response for " + f"/pools/default/buckets/{bucket_name}")
 
-def create_and_update_bucket(cluster, bucket_name, old_storage_mode,
-                             new_storage_mode, ram_quota_mb):
-    data = {'name': f'{bucket_name}',
-            'storageBackend': f'{old_storage_mode}',
+
+def get_scopes(cluster, bucket):
+    return testlib.json_response(
+        testlib.get_succ(cluster,
+                         f"/pools/default/buckets/{bucket}/scopes"),
+        "non-json response for " +
+        f"/pools/default/buckets/{bucket}/scopes")
+
+
+def update_collection(cluster, bucket, scope, collection, data):
+    return testlib.patch_succ(
+        cluster,
+        f"/pools/default/buckets/{bucket}/scopes/{scope}/"
+        f"collections/{collection}",
+        data=data)
+
+
+def create_bucket(cluster, bucket, storage_mode, ram_quota_mb):
+    data = {'name': f'{bucket}',
+            'storageBackend': f'{storage_mode}',
             'ramQuotaMB': f'{ram_quota_mb}'}
     cluster.create_bucket(data)
+
+
+def create_scope(cluster, bucket, scope):
+    return testlib.post_succ(
+        cluster, f"/pools/default/buckets/{bucket}/scopes",
+        data={'name': f"{scope}"})
+
+
+def assert_create_collection_fail(cluster, bucket, scope, data):
+    return testlib.post_fail(
+        cluster, f"/pools/default/buckets/{bucket}/scopes/{scope}/collections",
+        expected_code=400, data=data)
+
+
+def assert_create_collection_succ(cluster, bucket, scope, data):
+    return testlib.post_succ(
+        cluster, f"/pools/default/buckets/{bucket}/scopes/{scope}/collections",
+        data=data)
+
+
+def assert_modify_collection_fail(cluster, bucket, scope, data):
+    collection = data['name']
+    return testlib.patch_fail(
+        cluster,
+        f"/pools/default/buckets/{bucket}/scopes/{scope}/"
+        f"collections/{collection}",
+        expected_code=400, data=data)
+
+
+def disable_history_on_all_collections(cluster, bucket_name):
+    res = get_scopes(cluster, bucket_name)
+    # Extract all collections and set history to false.
+    for scope in res['scopes']:
+        for collection in scope['collections']:
+            update_collection(cluster, bucket_name,
+                              scope['name'], collection['name'],
+                              {'history': "false"})
+
+
+def disable_history_on_bucket(cluster, bucket_name):
+    cluster.update_bucket(
+        {'name': f'{bucket_name}',
+         'historyRetentionCollectionDefault': "false"})
+
+
+def create_and_update_bucket(cluster, bucket_name, old_storage_mode,
+                             new_storage_mode, ram_quota_mb):
+    create_bucket(
+        cluster, bucket_name, old_storage_mode, ram_quota_mb)
 
     def is_server_list_non_empty():
         res = get_bucket(cluster, bucket_name)
@@ -30,13 +96,22 @@ def create_and_update_bucket(cluster, bucket_name, old_storage_mode,
                                attempts=100, timeout=60,
                                msg="poll is server-list not empty")
 
-    data['storageBackend'] = f'{new_storage_mode}'
-    cluster.update_bucket(data)
+    # magma -> couchstore migration won't proceed until history retention isn't
+    # set to false.
+    if old_storage_mode == "magma":
+        disable_history_on_bucket(cluster, bucket_name)
+        disable_history_on_all_collections(cluster, bucket_name)
+
+    cluster.update_bucket(
+        {'name': f'{bucket_name}',
+         'storageBackend': f'{new_storage_mode}'})
+
 
 def get_per_node_storage_mode(cluster, bucket_name):
     res = get_bucket(cluster, bucket_name)
     return {n['hostname']: n['storageBackend'] for n in res['nodes']
             if n.get('storageBackend') != None}
+
 
 def assert_per_node_storage_mode_keys_added(cluster, bucket_name,
                                             expected_storage_mode):
@@ -49,13 +124,15 @@ def assert_per_node_storage_mode_keys_added(cluster, bucket_name,
         all([storage_mode == expected_storage_mode
              for storage_mode in storage_modes])
 
+
 def assert_per_node_storage_mode_not_present(cluster, node, bucket_name):
     per_node_storage_mode = get_per_node_storage_mode(
         cluster, bucket_name)
     assert None == per_node_storage_mode.get(node.hostname())
 
+
 def assert_ejected_node_override_props_deleted(
-    cluster, ejected_otp_node, bucket_name):
+        cluster, ejected_otp_node, bucket_name):
 
     # Node ejection is asynchronous at the end of a rebalance - i.e the
     # new chronicle_master might not have removed the node from nodes_wanted
@@ -84,6 +161,7 @@ def assert_ejected_node_override_props_deleted(
         f"per-node override props clean-up failed for " \
         f"ejected node: {ejected_otp_node}"
 
+
 def assert_per_node_storage_mode_in_memcached(node, bucket_name,
                                               expected_storage_mode):
     diag_eval = f'ns_memcached:get_config_stats("{bucket_name}", <<"ep_backend">>).'
@@ -92,6 +170,44 @@ def assert_per_node_storage_mode_in_memcached(node, bucket_name,
     if expected_storage_mode == "couchstore":
         expected_storage_mode = "couchdb"
     assert storage_mode == expected_storage_mode
+
+
+def migrate_storage_mode(cluster, old_storage_mode, new_storage_mode, id):
+    bucket = f"bucket-{id}"
+    scope = f"scope-{id}"
+    collection = f"collection-{id}"
+    create_and_update_bucket(
+        cluster, bucket, old_storage_mode, new_storage_mode,
+        1024)
+    assert_per_node_storage_mode_keys_added(
+        cluster, bucket, old_storage_mode)
+
+    create_scope(cluster, bucket, scope)
+    # try creating a collection with history: true for a bucket marked to
+    # be migrated to magma and it should fail.
+    if new_storage_mode == "magma":
+        assert_create_collection_fail(
+            cluster, bucket, scope,
+            {'name': collection,
+             'history': 'true'})
+
+        assert_create_collection_succ(
+            cluster, bucket, scope,
+            {'name': collection,
+             'history': 'false'})
+
+        # assert history can not be set to true.
+        assert_modify_collection_fail(
+            cluster, bucket, scope,
+            {'name': collection,
+             'history': 'true'})
+
+        # modify some other prop of the collection and it should pass.
+        update_collection(cluster, bucket=bucket, scope=scope,
+                          collection=collection, data={'maxTTL': 15})
+
+    cluster.delete_bucket(bucket)
+
 
 class BucketMigrationTest(testlib.BaseTestSet):
 
@@ -108,20 +224,45 @@ class BucketMigrationTest(testlib.BaseTestSet):
         testlib.delete_all_buckets(self.cluster)
 
     def migrate_storage_mode_test(self):
-        # couchstore -> magma migration.
-        create_and_update_bucket(self.cluster, "bucket-1", "couchstore",
-                                 "magma", 1024)
-        assert_per_node_storage_mode_keys_added(
-            self.cluster, "bucket-1", "couchstore")
+        testlib.delete_all_buckets(self.cluster)
+        migrate_storage_mode(
+            self.cluster, old_storage_mode="couchstore",
+            new_storage_mode="magma", id=1)
+        migrate_storage_mode(
+            self.cluster, old_storage_mode="magma",
+            new_storage_mode="couchstore", id=2)
 
-        self.cluster.delete_bucket("bucket-1")
+    def disallow_storage_mode_migration_when_history_set_test(self):
+        testlib.delete_all_buckets(self.cluster)
+        bucket = "bucket-1"
+        data = {'name': bucket,
+                'storageBackend': "magma",
+                'ramQuotaMB': 1024}
 
-        # magma -> couchstore migration
-        create_and_update_bucket(self.cluster, "bucket-2", "magma",
-                                 "couchstore", 1024)
-        assert_per_node_storage_mode_keys_added(self.cluster, "bucket-2",
-                                                "magma")
-        self.cluster.delete_bucket("bucket-2")
+        self.cluster.create_bucket(data)
+
+        storage_mode_update = {'storageBackend': "couchstore"}
+
+        testlib.post_fail(
+            self.cluster, f"/pools/default/buckets/{bucket}",
+            expected_code=400,
+            data=storage_mode_update)
+
+        disable_history_on_bucket(self.cluster, bucket)
+
+        testlib.post_fail(
+            self.cluster, f"/pools/default/buckets/{bucket}",
+            expected_code=400,
+            data=storage_mode_update)
+
+        disable_history_on_all_collections(self.cluster, bucket)
+
+        testlib.post_succ(
+            self.cluster,
+            f"/pools/default/buckets/{bucket}",
+            data=storage_mode_update)
+
+        self.cluster.delete_bucket(bucket)
 
     def migrate_storage_mode_via_rebalance_test(self):
         # Delete buckets irrelevant to this test, to reduce the rebalance
@@ -160,8 +301,9 @@ class BucketMigrationTest(testlib.BaseTestSet):
             count += 1
 
     def migrate_storage_mode_via_failover_test(self):
-        create_and_update_bucket(self.cluster, "bucket-2", "couchstore",
-                                 "magma", 1024)
+        testlib.delete_all_buckets(self.cluster)
+        create_and_update_bucket(
+            self.cluster, "bucket-2", "couchstore", "magma", 1024)
         assert_per_node_storage_mode_keys_added(self.cluster, "bucket-2",
                                                 "couchstore")
         nodes = self.cluster.connected_nodes

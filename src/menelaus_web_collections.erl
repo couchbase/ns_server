@@ -371,6 +371,14 @@ get_err_code_msg({scope_already_exists, ScopeName}) ->
 get_err_code_msg({collection_already_exists, ScopeName, CollectionName}) ->
     {"Collection with name ~p in scope ~p already exists",
      [CollectionName, ScopeName], 400};
+get_err_code_msg({collection_has_history, Name,
+                  storage_mode_migration_in_progress}) ->
+    {"Cannot create collection (~p) with history enabled while storage mode "
+     "migration is in progress", [Name], 400};
+get_err_code_msg({cannot_modify_history, Name,
+                  storage_mode_migration_in_progress}) ->
+    {"Cannot enable history for collection (~p), while storage mode migration "
+     " is in progress", [Name], 400};
 get_err_code_msg({collection_not_found, ScopeName, CollectionName}) ->
     {"Collection with name ~p in scope ~p is not found",
      [CollectionName, ScopeName], 404};

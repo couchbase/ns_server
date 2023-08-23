@@ -1298,103 +1298,194 @@ add_override_props(Props, BucketConfig) ->
       [{storage_mode, fun storage_mode/1},
        {autocompaction, fun autocompaction_settings/1}]).
 
-
-update_bucket_props(Type, OldStorageMode, BucketName, Props) ->
-    try
-        update_bucket_props_inner(Type, OldStorageMode, BucketName, Props)
-    catch
-        throw:Error ->
-            Error
-    end.
-
-maybe_delete_cas_props(_PrevCcvEn, false = _CurrCcvEn, Props) ->
-    {Props, [vbuckets_max_cas]};
-maybe_delete_cas_props(false = _PrevCcvEn, true = _CurrCcvEn, Props) ->
-    {Props, []};
-maybe_delete_cas_props(true = _PrevCcvEn, true = _CurrCcvEn, _Props) ->
-    throw({error, cc_versioning_already_enabled}).
-
 %% Updates properties of bucket of given name and type.  Check of type
 %% protects us from type change races in certain cases.
 %% If bucket with given name exists, but with different type, we
 %% should return {exit, {not_found, _}, _}
-update_bucket_props_inner(Type, OldStorageMode, BucketName, Props) ->
+update_bucket_props(Type, OldStorageMode, BucketName, Props) ->
     case lists:member(BucketName,
                       get_bucket_names_of_type({Type, OldStorageMode})) of
         true ->
-            {ok, BucketConfig} = get_bucket(BucketName),
-            PrevProps = extract_bucket_props(BucketConfig),
-            DisplayBucketType = display_type(Type, OldStorageMode),
-
-            case update_bucket_props_allowed(Props, BucketConfig) of
-                true ->
-                    ok;
-                {false, Error} ->
-                    throw({error, Error})
-            end,
-
-            PrevCcvEn =
-                proplists:get_value(cross_cluster_versioning_enabled,
-                                    PrevProps, false),
-            NewCcvEn =
-                proplists:get_value(cross_cluster_versioning_enabled,
-                    Props, false),
-
-            {Props1, MaybeDeleteCasKey} =
-                maybe_delete_cas_props(PrevCcvEn, NewCcvEn, Props),
-
-            NewStorageMode = proplists:get_value(storage_mode, Props1),
-
-            {NewProps, DeleteKeys} =
-                case NewStorageMode of
-                    OldStorageMode ->
-                        {Props1, []};
-                    _ ->
-                        %% Reject storage migration if servers haven't been
-                        %% populated yet (This is extremely unlikely to happen,
-                        %% since we invoke a janitor run right after a bucket
-                        %% is created in chronicle - but there is still a
-                        %% non-zero probability that it could happen, therefore
-                        %% the below check).
-                        get_servers(BucketConfig) =/= [] orelse
-                            throw({error,
-                                   {storage_mode_migration, janitor_not_run}}),
-                        add_override_props(Props1, BucketConfig)
-                end,
-
-            %% Update the bucket properties.
-            AllDeleteKeys = DeleteKeys ++ MaybeDeleteCasKey,
-            RV = update_bucket_props(BucketName, NewProps, AllDeleteKeys),
-
-            case RV of
-                ok ->
-                    {ok, NewBucketConfig} = get_bucket(BucketName),
-                    NewExtractedProps = extract_bucket_props(NewBucketConfig),
-                    if
-                        PrevProps =/= NewExtractedProps ->
-                            event_log:add_log(
-                              bucket_cfg_changed,
-                              [{bucket, list_to_binary(BucketName)},
-                               {bucket_uuid, uuid(BucketName, direct)},
-                               {type, DisplayBucketType},
-                               {old_settings,
-                                {build_bucket_props_json(PrevProps)}},
-                               {new_settings,
-                                {build_bucket_props_json(NewExtractedProps)}}]);
-                        true ->
-                            ok
-                    end,
-                    ok;
-                _ ->
-                    RV
+            try
+                update_bucket_props_inner(
+                  Type, OldStorageMode, BucketName, Props)
+            catch
+                throw:Error ->
+                    Error
             end;
         false ->
             {exit, {not_found, BucketName}, []}
     end.
 
+maybe_delete_cas_props(PrevProps, NewProps) ->
+    PrevCcvEn =
+        proplists:get_value(cross_cluster_versioning_enabled,
+                            PrevProps, false),
+    NewCcvEn =
+        proplists:get_value(cross_cluster_versioning_enabled,
+                            NewProps, false),
+
+    maybe_delete_cas_props_inner(PrevCcvEn, NewCcvEn, NewProps).
+
+maybe_delete_cas_props_inner(_PrevCcvEn, false = _CurrCcvEn, Props) ->
+    {Props, [vbuckets_max_cas]};
+maybe_delete_cas_props_inner(false = _PrevCcvEn, true = _CurrCcvEn, Props) ->
+    {Props, []};
+maybe_delete_cas_props_inner(true = _PrevCcvEn, true = _CurrCcvEn, _Props) ->
+    throw({error, cc_versioning_already_enabled}).
+
+update_bucket_props_inner(Type, OldStorageMode, BucketName, Props) ->
+    {ok, BucketConfig} = get_bucket(BucketName),
+    PrevProps = extract_bucket_props(BucketConfig),
+    DisplayBucketType = display_type(Type, OldStorageMode),
+
+    case update_bucket_props_allowed(Props, BucketConfig) of
+        true ->
+            ok;
+        {false, Error} ->
+            throw({error, Error})
+    end,
+
+    {Props1, MaybeDeleteCasKey} =
+        maybe_delete_cas_props(PrevProps, Props),
+
+    NewStorageMode = proplists:get_value(storage_mode, Props),
+    IsStorageModeMigration = OldStorageMode =/= NewStorageMode,
+
+    RV =
+        case IsStorageModeMigration of
+            false ->
+                update_bucket_props(
+                  BucketName, Props1, MaybeDeleteCasKey);
+            true ->
+                %% Reject storage migration if servers haven't been
+                %% populated yet (This is extremely unlikely to happen,
+                %% since we invoke a janitor run right after a bucket
+                %% is created in chronicle - but there is still a
+                %% non-zero probability that it could happen, therefore
+                %% the below check).
+                get_servers(BucketConfig) =/= [] orelse
+                    throw({error,
+                           {storage_mode_migration, janitor_not_run}}),
+
+                {NewProps, DeleteKeys} =
+                    add_override_props(Props1, BucketConfig),
+
+                %% Collections can be updated concurrently while a
+                %% bucket is being updated - make sure history is not
+                %% enabled on any of the bucket collections, before we
+                %% update the storage_mode in the transaction.
+                %%
+                %% A concurrent update could have been set to a majority
+                %% nodes and this node might not have yet received that
+                %% (or not have been part of the majority nodes). Set
+                %% read_consistency to 'quorum' to make sure we pick
+                %% such updates too.
+
+                Predicate =
+                    fun (Snapshot) ->
+                            case collections:history_retention_enabled(
+                                   BucketName, Snapshot) of
+                                false ->
+                                    ok;
+                                true ->
+                                    {error,
+                                     {storage_mode_migration,
+                                      history_retention_enabled_on_collections}}
+                            end
+                    end,
+
+                update_bucket_props_with_predicate(
+                  BucketName, NewProps, DeleteKeys ++ MaybeDeleteCasKey,
+                  Predicate, [collections], #{read_consistency => quorum})
+        end,
+
+    case RV of
+        ok ->
+            {ok, NewBucketConfig} = get_bucket(BucketName),
+            NewExtractedProps = extract_bucket_props(NewBucketConfig),
+            if
+                PrevProps =/= NewExtractedProps ->
+                    event_log:add_log(
+                      bucket_cfg_changed,
+                      [{bucket, list_to_binary(BucketName)},
+                       {bucket_uuid, uuid(BucketName, direct)},
+                       {type, DisplayBucketType},
+                       {old_settings,
+                        {build_bucket_props_json(PrevProps)}},
+                       {new_settings,
+                        {build_bucket_props_json(NewExtractedProps)}}]);
+                true ->
+                    ok
+            end,
+            ok;
+        _ ->
+            RV
+    end.
+
 -spec update_bucket_props_allowed(proplists:proplist(), proplists:proplist()) ->
           true | {false, Error::term()}.
 update_bucket_props_allowed(NewProps, BucketConfig) ->
+    Res = functools:sequence_(
+            [?cut(is_storage_mode_update_allowed(
+                    NewProps, BucketConfig)),
+             ?cut(update_bucket_props_allowed_inner(
+                    NewProps, BucketConfig))]),
+    case Res of
+        ok ->
+            true;
+        Error ->
+            {false, Error}
+    end.
+
+%% is_storage_mode_update_allowed/2 logic.
+%%
+%% storage_mode_migration_in_progress - no, magma -> couchstore.
+%%  - history_retention_collection_default should not be explicitly set to
+%%    true.
+%% storage_mode_migration_in_progress - no, couchstore -> magma.
+%%  - no check pass.
+%% storage_mode_migration_in_progress - yes, couchstore -> magma.
+%%  - storage_mode: couchstore, some nodes have magma backend.
+%%  - no check pass.
+%% storage_mode_migration_in_progress - yes, magma -> couchstore.
+%%  - storage_mode: magma, some nodes have couchstore backend.
+%%  - no check pass because:
+%%      1. This was previously a couchstore bucket and therefore it is not
+%%      possible for history_retention_collection_default to have been set to
+%%      true.
+%%      2. We disallow changing any props other than ram_quota and
+%%      storage_mode while a storage mode migration is running, therefore we
+%%      can safely assume history_retention_collection_default was never
+%%      explicitly toggled to true.
+
+is_storage_mode_update_allowed(NewProps, BucketConfig) ->
+    NewStorageMode = proplists:get_value(storage_mode, NewProps),
+    OldStorageMode = proplists:get_value(storage_mode, BucketConfig),
+    StorageModeMigrationInProgress =
+        storage_mode_migration_in_progress(BucketConfig),
+
+    case {StorageModeMigrationInProgress, OldStorageMode, NewStorageMode} of
+        {false, magma, couchstore} ->
+            %% Intentionally not using
+            %% history_retention_collection_default/1 - because it returns
+            %% true by default for a magma bucket.
+            case proplists:get_value(
+                   history_retention_collection_default, BucketConfig) of
+                true ->
+                    %% Prevents migrating a magma bucket to couchstore if the
+                    %% history_retention_collection_default is explicitly set
+                    %% to true.
+                    {storage_mode_migration,
+                     history_retention_enabled_on_bucket};
+                _Val ->
+                    ok
+            end;
+        _ ->
+            ok
+    end.
+
+update_bucket_props_allowed_inner(NewProps, BucketConfig) ->
     case storage_mode_migration_in_progress(BucketConfig) of
         true ->
             %% We allow only ram_quota and storage_mode settings to be changed
@@ -1407,7 +1498,7 @@ update_bucket_props_allowed(NewProps, BucketConfig) ->
                   end, NewProps),
             case FilteredProps of
                 [] ->
-                    true;
+                    ok;
                 _ ->
                     %% Check if any of the other props have changed or a new
                     %% Prop is being added.
@@ -1423,13 +1514,13 @@ update_bucket_props_allowed(NewProps, BucketConfig) ->
                           end, FilteredProps),
                     case PropsChanged of
                         false ->
-                            true;
+                            ok;
                         true ->
-                            {false, {storage_mode_migration, in_progress}}
+                            {storage_mode_migration, in_progress}
                     end
             end;
         false ->
-            true
+            ok
     end.
 
 %% If there are per-node storage mode override keys, we are essentially midway
@@ -1445,6 +1536,11 @@ update_bucket_props(BucketName, Props) ->
     update_bucket_props(BucketName, Props, []).
 
 update_bucket_props(BucketName, Props, DeleteKeys) ->
+    update_bucket_props_with_predicate(
+      BucketName, Props, DeleteKeys, fun (_) -> ok end, [], #{}).
+
+update_bucket_props_with_predicate(
+  BucketName, Props, DeleteKeys, Predicate, SubKeys, Opts) ->
     update_bucket_config(
       BucketName,
       fun (OldProps) ->
@@ -1457,7 +1553,7 @@ update_bucket_props(BucketName, Props, DeleteKeys) ->
                                     lists:keydelete(K, 1, Acc)
                             end, NewProps, DeleteKeys),
               cleanup_bucket_props(NewProps1)
-      end).
+      end, Predicate, SubKeys, Opts).
 
 set_property(Bucket, Key, Value, Default, Fun) ->
     ok = update_bucket_config(
@@ -1617,32 +1713,46 @@ set_buckets_config_failover(BucketsAndMap, FailedNodes) ->
 
 % Update the bucket config atomically.
 update_bucket_config(BucketName, Fun) ->
-    update_buckets_config([{BucketName, Fun}]).
+    update_bucket_config(BucketName, Fun, fun (_) -> ok end, [], #{}).
+
+update_bucket_config(BucketName, Fun, Predicate, Subkeys, Opts) ->
+    update_buckets_config([{BucketName, Fun}], Predicate, Subkeys, Opts).
 
 update_buckets_config(BucketsUpdates) ->
+    update_buckets_config(BucketsUpdates, fun (_) -> ok end, [], #{}).
+
+update_buckets_config(BucketsUpdates, Predicate, SubKeys, Opts) ->
     RV =
         chronicle_kv:transaction(
           kv,
-          [sub_key(BucketName, props) || {BucketName, _} <- BucketsUpdates],
+          [sub_key(BucketName, SubKey) ||
+           {BucketName, _} <- BucketsUpdates, SubKey <- [props | SubKeys]],
           fun (Snapshot) ->
-                  Commits = lists:map(
-                              fun({BucketName, UpdtFun}) ->
-                                      case get_bucket(BucketName, Snapshot) of
-                                          {ok, CurrentConfig} ->
-                                              {set, sub_key(BucketName, props),
-                                               UpdtFun(CurrentConfig)};
-                                          not_present ->
-                                              {abort, not_found}
-                                      end
-                              end, BucketsUpdates),
+                  case Predicate(Snapshot) of
+                      ok ->
+                          Commits =
+                              lists:map(
+                                fun({BucketName, UpdtFun}) ->
+                                        case get_bucket(BucketName, Snapshot) of
+                                            {ok, CurrentConfig} ->
+                                                {set, sub_key(
+                                                        BucketName, props),
+                                                 UpdtFun(CurrentConfig)};
+                                            not_present ->
+                                                {abort, not_found}
+                                        end
+                                end, BucketsUpdates),
 
-                  case lists:keyfind(abort, 1, Commits) of
-                      false ->
-                          {commit, Commits};
-                      Res ->
-                          Res
+                          case lists:keyfind(abort, 1, Commits) of
+                              false ->
+                                  {commit, Commits};
+                              Res ->
+                                  Res
+                          end;
+                      Error ->
+                          {abort, Error}
                   end
-          end),
+          end, Opts),
     case RV of
         {ok, _} ->
             ok;
@@ -2242,6 +2352,7 @@ update_bucket_props_allowed_test() ->
     NewProps = [{storage_mode, magma},
                 {foo, blah}],
     BucketConfig = [{storage_mode, couchstore},
+                    {type, membase},
                     {ram_quota, 1024},
                     {foo, blah}],
     ?assert(update_bucket_props_allowed(NewProps, BucketConfig)),

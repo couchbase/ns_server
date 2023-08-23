@@ -751,6 +751,20 @@ update_props_with_cas(NodeCasVals, Map, Props) ->
             {error, max_cas_vbucket_retrieval}
     end.
 
+storage_mode_migration_error(in_progress) ->
+    {"Cannot update bucket while storage mode is being migrated.", 503};
+storage_mode_migration_error(janitor_not_run) ->
+    {"Cannot migrate storage mode before janitor has run for the bucket.", 503};
+storage_mode_migration_error(history_retention_enabled_on_bucket) ->
+    {"Cannot migrate storage mode. history_retention enabled on bucket.", 400};
+storage_mode_migration_error(history_retention_enabled_on_collections) ->
+    {"Cannot migrate storage mode. history_retention enabled on collections.",
+     400}.
+
+reply_storage_mode_migration_error(Req, Error) ->
+    {Reply, Code} = storage_mode_migration_error(Error),
+    reply_text(Req, Reply, Code).
+
 maybe_update_cas_props(BucketId, BucketConfig, UpdatedProps, true = _CcvEn) ->
     Servers = ns_bucket:get_servers(BucketConfig),
     {NodeResp, NodeErrors, DownNodes} =
@@ -798,14 +812,10 @@ update_via_orchestrator(Req, BucketId, StorageMode, BucketType, UpdatedProps) ->
                        "is being deleted", 503);
         {error, {need_more_space, Zones}} ->
             reply_text(Req, need_more_space_error(Zones), 400);
-        {error, {storage_mode_migration, in_progress}} ->
-            reply_text(Req, "Cannot update bucket while storage mode is being "
-                       "migrated.", 503);
-        {error, {storage_mode_migration, janitor_not_run}} ->
-            reply_text(Req, "Cannot migrate storage mode before janitor has "
-                       "run for the bucket", 503);
         {error, cc_versioning_already_enabled} ->
             reply_text(Req, "Cross cluster versioning already enabled", 409);
+        {error, {storage_mode_migration, Error}} ->
+            reply_storage_mode_migration_error(Req, Error);
         {exit, {not_found, _}, _} ->
             %% if this happens then our validation raced, so repeat everything
             retry

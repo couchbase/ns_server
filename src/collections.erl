@@ -55,7 +55,8 @@
          last_seen_ids_key/2,
          last_seen_ids_set/3,
          chronicle_upgrade_to_72/2,
-         upgrade_to_trinity/2]).
+         upgrade_to_trinity/2,
+         history_retention_enabled/2]).
 
 %% rpc from other nodes
 -export([wait_for_manifest_uid/4]).
@@ -535,7 +536,7 @@ perform_operations(_Manifest, {error, Error}, _BucketConf) ->
 perform_operations(Manifest, [], _BucketConf) ->
     {ok, Manifest};
 perform_operations(Manifest, [Operation | Rest], BucketConf) ->
-    case verify_oper(Operation, Manifest) of
+    case verify_oper(Operation, Manifest, BucketConf) of
         ok ->
             perform_operations(handle_oper(Operation, Manifest, BucketConf),
                                Rest, BucketConf);
@@ -740,51 +741,7 @@ compile_operation({set_manifest, Roles, RequiredScopes0, CheckUid},
 compile_operation(Oper, _Bucket, _Manifest) ->
     [Oper].
 
-verify_oper({check_uid, CheckUid}, Manifest) ->
-    ManifestUid = proplists:get_value(uid, Manifest),
-    case CheckUid =:= ManifestUid orelse CheckUid =:= undefined of
-        true ->
-            ok;
-        false ->
-            uid_mismatch
-    end;
-verify_oper({create_scope, Name}, Manifest) ->
-    Scopes = get_scopes(Manifest),
-    case find_scope(Name, Scopes) of
-        undefined ->
-            ok;
-        _ ->
-            {scope_already_exists, Name}
-    end;
-verify_oper({drop_scope, "_default"}, _Manifest) ->
-    cannot_drop_default_scope;
-verify_oper({drop_scope, ?SYSTEM_SCOPE_NAME}, _Manifest) ->
-    cannot_drop_system_scope;
-verify_oper({drop_scope, Name}, Manifest) ->
-    with_scope(fun (_) -> ok end, Name, Manifest);
-verify_oper({create_collection, ScopeName, "_default", _}, _Manifest) ->
-    {cannot_create_default_collection, ScopeName};
-verify_oper({create_collection, ?SYSTEM_SCOPE_NAME, _Name, _},
-            _Manifest) ->
-    {cannot_create_collection_in_system_scope};
-verify_oper({create_collection, ScopeName, Name, _}, Manifest) ->
-    with_scope(
-      fun (Scope) ->
-              Collections = get_collections(Scope),
-              case find_collection(Name, Collections) of
-                  undefined ->
-                      ok;
-                  _ ->
-                      {collection_already_exists, ScopeName, Name}
-              end
-      end, ScopeName, Manifest);
-verify_oper({drop_collection, ?SYSTEM_SCOPE_NAME, "_" ++ _ = CollectionName},
-            _Manifest) ->
-    {cannot_drop_system_collection, ?SYSTEM_SCOPE_NAME, CollectionName};
-verify_oper({drop_collection, ScopeName, Name}, Manifest) ->
-    with_collection(fun (_) -> ok end, ScopeName, Name, Manifest);
-verify_oper({modify_collection, ScopeName, Name, SuppliedProps},
-            Manifest) ->
+modify_collection_allowed(ScopeName, Name, Manifest, SuppliedProps) ->
     %% We were originally only allowed to change history for a collection.
     %% In Trinity, we are also able to modify maxTTL, but this does not mean
     %% that we can skip verification, as we still need to prevent modification
@@ -828,8 +785,94 @@ verify_oper({modify_collection, ScopeName, Name, SuppliedProps},
                   _ ->
                       {cannot_modify_properties, Name, InvalidProps}
               end
-      end, ScopeName, Name, Manifest);
-verify_oper(bump_epoch, _Manifest) ->
+      end, ScopeName, Name, Manifest).
+
+modify_collection_history_allowed(Name, SuppliedProps, BucketConf) ->
+    StorageModeMigrationInProgress =
+        ns_bucket:storage_mode_migration_in_progress(BucketConf),
+
+    HistoryEnabled = proplists:get_value(history, SuppliedProps, false),
+
+    case {StorageModeMigrationInProgress, HistoryEnabled} of
+        {true, true} ->
+            {cannot_modify_history, Name, storage_mode_migration_in_progress};
+        _ ->
+            ok
+    end.
+
+create_collection_allowed(Name, ScopeName, Manifest) ->
+    with_scope(
+      fun (Scope) ->
+              Collections = get_collections(Scope),
+              case find_collection(Name, Collections) of
+                  undefined ->
+                      ok;
+                  _ ->
+                      {collection_already_exists, ScopeName, Name}
+              end
+      end, ScopeName, Manifest).
+
+%% Disallow creation of a collection with history=true, while the storage mode
+%% is being migrated.
+create_collection_with_history_allowed(Name, Props, BucketConf) ->
+    HasHistory = proplists:get_value(history, Props, false),
+    StorageModeMigrationInProgress =
+        ns_bucket:storage_mode_migration_in_progress(BucketConf),
+
+    case {HasHistory, StorageModeMigrationInProgress} of
+        {true, true} ->
+            {collection_has_history, Name, storage_mode_migration_in_progress};
+        _ ->
+            ok
+    end.
+
+verify_oper({check_uid, CheckUid}, Manifest, _BucketConf) ->
+    ManifestUid = proplists:get_value(uid, Manifest),
+    case CheckUid =:= ManifestUid orelse CheckUid =:= undefined of
+        true ->
+            ok;
+        false ->
+            uid_mismatch
+    end;
+verify_oper({create_scope, Name}, Manifest, _BucketConf) ->
+    Scopes = get_scopes(Manifest),
+    case find_scope(Name, Scopes) of
+        undefined ->
+            ok;
+        _ ->
+            {scope_already_exists, Name}
+    end;
+verify_oper({drop_scope, "_default"}, _Manifest, _BucketConf) ->
+    cannot_drop_default_scope;
+verify_oper({drop_scope, ?SYSTEM_SCOPE_NAME}, _Manifest, _BucketConf) ->
+    cannot_drop_system_scope;
+verify_oper({drop_scope, Name}, Manifest, _BucketConf) ->
+    with_scope(fun (_) -> ok end, Name, Manifest);
+verify_oper({create_collection, ScopeName, "_default", _},
+            _Manifest, _BucketConf) ->
+    {cannot_create_default_collection, ScopeName};
+verify_oper({create_collection, ?SYSTEM_SCOPE_NAME, _Name, _},
+            _Manifest, _BucketConf) ->
+    {cannot_create_collection_in_system_scope};
+verify_oper({create_collection, ScopeName, Name, Props}, Manifest,
+            BucketConf) ->
+    functools:sequence_([?cut(create_collection_with_history_allowed(
+                                Name, Props, BucketConf)),
+                         ?cut(create_collection_allowed(
+                                Name, ScopeName, Manifest))]);
+verify_oper({drop_collection, ?SYSTEM_SCOPE_NAME, "_" ++ _ = CollectionName},
+            _Manifest, _BucketConf) ->
+    {cannot_drop_system_collection, ?SYSTEM_SCOPE_NAME, CollectionName};
+verify_oper({drop_collection, ScopeName, Name}, Manifest, _BucketConf) ->
+    with_collection(fun (_) -> ok end, ScopeName, Name, Manifest);
+verify_oper({modify_collection, ScopeName, Name, SuppliedProps},
+            Manifest, BucketConf) ->
+    functools:sequence_(
+      [?cut(modify_collection_history_allowed(
+              Name, SuppliedProps, BucketConf)),
+       ?cut(modify_collection_allowed(
+              ScopeName, Name, Manifest, SuppliedProps))]);
+verify_oper(bump_epoch, _Manifest, _BucketConf) ->
     ok.
 
 handle_oper({check_uid, _CheckUid}, Manifest, _BucketConf) ->
@@ -936,15 +979,23 @@ get_collection(Name, Scope) ->
 find_collection(Name, Collections) ->
     proplists:get_value(Name, Collections).
 
+maybe_add_history(BucketConfig) ->
+    %% This is a bit tricky - when a bucket's storage mode is marked for
+    %% migration to magma, we set the storage_mode to magma but we might not
+    %% have completed the migration yet (and therefore the storage_mode might
+    %% still be couchstore on some nodes). Therefore explicitly check if there
+    %% is such a migration in progress even if
+    %% ns_bucket:history_retention_collection_default/1 evaluates to true.
+    [{history, ns_bucket:history_retention_collection_default(BucketConfig)} ||
+     not ns_bucket:storage_mode_migration_in_progress(BucketConfig)].
+
 add_collection(Manifest, Name, ScopeName, SuppliedProps, BucketConf) ->
     Uid = proplists:get_value(next_coll_uid, Manifest),
     Props0 =
         case proplists:get_value(history, SuppliedProps) of
             undefined ->
                 % History defined by our default value
-                SuppliedProps ++
-                [{history,
-                  ns_bucket:history_retention_collection_default(BucketConf)}];
+                SuppliedProps ++ maybe_add_history(BucketConf);
             _ ->
                 % History defined by the user
                 SuppliedProps
@@ -1270,6 +1321,19 @@ maybe_add_collection_history_inner(Collection, BucketConfig) ->
             Collection
     end.
 
+-spec history_retention_enabled(
+        Bucket:: bucket_name(), Snapshot :: map()) -> boolean().
+history_retention_enabled(Bucket, Snapshot) ->
+    Manifest = get_manifest(Bucket, Snapshot),
+
+    lists:any(
+      fun ({_SN, SP}) ->
+              lists:any(
+                fun ({_CN, CP}) ->
+                        proplists:get_value(history, CP, false)
+                end, get_collections(SP))
+      end, get_scopes(Manifest)).
+
 -ifdef(TEST).
 manifest_test_set_history_default(Val) ->
     BucketProps =
@@ -1277,6 +1341,9 @@ manifest_test_set_history_default(Val) ->
          {history_retention_seconds, 1},
          {storage_mode, magma},
          {type, membase}],
+    meck_ns_bucket_get_snapshot(BucketProps).
+
+meck_ns_bucket_get_snapshot(BucketProps) ->
     meck:expect(ns_bucket, get_snapshot,
                 fun ("bucket", [props]) ->
                         ns_bucket:toy_buckets(
@@ -1411,7 +1478,57 @@ create_collection_t() ->
        {abort, {error, {collection_already_exists, "_default", "c1"}}},
        update_manifest_test_create_collection(Manifest1, "_default", "c1", [])),
     meck:expect(guardrail_monitor, get,
-                fun (collections_per_quota) -> undefined end).
+                fun (collections_per_quota) -> undefined end),
+
+    %% Set a per-node key to mimick a storage_mode migration in progress.
+    meck_ns_bucket_get_snapshot(
+      [{{node, n1, storage_mode}, magma},
+       {storage_mode, couchstore},
+       {type, membase},
+       {history_retention_collection_default, false}]),
+
+    ?assertEqual(
+       {abort,
+        {error,
+         {collection_has_history, "c4",
+          storage_mode_migration_in_progress}}},
+       update_manifest_test_create_collection(
+         Manifest3, "_default", "c4", [{history, true}])),
+
+    meck_ns_bucket_get_snapshot(
+      [{{node, n1, storage_mode}, magma},
+       {storage_mode, couchstore},
+       {type, membase}]),
+
+    {commit, [{_, _, Manifest4}], _} =
+        update_manifest_test_create_collection(
+          Manifest3, "_default", "c4", []),
+
+    ?assertEqual(undefined, get_history("c4", "_default", Manifest4)),
+
+    meck_ns_bucket_get_snapshot(
+      [{{node, n1, storage_mode}, couchstore},
+       {storage_mode, magma},
+       {type, membase}]),
+
+    ?assertEqual(
+       {abort,
+        {error,
+         {collection_has_history, "c5",
+          storage_mode_migration_in_progress}}},
+        update_manifest_test_create_collection(
+          Manifest4, "_default", "c5", [{history, true}])),
+
+    meck_ns_bucket_get_snapshot(
+      [{{node, n1, storage_mode}, couchstore},
+       {storage_mode, magma},
+       {type, membase}]),
+
+    {commit, [{_, _, Manifest5}], _} =
+        update_manifest_test_create_collection(
+          Manifest4, "_default", "c5", []),
+
+    ?assertEqual(undefined, get_history("c5", "_default", Manifest5)).
 
 drop_collection_t() ->
     {ok, BucketConf} = get_bucket_config("bucket"),
@@ -1536,6 +1653,9 @@ collection_uid_t() ->
                  get_uid(get_collection("s1c1",
                                         get_scope("s1", Manifest6)))).
 
+aborted_with_error(Error) ->
+    {abort, {error, Error}}.
+
 modify_collection_t() ->
     {ok, BucketConf} = get_bucket_config("bucket"),
 
@@ -1625,7 +1745,62 @@ modify_collection_t() ->
     ?assertEqual(
        {abort, {error, {cannot_modify_properties, "c1", [{uid, 999}]}}},
        update_manifest_test_update_collection(Manifest2, "_default", "c1",
-                                              [{uid, 999}])).
+                                              [{uid, 999}])),
+
+    manifest_test_set_history_default(false),
+
+    {commit, [{_, _, Manifest6}], _} =
+        update_manifest_test_create_collection(
+          Manifest5, "_default", "c10", []),
+
+    %% magma -> couchstore migration.
+    meck_ns_bucket_get_snapshot(
+      [{{node, n1, storage_mode}, magma},
+       {storage_mode, couchstore},
+       {type, membase},
+       {history_retention_collection_default, false}]),
+
+    %% Disallow changing history while a storage_mode migration is in progress.
+    ?assertEqual(aborted_with_error(
+                   {cannot_modify_history, "c10",
+                    storage_mode_migration_in_progress}),
+                 update_manifest_test_update_collection(
+                   Manifest6, "_default", "c10", [{history, true}])),
+
+    %% Modifying a collection should be allowed, but history should be false.
+
+    {commit, [{_, _, Manifest7}], _} =
+        update_manifest_test_update_collection(
+          Manifest6, "_default", "c10", [{maxTTL, 10}]),
+
+    ?assertEqual(false, get_history("c10", "_default", Manifest7)),
+
+    meck_ns_bucket_get_snapshot(
+      [{storage_mode, couchstore},
+       {type, membase}]),
+
+    {commit, [{_, _, Manifest8}], _} =
+        update_manifest_test_create_collection(
+          Manifest7, "_default", "c11", []),
+
+    %% couchstore -> magma migration.
+    meck_ns_bucket_get_snapshot(
+      [{{node, n1, storage_mode}, couchstore},
+       {storage_mode, magma},
+       {type, membase}]),
+
+     %% Disallow changing history while a storage_mode migration is in progress.
+     ?assertEqual(aborted_with_error(
+                    {cannot_modify_history, "c11",
+                     storage_mode_migration_in_progress}),
+                  update_manifest_test_update_collection(
+                    Manifest8, "_default", "c11", [{history, true}])),
+
+     {commit, [{_, _, Manifest9}], _} =
+        update_manifest_test_update_collection(
+          Manifest8, "_default", "c11", [{maxTTL, 10}]),
+
+    ?assertEqual(false, get_history("c11", "_default", Manifest9)).
 
 get_history(CN, SN, Manifest) ->
     proplists:get_value(
@@ -2040,4 +2215,38 @@ basic_collections_manifest_test_() ->
       {"upgrade to Trinity test (collection history)",
        fun() -> upgrade_to_trinity_collection_history_t() end}]}.
 
+create_snapshot(Bucket, Props) ->
+    Manifest =
+        [{scopes,
+          lists:map(fun ({SN, CP}) ->
+                            {SN, [{collections, CP}]}
+                    end, Props)}],
+    maps:from_list([{key(Bucket), {Manifest, no_revision}}]).
+
+history_retention_enabled_test_() ->
+    TestArgs = [%% Empty manifest.
+                {[], false},
+                {[{"s1", [{"c1", []}]}], false},
+                {[{"s1", [{"c1", [{history, false}]}]}], false},
+                {[{"s1", [{"c1", [{history, true}]}]}], true},
+                {[{"s1", [{"c1", [{history, true}]},
+                          {"c2", [{history, false}]}]}], true},
+                {[{"s1", [{"c1", [{history, false}]},
+                          {"c2", [{history, true}]}]}], true},
+                {[{"s1", [{"c1", [{history, true}]}]},
+                  {"s2", [{"c1", [{history, false}]}]}], true},
+                {[{"s1", [{"c1", [{history, true}]}]},
+                  {"s2", [{"c1", [{history, false}]}]}], true}],
+
+    Bucket = "foo",
+
+    {setup,
+     fun () -> ok end,
+     [{lists:flatten(io_lib:format("history_retention_enabled_test: Arg - ~p",
+                     [Arg])),
+       fun () ->
+               ?assertEqual(Expected,
+                            history_retention_enabled(
+                              Bucket, create_snapshot(Bucket, Props)))
+       end} || {Props, Expected} = Arg <- TestArgs]}.
 -endif.

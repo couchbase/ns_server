@@ -362,6 +362,14 @@ def post_fail(cluster_or_node, path, expected_code, **kwargs):
     return request('POST', cluster_or_node, path, expected_code, **kwargs)
 
 
+def patch_succ(cluster_or_node, path, expected_code=200, **kwargs):
+    return request('PATCH', cluster_or_node, path, expected_code, **kwargs)
+
+
+def patch_fail(cluster_or_node, path, expected_code=200, **kwargs):
+    return request('PATCH', cluster_or_node, path, expected_code, **kwargs)
+
+
 def post(cluster_or_node, path, **kwargs):
     return request('POST', cluster_or_node, path, None, **kwargs)
 

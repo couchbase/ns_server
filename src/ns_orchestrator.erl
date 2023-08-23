@@ -173,6 +173,10 @@ create_bucket(BucketType, BucketName, NewConfig) ->
                            {error, {storage_mode_migration, in_progress}} |
                            {error, cc_versioning_already_enabled} |
                            {error, {storage_mode_migration, janitor_not_run}} |
+                           {error, {storage_mode_migration,
+                                    history_retention_enabled_on_bucket}} |
+                           {error, {storage_mode_migration,
+                                    history_retention_enabled_on_collections}} |
                            rebalance_running | in_recovery |
                            in_bucket_hibernation |
                            in_buckets_shutdown.
