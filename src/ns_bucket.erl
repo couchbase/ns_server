@@ -167,7 +167,8 @@
          node_magma_fragmentation_percentage/1,
          remove_override_props/2,
          remove_override_props_many/2,
-         update_bucket_config/2]).
+         update_bucket_config/2,
+         all_keys/1]).
 
 -import(json_builder,
         [to_binary/1,
@@ -210,6 +211,9 @@ names_change(_) ->
 
 all_sub_keys() ->
     [uuid, props, collections].
+
+all_keys(Bucket) ->
+    all_keys([Bucket], all_sub_keys()).
 
 all_keys(Names, SubKeys) ->
     [sub_key(B, SubKey) || B <- Names, SubKey <- SubKeys].

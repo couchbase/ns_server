@@ -427,8 +427,8 @@ do_update(Bucket, Operation) ->
             {error, not_found};
         LastSeenIdsWithUUID ->
             chronicle_kv:transaction(
-              kv, [key(Bucket), ns_bucket:uuid_key(Bucket),
-                   chronicle_master:failover_opaque_key()],
+              kv, [chronicle_master:failover_opaque_key() |
+                   ns_bucket:all_keys(Bucket)],
               update_txn(Bucket, Operation, OtherBucketCounts,
                          ScopeCollectionLimits, LastSeenIdsWithUUID, _),
               #{read_consistency => quorum})
@@ -449,20 +449,22 @@ update_txn(Bucket, Operation, OtherBucketCounts, ScopeCollectionLimits,
                             {abort, {error, not_found}};
                         Manifest ->
                             do_update_with_manifest(
-                              Bucket, Manifest, Operation, OtherBucketCounts,
-                              ScopeCollectionLimits, LastSeenIds)
+                              Snapshot, Bucket, Manifest, Operation,
+                              OtherBucketCounts, ScopeCollectionLimits,
+                              LastSeenIds)
                     end;
                 false ->
                     {abort, {error, not_found}}
             end
     end.
 
-do_update_with_manifest(Bucket, Manifest, Operation, OtherBucketCounts,
-                        ScopeCollectionLimits, LastSeenIds) ->
+do_update_with_manifest(Snapshot, Bucket, Manifest, Operation,
+                        OtherBucketCounts, ScopeCollectionLimits,
+                        LastSeenIds) ->
     ?log_debug("Perform operation ~p on manifest ~p of bucket ~p",
                [Operation, get_uid(Manifest), Bucket]),
     CompiledOperation = compile_operation(Operation, Bucket, Manifest),
-    case ns_bucket:get_bucket(Bucket) of
+    case ns_bucket:get_bucket(Bucket, Snapshot) of
         {ok, BucketConf} ->
             case perform_operations(Manifest, CompiledOperation,
                                     BucketConf) of
@@ -1206,13 +1208,15 @@ upgrade_to_trinity(Manifest0, BucketConfig) ->
 
 -ifdef(TEST).
 manifest_test_set_history_default(Val) ->
-    meck:expect(ns_bucket,
-                get_bucket,
-                fun("bucket") ->
-                        {ok, [{history_retention_collection_default, Val},
-                              {history_retention_seconds, 1},
-                              {storage_mode, magma},
-                              {type, membase}]}
+    BucketProps =
+        [{history_retention_collection_default, Val},
+         {history_retention_seconds, 1},
+         {storage_mode, magma},
+         {type, membase}],
+    meck:expect(ns_bucket, get_snapshot,
+                fun ("bucket", [props]) ->
+                        ns_bucket:toy_buckets(
+                          [{"bucket", [{props, BucketProps}]}])
                 end).
 
 update_manifest_test_setup() ->
@@ -1257,8 +1261,10 @@ update_with_manifest(Manifest, Operation) ->
     LastSeenIds = [{check, [0,0,0]}],
     ScopeCollectionLimits = {max_scopes_per_bucket(),
                              max_collections_per_bucket()},
-    do_update_with_manifest(Bucket, Manifest, Operation, OtherBucketCounts,
-                            ScopeCollectionLimits, LastSeenIds).
+    Snapshot = ns_bucket:get_snapshot(Bucket, [props]),
+    do_update_with_manifest(Snapshot, Bucket, Manifest, Operation,
+                            OtherBucketCounts, ScopeCollectionLimits,
+                            LastSeenIds).
 
 update_manifest_test_create_collection(Manifest, Scope, Name, Props) ->
     update_with_manifest(Manifest, {create_collection, Scope, Name, Props}).
@@ -1286,8 +1292,12 @@ update_manifest_test_set_manifest(Manifest, NewScopes) ->
     update_with_manifest(Manifest,
                          {set_manifest, Roles, NewScopes, ValidOnUid}).
 
+get_bucket_config(Bucket) ->
+    Snapshot = ns_bucket:get_snapshot(Bucket, [props]),
+    ns_bucket:get_bucket(Bucket, Snapshot).
+
 create_collection_t() ->
-    {ok, BucketConf} = ns_bucket:get_bucket("bucket"),
+    {ok, BucketConf} = get_bucket_config("bucket"),
     {commit, [{_, _, Manifest1}], _} =
         update_manifest_test_create_collection(default_manifest(BucketConf),
                                                "_default", "c1", []),
@@ -1305,7 +1315,7 @@ create_collection_t() ->
                  get_collection("c2", get_scope("_default", Manifest2))).
 
 drop_collection_t() ->
-    {ok, BucketConf} = ns_bucket:get_bucket("bucket"),
+    {ok, BucketConf} = get_bucket_config("bucket"),
     {commit, [{_, _, Manifest1}], _} =
         update_manifest_test_create_collection(default_manifest(BucketConf),
                                                "_default", "c1", []),
@@ -1323,7 +1333,7 @@ drop_collection_t() ->
        update_manifest_test_drop_collection(Manifest2, "_default", "c1")).
 
 create_scope_t() ->
-    {ok, BucketConf} = ns_bucket:get_bucket("bucket"),
+    {ok, BucketConf} = get_bucket_config("bucket"),
     {commit, [{_, _, Manifest1}], _} =
         update_manifest_test_create_scope(default_manifest(BucketConf), "s1"),
     ?assertEqual([{uid, 9}, {collections, []}],
@@ -1339,7 +1349,7 @@ create_scope_t() ->
                  proplists:get_value("s2", get_scopes(Manifest2))).
 
 drop_scope_t() ->
-    {ok, BucketConf} = ns_bucket:get_bucket("bucket"),
+    {ok, BucketConf} = get_bucket_config("bucket"),
     {commit, [{_, _, Manifest1}], _} =
         update_manifest_test_create_scope(default_manifest(BucketConf), "s1"),
     ?assertEqual([{uid, 9}, {collections, []}],
@@ -1355,7 +1365,7 @@ drop_scope_t() ->
                  update_manifest_test_drop_scope(Manifest2, "s1")).
 
 manifest_uid_t() ->
-    {ok, BucketConf} = ns_bucket:get_bucket("bucket"),
+    {ok, BucketConf} = get_bucket_config("bucket"),
     {commit, [{_, _, Manifest1}], _} =
         update_manifest_test_create_scope(default_manifest(BucketConf), "s1"),
     ?assertEqual(2, proplists:get_value(uid, Manifest1)),
@@ -1378,7 +1388,7 @@ manifest_uid_t() ->
     ?assertEqual(6, proplists:get_value(uid, Manifest5)).
 
 scope_uid_t() ->
-    {ok, BucketConf} = ns_bucket:get_bucket("bucket"),
+    {ok, BucketConf} = get_bucket_config("bucket"),
     {commit, [{_, _, Manifest1}], _} =
         update_manifest_test_create_scope(default_manifest(BucketConf), "s1"),
     ?assertEqual(9, get_uid(get_scope("s1", Manifest1))),
@@ -1395,7 +1405,7 @@ scope_uid_t() ->
     ?assertEqual(11, get_uid(get_scope("s1", Manifest4))).
 
 collection_uid_t() ->
-    {ok, BucketConf} = ns_bucket:get_bucket("bucket"),
+    {ok, BucketConf} = get_bucket_config("bucket"),
     {commit, [{_, _, Manifest1}], _} =
         update_manifest_test_create_collection(default_manifest(BucketConf),
                                                "_default", "c1", []),
@@ -1428,7 +1438,7 @@ collection_uid_t() ->
                                         get_scope("s1", Manifest6)))).
 
 modify_collection_t() ->
-    {ok, BucketConf} = ns_bucket:get_bucket("bucket"),
+    {ok, BucketConf} = get_bucket_config("bucket"),
 
     %% Enable system scope for testing that its maxTTL cannot be modified
     meck:expect(config_profile, get_bool,
@@ -1518,7 +1528,7 @@ modify_collection_t() ->
                                               [{uid, 999}])).
 
 history_default_t() ->
-    {ok, BucketConf} = ns_bucket:get_bucket("bucket"),
+    {ok, BucketConf} = get_bucket_config("bucket"),
 
     %% Default collection history field should inherit the default
     DefaultMan = default_manifest(BucketConf),
@@ -1540,7 +1550,7 @@ history_default_t() ->
 
     %% Set history_default to false and a new collection should not have history
     manifest_test_set_history_default(false),
-    {ok, BucketConf1} = ns_bucket:get_bucket("bucket"),
+    {ok, BucketConf1} = get_bucket_config("bucket"),
 
     %% And the default collections history field should not be present
     DefaultMan1 = default_manifest(BucketConf1),
@@ -1570,7 +1580,7 @@ history_default_t() ->
                                                          Manifest3)))).
 
 set_manifest_t() ->
-    {ok, BucketConf} = ns_bucket:get_bucket("bucket"),
+    {ok, BucketConf} = get_bucket_config("bucket"),
     %% Cannot drop default scope
     {abort, {error, cannot_drop_default_scope}} =
         update_manifest_test_set_manifest(default_manifest(BucketConf),
@@ -1837,7 +1847,7 @@ upgrade_to_72_t() ->
                     (enable_metered_collections) -> false
                 end),
 
-    {ok, BucketConf71} = ns_bucket:get_bucket("bucket"),
+    {ok, BucketConf71} = get_bucket_config("bucket"),
     Manifest71 = default_manifest(BucketConf71),
     ?assertEqual(undefined,
                  proplists:get_value(history,
@@ -1854,7 +1864,7 @@ upgrade_to_72_t() ->
     %% going to "upgrade" the BucketConfig that we pass into the Snapshot here
     %% to accomplish that.
     manifest_test_set_history_default(true),
-    {ok, BucketConf72} = ns_bucket:get_bucket("bucket"),
+    {ok, BucketConf72} = get_bucket_config("bucket"),
     Snapshot1 = maps:put({bucket, "bucket", props}, BucketConf72, maps:new()),
     Snapshot71 = maps:put(CollectionsKey, Manifest71, Snapshot1),
     Txn = {Snapshot71, undefined},
@@ -1874,12 +1884,12 @@ upgrade_to_72_t() ->
 %% collections for query and mobile.
 upgrade_to_trinity_t() ->
     meck:expect(cluster_compat_mode, is_cluster_trinity, fun() -> false end),
-    {ok, BucketConf72} = ns_bucket:get_bucket("bucket"),
+    {ok, BucketConf72} = get_bucket_config("bucket"),
     Manifest72 = default_manifest(BucketConf72),
     ?assertEqual(undefined, get_scope("_system", Manifest72)),
 
     meck:expect(cluster_compat_mode, is_cluster_trinity, fun() -> true end),
-    {ok, BucketConfTrinity} = ns_bucket:get_bucket("bucket"),
+    {ok, BucketConfTrinity} = get_bucket_config("bucket"),
     UpdatedManifest = upgrade_to_trinity(Manifest72, BucketConfTrinity),
     SystemScope = get_scope("_system", UpdatedManifest),
     ?assertNotEqual(undefined, SystemScope),
