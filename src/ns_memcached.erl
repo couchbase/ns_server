@@ -199,7 +199,7 @@ get_worker_features() ->
     FeatureSet = [%% Always use json feature as the local memcached would have
                   %% enabled this feature in/after 6.5.
                   {json, true},
-                  {collections, collections:enabled()}],
+                  {collections, true}],
     misc:canonical_proplist(FeatureSet).
 
 worker_init(Parent, ParentState) ->

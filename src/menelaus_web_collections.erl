@@ -31,7 +31,6 @@
          handle_ensure_manifest/3]).
 
 handle_get(Bucket, Req) ->
-    assert_collections_enabled(),
     menelaus_util:reply_json(
       Req, collections:manifest_json(menelaus_auth:get_authn_res(Req),
                                      Bucket, direct)).
@@ -294,17 +293,7 @@ handle_ensure_manifest(Bucket, Uid, Req) ->
        nodes_validator(BucketNodes, Req, _),
        validator:unsupported(_)]).
 
-assert_collections_enabled() ->
-    case collections:enabled() of
-        true ->
-            ok;
-        false ->
-            menelaus_util:web_exception(
-              400, "Not allowed until entire cluster is upgraded to 7.0")
-    end.
-
 assert_api_available(Bucket) ->
-    assert_collections_enabled(),
     {ok, BucketConfig} = ns_bucket:get_bucket(Bucket),
     case collections:enabled(BucketConfig) of
         true ->
@@ -485,7 +474,6 @@ bucket_has_config_validator_test() ->
 
 bucket_config_not_found_when_posting_collections_test() ->
     meck:new(collections, [passthrough]),
-    meck:expect(collections, enabled, fun() -> true end),
     meck:expect(collections, enabled, fun(_) -> true end),
 
     % We need to pass the first get_bucket call and fail the second, we can use

@@ -21,7 +21,7 @@
 %% referenced from ns_config_default
 -export([get_minidump_dir/2, get_interfaces/2,
          client_cert_auth/2, is_snappy_enabled/2,
-         is_snappy_enabled/0, collections_enabled/2, get_fallback_salt/2,
+         is_snappy_enabled/0, get_fallback_salt/2,
          get_external_users_push_interval/2,
          get_external_auth_service/2,
          is_external_auth_service_enabled/0,
@@ -461,9 +461,6 @@ is_snappy_enabled() ->
                                     datatype_snappy, false),
 
     ns_config:search_node_prop(Cfg, memcached, datatype_snappy, Default).
-
-collections_enabled([], _Params) ->
-    collections:enabled().
 
 get_fallback_salt([], _Params) ->
     base64:encode(scram_sha:get_fallback_salt()).

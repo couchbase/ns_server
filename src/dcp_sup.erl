@@ -78,7 +78,7 @@ get_replication_features() ->
                   %% this function is called for membase buckets only
                   %% so we can assume that if collections are enabled globally
                   %% they cannot be disabled for particular bucket
-                  {collections, collections:enabled()},
+                  {collections, true},
                   {del_times, true},
                   {ssl, misc:should_cluster_data_be_encrypted()},
                   %% Not used directly but we need it to make sure we restart

@@ -56,10 +56,7 @@ process_memcached_error_response({Err, _, _, _}) ->
       {message, "Unknown error"}]}.
 
 get_default_collection_uid() ->
-    case collections:enabled() of
-        true -> 0;
-        false -> undefined
-    end.
+    0.
 
 add_document(Bucket, VBucket, Key, Value) ->
     add_document(Bucket, VBucket, Key, get_default_collection_uid(), Value).

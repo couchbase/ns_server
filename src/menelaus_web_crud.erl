@@ -96,12 +96,7 @@ parse_params(Params) ->
       {end_key, parse_key(proplists:get_value("endkey", Params))}]}.
 
 assert_default_collection_uid(Bucket) ->
-    case collections:enabled() of
-        false ->
-            undefined;
-        true ->
-            assert_collection_uid(Bucket, "_default", "_default")
-    end.
+    assert_collection_uid(Bucket, "_default", "_default").
 
 handle_list(BucketId, Req) ->
     handle_list(BucketId, assert_default_collection_uid(BucketId), Req).

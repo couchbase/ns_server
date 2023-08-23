@@ -21,7 +21,6 @@
 -endif.
 
 -export([start_link/0,
-         enabled/0,
          enabled/1,
          default_manifest/1,
          default_kvs/2,
@@ -83,11 +82,8 @@ start_link() ->
                 end)
       end).
 
-enabled() ->
-    cluster_compat_mode:is_enabled(?VERSION_70).
-
 enabled(BucketConfig) ->
-    enabled() andalso ns_bucket:bucket_type(BucketConfig) =:= membase.
+    ns_bucket:bucket_type(BucketConfig) =:= membase.
 
 key(Bucket) ->
     ns_bucket:sub_key(Bucket, collections).
@@ -1159,13 +1155,8 @@ update_last_seen_ids(Key, Manifest, Rev) ->
     end.
 
 update_last_seen_ids() ->
-    case enabled() of
-        true ->
-            [update_last_seen_ids(Bucket) ||
-                Bucket <- ns_bucket:get_bucket_names()];
-        false ->
-            ok
-    end.
+    [update_last_seen_ids(Bucket) ||
+        Bucket <- ns_bucket:get_bucket_names()].
 
 last_seen_ids_set(Node, Bucket, Manifest) ->
     {set, last_seen_ids_key(Node, Bucket), get_next_uids(Manifest)}.

@@ -255,19 +255,11 @@ apply_indexes_settings(Req, Values) ->
     end.
 
 filter_indexes(Roles, Indexes) ->
-    CollectionEnabled = collections:enabled(),
     lists:filter(
       fun (Index) ->
               B = binary_to_list(proplists:get_value(bucket, Index)),
-              {S, C} = case CollectionEnabled of
-                           false ->
-                               {all, all};
-                           true ->
-                               {binary_to_list(proplists:get_value(scope,
-                                                                   Index)),
-                                binary_to_list(proplists:get_value(collection,
-                                                                   Index))}
-                       end,
+              {S, C} = {binary_to_list(proplists:get_value(scope, Index)),
+                        binary_to_list(proplists:get_value(collection, Index))},
               menelaus_roles:is_allowed(
                 {[{collection, [B, S, C]}, n1ql, index], read}, Roles)
       end, Indexes).
