@@ -142,14 +142,7 @@ authenticate(Username, Password) ->
                 true ->
                     {ok, {Username, local}};
                 false ->
-                    %% This code can be removed when 7.0 is the minimum
-                    %% supported release.
-                    case is_bucket_auth(Username, Password) of
-                        true ->
-                            {ok, {Username, bucket}};
-                        false ->
-                            {error, auth_failure}
-                    end
+                    {error, auth_failure}
             end;
         {error, Reason} ->
             {error, Reason}
@@ -214,23 +207,4 @@ hash_password(HashInfo, Password) ->
         ?SHA1_HASH ->
             Salt = base64:decode(proplists:get_value(?SALT_KEY, HashInfo)),
             crypto:mac(hmac, sha, Salt, list_to_binary(Password))
-    end.
-
-is_bucket_auth(User, Password) ->
-    case cluster_compat_mode:is_cluster_70() of
-        true ->
-            false;
-        false ->
-            case ns_bucket:get_bucket(User) of
-                {ok, BucketConf} ->
-                    case {proplists:get_value(auth_type, BucketConf),
-                          proplists:get_value(sasl_password, BucketConf)} of
-                        {none, _} ->
-                            Password =:= "";
-                        {sasl, P} ->
-                            misc:compare_secure(Password, P)
-                    end;
-                not_present ->
-                    false
-            end
     end.

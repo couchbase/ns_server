@@ -993,20 +993,6 @@ new_bucket_default_params(memcached) ->
 cleanup_bucket_props(Props) ->
     lists:keydelete(moxi_port, 1, Props).
 
-generate_sasl_password() ->
-    binary_to_list(couch_uuids:random()).
-
-generate_sasl_password(Props) ->
-    case cluster_compat_mode:is_cluster_70() of
-        false ->
-            %% Backwards compatility with older releases that require
-            %% this property
-            lists:keystore(sasl_password, 1, Props,
-                           {sasl_password, generate_sasl_password()});
-        true ->
-            Props
-    end.
-
 add_auth_type(Props) ->
     case cluster_compat_mode:is_cluster_71() of
         true ->
@@ -1020,8 +1006,7 @@ create_bucket(BucketType, BucketName, NewConfig) ->
     MergedConfig0 =
         misc:update_proplist(new_bucket_default_params(BucketType),
                              NewConfig),
-    MergedConfig1 = generate_sasl_password(MergedConfig0),
-    MergedConfig = add_auth_type(MergedConfig1),
+    MergedConfig = add_auth_type(MergedConfig0),
     BucketUUID = couch_uuids:random(),
     Manifest = collections:default_manifest(MergedConfig),
     do_create_bucket(chronicle_compat:backend(), BucketName,

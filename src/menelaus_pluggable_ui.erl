@@ -286,29 +286,19 @@ proxy_req(RestPrefix, Path, PluginsConfig, Req) ->
         {#prefix{port_name = Port, service = Service},
          #plugin{request_headers_filter = HdrFilter} = Plugin} ->
             case choose_node(Service, Plugin, Req) of
-                {ok, Node, Remote} ->
+                {ok, Node} ->
                     HostPort = address_and_port(Port, Node),
                     Timeout = get_timeout(Service, Req),
 
-                    % choose_node/3 makes sure that the version of
+                    % choose_node/2 makes sure that the version of
                     % this node and the destination node are same.
-                    % But we still need to make the following
-                    % cluster_compat_mode check, since some services like
-                    % Analytics can forward this request to an Analytics
-                    % service on a node with lower version.
 
-                    {FwdHeader, HdrFilter1} =
-                        case cluster_compat_mode:is_cluster_70() of
-                            false ->
-                                {auth_token(Req, Remote), HdrFilter};
-                            true ->
-                                AuthnRes = menelaus_auth:get_authn_res(Req),
-                                {[menelaus_rest:on_behalf_header(AuthnRes),
-                                  menelaus_rest:special_auth_header(Node)],
-                                 add_filter_headers(HdrFilter)}
-                        end,
+                    AuthnRes = menelaus_auth:get_authn_res(Req),
+                    FwdHeader = [menelaus_rest:on_behalf_header(AuthnRes),
+                                 menelaus_rest:special_auth_header(Node)],
 
-                    Headers = FwdHeader ++ convert_headers(Req, HdrFilter1) ++
+                    Headers = FwdHeader ++
+                        convert_headers(Req, add_filter_headers(HdrFilter)) ++
                         forwarded_headers(Req),
                     RespHeaderFilter =
                         fun (H) ->
@@ -332,12 +322,7 @@ connect_options_for_mb54428({https, _, _, _}, Service) ->
                            set_tls_version_for_services_mb54428, [cbas]),
     case lists:member(Service, ServicesToApplyFix) of
         true ->
-            Vsn =
-                case cluster_compat_mode:is_cluster_70() of
-                    true -> 'tlsv1.3';
-                    false -> 'tlsv1.2'
-                end,
-            [{versions, [Vsn]}];
+            [{versions, ['tlsv1.3']}];
         false ->
             []
     end.
@@ -356,7 +341,7 @@ choose_node(views, Plugin, Req) ->
 choose_node(Service, #plugin{proxy_strategy = local}, _Req) ->
     Node = node(),
     case ns_cluster_membership:should_run_service(Service, Node) of
-        true -> {ok, Node, local};
+        true -> {ok, Node};
         false -> {error, {service_not_running, Service}}
     end;
 choose_node(Service, #plugin{proxy_strategy = sticky}, Req) ->
@@ -364,10 +349,9 @@ choose_node(Service, #plugin{proxy_strategy = sticky}, Req) ->
     case service_nodes(Service) of
         {ok, Nodes} ->
             case lists:member(Node, Nodes) of
-                true -> {ok, Node, local};
+                true -> {ok, Node};
                 false ->
-                    {ok, menelaus_util:choose_node_consistently(Req, Nodes),
-                     remote}
+                    {ok, menelaus_util:choose_node_consistently(Req, Nodes)}
             end;
         Err ->
             Err
@@ -435,37 +419,6 @@ get_timeout(_Service, Req) ->
             ?TIMEOUT;
         Val ->
             list_to_integer(Val)
-    end.
-
-auth_token(Req, Remote) ->
-    case menelaus_auth:extract_ui_auth_token(Req) of
-        not_ui ->
-            [];
-        {token, undefined} ->
-            [];
-        {token, Token} ->
-            %% if we go agains local node, there's no reason to pack node name
-            %% into the token. In fact it causes the race with node rename that
-            %% results in 401
-
-            %% Services running on the local node, can forward pluggable UI
-            %% requests to remote nodes. That necessitates packing the
-            %% local-node in the "ns-server-auth-token" when the compat version
-            %% is less than 7.0.0, else authentication of the request on the remote
-            %% node will fail.
-
-            %% Starting 7.0.0, Services use "cb-on-behalf-of" Headers which doesn't
-            %% need the local-node info to authenticate a request.
-
-            NodeToken = case cluster_compat_mode:is_cluster_70()
-                             andalso Remote =:= local of
-                            true ->
-                                Token;
-                            false ->
-                                menelaus_ui_auth:set_token_node(Token, node())
-                        end,
-            [{"ns-server-ui","yes"},
-             {"ns-server-auth-token", NodeToken}]
     end.
 
 convert_headers(Req, Filter) ->

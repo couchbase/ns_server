@@ -288,7 +288,7 @@ build_bucket_info(Id, Ctx, InfoLevel, MayExposeAuth, SkipMap) ->
         build_throttle_limits(BucketConfig),
         build_bucket_priority(BucketConfig),
         build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx),
-        [build_sasl_password(BucketConfig) || MayExposeAuth]])}.
+        [build_sasl_password() || MayExposeAuth]])}.
 
 get_internal_default(Key, Default) ->
     ns_config:read_key_fast(Key, Default).
@@ -346,19 +346,12 @@ build_hibernation_state(BucketConfig) ->
             {hibernationState, State}
     end.
 
-build_sasl_password(BucketConfig) ->
+build_sasl_password() ->
     case cluster_compat_mode:is_cluster_71() of
         true ->
             [];
         false ->
-            case cluster_compat_mode:is_cluster_70() of
-                true ->
-                    {saslPassword, <<>>};
-                false ->
-                    {saslPassword,
-                     list_to_binary(proplists:get_value(sasl_password,
-                                                        BucketConfig, ""))}
-            end
+            {saslPassword, <<>>}
     end.
 
 build_replica_index(BucketConfig) ->

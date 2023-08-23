@@ -308,10 +308,8 @@ build_bucket_capabilities(BucketConfig) ->
                      {durableWrite, true},
                      {tombstonedUserXAttrs, true},
                      {couchapi, ns_bucket:can_have_views(BucketConfig)},
-                     {'subdoc.ReplaceBodyWithXattr',
-                      cluster_compat_mode:is_cluster_70()},
-                     {'subdoc.DocumentMacroSupport',
-                      cluster_compat_mode:is_cluster_70()},
+                     {'subdoc.ReplaceBodyWithXattr', true},
+                     {'subdoc.DocumentMacroSupport', true},
                      {'subdoc.ReviveDocument',
                       cluster_compat_mode:is_cluster_71()},
                      {'nonDedupedHistory',
@@ -348,14 +346,8 @@ compute_global_rev(Config, {_, ChronicleRev}) ->
 compute_global_rev(Config, no_rev) ->
     ns_config:compute_global_rev(Config).
 
-build_global_rev_epoch(Config, Snapshot) ->
-    case cluster_compat_mode:is_cluster_70(Config) of
-         true ->
-            Failovers = ns_cluster:counter(Snapshot, quorum_failover_success,
-                                           0),
-            [{revEpoch, Failovers + 1}];
-         false -> []
-    end.
+get_rev_epoch(Snapshot) ->
+    ns_cluster:counter(Snapshot, quorum_failover_success, 0) + 1.
 
 compute_bucket_info_with_config(Id, Config, Snapshot, BucketConfig,
                                 ChronicleRev) ->
@@ -370,15 +362,11 @@ compute_bucket_info_with_config(Id, Config, Snapshot, BucketConfig,
     %% We're computing rev using config's global rev which allows us
     %% to track changes to node services and set of active nodes.
     Rev = compute_global_rev(Config, ChronicleRev),
-    RevEpochJSON = build_global_rev_epoch(Config, Snapshot),
-    RevEpoch = case RevEpochJSON of
-                   [] -> not_present;
-                   [{revEpoch, E}] -> E
-               end,
+    RevEpoch = get_rev_epoch(Snapshot),
     Json =
         {lists:flatten(
            [{rev, Rev},
-            RevEpochJSON,
+            {revEpoch, RevEpoch},
             build_short_bucket_info(Id, BucketConfig, Snapshot),
             build_ddocs(Id, BucketConfig),
             build_vbucket_map(?LOCALHOST_MARKER_STRING, BucketConfig),
@@ -481,13 +469,8 @@ do_build_node_services() ->
     NodesExtHash = integer_to_binary(erlang:phash2(NEIs)),
     Caps = build_cluster_capabilities(Config),
     Rev = compute_global_rev(Config, ChronicleRev),
-    RevEpochJSON = build_global_rev_epoch(Config, Snapshot),
-    RevEpoch = case RevEpochJSON of
-                   [] -> not_present;
-                   [{revEpoch, E}] -> E
-               end,
-    J = {[{rev, Rev},
-          {nodesExt, NEIs}] ++ Caps ++ RevEpochJSON},
+    RevEpoch = get_rev_epoch(Snapshot),
+    J = {[{rev, Rev}, {nodesExt, NEIs}, {revEpoch, RevEpoch}] ++ Caps},
     {Rev, RevEpoch, ejson:encode(J), NodesExtHash}.
 
 -ifdef(TEST).

@@ -85,17 +85,12 @@ settings_post_validators() ->
     [validator:integer(indexerThreads, 0, 1024, _),
      validator:integer(memorySnapshotInterval, 1, infinity, _),
      validator:integer(stableSnapshotInterval, 1, infinity, _),
-     validator:integer(maxRollbackPoints, 1, infinity, _)] ++
-        case cluster_compat_mode:is_cluster_70() of
+     validator:integer(maxRollbackPoints, 1, infinity, _),
+     validator:integer(numReplica, 0, 16, _)] ++
+        case cluster_compat_mode:is_enterprise() of
             true ->
-                [validator:integer(numReplica, 0, 16, _)] ++
-                case cluster_compat_mode:is_enterprise() of
-                    true ->
-                        [validator:boolean(redistributeIndexes, _)];
-                    false ->
-                        []
-                end;
-            _ ->
+                [validator:boolean(redistributeIndexes, _)];
+            false ->
                 []
         end ++
         case cluster_compat_mode:is_cluster_71() andalso

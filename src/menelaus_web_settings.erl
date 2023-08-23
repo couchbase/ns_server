@@ -397,7 +397,6 @@ get_cluster_encryption(Level) ->
     IsMandatory = (ns_ssl_services_setup:client_cert_auth_state() =:=
                        "mandatory"),
     IsTrinity = cluster_compat_mode:is_cluster_trinity(),
-    IsStrictPossibleCompat = cluster_compat_mode:is_cluster_70(),
     IsStrictPossibleUnencDist = misc:cluster_has_external_unencrpted_dist(),
     if
         not IsCEncryptEnabled  ->
@@ -413,10 +412,6 @@ get_cluster_encryption(Level) ->
             M = "Can't set cluster encryption level to '" ++ Level ++
                 "' when client certificate authentication state is set "
                 "to 'mandatory'.",
-            {error, M};
-        Level =:= "strict" andalso not IsStrictPossibleCompat ->
-            M = "Can't set cluster encryption level to 'strict' "
-                "in mixed version clusters.",
             {error, M};
         Level =:= "strict" andalso IsStrictPossibleUnencDist ->
             M = "Can't set cluster encryption level to 'strict' when "
@@ -440,8 +435,6 @@ get_cluster_encryption(Level) ->
 services_with_security_settings() ->
     [kv, fts, index, eventing, n1ql, cbas, backup, ns_server].
 
-is_allowed_on_cluster([secure_headers]) ->
-    cluster_compat_mode:is_cluster_70();
 is_allowed_on_cluster([event_logs_limit]) ->
     cluster_compat_mode:is_cluster_71();
 is_allowed_on_cluster([magma_min_memory_quota]) ->

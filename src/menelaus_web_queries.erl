@@ -40,44 +40,34 @@ settings_post_validators() ->
      validator:integer(queryN1QLFeatCtrl, _),
      validator:one_of(queryLogLevel, ["debug", "trace", "info", "warn",
                                       "error", "severe", "none"], _),
-     validator:convert(queryLogLevel, fun list_to_binary/1, _)] ++
-        settings_post_validators_70() ++
+     validator:convert(queryLogLevel, fun list_to_binary/1, _),
+     validator:time_duration(queryTxTimeout, _),
+     validator:convert(queryTxTimeout, fun list_to_binary/1, _),
+     validator:integer(queryMemoryQuota, _),
+     validator:boolean(queryUseCBO, _),
+     validator:boolean(queryCleanupClientAttempts, _),
+     validator:boolean(queryCleanupLostAttempts, _),
+     validator:time_duration(queryCleanupWindow, _),
+     validator:convert(queryCleanupWindow, fun list_to_binary/1, _),
+     validator:integer(queryNumAtrs, _)] ++
+        case cluster_compat_mode:is_cluster_trinity() of
+            true ->
+                [validator:integer(queryNodeQuota, _),
+                 validator:range(queryNodeQuota, 0, infinity, _),
+                 validator:integer(queryNodeQuotaValPercent, _),
+                 validator:range(queryNodeQuotaValPercent, 0, 100, _),
+                 validator:string(queryUseReplica, _),
+                 validator:convert(queryUseReplica, fun list_to_binary/1, _),
+                 validator:one_of(queryUseReplica,
+                                  [<<"unset">>, <<"off">>, <<"on">>], _),
+                 validator:integer(queryNumCpus, _),
+                 validator:range(queryNumCpus, 0, infinity, _),
+                 validator:integer(queryCompletedMaxPlanSize, _),
+                 validator:range(queryCompletedMaxPlanSize, 0, infinity, _)];
+            false ->
+                []
+        end ++
         [validator:unsupported(_)].
-
-settings_post_validators_70() ->
-    case cluster_compat_mode:is_cluster_70() of
-        true ->
-            [validator:time_duration(queryTxTimeout, _),
-             validator:convert(queryTxTimeout, fun list_to_binary/1, _),
-             validator:integer(queryMemoryQuota, _),
-             validator:boolean(queryUseCBO, _),
-             validator:boolean(queryCleanupClientAttempts, _),
-             validator:boolean(queryCleanupLostAttempts, _),
-             validator:time_duration(queryCleanupWindow, _),
-             validator:convert(queryCleanupWindow, fun list_to_binary/1, _),
-             validator:integer(queryNumAtrs, _)] ++
-                case cluster_compat_mode:is_cluster_trinity() of
-                    true ->
-                        [validator:integer(queryNodeQuota, _),
-                         validator:range(queryNodeQuota, 0, infinity, _),
-                         validator:integer(queryNodeQuotaValPercent, _),
-                         validator:range(queryNodeQuotaValPercent, 0, 100, _),
-                         validator:string(queryUseReplica, _),
-                         validator:convert(queryUseReplica,
-                                           fun list_to_binary/1, _),
-                         validator:one_of(queryUseReplica,
-                                          [<<"unset">>, <<"off">>, <<"on">>], _),
-                         validator:integer(queryNumCpus, _),
-                         validator:range(queryNumCpus, 0, infinity, _),
-                         validator:integer(queryCompletedMaxPlanSize, _),
-                         validator:range(queryCompletedMaxPlanSize, 0,
-                                         infinity, _)];
-                    false ->
-                        []
-                end;
-        false ->
-            []
-    end.
 
 validate_tmp_space_size(Name, State) ->
     %% zero disables the feature, and -1 implies unlimited quota

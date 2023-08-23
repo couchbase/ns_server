@@ -1232,7 +1232,6 @@ update_manifest_test_setup() ->
     meck:new(ns_bucket, [passthrough]),
     meck:new(config_profile, [passthrough]),
 
-    meck:expect(cluster_compat_mode, is_cluster_70, fun () -> true end),
     meck:expect(cluster_compat_mode, is_cluster_72, fun () -> true end),
     meck:expect(cluster_compat_mode, is_cluster_trinity, fun () -> true end),
     meck:expect(config_profile, get_bool,

@@ -12,15 +12,11 @@
 -include("ns_common.hrl").
 -include("rbac.hrl").
 
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
--endif.
-
 -export([start_link/0]).
 -export([init/0]).
 
 -export([start_ui_session/3, maybe_refresh/1,
-         check/1, reset/0, logout/1, set_token_node/2, session_type_by_id/1,
+         check/1, reset/0, logout/1, session_type_by_id/1,
          logout_by_session_name/2, logout_by_session_type/1]).
 
 start_link() ->
@@ -45,10 +41,6 @@ start_ui_session(UISessionType, SessionName,
 -spec maybe_refresh(auth_token()) -> nothing | {new_token, auth_token()}.
 maybe_refresh(Token) ->
     token_server:maybe_refresh(?MODULE, Token).
-
--spec set_token_node(auth_token(), atom()) -> auth_token().
-set_token_node(Token, Node) ->
-    base64:encode(erlang:term_to_binary({Node, Token})).
 
 -spec get_token_node(auth_token() | undefined) ->
         {Node :: atom(), auth_token() | undefined}.
@@ -116,18 +108,3 @@ logout_by_session_name(Type, SessionName) ->
 logout_by_session_type(Type) ->
     Pattern = #uisession{type = Type, _ = '_'},
     token_server:purge(?MODULE, Pattern).
-
--ifdef(TEST).
-set_and_get_token_node_test() ->
-    ?assertEqual({local, undefined}, get_token_node(undefined)),
-    ?assertEqual({local, <<"token">>}, get_token_node(<<"token">>)),
-    ?assertEqual({local, "token"}, get_token_node("token")),
-    [?assertEqual({Node, Token}, get_token_node(set_token_node(Token, Node)))
-        || _    <- lists:seq(1,1000),
-           Node <- ['n_0@192.168.0.1',
-                    'n_0@::1',
-                    'n_0@2001:db8:0:0:0:ff00:42:8329',
-                    'n_0@crazy*host%name;'],
-           Token <- [couch_uuids:random(),
-                     binary_to_list(couch_uuids:random())]].
--endif.
