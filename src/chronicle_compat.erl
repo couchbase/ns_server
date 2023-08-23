@@ -19,7 +19,6 @@
 -export([backend/0,
          get/2,
          get/3,
-         set/2,
          set_multiple/1,
          transaction/2,
          txn/1,
@@ -81,14 +80,6 @@ get(direct, Key, #{}) ->
                 Error ->
                     Error
             end
-    end.
-
-set(Key, Value) ->
-    case chronicle_kv:set(kv, Key, Value) of
-        {ok, _} ->
-            ok;
-        Error ->
-            Error
     end.
 
 set_multiple([]) ->

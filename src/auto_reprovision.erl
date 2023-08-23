@@ -83,17 +83,17 @@ init([]) ->
 
 handle_call({enable, MaxNodes}, _From, #state{count = Count} = State) ->
     ale:info(?USER_LOGGER, "Enabled auto-reprovision config with max_nodes set to ~p", [MaxNodes]),
-    ok = persist_config(true, MaxNodes, Count),
+    persist_config(true, MaxNodes, Count),
     {reply, ok, State#state{enabled = true, max_nodes = MaxNodes, count = Count}};
 handle_call(disable, _From, _State) ->
-    ok = persist_config(false, ?DEFAULT_MAX_NODES_SUPPORTED, 0),
+    persist_config(false, ?DEFAULT_MAX_NODES_SUPPORTED, 0),
     {reply, ok, #state{}};
 handle_call(reset_count, _From, #state{count = 0} = State) ->
     {reply, ok, State};
 handle_call(reset_count, _From, State) ->
     {Enabled, MaxNodes, Count} = get_reprovision_info(),
     ale:info(?USER_LOGGER, "auto-reprovision count reset from ~p", [Count]),
-    ok = persist_config(Enabled, MaxNodes, 0),
+    persist_config(Enabled, MaxNodes, 0),
     {reply, ok, State#state{count = 0}};
 handle_call({reprovision_buckets, Buckets, UnsafeNodes}, _From,
             #state{enabled = Enabled, max_nodes = MaxNodes,
@@ -163,10 +163,10 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% Internal functions.
 persist_config(Enabled, MaxNodes, Count) ->
-    ok = chronicle_compat:set(auto_reprovision_cfg,
-                              [{enabled, Enabled},
-                               {max_nodes, MaxNodes},
-                               {count, Count}]).
+    {ok, _} = chronicle_kv:set(kv, auto_reprovision_cfg,
+                               [{enabled, Enabled},
+                                {max_nodes, MaxNodes},
+                                {count, Count}]).
 
 get_reprovision_cfg() ->
     chronicle_compat:get(auto_reprovision_cfg, #{required => true}).

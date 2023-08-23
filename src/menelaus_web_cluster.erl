@@ -722,7 +722,7 @@ do_setup_services_post(Req, Props) ->
     SetDefaultMemQuotas = proplists:get_value(setDefaultMemQuotas, Props),
     case setup_services_check_quota(Services, SetDefaultMemQuotas) of
         ok ->
-            ok = chronicle_compat:set({node, node(), services}, Services),
+            {ok, _} = chronicle_kv:set(kv, {node, node(), services}, Services),
             ns_audit:setup_node_services(Req, node(), Services),
             ok;
         {error, Error} ->

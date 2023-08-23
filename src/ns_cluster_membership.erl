@@ -592,7 +592,12 @@ set_service_map(kv, _Nodes) ->
 set_service_map(Service, Nodes) ->
     ?log_debug("Set service map for service ~p to ~p", [Service, Nodes]),
     master_activity_events:note_set_service_map(Service, Nodes),
-    chronicle_compat:set({service_map, Service}, Nodes).
+    case chronicle_kv:set(kv, {service_map, Service}, Nodes) of
+        {ok, _} ->
+            ok;
+        Error ->
+            Error
+    end.
 
 get_service_map(Snapshot, kv) ->
     %% kv is special; just return active kv nodes
@@ -629,7 +634,7 @@ service_has_pending_failover(Snapshot, Service) ->
 
 service_clear_pending_failover(Service) ->
     ?log_debug("Clear pending failover for service ~p", [Service]),
-    chronicle_compat:set({service_failover_pending, Service}, false).
+    chronicle_kv:set(kv, {service_failover_pending, Service}, false).
 
 node_active_services(Node) ->
     node_active_services(direct, Node).

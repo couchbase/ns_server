@@ -184,7 +184,7 @@ complete_service_failover(Snapshot, Service, FailedNodes) ->
     RV.
 
 clear_pending_failover(Snapshot, Service, FailedNodes) ->
-    ok = ns_cluster_membership:service_clear_pending_failover(Service),
+    {ok, _} = ns_cluster_membership:service_clear_pending_failover(Service),
 
     case chronicle_compat:backend() of
         chronicle ->
