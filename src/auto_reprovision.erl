@@ -169,7 +169,7 @@ persist_config(Enabled, MaxNodes, Count) ->
                                {count, Count}]).
 
 get_reprovision_cfg() ->
-    chronicle_compat:get(direct, auto_reprovision_cfg, #{required => true}).
+    chronicle_compat:get(auto_reprovision_cfg, #{required => true}).
 
 jsonify_cfg() ->
     {get_reprovision_cfg()}.

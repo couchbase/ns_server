@@ -65,7 +65,7 @@ get(Snapshot, Key, #{}) when is_map(Snapshot) ->
         error ->
             {error, not_found}
     end;
-get(_Config, Key, #{}) ->
+get(direct, Key, #{}) ->
     case ns_node_disco:couchdb_node() =:= node() of
         true ->
             case ns_couchdb_chronicle_dup:lookup(Key) of

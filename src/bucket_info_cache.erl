@@ -486,7 +486,7 @@ setup_compat_mode_for(Version, IsEnterprise) ->
 
     meck:new(chronicle_compat, [passthrough]),
     meck:expect(chronicle_compat, get,
-        fun(_, cluster_compat_version, _) -> Version end).
+        fun(cluster_compat_version, _) -> Version end).
 
 teardown_compat_mode() ->
     meck:unload(cluster_compat_mode),

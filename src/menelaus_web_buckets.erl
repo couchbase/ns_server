@@ -4058,7 +4058,7 @@ build_dynamic_bucket_info_test_setup(Version, IsEnterprise) ->
 
     meck:new(chronicle_compat, [passthrough]),
     meck:expect(chronicle_compat, get,
-        fun(_, cluster_compat_version, _) ->
+        fun(cluster_compat_version, _) ->
             Version
         end),
 

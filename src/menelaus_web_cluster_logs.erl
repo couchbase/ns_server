@@ -61,7 +61,7 @@ do_handle_settings_log_redaction_post_body(Req, Values) ->
 handle_start_collect_logs(Req) ->
     Params = mochiweb_request:parse_post(Req),
 
-    case parse_validate_collect_params(Params, ns_config:get()) of
+    case parse_validate_collect_params(Params) of
         {ok, Nodes, BaseURL, Options} ->
             ProxyInfo = lists:keyfind(upload_proxy, 1, Options),
             case maybe_do_preflight_checks(BaseURL, ProxyInfo, Options) of
@@ -146,12 +146,13 @@ stringify_one_node_upload_error({invalid_directory, R}) ->
     {R, "Must be an absolute path"}.
 
 
-parse_nodes("*", Config) ->
-    [{ok, ns_node_disco:nodes_wanted(Config)}];
-parse_nodes(undefined, _) ->
+parse_nodes("*") ->
+    [{ok, ns_node_disco:nodes_wanted()}];
+parse_nodes(undefined) ->
     [{error, missing_nodes}];
-parse_nodes(NodesParam, Config) ->
-    KnownNodes = sets:from_list([atom_to_list(N) || N <- ns_node_disco:nodes_wanted(Config)]),
+parse_nodes(NodesParam) ->
+    KnownNodes = sets:from_list(
+                   [atom_to_list(N) || N <- ns_node_disco:nodes_wanted()]),
     Nodes = string:tokens(NodesParam, ","),
     {_Good, Bad} = lists:partition(
                     fun (N) ->
@@ -235,8 +236,8 @@ parse_validate_proxy_url(ProxyHost0) ->
             [{ok, URL}]
     end.
 
-parse_validate_collect_params(Params, Config) ->
-    NodesRV = parse_nodes(proplists:get_value("nodes", Params), Config),
+parse_validate_collect_params(Params) ->
+    NodesRV = parse_nodes(proplists:get_value("nodes", Params)),
 
     UploadHost = proplists:get_value("uploadHost", Params),
     Customer = proplists:get_value("customer", Params),

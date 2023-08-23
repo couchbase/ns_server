@@ -1255,7 +1255,7 @@ cert_props(Type, DerCert, Extras) when is_binary(DerCert) ->
 
 get_warnings() ->
     Config = ns_config:get(),
-    Nodes = ns_node_disco:nodes_wanted(Config),
+    Nodes = ns_node_disco:nodes_wanted(),
     TrustedCAs = trusted_CAs(pem),
     IsTrinity = cluster_compat_mode:is_cluster_trinity(),
     ClientWarnings =

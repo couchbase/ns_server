@@ -24,7 +24,7 @@
 -endif.
 
 -export([start/2, is_possible/2, orchestrate/2,
-         get_failover_vbuckets/2, promote_max_replicas/4,
+         get_failover_vbuckets/1, promote_max_replicas/4,
          clear_failover_vbuckets_sets/1,
          nodes_needed_for_durability_failover/2,
          can_preserve_durability_majority/2]).
@@ -866,8 +866,11 @@ check_last_server([{BucketName, BucketConfig} | Rest], FailoverNodes) ->
             check_last_server(Rest, FailoverNodes)
     end.
 
-get_failover_vbuckets(Config, Node) ->
-    chronicle_compat:get(Config, {node, Node, failover_vbuckets},
+get_failover_vbuckets(Node) ->
+    get_failover_vbuckets(direct, Node).
+
+get_failover_vbuckets(Snapshot, Node) ->
+    chronicle_compat:get(Snapshot, {node, Node, failover_vbuckets},
                          #{default => []}).
 
 check_test_condition({Step, Bucket}) ->

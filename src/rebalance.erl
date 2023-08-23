@@ -23,8 +23,8 @@
 
 -include("ns_common.hrl").
 
-rebalancer(Config) ->
-    chronicle_compat:get(Config, rebalancer_pid, #{default => undefined}).
+rebalancer(Snapshot) ->
+    chronicle_compat:get(Snapshot, rebalancer_pid, #{default => undefined}).
 
 running() ->
     running(direct).

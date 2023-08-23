@@ -615,8 +615,7 @@ section_nodes("@xdcr-" ++ Bucket) ->
 section_nodes(Section) ->
     case describe_section(Section) of
         {Service, _} ->
-            ns_cluster_membership:service_actual_nodes(ns_config:latest(),
-                                                       Service);
+            ns_cluster_membership:service_actual_nodes(direct, Service);
         undefined ->
             live_bucket_nodes(Section)
     end.
@@ -1246,7 +1245,7 @@ proceed_if_has_nodes(Service, ServiceNodes, MemoizeKey, Fun) ->
                 case NodesOrAll of
                     all ->
                         ns_cluster_membership:service_actual_nodes(
-                          ns_config:latest(), Service);
+                          direct, Service);
                     _ ->
                         NodesOrAll
                 end,
@@ -2712,7 +2711,7 @@ serve_aggregated_ui_stats(Req, Params) ->
         lists:map(
           fun ({Service, Param}) ->
                   AllNodes = ns_cluster_membership:service_actual_nodes(
-                                ns_config:latest(), Service),
+                                direct, Service),
                   {Service,
                    {Param,
                     case should_grab_service_stats(Nodes, AllNodes) of

@@ -84,7 +84,7 @@ get_compat_version(Config) ->
         V when V =:= undefined orelse V < ?VERSION_71 ->
             V;
         _ ->
-            chronicle_compat:get(Config, cluster_compat_version,
+            chronicle_compat:get(cluster_compat_version,
                                  #{default => ?VERSION_70})
     end.
 
@@ -260,7 +260,7 @@ do_upgrades([_ | Rest], CurrentVersion, NewVersion, Config, NodesWanted) ->
     do_upgrades(Rest, CurrentVersion, NewVersion, Config, NodesWanted).
 
 do_consider_switching_compat_mode(Config, CompatVersion, NsConfigVersion) ->
-    NodesWanted = ns_node_disco:nodes_wanted(Config),
+    NodesWanted = ns_node_disco:nodes_wanted(),
     NodesUp = lists:sort([node() | nodes()]),
     case ordsets:is_subset(NodesWanted, NodesUp) of
         true ->

@@ -620,7 +620,7 @@ maybe_reset_rebalance_status(Options) ->
 %% !!! only purely functional code below (with notable exception of logging) !!!
 %% lets try to keep as much as possible logic below this line
 check_server_list(Bucket, BucketConfig) ->
-    check_server_list(Bucket, BucketConfig, ns_config:latest(), []).
+    check_server_list(Bucket, BucketConfig, direct, []).
 
 check_server_list(Bucket, BucketConfig, Snapshot, Options) ->
     Servers = ns_bucket:get_servers(BucketConfig),

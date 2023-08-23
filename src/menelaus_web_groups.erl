@@ -85,9 +85,9 @@ build_replacement_groups(Groups, ParsedGroups) ->
                        KA =< KB
                end, ReplacementGroups0).
 
-server_groups_put_txn(Cfg, JSON, Rev) ->
-    Groups = ns_cluster_membership:server_groups(Cfg),
-    Nodes = ns_node_disco:nodes_wanted(Cfg),
+server_groups_put_txn(Snapshot, JSON, Rev) ->
+    Groups = ns_cluster_membership:server_groups(Snapshot),
+    Nodes = ns_node_disco:nodes_wanted(Snapshot),
     ParsedGroups =
         try
             parse_validate_groups_payload(JSON, Groups, Nodes)
@@ -103,7 +103,7 @@ server_groups_put_txn(Cfg, JSON, Rev) ->
         _ ->
             case integer_to_list(erlang:phash2(Groups)) of
                 Rev ->
-                    case rebalance:running(Cfg) of
+                    case rebalance:running(Snapshot) of
                         true ->
                             {abort, rebalance_running};
                         false ->

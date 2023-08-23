@@ -635,8 +635,8 @@ build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr) ->
                     L ->
                         [{[{afamily, AF}, {nodeEncryption, E}]} || {AF, E} <- L]
                 end,
-    ServerGroup = ns_cluster_membership:get_node_server_group(WantENode,
-                                                              Config),
+    ServerGroup =
+        ns_cluster_membership:get_node_server_group(WantENode, Snapshot),
 
     RV = [{hostname, build_node_hostname(Config, WantENode, LocalAddr)},
           {nodeUUID, NodeUUID},

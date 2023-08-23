@@ -1214,7 +1214,7 @@ do_handle_set_recovery_type(Req, Type, Params) ->
     OtpNodeErrorMsg =
         <<"invalid node name or node can't be used for delta recovery">>,
 
-    NodeSvcs = ns_cluster_membership:node_services(ns_config:latest(), Node),
+    NodeSvcs = ns_cluster_membership:node_services(Node),
     NotKVIndex = not lists:member(kv, NodeSvcs) andalso
         not lists:member(index, NodeSvcs),
 

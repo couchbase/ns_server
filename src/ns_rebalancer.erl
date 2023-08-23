@@ -242,7 +242,7 @@ calculate_desired_servers(#{keep_nodes := KeepNodes,
     %% defragment_zones can be missing in map if called from pre-Trinity nodes
     case bucket_placer:rebalance(
            KeepNodes,
-           bucket_failover_vbuckets(ns_config:latest(), _, DeltaNodes),
+           bucket_failover_vbuckets(_, DeltaNodes),
            maps:get(defragment_zones, Params, undefined)) of
         {ok, Res} ->
             Res;
@@ -1011,7 +1011,7 @@ find_delta_recovery_map(Config, AllNodes, DeltaNodes, Bucket, BucketConfig) ->
             MatchingMaps = mb_map:find_matching_past_maps(AllNodes, CurrentMap,
                                                           CurrentOptions,
                                                           History),
-            FailoverVBs = bucket_failover_vbuckets(Config, Bucket, DeltaNodes),
+            FailoverVBs = bucket_failover_vbuckets(Bucket, DeltaNodes),
 
             case find_delta_recovery_map(CurrentMap,
                                          FailoverVBs, MatchingMaps) of
@@ -1045,13 +1045,13 @@ map_to_vbuckets_dict(Map) ->
                           Acc, lists:filter(_ =/= undefined, Chain))
       end, dict:new(), misc:enumerate(Map, 0)).
 
-bucket_failover_vbuckets(Config, Bucket, DeltaNodes) ->
+bucket_failover_vbuckets(Bucket, DeltaNodes) ->
     dict:from_list(
       lists:map(
         fun (Node) ->
                 VBs = proplists:get_value(
                         Bucket,
-                        failover:get_failover_vbuckets(Config, Node),
+                        failover:get_failover_vbuckets(Node),
                         []),
                 {Node, lists:usort(VBs)}
         end, DeltaNodes)).
