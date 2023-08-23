@@ -247,6 +247,9 @@ check_bucket_guard_rail(Resource, ResourceConfig, BucketConfig, BucketStats) ->
             case Resource of
                 resident_ratio ->
                     validate_bucket_resource_min(BucketConfig,
+                                                 ResourceConfig, Metric);
+                data_size ->
+                    validate_bucket_resource_max(BucketConfig,
                                                  ResourceConfig, Metric)
             end
     end.
@@ -267,6 +270,27 @@ validate_bucket_resource_min(BucketConfig, ResourceConfig, Metric) ->
                     _ -> CouchstoreLimit
                 end,
             Value < Limit
+    end.
+
+validate_bucket_resource_max(BucketConfig, ResourceConfig, Metric) ->
+    CouchstoreLimit = proplists:get_value(couchstore_maximum, ResourceConfig),
+    MagmaLimit = proplists:get_value(magma_maximum, ResourceConfig),
+    case Metric of
+        %% Ignore infinity/neg_infinity as these are not meaningful here
+        infinity ->
+            false;
+        neg_infinity ->
+            false;
+        Value ->
+            Limit =
+                case ns_bucket:storage_mode(BucketConfig) of
+                    magma -> MagmaLimit;
+                    _ -> CouchstoreLimit
+                end,
+            %% Inclusive inequality so that when limit is 0 and value is 0, the
+            %% guard rail still fires, which is useful for testing, and doesn't
+            %% impact real world behaviour in a noticeable manner
+            Value >= Limit
     end.
 
 -ifdef(TEST).
@@ -307,6 +331,22 @@ check_bucket_t() ->
                    resident_ratio, RRConfig, CouchstoreBucket,
                    [{resident_ratio, 5}])),
 
+    DataSizeConfig = [{enabled, true},
+                      {couchstore_maximum, 1.6},
+                      {magma_maximum, 16}],
+
+    %% Data size below maximum
+    ?assertEqual(false,
+                 check_bucket_guard_rail(
+                   data_size, DataSizeConfig, CouchstoreBucket,
+                   [{data_size, 1}])),
+
+    %% Data size above maximum
+    ?assertEqual(true,
+                 check_bucket_guard_rail(
+                   data_size, DataSizeConfig, CouchstoreBucket,
+                   [{data_size, 2}])),
+
     MagmaBucket = [{type, membase},
                    {storage_mode, magma}],
 
@@ -317,7 +357,9 @@ check_bucket_t() ->
                         [{"couchstore", CouchstoreBucket},
                          {"magma", MagmaBucket}]
                 end),
-    Config = [{resident_ratio, RRConfig}],
+    Config = [{resident_ratio, RRConfig},
+              {data_size, DataSizeConfig}],
+
 
     %% RR% above couchstore minimum
     ?assertEqual(
@@ -341,6 +383,28 @@ check_bucket_t() ->
        check_bucket(Config, "magma", MagmaBucket,
                     [{resident_ratio, 0.5}])),
 
+    %% Data size below couchstore maximum
+    ?assertEqual(
+       [],
+       check_bucket(Config, "couchstore", CouchstoreBucket,
+                    [{data_size, 1}])),
+    %% Data size above couchstore maximum
+    ?assertEqual(
+       [{{bucket, "couchstore"}, data_size}],
+       check_bucket(Config, "couchstore", CouchstoreBucket,
+                    [{data_size, 5}])),
+
+    %% Data size below magma maximum
+    ?assertEqual(
+       [],
+       check_bucket(Config, "magma", MagmaBucket,
+                    [{data_size, 5}])),
+    %% Data size above magma maximum
+    ?assertEqual(
+       [{{bucket, "magma"}, data_size}],
+       check_bucket(Config, "magma", MagmaBucket,
+                    [{data_size, 20}])),
+
     %% Service level check
 
     %% RR% above couchstore minimum
@@ -360,6 +424,24 @@ check_bucket_t() ->
     ?assertListsEqual(
        [{{bucket, "magma"}, resident_ratio}],
        check({bucket, Config}, [{"magma", [{resident_ratio, 0.5}]}])),
+
+    %% Data size below couchstore maximum
+    ?assertListsEqual(
+       [],
+       check({bucket, Config}, [{"couchstore", [{data_size, 1}]}])),
+    %% Data size above couchstore maximum
+    ?assertListsEqual(
+       [{{bucket, "couchstore"}, data_size}],
+       check({bucket, Config}, [{"couchstore", [{data_size, 5}]}])),
+
+    %% Data size below magma maximum
+    ?assertListsEqual(
+       [],
+       check({bucket, Config}, [{"magma", [{data_size, 5}]}])),
+    %% Data size above magma maximum
+    ?assertListsEqual(
+       [{{bucket, "magma"}, data_size}],
+       check({bucket, Config}, [{"magma", [{data_size, 20}]}])),
     ok.
 
 check_resources_t() ->
@@ -408,9 +490,11 @@ check_resources_t() ->
     meck:expect(stats_interface, for_resource_management,
                 fun () ->
                         [{"couchstore_bucket",
-                          [{resident_ratio, 9}]},
+                          [{resident_ratio, 9},
+                           {data_size, 2}]},
                          {"magma_bucket",
-                          [{resident_ratio, 0.5}]}]
+                          [{resident_ratio, 0.5},
+                           {data_size, 20}]}]
                 end),
     ?assertEqual([],
                  check_resources()),
@@ -421,7 +505,11 @@ check_resources_t() ->
                           [{resident_ratio,
                             [{enabled, true},
                              {couchstore_minimum, 10},
-                             {magma_minimum, 1}]}]}]
+                             {magma_minimum, 1}]},
+                           {data_size,
+                            [{enabled, true},
+                             {couchstore_maximum, 1.6},
+                             {magma_maximum, 16}]}]}]
                 end),
 
     meck:expect(stats_interface, for_resource_management,
@@ -453,7 +541,46 @@ check_resources_t() ->
                 end),
     ?assertEqual([{{bucket, "couchstore_bucket"}, resident_ratio},
                   {{bucket, "magma_bucket"}, resident_ratio}],
-                 check_resources()).
+                 check_resources()),
+
+    meck:expect(stats_interface, for_resource_management,
+                fun () ->
+                        [{"couchstore_bucket",
+                          [{data_size, 2}]},
+                         {"magma_bucket",
+                          [{data_size, 20}]}]
+                end),
+    ?assertEqual([{{bucket, "couchstore_bucket"}, data_size},
+                  {{bucket, "magma_bucket"}, data_size}],
+                 check_resources()),
+
+    meck:expect(stats_interface, for_resource_management,
+                fun () ->
+                        [{"couchstore_bucket",
+                          [{resident_ratio, 11},
+                           {data_size, 2}]},
+                         {"magma_bucket",
+                          [{resident_ratio, 2},
+                           {data_size, 20}]}]
+                end),
+    ?assertEqual([{{bucket, "couchstore_bucket"}, data_size},
+                  {{bucket, "magma_bucket"}, data_size}],
+                 check_resources()),
+
+    meck:expect(stats_interface, for_resource_management,
+                fun () ->
+                        [{"couchstore_bucket",
+                          [{resident_ratio, 9},
+                           {data_size, 2}]},
+                         {"magma_bucket",
+                          [{resident_ratio, 0.5},
+                           {data_size, 20}]}]
+                end),
+    ?assertListsEqual([{{bucket, "couchstore_bucket"}, resident_ratio},
+                       {{bucket, "couchstore_bucket"}, data_size},
+                       {{bucket, "magma_bucket"}, resident_ratio},
+                       {{bucket, "magma_bucket"}, data_size}],
+                      check_resources()).
 
 validate_topology_change_t() ->
     Servers = [node1, node2],

@@ -191,7 +191,9 @@ for_resource_management() ->
               [
                {kv_resident_ratio, "100 * kv_ep_max_size / on(bucket) "
                 "(sum by(bucket, name) (kv_logical_data_size_bytes"
-                "{state=`active`}))"}
+                "{state=`active`}))"},
+               {kv_data_size,
+                "kv_logical_data_size_bytes{state=`active`} / 10^12"}
               ]))),
 
     Res = latest(

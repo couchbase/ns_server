@@ -59,6 +59,16 @@ params() ->
      {"bucket.residentRatio.magmaMinimum",
       #{type => {num, 0, 100},
         cfg_key => [bucket, resident_ratio, magma_minimum]}},
+     %% Max data per node per bucket configuration
+     {"bucket.dataSizePerNode.enabled",
+      #{type => bool,
+        cfg_key => [bucket, data_size, enabled]}},
+     {"bucket.dataSizePerNode.couchstoreMaximum",
+      #{type => {num, 0, infinity},
+        cfg_key => [bucket, data_size, couchstore_maximum]}},
+     {"bucket.dataSizePerNode.magmaMaximum",
+      #{type => {num, 0, infinity},
+        cfg_key => [bucket, data_size, magma_maximum]}},
      %% Min number of cores per node per bucket
      {"coresPerBucket.enabled",
       #{type => bool,
@@ -87,7 +97,12 @@ raw_default_config() ->
       [{resident_ratio,
         [{enabled, false},
          {couchstore_minimum, 10},
-         {magma_minimum, 1}]}
+         {magma_minimum, 1}]},
+       %% Max data size per bucket on a node in TB
+       {data_size,
+        [{enabled, false},
+         {couchstore_maximum, 1.6},
+         {magma_maximum, 16}]}
       ]},
      %% Minimum cores required per bucket
      {cores_per_bucket,
@@ -151,7 +166,8 @@ default_config_t() ->
 
     SetConfigProfile([{resource_management,
                        [{[bucket, resident_ratio, enabled], true},
-                        {[cores_per_bucket, enabled], true}]
+                        {[cores_per_bucket, enabled], true},
+                        {[bucket, data_size, enabled], true}]
                       }]),
     assert_config_equal([{resource_management,
                           [{bucket,
@@ -159,7 +175,11 @@ default_config_t() ->
                               [{enabled, true},
                                {couchstore_minimum, 10},
                                {magma_minimum, 1}]
-                             }]
+                             },
+                             {data_size,
+                              [{enabled, true},
+                               {couchstore_maximum, 1.6},
+                               {magma_maximum, 16}]}]
                            },
                            {cores_per_bucket,
                             [{enabled, true},

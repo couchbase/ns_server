@@ -2,4 +2,5 @@
 {{resource_management, enabled}, true}.
 {resource_management,
  [{[bucket, resident_ratio, enabled], true},
-  {[cores_per_bucket, enabled], true}]}.
+  {[cores_per_bucket, enabled], true},
+  {[bucket, data_size, enabled], true}]}.

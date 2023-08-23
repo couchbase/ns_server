@@ -32,6 +32,12 @@ class ResourceManagementTests(testlib.BaseTestSet):
         get("couchstoreMinimum", resident_ratio_config)
         get("magmaMinimum", resident_ratio_config)
 
+        data_size_config = testlib.get_succ(
+            cluster, "/settings/resourceManagement/bucket/dataSizePerNode")
+        get("enabled", data_size_config)
+        get("couchstoreMaximum", data_size_config)
+        get("magmaMaximum", data_size_config)
+
         cores_per_bucket_config = testlib.get_succ(
             cluster, "/settings/resourceManagement/coresPerBucket")
         get("enabled", cores_per_bucket_config)
@@ -47,6 +53,11 @@ class ResourceManagementTests(testlib.BaseTestSet):
                                           "enabled": True,
                                           "couchstoreMinimum": 5,
                                           "magmaMinimum": 0.5
+                                      },
+                                      "dataSizePerNode": {
+                                          "enabled": True,
+                                          "couchstoreMaximum": 32,
+                                          "magmaMaximum": 64
                                       }
                                   },
                                   "coresPerBucket": {
@@ -62,6 +73,11 @@ class ResourceManagementTests(testlib.BaseTestSet):
         assert resident_ratio_config.get("couchstoreMinimum") == 5
         assert resident_ratio_config.get("magmaMinimum") == 0.5
 
+        data_size_config = bucket_config.get("dataSizePerNode")
+        assert data_size_config.get("enabled") is True
+        assert data_size_config.get("couchstoreMaximum") == 32
+        assert data_size_config.get("magmaMaximum") == 64
+
         cores_per_bucket_config = get("coresPerBucket", r)
         assert cores_per_bucket_config.get("enabled") is True
         assert cores_per_bucket_config.get("minimum") == 0.2
@@ -75,6 +91,9 @@ class ResourceManagementTests(testlib.BaseTestSet):
                 "bucket.residentRatio.enabled": "false",
                 "bucket.residentRatio.couchstoreMinimum": 6,
                 "bucket.residentRatio.magmaMinimum": 0.6,
+                "bucket.dataSizePerNode.enabled": "false",
+                "bucket.dataSizePerNode.couchstoreMaximum": 33,
+                "bucket.dataSizePerNode.magmaMaximum": 65,
                 "coresPerBucket.enabled": "false",
                 "coresPerBucket.minimum": 0.3
             })
@@ -85,6 +104,11 @@ class ResourceManagementTests(testlib.BaseTestSet):
         assert resident_ratio_config.get("enabled") is False
         assert resident_ratio_config.get("couchstoreMinimum") == 6
         assert resident_ratio_config.get("magmaMinimum") == 0.6
+
+        data_size_config = bucket_config.get("dataSizePerNode")
+        assert data_size_config.get("enabled") is False
+        assert data_size_config.get("couchstoreMaximum") == 33
+        assert data_size_config.get("magmaMaximum") == 65
 
         assert get("coresPerBucket", r).get("enabled") is False
         assert get("coresPerBucket", r).get("minimum") == 0.3
@@ -102,6 +126,17 @@ class ResourceManagementTests(testlib.BaseTestSet):
         assert get("enabled", r) is True
         assert get("couchstoreMinimum", r) == 7
         assert get("magmaMinimum", r) == 0.7
+
+        r = testlib.post_succ(
+            cluster, "/settings/resourceManagement/bucket/dataSizePerNode",
+            json={
+                "enabled": True,
+                "couchstoreMaximum": 34,
+                "magmaMaximum": 66
+            })
+        assert get("enabled", r) is True
+        assert get("couchstoreMaximum", r) == 34
+        assert get("magmaMaximum", r) == 66
 
         r = testlib.post_succ(
             cluster, "/settings/resourceManagement/coresPerBucket",

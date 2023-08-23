@@ -204,7 +204,10 @@ get_status_test() ->
                        #{{bucket, "bucket"} => {ok, retry}}),
 
     test_handle_status(resident_ratio, {bucket, "bucket"},
-                       #{{bucket, "bucket"} => resident_ratio}).
+                       #{{bucket, "bucket"} => resident_ratio}),
+
+    test_handle_status(data_size, {bucket, "bucket"},
+                       #{{bucket, "bucket"} => data_size}).
 
 get_changes_test() ->
     %% No statuses, no changes
@@ -232,8 +235,18 @@ get_aggregated_status_test() ->
 
     ?assertEqual(resident_ratio,
                  get_aggregated_status({bucket, "bucket"},
-                                       [{node1, resident_ratio},
-                                        {node2, ok}])).
+                                         [{node1, resident_ratio},
+                                          {node2, ok}])),
+
+    ?assertEqual(resident_ratio,
+                 get_aggregated_status({bucket, "bucket"},
+                                         [{node1, resident_ratio},
+                                          {node2, data_size}])),
+
+    ?assertEqual(data_size,
+                 get_aggregated_status({bucket, "bucket"},
+                                         [{node1, data_size},
+                                          {node2, ok}])).
 
 resolve_status_conflict_test() ->
     %% Generic status conflict logic
@@ -388,6 +401,19 @@ update_statuses_t() ->
     test_update_statuses(#{node1 => [{{bucket, "bucket1"}, resident_ratio}]}),
     ?assertEqual(resident_ratio, get_status({bucket, "bucket1"})),
     ?assertEqual(4, meck:num_calls(janitor_agent, maybe_set_data_ingress,
+                                   ["bucket1", resident_ratio, Servers])),
+
+    %% Update status to data_size
+    test_update_statuses(#{node1 => [{{bucket, "bucket1"}, data_size}]}),
+    ?assertEqual(data_size, get_status({bucket, "bucket1"})),
+    ?assertEqual(1, meck:num_calls(janitor_agent, maybe_set_data_ingress,
+                                   ["bucket1", data_size, Servers])),
+
+    %% Update both data_size and resident_ratio at same time
+    test_update_statuses(#{node1 => [{{bucket, "bucket1"}, data_size}],
+                           node2 => [{{bucket, "bucket1"}, resident_ratio}]}),
+    ?assertEqual(resident_ratio, get_status({bucket, "bucket1"})),
+    ?assertEqual(5, meck:num_calls(janitor_agent, maybe_set_data_ingress,
                                    ["bucket1", resident_ratio, Servers])).
 
 basic_test_teardown() ->
