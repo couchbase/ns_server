@@ -15,8 +15,7 @@
 -behaviour(gen_server).
 
 -export([start_link/0,
-         gather_stats/4, gather_stats/5,
-         invoke_archiver/3, invoke_archiver/4]).
+         gather_stats/4, gather_stats/5]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
@@ -93,8 +92,6 @@ gather_op_stats(Bucket, Nodes, ClientTStamp, Window, StatList) ->
               end, {undefined, undefined, []}, RV)
     end.
 
-invoke_archiver(Bucket, NodeS, Window) ->
-    invoke_archiver(Bucket, NodeS, Window, all).
 invoke_archiver(Bucket, NodeS, {Step, Period, Count}, StatList) ->
     RV = (catch stats_reader:latest_specific_stats(Period, NodeS, Bucket, Step,
                                                    Count, StatList)),

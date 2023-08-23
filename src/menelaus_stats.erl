@@ -63,14 +63,7 @@ grab_latest_bucket_stats(BucketName, Nodes) ->
         case Nodes -- FoundNodes of
             [] -> [];
             RestNodes ->
-                case cluster_compat_mode:is_cluster_70() of
-                    true ->
-                        stats_interface:buckets_interesting(RestNodes);
-                    false ->
-                        Entries = menelaus_stats_gatherer:invoke_archiver(
-                                    BucketName, RestNodes, {1, minute, 1}),
-                        [{N, S} || {N, [#stat_entry{values=S} | _]} <- Entries]
-                end
+                stats_interface:buckets_interesting(RestNodes)
         end,
     Stats ++ RestStats.
 
