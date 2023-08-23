@@ -24,8 +24,6 @@
 
 -define(TIMEOUT, ?get_timeout(timeout, 15000)).
 
--record(state, { tref }).
-
 start_link() ->
     misc:start_singleton(gen_server, ?MODULE, [], []).
 
@@ -34,17 +32,12 @@ purge_now(Age) ->
 
 %% callbacks
 init([]) ->
-    chronicle_compat_events:notify_if_key_changes(
-      fun (cluster_compat_version) ->
-              true;
-          (_) ->
-              false
-      end, maybe_schedule_timer),
-
-    {ok, maybe_schedule_timer(#state{})}.
+    schedule_timer(),
+    {ok, []}.
 
 handle_call({purge_now, Age}, _From, State) ->
-    handle_purge_now(Age, State);
+    Result = tombstone_agent:purge_cluster(Age),
+    {reply, Result, State};
 handle_call(_Call, _From, State) ->
     {reply, nack, State}.
 
@@ -53,36 +46,17 @@ handle_cast(Cast, State) ->
     {noreply, State}.
 
 handle_info(check, State) ->
-    {noreply, check(State)};
-handle_info(maybe_schedule_timer, State) ->
-    {noreply, maybe_schedule_timer(State)};
+    check(),
+    {noreply, State};
 handle_info(Msg, State) ->
     ?log_debug("Unexpected message:~n~p", [Msg]),
     {noreply, State}.
 
 %% internal
-handle_purge_now(Age, State) ->
-    case cluster_compat_mode:is_cluster_70() of
-        true ->
-            Result = tombstone_agent:purge_cluster(Age),
-            {reply, Result, State};
-        false ->
-            {reply, {error, not_supported}, State}
-    end.
+schedule_timer() ->
+    erlang:send_after(?CHECK_INTERVAL, self(), check).
 
-maybe_schedule_timer(#state{tref = TRef} = State) ->
-    case cluster_compat_mode:is_cluster_70() andalso TRef =:= undefined of
-        true ->
-            schedule_timer(State);
-        false ->
-            State
-    end.
-
-schedule_timer(#state{tref = undefined} = State) ->
-    TRef = erlang:send_after(?CHECK_INTERVAL, self(), check),
-    State#state{tref = TRef}.
-
-check(State) ->
+check() ->
     case ns_config:read_key_fast(tombstone_purger_enabled, true) of
         true ->
             case tombstone_agent:purge_cluster(?PURGE_AGE) of
@@ -95,4 +69,4 @@ check(State) ->
             ok
     end,
 
-    schedule_timer(State#state{tref = undefined}).
+    schedule_timer().

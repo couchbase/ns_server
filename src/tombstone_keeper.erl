@@ -40,7 +40,18 @@ init([]) ->
     {ok, {}}.
 
 handle_call(refresh, _From, State) ->
-    ets:insert(?MODULE, tombstone_agent:refresh_timestamps()),
+    %% This might be called during node joining cluster when chronicle is
+    %% temporarily wiped out. In this case we can skip the refresh. Refresh
+    %% will be called again by ns_cluster when it's ready.
+    case chronicle:get_system_state() of
+        provisioned ->
+            Timestamps = tombstone_agent:refresh_timestamps(),
+            ?log_debug("Refreshed with timestamps ~p", [Timestamps]),
+            ets:insert(?MODULE, Timestamps);
+        Other ->
+            ?log_debug("Refresh skipped due to chronicle being in state ~p",
+                       [Other])
+    end,
     {reply, ok, State};
 handle_call(wipe, _From, State) ->
     ets:delete_all_objects(?MODULE),

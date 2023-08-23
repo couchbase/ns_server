@@ -810,7 +810,7 @@ init({full, ConfigPath, DirPath, PolicyMod} = Init) ->
     erlang:process_flag(priority, high),
     case load_config(ConfigPath, DirPath, PolicyMod) of
         {ok, Config} ->
-            tombstone_agent:init_timestamps(Config),
+            tombstone_agent:refresh(),
             do_init(Config#config{init = Init,
                                   saver_mfa = {PolicyMod, encrypt_and_save, []},
                                   upgrade_config_fun = fun upgrade_config/1});
@@ -1455,7 +1455,7 @@ latest() ->
 -ifdef(TEST).
 mock_tombstone_agent() ->
     ok = meck:new(tombstone_agent),
-    ok = meck:expect(tombstone_agent, init_timestamps, fun (_) -> ok end),
+    ok = meck:expect(tombstone_agent, refresh, fun () -> ok end),
     ok = meck:expect(tombstone_agent, vclock_ts, fun() -> 0 end),
     ok = meck:expect(tombstone_agent, purge_ts, fun() -> 0 end).
 

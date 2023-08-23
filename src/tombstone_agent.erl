@@ -15,7 +15,7 @@
 
 -export([start_link/0]).
 -export([purge_ts/0, vclock_ts/0, purge_kvlist/1, purge_cluster/1,
-         init_timestamps/1, refresh/0, wipe/0, refresh_timestamps/0]).
+         refresh/0, wipe/0, refresh_timestamps/0]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
@@ -110,14 +110,6 @@ prepare_purge(Nodes, Rev) ->
             throw({prepare_purge_failed, FailedNodes})
     end.
 
-init_timestamps(Config) ->
-    case cluster_compat_mode:is_cluster_70(Config) of
-        true ->
-            refresh();
-        false ->
-            ok
-    end.
-
 refresh() ->
     tombstone_keeper:refresh().
 
@@ -160,19 +152,14 @@ handle_info(Msg, State) ->
     {noreply, State}.
 
 maybe_purge(#state{purge_ts = OldPurgeTS} = State) ->
-    case cluster_compat_mode:is_cluster_70() of
+    refresh(),
+    NewPurgeTS = purge_ts(),
+    case OldPurgeTS =:= NewPurgeTS of
         true ->
-            refresh(),
-            NewPurgeTS = purge_ts(),
-            case OldPurgeTS =:= NewPurgeTS of
-                true ->
-                    State;
-                false ->
-                    purge(NewPurgeTS),
-                    State#state{purge_ts = NewPurgeTS}
-            end;
+            State;
         false ->
-            State
+            purge(NewPurgeTS),
+            State#state{purge_ts = NewPurgeTS}
     end.
 
 purge(PurgeTS) ->
