@@ -212,21 +212,6 @@ config_sync(Type, Nodes) ->
             exit({config_sync_failed, Error})
     end.
 
-push_ns_config(Nodes) ->
-    case cluster_compat_mode:is_cluster_70() of
-        true ->
-            ok;
-        false ->
-            case ns_config_rep:ensure_config_seen_by_nodes(Nodes) of
-                ok ->
-                    ok;
-                {error, SyncFailedNodes} ->
-                    ?log_error("Failed to push config to nodes ~p",
-                               [SyncFailedNodes]),
-                    {config_sync_failed, SyncFailedNodes}
-            end
-    end.
-
 check_rebalance_condition(Check, Error) ->
     check_test_condition(Error) =:= ok orelse throw({error, Error}),
     Check() orelse throw({error, Error}).
@@ -1002,19 +987,14 @@ maybe_cleanup_old_buckets(KeepNodes) ->
                                      delete_unused_buckets_db_files, []))} ||
                    Node <- KeepNodes],
 
-    case push_ns_config(KeepNodes) of
-        ok ->
-            case misc:multi_call_request(Requests, infinity, _ =:= ok) of
-                {_, []} ->
-                    ok;
-                {_, BadNodes} ->
-                    [?rebalance_error(
-                        "Failed to cleanup old buckets on node ~p: ~p",
-                        [Node, Error]) || {Node, Error} <- BadNodes],
-                    {buckets_cleanup_failed, [N || {N, _} <- BadNodes]}
-            end;
-        Error ->
-            Error
+    case misc:multi_call_request(Requests, infinity, _ =:= ok) of
+        {_, []} ->
+            ok;
+        {_, BadNodes} ->
+            [?rebalance_error(
+                "Failed to cleanup old buckets on node ~p: ~p",
+                [Node, Error]) || {Node, Error} <- BadNodes],
+            {buckets_cleanup_failed, [N || {N, _} <- BadNodes]}
     end.
 
 find_delta_recovery_map(Config, AllNodes, DeltaNodes, Bucket, BucketConfig) ->
