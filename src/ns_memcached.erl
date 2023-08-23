@@ -286,6 +286,8 @@ handle_call(paused, _From, #state{status = paused} = State) ->
     {reply, true, State};
 handle_call(paused, _From, State) ->
     {reply, false, State};
+handle_call(status, From, #state{status = warmed} = State) ->
+    handle_call(verify_warmup_status, From, State);
 handle_call(status, _From, #state{status = Status} = State) ->
     {reply, Status, State};
 handle_call(disable_traffic, _From, State) ->
@@ -575,6 +577,14 @@ do_handle_call(verify_warmup,  _From, #state{bucket = Bucket,
                                              sock = Sock} = State) ->
     Stats = retrieve_warmup_stats(Sock),
     {reply, has_started(Stats, Bucket), State};
+do_handle_call(verify_warmup_status, _From, #state{bucket = Bucket,
+                                                   sock = Sock} = State) ->
+    Stats = retrieve_warmup_stats(Sock),
+    Response = case has_started(Stats, Bucket) of
+        true -> warmed;
+        _ -> connected
+    end,
+    {reply, Response, State};
 do_handle_call({raw_stats, SubStat, StatsFun, StatsFunState}, _From, State) ->
     try mc_binary:quick_stats(State#state.sock, SubStat, StatsFun, StatsFunState) of
         Reply ->
