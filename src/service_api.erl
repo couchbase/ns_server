@@ -129,11 +129,11 @@ empty_req() ->
 
 get_req(Rev, Timeout) ->
     {[{rev, encode_rev(Rev)},
-      {timeout, encode_timeout(Timeout)}] ++ maybe_add_additional_info()}.
+      {timeout, encode_timeout(Timeout)}]}.
 
 cancel_task_req(Id, Rev) when is_binary(Id) ->
     {[{id, Id},
-      {rev, encode_rev(Rev)}] ++ maybe_add_additional_info()}.
+      {rev, encode_rev(Rev)}]}.
 
 topology_change_req(Id, Rev, Type, KeepNodes, EjectNodes) ->
     true = is_binary(Id),
@@ -142,8 +142,7 @@ topology_change_req(Id, Rev, Type, KeepNodes, EjectNodes) ->
       {currentTopologyRev, encode_rev(Rev)},
       {type, encode_topology_change_type(Type)},
       {keepNodes, encode_keep_nodes(KeepNodes)},
-      {ejectNodes, encode_eject_nodes(EjectNodes)}] ++
-     maybe_add_additional_info()}.
+      {ejectNodes, encode_eject_nodes(EjectNodes)}]}.
 
 pause_req(Id,
           #bucket_hibernation_op_args{
@@ -177,14 +176,6 @@ resume_req(Id,
       {rateLimit, RateLimit},
       {dryRun, DryRun}]}.
 
-maybe_add_additional_info() ->
-    case cluster_compat_mode:is_cluster_trinity() of
-        false ->
-            [];
-        true ->
-            [{serviceApiVersion, "1.0"}]
-    end.
-
 encode_rev(undefined) ->
     null;
 encode_rev(Rev) when is_binary(Rev) ->
@@ -212,20 +203,7 @@ encode_node_info(Props) ->
 
     {[{nodeId, Id},
       {priority, Priority},
-      {opaque, Opaque}] ++ conditional_node_info(Id)}.
-
-conditional_node_info(NodeId) ->
-    case cluster_compat_mode:is_cluster_trinity() of
-        false ->
-            [];
-        true ->
-            Config = ns_config:get(),
-            UuidToNodeMap = ns_config:get_uuid_node_map(Config),
-            {ok, Node} = dict:find(NodeId, UuidToNodeMap),
-            ServerGroup = ns_cluster_membership:get_node_server_group(Node,
-                                                                      Config),
-            [{serverGroup, ServerGroup}]
-    end.
+      {opaque, Opaque}]}.
 
 encode_keep_nodes(KeepNodes) ->
     lists:map(
